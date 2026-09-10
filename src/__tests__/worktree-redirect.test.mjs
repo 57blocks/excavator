@@ -1,6 +1,6 @@
 // Validates the worktree-redirect bash snippet embedded in
-// `skills/understand/SKILL.md` Phase 0 step 1 and
-// `skills/understand-domain/SKILL.md` Phase 0.
+// `skills/excavator/SKILL.md` Phase 0 step 1 and
+// `skills/excavator-domain/SKILL.md` Phase 0.
 //
 // If you edit the snippet in either SKILL.md, mirror the change to RESOLVE_SNIPPET
 // below — there is no shared script to source (per-skill convention in this repo).

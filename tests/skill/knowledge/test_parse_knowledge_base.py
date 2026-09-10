@@ -24,7 +24,7 @@ from typing import Any
 
 _HERE = Path(__file__).resolve().parent
 _REPO_ROOT = _HERE.parent.parent.parent
-_SKILL_DIR = _REPO_ROOT / "skills" / "understand-knowledge"
+_SKILL_DIR = _REPO_ROOT / "skills" / "excavator-knowledge"
 
 
 def _load(script: str, alias: str) -> Any:

@@ -1,8 +1,8 @@
 ## 1. 目录与文件改名（commit 1）
 
-- [ ] 1.1 `git mv skills/understand skills/excavator` 及其余 8 个 `skills/understand-<s>` → `skills/excavator-<s>`；验证 `ls skills/` 全为 `excavator*`
-- [ ] 1.2 `git mv agents/<role>.md agents/excavator-<role>.md`（10 个）并改各自 frontmatter `name:`；验证 `ls agents/` 全为 `excavator-*.md` 且 name 与文件名一致
-- [ ] 1.3 修因移动而断的路径：`tests/**`、`src/__tests__/*` 的 import 与路径常量，SKILL.md 与 agents 里的 `agents/<role>.md`、`skills/understand/...` 路径；验证 `pnpm test` 绿且用例数不变（root 789 / core 1013）
+- [x] 1.1 `git mv skills/understand skills/excavator` 及其余 8 个 `skills/understand-<s>` → `skills/excavator-<s>`；验证 `ls skills/` 全为 `excavator*`
+- [x] 1.2 `git mv agents/<role>.md agents/excavator-<role>.md`（10 个）并改各自 frontmatter `name:`；验证 `ls agents/` 全为 `excavator-*.md` 且 name 与文件名一致
+- [x] 1.3 修因移动而断的路径：`tests/**`、`src/__tests__/*` 的 import 与路径常量，SKILL.md 与 agents 里的 `agents/<role>.md`、`skills/understand/...` 路径；验证 `pnpm test` 绿且用例数不变（root 789 / core 1013）
 
 ## 2. 品牌、包名、manifest、i18n（commit 2）
 

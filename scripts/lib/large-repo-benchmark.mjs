@@ -43,19 +43,19 @@ export const REPORT_SCHEMA_URL =
 const WORKER = resolve(__dirname, 'benchmark-stage-worker.mjs');
 const SCAN_SCRIPT = resolve(
   REPO_ROOT,
-  'skills/understand/scan-project.mjs',
+  'skills/excavator/scan-project.mjs',
 );
 const IMPORT_SCRIPT = resolve(
   REPO_ROOT,
-  'skills/understand/extract-import-map.mjs',
+  'skills/excavator/extract-import-map.mjs',
 );
 const BATCH_SCRIPT = resolve(
   REPO_ROOT,
-  'skills/understand/compute-batches.mjs',
+  'skills/excavator/compute-batches.mjs',
 );
 const STRUCTURE_SCRIPT = resolve(
   REPO_ROOT,
-  'skills/understand/extract-structure.mjs',
+  'skills/excavator/extract-structure.mjs',
 );
 
 export const STAGE_METRICS_PREFIX = '__UA_BENCHMARK_METRICS__';
