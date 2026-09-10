@@ -35,9 +35,9 @@
 
 ## 6. 引用完整性门（commit 6）
 
-- [ ] 6.1 `scripts/check-refs.mjs` 实现 design D8 六项检查，非零退出逐条打印；验证 `node scripts/check-refs.mjs` exit 0 并打印检查计数
-- [ ] 6.2 `tests/refs/check-refs.test.mjs`：用例 A 对仓库跑 exit 0；用例 B 复制树到临时目录、重命名一个 agent 文件、断言非零且输出点名该 agent 与引用它的文件；验证两条用例绿
-- [ ] 6.3 接进 `pnpm test`（vitest include 覆盖 `tests/refs/**`）；验证 `pnpm test` 输出含该文件
+- [x] 6.1 `scripts/check-refs.mjs` 实现 design D8 六项检查（zero deps，locale 校验通过子进程 `node --experimental-strip-types --input-type=module` 动态取键集，绕开本脚本自身要免特殊 flag 的约束），非零退出逐条打印；`frameworks/`、`languages/`、`locales/` 下的参考文档（glob 示例、纯 prose）排除出检查语料，避免把说明性文件名误判成断引用；验证 `node scripts/check-refs.mjs` exit 0 并打印检查计数（9 skills/10 agents 身份、16 agent 引用、71 斜杠引用、29 脚本路径引用、2 条 hooks.json 路径、6 条 locale key）
+- [x] 6.2 `tests/refs/check-refs.test.mjs`：用例 A 对仓库跑 exit 0；用例 B 用 rsync 复制树到临时目录（排除 node_modules/dist/.git）、重命名 `agents/excavator-file-analyzer.md`、运行**副本自己的** check-refs.mjs（脚本按 `import.meta.url` 而非 cwd 定位仓库根，必须跑副本里的脚本才能验证副本状态——已用先验装置发现并修正这个坑）、断言非零且输出点名该 agent 与引用它的文件（`skills/excavator/SKILL.md`、`hooks/auto-update-prompt.md`）；验证两条用例绿
+- [x] 6.3 接进 `pnpm test`（vitest include `tests/**/*.test.{js,mjs,ts}` 已覆盖 `tests/refs/**`，无需改配置）；验证 `pnpm test` 输出含该文件（38 files/807 tests，0 fail，4 skip）
 
 ## 7. 守卫与文档（commit 7）
 
