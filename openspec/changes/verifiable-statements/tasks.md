@@ -62,9 +62,9 @@
 
 ## 10. 新鲜度（②b commit 10）
 
-- [ ] 10.1 annotate 从 fingerprints 算 cosmetic dirty 文件 → `meta.json.excavator.dirtyFiles` 与节点 `verification:'dirty'`；UA 的 commit 标记逻辑不动；验证测试：改 `if` 阈值 → dirty 可见，UA 标记行为与之前一致
-- [ ] 10.2 `prepare-incremental.mjs` 新增 git 不可用回退（contentHash 变更集），git 可用时行为不变；验证非 git 夹具改一文件 → 变更集恰为该文件；wcp 父目录实跑不 fatal
-- [ ] 10.3 非 git 目标 `project.gitCommitHash=null`、`sourceDigest` 存在；验证测试
+- [x] 10.1 annotate 从 fingerprints 算 cosmetic dirty 文件 → `meta.json.excavator.dirtyFiles` 与节点 `verification:'dirty'`；UA 的 commit 标记逻辑不动；验证测试：改 `if` 阈值 → dirty 可见，UA 标记行为与之前一致
+- [x] 10.2 `prepare-incremental.mjs` 新增 git 不可用回退（contentHash 变更集），git 可用时行为不变；验证非 git 夹具改一文件 → 变更集恰为该文件；wcp 父目录实跑不 fatal
+- [x] 10.3 非 git 目标 `project.gitCommitHash=null`、`sourceDigest` 存在；验证测试
 
 ## 11. 领域步骤（②b commit 11）
 

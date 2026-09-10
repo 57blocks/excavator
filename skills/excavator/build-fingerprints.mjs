@@ -70,9 +70,16 @@ async function main() {
   const { projectRoot, gitCommitHash } = input;
   const filePaths = input.filePaths ?? input.sourceFilePaths;
 
-  if (!projectRoot || !Array.isArray(filePaths) || typeof gitCommitHash !== 'string') {
+  // `gitCommitHash: null` is accepted, and only null — a target with no git
+  // repository has no commit to stamp, and refusing it here would mean a
+  // non-git project can never get a fingerprint baseline, which in turn means
+  // its incremental runs have nothing to compare against. Any other type is
+  // still rejected: a missing hash must be the explicit null, not `undefined`
+  // arriving from a template that failed to substitute.
+  if (!projectRoot || !Array.isArray(filePaths)
+    || (typeof gitCommitHash !== 'string' && gitCommitHash !== null)) {
     throw new Error(
-      'Invalid input: requires { projectRoot: string, filePaths: string[], gitCommitHash: string }',
+      'Invalid input: requires { projectRoot: string, filePaths: string[], gitCommitHash: string | null }',
     );
   }
 

@@ -14,6 +14,11 @@
  *     node, nodes with no declaration, and declarations the model merged into
  *     one node (identity collisions);
  *   - adds the coverage ledger, the gap list and the source/facts digests;
+ *   - marks the nodes of files an incremental run classified as COSMETIC and
+ *     therefore did NOT re-analyse with `verification: "dirty"`, and records
+ *     that file list under `meta.json`'s `excavator.dirtyFiles`, so "the
+ *     source moved under this summary" is visible without changing the
+ *     pipeline's own commit marker;
  *   - optionally appends the deterministic `imports`/`exports`/`contains`
  *     records the model omitted, marked `addedBy: "excavator-annotate"`.
  *
@@ -25,6 +30,8 @@
  *   node annotate-graph.mjs <projectRoot>
  *     [--graph <assembled-graph.json>] [--structure <structure-all.json>]
  *     [--scan <scan-result.json>] [--import-map <import-map.json>]
+ *     [--plan <incremental-plan.json>] [--fingerprints <fingerprints.json>]
+ *     [--meta <meta.json>] [--no-meta]
  *     [--out <annotated-graph.json>] [--audit-out <audit.json>]
  *     [--no-supplement] [--samples <n>]
  *
@@ -45,6 +52,7 @@ import {
   conservationViolations,
   compareGaps,
 } from './coverage-ledger.mjs';
+import { mergeVerification } from './verification-state.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const pluginRoot = resolve(__dirname, '../..');
@@ -69,6 +77,14 @@ export const SUPPLEMENTABLE_TYPES = Object.freeze(['imports', 'exports', 'contai
 
 /** UA's per-type weight constants (SKILL.md "Edge Weight Conventions"). */
 const WEIGHT_BY_TYPE = Object.freeze({ contains: 1.0, exports: 0.8, imports: 0.7 });
+
+/**
+ * What a commit hash looks like. Anything else in `project.gitCommitHash` —
+ * `""`, `"unknown"`, `"HEAD"`, a missing field — becomes `null`, so "this
+ * target has no commit" is one visible value rather than four spellings of
+ * absence. The count says how often it happened.
+ */
+const GIT_COMMIT_HASH = /^[0-9a-f]{7,40}$/i;
 
 /** Extraction statuses whose files can be compared against the graph. */
 const COMPARABLE_STATUSES = Object.freeze(new Set(['parsed', 'zero-symbol']));
@@ -274,6 +290,52 @@ export function resolveUniqueCallSites({ structure, importMap, expected }) {
   return { unique, ambiguous, unresolved };
 }
 
+/**
+ * Files whose analysis this run SKIPPED because the change was cosmetic.
+ *
+ * The authority is the incremental plan: `cosmeticFiles` is the pipeline's own
+ * record of "content changed, structural fingerprint did not, so the old nodes
+ * were kept". Their summaries therefore describe source that has since moved,
+ * which is what `verification: "dirty"` says.
+ *
+ * With no plan there is nothing to report: a full analysis re-derived every
+ * node from current source, so no node is stale, and deriving a dirty set from
+ * the leftover fingerprint store would mark the whole freshly-analysed graph.
+ *
+ * The fingerprint store is the baseline that classification came from. A
+ * cosmetic file with no entry in it is a bookkeeping hole, not a reason to
+ * drop the file: it is still reported dirty AND counted separately.
+ */
+export function cosmeticDirtyFiles({ plan, fingerprints, scan }) {
+  if (!plan || !Array.isArray(plan.cosmeticFiles)) {
+    return { files: [], unfingerprinted: [], reanalysedOverlap: [] };
+  }
+  const scanned = new Set((scan?.files ?? []).map((file) => file?.path));
+  const reanalysed = new Set(Array.isArray(plan.filesToReanalyze) ? plan.filesToReanalyze : []);
+  const baseline = fingerprints?.files ?? {};
+
+  const files = [];
+  const unfingerprinted = [];
+  const reanalysedOverlap = [];
+  for (const path of plan.cosmeticFiles) {
+    if (typeof path !== 'string' || path.length === 0) continue;
+    if (!scanned.has(path)) continue;
+    if (reanalysed.has(path)) {
+      // Re-analysed after all, so its nodes are current. Counted, because a
+      // file in both lists means the plan disagrees with itself.
+      reanalysedOverlap.push(path);
+      continue;
+    }
+    if (!Object.hasOwn(baseline, path)) unfingerprinted.push(path);
+    files.push(path);
+  }
+  return {
+    files: [...new Set(files)].sort(compareStrings),
+    unfingerprinted: unfingerprinted.sort(compareStrings),
+    reanalysedOverlap: reanalysedOverlap.sort(compareStrings),
+  };
+}
+
 /** Index of the graph's nodes, by id and by the fields an audit matches on. */
 function indexNodes(nodes) {
   const byId = new Map();
@@ -316,7 +378,7 @@ function sampler(limit) {
  * The whole audit. Pure over already-parsed inputs so it is testable without
  * touching disk, and so the CLI is a thin shell around it.
  */
-export function annotate({ graph, structure, scan, importMap, supplement = true, sampleLimit = 5 }) {
+export function annotate({ graph, structure, scan, importMap, plan = null, fingerprints = null, supplement = true, sampleLimit = 5 }) {
   const annotated = clone(graph);
   annotated.nodes = Array.isArray(annotated.nodes) ? annotated.nodes : [];
   annotated.edges = Array.isArray(annotated.edges) ? annotated.edges : [];
@@ -344,6 +406,13 @@ export function annotate({ graph, structure, scan, importMap, supplement = true,
     anchorSourceAnnotated: 0,
     notComparableNodes: 0,
     importLineUnmatched: expected.importLineUnmatched,
+    dirtyFiles: 0,
+    dirtyNodes: 0,
+    dirtyPreserved: 0,
+    dirtyUnfingerprinted: 0,
+    dirtyReanalysedOverlap: 0,
+    gitCommitHashNormalized: 0,
+    sourceDigestMissing: 0,
   };
 
   // ── edges the model wrote ────────────────────────────────────────────────
@@ -468,6 +537,31 @@ export function annotate({ graph, structure, scan, importMap, supplement = true,
     }
   }
 
+  // ── freshness: nodes of files this run did not re-analyse ───────────────
+  const dirty = cosmeticDirtyFiles({ plan, fingerprints, scan });
+  counts.dirtyFiles = dirty.files.length;
+  counts.dirtyUnfingerprinted = dirty.unfingerprinted.length;
+  counts.dirtyReanalysedOverlap = dirty.reanalysedOverlap.length;
+  const dirtySet = new Set(dirty.files);
+  if (dirtySet.size > 0) {
+    for (const node of annotated.nodes) {
+      if (!node || typeof node !== 'object') continue;
+      if (typeof node.filePath !== 'string' || !dirtySet.has(node.filePath)) continue;
+      // `mergeVerification` keeps a `contradicted` marking: "the source says
+      // otherwise" outranks "the source moved".
+      const merged = mergeVerification(node.verification, 'dirty');
+      if (merged.preserved) {
+        counts.dirtyPreserved += 1;
+        continue;
+      }
+      node.verification = merged.value;
+      counts.dirtyNodes += 1;
+    }
+    for (const path of dirty.files) samples.add('cosmetic-dirty', path);
+    for (const path of dirty.unfingerprinted) samples.add('dirty-unfingerprinted', path);
+  }
+  for (const path of dirty.reanalysedOverlap) samples.add('dirty-reanalysed-overlap', path);
+
   // ── records with no node / no edge ───────────────────────────────────────
   for (const [path, decls] of expected.declarations) {
     for (const decl of decls) {
@@ -541,6 +635,28 @@ export function annotate({ graph, structure, scan, importMap, supplement = true,
     samples.add(`shape-issue|${issue.code}`, issue.nodeId ?? issue.edgeKey ?? issue.code);
   }
 
+  // Digests and the project's version identity, before the gaps are built:
+  // `sourceDigestMissing` is one of the facts the gap list has to carry.
+  if (annotated.project && typeof annotated.project === 'object') {
+    if (typeof scan?.contentDigest === 'string') {
+      annotated.project.sourceDigest = scan.contentDigest;
+    } else {
+      counts.sourceDigestMissing = 1;
+    }
+    annotated.project.factsDigest = sha256(
+      JSON.stringify(canonicalize({ structure, importMap: importMap ?? null })),
+    );
+    annotated.project.pipelineVersion = PIPELINE_VERSION;
+    // A target with no git repository has no commit; `sourceDigest` carries
+    // the version instead. The field is set to null rather than left absent
+    // so a consumer reads "no commit" instead of "field missing, ask again".
+    const commit = annotated.project.gitCommitHash;
+    if (typeof commit !== 'string' || !GIT_COMMIT_HASH.test(commit.trim())) {
+      if (commit !== null && commit !== undefined) counts.gitCommitHashNormalized = 1;
+      annotated.project.gitCommitHash = null;
+    }
+  }
+
   const auditGaps = [];
   const gap = (kind, scope, reason, count, sampleKey) => {
     if (count <= 0) return;
@@ -578,6 +694,18 @@ export function annotate({ graph, structure, scan, importMap, supplement = true,
   gap('identity-collision', 'graph',
     `${counts.identityCollision} node(s) stand for more than one declaration of the same name in one file`,
     counts.identityCollision);
+  gap('cosmetic-dirty', 'graph',
+    `${counts.dirtyFiles} file(s) changed without re-analysis; ${counts.dirtyNodes} node(s) marked dirty`,
+    counts.dirtyFiles, 'cosmetic-dirty');
+  gap('dirty-unfingerprinted', 'graph',
+    `${counts.dirtyUnfingerprinted} cosmetic file(s) have no baseline fingerprint entry`,
+    counts.dirtyUnfingerprinted, 'dirty-unfingerprinted');
+  gap('dirty-reanalysed-overlap', 'graph',
+    `${counts.dirtyReanalysedOverlap} file(s) appear as both cosmetic and re-analysed in the incremental plan`,
+    counts.dirtyReanalysedOverlap, 'dirty-reanalysed-overlap');
+  gap('source-digest-missing', 'graph',
+    'the scan result carries no contentDigest, so project.sourceDigest cannot identify the analysed sources',
+    counts.sourceDigestMissing);
   for (const [code, count] of Object.entries(shapeByCode).sort((a, b) => compareStrings(a[0], b[0]))) {
     gap('shape-issue', code, `${count} ${code}`, count, `shape-issue|${code}`);
   }
@@ -602,18 +730,13 @@ export function annotate({ graph, structure, scan, importMap, supplement = true,
 
   annotated.coverage = ledger.coverage;
   annotated.gaps = gaps;
-  if (annotated.project && typeof annotated.project === 'object') {
-    if (typeof scan?.contentDigest === 'string') annotated.project.sourceDigest = scan.contentDigest;
-    annotated.project.factsDigest = sha256(
-      JSON.stringify(canonicalize({ structure, importMap: importMap ?? null })),
-    );
-    annotated.project.pipelineVersion = PIPELINE_VERSION;
-  }
 
   const audit = {
     scriptCompleted: true,
     pipelineVersion: PIPELINE_VERSION,
     supplement,
+    dirtyFiles: dirty.files,
+    dirtyUnfingerprinted: dirty.unfingerprinted,
     counts: {
       ...counts,
       edgeAutoInferred: sortObject(counts.edgeAutoInferred),
@@ -631,7 +754,7 @@ export function annotate({ graph, structure, scan, importMap, supplement = true,
     importLineUnmatchedSamples: expected.importLineUnmatchedSamples.slice(0, sampleLimit),
   };
 
-  return { annotated, audit, addedEdges: added };
+  return { annotated, audit, addedEdges: added, dirtyFiles: dirty.files };
 }
 
 function sortObject(obj) {
@@ -712,15 +835,18 @@ function supplementEndpoints(kind, record, nodes) {
 function parseArgs(argv) {
   const args = {
     projectRoot: null, graph: null, structure: null, scan: null, importMap: null,
+    plan: null, fingerprints: null, meta: null, writeMeta: true,
     out: null, auditOut: null, supplement: true, sampleLimit: 5,
   };
   const valueFlags = {
     '--graph': 'graph', '--structure': 'structure', '--scan': 'scan',
-    '--import-map': 'importMap', '--out': 'out', '--audit-out': 'auditOut',
+    '--import-map': 'importMap', '--plan': 'plan', '--fingerprints': 'fingerprints',
+    '--meta': 'meta', '--out': 'out', '--audit-out': 'auditOut',
   };
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
     if (arg === '--no-supplement') { args.supplement = false; continue; }
+    if (arg === '--no-meta') { args.writeMeta = false; continue; }
     if (arg === '--samples') {
       const value = Number.parseInt(argv[i + 1], 10);
       if (!Number.isInteger(value) || value < 0) throw new Error('annotate-graph: --samples requires a non-negative integer');
@@ -742,7 +868,8 @@ function parseArgs(argv) {
   if (!args.projectRoot) {
     throw new Error(
       'Usage: node annotate-graph.mjs <projectRoot> [--graph <path>] [--structure <path>] ' +
-      '[--scan <path>] [--import-map <path>] [--out <path>] [--audit-out <path>] [--no-supplement]',
+      '[--scan <path>] [--import-map <path>] [--plan <path>] [--fingerprints <path>] ' +
+      '[--meta <path>] [--no-meta] [--out <path>] [--audit-out <path>] [--no-supplement]',
     );
   }
   return args;
@@ -757,10 +884,14 @@ async function main() {
   const args = parseArgs(process.argv.slice(2));
   const projectRoot = resolve(args.projectRoot);
   const intermediate = join(resolveDataDir(projectRoot), 'intermediate');
+  const dataDir = resolveDataDir(projectRoot);
   const graphPath = resolve(args.graph ?? join(intermediate, 'assembled-graph.json'));
   const structurePath = resolve(args.structure ?? join(intermediate, 'structure-all.json'));
   const scanPath = resolve(args.scan ?? join(intermediate, 'scan-result.json'));
   const importMapPath = resolve(args.importMap ?? join(intermediate, 'import-map.json'));
+  const planPath = resolve(args.plan ?? join(intermediate, 'incremental-plan.json'));
+  const fingerprintPath = resolve(args.fingerprints ?? join(dataDir, 'fingerprints.json'));
+  const metaPath = resolve(args.meta ?? join(dataDir, 'meta.json'));
   const outPath = resolve(args.out ?? join(intermediate, 'annotated-graph.json'));
   const auditPath = resolve(args.auditOut ?? join(intermediate, 'audit.json'));
 
@@ -774,8 +905,15 @@ async function main() {
     );
   }
 
-  const { annotated, audit } = annotate({
-    graph, structure, scan, importMap,
+  // Both are absent on a full analysis, and both being absent means "nothing
+  // was skipped, so nothing is dirty" — see cosmeticDirtyFiles.
+  const plan = existsSync(planPath) ? JSON.parse(readFileSync(planPath, 'utf-8')) : null;
+  const fingerprints = existsSync(fingerprintPath)
+    ? JSON.parse(readFileSync(fingerprintPath, 'utf-8'))
+    : null;
+
+  const { annotated, audit, dirtyFiles } = annotate({
+    graph, structure, scan, importMap, plan, fingerprints,
     supplement: args.supplement,
     sampleLimit: args.sampleLimit,
   });
@@ -785,6 +923,8 @@ async function main() {
   writeFileSync(outPath, JSON.stringify(annotated, null, 2), 'utf-8');
   writeFileSync(auditPath, JSON.stringify(audit, null, 2), 'utf-8');
 
+  if (args.writeMeta && dirtyFiles.length > 0) publishDirtyFiles(metaPath, dirtyFiles);
+
   const c = audit.counts;
   process.stderr.write(
     `annotate-graph: edges=${c.edgesTotal} extracted=${c.edgesExtracted} inferred=${c.edgesInferred} ` +
@@ -792,13 +932,50 @@ async function main() {
     `edge-unsupported=${c.edgeUnsupported} evidence-corrected=${c.evidenceCorrected} ` +
     `edge-missing=${sum(c.edgeMissing)} node-missing=${c.nodeMissing} ` +
     `node-unsupported=${c.nodeUnsupported} identity-collision=${c.identityCollision} ` +
-    `supplement-added=${sum(c.supplementAdded)}\n`,
+    `supplement-added=${sum(c.supplementAdded)} dirty-files=${c.dirtyFiles} ` +
+    `dirty-nodes=${c.dirtyNodes}\n`,
   );
   if (audit.conservationViolations.length > 0) {
     process.stderr.write(
       `Warning: annotate-graph: coverage does not conserve for ${audit.conservationViolations.length} language(s)\n`,
     );
   }
+}
+
+/**
+ * Merge the dirty file list into `meta.json` under one `excavator` key.
+ *
+ * Read-modify-write, never a replace: `meta.json` is the pipeline's own
+ * metadata and its keys (`gitCommitHash`, `lastAnalyzedAt`, …) are UA's. The
+ * commit marker is not touched here — that logic stays exactly where it is,
+ * and this file only says which analysed files have since moved.
+ *
+ * A missing `meta.json` means no graph has been published, so a dirty list
+ * would describe nothing: warn rather than create one.
+ */
+function publishDirtyFiles(metaPath, dirtyFiles) {
+  if (!existsSync(metaPath)) {
+    process.stderr.write(
+      `Warning: annotate-graph: ${dirtyFiles.length} dirty file(s) not published — no meta.json at ${metaPath}\n`,
+    );
+    return;
+  }
+  let meta;
+  try {
+    meta = JSON.parse(readFileSync(metaPath, 'utf-8'));
+  } catch (err) {
+    process.stderr.write(`Warning: annotate-graph: meta.json is unreadable (${err.message}); dirty files not published\n`);
+    return;
+  }
+  if (!meta || typeof meta !== 'object' || Array.isArray(meta)) {
+    process.stderr.write('Warning: annotate-graph: meta.json is not an object; dirty files not published\n');
+    return;
+  }
+  const excavator = meta.excavator && typeof meta.excavator === 'object' && !Array.isArray(meta.excavator)
+    ? meta.excavator
+    : {};
+  meta.excavator = { ...excavator, dirtyFiles };
+  writeFileSync(metaPath, `${JSON.stringify(meta, null, 2)}\n`, 'utf-8');
 }
 
 function sum(obj) {
@@ -823,4 +1000,7 @@ if (isCliEntry()) {
   }
 }
 
-export default { annotate, buildExpectedRecords, resolveUniqueCallSites, matchImportLine, PIPELINE_VERSION };
+export default {
+  annotate, buildExpectedRecords, resolveUniqueCallSites, matchImportLine,
+  cosmeticDirtyFiles, PIPELINE_VERSION,
+};

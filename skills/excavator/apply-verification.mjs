@@ -67,6 +67,7 @@ import {
 } from 'node:fs';
 import { compareGaps } from './coverage-ledger.mjs';
 import { resolveWithinRoot } from './validate-graph.mjs';
+import { VERIFICATION_SEVERITY, mergeVerification } from './verification-state.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const pluginRoot = resolve(__dirname, '../..');
@@ -83,13 +84,11 @@ const { resolveDataDir } = core;
 /** The only verdicts a verifier may return. There is no fourth. */
 export const VERDICTS = Object.freeze(['verified', 'unverified', 'contradicted']);
 
-/** Severity order for `verification`; a verdict never lowers an existing one. */
-export const VERIFICATION_SEVERITY = Object.freeze({
-  verified: 0,
-  unverified: 1,
-  dirty: 2,
-  contradicted: 3,
-});
+/**
+ * Severity order for `verification`, owned by `verification-state.mjs` and
+ * re-exported here: a verdict never lowers a marking an earlier phase set.
+ */
+export { VERIFICATION_SEVERITY };
 
 /** Gap kinds this script owns and therefore replaces on a re-run. */
 export const OWNED_GAP_KINDS = Object.freeze([
@@ -311,15 +310,9 @@ export function applyVerification({ graph, manifest = null, verdicts = [], mode 
     }
     seen.add(id);
 
-    const existing = node.verification;
-    const existingRank = VERIFICATION_SEVERITY[existing];
-    const verdictRank = VERIFICATION_SEVERITY[verdict];
-    if (existingRank !== undefined && existingRank > verdictRank) {
-      node.verification = existing;
-      counts.verificationPreserved += 1;
-    } else {
-      node.verification = verdict;
-    }
+    const merged = mergeVerification(node.verification, verdict);
+    node.verification = merged.value;
+    if (merged.preserved) counts.verificationPreserved += 1;
     counts.verdictsApplied += 1;
     counts[verdict] += 1;
 
@@ -351,9 +344,9 @@ export function applyVerification({ graph, manifest = null, verdicts = [], mode 
     counts.verdictMissing += 1;
     if (samples.missing.length < sampleLimit) samples.missing.push(String(id));
     if (!node) continue;
-    const existingRank = VERIFICATION_SEVERITY[node.verification];
-    if (existingRank !== undefined && existingRank > VERIFICATION_SEVERITY.unverified) continue;
-    node.verification = 'unverified';
+    const merged = mergeVerification(node.verification, 'unverified');
+    if (merged.preserved) continue;
+    node.verification = merged.value;
     counts.unverified += 1;
   }
 

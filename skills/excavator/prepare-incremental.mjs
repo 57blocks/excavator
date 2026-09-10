@@ -18,6 +18,13 @@
  * only changes are generated analysis artifacts). All git subprocess
  * arguments are parameterized and all path lists use Git's NUL-delimited
  * format so spaces, renames, and non-ASCII filenames round-trip safely.
+ *
+ * Targets with no git repository (a plain directory, or a multi-repo parent
+ * that is not itself a repository) take an added fallback: the change set
+ * comes from the fingerprint store's content hashes instead of a git diff,
+ * `baseCommit`/`headCommit` are null, and `sourceDigest` carries the version.
+ * Everything the git path does is unchanged; the fallback only fills in for
+ * the four questions git would have answered.
  */
 
 import { createRequire } from 'node:module';
@@ -57,6 +64,7 @@ const {
   classifyUpdate,
   createIgnoreFilter,
   resolveDataDir,
+  contentHash,
 } = core;
 
 const SCAN_SCRIPT = join(__dirname, 'scan-project.mjs');
@@ -153,6 +161,57 @@ function resolveCommit(projectRoot, value) {
     ['rev-parse', '--verify', '--end-of-options', `${value}^{commit}`],
     { cwd: projectRoot },
   ).trim();
+}
+
+/**
+ * Is this directory inside a git repository at all?
+ *
+ * Asked once, with a probe that cannot be mistaken for a different failure:
+ * `rev-parse --git-dir` fails only when there is no repository (a repository
+ * with no commits still answers). Any other git problem — a broken HEAD, a
+ * corrupt index — must keep reaching the caller as an error rather than
+ * quietly demoting the run to the fallback, which would hide a real fault
+ * behind a degraded mode.
+ */
+function hasGitRepository(projectRoot) {
+  const probe = spawnSync('git', ['rev-parse', '--git-dir'], {
+    cwd: projectRoot,
+    encoding: 'utf-8',
+  });
+  return probe.status === 0;
+}
+
+/**
+ * The change set for a target with no git history: every scanned file whose
+ * content hash differs from the fingerprint baseline, plus every file the
+ * baseline has never seen.
+ *
+ * Fail-closed twice over. A file that cannot be read is reported as changed,
+ * not as unchanged, so a transient read failure re-analyses instead of
+ * silently freezing an old summary. A file with no baseline fingerprint is
+ * changed too: "we have no record" is not "it is the same".
+ */
+function contentChangeSet({ projectRoot, currentInventory, oldInventorySet, oldFingerprints }) {
+  const baseline = oldFingerprints?.files ?? {};
+  const changed = [];
+  const unreadable = [];
+  for (const path of currentInventory) {
+    const previous = baseline[path];
+    if (!previous || typeof previous.contentHash !== 'string' || !oldInventorySet.has(path)) {
+      changed.push(path);
+      continue;
+    }
+    let hash;
+    try {
+      hash = contentHash(readFileSync(join(projectRoot, path), 'utf-8'));
+    } catch {
+      unreadable.push(path);
+      changed.push(path);
+      continue;
+    }
+    if (hash !== previous.contentHash) changed.push(path);
+  }
+  return { changed: sorted(changed), unreadable: sorted(unreadable) };
 }
 
 function parseNameStatusZ(output) {
@@ -450,6 +509,8 @@ function pruneExistingGraph(graph, pathsToReplace, importPathsToRefresh = new Se
   return { nodes, edges };
 }
 
+const USAGE = 'Usage: node prepare-incremental.mjs <projectRoot> <baseCommit> [--exclude <patterns>]';
+
 function parseArgs(argv) {
   const positionals = [];
   const excludePatterns = [];
@@ -465,12 +526,17 @@ function parseArgs(argv) {
       positionals.push(arg);
     }
   }
-  if (positionals.length !== 2) {
-    throw new Error(
-      'Usage: node prepare-incremental.mjs <projectRoot> <baseCommit> [--exclude <patterns>]',
-    );
+  // A target with no git repository has no base commit to name, so the second
+  // positional is optional there. The git path still requires it: main() fails
+  // with this same message when a repository is present and it is missing.
+  if (positionals.length < 1 || positionals.length > 2) {
+    throw new Error(USAGE);
   }
-  return { projectRoot: positionals[0], baseCommit: positionals[1], excludePatterns };
+  return {
+    projectRoot: positionals[0],
+    baseCommit: positionals.length === 2 ? positionals[1] : null,
+    excludePatterns,
+  };
 }
 
 async function main() {
@@ -480,25 +546,40 @@ async function main() {
   const intermediateDir = join(dataDir, 'intermediate');
   mkdirSync(intermediateDir, { recursive: true });
 
-  const baseCommit = resolveCommit(projectRoot, args.baseCommit);
-  const headCommit = resolveCommit(projectRoot, 'HEAD');
-  const dirtyPaths = relevantWorktreeChanges(projectRoot, args.excludePatterns);
-  if (dirtyPaths.length > 0) {
-    const preview = dirtyPaths.slice(0, 10).join(', ');
-    const suffix = dirtyPaths.length > 10 ? ` (+${dirtyPaths.length - 10} more)` : '';
-    throw new Error(
-      `Working tree has relevant uncommitted changes: ${preview}${suffix}. ` +
-      `Commit or stash them before incremental analysis so the HEAD baseline remains reproducible.`,
+  // The git path below is unchanged. Without a repository there are no
+  // commits to resolve, no working tree to compare against HEAD and no diff
+  // to ask for, so those four answers come from the fingerprint store instead
+  // (filled in after the scan, where the inventory exists).
+  const gitAvailable = hasGitRepository(projectRoot);
+  if (gitAvailable && (args.baseCommit === null || args.baseCommit === '')) throw new Error(USAGE);
+  const baseCommit = gitAvailable ? resolveCommit(projectRoot, args.baseCommit) : null;
+  const headCommit = gitAvailable ? resolveCommit(projectRoot, 'HEAD') : null;
+  if (gitAvailable) {
+    const dirtyPaths = relevantWorktreeChanges(projectRoot, args.excludePatterns);
+    if (dirtyPaths.length > 0) {
+      const preview = dirtyPaths.slice(0, 10).join(', ');
+      const suffix = dirtyPaths.length > 10 ? ` (+${dirtyPaths.length - 10} more)` : '';
+      throw new Error(
+        `Working tree has relevant uncommitted changes: ${preview}${suffix}. ` +
+        `Commit or stash them before incremental analysis so the HEAD baseline remains reproducible.`,
+      );
+    }
+  } else {
+    process.stderr.write(
+      `Warning: ${projectRoot} is not a git repository; using content hashes for the change set ` +
+      `and recording gitCommitHash as null\n`,
     );
   }
-  const changes = parseNameStatusZ(
-    run(
-      'git',
-      ['diff', '--name-status', '-z', '--relative', baseCommit, headCommit, '--', '.'],
-      { cwd: projectRoot },
-    ),
-  );
-  const diffPaths = pathsFromChanges(changes);
+  const changes = gitAvailable
+    ? parseNameStatusZ(
+      run(
+        'git',
+        ['diff', '--name-status', '-z', '--relative', baseCommit, headCommit, '--', '.'],
+        { cwd: projectRoot },
+      ),
+    )
+    : [];
+  let diffPaths = pathsFromChanges(changes);
 
   const scanPath = join(intermediateDir, 'scan-result.json');
   const oldScan = readJson(scanPath, {});
@@ -546,15 +627,24 @@ async function main() {
   // Use only the preserved graph, even when retrying against a different HEAD.
   const oldInventory = inventoryFrom(baselineScan, baselineGraph, oldFingerprints);
   const oldInventorySet = new Set(oldInventory);
-  const trackedPaths = new Set(parseNulPaths(run(
-    'git',
-    ['ls-files', '--cached', '-z', '--', '.'],
-    { cwd: projectRoot },
-  )));
+  // Git's index answers "was this file ever part of the project?". Without it,
+  // the filesystem answers the same question: a file the scan omitted while it
+  // still exists on disk is unexplained either way, so the safety check keeps
+  // its teeth instead of being skipped.
+  const trackedPaths = gitAvailable
+    ? new Set(parseNulPaths(run(
+      'git',
+      ['ls-files', '--cached', '-z', '--', '.'],
+      { cwd: projectRoot },
+    )))
+    : null;
+  const wasTracked = path => (trackedPaths
+    ? trackedPaths.has(path)
+    : existsSync(join(projectRoot, path)));
   const currentIgnoreFilter = createIgnoreFilter(projectRoot, args.excludePatterns);
   const unexplainedMissingFiles = oldInventory.filter(path =>
     !currentInventorySet.has(path)
-    && trackedPaths.has(path)
+    && wasTracked(path)
     && !currentIgnoreFilter.isIgnored(path)
     && !isTrackedSymlink(projectRoot, path),
   );
@@ -563,6 +653,23 @@ async function main() {
       `Project scan omitted tracked, non-ignored files: ` +
       `${unexplainedMissingFiles.slice(0, 10).join(', ')}. Baseline not advanced.`,
     );
+  }
+
+  if (!gitAvailable) {
+    // Every entry is a path the current scan emitted, so `ignoredFiles` (paths
+    // in neither inventory) is necessarily empty here: without git we cannot
+    // see a change to a file the scanner never looked at, and reporting an
+    // empty list is the honest answer rather than a guess.
+    const contentChanges = contentChangeSet({
+      projectRoot, currentInventory, oldInventorySet, oldFingerprints,
+    });
+    diffPaths = contentChanges.changed;
+    if (contentChanges.unreadable.length > 0) {
+      process.stderr.write(
+        `Warning: ${contentChanges.unreadable.length} file(s) could not be read for hashing ` +
+        `and are treated as changed: ${contentChanges.unreadable.slice(0, 5).join(', ')}\n`,
+      );
+    }
   }
 
   const generatedArtifactFiles = sorted(diffPaths.filter(isGeneratedArtifact));
