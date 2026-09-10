@@ -1011,7 +1011,7 @@ async function main() {
  * to annotate: warn only when a dirty list would otherwise be lost, and never
  * create the file.
  */
-function publishSupplementMeta(metaPath, { dirtyFiles, model, pipelineVersion }) {
+export function publishSupplementMeta(metaPath, { dirtyFiles, model, pipelineVersion }) {
   if (!existsSync(metaPath)) {
     if (dirtyFiles.length > 0) {
       process.stderr.write(
@@ -1062,5 +1062,5 @@ if (isCliEntry()) {
 
 export default {
   annotate, buildExpectedRecords, resolveUniqueCallSites, matchImportLine,
-  cosmeticDirtyFiles, hostModelName, PIPELINE_VERSION,
+  cosmeticDirtyFiles, hostModelName, publishSupplementMeta, PIPELINE_VERSION,
 };

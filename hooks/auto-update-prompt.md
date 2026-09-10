@@ -46,6 +46,21 @@ said yes.
    node "$PLUGIN_ROOT/skills/excavator/finalize-incremental.mjs" "$PROJECT_ROOT"
    ```
 
+   Then mark the cosmetic files dirty (added; the finalizer's own behavior is
+   unchanged). A cosmetic commit is the one case the freshness marking exists
+   for, and this path stops before the analysis phases that would otherwise
+   apply it:
+
+   ```bash
+   node "$PLUGIN_ROOT/skills/excavator/mark-dirty.mjs" "$PROJECT_ROOT"
+   node "$PLUGIN_ROOT/skills/excavator/publish-annotations.mjs" "$PROJECT_ROOT" \
+     --annotated "$PROJECT_ROOT/.excavator/intermediate/dirty-graph.json" --no-reports
+   ```
+
+   Both print a note and exit 0 when there is nothing to mark. Treat a
+   non-zero exit as a warning, not a failure: the finalizer's bookkeeping
+   already stands, and this only adds visibility.
+
 ## Phase 1 — Targeted file analysis
 
 **Only reached after the user has approved the proposal from Phase 0.**

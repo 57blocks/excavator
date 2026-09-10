@@ -15,11 +15,21 @@ When an incremental run classifies changes as cosmetic (content hash changed, st
 
 ### Requirement: 无 git 目标用源码 digest
 
-For a project without a git repository, freshness SHALL be `unknown` with reason `no-git`, `project.gitCommitHash` SHALL be `null`, and `project.sourceDigest` SHALL identify the analysed sources.
+For a project without a git repository, freshness SHALL be `unknown` with the pipeline's existing reason for an unusable graph commit (`missing-graph-commit`), and `project.sourceDigest` SHALL identify the analysed sources. The reason strings of the freshness evaluator belong to the pipeline and SHALL NOT be renamed by this change. `project.gitCommitHash` SHALL be `null` for a single non-git directory; for a multi-repo parent whose members are separate repositories it SHALL keep the pipeline's own `multi-repo:<digest>` marker, which identifies the member states and is therefore version information, not an absence.
 
 #### Scenario: 非 git 目标
 - **WHEN** a non-git project is analysed twice with identical content
-- **THEN** both runs report the same `sourceDigest` and freshness `unknown/no-git`
+- **THEN** both runs report the same `sourceDigest` and freshness `unknown` with reason `missing-graph-commit`
+
+#### Scenario: 多仓父目录保留自己的版本标记
+- **GIVEN** a parent directory that is not itself a repository and whose `project.gitCommitHash` is `multi-repo:<digest>`
+- **WHEN** the graph is annotated
+- **THEN** `gitCommitHash` still equals that marker and is not replaced with `null`
+
+#### Scenario: 不带标识符的值归一为 null
+- **GIVEN** a `project.gitCommitHash` of `""`, `"unknown"`, `"HEAD"` or a missing field
+- **WHEN** the graph is annotated
+- **THEN** `gitCommitHash` is `null`, the replacement is counted, and the replaced value appears in the gap's samples
 
 #### Scenario: 非 git 目标仍可增量
 - **GIVEN** a non-git project (or a multi-repo parent directory that is not itself a repository) with an existing graph and fingerprints

@@ -213,6 +213,32 @@ Determine whether to run a full analysis or incremental update.
 
    `filesToReanalyze` contains only current, non-ignored files with structural changes. Deletions, newly ignored files, cosmetic changes, and generated artifacts are never passed to file-analyzer.
 
+   **Added sub-step on the `SKIP` path — mark the cosmetic files dirty.** Run
+   this after the finalizer above and before reporting/stopping. The `SKIP`
+   row is unchanged: the finalizer still advances exactly what it advanced
+   before. What was missing is that a cosmetic commit is the ONE case the
+   freshness marking exists for, and `SKIP` stops before Phase 2.3 ever runs,
+   so the graph never said the source had moved under its summaries.
+
+   ```bash
+   node "<SKILL_DIR>/mark-dirty.mjs" "$PROJECT_ROOT"
+   node "<SKILL_DIR>/publish-annotations.mjs" "$PROJECT_ROOT" \
+     --annotated "$DATA_DIR/intermediate/dirty-graph.json" --no-reports
+   ```
+
+   `mark-dirty.mjs` reads `incremental-plan.json`, `fingerprints.json`,
+   `scan-result.json` and the published graph, marks the nodes of the plan's
+   cosmetic files `verification: "dirty"` (never downgrading a `contradicted`
+   marking), writes `meta.json`'s `excavator.dirtyFiles`, and emits a
+   supplement copy at `$DATA_DIR/intermediate/dirty-graph.json`.
+   `publish-annotations.mjs` then merges only those fields into
+   `$DATA_DIR/knowledge-graph.json`. Both exit 0 with a printed note when the
+   plan has no still-analysed cosmetic file, which is the ordinary case for a
+   `SKIP` caused by ignored or generated files.
+
+   **Supplement, so not fatal.** Report a non-zero exit as a warning and
+   continue to the zero-token report; the finalizer's work already stands.
+
 8. **Collect project context for subagent injection:**
    - Read `README.md` (or `README.rst`, `readme.md`) from `$PROJECT_ROOT` if it exists. Store as `$README_CONTENT` (first 3000 characters).
    - Read the primary package manifest (`package.json`, `pyproject.toml`, `Cargo.toml`, `go.mod`, `pom.xml`) if it exists. Store as `$MANIFEST_CONTENT`.

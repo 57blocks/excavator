@@ -89,6 +89,12 @@
 - [x] 15.2 SKILL.md 新增 SAVE 子步 7.1（在既有第 1 步之后、第 4 步清理之前插入，既有步骤零删改）；`excavator-domain` SKILL.md 新增 Phase 5.1；验证 check-refs 绿
 - [x] 15.3 测试：各字段类到位、UA 内容逐字段不变、白名单结构性断言、幂等、缺输入为 no-op 且打印说明
 
+## 16. SKIP 路径的新鲜度与 spec 措辞（②b commit 15，follow-up 2）
+
+- [x] 16.1 `skills/excavator/mark-dirty.mjs`：SKIP 路径没有阶段 1.2/2.3，改由计划 + fingerprints + scan + 已发布图算 dirty，产 `intermediate/dirty-graph.json` 交 `publish-annotations.mjs` 合并（发布图仍只有一个写者）；复用 `cosmeticDirtyFiles` 与 `mergeVerification`，测试断言两条路径对同一 plan 逐节点一致
+- [x] 16.2 SKILL.md 增量动作表后与 `hooks/auto-update-prompt.md` SKIP 终结器后各插一段（既有行零删改，finalizer 行为不变）；验证 numstat 删除为 0
+- [x] 16.3 `specs/freshness/spec.md`：非 git 理由改为流水线现有的 `missing-graph-commit`（reason 字符串是流水线的，不由本变更改名），并写明单仓为 `null`、多仓父目录保留 `multi-repo:<digest>`；验证 `openspec validate verifiable-statements --strict` 通过
+
 ## 13. ②b 真实验收（不提交产物；结果贴 PR）
 
 - [ ] 13.1 wcp 在 v2 上全量一次（design「②b 执行注」的 headless 配方；旧 `.excavator/` 先移作 `.excavator-ua-baseline/`）：b1 自报证据核对比例、b6 墙钟与 `total_cost_usd`、与 UA 基线的节点/边/gaps 计数对比
