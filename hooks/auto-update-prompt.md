@@ -1,6 +1,13 @@
 # Auto-Update Knowledge Graph (Internal — Hook-Triggered)
 
-Incrementally update the knowledge graph after a commit. Do not ask the user for confirmation.
+Detect what changed since the knowledge graph was last generated, and decide
+whether an incremental update is needed. Phase 0 below is deterministic and
+safe to run unconditionally (it never dispatches an LLM agent). If it
+concludes a real update is warranted (`PARTIAL_UPDATE`, `ARCHITECTURE_UPDATE`,
+or `FULL_UPDATE`), **stop and propose it to the user** — list what changed and
+suggest running `/excavator` — instead of dispatching agents on your own. Only
+continue past Phase 0 into the agent-dispatching phases once the user has
+said yes.
 
 **Cost rule:** deletion-only, ignored-only, generated-artifact-only, and cosmetic-only updates dispatch no LLM agent. Local structural updates dispatch file-analyzer only for the current files that actually changed structurally. Whole-graph architecture/tour agents run only when the prepared plan requests them.
 
@@ -28,10 +35,10 @@ Incrementally update the knowledge graph after a commit. Do not ask the user for
 
    | Action | Required behavior |
    |---|---|
-   | `SKIP` | Run the finalizer below. It advances scan/fingerprint/meta for safe cosmetic or irrelevant changes and intentionally advances nothing for generated-only commits. Report zero tokens spent and **STOP**. |
-   | `PARTIAL_UPDATE` | Continue with targeted analysis. |
-   | `ARCHITECTURE_UPDATE` | Continue with targeted analysis, then rerun architecture and tour. |
-   | `FULL_UPDATE` | Immediately invoke `/excavator --full`; do not patch the incremental baseline. |
+   | `SKIP` | Run the finalizer below. It advances scan/fingerprint/meta for safe cosmetic or irrelevant changes and intentionally advances nothing for generated-only commits. This is deterministic bookkeeping, not an analysis — no user decision needed. Report zero tokens spent and **STOP**. |
+   | `PARTIAL_UPDATE` | **STOP.** Tell the user which files changed structurally and that targeted analysis is available; suggest running `/excavator`. Only proceed to Phase 1 if they say yes. |
+   | `ARCHITECTURE_UPDATE` | **STOP.** Same as `PARTIAL_UPDATE`, plus note that architecture/tour will be rerun. Only proceed to Phase 1 if the user says yes. |
+   | `FULL_UPDATE` | **STOP.** Tell the user a full rebuild is needed (with why) and suggest running `/excavator --full`. Do not invoke it yourself. |
 
    SKIP finalizer:
 
@@ -40,6 +47,8 @@ Incrementally update the knowledge graph after a commit. Do not ask the user for
    ```
 
 ## Phase 1 — Targeted file analysis
+
+**Only reached after the user has approved the proposal from Phase 0.**
 
 Read `filesToReanalyze` from the plan. It never contains deleted, ignored, cosmetic, or generated-artifact paths.
 

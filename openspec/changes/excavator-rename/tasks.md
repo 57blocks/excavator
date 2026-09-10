@@ -30,8 +30,8 @@
 
 ## 5. hooks 只建议不执行（commit 5）
 
-- [ ] 5.1 `hooks/hooks.json` SessionStart 命令删 "Do not ask the user for confirmation — just do it"，改为「读取提示文件并向用户建议」；验证 `grep -rn 'Do not ask the user' hooks/` 为空
-- [ ] 5.2 `hooks/auto-update-prompt.md` 结尾改为建议 + 等待用户；`post-tool-use-auto-update.mjs` 只写提示不触发分析；验证 `tests/hooks/*` 更新后绿
+- [x] 5.1 `hooks/hooks.json` SessionStart 命令删 "Do not ask the user for confirmation — just do it"，改为「读取提示文件并向用户建议」；验证 `grep -rn 'Do not ask the user' hooks/` 为空
+- [x] 5.2 `hooks/auto-update-prompt.md`：顶部说明改为"检测变化→提议→等待"；Phase 0 决策表把 `PARTIAL_UPDATE`/`ARCHITECTURE_UPDATE`/`FULL_UPDATE` 三行从"继续执行"改为"STOP，告知用户并建议 `/excavator`，等用户同意才进入 Phase 1"（`SKIP` 保持自动，因为它是零 token 的确定性记账，不涉及判断）；`post-tool-use-auto-update.mjs` 的 additionalContext 文案同步改为建议+等待；新增 `tests/hooks/post-tool-use-auto-update.test.mjs` 三条用例（PostToolUse 消息不含自动执行指令、hooks.json SessionStart 命令不含自动执行指令、auto-update-prompt.md 不含自动执行指令且每个真正动手的分支都以"STOP + 告知用户"收尾）；验证 `tests/hooks/*`（17 用例，原 14 + 新增 3）绿
 
 ## 6. 引用完整性门（commit 6）
 

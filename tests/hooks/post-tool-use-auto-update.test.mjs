@@ -96,6 +96,17 @@ describe('PostToolUse auto-update hook', () => {
     );
   });
 
+  it('proposes the update and waits for the user — never instructs auto-execution', () => {
+    const result = runHook();
+    const output = JSON.parse(result.stdout);
+    const context = output.hookSpecificOutput.additionalContext;
+
+    expect(context).not.toContain('Do not ask the user');
+    expect(context).not.toMatch(/\bMUST\b/);
+    expect(context).toMatch(/propose/i);
+    expect(context).toMatch(/wait for the user/i);
+  });
+
   it.each(['commit', 'merge', 'cherry-pick', 'rebase'])(
     'recognizes git %s as a graph-changing operation',
     (operation) => {
@@ -155,5 +166,28 @@ describe('PostToolUse auto-update hook', () => {
     expect(result.status).toBe(0);
     expect(result.stderr).toBe('');
     expect(result.stdout).toBe('');
+  });
+});
+
+describe('SessionStart staleness hook + auto-update-prompt.md — propose, never auto-execute', () => {
+  const sessionStartCommand =
+    hooksConfig.hooks.SessionStart[0].hooks[0].command;
+  const promptDoc = readFileSync(
+    join(repoRoot, 'hooks', 'auto-update-prompt.md'),
+    'utf8',
+  );
+
+  it('hooks.json SessionStart command contains no auto-execute directive', () => {
+    expect(sessionStartCommand).not.toContain('Do not ask the user');
+    expect(sessionStartCommand).not.toMatch(/just do it/i);
+    expect(sessionStartCommand).toMatch(/propose/i);
+  });
+
+  it('auto-update-prompt.md contains no auto-execute directive and ends each real-work action with a proposal that waits for the user', () => {
+    expect(promptDoc).not.toContain('Do not ask the user');
+    expect(promptDoc).not.toMatch(/just do it/i);
+    expect(promptDoc).not.toMatch(/\bYou MUST\b/);
+    expect(promptDoc).toMatch(/STOP\.\*\* Tell the user/);
+    expect(promptDoc).toMatch(/Only proceed to Phase 1 if/i);
   });
 });
