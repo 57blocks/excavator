@@ -866,6 +866,47 @@ Pass these parameters in the dispatch prompt:
 
 ---
 
+## Phase 6b — VALIDATE (added)
+
+Report: `[Phase 6b/7] Checking anchors and evidence against the source...`
+
+Phase 6 above is unchanged — its inline validator (or the `--review` reviewer)
+still runs and still decides what UA decides. This phase runs after it and
+does the one thing neither can: it **opens the source files** and checks that
+the graph's anchors and cited lines say what the graph claims.
+
+Skip this phase if `$DATA_DIR/intermediate/annotated-graph.json` does not exist
+(Phase 2.3 was skipped or failed).
+
+```bash
+node "<SKILL_DIR>/validate-graph.mjs" "$PROJECT_ROOT"
+```
+
+Checks: every `function`/`class` node's `lineRange[0]` (±1 line) must contain
+the node's `name`; every `extracted` edge's cited line must contain the
+expected token (callee for `calls`, target module segment for `imports`,
+symbol for `exports`, declaration for `contains`, either endpoint's name or
+file for a model-cited line); `inferred` edges pass; the referential-integrity
+checks of Phase 6 are repeated; and every `step` node must carry `nodeIds`
+that exist, or be marked `provenance: "inferred"`.
+
+Writes `$DATA_DIR/intermediate/validation.json` (counts, named findings,
+issues, warnings) and `$DATA_DIR/intermediate/validated-graph.json` (the same
+graph with `verification: "contradicted"` on the nodes and edges that failed
+and the counts merged into `gaps`). A source file that cannot be read is
+counted under `source-missing`, never reported as a contradiction.
+
+Report the counts to the user and append them to `$PHASE_WARNINGS`:
+
+> Source check: {anchorMismatch} anchor mismatches, {edgeContradicted}
+> contradicted edges, {stepUnanchored} unanchored steps.
+
+**Supplement, so not fatal.** Findings are data: the script exits 0 whenever
+it completed. If it exits non-zero, report its stderr as a Phase 6b warning
+and continue.
+
+---
+
 ## Phase 7 — SAVE
 
 Report to the user: `[Phase 7/7] Saving knowledge graph...`

@@ -35,9 +35,9 @@
 
 ## 6. validate-graph（②a commit 6）
 
-- [ ] 6.1 `skills/excavator/validate-graph.mjs`：锚点 ±1 含 name、`extracted` 边证据行记号、模型判断边证据行、inferred 纪律、引用完整性、step `nodeIds`；输出 `validation.json` 并入 gaps；验证干净夹具 0 finding
-- [ ] 6.2 **先验装置测试**：注入错证据行 calls 边 + 偏移 5 行节点 → `edge-contradicted`=1、`anchor-mismatch`=1 且点名；验证绿（不绿不得合入）
-- [ ] 6.3 SKILL.md 新增阶段 6b VALIDATE（UA 阶段 6 inline validator 保留）；验证 check-refs 绿
+- [x] 6.1 `skills/excavator/validate-graph.mjs`：锚点 ±1 含 name、`extracted` 边证据行记号、模型判断边证据行、inferred 纪律、引用完整性、step `nodeIds`；输出 `validation.json` 并入 gaps；验证干净夹具 0 finding
+- [x] 6.2 **先验装置测试**：注入错证据行 calls 边 + 偏移 5 行节点 → `edge-contradicted`=1、`anchor-mismatch`=1 且点名；验证绿（不绿不得合入）
+- [x] 6.3 SKILL.md 新增阶段 6b VALIDATE（UA 阶段 6 inline validator 保留）；验证 check-refs 绿
 
 ## 7. Benchmark 与文档（②a commit 7）
 
