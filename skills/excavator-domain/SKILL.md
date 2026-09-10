@@ -134,6 +134,55 @@ The preprocessing script does NOT produce a domain graph — it produces **raw m
 2. Dispatch a subagent with the domain-analyzer prompt + the context from Phase 2 or 3
 3. The agent writes its output to `$DATA_DIR/intermediate/domain-analysis.json`
 
+### Phase 4.5: Anchor Steps (added)
+
+This phase is **additive**: it changes nothing about how the domain analysis is
+produced. A business step's whole value is the claim "this is where that
+happens in the code", so each `step` node is tied to real knowledge-graph node
+ids before the graph is saved.
+
+```bash
+node "<SKILL_DIR>/annotate-domain.mjs" "$PROJECT_ROOT"
+```
+
+Reads `$DATA_DIR/intermediate/domain-analysis.json` and
+`$DATA_DIR/knowledge-graph.json`, and updates the analysis in place:
+
+- `nodeIds` the domain-analyzer supplied are **checked** against the knowledge
+  graph. Ones that resolve stay, in the model's order; ones that do not move to
+  `unresolvedNodeIds` and are counted under gap `step-nodeid-unresolved`, so a
+  reconstructed id is visible instead of sitting in `nodeIds` looking like an
+  anchor.
+- `nodeIds` it did not supply are **derived**: knowledge-graph nodes on the
+  same `filePath` whose `lineRange` intersects the step's, or that file's own
+  node when the step gives no usable range (counted separately under
+  `step-file-anchored`, because "somewhere in this file" is a weaker claim).
+- `evidence` is written only where a matched node carries a real line; an
+  anchored step with nothing citable is counted under
+  `step-evidence-unavailable`.
+
+Writes the counts to `$DATA_DIR/intermediate/domain-annotation.json`. On the
+standalone path (Phase 2, no knowledge graph) it warns and leaves every step
+unanchored rather than inventing ids.
+
+Then run the source-touching validator on the result, which is where a step
+with no resolvable `nodeIds` and no `provenance: "inferred"` is counted as
+`step-unanchored`:
+
+```bash
+node "$PLUGIN_ROOT/skills/excavator/validate-graph.mjs" "$PROJECT_ROOT" \
+  --graph "$DATA_DIR/intermediate/domain-analysis.json" \
+  --out "$DATA_DIR/intermediate/domain-validated.json" \
+  --report "$DATA_DIR/intermediate/domain-validation.json"
+```
+
+Report the `stepUnanchored`, `anchorMismatch` and `edgeContradicted` counts
+from that report to the user.
+
+**Supplement, so not fatal.** If either script exits non-zero, report its
+stderr as a Phase 4.5 warning and continue to Phase 5 with the analysis
+unchanged.
+
 ### Phase 5: Validate and Save
 
 1. Read the domain analysis output

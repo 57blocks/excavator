@@ -68,8 +68,8 @@
 
 ## 11. 领域步骤（②b commit 11）
 
-- [ ] 11.1 `skills/excavator-domain/annotate-domain.mjs`：为 step 推导 `nodeIds` 与 `evidence`（模型给了就核对，没给就推导）；验证夹具
-- [ ] 11.2 validate 的 `step-unanchored` 对领域图生效；验证夹具
+- [x] 11.1 `skills/excavator-domain/annotate-domain.mjs`：为 step 推导 `nodeIds` 与 `evidence`（模型给了就核对，没给就推导）；验证夹具
+- [x] 11.2 validate 的 `step-unanchored` 对领域图生效；验证夹具
 
 ## 12. dashboard 回退与文档（②b commit 12）
 
