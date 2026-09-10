@@ -6,8 +6,8 @@ import { defineConfig } from 'vitest/config';
 //   - src/**                 — skill TS source tests
 //   - packages/dashboard/**  — dashboard utils tests
 //
-// The `@understand-anything/core` package owns its own vitest.config.ts and is
-// invoked separately via `pnpm --filter @understand-anything/core test`; its
+// The `@excavator/core` package owns its own vitest.config.ts and is
+// invoked separately via `pnpm --filter @excavator/core test`; its
 // files are excluded here to avoid double-counting.
 export default defineConfig({
   test: {

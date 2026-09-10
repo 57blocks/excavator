@@ -29,7 +29,7 @@ import type {
   GraphNode,
   KnowledgeGraph,
   NodeType,
-} from "@understand-anything/core/types";
+} from "@excavator/core/types";
 import { useTheme } from "../themes/index.ts";
 import {
   NODE_WIDTH,

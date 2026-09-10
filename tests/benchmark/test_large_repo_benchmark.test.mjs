@@ -104,7 +104,7 @@ function benchmarkArtifactEntries() {
   return readdirSync(tmpdir(), { withFileTypes: true })
     .filter(
       (entry) =>
-        entry.isDirectory() && entry.name.startsWith('ua-large-bench-'),
+        entry.isDirectory() && entry.name.startsWith('excavator-large-bench-'),
     )
     .map((entry) => entry.name)
     .sort();
@@ -128,7 +128,7 @@ function expectSafeReportWriteFailure(result, sensitivePaths) {
       expect(result.stderr).not.toContain(alias);
     }
   }
-  expect(result.stderr).not.toContain('ua-large-bench-');
+  expect(result.stderr).not.toContain('excavator-large-bench-');
 }
 
 function runGit(directory, args) {
@@ -254,7 +254,7 @@ throw new Error(\`helper failed below \${subject}/failed.txt\`);
     expect(retained).toContain('<subject>');
     expect(retained).toContain('<tool>');
     expect(retained).toContain('<artifacts>');
-    expect(retained).not.toContain('__UA_BENCHMARK_METRICS__');
+    expect(retained).not.toContain('__EXCAVATOR_BENCHMARK_METRICS__');
     expect(retained).not.toContain(subject);
     expect(retained).not.toContain(benchmark.REPO_ROOT);
     expect(retained).not.toContain(artifacts);
@@ -1445,7 +1445,7 @@ describe('large repository benchmark CLI', () => {
   );
 
   it('wraps cleanup operation failures without exposing artifact paths', () => {
-    const artifactRoot = join(tmpdir(), 'ua-large-bench-private-cleanup');
+    const artifactRoot = join(tmpdir(), 'excavator-large-bench-private-cleanup');
     let cleanupError;
 
     try {
@@ -1900,13 +1900,8 @@ describe('large repository benchmark CLI', () => {
     const reportPath = join(root, 'reports', 'result.json');
     const markdownPath = join(root, 'reports', 'result.md');
     const secondReportPath = join(root, 'reports', 'result-second.json');
-    mkdirSync(join(subject, '.ua'), { recursive: true });
-    mkdirSync(join(subject, '.understand-anything'), { recursive: true });
-    writeFileSync(join(subject, '.ua', 'sentinel.txt'), 'keep me\n');
-    writeFileSync(
-      join(subject, '.understand-anything', 'sentinel.txt'),
-      'keep me too\n',
-    );
+    mkdirSync(join(subject, '.excavator'), { recursive: true });
+    writeFileSync(join(subject, '.excavator', 'sentinel.txt'), 'keep me\n');
     const before = snapshotTree(subject);
 
     const result = runCli(

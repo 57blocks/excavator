@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { STRUCTURAL_VISIBLE_TYPES } from "../GraphView";
-import type { NodeType } from "@understand-anything/core/types";
+import type { NodeType } from "@excavator/core/types";
 
 /**
  * Guard for the drill-in (layer-detail) canvas node-type filter.

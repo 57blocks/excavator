@@ -19,7 +19,7 @@ describe("generateStarterIgnoreFile", () => {
 
   it("includes a header comment explaining the file", () => {
     const content = generateStarterIgnoreFile(testDir);
-    expect(content).toContain(".understandignore");
+    expect(content).toContain(".excavatorignore");
     expect(content).toContain("same as .gitignore");
     expect(content).toContain("Built-in defaults");
   });

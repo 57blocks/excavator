@@ -10,7 +10,7 @@ describe("IgnoreFilter", () => {
   beforeEach(() => {
     testDir = join(tmpdir(), `ignore-filter-test-${Date.now()}`);
     mkdirSync(testDir, { recursive: true });
-    mkdirSync(join(testDir, ".understand-anything"), { recursive: true });
+    mkdirSync(join(testDir, ".excavator"), { recursive: true });
   });
 
   afterEach(() => {
@@ -26,8 +26,8 @@ describe("IgnoreFilter", () => {
       expect(DEFAULT_IGNORE_PATTERNS).toContain(".git/");
     });
 
-    it("contains the .understandignore control file", () => {
-      expect(DEFAULT_IGNORE_PATTERNS).toContain(".understandignore");
+    it("contains the .excavatorignore control file", () => {
+      expect(DEFAULT_IGNORE_PATTERNS).toContain(".excavatorignore");
     });
 
     it("contains obj for .NET", () => {
@@ -90,10 +90,10 @@ describe("IgnoreFilter", () => {
     });
   });
 
-  describe("createIgnoreFilter with user .understandignore", () => {
-    it("reads patterns from .understand-anything/.understandignore", () => {
+  describe("createIgnoreFilter with user .excavatorignore", () => {
+    it("reads patterns from .excavator/.excavatorignore", () => {
       writeFileSync(
-        join(testDir, ".understand-anything", ".understandignore"),
+        join(testDir, ".excavator", ".excavatorignore"),
         "# Exclude tests\n__tests__/\n*.test.ts\n"
       );
       const filter = createIgnoreFilter(testDir);
@@ -102,9 +102,9 @@ describe("IgnoreFilter", () => {
       expect(filter.isIgnored("src/utils.ts")).toBe(false);
     });
 
-    it("reads patterns from project root .understandignore", () => {
+    it("reads patterns from project root .excavatorignore", () => {
       writeFileSync(
-        join(testDir, ".understandignore"),
+        join(testDir, ".excavatorignore"),
         "docs/\n"
       );
       const filter = createIgnoreFilter(testDir);
@@ -114,7 +114,7 @@ describe("IgnoreFilter", () => {
 
     it("handles # comments and blank lines", () => {
       writeFileSync(
-        join(testDir, ".understand-anything", ".understandignore"),
+        join(testDir, ".excavator", ".excavatorignore"),
         "# This is a comment\n\n\nfixtures/\n\n# Another comment\n"
       );
       const filter = createIgnoreFilter(testDir);
@@ -124,7 +124,7 @@ describe("IgnoreFilter", () => {
 
     it("supports ! negation to override defaults", () => {
       writeFileSync(
-        join(testDir, ".understand-anything", ".understandignore"),
+        join(testDir, ".excavator", ".excavatorignore"),
         "!dist/\n"
       );
       const filter = createIgnoreFilter(testDir);
@@ -133,7 +133,7 @@ describe("IgnoreFilter", () => {
 
     it("supports ** recursive matching", () => {
       writeFileSync(
-        join(testDir, ".understand-anything", ".understandignore"),
+        join(testDir, ".excavator", ".excavatorignore"),
         "**/snapshots/\n"
       );
       const filter = createIgnoreFilter(testDir);
@@ -141,13 +141,13 @@ describe("IgnoreFilter", () => {
       expect(filter.isIgnored("snapshots/foo.snap")).toBe(true);
     });
 
-    it("merges .understand-anything/ and root .understandignore", () => {
+    it("merges .excavator/ and root .excavatorignore", () => {
       writeFileSync(
-        join(testDir, ".understand-anything", ".understandignore"),
+        join(testDir, ".excavator", ".excavatorignore"),
         "__tests__/\n"
       );
       writeFileSync(
-        join(testDir, ".understandignore"),
+        join(testDir, ".excavatorignore"),
         "fixtures/\n"
       );
       const filter = createIgnoreFilter(testDir);
@@ -170,15 +170,15 @@ describe("IgnoreFilter", () => {
       expect(filter.isIgnored("README.md")).toBe(false);
     });
 
-    it("CLI patterns have highest priority over .understandignore files", () => {
-      // .understandignore says to include docs/
+    it("CLI patterns have highest priority over .excavatorignore files", () => {
+      // .excavatorignore says to include docs/
       writeFileSync(
-        join(testDir, ".understand-anything", ".understandignore"),
+        join(testDir, ".excavator", ".excavatorignore"),
         "!docs/\n"
       );
       // CLI --exclude says to exclude docs/
       const filter = createIgnoreFilter(testDir, ["docs/"]);
-      // CLI patterns are added last, so they override the ! negation from .understandignore
+      // CLI patterns are added last, so they override the ! negation from .excavatorignore
       expect(filter.isIgnored("docs/README.md")).toBe(true);
     });
 
@@ -190,9 +190,9 @@ describe("IgnoreFilter", () => {
       expect(filter.isIgnored("node_modules/foo.js")).toBe(true);
     });
 
-    it("CLI patterns combined with .understandignore files all apply", () => {
+    it("CLI patterns combined with .excavatorignore files all apply", () => {
       writeFileSync(
-        join(testDir, ".understandignore"),
+        join(testDir, ".excavatorignore"),
         "fixtures/\n"
       );
       const filter = createIgnoreFilter(testDir, ["e2e/"]);

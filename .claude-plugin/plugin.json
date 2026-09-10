@@ -1,12 +1,12 @@
 {
-  "name": "understand-anything",
-  "description": "AI-powered codebase understanding — analyze, visualize, and explain any project",
+  "name": "excavator",
+  "description": "AI-first defensible code investigation engine — analyze, visualize, and explain any project",
   "version": "2.9.6",
   "author": {
-    "name": "Egonex"
+    "name": "57blocks"
   },
-  "homepage": "https://github.com/Egonex-AI/Understand-Anything",
-  "repository": "https://github.com/Egonex-AI/Understand-Anything",
+  "homepage": "https://github.com/Jingqi-57blocks/excavator",
+  "repository": "https://github.com/Jingqi-57blocks/excavator",
   "license": "MIT",
   "keywords": [
     "codebase-analysis",
@@ -14,5 +14,8 @@
     "architecture",
     "onboarding",
     "dashboard"
-  ]
+  ],
+  "skills": "./skills",
+  "agents": "./agents",
+  "hooks": "./hooks/hooks.json"
 }

@@ -37,28 +37,32 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 export const REPO_ROOT = resolve(__dirname, '../..');
 export const REPORT_SCHEMA_VERSION = '1.0.0';
+// NOTE: this URL intentionally still points at the upstream Understand-Anything
+// repo — docs/benchmarks/*.schema.json is out of this change's scope (docs/ is
+// excluded from the rename), and its own "$id"/"const" self-reference still
+// uses the upstream URL, so this constant must match it exactly.
 export const REPORT_SCHEMA_URL =
   'https://raw.githubusercontent.com/Egonex-AI/Understand-Anything/main/docs/benchmarks/large-repo-report-1.0.0.schema.json';
 
 const WORKER = resolve(__dirname, 'benchmark-stage-worker.mjs');
 const SCAN_SCRIPT = resolve(
   REPO_ROOT,
-  'skills/understand/scan-project.mjs',
+  'skills/excavator/scan-project.mjs',
 );
 const IMPORT_SCRIPT = resolve(
   REPO_ROOT,
-  'skills/understand/extract-import-map.mjs',
+  'skills/excavator/extract-import-map.mjs',
 );
 const BATCH_SCRIPT = resolve(
   REPO_ROOT,
-  'skills/understand/compute-batches.mjs',
+  'skills/excavator/compute-batches.mjs',
 );
 const STRUCTURE_SCRIPT = resolve(
   REPO_ROOT,
-  'skills/understand/extract-structure.mjs',
+  'skills/excavator/extract-structure.mjs',
 );
 
-export const STAGE_METRICS_PREFIX = '__UA_BENCHMARK_METRICS__';
+export const STAGE_METRICS_PREFIX = '__EXCAVATOR_BENCHMARK_METRICS__';
 const DEFAULT_CONCURRENCY = 5;
 export const GIT_METADATA_MAX_BUFFER = 64 * 1024;
 // Child helpers can be noisy on large repositories. Retain at most 128 KiB
@@ -853,7 +857,7 @@ export function reportPairLockPath(outputPath, markdownPath) {
     .update(normalizedMarkdownPath)
     .digest('hex')
     .slice(0, 24);
-  return join(resolve(dirname(outputPath)), `.ua-report-pair-${pairKey}.lock`);
+  return join(resolve(dirname(outputPath)), `.excavator-report-pair-${pairKey}.lock`);
 }
 
 function stageReportEntry(entry, fileSystem) {
@@ -910,11 +914,11 @@ export function deliverBenchmarkReports(reportFiles, operations = {}) {
     contents,
     tempPath: join(
       dirname(targetPath),
-      `.${basename(targetPath)}.ua-report-${transactionId}.tmp`,
+      `.${basename(targetPath)}.excavator-report-${transactionId}.tmp`,
     ),
     backupPath: join(
       dirname(targetPath),
-      `.${basename(targetPath)}.ua-report-${transactionId}.backup`,
+      `.${basename(targetPath)}.excavator-report-${transactionId}.backup`,
     ),
     hadOriginal: false,
     tempCreated: false,
@@ -1671,7 +1675,7 @@ export function warningSummary(stageResults) {
 export async function runBenchmark(options, hooks = {}) {
   const startedAt = new Date();
   const overallStart = performance.now();
-  const artifactRoot = mkdtempSync(join(tmpdir(), 'ua-large-bench-'));
+  const artifactRoot = mkdtempSync(join(tmpdir(), 'excavator-large-bench-'));
   const redactionRoots = [
     [options.repoRoot, '<subject>'],
     [REPO_ROOT, '<tool>'],

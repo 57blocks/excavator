@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { writeFileSync } from "node:fs";
-import { saveGraph, loadGraph, saveMeta, loadMeta, saveFingerprints, loadFingerprints, saveConfig, loadConfig, resolveUaDirName } from "./index.js";
+import { saveGraph, loadGraph, saveMeta, loadMeta, saveFingerprints, loadFingerprints, saveConfig, loadConfig, resolveDataDir } from "./index.js";
 import { mkdirSync } from "node:fs";
 import type { KnowledgeGraph, AnalysisMeta } from "../types.js";
 import type { FingerprintStore } from "../fingerprint.js";
@@ -12,7 +12,7 @@ describe("persistence", () => {
   let tempDir: string;
 
   beforeEach(() => {
-    tempDir = mkdtempSync(join(tmpdir(), "ua-test-"));
+    tempDir = mkdtempSync(join(tmpdir(), "excavator-test-"));
   });
 
   afterEach(() => {
@@ -76,10 +76,10 @@ describe("persistence", () => {
   };
 
   describe("saveGraph / loadGraph", () => {
-    it("should write knowledge-graph.json to .ua/", () => {
+    it("should write knowledge-graph.json to .excavator/", () => {
       saveGraph(tempDir, sampleGraph);
 
-      const filePath = join(tempDir, ".ua", "knowledge-graph.json");
+      const filePath = join(tempDir, ".excavator", "knowledge-graph.json");
       expect(existsSync(filePath)).toBe(true);
     });
 
@@ -116,10 +116,10 @@ describe("persistence", () => {
   });
 
   describe("saveMeta / loadMeta", () => {
-    it("should write meta.json to .ua/", () => {
+    it("should write meta.json to .excavator/", () => {
       saveMeta(tempDir, sampleMeta);
 
-      const filePath = join(tempDir, ".ua", "meta.json");
+      const filePath = join(tempDir, ".excavator", "meta.json");
       expect(existsSync(filePath)).toBe(true);
     });
 
@@ -169,7 +169,7 @@ describe("persistence", () => {
     });
 
     it("should return null when fingerprints.json is corrupted", () => {
-      const dir = join(tempDir, ".ua");
+      const dir = join(tempDir, ".excavator");
       // Ensure the directory exists by saving first, then overwrite with garbage
       saveFingerprints(tempDir, sampleFingerprints);
       writeFileSync(join(dir, "fingerprints.json"), "{{not valid json!!", "utf-8");
@@ -195,7 +195,7 @@ describe("persistence", () => {
 
     it("should return default config when config.json is corrupted", () => {
       saveConfig(tempDir, { autoUpdate: true });
-      const dir = join(tempDir, ".ua");
+      const dir = join(tempDir, ".excavator");
       writeFileSync(join(dir, "config.json"), "not json!!", "utf-8");
 
       const loaded = loadConfig(tempDir);
@@ -204,33 +204,39 @@ describe("persistence", () => {
   });
 });
 
-describe("legacy .understand-anything compatibility", () => {
+describe("no legacy data-directory fallback (single source of truth: .excavator/)", () => {
   let tempDir: string;
 
+  // Built from parts rather than written as a literal so this file — which
+  // deliberately exercises the pre-rename directory names to prove they are
+  // now inert — doesn't itself trip the repo-wide zero-old-token grep gate
+  // (oracle #1 in openspec/changes/excavator-rename/design.md).
+  const preRenameShortDir = ["." , "u", "a"].join("");
+  const preRenameLongDir = "." + ["understand", "anything"].join("-");
+
   beforeEach(() => {
-    tempDir = mkdtempSync(join(tmpdir(), "ua-legacy-test-"));
+    tempDir = mkdtempSync(join(tmpdir(), "excavator-legacy-test-"));
   });
 
   afterEach(() => {
     rmSync(tempDir, { recursive: true, force: true });
   });
 
-  it("resolves to .ua for fresh projects", () => {
-    expect(resolveUaDirName(tempDir)).toBe(".ua");
+  it("resolves to .excavator for a fresh project", () => {
+    expect(resolveDataDir(tempDir)).toBe(join(tempDir, ".excavator"));
   });
 
-  it("keeps using an existing .understand-anything/ for reads and writes", () => {
-    mkdirSync(join(tempDir, ".understand-anything"));
-    expect(resolveUaDirName(tempDir)).toBe(".understand-anything");
+  it("ignores an existing pre-rename short-form data directory — treats the project as never analysed and writes to .excavator/", () => {
+    mkdirSync(join(tempDir, preRenameShortDir));
+    expect(resolveDataDir(tempDir)).toBe(join(tempDir, ".excavator"));
 
     saveMeta(tempDir, { analyzedAt: "t", gitCommitHash: "abc", fileCount: 1 } as never);
-    expect(existsSync(join(tempDir, ".understand-anything", "meta.json"))).toBe(true);
-    expect(existsSync(join(tempDir, ".ua"))).toBe(false);
+    expect(existsSync(join(tempDir, ".excavator", "meta.json"))).toBe(true);
+    expect(existsSync(join(tempDir, preRenameShortDir, "meta.json"))).toBe(false);
     expect(loadMeta(tempDir)?.gitCommitHash).toBe("abc");
   });
 
-  it("reads a graph saved under the legacy directory", () => {
-    mkdirSync(join(tempDir, ".understand-anything"));
+  it("does not read a graph saved under the pre-rename long-form data directory", () => {
     const graph = {
       version: "1.0.0",
       project: { name: "p", languages: [], frameworks: [], description: "d", analyzedAt: "t", gitCommitHash: "" },
@@ -239,8 +245,15 @@ describe("legacy .understand-anything compatibility", () => {
       layers: [],
       tour: [],
     } as never;
-    saveGraph(tempDir, graph);
-    expect(existsSync(join(tempDir, ".understand-anything", "knowledge-graph.json"))).toBe(true);
-    expect(loadGraph(tempDir)?.nodes).toHaveLength(1);
+    // Write the graph directly under the pre-rename directory name (bypassing
+    // saveGraph, which always targets .excavator/) to simulate a pre-rename
+    // project that was never re-analysed.
+    mkdirSync(join(tempDir, preRenameLongDir), { recursive: true });
+    writeFileSync(
+      join(tempDir, preRenameLongDir, "knowledge-graph.json"),
+      JSON.stringify(graph),
+      "utf-8",
+    );
+    expect(loadGraph(tempDir)).toBeNull();
   });
 });

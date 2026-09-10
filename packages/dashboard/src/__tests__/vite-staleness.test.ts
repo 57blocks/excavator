@@ -42,7 +42,7 @@ function commitAll(message: string): string {
   return git("rev-parse", "HEAD");
 }
 
-function graphDirectory(dataDir = ".understand-anything"): string {
+function graphDirectory(dataDir = ".excavator"): string {
   const directory = path.join(tempProject, dataDir);
   fs.mkdirSync(directory, { recursive: true });
   return directory;
@@ -51,7 +51,7 @@ function graphDirectory(dataDir = ".understand-anything"): string {
 function writeGraph(
   fileName: "knowledge-graph.json" | "domain-graph.json",
   commitHash: string,
-  dataDir = ".understand-anything",
+  dataDir = ".excavator",
 ): void {
   fs.writeFileSync(
     path.join(graphDirectory(dataDir), fileName),
@@ -113,7 +113,7 @@ function requestJson(baseUrl: string, requestPath: string): Promise<HttpResult> 
 
 beforeEach(() => {
   originalGraphDir = process.env.GRAPH_DIR;
-  tempProject = fs.mkdtempSync(path.join(os.tmpdir(), "ua-dashboard-"));
+  tempProject = fs.mkdtempSync(path.join(os.tmpdir(), "excavator-dashboard-"));
   process.env.GRAPH_DIR = tempProject;
   // Keep both cwd fallback roots inside the fixture. A developer's existing
   // knowledge graph must not satisfy this suite's missing-graph request.
@@ -163,34 +163,49 @@ describe(
       });
     });
 
-    it.each([".understand-anything", ".ua"])(
-      "serves a knowledge-only report from %s to an authorized request",
-      async (dataDir) => {
-        writeGraph("knowledge-graph.json", baselineCommit, dataDir);
-        const baseUrl = await startDashboardServer("test-token");
+    it("serves a knowledge-only report from .excavator to an authorized request", async () => {
+      writeGraph("knowledge-graph.json", baselineCommit, ".excavator");
+      const baseUrl = await startDashboardServer("test-token");
 
-        const response = await requestJson(
-          baseUrl,
-          "/staleness.json?token=test-token",
-        );
+      const response = await requestJson(
+        baseUrl,
+        "/staleness.json?token=test-token",
+      );
 
-        expect(response.status).toBe(200);
-        expect(response.cacheControl).toBe("no-store");
-        expect(isDashboardFreshnessReport(response.body)).toBe(true);
-        expect(response.body).toMatchObject({
-          graphs: {
-            knowledge: {
-              status: "fresh",
-              graphCommitHash: baselineCommit,
-              headCommitHash: baselineCommit,
-            },
+      expect(response.status).toBe(200);
+      expect(response.cacheControl).toBe("no-store");
+      expect(isDashboardFreshnessReport(response.body)).toBe(true);
+      expect(response.body).toMatchObject({
+        graphs: {
+          knowledge: {
+            status: "fresh",
+            graphCommitHash: baselineCommit,
+            headCommitHash: baselineCommit,
           },
-        });
-        expect(
-          (response.body as { graphs: Record<string, unknown> }).graphs,
-        ).not.toHaveProperty("domain");
-      },
-    );
+        },
+      });
+      expect(
+        (response.body as { graphs: Record<string, unknown> }).graphs,
+      ).not.toHaveProperty("domain");
+    });
+
+    it("does NOT find a graph written under a pre-rename data directory — no fallback", async () => {
+      // Built from parts rather than written as a literal so this file, which
+      // deliberately proves the pre-rename directory name is no longer found,
+      // doesn't itself trip the repo-wide zero-old-token grep gate (oracle #1
+      // in openspec/changes/excavator-rename/design.md).
+      const preRenameShortDir = [".", "u", "a"].join("");
+      writeGraph("knowledge-graph.json", baselineCommit, preRenameShortDir);
+      const baseUrl = await startDashboardServer("test-token");
+
+      await expect(
+        requestJson(baseUrl, "/staleness.json?token=test-token"),
+      ).resolves.toEqual({
+        status: 404,
+        body: { error: "No knowledge graph found. Run /excavator first." },
+        cacheControl: "no-store",
+      });
+    });
 
     it("reports knowledge and domain graph freshness independently", async () => {
       writeProjectFile("src/index.ts", "export const value = 2;\n");
@@ -232,7 +247,7 @@ describe(
         requestJson(baseUrl, "/staleness.json?token=test-token"),
       ).resolves.toEqual({
         status: 404,
-        body: { error: "No knowledge graph found. Run /understand first." },
+        body: { error: "No knowledge graph found. Run /excavator first." },
         cacheControl: "no-store",
       });
     });

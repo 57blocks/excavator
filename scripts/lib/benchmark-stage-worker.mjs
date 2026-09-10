@@ -4,7 +4,7 @@ import { performance } from 'node:perf_hooks';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
-export const STAGE_METRICS_PREFIX = '__UA_BENCHMARK_METRICS__';
+export const STAGE_METRICS_PREFIX = '__EXCAVATOR_BENCHMARK_METRICS__';
 
 const [scriptPath, ...scriptArgs] = process.argv.slice(2);
 if (!scriptPath) {

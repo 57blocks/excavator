@@ -1,12 +1,12 @@
 import { create } from "zustand";
-import { SearchEngine } from "@understand-anything/core/search";
-import type { SearchResult } from "@understand-anything/core/search";
-import type { GraphIssue } from "@understand-anything/core/schema";
+import { SearchEngine } from "@excavator/core/search";
+import type { SearchResult } from "@excavator/core/search";
+import type { GraphIssue } from "@excavator/core/schema";
 import type {
   GraphNode,
   KnowledgeGraph,
   TourStep,
-} from "@understand-anything/core/types";
+} from "@excavator/core/types";
 import type { ReactFlowInstance } from "@xyflow/react";
 
 export type Persona = "non-technical" | "junior" | "experienced";

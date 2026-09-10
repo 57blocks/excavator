@@ -1,5 +1,6 @@
 {
-  "name": "@understand-anything/skill",
+  "name": "@excavator/skill",
+  "private": true,
   "version": "2.9.6",
   "type": "module",
   "main": "dist/index.js",
@@ -13,7 +14,7 @@
     "benchmark:large-repo": "node scripts/benchmark-large-repo.mjs"
   },
   "dependencies": {
-    "@understand-anything/core": "workspace:*",
+    "@excavator/core": "workspace:*",
     "graphology": "~0.26.0",
     "graphology-communities-louvain": "^2.0.2"
   },

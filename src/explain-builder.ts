@@ -3,7 +3,7 @@ import type {
   GraphNode,
   GraphEdge,
   Layer,
-} from "@understand-anything/core";
+} from "@excavator/core";
 
 export interface ExplainContext {
   projectName: string;
@@ -113,7 +113,7 @@ export function formatExplainPrompt(ctx: ExplainContext): string {
       `The path "${ctx.path}" was not found in the knowledge graph for ${ctx.projectName}.`,
       ``,
       `Possible reasons:`,
-      `- The file hasn't been analyzed yet — try running /understand first`,
+      `- The file hasn't been analyzed yet — try running /excavator first`,
       `- The path may be different in the graph — check the exact file path`,
       `- The file may have been deleted or renamed since the last analysis`,
     ].join("\n");

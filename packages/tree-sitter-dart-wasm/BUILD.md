@@ -23,7 +23,7 @@ tar xzf tree-sitter-dart-1.0.0.tgz
 cd package
 tree-sitter build --wasm
 cp tree-sitter-dart.wasm \
-   /path/to/understand-anything-plugin/packages/tree-sitter-dart-wasm/
+   /path/to/excavator-plugin/packages/tree-sitter-dart-wasm/
 ```
 
 Verify the resulting wasm:
@@ -44,4 +44,4 @@ head -c 30 tree-sitter-dart.wasm | xxd | head -1
 
 If amaanq publishes a refreshed `tree-sitter-dart` with a `dylink.0` wasm,
 this workspace package can be deleted and the dependency in
-`@understand-anything/core` flipped to the upstream package.
+`@excavator/core` flipped to the upstream package.

@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { EDGE_CATEGORY_MAP, ALL_EDGE_CATEGORIES } from "../store";
-import type { EdgeType as CoreEdgeType } from "@understand-anything/core/types";
+import type { EdgeType as CoreEdgeType } from "@excavator/core/types";
 
 /**
  * Guard for the edge-category FILTER path — the edge analog of

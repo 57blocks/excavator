@@ -8,7 +8,7 @@ importers:
 
   .:
     dependencies:
-      '@understand-anything/core':
+      '@excavator/core':
         specifier: workspace:*
         version: link:packages/core
       graphology:
@@ -45,15 +45,15 @@ importers:
 
   packages/core:
     dependencies:
+      '@excavator/tree-sitter-dart-wasm':
+        specifier: workspace:*
+        version: link:../tree-sitter-dart-wasm
+      '@excavator/tree-sitter-swift-wasm':
+        specifier: workspace:*
+        version: link:../tree-sitter-swift-wasm
       '@tree-sitter-grammars/tree-sitter-kotlin':
         specifier: 1.1.0
         version: 1.1.0
-      '@understand-anything/tree-sitter-dart-wasm':
-        specifier: workspace:*
-        version: link:../tree-sitter-dart-wasm
-      '@understand-anything/tree-sitter-swift-wasm':
-        specifier: workspace:*
-        version: link:../tree-sitter-swift-wasm
       fuse.js:
         specifier: ^7.1.0
         version: 7.1.0
@@ -121,7 +121,7 @@ importers:
       '@dagrejs/dagre':
         specifier: ^2.0.4
         version: 2.0.4
-      '@understand-anything/core':
+      '@excavator/core':
         specifier: workspace:*
         version: link:../core
       '@xyflow/react':

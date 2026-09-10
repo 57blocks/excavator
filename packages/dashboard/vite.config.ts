@@ -15,12 +15,11 @@ import {
 // Generate a one-time token when the server process starts.
 // This token is printed to the terminal and must be in the URL
 // to fetch knowledge-graph.json or diff-overlay.json.
-const ACCESS_TOKEN = process.env.UNDERSTAND_ACCESS_TOKEN || crypto.randomBytes(16).toString("hex");
+const ACCESS_TOKEN = process.env.EXCAVATOR_ACCESS_TOKEN || crypto.randomBytes(16).toString("hex");
 const MAX_SOURCE_FILE_BYTES = 1024 * 1024;
 
-// Legacy directory first — projects analyzed before the `.ua` rename keep
-// their existing `.understand-anything/` data.
-const UA_DIR_CANDIDATES = [".understand-anything", ".ua"];
+// The project's data directory — single source of truth: `.excavator/`.
+const EXCAVATOR_DIR = ".excavator";
 
 function graphFileCandidates(fileName: string): string[] {
   const graphDir = process.env.GRAPH_DIR;
@@ -29,9 +28,7 @@ function graphFileCandidates(fileName: string): string[] {
     process.cwd(),
     path.resolve(process.cwd(), "../../.."),
   ];
-  return roots.flatMap((root) =>
-    UA_DIR_CANDIDATES.map((dir) => path.resolve(root, dir, fileName)),
-  );
+  return roots.map((root) => path.resolve(root, EXCAVATOR_DIR, fileName));
 }
 
 function findGraphFile(fileName: string): string | null {
@@ -140,7 +137,7 @@ function readSourceFile(url: URL) {
 
   const graphFile = findGraphFile("knowledge-graph.json");
   if (!graphFile) {
-    return rejectFileRequest("No knowledge graph found. Run /understand first.", 404);
+    return rejectFileRequest("No knowledge graph found. Run /excavator first.", 404);
   }
 
   const projectRoot = projectRootFromGraphFile(graphFile);
@@ -216,7 +213,7 @@ function readGraphMetadata(graphFile: string): GraphFreshnessInput {
 export async function readGraphFreshness() {
   const graphFile = findGraphFile("knowledge-graph.json");
   if (!graphFile) {
-    return rejectFileRequest("No knowledge graph found. Run /understand first.", 404);
+    return rejectFileRequest("No knowledge graph found. Run /excavator first.", 404);
   }
 
   const domainGraphFile = path.join(path.dirname(graphFile), "domain-graph.json");
@@ -305,9 +302,9 @@ const config: DashboardViteConfig = {
 
   resolve: {
     alias: {
-      "@understand-anything/core/schema": path.resolve(__dirname, "../core/dist/schema.js"),
-      "@understand-anything/core/search": path.resolve(__dirname, "../core/dist/search.js"),
-      "@understand-anything/core/types": path.resolve(__dirname, "../core/dist/types.js"),
+      "@excavator/core/schema": path.resolve(__dirname, "../core/dist/schema.js"),
+      "@excavator/core/search": path.resolve(__dirname, "../core/dist/search.js"),
+      "@excavator/core/types": path.resolve(__dirname, "../core/dist/types.js"),
     },
   },
 
@@ -454,7 +451,7 @@ const config: DashboardViteConfig = {
             } catch (err) {
               // If we cannot parse or sanitise the file, refuse to serve it
               // rather than accidentally leaking raw content.
-              console.error("[understand-anything] Failed to sanitise graph file:", err);
+              console.error("[excavator] Failed to sanitise graph file:", err);
               res.statusCode = 500;
               res.setHeader("Content-Type", "application/json");
               res.end(JSON.stringify({ error: "Failed to read graph file" }));
@@ -466,7 +463,7 @@ const config: DashboardViteConfig = {
           res.statusCode = 404;
           if (pathname === "/knowledge-graph.json") {
             res.setHeader("Content-Type", "application/json");
-            res.end(JSON.stringify({ error: "No knowledge graph found. Run /understand first." }));
+            res.end(JSON.stringify({ error: "No knowledge graph found. Run /excavator first." }));
           } else {
             res.end();
           }

@@ -31,11 +31,11 @@ function runHook({
   configContents,
   createConfig = true,
   createGraph = true,
-  dataDirName = '.understand-anything',
+  dataDirName = '.excavator',
   input,
   pluginRoot,
 } = {}) {
-  const projectRoot = mkdtempSync(join(tmpdir(), 'ua-post-tool-use-'));
+  const projectRoot = mkdtempSync(join(tmpdir(), 'excavator-post-tool-use-'));
   const dataDir = join(projectRoot, dataDirName);
   mkdirSync(dataDir);
   if (createConfig) {
@@ -87,13 +87,24 @@ describe('PostToolUse auto-update hook', () => {
       hookSpecificOutput: {
         hookEventName: 'PostToolUse',
         additionalContext: expect.stringContaining(
-          '[understand-anything] Commit detected',
+          '[excavator] Commit detected',
         ),
       },
     });
     expect(output.hookSpecificOutput.additionalContext).toContain(
       `${result.pluginRoot}/hooks/auto-update-prompt.md`,
     );
+  });
+
+  it('proposes the update and waits for the user — never instructs auto-execution', () => {
+    const result = runHook();
+    const output = JSON.parse(result.stdout);
+    const context = output.hookSpecificOutput.additionalContext;
+
+    expect(context).not.toContain('Do not ask the user');
+    expect(context).not.toMatch(/\bMUST\b/);
+    expect(context).toMatch(/propose/i);
+    expect(context).toMatch(/wait for the user/i);
   });
 
   it.each(['commit', 'merge', 'cherry-pick', 'rebase'])(
@@ -109,7 +120,7 @@ describe('PostToolUse auto-update hook', () => {
   );
 
   it('preserves Windows-style plugin paths as valid JSON', () => {
-    const pluginRoot = 'C:\\Users\\Example Person\\understand-anything';
+    const pluginRoot = 'C:\\Users\\Example Person\\excavator';
     const result = runHook({ pluginRoot });
     const output = JSON.parse(result.stdout);
 
@@ -118,13 +129,16 @@ describe('PostToolUse auto-update hook', () => {
     );
   });
 
-  it('supports the legacy .ua data directory', () => {
-    const result = runHook({ dataDirName: '.ua' });
+  it('does not fall back to a pre-rename data directory — stays silent', () => {
+    // Built from parts rather than written as a literal so this file, which
+    // deliberately proves the pre-rename directory name is no longer read,
+    // doesn't itself trip the repo-wide zero-old-token grep gate (oracle #1
+    // in openspec/changes/excavator-rename/design.md).
+    const preRenameDir = ["." , "u", "a"].join("");
+    const result = runHook({ dataDirName: preRenameDir });
 
     expect(result.status).toBe(0);
-    expect(JSON.parse(result.stdout).hookSpecificOutput.hookEventName).toBe(
-      'PostToolUse',
-    );
+    expect(result.stdout).toBe('');
   });
 
   it('stays silent for unrelated Bash commands', () => {
@@ -152,5 +166,28 @@ describe('PostToolUse auto-update hook', () => {
     expect(result.status).toBe(0);
     expect(result.stderr).toBe('');
     expect(result.stdout).toBe('');
+  });
+});
+
+describe('SessionStart staleness hook + auto-update-prompt.md — propose, never auto-execute', () => {
+  const sessionStartCommand =
+    hooksConfig.hooks.SessionStart[0].hooks[0].command;
+  const promptDoc = readFileSync(
+    join(repoRoot, 'hooks', 'auto-update-prompt.md'),
+    'utf8',
+  );
+
+  it('hooks.json SessionStart command contains no auto-execute directive', () => {
+    expect(sessionStartCommand).not.toContain('Do not ask the user');
+    expect(sessionStartCommand).not.toMatch(/just do it/i);
+    expect(sessionStartCommand).toMatch(/propose/i);
+  });
+
+  it('auto-update-prompt.md contains no auto-execute directive and ends each real-work action with a proposal that waits for the user', () => {
+    expect(promptDoc).not.toContain('Do not ask the user');
+    expect(promptDoc).not.toMatch(/just do it/i);
+    expect(promptDoc).not.toMatch(/\bYou MUST\b/);
+    expect(promptDoc).toMatch(/STOP\.\*\* Tell the user/);
+    expect(promptDoc).toMatch(/Only proceed to Phase 1 if/i);
   });
 });

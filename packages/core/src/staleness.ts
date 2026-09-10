@@ -72,10 +72,8 @@ const GIT_MAX_BUFFER_BYTES = 4 * 1024 * 1024;
 const PROJECT_PATHSPEC = [
   "--",
   ".",
-  ":(exclude).understand-anything",
-  ":(exclude).understand-anything/**",
-  ":(exclude).ua",
-  ":(exclude).ua/**",
+  ":(exclude).excavator",
+  ":(exclude).excavator/**",
 ] as const;
 
 class GitCommandError extends Error {

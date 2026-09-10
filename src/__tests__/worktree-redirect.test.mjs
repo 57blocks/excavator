@@ -1,6 +1,6 @@
 // Validates the worktree-redirect bash snippet embedded in
-// `skills/understand/SKILL.md` Phase 0 step 1 and
-// `skills/understand-domain/SKILL.md` Phase 0.
+// `skills/excavator/SKILL.md` Phase 0 step 1 and
+// `skills/excavator-domain/SKILL.md` Phase 0.
 //
 // If you edit the snippet in either SKILL.md, mirror the change to RESOLVE_SNIPPET
 // below — there is no shared script to source (per-skill convention in this repo).
@@ -19,7 +19,7 @@ if [ -n "$COMMON_DIR" ] && [ -n "$GIT_DIR" ]; then
   GIT_ABS=$(cd "$PROJECT_ROOT" && cd "$GIT_DIR" 2>/dev/null && pwd -P)
   if [ -n "$COMMON_ABS" ] && [ "$COMMON_ABS" != "$GIT_ABS" ]; then
     MAIN_ROOT=$(dirname "$COMMON_ABS")
-    if [ -d "$MAIN_ROOT" ] && [ "\${UNDERSTAND_NO_WORKTREE_REDIRECT:-0}" != "1" ]; then
+    if [ -d "$MAIN_ROOT" ] && [ "\${EXCAVATOR_NO_WORKTREE_REDIRECT:-0}" != "1" ]; then
       PROJECT_ROOT="$MAIN_ROOT"
     fi
   fi
@@ -63,7 +63,7 @@ let subdir;
 
 describeWithBash("worktree-redirect snippet (issue #133)", () => {
   beforeAll(() => {
-    tmpRoot = realpathSync(mkdtempSync(join(tmpdir(), "ua-wt-")));
+    tmpRoot = realpathSync(mkdtempSync(join(tmpdir(), "excavator-wt-")));
     mainRepo = join(tmpRoot, "main");
     worktree = join(tmpRoot, "wt");
     subdir = join(worktree, "src", "deep");
@@ -98,8 +98,8 @@ describeWithBash("worktree-redirect snippet (issue #133)", () => {
     expectSamePath(runResolve(subdir), mainRepo);
   });
 
-  it("respects UNDERSTAND_NO_WORKTREE_REDIRECT=1", () => {
-    expectSamePath(runResolve(worktree, { UNDERSTAND_NO_WORKTREE_REDIRECT: "1" }), worktree);
+  it("respects EXCAVATOR_NO_WORKTREE_REDIRECT=1", () => {
+    expectSamePath(runResolve(worktree, { EXCAVATOR_NO_WORKTREE_REDIRECT: "1" }), worktree);
   });
 
   it("leaves PROJECT_ROOT alone when not inside a git repo", () => {
