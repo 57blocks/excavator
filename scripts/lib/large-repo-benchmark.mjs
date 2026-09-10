@@ -1238,6 +1238,7 @@ export function aggregateStructureSummaries(structureSummaries) {
     filesSkipped: 0,
     structureSucceeded: 0,
     structureFailed: 0,
+    structureSkipped: 0,
     callGraphSucceeded: 0,
     callGraphFailed: 0,
     callGraphSkipped: 0,
@@ -1248,6 +1249,7 @@ export function aggregateStructureSummaries(structureSummaries) {
     aggregate.filesSkipped += summary.filesSkipped;
     aggregate.structureSucceeded += summary.structureSucceeded;
     aggregate.structureFailed += summary.structureFailed;
+    aggregate.structureSkipped += summary.structureSkipped;
     aggregate.callGraphSucceeded += summary.callGraphSucceeded;
     aggregate.callGraphFailed += summary.callGraphFailed;
     aggregate.callGraphSkipped += summary.callGraphSkipped;
@@ -1282,6 +1284,12 @@ export function summarizeStructureOutput(batch, output) {
   const callGraphSkipped = hasOutcomeCounts
     ? outcomeCounts?.callGraph?.skipped
     : results.length;
+  // Rows for files with no extractor for their language. They now stay in
+  // `results` (with status `no-extractor`) instead of vanishing, so the
+  // completeness identity has to account for them.
+  const structureSkipped = hasOutcomeCounts
+    ? (outcomeCounts?.structure?.skipped ?? 0)
+    : 0;
   let malformed =
     !output ||
     typeof output !== 'object' ||
@@ -1296,7 +1304,8 @@ export function summarizeStructureOutput(batch, output) {
     !isCount(callGraphSucceeded) ||
     !isCount(callGraphFailed) ||
     !isCount(callGraphSkipped) ||
-    structureSucceeded + structureFailed !== results.length ||
+    !isCount(structureSkipped) ||
+    structureSucceeded + structureFailed + structureSkipped !== results.length ||
     callGraphSucceeded + callGraphFailed + callGraphSkipped !== results.length;
 
   const pathCounts = new Map();
@@ -1320,7 +1329,11 @@ export function summarizeStructureOutput(batch, output) {
       malformed = true;
       continue;
     }
-    pathCounts.set(path, (pathCounts.get(path) ?? 0) + 1);
+    // A skipped file also carries a `results` row now (status `no-extractor`
+    // or `parse-failed`), so counting it from both lists would report a
+    // duplicate path that does not exist.
+    if (pathCounts.has(path)) continue;
+    pathCounts.set(path, 1);
   }
 
   const accountedExpectedPaths = [...expectedPaths].filter((path) =>
@@ -1351,6 +1364,7 @@ export function summarizeStructureOutput(batch, output) {
     filesSkipped: skippedPaths.length,
     structureSucceeded: isCount(structureSucceeded) ? structureSucceeded : 0,
     structureFailed: isCount(structureFailed) ? structureFailed : 0,
+    structureSkipped: isCount(structureSkipped) ? structureSkipped : 0,
     callGraphSucceeded: isCount(callGraphSucceeded) ? callGraphSucceeded : 0,
     callGraphFailed: isCount(callGraphFailed) ? callGraphFailed : 0,
     callGraphSkipped: isCount(callGraphSkipped) ? callGraphSkipped : 0,

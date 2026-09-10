@@ -442,7 +442,12 @@ export const GapSchema = z.object({
   samples: z.array(z.string()).optional(),
 }).passthrough();
 
-const SKIP_REASONS = ["symlink", "read-failed", "unknown-language", "binary", "too-large", "ignored"] as const;
+// Scan-time skip reasons plus the two extraction outcomes that leave a file
+// unparsed. One map, so `files = parsed + zeroSymbol + Σ skipped` holds.
+const SKIP_REASONS = [
+  "symlink", "read-failed", "unknown-language", "binary", "too-large", "ignored",
+  "no-extractor", "parse-failed",
+] as const;
 
 export const LanguageCoverageSchema = z.object({
   files: z.number(),

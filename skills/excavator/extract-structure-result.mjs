@@ -213,13 +213,60 @@ export function analyzeFileWithOutcomes(registry, file, content) {
   return { analysis, callGraph, structureOutcome, callGraphOutcome };
 }
 
-export function buildResult(file, totalLines, nonEmptyLines, analysis, callGraph, batchImportData) {
+/**
+ * Every declaration array an extractor can fill. A file whose extractor ran
+ * and filled none of them is `zero-symbol` — a real, reportable outcome, not
+ * a failure and not an absence.
+ */
+const SYMBOL_ARRAY_FIELDS = [
+  ...REQUIRED_STRUCTURE_ARRAY_FIELDS,
+  ...OPTIONAL_STRUCTURE_ARRAY_FIELDS,
+];
+
+/** Outcomes `analyzeFileWithOutcomes` (plus the caller's read step) can report. */
+export const EXTRACTION_OUTCOMES = Object.freeze([
+  'succeeded',
+  'failed',
+  'skipped',
+  'read-failed',
+]);
+
+/**
+ * Map one extraction outcome onto the per-file status the coverage ledger
+ * consumes. Fail-closed: an unknown or missing outcome throws instead of
+ * defaulting, because a silently defaulted status is exactly the invisible
+ * bucket this ledger exists to remove.
+ */
+export function deriveStatus(analysis, outcome) {
+  if (!EXTRACTION_OUTCOMES.includes(outcome)) {
+    throw new Error(
+      `buildResult: outcome must be one of ${EXTRACTION_OUTCOMES.join('|')}, got ${JSON.stringify(outcome)}`,
+    );
+  }
+  if (outcome === 'skipped') return { status: 'no-extractor' };
+  if (outcome === 'read-failed') {
+    return { status: 'parse-failed', statusReason: 'read-failed' };
+  }
+  if (outcome === 'failed' || !analysis) {
+    return { status: 'parse-failed', statusReason: 'extractor-error-or-invalid-output' };
+  }
+  const symbols = SYMBOL_ARRAY_FIELDS.reduce(
+    (sum, field) => sum + (Array.isArray(analysis[field]) ? analysis[field].length : 0),
+    0,
+  );
+  return { status: symbols > 0 ? 'parsed' : 'zero-symbol' };
+}
+
+export function buildResult(file, totalLines, nonEmptyLines, analysis, callGraph, batchImportData, outcome) {
+  const { status, statusReason } = deriveStatus(analysis, outcome);
   const base = {
     path: file.path,
     language: file.language,
     fileCategory: file.fileCategory,
     totalLines,
     nonEmptyLines,
+    status,
+    ...(statusReason ? { statusReason } : {}),
   };
 
   if (!analysis) {
@@ -243,6 +290,14 @@ export function buildResult(file, totalLines, nonEmptyLines, analysis, callGraph
       endLine: cls.lineRange[1],
       methods: cls.methods || [],
       properties: cls.properties || [],
+    }));
+  }
+
+  if (analysis.imports && analysis.imports.length > 0) {
+    base.imports = analysis.imports.map(imp => ({
+      source: imp.source,
+      specifiers: imp.specifiers || [],
+      line: imp.lineNumber,
     }));
   }
 

@@ -92,9 +92,13 @@ export interface Gap {
   samples?: string[];
 }
 
-/** Why a scanned file was never handed to extraction. */
+/** Why a scanned file did not end up parsed. The first six are scan-time
+ *  reasons (the file was never handed to a reader); the last two are
+ *  extraction outcomes. They share one map so the per-language conservation
+ *  identity `files = parsed + zeroSymbol + Σ skipped` covers every input. */
 export type SkipReason =
-  | "symlink" | "read-failed" | "unknown-language" | "binary" | "too-large" | "ignored";
+  | "symlink" | "read-failed" | "unknown-language" | "binary" | "too-large" | "ignored"
+  | "no-extractor" | "parse-failed";
 
 /** Declaration counts a language contributed to the graph. */
 export interface CoverageKinds {

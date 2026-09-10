@@ -504,6 +504,8 @@ describe('structure output summaries', () => {
       filesSkipped: 1,
       structureSucceeded: 2,
       structureFailed: 0,
+      // no-extractor rows are accounted for now (0 here: legacy-shaped output)
+      structureSkipped: 0,
       callGraphSucceeded: 0,
       callGraphFailed: 0,
       callGraphSkipped: 2,
@@ -611,6 +613,7 @@ describe('structure output summaries', () => {
       filesSkipped: 1,
       structureSucceeded: 3,
       structureFailed: 0,
+      structureSkipped: 0,
       callGraphSucceeded: 0,
       callGraphFailed: 0,
       callGraphSkipped: 3,

@@ -6,10 +6,10 @@
 
 ## 2. 账本（②a commit 2）
 
-- [ ] 2.1 `skills/excavator/scan-project.mjs`：输出 `skipped:[{path,reason}]`（symlink / read-failed / unknown-language / binary / too-large / ignored）与 `coverage.limits`；binary 判定 = 已知扩展名或前 8KB 含 NUL；too-large 阈值为脚本顶部常量；验证夹具含符号链接、不可读文件、`.xyz` 未知扩展名、一个 `.dll`、一个超阈值文件、`.claude/` 文件，各落对应桶
-- [ ] 2.2 `skills/excavator/extract-structure*.mjs`：每文件 `status: parsed|zero-symbol|no-extractor|parse-failed`，失败文件保留在 `results`；验证夹具含语法错误文件与 `.html` 文件
-- [ ] 2.3 `skills/excavator/extract-import-map.mjs`：输出 `unresolved:{path:[specifier]}`；验证夹具含一个外部包 import 与一个错误相对路径 import
-- [ ] 2.4 守恒测试：对夹具 `files = parsed + zeroSymbol + Σskipped`；验证测试绿
+- [x] 2.1 `skills/excavator/scan-project.mjs`：输出 `skipped:[{path,reason}]`（symlink / read-failed / unknown-language / binary / too-large / ignored）与 `coverage.limits`；binary 判定 = 已知扩展名或前 8KB 含 NUL；too-large 阈值为脚本顶部常量；验证夹具含符号链接、不可读文件、`.xyz` 未知扩展名、一个 `.dll`、一个超阈值文件、`.claude/` 文件，各落对应桶
+- [x] 2.2 `skills/excavator/extract-structure*.mjs`：每文件 `status: parsed|zero-symbol|no-extractor|parse-failed`，失败文件保留在 `results`；验证夹具含语法错误文件与 `.html` 文件
+- [x] 2.3 `skills/excavator/extract-import-map.mjs`：输出 `unresolved:{path:[specifier]}`；验证夹具含一个外部包 import 与一个错误相对路径 import
+- [x] 2.4 守恒测试：对夹具 `files = parsed + zeroSymbol + Σskipped`；验证测试绿
 
 ## 3. 抽取器与身份（②a commit 3）
 

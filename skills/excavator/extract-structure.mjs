@@ -13,7 +13,13 @@
  *   { projectRoot, batchFiles: [{path, language, sizeLines, fileCategory}], batchImportData }
  *
  * Output JSON:
- *   { scriptCompleted, filesAnalyzed, filesSkipped, results: [...] }
+ *   { scriptCompleted, filesAnalyzed, filesSkipped, analysisOutcomes,
+ *     byStatus: { parsed, zero-symbol, no-extractor, parse-failed },
+ *     results: [{ path, language, status, statusReason?, ... }] }
+ *
+ * Every input file gets exactly one `results` row carrying a `status` of
+ * parsed | zero-symbol | no-extractor | parse-failed. Failed and
+ * extractor-less files are NOT dropped from `results`.
  */
 
 import { createRequire } from 'node:module';
@@ -28,6 +34,8 @@ import {
 export {
   analyzeFileWithOutcomes,
   buildResult,
+  deriveStatus,
+  EXTRACTION_OUTCOMES,
 } from './extract-structure-result.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -83,20 +91,30 @@ async function main() {
 
   const results = [];
   const filesSkipped = [];
+  // Every `results` row is counted here, so
+  // structure.succeeded + structure.failed + structure.skipped === results.length
+  // and the same identity holds for callGraph. `skipped` = structure was never
+  // attempted (no extractor for the language, or the file could not be read at
+  // all); `failed` = a reader ran and did not produce usable structure. The
+  // per-file `status`/`statusReason` in `results` keeps the finer distinction.
   const analysisOutcomes = {
-    structure: { succeeded: 0, failed: 0 },
+    structure: { succeeded: 0, failed: 0, skipped: 0 },
     callGraph: { succeeded: 0, failed: 0, skipped: 0 },
   };
 
   for (const file of batchFiles) {
     const absolutePath = join(projectRoot, file.path);
 
-    // Read file content
+    // Read file content. A file that cannot be read here is still reported —
+    // dropping it would leave an input in no bucket at all.
     let content;
     try {
       content = readFileSync(absolutePath, 'utf-8');
     } catch {
       filesSkipped.push(file.path);
+      results.push(buildExtractResult(file, 0, 0, null, null, batchImportData, 'read-failed'));
+      analysisOutcomes.structure.skipped += 1;
+      analysisOutcomes.callGraph.skipped += 1;
       continue;
     }
 
@@ -111,16 +129,33 @@ async function main() {
       analyzeFileWithOutcomes(registry, file, content);
 
     if (structureOutcome === 'skipped') {
+      // No extractor for this language. The file stays in `results` with
+      // status `no-extractor` so the coverage ledger can name it; it also
+      // stays in `filesSkipped` for the existing consumers of that list.
       filesSkipped.push(file.path);
+      results.push(
+        buildExtractResult(file, totalLines, nonEmptyLines, null, null, batchImportData, 'skipped'),
+      );
+      analysisOutcomes.structure.skipped += 1;
+      analysisOutcomes.callGraph.skipped += 1;
       continue;
     }
 
     analysisOutcomes.structure[structureOutcome] += 1;
     analysisOutcomes.callGraph[callGraphOutcome] += 1;
 
-    // Build result object
-    const result = buildExtractResult(file, totalLines, nonEmptyLines, analysis, callGraph, batchImportData);
+    // Build result object. A parse failure keeps its row (status
+    // `parse-failed`) instead of vanishing from the output.
+    const result = buildExtractResult(
+      file, totalLines, nonEmptyLines, analysis, callGraph, batchImportData, structureOutcome,
+    );
     results.push(result);
+  }
+
+  // Per-status counts, so a consumer does not have to re-derive the ledger.
+  const byStatus = {};
+  for (const result of results) {
+    byStatus[result.status] = (byStatus[result.status] || 0) + 1;
   }
 
   // Write output
@@ -129,6 +164,7 @@ async function main() {
     filesAnalyzed: results.length,
     filesSkipped,
     analysisOutcomes,
+    byStatus,
     results,
   };
 

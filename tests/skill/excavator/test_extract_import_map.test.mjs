@@ -129,7 +129,11 @@ describe('extract-import-map.mjs — TypeScript / JavaScript resolver', () => {
       filesScanned: 1,
       filesWithImports: 1,
       totalEdges: 1,
+      // Unresolved-specifier accounting is part of the stats block now.
+      filesWithUnresolved: 0,
+      unresolvedSpecifiers: 0,
     });
+    expect(result.output.unresolved).toEqual({});
   });
 
   it('rejects analysisPaths that are absent from the current inventory', () => {

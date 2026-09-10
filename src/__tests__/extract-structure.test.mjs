@@ -19,14 +19,14 @@ const analysis = (overrides = {}) => ({
 describe("extract-structure buildResult", () => {
   describe("language pass-through", () => {
     it("preserves the input language on the output", () => {
-      const result = buildResult(file({ language: "python" }), 10, 8, analysis(), null, {});
+      const result = buildResult(file({ language: "python" }), 10, 8, analysis(), null, {}, "succeeded");
       expect(result.language).toBe("python");
     });
 
     it("preserves null when caller did not set a language", () => {
       // Documents the failure mode the SKILL.md/file-analyzer.md fix prevents:
       // if the dispatch prompt loses `language`, it propagates to the output.
-      const result = buildResult(file({ language: null }), 10, 8, analysis(), null, {});
+      const result = buildResult(file({ language: null }), 10, 8, analysis(), null, {}, "succeeded");
       expect(result.language).toBeNull();
     });
   });
@@ -45,7 +45,7 @@ describe("extract-structure buildResult", () => {
 
     it("uses pre-resolved imports when batchImportData has entries", () => {
       const batchImportData = { "src/foo.py": ["src/bar.py", "src/baz.py"] };
-      const result = buildResult(file(), 10, 8, analysisWithImports, null, batchImportData);
+      const result = buildResult(file(), 10, 8, analysisWithImports, null, batchImportData, "succeeded");
       expect(result.metrics.importCount).toBe(2);
     });
 
@@ -54,22 +54,22 @@ describe("extract-structure buildResult", () => {
       // would clobber the parser's count with 0. This is the bug Python projects
       // using absolute imports (which the project scanner doesn't resolve) hit.
       const batchImportData = { "src/foo.py": [] };
-      const result = buildResult(file(), 10, 8, analysisWithImports, null, batchImportData);
+      const result = buildResult(file(), 10, 8, analysisWithImports, null, batchImportData, "succeeded");
       expect(result.metrics.importCount).toBe(3);
     });
 
     it("falls back to parser imports when batchImportData has no entry for the file", () => {
-      const result = buildResult(file(), 10, 8, analysisWithImports, null, {});
+      const result = buildResult(file(), 10, 8, analysisWithImports, null, {}, "succeeded");
       expect(result.metrics.importCount).toBe(3);
     });
 
     it("falls back to parser imports when batchImportData is undefined", () => {
-      const result = buildResult(file(), 10, 8, analysisWithImports, null, undefined);
+      const result = buildResult(file(), 10, 8, analysisWithImports, null, undefined, "succeeded");
       expect(result.metrics.importCount).toBe(3);
     });
 
     it("reports 0 imports when neither source has any", () => {
-      const result = buildResult(file(), 10, 8, analysis(), null, { "src/foo.py": [] });
+      const result = buildResult(file(), 10, 8, analysis(), null, { "src/foo.py": [] }, "succeeded");
       expect(result.metrics.importCount).toBe(0);
     });
 
@@ -84,7 +84,7 @@ describe("extract-structure buildResult", () => {
           { source: "./local", specifiers: [] },
         ],
       });
-      const result = buildResult(file(), 10, 8, ext, null, {});
+      const result = buildResult(file(), 10, 8, ext, null, {}, "succeeded");
       expect(result.metrics.importCount).toBe(1);
     });
   });
