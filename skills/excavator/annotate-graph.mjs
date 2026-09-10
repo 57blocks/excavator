@@ -79,12 +79,22 @@ export const SUPPLEMENTABLE_TYPES = Object.freeze(['imports', 'exports', 'contai
 const WEIGHT_BY_TYPE = Object.freeze({ contains: 1.0, exports: 0.8, imports: 0.7 });
 
 /**
- * What a commit hash looks like. Anything else in `project.gitCommitHash` —
- * `""`, `"unknown"`, `"HEAD"`, a missing field — becomes `null`, so "this
- * target has no commit" is one visible value rather than four spellings of
- * absence. The count says how often it happened.
+ * Does `project.gitCommitHash` carry an identifier at all?
+ *
+ * A hex run of seven or more characters is the structural test, not a list of
+ * accepted spellings: it matches a git commit, an abbreviated one, and the
+ * pipeline's own `multi-repo:<digest>` marker for a parent directory whose
+ * members are separate repositories. Those are version identities and are
+ * KEPT — nulling the multi-repo marker would throw away the only record of
+ * which member states the graph was built from, and would also rewrite a
+ * value the pipeline itself wrote.
+ *
+ * What has no identifier in it — a missing field, `""`, whitespace,
+ * `"unknown"`, `"HEAD"`, `"none"` — becomes `null`, so "this target has no
+ * commit" is one visible value instead of five spellings of absence. The
+ * count and a sample say what was replaced.
  */
-const GIT_COMMIT_HASH = /^[0-9a-f]{7,40}$/i;
+const CARRIES_IDENTIFIER = /[0-9a-f]{7,}/i;
 
 /**
  * Where the host's model name might be, most explicit first. None of these is
@@ -681,8 +691,11 @@ export function annotate({
     // the version instead. The field is set to null rather than left absent
     // so a consumer reads "no commit" instead of "field missing, ask again".
     const commit = annotated.project.gitCommitHash;
-    if (typeof commit !== 'string' || !GIT_COMMIT_HASH.test(commit.trim())) {
-      if (commit !== null && commit !== undefined) counts.gitCommitHashNormalized = 1;
+    if (typeof commit !== 'string' || !CARRIES_IDENTIFIER.test(commit.trim())) {
+      if (typeof commit === 'string' && commit.trim().length > 0) {
+        counts.gitCommitHashNormalized = 1;
+        samples.add('git-commit-hash-normalized', commit.trim());
+      }
       annotated.project.gitCommitHash = null;
     }
   }
@@ -733,6 +746,9 @@ export function annotate({
   gap('dirty-reanalysed-overlap', 'graph',
     `${counts.dirtyReanalysedOverlap} file(s) appear as both cosmetic and re-analysed in the incremental plan`,
     counts.dirtyReanalysedOverlap, 'dirty-reanalysed-overlap');
+  gap('git-commit-hash-normalized', 'graph',
+    `${counts.gitCommitHashNormalized} project.gitCommitHash value(s) carried no identifier and were replaced with null`,
+    counts.gitCommitHashNormalized, 'git-commit-hash-normalized');
   gap('source-digest-missing', 'graph',
     'the scan result carries no contentDigest, so project.sourceDigest cannot identify the analysed sources',
     counts.sourceDigestMissing);

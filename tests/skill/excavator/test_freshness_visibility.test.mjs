@@ -213,8 +213,10 @@ describe('non-git targets get a null commit and a source digest', () => {
   it.each([
     ['a missing field', undefined],
     ['an empty string', ''],
+    ['whitespace', '   '],
     ['the word unknown', 'unknown'],
     ['a branch name', 'HEAD'],
+    ['the word none', 'none'],
     ['an already-null value', null],
   ])('normalises %s to null', (_label, value) => {
     const graph = graphOf([fileNode('src/a.ts')], { gitCommitHash: value });
@@ -224,8 +226,12 @@ describe('non-git targets get a null commit and a source digest', () => {
     expect(annotated.project.sourceDigest).toBe('a'.repeat(64));
   });
 
-  it('keeps a real commit hash, short or full', () => {
-    for (const hash of ['a'.repeat(40), 'abc1234']) {
+  it('keeps any value that carries an identifier', () => {
+    // A commit, an abbreviated commit, and the pipeline's own multi-repo
+    // marker for a parent directory of separate repositories. Nulling that
+    // last one would discard the only record of which member states the
+    // graph was built from — and would rewrite a value the pipeline wrote.
+    for (const hash of ['a'.repeat(40), 'abc1234', `multi-repo:${'d'.repeat(64)}`]) {
       const graph = graphOf([fileNode('src/a.ts')], { gitCommitHash: hash });
       const { annotated, audit } = annotate({ ...base, graph });
       expect(annotated.project.gitCommitHash).toBe(hash);
@@ -233,10 +239,21 @@ describe('non-git targets get a null commit and a source digest', () => {
     }
   });
 
-  it('counts the normalisation rather than doing it silently', () => {
+  it('counts the normalisation and names what it replaced', () => {
     const graph = graphOf([fileNode('src/a.ts')], { gitCommitHash: 'unknown' });
-    const { audit } = annotate({ ...base, graph });
+    const { annotated, audit } = annotate({ ...base, graph });
     expect(audit.counts.gitCommitHashNormalized).toBe(1);
+    const gap = annotated.gaps.find(g => g.kind === 'git-commit-hash-normalized');
+    expect(gap.count).toBe(1);
+    expect(gap.samples).toEqual(['unknown']);
+  });
+
+  it('does not count an absent field as a replacement', () => {
+    const graph = graphOf([fileNode('src/a.ts')]);
+    delete graph.project.gitCommitHash;
+    const { annotated, audit } = annotate({ ...base, graph });
+    expect(annotated.project.gitCommitHash).toBeNull();
+    expect(audit.counts.gitCommitHashNormalized).toBe(0);
   });
 
   it('reports a gap when the scan has no contentDigest to stand in for a commit', () => {
