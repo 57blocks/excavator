@@ -291,6 +291,36 @@ If the scan result includes `filteredByIgnore > 0`, report:
 
 ---
 
+## Phase 1.2 — STRUCTURE-ALL (added; full analysis only)
+
+Report: `[Phase 1.2/7] Extracting structural facts for the whole project...`
+
+This phase is **additive**: it changes nothing about how the graph is produced.
+It runs the same structural extraction the file-analyzer batches use, over
+every scanned file at once, so the later ANNOTATE (2.3) and VALIDATE (6b)
+phases can check the model's graph against the same line-numbered facts the
+model was given.
+
+```bash
+node "<SKILL_DIR>/structure-all.mjs" "$PROJECT_ROOT"
+```
+
+Reads `$DATA_DIR/intermediate/scan-result.json`, calls
+`<SKILL_DIR>/extract-structure.mjs` in chunks, and writes
+`$DATA_DIR/intermediate/structure-all.json` — one row per scanned file with
+its `status` (`parsed` / `zero-symbol` / `no-extractor` / `parse-failed`),
+declarations with line ranges, imports and exports with line numbers, and call
+sites.
+
+Capture stderr and append any line starting with `Warning:` to
+`$PHASE_WARNINGS`.
+
+**This phase is a supplement, so its failure is not fatal.** If the script
+exits non-zero, report the stderr as a Phase 1.2 warning, note that phases 2.3
+and 6b will be skipped, and continue with the analysis unchanged.
+
+---
+
 ## Phase 1.5 — BATCH
 
 Report: `[Phase 1.5/7] Computing semantic batches...`

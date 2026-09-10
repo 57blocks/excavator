@@ -20,8 +20,8 @@
 
 ## 4. 结构全量抽取（②a commit 4）
 
-- [ ] 4.1 `skills/excavator/structure-all.mjs`：对 scan 标为 code 的全部文件调用既有 `extract-structure.mjs`（不改它），合并为 `intermediate/structure-all.json`（含每文件 `status`、`imports[].line`、`callGraph`）；验证合成项目产物覆盖全部 code 文件且两次运行相同
-- [ ] 4.2 SKILL.md 新增阶段 1.2 STRUCTURE-ALL（只加，不改既有阶段）；验证 check-refs 绿
+- [x] 4.1 `skills/excavator/structure-all.mjs`：对 scan 标为 code 的全部文件调用既有 `extract-structure.mjs`（不改它），合并为 `intermediate/structure-all.json`（含每文件 `status`、`imports[].line`、`callGraph`）；验证合成项目产物覆盖全部 code 文件且两次运行相同
+- [x] 4.2 SKILL.md 新增阶段 1.2 STRUCTURE-ALL（只加，不改既有阶段）；验证 check-refs 绿
 
 ## 5. annotate-graph（②a commit 5）
 
