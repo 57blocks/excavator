@@ -41,9 +41,9 @@
 
 ## 7. Benchmark 与文档（②a commit 7）
 
-- [ ] 7.1 `scripts/lib/large-repo-benchmark.mjs` `structureCoverage` 分母 = parsed + zeroSymbol + skipped；验证既有 benchmark 测试更新后绿
-- [ ] 7.2 `docs/v2-plan.md` §3 按补充层架构重写（UA 原样、插件口 + 后阶段口、存分支清单）；验证三件套绿
-- [ ] 7.3 ②a 冒烟（不提交）：wcp 与 cebreo 两目标各两次 structure-all + annotate + validate；对 wcp 现有 UA 图跑 validateGraph 与 annotate 0 删；数字贴 PR（a2–a5、a7）
+- [x] 7.1 `scripts/lib/large-repo-benchmark.mjs` `structureCoverage` 分母 = parsed + zeroSymbol + skipped；验证既有 benchmark 测试更新后绿
+- [x] 7.2 `docs/v2-plan.md` §3 按补充层架构重写（UA 原样、插件口 + 后阶段口、存分支清单）；验证三件套绿
+- [x] 7.3 ②a 冒烟（不提交）：wcp 与 cebreo 两目标各两次 structure-all + annotate + validate；对 wcp 现有 UA 图跑 validateGraph 与 annotate 0 删；数字贴 PR（a2–a5、a7）
 
 ## 8. 提示词加节（②b commit 8，只加不改）
 

@@ -1478,6 +1478,10 @@ export function buildBenchmarkIntegrity(
     (sum, summary) => sum + summary.filesSkipped,
     0,
   );
+  const structureSkips = structureSummaries.reduce(
+    (sum, summary) => sum + (summary.structureSkipped ?? 0),
+    0,
+  );
   const missingStructurePaths = structureSummaries.reduce(
     (sum, summary) => sum + summary.missingStructurePaths,
     0,
@@ -1502,13 +1506,16 @@ export function buildBenchmarkIntegrity(
     duplicateBatchFiles,
     unexpectedBatchFiles: unexpectedBatchFiles.length,
     missingImportTargets,
-    structureCoverage:
-      structureSucceeded + structureFailures === 0
-        ? 1
-        : Math.round(
-            (structureSucceeded / (structureSucceeded + structureFailures)) *
-              10000,
-          ) / 10000,
+    // Honest denominator: every file the structure stage accounted for, which
+    // includes the ones it could not parse AND the ones no reader supports.
+    // Dividing only by succeeded + failed reported 100% coverage for a project
+    // whose .html/.xaml files were never read at all.
+    structureCoverage: (() => {
+      const accounted = structureSucceeded + structureFailures + structureSkips;
+      if (accounted === 0) return 1;
+      return Math.round((structureSucceeded / accounted) * 10000) / 10000;
+    })(),
+    structureSkipped: structureSkips,
     structureFailures,
     callGraphFailures,
     filesSkipped,
@@ -1524,7 +1531,10 @@ export function hasFailedIntegrity(integrity) {
   return (
     !integrity.allScannedFilesBatched ||
     integrity.missingImportTargets > 0 ||
-    integrity.structureCoverage !== 1 ||
+    // structureCoverage is NOT a gate any more: with the honest denominator it
+    // is below 1 for every project containing a language no reader supports,
+    // which is a known gap, not a defect. `structureFailures` (a reader ran
+    // and failed) is the defect signal and still gates.
     integrity.structureFailures > 0 ||
     integrity.callGraphFailures > 0 ||
     integrity.failedBatches > 0 ||
