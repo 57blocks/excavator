@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { validateGraph } from "../schema.js";
+import { auditGraphShape, edgeKey, validateGraph } from "../schema.js";
 import type { Coverage, Gap, GraphEdge, GraphNode, KnowledgeGraph } from "../types.js";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -126,34 +126,43 @@ describe("edge attribution (provenance + evidence)", () => {
     expect(edge.verification).toBe("verified");
   });
 
-  it("rejects an extracted edge with no evidence and names it", () => {
+  // Attribution discipline is an AUDIT finding, not a load failure: refusing
+  // these edges would delete knowledge the pipeline already produced.
+  it("keeps an extracted edge with no evidence and reports it as an audit finding", () => {
     const graph = v2Graph();
     graph.edges[0].evidence = [];
     const result = validateGraph(graph);
 
-    expect(result.data!.edges).toHaveLength(0);
-    expect(result.issues).toContainEqual(
-      expect.objectContaining({ level: "dropped", category: "invalid-edge", path: "edges[0]" }),
+    expect(result.data!.edges).toHaveLength(1);
+    expect(result.issues.filter((i) => i.level === "dropped")).toEqual([]);
+    expect(auditGraphShape(result.data!).issues).toContainEqual(
+      expect.objectContaining({
+        code: "extracted-edge-without-evidence",
+        edgeKey: edgeKey(graph.edges[0]),
+      }),
     );
-    expect(result.issues.some((i) => /extracted.*evidence/.test(i.message))).toBe(true);
   });
 
-  it("rejects an extracted edge whose only evidence is model-cited", () => {
+  it("keeps an extracted edge whose only evidence is model-cited and audits it", () => {
     const graph = v2Graph();
     graph.edges[0].evidence = [{ file: "src/a.ts", line: 3, source: "model" }];
     const result = validateGraph(graph);
 
-    expect(result.data!.edges).toHaveLength(0);
-    expect(result.issues.some((i) => /not "model"/.test(i.message))).toBe(true);
+    expect(result.data!.edges).toHaveLength(1);
+    expect(auditGraphShape(result.data!).issues).toContainEqual(
+      expect.objectContaining({ code: "extracted-edge-without-nonmodel-evidence" }),
+    );
   });
 
-  it("rejects an inferred edge carrying non-model evidence", () => {
+  it("keeps an inferred edge carrying non-model evidence and audits it", () => {
     const graph = v2Graph();
     graph.edges[0].provenance = "inferred";
     const result = validateGraph(graph);
 
-    expect(result.data!.edges).toHaveLength(0);
-    expect(result.issues.some((i) => /inferred.*tree-sitter/.test(i.message))).toBe(true);
+    expect(result.data!.edges).toHaveLength(1);
+    expect(auditGraphShape(result.data!).issues).toContainEqual(
+      expect.objectContaining({ code: "inferred-edge-with-nonmodel-evidence" }),
+    );
   });
 
   it("accepts an inferred edge with model evidence and with no evidence", () => {
@@ -180,41 +189,80 @@ describe("edge attribution (provenance + evidence)", () => {
     expect(result.data!.edges).toHaveLength(3);
   });
 
-  it("defaults an edge that states no provenance to inferred with empty evidence", () => {
+  it("passes an edge that states no provenance through untouched", () => {
     const result = validateGraph(legacyGraph());
     expect(result.success).toBe(true);
-    expect(result.data!.edges[0].provenance).toBe("inferred");
-    expect(result.data!.edges[0].evidence).toEqual([]);
+    // Not defaulted: whether the producer stated its attribution is itself a
+    // fact, and the audit is what reports the silence.
+    expect(result.data!.edges[0].provenance).toBeUndefined();
+    expect(result.data!.edges[0].evidence).toBeUndefined();
+    expect(auditGraphShape(result.data!).issues).toContainEqual(
+      expect.objectContaining({ code: "edge-without-provenance" }),
+    );
   });
 });
 
-describe("per-type node anchors", () => {
-  it("drops a function node with no lineRange and names it", () => {
+describe("per-type node anchors are audited, not enforced", () => {
+  it("keeps a function node with no lineRange and reports the missing anchor", () => {
     const graph = v2Graph();
     delete graph.nodes[1].lineRange;
     const result = validateGraph(graph);
 
-    expect(result.data!.nodes.map((n) => n.id)).toEqual(["file:src/a.ts"]);
-    expect(result.issues).toContainEqual(
-      expect.objectContaining({ level: "dropped", category: "invalid-node", path: "nodes[1]" }),
+    // Still loadable: an unanchored node is worse knowledge, not no knowledge.
+    expect(result.data!.nodes.map((n) => n.id)).toEqual([
+      "file:src/a.ts",
+      "function:src/a.ts:Api.list",
+    ]);
+    expect(result.issues.filter((i) => i.level === "dropped")).toEqual([]);
+    expect(auditGraphShape(result.data!).issues).toContainEqual(
+      expect.objectContaining({
+        code: "missing-line-anchor",
+        nodeId: "function:src/a.ts:Api.list",
+      }),
     );
-    expect(result.issues.some((i) => /function node requires "lineRange"/.test(i.message))).toBe(true);
   });
 
-  it("drops a function node with no filePath", () => {
+  it("keeps a function node with no filePath and reports the missing anchor", () => {
     const graph = v2Graph();
     delete graph.nodes[1].filePath;
     const result = validateGraph(graph);
-    expect(result.data!.nodes.map((n) => n.id)).toEqual(["file:src/a.ts"]);
-    expect(result.issues.some((i) => /function node requires "filePath"/.test(i.message))).toBe(true);
+
+    expect(result.data!.nodes).toHaveLength(2);
+    expect(auditGraphShape(result.data!).issues).toContainEqual(
+      expect.objectContaining({
+        code: "missing-file-anchor",
+        nodeId: "function:src/a.ts:Api.list",
+      }),
+    );
   });
 
-  it("drops a file node with no filePath (null included)", () => {
-    const graph = v2Graph() as unknown as Record<string, unknown>;
-    (graph.nodes as GraphNode[])[0] = { ...(graph.nodes as GraphNode[])[0], filePath: undefined };
+  it("keeps a file node with no filePath and reports the missing anchor", () => {
+    const graph = v2Graph();
+    delete graph.nodes[0].filePath;
     const result = validateGraph(graph);
-    expect(result.data!.nodes.map((n) => n.id)).toEqual(["function:src/a.ts:Api.list"]);
-    expect(result.issues.some((i) => /file node requires "filePath"/.test(i.message))).toBe(true);
+
+    expect(result.data!.nodes).toHaveLength(2);
+    expect(auditGraphShape(result.data!).issues).toContainEqual(
+      expect.objectContaining({ code: "missing-file-anchor", nodeId: "file:src/a.ts" }),
+    );
+  });
+
+  it("reports nothing for a fully anchored, fully attributed graph", () => {
+    expect(auditGraphShape(v2Graph()).issues).toEqual([]);
+  });
+
+  it("audits a malformed entry instead of throwing", () => {
+    expect(auditGraphShape(null).issues).toEqual([]);
+    expect(auditGraphShape({ nodes: [null, 7], edges: ["x"] }).issues).toEqual([]);
+    const audit = auditGraphShape({
+      nodes: [{ id: "function:x", type: "function" }],
+      edges: [{ type: "calls", source: "a", target: "b" }],
+    });
+    expect(audit.issues.map((i) => i.code).sort()).toEqual([
+      "edge-without-provenance",
+      "missing-file-anchor",
+      "missing-line-anchor",
+    ]);
   });
 
   it("keeps a class node anchored and its owner/anchorSource fields", () => {
@@ -331,7 +379,14 @@ describe("pre-v2 (legacy) graphs still validate", () => {
     expect(result.issues.filter((i) => i.level === "dropped")).toEqual([]);
     expect(result.data!.nodes).toHaveLength(raw.nodes.length);
     expect(result.data!.edges).toHaveLength(raw.edges.length);
-    expect(result.data!.edges.every((e) => e.provenance === "inferred")).toBe(true);
+    // The shipped graph states no attribution at all; the audit is what says so.
+    expect(result.data!.edges.every((e) => e.provenance === undefined)).toBe(true);
+    const audit = auditGraphShape(result.data!);
+    expect(audit.issues.filter((i) => i.code === "edge-without-provenance")).toHaveLength(
+      raw.edges.length,
+    );
+    // Every node in that graph IS anchored, so the audit finds nothing else.
+    expect(audit.issues.every((i) => i.code === "edge-without-provenance")).toBe(true);
     expect(result.data!.coverage).toEqual({ files: 0, byLanguage: {}, ignored: 0 });
   });
 });

@@ -2,6 +2,7 @@
 
 - [x] 1.1 `packages/core/src/types.ts`：加 `Evidence`、`EvidenceSource`、`Gap`、`Coverage`；`GraphEdge.evidence/provenance`；`GraphNode.owner?/anchorSource?/verification?`、`summary` 允许空串；`ProjectMeta.gitCommitHash: string|null` + `sourceDigest/factsDigest/pipelineVersion/model`；`KnowledgeGraph.coverage/gaps`；`weight` 注释为种类常量；验证 `pnpm typecheck` 绿
 - [x] 1.2 `packages/core/src/schema.ts`：显式 zod 字段 + 边与顶层 `.passthrough()`；`superRefine` 使 function/class 节点 `filePath`/`lineRange` 必填、file 节点 `filePath` 必填；重建路径保留 `kind/coverage/gaps`；验证新测试：含 `evidence` 的边经 `validateGraph` 后字段仍在；缺 lineRange 的 function 节点被报错
+- 1.2 修订：按用户 2026-09-11 方向，强制锚点/证据改为审计告警（`auditGraphShape`），不拒绝 UA 产出
 - [x] 1.3 兼容测试：dashboard `public/knowledge-graph.json` 样例与 `wcp-quality/clean-room` 形状的旧图（合成缩样）经 `validateGraph` 通过并得到 `coverage`/`gaps` 默认空值；验证 core 测试绿
 
 ## 2. 账本（②a commit 2）

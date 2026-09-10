@@ -5,10 +5,16 @@ export {
   validateGraph,
   sanitizeGraph,
   autoFixGraph,
+  auditGraphShape,
+  edgeKey,
+  emptyCoverage,
   COMPLEXITY_ALIASES,
   DIRECTION_ALIASES,
   type ValidationResult,
   type GraphIssue,
+  type GraphAuditCode,
+  type GraphAuditIssue,
+  type GraphAuditResult,
 } from "./schema.js";
 export { TreeSitterPlugin } from "./plugins/tree-sitter-plugin.js";
 export type { LanguageExtractor } from "./plugins/extractors/types.js";

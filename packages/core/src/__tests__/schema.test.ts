@@ -507,8 +507,6 @@ describe("permissive validation", () => {
     // Add a second valid node so graph isn't fatal
     graph.nodes.push({
       id: "node-2", type: "file", name: "other.ts",
-      // file nodes now require filePath (per-type anchor rule)
-      filePath: "src/other.ts",
       summary: "Other file", tags: ["util"], complexity: "simple",
     });
 
@@ -562,8 +560,6 @@ describe("permissive validation", () => {
     // Add a good node
     graph.nodes.push({
       id: "node-2", type: "function", name: "doThing",
-      // function nodes now require filePath + lineRange (per-type anchor rule)
-      filePath: "src/index.ts", lineRange: [10, 20],
       summary: "Does a thing", tags: ["util"], complexity: "moderate",
     });
     // Add a bad node (missing id AND name -- unrecoverable)
@@ -607,11 +603,7 @@ describe("permissive validation", () => {
       project: validGraph.project,
       nodes: [{
         id: "n1", type: "FILE", name: "app.ts",
-        // A file node with no path is now dropped by the anchor rule rather
-        // than auto-corrected (see "per-type anchors"), so this messy-input
-        // case carries a real path; the null → undefined sanitisation of
-        // filePath is covered in the sanitizeGraph block above.
-        filePath: "src/app.ts", summary: "App entry",
+        filePath: null, summary: "App entry",
         tags: null, complexity: "HIGH",
       }],
       edges: [{

@@ -475,10 +475,11 @@ export const CoverageSchema = z.object({
   limits: z.object({ maxFileLines: z.number(), maxFileBytes: z.number() }).passthrough().optional(),
 }).passthrough();
 
-/** Node types whose identity is a declaration: they must be anchored to a file
- *  AND a line span. */
+/** Node types whose identity is a declaration: an audit expects a file AND a
+ *  line span, because a declaration that cannot be pointed at cannot be
+ *  checked against the source. */
 const LINE_ANCHORED_NODE_TYPES = new Set(["function", "class"]);
-/** Node types that are a whole file: path required, no line claim. */
+/** Node types that are a whole file: an audit expects a path, no line claim. */
 const FILE_ANCHORED_NODE_TYPES = new Set(["file", "config", "document"]);
 
 export const GraphNodeSchema = z.object({
@@ -504,20 +505,7 @@ export const GraphNodeSchema = z.object({
   domainMeta: DomainMetaSchema.optional(),
   knowledgeMeta: KnowledgeMetaSchema.optional(),
   figmaMeta: FigmaMetaSchema.optional(),
-}).passthrough().superRefine((node, ctx) => {
-  // Anchors are required per node type: a declaration node that cannot be
-  // pointed at is not a fact, and an unanchored node cannot be verified.
-  if (LINE_ANCHORED_NODE_TYPES.has(node.type)) {
-    if (!node.filePath) {
-      ctx.addIssue({ code: "custom", message: `${node.type} node requires "filePath"`, path: ["filePath"] });
-    }
-    if (!node.lineRange) {
-      ctx.addIssue({ code: "custom", message: `${node.type} node requires "lineRange"`, path: ["lineRange"] });
-    }
-  } else if (FILE_ANCHORED_NODE_TYPES.has(node.type) && !node.filePath) {
-    ctx.addIssue({ code: "custom", message: `${node.type} node requires "filePath"`, path: ["filePath"] });
-  }
-});
+}).passthrough();
 
 export const GraphEdgeSchema = z.object({
   source: z.string(),
@@ -526,40 +514,13 @@ export const GraphEdgeSchema = z.object({
   direction: z.enum(["forward", "backward", "bidirectional"]),
   description: z.string().optional(),
   weight: z.number().min(0).max(1),
-  // Optional in the schema so a pre-v2 graph still validates; `validateGraph`
-  // defaults an edge with no stated provenance to `inferred` (= unevidenced),
-  // which understates rather than invents attribution.
+  // Optional, and never defaulted: whether an edge STATED its attribution is
+  // itself an audit finding, so validation must not overwrite silence with a
+  // guess. `auditGraphShape` reports the silence instead.
   evidence: z.array(EvidenceSchema).optional(),
   provenance: EdgeProvenanceSchema.optional(),
   verification: VerificationStateSchema.optional(),
-}).passthrough().superRefine((edge, ctx) => {
-  const evidence = edge.evidence ?? [];
-  if (edge.provenance === "extracted") {
-    if (evidence.length === 0) {
-      ctx.addIssue({
-        code: "custom",
-        message: 'edge with provenance "extracted" requires at least one evidence entry',
-        path: ["evidence"],
-      });
-    } else if (!evidence.some((e) => e.source !== "model")) {
-      ctx.addIssue({
-        code: "custom",
-        message: 'edge with provenance "extracted" requires evidence whose source is not "model"',
-        path: ["evidence"],
-      });
-    }
-  }
-  if (edge.provenance === "inferred") {
-    const nonModel = evidence.find((e) => e.source !== "model");
-    if (nonModel) {
-      ctx.addIssue({
-        code: "custom",
-        message: `edge with provenance "inferred" must not carry evidence with source "${nonModel.source}"`,
-        path: ["evidence"],
-      });
-    }
-  }
-});
+}).passthrough();
 
 export const LayerSchema = z.object({
   id: z.string(),
@@ -606,6 +567,140 @@ export const KnowledgeGraphSchema = z.object({
  *  consumer has to special-case a missing field. */
 export function emptyCoverage(): Coverage {
   return { files: 0, byLanguage: {}, ignored: 0 };
+}
+
+// ---------------------------------------------------------------------------
+// Shape audit
+//
+// These are the checks that a graph SHOULD satisfy for its statements to be
+// verifiable: anchored declaration nodes, and attribution that does not
+// contradict itself. They are deliberately NOT part of `validateGraph`.
+// Validation decides what is loadable; an unanchored node or an unattributed
+// edge is still loadable, and refusing it would only delete knowledge the
+// pipeline already produced. So the audit reports, and the caller decides.
+// ---------------------------------------------------------------------------
+
+export type GraphAuditCode =
+  | "missing-file-anchor"
+  | "missing-line-anchor"
+  | "edge-without-provenance"
+  | "extracted-edge-without-evidence"
+  | "extracted-edge-without-nonmodel-evidence"
+  | "inferred-edge-with-nonmodel-evidence";
+
+export interface GraphAuditIssue {
+  code: GraphAuditCode;
+  message: string;
+  /** Set for node findings. */
+  nodeId?: string;
+  /** Set for edge findings: `<type>|<source>|<target>`. */
+  edgeKey?: string;
+}
+
+export interface GraphAuditResult {
+  issues: GraphAuditIssue[];
+}
+
+/** Stable, readable identifier for an edge, which has no id of its own. */
+export function edgeKey(edge: { type?: unknown; source?: unknown; target?: unknown }): string {
+  return `${String(edge.type ?? "?")}|${String(edge.source ?? "?")}|${String(edge.target ?? "?")}`;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/**
+ * Audit a graph's shape. Pure, total, and never throws: it is meant to run
+ * over model-authored output, so a malformed entry becomes a finding rather
+ * than an exception.
+ *
+ * An empty `issues` array means every node carries the anchor its type needs
+ * and every edge's stated attribution is self-consistent.
+ */
+export function auditGraphShape(graph: unknown): GraphAuditResult {
+  const issues: GraphAuditIssue[] = [];
+  if (!isRecord(graph)) return { issues };
+
+  const nodes = Array.isArray(graph.nodes) ? graph.nodes : [];
+  for (const node of nodes) {
+    if (!isRecord(node)) continue;
+    const id = typeof node.id === "string" ? node.id : String(node.id ?? "?");
+    const type = typeof node.type === "string" ? node.type : "";
+    const hasFilePath = typeof node.filePath === "string" && node.filePath.length > 0;
+    const hasLineRange = Array.isArray(node.lineRange) && node.lineRange.length === 2;
+
+    if (LINE_ANCHORED_NODE_TYPES.has(type)) {
+      if (!hasFilePath) {
+        issues.push({
+          code: "missing-file-anchor",
+          nodeId: id,
+          message: `${type} node "${id}" has no filePath, so it cannot be checked against the source`,
+        });
+      }
+      if (!hasLineRange) {
+        issues.push({
+          code: "missing-line-anchor",
+          nodeId: id,
+          message: `${type} node "${id}" has no lineRange, so its summary cannot be verified against a slice`,
+        });
+      }
+    } else if (FILE_ANCHORED_NODE_TYPES.has(type) && !hasFilePath) {
+      issues.push({
+        code: "missing-file-anchor",
+        nodeId: id,
+        message: `${type} node "${id}" has no filePath`,
+      });
+    }
+  }
+
+  const edges = Array.isArray(graph.edges) ? graph.edges : [];
+  for (const edge of edges) {
+    if (!isRecord(edge)) continue;
+    const key = edgeKey(edge);
+    const provenance = edge.provenance;
+    const evidence = Array.isArray(edge.evidence)
+      ? edge.evidence.filter(isRecord)
+      : [];
+
+    if (provenance === undefined || provenance === null) {
+      issues.push({
+        code: "edge-without-provenance",
+        edgeKey: key,
+        message: `edge ${key} states no provenance, so nothing says where it came from`,
+      });
+      continue;
+    }
+
+    if (provenance === "extracted") {
+      if (evidence.length === 0) {
+        issues.push({
+          code: "extracted-edge-without-evidence",
+          edgeKey: key,
+          message: `edge ${key} claims provenance "extracted" but cites no evidence`,
+        });
+      } else if (!evidence.some((entry) => entry.source !== "model")) {
+        issues.push({
+          code: "extracted-edge-without-nonmodel-evidence",
+          edgeKey: key,
+          message: `edge ${key} claims provenance "extracted" but every evidence entry is model-cited`,
+        });
+      }
+    }
+
+    if (provenance === "inferred") {
+      const nonModel = evidence.find((entry) => entry.source !== "model");
+      if (nonModel) {
+        issues.push({
+          code: "inferred-edge-with-nonmodel-evidence",
+          edgeKey: key,
+          message: `edge ${key} is marked "inferred" but cites ${String(nonModel.source)} evidence`,
+        });
+      }
+    }
+  }
+
+  return { issues };
 }
 
 export interface GraphIssue {
@@ -799,14 +894,10 @@ export function validateGraph(data: unknown): ValidationResult {
         });
         continue;
       }
-      // No fourth state: an edge that stated no provenance is unevidenced, and
-      // `inferred` is exactly that. Defaulting here (rather than leaving the
-      // field absent) keeps every consumer on one shape.
-      validEdges.push({
-        ...result.data,
-        evidence: (result.data.evidence ?? []) as GraphEdge["evidence"],
-        provenance: result.data.provenance ?? "inferred",
-      } as GraphEdge);
+      // Passed through as stated, attribution included or absent. Whether an
+      // edge declared its provenance is a fact about the producer that the
+      // audit pass reads; defaulting it here would erase that fact.
+      validEdges.push(result.data as GraphEdge);
     }
   }
 

@@ -168,10 +168,14 @@ export interface GraphEdge {
    *  NodeInfo rows by it). NOT a confidence score — attribution lives in
    *  `provenance`/`evidence`. */
   weight: number; // 0-1
-  /** Cited lines. An `extracted` edge carries at least one entry whose
-   *  `source` is not `model`; an `inferred` edge carries no non-model entry. */
-  evidence: Evidence[];
-  provenance: EdgeProvenance;
+  /** Cited lines. Optional: a graph produced by the existing pipeline states
+   *  neither of these, and validation accepts that unchanged. When they ARE
+   *  present, `auditGraphShape` checks the discipline — an `extracted` edge
+   *  should carry at least one entry whose `source` is not `model`, and an
+   *  `inferred` edge should carry no non-model entry — and reports a WARNING,
+   *  never a rejection. */
+  evidence?: Evidence[];
+  provenance?: EdgeProvenance;
   /** Set by the graph validator when it re-reads the evidence line. */
   verification?: VerificationState;
 }
