@@ -2933,7 +2933,7 @@
     {
       "id": "layer:skill",
       "name": "Skill (CLI Command) Layer",
-      "description": "Claude Code skill handlers implementing the /understand-* commands",
+      "description": "Claude Code skill handlers implementing the /excavator-* commands",
       "nodeIds": [
         "file:packages/skill/src/context-builder.ts",
         "file:packages/skill/src/excavator-chat.ts",

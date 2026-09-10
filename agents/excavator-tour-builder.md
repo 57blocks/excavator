@@ -183,7 +183,7 @@ Before writing the script, create its input JSON file. First resolve the project
 
 ```bash
 DATA_DIR="$PROJECT_ROOT/.excavator"
-cat > $DATA_DIR/tmp/ua-tour-input.json << 'ENDJSON'
+cat > $DATA_DIR/tmp/excavator-tour-input.json << 'ENDJSON'
 {
   "nodes": [<nodes from prompt — all types including non-code>],
   "edges": [<edges from prompt — all types>],
@@ -197,7 +197,7 @@ ENDJSON
 After writing the script, execute it:
 
 ```bash
-node $DATA_DIR/tmp/ua-tour-analyze.js $DATA_DIR/tmp/ua-tour-input.json $DATA_DIR/tmp/ua-tour-results.json
+node $DATA_DIR/tmp/excavator-tour-analyze.js $DATA_DIR/tmp/excavator-tour-input.json $DATA_DIR/tmp/excavator-tour-results.json
 ```
 
 If the script exits with a non-zero code, read stderr, diagnose the issue, fix the script, and re-run. You have up to 2 retry attempts.
@@ -206,7 +206,7 @@ If the script exits with a non-zero code, read stderr, diagnose the issue, fix t
 
 ## Phase 2 -- Pedagogical Tour Design
 
-After the script completes, read `$DATA_DIR/tmp/ua-tour-results.json`. Use the structural analysis as your primary guide for designing the tour. Do NOT re-read source files or re-analyze the graph -- trust the script's results entirely.
+After the script completes, read `$DATA_DIR/tmp/excavator-tour-results.json`. Use the structural analysis as your primary guide for designing the tour. Do NOT re-read source files or re-analyze the graph -- trust the script's results entirely.
 
 ### Step 1 -- Choose the Starting Point
 

@@ -63,7 +63,7 @@ DATA_DIR="$PROJECT_ROOT/.excavator"
 mkdir -p $DATA_DIR/tmp
 node $PLUGIN_ROOT/skills/excavator/scan-project.mjs \
   "$PROJECT_ROOT" \
-  "$DATA_DIR/tmp/ua-scan-files.json"
+  "$DATA_DIR/tmp/excavator-scan-files.json"
 ```
 
 With exclude patterns (add the `--exclude` flag after the output path):
@@ -71,7 +71,7 @@ With exclude patterns (add the `--exclude` flag after the output path):
 ```bash
 node $PLUGIN_ROOT/skills/excavator/scan-project.mjs \
   "$PROJECT_ROOT" \
-  "$DATA_DIR/tmp/ua-scan-files.json" \
+  "$DATA_DIR/tmp/excavator-scan-files.json" \
   --exclude "tests/*,docs/*"
 ```
 
@@ -136,7 +136,7 @@ Write the input JSON for the bundled script (the `files[]` array is exactly Step
 ```bash
 DATA_DIR="$PROJECT_ROOT/.excavator"
 mkdir -p $DATA_DIR/tmp
-cat > $DATA_DIR/tmp/ua-import-map-input.json << 'ENDJSON'
+cat > $DATA_DIR/tmp/excavator-import-map-input.json << 'ENDJSON'
 {
   "projectRoot": "<absolute-project-root>",
   "files": [
@@ -151,8 +151,8 @@ Then run:
 
 ```bash
 node $PLUGIN_ROOT/skills/excavator/extract-import-map.mjs \
-  $DATA_DIR/tmp/ua-import-map-input.json \
-  $DATA_DIR/tmp/ua-import-map-output.json
+  $DATA_DIR/tmp/excavator-import-map-input.json \
+  $DATA_DIR/tmp/excavator-import-map-output.json
 ```
 
 The output JSON has shape:
@@ -181,8 +181,8 @@ Read the output JSON and merge the `importMap` field directly into your final sc
 ## Phase 2 -- Description and Final Assembly
 
 After Steps A + B + C have all completed, read:
-1. `$DATA_DIR/tmp/ua-scan-files.json` — output of `scan-project.mjs` (file list with language, sizeLines, fileCategory; plus `totalFiles`, `filteredByIgnore`, `estimatedComplexity`).
-2. `$DATA_DIR/tmp/ua-import-map-output.json` — output of `extract-import-map.mjs` (the `importMap` field).
+1. `$DATA_DIR/tmp/excavator-scan-files.json` — output of `scan-project.mjs` (file list with language, sizeLines, fileCategory; plus `totalFiles`, `filteredByIgnore`, `estimatedComplexity`).
+2. `$DATA_DIR/tmp/excavator-import-map-output.json` — output of `extract-import-map.mjs` (the `importMap` field).
 3. Your Step A in-memory notes (`name`, `rawDescription`, `readmeHead`, `frameworks`, `languages` narrative).
 
 Do NOT re-walk the file tree, re-count lines, or re-derive categories — trust `scan-project.mjs` entirely. Do NOT re-implement import resolution — trust `extract-import-map.mjs` entirely.

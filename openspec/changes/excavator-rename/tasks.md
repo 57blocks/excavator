@@ -38,6 +38,7 @@
 - [x] 6.1 `scripts/check-refs.mjs` 实现 design D8 六项检查（zero deps，locale 校验通过子进程 `node --experimental-strip-types --input-type=module` 动态取键集，绕开本脚本自身要免特殊 flag 的约束），非零退出逐条打印；`frameworks/`、`languages/`、`locales/` 下的参考文档（glob 示例、纯 prose）排除出检查语料，避免把说明性文件名误判成断引用；验证 `node scripts/check-refs.mjs` exit 0 并打印检查计数（9 skills/10 agents 身份、16 agent 引用、71 斜杠引用、29 脚本路径引用、2 条 hooks.json 路径、6 条 locale key）
 - [x] 6.2 `tests/refs/check-refs.test.mjs`：用例 A 对仓库跑 exit 0；用例 B 用 rsync 复制树到临时目录（排除 node_modules/dist/.git）、重命名 `agents/excavator-file-analyzer.md`、运行**副本自己的** check-refs.mjs（脚本按 `import.meta.url` 而非 cwd 定位仓库根，必须跑副本里的脚本才能验证副本状态——已用先验装置发现并修正这个坑）、断言非零且输出点名该 agent 与引用它的文件（`skills/excavator/SKILL.md`、`hooks/auto-update-prompt.md`）；验证两条用例绿
 - [x] 6.3 接进 `pnpm test`（vitest include `tests/**/*.test.{js,mjs,ts}` 已覆盖 `tests/refs/**`，无需改配置）；验证 `pnpm test` 输出含该文件（38 files/807 tests，0 fail，4 skip）
+- [x] 6.4 legacy-literal gate test（commit 8 补）：`tests/refs/legacy-literals.test.mjs`——纯函数 matcher 扫 `git ls-files`，断言旧字面量（`understand-anything`/`understandignore`/`UA_DIR`/`.ua` 目录字面量）在 NOTICE、`docs/`、`openspec/`、`scripts/lib/large-repo-benchmark.mjs` 两条按行精确匹配豁免的 schema URL 行之外为零；另断言 `skills/`/`agents/`/`hooks/` 无裸斜杠 `/understand(-x)` 引用；含先验装置（temp 目录种入已知违例，证明 matcher 真能看见）；接入 `pnpm test`（glob 已覆盖，无需改配置）；验证 5/5 绿
 
 ## 7. 守卫与文档（commit 7）
 

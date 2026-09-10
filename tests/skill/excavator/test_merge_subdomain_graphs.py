@@ -4,7 +4,7 @@ test_merge_subdomain_graphs.py — Tests for structural-edge drop reporting
 and cross-run recovery in merge-subdomain-graphs.py (issue #529).
 
 Run from the repo root:
-    python -m unittest tests.skill.understand.test_merge_subdomain_graphs -v
+    python -m unittest tests.skill.excavator.test_merge_subdomain_graphs -v
 """
 
 from __future__ import annotations

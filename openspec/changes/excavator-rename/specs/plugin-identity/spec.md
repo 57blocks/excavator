@@ -6,12 +6,12 @@
 
 ### Requirement: 插件与全部组件以 excavator 命名
 
-The plugin manifest name SHALL be `excavator`. Every skill directory and its frontmatter `name:` SHALL be `excavator` or `excavator-<suffix>`. Every agent file and its frontmatter `name:` SHALL be `excavator-<role>`. Every workspace package SHALL be scoped `@excavator/*` or named `excavator-*`. The tokens `understand-anything`, `understandignore`, `UA_DIR` and the directory literal `.ua` SHALL NOT appear in tracked files other than `NOTICE`, files under `docs/`, and planning artifacts under `openspec/` (which describe the rename itself).
+The plugin manifest name SHALL be `excavator`. Every skill directory and its frontmatter `name:` SHALL be `excavator` or `excavator-<suffix>`. Every agent file and its frontmatter `name:` SHALL be `excavator-<role>`. Every workspace package SHALL be scoped `@excavator/*` or named `excavator-*`. The tokens `understand-anything`, `understandignore`, `UA_DIR` and the directory literal `.ua` SHALL NOT appear in tracked files other than `NOTICE`, files under `docs/`, planning artifacts under `openspec/` (which describe the rename itself), and the two upstream schema-URL lines in `scripts/lib/large-repo-benchmark.mjs` that must byte-match the `$id` in `docs/benchmarks/*.schema.json` (out of this change's scope). This gate SHALL run in `pnpm test` (`tests/refs/legacy-literals.test.mjs`), scanning `git ls-files` so untracked files cannot hide from it.
 
 #### Scenario: 旧名 grep 为零
 - **GIVEN** the repository at HEAD
 - **WHEN** `grep -rniE 'understand-anything|understandignore|UA_DIR|\.ua\b' --exclude-dir=node_modules --exclude-dir=.git --exclude-dir=dist --exclude-dir=docs --exclude-dir=openspec .` runs
-- **THEN** it matches only `NOTICE`
+- **THEN** it matches only `NOTICE` and the two schema-URL lines in `scripts/lib/large-repo-benchmark.mjs`
 
 #### Scenario: 名字与位置一致
 - **WHEN** `scripts/check-refs.mjs` runs

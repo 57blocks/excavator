@@ -27,12 +27,12 @@ The per-project ignore file SHALL be `.excavatorignore` at the project root; the
 
 ### Requirement: 默认排除 agent 目录与数据目录
 
-`DEFAULT_IGNORE_PATTERNS` SHALL include `.claude/`, `.agents/`, `.codex/` and `.excavator/`. The scanner's self-exclusion list SHALL be a subset of `DEFAULT_IGNORE_PATTERNS`. Files excluded by these patterns SHALL be counted under reason `ignored` in the scan ledger, not silently dropped.
+`DEFAULT_IGNORE_PATTERNS` SHALL include `.claude/`, `.agents/`, `.codex/` and `.excavator/`. The scanner's self-exclusion list SHALL be a subset of `DEFAULT_IGNORE_PATTERNS`. Files excluded by these patterns SHALL be counted in a dedicated default-filter ledger field (`filteredByDefaults`) and SHALL NOT be silently dropped — this keeps the default-pattern exclusion visible and distinct from user-authored `.excavatorignore` exclusions (`filteredByIgnore`), so no input lands in an unaccounted-for bucket.
 
 #### Scenario: 插件文件不进清单
 - **GIVEN** a fixture project with files under `.claude/skills/x/SKILL.md`, `.agents/skills/y/SKILL.md`, `.codex/z.md` and `.excavator/config.json`
 - **WHEN** scan-project runs
-- **THEN** none of those files appear in the scan manifest, and the ledger counts four files under reason `ignored`
+- **THEN** none of those files appear in the scan manifest, and `filteredByDefaults` counts at least four files
 
 #### Scenario: 两处列表一致
 - **WHEN** the unit test comparing the scanner's self-exclusion list with `DEFAULT_IGNORE_PATTERNS` runs

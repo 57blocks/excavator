@@ -42,7 +42,7 @@ Each entry in `batchFiles` MUST be an object with these four fields, copied verb
 - `fileCategory` (string) — `code`, `config`, `docs`, `infra`, `data`, `script`, or `markup`
 
 ```bash
-cat > $DATA_DIR/tmp/ua-file-analyzer-input-<batchIndex>.json << 'ENDJSON'
+cat > $DATA_DIR/tmp/excavator-file-analyzer-input-<batchIndex>.json << 'ENDJSON'
 {
   "projectRoot": "<project-root>",
   "batchFiles": [
@@ -71,17 +71,17 @@ Run the bundled `extract-structure.mjs` script. The `<SKILL_DIR>` path is provid
 
 ```bash
 node <SKILL_DIR>/extract-structure.mjs \
-  $DATA_DIR/tmp/ua-file-analyzer-input-<batchIndex>.json \
-  $DATA_DIR/tmp/ua-file-extract-results-<batchIndex>.json
+  $DATA_DIR/tmp/excavator-file-analyzer-input-<batchIndex>.json \
+  $DATA_DIR/tmp/excavator-file-extract-results-<batchIndex>.json
 ```
 
 If the script exits non-zero, read stderr and report the error. Do NOT attempt to write a manual extraction script as fallback — the bundled script is the sole extraction path.
 
-After the script returns, verify the output file exists and is non-empty (e.g. `test -s $DATA_DIR/tmp/ua-file-extract-results-<batchIndex>.json`). Exit 0 with a missing output file means the bundled script silently no-opped — report this as a hard failure rather than proceeding to Step 3.
+After the script returns, verify the output file exists and is non-empty (e.g. `test -s $DATA_DIR/tmp/excavator-file-extract-results-<batchIndex>.json`). Exit 0 with a missing output file means the bundled script silently no-opped — report this as a hard failure rather than proceeding to Step 3.
 
 ### Step 3 — Read the extraction results
 
-Read `$DATA_DIR/tmp/ua-file-extract-results-<batchIndex>.json`. The output format is:
+Read `$DATA_DIR/tmp/excavator-file-extract-results-<batchIndex>.json`. The output format is:
 
 ```json
 {
@@ -144,7 +144,7 @@ Treat these the same as tree-sitter-derived functions for node creation (Step 2 
 
 ## Phase 2 -- Semantic Analysis
 
-After the script completes, read `$DATA_DIR/tmp/ua-file-extract-results-<batchIndex>.json`. Use these structured results as the foundation for your analysis. Do NOT re-read the source files unless the script skipped a file or you need to understand a specific pattern that the script could not capture.
+After the script completes, read `$DATA_DIR/tmp/excavator-file-extract-results-<batchIndex>.json`. Use these structured results as the foundation for your analysis. Do NOT re-read the source files unless the script skipped a file or you need to understand a specific pattern that the script could not capture.
 
 For each file in the script's `results` array, produce `GraphNode` and `GraphEdge` objects by combining the script's structural data with your expert judgment.
 

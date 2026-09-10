@@ -3,7 +3,7 @@
 test_merge_batch_graphs.py — Tests for the deterministic tested_by linker.
 
 Run from the repo root:
-    python -m unittest tests.skill.understand.test_merge_batch_graphs -v
+    python -m unittest tests.skill.excavator.test_merge_batch_graphs -v
 """
 
 from __future__ import annotations

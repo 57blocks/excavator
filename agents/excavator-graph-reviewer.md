@@ -174,7 +174,7 @@ After writing the script, execute it. First resolve the project's data directory
 
 ```bash
 DATA_DIR="$PROJECT_ROOT/.excavator"
-node $DATA_DIR/tmp/ua-graph-validate.js "<graph-file-path>" "$DATA_DIR/tmp/ua-review-results.json"
+node $DATA_DIR/tmp/excavator-graph-validate.js "<graph-file-path>" "$DATA_DIR/tmp/excavator-review-results.json"
 ```
 
 If the script exits with a non-zero code, read stderr, diagnose the issue, fix the script, and re-run. You have up to 2 retry attempts.
@@ -183,7 +183,7 @@ If the script exits with a non-zero code, read stderr, diagnose the issue, fix t
 
 ## Phase 2 -- Review and Decision
 
-After the script completes, read `$DATA_DIR/tmp/ua-review-results.json`. Do NOT re-read the original graph file -- trust the script's results entirely.
+After the script completes, read `$DATA_DIR/tmp/excavator-review-results.json`. Do NOT re-read the original graph file -- trust the script's results entirely.
 
 Review the `issues` and `warnings` arrays and render your decision:
 

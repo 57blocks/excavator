@@ -35,9 +35,9 @@
 
 **D3 数据目录单一来源**：`packages/core/src/persistence/index.ts` 导出 `EXCAVATOR_DIR = ".excavator"` 与 `resolveDataDir(root)`；TS 侧全部改为 import；shell/Python/md 侧硬编码同一字面量，由 grep 门守住。`staleness.ts` 的 `:(exclude).ua` pathspec 同步。
 
-**D4 默认忽略与自排除**：`DEFAULT_IGNORE_PATTERNS` 增加 `.claude/`、`.agents/`、`.codex/`、`.excavator/`；`scan-project.mjs` 自排除改为同一组；新增单元测试断言 scanner 列表 ⊆ core 列表，并用夹具证明这些目录下的文件不进清单、且以 `ignored` 原因计入账目（不是静默消失——「没有第四态」）。
+**D4 默认忽略与自排除**：`DEFAULT_IGNORE_PATTERNS` 增加 `.claude/`、`.agents/`、`.codex/`、`.excavator/`；`scan-project.mjs` 自排除改为同一组；新增单元测试断言 scanner 列表 ⊆ core 列表，并用夹具证明这些目录下的文件不进清单、且计入专门的默认过滤账目字段 `filteredByDefaults`（不是静默消失、也不与用户 `.excavatorignore` 的 `filteredByIgnore` 混同——「没有第四态」）。
 
-**D5 两宿主脚本定位**：候选只留三项——`${CLAUDE_PLUGIN_ROOT}`（Claude Code）、`$HOME/.excavator-plugin`（安装器建立的通用符号链接）、`$SELF_RELATIVE`（`~/.agents/skills/<skill>` realpath 上两级，Codex）。校验仍是候选下存在 `package.json` 与 `pnpm-workspace.yaml`。三份 SKILL.md（excavator / -dashboard / -domain）共用同一段；`-knowledge`、`-figma` 的 `<SKILL_DIR>` 占位改为同一机制；`hooks/auto-update-prompt.md` 的候选同步。
+**D5 两宿主脚本定位**：候选只留三项——`${CLAUDE_PLUGIN_ROOT}`（Claude Code）、`$HOME/.excavator-plugin`（安装器建立的通用符号链接）、`$SELF_RELATIVE`（`~/.agents/skills/<skill>` realpath 上两级，Codex）。校验仍是候选下存在 `package.json` 与 `pnpm-workspace.yaml`。三份 SKILL.md（excavator / -dashboard / -domain）共用同一段；`-knowledge`、`-figma` 的 `<SKILL_DIR>` 占位改为同一机制；`hooks/auto-update-prompt.md` 的候选同步。**落地记录**：`-knowledge`、`-figma` 两份 SKILL.md 实际仍保留 `<SKILL_DIR>` 占位散文，未切到三候选解析块——两文件本身不含旧宿主字面量，check-refs 与 grep 门均已清洁，此项接受为已知偏差，后续步骤可选择性收口。
 
 **D6 安装**：新 `install.sh` 只做 Codex：`ln -sfn skills/<each> ~/.agents/skills/<each>` 与 `ln -sfn <repo> ~/.excavator-plugin`，支持 `--uninstall`。Claude Code 走 `.claude-plugin/marketplace.json`：`{name:"excavator", owner:{name:"57blocks"}, plugins:[{name:"excavator", source:"./", description}]}`，安装命令 `/plugin marketplace add <repo-path>` 再 `/plugin install excavator@excavator`。`plugin.json` 显式写 `skills/agents/hooks` 键以自文档。删 `install.ps1`；`tests/install/*` 重写为对新 `install.sh` 的表驱动测试（HOME 指向临时目录）。上游继承的 kimi 红因此消失，属替换非弱化，PR 里列出被删测试名与新增测试名。
 
