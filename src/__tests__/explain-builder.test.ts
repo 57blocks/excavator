@@ -19,15 +19,9 @@ const sampleGraph: KnowledgeGraph = {
     { id: "file:src/db.ts", type: "file", name: "db.ts", filePath: "src/db.ts", summary: "Database", tags: ["db"], complexity: "simple" },
   ],
   edges: [
-    { source: "file:src/auth.ts", target: "function:src/auth.ts:login", type: "contains", direction: "forward", weight: 1.0,
-    evidence: [], provenance: "inferred" as const,
-  },
-    { source: "file:src/auth.ts", target: "function:src/auth.ts:verify", type: "contains", direction: "forward", weight: 1.0,
-    evidence: [], provenance: "inferred" as const,
-  },
-    { source: "function:src/auth.ts:login", target: "file:src/db.ts", type: "reads_from", direction: "forward", weight: 0.8,
-    evidence: [], provenance: "inferred" as const,
-  },
+    { source: "file:src/auth.ts", target: "function:src/auth.ts:login", type: "contains", direction: "forward", weight: 1.0 },
+    { source: "file:src/auth.ts", target: "function:src/auth.ts:verify", type: "contains", direction: "forward", weight: 1.0 },
+    { source: "function:src/auth.ts:login", target: "file:src/db.ts", type: "reads_from", direction: "forward", weight: 0.8 },
   ],
   layers: [
     { id: "layer:auth", name: "Auth Layer", description: "Authentication", nodeIds: ["file:src/auth.ts", "function:src/auth.ts:login", "function:src/auth.ts:verify"] },

@@ -258,7 +258,6 @@ export class JavaExtractor implements LanguageExtractor {
         properties,
         functions,
         exports,
-        nameNode.text,
       );
     }
 
@@ -343,8 +342,6 @@ export class JavaExtractor implements LanguageExtractor {
     properties: string[],
     functions: StructuralAnalysis["functions"],
     exports: StructuralAnalysis["exports"],
-    /** Declaring type name — the method's identity depends on it. */
-    owner: string,
   ): void {
     for (let i = 0; i < body.childCount; i++) {
       const child = body.child(i);
@@ -360,16 +357,15 @@ export class JavaExtractor implements LanguageExtractor {
             properties,
             functions,
             exports,
-            owner,
           );
           break;
 
         case "method_declaration":
-          this.extractMethod(child, methods, functions, exports, owner);
+          this.extractMethod(child, methods, functions, exports);
           break;
 
         case "constructor_declaration":
-          this.extractConstructor(child, methods, functions, exports, owner);
+          this.extractConstructor(child, methods, functions, exports);
           break;
 
         case "field_declaration":
@@ -384,7 +380,6 @@ export class JavaExtractor implements LanguageExtractor {
     methods: string[],
     functions: StructuralAnalysis["functions"],
     exports: StructuralAnalysis["exports"],
-    owner: string,
   ): void {
     const nameNode = node.childForFieldName("name");
     if (!nameNode) return;
@@ -397,7 +392,6 @@ export class JavaExtractor implements LanguageExtractor {
 
     functions.push({
       name: nameNode.text,
-      owner,
       lineRange: [
         node.startPosition.row + 1,
         node.endPosition.row + 1,
@@ -419,7 +413,6 @@ export class JavaExtractor implements LanguageExtractor {
     methods: string[],
     functions: StructuralAnalysis["functions"],
     exports: StructuralAnalysis["exports"],
-    owner: string,
   ): void {
     const nameNode = node.childForFieldName("name");
     if (!nameNode) return;
@@ -431,7 +424,6 @@ export class JavaExtractor implements LanguageExtractor {
 
     functions.push({
       name: nameNode.text,
-      owner,
       lineRange: [
         node.startPosition.row + 1,
         node.endPosition.row + 1,

@@ -69,7 +69,6 @@ const sampleEdges: GraphEdge[] = [
     direction: "forward",
     description: "AuthenticationController uses UserModel for user lookup",
     weight: 0.9,
-    evidence: [], provenance: "inferred" as const,
   },
   {
     source: "auth-ctrl",
@@ -78,7 +77,6 @@ const sampleEdges: GraphEdge[] = [
     direction: "forward",
     description: "Controller registers auth middleware",
     weight: 0.7,
-    evidence: [], provenance: "inferred" as const,
   },
   {
     source: "user-model",
@@ -87,7 +85,6 @@ const sampleEdges: GraphEdge[] = [
     direction: "forward",
     description: "UserModel uses DatabasePool for queries",
     weight: 0.8,
-    evidence: [], provenance: "inferred" as const,
   },
 ];
 

@@ -600,24 +600,4 @@ describe("JavaExtractor - modern type declarations", () => {
     tree.delete();
     parser.delete();
   });
-  // Identity (design D2): the declaring type is part of a method's identity.
-  describe("extractStructure - owner", () => {
-    it("reports the declaring class as owner for methods and constructors", () => {
-      const { tree, parser, root } = parse(`class Repo {
-    Repo() {}
-
-    public String get(String key) { return key; }
-}
-`);
-      const result = extractor.extractStructure(root);
-
-      expect(result.functions.map((f) => `${f.owner}.${f.name}`).sort()).toEqual([
-        "Repo.Repo",
-        "Repo.get",
-      ]);
-
-      tree.delete();
-      parser.delete();
-    });
-  });
 });

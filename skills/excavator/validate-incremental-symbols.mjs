@@ -104,18 +104,8 @@ function sourceSymbols(evidence) {
   }
   // Supplementary identities come from AST scope, never guessed by line-range
   // containment (which cannot distinguish same-line free functions/methods).
-  const sameCallable = (symbol, owner, name, lineRange) => symbol.kind === 'callable'
-    && symbol.owner === owner && symbol.name === name
-    && JSON.stringify(symbol.lineRange) === JSON.stringify(lineRange);
   for (const fn of evidence.symbolEvidence.functions) {
-    if (fn.scope.kind === 'local') continue;
-    const owner = scopeOwner(fn.scope);
-    // An owner-aware extractor may already have reported this exact
-    // declaration above. Pushing the AST-derived twin as well would make one
-    // declaration look like two candidates and turn a unique match into
-    // "cannot be mapped uniquely".
-    if (symbols.some(symbol => sameCallable(symbol, owner, fn.name, fn.lineRange))) continue;
-    symbols.push({ kind: 'callable', owner, name: fn.name, lineRange: fn.lineRange });
+    if (fn.scope.kind !== 'local') symbols.push({ kind: 'callable', owner: scopeOwner(fn.scope), name: fn.name, lineRange: fn.lineRange });
   }
   for (const fn of functions.filter(fn => fn.owner === undefined)) {
     if (!evidence.symbolEvidence.functions.some(candidate => candidate.name === fn.name
