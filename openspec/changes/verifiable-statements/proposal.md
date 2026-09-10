@@ -1,35 +1,35 @@
 ## Why
 
-UA 发布图里 98.8% 的边（imports/contains/exports/calls）是确定性事实，却由模型逐批转写；判断类边 6/10 无源码依据；边没有证据字段、节点 id 没有 owner（wcp 19% 声明坍缩）；验证器只查引用完整性从不触源码；跳过的文件不进覆盖率分母；cosmetic 变更后 commit 标记照样前进。结果是「AI 能否完整了解一个流程」这条首要判据无法被核验。第 ② 步把「事实由脚本写、散文由模型写、每条陈述要么带证据要么标 inferred、每个输入必落一个可见桶」落成 schema、构建器、验证器与账本；后续 cebreo（③）与 MCP/PRD（④）都建在这上面。
+UA 发布图里 98.8% 的边是确定性种类（imports/contains/exports/calls），全部由模型转写且**没有证据字段**；判断类边抽样 6/10 无源码依据；节点 id 无 owner（wcp 19% 声明坍缩）；验证器只查引用完整性从不触源码；跳过的文件不进覆盖率分母；cosmetic 变更后 commit 标记照样前进。结果是「AI 能否完整了解一个流程」这条首要判据无法被核验。用户方向（2026-09-11）：UA 的逻辑已经过验证，**先不改它已有行为的语义**，图的作者仍是模型；excavator 作为补充——往 UA 文件里加内容可以，改已有输出的样子不行。本步据此把「每条边有来源与可核证据、每个 summary 有核验状态、每个输入落可见桶」做成合并之后的附加阶段与只加不改的提示词小节。
 
 ## What Changes
 
-- **BREAKING schema**：`GraphEdge` 增 `evidence: Evidence[]` 与 `provenance: 'extracted'|'inferred'`；`GraphNode` 增 `owner?`、`anchorSource?`、`verification?`、`summary` 可为空；顶层增 `coverage`、`gaps[]`；`project` 增 `factsDigest`、`sourceDigest`、`pipelineVersion`、`model`。边 schema 与顶层 schema 加 `.passthrough()`（当前 `validateGraph` 会静默剥掉边上的新字段）。`weight` 保留，文档明说是种类常量。
-- **确定性图构建器** `build-facts-graph.mjs`：对全部文件跑结构抽取与 import-map，产出 file/function/class（及 config/document）节点与 contains/imports/exports/calls 边，每条边带行号证据；calls 只在被调用名**唯一**解析到目标时成边，多义与未解析进 `gaps`。两次运行产物逐字节相同，`factsDigest` 相等。
-- **身份**：节点 id = `<kind>:<path>:<owner>.<name>`，同文件同 owner 同名冲突时全部追加 `@<startLine>`；owner = Go 接收者 / C# 类 / Kotlin 类或对象 / TS 类或对象字面量 / PHP 类、trait、enum。修 TS 对象字面量方法零函数与 PHP trait/enum/匿名类整块跳过两处抽取器缺陷。
-- **模型层改契约**：file-analyzer 不再撰写结构节点与边、不再撰写 id；只对给定 id 产 summary/tags/complexity 与判断类边，判断类边必须给 `evidence:[{file,line}]` 或标 `inferred`。`merge-batch-graphs.py` 改为 `merge-overlays.py`：事实图为底，模型层叠加；与事实重复的边丢弃并计数，缺证据又未标 inferred 的边拒绝并计数，引用不存在 id 的记录拒绝并计数。
-- **触源码的验证器** `validate-graph.mjs`：节点锚点行确有该声明；extracted 边的证据行含被调用/被导入的记号，否则降为 `contradicted` 并计数；inferred 边必须已标记；先验装置——注入一条假边与一个错锚点必被报出。
-- **summary 核验**：新 agent `excavator-summary-verifier` 带源码片段逐条核对 summary，写回 `verification: verified|unverified|contradicted`；contradicted 的 summary 置空并记 gap。
-- **覆盖账本**：scan 的跳过按原因分桶（symlink / read-failed / unknown-language / no-extractor / parse-failed / ignored），extract 的每文件结果带 `status`，import-map 输出 `unresolved`；`coverage` 按语言 × 种类给文件数、解析数、零符号数、跳过数；某语言存在但某种类为零 → `gaps[]` 一条；benchmark 的分母含跳过文件。
-- **领域步骤可核验**：domain step 节点必须带 `nodeIds`（⊆ 图）与由其推出的 `evidence`；验证器检查。
-- **新鲜度**：内容变了而签名没变（cosmetic）的 SKIP 不再推进 commit 标记；受影响文件节点的 summary 标 `dirty`；四态 fresh|dirty|stale|unknown 保留；非 git 目标 `gitCommitHash` 为空、以 `sourceDigest` 为「对应提交」。
+- **Schema（已落地）**：边 `evidence?`/`provenance?`/`verification?`/`addedBy?`；节点 `owner?`/`owners?`/`anchorSource?`/`verification?`；根 `coverage?`/`gaps?`；`project` 增 `sourceDigest`/`factsDigest`/`pipelineVersion`/`model`/`verification`，`gitCommitHash` 可空。全部可选；边与根 `.passthrough()`（原先 `validateGraph` 会剥掉边上的新字段）；强制锚点/证据规则由 `auditGraphShape` 报告而不是拒绝。`weight` 保留为种类常量。
+- **账本（已落地）**：scan 跳过按原因分桶（symlink / read-failed / unknown-language / binary / too-large / ignored）；extract 每文件 `status`；import-map `unresolved`；`coverage-ledger` 守恒折叠。
+- **结构全量抽取**（新阶段 1.2）：对全部 code 文件跑既有 `extract-structure`，产 `structure-all.json` 供审计与 ③。
+- **annotate-graph**（新阶段 2.3，合并后）：给模型边标 `provenance` 与 evidence（匹配抽取事实）、核对模型自报证据、审计（`edge-missing` / `node-missing` / `node-unsupported` / `identity-collision` / `shape-issue`）、补 `owner`/`anchorSource`、写 `coverage`/`gaps`/digest；可选补充模型漏掉的 imports/exports/contains 边（标 `addedBy`）；**不删不改模型内容**。
+- **validate-graph**（新阶段 6b，UA 的 inline validator 保留）：触源码核对锚点与证据行，标 `contradicted` 并计数；先验装置——注入假边与错锚点必被报出。
+- **提示词只加不改**（②b）：file-analyzer 末尾加「证据字段」与「框架指引」两节；domain-analyzer 加一句 step `nodeIds`。
+- **summary 核验**（②b，新阶段 2.5，可关）：`excavator-summary-verifier` 带源码逐条核对，写回 `verification`，不清空正文。
+- **新鲜度可见**（②b）：cosmetic dirty 文件与节点标注；`prepare-incremental` 新增 git 不可用回退分支；UA 的 commit 标记逻辑不动。
+- **领域步骤**（②b）：`annotate-domain` 推导 step `nodeIds` 与 evidence。
+- **不做、存分支**：抽取器修复（`v2/deferred-ua-extractor-fixes`）；owner 进 id；overlay 契约与合并拒绝逻辑；cosmetic SKIP 修复；脚本建图。
 
 ## Capabilities
 
 ### New Capabilities
-- `evidence-model`: 图的证据/来源/核验/覆盖/摘要字段契约与校验行为
-- `facts-graph`: 确定性事实图——普查、身份、带证据的结构边、确定性与 digest
-- `graph-validation`: 触源码的验证器、summary 核验、拒绝与降级的账目、先验装置
+- `evidence-model`: 图的证据/来源/核验/覆盖/摘要字段契约与形状审计
+- `facts-audit`: 结构事实交给模型、事后审计模型图（多出/漏掉/行号不符/身份冲突可见）、可选补边、确定性审计报告
+- `graph-validation`: 触源码的验证器、summary 核验状态、先验装置、领域步骤锚定
 - `coverage-ledger`: 每个输入落一个可见桶；语言 × 种类覆盖表与 gaps；分母诚实
-- `freshness`: 变更分类、commit 标记只随重推导前进、dirty 标记
+- `freshness`: cosmetic 变更可见、非 git 目标可增量并以 sourceDigest 为版本
 
 ### Modified Capabilities
-（无：新增 agent `excavator-summary-verifier` 与删除 `excavator-assemble-reviewer` 不改变 `plugin-identity` 的任何 requirement；`data-directory`、`reference-integrity` 沿用）
+（无：新增 agent `excavator-summary-verifier` 不改 `plugin-identity` 的 requirement；`data-directory`、`reference-integrity` 沿用）
 
 ## Impact
 
-- 改 `packages/core/src/{types,schema,fingerprint,change-classifier}.ts`、两处抽取器、`scan-project.mjs`、`extract-import-map.mjs`、`extract-structure*.mjs`、`finalize-incremental.mjs`、`merge-batch-graphs.py`（→ `merge-overlays.py`）、`skills/excavator/SKILL.md` 各阶段、`agents/excavator-file-analyzer.md`、新 agent、`scripts/lib/large-repo-benchmark.mjs`、dashboard 对空 summary 的显示。
-- 节点数上升：事实图普查全部声明，不再按「10 行以上」筛选；wcp 预计 function 节点从 4,261 升至接近声明总数 3,497（Go）+ TS 全量；模型只为有 summary 的节点写散文。
-- 模型输出量下降约 98%（不再转写结构），新增一遍 summary 核验；wcp 全量成本与时间对基线（65+60 分钟）的实测进验收报告。
-- 两个 PR、一个 change：②a 确定性半（schema、账本、抽取器、构建器、验证器），②b 模型半（overlay 契约、merge、核验 agent、新鲜度、领域步骤、真实全量）。
-- Non-goals：不加语言与框架规则抽取（③）；不建 MCP（④）；dashboard 只保证不破、显示空 summary 的节点名，不做证据视图（§6）。
+- 只加文件与阶段：`skills/excavator/{structure-all,annotate-graph,validate-graph,apply-verification}.mjs`、`skills/excavator-domain/annotate-domain.mjs`、`agents/excavator-summary-verifier.md`、SKILL.md 四个新增阶段、两份 agent 提示词末尾各一节、`prepare-incremental.mjs` 一个回退分支、benchmark 分母。UA 既有阶段、提示词段落、抽取器、合并语义、id 格式不动。
+- 成本与 UA 基线同量级；新增结构全量抽取与审计（秒级）、summary 核验（模型，可关）；实测进 ②b 报告。
+- 两个 PR、一个 change：②a 确定性半（commits 1–7），②b 模型半（8–12 + 真实全量）。
+- Non-goals：框架规则与新语言插件（③）；MCP（④）；dashboard 证据视图。

@@ -17,27 +17,27 @@ The validator SHALL read source files. For every `function`/`class` node it SHAL
 - **WHEN** the validator runs on the un-injected fixture graph
 - **THEN** it reports zero `edge-contradicted` and zero `anchor-mismatch`
 
-### Requirement: 模型叠加层按规则接受或计数拒绝
+### Requirement: 无证据的边可见而不丢弃
 
-Merging model overlays onto the facts graph SHALL: attach summaries only to existing node ids (unknown id → reject, gap `overlay-unknown-id`); drop overlay edges that duplicate a facts edge by (source, target, type) (gap `overlay-duplicate-fact`); reject `extracted` overlay edges without evidence (gap `overlay-missing-evidence`); reject `inferred` edges carrying non-model evidence; reject edges with a missing endpoint (gap `overlay-dangling`). Nothing SHALL be dropped without a gap count.
+The pipeline SHALL keep the model as the author of the graph. Any model-written edge that no extractor record supports SHALL remain in the graph with `provenance: "inferred"` and be counted under `edge-auto-inferred`; any evidence the model cites that disagrees with the extractor record SHALL be corrected to the extractor line and counted under `evidence-corrected`. Nothing SHALL be dropped without a count, and the counts printed by the annotate step SHALL equal the corresponding gap counts in the graph.
 
-#### Scenario: 五类拒绝各计一
-- **GIVEN** an overlay containing one record of each rejected kind and one valid summary and one valid inferred edge
-- **WHEN** merge runs
-- **THEN** the valid records are present in the merged graph and `gaps` contains each of the five rejection kinds with count 1
+#### Scenario: 注入的无证据边被标出而不删
+- **GIVEN** a batch output with one edge that has no evidence and no extractor record
+- **WHEN** annotate runs
+- **THEN** the edge is present with `provenance: "inferred"` and `edge-auto-inferred` is 1
 
-#### Scenario: 拒绝计数与日志一致
-- **WHEN** merge runs
-- **THEN** the sum of rejected records printed by merge equals the sum of `overlay-*` gap counts in the graph
+#### Scenario: 计数与日志一致
+- **WHEN** annotate runs
+- **THEN** the totals it prints equal the sums of the corresponding gap counts in the graph
 
 ### Requirement: 摘要经独立核验并标注
 
-Every non-empty summary SHALL be checked against the source within its node's `lineRange` by a verifier that receives only the summary, the anchor, and the source slice, and SHALL be marked `verified`, `unverified`, or `contradicted`. A `contradicted` summary SHALL be removed from the node (the node stays), preserved with its reason in an intermediate record, and counted under gap `summary-contradicted`. The graph SHALL record whether verification was full or sampled.
+Every non-empty summary SHALL be checked against the source within its node's `lineRange` by a verifier that receives only the summary, the anchor, and the source slice, and SHALL be marked `verified`, `unverified`, or `contradicted`. A `contradicted` summary SHALL stay on the node with `verification: "contradicted"`, SHALL be recorded with its reason in an intermediate file, and SHALL be counted under gap `summary-contradicted`; consumers decide how to treat it. The graph SHALL record whether verification was full or sampled.
 
 #### Scenario: contradicted 摘要出图
 - **GIVEN** a node whose verifier verdict is `contradicted`
 - **WHEN** verification is applied
-- **THEN** the node's `summary` is empty, `verification` is `contradicted`, and `gaps` contains `summary-contradicted`
+- **THEN** the node keeps its summary text, `verification` is `contradicted`, the intermediate record holds the reason, and `gaps` contains `summary-contradicted`
 
 #### Scenario: 运行方式可见
 - **WHEN** verification ran with sampling of 50 summaries

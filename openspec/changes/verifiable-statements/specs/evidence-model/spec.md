@@ -6,15 +6,15 @@
 
 ### Requirement: 每条边声明来源与证据
 
-Every edge SHALL carry `provenance` ∈ {`extracted`, `inferred`} and `evidence: Evidence[]` where `Evidence = {file, line, endLine?, source ∈ {tree-sitter, import-map, rule, model}, text?}`. An `extracted` edge SHALL have at least one evidence entry whose `source` is not `model`. An `inferred` edge SHALL NOT carry evidence whose `source` is not `model`. `weight` SHALL remain a per-edge-type constant used only for ordering and SHALL be documented as such.
+Every edge SHALL carry `provenance` ∈ {`extracted`, `inferred`} and `evidence: Evidence[]` where `Evidence = {file, line, endLine?, source ∈ {tree-sitter, import-map, rule, model}, text?}`. An `extracted` edge SHOULD have at least one evidence entry; an `inferred` edge SHOULD NOT carry evidence whose `source` is not `model`. Violations SHALL be reported by the shape audit (`auditGraphShape`) and SHALL NOT cause validation to reject the graph, so that graphs produced by the unmodified UA pipeline still load. `weight` SHALL remain a per-edge-type constant used only for ordering and SHALL be documented as such.
 
-#### Scenario: extracted 边缺证据被拒
-- **WHEN** a graph containing an edge with `provenance: "extracted"` and empty `evidence` is validated
-- **THEN** validation reports the edge as invalid and names it
+#### Scenario: extracted 边缺证据被审计标出
+- **WHEN** a graph containing an edge with `provenance: "extracted"` and empty `evidence` is validated and shape-audited
+- **THEN** validation accepts the graph and the shape audit reports `extracted-edge-without-evidence` naming the edge
 
-#### Scenario: inferred 边带非模型证据被拒
+#### Scenario: inferred 边带非模型证据被审计标出
 - **WHEN** an edge has `provenance: "inferred"` and an evidence entry with `source: "tree-sitter"`
-- **THEN** validation reports the edge as invalid
+- **THEN** the shape audit reports `inferred-edge-with-nonmodel-evidence` for that edge
 
 #### Scenario: 新字段经校验后仍在
 - **WHEN** a graph whose edges carry `evidence`, `provenance` and whose root carries `coverage`, `gaps` passes through the graph validator
@@ -22,11 +22,11 @@ Every edge SHALL carry `provenance` ∈ {`extracted`, `inferred`} and `evidence:
 
 ### Requirement: 节点锚点按类型必填并可核验
 
-`function` and `class` nodes SHALL have `filePath` and `lineRange`; `file`, `config`, `document` nodes SHALL have `filePath`. Structural nodes SHALL carry `anchorSource` ∈ {`tree-sitter`, `rule`, `census`} and MAY carry `owner`. `summary` MAY be empty. A node with a summary MAY carry `verification` ∈ {`verified`, `unverified`, `contradicted`, `dirty`}.
+`function` and `class` nodes SHOULD have `filePath` and `lineRange`; `file`, `config`, `document` nodes SHOULD have `filePath`; missing anchors SHALL be reported by the shape audit as `missing-file-anchor` / `missing-line-anchor` and SHALL NOT cause validation to reject the node. Structural nodes SHALL carry `anchorSource` ∈ {`tree-sitter`, `rule`, `census`} and MAY carry `owner`. `summary` MAY be empty. A node with a summary MAY carry `verification` ∈ {`verified`, `unverified`, `contradicted`, `dirty`}.
 
-#### Scenario: 缺锚点的函数节点被拒
-- **WHEN** a `function` node without `lineRange` is validated
-- **THEN** validation reports the node as invalid
+#### Scenario: 缺锚点的函数节点被审计标出
+- **WHEN** a `function` node without `lineRange` is validated and shape-audited
+- **THEN** validation accepts the node and the shape audit reports `missing-line-anchor` for it
 
 #### Scenario: 空摘要合法
 - **WHEN** a `function` node has `summary: ""` and no `verification`

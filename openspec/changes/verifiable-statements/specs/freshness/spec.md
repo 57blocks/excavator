@@ -4,19 +4,14 @@
 
 ## ADDED Requirements
 
-### Requirement: commit 标记只随重推导前进
+### Requirement: cosmetic 变更可见
 
-When an incremental run classifies all changes as cosmetic (content hash changed, structural fingerprint unchanged) and therefore skips re-analysis, it SHALL NOT advance `project.gitCommitHash` nor the metadata commit marker; it SHALL record the baseline commit and the list of dirty files, and SHALL mark the affected `file` nodes and their contained nodes with `verification: "dirty"`. When re-analysis runs (partial, architecture, or full), the marker SHALL advance.
+When an incremental run classifies changes as cosmetic (content hash changed, structural fingerprint unchanged) and skips re-analysis, the supplement SHALL record the affected files under `meta.json.excavator.dirtyFiles` and mark the affected `file` nodes and their contained nodes with `verification: "dirty"`. The existing commit-marker behaviour of the pipeline SHALL NOT be changed by this step.
 
-#### Scenario: cosmetic 变更不前进
+#### Scenario: cosmetic 变更被标出
 - **GIVEN** a graph at commit A and a new commit B that only changes a threshold literal inside one function body
 - **WHEN** the incremental run executes
-- **THEN** the commit marker still says A, the changed file's nodes carry `verification: "dirty"`, and the baseline record lists that file
-
-#### Scenario: 结构变更前进
-- **GIVEN** commit B changes a function signature
-- **WHEN** the incremental run executes
-- **THEN** re-analysis runs for that file and the commit marker advances to B
+- **THEN** the changed file's nodes carry `verification: "dirty"`, `dirtyFiles` lists that file, and the pipeline's own commit marker behaves exactly as before this change
 
 ### Requirement: 无 git 目标用源码 digest
 
