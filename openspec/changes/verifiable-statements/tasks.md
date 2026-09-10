@@ -25,13 +25,13 @@
 
 ## 5. annotate-graph（②a commit 5）
 
-- [ ] 5.1 `skills/excavator/annotate-graph.mjs` 边标注：匹配抽取事实 → `extracted` + evidence；否则 `inferred` + `edge-auto-inferred` 计数；模型自报 evidence 核对（`verified:true` / `evidence-corrected`）；验证合成 UA 风格图夹具：四类边各一条匹配、一条不匹配
-- [ ] 5.2 审计计数：`edge-missing`、`node-missing`、`node-unsupported`、`identity-collision`（节点加 `owners`，不改 id）、`shape-issue`；验证夹具每类各计一
-- [ ] 5.3 节点补 `owner`/`anchorSource`；`coverage`（折叠账本）、`gaps`、`project.sourceDigest/factsDigest/pipelineVersion`；验证字段存在且守恒断言绿
-- [ ] 5.4 可选补边（默认开，`--no-supplement` 关）：`edge-missing` 的 imports/exports/contains 追加为边 `addedBy:'excavator-annotate'`；calls 不补；验证开/关两例
-- [ ] 5.5 不删不改模型内容：对夹具 UA 图 annotate 前后模型写的字段逐条相同；验证测试绿
-- [ ] 5.6 确定性：同输入两次运行 `annotated-graph.json` 与 `audit.json` 相同；验证测试绿
-- [ ] 5.7 SKILL.md 新增阶段 2.3 ANNOTATE（merge 之后、assemble-review 之前）；验证 check-refs 绿
+- [x] 5.1 `skills/excavator/annotate-graph.mjs` 边标注：匹配抽取事实 → `extracted` + evidence；否则 `inferred` + `edge-auto-inferred` 计数；模型自报 evidence 核对（`verified:true` / `evidence-corrected`）；验证合成 UA 风格图夹具：四类边各一条匹配、一条不匹配
+- [x] 5.2 审计计数：`edge-missing`、`node-missing`、`node-unsupported`、`identity-collision`（节点加 `owners`，不改 id）、`shape-issue`；验证夹具每类各计一
+- [x] 5.3 节点补 `owner`/`anchorSource`；`coverage`（折叠账本）、`gaps`、`project.sourceDigest/factsDigest/pipelineVersion`；验证字段存在且守恒断言绿
+- [x] 5.4 可选补边（默认开，`--no-supplement` 关）：`edge-missing` 的 imports/exports/contains 追加为边 `addedBy:'excavator-annotate'`；calls 不补；验证开/关两例
+- [x] 5.5 不删不改模型内容：对夹具 UA 图 annotate 前后模型写的字段逐条相同；验证测试绿
+- [x] 5.6 确定性：同输入两次运行 `annotated-graph.json` 与 `audit.json` 相同；验证测试绿
+- [x] 5.7 SKILL.md 新增阶段 2.3 ANNOTATE（merge 之后、assemble-review 之前）；验证 check-refs 绿
 
 ## 6. validate-graph（②a commit 6）
 

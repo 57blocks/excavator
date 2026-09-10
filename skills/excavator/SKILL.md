@@ -456,6 +456,50 @@ Parser limitation: automatic deletion requires both a deterministic parser and a
 
 ---
 
+## Phase 2.3 — ANNOTATE (added)
+
+Report: `[Phase 2.3/7] Annotating the merged graph with extractor facts...`
+
+This phase is **additive and non-authoring**. The model wrote the graph; this
+step compares it with the structural facts from Phase 1.2 and records what it
+finds. It never deletes or rewrites a node, an edge, an id or a field.
+
+Skip this phase if `$DATA_DIR/intermediate/structure-all.json` does not exist
+(Phase 1.2 was skipped or failed).
+
+```bash
+node "<SKILL_DIR>/annotate-graph.mjs" "$PROJECT_ROOT"
+```
+
+Inputs (all already on disk): `assembled-graph.json`, `structure-all.json`,
+`scan-result.json`, `import-map.json`. Outputs
+`$DATA_DIR/intermediate/annotated-graph.json` and
+`$DATA_DIR/intermediate/audit.json`.
+
+What it adds:
+- `provenance` on every edge — `extracted` with an `evidence` line when an
+  extractor record supports it, `inferred` when none does (counted per type
+  under `edge-auto-inferred`).
+- `verification` on an edge whose cited line disagrees with the extractor
+  (`contradicted`) or that claims extraction with no record (`unverified`).
+- `owner` / `owners` / `anchorSource` on nodes; `owners` plus an
+  `identity-collision` count when one node stands for several declarations of
+  the same name in one file. **Ids are never rewritten.**
+- root `coverage` and `gaps`, and `project.sourceDigest` / `factsDigest` /
+  `pipelineVersion`.
+- by default, the deterministic `imports`/`exports`/`contains` records the
+  model omitted, appended as edges marked `addedBy: "excavator-annotate"`
+  (never `calls`). Pass `--no-supplement` to record them as gaps only.
+
+Append the script's stderr summary to `$PHASE_WARNINGS`. Continue using
+`assembled-graph.json` for the remaining phases; `annotated-graph.json` is the
+audited copy, and Phase 6b validates it.
+
+**Supplement, so not fatal.** If the script exits non-zero, report its stderr
+as a Phase 2.3 warning and continue with the analysis unchanged.
+
+---
+
 ## Phase 3 — ASSEMBLE REVIEW
 
 Run this phase for **full analysis only**. Both incremental actions skip assemble-reviewer: their deterministic merge/reconciliation checks replace this whole-graph LLM pass. The user-facing `--review` option is still honored later by the graph-reviewer in Phase 6.
