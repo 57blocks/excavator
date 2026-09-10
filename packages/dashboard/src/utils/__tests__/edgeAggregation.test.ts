@@ -8,6 +8,10 @@ const ce = (source: string, target: string, type: EdgeType = "calls"): GraphEdge
   type,
   direction: "forward",
   weight: 1,
+  // Attribution is required on every edge now; these fixtures make no
+  // evidence claim, so they say so.
+  evidence: [],
+  provenance: "inferred",
 });
 
 describe("aggregateContainerEdges", () => {

@@ -100,6 +100,8 @@ function collectClassBody(
   properties: string[],
   functions: StructuralAnalysis["functions"],
   exports: StructuralAnalysis["exports"],
+  /** Declaring class/object name — the method's identity depends on it. */
+  owner: string,
 ): void {
   for (let i = 0; i < body.childCount; i++) {
     const member = body.child(i);
@@ -111,6 +113,7 @@ function collectClassBody(
       methods.push(name);
       functions.push({
         name,
+        owner,
         lineRange: [member.startPosition.row + 1, member.endPosition.row + 1],
         params: extractParams(member),
         returnType: extractReturnType(member),
@@ -267,6 +270,7 @@ export class KotlinExtractor implements LanguageExtractor {
     const name = extractDeclarationName(declNode);
     if (!name) return;
     functions.push({
+      // No `owner`: a top-level Kotlin function has no declaring scope.
       name,
       lineRange: [declNode.startPosition.row + 1, declNode.endPosition.row + 1],
       params: extractParams(declNode),
@@ -296,7 +300,7 @@ export class KotlinExtractor implements LanguageExtractor {
     //    (e.g. `class Empty` or `data class Point(...)` without `{}`).
     const body = findChild(declNode, "class_body");
     if (body) {
-      collectClassBody(body, methods, properties, functions, exports);
+      collectClassBody(body, methods, properties, functions, exports, name);
     }
 
     classes.push({
@@ -325,7 +329,7 @@ export class KotlinExtractor implements LanguageExtractor {
 
     const body = findChild(declNode, "class_body");
     if (body) {
-      collectClassBody(body, methods, properties, functions, exports);
+      collectClassBody(body, methods, properties, functions, exports, name);
     }
 
     classes.push({

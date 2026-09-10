@@ -13,10 +13,10 @@
 
 ## 3. 抽取器与身份（②a commit 3）
 
-- [ ] 3.1 `typescript-extractor.ts` `extractVariableDeclarations`：递归对象字面量，方法与箭头属性成函数，`owner` = 绑定名；类方法 `owner` = 类名；验证夹具 `const api = { list() {}, get: () => {} }` 产 2 函数 owner `api`
-- [ ] 3.2 `php-extractor.ts` `walkStatements`：加 `trait_declaration`、`enum_declaration`、匿名类（`object_creation_expression` 内 class body）case，方法 `owner` = trait/enum 名或 `anon@<line>`；验证夹具三种各产方法
-- [ ] 3.3 Go/C#/Kotlin/Java 抽取器 `owner` 填充复核（Go 接收者去 `*`、C#/Kotlin/Java 外层类/object）；验证夹具：同文件 `func (a *A) Save()` 与 `func (b *B) Save()` 两个函数 owner 不同
-- [ ] 3.4 身份夹具集 `tests/fixtures/identity/`：同内容不同路径两个文件、同名不同 owner、同类两个重载、匿名类；验证为后续构建器测试可用
+- [x] 3.1 `typescript-extractor.ts` `extractVariableDeclarations`：递归对象字面量，方法与箭头属性成函数，`owner` = 绑定名；类方法 `owner` = 类名；验证夹具 `const api = { list() {}, get: () => {} }` 产 2 函数 owner `api`
+- [x] 3.2 `php-extractor.ts` `walkStatements`：加 `trait_declaration`、`enum_declaration`、匿名类（`object_creation_expression` 内 class body）case，方法 `owner` = trait/enum 名或 `anon@<line>`；验证夹具三种各产方法
+- [x] 3.3 Go/C#/Kotlin/Java 抽取器 `owner` 填充复核（Go 接收者去 `*`、C#/Kotlin/Java 外层类/object）；验证夹具：同文件 `func (a *A) Save()` 与 `func (b *B) Save()` 两个函数 owner 不同
+- [x] 3.4 身份夹具集 `tests/fixtures/identity/`：同内容不同路径两个文件、同名不同 owner、同类两个重载、匿名类；验证为后续构建器测试可用
 
 ## 4. 事实图构建器（②a commit 4）
 

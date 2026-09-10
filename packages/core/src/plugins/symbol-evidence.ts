@@ -120,6 +120,12 @@ export function collectSymbolEvidence(root: Node, structure: StructuralAnalysis,
     if (FUNCTION_NODES.has(node.type) && !objectMethod) {
       const valueFunction = ["arrow_function", "function_expression", "generator_function", "lambda"].includes(node.type);
       const name = valueFunction ? identifier(node.parent?.childForFieldName("name")) : declaredName;
+      // `owner === undefined` is load-bearing, not a loose check for "no
+      // owner": an extractor that STATES an owner (even "" for "no declaring
+      // scope") is authoritative about ownership, so its entries are handled
+      // by `detailed` below and matched via AST scope instead of by name.
+      // Relaxing this to `!fn.owner` breaks same-name resolution for the
+      // owner-aware extractors.
       const matches = structure.functions.map((fn, index) => ({ fn, index })).filter(({ fn }) => fn.owner === undefined
         && (fn.name === name || node.type === "singleton_method" && fn.name === `self.${name}`)
         && fn.lineRange[0] === node.startPosition.row + 1 && fn.lineRange[1] === node.endPosition.row + 1);

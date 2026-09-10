@@ -97,6 +97,15 @@ function extractImportSpecifiers(
   return specifiers;
 }
 
+/** Is this node a function value (arrow, function expression, function)? */
+function isFunctionValue(node: TreeSitterNode): boolean {
+  return (
+    node.type === "arrow_function" ||
+    node.type === "function_expression" ||
+    node.type === "function"
+  );
+}
+
 /**
  * TypeScript/JavaScript extractor.
  *
@@ -210,7 +219,7 @@ export class TypeScriptExtractor implements LanguageExtractor {
 
       case "abstract_class_declaration":
       case "class_declaration":
-        this.extractClass(node, classes);
+        this.extractClass(node, classes, functions);
         break;
 
       case "lexical_declaration":
@@ -254,6 +263,9 @@ export class TypeScriptExtractor implements LanguageExtractor {
     const returnType = extractReturnType(node);
 
     functions.push({
+      // No `owner`: a free function has no declaring scope. The field is set
+      // only where one exists (class methods, object-literal members), so
+      // consumers can read "owner present" as "this entry is a member".
       name: nameNode.text,
       lineRange: [
         node.startPosition.row + 1,
@@ -267,6 +279,7 @@ export class TypeScriptExtractor implements LanguageExtractor {
   private extractClass(
     node: TreeSitterNode,
     classes: StructuralAnalysis["classes"],
+    functions?: StructuralAnalysis["functions"],
   ): void {
     const nameNode = node.children.find(
       (c) =>
@@ -293,6 +306,25 @@ export class TypeScriptExtractor implements LanguageExtractor {
             (c) => c.type === "property_identifier",
           );
           if (methodName) methods.push(methodName.text);
+          // A method is a declaration with its own anchor. Listing it only as
+          // a name string in classes[].methods left it unaddressable: no line
+          // range, so no node the graph could point at or verify.
+          if (functions && methodName && member.type === "method_definition") {
+            functions.push({
+              name: methodName.text,
+              owner: nameNode.text,
+              lineRange: [
+                member.startPosition.row + 1,
+                member.endPosition.row + 1,
+              ],
+              params: extractParams(
+                member.childForFieldName("parameters") ??
+                  member.children.find((c) => c.type === "formal_parameters") ??
+                  null,
+              ),
+              returnType: extractReturnType(member),
+            });
+          }
         } else if (
           member.type === "public_field_definition" ||
           member.type === "property_definition"
@@ -326,32 +358,100 @@ export class TypeScriptExtractor implements LanguageExtractor {
 
       const nameNode = child.childForFieldName("name");
       const valueNode = child.childForFieldName("value");
+      if (!nameNode || !valueNode) continue;
 
-      if (
-        nameNode &&
-        valueNode &&
-        (valueNode.type === "arrow_function" ||
-          valueNode.type === "function_expression" ||
-          valueNode.type === "function")
-      ) {
-        const params = extractParams(
-          valueNode.childForFieldName("parameters") ??
-            valueNode.children.find(
-              (c) => c.type === "formal_parameters",
-            ) ??
-            null,
-        );
-        const returnType = extractReturnType(valueNode);
-
+      if (isFunctionValue(valueNode)) {
         functions.push({
+          // A function assigned to a top-level binding has no owner either.
           name: nameNode.text,
           lineRange: [
             node.startPosition.row + 1,
             node.endPosition.row + 1,
           ],
-          params,
-          returnType,
+          params: extractParams(
+            valueNode.childForFieldName("parameters") ??
+              valueNode.children.find((c) => c.type === "formal_parameters") ??
+              null,
+          ),
+          returnType: extractReturnType(valueNode),
         });
+        continue;
+      }
+
+      // `const api = { list() {}, get: () => {} }` — the members are real
+      // callables with real anchors. Skipping the object literal made every
+      // one of them invisible, which for module-object codebases is most of
+      // the file's behaviour.
+      if (valueNode.type === "object") {
+        this.extractObjectLiteralMembers(valueNode, nameNode.text, functions);
+      }
+    }
+  }
+
+  /**
+   * Walk an object literal, pushing each function-valued member as a function
+   * owned by the binding path (`api`, then `api.nested`, …). Nested object
+   * literals recurse, so the owner chain stays addressable.
+   */
+  private extractObjectLiteralMembers(
+    objectNode: TreeSitterNode,
+    ownerPath: string,
+    functions: StructuralAnalysis["functions"],
+  ): void {
+    for (let i = 0; i < objectNode.childCount; i++) {
+      const member = objectNode.child(i);
+      if (!member) continue;
+
+      // `list() {}` — a shorthand method inside the object literal.
+      if (member.type === "method_definition") {
+        const nameNode = member.children.find(
+          (c) => c.type === "property_identifier" || c.type === "string",
+        );
+        if (!nameNode) continue;
+        functions.push({
+          name: nameNode.type === "string" ? getStringValue(nameNode) : nameNode.text,
+          owner: ownerPath,
+          lineRange: [
+            member.startPosition.row + 1,
+            member.endPosition.row + 1,
+          ],
+          params: extractParams(
+            member.childForFieldName("parameters") ??
+              member.children.find((c) => c.type === "formal_parameters") ??
+              null,
+          ),
+          returnType: extractReturnType(member),
+        });
+        continue;
+      }
+
+      if (member.type !== "pair") continue;
+      const keyNode = member.childForFieldName("key");
+      const valueNode = member.childForFieldName("value");
+      if (!keyNode || !valueNode) continue;
+      const key = keyNode.type === "string" ? getStringValue(keyNode) : keyNode.text;
+
+      // `get: () => {}` / `get: function () {}`
+      if (isFunctionValue(valueNode)) {
+        functions.push({
+          name: key,
+          owner: ownerPath,
+          lineRange: [
+            member.startPosition.row + 1,
+            member.endPosition.row + 1,
+          ],
+          params: extractParams(
+            valueNode.childForFieldName("parameters") ??
+              valueNode.children.find((c) => c.type === "formal_parameters") ??
+              null,
+          ),
+          returnType: extractReturnType(valueNode),
+        });
+        continue;
+      }
+
+      if (valueNode.type === "object") {
+        this.extractObjectLiteralMembers(valueNode, `${ownerPath}.${key}`, functions);
       }
     }
   }
@@ -422,7 +522,7 @@ export class TypeScriptExtractor implements LanguageExtractor {
 
         case "abstract_class_declaration":
         case "class_declaration": {
-          this.extractClass(child, classes);
+          this.extractClass(child, classes, functions);
           const nameNode = child.children.find(
             (c) =>
               c.type === "type_identifier" ||

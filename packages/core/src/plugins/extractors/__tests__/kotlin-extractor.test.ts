@@ -361,4 +361,45 @@ fun caller(): Int {
       parser.delete();
     });
   });
+  // Identity (design D2): a member function belongs to its class or object.
+  describe("extractStructure - owner", () => {
+    it("owns class members by the class and leaves top-level functions unowned", () => {
+      const { tree, parser, root } = parse(`class Repo {
+    fun get(key: String): String {
+        return key
+    }
+}
+
+fun free(): Int {
+    return 1
+}
+`);
+      const result = extractor.extractStructure(root);
+
+      expect(result.functions.map((f) => [f.name, f.owner]).sort()).toEqual([
+        ["free", undefined],
+        ["get", "Repo"],
+      ]);
+
+      tree.delete();
+      parser.delete();
+    });
+
+    it("owns object-declaration members by the object", () => {
+      const { tree, parser, root } = parse(`object Registry {
+    fun lookup(id: String): String {
+        return id
+    }
+}
+`);
+      const result = extractor.extractStructure(root);
+
+      expect(result.functions.map((f) => [f.name, f.owner])).toEqual([
+        ["lookup", "Registry"],
+      ]);
+
+      tree.delete();
+      parser.delete();
+    });
+  });
 });

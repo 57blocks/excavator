@@ -18,7 +18,9 @@ const sampleGraph: KnowledgeGraph = {
     { id: "concept:auth", type: "concept", name: "Auth Flow", summary: "JWT-based authentication", tags: ["concept", "auth"], complexity: "complex" },
   ],
   edges: [
-    { source: "file:src/index.ts", target: "file:src/service.ts", type: "imports", direction: "forward", weight: 0.8 },
+    { source: "file:src/index.ts", target: "file:src/service.ts", type: "imports", direction: "forward", weight: 0.8,
+    evidence: [], provenance: "inferred" as const,
+  },
   ],
   layers: [
     { id: "layer:api", name: "API Layer", description: "Routes and handlers", nodeIds: ["file:src/index.ts"] },

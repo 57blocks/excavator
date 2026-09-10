@@ -310,7 +310,7 @@ export class CSharpExtractor implements LanguageExtractor {
 
     const body = node.childForFieldName("body");
     if (body) {
-      this.extractClassBodyMembers(body, methods, properties, functions, exports);
+      this.extractClassBodyMembers(body, methods, properties, functions, exports, nameNode.text);
     }
 
     classes.push({
@@ -392,6 +392,8 @@ export class CSharpExtractor implements LanguageExtractor {
     properties: string[],
     functions: StructuralAnalysis["functions"],
     exports: StructuralAnalysis["exports"],
+    /** Declaring type name — the method's identity depends on it. */
+    owner: string,
   ): void {
     for (let i = 0; i < body.childCount; i++) {
       const child = body.child(i);
@@ -399,11 +401,11 @@ export class CSharpExtractor implements LanguageExtractor {
 
       switch (child.type) {
         case "method_declaration":
-          this.extractMethod(child, methods, functions, exports);
+          this.extractMethod(child, methods, functions, exports, owner);
           break;
 
         case "constructor_declaration":
-          this.extractConstructor(child, methods, functions, exports);
+          this.extractConstructor(child, methods, functions, exports, owner);
           break;
 
         case "property_declaration":
@@ -422,6 +424,7 @@ export class CSharpExtractor implements LanguageExtractor {
     methods: string[],
     functions: StructuralAnalysis["functions"],
     exports: StructuralAnalysis["exports"],
+    owner: string,
   ): void {
     const nameNode = node.childForFieldName("name");
     if (!nameNode) return;
@@ -434,6 +437,7 @@ export class CSharpExtractor implements LanguageExtractor {
 
     functions.push({
       name: nameNode.text,
+      owner,
       lineRange: [
         node.startPosition.row + 1,
         node.endPosition.row + 1,
@@ -455,6 +459,7 @@ export class CSharpExtractor implements LanguageExtractor {
     methods: string[],
     functions: StructuralAnalysis["functions"],
     exports: StructuralAnalysis["exports"],
+    owner: string,
   ): void {
     const nameNode = node.childForFieldName("name");
     if (!nameNode) return;
@@ -466,6 +471,7 @@ export class CSharpExtractor implements LanguageExtractor {
 
     functions.push({
       name: nameNode.text,
+      owner,
       lineRange: [
         node.startPosition.row + 1,
         node.endPosition.row + 1,

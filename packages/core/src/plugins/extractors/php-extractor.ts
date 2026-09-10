@@ -125,6 +125,7 @@ export class PhpExtractor implements LanguageExtractor {
     // `program` include `php_tag`, `namespace_definition`, `namespace_use_declaration`,
     // `class_declaration`, `function_definition`, etc.
     this.walkStatements(rootNode, functions, classes, imports, exports);
+    this.walkAnonymousClasses(rootNode, functions, classes);
 
     return { functions, classes, imports, exports };
   }
@@ -170,6 +171,31 @@ export class PhpExtractor implements LanguageExtractor {
           });
           break;
 
+        // A trait's and an enum's methods are ordinary declarations with
+        // ordinary anchors; skipping these two node types made every method
+        // inside them invisible, and PHP codebases put real behaviour there.
+        case "trait_declaration":
+        case "enum_declaration": {
+          const name = findChild(node, "name")?.text;
+          if (!name) break;
+          const methods: string[] = [];
+          const properties: string[] = [];
+          const body =
+            findChild(node, "declaration_list") ??
+            findChild(node, "enum_declaration_list");
+          if (body) {
+            this.extractDeclarationList(body, methods, properties, functions, name);
+          }
+          classes.push({
+            name,
+            lineRange: [node.startPosition.row + 1, node.endPosition.row + 1],
+            methods,
+            properties,
+          });
+          exports.push({ name, lineNumber: node.startPosition.row + 1 });
+          break;
+        }
+
         case "namespace_use_declaration":
           this.extractUseDeclaration(node, imports);
           break;
@@ -185,6 +211,37 @@ export class PhpExtractor implements LanguageExtractor {
           break;
         }
       }
+    }
+  }
+
+  /**
+   * Find `new class { ... }` anywhere in the tree. An anonymous class has no
+   * name to be identified by, so it is named `anon@<startLine>` — unique
+   * within the file and stable as long as the declaration does not move.
+   */
+  private walkAnonymousClasses(
+    node: TreeSitterNode,
+    functions: StructuralAnalysis["functions"],
+    classes: StructuralAnalysis["classes"],
+  ): void {
+    if (node.type === "anonymous_class") {
+      const name = `anon@${node.startPosition.row + 1}`;
+      const methods: string[] = [];
+      const properties: string[] = [];
+      const declList = findChild(node, "declaration_list");
+      if (declList) {
+        this.extractDeclarationList(declList, methods, properties, functions, name);
+      }
+      classes.push({
+        name,
+        lineRange: [node.startPosition.row + 1, node.endPosition.row + 1],
+        methods,
+        properties,
+      });
+    }
+    for (let i = 0; i < node.childCount; i++) {
+      const child = node.child(i);
+      if (child) this.walkAnonymousClasses(child, functions, classes);
     }
   }
 
@@ -295,6 +352,7 @@ export class PhpExtractor implements LanguageExtractor {
     const returnType = extractReturnType(node);
 
     functions.push({
+      // No `owner`: a top-level PHP function has no declaring scope.
       name: nameNode.text,
       lineRange: [node.startPosition.row + 1, node.endPosition.row + 1],
       params,
@@ -315,7 +373,7 @@ export class PhpExtractor implements LanguageExtractor {
 
     const declList = findChild(node, "declaration_list");
     if (declList) {
-      this.extractDeclarationList(declList, methods, properties, functions);
+      this.extractDeclarationList(declList, methods, properties, functions, name);
     }
 
     classes.push({
@@ -365,6 +423,7 @@ export class PhpExtractor implements LanguageExtractor {
     methods: string[],
     properties: string[],
     functions: StructuralAnalysis["functions"],
+    owner: string,
   ): void {
     for (let i = 0; i < declList.childCount; i++) {
       const member = declList.child(i);
@@ -382,6 +441,9 @@ export class PhpExtractor implements LanguageExtractor {
 
           functions.push({
             name: nameNode.text,
+            // The declaring class/trait/enum. Without it, two same-named
+            // methods in one file collapse onto one identity.
+            owner,
             lineRange: [member.startPosition.row + 1, member.endPosition.row + 1],
             params,
             returnType,

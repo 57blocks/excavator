@@ -85,4 +85,107 @@ describe("TypeScriptExtractor", () => {
       parser.delete();
     });
   });
+  // Identity (design D2): a declaration is (path, owner, name). These cases
+  // are the ones that used to collapse or disappear entirely.
+  describe("extractStructure - owner and object literals", () => {
+    it("reports object-literal methods and arrow properties owned by the binding", () => {
+      const { tree, parser, root } = parse(`const api = {
+  list() {
+    return [];
+  },
+  get: (id: string) => id,
+};
+`);
+      const result = extractor.extractStructure(root);
+      const owned = result.functions.map((f) => `${f.owner}.${f.name}`);
+
+      expect(owned).toContain("api.list");
+      expect(owned).toContain("api.get");
+      expect(result.functions).toHaveLength(2);
+
+      tree.delete();
+      parser.delete();
+    });
+
+    it("extends the owner path through nested object literals", () => {
+      const { tree, parser, root } = parse(`export const api = {
+  nested: {
+    deep() {
+      return 1;
+    },
+  },
+};
+`);
+      const result = extractor.extractStructure(root);
+      expect(result.functions.map((f) => `${f.owner}.${f.name}`)).toEqual([
+        "api.nested.deep",
+      ]);
+
+      tree.delete();
+      parser.delete();
+    });
+
+    it("reports class methods as anchored functions owned by the class", () => {
+      const { tree, parser, root } = parse(`class Api {
+  list(): string[] {
+    return [];
+  }
+
+  get(id: string): string {
+    return id;
+  }
+}
+`);
+      const result = extractor.extractStructure(root);
+      const list = result.functions.find((f) => f.name === "list");
+
+      expect(result.functions.map((f) => `${f.owner}.${f.name}`).sort()).toEqual([
+        "Api.get",
+        "Api.list",
+      ]);
+      // A method's anchor is its own line span, not the class's.
+      expect(list!.lineRange).toEqual([2, 4]);
+      expect(result.classes[0].methods.sort()).toEqual(["get", "list"]);
+
+      tree.delete();
+      parser.delete();
+    });
+
+    it("distinguishes two same-named callables in one file by owner", () => {
+      const { tree, parser, root } = parse(`const api = {
+  get: (id: string) => id,
+};
+
+class Api {
+  get(id: string): string {
+    return id;
+  }
+}
+`);
+      const result = extractor.extractStructure(root);
+      const gets = result.functions.filter((f) => f.name === "get");
+
+      expect(gets).toHaveLength(2);
+      expect(gets.map((f) => f.owner).sort()).toEqual(["Api", "api"]);
+
+      tree.delete();
+      parser.delete();
+    });
+
+    it("leaves a free function and an arrow const without an owner", () => {
+      const { tree, parser, root } = parse(`function free() {}
+const alsoFree = () => 1;
+`);
+      const result = extractor.extractStructure(root);
+      // `owner` is present only where a declaring scope exists, so its absence
+      // is the statement "this is not a member".
+      expect(result.functions.map((f) => [f.name, f.owner])).toEqual([
+        ["free", undefined],
+        ["alsoFree", undefined],
+      ]);
+
+      tree.delete();
+      parser.delete();
+    });
+  });
 });
