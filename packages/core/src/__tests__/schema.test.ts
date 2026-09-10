@@ -37,6 +37,7 @@ const validGraph: KnowledgeGraph = {
       type: "imports",
       direction: "forward",
       weight: 0.8,
+      evidence: [], provenance: "inferred" as const,
     },
   ],
   layers: [
@@ -506,6 +507,8 @@ describe("permissive validation", () => {
     // Add a second valid node so graph isn't fatal
     graph.nodes.push({
       id: "node-2", type: "file", name: "other.ts",
+      // file nodes now require filePath (per-type anchor rule)
+      filePath: "src/other.ts",
       summary: "Other file", tags: ["util"], complexity: "simple",
     });
 
@@ -559,6 +562,8 @@ describe("permissive validation", () => {
     // Add a good node
     graph.nodes.push({
       id: "node-2", type: "function", name: "doThing",
+      // function nodes now require filePath + lineRange (per-type anchor rule)
+      filePath: "src/index.ts", lineRange: [10, 20],
       summary: "Does a thing", tags: ["util"], complexity: "moderate",
     });
     // Add a bad node (missing id AND name -- unrecoverable)
@@ -602,12 +607,17 @@ describe("permissive validation", () => {
       project: validGraph.project,
       nodes: [{
         id: "n1", type: "FILE", name: "app.ts",
-        filePath: null, summary: "App entry",
+        // A file node with no path is now dropped by the anchor rule rather
+        // than auto-corrected (see "per-type anchors"), so this messy-input
+        // case carries a real path; the null → undefined sanitisation of
+        // filePath is covered in the sanitizeGraph block above.
+        filePath: "src/app.ts", summary: "App entry",
         tags: null, complexity: "HIGH",
       }],
       edges: [{
         source: "n1", target: "n1", type: "CALLS",
         direction: "TO", weight: "0.9",
+        evidence: [], provenance: "inferred" as const,
       }],
       layers: [{ id: "l1", name: "Core", description: "Core", nodeIds: ["n1"] }],
       tour: [],
@@ -740,8 +750,12 @@ function designGraph() {
       { id: "token:color:brand", type: "token", name: "color/brand", summary: "s", tags: ["token"], complexity: "simple" },
     ],
     edges: [
-      { source: "instance:5:6", target: "component:3:4", type: "instance_of", direction: "forward", weight: 0.8 },
-      { source: "component:3:4", target: "token:color:brand", type: "uses_token", direction: "forward", weight: 0.5 },
+      { source: "instance:5:6", target: "component:3:4", type: "instance_of", direction: "forward", weight: 0.8,
+    evidence: [], provenance: "inferred" as const,
+  },
+      { source: "component:3:4", target: "token:color:brand", type: "uses_token", direction: "forward", weight: 0.5,
+    evidence: [], provenance: "inferred" as const,
+  },
     ],
     layers: [],
     tour: [],
@@ -772,7 +786,9 @@ describe("design graph schema", () => {
   it("keeps componentSet (the only camelCase node type) through sanitize lowercasing", () => {
     const g = designGraph();
     g.nodes.push({ id: "componentSet:7:8", type: "componentSet", name: "Button", summary: "s", tags: ["ds"], complexity: "simple" });
-    g.edges.push({ source: "component:3:4", target: "componentSet:7:8", type: "variant_of", direction: "forward", weight: 0.9 });
+    g.edges.push({ source: "component:3:4", target: "componentSet:7:8", type: "variant_of", direction: "forward", weight: 0.9,
+    evidence: [], provenance: "inferred" as const,
+  });
     const res = validateGraph(g);
     const set = res.data!.nodes.find((n) => n.id === "componentSet:7:8");
     expect(set).toBeTruthy();
@@ -798,7 +814,9 @@ describe("kind-aware alias normalization", () => {
         { id: "topic:llm", type: "topic", name: "LLMs", summary: "s", tags: ["topic"], complexity: "simple" },
       ],
       edges: [
-        { source: "entity:gpt", target: "topic:llm", type: "instance_of", direction: "forward", weight: 0.7 },
+        { source: "entity:gpt", target: "topic:llm", type: "instance_of", direction: "forward", weight: 0.7,
+    evidence: [], provenance: "inferred" as const,
+  },
       ],
       layers: [],
       tour: [],
@@ -829,7 +847,9 @@ describe("kind-aware alias normalization", () => {
 
   it('applies design aliases (styled_by → uses_token) only to design graphs', () => {
     const g = designGraph();
-    g.edges.push({ source: "screen:1:2", target: "token:color:brand", type: "styled_by", direction: "forward", weight: 0.5 });
+    g.edges.push({ source: "screen:1:2", target: "token:color:brand", type: "styled_by", direction: "forward", weight: 0.5,
+    evidence: [], provenance: "inferred" as const,
+  });
     const res = validateGraph(g);
     expect(res.data!.edges.some((e) => e.source === "screen:1:2" && e.type === "uses_token")).toBe(true);
   });

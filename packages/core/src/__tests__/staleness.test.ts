@@ -31,6 +31,8 @@ const makeEdge = (
   type: "imports",
   direction: "forward",
   weight: 1,
+  evidence: [],
+  provenance: "inferred",
   ...overrides,
 });
 

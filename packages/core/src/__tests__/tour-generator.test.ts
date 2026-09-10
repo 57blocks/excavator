@@ -24,9 +24,15 @@ const sampleGraph: KnowledgeGraph = {
     { id: "concept:auth-flow", type: "concept", name: "Auth Flow", summary: "Authentication concept", tags: ["concept", "auth"], complexity: "moderate" },
   ],
   edges: [
-    { source: "file:src/index.ts", target: "file:src/routes.ts", type: "imports", direction: "forward", weight: 0.9 },
-    { source: "file:src/routes.ts", target: "file:src/service.ts", type: "calls", direction: "forward", weight: 0.8 },
-    { source: "file:src/service.ts", target: "file:src/db.ts", type: "reads_from", direction: "forward", weight: 0.7 },
+    { source: "file:src/index.ts", target: "file:src/routes.ts", type: "imports", direction: "forward", weight: 0.9,
+    evidence: [], provenance: "inferred" as const,
+  },
+    { source: "file:src/routes.ts", target: "file:src/service.ts", type: "calls", direction: "forward", weight: 0.8,
+    evidence: [], provenance: "inferred" as const,
+  },
+    { source: "file:src/service.ts", target: "file:src/db.ts", type: "reads_from", direction: "forward", weight: 0.7,
+    evidence: [], provenance: "inferred" as const,
+  },
   ],
   layers: [
     { id: "layer:api", name: "API Layer", description: "HTTP routes", nodeIds: ["file:src/index.ts", "file:src/routes.ts"] },

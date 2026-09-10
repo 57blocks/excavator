@@ -1,4 +1,5 @@
 import { z } from "zod";
+import type { Coverage, Gap, GraphEdge, GraphNode, KnowledgeGraph } from "./types.js";
 
 // Edge types (38 values across 9 categories)
 export const EdgeTypeSchema = z.enum([
@@ -288,8 +289,10 @@ export function autoFixGraph(data: Record<string, unknown>): {
         });
       }
 
-      // Missing summary
-      if (!n.summary || typeof n.summary !== "string") {
+      // Missing summary. An EMPTY summary is left empty on purpose: "not
+      // summarised" is a visible state in v2, and filling it with the node's
+      // name would dress an unwritten summary up as a written one.
+      if (typeof n.summary !== "string") {
         n.summary = (n.name as string) || "No summary";
         issues.push({
           level: "auto-corrected",
@@ -417,6 +420,62 @@ const FigmaMetaSchema = z.object({
   componentKey: z.string().optional(),
 }).passthrough();
 
+export const EvidenceSourceSchema = z.enum(["tree-sitter", "import-map", "rule", "model"]);
+
+export const EvidenceSchema = z.object({
+  file: z.string(),
+  line: z.number(),
+  endLine: z.number().optional(),
+  source: EvidenceSourceSchema,
+  text: z.string().optional(),
+}).passthrough();
+
+export const VerificationStateSchema = z.enum(["verified", "unverified", "contradicted", "dirty"]);
+export const AnchorSourceSchema = z.enum(["tree-sitter", "rule", "census"]);
+export const EdgeProvenanceSchema = z.enum(["extracted", "inferred"]);
+
+export const GapSchema = z.object({
+  kind: z.string(),
+  scope: z.string(),
+  reason: z.string(),
+  count: z.number(),
+  samples: z.array(z.string()).optional(),
+}).passthrough();
+
+const SKIP_REASONS = ["symlink", "read-failed", "unknown-language", "binary", "too-large", "ignored"] as const;
+
+export const LanguageCoverageSchema = z.object({
+  files: z.number(),
+  parsed: z.number(),
+  zeroSymbol: z.number(),
+  // A partial map: an absent reason means zero. Keys are checked below rather
+  // than via z.record(z.enum(...)), which would demand every reason be present.
+  skipped: z.record(z.string(), z.number()).refine(
+    (m) => Object.keys(m).every((k) => (SKIP_REASONS as readonly string[]).includes(k)),
+    { message: `skipped keys must be skip reasons: ${SKIP_REASONS.join(", ")}` },
+  ),
+  kinds: z.object({
+    function: z.number(),
+    class: z.number(),
+    import: z.number(),
+    export: z.number(),
+    call: z.number(),
+  }).passthrough(),
+}).passthrough();
+
+export const CoverageSchema = z.object({
+  files: z.number(),
+  byLanguage: z.record(z.string(), LanguageCoverageSchema),
+  ignored: z.number(),
+  limits: z.object({ maxFileLines: z.number(), maxFileBytes: z.number() }).passthrough().optional(),
+}).passthrough();
+
+/** Node types whose identity is a declaration: they must be anchored to a file
+ *  AND a line span. */
+const LINE_ANCHORED_NODE_TYPES = new Set(["function", "class"]);
+/** Node types that are a whole file: path required, no line claim. */
+const FILE_ANCHORED_NODE_TYPES = new Set(["file", "config", "document"]);
+
 export const GraphNodeSchema = z.object({
   id: z.string(),
   type: z.enum([
@@ -430,14 +489,30 @@ export const GraphNodeSchema = z.object({
   name: z.string(),
   filePath: z.string().optional(),
   lineRange: z.tuple([z.number(), z.number()]).optional(),
+  owner: z.string().optional(),
+  anchorSource: AnchorSourceSchema.optional(),
   summary: z.string(),
+  verification: VerificationStateSchema.optional(),
   tags: z.array(z.string()),
   complexity: z.enum(["simple", "moderate", "complex"]),
   languageNotes: z.string().optional(),
   domainMeta: DomainMetaSchema.optional(),
   knowledgeMeta: KnowledgeMetaSchema.optional(),
   figmaMeta: FigmaMetaSchema.optional(),
-}).passthrough();
+}).passthrough().superRefine((node, ctx) => {
+  // Anchors are required per node type: a declaration node that cannot be
+  // pointed at is not a fact, and an unanchored node cannot be verified.
+  if (LINE_ANCHORED_NODE_TYPES.has(node.type)) {
+    if (!node.filePath) {
+      ctx.addIssue({ code: "custom", message: `${node.type} node requires "filePath"`, path: ["filePath"] });
+    }
+    if (!node.lineRange) {
+      ctx.addIssue({ code: "custom", message: `${node.type} node requires "lineRange"`, path: ["lineRange"] });
+    }
+  } else if (FILE_ANCHORED_NODE_TYPES.has(node.type) && !node.filePath) {
+    ctx.addIssue({ code: "custom", message: `${node.type} node requires "filePath"`, path: ["filePath"] });
+  }
+});
 
 export const GraphEdgeSchema = z.object({
   source: z.string(),
@@ -446,6 +521,39 @@ export const GraphEdgeSchema = z.object({
   direction: z.enum(["forward", "backward", "bidirectional"]),
   description: z.string().optional(),
   weight: z.number().min(0).max(1),
+  // Optional in the schema so a pre-v2 graph still validates; `validateGraph`
+  // defaults an edge with no stated provenance to `inferred` (= unevidenced),
+  // which understates rather than invents attribution.
+  evidence: z.array(EvidenceSchema).optional(),
+  provenance: EdgeProvenanceSchema.optional(),
+  verification: VerificationStateSchema.optional(),
+}).passthrough().superRefine((edge, ctx) => {
+  const evidence = edge.evidence ?? [];
+  if (edge.provenance === "extracted") {
+    if (evidence.length === 0) {
+      ctx.addIssue({
+        code: "custom",
+        message: 'edge with provenance "extracted" requires at least one evidence entry',
+        path: ["evidence"],
+      });
+    } else if (!evidence.some((e) => e.source !== "model")) {
+      ctx.addIssue({
+        code: "custom",
+        message: 'edge with provenance "extracted" requires evidence whose source is not "model"',
+        path: ["evidence"],
+      });
+    }
+  }
+  if (edge.provenance === "inferred") {
+    const nonModel = evidence.find((e) => e.source !== "model");
+    if (nonModel) {
+      ctx.addIssue({
+        code: "custom",
+        message: `edge with provenance "inferred" must not carry evidence with source "${nonModel.source}"`,
+        path: ["evidence"],
+      });
+    }
+  }
 });
 
 export const LayerSchema = z.object({
@@ -469,8 +577,13 @@ export const ProjectMetaSchema = z.object({
   frameworks: z.array(z.string()),
   description: z.string(),
   analyzedAt: z.string(),
-  gitCommitHash: z.string(),
-});
+  // `null` for a non-git target; `sourceDigest` identifies it instead.
+  gitCommitHash: z.string().nullable(),
+  sourceDigest: z.string().optional(),
+  factsDigest: z.string().optional(),
+  pipelineVersion: z.string().optional(),
+  model: z.string().optional(),
+}).passthrough();
 
 export const KnowledgeGraphSchema = z.object({
   version: z.string(),
@@ -480,7 +593,15 @@ export const KnowledgeGraphSchema = z.object({
   edges: z.array(GraphEdgeSchema),
   layers: z.array(LayerSchema),
   tour: z.array(TourStepSchema),
-});
+  coverage: CoverageSchema.optional(),
+  gaps: z.array(GapSchema).optional(),
+}).passthrough();
+
+/** An empty ledger: what a graph that never carried coverage gets, so no
+ *  consumer has to special-case a missing field. */
+export function emptyCoverage(): Coverage {
+  return { files: 0, byLanguage: {}, ignored: 0 };
+}
 
 export interface GraphIssue {
   level: "auto-corrected" | "dropped" | "fatal";
@@ -491,11 +612,16 @@ export interface GraphIssue {
 
 export interface ValidationResult {
   success: boolean;
-  data?: z.infer<typeof KnowledgeGraphSchema>;
+  data?: KnowledgeGraph;
   /** @deprecated Use issues/fatal instead */
   errors?: string[];
   issues: GraphIssue[];
   fatal?: string;
+  /** True when the input carried none of the v2 attribution fields (no root
+   *  `coverage`, no edge `provenance`) — i.e. a pre-v2 graph. The returned
+   *  graph still gets an empty ledger and `inferred` edges so downstream code
+   *  never sees a missing field. */
+  legacyShape?: boolean;
 }
 
 function buildInvalidCollectionIssue(name: string): GraphIssue {
@@ -605,13 +731,13 @@ export function validateGraph(data: unknown): ValidationResult {
   }
 
   // Tier 3: Validate nodes individually, drop broken
-  const validNodes: z.infer<typeof GraphNodeSchema>[] = [];
+  const validNodes: GraphNode[] = [];
   if (Array.isArray(fixed.nodes)) {
     for (let i = 0; i < fixed.nodes.length; i++) {
       const node = fixed.nodes[i] as Record<string, unknown>;
       const result = GraphNodeSchema.safeParse(node);
       if (result.success) {
-        validNodes.push(result.data);
+        validNodes.push(result.data as GraphNode);
       } else {
         const name = node?.name || node?.id || `index ${i}`;
         issues.push({
@@ -636,7 +762,7 @@ export function validateGraph(data: unknown): ValidationResult {
 
   // Tier 3: Validate edges + referential integrity
   const nodeIds = new Set(validNodes.map((n) => n.id));
-  const validEdges: z.infer<typeof GraphEdgeSchema>[] = [];
+  const validEdges: GraphEdge[] = [];
   if (Array.isArray(fixed.edges)) {
     for (let i = 0; i < fixed.edges.length; i++) {
       const edge = fixed.edges[i] as Record<string, unknown>;
@@ -668,7 +794,14 @@ export function validateGraph(data: unknown): ValidationResult {
         });
         continue;
       }
-      validEdges.push(result.data);
+      // No fourth state: an edge that stated no provenance is unevidenced, and
+      // `inferred` is exactly that. Defaulting here (rather than leaving the
+      // field absent) keeps every consumer on one shape.
+      validEdges.push({
+        ...result.data,
+        evidence: (result.data.evidence ?? []) as GraphEdge["evidence"],
+        provenance: result.data.provenance ?? "inferred",
+      } as GraphEdge);
     }
   }
 
@@ -714,14 +847,70 @@ export function validateGraph(data: unknown): ValidationResult {
     }
   }
 
-  const graph = {
+  // Coverage and gaps survive validation: dropping them would erase the record
+  // of what was NOT read, which is the whole point of the ledger.
+  let coverage: Coverage = emptyCoverage();
+  if (fixed.coverage !== undefined && fixed.coverage !== null) {
+    const parsed = CoverageSchema.safeParse(fixed.coverage);
+    if (parsed.success) {
+      coverage = parsed.data as Coverage;
+    } else {
+      issues.push({
+        level: "dropped",
+        category: "invalid-coverage",
+        message: `coverage: ${parsed.error.issues[0]?.message ?? "validation failed"} — replaced with an empty ledger`,
+        path: "coverage",
+      });
+    }
+  }
+
+  const gaps: Gap[] = [];
+  if (Array.isArray(fixed.gaps)) {
+    for (let i = 0; i < (fixed.gaps as unknown[]).length; i++) {
+      const parsed = GapSchema.safeParse((fixed.gaps as unknown[])[i]);
+      if (parsed.success) {
+        gaps.push(parsed.data as Gap);
+      } else {
+        issues.push({
+          level: "dropped",
+          category: "invalid-gap",
+          message: `gaps[${i}]: ${parsed.error.issues[0]?.message ?? "validation failed"} — removed`,
+          path: `gaps[${i}]`,
+        });
+      }
+    }
+  } else if (fixed.gaps !== undefined && fixed.gaps !== null) {
+    issues.push({
+      level: "dropped",
+      category: "invalid-gap",
+      message: '"gaps" must be an array when present — replaced with []',
+      path: "gaps",
+    });
+  }
+
+  const kindResult = z.enum(["codebase", "knowledge", "design"]).safeParse(fixed.kind);
+
+  const graph: KnowledgeGraph = {
     version: typeof fixed.version === "string" ? fixed.version : "1.0.0",
-    project: projectResult.data,
+    // `kind` decides which alias table and which dashboard view applies —
+    // dropping it here silently turned design/knowledge graphs into codebase
+    // graphs (each caller had to re-attach it).
+    ...(kindResult.success ? { kind: kindResult.data } : {}),
+    project: projectResult.data as KnowledgeGraph["project"],
     nodes: validNodes,
     edges: validEdges,
     layers: validLayers,
     tour: validTour,
+    coverage,
+    gaps,
   };
 
-  return { success: true, data: graph, issues, errors: buildErrors(issues) };
+  const legacyShape =
+    (fixed.coverage === undefined || fixed.coverage === null) &&
+    !(Array.isArray(fixed.edges) &&
+      (fixed.edges as Array<Record<string, unknown>>).some(
+        (e) => typeof e === "object" && e !== null && e.provenance !== undefined,
+      ));
+
+  return { success: true, data: graph, issues, errors: buildErrors(issues), legacyShape };
 }

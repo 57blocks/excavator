@@ -223,6 +223,7 @@ describe("normalizeBatchOutput", () => {
           type: "imports",
           direction: "forward",
           weight: 0.7,
+          evidence: [], provenance: "inferred" as const,
         },
         {
           source: "src/bare.ts",
@@ -230,6 +231,7 @@ describe("normalizeBatchOutput", () => {
           type: "imports",
           direction: "forward",
           weight: 0.7,
+          evidence: [], provenance: "inferred" as const,
         },
       ],
     });
@@ -272,6 +274,7 @@ describe("normalizeBatchOutput", () => {
           type: "imports",
           direction: "forward",
           weight: 0.7,
+          evidence: [], provenance: "inferred" as const,
         },
       ],
     });
@@ -341,6 +344,7 @@ describe("normalizeBatchOutput", () => {
           type: "imports",
           direction: "forward",
           weight: 0.7,
+          evidence: [], provenance: "inferred" as const,
         },
         {
           source: "proj:file:src/a.ts",
@@ -348,6 +352,7 @@ describe("normalizeBatchOutput", () => {
           type: "imports",
           direction: "forward",
           weight: 0.7,
+          evidence: [], provenance: "inferred" as const,
         },
       ],
     });
@@ -383,6 +388,7 @@ describe("normalizeBatchOutput", () => {
           type: "imports",
           direction: "forward",
           weight: 0.7,
+          evidence: [], provenance: "inferred" as const,
         },
         {
           source: "file:src/ok.ts",
@@ -390,6 +396,7 @@ describe("normalizeBatchOutput", () => {
           type: "imports",
           direction: "forward",
           weight: 0.7,
+          evidence: [], provenance: "inferred" as const,
         },
       ],
     });
@@ -430,6 +437,7 @@ describe("normalizeBatchOutput", () => {
           type: "imports",
           direction: "forward",
           weight: 0.7,
+          evidence: [], provenance: "inferred" as const,
         },
       ],
     });
@@ -470,6 +478,7 @@ describe("normalizeBatchOutput integration", () => {
           type: "imports",
           direction: "forward",
           weight: 0.7,
+          evidence: [], provenance: "inferred" as const,
         },
       ],
     });

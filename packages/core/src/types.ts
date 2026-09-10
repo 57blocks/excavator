@@ -50,6 +50,86 @@ export interface FigmaMeta {
   componentKey?: string;       // roadmap C — recorded now
 }
 
+// ---------------------------------------------------------------------------
+// Attribution model (v2): every edge says where it came from, every anchored
+// node says how its anchor was obtained, every summary says whether it was
+// checked against the source.
+// ---------------------------------------------------------------------------
+
+/** Where an evidence line came from. `model` means a model pointed at the
+ *  line; a deterministic reader produced every other kind. */
+export type EvidenceSource = "tree-sitter" | "import-map" | "rule" | "model";
+
+/** One citation: a file and the line in it that carries the cited token. */
+export interface Evidence {
+  file: string;
+  line: number;
+  endLine?: number;
+  source: EvidenceSource;
+  /** Optional verbatim slice of the cited line, for display only. */
+  text?: string;
+}
+
+/** `extracted` = a reader produced this edge from a cited line.
+ *  `inferred` = judgement, with no non-model evidence behind it. */
+export type EdgeProvenance = "extracted" | "inferred";
+
+/** How a node's `lineRange`/`filePath` anchor was obtained. `census` means the
+ *  node is the file itself, so the anchor is the path with no line claim. */
+export type AnchorSource = "tree-sitter" | "rule" | "census";
+
+/** Result of checking a statement against the source it claims to describe.
+ *  `dirty` = the source changed since the statement was checked. */
+export type VerificationState = "verified" | "unverified" | "contradicted" | "dirty";
+
+/** A named hole in the knowledge: something the pipeline could not resolve,
+ *  counted rather than dropped. */
+export interface Gap {
+  kind: string;
+  scope: string;
+  reason: string;
+  count: number;
+  samples?: string[];
+}
+
+/** Why a scanned file was never handed to extraction. */
+export type SkipReason =
+  | "symlink" | "read-failed" | "unknown-language" | "binary" | "too-large" | "ignored";
+
+/** Declaration counts a language contributed to the graph. */
+export interface CoverageKinds {
+  function: number;
+  class: number;
+  import: number;
+  export: number;
+  call: number;
+}
+
+export interface LanguageCoverage {
+  files: number;
+  parsed: number;
+  zeroSymbol: number;
+  /** Skip counts by reason. Absent reason = zero. */
+  skipped: Partial<Record<SkipReason, number>>;
+  kinds: CoverageKinds;
+}
+
+/** Size thresholds the scanner applied, published so the `too-large` bucket is
+ *  interpretable. */
+export interface CoverageLimits {
+  maxFileLines: number;
+  maxFileBytes: number;
+}
+
+/** Per-language ledger of what was read and what was not. Conservation holds:
+ *  `files = parsed + zeroSymbol + Σ skipped[reason]`. */
+export interface Coverage {
+  files: number;
+  byLanguage: Record<string, LanguageCoverage>;
+  ignored: number;
+  limits?: CoverageLimits;
+}
+
 // GraphNode with 27 types: 5 code + 8 non-code + 3 domain + 5 knowledge + 6 design
 export interface GraphNode {
   id: string;
@@ -57,7 +137,14 @@ export interface GraphNode {
   name: string;
   filePath?: string;
   lineRange?: [number, number];
+  /** Declaring scope: receiver type, enclosing class/trait/enum/object, or
+   *  object-literal binding name. Absent for free declarations and files. */
+  owner?: string;
+  anchorSource?: AnchorSource;
+  /** MAY be empty: "not summarised" is a visible state, not an absence. */
   summary: string;
+  /** Verdict of checking `summary` against the source inside `lineRange`. */
+  verification?: VerificationState;
   tags: string[];
   complexity: "simple" | "moderate" | "complex";
   languageNotes?: string;
@@ -73,7 +160,16 @@ export interface GraphEdge {
   type: EdgeType;
   direction: "forward" | "backward" | "bidirectional";
   description?: string;
+  /** Per-edge-type ORDERING CONSTANT (the dashboard sorts `flow_step` and
+   *  NodeInfo rows by it). NOT a confidence score — attribution lives in
+   *  `provenance`/`evidence`. */
   weight: number; // 0-1
+  /** Cited lines. An `extracted` edge carries at least one entry whose
+   *  `source` is not `model`; an `inferred` edge carries no non-model entry. */
+  evidence: Evidence[];
+  provenance: EdgeProvenance;
+  /** Set by the graph validator when it re-reads the evidence line. */
+  verification?: VerificationState;
 }
 
 // Layer (logical grouping)
@@ -100,7 +196,17 @@ export interface ProjectMeta {
   frameworks: string[];
   description: string;
   analyzedAt: string;
-  gitCommitHash: string;
+  /** `null` when the analysed target is not a git repository (or is a
+   *  multi-repo parent directory); `sourceDigest` identifies it instead. */
+  gitCommitHash: string | null;
+  /** sha256 over the scanned source content. Written by the scan. */
+  sourceDigest?: string;
+  /** sha256 over the canonical deterministic facts graph. */
+  factsDigest?: string;
+  /** Version of the deterministic pipeline that produced the facts. */
+  pipelineVersion?: string;
+  /** Host-reported model name for the prose half, or `unknown`. */
+  model?: string;
 }
 
 // Root KnowledgeGraph
@@ -112,6 +218,11 @@ export interface KnowledgeGraph {
   edges: GraphEdge[];
   layers: Layer[];
   tour: TourStep[];
+  /** Per-language ledger. Absent only in the pre-v2 shape; `validateGraph`
+   *  defaults it to an empty ledger. */
+  coverage?: Coverage;
+  /** Named holes, counted. Same defaulting rule as `coverage`. */
+  gaps?: Gap[];
 }
 
 // Theme configuration (for dashboard customization)

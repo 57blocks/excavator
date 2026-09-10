@@ -11,8 +11,12 @@ const manifest = {
     { id: "token:color:brand", type: "token", name: "brand", summary: "brand", tags: ["token"], complexity: "simple" },
   ] as GraphNode[],
   edges: [
-    { source: "page:1:0", target: "screen:1:1", type: "contains", direction: "forward", weight: 1 },
-    { source: "component:2:1", target: "token:color:brand", type: "uses_token", direction: "forward", weight: 0.5 },
+    { source: "page:1:0", target: "screen:1:1", type: "contains", direction: "forward", weight: 1,
+    evidence: [], provenance: "inferred" as const,
+  },
+    { source: "component:2:1", target: "token:color:brand", type: "uses_token", direction: "forward", weight: 0.5,
+    evidence: [], provenance: "inferred" as const,
+  },
   ] as GraphEdge[],
 };
 

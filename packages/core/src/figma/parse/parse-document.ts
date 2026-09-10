@@ -24,8 +24,11 @@ export function parseDocument(doc: FigmaDocument, fileKey: string): { nodes: Gra
   const seen = new Set<string>();
 
   const add = (n: GraphNode) => { if (!seen.has(n.id)) { seen.add(n.id); nodes.push(n); } };
+  // A Figma document has no source file and no line, so a design edge has no
+  // file:line to cite. It is recorded as unevidenced rather than claiming an
+  // "extracted" citation it cannot produce.
   const link = (source: string, target: string, type: GraphEdge["type"], weight: number) =>
-    edges.push({ source, target, type, direction: "forward", weight });
+    edges.push({ source, target, type, direction: "forward", weight, evidence: [], provenance: "inferred" });
 
   // Deep-read a screen subtree to find instances (shallow node set, but deep read).
   function collectInstances(n: FigmaNode, screenId: string) {

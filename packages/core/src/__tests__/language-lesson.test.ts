@@ -25,6 +25,7 @@ const sampleEdges: GraphEdge[] = [
     type: "reads_from",
     direction: "forward",
     weight: 0.6,
+    evidence: [], provenance: "inferred" as const,
   },
   {
     source: "file:src/middleware.ts",
@@ -32,6 +33,7 @@ const sampleEdges: GraphEdge[] = [
     type: "calls",
     direction: "forward",
     weight: 0.8,
+    evidence: [], provenance: "inferred" as const,
   },
 ];
 
