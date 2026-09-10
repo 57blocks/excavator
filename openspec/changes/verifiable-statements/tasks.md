@@ -50,7 +50,7 @@
 
 ## 8. 提示词加节（②b commit 8，只加不改）
 
-- [ ] 8.1 `agents/excavator-file-analyzer.md` 末尾加「证据字段」节（行号抄自结构 JSON；抄不到标 inferred）；验证既有段落 diff 为零、新节存在
+- [ ] 8.1 `agents/excavator-file-analyzer.md` 末尾加「证据字段」节（行号抄自结构 JSON；抄不到标 inferred；`status: no-extractor|parse-failed` 的文件只建 file 节点不臆造成员；有 `owner` 则保留）；验证既有段落 diff 为零、新节存在
 - [ ] 8.2 同文件加「框架指引」节（frameworks 含 spring/angular/maui → 读 `skills/excavator/frameworks/<x>.md`；目录先建 README 说明文件由 ③ 提供）；验证 check-refs 绿
 - [ ] 8.3 `agents/excavator-domain-analyzer.md` 加一句 step `nodeIds`；验证既有段落 diff 为零
 
@@ -79,5 +79,5 @@
 
 ## 13. ②b 真实验收（不提交产物；结果贴 PR）
 
-- [ ] 13.1 wcp 在 v2 上全量一次（旧 `.excavator/` 先移作对照）：b1 自报证据核对比例、b6 墙钟与 token
+- [ ] 13.1 wcp 在 v2 上全量一次（design「②b 执行注」的 headless 配方；旧 `.excavator/` 先移作 `.excavator-ua-baseline/`）：b1 自报证据核对比例、b6 墙钟与 `total_cost_usd`、与 UA 基线的节点/边/gaps 计数对比
 - [ ] 13.2 Opus 分层审计（b2）、注入测试（b3）、负向探针「撤销申请」（b4）、新鲜度实操（b5）

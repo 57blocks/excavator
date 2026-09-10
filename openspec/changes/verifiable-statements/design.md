@@ -77,3 +77,21 @@
 ## Migration Plan
 
 无外部用户。UA 产物与流程不变；新增阶段可单独关闭。回滚按 commit / PR。抽取器修复留 `v2/deferred-ua-extractor-fixes` 等单独批准。
+
+## ②b 执行注（2026-09-11，②a 合入 `5a10e468` 后）
+
+**D6 补充——提示词加节要覆盖的两点**：(1) `extract-structure` 的 `results` 现含 `status: no-extractor | parse-failed` 的文件行（②a commit 2）：提示词说明「这类文件仍建 `file` 节点（UA 规则：每个文件一个节点），summary 只描述文件用途，不臆造函数/类；不为它们写 calls 边」；(2) `owner` 目前只有 Go/Rust/C++ 抽取器产出：提示词说明「结构 JSON 给了 `owner` 时保留到节点 `owner` 字段；没给不要猜」。
+
+**13.1 真实全量的运行方式**（本机 Claude Code 2.1.267 已核对：有 `--plugin-dir`、`--permission-mode`、`--output-format`、`-p`；无 `--cwd`、`--max-turns`）：
+```
+mv /Users/57block/Documents/excavator-test-repos/wcp/.excavator /Users/57block/Documents/excavator-test-repos/wcp/.excavator-ua-baseline
+( cd /Users/57block/Documents/excavator-test-repos/wcp && \
+  CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS=0 \
+  claude --plugin-dir /Users/57block/Documents/excavator-wt/excavator-v2 \
+         --permission-mode auto --output-format json \
+         -p "/excavator:excavator" > /private/tmp/excavator-v2-wcp-run.json )
+jq '.total_cost_usd, .session_id, .duration_ms' /private/tmp/excavator-v2-wcp-run.json
+```
+skill 必须在 prompt 里点名（模型不会自动调用）；`total_cost_usd` 含子代理（客户端估算）。跑完对比 `.excavator/knowledge-graph.json` 与 `.excavator-ua-baseline/knowledge-graph.json`：节点/边/gaps 计数、`provenance` 分布、自报 evidence 的 `verified:true` 比例、`summary-contradicted` 数、墙钟。产物与真实路径不进 PR，只贴计数。
+
+**②a 留下的解释**：`edge-missing` 中 contains 698 + exports 352 的目标声明无节点（`node-missing` 699）——补边不造节点，故补 0；这是节点召回问题，属提示词/显著性门槛，②b 不动（UA 语义），只报告。calls 从不补边（59,562 unresolved 是 reader 缺口，留 ③/roadmap）。imports 证据窗口 12 行，超长 import 留 1 条 `edge-contradicted`。
