@@ -30,7 +30,7 @@ const require = createRequire(resolve(pluginRoot, 'package.json'));
 
 let core;
 try {
-  core = await import(pathToFileURL(require.resolve('@understand-anything/core')).href);
+  core = await import(pathToFileURL(require.resolve('@excavator/core')).href);
 } catch {
   core = await import(pathToFileURL(resolve(pluginRoot, 'packages/core/dist/index.js')).href);
 }
@@ -393,7 +393,7 @@ async function main() {
   }
 
   if (plan.action === 'FULL_UPDATE') {
-    throw new Error('FULL_UPDATE must run the full /understand pipeline');
+    throw new Error('FULL_UPDATE must run the full /excavator pipeline');
   }
   if (plan.action === 'SKIP' && isGeneratedOnly(plan)) {
     process.stdout.write('Generated artifacts only: analysis baseline unchanged\n');

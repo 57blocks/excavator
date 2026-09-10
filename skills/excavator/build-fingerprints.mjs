@@ -3,7 +3,7 @@
  * build-fingerprints.mjs
  *
  * Builds the structural-fingerprint baseline used by auto-update's
- * incremental change detection. Runs once per /understand full rebuild
+ * incremental change detection. Runs once per /excavator full rebuild
  * (Phase 7 step 2.5), generating fingerprints.json in the project's data dir
  * (`.ua/`, or legacy `.understand-anything/` — resolved by core's
  * saveFingerprints via resolveUaDir).
@@ -39,13 +39,13 @@ const pluginRoot = resolve(__dirname, '../..');
 const require = createRequire(resolve(pluginRoot, 'package.json'));
 
 // ---------------------------------------------------------------------------
-// Resolve @understand-anything/core (matches extract-structure.mjs).
+// Resolve @excavator/core (matches extract-structure.mjs).
 // pathToFileURL() is required for Windows: dynamic import() of a raw
 // "C:\..." path throws ERR_UNSUPPORTED_ESM_URL_SCHEME.
 // ---------------------------------------------------------------------------
 let core;
 try {
-  core = await import(pathToFileURL(require.resolve('@understand-anything/core')).href);
+  core = await import(pathToFileURL(require.resolve('@excavator/core')).href);
 } catch {
   core = await import(pathToFileURL(resolve(pluginRoot, 'packages/core/dist/index.js')).href);
 }

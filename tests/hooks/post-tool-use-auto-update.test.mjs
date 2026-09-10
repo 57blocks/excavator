@@ -87,7 +87,7 @@ describe('PostToolUse auto-update hook', () => {
       hookSpecificOutput: {
         hookEventName: 'PostToolUse',
         additionalContext: expect.stringContaining(
-          '[understand-anything] Commit detected',
+          '[excavator] Commit detected',
         ),
       },
     });
@@ -109,7 +109,7 @@ describe('PostToolUse auto-update hook', () => {
   );
 
   it('preserves Windows-style plugin paths as valid JSON', () => {
-    const pluginRoot = 'C:\\Users\\Example Person\\understand-anything';
+    const pluginRoot = 'C:\\Users\\Example Person\\excavator';
     const result = runHook({ pluginRoot });
     const output = JSON.parse(result.stdout);
 

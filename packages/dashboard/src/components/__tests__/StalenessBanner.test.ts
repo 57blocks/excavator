@@ -47,7 +47,7 @@ describe("buildFreshnessBanner", () => {
       summary:
         "The knowledge graph is 1 project commit behind HEAD; 1 file has changed since analysis.",
       action:
-        "Run /understand to refresh it before relying on impact or onboarding answers.",
+        "Run /excavator to refresh it before relying on impact or onboarding answers.",
       changedFiles: ["src/auth.ts"],
     });
   });
@@ -71,7 +71,7 @@ describe("buildFreshnessBanner", () => {
       summary:
         "The domain graph comes from a newer project history than HEAD; 2 files have changed since analysis.",
       action:
-        "Run /understand-domain to refresh it before relying on impact or onboarding answers.",
+        "Run /excavator-domain to refresh it before relying on impact or onboarding answers.",
     });
   });
 

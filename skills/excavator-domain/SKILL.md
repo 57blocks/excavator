@@ -1,10 +1,10 @@
 ---
 name: excavator-domain
-description: Extract business domain knowledge from a codebase and generate an interactive domain flow graph. Works standalone (lightweight scan) or derives from an existing /understand knowledge graph.
+description: Extract business domain knowledge from a codebase and generate an interactive domain flow graph. Works standalone (lightweight scan) or derives from an existing /excavator knowledge graph.
 argument-hint: "[--full]"
 ---
 
-# /understand-domain
+# /excavator-domain
 
 Extracts business domain knowledge — domains, business flows, and process steps — from a codebase and produces an interactive horizontal flow graph in the dashboard.
 
@@ -42,7 +42,7 @@ fi
 
 Use `$PROJECT_ROOT` (not the bare CWD) for every reference to "the current project" / `<project-root>` in subsequent phases.
 
-**Resolve the data directory `$UA_DIR`.** All Understand-Anything artifacts live in the project's data directory. Resolve it once, now that `$PROJECT_ROOT` is known, and reuse `$UA_DIR` for every read and write in later phases:
+**Resolve the data directory `$UA_DIR`.** All Excavator artifacts live in the project's data directory. Resolve it once, now that `$PROJECT_ROOT` is known, and reuse `$UA_DIR` for every read and write in later phases:
 ```bash
 UA_DIR="$PROJECT_ROOT/$([ -d "$PROJECT_ROOT/.understand-anything" ] && echo .understand-anything || echo .ua)"
 ```
@@ -64,10 +64,10 @@ for candidate in \
   "$HOME/.understand-anything-plugin" \
   "$SELF_RELATIVE" \
   "$COPILOT_SELF_RELATIVE" \
-  "$HOME/.codex/understand-anything/understand-anything-plugin" \
-  "$HOME/.opencode/understand-anything/understand-anything-plugin" \
-  "$HOME/.pi/understand-anything/understand-anything-plugin" \
-  "$HOME/understand-anything/understand-anything-plugin"; do
+  "$HOME/.codex/excavator/excavator-plugin" \
+  "$HOME/.opencode/excavator/excavator-plugin" \
+  "$HOME/.pi/excavator/excavator-plugin" \
+  "$HOME/excavator/excavator-plugin"; do
   if [ -n "$candidate" ] && [ -f "$candidate/package.json" ] && [ -f "$candidate/pnpm-workspace.yaml" ]; then
     PLUGIN_ROOT="$candidate"
     break
@@ -75,16 +75,16 @@ for candidate in \
 done
 
 if [ -z "$PLUGIN_ROOT" ]; then
-  echo "Error: Cannot find the understand-anything plugin root."
+  echo "Error: Cannot find the excavator plugin root."
   echo "Checked:"
   echo "  - ${CLAUDE_PLUGIN_ROOT:-<unset CLAUDE_PLUGIN_ROOT>}"
   echo "  - $HOME/.understand-anything-plugin"
   echo "  - ${SELF_RELATIVE:-<unresolved path derived from ~/.agents/skills/excavator-domain>}"
   echo "  - ${COPILOT_SELF_RELATIVE:-<unresolved path derived from ~/.copilot/skills/excavator-domain>}"
-  echo "  - $HOME/.codex/understand-anything/understand-anything-plugin"
-  echo "  - $HOME/.opencode/understand-anything/understand-anything-plugin"
-  echo "  - $HOME/.pi/understand-anything/understand-anything-plugin"
-  echo "  - $HOME/understand-anything/understand-anything-plugin"
+  echo "  - $HOME/.codex/excavator/excavator-plugin"
+  echo "  - $HOME/.opencode/excavator/excavator-plugin"
+  echo "  - $HOME/.pi/excavator/excavator-plugin"
+  echo "  - $HOME/excavator/excavator-plugin"
   echo "Make sure the plugin is installed correctly."
   exit 1
 fi
@@ -107,7 +107,7 @@ Use `$PLUGIN_ROOT` for every reference to agent definitions in subsequent phases
      ```
    - The `-- .` pathspec is required: commits that only touch a sibling monorepo project must not make this graph stale. A hash mismatch alone is not stale when the project diff is empty.
    - Ignore the selected data directory (`.ua/` or legacy `.understand-anything/`) in every command's output because it contains generated graph artifacts, not project source drift.
-   - If the committed diff or any working-tree command reports project files, warn that domain extraction may omit those changes. Suggest: Run `/understand` to refresh the knowledge graph.
+   - If the committed diff or any working-tree command reports project files, warn that domain extraction may omit those changes. Suggest: Run `/excavator` to refresh the knowledge graph.
    - Run the commit diff only when `GRAPH_COMMIT_RAW` resolves successfully. If the graph commit or Git metadata is missing, invalid, or unavailable, give a brief best-effort warning and continue instead of blocking.
 3. After that preflight, proceed to Phase 3 (derive from graph).
 4. Otherwise, proceed to Phase 2 (lightweight scan). When `--full` is used, skip this preflight because the command performs a fresh scan instead of consuming the existing graph.
@@ -156,5 +156,5 @@ The preprocessing script does NOT produce a domain graph — it produces **raw m
 
 ### Phase 6: Launch Dashboard
 
-1. Auto-trigger `/understand-dashboard` to visualize the domain graph
+1. Auto-trigger `/excavator-dashboard` to visualize the domain graph
 2. The dashboard will detect `domain-graph.json` and show the domain view by default

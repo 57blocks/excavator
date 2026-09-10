@@ -1,6 +1,6 @@
 # Excavator v2 — agent guide
 
-Excavator v2 是在 Understand-Anything（上游提交 5feed1f2，MIT，见 NOTICE）基础上重建的 AI-first 可辩护代码调查插件。事实由确定性脚本写，散文由宿主 agent 写；每条陈述要么带证据，要么标 inferred。计划以 `docs/v2-plan.md` 为准；每个开发步是一个 OpenSpec change（`openspec/changes/`）加一个对 `excavator-v2` 的 PR。
+Excavator v2 是在 Understand Anything（上游提交 5feed1f2，MIT，详见 NOTICE 里的原始仓库地址）基础上重建的 AI-first 可辩护代码调查插件。事实由确定性脚本写，散文由宿主 agent 写；每条陈述要么带证据，要么标 inferred。计划以 `docs/v2-plan.md` 为准；每个开发步是一个 OpenSpec change（`openspec/changes/`）加一个对 `excavator-v2` 的 PR。
 
 ## 执行纪律
 - 无人守：判断题自己拍板并写下理由；不问用户。

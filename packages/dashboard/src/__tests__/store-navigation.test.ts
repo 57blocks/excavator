@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import type { GraphNode, KnowledgeGraph } from "@understand-anything/core/types";
+import type { GraphNode, KnowledgeGraph } from "@excavator/core/types";
 import { useDashboardStore } from "../store";
 
 function node(id: string): GraphNode {

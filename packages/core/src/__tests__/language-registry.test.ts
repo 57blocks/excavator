@@ -78,7 +78,7 @@ describe("LanguageRegistry", () => {
     it("registers Swift with tree-sitter grammar metadata", () => {
       const registry = LanguageRegistry.createDefault();
       expect(registry.getById("swift")?.treeSitter).toEqual({
-        wasmPackage: "@understand-anything/tree-sitter-swift-wasm",
+        wasmPackage: "@excavator/tree-sitter-swift-wasm",
         wasmFile: "tree-sitter-swift.wasm",
       });
     });

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * compute-batches.mjs — Phase 1.5 of /understand
+ * compute-batches.mjs — Phase 1.5 of /excavator
  *
  * Reads scan-result.json, runs Louvain community detection on the import
  * graph, and writes batches.json containing batches + neighborMap.
@@ -17,7 +17,7 @@
  *
  * `--scan-result` and `--output` let read-only tooling (for example the
  * large-repository benchmark runner) keep intermediate artifacts outside the
- * analyzed project. Omitting them preserves the normal /understand paths.
+ * analyzed project. Omitting them preserves the normal /excavator paths.
  */
 
 import {
@@ -46,7 +46,7 @@ const require = createRequire(resolve(PLUGIN_ROOT, 'package.json'));
 
 let core;
 try {
-  core = await import(pathToFileURL(require.resolve('@understand-anything/core')).href);
+  core = await import(pathToFileURL(require.resolve('@excavator/core')).href);
 } catch {
   core = await import(pathToFileURL(resolve(PLUGIN_ROOT, 'packages/core/dist/index.js')).href);
 }

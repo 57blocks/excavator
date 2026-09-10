@@ -5,7 +5,7 @@ export const swiftConfig = {
   displayName: "Swift",
   extensions: [".swift"],
   treeSitter: {
-    wasmPackage: "@understand-anything/tree-sitter-swift-wasm",
+    wasmPackage: "@excavator/tree-sitter-swift-wasm",
     wasmFile: "tree-sitter-swift.wasm",
   },
   concepts: [

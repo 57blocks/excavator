@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { ALL_NODE_TYPES } from "../store";
-import type { NodeType as CoreNodeType } from "@understand-anything/core/types";
+import type { NodeType as CoreNodeType } from "@excavator/core/types";
 
 /**
  * Guard for the node-type FILTER / EXPORT path.

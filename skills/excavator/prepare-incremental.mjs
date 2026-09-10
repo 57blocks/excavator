@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Prepare a deterministic incremental /understand update.
+ * Prepare a deterministic incremental /excavator update.
  *
  * Usage:
  *   node prepare-incremental.mjs <projectRoot> <baseCommit>
@@ -42,7 +42,7 @@ const require = createRequire(resolve(pluginRoot, 'package.json'));
 
 let core;
 try {
-  core = await import(pathToFileURL(require.resolve('@understand-anything/core')).href);
+  core = await import(pathToFileURL(require.resolve('@excavator/core')).href);
 } catch {
   core = await import(pathToFileURL(resolve(pluginRoot, 'packages/core/dist/index.js')).href);
 }

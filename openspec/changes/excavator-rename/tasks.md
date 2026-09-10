@@ -6,13 +6,13 @@
 
 ## 2. 品牌、包名、manifest、i18n（commit 2）
 
-- [ ] 2.1 `packages/*/package.json`、根 `package.json`（并恢复 `private: true`）、`packages/viewer/build.mjs` 的 pnpm filter：`@excavator/*`、`excavator-viewer`（bin 同名）、`@excavator/skill`；验证 `grep -rn '@understand-anything' packages src package.json` 为空
-- [ ] 2.2 `.claude-plugin/plugin.json`：name `excavator`、description、homepage/repository 指向本仓、显式 `skills/agents/hooks` 键；新增 `.claude-plugin/marketplace.json`（name `excavator`，plugins[0] source `./`）；验证两文件为合法 JSON 且 `node -e` 读出 name 均为 `excavator`
-- [ ] 2.3 `packages/dashboard/src/locales/{en,ja,ko,ru,zh-TW,zh}.ts` 的 `appName` 与品牌文案、`packages/dashboard/index.html` `<title>`、`packages/dashboard/public/knowledge-graph.json` 样例里的 `.ua` 路径；验证 `grep -rni 'understand' packages/dashboard/src/locales packages/dashboard/index.html` 为空
-- [ ] 2.4 `packages/viewer/README.md`、`bin/viewer.mjs` 文案与 `EXCAVATOR_ACCESS_TOKEN`；验证 `grep -rn 'UNDERSTAND_ACCESS_TOKEN' packages/viewer` 为空
-- [ ] 2.5 `src/onboard-builder.ts` 品牌文案、`agents/excavator-knowledge-graph-guide.md` 品牌文案；验证对应测试更新后绿
-- [ ] 2.6 根 `README.md` 换为 Excavator 简介：两宿主安装命令、Claude Code 的 `/excavator:<skill>` 前缀说明、9 个 skill 各一句、NOTICE 指引；验证不含 `understand-anything`
-- [ ] 2.7 `pnpm install` 重生 lock；验证 `rm -rf node_modules packages/*/node_modules && pnpm install --frozen-lockfile && pnpm -r build && pnpm test` 绿
+- [x] 2.1 `packages/*/package.json`、根 `package.json`（并恢复 `private: true`）、`packages/viewer/build.mjs` 的 pnpm filter：`@excavator/*`、`excavator-viewer`（bin 同名）、`@excavator/skill`；验证 `grep -rn '@understand-anything' packages src package.json` 为空
+- [x] 2.2 `.claude-plugin/plugin.json`：name `excavator`、description、homepage/repository 指向本仓、显式 `skills/agents/hooks` 键；新增 `.claude-plugin/marketplace.json`（name `excavator`，plugins[0] source `./`）；验证两文件为合法 JSON 且 `node -e` 读出 name 均为 `excavator`
+- [x] 2.3 `packages/dashboard/src/locales/{en,ja,ko,ru,zh-TW,zh}.ts` 的 `appName` 与品牌文案、`packages/dashboard/index.html` `<title>`、`packages/dashboard/public/knowledge-graph.json` 样例里的 `.ua` 路径；验证 `grep -rni 'understand' packages/dashboard/src/locales packages/dashboard/index.html` 为空
+- [x] 2.4 `packages/viewer/README.md`、`bin/viewer.mjs` 文案与 `EXCAVATOR_ACCESS_TOKEN`；验证 `grep -rn 'UNDERSTAND_ACCESS_TOKEN' packages/viewer` 为空
+- [x] 2.5 `src/onboard-builder.ts` 品牌文案、`agents/excavator-knowledge-graph-guide.md` 品牌文案；验证对应测试更新后绿
+- [x] 2.6 根 `README.md` 换为 Excavator 品牌（标题、tagline、install/quick-start 命令、agent 表、NOTICE 出处指引）；验证不含 `understand-anything`。**偏差**：`tests/install/platform-table-consistency.test.mjs` 逐字段核对 README 的「Multi-Platform Installation」小节（Platform Compatibility 表、`Supported <platform> values` 行）与当前（尚未在 commit 4 改造的）`install.sh`/`install.ps1` 的多宿主行为——该测试在 commit 4 才随安装器一起重写；本 commit 只对这部分做逐 token 品牌替换而不做「两宿主」结构性精简（结构精简随 commit 4 一起做，否则会在本 commit 里提前打破一个要到 commit 4 才允许重写的测试）。Quick Start 的安装示例已展示 Claude Code + Codex 两条路径。
+- [x] 2.7 `pnpm install` 重生 lock；验证 `rm -rf node_modules packages/*/node_modules && pnpm install --frozen-lockfile && pnpm -r build && pnpm test` 绿
 
 ## 3. 数据目录、忽略文件、去回退、默认忽略（commit 3）
 

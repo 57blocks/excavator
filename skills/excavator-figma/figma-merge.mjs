@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { readFileSync, writeFileSync, readdirSync, existsSync } from "node:fs";
 import { join } from "node:path";
-import { mergeDesignGraph } from "@understand-anything/core/figma";
+import { mergeDesignGraph } from "@excavator/core/figma";
 
 // Mirror core's resolveUaDir: the legacy `.understand-anything/` dir wins for
 // both reads and writes when it already exists; otherwise use `.ua/`.

@@ -13,7 +13,7 @@ let corePromise;
 async function getCore() {
   corePromise ??= (async () => {
     try {
-      return await import(pathToFileURL(require.resolve('@understand-anything/core')).href);
+      return await import(pathToFileURL(require.resolve('@excavator/core')).href);
     } catch {
       return import(pathToFileURL(join(pluginRoot, 'packages/core/dist/index.js')).href);
     }

@@ -4,7 +4,7 @@ description: Analyze a Figma file via the Figma REST API and generate an interac
 argument-hint: "<figma-file-url-or-key> [--language <lang>]"
 ---
 
-# /understand-figma
+# /excavator-figma
 
 Analyzes a Figma file and produces an interactive design knowledge graph in the existing dashboard.
 
@@ -14,15 +14,15 @@ Analyzes a Figma file and produces an interactive design knowledge graph in the 
   > Set a Figma token first: create one at figma.com/settings, then `export FIGMA_TOKEN=<token>`.
 - Node ≥ 22, pnpm ≥ 10.
 
-> **Security:** the token is read only from the environment and travels only in the `X-Figma-Token` request header. Never write it to the graph, `meta.json`, logs, or intermediate files. This skill makes outbound calls to `api.figma.com` — unlike `/understand`, it is not fully offline. Tell the user this once.
+> **Security:** the token is read only from the environment and travels only in the `X-Figma-Token` request header. Never write it to the graph, `meta.json`, logs, or intermediate files. This skill makes outbound calls to `api.figma.com` — unlike `/excavator`, it is not fully offline. Tell the user this once.
 
 ## Phase 0 — Pre-flight
 
 1. Parse `$ARGUMENTS` for a Figma URL or bare file key (the non-flag token) and an optional `--language <lang>`.
 2. Resolve `PROJECT_ROOT` to the current working directory. **Resolve the data directory `$UA_DIR`** once and reuse it for every read and write below: `UA_DIR="$PROJECT_ROOT/$([ -d "$PROJECT_ROOT/.understand-anything" ] && echo .understand-anything || echo .ua)"` — the legacy `.understand-anything/` when it already exists, otherwise the new `.ua/`. Because each phase may run in a fresh shell, carry `$UA_DIR` forward like `$PROJECT_ROOT`, re-resolving it with the same line if a later command block needs it.
-3. Resolve `PLUGIN_ROOT` and ensure core is built (same logic as `/understand` Phase 0.1.5). If `packages/core/dist/figma/index.js` is missing, run:
+3. Resolve `PLUGIN_ROOT` and ensure core is built (same logic as `/excavator` Phase 0.1.5). If `packages/core/dist/figma/index.js` is missing, run:
    ```bash
-   cd "$PLUGIN_ROOT" && (pnpm install --frozen-lockfile 2>/dev/null || pnpm install) && pnpm --filter @understand-anything/core build
+   cd "$PLUGIN_ROOT" && (pnpm install --frozen-lockfile 2>/dev/null || pnpm install) && pnpm --filter @excavator/core build
    ```
 4. `mkdir -p $UA_DIR/intermediate`.
 
@@ -47,7 +47,7 @@ It writes `$UA_DIR/intermediate/scan-manifest.json` and prints the node counts. 
    - `$INTERMEDIATE_DIR = $UA_DIR/intermediate`,
    - the batch number for output naming.
    The agent writes `analysis-batch-<N>.json`.
-   Append `$LANGUAGE_DIRECTIVE` if `--language` was provided (reuse `/understand`'s directive text).
+   Append `$LANGUAGE_DIRECTIVE` if `--language` was provided (reuse `/excavator`'s directive text).
 3. Run up to **5 batches concurrently**. If a batch fails, log a warning and continue — the manifest is a solid base.
 
 ## Phase 3 — MERGE
@@ -66,4 +66,4 @@ It combines `scan-manifest.json` + `analysis-batch-*.json`, runs `mergeDesignGra
    find "$INTER" -mindepth 1 -maxdepth 1 -not -name 'scan-manifest.json' -exec rm -rf {} +
    ```
 2. Report a summary: project name, counts by node type, edges by type, layers, tour steps, and the path `$UA_DIR/knowledge-graph.json`.
-3. Auto-launch the dashboard by invoking the `/understand-dashboard` skill.
+3. Auto-launch the dashboard by invoking the `/excavator-dashboard` skill.

@@ -3,7 +3,7 @@ name: excavator-diff
 description: Use when you need to analyze git diffs or pull requests to understand what changed, affected components, and risks
 ---
 
-# /understand-diff
+# /excavator-diff
 
 Analyze the current code changes against the knowledge graph in the project's data directory (`.ua/knowledge-graph.json`, or the legacy `.understand-anything/knowledge-graph.json` when that directory is present).
 
@@ -30,7 +30,7 @@ The knowledge graph JSON has this structure:
 
 ## Instructions
 
-1. **Resolve the data directory `$UA_DIR`.** Run `UA_DIR=$([ -d .understand-anything ] && echo .understand-anything || echo .ua)` — this is the legacy `.understand-anything/` when it already exists, otherwise the new `.ua/`. Check that `$UA_DIR/knowledge-graph.json` exists. If not, tell the user to run `/understand` first.
+1. **Resolve the data directory `$UA_DIR`.** Run `UA_DIR=$([ -d .understand-anything ] && echo .understand-anything || echo .ua)` — this is the legacy `.understand-anything/` when it already exists, otherwise the new `.ua/`. Check that `$UA_DIR/knowledge-graph.json` exists. If not, tell the user to run `/excavator` first.
 
 2. **Get the changed files list** (do NOT read the graph yet):
    - If on a branch with uncommitted changes: `git diff --name-only`
@@ -49,7 +49,7 @@ The knowledge graph JSON has this structure:
      ```
    - The `-- .` pathspec is required: commits that only touch a sibling monorepo project must not make this graph stale. A hash mismatch alone is not stale when the project diff is empty.
    - Ignore the selected data directory (`.ua/` or legacy `.understand-anything/`) in every command's output because it contains generated graph artifacts, not project source drift.
-   - If the committed diff or any working-tree command reports project files, warn before impact analysis that the graph may omit those changes. Suggest: Run `/understand` to refresh the graph.
+   - If the committed diff or any working-tree command reports project files, warn before impact analysis that the graph may omit those changes. Suggest: Run `/excavator` to refresh the graph.
    - Run the commit diff only when `GRAPH_COMMIT_RAW` resolves successfully. If the graph commit or Git metadata is missing, invalid, or unavailable, give a brief best-effort warning and continue instead of blocking.
 
 4. **Find nodes for changed files** — for each changed file path, use Grep to search the knowledge graph for:
@@ -82,4 +82,4 @@ The knowledge graph JSON has this structure:
      "affectedNodeIds": ["<node IDs from step 5, excluding changedNodeIds>"]
    }
    ```
-   After writing, tell the user they can run `/understand-anything:understand-dashboard` to see the diff overlay visually.
+   After writing, tell the user they can run `/excavator:understand-dashboard` to see the diff overlay visually.

@@ -1,0 +1,13 @@
+{
+  "name": "excavator",
+  "owner": {
+    "name": "57blocks"
+  },
+  "plugins": [
+    {
+      "name": "excavator",
+      "source": "./",
+      "description": "AI-first defensible code investigation engine — analyze, visualize, and explain any project"
+    }
+  ]
+}

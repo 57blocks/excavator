@@ -3,7 +3,7 @@ import type {
   GraphNode,
   GraphEdge,
   Layer,
-} from "@understand-anything/core";
+} from "@excavator/core";
 
 export interface DiffContext {
   projectName: string;

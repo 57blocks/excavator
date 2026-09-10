@@ -37,6 +37,10 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 export const REPO_ROOT = resolve(__dirname, '../..');
 export const REPORT_SCHEMA_VERSION = '1.0.0';
+// NOTE: this URL intentionally still points at the upstream Understand-Anything
+// repo — docs/benchmarks/*.schema.json is out of this change's scope (docs/ is
+// excluded from the rename), and its own "$id"/"const" self-reference still
+// uses the upstream URL, so this constant must match it exactly.
 export const REPORT_SCHEMA_URL =
   'https://raw.githubusercontent.com/Egonex-AI/Understand-Anything/main/docs/benchmarks/large-repo-report-1.0.0.schema.json';
 

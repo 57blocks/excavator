@@ -5,7 +5,7 @@
  * Writes a starter `.understandignore` into the project's data directory
  * (`.ua/`, or legacy `.understand-anything/` when that directory already
  * exists — see core's resolveUaDir) by delegating to
- * `generateStarterIgnoreFile` in `@understand-anything/core`. Invoked from
+ * `generateStarterIgnoreFile` in `@excavator/core`. Invoked from
  * SKILL.md Phase 0.5; replaces the inline `node -e "…"` block that previously
  * duplicated the generator logic.
  *
@@ -18,7 +18,7 @@
  *     `.understand-anything/`) if missing.
  *   - Emits a one-line stderr summary on success.
  *
- * Mirrors the @understand-anything/core resolution dance used by
+ * Mirrors the @excavator/core resolution dance used by
  * scan-project.mjs: workspace-linked package first, plugin-cache dist fallback.
  *
  * Plugin root resolution: prefer $PLUGIN_ROOT from the environment (set by
@@ -48,7 +48,7 @@ const require = createRequire(resolve(pluginRoot, 'package.json'));
 
 let core;
 try {
-  core = await import(pathToFileURL(require.resolve('@understand-anything/core')).href);
+  core = await import(pathToFileURL(require.resolve('@excavator/core')).href);
 } catch {
   core = await import(pathToFileURL(resolve(pluginRoot, 'packages/core/dist/index.js')).href);
 }

@@ -5,7 +5,7 @@
  * tarball is fully self-contained (no runtime dependencies).
  *
  * Run from anywhere inside the monorepo:
- *     pnpm --filter understand-anything-viewer build
+ *     pnpm --filter excavator-viewer build
  */
 import { execSync } from "node:child_process";
 import { cpSync, rmSync, existsSync, mkdirSync } from "node:fs";
@@ -18,8 +18,8 @@ const coreStaleness = join(here, "..", "core", "dist", "staleness.js");
 const viewerDist = join(here, "dist");
 const viewerServerDist = join(here, "bin", "dist");
 
-execSync("pnpm --filter @understand-anything/core build", { stdio: "inherit", cwd: here });
-execSync("pnpm --filter @understand-anything/dashboard build", { stdio: "inherit", cwd: here });
+execSync("pnpm --filter @excavator/core build", { stdio: "inherit", cwd: here });
+execSync("pnpm --filter @excavator/dashboard build", { stdio: "inherit", cwd: here });
 
 if (!existsSync(dashboardDist)) {
   console.error(`Error: dashboard build output not found at ${dashboardDist}`);

@@ -78,7 +78,7 @@ const pluginRoot = resolve(__dirname, '../..');
 const require = createRequire(resolve(pluginRoot, 'package.json'));
 
 // ---------------------------------------------------------------------------
-// Resolve @understand-anything/core
+// Resolve @excavator/core
 //
 // Two-step resolution: try the workspace-linked package first, fall back to
 // the installed plugin cache layout. pathToFileURL() is required on Windows
@@ -87,7 +87,7 @@ const require = createRequire(resolve(pluginRoot, 'package.json'));
 // ---------------------------------------------------------------------------
 let core;
 try {
-  core = await import(pathToFileURL(require.resolve('@understand-anything/core')).href);
+  core = await import(pathToFileURL(require.resolve('@excavator/core')).href);
 } catch {
   core = await import(pathToFileURL(resolve(pluginRoot, 'packages/core/dist/index.js')).href);
 }
@@ -98,7 +98,7 @@ const { createIgnoreFilter, resolveUaDir } = core;
 // Language detection
 //
 // Mirrors the canonical extension list from
-// understand-anything-plugin/packages/core/src/languages/configs/* and the
+// excavator-plugin/packages/core/src/languages/configs/* and the
 // project-scanner.md Step 3 table. Extensions are matched lowercase;
 // filenames (Dockerfile, Makefile, etc.) are matched case-sensitively because
 // the projects-in-the-wild use canonical capitalizations.
@@ -669,7 +669,7 @@ function readAndCountLines(absPath, posixPath, failures) {
   }
 }
 
-const CONTENT_DIGEST_DOMAIN = Buffer.from('understand-anything:scan-content:v1\0', 'utf-8');
+const CONTENT_DIGEST_DOMAIN = Buffer.from('excavator:scan-content:v1\0', 'utf-8');
 
 /**
  * Add one scanned regular file to the aggregate fingerprint. Entries arrive

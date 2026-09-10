@@ -4,7 +4,7 @@ description: Analyze a Karpathy-pattern LLM wiki knowledge base and generate an 
 argument-hint: "[wiki-directory]"
 ---
 
-# /understand-knowledge
+# /excavator-knowledge
 
 Analyzes a Karpathy-pattern LLM wiki — a three-layer knowledge base with raw sources, wiki markdown, and a schema file — and produces an interactive knowledge graph dashboard.
 
@@ -126,7 +126,7 @@ Dispatch `article-analyzer` subagents to extract implicit knowledge:
 
 7. Auto-trigger the dashboard:
    ```
-   /understand-dashboard <TARGET_DIR>
+   /excavator-dashboard <TARGET_DIR>
    ```
 
 ## Notes

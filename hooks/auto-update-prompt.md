@@ -12,7 +12,7 @@ Incrementally update the knowledge graph after a commit. Do not ask the user for
    UA_DIR="$PROJECT_ROOT/$([ -d "$PROJECT_ROOT/.understand-anything" ] && echo .understand-anything || echo .ua)"
    ```
 
-2. Require `$UA_DIR/knowledge-graph.json` and `$UA_DIR/meta.json`. If either is missing, report that `/understand` must create a baseline and **STOP**.
+2. Require `$UA_DIR/knowledge-graph.json` and `$UA_DIR/meta.json`. If either is missing, report that `/excavator` must create a baseline and **STOP**.
 3. Read `gitCommitHash` from meta as `$LAST_COMMIT_HASH`; get `$HEAD_COMMIT` with `git rev-parse HEAD`. If they match, report that the graph is current and **STOP**.
 4. Resolve `$PLUGIN_ROOT` from `$CLAUDE_PLUGIN_ROOT`, then `$HOME/.understand-anything-plugin`, validating that it contains `skills/excavator/prepare-incremental.mjs`. If it cannot be found, report the error and **STOP** without changing metadata.
 5. Ensure core is built, then run the bundled helper with parameterized arguments:
@@ -31,7 +31,7 @@ Incrementally update the knowledge graph after a commit. Do not ask the user for
    | `SKIP` | Run the finalizer below. It advances scan/fingerprint/meta for safe cosmetic or irrelevant changes and intentionally advances nothing for generated-only commits. Report zero tokens spent and **STOP**. |
    | `PARTIAL_UPDATE` | Continue with targeted analysis. |
    | `ARCHITECTURE_UPDATE` | Continue with targeted analysis, then rerun architecture and tour. |
-   | `FULL_UPDATE` | Immediately invoke `/understand --full`; do not patch the incremental baseline. |
+   | `FULL_UPDATE` | Immediately invoke `/excavator --full`; do not patch the incremental baseline. |
 
    SKIP finalizer:
 
@@ -51,7 +51,7 @@ Read `filesToReanalyze` from the plan. It never contains deleted, ignored, cosme
     --changed-files="$UA_DIR/intermediate/changed-files.json"
   ```
 
-  Dispatch file-analyzer for those batches only, using `agents/excavator-file-analyzer.md` and the batch prompt contract from the `/understand` skill. Include `previousSymbols` for each batch's files from `incremental-symbol-baseline.json`: old symbol IDs, names, types, paths, line ranges, and class containment. Existing symbols that still exist must survive significance filtering. Preserve each original batch index in its output filename. Retry a failed dispatch once; if it still fails, **STOP** without running the finalizer or advancing the baseline.
+  Dispatch file-analyzer for those batches only, using `agents/excavator-file-analyzer.md` and the batch prompt contract from the `/excavator` skill. Include `previousSymbols` for each batch's files from `incremental-symbol-baseline.json`: old symbol IDs, names, types, paths, line ranges, and class containment. Existing symbols that still exist must survive significance filtering. Preserve each original batch index in its output filename. Retry a failed dispatch once; if it still fails, **STOP** without running the finalizer or advancing the baseline.
 
 ## Phase 2 — Merge
 

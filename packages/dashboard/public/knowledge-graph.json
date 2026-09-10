@@ -1,7 +1,7 @@
 {
   "version": "1.0.0",
   "project": {
-    "name": "understand-anything",
+    "name": "excavator",
     "languages": [
       "typescript",
       "css"
@@ -813,7 +813,7 @@
         18,
         21
       ],
-      "summary": "Writes a KnowledgeGraph as JSON to the data directory's knowledge-graph.json (.ua/, or legacy .understand-anything/ when present).",
+      "summary": "Writes a KnowledgeGraph as JSON to the data directory's knowledge-graph.json (.excavator/).",
       "tags": [
         "persistence",
         "write",
@@ -848,7 +848,7 @@
         45,
         48
       ],
-      "summary": "Writes AnalysisMeta to the data directory's meta.json (.ua/, or legacy .understand-anything/ when present).",
+      "summary": "Writes AnalysisMeta to the data directory's meta.json (.excavator/).",
       "tags": [
         "persistence",
         "write",

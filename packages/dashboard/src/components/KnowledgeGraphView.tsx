@@ -25,7 +25,7 @@ import type {
   ForceLayoutPosition,
 } from "../utils/force-layout";
 import { useI18n } from "../contexts/I18nContext";
-import type { KnowledgeGraph } from "@understand-anything/core/types";
+import type { KnowledgeGraph } from "@excavator/core/types";
 
 const nodeTypes = {
   custom: CustomNode,
@@ -346,7 +346,7 @@ function KnowledgeGraphViewInner() {
   if (!graph) {
     return (
       <div className="h-full flex items-center justify-center text-text-muted text-sm">
-        No knowledge graph available. Run /understand-knowledge to generate one.
+        No knowledge graph available. Run /excavator-knowledge to generate one.
       </div>
     );
   }

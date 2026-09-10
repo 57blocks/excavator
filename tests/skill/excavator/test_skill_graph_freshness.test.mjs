@@ -28,7 +28,7 @@ const requiredFreshnessInstructions = [
   "Ignore the selected data directory (`.ua/` or legacy `.understand-anything/`)",
   "warn",
   "continue",
-  "Run `/understand`",
+  "Run `/excavator`",
 ];
 
 describe("graph-consuming skills", () => {

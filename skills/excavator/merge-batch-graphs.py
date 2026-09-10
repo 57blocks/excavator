@@ -5,7 +5,7 @@ merge-batch-graphs.py — Merge and normalize batch analysis results.
 Combines batch-*.json files from the intermediate directory into a single
 assembled graph with normalized IDs, complexity values, and cleaned edges.
 
-Called at the end of Phase 2 of /understand. Phase 3 (ASSEMBLE REVIEW)
+Called at the end of Phase 2 of /excavator. Phase 3 (ASSEMBLE REVIEW)
 then reviews the output for semantic issues the script cannot catch.
 
 Usage:

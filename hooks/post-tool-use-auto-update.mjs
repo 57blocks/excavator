@@ -39,7 +39,7 @@ async function main() {
 
   const pluginRoot = process.env.CLAUDE_PLUGIN_ROOT ?? '';
   const additionalContext =
-    `[understand-anything] Commit detected with auto-update enabled. ` +
+    `[excavator] Commit detected with auto-update enabled. ` +
     `You MUST read the file at ${pluginRoot}/hooks/auto-update-prompt.md ` +
     'and execute its instructions to incrementally update the knowledge graph. ' +
     'Do not ask the user for confirmation — just do it.';

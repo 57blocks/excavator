@@ -4,9 +4,9 @@ description: Launch the interactive web dashboard to visualize a codebase's know
 argument-hint: "[project-path]"
 ---
 
-# /understand-dashboard
+# /excavator-dashboard
 
-Start the Understand Anything dashboard to visualize the knowledge graph for the current project.
+Start the Excavator dashboard to visualize the knowledge graph for the current project.
 
 ## Instructions
 
@@ -38,13 +38,13 @@ Start the Understand Anything dashboard to visualize the knowledge graph for the
 
 2. Check that `$UA_DIR/knowledge-graph.json` exists in the project directory. If not, tell the user:
    ```
-   No knowledge graph found. Run /understand first to analyze this project.
+   No knowledge graph found. Run /excavator first to analyze this project.
    ```
 
    Use the Bash tool to check:
    ```bash
    if [ ! -f "$UA_DIR/knowledge-graph.json" ]; then
-     echo "No knowledge graph found. Run /understand first to analyze this project."
+     echo "No knowledge graph found. Run /excavator first to analyze this project."
      exit 1
    fi
    ```
@@ -55,10 +55,10 @@ Start the Understand Anything dashboard to visualize the knowledge graph for the
    - Two levels up from `~/.agents/skills/excavator-dashboard` real path (self-relative fallback)
    - Two levels up from `~/.copilot/skills/excavator-dashboard` real path (Copilot personal skills fallback)
    - Common clone-based install roots:
-     - `~/.codex/understand-anything/understand-anything-plugin/packages/dashboard/`
-     - `~/.opencode/understand-anything/understand-anything-plugin/packages/dashboard/`
-     - `~/.pi/understand-anything/understand-anything-plugin/packages/dashboard/`
-     - `~/understand-anything/understand-anything-plugin/packages/dashboard/`
+     - `~/.codex/excavator/excavator-plugin/packages/dashboard/`
+     - `~/.opencode/excavator/excavator-plugin/packages/dashboard/`
+     - `~/.pi/excavator/excavator-plugin/packages/dashboard/`
+     - `~/excavator/excavator-plugin/packages/dashboard/`
 
    Use the Bash tool to resolve:
    ```bash
@@ -73,26 +73,26 @@ Start the Understand Anything dashboard to visualize the knowledge graph for the
      "$HOME/.understand-anything-plugin" \
      "$SELF_RELATIVE" \
      "$COPILOT_SELF_RELATIVE" \
-     "$HOME/.codex/understand-anything/understand-anything-plugin" \
-     "$HOME/.opencode/understand-anything/understand-anything-plugin" \
-     "$HOME/.pi/understand-anything/understand-anything-plugin" \
-     "$HOME/understand-anything/understand-anything-plugin"; do
+     "$HOME/.codex/excavator/excavator-plugin" \
+     "$HOME/.opencode/excavator/excavator-plugin" \
+     "$HOME/.pi/excavator/excavator-plugin" \
+     "$HOME/excavator/excavator-plugin"; do
      if [ -n "$candidate" ] && [ -d "$candidate/packages/dashboard" ]; then
        PLUGIN_ROOT="$candidate"; break
      fi
    done
 
    if [ -z "$PLUGIN_ROOT" ]; then
-     echo "Error: Cannot find the understand-anything plugin root."
+     echo "Error: Cannot find the excavator plugin root."
      echo "Checked:"
      echo "  - ${CLAUDE_PLUGIN_ROOT:-<unset CLAUDE_PLUGIN_ROOT>}"
      echo "  - $HOME/.understand-anything-plugin"
      echo "  - ${SELF_RELATIVE:-<unresolved path derived from ~/.agents/skills/excavator-dashboard>}"
      echo "  - ${COPILOT_SELF_RELATIVE:-<unresolved path derived from ~/.copilot/skills/excavator-dashboard>}"
-     echo "  - $HOME/.codex/understand-anything/understand-anything-plugin"
-     echo "  - $HOME/.opencode/understand-anything/understand-anything-plugin"
-     echo "  - $HOME/.pi/understand-anything/understand-anything-plugin"
-     echo "  - $HOME/understand-anything/understand-anything-plugin"
+     echo "  - $HOME/.codex/excavator/excavator-plugin"
+     echo "  - $HOME/.opencode/excavator/excavator-plugin"
+     echo "  - $HOME/.pi/excavator/excavator-plugin"
+     echo "  - $HOME/excavator/excavator-plugin"
      echo "Make sure you followed the installation instructions for your platform."
      exit 1
    fi
@@ -105,7 +105,7 @@ Start the Understand Anything dashboard to visualize the knowledge graph for the
    : "${PLUGIN_ROOT:?Run step 3 first so PLUGIN_ROOT is set}"
    : "${PROJECT_DIR:?Run step 1 first so PROJECT_DIR is set}"
    PLUGIN_VERSION=$(node -p "require('$PLUGIN_ROOT/package.json').version")
-   VIEWER_URL="https://github.com/Egonex-AI/Understand-Anything/releases/download/v${PLUGIN_VERSION}/understand-anything-viewer.tgz"
+   VIEWER_URL="https://github.com/Jingqi-57blocks/excavator/releases/download/v${PLUGIN_VERSION}/excavator-viewer.tgz"
    npx --yes "$VIEWER_URL" "$PROJECT_DIR"
    ```
    Run this in the background. It prints the same `🔑  Dashboard URL` line as the dev server:
@@ -121,7 +121,7 @@ Start the Understand Anything dashboard to visualize the knowledge graph for the
    Then ensure the core package is built (the dashboard depends on it):
    ```bash
    : "${PLUGIN_ROOT:?Run step 3 first so PLUGIN_ROOT is set}"
-   cd "$PLUGIN_ROOT" && pnpm --filter @understand-anything/core build
+   cd "$PLUGIN_ROOT" && pnpm --filter @excavator/core build
    ```
 
 6. Fallback: start the Vite dev server pointing at the project's knowledge graph:

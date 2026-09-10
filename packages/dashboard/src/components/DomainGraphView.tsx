@@ -20,7 +20,7 @@ import { useDashboardStore } from "../store";
 import { useI18n } from "../contexts/I18nContext";
 import { mergeElkPositions, nodesToElkInput } from "../utils/layout";
 import { applyElkLayout } from "../utils/elk-layout";
-import type { KnowledgeGraph, GraphNode } from "@understand-anything/core/types";
+import type { KnowledgeGraph, GraphNode } from "@excavator/core/types";
 
 const nodeTypes = {
   "domain-cluster": DomainClusterNode,
@@ -225,7 +225,7 @@ function DomainGraphViewInner() {
   if (!domainGraph) {
     return (
       <div className="h-full flex items-center justify-center text-text-muted text-sm">
-        No domain graph available. Run /understand-domain to generate one.
+        No domain graph available. Run /excavator-domain to generate one.
       </div>
     );
   }

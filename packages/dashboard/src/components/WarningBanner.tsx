@@ -1,5 +1,5 @@
 import { useState, useCallback } from "react";
-import type { GraphIssue } from "@understand-anything/core/schema";
+import type { GraphIssue } from "@excavator/core/schema";
 
 interface WarningBannerProps {
   issues: GraphIssue[];
@@ -13,7 +13,7 @@ function buildCopyText(issues: GraphIssue[]): string {
   const lines = hasFatal
     ? [
         "Some of these issues look like dashboard rendering bugs.",
-        "Please file an issue at github.com/Egonex-AI/Understand-Anything/issues with the text below.",
+        "Please file an issue at github.com/Jingqi-57blocks/excavator/issues with the text below.",
         "",
       ]
     : [

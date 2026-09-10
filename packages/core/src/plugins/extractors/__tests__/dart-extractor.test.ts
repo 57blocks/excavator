@@ -14,7 +14,7 @@ beforeAll(async () => {
   Language = mod.Language;
   await Parser.init();
   const wasmPath = require.resolve(
-    "@understand-anything/tree-sitter-dart-wasm/tree-sitter-dart.wasm",
+    "@excavator/tree-sitter-dart-wasm/tree-sitter-dart.wasm",
   );
   dartLang = await Language.load(wasmPath);
 });

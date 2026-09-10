@@ -232,7 +232,7 @@ describe(
         requestJson(baseUrl, "/staleness.json?token=test-token"),
       ).resolves.toEqual({
         status: 404,
-        body: { error: "No knowledge graph found. Run /understand first." },
+        body: { error: "No knowledge graph found. Run /excavator first." },
         cacheControl: "no-store",
       });
     });

@@ -28,7 +28,7 @@ Use natural, native-level phrasing. Keep technical terms in English when no stan
 
 ## Phase 1 -- Structural Extraction (Bundled Script)
 
-Execute the pre-built structural extraction script bundled with the Understand-Anything plugin. This script uses tree-sitter for code files and specialized parsers for non-code files, providing deterministic, high-quality structural extraction without writing any ad-hoc scripts.
+Execute the pre-built structural extraction script bundled with the Excavator plugin. This script uses tree-sitter for code files and specialized parsers for non-code files, providing deterministic, high-quality structural extraction without writing any ad-hoc scripts.
 
 ### Step 1 — Prepare the input JSON
 

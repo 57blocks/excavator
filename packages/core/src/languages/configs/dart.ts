@@ -5,7 +5,7 @@ export const dartConfig = {
   displayName: "Dart",
   extensions: [".dart"],
   treeSitter: {
-    wasmPackage: "@understand-anything/tree-sitter-dart-wasm",
+    wasmPackage: "@excavator/tree-sitter-dart-wasm",
     wasmFile: "tree-sitter-dart.wasm",
   },
   concepts: [

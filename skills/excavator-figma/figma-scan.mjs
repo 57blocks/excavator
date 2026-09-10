@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { writeFileSync, mkdirSync, readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
-import { parseFileKey, FigmaApiSource, parseDocument, extractTokens, applyScreenThumbnails } from "@understand-anything/core/figma";
+import { parseFileKey, FigmaApiSource, parseDocument, extractTokens, applyScreenThumbnails } from "@excavator/core/figma";
 
 // Mirror core's resolveUaDir: the legacy `.understand-anything/` dir wins for
 // both reads and writes when it already exists; otherwise use `.ua/`.

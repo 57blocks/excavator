@@ -1,14 +1,14 @@
 #!/usr/bin/env node
 /**
- * understand-anything-viewer — serve a generated knowledge graph in the
+ * excavator-viewer — serve a generated knowledge graph in the
  * dashboard UI with nothing but Node.js. Read-only, no Claude Code, no LLM.
  *
  * Usage:
- *     understand-anything-viewer [project-dir] [--port <n>] [--no-open]
+ *     excavator-viewer [project-dir] [--port <n>] [--no-open]
  *
  * The project directory (default: cwd) must contain a data directory —
  * `.ua/` or legacy `.understand-anything/` — with a knowledge-graph.json
- * produced by /understand.
+ * produced by /excavator.
  *
  * Security model mirrors the dashboard dev server (vite.config.ts):
  *   - binds to 127.0.0.1 only
@@ -52,7 +52,7 @@ for (let i = 0; i < args.length; i++) {
   } else if (a === "--no-open") {
     openBrowser = false;
   } else if (a === "--help" || a === "-h") {
-    console.log("Usage: understand-anything-viewer [project-dir] [--port <n>] [--no-open]");
+    console.log("Usage: excavator-viewer [project-dir] [--port <n>] [--no-open]");
     process.exit(0);
   } else if (!a.startsWith("-")) {
     projectRoot = path.resolve(a);
@@ -65,7 +65,7 @@ for (let i = 0; i < args.length; i++) {
 if (!fs.existsSync(DIST_DIR)) {
   console.error(
     "Error: embedded dashboard build not found. This tarball was packed " +
-    "without running the build — run `pnpm --filter understand-anything-viewer build` first.",
+    "without running the build — run `pnpm --filter excavator-viewer build` first.",
   );
   process.exit(1);
 }
@@ -78,12 +78,12 @@ if (!graphDir) {
   console.error(
     `Error: no knowledge graph found under ${projectRoot}\n` +
     "Expected .ua/knowledge-graph.json (or legacy .understand-anything/). " +
-    "Generate one with /understand first, or pass the project directory as an argument.",
+    "Generate one with /excavator first, or pass the project directory as an argument.",
   );
   process.exit(1);
 }
 
-const ACCESS_TOKEN = process.env.UNDERSTAND_ACCESS_TOKEN || crypto.randomBytes(16).toString("hex");
+const ACCESS_TOKEN = process.env.EXCAVATOR_ACCESS_TOKEN || crypto.randomBytes(16).toString("hex");
 
 // ── Helpers (mirroring vite.config.ts) ────────────────────────────────────
 
@@ -224,7 +224,7 @@ function serveGraphJson(res, fileName) {
     return;
   }
   if (fileName === "knowledge-graph.json") {
-    sendJson(res, 404, { error: "No knowledge graph found. Run /understand first." });
+    sendJson(res, 404, { error: "No knowledge graph found. Run /excavator first." });
   } else {
     res.statusCode = 404;
     res.end();
@@ -252,7 +252,7 @@ async function readGraphFreshness() {
   if (!fs.existsSync(knowledgeGraph)) {
     return {
       statusCode: 404,
-      payload: { error: "No knowledge graph found. Run /understand first." },
+      payload: { error: "No knowledge graph found. Run /excavator first." },
     };
   }
 

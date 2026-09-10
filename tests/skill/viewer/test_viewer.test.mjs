@@ -94,7 +94,7 @@ function startViewer(projectRoot) {
   });
 }
 
-describe.skipIf(!existsSync(VIEWER_DIST))("understand-anything-viewer", () => {
+describe.skipIf(!existsSync(VIEWER_DIST))("excavator-viewer", () => {
   let root;
   let viewer;
 

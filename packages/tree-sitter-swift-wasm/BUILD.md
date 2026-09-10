@@ -19,7 +19,7 @@ cd /tmp/tree-sitter-swift
 git checkout d42e9bb24646c4dbf1f5ec476a35b96d817da448
 npx -y tree-sitter-cli@0.26.9 build --wasm --output tree-sitter-swift.wasm .
 cp tree-sitter-swift.wasm \
-   /path/to/understand-anything-plugin/packages/tree-sitter-swift-wasm/
+   /path/to/excavator-plugin/packages/tree-sitter-swift-wasm/
 ```
 
 Verify the resulting wasm:
@@ -45,4 +45,4 @@ node -e "const b=require('fs').readFileSync('tree-sitter-swift.wasm'); console.l
 
 If `tree-sitter-swift` publishes a refreshed npm package with a compatible
 `tree-sitter-swift.wasm`, this workspace package can be deleted and
-`@understand-anything/core` can depend directly on the upstream grammar package.
+`@excavator/core` can depend directly on the upstream grammar package.

@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useState } from "react";
-import type { GraphIssue } from "@understand-anything/core/schema";
+import type { GraphIssue } from "@excavator/core/schema";
 import { useDashboardStore } from "../store";
 import { useI18n } from "../contexts/I18nContext";
 import GraphView from "./GraphView";
