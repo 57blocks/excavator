@@ -25,6 +25,12 @@
  *   5. Every `${CLAUDE_PLUGIN_ROOT}/...` path in hooks/hooks.json resolves.
  *   6. All packages/dashboard/src/locales/*.ts files export the same set
  *      of (possibly nested) keys.
+ *   7. `.claude-plugin/plugin.json` and `marketplace.json` have a shape the
+ *      Claude Code plugin loader accepts: `agents` absent or an ARRAY of
+ *      existing files, `skills`/`hooks` paths that resolve, and every
+ *      `plugins[].source` present. An invalid manifest makes `--plugin-dir`
+ *      load NOTHING, silently, with no error in `-p` mode — the whole plugin
+ *      disappears and every slash command becomes "Unknown command".
  *
  * Usage: node scripts/check-refs.mjs
  * Exit code: 0 if every check passes; 1 and one line per violation
@@ -374,6 +380,110 @@ async function checkLocaleParity() {
   return checked;
 }
 
+// ── Check 7: plugin manifest shape ──────────────────────────────────────
+
+/**
+ * The loader is silent about a manifest it cannot parse: `--plugin-dir` on a
+ * plugin whose `plugin.json` has `"agents": "./agents"` (a string where the
+ * schema wants an array) loads no skills, no agents and no hooks, prints
+ * nothing, and every `/excavator:*` command comes back as "Unknown command".
+ * That cost a whole acceptance run to diagnose, so the shape is a gate now —
+ * checkable without the `claude` binary.
+ */
+function checkPluginManifests() {
+  let checked = 0;
+  const pluginJsonPath = join(REPO_ROOT, '.claude-plugin', 'plugin.json');
+  const marketplacePath = join(REPO_ROOT, '.claude-plugin', 'marketplace.json');
+
+  const readJson = (path, label) => {
+    if (!existsSync(path)) {
+      fail(7, `${label} does not exist at ${relative(REPO_ROOT, path)}`);
+      return null;
+    }
+    try {
+      return JSON.parse(readText(path));
+    } catch (err) {
+      fail(7, `${label} is not valid JSON: ${err.message}`);
+      return null;
+    }
+  };
+
+  const plugin = readJson(pluginJsonPath, 'plugin.json');
+  if (plugin) {
+    checked++;
+    if (typeof plugin.name !== 'string' || plugin.name.length === 0) {
+      fail(7, 'plugin.json has no name');
+    }
+    // `agents` must be absent (auto-discovery from agents/) or an array of
+    // files. A string here is the exact shape the loader rejects.
+    if (Object.hasOwn(plugin, 'agents')) {
+      checked++;
+      if (!Array.isArray(plugin.agents)) {
+        fail(
+          7,
+          `plugin.json "agents" must be an array of file paths or be absent (auto-discovery), got ${typeof plugin.agents}: ` +
+          `${JSON.stringify(plugin.agents)} — a string here makes --plugin-dir load nothing, silently`,
+        );
+      } else {
+        for (const entry of plugin.agents) {
+          checked++;
+          if (typeof entry !== 'string') {
+            fail(7, `plugin.json "agents" entry is not a string: ${JSON.stringify(entry)}`);
+            continue;
+          }
+          const abs = resolve(REPO_ROOT, entry.replace(/^\.\//, ''));
+          if (!existsSync(abs) || !statSync(abs).isFile()) {
+            fail(7, `plugin.json "agents" entry "${entry}" does not resolve to a file`);
+          }
+        }
+      }
+    }
+    for (const [key, kind] of [['skills', 'directory'], ['hooks', 'file']]) {
+      if (!Object.hasOwn(plugin, key)) continue;
+      checked++;
+      const value = plugin[key];
+      if (typeof value !== 'string') {
+        fail(7, `plugin.json "${key}" must be a path string, got ${typeof value}`);
+        continue;
+      }
+      const abs = resolve(REPO_ROOT, value.replace(/^\.\//, ''));
+      if (!existsSync(abs)) {
+        fail(7, `plugin.json "${key}" path "${value}" does not exist`);
+      } else if (kind === 'directory' && !statSync(abs).isDirectory()) {
+        fail(7, `plugin.json "${key}" path "${value}" is not a directory`);
+      } else if (kind === 'file' && !statSync(abs).isFile()) {
+        fail(7, `plugin.json "${key}" path "${value}" is not a file`);
+      }
+    }
+  }
+
+  const marketplace = readJson(marketplacePath, 'marketplace.json');
+  if (marketplace) {
+    checked++;
+    if (typeof marketplace.description !== 'string' || marketplace.description.trim().length === 0) {
+      fail(7, 'marketplace.json has no description (the validator warns, and users see nothing)');
+    }
+    if (!Array.isArray(marketplace.plugins) || marketplace.plugins.length === 0) {
+      fail(7, 'marketplace.json has no plugins array');
+    } else {
+      for (const entry of marketplace.plugins) {
+        checked++;
+        const source = entry?.source;
+        if (typeof source !== 'string' || source.length === 0) {
+          fail(7, `marketplace.json plugin "${entry?.name ?? '<unnamed>'}" has no source`);
+          continue;
+        }
+        const abs = resolve(REPO_ROOT, source.replace(/^\.\//, ''));
+        if (!existsSync(abs)) {
+          fail(7, `marketplace.json plugin source "${source}" does not exist`);
+        }
+      }
+    }
+  }
+
+  return checked;
+}
+
 // ── Run ────────────────────────────────────────────────────────────────
 
 async function main() {
@@ -383,6 +493,7 @@ async function main() {
   const scriptPathsChecked = checkScriptPaths();
   const hooksJsonChecked = checkHooksJsonPaths();
   const localeKeysChecked = await checkLocaleParity();
+  const manifestEntriesChecked = checkPluginManifests();
 
   console.log(
     [
@@ -392,6 +503,7 @@ async function main() {
       `  script path references checked: ${scriptPathsChecked}`,
       `  hooks.json plugin-root paths checked: ${hooksJsonChecked}`,
       `  locale key entries checked: ${localeKeysChecked}`,
+      `  plugin manifest entries checked: ${manifestEntriesChecked}`,
     ].join('\n'),
   );
 

@@ -77,6 +77,12 @@
 - [x] 12.2 `project.model` 取宿主模型名（取不到 `unknown`）；`pipelineVersion` 常量；验证 SAVE 阶段写入
 - [x] 12.3 `docs/v2-plan.md` §3 收尾 + follow-ups（抽取器修复分支、owner 进 id、cosmetic SKIP 修复、C# 解析器本体）；验证三件套绿
 
+## 14. 插件清单（②b commit 13，13.1 的前置阻塞）
+
+- [x] 14.1 `.claude-plugin/plugin.json` 去掉 `"agents": "./agents"`（字符串不合 schema，`--plugin-dir` 会**静默**一个不加载：九个 skill 全变 Unknown command）；`marketplace.json` 补 `description`；验证 `claude plugin validate` 通过且 headless 探针列出九个 `excavator:*`
+- [x] 14.2 `tests/refs/plugin-manifest.test.mjs`：结构性规则（`agents` 缺省或为存在文件的数组、`skills`/`hooks` 路径可解析、marketplace 有 description 与可解析 source）+ 有 `claude` 时跑真验证器（没有则**打印原因**不静默跳过）；先验装置：`"agents": "./agents"` 的副本必须红
+- [x] 14.3 `scripts/check-refs.mjs` 增 check 7 同一规则（无需 `claude` 即可把门守住）；验证 check-refs 绿
+
 ## 13. ②b 真实验收（不提交产物；结果贴 PR）
 
 - [ ] 13.1 wcp 在 v2 上全量一次（design「②b 执行注」的 headless 配方；旧 `.excavator/` 先移作 `.excavator-ua-baseline/`）：b1 自报证据核对比例、b6 墙钟与 `total_cost_usd`、与 UA 基线的节点/边/gaps 计数对比

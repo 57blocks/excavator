@@ -1,5 +1,6 @@
 {
   "name": "excavator",
+  "description": "Excavator: AI-first defensible code investigation — compile a workspace into a sealed knowledge epoch and serve it to an agent",
   "owner": {
     "name": "57blocks"
   },
