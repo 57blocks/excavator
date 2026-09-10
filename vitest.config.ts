@@ -1,14 +1,25 @@
 import { defineConfig } from 'vitest/config';
 
-// The plugin package no longer ships any test files — they were relocated
-// to the repo-root `tests/` tree so they no longer ride along with the
-// plugin marketplace bundle. This config exists solely to shadow the
-// repo-root vitest.config.ts (which would otherwise be inherited via
-// upward config discovery from this cwd) and explicitly resolve no tests.
+// Single-config aggregation for the whole monorepo. Picks up:
+//   - tests/**                                          — relocated skill tests (out-of-plugin so they
+//                                                         do not ship via the marketplace bundle)
+//   - src/**                 — skill TS source tests
+//   - packages/dashboard/**  — dashboard utils tests
 //
-// Run skill tests from the repo root with `pnpm test` instead.
+// The `@understand-anything/core` package owns its own vitest.config.ts and is
+// invoked separately via `pnpm --filter @understand-anything/core test`; its
+// files are excluded here to avoid double-counting.
 export default defineConfig({
   test: {
-    include: [],
+    include: [
+      'tests/**/*.test.{js,mjs,ts}',
+      'src/**/*.test.{js,mjs,ts}',
+      'packages/dashboard/**/*.test.{js,mjs,ts,tsx}',
+    ],
+    exclude: [
+      '**/node_modules/**',
+      '**/dist/**',
+      'packages/core/**',
+    ],
   },
 });
