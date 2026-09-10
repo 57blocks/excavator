@@ -47,5 +47,7 @@
 
 ## 8. 冒烟（不提交产物；结果贴 PR）
 
-- [ ] 8.1 wcp：拷基线到 `<excavator-eval>/tools/understand-anything/wcp-quality/baseline-ua/` → `mv .ua .excavator`、`mv .understandignore .excavatorignore`、删 `.trash-*` → dashboard 打开 → 增量路径识别；验证 dashboard 加载节点数 7,611、增量只报预期变更
-- [ ] 8.2 wcp 与 cebreo 确定性阶段（scan → import-map → batches → extract-structure）各跑一次；验证 `find <target> -name .ua` 为空、`.excavator/intermediate/` 存在，cebreo 每语言文件数/解析数/零符号数/跳过原因计数表贴 PR
+- [x] 8.1 wcp：拷基线到 `<excavator-eval>/tools/understand-anything/wcp-quality/baseline-ua/` → `mv .ua .excavator`、`mv .understandignore .excavatorignore`、删 `.trash-*` → dashboard 打开 → 增量路径识别；验证 dashboard 加载节点数 7,611、增量只报预期变更
+- [x] 8.2 wcp 与 cebreo 确定性阶段（scan → import-map → batches → extract-structure）各跑一次；验证 `find <target> -name .ua` 为空、`.excavator/intermediate/` 存在，cebreo 每语言文件数/解析数/零符号数/跳过原因计数表贴 PR
+
+完成记录：8.1/8.2 由 coder 执行、Opus acceptor 复测（PR #400 评论）；8.1 的增量路径在 wcp 非 git 父目录上 fatal，已作为真缺陷移交第 ② 步（freshness 9.3）。
