@@ -1,0 +1,28 @@
+schema: spec-driven
+
+# Project context (optional)
+# This is shown to AI when creating artifacts.
+context: |
+  Excavator v2 rebuilds the Excavator investigation plugin on top of Understand-Anything (pinned upstream commit 5feed1f2, MIT; see NOTICE). Facts are written by deterministic scripts (tree-sitter structure, import map, ast-grep rule packs); prose is written by the host agent. Every statement carries evidence or is marked inferred; every input lands in a visible coverage bucket. Zero fabrication is a hard gate; coverage is a soft metric. Data directory is `.excavator/` (no legacy compatibility). Test corpora: wcp and cebreo only. Plan of record: docs/v2-plan.md. Steps 1-4 of the plan are each one OpenSpec change and one PR against `excavator-v2`.
+
+# Per-artifact rules (optional)
+# Add custom rules for specific artifacts.
+# Example:
+#   rules:
+#     proposal:
+#       - Keep proposals under 500 words
+#       - Always include a "Non-goals" section
+#     tasks:
+#       - Break tasks into chunks of max 2 hours
+
+# Per-operation guidance (optional)
+# Add advisory guidance for how apply and archive work should be conducted.
+# This is separate from artifact rules above.
+# Example:
+#   operations:
+#     apply:
+#       guidance:
+#         - Keep test summaries concise
+#     archive:
+#       guidance:
+#         - Summarize the archive outcome before finishing

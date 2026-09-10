@@ -2,6 +2,7 @@ node_modules
 dist
 .understand-anything
 .ua
+.excavator
 *.tsbuildinfo
 .DS_Store
 .env
