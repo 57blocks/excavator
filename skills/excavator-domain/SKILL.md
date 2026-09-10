@@ -191,6 +191,29 @@ unchanged.
 4. Save to `$DATA_DIR/domain-graph.json`
 5. Clean up `$DATA_DIR/intermediate/domain-analysis.json` and `$DATA_DIR/intermediate/domain-context.json`
 
+### Phase 5.1: Publish Annotations (added)
+
+Phase 4.5 anchored the steps in `$DATA_DIR/intermediate/domain-analysis.json`,
+and Phase 5 step 5 deletes that file. Carry the anchors into the saved graph
+first:
+
+```bash
+node "$PLUGIN_ROOT/skills/excavator/publish-annotations.mjs" "$PROJECT_ROOT" \
+  --domain-annotated "$DATA_DIR/intermediate/domain-analysis.json"
+```
+
+It merges **only** the supplement fields — a step's `nodeIds`,
+`unresolvedNodeIds`, `evidence`, `provenance`, plus the root `gaps` — into
+`$DATA_DIR/domain-graph.json`, matching nodes by id. It adds no node and no
+edge, and it cannot touch a `summary`, a `name` or a `weight`.
+
+If Phase 5 step 5 already ran, `domain-analysis.json` is gone: the script
+prints a note and exits 0, and the saved domain graph simply carries no
+anchors. Run it between Phase 5 step 4 and step 5.
+
+**Supplement, so not fatal.** Report a non-zero exit as a Phase 5.1 warning
+and continue.
+
 ### Phase 6: Launch Dashboard
 
 1. Auto-trigger `/excavator-dashboard` to visualize the domain graph

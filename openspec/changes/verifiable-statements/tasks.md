@@ -83,6 +83,12 @@
 - [x] 14.2 `tests/refs/plugin-manifest.test.mjs`：结构性规则（`agents` 缺省或为存在文件的数组、`skills`/`hooks` 路径可解析、marketplace 有 description 与可解析 source）+ 有 `claude` 时跑真验证器（没有则**打印原因**不静默跳过）；先验装置：`"agents": "./agents"` 的副本必须红
 - [x] 14.3 `scripts/check-refs.mjs` 增 check 7 同一规则（无需 `claude` 即可把门守住）；验证 check-refs 绿
 
+## 15. 发布补充字段（②b commit 14，follow-up 1）
+
+- [x] 15.1 `skills/excavator/publish-annotations.mjs`：按 node id / 边 `(source,target,type,direction)` 只把补充字段并入 `knowledge-graph.json` 与 `domain-graph.json`；白名单之外的键（summary/name/weight/tags/id）结构上不可能被写；不加不删节点与边（补充边计 `edge-not-published`）；不发布 `project.gitCommitHash`；evidence 非超集时拒写并计数；报告落 `.excavator/excavator/`（在 `intermediate/` 之外，SAVE 清理带不走）
+- [x] 15.2 SKILL.md 新增 SAVE 子步 7.1（在既有第 1 步之后、第 4 步清理之前插入，既有步骤零删改）；`excavator-domain` SKILL.md 新增 Phase 5.1；验证 check-refs 绿
+- [x] 15.3 测试：各字段类到位、UA 内容逐字段不变、白名单结构性断言、幂等、缺输入为 no-op 且打印说明
+
 ## 13. ②b 真实验收（不提交产物；结果贴 PR）
 
 - [ ] 13.1 wcp 在 v2 上全量一次（design「②b 执行注」的 headless 配方；旧 `.excavator/` 先移作 `.excavator-ua-baseline/`）：b1 自报证据核对比例、b6 墙钟与 `total_cost_usd`、与 UA 基线的节点/边/gaps 计数对比

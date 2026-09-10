@@ -1041,6 +1041,36 @@ Report to the user: `[Phase 7/7] Saving knowledge graph...`
    }
    ```
 
+**Step 7.1 — PUBLISH ANNOTATIONS (added; run before step 4).**
+
+Phases 2.3 / 2.5 / 6b wrote their findings into
+`$DATA_DIR/intermediate/annotated-graph.json` and `validated-graph.json`. The
+file consumers read is the one step 1 just wrote, and step 4 below moves
+`intermediate/` into `.trash-*` — so without this step `coverage`, `gaps`, edge
+`provenance`/`evidence`, node `verification`/`owner`/`anchorSource` and the
+digests exist for a few minutes and are then thrown away.
+
+```bash
+node "<SKILL_DIR>/publish-annotations.mjs" "$PROJECT_ROOT"
+```
+
+It carries **only** the supplement fields across, matching nodes by id and
+edges by `(source, target, type, direction)`, and copies `audit.json`,
+`validation.json` and `contradicted-summaries.json` into
+`$DATA_DIR/excavator/`, which is outside `intermediate/` and so survives step
+4. It never adds or removes a node or an edge, never writes a field outside its
+allowlist (a `summary`, `name`, `id`, `weight` or `tags` cannot be touched),
+and never publishes `project.gitCommitHash` — the published value is the
+pipeline's own.
+
+**Order matters:** this must run after step 1 (the graph exists to publish
+into) and before step 4 (its inputs still exist). Skip it if
+`$DATA_DIR/intermediate/annotated-graph.json` and `validated-graph.json` are
+both absent — it prints a note and exits 0 in that case anyway.
+
+**Supplement, so not fatal.** If it exits non-zero, report its stderr as a
+Phase 7.1 warning and continue with the cleanup; the graph is already saved.
+
 4. Clean up intermediate files, **preserving `scan-result.json`** so future incremental runs can skip Phase 1 SCAN (see issue #293). We `mv` scratch dirs into a timestamped `.trash-*` instead of `rm -rf`ing them directly — this avoids tripping destructive-action gates on hardened hosts (e.g. freshness-window checks) that flag deleting directories created moments earlier (see issue #301). The delayed-purge step in Phase 0 reclaims the space once the trash is older than 7 days.
    ```bash
    # Preserve scan-result.json — Phase 1's deterministic file inventory.
