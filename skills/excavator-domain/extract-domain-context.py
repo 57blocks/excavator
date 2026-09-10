@@ -9,8 +9,7 @@ Usage:
     python extract-domain-context.py <project-root>
 
 Output:
-    <ua-dir>/intermediate/domain-context.json, where <ua-dir> is `.ua/` (or
-    legacy `.understand-anything/` when that directory already exists).
+    .excavator/intermediate/domain-context.json
 """
 
 import json
@@ -21,10 +20,9 @@ from pathlib import Path
 from typing import Any
 
 
-def resolve_ua_dir(root: Path) -> Path:
-    """Mirror core resolveUaDir: legacy .understand-anything/ wins if present."""
-    legacy = root / ".understand-anything"
-    return legacy if legacy.is_dir() else root / ".ua"
+def resolve_data_dir(root: Path) -> Path:
+    """The project's data directory -- single source of truth: `.excavator/`."""
+    return root / ".excavator"
 
 # ── Configuration ──────────────────────────────────────────────────────────
 
@@ -59,7 +57,7 @@ SKIP_DIRS = {
     "node_modules", ".git", ".svn", ".hg", "__pycache__", ".tox",
     "venv", ".venv", "env", ".env", "dist", "build", "out", ".next",
     ".nuxt", "target", "vendor", ".idea", ".vscode", "coverage",
-    ".understand-anything", ".ua", ".pytest_cache", ".mypy_cache",
+    ".excavator", ".pytest_cache", ".mypy_cache",
     "Pods", "DerivedData", ".gradle", "bin", "obj",
 }
 
@@ -392,7 +390,7 @@ def main() -> None:
 
     try:
         # Ensure output directory exists
-        output_dir = resolve_ua_dir(project_root) / "intermediate"
+        output_dir = resolve_data_dir(project_root) / "intermediate"
         output_dir.mkdir(parents=True, exist_ok=True)
         output_path = output_dir / "domain-context.json"
 

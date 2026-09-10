@@ -18,9 +18,8 @@ import {
 const ACCESS_TOKEN = process.env.EXCAVATOR_ACCESS_TOKEN || crypto.randomBytes(16).toString("hex");
 const MAX_SOURCE_FILE_BYTES = 1024 * 1024;
 
-// Legacy directory first — projects analyzed before the `.ua` rename keep
-// their existing `.understand-anything/` data.
-const UA_DIR_CANDIDATES = [".understand-anything", ".ua"];
+// The project's data directory — single source of truth: `.excavator/`.
+const EXCAVATOR_DIR = ".excavator";
 
 function graphFileCandidates(fileName: string): string[] {
   const graphDir = process.env.GRAPH_DIR;
@@ -29,9 +28,7 @@ function graphFileCandidates(fileName: string): string[] {
     process.cwd(),
     path.resolve(process.cwd(), "../../.."),
   ];
-  return roots.flatMap((root) =>
-    UA_DIR_CANDIDATES.map((dir) => path.resolve(root, dir, fileName)),
-  );
+  return roots.map((root) => path.resolve(root, EXCAVATOR_DIR, fileName));
 }
 
 function findGraphFile(fileName: string): string | null {

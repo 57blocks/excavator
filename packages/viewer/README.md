@@ -10,7 +10,7 @@ Run the tarball attached to each GitHub release directly (no npm registry involv
 npx https://github.com/Jingqi-57blocks/excavator/releases/latest/download/excavator-viewer.tgz /path/to/analyzed/project
 ```
 
-The project directory (default: current directory) must contain a data directory — `.ua/` or legacy `.understand-anything/` — with a `knowledge-graph.json`. The terminal prints a tokenized URL (`http://127.0.0.1:<port>/?token=…`) and opens it in your browser.
+The project directory (default: current directory) must contain the data directory — `.excavator/` — with a `knowledge-graph.json`. The terminal prints a tokenized URL (`http://127.0.0.1:<port>/?token=…`) and opens it in your browser.
 
 Options: `--port <n>` (default 5173, auto-increments if taken), `--no-open`.
 

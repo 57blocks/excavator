@@ -6,7 +6,7 @@
  *   node prepare-incremental.mjs <projectRoot> <baseCommit>
  *     [--exclude <comma-separated-patterns>]
  *
- * Writes under <UA_DIR>/intermediate:
+ * Writes under .excavator/intermediate:
  *   - incremental-plan.json
  *   - changed-files.json
  *   - fingerprint-patch.json
@@ -56,12 +56,12 @@ const {
   compareFingerprints,
   classifyUpdate,
   createIgnoreFilter,
-  resolveUaDir,
+  resolveDataDir,
 } = core;
 
 const SCAN_SCRIPT = join(__dirname, 'scan-project.mjs');
 const IMPORT_SCRIPT = join(__dirname, 'extract-import-map.mjs');
-const GENERATED_ROOTS = new Set(['.ua', '.understand-anything']);
+const GENERATED_ROOTS = new Set(['.excavator']);
 const WHOLE_FILE_TYPES = new Set([
   'file',
   'config',
@@ -219,7 +219,7 @@ function relevantWorktreeChanges(projectRoot, excludePatterns) {
     const name = path.split('/').at(-1);
     // These control which files the live scanner can see, so a dirty version
     // is relevant even though the control file itself is not analyzed.
-    if (name === '.gitignore' || name === '.understandignore') return true;
+    if (name === '.gitignore' || name === '.excavatorignore') return true;
     return !ignoreFilter.isIgnored(path);
   });
 }
@@ -476,8 +476,8 @@ function parseArgs(argv) {
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   const projectRoot = realpathSync(args.projectRoot);
-  const uaDir = resolveUaDir(projectRoot);
-  const intermediateDir = join(uaDir, 'intermediate');
+  const dataDir = resolveDataDir(projectRoot);
+  const intermediateDir = join(dataDir, 'intermediate');
   mkdirSync(intermediateDir, { recursive: true });
 
   const baseCommit = resolveCommit(projectRoot, args.baseCommit);
@@ -502,9 +502,9 @@ async function main() {
 
   const scanPath = join(intermediateDir, 'scan-result.json');
   const oldScan = readJson(scanPath, {});
-  const graph = readJson(join(uaDir, 'knowledge-graph.json'), {});
+  const graph = readJson(join(dataDir, 'knowledge-graph.json'), {});
   const oldFingerprints = normalizeFingerprintStore(
-    readJson(join(uaDir, 'fingerprints.json'), null),
+    readJson(join(dataDir, 'fingerprints.json'), null),
     baseCommit,
   );
   const baselineSnapshotPath = join(intermediateDir, 'incremental-baseline.json');

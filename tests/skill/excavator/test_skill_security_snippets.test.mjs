@@ -56,8 +56,8 @@ describe('skill command hardening', () => {
     expect(content).not.toMatch(/\bcd <(?:dashboard-dir|plugin-root)>/);
     expect(content).not.toMatch(/GRAPH_DIR=<project-dir>/);
     expect(content).toMatch(/PROJECT_DIR=\$\(pwd -P\)/);
-    expect(content).toMatch(/UA_DIR="\$PROJECT_DIR\/\.understand-anything"/);
-    expect(content).toMatch(/\[ ! -f "\$UA_DIR\/knowledge-graph\.json" \]/);
+    expect(content).toMatch(/DATA_DIR="\$PROJECT_DIR\/\.excavator"/);
+    expect(content).toMatch(/\[ ! -f "\$DATA_DIR\/knowledge-graph\.json" \]/);
     expect(content).toMatch(/DASHBOARD_DIR="\$PLUGIN_ROOT\/packages\/dashboard"/);
     expect(content).toMatch(/: "\$\{PLUGIN_ROOT:\?Run step 3 first so PLUGIN_ROOT is set\}"/);
     expect(content).toMatch(/: "\$\{PROJECT_DIR:\?Run step 1 first so PROJECT_DIR is set\}"/);

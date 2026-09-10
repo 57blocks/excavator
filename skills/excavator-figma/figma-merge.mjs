@@ -1,14 +1,13 @@
 #!/usr/bin/env node
-import { readFileSync, writeFileSync, readdirSync, existsSync } from "node:fs";
+import { readFileSync, writeFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { mergeDesignGraph } from "@excavator/core/figma";
 
-// Mirror core's resolveUaDir: the legacy `.understand-anything/` dir wins for
-// both reads and writes when it already exists; otherwise use `.ua/`.
-const uaDir = (root) => { const legacy = join(root, ".understand-anything"); return existsSync(legacy) ? legacy : join(root, ".ua"); };
+// The project's data directory — single source of truth: `.excavator/`.
+const dataDir = (root) => join(root, ".excavator");
 
 const [, , projectRoot] = process.argv;
-const interDir = join(uaDir(projectRoot), "intermediate");
+const interDir = join(dataDir(projectRoot), "intermediate");
 const manifest = JSON.parse(readFileSync(join(interDir, "scan-manifest.json"), "utf8"));
 const analyses = readdirSync(interDir)
   .filter((f) => /^analysis-batch-.*\.json$/.test(f))
@@ -24,7 +23,7 @@ if (!result.success || !result.data) {
   process.exit(1);
 }
 
-const outDir = uaDir(projectRoot);
+const outDir = dataDir(projectRoot);
 writeFileSync(join(outDir, "knowledge-graph.json"), JSON.stringify(result.data, null, 2));
 writeFileSync(join(outDir, "meta.json"), JSON.stringify({
   lastAnalyzedAt: new Date().toISOString(),

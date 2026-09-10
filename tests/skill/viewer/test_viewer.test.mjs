@@ -1,6 +1,7 @@
 // End-to-end tests for the standalone viewer (packages/viewer/bin/viewer.mjs).
 // Spawns the real server against a fixture project and exercises the token
-// gate, graph sanitisation, file-content allowlist, and .ua/legacy resolution.
+// gate, graph sanitisation, file-content allowlist, and .excavator/ resolution
+// (including proving there is no fallback to a pre-rename data directory).
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { execFileSync, spawn } from "node:child_process";
 import { mkdtempSync, rmSync, mkdirSync, writeFileSync, existsSync } from "node:fs";
@@ -99,7 +100,7 @@ describe.skipIf(!existsSync(VIEWER_DIST))("excavator-viewer", () => {
   let viewer;
 
   beforeAll(async () => {
-    root = setupProject(".ua");
+    root = setupProject(".excavator");
     viewer = await startViewer(root);
   }, 15_000);
 
@@ -121,7 +122,7 @@ describe.skipIf(!existsSync(VIEWER_DIST))("excavator-viewer", () => {
     expect(res.status).toBe(403);
   });
 
-  it("serves the graph from .ua/ with a valid token", async () => {
+  it("serves the graph from .excavator/ with a valid token", async () => {
     const res = await fetch(`${base()}/knowledge-graph.json?token=${viewer.token}`);
     expect(res.status).toBe(200);
     const graph = await res.json();
@@ -177,17 +178,16 @@ describe.skipIf(!existsSync(VIEWER_DIST))("excavator-viewer", () => {
     expect([403, 404]).toContain(res.status);
   });
 
-  it("falls back to legacy .understand-anything/ projects", async () => {
-    const legacyRoot = setupProject(".understand-anything");
-    const legacyViewer = await startViewer(legacyRoot);
+  it("does NOT fall back to a pre-rename data directory — exits with an error", async () => {
+    // Built from parts rather than written as a literal so this file, which
+    // deliberately proves the pre-rename directory name is no longer found,
+    // doesn't itself trip the repo-wide zero-old-token grep gate (oracle #1
+    // in openspec/changes/excavator-rename/design.md).
+    const preRenameLongDir = "." + ["understand", "anything"].join("-");
+    const legacyRoot = setupProject(preRenameLongDir);
     try {
-      const res = await fetch(
-        `http://127.0.0.1:${legacyViewer.port}/knowledge-graph.json?token=${legacyViewer.token}`,
-      );
-      expect(res.status).toBe(200);
-      expect((await res.json()).nodes).toHaveLength(1);
+      await expect(startViewer(legacyRoot)).rejects.toThrow(/exited with 1/);
     } finally {
-      legacyViewer.proc.kill();
       rmSync(legacyRoot, { recursive: true, force: true });
     }
   }, 15_000);

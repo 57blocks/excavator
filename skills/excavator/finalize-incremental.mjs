@@ -35,7 +35,7 @@ try {
   core = await import(pathToFileURL(resolve(pluginRoot, 'packages/core/dist/index.js')).href);
 }
 
-const { resolveUaDir } = core;
+const { resolveDataDir } = core;
 const LAYER_NODE_TYPES = new Set([
   'file',
   'config',
@@ -334,8 +334,8 @@ function isGeneratedOnly(plan) {
     && plan.ignoredFiles.length === 0;
 }
 
-function patchFingerprints(uaDir, plan, patch) {
-  const fingerprintPath = join(uaDir, 'fingerprints.json');
+function patchFingerprints(dataDir, plan, patch) {
+  const fingerprintPath = join(dataDir, 'fingerprints.json');
   const store = normalizeFingerprintStore(readJson(fingerprintPath, null), plan.baseCommit);
   const files = { ...store.files };
   for (const filePath of patch.deletedFiles ?? []) delete files[filePath];
@@ -350,8 +350,8 @@ function patchFingerprints(uaDir, plan, patch) {
   });
 }
 
-function advanceMeta(uaDir, plan, analyzedFiles) {
-  const metaPath = join(uaDir, 'meta.json');
+function advanceMeta(dataDir, plan, analyzedFiles) {
+  const metaPath = join(dataDir, 'meta.json');
   const previous = readJson(metaPath, {});
   atomicWriteJson(metaPath, {
     ...previous,
@@ -382,8 +382,8 @@ async function main() {
     throw new Error('Usage: node finalize-incremental.mjs <projectRoot>');
   }
   const projectRoot = realpathSync(args[0]);
-  const uaDir = resolveUaDir(projectRoot);
-  const intermediateDir = join(uaDir, 'intermediate');
+  const dataDir = resolveDataDir(projectRoot);
+  const intermediateDir = join(dataDir, 'intermediate');
   const plan = readJson(join(intermediateDir, 'incremental-plan.json'));
   const patch = readJson(join(intermediateDir, 'fingerprint-patch.json'));
   const scan = readJson(join(intermediateDir, 'scan-result.json'), { totalFiles: 0 });
@@ -400,7 +400,7 @@ async function main() {
     return;
   }
 
-  const graphPath = join(uaDir, 'knowledge-graph.json');
+  const graphPath = join(dataDir, 'knowledge-graph.json');
   const importMapRefreshPaths = Array.isArray(plan.importMapRefreshPaths)
     ? plan.importMapRefreshPaths
     : [];
@@ -478,8 +478,8 @@ async function main() {
     atomicWriteJson(graphPath, graph);
   }
 
-  patchFingerprints(uaDir, plan, patch);
-  advanceMeta(uaDir, plan, scan.totalFiles);
+  patchFingerprints(dataDir, plan, patch);
+  advanceMeta(dataDir, plan, scan.totalFiles);
   process.stdout.write(
     `Incremental update finalized: ${plan.action}; analyzedFiles=${scan.totalFiles}\n`,
   );

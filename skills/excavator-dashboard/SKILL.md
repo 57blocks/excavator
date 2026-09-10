@@ -13,7 +13,7 @@ Start the Excavator dashboard to visualize the knowledge graph for the current p
 1. Determine the project directory and data directory:
    - If `$ARGUMENTS` contains a path, use that as the project directory
    - Otherwise, use the current working directory
-   - Prefer the legacy `.understand-anything/` data directory when it exists, otherwise use `.ua/`
+   - The data directory is always `.excavator/`
 
    Use the Bash tool to resolve:
    ```bash
@@ -29,21 +29,17 @@ Start the Excavator dashboard to visualize the knowledge graph for the current p
      exit 1
    fi
 
-   if [ -d "$PROJECT_DIR/.understand-anything" ]; then
-     UA_DIR="$PROJECT_DIR/.understand-anything"
-   else
-     UA_DIR="$PROJECT_DIR/.ua"
-   fi
+   DATA_DIR="$PROJECT_DIR/.excavator"
    ```
 
-2. Check that `$UA_DIR/knowledge-graph.json` exists in the project directory. If not, tell the user:
+2. Check that `$DATA_DIR/knowledge-graph.json` exists in the project directory. If not, tell the user:
    ```
    No knowledge graph found. Run /excavator first to analyze this project.
    ```
 
    Use the Bash tool to check:
    ```bash
-   if [ ! -f "$UA_DIR/knowledge-graph.json" ]; then
+   if [ ! -f "$DATA_DIR/knowledge-graph.json" ]; then
      echo "No knowledge graph found. Run /excavator first to analyze this project."
      exit 1
    fi
@@ -141,7 +137,7 @@ Start the Excavator dashboard to visualize the knowledge graph for the current p
 8. Report to the user, including the full tokenized URL:
    ```
    Dashboard started at http://127.0.0.1:<PORT>?token=<TOKEN>
-   Viewing: $UA_DIR/knowledge-graph.json
+   Viewing: $DATA_DIR/knowledge-graph.json
 
    The dashboard is running in the background. Press Ctrl+C in the terminal to stop it.
    ```

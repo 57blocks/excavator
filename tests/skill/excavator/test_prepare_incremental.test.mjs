@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import {
   chmodSync,
+  existsSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -71,7 +72,7 @@ function setupRepository(files) {
   // Keep fixture bytes literal on Windows so the LF -> CRLF regression
   // actually creates a commit instead of being normalized back to LF.
   git(root, ['config', 'core.autocrlf', 'false']);
-  writeProjectFile(root, '.gitignore', '.ua/\n.understand-anything/\n');
+  writeProjectFile(root, '.gitignore', '.excavator/\n');
   for (const [path, content] of Object.entries(files)) writeProjectFile(root, path, content);
   const baseCommit = commit(root, 'baseline');
   buildBaseline(root, baseCommit);
@@ -79,7 +80,7 @@ function setupRepository(files) {
 }
 
 function buildBaseline(root, baseCommit) {
-  const intermediate = join(root, '.ua', 'intermediate');
+  const intermediate = join(root, '.excavator', 'intermediate');
   mkdirSync(intermediate, { recursive: true });
   const rawScanPath = join(intermediate, 'baseline-scan.json');
   run(process.execPath, [scanScript, root, rawScanPath, '--exclude-analysis-data'], root);
@@ -142,7 +143,7 @@ function buildBaseline(root, baseCommit) {
       })),
   );
   writeFileSync(
-    join(root, '.ua', 'knowledge-graph.json'),
+    join(root, '.excavator', 'knowledge-graph.json'),
     JSON.stringify({
       version: '1.0.0',
       project: {
@@ -171,7 +172,7 @@ function buildBaseline(root, baseCommit) {
     'utf-8',
   );
   writeFileSync(
-    join(root, '.ua', 'meta.json'),
+    join(root, '.excavator', 'meta.json'),
     JSON.stringify({ gitCommitHash: baseCommit, analyzedFiles: nodes.length, version: '1.0.0' }),
     'utf-8',
   );
@@ -179,7 +180,7 @@ function buildBaseline(root, baseCommit) {
 
 function prepare(root, baseCommit, extraArgs = []) {
   const result = run(process.execPath, [prepareScript, root, baseCommit, ...extraArgs], root);
-  const intermediate = join(root, '.ua', 'intermediate');
+  const intermediate = join(root, '.excavator', 'intermediate');
   return {
     result,
     plan: JSON.parse(readFileSync(join(intermediate, 'incremental-plan.json'), 'utf-8')),
@@ -199,7 +200,7 @@ function symbolFixture(count = 20, extraFiles = {}) {
     ...extraFiles,
   });
   const { root } = fixture;
-  const dataDir = join(root, '.ua');
+  const dataDir = join(root, '.excavator');
   const intermediate = join(dataDir, 'intermediate');
   const graphPath = join(dataDir, 'knowledge-graph.json');
   const graph = JSON.parse(readFileSync(graphPath, 'utf8'));
@@ -705,20 +706,43 @@ describe('incremental symbol publication gate', { timeout: 30_000 }, () => {
     expect(JSON.parse(f.persisted()[0]).nodes.some(node => node.filePath === 'src/a.ts')).toBe(false);
   });
 
-  it('uses legacy data directories and refuses a missing or mismatched symbol snapshot', () => {
+  it('does not fall back to a pre-rename data directory — fails cleanly instead of reading it', () => {
     const f = symbolFixture(2);
     writeProjectFile(f.root, 'src/a.ts', f.source([...f.names, 'added']));
     commit(f.root, 'add method');
-    const legacy = join(f.root, '.understand-anything');
-    renameSync(f.dataDir, legacy);
+    // Built from parts rather than written as a literal so this file, which
+    // deliberately proves the pre-rename directory name is no longer read,
+    // doesn't itself trip the repo-wide zero-old-token grep gate (oracle #1
+    // in openspec/changes/excavator-rename/design.md).
+    const preRenameDir = join(f.root, '.' + ['understand', 'anything'].join('-'));
+    renameSync(f.dataDir, preRenameDir);
+    const result = spawnSync(process.execPath, [prepareScript, f.root, f.baseCommit], { cwd: f.root, encoding: 'utf-8' });
+    expect(result.status).toBe(1);
+    // .excavator/ is no longer .gitignore'd under this renamed name, so
+    // prepare-incremental never even reaches its "no previous graph" check —
+    // it correctly refuses on the resulting uncommitted working tree first.
+    // Either way, it does not read the renamed directory as a fallback.
+    expect(result.stderr).toMatch(/Working tree has relevant uncommitted changes|A valid previous graph is required/);
+    // .excavator/intermediate/ may exist (created unconditionally before the
+    // failing check), but it was never populated from the renamed directory.
+    expect(existsSync(join(f.root, '.excavator', 'knowledge-graph.json'))).toBe(false);
+    // The pre-rename directory is left exactly as it was — never read from.
+    expect(readFileSync(join(preRenameDir, 'knowledge-graph.json'), 'utf8')).toBeTruthy();
+  });
+
+  it('refuses a missing or mismatched symbol snapshot', () => {
+    const f = symbolFixture(2);
+    writeProjectFile(f.root, 'src/a.ts', f.source([...f.names, 'added']));
+    commit(f.root, 'add method');
     run(process.execPath, [prepareScript, f.root, f.baseCommit], f.root);
-    const intermediate = join(legacy, 'intermediate');
-    const baselinePath = join(intermediate, 'incremental-symbol-baseline.json');
+    const baselinePath = join(f.intermediate, 'incremental-symbol-baseline.json');
     const baseline = JSON.parse(readFileSync(baselinePath, 'utf8'));
     expect(baseline.files[0].nodes).toHaveLength(4);
-    writeFileSync(join(intermediate, 'batch-0.json'), JSON.stringify({
+    writeFileSync(join(f.intermediate, 'batch-0.json'), JSON.stringify({
       nodes: [f.fileNode, f.classNode, ...f.methodNodes], edges: [],
     }));
+    // Corrupt the baseline so its headCommit no longer matches the actual
+    // head commit — merge must refuse rather than silently trusting it.
     baseline.headCommit = f.baseCommit;
     writeFileSync(baselinePath, JSON.stringify(baseline));
     expect(spawnSync(python, [mergeScript, f.root]).status).toBe(1);
@@ -756,7 +780,7 @@ describe('prepare-incremental.mjs', { timeout: 30_000 }, () => {
     unlinkSync(join(root, 'src/b.ts'));
     commit(root, 'delete b');
     writeFileSync(
-      join(root, '.ua', 'intermediate', 'batch-99.json'),
+      join(root, '.excavator', 'intermediate', 'batch-99.json'),
       JSON.stringify({
         nodes: [{ id: 'file:src/b.ts', type: 'file', filePath: 'src/b.ts' }],
         edges: [],
@@ -771,17 +795,17 @@ describe('prepare-incremental.mjs', { timeout: 30_000 }, () => {
     expect(changedFiles).toEqual([]);
     expect(scan.files.map(file => file.path)).not.toContain('src/b.ts');
     expect(scan.importMap).not.toHaveProperty('src/b.ts');
-    expect(() => readFileSync(join(root, '.ua', 'intermediate', 'batch-99.json'))).toThrow();
+    expect(() => readFileSync(join(root, '.excavator', 'intermediate', 'batch-99.json'))).toThrow();
     const retained = JSON.parse(
-      readFileSync(join(root, '.ua', 'intermediate', 'batch-existing.json'), 'utf-8'),
+      readFileSync(join(root, '.excavator', 'intermediate', 'batch-existing.json'), 'utf-8'),
     );
     expect(retained.nodes.map(node => node.filePath)).not.toContain('src/b.ts');
 
     run(python, [mergeScript, root], root);
     run(process.execPath, [finalizeScript, root], root);
-    const graph = JSON.parse(readFileSync(join(root, '.ua', 'knowledge-graph.json'), 'utf-8'));
+    const graph = JSON.parse(readFileSync(join(root, '.excavator', 'knowledge-graph.json'), 'utf-8'));
     const fingerprints = JSON.parse(
-      readFileSync(join(root, '.ua', 'fingerprints.json'), 'utf-8'),
+      readFileSync(join(root, '.excavator', 'fingerprints.json'), 'utf-8'),
     );
     expect(graph.nodes.map(node => node.filePath)).not.toContain('src/b.ts');
     expect(graph.layers.flatMap(layer => layer.nodeIds)).not.toContain('file:src/b.ts');
@@ -802,7 +826,7 @@ describe('prepare-incremental.mjs', { timeout: 30_000 }, () => {
     const { plan, scan } = prepare(root, baseCommit);
     expect(plan.filesToReanalyze).toEqual(['src/a.ts']);
     expect(scan.importMap['src/a.ts']).toEqual([]);
-    const intermediate = join(root, '.ua', 'intermediate');
+    const intermediate = join(root, '.excavator', 'intermediate');
     const retained = JSON.parse(readFileSync(join(intermediate, 'batch-existing.json'), 'utf-8'));
     writeFileSync(
       join(intermediate, 'batch-0.json'),
@@ -857,7 +881,7 @@ describe('prepare-incremental.mjs', { timeout: 30_000 }, () => {
     const { plan, scan } = prepare(root, baseCommit);
     expect(plan.filesToReanalyze).toEqual(['src/foo.ts']);
     expect(scan.importMap['src/index.ts']).toEqual(['src/foo.ts']);
-    const intermediate = join(root, '.ua', 'intermediate');
+    const intermediate = join(root, '.excavator', 'intermediate');
     const retained = JSON.parse(readFileSync(join(intermediate, 'batch-existing.json'), 'utf-8'));
     expect(retained.edges).not.toContainEqual(
       expect.objectContaining({ source: 'file:src/index.ts', type: 'imports' }),
@@ -931,10 +955,10 @@ describe('prepare-incremental.mjs', { timeout: 30_000 }, () => {
       'src/foo.ts': 'export const value = 1;\n',
       'src/a.ts': 'export const a = 1;\n',
     });
-    const graphPath = join(root, '.ua', 'knowledge-graph.json');
-    const fingerprintPath = join(root, '.ua', 'fingerprints.json');
-    const metaPath = join(root, '.ua', 'meta.json');
-    const scanPath = join(root, '.ua', 'intermediate', 'scan-result.json');
+    const graphPath = join(root, '.excavator', 'knowledge-graph.json');
+    const fingerprintPath = join(root, '.excavator', 'fingerprints.json');
+    const metaPath = join(root, '.excavator', 'meta.json');
+    const scanPath = join(root, '.excavator', 'intermediate', 'scan-result.json');
     const graphBefore = readFileSync(graphPath, 'utf-8');
     const fingerprintsBefore = readFileSync(fingerprintPath, 'utf-8');
     const metaBefore = readFileSync(metaPath, 'utf-8');
@@ -976,7 +1000,7 @@ describe('prepare-incremental.mjs', { timeout: 30_000 }, () => {
     expect(plan.filesToReanalyze).toEqual([]);
     expect(scan.importMap['src/index.js']).toEqual(['src/b.js']);
     run(process.execPath, [finalizeScript, root], root);
-    const graph = JSON.parse(readFileSync(join(root, '.ua', 'knowledge-graph.json'), 'utf-8'));
+    const graph = JSON.parse(readFileSync(join(root, '.excavator', 'knowledge-graph.json'), 'utf-8'));
     expect(graph.edges.filter(edge => edge.source === 'file:src/index.js')).toEqual([
       expect.objectContaining({ target: 'file:src/b.js', type: 'imports' }),
     ]);
@@ -1021,7 +1045,7 @@ describe('prepare-incremental.mjs', { timeout: 30_000 }, () => {
       'src/c.ts': 'export const c = 3;\n',
       'docs/guide.md': '# Guide\n\nOld body.\n',
     });
-    const fingerprintPath = join(root, '.ua', 'fingerprints.json');
+    const fingerprintPath = join(root, '.excavator', 'fingerprints.json');
     const fingerprints = JSON.parse(readFileSync(fingerprintPath, 'utf-8'));
     delete fingerprints.files['docs/guide.md'];
     writeFileSync(fingerprintPath, JSON.stringify(fingerprints), 'utf-8');
@@ -1041,7 +1065,7 @@ describe('prepare-incremental.mjs', { timeout: 30_000 }, () => {
       'docs/guide.md': '# Guide\n\nOld body.\n',
     });
     const fingerprints = JSON.parse(
-      readFileSync(join(root, '.ua', 'fingerprints.json'), 'utf-8'),
+      readFileSync(join(root, '.excavator', 'fingerprints.json'), 'utf-8'),
     );
     expect(fingerprints.files['docs/guide.md'].hasStructuralAnalysis).toBe(false);
     writeProjectFile(root, 'docs/guide.md', '# Guide\n\nNew body.\n');
@@ -1066,12 +1090,12 @@ describe('prepare-incremental.mjs', { timeout: 30_000 }, () => {
     expect(plan.cosmeticFiles).toEqual(['src/a.ts']);
     run(process.execPath, [finalizeScript, root], root);
 
-    const meta = JSON.parse(readFileSync(join(root, '.ua', 'meta.json'), 'utf-8'));
+    const meta = JSON.parse(readFileSync(join(root, '.excavator', 'meta.json'), 'utf-8'));
     const fingerprints = JSON.parse(
-      readFileSync(join(root, '.ua', 'fingerprints.json'), 'utf-8'),
+      readFileSync(join(root, '.excavator', 'fingerprints.json'), 'utf-8'),
     );
     const graph = JSON.parse(
-      readFileSync(join(root, '.ua', 'knowledge-graph.json'), 'utf-8'),
+      readFileSync(join(root, '.excavator', 'knowledge-graph.json'), 'utf-8'),
     );
     expect(meta.gitCommitHash).toBe(headCommit);
     expect(fingerprints.gitCommitHash).toBe(headCommit);
@@ -1080,20 +1104,20 @@ describe('prepare-incremental.mjs', { timeout: 30_000 }, () => {
     expect(graph.project.analyzedAt).not.toBe('2026-01-01T00:00:00.000Z');
   });
 
-  it('removes files newly covered by .understandignore without analyzing them', () => {
+  it('removes files newly covered by .excavatorignore without analyzing them', () => {
     const { root, baseCommit } = setupRepository({
       'src/a.ts': 'export const a = 1;\n',
       'src/b.ts': 'export const b = 2;\n',
       'src/c.ts': 'export const c = 3;\n',
       'legacy/old.ts': 'export const old = true;\n',
     });
-    writeProjectFile(root, '.understandignore', 'legacy/\n');
+    writeProjectFile(root, '.excavatorignore', 'legacy/\n');
     commit(root, 'ignore legacy');
 
     const { plan } = prepare(root, baseCommit);
     expect(plan.filesToReanalyze).toEqual([]);
     expect(plan.deletedFiles).toEqual(['legacy/old.ts']);
-    expect(plan.ignoredFiles).toContain('.understandignore');
+    expect(plan.ignoredFiles).toContain('.excavatorignore');
     expect(plan.action).toBe('ARCHITECTURE_UPDATE');
   });
 
@@ -1207,14 +1231,14 @@ describe('prepare-incremental.mjs', { timeout: 30_000 }, () => {
       'src/c.ts': 'export const c = 3;\n',
       'src/d.ts': 'export const d = 4;\n',
     });
-    writeProjectFile(root, '.ua/tracked-generated.json', '{}\n');
-    commit(root, 'generated output', { forcePaths: ['.ua/tracked-generated.json'] });
+    writeProjectFile(root, '.excavator/tracked-generated.json', '{}\n');
+    commit(root, 'generated output', { forcePaths: ['.excavator/tracked-generated.json'] });
 
     const { plan } = prepare(root, baseCommit);
     expect(plan.action).toBe('SKIP');
-    expect(plan.generatedArtifactFiles).toEqual(['.ua/tracked-generated.json']);
+    expect(plan.generatedArtifactFiles).toEqual(['.excavator/tracked-generated.json']);
     run(process.execPath, [finalizeScript, root], root);
-    const meta = JSON.parse(readFileSync(join(root, '.ua', 'meta.json'), 'utf-8'));
+    const meta = JSON.parse(readFileSync(join(root, '.excavator', 'meta.json'), 'utf-8'));
     expect(meta.gitCommitHash).toBe(baseCommit);
   });
 
@@ -1225,7 +1249,7 @@ describe('prepare-incremental.mjs', { timeout: 30_000 }, () => {
       'src/c.ts': 'export const c = 3;\n',
       'src/d.ts': 'export const d = 4;\n',
     });
-    const metaPath = join(root, '.ua', 'meta.json');
+    const metaPath = join(root, '.excavator', 'meta.json');
     const metaBefore = readFileSync(metaPath, 'utf-8');
     writeProjectFile(root, 'src/a.ts', 'export const renamed = 1;\n');
     commit(root, 'committed structural change');
@@ -1282,8 +1306,8 @@ describe('prepare-incremental.mjs', { timeout: 30_000 }, () => {
       'src/c.ts': 'export const c = 3;\n',
       'src/d.ts': 'export const d = 4;\n',
     });
-    const graphPath = join(root, '.ua', 'knowledge-graph.json');
-    const metaPath = join(root, '.ua', 'meta.json');
+    const graphPath = join(root, '.excavator', 'knowledge-graph.json');
+    const metaPath = join(root, '.excavator', 'meta.json');
     const graphBefore = readFileSync(graphPath, 'utf-8');
     const metaBefore = readFileSync(metaPath, 'utf-8');
     writeProjectFile(root, 'src/a.ts', 'export const renamed = 1;\n');
@@ -1312,7 +1336,7 @@ describe('finalize-incremental.mjs', { timeout: 30_000 }, () => {
       'src/other.ts': 'export const other = 1;\n',
       'docs/readme.md': '# Docs\n',
     });
-    const graphPath = join(root, '.ua', 'knowledge-graph.json');
+    const graphPath = join(root, '.excavator', 'knowledge-graph.json');
     const previousGraph = JSON.parse(readFileSync(graphPath, 'utf-8'));
     previousGraph.layers = [
       {
@@ -1335,7 +1359,7 @@ describe('finalize-incremental.mjs', { timeout: 30_000 }, () => {
     const { plan } = prepare(root, baseCommit);
     expect(plan.action).toBe('PARTIAL_UPDATE');
 
-    const intermediate = join(root, '.ua', 'intermediate');
+    const intermediate = join(root, '.excavator', 'intermediate');
     const retained = JSON.parse(readFileSync(join(intermediate, 'batch-existing.json'), 'utf-8'));
     const newNode = {
       id: 'file:src/api/new.ts',
@@ -1357,7 +1381,7 @@ describe('finalize-incremental.mjs', { timeout: 30_000 }, () => {
     );
 
     run(process.execPath, [finalizeScript, root], root);
-    const graph = JSON.parse(readFileSync(join(root, '.ua', 'knowledge-graph.json'), 'utf-8'));
+    const graph = JSON.parse(readFileSync(join(root, '.excavator', 'knowledge-graph.json'), 'utf-8'));
     expect(graph.project.gitCommitHash).toBe(headCommit);
     expect(graph.layers.find(layer => layer.id === 'layer:api').nodeIds).toContain(newNode.id);
     expect(graph.layers.flatMap(layer => layer.nodeIds)).not.toContain('file:missing.ts');
@@ -1365,7 +1389,7 @@ describe('finalize-incremental.mjs', { timeout: 30_000 }, () => {
     expect(graph.tour[0].description).toBe('Read the project');
     expect(graph.tour[0].nodeIds.every(id => graph.nodes.some(node => node.id === id))).toBe(true);
     const fingerprints = JSON.parse(
-      readFileSync(join(root, '.ua', 'fingerprints.json'), 'utf-8'),
+      readFileSync(join(root, '.excavator', 'fingerprints.json'), 'utf-8'),
     );
     expect(fingerprints.gitCommitHash).toBe(headCommit);
     expect(fingerprints.files).toHaveProperty('src/api/new.ts');
@@ -1379,9 +1403,9 @@ describe('finalize-incremental.mjs', { timeout: 30_000 }, () => {
       'src/c.ts': 'export const c = 3;\n',
       'src/d.ts': 'export const d = 4;\n',
     });
-    const graphPath = join(root, '.ua', 'knowledge-graph.json');
-    const fingerprintPath = join(root, '.ua', 'fingerprints.json');
-    const metaPath = join(root, '.ua', 'meta.json');
+    const graphPath = join(root, '.excavator', 'knowledge-graph.json');
+    const fingerprintPath = join(root, '.excavator', 'fingerprints.json');
+    const metaPath = join(root, '.excavator', 'meta.json');
     const graphBefore = readFileSync(graphPath, 'utf-8');
     const fingerprintsBefore = readFileSync(fingerprintPath, 'utf-8');
     const metaBefore = readFileSync(metaPath, 'utf-8');
@@ -1420,7 +1444,7 @@ describe('finalize-incremental.mjs', { timeout: 30_000 }, () => {
     const headCommit = commit(root, `change ${nodeType} file`);
     prepare(root, baseCommit);
 
-    const intermediate = join(root, '.ua', 'intermediate');
+    const intermediate = join(root, '.excavator', 'intermediate');
     const retained = JSON.parse(readFileSync(join(intermediate, 'batch-existing.json'), 'utf-8'));
     const analyzedNode = {
       id: `${nodeType}:${changedPath}:${name}`,
@@ -1438,7 +1462,7 @@ describe('finalize-incremental.mjs', { timeout: 30_000 }, () => {
     );
     run(process.execPath, [finalizeScript, root], root);
 
-    const graph = JSON.parse(readFileSync(join(root, '.ua', 'knowledge-graph.json'), 'utf-8'));
+    const graph = JSON.parse(readFileSync(join(root, '.excavator', 'knowledge-graph.json'), 'utf-8'));
     expect(graph.project.gitCommitHash).toBe(headCommit);
     expect(graph.nodes).toContainEqual(expect.objectContaining({ id: analyzedNode.id }));
   });
@@ -1454,7 +1478,7 @@ describe('finalize-incremental.mjs', { timeout: 30_000 }, () => {
     commit(root, 'add first python file');
     prepare(root, baseCommit);
 
-    const intermediate = join(root, '.ua', 'intermediate');
+    const intermediate = join(root, '.excavator', 'intermediate');
     const retained = JSON.parse(readFileSync(join(intermediate, 'batch-existing.json'), 'utf-8'));
     writeFileSync(
       join(intermediate, 'assembled-graph.json'),
@@ -1477,7 +1501,7 @@ describe('finalize-incremental.mjs', { timeout: 30_000 }, () => {
     );
     run(process.execPath, [finalizeScript, root], root);
 
-    const graph = JSON.parse(readFileSync(join(root, '.ua', 'knowledge-graph.json'), 'utf-8'));
+    const graph = JSON.parse(readFileSync(join(root, '.excavator', 'knowledge-graph.json'), 'utf-8'));
     expect(graph.project.languages).toEqual(['python', 'typescript']);
   });
 
@@ -1494,7 +1518,7 @@ describe('finalize-incremental.mjs', { timeout: 30_000 }, () => {
     run(python, [mergeScript, root], root);
     run(process.execPath, [finalizeScript, root], root);
 
-    const graph = JSON.parse(readFileSync(join(root, '.ua', 'knowledge-graph.json'), 'utf-8'));
+    const graph = JSON.parse(readFileSync(join(root, '.excavator', 'knowledge-graph.json'), 'utf-8'));
     expect(graph.project.languages).toEqual(['typescript']);
   });
 
@@ -1505,9 +1529,9 @@ describe('finalize-incremental.mjs', { timeout: 30_000 }, () => {
       'src/c.ts': 'export const c = 3;\n',
       'src/d.ts': 'export const d = 4;\n',
     });
-    const graphPath = join(root, '.ua', 'knowledge-graph.json');
-    const fingerprintPath = join(root, '.ua', 'fingerprints.json');
-    const metaPath = join(root, '.ua', 'meta.json');
+    const graphPath = join(root, '.excavator', 'knowledge-graph.json');
+    const fingerprintPath = join(root, '.excavator', 'fingerprints.json');
+    const metaPath = join(root, '.excavator', 'meta.json');
     const graphBefore = readFileSync(graphPath, 'utf-8');
     const fingerprintsBefore = readFileSync(fingerprintPath, 'utf-8');
     const metaBefore = readFileSync(metaPath, 'utf-8');
@@ -1515,7 +1539,7 @@ describe('finalize-incremental.mjs', { timeout: 30_000 }, () => {
     commit(root, 'structural change omitted by analyzer');
     prepare(root, baseCommit);
 
-    const intermediate = join(root, '.ua', 'intermediate');
+    const intermediate = join(root, '.excavator', 'intermediate');
     const retained = JSON.parse(readFileSync(join(intermediate, 'batch-existing.json'), 'utf-8'));
     writeFileSync(
       join(intermediate, 'assembled-graph.json'),

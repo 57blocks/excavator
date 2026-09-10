@@ -32,7 +32,7 @@ Execute the pre-built structural extraction script bundled with the Excavator pl
 
 ### Step 1 — Prepare the input JSON
 
-Create the input file with the batch data. **IMPORTANT:** Use the batch index in ALL temp file paths to avoid collisions when multiple file-analyzer agents run concurrently. First resolve the project's data directory once (the legacy `.understand-anything/` when it already exists, otherwise the new `.ua/`) and reuse `$UA_DIR` for every path below: `UA_DIR="$PROJECT_ROOT/$([ -d "$PROJECT_ROOT/.understand-anything" ] && echo .understand-anything || echo .ua)"`.
+Create the input file with the batch data. **IMPORTANT:** Use the batch index in ALL temp file paths to avoid collisions when multiple file-analyzer agents run concurrently. First resolve the project's data directory once and reuse `$DATA_DIR` for every path below: `DATA_DIR="$PROJECT_ROOT/.excavator"`.
 
 Each entry in `batchFiles` MUST be an object with these four fields, copied verbatim from the dispatch prompt's batch list:
 
@@ -42,7 +42,7 @@ Each entry in `batchFiles` MUST be an object with these four fields, copied verb
 - `fileCategory` (string) — `code`, `config`, `docs`, `infra`, `data`, `script`, or `markup`
 
 ```bash
-cat > $UA_DIR/tmp/ua-file-analyzer-input-<batchIndex>.json << 'ENDJSON'
+cat > $DATA_DIR/tmp/ua-file-analyzer-input-<batchIndex>.json << 'ENDJSON'
 {
   "projectRoot": "<project-root>",
   "batchFiles": [
@@ -71,17 +71,17 @@ Run the bundled `extract-structure.mjs` script. The `<SKILL_DIR>` path is provid
 
 ```bash
 node <SKILL_DIR>/extract-structure.mjs \
-  $UA_DIR/tmp/ua-file-analyzer-input-<batchIndex>.json \
-  $UA_DIR/tmp/ua-file-extract-results-<batchIndex>.json
+  $DATA_DIR/tmp/ua-file-analyzer-input-<batchIndex>.json \
+  $DATA_DIR/tmp/ua-file-extract-results-<batchIndex>.json
 ```
 
 If the script exits non-zero, read stderr and report the error. Do NOT attempt to write a manual extraction script as fallback — the bundled script is the sole extraction path.
 
-After the script returns, verify the output file exists and is non-empty (e.g. `test -s $UA_DIR/tmp/ua-file-extract-results-<batchIndex>.json`). Exit 0 with a missing output file means the bundled script silently no-opped — report this as a hard failure rather than proceeding to Step 3.
+After the script returns, verify the output file exists and is non-empty (e.g. `test -s $DATA_DIR/tmp/ua-file-extract-results-<batchIndex>.json`). Exit 0 with a missing output file means the bundled script silently no-opped — report this as a hard failure rather than proceeding to Step 3.
 
 ### Step 3 — Read the extraction results
 
-Read `$UA_DIR/tmp/ua-file-extract-results-<batchIndex>.json`. The output format is:
+Read `$DATA_DIR/tmp/ua-file-extract-results-<batchIndex>.json`. The output format is:
 
 ```json
 {
@@ -144,7 +144,7 @@ Treat these the same as tree-sitter-derived functions for node creation (Step 2 
 
 ## Phase 2 -- Semantic Analysis
 
-After the script completes, read `$UA_DIR/tmp/ua-file-extract-results-<batchIndex>.json`. Use these structured results as the foundation for your analysis. Do NOT re-read the source files unless the script skipped a file or you need to understand a specific pattern that the script could not capture.
+After the script completes, read `$DATA_DIR/tmp/ua-file-extract-results-<batchIndex>.json`. Use these structured results as the foundation for your analysis. Do NOT re-read the source files unless the script skipped a file or you need to understand a specific pattern that the script could not capture.
 
 For each file in the script's `results` array, produce `GraphNode` and `GraphEdge` objects by combining the script's structural data with your expert judgment.
 
@@ -503,7 +503,7 @@ edgeCount = edges.length
 ```
 
 **Step B — Decide split.**
-- If `nodeCount ≤ 60` AND `edgeCount ≤ 120`: write ONE file to `$UA_DIR/intermediate/batch-<batchIndex>.json` (the data directory — `.ua/`, or the legacy `.understand-anything/` when present). Done. Skip to Step F.
+- If `nodeCount ≤ 60` AND `edgeCount ≤ 120`: write ONE file to `$DATA_DIR/intermediate/batch-<batchIndex>.json` (the data directory — `.excavator/`). Done. Skip to Step F.
 - Otherwise: `parts = ceil(max(nodeCount / 60, edgeCount / 120))`.
 
 **Step C — Partition.**
@@ -512,7 +512,7 @@ Sort files in your batch alphabetically by path. Chunk them sequentially into `p
 - All edges whose `source` is in this part's nodes (target may be anywhere — same part, different part of same batch, different batch).
 
 **Step D — Write each part.**
-Write part `k` (1-indexed) to `$UA_DIR/intermediate/batch-<batchIndex>-part-<k>.json`. Each part is a valid GraphFragment: `{ "nodes": [...], "edges": [...] }`.
+Write part `k` (1-indexed) to `$DATA_DIR/intermediate/batch-<batchIndex>-part-<k>.json`. Each part is a valid GraphFragment: `{ "nodes": [...], "edges": [...] }`.
 
 **Step E — Self-validate.**
 For each file written, verify:

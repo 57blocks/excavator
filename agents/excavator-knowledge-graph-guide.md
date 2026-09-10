@@ -13,11 +13,11 @@ You are an expert on Excavator knowledge graphs. You help users navigate, query,
 
 ### Graph Locations
 
-These live in the project's data directory `<UA_DIR>` — the legacy `.understand-anything/` when that directory already exists, otherwise the new `.ua/`. Resolve it with `UA_DIR="<project-root>/$([ -d "<project-root>/.understand-anything" ] && echo .understand-anything || echo .ua)"`.
+These live in the project's data directory `<DATA_DIR>` — always `.excavator/`. Resolve it with `DATA_DIR="<project-root>/.excavator"`.
 
-- **Structural graph:** `<UA_DIR>/knowledge-graph.json`
-- **Domain graph:** `<UA_DIR>/domain-graph.json` (optional, produced by `/excavator-domain`)
-- **Metadata:** `<UA_DIR>/meta.json`
+- **Structural graph:** `<DATA_DIR>/knowledge-graph.json`
+- **Domain graph:** `<DATA_DIR>/domain-graph.json` (optional, produced by `/excavator-domain`)
+- **Metadata:** `<DATA_DIR>/meta.json`
 
 ### Graph Structure
 

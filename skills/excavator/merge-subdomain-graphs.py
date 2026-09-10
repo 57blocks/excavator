@@ -3,8 +3,7 @@
 merge-subdomain-graphs.py — Merge subdomain knowledge-graph files into one.
 
 Auto-discovers *knowledge-graph*.json files in the project's data dir
-(`.ua/`, or legacy `.understand-anything/` when that directory already exists)
-excluding knowledge-graph.json itself, loads the existing
+(`.excavator/`) excluding knowledge-graph.json itself, loads the existing
 knowledge-graph.json as a base if present, and merges everything
 into a single knowledge-graph.json.
 
@@ -16,7 +15,7 @@ knowledge-graph.json is loaded as a base but never as a discovery input
 (prevents self-merging on repeated runs).
 
 Output:
-    <ua-dir>/knowledge-graph.json
+    .excavator/knowledge-graph.json
 """
 
 import json
@@ -26,10 +25,9 @@ from pathlib import Path
 from typing import Any
 
 
-def resolve_ua_dir(root: Path) -> Path:
-    """Mirror core resolveUaDir: legacy .understand-anything/ wins if present."""
-    legacy = root / ".understand-anything"
-    return legacy if legacy.is_dir() else root / ".ua"
+def resolve_data_dir(root: Path) -> Path:
+    """The project's data directory -- single source of truth: `.excavator/`."""
+    return root / ".excavator"
 
 # Edge types that carry the domain hierarchy. Dropping one of these changes
 # downstream graph traversal (unlike a routine `related` edge), so they are
@@ -315,13 +313,13 @@ def main() -> None:
         sys.exit(1)
 
     project_root = Path(sys.argv[1]).resolve()
-    ua_dir = resolve_ua_dir(project_root)
+    data_dir = resolve_data_dir(project_root)
 
-    if not ua_dir.is_dir():
-        print(f"Error: {ua_dir} does not exist", file=sys.stderr)
+    if not data_dir.is_dir():
+        print(f"Error: {data_dir} does not exist", file=sys.stderr)
         sys.exit(1)
 
-    output_path = ua_dir / "knowledge-graph.json"
+    output_path = data_dir / "knowledge-graph.json"
 
     # Determine which files to merge
     if len(sys.argv) > 2:
@@ -331,7 +329,7 @@ def main() -> None:
         # Auto-discover subdomain graphs — exclude the main output file
         # to avoid self-merging on repeated runs
         graph_files = sorted(
-            p for p in ua_dir.glob("*knowledge-graph*.json")
+            p for p in data_dir.glob("*knowledge-graph*.json")
             if p.name != "knowledge-graph.json"
         )
 
@@ -368,7 +366,7 @@ def main() -> None:
 
     # Re-inject structural edges a previous run had to drop; if their missing
     # endpoints have arrived in the meantime, this run resolves them.
-    report_path = ua_dir / "merge-report.json"
+    report_path = data_dir / "merge-report.json"
     pending_edges = load_pending_structural_edges(report_path)
     if pending_edges:
         print(f"    Retrying {len(pending_edges)} structural edges dropped by a previous run", file=sys.stderr)

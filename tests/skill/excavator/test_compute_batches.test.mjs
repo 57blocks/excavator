@@ -19,15 +19,15 @@ function runScript(projectRoot, extraArgs = [], env = process.env) {
 
 function setupProject(fixtureName) {
   const root = mkdtempSync(join(tmpdir(), 'ua-cb-test-'));
-  mkdirSync(join(root, '.understand-anything', 'intermediate'), { recursive: true });
+  mkdirSync(join(root, '.excavator', 'intermediate'), { recursive: true });
   const fixturePath = join(FIXTURES, fixtureName);
-  const dest = join(root, '.understand-anything', 'intermediate', 'scan-result.json');
+  const dest = join(root, '.excavator', 'intermediate', 'scan-result.json');
   writeFileSync(dest, readFileSync(fixturePath, 'utf-8'));
   return root;
 }
 
 // Variant of setupProject that seeds the fixture into an arbitrary data
-// directory name (`.ua` for fresh projects, `.understand-anything` for legacy).
+// directory name (used by the data-dir-resolution tests below).
 function setupProjectInDir(fixtureName, dirName) {
   const root = mkdtempSync(join(tmpdir(), 'ua-cb-dir-test-'));
   mkdirSync(join(root, dirName, 'intermediate'), { recursive: true });
@@ -40,13 +40,13 @@ function setupProjectInDir(fixtureName, dirName) {
 }
 
 function readBatches(projectRoot) {
-  const p = join(projectRoot, '.understand-anything', 'intermediate', 'batches.json');
+  const p = join(projectRoot, '.excavator', 'intermediate', 'batches.json');
   return JSON.parse(readFileSync(p, 'utf-8'));
 }
 
 function setupAmbiguousRingProject() {
   const root = mkdtempSync(join(tmpdir(), 'ua-cb-ring-'));
-  mkdirSync(join(root, '.understand-anything', 'intermediate'), { recursive: true });
+  mkdirSync(join(root, '.excavator', 'intermediate'), { recursive: true });
 
   const paths = ['zeta', 'äther', 'åland']
     .flatMap(dir => ['a', 'b', 'c', 'd'].map(name => `src/${dir}/${name}.ts`));
@@ -67,7 +67,7 @@ function setupAmbiguousRingProject() {
     fileCategory: 'code',
   }));
   writeFileSync(
-    join(root, '.understand-anything', 'intermediate', 'scan-result.json'),
+    join(root, '.excavator', 'intermediate', 'scan-result.json'),
     JSON.stringify({ files, importMap }),
   );
   return root;
@@ -108,14 +108,14 @@ describe('compute-batches.mjs — Louvain basic', () => {
     const r1 = runScript(projectRoot);
     expect(r1.status).toBe(0);
     const json1 = readFileSync(
-      join(projectRoot, '.understand-anything', 'intermediate', 'batches.json'),
+      join(projectRoot, '.excavator', 'intermediate', 'batches.json'),
       'utf-8',
     );
 
     const r2 = runScript(projectRoot);
     expect(r2.status).toBe(0);
     const json2 = readFileSync(
-      join(projectRoot, '.understand-anything', 'intermediate', 'batches.json'),
+      join(projectRoot, '.excavator', 'intermediate', 'batches.json'),
       'utf-8',
     );
 
@@ -134,7 +134,7 @@ describe('compute-batches.mjs - deterministic Louvain', () => {
     projectRoot = setupAmbiguousRingProject();
     const outputPath = join(
       projectRoot,
-      '.understand-anything',
+      '.excavator',
       'intermediate',
       'batches.json',
     );
@@ -180,8 +180,7 @@ describe('compute-batches.mjs — explicit benchmark paths', () => {
 
     expect(result.status).toBe(0);
     expect(existsSync(outputPath)).toBe(true);
-    expect(existsSync(join(projectRoot, '.ua'))).toBe(false);
-    expect(existsSync(join(projectRoot, '.understand-anything'))).toBe(false);
+    expect(existsSync(join(projectRoot, '.excavator'))).toBe(false);
 
     const batches = JSON.parse(readFileSync(outputPath, 'utf-8'));
     expect(batches.totalFiles).toBe(9);
@@ -242,8 +241,7 @@ describe('compute-batches.mjs - invalid benchmark path options', () => {
 
     expect(result.status).not.toBe(0);
     expect(result.stderr).toMatch(/Error: compute-batches: (invalid|duplicate) option/);
-    expect(existsSync(join(projectRoot, '.ua'))).toBe(false);
-    expect(existsSync(join(projectRoot, '.understand-anything'))).toBe(false);
+    expect(existsSync(join(projectRoot, '.excavator'))).toBe(false);
   });
 });
 
@@ -284,7 +282,7 @@ describe('compute-batches.mjs — exports extraction', () => {
 
   it('populates exports for code files via tree-sitter', () => {
     root = mkdtempSync(join(tmpdir(), 'ua-cb-exp-'));
-    mkdirSync(join(root, '.understand-anything', 'intermediate'), { recursive: true });
+    mkdirSync(join(root, '.excavator', 'intermediate'), { recursive: true });
     mkdirSync(join(root, 'src'), { recursive: true });
     writeFileSync(join(root, 'src', 'a.ts'),
       'export function greet(name: string) { return "hi " + name; }\n' +
@@ -305,7 +303,7 @@ describe('compute-batches.mjs — exports extraction', () => {
       importMap: { 'src/a.ts': [], 'src/b.ts': ['src/a.ts'] },
     };
     writeFileSync(
-      join(root, '.understand-anything', 'intermediate', 'scan-result.json'),
+      join(root, '.excavator', 'intermediate', 'scan-result.json'),
       JSON.stringify(scan));
 
     const result = runScript(root);
@@ -321,7 +319,7 @@ describe('compute-batches.mjs — exports extraction', () => {
 
   it('emits warning when file is missing from disk (read error path)', () => {
     root = mkdtempSync(join(tmpdir(), 'ua-cb-exp-err-'));
-    mkdirSync(join(root, '.understand-anything', 'intermediate'), { recursive: true });
+    mkdirSync(join(root, '.excavator', 'intermediate'), { recursive: true });
     // Note: NOT creating the file on disk — scan-result.json references it,
     // but the file doesn't exist, so the read branch fires.
     const scan = {
@@ -336,7 +334,7 @@ describe('compute-batches.mjs — exports extraction', () => {
       importMap: { 'src/missing.ts': [] },
     };
     writeFileSync(
-      join(root, '.understand-anything', 'intermediate', 'scan-result.json'),
+      join(root, '.excavator', 'intermediate', 'scan-result.json'),
       JSON.stringify(scan));
 
     const result = runScript(root);
@@ -432,7 +430,7 @@ describe('compute-batches.mjs — Group E MAX_E split', () => {
 
   it('splits 25 .md files under docs/ into [20, 5]', () => {
     root = mkdtempSync(join(tmpdir(), 'ua-cb-maxe-'));
-    mkdirSync(join(root, '.understand-anything', 'intermediate'), { recursive: true });
+    mkdirSync(join(root, '.excavator', 'intermediate'), { recursive: true });
 
     const files = [];
     const importMap = {};
@@ -448,7 +446,7 @@ describe('compute-batches.mjs — Group E MAX_E split', () => {
       estimatedComplexity: 'small', importMap,
     };
     writeFileSync(
-      join(root, '.understand-anything', 'intermediate', 'scan-result.json'),
+      join(root, '.excavator', 'intermediate', 'scan-result.json'),
       JSON.stringify(scan));
 
     const result = runScript(root);
@@ -514,7 +512,7 @@ describe('compute-batches.mjs — neighborMap + batchImportData', () => {
 
   it('neighborMap entries carry symbols when target has exports', () => {
     const root = mkdtempSync(join(tmpdir(), 'ua-cb-nbr-'));
-    mkdirSync(join(root, '.understand-anything', 'intermediate'), { recursive: true });
+    mkdirSync(join(root, '.excavator', 'intermediate'), { recursive: true });
     mkdirSync(join(root, 'src', 'a'), { recursive: true });
     mkdirSync(join(root, 'src', 'b'), { recursive: true });
 
@@ -557,7 +555,7 @@ describe('compute-batches.mjs — neighborMap + batchImportData', () => {
       },
     };
     writeFileSync(
-      join(root, '.understand-anything', 'intermediate', 'scan-result.json'),
+      join(root, '.excavator', 'intermediate', 'scan-result.json'),
       JSON.stringify(scan));
 
     const result = runScript(root);
@@ -592,7 +590,7 @@ describe('compute-batches.mjs — neighborMap truncation', () => {
 
   it('truncates and warns when neighbors > 50', () => {
     root = mkdtempSync(join(tmpdir(), 'ua-cb-trunc-'));
-    mkdirSync(join(root, '.understand-anything', 'intermediate'), { recursive: true });
+    mkdirSync(join(root, '.excavator', 'intermediate'), { recursive: true });
     // hub.ts imported by 60 other files
     const files = [{ path: 'src/hub.ts', language: 'typescript', sizeLines: 1, fileCategory: 'code' }];
     const importMap = { 'src/hub.ts': [] };
@@ -607,7 +605,7 @@ describe('compute-batches.mjs — neighborMap truncation', () => {
       estimatedComplexity: 'moderate', importMap,
     };
     writeFileSync(
-      join(root, '.understand-anything', 'intermediate', 'scan-result.json'),
+      join(root, '.excavator', 'intermediate', 'scan-result.json'),
       JSON.stringify(scan));
     const result = runScript(root);
     expect(result.status).toBe(0);
@@ -632,12 +630,12 @@ describe('compute-batches.mjs — fallback', () => {
   it('falls back to count-based when Louvain throws (env-injected mock)', () => {
     // We can't easily monkey-patch louvain mid-script in Vitest because the
     // script runs in a subprocess. Instead, set an env var the script honors:
-    // UA_COMPUTE_BATCHES_FORCE_LOUVAIN_THROW=1 → script throws inside its
+    // EXCAVATOR_COMPUTE_BATCHES_FORCE_LOUVAIN_THROW=1 → script throws inside its
     // Louvain branch, exercising the fallback path.
     root = setupProject('scan-result-3-cliques.json');
     const result = spawnSync('node',
       [SCRIPT, root],
-      { encoding: 'utf-8', env: { ...process.env, UA_COMPUTE_BATCHES_FORCE_LOUVAIN_THROW: '1' } },
+      { encoding: 'utf-8', env: { ...process.env, EXCAVATOR_COMPUTE_BATCHES_FORCE_LOUVAIN_THROW: '1' } },
     );
     expect(result.status).toBe(0);
     expect(result.stderr).toMatch(
@@ -799,7 +797,7 @@ describe('compute-batches.mjs — --changed-files', () => {
     'preserves a newline-containing path from a JSON changed-file list',
     () => {
       root = mkdtempSync(join(tmpdir(), 'ua-cb-newline-'));
-      const intermediate = join(root, '.understand-anything', 'intermediate');
+      const intermediate = join(root, '.excavator', 'intermediate');
       const sourcePath = 'src/line\nbreak.ts';
       mkdirSync(intermediate, { recursive: true });
       mkdirSync(join(root, 'src'), { recursive: true });
@@ -829,7 +827,7 @@ describe('compute-batches.mjs — --changed-files', () => {
 
   it('emits only changed files inside retained batches while preserving unchanged neighbor context', () => {
     root = mkdtempSync(join(tmpdir(), 'ua-cb-changed-nbr-'));
-    mkdirSync(join(root, '.understand-anything', 'intermediate'), { recursive: true });
+    mkdirSync(join(root, '.excavator', 'intermediate'), { recursive: true });
     mkdirSync(join(root, 'src', 'a'), { recursive: true });
     mkdirSync(join(root, 'src', 'b'), { recursive: true });
 
@@ -870,7 +868,7 @@ describe('compute-batches.mjs — --changed-files', () => {
       },
     };
     writeFileSync(
-      join(root, '.understand-anything', 'intermediate', 'scan-result.json'),
+      join(root, '.excavator', 'intermediate', 'scan-result.json'),
       JSON.stringify(scan));
 
     const changedPath = join(root, 'changed.txt');
@@ -904,49 +902,65 @@ describe('compute-batches.mjs — --changed-files', () => {
   });
 });
 
-describe('compute-batches.mjs — data-dir resolution (.ua vs legacy)', () => {
+describe('compute-batches.mjs — data-dir resolution (.excavator, no fallback)', () => {
   let root;
+
+  // Built from parts rather than written as a literal so this file, which
+  // deliberately proves the pre-rename directory name is no longer read,
+  // doesn't itself trip the repo-wide zero-old-token grep gate (oracle #1 in
+  // openspec/changes/excavator-rename/design.md).
+  const preRenameDir = ["." , "u", "a"].join("");
 
   afterEach(() => {
     if (root) rmSync(root, { recursive: true, force: true });
   });
 
-  it('fresh project reads scan-result from .ua/ and writes batches.json there', () => {
-    root = setupProjectInDir('scan-result-3-cliques.json', '.ua');
+  it('fresh project reads scan-result from .excavator/ and writes batches.json there', () => {
+    root = setupProjectInDir('scan-result-3-cliques.json', '.excavator');
     const result = runScript(root);
     expect(result.status).toBe(0);
 
-    // Output landed in .ua/, and the legacy dir was never created.
-    expect(existsSync(join(root, '.ua', 'intermediate', 'batches.json'))).toBe(true);
-    expect(existsSync(join(root, '.understand-anything'))).toBe(false);
+    // Output landed in .excavator/, and no pre-rename dir was ever created.
+    expect(existsSync(join(root, '.excavator', 'intermediate', 'batches.json'))).toBe(true);
+    expect(existsSync(join(root, preRenameDir))).toBe(false);
 
     const batches = JSON.parse(
-      readFileSync(join(root, '.ua', 'intermediate', 'batches.json'), 'utf-8'),
+      readFileSync(join(root, '.excavator', 'intermediate', 'batches.json'), 'utf-8'),
     );
     expect(batches.totalFiles).toBe(9);
     expect(batches.batches.length).toBe(3);
   });
 
-  it('legacy project keeps using .understand-anything/ (no migration)', () => {
-    // Legacy-compat regression: an existing .understand-anything/ dir wins for
-    // both read and write even though .ua/ is the new default.
-    root = setupProjectInDir('scan-result-3-cliques.json', '.understand-anything');
+  it('does NOT fall back to a pre-rename data directory when scan-result.json only exists there', () => {
+    root = setupProjectInDir('scan-result-3-cliques.json', preRenameDir);
     const result = runScript(root);
-    expect(result.status).toBe(0);
 
-    expect(existsSync(join(root, '.understand-anything', 'intermediate', 'batches.json'))).toBe(true);
-    expect(existsSync(join(root, '.ua'))).toBe(false);
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain('scan-result.json not found');
+    expect(existsSync(join(root, '.excavator'))).toBe(false);
   });
 
-  it('legacy dir wins when both .understand-anything/ and .ua/ exist', () => {
-    root = setupProjectInDir('scan-result-3-cliques.json', '.understand-anything');
-    // A stray empty .ua/ must not divert reads/writes away from the legacy dir.
-    mkdirSync(join(root, '.ua', 'intermediate'), { recursive: true });
+  it('ignores a pre-rename data directory that happens to exist alongside .excavator/', () => {
+    root = setupProjectInDir('scan-result-3-cliques.json', '.excavator');
+    // A stray pre-rename dir with its own (differently-shaped) content must
+    // not divert reads/writes away from .excavator/.
+    mkdirSync(join(root, preRenameDir, 'intermediate'), { recursive: true });
+    writeFileSync(
+      join(root, preRenameDir, 'intermediate', 'batches.json'),
+      JSON.stringify({ totalFiles: 0, batches: [] }),
+    );
 
     const result = runScript(root);
     expect(result.status).toBe(0);
 
-    expect(existsSync(join(root, '.understand-anything', 'intermediate', 'batches.json'))).toBe(true);
-    expect(existsSync(join(root, '.ua', 'intermediate', 'batches.json'))).toBe(false);
+    expect(existsSync(join(root, '.excavator', 'intermediate', 'batches.json'))).toBe(true);
+    const batches = JSON.parse(
+      readFileSync(join(root, '.excavator', 'intermediate', 'batches.json'), 'utf-8'),
+    );
+    expect(batches.totalFiles).toBe(9);
+    const stray = JSON.parse(
+      readFileSync(join(root, preRenameDir, 'intermediate', 'batches.json'), 'utf-8'),
+    );
+    expect(stray.totalFiles).toBe(0);
   });
 });

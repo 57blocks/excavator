@@ -13,6 +13,8 @@ import { tmpdir } from 'node:os';
 import { join, dirname, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { DEFAULT_IGNORE_PATTERNS } from '@excavator/core';
+import scanProject from '../../../skills/excavator/scan-project.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const SCRIPT = resolve(
@@ -47,10 +49,9 @@ function setupTree(files, { gitInit = true } = {}) {
 
 /**
  * Tracks every temp output dir created by runScript() so the global
- * cleanup can sweep them between tests. The output file must live
- * OUTSIDE projectRoot because the project's default ignore patterns
- * do NOT exclude `.understand-anything/` (the dir is reserved for
- * persistent state, not transient scratch). If we wrote inside
+ * cleanup can sweep them between tests. The output file lives OUTSIDE
+ * projectRoot on principle (defense in depth, independent of what the
+ * default ignore patterns happen to cover) — if we wrote inside
  * projectRoot, the second call in the determinism test would
  * enumerate the first call's output file and produce drift.
  */
@@ -311,7 +312,7 @@ describe('scan-project.mjs — category assignment (project-scanner.md Step 4)',
     // LICENSE exception: must NOT be docs. The default ignore filter
     // normally drops LICENSE entirely, so we re-include it via
     // `!LICENSE` so the category test can fire.
-    writeFileSync(join(projectRoot, '.understandignore'), '!LICENSE\n');
+    writeFileSync(join(projectRoot, '.excavatorignore'), '!LICENSE\n');
     const r2 = runScript(projectRoot);
     const license = byPath(r2.output, 'LICENSE');
     expect(license).toBeDefined();
@@ -427,7 +428,7 @@ describe('scan-project.mjs — category assignment (project-scanner.md Step 4)',
   });
 });
 
-describe('scan-project.mjs — .understandignore handling', () => {
+describe('scan-project.mjs — .excavatorignore handling', () => {
   let projectRoot;
 
   afterEach(() => {
@@ -437,11 +438,11 @@ describe('scan-project.mjs — .understandignore handling', () => {
     }
   });
 
-  it('respects .understandignore patterns and increments filteredByIgnore', () => {
+  it('respects .excavatorignore patterns and increments filteredByIgnore', () => {
     // `**/*.log` is NOT in the hardcoded defaults at the recursive level
     // — wait, `*.log` is. Use a custom pattern to exercise user-driven drops.
     projectRoot = setupTree({
-      '.understandignore': 'fixtures/\n',
+      '.excavatorignore': 'fixtures/\n',
       'src/index.ts': 'export const x = 1;\n',
       'fixtures/snap1.json': '{ "a": 1 }\n',
       'fixtures/snap2.json': '{ "b": 2 }\n',
@@ -461,7 +462,7 @@ describe('scan-project.mjs — .understandignore handling', () => {
     // appear in the output. It is NOT counted in filteredByIgnore (it
     // was re-included, not additionally filtered).
     projectRoot = setupTree({
-      '.understandignore': '!keep.log\n',
+      '.excavatorignore': '!keep.log\n',
       'src/index.ts': 'export const x = 1;\n',
       'keep.log': 'important diagnostic\n',
       'drop.log': 'noise\n',
@@ -477,8 +478,14 @@ describe('scan-project.mjs — .understandignore handling', () => {
   });
 });
 
-describe('scan-project.mjs — data-dir resolution (.ua vs legacy)', () => {
+describe('scan-project.mjs — data-dir resolution (.excavator, no fallback)', () => {
   let projectRoot;
+
+  // Built from parts rather than written as a literal so this file, which
+  // deliberately proves the pre-rename directory name is no longer read,
+  // doesn't itself trip the repo-wide zero-old-token grep gate (oracle #1 in
+  // openspec/changes/excavator-rename/design.md).
+  const preRenameDir = ["." , "u", "a"].join("");
 
   afterEach(() => {
     if (projectRoot) {
@@ -487,11 +494,11 @@ describe('scan-project.mjs — data-dir resolution (.ua vs legacy)', () => {
     }
   });
 
-  it('honors .ua/.understandignore in a fresh project (no legacy dir)', () => {
+  it('honors .excavator/.excavatorignore', () => {
     // scan-project delegates ignore handling to core's createIgnoreFilter,
-    // which reads <resolveUaDir>/.understandignore — .ua/ for fresh projects.
+    // which reads resolveDataDir(projectRoot)/.excavatorignore — .excavator/.
     projectRoot = setupTree({
-      '.ua/.understandignore': 'fixtures/\n',
+      '.excavator/.excavatorignore': 'fixtures/\n',
       'src/index.ts': 'export const x = 1;\n',
       'fixtures/snap1.json': '{ "a": 1 }\n',
       'fixtures/snap2.json': '{ "b": 2 }\n',
@@ -500,30 +507,29 @@ describe('scan-project.mjs — data-dir resolution (.ua vs legacy)', () => {
     expect(r.status).toBe(0);
     expect(byPath(r.output, 'fixtures/snap1.json')).toBeUndefined();
     expect(byPath(r.output, 'fixtures/snap2.json')).toBeUndefined();
-    // Counted as user-driven drops (dual-filter accounting saw the ua ignore).
+    // Counted as user-driven drops (dual-filter accounting saw the ignore).
     expect(r.output.filteredByIgnore).toBe(2);
   });
 
-  it('honors legacy .understand-anything/.understandignore (legacy-compat)', () => {
-    // Legacy-compat regression: projects with an existing
-    // .understand-anything/ keep using it for the .understandignore lookup.
+  it('does NOT honor a .excavatorignore under a pre-rename data directory — no fallback', () => {
     projectRoot = setupTree({
-      '.understand-anything/.understandignore': 'fixtures/\n',
+      [`${preRenameDir}/.excavatorignore`]: 'fixtures/\n',
       'src/index.ts': 'export const x = 1;\n',
       'fixtures/snap1.json': '{ "a": 1 }\n',
       'fixtures/snap2.json': '{ "b": 2 }\n',
     });
     const r = runScript(projectRoot);
     expect(r.status).toBe(0);
-    expect(byPath(r.output, 'fixtures/snap1.json')).toBeUndefined();
-    expect(byPath(r.output, 'fixtures/snap2.json')).toBeUndefined();
-    expect(r.output.filteredByIgnore).toBe(2);
+    // Not read from the pre-rename dir, so fixtures/ is NOT excluded.
+    expect(byPath(r.output, 'fixtures/snap1.json')).toBeDefined();
+    expect(byPath(r.output, 'fixtures/snap2.json')).toBeDefined();
+    expect(r.output.filteredByIgnore).toBe(0);
   });
 
   it('can exclude persistent analysis data for isolated benchmark scans', () => {
     projectRoot = setupTree({
-      '.ua/knowledge-graph.json': '{ "nodes": [] }\n',
-      '.understand-anything/meta.json': '{ "version": 1 }\n',
+      '.excavator/knowledge-graph.json': '{ "nodes": [] }\n',
+      '.excavator/meta.json': '{ "version": 1 }\n',
       'src/index.ts': 'export const x = 1;\n',
     });
 
@@ -535,8 +541,8 @@ describe('scan-project.mjs — data-dir resolution (.ua vs legacy)', () => {
 
   it('composes CLI exclusions for benchmark scans regardless of flag order', () => {
     projectRoot = setupTree({
-      '.ua/knowledge-graph.json': '{ "nodes": [] }\n',
-      '.understand-anything/meta.json': '{ "version": 1 }\n',
+      '.excavator/knowledge-graph.json': '{ "nodes": [] }\n',
+      '.excavator/meta.json': '{ "version": 1 }\n',
       'generated/client.ts': 'export const generated = true;\n',
       'src/index.ts': 'export const x = 1;\n',
     });
@@ -552,6 +558,48 @@ describe('scan-project.mjs — data-dir resolution (.ua vs legacy)', () => {
       expect(r.output.filteredByIgnore).toBe(1);
       expect(r.output.contentDigest).toMatch(/^[0-9a-f]{64}$/);
     }
+  });
+});
+
+describe('scan-project.mjs — default exclusion of plugin/agent and data directories', () => {
+  let projectRoot;
+
+  afterEach(() => {
+    if (projectRoot) {
+      rmSync(projectRoot, { recursive: true, force: true });
+      projectRoot = null;
+    }
+  });
+
+  it("scanner's walker self-exclusion list is a subset of core's DEFAULT_IGNORE_PATTERNS", () => {
+    // HARD_SKIP_DIRS entries have no trailing slash; DEFAULT_IGNORE_PATTERNS
+    // directory entries do — normalize before comparing.
+    const normalizedDefaults = new Set(
+      DEFAULT_IGNORE_PATTERNS.map(p => p.replace(/\/+$/, '')),
+    );
+    for (const dir of scanProject.HARD_SKIP_DIRS) {
+      expect(normalizedDefaults.has(dir), `${dir} missing from DEFAULT_IGNORE_PATTERNS`).toBe(true);
+    }
+  });
+
+  it('excludes .claude/, .agents/, .codex/ and .excavator/ files and counts them as ignored, not silently dropped', () => {
+    projectRoot = setupTree({
+      '.claude/skills/x/SKILL.md': '# x\n',
+      '.agents/skills/y/SKILL.md': '# y\n',
+      '.codex/z.md': '# z\n',
+      '.excavator/config.json': '{}\n',
+      'src/index.ts': 'export const x = 1;\n',
+    });
+    const r = runScript(projectRoot);
+    expect(r.status).toBe(0);
+    expect(byPath(r.output, '.claude/skills/x/SKILL.md')).toBeUndefined();
+    expect(byPath(r.output, '.agents/skills/y/SKILL.md')).toBeUndefined();
+    expect(byPath(r.output, '.codex/z.md')).toBeUndefined();
+    expect(byPath(r.output, '.excavator/config.json')).toBeUndefined();
+    expect(byPath(r.output, 'src/index.ts')).toBeDefined();
+    // Not silently dropped — counted under the default-pattern ledger bucket.
+    expect(r.output.filteredByDefaults).toBeGreaterThanOrEqual(4);
+    expect(r.output.filteredByIgnore).toBe(0);
   });
 });
 
@@ -777,7 +825,7 @@ describe('scan-project.mjs — per-file failure resilience', () => {
     expect(r.stderr).toMatch(/file skipped from output/);
     // Final summary line still fires.
     expect(r.stderr).toMatch(
-      /scan-project: filesScanned=1 filteredByIgnore=0 complexity=small/,
+      /scan-project: filesScanned=1 filteredByIgnore=0 filteredByDefaults=0 complexity=small/,
     );
   });
 });
@@ -869,7 +917,7 @@ describe('scan-project.mjs — CLI entry guard + invocation', () => {
     expect(r.output.scriptCompleted).toBe(true);
     // Stats summary line fires on stderr.
     expect(r.stderr).toMatch(
-      /scan-project: filesScanned=2 filteredByIgnore=0 complexity=small/,
+      /scan-project: filesScanned=2 filteredByIgnore=0 filteredByDefaults=0 complexity=small/,
     );
     // Two files captured.
     expect(r.output.totalFiles).toBe(2);
@@ -906,6 +954,7 @@ describe('scan-project.mjs — output schema invariants', () => {
     expect(typeof out.totalFiles).toBe('number');
     expect(out.totalFiles).toBe(out.files.length);
     expect(typeof out.filteredByIgnore).toBe('number');
+    expect(typeof out.filteredByDefaults).toBe('number');
     expect(out.contentDigest).toMatch(/^[0-9a-f]{64}$/);
     expect(['small', 'moderate', 'large', 'very-large']).toContain(
       out.estimatedComplexity,

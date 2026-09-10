@@ -22,7 +22,7 @@ async function getCore() {
 }
 
 export async function getIntermediateDir(projectRoot) {
-  return join((await getCore()).resolveUaDir(projectRoot), 'intermediate');
+  return join((await getCore()).resolveDataDir(projectRoot), 'intermediate');
 }
 
 export function readJson(path) {
@@ -313,7 +313,7 @@ export function loadSymbolContext(projectRoot, intermediateDir) {
 
 export async function validateIncrementalSymbols(projectRoot, { graph, intermediateDir } = {}) {
   const core = await getCore();
-  intermediateDir ??= join(core.resolveUaDir(projectRoot), 'intermediate');
+  intermediateDir ??= join(core.resolveDataDir(projectRoot), 'intermediate');
   const reportPath = join(intermediateDir, 'incremental-symbol-report.json');
   const report = { version: 1, ok: false, files: [], unresolvedFiles: [], errors: [] };
   const graphFromDisk = graph === undefined;

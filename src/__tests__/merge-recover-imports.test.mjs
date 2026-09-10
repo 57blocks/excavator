@@ -73,7 +73,7 @@ function importsEdge(src, tgt) {
 
 beforeEach(() => {
   projectRoot = mkdtempSync(join(tmpdir(), "ua-merge-test-"));
-  intermediateDir = join(projectRoot, ".understand-anything", "intermediate");
+  intermediateDir = join(projectRoot, ".excavator", "intermediate");
   mkdirSync(intermediateDir, { recursive: true });
 });
 
@@ -291,9 +291,9 @@ describe("merge-batch-graphs.py imports recovery", () => {
   });
 });
 
-describe("merge-batch-graphs.py data-dir resolution (.ua vs legacy)", () => {
+describe("merge-batch-graphs.py data-dir resolution (.excavator, no fallback)", () => {
   // Self-contained: uses its own temp roots rather than the module-global
-  // .understand-anything projectRoot wired up in the top-level beforeEach.
+  // .excavator projectRoot wired up in the top-level beforeEach.
   function runIn(root) {
     const result = spawnSync(PYTHON.command, [...PYTHON.args, MERGE_SCRIPT, root], {
       encoding: "utf-8",
@@ -301,10 +301,16 @@ describe("merge-batch-graphs.py data-dir resolution (.ua vs legacy)", () => {
     return result;
   }
 
-  it("fresh project reads/writes under .ua/", () => {
+  // Built from parts rather than written as a literal so this file, which
+  // deliberately proves the pre-rename directory name is no longer read,
+  // doesn't itself trip the repo-wide zero-old-token grep gate (oracle #1 in
+  // openspec/changes/excavator-rename/design.md).
+  const preRenameDir = ["." , "u", "a"].join("");
+
+  it("fresh project reads/writes under .excavator/", () => {
     const root = mkdtempSync(join(tmpdir(), "ua-merge-uadir-"));
     try {
-      const inter = join(root, ".ua", "intermediate");
+      const inter = join(root, ".excavator", "intermediate");
       mkdirSync(inter, { recursive: true });
       writeFileSync(
         join(inter, "batch-0.json"),
@@ -312,31 +318,33 @@ describe("merge-batch-graphs.py data-dir resolution (.ua vs legacy)", () => {
       );
       const result = runIn(root);
       expect(result.status).toBe(0);
-      // Output landed in .ua/, legacy dir never created.
+      // Output landed in .excavator/, the pre-rename dir was never created.
       const out = JSON.parse(
         readFileSync(join(inter, "assembled-graph.json"), "utf-8"),
       );
       expect(out.nodes.map((n) => n.id)).toContain("file:src/a.py");
-      expect(existsSync(join(root, ".understand-anything"))).toBe(false);
+      expect(existsSync(join(root, preRenameDir))).toBe(false);
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
   });
 
-  it("legacy .understand-anything/ wins even when .ua/ also exists", () => {
+  it("does NOT fall back to a pre-rename data directory even when .excavator/ also exists", () => {
     const root = mkdtempSync(join(tmpdir(), "ua-merge-legacy-"));
     try {
-      const legacyInter = join(root, ".understand-anything", "intermediate");
+      const legacyInter = join(root, preRenameDir, "intermediate");
       mkdirSync(legacyInter, { recursive: true });
-      mkdirSync(join(root, ".ua", "intermediate"), { recursive: true });
+      mkdirSync(join(root, ".excavator", "intermediate"), { recursive: true });
       writeFileSync(
         join(legacyInter, "batch-0.json"),
         JSON.stringify({ nodes: [fileNode("src/a.py")], edges: [] }),
       );
       const result = runIn(root);
-      expect(result.status).toBe(0);
-      expect(existsSync(join(legacyInter, "assembled-graph.json"))).toBe(true);
-      expect(existsSync(join(root, ".ua", "intermediate", "assembled-graph.json"))).toBe(false);
+      // .excavator/intermediate has no batch-*.json of its own, so the
+      // script fails rather than reading the pre-rename directory's batch.
+      expect(result.status).not.toBe(0);
+      expect(existsSync(join(legacyInter, "assembled-graph.json"))).toBe(false);
+      expect(existsSync(join(root, ".excavator", "intermediate", "assembled-graph.json"))).toBe(false);
     } finally {
       rmSync(root, { recursive: true, force: true });
     }

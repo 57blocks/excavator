@@ -9,10 +9,10 @@ Incrementally update the knowledge graph after a commit. Do not ask the user for
 1. Set `PROJECT_ROOT` to the current working directory. Resolve the data directory once:
 
    ```bash
-   UA_DIR="$PROJECT_ROOT/$([ -d "$PROJECT_ROOT/.understand-anything" ] && echo .understand-anything || echo .ua)"
+   DATA_DIR="$PROJECT_ROOT/.excavator"
    ```
 
-2. Require `$UA_DIR/knowledge-graph.json` and `$UA_DIR/meta.json`. If either is missing, report that `/excavator` must create a baseline and **STOP**.
+2. Require `$DATA_DIR/knowledge-graph.json` and `$DATA_DIR/meta.json`. If either is missing, report that `/excavator` must create a baseline and **STOP**.
 3. Read `gitCommitHash` from meta as `$LAST_COMMIT_HASH`; get `$HEAD_COMMIT` with `git rev-parse HEAD`. If they match, report that the graph is current and **STOP**.
 4. Resolve `$PLUGIN_ROOT` from `$CLAUDE_PLUGIN_ROOT`, then `$HOME/.understand-anything-plugin`, validating that it contains `skills/excavator/prepare-incremental.mjs`. If it cannot be found, report the error and **STOP** without changing metadata.
 5. Ensure core is built, then run the bundled helper with parameterized arguments:
@@ -24,7 +24,7 @@ Incrementally update the knowledge graph after a commit. Do not ask the user for
    ```
 
    The helper is authoritative for `git diff --name-status -z`, renames, spaces, POSIX normalization, the current scan/ignore rules, structural fingerprints, generated artifacts, and selective import-map refresh. Do not recreate or post-filter its decisions.
-6. Read `$UA_DIR/intermediate/incremental-plan.json`.
+6. Read `$DATA_DIR/intermediate/incremental-plan.json`.
 
    | Action | Required behavior |
    |---|---|
@@ -48,7 +48,7 @@ Read `filesToReanalyze` from the plan. It never contains deleted, ignored, cosme
 
   ```bash
   node "$PLUGIN_ROOT/skills/excavator/compute-batches.mjs" "$PROJECT_ROOT" \
-    --changed-files="$UA_DIR/intermediate/changed-files.json"
+    --changed-files="$DATA_DIR/intermediate/changed-files.json"
   ```
 
   Dispatch file-analyzer for those batches only, using `agents/excavator-file-analyzer.md` and the batch prompt contract from the `/excavator` skill. Include `previousSymbols` for each batch's files from `incremental-symbol-baseline.json`: old symbol IDs, names, types, paths, line ranges, and class containment. Existing symbols that still exist must survive significance filtering. Preserve each original batch index in its output filename. Retry a failed dispatch once; if it still fails, **STOP** without running the finalizer or advancing the baseline.
@@ -61,7 +61,7 @@ Run the deterministic merge in both empty and non-empty analyzer cases:
 python "$PLUGIN_ROOT/skills/excavator/merge-batch-graphs.py" "$PROJECT_ROOT"
 ```
 
-It combines `batch-existing.json` with fresh batches and recovers imports from the refreshed `scan-result.json`, including `config:`, `schema:`, `service:`, and other valid whole-file nodes. Require both a successful exit and `$UA_DIR/intermediate/assembled-graph.json`; failed candidates remain on disk for diagnosis.
+It combines `batch-existing.json` with fresh batches and recovers imports from the refreshed `scan-result.json`, including `config:`, `schema:`, `service:`, and other valid whole-file nodes. Require both a successful exit and `$DATA_DIR/intermediate/assembled-graph.json`; failed candidates remain on disk for diagnosis.
 
 Merge runs `validate-incremental-symbols.mjs`, comparing the preserved old symbols with the candidate and base/current source. Read `incremental-symbol-report.json` for per-file counts, missing IDs/names, and still-present/deleted/unknown classifications. A same-size node set can still have missing symbols. Confirmed deletions are allowed; still-present or unknown omissions block publication.
 
@@ -86,7 +86,7 @@ Do not dispatch assemble-reviewer or graph-reviewer for automatic updates.
 ## Phase 3 — Conditional architecture and tour
 
 - For `PARTIAL_UPDATE`, dispatch neither agent. The finalizer preserves existing layer assignments and tour prose, removes dangling references/empty layers, and assigns new nodes deterministically by directory depth, graph connectivity, then prior layer order.
-- For `ARCHITECTURE_UPDATE`, dispatch architecture-analyzer on the full merged node/edge set, including previous layers for naming stability, and write `$UA_DIR/intermediate/layers.json`. Then dispatch tour-builder and write `$UA_DIR/intermediate/tour.json`.
+- For `ARCHITECTURE_UPDATE`, dispatch architecture-analyzer on the full merged node/edge set, including previous layers for naming stability, and write `$DATA_DIR/intermediate/layers.json`. Then dispatch tour-builder and write `$DATA_DIR/intermediate/tour.json`.
 
 Retry either required agent once. If it still fails, **STOP** without advancing the baseline.
 

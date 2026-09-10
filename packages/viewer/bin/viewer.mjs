@@ -6,9 +6,8 @@
  * Usage:
  *     excavator-viewer [project-dir] [--port <n>] [--no-open]
  *
- * The project directory (default: cwd) must contain a data directory —
- * `.ua/` or legacy `.understand-anything/` — with a knowledge-graph.json
- * produced by /excavator.
+ * The project directory (default: cwd) must contain the data directory —
+ * `.excavator/` — with a knowledge-graph.json produced by /excavator.
  *
  * Security model mirrors the dashboard dev server (vite.config.ts):
  *   - binds to 127.0.0.1 only
@@ -27,9 +26,8 @@ import { getGraphFreshnessBatch } from "./dist/staleness.js";
 
 const DIST_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "dist");
 const MAX_SOURCE_FILE_BYTES = 1024 * 1024;
-// Legacy directory first — projects analyzed before the `.ua` rename keep
-// their existing `.understand-anything/` data.
-const UA_DIR_CANDIDATES = [".understand-anything", ".ua"];
+// The project's data directory — single source of truth: `.excavator/`.
+const EXCAVATOR_DIR = ".excavator";
 
 // ── CLI args ───────────────────────────────────────────────────────────────
 
@@ -70,14 +68,12 @@ if (!fs.existsSync(DIST_DIR)) {
   process.exit(1);
 }
 
-const graphDir = UA_DIR_CANDIDATES
-  .map((d) => path.join(projectRoot, d))
-  .find((d) => fs.existsSync(path.join(d, "knowledge-graph.json")));
+const graphDir = path.join(projectRoot, EXCAVATOR_DIR);
 
-if (!graphDir) {
+if (!fs.existsSync(path.join(graphDir, "knowledge-graph.json"))) {
   console.error(
     `Error: no knowledge graph found under ${projectRoot}\n` +
-    "Expected .ua/knowledge-graph.json (or legacy .understand-anything/). " +
+    "Expected .excavator/knowledge-graph.json. " +
     "Generate one with /excavator first, or pass the project directory as an argument.",
   );
   process.exit(1);

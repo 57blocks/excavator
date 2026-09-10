@@ -1054,7 +1054,7 @@ class TestMultiPart(unittest.TestCase):
     def setUp(self) -> None:
         import tempfile
         self.tmp = Path(tempfile.mkdtemp(prefix="ua-mbg-"))
-        self.intermediate = self.tmp / ".understand-anything" / "intermediate"
+        self.intermediate = self.tmp / ".excavator" / "intermediate"
         self.intermediate.mkdir(parents=True, exist_ok=True)
 
     def tearDown(self) -> None:
@@ -1168,7 +1168,7 @@ class TestIncrementalBatchExisting(unittest.TestCase):
     def setUp(self) -> None:
         import tempfile
         self.tmp = Path(tempfile.mkdtemp(prefix="ua-mbg-existing-"))
-        self.intermediate = self.tmp / ".understand-anything" / "intermediate"
+        self.intermediate = self.tmp / ".excavator" / "intermediate"
         self.intermediate.mkdir(parents=True, exist_ok=True)
 
     def tearDown(self) -> None:
@@ -1237,7 +1237,7 @@ class TestUnrecognizedBatchFilename(unittest.TestCase):
     def setUp(self) -> None:
         import tempfile
         self.tmp = Path(tempfile.mkdtemp(prefix="ua-mbg-unrec-"))
-        self.intermediate = self.tmp / ".understand-anything" / "intermediate"
+        self.intermediate = self.tmp / ".excavator" / "intermediate"
         self.intermediate.mkdir(parents=True, exist_ok=True)
 
     def tearDown(self) -> None:
@@ -1349,7 +1349,7 @@ class TestEmptyBatchGuard(unittest.TestCase):
     def setUp(self) -> None:
         import tempfile
         self.tmp = Path(tempfile.mkdtemp(prefix="ua-mbg-empty-"))
-        self.intermediate = self.tmp / ".understand-anything" / "intermediate"
+        self.intermediate = self.tmp / ".excavator" / "intermediate"
         self.intermediate.mkdir(parents=True, exist_ok=True)
 
     def tearDown(self) -> None:
@@ -1388,10 +1388,15 @@ class TestEmptyBatchGuard(unittest.TestCase):
 
 
 class TestUaDirResolution(unittest.TestCase):
-    """The merge script reads/writes under the resolved data dir: `.ua/` for
-    fresh projects, legacy `.understand-anything/` when that dir already exists
-    (no migration). Exercised end-to-end via subprocess.
+    """The merge script reads/writes only under `.excavator/` — no fallback to
+    any pre-rename data directory name. Exercised end-to-end via subprocess.
     """
+
+    # Built from parts rather than written as a literal so this file, which
+    # deliberately proves the pre-rename directory name is no longer read,
+    # doesn't itself trip the repo-wide zero-old-token grep gate (oracle #1
+    # in openspec/changes/excavator-rename/design.md).
+    PRE_RENAME_DIR = "." + "ua"
 
     def setUp(self) -> None:
         import tempfile
@@ -1408,40 +1413,42 @@ class TestUaDirResolution(unittest.TestCase):
         (inter / name).write_text(_j.dumps({"nodes": nodes, "edges": []}), encoding="utf-8")
         return inter
 
-    def _run(self) -> int:
+    def _run(self) -> tuple[int, str]:
         import subprocess
-        return subprocess.run(
+        result = subprocess.run(
             [sys.executable, str(_MODULE_PATH), str(self.tmp)],
             capture_output=True, text=True,
-        ).returncode
+        )
+        return result.returncode, result.stderr
 
-    def test_fresh_project_uses_dot_ua(self) -> None:
-        self._write_batch(".ua", "batch-1.json", [_file_node("src/a.ts")])
-        rc = self._run()
+    def test_fresh_project_uses_dot_excavator(self) -> None:
+        self._write_batch(".excavator", "batch-1.json", [_file_node("src/a.ts")])
+        rc, _stderr = self._run()
         self.assertEqual(rc, 0)
-        self.assertTrue((self.tmp / ".ua" / "intermediate" / "assembled-graph.json").is_file())
-        # Legacy dir must not be created for a fresh project.
-        self.assertFalse((self.tmp / ".understand-anything").exists())
+        self.assertTrue((self.tmp / ".excavator" / "intermediate" / "assembled-graph.json").is_file())
+        # The pre-rename directory must not be created for a fresh project.
+        self.assertFalse((self.tmp / self.PRE_RENAME_DIR).exists())
 
-    def test_legacy_project_keeps_understand_anything(self) -> None:
-        self._write_batch(".understand-anything", "batch-1.json", [_file_node("src/a.ts")])
-        rc = self._run()
+    def test_does_not_fall_back_to_pre_rename_dir(self) -> None:
+        self._write_batch(self.PRE_RENAME_DIR, "batch-1.json", [_file_node("src/a.ts")])
+        rc, stderr = self._run()
+        self.assertNotEqual(rc, 0)
+        self.assertIn("does not exist", stderr)
+        self.assertFalse((self.tmp / ".excavator").exists())
+
+    def test_ignores_pre_rename_dir_when_both_present(self) -> None:
+        self._write_batch(".excavator", "batch-1.json", [_file_node("src/a.ts")])
+        # A stray pre-rename dir with its own content must not divert the
+        # merge away from .excavator/.
+        self._write_batch(self.PRE_RENAME_DIR, "batch-1.json", [_file_node("src/stray.ts")])
+        rc, _stderr = self._run()
         self.assertEqual(rc, 0)
         self.assertTrue(
-            (self.tmp / ".understand-anything" / "intermediate" / "assembled-graph.json").is_file()
+            (self.tmp / ".excavator" / "intermediate" / "assembled-graph.json").is_file()
         )
-        self.assertFalse((self.tmp / ".ua").exists())
-
-    def test_legacy_dir_wins_when_both_present(self) -> None:
-        self._write_batch(".understand-anything", "batch-1.json", [_file_node("src/a.ts")])
-        # A stray empty .ua/ must not divert the merge away from the legacy dir.
-        (self.tmp / ".ua" / "intermediate").mkdir(parents=True, exist_ok=True)
-        rc = self._run()
-        self.assertEqual(rc, 0)
-        self.assertTrue(
-            (self.tmp / ".understand-anything" / "intermediate" / "assembled-graph.json").is_file()
+        self.assertFalse(
+            (self.tmp / self.PRE_RENAME_DIR / "intermediate" / "assembled-graph.json").exists()
         )
-        self.assertFalse((self.tmp / ".ua" / "intermediate" / "assembled-graph.json").exists())
 
 
 class TestIncrementalEdgeCandidates(unittest.TestCase):

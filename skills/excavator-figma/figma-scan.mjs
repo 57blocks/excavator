@@ -3,9 +3,8 @@ import { writeFileSync, mkdirSync, readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { parseFileKey, FigmaApiSource, parseDocument, extractTokens, applyScreenThumbnails } from "@excavator/core/figma";
 
-// Mirror core's resolveUaDir: the legacy `.understand-anything/` dir wins for
-// both reads and writes when it already exists; otherwise use `.ua/`.
-const uaDir = (root) => { const legacy = join(root, ".understand-anything"); return existsSync(legacy) ? legacy : join(root, ".ua"); };
+// The project's data directory — single source of truth: `.excavator/`.
+const dataDir = (root) => join(root, ".excavator");
 
 const [, , projectRoot, urlOrKey] = process.argv;
 if (!projectRoot || !urlOrKey) {
@@ -17,7 +16,7 @@ const fileKey = parseFileKey(urlOrKey);
 const source = new FigmaApiSource(fileKey); // reads FIGMA_TOKEN from env; throws a friendly error if missing
 const doc = await source.fetchDocument();
 
-const metaPath = join(uaDir(projectRoot), "meta.json");
+const metaPath = join(dataDir(projectRoot), "meta.json");
 let prevVersion = null;
 if (existsSync(metaPath)) {
   try {
@@ -26,7 +25,7 @@ if (existsSync(metaPath)) {
     prevVersion = null; // malformed/partial meta.json → fall through to a full rebuild
   }
 }
-if (doc.version && prevVersion === doc.version && process.env.UNDERSTAND_FIGMA_FORCE !== "1") {
+if (doc.version && prevVersion === doc.version && process.env.EXCAVATOR_FIGMA_FORCE !== "1") {
   // Content is unchanged, but the stored screen thumbnail URLs are pre-signed
   // and expire after a few hours. Refresh them in the existing graph so a later
   // re-run doesn't leave the dashboard with broken sidebar thumbnails, then
@@ -68,7 +67,7 @@ const manifest = {
   edges,
 };
 
-const interDir = join(uaDir(projectRoot), "intermediate");
+const interDir = join(dataDir(projectRoot), "intermediate");
 mkdirSync(interDir, { recursive: true });
 writeFileSync(join(interDir, "scan-manifest.json"), JSON.stringify(manifest, null, 2));
 
@@ -87,7 +86,7 @@ console.error(
  * Best-effort: never throw (thumbnails are optional).
  */
 async function refreshThumbnailsInPlace(projectRoot, source) {
-  const graphPath = join(uaDir(projectRoot), "knowledge-graph.json");
+  const graphPath = join(dataDir(projectRoot), "knowledge-graph.json");
   if (!existsSync(graphPath)) return;
   try {
     const graph = JSON.parse(readFileSync(graphPath, "utf8"));

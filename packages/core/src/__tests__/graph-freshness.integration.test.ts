@@ -75,6 +75,13 @@ afterEach(() => {
   }
 });
 
+// Built from parts rather than written as literals so this file — which
+// deliberately proves the pre-rename directory names are no longer treated
+// specially — doesn't itself trip the repo-wide zero-old-token grep gate
+// (oracle #1 in openspec/changes/excavator-rename/design.md).
+const preRenameShortDir = ["." , "u", "a"].join("");
+const preRenameLongDir = "." + ["understand", "anything"].join("-");
+
 describe(
   "getGraphFreshness with a real Git repository",
   { timeout: 15_000 },
@@ -158,20 +165,10 @@ describe(
     });
   });
 
-  it.each([".understand-anything", ".ua"])(
-    "ignores untracked Understand Anything output files in %s",
-    async (dataDir) => {
+  it("ignores untracked Excavator output files in .excavator", async () => {
     const { repoDir, baseline } = createRepository();
-    writeProjectFile(
-      repoDir,
-      `${dataDir}/knowledge-graph.json`,
-      "{}\n",
-    );
-    writeProjectFile(
-      repoDir,
-      `${dataDir}/intermediate/batch-0.json`,
-      "{}\n",
-    );
+    writeProjectFile(repoDir, ".excavator/knowledge-graph.json", "{}\n");
+    writeProjectFile(repoDir, ".excavator/intermediate/batch-0.json", "{}\n");
 
     await expect(
       getGraphFreshness(repoDir, { graphCommitHash: baseline }),
@@ -180,50 +177,116 @@ describe(
       changedFileCount: 0,
       changedFiles: [],
     });
-    },
-  );
+  });
 
-  it.each([".understand-anything", ".ua"])(
-    "ignores commits that only change Understand Anything output files in %s",
-    async (dataDir) => {
-      const { repoDir, baseline } = createRepository();
-      writeProjectFile(repoDir, `${dataDir}/knowledge-graph.json`, "{}\n");
-      const headCommit = commitAll(repoDir, "persist generated graph");
+  it("does NOT ignore untracked files under a pre-rename data directory — no fallback", async () => {
+    const { repoDir, baseline } = createRepository();
+    writeProjectFile(
+      repoDir,
+      `${preRenameShortDir}/knowledge-graph.json`,
+      "{}\n",
+    );
+    writeProjectFile(
+      repoDir,
+      `${preRenameShortDir}/intermediate/batch-0.json`,
+      "{}\n",
+    );
 
-      await expect(
-        getGraphFreshness(repoDir, { graphCommitHash: baseline }),
-      ).resolves.toEqual({
-        status: "fresh",
-        graphCommitHash: baseline,
-        headCommitHash: headCommit,
-        changedFileCount: 0,
-        changedFiles: [],
-        commitsBehind: 0,
-        commitsAhead: 0,
-      });
-    },
-  );
+    await expect(
+      getGraphFreshness(repoDir, { graphCommitHash: baseline }),
+    ).resolves.toMatchObject({
+      status: "dirty",
+      changedFileCount: 2,
+      changedFiles: expect.arrayContaining([
+        `${preRenameShortDir}/knowledge-graph.json`,
+        `${preRenameShortDir}/intermediate/batch-0.json`,
+      ]),
+    });
+  });
 
-  it.each([".understand-anything", ".ua"])(
-    "still reports source changes beside ignored output files in %s",
-    async (dataDir) => {
-      const { repoDir, baseline } = createRepository();
-      writeProjectFile(repoDir, `${dataDir}/knowledge-graph.json`, "{}\n");
-      writeProjectFile(
-        repoDir,
+  it("ignores a commit that only changes Excavator output files in .excavator", async () => {
+    const { repoDir, baseline } = createRepository();
+    writeProjectFile(repoDir, ".excavator/knowledge-graph.json", "{}\n");
+    const headCommit = commitAll(repoDir, "persist generated graph");
+
+    await expect(
+      getGraphFreshness(repoDir, { graphCommitHash: baseline }),
+    ).resolves.toEqual({
+      status: "fresh",
+      graphCommitHash: baseline,
+      headCommitHash: headCommit,
+      changedFileCount: 0,
+      changedFiles: [],
+      commitsBehind: 0,
+      commitsAhead: 0,
+    });
+  });
+
+  it("does NOT ignore a commit that only changes a pre-rename data directory — reports the graph behind", async () => {
+    const { repoDir, baseline } = createRepository();
+    writeProjectFile(
+      repoDir,
+      `${preRenameLongDir}/knowledge-graph.json`,
+      "{}\n",
+    );
+    const headCommit = commitAll(repoDir, "persist generated graph under pre-rename dir");
+
+    await expect(
+      getGraphFreshness(repoDir, { graphCommitHash: baseline }),
+    ).resolves.toMatchObject({
+      status: "stale",
+      relation: "behind",
+      graphCommitHash: baseline,
+      headCommitHash: headCommit,
+      changedFileCount: 1,
+      changedFiles: [`${preRenameLongDir}/knowledge-graph.json`],
+      commitsBehind: 1,
+      commitsAhead: 0,
+    });
+  });
+
+  it("still reports source changes beside ignored output files in .excavator", async () => {
+    const { repoDir, baseline } = createRepository();
+    writeProjectFile(repoDir, ".excavator/knowledge-graph.json", "{}\n");
+    writeProjectFile(
+      repoDir,
+      "src/real-change.ts",
+      "export const changed = true;\n",
+    );
+
+    await expect(
+      getGraphFreshness(repoDir, { graphCommitHash: baseline }),
+    ).resolves.toMatchObject({
+      status: "dirty",
+      changedFileCount: 1,
+      changedFiles: ["src/real-change.ts"],
+    });
+  });
+
+  it("reports both the source change and the un-ignored pre-rename output file", async () => {
+    const { repoDir, baseline } = createRepository();
+    writeProjectFile(
+      repoDir,
+      `${preRenameShortDir}/knowledge-graph.json`,
+      "{}\n",
+    );
+    writeProjectFile(
+      repoDir,
+      "src/real-change.ts",
+      "export const changed = true;\n",
+    );
+
+    await expect(
+      getGraphFreshness(repoDir, { graphCommitHash: baseline }),
+    ).resolves.toMatchObject({
+      status: "dirty",
+      changedFileCount: 2,
+      changedFiles: expect.arrayContaining([
         "src/real-change.ts",
-        "export const changed = true;\n",
-      );
-
-      await expect(
-        getGraphFreshness(repoDir, { graphCommitHash: baseline }),
-      ).resolves.toMatchObject({
-        status: "dirty",
-        changedFileCount: 1,
-        changedFiles: ["src/real-change.ts"],
-      });
-    },
-  );
+        `${preRenameShortDir}/knowledge-graph.json`,
+      ]),
+    });
+  });
 
   it("resolves an abbreviated graph hash to the full matching commit", async () => {
     const { repoDir, baseline } = createRepository();

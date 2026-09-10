@@ -6,17 +6,17 @@ argument-hint: ["[path] [--full|--auto-update|--no-auto-update|--review|--langua
 
 # /excavator
 
-Analyze the current codebase and produce a `knowledge-graph.json` file in the project's data directory (`.ua/`, or the legacy `.understand-anything/` when it already exists). This file powers the interactive dashboard for exploring the project's architecture.
+Analyze the current codebase and produce a `knowledge-graph.json` file in the project's data directory (`.excavator/`). This file powers the interactive dashboard for exploring the project's architecture.
 
 ## Options
 
 - `$ARGUMENTS` may contain:
   - `--full` — Force a full rebuild, ignoring any existing graph
-  - `--auto-update` — Enable automatic graph updates on commit (writes `autoUpdate: true` to `$UA_DIR/config.json`)
-  - `--no-auto-update` — Disable automatic graph updates (writes `autoUpdate: false` to `$UA_DIR/config.json`)
+  - `--auto-update` — Enable automatic graph updates on commit (writes `autoUpdate: true` to `$DATA_DIR/config.json`)
+  - `--no-auto-update` — Disable automatic graph updates (writes `autoUpdate: false` to `$DATA_DIR/config.json`)
   - `--review` — Run full LLM graph-reviewer instead of inline deterministic validation
-  - `--language <lang>` — Generate all textual content (summaries, descriptions, tags, titles, languageNotes, languageLesson) in the specified language. Accepts ISO 639-1 codes (`zh`, `ja`, `ko`, `en`, `es`, `fr`, `de`, etc.) or friendly names (`chinese`, `japanese`, `korean`, `english`, `spanish`, etc.). Locale variants supported: `zh-TW`, `zh-HK`, etc. Defaults to `en` (English). Stores preference in `$UA_DIR/config.json` for consistency across incremental updates.
-  - `--exclude <patterns>` — Comma-separated glob patterns for additional files/directories to exclude from analysis (e.g., `--exclude "tests/*,docs/*"`). These patterns take highest priority over built-in defaults and `.understandignore` rules. Supports gitignore syntax including `!` negation.
+  - `--language <lang>` — Generate all textual content (summaries, descriptions, tags, titles, languageNotes, languageLesson) in the specified language. Accepts ISO 639-1 codes (`zh`, `ja`, `ko`, `en`, `es`, `fr`, `de`, etc.) or friendly names (`chinese`, `japanese`, `korean`, `english`, `spanish`, etc.). Locale variants supported: `zh-TW`, `zh-HK`, etc. Defaults to `en` (English). Stores preference in `$DATA_DIR/config.json` for consistency across incremental updates.
+  - `--exclude <patterns>` — Comma-separated glob patterns for additional files/directories to exclude from analysis (e.g., `--exclude "tests/*,docs/*"`). These patterns take highest priority over built-in defaults and `.excavatorignore` rules. Supports gitignore syntax including `!` negation.
   - A directory path (e.g. `/path/to/repo` or `../other-project`) — Analyze the given directory instead of the current working directory
 
 ---
@@ -50,7 +50,7 @@ Determine whether to run a full analysis or incremental update.
      - Verify the resolved path exists and is a directory (run `test -d <path>`). If it does not exist or is not a directory, report an error to the user and **STOP**.
      - Set `PROJECT_ROOT` to the resolved absolute path.
    - If no directory path argument is found, set `PROJECT_ROOT` to the current working directory.
-   - **Worktree redirect.** If `PROJECT_ROOT` is inside a git worktree (not the main checkout), redirect output to the main repository root. Worktrees managed by Claude Code are ephemeral — the data directory (`.ua/`, or legacy `.understand-anything/`) written there is destroyed when the session ends, taking the knowledge graph with it (issue #133). Detect a worktree by comparing `git rev-parse --git-dir` against `git rev-parse --git-common-dir`; in a normal checkout or submodule they resolve to the same path, in a worktree they differ and the parent of `--git-common-dir` is the main repo root.
+   - **Worktree redirect.** If `PROJECT_ROOT` is inside a git worktree (not the main checkout), redirect output to the main repository root. Worktrees managed by Claude Code are ephemeral — the data directory (`.excavator/`) written there is destroyed when the session ends, taking the knowledge graph with it (issue #133). Detect a worktree by comparing `git rev-parse --git-dir` against `git rev-parse --git-common-dir`; in a normal checkout or submodule they resolve to the same path, in a worktree they differ and the parent of `--git-common-dir` is the main repo root.
 
      ```bash
      COMMON_DIR=$(git -C "$PROJECT_ROOT" rev-parse --git-common-dir 2>/dev/null)
@@ -60,17 +60,17 @@ Determine whether to run a full analysis or incremental update.
        GIT_ABS=$(cd "$PROJECT_ROOT" && cd "$GIT_DIR" 2>/dev/null && pwd -P)
        if [ -n "$COMMON_ABS" ] && [ "$COMMON_ABS" != "$GIT_ABS" ]; then
          MAIN_ROOT=$(dirname "$COMMON_ABS")
-         if [ -d "$MAIN_ROOT" ] && [ "${UNDERSTAND_NO_WORKTREE_REDIRECT:-0}" != "1" ]; then
-           echo "[understand] Detected git worktree at $PROJECT_ROOT"
-           echo "[understand] Redirecting output to main repo root: $MAIN_ROOT"
-           echo "[understand] (Set UNDERSTAND_NO_WORKTREE_REDIRECT=1 to keep PROJECT_ROOT as the worktree.)"
+         if [ -d "$MAIN_ROOT" ] && [ "${EXCAVATOR_NO_WORKTREE_REDIRECT:-0}" != "1" ]; then
+           echo "[excavator] Detected git worktree at $PROJECT_ROOT"
+           echo "[excavator] Redirecting output to main repo root: $MAIN_ROOT"
+           echo "[excavator] (Set EXCAVATOR_NO_WORKTREE_REDIRECT=1 to keep PROJECT_ROOT as the worktree.)"
            PROJECT_ROOT="$MAIN_ROOT"
          fi
        fi
      fi
      ```
 
-     Set `UNDERSTAND_NO_WORKTREE_REDIRECT=1` if you intentionally want a per-worktree graph (rare — most users want the redirect).
+     Set `EXCAVATOR_NO_WORKTREE_REDIRECT=1` if you intentionally want a per-worktree graph (rare — most users want the redirect).
 1.5. **Ensure the plugin is built.** Later phases invoke Node scripts that import `@excavator/core`. On a fresh install `packages/core/dist/` does not exist yet — build once.
 
    **Important:** do **not** assume the plugin root is simply two directories above the skill path string. In many installations `~/.agents/skills/excavator` is a symlink into the real plugin checkout. Prefer runtime-provided plugin roots first (for Claude), then fall back to universal symlinks, skill symlink resolution, and common clone-based install paths.
@@ -121,11 +121,11 @@ Determine whether to run a full analysis or incremental update.
 
    If `pnpm` is missing, report to the user: "Install Node.js ≥ 22 and pnpm ≥ 10, then re-run `/excavator`."
 
-1.7. **Resolve the data directory `$UA_DIR`.** All Excavator artifacts live in the project's data directory. Resolve it once, now that `$PROJECT_ROOT` is known, and reuse `$UA_DIR` for every read and write in later phases:
+1.7. **Resolve the data directory `$DATA_DIR`.** All Excavator artifacts live in the project's data directory, `.excavator/`. Resolve it once, now that `$PROJECT_ROOT` is known, and reuse `$DATA_DIR` for every read and write in later phases:
    ```bash
-   UA_DIR="$PROJECT_ROOT/$([ -d "$PROJECT_ROOT/.understand-anything" ] && echo .understand-anything || echo .ua)"
+   DATA_DIR="$PROJECT_ROOT/.excavator"
    ```
-   This keeps the legacy `.understand-anything/` directory when it already exists (existing projects keep working with no migration) and uses the new `.ua/` otherwise. Because each phase may run in a fresh shell, treat `$UA_DIR` — like `$PROJECT_ROOT` — as a value you carry forward and substitute; re-resolve it with the line above if a later command block needs it in a new shell.
+   Because each phase may run in a fresh shell, treat `$DATA_DIR` — like `$PROJECT_ROOT` — as a value you carry forward and substitute; re-resolve it with the line above if a later command block needs it in a new shell.
 
 2. Get the current git commit hash:
    ```bash
@@ -133,16 +133,16 @@ Determine whether to run a full analysis or incremental update.
    ```
 3. Create the intermediate and temp output directories:
    ```bash
-   mkdir -p "$UA_DIR/intermediate"
-   mkdir -p "$UA_DIR/tmp"
+   mkdir -p "$DATA_DIR/intermediate"
+   mkdir -p "$DATA_DIR/tmp"
    ```
 3.1. **Purge stale trash dirs.** Phase 7 cleanup `mv`s scratch dirs into `.trash-<timestamp>/` rather than `rm -rf`ing them directly (see issue #301), so that destructive-action gates on hardened hosts don't trip on just-created paths. Reclaim the space here once the trash is older than 7 days — by this point any freshness-window check has long since stopped caring about those dirs:
    ```bash
-   find "$UA_DIR/" -maxdepth 1 -type d -name '.trash-*' -mtime +7 -exec rm -rf {} + 2>/dev/null || true
+   find "$DATA_DIR/" -maxdepth 1 -type d -name '.trash-*' -mtime +7 -exec rm -rf {} + 2>/dev/null || true
    ```
 3.5. **Auto-update configuration:**
-    - If `--auto-update` is in `$ARGUMENTS`: write `{"autoUpdate": true}` to `$UA_DIR/config.json`
-    - If `--no-auto-update` is in `$ARGUMENTS`: write `{"autoUpdate": false}` to `$UA_DIR/config.json`
+    - If `--auto-update` is in `$ARGUMENTS`: write `{"autoUpdate": true}` to `$DATA_DIR/config.json`
+    - If `--no-auto-update` is in `$ARGUMENTS`: write `{"autoUpdate": false}` to `$DATA_DIR/config.json`
     - These flags only set the config — analysis proceeds normally regardless.
 
  3.6. **Language configuration:**
@@ -151,12 +151,12 @@ Determine whether to run a full analysis or incremental update.
       - `chinese` → `zh`, `japanese` → `ja`, `korean` → `ko`, `english` → `en`, `spanish` → `es`, `french` → `fr`, `german` → `de`, `portuguese` → `pt`, `russian` → `ru`, `arabic` → `ar`, etc.
       - Locale variants: `zh-TW`, `zh-HK`, `zh-CN`, `pt-BR`, etc. are preserved as-is.
     - If `--language` is NOT specified:
-      - **Stored preference wins.** If `$UA_DIR/config.json` has an `outputLanguage` field, set `$OUTPUT_LANGUAGE` to it and skip the rest.
+      - **Stored preference wins.** If `$DATA_DIR/config.json` has an `outputLanguage` field, set `$OUTPUT_LANGUAGE` to it and skip the rest.
       - **Otherwise detect (first run only).** Infer the predominant language of the user's conversation as an ISO 639-1 code (`$DETECTED_LANG`). If it is `en` or cannot be confidently determined, set `$OUTPUT_LANGUAGE=en` and proceed silently — no prompt (English users see no change).
       - **If `$DETECTED_LANG` ≠ `en`, confirm once before analyzing:** tell the user you detected `<language>` and ask whether to generate all content in it; they press Enter/"yes" to accept, or type another language code/name to override (normalize via the friendly-name map above). If running non-interactively (no reply possible), skip the wait, use `$DETECTED_LANG`, and print a one-line notice instead of blocking.
       - **Persist** the resolved `$OUTPUT_LANGUAGE` (including `en`) into `config.json` so it never re-prompts for this project.
     - If `--language` IS specified:
-      - Update `$UA_DIR/config.json` with the new language: merge `{"outputLanguage": "<lang>"}` into existing config.
+      - Update `$DATA_DIR/config.json` with the new language: merge `{"outputLanguage": "<lang>"}` into existing config.
       - Store as `$OUTPUT_LANGUAGE` for use throughout all phases.
     - **Language directive template:** Store as `$LANGUAGE_DIRECTIVE`:
       ```markdown
@@ -167,18 +167,18 @@ Determine whether to run a full analysis or incremental update.
     - Parse `$ARGUMENTS` for `--exclude <patterns>` flag. If found, extract the comma-separated patterns string.
     - Split on commas, trim whitespace from each pattern, and filter out empty entries.
     - Store the patterns as `$EXCLUDE_PATTERNS` (comma-joined for passing to downstream scripts: `"tests/*,docs/*"`).
-    - These patterns take highest priority — they are applied on top of default patterns and `.understandignore` rules. Use `!` prefix to force-include files that would otherwise be excluded.
+    - These patterns take highest priority — they are applied on top of default patterns and `.excavatorignore` rules. Use `!` prefix to force-include files that would otherwise be excluded.
     - Incremental preparation re-scans the current inventory, so newly supplied exclusions take effect immediately and remove any previously analyzed files they now cover.
 
 4. **Check for subdomain knowledge graphs to merge:**
-   List all `*knowledge-graph*.json` files in `$UA_DIR/` **excluding** `knowledge-graph.json` itself (e.g. `frontend-knowledge-graph.json`, `backend-knowledge-graph.json`). If any subdomain graphs exist, run the merge script bundled with this skill (located next to this SKILL.md file — use the skill directory path, not the project root):
+   List all `*knowledge-graph*.json` files in `$DATA_DIR/` **excluding** `knowledge-graph.json` itself (e.g. `frontend-knowledge-graph.json`, `backend-knowledge-graph.json`). If any subdomain graphs exist, run the merge script bundled with this skill (located next to this SKILL.md file — use the skill directory path, not the project root):
    ```bash
    python "<SKILL_DIR>/merge-subdomain-graphs.py" "$PROJECT_ROOT"
    ```
    The script discovers subdomain graphs, loads the existing `knowledge-graph.json` as a base (if present), and merges everything into `knowledge-graph.json` (deduplicating nodes and edges). Report the merge summary to the user, then continue with the merged graph.
 
-5. Check if `$UA_DIR/knowledge-graph.json` exists. If it does, read it.
-6. Check if `$UA_DIR/meta.json` exists. If it does, read its `gitCommitHash` and store it as `$LAST_COMMIT_HASH`.
+5. Check if `$DATA_DIR/knowledge-graph.json` exists. If it does, read it.
+6. Check if `$DATA_DIR/meta.json` exists. If it does, read its `gitCommitHash` and store it as `$LAST_COMMIT_HASH`.
 7. **Decision logic:**
 
    | Condition | Action |
@@ -190,7 +190,7 @@ Determine whether to run a full analysis or incremental update.
    | Existing graph + unchanged commit hash | Ask the user: "The graph is up to date at this commit. Would you like to: **(a)** run a full rebuild (`--full`), **(b)** run the LLM graph reviewer (`--review`), or **(c)** do nothing?" Then follow their choice. If they pick (c), STOP. |
    | Existing graph + changed files | Run deterministic incremental preparation below |
 
-   **Review-only path:** Copy the existing `knowledge-graph.json` to `$UA_DIR/intermediate/assembled-graph.json`, then jump directly to Phase 6 step 3.
+   **Review-only path:** Copy the existing `knowledge-graph.json` to `$DATA_DIR/intermediate/assembled-graph.json`, then jump directly to Phase 6 step 3.
 
    For incremental updates, do **not** construct the changed-file list by hand. Run the bundled reconciliation helper with the previous analyzed commit. Pass `--exclude "$EXCLUDE_PATTERNS"` only when the option is non-empty:
    ```bash
@@ -207,18 +207,18 @@ Determine whether to run a full analysis or incremental update.
      --exclude "$EXCLUDE_PATTERNS"
    ```
 
-   The helper uses parameterized `git diff --name-status -z`, performs a fresh deterministic scan with the current `.understandignore` / `--exclude` rules, compares structural fingerprints, selectively refreshes imports, and atomically writes:
-   - `$UA_DIR/intermediate/incremental-plan.json`
-   - `$UA_DIR/intermediate/scan-result.json`
-   - `$UA_DIR/intermediate/changed-files.json`
-   - `$UA_DIR/intermediate/batch-existing.json` for partial/architecture updates
-   - `$UA_DIR/intermediate/incremental-symbol-baseline.json`, the previous node inventory for reanalyzed files, bound to the base/head commits
+   The helper uses parameterized `git diff --name-status -z`, performs a fresh deterministic scan with the current `.excavatorignore` / `--exclude` rules, compares structural fingerprints, selectively refreshes imports, and atomically writes:
+   - `$DATA_DIR/intermediate/incremental-plan.json`
+   - `$DATA_DIR/intermediate/scan-result.json`
+   - `$DATA_DIR/intermediate/changed-files.json`
+   - `$DATA_DIR/intermediate/batch-existing.json` for partial/architecture updates
+   - `$DATA_DIR/intermediate/incremental-symbol-baseline.json`, the previous node inventory for reanalyzed files, bound to the base/head commits
 
    Read `incremental-plan.json` and store its `action`, `filesToReanalyze`, `deletedFiles`, `rerunArchitecture`, and `rerunTour` values. Follow this gate:
 
    | Prepared action | Next step |
    |---|---|
-   | `SKIP` | Run `node "<SKILL_DIR>/finalize-incremental.mjs" "$PROJECT_ROOT"`. It updates graph metadata, scan, fingerprints, and meta for cosmetic or irrelevant changes, but intentionally advances nothing for generated-artifact-only commits. Without `--review`, report zero LLM tokens spent and **STOP**. With explicit `--review`, copy `$UA_DIR/knowledge-graph.json` to `$UA_DIR/intermediate/assembled-graph.json` and jump to the `--review` graph-reviewer path in Phase 6 instead of stopping. |
+   | `SKIP` | Run `node "<SKILL_DIR>/finalize-incremental.mjs" "$PROJECT_ROOT"`. It updates graph metadata, scan, fingerprints, and meta for cosmetic or irrelevant changes, but intentionally advances nothing for generated-artifact-only commits. Without `--review`, report zero LLM tokens spent and **STOP**. With explicit `--review`, copy `$DATA_DIR/knowledge-graph.json` to `$DATA_DIR/intermediate/assembled-graph.json` and jump to the `--review` graph-reviewer path in Phase 6 instead of stopping. |
    | `PARTIAL_UPDATE` | Skip Phase 0.5 and Phase 1; continue with the incremental Phase 1.5/2 path. |
    | `ARCHITECTURE_UPDATE` | Skip Phase 0.5 and Phase 1; continue with incremental analysis, then rerun Phase 4 and Phase 5. |
    | `FULL_UPDATE` | Switch to the existing full pipeline beginning at Phase 0.5. Do not patch fingerprints or metadata from the incremental helper. |
@@ -239,18 +239,18 @@ Determine whether to run a full analysis or incremental update.
 
 ## Phase 0.5 — Ignore Configuration (full analysis only)
 
-Set up and verify the `.understandignore` file before a full scan. Incremental preparation already applies the current ignore rules and must skip this confirmation phase.
+Set up and verify the `.excavatorignore` file before a full scan. Incremental preparation already applies the current ignore rules and must skip this confirmation phase.
 
-1. Check if `$UA_DIR/.understandignore` exists.
+1. Check if `$DATA_DIR/.excavatorignore` exists.
 2. **If it does NOT exist**, generate a starter file by invoking the bundled script (delegates to `generateStarterIgnoreFile` in `@excavator/core`, which reads `.gitignore`, deduplicates against built-in defaults, and emits language-grouped test-file suggestions). Pass `$PLUGIN_ROOT` via the env so the script doesn't have to re-derive it from its own path (which breaks for copied skill installs):
      ```bash
      PLUGIN_ROOT="$PLUGIN_ROOT" node "<SKILL_DIR>/generate-ignore.mjs" "$PROJECT_ROOT"
      ```
    - Report to the user:
-     > Generated `$UA_DIR/.understandignore` with suggested exclusions based on your project structure. Please review it and uncomment any patterns you'd like to exclude from analysis. When ready, confirm to continue.
+     > Generated `$DATA_DIR/.excavatorignore` with suggested exclusions based on your project structure. Please review it and uncomment any patterns you'd like to exclude from analysis. When ready, confirm to continue.
    - **Wait for user confirmation before proceeding.**
 3. **If it already exists**, report:
-   > Found `$UA_DIR/.understandignore`. Review it if needed, then confirm to continue.
+   > Found `$DATA_DIR/.excavatorignore`. Review it if needed, then confirm to continue.
    - **Wait for user confirmation before proceeding.**
 4. After confirmation, proceed to Phase 1.
 
@@ -282,11 +282,11 @@ Pass these parameters in the dispatch prompt:
 
 > Scan this project directory to discover all project files (including non-code files like configs, docs, infrastructure), detect languages and frameworks.
 > Project root: `$PROJECT_ROOT`
-> Write output to: `$UA_DIR/intermediate/scan-result.json`
+> Write output to: `$DATA_DIR/intermediate/scan-result.json`
 >
 > Exclude patterns (from --exclude CLI flag; pass to scan-project.mjs via --exclude): $EXCLUDE_PATTERNS
 
-After the subagent completes, read `$UA_DIR/intermediate/scan-result.json` to get:
+After the subagent completes, read `$DATA_DIR/intermediate/scan-result.json` to get:
 - Project name, description
 - Languages, frameworks
 - File list with line counts and `fileCategory` per file (`code`, `config`, `docs`, `infra`, `data`, `script`, `markup`)
@@ -299,7 +299,7 @@ Store the file list as `$FILE_LIST` with `fileCategory` metadata for use in Phas
 **Gate check:** If >100 files, inform the user and suggest scoping with a subdirectory argument. Proceed only if user confirms or add guidance that this may take a while.
 
 If the scan result includes `filteredByIgnore > 0`, report:
-> Excluded {filteredByIgnore} files via `.understandignore` and/or `--exclude` rules.
+> Excluded {filteredByIgnore} files via `.excavatorignore` and/or `--exclude` rules.
 
 ---
 
@@ -319,10 +319,10 @@ For `PARTIAL_UPDATE` or `ARCHITECTURE_UPDATE`, inspect `filesToReanalyze` from t
 
   ```bash
   node "<SKILL_DIR>/compute-batches.mjs" "$PROJECT_ROOT" \
-    --changed-files="$UA_DIR/intermediate/changed-files.json"
+    --changed-files="$DATA_DIR/intermediate/changed-files.json"
   ```
 
-Both forms read the freshly reconciled `$UA_DIR/intermediate/scan-result.json` and write `$UA_DIR/intermediate/batches.json`.
+Both forms read the freshly reconciled `$DATA_DIR/intermediate/scan-result.json` and write `$DATA_DIR/intermediate/batches.json`.
 
 Capture stderr. Append any line starting with `Warning:` to `$PHASE_WARNINGS` for the final report.
 
@@ -334,7 +334,7 @@ If the script exits non-zero, the failure is hard — relay the full stderr to t
 
 ### Full analysis path
 
-Load `$UA_DIR/intermediate/batches.json` (produced by Phase 1.5). Iterate the `batches[]` array.
+Load `$DATA_DIR/intermediate/batches.json` (produced by Phase 1.5). Iterate the `batches[]` array.
 
 Report: `[Phase 2/7] Analyzing files — <totalFiles> files in <totalBatches> batches (up to 5 concurrent)...`
 
@@ -355,7 +355,7 @@ Dispatch prompt template (fill in batch-specific values from `batches.json[i]`):
 > Languages: `<languages>`
 > Batch: `<batchIndex>/<totalBatches>`
 > Skill directory (for bundled scripts): `<SKILL_DIR>`
-> Output: write to `$UA_DIR/intermediate/batch-<batchIndex>.json` (single-file mode) OR `batch-<batchIndex>-part-<k>.json` (split mode, per Step B of your output protocol).
+> Output: write to `$DATA_DIR/intermediate/batch-<batchIndex>.json` (single-file mode) OR `batch-<batchIndex>-part-<k>.json` (split mode, per Step B of your output protocol).
 >
 > Pre-resolved import data for this batch (use directly — do NOT re-resolve imports from source):
 > ```json
@@ -381,7 +381,7 @@ Run the merge-and-normalize script bundled with this skill (located next to this
 python "<SKILL_DIR>/merge-batch-graphs.py" "$PROJECT_ROOT"
 ```
 
-This script reads all `batch-*.json` files (including `batch-<i>-part-<k>.json` produced by file-analyzers that split their output) from `$UA_DIR/intermediate/`, then in one pass:
+This script reads all `batch-*.json` files (including `batch-<i>-part-<k>.json` produced by file-analyzers that split their output) from `$DATA_DIR/intermediate/`, then in one pass:
 - Combines all nodes and edges across batches
 - Normalizes node IDs (strips double prefixes, project-name prefixes, adds missing prefixes)
 - Normalizes complexity values (`low`→`simple`, `medium`→`moderate`, `high`→`complex`, etc.)
@@ -392,7 +392,7 @@ This script reads all `batch-*.json` files (including `batch-<i>-part-<k>.json` 
 
 The merge script also runs a `tested_by` linker that canonicalizes test-coverage edges in two passes. **Pass 1** walks LLM-emitted `tested_by` edges and flips inverted ones in place; semantically broken edges (test↔test, prod↔prod, orphan endpoints) are dropped. **Pass 2** supplements with path-convention pairings. Production nodes that end up sourcing any `tested_by` edge get a `"tested"` tag. All resulting edges run `production → test`.
 
-Output: `$UA_DIR/intermediate/assembled-graph.json`
+Output: `$DATA_DIR/intermediate/assembled-graph.json`
 
 Include the script's warnings in `$PHASE_WARNINGS` for the reviewer.
 
@@ -448,10 +448,10 @@ Dispatch a subagent using the `excavator-assemble-reviewer` agent definition (at
 
 Pass these parameters in the dispatch prompt:
 
-> Review the assembled graph at `$UA_DIR/intermediate/assembled-graph.json`.
+> Review the assembled graph at `$DATA_DIR/intermediate/assembled-graph.json`.
 > Project root: `$PROJECT_ROOT`
-> Batch files are at: `$UA_DIR/intermediate/batch-*.json`
-> Write review output to: `$UA_DIR/intermediate/assemble-review.json`
+> Batch files are at: `$DATA_DIR/intermediate/batch-*.json`
+> Write review output to: `$DATA_DIR/intermediate/assemble-review.json`
 >
 > **Merge script report:**
 > ```
@@ -463,7 +463,7 @@ Pass these parameters in the dispatch prompt:
 > $IMPORT_MAP
 > ```
 
-After the subagent completes, read `$UA_DIR/intermediate/assemble-review.json` and add any notes to `$PHASE_WARNINGS`.
+After the subagent completes, read `$DATA_DIR/intermediate/assemble-review.json` and add any notes to `$PHASE_WARNINGS`.
 
 ---
 
@@ -498,7 +498,7 @@ Pass these parameters in the dispatch prompt:
 
 > Analyze this codebase's structure to identify architectural layers.
 > Project root: `$PROJECT_ROOT`
-> Write output to: `$UA_DIR/intermediate/layers.json`
+> Write output to: `$DATA_DIR/intermediate/layers.json`
 > Project: `<projectName>` — `<projectDescription>`
 >
 > File nodes (all node types — includes code files, config, document, service, pipeline, table, schema, resource, endpoint):
@@ -516,7 +516,7 @@ Pass these parameters in the dispatch prompt:
 > [list of ALL edges — include all edge types]
 > ```
 
-After the subagent completes, read `$UA_DIR/intermediate/layers.json` and normalize it into a final `layers` array. Apply these steps **in order**:
+After the subagent completes, read `$DATA_DIR/intermediate/layers.json` and normalize it into a final `layers` array. Apply these steps **in order**:
 
 1. **Unwrap envelope:** If the file contains `{ "layers": [...] }` instead of a plain array, extract the inner array. (The prompt requests a plain array, but LLMs may still produce an envelope.)
 2. **Rename legacy fields:** If any layer object has a `nodes` field instead of `nodeIds`, rename `nodes` → `nodeIds`. If `nodes` entries are objects with an `id` field rather than plain strings, extract just the `id` values into `nodeIds`.
@@ -577,7 +577,7 @@ Pass these parameters in the dispatch prompt:
 
 > Create a guided learning tour for this codebase.
 > Project root: `$PROJECT_ROOT`
-> Write output to: `$UA_DIR/intermediate/tour.json`
+> Write output to: `$DATA_DIR/intermediate/tour.json`
 > Project: `<projectName>` — `<projectDescription>`
 > Languages: `<languages>`
 >
@@ -596,7 +596,7 @@ Pass these parameters in the dispatch prompt:
 > [list of ALL edges — include all edge types for complete graph topology analysis]
 > ```
 
-After the subagent completes, read `$UA_DIR/intermediate/tour.json` and normalize it into a final `tour` array. Apply these steps **in order**:
+After the subagent completes, read `$DATA_DIR/intermediate/tour.json` and normalize it into a final `tour` array. Apply these steps **in order**:
 
 1. **Unwrap envelope:** If the file contains `{ "steps": [...] }` instead of a plain array, extract the inner array. (The prompt requests a plain array, but LLMs may still produce an envelope.)
 2. **Rename legacy fields:** If any step has `nodesToInspect` instead of `nodeIds`, rename it → `nodeIds`. If any step has `whyItMatters` instead of `description`, rename it → `description`.
@@ -636,7 +636,7 @@ node "<SKILL_DIR>/finalize-incremental.mjs" "$PROJECT_ROOT"
 This helper validates/deduplicates nodes and edges, reconciles layers/tour, and independently reruns the shared symbol validator on the exact graph to be saved. It then atomically saves the graph, patches only changed fingerprints while preserving all others, removes deleted fingerprints, and only then advances `meta.json`. A cached successful merge report cannot bypass the save check. If symbol loss is first detected here, use the same one-retry procedure above, rerun merge and any required architecture/tour phases, then finalize again; if the retry was already used or remains unresolved, **STOP** with the old graph and baselines intact.
 
 - Without `--review`, report the incremental summary and **STOP**. Do not run Phase 6 or the full-save Phase 7; this is what prevents the ordinary local update from paying for whole-graph review.
-- With `--review`, copy the newly saved `$UA_DIR/knowledge-graph.json` to `$UA_DIR/intermediate/assembled-graph.json`, then continue to the full graph-reviewer path in Phase 6. Do not run the inline default reviewer.
+- With `--review`, copy the newly saved `$DATA_DIR/knowledge-graph.json` to `$DATA_DIR/intermediate/assembled-graph.json`, then continue to the full graph-reviewer path in Phase 6. Do not run the inline default reviewer.
 
 ---
 
@@ -675,7 +675,7 @@ Assemble the full KnowledgeGraph JSON object:
 
    If validation fails, automatically normalize and rewrite the graph into this shape before saving. If the graph still fails final validation after the normalization pass, save it with warnings but mark dashboard auto-launch as skipped.
 
-2. Write the assembled graph to `$UA_DIR/intermediate/assembled-graph.json`.
+2. Write the assembled graph to `$DATA_DIR/intermediate/assembled-graph.json`.
 
 3. **Check `$ARGUMENTS` for `--review` flag.** Then run the appropriate validation path:
 
@@ -683,7 +683,7 @@ Assemble the full KnowledgeGraph JSON object:
 
 #### Default path (no `--review`): inline deterministic validation
 
-Write the following Node.js script to `$UA_DIR/tmp/ua-inline-validate.cjs`:
+Write the following Node.js script to `$DATA_DIR/tmp/ua-inline-validate.cjs`:
 
 ```javascript
 #!/usr/bin/env node
@@ -753,9 +753,9 @@ try {
 
 Execute it:
 ```bash
-node "$UA_DIR/tmp/ua-inline-validate.cjs" \
-  "$UA_DIR/intermediate/assembled-graph.json" \
-  "$UA_DIR/intermediate/review.json"
+node "$DATA_DIR/tmp/ua-inline-validate.cjs" \
+  "$DATA_DIR/intermediate/assembled-graph.json" \
+  "$DATA_DIR/intermediate/review.json"
 ```
 
 If the script exits non-zero, read stderr, fix the script, and retry once.
@@ -782,14 +782,14 @@ Dispatch a subagent using the `excavator-graph-reviewer` agent definition (at `a
 
 Pass these parameters in the dispatch prompt:
 
-> Validate the knowledge graph at `$UA_DIR/intermediate/assembled-graph.json`.
+> Validate the knowledge graph at `$DATA_DIR/intermediate/assembled-graph.json`.
 > Project root: `$PROJECT_ROOT`
 > Read the file and validate it for completeness and correctness.
-> Write output to: `$UA_DIR/intermediate/review.json`
+> Write output to: `$DATA_DIR/intermediate/review.json`
 
 ---
 
-4. Read `$UA_DIR/intermediate/review.json`.
+4. Read `$DATA_DIR/intermediate/review.json`.
 
 5. **If `issues` array is non-empty:**
    - Review the `issues` list
@@ -808,13 +808,13 @@ Pass these parameters in the dispatch prompt:
 
 Report to the user: `[Phase 7/7] Saving knowledge graph...`
 
-1. Write the final knowledge graph to `$UA_DIR/knowledge-graph.json`.
+1. Write the final knowledge graph to `$DATA_DIR/knowledge-graph.json`.
 
 2. **Generate structural fingerprints baseline.** This creates the basis for future automatic incremental updates and **must succeed before `meta.json` is written** — otherwise auto-update sees a fresh commit hash with no fingerprints to compare against, classifies every file as STRUCTURAL, and escalates to `FULL_UPDATE` on every subsequent commit (issue #152).
 
    Write the input file:
    ```bash
-   node - "$PROJECT_ROOT" "$UA_DIR/intermediate/fingerprint-input.json" <<'NODE'
+   node - "$PROJECT_ROOT" "$DATA_DIR/intermediate/fingerprint-input.json" <<'NODE'
    const fs = require('fs');
    const projectRoot = process.argv[2];
    const outputPath = process.argv[3];
@@ -830,14 +830,14 @@ Report to the user: `[Phase 7/7] Saving knowledge graph...`
    Then invoke the bundled script (located next to this SKILL.md):
    ```bash
    node "<SKILL_DIR>/build-fingerprints.mjs" \
-     "$UA_DIR/intermediate/fingerprint-input.json"
+     "$DATA_DIR/intermediate/fingerprint-input.json"
    ```
 
    The script uses `TreeSitterPlugin + PluginRegistry` exactly like `extract-structure.mjs`, so the baseline matches incremental comparison. The baseline MUST include every file in `scan-result.json`, not only source-code files; unsupported formats receive conservative content-only fingerprints.
 
    **If the script exits non-zero or stdout does not include `Fingerprints baseline:`, abort Phase 7 and report the error. Do NOT proceed to step 3 (writing `meta.json`).**
 
-3. Write metadata to `$UA_DIR/meta.json` (only after step 2 succeeded):
+3. Write metadata to `$DATA_DIR/meta.json` (only after step 2 succeeded):
    ```json
    {
      "lastAnalyzedAt": "<ISO 8601 timestamp>",
@@ -853,14 +853,14 @@ Report to the user: `[Phase 7/7] Saving knowledge graph...`
    # Future incremental runs (Phase 2 compute-batches.mjs --changed-files=…)
    # need this inventory; without it, Phase 1 must re-dispatch and pay ~157k
    # tokens / ~158s per incremental run.
-   TRASH="$UA_DIR/.trash-$(date +%s)"
+   TRASH="$DATA_DIR/.trash-$(date +%s)"
    mkdir -p "$TRASH"
-   INTER="$UA_DIR/intermediate"
+   INTER="$DATA_DIR/intermediate"
    if [ -d "$INTER" ]; then
      # Move every entry except scan-result.json into the trash dir.
      find "$INTER" -mindepth 1 -maxdepth 1 -not -name 'scan-result.json' -exec mv {} "$TRASH/" \; 2>/dev/null || true
    fi
-   mv "$UA_DIR/tmp" "$TRASH/" 2>/dev/null || true
+   mv "$DATA_DIR/tmp" "$TRASH/" 2>/dev/null || true
    ```
 
 5. Report a summary to the user containing:
@@ -871,7 +871,7 @@ Report to the user: `[Phase 7/7] Saving knowledge graph...`
    - Layers identified (with names)
    - Tour steps generated (count)
    - Any warnings from the reviewer
-   - Path to the output file: `$UA_DIR/knowledge-graph.json`
+   - Path to the output file: `$DATA_DIR/knowledge-graph.json`
 
 6. Only automatically launch the dashboard by invoking the `/excavator-dashboard` skill if final graph validation passed after normalization/review fixes.
    If final validation did not pass, report that the graph was saved with warnings and dashboard launch was skipped.

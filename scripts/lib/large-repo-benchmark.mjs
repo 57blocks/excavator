@@ -62,7 +62,7 @@ const STRUCTURE_SCRIPT = resolve(
   'skills/excavator/extract-structure.mjs',
 );
 
-export const STAGE_METRICS_PREFIX = '__UA_BENCHMARK_METRICS__';
+export const STAGE_METRICS_PREFIX = '__EXCAVATOR_BENCHMARK_METRICS__';
 const DEFAULT_CONCURRENCY = 5;
 export const GIT_METADATA_MAX_BUFFER = 64 * 1024;
 // Child helpers can be noisy on large repositories. Retain at most 128 KiB
@@ -857,7 +857,7 @@ export function reportPairLockPath(outputPath, markdownPath) {
     .update(normalizedMarkdownPath)
     .digest('hex')
     .slice(0, 24);
-  return join(resolve(dirname(outputPath)), `.ua-report-pair-${pairKey}.lock`);
+  return join(resolve(dirname(outputPath)), `.excavator-report-pair-${pairKey}.lock`);
 }
 
 function stageReportEntry(entry, fileSystem) {
@@ -914,11 +914,11 @@ export function deliverBenchmarkReports(reportFiles, operations = {}) {
     contents,
     tempPath: join(
       dirname(targetPath),
-      `.${basename(targetPath)}.ua-report-${transactionId}.tmp`,
+      `.${basename(targetPath)}.excavator-report-${transactionId}.tmp`,
     ),
     backupPath: join(
       dirname(targetPath),
-      `.${basename(targetPath)}.ua-report-${transactionId}.backup`,
+      `.${basename(targetPath)}.excavator-report-${transactionId}.backup`,
     ),
     hadOriginal: false,
     tempCreated: false,

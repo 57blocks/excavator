@@ -11,17 +11,14 @@
  *             dashboard robustness pipeline (Tier 1-3: null fields, wrong cases,
  *             missing fields, aliases, dangling refs, unrecognizable types).
  *
- * Default: 3000 nodes. Writes to the project's data dir —
- * .ua/knowledge-graph.json (or legacy .understand-anything/knowledge-graph.json
- * when that directory already exists).
+ * Default: 3000 nodes. Writes to the project's data dir — .excavator/knowledge-graph.json.
  */
 
-import { writeFileSync, mkdirSync, existsSync } from "node:fs";
+import { writeFileSync, mkdirSync } from "node:fs";
 import { resolve, join } from "node:path";
 
-// Mirror core's resolveUaDir: the legacy `.understand-anything/` dir wins for
-// both reads and writes when it already exists; otherwise use `.ua/`.
-const uaDir = (root) => { const legacy = join(root, ".understand-anything"); return existsSync(legacy) ? legacy : join(root, ".ua"); };
+// The project's data directory — single source of truth: `.excavator/`.
+const dataDir = (root) => join(root, ".excavator");
 
 const args = process.argv.slice(2);
 const MESSY = args.includes("--messy");
@@ -284,7 +281,7 @@ const graph = {
   tour: MESSY && Math.random() < 0.5 ? null : tour,
 };
 
-const outDir = resolve(uaDir(process.cwd()));
+const outDir = resolve(dataDir(process.cwd()));
 mkdirSync(outDir, { recursive: true });
 const outPath = resolve(outDir, "knowledge-graph.json");
 writeFileSync(outPath, JSON.stringify(graph, null, 2));

@@ -11,10 +11,9 @@ then reviews the output for semantic issues the script cannot catch.
 Usage:
     python merge-batch-graphs.py <project-root>
 
-Input/output live under the project's data dir (`.ua/`, or legacy
-`.understand-anything/` when that directory already exists):
-    Input:  <ua-dir>/intermediate/batch-*.json
-    Output: <ua-dir>/intermediate/assembled-graph.json
+Input/output live under the project's data dir (`.excavator/`):
+    Input:  .excavator/intermediate/batch-*.json
+    Output: .excavator/intermediate/assembled-graph.json
 """
 
 import json
@@ -27,10 +26,9 @@ from pathlib import Path
 from typing import Any
 
 
-def resolve_ua_dir(root: Path) -> Path:
-    """Mirror core resolveUaDir: legacy .understand-anything/ wins if present."""
-    legacy = root / ".understand-anything"
-    return legacy if legacy.is_dir() else root / ".ua"
+def resolve_data_dir(root: Path) -> Path:
+    """The project's data directory -- single source of truth: `.excavator/`."""
+    return root / ".excavator"
 
 
 # ── Configuration ─────────────────────────────────────────────────────────
@@ -1134,7 +1132,7 @@ def main() -> None:
         sys.exit(1)
 
     project_root = Path(sys.argv[1]).resolve()
-    intermediate_dir = resolve_ua_dir(project_root) / "intermediate"
+    intermediate_dir = resolve_data_dir(project_root) / "intermediate"
     plan_path = intermediate_dir / "incremental-plan.json"
     plan = json.loads(plan_path.read_text(encoding="utf-8")) if plan_path.exists() else {}
     incremental = plan.get("action") in ("PARTIAL_UPDATE", "ARCHITECTURE_UPDATE")

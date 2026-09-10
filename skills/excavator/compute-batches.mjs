@@ -9,11 +9,10 @@
  *   node compute-batches.mjs <project-root> [--changed-files=<path>]
  *     [--scan-result=<path>] [--output=<path>]
  *
- * Input/output live under the project's data dir (`.ua/`, or legacy
- * `.understand-anything/` when that directory already exists — resolved by
- * core's resolveUaDir):
- *   Input:  <ua-dir>/intermediate/scan-result.json
- *   Output: <ua-dir>/intermediate/batches.json
+ * Input/output live under the project's data dir (`.excavator/` — resolved
+ * by core's resolveDataDir):
+ *   Input:  .excavator/intermediate/scan-result.json
+ *   Output: .excavator/intermediate/batches.json
  *
  * `--scan-result` and `--output` let read-only tooling (for example the
  * large-repository benchmark runner) keep intermediate artifacts outside the
@@ -50,7 +49,7 @@ try {
 } catch {
   core = await import(pathToFileURL(resolve(PLUGIN_ROOT, 'packages/core/dist/index.js')).href);
 }
-const { TreeSitterPlugin, PluginRegistry, builtinLanguageConfigs, registerAllParsers, resolveUaDir } = core;
+const { TreeSitterPlugin, PluginRegistry, builtinLanguageConfigs, registerAllParsers, resolveDataDir } = core;
 
 import Graph from 'graphology';
 import louvain from 'graphology-communities-louvain';
@@ -285,12 +284,12 @@ function comparePaths(a, b) {
 
 /**
  * Returns Map<path, communityId> via Louvain. May throw — caller must catch
- * and fall back if it does. Honors UA_COMPUTE_BATCHES_FORCE_LOUVAIN_THROW=1
+ * and fall back if it does. Honors EXCAVATOR_COMPUTE_BATCHES_FORCE_LOUVAIN_THROW=1
  * to allow tests to exercise the fallback path.
  */
 function runLouvain(codeFiles, importMap) {
-  if (process.env.UA_COMPUTE_BATCHES_FORCE_LOUVAIN_THROW === '1') {
-    throw new Error('forced throw via UA_COMPUTE_BATCHES_FORCE_LOUVAIN_THROW');
+  if (process.env.EXCAVATOR_COMPUTE_BATCHES_FORCE_LOUVAIN_THROW === '1') {
+    throw new Error('forced throw via EXCAVATOR_COMPUTE_BATCHES_FORCE_LOUVAIN_THROW');
   }
   const g = new Graph({ type: 'undirected', allowSelfLoops: false });
   const sortedCodePaths = codeFiles.map(f => f.path).sort(comparePaths);
@@ -446,8 +445,8 @@ async function main() {
   const scanResultPath = scanResultValue ? resolve(scanResultValue) : null;
   const outputPath = outputValue ? resolve(outputValue) : null;
 
-  const uaDir = resolveUaDir(projectRoot);
-  const scanPath = scanResultPath ?? join(uaDir, 'intermediate', 'scan-result.json');
+  const dataDir = resolveDataDir(projectRoot);
+  const scanPath = scanResultPath ?? join(dataDir, 'intermediate', 'scan-result.json');
   if (!existsSync(scanPath)) {
     process.stderr.write(`Error: scan-result.json not found at ${scanPath}\n`);
     process.exit(1);
@@ -645,7 +644,7 @@ async function main() {
     batches: finalBatches,
   };
 
-  const outPath = outputPath ?? join(uaDir, 'intermediate', 'batches.json');
+  const outPath = outputPath ?? join(dataDir, 'intermediate', 'batches.json');
   mkdirSync(dirname(outPath), { recursive: true });
   writeFileSync(outPath, JSON.stringify(output, null, 2), 'utf-8');
   const batchSizes = finalBatches.map(b => b.files.length);

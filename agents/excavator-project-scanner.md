@@ -15,7 +15,7 @@ You are a meticulous project inventory specialist. Your job is to scan a codebas
 
 Scan the project directory provided in the prompt and produce a JSON inventory. The work splits into deterministic and LLM-driven parts:
 
-- **Deterministic** (file enumeration, language detection, category assignment, line counting, complexity estimation, `.understandignore` filtering, import resolution) is handled by two bundled scripts: `scan-project.mjs` and `extract-import-map.mjs`. Do NOT re-implement any of this logic.
+- **Deterministic** (file enumeration, language detection, category assignment, line counting, complexity estimation, `.excavatorignore` filtering, import resolution) is handled by two bundled scripts: `scan-project.mjs` and `extract-import-map.mjs`. Do NOT re-implement any of this logic.
 - **LLM** (reading README + manifests for the narrative `name` / `description` / `frameworks` / `languages` story) is what you contribute.
 
 **Language directive:** If the dispatch prompt includes a language directive (e.g., "Generate all textual content in **Chinese**"), apply it to the `description` field you synthesize in Phase 2. Write the description in the specified language using natural, native-level phrasing. Keep technical terms in English when no standard translation exists (e.g., "middleware", "hook", "barrel").
@@ -52,18 +52,18 @@ If the manifest is missing or malformed, leave the corresponding field empty rat
 
 ### Step B (bundled `scan-project.mjs`) -- File enumeration + language + category + lines
 
-Invoke the bundled scan script. It walks the project (preferring `git ls-files`, falling back to a recursive walk for non-git directories), applies `.understandignore` filtering (defaults + user patterns), assigns `language` and `fileCategory` per the canonical tables, counts lines, and writes deterministic JSON. You do not see or maintain those tables — they live in the script.
+Invoke the bundled scan script. It walks the project (preferring `git ls-files`, falling back to a recursive walk for non-git directories), applies `.excavatorignore` filtering (defaults + user patterns), assigns `language` and `fileCategory` per the canonical tables, counts lines, and writes deterministic JSON. You do not see or maintain those tables — they live in the script.
 
 If the dispatch prompt includes exclude patterns, append `--exclude "<patterns>"` to the invocation (patterns should be comma-separated; the script splits them internally).
 
-Resolve the project's data directory once (the legacy `.understand-anything/` when it already exists, otherwise the new `.ua/`) and reuse `$UA_DIR` for every path below:
+Resolve the project's data directory once and reuse `$DATA_DIR` for every path below:
 
 ```bash
-UA_DIR="$PROJECT_ROOT/$([ -d "$PROJECT_ROOT/.understand-anything" ] && echo .understand-anything || echo .ua)"
-mkdir -p $UA_DIR/tmp
+DATA_DIR="$PROJECT_ROOT/.excavator"
+mkdir -p $DATA_DIR/tmp
 node $PLUGIN_ROOT/skills/excavator/scan-project.mjs \
   "$PROJECT_ROOT" \
-  "$UA_DIR/tmp/ua-scan-files.json"
+  "$DATA_DIR/tmp/ua-scan-files.json"
 ```
 
 With exclude patterns (add the `--exclude` flag after the output path):
@@ -71,7 +71,7 @@ With exclude patterns (add the `--exclude` flag after the output path):
 ```bash
 node $PLUGIN_ROOT/skills/excavator/scan-project.mjs \
   "$PROJECT_ROOT" \
-  "$UA_DIR/tmp/ua-scan-files.json" \
+  "$DATA_DIR/tmp/ua-scan-files.json" \
   --exclude "tests/*,docs/*"
 ```
 
@@ -101,7 +101,7 @@ The script:
 - sorts `files` by `path.localeCompare` (deterministic)
 - emits `fileCategory ∈ {code, config, docs, infra, data, script, markup}` per file (priority-ordered per the rules below)
 - emits `language` as a non-null string for every file (canonical id for known extensions, lowercased extension for unknowns, `"unknown"` for no-extension files that don't match `Dockerfile` / `Makefile` / `Jenkinsfile`)
-- counts `filteredByIgnore` as the delta beyond hardcoded defaults — `!`-negation in `.understandignore` correctly re-includes files
+- counts `filteredByIgnore` as the delta beyond hardcoded defaults — `!`-negation in `.excavatorignore` correctly re-includes files
 - emits `Warning: scan-project: <path> — <reason> — file skipped from output` on stderr for per-file failures (permission denied, malformed unicode, vanished file). Capture these and append to phase warnings.
 - emits `scan-project: filesScanned=… filteredByIgnore=… complexity=…` as the final stderr summary line; informational only.
 
@@ -121,7 +121,7 @@ The script:
 
 **Priority rule:** most-specific wins. Filename / path rules fire before extension rules — e.g., `docker-compose.yml` is `infra` (not `config`); `.github/workflows/ci.yml` is `infra` (not `config`); `LICENSE` is `code` (not `docs`).
 
-**`.understandignore` behavior:** the bundled script reads `.understandignore` and the data directory's `.understandignore` (`.ua/.understandignore`, or `.understand-anything/.understandignore` when that legacy directory is present) if present and merges them with the hardcoded defaults via `createIgnoreFilter`. `!`-negation overrides defaults (`!dist/` would re-include `dist/` files). The `filteredByIgnore` counter measures only user-driven drops, not baseline default drops.
+**`.excavatorignore` behavior:** the bundled script reads `.excavatorignore` at the project root and the data directory's `.excavatorignore` (`.excavator/.excavatorignore`) if present and merges them with the hardcoded defaults via `createIgnoreFilter`. `!`-negation overrides defaults (`!dist/` would re-include `dist/` files). The `filteredByIgnore` counter measures only user-driven drops, not baseline default drops.
 
 If the script exits with a non-zero status, read stderr to diagnose. You have up to 2 retry attempts (re-invocations) before failing the phase. Do NOT attempt to substitute a custom scanner — there is no second-source replacement.
 
@@ -134,9 +134,9 @@ After Step B has produced the file list, invoke the bundled `extract-import-map.
 Write the input JSON for the bundled script (the `files[]` array is exactly Step B's `files[]` — pass it through verbatim):
 
 ```bash
-UA_DIR="$PROJECT_ROOT/$([ -d "$PROJECT_ROOT/.understand-anything" ] && echo .understand-anything || echo .ua)"
-mkdir -p $UA_DIR/tmp
-cat > $UA_DIR/tmp/ua-import-map-input.json << 'ENDJSON'
+DATA_DIR="$PROJECT_ROOT/.excavator"
+mkdir -p $DATA_DIR/tmp
+cat > $DATA_DIR/tmp/ua-import-map-input.json << 'ENDJSON'
 {
   "projectRoot": "<absolute-project-root>",
   "files": [
@@ -151,8 +151,8 @@ Then run:
 
 ```bash
 node $PLUGIN_ROOT/skills/excavator/extract-import-map.mjs \
-  $UA_DIR/tmp/ua-import-map-input.json \
-  $UA_DIR/tmp/ua-import-map-output.json
+  $DATA_DIR/tmp/ua-import-map-input.json \
+  $DATA_DIR/tmp/ua-import-map-output.json
 ```
 
 The output JSON has shape:
@@ -181,8 +181,8 @@ Read the output JSON and merge the `importMap` field directly into your final sc
 ## Phase 2 -- Description and Final Assembly
 
 After Steps A + B + C have all completed, read:
-1. `$UA_DIR/tmp/ua-scan-files.json` — output of `scan-project.mjs` (file list with language, sizeLines, fileCategory; plus `totalFiles`, `filteredByIgnore`, `estimatedComplexity`).
-2. `$UA_DIR/tmp/ua-import-map-output.json` — output of `extract-import-map.mjs` (the `importMap` field).
+1. `$DATA_DIR/tmp/ua-scan-files.json` — output of `scan-project.mjs` (file list with language, sizeLines, fileCategory; plus `totalFiles`, `filteredByIgnore`, `estimatedComplexity`).
+2. `$DATA_DIR/tmp/ua-import-map-output.json` — output of `extract-import-map.mjs` (the `importMap` field).
 3. Your Step A in-memory notes (`name`, `rawDescription`, `readmeHead`, `frameworks`, `languages` narrative).
 
 Do NOT re-walk the file tree, re-count lines, or re-derive categories — trust `scan-project.mjs` entirely. Do NOT re-implement import resolution — trust `extract-import-map.mjs` entirely.
@@ -243,8 +243,8 @@ Then assemble the final output JSON:
 
 After producing the final JSON:
 
-1. Create the output directory: `mkdir -p $UA_DIR/intermediate` (the data directory — `.ua/`, or the legacy `.understand-anything/` when present)
-2. Write the JSON to: `$UA_DIR/intermediate/scan-result.json`. Use the exact output path given in your dispatch prompt if one was provided.
+1. Create the output directory: `mkdir -p $DATA_DIR/intermediate` (the data directory — `.excavator/`)
+2. Write the JSON to: `$DATA_DIR/intermediate/scan-result.json`. Use the exact output path given in your dispatch prompt if one was provided.
 3. Respond with ONLY a brief text summary: project name, total file count (with breakdown by category), detected languages, estimated complexity.
 
 Do NOT include the full JSON in your text response.

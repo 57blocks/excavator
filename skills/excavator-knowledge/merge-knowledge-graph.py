@@ -12,9 +12,7 @@ Usage:
     python merge-knowledge-graph.py <wiki-directory>
 
 Output:
-    Writes assembled-graph.json to <wiki-directory>/<ua-dir>/intermediate/, where
-    <ua-dir> is `.ua/` (or legacy `.understand-anything/` when that directory
-    already exists).
+    Writes assembled-graph.json to <wiki-directory>/.excavator/intermediate/.
 """
 
 import json
@@ -25,10 +23,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 
-def resolve_ua_dir(root: Path) -> Path:
-    """Mirror core resolveUaDir: legacy .understand-anything/ wins if present."""
-    legacy = root / ".understand-anything"
-    return legacy if legacy.is_dir() else root / ".ua"
+def resolve_data_dir(root: Path) -> Path:
+    """The project's data directory -- single source of truth: `.excavator/`."""
+    return root / ".excavator"
 
 
 def _find_markdown_case_insensitive(parent: Path, name: str) -> Path:
@@ -118,7 +115,7 @@ def normalize_entity_name(name: str) -> str:
 # ---------------------------------------------------------------------------
 
 def merge(root: Path) -> dict:
-    intermediate = resolve_ua_dir(root) / "intermediate"
+    intermediate = resolve_data_dir(root) / "intermediate"
     manifest_path = intermediate / "scan-manifest.json"
 
     if not manifest_path.is_file():

@@ -4,29 +4,20 @@ import type { KnowledgeGraph, AnalysisMeta, ProjectConfig } from "../types.js";
 import type { FingerprintStore } from "../fingerprint.js";
 import { validateGraph } from "../schema.js";
 
-const UA_DIR = ".ua";
-const LEGACY_UA_DIR = ".understand-anything";
+/** Single source of truth for the project data directory name. No fallback. */
+export const EXCAVATOR_DIR = ".excavator";
 const GRAPH_FILE = "knowledge-graph.json";
 const META_FILE = "meta.json";
 const FINGERPRINT_FILE = "fingerprints.json";
 const CONFIG_FILE = "config.json";
 
-/**
- * Resolve the data directory NAME for a project. Projects analyzed before
- * the `.ua` rename keep their existing `.understand-anything/` for both
- * reads and writes (no migration needed); fresh projects get `.ua/`.
- */
-export function resolveUaDirName(projectRoot: string): string {
-  return existsSync(join(projectRoot, LEGACY_UA_DIR)) ? LEGACY_UA_DIR : UA_DIR;
-}
-
-/** Absolute path of the project's data directory (see resolveUaDirName). */
-export function resolveUaDir(projectRoot: string): string {
-  return join(projectRoot, resolveUaDirName(projectRoot));
+/** Absolute path of the project's data directory. */
+export function resolveDataDir(projectRoot: string): string {
+  return join(projectRoot, EXCAVATOR_DIR);
 }
 
 function ensureDir(projectRoot: string): string {
-  const dir = resolveUaDir(projectRoot);
+  const dir = resolveDataDir(projectRoot);
   if (!existsSync(dir)) {
     mkdirSync(dir, { recursive: true });
   }
@@ -101,7 +92,7 @@ export function loadGraph(
   projectRoot: string,
   options?: { validate?: boolean },
 ): KnowledgeGraph | null {
-  const filePath = join(resolveUaDir(projectRoot), GRAPH_FILE);
+  const filePath = join(resolveDataDir(projectRoot), GRAPH_FILE);
   if (!existsSync(filePath)) return null;
 
   const data = JSON.parse(readFileSync(filePath, "utf-8"));
@@ -125,7 +116,7 @@ export function saveMeta(projectRoot: string, meta: AnalysisMeta): void {
 }
 
 export function loadMeta(projectRoot: string): AnalysisMeta | null {
-  const filePath = join(resolveUaDir(projectRoot), META_FILE);
+  const filePath = join(resolveDataDir(projectRoot), META_FILE);
   if (!existsSync(filePath)) return null;
   return JSON.parse(readFileSync(filePath, "utf-8")) as AnalysisMeta;
 }
@@ -136,7 +127,7 @@ export function saveFingerprints(projectRoot: string, store: FingerprintStore): 
 }
 
 export function loadFingerprints(projectRoot: string): FingerprintStore | null {
-  const filePath = join(resolveUaDir(projectRoot), FINGERPRINT_FILE);
+  const filePath = join(resolveDataDir(projectRoot), FINGERPRINT_FILE);
   if (!existsSync(filePath)) return null;
   try {
     return JSON.parse(readFileSync(filePath, "utf-8")) as FingerprintStore;
@@ -153,7 +144,7 @@ export function saveConfig(projectRoot: string, config: ProjectConfig): void {
 }
 
 export function loadConfig(projectRoot: string): ProjectConfig {
-  const filePath = join(resolveUaDir(projectRoot), CONFIG_FILE);
+  const filePath = join(resolveDataDir(projectRoot), CONFIG_FILE);
   if (!existsSync(filePath)) return { ...DEFAULT_CONFIG };
   try {
     return JSON.parse(readFileSync(filePath, "utf-8")) as ProjectConfig;
@@ -178,7 +169,7 @@ export function loadDomainGraph(
   projectRoot: string,
   options?: { validate?: boolean },
 ): KnowledgeGraph | null {
-  const filePath = join(resolveUaDir(projectRoot), DOMAIN_GRAPH_FILE);
+  const filePath = join(resolveDataDir(projectRoot), DOMAIN_GRAPH_FILE);
   if (!existsSync(filePath)) return null;
 
   const data = JSON.parse(readFileSync(filePath, "utf-8"));

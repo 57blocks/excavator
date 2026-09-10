@@ -2,9 +2,8 @@
 /**
  * generate-ignore.mjs
  *
- * Writes a starter `.understandignore` into the project's data directory
- * (`.ua/`, or legacy `.understand-anything/` when that directory already
- * exists — see core's resolveUaDir) by delegating to
+ * Writes a starter `.excavatorignore` into the project's data directory
+ * (`.excavator/` — see core's resolveDataDir) by delegating to
  * `generateStarterIgnoreFile` in `@excavator/core`. Invoked from
  * SKILL.md Phase 0.5; replaces the inline `node -e "…"` block that previously
  * duplicated the generator logic.
@@ -14,8 +13,7 @@
  *
  * Behaviour:
  *   - Exits 0 with a stderr notice if the target file already exists.
- *   - Creates the resolved data dir (`.ua/` or legacy
- *     `.understand-anything/`) if missing.
+ *   - Creates the data dir (`.excavator/`) if missing.
  *   - Emits a one-line stderr summary on success.
  *
  * Mirrors the @excavator/core resolution dance used by
@@ -53,11 +51,11 @@ try {
   core = await import(pathToFileURL(resolve(pluginRoot, 'packages/core/dist/index.js')).href);
 }
 
-const { generateStarterIgnoreFile, resolveUaDir } = core;
+const { generateStarterIgnoreFile, resolveDataDir } = core;
 
 const projectRoot = resolve(process.argv[2] ?? process.cwd());
-const outDir = resolveUaDir(projectRoot);
-const outPath = join(outDir, '.understandignore');
+const outDir = resolveDataDir(projectRoot);
+const outPath = join(outDir, '.excavatorignore');
 
 if (existsSync(outPath)) {
   console.error(`generate-ignore: ${outPath} already exists — skipping`);

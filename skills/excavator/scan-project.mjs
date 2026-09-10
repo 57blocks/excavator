@@ -16,9 +16,8 @@
  *
  * What this script owns:
  *   - File enumeration (git ls-files preferred, recursive walk fallback)
- *   - `.understandignore` and CLI exclusion filtering (delegated to core's
- *     createIgnoreFilter, which reads the resolved data dir — `.ua/`, or
- *     legacy `.understand-anything/` when that directory already exists)
+ *   - `.excavatorignore` and CLI exclusion filtering (delegated to core's
+ *     createIgnoreFilter, which reads the data dir — `.excavator/`)
  *   - Per-file language detection (extension + filename table)
  *   - Per-file category assignment (priority-ordered rules from
  *     project-scanner.md Step 4)
@@ -31,8 +30,8 @@
  *
  *   --exclude <patterns>  Comma-separated gitignore-style patterns to
  *                         additionally exclude from the scan.
- *   --exclude-analysis-data  Always exclude persistent `.ua/` and legacy
- *                            `.understand-anything/` analysis data.
+ *   --exclude-analysis-data  Always exclude the persistent `.excavator/`
+ *                            analysis data directory.
  *
  * Output JSON (subset of what project-scanner.md Phase 1 expects — the LLM
  * agent merges this with Step A's narrative fields and Step C's importMap to
@@ -43,6 +42,7 @@
  *     "files": [{ "path": "...", "language": "...", "sizeLines": N, "fileCategory": "..." }, ...],
  *     "totalFiles": N,
  *     "filteredByIgnore": M,
+ *     "filteredByDefaults": K,
  *     "estimatedComplexity": "small" | "moderate" | "large" | "very-large",
  *     "stats": { "filesScanned": N, "byCategory": {...}, "byLanguage": {...} }
  *   }
@@ -92,7 +92,7 @@ try {
   core = await import(pathToFileURL(resolve(pluginRoot, 'packages/core/dist/index.js')).href);
 }
 
-const { createIgnoreFilter, resolveUaDir } = core;
+const { createIgnoreFilter, resolveDataDir } = core;
 
 // ---------------------------------------------------------------------------
 // Language detection
@@ -375,7 +375,7 @@ const INFRA_FILENAMES = new Set([
  *
  * 1. LICENSE -> code (per the spec note "except LICENSE"). The Step-2
  *    exclusion table normally removes LICENSE, but if a project chooses to
- *    re-include it via `.understandignore` negation, it should NOT land in
+ *    re-include it via `.excavatorignore` negation, it should NOT land in
  *    docs. We classify as `code` rather than inventing a new bucket.
  * 2. Filename-based infra (Dockerfile, Makefile, Jenkinsfile,
  *    docker-compose.*, Vagrantfile, Procfile, .gitlab-ci.yml,
@@ -513,6 +513,25 @@ function enumerateViaGit(projectRoot) {
     .map(toPosix);
 }
 
+// Hard skip — these directories are universally non-source (or, for the
+// plugin/agent and data directories, never analysis input) and skipping at
+// the walker level avoids materializing thousands of paths before the
+// ignore filter would drop them anyway. The ignore filter still runs on
+// everything else. Every entry here MUST also be a DEFAULT_IGNORE_PATTERNS
+// entry in core's ignore-filter.ts (checked by a unit test) — this is a
+// walker-only performance subset, not a second source of truth.
+const HARD_SKIP_DIRS = new Set([
+  'node_modules',
+  '.git',
+  '.svn',
+  '.hg',
+  '__pycache__',
+  '.claude',
+  '.agents',
+  '.codex',
+  '.excavator',
+]);
+
 /**
  * Recursive directory walker — fallback when `git ls-files` is unavailable
  * (no git, not a repo, or git refused). Skips hard-coded "obviously bad"
@@ -523,18 +542,6 @@ function enumerateViaGit(projectRoot) {
  * output is deterministic without an extra sort pass.
  */
 function enumerateViaWalk(projectRoot) {
-  // Hard skip — these directories are universally non-source and skipping
-  // at the walker level avoids materializing thousands of node_modules
-  // paths before the ignore filter drops them. The ignore filter still
-  // runs on everything else.
-  const HARD_SKIP_DIRS = new Set([
-    'node_modules',
-    '.git',
-    '.svn',
-    '.hg',
-    '__pycache__',
-  ]);
-
   const out = [];
 
   function walk(absDir) {
@@ -588,7 +595,7 @@ function enumerateFiles(projectRoot) {
 // Filter accounting
 //
 // The project-scanner.md contract requires `filteredByIgnore` to count files
-// dropped specifically by user `.understandignore` or CLI `--exclude`
+// dropped specifically by user `.excavatorignore` or CLI `--exclude`
 // patterns (the delta beyond what the hardcoded defaults would have removed).
 // We accomplish this by building TWO filters:
 //   - `defaultOnly`: defaults only, no user patterns
@@ -603,13 +610,13 @@ function enumerateFiles(projectRoot) {
 
 /**
  * Build a defaults-only IgnoreFilter — same patterns as createIgnoreFilter
- * would apply, minus any user .understandignore content. We synthesize this
- * via a temp directory with no .understandignore files so the core function
+ * would apply, minus any user .excavatorignore content. We synthesize this
+ * via a temp directory with no .excavatorignore files so the core function
  * still drives the matcher. (Re-implementing the ignore-package wiring here
  * would risk subtle behavior drift from core's matcher.)
  */
 function buildDefaultsOnlyFilter() {
-  // Use the createIgnoreFilter with a path that we KNOW has no .understandignore.
+  // Use the createIgnoreFilter with a path that we KNOW has no .excavatorignore.
   // `os.tmpdir()`-based fresh dir guarantees no user patterns leak in.
   // The directory doesn't need to exist on disk because createIgnoreFilter
   // only checks existsSync() before reading.
@@ -621,18 +628,17 @@ function buildDefaultsOnlyFilter() {
 }
 
 /**
- * Determine whether `projectRoot` has any user .understandignore files.
+ * Determine whether `projectRoot` has any user .excavatorignore files.
  * When neither file exists, the combined and defaults-only filters are
  * identical, so we can skip the dual-filter accounting entirely.
  *
- * Mirrors core's createIgnoreFilter, which reads the resolved data dir —
- * `.ua/`, or legacy `.understand-anything/` when that directory already
- * exists (see resolveUaDir).
+ * Mirrors core's createIgnoreFilter, which reads the data dir — `.excavator/`
+ * (see resolveDataDir).
  */
 function hasUserIgnoreFile(projectRoot) {
   return (
-    existsSync(join(projectRoot, '.understandignore'))
-    || existsSync(join(resolveUaDir(projectRoot), '.understandignore'))
+    existsSync(join(projectRoot, '.excavatorignore'))
+    || existsSync(join(resolveDataDir(projectRoot), '.excavatorignore'))
   );
 }
 
@@ -762,18 +768,19 @@ async function main() {
 
   // 1. Enumerate. Either git ls-files or recursive walk.
   const candidates = enumerateFiles(projectRoot).filter(
-    rel =>
-      !excludeAnalysisData ||
-      (!rel.startsWith('.ua/') && !rel.startsWith('.understand-anything/')),
+    rel => !excludeAnalysisData || !rel.startsWith('.excavator/'),
   );
 
-  // 2. Filter via createIgnoreFilter (defaults + .understandignore + CLI excludes).
-  //    Build a defaults-only filter in parallel to count user-driven drops.
+  // 2. Filter via createIgnoreFilter (defaults + .excavatorignore + CLI excludes).
+  //    Build a defaults-only filter in parallel so every drop lands in a
+  //    visible bucket — baseline default drops (node_modules/, .excavator/,
+  //    .claude/, etc.) are never silently absorbed into "not counted".
   const combined = createIgnoreFilter(projectRoot, excludePatterns);
   const userIgnoresPresent = hasUserIgnoreFile(projectRoot) || excludePatterns.length > 0;
-  const defaultsOnly = userIgnoresPresent ? buildDefaultsOnlyFilter() : combined;
+  const defaultsOnly = buildDefaultsOnlyFilter();
 
   let filteredByIgnore = 0;
+  let filteredByDefaults = 0;
   const kept = [];
   for (const rel of candidates) {
     const isIgnoredCombined = combined.isIgnored(rel);
@@ -782,10 +789,13 @@ async function main() {
       continue;
     }
     // Dropped by combined filter. If defaults-only would have ALSO dropped
-    // it, this is a baseline default drop — not counted. If defaults-only
-    // would have KEPT it, this drop is attributable to the user's
-    // .understandignore content or CLI --exclude patterns.
-    if (userIgnoresPresent && !defaultsOnly.isIgnored(rel)) {
+    // it, this is a baseline default drop (reason: ignored — counted here,
+    // not silently dropped). If defaults-only would have KEPT it, this drop
+    // is attributable to the user's .excavatorignore content or CLI
+    // --exclude patterns.
+    if (defaultsOnly.isIgnored(rel)) {
+      filteredByDefaults++;
+    } else if (userIgnoresPresent) {
       filteredByIgnore++;
     }
   }
@@ -858,6 +868,7 @@ async function main() {
     files: fileEntries,
     totalFiles: fileEntries.length,
     filteredByIgnore,
+    filteredByDefaults,
     estimatedComplexity,
     failures,
     stats: {
@@ -876,6 +887,7 @@ async function main() {
   process.stderr.write(
     `scan-project: filesScanned=${fileEntries.length} ` +
     `filteredByIgnore=${filteredByIgnore} ` +
+    `filteredByDefaults=${filteredByDefaults} ` +
     `complexity=${estimatedComplexity}\n`,
   );
 }
@@ -915,4 +927,5 @@ export default {
   detectLanguage,
   detectCategory,
   estimateComplexity,
+  HARD_SKIP_DIRS: Array.from(HARD_SKIP_DIRS),
 };

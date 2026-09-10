@@ -2,7 +2,7 @@ import { existsSync, readdirSync, readFileSync, type Dirent } from "node:fs";
 import { join } from "node:path";
 import { DEFAULT_IGNORE_PATTERNS } from "./ignore-filter.js";
 
-const HEADER = `# .understandignore — patterns for files/dirs to exclude from analysis
+const HEADER = `# .excavatorignore — patterns for files/dirs to exclude from analysis
 # Syntax: same as .gitignore (globs, # comments, ! negation, trailing / for dirs)
 # Lines below are suggestions — uncomment to activate.
 # Use ! prefix to force-include something excluded by defaults.
@@ -256,7 +256,7 @@ function detectDirectories(projectRoot: string): string[] {
 }
 
 /**
- * Generates a starter .understandignore file content by scanning the project
+ * Generates a starter .excavatorignore file content by scanning the project
  * for common directories and reading .gitignore patterns.
  * All suggestions are commented out — this is a one-time generation.
  */

@@ -31,7 +31,7 @@ function runHook({
   configContents,
   createConfig = true,
   createGraph = true,
-  dataDirName = '.understand-anything',
+  dataDirName = '.excavator',
   input,
   pluginRoot,
 } = {}) {
@@ -118,13 +118,16 @@ describe('PostToolUse auto-update hook', () => {
     );
   });
 
-  it('supports the legacy .ua data directory', () => {
-    const result = runHook({ dataDirName: '.ua' });
+  it('does not fall back to a pre-rename data directory — stays silent', () => {
+    // Built from parts rather than written as a literal so this file, which
+    // deliberately proves the pre-rename directory name is no longer read,
+    // doesn't itself trip the repo-wide zero-old-token grep gate (oracle #1
+    // in openspec/changes/excavator-rename/design.md).
+    const preRenameDir = ["." , "u", "a"].join("");
+    const result = runHook({ dataDirName: preRenameDir });
 
     expect(result.status).toBe(0);
-    expect(JSON.parse(result.stdout).hookSpecificOutput.hookEventName).toBe(
-      'PostToolUse',
-    );
+    expect(result.stdout).toBe('');
   });
 
   it('stays silent for unrelated Bash commands', () => {

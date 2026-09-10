@@ -30,7 +30,7 @@ The knowledge graph JSON has this structure:
 
 ## Instructions
 
-1. **Resolve the data directory `$UA_DIR`.** Run `UA_DIR=$([ -d .understand-anything ] && echo .understand-anything || echo .ua)` — this is the legacy `.understand-anything/` when it already exists, otherwise the new `.ua/`. Check that `$UA_DIR/knowledge-graph.json` exists. If not, tell the user to run `/excavator` first.
+1. **Check that `.excavator/knowledge-graph.json` exists.** If not, tell the user to run `/excavator` first.
 
 2. **Check graph freshness before using graph-derived context**:
    - Read `project.gitCommitHash` from the graph metadata as `GRAPH_COMMIT_RAW`. Resolve it as a commit before using it in any Git diff, then compare it with `git rev-parse HEAD` and inspect project-scoped committed and working-tree changes from the project root:
@@ -43,7 +43,7 @@ The knowledge graph JSON has this structure:
      git ls-files --others --exclude-standard -- .
      ```
    - The `-- .` pathspec is required: commits that only touch a sibling monorepo project must not make this graph stale. A hash mismatch alone is not stale when the project diff is empty.
-   - Ignore the selected data directory (`.ua/` or legacy `.understand-anything/`) in every command's output because it contains generated graph artifacts, not project source drift.
+   - Ignore the `.excavator/` data directory in every command's output because it contains generated graph artifacts, not project source drift.
    - If the committed diff or any working-tree command reports project files, warn before generating the guide that onboarding content may omit those changes. Suggest: Run `/excavator` to refresh the graph.
    - Run the commit diff only when `GRAPH_COMMIT_RAW` resolves successfully. If the graph commit or Git metadata is missing, invalid, or unavailable, give a brief best-effort warning and continue instead of blocking.
 
@@ -66,5 +66,5 @@ The knowledge graph JSON has this structure:
    - **Complexity Hotspots**: areas to approach carefully (from complexity values)
 
 9. Format as clean markdown
-10. Offer to save the guide to `docs/UA_ONBOARDING.md` in the project
+10. Offer to save the guide to `docs/EXCAVATOR_ONBOARDING.md` in the project
 11. Suggest the user commit it to the repo for the team

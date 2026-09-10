@@ -16,11 +16,11 @@
 
 ## 3. 数据目录、忽略文件、去回退、默认忽略（commit 3）
 
-- [ ] 3.1 `packages/core/src/persistence/index.ts`：`EXCAVATOR_DIR = ".excavator"`，删 `LEGACY_UA_DIR`/`resolveUaDirName`，导出 `resolveDataDir`；验证 core 测试绿
-- [ ] 3.2 删全部回退分支（design D3 列表 11 处）与 agents/SKILL.md 里的三元式；`staleness.ts` pathspec、dashboard `vite.config.ts`、viewer `bin/viewer.mjs`、`prepare-incremental.mjs` GENERATED_ROOTS 同步；验证 `grep -rnE '\.understand-anything|\.ua\b' packages skills agents hooks src scripts tests` 为空
-- [ ] 3.3 `.understandignore` → `.excavatorignore`：`ignore-filter.ts`、`ignore-generator.ts`、`generate-ignore.mjs`、`scan-project.mjs`、`prepare-incremental.mjs`、agents/SKILL.md、core 测试；验证 `grep -rn understandignore` 为空且生成器测试写出 `.excavatorignore`
-- [ ] 3.4 `DEFAULT_IGNORE_PATTERNS` 加 `.claude/ .agents/ .codex/ .excavator/`；`scan-project.mjs` 自排除同步；验证新增单元测试「scanner 自排除 ⊆ DEFAULT_IGNORE_PATTERNS」绿
-- [ ] 3.5 新夹具测试：项目含 `.claude/skills/x/SKILL.md`、`.agents/skills/y/SKILL.md`、`.codex/z.md`、`.excavator/config.json`，scan 清单不含它们且账目 `ignored` 计 4；验证测试绿
+- [x] 3.1 `packages/core/src/persistence/index.ts`：`EXCAVATOR_DIR = ".excavator"`，删 `LEGACY_UA_DIR`/`resolveUaDirName`，导出 `resolveDataDir`；验证 core 测试绿
+- [x] 3.2 删全部回退分支（design D3 列表 11 处）与 agents/SKILL.md 里的三元式；`staleness.ts` pathspec、dashboard `vite.config.ts`、viewer `bin/viewer.mjs`、`prepare-incremental.mjs` GENERATED_ROOTS 同步；验证 `grep -rnE '\.understand-anything|\.ua\b' packages skills agents hooks src scripts tests` 为空（额外清理了 `.gitignore`、README.md、`packages/viewer/README.md`、`scripts/generate-large-graph.mjs`、`hooks/post-tool-use-auto-update.mjs`、`hooks/hooks.json` 里同类回退字面量，以及一批 `UA_`/`UNDERSTAND_` 前缀内部标识符——`UNDERSTAND_NO_WORKTREE_REDIRECT`→`EXCAVATOR_NO_WORKTREE_REDIRECT`、`UNDERSTAND_FIGMA_FORCE`→`EXCAVATOR_FIGMA_FORCE`、`__UA_BENCHMARK_METRICS__`→`__EXCAVATOR_BENCHMARK_METRICS__`、`UA_COMPUTE_BATCHES_FORCE_LOUVAIN_THROW`→`EXCAVATOR_COMPUTE_BATCHES_FORCE_LOUVAIN_THROW`、`docs/UA_ONBOARDING.md`→`docs/EXCAVATOR_ONBOARDING.md`、benchmark 的 `.ua-report-*` 锁/临时文件前缀→`.excavator-report-*`；测试中需要构造"回退目录名仍不被读取"的负向断言时，用字符串拼接而非字面量书写目录名，避免测试文件自身触发 oracle #1 的 grep）
+- [x] 3.3 `.understandignore` → `.excavatorignore`：`ignore-filter.ts`、`ignore-generator.ts`、`generate-ignore.mjs`、`scan-project.mjs`、`prepare-incremental.mjs`、agents/SKILL.md、core 测试；验证 `grep -rn understandignore` 为空且生成器测试写出 `.excavatorignore`
+- [x] 3.4 `DEFAULT_IGNORE_PATTERNS` 加 `.claude/ .agents/ .codex/ .excavator/`（顺带补 `.svn/ .hg/`，使既有 walker 自排除列表满足子集要求）；`scan-project.mjs` 的 `HARD_SKIP_DIRS`（walker 快速跳过表，D4 所指"scanner 自排除列表"）同步并导出供测试；验证新增单元测试「scanner 自排除 ⊆ DEFAULT_IGNORE_PATTERNS」绿
+- [x] 3.5 新夹具测试：项目含 `.claude/skills/x/SKILL.md`、`.agents/skills/y/SKILL.md`、`.codex/z.md`、`.excavator/config.json`，scan 清单不含它们；新增 `filteredByDefaults` 账目字段（与既有的用户驱动 `filteredByIgnore` 分开计数，避免默认规则丢弃被"零计数"吞掉），断言其 ≥4 且四个夹具路径均不在 `files[]` 中；验证测试绿
 
 ## 4. 两宿主：脚本定位、安装器、安装测试（commit 4）
 

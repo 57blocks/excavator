@@ -113,7 +113,7 @@ Point `/excavator-knowledge` at a [Karpathy-pattern LLM wiki](https://gist.githu
 /excavator
 ```
 
-A multi-agent pipeline scans your project, extracts every file, function, class, and dependency, then builds a knowledge graph saved to `.ua/knowledge-graph.json`. (Projects that already have a `.understand-anything/` directory keep using it — it stays the data directory when present, so nothing needs migrating.)
+A multi-agent pipeline scans your project, extracts every file, function, class, and dependency, then builds a knowledge graph saved to `.excavator/knowledge-graph.json`.
 
 > **Heads up on token usage:** The initial `/excavator` analyzes your whole codebase and can consume a significant number of tokens on large projects. We recommend running it on a token plan / subscription, or using a local model (see above) for initialization. Subsequent runs are incremental by default — only changed files are re-analyzed — so they use far fewer tokens.
 
@@ -126,7 +126,7 @@ A multi-agent pipeline scans your project, extracts every file, function, class,
 # Supported languages: en (default), zh, zh-TW, ja, ko, ru
 ```
 
-On the **first run** in a project — when you don't pass `--language` and no language is stored yet — `/excavator` detects the language you're conversing in. If it isn't English, it asks you to confirm (or override) before generating; English conversations are unaffected. Your choice is saved to `.ua/config.json` and reused on every later run.
+On the **first run** in a project — when you don't pass `--language` and no language is stored yet — `/excavator` detects the language you're conversing in. If it isn't English, it asks you to confirm (or override) before generating; English conversations are unaffected. Your choice is saved to `.excavator/config.json` and reused on every later run.
 
 The `--language` parameter affects:
 - Node summaries and descriptions in the knowledge graph
@@ -274,11 +274,11 @@ The graph is just JSON — **commit it once, and teammates skip the pipeline**. 
 
 > **Example:** [GoogleCloudPlatform/microservices-demo](https://github.com/GoogleCloudPlatform/microservices-demo) — Go / Java / Python / Node reference with a committed graph.
 
-**What to commit:** everything in `.ua/` *except* `intermediate/` and `diff-overlay.json` (those are local scratch). (Legacy projects use `.understand-anything/` — substitute that directory name below if it's the one present.)
+**What to commit:** everything in `.excavator/` *except* `intermediate/` and `diff-overlay.json` (those are local scratch).
 
 ```gitignore
-.ua/intermediate/
-.ua/diff-overlay.json
+.excavator/intermediate/
+.excavator/diff-overlay.json
 ```
 
 **Keep it fresh:** enable `/excavator --auto-update` — a post-commit hook incrementally patches the graph so each commit lands with a matching graph. Or re-run `/excavator` manually before releases.
@@ -287,8 +287,8 @@ The graph is just JSON — **commit it once, and teammates skip the pipeline**. 
 
 ```bash
 git lfs install
-git lfs track ".ua/*.json"
-git add .gitattributes .ua/
+git lfs track ".excavator/*.json"
+git add .gitattributes .excavator/
 ```
 
 ### View the dashboard without Claude Code
@@ -299,7 +299,7 @@ Once a graph has been generated and committed, anyone on the team can open it wi
 npx https://github.com/Jingqi-57blocks/excavator/releases/latest/download/excavator-viewer.tgz /path/to/analyzed/project
 ```
 
-The terminal prints a tokenized URL (`http://127.0.0.1:5173/?token=…`) and opens the full interactive dashboard in your browser. The project directory (default: current directory) must contain the committed data directory (`.ua/`, or legacy `.understand-anything/`). Everything is served read-only from local disk — no LLM calls, no data leaves your machine.
+The terminal prints a tokenized URL (`http://127.0.0.1:5173/?token=…`) and opens the full interactive dashboard in your browser. The project directory (default: current directory) must contain the committed data directory (`.excavator/`). Everything is served read-only from local disk — no LLM calls, no data leaves your machine.
 
 Working from a clone instead? `pnpm install && pnpm --filter @excavator/core build`, then `GRAPH_DIR=/path/to/analyzed/project pnpm dev:dashboard` does the same via the Vite dev server.
 

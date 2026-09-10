@@ -10,7 +10,7 @@ Extracts business domain knowledge — domains, business flows, and process step
 
 ## How It Works
 
-- If a knowledge graph already exists (`.ua/knowledge-graph.json`, or the legacy `.understand-anything/knowledge-graph.json` when that directory is present), derives domain knowledge from it (cheap, no file scanning)
+- If a knowledge graph already exists (`.excavator/knowledge-graph.json`), derives domain knowledge from it (cheap, no file scanning)
 - If no knowledge graph exists, performs a lightweight scan: file tree + entry point detection + sampled files
 - Use `--full` flag to force a fresh scan even if a knowledge graph exists
 
@@ -20,7 +20,7 @@ Extracts business domain knowledge — domains, business flows, and process step
 
 Set `PROJECT_ROOT` to the current working directory.
 
-**Worktree redirect.** If `PROJECT_ROOT` is inside a git worktree (not the main checkout), redirect output to the main repository root. Worktrees managed by Claude Code are ephemeral — the data directory (`.ua/`, or legacy `.understand-anything/`) written there is destroyed when the session ends, taking the domain graph with it (issue #133). Detect a worktree by comparing `git rev-parse --git-dir` against `git rev-parse --git-common-dir`; in a normal checkout or submodule they resolve to the same path, in a worktree they differ and the parent of `--git-common-dir` is the main repo root.
+**Worktree redirect.** If `PROJECT_ROOT` is inside a git worktree (not the main checkout), redirect output to the main repository root. Worktrees managed by Claude Code are ephemeral — the data directory (`.excavator/`) written there is destroyed when the session ends, taking the domain graph with it (issue #133). Detect a worktree by comparing `git rev-parse --git-dir` against `git rev-parse --git-common-dir`; in a normal checkout or submodule they resolve to the same path, in a worktree they differ and the parent of `--git-common-dir` is the main repo root.
 
 ```bash
 COMMON_DIR=$(git -C "$PROJECT_ROOT" rev-parse --git-common-dir 2>/dev/null)
@@ -30,10 +30,10 @@ if [ -n "$COMMON_DIR" ] && [ -n "$GIT_DIR" ]; then
   GIT_ABS=$(cd "$PROJECT_ROOT" && cd "$GIT_DIR" 2>/dev/null && pwd -P)
   if [ -n "$COMMON_ABS" ] && [ "$COMMON_ABS" != "$GIT_ABS" ]; then
     MAIN_ROOT=$(dirname "$COMMON_ABS")
-    if [ -d "$MAIN_ROOT" ] && [ "${UNDERSTAND_NO_WORKTREE_REDIRECT:-0}" != "1" ]; then
-      echo "[understand-domain] Detected git worktree at $PROJECT_ROOT"
-      echo "[understand-domain] Redirecting output to main repo root: $MAIN_ROOT"
-      echo "[understand-domain] (Set UNDERSTAND_NO_WORKTREE_REDIRECT=1 to keep PROJECT_ROOT as the worktree.)"
+    if [ -d "$MAIN_ROOT" ] && [ "${EXCAVATOR_NO_WORKTREE_REDIRECT:-0}" != "1" ]; then
+      echo "[excavator-domain] Detected git worktree at $PROJECT_ROOT"
+      echo "[excavator-domain] Redirecting output to main repo root: $MAIN_ROOT"
+      echo "[excavator-domain] (Set EXCAVATOR_NO_WORKTREE_REDIRECT=1 to keep PROJECT_ROOT as the worktree.)"
       PROJECT_ROOT="$MAIN_ROOT"
     fi
   fi
@@ -42,11 +42,11 @@ fi
 
 Use `$PROJECT_ROOT` (not the bare CWD) for every reference to "the current project" / `<project-root>` in subsequent phases.
 
-**Resolve the data directory `$UA_DIR`.** All Excavator artifacts live in the project's data directory. Resolve it once, now that `$PROJECT_ROOT` is known, and reuse `$UA_DIR` for every read and write in later phases:
+**Resolve the data directory `$DATA_DIR`.** All Excavator artifacts live in the project's data directory, `.excavator/`. Resolve it once, now that `$PROJECT_ROOT` is known, and reuse `$DATA_DIR` for every read and write in later phases:
 ```bash
-UA_DIR="$PROJECT_ROOT/$([ -d "$PROJECT_ROOT/.understand-anything" ] && echo .understand-anything || echo .ua)"
+DATA_DIR="$PROJECT_ROOT/.excavator"
 ```
-This keeps the legacy `.understand-anything/` directory when it already exists (existing projects keep working with no migration) and uses the new `.ua/` otherwise. Because each phase may run in a fresh shell, carry `$UA_DIR` forward like `$PROJECT_ROOT`, re-resolving it with the line above if a later command block needs it.
+Because each phase may run in a fresh shell, carry `$DATA_DIR` forward like `$PROJECT_ROOT`, re-resolving it with the line above if a later command block needs it.
 
 **Important:** do **not** assume the plugin root is simply two directories above the skill path string. In many installations `~/.agents/skills/excavator-domain` is a symlink into the real plugin checkout. Prefer runtime-provided plugin roots first (for Claude), then fall back to universal symlinks, skill symlink resolution, and common clone-based install paths.
 
@@ -94,7 +94,7 @@ Use `$PLUGIN_ROOT` for every reference to agent definitions in subsequent phases
 
 ### Phase 1: Detect Existing Graph
 
-1. Check if `$UA_DIR/knowledge-graph.json` exists
+1. Check if `$DATA_DIR/knowledge-graph.json` exists
 2. If it exists AND `--full` was NOT passed, check freshness before deriving from it:
    - Read `project.gitCommitHash` from the graph metadata as `GRAPH_COMMIT_RAW`. Change to `$PROJECT_ROOT`, resolve it as a commit before using it in any Git diff, compare the resolved commit with `git rev-parse HEAD`, and inspect project-scoped committed and working-tree changes:
      ```bash
@@ -106,7 +106,7 @@ Use `$PLUGIN_ROOT` for every reference to agent definitions in subsequent phases
      git ls-files --others --exclude-standard -- .
      ```
    - The `-- .` pathspec is required: commits that only touch a sibling monorepo project must not make this graph stale. A hash mismatch alone is not stale when the project diff is empty.
-   - Ignore the selected data directory (`.ua/` or legacy `.understand-anything/`) in every command's output because it contains generated graph artifacts, not project source drift.
+   - Ignore the `.excavator/` data directory in every command's output because it contains generated graph artifacts, not project source drift.
    - If the committed diff or any working-tree command reports project files, warn that domain extraction may omit those changes. Suggest: Run `/excavator` to refresh the knowledge graph.
    - Run the commit diff only when `GRAPH_COMMIT_RAW` resolves successfully. If the graph commit or Git metadata is missing, invalid, or unavailable, give a brief best-effort warning and continue instead of blocking.
 3. After that preflight, proceed to Phase 3 (derive from graph).
@@ -120,7 +120,7 @@ The preprocessing script does NOT produce a domain graph — it produces **raw m
    ```
    python ./extract-domain-context.py "$PROJECT_ROOT"
    ```
-   This outputs `$UA_DIR/intermediate/domain-context.json` containing:
+   This outputs `$DATA_DIR/intermediate/domain-context.json` containing:
    - File tree (respecting `.gitignore`)
    - Detected entry points (HTTP routes, CLI commands, event handlers, cron jobs, exported handlers)
    - File signatures (exports, imports per file)
@@ -131,7 +131,7 @@ The preprocessing script does NOT produce a domain graph — it produces **raw m
 
 ### Phase 3: Derive from Existing Graph (Path 2)
 
-1. Read `$UA_DIR/knowledge-graph.json`
+1. Read `$DATA_DIR/knowledge-graph.json`
 2. Format the graph data as structured context:
    - All nodes with their types, names, summaries, and tags
    - All edges with their types (especially `calls`, `imports`, `contains`)
@@ -144,15 +144,15 @@ The preprocessing script does NOT produce a domain graph — it produces **raw m
 
 1. Read the domain-analyzer agent prompt from `$PLUGIN_ROOT/agents/excavator-domain-analyzer.md`
 2. Dispatch a subagent with the domain-analyzer prompt + the context from Phase 2 or 3
-3. The agent writes its output to `$UA_DIR/intermediate/domain-analysis.json`
+3. The agent writes its output to `$DATA_DIR/intermediate/domain-analysis.json`
 
 ### Phase 5: Validate and Save
 
 1. Read the domain analysis output
 2. Validate using the standard graph validation pipeline (the schema now supports domain/flow/step types)
 3. If validation fails, log warnings but save what's valid (error tolerance)
-4. Save to `$UA_DIR/domain-graph.json`
-5. Clean up `$UA_DIR/intermediate/domain-analysis.json` and `$UA_DIR/intermediate/domain-context.json`
+4. Save to `$DATA_DIR/domain-graph.json`
+5. Clean up `$DATA_DIR/intermediate/domain-analysis.json` and `$DATA_DIR/intermediate/domain-context.json`
 
 ### Phase 6: Launch Dashboard
 

@@ -2,9 +2,7 @@ import { existsSync, readFileSync } from 'node:fs';
 
 const COMMIT_COMMAND = /git\s+(commit|merge|cherry-pick|rebase)/;
 
-function findDataDir() {
-  return existsSync('.understand-anything') ? '.understand-anything' : '.ua';
-}
+const DATA_DIR = '.excavator';
 
 function autoUpdateEnabled(dataDir) {
   try {
@@ -33,7 +31,7 @@ async function main() {
   const command = payload?.tool_input?.command;
   if (typeof command !== 'string' || !COMMIT_COMMAND.test(command)) return;
 
-  const dataDir = findDataDir();
+  const dataDir = DATA_DIR;
   if (!autoUpdateEnabled(dataDir)) return;
   if (!existsSync(`${dataDir}/knowledge-graph.json`)) return;
 
