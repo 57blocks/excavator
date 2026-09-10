@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useDashboardStore } from "../store";
 import { useI18n } from "../contexts/I18nContext";
 import type { NodeType, EdgeType, KnowledgeGraph, GraphNode } from "@excavator/core/types";
+import { displaySummary } from "../utils/nodeDisplay";
 
 // Badge color classes keyed by NodeType — must be kept in sync with core NodeType union.
 const typeBadgeColors: Record<NodeType, string> = {
@@ -402,7 +403,7 @@ export default function NodeInfo() {
       <FigmaThumbnail node={node} />
 
       <p className="text-sm text-text-secondary mb-4 leading-relaxed">
-        {node.summary}
+        {displaySummary(node.summary, node.name)}
       </p>
 
       {node.filePath && (

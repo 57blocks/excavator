@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import type { CustomNodeData } from "./CustomNode";
+import { displaySummary } from "../utils/nodeDisplay";
 
 interface NodeTooltipProps {
   data: CustomNodeData;
@@ -96,11 +97,15 @@ export default function NodeTooltip({
         </div>
 
         {/* Summary */}
-        {data.summary && (
-          <p className="text-xs text-text-secondary leading-relaxed mb-2">
-            {data.summary.length > 120 ? data.summary.slice(0, 120) + "..." : data.summary}
-          </p>
-        )}
+        {(() => {
+          const text = displaySummary(data.summary, data.label);
+          if (text.length === 0) return null;
+          return (
+            <p className="text-xs text-text-secondary leading-relaxed mb-2">
+              {text.length > 120 ? text.slice(0, 120) + "..." : text}
+            </p>
+          );
+        })()}
 
         {/* Tags */}
         {tags.length > 0 && (

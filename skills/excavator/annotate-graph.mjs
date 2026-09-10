@@ -31,7 +31,7 @@
  *     [--graph <assembled-graph.json>] [--structure <structure-all.json>]
  *     [--scan <scan-result.json>] [--import-map <import-map.json>]
  *     [--plan <incremental-plan.json>] [--fingerprints <fingerprints.json>]
- *     [--meta <meta.json>] [--no-meta]
+ *     [--meta <meta.json>] [--no-meta] [--model <name>]
  *     [--out <annotated-graph.json>] [--audit-out <audit.json>]
  *     [--no-supplement] [--samples <n>]
  *
@@ -85,6 +85,27 @@ const WEIGHT_BY_TYPE = Object.freeze({ contains: 1.0, exports: 0.8, imports: 0.7
  * absence. The count says how often it happened.
  */
 const GIT_COMMIT_HASH = /^[0-9a-f]{7,40}$/i;
+
+/**
+ * Where the host's model name might be, most explicit first. None of these is
+ * guaranteed to be set — the harness decides — so `unknown` is the honest
+ * default rather than a guess assembled from a version string. A caller that
+ * knows the model passes `--model`.
+ */
+export const HOST_MODEL_ENV_VARS = Object.freeze([
+  'EXCAVATOR_MODEL', 'CLAUDE_MODEL', 'ANTHROPIC_MODEL', 'CLAUDE_CODE_MODEL',
+]);
+
+/** The model name to stamp into `project.model`, or `unknown`. */
+export function hostModelName(env = process.env, override = null) {
+  const explicit = typeof override === 'string' ? override.trim() : '';
+  if (explicit.length > 0) return explicit;
+  for (const name of HOST_MODEL_ENV_VARS) {
+    const value = env?.[name];
+    if (typeof value === 'string' && value.trim().length > 0) return value.trim();
+  }
+  return 'unknown';
+}
 
 /** Extraction statuses whose files can be compared against the graph. */
 const COMPARABLE_STATUSES = Object.freeze(new Set(['parsed', 'zero-symbol']));
@@ -378,7 +399,10 @@ function sampler(limit) {
  * The whole audit. Pure over already-parsed inputs so it is testable without
  * touching disk, and so the CLI is a thin shell around it.
  */
-export function annotate({ graph, structure, scan, importMap, plan = null, fingerprints = null, supplement = true, sampleLimit = 5 }) {
+export function annotate({
+  graph, structure, scan, importMap, plan = null, fingerprints = null,
+  model = 'unknown', supplement = true, sampleLimit = 5,
+}) {
   const annotated = clone(graph);
   annotated.nodes = Array.isArray(annotated.nodes) ? annotated.nodes : [];
   annotated.edges = Array.isArray(annotated.edges) ? annotated.edges : [];
@@ -647,6 +671,12 @@ export function annotate({ graph, structure, scan, importMap, plan = null, finge
       JSON.stringify(canonicalize({ structure, importMap: importMap ?? null })),
     );
     annotated.project.pipelineVersion = PIPELINE_VERSION;
+    // Which model wrote the prose in this graph. `unknown` is a real answer:
+    // the host does not always say, and a fabricated name would make the
+    // graph unfalsifiable about its own authorship.
+    annotated.project.model = typeof model === 'string' && model.trim().length > 0
+      ? model.trim()
+      : 'unknown';
     // A target with no git repository has no commit; `sourceDigest` carries
     // the version instead. The field is set to null rather than left absent
     // so a consumer reads "no commit" instead of "field missing, ask again".
@@ -835,13 +865,13 @@ function supplementEndpoints(kind, record, nodes) {
 function parseArgs(argv) {
   const args = {
     projectRoot: null, graph: null, structure: null, scan: null, importMap: null,
-    plan: null, fingerprints: null, meta: null, writeMeta: true,
+    plan: null, fingerprints: null, meta: null, model: null, writeMeta: true,
     out: null, auditOut: null, supplement: true, sampleLimit: 5,
   };
   const valueFlags = {
     '--graph': 'graph', '--structure': 'structure', '--scan': 'scan',
     '--import-map': 'importMap', '--plan': 'plan', '--fingerprints': 'fingerprints',
-    '--meta': 'meta', '--out': 'out', '--audit-out': 'auditOut',
+    '--meta': 'meta', '--model': 'model', '--out': 'out', '--audit-out': 'auditOut',
   };
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
@@ -869,7 +899,8 @@ function parseArgs(argv) {
     throw new Error(
       'Usage: node annotate-graph.mjs <projectRoot> [--graph <path>] [--structure <path>] ' +
       '[--scan <path>] [--import-map <path>] [--plan <path>] [--fingerprints <path>] ' +
-      '[--meta <path>] [--no-meta] [--out <path>] [--audit-out <path>] [--no-supplement]',
+      '[--meta <path>] [--no-meta] [--model <name>] [--out <path>] [--audit-out <path>] ' +
+      '[--no-supplement]',
     );
   }
   return args;
@@ -914,6 +945,7 @@ async function main() {
 
   const { annotated, audit, dirtyFiles } = annotate({
     graph, structure, scan, importMap, plan, fingerprints,
+    model: hostModelName(process.env, args.model),
     supplement: args.supplement,
     sampleLimit: args.sampleLimit,
   });
@@ -923,7 +955,13 @@ async function main() {
   writeFileSync(outPath, JSON.stringify(annotated, null, 2), 'utf-8');
   writeFileSync(auditPath, JSON.stringify(audit, null, 2), 'utf-8');
 
-  if (args.writeMeta && dirtyFiles.length > 0) publishDirtyFiles(metaPath, dirtyFiles);
+  if (args.writeMeta) {
+    publishSupplementMeta(metaPath, {
+      dirtyFiles,
+      model: annotated.project?.model ?? 'unknown',
+      pipelineVersion: PIPELINE_VERSION,
+    });
+  }
 
   const c = audit.counts;
   process.stderr.write(
@@ -943,21 +981,27 @@ async function main() {
 }
 
 /**
- * Merge the dirty file list into `meta.json` under one `excavator` key.
+ * Merge this layer's facts into `meta.json` under one `excavator` key: which
+ * analysed files have since moved, which model wrote the prose, and which
+ * audit produced it.
  *
  * Read-modify-write, never a replace: `meta.json` is the pipeline's own
  * metadata and its keys (`gitCommitHash`, `lastAnalyzedAt`, …) are UA's. The
- * commit marker is not touched here — that logic stays exactly where it is,
- * and this file only says which analysed files have since moved.
+ * commit marker is not touched here — that logic stays exactly where it is.
+ * `dirtyFiles: []` is written rather than omitted, so "checked, nothing is
+ * dirty" and "never checked" stay distinguishable.
  *
- * A missing `meta.json` means no graph has been published, so a dirty list
- * would describe nothing: warn rather than create one.
+ * A missing `meta.json` means no graph has been published, so there is nothing
+ * to annotate: warn only when a dirty list would otherwise be lost, and never
+ * create the file.
  */
-function publishDirtyFiles(metaPath, dirtyFiles) {
+function publishSupplementMeta(metaPath, { dirtyFiles, model, pipelineVersion }) {
   if (!existsSync(metaPath)) {
-    process.stderr.write(
-      `Warning: annotate-graph: ${dirtyFiles.length} dirty file(s) not published — no meta.json at ${metaPath}\n`,
-    );
+    if (dirtyFiles.length > 0) {
+      process.stderr.write(
+        `Warning: annotate-graph: ${dirtyFiles.length} dirty file(s) not published — no meta.json at ${metaPath}\n`,
+      );
+    }
     return;
   }
   let meta;
@@ -974,7 +1018,7 @@ function publishDirtyFiles(metaPath, dirtyFiles) {
   const excavator = meta.excavator && typeof meta.excavator === 'object' && !Array.isArray(meta.excavator)
     ? meta.excavator
     : {};
-  meta.excavator = { ...excavator, dirtyFiles };
+  meta.excavator = { ...excavator, dirtyFiles, model, pipelineVersion };
   writeFileSync(metaPath, `${JSON.stringify(meta, null, 2)}\n`, 'utf-8');
 }
 
@@ -1002,5 +1046,5 @@ if (isCliEntry()) {
 
 export default {
   annotate, buildExpectedRecords, resolveUniqueCallSites, matchImportLine,
-  cosmeticDirtyFiles, PIPELINE_VERSION,
+  cosmeticDirtyFiles, hostModelName, PIPELINE_VERSION,
 };

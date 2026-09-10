@@ -22,7 +22,9 @@ import {
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { annotate, cosmeticDirtyFiles } from '../../../skills/excavator/annotate-graph.mjs';
+import {
+  annotate, cosmeticDirtyFiles, hostModelName, HOST_MODEL_ENV_VARS, PIPELINE_VERSION,
+} from '../../../skills/excavator/annotate-graph.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(__dirname, '../../..');
@@ -283,6 +285,8 @@ describe('annotate publishes dirtyFiles into meta.json', () => {
 
     const meta = readJson(join(root, '.excavator', 'meta.json'));
     expect(meta.excavator.dirtyFiles).toEqual(['src/a.ts']);
+    expect(meta.excavator.pipelineVersion).toBe(PIPELINE_VERSION);
+    expect(meta.excavator.model).toBe('unknown');
     // The commit marker is finalize's business, not this step's.
     expect(meta.gitCommitHash).toBe('b'.repeat(40));
     expect(meta.lastAnalyzedAt).toBe('2026-01-01T00:00:00.000Z');
@@ -562,5 +566,58 @@ describe('prepare-incremental without git', { timeout: 60_000 }, () => {
     const result = spawnSync(process.execPath, [PREPARE, root], { cwd: root, encoding: 'utf-8' });
     expect(result.status).toBe(1);
     expect(result.stderr).toContain('Usage: node prepare-incremental.mjs');
+  });
+});
+
+describe('project.model says which model wrote the prose', () => {
+  const paths = ['src/a.ts'];
+  const base = { structure: structureOf(paths), scan: scanOf(paths), importMap: { importMap: {} } };
+
+  it('defaults to unknown rather than to a guess', () => {
+    const { annotated } = annotate({ ...base, graph: graphOf([fileNode('src/a.ts')]) });
+    expect(annotated.project.model).toBe('unknown');
+    expect(annotated.project.pipelineVersion).toBe(PIPELINE_VERSION);
+  });
+
+  it('stamps the name it is given', () => {
+    const { annotated } = annotate({
+      ...base, graph: graphOf([fileNode('src/a.ts')]), model: 'claude-opus-5',
+    });
+    expect(annotated.project.model).toBe('claude-opus-5');
+  });
+
+  it('treats a blank name as unknown', () => {
+    for (const model of ['', '   ', null, undefined]) {
+      const { annotated } = annotate({ ...base, graph: graphOf([fileNode('src/a.ts')]), model });
+      expect(annotated.project.model).toBe('unknown');
+    }
+  });
+
+  it('reads the host env in the documented order, explicit flag first', () => {
+    expect(hostModelName({}, null)).toBe('unknown');
+    expect(hostModelName({ CLAUDE_MODEL: 'from-env' }, null)).toBe('from-env');
+    expect(hostModelName({ CLAUDE_MODEL: 'from-env' }, 'from-flag')).toBe('from-flag');
+    expect(hostModelName({ CLAUDE_MODEL: '  spaced  ' }, null)).toBe('spaced');
+    // Every documented variable is actually consulted.
+    for (const name of HOST_MODEL_ENV_VARS) {
+      expect(hostModelName({ [name]: `via-${name}` }, null)).toBe(`via-${name}`);
+    }
+  });
+
+  it('honours --model on the command line', () => {
+    const root = tempRoot('excavator-model-');
+    const intermediate = join(root, '.excavator', 'intermediate');
+    mkdirSync(intermediate, { recursive: true });
+    writeFile(root, 'src/a.ts', 'export const a = 1;\n');
+    writeFileSync(join(intermediate, 'assembled-graph.json'),
+      JSON.stringify(graphOf([fileNode('src/a.ts')])), 'utf-8');
+    writeFileSync(join(intermediate, 'structure-all.json'),
+      JSON.stringify(structureOf(['src/a.ts'])), 'utf-8');
+    writeFileSync(join(intermediate, 'scan-result.json'),
+      JSON.stringify(scanOf(['src/a.ts'])), 'utf-8');
+
+    run(process.execPath, [ANNOTATE, root, '--model', 'claude-opus-5'], repoRoot);
+    const annotated = readJson(join(intermediate, 'annotated-graph.json'));
+    expect(annotated.project.model).toBe('claude-opus-5');
   });
 });

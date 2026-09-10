@@ -73,9 +73,9 @@
 
 ## 12. dashboard 回退与文档（②b commit 12）
 
-- [ ] 12.1 dashboard 对新字段/`verification` 的存在不报错，空 summary 显示节点名；验证 dashboard 测试绿
-- [ ] 12.2 `project.model` 取宿主模型名（取不到 `unknown`）；`pipelineVersion` 常量；验证 SAVE 阶段写入
-- [ ] 12.3 `docs/v2-plan.md` §3 收尾 + follow-ups（抽取器修复分支、owner 进 id、cosmetic SKIP 修复、C# 解析器本体）；验证三件套绿
+- [x] 12.1 dashboard 对新字段/`verification` 的存在不报错，空 summary 显示节点名；验证 dashboard 测试绿
+- [x] 12.2 `project.model` 取宿主模型名（取不到 `unknown`）；`pipelineVersion` 常量；验证 SAVE 阶段写入
+- [x] 12.3 `docs/v2-plan.md` §3 收尾 + follow-ups（抽取器修复分支、owner 进 id、cosmetic SKIP 修复、C# 解析器本体）；验证三件套绿
 
 ## 13. ②b 真实验收（不提交产物；结果贴 PR）
 

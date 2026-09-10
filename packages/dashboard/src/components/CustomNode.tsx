@@ -3,6 +3,7 @@ import { Handle, Position } from "@xyflow/react";
 import type { NodeProps, Node } from "@xyflow/react";
 import type { NodeType } from "@excavator/core/types";
 import { useI18n } from "../contexts/I18nContext";
+import { displaySummary } from "../utils/nodeDisplay";
 
 // Color maps keyed by NodeType — must be kept in sync with core NodeType union.
 const typeColors: Record<NodeType, string> = {
@@ -185,7 +186,7 @@ function CustomNodeComponent({
         </div>
 
         <div className="text-[11px] text-text-secondary mt-1 line-clamp-2 leading-tight">
-          {data.summary}
+          {displaySummary(data.summary, data.label)}
         </div>
       </div>
 
