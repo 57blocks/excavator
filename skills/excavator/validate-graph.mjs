@@ -16,8 +16,10 @@
  *      expected token: the callee name (`calls`), the target module segment
  *      (`imports`), the symbol name (`exports`), the declared name
  *      (`contains`); for a model-cited entry, either endpoint's name or file
- *      name. Otherwise: gap `edge-contradicted`, edge
- *      `verification: "contradicted"`.
+ *      name. `imports` is checked across the whole statement (a multi-line ES
+ *      import names its specifier several lines below its start); every other
+ *      type is checked on the cited line alone. Otherwise: gap
+ *      `edge-contradicted`, edge `verification: "contradicted"`.
  *   3. `inferred` edges pass — being marked as judgement IS the honest state.
  *   4. referential integrity — the same checks UA's inline validator makes
  *      (required node fields, duplicate ids, dangling endpoints, layer and
@@ -57,6 +59,9 @@ const { resolveDataDir } = core;
 
 /** Tolerance, in lines, when confirming a declaration anchor. */
 export const ANCHOR_TOLERANCE = 1;
+
+/** How far an `imports` evidence check may scan for the statement's end. */
+export const IMPORT_WINDOW_LINES = 12;
 
 const CODE_NODE_TYPES = Object.freeze(new Set(['function', 'class']));
 const FILE_LEVEL_TYPES = Object.freeze(new Set([
@@ -146,6 +151,46 @@ export function expectedTokens(edge, source, target, evidenceEntry) {
     default:
       return [source?.name, target?.name].filter(Boolean);
   }
+}
+
+/**
+ * Does this line end the import statement it belongs to? `from`, a trailing
+ * `;` or `)`, and a `require(`/`import(` call all mark the point where the
+ * module specifier has been named.
+ */
+export function endsImportStatement(text) {
+  const trimmed = text.trim();
+  return /\bfrom\b/.test(text)
+    || trimmed.endsWith(';')
+    || trimmed.endsWith(')')
+    || /\b(?:require|import)\s*\(/.test(text);
+}
+
+/**
+ * Scan an import STATEMENT rather than a single line.
+ *
+ * A multi-line ES import puts the specifier several lines below the line
+ * tree-sitter reports as the statement's start:
+ *
+ *     import {          <- the cited line
+ *       a,
+ *       b
+ *     } from './x';     <- where the specifier actually is
+ *
+ * Checking only the cited line reported every one of those as contradicted.
+ * The scan stops at the first line that ends the statement (checking that
+ * line for the token first), so it cannot wander into unrelated code, and it
+ * is bounded at `maxLines` regardless.
+ */
+export function findTokenInImportStatement(reader, filePath, lineNumber, tokens, maxLines = IMPORT_WINDOW_LINES) {
+  for (let offset = 0; offset < maxLines; offset++) {
+    const candidate = lineNumber + offset;
+    const text = reader.line(filePath, candidate);
+    if (text === null) return null;
+    if (tokens.some((token) => token && text.includes(token))) return candidate;
+    if (endsImportStatement(text)) return null;
+  }
+  return null;
 }
 
 function sampler(limit) {
@@ -268,7 +313,13 @@ export function validateAgainstSource({ graph, reader, sampleLimit = 5 }) {
       sawSource = true;
       const tokens = expectedTokens(edge, source, target, entry);
       if (tokens.length === 0) continue;
-      if (findToken(reader, entry.file, entry.line, tokens, 0) !== null) {
+      // `imports` is the one type whose evidence line is the START of a
+      // statement that may span several lines; every other type cites the
+      // exact line the token is on.
+      const found = edge.type === 'imports' && entry.source !== 'model'
+        ? findTokenInImportStatement(reader, entry.file, entry.line, tokens)
+        : findToken(reader, entry.file, entry.line, tokens, 0);
+      if (found !== null) {
         confirmed = true;
         break;
       }
@@ -476,4 +527,7 @@ if (isCliEntry()) {
   }
 }
 
-export default { validateAgainstSource, createSourceReader, findToken, expectedTokens, ANCHOR_TOLERANCE };
+export default {
+  validateAgainstSource, createSourceReader, findToken, findTokenInImportStatement,
+  endsImportStatement, expectedTokens, ANCHOR_TOLERANCE, IMPORT_WINDOW_LINES,
+};

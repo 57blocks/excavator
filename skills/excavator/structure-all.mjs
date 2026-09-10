@@ -197,8 +197,10 @@ async function main() {
 
   const chunks = chunk(files, args.chunkSize);
   for (let index = 0; index < chunks.length; index++) {
-    const inputPath = join(tmpDir, `structure-all-chunk-${index}.in.json`);
-    const chunkOut = join(tmpDir, `structure-all-chunk-${index}.out.json`);
+    // The pid keeps two concurrent runs over the same project root from
+    // overwriting each other's scratch files. It never reaches the output.
+    const inputPath = join(tmpDir, `structure-all-chunk-${process.pid}-${index}.in.json`);
+    const chunkOut = join(tmpDir, `structure-all-chunk-${process.pid}-${index}.out.json`);
     writeFileSync(
       inputPath,
       JSON.stringify({ projectRoot, batchFiles: chunks[index], batchImportData: {} }),

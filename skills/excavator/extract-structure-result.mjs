@@ -277,6 +277,10 @@ export function buildResult(file, totalLines, nonEmptyLines, analysis, callGraph
   if (analysis.functions && analysis.functions.length > 0) {
     base.functions = analysis.functions.map(fn => ({
       name: fn.name,
+      // Additive: the declaring scope the extractor already computed (Go
+      // receiver, Rust impl type, C++ qualifier). It was being dropped here,
+      // so nothing downstream could tell two same-named methods apart.
+      ...(fn.owner === undefined ? {} : { owner: fn.owner }),
       startLine: fn.lineRange[0],
       endLine: fn.lineRange[1],
       params: fn.params || [],

@@ -12,12 +12,13 @@ import {
 } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { tmpdir } from 'node:os';
-import { join, dirname, resolve } from 'node:path';
+import { basename, join, dirname, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import {
-  validateAgainstSource, createSourceReader, findToken, expectedTokens, isAnonymousName,
-  ANCHOR_TOLERANCE,
+  validateAgainstSource, createSourceReader, findToken, findTokenInImportStatement,
+  endsImportStatement, expectedTokens, isAnonymousName,
+  ANCHOR_TOLERANCE, IMPORT_WINDOW_LINES,
 } from '../../../skills/excavator/validate-graph.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -58,6 +59,32 @@ const SOURCES = {
     '    return run();',
     '  }',
     '}',
+    '',
+  ].join('\n'),
+  // A multi-line ES import: tree-sitter reports the statement as starting on
+  // line 1, but the specifier is on line 5.
+  'src/multiline.ts': [
+    'import {',
+    '  helper,',
+    '  other,',
+    '  third',
+    "} from './helper';",
+    '',
+    'export function useThem() {',
+    '  return helper();',
+    '}',
+    '',
+  ].join('\n'),
+  // The control: same multi-line shape, but the statement never names
+  // `helper`. `helper` DOES appear after the statement ends, so this file also
+  // proves the scan stops at the statement instead of running on.
+  'src/decoy.ts': [
+    'import {',
+    '  unrelated,',
+    '  alsoUnrelated',
+    "} from './something-else';",
+    '',
+    'export const decoy = () => helper();',
     '',
   ].join('\n'),
   'src/helper.ts': [
@@ -347,5 +374,65 @@ describe('validate-graph — CLI', () => {
     const r = spawnSync('node', [VALIDATE, root], { encoding: 'utf-8' });
     expect(r.status).toBe(1);
     expect(r.stderr).toMatch(/graph not found/);
+  });
+});
+
+describe('validate-graph — imports evidence spans the whole statement', () => {
+  function multilineGraph(fromPath) {
+    const graph = cleanGraph();
+    graph.nodes.push({
+      id: `file:${fromPath}`, type: 'file', name: basename(fromPath), filePath: fromPath,
+      summary: '', tags: [], complexity: 'simple',
+    });
+    graph.layers[0].nodeIds.push(`file:${fromPath}`);
+    graph.edges.push({
+      source: `file:${fromPath}`, target: 'file:src/helper.ts', type: 'imports',
+      direction: 'forward', weight: 0.7, provenance: 'extracted',
+      // cites the `import {` line, which is what the extractor reports
+      evidence: [{ file: fromPath, line: 1, source: 'import-map' }],
+    });
+    return graph;
+  }
+
+  it('confirms a 3-line import whose evidence cites the first line', () => {
+    const root = fixtureProject();
+    const { report } = validate(root, multilineGraph('src/multiline.ts'));
+    expect(report.counts.edgeContradicted).toBe(0);
+    expect(report.counts.edgeConfirmed).toBe(5);
+  });
+
+  it('still contradicts when the specifier is genuinely absent from the statement', () => {
+    const root = fixtureProject();
+    const { report } = validate(root, multilineGraph('src/decoy.ts'));
+    expect(report.counts.edgeContradicted).toBe(1);
+    expect(report.findings.edgeContradicted[0].edgeKey).toBe(
+      'imports|file:src/decoy.ts|file:src/helper.ts',
+    );
+  });
+
+  it('stops at the end of the statement instead of scanning into later code', () => {
+    const root = fixtureProject();
+    const reader = createSourceReader(root);
+    // decoy.ts names `helper` on line 6, after its statement ends on line 4.
+    // A window that ran on would confirm an import that does not exist.
+    expect(findTokenInImportStatement(reader, 'src/decoy.ts', 1, ['helper'])).toBeNull();
+    expect(reader.line('src/decoy.ts', 6)).toContain('helper');
+    // the multi-line case still resolves, on the line the specifier list is on
+    expect(findTokenInImportStatement(reader, 'src/multiline.ts', 1, ['helper'])).toBe(2);
+    expect(endsImportStatement("} from './helper';")).toBe(true);
+    expect(endsImportStatement("const x = require('./y');")).toBe(true);
+    expect(endsImportStatement('  a,')).toBe(false);
+    expect(IMPORT_WINDOW_LINES).toBeGreaterThan(1);
+  });
+
+
+  it('keeps the single-line rule for every other edge type', () => {
+    const root = fixtureProject();
+    const graph = cleanGraph();
+    // the callee is named on line 4; citing line 3 must still contradict
+    graph.edges.find((e) => e.type === 'calls').evidence = [
+      { file: 'src/app.ts', line: 3, source: 'tree-sitter' },
+    ];
+    expect(validate(root, graph).report.counts.edgeContradicted).toBe(1);
   });
 });
