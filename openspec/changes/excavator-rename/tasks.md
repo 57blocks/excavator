@@ -41,8 +41,8 @@
 
 ## 7. 守卫与文档（commit 7）
 
-- [ ] 7.1 `.claude/settings.json` push 守卫拦 `main|excavator-v2`；验证 JSON 合法且守卫正则含两个分支名
-- [ ] 7.2 `docs/v2-plan.md` §2 增补：命名表、11 处回退站点已删、`UA_DIR` 非 env 的修正已落地、Claude Code 前缀调用形式；验证 `pnpm typecheck` 绿
+- [x] 7.1 `.claude/settings.json` push 守卫拦 `main|excavator-v2`；验证 JSON 合法且守卫正则含两个分支名（命令级正则与当前分支判断两处都已加 `excavator-v2`）
+- [x] 7.2 `docs/v2-plan.md` §2 增补落地记录：命名表已按 design D1 落地、11+ 处回退站点已删（实际按分支数计比 21 处"文件数"更多）、`UA_DIR` 非 env 的修正已落地为代码（变量整体消失）、Claude Code 前缀调用形式说明、两宿主收敛、hooks 只建议不执行、默认忽略扩展、引用完整性脚本；验证 `pnpm typecheck` 绿
 
 ## 8. 冒烟（不提交产物；结果贴 PR）
 

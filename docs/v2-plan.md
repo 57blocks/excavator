@@ -89,6 +89,19 @@ git -C "$UA" archive 5feed1f2 tests scripts vitest.config.ts | tar -x -C "$V2"
 4. **wcp 复用**：按 §0 把 `wcp/.ua/` 改名为 `wcp/.excavator/`（先拷基线），然后 `/excavator-dashboard` 能打开它、`/excavator-diff` 或 hooks 的增量路径能识别它并只报少量变更（自引用节点被默认忽略清掉算预期变更）；不在第 ① 步跑 wcp 全量模型阶段。
 5. **确定性阶段冒烟**：对 wcp 与 cebreo 各跑一次 scan → import-map → batches → extract-structure（无模型，秒级），产物落在 `.excavator/intermediate/`；两个目标里**不出现** `.ua/`，各子仓 `git status` 只多 `.excavator/`（cebreo 非 git，看目录）。cebreo 这一跑同时给 §4.1 的普查表，不必再跑一次。
 
+**§2 落地记录（2026-09-10，PR `v2/step1-rename` → `excavator-v2`，openspec change `excavator-rename`，commit 1-7）**：
+
+- 命名表（第 74-81 行）已按 `openspec/changes/excavator-rename/design.md` D1 逐项落地：插件/包/skill/agent 全部改名（commit 1-2）；skill 目录名与 `name:` frontmatter、agent 文件名与 `name:` frontmatter 一一对应，由 `scripts/check-refs.mjs`（commit 6）机械核对。
+- 第 77 行列出的 11 处数据目录回退分支（`.ua`/`.understand-anything` 二选一探测）已**全部删除**（commit 3），另发现并一并删除了 3 处该清单未覆盖到的站点（`scripts/generate-large-graph.mjs`、`hooks/post-tool-use-auto-update.mjs` 里第二处、以及各 SKILL.md/agents/*.md 内联复制的同款三元式，逐文件数超过原盘点的 21 处，因为 21 是"文件数"不是"分支数"，同一文件常有多处内联三元式）。`packages/core/src/persistence/index.ts` 现只导出 `EXCAVATOR_DIR = ".excavator"` 常量与 `resolveDataDir()`，不再探测任何遗留目录。
+- 第 78 行【修正】的 `UA_DIR` 非环境变量的结论已落地为代码：21+ 个内联三元式全部折叠为固定 `.excavator`（或对应的 `$DATA_DIR="$PROJECT_ROOT/.excavator"` 局部变量），`UA_DIR` 这个 shell 变量名在仓库里不再出现；插件安装路径搜索（原 `$HOME/.understand-anything-plugin`）改为 `$HOME/.excavator-plugin`，候选列表从 8 项砍到 `${CLAUDE_PLUGIN_ROOT}` → `$HOME/.excavator-plugin` → `$SELF_RELATIVE` 三项（commit 4，design D5）。
+- **Claude Code 前缀调用形式**（design D11）：Claude Code 里实际调用是 `/excavator:excavator`、`/excavator:excavator-chat` 等带插件名前缀的形式；仓库内 SKILL.md/agents/hooks 的散文统一写宿主中立的裸名（`/excavator`），前缀说明放在 README 的 Claude Code 安装小节。`scripts/check-refs.mjs` 的斜杠引用检查两种形式都接受。
+- 两宿主收敛（design D6）：新 `install.sh` 只做 Codex（符号链接 `~/.agents/skills/<skill>` + `~/.excavator-plugin`，支持 `--uninstall`）；`install.ps1` 已删除；Claude Code 走 `.claude-plugin/marketplace.json`（commit 4）。
+- hooks 只建议不执行（design D7）：`hooks.json`/`auto-update-prompt.md`/`post-tool-use-auto-update.mjs` 里的「Do not ask the user for confirmation — just do it」已删除，SessionStart 与 PostToolUse 两条路径现在都是"检测变化→提议→等待用户"（commit 5）。
+- 第 81 行的默认忽略已落地为 `DEFAULT_IGNORE_PATTERNS` 新增 `.claude/ .agents/ .codex/ .excavator/`（`.ua/`、`.understand-anything/` 不再需要，因为不再是被识别的数据目录名，见上一条）；`scan-project.mjs` 的 walker 自排除表 `HARD_SKIP_DIRS` 已同步并由单元测试断言是 `DEFAULT_IGNORE_PATTERNS` 的子集（commit 3，design D4）。
+- 验收第 1 条的 grep 命令已复测：`.excavator-report-*`、`EXCAVATOR_NO_WORKTREE_REDIRECT`、`EXCAVATOR_FIGMA_FORCE`、`docs/EXCAVATOR_ONBOARDING.md` 等原盘点未列出的 `UA_`/`UNDERSTAND_` 前缀内部标识符也一并改名，全仓库只剩 `NOTICE`、`docs/`、`openspec/` 里的历史性提及，以及 `scripts/lib/large-repo-benchmark.mjs` 一处刻意保留指向上游 schema 文件的 URL（该 schema 文件本身在 `docs/` 范围外未改名，两端必须字节一致）。
+- 验收第 2 条的引用完整性脚本已实现为 `scripts/check-refs.mjs`（六项检查，见 commit 6 message），先验装置证明改坏一个 agent 文件会被同时两种检查方式抓到。
+- 详细的逐 commit 验证结果、oracle 逐行复测、残余 `understand` 分类见 PR 描述。
+
 ## 3. 第 ② 步：陈述可核验（核心，1–2 周）
 
 **原则**：事实由脚本写，散文由模型写；**每条陈述要么带证据，要么标 inferred**；每个输入必落一个可见的桶。
