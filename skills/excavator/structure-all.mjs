@@ -27,6 +27,7 @@
  *     chunkSize: N,
  *     filesRequested: N,
  *     filesAnalyzed: N,
+ *     filesOutOfScope: [<path>, ...],
  *     filesSkipped: [<path>, ...],
  *     analysisOutcomes: { structure: {...}, callGraph: {...} },
  *     byStatus: { parsed, zero-symbol, no-extractor, parse-failed },
@@ -41,7 +42,7 @@
  */
 
 import { createRequire } from 'node:module';
-import { dirname, join, resolve } from 'node:path';
+import { dirname, isAbsolute, join, resolve, sep } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import {
   existsSync,
@@ -73,6 +74,19 @@ const EXTRACT_STRUCTURE = join(__dirname, 'extract-structure.mjs');
 
 /** Files handed to one `extract-structure.mjs` invocation. */
 export const DEFAULT_CHUNK_SIZE = 400;
+
+/**
+ * Is this scan-provided path inside the project root? The scan result is an
+ * input file, so its paths are untrusted with respect to the read they cause:
+ * an absolute path or one that climbs out of the root is refused and counted,
+ * never handed to extraction.
+ */
+export function isWithinRoot(root, filePath) {
+  if (typeof filePath !== 'string' || filePath.length === 0) return false;
+  if (isAbsolute(filePath)) return false;
+  const resolved = resolve(root, filePath);
+  return resolved === root || resolved.startsWith(root + sep);
+}
 
 /** Locale-independent order (UTF-16 code units), as used by the scanner. */
 function compareStableStrings(a, b) {
@@ -175,7 +189,13 @@ async function main() {
   // has no reader must still come back with `status: "no-extractor"`, or the
   // ledger cannot account for it and `files = parsed + zeroSymbol + skipped`
   // silently stops holding.
-  const files = scan.files
+  let root;
+  try {
+    root = realpathSync(projectRoot);
+  } catch {
+    root = projectRoot;
+  }
+  const requested = scan.files
     .map((file) => ({
       path: file.path,
       language: file.language,
@@ -183,6 +203,15 @@ async function main() {
       fileCategory: file.fileCategory,
     }))
     .sort((a, b) => compareStableStrings(a.path, b.path));
+  const files = requested.filter((file) => isWithinRoot(root, file.path));
+  const outOfScope = requested
+    .filter((file) => !isWithinRoot(root, file.path))
+    .map((file) => file.path);
+  for (const path of outOfScope) {
+    process.stderr.write(
+      `Warning: structure-all: ${path} — outside the project root — refused, not read\n`,
+    );
+  }
 
   const tmpDir = join(dataDir, 'tmp');
   mkdirSync(tmpDir, { recursive: true });
@@ -232,6 +261,7 @@ async function main() {
     chunkSize: args.chunkSize,
     filesRequested: files.length,
     filesAnalyzed: accumulator.results.length,
+    filesOutOfScope: outOfScope,
     filesSkipped: accumulator.filesSkipped,
     analysisOutcomes: sortKeys(
       Object.fromEntries(
@@ -290,4 +320,4 @@ if (isCliEntry()) {
   }
 }
 
-export default { chunk, mergeChunkOutput, DEFAULT_CHUNK_SIZE };
+export default { chunk, mergeChunkOutput, isWithinRoot, DEFAULT_CHUNK_SIZE };

@@ -8,7 +8,7 @@
  */
 import { describe, it, expect, afterEach } from 'vitest';
 import {
-  mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync,
+  mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, symlinkSync,
 } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { tmpdir } from 'node:os';
@@ -16,7 +16,7 @@ import { basename, join, dirname, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import {
-  validateAgainstSource, createSourceReader, findToken, findTokenInImportStatement,
+  validateAgainstSource, createSourceReader, resolveWithinRoot, findToken, findTokenInImportStatement,
   endsImportStatement, expectedTokens, isAnonymousName,
   ANCHOR_TOLERANCE, IMPORT_WINDOW_LINES,
 } from '../../../skills/excavator/validate-graph.mjs';
@@ -434,5 +434,118 @@ describe('validate-graph — imports evidence spans the whole statement', () => 
       { file: 'src/app.ts', line: 3, source: 'tree-sitter' },
     ];
     expect(validate(root, graph).report.counts.edgeContradicted).toBe(1);
+  });
+});
+
+describe('validate-graph — source reads are confined to the project root', () => {
+  /** A file OUTSIDE the fixture root, which no check may ever read. */
+  function outsideSecret(root) {
+    const outside = join(dirname(root), 'outside-secret.ts');
+    writeFileSync(outside, 'export function helper() { /* not in the project */ }\n');
+    return outside;
+  }
+
+  function graphNaming(filePath) {
+    const graph = cleanGraph();
+    graph.nodes.push({
+      id: `function:${filePath}:helper`, type: 'function', name: 'helper',
+      filePath, lineRange: [1, 1], summary: 'claims to be here', tags: [], complexity: 'simple',
+    });
+    graph.layers[0].nodeIds.push(`function:${filePath}:helper`);
+    return graph;
+  }
+
+  it('refuses a parent-relative path, counts it, and does not confirm it', () => {
+    const root = fixtureProject();
+    outsideSecret(root);
+    const { validated, report } = validate(root, graphNaming('../outside-secret.ts'));
+
+    expect(report.counts.pathOutOfScope).toBe(1);
+    // the anchor is NOT confirmed — the clean graph's three anchors only
+    expect(report.counts.anchorConfirmed).toBe(3);
+    expect(report.counts.anchorMismatch).toBe(0);
+    expect(report.counts.sourceMissing).toBe(0);
+    expect(report.outOfScopePaths).toEqual(['../outside-secret.ts']);
+
+    const node = validated.nodes.find((n) => n.filePath === '../outside-secret.ts');
+    expect(node.verification).toBe('unverified');
+    const gap = validated.gaps.find((g) => g.kind === 'path-out-of-scope');
+    expect(gap.count).toBe(1);
+    expect(gap.samples[0]).toContain('function:../outside-secret.ts:helper');
+  });
+
+  it('refuses an absolute path outright', () => {
+    const root = fixtureProject();
+    const { validated, report } = validate(root, graphNaming('/etc/hosts'));
+
+    expect(report.counts.pathOutOfScope).toBe(1);
+    expect(report.counts.anchorConfirmed).toBe(3);
+    expect(validated.nodes.find((n) => n.filePath === '/etc/hosts').verification).toBe('unverified');
+    expect(validated.gaps.find((g) => g.kind === 'path-out-of-scope').count).toBe(1);
+  });
+
+  it('refuses an edge whose evidence file is outside the root', () => {
+    const root = fixtureProject();
+    outsideSecret(root);
+    const graph = cleanGraph();
+    graph.edges.find((e) => e.type === 'calls').evidence = [
+      { file: '../outside-secret.ts', line: 1, source: 'tree-sitter' },
+    ];
+    const { validated, report } = validate(root, graph);
+
+    expect(report.counts.pathOutOfScope).toBe(1);
+    expect(report.counts.edgeConfirmed).toBe(3);
+    expect(report.counts.edgeContradicted).toBe(0);
+    expect(validated.edges.find((e) => e.type === 'calls').verification).toBe('unverified');
+  });
+
+  it('still verifies a legitimate nested path', () => {
+    const root = fixtureProject();
+    mkdirSync(join(root, 'src', 'deep', 'deeper'), { recursive: true });
+    writeFileSync(join(root, 'src/deep/deeper/mod.ts'), 'export function nested() {\n  return 1;\n}\n');
+    const graph = graphNaming('src/deep/deeper/mod.ts');
+    const node = graph.nodes.find((n) => n.filePath === 'src/deep/deeper/mod.ts');
+    node.name = 'nested';
+    node.id = 'function:src/deep/deeper/mod.ts:nested';
+    graph.layers[0].nodeIds = graph.layers[0].nodeIds.map((id) =>
+      id === 'function:src/deep/deeper/mod.ts:helper' ? node.id : id);
+    const { report } = validate(root, graph);
+
+    expect(report.counts.pathOutOfScope).toBe(0);
+    expect(report.counts.anchorConfirmed).toBe(4);
+    expect(report.counts.anchorMismatch).toBe(0);
+  });
+
+  it('refuses a symlink that resolves outside the root', () => {
+    const root = fixtureProject();
+    const outside = outsideSecret(root);
+    symlinkSync(outside, join(root, 'src', 'link-out.ts'));
+    const { report } = validate(root, graphNaming('src/link-out.ts'));
+
+    expect(report.counts.pathOutOfScope).toBe(1);
+    expect(report.counts.anchorConfirmed).toBe(3);
+  });
+
+  it('verifies in-scope files even when the root itself is reached through a symlink', () => {
+    // The instrument check: on macOS the temp root is /var/... which is a
+    // symlink to /private/var/.... Comparing a realpath'd file against a
+    // symlinked root would refuse EVERY path and report a perfectly clean
+    // graph as entirely out of scope.
+    const root = fixtureProject();
+    const { report } = validate(root, cleanGraph());
+    expect(report.counts.pathOutOfScope).toBe(0);
+    expect(report.counts.anchorConfirmed).toBe(3);
+    expect(report.counts.edgeConfirmed).toBe(4);
+  });
+
+  it('resolveWithinRoot answers each shape directly', () => {
+    const root = fixtureProject();
+    expect(resolveWithinRoot(root, '../outside-secret.ts')).toBeNull();
+    expect(resolveWithinRoot(root, '/etc/hosts')).toBeNull();
+    expect(resolveWithinRoot(root, 'src/../../escape.ts')).toBeNull();
+    expect(resolveWithinRoot(root, '')).toBeNull();
+    expect(resolveWithinRoot(root, 'src/app.ts')).toContain('src/app.ts');
+    // in scope but absent: readable-or-not is a separate finding
+    expect(resolveWithinRoot(root, 'src/absent.ts')).toContain('src/absent.ts');
   });
 });

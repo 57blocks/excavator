@@ -40,6 +40,7 @@
 - [x] 6.2 **先验装置测试**：注入错证据行 calls 边 + 偏移 5 行节点 → `edge-contradicted`=1、`anchor-mismatch`=1 且点名；验证绿（不绿不得合入）
 - [x] 6.3 SKILL.md 新增阶段 6b VALIDATE（UA 阶段 6 inline validator 保留）；验证 check-refs 绿
 - [x] 6.4 imports 证据检查覆盖整条 import 语句（多行 ES import）
+- [x] 6.5 源码读取收敛到项目根内（越界 → path-out-of-scope 计数，不读）
 
 ## 7. Benchmark 与文档（②a commit 7）
 

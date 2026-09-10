@@ -14,7 +14,7 @@ import { tmpdir } from 'node:os';
 import { join, dirname, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { chunk, mergeChunkOutput, DEFAULT_CHUNK_SIZE } from '../../../skills/excavator/structure-all.mjs';
+import { chunk, mergeChunkOutput, isWithinRoot, DEFAULT_CHUNK_SIZE } from '../../../skills/excavator/structure-all.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const SKILL_DIR = resolve(__dirname, '../../../skills/excavator');
@@ -193,5 +193,41 @@ describe('structure-all.mjs — pure helpers', () => {
     const acc = { results: [], filesSkipped: [], analysisOutcomes: {}, byStatus: {} };
     expect(() => mergeChunkOutput(acc, null)).toThrow(/not an object/);
     expect(() => mergeChunkOutput(acc, { results: 'nope' })).toThrow(/no results array/);
+  });
+});
+
+describe('structure-all.mjs — scan paths are confined to the project root', () => {
+  it('refuses a parent-relative and an absolute path, and still processes the rest', () => {
+    const root = setupProject({ 'src/app.ts': 'export function run() { return 1; }\n' });
+    writeFileSync(join(dirname(root), 'outside-secret.ts'), 'export const secret = 1;\n');
+
+    // A crafted scan result: the scan file is an input, so its paths are
+    // untrusted with respect to the read they cause.
+    const scanPath = join(root, '.excavator', 'intermediate', 'scan-result.json');
+    mkdirSync(dirname(scanPath), { recursive: true });
+    writeFileSync(scanPath, JSON.stringify({
+      contentDigest: 'a'.repeat(64),
+      files: [
+        { path: 'src/app.ts', language: 'typescript', sizeLines: 1, fileCategory: 'code' },
+        { path: '../outside-secret.ts', language: 'typescript', sizeLines: 1, fileCategory: 'code' },
+        { path: '/etc/hosts', language: 'unknown', sizeLines: 1, fileCategory: 'config' },
+      ],
+      skipped: [],
+    }));
+
+    const { output, stderr } = runStructureAll(root);
+    expect(output.filesOutOfScope).toEqual(['../outside-secret.ts', '/etc/hosts']);
+    expect(output.results.map((r) => r.path)).toEqual(['src/app.ts']);
+    expect(output.filesRequested).toBe(1);
+    expect(output.filesAnalyzed).toBe(1);
+    expect(stderr).toMatch(/outside the project root — refused, not read/);
+  });
+
+  it('isWithinRoot answers each shape directly', () => {
+    expect(isWithinRoot('/project', 'src/a.ts')).toBe(true);
+    expect(isWithinRoot('/project', '../escape.ts')).toBe(false);
+    expect(isWithinRoot('/project', 'src/../../escape.ts')).toBe(false);
+    expect(isWithinRoot('/project', '/etc/hosts')).toBe(false);
+    expect(isWithinRoot('/project', '')).toBe(false);
   });
 });

@@ -29,6 +29,11 @@
  *
  * A source file that cannot be read is counted (`source-missing`), never
  * treated as a contradiction: "we could not look" is not "the graph is wrong".
+ * A path that names something OUTSIDE the project root is refused without
+ * being read and counted under `path-out-of-scope`; the node or edge is marked
+ * `unverified`. The graph is model-authored, so its paths are untrusted input
+ * to a file read, and a read that escapes the analysed tree must never be
+ * able to come back as a confirmation.
  *
  * Usage:
  *   node validate-graph.mjs <projectRoot>
@@ -40,7 +45,7 @@
  */
 
 import { createRequire } from 'node:module';
-import { basename, dirname, extname, join, resolve } from 'node:path';
+import { basename, dirname, extname, isAbsolute, join, resolve, sep } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { compareGaps } from './coverage-ledger.mjs';
@@ -86,21 +91,84 @@ export function isAnonymousName(name) {
   return typeof name !== 'string' || name.length === 0 || /^anon(@\d+)?$/i.test(name);
 }
 
-/** Reader with a per-file line cache; a missing file is reported, not thrown. */
+/**
+ * Resolve a graph-provided path INSIDE the project root, or return null.
+ *
+ * The graph is model-authored data, so its `filePath` values are untrusted
+ * input to a file read. Without this, a node claiming
+ * `filePath: "../outside.ts"` would be read and — worse — confirmed, which
+ * both leaks a read outside the analysed tree and turns a bogus anchor into
+ * evidence of correctness. Absolute paths are refused outright; relative ones
+ * must resolve inside the root; a path that exists is realpath'd so a symlink
+ * cannot step out either.
+ */
+export function resolveWithinRoot(root, filePath) {
+  if (typeof filePath !== 'string' || filePath.length === 0) return null;
+  if (isAbsolute(filePath)) return null;
+  // The root is canonicalised here too, not only by the caller: comparing a
+  // realpath'd file against a symlinked root (macOS /var -> /private/var, or
+  // any symlinked checkout) refuses EVERY path — a containment check that
+  // fails closed on everything is just as broken as one that fails open.
+  const canonicalRoot = canonicalise(resolve(root));
+  const resolved = resolve(canonicalRoot, filePath);
+  if (resolved !== canonicalRoot && !resolved.startsWith(canonicalRoot + sep)) return null;
+  const real = canonicalise(resolved);
+  if (real !== canonicalRoot && !real.startsWith(canonicalRoot + sep)) return null;
+  return real;
+}
+
+/** realpath when the path exists, the path itself when it does not. */
+function canonicalise(path) {
+  try {
+    return realpathSync(path);
+  } catch {
+    return path;
+  }
+}
+
+/**
+ * Reader with a per-file line cache. Three outcomes, all visible: `ok`,
+ * `missing` (in scope, unreadable) and `out-of-scope` (refused, never read).
+ */
 export function createSourceReader(projectRoot) {
+  let root;
+  try {
+    root = realpathSync(resolve(projectRoot));
+  } catch {
+    root = resolve(projectRoot);
+  }
   const cache = new Map();
   const missing = new Set();
+  const outOfScope = new Set();
   return {
-    lines(filePath) {
-      if (cache.has(filePath)) return cache.get(filePath);
-      let lines = null;
-      try {
-        lines = readFileSync(join(projectRoot, filePath), 'utf-8').split('\n');
-      } catch {
-        missing.add(filePath);
+    /** 'ok' | 'missing' | 'out-of-scope' — computed once per path. */
+    classify(filePath) {
+      if (!cache.has(filePath)) {
+        const absolute = resolveWithinRoot(root, filePath);
+        if (absolute === null) {
+          outOfScope.add(filePath);
+          cache.set(filePath, { status: 'out-of-scope', lines: null });
+        } else {
+          try {
+            cache.set(filePath, {
+              status: 'ok',
+              lines: readFileSync(absolute, 'utf-8').split('\n'),
+            });
+          } catch {
+            missing.add(filePath);
+            cache.set(filePath, { status: 'missing', lines: null });
+          }
+        }
       }
-      cache.set(filePath, lines);
-      return lines;
+      return cache.get(filePath).status;
+    },
+    /** True when the path is outside the project root and was NOT read. */
+    isOutOfScope(filePath) {
+      return this.classify(filePath) === 'out-of-scope';
+    },
+    lines(filePath) {
+      this.classify(filePath);
+      return cache.get(filePath).lines;
     },
     /** 1-based line text, or null when the file or the line does not exist. */
     line(filePath, lineNumber) {
@@ -111,6 +179,12 @@ export function createSourceReader(projectRoot) {
     },
     missingFiles() {
       return [...missing].sort(compareStrings);
+    },
+    outOfScopePaths() {
+      return [...outOfScope].sort(compareStrings);
+    },
+    root() {
+      return root;
     },
   };
 }
@@ -230,6 +304,7 @@ export function validateAgainstSource({ graph, reader, sampleLimit = 5 }) {
     edgesInferred: 0,
     edgesWithoutEvidence: 0,
     sourceMissing: 0,
+    pathOutOfScope: 0,
     stepUnanchored: 0,
   };
 
@@ -265,6 +340,14 @@ export function validateAgainstSource({ graph, reader, sampleLimit = 5 }) {
     counts.nodesChecked += 1;
 
     const startLine = node.lineRange[0];
+    if (reader.isOutOfScope(node.filePath)) {
+      // Refused, not read, and NOT confirmed: an out-of-scope anchor cannot
+      // be evidence of anything.
+      counts.pathOutOfScope += 1;
+      node.verification = 'unverified';
+      samples.add('path-out-of-scope', `${node.id} -> ${node.filePath}`);
+      continue;
+    }
     if (reader.lines(node.filePath) === null) {
       counts.sourceMissing += 1;
       samples.add('source-missing', node.filePath);
@@ -307,8 +390,13 @@ export function validateAgainstSource({ graph, reader, sampleLimit = 5 }) {
 
     let confirmed = false;
     let sawSource = false;
+    let refused = false;
     for (const entry of evidence) {
       if (!entry || typeof entry !== 'object' || typeof entry.file !== 'string') continue;
+      if (reader.isOutOfScope(entry.file)) {
+        refused = true;
+        continue;
+      }
       if (reader.lines(entry.file) === null) continue;
       sawSource = true;
       const tokens = expectedTokens(edge, source, target, entry);
@@ -325,6 +413,12 @@ export function validateAgainstSource({ graph, reader, sampleLimit = 5 }) {
       }
     }
 
+    if (refused && !sawSource) {
+      counts.pathOutOfScope += 1;
+      edge.verification = 'unverified';
+      samples.add('path-out-of-scope', `${edge.type}|${edge.source}|${edge.target}`);
+      continue;
+    }
     if (!sawSource) {
       counts.sourceMissing += 1;
       samples.add('source-missing', evidence[0]?.file ?? '<unknown>');
@@ -424,6 +518,8 @@ export function validateAgainstSource({ graph, reader, sampleLimit = 5 }) {
     `${counts.stepUnanchored} step node(s) with no resolvable nodeIds and no inferred marking`);
   addGap('source-missing', counts.sourceMissing,
     `${counts.sourceMissing} check(s) skipped because the source file could not be read`);
+  addGap('path-out-of-scope', counts.pathOutOfScope,
+    `${counts.pathOutOfScope} path(s) named outside the project root were refused, not read`);
   gaps.sort(compareGaps);
   validated.gaps = gaps;
 
@@ -434,6 +530,7 @@ export function validateAgainstSource({ graph, reader, sampleLimit = 5 }) {
     issues,
     warnings,
     missingFiles: reader.missingFiles().slice(0, sampleLimit),
+    outOfScopePaths: reader.outOfScopePaths().slice(0, sampleLimit),
     stats: {
       totalNodes: validated.nodes.length,
       totalEdges: validated.edges.length,
@@ -505,7 +602,8 @@ async function main() {
     `validate-graph: nodes-checked=${c.nodesChecked} anchor-mismatch=${c.anchorMismatch} ` +
     `edges-checked=${c.edgesChecked} edge-contradicted=${c.edgeContradicted} ` +
     `edges-inferred=${c.edgesInferred} step-unanchored=${c.stepUnanchored} ` +
-    `source-missing=${c.sourceMissing} issues=${report.issues.length}\n`,
+    `source-missing=${c.sourceMissing} path-out-of-scope=${c.pathOutOfScope} ` +
+    `issues=${report.issues.length}\n`,
   );
 }
 
@@ -528,6 +626,7 @@ if (isCliEntry()) {
 }
 
 export default {
-  validateAgainstSource, createSourceReader, findToken, findTokenInImportStatement,
-  endsImportStatement, expectedTokens, ANCHOR_TOLERANCE, IMPORT_WINDOW_LINES,
+  validateAgainstSource, createSourceReader, resolveWithinRoot, findToken,
+  findTokenInImportStatement, endsImportStatement, expectedTokens,
+  ANCHOR_TOLERANCE, IMPORT_WINDOW_LINES,
 };
