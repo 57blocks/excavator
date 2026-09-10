@@ -94,6 +94,34 @@ describe('UA prompt files are only ever appended to', () => {
   });
 });
 
+describe('SKILL.md only ever gains lines', () => {
+  /**
+   * SKILL.md gains phases by INSERTION, not by appending, so the prefix rule
+   * used above cannot apply to it. The equivalent property is that its diff
+   * against the base branch removes nothing: `git diff --numstat` reports a
+   * deletion count of zero. That is the same "no `-` lines" check, read off
+   * git rather than off a substring comparison.
+   */
+  it('has zero deleted lines against the base branch', () => {
+    const relPath = 'skills/excavator/SKILL.md';
+    // Confirm a base ref resolves at all — readBaseVersion throws otherwise.
+    readBaseVersion(relPath);
+    const ref = BASE_REFS.find(candidate => {
+      try {
+        git(['rev-parse', '--verify', '--quiet', `${candidate}^{commit}`]);
+        return true;
+      } catch {
+        return false;
+      }
+    });
+    const numstat = git(['diff', '--numstat', ref, '--', relPath]).trim();
+    if (numstat === '') return; // identical to the base
+    const [added, deleted] = numstat.split('\n')[0].split('\t');
+    expect(Number(deleted), `SKILL.md deleted ${deleted} line(s); phases are additive`).toBe(0);
+    expect(Number(added)).toBeGreaterThan(0);
+  });
+});
+
 describe('file-analyzer evidence section', () => {
   it('adds the section without disturbing the existing headings', () => {
     expect(fileAnalyzer).toContain('## Evidence Fields (added — nothing above changes)');

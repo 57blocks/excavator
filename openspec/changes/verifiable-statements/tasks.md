@@ -56,9 +56,9 @@
 
 ## 9. Summary 核验（②b commit 9）
 
-- [ ] 9.1 `agents/excavator-summary-verifier.md`：三态 + 理由；验证提示词只允许三态
-- [ ] 9.2 `skills/excavator/apply-verification.mjs`：写回 `verification`，不清空 summary，contradicted 存档并计 `summary-contradicted`，`project.verification`；验证单元测试三态写回
-- [ ] 9.3 SKILL.md 新增阶段 2.5 VERIFY（`--no-verify`、`--verify-sample <n>`）；验证 check-refs 绿
+- [x] 9.1 `agents/excavator-summary-verifier.md`：三态 + 理由；验证提示词只允许三态
+- [x] 9.2 `skills/excavator/apply-verification.mjs`：写回 `verification`，不清空 summary，contradicted 存档并计 `summary-contradicted`，`project.verification`；验证单元测试三态写回
+- [x] 9.3 SKILL.md 新增阶段 2.5 VERIFY（`--no-verify`、`--verify-sample <n>`）；验证 check-refs 绿
 
 ## 10. 新鲜度（②b commit 10）
 

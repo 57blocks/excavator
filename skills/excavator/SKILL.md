@@ -500,6 +500,97 @@ as a Phase 2.3 warning and continue with the analysis unchanged.
 
 ---
 
+## Phase 2.5 — VERIFY (added)
+
+Report: `[Phase 2.5/7] Verifying summaries against the source...`
+
+This phase is **additive**. It writes no summary and rewrites none: it asks an
+independent agent whether each summary is supported by the exact lines it is
+anchored to, and records the answer in the node's `verification` field. A
+summary the source contradicts **stays on the node**, marked — the consumer
+decides what to do with it, not this pipeline.
+
+Options owned by this phase (parsed from `$ARGUMENTS`; documented here rather
+than in the Options list above because nothing else reads them):
+
+- `--no-verify` — do not check summaries. Still runs the `skip` action below so
+  the graph says `project.verification: "skipped"` out loud instead of looking
+  as though verification passed.
+- `--verify-sample <n>` — check `n` summaries instead of all of them, chosen by
+  a fixed stride over the id-sorted candidates (never the first `n`, which
+  would be one alphabetical corner of the project). The graph then records
+  `project.verification: "sample:<n>"`.
+
+Skip this phase entirely if `$DATA_DIR/intermediate/annotated-graph.json` does
+not exist (Phase 2.3 was skipped or failed) — there is nothing to write back
+into.
+
+**Step 1 — prepare the batches.**
+
+```bash
+node "<SKILL_DIR>/apply-verification.mjs" "$PROJECT_ROOT" prepare
+```
+
+Add `--sample <n>` when `--verify-sample <n>` was given. Writes
+`$DATA_DIR/intermediate/summary-verify-manifest.json` and one
+`summary-verify-batch-<i>.json` per batch (30 nodes each by default). Nodes
+whose `filePath` names something outside `$PROJECT_ROOT` are refused here and
+counted under `summary-path-out-of-scope` — a model-authored path never becomes
+a read instruction that leaves the analysed tree.
+
+If the manifest reports `selected: 0`, skip to Step 3.
+
+**Step 2 — dispatch the verifier.**
+
+For each batch, dispatch a subagent using the `excavator-summary-verifier`
+agent definition (at `agents/excavator-summary-verifier.md`). Run up to **5
+subagents concurrently**. Give each one only this:
+
+> Verify the summaries in this batch against the source.
+> Project root: `$PROJECT_ROOT`
+> Batch file: `$DATA_DIR/intermediate/summary-verify-batch-<i>.json`
+> Output file: `$DATA_DIR/intermediate/summary-verdicts-<i>.json`
+
+Pass **no** project description, no graph, no other batch, and no language
+directive. The verifier's independence is the whole point: a summary that only
+looks right in the light of the rest of the graph has not been checked.
+
+**Step 3 — write the verdicts back.**
+
+```bash
+node "<SKILL_DIR>/apply-verification.mjs" "$PROJECT_ROOT" apply
+```
+
+With `--no-verify`, run this instead — no dispatch, no verdicts:
+
+```bash
+node "<SKILL_DIR>/apply-verification.mjs" "$PROJECT_ROOT" skip
+```
+
+Either form updates `annotated-graph.json` in place (so Phase 6b needs no new
+argument) and writes:
+
+- `$DATA_DIR/intermediate/summary-verification.json` — counts per verdict, the
+  bucket totals, and whether every non-empty summary is accounted for.
+- `$DATA_DIR/intermediate/contradicted-summaries.json` — every contradicted
+  summary with the verifier's one-line reason.
+
+What it adds to the graph: `verification` on each checked node
+(`verified` / `unverified` / `contradicted`, and never a downgrade of a
+`dirty` or `contradicted` marking a previous phase set),
+`project.verification` (`full` / `sample:<n>` / `skipped`), and the
+`summary-contradicted` / `summary-unverified` / `summary-unchecked` gap rows.
+
+Report the counts to the user and append them to `$PHASE_WARNINGS`:
+
+> Summary check: {verified} verified, {unverified} unverified,
+> {contradicted} contradicted, {unchecked} unchecked ({mode}).
+
+**Supplement, so not fatal.** If either invocation exits non-zero, report its
+stderr as a Phase 2.5 warning and continue with the analysis unchanged.
+
+---
+
 ## Phase 3 — ASSEMBLE REVIEW
 
 Run this phase for **full analysis only**. Both incremental actions skip assemble-reviewer: their deterministic merge/reconciliation checks replace this whole-graph LLM pass. The user-facing `--review` option is still honored later by the graph-reviewer in Phase 6.
