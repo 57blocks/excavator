@@ -148,6 +148,7 @@ function validReport() {
       missingImportTargets: 0,
       structureCoverage: 1,
       structureFailures: 0,
+      structureSkipped: 0,
       callGraphFailures: 0,
       filesSkipped: 0,
       failedBatches: 0,
@@ -262,7 +263,6 @@ describe('large repository report schema 1.0.0', () => {
     ['duplicateBatchFiles', 1],
     ['unexpectedBatchFiles', 1],
     ['missingImportTargets', 1],
-    ['structureCoverage', 0.5],
     ['failedBatches', 1],
     ['missingStructurePaths', 1],
     ['duplicateStructurePaths', 1],
@@ -272,6 +272,17 @@ describe('large repository report schema 1.0.0', () => {
     const report = validReport();
     report.integrity[field] = value;
     expectInvalid(report);
+  });
+
+  // structureCoverage is no longer a success gate: with skipped files in the
+  // denominator, any project containing a language no reader supports reports
+  // less than 1, and that is a known gap rather than a failed run. The defect
+  // signal is structureFailures, which still gates above.
+  it('accepts a successful report whose structure coverage is below 1', () => {
+    const report = validReport();
+    report.integrity.structureCoverage = 0.5;
+    report.integrity.structureSkipped = 3;
+    expectValid(report);
   });
 
   it('rejects degraded status without a warning or skipped-file reason', () => {

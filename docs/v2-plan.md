@@ -104,33 +104,36 @@ git -C "$UA" archive 5feed1f2 tests scripts vitest.config.ts | tar -x -C "$V2"
 
 ## 3. 第 ② 步：陈述可核验（核心，1–2 周）
 
-**原则**：事实由脚本写，散文由模型写；**每条陈述要么带证据，要么标 inferred**；每个输入必落一个可见的桶。
+**架构（用户 2026-09-11 两次收敛后的定稿）**：UA 的流水线**原样保留**——图的作者仍是模型（file-analyzer），id 格式、合并去重、增量分类、抽取器行为一律不动。excavator 只作**补充层**，两个口：
+1. **插件口**：能注册进 `PluginRegistry` 的（新语言抽取器、新解析器）走 UA 既有的注册点。
+2. **后阶段口**：其余一律是合并之后的附加阶段，只**加**字段 / 加计数 / 加标记过的边，不删不改模型写的任何东西。
 
-**3.1 Schema 扩展**（`packages/core/src/types.ts`、`schema.ts`；schema 已是 `.passthrough()`，扩展字段不破坏 dashboard）
-- `Evidence = { file, line, endLine?, source: 'tree-sitter' | 'import-map' | 'rule' | 'model', text? }`
-- `GraphEdge.evidence: Evidence[]`；`GraphEdge.provenance: 'extracted' | 'inferred'`；inferred 边不得携带 `evidence.source ≠ 'model'`
-- `GraphNode.anchorSource: 'tree-sitter' | 'rule' | 'census'`；`GraphNode.verification?: 'verified' | 'unverified' | 'contradicted'`（对 summary）；`GraphNode.provenance.summary = 'model'`
-- 顶层 `coverage`（按语言 × 种类：文件数、解析数、零符号文件数、按原因分类的跳过数）与 `gaps[]`（`{kind, scope, reason, count}`）
-- `project.factsDigest`（确定性产物的 sha256）、`project.pipelineVersion`、`project.model`（宿主报告的模型名，取不到则 `unknown`）
-- `weight` 保留但文档明说它是种类常量，不是置信度
+判据一句话：**UA 今天的产物，经过任一新增阶段后仍原样通过**。往 UA 文件里加内容可以（新阶段小节、新输出字段、新注册行）；改已有输出的样子不行。
 
-**3.2 确定性图构建器**（新 `skills/excavator/build-facts-graph.mjs`）
-把 extract-structure 与 import-map 的输出直接变成 file/function/class/… 节点与 contains/imports/exports/calls 边，每条边带 `evidence` 行号。file-analyzer 不再转写这些（去掉约 98% 的模型输出），只产：summary、tags、complexity、判断类边（related/depends_on/validates/…），且每条判断类边必须给 `evidence:[{file,line}]` 或标 `inferred`。`merge-batch-graphs.py` 改为：事实图为底，模型层叠加；模型给出的与事实重复的边丢弃，缺证据又未标 inferred 的边**拒绝并计数**。
+**3.1 Schema（已落地）**：边 `evidence?`/`provenance?`/`verification?`/`addedBy?`；节点 `owner?`/`owners?`/`anchorSource?`/`verification?`；根 `coverage?`/`gaps?`；`project` 增 `sourceDigest?`/`factsDigest?`/`pipelineVersion?`/`model?`，`gitCommitHash: string|null`。**全部可选**，边与根 `.passthrough()`。强制锚点与证据纪律**不进** `validateGraph`（那会拒掉 UA 今天的产物），而是导出的纯函数 `auditGraphShape(graph)` 报告 6 类 code。`weight` 保留为种类常量。
 
-**3.3 身份**：节点 id = `<kind>:<path>:<owner>.<name>@<startLine>`。owner = Go 接收者 / C# 类 / Kotlin 类或对象 / TS 对象字面量或类；同文件同名不同 owner 不再坍缩（wcp 19%）。必须修的抽取器（【修正】位置与描述）：`typescript-extractor.ts:319-357` `extractVariableDeclarations`——只在 `valueNode.type` 为 arrow/function 表达式时记函数，从不递归对象字面量，所以 `const api = { list() {}, get: () => {} }` 零函数（原引 138-168 是 `extractCallGraph` 调用图遍历，位置有误）；`php-extractor.ts:148-187` `walkStatements`——switch 只有 `class_declaration`（157）与 `interface_declaration`（165）两个 case，trait/enum/匿名类**整块跳过、内部方法一起不可见**，比「functions:null」更严重。夹具：同内容不同路径的两个文件、同名不同接收者的方法、匿名类。
+**3.2 覆盖账本（已落地）**：`scan-project.mjs` 增 `skipped[{path,reason,language}]`（symlink / read-failed / unknown-language / binary / too-large / ignored）与 `coverage.limits`；`extract-structure` 每文件 `status`（parsed / zero-symbol / no-extractor / parse-failed）且失败文件保留在 `results`；`extract-import-map` 增 `unresolved`；`coverage-ledger.mjs` 纯折叠 + `conservationViolations()`。守恒式：`files = parsed + zeroSymbol + Σ skipped[reason]`（两个抽取结局也进 `skipped` 这张表，否则 html 那类语言的等式不成立）。
 
-**3.4 触源码的验证器**（新 `validate-graph.mjs`，替换 `SKILL.md:684-750` 那 60 行只查引用完整性的 JS）
-- 每个节点：锚点行上确有该声明（tree-sitter 再解析或文本匹配）
-- 每条 extracted 边：证据行含被调用/被导入的记号；否则降级为 `contradicted` 并计数
-- 每条 inferred 边：已标记；未标记且无证据 → 拒绝
-- **先验装置**：测试里注入一条假边和一个错锚点，验证器必须报出来；这是合入门槛
-- summary 核验：reviewer agent 带源码逐句核对，输出 `verified | unverified | contradicted`，写回节点；contradicted 的 summary 不进图（保留节点、summary 置空并记 gap）
+**3.3 结构全量抽取（新增阶段 1.2）**：`structure-all.mjs` 对**全部**扫描文件调用**未修改的** `extract-structure.mjs`（分块、逐字节确定），产 `intermediate/structure-all.json`：每文件一行，带 `status`、声明行区间、imports/exports 行号、调用点。全部文件而非只 code 文件，否则账本守恒与「html/xaml 可见为 no-extractor」都测不出来。
 
-**3.5 覆盖账本**：`filesSkipped` 改为按原因（无语言配置 / 二进制 / 忽略规则 / 解析失败 / 超大）与扩展名分组；每语言零符号文件数进 `coverage`；某语言存在但某种类（endpoint/table/route）为零 → `gaps[]` 一条；基准的分子分母修正（跳过进分母）。
+**3.4 annotate-graph（新增阶段 2.3，merge 之后）**：读模型写的图 + 3.3 的事实，
+- 每条边给 `provenance`：能在事实里找到对应记录 → `extracted` + `evidence[{file,line,source}]`；找不到 → `inferred`，按类型计 `edge-auto-inferred`。模型自报的 evidence 一致 → 该条 `verified:true`；不一致 → **保留模型原文**、追加抽取行，同时计 `evidence-corrected` 与 `edge-contradicted`。
+- 审计计数全部进 `gaps`（带样本）：`edge-missing`（按类型）、`edge-unsupported`、`node-missing`、`node-unsupported`、`identity-collision`、`shape-issue`、`calls-ambiguous`、`calls-unresolved`。比对只在**读得懂的文件**上做（`parsed`/`zero-symbol`）——html 里的节点是「没有读者」，不是「模型编的」。
+- 节点加 `owner`/`owners`/`anchorSource`；同文件同名多声明被合成一个节点时记 `owners` 与 `identity-collision`，**id 不改**（wcp 的 3,497→2,825 由此可见而不被「修正」）。
+- 根加 `coverage`/`gaps` 与 `project.sourceDigest`/`factsDigest`/`pipelineVersion`。
+- 默认补边：只补模型漏掉的 `imports`/`exports`/`contains`，标 `addedBy:'excavator-annotate'`，`--no-supplement` 可关；**`calls` 永不补**，留缺口。补边只在两端节点都已存在时进行——造节点就等于当作者。
+- 输出 `annotated-graph.json` + `audit.json`，同输入两次运行逐字节相同。
 
-**3.6 新鲜度**：以 `factsDigest` 与每个节点依赖文件的 contentHash 为键；内容变了而签名没变（cosmetic）→ 该文件节点的 summary 标 `dirty`，**不推进**它的 commit 标记（改 `finalize-incremental.mjs:408-422`）；四态 `fresh|dirty|stale|unknown` 保留。
+**3.5 触源码的验证器（新增阶段 6b）**：`validate-graph.mjs`——UA 的阶段 6 inline validator **保留**，这一阶段在它之后开源码文件核对：function/class 节点锚点行 ±1 含 `name`；`extracted` 边证据行含按类型的记号；`inferred` 边直接通过；沿用 inline validator 的全部引用完整性检查；`step` 节点须有可解析的 `nodeIds` 或标 `inferred`。产 `validation.json` + `validated-graph.json`（标 `verification:'contradicted'`、计数并入 gaps）。读不到的源码文件计 `source-missing`，**不当作矛盾**。**先验装置**是合入门槛：注入一条证据行不含 callee 的边与一个偏移 5 行的节点 → 各恰好 1；干净夹具 0/0。
 
-**验收（wcp + cebreo；【修正】koel 退出）**：边 100% 有 evidence 或 inferred；验证器对 extracted 边通过率 100%；Opus 分层审计 10 条 summary + 30 条边（含全部 depends_on）中 verified/extracted 类 0 条错；注入编造被抓；wcp Go 声明数 = 节点数（坍缩 0，对照 `wcp-quality/scripts/collapse.out.txt` 的 3,497 vs 2,825）；`coverage` 列出 cebreo 的 `.html`（622）与 `.xaml`（128）为零符号种类、wcp 的零记录种类；wcp 在 v2 上**重新全量**一次（这是本步唯一一次全量，产物即 §5 的输入）；改一处 `if` 阈值后受影响 summary 变 dirty 且 commit 标记不前进；wcp 全量成本与时间对比 §0 基线记录进报告。**负向探针**：UA 对 wcp 的领域图里「请假与 PTO 管理」有 4 条流程（submit-leave-request / decide-leave-request / maintain-leave-balance / accrue-latam-pto，23 步全带 filePath+lineRange），但没有用户 PRD 模版 §7.3 的「撤销申请」；v2 的验证器 + 普查必须给出二者之一并带证据：「代码中无撤销入口（scope 已覆盖，可 assert absent）」或「有，在 file:line，UA 漏了」。
+**3.6 基准分母**：`structureCoverage` 分母 = parsed + zeroSymbol + skipped，并新增 `structureSkipped`。分母诚实后覆盖率对含无读者语言的项目必然 < 1，所以它**不再是成功门**——门是 `structureFailures`（读者跑了但失败）。
+
+**3.7 ②b（分支 `v2/step2b-verify`）**：提示词只加节（file-analyzer 加「证据字段」与「框架指引」，domain-analyzer 加一句 step `nodeIds`）；`excavator-summary-verifier` + `apply-verification.mjs`（contradicted 的 summary **留在图里**标状态，由消费端决定）；新鲜度可见性（不改 UA 的 commit 标记逻辑，只写 `meta.json.excavator.dirtyFiles` 与节点 `verification:'dirty'`）；`prepare-incremental.mjs` **新增**非 git 回退分支；`annotate-domain.mjs` 推导 step `nodeIds`。
+
+**存分支清单（做过但按方向暂缓，等单独批准）**
+- `v2/deferred-ua-extractor-fixes`（commit `4d2350e2`，已 revert 出主线）：TS 对象字面量与类方法成函数、PHP trait/enum/匿名类、TS/PHP/C#/Java/Kotlin 的 `owner`、身份夹具集。影响：`identity-collision` 目前只能靠「同名多声明」判定，`owners` 在真实运行里永远为空——`extract-structure-result.mjs` 的映射今天不透传 `owner`。今天真正会填 `owner` 的抽取器只有 Go（接收者）、Rust、C++。
+
+**验收（②a，无模型）**：a1 先验装置 1/1 与 0/0；a2 structure-all 与 annotate 两次运行 sha256 相等；a3 wcp `identity-collision` 计数与样本；a4 图中 100% 边有 `provenance`，`extracted` 边的 evidence 覆盖率、`edge-auto-inferred` 按类型、补边数、`edge-missing` 按类型；a5 cebreo `coverage.byLanguage` 含 html/xaml 为 `no-extractor` 与各 `gaps` 计数；a6 `pnpm -r build` 先行 + `pnpm test`/core/typecheck/check-refs 全绿且用例只增；a7 **UA 产物原样通过**——对 wcp 现有 `.excavator/knowledge-graph.json` 跑 annotate：0 节点/0 边被删，模型写的字段逐条相同。
 
 ## 4. 第 ③ 步：支持 cebreo（1–2 周）
 

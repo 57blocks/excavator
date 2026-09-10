@@ -291,6 +291,36 @@ If the scan result includes `filteredByIgnore > 0`, report:
 
 ---
 
+## Phase 1.2 — STRUCTURE-ALL (added; full analysis only)
+
+Report: `[Phase 1.2/7] Extracting structural facts for the whole project...`
+
+This phase is **additive**: it changes nothing about how the graph is produced.
+It runs the same structural extraction the file-analyzer batches use, over
+every scanned file at once, so the later ANNOTATE (2.3) and VALIDATE (6b)
+phases can check the model's graph against the same line-numbered facts the
+model was given.
+
+```bash
+node "<SKILL_DIR>/structure-all.mjs" "$PROJECT_ROOT"
+```
+
+Reads `$DATA_DIR/intermediate/scan-result.json`, calls
+`<SKILL_DIR>/extract-structure.mjs` in chunks, and writes
+`$DATA_DIR/intermediate/structure-all.json` — one row per scanned file with
+its `status` (`parsed` / `zero-symbol` / `no-extractor` / `parse-failed`),
+declarations with line ranges, imports and exports with line numbers, and call
+sites.
+
+Capture stderr and append any line starting with `Warning:` to
+`$PHASE_WARNINGS`.
+
+**This phase is a supplement, so its failure is not fatal.** If the script
+exits non-zero, report the stderr as a Phase 1.2 warning, note that phases 2.3
+and 6b will be skipped, and continue with the analysis unchanged.
+
+---
+
 ## Phase 1.5 — BATCH
 
 Report: `[Phase 1.5/7] Computing semantic batches...`
@@ -423,6 +453,50 @@ This helper revalidates the candidate, records attempt 1/1 for the base/head com
 If repair preparation, the repair dispatch, or the second merge fails, **STOP** and retain diagnostics. Do not publish or advance `knowledge-graph.json`, `fingerprints.json`, or `meta.json`. Never concatenate old nodes or old semantic edges into the candidate to satisfy the gate. Other merge failures without eligible unresolved files stop immediately. On success, continue to the applicable architecture/tour phases.
 
 Parser limitation: automatic deletion requires both a deterministic parser and a declaration-coverage adapter. Current adapters cover JavaScript/JSX, TypeScript/TSX, Ruby, Python, Go, Rust, and C++; other grammars remain conservative even if parsing succeeds. Languages without a deterministic structural parser (including `.sh`, `.ps1`, and `.bat`) cannot have missing symbols automatically confirmed as deleted. Such omissions remain `unknown`, even for genuine deletions, and stop publication pending manual investigation or parser support. Supplemental LLM source inspection and regex guesses are not deletion evidence. Callables without explicit class containment require source identity verification even when their IDs/names stay unchanged and neither graph emits class nodes; unsupported or unextractable callables therefore also block in this case. Dots in an opaque ID are not ownership evidence. Stable explicit class ownership can establish preservation without parsing. Identical current descriptors within one HEAD may preserve repair references; this does not waive verification of the previous published symbols across revisions.
+
+---
+
+## Phase 2.3 — ANNOTATE (added)
+
+Report: `[Phase 2.3/7] Annotating the merged graph with extractor facts...`
+
+This phase is **additive and non-authoring**. The model wrote the graph; this
+step compares it with the structural facts from Phase 1.2 and records what it
+finds. It never deletes or rewrites a node, an edge, an id or a field.
+
+Skip this phase if `$DATA_DIR/intermediate/structure-all.json` does not exist
+(Phase 1.2 was skipped or failed).
+
+```bash
+node "<SKILL_DIR>/annotate-graph.mjs" "$PROJECT_ROOT"
+```
+
+Inputs (all already on disk): `assembled-graph.json`, `structure-all.json`,
+`scan-result.json`, `import-map.json`. Outputs
+`$DATA_DIR/intermediate/annotated-graph.json` and
+`$DATA_DIR/intermediate/audit.json`.
+
+What it adds:
+- `provenance` on every edge — `extracted` with an `evidence` line when an
+  extractor record supports it, `inferred` when none does (counted per type
+  under `edge-auto-inferred`).
+- `verification` on an edge whose cited line disagrees with the extractor
+  (`contradicted`) or that claims extraction with no record (`unverified`).
+- `owner` / `owners` / `anchorSource` on nodes; `owners` plus an
+  `identity-collision` count when one node stands for several declarations of
+  the same name in one file. **Ids are never rewritten.**
+- root `coverage` and `gaps`, and `project.sourceDigest` / `factsDigest` /
+  `pipelineVersion`.
+- by default, the deterministic `imports`/`exports`/`contains` records the
+  model omitted, appended as edges marked `addedBy: "excavator-annotate"`
+  (never `calls`). Pass `--no-supplement` to record them as gaps only.
+
+Append the script's stderr summary to `$PHASE_WARNINGS`. Continue using
+`assembled-graph.json` for the remaining phases; `annotated-graph.json` is the
+audited copy, and Phase 6b validates it.
+
+**Supplement, so not fatal.** If the script exits non-zero, report its stderr
+as a Phase 2.3 warning and continue with the analysis unchanged.
 
 ---
 
@@ -789,6 +863,47 @@ Pass these parameters in the dispatch prompt:
    - If critical issues remain after one fix attempt, save the graph anyway but include the warnings in the final report and mark dashboard auto-launch as skipped
 
 6. **If `issues` array is empty:** Proceed to Phase 7.
+
+---
+
+## Phase 6b — VALIDATE (added)
+
+Report: `[Phase 6b/7] Checking anchors and evidence against the source...`
+
+Phase 6 above is unchanged — its inline validator (or the `--review` reviewer)
+still runs and still decides what UA decides. This phase runs after it and
+does the one thing neither can: it **opens the source files** and checks that
+the graph's anchors and cited lines say what the graph claims.
+
+Skip this phase if `$DATA_DIR/intermediate/annotated-graph.json` does not exist
+(Phase 2.3 was skipped or failed).
+
+```bash
+node "<SKILL_DIR>/validate-graph.mjs" "$PROJECT_ROOT"
+```
+
+Checks: every `function`/`class` node's `lineRange[0]` (±1 line) must contain
+the node's `name`; every `extracted` edge's cited line must contain the
+expected token (callee for `calls`, target module segment for `imports`,
+symbol for `exports`, declaration for `contains`, either endpoint's name or
+file for a model-cited line); `inferred` edges pass; the referential-integrity
+checks of Phase 6 are repeated; and every `step` node must carry `nodeIds`
+that exist, or be marked `provenance: "inferred"`.
+
+Writes `$DATA_DIR/intermediate/validation.json` (counts, named findings,
+issues, warnings) and `$DATA_DIR/intermediate/validated-graph.json` (the same
+graph with `verification: "contradicted"` on the nodes and edges that failed
+and the counts merged into `gaps`). A source file that cannot be read is
+counted under `source-missing`, never reported as a contradiction.
+
+Report the counts to the user and append them to `$PHASE_WARNINGS`:
+
+> Source check: {anchorMismatch} anchor mismatches, {edgeContradicted}
+> contradicted edges, {stepUnanchored} unanchored steps.
+
+**Supplement, so not fatal.** Findings are data: the script exits 0 whenever
+it completed. If it exits non-zero, report its stderr as a Phase 6b warning
+and continue.
 
 ---
 

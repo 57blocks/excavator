@@ -59,7 +59,8 @@ export function extractTokens(
           const dedupe = `${consumerId}|${tokenId}`;
           if (!usesSeen.has(dedupe)) {
             usesSeen.add(dedupe);
-            edges.push({ source: consumerId, target: tokenId, type: "uses_token", direction: "forward", weight: 0.5 });
+            // No file:line behind a Figma style link — see parse-document.ts.
+            edges.push({ source: consumerId, target: tokenId, type: "uses_token", direction: "forward", weight: 0.5, evidence: [], provenance: "inferred" });
           }
         }
       }

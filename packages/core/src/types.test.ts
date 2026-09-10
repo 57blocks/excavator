@@ -84,6 +84,7 @@ describe("KnowledgeGraph types", () => {
       direction: "forward",
       description: "index.ts imports processData from utils.ts",
       weight: 0.8,
+      evidence: [], provenance: "inferred" as const,
     };
 
     expect(edge.source).toBe("node-1");
@@ -99,6 +100,7 @@ describe("KnowledgeGraph types", () => {
       type: "related",
       direction: "bidirectional",
       weight: 0,
+      evidence: [], provenance: "inferred" as const,
     };
 
     expect(minWeightEdge.weight).toBe(0);
@@ -110,6 +112,7 @@ describe("KnowledgeGraph types", () => {
       type: "calls",
       direction: "forward",
       weight: 1,
+      evidence: [], provenance: "inferred" as const,
     };
 
     expect(maxWeightEdge.weight).toBe(1);

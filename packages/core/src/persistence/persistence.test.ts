@@ -48,6 +48,7 @@ describe("persistence", () => {
         type: "imports",
         direction: "forward",
         weight: 0.8,
+        evidence: [], provenance: "inferred" as const,
       },
     ],
     layers: [
@@ -88,7 +89,13 @@ describe("persistence", () => {
       const loaded = loadGraph(tempDir);
 
       expect(loaded).not.toBeNull();
-      expect(loaded).toEqual(sampleGraph);
+      // loadGraph validates, and validation defaults the v2 ledger fields so
+      // no consumer sees a missing coverage/gaps.
+      expect(loaded).toEqual({
+        ...sampleGraph,
+        coverage: { files: 0, byLanguage: {}, ignored: 0 },
+        gaps: [],
+      });
     });
 
     it("should return null when no graph exists", () => {

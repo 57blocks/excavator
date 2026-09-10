@@ -51,6 +51,7 @@ const domainGraph: KnowledgeGraph = {
       type: "contains_flow",
       direction: "forward",
       weight: 1.0,
+      evidence: [], provenance: "inferred" as const,
     },
     {
       source: "flow:create-order",
@@ -58,6 +59,7 @@ const domainGraph: KnowledgeGraph = {
       type: "flow_step",
       direction: "forward",
       weight: 0.1,
+      evidence: [], provenance: "inferred" as const,
     },
   ],
   layers: [],
@@ -102,6 +104,7 @@ describe("domain graph types", () => {
       direction: "forward",
       description: "Triggers on order confirmed",
       weight: 0.6,
+      evidence: [], provenance: "inferred" as const,
     });
     const result = validateGraph(graph);
     expect(result.success).toBe(true);

@@ -504,6 +504,8 @@ describe('structure output summaries', () => {
       filesSkipped: 1,
       structureSucceeded: 2,
       structureFailed: 0,
+      // no-extractor rows are accounted for now (0 here: legacy-shaped output)
+      structureSkipped: 0,
       callGraphSucceeded: 0,
       callGraphFailed: 0,
       callGraphSkipped: 2,
@@ -611,6 +613,7 @@ describe('structure output summaries', () => {
       filesSkipped: 1,
       structureSucceeded: 3,
       structureFailed: 0,
+      structureSkipped: 0,
       callGraphSucceeded: 0,
       callGraphFailed: 0,
       callGraphSkipped: 3,
@@ -2067,7 +2070,11 @@ describe('large repository benchmark CLI', () => {
     expect(result.report.status).toBe('degraded');
     expectValidReport(result.report);
     expect(result.report.integrity).toMatchObject({
-      structureCoverage: 1,
+      // The vanished file is accounted for in the denominator now: 2 of the 3
+      // files the structure stage handled produced structure. Reporting 1.0
+      // here was the dishonest number this change removes.
+      structureCoverage: 0.6667,
+      structureSkipped: 1,
       filesSkipped: 1,
       failedBatches: 0,
       missingStructurePaths: 0,

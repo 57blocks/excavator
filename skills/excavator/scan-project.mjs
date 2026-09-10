@@ -43,6 +43,8 @@
  *     "totalFiles": N,
  *     "filteredByIgnore": M,
  *     "filteredByDefaults": K,
+ *     "skipped": [{ "path": "...", "reason": "symlink|read-failed|unknown-language|binary|too-large|ignored", "language": "..." }, ...],
+ *     "coverage": { "limits": { "maxFileLines": N, "maxFileBytes": N } },
  *     "estimatedComplexity": "small" | "moderate" | "large" | "very-large",
  *     "stats": { "filesScanned": N, "byCategory": {...}, "byLanguage": {...} }
  *   }
@@ -93,6 +95,57 @@ try {
 }
 
 const { createIgnoreFilter, resolveDataDir } = core;
+
+// ---------------------------------------------------------------------------
+// Skip limits and binary detection
+//
+// A scanned file that is never handed to extraction must land in a NAMED skip
+// bucket, so the coverage ledger can account for every input. These two
+// thresholds are published in the scan output under `coverage.limits`, because
+// a `too-large` count is meaningless without the limit that produced it.
+// ---------------------------------------------------------------------------
+
+/** Files with more newlines than this are skipped (reason: too-large). */
+export const MAX_FILE_LINES = 20000;
+/** Files with more bytes than this are skipped (reason: too-large). */
+export const MAX_FILE_BYTES = 2 * 1024 * 1024;
+/** How many leading bytes are inspected for a NUL byte (binary sniff). */
+export const BINARY_SNIFF_BYTES = 8192;
+
+/**
+ * Extensions that are binary by definition. Checked BEFORE the file is read so
+ * a 200MB `.dll` never enters memory; files not in this table are still
+ * sniffed for a NUL byte in their first BINARY_SNIFF_BYTES bytes.
+ */
+export const BINARY_EXTENSIONS = Object.freeze(new Set([
+  // native / managed binaries and intermediates
+  '.dll', '.exe', '.so', '.dylib', '.a', '.lib', '.o', '.obj', '.pdb', '.ilk',
+  '.class', '.jar', '.war', '.ear', '.nupkg', '.snupkg', '.wasm', '.pyc', '.pyo',
+  '.node', '.bin', '.msi', '.apk', '.aab', '.ipa', '.framework',
+  // archives
+  '.zip', '.tar', '.gz', '.tgz', '.bz2', '.xz', '.7z', '.rar', '.jar', '.iso', '.dmg',
+  // images / media / fonts
+  '.png', '.jpg', '.jpeg', '.gif', '.bmp', '.ico', '.icns', '.tif', '.tiff', '.webp',
+  '.psd', '.ai', '.eps', '.mp3', '.wav', '.ogg', '.flac', '.mp4', '.m4a', '.m4v',
+  '.avi', '.mov', '.wmv', '.webm', '.mkv', '.ttf', '.otf', '.woff', '.woff2', '.eot',
+  // documents / data stores
+  '.pdf', '.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx', '.db', '.sqlite',
+  '.sqlite3', '.mdb', '.dat', '.pack', '.idx', '.resources', '.baml', '.pfx', '.p12',
+]));
+
+/** True when the path's extension is a known-binary one. */
+export function hasBinaryExtension(filePath) {
+  return BINARY_EXTENSIONS.has(extname(filePath).toLowerCase());
+}
+
+/** True when the buffer's head contains a NUL byte (classic binary sniff). */
+export function looksBinary(buf) {
+  const end = Math.min(buf.length, BINARY_SNIFF_BYTES);
+  for (let i = 0; i < end; i++) {
+    if (buf[i] === 0x00) return true;
+  }
+  return false;
+}
 
 // ---------------------------------------------------------------------------
 // Language detection
@@ -216,6 +269,26 @@ const LANGUAGE_BY_EXT = Object.freeze({
  * possible suffix.
  */
 const LANGUAGE_BY_FILENAME = Object.freeze({
+  // Conventional extension-less text files. Named here so they keep a
+  // language and stay in the census instead of landing in the
+  // `unknown-language` skip bucket — a repository's LICENSE and CHANGELOG are
+  // real inputs, and a reader looking for them must be able to find them.
+  LICENSE: 'text',
+  LICENCE: 'text',
+  COPYING: 'text',
+  COPYRIGHT: 'text',
+  NOTICE: 'text',
+  AUTHORS: 'text',
+  CONTRIBUTORS: 'text',
+  CONTRIBUTING: 'text',
+  CHANGELOG: 'text',
+  CHANGES: 'text',
+  HISTORY: 'text',
+  README: 'text',
+  INSTALL: 'text',
+  TODO: 'text',
+  VERSION: 'text',
+  CODEOWNERS: 'text',
   Dockerfile: 'dockerfile',
   Makefile: 'makefile',
   GNUmakefile: 'makefile',
@@ -233,11 +306,27 @@ const LANGUAGE_BY_FILENAME = Object.freeze({
  * (see project-scanner.md Step 3 "Fallback" note).
  */
 export function detectLanguage(filePath) {
+  return classifyLanguage(filePath).language;
+}
+
+/**
+ * Same lookup as detectLanguage, but it also reports whether the answer came
+ * from a DECLARED table entry or from the bare-extension fallback.
+ *
+ * The distinction is the `unknown-language` skip bucket: `.html` is a declared
+ * language with no extractor (it goes to extraction and comes back
+ * `no-extractor`), whereas `.xyz` is a language this pipeline has never heard
+ * of — handing it to extraction would only manufacture a false "no extractor
+ * for xyz" finding for every junk extension in the tree.
+ */
+export function classifyLanguage(filePath) {
   const base = basename(filePath);
   const ext = extname(filePath).toLowerCase();
 
   // Dockerfile.dev, Dockerfile.prod, etc. — common variant form.
-  if (base === 'Dockerfile' || base.startsWith('Dockerfile.')) return 'dockerfile';
+  if (base === 'Dockerfile' || base.startsWith('Dockerfile.')) {
+    return { language: 'dockerfile', declared: true };
+  }
 
   // Dotfile names like .env, .env.local — path.extname returns '' for
   // single-segment dotfiles (e.g. '.env') and the SECOND segment for
@@ -245,20 +334,22 @@ export function detectLanguage(filePath) {
   // intended LANGUAGE_BY_EXT['.env'] mapping. Try the leading dotfile
   // portion first so `.env`, `.env.local`, `.env.production` all map.
   const dotKey = dotfileKey(base);
-  if (dotKey && LANGUAGE_BY_EXT[dotKey]) return LANGUAGE_BY_EXT[dotKey];
+  if (dotKey && LANGUAGE_BY_EXT[dotKey]) {
+    return { language: LANGUAGE_BY_EXT[dotKey], declared: true };
+  }
 
   if (ext) {
     const byExt = LANGUAGE_BY_EXT[ext];
-    if (byExt) return byExt;
+    if (byExt) return { language: byExt, declared: true };
     // Unknown extension → drop the leading dot, lowercase. Never null.
-    return ext.slice(1);
+    return { language: ext.slice(1), declared: false };
   }
 
   // No-extension file — try filename table.
   const byFilename = LANGUAGE_BY_FILENAME[base];
-  if (byFilename) return byFilename;
+  if (byFilename) return { language: byFilename, declared: true };
 
-  return 'unknown';
+  return { language: 'unknown', declared: false };
 }
 
 /**
@@ -782,6 +873,12 @@ async function main() {
   let filteredByIgnore = 0;
   let filteredByDefaults = 0;
   const kept = [];
+  // Every enumerated file that is not emitted lands here with the reason it
+  // was dropped, so the coverage ledger can account for it by name.
+  const skipped = [];
+  const recordSkip = (rel, reason) => {
+    skipped.push({ path: rel, reason, language: detectLanguage(rel) });
+  };
   for (const rel of candidates) {
     const isIgnoredCombined = combined.isIgnored(rel);
     if (!isIgnoredCombined) {
@@ -798,6 +895,7 @@ async function main() {
     } else if (userIgnoresPresent) {
       filteredByIgnore++;
     }
+    recordSkip(rel, 'ignored');
   }
 
   // The per-file pass, output, stats key insertion, and content fingerprint
@@ -813,36 +911,84 @@ async function main() {
     const absPath = join(projectRoot, rel);
     // lstat first so Git-enumerated symlinks are rejected before any operation
     // can follow them to a repository-external target.
+    let stat;
     try {
-      const st = lstatSync(absPath);
-      if (st.isSymbolicLink()) {
+      stat = lstatSync(absPath);
+      if (stat.isSymbolicLink()) {
+        recordSkip(rel, 'symlink');
         process.stderr.write(
           `Warning: scan-project: ${rel} — symbolic link skipped ` +
           `— file skipped from output\n`,
         );
         continue;
       }
-      if (!st.isFile()) {
+      if (!stat.isFile()) {
         // Directories and special files are not scanned as regular-file input.
         continue;
       }
     } catch (err) {
       failures.push({ path: rel, stage: 'file-lstat', message: err.message });
+      recordSkip(rel, 'read-failed');
       process.stderr.write(
         `Warning: scan-project: ${rel} — lstat failed (${err.message}) ` +
         `— file skipped from output\n`,
       );
       continue;
     }
+
+    // Known-binary extension: decided from the path, so a huge artifact is
+    // never read into memory.
+    if (hasBinaryExtension(rel)) {
+      recordSkip(rel, 'binary');
+      continue;
+    }
+
+    // Byte limit from stat, again to avoid reading what we would then drop.
+    if (stat.size > MAX_FILE_BYTES) {
+      recordSkip(rel, 'too-large');
+      process.stderr.write(
+        `Warning: scan-project: ${rel} — ${stat.size} bytes exceeds ` +
+        `MAX_FILE_BYTES=${MAX_FILE_BYTES} — file skipped from output\n`,
+      );
+      continue;
+    }
+
     const scanned = readAndCountLines(absPath, rel, failures);
     if (scanned === null) {
       // readAndCountLines already emitted the Warning: line.
+      recordSkip(rel, 'read-failed');
       continue;
     }
+
+    // No known-binary extension, but the content says otherwise.
+    if (looksBinary(scanned.bytes)) {
+      recordSkip(rel, 'binary');
+      continue;
+    }
+
+    if (scanned.sizeLines > MAX_FILE_LINES) {
+      recordSkip(rel, 'too-large');
+      process.stderr.write(
+        `Warning: scan-project: ${rel} — ${scanned.sizeLines} lines exceeds ` +
+        `MAX_FILE_LINES=${MAX_FILE_LINES} — file skipped from output\n`,
+      );
+      continue;
+    }
+
+    // The scanner cannot even NAME this file's language: no extension and no
+    // filename-table match. An unrecognised *extension* is different — it
+    // still names a language ("log", "xaml"), keeps its census node, and comes
+    // back from extraction as `no-extractor`, which is the honest finding.
+    const { language, declared } = classifyLanguage(rel);
+    if (!declared && language === 'unknown') {
+      recordSkip(rel, 'unknown-language');
+      continue;
+    }
+
     updateContentDigest(contentHash, rel, scanned.bytes);
     fileEntries.push({
       path: rel,
-      language: detectLanguage(rel),
+      language,
       sizeLines: scanned.sizeLines,
       fileCategory: detectCategory(rel),
     });
@@ -862,6 +1008,13 @@ async function main() {
 
   const estimatedComplexity = estimateComplexity(fileEntries.length);
 
+  // Deterministic order for the skip ledger, independent of enumeration order.
+  skipped.sort((a, b) => compareStableStrings(a.path, b.path) || compareStableStrings(a.reason, b.reason));
+  const skippedByReason = {};
+  for (const entry of skipped) {
+    skippedByReason[entry.reason] = (skippedByReason[entry.reason] || 0) + 1;
+  }
+
   const output = {
     scriptCompleted: true,
     contentDigest,
@@ -871,10 +1024,18 @@ async function main() {
     filteredByDefaults,
     estimatedComplexity,
     failures,
+    skipped,
+    coverage: {
+      limits: {
+        maxFileLines: MAX_FILE_LINES,
+        maxFileBytes: MAX_FILE_BYTES,
+      },
+    },
     stats: {
       filesScanned: fileEntries.length,
       byCategory,
       byLanguage,
+      skippedByReason,
     },
   };
 
@@ -888,7 +1049,8 @@ async function main() {
     `scan-project: filesScanned=${fileEntries.length} ` +
     `filteredByIgnore=${filteredByIgnore} ` +
     `filteredByDefaults=${filteredByDefaults} ` +
-    `complexity=${estimatedComplexity}\n`,
+    `complexity=${estimatedComplexity} ` +
+    `skipped=${skipped.length}\n`,
   );
 }
 
@@ -925,7 +1087,13 @@ if (isCliEntry()) {
 // Default export of helpers for testability.
 export default {
   detectLanguage,
+  classifyLanguage,
   detectCategory,
   estimateComplexity,
+  hasBinaryExtension,
+  looksBinary,
+  MAX_FILE_LINES,
+  MAX_FILE_BYTES,
+  BINARY_SNIFF_BYTES,
   HARD_SKIP_DIRS: Array.from(HARD_SKIP_DIRS),
 };

@@ -124,6 +124,9 @@ describe("GraphBuilder", () => {
       type: "contains",
       direction: "forward",
       weight: 1,
+      // The declaration line is the citation for a contains edge.
+      evidence: [{ file: "src/widget.ts", line: 5, endLine: 15, source: "tree-sitter" }],
+      provenance: "extracted",
     });
     expect(containsEdges[1]).toMatchObject({
       source: "file:src/widget.ts",
@@ -131,6 +134,8 @@ describe("GraphBuilder", () => {
       type: "contains",
       direction: "forward",
       weight: 1,
+      evidence: [{ file: "src/widget.ts", line: 20, endLine: 50, source: "tree-sitter" }],
+      provenance: "extracted",
     });
   });
 
@@ -158,6 +163,7 @@ describe("GraphBuilder", () => {
       target: "file:src/utils.ts",
       type: "imports",
       direction: "forward",
+      evidence: [], provenance: "inferred" as const,
     });
   });
 
@@ -174,6 +180,7 @@ describe("GraphBuilder", () => {
       target: "function:src/utils.ts:helper",
       type: "calls",
       direction: "forward",
+      evidence: [], provenance: "inferred" as const,
     });
   });
 

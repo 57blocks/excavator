@@ -232,13 +232,35 @@ describe('scan-project.mjs — language detection', () => {
     expect(byPath(r.output, 'Dockerfile.dev').language).toBe('dockerfile');
   });
 
-  it('falls back to "unknown" for files with no extension and no filename match', () => {
+  // A file whose language cannot be NAMED at all (no extension, no filename
+  // table entry) is no longer emitted with language "unknown": it lands in the
+  // skip ledger under `unknown-language`, so the coverage table can account
+  // for it instead of carrying an un-analysable pseudo-language.
+  it('skips files with no extension and no filename match as unknown-language', () => {
     projectRoot = setupTree({
       WEIRD_FILE: 'mystery contents\n',
+      'src/index.ts': 'export const x = 1;\n',
     });
     const r = runScript(projectRoot);
     expect(r.status).toBe(0);
-    expect(byPath(r.output, 'WEIRD_FILE').language).toBe('unknown');
+    expect(byPath(r.output, 'WEIRD_FILE')).toBeUndefined();
+    expect(r.output.skipped).toContainEqual({
+      path: 'WEIRD_FILE',
+      reason: 'unknown-language',
+      language: 'unknown',
+    });
+    expect(r.output.stats.skippedByReason['unknown-language']).toBe(1);
+  });
+
+  it('keeps conventional extension-less files (LICENSE, CHANGELOG) in the census', () => {
+    projectRoot = setupTree({
+      '.excavatorignore': '!LICENSE\n',
+      CHANGELOG: '## 1.0\n',
+      'src/index.ts': 'export const x = 1;\n',
+    });
+    const r = runScript(projectRoot);
+    expect(r.status).toBe(0);
+    expect(byPath(r.output, 'CHANGELOG').language).toBe('text');
   });
 
   it('falls back to bare extension (without dot) for unknown extensions', () => {

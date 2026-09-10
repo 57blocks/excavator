@@ -148,6 +148,8 @@ export class GraphBuilder {
         type: "contains",
         direction: "forward",
         weight: 1,
+        evidence: [{ file: filePath, line: fn.lineRange[0], endLine: fn.lineRange[1], source: "tree-sitter" }],
+        provenance: "extracted",
       });
     }
 
@@ -172,6 +174,8 @@ export class GraphBuilder {
         type: "contains",
         direction: "forward",
         weight: 1,
+        evidence: [{ file: filePath, line: cls.lineRange[0], endLine: cls.lineRange[1], source: "tree-sitter" }],
+        provenance: "extracted",
       });
     }
   }
@@ -186,6 +190,11 @@ export class GraphBuilder {
       type: "imports",
       direction: "forward",
       weight: 0.7,
+      // This in-process builder is handed file pairs without the import
+      // statement's line, so it has nothing to cite: unevidenced, not
+      // "extracted". The v2 deterministic facts builder cites the line.
+      evidence: [],
+      provenance: "inferred",
     });
   }
 
@@ -204,6 +213,9 @@ export class GraphBuilder {
       type: "calls",
       direction: "forward",
       weight: 0.8,
+      // No call-site line reaches this API either — see addImportEdge.
+      evidence: [],
+      provenance: "inferred",
     });
   }
 
@@ -306,7 +318,17 @@ export class GraphBuilder {
     }
     this.nodeIds.add(node.id);
     this.nodes.push(node);
-    this.edges.push({ source: parentId, target: node.id, type: "contains", direction: "forward", weight: 1 });
+    this.edges.push({
+      source: parentId,
+      target: node.id,
+      type: "contains",
+      direction: "forward",
+      weight: 1,
+      evidence: node.filePath && node.lineRange
+        ? [{ file: node.filePath, line: node.lineRange[0], endLine: node.lineRange[1], source: "tree-sitter" as const }]
+        : [],
+      provenance: node.filePath && node.lineRange ? "extracted" : "inferred",
+    });
   }
 
   private mapKindToNodeType(kind: string): GraphNode["type"] {

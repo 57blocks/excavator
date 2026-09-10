@@ -31,8 +31,12 @@
  *   {
  *     scriptCompleted: true,
  *     stats: { filesScanned, filesWithImports, totalEdges },
- *     importMap: { <path>: [<resolvedPath>, ...], ... }
+ *     importMap: { <path>: [<resolvedPath>, ...], ... },
+ *     unresolved: { <path>: [<specifier>, ...], ... }
  *   }
+ *
+ * `unresolved` records every import specifier that named nothing inside the
+ * project (external package or broken path) instead of dropping it silently.
  *
  * Logging: stderr only (stdout reserved for piped tools).
  * Per-file resilience: failures emit `Warning: extract-import-map: ...` and
@@ -2023,8 +2027,14 @@ async function main() {
   failures.push(...ctx.failures);
 
   const importMap = {};
+  // Specifiers that named nothing inside the project, per file. An external
+  // package and a broken relative path both land here — the samples in the
+  // graph's `imports-unresolved` gap are what tell them apart. Previously an
+  // unresolved specifier was simply absent from the output.
+  const unresolved = {};
   let filesWithImports = 0;
   let totalEdges = 0;
+  let unresolvedSpecifiers = 0;
 
   for (const file of analysisFiles) {
     const path = toPosix(file.path);
@@ -2061,6 +2071,7 @@ async function main() {
 
     // Analyze + resolve
     let resolved;
+    const unresolvedSet = new Set();
     try {
       const resolvedSet = new Set();
 
@@ -2070,30 +2081,38 @@ async function main() {
       // languages get analyzed once and dispatched normally.
       if (file.language === 'ruby') {
         for (const imp of parseRubyImports(content)) {
+          let hit = false;
           for (const out of resolveRubyImport(imp, file, ctx)) {
-            if (out && ctx.fileSet.has(out)) resolvedSet.add(out);
+            if (out && ctx.fileSet.has(out)) { resolvedSet.add(out); hit = true; }
           }
+          if (!hit && imp.source) unresolvedSet.add(imp.source);
         }
       } else {
         const analysis = registry.analyzeFile(file.path, content);
         const imports = analysis?.imports ?? [];
         for (const imp of imports) {
           const outs = resolveImport(imp, file, ctx);
+          let hit = false;
           for (const out of outs) {
             if (out && ctx.fileSet.has(out)) {
               resolvedSet.add(out);
+              hit = true;
             }
           }
+          if (!hit && imp?.source) unresolvedSet.add(imp.source);
         }
         // Supplemental pass for sources tree-sitter doesn't capture (e.g.
         // CJS require() calls, Kotlin imports). Dedup via the same set.
         for (const extra of extractExtraImportSources(file, content)) {
           const outs = resolveImport({ source: extra, specifiers: [] }, file, ctx);
+          let hit = false;
           for (const out of outs) {
             if (out && ctx.fileSet.has(out)) {
               resolvedSet.add(out);
+              hit = true;
             }
           }
+          if (!hit && extra) unresolvedSet.add(extra);
         }
       }
       resolved = [...resolvedSet].sort((a, b) =>
@@ -2112,6 +2131,11 @@ async function main() {
     }
 
     importMap[path] = resolved;
+    if (unresolvedSet.size > 0) {
+      // Locale-independent order (UTF-16 code units) keeps the output byte-stable.
+      unresolved[path] = [...unresolvedSet].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
+      unresolvedSpecifiers += unresolvedSet.size;
+    }
     if (resolved.length > 0) {
       filesWithImports += 1;
       totalEdges += resolved.length;
@@ -2124,9 +2148,12 @@ async function main() {
       filesScanned: analysisFiles.length,
       filesWithImports,
       totalEdges,
+      filesWithUnresolved: Object.keys(unresolved).length,
+      unresolvedSpecifiers,
     },
     failures,
     importMap,
+    unresolved,
   };
 
   writeFileSync(outputPath, JSON.stringify(output, null, 2), 'utf-8');
