@@ -50,9 +50,9 @@
 
 ## 8. 提示词加节（②b commit 8，只加不改）
 
-- [ ] 8.1 `agents/excavator-file-analyzer.md` 末尾加「证据字段」节（行号抄自结构 JSON；抄不到标 inferred；`status: no-extractor|parse-failed` 的文件只建 file 节点不臆造成员；有 `owner` 则保留）；验证既有段落 diff 为零、新节存在
-- [ ] 8.2 同文件加「框架指引」节（frameworks 含 spring/angular/maui → 读 `skills/excavator/frameworks/<x>.md`；目录先建 README 说明文件由 ③ 提供）；验证 check-refs 绿
-- [ ] 8.3 `agents/excavator-domain-analyzer.md` 加一句 step `nodeIds`；验证既有段落 diff 为零
+- [x] 8.1 `agents/excavator-file-analyzer.md` 末尾加「证据字段」节（行号抄自结构 JSON；抄不到标 inferred；`status: no-extractor|parse-failed` 的文件只建 file 节点不臆造成员；有 `owner` 则保留）；验证既有段落 diff 为零、新节存在
+- [x] 8.2 同文件加「框架指引」节（frameworks 含 spring/angular/maui → 读 `skills/excavator/frameworks/<x>.md`；目录先建 README 说明文件由 ③ 提供）；验证 check-refs 绿
+- [x] 8.3 `agents/excavator-domain-analyzer.md` 加一句 step `nodeIds`；验证既有段落 diff 为零
 
 ## 9. Summary 核验（②b commit 9）
 

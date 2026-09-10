@@ -122,3 +122,31 @@ Produce a JSON object with this exact structure:
 3. Respond with ONLY a brief text summary: number of domains, flows, and steps created, plus key domain names.
 
 Do NOT include the full JSON in your text response.
+
+---
+
+## Step Anchors (added — nothing above changes)
+
+Every `step` node SHOULD carry a `nodeIds` array holding the **real ids of the
+knowledge-graph nodes that implement that step** — copied verbatim from the
+graph you were given (Option B), never composed from a path and a name:
+
+```json
+{
+  "id": "step:create-order:validate-input",
+  "type": "step",
+  "name": "Validate input",
+  "summary": "Rejects orders with no line items before any write happens.",
+  "tags": ["validation"],
+  "complexity": "simple",
+  "filePath": "src/orders/create.ts",
+  "lineRange": [12, 31],
+  "nodeIds": ["function:src/orders/create.ts:validateOrder"]
+}
+```
+
+If you cannot identify any implementing node — you are working from Option A
+(`domain-context.json`), where no graph ids exist, or the step is a business
+action with no single code home — then omit `nodeIds` and mark the step
+`"provenance": "inferred"`. That is an accepted, counted state; a `nodeIds`
+entry that is not in the graph is not.

@@ -524,3 +524,142 @@ If validation fails on a part, do NOT silently rebuild. Respond with an explicit
 
 **Step F — Respond.**
 Respond with ONLY a brief text summary: parts written (1 or more), total nodes/edges across all parts, any files skipped. Do NOT include JSON content in the response.
+
+---
+
+## Evidence Fields (added — nothing above changes)
+
+Everything above still applies exactly as written. This section adds one field
+to the edges you already emit and two rules about what you must NOT invent. A
+later deterministic phase (ANNOTATE) checks every line you cite against the
+same extraction results you were given, so a cited line that is wrong is worse
+than no line at all.
+
+### Cite the line you copied
+
+For **every** edge you emit, add an `evidence` array with one entry:
+
+```json
+{
+  "source": "file:src/app.ts",
+  "target": "function:src/app.ts:start",
+  "type": "contains",
+  "direction": "forward",
+  "weight": 1.0,
+  "evidence": [{"file": "src/app.ts", "line": 42, "source": "model"}]
+}
+```
+
+- `file` — the project-relative path of the file whose source line you are
+  citing. For `contains`/`exports`/`calls` this is the file the structural
+  record came from; for `imports` it is the **importing** file.
+- `line` — a line number **copied from the extraction results**, never
+  estimated, never counted by hand, never a range midpoint.
+- `source` — always the literal string `"model"`. It records that you, not a
+  reader, put the line there. The ANNOTATE phase confirms or corrects it.
+
+Where each line comes from in `$DATA_DIR/tmp/excavator-file-extract-results-<batchIndex>.json`:
+
+| Edge type | Line to copy |
+|---|---|
+| `contains` | the contained declaration's `functions[].startLine` / `classes[].startLine` |
+| `exports` | the matching `exports[].line` |
+| `calls` | the `callGraph[]` entry whose `caller` and `callee` are this edge's two ends — its `lineNumber` |
+| `imports` | the `imports[].line` of the import statement that produced this resolved target |
+| everything else (`configures`, `documents`, `deploys`, `migrates`, `triggers`, `defines_schema`, `serves`, `provisions`, `routes`, `related`, `depends_on`, `inherits`, `implements`, `tested_by`) | the line you actually read that names the other endpoint |
+
+### When you cannot copy a line, say so
+
+If no record in the extraction results gives you the line — the callee is not
+in `callGraph`, several import statements could have produced the same resolved
+path, the relationship is your judgement rather than a record, or the file has
+no structural records at all — then:
+
+- **omit `evidence` entirely** (an empty array is fine too), and
+- set `"provenance": "inferred"` on that edge.
+
+`inferred` is not a defect and is never penalised: it is the honest state for a
+judgement edge, and the pipeline keeps every one of them. What IS a defect is a
+line number that does not hold what you claimed.
+
+**Never write `"provenance": "extracted"` yourself.** That value means "a
+deterministic reader has a record for this", which only the ANNOTATE phase can
+establish. Write `inferred` or leave `provenance` off; ANNOTATE fills in the
+rest and counts what it could not support.
+
+### Files with no structural records
+
+The extraction results carry a `status` for every file. Two values mean you
+were given no declarations to work from:
+
+- `no-extractor` — the file's language has no reader (e.g. `.html`, `.xaml`,
+  `.swift`, `.kt`).
+- `parse-failed` — the reader ran and could not parse the file (syntax error,
+  unsupported dialect, truncated source).
+
+For these files:
+
+- **Still create exactly one node for the file** — the one-node-per-file rule
+  above is unconditional, and a file missing from the graph is invisible.
+- Write the `summary` about **what the file is for**, at the level the file
+  itself supports (its name, its directory, its own text if you read it).
+- Do **NOT** invent `function:` or `class:` nodes for them, and do not
+  transcribe names out of the source as if a reader had extracted them. The
+  exception already stated above stands unchanged: for `script`-category files
+  and the listed unsupported languages (PowerShell, shell, Batch, Swift,
+  Kotlin), supplement function definitions by reading the source as Phase 1
+  Step 3 instructs — that is a documented reading task, not an invention.
+- Do **NOT** emit `calls` edges for them. There is no call graph to copy a line
+  from, so any such edge would be an unciteable guess.
+- `imports` edges are unaffected: they come from `batchImportData`, which is
+  resolved independently of the structural reader, and the 1:1 emission rule
+  above still holds. Cite the `imports[].line` when the extraction results have
+  one; otherwise mark the edge `inferred`.
+- A `parse-failed` file is worth one sentence in the `summary` saying the
+  structure could not be parsed. Do not hide it.
+
+### Keep `owner` when it is given
+
+Some readers report the type a method belongs to as an `owner` field on
+`functions[]` / `classes[]` (today: Go receivers, Rust `impl` blocks, C++
+out-of-class definitions). When a declaration you are emitting a node for has
+an `owner`:
+
+- copy it verbatim onto the node as `"owner": "<value>"`.
+
+When it has none, **leave the field off**. Do not derive it from the file name,
+the directory, a nearby class, or the method's first parameter. A guessed owner
+is indistinguishable from a reported one downstream, and two same-named methods
+on different receivers are exactly the case the field exists to keep apart.
+
+Do not change the node `id` because of an `owner` — ids stay exactly as the
+conventions above specify.
+
+---
+
+## Framework Guidance (added — nothing above changes)
+
+Your dispatch prompt reports the project's detected `frameworks`. For each
+detected framework, before writing summaries and edges, check for a framework
+addendum next to the dispatching skill:
+
+```bash
+test -f <SKILL_DIR>/frameworks/<framework-id-lowercase>.md \
+  && cat <SKILL_DIR>/frameworks/<framework-id-lowercase>.md
+```
+
+- If the file exists, read it first and apply its conventions (canonical file
+  roles, tags, and the edge patterns that framework's wiring implies) on top of
+  the base rules above.
+- If it does not exist, **continue silently**. A missing addendum means nobody
+  has written down that framework's conventions yet — it is not licence to
+  reconstruct them from the framework's name.
+
+See `<SKILL_DIR>/frameworks/README.md` for what these files are and which ones
+exist.
+
+**An addendum never outranks the evidence rules.** Framework conventions tell
+you where to look and what to call things; they are not a source of line
+numbers. An edge you emit because a framework convention implies it, with no
+record in the extraction results to cite, is `"provenance": "inferred"` with no
+`evidence` — the same as any other judgement edge.
