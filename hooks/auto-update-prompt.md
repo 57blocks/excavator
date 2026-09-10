@@ -14,7 +14,7 @@ Incrementally update the knowledge graph after a commit. Do not ask the user for
 
 2. Require `$DATA_DIR/knowledge-graph.json` and `$DATA_DIR/meta.json`. If either is missing, report that `/excavator` must create a baseline and **STOP**.
 3. Read `gitCommitHash` from meta as `$LAST_COMMIT_HASH`; get `$HEAD_COMMIT` with `git rev-parse HEAD`. If they match, report that the graph is current and **STOP**.
-4. Resolve `$PLUGIN_ROOT` from `$CLAUDE_PLUGIN_ROOT`, then `$HOME/.understand-anything-plugin`, validating that it contains `skills/excavator/prepare-incremental.mjs`. If it cannot be found, report the error and **STOP** without changing metadata.
+4. Resolve `$PLUGIN_ROOT` from `$CLAUDE_PLUGIN_ROOT`, then `$HOME/.excavator-plugin`, validating that it contains `skills/excavator/prepare-incremental.mjs`. If it cannot be found, report the error and **STOP** without changing metadata.
 5. Ensure core is built, then run the bundled helper with parameterized arguments:
 
    ```bash

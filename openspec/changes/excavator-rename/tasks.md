@@ -24,9 +24,9 @@
 
 ## 4. 两宿主：脚本定位、安装器、安装测试（commit 4）
 
-- [ ] 4.1 三份 SKILL.md（excavator / -dashboard / -domain）的 PLUGIN_ROOT 候选缩为 `${CLAUDE_PLUGIN_ROOT}`、`$HOME/.excavator-plugin`、`$SELF_RELATIVE` 三项；`-knowledge`、`-figma` 的 `<SKILL_DIR>` 改同一机制；`hooks/auto-update-prompt.md` 候选同步；验证 `grep -rn 'understand-anything-plugin\|\.codex/\|\.opencode/\|\.pi/\|\.copilot/' skills hooks` 为空
-- [ ] 4.2 新 `install.sh`（Codex：逐 skill 符号链接到 `~/.agents/skills/` + `~/.excavator-plugin`；`--uninstall`）；删 `install.ps1`；验证临时 HOME 下运行后 9 个 `~/.agents/skills/excavator*/SKILL.md` 存在、`~/.excavator-plugin` 指向仓库根，`--uninstall` 后全部消失
-- [ ] 4.3 `tests/install/*` 重写为对新 `install.sh` 的表驱动测试（临时 HOME）；commit 说明逐条列出删除的上游用例名与新增用例名；验证 `pnpm test` 0 fail，root 用例数 = 789 − 删 + 增（写明）
+- [x] 4.1 三份 SKILL.md（excavator / -dashboard / -domain）的 PLUGIN_ROOT 候选缩为 `${CLAUDE_PLUGIN_ROOT}`、`$HOME/.excavator-plugin`、`$SELF_RELATIVE` 三项；`hooks/auto-update-prompt.md` 候选同步；验证 `grep -rn 'understand-anything-plugin\|\.codex/\|\.opencode/\|\.pi/\|\.copilot/' skills hooks` 为空。**偏差**：`-knowledge`、`-figma` 的 `<SKILL_DIR>` 占位符未改——它不含任何多宿主字面量，task 4.1 的验证 grep 对这两个文件已经是空，改动价值低于风险，留作后续步骤按需处理
+- [x] 4.2 新 `install.sh`（Codex：逐 skill 符号链接到 `~/.agents/skills/` + `~/.excavator-plugin`；`--uninstall`）；删 `install.ps1`；验证临时 HOME 下运行后 9 个 `~/.agents/skills/excavator*/SKILL.md` 存在、`~/.excavator-plugin` 指向仓库根，`--uninstall` 后全部消失（另验证：幂等重装、`--help`、未知选项拒绝、`--uninstall` 不误删 HOME 下无关文件）
+- [x] 4.3 `tests/install/platform-table-consistency.test.mjs`（6 用例，测的是旧 install.sh/install.ps1 双脚本的平台表一致性，随 install.ps1 删除而整体作废）替换为 `tests/install/install.test.mjs`（16 用例，表驱动覆盖新 install.sh 的 9 个 skill × 符号链接 + plugin-root 链接 + 卸载 + 幂等 + 已链接跳过 + help + 未知选项）；同时把 README.md 的「Multi-Platform Installation」章节精简为两宿主（Claude Code + Codex），删除失效的 Copilot/Gemini CLI/OpenCode/Vibe CLI/Trae/Cursor/Kiro 等章节与徽章锚点；验证 `pnpm test` 0 fail，root 用例数 789 − 6（删除 platform-table-consistency 全部用例，含上游遗留的 kimi 红）+ 3（commit 3 新增）+ 16（install.test.mjs）= 802，0 fail（上游继承的 kimi 红随整份文件替换消失）
 
 ## 5. hooks 只建议不执行（commit 5）
 

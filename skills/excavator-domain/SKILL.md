@@ -48,26 +48,19 @@ DATA_DIR="$PROJECT_ROOT/.excavator"
 ```
 Because each phase may run in a fresh shell, carry `$DATA_DIR` forward like `$PROJECT_ROOT`, re-resolving it with the line above if a later command block needs it.
 
-**Important:** do **not** assume the plugin root is simply two directories above the skill path string. In many installations `~/.agents/skills/excavator-domain` is a symlink into the real plugin checkout. Prefer runtime-provided plugin roots first (for Claude), then fall back to universal symlinks, skill symlink resolution, and common clone-based install paths.
+**Important:** do **not** assume the plugin root is simply two directories above the skill path string. In many installations `~/.agents/skills/excavator-domain` is a symlink into the real plugin checkout. Try, in order: the Claude Code runtime root, the universal install symlink, then the self-relative path resolved from the skill symlink.
 
 Resolve the plugin root like this:
 
 ```bash
 SKILL_REAL=$(realpath ~/.agents/skills/excavator-domain 2>/dev/null || readlink -f ~/.agents/skills/excavator-domain 2>/dev/null || echo "")
 SELF_RELATIVE=$([ -n "$SKILL_REAL" ] && cd "$SKILL_REAL/../.." 2>/dev/null && pwd || echo "")
-COPILOT_SKILL_REAL=$(realpath ~/.copilot/skills/excavator-domain 2>/dev/null || readlink -f ~/.copilot/skills/excavator-domain 2>/dev/null || echo "")
-COPILOT_SELF_RELATIVE=$([ -n "$COPILOT_SKILL_REAL" ] && cd "$COPILOT_SKILL_REAL/../.." 2>/dev/null && pwd || echo "")
 
 PLUGIN_ROOT=""
 for candidate in \
   "${CLAUDE_PLUGIN_ROOT}" \
-  "$HOME/.understand-anything-plugin" \
-  "$SELF_RELATIVE" \
-  "$COPILOT_SELF_RELATIVE" \
-  "$HOME/.codex/excavator/excavator-plugin" \
-  "$HOME/.opencode/excavator/excavator-plugin" \
-  "$HOME/.pi/excavator/excavator-plugin" \
-  "$HOME/excavator/excavator-plugin"; do
+  "$HOME/.excavator-plugin" \
+  "$SELF_RELATIVE"; do
   if [ -n "$candidate" ] && [ -f "$candidate/package.json" ] && [ -f "$candidate/pnpm-workspace.yaml" ]; then
     PLUGIN_ROOT="$candidate"
     break
@@ -78,13 +71,8 @@ if [ -z "$PLUGIN_ROOT" ]; then
   echo "Error: Cannot find the excavator plugin root."
   echo "Checked:"
   echo "  - ${CLAUDE_PLUGIN_ROOT:-<unset CLAUDE_PLUGIN_ROOT>}"
-  echo "  - $HOME/.understand-anything-plugin"
+  echo "  - $HOME/.excavator-plugin"
   echo "  - ${SELF_RELATIVE:-<unresolved path derived from ~/.agents/skills/excavator-domain>}"
-  echo "  - ${COPILOT_SELF_RELATIVE:-<unresolved path derived from ~/.copilot/skills/excavator-domain>}"
-  echo "  - $HOME/.codex/excavator/excavator-plugin"
-  echo "  - $HOME/.opencode/excavator/excavator-plugin"
-  echo "  - $HOME/.pi/excavator/excavator-plugin"
-  echo "  - $HOME/excavator/excavator-plugin"
   echo "Make sure the plugin is installed correctly."
   exit 1
 fi

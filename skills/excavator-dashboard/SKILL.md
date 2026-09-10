@@ -47,32 +47,19 @@ Start the Excavator dashboard to visualize the knowledge graph for the current p
 
 3. Find the dashboard code. The dashboard is at `packages/dashboard/` relative to this plugin's root directory. Check these paths in order and use the first that exists:
    - `${CLAUDE_PLUGIN_ROOT}/packages/dashboard/` (Claude Code runtime root, highest priority)
-   - `~/.understand-anything-plugin/packages/dashboard/` (universal symlink, all installs)
+   - `~/.excavator-plugin/packages/dashboard/` (universal symlink, all installs)
    - Two levels up from `~/.agents/skills/excavator-dashboard` real path (self-relative fallback)
-   - Two levels up from `~/.copilot/skills/excavator-dashboard` real path (Copilot personal skills fallback)
-   - Common clone-based install roots:
-     - `~/.codex/excavator/excavator-plugin/packages/dashboard/`
-     - `~/.opencode/excavator/excavator-plugin/packages/dashboard/`
-     - `~/.pi/excavator/excavator-plugin/packages/dashboard/`
-     - `~/excavator/excavator-plugin/packages/dashboard/`
 
    Use the Bash tool to resolve:
    ```bash
    SKILL_REAL=$(realpath ~/.agents/skills/excavator-dashboard 2>/dev/null || readlink -f ~/.agents/skills/excavator-dashboard 2>/dev/null || echo "")
    SELF_RELATIVE=$([ -n "$SKILL_REAL" ] && cd "$SKILL_REAL/../.." 2>/dev/null && pwd || echo "")
-   COPILOT_SKILL_REAL=$(realpath ~/.copilot/skills/excavator-dashboard 2>/dev/null || readlink -f ~/.copilot/skills/excavator-dashboard 2>/dev/null || echo "")
-   COPILOT_SELF_RELATIVE=$([ -n "$COPILOT_SKILL_REAL" ] && cd "$COPILOT_SKILL_REAL/../.." 2>/dev/null && pwd || echo "")
 
    PLUGIN_ROOT=""
    for candidate in \
      "${CLAUDE_PLUGIN_ROOT}" \
-     "$HOME/.understand-anything-plugin" \
-     "$SELF_RELATIVE" \
-     "$COPILOT_SELF_RELATIVE" \
-     "$HOME/.codex/excavator/excavator-plugin" \
-     "$HOME/.opencode/excavator/excavator-plugin" \
-     "$HOME/.pi/excavator/excavator-plugin" \
-     "$HOME/excavator/excavator-plugin"; do
+     "$HOME/.excavator-plugin" \
+     "$SELF_RELATIVE"; do
      if [ -n "$candidate" ] && [ -d "$candidate/packages/dashboard" ]; then
        PLUGIN_ROOT="$candidate"; break
      fi
@@ -82,13 +69,8 @@ Start the Excavator dashboard to visualize the knowledge graph for the current p
      echo "Error: Cannot find the excavator plugin root."
      echo "Checked:"
      echo "  - ${CLAUDE_PLUGIN_ROOT:-<unset CLAUDE_PLUGIN_ROOT>}"
-     echo "  - $HOME/.understand-anything-plugin"
+     echo "  - $HOME/.excavator-plugin"
      echo "  - ${SELF_RELATIVE:-<unresolved path derived from ~/.agents/skills/excavator-dashboard>}"
-     echo "  - ${COPILOT_SELF_RELATIVE:-<unresolved path derived from ~/.copilot/skills/excavator-dashboard>}"
-     echo "  - $HOME/.codex/excavator/excavator-plugin"
-     echo "  - $HOME/.opencode/excavator/excavator-plugin"
-     echo "  - $HOME/.pi/excavator/excavator-plugin"
-     echo "  - $HOME/excavator/excavator-plugin"
      echo "Make sure you followed the installation instructions for your platform."
      exit 1
    fi

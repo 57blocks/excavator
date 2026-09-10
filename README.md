@@ -3,7 +3,7 @@
 <p align="center">
   <strong>Turn any codebase, knowledge base, or docs into an interactive knowledge graph you can explore, search, and ask questions about.</strong>
   <br />
-  <em>Works with Claude Code, Codex, Cursor, Copilot, Gemini CLI, and more.</em>
+  <em>Works with Claude Code and Codex.</em>
 </p>
 
 <p align="center">
@@ -19,12 +19,6 @@
   <a href="https://github.com/Jingqi-57blocks/excavator/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-MIT-yellow" alt="License: MIT" /></a>
   <a href="https://docs.anthropic.com/en/docs/claude-code"><img src="https://img.shields.io/badge/Claude_Code-8A2BE2" alt="Claude Code" /></a>
   <a href="#codex"><img src="https://img.shields.io/badge/Codex-000000" alt="Codex" /></a>
-  <a href="#vs-code--github-copilot"><img src="https://img.shields.io/badge/Copilot-24292e" alt="Copilot" /></a>
-  <a href="#copilot-cli"><img src="https://img.shields.io/badge/Copilot_CLI-24292e" alt="Copilot CLI" /></a>
-  <a href="#gemini-cli"><img src="https://img.shields.io/badge/Gemini_CLI-4285F4" alt="Gemini CLI" /></a>
-  <a href="#opencode"><img src="https://img.shields.io/badge/OpenCode-38bdf8" alt="OpenCode" /></a>
-  <a href="#mistral-vibe-cli"><img src="https://img.shields.io/badge/Vibe_CLI-7c3aed" alt="Vibe CLI" /></a>
-  <a href="#trae"><img src="https://img.shields.io/badge/Trae-7e22ce" alt="Trae" /></a>
 </p>
 
 <p align="center">
@@ -174,9 +168,9 @@ An interactive web dashboard opens with your codebase visualized as a graph — 
 
 ---
 
-## 🌐 Multi-Platform Installation
+## 🌐 Installation
 
-Excavator works across multiple AI coding platforms.
+Excavator supports two hosts: Claude Code (native plugin) and Codex.
 
 ### Claude Code (Native)
 
@@ -185,86 +179,20 @@ Excavator works across multiple AI coding platforms.
 /plugin install excavator@excavator
 ```
 
+Claude Code invokes every skill with the plugin-name prefix, e.g. `/excavator:excavator` and `/excavator:excavator-chat`.
 
-### One-line install (Codex / OpenCode / OpenClaw / Antigravity / Gemini CLI / Pi Agent / Vibe CLI / VS Code Copilot / Hermes / Cline / KIMI CLI / Trae / Nanobot / Kiro)
-
-
-**macOS / Linux:**
-```bash
-curl -fsSL https://raw.githubusercontent.com/Jingqi-57blocks/excavator/main/install.sh | bash
-# or skip the prompt by passing the platform:
-curl -fsSL https://raw.githubusercontent.com/Jingqi-57blocks/excavator/main/install.sh | bash -s codex
-```
-
-**Windows (PowerShell):**
-```powershell
-iwr -useb https://raw.githubusercontent.com/Jingqi-57blocks/excavator/main/install.ps1 | iex
-```
-
-The installer clones the repo to `~/.understand-anything/repo` and creates the right symlinks for the chosen platform. Restart your CLI/IDE afterwards.
-
-> **Note on invoking skills:** the invocation prefix differs per platform. Most platforms use slash commands (`/excavator`), but **Codex uses `$` instead** — type `$excavator`, not `/excavator`. If neither prefix is recognized on your platform, just ask in plain language: *"Use the excavator skill to analyze this project."*
-
-- Supported `<platform>` values: `gemini`, `codex`, `opencode`, `pi`, `openclaw`, `antigravity`, `vibe`, `vscode`, `hermes`, `cline`, `kimi`, `trae`, `nanobot`, `kiro`
-- Update later:
-  - macOS / Linux: `./install.sh --update`
-  - Windows: `& "$HOME/.understand-anything/repo/install.ps1" -Update`
-- Uninstall:
-  - macOS / Linux: `./install.sh --uninstall <platform>`
-  - Windows: `& "$HOME/.understand-anything/repo/install.ps1" -Uninstall <platform>`
-
-### Cursor
-
-Cursor auto-discovers the plugin via `.cursor-plugin/plugin.json` when this repo is cloned. No manual installation needed — just clone and open in Cursor.
-
-If auto-discovery doesn't pick it up, install it manually: open **Cursor Settings → Plugins**, paste `https://github.com/Jingqi-57blocks/excavator` into the search field, and add it from there.
-
-### VS Code + GitHub Copilot
-
-VS Code with GitHub Copilot (v1.108+) auto-discovers the plugin via `.copilot-plugin/plugin.json` when this repo is cloned. No manual installation needed — just clone and open in VS Code.
-
-For personal skills (available across all projects), run the `install.sh` above with the `vscode` platform.
-
-### Copilot CLI
+### Codex
 
 ```bash
-copilot plugin install Jingqi-57blocks/excavator:excavator-plugin
+git clone https://github.com/Jingqi-57blocks/excavator.git ~/.excavator-plugin
+~/.excavator-plugin/install.sh
 ```
 
-### Kiro CLI / IDE
+This symlinks each skill into `~/.agents/skills/` and links `~/.excavator-plugin` to the repository (if you cloned elsewhere, run `install.sh` from that clone instead — it links wherever it's run from). Restart Codex afterwards.
 
-```bash
-curl -fsSL https://raw.githubusercontent.com/Jingqi-57blocks/excavator/main/install.sh | bash -s kiro
-```
+> **Note on invoking skills:** Codex uses `$` instead of `/` — type `$excavator`, not `/excavator`. If neither prefix is recognized, just ask in plain language: *"Use the excavator skill to analyze this project."*
 
-After installation:
-- **Kiro CLI**: `kiro-cli chat --agent excavator "Analyze this project"`
-- **Kiro IDE**: The skills are symlinked into `~/.kiro/skills/` and the `excavator` agent is written to `~/.kiro/agents/excavator.json`, so both are available after restarting the IDE.
-
-For personal skills (available across all projects), run the `install.sh` above with the `kiro` platform.
-
-### Platform Compatibility
-
-| Platform | Status | Install Method |
-|----------|--------|----------------|
-| Claude Code | ✅ Native | Plugin marketplace |
-| Cursor | ✅ Supported | Auto-discovery |
-| VS Code + GitHub Copilot | ✅ Supported | Auto-discovery |
-| Copilot CLI | ✅ Supported | Plugin install |
-| Codex | ✅ Supported | `install.sh codex` |
-| OpenCode | ✅ Supported | `install.sh opencode` |
-| OpenClaw | ✅ Supported | `install.sh openclaw` |
-| Antigravity | ✅ Supported | `install.sh antigravity` |
-| Gemini CLI | ✅ Supported | `install.sh gemini` |
-| Pi Agent | ✅ Supported | `install.sh pi` |
-| Vibe CLI | ✅ Supported | `install.sh vibe` |
-| Hermes | ✅ Supported | `install.sh hermes` |
-| Cline | ✅ Supported | `install.sh cline` |
-| KIMI CLI | ✅ Supported | `install.sh kimi` |
-| Trae | ✅ Supported | `install.sh trae` |
-| Nanobot | ✅ Supported | `install.sh nanobot` |
-| Kiro CLI / IDE | ✅ Supported | `install.sh kiro` |
-
+Uninstall: `~/.excavator-plugin/install.sh --uninstall` (or run `install.sh --uninstall` from wherever you cloned the repo). Update: `git -C ~/.excavator-plugin pull` (the symlinks follow the checkout, no re-run needed).
 
 ---
 
