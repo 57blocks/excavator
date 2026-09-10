@@ -20,7 +20,7 @@ const SCRIPT = resolve(__dirname, '../../../skills/excavator/extract-import-map.
  * Creates parent dirs as needed. Returns the temp project root.
  */
 function setupTree(files) {
-  const root = mkdtempSync(join(tmpdir(), 'ua-eim-test-'));
+  const root = mkdtempSync(join(tmpdir(), 'excavator-eim-test-'));
   for (const [relPath, contents] of Object.entries(files)) {
     const abs = join(root, relPath);
     mkdirSync(dirname(abs), { recursive: true });
@@ -38,8 +38,8 @@ function setupTree(files) {
  * tests can pass `--import` loader hooks to force specific failure modes.
  */
 function runScript(projectRoot, input, extraNodeArgs = [], env = process.env) {
-  const inputPath = join(projectRoot, 'ua-eim-input.json');
-  const outputPath = join(projectRoot, 'ua-eim-output.json');
+  const inputPath = join(projectRoot, 'excavator-eim-input.json');
+  const outputPath = join(projectRoot, 'excavator-eim-output.json');
   writeFileSync(inputPath, JSON.stringify(input), 'utf-8');
   const result = spawnSync(
     'node',
@@ -2152,8 +2152,8 @@ describe('extract-import-map.mjs — tree-sitter init graceful failure', () => {
     });
 
     // Write the loader hook + register module to the temp project root.
-    const hookPath = join(projectRoot, 'ua-eim-fail-hook.mjs');
-    const loaderPath = join(projectRoot, 'ua-eim-fail-loader.mjs');
+    const hookPath = join(projectRoot, 'excavator-eim-fail-hook.mjs');
+    const loaderPath = join(projectRoot, 'excavator-eim-fail-loader.mjs');
     writeFileSync(
       hookPath,
       `export async function resolve(specifier, ctx, nextResolve) {\n` +

@@ -113,7 +113,7 @@ function requestJson(baseUrl: string, requestPath: string): Promise<HttpResult> 
 
 beforeEach(() => {
   originalGraphDir = process.env.GRAPH_DIR;
-  tempProject = fs.mkdtempSync(path.join(os.tmpdir(), "ua-dashboard-"));
+  tempProject = fs.mkdtempSync(path.join(os.tmpdir(), "excavator-dashboard-"));
   process.env.GRAPH_DIR = tempProject;
   // Keep both cwd fallback roots inside the fixture. A developer's existing
   // knowledge graph must not satisfy this suite's missing-graph request.

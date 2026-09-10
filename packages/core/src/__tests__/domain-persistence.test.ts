@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { saveDomainGraph, loadDomainGraph } from "../persistence/index.js";
 import type { KnowledgeGraph } from "../types.js";
 
-const testRoot = join(tmpdir(), "ua-domain-persist-test");
+const testRoot = join(tmpdir(), "excavator-domain-persist-test");
 
 const domainGraph: KnowledgeGraph = {
   version: "1.0.0",

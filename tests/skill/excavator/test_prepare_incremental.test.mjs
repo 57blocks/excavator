@@ -64,7 +64,7 @@ function commit(root, message, { forcePaths = [] } = {}) {
 }
 
 function setupRepository(files) {
-  const root = mkdtempSync(join(tmpdir(), 'ua-incremental-test-'));
+  const root = mkdtempSync(join(tmpdir(), 'excavator-incremental-test-'));
   roots.push(root);
   git(root, ['init', '-b', 'main']);
   git(root, ['config', 'user.email', 'test@example.com']);

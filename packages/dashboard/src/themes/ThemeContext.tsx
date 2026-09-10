@@ -12,7 +12,7 @@ import { DEFAULT_THEME_CONFIG } from "./types.ts";
 import { getPreset } from "./presets.ts";
 import { applyTheme } from "./theme-engine.ts";
 
-const STORAGE_KEY = "ua-theme";
+const STORAGE_KEY = "excavator-theme";
 
 interface ThemeContextValue {
   config: ThemeConfig;

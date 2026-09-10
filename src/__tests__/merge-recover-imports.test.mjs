@@ -72,7 +72,7 @@ function importsEdge(src, tgt) {
 }
 
 beforeEach(() => {
-  projectRoot = mkdtempSync(join(tmpdir(), "ua-merge-test-"));
+  projectRoot = mkdtempSync(join(tmpdir(), "excavator-merge-test-"));
   intermediateDir = join(projectRoot, ".excavator", "intermediate");
   mkdirSync(intermediateDir, { recursive: true });
 });
@@ -308,7 +308,7 @@ describe("merge-batch-graphs.py data-dir resolution (.excavator, no fallback)", 
   const preRenameDir = ["." , "u", "a"].join("");
 
   it("fresh project reads/writes under .excavator/", () => {
-    const root = mkdtempSync(join(tmpdir(), "ua-merge-uadir-"));
+    const root = mkdtempSync(join(tmpdir(), "excavator-merge-uadir-"));
     try {
       const inter = join(root, ".excavator", "intermediate");
       mkdirSync(inter, { recursive: true });
@@ -330,7 +330,7 @@ describe("merge-batch-graphs.py data-dir resolution (.excavator, no fallback)", 
   });
 
   it("does NOT fall back to a pre-rename data directory even when .excavator/ also exists", () => {
-    const root = mkdtempSync(join(tmpdir(), "ua-merge-legacy-"));
+    const root = mkdtempSync(join(tmpdir(), "excavator-merge-legacy-"));
     try {
       const legacyInter = join(root, preRenameDir, "intermediate");
       mkdirSync(legacyInter, { recursive: true });

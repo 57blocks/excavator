@@ -29,7 +29,7 @@ const SCRIPT = resolve(
  * fallback can set `gitInit=false`.
  */
 function setupTree(files, { gitInit = true } = {}) {
-  const root = mkdtempSync(join(tmpdir(), 'ua-scan-test-'));
+  const root = mkdtempSync(join(tmpdir(), 'excavator-scan-test-'));
   for (const [relPath, contents] of Object.entries(files)) {
     const abs = join(root, relPath);
     mkdirSync(dirname(abs), { recursive: true });
@@ -63,7 +63,7 @@ const _runScriptOutputDirs = [];
  * written by the script (or null on failure).
  */
 function runScript(projectRoot, extraArgs = [], envOverrides = {}) {
-  const outputDir = mkdtempSync(join(tmpdir(), 'ua-scan-out-'));
+  const outputDir = mkdtempSync(join(tmpdir(), 'excavator-scan-out-'));
   _runScriptOutputDirs.push(outputDir);
   const outputPath = join(outputDir, 'scan-output.json');
   const result = spawnSync('node', [SCRIPT, projectRoot, outputPath, ...extraArgs], {
@@ -717,7 +717,7 @@ describe('scan-project.mjs — determinism', () => {
     projectRoot = setupTree({
       'src/inside.ts': 'export const inside = true;\n',
     });
-    const externalRoot = mkdtempSync(join(tmpdir(), 'ua-scan-external-'));
+    const externalRoot = mkdtempSync(join(tmpdir(), 'excavator-scan-external-'));
     const externalFile = join(externalRoot, 'secret.ts');
 
     try {

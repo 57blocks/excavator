@@ -12,7 +12,7 @@ describe("persistence", () => {
   let tempDir: string;
 
   beforeEach(() => {
-    tempDir = mkdtempSync(join(tmpdir(), "ua-test-"));
+    tempDir = mkdtempSync(join(tmpdir(), "excavator-test-"));
   });
 
   afterEach(() => {
@@ -215,7 +215,7 @@ describe("no legacy data-directory fallback (single source of truth: .excavator/
   const preRenameLongDir = "." + ["understand", "anything"].join("-");
 
   beforeEach(() => {
-    tempDir = mkdtempSync(join(tmpdir(), "ua-legacy-test-"));
+    tempDir = mkdtempSync(join(tmpdir(), "excavator-legacy-test-"));
   });
 
   afterEach(() => {

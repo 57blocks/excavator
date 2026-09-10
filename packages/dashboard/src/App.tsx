@@ -43,7 +43,7 @@ const OnboardingOverlay = lazy(() => import("./components/OnboardingOverlay"));
 
 const DEMO_MODE = import.meta.env.VITE_DEMO_MODE === "true";
 const SESSION_TOKEN_KEY = "excavator-token";
-const ONBOARDING_DISMISSED_KEY = "ua-onboarding-dismissed-v1";
+const ONBOARDING_DISMISSED_KEY = "excavator-onboarding-dismissed-v1";
 type SidebarTab = "info" | "files";
 
 function shouldShowOnboarding(): boolean {

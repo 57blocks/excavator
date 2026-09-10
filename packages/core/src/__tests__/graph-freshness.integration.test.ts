@@ -22,7 +22,7 @@ function git(cwd: string, ...args: string[]): string {
   }).trim();
 }
 
-function createTemporaryDirectory(prefix = "ua-freshness-"): string {
+function createTemporaryDirectory(prefix = "excavator-freshness-"): string {
   const directory = mkdtempSync(join(tmpdir(), prefix));
   temporaryDirectories.push(directory);
   return directory;

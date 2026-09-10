@@ -104,7 +104,7 @@ function benchmarkArtifactEntries() {
   return readdirSync(tmpdir(), { withFileTypes: true })
     .filter(
       (entry) =>
-        entry.isDirectory() && entry.name.startsWith('ua-large-bench-'),
+        entry.isDirectory() && entry.name.startsWith('excavator-large-bench-'),
     )
     .map((entry) => entry.name)
     .sort();
@@ -128,7 +128,7 @@ function expectSafeReportWriteFailure(result, sensitivePaths) {
       expect(result.stderr).not.toContain(alias);
     }
   }
-  expect(result.stderr).not.toContain('ua-large-bench-');
+  expect(result.stderr).not.toContain('excavator-large-bench-');
 }
 
 function runGit(directory, args) {
@@ -1445,7 +1445,7 @@ describe('large repository benchmark CLI', () => {
   );
 
   it('wraps cleanup operation failures without exposing artifact paths', () => {
-    const artifactRoot = join(tmpdir(), 'ua-large-bench-private-cleanup');
+    const artifactRoot = join(tmpdir(), 'excavator-large-bench-private-cleanup');
     let cleanupError;
 
     try {

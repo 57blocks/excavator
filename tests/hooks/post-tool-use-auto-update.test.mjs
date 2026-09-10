@@ -35,7 +35,7 @@ function runHook({
   input,
   pluginRoot,
 } = {}) {
-  const projectRoot = mkdtempSync(join(tmpdir(), 'ua-post-tool-use-'));
+  const projectRoot = mkdtempSync(join(tmpdir(), 'excavator-post-tool-use-'));
   const dataDir = join(projectRoot, dataDirName);
   mkdirSync(dataDir);
   if (createConfig) {

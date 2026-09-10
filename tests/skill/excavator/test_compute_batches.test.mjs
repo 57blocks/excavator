@@ -18,7 +18,7 @@ function runScript(projectRoot, extraArgs = [], env = process.env) {
 }
 
 function setupProject(fixtureName) {
-  const root = mkdtempSync(join(tmpdir(), 'ua-cb-test-'));
+  const root = mkdtempSync(join(tmpdir(), 'excavator-cb-test-'));
   mkdirSync(join(root, '.excavator', 'intermediate'), { recursive: true });
   const fixturePath = join(FIXTURES, fixtureName);
   const dest = join(root, '.excavator', 'intermediate', 'scan-result.json');
@@ -29,7 +29,7 @@ function setupProject(fixtureName) {
 // Variant of setupProject that seeds the fixture into an arbitrary data
 // directory name (used by the data-dir-resolution tests below).
 function setupProjectInDir(fixtureName, dirName) {
-  const root = mkdtempSync(join(tmpdir(), 'ua-cb-dir-test-'));
+  const root = mkdtempSync(join(tmpdir(), 'excavator-cb-dir-test-'));
   mkdirSync(join(root, dirName, 'intermediate'), { recursive: true });
   const fixturePath = join(FIXTURES, fixtureName);
   writeFileSync(
@@ -45,7 +45,7 @@ function readBatches(projectRoot) {
 }
 
 function setupAmbiguousRingProject() {
-  const root = mkdtempSync(join(tmpdir(), 'ua-cb-ring-'));
+  const root = mkdtempSync(join(tmpdir(), 'excavator-cb-ring-'));
   mkdirSync(join(root, '.excavator', 'intermediate'), { recursive: true });
 
   const paths = ['zeta', 'äther', 'åland']
@@ -164,7 +164,7 @@ describe('compute-batches.mjs — explicit benchmark paths', () => {
   });
 
   it('reads and writes outside the project data directory when requested', () => {
-    projectRoot = mkdtempSync(join(tmpdir(), 'ua-cb-explicit-'));
+    projectRoot = mkdtempSync(join(tmpdir(), 'excavator-cb-explicit-'));
     const scanPath = join(projectRoot, 'benchmark-input', 'scan-result.json');
     const outputPath = join(projectRoot, 'benchmark-output', 'batches.json');
     mkdirSync(dirname(scanPath), { recursive: true });
@@ -218,7 +218,7 @@ describe('compute-batches.mjs - invalid benchmark path options', () => {
     _name,
     argTemplates,
   ) => {
-    testRoot = mkdtempSync(join(tmpdir(), 'ua-cb-invalid-'));
+    testRoot = mkdtempSync(join(tmpdir(), 'excavator-cb-invalid-'));
     const projectRoot = join(testRoot, 'subject-项目');
     const scanPath = join(testRoot, 'input data', 'scan-result.json');
     const outputPath = join(testRoot, 'output data', 'batches.json');
@@ -281,7 +281,7 @@ describe('compute-batches.mjs — exports extraction', () => {
   });
 
   it('populates exports for code files via tree-sitter', () => {
-    root = mkdtempSync(join(tmpdir(), 'ua-cb-exp-'));
+    root = mkdtempSync(join(tmpdir(), 'excavator-cb-exp-'));
     mkdirSync(join(root, '.excavator', 'intermediate'), { recursive: true });
     mkdirSync(join(root, 'src'), { recursive: true });
     writeFileSync(join(root, 'src', 'a.ts'),
@@ -318,7 +318,7 @@ describe('compute-batches.mjs — exports extraction', () => {
   });
 
   it('emits warning when file is missing from disk (read error path)', () => {
-    root = mkdtempSync(join(tmpdir(), 'ua-cb-exp-err-'));
+    root = mkdtempSync(join(tmpdir(), 'excavator-cb-exp-err-'));
     mkdirSync(join(root, '.excavator', 'intermediate'), { recursive: true });
     // Note: NOT creating the file on disk — scan-result.json references it,
     // but the file doesn't exist, so the read branch fires.
@@ -429,7 +429,7 @@ describe('compute-batches.mjs — Group E MAX_E split', () => {
   });
 
   it('splits 25 .md files under docs/ into [20, 5]', () => {
-    root = mkdtempSync(join(tmpdir(), 'ua-cb-maxe-'));
+    root = mkdtempSync(join(tmpdir(), 'excavator-cb-maxe-'));
     mkdirSync(join(root, '.excavator', 'intermediate'), { recursive: true });
 
     const files = [];
@@ -511,7 +511,7 @@ describe('compute-batches.mjs — neighborMap + batchImportData', () => {
   });
 
   it('neighborMap entries carry symbols when target has exports', () => {
-    const root = mkdtempSync(join(tmpdir(), 'ua-cb-nbr-'));
+    const root = mkdtempSync(join(tmpdir(), 'excavator-cb-nbr-'));
     mkdirSync(join(root, '.excavator', 'intermediate'), { recursive: true });
     mkdirSync(join(root, 'src', 'a'), { recursive: true });
     mkdirSync(join(root, 'src', 'b'), { recursive: true });
@@ -589,7 +589,7 @@ describe('compute-batches.mjs — neighborMap truncation', () => {
   });
 
   it('truncates and warns when neighbors > 50', () => {
-    root = mkdtempSync(join(tmpdir(), 'ua-cb-trunc-'));
+    root = mkdtempSync(join(tmpdir(), 'excavator-cb-trunc-'));
     mkdirSync(join(root, '.excavator', 'intermediate'), { recursive: true });
     // hub.ts imported by 60 other files
     const files = [{ path: 'src/hub.ts', language: 'typescript', sizeLines: 1, fileCategory: 'code' }];
@@ -796,7 +796,7 @@ describe('compute-batches.mjs — --changed-files', () => {
   it.skipIf(process.platform === 'win32')(
     'preserves a newline-containing path from a JSON changed-file list',
     () => {
-      root = mkdtempSync(join(tmpdir(), 'ua-cb-newline-'));
+      root = mkdtempSync(join(tmpdir(), 'excavator-cb-newline-'));
       const intermediate = join(root, '.excavator', 'intermediate');
       const sourcePath = 'src/line\nbreak.ts';
       mkdirSync(intermediate, { recursive: true });
@@ -826,7 +826,7 @@ describe('compute-batches.mjs — --changed-files', () => {
   );
 
   it('emits only changed files inside retained batches while preserving unchanged neighbor context', () => {
-    root = mkdtempSync(join(tmpdir(), 'ua-cb-changed-nbr-'));
+    root = mkdtempSync(join(tmpdir(), 'excavator-cb-changed-nbr-'));
     mkdirSync(join(root, '.excavator', 'intermediate'), { recursive: true });
     mkdirSync(join(root, 'src', 'a'), { recursive: true });
     mkdirSync(join(root, 'src', 'b'), { recursive: true });

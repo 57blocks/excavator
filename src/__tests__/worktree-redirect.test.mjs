@@ -63,7 +63,7 @@ let subdir;
 
 describeWithBash("worktree-redirect snippet (issue #133)", () => {
   beforeAll(() => {
-    tmpRoot = realpathSync(mkdtempSync(join(tmpdir(), "ua-wt-")));
+    tmpRoot = realpathSync(mkdtempSync(join(tmpdir(), "excavator-wt-")));
     mainRepo = join(tmpRoot, "main");
     worktree = join(tmpRoot, "wt");
     subdir = join(worktree, "src", "deep");

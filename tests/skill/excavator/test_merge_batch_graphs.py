@@ -1053,7 +1053,7 @@ class TestMultiPart(unittest.TestCase):
 
     def setUp(self) -> None:
         import tempfile
-        self.tmp = Path(tempfile.mkdtemp(prefix="ua-mbg-"))
+        self.tmp = Path(tempfile.mkdtemp(prefix="excavator-mbg-"))
         self.intermediate = self.tmp / ".excavator" / "intermediate"
         self.intermediate.mkdir(parents=True, exist_ok=True)
 
@@ -1167,7 +1167,7 @@ class TestIncrementalBatchExisting(unittest.TestCase):
 
     def setUp(self) -> None:
         import tempfile
-        self.tmp = Path(tempfile.mkdtemp(prefix="ua-mbg-existing-"))
+        self.tmp = Path(tempfile.mkdtemp(prefix="excavator-mbg-existing-"))
         self.intermediate = self.tmp / ".excavator" / "intermediate"
         self.intermediate.mkdir(parents=True, exist_ok=True)
 
@@ -1236,7 +1236,7 @@ class TestUnrecognizedBatchFilename(unittest.TestCase):
 
     def setUp(self) -> None:
         import tempfile
-        self.tmp = Path(tempfile.mkdtemp(prefix="ua-mbg-unrec-"))
+        self.tmp = Path(tempfile.mkdtemp(prefix="excavator-mbg-unrec-"))
         self.intermediate = self.tmp / ".excavator" / "intermediate"
         self.intermediate.mkdir(parents=True, exist_ok=True)
 
@@ -1348,7 +1348,7 @@ class TestEmptyBatchGuard(unittest.TestCase):
 
     def setUp(self) -> None:
         import tempfile
-        self.tmp = Path(tempfile.mkdtemp(prefix="ua-mbg-empty-"))
+        self.tmp = Path(tempfile.mkdtemp(prefix="excavator-mbg-empty-"))
         self.intermediate = self.tmp / ".excavator" / "intermediate"
         self.intermediate.mkdir(parents=True, exist_ok=True)
 
@@ -1400,7 +1400,7 @@ class TestUaDirResolution(unittest.TestCase):
 
     def setUp(self) -> None:
         import tempfile
-        self.tmp = Path(tempfile.mkdtemp(prefix="ua-mbg-uadir-"))
+        self.tmp = Path(tempfile.mkdtemp(prefix="excavator-mbg-uadir-"))
 
     def tearDown(self) -> None:
         import shutil

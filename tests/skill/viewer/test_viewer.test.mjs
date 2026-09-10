@@ -46,7 +46,7 @@ function git(projectRoot, ...args) {
 }
 
 function setupProject(dataDirName) {
-  const root = mkdtempSync(join(tmpdir(), "ua-viewer-"));
+  const root = mkdtempSync(join(tmpdir(), "excavator-viewer-"));
   mkdirSync(join(root, "src"), { recursive: true });
   writeFileSync(join(root, "src", "a.ts"), "export const a = 1;\n");
   writeFileSync(join(root, "secret.txt"), "not in graph\n");

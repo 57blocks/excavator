@@ -622,7 +622,7 @@ function buildDefaultsOnlyFilter() {
   // only checks existsSync() before reading.
   const fakeProjectRoot = join(
     require('node:os').tmpdir(),
-    `ua-scan-defaults-${process.pid}-${Date.now()}`,
+    `excavator-scan-defaults-${process.pid}-${Date.now()}`,
   );
   return createIgnoreFilter(fakeProjectRoot);
 }

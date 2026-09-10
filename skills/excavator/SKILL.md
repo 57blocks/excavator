@@ -671,7 +671,7 @@ Assemble the full KnowledgeGraph JSON object:
 
 #### Default path (no `--review`): inline deterministic validation
 
-Write the following Node.js script to `$DATA_DIR/tmp/ua-inline-validate.cjs`:
+Write the following Node.js script to `$DATA_DIR/tmp/excavator-inline-validate.cjs`:
 
 ```javascript
 #!/usr/bin/env node
@@ -741,7 +741,7 @@ try {
 
 Execute it:
 ```bash
-node "$DATA_DIR/tmp/ua-inline-validate.cjs" \
+node "$DATA_DIR/tmp/excavator-inline-validate.cjs" \
   "$DATA_DIR/intermediate/assembled-graph.json" \
   "$DATA_DIR/intermediate/review.json"
 ```

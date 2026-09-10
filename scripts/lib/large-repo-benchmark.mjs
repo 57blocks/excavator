@@ -1675,7 +1675,7 @@ export function warningSummary(stageResults) {
 export async function runBenchmark(options, hooks = {}) {
   const startedAt = new Date();
   const overallStart = performance.now();
-  const artifactRoot = mkdtempSync(join(tmpdir(), 'ua-large-bench-'));
+  const artifactRoot = mkdtempSync(join(tmpdir(), 'excavator-large-bench-'));
   const redactionRoots = [
     [options.repoRoot, '<subject>'],
     [REPO_ROOT, '<tool>'],

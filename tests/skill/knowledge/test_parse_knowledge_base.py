@@ -52,7 +52,7 @@ def _fs_is_case_sensitive(tmp: Path) -> bool:
 
 class TestFindMarkdownCaseInsensitive(unittest.TestCase):
     def setUp(self) -> None:
-        self.tmp = Path(tempfile.mkdtemp(prefix="ua-pkb-"))
+        self.tmp = Path(tempfile.mkdtemp(prefix="excavator-pkb-"))
 
     def tearDown(self) -> None:
         shutil.rmtree(self.tmp, ignore_errors=True)
@@ -85,7 +85,7 @@ class TestTitleCaseWiki(unittest.TestCase):
     """A wiki using Index.md / Log.md must parse the same as index.md / log.md."""
 
     def setUp(self) -> None:
-        self.tmp = Path(tempfile.mkdtemp(prefix="ua-pkb-wiki-"))
+        self.tmp = Path(tempfile.mkdtemp(prefix="excavator-pkb-wiki-"))
         wiki = self.tmp / "wiki"
         (wiki / "concepts").mkdir(parents=True)
         (wiki / "projects").mkdir(parents=True)
@@ -161,7 +161,7 @@ class TestLowercaseWikiStillWorks(unittest.TestCase):
     """Regression guard: the original all-lowercase layout keeps parsing."""
 
     def setUp(self) -> None:
-        self.tmp = Path(tempfile.mkdtemp(prefix="ua-pkb-lower-"))
+        self.tmp = Path(tempfile.mkdtemp(prefix="excavator-pkb-lower-"))
         (self.tmp / "concepts").mkdir(parents=True)
         (self.tmp / "index.md").write_text(
             "# Wiki\n\n## Concepts\n\n- [[concepts/attention]]\n", encoding="utf-8"
