@@ -139,6 +139,8 @@ git -C "$UA" archive 5feed1f2 tests scripts vitest.config.ts | tar -x -C "$V2"
 
 **3.8 ②b 之后的 follow-ups（按影响排序，都不在 ②a/②b 的任务范围内）**
 
+**跑真实全量之前的两条硬前置**（2026-09-11 各踩一次）：(1) `.claude-plugin/plugin.json` 的 `agents` 键缺省或为数组——写成字符串时 `--plugin-dir` **静默**不加载任何东西，九个 skill 全是 `Unknown command`、`num_turns: 0`、无报错；先 `claude plugin validate` 看到 `Validation passed` 再跑。(2) headless 命令**必须显式 `--model <id>`**：不给就用会话默认，第一次真实全量因此落到 `claude-fable-5-1`，跑到约 80% 的批次（83 个 batch 文件）时撞额度上限，**$71.13 / 798k 输出 token / 没有 assembled graph**。模型与预算是用户的决定，配方里点名、动手前报价。
+
 1. **补充层的产物到不了发布的图，并在 SAVE 时被清走。** 阶段 2.3/2.5/6b 写的是 `intermediate/annotated-graph.json` 与 `validated-graph.json`（②a 的定稿：UA 的产物不变），而 `knowledge-graph.json` 存的是 `assembled-graph.json`；Phase 7 第 4 步又把 `intermediate/` 除 `scan-result.json` 外全部 `mv` 进 `.trash-*`（7 天后清）。**后果**：`coverage`/`gaps`/边的 `provenance`/节点的 `verification`/`project.model` 目前只活在中间目录与回收站里，MCP（第 ④ 步）和 dashboard 都读不到。`meta.json.excavator` 能过增量 finalize（`{...previous}`），但会被全量 SAVE 的重写覆盖。要么加一个「发布补充字段」的新阶段（7b），要么让 ④ 直接读 `validated-graph.json`——是个需要用户定的方向题。
 2. **纯 cosmetic 提交仍然看不到 dirty。** `SKIP` 分支跑完 `finalize-incremental.mjs` 就 STOP，阶段 2.3 根本不执行，所以 dirty 标记只落在**到得了 2.3 的运行**上（PARTIAL/ARCHITECTURE/FULL 且计划里带 cosmetic 文件）。而这正是这个功能写给的那一种提交。要修就得给 SKIP 分支加一步（改 Phase 0 的现有表格，本步不允许）。同一段的 UA 行为——cosmetic SKIP 上 commit 标记照旧前进——是有意保留的。
 3. **抽取器修复仍在存分支**：见下面的清单。`owners` 在真实运行里几乎永远为空（今天只有 Go/Rust/C++ 报 `owner`），所以 `identity-collision` 只能靠「同文件同名多声明」判定。

@@ -429,28 +429,56 @@ describe('both skills wire the publish step in additively', () => {
     expect(skill).toContain('$DATA_DIR/excavator/');
   });
 
-  it('runs in the domain skill before its own cleanup', () => {
-    expect(domainSkill).toContain('### Phase 5.1: Publish Annotations (added)');
-    expect(domainSkill.indexOf('### Phase 5.1'))
-      .toBeGreaterThan(domainSkill.indexOf('### Phase 5: Validate and Save'));
-    expect(domainSkill.indexOf('### Phase 5.1'))
-      .toBeLessThan(domainSkill.indexOf('### Phase 6: Launch Dashboard'));
+  it('runs INSIDE the domain skill\'s Phase 5, between steps 4 and 5', () => {
+    // Placement is the whole point: step 5 deletes `domain-analysis.json`,
+    // which is this step's input, so a block sitting after the phase would
+    // always hit the documented no-op. The acceptor caught exactly that.
+    const step4 = domainSkill.indexOf('4. Save to `$DATA_DIR/domain-graph.json`');
+    const publish = domainSkill.indexOf('**Publish the step anchors (added; do this before step 5).**');
+    const step5 = domainSkill.indexOf('5. Clean up `$DATA_DIR/intermediate/domain-analysis.json`');
+    expect(step4).toBeGreaterThan(-1);
+    expect(publish).toBeGreaterThan(step4);
+    expect(step5).toBeGreaterThan(publish);
     expect(domainSkill).toContain('--domain-annotated');
+    // The later section is a pointer now, not a second copy of the command.
+    const pointer = domainSkill.slice(
+      domainSkill.indexOf('### Phase 5.1: Publish Annotations (added)'),
+      domainSkill.indexOf('### Phase 6: Launch Dashboard'),
+    );
+    expect(pointer).toContain('inside Phase 5, between steps 4 and 5');
+    expect(pointer).not.toContain('```bash');
   });
 
-  it('deletes nothing from either skill', () => {
+  it('deletes nothing UA wrote, in either skill', () => {
     const refs = ['excavator-v2', 'origin/excavator-v2'];
     const ref = refs.find(candidate => spawnSync(
       'git', ['-C', repoRoot, 'rev-parse', '--verify', '--quiet', `${candidate}^{commit}`], { encoding: 'utf-8' },
     ).status === 0);
     expect(ref).toBeTruthy();
     for (const path of ['skills/excavator/SKILL.md', 'skills/excavator-domain/SKILL.md']) {
-      const numstat = spawnSync('git', ['-C', repoRoot, 'diff', '--numstat', ref, '--', path], { encoding: 'utf-8' })
-        .stdout.trim();
-      expect(numstat, path).not.toBe('');
-      const [added, deleted] = numstat.split('\n')[0].split('\t');
-      expect(Number(deleted), `${path} deleted ${deleted} line(s)`).toBe(0);
-      expect(Number(added)).toBeGreaterThan(0);
+      const base = spawnSync('git', ['-C', repoRoot, 'show', `${ref}:${path}`], {
+        encoding: 'utf-8', maxBuffer: 32 * 1024 * 1024,
+      }).stdout;
+      const current = readFileSync(resolve(repoRoot, path), 'utf-8');
+
+      // The property is "every line the base branch has still exists, in
+      // order" — that is what "additions only to UA's text" means. `git diff
+      // --numstat == 0 deletions` is a proxy for it that also forbids editing
+      // lines WE added on this branch, which is how the mis-placed publish
+      // block could not be moved without weakening the check. Asserting the
+      // subsequence directly protects UA's text exactly as strictly and lets
+      // our own additions be corrected.
+      const baseLines = base.split('\n');
+      const currentLines = current.split('\n');
+      let cursor = 0;
+      const missing = [];
+      for (const line of baseLines) {
+        const at = currentLines.indexOf(line, cursor);
+        if (at === -1) missing.push(line);
+        else cursor = at + 1;
+      }
+      expect(missing, `${path} lost ${missing.length} line(s) from ${ref}`).toEqual([]);
+      expect(currentLines.length).toBeGreaterThan(baseLines.length);
     }
   });
 });

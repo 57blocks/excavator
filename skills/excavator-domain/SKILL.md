@@ -189,30 +189,36 @@ unchanged.
 2. Validate using the standard graph validation pipeline (the schema now supports domain/flow/step types)
 3. If validation fails, log warnings but save what's valid (error tolerance)
 4. Save to `$DATA_DIR/domain-graph.json`
+
+   **Publish the step anchors (added; do this before step 5).** Phase 4.5
+   anchored the steps in `$DATA_DIR/intermediate/domain-analysis.json`, and
+   step 5 below deletes that file — so this has to happen here, not after the
+   phase:
+
+   ```bash
+   node "$PLUGIN_ROOT/skills/excavator/publish-annotations.mjs" "$PROJECT_ROOT" \
+     --domain-annotated "$DATA_DIR/intermediate/domain-analysis.json"
+   ```
+
+   It merges **only** the supplement fields — a step's `nodeIds`,
+   `unresolvedNodeIds`, `evidence`, `provenance`, plus the root `gaps` — into
+   the file step 4 just saved, matching nodes by id. It adds no node and no
+   edge, and it cannot touch a `summary`, a `name` or a `weight`. It is
+   idempotent, so a second run changes nothing.
+
+   **Supplement, so not fatal.** Report a non-zero exit as a warning and
+   continue to step 5.
+
 5. Clean up `$DATA_DIR/intermediate/domain-analysis.json` and `$DATA_DIR/intermediate/domain-context.json`
 
 ### Phase 5.1: Publish Annotations (added)
 
-Phase 4.5 anchored the steps in `$DATA_DIR/intermediate/domain-analysis.json`,
-and Phase 5 step 5 deletes that file. Carry the anchors into the saved graph
-first:
-
-```bash
-node "$PLUGIN_ROOT/skills/excavator/publish-annotations.mjs" "$PROJECT_ROOT" \
-  --domain-annotated "$DATA_DIR/intermediate/domain-analysis.json"
-```
-
-It merges **only** the supplement fields — a step's `nodeIds`,
-`unresolvedNodeIds`, `evidence`, `provenance`, plus the root `gaps` — into
-`$DATA_DIR/domain-graph.json`, matching nodes by id. It adds no node and no
-edge, and it cannot touch a `summary`, a `name` or a `weight`.
-
-If Phase 5 step 5 already ran, `domain-analysis.json` is gone: the script
-prints a note and exits 0, and the saved domain graph simply carries no
-anchors. Run it between Phase 5 step 4 and step 5.
-
-**Supplement, so not fatal.** Report a non-zero exit as a Phase 5.1 warning
-and continue.
+This step runs **inside Phase 5, between steps 4 and 5** — the block under step
+4 above. It is named here only so the phase sequence accounts for it; there is
+nothing left to run at this point, because step 5 has already deleted
+`domain-analysis.json` by the time you reach it. That is why the original
+wording of this section was wrong: a model following the phases in order would
+have found the documented no-op instead of the anchors.
 
 ### Phase 6: Launch Dashboard
 

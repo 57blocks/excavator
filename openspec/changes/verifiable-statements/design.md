@@ -89,9 +89,14 @@ mv /Users/57block/Documents/excavator-test-repos/wcp/.excavator /Users/57block/D
   CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS=0 \
   claude --plugin-dir /Users/57block/Documents/excavator-wt/excavator-v2 \
          --permission-mode auto --output-format json \
+         --model <id> \
          -p "/excavator:excavator" > /private/tmp/excavator-v2-wcp-run.json )
 jq '.total_cost_usd, .session_id, .duration_ms' /private/tmp/excavator-v2-wcp-run.json
 ```
-skill 必须在 prompt 里点名（模型不会自动调用）；`total_cost_usd` 含子代理（客户端估算）。跑完对比 `.excavator/knowledge-graph.json` 与 `.excavator-ua-baseline/knowledge-graph.json`：节点/边/gaps 计数、`provenance` 分布、自报 evidence 的 `verified:true` 比例、`summary-contradicted` 数、墙钟。产物与真实路径不进 PR，只贴计数。
+skill 必须在 prompt 里点名（模型不会自动调用）；`total_cost_usd` 含子代理（客户端估算）。
+
+**`--model` 必须显式给。** 不给就用会话默认模型，而 file-analyzer 是这条流水线里最贵的一段（wcp 有 1,984 个文件、83+ 个批次）。2026-09-11 的第一次真实全量没有指定模型，默认落到 `claude-fable-5-1`，跑到约 80% 的批次时撞上账号额度上限：**$71.13、798k 输出 token、没产出 assembled graph**。跑真实语料用哪个模型是用户的花钱决定，不是 coder 的默认值——配方里必须点名，并在动手前把预计费用说清楚。
+
+**清单前置**：`.claude-plugin/plugin.json` 的 `agents` 键必须**缺省或为数组**。写成字符串（`"./agents"`）时 `--plugin-dir` 会**静默**什么都不加载：没有报错、`num_turns: 0`、九个 skill 全变 `Unknown command`。跑之前先 `claude plugin validate "$V2"` 看到 `Validation passed`，再用 headless 探针确认能列出 `excavator:excavator`（`check-refs` 的 check 7 与 `tests/refs/plugin-manifest.test.mjs` 现在把这条守住了）。跑完对比 `.excavator/knowledge-graph.json` 与 `.excavator-ua-baseline/knowledge-graph.json`：节点/边/gaps 计数、`provenance` 分布、自报 evidence 的 `verified:true` 比例、`summary-contradicted` 数、墙钟。产物与真实路径不进 PR，只贴计数。
 
 **②a 留下的解释**：`edge-missing` 中 contains 698 + exports 352 的目标声明无节点（`node-missing` 699）——补边不造节点，故补 0；这是节点召回问题，属提示词/显著性门槛，②b 不动（UA 语义），只报告。calls 从不补边（59,562 unresolved 是 reader 缺口，留 ③/roadmap）。imports 证据窗口 12 行，超长 import 留 1 条 `edge-contradicted`。
