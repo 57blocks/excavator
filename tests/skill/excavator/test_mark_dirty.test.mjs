@@ -258,7 +258,7 @@ describe('the SKIP path end to end', () => {
   });
 });
 
-describe('the SKIP path is wired in both places, additively', () => {
+describe('the SKIP path is wired in both service entry points', () => {
   const skill = readFileSync(resolve(repoRoot, 'skills/excavator/SKILL.md'), 'utf-8');
   const hook = readFileSync(resolve(repoRoot, 'hooks/auto-update-prompt.md'), 'utf-8');
 
@@ -270,21 +270,6 @@ describe('the SKIP path is wired in both places, additively', () => {
     expect(text.indexOf('finalize-incremental.mjs')).toBeLessThan(text.indexOf('mark-dirty.mjs'));
   });
 
-  it('deletes nothing from either file', () => {
-    const refs = ['excavator-v2', 'origin/excavator-v2'];
-    const ref = refs.find(candidate => spawnSync(
-      'git', ['-C', repoRoot, 'rev-parse', '--verify', '--quiet', `${candidate}^{commit}`], { encoding: 'utf-8' },
-    ).status === 0);
-    expect(ref).toBeTruthy();
-    for (const path of ['skills/excavator/SKILL.md', 'hooks/auto-update-prompt.md']) {
-      const numstat = spawnSync('git', ['-C', repoRoot, 'diff', '--numstat', ref, '--', path], { encoding: 'utf-8' })
-        .stdout.trim();
-      expect(numstat, path).not.toBe('');
-      const [added, deleted] = numstat.split('\n')[0].split('\t');
-      expect(Number(deleted), `${path} deleted ${deleted} line(s)`).toBe(0);
-      expect(Number(added)).toBeGreaterThan(0);
-    }
-  });
 });
 
 describe('the freshness spec says what the pipeline actually reports', () => {

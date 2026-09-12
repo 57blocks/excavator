@@ -8,7 +8,7 @@
     {
       "name": "excavator",
       "source": "./",
-      "description": "AI-first defensible code investigation engine — analyze, visualize, and explain any project"
+      "description": "AI-first defensible code investigation service — analyze and answer questions about any project"
     }
   ]
 }

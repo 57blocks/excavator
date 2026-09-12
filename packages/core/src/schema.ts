@@ -412,7 +412,6 @@ const FigmaMetaSchema = z.object({
   fileKey: z.string().optional(),
   nodeId: z.string().optional(),
   figmaType: z.string().optional(),
-  thumbnailUrl: z.string().optional(),
   dimensions: z.object({ width: z.number(), height: z.number() }).optional(),
   tokenKind: z.enum(["color", "type", "spacing", "effect", "grid"]).optional(),
   tokenValue: z.string().optional(),
@@ -988,7 +987,7 @@ export function validateGraph(data: unknown): ValidationResult {
 
   const graph: KnowledgeGraph = {
     version: typeof fixed.version === "string" ? fixed.version : "1.0.0",
-    // `kind` decides which alias table and which dashboard view applies —
+    // `kind` decides which alias table service consumers apply —
     // dropping it here silently turned design/knowledge graphs into codebase
     // graphs (each caller had to re-attach it).
     ...(kindResult.success ? { kind: kindResult.data } : {}),

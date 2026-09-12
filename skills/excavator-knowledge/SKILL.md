@@ -6,7 +6,7 @@ argument-hint: "[wiki-directory]"
 
 # /excavator-knowledge
 
-Analyzes a Karpathy-pattern LLM wiki — a three-layer knowledge base with raw sources, wiki markdown, and a schema file — and produces an interactive knowledge graph dashboard.
+Analyzes a Karpathy-pattern LLM wiki — a three-layer knowledge base with raw sources, wiki markdown, and a schema file — and produces a queryable knowledge graph.
 
 ## What It Detects
 
@@ -82,11 +82,10 @@ Dispatch `article-analyzer` subagents to extract implicit knowledge:
    - Deduplicates entities (case-insensitive name matching)
    - Normalizes node/edge types via alias maps
    - Builds layers from index.md categories
-   - Builds a tour from index.md section ordering
    - Writes `assembled-graph.json` to the intermediate directory
 
 3. Read the merge report from stderr and announce:
-   - Total nodes, edges, layers, tour steps
+   - Total nodes, edges, and layers
    - How many entities/claims the LLM analysis added
 
 ### Phase 5: SAVE
@@ -122,16 +121,13 @@ Dispatch `article-analyzer` subagents to extract implicit knowledge:
 6. Report summary to the user:
    - "Knowledge graph saved: N articles, N entities, N topics, N claims, N sources"
    - "N edges (N wikilink, N categorized, N implicit)"
-   - "N layers, N tour steps"
+   - "N layers"
 
-7. Auto-trigger the dashboard:
-   ```
-   /excavator-dashboard <TARGET_DIR>
-   ```
+7. Report that the graph is ready for terminal queries. Do not start a browser or HTTP server.
 
 ## Notes
 
 - The parse script handles ALL deterministic extraction (wikilinks, headings, frontmatter, categories from index.md). The LLM agents only add implicit knowledge that requires inference.
 - Categories and taxonomy come from index.md section headings, NOT from filename prefixes. The Karpathy spec is intentionally abstract about naming conventions.
-- The graph uses `kind: "knowledge"` to signal the dashboard to use force-directed layout instead of hierarchical dagre.
+- The graph uses `kind: "knowledge"` so service consumers can distinguish it from codebase and design graphs.
 - Source nodes from raw/ are lightweight (filename + size only) — we don't parse PDFs or binary files.

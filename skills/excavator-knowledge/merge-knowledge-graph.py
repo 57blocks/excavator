@@ -5,8 +5,8 @@ Merge script for Karpathy-pattern knowledge graphs.
 Combines the deterministic scan-manifest.json with LLM analysis batches
 (analysis-batch-*.json) into a final assembled knowledge graph.
 
-Handles: entity deduplication, edge normalization, layer building from
-index.md categories, tour generation from index.md section ordering.
+Handles: entity deduplication, edge normalization, and layer building from
+index.md categories.
 
 Usage:
     python merge-knowledge-graph.py <wiki-directory>
@@ -326,24 +326,6 @@ def merge(root: Path) -> dict:
             "nodeIds": uncategorized,
         })
 
-    # --- Build tour from index.md category ordering ---
-    tour = []
-    for i, cat in enumerate(categories):
-        cat_slug = cat["name"].lower().replace(" ", "-")
-        topic_id = f"topic:{cat_slug}"
-        # Pick representative articles (up to 3 per category)
-        members = [e["source"] for e in final_edges
-                   if e["type"] == "categorized_under" and e["target"] == topic_id][:3]
-        if not members and topic_id in nodes:
-            members = [topic_id]
-        if members:
-            tour.append({
-                "order": i + 1,
-                "title": cat["name"],
-                "description": f"Explore the {cat['name']} section ({cat['count']} articles)",
-                "nodeIds": members,
-            })
-
     # --- Detect project name ---
     project_name = root.name
     # Try to find a better name from index.md H1 (case-insensitively —
@@ -372,7 +354,7 @@ def merge(root: Path) -> dict:
         "nodes": list(nodes.values()),
         "edges": final_edges,
         "layers": layers,
-        "tour": tour,
+        "tour": [],
     }
 
     # Try to get git commit hash
@@ -400,7 +382,7 @@ def merge(root: Path) -> dict:
           f"({report['deduped_entities']} deduped entities, "
           f"{report['dropped_edges']} dropped dangling edges)", file=sys.stderr)
     print(f"[merge] Output: {len(graph['nodes'])} nodes, {len(final_edges)} edges, "
-          f"{len(layers)} layers, {len(tour)} tour steps", file=sys.stderr)
+          f"{len(layers)} layers", file=sys.stderr)
     print(f"[merge] Written: {out_path}", file=sys.stderr)
 
     return graph

@@ -5,7 +5,7 @@ import type { KnowledgeGraph } from "@excavator/core";
  * Output is standalone markdown suitable for a README, wiki, or docs.
  */
 export function buildOnboardingGuide(graph: KnowledgeGraph): string {
-  const { project, nodes, edges, layers, tour } = graph;
+  const { project, nodes, edges, layers } = graph;
   const lines: string[] = [];
 
   // --- Project Overview ---
@@ -55,36 +55,6 @@ export function buildOnboardingGuide(graph: KnowledgeGraph): string {
       lines.push("");
       lines.push(concept.summary);
       lines.push("");
-    }
-  }
-
-  // --- Getting Started (Tour) ---
-  if (tour.length > 0) {
-    lines.push("## Getting Started");
-    lines.push("");
-    lines.push("Follow this guided tour to understand the codebase:");
-    lines.push("");
-    for (const step of tour) {
-      const stepNodes = step.nodeIds
-        .map((id) => nodes.find((n) => n.id === id))
-        .filter(Boolean);
-      lines.push(`### ${step.order}. ${step.title}`);
-      lines.push("");
-      lines.push(step.description);
-      lines.push("");
-      if (stepNodes.length > 0) {
-        lines.push("**Files to look at:**");
-        for (const node of stepNodes) {
-          if (node!.filePath) {
-            lines.push(`- \`${node!.filePath}\` — ${node!.summary}`);
-          }
-        }
-        lines.push("");
-      }
-      if (step.languageLesson) {
-        lines.push(`> **Language Tip:** ${step.languageLesson}`);
-        lines.push("");
-      }
     }
   }
 

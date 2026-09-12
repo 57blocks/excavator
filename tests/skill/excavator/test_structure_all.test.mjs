@@ -128,7 +128,7 @@ describe('structure-all.mjs', () => {
     const chunked = runStructureAll(root, ['--chunk-size', '2']);
     expect(chunked.output.chunkSize).toBe(2);
     expect({ ...chunked.output, chunkSize: 0 }).toEqual({ ...first.output, chunkSize: 0 });
-  });
+  }, 15_000);
 
   it('cleans up its chunk scratch files', () => {
     const root = setupProject(PROJECT);

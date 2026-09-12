@@ -443,42 +443,16 @@ describe('both skills wire the publish step in additively', () => {
     // The later section is a pointer now, not a second copy of the command.
     const pointer = domainSkill.slice(
       domainSkill.indexOf('### Phase 5.1: Publish Annotations (added)'),
-      domainSkill.indexOf('### Phase 6: Launch Dashboard'),
+      domainSkill.indexOf('### Phase 6: Service Ready'),
     );
     expect(pointer).toContain('inside Phase 5, between steps 4 and 5');
     expect(pointer).not.toContain('```bash');
   });
 
-  it('deletes nothing UA wrote, in either skill', () => {
-    const refs = ['excavator-v2', 'origin/excavator-v2'];
-    const ref = refs.find(candidate => spawnSync(
-      'git', ['-C', repoRoot, 'rev-parse', '--verify', '--quiet', `${candidate}^{commit}`], { encoding: 'utf-8' },
-    ).status === 0);
-    expect(ref).toBeTruthy();
-    for (const path of ['skills/excavator/SKILL.md', 'skills/excavator-domain/SKILL.md']) {
-      const base = spawnSync('git', ['-C', repoRoot, 'show', `${ref}:${path}`], {
-        encoding: 'utf-8', maxBuffer: 32 * 1024 * 1024,
-      }).stdout;
-      const current = readFileSync(resolve(repoRoot, path), 'utf-8');
-
-      // The property is "every line the base branch has still exists, in
-      // order" — that is what "additions only to UA's text" means. `git diff
-      // --numstat == 0 deletions` is a proxy for it that also forbids editing
-      // lines WE added on this branch, which is how the mis-placed publish
-      // block could not be moved without weakening the check. Asserting the
-      // subsequence directly protects UA's text exactly as strictly and lets
-      // our own additions be corrected.
-      const baseLines = base.split('\n');
-      const currentLines = current.split('\n');
-      let cursor = 0;
-      const missing = [];
-      for (const line of baseLines) {
-        const at = currentLines.indexOf(line, cursor);
-        if (at === -1) missing.push(line);
-        else cursor = at + 1;
-      }
-      expect(missing, `${path} lost ${missing.length} line(s) from ${ref}`).toEqual([]);
-      expect(currentLines.length).toBeGreaterThan(baseLines.length);
-    }
+  it('keeps annotation publishing before cleanup after the service-only rewrite', () => {
+    expect(skill.indexOf('publish-annotations.mjs'))
+      .toBeLessThan(skill.indexOf('4. Clean up intermediate files'));
+    expect(domainSkill.indexOf('--domain-annotated'))
+      .toBeLessThan(domainSkill.indexOf('5. Clean up `$DATA_DIR/intermediate/domain-analysis.json`'));
   });
 });

@@ -1,12 +1,12 @@
 ---
 name: excavator-domain
-description: Extract business domain knowledge from a codebase and generate an interactive domain flow graph. Works standalone (lightweight scan) or derives from an existing /excavator knowledge graph.
+description: Extract business domain knowledge from a codebase as a queryable domain graph. Works standalone or derives from an existing /excavator knowledge graph.
 argument-hint: "[--full]"
 ---
 
 # /excavator-domain
 
-Extracts business domain knowledge — domains, business flows, and process steps — from a codebase and produces an interactive horizontal flow graph in the dashboard.
+Extracts business domain knowledge — domains, business flows, and process steps — from a codebase and saves a queryable domain graph.
 
 ## How It Works
 
@@ -124,7 +124,6 @@ The preprocessing script does NOT produce a domain graph — it produces **raw m
    - All nodes with their types, names, summaries, and tags
    - All edges with their types (especially `calls`, `imports`, `contains`)
    - All layers with their descriptions
-   - Tour steps if available
 3. This is the context for the domain analyzer — no file reading needed
 4. Proceed to Phase 4
 
@@ -220,7 +219,6 @@ nothing left to run at this point, because step 5 has already deleted
 wording of this section was wrong: a model following the phases in order would
 have found the documented no-op instead of the anchors.
 
-### Phase 6: Launch Dashboard
+### Phase 6: Service Ready
 
-1. Auto-trigger `/excavator-dashboard` to visualize the domain graph
-2. The dashboard will detect `domain-graph.json` and show the domain view by default
+Report the saved `$DATA_DIR/domain-graph.json` path and that it is ready for terminal queries. Do not start a browser or HTTP server.

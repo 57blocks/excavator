@@ -1,6 +1,6 @@
 {
   "name": "excavator",
-  "description": "AI-first defensible code investigation engine — analyze, visualize, and explain any project",
+  "description": "AI-first defensible code investigation service — analyze and answer questions about any project",
   "version": "2.9.6",
   "author": {
     "name": "57blocks"
@@ -13,7 +13,7 @@
     "knowledge-graph",
     "architecture",
     "onboarding",
-    "dashboard"
+    "codebase-questions"
   ],
   "skills": "./skills",
   "hooks": "./hooks/hooks.json"

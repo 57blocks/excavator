@@ -1039,7 +1039,7 @@ export function renderMarkdownReport(report) {
   const lines = [
     '# Large Repository Benchmark Report',
     '',
-    'This report covers deterministic static-analysis stages only. It does not include LLM inference or dashboard generation.',
+    'This report covers deterministic static-analysis stages only. It does not include LLM inference.',
     '',
     '## Run',
     '',

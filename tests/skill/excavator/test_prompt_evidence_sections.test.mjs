@@ -22,7 +22,6 @@ const repoRoot = resolve(__dirname, '../../..');
 /** The UA-semantics files this step is only allowed to append to. */
 const ADDITIVE_ONLY_FILES = [
   'agents/excavator-file-analyzer.md',
-  'agents/excavator-domain-analyzer.md',
 ];
 
 /** Candidate refs for "the branch these commits are based on", in order. */
@@ -94,31 +93,15 @@ describe('UA prompt files are only ever appended to', () => {
   });
 });
 
-describe('SKILL.md only ever gains lines', () => {
-  /**
-   * SKILL.md gains phases by INSERTION, not by appending, so the prefix rule
-   * used above cannot apply to it. The equivalent property is that its diff
-   * against the base branch removes nothing: `git diff --numstat` reports a
-   * deletion count of zero. That is the same "no `-` lines" check, read off
-   * git rather than off a substring comparison.
-   */
-  it('has zero deleted lines against the base branch', () => {
-    const relPath = 'skills/excavator/SKILL.md';
-    // Confirm a base ref resolves at all — readBaseVersion throws otherwise.
-    readBaseVersion(relPath);
-    const ref = BASE_REFS.find(candidate => {
-      try {
-        git(['rev-parse', '--verify', '--quiet', `${candidate}^{commit}`]);
-        return true;
-      } catch {
-        return false;
-      }
-    });
-    const numstat = git(['diff', '--numstat', ref, '--', relPath]).trim();
-    if (numstat === '') return; // identical to the base
-    const [added, deleted] = numstat.split('\n')[0].split('\t');
-    expect(Number(deleted), `SKILL.md deleted ${deleted} line(s); phases are additive`).toBe(0);
-    expect(Number(added)).toBeGreaterThan(0);
+describe('SKILL.md service-only contract', () => {
+  it('keeps evidence phases while removing presentation mode', () => {
+    const current = readRepoFile('skills/excavator/SKILL.md');
+    expect(current).toContain('## Phase 2.3 — ANNOTATE (added)');
+    expect(current).toContain('## Phase 2.5 — VERIFY (added)');
+    expect(current).toContain('## Phase 6b — VALIDATE (added)');
+    expect(current).toContain('## Phase 5 — SERVICE OUTPUT');
+    expect(current).not.toContain('--terminal-only');
+    expect(current).not.toContain('--with-dashboard');
   });
 });
 

@@ -26,5 +26,4 @@ export interface FigmaStyles {
 export interface FigmaSource {
   fetchDocument(): Promise<FigmaDocument>;
   fetchStyles(): Promise<FigmaStyles>;
-  renderImages(nodeIds: string[]): Promise<Record<string, string>>;
 }

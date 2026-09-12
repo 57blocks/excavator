@@ -37,7 +37,7 @@ said yes.
    |---|---|
    | `SKIP` | Run the finalizer below. It advances scan/fingerprint/meta for safe cosmetic or irrelevant changes and intentionally advances nothing for generated-only commits. This is deterministic bookkeeping, not an analysis — no user decision needed. Report zero tokens spent and **STOP**. |
    | `PARTIAL_UPDATE` | **STOP.** Tell the user which files changed structurally and that targeted analysis is available; suggest running `/excavator`. Only proceed to Phase 1 if they say yes. |
-   | `ARCHITECTURE_UPDATE` | **STOP.** Same as `PARTIAL_UPDATE`, plus note that architecture/tour will be rerun. Only proceed to Phase 1 if the user says yes. |
+   | `ARCHITECTURE_UPDATE` | **STOP.** Same as `PARTIAL_UPDATE`, plus note that architecture will be rerun. Only proceed to Phase 1 if the user says yes. |
    | `FULL_UPDATE` | **STOP.** Tell the user a full rebuild is needed (with why) and suggest running `/excavator --full`. Do not invoke it yourself. |
 
    SKIP finalizer:
@@ -107,10 +107,10 @@ Languages without a deterministic structural parser (including `.sh`, `.ps1`, an
 
 Do not dispatch assemble-reviewer or graph-reviewer for automatic updates.
 
-## Phase 3 — Conditional architecture and tour
+## Phase 3 — Conditional architecture
 
-- For `PARTIAL_UPDATE`, dispatch neither agent. The finalizer preserves existing layer assignments and tour prose, removes dangling references/empty layers, and assigns new nodes deterministically by directory depth, graph connectivity, then prior layer order.
-- For `ARCHITECTURE_UPDATE`, dispatch architecture-analyzer on the full merged node/edge set, including previous layers for naming stability, and write `$DATA_DIR/intermediate/layers.json`. Then dispatch tour-builder and write `$DATA_DIR/intermediate/tour.json`.
+- For `PARTIAL_UPDATE`, dispatch no architecture agent. The finalizer preserves existing layer assignments, removes dangling references/empty layers, assigns new nodes deterministically by directory depth, graph connectivity, then prior layer order, and writes `tour: []`.
+- For `ARCHITECTURE_UPDATE`, dispatch architecture-analyzer on the full merged node/edge set, including previous layers for naming stability, and write `$DATA_DIR/intermediate/layers.json`. Dispatch no presentation agent; the finalizer writes `tour: []`.
 
 Retry either required agent once. If it still fails, **STOP** without advancing the baseline.
 
@@ -129,7 +129,7 @@ Report:
 - action taken;
 - files structurally analyzed;
 - deleted/ignored/cosmetic/generated counts from the plan;
-- whether architecture/tour ran;
+- whether architecture ran;
 - output path.
 
 ## Error handling

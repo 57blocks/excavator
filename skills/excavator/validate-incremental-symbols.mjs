@@ -448,7 +448,7 @@ export async function validateIncrementalSymbols(projectRoot, { graph, intermedi
           }
         }
         // Merge's earlier dangling-edge cleanup cannot see semantic ID aliases.
-        // Save the reconciled candidate before architecture/tour consumers run.
+        // Save the reconciled candidate before architecture analysis runs.
         if (graphFromDisk && report.reconciledCurrentEdges > 0) {
           atomicWriteJson(join(intermediateDir, 'assembled-graph.json'), graph);
         }

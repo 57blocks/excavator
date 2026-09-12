@@ -1,12 +1,12 @@
 ---
 name: excavator-figma
-description: Analyze a Figma file via the Figma REST API and generate an interactive design knowledge graph (pages, screens, components, component sets, instances, design tokens) with a kind:"design" dashboard.
+description: Analyze a Figma file via the Figma REST API into a queryable design knowledge graph of pages, screens, components, instances, and tokens.
 argument-hint: "<figma-file-url-or-key> [--language <lang>]"
 ---
 
 # /excavator-figma
 
-Analyzes a Figma file and produces an interactive design knowledge graph in the existing dashboard.
+Analyzes a Figma file and produces a queryable design knowledge graph.
 
 ## Prerequisites
 
@@ -58,12 +58,12 @@ node <SKILL_DIR>/figma-merge.mjs "$PROJECT_ROOT"
 
 It combines `scan-manifest.json` + `analysis-batch-*.json`, runs `mergeDesignGraph` (validates, re-attaches `kind:"design"`), and writes `knowledge-graph.json` + `meta.json`. Relay the printed stats and any non-`auto-corrected` issues.
 
-## Phase 4 — SAVE & LAUNCH
+## Phase 4 — SAVE
 
 1. Clean up intermediate files **except** `scan-manifest.json`:
    ```bash
    INTER="$DATA_DIR/intermediate"
    find "$INTER" -mindepth 1 -maxdepth 1 -not -name 'scan-manifest.json' -exec rm -rf {} +
    ```
-2. Report a summary: project name, counts by node type, edges by type, layers, tour steps, and the path `$DATA_DIR/knowledge-graph.json`.
-3. Auto-launch the dashboard by invoking the `/excavator-dashboard` skill.
+2. Report a summary: project name, counts by node type, edges by type, layers, and the path `$DATA_DIR/knowledge-graph.json`.
+3. Report that the graph is ready for terminal queries. Do not start a browser or HTTP server.

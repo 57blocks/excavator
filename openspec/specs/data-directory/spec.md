@@ -1,7 +1,7 @@
 # data-directory Specification
 
 ## Purpose
-被分析项目的数据目录、忽略文件与默认排除规则的单一契约；确定性脚本、模型侧 skill 与 dashboard 都以它为准，不存在第二个目录名。
+被分析项目的数据目录、忽略文件与默认排除规则的单一契约；确定性脚本、模型侧 skill 与问答服务都以它为准，不存在第二个目录名。
 
 ## Requirements
 

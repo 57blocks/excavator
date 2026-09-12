@@ -122,7 +122,7 @@ _TEST_NAME_PATTERNS: dict[str, tuple[tuple[str, ...], tuple[str, ...]]] = {
 }
 
 
-# Mirrors packages/core/src/schema.ts so the dashboard validator has nothing
+# Mirrors packages/core/src/schema.ts so downstream validation has nothing
 # left to auto-correct for the `direction` field on merged graphs.
 _DIRECTION_ALIASES: dict[str, str] = {"both": "bidirectional", "mutual": "bidirectional"}
 _VALID_DIRECTIONS: frozenset[str] = frozenset({"forward", "backward", "bidirectional"})
@@ -876,7 +876,7 @@ def merge_and_normalize(
     node_ids = set(nodes_by_id.keys())
     # Direction is part of the dedup key so a `forward` edge does not silently
     # overwrite a `bidirectional` one (or vice versa); they're different
-    # semantic relationships that the dashboard renders distinctly.
+    # semantic relationships that service consumers query distinctly.
     edges_by_key: dict[tuple[str, str, str, str], dict] = {}
     dangling_by_key: dict[tuple[str, str, str, str], dict] = {}
     for edge in all_edges:

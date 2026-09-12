@@ -28,7 +28,7 @@ describe('incremental execution contract', () => {
   it('skips whole-graph LLM phases for ordinary partial updates', () => {
     expect(skill).toContain('Both incremental actions skip assemble-reviewer');
     expect(skill).toContain('For `PARTIAL_UPDATE`, dispatch no architecture agent');
-    expect(skill).toContain('For `PARTIAL_UPDATE`, dispatch no tour agent');
+    expect(skill).toContain('Incremental finalization also replaces any previous tour with `[]`');
     expect(skill).toContain('Without `--review`');
     expect(skill).toContain('Do not run Phase 6');
   });
@@ -36,7 +36,7 @@ describe('incremental execution contract', () => {
   it('keeps explicit review and architecture escalation behavior', () => {
     expect(skill).toContain('The user-facing `--review` option is still honored');
     expect(skill).toContain('where `rerunArchitecture === true`');
-    expect(skill).toContain('where `rerunTour === true`');
+    expect(skill).not.toContain('rerunTour');
     expect(skill).toContain('`FULL_UPDATE`');
     expect(skill).toContain('With explicit `--review`');
     expect(skill).toContain('jump to the `--review` graph-reviewer path in Phase 6');

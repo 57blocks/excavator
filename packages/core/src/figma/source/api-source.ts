@@ -39,12 +39,4 @@ export class FigmaApiSource implements FigmaSource {
     return this.get<FigmaStyles>(`/files/${this.fileKey}/styles`);
   }
 
-  async renderImages(nodeIds: string[]): Promise<Record<string, string>> {
-    if (nodeIds.length === 0) return {};
-    const ids = encodeURIComponent(nodeIds.join(","));
-    const data = await this.get<{ images: Record<string, string> }>(
-      `/images/${this.fileKey}?ids=${ids}&format=png&scale=1`,
-    );
-    return data.images ?? {};
-  }
 }

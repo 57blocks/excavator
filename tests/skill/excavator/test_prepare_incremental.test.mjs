@@ -809,7 +809,7 @@ describe('prepare-incremental.mjs', { timeout: 30_000 }, () => {
     );
     expect(graph.nodes.map(node => node.filePath)).not.toContain('src/b.ts');
     expect(graph.layers.flatMap(layer => layer.nodeIds)).not.toContain('file:src/b.ts');
-    expect(graph.tour.flatMap(step => step.nodeIds)).not.toContain('file:src/b.ts');
+    expect(graph.tour).toEqual([]);
     expect(fingerprints.files).not.toHaveProperty('src/b.ts');
   });
 
@@ -1121,6 +1121,45 @@ describe('prepare-incremental.mjs', { timeout: 30_000 }, () => {
     expect(plan.action).toBe('ARCHITECTURE_UPDATE');
   });
 
+  it('makes architecture updates save an empty compatibility tour without tour input', () => {
+    const { root, baseCommit } = setupRepository({
+      'src/a.ts': 'export const a = 1;\n',
+      'src/b.ts': 'export const b = 2;\n',
+      'src/c.ts': 'export const c = 3;\n',
+      'legacy/old.ts': 'export const old = true;\n',
+    });
+    writeProjectFile(root, '.excavatorignore', 'legacy/\n');
+    const headCommit = commit(root, 'ignore legacy in service mode');
+
+    const { plan } = prepare(root, baseCommit);
+    expect(plan.action).toBe('ARCHITECTURE_UPDATE');
+    expect(plan.rerunArchitecture).toBe(true);
+    expect(plan).not.toHaveProperty('rerunTour');
+
+    const intermediate = join(root, '.excavator', 'intermediate');
+    const retained = JSON.parse(readFileSync(join(intermediate, 'batch-existing.json'), 'utf-8'));
+    writeFileSync(
+      join(intermediate, 'assembled-graph.json'),
+      JSON.stringify(retained),
+      'utf-8',
+    );
+    writeFileSync(
+      join(intermediate, 'layers.json'),
+      JSON.stringify([{
+        id: 'layer:source',
+        name: 'Source',
+        description: 'Source files',
+        nodeIds: retained.nodes.map(node => node.id),
+      }]),
+      'utf-8',
+    );
+
+    run(process.execPath, [finalizeScript, root], root);
+    const graph = JSON.parse(readFileSync(join(root, '.excavator', 'knowledge-graph.json'), 'utf-8'));
+    expect(graph.project.gitCommitHash).toBe(headCommit);
+    expect(graph.tour).toEqual([]);
+  });
+
   it('handles renames and spaces as a delete plus add', () => {
     const { root, baseCommit } = setupRepository({
       'src/old name.ts': 'export const value = 1;\n',
@@ -1329,7 +1368,7 @@ describe('prepare-incremental.mjs', { timeout: 30_000 }, () => {
 });
 
 describe('finalize-incremental.mjs', { timeout: 30_000 }, () => {
-  it('preserves local layer/tour text, removes dangling refs, and places new nodes by path', () => {
+  it('preserves local layer text, clears presentation data, and places new nodes by path', () => {
     const { root, baseCommit } = setupRepository({
       'src/api/a.ts': 'export const a = 1;\n',
       'src/ui/view.ts': 'export const view = 1;\n',
@@ -1385,9 +1424,7 @@ describe('finalize-incremental.mjs', { timeout: 30_000 }, () => {
     expect(graph.project.gitCommitHash).toBe(headCommit);
     expect(graph.layers.find(layer => layer.id === 'layer:api').nodeIds).toContain(newNode.id);
     expect(graph.layers.flatMap(layer => layer.nodeIds)).not.toContain('file:missing.ts');
-    expect(graph.tour[0].title).toBe('Overview');
-    expect(graph.tour[0].description).toBe('Read the project');
-    expect(graph.tour[0].nodeIds.every(id => graph.nodes.some(node => node.id === id))).toBe(true);
+    expect(graph.tour).toEqual([]);
     const fingerprints = JSON.parse(
       readFileSync(join(root, '.excavator', 'fingerprints.json'), 'utf-8'),
     );

@@ -24,10 +24,7 @@ const sampleGraph: KnowledgeGraph = {
     { id: "layer:api", name: "API Layer", description: "Routes and handlers", nodeIds: ["file:src/index.ts"] },
     { id: "layer:service", name: "Service Layer", description: "Business logic", nodeIds: ["file:src/service.ts"] },
   ],
-  tour: [
-    { order: 1, title: "Start Here", description: "Begin with index.ts", nodeIds: ["file:src/index.ts"] },
-    { order: 2, title: "Core Logic", description: "Service layer", nodeIds: ["file:src/service.ts"] },
-  ],
+  tour: [],
 };
 
 describe("onboard-builder", () => {
@@ -56,12 +53,6 @@ describe("onboard-builder", () => {
     expect(guide).toContain("Auth Flow");
   });
 
-  it("includes getting started / tour section", () => {
-    const guide = buildOnboardingGuide(sampleGraph);
-    expect(guide).toContain("## Getting Started");
-    expect(guide).toContain("Start Here");
-  });
-
   it("includes complexity hotspots", () => {
     const guide = buildOnboardingGuide(sampleGraph);
     expect(guide).toContain("## Complexity Hotspots");
@@ -79,9 +70,4 @@ describe("onboard-builder", () => {
     expect(guide).toContain("# test-project");
   });
 
-  it("handles graph with no tour gracefully", () => {
-    const noTour = { ...sampleGraph, tour: [] };
-    const guide = buildOnboardingGuide(noTour);
-    expect(guide).toContain("# test-project");
-  });
 });

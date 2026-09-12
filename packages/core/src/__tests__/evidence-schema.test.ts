@@ -1,11 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { readFileSync } from "node:fs";
-import { join, dirname } from "node:path";
-import { fileURLToPath } from "node:url";
 import { auditGraphShape, edgeKey, validateGraph } from "../schema.js";
 import type { Coverage, Gap, GraphEdge, GraphNode, KnowledgeGraph } from "../types.js";
-
-const HERE = dirname(fileURLToPath(import.meta.url));
 
 /** A v2-shaped graph: edges attributed, root carrying the ledger. */
 function v2Graph(overrides?: Partial<KnowledgeGraph>): KnowledgeGraph {
@@ -368,25 +363,4 @@ describe("pre-v2 (legacy) graphs still validate", () => {
     expect(result.data!.tour[0].nodeIds).toEqual(["file:src/a.ts"]);
   });
 
-  it("accepts the dashboard's shipped pre-v2 graph with nothing dropped", () => {
-    const raw = JSON.parse(
-      readFileSync(join(HERE, "../../../dashboard/public/knowledge-graph.json"), "utf-8"),
-    );
-    const result = validateGraph(raw);
-
-    expect(result.success).toBe(true);
-    expect(result.legacyShape).toBe(true);
-    expect(result.issues.filter((i) => i.level === "dropped")).toEqual([]);
-    expect(result.data!.nodes).toHaveLength(raw.nodes.length);
-    expect(result.data!.edges).toHaveLength(raw.edges.length);
-    // The shipped graph states no attribution at all; the audit is what says so.
-    expect(result.data!.edges.every((e) => e.provenance === undefined)).toBe(true);
-    const audit = auditGraphShape(result.data!);
-    expect(audit.issues.filter((i) => i.code === "edge-without-provenance")).toHaveLength(
-      raw.edges.length,
-    );
-    // Every node in that graph IS anchored, so the audit finds nothing else.
-    expect(audit.issues.every((i) => i.code === "edge-without-provenance")).toBe(true);
-    expect(result.data!.coverage).toEqual({ files: 0, byLanguage: {}, ignored: 0 });
-  });
 });

@@ -971,7 +971,7 @@ class MergeIntegrationTests(unittest.TestCase):
 
 
 class NormalizeDirectionTests(unittest.TestCase):
-    """`direction` canonicalization mirrors the dashboard schema validator."""
+    """`direction` canonicalization mirrors the shared schema validator."""
 
     def test_missing_defaults_to_forward(self) -> None:
         self.assertEqual(mbg.normalize_direction(None), "forward")
@@ -1006,7 +1006,7 @@ class MergeEdgeDirectionTests(unittest.TestCase):
 
     def test_missing_direction_is_persisted_as_forward(self) -> None:
         # Reproduces issue #140: edges without a `direction` field still
-        # reach the final graph and trigger dashboard auto-corrections.
+        # reach the final graph and trigger shared-schema corrections.
         batch = self._two_node_batch({
             "source": "file:src/a.ts",
             "target": "file:src/b.ts",

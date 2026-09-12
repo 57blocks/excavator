@@ -77,8 +77,8 @@ export function saveGraph(projectRoot: string, graph: KnowledgeGraph): void {
 
   // FIX — sanitise absolute file paths before persisting.
   // Without this, absolute paths like /Users/alice/company/src/auth.ts
-  // are written verbatim into knowledge-graph.json and later served
-  // by the dashboard server, leaking the developer's directory layout.
+  // are written verbatim into knowledge-graph.json, leaking the developer's
+  // directory layout to any downstream consumer.
   const sanitised = sanitiseFilePaths(graph, projectRoot);
 
   writeFileSync(
@@ -136,7 +136,10 @@ export function loadFingerprints(projectRoot: string): FingerprintStore | null {
   }
 }
 
-const DEFAULT_CONFIG: ProjectConfig = { autoUpdate: false, outputLanguage: "en" };
+const DEFAULT_CONFIG: ProjectConfig = {
+  autoUpdate: false,
+  outputLanguage: "en",
+};
 
 export function saveConfig(projectRoot: string, config: ProjectConfig): void {
   const dir = ensureDir(projectRoot);

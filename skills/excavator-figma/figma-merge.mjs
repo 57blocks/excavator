@@ -35,7 +35,7 @@ writeFileSync(join(outDir, "meta.json"), JSON.stringify({
 
 console.error(
   `Design graph: ${result.data.nodes.length} nodes, ${result.data.edges.length} edges, ` +
-  `${result.data.layers.length} layers, ${result.data.tour.length} tour steps`,
+  `${result.data.layers.length} layers`,
 );
 for (const issue of result.issues) {
   if (issue.level !== "auto-corrected") console.error(`[${issue.level}] ${issue.message}`);

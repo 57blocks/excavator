@@ -2,6 +2,8 @@
 
 planner 定稿 2026-09-10 18:40。执行顺序由用户定：**① 改名 → ② 陈述可核验 → ③ 支持 cebreo → ④ MCP**。新分支、全新开始。
 
+**修订 2026-09-11（service-only）**：用户决定删除所有 HTML 展示业务。Dashboard、Viewer、dashboard skill、tour builder、缩略图获取与展示启动流程已经退出产品；插件只保留分析产物与终端问答服务。本文后续涉及这些展示组件的旧计划仅保留为历史背景，不再是当前实现要求。
+
 **修订 2026-09-10（v2 会话，三份只读盘点核验后）**：分支名 `excavator-v2`，建在 worktree（§1）；**零兼容**——不保留 UA 的 `.understand-anything`/旧名兼容分支，不沿用旧 excavator 的 MCP 契约与 PRD skill，MCP 与 PRD 消费端全新设计（§5）；数据目录 `.excavator/`。各节【修正】段为本次修订，其余保持原文。
 
 ## 0. 背景、约束与已量到的事实

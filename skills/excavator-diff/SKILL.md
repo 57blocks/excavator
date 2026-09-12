@@ -19,7 +19,7 @@ The knowledge graph JSON has this structure:
 - `edges[]` — each has {source, target, type, direction, weight}
   - Key types: imports, contains, calls, depends_on, configures, documents, deploys, triggers, contains_flow, flow_step, related, cites
 - `layers[]` — each has {id, name, description, nodeIds[]}
-- `tour[]` — each has {order, title, description, nodeIds[]}
+- `tour[]` — compatibility field; new service graphs store an empty array
 
 ## How to Read Efficiently
 
@@ -70,16 +70,3 @@ The knowledge graph JSON has this structure:
    - **Affected Layers**: Which architectural layers are touched and cross-layer concerns
    - **Risk Assessment**: Based on node `complexity` values, number of cross-layer edges, and blast radius (number of affected components)
    - Suggest what to review carefully and any potential issues
-
-8. **Write diff overlay for dashboard** — after producing the analysis, write the diff data to `.excavator/diff-overlay.json` so the dashboard can visualize changed and affected components. The file contains:
-   ```json
-   {
-     "version": "1.0.0",
-     "baseBranch": "<the base branch used>",
-     "generatedAt": "<ISO timestamp>",
-     "changedFiles": ["<list of changed file paths>"],
-     "changedNodeIds": ["<node IDs from step 4>"],
-     "affectedNodeIds": ["<node IDs from step 5, excluding changedNodeIds>"]
-   }
-   ```
-   After writing, tell the user they can run `/excavator-dashboard` to see the diff overlay visually.

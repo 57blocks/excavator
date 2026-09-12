@@ -507,18 +507,19 @@ describe('the cosmetic-change scenario end to end', { timeout: 60_000 }, () => {
   });
 });
 
-describe('UA commit-marker logic is untouched', () => {
-  it('finalize-incremental.mjs is byte-identical to the base branch', () => {
-    const refs = ['excavator-v2', 'origin/excavator-v2'];
-    const ref = refs.find(candidate => {
-      const probe = spawnSync('git', ['-C', repoRoot, 'rev-parse', '--verify', '--quiet', `${candidate}^{commit}`], { encoding: 'utf-8' });
-      return probe.status === 0;
-    });
-    expect(ref, 'a base ref is required to prove the marker logic was not touched').toBeTruthy();
-    const diff = execFileSync('git', [
-      '-C', repoRoot, 'diff', '--numstat', ref, '--', 'skills/excavator/finalize-incremental.mjs',
-    ], { encoding: 'utf-8' }).trim();
-    expect(diff).toBe('');
+describe('service-only incremental finalization', () => {
+  it('forces an empty tour before advancing fingerprints and metadata', () => {
+    const current = readFileSync(
+      resolve(repoRoot, 'skills/excavator/finalize-incremental.mjs'),
+      'utf-8',
+    );
+    expect(current).toContain('tour: []');
+    expect(current).not.toContain('rerunTour');
+    expect(current).not.toContain('tour.json');
+    expect(current.lastIndexOf('atomicWriteJson(graphPath, graph)'))
+      .toBeLessThan(current.lastIndexOf('patchFingerprints(dataDir, plan, patch)'));
+    expect(current.lastIndexOf('patchFingerprints(dataDir, plan, patch)'))
+      .toBeLessThan(current.lastIndexOf('advanceMeta(dataDir, plan, scan.totalFiles)'));
   });
 });
 

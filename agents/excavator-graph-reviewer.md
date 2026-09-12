@@ -65,17 +65,16 @@ Verify every **edge** has ALL required fields with correct types:
 - Every edge `source` MUST reference an existing node `id`
 - Every edge `target` MUST reference an existing node `id`
 - Every `nodeIds` entry in layers MUST reference an existing node `id`
-- Every `nodeIds` entry in tour steps MUST reference an existing node `id`
-- Log every dangling reference with the specific edge index/layer/step and the missing ID
+- Log every dangling reference with the specific edge index/layer and the missing ID
 
 **Check 3 -- Completeness (Critical)**
 
 - At least 1 node exists
 - At least 1 edge exists
 - At least 1 layer exists (warning-only for domain graphs — domain graphs may have empty layers)
-- At least 1 tour step exists (warning-only for domain graphs — domain graphs may have empty tours)
+- The compatibility field `tour` is an empty array
 
-**Domain graph detection:** If the graph contains nodes of type `domain`, `flow`, or `step`, treat it as a domain graph and relax the layers/tour requirements to warnings instead of critical issues.
+**Domain graph detection:** If the graph contains nodes of type `domain`, `flow`, or `step`, treat it as a domain graph and relax the layer requirement to a warning instead of a critical issue.
 
 **Check 4 -- Layer Coverage (Critical)**
 
@@ -88,11 +87,6 @@ Verify every **edge** has ALL required fields with correct types:
 
 - No duplicate node IDs. If any node `id` appears more than once, log every duplicate with the repeated ID and the indices where it appears.
 
-**Check 6 -- Tour Validation (Warning)**
-
-- Tour steps have sequential `order` values starting from 1
-- No duplicate `order` values
-- Each step has at least 1 entry in `nodeIds`
 - Tour has between 5 and 15 steps
 
 **Check 7 -- Quality Checks (Warning)**
@@ -137,7 +131,6 @@ The script must write this exact JSON structure to the output file:
     "totalNodes": 42,
     "totalEdges": 87,
     "totalLayers": 5,
-    "tourSteps": 8,
     "nodeTypes": {"file": 20, "function": 15, "class": 7, "config": 3, "document": 2, "service": 1},
     "edgeTypes": {"imports": 30, "contains": 40, "calls": 17, "configures": 5, "documents": 3, "deploys": 2}
   }
@@ -154,7 +147,7 @@ The script must write this exact JSON structure to the output file:
 **Critical issues** (go into `issues`):
 - Missing required fields on any node or edge
 - Broken referential integrity (dangling references)
-- Zero nodes, edges, layers, or tour steps
+- Zero nodes, edges, or layers
 - Invalid edge types or node types
 - Edge weights outside 0.0-1.0 range
 - File-level nodes missing from all layers
@@ -163,7 +156,6 @@ The script must write this exact JSON structure to the output file:
 **Warnings** (go into `warnings`):
 - Orphan nodes with no edges
 - Short or generic summaries
-- Tour step count outside 5-15 range
 - Self-referencing edges
 - Non-code nodes missing expected edge types (configures, documents, deploys, etc.)
 - Node type / ID prefix mismatches
@@ -208,7 +200,6 @@ Produce the final validation report JSON:
     "totalNodes": 42,
     "totalEdges": 87,
     "totalLayers": 5,
-    "tourSteps": 8,
     "nodeTypes": {"file": 20, "function": 15, "class": 7, "config": 3, "document": 2, "service": 1},
     "edgeTypes": {"imports": 30, "contains": 40, "calls": 17, "configures": 5, "documents": 3, "deploys": 2}
   }
@@ -219,7 +210,7 @@ Produce the final validation report JSON:
 - `approved` (boolean) -- `true` if no critical issues, `false` if any critical issues exist
 - `issues` (string[]) -- list of critical issues; empty array `[]` if none
 - `warnings` (string[]) -- list of non-critical observations; empty array `[]` if none
-- `stats` (object) -- summary statistics with `totalNodes`, `totalEdges`, `totalLayers`, `tourSteps`, `nodeTypes` (object mapping type to count), `edgeTypes` (object mapping type to count)
+- `stats` (object) -- summary statistics with `totalNodes`, `totalEdges`, `totalLayers`, `nodeTypes` (object mapping type to count), `edgeTypes` (object mapping type to count)
 
 ## Critical Constraints
 

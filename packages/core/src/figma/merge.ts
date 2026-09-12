@@ -1,4 +1,4 @@
-import type { KnowledgeGraph, GraphNode, GraphEdge, Layer, TourStep, ProjectMeta } from "../types.js";
+import type { KnowledgeGraph, GraphNode, GraphEdge, Layer, ProjectMeta } from "../types.js";
 import { validateGraph, type ValidationResult } from "../schema.js";
 
 export interface DesignAnalysis {
@@ -65,17 +65,9 @@ export function mergeDesignGraph(
     layers.push({ id: "layer:design-system", name: "Design System", description: "Components, variants, and design tokens", nodeIds: ds });
   }
 
-  // 4. tour: Design System first, then each page
-  const tour: TourStep[] = [];
-  let order = 1;
-  if (ds.length) tour.push({ order: order++, title: "Design System", description: "Shared components, variants, and tokens the screens are built from.", nodeIds: ds.slice(0, 8) });
-  for (const l of layers) {
-    if (l.id === "layer:design-system") continue;
-    tour.push({ order: order++, title: l.name, description: `Screens on the "${l.name}" page.`, nodeIds: l.nodeIds.slice(0, 8) });
-  }
-
-  // 5. assemble + validate, then re-attach kind (validateGraph drops it)
-  const graph: KnowledgeGraph = { version: "1.0.0", kind: "design", project, nodes, edges, layers, tour };
+  // 4. assemble the service graph. The compatibility field stays empty;
+  // presentation tours are no longer generated.
+  const graph: KnowledgeGraph = { version: "1.0.0", kind: "design", project, nodes, edges, layers, tour: [] };
   const result = validateGraph(graph);
   if (result.success && result.data) {
     (result.data as KnowledgeGraph).kind = "design";

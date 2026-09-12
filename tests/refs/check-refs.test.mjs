@@ -31,7 +31,7 @@ describe('check-refs.mjs', () => {
     expect(result.stdout).toMatch(/slash references checked: \d+/);
     expect(result.stdout).toMatch(/script path references checked: \d+/);
     expect(result.stdout).toMatch(/hooks\.json plugin-root paths checked: \d+/);
-    expect(result.stdout).toMatch(/locale key entries checked: \d+/);
+    expect(result.stdout).toMatch(/plugin manifest entries checked: \d+/);
     expect(result.stdout).toContain('All references resolved. OK.');
   });
 

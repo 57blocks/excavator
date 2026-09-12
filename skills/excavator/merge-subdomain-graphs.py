@@ -151,37 +151,6 @@ def merge_graphs(graphs: list[dict[str, Any]]) -> tuple[dict[str, Any], list[str
         if diff:
             dropped_layer_refs += diff
 
-    # ── Tour: concatenate, merge steps with same title ─────────────────
-    all_tour_steps: list[dict] = []
-    title_to_step: dict[str, dict] = {}
-    for g in graphs:
-        for step in g.get("tour", []):
-            title = step.get("title", "")
-            if title in title_to_step:
-                # Merge nodeIds from duplicate-titled steps (e.g. both
-                # subdomains produce a "Project Overview" step 1)
-                existing = title_to_step[title]
-                for nid in step.get("nodeIds", []):
-                    if nid not in existing.get("nodeIds", []):
-                        existing.setdefault("nodeIds", []).append(nid)
-                # Keep the longer description
-                if len(step.get("description", "")) > len(existing.get("description", "")):
-                    existing["description"] = step["description"]
-            else:
-                new_step = {**step}
-                title_to_step[title] = new_step
-                all_tour_steps.append(new_step)
-
-    # Drop dangling tour nodeIds and re-number
-    dropped_tour_refs = 0
-    for i, step in enumerate(all_tour_steps, start=1):
-        step["order"] = i
-        before = len(step.get("nodeIds", []))
-        step["nodeIds"] = [nid for nid in step.get("nodeIds", []) if nid in node_ids]
-        diff = before - len(step["nodeIds"])
-        if diff:
-            dropped_tour_refs += diff
-
     # ── Project metadata: merge ───────────────────────────────────────
     languages: list[str] = []
     frameworks: list[str] = []
@@ -220,11 +189,8 @@ def merge_graphs(graphs: list[dict[str, Any]]) -> tuple[dict[str, Any], list[str
         fixed_lines.append(f"  {edge_dedup_count:>4} × duplicate edges removed (kept higher weight)")
     if dropped_layer_refs:
         fixed_lines.append(f"  {dropped_layer_refs:>4} × dangling layer nodeId refs removed")
-    if dropped_tour_refs:
-        fixed_lines.append(f"  {dropped_tour_refs:>4} × dangling tour nodeId refs removed")
-
     if fixed_lines:
-        total_fixed = sum(node_dedup_by_type.values()) + edge_dedup_count + dropped_layer_refs + dropped_tour_refs
+        total_fixed = sum(node_dedup_by_type.values()) + edge_dedup_count + dropped_layer_refs
         report.append("")
         report.append(f"Fixed ({total_fixed} corrections):")
         report.extend(fixed_lines)
@@ -244,7 +210,7 @@ def merge_graphs(graphs: list[dict[str, Any]]) -> tuple[dict[str, Any], list[str
 
     # Output stats
     report.append("")
-    report.append(f"Output: {len(nodes_by_id)} nodes, {len(valid_edges)} edges, {len(layers_by_id)} layers, {len(all_tour_steps)} tour steps")
+    report.append(f"Output: {len(nodes_by_id)} nodes, {len(valid_edges)} edges, {len(layers_by_id)} layers")
 
     merged: dict[str, Any] = {
         "version": "1.0.0",
@@ -259,7 +225,7 @@ def merge_graphs(graphs: list[dict[str, Any]]) -> tuple[dict[str, Any], list[str
         "nodes": list(nodes_by_id.values()),
         "edges": valid_edges,
         "layers": list(layers_by_id.values()),
-        "tour": all_tour_steps,
+        "tour": [],
     }
 
     return merged, report, dropped_edges
@@ -299,7 +265,6 @@ def write_merge_report(
             "nodes": len(merged.get("nodes", [])),
             "edges": len(merged.get("edges", [])),
             "layers": len(merged.get("layers", [])),
-            "tourSteps": len(merged.get("tour", [])),
         },
         "recoveredStructuralEdges": recovered_count,
         "droppedEdges": dropped_edges,

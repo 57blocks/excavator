@@ -10,7 +10,7 @@
  * than being quietly marked inferred by the script that failed to anchor it.
  */
 import { afterEach, describe, expect, it } from 'vitest';
-import { execFileSync, spawnSync } from 'node:child_process';
+import { spawnSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
@@ -254,7 +254,7 @@ describe('the validator counts an unanchored step on a domain graph', () => {
 
   it('accepts a step whose nodeIds are in the graph', () => {
     // The domain graph carries its own copy of the anchored node, as the
-    // dashboard's domain view receives it.
+    // domain graph consumers receive it.
     const domainGraph = domain([step('step:create-order:validate', {
       lineRange: [12, 31], nodeIds: ['function:src/orders/create.ts:validateOrder'],
     })]);
@@ -346,18 +346,10 @@ describe('the domain skill wires the anchoring phase in additively', () => {
     expect(section).toContain('Supplement, so not fatal.');
   });
 
-  it('deletes nothing from the domain skill', () => {
-    const refs = ['excavator-v2', 'origin/excavator-v2'];
-    const ref = refs.find(candidate => spawnSync(
-      'git', ['-C', repoRoot, 'rev-parse', '--verify', '--quiet', `${candidate}^{commit}`], { encoding: 'utf-8' },
-    ).status === 0);
-    expect(ref, 'a base ref is required for the additive check').toBeTruthy();
-    const numstat = execFileSync('git', [
-      '-C', repoRoot, 'diff', '--numstat', ref, '--', 'skills/excavator-domain/SKILL.md',
-    ], { encoding: 'utf-8' }).trim();
-    expect(numstat).not.toBe('');
-    const [added, deleted] = numstat.split('\n')[0].split('\t');
-    expect(Number(deleted)).toBe(0);
-    expect(Number(added)).toBeGreaterThan(0);
+  it('publishes a queryable service artifact without a display step', () => {
+    expect(skill).toContain('queryable domain graph');
+    expect(skill).toContain('### Phase 6: Service Ready');
+    expect(skill).not.toContain('/excavator-dashboard');
+    expect(skill).not.toContain('Open your browser');
   });
 });

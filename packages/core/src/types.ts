@@ -42,7 +42,6 @@ export interface FigmaMeta {
   fileKey?: string;
   nodeId?: string;            // Figma node id, e.g. "1:23"
   figmaType?: string;         // FRAME | COMPONENT | COMPONENT_SET | INSTANCE | TEXT ...
-  thumbnailUrl?: string;      // lazily filled from GET /v1/images
   dimensions?: { width: number; height: number };
   tokenKind?: "color" | "type" | "spacing" | "effect" | "grid";
   tokenValue?: string;        // e.g. "#0A84FF", "16px"
@@ -164,9 +163,8 @@ export interface GraphEdge {
   type: EdgeType;
   direction: "forward" | "backward" | "bidirectional";
   description?: string;
-  /** Per-edge-type ORDERING CONSTANT (the dashboard sorts `flow_step` and
-   *  NodeInfo rows by it). NOT a confidence score — attribution lives in
-   *  `provenance`/`evidence`. */
+  /** Per-edge-type ORDERING CONSTANT. NOT a confidence score — attribution
+   *  lives in `provenance`/`evidence`. */
   weight: number; // 0-1
   /** Cited lines. Optional: a graph produced by the existing pipeline states
    *  neither of these, and validation accepts that unchanged. When they ARE
@@ -233,19 +231,12 @@ export interface KnowledgeGraph {
   gaps?: Gap[];
 }
 
-// Theme configuration (for dashboard customization)
-export interface ThemeConfig {
-  presetId: string;
-  accentId: string;
-}
-
 // AnalysisMeta (for persistence)
 export interface AnalysisMeta {
   lastAnalyzedAt: string;
   gitCommitHash: string;
   version: string;
   analyzedFiles: number;
-  theme?: ThemeConfig;
 }
 
 // Project config (for auto-update opt-in and language preference)

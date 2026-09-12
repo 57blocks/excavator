@@ -1,7 +1,7 @@
 <h1 align="center">Excavator</h1>
 
 <p align="center">
-  <strong>Turn any codebase, knowledge base, or docs into an interactive knowledge graph you can explore, search, and ask questions about.</strong>
+  <strong>Turn any codebase, knowledge base, or docs into a verified knowledge graph you can ask questions about.</strong>
   <br />
   <em>Works with Claude Code and Codex.</em>
 </p>
@@ -22,7 +22,7 @@
 </p>
 
 <p align="center">
-  <img src="assets/hero.png" alt="Excavator — Turn any codebase into an interactive knowledge graph" width="800" />
+  <img src="assets/hero.png" alt="Excavator — Turn any codebase into a queryable knowledge graph" width="800" />
 </p>
 
 <p align="center">
@@ -35,7 +35,7 @@
 
 **You just joined a new team. The codebase is 200,000 lines of code. Where do you even start?**
 
-Excavator is a [Claude Code Plugin](https://code.claude.com/docs/en/plugins-reference#plugins-reference) that analyzes your project with a multi-agent pipeline, builds a knowledge graph of every file, function, class, and dependency, then gives you an interactive dashboard to explore it all visually. Stop reading code blind. Start seeing the big picture.
+Excavator is a [Claude Code Plugin](https://code.claude.com/docs/en/plugins-reference#plugins-reference) that analyzes your project with a multi-agent pipeline, builds a knowledge graph of every file, function, class, and dependency, then answers questions against that graph in the terminal.
 
 > **The goal isn't a graph that wows you with how complex your codebase is — it's a graph that quietly teaches you how every piece fits together.**
 
@@ -43,23 +43,23 @@ Excavator is a [Claude Code Plugin](https://code.claude.com/docs/en/plugins-refe
 
 ## ✨ Features
 
-### Explore the structural graph
+### Query the structural graph
 
-Navigate your codebase as an interactive knowledge graph — every file, function, and class is a node you can click, search, and explore. Select any node to see plain-English summaries, relationships, and guided tours.
+Ask about files, functions, classes, dependencies, and request flows. Answers use plain-English summaries, architecture layers, relationships, and source evidence from the generated graph.
 
 ### Understand business logic
 
-Switch to the domain view and see how your code maps to real business processes — domains, flows, and steps laid out as a horizontal graph.
+Extract how code maps to real business processes — domains, flows, and steps — and query those relationships from the terminal.
 
 ### Analyze knowledge bases
 
-Point `/excavator-knowledge` at a [Karpathy-pattern LLM wiki](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f) and get a force-directed knowledge graph with community clustering. The deterministic parser extracts wikilinks and categories from `index.md`, then LLM agents discover implicit relationships, extract entities, and surface claims — turning your wiki into a navigable graph of interconnected ideas.
+Point `/excavator-knowledge` at a [Karpathy-pattern LLM wiki](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f). The deterministic parser extracts wikilinks and categories from `index.md`, then LLM agents discover implicit relationships, extract entities, and surface claims.
 
 <table>
   <tr>
     <td width="50%" valign="top">
-      <h3>🧭 Guided Tours</h3>
-      <p>Auto-generated walkthroughs of the architecture, ordered by dependency. Learn the codebase in the right order.</p>
+      <h3>💬 Terminal Q&amp;A</h3>
+      <p>Ask architecture and business-flow questions without starting a browser or local web server.</p>
     </td>
     <td width="50%" valign="top">
       <h3>🔍 Fuzzy & Semantic Search</h3>
@@ -72,14 +72,14 @@ Point `/excavator-knowledge` at a [Karpathy-pattern LLM wiki](https://gist.githu
       <p>See which parts of the system your changes affect before you commit. Understand ripple effects across the codebase.</p>
     </td>
     <td width="50%" valign="top">
-      <h3>🎭 Persona-Adaptive UI</h3>
-      <p>The dashboard adjusts its detail level based on who you are — junior dev, PM, or power user.</p>
+      <h3>🧾 Evidence Tracking</h3>
+      <p>Trace graph statements back to source files and validation results.</p>
     </td>
   </tr>
   <tr>
     <td width="50%" valign="top">
-      <h3>🏗️ Layer Visualization</h3>
-      <p>Automatic grouping by architectural layer — API, Service, Data, UI, Utility — with color-coded legend.</p>
+      <h3>🏗️ Architecture Layers</h3>
+      <p>Automatic grouping by architectural layer — API, Service, Data, UI, and Utility.</p>
     </td>
     <td width="50%" valign="top">
       <h3>📚 Language Concepts</h3>
@@ -109,12 +109,20 @@ Point `/excavator-knowledge` at a [Karpathy-pattern LLM wiki](https://gist.githu
 
 A multi-agent pipeline scans your project, extracts every file, function, class, and dependency, then builds a knowledge graph saved to `.excavator/knowledge-graph.json`.
 
+Then ask questions directly:
+
+```bash
+/excavator-chat How does the request flow work?
+```
+
+Excavator is service-only: it generates nodes, edges, architecture layers, and evidence for terminal Q&A. It does not ship or launch an HTML interface.
+
 > **Heads up on token usage:** The initial `/excavator` analyzes your whole codebase and can consume a significant number of tokens on large projects. We recommend running it on a token plan / subscription, or using a local model (see above) for initialization. Subsequent runs are incremental by default — only changed files are re-analyzed — so they use far fewer tokens.
 
 **Localized output:** Use `--language` to generate content in your preferred language:
 
 ```bash
-# Generate Chinese content (知识图节点描述和 Dashboard UI)
+# Generate Chinese graph summaries
 /excavator --language zh
 
 # Supported languages: en (default), zh, zh-TW, ja, ko, ru
@@ -122,20 +130,9 @@ A multi-agent pipeline scans your project, extracts every file, function, class,
 
 On the **first run** in a project — when you don't pass `--language` and no language is stored yet — `/excavator` detects the language you're conversing in. If it isn't English, it asks you to confirm (or override) before generating; English conversations are unaffected. Your choice is saved to `.excavator/config.json` and reused on every later run.
 
-The `--language` parameter affects:
-- Node summaries and descriptions in the knowledge graph
-- Dashboard UI labels, buttons, and tooltips
-- Guided tour explanations
+The `--language` parameter affects node summaries, descriptions, and other generated graph text.
 
-### 3. Explore the dashboard
-
-```bash
-/excavator-dashboard
-```
-
-An interactive web dashboard opens with your codebase visualized as a graph — color-coded by architectural layer, searchable, and clickable. Select any node to see its code, relationships, and a plain-English explanation.
-
-### 4. Keep learning
+### 3. Ask and analyze
 
 ```bash
 # Ask anything about the codebase
@@ -202,11 +199,10 @@ The graph is just JSON — **commit it once, and teammates skip the pipeline**. 
 
 > **Example:** [GoogleCloudPlatform/microservices-demo](https://github.com/GoogleCloudPlatform/microservices-demo) — Go / Java / Python / Node reference with a committed graph.
 
-**What to commit:** everything in `.excavator/` *except* `intermediate/` and `diff-overlay.json` (those are local scratch).
+**What to commit:** everything in `.excavator/` except `intermediate/` (local scratch).
 
 ```gitignore
 .excavator/intermediate/
-.excavator/diff-overlay.json
 ```
 
 **Keep it fresh:** enable `/excavator --auto-update` — a post-commit hook incrementally patches the graph so each commit lands with a matching graph. Or re-run `/excavator` manually before releases.
@@ -219,20 +215,6 @@ git lfs track ".excavator/*.json"
 git add .gitattributes .excavator/
 ```
 
-### View the dashboard without Claude Code
-
-Once a graph has been generated and committed, anyone on the team can open it with one command — no Claude Code, no LLM, no API key. Only Node.js (>= 18) is required:
-
-```bash
-npx https://github.com/Jingqi-57blocks/excavator/releases/latest/download/excavator-viewer.tgz /path/to/analyzed/project
-```
-
-The terminal prints a tokenized URL (`http://127.0.0.1:5173/?token=…`) and opens the full interactive dashboard in your browser. The project directory (default: current directory) must contain the committed data directory (`.excavator/`). Everything is served read-only from local disk — no LLM calls, no data leaves your machine.
-
-Working from a clone instead? `pnpm install && pnpm --filter @excavator/core build`, then `GRAPH_DIR=/path/to/analyzed/project pnpm dev:dashboard` does the same via the Vite dev server.
-
----
-
 ## 🔧 Under the Hood
 
 ### Tree-sitter + LLM hybrid
@@ -240,20 +222,19 @@ Working from a clone instead? `pnpm install && pnpm --filter @excavator/core bui
 Static analysis and LLMs do what each does best:
 
 - **Tree-sitter (deterministic)** — parses source into a concrete syntax tree and extracts structural facts: imports, exports, function/class definitions, call sites, inheritance. Pre-resolved into an `importMap` during the scan phase and passed to file-analyzers so they don't re-derive imports from source. Same input → same output, every run. Also powers fingerprint-based change detection for incremental updates.
-- **LLM (semantic)** — reads the parsed structure alongside the original source to produce what parsers can't: plain-English summaries, tags, architectural layer assignments, business-domain mapping, guided tours, language concept callouts.
+- **LLM (semantic)** — reads the parsed structure alongside the original source to produce what parsers can't: plain-English summaries, tags, architectural layer assignments, business-domain mapping, and language concept callouts.
 
 This split is why the graph is reproducible on the structural side (the same code always yields the same edges) while still capturing intent on the semantic side (what a file is *for*, not just what it imports).
 
 ### Multi-Agent Pipeline
 
-The `/excavator` command orchestrates 5 specialized agents, `/excavator-domain` adds a 6th, and `/excavator-knowledge` adds a 7th:
+The `/excavator` command orchestrates specialized analysis and verification agents:
 
 | Agent                   | Role                                                                                                               | Used By                 |
 | ----------------------- | ------------------------------------------------------------------------------------------------------------------ | ----------------------- |
 | `project-scanner`       | Discovers files, detects languages and frameworks                                                                  | `/excavator`           |
 | `file-analyzer`         | Extracts functions, classes, imports; produces graph nodes and edges                                               | `/excavator`           |
 | `architecture-analyzer` | Identifies architectural layers                                                                                    | `/excavator`           |
-| `tour-builder`          | Generates guided learning tours                                                                                    | `/excavator`           |
 | `graph-reviewer`        | Validates graph completeness and referential integrity. Runs inline by default; use `--review` for full LLM review | `/excavator`           |
 | `domain-analyzer`       | Extracts business domains, flows, and process steps                                                                | `/excavator-domain`    |
 | `article-analyzer`      | Extracts entities, claims, and implicit relationships from wiki articles                                           | `/excavator-knowledge` |

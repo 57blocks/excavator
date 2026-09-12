@@ -23,7 +23,7 @@
  *   3. `inferred` edges pass — being marked as judgement IS the honest state.
  *   4. referential integrity — the same checks UA's inline validator makes
  *      (required node fields, duplicate ids, dangling endpoints, layer and
- *      tour references, file nodes in a layer, orphan warnings).
+ *      file nodes in a layer and orphan warnings).
  *   5. domain steps — a `step` node needs `nodeIds` that exist in the graph,
  *      or `provenance: "inferred"`. Otherwise: gap `step-unanchored`.
  *
@@ -449,8 +449,7 @@ export function validateAgainstSource({ graph, reader, sampleLimit = 5 }) {
 
   const layers = Array.isArray(validated.layers) ? validated.layers : [];
   if (validated.layers && !Array.isArray(validated.layers)) warnings.push('graph.layers is not an array');
-  const tour = Array.isArray(validated.tour) ? validated.tour : [];
-  if (validated.tour && !Array.isArray(validated.tour)) warnings.push('graph.tour is not an array');
+  validated.tour = [];
 
   const assigned = new Map();
   for (const layer of layers) {
@@ -465,12 +464,6 @@ export function validateAgainstSource({ graph, reader, sampleLimit = 5 }) {
       issues.push(`File node '${node.id}' not in any layer`);
     }
   }
-  tour.forEach((step, i) => {
-    for (const id of step?.nodeIds ?? []) {
-      if (!nodeById.has(id)) issues.push(`Tour step[${i}] refs missing node '${id}'`);
-    }
-  });
-
   const withEdges = new Set();
   for (const edge of validated.edges) {
     if (!edge || typeof edge !== 'object') continue;
@@ -535,7 +528,6 @@ export function validateAgainstSource({ graph, reader, sampleLimit = 5 }) {
       totalNodes: validated.nodes.length,
       totalEdges: validated.edges.length,
       totalLayers: layers.length,
-      tourSteps: tour.length,
     },
   };
 

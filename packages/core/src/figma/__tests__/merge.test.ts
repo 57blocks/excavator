@@ -39,8 +39,8 @@ describe("mergeDesignGraph", () => {
     expect(screen.summary).toBe("The sign-in screen");
     expect(screen.tags).toEqual(["auth", "entry"]);
   });
-  it("builds a tour that starts with the Design System", () => {
+  it("keeps the presentation compatibility field empty", () => {
     const { data } = mergeDesignGraph(manifest, [], project);
-    expect(data!.tour[0].title).toBe("Design System");
+    expect(data!.tour).toEqual([]);
   });
 });

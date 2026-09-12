@@ -20,7 +20,7 @@ The knowledge graph JSON has this structure:
 - `edges[]` — each has {source, target, type, direction, weight}
   - Key types: imports, contains, calls, depends_on, configures, documents, deploys, triggers, contains_flow, flow_step, related, cites
 - `layers[]` — each has {id, name, description, nodeIds[]}
-- `tour[]` — each has {order, title, description, nodeIds[]}
+- `tour[]` — compatibility field; new service graphs always store an empty array and Q&A does not read it
 
 ## How to Read Efficiently
 

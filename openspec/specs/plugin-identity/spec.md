@@ -25,13 +25,13 @@ Skill script resolution SHALL try, in order, `${CLAUDE_PLUGIN_ROOT}`, `$HOME/.ex
 #### Scenario: Codex 安装与卸载
 - **GIVEN** `HOME` points to an empty temporary directory
 - **WHEN** `install.sh` runs
-- **THEN** `~/.agents/skills/excavator*/SKILL.md` exists for all nine skills and `~/.excavator-plugin` resolves to the repository root
+- **THEN** `~/.agents/skills/excavator*/SKILL.md` exists for all eight service skills and `~/.excavator-plugin` resolves to the repository root
 - **WHEN** `install.sh --uninstall` runs
 - **THEN** those symlinks are removed and no other file under `HOME` was touched
 
 #### Scenario: 脚本定位只探测三处
 - **WHEN** the resolution block in `skills/excavator/SKILL.md` is read
-- **THEN** it lists exactly `${CLAUDE_PLUGIN_ROOT}`, `$HOME/.excavator-plugin`, and the `~/.agents/skills` realpath root, and the same block appears in `excavator-dashboard` and `excavator-domain`
+- **THEN** it lists exactly `${CLAUDE_PLUGIN_ROOT}`, `$HOME/.excavator-plugin`, and the `~/.agents/skills` realpath root, and the same block appears in `excavator-domain`
 
 ### Requirement: hooks 只建议不执行
 

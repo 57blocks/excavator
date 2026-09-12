@@ -130,7 +130,6 @@ function clearIncrementalScratch(intermediateDir) {
     'batch-existing.json',
     'batches.json',
     'layers.json',
-    'tour.json',
     'incremental-symbol-report.json',
     'incremental-edge-candidates.json',
   ]);
@@ -703,7 +702,6 @@ async function main() {
     oldInventory,
     currentInventory,
   );
-
   const onlyGeneratedArtifacts =
     generatedArtifactFiles.length > 0
     && nonGeneratedDiffPaths.length === 0
@@ -774,7 +772,6 @@ async function main() {
     generatedArtifactFiles,
     importMapRefreshPaths: importAnalysisPaths,
     rerunArchitecture: decision.rerunArchitecture,
-    rerunTour: decision.rerunTour,
     reason: decision.reason,
   };
 

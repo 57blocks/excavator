@@ -311,15 +311,14 @@ describe('validate-graph — referential integrity and domain steps', () => {
     graph.nodes.push({ id: 'function:src/app.ts:run', type: 'function', name: 'run', filePath: 'src/app.ts', lineRange: [3, 5], summary: 'dup', tags: [], complexity: 'simple' });
     graph.nodes.push({ id: 'file:src/orphan.ts', type: 'file', name: 'orphan.ts', filePath: 'src/orphan.ts', summary: '', tags: [], complexity: 'simple' });
     graph.edges.push({ source: 'file:src/app.ts', target: 'file:src/nowhere.ts', type: 'imports', direction: 'forward', weight: 0.7, provenance: 'inferred', evidence: [] });
-    graph.tour.push({ order: 2, title: 'Bad', description: '', nodeIds: ['file:src/nowhere.ts'] });
 
     const { report } = validate(root, graph);
     const joined = report.issues.join('\n');
     expect(joined).toMatch(/Duplicate node ID 'function:src\/app\.ts:run'/);
     expect(joined).toMatch(/target 'file:src\/nowhere\.ts' not found/);
     expect(joined).toMatch(/File node 'file:src\/orphan\.ts' not in any layer/);
-    expect(joined).toMatch(/Tour step\[1\] refs missing node/);
     expect(report.warnings.join('\n')).toMatch(/has no edges \(orphan\)/);
+    expect(report.stats).not.toHaveProperty('tourSteps');
   });
 
   it('counts a step with no resolvable nodeIds, and accepts an inferred one', () => {

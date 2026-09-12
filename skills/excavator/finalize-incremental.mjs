@@ -5,8 +5,8 @@
  * Usage: node finalize-incremental.mjs <projectRoot>
  *
  * For PARTIAL_UPDATE / ARCHITECTURE_UPDATE, reads assembled-graph.json plus
- * either the previous or regenerated layers/tour, performs deterministic
- * dangling-reference cleanup and local layer placement, then atomically saves
+ * either the previous or regenerated layers, performs deterministic
+ * dangling-reference cleanup and local layer placement, forces `tour: []`, then atomically saves
  * knowledge-graph.json. Only after that succeeds does it patch fingerprints
  * and advance meta.json. SKIP applies the fingerprint/meta patch only; a
  * generated-artifact-only SKIP deliberately advances nothing.
@@ -232,35 +232,6 @@ function assignLayers(rawLayers, nodes, edges) {
   return layers.filter(layer => layer.nodeIds.length > 0);
 }
 
-function normalizeTour(rawTour, nodeIds, pathIndex) {
-  return unwrap(rawTour, 'steps')
-    .map((step, index) => {
-      const refs = Array.isArray(step?.nodeIds)
-        ? step.nodeIds
-        : Array.isArray(step?.nodesToInspect)
-          ? step.nodesToInspect
-          : [];
-      const normalized = {
-        order: Number.isFinite(step?.order) ? step.order : index + 1,
-        title: typeof step?.title === 'string' ? step.title : `Step ${index + 1}`,
-        description:
-          typeof step?.description === 'string'
-            ? step.description
-            : typeof step?.whyItMatters === 'string'
-              ? step.whyItMatters
-              : '',
-        nodeIds: [...new Set(
-          refs.map(ref => resolveNodeRef(ref, nodeIds, pathIndex)).filter(Boolean),
-        )],
-      };
-      if (typeof step?.languageLesson === 'string') {
-        normalized.languageLesson = step.languageLesson;
-      }
-      return normalized;
-    })
-    .sort((a, b) => a.order - b.order);
-}
-
 function normalizeAssembled(assembled) {
   const nodesById = new Map();
   for (const node of assembled?.nodes ?? []) {
@@ -432,8 +403,6 @@ async function main() {
       scan.importMap ?? {},
       importMapRefreshPaths,
     );
-    const nodeIds = new Set(assembled.nodes.map(node => node.id));
-    const pathIndex = buildPathIndex(assembled.nodes);
     const missingAnalyzedPaths = plan.filesToReanalyze.filter(
       path => !hasAnalyzedFileCoverage(assembled.nodes, path),
     );
@@ -446,15 +415,9 @@ async function main() {
     if (plan.rerunArchitecture && !existsSync(join(intermediateDir, 'layers.json'))) {
       throw new Error('Architecture update requires layers.json; baseline not advanced');
     }
-    if (plan.rerunTour && !existsSync(join(intermediateDir, 'tour.json'))) {
-      throw new Error('Architecture update requires tour.json; baseline not advanced');
-    }
     const rawLayers = plan.rerunArchitecture
       ? readJson(join(intermediateDir, 'layers.json'))
       : previousGraph.layers ?? [];
-    const rawTour = plan.rerunTour
-      ? readJson(join(intermediateDir, 'tour.json'))
-      : previousGraph.tour ?? [];
     const now = new Date().toISOString();
     const graph = {
       ...previousGraph,
@@ -466,7 +429,7 @@ async function main() {
       nodes: assembled.nodes,
       edges: assembled.edges,
       layers: assignLayers(rawLayers, assembled.nodes, assembled.edges),
-      tour: normalizeTour(rawTour, nodeIds, pathIndex),
+      tour: [],
     };
 
     // Ordering is intentional: a failed graph save must never advance the
@@ -507,6 +470,5 @@ export {
   assignLayers,
   commonParentDepth,
   hasAnalyzedFileCoverage,
-  normalizeTour,
   refreshGraphImports,
 };

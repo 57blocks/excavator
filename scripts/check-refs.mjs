@@ -3,7 +3,7 @@
  * check-refs.mjs — cross-reference integrity gate for the Excavator plugin.
  *
  * Zero dependencies, zero network. Verifies that every cross-reference
- * between skills, agents, hooks, and dashboard locales in this repository
+ * between skills, agents, hooks, and plugin manifests in this repository
  * actually resolves to something that exists — so a rename, a typo, or a
  * moved file shows up as a hard failure instead of a silent dangling
  * reference discovered only when a user hits it.
@@ -23,9 +23,7 @@
  *      prefix, resolves relative to the repo root or to the referencing
  *      file's own skill directory.
  *   5. Every `${CLAUDE_PLUGIN_ROOT}/...` path in hooks/hooks.json resolves.
- *   6. All packages/dashboard/src/locales/*.ts files export the same set
- *      of (possibly nested) keys.
- *   7. `.claude-plugin/plugin.json` and `marketplace.json` have a shape the
+ *   6. `.claude-plugin/plugin.json` and `marketplace.json` have a shape the
  *      Claude Code plugin loader accepts: `agents` absent or an ARRAY of
  *      existing files, `skills`/`hooks` paths that resolve, and every
  *      `plugins[].source` present. An invalid manifest makes `--plugin-dir`
@@ -39,8 +37,7 @@
 
 import { readFileSync, readdirSync, existsSync, statSync } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
-import { fileURLToPath, pathToFileURL } from 'node:url';
-import { execFileSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(__dirname, '..');
@@ -212,8 +209,7 @@ function checkSlashReferences() {
   // Matches bare `/excavator[-suffix]` and Claude Code-prefixed
   // `/excavator:excavator[-suffix]`, word-bounded so it doesn't also match
   // inside a longer path or URL segment. Excludes a match immediately
-  // followed by a file extension (e.g. `/excavator-viewer.tgz` in a release
-  // download URL) — that is a filename, not a skill invocation.
+  // followed by a file extension — that is a filename, not a skill invocation.
   const slashRe =
     /(?:^|[^a-zA-Z0-9_/])\/excavator(?::excavator)?(-[a-z]+)?\b(?!\.[a-z])/g;
   const files = [...corpusFiles, join(REPO_ROOT, 'README.md')].filter(existsSync);
@@ -306,81 +302,7 @@ function checkHooksJsonPaths() {
   return checked;
 }
 
-// ── Check 6: dashboard locale key parity ─────────────────────────────────
-
-/**
- * Import a locale .ts file's named (or default) export and return its
- * key-path set, via a child process so this script itself needs no special
- * `--experimental-strip-types` flag on its own invocation (design's
- * verification runs it as plain `node scripts/check-refs.mjs`).
- */
-function importLocaleKeyPaths(filePath, modName) {
-  const url = pathToFileURL(filePath).href;
-  const inline = [
-    `import { pathToFileURL } from 'node:url';`,
-    `const mod = await import(${JSON.stringify(url)});`,
-    `const exported = mod[${JSON.stringify(modName)}] ?? mod.default;`,
-    `if (!exported || typeof exported !== 'object') { console.log(JSON.stringify(null)); process.exit(0); }`,
-    `function collect(obj, prefix) {`,
-    `  const keys = [];`,
-    `  for (const [k, v] of Object.entries(obj)) {`,
-    `    const path = prefix ? prefix + '.' + k : k;`,
-    `    if (v !== null && typeof v === 'object' && !Array.isArray(v)) keys.push(...collect(v, path));`,
-    `    else keys.push(path);`,
-    `  }`,
-    `  return keys;`,
-    `}`,
-    `console.log(JSON.stringify(collect(exported, '')));`,
-  ].join('\n');
-  const out = execFileSync(
-    process.execPath,
-    ['--experimental-strip-types', '--input-type=module', '-e', inline],
-    { encoding: 'utf-8', stdio: ['ignore', 'pipe', 'ignore'] },
-  );
-  return JSON.parse(out);
-}
-
-async function checkLocaleParity() {
-  let checked = 0;
-  const localesDir = join(REPO_ROOT, 'packages/dashboard/src/locales');
-  const localeFiles = listFiles(localesDir, { suffix: '.ts' }).filter(
-    (f) => f !== 'index.ts',
-  );
-  if (localeFiles.length === 0) {
-    fail(6, `no locale files found under ${relative(REPO_ROOT, localesDir)}`);
-    return checked;
-  }
-
-  const keySets = {};
-  for (const file of localeFiles) {
-    checked++;
-    const modName = file.replace(/\.ts$/, '');
-    const keyPaths = importLocaleKeyPaths(join(localesDir, file), modName);
-    if (keyPaths === null) {
-      fail(6, `${relative(REPO_ROOT, join(localesDir, file))} does not export an object named "${modName}" (or default)`);
-      continue;
-    }
-    keySets[file] = new Set(keyPaths);
-  }
-
-  const fileNames = Object.keys(keySets);
-  if (fileNames.length < 2) return checked;
-  const reference = keySets[fileNames[0]];
-  for (const file of fileNames.slice(1)) {
-    const current = keySets[file];
-    const missing = [...reference].filter((k) => !current.has(k));
-    const extra = [...current].filter((k) => !reference.has(k));
-    for (const k of missing) {
-      fail(6, `${file} is missing key "${k}" present in ${fileNames[0]}`);
-    }
-    for (const k of extra) {
-      fail(6, `${file} has extra key "${k}" not present in ${fileNames[0]}`);
-    }
-  }
-  return checked;
-}
-
-// ── Check 7: plugin manifest shape ──────────────────────────────────────
+// ── Check 6: plugin manifest shape ──────────────────────────────────────
 
 /**
  * The loader is silent about a manifest it cannot parse: `--plugin-dir` on a
@@ -397,13 +319,13 @@ function checkPluginManifests() {
 
   const readJson = (path, label) => {
     if (!existsSync(path)) {
-      fail(7, `${label} does not exist at ${relative(REPO_ROOT, path)}`);
+      fail(6, `${label} does not exist at ${relative(REPO_ROOT, path)}`);
       return null;
     }
     try {
       return JSON.parse(readText(path));
     } catch (err) {
-      fail(7, `${label} is not valid JSON: ${err.message}`);
+      fail(6, `${label} is not valid JSON: ${err.message}`);
       return null;
     }
   };
@@ -412,7 +334,7 @@ function checkPluginManifests() {
   if (plugin) {
     checked++;
     if (typeof plugin.name !== 'string' || plugin.name.length === 0) {
-      fail(7, 'plugin.json has no name');
+      fail(6, 'plugin.json has no name');
     }
     // `agents` must be absent (auto-discovery from agents/) or an array of
     // files. A string here is the exact shape the loader rejects.
@@ -428,12 +350,12 @@ function checkPluginManifests() {
         for (const entry of plugin.agents) {
           checked++;
           if (typeof entry !== 'string') {
-            fail(7, `plugin.json "agents" entry is not a string: ${JSON.stringify(entry)}`);
+            fail(6, `plugin.json "agents" entry is not a string: ${JSON.stringify(entry)}`);
             continue;
           }
           const abs = resolve(REPO_ROOT, entry.replace(/^\.\//, ''));
           if (!existsSync(abs) || !statSync(abs).isFile()) {
-            fail(7, `plugin.json "agents" entry "${entry}" does not resolve to a file`);
+            fail(6, `plugin.json "agents" entry "${entry}" does not resolve to a file`);
           }
         }
       }
@@ -443,16 +365,16 @@ function checkPluginManifests() {
       checked++;
       const value = plugin[key];
       if (typeof value !== 'string') {
-        fail(7, `plugin.json "${key}" must be a path string, got ${typeof value}`);
+        fail(6, `plugin.json "${key}" must be a path string, got ${typeof value}`);
         continue;
       }
       const abs = resolve(REPO_ROOT, value.replace(/^\.\//, ''));
       if (!existsSync(abs)) {
-        fail(7, `plugin.json "${key}" path "${value}" does not exist`);
+        fail(6, `plugin.json "${key}" path "${value}" does not exist`);
       } else if (kind === 'directory' && !statSync(abs).isDirectory()) {
-        fail(7, `plugin.json "${key}" path "${value}" is not a directory`);
+        fail(6, `plugin.json "${key}" path "${value}" is not a directory`);
       } else if (kind === 'file' && !statSync(abs).isFile()) {
-        fail(7, `plugin.json "${key}" path "${value}" is not a file`);
+        fail(6, `plugin.json "${key}" path "${value}" is not a file`);
       }
     }
   }
@@ -461,21 +383,21 @@ function checkPluginManifests() {
   if (marketplace) {
     checked++;
     if (typeof marketplace.description !== 'string' || marketplace.description.trim().length === 0) {
-      fail(7, 'marketplace.json has no description (the validator warns, and users see nothing)');
+      fail(6, 'marketplace.json has no description (the validator warns, and users see nothing)');
     }
     if (!Array.isArray(marketplace.plugins) || marketplace.plugins.length === 0) {
-      fail(7, 'marketplace.json has no plugins array');
+      fail(6, 'marketplace.json has no plugins array');
     } else {
       for (const entry of marketplace.plugins) {
         checked++;
         const source = entry?.source;
         if (typeof source !== 'string' || source.length === 0) {
-          fail(7, `marketplace.json plugin "${entry?.name ?? '<unnamed>'}" has no source`);
+          fail(6, `marketplace.json plugin "${entry?.name ?? '<unnamed>'}" has no source`);
           continue;
         }
         const abs = resolve(REPO_ROOT, source.replace(/^\.\//, ''));
         if (!existsSync(abs)) {
-          fail(7, `marketplace.json plugin source "${source}" does not exist`);
+          fail(6, `marketplace.json plugin source "${source}" does not exist`);
         }
       }
     }
@@ -492,7 +414,6 @@ async function main() {
   const slashRefsChecked = checkSlashReferences();
   const scriptPathsChecked = checkScriptPaths();
   const hooksJsonChecked = checkHooksJsonPaths();
-  const localeKeysChecked = await checkLocaleParity();
   const manifestEntriesChecked = checkPluginManifests();
 
   console.log(
@@ -502,7 +423,6 @@ async function main() {
       `  slash references checked: ${slashRefsChecked}`,
       `  script path references checked: ${scriptPathsChecked}`,
       `  hooks.json plugin-root paths checked: ${hooksJsonChecked}`,
-      `  locale key entries checked: ${localeKeysChecked}`,
       `  plugin manifest entries checked: ${manifestEntriesChecked}`,
     ].join('\n'),
   );
