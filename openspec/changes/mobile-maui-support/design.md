@@ -44,10 +44,11 @@
 
 `skills/excavator/frameworks/maui.md`（若写）沿用 `frameworks/README.md` 契约：约定只指路、不产行号，据此得到的边一律 `provenance:"inferred"` 无 evidence，annotate / validate 永不当事实。它是对 `maui.ts`（确定性检测 + 分层）的补充，不是抽取手段。
 
-## D6 扫描 ignore 调整：只删噪声不删源码
+## D6 扫描去污：项目级 ignore，不动全局默认
 
-- 新增忽略 `**/bin/`、`**/obj/`、`**/.unit-test/`、`*.dll`、`*.pdb`、`*.nupkg`。
-- 证伪装置（`excluded-manifest-zeroes-a-capability` 的反向）：用「含 / 不含忽略规则」两次扫 `unmc` 对照，断言被移出的文件**全部**属于构建 / 覆盖 / 二进制产物，无一条是 `.cs`/`.xaml`/`.csproj`/`.feature` 源码；即证明去污只降噪、不误伤能力分母。
+- 盘点：全局默认已含 `obj/`/`coverage/`/`build/`/`target/`；`.dll`/`.exe`/`.pdb`/`.nupkg` 已按二进制扩展落可见 skip 桶。
+- **不把 `bin/`、`.unit-test/` 加进全局默认**：`bin/` 在 Rails（`bin/rails`）、venv、npm CLI bin 里是真源码，全局忽略会在别的语料反向误伤（over-ignoring inverts on new corpus）；`.unit-test/` 是 `unmc` 自定义覆盖目录名，不具普适性。二者属项目级 `.excavatorignore`（layer 2）。
+- 证伪装置（`excluded-manifest-zeroes-a-capability` 的反向）：用「含 / 不含项目 ignore」两次扫 `unmc` 对照（`--exclude bin/,.unit-test/,TestResults/` vs 默认），断言被移出的文件**全部**属于构建 / 覆盖 / 二进制产物，无一条 `.cs`/`.xaml`/`.csproj`/`.feature` 源码。实测：1772→1231，dropped 541，源码丢失 0。
 
 ## 切片顺序理由
 

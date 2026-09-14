@@ -27,9 +27,9 @@
 
 ## 4. maui FrameworkConfig + 扫描去污
 
-- [ ] 4.1 写验收并确认先红：`maui.ts` 从含 `UseMaui` / `Microsoft.Maui.Controls` / `Prism.Maui` 的 `.csproj` 检测出 `maui`；`layerHints` 覆盖 `Views`/`ViewModels`/`Services`/`Models`；`entryPoints` 含 `MauiProgram.cs`/`App.xaml.cs`。验证：framework 检测单测先红。
-- [ ] 4.2 实现 `languages/frameworks/maui.ts` 并在 `frameworks/index.ts` 注册；（可选）写 `skills/excavator/frameworks/maui.md`（英文，仅 guidance，不产行号）。验证：4.1 绿；README「present today」与实际文件一致。
-- [ ] 4.3 扫描默认 ignore 增 `**/bin/`、`**/obj/`、`**/.unit-test/`、`*.dll`、`*.pdb`、`*.nupkg`；写「含 / 不含」对照证伪装置：对 `unmc` 两次扫描，断言被移出的文件全部是构建 / 覆盖 / 二进制产物，无一条源码（`.cs`/`.xaml`/`.csproj`/`.feature`）。验证：对照装置绿。
+- [x] 4.1 写验收并确认先红：`maui.ts` 从含 `UseMaui` / `Microsoft.Maui.Controls` / `Prism.Maui` 的 `.csproj` 检测出 `maui`；`layerHints` 覆盖 `Views`/`ViewModels`/`Services`/`Models`；`entryPoints` 含 `MauiProgram.cs`/`App.xaml.cs`。验证：framework 检测单测先红（count 10→11、maui 检测、layerHints 三条红）。
+- [x] 4.2 实现 `languages/frameworks/maui.ts` 并在 `frameworks/index.ts` 注册；`.csproj` 名不固定，故给 `FrameworkRegistry.detectFrameworks` 加 `*.ext` glob manifest 匹配（`manifestFiles:["*.csproj"]`）；写 `skills/excavator/frameworks/maui.md`（英文，仅 guidance，不产行号）并列入 README「Present today」。验证：4.1 绿；README addendum-list 测试绿。
+- [x] 4.3 扫描去污（**修正为项目级 ignore，不动全局默认**）：`obj/`/`coverage/`/`build/`/`target/` 已在全局默认；`.dll`/`.exe`/`.pdb`/`.nupkg` 已按二进制扩展落可见 skip 桶；`bin/` 不进全局（Rails `bin/rails`、venv `bin/`、npm CLI bin 是真源码，全局忽略会在别的语料反向误伤——见「over-ignoring inverts」）。真实噪声 `.unit-test/`（覆盖报告）是项目自定义名，属项目级 `.excavatorignore`（layer 2）。「含 / 不含」证伪装置（`--exclude bin/,.unit-test/,TestResults/` vs 默认）实测：filesScanned 1772→1231，dropped 541，**源码丢失 0**；dropped 分布 `.unit-test` 526 / `bin` 14 / `TestResults` 1；byLanguage 掉 html 502 / xml 22 / json 9 等，csharp/xaml/csproj/feature 一条未掉。结论：MAUI 项目去污用项目 `.excavatorignore`（`bin/ .unit-test/ TestResults/`），不改全局默认。
 
 ## 5. 端到端、真实语料与门禁
 
