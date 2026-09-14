@@ -2,17 +2,17 @@
 
 ## 1. csproj parser（SOUP，最小、先落）
 
-- [ ] 1.1 写验收并确认先红：夹具含多个 `<PackageReference Include=".." Version="..">`、`<TargetFramework(s)>`、`<UseMaui>` → 期望每个依赖一条 `definitions{kind:"dependency", name, fields:["version=.."], lineRange}`；行号落在该 `<PackageReference>` 行；同输入两次运行逐字节相同。反例夹具（无 PackageReference）→ 零依赖记录、不报错。验证：`packages/core/src/plugins/parsers/__tests__/csproj-parser.test.ts` 先红。
-- [ ] 1.2 新增 `languages/configs/csproj.ts`（id `csproj`，扩展 `.csproj`）并接入语言注册，使 `getForFile` 对 `.csproj` 返回 id `csproj`。验证：注册单测断言 `.csproj` → `csproj`。
-- [ ] 1.3 实现 `plugins/parsers/csproj-parser.ts`（`languages=["csproj"]`），在 `registerAllParsers` 注册。产 `definitions`（依赖 / 目标框架），其余字段空数组。验证：1.1 全绿。
-- [ ] 1.4 真实 opt-in：对 `unmc/src/UNMC/UNMC/UNMC/UNMC.csproj` 跑一次，核对 48 个 `PackageReference` 全部成 `definitions` 且行号命中（人工抽查 5 条）。验证：产出计数与抽查记录写入变更记录（产物不提交）。
+- [x] 1.1 写验收并确认先红：夹具含多个 `<PackageReference Include=".." Version="..">`、`<TargetFramework(s)>`、`<UseMaui>` → 期望每个依赖一条 `definitions{kind:"dependency", name, fields:["version=.."], lineRange}`；行号落在该 `<PackageReference>` 行；同输入两次运行逐字节相同。反例夹具（无 PackageReference）→ 零依赖记录、不报错。验证：`packages/core/src/plugins/parsers/__tests__/csproj-parser.test.ts` 先红。
+- [x] 1.2 新增 `languages/configs/csproj.ts`（id `csproj`，扩展 `.csproj`）并接入语言注册，使 `getForFile` 对 `.csproj` 返回 id `csproj`。验证：注册单测断言 `.csproj` → `csproj`。
+- [x] 1.3 实现 `plugins/parsers/csproj-parser.ts`（`languages=["csproj"]`），在 `registerAllParsers` 注册。产 `definitions`（依赖 / 目标框架），其余字段空数组。验证：1.1 全绿。
+- [x] 1.4 真实 opt-in：对 `unmc/src/UNMC/UNMC/UNMC/UNMC.csproj` 跑一次，核对 `PackageReference` 全部成 `definitions` 且行号命中。实测：主 csproj 32 依赖 + 1 target + 1 property，行号命中（如 Microsoft.Maui.Controls 8.0.100 @ L262）。
 
 ## 2. Gherkin parser（.feature，行为章）
 
-- [ ] 2.1 写验收并确认先红：夹具含 `Feature` / `Scenario` / `Scenario Outline` / `Given|When|Then|And|But` → 期望 `Feature`/`Scenario` 落 `sections{name, level, lineRange}`、每个步骤落 `steps{name, lineRange}`；步骤原文保真；注释 / 空行不产记录；同输入两次逐字节相同。验证：`feature-parser.test.ts` 先红。
-- [ ] 2.2 新增 `languages/configs/feature.ts`（id `feature`，扩展 `.feature`）并接入注册。验证：`.feature` → `feature`。
-- [ ] 2.3 实现 `plugins/parsers/feature-parser.ts`（`languages=["feature"]`）并注册。验证：2.1 全绿。
-- [ ] 2.4 真实 opt-in：对 `unmc` 的 24 个 `.feature` 跑一次，核对每个文件产 ≥1 section 且步骤数 > 0，无 no-extractor 残留。验证：24/24 parsed 记录写入变更记录。
+- [x] 2.1 写验收并确认先红：夹具含 `Feature` / `Scenario` / `Scenario Outline` / `Given|When|Then|And|But` → 期望 `Feature`/`Scenario` 落 `sections{name, level, lineRange}`、每个步骤落 `steps{name, lineRange}`；步骤原文保真；注释 / 空行不产记录；同输入两次逐字节相同。验证：`feature-parser.test.ts` 先红。
+- [x] 2.2 新增 `languages/configs/feature.ts`（id `feature`，扩展 `.feature`）并接入注册。验证：`.feature` → `feature`。
+- [x] 2.3 实现 `plugins/parsers/feature-parser.ts`（`languages=["feature"]`）并注册。验证：2.1 全绿。
+- [x] 2.4 真实 opt-in：对 `unmc` 的 24 个 `.feature` 跑一次，核对每个文件产 ≥1 section 且步骤数 > 0，无 no-extractor 残留。实测：24/24 files parsed，0 zero-section / 0 zero-step，共 68 sections / 2234 steps。
 
 ## 3. XAML parser（View / 导航 / 绑定，大头）
 
