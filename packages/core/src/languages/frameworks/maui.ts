@@ -9,9 +9,9 @@ export const mauiConfig = {
   promptSnippetPath: "./frameworks/maui.md",
   entryPoints: ["MauiProgram.cs", "App.xaml.cs", "App.xaml"],
   layerHints: {
-    Views: "ui",
-    ViewModels: "service",
-    Services: "service",
-    Models: "data",
+    views: "ui",
+    viewmodels: "service",
+    services: "service",
+    models: "data",
   },
 } satisfies FrameworkConfig;

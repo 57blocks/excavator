@@ -1,19 +1,29 @@
 import type { AnalyzerPlugin, StructuralAnalysis, SectionInfo, StepInfo } from "../../types.js";
 
 /**
- * Parses Gherkin feature files (.feature) into anchored structure:
- * - Feature -> section (level 1)
- * - Scenario / Scenario Outline -> section (level 2)
- * - Given/When/Then/And/But lines -> steps (name is the original step text)
- *
- * Tag lines (@...), comments (#), doc-string bodies ("""/'''), data tables (|)
- * and Examples/description lines are ignored. Line-based and deterministic.
+ * Parses Gherkin feature files (.feature) into anchored structure. The Feature
+ * and each Scenario / Scenario Outline become sections, and every
+ * Given/When/Then/And/But line becomes a step whose name is the original step
+ * text. Tag lines, comments, doc-string bodies, and data tables are ignored.
+ * Line-based and deterministic.
  */
 export class FeatureParser implements AnalyzerPlugin {
   name = "feature-parser";
   languages = ["feature"];
 
   analyzeFile(_filePath: string, content: string): StructuralAnalysis {
+    const { sections, steps } = this.extract(content);
+    return {
+      functions: [],
+      classes: [],
+      imports: [],
+      exports: [],
+      sections,
+      steps,
+    };
+  }
+
+  private extract(content: string): { sections: SectionInfo[]; steps: StepInfo[] } {
     const lines = content.split("\n");
     const sections: SectionInfo[] = [];
     const steps: StepInfo[] = [];
@@ -57,6 +67,6 @@ export class FeatureParser implements AnalyzerPlugin {
       }
     }
 
-    return { functions: [], classes: [], imports: [], exports: [], sections, steps };
+    return { sections, steps };
   }
 }

@@ -6,12 +6,7 @@ export const csprojConfig = {
   id: "csproj",
   displayName: "MSBuild project (.csproj)",
   extensions: [".csproj"],
-  concepts: [
-    "package references",
-    "target frameworks",
-    "MSBuild properties",
-    "project references",
-  ],
+  concepts: ["package references", "target frameworks", "MSBuild properties", "project references"],
   filePatterns: {
     entryPoints: [],
     barrels: [],

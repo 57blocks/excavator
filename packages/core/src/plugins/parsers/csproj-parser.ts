@@ -1,21 +1,28 @@
 import type { AnalyzerPlugin, StructuralAnalysis, DefinitionInfo } from "../../types.js";
 
 /**
- * Parses MSBuild project files (.csproj) into anchored definitions:
- * - each <PackageReference Include="X" Version="Y" /> -> kind "dependency"
- *   (Version may also be a <Version> child element; absent Version is left
- *   empty, never guessed)
- * - <TargetFramework> / <TargetFrameworks> -> kind "target"
- * - <UseMaui> -> kind "property"
- *
- * Line-based and deterministic. Does not evaluate MSBuild imports, conditions,
- * or property substitution.
+ * Parses MSBuild project files (.csproj) into anchored definitions. Each
+ * <PackageReference> becomes a "dependency" definition (its version — whether an
+ * attribute or a <Version> child element — carried in fields, and an absent
+ * version left empty rather than guessed); <TargetFramework(s)> becomes a
+ * "target" and <UseMaui> a "property". Line-based and deterministic. Does not
+ * evaluate MSBuild imports, conditions, or property substitution.
  */
 export class CsprojParser implements AnalyzerPlugin {
   name = "csproj-parser";
   languages = ["csproj"];
 
   analyzeFile(_filePath: string, content: string): StructuralAnalysis {
+    return {
+      functions: [],
+      classes: [],
+      imports: [],
+      exports: [],
+      definitions: this.extractDefinitions(content),
+    };
+  }
+
+  private extractDefinitions(content: string): DefinitionInfo[] {
     const lines = content.split("\n");
     const definitions: DefinitionInfo[] = [];
 
@@ -23,13 +30,11 @@ export class CsprojParser implements AnalyzerPlugin {
       const line = lines[i];
       const ln = i + 1;
 
-      // <TargetFramework> / <TargetFrameworks>
       const tf = line.match(/<TargetFrameworks?>([^<]+)<\/TargetFrameworks?>/);
       if (tf) {
         definitions.push({ name: tf[1].trim(), kind: "target", lineRange: [ln, ln], fields: [] });
       }
 
-      // <UseMaui>
       const um = line.match(/<UseMaui>([^<]*)<\/UseMaui>/);
       if (um) {
         definitions.push({
@@ -40,7 +45,6 @@ export class CsprojParser implements AnalyzerPlugin {
         });
       }
 
-      // <PackageReference Include="X" [Version="Y"] /> (Version may also be a child element)
       const pr = line.match(/<PackageReference\b([^>]*)>/);
       if (pr) {
         let attrs = pr[1];
@@ -68,6 +72,6 @@ export class CsprojParser implements AnalyzerPlugin {
       }
     }
 
-    return { functions: [], classes: [], imports: [], exports: [], definitions };
+    return definitions;
   }
 }
