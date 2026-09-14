@@ -329,3 +329,45 @@ describe('updateSourceIndex — single-file incremental rebuild', () => {
     expect(paymentResults).toEqual([]);
   });
 });
+
+// Regression: real source tokens like `constructor`/`toString`/`hasOwnProperty`
+// collide with Object.prototype. A plain-object postings map crashed the build
+// (postings["constructor"].push is not a function) on the wcp TS/Vue corpus;
+// a JSON-parsed index also makes an un-indexed colliding query term resolve to
+// an inherited function on the read side. Caught by group-6 real-corpus
+// acceptance, not by Go/synthetic fixtures.
+describe('prototype-colliding tokens', () => {
+  const P = 'src/proto.ts';
+  const CONTENT = [
+    'class Widget {',
+    '  constructor(name) { this.name = name; }',
+    '}',
+    'function toString(x) { return String(x); }',
+  ].join('\n');
+  const scan = { files: [{ path: P, language: 'typescript', sizeLines: 4, fileCategory: 'code' }] };
+  const structureAll = {
+    results: [{
+      path: P, language: 'typescript', fileCategory: 'code', totalLines: 4, nonEmptyLines: 4, status: 'parsed',
+      functions: [
+        { name: 'constructor', owner: 'Widget', startLine: 2, endLine: 2, params: ['name'] },
+        { name: 'toString', owner: '', startLine: 4, endLine: 4, params: ['x'] },
+      ],
+      classes: [{ name: 'Widget', startLine: 1, endLine: 3, methods: ['constructor'], properties: [] }],
+      metrics: {},
+    }],
+  };
+  const readFile = (p) => (p === P ? CONTENT : '');
+
+  it('builds and searches without crashing on Object.prototype-colliding tokens', () => {
+    const index = buildSourceIndex({ scan, structureAll, readFile, sourceRevision: 'rev-1' });
+    // Round-trip through JSON to mirror persistence — the read side must be safe too.
+    const persisted = JSON.parse(JSON.stringify(index));
+    expect(() => bm25Search(persisted, ['constructor'], 20)).not.toThrow();
+    expect(() => bm25Search(persisted, ['toString'], 20)).not.toThrow();
+    expect(() => bm25Search(persisted, ['hasOwnProperty'], 20)).not.toThrow(); // never indexed
+    // an indexed colliding term still retrieves its chunk
+    expect(bm25Search(persisted, ['constructor'], 20).length).toBeGreaterThan(0);
+    // an un-indexed colliding term is a clean miss, not a crash
+    expect(bm25Search(persisted, ['hasOwnProperty'], 20)).toEqual([]);
+  });
+});

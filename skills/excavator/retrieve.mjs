@@ -59,8 +59,12 @@ export function bm25Search(index, terms, k = 20) {
 
   const scores = new Map();
   for (const term of queryTokens) {
-    const list = postings[term];
-    if (!list || list.length === 0) continue;
+    // A persisted index is JSON-parsed into a normal object, so an un-indexed
+    // query term naming an Object.prototype member (`constructor`, `toString`,
+    // …) would resolve to an inherited function. hasOwn + Array.isArray make a
+    // colliding term a clean miss instead of a crash.
+    const list = Object.prototype.hasOwnProperty.call(postings, term) ? postings[term] : undefined;
+    if (!Array.isArray(list) || list.length === 0) continue;
     const df = list.length;
     const idf = Math.log((N - df + 0.5) / (df + 0.5) + 1);
     for (const { chunkId, tf } of list) {

@@ -330,8 +330,13 @@ function chunksForRow(row, { readFile, language, usedIds }) {
 // `bm25Search`, kept in the group-3 module so this one stays a pure builder).
 // ---------------------------------------------------------------------------
 function buildPostings(chunks) {
-  const postings = {};
-  const docLengths = {};
+  // Null-prototype maps: source tokens like `constructor` / `toString` /
+  // `hasOwnProperty` are real identifiers and would otherwise collide with
+  // Object.prototype — `postings["constructor"]` on a plain {} is a function,
+  // not our array, so `.push` throws. A null-proto object has no inherited
+  // keys. (Caught on the wcp TS/Vue corpus; Go / synthetic fixtures never hit it.)
+  const postings = Object.create(null);
+  const docLengths = Object.create(null);
   let totalLength = 0;
 
   for (const chunk of chunks) {
