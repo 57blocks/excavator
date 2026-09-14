@@ -49,11 +49,12 @@ describe("LanguageRegistry", () => {
   });
 
   describe("createDefault", () => {
-    it("registers all 43 built-in language configs", () => {
+    it("registers all 44 built-in language configs", () => {
       const registry = LanguageRegistry.createDefault();
       const all = registry.getAllLanguages();
-      expect(all.length).toBe(43);
+      expect(all.length).toBe(44);
       expect(all.map((c) => c.id)).toContain("csproj");
+      expect(all.map((c) => c.id)).toContain("feature");
     });
 
     it("maps all expected extensions", () => {
