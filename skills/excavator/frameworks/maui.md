@@ -15,6 +15,28 @@ Applies when a `.csproj` sets `<UseMaui>` or references `Microsoft.Maui.Controls
 - **Entry points**: `MauiProgram.cs` (DI + app config), `App.xaml`/`App.xaml.cs`,
   and Prism `RegisterTypes` for navigation routes.
 
+## Navigation / routing (edge patterns)
+
+MAUI apps navigate one of two ways. Capture routes and navigation as `inferred`
+edges (never a line-anchored fact — resolving a route to its view soundly needs
+a resolver over the C# symbols):
+
+- **Prism navigation** — `containerRegistry.RegisterForNavigation<TView>()` (also
+  `RegisterForNavigation<TView, TViewModel>()`, or with an explicit key
+  `RegisterForNavigation<TView>("name")`) registers a navigation route. The route
+  key is the explicit name when given, otherwise the `TView` type name. For each
+  registration create an `inferred` route→view edge (view = `TView`). Navigation
+  happens via `INavigationService.NavigateAsync(target, ...)`.
+- **Shell navigation** — `Routing.RegisterRoute("route", typeof(TPage))` registers
+  a route; `ShellContent` / `FlyoutItem` / `TabBar` in `AppShell.xaml` declare
+  shell routes. Navigation happens via `Shell.Current.GoToAsync("route")`.
+- **Navigation edges** — when a `NavigateAsync(...)` / `GoToAsync(...)` call passes
+  a string/URI **literal**, create an `inferred` navigation edge to that route's
+  view. When the target is a **computed value** (a variable, or a URI built at
+  runtime), do **not** guess the destination — leave it unresolved. Registrations
+  and literal navigations are the reliable signal; runtime-built targets are a
+  gap, not a guess.
+
 ## Discipline
 
 These are conventions, not evidence. Any relationship asserted only because
