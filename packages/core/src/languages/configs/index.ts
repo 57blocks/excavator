@@ -24,6 +24,7 @@ import { envConfig } from "./env.js";
 import { xmlConfig } from "./xml.js";
 import { csprojConfig } from "./csproj.js";
 import { featureConfig } from "./feature.js";
+import { xamlConfig } from "./xaml.js";
 import { dockerfileConfig } from "./dockerfile.js";
 import { sqlConfig } from "./sql.js";
 import { graphqlConfig } from "./graphql.js";
@@ -72,6 +73,7 @@ export const builtinLanguageConfigs: LanguageConfig[] = [
   xmlConfig,
   csprojConfig,
   featureConfig,
+  xamlConfig,
   dockerfileConfig,
   sqlConfig,
   graphqlConfig,
@@ -121,6 +123,7 @@ export {
   xmlConfig,
   csprojConfig,
   featureConfig,
+  xamlConfig,
   dockerfileConfig,
   sqlConfig,
   graphqlConfig,

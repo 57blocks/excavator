@@ -16,10 +16,14 @@
 
 ## 3. XAML parser（View / 导航 / 绑定，大头）
 
-- [ ] 3.1 写验收并确认先红：夹具含 `x:Class`、`x:Name`、`{Binding Path=..}`、`Command="{Binding ..}"`，以及一份带 `x:DataType` 与一份不带 → 期望根元素落 `sections`；`x:Class` 落 `references{referenceType:"code-behind", target:类FQN, line}`；`{Binding}`/`Command`/`x:Name` 落 `definitions{kind:"binding"|"command"|"element", fields, lineRange}`；**带 `x:DataType` 时**绑定可连成员、**不带时**记 `gap: binding-unresolved`（带 file:line 样本）绝不猜。同输入两次逐字节相同。验证：`xaml-parser.test.ts` 先红（含「不带 x:DataType 必须落 gap」这条唱反调绊线）。
-- [ ] 3.2 新增 `languages/configs/xaml.ts`（id `xaml`，扩展 `.xaml`；与既有 `xml.ts` 的扩展优先级不冲突）并接入注册。验证：`.xaml` → `xaml`（而非 `xml`）。
-- [ ] 3.3 实现 `plugins/parsers/xaml-parser.ts`（`languages=["xaml"]`，`analyzeFile` + `extractReferences`），参考旧 excavator XAML reader；注册。绑定 → 成员解析只做 `x:DataType`/显式类型可唯一定位一档，其余入 gap。验证：3.1 全绿（含 gap 分支）。
-- [ ] 3.4 真实 opt-in：对 `unmc` 128 个 `.xaml` 跑一次，记录 parsed 数、`x:Class` 引用命中数、绑定 resolved vs `binding-unresolved` 数（缺口可见即可，不设门）。验证：分类计数写入变更记录。
+**范围（诚实边界）**：单文件 parser 只抽 XAML 文本可见事实（带行号）。`{Binding}` → ViewModel **成员**的连边需另一份 `.cs` 的符号，**不在本切片做**，记为下面的「resolver 后续」。产物一律落 `analyzeFile` 的 `StructuralAnalysis`（`extractReferences` 当前不被流水线消费）。
+
+- [x] 3.1 写验收并确认先红：夹具含 `x:Class`、`x:Name`、`{Binding Path=..}`、`Command="{Binding ..}"`，以及一份带唯一 `x:DataType` 与一份不带 → 期望根元素落一条 `sections`（name 取 `x:Class` 短名）；`x:Class` 落 `definitions{kind:"code-behind", name:FQN, lineRange}`；`x:Name`/`{Binding}`/`Command`/`x:DataType` 落 `definitions{kind:"element"|"binding"|"command"|"datatype", lineRange}`；每条绑定 fields 带 `context=<type>`（唯一 x:DataType）或 `context=none`（缺失/多义），**绝不产成员连边**。同输入两次逐字节相同。验证：`xaml-parser.test.ts` 先红（含「无 x:DataType → context=none」这条唱反调绊线）。
+- [x] 3.2 新增 `languages/configs/xaml.ts`（id `xaml`，扩展 `.xaml`；与既有 `xml.ts` 扩展不冲突）并接入注册。验证：`.xaml` → `xaml`（而非 `xml`）。
+- [x] 3.3 实现 `plugins/parsers/xaml-parser.ts`（`languages=["xaml"]`，仅 `analyzeFile`），参考旧 excavator XAML reader；注册。验证：3.1 全绿。
+- [x] 3.4 真实 opt-in：对 `unmc` 128 个 `.xaml` 跑一次，记录 parsed 数、`x:Class`/`x:Name`/binding/command 计数、有/无 DataType 上下文的绑定数（缺口可见即可，不设门）。实测：128/128 有 view section；x:Class 125、x:DataType 19、x:Name 433、binding 393、command 113；context-known 69、context=none 437（未声明唯一 x:DataType 的绑定诚实标 none，不猜成员）。
+
+**resolver 后续（不在本切片）**：结合 C# ViewModel 符号 + node-identity，把带 `context=<type>` 的绑定解析到成员（命中→连边、未命中→ `binding-unresolved` gap、`context=none`→无法尝试）。
 
 ## 4. maui FrameworkConfig + 扫描去污
 

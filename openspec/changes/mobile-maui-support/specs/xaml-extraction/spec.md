@@ -1,6 +1,10 @@
 ## Purpose
 
-让 `.xaml` 从 `no-extractor` 变成带锚点事实：产 View 记录、`x:Class` → code-behind 引用、绑定 / 命令记录，作为移动端文档「Description of the UI / 导航」章节的证据源；不可唯一解析的绑定入 gap，绝不猜。
+让 `.xaml` 从 `no-extractor` 变成带锚点事实：产 View 记录、`x:Class` code-behind 关联、`x:DataType`、绑定 / 命令 / `x:Name`，作为移动端文档「Description of the UI / 导航」章节的证据源。
+
+**诚实边界**：这是**单文件** parser，只抽取 XAML 里文本可见的事实（带行号）。`{Binding Path=Foo}` 到 ViewModel **成员**的连边需要另一份 `.cs` 里的符号，单文件 parser 无法确认，故**不在 parser 内做**；parser 只记录每条绑定的**文件级 DataType 上下文**（唯一的 `x:DataType`，或缺失/多义时记 `none`）。成员级解析与 `binding-unresolved` gap 由后续 resolver 阶段（另一切片，结合 C# 符号与 node-identity）产出。
+
+产物一律落 `analyzeFile` 返回的 `StructuralAnalysis`（`sections` / `definitions`），因为流水线只消费该结构；`extractReferences` 当前不被消费，故不依赖它。
 
 ## ADDED Requirements
 
@@ -12,29 +16,29 @@
 - **WHEN** 对一个 `.xaml` 文件取语言与 plugin
 - **THEN** 语言 id 为 `xaml`（非 `xml`）且存在处理它的 parser（非 null）
 
-### Requirement: View 与 x:Class 引用带锚点
+### Requirement: View 与 x:Class 带锚点
 
-parser SHALL 把根元素 / 页面抽成 `sections`（带 `lineRange`），把 `x:Class` 抽成一条 `references`（`referenceType:"code-behind"`，`target` 为类 FQN，带 `line`）。
+parser SHALL 把根元素 / 页面抽成一条 `sections`（`name` 取 `x:Class` 短名或根元素名，带 `lineRange`），把 `x:Class` 抽成一条 `definitions`（`kind:"code-behind"`，`name` 为类 FQN，带 `lineRange`）。
 
-#### Scenario: x:Class 成为到 code-behind 的引用
+#### Scenario: x:Class 成为 code-behind 定义
 - **WHEN** `.xaml` 根元素声明 `x:Class="App.Views.FooPage"`
-- **THEN** 产一条 reference，target 为 `App.Views.FooPage`，line 命中
+- **THEN** 产一条 `sections`（name `FooPage`）与一条 `definitions{kind:"code-behind", name:"App.Views.FooPage"}`，行号命中
 
-### Requirement: 绑定解析的诚实边界（零编造）
+### Requirement: 绑定 / 命令 / x:Name 带锚点与 DataType 上下文（零编造）
 
-parser SHALL 把 `{Binding}`、`Command`、`x:Name` 抽成带 `lineRange` 的 `definitions`。绑定到 ViewModel 成员的连边**仅在** `x:DataType` 或显式类型能唯一定位目标类型时才建立；否则 MUST 记 `gap`（`binding-unresolved`，带 file:line 与原文样本），MUST NOT 猜测成员。每条绑定要么 `resolved` 要么 `binding-unresolved`，无第三种静默态。
+parser SHALL 把 `x:Name`、`{Binding}`、`Command="{Binding …}"`、`x:DataType` 抽成带 `lineRange` 的 `definitions`（`kind` 分别为 `element` / `binding` / `command` / `datatype`）。每条绑定 / 命令 MUST 记录其**文件级 DataType 上下文**：当文件恰有一个 `x:DataType` 时记 `context=<type>`，否则记 `context=none`。parser MUST NOT 断言某 ViewModel 成员存在，也 MUST NOT 产任何猜测的成员连边。
 
-#### Scenario: 有 x:DataType 时绑定可解析
-- **WHEN** 页面声明 `x:DataType` 且绑定 `Path` 命中该类型成员
-- **THEN** 绑定连到该成员，不入 gap
+#### Scenario: 有唯一 x:DataType 时绑定带该上下文
+- **WHEN** 文件恰有一个 `x:DataType="vm:FooViewModel"` 且某处 `Text="{Binding Bar}"`
+- **THEN** 产 `definitions{kind:"binding", name:"Bar", fields:["context=vm:FooViewModel"]}`，且不产任何成员连边
 
-#### Scenario: 无 x:DataType 时绑定入 gap 而非臆造
-- **WHEN** 绑定所在页面没有可唯一定位的目标类型
-- **THEN** 该绑定记 `binding-unresolved` gap（带 file:line），且不产任何猜测的成员连边
+#### Scenario: 无 x:DataType 时绑定上下文为 none 而非臆造
+- **WHEN** 绑定所在文件没有 `x:DataType`
+- **THEN** 该绑定记 `context=none`（带 file:line），且不产任何猜测的成员连边
 
 ### Requirement: 确定性
 
-对同一 `.xaml` 内容重复运行，`sections`/`definitions`/`references` 与 gap SHALL 逐字节相同。
+对同一 `.xaml` 内容重复运行，`sections` 与 `definitions` SHALL 逐字节相同。
 
 #### Scenario: 重复运行稳定
 - **WHEN** 对同一内容运行两次
