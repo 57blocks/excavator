@@ -68,3 +68,12 @@ The knowledge graph JSON has this structure:
    - Explain which layer(s) are relevant and why
    - Be concise but thorough — link concepts to actual code locations
    - If the query doesn't match any nodes, say so and suggest related terms from the graph
+
+## Lazy mode: answer structural questions directly, degrade honestly on semantic ones
+
+A Lazy graph carries deterministic facts only: node `summary` is empty and `tags`/`layers` may be empty. Route by question type:
+
+- **Structural questions** (which files/symbols exist, which methods a class has, who imports or calls whom, a node's 1-hop neighbours, contains/depends relationships): answer straight from the fact nodes and fact edges — grep `id` / `name` / `type` and the `edges` (`contains` / `imports` / `calls` / `exports`). **No summary is needed, and do not trigger any semantic supplement or whole-project analysis.**
+- **Semantic questions** (what a module/service is responsible for, business meaning, a cross-file business flow): when the matched nodes' `summary` is empty, **say plainly that this semantics has not been generated yet** and suggest running `/excavator --mode=full` to fill semantics for the whole project. **Never fabricate** a summary, a responsibility, or a business conclusion. You may state, from fact edges and source evidence, that "structurally it connects to X", but do not present a structural connection as a business responsibility.
+- **Do not auto-trigger Full just because a question is semantic** — whether to fill semantics is the user's explicit choice.
+- Fact edges (`calls` / `imports` / `contains` / `exports`) and `gaps` are authoritative: to answer "can we be sure A calls B", go by the fact edge; a call the engine could not resolve is recorded in `gaps`, so say "the engine could not determine that connection" rather than guessing.
