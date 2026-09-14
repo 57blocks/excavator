@@ -69,7 +69,27 @@
  * unconditional (matching Phase 7 step 1, which is likewise not gated on the
  * fingerprints step that follows it).
  *
+ * SourceSnapshot (openspec: changes/source-snapshot, capability
+ * `source-snapshot`, design D5): this driver no longer decides "what source
+ * to analyze" itself — `resolveSourceSnapshot(root)` does (git repo ->
+ * GitCommitSnapshot HEAD-only, non-git parent with member repos ->
+ * MultiRepoSnapshot, otherwise -> DirectorySnapshot), and every read the
+ * scan/structure/import-map scripts perform below goes through that
+ * snapshot's `materialize()`-produced temp directory, never `root` directly.
+ * The whole produce step runs under `snapshot.runGuarded(producer, publish)`
+ * (D7's consistency guard): `publish` — the actual `saveGraph`/fingerprints/
+ * `saveMeta`/`source-manifest.json` writes — only ever runs once the guard
+ * has confirmed nothing about the source changed for the run's whole
+ * duration; a DirectorySnapshot that keeps drifting retries once and then
+ * fails visibly (`saveError` set, `metaAdvanced` false, nothing published).
+ * `source-manifest.json` (`sourceRevision`/`selectionDigest`/
+ * `pipelineVersion`) is written in the same publish step, right alongside
+ * `knowledge-graph.json`/`meta.json`/`fingerprints.json`. This slice does
+ * NOT add revision-based incremental sync (group 5 / `revision-sync`) — every
+ * run here is still a full deterministic re-projection.
+ *
  * Contract: openspec/changes/lazy-first-run/specs/lazy-analysis/spec.md
+ *           openspec/changes/source-snapshot/specs/source-snapshot/spec.md
  */
 
 import { dirname, join, resolve } from 'node:path';
@@ -80,6 +100,7 @@ import { createRequire } from 'node:module';
 
 import { buildFactGraph } from './build-fact-graph.mjs';
 import { conservationViolations } from './coverage-ledger.mjs';
+import { resolveSourceSnapshot } from './source-snapshot.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const pluginRoot = resolve(__dirname, '../..');
@@ -231,13 +252,6 @@ export function defaultRunScript(scriptName, args) {
   return { status: result.status ?? 1, stdout: result.stdout ?? '', stderr: result.stderr ?? '' };
 }
 
-function gitCommitHashOf(projectRoot) {
-  const result = spawnSync('git', ['rev-parse', 'HEAD'], { cwd: projectRoot, encoding: 'utf-8' });
-  if (result.status !== 0) return null;
-  const hash = result.stdout.trim();
-  return hash.length > 0 ? hash : null;
-}
-
 function basenameOf(p) {
   const parts = p.replace(/[\\/]+$/, '').split(/[\\/]/);
   return parts[parts.length - 1] || p;
@@ -271,6 +285,19 @@ function extractExcludeArgs(argv) {
   for (let i = 0; i < argv.length; i++) {
     if (argv[i] === '--exclude' && typeof argv[i + 1] === 'string') {
       return ['--exclude', argv[i + 1]];
+    }
+  }
+  return [];
+}
+
+/** Same `--exclude <patterns>` CLI flag, parsed into a raw pattern array for
+ *  `resolveSourceSnapshot`'s `extraExcludePatterns` (so a CLI exclude applies
+ *  to the snapshot's OWN selection/selectionDigest too, not only to
+ *  scan-project's redundant re-filter over the already-materialized temp). */
+function parseExcludePatterns(argv) {
+  for (let i = 0; i < argv.length; i++) {
+    if (argv[i] === '--exclude' && typeof argv[i + 1] === 'string') {
+      return argv[i + 1].split(',').map((p) => p.trim()).filter(Boolean);
     }
   }
   return [];
@@ -311,123 +338,155 @@ export async function runLazyAnalysis({
   const dataDir = resolveDataDir(root);
   const intermediateDir = join(dataDir, 'intermediate');
   mkdirSync(intermediateDir, { recursive: true });
+  const graphPath = join(dataDir, 'knowledge-graph.json');
 
-  const timings = {};
-  function time(label, fn) {
-    const start = Date.now();
-    const value = fn();
-    timings[label] = Date.now() - start;
-    return value;
+  // SourceSnapshot decides WHAT gets analyzed (design D2/D5) — this driver
+  // no longer calls `git rev-parse HEAD` or reads `root` directly to decide
+  // analysis content; every read below goes through the snapshot's
+  // `materialize()`-produced temp directory instead.
+  const extraExcludePatterns = parseExcludePatterns(argv);
+  const snapshot = resolveSourceSnapshot(root, { extraExcludePatterns });
+
+  const saveState = { metaAdvanced: false, saveError: null };
+  let lastProduct = null;
+
+  // --- Produce: run the existing Scan -> Structure-All -> Import-Map ->
+  // Build Fact Graph -> Deterministic Validate pipeline against the
+  // MATERIALIZED snapshot content (never `root` directly). ------------------
+  async function produce(materializedDir) {
+    const timings = {};
+    function time(label, fn) {
+      const start = Date.now();
+      const value = fn();
+      timings[label] = Date.now() - start;
+      return value;
+    }
+
+    // --- Phase 1 SCAN (script, never the excavator-project-scanner subagent) -
+    const scanPath = join(intermediateDir, 'scan-result.json');
+    time('scan', () => {
+      // `.excavator/` exclusion is now guaranteed by the snapshot's own
+      // selection (it is never materialized into `materializedDir` at all),
+      // so --exclude-analysis-data is redundant belt-and-suspenders here —
+      // kept because it is harmless and other callers still rely on it.
+      const result = runScript('scan-project.mjs', [materializedDir, scanPath, '--exclude-analysis-data', ...extractExcludeArgs(argv)]);
+      if (result.status !== 0) {
+        throw new Error(`lazy-analyze: scan-project.mjs failed: ${result.stderr || result.status}`);
+      }
+    });
+    const scan = readJsonRequired(scanPath, 'scan-result.json');
+
+    // --- Phase 1.2 STRUCTURE-ALL ---------------------------------------------
+    const structurePath = join(intermediateDir, 'structure-all.json');
+    time('structureAll', () => {
+      const result = runScript('structure-all.mjs', [materializedDir, '--scan', scanPath, '--out', structurePath]);
+      if (result.status !== 0) {
+        throw new Error(`lazy-analyze: structure-all.mjs failed: ${result.stderr || result.status}`);
+      }
+    });
+    const structureAll = readJsonRequired(structurePath, 'structure-all.json');
+
+    // --- Import map (deterministic, extract-import-map.mjs) ------------------
+    const importMapInputPath = join(intermediateDir, 'lazy-import-map-input.json');
+    const importMapPath = join(intermediateDir, 'import-map.json');
+    time('importMap', () => {
+      writeFileSync(
+        importMapInputPath,
+        JSON.stringify({ projectRoot: materializedDir, files: scan.files }, null, 2),
+        'utf-8',
+      );
+      const result = runScript('extract-import-map.mjs', [importMapInputPath, importMapPath]);
+      if (result.status !== 0) {
+        throw new Error(`lazy-analyze: extract-import-map.mjs failed: ${result.stderr || result.status}`);
+      }
+    });
+    const importMap = readJsonRequired(importMapPath, 'import-map.json');
+
+    // --- Build Fact Graph (in-process — design D1: a projection, not a CLI) -
+    let projection;
+    time('factGraph', () => {
+      projection = buildFactGraph({ scan, structureAll, importMap });
+      writeFileSync(join(intermediateDir, 'fact-graph.json'), JSON.stringify(projection, null, 2), 'utf-8');
+    });
+
+    // --- Deterministic validate ----------------------------------------------
+    let validation;
+    time('validate', () => {
+      validation = validateFactGraphIntegrity(projection);
+      writeFileSync(join(intermediateDir, 'lazy-validation.json'), JSON.stringify(validation, null, 2), 'utf-8');
+    });
+
+    // --- Assemble the (not-yet-published) knowledge graph --------------------
+    // `gitCommitHash` is derived from the snapshot's OWN revision rather than
+    // a second `git rev-parse HEAD` call — for a GitCommitSnapshot this is
+    // exactly the sha `revision` already names; for Directory/MultiRepo there
+    // is no single commit to report, so it is honestly null.
+    const gitCommitHash = snapshot.kind === 'git' ? snapshot.sha : null;
+    const { name, description } = deterministicProjectMeta(materializedDir);
+    const languages = Object.keys(scan.stats?.byLanguage ?? {}).sort();
+
+    const existingGraph = loadGraph(root, { validate: false });
+    const merged = mergeFactProjectionIntoGraph(existingGraph, projection);
+
+    const knowledgeGraph = {
+      version: KNOWLEDGE_GRAPH_VERSION,
+      project: {
+        name: existingGraph?.project?.name ?? name,
+        languages: existingGraph?.project?.languages?.length ? existingGraph.project.languages : languages,
+        frameworks: existingGraph?.project?.frameworks ?? [],
+        description: existingGraph?.project?.description ?? description,
+        analyzedAt: now(),
+        gitCommitHash,
+        // sha256 over the scanned source content — written by the scan
+        // (scan-project.mjs's own `contentDigest`), matching ProjectMeta's
+        // documented meaning for `sourceDigest`.
+        sourceDigest: scan.contentDigest,
+        factsDigest: projection.factsDigest,
+        pipelineVersion: PIPELINE_VERSION,
+      },
+      nodes: merged.nodes,
+      edges: merged.edges,
+      layers: merged.layers,
+      tour: merged.tour,
+      coverage: projection.coverage,
+      gaps: projection.gaps,
+    };
+
+    const product = { knowledgeGraph, validation, scan, structureAll, projection, timings };
+    lastProduct = product; // kept for diagnostics even if the guard later discards it.
+    return product;
   }
 
-  // --- Phase 1 SCAN (script, never the excavator-project-scanner subagent) ---
-  const scanPath = join(intermediateDir, 'scan-result.json');
-  time('scan', () => {
-    // --exclude-analysis-data DROPS the tool's own `.excavator/` data dir from
-    // the scan entirely (scan-project.mjs). Without it, a re-run would still
-    // *count* the prior run's `.excavator/*.json` under coverage's "ignored"
-    // bucket — same node/edge/gap set, but a different coverage tally, hence a
-    // different factsDigest on every re-run. The plan requires `.excavator/`
-    // always excluded (§3.3); this keeps re-runs byte-identical.
-    const result = runScript('scan-project.mjs', [root, scanPath, '--exclude-analysis-data', ...extractExcludeArgs(argv)]);
-    if (result.status !== 0) {
-      throw new Error(`lazy-analyze: scan-project.mjs failed: ${result.stderr || result.status}`);
-    }
-  });
-  const scan = readJsonRequired(scanPath, 'scan-result.json');
+  // --- Publish: non-destructive merge already happened above; this step is
+  // ONLY reached once `runGuarded` has confirmed nothing about the source
+  // changed for the whole duration of `produce` (design D7). --------------
+  async function publish(product) {
+    const saveStart = Date.now();
 
-  // --- Phase 1.2 STRUCTURE-ALL -------------------------------------------
-  const structurePath = join(intermediateDir, 'structure-all.json');
-  time('structureAll', () => {
-    const result = runScript('structure-all.mjs', [root, '--scan', scanPath, '--out', structurePath]);
-    if (result.status !== 0) {
-      throw new Error(`lazy-analyze: structure-all.mjs failed: ${result.stderr || result.status}`);
-    }
-  });
-  const structureAll = readJsonRequired(structurePath, 'structure-all.json');
-
-  // --- Import map (deterministic, extract-import-map.mjs) -----------------
-  const importMapInputPath = join(intermediateDir, 'lazy-import-map-input.json');
-  const importMapPath = join(intermediateDir, 'import-map.json');
-  time('importMap', () => {
-    writeFileSync(
-      importMapInputPath,
-      JSON.stringify({ projectRoot: root, files: scan.files }, null, 2),
-      'utf-8',
-    );
-    const result = runScript('extract-import-map.mjs', [importMapInputPath, importMapPath]);
-    if (result.status !== 0) {
-      throw new Error(`lazy-analyze: extract-import-map.mjs failed: ${result.stderr || result.status}`);
-    }
-  });
-  const importMap = readJsonRequired(importMapPath, 'import-map.json');
-
-  // --- Build Fact Graph (in-process — design D1: a projection, not a CLI) -
-  let projection;
-  time('factGraph', () => {
-    projection = buildFactGraph({ scan, structureAll, importMap });
-    writeFileSync(join(intermediateDir, 'fact-graph.json'), JSON.stringify(projection, null, 2), 'utf-8');
-  });
-
-  // --- Deterministic validate ----------------------------------------------
-  let validation;
-  time('validate', () => {
-    validation = validateFactGraphIntegrity(projection);
-    writeFileSync(join(intermediateDir, 'lazy-validation.json'), JSON.stringify(validation, null, 2), 'utf-8');
-  });
-
-  // --- Save: non-destructive merge, then the fingerprints-before-meta gate -
-  const gitCommitHash = gitCommitHashOf(root);
-  const { name, description } = deterministicProjectMeta(root);
-  const languages = Object.keys(scan.stats?.byLanguage ?? {}).sort();
-
-  const graphPath = join(dataDir, 'knowledge-graph.json');
-  const existingGraph = loadGraph(root, { validate: false });
-  const merged = mergeFactProjectionIntoGraph(existingGraph, projection);
-
-  const knowledgeGraph = {
-    version: KNOWLEDGE_GRAPH_VERSION,
-    project: {
-      name: existingGraph?.project?.name ?? name,
-      languages: existingGraph?.project?.languages?.length ? existingGraph.project.languages : languages,
-      frameworks: existingGraph?.project?.frameworks ?? [],
-      description: existingGraph?.project?.description ?? description,
-      analyzedAt: now(),
-      gitCommitHash,
-      // sha256 over the scanned source content — written by the scan
-      // (scan-project.mjs's own `contentDigest`), matching ProjectMeta's
-      // documented meaning for `sourceDigest`.
-      sourceDigest: scan.contentDigest,
-      factsDigest: projection.factsDigest,
-      pipelineVersion: PIPELINE_VERSION,
-    },
-    nodes: merged.nodes,
-    edges: merged.edges,
-    layers: merged.layers,
-    tour: merged.tour,
-    coverage: projection.coverage,
-    gaps: projection.gaps,
-  };
-
-  let metaAdvanced = false;
-  let saveError = null;
-  time('save', () => {
     try {
-      saveGraph(root, knowledgeGraph);
+      saveGraph(root, product.knowledgeGraph);
     } catch (err) {
-      saveError = `writing knowledge-graph.json failed: ${err.message}`;
+      saveState.saveError = `writing knowledge-graph.json failed: ${err.message}`;
+      product.timings.save = Date.now() - saveStart;
       return;
     }
 
     // Fingerprints baseline MUST succeed before meta.json is written — the
     // same gate Phase 7 step 2 already enforces (see build-fingerprints.mjs
     // / issue #152: otherwise a future incremental run sees a fresh commit
-    // hash with no fingerprints to compare against).
+    // hash with no fingerprints to compare against). This reads/writes the
+    // REAL `root` (not the materialized temp) — the structural-fingerprint
+    // baseline is a separate, pre-existing change-detection subsystem this
+    // slice does not otherwise touch.
     const fingerprintInputPath = join(intermediateDir, 'fingerprint-input.json');
     writeFileSync(
       fingerprintInputPath,
       JSON.stringify(
-        { projectRoot: root, filePaths: scan.files.map((f) => f.path), gitCommitHash },
+        {
+          projectRoot: root,
+          filePaths: product.scan.files.map((f) => f.path),
+          gitCommitHash: product.knowledgeGraph.project.gitCommitHash,
+        },
         null,
         2,
       ),
@@ -435,35 +494,70 @@ export async function runLazyAnalysis({
     );
     const fpResult = runScript('build-fingerprints.mjs', [fingerprintInputPath]);
     if (fpResult.status !== 0 || !/Fingerprints baseline:/.test(fpResult.stdout ?? '')) {
-      saveError = `build-fingerprints.mjs failed: ${fpResult.stderr || fpResult.status}`;
-      return; // Do NOT advance meta.json — sourceRevision/fingerprints/meta
-      // all stay at their last successful state (spec Scenario
-      // "a failed save must not advance metadata").
+      saveState.saveError = `build-fingerprints.mjs failed: ${fpResult.stderr || fpResult.status}`;
+      product.timings.save = Date.now() - saveStart;
+      return; // Do NOT advance meta.json/source-manifest.json — they all stay
+      // at their last successful state (spec Scenario "a failed save must
+      // not advance metadata").
     }
 
     saveMeta(root, {
       lastAnalyzedAt: now(),
-      gitCommitHash: gitCommitHash ?? '',
+      gitCommitHash: product.knowledgeGraph.project.gitCommitHash ?? '',
       version: KNOWLEDGE_GRAPH_VERSION,
-      analyzedFiles: structureAll.filesAnalyzed,
+      analyzedFiles: product.structureAll.filesAnalyzed,
     });
-    metaAdvanced = true;
-  });
 
+    // source-manifest.json — the new artifact this slice adds, written
+    // alongside knowledge-graph.json/meta.json/fingerprints.json, and only
+    // ever advanced together with them (same gate as meta.json above).
+    writeFileSync(
+      join(dataDir, 'source-manifest.json'),
+      JSON.stringify(
+        {
+          sourceRevision: snapshot.revision,
+          selectionDigest: snapshot.selectionDigest,
+          pipelineVersion: PIPELINE_VERSION,
+        },
+        null,
+        2,
+      ),
+      'utf-8',
+    );
+
+    saveState.metaAdvanced = true;
+    product.timings.save = Date.now() - saveStart;
+  }
+
+  const guardResult = await snapshot.runGuarded(
+    (materializedDir) => produce(materializedDir),
+    (product) => publish(product),
+  );
+
+  if (!guardResult.ok) {
+    // D7: the guard retried once and the source still changed — keep
+    // whatever was already persisted (nothing above ever touched it) and
+    // fail visibly rather than publish against a moving target.
+    saveState.saveError = `source consistency guard failed: ${guardResult.reason}`;
+  }
+
+  const product = guardResult.ok ? guardResult.product : lastProduct;
+  const timings = product?.timings ?? {};
   timings.total = Object.values(timings).reduce((sum, ms) => sum + ms, 0);
 
   return {
     mode: 'lazy',
     graphPath,
-    metaAdvanced,
-    saveError,
-    validation,
-    coverage: projection.coverage,
-    gaps: projection.gaps,
-    factsDigest: projection.factsDigest,
-    nodeCount: knowledgeGraph.nodes.length,
-    edgeCount: knowledgeGraph.edges.length,
+    metaAdvanced: saveState.metaAdvanced,
+    saveError: saveState.saveError,
+    validation: product?.validation ?? { ok: false, issues: [saveState.saveError ?? 'no product was produced'] },
+    coverage: product?.projection?.coverage ?? {},
+    gaps: product?.projection?.gaps ?? [],
+    factsDigest: product?.projection?.factsDigest ?? '',
+    nodeCount: product?.knowledgeGraph?.nodes?.length ?? 0,
+    edgeCount: product?.knowledgeGraph?.edges?.length ?? 0,
     timings,
+    sourceRevision: snapshot.revision,
   };
 }
 

@@ -158,6 +158,67 @@ describe('lazy-analyze driver — first-run pipeline', () => {
     expect(second.coverage.files).toBe(first.coverage.files);
   });
 
+  it('a git target gets a git:<sha> source-manifest.json, without the driver ever calling `git rev-parse` itself', async () => {
+    const git = (args) => execFileSync('git', ['-c', 'user.email=t@t', '-c', 'user.name=t', ...args], { cwd: root, stdio: 'pipe', encoding: 'utf-8' });
+    git(['init', '-q']);
+    git(['add', '-A']);
+    git(['commit', '-q', '-m', 'fixture']);
+    const headSha = git(['rev-parse', 'HEAD']).trim();
+
+    const result = await runLazyAnalysis({ projectRoot: root, now: FIXED_NOW });
+    expect(result.saveError).toBeNull();
+
+    const manifest = JSON.parse(readFileSync(join(root, '.excavator', 'source-manifest.json'), 'utf-8'));
+    expect(manifest.sourceRevision).toBe(`git:${headSha}`);
+    expect(result.sourceRevision).toBe(`git:${headSha}`);
+
+    // Driver source code itself never shells out to git — resolveSourceSnapshot
+    // (source-snapshot.mjs) owns every git invocation now. Strip comments
+    // first (the module doc explicitly narrates what it used to do and no
+    // longer does, which legitimately mentions these tokens in prose).
+    const raw = readFileSync(new URL('../../skills/excavator/lazy-analyze.mjs', import.meta.url), 'utf-8');
+    const codeOnly = raw
+      .replace(/\/\*[\s\S]*?\*\//g, '')
+      .replace(/(^|[^:])\/\/[^\n]*/g, '$1');
+    expect(codeOnly.includes("'git',")).toBe(false); // no spawnSync('git', ...) / execFileSync('git', ...)
+    expect(codeOnly.includes('rev-parse')).toBe(false);
+  });
+
+  it('writes source-manifest.json with sourceRevision/selectionDigest/pipelineVersion, matching the resolved DirectorySnapshot', async () => {
+    // Slice B / Task 4 — lazy-analyze now takes source through SourceSnapshot
+    // (openspec: changes/source-snapshot) instead of reading `root` directly.
+    const { resolveSourceSnapshot } = await import('../../skills/excavator/source-snapshot.mjs');
+    const expectedSnapshot = resolveSourceSnapshot(root);
+
+    const result = await runLazyAnalysis({ projectRoot: root, now: FIXED_NOW });
+    expect(result.saveError).toBeNull();
+    expect(result.metaAdvanced).toBe(true);
+
+    const manifestPath = join(root, '.excavator', 'source-manifest.json');
+    expect(existsSync(manifestPath)).toBe(true);
+    const manifest = JSON.parse(readFileSync(manifestPath, 'utf-8'));
+    expect(manifest.sourceRevision).toBe(expectedSnapshot.revision);
+    expect(manifest.sourceRevision).toMatch(/^directory:[0-9a-f]{64}$/);
+    expect(manifest.sourceRevision).toBe(result.sourceRevision);
+    expect(manifest.selectionDigest).toBe(expectedSnapshot.selectionDigest);
+    expect(typeof manifest.selectionDigest).toBe('string');
+
+    const { PIPELINE_VERSION } = await import('../../skills/excavator/lazy-analyze.mjs');
+    expect(manifest.pipelineVersion).toBe(PIPELINE_VERSION);
+  });
+
+  it('.excavator/ never reaches scan-project\'s enumeration — excluded by the snapshot\'s own selection, not merely --exclude-analysis-data', async () => {
+    await runLazyAnalysis({ projectRoot: root, now: FIXED_NOW });
+    // A second run: `.excavator/` now genuinely exists on disk (from the
+    // first run's own output) — the snapshot's materialize() must still
+    // never carry it into the temp dir the scan runs against.
+    await runLazyAnalysis({ projectRoot: root, now: FIXED_NOW });
+
+    const scanResult = JSON.parse(readFileSync(join(root, '.excavator', 'intermediate', 'scan-result.json'), 'utf-8'));
+    expect(scanResult.files.some((f) => f.path.startsWith('.excavator/'))).toBe(false);
+    expect(scanResult.skipped.some((s) => s.path.startsWith('.excavator/'))).toBe(false);
+  });
+
   it('never dispatches a model/subagent — structural check on the driver code (comments excluded)', () => {
     const raw = readFileSync(new URL('../../skills/excavator/lazy-analyze.mjs', import.meta.url), 'utf-8');
     // The module doc deliberately NAMES every subagent it does NOT invoke, to
