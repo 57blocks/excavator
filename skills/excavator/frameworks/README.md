@@ -39,8 +39,8 @@ ANNOTATE and VALIDATE phases never treat a convention as a fact.
 
 ## Present today
 
-`django.md`, `express.md`, `fastapi.md`, `flask.md`, `gin.md`, `nextjs.md`,
-`rails.md`, `react.md`, `spring.md`, `vue.md`.
+`django.md`, `express.md`, `fastapi.md`, `flask.md`, `gin.md`, `maui.md`,
+`nextjs.md`, `rails.md`, `react.md`, `spring.md`, `vue.md`.
 
 Deterministic readers for framework-specific file types — parser plugins that
 emit anchored structure rather than prose conventions — are tracked as OpenSpec

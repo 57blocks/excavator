@@ -50,9 +50,15 @@ export class FrameworkRegistry {
       if (detected.has(config.id)) continue;
 
       for (const manifestFile of config.manifestFiles) {
-        // Match manifest entries by filename (basename match)
-        const content = Object.entries(manifests).find(
-          ([key]) => key === manifestFile || key.endsWith(`/${manifestFile}`),
+        // Match manifest entries by filename. A `*.ext` manifest matches any
+        // key ending with `.ext` (e.g. `*.csproj` for arbitrarily-named
+        // MSBuild projects); otherwise it is an exact basename / path-suffix.
+        const isGlob = manifestFile.startsWith("*.");
+        const globSuffix = isGlob ? manifestFile.slice(1) : "";
+        const content = Object.entries(manifests).find(([key]) =>
+          isGlob
+            ? key.endsWith(globSuffix)
+            : key === manifestFile || key.endsWith(`/${manifestFile}`),
         )?.[1];
 
         if (!content) continue;
