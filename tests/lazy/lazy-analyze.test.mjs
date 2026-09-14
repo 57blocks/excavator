@@ -11,6 +11,7 @@ import { describe, expect, it, beforeEach, afterEach } from 'vitest';
 import { mkdtempSync, rmSync, mkdirSync, writeFileSync, readFileSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { execFileSync } from 'node:child_process';
 
 import { runLazyAnalysis, defaultRunScript } from '../../skills/excavator/lazy-analyze.mjs';
 
@@ -133,6 +134,28 @@ describe('lazy-analyze driver — first-run pipeline', () => {
     expect(afterTarget.summary).toBe('Runs the fixture entry point.');
     expect(afterTarget.tags).toEqual(['entrypoint']);
     expect(after.layers).toEqual(graph.layers);
+  });
+
+  it('re-run over a GIT target with an existing .excavator is byte-identical (data dir dropped from scan)', async () => {
+    // A real-repo-only defect the plain (non-git) fixture cannot catch: on a
+    // git target, scan-project consults the working tree and, on the second
+    // run, sees the first run's own `.excavator/*.json`. Ignored files are not
+    // parsed, but they were still COUNTED in the coverage ledger — so
+    // coverage.files grew (41 -> 51 on go-clean-arch) and factsDigest shifted
+    // every re-run, though nodes/edges/gaps were unchanged. The driver now
+    // passes --exclude-analysis-data so `.excavator/` is dropped before
+    // coverage, keeping re-runs byte-identical (plan §3.3: always excluded).
+    const git = (args) => execFileSync('git', ['-c', 'user.email=t@t', '-c', 'user.name=t', ...args], { cwd: root, stdio: 'ignore' });
+    git(['init', '-q']);
+    git(['add', '-A']);
+    git(['commit', '-q', '-m', 'fixture']);
+
+    const first = await runLazyAnalysis({ projectRoot: root, now: FIXED_NOW });
+    const second = await runLazyAnalysis({ projectRoot: root, now: FIXED_NOW });
+
+    expect(second.factsDigest).toBe(first.factsDigest);
+    // The tell-tale of the bug: the second run must not count its own data dir.
+    expect(second.coverage.files).toBe(first.coverage.files);
   });
 
   it('never dispatches a model/subagent — structural check on the driver code (comments excluded)', () => {

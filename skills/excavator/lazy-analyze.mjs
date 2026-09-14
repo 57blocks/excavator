@@ -323,7 +323,13 @@ export async function runLazyAnalysis({
   // --- Phase 1 SCAN (script, never the excavator-project-scanner subagent) ---
   const scanPath = join(intermediateDir, 'scan-result.json');
   time('scan', () => {
-    const result = runScript('scan-project.mjs', [root, scanPath, ...extractExcludeArgs(argv)]);
+    // --exclude-analysis-data DROPS the tool's own `.excavator/` data dir from
+    // the scan entirely (scan-project.mjs). Without it, a re-run would still
+    // *count* the prior run's `.excavator/*.json` under coverage's "ignored"
+    // bucket — same node/edge/gap set, but a different coverage tally, hence a
+    // different factsDigest on every re-run. The plan requires `.excavator/`
+    // always excluded (§3.3); this keeps re-runs byte-identical.
+    const result = runScript('scan-project.mjs', [root, scanPath, '--exclude-analysis-data', ...extractExcludeArgs(argv)]);
     if (result.status !== 0) {
       throw new Error(`lazy-analyze: scan-project.mjs failed: ${result.stderr || result.status}`);
     }
