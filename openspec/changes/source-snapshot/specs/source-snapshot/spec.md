@@ -22,11 +22,15 @@
 
 ### Requirement: MultiRepoSnapshot 由成员 HEAD 决定
 
-当根目录本身不是 Git 仓库但包含多个成员仓时，`revision` SHALL 为 `multi-repo:<sha256(排序后的 成员路径+成员 HEAD)>`。每个成员仓 SHALL 按 GitCommitSnapshot 读取（忽略其工作区变化）；父目录中不属于任何成员仓的源码 SHALL 按 DirectorySnapshot 读取并计入 multi-repo digest；父目录生效的 ignore 规则 SHALL 进入 `selectionDigest`。系统 MUST NOT 把多仓父目录误当普通目录而去读成员仓工作区。
+当根目录本身不是 Git 仓库但包含多个成员仓时，`revision` SHALL 为 `multi-repo:<sha256(排序后的 成员路径+成员 HEAD，以及父目录非成员源码的 directory digest)>`——即成员 HEAD 与父目录非成员内容**共同**决定 revision。父目录非成员源码内容变化 SHALL 改变 revision（否则父目录改动不会触发新鲜度失配、被漏同步）。每个成员仓 SHALL 按 GitCommitSnapshot 读取（忽略其工作区变化）；父目录中不属于任何成员仓的源码 SHALL 按 DirectorySnapshot 读取并计入该 digest；父目录生效的 ignore 规则 SHALL 进入 `selectionDigest`。系统 MUST NOT 把多仓父目录误当普通目录而去读成员仓工作区。
 
 #### Scenario: 成员工作区变化不进结果
 - **WHEN** 某成员仓有未提交改动
-- **THEN** multi-repo revision 与结果不变，只由成员路径与成员 HEAD 决定
+- **THEN** multi-repo revision 与结果不变（成员只由其 HEAD 决定，忽略工作区）
+
+#### Scenario: 父目录非成员文件变化改变 revision
+- **WHEN** 父目录里一个不属于任何成员仓的源码文件被修改
+- **THEN** multi-repo revision 改变，从而触发新鲜度失配与重新同步
 
 ### Requirement: DirectorySnapshot 以磁盘内容为准
 

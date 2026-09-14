@@ -25,7 +25,7 @@
 `resolveSourceSnapshot(root)`：root 自身是 Git 仓库 → **GitCommitSnapshot**；否则 root 下存在一个或多个 Git 成员仓 → **MultiRepoSnapshot**；否则 → **DirectorySnapshot**。探测结果记入 manifest，adapter 类型变化触发完整重建（revision-sync spec）。
 
 ### D3. revision 格式（plan §3.1–3.3，固定口径）
-`git:<full-head-sha>` / `multi-repo:<sha256(排序后 成员相对路径 + 成员 HEAD)>` / `directory:<sha256(排序后 {path,contentHash})>`。`selectionDigest` 覆盖生效的 ignore/exclude 规则；`pipelineVersion` 覆盖抽取器版本。三者进 `source-manifest.json`。
+`git:<full-head-sha>` / `multi-repo:<sha256(排序后 成员相对路径 + 成员 HEAD，再加父目录非成员源码的 directory digest)>`（成员 HEAD 与父目录非成员内容共同决定，父目录改动也改 revision，避免漏同步）/ `directory:<sha256(排序后 {path,contentHash})>`。`selectionDigest` 覆盖生效的 ignore/exclude 规则；`pipelineVersion` 覆盖抽取器版本。三者进 `source-manifest.json`。
 
 ### D4. 增量同步 = 对新快照做完整确定性重投影（**关键取舍，请重点评审**）
 本切片的「增量同步」实现为：用 `prepare-incremental.mjs` 的 diff **判断是否有变化**（无变化则跳过、不推进 manifest），有变化则**对新快照重跑确定性投影**（scan→structure-all→import-map→build-fact-graph），原子保存后推进 manifest。
