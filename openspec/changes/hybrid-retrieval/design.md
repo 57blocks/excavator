@@ -40,6 +40,8 @@
 - **按需 summary 越界**（把跨文件推断当节点自身职责、或编造）→ 可缓存三条件 + 字段白名单 + 回源核实；零编造是硬指标，靠真语料语义核验，不靠正则。
 - **并发/陈旧锁**→ 提交时短持锁 + CAS + TTL 夺锁；锁只协调写不协调生成（接受偶发重复计算，见 lazy-mode-plan §8）。
 - **事实层被误写**→ 断言 `knowledge-graph.json` SHA-256 在语义写入前后不变（§12.4.2）。
+- **倒排表用普通对象当 map**（group 6 真语料发现并已修）→ 源码里 `constructor`/`toString`/`hasOwnProperty` 是真实标识符，`postings["constructor"]` 在普通 `{}` 上是继承来的函数而非数组，`.push` 直接抛（wcp 的 TS/Vue 触发，Go/合成夹具不触发）。已改为 null-proto map（写端）+ `hasOwn` 守卫（读端，索引 JSON 回读后仍是普通对象），并加回归夹具（先红验证）。
+- **索引被工具自身产物/生成目录污染**（group 6 真语料发现，留作 selection 硬化 follow-up）→ 索引若扫进 `.excavator*` 变体、`.trash-*`、旧 run 的生成 `.js/.json`，这些数据块的 token 会淹没真实代码，召回从 6/6 掉到 2/6。正常被分析过的仓库 `.trash-*` 在被排除的 `.excavator/` 之内、风险低；但为稳健，**scan/SourceSnapshot 的 selection 应把工具产物按 glob（`.excavator*` / `.trash-*`）排除**（属切片 B 的 selection / core ignore，记为 follow-up，不在本切片扩范围）。clean 语料上召回门 6/6 成立。
 
 ## Migration Plan
 
