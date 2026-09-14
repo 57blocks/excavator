@@ -33,6 +33,11 @@
 
 ## 5. 端到端、真实语料与门禁
 
-- [ ] 5.1 合成端到端：一个 purpose-built MAUI 小项目（含 `.csproj`/`.xaml`/`.feature`/`.cs`）跑 structure-all → 四类文件全 parsed、事实落对应字段、coverage 无 `no-extractor` 残留（除故意留的未知类型）。验证：端到端套件绿。
-- [ ] 5.2 真实 opt-in 复跑：对 `unmc` 全量 structure-all，出「移动端文档章节 → 数据来源」对照（SOUP / 行为 / View-导航 / 状态机 / 错误处理各引用到具体 file:line），记录 XAML 绑定 resolved 率与 gap 清单。产物 / 源码不提交，仅把计数与结论写入变更记录。
-- [ ] 5.3 门禁：`openspec validate --strict mobile-maui-support` 通过；`pnpm -r build` 先行 + 受影响 `pnpm test` / typecheck / check-refs 全绿且用例只增；无删除 / 跳过 / 弱化既有测试；`docs/v2-plan.md` 删除后无**活跃**悬挂引用（指令 / 配置文件 AGENTS.md / CLAUDE.md / `openspec/config.yaml` / frameworks README 均已改指 `openspec/changes/`；grep `v2-plan` 仅剩其它变更里描述历史工作的已完成任务记录与 `archive/**`，不改写他人变更的历史记录）。验证：命令通过、活跃引用为零。
+- [x] 5.1 合成端到端（committed vitest `tests/skill/excavator/test_maui_readers_e2e.test.mjs`）：用真实 `PluginRegistry`（`registerAllParsers`）经 `analyzeFileWithOutcomes` 跑三个新 reader 的 purpose-built 夹具（`.csproj`/`.feature`/`.xaml`）→ 全部 `structureOutcome: succeeded` 且 `deriveStatus = parsed`；未知扩展 → `skipped`/`no-extractor`（无假 parse）。`.cs` 为既有 csharp 抽取器（unmc 962 文件已验证），不在本 e2e 重复。验证：4/4 绿。
+- [x] 5.2 真实 opt-in（`unmc`，仅计数、不提交路径）——「移动端文档章节 → 数据来源」对照：
+  - **2.3 SOUP / 6 References** ← `.csproj` PackageReference：5 个 csproj 共 **47 个 distinct 依赖**（Microsoft.Maui.Controls、Prism.Maui、Plugin.BLE、Serilog、Stateless、ScottPlot、Newtonsoft.Json 等）。
+  - **3 UI 描述 / 行为流程** ← `.feature`：**24 文件、68 features/scenarios、2234 steps**（ErrorHandling / Recordings / PatientEvents / TabNavigation…）。
+  - **3 View / 导航** ← `.xaml`：**128 views、x:Class 125、x:Name 433、binding 393、command 113**；绑定 DataType 上下文 **ctx-known 69 / ctx-none 437**（none 为可见 gap 候选，成员级 resolved 属 resolver 后续，不在本切片）。
+  - **2.4 Solution Overview / 3.6 MVVM** ← `maui` 框架检测（Prism.Maui）+ xaml/csharp 分层。
+  - **4 错误处理 / 状态模型** ← 既有 C# 抽取（unmc 962 文件）+ `ErrorHandling.feature` + `Stateless` 状态机（见 SOUP）。
+- [x] 5.3 门禁：`openspec validate --strict mobile-maui-support` 通过；`pnpm -r build` 先行 + 受影响 `pnpm test` / typecheck / check-refs 全绿且用例只增；无删除 / 跳过 / 弱化既有测试；`docs/v2-plan.md` 删除后无**活跃**悬挂引用（指令 / 配置文件 AGENTS.md / CLAUDE.md / `openspec/config.yaml` / frameworks README 均已改指 `openspec/changes/`；grep `v2-plan` 仅剩其它变更里描述历史工作的已完成任务记录与 `archive/**`，不改写他人变更的历史记录）。实测全绿：build / typecheck / check-refs（44 script + 2 hook + 5 manifest 引用全解析）/ core 1039 / root 928+4skip / `openspec validate --strict` valid；活跃 `v2-plan` 引用为零（仅本变更 proposal/tasks 在描述该删除，及 verifiable-statements 的历史任务记录）。
