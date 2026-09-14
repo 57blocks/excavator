@@ -42,8 +42,9 @@ ANNOTATE and VALIDATE phases never treat a convention as a fact.
 `django.md`, `express.md`, `fastapi.md`, `flask.md`, `gin.md`, `nextjs.md`,
 `rails.md`, `react.md`, `spring.md`, `vue.md`.
 
-Framework *rule packs* — deterministic, machine-checkable route/handler rules
-rather than prose conventions — are step ③ of the v2 plan and are not in this
-directory yet; `angular` and `maui` are the first two targets and have no file
-here, so a project using them currently gets the base rules only. See
-`docs/v2-plan.md`.
+Deterministic readers for framework-specific file types — parser plugins that
+emit anchored structure rather than prose conventions — are tracked as OpenSpec
+changes under `openspec/changes/`, not authored in this directory. `angular` and
+`maui` are the first two targets; the MAUI reader set (`.xaml`/`.csproj`/
+`.feature`) is added by the `mobile-maui-support` change, and until it lands a
+project using them gets the base rules only.
