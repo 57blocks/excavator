@@ -209,8 +209,8 @@ describe('frameworks/README.md explains the hook', () => {
     expect(readme).toContain('skip it and continue');
   });
 
-  it('says the rule packs arrive with step ③ and are not here yet', () => {
-    expect(readme).toContain('step ③');
+  it('says the framework readers are tracked as OpenSpec changes, naming the targets', () => {
+    expect(readme).toContain('openspec/changes');
     expect(readme).toContain('angular');
     expect(readme).toContain('maui');
   });
