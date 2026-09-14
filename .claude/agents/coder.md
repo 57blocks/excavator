@@ -8,7 +8,7 @@ model: sonnet
 
 ## 语言约定（硬规则）
 
-代码、注释、测试名，以及 skill 的 `SKILL.md` 提示词散文一律用**英文**（与现有文件一致）。只有 OpenSpec 产物（`openspec/changes/*/{proposal,design,specs,tasks}.md`）用中文——而那些不在你的产出范围内。
+代码、注释、测试名，以及 skill 的 `SKILL.md` 提示词散文一律用**英文**（与现有文件一致）。只有 OpenSpec 产物（`openspec/changes/*/{proposal,design,specs,tasks}.md`）用中文——而那些不在你的产出范围内。**注释里引用 spec 时用英文转述或按 requirement 名 / 场景名引用，不要把中文 spec 原文逐字粘进注释**（这会让代码里混入中文，违反本约定）。
 
 ## 开工前按序读取
 
