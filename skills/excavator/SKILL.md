@@ -1,7 +1,7 @@
 ---
 name: excavator
 description: Analyze a codebase into a knowledge graph for architecture understanding and terminal question answering
-argument-hint: ["[path] [--full|--auto-update|--no-auto-update|--review|--language <lang>|--exclude <patterns>]"]
+argument-hint: ["[path] [--mode lazy|full|--full|--auto-update|--no-auto-update|--review|--language <lang>|--exclude <patterns>]"]
 ---
 
 # /excavator
@@ -11,7 +11,8 @@ Analyze the current codebase and produce a `knowledge-graph.json` file in the pr
 ## Options
 
 - `$ARGUMENTS` may contain:
-  - `--full` — Force a full rebuild, ignoring any existing graph
+  - `--mode=lazy|full` — Override `analysisMode` for this run only, without changing `$DATA_DIR/config.json`. Default is `lazy` (facts only, zero LLM calls — see Phase 0 step 6.5). `full` runs the existing full pipeline below.
+  - `--full` — Force a full rebuild, ignoring any existing graph. Equivalent to `--mode=full` plus a forced rebuild; also not persisted to config.json.
   - `--auto-update` — Enable automatic graph updates on commit (writes `autoUpdate: true` to `$DATA_DIR/config.json`)
   - `--no-auto-update` — Disable automatic graph updates (writes `autoUpdate: false` to `$DATA_DIR/config.json`)
   - `--review` — Run full LLM graph-reviewer instead of inline deterministic validation
@@ -168,7 +169,25 @@ Determine whether to run a full analysis or incremental update.
 
 5. Check if `$DATA_DIR/knowledge-graph.json` exists. If it does, read it.
 6. Check if `$DATA_DIR/meta.json` exists. If it does, read its `gitCommitHash` and store it as `$LAST_COMMIT_HASH`.
-7. **Decision logic:**
+
+6.5. **Resolve the analysis mode (lazy vs. full).** Read `$DATA_DIR/config.json`'s `analysisMode` field (if present). Parse `$ARGUMENTS` for `--mode=lazy|full` (a single-run override that does NOT change `config.json`) and `--full` (equivalent to `--mode=full` plus a forced rebuild — the pre-existing `--full` flag, unchanged). Apply `resolveMode()`'s rule, defined once in `<SKILL_DIR>/resolve-mode.mjs` (a pure function — see its own tests for every scenario):
+
+   - `--full` present → mode `full`, forced rebuild.
+   - else `--mode=<value>` present → mode `<value>`, this run only, `config.json` untouched.
+   - else stored `config.json` `analysisMode` → that value, `config.json` untouched.
+   - else (no flag, no stored value) → mode `lazy` (the default). Merge `{"analysisMode": "lazy"}` into `$DATA_DIR/config.json` now (preserving every other key), so future runs read an explicit value instead of re-deriving it — mirrors the existing `outputLanguage` first-run persistence above.
+
+   Store the resolved value as `$ANALYSIS_MODE`.
+
+   **If `$ANALYSIS_MODE` is `lazy`:** run the Lazy driver instead of the rest of Phase 0 and Phases 0.5–6:
+   ```bash
+   node "<SKILL_DIR>/lazy-analyze.mjs" "$PROJECT_ROOT" ${EXCLUDE_PATTERNS:+--exclude "$EXCLUDE_PATTERNS"}
+   ```
+   This single script performs Phase 1 SCAN via `scan-project.mjs` (the deterministic script — never the `excavator-project-scanner` subagent), Phase 1.2 STRUCTURE-ALL, the deterministic Fact Builder (`build-fact-graph.mjs`), a deterministic validate pass, and Phase 7 SAVE, with zero LLM/subagent calls: no `file-analyzer`, `summary-verifier`, `assemble-reviewer`, `architecture-analyzer`, or `graph-reviewer` dispatch, no LLM batch file, no HTML, no Tour. It never wipes or downgrades an already-existing full graph's `summary`/`tags`/`layers` — a prior Full run's semantics are merged forward, not overwritten. Report its printed summary to the user and **STOP**. Do not continue to Phase 0.5 or any phase below.
+
+   **If `$ANALYSIS_MODE` is `full`:** continue with the existing pipeline unchanged, starting at step 7 below (a mode forced by `--full` behaves exactly like the existing `--full` row in the decision table).
+
+7. **Decision logic (full analysis only — reached only when `$ANALYSIS_MODE` is `full`):**
 
    | Condition | Action |
    |---|---|
