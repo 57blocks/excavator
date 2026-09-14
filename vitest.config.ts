@@ -19,5 +19,13 @@ export default defineConfig({
       '**/dist/**',
       'packages/core/**',
     ],
+    // Several suites (tests/lazy, tests/snapshot, tests/revision-sync) are
+    // integration tests that spawn the real analysis pipeline (scan /
+    // structure-all / import-map via tree-sitter) against tmp fixtures, often
+    // more than once per test. Under the full gate's parallel load — and any
+    // concurrent worktree build on the same machine — that exceeds vitest's
+    // 5s default and flakes on timeout (not on any assertion). 20s gives these
+    // cross-process tests headroom without masking a genuine hang.
+    testTimeout: 20000,
   },
 });
