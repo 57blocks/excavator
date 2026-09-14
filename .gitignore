@@ -11,6 +11,10 @@ benchmark-results/
 __pycache__/
 .worktrees/
 .private/
+# local eval/scratch data (carried over from the old compiler main; not part of v2)
+/.work/
+/tmp/
+/.test-infra-local/
 .venv/
 venv/
 *.pyc
