@@ -67,7 +67,14 @@
  * failure, `meta.json` (and, by not being asked to advance, `fingerprints`)
  * stay at their last successful state. The knowledge graph write itself is
  * unconditional (matching Phase 7 step 1, which is likewise not gated on the
- * fingerprints step that follows it).
+ * fingerprints step that follows it). The fingerprints baseline itself is
+ * BUILT inside `produce()`, against the materialized snapshot content (HEAD
+ * for a git target — Fix B of openspec change `source-snapshot`, Slice B),
+ * not against the real `root`; `publish()` only relocates the already-built
+ * `fingerprints.json` into the real `root/.excavator/` once the guard has
+ * confirmed the source did not change (see `produce()`'s "Structural
+ * fingerprints baseline" step for why it cannot be built in `publish()`
+ * itself: the materialized temp dir is already gone by then).
  *
  * SourceSnapshot (openspec: changes/source-snapshot, capability
  * `source-snapshot`, design D5): this driver no longer decides "what source
@@ -179,19 +186,33 @@ function edgeKey(e) {
 
 /**
  * Merge the deterministic fact projection into an already-existing
- * KnowledgeGraph (produced by a prior Full run), without discarding any
- * model-authored semantics.
+ * KnowledgeGraph (produced by a prior Full run, or a prior Lazy sync),
+ * without discarding any model-authored semantics.
  *
  * - Nodes: for every fact node, if a node with the same id already exists,
  *   its structural fields are refreshed from the fresh projection while its
  *   semantic fields (see `SEMANTIC_NODE_FIELDS`) are preserved verbatim. A
  *   fact node with no prior counterpart is added as-is (nothing to
  *   preserve — it is genuinely new). An existing node the fresh projection
- *   no longer sees (e.g. the file was deleted) is left in place: Lazy has
- *   no incremental-deletion logic of its own, and the conservative choice
- *   next to "never clear or downgrade" is to leave it rather than guess.
- * - Edges: union, keyed by (source, target, type, direction) — existing
- *   edges are kept, new fact edges not already present are appended.
+ *   no longer sees is DROPPED when it is itself fact-provenance (carries a
+ *   `filePath`) — design D4's full re-projection (openspec: changes/
+ *   source-snapshot, capability `revision-sync`) is exhaustive over every
+ *   currently-scanned file, so a fact node it does not reproduce genuinely
+ *   no longer exists (its file was deleted, or its declaration was
+ *   renamed/removed); keeping it would violate revision-sync's "deleted files'
+ *   fact nodes and edges SHALL be removed" and leave stale line numbers behind. A node
+ *   with NO `filePath` (never produced by the fact layer — e.g. a
+ *   Full-mode-only conceptual/grouping node) is preserved exactly as
+ *   before: Lazy has no way to reason about it, so "leave it rather than
+ *   guess" still applies there.
+ * - Edges: the fresh projection is likewise exhaustive for every edge that
+ *   touches a CURRENT fact node (an edge whose endpoint is a fact node was
+ *   necessarily re-derivable this run, since that node's whole file was
+ *   re-extracted). An existing edge is therefore stale — and dropped —
+ *   whenever either endpoint is a fact node id (present now, or just
+ *   dropped as stale above), unless the fresh projection reproduces that
+ *   exact edge. An edge between two non-fact ids (Full-mode-only nodes with
+ *   no `filePath`) is preserved as-is; Lazy never re-derives those.
  * - `layers` / `tour`: left exactly as they were; Lazy populates neither.
  *
  * @param {object|null} existing a previously-saved KnowledgeGraph, or null
@@ -216,16 +237,24 @@ export function mergeFactProjectionIntoGraph(existing, projection) {
     }
     seenIds.add(factNode.id);
   }
+  const staleFactIds = new Set();
   for (const node of existing?.nodes ?? []) {
-    if (!seenIds.has(node.id)) nodes.push(node);
+    if (seenIds.has(node.id)) continue;
+    if (typeof node.filePath === 'string' && node.filePath.length > 0) {
+      staleFactIds.add(node.id); // dropped — not pushed to `nodes`.
+      continue;
+    }
+    nodes.push(node);
   }
   nodes.sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
 
-  const existingEdgeKeys = new Set((existing?.edges ?? []).map(edgeKey));
-  const edges = [...(existing?.edges ?? [])];
-  for (const factEdge of projection.edges) {
-    if (!existingEdgeKeys.has(edgeKey(factEdge))) edges.push(factEdge);
-  }
+  const factNodeIds = new Set([...projection.nodes.map((n) => n.id), ...staleFactIds]);
+  const freshEdgeKeys = new Set(projection.edges.map(edgeKey));
+  const survivingExistingEdges = (existing?.edges ?? []).filter((e) => {
+    if (freshEdgeKeys.has(edgeKey(e))) return false; // reintroduced once, from projection.edges below.
+    return !factNodeIds.has(e.source) && !factNodeIds.has(e.target);
+  });
+  const edges = [...survivingExistingEdges, ...projection.edges];
 
   return {
     nodes,
@@ -416,6 +445,45 @@ export async function runLazyAnalysis({
       writeFileSync(join(intermediateDir, 'lazy-validation.json'), JSON.stringify(validation, null, 2), 'utf-8');
     });
 
+    // --- Structural fingerprints baseline (Fix B, openspec change
+    // source-snapshot) ---------------------------------------------------------
+    // Built against `materializedDir` — the snapshot's own materialized
+    // content (HEAD for a git target) — never against the real, possibly
+    // dirty `root`. The temp dir is still alive here (runGuarded's cleanup
+    // only runs after this whole `produce` call returns), so the resulting
+    // fingerprints.json is read back into `product` now and relocated into
+    // the REAL root's `.excavator/` by `publish()`, once the D7 consistency
+    // guard has confirmed the source did not change for the run's whole
+    // duration. Still invoked via `runScript('build-fingerprints.mjs', ...)`
+    // (never imported) so the existing save-failure-gate injection point
+    // (tests replace this exact script name) keeps working unchanged.
+    let fingerprints;
+    time('fingerprints', () => {
+      const fingerprintInputPath = join(intermediateDir, 'fingerprint-input.json');
+      writeFileSync(
+        fingerprintInputPath,
+        JSON.stringify(
+          {
+            projectRoot: materializedDir,
+            filePaths: scan.files.map((f) => f.path),
+            gitCommitHash: snapshot.kind === 'git' ? snapshot.sha : null,
+          },
+          null,
+          2,
+        ),
+        'utf-8',
+      );
+      const fpResult = runScript('build-fingerprints.mjs', [fingerprintInputPath]);
+      if (fpResult.status !== 0 || !/Fingerprints baseline:/.test(fpResult.stdout ?? '')) {
+        fingerprints = { ok: false, error: `build-fingerprints.mjs failed: ${fpResult.stderr || fpResult.status}` };
+        return;
+      }
+      fingerprints = {
+        ok: true,
+        raw: readFileSync(join(materializedDir, '.excavator', 'fingerprints.json'), 'utf-8'),
+      };
+    });
+
     // --- Assemble the (not-yet-published) knowledge graph --------------------
     // `gitCommitHash` is derived from the snapshot's OWN revision rather than
     // a second `git rev-parse HEAD` call — for a GitCommitSnapshot this is
@@ -452,7 +520,7 @@ export async function runLazyAnalysis({
       gaps: projection.gaps,
     };
 
-    const product = { knowledgeGraph, validation, scan, structureAll, projection, timings };
+    const product = { knowledgeGraph, validation, scan, structureAll, projection, timings, fingerprints };
     lastProduct = product; // kept for diagnostics even if the guard later discards it.
     return product;
   }
@@ -474,32 +542,22 @@ export async function runLazyAnalysis({
     // Fingerprints baseline MUST succeed before meta.json is written — the
     // same gate Phase 7 step 2 already enforces (see build-fingerprints.mjs
     // / issue #152: otherwise a future incremental run sees a fresh commit
-    // hash with no fingerprints to compare against). This reads/writes the
-    // REAL `root` (not the materialized temp) — the structural-fingerprint
-    // baseline is a separate, pre-existing change-detection subsystem this
-    // slice does not otherwise touch.
-    const fingerprintInputPath = join(intermediateDir, 'fingerprint-input.json');
-    writeFileSync(
-      fingerprintInputPath,
-      JSON.stringify(
-        {
-          projectRoot: root,
-          filePaths: product.scan.files.map((f) => f.path),
-          gitCommitHash: product.knowledgeGraph.project.gitCommitHash,
-        },
-        null,
-        2,
-      ),
-      'utf-8',
-    );
-    const fpResult = runScript('build-fingerprints.mjs', [fingerprintInputPath]);
-    if (fpResult.status !== 0 || !/Fingerprints baseline:/.test(fpResult.stdout ?? '')) {
-      saveState.saveError = `build-fingerprints.mjs failed: ${fpResult.stderr || fpResult.status}`;
+    // hash with no fingerprints to compare against). The baseline itself was
+    // already BUILT (via `runScript('build-fingerprints.mjs', ...)`) against
+    // the materialized snapshot content in `produce()` (Fix B) — it cannot be
+    // built here because the materialized temp dir is already gone by the
+    // time `publish` runs (runGuarded's cleanup happens right after
+    // `produce` returns). This step only relocates that already-built
+    // fingerprints.json into the REAL root's `.excavator/`, or — on a
+    // build-fingerprints failure — withholds meta.json exactly as before.
+    if (!product.fingerprints.ok) {
+      saveState.saveError = product.fingerprints.error;
       product.timings.save = Date.now() - saveStart;
       return; // Do NOT advance meta.json/source-manifest.json — they all stay
       // at their last successful state (spec Scenario "a failed save must
       // not advance metadata").
     }
+    writeFileSync(join(dataDir, 'fingerprints.json'), product.fingerprints.raw, 'utf-8');
 
     saveMeta(root, {
       lastAnalyzedAt: now(),
@@ -511,6 +569,12 @@ export async function runLazyAnalysis({
     // source-manifest.json — the new artifact this slice adds, written
     // alongside knowledge-graph.json/meta.json/fingerprints.json, and only
     // ever advanced together with them (same gate as meta.json above).
+    // `entries` (the snapshot's own `{path, contentHash}` list) is persisted
+    // too, beyond the three required fields — it is the previous-manifest
+    // baseline `sync-fact-graph.mjs` (openspec: changes/source-snapshot,
+    // capability `revision-sync`) needs to compute a real diff instead of
+    // guessing one; the spec's "at-least" ("contains AT LEAST") wording leaves
+    // room for it on the same artifact rather than a second file.
     writeFileSync(
       join(dataDir, 'source-manifest.json'),
       JSON.stringify(
@@ -518,6 +582,7 @@ export async function runLazyAnalysis({
           sourceRevision: snapshot.revision,
           selectionDigest: snapshot.selectionDigest,
           pipelineVersion: PIPELINE_VERSION,
+          entries: snapshot.entries(),
         },
         null,
         2,

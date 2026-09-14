@@ -32,15 +32,39 @@ function makeFixture() {
   return root;
 }
 
+/**
+ * Fix A: revision folds sorted (member relative path + member HEAD) AND the
+ * parent (non-member) directory digest into one composite hash, so a
+ * parent-only content change also changes `revision` (source-snapshot spec,
+ * UPDATED "MultiRepoSnapshot 由成员 HEAD 决定" requirement). Independently
+ * reimplemented here (not calling into manifest.mjs) so this test would
+ * actually catch a bug in that formula, not just echo it.
+ *
+ * In `makeFixture()`, the parent's only non-member content is `README.md`
+ * ('# workspace\n') — member-a/ and member-b/ are carved out.
+ */
 function expectedRevision(root) {
   const shaA = git(join(root, 'member-a'), ['rev-parse', 'HEAD']).trim();
   const shaB = git(join(root, 'member-b'), ['rev-parse', 'HEAD']).trim();
-  const hash = createHash('sha256');
-  hash.update('excavator:multi-repo-members:v1\0');
+  const memberHash = createHash('sha256');
+  memberHash.update('excavator:multi-repo-members:v1\0');
   for (const [id, sha] of [['member-a', shaA], ['member-b', shaB]].sort((x, y) => (x[0] < y[0] ? -1 : 1))) {
-    hash.update(id); hash.update('\0'); hash.update(sha); hash.update('\n');
+    memberHash.update(id); memberHash.update('\0'); memberHash.update(sha); memberHash.update('\n');
   }
-  return `multi-repo:${hash.digest('hex')}`;
+  const memberDigest = memberHash.digest('hex');
+
+  const readmeHash = createHash('sha256').update(readFileSync(join(root, 'README.md'))).digest('hex');
+  const parentHash = createHash('sha256');
+  parentHash.update('excavator:source-manifest:v1\0');
+  parentHash.update('README.md'); parentHash.update('\0'); parentHash.update(readmeHash); parentHash.update('\n');
+  const parentDigest = parentHash.digest('hex');
+
+  const composite = createHash('sha256');
+  composite.update('excavator:multi-repo-revision:v1\0');
+  composite.update(memberDigest);
+  composite.update('\0');
+  composite.update(parentDigest);
+  return `multi-repo:${composite.digest('hex')}`;
 }
 
 describe('MultiRepoSnapshot — detection and revision', () => {
@@ -55,7 +79,7 @@ describe('MultiRepoSnapshot — detection and revision', () => {
     expect(snapshot.members.map((m) => m.id).sort()).toEqual(['member-a', 'member-b']);
   });
 
-  it('revision is sha256 over sorted (member relative path + member HEAD)', () => {
+  it('revision is sha256 over sorted (member relative path + member HEAD) folded with the parent directory digest', () => {
     const snapshot = resolveSourceSnapshot(root);
     expect(snapshot.revision).toBe(expectedRevision(root));
   });
@@ -89,6 +113,32 @@ describe('MultiRepoSnapshot — member working-tree changes do not affect the re
     expect(after.revision).toBe(before.revision);
     expect(after.readFile('member-a/index.ts').toString('utf-8')).toBe('export const a = 1;\n');
     expect(after.listFiles()).not.toContain('member-a/untracked.ts');
+  });
+});
+
+describe('MultiRepoSnapshot — Fix A: parent non-member content is folded into the revision', () => {
+  let root;
+  beforeEach(() => { root = makeFixture(); });
+  afterEach(() => { rmSync(root, { recursive: true, force: true }); });
+
+  it('a parent non-member file change changes the revision; a member working-tree change does not', () => {
+    const before = resolveSourceSnapshot(root);
+
+    // Member working-tree change (uncommitted) — the member is read as its
+    // HEAD only, so this must NOT change the multi-repo revision.
+    writeFileSync(join(root, 'member-a', 'index.ts'), 'export const a = 999;\n');
+    const afterMemberEdit = resolveSourceSnapshot(root);
+    expect(afterMemberEdit.revision).toBe(before.revision);
+
+    // Restore, so the next assertion isolates the parent-content effect.
+    writeFileSync(join(root, 'member-a', 'index.ts'), 'export const a = 1;\n');
+
+    // Parent (non-member) file change — MUST change the revision (Fix A):
+    // otherwise a parent-only edit would never produce a freshness mismatch
+    // and revision-sync would silently miss it.
+    writeFileSync(join(root, 'README.md'), '# workspace, edited\n');
+    const afterParentEdit = resolveSourceSnapshot(root);
+    expect(afterParentEdit.revision).not.toBe(before.revision);
   });
 });
 

@@ -18,6 +18,7 @@ import { createHash } from 'node:crypto';
 const MANIFEST_DIGEST_DOMAIN = 'excavator:source-manifest:v1\0';
 const SELECTION_DIGEST_DOMAIN = 'excavator:selection-digest:v1\0';
 const MEMBER_LIST_DIGEST_DOMAIN = 'excavator:multi-repo-members:v1\0';
+const MULTI_REPO_REVISION_DIGEST_DOMAIN = 'excavator:multi-repo-revision:v1\0';
 
 /** sha256 hex of a Buffer/string — the per-file content hash every adapter's
  *  manifest entries are built from. */
@@ -92,6 +93,32 @@ export function memberListDigest(members) {
     hash.update(String(headSha));
     hash.update('\n');
   }
+  return hash.digest('hex');
+}
+
+/**
+ * The MultiRepoSnapshot `revision` digest (D3, Fix A): folds the sorted
+ * member (id, headSha) list TOGETHER WITH the parent (non-member) directory
+ * digest into one sha256, so a parent-only content change also changes
+ * `revision` (source-snapshot spec, "MultiRepoSnapshot determined by member HEADs"
+ * requirement: "parent non-member source content changes SHALL change the revision" — otherwise a
+ * parent-only edit would never produce a freshness mismatch and
+ * revision-sync would silently miss it). Deliberately its own domain, and
+ * deliberately combines the two ALREADY-COMPUTED digests (member list +
+ * parent manifest) rather than re-deriving a new formula over their raw
+ * inputs — the point is exactly to bind two independent digests together.
+ *
+ * @param {Array<{id: string, headSha: string}>} members
+ * @param {string} parentDirectoryDigest a `manifestDigest(...)`-shaped hex
+ *   sha256 over the parent's own non-member `{path, contentHash}` entries.
+ * @returns {string} lowercase hex sha256
+ */
+export function multiRepoRevisionDigest(members, parentDirectoryDigest) {
+  const hash = createHash('sha256');
+  hash.update(MULTI_REPO_REVISION_DIGEST_DOMAIN);
+  hash.update(memberListDigest(members));
+  hash.update('\0');
+  hash.update(String(parentDirectoryDigest));
   return hash.digest('hex');
 }
 

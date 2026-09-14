@@ -12,6 +12,7 @@ import { mkdtempSync, rmSync, mkdirSync, writeFileSync, readFileSync, existsSync
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 
 import { runLazyAnalysis, defaultRunScript } from '../../skills/excavator/lazy-analyze.mjs';
 
@@ -217,6 +218,35 @@ describe('lazy-analyze driver — first-run pipeline', () => {
     const scanResult = JSON.parse(readFileSync(join(root, '.excavator', 'intermediate', 'scan-result.json'), 'utf-8'));
     expect(scanResult.files.some((f) => f.path.startsWith('.excavator/'))).toBe(false);
     expect(scanResult.skipped.some((s) => s.path.startsWith('.excavator/'))).toBe(false);
+  });
+
+  it('Fix B: a git target\'s fingerprints are computed from HEAD content, not from an uncommitted working-tree edit', async () => {
+    const git = (args) => execFileSync('git', ['-c', 'user.email=t@t', '-c', 'user.name=t', ...args], { cwd: root, stdio: 'pipe', encoding: 'utf-8' });
+    git(['init', '-q']);
+    git(['add', '-A']);
+    git(['commit', '-q', '-m', 'fixture']);
+
+    const committedContent = readFileSync(join(root, 'src', 'a.ts'));
+    const committedHash = createHash('sha256').update(committedContent).digest('hex');
+
+    const first = await runLazyAnalysis({ projectRoot: root, now: FIXED_NOW });
+    expect(first.saveError).toBeNull();
+    const fingerprintsAfterCommit = JSON.parse(readFileSync(join(root, '.excavator', 'fingerprints.json'), 'utf-8'));
+    expect(fingerprintsAfterCommit.files['src/a.ts'].contentHash).toBe(committedHash);
+
+    // Uncommitted edit — HEAD is unchanged (GitCommitSnapshot ignores the
+    // working tree), so a re-run must still fingerprint the COMMITTED
+    // content, never this dirty edit.
+    const dirtyContent = "import { helper } from './b';\n\nexport function run(): void {\n  helper();\n  helper();\n}\n";
+    writeFileSync(join(root, 'src', 'a.ts'), dirtyContent);
+    const dirtyHash = createHash('sha256').update(dirtyContent).digest('hex');
+    expect(dirtyHash).not.toBe(committedHash);
+
+    const second = await runLazyAnalysis({ projectRoot: root, now: FIXED_NOW });
+    expect(second.saveError).toBeNull();
+    const fingerprintsAfterDirtyEdit = JSON.parse(readFileSync(join(root, '.excavator', 'fingerprints.json'), 'utf-8'));
+    expect(fingerprintsAfterDirtyEdit.files['src/a.ts'].contentHash).toBe(committedHash);
+    expect(fingerprintsAfterDirtyEdit.files['src/a.ts'].contentHash).not.toBe(dirtyHash);
   });
 
   it('never dispatches a model/subagent — structural check on the driver code (comments excluded)', () => {

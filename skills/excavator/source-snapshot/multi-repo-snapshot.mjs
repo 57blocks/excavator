@@ -4,12 +4,13 @@
  * SourceSnapshot adapter for a parent directory that is NOT itself a git
  * repository but contains one or more member git repositories (design
  * D2/D3). `revision` is `multi-repo:<sha256(sorted member-relative-path +
- * member HEAD)>` — a fixed formula that intentionally does NOT fold parent
- * (non-member) file content into the revision string; parent content still
- * flows into the analysis (and therefore into `factsDigest`) via
- * materialize(), it just isn't part of what makes this adapter's `revision`
- * change. See the source-snapshot proposal's Why for why `revision` is
- * scoped this way.
+ * member HEAD, PLUS the parent (non-member) directory digest)>` (Fix A) —
+ * member HEAD and parent non-member content TOGETHER decide `revision`, so a
+ * parent-only file change produces a new revision and is never silently
+ * missed by revision-sync's freshness check. Parent content also flows into
+ * the analysis (and therefore into `factsDigest`) via materialize(), as
+ * before. See the source-snapshot spec's "MultiRepoSnapshot determined by member HEADs
+ * " requirement (UPDATED) and design D3.
  *
  * Each member is read as a GitCommitSnapshot (HEAD-only, working tree
  * ignored). Parent non-member source is read as a DirectorySnapshot with
@@ -22,7 +23,7 @@ import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync } from 
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { memberListDigest, diffEntries } from './manifest.mjs';
+import { memberListDigest, multiRepoRevisionDigest, manifestDigest, diffEntries } from './manifest.mjs';
 import { ignoreRulesFromDisk } from './ignore-rules.mjs';
 import { isGitRepoRoot, headSha } from './git-utils.mjs';
 import { GitCommitSnapshot } from './git-commit-snapshot.mjs';
@@ -84,7 +85,6 @@ export class MultiRepoSnapshot {
     this.members = members;
     this._extraExcludePatterns = options.extraExcludePatterns ?? [];
 
-    this.revision = `multi-repo:${memberListDigest(members.map((m) => ({ id: m.id, headSha: m.sha })))}`;
     // Parent's OWN effective ignore rules only (spec: "the parent's own effective ignore rules
     // SHALL enter selectionDigest") — member-directory carve-outs below are a
     // structural artifact of the adapter, not a user-configured rule, so they
@@ -95,6 +95,16 @@ export class MultiRepoSnapshot {
     this._parentSnapshot = new DirectorySnapshot(root, {
       extraExcludePatterns: [...this._extraExcludePatterns, ...members.map((m) => `${m.id}/`)],
     });
+
+    // Fix A: fold the parent's non-member directory digest into revision
+    // ALONGSIDE the member list, so a parent-only content change produces a
+    // new revision (constructed after `_parentSnapshot` so its `entries()`
+    // are available to hash).
+    const parentDirectoryDigest = manifestDigest(this._parentSnapshot.entries());
+    this.revision = `multi-repo:${multiRepoRevisionDigest(
+      members.map((m) => ({ id: m.id, headSha: m.sha })),
+      parentDirectoryDigest,
+    )}`;
   }
 
   listFiles() {

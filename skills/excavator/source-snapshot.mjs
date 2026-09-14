@@ -41,7 +41,7 @@ import { isGitRepoRoot, headSha } from './source-snapshot/git-utils.mjs';
 import { GitCommitSnapshot } from './source-snapshot/git-commit-snapshot.mjs';
 import { DirectorySnapshot } from './source-snapshot/directory-snapshot.mjs';
 import { MultiRepoSnapshot, findGitMembers } from './source-snapshot/multi-repo-snapshot.mjs';
-import { contentHash, manifestDigest, memberListDigest, selectionDigest, diffEntries } from './source-snapshot/manifest.mjs';
+import { contentHash, manifestDigest, memberListDigest, multiRepoRevisionDigest, selectionDigest, diffEntries } from './source-snapshot/manifest.mjs';
 
 /**
  * Resolve the right SourceSnapshot adapter for `root` (D2's detection
@@ -90,6 +90,7 @@ export {
   contentHash,
   manifestDigest,
   memberListDigest,
+  multiRepoRevisionDigest,
   selectionDigest,
   diffEntries,
 };
