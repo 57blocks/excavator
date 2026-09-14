@@ -22,11 +22,15 @@ Fact Builder SHALL 仅由 `structure-all` 与 import-map 的结果投影得到�
 
 ### Requirement: Lazy schema 的确定性基础字段
 
-Lazy 事实节点 SHALL 允许 `summary: ""`、`tags: []`、`layers: []`。`complexity` SHALL 按非空代码行数确定性生成：`<50` 为 `simple`、`50–200` 为 `moderate`、`>200` 为 `complex`；阈值固定、可复现、不调用模型。
+Lazy 事实节点 SHALL 允许 `summary: ""`、`tags: []`、`layers: []`。`complexity` SHALL 由固定阈值确定性生成：`<50` 为 `simple`、`50–200` 为 `moderate`、`>200` 为 `complex`；阈值固定、可复现、不调用模型。文件节点 SHALL 使用 structure-all 已算出的非空代码行数（`nonEmptyLines`）；声明节点因投影不重新读源、没有逐声明的非空计数，SHALL 使用行跨度（`endLine-startLine+1`）作为代理。
 
-#### Scenario: complexity 由非空行数确定
-- **WHEN** 为一个函数/文件节点计算 complexity
-- **THEN** 依据其非空代码行数落入固定阈值分档，且不调用模型
+#### Scenario: 文件 complexity 由非空行数确定
+- **WHEN** 为一个文件节点计算 complexity
+- **THEN** 依据 structure-all 的 `nonEmptyLines` 落入固定阈值分档，不调用模型
+
+#### Scenario: 声明 complexity 由行跨度代理确定
+- **WHEN** 为一个函数/类节点计算 complexity
+- **THEN** 依据其行跨度落入固定阈值分档，不调用模型
 
 #### Scenario: Lazy 节点语义字段为空或确定性值
 - **WHEN** Lazy 首次运行产出事实节点
@@ -43,6 +47,10 @@ Lazy 事实节点 SHALL 允许 `summary: ""`、`tags: []`、`layers: []`。`comp
 #### Scenario: factDigest 不含运行元数据
 - **WHEN** 同一源码内容以不同时间戳/运行元数据构建两次
 - **THEN** 两次得到相同的 factDigest
+
+#### Scenario: 仅有名字的类方法记为可见 gap
+- **WHEN** 抽取器只给出类方法的名字而无行号（如 TS/JS 的 `classes[].methods`），无法投影为节点
+- **THEN** 这些方法记为可见 gap（`methods-name-only`），而不是从图中静默消失；已由 `functions[]` 带 owner 投影为节点的方法（Go/Rust/C++）不重复计入
 
 ### Requirement: canonical 事实不可被模型回写
 
