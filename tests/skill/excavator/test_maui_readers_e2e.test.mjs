@@ -1,10 +1,10 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect } from 'vitest';
 
-import { PluginRegistry, registerAllParsers } from "../../../packages/core/dist/index.js";
+import { PluginRegistry, registerAllParsers } from '../../../packages/core/dist/index.js';
 import {
   analyzeFileWithOutcomes,
   deriveStatus,
-} from "../../../skills/excavator/extract-structure-result.mjs";
+} from '../../../skills/excavator/extract-structure-result.mjs';
 
 // End-to-end: the three MAUI readers added by this change must dispatch through
 // the *real* PluginRegistry (extension -> language -> plugin) and land as

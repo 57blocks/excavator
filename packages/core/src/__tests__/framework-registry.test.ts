@@ -132,8 +132,8 @@ describe("FrameworkRegistry", () => {
     it("exposes maui layer hints, entry points, and csharp language", () => {
       const registry = FrameworkRegistry.createDefault();
       const maui = registry.getById("maui")!;
-      expect(maui.layerHints?.Views).toBe("ui");
-      expect(maui.layerHints?.ViewModels).toBe("service");
+      expect(maui.layerHints?.views).toBe("ui");
+      expect(maui.layerHints?.viewmodels).toBe("service");
       expect(maui.entryPoints).toContain("MauiProgram.cs");
       expect(registry.getForLanguage("csharp").some((f) => f.id === "maui")).toBe(true);
     });

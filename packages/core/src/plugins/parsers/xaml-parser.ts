@@ -1,24 +1,33 @@
 import type { AnalyzerPlugin, StructuralAnalysis, SectionInfo, DefinitionInfo } from "../../types.js";
 
 /**
- * Parses XAML view markup (.xaml, WPF/MAUI) into anchored, single-file facts:
- * - the view -> one section (name = x:Class short name, else root element name)
- * - x:Class -> definition kind "code-behind" (class FQN)
- * - x:DataType -> definition kind "datatype"
- * - x:Name -> definition kind "element"
- * - {Binding …} -> definition kind "binding"; Command="{Binding …}" -> kind "command"
- *
- * Each binding/command records its file-level DataType context in `fields`:
- * `context=<type>` when the file has exactly one x:DataType, else `context=none`.
- * This is a single-file reader: it never asserts that a ViewModel member exists
- * and never emits a member edge — that cross-file resolution is a later stage.
- * Line-based and deterministic.
+ * Parses XAML view markup (.xaml, WPF/MAUI) into anchored, single-file facts.
+ * The view becomes one section (named by the x:Class short name, else the root
+ * element); x:Class becomes a "code-behind" definition, x:DataType a "datatype",
+ * x:Name an "element", {Binding …} a "binding", and Command="{Binding …}" a
+ * "command". Each binding/command records its file-level DataType context in
+ * fields (context=<type> when the file has exactly one x:DataType, else
+ * context=none). This is a single-file reader: it never asserts that a ViewModel
+ * member exists and never emits a member edge — that cross-file resolution is a
+ * later stage. Line-based and deterministic.
  */
 export class XamlParser implements AnalyzerPlugin {
   name = "xaml-parser";
   languages = ["xaml"];
 
   analyzeFile(_filePath: string, content: string): StructuralAnalysis {
+    const { sections, definitions } = this.extract(content);
+    return {
+      functions: [],
+      classes: [],
+      imports: [],
+      exports: [],
+      sections,
+      definitions,
+    };
+  }
+
+  private extract(content: string): { sections: SectionInfo[]; definitions: DefinitionInfo[] } {
     const lines = content.split("\n");
     const sections: SectionInfo[] = [];
     const definitions: DefinitionInfo[] = [];
@@ -87,7 +96,7 @@ export class XamlParser implements AnalyzerPlugin {
       }
     }
 
-    return { functions: [], classes: [], imports: [], exports: [], sections, definitions };
+    return { sections, definitions };
   }
 
   /** Extract the bound property path from a `{Binding …}` markup value. */

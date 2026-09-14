@@ -254,7 +254,7 @@ export interface SectionInfo {
 
 export interface DefinitionInfo {
   name: string;
-  /** Parser-reported definition kind. Known values: "table", "view", "index", "message", "enum", "type", "input", "interface", "union", "scalar", "variable", "output", "resource", "data", "section", "target", "stage" */
+  /** Parser-reported definition kind. Known values: "table", "view", "index", "message", "enum", "type", "input", "interface", "union", "scalar", "variable", "output", "resource", "data", "section", "target", "stage", "dependency", "property", "code-behind", "datatype", "element", "binding", "command" */
   kind: string;
   lineRange: [number, number];
   fields: string[];
