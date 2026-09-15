@@ -62,7 +62,20 @@
  * which is why `lazy-analyze.mjs`'s publish step now persists `entries` on
  * `source-manifest.json` (see that file's own comment at the write site).
  *
+ * source-index.json incremental reuse (openspec: changes/hybrid-retrieval,
+ * capability `source-index`, D2): a sync that already computed a
+ * changed-file set (branch 4 above) also reuses `updateSourceIndex` — via
+ * `buildOrUpdateSourceIndex` below — to rebuild ONLY the touched files'
+ * chunks against the previously-persisted `source-index.json`, instead of
+ * `lazy-analyze.mjs`'s default full `buildSourceIndex`. This is passed to
+ * `runLazyAnalysis` as its `buildSourceIndexStep` override; a first build or
+ * an adapter-type-change full rebuild (branches 1/3, `changed === null`)
+ * gets no override and falls back to lazy-analyze's own full-build default,
+ * as does a project with no previously-persisted `source-index.json` yet
+ * (a Slice-C upgrade of an existing Slice-A/B project).
+ *
  * Contract: openspec/changes/source-snapshot/specs/revision-sync/spec.md
+ *           openspec/changes/hybrid-retrieval/specs/source-index/spec.md
  */
 
 import { dirname, join, resolve } from 'node:path';
@@ -74,6 +87,7 @@ import { createRequire } from 'node:module';
 import { resolveSourceSnapshot } from './source-snapshot.mjs';
 import { parseNameStatusZ } from './prepare-incremental.mjs';
 import { runLazyAnalysis, defaultRunScript, PIPELINE_VERSION } from './lazy-analyze.mjs';
+import { buildSourceIndex, updateSourceIndex } from './build-source-index.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const pluginRoot = resolve(__dirname, '../..');
@@ -178,6 +192,47 @@ export function computeChangedFileSet(snapshot, persistedManifest) {
   return restrictToInventory(raw, currentPaths, previousPaths);
 }
 
+/**
+ * Decide how `source-index.json` should be produced for this run (openspec:
+ * changes/hybrid-retrieval, capability `source-index`, D2): reuse
+ * `updateSourceIndex`'s single-file incremental rebuild whenever there IS a
+ * computed changed-file-set AND a previously-persisted `source-index.json`
+ * to update against; otherwise fall back to a full `buildSourceIndex` (first
+ * build, an adapter-type-change full rebuild, or a project with no
+ * source-index.json yet). Pure and exported so this decision is directly
+ * unit-testable (inject fake `buildFn`/`updateFn` and assert which one was
+ * called) without needing to run the real pipeline.
+ *
+ * @param {{
+ *   changed: {added:string[],modified:string[],removed:string[]}|null,
+ *   previousIndex: object|null,
+ *   scan: object, structureAll: object, readFile: (p:string)=>string, sourceRevision: string,
+ *   buildFn?: typeof buildSourceIndex, updateFn?: typeof updateSourceIndex,
+ * }} args
+ */
+export function buildOrUpdateSourceIndex({
+  changed, previousIndex, scan, structureAll, readFile, sourceRevision,
+  buildFn = buildSourceIndex, updateFn = updateSourceIndex,
+}) {
+  if (changed && previousIndex) {
+    return updateFn({ previousIndex, structureAll, changed, readFile, sourceRevision });
+  }
+  return buildFn({ scan, structureAll, readFile, sourceRevision });
+}
+
+/** Read a previously-persisted `source-index.json`, if any. A corrupt file
+ *  is treated the same as a missing one — `buildOrUpdateSourceIndex` then
+ *  safely falls back to a full rebuild rather than failing the whole sync
+ *  over a damaged incidental artifact. */
+function readPreviousSourceIndex(sourceIndexPath) {
+  if (!existsSync(sourceIndexPath)) return null;
+  try {
+    return JSON.parse(readFileSync(sourceIndexPath, 'utf-8'));
+  } catch {
+    return null;
+  }
+}
+
 // ---------------------------------------------------------------------------
 // The router.
 // ---------------------------------------------------------------------------
@@ -211,7 +266,9 @@ export async function syncFactGraph({
 
   const core = await resolveCore(pluginRoot);
   const { resolveDataDir } = core;
-  const manifestPath = join(resolveDataDir(root), 'source-manifest.json');
+  const dataDir = resolveDataDir(root);
+  const manifestPath = join(dataDir, 'source-manifest.json');
+  const sourceIndexPath = join(dataDir, 'source-index.json');
 
   const extraExcludePatterns = parseExcludePatterns(argv);
   const snapshot = resolveSourceSnapshot(root, { extraExcludePatterns });
@@ -219,6 +276,9 @@ export async function syncFactGraph({
   const persisted = existsSync(manifestPath)
     ? JSON.parse(readFileSync(manifestPath, 'utf-8'))
     : null;
+  // Read BEFORE the rebuild below overwrites it — this is the "previous"
+  // half of the incremental source-index update.
+  const previousSourceIndex = readPreviousSourceIndex(sourceIndexPath);
 
   // 1. Freshness match -> SKIP: no rebuild, manifest not touched (spec
   // "manifest matches, skip").
@@ -253,8 +313,14 @@ export async function syncFactGraph({
 
   // D4: the rebuild itself is ALWAYS runLazyAnalysis's full deterministic
   // re-projection — reused wholesale (produce + D7 guard + publish + atomic
-  // manifest advance), for every branch that reaches this point.
-  const lazyResult = await runLazyAnalysis({ projectRoot: root, argv, now, runScript });
+  // manifest advance), for every branch that reaches this point. The
+  // source-index build strategy is the one piece this router DOES override:
+  // when there is a changed-file-set AND a previous index to update against,
+  // reuse the incremental `updateSourceIndex` path (hybrid-retrieval D2)
+  // instead of lazy-analyze's own full-rebuild default.
+  const buildSourceIndexStep = ({ scan, structureAll, readFile, sourceRevision }) =>
+    buildOrUpdateSourceIndex({ changed, previousIndex: previousSourceIndex, scan, structureAll, readFile, sourceRevision });
+  const lazyResult = await runLazyAnalysis({ projectRoot: root, argv, now, runScript, buildSourceIndexStep });
 
   let kind;
   let reason;
@@ -330,4 +396,5 @@ if (isCliEntry()) {
 export default {
   syncFactGraph,
   computeChangedFileSet,
+  buildOrUpdateSourceIndex,
 };

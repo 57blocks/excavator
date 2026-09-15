@@ -95,8 +95,21 @@
  * NOT add revision-based incremental sync (group 5 / `revision-sync`) — every
  * run here is still a full deterministic re-projection.
  *
+ * source-index.json (openspec: changes/hybrid-retrieval, capability
+ * `source-index`, D2): built here alongside the knowledge graph, from the
+ * SAME `scan`/`structureAll` this run already produced, via an injectable
+ * `buildSourceIndexStep` (defaulting to a plain `buildSourceIndex` full
+ * build). `sync-fact-graph.mjs` overrides this step for an incremental sync
+ * so it can reuse `updateSourceIndex` against the previously-persisted index
+ * and the already-computed changed-file set, instead of always rebuilding
+ * every chunk — this driver itself stays agnostic to that choice. Written in
+ * `publish()` gated the same as `source-manifest.json`/`meta.json` (only
+ * once the fingerprints baseline succeeds), since it is likewise keyed by
+ * `sourceRevision` and must never advance out of step with the manifest.
+ *
  * Contract: openspec/changes/lazy-first-run/specs/lazy-analysis/spec.md
  *           openspec/changes/source-snapshot/specs/source-snapshot/spec.md
+ *           openspec/changes/hybrid-retrieval/specs/source-index/spec.md
  */
 
 import { dirname, join, resolve } from 'node:path';
@@ -106,6 +119,7 @@ import { spawnSync } from 'node:child_process';
 import { createRequire } from 'node:module';
 
 import { buildFactGraph } from './build-fact-graph.mjs';
+import { buildSourceIndex } from './build-source-index.mjs';
 import { conservationViolations } from './coverage-ledger.mjs';
 import { resolveSourceSnapshot } from './source-snapshot.mjs';
 
@@ -337,6 +351,14 @@ function readJsonRequired(path, label) {
   return JSON.parse(readFileSync(path, 'utf-8'));
 }
 
+/** Default `buildSourceIndexStep`: an unconditional full build (first run,
+ *  a full rebuild, or any caller with no better strategy — see
+ *  sync-fact-graph.mjs's `buildOrUpdateSourceIndex` for the incremental
+ *  override an actual sync passes instead). */
+function defaultBuildSourceIndexStep({ scan, structureAll, readFile, sourceRevision }) {
+  return buildSourceIndex({ scan, structureAll, readFile, sourceRevision });
+}
+
 // ---------------------------------------------------------------------------
 // The driver.
 // ---------------------------------------------------------------------------
@@ -350,6 +372,7 @@ function readJsonRequired(path, label) {
  *   argv?: string[],
  *   now?: () => string,
  *   runScript?: (scriptName: string, args: string[]) => { status: number, stdout: string, stderr: string },
+ *   buildSourceIndexStep?: (args: { scan: object, structureAll: object, readFile: (p: string) => string, sourceRevision: string }) => object,
  * }} options
  */
 export async function runLazyAnalysis({
@@ -357,6 +380,7 @@ export async function runLazyAnalysis({
   argv = [],
   now = () => new Date().toISOString(),
   runScript = defaultRunScript,
+  buildSourceIndexStep = defaultBuildSourceIndexStep,
 } = {}) {
   if (!projectRoot) throw new Error('runLazyAnalysis: projectRoot is required');
   const root = resolve(projectRoot);
@@ -436,6 +460,15 @@ export async function runLazyAnalysis({
     time('factGraph', () => {
       projection = buildFactGraph({ scan, structureAll, importMap });
       writeFileSync(join(intermediateDir, 'fact-graph.json'), JSON.stringify(projection, null, 2), 'utf-8');
+    });
+
+    // --- source-index (deterministic lexical index, hybrid-retrieval D2) ----
+    // `readFile` reads from the MATERIALIZED snapshot content, same as every
+    // other read in this driver — never `root` directly.
+    let sourceIndex;
+    time('sourceIndex', () => {
+      const readFile = (relPath) => readFileSync(join(materializedDir, relPath), 'utf-8');
+      sourceIndex = buildSourceIndexStep({ scan, structureAll, readFile, sourceRevision: snapshot.revision });
     });
 
     // --- Deterministic validate ----------------------------------------------
@@ -520,7 +553,7 @@ export async function runLazyAnalysis({
       gaps: projection.gaps,
     };
 
-    const product = { knowledgeGraph, validation, scan, structureAll, projection, timings, fingerprints };
+    const product = { knowledgeGraph, validation, scan, structureAll, projection, sourceIndex, timings, fingerprints };
     lastProduct = product; // kept for diagnostics even if the guard later discards it.
     return product;
   }
@@ -558,6 +591,12 @@ export async function runLazyAnalysis({
       // not advance metadata").
     }
     writeFileSync(join(dataDir, 'fingerprints.json'), product.fingerprints.raw, 'utf-8');
+
+    // source-index.json (openspec: changes/hybrid-retrieval, capability
+    // `source-index`) — gated the same as source-manifest.json/meta.json
+    // below: it is likewise keyed by `sourceRevision` and must never advance
+    // out of step with the manifest it is paired with.
+    writeFileSync(join(dataDir, 'source-index.json'), JSON.stringify(product.sourceIndex, null, 2), 'utf-8');
 
     saveMeta(root, {
       lastAnalyzedAt: now(),
