@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { createIgnoreFilter, DEFAULT_IGNORE_PATTERNS } from "../ignore-filter";
+import ignore from "ignore";
 import { mkdirSync, writeFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
@@ -44,6 +45,24 @@ describe("IgnoreFilter", () => {
       expect(DEFAULT_IGNORE_PATTERNS).toContain("out/");
       expect(DEFAULT_IGNORE_PATTERNS).toContain("coverage/");
     });
+
+    it("contains the .excavator variant/backup and .trash-* recycle directory patterns (selection-hardening)", () => {
+      expect(DEFAULT_IGNORE_PATTERNS).toContain(".excavator.*/");
+      expect(DEFAULT_IGNORE_PATTERNS).toContain(".excavator-*/");
+      expect(DEFAULT_IGNORE_PATTERNS).toContain(".trash-*/");
+    });
+
+    it("the new variant/trash directory patterns do not match the .excavatorignore file (isolated from the full default set)", () => {
+      // Built from ONLY the three new patterns — not the merged default set,
+      // which already ignores .excavatorignore via its own separate literal
+      // entry — so this proves the NEW patterns specifically can't misfire on
+      // it, independent of that pre-existing entry.
+      const ig = ignore().add([".excavator.*/", ".excavator-*/", ".trash-*/"]);
+      expect(ig.ignores(".excavatorignore")).toBe(false);
+      expect(ig.ignores(".excavator.bak/knowledge-graph.json")).toBe(true);
+      expect(ig.ignores(".excavator-old/foo.ts")).toBe(true);
+      expect(ig.ignores(".trash-1234/bar.ts")).toBe(true);
+    });
   });
 
   describe("createIgnoreFilter with no user file", () => {
@@ -53,6 +72,28 @@ describe("IgnoreFilter", () => {
       expect(filter.isIgnored("dist/index.js")).toBe(true);
       expect(filter.isIgnored(".git/config")).toBe(true);
       expect(filter.isIgnored("obj/Release/net8.0/app.dll")).toBe(true);
+    });
+
+    it("ignores .excavator variant/backup directories and .trash-* recycle directories", () => {
+      const filter = createIgnoreFilter(testDir);
+      expect(filter.isIgnored(".excavator.bak/knowledge-graph.json")).toBe(true);
+      expect(filter.isIgnored(".excavator.slicec-bak/knowledge-graph.json")).toBe(true);
+      expect(filter.isIgnored(".excavator-old/foo.ts")).toBe(true);
+      expect(filter.isIgnored(".trash-1234/bar.ts")).toBe(true);
+    });
+
+    it("selection-hardening scenario: a root .excavatorignore is still read and effective alongside a stray .excavator.bak/ (does not misfire on the ignore-rules file itself)", () => {
+      // Mirrors openspec/changes/lazy-mode-completion/specs/selection-hardening
+      // scenario "`.excavatorignore` 仍被读取" — both a real .excavatorignore
+      // rules file AND a stray variant backup directory exist at project root.
+      writeFileSync(join(testDir, ".excavatorignore"), "docs/\n");
+      const filter = createIgnoreFilter(testDir);
+      // The rule inside .excavatorignore still takes effect...
+      expect(filter.isIgnored("docs/README.md")).toBe(true);
+      // ...only the variant backup directory is excluded by the new patterns.
+      expect(filter.isIgnored(".excavator.bak/knowledge-graph.json")).toBe(true);
+      // A normal source file is untouched.
+      expect(filter.isIgnored("src/index.ts")).toBe(false);
     });
 
     it("does not ignore source files", () => {

@@ -179,6 +179,67 @@ describe(
     });
   });
 
+  it("ignores untracked files in .excavator variant/backup directories (selection-hardening)", async () => {
+    const { repoDir, baseline } = createRepository();
+    writeProjectFile(repoDir, ".excavator.bak/knowledge-graph.json", "{}\n");
+    writeProjectFile(repoDir, ".excavator-old/foo.ts", "export const old = true;\n");
+
+    await expect(
+      getGraphFreshness(repoDir, { graphCommitHash: baseline }),
+    ).resolves.toMatchObject({
+      status: "fresh",
+      changedFileCount: 0,
+      changedFiles: [],
+    });
+  });
+
+  it("ignores untracked files in a .trash-* recycle directory (selection-hardening)", async () => {
+    const { repoDir, baseline } = createRepository();
+    writeProjectFile(repoDir, ".trash-1234/bar.ts", "export const trashed = true;\n");
+
+    await expect(
+      getGraphFreshness(repoDir, { graphCommitHash: baseline }),
+    ).resolves.toMatchObject({
+      status: "fresh",
+      changedFileCount: 0,
+      changedFiles: [],
+    });
+  });
+
+  it("ignores a commit that only changes files in .excavator variant/backup or .trash-* directories (selection-hardening)", async () => {
+    const { repoDir, baseline } = createRepository();
+    writeProjectFile(repoDir, ".excavator.bak/knowledge-graph.json", "{}\n");
+    writeProjectFile(repoDir, ".trash-1234/bar.ts", "export const trashed = true;\n");
+    const headCommit = commitAll(repoDir, "persist stray backup/trash dirs");
+
+    await expect(
+      getGraphFreshness(repoDir, { graphCommitHash: baseline }),
+    ).resolves.toEqual({
+      status: "fresh",
+      graphCommitHash: baseline,
+      headCommitHash: headCommit,
+      changedFileCount: 0,
+      changedFiles: [],
+      commitsBehind: 0,
+      commitsAhead: 0,
+    });
+  });
+
+  it("still reports source changes beside ignored .excavator variant/backup and .trash-* files (selection-hardening)", async () => {
+    const { repoDir, baseline } = createRepository();
+    writeProjectFile(repoDir, ".excavator-old/foo.ts", "export const old = true;\n");
+    writeProjectFile(repoDir, ".trash-1234/bar.ts", "export const trashed = true;\n");
+    writeProjectFile(repoDir, "src/real-change.ts", "export const changed = true;\n");
+
+    await expect(
+      getGraphFreshness(repoDir, { graphCommitHash: baseline }),
+    ).resolves.toMatchObject({
+      status: "dirty",
+      changedFileCount: 1,
+      changedFiles: ["src/real-change.ts"],
+    });
+  });
+
   it("does NOT ignore untracked files under a pre-rename data directory — no fallback", async () => {
     const { repoDir, baseline } = createRepository();
     writeProjectFile(

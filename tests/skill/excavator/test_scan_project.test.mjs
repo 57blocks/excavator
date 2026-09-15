@@ -13,7 +13,7 @@ import { tmpdir } from 'node:os';
 import { join, dirname, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { DEFAULT_IGNORE_PATTERNS } from '@excavator/core';
+import { createIgnoreFilter } from '@excavator/core';
 import scanProject from '../../../skills/excavator/scan-project.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -593,14 +593,44 @@ describe('scan-project.mjs — default exclusion of plugin/agent and data direct
     }
   });
 
-  it("scanner's walker self-exclusion list is a subset of core's DEFAULT_IGNORE_PATTERNS", () => {
-    // HARD_SKIP_DIRS entries have no trailing slash; DEFAULT_IGNORE_PATTERNS
-    // directory entries do — normalize before comparing.
-    const normalizedDefaults = new Set(
-      DEFAULT_IGNORE_PATTERNS.map(p => p.replace(/\/+$/, '')),
-    );
-    for (const dir of scanProject.HARD_SKIP_DIRS) {
-      expect(normalizedDefaults.has(dir), `${dir} missing from DEFAULT_IGNORE_PATTERNS`).toBe(true);
+  it("everything the walker hard-skips is also excluded by core's real ignore filter (no walker/filter drift)", () => {
+    // The walker's HARD_SKIP_DIRS started as an exact-name Set compared
+    // against a normalized copy of DEFAULT_IGNORE_PATTERNS. selection-hardening
+    // (openspec/changes/lazy-mode-completion) made the walker prefix-aware for
+    // the `.excavator.*/`, `.excavator-*/`, `.trash-*/` variant/backup/recycle
+    // directory shapes core's DEFAULT_IGNORE_PATTERNS also excludes — those
+    // shapes have no fixed name (a stray backup dir can be named anything
+    // after the dot/dash), so an exact-name-set comparison can no longer
+    // express the invariant. The property that must still hold: whatever
+    // directory NAME the walker decides to hard-skip (`isHardSkipDir` returns
+    // true) must ALSO be excluded by core's real ignore filter — otherwise the
+    // walker could silently drop a directory the real filter would have kept,
+    // diverging from the single source of truth. Exercised against the real
+    // `createIgnoreFilter`, not a hand-rolled reimplementation, and covers both
+    // the pre-existing exact-name entries and representative variant/trash
+    // names — not a tautology, since a name isHardSkipDir wrongly starts
+    // returning true for (drift in the OTHER direction) would fail here too
+    // if core's patterns don't also cover it.
+    const projectRoot = mkdtempSync(join(tmpdir(), 'excavator-hardskip-invariant-'));
+    try {
+      const filter = createIgnoreFilter(projectRoot);
+      const representativeDirNames = [
+        ...scanProject.HARD_SKIP_DIRS, // exact-name entries: node_modules, .git, .excavator, etc.
+        '.excavator.bak',
+        '.excavator.slicec-bak',
+        '.excavator-old',
+        '.trash-9',
+        '.trash-1234567890',
+      ];
+      for (const name of representativeDirNames) {
+        expect(scanProject.isHardSkipDir(name), `expected walker to hard-skip ${name}`).toBe(true);
+        expect(
+          filter.isIgnored(`${name}/some-file.ts`),
+          `walker hard-skips ${name}/ but core's DEFAULT_IGNORE_PATTERNS would NOT exclude it — drift`,
+        ).toBe(true);
+      }
+    } finally {
+      rmSync(projectRoot, { recursive: true, force: true });
     }
   });
 
