@@ -36,10 +36,14 @@ import { join, relative, resolve } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 
 import { auditSemanticCacheFields } from '../../skills/excavator/semantic-language-audit.mjs';
+import {
+  commitSemanticCacheEntry,
+  readSemanticCache,
+} from '../../skills/excavator/semantic-cache.mjs';
 
-// Exact cache identity frozen by acceptance-oracle.md. Avoid importing the
-// writer module here: the red planner fixture must collect before core build
-// output exists, and the future planner itself owns reuse of the read gate.
+// Exact cache identity frozen by acceptance-oracle.md. Planner expectations
+// keep these fixture values explicit; the disk integration below separately
+// imports the existing writer to exercise its real CAS gate.
 const SEMANTIC_CACHE_VERSION = '2.0.0';
 const CANONICAL_CONTENT_LANGUAGE = 'en';
 const CLI_PATH = resolve(process.cwd(), 'skills/excavator/semantic-cache-reuse.mjs');
@@ -55,6 +59,7 @@ const OUTSIDE = 'export function outside() { return 5; }\n';
 const SHARED_0 = 'export class OwnerA { save() { return 0; } }\nexport class OwnerB { save() { return 2; } }\n';
 const SHARED_1 = 'export class OwnerA { save() { return 1; } }\nexport class OwnerB { save() { return 2; } }\n';
 const SHARED_2 = 'export class OwnerA { save() { return 10; } }\nexport class OwnerB { save() { return 2; } }\n';
+const SHARED_3 = 'export class OwnerA { save() { return 20; } }\nexport class OwnerB { save() { return 2; } }\n';
 
 const H = (text) => createHash('sha256').update(text).digest('hex');
 
@@ -302,6 +307,114 @@ async function executeSimulatedAnswer({
   ));
   assertClaimsSupported(verifiedClaims, evidenceByNode);
   return { semanticCache, evidenceByNode, verifiedClaims };
+}
+
+function writeIntegrationManifest(root, sharedSource) {
+  const manifest = {
+    sourceRevision: `directory:${H(sharedSource)}`,
+    entries: [
+      { path: PATH.A, contentHash: H(SAME) },
+      { path: PATH.B, contentHash: H(SAME) },
+      { path: PATH.S, contentHash: H(sharedSource) },
+    ],
+  };
+  writeFileSync(
+    join(root, '.excavator', 'source-manifest.json'),
+    JSON.stringify(manifest, null, 2),
+    'utf-8',
+  );
+  return manifest;
+}
+
+async function makeIntegrationProject() {
+  const root = mkdtempSync(join(tmpdir(), 'excavator-semantic-reuse-integration-'));
+  const dataDir = join(root, '.excavator');
+  mkdirSync(join(root, 'src'), { recursive: true });
+  mkdirSync(dataDir, { recursive: true });
+  writeFileSync(join(root, PATH.A), SAME, 'utf-8');
+  writeFileSync(join(root, PATH.B), SAME, 'utf-8');
+  writeFileSync(join(root, PATH.S), SHARED_1, 'utf-8');
+
+  const nodes = makeFixture().nodes.filter((node) => [ID.A, ID.B, ID.S, ID.T].includes(node.id));
+  const graphRaw = JSON.stringify({
+    version: '1.0.0',
+    nodes: nodes.map((node) => ({ ...node, lineRange: { start: 1, end: node.filePath === PATH.S ? 2 : 1 } })),
+    edges: [],
+  }, null, 2);
+  writeFileSync(join(dataDir, 'knowledge-graph.json'), graphRaw, 'utf-8');
+  writeIntegrationManifest(root, SHARED_1);
+
+  const seeds = [
+    [ID.A, PATH.A, H(SAME), 'save returns one from the local source.'],
+    [ID.B, PATH.B, H(SAME), 'save returns one from the local source.'],
+    [ID.S, PATH.S, H(SHARED_1), 'OwnerA.save returns one from the shared source.'],
+    [ID.T, PATH.T, H(SHARED_1), 'OwnerB.save returns two from the shared source.'],
+  ];
+  for (const [nodeId, filePath, semanticSourceHash, summary] of seeds) {
+    const result = await commitSemanticCacheEntry({
+      projectRoot: root,
+      nodeId,
+      filePath,
+      fields: {
+        summary,
+        tags: ['local', 'value'],
+        semanticSourceHash,
+        model: 'integration-seed-model',
+        generatedAt: '2026-09-01T00:00:00.000Z',
+      },
+    });
+    if (!result.ok) throw new Error(`failed to seed ${nodeId}: ${JSON.stringify(result)}`);
+  }
+  if (readFileSync(join(dataDir, 'knowledge-graph.json'), 'utf-8') !== graphRaw) {
+    throw new Error('semantic-cache seed changed knowledge-graph.json');
+  }
+  return { root, dataDir, nodes, graphRaw };
+}
+
+async function planFromIntegrationDisk(root, requestedNodeIds) {
+  const dataDir = join(root, '.excavator');
+  const graph = JSON.parse(readFileSync(join(dataDir, 'knowledge-graph.json'), 'utf-8'));
+  const manifest = JSON.parse(readFileSync(join(dataDir, 'source-manifest.json'), 'utf-8'));
+  const semanticCache = await readSemanticCache(root);
+  return getPlanner()({
+    requestedNodeIds,
+    nodes: graph.nodes,
+    manifestEntries: manifest.entries,
+    semanticCache,
+  });
+}
+
+async function executeIntegrationPlan({ root, plan, verifier, generator, writer, beforeWrite = null }) {
+  const evidenceByNode = new Map();
+  for (const item of [...plan.reuse, ...plan.generate]) {
+    evidenceByNode.set(item.nodeId, await verifier(item));
+  }
+
+  const answers = [];
+  const commits = [];
+  for (const item of plan.generate) {
+    const evidence = evidenceByNode.get(item.nodeId);
+    if (!evidence?.fullLocalSourceVerified) {
+      answers.push({ nodeId: item.nodeId, status: 'verification-failed' });
+      continue;
+    }
+    const fields = await generator(item, evidence);
+    if (beforeWrite) await beforeWrite(item, fields, evidence);
+    const result = await writer({
+      projectRoot: root,
+      nodeId: item.nodeId,
+      filePath: item.filePath,
+      fields,
+    });
+    commits.push({ nodeId: item.nodeId, result });
+    answers.push({
+      nodeId: item.nodeId,
+      summary: fields.summary,
+      sourceHash: evidence.sourceHash,
+      cacheStatus: result.status,
+    });
+  }
+  return { answers, commits, evidenceByNode };
 }
 
 describe('semantic-cache reuse — known-false controls prove the oracle can fail', () => {
@@ -766,6 +879,224 @@ describe('semantic-cache reuse — future planner and simulated execution contra
 
     expect(second).toEqual(first);
     expect(reordered).toEqual(reorderedBefore);
+  });
+});
+
+describe('semantic-cache reuse — disk integration through verification and existing CAS writer', () => {
+  it('regenerates every needed node in one changed file, preserves unchanged entries, then fully reuses', async () => {
+    const project = await makeIntegrationProject();
+    const { root, dataDir, graphRaw } = project;
+    const graphPath = join(dataDir, 'knowledge-graph.json');
+    const cachePath = join(dataDir, 'semantic-cache.json');
+    const graphSha = H(graphRaw);
+
+    try {
+      const cacheBeforeRaw = readFileSync(cachePath, 'utf-8');
+      const cacheBefore = JSON.parse(cacheBeforeRaw);
+      const entriesBefore = Object.fromEntries(
+        Object.keys(cacheBefore.entries).map((nodeId) => [nodeId, entryBytes(cacheBefore, nodeId)]),
+      );
+
+      writeFileSync(join(root, PATH.S), SHARED_2, 'utf-8');
+      writeIntegrationManifest(root, SHARED_2);
+      const plan = await planFromIntegrationDisk(root, [ID.T, ID.B, ID.S, ID.T]);
+      expect(plan).toEqual({
+        reuse: [{
+          nodeId: ID.B,
+          filePath: PATH.B,
+          reason: 'fresh',
+          summary: 'save returns one from the local source.',
+          tags: ['local', 'value'],
+        }],
+        generate: [
+          { nodeId: ID.T, filePath: PATH.T, currentContentHash: H(SHARED_2), reason: 'stale' },
+          { nodeId: ID.S, filePath: PATH.S, currentContentHash: H(SHARED_2), reason: 'stale' },
+        ],
+        unavailable: [],
+        counts: { requested: 3, reuse: 1, generate: 2, unavailable: 0 },
+      });
+
+      const verifier = vi.fn(async (item) => {
+        const sourceBytes = readFileSync(join(root, item.filePath));
+        const source = sourceBytes.toString('utf-8');
+        const manifest = JSON.parse(readFileSync(join(dataDir, 'source-manifest.json'), 'utf-8'));
+        const manifestHash = manifest.entries.find((entry) => entry.path === item.filePath)?.contentHash;
+        expect(H(sourceBytes)).toBe(manifestHash);
+        return {
+          fullLocalSourceVerified: true,
+          source,
+          sourceBytes: sourceBytes.length,
+          sourceHash: manifestHash,
+        };
+      });
+      const generator = vi.fn(async (item, evidence) => {
+        const owner = item.nodeId === ID.S ? 'OwnerA' : 'OwnerB';
+        const ownerLine = evidence.source.split('\n').find((line) => line.includes(`class ${owner}`));
+        const returnValue = ownerLine?.match(/return (\d+)/)?.[1];
+        expect(returnValue).toMatch(/^\d+$/);
+        return {
+          summary: `${owner}.save returns ${returnValue} from the verified local source.`,
+          tags: [owner, 'save'],
+          semanticSourceHash: item.currentContentHash,
+          model: 'integration-generate-model',
+          generatedAt: '2026-09-15T01:00:00.000Z',
+        };
+      });
+      const writer = vi.fn((args) => commitSemanticCacheEntry(args));
+
+      const execution = await executeIntegrationPlan({ root, plan, verifier, generator, writer });
+      expect(verifier.mock.calls.map(([item]) => item.nodeId)).toEqual([ID.B, ID.T, ID.S]);
+      expect(generator.mock.calls.map(([item]) => item.nodeId)).toEqual([ID.T, ID.S]);
+      expect(writer.mock.calls.map(([args]) => args.nodeId)).toEqual([ID.T, ID.S]);
+      expect(execution.commits.map(({ nodeId, result }) => [nodeId, result.ok, result.status])).toEqual([
+        [ID.T, true, 'committed'],
+        [ID.S, true, 'committed'],
+      ]);
+      expect(execution.answers.map(({ nodeId, cacheStatus }) => [nodeId, cacheStatus])).toEqual([
+        [ID.T, 'committed'],
+        [ID.S, 'committed'],
+      ]);
+
+      const cacheAfterRaw = readFileSync(cachePath, 'utf-8');
+      const cacheAfter = JSON.parse(cacheAfterRaw);
+      expect(cacheAfterRaw).not.toBe(cacheBeforeRaw);
+      expect(H(cacheAfterRaw)).not.toBe(H(cacheBeforeRaw));
+      expect(Object.keys(cacheAfter.entries).sort()).toEqual([ID.A, ID.B, ID.S, ID.T].sort());
+      for (const nodeId of [ID.A, ID.B]) {
+        expect(entryBytes(cacheAfter, nodeId), `${nodeId} must stay byte-identical`).toBe(entriesBefore[nodeId]);
+      }
+      for (const nodeId of [ID.T, ID.S]) {
+        expect(entryBytes(cacheAfter, nodeId)).not.toBe(entriesBefore[nodeId]);
+        expect(cacheAfter.entries[nodeId]).toMatchObject({
+          semanticSourceHash: H(SHARED_2),
+          model: 'integration-generate-model',
+          generatedAt: '2026-09-15T01:00:00.000Z',
+          languageAudit: { status: 'accepted', rejected: [] },
+        });
+      }
+      expect(readFileSync(graphPath, 'utf-8')).toBe(graphRaw);
+      expect(H(readFileSync(graphPath))).toBe(graphSha);
+      expect(existsSync(join(dataDir, 'semantic.lock'))).toBe(false);
+
+      const afterEntries = Object.fromEntries(
+        Object.keys(cacheAfter.entries).map((nodeId) => [nodeId, entryBytes(cacheAfter, nodeId)]),
+      );
+      const stableCacheRaw = cacheAfterRaw;
+      generator.mockClear();
+      writer.mockClear();
+      verifier.mockClear();
+      const repeatPlan = await planFromIntegrationDisk(root, [ID.T, ID.B, ID.S, ID.T]);
+      expect(repeatPlan.generate).toEqual([]);
+      expect(repeatPlan.reuse.map((item) => item.nodeId)).toEqual([ID.T, ID.B, ID.S]);
+      const repeat = await executeIntegrationPlan({ root, plan: repeatPlan, verifier, generator, writer });
+      expect(repeat.evidenceByNode.size).toBe(3);
+      expect(verifier.mock.calls.map(([item]) => item.nodeId)).toEqual([ID.T, ID.B, ID.S]);
+      expect(generator).not.toHaveBeenCalled();
+      expect(writer).not.toHaveBeenCalled();
+      expect(readFileSync(cachePath, 'utf-8')).toBe(stableCacheRaw);
+      expect(H(readFileSync(cachePath))).toBe(H(stableCacheRaw));
+      const repeatedCache = JSON.parse(readFileSync(cachePath, 'utf-8'));
+      for (const [nodeId, bytes] of Object.entries(afterEntries)) {
+        expect(entryBytes(repeatedCache, nodeId)).toBe(bytes);
+      }
+      expect(readFileSync(graphPath, 'utf-8')).toBe(graphRaw);
+      expect(H(readFileSync(graphPath))).toBe(graphSha);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it('returns the verified answer summary when post-plan source drift makes the existing CAS reject', async () => {
+    const project = await makeIntegrationProject();
+    const { root, dataDir, graphRaw } = project;
+    const graphPath = join(dataDir, 'knowledge-graph.json');
+    const cachePath = join(dataDir, 'semantic-cache.json');
+    const graphSha = H(graphRaw);
+
+    try {
+      writeFileSync(join(root, PATH.S), SHARED_2, 'utf-8');
+      writeIntegrationManifest(root, SHARED_2);
+      const plan = await planFromIntegrationDisk(root, [ID.S]);
+      expect(plan.generate).toEqual([{
+        nodeId: ID.S,
+        filePath: PATH.S,
+        currentContentHash: H(SHARED_2),
+        reason: 'stale',
+      }]);
+
+      const cacheBeforeRaw = readFileSync(cachePath, 'utf-8');
+      const cacheBefore = JSON.parse(cacheBeforeRaw);
+      const entriesBefore = Object.fromEntries(
+        Object.keys(cacheBefore.entries).map((nodeId) => [nodeId, entryBytes(cacheBefore, nodeId)]),
+      );
+      const verifier = vi.fn(async (item) => {
+        const sourceBytes = readFileSync(join(root, item.filePath));
+        expect(sourceBytes.toString('utf-8')).toBe(SHARED_2);
+        expect(H(sourceBytes)).toBe(item.currentContentHash);
+        return {
+          fullLocalSourceVerified: true,
+          source: sourceBytes.toString('utf-8'),
+          sourceBytes: sourceBytes.length,
+          sourceHash: H(sourceBytes),
+        };
+      });
+      const generator = vi.fn(async (item, evidence) => {
+        expect(evidence.source).toContain('return 10');
+        return {
+          summary: 'OwnerA.save returns 10 from the verified local source.',
+          tags: ['OwnerA', 'save'],
+          semanticSourceHash: item.currentContentHash,
+          model: 'integration-drift-model',
+          generatedAt: '2026-09-15T02:00:00.000Z',
+        };
+      });
+      const writer = vi.fn((args) => commitSemanticCacheEntry(args));
+      const beforeWrite = vi.fn(async () => {
+        writeFileSync(join(root, PATH.S), SHARED_3, 'utf-8');
+        writeIntegrationManifest(root, SHARED_3);
+      });
+
+      const execution = await executeIntegrationPlan({
+        root, plan, verifier, generator, writer, beforeWrite,
+      });
+      expect(verifier).toHaveBeenCalledTimes(1);
+      expect(generator.mock.calls.map(([item]) => item.nodeId)).toEqual([ID.S]);
+      expect(writer.mock.calls.map(([args]) => args.nodeId)).toEqual([ID.S]);
+      expect(beforeWrite).toHaveBeenCalledTimes(1);
+      expect(execution.commits).toEqual([{
+        nodeId: ID.S,
+        result: { ok: false, status: 'stale-hash', currentSourceHash: H(SHARED_3) },
+      }]);
+      expect(execution.answers).toEqual([{
+        nodeId: ID.S,
+        summary: 'OwnerA.save returns 10 from the verified local source.',
+        sourceHash: H(SHARED_2),
+        cacheStatus: 'stale-hash',
+      }]);
+
+      expect(readFileSync(cachePath, 'utf-8')).toBe(cacheBeforeRaw);
+      expect(H(readFileSync(cachePath))).toBe(H(cacheBeforeRaw));
+      const cacheAfter = JSON.parse(readFileSync(cachePath, 'utf-8'));
+      for (const [nodeId, bytes] of Object.entries(entriesBefore)) {
+        expect(entryBytes(cacheAfter, nodeId)).toBe(bytes);
+      }
+      expect(readFileSync(graphPath, 'utf-8')).toBe(graphRaw);
+      expect(H(readFileSync(graphPath))).toBe(graphSha);
+      expect(existsSync(join(dataDir, 'semantic.lock'))).toBe(false);
+
+      const replan = await planFromIntegrationDisk(root, [ID.S]);
+      expect(replan.reuse).toEqual([]);
+      expect(replan.generate).toEqual([{
+        nodeId: ID.S,
+        filePath: PATH.S,
+        currentContentHash: H(SHARED_3),
+        reason: 'stale',
+      }]);
+      expect(readFileSync(join(root, PATH.S), 'utf-8')).toBe(SHARED_3);
+      expect(readFileSync(graphPath, 'utf-8')).toBe(graphRaw);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 });
 
