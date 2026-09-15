@@ -8,6 +8,7 @@ import {
   CANONICAL_CONTENT_LANGUAGE,
   SEMANTIC_CACHE_VERSION,
 } from '../../skills/excavator/semantic-cache.mjs';
+import { auditSemanticCacheFields } from '../../skills/excavator/semantic-language-audit.mjs';
 
 function kg(paths) {
   return { nodes: paths.map((p) => ({ id: `file:${p}`, type: 'file', filePath: p })) };
@@ -22,13 +23,11 @@ function canonicalCache(entries) {
 }
 
 function auditedEntry(summary, semanticSourceHash) {
+  const fields = { summary };
   return {
     summary,
     semanticSourceHash,
-    languageAudit: {
-      status: 'accepted', inspected: 1,
-      accepted: [{ fieldPath: 'summary' }], rejected: [],
-    },
+    languageAudit: auditSemanticCacheFields({ fields }),
   };
 }
 

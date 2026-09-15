@@ -79,10 +79,11 @@ describe('model-owned semantic language audit', () => {
     const audit = auditSemanticCacheFields({ fields, factGraph: factGraph('提交请假') });
 
     expect(audit.status).toBe('accepted');
-    expect(audit.accepted[0]).toEqual({
+    expect(audit.accepted[0]).toMatchObject({
       fieldPath: 'summary',
       maskedSourceSpans: ['提交请假'],
     });
+    expect(audit.accepted[0].valueDigest).toMatch(/^sha256:[a-f0-9]{64}$/);
     expect(fields).toEqual(before);
     expectConserved(audit);
   });
@@ -104,6 +105,26 @@ describe('model-owned semantic language audit', () => {
       }),
     ]);
     expectConserved(audit);
+  });
+
+  it('binds an accepted audit to the exact model-owned field content', () => {
+    const accepted = auditSemanticCacheFields({
+      fields: { summary: 'Validates requests.', tags: ['validation'] },
+    });
+    const changed = auditSemanticCacheFields({
+      fields: { summary: '验证请求。', tags: ['validation'] },
+    });
+
+    expect(isAcceptedLanguageAudit(accepted, changed)).toBe(false);
+  });
+
+  it('treats a pre-digest accepted audit as noncanonical instead of trusting its paths', () => {
+    expect(isAcceptedLanguageAudit({
+      status: 'accepted',
+      inspected: 1,
+      accepted: [{ fieldPath: 'summary' }],
+      rejected: [],
+    })).toBe(false);
   });
 
   it('accepts an exact span from the current SourceSnapshot only on an allowed path', () => {

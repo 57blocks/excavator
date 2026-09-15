@@ -552,6 +552,7 @@ export const ProjectMetaSchema = z.object({
 
 export const SemanticLanguageAuditFieldSchema = z.object({
   fieldPath: z.string(),
+  valueDigest: z.string().regex(/^sha256:[a-f0-9]{64}$/),
   maskedSourceSpans: z.array(z.string()).optional(),
   reason: z.literal("noncanonical-language").optional(),
   unverifiedSpans: z.array(z.string()).optional(),

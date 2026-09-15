@@ -84,6 +84,51 @@ describe('semantic-graph.mjs — buildSemanticGraph', () => {
     expect(gaps).toEqual([]);
   });
 
+  it('audits the final sorted relation positions so a valid graph remains writable', () => {
+    const { semanticGraph, gaps } = buildSemanticGraph({
+      factDigest: 'd1',
+      factNodeIds,
+      relations: [
+        {
+          id: 'relation:z', type: 'calls',
+          source: fileNodeId('src/a.ts'), target: fileNodeId('src/b.ts'),
+          description: 'Calls the service.',
+        },
+        {
+          id: 'relation:a', type: 'calls',
+          source: fileNodeId('src/a.ts'), target: fileNodeId('src/b.ts'),
+        },
+      ],
+    });
+
+    expect(gaps).toEqual([]);
+    expect(semanticGraph.relations.map((relation) => relation.id)).toEqual([
+      'relation:a', 'relation:z',
+    ]);
+    expect(semanticGraph.languageAudit.accepted.map((entry) => entry.fieldPath))
+      .toContain('relations[1].description');
+    expect(() => writeSemanticGraph('/virtual', semanticGraph, {
+      fsImpl: { mkdirSync() {}, writeFileSync() {}, renameSync() {} },
+    })).not.toThrow();
+  });
+
+  it('records a dropped invalid relation as a structural gap without auditing its discarded prose', () => {
+    const { semanticGraph, gaps, languageAudit } = buildSemanticGraph({
+      factDigest: 'd1',
+      factNodeIds,
+      relations: [{
+        id: 'relation:invalid', type: 'calls',
+        source: fileNodeId('src/a.ts'), target: 'file:src/ghost.ts',
+        description: '这段文字不会被保存。',
+      }],
+    });
+
+    expect(semanticGraph).not.toBeNull();
+    expect(semanticGraph.relations).toEqual([]);
+    expect(languageAudit).toMatchObject({ status: 'accepted', inspected: 0 });
+    expect(gaps.some((gap) => gap.kind === 'relation-endpoint-unmappable')).toBe(true);
+  });
+
   it('drops a relation whole when either endpoint is unmappable, as a gap — never a dangling reference', () => {
     const relation = {
       id: 'relation:1', type: 'depends_on',
@@ -144,9 +189,10 @@ describe('semantic-graph.mjs — buildSemanticGraph', () => {
 
     expect(semanticGraph.layers[0].description).toBe(layer.description);
     expect(languageAudit.status).toBe('accepted');
-    expect(languageAudit.accepted).toContainEqual({
+    expect(languageAudit.accepted).toContainEqual(expect.objectContaining({
       fieldPath: 'layers[0].description', maskedSourceSpans: ['提交请假'],
-    });
+      valueDigest: expect.stringMatching(/^sha256:[a-f0-9]{64}$/),
+    }));
   });
 
   it('ignores model-declared source spans and rejects the candidate', () => {
@@ -189,6 +235,21 @@ describe('semantic-graph.mjs — resolveArchitectureAction (factDigest gate)', (
     expect(action).toBe('reuse');
     expect(status).toBe('fresh');
     expect(reason).toMatch(/unchanged/);
+  });
+
+  it('rebuilds when prose changes after its accepted audit was created', () => {
+    const { semanticGraph } = buildSemanticGraph({
+      factDigest: 'abc',
+      factNodeIds: new Set(['file:a.ts']),
+      layers: [{
+        id: 'layer:app', name: 'Application', description: 'Handles requests.',
+        nodeIds: ['file:a.ts'],
+      }],
+    });
+    semanticGraph.layers[0].description = '处理请求。';
+
+    expect(resolveArchitectureAction({ currentFactDigest: 'abc', existing: semanticGraph }))
+      .toMatchObject({ action: 'rebuild', status: 'noncanonical-language' });
   });
 
   it('reports rebuild when factDigest changed', () => {

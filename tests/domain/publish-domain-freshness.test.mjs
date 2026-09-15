@@ -16,6 +16,7 @@ import {
   DOMAIN_CONTENT_LANGUAGE,
   DOMAIN_GRAPH_VERSION,
 } from '../../skills/excavator-domain/domain-contract.mjs';
+import { auditDomainGraphFields } from '../../skills/excavator/semantic-language-audit.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(__dirname, '../..');
@@ -80,18 +81,15 @@ describe('publish-annotations CLI — domain-graph.json gains identity/freshness
       edges: [], layers: [], tour: [],
     }), 'utf-8');
     // The annotated copy, already stamped by annotate-domain.mjs.
-    writeFileSync(join(intermediate, 'domain-analysis.json'), JSON.stringify({
+    const annotated = {
       version: DOMAIN_GRAPH_VERSION, contentLanguage: DOMAIN_CONTENT_LANGUAGE, project: { name: 'x' },
       nodes: [{ id: 'step:s1', type: 'step', name: 's1', summary: '', tags: [], complexity: 'simple' }],
       edges: [], layers: [], tour: [],
-      languageAudit: {
-        status: 'accepted', inspected: 2,
-        accepted: [{ fieldPath: 'nodes[0].name' }, { fieldPath: 'nodes[0].summary' }],
-        rejected: [],
-      },
       sourceRevision: 'directory:' + 'c'.repeat(64),
       factDigest: 'd'.repeat(64),
-    }), 'utf-8');
+    };
+    annotated.languageAudit = auditDomainGraphFields({ domainGraph: annotated });
+    writeFileSync(join(intermediate, 'domain-analysis.json'), JSON.stringify(annotated), 'utf-8');
 
     const result = spawnSync(process.execPath, [PUBLISH, root, '--no-reports'], { encoding: 'utf-8', cwd: repoRoot });
     expect(result.status, result.stderr).toBe(0);

@@ -15,6 +15,7 @@ import { fileURLToPath } from 'node:url';
 
 import { annotateDomain } from '../../skills/excavator-domain/annotate-domain.mjs';
 import { isDomainGraphUsable, resolveDomainFreshness } from '../../skills/excavator-domain/domain-freshness.mjs';
+import { auditDomainGraphFields } from '../../skills/excavator/semantic-language-audit.mjs';
 import {
   DOMAIN_CONTENT_LANGUAGE,
   DOMAIN_GRAPH_VERSION,
@@ -118,8 +119,14 @@ describe('annotateDomain stamps domain freshness keys at the top level', () => {
     expect(annotated.nodes[0].name).toBe('提交请假');
     expect(annotated.nodes[0].summary).toBe('Calls 提交请假 after validation.');
     expect(annotated.languageAudit.accepted).toEqual(expect.arrayContaining([
-      { fieldPath: 'nodes[0].name', maskedSourceSpans: ['提交请假'] },
-      { fieldPath: 'nodes[0].summary', maskedSourceSpans: ['提交请假'] },
+      expect.objectContaining({
+        fieldPath: 'nodes[0].name', maskedSourceSpans: ['提交请假'],
+        valueDigest: expect.stringMatching(/^sha256:[a-f0-9]{64}$/),
+      }),
+      expect.objectContaining({
+        fieldPath: 'nodes[0].summary', maskedSourceSpans: ['提交请假'],
+        valueDigest: expect.stringMatching(/^sha256:[a-f0-9]{64}$/),
+      }),
     ]));
   });
 
@@ -203,6 +210,20 @@ describe('isDomainGraphUsable — pure gate', () => {
     });
     expect(result.usable).toBe(true);
     expect(result.status).toBe('fresh');
+  });
+
+  it('is noncanonical when domain prose changes after its accepted audit was created', () => {
+    const graph = canonical({
+      project: { description: 'Handles requests.' },
+      nodes: [],
+      edges: [],
+    });
+    graph.languageAudit = auditDomainGraphFields({ domainGraph: graph });
+    graph.project.description = '处理请求。';
+
+    expect(isDomainGraphUsable({
+      domainGraph: graph, currentSourceRevision, currentFactDigest,
+    })).toMatchObject({ usable: false, status: 'noncanonical-language' });
   });
 
   it('is not usable when sourceRevision has moved (factDigest still matching)', () => {

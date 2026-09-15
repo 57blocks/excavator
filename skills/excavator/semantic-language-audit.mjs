@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { createHash } from 'node:crypto';
 /**
  * Deterministic language audit for persisted model-authored semantic fields.
  *
@@ -23,6 +24,10 @@ function compareStrings(a, b) {
   if (a < b) return -1;
   if (a > b) return 1;
   return 0;
+}
+
+function valueDigest(value) {
+  return `sha256:${createHash('sha256').update(String(value), 'utf-8').digest('hex')}`;
 }
 
 /** Maximal runs of non-Latin letters (plus combining marks). */
@@ -167,6 +172,7 @@ function auditFields(fields, authority) {
     if (unverifiedSpans.length > 0) {
       rejected.push({
         fieldPath: field.fieldPath,
+        valueDigest: valueDigest(field.value),
         reason: NONCANONICAL_LANGUAGE,
         unverifiedSpans,
       });
@@ -175,6 +181,7 @@ function auditFields(fields, authority) {
     const maskedSourceSpans = suspicious.filter((span) => verified.has(span)).sort(compareStrings);
     accepted.push({
       fieldPath: field.fieldPath,
+      valueDigest: valueDigest(field.value),
       ...(maskedSourceSpans.length > 0 ? { maskedSourceSpans } : {}),
     });
   }
@@ -202,22 +209,30 @@ export function auditDomainGraphFields({ domainGraph, factGraph = null, sourceSn
 }
 
 export function isAcceptedLanguageAudit(audit, expectedFields = null) {
+  const digestPattern = /^sha256:[a-f0-9]{64}$/;
   const structurallyAccepted = audit?.status === 'accepted'
     && Number.isInteger(audit.inspected)
     && audit.inspected >= 0
     && Array.isArray(audit.accepted)
     && Array.isArray(audit.rejected)
     && audit.rejected.length === 0
-    && audit.inspected === audit.accepted.length;
+    && audit.inspected === audit.accepted.length
+    && audit.accepted.every((entry) => (
+      typeof entry?.fieldPath === 'string'
+      && digestPattern.test(entry?.valueDigest)
+    ))
+    && new Set(audit.accepted.map((entry) => entry.fieldPath)).size === audit.accepted.length;
   if (!structurallyAccepted) return false;
   if (!expectedFields) return true;
 
-  const expectedPaths = [...(expectedFields.accepted ?? []), ...(expectedFields.rejected ?? [])]
-    .map((entry) => entry.fieldPath)
+  const expectedBindings = [...(expectedFields.accepted ?? []), ...(expectedFields.rejected ?? [])]
+    .map((entry) => `${entry.fieldPath}\0${entry.valueDigest}`)
     .sort(compareStrings);
-  const acceptedPaths = audit.accepted.map((entry) => entry.fieldPath).sort(compareStrings);
-  return audit.inspected === expectedPaths.length
-    && JSON.stringify(acceptedPaths) === JSON.stringify(expectedPaths);
+  const acceptedBindings = audit.accepted
+    .map((entry) => `${entry.fieldPath}\0${entry.valueDigest}`)
+    .sort(compareStrings);
+  return audit.inspected === expectedBindings.length
+    && JSON.stringify(acceptedBindings) === JSON.stringify(expectedBindings);
 }
 
 export default {

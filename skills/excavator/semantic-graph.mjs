@@ -200,28 +200,40 @@ export function buildSemanticGraph({
   if (typeof factDigest !== 'string' || factDigest.length === 0) {
     throw new Error('buildSemanticGraph: factDigest is required');
   }
-  const languageAudit = auditSemanticGraphFields({
-    layers, relations, factGraph, sourceSnapshot,
-  });
-  if (!isAcceptedLanguageAudit(languageAudit)) {
-    return {
-      semanticGraph: null,
-      languageAudit,
-      gaps: [{
-        kind: 'noncanonical-language',
-        scope: 'semantic-graph',
-        reason: 'model-owned semantic graph prose failed the canonical English language audit',
-        count: languageAudit.rejected.length,
-        samples: languageAudit.rejected.map((entry) => entry.fieldPath),
-      }],
-    };
-  }
   const idSet = factNodeIds instanceof Set ? factNodeIds : new Set(factNodeIds ?? []);
 
   const gapCollector = createGapCollector(sampleLimit);
   const sanitizedLayers = sanitizeLayers(layers, idSet, gapCollector);
   const sanitizedRelations = sanitizeRelations(relations, idSet, gapCollector);
   const ownGaps = gapCollector.toArray(reasonFor);
+
+  // Audit exactly what can be persisted. Sanitization may drop invalid input
+  // and sorting may move an optional description to a different array index;
+  // auditing the raw model arrays would bind field paths to the wrong product.
+  const languageAudit = auditSemanticGraphFields({
+    layers: sanitizedLayers,
+    relations: sanitizedRelations,
+    factGraph,
+    sourceSnapshot,
+  });
+  if (!isAcceptedLanguageAudit(languageAudit)) {
+    const languageGap = {
+      kind: 'noncanonical-language',
+      scope: 'semantic-graph',
+      reason: 'model-owned semantic graph prose failed the canonical English language audit',
+      count: languageAudit.rejected.length,
+      samples: languageAudit.rejected.map((entry) => entry.fieldPath),
+    };
+    return {
+      semanticGraph: null,
+      languageAudit,
+      gaps: [
+        ...ownGaps,
+        ...(Array.isArray(extraGaps) ? extraGaps : []),
+        languageGap,
+      ].sort(compareGaps),
+    };
+  }
 
   // `extraGaps` lets an upstream step (e.g. apply-semantic-patches.mjs's
   // node-local patch gaps) merge into the SAME overlay artifact rather than

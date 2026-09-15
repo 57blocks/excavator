@@ -217,6 +217,7 @@ export interface ProjectMeta {
 
 export interface SemanticLanguageAuditField {
   fieldPath: string;
+  valueDigest: string;
   maskedSourceSpans?: string[];
   reason?: "noncanonical-language";
   unverifiedSpans?: string[];

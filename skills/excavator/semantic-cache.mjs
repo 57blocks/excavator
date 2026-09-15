@@ -130,10 +130,7 @@ export function freshnessOf(entry, currentContentHash, cacheIdentity) {
     ? cacheIdentity === CANONICAL_CONTENT_LANGUAGE
     : isCanonicalSemanticCache(cacheIdentity);
   if (!canonicalIdentity) return 'noncanonical-language';
-  if (!isAcceptedLanguageAudit(
-    entry.languageAudit,
-    auditSemanticCacheFields({ fields: entry }),
-  )) return 'noncanonical-language';
+  if (!isCanonicalSemanticCacheEntry(entry)) return 'noncanonical-language';
   if (typeof currentContentHash !== 'string' || currentContentHash.length === 0) return 'missing';
   return entry.semanticSourceHash === currentContentHash ? 'fresh' : 'stale';
 }
@@ -227,7 +224,33 @@ export async function currentSourceHashFor(projectRoot, filePath, { fsImpl = REA
 export function validateCacheableFields(fields) {
   const keys = Object.keys(fields ?? {});
   const rejectedFields = keys.filter((k) => !CACHEABLE_FIELDS.includes(k));
+  if (typeof fields?.summary !== 'string' && !rejectedFields.includes('summary')) {
+    rejectedFields.push('summary');
+  }
+  if (
+    Object.hasOwn(fields ?? {}, 'tags')
+    && (!Array.isArray(fields.tags) || fields.tags.some((tag) => typeof tag !== 'string'))
+    && !rejectedFields.includes('tags')
+  ) {
+    rejectedFields.push('tags');
+  }
   return { ok: rejectedFields.length === 0, rejectedFields };
+}
+
+/**
+ * Read-side entry gate. `languageAudit` is writer-owned metadata rather than
+ * a cacheable model field, so remove only that key before applying the same
+ * allowlist/type rules used by the writer. The audit must then bind to the
+ * exact current prose bytes; pre-digest and mutated entries are noncanonical.
+ */
+export function isCanonicalSemanticCacheEntry(entry) {
+  if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return false;
+  const { languageAudit, ...fields } = entry;
+  if (!validateCacheableFields(fields).ok) return false;
+  return isAcceptedLanguageAudit(
+    languageAudit,
+    auditSemanticCacheFields({ fields }),
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -403,7 +426,11 @@ export async function commitSemanticCacheEntry({
       // A cache with an old schema or missing/non-English identity is an
       // untrusted empty view. The first canonical write must never carry its
       // unaudited entries forward.
-      const reusableEntries = isCanonicalSemanticCache(latest) ? latest.entries : {};
+      const reusableEntries = isCanonicalSemanticCache(latest)
+        ? Object.fromEntries(
+          Object.entries(latest.entries).filter(([, entry]) => isCanonicalSemanticCacheEntry(entry)),
+        )
+        : {};
       const nextEntries = sortObjectKeys({
         ...reusableEntries,
         [nodeId]: { ...fields, languageAudit },
@@ -438,6 +465,7 @@ export default {
   readSemanticCache,
   currentSourceHashFor,
   validateCacheableFields,
+  isCanonicalSemanticCacheEntry,
   auditSemanticCacheFields,
   isAcceptedLanguageAudit,
   commitSemanticCacheEntry,

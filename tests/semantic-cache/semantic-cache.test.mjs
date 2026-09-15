@@ -24,6 +24,7 @@ import {
   SEMANTIC_CACHE_VERSION,
   CANONICAL_CONTENT_LANGUAGE,
 } from '../../skills/excavator/semantic-cache.mjs';
+import { auditSemanticCacheFields } from '../../skills/excavator/semantic-language-audit.mjs';
 
 const NODE_ID = 'function:src/orderService.ts:createOrder()';
 const FILE_PATH = 'src/orderService.ts';
@@ -119,12 +120,7 @@ describe('semantic-cache — canonical-language oracle (red before implementatio
     const unauditedEntry = validFields();
     const entry = {
       ...unauditedEntry,
-      languageAudit: {
-        status: 'accepted',
-        inspected: 3,
-        accepted: [{ fieldPath: 'summary' }, { fieldPath: 'tags[0]' }, { fieldPath: 'tags[1]' }],
-        rejected: [],
-      },
+      languageAudit: auditSemanticCacheFields({ fields: unauditedEntry }),
     };
 
     expect(freshnessOf(entry, HASH_V1, 'en')).toBe('fresh');
@@ -132,6 +128,34 @@ describe('semantic-cache — canonical-language oracle (red before implementatio
     expect(freshnessOf(entry, HASH_V1, undefined)).toBe('noncanonical-language');
     expect(freshnessOf(entry, HASH_V1, 'zh')).toBe('noncanonical-language');
     expect(isFresh(entry, HASH_V1, undefined)).toBe(false);
+  });
+
+  it('rejects an entry whose prose changed after its accepted audit was created', () => {
+    const fields = validFields();
+    const entry = {
+      ...fields,
+      languageAudit: auditSemanticCacheFields({ fields }),
+    };
+    entry.summary = '在写入订单前验证请求。';
+
+    expect(freshnessOf(entry, HASH_V1, {
+      version: SEMANTIC_CACHE_VERSION,
+      contentLanguage: CANONICAL_CONTENT_LANGUAGE,
+    })).toBe('noncanonical-language');
+  });
+
+  it('rejects a legacy object-shaped entry on read even when its empty audit and cache marker look accepted', () => {
+    const entry = {
+      summary: { text: '在写入订单前验证请求。' },
+      tags: [{ text: '验证' }],
+      semanticSourceHash: HASH_V1,
+      languageAudit: { status: 'accepted', inspected: 0, accepted: [], rejected: [] },
+    };
+
+    expect(freshnessOf(entry, HASH_V1, {
+      version: SEMANTIC_CACHE_VERSION,
+      contentLanguage: CANONICAL_CONTENT_LANGUAGE,
+    })).toBe('noncanonical-language');
   });
 
   it('an accepted English write stamps the cache-level marker itself', async () => {
@@ -177,6 +201,35 @@ describe('semantic-cache — canonical-language oracle (red before implementatio
     expect(cache.entries[oldNodeId]).toBeUndefined();
   });
 
+  it('a canonical write drops pre-digest entries even when the old cache marker is current', async () => {
+    const oldNodeId = 'function:src/legacy.ts:oldFlow()';
+    writeFileSync(
+      join(root, '.excavator', 'semantic-cache.json'),
+      JSON.stringify({
+        version: SEMANTIC_CACHE_VERSION,
+        contentLanguage: CANONICAL_CONTENT_LANGUAGE,
+        entries: {
+          [oldNodeId]: {
+            summary: 'Old English prose.',
+            semanticSourceHash: HASH_V1,
+            languageAudit: {
+              status: 'accepted', inspected: 1,
+              accepted: [{ fieldPath: 'summary' }], rejected: [],
+            },
+          },
+        },
+      }, null, 2),
+      'utf-8',
+    );
+
+    const result = await commitSemanticCacheEntry({
+      projectRoot: root, nodeId: NODE_ID, filePath: FILE_PATH, fields: validFields(),
+    });
+
+    expect(result).toMatchObject({ ok: true, status: 'committed' });
+    expect(Object.keys(readCacheFileRaw(root).entries)).toEqual([NODE_ID]);
+  });
+
   it('does not rewrite a source-owned non-English node id', async () => {
     const sourceOwnedNodeId = 'function:src/orderService.ts:提交订单()';
     const result = await commitSemanticCacheEntry({
@@ -211,9 +264,10 @@ describe('semantic-cache — canonical-language oracle (red before implementatio
     });
 
     expect(result).toMatchObject({ ok: true, status: 'committed' });
-    expect(result.languageAudit.accepted[0]).toEqual({
+    expect(result.languageAudit.accepted[0]).toMatchObject({
       fieldPath: 'summary', maskedSourceSpans: ['提交请假'],
     });
+    expect(result.languageAudit.accepted[0].valueDigest).toMatch(/^sha256:[a-f0-9]{64}$/);
     const entry = readCacheFileRaw(root).entries['function:src/orderService.ts:提交请假()'];
     expect(entry.summary).toBe('Calls 提交请假 after validation.');
     expect(entry.languageAudit).toEqual(result.languageAudit);
@@ -318,6 +372,27 @@ describe('semantic-cache — field whitelist', () => {
     expect(result.ok).toBe(false);
     expect(result.status).toBe('rejected-fields');
     expect(result.rejectedFields).toEqual(['answer']);
+  });
+
+  it('rejects non-string summaries and tags before language audit or persistence', async () => {
+    const fields = validFields({
+      summary: { text: '在写入文章前验证请求。' },
+      tags: [{ text: '验证' }],
+    });
+
+    expect(validateCacheableFields(fields)).toEqual({
+      ok: false,
+      rejectedFields: ['summary', 'tags'],
+    });
+    const result = await commitSemanticCacheEntry({
+      projectRoot: root, nodeId: NODE_ID, filePath: FILE_PATH, fields,
+    });
+    expect(result).toEqual({
+      ok: false,
+      status: 'rejected-fields',
+      rejectedFields: ['summary', 'tags'],
+    });
+    expect(existsSync(join(root, '.excavator', 'semantic-cache.json'))).toBe(false);
   });
 });
 

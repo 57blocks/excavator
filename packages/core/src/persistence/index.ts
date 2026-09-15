@@ -181,6 +181,7 @@ export function saveDomainGraph(projectRoot: string, graph: KnowledgeGraph): voi
     || !Array.isArray(audit.rejected)
     || audit.inspected !== audit.accepted.length
     || audit.rejected.length !== 0
+    || audit.accepted.some((entry) => !/^sha256:[a-f0-9]{64}$/.test(entry.valueDigest))
   ) {
     throw new Error(
       "Refusing to save domain graph: model-owned fields lack an accepted canonical-language audit",

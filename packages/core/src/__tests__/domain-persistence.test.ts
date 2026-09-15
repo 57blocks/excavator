@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { mkdirSync, rmSync, existsSync, readFileSync } from "node:fs";
+import { createHash } from "node:crypto";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import {
@@ -12,15 +13,19 @@ import type { KnowledgeGraph } from "../types.js";
 
 const testRoot = join(tmpdir(), "excavator-domain-persist-test");
 
+function valueDigest(value: string): string {
+  return `sha256:${createHash("sha256").update(value, "utf-8").digest("hex")}`;
+}
+
 const domainGraph: KnowledgeGraph = {
   version: "1.0.0",
   languageAudit: {
     status: "accepted",
     inspected: 3,
     accepted: [
-      { fieldPath: "project.description" },
-      { fieldPath: "nodes[0].name" },
-      { fieldPath: "nodes[0].summary" },
+      { fieldPath: "project.description", valueDigest: valueDigest("test") },
+      { fieldPath: "nodes[0].name", valueDigest: valueDigest("Orders") },
+      { fieldPath: "nodes[0].summary", valueDigest: valueDigest("Order management") },
     ],
     rejected: [],
   },
