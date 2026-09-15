@@ -340,7 +340,10 @@ async function makeIntegrationProject({ seedNodeIds = [ID.A, ID.B, ID.S, ID.T] }
   const nodes = makeFixture().nodes.filter((node) => [ID.A, ID.B, ID.M, ID.S, ID.T].includes(node.id));
   const graphRaw = JSON.stringify({
     version: '1.0.0',
-    nodes: nodes.map((node) => ({ ...node, lineRange: { start: 1, end: node.filePath === PATH.S ? 2 : 1 } })),
+    nodes: nodes.map((node) => ({
+      ...node,
+      lineRange: node.id === ID.T ? [2, 2] : [1, 1],
+    })),
     edges: [],
   }, null, 2);
   writeFileSync(join(dataDir, 'knowledge-graph.json'), graphRaw, 'utf-8');
@@ -384,6 +387,36 @@ async function planFromIntegrationDisk(root, requestedNodeIds) {
     manifestEntries: manifest.entries,
     semanticCache,
   });
+}
+
+function verifyPlannedFileSnapshotAndExtractNodeRange(root, item) {
+  const dataDir = join(root, '.excavator');
+  const graph = JSON.parse(readFileSync(join(dataDir, 'knowledge-graph.json'), 'utf-8'));
+  const node = graph.nodes.find((candidate) => candidate.id === item.nodeId);
+  if (!node) return { fullLocalSourceVerified: false, status: 'unknown-node' };
+
+  const fileBytes = readFileSync(join(root, item.filePath));
+  const fileSource = fileBytes.toString('utf-8');
+  const fileHash = H(fileBytes);
+  if (fileHash !== item.currentContentHash) {
+    return { fullLocalSourceVerified: false, status: 'file-hash-mismatch', fileHash };
+  }
+
+  const sourceLines = fileSource.match(/[^\n]*\n|[^\n]+$/g) ?? [];
+  const isFileNode = node.type === 'file';
+  const nodeSource = isFileNode
+    ? fileSource
+    : sourceLines.slice(node.lineRange[0] - 1, node.lineRange[1]).join('');
+  return {
+    fullLocalSourceVerified: true,
+    status: 'verified',
+    fileSource,
+    fileBytes: fileBytes.length,
+    fileHash,
+    nodeSource,
+    nodeRange: node.lineRange,
+    nodeRangeHash: H(nodeSource),
+  };
 }
 
 async function executeIntegrationPlan({ root, plan, verifier, generator, writer, beforeWrite = null }) {
@@ -885,6 +918,56 @@ describe('semantic-cache reuse — future planner and simulated execution contra
 });
 
 describe('semantic-cache reuse — disk integration through verification and existing CAS writer', () => {
+  it('checks the frozen whole-file hash before extracting a node range from the same snapshot', async () => {
+    const project = await makeIntegrationProject();
+    const { root, dataDir, graphRaw } = project;
+    const graphPath = join(dataDir, 'knowledge-graph.json');
+
+    try {
+      writeFileSync(join(root, PATH.S), SHARED_2, 'utf-8');
+      writeIntegrationManifest(root, SHARED_2);
+      const plan = await planFromIntegrationDisk(root, [ID.S]);
+      expect(plan.generate).toEqual([{
+        nodeId: ID.S,
+        filePath: PATH.S,
+        currentContentHash: H(SHARED_2),
+        reason: 'stale',
+      }]);
+
+      const verifier = vi.fn(async (item) => verifyPlannedFileSnapshotAndExtractNodeRange(root, item));
+      const generator = vi.fn(async (item, evidence) => {
+        expect(evidence.fullLocalSourceVerified).toBe(true);
+        expect(evidence.fileSource).toBe(SHARED_2);
+        expect(evidence.fileHash).toBe(item.currentContentHash);
+        expect(evidence.nodeRange).toEqual([1, 1]);
+        expect(evidence.nodeSource).toBe('export class OwnerA { save() { return 10; } }\n');
+        expect(evidence.nodeRangeHash).not.toBe(item.currentContentHash);
+        return {
+          summary: 'OwnerA.save returns 10 from its verified node-local range.',
+          tags: ['OwnerA', 'save'],
+          semanticSourceHash: item.currentContentHash,
+          model: 'integration-range-model',
+          generatedAt: '2026-09-15T00:30:00.000Z',
+        };
+      });
+      const writer = vi.fn((args) => commitSemanticCacheEntry(args));
+      const execution = await executeIntegrationPlan({ root, plan, verifier, generator, writer });
+
+      expect(verifier).toHaveBeenCalledTimes(1);
+      expect(generator).toHaveBeenCalledTimes(1);
+      expect(writer).toHaveBeenCalledTimes(1);
+      expect(writer.mock.calls[0][0].fields.semanticSourceHash).toBe(H(SHARED_2));
+      expect(execution.commits[0]).toMatchObject({
+        nodeId: ID.S,
+        result: { ok: true, status: 'committed' },
+      });
+      expect(readFileSync(graphPath, 'utf-8')).toBe(graphRaw);
+      expect(existsSync(join(dataDir, 'semantic.lock'))).toBe(false);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   it('regenerates every needed node in one changed file, preserves unchanged entries, then fully reuses', async () => {
     const project = await makeIntegrationProject();
     const { root, dataDir, graphRaw } = project;
@@ -1261,6 +1344,12 @@ describe('/excavator-chat — reuse-before-generation runtime protocol', () => {
     expect(skill).toContain('Never send a reused node to the generator or semantic-cache writer');
     expect(skill).toContain('`generate[]` is the only semantic generation loop');
     expect(skill).toContain('full local source range');
+    expect(skill).toContain("read the containing file's complete bytes and confirm their SHA-256 equals that item's `currentContentHash`");
+    expect(skill).toContain('extract the node\'s full local source range from the same snapshot');
+    expect(skill).toContain('Do not compare a node-range hash to `currentContentHash`');
+    expect(skill.indexOf("read the containing file's complete bytes")).toBeLessThan(
+      skill.indexOf("extract the node's full local source range from the same snapshot"),
+    );
     expect(skill).toContain('`unavailable[]` is a visible degraded result');
     expect(skill).toContain('never generate or write semantics for it');
     expect(skill).toContain('zero generator calls, zero semantic-cache writer calls');
