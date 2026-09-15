@@ -48,3 +48,7 @@
 ## Open Questions
 
 - 无阻断性未决项。Full 语义内容质量以真语料 opt-in 验收为准；figma/knowledge 迁移与 selection 硬化明确留切片 E，不外溢。
+
+## 已知边界（切片 E follow-up）
+
+- **遗留增量-Full 路径仍让 LLM 造结构**：本切片把「Full 全量分析」/`FULL_UPDATE`/无图首建 三个入口改走 Phase F（复用确定性事实构建、语义物理隔离）；但 Phase 0 决策表里 `PARTIAL_UPDATE`/`ARCHITECTURE_UPDATE`（已有图 + 改动文件、且非 `--full`）仍走旧 Phase 1–7，由 file-analyzer 直接产结构节点。原因：把这条也改走 Phase F 需要重做 `prepare-incremental`/`validate-incremental-symbols`/`finalize-incremental`/`mark-dirty` 并触动被锁定的 incremental-contract 契约测试，属实质更大、更高风险的改动，超出本切片范围。**影响**：主 Full 路径的「LLM 不改事实图」不变量成立，但 `--mode=full` 的增量子情形仍走遗留路径。记为切片 E 的 follow-up：把 Full 的所有入口统一到 Phase F，退役/重定向旧增量流水线（并相应更新 incremental-contract 测试）。
