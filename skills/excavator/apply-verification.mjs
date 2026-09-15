@@ -47,6 +47,16 @@
  * `apply` and `skip` default `--out` to the input graph path, so phase 6b
  * picks the verification up without any change to how it is invoked.
  *
+ * Semantic-cache mode (openspec: changes/full-semantic-isolation) — the same
+ * three-step shape, redirected at `semantic-cache.json` instead of a
+ * model-authored graph node, for Full mode's new semantic-generation
+ * pipeline:
+ *   node apply-verification.mjs <projectRoot> prepare-semantic [--sample <n>] [--batch-size <n>]
+ *   node apply-verification.mjs <projectRoot> apply-semantic
+ *   node apply-verification.mjs <projectRoot> skip-semantic
+ * These NEVER read or write `knowledge-graph.json`'s node fields — see
+ * `prepareSemanticVerification`/`applySemanticVerification` below.
+ *
  * Determinism: no timestamps; nodes ordered by id; sampling is a fixed stride,
  * never random; this script's own gap rows are replaced rather than appended,
  * so running it twice over the same inputs is a no-op.
@@ -242,6 +252,265 @@ export function prepareVerification({ graph, sample = null, batchSize = DEFAULT_
   return { manifest, batches, mode };
 }
 
+// ---------------------------------------------------------------------------
+// Semantic-cache mode (openspec: changes/full-semantic-isolation, capability
+// `full-semantic-isolation`). Full mode no longer keeps a model-authored
+// `summary` ON the knowledge-graph node — that field lives in
+// `semantic-cache.json` (Slice C), keyed by the same node id. These two
+// functions are the Summary-Verifier's redirected read/write target: they
+// join fact nodes (id/filePath/lineRange only — read-only, never mutated)
+// with their semantic-cache entry to build the same kind of candidate list
+// `prepareVerification`/`applyVerification` above already produce, but the
+// verdict is written back into the semantic-cache ENTRY's `verification`
+// field, never onto a knowledge-graph node. `prepareVerification` and
+// `applyVerification` above are UNCHANGED and keep serving the pre-existing
+// (incremental-with-model-authored-summaries) full pipeline.
+// ---------------------------------------------------------------------------
+
+/**
+ * Choose what to hand the verifier, sourcing each candidate's summary from a
+ * semantic-cache entry rather than from `node.summary`. A fact node with no
+ * cache entry (or an entry with no non-empty `summary`) is simply not a
+ * candidate — nothing to verify, same as an empty `summary` in the graph-based
+ * flow above.
+ *
+ * @param {{
+ *   factNodes: Array<{id: string, filePath?: string, lineRange?: [number, number]}>,
+ *   semanticCache: { entries: Record<string, object> } | null | undefined,
+ *   sample?: number|null, batchSize?: number,
+ *   classifyPath: (filePath: string) => 'ok'|'missing'|'out-of-scope',
+ * }} args
+ */
+export function prepareSemanticVerification({
+  factNodes, semanticCache, sample = null, batchSize = DEFAULT_BATCH_SIZE, classifyPath,
+}) {
+  if (typeof classifyPath !== 'function') {
+    throw new Error('prepareSemanticVerification: classifyPath must be a function');
+  }
+  const entries = semanticCache?.entries ?? {};
+  const nodes = Array.isArray(factNodes) ? factNodes : [];
+  const counts = {
+    nodesTotal: nodes.length,
+    summariesTotal: 0,
+    noAnchor: 0,
+    pathOutOfScope: 0,
+    sourceMissing: 0,
+    candidates: 0,
+    selected: 0,
+  };
+  const outOfScope = [];
+  const missing = [];
+  const candidates = [];
+
+  for (const node of nodes) {
+    if (!node || typeof node !== 'object') continue;
+    const entry = entries[node.id];
+    if (!entry || typeof entry.summary !== 'string' || entry.summary.trim().length === 0) continue;
+    counts.summariesTotal += 1;
+    if (!hasAnchor(node)) {
+      counts.noAnchor += 1;
+      continue;
+    }
+    const status = classifyPath(node.filePath);
+    if (status === 'out-of-scope') {
+      counts.pathOutOfScope += 1;
+      outOfScope.push(`${node.id} -> ${node.filePath}`);
+      continue;
+    }
+    if (status === 'missing') {
+      counts.sourceMissing += 1;
+      missing.push(`${node.id} -> ${node.filePath}`);
+      continue;
+    }
+    candidates.push({
+      id: node.id,
+      filePath: node.filePath,
+      lineRange: [node.lineRange[0], node.lineRange[1]],
+      summary: entry.summary,
+    });
+  }
+
+  candidates.sort((a, b) => compareStrings(a.id, b.id));
+  counts.candidates = candidates.length;
+
+  const selected =
+    sample === null || sample >= candidates.length ? candidates : strideSample(candidates, sample);
+  counts.selected = selected.length;
+  const mode = sample === null || sample >= candidates.length ? 'full' : `sample:${selected.length}`;
+
+  const batches = chunk(selected, Math.max(1, batchSize)).map((batchNodes, index) => ({
+    batchIndex: index,
+    nodes: batchNodes,
+  }));
+
+  const manifest = {
+    scriptCompleted: true,
+    mode,
+    batchSize: Math.max(1, batchSize),
+    counts,
+    outOfScopePaths: outOfScope.sort(compareStrings),
+    missingFiles: missing.sort(compareStrings),
+    selectedIds: selected.map((n) => n.id),
+    batches: batches.map((b) => ({ batchIndex: b.batchIndex, nodeCount: b.nodes.length })),
+  };
+
+  return { manifest, batches, mode };
+}
+
+/**
+ * Write the verdicts into semantic-cache entries' `verification` field.
+ * NEVER touches `knowledge-graph.json` — it does not even take a graph as an
+ * argument. Returns a new semantic-cache object; the caller persists it.
+ *
+ * @param {{
+ *   semanticCache: { version?: string, entries?: Record<string, object> } | null | undefined,
+ *   manifest?: object|null, verdicts?: object[], mode?: string|null, sampleLimit?: number,
+ * }} args
+ */
+export function applySemanticVerification({ semanticCache, manifest = null, verdicts = [], mode = null, sampleLimit = 5 }) {
+  const cache = {
+    version: semanticCache?.version ?? '1.0.0',
+    entries: { ...(semanticCache?.entries ?? {}) },
+  };
+
+  const counts = {
+    verdictsRead: verdicts.length,
+    verdictsApplied: 0,
+    verified: 0,
+    unverified: 0,
+    contradicted: 0,
+    verdictInvalid: 0,
+    verdictUnknownNode: 0,
+    verdictDuplicate: 0,
+    verdictMissing: 0,
+    verificationPreserved: 0,
+  };
+  const samples = { contradicted: [], unverified: [], invalid: [], unknownNode: [], missing: [] };
+  const archive = [];
+
+  const seen = new Set();
+  const ordered = verdicts
+    .filter((entry) => entry && typeof entry === 'object')
+    .slice()
+    .sort((a, b) => compareStrings(String(a.id), String(b.id)));
+
+  for (const entry of ordered) {
+    const id = entry.id;
+    const verdict = entry.verdict;
+    if (!VERDICTS.includes(verdict)) {
+      counts.verdictInvalid += 1;
+      if (samples.invalid.length < sampleLimit) samples.invalid.push(`${id}: ${JSON.stringify(verdict)}`);
+      continue;
+    }
+    const existingEntry = cache.entries[id];
+    if (!existingEntry) {
+      // A verdict for a node id with no semantic-cache entry at all — discard
+      // visibly rather than fabricate an entry to hang the verdict on.
+      counts.verdictUnknownNode += 1;
+      if (samples.unknownNode.length < sampleLimit) samples.unknownNode.push(String(id));
+      continue;
+    }
+    if (seen.has(id)) {
+      counts.verdictDuplicate += 1;
+      continue;
+    }
+    seen.add(id);
+
+    const merged = mergeVerification(existingEntry.verification, verdict);
+    cache.entries[id] = { ...existingEntry, verification: merged.value };
+    if (merged.preserved) counts.verificationPreserved += 1;
+    counts.verdictsApplied += 1;
+    counts[verdict] += 1;
+
+    if (verdict === 'contradicted') {
+      archive.push({
+        id,
+        summary: existingEntry.summary ?? '',
+        reason: typeof entry.reason === 'string' ? entry.reason : '',
+      });
+      if (samples.contradicted.length < sampleLimit) samples.contradicted.push(id);
+    } else if (verdict === 'unverified') {
+      if (samples.unverified.length < sampleLimit) samples.unverified.push(id);
+    }
+  }
+  archive.sort((a, b) => compareStrings(a.id, b.id));
+
+  const selectedIds = Array.isArray(manifest?.selectedIds) ? manifest.selectedIds : [];
+  for (const id of [...selectedIds].sort(compareStrings)) {
+    if (seen.has(id)) continue;
+    const existingEntry = cache.entries[id];
+    counts.verdictMissing += 1;
+    if (samples.missing.length < sampleLimit) samples.missing.push(String(id));
+    if (!existingEntry) continue;
+    const merged = mergeVerification(existingEntry.verification, 'unverified');
+    if (merged.preserved) continue;
+    cache.entries[id] = { ...existingEntry, verification: merged.value };
+    counts.unverified += 1;
+  }
+
+  const byVerification = { verified: 0, unverified: 0, contradicted: 0, unmarked: 0 };
+  let summariesTotal = 0;
+  const uncheckedSamples = [];
+  for (const [id, entry] of Object.entries(cache.entries)) {
+    if (typeof entry?.summary !== 'string' || entry.summary.trim().length === 0) continue;
+    summariesTotal += 1;
+    const value = entry.verification;
+    if (value === undefined || value === null || value === '') {
+      byVerification.unmarked += 1;
+      if (uncheckedSamples.length < sampleLimit) uncheckedSamples.push(id);
+      continue;
+    }
+    if (byVerification[value] === undefined) byVerification[value] = 0;
+    byVerification[value] += 1;
+  }
+
+  const resolvedMode = mode ?? manifest?.mode ?? 'full';
+
+  const gaps = [];
+  const addGap = (kind, count, reason, sampleList) => {
+    if (count <= 0) return;
+    gaps.push({ kind, scope: 'semantic-cache', reason, count, samples: (sampleList ?? []).slice().sort(compareStrings) });
+  };
+  addGap('semantic-summary-contradicted', counts.contradicted,
+    `${counts.contradicted} cached summary(ies) the verifier found the anchored source contradicts`,
+    samples.contradicted);
+  addGap('semantic-summary-unverified', counts.unverified,
+    `${counts.unverified} cached summary(ies) the anchored source neither supports nor contradicts`,
+    samples.unverified);
+  addGap('semantic-summary-unchecked', byVerification.unmarked,
+    `${byVerification.unmarked} non-empty cached summary(ies) carry no verification status`,
+    uncheckedSamples);
+  addGap('semantic-summary-verdict-missing', counts.verdictMissing,
+    `${counts.verdictMissing} selected summary(ies) came back with no verdict`,
+    samples.missing);
+  addGap('semantic-summary-verdict-unknown-node', counts.verdictUnknownNode,
+    `${counts.verdictUnknownNode} verdict(s) name a node id absent from semantic-cache.json`,
+    samples.unknownNode);
+  addGap('semantic-summary-verdict-invalid', counts.verdictInvalid,
+    `${counts.verdictInvalid} verdict(s) are not one of ${VERDICTS.join('/')}`,
+    samples.invalid);
+  const outOfScopeCount = manifest?.counts?.pathOutOfScope ?? 0;
+  addGap('semantic-summary-path-out-of-scope', outOfScopeCount,
+    `${outOfScopeCount} cached summary anchor(s) name a path outside the project root and were not checked`,
+    (manifest?.outOfScopePaths ?? []).slice(0, sampleLimit));
+  gaps.sort(compareGaps);
+
+  const bucketSum = Object.values(byVerification).reduce((a, b) => a + b, 0);
+  const report = {
+    scriptCompleted: true,
+    action: 'apply-semantic',
+    mode: resolvedMode,
+    counts: { ...counts, summariesTotal },
+    byVerification,
+    conserves: bucketSum === summariesTotal,
+    samples,
+    archived: archive.length,
+    gaps,
+  };
+
+  return { semanticCache: cache, report, archive };
+}
+
 /**
  * Write the verdicts onto the graph.
  *
@@ -425,7 +694,13 @@ export function applyVerification({ graph, manifest = null, verdicts = [], mode 
 // CLI
 // ---------------------------------------------------------------------------
 
-const ACTIONS = Object.freeze(['prepare', 'apply', 'skip']);
+const ACTIONS = Object.freeze([
+  'prepare', 'apply', 'skip',
+  // Semantic-cache mode (full-semantic-isolation): same three-step shape,
+  // retargeted at semantic-cache.json instead of a model-authored graph node.
+  'prepare-semantic', 'apply-semantic', 'skip-semantic',
+]);
+const SEMANTIC_ACTIONS = Object.freeze(['prepare-semantic', 'apply-semantic', 'skip-semantic']);
 
 function parseArgs(argv) {
   const args = {
@@ -529,10 +804,101 @@ export function readVerdictFiles(dir) {
   return { verdicts, files };
 }
 
+/** Fact nodes usable as verification anchors, straight from knowledge-graph.json. */
+function factNodesFrom(knowledgeGraph) {
+  return (knowledgeGraph?.nodes ?? []).map((n) => ({ id: n.id, filePath: n.filePath, lineRange: n.lineRange }));
+}
+
+async function runSemanticAction(args, projectRoot, dataDir, intermediate) {
+  const manifestPath = resolve(args.manifest ?? join(intermediate, 'semantic-verify-manifest.json'));
+  const batchDir = resolve(args.batchDir ?? intermediate);
+  const verdictDir = resolve(args.verdictDir ?? intermediate);
+  const reportPath = resolve(args.report ?? join(intermediate, 'semantic-verification.json'));
+  const archivePath = resolve(args.archive ?? join(intermediate, 'semantic-contradicted-summaries.json'));
+  const cachePath = join(dataDir, 'semantic-cache.json');
+
+  const knowledgeGraph = readJson(join(dataDir, 'knowledge-graph.json'), 'knowledge-graph.json');
+  const factNodes = factNodesFrom(knowledgeGraph);
+
+  if (args.action === 'prepare-semantic') {
+    const semanticCache = existsSync(cachePath) ? JSON.parse(readFileSync(cachePath, 'utf-8')) : { entries: {} };
+    const { manifest, batches, mode } = prepareSemanticVerification({
+      factNodes,
+      semanticCache,
+      sample: args.sample,
+      batchSize: args.batchSize,
+      classifyPath: createPathClassifier(projectRoot),
+    });
+    writeJson(manifestPath, manifest);
+    for (const batch of batches) {
+      writeJson(join(batchDir, `semantic-verify-batch-${batch.batchIndex}.json`), batch);
+    }
+    const c = manifest.counts;
+    process.stderr.write(
+      `apply-verification prepare-semantic: mode=${mode} summaries=${c.summariesTotal} ` +
+      `candidates=${c.candidates} selected=${c.selected} batches=${batches.length} ` +
+      `no-anchor=${c.noAnchor} source-missing=${c.sourceMissing} ` +
+      `path-out-of-scope=${c.pathOutOfScope}\n`,
+    );
+    return;
+  }
+
+  if (args.action === 'skip-semantic') {
+    writeJson(reportPath, {
+      scriptCompleted: true, action: 'skip-semantic', mode: 'skipped',
+      counts: { verdictsRead: 0, verdictsApplied: 0 }, byVerification: {}, conserves: true, archived: 0,
+    });
+    process.stderr.write('apply-verification skip-semantic: verification=skipped, semantic-cache.json untouched\n');
+    return;
+  }
+
+  // apply-semantic
+  const manifest = existsSync(manifestPath) ? JSON.parse(readFileSync(manifestPath, 'utf-8')) : null;
+  if (!manifest) {
+    process.stderr.write(
+      `Warning: apply-verification: no manifest at ${manifestPath} — selected-but-unanswered summaries cannot be counted\n`,
+    );
+  }
+  const semanticCache = existsSync(cachePath) ? JSON.parse(readFileSync(cachePath, 'utf-8')) : { entries: {} };
+  const { verdicts, files } = readVerdictFiles(verdictDir);
+  if (files.length === 0) {
+    process.stderr.write(`Warning: apply-verification: no summary-verdicts-*.json in ${verdictDir}\n`);
+  }
+
+  const { semanticCache: updatedCache, report, archive } = applySemanticVerification({
+    semanticCache, manifest, verdicts, sampleLimit: args.sampleLimit,
+  });
+
+  writeJson(cachePath, updatedCache);
+  writeJson(reportPath, { ...report, verdictFiles: files });
+  writeJson(archivePath, { scriptCompleted: true, count: archive.length, records: archive });
+
+  const c = report.counts;
+  process.stderr.write(
+    `apply-verification apply-semantic: mode=${report.mode} verdicts=${c.verdictsRead} applied=${c.verdictsApplied} ` +
+    `verified=${c.verified} unverified=${c.unverified} contradicted=${c.contradicted} ` +
+    `verdict-missing=${c.verdictMissing} unknown-node=${c.verdictUnknownNode} ` +
+    `invalid=${c.verdictInvalid} preserved=${c.verificationPreserved} ` +
+    `unchecked=${report.byVerification.unmarked}\n`,
+  );
+  if (!report.conserves) {
+    process.stderr.write(
+      'Warning: apply-verification: semantic verification buckets do not account for every cached summary\n',
+    );
+  }
+}
+
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   const projectRoot = resolve(args.projectRoot);
-  const intermediate = join(resolveDataDir(projectRoot), 'intermediate');
+  const dataDir = resolveDataDir(projectRoot);
+  const intermediate = join(dataDir, 'intermediate');
+
+  if (SEMANTIC_ACTIONS.includes(args.action)) {
+    await runSemanticAction(args, projectRoot, dataDir, intermediate);
+    return;
+  }
+
   const graphPath = resolve(args.graph ?? join(intermediate, 'annotated-graph.json'));
   const manifestPath = resolve(args.manifest ?? join(intermediate, 'summary-verify-manifest.json'));
   const batchDir = resolve(args.batchDir ?? intermediate);
@@ -641,5 +1007,6 @@ if (isCliEntry()) {
 
 export default {
   prepareVerification, applyVerification, readVerdictFiles, strideSample, chunk,
+  prepareSemanticVerification, applySemanticVerification,
   VERDICTS, VERIFICATION_SEVERITY, OWNED_GAP_KINDS, DEFAULT_BATCH_SIZE,
 };

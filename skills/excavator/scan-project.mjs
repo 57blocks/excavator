@@ -623,6 +623,22 @@ const HARD_SKIP_DIRS = new Set([
   '.excavator',
 ]);
 
+// `.excavator` variant/backup directories (e.g. `.excavator.slicec-bak`,
+// `.excavator-old`) and `.trash-*` recycle directories have no fixed name —
+// a Set of exact names can't express them — so the walker also recognizes
+// them structurally, matching core's DEFAULT_IGNORE_PATTERNS shapes
+// (`.excavator.*/`, `.excavator-*/`, `.trash-*/`) exactly. Same "walker-only
+// performance subset" contract as HARD_SKIP_DIRS above: every name this
+// returns true for MUST also be excluded by core's real ignore filter
+// (checked by a unit test) — this function does not decide correctness by
+// itself, the ignore filter still runs on everything the walker keeps.
+function isHardSkipDir(name) {
+  if (HARD_SKIP_DIRS.has(name)) return true;
+  if (name.startsWith('.excavator.') || name.startsWith('.excavator-')) return true;
+  if (name.startsWith('.trash-')) return true;
+  return false;
+}
+
 /**
  * Recursive directory walker — fallback when `git ls-files` is unavailable
  * (no git, not a repo, or git refused). Skips hard-coded "obviously bad"
@@ -652,7 +668,7 @@ function enumerateViaWalk(projectRoot) {
     entries.sort((a, b) => compareStableStrings(a.name, b.name));
     for (const ent of entries) {
       if (ent.isDirectory()) {
-        if (HARD_SKIP_DIRS.has(ent.name)) continue;
+        if (isHardSkipDir(ent.name)) continue;
         walk(join(absDir, ent.name));
       } else if (ent.isFile()) {
         const rel = toPosix(relative(projectRoot, join(absDir, ent.name)));
@@ -1096,4 +1112,5 @@ export default {
   MAX_FILE_BYTES,
   BINARY_SNIFF_BYTES,
   HARD_SKIP_DIRS: Array.from(HARD_SKIP_DIRS),
+  isHardSkipDir,
 };

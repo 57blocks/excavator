@@ -20,7 +20,7 @@ Extracts business domain knowledge — domains, business flows, and process step
 
 Set `PROJECT_ROOT` to the current working directory.
 
-**Worktree redirect.** If `PROJECT_ROOT` is inside a git worktree (not the main checkout), redirect output to the main repository root. Worktrees managed by Claude Code are ephemeral — the data directory (`.excavator/`) written there is destroyed when the session ends, taking the domain graph with it (issue #133). Detect a worktree by comparing `git rev-parse --git-dir` against `git rev-parse --git-common-dir`; in a normal checkout or submodule they resolve to the same path, in a worktree they differ and the parent of `--git-common-dir` is the main repo root.
+**Worktree isolation.** If `PROJECT_ROOT` is inside a git worktree (not the main checkout), Excavator writes `.excavator/` **inside that worktree** and never sends output anywhere else. The domain graph corresponds only to that worktree's SourceSnapshot revision, which is what keeps two worktrees on different branches/HEADs from silently overwriting each other's graph. The trade-off: deleting the worktree deletes its `.excavator/` cache along with it — this reopens issue #133's data-loss risk by design (a deliberate choice for snapshot correctness, see plan §10), and is expected behavior rather than an error. Detect a worktree by comparing `git rev-parse --git-dir` against `git rev-parse --git-common-dir`; in a normal checkout or submodule they resolve to the same path, in a worktree they differ.
 
 ```bash
 COMMON_DIR=$(git -C "$PROJECT_ROOT" rev-parse --git-common-dir 2>/dev/null)
@@ -29,13 +29,9 @@ if [ -n "$COMMON_DIR" ] && [ -n "$GIT_DIR" ]; then
   COMMON_ABS=$(cd "$PROJECT_ROOT" && cd "$COMMON_DIR" 2>/dev/null && pwd -P)
   GIT_ABS=$(cd "$PROJECT_ROOT" && cd "$GIT_DIR" 2>/dev/null && pwd -P)
   if [ -n "$COMMON_ABS" ] && [ "$COMMON_ABS" != "$GIT_ABS" ]; then
-    MAIN_ROOT=$(dirname "$COMMON_ABS")
-    if [ -d "$MAIN_ROOT" ] && [ "${EXCAVATOR_NO_WORKTREE_REDIRECT:-0}" != "1" ]; then
-      echo "[excavator-domain] Detected git worktree at $PROJECT_ROOT"
-      echo "[excavator-domain] Redirecting output to main repo root: $MAIN_ROOT"
-      echo "[excavator-domain] (Set EXCAVATOR_NO_WORKTREE_REDIRECT=1 to keep PROJECT_ROOT as the worktree.)"
-      PROJECT_ROOT="$MAIN_ROOT"
-    fi
+    echo "[excavator-domain] Detected git worktree at $PROJECT_ROOT"
+    echo "[excavator-domain] The domain graph is written here, inside this worktree, and corresponds only to this worktree's revision."
+    echo "[excavator-domain] Deleting this worktree deletes its .excavator/ cache with it."
   fi
 fi
 ```
@@ -83,20 +79,14 @@ Use `$PLUGIN_ROOT` for every reference to agent definitions in subsequent phases
 ### Phase 1: Detect Existing Graph
 
 1. Check if `$DATA_DIR/knowledge-graph.json` exists
-2. If it exists AND `--full` was NOT passed, check freshness before deriving from it:
-   - Read `project.gitCommitHash` from the graph metadata as `GRAPH_COMMIT_RAW`. Change to `$PROJECT_ROOT`, resolve it as a commit before using it in any Git diff, compare the resolved commit with `git rev-parse HEAD`, and inspect project-scoped committed and working-tree changes:
-     ```bash
-     GRAPH_COMMIT=$(git rev-parse --verify --end-of-options "${GRAPH_COMMIT_RAW}^{commit}" 2>/dev/null)
-     git rev-parse HEAD
-     git diff --name-only "$GRAPH_COMMIT" HEAD -- .
-     git diff --cached --name-only -- .
-     git diff --name-only -- .
-     git ls-files --others --exclude-standard -- .
-     ```
-   - The `-- .` pathspec is required: commits that only touch a sibling monorepo project must not make this graph stale. A hash mismatch alone is not stale when the project diff is empty.
-   - Ignore the `.excavator/` data directory in every command's output because it contains generated graph artifacts, not project source drift.
-   - If the committed diff or any working-tree command reports project files, warn that domain extraction may omit those changes. Suggest: Run `/excavator` to refresh the knowledge graph.
-   - Run the commit diff only when `GRAPH_COMMIT_RAW` resolves successfully. If the graph commit or Git metadata is missing, invalid, or unavailable, give a brief best-effort warning and continue instead of blocking.
+2. If it exists AND `--full` was NOT passed, check freshness before deriving from it (openspec: changes/full-semantic-isolation, capability `consumer-freshness`) — via the ONE shared, deterministic freshness helper (`$PLUGIN_ROOT` was already resolved in Phase 0), instead of this skill computing its own gitCommitHash/git-diff comparison:
+   ```bash
+   node "$PLUGIN_ROOT/skills/excavator/consumer-freshness.mjs" "$PROJECT_ROOT"
+   ```
+   - It prints `{ status, currentSourceRevision, manifestSourceRevision, reason }` as JSON. `status` is `fresh`, `stale`, or `missing`: it compares the CURRENT `sourceRevision` — resolved via SourceSnapshot, so a git project reads HEAD only (an uncommitted working-tree change never flips this — no working-tree leak) and a plain-directory project is guarded by a content hash over every tracked file (any content drift is caught) — against the `sourceRevision` persisted in `.excavator/source-manifest.json`.
+   - `stale`: warn that domain extraction may omit recent changes. Suggest: Run `/excavator` to refresh the knowledge graph.
+   - `missing` (no `source-manifest.json` yet — an older project, or one built before this capability): give a brief best-effort note and continue instead of blocking.
+   - `fresh`: proceed with no warning.
 3. After that preflight, proceed to Phase 3 (derive from graph).
 4. Otherwise, proceed to Phase 2 (lightweight scan). When `--full` is used, skip this preflight because the command performs a fresh scan instead of consuming the existing graph.
 
@@ -222,3 +212,11 @@ have found the documented no-op instead of the anchors.
 ### Phase 6: Service Ready
 
 Report the saved `$DATA_DIR/domain-graph.json` path and that it is ready for terminal queries. Do not start a browser or HTTP server.
+
+**Freshness contract for any later consumer (added; openspec: changes/full-semantic-isolation, capability `domain-freshness`).** `domain-graph.json` now carries top-level `sourceRevision` and `factDigest` (stamped by Phase 4.5's `annotate-domain.mjs`, carried through by Phase 5's `publish-annotations.mjs` — see their own doc comments). ANY later consumer that reads `domain-graph.json` to answer a question (this skill's own terminal queries, or any other skill) MUST check it against the CURRENT fact layer before treating its content as current:
+
+```bash
+node "$PLUGIN_ROOT/skills/excavator-domain/domain-freshness.mjs" "$PROJECT_ROOT"
+```
+
+This prints `{ usable, status, reason }` as JSON. `usable: false` (a `sourceRevision` or `factDigest` mismatch, or no domain graph at all) means the domain graph MUST NOT be used in the answer — say so and suggest re-running `/excavator-domain`. `usable: true` means it may be used, but only as a HINT: domain/flow/step content is re-verified against the fact graph and source evidence before it enters a final answer (it is never itself the evidence for a claim).

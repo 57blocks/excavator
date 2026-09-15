@@ -1,7 +1,7 @@
 ---
 name: excavator
 description: Analyze a codebase into a knowledge graph for architecture understanding and terminal question answering
-argument-hint: ["[path] [--full|--auto-update|--no-auto-update|--review|--language <lang>|--exclude <patterns>]"]
+argument-hint: ["[path] [--mode lazy|full|--full|--auto-update|--no-auto-update|--review|--language <lang>|--exclude <patterns>]"]
 ---
 
 # /excavator
@@ -11,7 +11,8 @@ Analyze the current codebase and produce a `knowledge-graph.json` file in the pr
 ## Options
 
 - `$ARGUMENTS` may contain:
-  - `--full` — Force a full rebuild, ignoring any existing graph
+  - `--mode=lazy|full` — Override `analysisMode` for this run only, without changing `$DATA_DIR/config.json`. Default is `lazy` (facts only, zero LLM calls — see Phase 0 step 6.5). `full` runs the existing full pipeline below.
+  - `--full` — Force a full rebuild, ignoring any existing graph. Equivalent to `--mode=full` plus a forced rebuild; also not persisted to config.json.
   - `--auto-update` — Enable automatic graph updates on commit (writes `autoUpdate: true` to `$DATA_DIR/config.json`)
   - `--no-auto-update` — Disable automatic graph updates (writes `autoUpdate: false` to `$DATA_DIR/config.json`)
   - `--review` — Run full LLM graph-reviewer instead of inline deterministic validation
@@ -50,7 +51,7 @@ Determine whether to run a full analysis or incremental update.
      - Verify the resolved path exists and is a directory (run `test -d <path>`). If it does not exist or is not a directory, report an error to the user and **STOP**.
      - Set `PROJECT_ROOT` to the resolved absolute path.
    - If no directory path argument is found, set `PROJECT_ROOT` to the current working directory.
-   - **Worktree redirect.** If `PROJECT_ROOT` is inside a git worktree (not the main checkout), redirect output to the main repository root. Worktrees managed by Claude Code are ephemeral — the data directory (`.excavator/`) written there is destroyed when the session ends, taking the knowledge graph with it (issue #133). Detect a worktree by comparing `git rev-parse --git-dir` against `git rev-parse --git-common-dir`; in a normal checkout or submodule they resolve to the same path, in a worktree they differ and the parent of `--git-common-dir` is the main repo root.
+   - **Worktree isolation.** If `PROJECT_ROOT` is inside a git worktree (not the main checkout), Excavator writes `.excavator/` **inside that worktree** and never sends output anywhere else. The knowledge graph corresponds only to that worktree's SourceSnapshot revision, which is what keeps two worktrees on different branches/HEADs from silently overwriting each other's graph. The trade-off: deleting the worktree deletes its `.excavator/` cache along with it — this reopens issue #133's data-loss risk by design (a deliberate choice for snapshot correctness, see plan §10), and is expected behavior rather than an error. Detect a worktree by comparing `git rev-parse --git-dir` against `git rev-parse --git-common-dir`; in a normal checkout or submodule they resolve to the same path, in a worktree they differ.
 
      ```bash
      COMMON_DIR=$(git -C "$PROJECT_ROOT" rev-parse --git-common-dir 2>/dev/null)
@@ -59,18 +60,12 @@ Determine whether to run a full analysis or incremental update.
        COMMON_ABS=$(cd "$PROJECT_ROOT" && cd "$COMMON_DIR" 2>/dev/null && pwd -P)
        GIT_ABS=$(cd "$PROJECT_ROOT" && cd "$GIT_DIR" 2>/dev/null && pwd -P)
        if [ -n "$COMMON_ABS" ] && [ "$COMMON_ABS" != "$GIT_ABS" ]; then
-         MAIN_ROOT=$(dirname "$COMMON_ABS")
-         if [ -d "$MAIN_ROOT" ] && [ "${EXCAVATOR_NO_WORKTREE_REDIRECT:-0}" != "1" ]; then
-           echo "[excavator] Detected git worktree at $PROJECT_ROOT"
-           echo "[excavator] Redirecting output to main repo root: $MAIN_ROOT"
-           echo "[excavator] (Set EXCAVATOR_NO_WORKTREE_REDIRECT=1 to keep PROJECT_ROOT as the worktree.)"
-           PROJECT_ROOT="$MAIN_ROOT"
-         fi
+         echo "[excavator] Detected git worktree at $PROJECT_ROOT"
+         echo "[excavator] The knowledge graph is written here, inside this worktree, and corresponds only to this worktree's revision."
+         echo "[excavator] Deleting this worktree deletes its .excavator/ cache with it."
        fi
      fi
      ```
-
-     Set `EXCAVATOR_NO_WORKTREE_REDIRECT=1` if you intentionally want a per-worktree graph (rare — most users want the redirect).
 1.5. **Ensure the plugin is built.** Later phases invoke Node scripts that import `@excavator/core`. On a fresh install `packages/core/dist/` does not exist yet — build once.
 
    **Important:** do **not** assume the plugin root is simply two directories above the skill path string. In many installations `~/.agents/skills/excavator` is a symlink into the real plugin checkout. Try, in order: the Claude Code runtime root, the universal install symlink, then the self-relative path resolved from the skill symlink.
@@ -168,16 +163,36 @@ Determine whether to run a full analysis or incremental update.
 
 5. Check if `$DATA_DIR/knowledge-graph.json` exists. If it does, read it.
 6. Check if `$DATA_DIR/meta.json` exists. If it does, read its `gitCommitHash` and store it as `$LAST_COMMIT_HASH`.
-7. **Decision logic:**
+
+6.5. **Resolve the analysis mode (lazy vs. full).** Read `$DATA_DIR/config.json`'s `analysisMode` field (if present). Parse `$ARGUMENTS` for `--mode=lazy|full` (a single-run override that does NOT change `config.json`) and `--full` (equivalent to `--mode=full` plus a forced rebuild — the pre-existing `--full` flag, unchanged). Apply `resolveMode()`'s rule, defined once in `<SKILL_DIR>/resolve-mode.mjs` (a pure function — see its own tests for every scenario):
+
+   - `--full` present → mode `full`, forced rebuild.
+   - else `--mode=<value>` present → mode `<value>`, this run only, `config.json` untouched.
+   - else stored `config.json` `analysisMode` → that value, `config.json` untouched.
+   - else (no flag, no stored value) → mode `lazy` (the default). Merge `{"analysisMode": "lazy"}` into `$DATA_DIR/config.json` now (preserving every other key), so future runs read an explicit value instead of re-deriving it — mirrors the existing `outputLanguage` first-run persistence above.
+
+   Store the resolved value as `$ANALYSIS_MODE`.
+
+   **If `$ANALYSIS_MODE` is `lazy`:** run the Lazy driver instead of the rest of Phase 0 and Phases 0.5–6:
+   ```bash
+   node "<SKILL_DIR>/lazy-analyze.mjs" "$PROJECT_ROOT" ${EXCLUDE_PATTERNS:+--exclude "$EXCLUDE_PATTERNS"}
+   ```
+   This single script performs Phase 1 SCAN via `scan-project.mjs` (the deterministic script — never the `excavator-project-scanner` subagent), Phase 1.2 STRUCTURE-ALL, the deterministic Fact Builder (`build-fact-graph.mjs`), a deterministic validate pass, and Phase 7 SAVE, with zero LLM/subagent calls: no `file-analyzer`, `summary-verifier`, `assemble-reviewer`, `architecture-analyzer`, or `graph-reviewer` dispatch, no LLM batch file, no HTML, no Tour. It never wipes or downgrades an already-existing full graph's `summary`/`tags`/`layers` — a prior Full run's semantics are merged forward, not overwritten. Report its printed summary to the user and **STOP**. Do not continue to Phase 0.5 or any phase below.
+
+   **If `$ANALYSIS_MODE` is `full`:** continue with the existing pipeline unchanged, starting at step 7 below (a mode forced by `--full` behaves exactly like the existing `--full` row in the decision table).
+
+7. **Decision logic (full analysis only — reached only when `$ANALYSIS_MODE` is `full`):**
 
    | Condition | Action |
    |---|---|
-   | `--full` flag in `$ARGUMENTS` | Full analysis (all phases) |
-   | No existing graph or meta | Full analysis (all phases) |
+   | `--full` flag in `$ARGUMENTS` | Full analysis (all phases) — see **Phase F** below (openspec: changes/full-semantic-isolation) |
+   | No existing graph or meta | Full analysis (all phases) — see **Phase F** below |
    | Existing graph + explicit `--exclude` | Run deterministic incremental preparation even when the commit hash is unchanged, so the new inventory rules take effect immediately |
    | `--review` flag + existing graph + unchanged commit hash | Skip to Phase 6 (review-only — reuse existing assembled graph) |
    | Existing graph + unchanged commit hash | Ask the user: "The graph is up to date at this commit. Would you like to: **(a)** run a full rebuild (`--full`), **(b)** run the LLM graph reviewer (`--review`), or **(c)** do nothing?" Then follow their choice. If they pick (c), STOP. |
    | Existing graph + changed files | Run deterministic incremental preparation below |
+
+   **`full-semantic-isolation` scope note.** "Full analysis (all phases)" (and, below, `FULL_UPDATE`) no longer means "run Phase 1 through Phase 7 below" — it means **Phase F**, a new section placed after Phase 0.5. Phase 1 through Phase 7 below are unchanged and still govern every `PARTIAL_UPDATE` / `ARCHITECTURE_UPDATE` / `SKIP` destination (they already skip Phase 1 for those), plus the `--review` review-only path. Phase F reuses the exact same deterministic fact build Lazy mode uses instead of letting file-analyzer author `knowledge-graph.json`'s nodes/edges/layers directly — see Phase F's own header for why.
 
    **Review-only path:** Copy the existing `knowledge-graph.json` to `$DATA_DIR/intermediate/assembled-graph.json`, then jump directly to Phase 6 step 3.
 
@@ -210,7 +225,7 @@ Determine whether to run a full analysis or incremental update.
    | `SKIP` | Run `node "<SKILL_DIR>/finalize-incremental.mjs" "$PROJECT_ROOT"`. It updates graph metadata, scan, fingerprints, and meta for cosmetic or irrelevant changes, but intentionally advances nothing for generated-artifact-only commits. Without `--review`, report zero LLM tokens spent and **STOP**. With explicit `--review`, copy `$DATA_DIR/knowledge-graph.json` to `$DATA_DIR/intermediate/assembled-graph.json` and jump to the `--review` graph-reviewer path in Phase 6 instead of stopping. |
    | `PARTIAL_UPDATE` | Skip Phase 0.5 and Phase 1; continue with the incremental Phase 1.5/2 path. |
    | `ARCHITECTURE_UPDATE` | Skip Phase 0.5 and Phase 1; continue with incremental analysis, then rerun Phase 4. |
-   | `FULL_UPDATE` | Switch to the existing full pipeline beginning at Phase 0.5. Do not patch fingerprints or metadata from the incremental helper. |
+   | `FULL_UPDATE` | Run Phase 0.5, then **Phase F** below (not the legacy Phase 1-7 pipeline — see the scope note above). Do not patch fingerprints or metadata from the incremental helper; Phase F's own Phase F1 (re)writes them. |
 
    `filesToReanalyze` contains only current, non-ignored files with structural changes. Deletions, newly ignored files, cosmetic changes, and generated artifacts are never passed to file-analyzer.
 
@@ -267,7 +282,253 @@ Set up and verify the `.excavatorignore` file before a full scan. Incremental pr
 3. **If it already exists**, report:
    > Found `$DATA_DIR/.excavatorignore`. Review it if needed, then confirm to continue.
    - **Wait for user confirmation before proceeding.**
-4. After confirmation, proceed to Phase 1.
+4. After confirmation, proceed to **Phase F** below (openspec: changes/full-semantic-isolation — see the scope note in Phase 0 step 7 above). Phase 1 below is superseded for this destination.
+
+---
+
+## Phase F — Full Semantic Generation (added; openspec: changes/full-semantic-isolation)
+
+This section is what "Full analysis (all phases)" and `FULL_UPDATE` (Phase 0
+step 7's decision table) now mean. It replaces the OLD mechanism — file-
+analyzer authoring `knowledge-graph.json`'s nodes/edges directly, merged by
+`merge-batch-graphs.py`, reviewed by `excavator-assemble-reviewer` and saved
+as-is (Phase 1 through Phase 7 below) — because that mechanism let the model
+recreate the structure graph, which this capability's spec forbids: `/excavator
+--mode=full` SHALL run the SAME deterministic `scan -> structure-all ->
+build-fact-graph` Lazy runs, and for the same source SHALL get the same
+`factsDigest` Lazy gets. Phase 1 through Phase 7 below are UNCHANGED and still
+apply verbatim to the `PARTIAL_UPDATE` / `ARCHITECTURE_UPDATE` / `SKIP`
+incremental destinations and the `--review` review-only path — none of those
+reach Phase 1's subagent-dispatch SCAN either (they already skip it).
+
+The LLM writes only two things here, and never a node id, a source range, a
+structural edge, `coverage`, or `gaps` in `knowledge-graph.json`:
+- node-local `summary`/`tags` for an EXISTING fact node, into
+  `$DATA_DIR/semantic-cache.json` (Phase F2, reusing Slice C's cache);
+- architecture `layers` and cross-node `relations`, into the new
+  `$DATA_DIR/semantic-graph.json` (Phase F3), gated by `factDigest` so an
+  unchanged fact graph does not pay for Architecture again.
+
+An id the model writes that is not a real fact node id is dropped and
+recorded as a semantic gap — never a fact anchor, never silently kept. See
+`semantic-graph.mjs` and `apply-semantic-patches.mjs` (next to this file) for
+the enforcing code.
+
+Set `$FULL_MODE_FORCED` once, at the start of this section: `1` if `--full`
+is in `$ARGUMENTS` (the same flag Phase 0 step 7 already checked to route
+here), else `0`. Phase F2 and Phase F3 below both read it.
+
+### Phase F1 — FACT BUILD
+
+Report: `[Phase F1] Building the deterministic fact graph...`
+
+Run the EXACT SAME driver Phase 0 step 6.5 documents for Lazy mode:
+
+```bash
+node "<SKILL_DIR>/lazy-analyze.mjs" "$PROJECT_ROOT" ${EXCLUDE_PATTERNS:+--exclude "$EXCLUDE_PATTERNS"}
+```
+
+This performs SCAN, STRUCTURE-ALL, import-map extraction, the deterministic
+Fact Builder, a deterministic validate pass, and SAVE (`knowledge-graph.json`
+fact fields, `meta.json`, `fingerprints.json`, `source-manifest.json`,
+`source-index.json`) — zero LLM/subagent calls. It is non-destructive: a
+node's prior semantic fields (if any — from before this slice) are preserved,
+not wiped, though Full no longer writes semantics there going forward.
+
+Read the driver's printed `factsDigest`, or re-read
+`$DATA_DIR/knowledge-graph.json`'s `project.factsDigest`; store as
+`$FACTS_DIGEST`. On a non-zero exit or a printed `SAVE FAILED`, **STOP** —
+there is no fact graph to generate semantics against.
+
+### Phase F2 — SEMANTIC GENERATE (node-local patches -> `semantic-cache.json`)
+
+Report: `[Phase F2] Selecting files needing semantic (re)generation...`
+
+1. **Select stale/missing files.** Pass `--force-all` when `--full` is in
+   `$ARGUMENTS` — that flag's meaning here is "regenerate every file's
+   semantics" (the fact layer itself is already unconditionally rebuilt
+   fresh every run by Phase F1, so `--full` no longer needs to force that
+   part):
+
+   ```bash
+   node "<SKILL_DIR>/select-stale-semantics.mjs" "$PROJECT_ROOT" $([ "$FULL_MODE_FORCED" = 1 ] && echo --force-all)
+   ```
+
+   Writes `$DATA_DIR/intermediate/stale-semantics.json` (counts) and
+   `$DATA_DIR/intermediate/stale-files.json` (a plain JSON array of paths).
+   Report: `{stale} of {total} files need semantic (re)generation.` If
+   `{stale}` is 0, skip straight to Phase F3 — the zero-token path for an
+   unchanged project.
+
+2. **Batch the stale files**, reusing the same batching script Phase 1.5
+   below uses (see its own doc for the algorithm):
+
+   ```bash
+   node "<SKILL_DIR>/compute-batches.mjs" "$PROJECT_ROOT" \
+     --changed-files="$DATA_DIR/intermediate/stale-files.json"
+   ```
+
+   Writes `$DATA_DIR/intermediate/batches.json`, scoped to only the stale
+   files.
+
+3. **Dispatch file-analyzer for node-local patches, not a graph.** For each
+   batch, dispatch a subagent using the `excavator-file-analyzer` agent
+   definition (`agents/excavator-file-analyzer.md`). Run up to **5**
+   subagents concurrently. Read `knowledge-graph.json` and, for this batch's
+   files, list every fact node's `{id, type, name, filePath, lineRange}` —
+   this is the ONLY set of ids the dispatch may use.
+
+   > Produce a semantic patch for each fact node below: a `summary` and
+   > `tags` describing what it does, from reading its source at the given
+   > `filePath`/`lineRange`. Copy each `nodeId` VERBATIM from the list — do
+   > NOT invent a node, an edge, a layer, or an id that is not in this list.
+   > Project root: `$PROJECT_ROOT`
+   > Fact nodes for this batch:
+   > ```json
+   > <filtered {id, type, name, filePath, lineRange} list>
+   > ```
+   > Write output to: `$DATA_DIR/intermediate/semantic-patch-batch-<batchIndex>.json`
+   > as `{ "patches": [{ "nodeId": "<copied verbatim>", "summary": "...", "tags": ["..."] }] }`.
+   >
+   > $LANGUAGE_DIRECTIVE
+
+4. **Hydrate + commit.** The model was never asked for `filePath` or a
+   content hash — attach both deterministically (`filePath` from the fact
+   node id's own entry, `semanticSourceHash` from that file's CURRENT
+   `contentHash` in `source-manifest.json`) before calling
+   `apply-semantic-patches.mjs`, which re-validates every `nodeId` against
+   the real fact-graph id set one more time and NEVER commits an unmappable
+   one (recorded as a semantic gap instead):
+
+   ```bash
+   node - "$PROJECT_ROOT" "$DATA_DIR/intermediate/semantic-patch-batch-<i>.json" <<'NODE'
+   const fs = require('fs');
+   const path = require('path');
+   const [projectRoot, batchPath] = process.argv.slice(2);
+   const dataDir = path.join(projectRoot, '.excavator');
+   const manifest = JSON.parse(fs.readFileSync(path.join(dataDir, 'source-manifest.json'), 'utf-8'));
+   const graph = JSON.parse(fs.readFileSync(path.join(dataDir, 'knowledge-graph.json'), 'utf-8'));
+   const nodeById = new Map(graph.nodes.map(n => [n.id, n]));
+   const hashByPath = new Map(manifest.entries.map(e => [e.path, e.contentHash]));
+   const batch = JSON.parse(fs.readFileSync(batchPath, 'utf-8'));
+   const patches = (batch.patches ?? []).map(p => {
+     const node = nodeById.get(p.nodeId);
+     const filePath = node ? node.filePath : null;
+     return { ...p, filePath, semanticSourceHash: filePath ? (hashByPath.get(filePath) ?? null) : null };
+   });
+   fs.writeFileSync(batchPath, JSON.stringify({ patches }, null, 2));
+   NODE
+   node "<SKILL_DIR>/apply-semantic-patches.mjs" "$PROJECT_ROOT" \
+     --patches "$DATA_DIR/intermediate/semantic-patch-batch-<i>.json" \
+     --out "$DATA_DIR/intermediate/semantic-patch-report-<i>.json"
+   ```
+
+   A `nodeId` the hydration step cannot find gets `filePath: null`, which
+   `apply-semantic-patches.mjs` treats as unmappable and rejects before it
+   ever reaches `commitSemanticCacheEntry`.
+
+Concatenate every `semantic-patch-report-<i>.json`'s `gaps` array into
+`$DATA_DIR/intermediate/semantic-gaps.json` — Phase F3 merges this into
+`semantic-graph.json`'s own `gaps`, so a patch-time gap is not lost even when
+Architecture itself is reused unchanged.
+
+### Phase F3 — ARCHITECTURE (factDigest-gated; layers/relations -> `semantic-graph.json`)
+
+Report: `[Phase F3] Checking whether architecture needs to rerun...`
+
+```bash
+node "<SKILL_DIR>/semantic-graph.mjs" "$PROJECT_ROOT" check
+```
+
+Prints `reuse` or `rebuild` to stdout (and the reason to stderr). Treat this
+as `rebuild` unconditionally when `--full` is in `$ARGUMENTS` (same
+"ignore any existing product" intent `--full` has always had).
+
+**If `reuse`:** run
+```bash
+node "<SKILL_DIR>/semantic-graph.mjs" "$PROJECT_ROOT" merge-gaps \
+  --extra-gaps "$DATA_DIR/intermediate/semantic-gaps.json"
+```
+to refresh ONLY `semantic-graph.json`'s `gaps` with Phase F2's patch-time
+gaps (its `layers`/`relations`/`factDigest` are left exactly as they were —
+a reused Architecture must not silently swallow a gap this run actually
+found). Report `Architecture unchanged (factDigest match) — reusing existing
+semantic-graph.json.` and continue to Phase F4 without dispatching anything.
+
+**If `rebuild`:** dispatch the SAME `excavator-architecture-analyzer` agent
+definition Phase 4 below uses (language/framework context injection identical
+to Phase 4's own steps 2-4), retargeted at fact nodes and this artifact:
+
+> Analyze this codebase's structure to identify architectural layers and any
+> notable cross-node relations. Every `nodeIds` entry and every relation's
+> `source`/`target` MUST be copied verbatim from the fact node id list below
+> — an id that is not in this list is not a real node and will be dropped.
+> Project root: `$PROJECT_ROOT`
+> Fact nodes: `<{id, type, name, filePath} for every node in knowledge-graph.json>`
+> Import edges: `<edges with type "imports" from knowledge-graph.json>`
+> Write output to: `$DATA_DIR/intermediate/semantic-layers.json` as
+> `{ "layers": [{"id","name","description","nodeIds"}], "relations": [{"id","type","source","target","description"?,"evidence"?}] }`
+
+Then dispatch `excavator-assemble-reviewer` (`agents/excavator-assemble-reviewer.md`)
+to sanity-check the draft against the fact node/edge lists, the same review
+intent as Phase 3 below, retargeted at this smaller draft instead of a whole
+merged graph. Apply any corrections it proposes to
+`semantic-layers.json` before writing.
+
+Write the artifact (`--layers`/`--relations` may point at the SAME file when
+it already carries both keys, as above):
+
+```bash
+node "<SKILL_DIR>/semantic-graph.mjs" "$PROJECT_ROOT" write \
+  --layers "$DATA_DIR/intermediate/semantic-layers.json" \
+  --relations "$DATA_DIR/intermediate/semantic-layers.json" \
+  --extra-gaps "$DATA_DIR/intermediate/semantic-gaps.json" \
+  --model "${EXCAVATOR_MODEL:-unknown}"
+```
+
+This drops any `nodeIds`/relation-endpoint that is not a real fact node id,
+recording each as a semantic gap (never a dangling reference, never a fact
+anchor), stamps the CURRENT `factsDigest` as `factDigest`, and writes
+`$DATA_DIR/semantic-graph.json`. Report the layer/relation counts and any
+gaps to the user.
+
+### Phase F4 — VERIFY SEMANTICS (Summary-Verifier stays in Full; Lazy never runs it)
+
+Report: `[Phase F4] Verifying cached summaries against the source...`
+
+Same three-step shape as Phase 2.5 below, retargeted at
+`semantic-cache.json` via `apply-verification.mjs`'s semantic actions —
+these never read or write a `knowledge-graph.json` node:
+
+```bash
+node "<SKILL_DIR>/apply-verification.mjs" "$PROJECT_ROOT" prepare-semantic
+```
+
+With `--no-verify`, run `skip-semantic` instead (no dispatch) and continue to
+Phase F5. If the manifest's `selected` count is 0, also skip to Phase F5.
+
+Otherwise dispatch `excavator-summary-verifier`
+(`agents/excavator-summary-verifier.md`) per
+`$DATA_DIR/intermediate/semantic-verify-batch-<i>.json`, writing
+`$DATA_DIR/intermediate/summary-verdicts-<i>.json` — identical prompt shape
+to Phase 2.5's Step 2 below (no project description, no graph, no language
+directive: the verifier's independence is the point). Then:
+
+```bash
+node "<SKILL_DIR>/apply-verification.mjs" "$PROJECT_ROOT" apply-semantic
+```
+
+Writes verdicts into `semantic-cache.json` entries' `verification` field and
+`$DATA_DIR/intermediate/semantic-verification.json`. Report the counts, same
+format as Phase 2.5's report line below.
+
+### Phase F5 — REPORT
+
+Report a summary to the user containing: files with fresh vs. regenerated
+semantics, summaries committed to `semantic-cache.json`, whether Architecture
+reused or rebuilt `semantic-graph.json` (with layer/relation counts), any
+semantic gaps (count and top kinds), and the Phase F4 verification counts.
+Then **STOP** — do not run Phase 1 through Phase 7 below.
 
 ---
 

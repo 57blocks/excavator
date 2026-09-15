@@ -4,6 +4,7 @@
 日期：2026-09-12  
 范围：`/excavator`、`/excavator-chat`、`/excavator-diff`、`/excavator-explain`、`/excavator-onboard`、`/excavator-domain`、知识图谱持久化与增量更新  
 评审：已纳入 GPT-6 以及二次架构 Review 对快照抽象、非 Git 支持、检索召回、多跳遍历、数据隔离、节点身份和缓存并发的反馈
+评审（2026-09-14，对照 v2 现有代码）：对照 `structure-all.mjs`、`prepare-incremental.mjs`、`excavator-chat` 复核后补齐——节点身份契约（去重唯一支点，§4.1）、按需语义为何不产生重复数据（§7.3/§8）、缓存锁的陈旧处理（§8）、worktree 隔离与 issue #133 的冲突（§10）、HEAD-only 快照对 chat 的行为变化（§3.1）、事实层是对现有确定性抽取的投影（§4）、以及把检索引擎从"子步骤"重切为独立切片（§11）。
 
 ## 1. 目标
 
@@ -19,6 +20,8 @@
 - 问答始终基于一个具有稳定 revision 的源码快照。
 - Full 与 Lazy 共用同一事实层，不维护两套结构分析机制。
 - 产品只提供分析产物和终端问答，不恢复 HTML、Dashboard、Viewer 或 Tour。
+
+**"Lazy" 的准确含义**：Lazy 去掉的是**首次运行的逐文件 LLM 批处理**（file-analyzer / summary-verifier / assemble-reviewer / architecture-analyzer / graph-reviewer 五类 subagent，对应 v2 `skills/excavator/SKILL.md` 的 Phase 2 / 2.5 / 3 / 4 / 6）。Chat 本身仍会调用模型——用于查询扩展（§7.1）和最终回答；按需语义补充（§7.3）也会调用模型。因此 Lazy ≠ "问答不再用 LLM"，而是"不在分析前一次性烧掉整仓的 LLM 预算"。
 
 ## 2. 已确定的产品边界
 
@@ -44,6 +47,8 @@
 - `/excavator --mode=lazy` 或 `/excavator --mode=full` 只覆盖本次运行，不改配置。
 - 现有 `/excavator --full` 保留为一次性别名，等价于 `--mode=full` 加强制重建事实，不持久化配置。
 - `/excavator-chat` 不要求用户选择更新策略；它始终先做轻量的新鲜度检查。
+
+**存量迁移**：默认值翻转为 `lazy` 不得破坏已存在的 `.excavator/` 产物。若项目已有完整的 `knowledge-graph.json`（含非空 summary / layers）与 `semantic-graph.json`，切到 lazy 默认后：事实层照常按 sourceRevision 增量同步，已有语义按 §7.4 的 hash 规则复用或失效，**不清空、不降级**已生成的语义；只有显式 `/excavator --mode=full` 才会主动补齐。首次从 pre-lazy 布局升级时，若缺 `source-manifest.json` / `factDigest`，做一次性确定性重建补齐这些键，语义缓存按新 manifest 重新判断新鲜度。
 
 ## 3. SourceSnapshot 与源码版本
 
@@ -82,6 +87,8 @@ git:<full-head-sha>
 - 终端显示 `Analyzing git:<short-sha>; uncommitted changes ignored`。
 
 只要 HEAD 不变，工作区变化不得改变图谱、索引、语义缓存或回答引用的源码。
+
+**这会改变 v2 当前 chat 行为**：现 `excavator-chat` 会检查 staged/unstaged/untracked 并在回答前 **warn**（见 `skills/excavator-chat/SKILL.md`）。改为 HEAD-only 后，Git 项目里"我刚改了还没提交"的问题会按 HEAD 回答、忽略工作区改动，只在终端给一行提示。这是为确定性主动做的取舍——务必让该提示显著（例如每次回答前打印 `Analyzing git:<short-sha>; N uncommitted file(s) ignored — commit or use a non-git checkout to include them`），避免用户误以为回答覆盖了未提交改动。
 
 ### 3.2 MultiRepoSnapshot
 
@@ -130,6 +137,8 @@ Chat 读取非 Git 源码时也必须校验文件 hash；不匹配时先同步�
 skills/excavator/build-fact-graph.mjs
 ```
 
+**它主要是"投影"，不是新抽取器**。v2 已有的 Phase 1.2 `structure-all.mjs` 已确定性产出每个文件的：`status`（`parsed`/`zero-symbol`/`no-extractor`/`parse-failed`）、带行号的声明、带行号的 imports/exports、以及 call sites；import-map 已解析项目内部导入。Fact Builder 的职责是把这些 + import-map 规范化为事实节点/边，算 coverage / gaps / fingerprints 与 factDigest，**不重新解析源码**。唯一真正的新增确定性工作是"把 call site 唯一解析到目标节点"（§4.2）——解析不了就写 gap，绝不猜。
+
 输入：
 
 - SourceSnapshot 的扫描结果；
@@ -162,6 +171,26 @@ path + kind + owner + normalized signature
 ```
 
 缺少签名时使用 name；以上字段仍无法区分时，声明序号只能作为最后兜底。禁止把不同 receiver、class 或 owner 下的同名方法合并。
+
+#### 节点身份契约（去重的唯一支点）
+
+按需语义缓存按**节点 ID**去重（§7.3 / §8）——同一逻辑节点每次必须得到同一个 ID，否则一个节点会出现两条缓存、并产生"有事实节点却无对应语义"的悬挂。因此节点身份是整套 Lazy 缓存正确性的**单点支柱**，必须由一处实现、Fact Builder 与 Chat 查缓存两侧**共用同一函数**，不得各算各的。
+
+必须成立的不变量：
+
+1. **确定性**：同一源码内容，重复运行得到逐字节相同的 ID。
+2. **跨 adapter 稳定**：同一逻辑文件，无论经 GitCommitSnapshot（git blob 路径）、DirectorySnapshot（相对路径）还是 MultiRepoSnapshot（带成员前缀的路径）分析，规范化后得到同一 path 分量，从而同一 ID。多仓成员前缀规则要写死（如 `<memberId>/<member-relative-path>`），它是 factDigest 跨 adapter 一致（§12.4.1）的前提。
+3. **可区分维度不坍缩**：不同 receiver / class / owner 下的同名方法、签名不同的重载，必须是不同 ID（守恒过得了坍缩，靠可区分维度判定，不靠计数）。
+4. **匿名/难命名构造有稳定兜底**：匿名函数、箭头常量、默认导出的匿名 handler、闭包内声明等没有稳定 name/signature 的节点，兜底顺序为 `path+kind+owner+signature` → `path+kind+owner+name` → **owner 内同 kind 声明的出现序号**。序号是脆弱兜底：在它之前**新增一个同类声明**会改变序号（该节点语义缓存随之失效重算——可接受的偶发代价，不是错误）；但插入注释、空行或非同类代码不得改变它。序号必须记入 provenance 以标记这份脆弱性。
+5. **与既有产物对齐**：ID 规范化必须与 v2 现有 `annotate-graph.mjs` / `structure-all.mjs` 的锚点一致，避免事实层与（迁移期仍存在的）旧语义层身份漂移。
+
+验收夹具（Step / 切片 A 先写失败）：
+
+- 同内容不同路径（git 相对 vs 目录相对 vs 多仓成员前缀）→ 同 ID；
+- 同内容经 GitCommitSnapshot 与 DirectorySnapshot → 同 factDigest（§12.4.1 已列）；
+- 同文件两个不同 receiver 的同名方法 → 两个不同 ID；
+- 在匿名 handler 前插入注释 / 空行 / 非同类声明 → 该 handler ID 不变；在其前新增一个同类声明 → 该 handler ID 允许变化，但只表现为该节点缓存失效重算，**绝不张冠李戴到别的节点**；
+- 重命名文件（git 未识别为 rename）→ 旧 ID 记为删除、新 ID 记为新增，语义缓存对旧 ID 失效而非错配到新节点。
 
 ### 4.2 事实边
 
@@ -329,6 +358,11 @@ source chunk 至少记录 path、owner、symbol、line range、拆分后的 iden
 
 跨文件业务结论、领域流程和回答文本不写入语义缓存。跨文件结论可以在当次回答中基于证据生成，但不写回为长期事实。
 
+**为什么按需补充不产生重复数据**。缓存的最小单位是**节点自身**（按节点 ID + source hash 去重），不是"路径"或"流程"，所以根本不存在"B→C"这样一条可被重复写入的记录：
+
+- **A→B→C，先问 B→C 再问 A→C**：问 B→C 时缓存 `summary(B)`、`summary(C)`；再问 A→C 时 B、C 按 ID 命中且 hash 未变 → 直接复用，只新算 `summary(A)`。A→B、B→C 这些边是**确定性事实**，由 Fact Builder 去重后写在 `knowledge-graph.json`，chat 只读不写。流程级理解（"A→B→C 合起来做了什么"）**按设计不落缓存**，每次基于事实边 + 节点摘要 + 源码证据重新推理——这是重算，不是重复存储；节点摘要（真正贵的逐文件读取）已被复用。需要流程级复用请走 Domain overlay（§7.5），它按 sourceRevision + factDigest 显式产出并去重。
+- **两个 session 并发问 B→C**：两边都会**各自计算** `summary(B)`（重复的是算力 / token，不是数据）；写入时按 §8 的锁串行化，第二个 session 重读后对同一 node ID 做**幂等 upsert**（覆盖为等价值），不追加第二条。锁只协调"写"、不协调"生成"——即接受偶发重复计算，换取无需跨 session 的生成锁（生成锁会让一个 session 阻塞等另一个，且持有者崩溃会卡死）。
+
 ### 7.4 语义新鲜度
 
 不增加显式状态机。字段有效性由 hash 直接判断：
@@ -359,6 +393,8 @@ Git 项目的工作区修改不会改变 HEAD manifest，因此不会让缓存�
 
 原子 rename 只防止半文件，不能防止两个 Chat 相互覆盖，所以锁、重新加载和 hash compare-and-swap 三者都需要保留。
 
+**锁的陈旧处理**。`.excavator/semantic.lock` 只在"提交语义产物"这一步短暂持有（毫秒级，不覆盖 LLM 生成），因此卡死概率低；但仍须防"持锁者崩溃"：锁文件写入 `{ pid, host, acquiredAt }`，获取时若锁已存在且 `acquiredAt` 超过 TTL（例如 30s，远大于一次提交耗时）即视为陈旧并夺锁；夺锁与随后的 compare-and-swap（第 3 步）叠加，保证即便误夺也不会覆盖更新的 hash。重申锁只协调写、不协调生成：并发 session 可能重复计算同一节点摘要（可接受的 token 浪费），但存储侧因按 node ID upsert + CAS 而始终无重复、无丢更新。
+
 ## 9. Full 模式如何复用同一机制
 
 Full 不再让 LLM 重新创造整张结构图：
@@ -388,21 +424,23 @@ Full 不以逐字保持旧图里所有 module / concept 节点数量为兼容目
 
 这会牺牲少量缓存复用，但能避免不同分支覆盖同一图谱。
 
+**与 v2 现状冲突，需显式改 skill**：当前 `skills/excavator/SKILL.md` Phase 0 的做法**相反**——检测到 worktree 时把输出**重定向到主 checkout**，注释引用 issue #133：Claude Code 的 worktree 是临时的，写在其中的 `.excavator/` 会随 session 销毁而丢图。§10 翻转为 per-worktree 是为快照正确性（图只对应该 worktree 的 revision、避免跨分支互相覆盖）做的主动取舍，但它**重新打开了 #133 的丢数据风险**。落地时必须：删掉 Phase 0 的 worktree 重定向逻辑；并明确提示"worktree 删除即缓存丢失"（§10 已声明容忍）。不得让两处默默矛盾。
+
 ## 11. 实施顺序与工时
 
-每一步按仓库规则建立 OpenSpec change、先写失败验收、实现、验证，再单独 commit。
+每一步按仓库规则建立 OpenSpec change、先写失败验收、实现、验证，再单独 commit。**按薄垂直切片交付**：每个切片独立可测、独立可用，避免把"能用"吊在一个大步骤之后。
 
-| 步骤 | 内容 | 预计工时 |
-|---|---|---:|
-| 1 | SourceSnapshot 契约、三种 adapter、sourceRevision 与身份 fixture | 7–10 小时 |
-| 2 | 确定性 Fact Builder、source index 与 revision 增量同步 | 7–9 小时 |
-| 3 | Chat 混合检索、多跳遍历、按需语义和并发缓存 | 7–10 小时 |
-| 4 | Full 语义物理隔离、Domain 新鲜度与所有消费 skill 迁移 | 8–11 小时 |
-| 5 | 端到端验收、性能记录和文档 | 5–8 小时 |
+| 切片 | 内容 | 独立价值 / 验收 | 预计工时 |
+|---|---|---|---:|
+| A | 节点身份契约（§4.1，去重支柱，最先落）+ Lazy 首次运行（事实层 = `structure-all` + import-map 的投影）+ 只答**结构类**问题的 chat | 立刻消除 >1h 首跑；身份夹具 + go-clean-arch 首跑 <60s + 结构问答（§7 结构路径）全绿 | 10–16 小时 |
+| B | SourceSnapshot 契约与三种 adapter（Git / Multi-repo / Directory）+ revision 增量同步（复用 `prepare-incremental.mjs`）+ 快照一致性 guard | 增量、非 Git、多仓的首建与同步（§12.2）全绿；factDigest 跨 adapter 一致（§12.4.1） | 10–14 小时 |
+| C | 检索引擎：`source-index.json`（symbol-aware BM25）+ 查询扩展 + 有预算多跳遍历 + 按需语义 + 并发缓存（锁 + CAS + 陈旧处理）| 中文问题命中英文代码（§12.3.1）+ 多跳路径（§12.3.2）+ 并发无丢更新（§12.4.5） | 14–20 小时 |
+| D | Full 语义物理隔离 + Domain 新鲜度 + 所有消费 skill（chat / diff / explain / onboard / domain / 自动更新 hook）迁移到 sourceRevision | Full 与 Lazy 事实投影一致且不改 canonical graph（§12.5）+ 消费端一致（§12.6） | 10–14 小时 |
+| E | 端到端验收、性能记录、文档、清理 Phase 0 的 worktree 重定向（§10）| §13 完成定义全过 | 5–8 小时 |
 
-总计：34–48 小时。
+总计：49–72 小时。原 34–48 小时估计偏乐观：切片 C（检索引擎）是从零建持久化 BM25 索引 + 多跳遍历 + 并发缓存，接近"另一个产品"，故单独拆出并上调；身份契约提前进 A 作为一切去重的前置。
 
-顺序不能交换：先统一快照语义，再建立权威事实层和索引；先证明增量同步可靠，再让 Chat 自动调用；最后才迁移 Full 和其他消费 skill。
+**排序理由**：身份契约必须最先落（B/C/D 的去重都依赖它）；先交付 A 拿到"首跑变快"的即时价值并验证事实层；再做 B 证明快照与增量可靠；C 是最大不确定性——**其中中文→英文召回（§12.3.1）必须在建全量索引前，先用一小组 gold 原型验证"无 embedding、只靠 BM25 + 查询扩展"这条路走不走得通**，走不通就在 C 内改用向量召回，不要把这个赌注埋到最后；D / E 收尾。切片内部顺序不可交换：先统一快照语义与事实层，再让 Chat 自动调用，最后迁移 Full 与其他消费端。
 
 ## 12. 最小验收标准
 

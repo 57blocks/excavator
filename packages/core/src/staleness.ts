@@ -69,11 +69,25 @@ interface ProjectGitSnapshot {
 
 const GIT_TIMEOUT_MS = 5_000;
 const GIT_MAX_BUFFER_BYTES = 4 * 1024 * 1024;
+// Kept in sync with core's own single source of truth,
+// DEFAULT_IGNORE_PATTERNS (ignore-filter.ts): `.excavator/` plus the
+// `.excavator` variant/backup (`.excavator.*/`, `.excavator-*/`) and
+// `.trash-*/` recycle directory shapes — none of these are analysis input,
+// so a staleness check must never report the graph "stale" over the SAVE
+// phase moving scratch dirs into `.trash-<timestamp>/` or a manual
+// `.excavator.<label>-bak/` snapshot sitting beside the real data dir. Git
+// pathspec's default (non-`:(literal)`) matching already lets `*` cross `/`
+// (fnmatch semantics — see gitglossary(7)'s "pathspec" entry), so the plain
+// `*` forms below are equivalent to `:(exclude,glob)` here; kept unadorned
+// for consistency with the two pre-existing entries.
 const PROJECT_PATHSPEC = [
   "--",
   ".",
   ":(exclude).excavator",
   ":(exclude).excavator/**",
+  ":(exclude).excavator.*/**",
+  ":(exclude).excavator-*/**",
+  ":(exclude).trash-*/**",
 ] as const;
 
 class GitCommandError extends Error {

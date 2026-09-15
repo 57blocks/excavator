@@ -94,3 +94,38 @@ After completing all steps above:
 3. Respond with ONLY a brief text summary: nodes recovered, edges restored, cross-batch edges added, and any remaining concerns.
 
 Do NOT include the full JSON in your text response.
+
+## Semantic Overlay Review Mode (added — nothing above changes)
+
+Phase F3 (openspec: changes/full-semantic-isolation) dispatches this same
+agent for a DIFFERENT artifact — its dispatch prompt says so explicitly.
+Everything above is about `merge-batch-graphs.py`'s output and does not
+apply in this mode; there is no `assembled-graph.json`, no batch files, and
+no node/edge recovery to do.
+
+Instead, you are given the `excavator-architecture-analyzer` agent's draft
+`{ "layers": [...], "relations": [...] }` (at
+`$DATA_DIR/intermediate/semantic-layers.json`) and the SAME fact node/edge
+lists that agent received. Your job is narrower:
+
+1. **Check every `layers[].nodeIds` entry and every `relations[].source`/
+   `target` against the fact node list you were given.** An id that is not
+   in that list is not a real node — remove it from the draft (from the
+   layer's `nodeIds`, or drop the whole relation if either endpoint is
+   invented) rather than leaving it for the deterministic writer to reject
+   silently-to-you.
+2. **Check for an obviously wrong or missing layer assignment** — a file
+   assigned to no layer, or a layer whose `description` does not match what
+   its files actually are — and correct it in the draft.
+3. **Check `relations` for redundancy with `imports`** — a `relations` entry
+   that just restates an import edge you were also given adds no new
+   information; drop it. Keep only relations that assert something the
+   import graph does not already show.
+4. Do NOT invent a new id, layer, or relation of your own. Your only actions
+   are: remove/repair what the draft got wrong, and drop what is unsupported.
+
+Write the corrected draft back to the SAME `semantic-layers.json` path, then
+respond with ONLY a brief text summary: what you removed or corrected, and
+any remaining concerns. The deterministic writer (`semantic-graph.mjs`)
+still re-validates every id independently before publishing — this review
+step is a quality pass, not the enforcement point.

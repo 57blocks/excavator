@@ -24,6 +24,24 @@
  * truth. `step-unanchored` is deliberately NOT written here — that count
  * belongs to the validator, and writing it in both places would double it.
  *
+ * Domain freshness keys (added; openspec: changes/full-semantic-isolation,
+ * capability `domain-freshness`, design D4). This is also where
+ * `domain-graph.json`'s two freshness fields get stamped, at the TOP level
+ * of the annotated domain graph: `sourceRevision` (the persisted
+ * `source-manifest.json`'s `sourceRevision` at the time Domain ran — the
+ * SAME value the fact layer was built against, read directly rather than
+ * re-resolved, so a domain graph never claims a newer revision than the
+ * knowledge graph it was derived from) and `factDigest` (the knowledge
+ * graph's own `project.factsDigest` — the identical value
+ * `semantic-graph.mjs`'s factDigest gate reads, so "the fact layer this
+ * Domain analysis was anchored against" has exactly one meaning across the
+ * codebase). Neither field is invented when its source is unavailable: a
+ * project with no `source-manifest.json` yet (never analyzed) or no
+ * `knowledge-graph.json` gets NO `sourceRevision`/`factDigest` key at all,
+ * which `domain-freshness.mjs`'s gate then correctly reads as "never
+ * usable" rather than a fabricated match. See `domain-freshness.mjs` for the
+ * consumption side of this contract.
+ *
  * Usage:
  *   node annotate-domain.mjs <projectRoot>
  *     [--domain <domain-analysis.json>] [--graph <knowledge-graph.json>]
@@ -152,8 +170,16 @@ function evidenceFor(nodes) {
 
 /**
  * The whole annotation. Pure over two already-parsed graphs.
+ *
+ * @param {{
+ *   domainGraph: object, knowledgeGraph: object|null, sampleLimit?: number,
+ *   sourceRevision?: string|null,
+ * }} args `sourceRevision` is the persisted source-manifest.json's
+ *   `sourceRevision` at call time (the CLI reads it; a direct unit-test call
+ *   may omit it, in which case no `sourceRevision`/`factDigest` key is
+ *   stamped at all — see the module doc's "Domain freshness keys" section).
  */
-export function annotateDomain({ domainGraph, knowledgeGraph, sampleLimit = 5 }) {
+export function annotateDomain({ domainGraph, knowledgeGraph, sampleLimit = 5, sourceRevision = null }) {
   const annotated = clone(domainGraph);
   annotated.nodes = Array.isArray(annotated.nodes) ? annotated.nodes : [];
 
@@ -276,6 +302,18 @@ export function annotateDomain({ domainGraph, knowledgeGraph, sampleLimit = 5 })
   gaps.sort((a, b) => compareStrings(a.kind, b.kind) || compareStrings(a.scope, b.scope));
   annotated.gaps = gaps;
 
+  // Domain freshness keys (design D4) — stamped only when their source value
+  // is actually known. A caller that omits `sourceRevision` (an existing
+  // unit test, or a standalone run with no source-manifest.json yet) gets NO
+  // `sourceRevision`/`factDigest` key at all rather than a fabricated one;
+  // `domain-freshness.mjs`'s gate treats an absent key as "never usable".
+  if (typeof sourceRevision === 'string' && sourceRevision.length > 0) {
+    annotated.sourceRevision = sourceRevision;
+  }
+  if (typeof knowledgeGraph?.project?.factsDigest === 'string' && knowledgeGraph.project.factsDigest.length > 0) {
+    annotated.factDigest = knowledgeGraph.project.factsDigest;
+  }
+
   const report = {
     scriptCompleted: true,
     counts,
@@ -363,8 +401,31 @@ async function main() {
     );
   }
 
+  // Domain freshness (design D4): read the sourceRevision the FACT LAYER was
+  // built against — the persisted source-manifest.json — rather than
+  // re-resolving a live SourceSnapshot here. A domain graph's stamped
+  // sourceRevision then means exactly "the source state the knowledge graph
+  // it was derived from reflects", which is what `domain-freshness.mjs`'s
+  // gate compares against later. A missing/corrupt manifest (a project never
+  // analyzed, or an older Lazy/Full project) is not fatal — it just means no
+  // sourceRevision gets stamped, and the domain graph is correctly never
+  // "usable" downstream.
+  const manifestPath = join(dataDir, 'source-manifest.json');
+  let sourceRevision = null;
+  if (existsSync(manifestPath)) {
+    try {
+      const manifest = JSON.parse(readFileSync(manifestPath, 'utf-8'));
+      if (typeof manifest?.sourceRevision === 'string' && manifest.sourceRevision.length > 0) {
+        sourceRevision = manifest.sourceRevision;
+      }
+    } catch {
+      // Corrupt manifest — leave sourceRevision null, surfaced downstream as
+      // "not stamped" rather than crashing Domain analysis over it.
+    }
+  }
+
   const { annotated, report } = annotateDomain({
-    domainGraph, knowledgeGraph, sampleLimit: args.sampleLimit,
+    domainGraph, knowledgeGraph, sampleLimit: args.sampleLimit, sourceRevision,
   });
 
   writeJson(outPath, annotated);

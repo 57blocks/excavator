@@ -117,7 +117,7 @@ Then ask questions directly:
 
 Excavator is service-only: it generates nodes, edges, architecture layers, and evidence for terminal Q&A. It does not ship or launch an HTML interface.
 
-> **Heads up on token usage:** The initial `/excavator` analyzes your whole codebase and can consume a significant number of tokens on large projects. We recommend running it on a token plan / subscription, or using a local model (see above) for initialization. Subsequent runs are incremental by default — only changed files are re-analyzed — so they use far fewer tokens.
+> **Heads up on token usage:** By default, the initial `/excavator` run only builds a deterministic fact index (files, symbols, imports, calls) — it's fast and makes zero LLM calls. Summaries and other semantic detail are then generated on demand as you ask questions with `/excavator-chat`, and cached for next time. If you'd rather pre-generate everything up front (e.g. before a review), run `/excavator --full`; on large projects this can consume a significant number of tokens, so we recommend a token plan / subscription or a local model (see above) for that path. See [Lazy Mode](docs/lazy-mode.md) for details.
 
 **Localized output:** Use `--language` to generate content in your preferred language:
 

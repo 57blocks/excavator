@@ -78,6 +78,18 @@ export const DEFAULT_IGNORE_PATTERNS: string[] = [
   ".agents/",
   ".codex/",
   ".excavator/",
+
+  // Stray `.excavator` variant/backup directories (e.g. a manual
+  // `.excavator.slicec-bak/` snapshot or an `.excavator-old/` rename) and
+  // `.trash-*/` recycle directories (see skills/excavator/SKILL.md's Phase 7
+  // delayed-purge step) — same reasoning as `.excavator/` above: never
+  // analysis input. Directory patterns only (trailing `/`), so the
+  // `.excavatorignore` FILE (no trailing slash, and no literal `.` or `-`
+  // right after "excavator") is never matched by these — it stays a real
+  // ignore-rules source, read directly by createIgnoreFilter below.
+  ".excavator.*/",
+  ".excavator-*/",
+  ".trash-*/",
 ];
 
 export interface IgnoreFilter {
