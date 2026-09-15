@@ -16,7 +16,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "DATA_DIR=.excavator; [ -f $DATA_DIR/config.json ] && grep -q '\"autoUpdate\".*true' $DATA_DIR/config.json && [ -f $DATA_DIR/meta.json ] && [ -f $DATA_DIR/knowledge-graph.json ] && [ \"$(node -p \"JSON.parse(require('fs').readFileSync('$DATA_DIR/meta.json','utf8')).gitCommitHash\")\" != \"$(git rev-parse HEAD 2>/dev/null)\" ] && echo \"[excavator] Knowledge graph may be stale (HEAD has moved since the last analysis). Read the file at ${CLAUDE_PLUGIN_ROOT}/hooks/auto-update-prompt.md, follow its instructions to detect what structurally changed, and propose running /excavator to the user with a summary of the detected changes. Wait for the user's decision before updating the graph.\" || true"
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/session-start-freshness-check.mjs\" && echo \"[excavator] Knowledge graph may be stale (source has changed since the last analysis). Read the file at ${CLAUDE_PLUGIN_ROOT}/hooks/auto-update-prompt.md, follow its instructions to detect what structurally changed, and propose running /excavator to the user with a summary of the detected changes. Wait for the user's decision before updating the graph.\" || true"
           }
         ]
       }

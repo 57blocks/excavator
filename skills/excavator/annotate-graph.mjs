@@ -40,6 +40,20 @@
  * byte-identical `annotated-graph.json` and `audit.json`.
  *
  * Logging: stderr only. The printed totals equal the gap counts in the graph.
+ *
+ * Scope note (openspec: changes/full-semantic-isolation): this script's whole
+ * premise — auditing a MODEL-authored graph's edges/nodes against extractor
+ * facts — only applies to the pre-existing pipeline where file-analyzer wrote
+ * `assembled-graph.json`'s nodes/edges directly (still true today for the
+ * `PARTIAL_UPDATE` / `ARCHITECTURE_UPDATE` incremental paths in SKILL.md's
+ * Phase 2). It is NOT part of Full's new Phase F (a fresh "Full analysis"),
+ * which builds the fact graph deterministically via `build-fact-graph.mjs`
+ * (the same projection Lazy uses) and never runs this script at all — there
+ * is no model-authored structure left to audit there. No functional change
+ * was made here for that reason: this script already writes only audit-only
+ * fields (`provenance`, `verification`, `owner`, `coverage`, `gaps`, digests)
+ * and never a `summary`/`tags`/`layers` value, so it already satisfies "model
+ * semantics never land in a fact field" by construction.
  */
 
 import { createRequire } from 'node:module';

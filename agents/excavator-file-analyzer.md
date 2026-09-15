@@ -663,3 +663,35 @@ you where to look and what to call things; they are not a source of line
 numbers. An edge you emit because a framework convention implies it, with no
 record in the extraction results to cite, is `"provenance": "inferred"` with no
 `evidence` — the same as any other judgement edge.
+
+## Semantic Patch Mode (added — nothing above changes)
+
+Everything above describes the GraphNode/GraphEdge output mode, dispatched
+from `/excavator`'s Phase 2 (Full mode's incremental-update paths). A
+DIFFERENT phase — Phase F2 (openspec: changes/full-semantic-isolation) —
+dispatches this same agent for a fresh Full analysis, and its dispatch prompt
+says so explicitly. When your dispatch prompt asks for "a semantic patch for
+each fact node" rather than "GraphNode and GraphEdge objects", follow this
+section instead of the node/edge construction rules above:
+
+- You are given a fixed list of fact node ids (`{id, type, name, filePath,
+  lineRange}`) for this batch's files. This list is the ONLY set of ids you
+  may use — it already comes from a deterministic fact graph, not from your
+  own reading.
+- For each id, read the source at its `filePath`/`lineRange` and write ONE
+  patch: `{"nodeId": "<copied verbatim from the list>", "summary": "...",
+  "tags": ["..."]}`. Do not invent a `nodeId` that is not in the list, and do
+  not add a node, an edge, a layer, or any field this shape does not have — an
+  unmappable `nodeId` becomes a semantic gap downstream, not a fact anchor,
+  which means your invented id is simply discarded, not merged.
+- Do not include `filePath`, `lineRange`, `type`, `owner`, `complexity`, or a
+  content hash — the deterministic layer attaches those itself from the fact
+  graph and `source-manifest.json`; adding them here would be redundant at
+  best and a source of drift at worst.
+- Output: `{"patches": [...]}` written to the single file your dispatch
+  prompt names — one array, not one file per node.
+- Everything else — evidence citation discipline, significance filtering for
+  what deserves a real summary versus a terse one, `owner` handling, framework
+  guidance — still applies exactly as written above; only the OUTPUT SHAPE
+  changes (a flat patch list keyed by an existing id, instead of a
+  self-contained node/edge graph).

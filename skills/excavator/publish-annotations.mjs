@@ -52,6 +52,21 @@
  * replaced rather than appended, so running it twice equals running it once.
  *
  * Logging: stderr only.
+ *
+ * Scope note (openspec: changes/full-semantic-isolation): `NODE_FIELDS` /
+ * `EDGE_FIELDS` / `PROJECT_FIELDS` above already exclude `summary`, `tags`,
+ * `name`, `id`, `weight` and `layers` by construction — this script has never
+ * been able to carry model semantics into a fact field, on any pipeline. No
+ * functional change was made here. It remains part of the pre-existing
+ * `annotate-graph.mjs`/`apply-verification.mjs` (graph mode) pipeline used by
+ * SKILL.md's `PARTIAL_UPDATE`/`ARCHITECTURE_UPDATE` incremental paths and the
+ * cosmetic-`SKIP` dirty-marking sub-step; Full's new Phase F does not call it
+ * — its two products (`semantic-cache.json`, `semantic-graph.json`) are
+ * written directly by `apply-semantic-patches.mjs` / `semantic-graph.mjs`.
+ * The ONE addition this change makes here is `DOMAIN_ROOT_FIELDS` (see its
+ * own doc comment) — carrying Domain's freshness keys across the same
+ * intermediate-directory-gets-trashed hole `ROOT_FIELDS` already exists to
+ * close, for `domain-graph.json` only.
  */
 
 import { createRequire } from 'node:module';
@@ -87,8 +102,21 @@ export const PROJECT_FIELDS = Object.freeze([
   'sourceDigest', 'factsDigest', 'pipelineVersion', 'model', 'verification',
 ]);
 
-/** Root keys copied wholesale. */
+/** Root keys copied wholesale for every published graph. */
 export const ROOT_FIELDS = Object.freeze(['coverage', 'gaps']);
+
+/**
+ * Root keys copied wholesale ADDITIONALLY for `domain-graph.json` only
+ * (openspec: changes/full-semantic-isolation, capability `domain-freshness`,
+ * design D4): the `sourceRevision`/`factDigest` freshness keys
+ * `annotate-domain.mjs` stamps onto its output have exactly the same
+ * "written into intermediate/, then thrown away when the SAVE phase moves
+ * intermediate/ into .trash-*" exposure this whole script exists to close for
+ * `coverage`/`gaps` — so they are carried across the same way. Kept SEPARATE
+ * from `ROOT_FIELDS` (used for both graphs) rather than added to it, so a
+ * knowledge-graph.json fixture/test with no domain semantics is unaffected.
+ */
+export const DOMAIN_ROOT_FIELDS = Object.freeze(['sourceRevision', 'factDigest']);
 
 /** Reports moved out of `intermediate/` so the SAVE cleanup cannot take them. */
 export const REPORT_FILES = Object.freeze([
@@ -128,7 +156,7 @@ export function isEvidenceSuperset(annotated, published) {
  * counts. Field order is preserved for keys that already exist, so a graph
  * that has been published once does not churn on the next run.
  */
-export function mergeAnnotations({ published, annotated }) {
+export function mergeAnnotations({ published, annotated, rootFields = ROOT_FIELDS }) {
   const merged = JSON.parse(JSON.stringify(published));
   merged.nodes = Array.isArray(merged.nodes) ? merged.nodes : [];
   merged.edges = Array.isArray(merged.edges) ? merged.edges : [];
@@ -212,7 +240,7 @@ export function mergeAnnotations({ published, annotated }) {
     }
   }
 
-  for (const field of ROOT_FIELDS) {
+  for (const field of rootFields) {
     if (!Object.hasOwn(annotated ?? {}, field)) continue;
     merged[field] = annotated[field];
     counts.rootFieldsWritten += 1;
@@ -282,7 +310,7 @@ function pickAnnotated(intermediate, override) {
   return null;
 }
 
-function publishPair({ label, publishedPath, annotatedPath }) {
+function publishPair({ label, publishedPath, annotatedPath, rootFields }) {
   if (!existsSync(publishedPath)) {
     process.stderr.write(
       `publish-annotations: no ${label} at ${publishedPath} — nothing to publish into\n`,
@@ -298,6 +326,7 @@ function publishPair({ label, publishedPath, annotatedPath }) {
   const { merged, counts, samples } = mergeAnnotations({
     published: readJson(publishedPath),
     annotated: readJson(annotatedPath),
+    rootFields,
   });
   writeFileSync(publishedPath, `${JSON.stringify(merged, null, 2)}\n`, 'utf-8');
   process.stderr.write(
@@ -333,6 +362,7 @@ async function main() {
     label: 'domain-graph.json',
     publishedPath: resolve(args.domainGraph ?? join(dataDir, 'domain-graph.json')),
     annotatedPath: domainAnnotated,
+    rootFields: [...ROOT_FIELDS, ...DOMAIN_ROOT_FIELDS],
   });
 
   const copied = [];
@@ -390,5 +420,5 @@ if (isCliEntry()) {
 
 export default {
   mergeAnnotations, isEvidenceSuperset,
-  NODE_FIELDS, EDGE_FIELDS, PROJECT_FIELDS, ROOT_FIELDS, REPORT_FILES,
+  NODE_FIELDS, EDGE_FIELDS, PROJECT_FIELDS, ROOT_FIELDS, DOMAIN_ROOT_FIELDS, REPORT_FILES,
 };

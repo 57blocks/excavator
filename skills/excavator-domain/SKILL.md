@@ -83,20 +83,14 @@ Use `$PLUGIN_ROOT` for every reference to agent definitions in subsequent phases
 ### Phase 1: Detect Existing Graph
 
 1. Check if `$DATA_DIR/knowledge-graph.json` exists
-2. If it exists AND `--full` was NOT passed, check freshness before deriving from it:
-   - Read `project.gitCommitHash` from the graph metadata as `GRAPH_COMMIT_RAW`. Change to `$PROJECT_ROOT`, resolve it as a commit before using it in any Git diff, compare the resolved commit with `git rev-parse HEAD`, and inspect project-scoped committed and working-tree changes:
-     ```bash
-     GRAPH_COMMIT=$(git rev-parse --verify --end-of-options "${GRAPH_COMMIT_RAW}^{commit}" 2>/dev/null)
-     git rev-parse HEAD
-     git diff --name-only "$GRAPH_COMMIT" HEAD -- .
-     git diff --cached --name-only -- .
-     git diff --name-only -- .
-     git ls-files --others --exclude-standard -- .
-     ```
-   - The `-- .` pathspec is required: commits that only touch a sibling monorepo project must not make this graph stale. A hash mismatch alone is not stale when the project diff is empty.
-   - Ignore the `.excavator/` data directory in every command's output because it contains generated graph artifacts, not project source drift.
-   - If the committed diff or any working-tree command reports project files, warn that domain extraction may omit those changes. Suggest: Run `/excavator` to refresh the knowledge graph.
-   - Run the commit diff only when `GRAPH_COMMIT_RAW` resolves successfully. If the graph commit or Git metadata is missing, invalid, or unavailable, give a brief best-effort warning and continue instead of blocking.
+2. If it exists AND `--full` was NOT passed, check freshness before deriving from it (openspec: changes/full-semantic-isolation, capability `consumer-freshness`) — via the ONE shared, deterministic freshness helper (`$PLUGIN_ROOT` was already resolved in Phase 0), instead of this skill computing its own gitCommitHash/git-diff comparison:
+   ```bash
+   node "$PLUGIN_ROOT/skills/excavator/consumer-freshness.mjs" "$PROJECT_ROOT"
+   ```
+   - It prints `{ status, currentSourceRevision, manifestSourceRevision, reason }` as JSON. `status` is `fresh`, `stale`, or `missing`: it compares the CURRENT `sourceRevision` — resolved via SourceSnapshot, so a git project reads HEAD only (an uncommitted working-tree change never flips this — no working-tree leak) and a plain-directory project is guarded by a content hash over every tracked file (any content drift is caught) — against the `sourceRevision` persisted in `.excavator/source-manifest.json`.
+   - `stale`: warn that domain extraction may omit recent changes. Suggest: Run `/excavator` to refresh the knowledge graph.
+   - `missing` (no `source-manifest.json` yet — an older project, or one built before this capability): give a brief best-effort note and continue instead of blocking.
+   - `fresh`: proceed with no warning.
 3. After that preflight, proceed to Phase 3 (derive from graph).
 4. Otherwise, proceed to Phase 2 (lightweight scan). When `--full` is used, skip this preflight because the command performs a fresh scan instead of consuming the existing graph.
 
@@ -222,3 +216,11 @@ have found the documented no-op instead of the anchors.
 ### Phase 6: Service Ready
 
 Report the saved `$DATA_DIR/domain-graph.json` path and that it is ready for terminal queries. Do not start a browser or HTTP server.
+
+**Freshness contract for any later consumer (added; openspec: changes/full-semantic-isolation, capability `domain-freshness`).** `domain-graph.json` now carries top-level `sourceRevision` and `factDigest` (stamped by Phase 4.5's `annotate-domain.mjs`, carried through by Phase 5's `publish-annotations.mjs` — see their own doc comments). ANY later consumer that reads `domain-graph.json` to answer a question (this skill's own terminal queries, or any other skill) MUST check it against the CURRENT fact layer before treating its content as current:
+
+```bash
+node "$PLUGIN_ROOT/skills/excavator-domain/domain-freshness.mjs" "$PROJECT_ROOT"
+```
+
+This prints `{ usable, status, reason }` as JSON. `usable: false` (a `sourceRevision` or `factDigest` mismatch, or no domain graph at all) means the domain graph MUST NOT be used in the answer — say so and suggest re-running `/excavator-domain`. `usable: true` means it may be used, but only as a HINT: domain/flow/step content is re-verified against the fact graph and source evidence before it enters a final answer (it is never itself the evidence for a claim).

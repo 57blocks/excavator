@@ -155,7 +155,10 @@ describe('semantic-cache — field whitelist', () => {
 
   it('validateCacheableFields accepts exactly the documented field set', () => {
     expect(validateCacheableFields(validFields())).toEqual({ ok: true, rejectedFields: [] });
-    expect(CACHEABLE_FIELDS).toEqual(['summary', 'tags', 'semanticSourceHash', 'model', 'generatedAt']);
+    // `verification` (openspec: changes/full-semantic-isolation) is an
+    // additive extension: the Summary-Verifier's verdict about THIS entry's
+    // own summary, redirected here instead of onto a knowledge-graph node.
+    expect(CACHEABLE_FIELDS).toEqual(['summary', 'tags', 'semanticSourceHash', 'model', 'generatedAt', 'verification']);
   });
 
   it('rejects a disallowed field (a cross-file conclusion) and writes nothing', async () => {

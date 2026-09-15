@@ -33,20 +33,28 @@ The knowledge graph JSON has this structure:
 
 1. **Check that `.excavator/knowledge-graph.json` exists** in the current project root. If not, tell the user to run `/excavator` first.
 
-2. **Check graph freshness before using graph-derived context**:
-   - Read `project.gitCommitHash` from the graph metadata as `GRAPH_COMMIT_RAW`. Resolve it as a commit before using it in any Git diff, then compare it with `git rev-parse HEAD` and inspect project-scoped committed and working-tree changes from the project root:
+2. **Check graph freshness before using graph-derived context** (openspec: changes/full-semantic-isolation, capability `consumer-freshness`) — via the ONE shared, deterministic freshness helper, instead of this skill computing its own gitCommitHash/git-diff comparison:
+   - Resolve `$PROJECT_ROOT` and `$PLUGIN_ROOT`:
      ```bash
-     GRAPH_COMMIT=$(git rev-parse --verify --end-of-options "${GRAPH_COMMIT_RAW}^{commit}" 2>/dev/null)
-     git rev-parse HEAD
-     git diff --name-only "$GRAPH_COMMIT" HEAD -- .
-     git diff --cached --name-only -- .
-     git diff --name-only -- .
-     git ls-files --others --exclude-standard -- .
+     PROJECT_ROOT="$(pwd)"
+     SKILL_REAL=$(realpath ~/.agents/skills/excavator-chat 2>/dev/null || readlink -f ~/.agents/skills/excavator-chat 2>/dev/null || echo "")
+     SELF_RELATIVE=$([ -n "$SKILL_REAL" ] && cd "$SKILL_REAL/../.." 2>/dev/null && pwd || echo "")
+     PLUGIN_ROOT=""
+     for candidate in "${CLAUDE_PLUGIN_ROOT}" "$HOME/.excavator-plugin" "$SELF_RELATIVE"; do
+       if [ -n "$candidate" ] && [ -f "$candidate/package.json" ] && [ -f "$candidate/pnpm-workspace.yaml" ]; then
+         PLUGIN_ROOT="$candidate"
+         break
+       fi
+     done
      ```
-   - The `-- .` pathspec is required: commits that only touch a sibling monorepo project must not make this graph stale. A hash mismatch alone is not stale when the project diff is empty.
-   - Ignore the `.excavator/` data directory in every command's output because it contains generated graph artifacts, not project source drift.
-   - If the committed diff or any working-tree command reports project files, warn before answering that graph-derived context may omit those changes. Suggest: Run `/excavator` to refresh the graph.
-   - Run the commit diff only when `GRAPH_COMMIT_RAW` resolves successfully. If the graph commit or Git metadata is missing, invalid, or unavailable, give a brief best-effort warning and continue instead of blocking.
+   - Run the helper:
+     ```bash
+     node "$PLUGIN_ROOT/skills/excavator/consumer-freshness.mjs" "$PROJECT_ROOT"
+     ```
+   - It prints `{ status, currentSourceRevision, manifestSourceRevision, reason }` as JSON. `status` is `fresh`, `stale`, or `missing`: it compares the CURRENT `sourceRevision` — resolved via SourceSnapshot, so a git project reads HEAD only (an uncommitted working-tree change never flips this — no working-tree leak) and a plain-directory project is guarded by a content hash over every tracked file (any content drift is caught) — against the `sourceRevision` persisted in `.excavator/source-manifest.json`.
+   - `stale`: warn before answering that graph-derived context may omit recent changes. Suggest: Run `/excavator` to refresh the graph.
+   - `missing` (no `source-manifest.json` yet — an older project, or one built before this capability): give a brief best-effort note and continue instead of blocking.
+   - `fresh`: proceed with no warning.
 
 3. **Read project metadata only** — use Grep or Read with a line limit to extract just the `"project"` section from the top of the file for context (name, description, languages, frameworks).
 
