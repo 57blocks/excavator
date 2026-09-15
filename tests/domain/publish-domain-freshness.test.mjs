@@ -12,6 +12,11 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { mergeAnnotations, ROOT_FIELDS, DOMAIN_ROOT_FIELDS } from '../../skills/excavator/publish-annotations.mjs';
+import {
+  DOMAIN_CONTENT_LANGUAGE,
+  DOMAIN_GRAPH_VERSION,
+} from '../../skills/excavator-domain/domain-contract.mjs';
+import { auditDomainGraphFields } from '../../skills/excavator/semantic-language-audit.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(__dirname, '../..');
@@ -33,10 +38,15 @@ describe('DOMAIN_ROOT_FIELDS is additional to, not a replacement of, ROOT_FIELDS
   });
 });
 
-describe('mergeAnnotations — domain freshness keys propagate when rootFields includes them', () => {
-  it('carries sourceRevision/factDigest from annotated into published only when requested', () => {
+describe('mergeAnnotations — domain identity and freshness keys propagate when rootFields includes them', () => {
+  it('carries language identity plus sourceRevision/factDigest only when requested', () => {
     const published = { nodes: [], edges: [] };
-    const annotated = { nodes: [], edges: [], sourceRevision: 'git:' + 'a'.repeat(40), factDigest: 'b'.repeat(64) };
+    const annotated = {
+      version: DOMAIN_GRAPH_VERSION,
+      contentLanguage: DOMAIN_CONTENT_LANGUAGE,
+      languageAudit: { status: 'accepted', inspected: 0, accepted: [], rejected: [] },
+      nodes: [], edges: [], sourceRevision: 'git:' + 'a'.repeat(40), factDigest: 'b'.repeat(64),
+    };
 
     const withoutDomainFields = mergeAnnotations({ published, annotated });
     expect(withoutDomainFields.merged.sourceRevision).toBeUndefined();
@@ -46,12 +56,15 @@ describe('mergeAnnotations — domain freshness keys propagate when rootFields i
     });
     expect(withDomainFields.merged.sourceRevision).toBe('git:' + 'a'.repeat(40));
     expect(withDomainFields.merged.factDigest).toBe('b'.repeat(64));
-    expect(withDomainFields.counts.rootFieldsWritten).toBe(2);
+    expect(withDomainFields.merged.version).toBe(DOMAIN_GRAPH_VERSION);
+    expect(withDomainFields.merged.contentLanguage).toBe(DOMAIN_CONTENT_LANGUAGE);
+    expect(withDomainFields.merged.languageAudit).toEqual(annotated.languageAudit);
+    expect(withDomainFields.counts.rootFieldsWritten).toBe(5);
   });
 });
 
-describe('publish-annotations CLI — domain-graph.json gains freshness keys it did not have on disk', () => {
-  it('the published domain-graph.json ends up with the annotated sourceRevision/factDigest', () => {
+describe('publish-annotations CLI — domain-graph.json gains identity/freshness keys it did not have on disk', () => {
+  it('the published domain-graph.json ends up with the annotated language/source/fact identity', () => {
     const root = tempRoot();
     const dataDir = join(root, '.excavator');
     const intermediate = join(dataDir, 'intermediate');
@@ -68,13 +81,15 @@ describe('publish-annotations CLI — domain-graph.json gains freshness keys it 
       edges: [], layers: [], tour: [],
     }), 'utf-8');
     // The annotated copy, already stamped by annotate-domain.mjs.
-    writeFileSync(join(intermediate, 'domain-analysis.json'), JSON.stringify({
-      version: '1.0.0', project: { name: 'x' },
+    const annotated = {
+      version: DOMAIN_GRAPH_VERSION, contentLanguage: DOMAIN_CONTENT_LANGUAGE, project: { name: 'x' },
       nodes: [{ id: 'step:s1', type: 'step', name: 's1', summary: '', tags: [], complexity: 'simple' }],
       edges: [], layers: [], tour: [],
       sourceRevision: 'directory:' + 'c'.repeat(64),
       factDigest: 'd'.repeat(64),
-    }), 'utf-8');
+    };
+    annotated.languageAudit = auditDomainGraphFields({ domainGraph: annotated });
+    writeFileSync(join(intermediate, 'domain-analysis.json'), JSON.stringify(annotated), 'utf-8');
 
     const result = spawnSync(process.execPath, [PUBLISH, root, '--no-reports'], { encoding: 'utf-8', cwd: repoRoot });
     expect(result.status, result.stderr).toBe(0);
@@ -82,5 +97,8 @@ describe('publish-annotations CLI — domain-graph.json gains freshness keys it 
     const published = JSON.parse(readFileSync(join(dataDir, 'domain-graph.json'), 'utf-8'));
     expect(published.sourceRevision).toBe('directory:' + 'c'.repeat(64));
     expect(published.factDigest).toBe('d'.repeat(64));
+    expect(published.version).toBe(DOMAIN_GRAPH_VERSION);
+    expect(published.contentLanguage).toBe(DOMAIN_CONTENT_LANGUAGE);
+    expect(published.languageAudit.status).toBe('accepted');
   });
 });

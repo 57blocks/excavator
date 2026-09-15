@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { mkdtempSync, rmSync, existsSync } from "node:fs";
+import { mkdtempSync, rmSync, existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { writeFileSync } from "node:fs";
@@ -197,7 +197,7 @@ describe("persistence", () => {
     it("should return default config when no file exists", () => {
       const loaded = loadConfig(tempDir);
 
-      expect(loaded).toEqual({ autoUpdate: false, outputLanguage: "en" });
+      expect(loaded).toEqual({ autoUpdate: false });
     });
 
     it("should return default config when config.json is corrupted", () => {
@@ -206,7 +206,36 @@ describe("persistence", () => {
       writeFileSync(join(dir, "config.json"), "not json!!", "utf-8");
 
       const loaded = loadConfig(tempDir);
-      expect(loaded).toEqual({ autoUpdate: false, outputLanguage: "en" });
+      expect(loaded).toEqual({ autoUpdate: false });
+    });
+
+    it("treats outputLanguage as legacy data and removes it on normalized write-back", () => {
+      const dir = join(tempDir, ".excavator");
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(
+        join(dir, "config.json"),
+        JSON.stringify({
+          autoUpdate: true,
+          analysisMode: "lazy",
+          customSetting: { keep: true },
+          outputLanguage: "zh",
+        }),
+        "utf-8",
+      );
+
+      const loaded = loadConfig(tempDir);
+      expect(loaded).toEqual({
+        autoUpdate: true,
+        analysisMode: "lazy",
+        customSetting: { keep: true },
+      });
+
+      saveConfig(tempDir, loaded);
+      expect(JSON.parse(readFileSync(join(dir, "config.json"), "utf-8"))).toEqual({
+        autoUpdate: true,
+        analysisMode: "lazy",
+        customSetting: { keep: true },
+      });
     });
   });
 });

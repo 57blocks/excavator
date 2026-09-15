@@ -138,29 +138,61 @@ export function loadFingerprints(projectRoot: string): FingerprintStore | null {
 
 const DEFAULT_CONFIG: ProjectConfig = {
   autoUpdate: false,
-  outputLanguage: "en",
 };
+
+function normalizeConfig(value: unknown): ProjectConfig {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    return { ...DEFAULT_CONFIG };
+  }
+
+  const { outputLanguage: _legacyOutputLanguage, ...current } = value as Record<string, unknown>;
+  return current as ProjectConfig;
+}
 
 export function saveConfig(projectRoot: string, config: ProjectConfig): void {
   const dir = ensureDir(projectRoot);
-  writeFileSync(join(dir, CONFIG_FILE), JSON.stringify(config, null, 2), "utf-8");
+  writeFileSync(
+    join(dir, CONFIG_FILE),
+    JSON.stringify(normalizeConfig(config), null, 2),
+    "utf-8",
+  );
 }
 
 export function loadConfig(projectRoot: string): ProjectConfig {
   const filePath = join(resolveDataDir(projectRoot), CONFIG_FILE);
   if (!existsSync(filePath)) return { ...DEFAULT_CONFIG };
   try {
-    return JSON.parse(readFileSync(filePath, "utf-8")) as ProjectConfig;
+    return normalizeConfig(JSON.parse(readFileSync(filePath, "utf-8")));
   } catch {
     return { ...DEFAULT_CONFIG };
   }
 }
 
 const DOMAIN_GRAPH_FILE = "domain-graph.json";
+export const DOMAIN_GRAPH_VERSION = "2.0.0";
+export const DOMAIN_CONTENT_LANGUAGE = "en";
 
 export function saveDomainGraph(projectRoot: string, graph: KnowledgeGraph): void {
+  const audit = graph.languageAudit;
+  if (
+    audit?.status !== "accepted"
+    || !Number.isInteger(audit.inspected)
+    || !Array.isArray(audit.accepted)
+    || !Array.isArray(audit.rejected)
+    || audit.inspected !== audit.accepted.length
+    || audit.rejected.length !== 0
+    || audit.accepted.some((entry) => !/^sha256:[a-f0-9]{64}$/.test(entry.valueDigest))
+  ) {
+    throw new Error(
+      "Refusing to save domain graph: model-owned fields lack an accepted canonical-language audit",
+    );
+  }
   const dir = ensureDir(projectRoot);
-  const sanitised = sanitiseFilePaths(graph, projectRoot);
+  const sanitised = sanitiseFilePaths({
+    ...graph,
+    version: DOMAIN_GRAPH_VERSION,
+    contentLanguage: DOMAIN_CONTENT_LANGUAGE,
+  }, projectRoot);
   writeFileSync(
     join(dir, DOMAIN_GRAPH_FILE),
     JSON.stringify(sanitised, null, 2),

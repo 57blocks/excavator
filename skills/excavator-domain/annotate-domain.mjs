@@ -26,8 +26,9 @@
  *
  * Domain freshness keys (added; openspec: changes/full-semantic-isolation,
  * capability `domain-freshness`, design D4). This is also where
- * `domain-graph.json`'s two freshness fields get stamped, at the TOP level
- * of the annotated domain graph: `sourceRevision` (the persisted
+ * `domain-graph.json`'s canonical semantic identity and two fact freshness
+ * fields get stamped at the TOP level of the annotated domain graph:
+ * current schema plus `contentLanguage: "en"`, `sourceRevision` (the persisted
  * `source-manifest.json`'s `sourceRevision` at the time Domain ran — the
  * SAME value the fact layer was built against, read directly rather than
  * re-resolved, so a domain graph never claims a newer revision than the
@@ -60,6 +61,15 @@ import { createRequire } from 'node:module';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
+import {
+  DOMAIN_CONTENT_LANGUAGE,
+  DOMAIN_GRAPH_VERSION,
+} from './domain-contract.mjs';
+import { resolveSourceSnapshot } from '../excavator/source-snapshot.mjs';
+import {
+  auditDomainGraphFields,
+  isAcceptedLanguageAudit,
+} from '../excavator/semantic-language-audit.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const pluginRoot = resolve(__dirname, '../..');
@@ -173,14 +183,41 @@ function evidenceFor(nodes) {
  *
  * @param {{
  *   domainGraph: object, knowledgeGraph: object|null, sampleLimit?: number,
- *   sourceRevision?: string|null,
+ *   sourceRevision?: string|null, sourceSnapshot?: object|null,
+ *   languageFactGraph?: object|null,
  * }} args `sourceRevision` is the persisted source-manifest.json's
  *   `sourceRevision` at call time (the CLI reads it; a direct unit-test call
  *   may omit it, in which case no `sourceRevision`/`factDigest` key is
  *   stamped at all — see the module doc's "Domain freshness keys" section).
  */
-export function annotateDomain({ domainGraph, knowledgeGraph, sampleLimit = 5, sourceRevision = null }) {
+export function annotateDomain({
+  domainGraph,
+  knowledgeGraph,
+  sampleLimit = 5,
+  sourceRevision = null,
+  sourceSnapshot = null,
+  languageFactGraph = knowledgeGraph,
+}) {
+  const languageAudit = auditDomainGraphFields({
+    domainGraph,
+    factGraph: languageFactGraph,
+    sourceSnapshot,
+  });
+  if (!isAcceptedLanguageAudit(languageAudit)) {
+    return {
+      annotated: null,
+      report: {
+        scriptCompleted: true,
+        status: 'noncanonical-language',
+        languageAudit,
+      },
+    };
+  }
+
   const annotated = clone(domainGraph);
+  annotated.version = DOMAIN_GRAPH_VERSION;
+  annotated.contentLanguage = DOMAIN_CONTENT_LANGUAGE;
+  annotated.languageAudit = languageAudit;
   annotated.nodes = Array.isArray(annotated.nodes) ? annotated.nodes : [];
 
   const index = indexKnowledge(knowledgeGraph);
@@ -302,7 +339,7 @@ export function annotateDomain({ domainGraph, knowledgeGraph, sampleLimit = 5, s
   gaps.sort((a, b) => compareStrings(a.kind, b.kind) || compareStrings(a.scope, b.scope));
   annotated.gaps = gaps;
 
-  // Domain freshness keys (design D4) — stamped only when their source value
+  // Domain fact freshness keys (design D4) — stamped only when their source value
   // is actually known. A caller that omits `sourceRevision` (an existing
   // unit test, or a standalone run with no source-manifest.json yet) gets NO
   // `sourceRevision`/`factDigest` key at all rather than a fabricated one;
@@ -316,6 +353,8 @@ export function annotateDomain({ domainGraph, knowledgeGraph, sampleLimit = 5, s
 
   const report = {
     scriptCompleted: true,
+    status: 'accepted',
+    languageAudit,
     counts,
     samples: {
       unresolvedNodeIds: samples.unresolved.slice().sort(compareStrings),
@@ -424,9 +463,33 @@ async function main() {
     }
   }
 
-  const { annotated, report } = annotateDomain({
-    domainGraph, knowledgeGraph, sampleLimit: args.sampleLimit, sourceRevision,
+  let sourceSnapshot = null;
+  let languageFactGraph = null;
+  try {
+    sourceSnapshot = resolveSourceSnapshot(projectRoot);
+    if (sourceRevision === sourceSnapshot.revision) languageFactGraph = knowledgeGraph;
+  } catch {
+    // Without a current snapshot, no source-owned exemption is granted. The
+    // knowledge graph may still anchor steps, but is not language authority.
+  }
+  const result = annotateDomain({
+    domainGraph,
+    knowledgeGraph,
+    sampleLimit: args.sampleLimit,
+    sourceRevision,
+    sourceSnapshot,
+    languageFactGraph,
   });
+  const { annotated, report } = result;
+
+  if (!annotated) {
+    writeJson(reportPath, report);
+    process.stderr.write(
+      `annotate-domain: status=noncanonical-language ${JSON.stringify(report.languageAudit)}\n`,
+    );
+    process.exitCode = 2;
+    return;
+  }
 
   writeJson(outPath, annotated);
   writeJson(reportPath, report);
@@ -463,4 +526,5 @@ if (isCliEntry()) {
 
 export default {
   annotateDomain, deriveStepNodes, indexKnowledge, usableRange, OWNED_GAP_KINDS,
+  auditDomainGraphFields, isAcceptedLanguageAudit,
 };

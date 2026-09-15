@@ -421,7 +421,7 @@ describe('both skills wire the publish step in additively', () => {
   const domainSkill = readFileSync(resolve(repoRoot, 'skills/excavator-domain/SKILL.md'), 'utf-8');
 
   it('runs before the SAVE cleanup that trashes intermediate/', () => {
-    const publishAt = skill.indexOf('**Step 7.1 — PUBLISH ANNOTATIONS (added; run before step 4).**');
+    const publishAt = skill.indexOf('**Step 7.1 — PUBLISH ANNOTATIONS (run before step 4).**');
     const cleanupAt = skill.indexOf('4. Clean up intermediate files');
     expect(publishAt).toBeGreaterThan(-1);
     expect(cleanupAt).toBeGreaterThan(publishAt);
@@ -434,7 +434,7 @@ describe('both skills wire the publish step in additively', () => {
     // which is this step's input, so a block sitting after the phase would
     // always hit the documented no-op. The acceptor caught exactly that.
     const step4 = domainSkill.indexOf('4. Save to `$DATA_DIR/domain-graph.json`');
-    const publish = domainSkill.indexOf('**Publish the step anchors (added; do this before step 5).**');
+    const publish = domainSkill.indexOf('**Publish the step anchors before step 5.**');
     const step5 = domainSkill.indexOf('5. Clean up `$DATA_DIR/intermediate/domain-analysis.json`');
     expect(step4).toBeGreaterThan(-1);
     expect(publish).toBeGreaterThan(step4);
@@ -442,7 +442,7 @@ describe('both skills wire the publish step in additively', () => {
     expect(domainSkill).toContain('--domain-annotated');
     // The later section is a pointer now, not a second copy of the command.
     const pointer = domainSkill.slice(
-      domainSkill.indexOf('### Phase 5.1: Publish Annotations (added)'),
+      domainSkill.indexOf('### Phase 5.1: Publish Annotations'),
       domainSkill.indexOf('### Phase 6: Service Ready'),
     );
     expect(pointer).toContain('inside Phase 5, between steps 4 and 5');

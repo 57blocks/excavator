@@ -96,9 +96,9 @@ describe('UA prompt files are only ever appended to', () => {
 describe('SKILL.md service-only contract', () => {
   it('keeps evidence phases while removing presentation mode', () => {
     const current = readRepoFile('skills/excavator/SKILL.md');
-    expect(current).toContain('## Phase 2.3 — ANNOTATE (added)');
-    expect(current).toContain('## Phase 2.5 — VERIFY (added)');
-    expect(current).toContain('## Phase 6b — VALIDATE (added)');
+    expect(current).toContain('## Phase 2.3 — ANNOTATE');
+    expect(current).toContain('## Phase 2.5 — VERIFY');
+    expect(current).toContain('## Phase 6b — VALIDATE');
     expect(current).toContain('## Phase 5 — SERVICE OUTPUT');
     expect(current).not.toContain('--terminal-only');
     expect(current).not.toContain('--with-dashboard');

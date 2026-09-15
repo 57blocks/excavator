@@ -18,7 +18,8 @@ Analyzes a Figma file and produces a queryable design knowledge graph.
 
 ## Phase 0 — Pre-flight
 
-1. Parse `$ARGUMENTS` for a Figma URL or bare file key (the non-flag token) and an optional `--language <lang>`.
+1. Parse `$ARGUMENTS` for a Figma URL or bare file key (the non-flag token) and an optional `--language <lang>`. Resolve that request-local option into `$FIGMA_LANGUAGE_DIRECTIVE` using this template (default to English when omitted):
+   > **Figma-only language directive**: Write model-generated design summaries, tags, and relationship descriptions in **{language}**. Preserve source-owned Figma names, identifiers, and literal values verbatim.
 2. Resolve `PROJECT_ROOT` to the current working directory. **Resolve the data directory `$DATA_DIR`** once and reuse it for every read and write below: `DATA_DIR="$PROJECT_ROOT/.excavator"`. Because each phase may run in a fresh shell, carry `$DATA_DIR` forward like `$PROJECT_ROOT`, re-resolving it with the same line if a later command block needs it.
 3. Resolve `PLUGIN_ROOT` and ensure core is built (same logic as `/excavator` Phase 0.1.5). If `packages/core/dist/figma/index.js` is missing, run:
    ```bash
@@ -47,7 +48,7 @@ It writes `$DATA_DIR/intermediate/scan-manifest.json` and prints the node counts
    - `$INTERMEDIATE_DIR = $DATA_DIR/intermediate`,
    - the batch number for output naming.
    The agent writes `analysis-batch-<N>.json`.
-   Append `$LANGUAGE_DIRECTIVE` if `--language` was provided (reuse `/excavator`'s directive text).
+   Append `$FIGMA_LANGUAGE_DIRECTIVE` to every design-analyzer dispatch.
 3. Run up to **5 batches concurrently**. If a batch fails, log a warning and continue — the manifest is a solid base.
 
 ## Phase 3 — MERGE

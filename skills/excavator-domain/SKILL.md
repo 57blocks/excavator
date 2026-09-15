@@ -79,13 +79,13 @@ Use `$PLUGIN_ROOT` for every reference to agent definitions in subsequent phases
 ### Phase 1: Detect Existing Graph
 
 1. Check if `$DATA_DIR/knowledge-graph.json` exists
-2. If it exists AND `--full` was NOT passed, check freshness before deriving from it (openspec: changes/full-semantic-isolation, capability `consumer-freshness`) — via the ONE shared, deterministic freshness helper (`$PLUGIN_ROOT` was already resolved in Phase 0), instead of this skill computing its own gitCommitHash/git-diff comparison:
+2. If it exists AND `--full` was NOT passed, check freshness before deriving from it via the ONE shared, deterministic freshness helper (`$PLUGIN_ROOT` was already resolved in Phase 0), instead of computing a separate gitCommitHash/git-diff comparison in this skill:
    ```bash
    node "$PLUGIN_ROOT/skills/excavator/consumer-freshness.mjs" "$PROJECT_ROOT"
    ```
    - It prints `{ status, currentSourceRevision, manifestSourceRevision, reason }` as JSON. `status` is `fresh`, `stale`, or `missing`: it compares the CURRENT `sourceRevision` — resolved via SourceSnapshot, so a git project reads HEAD only (an uncommitted working-tree change never flips this — no working-tree leak) and a plain-directory project is guarded by a content hash over every tracked file (any content drift is caught) — against the `sourceRevision` persisted in `.excavator/source-manifest.json`.
    - `stale`: warn that domain extraction may omit recent changes. Suggest: Run `/excavator` to refresh the knowledge graph.
-   - `missing` (no `source-manifest.json` yet — an older project, or one built before this capability): give a brief best-effort note and continue instead of blocking.
+   - `missing` (no `source-manifest.json` yet): give a brief best-effort note and continue instead of blocking.
    - `fresh`: proceed with no warning.
 3. After that preflight, proceed to Phase 3 (derive from graph).
 4. Otherwise, proceed to Phase 2 (lightweight scan). When `--full` is used, skip this preflight because the command performs a fresh scan instead of consuming the existing graph.
@@ -120,10 +120,10 @@ The preprocessing script does NOT produce a domain graph — it produces **raw m
 ### Phase 4: Domain Analysis
 
 1. Read the domain-analyzer agent prompt from `$PLUGIN_ROOT/agents/excavator-domain-analyzer.md`
-2. Dispatch a subagent with the domain-analyzer prompt + the context from Phase 2 or 3
+2. Dispatch a subagent with the domain-analyzer prompt + the context from Phase 2 or 3. Explicitly require every model-owned domain field to be written in English while preserving source-owned identifiers, paths, literals, and excerpts verbatim.
 3. The agent writes its output to `$DATA_DIR/intermediate/domain-analysis.json`
 
-### Phase 4.5: Anchor Steps (added)
+### Phase 4.5: Anchor Steps
 
 This phase is **additive**: it changes nothing about how the domain analysis is
 produced. A business step's whole value is the claim "this is where that
@@ -168,18 +168,23 @@ node "$PLUGIN_ROOT/skills/excavator/validate-graph.mjs" "$PROJECT_ROOT" \
 Report the `stepUnanchored`, `anchorMismatch` and `edgeContradicted` counts
 from that report to the user.
 
-**Supplement, so not fatal.** If either script exits non-zero, report its
+If `annotate-domain.mjs` exits 2 with `status=noncanonical-language`, read
+`$DATA_DIR/intermediate/domain-annotation.json`, report its rejected field
+paths, and **STOP**. Do not save or publish `domain-graph.json`; regenerate the
+model-owned fields in English first. For any other non-zero exit, report
 stderr as a Phase 4.5 warning and continue to Phase 5 with the analysis
-unchanged.
+unchanged. The source-touching validator remains supplementary and non-fatal.
 
 ### Phase 5: Validate and Save
 
 1. Read the domain analysis output
 2. Validate using the standard graph validation pipeline (the schema now supports domain/flow/step types)
 3. If validation fails, log warnings but save what's valid (error tolerance)
-4. Save to `$DATA_DIR/domain-graph.json`
+4. Save to `$DATA_DIR/domain-graph.json` only when the annotated input carries
+   `languageAudit.status: "accepted"` and its terminal buckets account for
+   every inspected model-owned field.
 
-   **Publish the step anchors (added; do this before step 5).** Phase 4.5
+   **Publish the step anchors before step 5.** Phase 4.5
    anchored the steps in `$DATA_DIR/intermediate/domain-analysis.json`, and
    step 5 below deletes that file — so this has to happen here, not after the
    phase:
@@ -200,23 +205,20 @@ unchanged.
 
 5. Clean up `$DATA_DIR/intermediate/domain-analysis.json` and `$DATA_DIR/intermediate/domain-context.json`
 
-### Phase 5.1: Publish Annotations (added)
+### Phase 5.1: Publish Annotations
 
-This step runs **inside Phase 5, between steps 4 and 5** — the block under step
-4 above. It is named here only so the phase sequence accounts for it; there is
-nothing left to run at this point, because step 5 has already deleted
-`domain-analysis.json` by the time you reach it. That is why the original
-wording of this section was wrong: a model following the phases in order would
-have found the documented no-op instead of the anchors.
+The runnable block is **inside Phase 5, between steps 4 and 5**. This heading
+only makes that operation visible in the phase sequence. Do not run it again
+here: step 5 has already deleted `domain-analysis.json`.
 
 ### Phase 6: Service Ready
 
 Report the saved `$DATA_DIR/domain-graph.json` path and that it is ready for terminal queries. Do not start a browser or HTTP server.
 
-**Freshness contract for any later consumer (added; openspec: changes/full-semantic-isolation, capability `domain-freshness`).** `domain-graph.json` now carries top-level `sourceRevision` and `factDigest` (stamped by Phase 4.5's `annotate-domain.mjs`, carried through by Phase 5's `publish-annotations.mjs` — see their own doc comments). ANY later consumer that reads `domain-graph.json` to answer a question (this skill's own terminal queries, or any other skill) MUST check it against the CURRENT fact layer before treating its content as current:
+**Freshness contract for any later consumer.** `domain-graph.json` carries top-level `contentLanguage: "en"`, `sourceRevision`, and `factDigest`. ANY later consumer that reads `domain-graph.json` to answer a question (this skill's own terminal queries, or any other skill) MUST check it against the CURRENT semantic schema/language identity and fact layer before treating its content as current:
 
 ```bash
 node "$PLUGIN_ROOT/skills/excavator-domain/domain-freshness.mjs" "$PROJECT_ROOT"
 ```
 
-This prints `{ usable, status, reason }` as JSON. `usable: false` (a `sourceRevision` or `factDigest` mismatch, or no domain graph at all) means the domain graph MUST NOT be used in the answer — say so and suggest re-running `/excavator-domain`. `usable: true` means it may be used, but only as a HINT: domain/flow/step content is re-verified against the fact graph and source evidence before it enters a final answer (it is never itself the evidence for a claim).
+This prints `{ usable, status, reason }` as JSON. `usable: false` (`noncanonical-language`, a `sourceRevision` or `factDigest` mismatch, or no domain graph at all) means the domain graph MUST NOT be used in the answer — say so and suggest re-running `/excavator-domain`. `usable: true` means it may be used, but only as a HINT: domain/flow/step content is re-verified against the fact graph and source evidence before it enters a final answer (it is never itself the evidence for a claim).
