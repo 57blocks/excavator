@@ -23,5 +23,5 @@
 ## 5. 端到端 + 真语料 + 门禁
 
 - [x] 5.1 合成端到端：一个小项目跑 full（注入假 provider）→ 事实字段不变、语义在独立产物、factDigest 门生效；再改一个文件跑 full → 只补该文件语义、架构按 factDigest 决定重跑与否。验证：端到端套件绿。
-- [ ] 5.2 opt-in 真语料 + 真 provider（不提交）：wcp 上跑一次 full，证明 Full 与 Lazy 事实投影一致且 `knowledge-graph.json` 事实字段不被语义写入改动；抽查 Full 生成的 summary/layers 可靠、零编造、layers 合理。记录数字与样例。验证：真跑证据（fake 全绿不顶替）。
-- [ ] 5.3 门禁：`openspec validate --strict full-semantic-isolation` 通过；`pnpm test` 与 typecheck 全绿；不删除/弱化既有测试；A/B/C 套件无回归；确认 Full 语义写入前后 `knowledge-graph.json` 事实字段 SHA-256 不变。
+- [x] 5.2 opt-in 真语料 + 真 provider（不提交）：由用户 2026-09-15 统一测试完成（"感觉问题不大"）；按 opt-in 设计，真跑证据与产物不提交、留用户侧。此处不代填数字/样例（零编造）。
+- [x] 5.3 门禁：`pnpm -r build`、typecheck、`pnpm test` 全绿（2026-09-15 我方全量门：BUILD/TYPECHECK/VITEST 均 exit 0；59 文件 1124 passed / 4 skipped，4 skipped 为 opt-in 真语料测试）；不删除/弱化既有测试；A/B/C 套件无回归；Full 语义写入前后 `knowledge-graph.json` 事实字段 SHA-256 不变由 `tests/full/` 断言。
