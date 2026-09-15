@@ -31,6 +31,14 @@ The knowledge graph JSON has this structure:
 
 ## Instructions
 
+0. **Capture request-local state before retrieval.** Keep these values in working memory only:
+   - `$ORIGINAL_QUESTION` — copy `$ARGUMENTS` exactly, including its original language and any explicit answer-language request. Never replace it with a translation or normalized query.
+   - `$ENGLISH_RETRIEVAL_EXPRESSIONS` — in this same inference, derive a short list of English business/code search expressions and common code synonyms. This list is for retrieval only, not for answering.
+   - `$LITERAL_IDENTIFIERS` — copy any exact code identifiers or source-owned literals separately; non-English identifiers belong here, not in the English expression list.
+   - Three language signals: an explicit requested answer language, the current question's predominant natural language, and the most recent confidently identifiable conversation language. Use `null` for an identifier-only question or an unavailable signal.
+
+   After `$PLUGIN_ROOT` is resolved in step 2, pass those values to `createChatRequestState()` from `<PLUGIN_ROOT>/skills/excavator-chat/request-language.mjs`. Keep the returned state in memory. It deliberately has no `answerLanguage` yet. If an English retrieval expression is rejected, regenerate that expression in English while keeping `$ORIGINAL_QUESTION` and `$LITERAL_IDENTIFIERS` unchanged. **Do not persist request or answer language** to config, cache, graph, metadata, or any other `.excavator/` file.
+
 1. **Check that `.excavator/knowledge-graph.json` exists** in the current project root. If not, tell the user to run `/excavator` first.
 
 2. **Check graph freshness before using graph-derived context** — use the ONE shared, deterministic freshness helper instead of computing a separate gitCommitHash/git-diff comparison in this skill:
@@ -58,7 +66,7 @@ The knowledge graph JSON has this structure:
 
 3. **Read project metadata only** — use Grep or Read with a line limit to extract just the `"project"` section from the top of the file for context (name, description, languages, frameworks).
 
-4. **Search for relevant nodes** — use Grep to search the knowledge graph file for the user's query keywords: "$ARGUMENTS"
+4. **Search for relevant nodes** — use Grep to search the knowledge graph with `$ENGLISH_RETRIEVAL_EXPRESSIONS` plus `$LITERAL_IDENTIFIERS`. Keep `$ORIGINAL_QUESTION` intact for intent and final presentation; do not substitute it with the English expressions.
    - Search `"name"` fields: `grep -i "query_keyword"` in the graph file
    - Search `"summary"` fields for semantic matches
    - Search `"tags"` arrays for topic matches
@@ -76,6 +84,15 @@ The knowledge graph JSON has this structure:
    - Explain which layer(s) are relevant and why
    - Be concise but thorough — link concepts to actual code locations
    - If the query doesn't match any nodes, say so and suggest related terms from the graph
+
+### Evidence verification gate and answer language
+
+This gate applies to every route above and below, including direct structural answers and honest-degrade responses.
+
+1. **Evidence verification gate:** before producing answer prose, check every code or business claim against current fact nodes/edges or current source text. A semantic cache entry, summary, layer description, domain result, or English retrieval expression can select where to inspect, but is not evidence by itself. Preserve exact code identifiers and quoted source spans in their source language.
+2. Only after that check, call `finalizeVerifiedAnswerLanguage($CHAT_REQUEST_STATE, { evidenceVerified: true })` from `request-language.mjs`. The helper applies this precedence: explicit answer-language request → current question's predominant natural language → recent identifiable conversation language → English. An identifier-only question therefore falls back to recent conversation language, then English.
+3. Write the final answer in the returned `answerLanguage`. Restate the verified conclusions naturally in that language; do not translate a cached English summary and present the translation as evidence.
+4. Do not persist the selected answer language or rewritten answer. Answer-language changes must leave `.excavator/config.json`, `knowledge-graph.json`, and every semantic product unchanged except for independently justified English node-local cache writes from step (c).
 
 ## Lazy mode: answer structural questions directly, retrieve on-demand for semantic ones
 
@@ -107,7 +124,7 @@ done
 
 If `$PLUGIN_ROOT` cannot be resolved, or `$DATA_DIR/source-index.json` does not exist, fall back to the honest degrade: say plainly that this semantics has not been generated/retrieved yet and suggest `/excavator --mode=full` or re-running `/excavator` to produce a `source-index.json`. **Do not auto-trigger Full** — whether to fill semantics for the whole project is the user's explicit choice.
 
-**(a) Expand the question into code search terms — same inference, no subagent.** Before running any retrieval, produce (as part of this same reasoning turn) a short list of English/code search terms for the user's question: literal identifiers you already suspect, English translations of the business terms, and common code synonyms (e.g. a non-English business question about placing an order might expand to `order`, `createOrder`, `checkout`, `placeOrder`). Do **not** dispatch a separate query-expansion agent/subagent for this — the whole point of same-inference expansion is that it costs no extra model round trip.
+**(a) Use the request-local search expressions — same inference, no subagent.** Use `$ENGLISH_RETRIEVAL_EXPRESSIONS` and `$LITERAL_IDENTIFIERS` captured before retrieval. For example, a non-English business question about placing an order might produce English/code expressions such as `order`, `createOrder`, `checkout`, `placeOrder`, while `$ORIGINAL_QUESTION` remains byte-for-byte unchanged. Do **not** dispatch a separate query-expansion agent/subagent for this — the whole point of same-inference expansion is that it costs no extra model round trip.
 
 **(b) Retrieve — merge candidates, then traverse within budget.**
 
@@ -180,7 +197,7 @@ console.log(JSON.stringify(result));
 
 `result.ok === false` (noncanonical language, a rejected field, a stale CAS hash, a held lock, or an I/O error) is expected occasionally and MUST NOT block the answer — the summary you already generated is still valid for THIS answer, it simply was not persisted for reuse.
 
-**(d) Seeds are re-verified before they enter the answer.** A semantic-cache or domain hit from step (b)/(c) only ever SEEDS which nodes/files to look at — it is never itself the evidence for a claim in the final answer. Before a conclusion derived from such a hit goes into the answer, re-check it against the fact graph's edges/nodes or the current source text (via SourceSnapshot/Grep on the project root). If it does not hold up, drop or qualify the claim; do not present an unverified cached seed as a checked fact.
+**(d) Seeds are re-verified before they enter the answer.** A semantic-cache or domain hit from step (b)/(c) only ever SEEDS which nodes/files to look at — it is never itself the evidence for a claim in the final answer. Before a conclusion derived from such a hit goes into the answer, re-check it against the fact graph's edges/nodes or the current source text (via SourceSnapshot/Grep on the project root). If it does not hold up, drop or qualify the claim; do not present an unverified cached seed as a checked fact. Once this and the global **Evidence verification gate** are complete, finalize the answer language; never choose it early merely because retrieval used English expressions.
 
 **(e) Structural questions never trigger this path.** If the question is purely structural (per the routing at the top of this section), answer directly from facts as before — do not run query expansion, retrieval, or semantic-cache generation for it.
 
