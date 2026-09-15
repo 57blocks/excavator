@@ -20,6 +20,19 @@
 // import is intentionally caught: instrument-control tests still execute while
 // the missing production planner leaves product expectations red.
 import { createHash } from 'node:crypto';
+import { spawnSync } from 'node:child_process';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  unlinkSync,
+  writeFileSync,
+} from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join, relative, resolve } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 
 import { auditSemanticCacheFields } from '../../skills/excavator/semantic-language-audit.mjs';
@@ -29,6 +42,7 @@ import { auditSemanticCacheFields } from '../../skills/excavator/semantic-langua
 // output exists, and the future planner itself owns reuse of the read gate.
 const SEMANTIC_CACHE_VERSION = '2.0.0';
 const CANONICAL_CONTENT_LANGUAGE = 'en';
+const CLI_PATH = resolve(process.cwd(), 'skills/excavator/semantic-cache-reuse.mjs');
 
 const plannerImport = await import('../../skills/excavator/semantic-cache-reuse.mjs')
   .then((module) => ({ module, error: null }))
@@ -40,6 +54,7 @@ const REMOVE = 'export function remove() { return 4; }\n';
 const OUTSIDE = 'export function outside() { return 5; }\n';
 const SHARED_0 = 'export class OwnerA { save() { return 0; } }\nexport class OwnerB { save() { return 2; } }\n';
 const SHARED_1 = 'export class OwnerA { save() { return 1; } }\nexport class OwnerB { save() { return 2; } }\n';
+const SHARED_2 = 'export class OwnerA { save() { return 10; } }\nexport class OwnerB { save() { return 2; } }\n';
 
 const H = (text) => createHash('sha256').update(text).digest('hex');
 
@@ -164,6 +179,57 @@ function cacheBytes(cache, space = 2) {
 
 function sha(value) {
   return H(typeof value === 'string' ? value : cacheBytes(value));
+}
+
+function makeCliProject(fixture = makeFixture(), { cache = fixture.semanticCache } = {}) {
+  const root = mkdtempSync(join(tmpdir(), 'excavator-semantic-reuse-'));
+  const dataDir = join(root, '.excavator');
+  mkdirSync(dataDir, { recursive: true });
+  writeFileSync(
+    join(dataDir, 'knowledge-graph.json'),
+    JSON.stringify({ version: '1.0.0', nodes: fixture.nodes, edges: [] }, null, 2),
+    'utf-8',
+  );
+  writeFileSync(
+    join(dataDir, 'source-manifest.json'),
+    JSON.stringify({ sourceRevision: 'directory:oracle', entries: fixture.manifestEntries }, null, 2),
+    'utf-8',
+  );
+  if (cache !== null) {
+    writeFileSync(join(dataDir, 'semantic-cache.json'), JSON.stringify(cache, null, 2), 'utf-8');
+  }
+  return root;
+}
+
+function snapshotFiles(root) {
+  const snapshot = {};
+  const visit = (directory) => {
+    for (const entry of readdirSync(directory, { withFileTypes: true })) {
+      const path = join(directory, entry.name);
+      if (entry.isDirectory()) visit(path);
+      else snapshot[relative(root, path)] = readFileSync(path).toString('hex');
+    }
+  };
+  visit(root);
+  return snapshot;
+}
+
+function runCli(root, nodeIds) {
+  return spawnSync(
+    process.execPath,
+    [CLI_PATH, root, ...nodeIds.flatMap((nodeId) => ['--node-id', nodeId])],
+    { cwd: root, encoding: 'utf-8' },
+  );
+}
+
+function runCliReadOnly(root, nodeIds) {
+  const before = snapshotFiles(root);
+  const result = runCli(root, nodeIds);
+  expect(snapshotFiles(root), `CLI changed project files: ${result.stderr}`).toEqual(before);
+  expect(
+    Object.keys(before).some((path) => /semantic\.lock|\.tmp-|telemetry|lastUsedAt|hitCount/.test(path)),
+  ).toBe(false);
+  return result;
 }
 
 function assertPlan(plan, expected, uniqueRequestedNodeIds) {
@@ -352,6 +418,161 @@ describe('semantic-cache reuse — known-false controls prove the oracle can fai
 });
 
 describe('semantic-cache reuse — future planner and simulated execution contract', () => {
+  it('handles empty input and preserves exact same-name identities in first-occurrence order', () => {
+    const fixture = makeFixture();
+    const planner = getPlanner();
+    expect(planner({
+      requestedNodeIds: [],
+      nodes: fixture.nodes,
+      manifestEntries: fixture.manifestEntries,
+      semanticCache: fixture.semanticCache,
+    })).toEqual({
+      reuse: [], generate: [], unavailable: [],
+      counts: { requested: 0, reuse: 0, generate: 0, unavailable: 0 },
+    });
+
+    fixture.semanticCache.entries[ID.S] = canonicalEntry(H(SHARED_1));
+    fixture.semanticCache.entries[ID.T] = canonicalEntry(H(SHARED_1));
+    const owners = planner({
+      requestedNodeIds: [ID.T, ID.S, ID.T],
+      nodes: fixture.nodes,
+      manifestEntries: fixture.manifestEntries,
+      semanticCache: fixture.semanticCache,
+    });
+    expect(owners.reuse.map((item) => item.nodeId)).toEqual([ID.T, ID.S]);
+    expect(owners.counts).toEqual({ requested: 2, reuse: 2, generate: 0, unavailable: 0 });
+
+    const sameContent = planner({
+      requestedNodeIds: [ID.A, ID.B, ID.A],
+      nodes: fixture.nodes,
+      manifestEntries: fixture.manifestEntries,
+      semanticCache: fixture.semanticCache,
+    });
+    expect(sameContent.reuse.map((item) => item.nodeId)).toEqual([ID.A, ID.B]);
+    expect(sameContent.counts).toEqual({ requested: 2, reuse: 2, generate: 0, unavailable: 0 });
+  });
+
+  it('uses the shared canonical gate and keeps missing-entry precedence under bad cache identity', () => {
+    const fixture = makeFixture();
+    const planner = getPlanner();
+    const invalidCaches = [
+      (() => { const cache = clone(fixture.semanticCache); delete cache.contentLanguage; return cache; })(),
+      { ...clone(fixture.semanticCache), contentLanguage: 'zh' },
+      { ...clone(fixture.semanticCache), version: '1.0.0' },
+    ];
+
+    for (const semanticCache of invalidCaches) {
+      const plan = planner({
+        requestedNodeIds: [ID.A, ID.M],
+        nodes: fixture.nodes,
+        manifestEntries: fixture.manifestEntries,
+        semanticCache,
+      });
+      expect(plan).toEqual({
+        reuse: [],
+        generate: [
+          { nodeId: ID.A, filePath: PATH.A, currentContentHash: H(SAME), reason: 'noncanonical-language' },
+          { nodeId: ID.M, filePath: PATH.M, currentContentHash: H(LOAD), reason: 'missing' },
+        ],
+        unavailable: [],
+        counts: { requested: 2, reuse: 0, generate: 2, unavailable: 0 },
+      });
+    }
+  });
+
+  it('classifies malformed, unaudited, and post-audit-mutated entries as noncanonical', () => {
+    const fixture = makeFixture();
+    const planner = getPlanner();
+    const base = fixture.semanticCache.entries[ID.A];
+    const malformedEntries = [
+      (() => { const entry = clone(base); delete entry.languageAudit; return entry; })(),
+      {
+        ...clone(base),
+        languageAudit: { status: 'accepted', inspected: 2, accepted: [], rejected: [] },
+      },
+      { ...clone(base), summary: 'Returns a different local value.' },
+      { ...clone(base), summary: { text: 'Returns a local value.' } },
+    ];
+
+    for (const entry of malformedEntries) {
+      const semanticCache = clone(fixture.semanticCache);
+      semanticCache.entries[ID.A] = entry;
+      const plan = planner({
+        requestedNodeIds: [ID.A],
+        nodes: fixture.nodes,
+        manifestEntries: fixture.manifestEntries,
+        semanticCache,
+      });
+      expect(plan.generate).toEqual([{
+        nodeId: ID.A,
+        filePath: PATH.A,
+        currentContentHash: H(SAME),
+        reason: 'noncanonical-language',
+      }]);
+    }
+
+    const staleAndUnaudited = clone(fixture.semanticCache);
+    delete staleAndUnaudited.entries[ID.S].languageAudit;
+    const precedence = planner({
+      requestedNodeIds: [ID.S],
+      nodes: fixture.nodes,
+      manifestEntries: fixture.manifestEntries,
+      semanticCache: staleAndUnaudited,
+    });
+    expect(precedence.generate[0].reason).toBe('noncanonical-language');
+  });
+
+  it('treats an entry without semanticSourceHash as missing', () => {
+    const fixture = makeFixture();
+    delete fixture.semanticCache.entries[ID.A].semanticSourceHash;
+    const plan = getPlanner()({
+      requestedNodeIds: [ID.A],
+      nodes: fixture.nodes,
+      manifestEntries: fixture.manifestEntries,
+      semanticCache: fixture.semanticCache,
+    });
+    expect(plan.generate).toEqual([{
+      nodeId: ID.A,
+      filePath: PATH.A,
+      currentContentHash: H(SAME),
+      reason: 'missing',
+    }]);
+  });
+
+  it('invalidates every requested node in one changed file and no unchanged-file node', () => {
+    const fixture = makeFixture();
+    fixture.semanticCache.entries[ID.S] = canonicalEntry(H(SHARED_1));
+    fixture.semanticCache.entries[ID.T] = canonicalEntry(H(SHARED_1));
+    fixture.manifestEntries.find((entry) => entry.path === PATH.S).contentHash = H(SHARED_2);
+    const before = clone(fixture);
+    const planner = getPlanner();
+
+    const oneOwner = planner({
+      requestedNodeIds: [ID.S, ID.B],
+      nodes: fixture.nodes,
+      manifestEntries: fixture.manifestEntries,
+      semanticCache: fixture.semanticCache,
+    });
+    expect(oneOwner.reuse.map((item) => item.nodeId)).toEqual([ID.B]);
+    expect(oneOwner.generate).toEqual([{
+      nodeId: ID.S, filePath: PATH.S, currentContentHash: H(SHARED_2), reason: 'stale',
+    }]);
+    expect(oneOwner.counts).toEqual({ requested: 2, reuse: 1, generate: 1, unavailable: 0 });
+
+    const bothOwners = planner({
+      requestedNodeIds: [ID.T, ID.B, ID.S],
+      nodes: fixture.nodes,
+      manifestEntries: fixture.manifestEntries,
+      semanticCache: fixture.semanticCache,
+    });
+    expect(bothOwners.reuse.map((item) => item.nodeId)).toEqual([ID.B]);
+    expect(bothOwners.generate.map((item) => [item.nodeId, item.reason])).toEqual([
+      [ID.T, 'stale'],
+      [ID.S, 'stale'],
+    ]);
+    expect(fixture).toEqual(before);
+  });
+
   it('plans the exact duplicate/fresh/missing/stale/noncanonical/unavailable matrix', () => {
     const fixture = makeFixture();
     const plan = getPlanner()({
@@ -545,5 +766,169 @@ describe('semantic-cache reuse — future planner and simulated execution contra
 
     expect(second).toEqual(first);
     expect(reordered).toEqual(reorderedBefore);
+  });
+});
+
+describe('semantic-cache reuse CLI — current disk inputs and zero writes', () => {
+  it('preserves repeated and shell-shaped argv literally without importing a writer', () => {
+    const fixture = makeFixture();
+    const evilPath = 'src/space ;$(touch ORACLE_SHOULD_NOT_EXIST).ts';
+    const evilId = `function:${evilPath}:save()`;
+    fixture.nodes.push({ id: evilId, type: 'function', name: 'save', filePath: evilPath });
+    fixture.manifestEntries.push({ path: evilPath, contentHash: H(SAME) });
+    fixture.semanticCache.entries[evilId] = canonicalEntry(H(SAME));
+    const root = makeCliProject(fixture);
+
+    try {
+      const first = runCliReadOnly(root, [evilId, evilId]);
+      expect(first.status, first.stderr).toBe(0);
+      const firstPlan = JSON.parse(first.stdout);
+      expect(firstPlan.reuse).toEqual([{
+        nodeId: evilId,
+        filePath: evilPath,
+        reason: 'fresh',
+        summary: 'Returns a local value.',
+        tags: ['value'],
+      }]);
+      expect(firstPlan.counts).toEqual({ requested: 1, reuse: 1, generate: 0, unavailable: 0 });
+      expect(existsSync(join(root, 'ORACLE_SHOULD_NOT_EXIST'))).toBe(false);
+
+      const second = runCliReadOnly(root, [evilId, evilId]);
+      expect(second.status, second.stderr).toBe(0);
+      expect(second.stdout).toBe(first.stdout);
+      expect(readFileSync(CLI_PATH, 'utf-8')).not.toMatch(/\bcommitSemanticCacheEntry\b/);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it('rereads graph and manifest on every invocation', () => {
+    const fixture = makeFixture();
+    const root = makeCliProject(fixture);
+    mkdirSync(join(root, 'src'), { recursive: true });
+    writeFileSync(join(root, PATH.A), SAME, 'utf-8');
+    writeFileSync(join(root, PATH.B), SAME, 'utf-8');
+
+    try {
+      const fresh = runCliReadOnly(root, [ID.A, ID.B]);
+      expect(fresh.status, fresh.stderr).toBe(0);
+      expect(JSON.parse(fresh.stdout).reuse.map((item) => item.nodeId)).toEqual([ID.A, ID.B]);
+
+      const changedA = 'export function save() { return 99; }\n';
+      writeFileSync(join(root, PATH.A), changedA, 'utf-8');
+      const changedManifest = {
+        sourceRevision: 'directory:oracle-2',
+        entries: fixture.manifestEntries.map((entry) => (
+          entry.path === PATH.A ? { ...entry, contentHash: H(changedA) } : entry
+        )),
+      };
+      writeFileSync(
+        join(root, '.excavator', 'source-manifest.json'),
+        JSON.stringify(changedManifest, null, 2),
+        'utf-8',
+      );
+      const stale = runCliReadOnly(root, [ID.A, ID.B]);
+      expect(stale.status, stale.stderr).toBe(0);
+      expect(JSON.parse(stale.stdout)).toMatchObject({
+        reuse: [{ nodeId: ID.B, reason: 'fresh' }],
+        generate: [{ nodeId: ID.A, currentContentHash: H(changedA), reason: 'stale' }],
+      });
+
+      const graphPath = join(root, '.excavator', 'knowledge-graph.json');
+      const graph = JSON.parse(readFileSync(graphPath, 'utf-8'));
+      writeFileSync(
+        graphPath,
+        JSON.stringify({ ...graph, nodes: graph.nodes.filter((node) => node.id !== ID.A) }, null, 2),
+        'utf-8',
+      );
+      const unknown = runCliReadOnly(root, [ID.A]);
+      expect(unknown.status, unknown.stderr).toBe(0);
+      expect(JSON.parse(unknown.stdout).unavailable).toEqual([{
+        nodeId: ID.A, filePath: null, reason: 'unknown-node',
+      }]);
+
+      writeFileSync(graphPath, JSON.stringify(graph, null, 2), 'utf-8');
+      writeFileSync(
+        join(root, '.excavator', 'source-manifest.json'),
+        JSON.stringify({
+          ...changedManifest,
+          entries: changedManifest.entries.filter((entry) => entry.path !== PATH.A),
+        }, null, 2),
+        'utf-8',
+      );
+      const outside = runCliReadOnly(root, [ID.A]);
+      expect(outside.status, outside.stderr).toBe(0);
+      expect(JSON.parse(outside.stdout).unavailable).toEqual([{
+        nodeId: ID.A, filePath: PATH.A, reason: 'path-not-in-manifest',
+      }]);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it('treats missing or corrupt cache as empty without creating or rewriting it', () => {
+    const fixture = makeFixture();
+    for (const cacheState of ['missing', 'corrupt']) {
+      const root = makeCliProject(fixture, { cache: null });
+      const cachePath = join(root, '.excavator', 'semantic-cache.json');
+      if (cacheState === 'corrupt') writeFileSync(cachePath, '{ not-json', 'utf-8');
+      try {
+        const result = runCliReadOnly(root, [ID.A]);
+        expect(result.status, result.stderr).toBe(0);
+        expect(JSON.parse(result.stdout)).toEqual({
+          reuse: [],
+          generate: [{
+            nodeId: ID.A,
+            filePath: PATH.A,
+            currentContentHash: H(SAME),
+            reason: 'missing',
+          }],
+          unavailable: [],
+          counts: { requested: 1, reuse: 0, generate: 1, unavailable: 0 },
+        });
+        expect(existsSync(cachePath)).toBe(cacheState === 'corrupt');
+        if (cacheState === 'corrupt') expect(readFileSync(cachePath, 'utf-8')).toBe('{ not-json');
+      } finally {
+        rmSync(root, { recursive: true, force: true });
+      }
+    }
+  });
+
+  it('fails visibly and nonzero for missing, corrupt, or malformed required artifacts', () => {
+    const cases = [
+      {
+        label: 'missing graph',
+        alter: (root) => unlinkSync(join(root, '.excavator', 'knowledge-graph.json')),
+        error: /knowledge-graph\.json not found/,
+      },
+      {
+        label: 'corrupt graph',
+        alter: (root) => writeFileSync(join(root, '.excavator', 'knowledge-graph.json'), '{ nope', 'utf-8'),
+        error: /invalid knowledge-graph\.json/,
+      },
+      {
+        label: 'missing manifest',
+        alter: (root) => unlinkSync(join(root, '.excavator', 'source-manifest.json')),
+        error: /source-manifest\.json not found/,
+      },
+      {
+        label: 'malformed manifest',
+        alter: (root) => writeFileSync(join(root, '.excavator', 'source-manifest.json'), '{}', 'utf-8'),
+        error: /invalid source-manifest\.json: expected entries array/,
+      },
+    ];
+
+    for (const fixtureCase of cases) {
+      const root = makeCliProject();
+      try {
+        fixtureCase.alter(root);
+        const result = runCliReadOnly(root, [ID.A]);
+        expect(result.status, fixtureCase.label).not.toBe(0);
+        expect(result.stdout, fixtureCase.label).toBe('');
+        expect(result.stderr, fixtureCase.label).toMatch(fixtureCase.error);
+      } finally {
+        rmSync(root, { recursive: true, force: true });
+      }
+    }
   });
 });
