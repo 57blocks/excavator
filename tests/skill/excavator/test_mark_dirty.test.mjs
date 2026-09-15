@@ -274,7 +274,7 @@ describe('the SKIP path is wired in both service entry points', () => {
 
 describe('the freshness spec says what the pipeline actually reports', () => {
   const spec = readFileSync(
-    resolve(repoRoot, 'openspec/changes/verifiable-statements/specs/freshness/spec.md'), 'utf-8',
+    resolve(repoRoot, 'openspec/specs/freshness/spec.md'), 'utf-8',
   );
 
   it('uses the pipeline\'s existing reason string, not an invented one', () => {

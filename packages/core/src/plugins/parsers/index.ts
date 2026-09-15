@@ -10,6 +10,9 @@ export { ProtobufParser } from "./protobuf-parser.js";
 export { TerraformParser } from "./terraform-parser.js";
 export { MakefileParser } from "./makefile-parser.js";
 export { ShellParser } from "./shell-parser.js";
+export { CsprojParser } from "./csproj-parser.js";
+export { FeatureParser } from "./feature-parser.js";
+export { XamlParser } from "./xaml-parser.js";
 
 import type { PluginRegistry } from "../registry.js";
 import { MarkdownParser } from "./markdown-parser.js";
@@ -24,6 +27,9 @@ import { ProtobufParser } from "./protobuf-parser.js";
 import { TerraformParser } from "./terraform-parser.js";
 import { MakefileParser } from "./makefile-parser.js";
 import { ShellParser } from "./shell-parser.js";
+import { CsprojParser } from "./csproj-parser.js";
+import { FeatureParser } from "./feature-parser.js";
+import { XamlParser } from "./xaml-parser.js";
 
 /**
  * Register all built-in non-code parsers with a PluginRegistry.
@@ -41,4 +47,7 @@ export function registerAllParsers(registry: PluginRegistry): void {
   registry.register(new TerraformParser());
   registry.register(new MakefileParser());
   registry.register(new ShellParser());
+  registry.register(new CsprojParser());
+  registry.register(new FeatureParser());
+  registry.register(new XamlParser());
 }

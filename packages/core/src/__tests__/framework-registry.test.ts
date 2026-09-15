@@ -106,9 +106,36 @@ describe("FrameworkRegistry", () => {
   });
 
   describe("createDefault", () => {
-    it("registers all 10 built-in framework configs", () => {
+    it("registers all 11 built-in framework configs", () => {
       const registry = FrameworkRegistry.createDefault();
-      expect(registry.getAllFrameworks()).toHaveLength(10);
+      expect(registry.getAllFrameworks()).toHaveLength(11);
+    });
+
+    it("detects .NET MAUI from a .csproj (glob manifest match)", () => {
+      const registry = FrameworkRegistry.createDefault();
+      const detected = registry.detectFrameworks({
+        "src/UNMC/UNMC/UNMC/UNMC.csproj":
+          "<Project><PropertyGroup><UseMaui>true</UseMaui></PropertyGroup>" +
+          '<ItemGroup><PackageReference Include="Microsoft.Maui.Controls" Version="8.0.100" /></ItemGroup></Project>',
+      });
+      expect(detected.some((f) => f.id === "maui")).toBe(true);
+    });
+
+    it("does not detect MAUI from a plain .csproj", () => {
+      const registry = FrameworkRegistry.createDefault();
+      const detected = registry.detectFrameworks({
+        "Lib.csproj": "<Project><PropertyGroup><TargetFramework>net8.0</TargetFramework></PropertyGroup></Project>",
+      });
+      expect(detected.some((f) => f.id === "maui")).toBe(false);
+    });
+
+    it("exposes maui layer hints, entry points, and csharp language", () => {
+      const registry = FrameworkRegistry.createDefault();
+      const maui = registry.getById("maui")!;
+      expect(maui.layerHints?.views).toBe("ui");
+      expect(maui.layerHints?.viewmodels).toBe("service");
+      expect(maui.entryPoints).toContain("MauiProgram.cs");
+      expect(registry.getForLanguage("csharp").some((f) => f.id === "maui")).toBe(true);
     });
 
     it("includes frameworks for multiple languages", () => {
