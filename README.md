@@ -119,18 +119,7 @@ Excavator is service-only: it generates nodes, edges, architecture layers, and e
 
 > **Heads up on token usage:** By default, the initial `/excavator` run only builds a deterministic fact index (files, symbols, imports, calls) — it's fast and makes zero LLM calls. Summaries and other semantic detail are then generated on demand as you ask questions with `/excavator-chat`, and cached for next time. If you'd rather pre-generate everything up front (e.g. before a review), run `/excavator --full`; on large projects this can consume a significant number of tokens, so we recommend a token plan / subscription or a local model (see above) for that path. See [Lazy Mode](docs/lazy-mode.md) for details.
 
-**Localized output:** Use `--language` to generate content in your preferred language:
-
-```bash
-# Generate Chinese graph summaries
-/excavator --language zh
-
-# Supported languages: en (default), zh, zh-TW, ja, ko, ru
-```
-
-On the **first run** in a project — when you don't pass `--language` and no language is stored yet — `/excavator` detects the language you're conversing in. If it isn't English, it asks you to confirm (or override) before generating; English conversations are unaffected. Your choice is saved to `.excavator/config.json` and reused on every later run.
-
-The `--language` parameter affects node summaries, descriptions, and other generated graph text.
+**Language behavior:** Persisted model-generated semantics use English so incremental analysis and shared caches stay consistent. Source-owned identifiers, paths, and literal excerpts remain unchanged. `/excavator-chat` answers follow the language of each question, so you can ask in Chinese without mixing storage languages.
 
 ### 3. Ask and analyze
 

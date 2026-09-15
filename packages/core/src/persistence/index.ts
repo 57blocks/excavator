@@ -138,19 +138,31 @@ export function loadFingerprints(projectRoot: string): FingerprintStore | null {
 
 const DEFAULT_CONFIG: ProjectConfig = {
   autoUpdate: false,
-  outputLanguage: "en",
 };
+
+function normalizeConfig(value: unknown): ProjectConfig {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    return { ...DEFAULT_CONFIG };
+  }
+
+  const { outputLanguage: _legacyOutputLanguage, ...current } = value as Record<string, unknown>;
+  return current as ProjectConfig;
+}
 
 export function saveConfig(projectRoot: string, config: ProjectConfig): void {
   const dir = ensureDir(projectRoot);
-  writeFileSync(join(dir, CONFIG_FILE), JSON.stringify(config, null, 2), "utf-8");
+  writeFileSync(
+    join(dir, CONFIG_FILE),
+    JSON.stringify(normalizeConfig(config), null, 2),
+    "utf-8",
+  );
 }
 
 export function loadConfig(projectRoot: string): ProjectConfig {
   const filePath = join(resolveDataDir(projectRoot), CONFIG_FILE);
   if (!existsSync(filePath)) return { ...DEFAULT_CONFIG };
   try {
-    return JSON.parse(readFileSync(filePath, "utf-8")) as ProjectConfig;
+    return normalizeConfig(JSON.parse(readFileSync(filePath, "utf-8")));
   } catch {
     return { ...DEFAULT_CONFIG };
   }

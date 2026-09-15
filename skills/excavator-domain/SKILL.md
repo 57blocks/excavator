@@ -120,7 +120,7 @@ The preprocessing script does NOT produce a domain graph — it produces **raw m
 ### Phase 4: Domain Analysis
 
 1. Read the domain-analyzer agent prompt from `$PLUGIN_ROOT/agents/excavator-domain-analyzer.md`
-2. Dispatch a subagent with the domain-analyzer prompt + the context from Phase 2 or 3
+2. Dispatch a subagent with the domain-analyzer prompt + the context from Phase 2 or 3. Explicitly require every model-owned domain field to be written in English while preserving source-owned identifiers, paths, literals, and excerpts verbatim.
 3. The agent writes its output to `$DATA_DIR/intermediate/domain-analysis.json`
 
 ### Phase 4.5: Anchor Steps

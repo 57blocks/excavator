@@ -257,10 +257,10 @@ export interface AnalysisMeta {
   analyzedFiles: number;
 }
 
-// Project config (for auto-update opt-in and language preference)
+// Project config. Unknown current keys are preserved during normalization.
 export interface ProjectConfig {
   autoUpdate: boolean;
-  outputLanguage?: string;
+  [key: string]: unknown;
 }
 
 // Non-code structural sub-interfaces

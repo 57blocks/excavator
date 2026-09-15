@@ -18,6 +18,8 @@ A JSON batch of manifest nodes. Each has:
 
 You also receive the full list of existing node IDs so you can reference them.
 
+If the dispatch includes a **Figma-only language directive**, follow that request-local directive for model-generated summaries, tags, and relationship descriptions. It is independent of Excavator code-analysis storage rules.
+
 ## Task
 
 For each node, produce an enrichment object:

@@ -197,7 +197,7 @@ describe("persistence", () => {
     it("should return default config when no file exists", () => {
       const loaded = loadConfig(tempDir);
 
-      expect(loaded).toEqual({ autoUpdate: false, outputLanguage: "en" });
+      expect(loaded).toEqual({ autoUpdate: false });
     });
 
     it("should return default config when config.json is corrupted", () => {
@@ -206,7 +206,7 @@ describe("persistence", () => {
       writeFileSync(join(dir, "config.json"), "not json!!", "utf-8");
 
       const loaded = loadConfig(tempDir);
-      expect(loaded).toEqual({ autoUpdate: false, outputLanguage: "en" });
+      expect(loaded).toEqual({ autoUpdate: false });
     });
 
     it("treats outputLanguage as legacy data and removes it on normalized write-back", () => {
@@ -214,15 +214,28 @@ describe("persistence", () => {
       mkdirSync(dir, { recursive: true });
       writeFileSync(
         join(dir, "config.json"),
-        JSON.stringify({ autoUpdate: true, outputLanguage: "zh" }),
+        JSON.stringify({
+          autoUpdate: true,
+          analysisMode: "lazy",
+          customSetting: { keep: true },
+          outputLanguage: "zh",
+        }),
         "utf-8",
       );
 
       const loaded = loadConfig(tempDir);
-      expect(loaded).toEqual({ autoUpdate: true });
+      expect(loaded).toEqual({
+        autoUpdate: true,
+        analysisMode: "lazy",
+        customSetting: { keep: true },
+      });
 
       saveConfig(tempDir, loaded);
-      expect(JSON.parse(readFileSync(join(dir, "config.json"), "utf-8"))).toEqual({ autoUpdate: true });
+      expect(JSON.parse(readFileSync(join(dir, "config.json"), "utf-8"))).toEqual({
+        autoUpdate: true,
+        analysisMode: "lazy",
+        customSetting: { keep: true },
+      });
     });
   });
 });

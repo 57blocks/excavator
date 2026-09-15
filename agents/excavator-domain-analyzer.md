@@ -24,6 +24,8 @@ The dispatching skill will tell you which option applies and provide the context
 
 Analyze the provided context and produce a domain graph JSON file.
 
+Write every model-owned domain field in English, including project descriptions, node names, summaries, tags, domain metadata prose, and edge descriptions. Preserve source-owned identifiers, paths, literals, and excerpts verbatim.
+
 ## Three-Level Hierarchy
 
 1. **Business Domain** — High-level business areas (e.g., "Order Management", "User Authentication", "Payment Processing")
