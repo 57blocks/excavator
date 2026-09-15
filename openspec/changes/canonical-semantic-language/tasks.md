@@ -5,7 +5,7 @@
 
 ## 2. Enforce one persisted language
 
-- [ ] 2.1 Coder upgrades semantic-cache metadata and writer prompts to deterministic `contentLanguage=en`; verify English entries are accepted, noncanonical entries report `noncanonical-language`, the first canonical write does not carry forward any old unverified entry, source-owned fields remain unchanged, and `knowledge-graph.json` is never written.
+- [x] 2.1 Coder upgrades semantic-cache metadata and writer prompts to deterministic `contentLanguage=en`; verify English entries are accepted, noncanonical entries report `noncanonical-language`, the first canonical write does not carry forward any old unverified entry, source-owned fields remain unchanged, and `knowledge-graph.json` is never written.
 - [ ] 2.2 Coder stamps semantic graph and domain graph with `contentLanguage=en` and includes it in freshness; verify missing/non-English markers invalidate only the corresponding semantic product and leave the fact graph byte-identical.
 - [ ] 2.3 Coder implements the model-owned-field language audit; only exact source-owned spans supplied by the current fact graph or SourceSnapshot may be masked, never model-declared exemptions; verify the frozen English/Chinese/source-owned fixtures produce their expected visible terminal buckets.
 - [ ] 2.4 Coder removes `/excavator` analyzer `--language`, `$LANGUAGE_DIRECTIVE`/locale injection, and `outputLanguage` config authority; decouple `excavator-figma` from the removed directive while preserving its independent language behavior; verify help rejects the old `/excavator` option clearly, config normalization removes only the old field, Figma has no dangling variable reference, and every `.excavator` semantic-generation prompt requests English.

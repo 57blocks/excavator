@@ -21,6 +21,8 @@ import {
   validateCacheableFields,
   commitSemanticCacheEntry,
   CACHEABLE_FIELDS,
+  SEMANTIC_CACHE_VERSION,
+  CANONICAL_CONTENT_LANGUAGE,
 } from '../../skills/excavator/semantic-cache.mjs';
 
 const NODE_ID = 'function:src/orderService.ts:createOrder()';
@@ -80,8 +82,8 @@ describe('semantic-cache — cacheable write then reuse on second lookup', () =>
 
     const currentHash = await currentSourceHashFor(root, FILE_PATH);
     expect(currentHash).toBe(HASH_V1);
-    expect(isFresh(entry, currentHash)).toBe(true);
-    expect(freshnessOf(entry, currentHash)).toBe('fresh');
+    expect(isFresh(entry, currentHash, cache)).toBe(true);
+    expect(freshnessOf(entry, currentHash, cache)).toBe('fresh');
   });
 
   it('a missing entry is reported as "missing", not silently treated as stale or fresh', () => {
@@ -127,7 +129,69 @@ describe('semantic-cache — canonical-language oracle (red before implementatio
     });
 
     expect(result).toEqual({ ok: true, status: 'committed' });
-    expect(readCacheFileRaw(root)).toMatchObject({ contentLanguage: 'en' });
+    expect(readCacheFileRaw(root)).toMatchObject({
+      version: SEMANTIC_CACHE_VERSION,
+      contentLanguage: CANONICAL_CONTENT_LANGUAGE,
+    });
+  });
+
+  it('the first canonical write drops every unaudited entry from an old cache', async () => {
+    const oldNodeId = 'function:src/legacy.ts:oldFlow()';
+    writeFileSync(
+      join(root, '.excavator', 'semantic-cache.json'),
+      JSON.stringify({
+        version: '1.0.0',
+        entries: {
+          [oldNodeId]: {
+            summary: '旧的未审计摘要。',
+            tags: ['旧数据'],
+            semanticSourceHash: 'sha256:legacy',
+          },
+        },
+      }, null, 2),
+      'utf-8',
+    );
+
+    const result = await commitSemanticCacheEntry({
+      projectRoot: root, nodeId: NODE_ID, filePath: FILE_PATH, fields: validFields(),
+    });
+
+    expect(result).toEqual({ ok: true, status: 'committed' });
+    const cache = readCacheFileRaw(root);
+    expect(cache).toMatchObject({
+      version: SEMANTIC_CACHE_VERSION,
+      contentLanguage: CANONICAL_CONTENT_LANGUAGE,
+    });
+    expect(Object.keys(cache.entries)).toEqual([NODE_ID]);
+    expect(cache.entries[oldNodeId]).toBeUndefined();
+  });
+
+  it('does not rewrite a source-owned non-English node id', async () => {
+    const sourceOwnedNodeId = 'function:src/orderService.ts:提交订单()';
+    const result = await commitSemanticCacheEntry({
+      projectRoot: root,
+      nodeId: sourceOwnedNodeId,
+      filePath: FILE_PATH,
+      fields: validFields(),
+    });
+
+    expect(result).toEqual({ ok: true, status: 'committed' });
+    const cache = readCacheFileRaw(root);
+    expect(Object.keys(cache.entries)).toEqual([sourceOwnedNodeId]);
+    expect(cache.entries[sourceOwnedNodeId].summary).toBe(validFields().summary);
+  });
+
+  it('both semantic-cache writer prompts require English model prose', () => {
+    const fullSkill = readFileSync(join(process.cwd(), 'skills/excavator/SKILL.md'), 'utf-8');
+    const phaseF2 = fullSkill.slice(
+      fullSkill.indexOf('### Phase F2'),
+      fullSkill.indexOf('### Phase F3'),
+    );
+    const chatSkill = readFileSync(join(process.cwd(), 'skills/excavator-chat/SKILL.md'), 'utf-8');
+
+    expect(phaseF2).toContain('Write every model-owned `summary` and `tags` value in English');
+    expect(phaseF2).not.toContain('$LANGUAGE_DIRECTIVE');
+    expect(chatSkill).toContain('write the model-owned `summary` and `tags` in **English**');
   });
 });
 
@@ -145,8 +209,8 @@ describe('semantic-cache — a file\'s source-hash change invalidates its entry'
     writeManifest(root, [{ path: FILE_PATH, contentHash: HASH_V2 }]);
     const currentHash = await currentSourceHashFor(root, FILE_PATH);
 
-    expect(freshnessOf(entry, currentHash)).toBe('stale');
-    expect(isFresh(entry, currentHash)).toBe(false);
+    expect(freshnessOf(entry, currentHash, cache)).toBe('stale');
+    expect(isFresh(entry, currentHash, cache)).toBe(false);
   });
 });
 

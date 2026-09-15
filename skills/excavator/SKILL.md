@@ -390,7 +390,10 @@ Report: `[Phase F2] Selecting files needing semantic (re)generation...`
    > Write output to: `$DATA_DIR/intermediate/semantic-patch-batch-<batchIndex>.json`
    > as `{ "patches": [{ "nodeId": "<copied verbatim>", "summary": "...", "tags": ["..."] }] }`.
    >
-   > $LANGUAGE_DIRECTIVE
+   > Write every model-owned `summary` and `tags` value in English regardless
+   > of the analyzer's configured output language. Preserve source-owned
+   > identifiers and literals verbatim. The deterministic writer owns the
+   > cache-level `contentLanguage: "en"` marker; do not emit that field.
 
 4. **Hydrate + commit.** The model was never asked for `filePath` or a
    content hash — attach both deterministically (`filePath` from the fact

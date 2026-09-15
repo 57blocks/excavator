@@ -5,13 +5,14 @@
  * Deterministic file selection for Full mode's semantic-generation phase
  * (openspec: changes/full-semantic-isolation, capability
  * `full-semantic-isolation`, design D3). Decides which scanned files' node-
- * local semantics (in `semantic-cache.json`) are MISSING or STALE against the
- * CURRENT `source-manifest.json` content hash, so file-analyzer is dispatched
- * only for those files — Full mode's incremental behavior at the semantic
- * layer, independent of whether the fact layer itself changed.
+ * local semantics (in `semantic-cache.json`) are MISSING, STALE, or carry a
+ * noncanonical cache schema/language identity against the CURRENT
+ * `source-manifest.json` content hash, so file-analyzer is dispatched only
+ * for those files — Full mode's incremental behavior at the semantic layer,
+ * independent of whether the fact layer itself changed.
  *
  * Calls no model. Reuses `semantic-cache.mjs`'s `freshnessOf` — the exact same
- * hash comparison the on-demand chat path already uses (Slice C) — rather
+ * cache identity plus hash comparison the on-demand chat path uses — rather
  * than inventing a second freshness rule.
  *
  * A file is stale when ANY of its fact-graph nodes (the file node itself,
@@ -55,7 +56,7 @@ function compareStrings(a, b) {
  *
  * @param {{
  *   knowledgeGraph: { nodes: object[] },
- *   semanticCache: { entries: Record<string, object> } | null | undefined,
+ *   semanticCache: { version: string, contentLanguage?: string, entries: Record<string, object> } | null | undefined,
  *   manifest: { entries: Array<{ path: string, contentHash: string }> } | null | undefined,
  *   forceAll?: boolean,
  * }} args
@@ -80,7 +81,9 @@ export function selectStaleFiles({ knowledgeGraph, semanticCache, manifest, forc
       continue;
     }
     const currentHash = contentHashByPath.get(filePath) ?? null;
-    const anyMissingOrStale = nodes.some((n) => freshnessOf(entries[n.id], currentHash) !== 'fresh');
+    const anyMissingOrStale = nodes.some(
+      (n) => freshnessOf(entries[n.id], currentHash, semanticCache) !== 'fresh',
+    );
     (anyMissingOrStale ? stale : fresh).push(filePath);
   }
 

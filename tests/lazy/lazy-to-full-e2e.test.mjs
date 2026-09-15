@@ -164,7 +164,7 @@ describe('Lazy -> structural retrieval -> on-demand semantics -> Full -> Domain 
 
     // "a second lookup reuses the cached entry, no re-generation": the
     // node's cache entry is fresh against the CURRENT manifest hash.
-    expect(isFresh(cacheAfterOnDemand.entries[runNode.id], hashOf('src/a.ts'))).toBe(true);
+    expect(isFresh(cacheAfterOnDemand.entries[runNode.id], hashOf('src/a.ts'), cacheAfterOnDemand)).toBe(true);
 
     // ── 4. Full: the Phase F semantic sequence ──────────────────────────────
     // select-stale-semantics.mjs decides FILE-level dispatch: a.ts still

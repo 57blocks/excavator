@@ -123,7 +123,7 @@ If `$PLUGIN_ROOT` cannot be resolved, or `$DATA_DIR/source-index.json` does not 
    " -- <term1> <term2> ...
    ```
 3. Source-text hits: Grep the project source tree directly for the same terms (this IS the "SourceSnapshot source-text search" candidate source — no script needed, a project-root Grep is the source of truth for current text).
-4. Valid semantic-cache hits: read `$DATA_DIR/semantic-cache.json` (if present) and keep only entries whose `semanticSourceHash` still matches that file's CURRENT `contentHash` in `$DATA_DIR/source-manifest.json` — i.e. only entries `isFresh` would call fresh:
+4. Valid semantic-cache hits: read `$DATA_DIR/semantic-cache.json` (if present) and keep only entries whose cache has the current schema plus `contentLanguage: "en"` and whose `semanticSourceHash` still matches that file's CURRENT `contentHash` in `$DATA_DIR/source-manifest.json` — i.e. only entries `isFresh(entry, hash, cache)` would call fresh. A missing or non-English cache marker is visibly `noncanonical-language`, never a retrieval candidate:
    ```bash
    node --input-type=module -e "
    import { readFileSync, existsSync } from 'node:fs';
@@ -133,6 +133,8 @@ If `$PLUGIN_ROOT` cannot be resolved, or `$DATA_DIR/source-index.json` does not 
    const cache = JSON.parse(readFileSync(cachePath, 'utf-8'));
    const manifest = JSON.parse(readFileSync('$DATA_DIR/source-manifest.json', 'utf-8'));
    const hashOf = (path) => manifest.entries.find((e) => e.path === path)?.contentHash ?? null;
+   // Pass the complete cache as the third argument so schema/language identity
+   // is checked together with the entry's source hash.
    // fill in nodeId -> filePath from the knowledge-graph nodes you already matched
    "
    ```
@@ -151,7 +153,7 @@ If `$PLUGIN_ROOT` cannot be resolved, or `$DATA_DIR/source-index.json` does not 
 
    All three return a `boundary` object (`reason`, `truncated`, budgets). **If `boundary.truncated` is true, say so in the answer** — name what was covered and that the graph was larger than the budget (seed ≤20 / nodes ≤80 / edges ≤160 / ~12k tokens of context), rather than presenting a partial subgraph as the whole picture.
 
-**(c) Generate and cache a NODE-LOCAL summary, on demand.** For each node your answer actually needs to explain, read that node's own source (its `filePath`/`lineRange` from `knowledge-graph.json`, or the chunk's own text from `source-index.json`) and write a summary of ONLY that node's own responsibility. Persist it via `semantic-cache.mjs` **only when all three cacheable conditions hold**: you read the node's full local source range, the summary reliably captures that node's OWN responsibility, and it depends on no unverified cross-file inference. Never persist a cross-file conclusion, a business flow, or answer text — the module enforces this with a field whitelist regardless, but do not even attempt it for content you know is out of scope.
+**(c) Generate and cache a NODE-LOCAL summary, on demand.** For each node your answer actually needs to explain, read that node's own source (its `filePath`/`lineRange` from `knowledge-graph.json`, or the chunk's own text from `source-index.json`) and write the model-owned `summary` and `tags` in **English**, regardless of the user's question language. Preserve source-owned identifiers and literals verbatim. Describe ONLY that node's own responsibility. Persist it via `semantic-cache.mjs` **only when all three cacheable conditions hold**: you read the node's full local source range, the summary reliably captures that node's OWN responsibility, and it depends on no unverified cross-file inference. Never persist a cross-file conclusion, a business flow, or answer text — the module enforces this with a field whitelist regardless, but do not even attempt it for content you know is out of scope.
 
 ```bash
 node --input-type=module -e "
@@ -176,7 +178,7 @@ console.log(JSON.stringify(result));
 "
 ```
 
-`result.ok === false` (a rejected field, a stale CAS hash, a held lock, or an I/O error) is expected occasionally and MUST NOT block the answer — the summary you already generated is still valid for THIS answer, it simply was not persisted for reuse.
+`result.ok === false` (noncanonical language, a rejected field, a stale CAS hash, a held lock, or an I/O error) is expected occasionally and MUST NOT block the answer — the summary you already generated is still valid for THIS answer, it simply was not persisted for reuse.
 
 **(d) Seeds are re-verified before they enter the answer.** A semantic-cache or domain hit from step (b)/(c) only ever SEEDS which nodes/files to look at — it is never itself the evidence for a claim in the final answer. Before a conclusion derived from such a hit goes into the answer, re-check it against the fact graph's edges/nodes or the current source text (via SourceSnapshot/Grep on the project root). If it does not hold up, drop or qualify the claim; do not present an unverified cached seed as a checked fact.
 
