@@ -315,6 +315,7 @@ function writeIntegrationManifest(root, sharedSource) {
     entries: [
       { path: PATH.A, contentHash: H(SAME) },
       { path: PATH.B, contentHash: H(SAME) },
+      { path: PATH.M, contentHash: H(LOAD) },
       { path: PATH.S, contentHash: H(sharedSource) },
     ],
   };
@@ -326,16 +327,17 @@ function writeIntegrationManifest(root, sharedSource) {
   return manifest;
 }
 
-async function makeIntegrationProject() {
+async function makeIntegrationProject({ seedNodeIds = [ID.A, ID.B, ID.S, ID.T] } = {}) {
   const root = mkdtempSync(join(tmpdir(), 'excavator-semantic-reuse-integration-'));
   const dataDir = join(root, '.excavator');
   mkdirSync(join(root, 'src'), { recursive: true });
   mkdirSync(dataDir, { recursive: true });
   writeFileSync(join(root, PATH.A), SAME, 'utf-8');
   writeFileSync(join(root, PATH.B), SAME, 'utf-8');
+  writeFileSync(join(root, PATH.M), LOAD, 'utf-8');
   writeFileSync(join(root, PATH.S), SHARED_1, 'utf-8');
 
-  const nodes = makeFixture().nodes.filter((node) => [ID.A, ID.B, ID.S, ID.T].includes(node.id));
+  const nodes = makeFixture().nodes.filter((node) => [ID.A, ID.B, ID.M, ID.S, ID.T].includes(node.id));
   const graphRaw = JSON.stringify({
     version: '1.0.0',
     nodes: nodes.map((node) => ({ ...node, lineRange: { start: 1, end: node.filePath === PATH.S ? 2 : 1 } })),
@@ -350,7 +352,7 @@ async function makeIntegrationProject() {
     [ID.S, PATH.S, H(SHARED_1), 'OwnerA.save returns one from the shared source.'],
     [ID.T, PATH.T, H(SHARED_1), 'OwnerB.save returns two from the shared source.'],
   ];
-  for (const [nodeId, filePath, semanticSourceHash, summary] of seeds) {
+  for (const [nodeId, filePath, semanticSourceHash, summary] of seeds.filter(([nodeId]) => seedNodeIds.includes(nodeId))) {
     const result = await commitSemanticCacheEntry({
       projectRoot: root,
       nodeId,
@@ -1006,6 +1008,136 @@ describe('semantic-cache reuse — disk integration through verification and exi
     }
   });
 
+  it('commits only a missing overlap difference and preserves every existing entry byte', async () => {
+    const project = await makeIntegrationProject({ seedNodeIds: [ID.A, ID.B, ID.T] });
+    const { root, dataDir, graphRaw } = project;
+    const graphPath = join(dataDir, 'knowledge-graph.json');
+    const cachePath = join(dataDir, 'semantic-cache.json');
+    const graphSha = H(graphRaw);
+
+    try {
+      const cacheBeforeRaw = readFileSync(cachePath, 'utf-8');
+      const cacheBeforeSha = H(cacheBeforeRaw);
+      const cacheBefore = JSON.parse(cacheBeforeRaw);
+      expect(Object.keys(cacheBefore.entries).sort()).toEqual([ID.A, ID.B, ID.T].sort());
+      const preservedEntries = Object.fromEntries(
+        [ID.A, ID.B, ID.T].map((nodeId) => [nodeId, entryBytes(cacheBefore, nodeId)]),
+      );
+
+      const plan = await planFromIntegrationDisk(root, [ID.B, ID.M, ID.A, ID.M]);
+      expect(plan).toEqual({
+        reuse: [
+          {
+            nodeId: ID.B,
+            filePath: PATH.B,
+            reason: 'fresh',
+            summary: 'save returns one from the local source.',
+            tags: ['local', 'value'],
+          },
+          {
+            nodeId: ID.A,
+            filePath: PATH.A,
+            reason: 'fresh',
+            summary: 'save returns one from the local source.',
+            tags: ['local', 'value'],
+          },
+        ],
+        generate: [{
+          nodeId: ID.M,
+          filePath: PATH.M,
+          currentContentHash: H(LOAD),
+          reason: 'missing',
+        }],
+        unavailable: [],
+        counts: { requested: 3, reuse: 2, generate: 1, unavailable: 0 },
+      });
+
+      const verifier = vi.fn(async (item) => {
+        const sourceBytes = readFileSync(join(root, item.filePath));
+        const manifest = JSON.parse(readFileSync(join(dataDir, 'source-manifest.json'), 'utf-8'));
+        const currentHash = manifest.entries.find((entry) => entry.path === item.filePath)?.contentHash;
+        expect(H(sourceBytes)).toBe(currentHash);
+        return {
+          fullLocalSourceVerified: true,
+          source: sourceBytes.toString('utf-8'),
+          sourceBytes: sourceBytes.length,
+          sourceHash: currentHash,
+        };
+      });
+      const generator = vi.fn(async (item, evidence) => {
+        expect(item.nodeId).toBe(ID.M);
+        expect(evidence.source).toBe(LOAD);
+        return {
+          summary: 'load returns three from the verified local source.',
+          tags: ['load', 'value'],
+          semanticSourceHash: item.currentContentHash,
+          model: 'integration-overlap-model',
+          generatedAt: '2026-09-15T01:30:00.000Z',
+        };
+      });
+      const writer = vi.fn((args) => commitSemanticCacheEntry(args));
+      const execution = await executeIntegrationPlan({ root, plan, verifier, generator, writer });
+
+      expect(verifier.mock.calls.map(([item]) => item.nodeId)).toEqual([ID.B, ID.A, ID.M]);
+      expect(generator.mock.calls.map(([item]) => item.nodeId)).toEqual([ID.M]);
+      expect(writer.mock.calls.map(([args]) => args.nodeId)).toEqual([ID.M]);
+      expect(writer.mock.calls[0][0].fields.semanticSourceHash).toBe(plan.generate[0].currentContentHash);
+      expect(execution.commits).toEqual([{
+        nodeId: ID.M,
+        result: expect.objectContaining({ ok: true, status: 'committed' }),
+      }]);
+
+      const cacheAfterRaw = readFileSync(cachePath, 'utf-8');
+      const cacheAfterSha = H(cacheAfterRaw);
+      const cacheAfter = JSON.parse(cacheAfterRaw);
+      expect(Object.keys(cacheAfter.entries).sort()).toEqual([ID.A, ID.B, ID.T, ID.M].sort());
+      expect(cacheAfterRaw).not.toBe(cacheBeforeRaw);
+      expect(cacheAfterSha).not.toBe(cacheBeforeSha);
+      for (const [nodeId, bytes] of Object.entries(preservedEntries)) {
+        expect(entryBytes(cacheAfter, nodeId), `${nodeId} content and provenance changed`).toBe(bytes);
+      }
+      expect(cacheAfter.entries[ID.M]).toMatchObject({
+        summary: 'load returns three from the verified local source.',
+        tags: ['load', 'value'],
+        semanticSourceHash: H(LOAD),
+        model: 'integration-overlap-model',
+        generatedAt: '2026-09-15T01:30:00.000Z',
+        languageAudit: { status: 'accepted', rejected: [] },
+      });
+      expect(readFileSync(graphPath, 'utf-8')).toBe(graphRaw);
+      expect(H(readFileSync(graphPath))).toBe(graphSha);
+
+      const allEntriesAfter = Object.fromEntries(
+        Object.keys(cacheAfter.entries).map((nodeId) => [nodeId, entryBytes(cacheAfter, nodeId)]),
+      );
+      generator.mockClear();
+      writer.mockClear();
+      verifier.mockClear();
+      const repeatPlan = await planFromIntegrationDisk(root, [ID.B, ID.M, ID.A, ID.M]);
+      expect(repeatPlan.generate).toEqual([]);
+      expect(repeatPlan.reuse.map((item) => item.nodeId)).toEqual([ID.B, ID.M, ID.A]);
+      expect(repeatPlan.reuse.find((item) => item.nodeId === ID.M)).toMatchObject({
+        reason: 'fresh',
+        summary: 'load returns three from the verified local source.',
+      });
+      await executeIntegrationPlan({ root, plan: repeatPlan, verifier, generator, writer });
+      expect(verifier.mock.calls.map(([item]) => item.nodeId)).toEqual([ID.B, ID.M, ID.A]);
+      expect(generator).not.toHaveBeenCalled();
+      expect(writer).not.toHaveBeenCalled();
+      expect(readFileSync(cachePath, 'utf-8')).toBe(cacheAfterRaw);
+      expect(H(readFileSync(cachePath))).toBe(cacheAfterSha);
+      const repeatedCache = JSON.parse(readFileSync(cachePath, 'utf-8'));
+      for (const [nodeId, bytes] of Object.entries(allEntriesAfter)) {
+        expect(entryBytes(repeatedCache, nodeId)).toBe(bytes);
+      }
+      expect(readFileSync(graphPath, 'utf-8')).toBe(graphRaw);
+      expect(H(readFileSync(graphPath))).toBe(graphSha);
+      expect(existsSync(join(dataDir, 'semantic.lock'))).toBe(false);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   it('returns the verified answer summary when post-plan source drift makes the existing CAS reject', async () => {
     const project = await makeIntegrationProject();
     const { root, dataDir, graphRaw } = project;
@@ -1062,6 +1194,9 @@ describe('semantic-cache reuse — disk integration through verification and exi
       expect(verifier).toHaveBeenCalledTimes(1);
       expect(generator.mock.calls.map(([item]) => item.nodeId)).toEqual([ID.S]);
       expect(writer.mock.calls.map(([args]) => args.nodeId)).toEqual([ID.S]);
+      expect(writer.mock.calls[0][0].fields.semanticSourceHash).toBe(plan.generate[0].currentContentHash);
+      expect(writer.mock.calls[0][0].fields.semanticSourceHash).toBe(H(SHARED_2));
+      expect(writer.mock.calls[0][0].fields.semanticSourceHash).not.toBe(H(SHARED_3));
       expect(beforeWrite).toHaveBeenCalledTimes(1);
       expect(execution.commits).toEqual([{
         nodeId: ID.S,
@@ -1148,6 +1283,28 @@ describe('/excavator-chat — reuse-before-generation runtime protocol', () => {
       skill.indexOf('Evidence verification gate'),
     );
     expect(skill).not.toMatch(/openspec\/changes/i);
+  });
+
+  it('pins commit CAS to the frozen generate-item hash instead of a later manifest hash', () => {
+    const skill = readFileSync(join(process.cwd(), 'skills/excavator-chat/SKILL.md'), 'utf-8');
+    const commitRuleAt = skill.indexOf('Only a verified `generate[]` item may reach');
+    const snippetStart = skill.indexOf('```bash', commitRuleAt);
+    const snippetEnd = skill.indexOf('```', snippetStart + '```bash'.length);
+    const commitSnippet = skill.slice(snippetStart, snippetEnd);
+
+    expect(commitRuleAt).toBeGreaterThan(-1);
+    expect(skill.slice(commitRuleAt, snippetStart)).toContain(
+      'Its frozen `currentContentHash` is the only allowed `semanticSourceHash`',
+    );
+    expect(skill.slice(commitRuleAt, snippetStart)).toContain(
+      'MUST NOT replace the planned hash with a later hash',
+    );
+    expect(commitSnippet).toContain("currentContentHash: '<exact plan.generate[].currentContentHash>'");
+    expect(commitSnippet).toContain('const plannedSemanticSourceHash = generateItem.currentContentHash');
+    expect(commitSnippet).toContain('semanticSourceHash: plannedSemanticSourceHash');
+    expect(commitSnippet).not.toContain("readFileSync('$DATA_DIR/source-manifest.json'");
+    expect(commitSnippet).not.toContain('manifest.entries.find');
+    expect(commitSnippet).not.toMatch(/semanticSourceHash\s*=\s*manifest/);
   });
 });
 

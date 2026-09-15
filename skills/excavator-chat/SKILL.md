@@ -184,30 +184,31 @@ node "$PLUGIN_ROOT/skills/excavator/semantic-cache-reuse.mjs" "$PROJECT_ROOT" \
 The planner reads the current fact graph, source manifest, and semantic cache for this invocation, then returns `reuse[]`, `generate[]`, `unavailable[]`, and conserving `counts`:
 
 - `reuse[]` is seed/context only. Recheck current facts or source before using any related claim. Never send a reused node to the generator or semantic-cache writer, and never restamp or rewrite its entry.
-- `generate[]` is the only semantic generation loop. For each item, first read and verify that node's full local source range (its `filePath`/`lineRange` from `knowledge-graph.json`, or the chunk's own full text from `source-index.json`). Then write the model-owned `summary` and `tags` in **English**, regardless of the user's question language. Preserve source-owned identifiers and literals verbatim and describe ONLY that node's own responsibility.
+- `generate[]` is the only semantic generation loop. Treat each generate item as frozen for this turn. For each item, first read and verify that node's full local source range (its `filePath`/`lineRange` from `knowledge-graph.json`, or the chunk's own full text from `source-index.json`) and confirm those exact bytes still hash to that item's `currentContentHash`. If they do not, stop processing that item and re-plan; do not generate against mixed source states. Then write the model-owned `summary` and `tags` in **English**, regardless of the user's question language. Preserve source-owned identifiers and literals verbatim and describe ONLY that node's own responsibility.
 - `unavailable[]` is a visible degraded result. Report each unavailable node id and its `unknown-node` or `path-not-in-manifest` reason; never generate or write semantics for it.
 
 An all-fresh plan means zero generator calls, zero semantic-cache writer calls, and a byte-identical `semantic-cache.json`, including every existing entry's model, `generatedAt`, and audit. For an overlapping question, preserve every `reuse[]` intersection entry byte-for-byte and generate/commit only the `generate[]` difference. A repeated plan after that commit should reuse the newly fresh entries without another write.
 
-Only a verified `generate[]` item may reach `commitSemanticCacheEntry`. Persist it **only when all three cacheable conditions hold**: you read the node's full local source range, the summary reliably captures that node's OWN responsibility, and it depends on no unverified cross-file inference. Never persist a cross-file conclusion, a business flow, or answer text — the module enforces this with a field whitelist regardless, but do not even attempt it for content you know is out of scope.
+Only a verified `generate[]` item may reach `commitSemanticCacheEntry`. Its frozen `currentContentHash` is the only allowed `semanticSourceHash` for the summary generated in this turn. You may re-read the manifest or source to recheck evidence, but MUST NOT replace the planned hash with a later hash; passing the frozen hash lets the writer's CAS reject any post-plan drift. Persist it **only when all three cacheable conditions hold**: you read the node's full local source range, the summary reliably captures that node's OWN responsibility, and it depends on no unverified cross-file inference. Never persist a cross-file conclusion, a business flow, or answer text — the module enforces this with a field whitelist regardless, but do not even attempt it for content you know is out of scope.
 
 ```bash
 node --input-type=module -e "
-import { readFileSync } from 'node:fs';
 import { commitSemanticCacheEntry } from '$PLUGIN_ROOT/skills/excavator/semantic-cache.mjs';
-const manifest = JSON.parse(readFileSync('$DATA_DIR/source-manifest.json', 'utf-8'));
 // Repeat this block only for one verified item from plan.generate.
-const nodeId = '<exact generate[].nodeId>';
-const filePath = '<exact generate[].filePath>';
-const semanticSourceHash = manifest.entries.find((e) => e.path === filePath)?.contentHash;
+const generateItem = {
+  nodeId: '<exact plan.generate[].nodeId>',
+  filePath: '<exact plan.generate[].filePath>',
+  currentContentHash: '<exact plan.generate[].currentContentHash>',
+};
+const plannedSemanticSourceHash = generateItem.currentContentHash;
 const result = await commitSemanticCacheEntry({
   projectRoot: '$PROJECT_ROOT',
-  nodeId,
-  filePath,
+  nodeId: generateItem.nodeId,
+  filePath: generateItem.filePath,
   fields: {
     summary: '<one paragraph about ONLY this node\'s own responsibility>',
     tags: ['<short local tags>'],
-    semanticSourceHash,
+    semanticSourceHash: plannedSemanticSourceHash,
     model: '<this model id>',
     generatedAt: new Date().toISOString(),
   },
