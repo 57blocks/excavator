@@ -51,7 +51,7 @@ Determine whether to run a full analysis or incremental update.
      - Verify the resolved path exists and is a directory (run `test -d <path>`). If it does not exist or is not a directory, report an error to the user and **STOP**.
      - Set `PROJECT_ROOT` to the resolved absolute path.
    - If no directory path argument is found, set `PROJECT_ROOT` to the current working directory.
-   - **Worktree redirect.** If `PROJECT_ROOT` is inside a git worktree (not the main checkout), redirect output to the main repository root. Worktrees managed by Claude Code are ephemeral — the data directory (`.excavator/`) written there is destroyed when the session ends, taking the knowledge graph with it (issue #133). Detect a worktree by comparing `git rev-parse --git-dir` against `git rev-parse --git-common-dir`; in a normal checkout or submodule they resolve to the same path, in a worktree they differ and the parent of `--git-common-dir` is the main repo root.
+   - **Worktree isolation.** If `PROJECT_ROOT` is inside a git worktree (not the main checkout), Excavator writes `.excavator/` **inside that worktree** and never sends output anywhere else. The knowledge graph corresponds only to that worktree's SourceSnapshot revision, which is what keeps two worktrees on different branches/HEADs from silently overwriting each other's graph. The trade-off: deleting the worktree deletes its `.excavator/` cache along with it — this reopens issue #133's data-loss risk by design (a deliberate choice for snapshot correctness, see plan §10), and is expected behavior rather than an error. Detect a worktree by comparing `git rev-parse --git-dir` against `git rev-parse --git-common-dir`; in a normal checkout or submodule they resolve to the same path, in a worktree they differ.
 
      ```bash
      COMMON_DIR=$(git -C "$PROJECT_ROOT" rev-parse --git-common-dir 2>/dev/null)
@@ -60,18 +60,12 @@ Determine whether to run a full analysis or incremental update.
        COMMON_ABS=$(cd "$PROJECT_ROOT" && cd "$COMMON_DIR" 2>/dev/null && pwd -P)
        GIT_ABS=$(cd "$PROJECT_ROOT" && cd "$GIT_DIR" 2>/dev/null && pwd -P)
        if [ -n "$COMMON_ABS" ] && [ "$COMMON_ABS" != "$GIT_ABS" ]; then
-         MAIN_ROOT=$(dirname "$COMMON_ABS")
-         if [ -d "$MAIN_ROOT" ] && [ "${EXCAVATOR_NO_WORKTREE_REDIRECT:-0}" != "1" ]; then
-           echo "[excavator] Detected git worktree at $PROJECT_ROOT"
-           echo "[excavator] Redirecting output to main repo root: $MAIN_ROOT"
-           echo "[excavator] (Set EXCAVATOR_NO_WORKTREE_REDIRECT=1 to keep PROJECT_ROOT as the worktree.)"
-           PROJECT_ROOT="$MAIN_ROOT"
-         fi
+         echo "[excavator] Detected git worktree at $PROJECT_ROOT"
+         echo "[excavator] The knowledge graph is written here, inside this worktree, and corresponds only to this worktree's revision."
+         echo "[excavator] Deleting this worktree deletes its .excavator/ cache with it."
        fi
      fi
      ```
-
-     Set `EXCAVATOR_NO_WORKTREE_REDIRECT=1` if you intentionally want a per-worktree graph (rare — most users want the redirect).
 1.5. **Ensure the plugin is built.** Later phases invoke Node scripts that import `@excavator/core`. On a fresh install `packages/core/dist/` does not exist yet — build once.
 
    **Important:** do **not** assume the plugin root is simply two directories above the skill path string. In many installations `~/.agents/skills/excavator` is a symlink into the real plugin checkout. Try, in order: the Claude Code runtime root, the universal install symlink, then the self-relative path resolved from the skill symlink.
