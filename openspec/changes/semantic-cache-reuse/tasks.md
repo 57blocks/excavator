@@ -1,6 +1,6 @@
 ## 1. Freeze the reuse oracle
 
-- [ ] 1.1 Acceptor writes the pre-implementation oracle for duplicate, fresh, missing, stale, noncanonical, unknown-node, and path-not-in-manifest inputs; verify every unique requested node lands in exactly one expected bucket and the expected counts conserve the input.
+- [x] 1.1 Acceptor writes the pre-implementation oracle for duplicate, fresh, missing, stale, noncanonical, unknown-node, and path-not-in-manifest inputs; verify every unique requested node lands in exactly one expected bucket and the expected counts conserve the input.
 - [ ] 1.2 Coder adds the red planner and execution fixtures before production edits; verify the current code has no single reuse plan, and an all-fresh simulated answer path can detect any generator/writer call or cache-byte change.
 
 ## 2. Implement deterministic reuse before generation
