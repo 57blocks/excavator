@@ -769,6 +769,57 @@ describe('semantic-cache reuse — future planner and simulated execution contra
   });
 });
 
+describe('/excavator-chat — reuse-before-generation runtime protocol', () => {
+  it('plans the exact bounded need set before any semantic generation', () => {
+    const skill = readFileSync(join(process.cwd(), 'skills/excavator-chat/SKILL.md'), 'utf-8');
+    const mergeAt = skill.indexOf('Merge all four lists');
+    const traverseAt = skill.indexOf('Pick ONE traversal primitive');
+    const needSetAt = skill.indexOf('Freeze the bounded need set');
+    const plannerAt = skill.indexOf('semantic-cache-reuse.mjs', needSetAt);
+    const generationAt = skill.indexOf('`generate[]` is the only semantic generation loop');
+
+    expect(mergeAt).toBeGreaterThan(-1);
+    expect(traverseAt).toBeGreaterThan(mergeAt);
+    expect(needSetAt).toBeGreaterThan(traverseAt);
+    expect(plannerAt).toBeGreaterThan(needSetAt);
+    expect(generationAt).toBeGreaterThan(plannerAt);
+    expect(skill).toContain('select the exact node ids that this answer actually needs explained');
+    expect(skill).toContain('deduplicate them by exact id in first-occurrence order');
+    expect(skill).toContain('fixed before any semantic generation');
+    expect(skill).not.toContain('For each node your answer actually needs to explain');
+  });
+
+  it('limits execution to generate, visibly degrades unavailable, and preserves all-fresh/overlap bytes', () => {
+    const skill = readFileSync(join(process.cwd(), 'skills/excavator-chat/SKILL.md'), 'utf-8');
+    expect(skill).toContain('`reuse[]` is seed/context only');
+    expect(skill).toContain('Never send a reused node to the generator or semantic-cache writer');
+    expect(skill).toContain('`generate[]` is the only semantic generation loop');
+    expect(skill).toContain('full local source range');
+    expect(skill).toContain('`unavailable[]` is a visible degraded result');
+    expect(skill).toContain('never generate or write semantics for it');
+    expect(skill).toContain('zero generator calls, zero semantic-cache writer calls');
+    expect(skill).toContain('byte-identical `semantic-cache.json`');
+    expect(skill).toContain('preserve every `reuse[]` intersection entry byte-for-byte');
+    expect(skill).toContain('only the `generate[]` difference');
+    expect(skill).toContain('Repeat this block only for one verified item from plan.generate');
+  });
+
+  it('keeps argv literal and preserves English-cache/current-evidence/final-language gates', () => {
+    const skill = readFileSync(join(process.cwd(), 'skills/excavator-chat/SKILL.md'), 'utf-8');
+    expect(skill).toContain("--node-id 'function:src/article.ts:favorite()'");
+    expect(skill.match(/--node-id 'function:src\/article\.ts:favorite\(\)'/g)).toHaveLength(2);
+    expect(skill).toContain('every needed id as a separate `--node-id` argument');
+    expect(skill).toContain('Never concatenate ids into a command string, evaluate them as shell/code');
+    expect(skill).toContain('write the model-owned `summary` and `tags` in **English**');
+    expect(skill).toContain('semantic cache entry, summary, layer description, domain result, or English retrieval expression can select where to inspect, but is not evidence by itself');
+    expect(skill).toContain('finalizeVerifiedAnswerLanguage($CHAT_REQUEST_STATE, { evidenceVerified: true })');
+    expect(skill.indexOf('finalizeVerifiedAnswerLanguage')).toBeGreaterThan(
+      skill.indexOf('Evidence verification gate'),
+    );
+    expect(skill).not.toMatch(/openspec\/changes/i);
+  });
+});
+
 describe('semantic-cache reuse CLI — current disk inputs and zero writes', () => {
   it('preserves repeated and shell-shaped argv literally without importing a writer', () => {
     const fixture = makeFixture();
