@@ -1,6 +1,12 @@
-// Validates the worktree-redirect bash snippet embedded in
+// Validates the worktree-isolation bash snippet embedded in
 // `skills/excavator/SKILL.md` Phase 0 step 1 and
 // `skills/excavator-domain/SKILL.md` Phase 0.
+//
+// Per worktree-isolation spec (openspec/changes/lazy-mode-completion): when
+// PROJECT_ROOT is inside a git worktree, Excavator MUST leave PROJECT_ROOT
+// alone (so `.excavator/` is written inside that worktree) and MUST NOT
+// redirect it to the main checkout root. The opt-out env switch that used to
+// gate this has been removed entirely — per-worktree behavior is unconditional.
 //
 // If you edit the snippet in either SKILL.md, mirror the change to RESOLVE_SNIPPET
 // below — there is no shared script to source (per-skill convention in this repo).
@@ -18,10 +24,7 @@ if [ -n "$COMMON_DIR" ] && [ -n "$GIT_DIR" ]; then
   COMMON_ABS=$(cd "$PROJECT_ROOT" && cd "$COMMON_DIR" 2>/dev/null && pwd -P)
   GIT_ABS=$(cd "$PROJECT_ROOT" && cd "$GIT_DIR" 2>/dev/null && pwd -P)
   if [ -n "$COMMON_ABS" ] && [ "$COMMON_ABS" != "$GIT_ABS" ]; then
-    MAIN_ROOT=$(dirname "$COMMON_ABS")
-    if [ -d "$MAIN_ROOT" ] && [ "\${EXCAVATOR_NO_WORKTREE_REDIRECT:-0}" != "1" ]; then
-      PROJECT_ROOT="$MAIN_ROOT"
-    fi
+    : # worktree detected; PROJECT_ROOT is intentionally left unchanged (per-worktree isolation)
   fi
 fi
 echo "$PROJECT_ROOT"
@@ -61,7 +64,7 @@ let mainRepo;
 let worktree;
 let subdir;
 
-describeWithBash("worktree-redirect snippet (issue #133)", () => {
+describeWithBash("worktree-isolation snippet (issue #133 reopened by design)", () => {
   beforeAll(() => {
     tmpRoot = realpathSync(mkdtempSync(join(tmpdir(), "excavator-wt-")));
     mainRepo = join(tmpRoot, "main");
@@ -90,16 +93,16 @@ describeWithBash("worktree-redirect snippet (issue #133)", () => {
     expectSamePath(runResolve(mainRepo), mainRepo);
   });
 
-  it("redirects PROJECT_ROOT to the main repo when started in a worktree", () => {
-    expectSamePath(runResolve(worktree), mainRepo);
+  it("leaves PROJECT_ROOT as the worktree path when started in a worktree (no redirect to main)", () => {
+    const resolved = runResolve(worktree);
+    expectSamePath(resolved, worktree);
+    expect(resolved).not.toBe(mainRepo);
   });
 
-  it("redirects from a subdirectory inside a worktree", () => {
-    expectSamePath(runResolve(subdir), mainRepo);
-  });
-
-  it("respects EXCAVATOR_NO_WORKTREE_REDIRECT=1", () => {
-    expectSamePath(runResolve(worktree, { EXCAVATOR_NO_WORKTREE_REDIRECT: "1" }), worktree);
+  it("leaves PROJECT_ROOT as the subdirectory path when started deep inside a worktree", () => {
+    const resolved = runResolve(subdir);
+    expectSamePath(resolved, subdir);
+    expect(resolved).not.toBe(mainRepo);
   });
 
   it("leaves PROJECT_ROOT alone when not inside a git repo", () => {
