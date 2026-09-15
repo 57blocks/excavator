@@ -10,8 +10,8 @@
  * reuses, design D1): it stores architecture `layers` (each `nodeIds[]` a set
  * of REAL fact-graph node ids, resolved via the shared node-identity
  * authority) and cross-node semantic `relations` (each carrying
- * `provenance`/`evidence` back to source), keyed by a `factDigest` freshness
- * field.
+ * `provenance`/`evidence` back to source), keyed by the current schema,
+ * `contentLanguage: "en"`, and a `factDigest` freshness field.
  *
  * Naming note: `factDigest` here is the SAME value build-fact-graph.mjs
  * computes and knowledge-graph.json publishes as `project.factsDigest` — this
@@ -58,7 +58,8 @@ import { compareGaps } from './coverage-ledger.mjs';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const pluginRoot = resolve(__dirname, '../..');
 
-export const SEMANTIC_GRAPH_VERSION = '1.0.0';
+export const SEMANTIC_GRAPH_VERSION = '2.0.0';
+export const SEMANTIC_GRAPH_CONTENT_LANGUAGE = 'en';
 export const SEMANTIC_GRAPH_FILE = 'semantic-graph.json';
 
 const REAL_FS = Object.freeze({
@@ -207,6 +208,7 @@ export function buildSemanticGraph({
 
   const semanticGraph = {
     version: SEMANTIC_GRAPH_VERSION,
+    contentLanguage: SEMANTIC_GRAPH_CONTENT_LANGUAGE,
     factDigest,
     layers: sanitizedLayers,
     relations: sanitizedRelations,
@@ -218,22 +220,39 @@ export function buildSemanticGraph({
 }
 
 /**
- * The architecture factDigest gate (design D3): when the existing
- * semantic-graph.json's factDigest matches the CURRENT fact graph's digest,
- * Architecture SHALL NOT rerun and the existing document is reused as-is.
+ * The architecture gate: reuse requires the current semantic schema,
+ * `contentLanguage: "en"`, and a factDigest matching the CURRENT fact graph.
  *
  * @param {{ currentFactDigest: string, existing: object|null }} args
- * @returns {{ action: 'reuse'|'rebuild', reason: string }}
+ * @returns {{ action: 'reuse'|'rebuild', status: 'fresh'|'stale'|'missing'|'noncanonical-language', reason: string }}
  */
 export function resolveArchitectureAction({ currentFactDigest, existing }) {
-  if (!existing || typeof existing.factDigest !== 'string' || existing.factDigest.length === 0) {
-    return { action: 'rebuild', reason: 'no existing semantic-graph.json (or it carries no factDigest)' };
+  if (!existing) {
+    return { action: 'rebuild', status: 'missing', reason: 'no existing semantic-graph.json' };
+  }
+  if (
+    existing.version !== SEMANTIC_GRAPH_VERSION
+    || existing.contentLanguage !== SEMANTIC_GRAPH_CONTENT_LANGUAGE
+  ) {
+    return {
+      action: 'rebuild',
+      status: 'noncanonical-language',
+      reason: 'noncanonical-language: semantic-graph.json lacks the current schema with contentLanguage=en',
+    };
+  }
+  if (typeof existing.factDigest !== 'string' || existing.factDigest.length === 0) {
+    return { action: 'rebuild', status: 'missing', reason: 'semantic-graph.json carries no factDigest' };
   }
   if (existing.factDigest === currentFactDigest) {
-    return { action: 'reuse', reason: 'factDigest unchanged since the existing semantic-graph.json was written' };
+    return {
+      action: 'reuse',
+      status: 'fresh',
+      reason: 'factDigest unchanged since the existing semantic-graph.json was written',
+    };
   }
   return {
     action: 'rebuild',
+    status: 'stale',
     reason: `factDigest changed (${existing.factDigest.slice(0, 12)}… -> ${String(currentFactDigest).slice(0, 12)}…)`,
   };
 }
@@ -423,7 +442,7 @@ if (isCliEntry()) {
 }
 
 export default {
-  SEMANTIC_GRAPH_VERSION, SEMANTIC_GRAPH_FILE,
+  SEMANTIC_GRAPH_VERSION, SEMANTIC_GRAPH_CONTENT_LANGUAGE, SEMANTIC_GRAPH_FILE,
   buildSemanticGraph, resolveArchitectureAction, collectFactNodeIds,
   mergeExtraGapsIntoExisting, readSemanticGraph, writeSemanticGraph,
 };

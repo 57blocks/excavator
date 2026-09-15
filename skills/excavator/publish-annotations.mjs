@@ -108,7 +108,8 @@ export const ROOT_FIELDS = Object.freeze(['coverage', 'gaps']);
 /**
  * Root keys copied wholesale ADDITIONALLY for `domain-graph.json` only
  * (openspec: changes/full-semantic-isolation, capability `domain-freshness`,
- * design D4): the `sourceRevision`/`factDigest` freshness keys
+ * design D4 plus canonical-semantic-language): the canonical `version` /
+ * `contentLanguage` identity and `sourceRevision`/`factDigest` freshness keys
  * `annotate-domain.mjs` stamps onto its output have exactly the same
  * "written into intermediate/, then thrown away when the SAVE phase moves
  * intermediate/ into .trash-*" exposure this whole script exists to close for
@@ -116,7 +117,9 @@ export const ROOT_FIELDS = Object.freeze(['coverage', 'gaps']);
  * from `ROOT_FIELDS` (used for both graphs) rather than added to it, so a
  * knowledge-graph.json fixture/test with no domain semantics is unaffected.
  */
-export const DOMAIN_ROOT_FIELDS = Object.freeze(['sourceRevision', 'factDigest']);
+export const DOMAIN_ROOT_FIELDS = Object.freeze([
+  'version', 'contentLanguage', 'sourceRevision', 'factDigest',
+]);
 
 /** Reports moved out of `intermediate/` so the SAVE cleanup cannot take them. */
 export const REPORT_FILES = Object.freeze([

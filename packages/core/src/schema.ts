@@ -552,6 +552,7 @@ export const ProjectMetaSchema = z.object({
 
 export const KnowledgeGraphSchema = z.object({
   version: z.string(),
+  contentLanguage: z.string().optional(),
   kind: z.enum(["codebase", "knowledge", "design"]).optional(),
   project: ProjectMetaSchema,
   nodes: z.array(GraphNodeSchema),
@@ -987,6 +988,9 @@ export function validateGraph(data: unknown): ValidationResult {
 
   const graph: KnowledgeGraph = {
     version: typeof fixed.version === "string" ? fixed.version : "1.0.0",
+    ...(typeof fixed.contentLanguage === "string"
+      ? { contentLanguage: fixed.contentLanguage }
+      : {}),
     // `kind` decides which alias table service consumers apply —
     // dropping it here silently turned design/knowledge graphs into codebase
     // graphs (each caller had to re-attach it).

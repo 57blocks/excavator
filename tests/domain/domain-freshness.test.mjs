@@ -15,6 +15,10 @@ import { fileURLToPath } from 'node:url';
 
 import { annotateDomain } from '../../skills/excavator-domain/annotate-domain.mjs';
 import { isDomainGraphUsable, resolveDomainFreshness } from '../../skills/excavator-domain/domain-freshness.mjs';
+import {
+  DOMAIN_CONTENT_LANGUAGE,
+  DOMAIN_GRAPH_VERSION,
+} from '../../skills/excavator-domain/domain-contract.mjs';
 import { runLazyAnalysis } from '../../skills/excavator/lazy-analyze.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -63,6 +67,8 @@ describe('annotateDomain stamps domain freshness keys at the top level', () => {
     });
     expect(annotated.sourceRevision).toBe('git:' + 'b'.repeat(40));
     expect(annotated.factDigest).toBe('a'.repeat(64));
+    expect(annotated.version).toBe(DOMAIN_GRAPH_VERSION);
+    expect(annotated.contentLanguage).toBe(DOMAIN_CONTENT_LANGUAGE);
   });
 
   it('stamps no sourceRevision/factDigest key at all when neither is known — never fabricates a match', () => {
@@ -121,18 +127,26 @@ describe('annotateDomain stamps domain freshness keys at the top level', () => {
 describe('isDomainGraphUsable — pure gate', () => {
   const currentSourceRevision = 'git:' + '1'.repeat(40);
   const currentFactDigest = '2'.repeat(64);
+  const canonical = (overrides = {}) => ({
+    version: DOMAIN_GRAPH_VERSION,
+    contentLanguage: DOMAIN_CONTENT_LANGUAGE,
+    sourceRevision: currentSourceRevision,
+    factDigest: currentFactDigest,
+    ...overrides,
+  });
 
   it('is usable when sourceRevision and factDigest both match', () => {
     const result = isDomainGraphUsable({
-      domainGraph: { sourceRevision: currentSourceRevision, factDigest: currentFactDigest },
+      domainGraph: canonical(),
       currentSourceRevision, currentFactDigest,
     });
     expect(result.usable).toBe(true);
+    expect(result.status).toBe('fresh');
   });
 
   it('is not usable when sourceRevision has moved (factDigest still matching)', () => {
     const result = isDomainGraphUsable({
-      domainGraph: { sourceRevision: 'git:' + '0'.repeat(40), factDigest: currentFactDigest },
+      domainGraph: canonical({ sourceRevision: 'git:' + '0'.repeat(40) }),
       currentSourceRevision, currentFactDigest,
     });
     expect(result.usable).toBe(false);
@@ -141,16 +155,26 @@ describe('isDomainGraphUsable — pure gate', () => {
 
   it('is not usable when factDigest has moved (sourceRevision still matching)', () => {
     const result = isDomainGraphUsable({
-      domainGraph: { sourceRevision: currentSourceRevision, factDigest: '9'.repeat(64) },
+      domainGraph: canonical({ factDigest: '9'.repeat(64) }),
       currentSourceRevision, currentFactDigest,
     });
     expect(result.usable).toBe(false);
     expect(result.reason).toMatch(/factDigest mismatch/);
   });
 
-  it('is not usable when the domain graph was never stamped (pre-existing/legacy graph)', () => {
+  it('is visibly noncanonical when the domain graph lacks its English identity', () => {
     const result = isDomainGraphUsable({ domainGraph: {}, currentSourceRevision, currentFactDigest });
     expect(result.usable).toBe(false);
+    expect(result.status).toBe('noncanonical-language');
+    expect(result.reason).toMatch(/noncanonical-language/);
+  });
+
+  it('is stale when a canonical graph carries no sourceRevision', () => {
+    const result = isDomainGraphUsable({
+      domainGraph: canonical({ sourceRevision: undefined }), currentSourceRevision, currentFactDigest,
+    });
+    expect(result.usable).toBe(false);
+    expect(result.status).toBe('stale');
     expect(result.reason).toMatch(/no sourceRevision/);
   });
 
@@ -185,6 +209,7 @@ describe('resolveDomainFreshness — end-to-end over real files', () => {
     const result = await resolveDomainFreshness(root);
     expect(result.usable).toBe(true);
     expect(result.status).toBe('fresh');
+    expect(result.domainGraph.contentLanguage).toBe(DOMAIN_CONTENT_LANGUAGE);
   });
 
   it('the same domain graph is reported not-usable once the source changes (stale)', async () => {

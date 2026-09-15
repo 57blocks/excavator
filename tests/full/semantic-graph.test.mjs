@@ -17,6 +17,7 @@ import {
   readSemanticGraph,
   writeSemanticGraph,
   SEMANTIC_GRAPH_VERSION,
+  SEMANTIC_GRAPH_CONTENT_LANGUAGE,
 } from '../../skills/excavator/semantic-graph.mjs';
 
 const fileNodeId = (path) => deriveNodeId({ type: 'file', path });
@@ -37,6 +38,7 @@ describe('semantic-graph.mjs — buildSemanticGraph', () => {
       factDigest: 'abc123', factNodeIds, layers: [layer], generatedAt: '2024-01-01T00:00:00.000Z',
     });
     expect(semanticGraph.version).toBe(SEMANTIC_GRAPH_VERSION);
+    expect(semanticGraph.contentLanguage).toBe(SEMANTIC_GRAPH_CONTENT_LANGUAGE);
     expect(semanticGraph.factDigest).toBe('abc123');
     expect(semanticGraph.layers).toHaveLength(1);
     // sorted, but both entries are real ids that survive verbatim.
@@ -106,24 +108,43 @@ describe('semantic-graph.mjs — buildSemanticGraph', () => {
 });
 
 describe('semantic-graph.mjs — resolveArchitectureAction (factDigest gate)', () => {
+  const current = (factDigest) => ({
+    version: SEMANTIC_GRAPH_VERSION,
+    contentLanguage: SEMANTIC_GRAPH_CONTENT_LANGUAGE,
+    factDigest,
+  });
+
   it('reports rebuild when there is no existing semantic-graph.json', () => {
-    const { action } = resolveArchitectureAction({ currentFactDigest: 'abc', existing: null });
+    const { action, status } = resolveArchitectureAction({ currentFactDigest: 'abc', existing: null });
     expect(action).toBe('rebuild');
+    expect(status).toBe('missing');
   });
 
   it('reports reuse when factDigest is unchanged', () => {
-    const { action, reason } = resolveArchitectureAction({
-      currentFactDigest: 'abc', existing: { factDigest: 'abc' },
+    const { action, status, reason } = resolveArchitectureAction({
+      currentFactDigest: 'abc', existing: current('abc'),
     });
     expect(action).toBe('reuse');
+    expect(status).toBe('fresh');
     expect(reason).toMatch(/unchanged/);
   });
 
   it('reports rebuild when factDigest changed', () => {
-    const { action } = resolveArchitectureAction({
-      currentFactDigest: 'def', existing: { factDigest: 'abc' },
+    const { action, status } = resolveArchitectureAction({
+      currentFactDigest: 'def', existing: current('abc'),
     });
     expect(action).toBe('rebuild');
+    expect(status).toBe('stale');
+  });
+
+  it.each([
+    ['missing marker', { version: SEMANTIC_GRAPH_VERSION, factDigest: 'abc' }],
+    ['non-English marker', { version: SEMANTIC_GRAPH_VERSION, contentLanguage: 'zh', factDigest: 'abc' }],
+    ['old schema', { version: '1.0.0', contentLanguage: SEMANTIC_GRAPH_CONTENT_LANGUAGE, factDigest: 'abc' }],
+  ])('reports visible noncanonical-language for %s', (_label, existing) => {
+    const result = resolveArchitectureAction({ currentFactDigest: 'abc', existing });
+    expect(result).toMatchObject({ action: 'rebuild', status: 'noncanonical-language' });
+    expect(result.reason).toContain('noncanonical-language');
   });
 });
 
@@ -131,6 +152,7 @@ describe('semantic-graph.mjs — mergeExtraGapsIntoExisting (reuse branch does n
   it('replaces prior patch-origin gaps with fresh ones while keeping layer/relation gaps from the last real build', () => {
     const existing = {
       version: SEMANTIC_GRAPH_VERSION,
+      contentLanguage: SEMANTIC_GRAPH_CONTENT_LANGUAGE,
       factDigest: 'abc',
       layers: [{ id: 'layer:app', name: 'App', description: 'd', nodeIds: ['file:a.ts'] }],
       relations: [],
@@ -183,5 +205,6 @@ describe('semantic-graph.mjs — collectFactNodeIds / read / write round trip', 
     expect(existsSync(outPath)).toBe(true);
     expect(readSemanticGraph(root)).toEqual(semanticGraph);
     expect(JSON.parse(readFileSync(outPath, 'utf-8')).factDigest).toBe('zzz');
+    expect(JSON.parse(readFileSync(outPath, 'utf-8')).contentLanguage).toBe('en');
   });
 });

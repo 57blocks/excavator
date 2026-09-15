@@ -218,6 +218,8 @@ export interface ProjectMeta {
 // Root KnowledgeGraph
 export interface KnowledgeGraph {
   version: string;
+  /** Present on persisted model-semantic products; writers currently fix it to English. */
+  contentLanguage?: string;
   kind?: "codebase" | "knowledge" | "design";
   project: ProjectMeta;
   nodes: GraphNode[];

@@ -453,7 +453,7 @@ node "<SKILL_DIR>/semantic-graph.mjs" "$PROJECT_ROOT" merge-gaps \
   --extra-gaps "$DATA_DIR/intermediate/semantic-gaps.json"
 ```
 to refresh ONLY `semantic-graph.json`'s `gaps` with Phase F2's patch-time
-gaps (its `layers`/`relations`/`factDigest` are left exactly as they were —
+gaps (its `layers`/`relations`/`factDigest`/`contentLanguage` are left exactly as they were —
 a reused Architecture must not silently swallow a gap this run actually
 found). Report `Architecture unchanged (factDigest match) — reusing existing
 semantic-graph.json.` and continue to Phase F4 without dispatching anything.
@@ -491,7 +491,7 @@ node "<SKILL_DIR>/semantic-graph.mjs" "$PROJECT_ROOT" write \
 
 This drops any `nodeIds`/relation-endpoint that is not a real fact node id,
 recording each as a semantic gap (never a dangling reference, never a fact
-anchor), stamps the CURRENT `factsDigest` as `factDigest`, and writes
+anchor), stamps `contentLanguage: "en"` plus the CURRENT `factsDigest` as `factDigest`, and writes
 `$DATA_DIR/semantic-graph.json`. Report the layer/relation counts and any
 gaps to the user.
 

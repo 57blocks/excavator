@@ -1,8 +1,13 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { mkdirSync, rmSync, existsSync } from "node:fs";
+import { mkdirSync, rmSync, existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { saveDomainGraph, loadDomainGraph } from "../persistence/index.js";
+import {
+  DOMAIN_CONTENT_LANGUAGE,
+  DOMAIN_GRAPH_VERSION,
+  saveDomainGraph,
+  loadDomainGraph,
+} from "../persistence/index.js";
 import type { KnowledgeGraph } from "../types.js";
 
 const testRoot = join(tmpdir(), "excavator-domain-persist-test");
@@ -47,6 +52,8 @@ describe("domain graph persistence", () => {
     const loaded = loadDomainGraph(testRoot);
     expect(loaded).not.toBeNull();
     expect(loaded!.nodes[0].id).toBe("domain:orders");
+    expect(loaded!.version).toBe(DOMAIN_GRAPH_VERSION);
+    expect(loaded!.contentLanguage).toBe(DOMAIN_CONTENT_LANGUAGE);
   });
 
   it("returns null when no domain graph exists", () => {
@@ -60,5 +67,8 @@ describe("domain graph persistence", () => {
     const structuralPath = join(testRoot, ".excavator", "knowledge-graph.json");
     expect(existsSync(domainPath)).toBe(true);
     expect(existsSync(structuralPath)).toBe(false);
+    const persisted = JSON.parse(readFileSync(domainPath, "utf-8"));
+    expect(persisted.version).toBe(DOMAIN_GRAPH_VERSION);
+    expect(persisted.contentLanguage).toBe(DOMAIN_CONTENT_LANGUAGE);
   });
 });

@@ -157,10 +157,16 @@ export function loadConfig(projectRoot: string): ProjectConfig {
 }
 
 const DOMAIN_GRAPH_FILE = "domain-graph.json";
+export const DOMAIN_GRAPH_VERSION = "2.0.0";
+export const DOMAIN_CONTENT_LANGUAGE = "en";
 
 export function saveDomainGraph(projectRoot: string, graph: KnowledgeGraph): void {
   const dir = ensureDir(projectRoot);
-  const sanitised = sanitiseFilePaths(graph, projectRoot);
+  const sanitised = sanitiseFilePaths({
+    ...graph,
+    version: DOMAIN_GRAPH_VERSION,
+    contentLanguage: DOMAIN_CONTENT_LANGUAGE,
+  }, projectRoot);
   writeFileSync(
     join(dir, DOMAIN_GRAPH_FILE),
     JSON.stringify(sanitised, null, 2),

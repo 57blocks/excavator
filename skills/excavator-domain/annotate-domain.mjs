@@ -26,8 +26,9 @@
  *
  * Domain freshness keys (added; openspec: changes/full-semantic-isolation,
  * capability `domain-freshness`, design D4). This is also where
- * `domain-graph.json`'s two freshness fields get stamped, at the TOP level
- * of the annotated domain graph: `sourceRevision` (the persisted
+ * `domain-graph.json`'s canonical semantic identity and two fact freshness
+ * fields get stamped at the TOP level of the annotated domain graph:
+ * current schema plus `contentLanguage: "en"`, `sourceRevision` (the persisted
  * `source-manifest.json`'s `sourceRevision` at the time Domain ran — the
  * SAME value the fact layer was built against, read directly rather than
  * re-resolved, so a domain graph never claims a newer revision than the
@@ -60,6 +61,10 @@ import { createRequire } from 'node:module';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
+import {
+  DOMAIN_CONTENT_LANGUAGE,
+  DOMAIN_GRAPH_VERSION,
+} from './domain-contract.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const pluginRoot = resolve(__dirname, '../..');
@@ -181,6 +186,8 @@ function evidenceFor(nodes) {
  */
 export function annotateDomain({ domainGraph, knowledgeGraph, sampleLimit = 5, sourceRevision = null }) {
   const annotated = clone(domainGraph);
+  annotated.version = DOMAIN_GRAPH_VERSION;
+  annotated.contentLanguage = DOMAIN_CONTENT_LANGUAGE;
   annotated.nodes = Array.isArray(annotated.nodes) ? annotated.nodes : [];
 
   const index = indexKnowledge(knowledgeGraph);
@@ -302,7 +309,7 @@ export function annotateDomain({ domainGraph, knowledgeGraph, sampleLimit = 5, s
   gaps.sort((a, b) => compareStrings(a.kind, b.kind) || compareStrings(a.scope, b.scope));
   annotated.gaps = gaps;
 
-  // Domain freshness keys (design D4) — stamped only when their source value
+  // Domain fact freshness keys (design D4) — stamped only when their source value
   // is actually known. A caller that omits `sourceRevision` (an existing
   // unit test, or a standalone run with no source-manifest.json yet) gets NO
   // `sourceRevision`/`factDigest` key at all rather than a fabricated one;

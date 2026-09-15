@@ -213,10 +213,10 @@ have found the documented no-op instead of the anchors.
 
 Report the saved `$DATA_DIR/domain-graph.json` path and that it is ready for terminal queries. Do not start a browser or HTTP server.
 
-**Freshness contract for any later consumer (added; openspec: changes/full-semantic-isolation, capability `domain-freshness`).** `domain-graph.json` now carries top-level `sourceRevision` and `factDigest` (stamped by Phase 4.5's `annotate-domain.mjs`, carried through by Phase 5's `publish-annotations.mjs` — see their own doc comments). ANY later consumer that reads `domain-graph.json` to answer a question (this skill's own terminal queries, or any other skill) MUST check it against the CURRENT fact layer before treating its content as current:
+**Freshness contract for any later consumer.** `domain-graph.json` carries top-level `contentLanguage: "en"`, `sourceRevision`, and `factDigest`. ANY later consumer that reads `domain-graph.json` to answer a question (this skill's own terminal queries, or any other skill) MUST check it against the CURRENT semantic schema/language identity and fact layer before treating its content as current:
 
 ```bash
 node "$PLUGIN_ROOT/skills/excavator-domain/domain-freshness.mjs" "$PROJECT_ROOT"
 ```
 
-This prints `{ usable, status, reason }` as JSON. `usable: false` (a `sourceRevision` or `factDigest` mismatch, or no domain graph at all) means the domain graph MUST NOT be used in the answer — say so and suggest re-running `/excavator-domain`. `usable: true` means it may be used, but only as a HINT: domain/flow/step content is re-verified against the fact graph and source evidence before it enters a final answer (it is never itself the evidence for a claim).
+This prints `{ usable, status, reason }` as JSON. `usable: false` (`noncanonical-language`, a `sourceRevision` or `factDigest` mismatch, or no domain graph at all) means the domain graph MUST NOT be used in the answer — say so and suggest re-running `/excavator-domain`. `usable: true` means it may be used, but only as a HINT: domain/flow/step content is re-verified against the fact graph and source evidence before it enters a final answer (it is never itself the evidence for a claim).

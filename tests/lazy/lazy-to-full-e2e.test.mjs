@@ -255,6 +255,7 @@ describe('Lazy -> structural retrieval -> on-demand semantics -> Full -> Domain 
     const freshResult = await resolveDomainFreshness(root);
     expect(freshResult.usable).toBe(true);
     expect(freshResult.status).toBe('fresh');
+    expect(freshDomain.contentLanguage).toBe('en');
 
     const staleDomain = {
       ...freshDomain,
@@ -265,5 +266,6 @@ describe('Lazy -> structural retrieval -> on-demand semantics -> Full -> Domain 
     const staleResult = await resolveDomainFreshness(root);
     expect(staleResult.usable).toBe(false);
     expect(staleResult.status).toBe('stale');
+    expect(sha256OfFile(join(dataDir, 'knowledge-graph.json'))).toBe(factHashAfterLazy);
   });
 });
