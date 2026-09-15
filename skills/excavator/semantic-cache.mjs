@@ -66,9 +66,17 @@ export const DEFAULT_LOCK_TTL_MS = 30_000;
  *  "on-demand node-local semantic supplement": cacheable fields limited to
  *  the node/file's own summary, local tags, the hash it was generated
  *  against, and model/time provenance). Anything else — a cross-file
- *  conclusion, a business flow, answer text — is rejected outright. */
+ *  conclusion, a business flow, answer text — is rejected outright.
+ *
+ *  `verification` (openspec: changes/full-semantic-isolation, capability
+ *  `full-semantic-isolation`) is a minimal, additive extension: it is the
+ *  Summary-Verifier's verdict ABOUT this entry's own `summary` — the same
+ *  four-state field `verification-state.mjs` already governs for a
+ *  knowledge-graph node — so Full mode's Summary-Verifier can record that
+ *  verdict beside the cached summary it checked, without ever touching
+ *  `knowledge-graph.json`. */
 export const CACHEABLE_FIELDS = Object.freeze([
-  'summary', 'tags', 'semanticSourceHash', 'model', 'generatedAt',
+  'summary', 'tags', 'semanticSourceHash', 'model', 'generatedAt', 'verification',
 ]);
 
 const REAL_FS = Object.freeze({

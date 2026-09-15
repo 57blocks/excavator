@@ -478,4 +478,43 @@ After producing the JSON:
 2. The project root will be provided in your prompt.
 3. Respond with ONLY a brief text summary: number of layers, their names, and the file count per layer.
 
+## Semantic Overlay Mode (added — nothing above changes)
+
+Phase F3 (openspec: changes/full-semantic-isolation) dispatches this same
+agent with a retargeted prompt and output file — its dispatch text says so
+explicitly. When asked for "architectural layers and any notable cross-node
+relations" rather than a plain `layers.json`, everything above still governs
+`layers` (same shape, same "never invent a node id" rule, same
+`$DATA_DIR/intermediate/semantic-layers.json` output path, per your dispatch
+prompt), PLUS a `relations` array alongside it in the same JSON object:
+
+```json
+{
+  "layers": [ /* same shape as above */ ],
+  "relations": [
+    {
+      "id": "relation:checkout-depends-on-payments",
+      "type": "depends_on",
+      "source": "function:src/checkout.ts:submitOrder",
+      "target": "function:src/payments.ts:charge",
+      "description": "submitOrder calls charge to settle payment"
+    }
+  ]
+}
+```
+
+Every `relations[].source` and `relations[].target` MUST be an id copied
+verbatim from the fact node list your dispatch prompt gave you — the same
+"never invent an id" rule `nodeIds` already follows. A relation with an
+invented endpoint is not merged; it becomes a semantic gap in
+`semantic-graph.json` and neither endpoint is treated as evidence of
+anything. Keep `relations` to genuinely notable cross-node facts (a real
+dependency, a data flow, a shared-owner relationship) — it is not a place to
+restate every `imports` edge you were already given.
+
+The layer-completeness rule above ("every file node ID must appear in
+exactly one layer") is a best-effort target here too, but this output is an
+OVERLAY: `semantic-graph.mjs` validates ids, never completeness, so a
+partial assignment is a lesser outcome, not a hard failure.
+
 Do NOT include the full JSON in your text response.

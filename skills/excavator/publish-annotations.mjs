@@ -52,6 +52,17 @@
  * replaced rather than appended, so running it twice equals running it once.
  *
  * Logging: stderr only.
+ *
+ * Scope note (openspec: changes/full-semantic-isolation): `NODE_FIELDS` /
+ * `EDGE_FIELDS` / `PROJECT_FIELDS` above already exclude `summary`, `tags`,
+ * `name`, `id`, `weight` and `layers` by construction — this script has never
+ * been able to carry model semantics into a fact field, on any pipeline. No
+ * functional change was made here. It remains part of the pre-existing
+ * `annotate-graph.mjs`/`apply-verification.mjs` (graph mode) pipeline used by
+ * SKILL.md's `PARTIAL_UPDATE`/`ARCHITECTURE_UPDATE` incremental paths and the
+ * cosmetic-`SKIP` dirty-marking sub-step; Full's new Phase F does not call it
+ * — its two products (`semantic-cache.json`, `semantic-graph.json`) are
+ * written directly by `apply-semantic-patches.mjs` / `semantic-graph.mjs`.
  */
 
 import { createRequire } from 'node:module';
