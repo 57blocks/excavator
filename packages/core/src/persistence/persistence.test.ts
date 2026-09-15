@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
-import { mkdtempSync, rmSync, existsSync } from "node:fs";
+import { mkdtempSync, rmSync, existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { writeFileSync } from "node:fs";
@@ -207,6 +207,22 @@ describe("persistence", () => {
 
       const loaded = loadConfig(tempDir);
       expect(loaded).toEqual({ autoUpdate: false, outputLanguage: "en" });
+    });
+
+    it("treats outputLanguage as legacy data and removes it on normalized write-back", () => {
+      const dir = join(tempDir, ".excavator");
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(
+        join(dir, "config.json"),
+        JSON.stringify({ autoUpdate: true, outputLanguage: "zh" }),
+        "utf-8",
+      );
+
+      const loaded = loadConfig(tempDir);
+      expect(loaded).toEqual({ autoUpdate: true });
+
+      saveConfig(tempDir, loaded);
+      expect(JSON.parse(readFileSync(join(dir, "config.json"), "utf-8"))).toEqual({ autoUpdate: true });
     });
   });
 });

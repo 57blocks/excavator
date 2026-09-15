@@ -1,7 +1,7 @@
 ## 1. Freeze the language oracle
 
 - [x] 1.1 Acceptor (Opus) writes the pre-implementation oracle for English model prose, Chinese-contaminated prose, source-owned non-English identifiers, old language metadata, and request-language selection; verify every inspected field lands in an accepted/rejected bucket and no pass condition trusts `contentLanguage` alone.
-- [ ] 1.2 Coder (Sonnet) adds the fake writer/freshness fixtures and verifies the current implementation fails for the expected mixed-language, missing-marker, or persisted-language-authority reason before any production edit.
+- [x] 1.2 Coder (Sonnet) adds the fake writer/freshness fixtures and verifies the current implementation fails for the expected mixed-language, missing-marker, or persisted-language-authority reason before any production edit.
 
 ## 2. Enforce one persisted language
 

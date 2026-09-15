@@ -91,6 +91,46 @@ describe('semantic-cache — cacheable write then reuse on second lookup', () =>
   });
 });
 
+describe('semantic-cache — canonical-language oracle (red before implementation)', () => {
+  let root;
+  beforeEach(() => { root = makeProject(); writeManifest(root, [{ path: FILE_PATH, contentHash: HASH_V1 }]); });
+  afterEach(() => { rmSync(root, { recursive: true, force: true }); });
+
+  it('the deterministic writer rejects Chinese model prose without creating a cache', async () => {
+    const result = await commitSemanticCacheEntry({
+      projectRoot: root,
+      nodeId: NODE_ID,
+      filePath: FILE_PATH,
+      fields: validFields({
+        summary: '在写入订单前验证请求。',
+        tags: ['order', '验证'],
+      }),
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.status).toBe('noncanonical-language');
+    expect(existsSync(join(root, '.excavator', 'semantic-cache.json'))).toBe(false);
+  });
+
+  it('freshness requires a cache-level English marker in addition to a matching source hash', () => {
+    const entry = validFields();
+
+    expect(freshnessOf(entry, HASH_V1, 'en')).toBe('fresh');
+    expect(freshnessOf(entry, HASH_V1, undefined)).toBe('noncanonical-language');
+    expect(freshnessOf(entry, HASH_V1, 'zh')).toBe('noncanonical-language');
+    expect(isFresh(entry, HASH_V1, undefined)).toBe(false);
+  });
+
+  it('an accepted English write stamps the cache-level marker itself', async () => {
+    const result = await commitSemanticCacheEntry({
+      projectRoot: root, nodeId: NODE_ID, filePath: FILE_PATH, fields: validFields(),
+    });
+
+    expect(result).toEqual({ ok: true, status: 'committed' });
+    expect(readCacheFileRaw(root)).toMatchObject({ contentLanguage: 'en' });
+  });
+});
+
 describe('semantic-cache — a file\'s source-hash change invalidates its entry', () => {
   let root;
   beforeEach(() => { root = makeProject(); writeManifest(root, [{ path: FILE_PATH, contentHash: HASH_V1 }]); });
