@@ -33,7 +33,7 @@ The knowledge graph JSON has this structure:
 
 1. **Check that `.excavator/knowledge-graph.json` exists** in the current project root. If not, tell the user to run `/excavator` first.
 
-2. **Check graph freshness before using graph-derived context** (openspec: changes/full-semantic-isolation, capability `consumer-freshness`) — via the ONE shared, deterministic freshness helper, instead of this skill computing its own gitCommitHash/git-diff comparison:
+2. **Check graph freshness before using graph-derived context** — use the ONE shared, deterministic freshness helper instead of computing a separate gitCommitHash/git-diff comparison in this skill:
    - Resolve `$PROJECT_ROOT` and `$PLUGIN_ROOT`:
      ```bash
      PROJECT_ROOT="$(pwd)"
@@ -53,7 +53,7 @@ The knowledge graph JSON has this structure:
      ```
    - It prints `{ status, currentSourceRevision, manifestSourceRevision, reason }` as JSON. `status` is `fresh`, `stale`, or `missing`: it compares the CURRENT `sourceRevision` — resolved via SourceSnapshot, so a git project reads HEAD only (an uncommitted working-tree change never flips this — no working-tree leak) and a plain-directory project is guarded by a content hash over every tracked file (any content drift is caught) — against the `sourceRevision` persisted in `.excavator/source-manifest.json`.
    - `stale`: warn before answering that graph-derived context may omit recent changes. Suggest: Run `/excavator` to refresh the graph.
-   - `missing` (no `source-manifest.json` yet — an older project, or one built before this capability): give a brief best-effort note and continue instead of blocking.
+   - `missing` (no `source-manifest.json` yet): give a brief best-effort note and continue instead of blocking.
    - `fresh`: proceed with no warning.
 
 3. **Read project metadata only** — use Grep or Read with a line limit to extract just the `"project"` section from the top of the file for context (name, description, languages, frameworks).
@@ -82,12 +82,12 @@ The knowledge graph JSON has this structure:
 A Lazy graph carries deterministic facts only: node `summary` is empty and `tags`/`layers` may be empty. Route by question type:
 
 - **Structural questions** (which files/symbols exist, which methods a class has, who imports or calls whom, a node's 1-hop neighbours, contains/depends relationships): answer straight from the fact nodes and fact edges — grep `id` / `name` / `type` and the `edges` (`contains` / `imports` / `calls` / `exports`). **No summary is needed, and do not trigger any semantic supplement, hybrid retrieval, or whole-project analysis.**
-- **Semantic questions** (what a module/service is responsible for, business meaning, a cross-file business flow, especially when phrased in a business/domain language such as Chinese over English-named code): follow the **hybrid retrieval** recipe below (openspec: changes/hybrid-retrieval) instead of degrading immediately.
+- **Semantic questions** (what a module/service is responsible for, business meaning, a cross-file business flow, especially when phrased in a business/domain language such as Chinese over English-named code): follow the **hybrid retrieval** recipe below instead of degrading immediately.
 - Fact edges (`calls` / `imports` / `contains` / `exports`) and `gaps` are authoritative: to answer "can we be sure A calls B", go by the fact edge; a call the engine could not resolve is recorded in `gaps`, so say "the engine could not determine that connection" rather than guessing.
 
-### Hybrid retrieval for semantic questions (openspec: changes/hybrid-retrieval)
+### Hybrid retrieval for semantic questions
 
-This on-demand path replaces Slice A's "always degrade honestly" for a semantic question. It stays the FALLBACK: fall back to it whenever a step below cannot complete (no model available for step (a), or the cache write in step (c) fails/is declined) — never fabricate to avoid degrading.
+This on-demand path is the FALLBACK for semantic questions: use it whenever a step below cannot complete (no model available for step (a), or the cache write in step (c) fails/is declined) — never fabricate to avoid degrading.
 
 **Resolve `$PLUGIN_ROOT` and `$DATA_DIR` first** (only needed for this path — the structural path above never needs them):
 
@@ -105,7 +105,7 @@ for candidate in "${CLAUDE_PLUGIN_ROOT}" "$HOME/.excavator-plugin" "$SELF_RELATI
 done
 ```
 
-If `$PLUGIN_ROOT` cannot be resolved, or `$DATA_DIR/source-index.json` does not exist (an older Lazy graph built before this slice), fall back to the honest degrade: say plainly that this semantics has not been generated/retrieved yet and suggest `/excavator --mode=full` or re-running `/excavator` to produce a `source-index.json`. **Do not auto-trigger Full** — whether to fill semantics for the whole project is the user's explicit choice.
+If `$PLUGIN_ROOT` cannot be resolved, or `$DATA_DIR/source-index.json` does not exist, fall back to the honest degrade: say plainly that this semantics has not been generated/retrieved yet and suggest `/excavator --mode=full` or re-running `/excavator` to produce a `source-index.json`. **Do not auto-trigger Full** — whether to fill semantics for the whole project is the user's explicit choice.
 
 **(a) Expand the question into code search terms — same inference, no subagent.** Before running any retrieval, produce (as part of this same reasoning turn) a short list of English/code search terms for the user's question: literal identifiers you already suspect, English translations of the business terms, and common code synonyms (e.g. a non-English business question about placing an order might expand to `order`, `createOrder`, `checkout`, `placeOrder`). Do **not** dispatch a separate query-expansion agent/subagent for this — the whole point of same-inference expansion is that it costs no extra model round trip.
 

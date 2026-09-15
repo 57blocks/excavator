@@ -33,7 +33,7 @@ The knowledge graph JSON has this structure:
 
 1. **Check that `.excavator/knowledge-graph.json` exists.** If not, tell the user to run `/excavator` first.
 
-2. **Check graph freshness before using graph-derived context** (openspec: changes/full-semantic-isolation, capability `consumer-freshness`) — via the ONE shared, deterministic freshness helper, instead of this skill computing its own gitCommitHash/git-diff comparison:
+2. **Check graph freshness before using graph-derived context** — use the ONE shared, deterministic freshness helper instead of computing a separate gitCommitHash/git-diff comparison in this skill:
    - Resolve `$PROJECT_ROOT` and `$PLUGIN_ROOT`:
      ```bash
      PROJECT_ROOT="$(pwd)"
@@ -53,7 +53,7 @@ The knowledge graph JSON has this structure:
      ```
    - It prints `{ status, currentSourceRevision, manifestSourceRevision, reason }` as JSON. `status` is `fresh`, `stale`, or `missing`: it compares the CURRENT `sourceRevision` — resolved via SourceSnapshot, so a git project reads HEAD only (an uncommitted working-tree change never flips this — no working-tree leak) and a plain-directory project is guarded by a content hash over every tracked file (any content drift is caught) — against the `sourceRevision` persisted in `.excavator/source-manifest.json`.
    - `stale`: warn before explaining that graph-derived context may omit recent changes. Suggest: Run `/excavator` to refresh the graph.
-   - `missing` (no `source-manifest.json` yet — an older project, or one built before this capability): give a brief best-effort note and continue instead of blocking.
+   - `missing` (no `source-manifest.json` yet): give a brief best-effort note and continue instead of blocking.
    - `fresh`: proceed with no warning.
 
 3. **Find the target node** — use Grep to search the knowledge graph for the component: "$ARGUMENTS"

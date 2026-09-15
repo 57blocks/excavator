@@ -185,14 +185,14 @@ Determine whether to run a full analysis or incremental update.
 
    | Condition | Action |
    |---|---|
-   | `--full` flag in `$ARGUMENTS` | Full analysis (all phases) — see **Phase F** below (openspec: changes/full-semantic-isolation) |
+   | `--full` flag in `$ARGUMENTS` | Full analysis (all phases) — see **Phase F** below |
    | No existing graph or meta | Full analysis (all phases) — see **Phase F** below |
    | Existing graph + explicit `--exclude` | Run deterministic incremental preparation even when the commit hash is unchanged, so the new inventory rules take effect immediately |
    | `--review` flag + existing graph + unchanged commit hash | Skip to Phase 6 (review-only — reuse existing assembled graph) |
    | Existing graph + unchanged commit hash | Ask the user: "The graph is up to date at this commit. Would you like to: **(a)** run a full rebuild (`--full`), **(b)** run the LLM graph reviewer (`--review`), or **(c)** do nothing?" Then follow their choice. If they pick (c), STOP. |
    | Existing graph + changed files | Run deterministic incremental preparation below |
 
-   **`full-semantic-isolation` scope note.** "Full analysis (all phases)" (and, below, `FULL_UPDATE`) no longer means "run Phase 1 through Phase 7 below" — it means **Phase F**, a new section placed after Phase 0.5. Phase 1 through Phase 7 below are unchanged and still govern every `PARTIAL_UPDATE` / `ARCHITECTURE_UPDATE` / `SKIP` destination (they already skip Phase 1 for those), plus the `--review` review-only path. Phase F reuses the exact same deterministic fact build Lazy mode uses instead of letting file-analyzer author `knowledge-graph.json`'s nodes/edges/layers directly — see Phase F's own header for why.
+   **Full-analysis routing.** "Full analysis (all phases)" and `FULL_UPDATE` mean **Phase F**, placed after Phase 0.5. Phase 1 through Phase 7 govern the `PARTIAL_UPDATE` / `ARCHITECTURE_UPDATE` / `SKIP` destinations and the `--review` review-only path. Phase F uses the same deterministic fact build as Lazy mode; file-analyzer never authors `knowledge-graph.json` nodes, edges, or layers for a Full run.
 
    **Review-only path:** Copy the existing `knowledge-graph.json` to `$DATA_DIR/intermediate/assembled-graph.json`, then jump directly to Phase 6 step 3.
 
@@ -225,16 +225,14 @@ Determine whether to run a full analysis or incremental update.
    | `SKIP` | Run `node "<SKILL_DIR>/finalize-incremental.mjs" "$PROJECT_ROOT"`. It updates graph metadata, scan, fingerprints, and meta for cosmetic or irrelevant changes, but intentionally advances nothing for generated-artifact-only commits. Without `--review`, report zero LLM tokens spent and **STOP**. With explicit `--review`, copy `$DATA_DIR/knowledge-graph.json` to `$DATA_DIR/intermediate/assembled-graph.json` and jump to the `--review` graph-reviewer path in Phase 6 instead of stopping. |
    | `PARTIAL_UPDATE` | Skip Phase 0.5 and Phase 1; continue with the incremental Phase 1.5/2 path. |
    | `ARCHITECTURE_UPDATE` | Skip Phase 0.5 and Phase 1; continue with incremental analysis, then rerun Phase 4. |
-   | `FULL_UPDATE` | Run Phase 0.5, then **Phase F** below (not the legacy Phase 1-7 pipeline — see the scope note above). Do not patch fingerprints or metadata from the incremental helper; Phase F's own Phase F1 (re)writes them. |
+   | `FULL_UPDATE` | Run Phase 0.5, then **Phase F** below, following the full-analysis routing above. Do not patch fingerprints or metadata from the incremental helper; Phase F's own Phase F1 (re)writes them. |
 
    `filesToReanalyze` contains only current, non-ignored files with structural changes. Deletions, newly ignored files, cosmetic changes, and generated artifacts are never passed to file-analyzer.
 
-   **Added sub-step on the `SKIP` path — mark the cosmetic files dirty.** Run
-   this after the finalizer above and before reporting/stopping. The `SKIP`
-   row is unchanged: the finalizer still advances exactly what it advanced
-   before. What was missing is that a cosmetic commit is the ONE case the
-   freshness marking exists for, and `SKIP` stops before Phase 2.3 ever runs,
-   so the graph never said the source had moved under its summaries.
+   **On the `SKIP` path, mark cosmetic files dirty.** Run this after the
+   finalizer above and before reporting/stopping. The finalizer advances its
+   normal metadata. A cosmetic commit also needs freshness marking because
+   `SKIP` stops before Phase 2.3 runs.
 
    ```bash
    node "<SKILL_DIR>/mark-dirty.mjs" "$PROJECT_ROOT"
@@ -282,29 +280,24 @@ Set up and verify the `.excavatorignore` file before a full scan. Incremental pr
 3. **If it already exists**, report:
    > Found `$DATA_DIR/.excavatorignore`. Review it if needed, then confirm to continue.
    - **Wait for user confirmation before proceeding.**
-4. After confirmation, proceed to **Phase F** below (openspec: changes/full-semantic-isolation — see the scope note in Phase 0 step 7 above). Phase 1 below is superseded for this destination.
+4. After confirmation, proceed to **Phase F** below, following the full-analysis routing in Phase 0 step 7.
 
 ---
 
-## Phase F — Full Semantic Generation (added; openspec: changes/full-semantic-isolation)
+## Phase F — Full Semantic Generation
 
-This section is what "Full analysis (all phases)" and `FULL_UPDATE` (Phase 0
-step 7's decision table) now mean. It replaces the OLD mechanism — file-
-analyzer authoring `knowledge-graph.json`'s nodes/edges directly, merged by
-`merge-batch-graphs.py`, reviewed by `excavator-assemble-reviewer` and saved
-as-is (Phase 1 through Phase 7 below) — because that mechanism let the model
-recreate the structure graph, which this capability's spec forbids: `/excavator
---mode=full` SHALL run the SAME deterministic `scan -> structure-all ->
-build-fact-graph` Lazy runs, and for the same source SHALL get the same
-`factsDigest` Lazy gets. Phase 1 through Phase 7 below are UNCHANGED and still
-apply verbatim to the `PARTIAL_UPDATE` / `ARCHITECTURE_UPDATE` / `SKIP`
-incremental destinations and the `--review` review-only path — none of those
-reach Phase 1's subagent-dispatch SCAN either (they already skip it).
+For "Full analysis (all phases)" and `FULL_UPDATE`, `/excavator --mode=full`
+runs the same deterministic `scan -> structure-all -> build-fact-graph`
+pipeline as Lazy mode. The same source must produce the same `factsDigest`,
+and the model must not recreate the structure graph. Phase 1 through Phase 7
+apply to the `PARTIAL_UPDATE` / `ARCHITECTURE_UPDATE` / `SKIP` incremental
+destinations and the `--review` review-only path; those routes skip Phase 1's
+subagent-dispatch SCAN.
 
 The LLM writes only two things here, and never a node id, a source range, a
 structural edge, `coverage`, or `gaps` in `knowledge-graph.json`:
 - node-local `summary`/`tags` for an EXISTING fact node, into
-  `$DATA_DIR/semantic-cache.json` (Phase F2, reusing Slice C's cache);
+  `$DATA_DIR/semantic-cache.json` (Phase F2);
 - architecture `layers` and cross-node `relations`, into the new
   `$DATA_DIR/semantic-graph.json` (Phase F3), gated by `factDigest` so an
   unchanged fact graph does not pay for Architecture again.
@@ -332,7 +325,7 @@ This performs SCAN, STRUCTURE-ALL, import-map extraction, the deterministic
 Fact Builder, a deterministic validate pass, and SAVE (`knowledge-graph.json`
 fact fields, `meta.json`, `fingerprints.json`, `source-manifest.json`,
 `source-index.json`) — zero LLM/subagent calls. It is non-destructive: a
-node's prior semantic fields (if any — from before this slice) are preserved,
+node's prior semantic fields (if any) are preserved,
 not wiped, though Full no longer writes semantics there going forward.
 
 Read the driver's printed `factsDigest`, or re-read
@@ -582,7 +575,7 @@ If the scan result includes `filteredByIgnore > 0`, report:
 
 ---
 
-## Phase 1.2 — STRUCTURE-ALL (added; full analysis only)
+## Phase 1.2 — STRUCTURE-ALL (full analysis only)
 
 Report: `[Phase 1.2/7] Extracting structural facts for the whole project...`
 
@@ -747,7 +740,7 @@ Parser limitation: automatic deletion requires both a deterministic parser and a
 
 ---
 
-## Phase 2.3 — ANNOTATE (added)
+## Phase 2.3 — ANNOTATE
 
 Report: `[Phase 2.3/7] Annotating the merged graph with extractor facts...`
 
@@ -791,7 +784,7 @@ as a Phase 2.3 warning and continue with the analysis unchanged.
 
 ---
 
-## Phase 2.5 — VERIFY (added)
+## Phase 2.5 — VERIFY
 
 Report: `[Phase 2.5/7] Verifying summaries against the source...`
 
@@ -1173,7 +1166,7 @@ Pass these parameters in the dispatch prompt:
 
 ---
 
-## Phase 6b — VALIDATE (added)
+## Phase 6b — VALIDATE
 
 Report: `[Phase 6b/7] Checking anchors and evidence against the source...`
 
@@ -1257,7 +1250,7 @@ Report to the user: `[Phase 7/7] Saving knowledge graph...`
    }
    ```
 
-**Step 7.1 — PUBLISH ANNOTATIONS (added; run before step 4).**
+**Step 7.1 — PUBLISH ANNOTATIONS (run before step 4).**
 
 Phases 2.3 / 2.5 / 6b wrote their findings into
 `$DATA_DIR/intermediate/annotated-graph.json` and `validated-graph.json`. The

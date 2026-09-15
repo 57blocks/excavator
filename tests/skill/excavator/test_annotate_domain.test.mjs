@@ -330,13 +330,13 @@ describe('the domain skill wires the anchoring phase in additively', () => {
 
   it('adds phase 4.5 between the analysis and the save', () => {
     const at = heading => skill.indexOf(heading);
-    expect(at('### Phase 4.5: Anchor Steps (added)')).toBeGreaterThan(at('### Phase 4: Domain Analysis'));
-    expect(at('### Phase 4.5: Anchor Steps (added)')).toBeLessThan(at('### Phase 5: Validate and Save'));
+    expect(at('### Phase 4.5: Anchor Steps')).toBeGreaterThan(at('### Phase 4: Domain Analysis'));
+    expect(at('### Phase 4.5: Anchor Steps')).toBeLessThan(at('### Phase 5: Validate and Save'));
   });
 
   it('runs both the anchoring script and the source validator', () => {
     const section = skill.slice(
-      skill.indexOf('### Phase 4.5: Anchor Steps (added)'),
+      skill.indexOf('### Phase 4.5: Anchor Steps'),
       skill.indexOf('### Phase 5: Validate and Save'),
     );
     expect(section).toContain('annotate-domain.mjs');

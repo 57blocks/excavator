@@ -538,14 +538,14 @@ describe('SKILL.md phase 2.5', () => {
 
   it('is a new phase between 2.3 and 3, leaving their order intact', () => {
     const at = (heading) => skill.indexOf(heading);
-    expect(at('## Phase 2.5 — VERIFY (added)')).toBeGreaterThan(at('## Phase 2.3 — ANNOTATE (added)'));
-    expect(at('## Phase 2.5 — VERIFY (added)')).toBeLessThan(at('## Phase 3 — ASSEMBLE REVIEW'));
-    expect(at('## Phase 6b — VALIDATE (added)')).toBeGreaterThan(at('## Phase 3 — ASSEMBLE REVIEW'));
+    expect(at('## Phase 2.5 — VERIFY')).toBeGreaterThan(at('## Phase 2.3 — ANNOTATE'));
+    expect(at('## Phase 2.5 — VERIFY')).toBeLessThan(at('## Phase 3 — ASSEMBLE REVIEW'));
+    expect(at('## Phase 6b — VALIDATE')).toBeGreaterThan(at('## Phase 3 — ASSEMBLE REVIEW'));
   });
 
   it('documents both options and the three script invocations', () => {
     const section = skill.slice(
-      skill.indexOf('## Phase 2.5 — VERIFY (added)'),
+      skill.indexOf('## Phase 2.5 — VERIFY'),
       skill.indexOf('## Phase 3 — ASSEMBLE REVIEW'),
     );
     expect(section).toContain('`--no-verify`');
