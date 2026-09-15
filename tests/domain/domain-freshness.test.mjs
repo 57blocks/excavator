@@ -83,6 +83,46 @@ describe('annotateDomain stamps domain freshness keys at the top level', () => {
     expect(Object.hasOwn(annotated, 'sourceRevision')).toBe(false);
   });
 
+  it('rejects Chinese model prose before producing an annotated domain candidate', () => {
+    const candidate = domain([{
+      id: 'domain:leave', type: 'domain', name: 'Leave',
+      summary: '处理请假请求。', tags: ['leave'], complexity: 'simple',
+    }]);
+    const { annotated, report } = annotateDomain({
+      domainGraph: candidate, knowledgeGraph: knowledge(), sourceRevision: 'directory:test',
+    });
+
+    expect(annotated).toBeNull();
+    expect(report.status).toBe('noncanonical-language');
+    expect(report.languageAudit.rejected).toEqual([
+      expect.objectContaining({ fieldPath: 'nodes[0].summary', reason: 'noncanonical-language' }),
+    ]);
+    expect(report.languageAudit.inspected)
+      .toBe(report.languageAudit.accepted.length + report.languageAudit.rejected.length);
+  });
+
+  it('accepts and preserves an exact non-English fact-node span', () => {
+    const graph = knowledge();
+    graph.nodes[0].id = 'function:src/a.ts:提交请假';
+    graph.nodes[0].name = '提交请假';
+    const candidate = domain([{
+      id: 'step:leave:submit', type: 'step', name: '提交请假',
+      summary: 'Calls 提交请假 after validation.', tags: ['leave'], complexity: 'simple',
+      filePath: 'src/a.ts', lineRange: [1, 1],
+    }]);
+    const { annotated, report } = annotateDomain({
+      domainGraph: candidate, knowledgeGraph: graph, sourceRevision: 'directory:test',
+    });
+
+    expect(report.status).toBe('accepted');
+    expect(annotated.nodes[0].name).toBe('提交请假');
+    expect(annotated.nodes[0].summary).toBe('Calls 提交请假 after validation.');
+    expect(annotated.languageAudit.accepted).toEqual(expect.arrayContaining([
+      { fieldPath: 'nodes[0].name', maskedSourceSpans: ['提交请假'] },
+      { fieldPath: 'nodes[0].summary', maskedSourceSpans: ['提交请假'] },
+    ]));
+  });
+
   it('end-to-end via the CLI: reads sourceRevision from the persisted source-manifest.json', () => {
     const root = tempRoot();
     const dataDir = join(root, '.excavator');
@@ -118,6 +158,26 @@ describe('annotateDomain stamps domain freshness keys at the top level', () => {
     const annotated = JSON.parse(readFileSync(join(intermediate, 'domain-analysis.json'), 'utf-8'));
     expect(Object.hasOwn(annotated, 'sourceRevision')).toBe(false);
   });
+
+  it('CLI exposes rejected buckets and does not create a domain product', () => {
+    const root = tempRoot();
+    const dataDir = join(root, '.excavator');
+    const intermediate = join(dataDir, 'intermediate');
+    mkdirSync(intermediate, { recursive: true });
+    writeFileSync(join(dataDir, 'knowledge-graph.json'), JSON.stringify(knowledge()), 'utf-8');
+    writeFileSync(join(intermediate, 'domain-analysis.json'), JSON.stringify(domain([{
+      id: 'domain:leave', type: 'domain', name: 'Leave',
+      summary: '处理请假请求。', tags: ['leave'], complexity: 'simple',
+    }])), 'utf-8');
+
+    const result = spawnSync(process.execPath, [ANNOTATE_DOMAIN, root], { encoding: 'utf-8', cwd: repoRoot });
+
+    expect(result.status).toBe(2);
+    expect(result.stderr).toContain('status=noncanonical-language');
+    const report = JSON.parse(readFileSync(join(intermediate, 'domain-annotation.json'), 'utf-8'));
+    expect(report.languageAudit.rejected[0].fieldPath).toBe('nodes[0].summary');
+    expect(existsSync(join(dataDir, 'domain-graph.json'))).toBe(false);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -130,6 +190,7 @@ describe('isDomainGraphUsable — pure gate', () => {
   const canonical = (overrides = {}) => ({
     version: DOMAIN_GRAPH_VERSION,
     contentLanguage: DOMAIN_CONTENT_LANGUAGE,
+    languageAudit: { status: 'accepted', inspected: 0, accepted: [], rejected: [] },
     sourceRevision: currentSourceRevision,
     factDigest: currentFactDigest,
     ...overrides,
@@ -167,6 +228,17 @@ describe('isDomainGraphUsable — pure gate', () => {
     expect(result.usable).toBe(false);
     expect(result.status).toBe('noncanonical-language');
     expect(result.reason).toMatch(/noncanonical-language/);
+  });
+
+  it('is visibly noncanonical when the language marker exists but the field audit is missing', () => {
+    const result = isDomainGraphUsable({
+      domainGraph: canonical({ languageAudit: undefined }),
+      currentSourceRevision,
+      currentFactDigest,
+    });
+    expect(result.usable).toBe(false);
+    expect(result.status).toBe('noncanonical-language');
+    expect(result.reason).toMatch(/accepted field audit/);
   });
 
   it('is stale when a canonical graph carries no sourceRevision', () => {

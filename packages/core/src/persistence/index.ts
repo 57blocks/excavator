@@ -161,6 +161,19 @@ export const DOMAIN_GRAPH_VERSION = "2.0.0";
 export const DOMAIN_CONTENT_LANGUAGE = "en";
 
 export function saveDomainGraph(projectRoot: string, graph: KnowledgeGraph): void {
+  const audit = graph.languageAudit;
+  if (
+    audit?.status !== "accepted"
+    || !Number.isInteger(audit.inspected)
+    || !Array.isArray(audit.accepted)
+    || !Array.isArray(audit.rejected)
+    || audit.inspected !== audit.accepted.length
+    || audit.rejected.length !== 0
+  ) {
+    throw new Error(
+      "Refusing to save domain graph: model-owned fields lack an accepted canonical-language audit",
+    );
+  }
   const dir = ensureDir(projectRoot);
   const sanitised = sanitiseFilePaths({
     ...graph,

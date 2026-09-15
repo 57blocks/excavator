@@ -484,9 +484,13 @@ node "<SKILL_DIR>/semantic-graph.mjs" "$PROJECT_ROOT" write \
 
 This drops any `nodeIds`/relation-endpoint that is not a real fact node id,
 recording each as a semantic gap (never a dangling reference, never a fact
-anchor), stamps `contentLanguage: "en"` plus the CURRENT `factsDigest` as `factDigest`, and writes
-`$DATA_DIR/semantic-graph.json`. Report the layer/relation counts and any
-gaps to the user.
+anchor), audits every model-owned name/description into an accepted or
+rejected terminal bucket, stamps `contentLanguage: "en"` plus the CURRENT
+`factsDigest` as `factDigest`, and writes `$DATA_DIR/semantic-graph.json`.
+If the command exits 2 with `status=noncanonical-language`, report the
+rejected field paths and **STOP** without overwriting the current semantic
+graph; regenerate those fields in English first. Otherwise report the
+layer/relation counts and any gaps to the user.
 
 ### Phase F4 — VERIFY SEMANTICS (Summary-Verifier stays in Full; Lazy never runs it)
 

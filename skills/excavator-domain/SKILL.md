@@ -168,16 +168,21 @@ node "$PLUGIN_ROOT/skills/excavator/validate-graph.mjs" "$PROJECT_ROOT" \
 Report the `stepUnanchored`, `anchorMismatch` and `edgeContradicted` counts
 from that report to the user.
 
-**Supplement, so not fatal.** If either script exits non-zero, report its
+If `annotate-domain.mjs` exits 2 with `status=noncanonical-language`, read
+`$DATA_DIR/intermediate/domain-annotation.json`, report its rejected field
+paths, and **STOP**. Do not save or publish `domain-graph.json`; regenerate the
+model-owned fields in English first. For any other non-zero exit, report
 stderr as a Phase 4.5 warning and continue to Phase 5 with the analysis
-unchanged.
+unchanged. The source-touching validator remains supplementary and non-fatal.
 
 ### Phase 5: Validate and Save
 
 1. Read the domain analysis output
 2. Validate using the standard graph validation pipeline (the schema now supports domain/flow/step types)
 3. If validation fails, log warnings but save what's valid (error tolerance)
-4. Save to `$DATA_DIR/domain-graph.json`
+4. Save to `$DATA_DIR/domain-graph.json` only when the annotated input carries
+   `languageAudit.status: "accepted"` and its terminal buckets account for
+   every inspected model-owned field.
 
    **Publish the step anchors before step 5.** Phase 4.5
    anchored the steps in `$DATA_DIR/intermediate/domain-analysis.json`, and

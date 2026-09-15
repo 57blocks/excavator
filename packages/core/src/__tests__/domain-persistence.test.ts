@@ -14,6 +14,16 @@ const testRoot = join(tmpdir(), "excavator-domain-persist-test");
 
 const domainGraph: KnowledgeGraph = {
   version: "1.0.0",
+  languageAudit: {
+    status: "accepted",
+    inspected: 3,
+    accepted: [
+      { fieldPath: "project.description" },
+      { fieldPath: "nodes[0].name" },
+      { fieldPath: "nodes[0].summary" },
+    ],
+    rejected: [],
+  },
   project: {
     name: "test",
     languages: ["typescript"],
@@ -70,5 +80,12 @@ describe("domain graph persistence", () => {
     const persisted = JSON.parse(readFileSync(domainPath, "utf-8"));
     expect(persisted.version).toBe(DOMAIN_GRAPH_VERSION);
     expect(persisted.contentLanguage).toBe(DOMAIN_CONTENT_LANGUAGE);
+  });
+
+  it("refuses an unaudited domain graph without creating a file", () => {
+    const { languageAudit: _languageAudit, ...unaudited } = domainGraph;
+    expect(() => saveDomainGraph(testRoot, unaudited as KnowledgeGraph))
+      .toThrow(/accepted canonical-language audit/);
+    expect(existsSync(join(testRoot, ".excavator", "domain-graph.json"))).toBe(false);
   });
 });

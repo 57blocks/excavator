@@ -43,6 +43,7 @@ describe('mergeAnnotations — domain identity and freshness keys propagate when
     const annotated = {
       version: DOMAIN_GRAPH_VERSION,
       contentLanguage: DOMAIN_CONTENT_LANGUAGE,
+      languageAudit: { status: 'accepted', inspected: 0, accepted: [], rejected: [] },
       nodes: [], edges: [], sourceRevision: 'git:' + 'a'.repeat(40), factDigest: 'b'.repeat(64),
     };
 
@@ -56,7 +57,8 @@ describe('mergeAnnotations — domain identity and freshness keys propagate when
     expect(withDomainFields.merged.factDigest).toBe('b'.repeat(64));
     expect(withDomainFields.merged.version).toBe(DOMAIN_GRAPH_VERSION);
     expect(withDomainFields.merged.contentLanguage).toBe(DOMAIN_CONTENT_LANGUAGE);
-    expect(withDomainFields.counts.rootFieldsWritten).toBe(4);
+    expect(withDomainFields.merged.languageAudit).toEqual(annotated.languageAudit);
+    expect(withDomainFields.counts.rootFieldsWritten).toBe(5);
   });
 });
 
@@ -82,6 +84,11 @@ describe('publish-annotations CLI — domain-graph.json gains identity/freshness
       version: DOMAIN_GRAPH_VERSION, contentLanguage: DOMAIN_CONTENT_LANGUAGE, project: { name: 'x' },
       nodes: [{ id: 'step:s1', type: 'step', name: 's1', summary: '', tags: [], complexity: 'simple' }],
       edges: [], layers: [], tour: [],
+      languageAudit: {
+        status: 'accepted', inspected: 2,
+        accepted: [{ fieldPath: 'nodes[0].name' }, { fieldPath: 'nodes[0].summary' }],
+        rejected: [],
+      },
       sourceRevision: 'directory:' + 'c'.repeat(64),
       factDigest: 'd'.repeat(64),
     }), 'utf-8');
@@ -94,5 +101,6 @@ describe('publish-annotations CLI — domain-graph.json gains identity/freshness
     expect(published.factDigest).toBe('d'.repeat(64));
     expect(published.version).toBe(DOMAIN_GRAPH_VERSION);
     expect(published.contentLanguage).toBe(DOMAIN_CONTENT_LANGUAGE);
+    expect(published.languageAudit.status).toBe('accepted');
   });
 });

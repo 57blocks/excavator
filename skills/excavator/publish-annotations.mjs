@@ -118,7 +118,7 @@ export const ROOT_FIELDS = Object.freeze(['coverage', 'gaps']);
  * knowledge-graph.json fixture/test with no domain semantics is unaffected.
  */
 export const DOMAIN_ROOT_FIELDS = Object.freeze([
-  'version', 'contentLanguage', 'sourceRevision', 'factDigest',
+  'version', 'contentLanguage', 'languageAudit', 'sourceRevision', 'factDigest',
 ]);
 
 /** Reports moved out of `intermediate/` so the SAVE cleanup cannot take them. */

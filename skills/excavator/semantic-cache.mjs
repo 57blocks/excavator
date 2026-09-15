@@ -55,6 +55,11 @@ import {
 import { createRequire } from 'node:module';
 
 import { sortObjectKeys } from './coverage-ledger.mjs';
+import { resolveSourceSnapshot } from './source-snapshot.mjs';
+import {
+  auditSemanticCacheFields,
+  isAcceptedLanguageAudit,
+} from './semantic-language-audit.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const pluginRoot = resolve(__dirname, '../..');
@@ -125,6 +130,10 @@ export function freshnessOf(entry, currentContentHash, cacheIdentity) {
     ? cacheIdentity === CANONICAL_CONTENT_LANGUAGE
     : isCanonicalSemanticCache(cacheIdentity);
   if (!canonicalIdentity) return 'noncanonical-language';
+  if (!isAcceptedLanguageAudit(
+    entry.languageAudit,
+    auditSemanticCacheFields({ fields: entry }),
+  )) return 'noncanonical-language';
   if (typeof currentContentHash !== 'string' || currentContentHash.length === 0) return 'missing';
   return entry.semanticSourceHash === currentContentHash ? 'fresh' : 'stale';
 }
@@ -219,28 +228,6 @@ export function validateCacheableFields(fields) {
   const keys = Object.keys(fields ?? {});
   const rejectedFields = keys.filter((k) => !CACHEABLE_FIELDS.includes(k));
   return { ok: rejectedFields.length === 0, rejectedFields };
-}
-
-/**
- * Task 2.1's deterministic minimum language gate: reject model-owned text
- * containing a non-Latin letter. This catches the frozen CJK fixture and
- * other non-Latin scripts without inspecting source-owned ids or provenance.
- * Task 2.3 adds exact authoritative source-span masking and the complete
- * accepted/rejected field ledger.
- */
-function nonCanonicalModelFieldPaths(fields) {
-  const candidates = [['summary', fields?.summary]];
-  if (Array.isArray(fields?.tags)) {
-    fields.tags.forEach((tag, index) => candidates.push([`tags[${index}]`, tag]));
-  }
-
-  const rejected = [];
-  for (const [path, value] of candidates) {
-    if (typeof value !== 'string') continue;
-    const letters = value.match(/\p{L}/gu) ?? [];
-    if (letters.some((letter) => !/\p{Script=Latin}/u.test(letter))) rejected.push(path);
-  }
-  return rejected;
 }
 
 // ---------------------------------------------------------------------------
@@ -362,9 +349,31 @@ export async function commitSemanticCacheEntry({
     if (!validation.ok) {
       return { ok: false, status: 'rejected-fields', rejectedFields: validation.rejectedFields };
     }
-    const noncanonicalFields = nonCanonicalModelFieldPaths(fields);
-    if (noncanonicalFields.length > 0) {
-      return { ok: false, status: 'noncanonical-language', rejectedFields: noncanonicalFields };
+    let languageAudit = auditSemanticCacheFields({ fields });
+    if (!isAcceptedLanguageAudit(languageAudit)) {
+      // Source-owned non-Latin text may pass only through a current
+      // SourceSnapshot. Restrict the authority to this node's file: the
+      // cache entry is node-local, so an unrelated file cannot authorize a
+      // model-authored span. The model patch has no exemption input here.
+      try {
+        const sourceSnapshot = resolveSourceSnapshot(projectRoot);
+        languageAudit = auditSemanticCacheFields({
+          fields,
+          sourceSnapshot,
+          sourcePaths: [filePath],
+        });
+      } catch {
+        // No current snapshot means no source-owned exemption. Preserve the
+        // deterministic rejected buckets from the authority-free audit.
+      }
+    }
+    if (!isAcceptedLanguageAudit(languageAudit)) {
+      return {
+        ok: false,
+        status: 'noncanonical-language',
+        rejectedFields: languageAudit.rejected.map((entry) => entry.fieldPath),
+        languageAudit,
+      };
     }
     if (typeof fields?.semanticSourceHash !== 'string' || fields.semanticSourceHash.length === 0) {
       return { ok: false, status: 'missing-source-hash' };
@@ -395,7 +404,10 @@ export async function commitSemanticCacheEntry({
       // untrusted empty view. The first canonical write must never carry its
       // unaudited entries forward.
       const reusableEntries = isCanonicalSemanticCache(latest) ? latest.entries : {};
-      const nextEntries = sortObjectKeys({ ...reusableEntries, [nodeId]: { ...fields } });
+      const nextEntries = sortObjectKeys({
+        ...reusableEntries,
+        [nodeId]: { ...fields, languageAudit },
+      });
       const nextCache = {
         version: SEMANTIC_CACHE_VERSION,
         contentLanguage: CANONICAL_CONTENT_LANGUAGE,
@@ -403,7 +415,7 @@ export async function commitSemanticCacheEntry({
       };
 
       atomicWriteJson(join(dataDir, SEMANTIC_CACHE_FILE), nextCache, fsImpl);
-      return { ok: true, status: 'committed' };
+      return { ok: true, status: 'committed', languageAudit };
     } finally {
       releaseLock(dataDir, fsImpl);
     }
@@ -426,5 +438,7 @@ export default {
   readSemanticCache,
   currentSourceHashFor,
   validateCacheableFields,
+  auditSemanticCacheFields,
+  isAcceptedLanguageAudit,
   commitSemanticCacheEntry,
 };

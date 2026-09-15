@@ -73,7 +73,8 @@ describe('semantic-cache — cacheable write then reuse on second lookup', () =>
     const result = await commitSemanticCacheEntry({
       projectRoot: root, nodeId: NODE_ID, filePath: FILE_PATH, fields: validFields(),
     });
-    expect(result).toEqual({ ok: true, status: 'committed' });
+    expect(result).toMatchObject({ ok: true, status: 'committed' });
+    expect(result.languageAudit).toMatchObject({ status: 'accepted', inspected: 3, rejected: [] });
 
     // Second, independent read (simulating a later question about the same node).
     const cache = await readSemanticCache(root);
@@ -115,9 +116,19 @@ describe('semantic-cache — canonical-language oracle (red before implementatio
   });
 
   it('freshness requires a cache-level English marker in addition to a matching source hash', () => {
-    const entry = validFields();
+    const unauditedEntry = validFields();
+    const entry = {
+      ...unauditedEntry,
+      languageAudit: {
+        status: 'accepted',
+        inspected: 3,
+        accepted: [{ fieldPath: 'summary' }, { fieldPath: 'tags[0]' }, { fieldPath: 'tags[1]' }],
+        rejected: [],
+      },
+    };
 
     expect(freshnessOf(entry, HASH_V1, 'en')).toBe('fresh');
+    expect(freshnessOf(unauditedEntry, HASH_V1, 'en')).toBe('noncanonical-language');
     expect(freshnessOf(entry, HASH_V1, undefined)).toBe('noncanonical-language');
     expect(freshnessOf(entry, HASH_V1, 'zh')).toBe('noncanonical-language');
     expect(isFresh(entry, HASH_V1, undefined)).toBe(false);
@@ -128,7 +139,7 @@ describe('semantic-cache — canonical-language oracle (red before implementatio
       projectRoot: root, nodeId: NODE_ID, filePath: FILE_PATH, fields: validFields(),
     });
 
-    expect(result).toEqual({ ok: true, status: 'committed' });
+    expect(result).toMatchObject({ ok: true, status: 'committed' });
     expect(readCacheFileRaw(root)).toMatchObject({
       version: SEMANTIC_CACHE_VERSION,
       contentLanguage: CANONICAL_CONTENT_LANGUAGE,
@@ -156,7 +167,7 @@ describe('semantic-cache — canonical-language oracle (red before implementatio
       projectRoot: root, nodeId: NODE_ID, filePath: FILE_PATH, fields: validFields(),
     });
 
-    expect(result).toEqual({ ok: true, status: 'committed' });
+    expect(result).toMatchObject({ ok: true, status: 'committed' });
     const cache = readCacheFileRaw(root);
     expect(cache).toMatchObject({
       version: SEMANTIC_CACHE_VERSION,
@@ -175,10 +186,37 @@ describe('semantic-cache — canonical-language oracle (red before implementatio
       fields: validFields(),
     });
 
-    expect(result).toEqual({ ok: true, status: 'committed' });
+    expect(result).toMatchObject({ ok: true, status: 'committed' });
     const cache = readCacheFileRaw(root);
     expect(Object.keys(cache.entries)).toEqual([sourceOwnedNodeId]);
     expect(cache.entries[sourceOwnedNodeId].summary).toBe(validFields().summary);
+  });
+
+  it('accepts and preserves an exact non-English span from the current source file', async () => {
+    const source = 'export function 提交请假() {}\n';
+    const hash = sha256(source);
+    mkdirSync(join(root, 'src'), { recursive: true });
+    writeFileSync(join(root, FILE_PATH), source, 'utf-8');
+    writeManifest(root, [{ path: FILE_PATH, contentHash: hash }]);
+
+    const result = await commitSemanticCacheEntry({
+      projectRoot: root,
+      nodeId: 'function:src/orderService.ts:提交请假()',
+      filePath: FILE_PATH,
+      fields: validFields({
+        summary: 'Calls 提交请假 after validation.',
+        tags: ['validation'],
+        semanticSourceHash: hash,
+      }),
+    });
+
+    expect(result).toMatchObject({ ok: true, status: 'committed' });
+    expect(result.languageAudit.accepted[0]).toEqual({
+      fieldPath: 'summary', maskedSourceSpans: ['提交请假'],
+    });
+    const entry = readCacheFileRaw(root).entries['function:src/orderService.ts:提交请假()'];
+    expect(entry.summary).toBe('Calls 提交请假 after validation.');
+    expect(entry.languageAudit).toEqual(result.languageAudit);
   });
 
   it('both semantic-cache writer prompts require English model prose', () => {
@@ -248,7 +286,7 @@ describe('semantic-cache — verify the instrument: a concurrent stale-hash writ
     const result = await commitSemanticCacheEntry({
       projectRoot: root, nodeId: NODE_ID, filePath: FILE_PATH, fields: validFields(),
     });
-    expect(result).toEqual({ ok: true, status: 'committed' });
+    expect(result).toMatchObject({ ok: true, status: 'committed' });
   });
 });
 
@@ -372,7 +410,7 @@ describe('semantic-cache — lock: a live holder rejects a write; a stale holder
       ttlMs: 30_000,
     });
 
-    expect(result).toEqual({ ok: true, status: 'committed' });
+    expect(result).toMatchObject({ ok: true, status: 'committed' });
     // The lock is released again once the commit completes.
     expect(existsSync(lockPath)).toBe(false);
     const cache = await readSemanticCache(root);

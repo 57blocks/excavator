@@ -65,6 +65,11 @@ import {
   DOMAIN_CONTENT_LANGUAGE,
   DOMAIN_GRAPH_VERSION,
 } from './domain-contract.mjs';
+import { resolveSourceSnapshot } from '../excavator/source-snapshot.mjs';
+import {
+  auditDomainGraphFields,
+  isAcceptedLanguageAudit,
+} from '../excavator/semantic-language-audit.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const pluginRoot = resolve(__dirname, '../..');
@@ -178,16 +183,41 @@ function evidenceFor(nodes) {
  *
  * @param {{
  *   domainGraph: object, knowledgeGraph: object|null, sampleLimit?: number,
- *   sourceRevision?: string|null,
+ *   sourceRevision?: string|null, sourceSnapshot?: object|null,
+ *   languageFactGraph?: object|null,
  * }} args `sourceRevision` is the persisted source-manifest.json's
  *   `sourceRevision` at call time (the CLI reads it; a direct unit-test call
  *   may omit it, in which case no `sourceRevision`/`factDigest` key is
  *   stamped at all — see the module doc's "Domain freshness keys" section).
  */
-export function annotateDomain({ domainGraph, knowledgeGraph, sampleLimit = 5, sourceRevision = null }) {
+export function annotateDomain({
+  domainGraph,
+  knowledgeGraph,
+  sampleLimit = 5,
+  sourceRevision = null,
+  sourceSnapshot = null,
+  languageFactGraph = knowledgeGraph,
+}) {
+  const languageAudit = auditDomainGraphFields({
+    domainGraph,
+    factGraph: languageFactGraph,
+    sourceSnapshot,
+  });
+  if (!isAcceptedLanguageAudit(languageAudit)) {
+    return {
+      annotated: null,
+      report: {
+        scriptCompleted: true,
+        status: 'noncanonical-language',
+        languageAudit,
+      },
+    };
+  }
+
   const annotated = clone(domainGraph);
   annotated.version = DOMAIN_GRAPH_VERSION;
   annotated.contentLanguage = DOMAIN_CONTENT_LANGUAGE;
+  annotated.languageAudit = languageAudit;
   annotated.nodes = Array.isArray(annotated.nodes) ? annotated.nodes : [];
 
   const index = indexKnowledge(knowledgeGraph);
@@ -323,6 +353,8 @@ export function annotateDomain({ domainGraph, knowledgeGraph, sampleLimit = 5, s
 
   const report = {
     scriptCompleted: true,
+    status: 'accepted',
+    languageAudit,
     counts,
     samples: {
       unresolvedNodeIds: samples.unresolved.slice().sort(compareStrings),
@@ -431,9 +463,33 @@ async function main() {
     }
   }
 
-  const { annotated, report } = annotateDomain({
-    domainGraph, knowledgeGraph, sampleLimit: args.sampleLimit, sourceRevision,
+  let sourceSnapshot = null;
+  let languageFactGraph = null;
+  try {
+    sourceSnapshot = resolveSourceSnapshot(projectRoot);
+    if (sourceRevision === sourceSnapshot.revision) languageFactGraph = knowledgeGraph;
+  } catch {
+    // Without a current snapshot, no source-owned exemption is granted. The
+    // knowledge graph may still anchor steps, but is not language authority.
+  }
+  const result = annotateDomain({
+    domainGraph,
+    knowledgeGraph,
+    sampleLimit: args.sampleLimit,
+    sourceRevision,
+    sourceSnapshot,
+    languageFactGraph,
   });
+  const { annotated, report } = result;
+
+  if (!annotated) {
+    writeJson(reportPath, report);
+    process.stderr.write(
+      `annotate-domain: status=noncanonical-language ${JSON.stringify(report.languageAudit)}\n`,
+    );
+    process.exitCode = 2;
+    return;
+  }
 
   writeJson(outPath, annotated);
   writeJson(reportPath, report);
@@ -470,4 +526,5 @@ if (isCliEntry()) {
 
 export default {
   annotateDomain, deriveStepNodes, indexKnowledge, usableRange, OWNED_GAP_KINDS,
+  auditDomainGraphFields, isAcceptedLanguageAudit,
 };

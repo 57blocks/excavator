@@ -54,6 +54,11 @@ import { createRequire } from 'node:module';
 import { pathToFileURL } from 'node:url';
 import { createGapCollector, compareStrings } from './fact-graph-resolve.mjs';
 import { compareGaps } from './coverage-ledger.mjs';
+import { resolveSourceSnapshot } from './source-snapshot.mjs';
+import {
+  auditSemanticGraphFields,
+  isAcceptedLanguageAudit,
+} from './semantic-language-audit.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const pluginRoot = resolve(__dirname, '../..');
@@ -173,15 +178,18 @@ function sanitizeRelations(relations, factNodeIds, gapCollector) {
  * @param {{
  *   factDigest: string,
  *   factNodeIds: Set<string>|string[],
+ *   factGraph?: object, sourceSnapshot?: object,
  *   layers?: object[], relations?: object[],
  *   model?: string, generatedAt?: string, sampleLimit?: number,
  *   extraGaps?: object[],
  * }} args
- * @returns {{ semanticGraph: object, gaps: object[] }}
+ * @returns {{ semanticGraph: object|null, gaps: object[], languageAudit: object }}
  */
 export function buildSemanticGraph({
   factDigest,
   factNodeIds,
+  factGraph = null,
+  sourceSnapshot = null,
   layers = [],
   relations = [],
   model = 'unknown',
@@ -191,6 +199,22 @@ export function buildSemanticGraph({
 }) {
   if (typeof factDigest !== 'string' || factDigest.length === 0) {
     throw new Error('buildSemanticGraph: factDigest is required');
+  }
+  const languageAudit = auditSemanticGraphFields({
+    layers, relations, factGraph, sourceSnapshot,
+  });
+  if (!isAcceptedLanguageAudit(languageAudit)) {
+    return {
+      semanticGraph: null,
+      languageAudit,
+      gaps: [{
+        kind: 'noncanonical-language',
+        scope: 'semantic-graph',
+        reason: 'model-owned semantic graph prose failed the canonical English language audit',
+        count: languageAudit.rejected.length,
+        samples: languageAudit.rejected.map((entry) => entry.fieldPath),
+      }],
+    };
   }
   const idSet = factNodeIds instanceof Set ? factNodeIds : new Set(factNodeIds ?? []);
 
@@ -209,6 +233,7 @@ export function buildSemanticGraph({
   const semanticGraph = {
     version: SEMANTIC_GRAPH_VERSION,
     contentLanguage: SEMANTIC_GRAPH_CONTENT_LANGUAGE,
+    languageAudit,
     factDigest,
     layers: sanitizedLayers,
     relations: sanitizedRelations,
@@ -216,7 +241,7 @@ export function buildSemanticGraph({
     model: isNonEmptyString(model) ? model.trim() : 'unknown',
     generatedAt,
   };
-  return { semanticGraph, gaps };
+  return { semanticGraph, gaps, languageAudit };
 }
 
 /**
@@ -233,11 +258,15 @@ export function resolveArchitectureAction({ currentFactDigest, existing }) {
   if (
     existing.version !== SEMANTIC_GRAPH_VERSION
     || existing.contentLanguage !== SEMANTIC_GRAPH_CONTENT_LANGUAGE
+    || !isAcceptedLanguageAudit(
+      existing.languageAudit,
+      auditSemanticGraphFields({ layers: existing.layers, relations: existing.relations }),
+    )
   ) {
     return {
       action: 'rebuild',
       status: 'noncanonical-language',
-      reason: 'noncanonical-language: semantic-graph.json lacks the current schema with contentLanguage=en',
+      reason: 'noncanonical-language: semantic-graph.json lacks the current schema, contentLanguage=en, or an accepted field audit',
     };
   }
   if (typeof existing.factDigest !== 'string' || existing.factDigest.length === 0) {
@@ -304,6 +333,16 @@ export function readSemanticGraph(dataDir, { fsImpl = REAL_FS } = {}) {
 
 /** Atomic write (temp file + rename), matching semantic-cache.mjs's pattern. */
 export function writeSemanticGraph(dataDir, semanticGraph, { fsImpl = REAL_FS } = {}) {
+  if (
+    semanticGraph?.version !== SEMANTIC_GRAPH_VERSION
+    || semanticGraph?.contentLanguage !== SEMANTIC_GRAPH_CONTENT_LANGUAGE
+    || !isAcceptedLanguageAudit(
+      semanticGraph?.languageAudit,
+      auditSemanticGraphFields({ layers: semanticGraph?.layers, relations: semanticGraph?.relations }),
+    )
+  ) {
+    throw new Error('semantic-graph: refusing to write a noncanonical or unaudited semantic graph');
+  }
   fsImpl.mkdirSync(dataDir, { recursive: true });
   const finalPath = join(dataDir, SEMANTIC_GRAPH_FILE);
   const tmpPath = `${finalPath}.tmp-${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2)}`;
@@ -406,20 +445,47 @@ async function main() {
   const extraGaps = args.extraGaps ? readJson(resolve(args.extraGaps), 'extra-gaps file') : [];
 
   const factNodeIds = collectFactNodeIds(knowledgeGraph);
-  const { semanticGraph, gaps } = buildSemanticGraph({
+  let sourceSnapshot = null;
+  let factGraphForLanguageAudit = null;
+  try {
+    sourceSnapshot = resolveSourceSnapshot(projectRoot);
+    const manifestPath = join(dataDir, 'source-manifest.json');
+    const manifest = existsSync(manifestPath)
+      ? JSON.parse(readFileSync(manifestPath, 'utf-8'))
+      : null;
+    if (manifest?.sourceRevision === sourceSnapshot.revision) {
+      factGraphForLanguageAudit = knowledgeGraph;
+    }
+  } catch {
+    // Without a current snapshot, no source-owned exemption is granted. The
+    // fact graph is still used structurally, but not as language authority.
+  }
+
+  const built = buildSemanticGraph({
     factDigest: currentFactDigest,
     factNodeIds,
+    factGraph: factGraphForLanguageAudit,
+    sourceSnapshot,
     layers: Array.isArray(layers) ? layers : layers?.layers ?? [],
     relations: Array.isArray(relations) ? relations : relations?.relations ?? [],
     model: args.model ?? undefined,
     generatedAt: args.generatedAt ?? undefined,
     extraGaps: Array.isArray(extraGaps) ? extraGaps : extraGaps?.gaps ?? [],
   });
+  const { semanticGraph, gaps, languageAudit } = built;
+  if (!semanticGraph) {
+    process.stderr.write(
+      `semantic-graph write: status=noncanonical-language ${JSON.stringify(languageAudit)}\n`,
+    );
+    process.exitCode = 2;
+    return;
+  }
 
   const outPath = writeSemanticGraph(dataDir, semanticGraph);
   process.stderr.write(
     `semantic-graph write: layers=${semanticGraph.layers.length} relations=${semanticGraph.relations.length} ` +
-    `gaps=${gaps.length} factDigest=${currentFactDigest.slice(0, 12)}… -> ${outPath}\n`,
+    `gaps=${gaps.length} language-fields=${languageAudit.inspected} ` +
+    `factDigest=${currentFactDigest.slice(0, 12)}… -> ${outPath}\n`,
   );
 }
 
@@ -445,4 +511,5 @@ export default {
   SEMANTIC_GRAPH_VERSION, SEMANTIC_GRAPH_CONTENT_LANGUAGE, SEMANTIC_GRAPH_FILE,
   buildSemanticGraph, resolveArchitectureAction, collectFactNodeIds,
   mergeExtraGapsIntoExisting, readSemanticGraph, writeSemanticGraph,
+  auditSemanticGraphFields, isAcceptedLanguageAudit,
 };

@@ -52,6 +52,10 @@ import { existsSync, readFileSync, realpathSync } from 'node:fs';
 
 import { resolveFreshness } from '../excavator/consumer-freshness.mjs';
 import { hasCanonicalDomainIdentity } from './domain-contract.mjs';
+import {
+  auditDomainGraphFields,
+  isAcceptedLanguageAudit,
+} from '../excavator/semantic-language-audit.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const pluginRoot = resolve(__dirname, '../..');
@@ -82,11 +86,17 @@ export function isDomainGraphUsable({ domainGraph, currentSourceRevision, curren
     return { usable: false, status: 'missing', reason: 'no domain graph to check' };
   }
 
-  if (!hasCanonicalDomainIdentity(domainGraph)) {
+  if (
+    !hasCanonicalDomainIdentity(domainGraph)
+    || !isAcceptedLanguageAudit(
+      domainGraph.languageAudit,
+      auditDomainGraphFields({ domainGraph }),
+    )
+  ) {
     return {
       usable: false,
       status: 'noncanonical-language',
-      reason: 'noncanonical-language: domain graph lacks the current schema with contentLanguage=en — re-run /excavator-domain',
+      reason: 'noncanonical-language: domain graph lacks the current schema, contentLanguage=en, or an accepted field audit — re-run /excavator-domain',
     };
   }
 

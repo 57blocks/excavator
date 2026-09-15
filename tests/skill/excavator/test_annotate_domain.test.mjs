@@ -343,7 +343,9 @@ describe('the domain skill wires the anchoring phase in additively', () => {
     expect(section).toContain('skills/excavator/validate-graph.mjs');
     expect(section).toContain('step-unanchored');
     expect(section).toContain('step-nodeid-unresolved');
-    expect(section).toContain('Supplement, so not fatal.');
+    expect(section).toContain('status=noncanonical-language');
+    expect(section).toContain('Do not save or publish `domain-graph.json`');
+    expect(section).toContain('source-touching validator remains supplementary and non-fatal');
   });
 
   it('publishes a queryable service artifact without a display step', () => {
