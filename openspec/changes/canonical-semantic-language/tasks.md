@@ -15,6 +15,6 @@
 ## 3. Validate on Conduit and close the change
 
 - [x] 3.1 Run all focused semantic-cache/graph/domain/config/language/Chat tests; verify they exit 0 and assert actual prose language, source-field exemptions, visible invalidation reasons, and fact-graph immutability.
-- [ ] 3.2 On pinned Conduit commit `5e127d8569b300e0a21dc2c20ea680da4967b1aa`, ask “收藏文章是怎么实现的” and then an English overlapping question; verify persisted model prose is English, answers follow each request, identifiers remain verbatim, and no test source or `.excavator` output enters the Excavator diff.
-- [ ] 3.3 Run `pnpm install --frozen-lockfile`, `pnpm -r build`, and `pnpm test`; verify all commands exit 0 without skipped or weakened suites.
-- [ ] 3.4 Run `openspec validate --strict canonical-semantic-language` and `git diff --check`; verify both exit 0 and the diff contains no unrelated user edits or real-project generated data.
+- [x] 3.2 On pinned Conduit commit `5e127d8569b300e0a21dc2c20ea680da4967b1aa`, ask “收藏文章是怎么实现的” and then an English overlapping question; verify persisted model prose is English, answers follow each request, identifiers remain verbatim, and no test source or `.excavator` output enters the Excavator diff.
+- [x] 3.3 Run `pnpm install --frozen-lockfile`, `pnpm -r build`, and `pnpm test`; verify all commands exit 0 without skipped or weakened suites.
+- [x] 3.4 Run `openspec validate --strict canonical-semantic-language` and `git diff --check`; verify both exit 0 and the diff contains no unrelated user edits or real-project generated data.
