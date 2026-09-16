@@ -1,9 +1,9 @@
-每组按仓库规则执行：coder 先写失败验收 → acceptor 冻结并证明 oracle 可见 → coder 实现 → acceptor 复测 → 单独 commit。合成夹具不含真实凭据；真实 cebreo 仅做 opt-in 选择层检查，源码、绝对路径和输出不提交。
+每组按仓库规则执行：先用 design D0 说明为什么不能由 skill/prompt 完成；不能通过 D0 的工作只改 skill/prompt，不进产品代码。coder 先写失败验收 → acceptor 冻结并证明 oracle 可见 → coder 实现 → acceptor 复测 → 单独 commit。合成夹具不含真实凭据；真实 cebreo 仅做 opt-in 选择层检查，源码、绝对路径和输出不提交。
 
 ## 1. 冻结选择安全 oracle
 
-- [ ] 1.1 添加合成夹具与失败验收：唯一 canary 假私钥 + 同大小普通文本、`bin/rails` + MAUI 生成树、Git/Directory/MultiRepo 同内容、TypeScript 与 Dockerfile 正反例、zip 有/无对照；验证目标测试在当前 `main` 上只因本 change 的缺失而红。
-- [ ] 1.2 由 acceptor 独立审查断言并做 verify-the-instrument：临时绕过敏感判断、适配器过滤和 no-source-loss 检查时，对应测试必须变红；恢复夹具后记录冻结的测试命令与预期失败点。
+- [ ] 1.1 写 D0 范围矩阵并添加合成失败验收：唯一 canary 假私钥 + 同大小普通文本、`bin/rails`、Git/Directory/MultiRepo 同内容、TypeScript 与 Dockerfile 正反例、zip 有/无对照；验证每项产品代码都有安全/确定性/持久化理由，测试在当前 `main` 上只因本 change 的缺失而红。
+- [ ] 1.2 由 acceptor 独立审查范围与断言并做 verify-the-instrument：临时绕过敏感判断或适配器过滤、或把 `bin/` 加入全局默认时，对应测试必须变红；MAUI/cebreo 规则发现不得出现新的产品测试模块或 runtime config。
 - [ ] 1.3 提交仅含红灯验收的 oracle commit；验证 `git show --stat HEAD` 不含项目实现文件改动。
 
 ## 2. 核心选择策略与安全桶
@@ -30,14 +30,14 @@
 
 ## 5. 收敛根目录 ignore 与 MAUI 项目配方
 
-- [ ] 5.1 把 generator、core filter、snapshot、incremental 和 skill 统一到根 `.excavatorignore`，删除 `.excavator/.excavatorignore` 读取；旧位置存在时只给一次明确迁移提示、不回退读取；验证 Git HEAD 与 Directory 的规则一致。
-- [ ] 5.2 增加确定性 ignore 配方校验器及 MAUI/cebreo 建议项 `bin/ .unit-test/ TestResults/ .vs/ .gradle/ .scratch/`，建议默认保持注释；验证对照报告 source loss 为 0，且非 MAUI `bin/rails` 仍 selected。
-- [ ] 5.3 更新用户文档/skill 的生成路径、审阅步骤和 no-source-loss 命令；验证仓库中不再有“data-dir `.excavatorignore` 是规则源”的运行指令。
+- [ ] 5.1 把 core filter、snapshot 和 incremental 统一到根 `.excavatorignore`，删除 `.excavator/.excavatorignore` 读取且不加 runtime 迁移分支；验证 Git HEAD 与 Directory 的规则一致。
+- [ ] 5.2 更新 Excavator skill：检查旧/新路径、由 agent 检查项目和 `.gitignore`、直接写根 `.excavatorignore`、调用现有 scanner 做前后两次扫描；移除 skill 对 data-dir generator 的依赖，若生成器/helper 无其他生产消费者则删除其脚本、导出与测试。验证 `rg` 无旧调用或旧规则源说明。
+- [ ] 5.3 在 skill 验收中让 agent 从两个现有 scan manifest 审阅 `bin/ .unit-test/ TestResults/ .vs/ .gradle/ .scratch/` 的 dropped paths，只有 source loss 为 0 才写规则；不得新增专用 validator、MAUI/cebreo registry 或 generated-directory classifier，且非 MAUI `bin/rails` 仍 selected。
 - [ ] 5.4 提交 ignore 收敛 commit；验证 `selectionDigest` 对 root rules、CLI rules、安全策略版本的任一变化都会变化。
 
 ## 6. 集成验收与独立 acceptor
 
 - [ ] 6.1 跑完整合成端到端：三 adapter、direct scan、Lazy、增量、facts、source index/search；验证零 canary 泄漏、零遗漏桶、零非批准语言漂移、zip 有无 factsDigest 相同。
-- [ ] 6.2 以 `CEBREO_ROOT` opt-in 运行选择层校验，不写真实源码/路径/输出：验证建议配方移除的 `.cs/.xaml/.csproj/.feature` 为 0、敏感候选仅计数、`unmc.zip` 是否仍存在都不影响结论；完整 cebreo 质量指标留给最后一个 ordered change。
-- [ ] 6.3 由 acceptor 在干净 worktree 独立复跑冻结 oracle，审计 Git 临时树未落敏感文件、scanner 无 cebreo 特判、语言走 registry、framework 未越界；任何“编造/泄漏”失败为硬阻断，coverage 遗漏单列。
+- [ ] 6.2 以 `CEBREO_ROOT` opt-in 运行 skill 选择层校验，不写真实源码/路径/输出：agent 基于现有扫描证据确认建议配方移除的 `.cs/.xaml/.csproj/.feature` 为 0、敏感候选仅计数、`unmc.zip` 是否仍存在都不影响结论；完整 cebreo 质量指标留给最后一个 ordered change。
+- [ ] 6.3 由 acceptor 在干净 worktree 独立复跑冻结 oracle，审计 Git 临时树未落敏感文件、scanner 无 cebreo 特判、语言走 registry、framework 未越界，并逐个产品改动复核 D0；任何“编造/泄漏”失败或 AI 可做却落代码的模块为硬阻断，coverage 遗漏单列。
 - [ ] 6.4 运行 `openspec validate --strict cebreo-selection-safety`、`pnpm install --frozen-lockfile && pnpm -r build && pnpm test`；全部通过后提交 gate/记录 commit，并确认主 checkout 与其他活跃 change 未被修改。

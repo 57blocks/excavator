@@ -55,3 +55,15 @@ Archive candidates matched by the default archive policy, including `*.zip`, SHA
 #### Scenario: Local cebreo archive is irrelevant
 - **WHEN** `unmc.zip` exists beside cebreo source directories
 - **THEN** analysis selects the same source set and produces the same facts as when `unmc.zip` is absent
+
+### Requirement: Project-specific selection judgment remains agent-owned
+
+Project-specific generated-directory discovery, rule proposal, and source-loss review SHALL be performed by the host skill from existing deterministic scan evidence and persisted only as project-owned root `.excavatorignore` rules. The deterministic runtime SHALL provide generic selection and accounting primitives but MUST NOT contain cebreo-, MAUI-, or other project-specific ignore profiles when the host agent can derive those rules reliably.
+
+#### Scenario: cebreo rules come from evidence, not a product branch
+- **WHEN** cebreo contains generated directories with project-specific names
+- **THEN** the host skill proposes and verifies root ignore rules from scanner evidence without adding a cebreo or MAUI conditional to product code
+
+#### Scenario: Generic safety remains deterministic
+- **WHEN** a candidate matches a non-negatable secret, archive, or analysis-data safety rule
+- **THEN** deterministic code rejects it before model access without relying on prompt compliance

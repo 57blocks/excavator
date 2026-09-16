@@ -4,9 +4,10 @@ cebreo currently reaches extraction with generated coverage/build trees and cred
 
 ## What Changes
 
+- Apply an AI-first scope gate: project-specific judgment, orchestration, explanation, and adaptation that the host agent can perform reliably SHALL live in the Excavator skill/prompt, not product code. Code is reserved for pre-model safety boundaries, deterministic reusable facts, machine-verifiable invariants, persistence contracts, and work that cannot be completed reliably within agent cost/scale limits.
 - Add one deterministic pre-extraction selection boundary that classifies every candidate before bytes can reach scanning, extraction, indexing, search, or model context.
 - **BREAKING** Make root `.excavatorignore` the only project ignore source; stop reading the conflicting `.excavator/.excavatorignore` location so snapshot adapters and direct scans cannot select different files.
-- Keep universal defaults conservative; express cebreo-specific `bin/`, `.unit-test/`, `TestResults/`, `.vs/`, `.gradle/`, and `.scratch/` rules through the existing project `.excavatorignore` layer, with a validator proving they remove no `.cs`, `.xaml`, `.csproj`, or `.feature` source.
+- Keep universal defaults conservative; let the Excavator skill inspect cebreo, propose project-specific `bin/`, `.unit-test/`, `TestResults/`, `.vs/`, `.gradle/`, and `.scratch/` rules in root `.excavatorignore`, run the existing scanner before/after, and review the deterministic dropped-file evidence for source loss. Do not add a MAUI/cebreo rule registry, generator, or dedicated validator.
 - Add a non-negatable sensitive-file policy for credential/container extensions and recognized private-key material. Record only safe metadata in a visible `sensitive` skip bucket; never persist or return the file bytes.
 - Recognize canonical Dockerfile variants such as `Dockerfile-prod`, `Dockerfile-qa`, and `Dockerfile-test` through the same `LanguageConfig`/`LanguageRegistry` path used by TypeScript and other languages, instead of adding a cebreo-only scanner branch.
 - Reconcile the MAUI specification with the already-decided project-level ignore boundary: `bin/` and `.unit-test/` are not global defaults because they can contain source in other ecosystems.
@@ -26,7 +27,7 @@ cebreo currently reaches extraction with generated coverage/build trees and cred
 
 ## Impact
 
-- Affects `packages/core` language/ignore configuration, `skills/excavator/scan-project.mjs`, SourceSnapshot selection, coverage schemas, and their tests.
+- Product-code impact is limited to the pre-model selection boundary, root ignore consumption, SourceSnapshot selection, coverage schemas, canonical language matching, and their tests. Project-specific rule discovery and review affect only the Excavator skill/prompt.
 - Extends existing configuration/registry types rather than adding language- or framework-specific dispatch in the scanner.
 - Adds no runtime dependency and no legacy compatibility path.
-- Does not implement nested multi-project framework discovery, C#/XAML resolution, or HTML/XML/Gradle readers; those remain the next three changes in order.
+- Does not implement nested multi-project framework discovery, C#/XAML resolution, or HTML/XML/Gradle readers. Each later change must pass the same AI-first scope gate; in particular, non-code readers are skipped if existing read/search plus skill prompting can answer the required questions with evidence.

@@ -2,10 +2,10 @@
 
 ### Requirement: 忽略文件为 .excavatorignore
 
-The authoritative per-project ignore file SHALL be `.excavatorignore` at the project root. The starter generator SHALL write that path, and source adapters SHALL consume the same content. No code SHALL read an ignore file from inside `.excavator/` or from any pre-rename data directory. A GitCommitSnapshot SHALL use the root `.excavatorignore` from HEAD; directory-based snapshots SHALL use the root file on disk.
+The authoritative per-project ignore file SHALL be `.excavatorignore` at the project root. The host skill SHALL create or update only that path after inspecting the project, and source adapters SHALL consume the same content. No code SHALL read an ignore file from inside `.excavator/` or from any pre-rename data directory. A GitCommitSnapshot SHALL use the root `.excavatorignore` from HEAD; directory-based snapshots SHALL use the root file on disk.
 
 #### Scenario: 生成器写新名
-- **WHEN** the ignore starter generator runs on an empty non-Git project
+- **WHEN** the host skill prepares starter ignore rules for an empty non-Git project
 - **THEN** `<project>/.excavatorignore` is created and the next scan consumes its rules
 
 #### Scenario: Git 分析只使用 HEAD 中的规则
