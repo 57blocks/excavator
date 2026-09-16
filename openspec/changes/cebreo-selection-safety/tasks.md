@@ -13,10 +13,10 @@
 - [x] 2.3 扩展 scan/coverage schema 与守恒计算，合并 selection ledger 后每个候选恰好一桶；验证含全部 exclusion/skip/extraction outcome 的合成守恒测试全绿。
 - [x] 2.4 提交核心选择策略 commit；验证 commit 只包含 core policy/schema/tests 与必要导出。
 
-## 3. 语言识别统一到 LanguageRegistry
+## 3. TypeScript/Dockerfile 识别统一到 LanguageRegistry
 
 - [ ] 3.1 扩展 `LanguageConfig`/`LanguageRegistry` 的 basename pattern，并在 Dockerfile config 声明 `Dockerfile.*`、`Dockerfile-*`；验证 exact → pattern → extension precedence、TypeScript `.ts/.tsx` 和负例 `MyDockerfile-prod`。
-- [ ] 3.2 让 `scan-project.mjs` 对已注册语言调用 canonical registry matcher，移除 TypeScript/Dockerfile 的权威重复判断；用当前分类矩阵证明除批准的 Dockerfile hyphen 变体外零漂移。
+- [ ] 3.2 让 `scan-project.mjs` 对 TypeScript/Dockerfile 调用 canonical registry matcher，移除这两类的权威重复判断；冻结既有 `jsonc`、env/dot-env、`svg`、`mk`、OpenAPI、docker-compose、`rst`、`txt/text` 兼容输出为显式后续债务，并用当前分类矩阵证明除批准的 Dockerfile hyphen 变体外零漂移。
 - [ ] 3.3 让 category 基于 canonical `dockerfile` 结果产出 `infra`，覆盖 `Dockerfile-prod|qa|test`；验证 scanner 与 `LanguageRegistry.createDefault()` 对同一路径给出相同 language。
 - [ ] 3.4 提交语言注册统一 commit；验证未修改 `FrameworkConfig`/`FrameworkRegistry`，后续框架 change 仍沿 Express 的注册方式扩展。
 
@@ -39,5 +39,5 @@
 
 - [ ] 6.1 跑完整合成端到端：三 adapter、direct scan、Lazy、增量、facts、source index/search；验证零 canary 泄漏、零遗漏桶、零非批准语言漂移、zip 有无 factsDigest 相同。
 - [ ] 6.2 以 `CEBREO_ROOT` opt-in 运行 skill 选择层校验，不写真实源码/路径/输出：agent 基于现有扫描证据确认建议配方移除的 `.cs/.xaml/.csproj/.feature` 为 0、敏感候选仅计数、`unmc.zip` 是否仍存在都不影响结论；完整 cebreo 质量指标留给最后一个 ordered change。
-- [ ] 6.3 由 acceptor 在干净 worktree 独立复跑冻结 oracle，审计 Git 临时树未落敏感文件、scanner 无 cebreo 特判、语言走 registry、framework 未越界，并逐个产品改动复核 D0；任何“编造/泄漏”失败或 AI 可做却落代码的模块为硬阻断，coverage 遗漏单列。
+- [ ] 6.3 由 acceptor 在干净 worktree 独立复跑冻结 oracle，审计 Git 临时树未落敏感文件、scanner 无 cebreo 特判、TypeScript/Dockerfile 走 registry 且既有分类债务零漂移、framework 未越界，并逐个产品改动复核 D0；任何“编造/泄漏”失败或 AI 可做却落代码的模块为硬阻断，coverage 遗漏单列。
 - [ ] 6.4 运行 `openspec validate --strict cebreo-selection-safety`、`pnpm install --frozen-lockfile && pnpm -r build && pnpm test`；全部通过后提交 gate/记录 commit，并确认主 checkout 与其他活跃 change 未被修改。

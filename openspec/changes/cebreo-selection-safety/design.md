@@ -71,9 +71,11 @@ This is intentionally breaking and follows the existing main spec. No automatic 
 
 Alternative considered: keep both locations and define precedence. Rejected because the data-directory file cannot be represented in a GitCommitSnapshot's HEAD source, so parity is impossible.
 
-### D5. Language and framework support stays declarative
+### D5. TypeScript and Dockerfile matching moves to the declarative catalog
 
-Extend `LanguageConfig` with optional basename patterns and give `LanguageRegistry` a single deterministic matcher with precedence: exact filename, basename pattern, then extension. The Dockerfile config declares `Dockerfile.*` and `Dockerfile-*`; TypeScript keeps its existing `.ts`/`.tsx` config. `scan-project.mjs` queries this matcher for registered languages and retains an explicit fallback only for genuinely unregistered extensions until those configs are added; it does not add a cebreo or hyphen-specific branch. Category assignment treats canonical `dockerfile` language as `infra`.
+Extend `LanguageConfig` with optional basename patterns and give `LanguageRegistry` a single deterministic matcher with precedence: exact filename, basename pattern, then extension. The Dockerfile config declares `Dockerfile.*` and `Dockerfile-*`; TypeScript keeps its existing `.ts`/`.tsx` config. `scan-project.mjs` uses this matcher as the authority for TypeScript and Dockerfile and removes its duplicate rules for those two languages; it does not add a cebreo or hyphen-specific branch. Category assignment treats canonical `dockerfile` language as `infra`.
+
+Live-main inspection found pre-existing registry/scanner disagreements for `jsonc`, env/dot-env, `svg`, `mk`, OpenAPI filenames, docker-compose filenames, `rst`, and `txt`/`text`. Migrating all registered languages now would silently change eight established scanner contracts, contradicting this change's zero-unapproved-drift oracle. Those classifications therefore remain on the existing scanner compatibility path and are recorded as explicit migration debt for a dedicated catalog-unification change. This is a scoped exception, not permission to add new duplicate rules.
 
 The same convention applies to later changes: framework support must be a `FrameworkConfig` registered in `builtinFrameworkConfigs` and detected by `FrameworkRegistry`, as Express is today. This change does not alter framework detection.
 
@@ -100,13 +102,13 @@ Nested manifest enumeration and framework identity require deterministic code on
 - **[Risk] Root ignore migration surprises users of the generated data-directory file.** → The skill checks both paths before analysis, names the old and new paths, and guides the one-time copy; runtime adds no fallback.
 - **[Risk] Header sniffing reads some protected bytes inside the policy.** → Bound the read, never stringify/log/hash it, discard immediately, and test with a canary search over artifacts and output.
 - **[Risk] Per-file `git show` is slower than one `git archive`.** → Reject by path before reads, batch only selected paths if measurement warrants it, and record a regression budget in tests; correctness and containment take priority.
-- **[Risk] Canonical registry migration changes classifications unintentionally.** → Snapshot the current declared-language matrix first and require zero differences except approved Dockerfile hyphen variants.
+- **[Risk] Canonical registry migration changes classifications unintentionally.** → Scope this change to TypeScript/Dockerfile, snapshot the full current classification matrix, and require zero differences except approved Dockerfile hyphen variants; migrate the eight known disagreements only under a later explicit contract change.
 - **[Risk] Project ignore recipes can still hide real source.** → The skill shows proposed rules, runs the existing scanner before/after, and reviews every dropped source extension before writing the root file.
 
 ## Migration Plan
 
 1. Land the failing synthetic oracle and accepted classification baseline.
-2. Land the core selection policy and language matcher.
+2. Land the core selection policy and the scoped TypeScript/Dockerfile language matcher.
 3. Move snapshot adapters and direct scan to the shared policy; remove whole-tree Git materialization.
 4. Switch ignore consumption to root `.excavatorignore`, remove the data-directory reader, and move project-rule discovery/writing/comparison into the skill; delete the old generator path if it has no remaining consumer.
 5. Use the skill to review the cebreo/MAUI recipe from two existing scans; real cebreo end-to-end metrics remain the final ordered acceptance change.

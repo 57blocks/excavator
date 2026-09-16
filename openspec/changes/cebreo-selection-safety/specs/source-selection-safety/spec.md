@@ -32,9 +32,9 @@ The selection boundary SHALL classify credential-bearing extensions (including `
 - **WHEN** a same-sized text fixture lacks a protected extension and private-key header
 - **THEN** it proceeds through ordinary selection, proving the detector does not reject every text file
 
-### Requirement: Language recognition uses the canonical configuration catalog
+### Requirement: Migrated language recognition uses the canonical configuration catalog
 
-Scanner language recognition SHALL use the same built-in language configurations and matching semantics as the language registry. Extension, exact-filename, and filename-pattern matches SHALL have deterministic precedence, and duplicate scanner-only language tables MUST NOT be authoritative. Existing TypeScript `.ts`/`.tsx` recognition SHALL remain unchanged.
+Within this change, scanner recognition for TypeScript and Dockerfile SHALL use the same built-in language configurations and matching semantics as the language registry. Exact-filename, filename-pattern, and extension matches SHALL have deterministic precedence, and duplicate scanner-only TypeScript/Dockerfile rules MUST NOT remain authoritative. Existing TypeScript `.ts`/`.tsx` recognition SHALL remain unchanged. Existing classifications whose registry ids already disagree with scanner output (`jsonc`, env/dot-env, `svg`, `mk`, OpenAPI filenames, docker-compose filenames, `rst`, and `txt`/`text`) SHALL retain their current scanner output in this change and remain explicit migration debt rather than being silently reclassified.
 
 #### Scenario: TypeScript remains registry-consistent
 - **WHEN** the scanner receives `src/app.ts` and `src/view.tsx`
@@ -47,6 +47,10 @@ Scanner language recognition SHALL use the same built-in language configurations
 #### Scenario: Similar arbitrary name is not misclassified
 - **WHEN** the scanner receives `MyDockerfile-prod`
 - **THEN** the Dockerfile filename pattern does not match it
+
+#### Scenario: Existing classification debt does not drift implicitly
+- **WHEN** the pre-change classification matrix covers the known registry/scanner disagreements
+- **THEN** every existing scanner result remains unchanged and only the approved Dockerfile hyphen variants are added
 
 ### Requirement: Archives remain outside the source corpus
 
