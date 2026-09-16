@@ -296,6 +296,8 @@ const result = await commitSemanticCacheEntry({
   projectRoot: '$PROJECT_ROOT',
   nodeId: generateItem.nodeId,
   filePath: generateItem.filePath,
+  verifyNodePath: true,
+  onlyIfNotFresh: true,
   fields: {
     summary: '<one paragraph about ONLY this node\'s own responsibility>',
     tags: ['<short local tags>'],

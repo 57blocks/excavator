@@ -25,16 +25,11 @@
  * per-file `contentHash` (equal -> reuse, missing -> not generated, differ ->
  * stale/ignore), while semantic trust additionally requires the current
  * cache schema and `contentLanguage: "en"`. This is a deliberate
- * simplification of design D5's prose ("reread the latest
- * manifest + fact graph + cache"): this system tracks no hash finer-grained
- * than a whole file's content hash, so "the node's current source hash" IS
- * the containing file's manifest entry — there is no separate fact-graph
- * hash to compare against, and re-reading the (potentially large)
- * `knowledge-graph.json` on every commit would add cost without adding a
- * distinct freshness signal. This module therefore never reads
- * `knowledge-graph.json` at all, which also makes the "chat semantic writes
- * MUST NEVER modify knowledge-graph.json" guarantee trivially true by
- * construction rather than merely tested.
+ * simplification of the source hash: this system tracks no hash finer-grained
+ * than a whole file's content hash. The optional strict node/path gate for
+ * MCP/Skill callers now rereads the fact graph under the same short lock as
+ * the manifest and cache, preventing a forged node id plus valid file path
+ * from entering the cache. It reads but never writes knowledge-graph.json.
  *
  * A commit failure (lock contention, a stale CAS hash, a rejected field, or
  * any I/O error) returns a status object; this module NEVER throws, so a
@@ -339,12 +334,13 @@ function atomicWriteJson(finalPath, data, fsImpl) {
  *   filePath: string,
  *   fields: { summary: string, tags?: string[], semanticSourceHash: string, model?: string, generatedAt?: string },
  *   now?: () => number, ttlMs?: number, pid?: number, host?: string,
+ *   verifyNodePath?: boolean, onlyIfNotFresh?: boolean,
  *   maxLockAttempts?: number, fsImpl?: object,
  * }} args
  * @returns {Promise<{ ok: boolean, status: string, [key: string]: any }>}
  *   `status` is one of: 'committed' | 'rejected-fields' | 'noncanonical-language' | 'missing-source-hash'
  *   | 'invalid-args' | 'lock-held' | 'manifest-missing' | 'path-not-in-manifest'
- *   | 'stale-hash' | 'io-error'.
+ *   | 'stale-hash' | 'node-path-mismatch' | 'graph-missing' | 'already-fresh' | 'io-error'.
  */
 export async function commitSemanticCacheEntry({
   projectRoot,
@@ -356,6 +352,8 @@ export async function commitSemanticCacheEntry({
   pid = process.pid,
   host = hostname(),
   maxLockAttempts = 1,
+  verifyNodePath = false,
+  onlyIfNotFresh = false,
   fsImpl = REAL_FS,
 } = {}) {
   try {
@@ -419,10 +417,28 @@ export async function commitSemanticCacheEntry({
         return { ok: false, status: 'stale-hash', currentSourceHash: currentHash };
       }
 
+      if (verifyNodePath) {
+        const graphPath = join(dataDir, 'knowledge-graph.json');
+        if (!fsImpl.existsSync(graphPath)) return { ok: false, status: 'graph-missing' };
+        let graph;
+        try {
+          graph = JSON.parse(fsImpl.readFileSync(graphPath, 'utf-8'));
+        } catch {
+          return { ok: false, status: 'graph-missing' };
+        }
+        if (!Array.isArray(graph?.nodes)) return { ok: false, status: 'graph-missing' };
+        if (!graph.nodes.some((node) => node.id === nodeId && node.filePath === filePath)) {
+          return { ok: false, status: 'node-path-mismatch' };
+        }
+      }
+
       // Reload the latest cache too — a concurrent writer's OTHER node
       // entries must survive a merge, never be clobbered by a blind
       // overwrite (spec: "no lost update").
       const latest = readCacheFile(dataDir, fsImpl);
+      if (onlyIfNotFresh && isFresh(latest.entries?.[nodeId], currentHash, latest)) {
+        return { ok: false, status: 'already-fresh' };
+      }
       // A cache with an old schema or missing/non-English identity is an
       // untrusted empty view. The first canonical write must never carry its
       // unaudited entries forward.
