@@ -1,0 +1,32 @@
+## Why
+
+cebreo currently reaches extraction with generated coverage/build trees and credential-like files mixed into its source set, while alternate Dockerfile names are skipped as unknown. This makes coverage noisy and risks exposing secret material before later C#/XAML and framework improvements can be evaluated safely.
+
+## What Changes
+
+- Add one deterministic pre-extraction selection boundary that classifies every candidate before bytes can reach scanning, extraction, indexing, search, or model context.
+- **BREAKING** Make root `.excavatorignore` the only project ignore source; stop reading the conflicting `.excavator/.excavatorignore` location so snapshot adapters and direct scans cannot select different files.
+- Keep universal defaults conservative; express cebreo-specific `bin/`, `.unit-test/`, `TestResults/`, `.vs/`, `.gradle/`, and `.scratch/` rules through the existing project `.excavatorignore` layer, with a validator proving they remove no `.cs`, `.xaml`, `.csproj`, or `.feature` source.
+- Add a non-negatable sensitive-file policy for credential/container extensions and recognized private-key material. Record only safe metadata in a visible `sensitive` skip bucket; never persist or return the file bytes.
+- Recognize canonical Dockerfile variants such as `Dockerfile-prod`, `Dockerfile-qa`, and `Dockerfile-test` through the same `LanguageConfig`/`LanguageRegistry` path used by TypeScript and other languages, instead of adding a cebreo-only scanner branch.
+- Reconcile the MAUI specification with the already-decided project-level ignore boundary: `bin/` and `.unit-test/` are not global defaults because they can contain source in other ecosystems.
+- Keep `unmc.zip` out of scope as an input corpus artifact; existing `*.zip` exclusion remains the required behavior even after the local file is deleted.
+
+## Capabilities
+
+### New Capabilities
+
+- `source-selection-safety`: Defines the single pre-extraction selection boundary, secret containment, and config-driven filename recognition.
+
+### Modified Capabilities
+
+- `data-directory`: Defines project-level ignore precedence, non-negatable safety exclusions, and selection-digest participation.
+- `coverage-ledger`: Adds an explicit `sensitive` skip reason and conservation rules without exposing protected bytes.
+- `maui-framework`: Replaces the incorrect global `bin/`/`.unit-test/` requirement with a validated project-level ignore recipe.
+
+## Impact
+
+- Affects `packages/core` language/ignore configuration, `skills/excavator/scan-project.mjs`, SourceSnapshot selection, coverage schemas, and their tests.
+- Extends existing configuration/registry types rather than adding language- or framework-specific dispatch in the scanner.
+- Adds no runtime dependency and no legacy compatibility path.
+- Does not implement nested multi-project framework discovery, C#/XAML resolution, or HTML/XML/Gradle readers; those remain the next three changes in order.
