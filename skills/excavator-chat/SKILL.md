@@ -170,23 +170,45 @@ If `$PLUGIN_ROOT` cannot be resolved, or `$DATA_DIR/source-index.json` does not 
 
    All three return a `boundary` object (`reason`, `truncated`, budgets). **If `boundary.truncated` is true, say so in the answer** — name what was covered and that the graph was larger than the budget (seed ≤20 / nodes ≤80 / edges ≤160 / ~12k tokens of context), rather than presenting a partial subgraph as the whole picture.
 
-**(c) Generate and cache a NODE-LOCAL summary, on demand.** For each node your answer actually needs to explain, read that node's own source (its `filePath`/`lineRange` from `knowledge-graph.json`, or the chunk's own text from `source-index.json`) and write the model-owned `summary` and `tags` in **English**, regardless of the user's question language. Preserve source-owned identifiers and literals verbatim. Describe ONLY that node's own responsibility. Persist it via `semantic-cache.mjs` **only when all three cacheable conditions hold**: you read the node's full local source range, the summary reliably captures that node's OWN responsibility, and it depends on no unverified cross-file inference. Never persist a cross-file conclusion, a business flow, or answer text — the module enforces this with a field whitelist regardless, but do not even attempt it for content you know is out of scope.
+**(c) Freeze the bounded need set, plan reuse, then generate only the difference.** After candidate merge and bounded fact-edge traversal, select the exact node ids that this answer actually needs explained. Keep them within the traversal boundary and deduplicate them by exact id in first-occurrence order. This `$NEEDED_NODE_IDS` list is fixed before any semantic generation.
+
+Invoke the read-only planner with every needed id as a separate `--node-id` argument. Never concatenate ids into a command string, evaluate them as shell/code, or treat their contents as options. For example, repeated arguments are safe when each exact id is a separately quoted argument:
+
+```bash
+node "$PLUGIN_ROOT/skills/excavator/semantic-cache-reuse.mjs" "$PROJECT_ROOT" \
+  --node-id 'function:src/article.ts:favorite()' \
+  --node-id 'function:src/article.ts:unfavorite()' \
+  --node-id 'function:src/article.ts:favorite()'
+```
+
+The planner reads the current fact graph, source manifest, and semantic cache for this invocation, then returns `reuse[]`, `generate[]`, `unavailable[]`, and conserving `counts`:
+
+- `reuse[]` is seed/context only. Recheck current facts or source before using any related claim. Never send a reused node to the generator or semantic-cache writer, and never restamp or rewrite its entry.
+- `generate[]` is the only semantic generation loop. Treat each generate item as frozen for this turn. For each item, first read the containing file's complete bytes and confirm their SHA-256 equals that item's `currentContentHash`; this whole-file comparison is the file-level freshness authority. If it does not match, stop processing that item and re-plan. Once it matches, keep that verified file snapshot fixed and extract the node's full local source range from the same snapshot using its `filePath`/`lineRange` in `knowledge-graph.json` (a file node uses the whole file). Do not compare a node-range hash to `currentContentHash` and do not reread a different snapshot for generation. Then write the model-owned `summary` and `tags` in **English**, regardless of the user's question language. Preserve source-owned identifiers and literals verbatim and describe ONLY that node's own responsibility.
+- `unavailable[]` is a visible degraded result. Report each unavailable node id and its `unknown-node` or `path-not-in-manifest` reason; never generate or write semantics for it.
+
+An all-fresh plan means zero generator calls, zero semantic-cache writer calls, and a byte-identical `semantic-cache.json`, including every existing entry's model, `generatedAt`, and audit. For an overlapping question, preserve every `reuse[]` intersection entry byte-for-byte and generate/commit only the `generate[]` difference. A repeated plan after that commit should reuse the newly fresh entries without another write.
+
+Only a verified `generate[]` item may reach `commitSemanticCacheEntry`. Its frozen `currentContentHash` is the only allowed `semanticSourceHash` for the summary generated in this turn. You may re-read the manifest or source to recheck evidence, but MUST NOT replace the planned hash with a later hash; passing the frozen hash lets the writer's CAS reject any post-plan drift. Persist it **only when all three cacheable conditions hold**: you read the node's full local source range, the summary reliably captures that node's OWN responsibility, and it depends on no unverified cross-file inference. Never persist a cross-file conclusion, a business flow, or answer text — the module enforces this with a field whitelist regardless, but do not even attempt it for content you know is out of scope.
 
 ```bash
 node --input-type=module -e "
-import { readFileSync } from 'node:fs';
 import { commitSemanticCacheEntry } from '$PLUGIN_ROOT/skills/excavator/semantic-cache.mjs';
-const manifest = JSON.parse(readFileSync('$DATA_DIR/source-manifest.json', 'utf-8'));
-const filePath = '<the node\'s filePath>';
-const semanticSourceHash = manifest.entries.find((e) => e.path === filePath)?.contentHash;
+// Repeat this block only for one verified item from plan.generate.
+const generateItem = {
+  nodeId: '<exact plan.generate[].nodeId>',
+  filePath: '<exact plan.generate[].filePath>',
+  currentContentHash: '<exact plan.generate[].currentContentHash>',
+};
+const plannedSemanticSourceHash = generateItem.currentContentHash;
 const result = await commitSemanticCacheEntry({
   projectRoot: '$PROJECT_ROOT',
-  nodeId: '<the node id you just summarized>',
-  filePath,
+  nodeId: generateItem.nodeId,
+  filePath: generateItem.filePath,
   fields: {
     summary: '<one paragraph about ONLY this node\'s own responsibility>',
     tags: ['<short local tags>'],
-    semanticSourceHash,
+    semanticSourceHash: plannedSemanticSourceHash,
     model: '<this model id>',
     generatedAt: new Date().toISOString(),
   },
@@ -195,7 +217,7 @@ console.log(JSON.stringify(result));
 "
 ```
 
-`result.ok === false` (noncanonical language, a rejected field, a stale CAS hash, a held lock, or an I/O error) is expected occasionally and MUST NOT block the answer — the summary you already generated is still valid for THIS answer, it simply was not persisted for reuse.
+`result.ok === false` (noncanonical language, a rejected field, a stale CAS hash, a held lock, or an I/O error) is expected occasionally and MUST NOT block the answer — the verified summary generated for THIS answer remains available for this answer, but the cache entry was not committed. Recheck or qualify affected claims if current evidence moved after planning.
 
 **(d) Seeds are re-verified before they enter the answer.** A semantic-cache or domain hit from step (b)/(c) only ever SEEDS which nodes/files to look at — it is never itself the evidence for a claim in the final answer. Before a conclusion derived from such a hit goes into the answer, re-check it against the fact graph's edges/nodes or the current source text (via SourceSnapshot/Grep on the project root). If it does not hold up, drop or qualify the claim; do not present an unverified cached seed as a checked fact. Once this and the global **Evidence verification gate** are complete, finalize the answer language; never choose it early merely because retrieval used English expressions.
 
