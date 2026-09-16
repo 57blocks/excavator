@@ -15,5 +15,5 @@
 
 - [x] 3.1 On pinned Conduit ask “发布文章需要填写和校验哪些字段”; verify local/source-first, no BFS, no 80-node fuse, and current frontend/backend evidence.
 - [x] 3.2 Ask “文章从编辑器提交到数据库如何流转” and “这个项目有哪些主要用户流程，请逐个说明前后端细节”; verify the first reports source-verified protocol bridges plus separately bounded fact segments without claiming one directed graph path, and the second reports `inventory-unavailable` with explicit coverage/gaps and zero full-repository BFS because pinned Conduit has no Domain inventory.
-- [ ] 3.3 Run focused retrieval/traversal/Chat tests followed by `pnpm install --frozen-lockfile`, `pnpm -r build`, and `pnpm test`; verify every command exits 0 and gold recall is not weakened by the seed cap.
-- [ ] 3.4 Run `openspec validate --strict query-scope-routing` and `git diff --check`; verify both exit 0 and no test-project source, generated provider data, or unrelated user edit is included.
+- [x] 3.3 Run focused retrieval/traversal/Chat tests followed by `pnpm install --frozen-lockfile`, `pnpm -r build`, and `pnpm test`; verify every command exits 0 and gold recall is not weakened by the seed cap.
+- [x] 3.4 Run `openspec validate --strict query-scope-routing` and `git diff --check`; verify both exit 0 and no test-project source, generated provider data, or unrelated user edit is included.
