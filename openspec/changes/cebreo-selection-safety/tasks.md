@@ -41,3 +41,10 @@
 - [x] 6.2 以 `CEBREO_ROOT` opt-in 运行 skill 选择层校验，不写真实源码/路径/输出：agent 基于现有扫描证据确认建议配方移除的 `.cs/.xaml/.csproj/.feature` 为 0、敏感候选仅计数、`unmc.zip` 是否仍存在都不影响结论；完整 cebreo 质量指标留给最后一个 ordered change。
 - [x] 6.3 由 acceptor 在干净 worktree 独立复跑冻结 oracle，审计 Git 临时树未落敏感文件、scanner 无 cebreo 特判、TypeScript/Dockerfile 走 registry 且既有分类债务零漂移、framework 未越界，并逐个产品改动复核 D0；任何“编造/泄漏”失败或 AI 可做却落代码的模块为硬阻断，coverage 遗漏单列。
 - [x] 6.4 运行 `openspec validate --strict cebreo-selection-safety`、`pnpm install --frozen-lockfile && pnpm -r build && pnpm test`；全部通过后提交 gate/记录 commit，并确认主 checkout 与其他活跃 change 未被修改。
+
+## 7. Lazy/Windows ignore preflight follow-up
+
+- [ ] 7.1 先冻结跨平台默认 oracle：Windows 反斜杠与大小写的系统元数据、macOS 元数据、`.vs/`/`.gradle/` 必须落 `filtered-by-defaults`，而 `bin\\rails`、`gradle/wrapper/` 仍 selected；由 acceptor 证明新增断言在实现前精确变红。
+- [ ] 7.2 扩充 core 的保守全局默认并修正相邻说明；验证新增默认进入 selection descriptors/digest、普通 negation 语义不变，且不新增项目/语言/framework 特判。
+- [ ] 7.3 将 agent-owned ignore preflight 移到 Lazy/Full 分支之前：仅在根文件缺失、旧文件待迁移或显式复查时运行，使用宿主原生临时目录，按 layout/`.gitignore`/scan buckets 发现非闭集候选，当前 run 复用 approved CLI patterns；不得恢复 generator/validator。用独立 skill review 验证 Windows、Git HEAD 与无规则项目路径。
+- [ ] 7.4 只跑两个 cebreo 项目的轻量 before/after scanner，确认新增 defaults 与项目候选零 `.cs/.xaml/.csproj/.feature` 损失且不写真实项目；运行 focused tests、skill 校验、OpenSpec strict 与必要 build/test 后分阶段提交，并再次确认主 checkout 未改。

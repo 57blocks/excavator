@@ -5,8 +5,8 @@
 The authoritative per-project ignore file SHALL be `.excavatorignore` at the project root. The host skill SHALL create or update only that path after inspecting the project, and source adapters SHALL consume the same content. No code SHALL read an ignore file from inside `.excavator/` or from any pre-rename data directory. A GitCommitSnapshot SHALL use the root `.excavatorignore` from HEAD; directory-based snapshots SHALL use the root file on disk.
 
 #### Scenario: 生成器写新名
-- **WHEN** the host skill prepares starter ignore rules for an empty non-Git project
-- **THEN** `<project>/.excavatorignore` is created and the next scan consumes its rules
+- **WHEN** the root file is absent and the host skill is invoked in Lazy or Full mode
+- **THEN** a lightweight preflight reviews scanner evidence, creates `<project>/.excavatorignore` without a dedicated generator, and applies approved rules to the current run
 
 #### Scenario: Git 分析只使用 HEAD 中的规则
 - **WHEN** committed `.excavatorignore` content differs from an unstaged working-tree edit
@@ -37,3 +37,15 @@ The source manifest `selectionDigest` SHALL deterministically cover the versione
 #### Scenario: 安全策略升级触发重建
 - **WHEN** the built-in sensitive extension set or language filename-pattern semantics change
 - **THEN** `selectionDigest` changes and stale deterministic artifacts are rebuilt
+
+### Requirement: 跨平台确定性噪声使用保守全局默认
+
+The built-in ordinary defaults SHALL exclude operating-system metadata and unambiguous tool caches consistently across POSIX and Windows path spellings. They SHALL include `.DS_Store`, AppleDouble `._*`, `__MACOSX/`, `Thumbs.db`, `ehthumbs.db`, `ehthumbs_vista.db`, `Desktop.ini`, `$RECYCLE.BIN/`, `System Volume Information/`, `.vs/`, and `.gradle/`. Matching SHALL normalize Windows separators and retain the existing case-insensitive semantics. Broad names that can contain source, including `bin/`, MUST remain outside the global defaults.
+
+#### Scenario: Windows 元数据跨路径格式一致排除
+- **WHEN** candidates use `src\\Thumbs.db`, `DESKTOP.INI`, `.VS\\cache.bin`, or `$RECYCLE.BIN\\item`
+- **THEN** each candidate is `filtered-by-defaults` after normalization
+
+#### Scenario: Windows 风格 bin 源码不被全局排除
+- **WHEN** a candidate path is `bin\\rails` and no project rule excludes `bin/`
+- **THEN** it remains selected

@@ -65,11 +65,19 @@ Alternative considered: archive then delete. Rejected because the protected byte
 
 The Excavator skill will inspect the project and write `<project>/.excavatorignore` directly through the host's normal file-editing capability. `createIgnoreFilter`, all SourceSnapshot adapters, incremental preparation, and direct scan will read only that file. The file inside `.excavator/` is no longer consulted. Git snapshots continue to read the root file from the fixed commit, while directory snapshots read it from disk.
 
-Do not add generator logic for MAUI/cebreo or a new validator. Remove the skill's dependency on the current data-directory generator; if its content generator has no remaining production consumer, delete the dead helper/export/tests instead of preserving compatibility. The skill checks for the old data-directory file, explains the one-time move, reviews the proposed rules, runs the existing scanner twice, and writes the root file only after the no-source-loss comparison.
+Do not add generator logic for MAUI/cebreo or a new validator. Remove the skill's dependency on the current data-directory generator; if its content generator has no remaining production consumer, delete the dead helper/export/tests instead of preserving compatibility. Before branching into Lazy or Full, the skill runs a shared lightweight preflight when the root file is absent or the obsolete data-directory file exists. It explains the one-time move, reviews proposed rules, runs the existing scanner twice, and writes the root file only after the no-source-loss comparison. Approved rules are also passed as current-run CLI exclusions so an uncommitted root file cannot be mistaken for the committed rule source of a Git snapshot.
+
+The preflight uses host-native temporary-directory and cleanup operations rather than assuming POSIX `mktemp`/`rm`; `.excavatorignore` patterns and scanner paths remain normalized to `/` on every operating system. A comment-only root file may record a completed first review when no project-specific rule is justified, avoiding a repeated preflight on every Lazy run.
 
 This is intentionally breaking and follows the existing main spec. No automatic code migration or fallback is added. One authoritative location is required for deterministic HEAD-only Git analysis.
 
 Alternative considered: keep both locations and define precedence. Rejected because the data-directory file cannot be represented in a GitCommitSnapshot's HEAD source, so parity is impossible.
+
+### D4a. Universal defaults cover only cross-platform deterministic noise
+
+Add ordinary, negatable defaults for filenames and directories that cannot carry project source: `.DS_Store`, AppleDouble `._*`, `__MACOSX/`, Windows `Thumbs.db`/`ehthumbs*.db`/`Desktop.ini`, `$RECYCLE.BIN/`, `System Volume Information/`, and the unambiguous `.vs/` and `.gradle/` caches. Matching remains case-insensitive and path separators are normalized before policy evaluation, so Windows spellings receive the same decision as POSIX spellings.
+
+Do not globalize `bin/`, `.unit-test/`, `TestResults/`, `.scratch/`, package directories, broad temporary-file globs, or other names that may contain authored source or project evidence. Those remain agent-reviewed project rules. This code passes D0 because all consumers need the same deterministic selection, the defaults participate in selection identity and coverage, and per-run prompting cannot reliably protect every pre-model consumer.
 
 ### D5. TypeScript and Dockerfile matching moves to the declarative catalog
 
@@ -104,6 +112,7 @@ Nested manifest enumeration and framework identity require deterministic code on
 - **[Risk] Per-file `git show` is slower than one `git archive`.** → Reject by path before reads, batch only selected paths if measurement warrants it, and record a regression budget in tests; correctness and containment take priority.
 - **[Risk] Canonical registry migration changes classifications unintentionally.** → Scope this change to TypeScript/Dockerfile, snapshot the full current classification matrix, and require zero differences except approved Dockerfile hyphen variants; migrate the eight known disagreements only under a later explicit contract change.
 - **[Risk] Project ignore recipes can still hide real source.** → The skill shows proposed rules, runs the existing scanner before/after, and reviews every dropped source extension before writing the root file.
+- **[Risk] A POSIX-only preflight or path matcher silently diverges on Windows.** → Use host-native temporary operations, normalize `\\` to `/` before selection, and freeze case-insensitive Windows metadata plus `bin\\rails` negative controls.
 
 ## Migration Plan
 
@@ -111,6 +120,7 @@ Nested manifest enumeration and framework identity require deterministic code on
 2. Land the core selection policy and the scoped TypeScript/Dockerfile language matcher.
 3. Move snapshot adapters and direct scan to the shared policy; remove whole-tree Git materialization.
 4. Switch ignore consumption to root `.excavatorignore`, remove the data-directory reader, and move project-rule discovery/writing/comparison into the skill; delete the old generator path if it has no remaining consumer.
-5. Use the skill to review the cebreo/MAUI recipe from two existing scans; real cebreo end-to-end metrics remain the final ordered acceptance change.
+5. Move the lightweight ignore preflight before the Lazy/Full branch and add conservative cross-platform defaults without globalizing `bin/` or project-specific directories.
+6. Use the skill to review the cebreo/MAUI recipe from two existing scans; real cebreo end-to-end metrics remain the final ordered acceptance change.
 
 Rollback is by logical commit in reverse order. A rollback must restore the prior tests and contract together; it MUST NOT keep a test that claims sensitive containment while restoring whole-tree materialization.

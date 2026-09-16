@@ -64,6 +64,8 @@ Archive candidates matched by the default archive policy, including `*.zip`, SHA
 
 Project-specific generated-directory discovery, rule proposal, and source-loss review SHALL be performed by the host skill from existing deterministic scan evidence and persisted only as project-owned root `.excavatorignore` rules. The deterministic runtime SHALL provide generic selection and accounting primitives but MUST NOT contain cebreo-, MAUI-, or other project-specific ignore profiles when the host agent can derive those rules reliably.
 
+The host skill SHALL run this lightweight review before choosing Lazy or Full whenever the root file is absent or legacy rules require migration. It SHALL use project layout, `.gitignore`, and scan bucket evidence to discover candidates rather than treating its example names as a closed registry. It SHALL use host-native temporary-file operations on Windows and POSIX, and SHALL pass newly approved rules to the current run when Git HEAD cannot yet contain the edited root file.
+
 #### Scenario: cebreo rules come from evidence, not a product branch
 - **WHEN** cebreo contains generated directories with project-specific names
 - **THEN** the host skill proposes and verifies root ignore rules from scanner evidence without adding a cebreo or MAUI conditional to product code
@@ -71,3 +73,7 @@ Project-specific generated-directory discovery, rule proposal, and source-loss r
 #### Scenario: Generic safety remains deterministic
 - **WHEN** a candidate matches a non-negatable secret, archive, or analysis-data safety rule
 - **THEN** deterministic code rejects it before model access without relying on prompt compliance
+
+#### Scenario: Lazy first run receives project rules without Full analysis
+- **WHEN** the root `.excavatorignore` is absent and the resolved mode is Lazy
+- **THEN** the host completes the lightweight before/after review first and the Lazy run receives every approved rule
