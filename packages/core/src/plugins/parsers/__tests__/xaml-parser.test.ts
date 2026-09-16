@@ -155,6 +155,21 @@ describe("XamlParser", () => {
     ]);
   });
 
+  it("ignores declarations, processing instructions, and CDATA as non-element content", () => {
+    const markup = [
+      '<?xml version="1.0"?>',
+      '<!DOCTYPE ContentPage>',
+      '<![CDATA[<ContentPage x:Class="Demo.Ghost" Text="{Binding Ghost}" />]]>',
+      '<ContentPage x:Class="Demo.Live">',
+      '  <Label Text="{Binding Live}" />',
+      '</ContentPage>',
+    ].join("\n");
+    const a = parser.analyzeFile("Live.xaml", markup);
+    expect(a.sections).toEqual([{ name: "Live", level: 1, lineRange: [4, 4] }]);
+    expect(defsOf(a, "code-behind").map((d) => d.name)).toEqual(["Demo.Live"]);
+    expect(defsOf(a, "binding").map((d) => [d.name, d.lineRange])).toEqual([["Live", [5, 5]]]);
+  });
+
   it("inherits the nearest x:DataType and restores the page type after a template", () => {
     const bindings = defsOf(parser.analyzeFile("ScopedPage.xaml", SCOPED_MARKUP), "binding");
     expect(bindings.map((d) => [d.name, d.fields, d.lineRange])).toEqual([

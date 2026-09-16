@@ -4,8 +4,8 @@
 
 ## 2. Repair the single-file reader
 
-- [ ] 2.1 Exclude XML comments and non-element content from tag/attribute extraction while preserving source offsets; verify focused tests show zero comment-derived sections/definitions and unchanged live line anchors.
-- [ ] 2.2 Apply nearest-element `x:DataType` inheritance, template override/restoration, and explicit `Source`/`RelativeSource` uncertainty; verify the frozen context matrix passes and no member edge is emitted.
+- [x] 2.1 Exclude XML comments and non-element content from tag/attribute extraction while preserving source offsets; verify focused tests show zero comment-derived sections/definitions and unchanged live line anchors.
+- [x] 2.2 Apply nearest-element `x:DataType` inheritance, template override/restoration, and explicit `Source`/`RelativeSource` uncertainty; verify the frozen context matrix passes and no member edge is emitted.
 
 ## 3. Validate consumers and the real corpus
 
