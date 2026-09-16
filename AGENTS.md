@@ -4,6 +4,7 @@ Excavator v2 是在 Understand Anything（上游提交 5feed1f2，MIT，详见 N
 
 ## 执行纪律
 - 无人守：判断题自己拍板并写下理由；不问用户。
+- AI-first scope gate：凡能由 skill / prompt 在运行时可靠完成的判断、编排、说明或项目级适配，就不写进产品代码；只有需要确定性复用、机器校验、安全或权限边界、持久化契约，或无法由 agent 在可接受成本内稳定完成的能力才落代码。动手前必须先说明为什么 skill / prompt 不足；没有充分理由则优先改 skill / prompt。
 - 一 coder 一 acceptor；编码/机械活 Sonnet，判断/审计/验收 Opus；验收 oracle 在动手前写死。
 - 分阶段 commit：一个逻辑步一个 commit；PR 用 merge commit 合并，保留每个 commit 以便按步 revert。
 - 先验装置再用装置：任何验证器/评分器先用已知假样本证明它看得见。
