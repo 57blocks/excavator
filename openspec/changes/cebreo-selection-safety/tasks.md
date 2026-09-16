@@ -3,7 +3,7 @@
 ## 1. 冻结选择安全 oracle
 
 - [x] 1.1 写 D0 范围矩阵并添加合成失败验收：唯一 canary 假私钥 + 同大小普通文本、`bin/rails`、Git/Directory/MultiRepo 同内容、TypeScript 与 Dockerfile 正反例、zip 有/无对照；验证每项产品代码都有安全/确定性/持久化理由，测试在当前 `main` 上只因本 change 的缺失而红。
-- [ ] 1.2 由 acceptor 独立审查范围与断言并做 verify-the-instrument：临时绕过敏感判断或适配器过滤、或把 `bin/` 加入全局默认时，对应测试必须变红；MAUI/cebreo 规则发现不得出现新的产品测试模块或 runtime config。
+- [x] 1.2 由 acceptor 独立审查范围与断言并做 verify-the-instrument：临时绕过敏感判断或适配器过滤、或把 `bin/` 加入全局默认时，对应测试必须变红；MAUI/cebreo 规则发现不得出现新的产品测试模块或 runtime config。
 - [x] 1.3 提交仅含红灯验收的 oracle commit；验证 `git show --stat HEAD` 不含项目实现文件改动。
 
 ## 2. 核心选择策略与安全桶
