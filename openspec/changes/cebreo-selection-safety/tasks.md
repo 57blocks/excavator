@@ -22,11 +22,11 @@
 
 ## 4. SourceSnapshot 只暴露并物化 selected 输入
 
-- [ ] 4.1 DirectorySnapshot 在 hash/revision/materialize/search 前应用共享策略并暴露 safe ledger；验证敏感变更不改 source revision、策略版本变化会改 `selectionDigest`、一致性 guard 仍通过。
-- [ ] 4.2 GitCommitSnapshot 用固定 SHA 枚举并只写 selected 路径，删除“整树 archive 后 prune”路径；验证临时树从未出现 canary、HEAD-only 与 dirty-worktree 既有测试不回归。
-- [ ] 4.3 MultiRepoSnapshot 组合 parent/member ledger 与有序 digest、路径前缀恰好一次；验证三 adapter 对同内容的 selected set/selection digest 一致。
-- [ ] 4.4 Lazy/增量/direct scan 复用 snapshot ledger，scan、facts、source index、search 都无法恢复被拒路径；验证合成端到端的 canary 搜索与 coverage 守恒全绿。
-- [ ] 4.5 提交 SourceSnapshot 接线 commit；验证 source-snapshot、revision-sync、lazy 测试全绿。
+- [x] 4.1 DirectorySnapshot 在 hash/revision/materialize/search 前应用共享策略并暴露 safe ledger；验证敏感变更不改 source revision、策略版本变化会改 `selectionDigest`、一致性 guard 仍通过。
+- [x] 4.2 GitCommitSnapshot 用固定 SHA 枚举并只写 selected 路径，删除“整树 archive 后 prune”路径；验证临时树从未出现 canary、HEAD-only 与 dirty-worktree 既有测试不回归。
+- [x] 4.3 MultiRepoSnapshot 组合 parent/member ledger 与有序 digest、路径前缀恰好一次；验证三 adapter 对同内容的 selected set/selection digest 一致。
+- [x] 4.4 Lazy/增量/direct scan 复用 snapshot ledger，scan、facts、source index、search 都无法恢复被拒路径；验证合成端到端的 canary 搜索与 coverage 守恒全绿。
+- [x] 4.5 提交 SourceSnapshot 接线 commit；验证 source-snapshot、revision-sync、lazy 测试全绿。
 
 ## 5. 收敛根目录 ignore 与 MAUI 项目配方
 

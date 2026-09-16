@@ -437,8 +437,29 @@ export function buildFactGraph({ scan, structureAll, importMap }) {
     (a, b) => compareStrings(a.type, b.type) || compareStrings(a.source, b.source) || compareStrings(a.target, b.target),
   );
 
+  // Pre-extraction exclusions are persisted in the safe selection ledger but
+  // are not source facts. Keep them visible in `coverage` while excluding
+  // them from facts identity, so adding an archive or rotating an excluded
+  // secret cannot invalidate an otherwise identical fact graph.
+  const digestCoverage = JSON.parse(JSON.stringify(ledger.coverage));
+  delete digestCoverage.selection;
+  let preExtractionFiles = 0;
+  let preExtractionIgnored = 0;
+  for (const [language, row] of Object.entries(digestCoverage.byLanguage ?? {})) {
+    for (const reason of ['filtered-by-defaults', 'filtered-by-ignore', 'sensitive']) {
+      const count = row.skipped?.[reason] ?? 0;
+      preExtractionFiles += count;
+      if (reason !== 'sensitive') preExtractionIgnored += count;
+      if (row.skipped) delete row.skipped[reason];
+      row.files -= count;
+    }
+    if (row.files === 0) delete digestCoverage.byLanguage[language];
+  }
+  digestCoverage.files -= preExtractionFiles;
+  digestCoverage.ignored = Math.max(0, (digestCoverage.ignored ?? 0) - preExtractionIgnored);
+
   const factsDigest = sha256Hex(
-    JSON.stringify(canonicalizeForDigest({ nodes, edges: sortedEdges, coverage: ledger.coverage, gaps })),
+    JSON.stringify(canonicalizeForDigest({ nodes, edges: sortedEdges, coverage: digestCoverage, gaps })),
   );
 
   return {

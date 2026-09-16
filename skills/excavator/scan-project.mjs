@@ -527,6 +527,72 @@ export function detectCategory(filePath, canonicalLanguage = classifyLanguage(fi
   return 'code';
 }
 
+/**
+ * Merge an authoritative SourceSnapshot selection ledger with processing
+ * outcomes produced by scanning its selected-only materialization. Excluded
+ * candidates are restored as safe metadata records; their bytes never need
+ * to exist in the materialized tree.
+ */
+export function mergeSnapshotSelection(scan, selection, snapshotProcessingSkips = []) {
+  if (!selection || !Array.isArray(selection.entries)) {
+    throw new Error('mergeSnapshotSelection: selection.entries must be an array');
+  }
+  const decisionByPath = new Map(selection.entries.map((entry) => [entry.path, entry]));
+  if (decisionByPath.size !== selection.entries.length) {
+    throw new Error('mergeSnapshotSelection: duplicate snapshot selection path');
+  }
+
+  const processing = [
+    ...(scan.skipped ?? []).filter((entry) => ![
+      'filtered-by-defaults', 'filtered-by-ignore', 'sensitive',
+    ].includes(entry.reason)),
+    ...snapshotProcessingSkips.map((entry) => ({
+      ...entry,
+      language: entry.language ?? detectLanguage(entry.path),
+    })),
+  ];
+  const outcomes = new Set((scan.files ?? []).map((entry) => entry.path));
+  for (const entry of processing) {
+    if (outcomes.has(entry.path)) {
+      throw new Error(`mergeSnapshotSelection: duplicate processing outcome for ${entry.path}`);
+    }
+    outcomes.add(entry.path);
+  }
+  for (const path of outcomes) {
+    if (decisionByPath.get(path)?.kind !== 'selected') {
+      throw new Error(`mergeSnapshotSelection: processing outcome ${path} is not snapshot-selected`);
+    }
+  }
+  for (const decision of selection.entries) {
+    if (decision.kind === 'selected' && !outcomes.has(decision.path)) {
+      throw new Error(`mergeSnapshotSelection: selected candidate ${decision.path} has no processing outcome`);
+    }
+  }
+
+  const excluded = selection.entries
+    .filter((entry) => entry.kind !== 'selected')
+    .map((entry) => ({
+      path: entry.path,
+      reason: entry.reason,
+      language: detectLanguage(entry.path),
+      detail: entry.detail,
+      ...(entry.kind === 'sensitive' && entry.size !== undefined ? { size: entry.size } : {}),
+    }));
+  const skipped = [...excluded, ...processing]
+    .sort((a, b) => compareStableStrings(a.path, b.path) || compareStableStrings(a.reason, b.reason));
+  const skippedByReason = {};
+  for (const entry of skipped) skippedByReason[entry.reason] = (skippedByReason[entry.reason] || 0) + 1;
+
+  return {
+    ...scan,
+    selection: JSON.parse(JSON.stringify(selection)),
+    filteredByIgnore: selection.filteredByIgnore,
+    filteredByDefaults: selection.filteredByDefaults,
+    skipped,
+    stats: { ...(scan.stats ?? {}), skippedByReason },
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Complexity estimation (project-scanner.md Step 7)
 // ---------------------------------------------------------------------------
@@ -1097,6 +1163,7 @@ export default {
   detectLanguage,
   classifyLanguage,
   detectCategory,
+  mergeSnapshotSelection,
   estimateComplexity,
   hasBinaryExtension,
   looksBinary,

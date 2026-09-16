@@ -6,7 +6,7 @@
 // are irrelevant to assertions (we always re-derive the expected sha via
 // `git rev-parse HEAD` rather than hardcoding one).
 import { describe, expect, it, beforeEach, afterEach, vi } from 'vitest';
-import { mkdtempSync, rmSync, mkdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, rmSync, mkdirSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { execFileSync } from 'node:child_process';
@@ -97,5 +97,42 @@ describe('GitCommitSnapshot — HEAD-only revision', () => {
     const stillHead = resolveSourceSnapshot(root);
     expect(stillHead.revision).toBe(committed.revision);
     expect(stillHead.listFiles()).not.toContain('ignored.txt');
+  });
+
+  it('never materializes sensitive committed bytes', () => {
+    writeFileSync(join(root, 'header.txt'), '-----BEGIN PRIVATE KEY-----\nGIT_CANARY\n');
+    writeFileSync(join(root, 'extension.key'), 'GIT_EXTENSION_CANARY\n');
+    git(root, ['add', '-A']);
+    git(root, ['commit', '-q', '-m', 'add synthetic secrets']);
+
+    const snapshot = resolveSourceSnapshot(root);
+    expect(snapshot.listFiles()).not.toContain('header.txt');
+    expect(snapshot.listFiles()).not.toContain('extension.key');
+    expect(snapshot.selection.sensitive).toBe(2);
+    expect(snapshot.search(['GIT_CANARY', 'GIT_EXTENSION_CANARY'])).toEqual([]);
+    const materialized = snapshot.materialize();
+    try {
+      expect(existsSync(join(materialized.dir, 'header.txt'))).toBe(false);
+      expect(existsSync(join(materialized.dir, 'extension.key'))).toBe(false);
+    } finally {
+      materialized.cleanup();
+    }
+  });
+
+  it('preserves a committed symlink as a named processing skip instead of a regular file', () => {
+    symlinkSync('src/a.ts', join(root, 'linked.ts'));
+    git(root, ['add', '-A']);
+    git(root, ['commit', '-q', '-m', 'add symlink']);
+
+    const snapshot = resolveSourceSnapshot(root);
+    expect(snapshot.listFiles()).not.toContain('linked.ts');
+    expect(snapshot.selection.entries).toContainEqual({ kind: 'selected', path: 'linked.ts' });
+    expect(snapshot.processingSkips).toContainEqual({ path: 'linked.ts', reason: 'symlink' });
+    const materialized = snapshot.materialize();
+    try {
+      expect(existsSync(join(materialized.dir, 'linked.ts'))).toBe(false);
+    } finally {
+      materialized.cleanup();
+    }
   });
 });

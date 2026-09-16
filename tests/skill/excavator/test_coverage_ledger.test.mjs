@@ -19,6 +19,7 @@ import {
   conservationViolations,
   SCAN_SKIP_REASONS,
 } from '../../../skills/excavator/coverage-ledger.mjs';
+import scanProject from '../../../skills/excavator/scan-project.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const SKILL_DIR = resolve(__dirname, '../../../skills/excavator');
@@ -257,6 +258,30 @@ describe('coverage ledger — every input lands in exactly one bucket', () => {
     scan.skipped = scan.skipped.filter((entry) => entry.path !== selected.path);
 
     expect(() => buildCoverageLedger({ scan, structure })).toThrow(/has no scan outcome/);
+  });
+
+  it('conserves a snapshot-selected candidate whose bounded/full read failed', () => {
+    const selection = {
+      policyVersion: 'source-selection-v1',
+      candidates: 1,
+      selected: 1,
+      filteredByDefaults: 0,
+      filteredByIgnore: 0,
+      sensitive: 0,
+      entries: [{ kind: 'selected', path: 'unreadable.ts' }],
+    };
+    const merged = scanProject.mergeSnapshotSelection(
+      { files: [], skipped: [], coverage: { limits: {} }, stats: {} },
+      selection,
+      [{ path: 'unreadable.ts', reason: 'read-failed' }],
+    );
+    const { coverage } = buildCoverageLedger({ scan: merged, structure: { results: [] } });
+    expect(merged.skipped).toContainEqual({
+      path: 'unreadable.ts',
+      reason: 'read-failed',
+      language: 'typescript',
+    });
+    expect(conservationViolations(coverage)).toEqual([]);
   });
 });
 

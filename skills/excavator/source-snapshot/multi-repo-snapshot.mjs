@@ -23,8 +23,13 @@ import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync } from 
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { memberListDigest, multiRepoRevisionDigest, manifestDigest, diffEntries } from './manifest.mjs';
-import { ignoreRulesFromDisk } from './ignore-rules.mjs';
+import {
+  multiRepoRevisionDigest,
+  manifestDigest,
+  selectionDigest,
+  diffEntries,
+} from './manifest.mjs';
+import { selectionLedger } from './ignore-rules.mjs';
 import { isGitRepoRoot, headSha } from './git-utils.mjs';
 import { GitCommitSnapshot } from './git-commit-snapshot.mjs';
 import { DirectorySnapshot } from './directory-snapshot.mjs';
@@ -85,16 +90,46 @@ export class MultiRepoSnapshot {
     this.members = members;
     this._extraExcludePatterns = options.extraExcludePatterns ?? [];
 
-    // Parent's OWN effective ignore rules only (spec: "the parent's own effective ignore rules
-    // SHALL enter selectionDigest") — member-directory carve-outs below are a
-    // structural artifact of the adapter, not a user-configured rule, so they
-    // deliberately do NOT feed this digest.
-    this.selectionDigest = ignoreRulesFromDisk(root, this._extraExcludePatterns).digest;
-
     this._memberById = new Map(members.map((m) => [m.id, new GitCommitSnapshot(m.dir, m.sha, { extraExcludePatterns: this._extraExcludePatterns })]));
     this._parentSnapshot = new DirectorySnapshot(root, {
-      extraExcludePatterns: [...this._extraExcludePatterns, ...members.map((m) => `${m.id}/`)],
+      extraExcludePatterns: this._extraExcludePatterns,
+      structuralExcludeDirs: members.map((m) => m.id),
     });
+
+    const descriptorSets = [
+      { scope: 'parent', descriptors: this._parentSnapshot._selectionDescriptors },
+      ...[...this._memberById].map(([id, member]) => ({
+        scope: `member:${id}`,
+        descriptors: member._selectionDescriptors,
+      })),
+    ];
+    const firstDescriptors = JSON.stringify(descriptorSets[0].descriptors);
+    this._selectionDescriptors = descriptorSets.every(
+      ({ descriptors }) => JSON.stringify(descriptors) === firstDescriptors,
+    )
+      ? [...descriptorSets[0].descriptors]
+      : [
+        'multi-repo-selection:v1',
+        ...descriptorSets.flatMap(({ scope, descriptors }) => [
+          `scope:${scope}`,
+          ...descriptors.map((descriptor) => `${scope}:${descriptor}`),
+        ]),
+      ];
+    this.selectionDigest = selectionDigest(this._selectionDescriptors);
+
+    const decisions = this._parentSnapshot.selection.entries.map((entry) => ({ ...entry }));
+    this.processingSkips = this._parentSnapshot.processingSkips.map((entry) => ({ ...entry }));
+    for (const [id, member] of this._memberById) {
+      decisions.push(...member.selection.entries.map((entry) => ({
+        ...entry,
+        path: `${id}/${entry.path}`,
+      })));
+      this.processingSkips.push(...member.processingSkips.map((entry) => ({
+        ...entry,
+        path: `${id}/${entry.path}`,
+      })));
+    }
+    this.selection = selectionLedger(decisions);
 
     // Fix A: fold the parent's non-member directory digest into revision
     // ALONGSIDE the member list, so a parent-only content change produces a
@@ -145,8 +180,8 @@ export class MultiRepoSnapshot {
   }
 
   /**
-   * Lays out `temp/<memberId>/...` (each member's own `git archive HEAD`)
-   * plus the parent's non-member files at the temp root.
+   * Lays out `temp/<memberId>/...` from each member's selected-only fixed
+   * commit materialization plus the parent's selected non-member files.
    *
    * @returns {{ dir: string, drifted: boolean, driftedPaths: string[], cleanup: () => void }}
    */
@@ -203,10 +238,14 @@ export class MultiRepoSnapshot {
         materialized.cleanup();
       }
 
-      const freshParentRevision = new DirectorySnapshot(snapshot.root, {
-        extraExcludePatterns: [...snapshot._extraExcludePatterns, ...snapshot.members.map((m) => `${m.id}/`)],
-      }).revision;
-      if (freshParentRevision === snapshot._parentSnapshot.revision) {
+      const freshParent = new DirectorySnapshot(snapshot.root, {
+        extraExcludePatterns: snapshot._extraExcludePatterns,
+        structuralExcludeDirs: snapshot.members.map((m) => m.id),
+      });
+      if (
+        freshParent.revision === snapshot._parentSnapshot.revision
+        && freshParent.selectionDigest === snapshot._parentSnapshot.selectionDigest
+      ) {
         await publish(product, snapshot);
         return { ok: true, attempts: attempt, product, revision: snapshot.revision };
       }

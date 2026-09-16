@@ -1036,6 +1036,14 @@ describe('prepare-incremental.mjs', { timeout: 30_000 }, () => {
     expect(plan.filesToReanalyze).toEqual([]);
     expect(plan.deletedFiles).toEqual(['feature/old.ts']);
     expect(scan.files.map(file => file.path)).not.toContain('feature/old.ts');
+    expect(scan.selection.entries).toContainEqual(expect.objectContaining({
+      path: 'feature/old.ts',
+      kind: 'filtered-by-ignore',
+    }));
+    expect(scan.skipped).toContainEqual(expect.objectContaining({
+      path: 'feature/old.ts',
+      reason: 'filtered-by-ignore',
+    }));
   });
 
   it('conservatively analyzes an existing non-code file missing from a legacy fingerprint baseline', () => {
