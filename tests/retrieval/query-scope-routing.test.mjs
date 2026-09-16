@@ -296,20 +296,13 @@ function expectOnlyScoreToFail(scores, expectedFailure) {
   });
 }
 
-function getRoutingApi() {
+function getRoutingExport(exportName) {
   expect(
     routingImport.error,
     'missing production routing policy: add skills/excavator/query-scope-routing.mjs',
   ).toBeNull();
-  for (const exportName of [
-    'validateQueryPlan',
-    'validateExecutionSelection',
-    'executeQueryPlan',
-    'validateRoutingOutcome',
-  ]) {
-    expect(routingImport.module?.[exportName], `missing export ${exportName}`).toBeTypeOf('function');
-  }
-  return routingImport.module;
+  expect(routingImport.module?.[exportName], `missing export ${exportName}`).toBeTypeOf('function');
+  return routingImport.module[exportName];
 }
 
 describe('query-scope-routing — known-false controls prove each oracle score can fail independently', () => {
@@ -394,7 +387,7 @@ describe('query-scope-routing — current traversal policy is the red baseline',
 
 describe('query-scope-routing — production policy requirements (red until implementation)', () => {
   it('rejects local-condition + bounded-bfs before any executor runs', () => {
-    const { validateQueryPlan } = getRoutingApi();
+    const validateQueryPlan = getRoutingExport('validateQueryPlan');
     const invalidPlan = { ...LOCAL_PLAN, primitive: 'bounded-bfs', hopLimit: 2 };
     expect(() => validateQueryPlan(invalidPlan)).toThrow(/incompatible/i);
   });
@@ -411,7 +404,7 @@ describe('query-scope-routing — production policy requirements (red until impl
       /recall/i,
     ],
   ])('rejects %s before traversal', (_name, selection, message) => {
-    const { validateExecutionSelection } = getRoutingApi();
+    const validateExecutionSelection = getRoutingExport('validateExecutionSelection');
     expect(() => validateExecutionSelection({
       plan: FLOW_PLAN,
       recallCandidates: FLOW_RECALL,
@@ -421,7 +414,7 @@ describe('query-scope-routing — production policy requirements (red until impl
   });
 
   it('rejects shortest path without targets before traversal', () => {
-    const { validateExecutionSelection } = getRoutingApi();
+    const validateExecutionSelection = getRoutingExport('validateExecutionSelection');
     expect(() => validateExecutionSelection({
       plan: EXPLICIT_PATH_PLAN,
       recallCandidates: [{ nodeId: ID.source }, { nodeId: ID.target }],
@@ -431,14 +424,14 @@ describe('query-scope-routing — production policy requirements (red until impl
   });
 
   it('rejects a fabricated continuous cross-protocol graph path', () => {
-    const { validateRoutingOutcome } = getRoutingApi();
+    const validateRoutingOutcome = getRoutingExport('validateRoutingOutcome');
     const result = makePassingOracleBundle().flow;
     result.continuousGraphPath = [ID.form, ID.route, ID.model];
     expect(() => validateRoutingOutcome({ plan: FLOW_PLAN, result })).toThrow(/continuous|bridge|path/i);
   });
 
   it('returns inventory-unavailable without calling BFS when Domain inventory is absent', () => {
-    const { executeQueryPlan } = getRoutingApi();
+    const executeQueryPlan = getRoutingExport('executeQueryPlan');
     const bfs = vi.fn(() => {
       throw new Error('inventory must not execute BFS');
     });
@@ -459,5 +452,74 @@ describe('query-scope-routing — production policy requirements (red until impl
       complete: false,
       fullRepositoryBfsCalls: 0,
     });
+  });
+});
+
+describe('query-scope-routing — closed query-plan validator and dispatch', () => {
+  it.each([
+    ['inventory', 'inventory', 0],
+    ['local-condition', 'source-first', 0],
+    ['local-condition', 'one-hop', 1],
+    ['explicit-path', 'bounded-shortest-path', 6],
+    ['direct-neighbor', 'one-hop', 1],
+    ['flow', 'bounded-bfs', 2],
+    ['source-locate', 'source-first', 0],
+  ])('accepts %s -> %s', (intent, primitive, hopLimit) => {
+    const validateQueryPlan = getRoutingExport('validateQueryPlan');
+    const candidate = { ...LOCAL_PLAN, intent, primitive, hopLimit };
+    const validated = validateQueryPlan(candidate);
+    expect(validated).toEqual(candidate);
+    expect(validated).not.toBe(candidate);
+    expect(Object.isFrozen(validated)).toBe(true);
+    expect(Object.isFrozen(validated.terms)).toBe(true);
+  });
+
+  it.each([
+    ['unknown intent', { ...LOCAL_PLAN, intent: 'topic' }, /unknown query intent/i],
+    ['unknown primitive', { ...LOCAL_PLAN, primitive: 'graph-walk' }, /unknown query primitive/i],
+    ['incompatible pair', { ...LOCAL_PLAN, primitive: 'bounded-bfs', hopLimit: 2 }, /incompatible/i],
+    ['recall above 20', { ...LOCAL_PLAN, recallLimit: 21 }, /recallLimit.*20/i],
+    ['nodes above 80', { ...LOCAL_PLAN, maxNodes: 81 }, /maxNodes.*80/i],
+    ['edges above 160', { ...LOCAL_PLAN, maxEdges: 161 }, /maxEdges.*160/i],
+    ['context above 12000', { ...LOCAL_PLAN, maxContextTokens: 12_001 }, /maxContextTokens.*12000/i],
+    ['shortest path above 6 hops', { ...EXPLICIT_PATH_PLAN, hopLimit: 7 }, /hopLimit.*6/i],
+    ['empty terms', { ...LOCAL_PLAN, terms: [] }, /terms.*non-empty/i],
+  ])('rejects %s', (_name, candidate, message) => {
+    const validateQueryPlan = getRoutingExport('validateQueryPlan');
+    expect(() => validateQueryPlan(candidate)).toThrow(message);
+  });
+
+  it('rejects an invalid plan before reading graph inputs or calling an executor', () => {
+    const executeQueryPlan = getRoutingExport('executeQueryPlan');
+    const boundedBFSExecutor = vi.fn();
+    const input = {
+      plan: { ...LOCAL_PLAN, primitive: 'bounded-bfs', hopLimit: 2 },
+      executors: { boundedBFS: boundedBFSExecutor },
+      get graphEdges() {
+        throw new Error('graph must not be read');
+      },
+    };
+    expect(() => executeQueryPlan(input)).toThrow(/incompatible/i);
+    expect(boundedBFSExecutor).not.toHaveBeenCalled();
+  });
+
+  it('dispatches a valid plan to exactly one selected executor', () => {
+    const executeQueryPlan = getRoutingExport('executeQueryPlan');
+    const sourceFirst = vi.fn(({ plan, graphEdges }) => ({ primitive: plan.primitive, graphEdges }));
+    const boundedBFSExecutor = vi.fn();
+    const result = executeQueryPlan({
+      plan: LOCAL_PLAN,
+      selection: { seedNodeIds: [], targetNodeIds: [] },
+      recallCandidates: FLOW_RECALL,
+      graphNodes: CURRENT_GRAPH_NODES,
+      graphEdges: [{ type: 'calls', source: ID.form, target: ID.service }],
+      executors: { sourceFirst, boundedBFS: boundedBFSExecutor },
+    });
+    expect(result).toEqual({
+      primitive: 'source-first',
+      graphEdges: [{ type: 'calls', source: ID.form, target: ID.service }],
+    });
+    expect(sourceFirst).toHaveBeenCalledOnce();
+    expect(boundedBFSExecutor).not.toHaveBeenCalled();
   });
 });
