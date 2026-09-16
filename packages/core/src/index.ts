@@ -143,4 +143,3 @@ export {
   type SourceSelectionPolicy,
   type SourceSelectionLedger,
 } from "./source-selection.js";
-export { generateStarterIgnoreFile } from "./ignore-generator.js";

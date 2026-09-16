@@ -8,18 +8,10 @@
  *     off disk (DirectorySnapshot, and MultiRepoSnapshot's parent source).
  *   - `ignoreRulesFromContent(content, extra)` — the `.excavatorignore`
  *     content is already known as an in-memory string (or absent), read from
- *     HEAD rather than disk (GitCommitSnapshot). Reuses core's
- *     `createIgnoreFilter` by pointing it at a directory guaranteed to have
- *     no `.excavatorignore` of its own and folding the HEAD content in as
- *     synthetic extra patterns — `createIgnoreFilter` only ever *appends*
- *     patterns to one matcher, so which tier added a pattern doesn't affect
- *     matching, only which files it reads them from.
+ *     HEAD rather than disk (GitCommitSnapshot).
  *
- * Both flavors return a filter whose `.excavator/` exclusion cannot be
- * overridden by any user pattern (spec: "`.excavator/` SHALL is always excluded") —
- * enforced structurally here, outside the `ignore`-package matcher, so a
- * `.excavatorignore` negation (`!.excavator/`) can never re-include it
- * regardless of pattern-ordering semantics.
+ * Both flavors use the shared versioned policy, whose hard-safety exclusions
+ * cannot be negated by project or CLI rules.
  */
 
 import { createRequire } from 'node:module';
@@ -44,7 +36,6 @@ const {
   PRIVATE_KEY_PREFIX_BYTES,
   buildSourceSelectionLedger,
   createSourceSelectionPolicy,
-  resolveDataDir,
 } = core;
 
 export const selectionPrefixBytes = PRIVATE_KEY_PREFIX_BYTES;
@@ -115,16 +106,8 @@ export function ignoreRulesFromContent(excavatorignoreContent, extraExcludePatte
  * @returns {{ filter: { isIgnored(path: string): boolean }, descriptors: string[], digest: string }}
  */
 export function ignoreRulesFromDisk(root, extraExcludePatterns = []) {
-  // Preserve the current load order for this group: data-dir file, root file,
-  // then CLI patterns. Group 5 removes the data-dir source.
   const projectPatterns = [];
   const rawDescriptors = [];
-  const dataIgnorePath = join(resolveDataDir(root), '.excavatorignore');
-  if (existsSync(dataIgnorePath)) {
-    const content = readFileSync(dataIgnorePath, 'utf-8');
-    projectPatterns.push(...patternsFromContent(content));
-    rawDescriptors.push(`data-ignorefile:${content}`);
-  }
   const rootIgnorePath = join(root, '.excavatorignore');
   if (existsSync(rootIgnorePath)) {
     const content = readFileSync(rootIgnorePath, 'utf-8');

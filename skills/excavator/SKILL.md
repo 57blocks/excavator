@@ -269,20 +269,29 @@ Determine whether to run a full analysis or incremental update.
 
 ## Phase 0.5 — Ignore Configuration (full analysis only)
 
-Set up and verify the `.excavatorignore` file before a full scan. Incremental preparation already applies the current ignore rules and must skip this confirmation phase.
+Prepare the project-owned root `$PROJECT_ROOT/.excavatorignore` before a full scan. Incremental preparation already consumes that root file and skips this phase.
 
-1. Check if `$DATA_DIR/.excavatorignore` exists.
-2. **If it does NOT exist**, generate a starter file by invoking the bundled script (delegates to `generateStarterIgnoreFile` in `@excavator/core`, which reads `.gitignore`, deduplicates against built-in defaults, and emits language-grouped test-file suggestions). Pass `$PLUGIN_ROOT` via the env so the script doesn't have to re-derive it from its own path (which breaks for copied skill installs):
-     ```bash
-     PLUGIN_ROOT="$PLUGIN_ROOT" node "<SKILL_DIR>/generate-ignore.mjs" "$PROJECT_ROOT"
-     ```
-   - Report to the user:
-     > Generated `$DATA_DIR/.excavatorignore` with suggested exclusions based on your project structure. Please review it and uncomment any patterns you'd like to exclude from analysis. When ready, confirm to continue.
-   - **Wait for user confirmation before proceeding.**
-3. **If it already exists**, report:
-   > Found `$DATA_DIR/.excavatorignore`. Review it if needed, then confirm to continue.
-   - **Wait for user confirmation before proceeding.**
-4. After confirmation, proceed to **Phase F** below (openspec: changes/full-semantic-isolation — see the scope note in Phase 0 step 7 above). Phase 1 below is superseded for this destination.
+1. Inspect both `$PROJECT_ROOT/.excavatorignore` and the obsolete `$DATA_DIR/.excavatorignore`.
+   - The root file is the only runtime rule source.
+   - If the obsolete file exists, tell the user it is no longer consumed. Read its active rules only as one-time migration candidates; do not treat it as fallback configuration or delete it without a separate request.
+2. Inspect the project layout, `.gitignore`, and existing deterministic evidence such as `$DATA_DIR/intermediate/scan-result.json` or `$DATA_DIR/source-manifest.json` when present. Propose only rules supported by this project. `bin/`, `.unit-test/`, `TestResults/`, `.vs/`, `.gradle/`, and `.scratch/` are candidates, never automatic defaults; `bin/` can contain source such as `bin/rails`.
+3. Run the existing scanner to create a baseline manifest in a temporary directory:
+   ```bash
+   IGNORE_REVIEW_DIR="$(mktemp -d)"
+   node "<SKILL_DIR>/scan-project.mjs" "$PROJECT_ROOT" "$IGNORE_REVIEW_DIR/before.json"
+   ```
+4. If no additional rule is justified, leave the root file unchanged, remove the temporary directory, and continue to **Phase F**. Otherwise, show the proposed rules, store them as a comma-separated `$CANDIDATE_PATTERNS` value, and create the comparison manifest without editing either ignore file:
+   ```bash
+   node "<SKILL_DIR>/scan-project.mjs" "$PROJECT_ROOT" "$IGNORE_REVIEW_DIR/after.json" --exclude "$CANDIDATE_PATTERNS"
+   ```
+5. Compare the two manifests' `selection.entries`. Review every path that was `selected` before and is not `selected` after; use project layout, `.gitignore`, and existing scan metadata to explain why each is generated output.
+   - Hard gate: if any dropped path ends in `.cs`, `.xaml`, `.csproj`, or `.feature` (case-insensitive), or any dropped path is unexplained, do not write any candidate rule. Report the unsafe candidates and continue without them.
+   - Do not encode this project judgment in a new runtime profile, registry, classifier, generator, or validator.
+6. Only after every dropped path passes review, directly edit `$PROJECT_ROOT/.excavatorignore` with the host's normal file-editing capability. Preserve existing comments and rules, append each approved rule once, and migrate only reviewed rules from the obsolete file. Then rerun the scanner without `--exclude` and verify its selected paths match `after.json`:
+   ```bash
+   node "<SKILL_DIR>/scan-project.mjs" "$PROJECT_ROOT" "$IGNORE_REVIEW_DIR/verified.json"
+   ```
+   Remove the temporary directory after the comparison. Report the added root rules and dropped-path evidence, then proceed to **Phase F** below (openspec: changes/full-semantic-isolation — see the scope note in Phase 0 step 7 above). Phase 1 below is superseded for this destination.
 
 ---
 

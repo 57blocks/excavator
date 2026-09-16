@@ -102,7 +102,6 @@ const {
   LanguageRegistry,
   buildSourceSelectionLedger,
   createSourceSelectionPolicy,
-  resolveDataDir,
 } = core;
 
 const canonicalLanguageRegistry = LanguageRegistry.createDefault();
@@ -779,10 +778,7 @@ function ignoreLines(path) {
 }
 
 function currentProjectPatterns(projectRoot) {
-  return [
-    ...ignoreLines(join(resolveDataDir(projectRoot), '.excavatorignore')),
-    ...ignoreLines(join(projectRoot, '.excavatorignore')),
-  ];
+  return ignoreLines(join(projectRoot, '.excavatorignore'));
 }
 
 function readBoundedPrefix(absPath) {

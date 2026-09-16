@@ -11,7 +11,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { execFileSync } from 'node:child_process';
 
-import { resolveSourceSnapshot, GitCommitSnapshot } from '../../skills/excavator/source-snapshot.mjs';
+import { resolveSourceSnapshot, DirectorySnapshot, GitCommitSnapshot } from '../../skills/excavator/source-snapshot.mjs';
 
 function git(root, args) {
   return execFileSync('git', ['-c', 'user.email=t@t', '-c', 'user.name=t', ...args], { cwd: root, encoding: 'utf-8' });
@@ -97,6 +97,24 @@ describe('GitCommitSnapshot — HEAD-only revision', () => {
     const stillHead = resolveSourceSnapshot(root);
     expect(stillHead.revision).toBe(committed.revision);
     expect(stillHead.listFiles()).not.toContain('ignored.txt');
+  });
+
+  it('keeps Git and Directory selection identical when a data-dir rule conflicts with root rules', () => {
+    mkdirSync(join(root, '.excavator'));
+    writeFileSync(join(root, '.excavator', '.excavatorignore'), 'data-only.txt\n');
+    writeFileSync(join(root, '.excavatorignore'), 'root-only.txt\n');
+    writeFileSync(join(root, 'data-only.txt'), 'must remain selected\n');
+    writeFileSync(join(root, 'root-only.txt'), 'must be ignored\n');
+    git(root, ['add', '-f', '.excavator/.excavatorignore']);
+    git(root, ['add', '-A']);
+    git(root, ['commit', '-q', '-m', 'add conflicting ignore sources']);
+
+    const gitSnapshot = resolveSourceSnapshot(root);
+    const directorySnapshot = new DirectorySnapshot(root);
+    expect(directorySnapshot.listFiles()).toEqual(gitSnapshot.listFiles());
+    expect(directorySnapshot.listFiles()).toContain('data-only.txt');
+    expect(directorySnapshot.listFiles()).not.toContain('root-only.txt');
+    expect(directorySnapshot.selectionDigest).toBe(gitSnapshot.selectionDigest);
   });
 
   it('never materializes sensitive committed bytes', () => {

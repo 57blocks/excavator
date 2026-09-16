@@ -96,6 +96,18 @@ describe('DirectorySnapshot — revision shape and file listing', () => {
     expect(first._selectionDescriptors).toContain('language-match-precedence:exact-filename>basename-pattern>extension');
     expect(first._selectionDescriptors.some((entry) => entry.includes('basename-patterns:Dockerfile.*,Dockerfile-*'))).toBe(true);
   });
+
+  it('ignores data-dir rules for both selection and selectionDigest', () => {
+    mkdirSync(join(root, '.excavator'));
+    writeFileSync(join(root, '.excavator', '.excavatorignore'), 'src/a.ts\n');
+    const first = resolveSourceSnapshot(root);
+
+    expect(first.listFiles()).toContain('src/a.ts');
+    writeFileSync(join(root, '.excavator', '.excavatorignore'), 'README.md\n');
+    const changedOldFile = resolveSourceSnapshot(root);
+    expect(changedOldFile.listFiles()).toEqual(first.listFiles());
+    expect(changedOldFile.selectionDigest).toBe(first.selectionDigest);
+  });
 });
 
 describe('DirectorySnapshot — readFile read-time hash check', () => {

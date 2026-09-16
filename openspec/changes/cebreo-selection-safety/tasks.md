@@ -30,10 +30,10 @@
 
 ## 5. 收敛根目录 ignore 与 MAUI 项目配方
 
-- [ ] 5.1 把 core filter、snapshot 和 incremental 统一到根 `.excavatorignore`，删除 `.excavator/.excavatorignore` 读取且不加 runtime 迁移分支；验证 Git HEAD 与 Directory 的规则一致。
-- [ ] 5.2 更新 Excavator skill：检查旧/新路径、由 agent 检查项目和 `.gitignore`、直接写根 `.excavatorignore`、调用现有 scanner 做前后两次扫描；移除 skill 对 data-dir generator 的依赖，若生成器/helper 无其他生产消费者则删除其脚本、导出与测试。验证 `rg` 无旧调用或旧规则源说明。
-- [ ] 5.3 在 skill 验收中让 agent 从两个现有 scan manifest 审阅 `bin/ .unit-test/ TestResults/ .vs/ .gradle/ .scratch/` 的 dropped paths，只有 source loss 为 0 才写规则；不得新增专用 validator、MAUI/cebreo registry 或 generated-directory classifier，且非 MAUI `bin/rails` 仍 selected。
-- [ ] 5.4 提交 ignore 收敛 commit；验证 `selectionDigest` 对 root rules、CLI rules、安全策略版本的任一变化都会变化。
+- [x] 5.1 把 core filter、snapshot 和 incremental 统一到根 `.excavatorignore`，删除 `.excavator/.excavatorignore` 读取且不加 runtime 迁移分支；验证 Git HEAD 与 Directory 的规则一致。
+- [x] 5.2 更新 Excavator skill：检查旧/新路径、由 agent 检查项目和 `.gitignore`、直接写根 `.excavatorignore`、调用现有 scanner 做前后两次扫描；移除 skill 对 data-dir generator 的依赖，若生成器/helper 无其他生产消费者则删除其脚本、导出与测试。验证 `rg` 无旧调用或旧规则源说明。
+- [x] 5.3 在 skill 验收中让 agent 从两个现有 scan manifest 审阅 `bin/ .unit-test/ TestResults/ .vs/ .gradle/ .scratch/` 的 dropped paths，只有 source loss 为 0 才写规则；不得新增专用 validator、MAUI/cebreo registry 或 generated-directory classifier，且非 MAUI `bin/rails` 仍 selected。
+- [x] 5.4 提交 ignore 收敛 commit；验证 `selectionDigest` 对 root rules、CLI rules、安全策略版本的任一变化都会变化。
 
 ## 6. 集成验收与独立 acceptor
 

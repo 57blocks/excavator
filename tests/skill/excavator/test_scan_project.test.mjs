@@ -625,7 +625,7 @@ describe('scan-project.mjs — pre-extraction selection safety', () => {
   });
 });
 
-describe('scan-project.mjs — data-dir resolution (.excavator, no fallback)', () => {
+describe('scan-project.mjs — root-only .excavatorignore', () => {
   let projectRoot;
 
   // Built from parts rather than written as a literal so this file, which
@@ -641,9 +641,7 @@ describe('scan-project.mjs — data-dir resolution (.excavator, no fallback)', (
     }
   });
 
-  it('honors .excavator/.excavatorignore', () => {
-    // scan-project delegates ignore handling to core's createIgnoreFilter,
-    // which reads resolveDataDir(projectRoot)/.excavatorignore — .excavator/.
+  it('does not honor .excavator/.excavatorignore', () => {
     projectRoot = setupTree({
       '.excavator/.excavatorignore': 'fixtures/\n',
       'src/index.ts': 'export const x = 1;\n',
@@ -652,10 +650,9 @@ describe('scan-project.mjs — data-dir resolution (.excavator, no fallback)', (
     });
     const r = runScript(projectRoot);
     expect(r.status).toBe(0);
-    expect(byPath(r.output, 'fixtures/snap1.json')).toBeUndefined();
-    expect(byPath(r.output, 'fixtures/snap2.json')).toBeUndefined();
-    // Counted as user-driven drops (dual-filter accounting saw the ignore).
-    expect(r.output.filteredByIgnore).toBe(2);
+    expect(byPath(r.output, 'fixtures/snap1.json')).toBeDefined();
+    expect(byPath(r.output, 'fixtures/snap2.json')).toBeDefined();
+    expect(r.output.filteredByIgnore).toBe(0);
   });
 
   it('does NOT honor a .excavatorignore under a pre-rename data directory — no fallback', () => {
