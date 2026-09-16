@@ -161,7 +161,7 @@ export function mergeCandidates({ exact = [], bm25 = [], sourceSearch = [], sema
  *  before adjacency is even built — it can never contribute a path edge. */
 export const DETERMINISTIC_EDGE_TYPES = Object.freeze(['contains', 'imports', 'exports', 'calls']);
 
-export const DEFAULT_TRAVERSAL_BUDGETS = Object.freeze({ maxSeeds: 20, maxNodes: 80, maxEdges: 160 });
+export const DEFAULT_TRAVERSAL_BUDGETS = Object.freeze({ maxSeeds: 5, maxNodes: 80, maxEdges: 160 });
 export const DEFAULT_BFS_MAX_HOPS = 4;
 export const DEFAULT_SHORTEST_PATH_MAX_HOPS = 6;
 
