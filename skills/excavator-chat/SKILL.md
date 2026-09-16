@@ -66,7 +66,7 @@ The knowledge graph JSON has this structure:
 
 3. **Read project metadata only** — use Grep or Read with a line limit to extract just the `"project"` section from the top of the file for context (name, description, languages, frameworks).
 
-4. **Form and validate the request-local query plan** — follow the ordered intent contract under **Lazy mode** below. Judge the operation and scope requested by `$ORIGINAL_QUESTION`; topic words in `$ENGLISH_RETRIEVAL_EXPRESSIONS` do not choose the primitive. Validate the complete plan with `validateQueryPlan()` from `<PLUGIN_ROOT>/skills/excavator/query-scope-routing.mjs` before reading graph edges or calling a traversal executor. Correct a rejected plan; never bypass the validator or persist the plan.
+4. **Choose the request-local route** — follow the ordered intent contract under **Lazy mode** below. Judge the operation and scope requested by `$ORIGINAL_QUESTION`; topic words in `$ENGLISH_RETRIEVAL_EXPRESSIONS` do not choose the primitive. Keep this semantic decision in the current inference and do not persist it.
 
 5. **Search for relevant nodes** — use Grep to search the knowledge graph with `$ENGLISH_RETRIEVAL_EXPRESSIONS` plus `$LITERAL_IDENTIFIERS`. Keep `$ORIGINAL_QUESTION` intact for intent and final presentation; do not substitute it with the English expressions.
    - Search `"name"` fields: `grep -i "query_keyword"` in the graph file
@@ -141,9 +141,9 @@ Build the plan with exactly `intent`, `terms`, `recallLimit`, `primitive`,
 request-local English retrieval expressions and source-owned literals already
 captured above. Use `recallLimit <= 20`, `maxNodes <= 80`, `maxEdges <= 160`,
 and `maxContextTokens <= 12000`; use `hopLimit: 0` for `source-first` and
-`inventory`. Pass the plan to `validateQueryPlan()` before any graph execution.
-If it is incompatible or over budget, fix the plan rather than falling back to
-a broader primitive.
+`inventory`. Check the route against this ordered contract before graph
+execution. If it is incompatible or over budget, correct the request-local
+choice rather than falling back to a broader primitive.
 
 ### Hybrid retrieval for semantic questions
 

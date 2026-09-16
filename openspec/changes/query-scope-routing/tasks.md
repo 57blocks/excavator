@@ -1,7 +1,7 @@
 ## 1. Remove the over-designed policy layer
 
-- [ ] 1.1 Acceptor revises `acceptance-oracle.md` so the three exact Conduit questions score observable AI routing, top-20 recall, top-5 traversal, graph boundaries, evidence coverage, and unsupported path/completeness claims without requiring a query-plan/executor API; verify no production function or schema is prescribed.
-- [ ] 1.2 Coder removes `skills/excavator/query-scope-routing.mjs` and the fake query-plan/executor red fixtures introduced by this change; verify no runtime validator/executor/scorer export or reference remains and existing retrieval behavior is still covered by focused tests.
+- [x] 1.1 Acceptor revises `acceptance-oracle.md` so the three exact Conduit questions score observable AI routing, top-20 recall, top-5 traversal, graph boundaries, evidence coverage, and unsupported path/completeness claims without requiring a query-plan/executor API; verify no production function or schema is prescribed.
+- [x] 1.2 Coder removes `skills/excavator/query-scope-routing.mjs` and the fake query-plan/executor red fixtures introduced by this change; verify no runtime validator/executor/scorer export or reference remains and existing retrieval behavior is still covered by focused tests.
 
 ## 2. Route with the Skill and keep only mechanical fuses in code
 
