@@ -66,20 +66,22 @@ The knowledge graph JSON has this structure:
 
 3. **Read project metadata only** — use Grep or Read with a line limit to extract just the `"project"` section from the top of the file for context (name, description, languages, frameworks).
 
-4. **Search for relevant nodes** — use Grep to search the knowledge graph with `$ENGLISH_RETRIEVAL_EXPRESSIONS` plus `$LITERAL_IDENTIFIERS`. Keep `$ORIGINAL_QUESTION` intact for intent and final presentation; do not substitute it with the English expressions.
+4. **Form and validate the request-local query plan** — follow the ordered intent contract under **Lazy mode** below. Judge the operation and scope requested by `$ORIGINAL_QUESTION`; topic words in `$ENGLISH_RETRIEVAL_EXPRESSIONS` do not choose the primitive. Validate the complete plan with `validateQueryPlan()` from `<PLUGIN_ROOT>/skills/excavator/query-scope-routing.mjs` before reading graph edges or calling a traversal executor. Correct a rejected plan; never bypass the validator or persist the plan.
+
+5. **Search for relevant nodes** — use Grep to search the knowledge graph with `$ENGLISH_RETRIEVAL_EXPRESSIONS` plus `$LITERAL_IDENTIFIERS`. Keep `$ORIGINAL_QUESTION` intact for intent and final presentation; do not substitute it with the English expressions.
    - Search `"name"` fields: `grep -i "query_keyword"` in the graph file
    - Search `"summary"` fields for semantic matches
    - Search `"tags"` arrays for topic matches
    - Note the `id` values of all matching nodes
 
-5. **Find connected edges** — for each matched node ID, Grep for that ID in the `edges` section to find:
+6. **Read only the graph scope authorized by the plan** — `source-first` reads current source without graph expansion; `inventory` reads the available Domain/flow inventory without substituting a repository graph flood. For a `one-hop`, `bounded-bfs`, or `bounded-shortest-path` plan, inspect only the selected fact-edge scope. When applicable, connected edges show:
    - What it imports or depends on (downstream)
    - What calls or imports it (upstream)
-   - This gives you the 1-hop subgraph around the query
+   - The bounded subgraph authorized by the selected primitive
 
-6. **Read layer context** — Grep for `"layers"` to understand which architectural layers the matched nodes belong to.
+7. **Read layer context when useful** — Grep for `"layers"` only when architectural context helps answer the planned scope.
 
-7. **Answer the query** using only the relevant subgraph:
+8. **Answer the query** using only the verified evidence within the planned scope:
    - Reference specific files, functions, and relationships from the graph
    - Explain which layer(s) are relevant and why
    - Be concise but thorough — link concepts to actual code locations
@@ -101,6 +103,47 @@ A Lazy graph carries deterministic facts only: node `summary` is empty and `tags
 - **Structural questions** (which files/symbols exist, which methods a class has, who imports or calls whom, a node's 1-hop neighbours, contains/depends relationships): answer straight from the fact nodes and fact edges — grep `id` / `name` / `type` and the `edges` (`contains` / `imports` / `calls` / `exports`). **No summary is needed, and do not trigger any semantic supplement, hybrid retrieval, or whole-project analysis.**
 - **Semantic questions** (what a module/service is responsible for, business meaning, a cross-file business flow, especially when phrased in a business/domain language such as Chinese over English-named code): follow the **hybrid retrieval** recipe below instead of degrading immediately.
 - Fact edges (`calls` / `imports` / `contains` / `exports`) and `gaps` are authoritative: to answer "can we be sure A calls B", go by the fact edge; a call the engine could not resolve is recorded in `gaps`, so say "the engine could not determine that connection" rather than guessing.
+
+### Request-local query plan
+
+Before recall or graph expansion, choose the first matching intent by the
+operation and scope the user requests:
+
+1. `inventory` — repository-wide enumeration such as all user or business
+   flows. Use primitive `inventory`; never replace a missing inventory with one
+   repository-wide BFS.
+2. `local-condition` — fields, conditions, validation, requirements, or other
+   bounded facts about one operation. Prefer `source-first`; use `one-hop` only
+   when an immediate owner/caller relationship is needed.
+3. `explicit-path` — the user names both endpoints and asks how A reaches B.
+   Use `bounded-shortest-path`, at most 6 hops.
+4. `direct-neighbor` — direct callers, callees, imports, or dependants. Use
+   `one-hop` with `hopLimit: 1`.
+5. `flow` — an end-to-end flow, impact, or dependency exploration that is not
+   an explicit endpoint pair. Use `bounded-bfs` over separately bounded fact
+   segments.
+6. `source-locate` — locate current source or the best evidence when none of
+   the operations above applies. Use `source-first`.
+
+Higher-priority scope wins over lower-priority topic words. For example:
+
+- “发布文章需要填写和校验哪些字段” is `local-condition` + `source-first`,
+  even if the wording also mentions a publishing flow; it does not run BFS.
+- “文章从编辑器提交到数据库如何流转” is `flow` + `bounded-bfs`; HTTP/API
+  gaps are source-verified boundaries between fact segments, not invented
+  graph edges.
+- “How does component A reach component B?” is `explicit-path` +
+  `bounded-shortest-path`.
+- “Who calls `createArticle` directly?” is `direct-neighbor` + `one-hop`.
+
+Build the plan with exactly `intent`, `terms`, `recallLimit`, `primitive`,
+`hopLimit`, `maxNodes`, `maxEdges`, and `maxContextTokens`. `terms` contains the
+request-local English retrieval expressions and source-owned literals already
+captured above. Use `recallLimit <= 20`, `maxNodes <= 80`, `maxEdges <= 160`,
+and `maxContextTokens <= 12000`; use `hopLimit: 0` for `source-first` and
+`inventory`. Pass the plan to `validateQueryPlan()` before any graph execution.
+If it is incompatible or over budget, fix the plan rather than falling back to
+a broader primitive.
 
 ### Hybrid retrieval for semantic questions
 
@@ -163,10 +206,12 @@ If `$PLUGIN_ROOT` cannot be resolved, or `$DATA_DIR/source-index.json` does not 
    console.log(JSON.stringify(mergeCandidates({ exact, bm25, sourceSearch, semanticCacheText })));
    "
    ```
-6. Pick ONE traversal primitive over the fact edges in `knowledge-graph.json` (`contains`/`imports`/`exports`/`calls` only — a semantic/domain edge, if any exist, never supplies a path, only ranking), based on the question's shape:
-   - "locate this" / "who calls this directly" -> `oneHop(edges, seedIds)`
-   - "what does this flow/process affect" / dependency questions -> `boundedBFS(edges, seedIds)` (default 4 hops)
-   - "how does A reach B" (an explicit pair) -> `boundedShortestPath(edges, seedIds, targetIds)` (default 6 hops)
+6. Pick ONE traversal primitive authorized by the already validated plan. Over fact edges, only `contains`/`imports`/`exports`/`calls` are traversable — a semantic/domain edge, if any exist, never supplies a path, only ranking:
+   - `inventory` -> read the Domain/flow inventory; do not call a fact-graph traversal primitive
+   - `source-first` -> inspect current source; do not call a graph traversal primitive
+   - `one-hop` -> `oneHop(edges, seedIds)`
+   - `bounded-bfs` -> `boundedBFS(edges, seedIds)`
+   - `bounded-shortest-path` -> `boundedShortestPath(edges, seedIds, targetIds)`
 
    All three return a `boundary` object (`reason`, `truncated`, budgets). **If `boundary.truncated` is true, say so in the answer** — name what was covered and that the graph was larger than the budget (seed ≤20 / nodes ≤80 / edges ≤160 / ~12k tokens of context), rather than presenting a partial subgraph as the whole picture.
 
