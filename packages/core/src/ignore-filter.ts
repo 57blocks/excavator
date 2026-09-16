@@ -3,8 +3,7 @@ import { readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 
 /**
- * Hardcoded default ignore patterns matching the project-scanner agent's
- * exclusion rules, plus bin/obj for .NET projects.
+ * Conservative universal exclusions shared by every source consumer.
  */
 export const DEFAULT_IGNORE_PATTERNS: string[] = [
   // Dependency directories
@@ -61,6 +60,21 @@ export const DEFAULT_IGNORE_PATTERNS: string[] = [
   // IDE/editor
   ".idea/",
   ".vscode/",
+
+  // Operating-system metadata
+  ".DS_Store",
+  "._*",
+  "__MACOSX/",
+  "Thumbs.db",
+  "ehthumbs.db",
+  "ehthumbs_vista.db",
+  "Desktop.ini",
+  "$RECYCLE.BIN/",
+  "System Volume Information/",
+
+  // Unambiguous IDE/tool caches
+  ".vs/",
+  ".gradle/",
 
   // Misc
   "LICENSE",
@@ -125,7 +139,7 @@ export function createIgnoreFilter(projectRoot: string, extraPatterns: string[] 
 
   return {
     isIgnored(relativePath: string): boolean {
-      return ig.ignores(relativePath);
+      return ig.ignores(relativePath.replaceAll("\\", "/"));
     },
   };
 }

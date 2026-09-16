@@ -84,6 +84,11 @@ describe("source selection policy", () => {
     );
   });
 
+  it("allows a project rule to negate an ordinary cross-platform default", () => {
+    const policy = createSourceSelectionPolicy({ projectPatterns: ["!.DS_Store"] });
+    expect(policy.decide({ path: ".DS_Store" })).toEqual({ kind: "selected", path: ".DS_Store" });
+  });
+
   it("allows an ordinary default to be negated", () => {
     const policy = createSourceSelectionPolicy({ projectPatterns: ["!LICENSE"] });
     expect(policy.decide({ path: "LICENSE" })).toEqual({ kind: "selected", path: "LICENSE" });
