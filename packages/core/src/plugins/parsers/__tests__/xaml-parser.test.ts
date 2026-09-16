@@ -94,7 +94,7 @@ describe("XamlParser", () => {
     expect(names).toEqual(["TitleLabel", "PairButton"]);
   });
 
-  it("captures bindings and commands with the file DataType context, never a member edge", () => {
+  it("captures bindings and commands with the inherited DataType context, never a member edge", () => {
     const a = parser.analyzeFile("x.xaml", SAMPLE);
     const bindings = defsOf(a, "binding");
     const title = bindings.find((d) => d.name === "Title")!;

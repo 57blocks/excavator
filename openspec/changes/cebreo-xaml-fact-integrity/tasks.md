@@ -10,6 +10,6 @@
 ## 3. Validate consumers and the real corpus
 
 - [x] 3.1 Add a synthetic extraction-to-fact-graph regression; verify a live concept survives while the commented concept creates no graph node even when there are zero gaps.
-- [ ] 3.2 Run read-only checks against the cebreo cases that exposed comments, nested template type, and an ordinary typed page; verify no false comment facts, correct local contexts, and separately record any remaining omissions without committing source, paths, or output.
-- [ ] 3.3 Run `pnpm install --frozen-lockfile`, `pnpm -r build`, and `pnpm test`; verify all exit successfully and record failures by location, cause, and fix.
-- [ ] 3.4 Run `openspec validate cebreo-xaml-fact-integrity --strict` and review the branch diff; verify no unrelated reader/resolver changes or real-project artifacts enter the change, then commit logical steps for review.
+- [x] 3.2 Run read-only checks against the cebreo cases that exposed comments, nested template type, and an ordinary typed page; verify no false comment facts, correct local contexts, and separately record any remaining omissions without committing source, paths, or output.
+- [x] 3.3 Run `pnpm install --frozen-lockfile`, `pnpm -r build`, and `pnpm test`; verify all exit successfully and record failures by location, cause, and fix.
+- [x] 3.4 Run `openspec validate cebreo-xaml-fact-integrity --strict` and review the branch diff; verify no unrelated reader/resolver changes or real-project artifacts enter the change, then commit logical steps for review.
