@@ -1,6 +1,6 @@
 ## 1. Freeze the routing oracle
 
-- [ ] 1.1 Acceptor (Opus) freezes the exact local, flow, and inventory questions plus expected query plan, post-recall seed/target selection, budgets, segmented-flow boundaries, and inventory availability before production edits; verify the oracle separately scores top-20 recall, top-5 traversal seeds, graph boundary, evidence coverage, and unsupported path/completeness claims.
+- [x] 1.1 Acceptor (Opus) freezes the exact local, flow, and inventory questions plus expected query plan, post-recall seed/target selection, budgets, segmented-flow boundaries, and inventory availability before production edits; verify the oracle separately scores top-20 recall, top-5 traversal seeds, graph boundary, evidence coverage, and unsupported path/completeness claims.
 - [ ] 1.2 Coder (Sonnet) adds fake query-plan/executor fixtures and verifies the current policy fails because `local-condition + bounded-bfs`, more than 5 or out-of-recall seed ids, missing shortest-path targets, a fabricated continuous cross-protocol path, and a single inventory graph flood are not all rejected.
 
 ## 2. Route before graph expansion
