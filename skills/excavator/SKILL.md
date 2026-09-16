@@ -174,8 +174,9 @@ Determine whether to run a full analysis or incremental update.
    1. Create `$IGNORE_REVIEW_DIR` with the host's native temporary-directory facility and always clean it up with the matching native operation. POSIX `mktemp`/cleanup and PowerShell `[System.IO.Path]::GetTempPath()` plus `New-Item`/`Remove-Item` are both acceptable implementations; choose for the actual host instead of requiring either command.
    2. Inspect the project layout, `.gitignore`, the obsolete file when present, and existing deterministic evidence such as `$DATA_DIR/intermediate/scan-result.json` or `$DATA_DIR/source-manifest.json`. Run the existing scanner for a fresh baseline, preserving the user's existing CLI exclusions:
       ```bash
-      node "<SKILL_DIR>/scan-project.mjs" "$PROJECT_ROOT" "$IGNORE_REVIEW_DIR/before.json" ${EXCLUDE_PATTERNS:+--exclude "$EXCLUDE_PATTERNS"}
+      node "<SKILL_DIR>/scan-project.mjs" "$PROJECT_ROOT" "$IGNORE_REVIEW_DIR/before.json" [--exclude "$EXCLUDE_PATTERNS"]
       ```
+      The bracketed segment is optional argv notation, not literal shell syntax. Only when `$EXCLUDE_PATTERNS` is non-empty, use the host-native invocation mechanism to append `--exclude` and its value as two arguments; neither PowerShell nor POSIX should pass `[` or `]`.
    3. Discover candidates by clustering repeated directories and path shapes across the layout, `.gitignore`, and the baseline manifest's selection and processing buckets (`selection.entries`, `skipped`, and `failures`). Example project candidates such as `bin/`, `.unit-test/`, `TestResults/`, `.scratch/`, or package caches are illustrative, not a closed registry. `.vs/` and `.gradle/` are already universal defaults and are not project candidates. A name alone is never evidence that a path is generated; `bin/` can contain source such as `bin/rails`.
    4. If candidates exist, form `$REVIEW_PATTERNS` by appending them to the existing `$EXCLUDE_PATTERNS` in order and removing exact duplicates. Show the proposed additions, then create the comparison manifest without editing either ignore file:
       ```bash
@@ -189,8 +190,9 @@ Determine whether to run a full analysis or incremental update.
       If the root file already exists, preserve it unchanged.
    7. If rules are approved, directly edit `$PROJECT_ROOT/.excavatorignore` with the host's normal file-editing capability. Preserve existing comments and rules, append each approved rule once, and migrate only reviewed rules from the obsolete file. Verify the edited root file by rescanning with only the user's original CLI exclusions; its selected paths must equal `after.json`:
       ```bash
-      node "<SKILL_DIR>/scan-project.mjs" "$PROJECT_ROOT" "$IGNORE_REVIEW_DIR/verified.json" ${EXCLUDE_PATTERNS:+--exclude "$EXCLUDE_PATTERNS"}
+      node "<SKILL_DIR>/scan-project.mjs" "$PROJECT_ROOT" "$IGNORE_REVIEW_DIR/verified.json" [--exclude "$EXCLUDE_PATTERNS"]
       ```
+      The bracketed segment is optional argv notation, not literal shell syntax. Only when `$EXCLUDE_PATTERNS` is non-empty, use the host-native invocation mechanism to append `--exclude` and its value as two arguments; neither PowerShell nor POSIX should pass `[` or `]`.
       If they differ, restore the previous root-file content, report the mismatch, and continue without the candidate rules.
    8. For a non-Git project, the edited root file applies directly. For a Git project whose edited root file or approved rules are not yet in `HEAD`, merge the approved rules into `$EXCLUDE_PATTERNS` in order with exact duplicates removed. This makes the current Lazy or Full run use them immediately. Tell the user that Git snapshot persistence begins only after the root file is committed to `HEAD`; until then, later runs must receive the same CLI rules or explicitly repeat the review. Clean up the temporary directory, report the approved rules and dropped-path evidence, then continue to step 6.5.
 
@@ -205,8 +207,9 @@ Determine whether to run a full analysis or incremental update.
 
    **If `$ANALYSIS_MODE` is `lazy`:** run the Lazy driver instead of the rest of Phase 0 and Phases 1–6:
    ```bash
-   node "<SKILL_DIR>/lazy-analyze.mjs" "$PROJECT_ROOT" ${EXCLUDE_PATTERNS:+--exclude "$EXCLUDE_PATTERNS"}
+   node "<SKILL_DIR>/lazy-analyze.mjs" "$PROJECT_ROOT" [--exclude "$EXCLUDE_PATTERNS"]
    ```
+   The bracketed segment is optional argv notation, not literal shell syntax. Only when `$EXCLUDE_PATTERNS` is non-empty, use the host-native invocation mechanism to append `--exclude` and its value as two arguments; neither PowerShell nor POSIX should pass `[` or `]`.
    This single script performs Phase 1 SCAN via `scan-project.mjs` (the deterministic script — never the `excavator-project-scanner` subagent), Phase 1.2 STRUCTURE-ALL, the deterministic Fact Builder (`build-fact-graph.mjs`), a deterministic validate pass, and Phase 7 SAVE, with zero LLM/subagent calls: no `file-analyzer`, `summary-verifier`, `assemble-reviewer`, `architecture-analyzer`, or `graph-reviewer` dispatch, no LLM batch file, no HTML, no Tour. It never wipes or downgrades an already-existing full graph's `summary`/`tags`/`layers` — a prior Full run's semantics are merged forward, not overwritten. Report its printed summary to the user and **STOP**.
 
    **If `$ANALYSIS_MODE` is `full`:** continue with the existing pipeline unchanged, starting at step 7 below (a mode forced by `--full` behaves exactly like the existing `--full` row in the decision table).
@@ -336,8 +339,10 @@ Report: `[Phase F1] Building the deterministic fact graph...`
 Run the EXACT SAME driver Phase 0 step 6.5 documents for Lazy mode:
 
 ```bash
-node "<SKILL_DIR>/lazy-analyze.mjs" "$PROJECT_ROOT" ${EXCLUDE_PATTERNS:+--exclude "$EXCLUDE_PATTERNS"}
+node "<SKILL_DIR>/lazy-analyze.mjs" "$PROJECT_ROOT" [--exclude "$EXCLUDE_PATTERNS"]
 ```
+
+The bracketed segment is optional argv notation, not literal shell syntax. Only when `$EXCLUDE_PATTERNS` is non-empty, use the host-native invocation mechanism to append `--exclude` and its value as two arguments; neither PowerShell nor POSIX should pass `[` or `]`.
 
 This performs SCAN, STRUCTURE-ALL, import-map extraction, the deterministic
 Fact Builder, a deterministic validate pass, and SAVE (`knowledge-graph.json`
