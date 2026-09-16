@@ -82,6 +82,10 @@ describe("IgnoreFilter", () => {
       expect(filter.isIgnored(".trash-1234/bar.ts")).toBe(true);
     });
 
+    it("normalizes Windows separators before matching ordinary defaults", () => {
+      expect(createIgnoreFilter(testDir).isIgnored(".VS\\cache.bin")).toBe(true);
+    });
+
     it("selection-hardening scenario: a root .excavatorignore is still read and effective alongside a stray .excavator.bak/ (does not misfire on the ignore-rules file itself)", () => {
       // Mirrors openspec/changes/lazy-mode-completion/specs/selection-hardening
       // scenario "`.excavatorignore` 仍被读取" — both a real .excavatorignore

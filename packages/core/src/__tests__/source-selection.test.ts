@@ -34,6 +34,56 @@ describe("source selection policy", () => {
     });
   });
 
+  it.each([
+    ["src\\Thumbs.db", "src/Thumbs.db"],
+    ["EHTHUMBS.DB", "EHTHUMBS.DB"],
+    ["nested\\ehthumbs_vista.DB", "nested/ehthumbs_vista.DB"],
+    ["DESKTOP.INI", "DESKTOP.INI"],
+    [".VS\\cache.bin", ".VS/cache.bin"],
+    ["$RECYCLE.BIN\\item", "$RECYCLE.BIN/item"],
+    ["System Volume Information\\item", "System Volume Information/item"],
+    ["src/.DS_Store", "src/.DS_Store"],
+    ["src/._metadata", "src/._metadata"],
+    ["__MACOSX/content", "__MACOSX/content"],
+    [".gradle/caches/state.bin", ".gradle/caches/state.bin"],
+  ])("normalizes and default-filters cross-platform metadata %s", (inputPath, normalizedPath) => {
+    expect(createSourceSelectionPolicy().decide({ path: inputPath })).toEqual({
+      kind: "filtered-by-defaults",
+      reason: "filtered-by-defaults",
+      detail: "default-pattern",
+      path: normalizedPath,
+    });
+  });
+
+  it.each([
+    ["bin\\rails", "bin/rails"],
+    ["gradle\\wrapper\\gradle-wrapper.properties", "gradle/wrapper/gradle-wrapper.properties"],
+  ])("keeps source-like cross-platform control %s selected", (inputPath, normalizedPath) => {
+    expect(createSourceSelectionPolicy().decide({ path: inputPath })).toEqual({
+      kind: "selected",
+      path: normalizedPath,
+    });
+  });
+
+  it("publishes every cross-platform default in selection identity descriptors", () => {
+    const expectedPatterns = [
+      ".DS_Store",
+      "._*",
+      "__MACOSX/",
+      "Thumbs.db",
+      "ehthumbs.db",
+      "ehthumbs_vista.db",
+      "Desktop.ini",
+      "$RECYCLE.BIN/",
+      "System Volume Information/",
+      ".vs/",
+      ".gradle/",
+    ];
+    expect(createSourceSelectionPolicy().descriptors).toEqual(
+      expect.arrayContaining(expectedPatterns.map((pattern) => `default:${pattern}`)),
+    );
+  });
+
   it("allows an ordinary default to be negated", () => {
     const policy = createSourceSelectionPolicy({ projectPatterns: ["!LICENSE"] });
     expect(policy.decide({ path: "LICENSE" })).toEqual({ kind: "selected", path: "LICENSE" });
