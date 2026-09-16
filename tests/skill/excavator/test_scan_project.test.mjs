@@ -500,6 +500,71 @@ describe('scan-project.mjs — .excavatorignore handling', () => {
   });
 });
 
+describe('scan-project.mjs — pre-extraction selection safety', () => {
+  let projectRoot;
+
+  afterEach(() => {
+    if (projectRoot) {
+      rmSync(projectRoot, { recursive: true, force: true });
+      projectRoot = null;
+    }
+  });
+
+  it('contains extension/header secrets, preserves a same-size control, and rejects hard-safety negation', () => {
+    const privateKey = Buffer.from(
+      '-----BEGIN PRIVATE KEY-----\nEXCAVATOR_FAKE_SECRET_CANARY_scan\n-----END PRIVATE KEY-----\n',
+    );
+    const sameSizeControl = Buffer.alloc(privateKey.byteLength, 0x61);
+    projectRoot = setupTree({
+      '.excavatorignore': [
+        '!LICENSE',
+        '!unmc.zip',
+        '!config/extension-only.key',
+        'generated/',
+      ].join('\n'),
+      'LICENSE': 'selected ordinary default\n',
+      'unmc.zip': 'archive bytes that must never be selected\n',
+      'config/privatekey3072.txt': privateKey,
+      'config/extension-only.key': 'synthetic extension-only credential fixture\n',
+      'config/same-size-control.txt': sameSizeControl,
+      'generated/client.ts': 'export const generated = true;\n',
+      'src/app.ts': 'export const app = true;\n',
+    });
+
+    const r = runScript(projectRoot);
+    expect(r.status, r.stderr).toBe(0);
+    const decision = (path) => r.output.selection.entries.find((entry) => entry.path === path);
+    const skip = (path) => r.output.skipped.find((entry) => entry.path === path);
+
+    expect(decision('LICENSE')?.kind).toBe('selected');
+    expect(decision('config/same-size-control.txt')?.kind).toBe('selected');
+    expect(decision('generated/client.ts')?.kind).toBe('filtered-by-ignore');
+    expect(decision('unmc.zip')?.kind).toBe('filtered-by-defaults');
+    expect(decision('config/privatekey3072.txt')).toMatchObject({
+      kind: 'sensitive', reason: 'sensitive', detail: 'private-key-header', size: privateKey.byteLength,
+    });
+    expect(decision('config/extension-only.key')).toMatchObject({
+      kind: 'sensitive', reason: 'sensitive', detail: 'sensitive-extension',
+    });
+    expect(skip('config/privatekey3072.txt')?.reason).toBe('sensitive');
+    expect(skip('config/extension-only.key')?.reason).toBe('sensitive');
+    expect(JSON.stringify(r.output)).not.toContain('EXCAVATOR_FAKE_SECRET_CANARY_scan');
+    expect(r.stderr).not.toContain('EXCAVATOR_FAKE_SECRET_CANARY_scan');
+    for (const record of [decision('config/privatekey3072.txt'), decision('config/extension-only.key')]) {
+      expect(record).not.toHaveProperty('content');
+      expect(record).not.toHaveProperty('excerpt');
+      expect(record).not.toHaveProperty('contentHash');
+    }
+    expect(r.output.selection.candidates).toBe(r.output.selection.entries.length);
+    expect(r.output.selection.candidates).toBe(
+      r.output.selection.selected
+      + r.output.selection.filteredByDefaults
+      + r.output.selection.filteredByIgnore
+      + r.output.selection.sensitive,
+    );
+  });
+});
+
 describe('scan-project.mjs — data-dir resolution (.excavator, no fallback)', () => {
   let projectRoot;
 
@@ -1007,6 +1072,15 @@ describe('scan-project.mjs — output schema invariants', () => {
     expect(out.totalFiles).toBe(out.files.length);
     expect(typeof out.filteredByIgnore).toBe('number');
     expect(typeof out.filteredByDefaults).toBe('number');
+    expect(out.selection).toEqual(expect.objectContaining({
+      policyVersion: 'source-selection-v1',
+      candidates: expect.any(Number),
+      selected: expect.any(Number),
+      filteredByDefaults: expect.any(Number),
+      filteredByIgnore: expect.any(Number),
+      sensitive: expect.any(Number),
+      entries: expect.any(Array),
+    }));
     expect(out.contentDigest).toMatch(/^[0-9a-f]{64}$/);
     expect(['small', 'moderate', 'large', 'very-large']).toContain(
       out.estimatedComplexity,

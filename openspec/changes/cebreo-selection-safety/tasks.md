@@ -8,10 +8,10 @@
 
 ## 2. 核心选择策略与安全桶
 
-- [ ] 2.1 在 `packages/core` 实现版本化的纯选择策略与 tagged decision，分清 default、project ignore、sensitive 和 selected；验证路径规则、普通 `!LICENSE`、不可恢复的 `.excavator/`/archive/sensitive 单测全绿。
-- [ ] 2.2 实现敏感扩展和有界私钥头检测；禁止内容、excerpt、content hash 进入结果或日志；验证 canary 全仓产物/输出搜索为空且普通文本控制样本仍 selected。
-- [ ] 2.3 扩展 scan/coverage schema 与守恒计算，合并 selection ledger 后每个候选恰好一桶；验证含全部 exclusion/skip/extraction outcome 的合成守恒测试全绿。
-- [ ] 2.4 提交核心选择策略 commit；验证 commit 只包含 core policy/schema/tests 与必要导出。
+- [x] 2.1 在 `packages/core` 实现版本化的纯选择策略与 tagged decision，分清 default、project ignore、sensitive 和 selected；验证路径规则、普通 `!LICENSE`、不可恢复的 `.excavator/`/archive/sensitive 单测全绿。
+- [x] 2.2 实现敏感扩展和有界私钥头检测；禁止内容、excerpt、content hash 进入结果或日志；验证 canary 全仓产物/输出搜索为空且普通文本控制样本仍 selected。
+- [x] 2.3 扩展 scan/coverage schema 与守恒计算，合并 selection ledger 后每个候选恰好一桶；验证含全部 exclusion/skip/extraction outcome 的合成守恒测试全绿。
+- [x] 2.4 提交核心选择策略 commit；验证 commit 只包含 core policy/schema/tests 与必要导出。
 
 ## 3. 语言识别统一到 LanguageRegistry
 

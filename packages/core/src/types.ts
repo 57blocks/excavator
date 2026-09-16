@@ -91,11 +91,11 @@ export interface Gap {
   samples?: string[];
 }
 
-/** Why a scanned file did not end up parsed. The first six are scan-time
- *  reasons (the file was never handed to a reader); the last two are
- *  extraction outcomes. They share one map so the per-language conservation
- *  identity `files = parsed + zeroSymbol + Σ skipped` covers every input. */
+/** Why an enumerated candidate did not end up parsed: pre-extraction
+ *  selection, scanner processing, or extraction outcome. They share one map
+ *  so `files = parsed + zeroSymbol + Σ skipped` covers every input. */
 export type SkipReason =
+  | "filtered-by-defaults" | "filtered-by-ignore" | "sensitive"
   | "symlink" | "read-failed" | "unknown-language" | "binary" | "too-large" | "ignored"
   | "no-extractor" | "parse-failed";
 
@@ -124,6 +124,16 @@ export interface CoverageLimits {
   maxFileBytes: number;
 }
 
+/** Aggregate, content-free pre-extraction selection ledger. */
+export interface SelectionCoverage {
+  policyVersion: string;
+  candidates: number;
+  selected: number;
+  filteredByDefaults: number;
+  filteredByIgnore: number;
+  sensitive: number;
+}
+
 /** Per-language ledger of what was read and what was not. Conservation holds:
  *  `files = parsed + zeroSymbol + Σ skipped[reason]`. */
 export interface Coverage {
@@ -131,6 +141,7 @@ export interface Coverage {
   byLanguage: Record<string, LanguageCoverage>;
   ignored: number;
   limits?: CoverageLimits;
+  selection?: SelectionCoverage;
 }
 
 // GraphNode with 27 types: 5 code + 8 non-code + 3 domain + 5 knowledge + 6 design
