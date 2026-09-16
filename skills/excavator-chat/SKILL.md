@@ -74,14 +74,14 @@ The knowledge graph JSON has this structure:
    - Search `"tags"` arrays for topic matches
    - Note the `id` values of all matching nodes
 
-6. **Read only the graph scope authorized by the plan** — `source-first` reads current source without graph expansion; `inventory` reads the available Domain/flow inventory without substituting a repository graph flood. For a `one-hop`, `bounded-bfs`, or `bounded-shortest-path` plan, inspect only the selected fact-edge scope. When applicable, connected edges show:
+6. **Read only the graph scope authorized by the chosen route** — `source-first` reads current source without graph expansion; `inventory` reads the available Domain/flow inventory without substituting a repository graph flood. For `one-hop`, `bounded-bfs`, or `bounded-shortest-path`, inspect only the selected fact-edge scope. When applicable, connected edges show:
    - What it imports or depends on (downstream)
    - What calls or imports it (upstream)
    - The bounded subgraph authorized by the selected primitive
 
-7. **Read layer context when useful** — Grep for `"layers"` only when architectural context helps answer the planned scope.
+7. **Read layer context when useful** — Grep for `"layers"` only when architectural context helps answer the chosen scope.
 
-8. **Answer the query** using only the verified evidence within the planned scope:
+8. **Answer the query** using only the verified evidence within the chosen scope:
    - Reference specific files, functions, and relationships from the graph
    - Explain which layer(s) are relevant and why
    - Be concise but thorough — link concepts to actual code locations
@@ -104,10 +104,11 @@ A Lazy graph carries deterministic facts only: node `summary` is empty and `tags
 - **Semantic questions** (what a module/service is responsible for, business meaning, a cross-file business flow, especially when phrased in a business/domain language such as Chinese over English-named code): follow the **hybrid retrieval** recipe below instead of degrading immediately.
 - Fact edges (`calls` / `imports` / `contains` / `exports`) and `gaps` are authoritative: to answer "can we be sure A calls B", go by the fact edge; a call the engine could not resolve is recorded in `gaps`, so say "the engine could not determine that connection" rather than guessing.
 
-### Request-local query plan
+### Request-local AI routing contract
 
-Before recall or graph expansion, choose the first matching intent by the
-operation and scope the user requests:
+Before recall or graph expansion, choose the first matching route by the
+operation and scope the user requests. This is an AI judgment held in working
+memory, not a persisted object or a keyword/regex classifier:
 
 1. `inventory` — repository-wide enumeration such as all user or business
    flows. Use primitive `inventory`; never replace a missing inventory with one
@@ -125,7 +126,11 @@ operation and scope the user requests:
 6. `source-locate` — locate current source or the best evidence when none of
    the operations above applies. Use `source-first`.
 
-Higher-priority scope wins over lower-priority topic words. For example:
+Higher-priority scope wins over lower-priority topic words. If code naming is
+irregular, abbreviated, or misspelled, first inspect the project tree, nearby
+identifiers, and small source snippets; then refine the English retrieval
+expressions with observed source-owned literals. Do not assume that a business
+word has a matching symbol name. For example:
 
 - “发布文章需要填写和校验哪些字段” is `local-condition` + `source-first`,
   even if the wording also mentions a publishing flow; it does not run BFS.
@@ -136,14 +141,13 @@ Higher-priority scope wins over lower-priority topic words. For example:
   `bounded-shortest-path`.
 - “Who calls `createArticle` directly?” is `direct-neighbor` + `one-hop`.
 
-Build the plan with exactly `intent`, `terms`, `recallLimit`, `primitive`,
-`hopLimit`, `maxNodes`, `maxEdges`, and `maxContextTokens`. `terms` contains the
-request-local English retrieval expressions and source-owned literals already
-captured above. Use `recallLimit <= 20`, `maxNodes <= 80`, `maxEdges <= 160`,
-and `maxContextTokens <= 12000`; use `hopLimit: 0` for `source-first` and
-`inventory`. Check the route against this ordered contract before graph
-execution. If it is incompatible or over budget, correct the request-local
-choice rather than falling back to a broader primitive.
+Keep the chosen route, English retrieval expressions, source-owned literals,
+hop bound, and resource boundaries in request-local working memory. Recall is
+at most 20; graph expansion is at most 5 seeds, 80 nodes, and 160 edges;
+shortest path is at most 6 hops; assembled context stays near 12,000 tokens.
+Check the choice against this ordered contract before graph execution. If it is
+incompatible, narrow or correct the route rather than falling back to a broader
+primitive.
 
 ### Hybrid retrieval for semantic questions
 
@@ -199,21 +203,63 @@ If `$PLUGIN_ROOT` cannot be resolved, or `$DATA_DIR/source-index.json` does not 
    "
    ```
    Only a hash-fresh entry's `summary`/`tags` text may feed retrieval — a stale or missing entry is simply not a candidate (never partially trusted).
-5. Merge all four lists with `mergeCandidates` (weights an exact id/symbol/path match highest, then source-search, semantic-cache, BM25 — see `$PLUGIN_ROOT/skills/excavator/retrieve.mjs`'s own doc comment for the exact rationale):
+5. Merge all four lists with `mergeCandidates` (weights an exact id/symbol/path match highest, then source-search, semantic-cache, BM25 — see `$PLUGIN_ROOT/skills/excavator/retrieve.mjs`'s own doc comment for the exact rationale), then keep the first 20 ranked candidates as the recall pool. Keep the other evidence locations available for direct source checking, but do not turn them into traversal seeds:
    ```bash
    node --input-type=module -e "
    import { mergeCandidates } from '$PLUGIN_ROOT/skills/excavator/retrieve.mjs';
-   console.log(JSON.stringify(mergeCandidates({ exact, bm25, sourceSearch, semanticCacheText })));
+   console.log(JSON.stringify(mergeCandidates({ exact, bm25, sourceSearch, semanticCacheText }).slice(0, 20)));
    "
    ```
-6. Pick ONE traversal primitive authorized by the already validated plan. Over fact edges, only `contains`/`imports`/`exports`/`calls` are traversable — a semantic/domain edge, if any exist, never supplies a path, only ranking:
-   - `inventory` -> read the Domain/flow inventory; do not call a fact-graph traversal primitive
+6. Pick ONE traversal primitive authorized by the current AI route. Over fact edges, only `contains`/`imports`/`exports`/`calls` are traversable — a semantic/domain edge, if any exist, never supplies a path, only ranking:
+   - `inventory` -> follow the inventory protocol below; do not call a fact-graph traversal primitive
    - `source-first` -> inspect current source; do not call a graph traversal primitive
    - `one-hop` -> `oneHop(edges, seedIds)`
    - `bounded-bfs` -> `boundedBFS(edges, seedIds)`
    - `bounded-shortest-path` -> `boundedShortestPath(edges, seedIds, targetIds)`
 
-   All three return a `boundary` object (`reason`, `truncated`, budgets). **If `boundary.truncated` is true, say so in the answer** — name what was covered and that the graph was larger than the budget (seed ≤20 / nodes ≤80 / edges ≤160 / ~12k tokens of context), rather than presenting a partial subgraph as the whole picture.
+   Before calling a graph primitive, map recall candidates to the CURRENT fact
+   graph. Select at most 5 unique ids that are relevant to the requested
+   operation; do not simply pass all 20 recalled candidates. A shortest-path
+   request also needs a non-empty current target. Put stale, unmapped, or
+   out-of-scope candidates in visible gaps and continue with the remaining
+   recall pool.
+
+   All three graph primitives return a `boundary` object (`reason`,
+   `truncated`, effective budgets). Report the actual reason and coverage even
+   when the result is not truncated. **If `boundary.truncated` is true, say so
+   in the answer** — name what was covered and what remains uncovered (seed ≤5
+   / nodes ≤80 / edges ≤160 / ~12k tokens of context), rather than presenting a
+   partial subgraph as the whole picture.
+
+### Inventory and segmented-flow protocols
+
+For repository-wide flow enumeration, run the shared Domain freshness check
+before reading `.excavator/domain-graph.json`:
+
+```bash
+node "$PLUGIN_ROOT/skills/excavator-domain/domain-freshness.mjs" "$PROJECT_ROOT"
+```
+
+If it returns `usable: true`, use stable Domain/flow identities to form a
+coverage-aware inventory, then expand flows in bounded batches and re-verify
+their details against current facts/source. If it is missing, stale, or
+otherwise unusable, report `inventory-unavailable`, the freshness reason,
+coverage, and gaps; suggest `/excavator-domain`; and do not replace the missing
+inventory with one repository-wide BFS or claim all flows were found.
+
+For an end-to-end flow, select separate relevant anchors for each
+fact-connected segment and traverse each segment within the same 5/80/160 hard
+fuses. HTTP/API literals, queue topics, dynamic framework wiring, ORM/model
+lookup, or other boundaries without fact edges are not graph paths. Inspect
+current source on both sides of such a boundary and label the result a
+`source-verified bridge`; then begin a separately bounded fact segment from the
+verified downstream anchor. Never describe the combined segments as one
+continuous or directed graph traversal.
+
+Before answering, list stale navigation candidates and uncovered segments as
+gaps. For every field or validation statement, verify frontend UI behavior and
+backend enforcement independently; a UI prompt or `required` attribute does
+not prove a server-side requirement.
 
 **(c) Freeze the bounded need set, plan reuse, then generate only the difference.** After candidate merge and bounded fact-edge traversal, select the exact node ids that this answer actually needs explained. Keep them within the traversal boundary and deduplicate them by exact id in first-occurrence order. This `$NEEDED_NODE_IDS` list is fixed before any semantic generation.
 
