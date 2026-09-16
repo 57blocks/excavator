@@ -99,10 +99,13 @@ try {
 
 const {
   PRIVATE_KEY_PREFIX_BYTES,
+  LanguageRegistry,
   buildSourceSelectionLedger,
   createSourceSelectionPolicy,
   resolveDataDir,
 } = core;
+
+const canonicalLanguageRegistry = LanguageRegistry.createDefault();
 
 // ---------------------------------------------------------------------------
 // Skip limits and binary detection
@@ -158,14 +161,11 @@ export function looksBinary(buf) {
 // ---------------------------------------------------------------------------
 // Language detection
 //
-// Mirrors the canonical extension list from
-// excavator-plugin/packages/core/src/languages/configs/* and the
-// project-scanner.md Step 3 table. Extensions are matched lowercase;
-// filenames (Dockerfile, Makefile, etc.) are matched case-sensitively because
-// the projects-in-the-wild use canonical capitalizations.
-//
-// Where the core configs and project-scanner.md diverge (rare), project-
-// scanner.md wins because it is the user-facing contract.
+// TypeScript and Dockerfile use LanguageRegistry as their authority. The
+// compatibility tables retain the scanner's established output for other
+// languages, including the explicitly frozen registry/scanner debt for
+// jsonc, env/dot-env, svg, mk, OpenAPI, docker-compose, rst, and txt/text.
+// Those differences require a separate contract migration.
 // ---------------------------------------------------------------------------
 
 /**
@@ -175,9 +175,7 @@ export function looksBinary(buf) {
  * for these extensions is handled separately in CATEGORY_BY_EXT.
  */
 const LANGUAGE_BY_EXT = Object.freeze({
-  // TypeScript / JavaScript
-  '.ts': 'typescript',
-  '.tsx': 'typescript',
+  // JavaScript (TypeScript is canonical-registry-owned)
   '.js': 'javascript',
   '.jsx': 'javascript',
   '.mjs': 'javascript',
@@ -272,9 +270,6 @@ const LANGUAGE_BY_EXT = Object.freeze({
  * basename(path). Includes the most common no-extension conventions; anything
  * NOT in this table with no extension falls back to `unknown`.
  *
- * Dockerfile.* variants (Dockerfile.dev, Dockerfile.prod) are handled by a
- * startsWith check in `detectLanguage()` so we don't have to enumerate every
- * possible suffix.
  */
 const LANGUAGE_BY_FILENAME = Object.freeze({
   // Conventional extension-less text files. Named here so they keep a
@@ -297,7 +292,6 @@ const LANGUAGE_BY_FILENAME = Object.freeze({
   TODO: 'text',
   VERSION: 'text',
   CODEOWNERS: 'text',
-  Dockerfile: 'dockerfile',
   Makefile: 'makefile',
   GNUmakefile: 'makefile',
   makefile: 'makefile',
@@ -331,9 +325,12 @@ export function classifyLanguage(filePath) {
   const base = basename(filePath);
   const ext = extname(filePath).toLowerCase();
 
-  // Dockerfile.dev, Dockerfile.prod, etc. — common variant form.
-  if (base === 'Dockerfile' || base.startsWith('Dockerfile.')) {
-    return { language: 'dockerfile', declared: true };
+  // These two migrated languages share the core registry's exact filename ->
+  // basename pattern -> extension matcher. No scanner-local TS/Dockerfile
+  // rule is authoritative.
+  const canonical = canonicalLanguageRegistry.getForFile(filePath);
+  if (canonical?.id === 'typescript' || canonical?.id === 'dockerfile') {
+    return { language: canonical.id, declared: true };
   }
 
   // Dotfile names like .env, .env.local — path.extname returns '' for
@@ -457,7 +454,6 @@ const CATEGORY_BY_EXT = Object.freeze({
  * against basename(path).
  */
 const INFRA_FILENAMES = new Set([
-  'Dockerfile',
   '.dockerignore',
   'Makefile',
   'GNUmakefile',
@@ -476,15 +472,15 @@ const INFRA_FILENAMES = new Set([
  *    exclusion table normally removes LICENSE, but if a project chooses to
  *    re-include it via `.excavatorignore` negation, it should NOT land in
  *    docs. We classify as `code` rather than inventing a new bucket.
- * 2. Filename-based infra (Dockerfile, Makefile, Jenkinsfile,
- *    docker-compose.*, Vagrantfile, Procfile, .gitlab-ci.yml,
+ * 2. Canonical Dockerfile language or filename-based infra (Makefile,
+ *    Jenkinsfile, docker-compose.*, Vagrantfile, Procfile, .gitlab-ci.yml,
  *    .dockerignore).
  * 3. Path-based infra (.github/workflows/, .circleci/, k8s/, kubernetes/,
  *    *.k8s.yml, *.k8s.yaml).
  * 4. Extension-based mapping (CATEGORY_BY_EXT).
  * 5. Fallback: `code` (matches the spec — "All other extensions").
  */
-export function detectCategory(filePath) {
+export function detectCategory(filePath, canonicalLanguage = classifyLanguage(filePath).language) {
   const base = basename(filePath);
   const ext = extname(filePath).toLowerCase();
   const posix = filePath.split(sep).join('/');
@@ -492,11 +488,12 @@ export function detectCategory(filePath) {
   // Rule 1: LICENSE exception (project-scanner.md Step 4 table comment).
   if (base === 'LICENSE') return 'code';
 
-  // Rule 2: infra by filename — Dockerfile + variants, Makefile,
-  // Jenkinsfile, docker-compose.*, Procfile, Vagrantfile, .gitlab-ci.yml,
-  // .dockerignore.
+  // Canonical Dockerfile matching includes exact, dot, and hyphen variants.
+  if (canonicalLanguage === 'dockerfile') return 'infra';
+
+  // Rule 2: infra by filename — Makefile, Jenkinsfile, docker-compose.*,
+  // Procfile, Vagrantfile, .gitlab-ci.yml, .dockerignore.
   if (INFRA_FILENAMES.has(base)) return 'infra';
-  if (base === 'Dockerfile' || base.startsWith('Dockerfile.')) return 'infra';
   if (base.startsWith('docker-compose.')) return 'infra';
   if (base === 'compose.yml' || base === 'compose.yaml') return 'infra';
 
@@ -1000,7 +997,7 @@ async function main() {
       path: rel,
       language,
       sizeLines: scanned.sizeLines,
-      fileCategory: detectCategory(rel),
+      fileCategory: detectCategory(rel, language),
     });
   }
 

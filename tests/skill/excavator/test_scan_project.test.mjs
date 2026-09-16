@@ -13,7 +13,7 @@ import { tmpdir } from 'node:os';
 import { join, dirname, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { createIgnoreFilter } from '@excavator/core';
+import { createIgnoreFilter, LanguageRegistry } from '@excavator/core';
 import scanProject from '../../../skills/excavator/scan-project.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -230,6 +230,66 @@ describe('scan-project.mjs — language detection', () => {
     expect(byPath(r.output, 'b.bat').language).toBe('batch');
     expect(byPath(r.output, 'Dockerfile').language).toBe('dockerfile');
     expect(byPath(r.output, 'Dockerfile.dev').language).toBe('dockerfile');
+  });
+
+  it('uses the canonical registry for TypeScript and Dockerfile variants', () => {
+    const registry = LanguageRegistry.createDefault();
+    const expected = [
+      ['src/app.ts', 'typescript', 'code'],
+      ['src/view.tsx', 'typescript', 'code'],
+      ['Dockerfile', 'dockerfile', 'infra'],
+      ['Dockerfile.dev', 'dockerfile', 'infra'],
+      ['Dockerfile-prod', 'dockerfile', 'infra'],
+      ['Dockerfile-qa', 'dockerfile', 'infra'],
+      ['Dockerfile-test', 'dockerfile', 'infra'],
+    ];
+
+    for (const [path, language, category] of expected) {
+      expect(scanProject.classifyLanguage(path).language, path).toBe(language);
+      expect(registry.getForFile(path)?.id, path).toBe(language);
+      expect(scanProject.detectCategory(path), path).toBe(category);
+    }
+    expect(scanProject.classifyLanguage('MyDockerfile-prod')).toEqual({
+      language: 'unknown',
+      declared: false,
+    });
+    expect(registry.getForFile('MyDockerfile-prod')).toBeNull();
+  });
+
+  it.each([
+    ['config.jsonc', 'jsonc', 'config'],
+    ['.env', 'config', 'config'],
+    ['.env.local', 'config', 'config'],
+    ['icon.svg', 'svg', 'code'],
+    ['rules.mk', 'mk', 'code'],
+    ['openapi.yaml', 'yaml', 'config'],
+    ['docker-compose.yml', 'yaml', 'infra'],
+    ['guide.rst', 'markdown', 'docs'],
+    ['notes.txt', 'txt', 'docs'],
+    ['notes.text', 'text', 'docs'],
+  ])('freezes compatibility classification for %s as %s/%s', (path, language, category) => {
+    expect(scanProject.classifyLanguage(path).language).toBe(language);
+    expect(scanProject.detectCategory(path)).toBe(category);
+  });
+
+  it('scans hyphenated Dockerfiles and keeps the arbitrary-name negative out', () => {
+    projectRoot = setupTree({
+      'Dockerfile-prod': 'FROM node:22\n',
+      'Dockerfile-qa': 'FROM node:22\n',
+      'Dockerfile-test': 'FROM node:22\n',
+      'MyDockerfile-prod': 'not a Dockerfile\n',
+    });
+    const r = runScript(projectRoot);
+    expect(r.status).toBe(0);
+    for (const path of ['Dockerfile-prod', 'Dockerfile-qa', 'Dockerfile-test']) {
+      expect(byPath(r.output, path)).toMatchObject({ language: 'dockerfile', fileCategory: 'infra' });
+    }
+    expect(byPath(r.output, 'MyDockerfile-prod')).toBeUndefined();
+    expect(r.output.skipped).toContainEqual({
+      path: 'MyDockerfile-prod',
+      reason: 'unknown-language',
+      language: 'unknown',
+    });
   });
 
   // A file whose language cannot be NAMED at all (no extension, no filename

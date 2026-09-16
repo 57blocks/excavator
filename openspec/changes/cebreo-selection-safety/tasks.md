@@ -15,10 +15,10 @@
 
 ## 3. TypeScript/Dockerfile 识别统一到 LanguageRegistry
 
-- [ ] 3.1 扩展 `LanguageConfig`/`LanguageRegistry` 的 basename pattern，并在 Dockerfile config 声明 `Dockerfile.*`、`Dockerfile-*`；验证 exact → pattern → extension precedence、TypeScript `.ts/.tsx` 和负例 `MyDockerfile-prod`。
-- [ ] 3.2 让 `scan-project.mjs` 对 TypeScript/Dockerfile 调用 canonical registry matcher，移除这两类的权威重复判断；冻结既有 `jsonc`、env/dot-env、`svg`、`mk`、OpenAPI、docker-compose、`rst`、`txt/text` 兼容输出为显式后续债务，并用当前分类矩阵证明除批准的 Dockerfile hyphen 变体外零漂移。
-- [ ] 3.3 让 category 基于 canonical `dockerfile` 结果产出 `infra`，覆盖 `Dockerfile-prod|qa|test`；验证 scanner 与 `LanguageRegistry.createDefault()` 对同一路径给出相同 language。
-- [ ] 3.4 提交语言注册统一 commit；验证未修改 `FrameworkConfig`/`FrameworkRegistry`，后续框架 change 仍沿 Express 的注册方式扩展。
+- [x] 3.1 扩展 `LanguageConfig`/`LanguageRegistry` 的 basename pattern，并在 Dockerfile config 声明 `Dockerfile.*`、`Dockerfile-*`；验证 exact → pattern → extension precedence、TypeScript `.ts/.tsx` 和负例 `MyDockerfile-prod`。
+- [x] 3.2 让 `scan-project.mjs` 对 TypeScript/Dockerfile 调用 canonical registry matcher，移除这两类的权威重复判断；冻结既有 `jsonc`、env/dot-env、`svg`、`mk`、OpenAPI、docker-compose、`rst`、`txt/text` 兼容输出为显式后续债务，并用当前分类矩阵证明除批准的 Dockerfile hyphen 变体外零漂移。
+- [x] 3.3 让 category 基于 canonical `dockerfile` 结果产出 `infra`，覆盖 `Dockerfile-prod|qa|test`；验证 scanner 与 `LanguageRegistry.createDefault()` 对同一路径给出相同 language。
+- [x] 3.4 提交语言注册统一 commit；验证未修改 `FrameworkConfig`/`FrameworkRegistry`，后续框架 change 仍沿 Express 的注册方式扩展。
 
 ## 4. SourceSnapshot 只暴露并物化 selected 输入
 
