@@ -5,16 +5,16 @@
 
 ## 2. 共享确定性服务和安全边界
 
-- [ ] 2.1 将当前状态读取、Lazy 事实同步、检索/遍历与证据读取抽为 CLI 和 MCP 共用的可调用服务；用既有 CLI 回归测试和同快照等价测试证明没有第二套评分、遍历或事实构建逻辑。
-- [ ] 2.2 实现单项目根目录绑定、规范相对路径、realpath containment 与 `.excavator/` 写入边界；用 `..`、绝对路径、外部 symlink、数据目录 symlink 和合法工作树夹具验证拒绝/允许结果。
-- [ ] 2.3 实现统一 snapshot-bound 响应、输入/输出预算、显式 truncated/boundary/gaps 和 stale-snapshot 终态；用预算命中、调用期间源码变化、缺失索引及未知节点测试验证每个输入进入可见桶。
+- [x] 2.1 将当前状态读取、Lazy 事实同步、检索/遍历与证据读取抽为 CLI 和 MCP 共用的可调用服务；用既有 CLI 回归测试和同快照等价测试证明没有第二套评分、遍历或事实构建逻辑。
+- [x] 2.2 实现单项目根目录绑定、规范相对路径、realpath containment 与 `.excavator/` 写入边界；用 `..`、绝对路径、外部 symlink、数据目录 symlink 和合法工作树夹具验证拒绝/允许结果。
+- [x] 2.3 实现统一 snapshot-bound 响应、输入/输出预算、显式 truncated/boundary/gaps 和 stale-snapshot 终态；用预算命中、调用期间源码变化、缺失索引及未知节点测试验证每个输入进入可见桶。
 
 ## 3. MCP 协议与只读/事实工具
 
-- [ ] 3.1 增加锁定版本的官方 MCP server SDK、stdio 入口和输入/输出 schema，只在 stderr 输出诊断；通过真实 MCP client 握手与 tools/list 测试验证恰好发现七个工具，且无 API key 时 server 可运行。
-- [ ] 3.2 实现 `project_status` 和 `sync_facts`，只调用既有确定性同步且不触发 Full 模型阶段；用干净/过期/缺失数据夹具与当前源码 SHA、事实 coverage 比较，并验证源码字节不变、失败可见。
-- [ ] 3.3 实现 `recall` 与 `traverse` 的明确 terms/seeds、有界响应及继续边界；用同输入 CLI/MCP 等价、80 节点预算命中与大范围分轮探索测试验证不伪称完整。
-- [ ] 3.4 实现 `read_evidence` 的当前源码/事实范围读取和行号定位；用合法范围、过大范围、源码漂移和外部路径测试验证证据不越界且旧证据不会标为 fresh。
+- [x] 3.1 增加锁定版本的官方 MCP server SDK、stdio 入口和输入/输出 schema，只在 stderr 输出诊断；通过真实 MCP client 握手与 tools/list 测试验证恰好发现七个工具，且无 API key 时 server 可运行。
+- [x] 3.2 实现 `project_status` 和 `sync_facts`，只调用既有确定性同步且不触发 Full 模型阶段；用干净/过期/缺失数据夹具与当前源码 SHA、事实 coverage 比较，并验证源码字节不变、失败可见。
+- [x] 3.3 实现 `recall` 与 `traverse` 的明确 terms/seeds、有界响应及继续边界；用同输入 CLI/MCP 等价、80 节点预算命中与大范围分轮探索测试验证不伪称完整。
+- [x] 3.4 实现 `read_evidence` 的当前源码/事实范围读取和行号定位；用合法范围、过大范围、源码漂移和外部路径测试验证证据不越界且旧证据不会标为 fresh。
 
 ## 4. 单一语义缓存闭环
 
