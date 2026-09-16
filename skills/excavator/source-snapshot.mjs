@@ -8,11 +8,13 @@
  * `source-snapshot`, capability `source-snapshot`).
  *
  * Contract every adapter implements:
- *   { revision, selectionDigest, listFiles(), readFile(path), search(terms),
- *     diff(previousManifest), materialize(), runGuarded(producer, publish) }
+ *   { revision, selectionDigest, selection, processingSkips, listFiles(),
+ *     readFile(path), search(terms), diff(previousManifest), materialize(),
+ *     runGuarded(producer, publish) }
  *
  * `revision` is that source version's ONE baseline; `selectionDigest` is a
- * stable hash of the effective ignore/exclude rules; together with a
+ * stable hash of the policy version, sensitive semantics, ordered rules,
+ * and canonical language matching catalog; together with a
  * `pipelineVersion` constant (owned by the caller — see lazy-analyze.mjs)
  * they form `source-manifest.json`'s three fields (see the spec's
  * "source-manifest records and drives rebuild" requirement). `materialize()` copies the

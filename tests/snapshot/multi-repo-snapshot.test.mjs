@@ -97,6 +97,22 @@ describe('MultiRepoSnapshot — detection and revision', () => {
     expect(snapshot.readFile('member-a/index.ts').toString('utf-8')).toBe('export const a = 1;\n');
     expect(snapshot.readFile('README.md').toString('utf-8')).toBe('# workspace\n');
   });
+
+  it('combines parent/member ledgers with each member prefix exactly once', () => {
+    const snapshot = resolveSourceSnapshot(root);
+    const paths = snapshot.selection.entries.map((entry) => entry.path);
+    expect(paths).toContain('README.md');
+    expect(paths).toContain('member-a/index.ts');
+    expect(paths).toContain('member-b/index.ts');
+    expect(paths.some((path) => path.includes('member-a/member-a/'))).toBe(false);
+    expect(new Set(paths).size).toBe(paths.length);
+    expect(snapshot.selection.candidates).toBe(
+      snapshot.selection.selected
+      + snapshot.selection.filteredByDefaults
+      + snapshot.selection.filteredByIgnore
+      + snapshot.selection.sensitive,
+    );
+  });
 });
 
 describe('MultiRepoSnapshot — member working-tree changes do not affect the result', () => {

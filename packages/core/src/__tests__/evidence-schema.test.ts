@@ -53,6 +53,14 @@ function v2Graph(overrides?: Partial<KnowledgeGraph>): KnowledgeGraph {
     },
     ignored: 4,
     limits: { maxFileLines: 20000, maxFileBytes: 2097152 },
+    selection: {
+      policyVersion: "source-selection-v1",
+      candidates: 3,
+      selected: 3,
+      filteredByDefaults: 0,
+      filteredByIgnore: 0,
+      sensitive: 0,
+    },
   };
   const gaps: Gap[] = [
     { kind: "calls-unresolved", scope: "typescript", reason: "callee not found in file or its imports", count: 2, samples: ["src/a.ts:9 helper"] },
