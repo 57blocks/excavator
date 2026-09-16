@@ -1,7 +1,7 @@
 ## 1. 验收 oracle 与边界夹具
 
-- [ ] 1.1 先写定 seven-tool contract、无模型调用、同一快照/预算/错误桶、跨入口 cache SHA/provenance 的验收矩阵；用一个已知错误的伪工具响应或错误配置证明检查会失败，再记录可复现的 red 结果。
-- [ ] 1.2 建立临时小仓库夹具，包含同内容异路径、同名异 owner、symlink 越界、`.excavator/` 越界 symlink、missing/stale/noncanonical/fresh cache；用夹具测试先看到预期拒绝/分桶，不提交真实项目源码或生成物。
+- [x] 1.1 先写定 seven-tool contract、无模型调用、同一快照/预算/错误桶、跨入口 cache SHA/provenance 的验收矩阵；用一个已知错误的伪工具响应或错误配置证明检查会失败，再记录可复现的 red 结果。
+- [x] 1.2 建立临时小仓库夹具，包含同内容异路径、同名异 owner、symlink 越界、`.excavator/` 越界 symlink、missing/stale/noncanonical/fresh cache；用夹具测试先看到预期拒绝/分桶，不提交真实项目源码或生成物。
 
 ## 2. 共享确定性服务和安全边界
 
