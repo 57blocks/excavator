@@ -4,14 +4,16 @@
  *
  * Domain freshness gate (openspec: changes/full-semantic-isolation,
  * capability `domain-freshness`, design D4). `annotate-domain.mjs` stamps
- * `domain-graph.json`'s top level with `sourceRevision` and `factDigest` —
- * the source/fact identity that was current when Domain analysis ran (see
+ * `domain-graph.json`'s top level with the current schema,
+ * `contentLanguage: "en"`, `sourceRevision`, and `factDigest` — the
+ * semantic/source/fact identity that was current when Domain analysis ran (see
  * that module's own doc comment for how those two values are derived). This
  * module is the other half of the contract: given an already-loaded domain
  * graph and the CURRENT fact layer's identity, decide whether that domain
  * graph is still usable, so a consumer never answers from a stale one.
  *
- * A domain graph is usable only when BOTH match the current fact layer:
+ * A domain graph is usable only when its schema/language identity is
+ * canonical and BOTH fact keys match the current fact layer:
  *   - `sourceRevision` — compared against the CURRENT sourceRevision as
  *     resolved by the shared `resolveFreshness` helper
  *     (`skills/excavator/consumer-freshness.mjs`); Domain does not invent
@@ -49,6 +51,11 @@ import { createRequire } from 'node:module';
 import { existsSync, readFileSync, realpathSync } from 'node:fs';
 
 import { resolveFreshness } from '../excavator/consumer-freshness.mjs';
+import { hasCanonicalDomainIdentity } from './domain-contract.mjs';
+import {
+  auditDomainGraphFields,
+  isAcceptedLanguageAudit,
+} from '../excavator/semantic-language-audit.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const pluginRoot = resolve(__dirname, '../..');
@@ -72,17 +79,31 @@ async function resolveCore(root) {
  *   currentSourceRevision: string|null,
  *   currentFactDigest: string|null,
  * }} args
- * @returns {{ usable: boolean, reason: string }}
+ * @returns {{ usable: boolean, status: 'fresh'|'stale'|'missing'|'noncanonical-language', reason: string }}
  */
 export function isDomainGraphUsable({ domainGraph, currentSourceRevision, currentFactDigest }) {
   if (!domainGraph || typeof domainGraph !== 'object') {
-    return { usable: false, reason: 'no domain graph to check' };
+    return { usable: false, status: 'missing', reason: 'no domain graph to check' };
+  }
+
+  if (
+    !hasCanonicalDomainIdentity(domainGraph)
+    || !isAcceptedLanguageAudit(
+      domainGraph.languageAudit,
+      auditDomainGraphFields({ domainGraph }),
+    )
+  ) {
+    return {
+      usable: false,
+      status: 'noncanonical-language',
+      reason: 'noncanonical-language: domain graph lacks the current schema, contentLanguage=en, or an accepted field audit — re-run /excavator-domain',
+    };
   }
 
   const domainSourceRevision = domainGraph.sourceRevision;
   if (typeof domainSourceRevision !== 'string' || domainSourceRevision.length === 0) {
     return {
-      usable: false,
+      usable: false, status: 'stale',
       reason: 'domain graph carries no sourceRevision (produced before domain-freshness, or never stamped) — re-run /excavator-domain',
     };
   }
@@ -90,32 +111,32 @@ export function isDomainGraphUsable({ domainGraph, currentSourceRevision, curren
   const domainFactDigest = domainGraph.factDigest;
   if (typeof domainFactDigest !== 'string' || domainFactDigest.length === 0) {
     return {
-      usable: false,
+      usable: false, status: 'stale',
       reason: 'domain graph carries no factDigest — re-run /excavator-domain',
     };
   }
 
   if (typeof currentSourceRevision !== 'string' || currentSourceRevision.length === 0) {
-    return { usable: false, reason: 'current sourceRevision could not be resolved' };
+    return { usable: false, status: 'stale', reason: 'current sourceRevision could not be resolved' };
   }
   if (domainSourceRevision !== currentSourceRevision) {
     return {
-      usable: false,
+      usable: false, status: 'stale',
       reason: `sourceRevision mismatch (domain graph: ${domainSourceRevision}, current: ${currentSourceRevision}) — the fact layer has moved since Domain last ran; re-run /excavator-domain`,
     };
   }
 
   if (typeof currentFactDigest !== 'string' || currentFactDigest.length === 0) {
-    return { usable: false, reason: 'no current knowledge-graph.json / factsDigest to compare against' };
+    return { usable: false, status: 'stale', reason: 'no current knowledge-graph.json / factsDigest to compare against' };
   }
   if (domainFactDigest !== currentFactDigest) {
     return {
-      usable: false,
+      usable: false, status: 'stale',
       reason: `factDigest mismatch (domain graph: ${domainFactDigest.slice(0, 12)}…, current: ${currentFactDigest.slice(0, 12)}…) — the fact projection changed since Domain last ran; re-run /excavator-domain`,
     };
   }
 
-  return { usable: true, reason: 'sourceRevision and factDigest both match the current fact layer' };
+  return { usable: true, status: 'fresh', reason: 'sourceRevision and factDigest both match the current fact layer' };
 }
 
 /**
@@ -127,7 +148,7 @@ export function isDomainGraphUsable({ domainGraph, currentSourceRevision, curren
  * @param {string} projectRoot
  * @returns {Promise<{
  *   usable: boolean,
- *   status: 'fresh'|'stale'|'missing',
+ *   status: 'fresh'|'stale'|'missing'|'noncanonical-language',
  *   reason: string,
  *   domainGraph: object|null,
  * }>}
@@ -169,13 +190,13 @@ export async function resolveDomainFreshness(projectRoot) {
   }
 
   const freshness = await resolveFreshness(root);
-  const { usable, reason } = isDomainGraphUsable({
+  const { usable, status, reason } = isDomainGraphUsable({
     domainGraph,
     currentSourceRevision: freshness.currentSourceRevision,
     currentFactDigest,
   });
 
-  return { usable, status: usable ? 'fresh' : 'stale', reason, domainGraph };
+  return { usable, status, reason, domainGraph };
 }
 
 // ---------------------------------------------------------------------------

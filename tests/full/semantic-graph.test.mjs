@@ -17,6 +17,7 @@ import {
   readSemanticGraph,
   writeSemanticGraph,
   SEMANTIC_GRAPH_VERSION,
+  SEMANTIC_GRAPH_CONTENT_LANGUAGE,
 } from '../../skills/excavator/semantic-graph.mjs';
 
 const fileNodeId = (path) => deriveNodeId({ type: 'file', path });
@@ -37,6 +38,7 @@ describe('semantic-graph.mjs — buildSemanticGraph', () => {
       factDigest: 'abc123', factNodeIds, layers: [layer], generatedAt: '2024-01-01T00:00:00.000Z',
     });
     expect(semanticGraph.version).toBe(SEMANTIC_GRAPH_VERSION);
+    expect(semanticGraph.contentLanguage).toBe(SEMANTIC_GRAPH_CONTENT_LANGUAGE);
     expect(semanticGraph.factDigest).toBe('abc123');
     expect(semanticGraph.layers).toHaveLength(1);
     // sorted, but both entries are real ids that survive verbatim.
@@ -82,6 +84,51 @@ describe('semantic-graph.mjs — buildSemanticGraph', () => {
     expect(gaps).toEqual([]);
   });
 
+  it('audits the final sorted relation positions so a valid graph remains writable', () => {
+    const { semanticGraph, gaps } = buildSemanticGraph({
+      factDigest: 'd1',
+      factNodeIds,
+      relations: [
+        {
+          id: 'relation:z', type: 'calls',
+          source: fileNodeId('src/a.ts'), target: fileNodeId('src/b.ts'),
+          description: 'Calls the service.',
+        },
+        {
+          id: 'relation:a', type: 'calls',
+          source: fileNodeId('src/a.ts'), target: fileNodeId('src/b.ts'),
+        },
+      ],
+    });
+
+    expect(gaps).toEqual([]);
+    expect(semanticGraph.relations.map((relation) => relation.id)).toEqual([
+      'relation:a', 'relation:z',
+    ]);
+    expect(semanticGraph.languageAudit.accepted.map((entry) => entry.fieldPath))
+      .toContain('relations[1].description');
+    expect(() => writeSemanticGraph('/virtual', semanticGraph, {
+      fsImpl: { mkdirSync() {}, writeFileSync() {}, renameSync() {} },
+    })).not.toThrow();
+  });
+
+  it('records a dropped invalid relation as a structural gap without auditing its discarded prose', () => {
+    const { semanticGraph, gaps, languageAudit } = buildSemanticGraph({
+      factDigest: 'd1',
+      factNodeIds,
+      relations: [{
+        id: 'relation:invalid', type: 'calls',
+        source: fileNodeId('src/a.ts'), target: 'file:src/ghost.ts',
+        description: '这段文字不会被保存。',
+      }],
+    });
+
+    expect(semanticGraph).not.toBeNull();
+    expect(semanticGraph.relations).toEqual([]);
+    expect(languageAudit).toMatchObject({ status: 'accepted', inspected: 0 });
+    expect(gaps.some((gap) => gap.kind === 'relation-endpoint-unmappable')).toBe(true);
+  });
+
   it('drops a relation whole when either endpoint is unmappable, as a gap — never a dangling reference', () => {
     const relation = {
       id: 'relation:1', type: 'depends_on',
@@ -103,27 +150,125 @@ describe('semantic-graph.mjs — buildSemanticGraph', () => {
   it('throws without a factDigest — the overlay must always be keyed', () => {
     expect(() => buildSemanticGraph({ factNodeIds })).toThrow(/factDigest/);
   });
+
+  it('rejects a Chinese model-owned field with visible conserved buckets', () => {
+    const { semanticGraph, gaps, languageAudit } = buildSemanticGraph({
+      factDigest: 'd1',
+      factNodeIds,
+      layers: [{
+        id: 'layer:app', name: 'Application', description: '处理请假请求。',
+        nodeIds: [fileNodeId('src/a.ts')],
+      }],
+    });
+
+    expect(semanticGraph).toBeNull();
+    expect(gaps).toEqual([expect.objectContaining({
+      kind: 'noncanonical-language', scope: 'semantic-graph', count: 1,
+    })]);
+    expect(languageAudit.rejected).toEqual([
+      expect.objectContaining({ fieldPath: 'layers[0].description', reason: 'noncanonical-language' }),
+    ]);
+    expect(languageAudit.inspected).toBe(languageAudit.accepted.length + languageAudit.rejected.length);
+  });
+
+  it('accepts and preserves an exact non-English fact-node name quoted in model prose', () => {
+    const nonEnglishId = 'function:src/leave.ts:提交请假';
+    const layer = {
+      id: 'layer:leave', name: 'Leave',
+      description: 'Calls 提交请假 after validation.', nodeIds: [nonEnglishId],
+    };
+    const { semanticGraph, languageAudit } = buildSemanticGraph({
+      factDigest: 'd1',
+      factNodeIds: new Set([nonEnglishId]),
+      factGraph: {
+        project: { name: 'fixture', languages: ['typescript'], frameworks: [] },
+        nodes: [{ id: nonEnglishId, name: '提交请假', filePath: 'src/leave.ts' }],
+      },
+      layers: [layer],
+    });
+
+    expect(semanticGraph.layers[0].description).toBe(layer.description);
+    expect(languageAudit.status).toBe('accepted');
+    expect(languageAudit.accepted).toContainEqual(expect.objectContaining({
+      fieldPath: 'layers[0].description', maskedSourceSpans: ['提交请假'],
+      valueDigest: expect.stringMatching(/^sha256:[a-f0-9]{64}$/),
+    }));
+  });
+
+  it('ignores model-declared source spans and rejects the candidate', () => {
+    const { semanticGraph, languageAudit } = buildSemanticGraph({
+      factDigest: 'd1',
+      factNodeIds,
+      layers: [{
+        id: 'layer:leave', name: 'Leave',
+        description: 'Calls 提交请假 after validation.',
+        nodeIds: [fileNodeId('src/a.ts')],
+        sourceOwnedSpans: ['提交请假'],
+      }],
+    });
+
+    expect(semanticGraph).toBeNull();
+    expect(languageAudit.rejected[0]).toMatchObject({
+      fieldPath: 'layers[0].description', unverifiedSpans: ['提交请假'],
+    });
+  });
 });
 
 describe('semantic-graph.mjs — resolveArchitectureAction (factDigest gate)', () => {
+  const current = (factDigest) => ({
+    version: SEMANTIC_GRAPH_VERSION,
+    contentLanguage: SEMANTIC_GRAPH_CONTENT_LANGUAGE,
+    languageAudit: { status: 'accepted', inspected: 0, accepted: [], rejected: [] },
+    factDigest,
+  });
+
   it('reports rebuild when there is no existing semantic-graph.json', () => {
-    const { action } = resolveArchitectureAction({ currentFactDigest: 'abc', existing: null });
+    const { action, status } = resolveArchitectureAction({ currentFactDigest: 'abc', existing: null });
     expect(action).toBe('rebuild');
+    expect(status).toBe('missing');
   });
 
   it('reports reuse when factDigest is unchanged', () => {
-    const { action, reason } = resolveArchitectureAction({
-      currentFactDigest: 'abc', existing: { factDigest: 'abc' },
+    const { action, status, reason } = resolveArchitectureAction({
+      currentFactDigest: 'abc', existing: current('abc'),
     });
     expect(action).toBe('reuse');
+    expect(status).toBe('fresh');
     expect(reason).toMatch(/unchanged/);
   });
 
+  it('rebuilds when prose changes after its accepted audit was created', () => {
+    const { semanticGraph } = buildSemanticGraph({
+      factDigest: 'abc',
+      factNodeIds: new Set(['file:a.ts']),
+      layers: [{
+        id: 'layer:app', name: 'Application', description: 'Handles requests.',
+        nodeIds: ['file:a.ts'],
+      }],
+    });
+    semanticGraph.layers[0].description = '处理请求。';
+
+    expect(resolveArchitectureAction({ currentFactDigest: 'abc', existing: semanticGraph }))
+      .toMatchObject({ action: 'rebuild', status: 'noncanonical-language' });
+  });
+
   it('reports rebuild when factDigest changed', () => {
-    const { action } = resolveArchitectureAction({
-      currentFactDigest: 'def', existing: { factDigest: 'abc' },
+    const { action, status } = resolveArchitectureAction({
+      currentFactDigest: 'def', existing: current('abc'),
     });
     expect(action).toBe('rebuild');
+    expect(status).toBe('stale');
+  });
+
+  it.each([
+    ['missing marker', { version: SEMANTIC_GRAPH_VERSION, factDigest: 'abc' }],
+    ['non-English marker', { version: SEMANTIC_GRAPH_VERSION, contentLanguage: 'zh', factDigest: 'abc' }],
+    ['old schema', { version: '1.0.0', contentLanguage: SEMANTIC_GRAPH_CONTENT_LANGUAGE, factDigest: 'abc' }],
+    ['missing field audit', { version: SEMANTIC_GRAPH_VERSION, contentLanguage: SEMANTIC_GRAPH_CONTENT_LANGUAGE, factDigest: 'abc' }],
+  ])('reports visible noncanonical-language for %s', (_label, existing) => {
+    const result = resolveArchitectureAction({ currentFactDigest: 'abc', existing });
+    expect(result).toMatchObject({ action: 'rebuild', status: 'noncanonical-language' });
+    expect(result.reason).toContain('noncanonical-language');
   });
 });
 
@@ -131,6 +276,7 @@ describe('semantic-graph.mjs — mergeExtraGapsIntoExisting (reuse branch does n
   it('replaces prior patch-origin gaps with fresh ones while keeping layer/relation gaps from the last real build', () => {
     const existing = {
       version: SEMANTIC_GRAPH_VERSION,
+      contentLanguage: SEMANTIC_GRAPH_CONTENT_LANGUAGE,
       factDigest: 'abc',
       layers: [{ id: 'layer:app', name: 'App', description: 'd', nodeIds: ['file:a.ts'] }],
       relations: [],
@@ -183,5 +329,19 @@ describe('semantic-graph.mjs — collectFactNodeIds / read / write round trip', 
     expect(existsSync(outPath)).toBe(true);
     expect(readSemanticGraph(root)).toEqual(semanticGraph);
     expect(JSON.parse(readFileSync(outPath, 'utf-8')).factDigest).toBe('zzz');
+    expect(JSON.parse(readFileSync(outPath, 'utf-8')).contentLanguage).toBe('en');
+  });
+
+  it('refuses an unaudited graph without overwriting the current product', () => {
+    const { semanticGraph } = buildSemanticGraph({ factDigest: 'old', factNodeIds: new Set() });
+    const outPath = writeSemanticGraph(root, semanticGraph);
+    const before = readFileSync(outPath, 'utf-8');
+
+    expect(() => writeSemanticGraph(root, {
+      version: SEMANTIC_GRAPH_VERSION,
+      contentLanguage: SEMANTIC_GRAPH_CONTENT_LANGUAGE,
+      factDigest: 'new', layers: [], relations: [], gaps: [],
+    })).toThrow(/refusing to write/);
+    expect(readFileSync(outPath, 'utf-8')).toBe(before);
   });
 });

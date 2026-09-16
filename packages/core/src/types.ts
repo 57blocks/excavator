@@ -215,9 +215,28 @@ export interface ProjectMeta {
   model?: string;
 }
 
+export interface SemanticLanguageAuditField {
+  fieldPath: string;
+  valueDigest: string;
+  maskedSourceSpans?: string[];
+  reason?: "noncanonical-language";
+  unverifiedSpans?: string[];
+}
+
+export interface SemanticLanguageAudit {
+  status: "accepted" | "rejected";
+  inspected: number;
+  accepted: SemanticLanguageAuditField[];
+  rejected: SemanticLanguageAuditField[];
+}
+
 // Root KnowledgeGraph
 export interface KnowledgeGraph {
   version: string;
+  /** Present on persisted model-semantic products; writers currently fix it to English. */
+  contentLanguage?: string;
+  /** Deterministic terminal buckets for every persisted model-owned prose field. */
+  languageAudit?: SemanticLanguageAudit;
   kind?: "codebase" | "knowledge" | "design";
   project: ProjectMeta;
   nodes: GraphNode[];
@@ -239,10 +258,10 @@ export interface AnalysisMeta {
   analyzedFiles: number;
 }
 
-// Project config (for auto-update opt-in and language preference)
+// Project config. Unknown current keys are preserved during normalization.
 export interface ProjectConfig {
   autoUpdate: boolean;
-  outputLanguage?: string;
+  [key: string]: unknown;
 }
 
 // Non-code structural sub-interfaces

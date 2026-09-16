@@ -31,9 +31,17 @@ The knowledge graph JSON has this structure:
 
 ## Instructions
 
+0. **Capture request-local state before retrieval.** Keep these values in working memory only:
+   - `$ORIGINAL_QUESTION` — copy `$ARGUMENTS` exactly, including its original language and any explicit answer-language request. Never replace it with a translation or normalized query.
+   - `$ENGLISH_RETRIEVAL_EXPRESSIONS` — in this same inference, derive a short list of English business/code search expressions and common code synonyms. This list is for retrieval only, not for answering.
+   - `$LITERAL_IDENTIFIERS` — copy any exact code identifiers or source-owned literals separately; non-English identifiers belong here, not in the English expression list.
+   - Three language signals: an explicit requested answer language, the current question's predominant natural language, and the most recent confidently identifiable conversation language. Use `null` for an identifier-only question or an unavailable signal.
+
+   After `$PLUGIN_ROOT` is resolved in step 2, pass those values to `createChatRequestState()` from `<PLUGIN_ROOT>/skills/excavator-chat/request-language.mjs`. Keep the returned state in memory. It deliberately has no `answerLanguage` yet. If an English retrieval expression is rejected, regenerate that expression in English while keeping `$ORIGINAL_QUESTION` and `$LITERAL_IDENTIFIERS` unchanged. **Do not persist request or answer language** to config, cache, graph, metadata, or any other `.excavator/` file.
+
 1. **Check that `.excavator/knowledge-graph.json` exists** in the current project root. If not, tell the user to run `/excavator` first.
 
-2. **Check graph freshness before using graph-derived context** (openspec: changes/full-semantic-isolation, capability `consumer-freshness`) — via the ONE shared, deterministic freshness helper, instead of this skill computing its own gitCommitHash/git-diff comparison:
+2. **Check graph freshness before using graph-derived context** — use the ONE shared, deterministic freshness helper instead of computing a separate gitCommitHash/git-diff comparison in this skill:
    - Resolve `$PROJECT_ROOT` and `$PLUGIN_ROOT`:
      ```bash
      PROJECT_ROOT="$(pwd)"
@@ -53,41 +61,97 @@ The knowledge graph JSON has this structure:
      ```
    - It prints `{ status, currentSourceRevision, manifestSourceRevision, reason }` as JSON. `status` is `fresh`, `stale`, or `missing`: it compares the CURRENT `sourceRevision` — resolved via SourceSnapshot, so a git project reads HEAD only (an uncommitted working-tree change never flips this — no working-tree leak) and a plain-directory project is guarded by a content hash over every tracked file (any content drift is caught) — against the `sourceRevision` persisted in `.excavator/source-manifest.json`.
    - `stale`: warn before answering that graph-derived context may omit recent changes. Suggest: Run `/excavator` to refresh the graph.
-   - `missing` (no `source-manifest.json` yet — an older project, or one built before this capability): give a brief best-effort note and continue instead of blocking.
+   - `missing` (no `source-manifest.json` yet): give a brief best-effort note and continue instead of blocking.
    - `fresh`: proceed with no warning.
 
 3. **Read project metadata only** — use Grep or Read with a line limit to extract just the `"project"` section from the top of the file for context (name, description, languages, frameworks).
 
-4. **Search for relevant nodes** — use Grep to search the knowledge graph file for the user's query keywords: "$ARGUMENTS"
+4. **Choose the request-local route** — follow the ordered intent contract under **Lazy mode** below. Judge the operation and scope requested by `$ORIGINAL_QUESTION`; topic words in `$ENGLISH_RETRIEVAL_EXPRESSIONS` do not choose the primitive. Keep this semantic decision in the current inference and do not persist it.
+
+5. **Search for relevant nodes** — use Grep to search the knowledge graph with `$ENGLISH_RETRIEVAL_EXPRESSIONS` plus `$LITERAL_IDENTIFIERS`. Keep `$ORIGINAL_QUESTION` intact for intent and final presentation; do not substitute it with the English expressions.
    - Search `"name"` fields: `grep -i "query_keyword"` in the graph file
    - Search `"summary"` fields for semantic matches
    - Search `"tags"` arrays for topic matches
    - Note the `id` values of all matching nodes
 
-5. **Find connected edges** — for each matched node ID, Grep for that ID in the `edges` section to find:
+6. **Read only the graph scope authorized by the chosen route** — `source-first` reads current source without graph expansion; `inventory` reads the available Domain/flow inventory without substituting a repository graph flood. For `one-hop`, `bounded-bfs`, or `bounded-shortest-path`, inspect only the selected fact-edge scope. When applicable, connected edges show:
    - What it imports or depends on (downstream)
    - What calls or imports it (upstream)
-   - This gives you the 1-hop subgraph around the query
+   - The bounded subgraph authorized by the selected primitive
 
-6. **Read layer context** — Grep for `"layers"` to understand which architectural layers the matched nodes belong to.
+7. **Read layer context when useful** — Grep for `"layers"` only when architectural context helps answer the chosen scope.
 
-7. **Answer the query** using only the relevant subgraph:
+8. **Answer the query** using only the verified evidence within the chosen scope:
    - Reference specific files, functions, and relationships from the graph
    - Explain which layer(s) are relevant and why
    - Be concise but thorough — link concepts to actual code locations
    - If the query doesn't match any nodes, say so and suggest related terms from the graph
+
+### Evidence verification gate and answer language
+
+This gate applies to every route above and below, including direct structural answers and honest-degrade responses.
+
+1. **Evidence verification gate:** before producing answer prose, check every code or business claim against current fact nodes/edges or current source text. A semantic cache entry, summary, layer description, domain result, or English retrieval expression can select where to inspect, but is not evidence by itself. Preserve exact code identifiers and quoted source spans in their source language.
+2. Only after that check, call `finalizeVerifiedAnswerLanguage($CHAT_REQUEST_STATE, { evidenceVerified: true })` from `request-language.mjs`. The helper applies this precedence: explicit answer-language request → current question's predominant natural language → recent identifiable conversation language → English. An identifier-only question therefore falls back to recent conversation language, then English.
+3. Write the final answer in the returned `answerLanguage`. Restate the verified conclusions naturally in that language; do not translate a cached English summary and present the translation as evidence.
+4. Do not persist the selected answer language or rewritten answer. Answer-language changes must leave `.excavator/config.json`, `knowledge-graph.json`, and every semantic product unchanged except for independently justified English node-local cache writes from step (c).
 
 ## Lazy mode: answer structural questions directly, retrieve on-demand for semantic ones
 
 A Lazy graph carries deterministic facts only: node `summary` is empty and `tags`/`layers` may be empty. Route by question type:
 
 - **Structural questions** (which files/symbols exist, which methods a class has, who imports or calls whom, a node's 1-hop neighbours, contains/depends relationships): answer straight from the fact nodes and fact edges — grep `id` / `name` / `type` and the `edges` (`contains` / `imports` / `calls` / `exports`). **No summary is needed, and do not trigger any semantic supplement, hybrid retrieval, or whole-project analysis.**
-- **Semantic questions** (what a module/service is responsible for, business meaning, a cross-file business flow, especially when phrased in a business/domain language such as Chinese over English-named code): follow the **hybrid retrieval** recipe below (openspec: changes/hybrid-retrieval) instead of degrading immediately.
+- **Semantic questions** (what a module/service is responsible for, business meaning, a cross-file business flow, especially when phrased in a business/domain language such as Chinese over English-named code): follow the **hybrid retrieval** recipe below instead of degrading immediately.
 - Fact edges (`calls` / `imports` / `contains` / `exports`) and `gaps` are authoritative: to answer "can we be sure A calls B", go by the fact edge; a call the engine could not resolve is recorded in `gaps`, so say "the engine could not determine that connection" rather than guessing.
 
-### Hybrid retrieval for semantic questions (openspec: changes/hybrid-retrieval)
+### Request-local AI routing contract
 
-This on-demand path replaces Slice A's "always degrade honestly" for a semantic question. It stays the FALLBACK: fall back to it whenever a step below cannot complete (no model available for step (a), or the cache write in step (c) fails/is declined) — never fabricate to avoid degrading.
+Before recall or graph expansion, choose the first matching route by the
+operation and scope the user requests. This is an AI judgment held in working
+memory, not a persisted object or a keyword/regex classifier:
+
+1. `inventory` — repository-wide enumeration such as all user or business
+   flows. Use primitive `inventory`; never replace a missing inventory with one
+   repository-wide BFS.
+2. `local-condition` — fields, conditions, validation, requirements, or other
+   bounded facts about one operation. Prefer `source-first`; use `one-hop` only
+   when an immediate owner/caller relationship is needed.
+3. `explicit-path` — the user names both endpoints and asks how A reaches B.
+   Use `bounded-shortest-path`, at most 6 hops.
+4. `direct-neighbor` — direct callers, callees, imports, or dependants. Use
+   `one-hop` with `hopLimit: 1`.
+5. `flow` — an end-to-end flow, impact, or dependency exploration that is not
+   an explicit endpoint pair. Use `bounded-bfs` over separately bounded fact
+   segments.
+6. `source-locate` — locate current source or the best evidence when none of
+   the operations above applies. Use `source-first`.
+
+Higher-priority scope wins over lower-priority topic words. If code naming is
+irregular, abbreviated, or misspelled, first inspect the project tree, nearby
+identifiers, and small source snippets; then refine the English retrieval
+expressions with observed source-owned literals. Do not assume that a business
+word has a matching symbol name. For example:
+
+- “发布文章需要填写和校验哪些字段” is `local-condition` + `source-first`,
+  even if the wording also mentions a publishing flow; it does not run BFS.
+- “文章从编辑器提交到数据库如何流转” is `flow` + `bounded-bfs`; HTTP/API
+  gaps are source-verified boundaries between fact segments, not invented
+  graph edges.
+- “How does component A reach component B?” is `explicit-path` +
+  `bounded-shortest-path`.
+- “Who calls `createArticle` directly?” is `direct-neighbor` + `one-hop`.
+
+Keep the chosen route, English retrieval expressions, source-owned literals,
+hop bound, and resource boundaries in request-local working memory. Recall is
+at most 20; graph expansion is at most 5 seeds, 80 nodes, and 160 edges;
+shortest path is at most 6 hops; assembled context stays near 12,000 tokens.
+Check the choice against this ordered contract before graph execution. If it is
+incompatible, narrow or correct the route rather than falling back to a broader
+primitive.
+
+### Hybrid retrieval for semantic questions
+
+This on-demand path is the FALLBACK for semantic questions: use it whenever a step below cannot complete (no model available for step (a), or the cache write in step (c) fails/is declined) — never fabricate to avoid degrading.
 
 **Resolve `$PLUGIN_ROOT` and `$DATA_DIR` first** (only needed for this path — the structural path above never needs them):
 
@@ -105,9 +169,9 @@ for candidate in "${CLAUDE_PLUGIN_ROOT}" "$HOME/.excavator-plugin" "$SELF_RELATI
 done
 ```
 
-If `$PLUGIN_ROOT` cannot be resolved, or `$DATA_DIR/source-index.json` does not exist (an older Lazy graph built before this slice), fall back to the honest degrade: say plainly that this semantics has not been generated/retrieved yet and suggest `/excavator --mode=full` or re-running `/excavator` to produce a `source-index.json`. **Do not auto-trigger Full** — whether to fill semantics for the whole project is the user's explicit choice.
+If `$PLUGIN_ROOT` cannot be resolved, or `$DATA_DIR/source-index.json` does not exist, fall back to the honest degrade: say plainly that this semantics has not been generated/retrieved yet and suggest `/excavator --mode=full` or re-running `/excavator` to produce a `source-index.json`. **Do not auto-trigger Full** — whether to fill semantics for the whole project is the user's explicit choice.
 
-**(a) Expand the question into code search terms — same inference, no subagent.** Before running any retrieval, produce (as part of this same reasoning turn) a short list of English/code search terms for the user's question: literal identifiers you already suspect, English translations of the business terms, and common code synonyms (e.g. a non-English business question about placing an order might expand to `order`, `createOrder`, `checkout`, `placeOrder`). Do **not** dispatch a separate query-expansion agent/subagent for this — the whole point of same-inference expansion is that it costs no extra model round trip.
+**(a) Use the request-local search expressions — same inference, no subagent.** Use `$ENGLISH_RETRIEVAL_EXPRESSIONS` and `$LITERAL_IDENTIFIERS` captured before retrieval. For example, a non-English business question about placing an order might produce English/code expressions such as `order`, `createOrder`, `checkout`, `placeOrder`, while `$ORIGINAL_QUESTION` remains byte-for-byte unchanged. Do **not** dispatch a separate query-expansion agent/subagent for this — the whole point of same-inference expansion is that it costs no extra model round trip.
 
 **(b) Retrieve — merge candidates, then traverse within budget.**
 
@@ -123,7 +187,7 @@ If `$PLUGIN_ROOT` cannot be resolved, or `$DATA_DIR/source-index.json` does not 
    " -- <term1> <term2> ...
    ```
 3. Source-text hits: Grep the project source tree directly for the same terms (this IS the "SourceSnapshot source-text search" candidate source — no script needed, a project-root Grep is the source of truth for current text).
-4. Valid semantic-cache hits: read `$DATA_DIR/semantic-cache.json` (if present) and keep only entries whose `semanticSourceHash` still matches that file's CURRENT `contentHash` in `$DATA_DIR/source-manifest.json` — i.e. only entries `isFresh` would call fresh:
+4. Valid semantic-cache hits: read `$DATA_DIR/semantic-cache.json` (if present) and keep only entries whose cache has the current schema plus `contentLanguage: "en"` and whose `semanticSourceHash` still matches that file's CURRENT `contentHash` in `$DATA_DIR/source-manifest.json` — i.e. only entries `isFresh(entry, hash, cache)` would call fresh. A missing or non-English cache marker is visibly `noncanonical-language`, never a retrieval candidate:
    ```bash
    node --input-type=module -e "
    import { readFileSync, existsSync } from 'node:fs';
@@ -133,41 +197,109 @@ If `$PLUGIN_ROOT` cannot be resolved, or `$DATA_DIR/source-index.json` does not 
    const cache = JSON.parse(readFileSync(cachePath, 'utf-8'));
    const manifest = JSON.parse(readFileSync('$DATA_DIR/source-manifest.json', 'utf-8'));
    const hashOf = (path) => manifest.entries.find((e) => e.path === path)?.contentHash ?? null;
+   // Pass the complete cache as the third argument so schema/language identity
+   // is checked together with the entry's source hash.
    // fill in nodeId -> filePath from the knowledge-graph nodes you already matched
    "
    ```
    Only a hash-fresh entry's `summary`/`tags` text may feed retrieval — a stale or missing entry is simply not a candidate (never partially trusted).
-5. Merge all four lists with `mergeCandidates` (weights an exact id/symbol/path match highest, then source-search, semantic-cache, BM25 — see `$PLUGIN_ROOT/skills/excavator/retrieve.mjs`'s own doc comment for the exact rationale):
+5. Merge all four lists with `mergeCandidates` (weights an exact id/symbol/path match highest, then source-search, semantic-cache, BM25 — see `$PLUGIN_ROOT/skills/excavator/retrieve.mjs`'s own doc comment for the exact rationale), then keep the first 20 ranked candidates as the recall pool. Keep the other evidence locations available for direct source checking, but do not turn them into traversal seeds:
    ```bash
    node --input-type=module -e "
    import { mergeCandidates } from '$PLUGIN_ROOT/skills/excavator/retrieve.mjs';
-   console.log(JSON.stringify(mergeCandidates({ exact, bm25, sourceSearch, semanticCacheText })));
+   console.log(JSON.stringify(mergeCandidates({ exact, bm25, sourceSearch, semanticCacheText }).slice(0, 20)));
    "
    ```
-6. Pick ONE traversal primitive over the fact edges in `knowledge-graph.json` (`contains`/`imports`/`exports`/`calls` only — a semantic/domain edge, if any exist, never supplies a path, only ranking), based on the question's shape:
-   - "locate this" / "who calls this directly" -> `oneHop(edges, seedIds)`
-   - "what does this flow/process affect" / dependency questions -> `boundedBFS(edges, seedIds)` (default 4 hops)
-   - "how does A reach B" (an explicit pair) -> `boundedShortestPath(edges, seedIds, targetIds)` (default 6 hops)
+6. Pick ONE traversal primitive authorized by the current AI route. Over fact edges, only `contains`/`imports`/`exports`/`calls` are traversable — a semantic/domain edge, if any exist, never supplies a path, only ranking:
+   - `inventory` -> follow the inventory protocol below; do not call a fact-graph traversal primitive
+   - `source-first` -> inspect current source; do not call a graph traversal primitive
+   - `one-hop` -> `oneHop(edges, seedIds)`
+   - `bounded-bfs` -> `boundedBFS(edges, seedIds)`
+   - `bounded-shortest-path` -> `boundedShortestPath(edges, seedIds, targetIds)`
 
-   All three return a `boundary` object (`reason`, `truncated`, budgets). **If `boundary.truncated` is true, say so in the answer** — name what was covered and that the graph was larger than the budget (seed ≤20 / nodes ≤80 / edges ≤160 / ~12k tokens of context), rather than presenting a partial subgraph as the whole picture.
+   Before calling a graph primitive, map recall candidates to the CURRENT fact
+   graph. Select at most 5 unique ids that are relevant to the requested
+   operation; do not simply pass all 20 recalled candidates. A shortest-path
+   request also needs a non-empty current target. Put stale, unmapped, or
+   out-of-scope candidates in visible gaps and continue with the remaining
+   recall pool.
 
-**(c) Generate and cache a NODE-LOCAL summary, on demand.** For each node your answer actually needs to explain, read that node's own source (its `filePath`/`lineRange` from `knowledge-graph.json`, or the chunk's own text from `source-index.json`) and write a summary of ONLY that node's own responsibility. Persist it via `semantic-cache.mjs` **only when all three cacheable conditions hold**: you read the node's full local source range, the summary reliably captures that node's OWN responsibility, and it depends on no unverified cross-file inference. Never persist a cross-file conclusion, a business flow, or answer text — the module enforces this with a field whitelist regardless, but do not even attempt it for content you know is out of scope.
+   All three graph primitives return a `boundary` object (`reason`,
+   `truncated`, effective budgets). Report the actual reason and coverage even
+   when the result is not truncated. **If `boundary.truncated` is true, say so
+   in the answer** — name what was covered and what remains uncovered (seed ≤5
+   / nodes ≤80 / edges ≤160 / ~12k tokens of context), rather than presenting a
+   partial subgraph as the whole picture.
+
+### Inventory and segmented-flow protocols
+
+For repository-wide flow enumeration, run the shared Domain freshness check
+before reading `.excavator/domain-graph.json`:
+
+```bash
+node "$PLUGIN_ROOT/skills/excavator-domain/domain-freshness.mjs" "$PROJECT_ROOT"
+```
+
+If it returns `usable: true`, use stable Domain/flow identities to form a
+coverage-aware inventory, then expand flows in bounded batches and re-verify
+their details against current facts/source. If it is missing, stale, or
+otherwise unusable, report `inventory-unavailable`, the freshness reason,
+coverage, and gaps; suggest `/excavator-domain`; and do not replace the missing
+inventory with one repository-wide BFS or claim all flows were found.
+
+For an end-to-end flow, select separate relevant anchors for each
+fact-connected segment and traverse each segment within the same 5/80/160 hard
+fuses. HTTP/API literals, queue topics, dynamic framework wiring, ORM/model
+lookup, or other boundaries without fact edges are not graph paths. Inspect
+current source on both sides of such a boundary and label the result a
+`source-verified bridge`; then begin a separately bounded fact segment from the
+verified downstream anchor. Never describe the combined segments as one
+continuous or directed graph traversal.
+
+Before answering, list stale navigation candidates and uncovered segments as
+gaps. For every field or validation statement, verify frontend UI behavior and
+backend enforcement independently; a UI prompt or `required` attribute does
+not prove a server-side requirement.
+
+**(c) Freeze the bounded need set, plan reuse, then generate only the difference.** After candidate merge and bounded fact-edge traversal, select the exact node ids that this answer actually needs explained. Keep them within the traversal boundary and deduplicate them by exact id in first-occurrence order. This `$NEEDED_NODE_IDS` list is fixed before any semantic generation.
+
+Invoke the read-only planner with every needed id as a separate `--node-id` argument. Never concatenate ids into a command string, evaluate them as shell/code, or treat their contents as options. For example, repeated arguments are safe when each exact id is a separately quoted argument:
+
+```bash
+node "$PLUGIN_ROOT/skills/excavator/semantic-cache-reuse.mjs" "$PROJECT_ROOT" \
+  --node-id 'function:src/article.ts:favorite()' \
+  --node-id 'function:src/article.ts:unfavorite()' \
+  --node-id 'function:src/article.ts:favorite()'
+```
+
+The planner reads the current fact graph, source manifest, and semantic cache for this invocation, then returns `reuse[]`, `generate[]`, `unavailable[]`, and conserving `counts`:
+
+- `reuse[]` is seed/context only. Recheck current facts or source before using any related claim. Never send a reused node to the generator or semantic-cache writer, and never restamp or rewrite its entry.
+- `generate[]` is the only semantic generation loop. Treat each generate item as frozen for this turn. For each item, first read the containing file's complete bytes and confirm their SHA-256 equals that item's `currentContentHash`; this whole-file comparison is the file-level freshness authority. If it does not match, stop processing that item and re-plan. Once it matches, keep that verified file snapshot fixed and extract the node's full local source range from the same snapshot using its `filePath`/`lineRange` in `knowledge-graph.json` (a file node uses the whole file). Do not compare a node-range hash to `currentContentHash` and do not reread a different snapshot for generation. Then write the model-owned `summary` and `tags` in **English**, regardless of the user's question language. Preserve source-owned identifiers and literals verbatim and describe ONLY that node's own responsibility.
+- `unavailable[]` is a visible degraded result. Report each unavailable node id and its `unknown-node` or `path-not-in-manifest` reason; never generate or write semantics for it.
+
+An all-fresh plan means zero generator calls, zero semantic-cache writer calls, and a byte-identical `semantic-cache.json`, including every existing entry's model, `generatedAt`, and audit. For an overlapping question, preserve every `reuse[]` intersection entry byte-for-byte and generate/commit only the `generate[]` difference. A repeated plan after that commit should reuse the newly fresh entries without another write.
+
+Only a verified `generate[]` item may reach `commitSemanticCacheEntry`. Its frozen `currentContentHash` is the only allowed `semanticSourceHash` for the summary generated in this turn. You may re-read the manifest or source to recheck evidence, but MUST NOT replace the planned hash with a later hash; passing the frozen hash lets the writer's CAS reject any post-plan drift. Persist it **only when all three cacheable conditions hold**: you read the node's full local source range, the summary reliably captures that node's OWN responsibility, and it depends on no unverified cross-file inference. Never persist a cross-file conclusion, a business flow, or answer text — the module enforces this with a field whitelist regardless, but do not even attempt it for content you know is out of scope.
 
 ```bash
 node --input-type=module -e "
-import { readFileSync } from 'node:fs';
 import { commitSemanticCacheEntry } from '$PLUGIN_ROOT/skills/excavator/semantic-cache.mjs';
-const manifest = JSON.parse(readFileSync('$DATA_DIR/source-manifest.json', 'utf-8'));
-const filePath = '<the node\'s filePath>';
-const semanticSourceHash = manifest.entries.find((e) => e.path === filePath)?.contentHash;
+// Repeat this block only for one verified item from plan.generate.
+const generateItem = {
+  nodeId: '<exact plan.generate[].nodeId>',
+  filePath: '<exact plan.generate[].filePath>',
+  currentContentHash: '<exact plan.generate[].currentContentHash>',
+};
+const plannedSemanticSourceHash = generateItem.currentContentHash;
 const result = await commitSemanticCacheEntry({
   projectRoot: '$PROJECT_ROOT',
-  nodeId: '<the node id you just summarized>',
-  filePath,
+  nodeId: generateItem.nodeId,
+  filePath: generateItem.filePath,
   fields: {
     summary: '<one paragraph about ONLY this node\'s own responsibility>',
     tags: ['<short local tags>'],
-    semanticSourceHash,
+    semanticSourceHash: plannedSemanticSourceHash,
     model: '<this model id>',
     generatedAt: new Date().toISOString(),
   },
@@ -176,9 +308,9 @@ console.log(JSON.stringify(result));
 "
 ```
 
-`result.ok === false` (a rejected field, a stale CAS hash, a held lock, or an I/O error) is expected occasionally and MUST NOT block the answer — the summary you already generated is still valid for THIS answer, it simply was not persisted for reuse.
+`result.ok === false` (noncanonical language, a rejected field, a stale CAS hash, a held lock, or an I/O error) is expected occasionally and MUST NOT block the answer — the verified summary generated for THIS answer remains available for this answer, but the cache entry was not committed. Recheck or qualify affected claims if current evidence moved after planning.
 
-**(d) Seeds are re-verified before they enter the answer.** A semantic-cache or domain hit from step (b)/(c) only ever SEEDS which nodes/files to look at — it is never itself the evidence for a claim in the final answer. Before a conclusion derived from such a hit goes into the answer, re-check it against the fact graph's edges/nodes or the current source text (via SourceSnapshot/Grep on the project root). If it does not hold up, drop or qualify the claim; do not present an unverified cached seed as a checked fact.
+**(d) Seeds are re-verified before they enter the answer.** A semantic-cache or domain hit from step (b)/(c) only ever SEEDS which nodes/files to look at — it is never itself the evidence for a claim in the final answer. Before a conclusion derived from such a hit goes into the answer, re-check it against the fact graph's edges/nodes or the current source text (via SourceSnapshot/Grep on the project root). If it does not hold up, drop or qualify the claim; do not present an unverified cached seed as a checked fact. Once this and the global **Evidence verification gate** are complete, finalize the answer language; never choose it early merely because retrieval used English expressions.
 
 **(e) Structural questions never trigger this path.** If the question is purely structural (per the routing at the top of this section), answer directly from facts as before — do not run query expansion, retrieval, or semantic-cache generation for it.
 

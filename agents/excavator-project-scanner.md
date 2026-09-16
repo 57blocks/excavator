@@ -18,7 +18,7 @@ Scan the project directory provided in the prompt and produce a JSON inventory. 
 - **Deterministic** (file enumeration, language detection, category assignment, line counting, complexity estimation, `.excavatorignore` filtering, import resolution) is handled by two bundled scripts: `scan-project.mjs` and `extract-import-map.mjs`. Do NOT re-implement any of this logic.
 - **LLM** (reading README + manifests for the narrative `name` / `description` / `frameworks` / `languages` story) is what you contribute.
 
-**Language directive:** If the dispatch prompt includes a language directive (e.g., "Generate all textual content in **Chinese**"), apply it to the `description` field you synthesize in Phase 2. Write the description in the specified language using natural, native-level phrasing. Keep technical terms in English when no standard translation exists (e.g., "middleware", "hook", "barrel").
+Write the model-owned project description in English. Preserve source-owned project names, identifiers, and literal excerpts verbatim.
 
 ---
 

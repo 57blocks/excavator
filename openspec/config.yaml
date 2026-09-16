@@ -3,7 +3,7 @@ schema: spec-driven
 # Project context (optional)
 # This is shown to AI when creating artifacts.
 context: |
-  Excavator v2 rebuilds the Excavator investigation plugin on top of Understand-Anything (pinned upstream commit 5feed1f2, MIT; see NOTICE). Facts are written by deterministic scripts (tree-sitter structure, import map, ast-grep rule packs); prose is written by the host agent. Every statement carries evidence or is marked inferred; every input lands in a visible coverage bucket. Zero fabrication is a hard gate; coverage is a soft metric. Data directory is `.excavator/` (no legacy compatibility). Test corpora: wcp and cebreo only. Plan of record: the active changes under `openspec/changes/`. Each development step is one OpenSpec change and one PR.
+  Excavator v2 rebuilds the Excavator investigation plugin on top of Understand-Anything (pinned upstream commit 5feed1f2, MIT; see NOTICE). Facts are written by deterministic scripts (tree-sitter structure, import map, ast-grep rule packs); prose is written by the host agent. Every statement carries evidence or is marked inferred; every input lands in a visible coverage bucket. Zero fabrication is a hard gate; coverage is a soft metric. Data directory is `.excavator/` (no legacy compatibility). Test corpora are wcp and cebreo by default; the four Lazy retrieval hardening changes exceptionally use pinned commit 5e127d8569b300e0a21dc2c20ea680da4967b1aa of test-repo/conduit-realworld-example-app. Real-project source and generated outputs are never committed. Plan of record: the active changes under `openspec/changes/`. Each development step is one OpenSpec change and one PR.
 
 # Per-artifact rules (optional)
 # Add custom rules for specific artifacts.

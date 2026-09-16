@@ -4,9 +4,31 @@
 // over synthetic knowledge-graph/semantic-cache/source-manifest fixtures.
 import { describe, expect, it } from 'vitest';
 import { selectStaleFiles } from '../../skills/excavator/select-stale-semantics.mjs';
+import {
+  CANONICAL_CONTENT_LANGUAGE,
+  SEMANTIC_CACHE_VERSION,
+} from '../../skills/excavator/semantic-cache.mjs';
+import { auditSemanticCacheFields } from '../../skills/excavator/semantic-language-audit.mjs';
 
 function kg(paths) {
   return { nodes: paths.map((p) => ({ id: `file:${p}`, type: 'file', filePath: p })) };
+}
+
+function canonicalCache(entries) {
+  return {
+    version: SEMANTIC_CACHE_VERSION,
+    contentLanguage: CANONICAL_CONTENT_LANGUAGE,
+    entries,
+  };
+}
+
+function auditedEntry(summary, semanticSourceHash) {
+  const fields = { summary };
+  return {
+    summary,
+    semanticSourceHash,
+    languageAudit: auditSemanticCacheFields({ fields }),
+  };
 }
 
 describe('select-stale-semantics.mjs — selectStaleFiles', () => {
@@ -24,7 +46,7 @@ describe('select-stale-semantics.mjs — selectStaleFiles', () => {
   it('treats a file with a fresh cache entry (hash matches current manifest) as not stale', () => {
     const { staleFiles, freshFiles } = selectStaleFiles({
       knowledgeGraph: kg(['a.ts', 'b.ts']),
-      semanticCache: { entries: { 'file:a.ts': { summary: 'x', semanticSourceHash: 'h1' } } },
+      semanticCache: canonicalCache({ 'file:a.ts': auditedEntry('x', 'h1') }),
       manifest: { entries: [{ path: 'a.ts', contentHash: 'h1' }, { path: 'b.ts', contentHash: 'h2' }] },
     });
     expect(freshFiles).toEqual(['a.ts']);
@@ -32,7 +54,7 @@ describe('select-stale-semantics.mjs — selectStaleFiles', () => {
   });
 
   it('a changed file (new contentHash) makes a previously-fresh file stale again', () => {
-    const semanticCache = { entries: { 'file:a.ts': { summary: 'x', semanticSourceHash: 'h1-old' } } };
+    const semanticCache = canonicalCache({ 'file:a.ts': auditedEntry('x', 'h1-old') });
     const { staleFiles, freshFiles } = selectStaleFiles({
       knowledgeGraph: kg(['a.ts']),
       semanticCache,
@@ -49,7 +71,7 @@ describe('select-stale-semantics.mjs — selectStaleFiles', () => {
         { id: 'function:a.ts:run', filePath: 'a.ts' },
       ],
     };
-    const semanticCache = { entries: { 'file:a.ts': { summary: 'file summary', semanticSourceHash: 'h1' } } };
+    const semanticCache = canonicalCache({ 'file:a.ts': auditedEntry('file summary', 'h1') });
     const { staleFiles } = selectStaleFiles({
       knowledgeGraph,
       semanticCache,
@@ -60,13 +82,24 @@ describe('select-stale-semantics.mjs — selectStaleFiles', () => {
   });
 
   it('forceAll marks every file stale regardless of cache freshness', () => {
-    const semanticCache = { entries: { 'file:a.ts': { summary: 'x', semanticSourceHash: 'h1' } } };
+    const semanticCache = canonicalCache({ 'file:a.ts': auditedEntry('x', 'h1') });
     const { staleFiles, freshFiles } = selectStaleFiles({
       knowledgeGraph: kg(['a.ts']),
       semanticCache,
       manifest: { entries: [{ path: 'a.ts', contentHash: 'h1' }] },
       forceAll: true,
     });
+    expect(staleFiles).toEqual(['a.ts']);
+    expect(freshFiles).toEqual([]);
+  });
+
+  it('treats a hash-matching entry without the canonical marker as stale', () => {
+    const { staleFiles, freshFiles } = selectStaleFiles({
+      knowledgeGraph: kg(['a.ts']),
+      semanticCache: { version: '1.0.0', entries: { 'file:a.ts': { summary: 'x', semanticSourceHash: 'h1' } } },
+      manifest: { entries: [{ path: 'a.ts', contentHash: 'h1' }] },
+    });
+
     expect(staleFiles).toEqual(['a.ts']);
     expect(freshFiles).toEqual([]);
   });

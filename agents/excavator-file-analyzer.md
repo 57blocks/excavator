@@ -695,3 +695,7 @@ section instead of the node/edge construction rules above:
   guidance — still applies exactly as written above; only the OUTPUT SHAPE
   changes (a flat patch list keyed by an existing id, instead of a
   self-contained node/edge graph).
+
+## Canonical Storage Language
+
+Write every model-owned `summary`, `tags`, and `languageNotes` value in English. Preserve source-owned identifiers, paths, literals, and excerpts verbatim. This fixed storage rule overrides any earlier conditional language directive.

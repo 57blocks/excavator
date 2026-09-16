@@ -5,12 +5,30 @@
 // same-inference, not a subagent) and are intentionally NOT exercised here.
 import { describe, expect, it } from 'vitest';
 import {
+  bm25Search,
   mergeCandidates,
   oneHop,
   boundedBFS,
   boundedShortestPath,
   DEFAULT_TRAVERSAL_BUDGETS,
 } from '../../skills/excavator/retrieve.mjs';
+
+describe('bm25Search — recall remains separate from traversal seeds', () => {
+  it('retains up to 20 ranked candidates for recall', () => {
+    const chunks = Array.from({ length: 25 }, (_, index) => ({ id: `chunk:${index}` }));
+    const index = {
+      postings: { match: chunks.map(({ id }) => ({ chunkId: id, tf: 1 })) },
+      docLengths: Object.fromEntries(chunks.map(({ id }) => [id, 1])),
+      avgDocLength: 1,
+      N: chunks.length,
+      chunks,
+    };
+
+    const result = bm25Search(index, ['match'], 20);
+
+    expect(result).toHaveLength(20);
+  });
+});
 
 // ---------------------------------------------------------------------------
 // mergeCandidates — Requirement "candidates merged and ranked from multiple sources".
@@ -156,11 +174,14 @@ describe('budgeted traversal — hitting a budget stops expansion and reports th
     expect(truncated.boundary.truncated).toBe(true);
   });
 
-  it('a seed count over budget is itself reported as truncated', () => {
-    const manySeeds = Array.from({ length: 25 }, (_, i) => `node:${i}`);
+  it('a sixth seed is cut off and reported as a visible seed-budget boundary', () => {
+    const manySeeds = Array.from({ length: 6 }, (_, i) => `node:${i}`);
     const result = boundedBFS([], manySeeds, { budgets: DEFAULT_TRAVERSAL_BUDGETS });
     expect(result.boundary.reason).toBe('seed-budget');
-    expect(result.boundary.seedsUsed).toBe(DEFAULT_TRAVERSAL_BUDGETS.maxSeeds);
-    expect(result.boundary.seedsRequested).toBe(25);
+    expect(DEFAULT_TRAVERSAL_BUDGETS.maxSeeds).toBe(5);
+    expect(result.boundary.seedsUsed).toBe(5);
+    expect(result.boundary.seedsRequested).toBe(6);
+    expect(result.nodes).toEqual(manySeeds.slice(0, 5));
+    expect(result.nodes).not.toContain(manySeeds[5]);
   });
 });
