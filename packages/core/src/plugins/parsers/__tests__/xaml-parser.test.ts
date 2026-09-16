@@ -44,6 +44,30 @@ const SAMPLE_NO_DT = `<ContentPage xmlns="http://schemas.microsoft.com/dotnet/20
 </ContentPage>
 `;
 
+const COMMENTED_MARKUP = [
+  '<!-- <ContentPage x:Class="Demo.GhostPage" x:DataType="vm:Ghost" /> -->',
+  '<ContentPage x:Class="Demo.LivePage" x:DataType="vm:Page">',
+  '  <!-- <Button x:Name="GhostButton" Command="{Binding GhostCommand}" /> -->',
+  '  <Label x:Name="LiveLabel" Text="{Binding LiveTitle}" /> <!-- <Label Text="{Binding InlineGhost}" /> -->',
+  '  <!--',
+  '  <DataTemplate x:DataType="vm:GhostRow">',
+  '    <Label Text="{Binding GhostRowTitle}" />',
+  '  </DataTemplate>',
+  '  -->',
+  '  <Button Command="{Binding LiveCommand}" />',
+  '</ContentPage>',
+].join("\n");
+
+const SCOPED_MARKUP = [
+  '<ContentPage x:Class="Demo.ScopedPage" x:DataType="vm:Page">',
+  '  <Label Text="{Binding OuterTitle}" />',
+  '  <DataTemplate x:DataType="vm:Row">',
+  '    <Label Text="{Binding RowTitle}" />',
+  '  </DataTemplate>',
+  '  <Label Text="{Binding AfterTitle}" />',
+  '</ContentPage>',
+].join("\n");
+
 const defsOf = (a: StructuralAnalysis, kind: string) =>
   (a.definitions ?? []).filter((d) => d.kind === kind);
 
@@ -113,5 +137,84 @@ describe("XamlParser", () => {
     registerAllParsers(registry);
     expect(registry.getLanguageForFile("Views/Foo.xaml")).toBe("xaml");
     expect(registry.getPluginForFile("Views/Foo.xaml")?.name).toBe("xaml-parser");
+  });
+
+  it("sees live facts but never turns inline or multiline comments into facts", () => {
+    const a = parser.analyzeFile("LivePage.xaml", COMMENTED_MARKUP);
+    expect(a.sections).toEqual([{ name: "LivePage", level: 1, lineRange: [2, 2] }]);
+    expect(defsOf(a, "code-behind")).toEqual([
+      { name: "Demo.LivePage", kind: "code-behind", lineRange: [2, 2], fields: [] },
+    ]);
+    expect(defsOf(a, "datatype").map((d) => d.name)).toEqual(["vm:Page"]);
+    expect(defsOf(a, "element").map((d) => d.name)).toEqual(["LiveLabel"]);
+    expect(defsOf(a, "binding")).toEqual([
+      { name: "LiveTitle", kind: "binding", lineRange: [4, 4], fields: ["context=vm:Page"] },
+    ]);
+    expect(defsOf(a, "command")).toEqual([
+      { name: "LiveCommand", kind: "command", lineRange: [10, 10], fields: ["context=vm:Page"] },
+    ]);
+  });
+
+  it("inherits the nearest x:DataType and restores the page type after a template", () => {
+    const bindings = defsOf(parser.analyzeFile("ScopedPage.xaml", SCOPED_MARKUP), "binding");
+    expect(bindings.map((d) => [d.name, d.fields, d.lineRange])).toEqual([
+      ["OuterTitle", ["context=vm:Page"], [2, 2]],
+      ["RowTitle", ["context=vm:Row"], [4, 4]],
+      ["AfterTitle", ["context=vm:Page"], [6, 6]],
+    ]);
+  });
+
+  it("does not apply a template-only type to bindings outside that template", () => {
+    const markup = [
+      '<ContentPage x:Class="Demo.UntypedPage">',
+      '  <Label Text="{Binding OuterTitle}" />',
+      '  <DataTemplate x:DataType="vm:Row">',
+      '    <Label Text="{Binding RowTitle}" />',
+      '  </DataTemplate>',
+      '</ContentPage>',
+    ].join("\n");
+    const bindings = defsOf(parser.analyzeFile("UntypedPage.xaml", markup), "binding");
+    expect(bindings.map((d) => [d.name, d.fields])).toEqual([
+      ["OuterTitle", ["context=none"]],
+      ["RowTitle", ["context=vm:Row"]],
+    ]);
+  });
+
+  it("marks Source and RelativeSource bindings unresolved without losing paths or anchors", () => {
+    const markup = [
+      '<ContentPage x:Name="Root">',
+      '  <DataTemplate x:DataType="vm:Row">',
+      '    <Button Command="{Binding Path=BindingContext.OpenCommand, Source={x:Reference Root}}" />',
+      '    <Label Text="{Binding Path=Title, RelativeSource={RelativeSource AncestorType=ContentPage}}" />',
+      '  </DataTemplate>',
+      '</ContentPage>',
+    ].join("\n");
+    const a = parser.analyzeFile("ExplicitSource.xaml", markup);
+    expect(defsOf(a, "command")).toEqual([
+      { name: "BindingContext.OpenCommand", kind: "command", lineRange: [3, 3], fields: ["context=none"] },
+    ]);
+    expect(defsOf(a, "binding")).toEqual([
+      { name: "Title", kind: "binding", lineRange: [4, 4], fields: ["context=none"] },
+    ]);
+    expect(a.definitions?.some((d) => d.fields.some((f) => f.startsWith("member=")))).toBe(false);
+  });
+
+  it("handles attribute order, multiline tags, quoted >, and explicit null context", () => {
+    const markup = [
+      '<ContentPage x:DataType="vm:Page">',
+      '  <Label Text="{Binding SameTag}" x:DataType="vm:Label" />',
+      '  <Label Text="{Binding Quoted}" ToolTip="a > b" />',
+      '  <Label',
+      '    Text="{Binding Multiline}"',
+      '    x:DataType="{x:Null}" />',
+      '</ContentPage>',
+    ].join("\n");
+    const a = parser.analyzeFile("AttributeOrder.xaml", markup);
+    expect(defsOf(a, "binding").map((d) => [d.name, d.fields, d.lineRange])).toEqual([
+      ["SameTag", ["context=vm:Label"], [2, 2]],
+      ["Quoted", ["context=vm:Page"], [3, 3]],
+      ["Multiline", ["context=none"], [5, 5]],
+    ]);
+    expect(JSON.stringify(parser.analyzeFile("AttributeOrder.xaml", markup))).toBe(JSON.stringify(a));
   });
 });

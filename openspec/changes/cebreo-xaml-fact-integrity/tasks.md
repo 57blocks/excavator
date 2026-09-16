@@ -1,6 +1,6 @@
 ## 1. Freeze and prove the acceptance oracle
 
-- [ ] 1.1 Add invented positive and known-false XAML fixtures for comments, scoped types, explicit sources, original line numbers, and determinism; verify the existing reader sees the positive control and fails at least one known-false assertion before parser edits.
+- [x] 1.1 Add invented positive and known-false XAML fixtures for comments, scoped types, explicit sources, original line numbers, and determinism; verify the existing reader sees the positive control and fails at least one known-false assertion before parser edits.
 
 ## 2. Repair the single-file reader
 
