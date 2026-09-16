@@ -1,0 +1,3 @@
+Ordinary fixture text; not a key.
+EXCAVATOR_SAFE_CONTROL_91f7c2
+abcdefghijklmnopqrstuvwxy
