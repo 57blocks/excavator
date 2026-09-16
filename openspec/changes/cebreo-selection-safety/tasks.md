@@ -47,4 +47,4 @@
 - [x] 7.1 先冻结跨平台默认 oracle：Windows 反斜杠与大小写的系统元数据、macOS 元数据、`.vs/`/`.gradle/` 必须落 `filtered-by-defaults`，而 `bin\\rails`、`gradle/wrapper/` 仍 selected；由 acceptor 证明新增断言在实现前精确变红。
 - [x] 7.2 扩充 core 的保守全局默认并修正相邻说明；验证新增默认进入 selection descriptors/digest、普通 negation 语义不变，且不新增项目/语言/framework 特判。
 - [x] 7.3 将 agent-owned ignore preflight 移到 Lazy/Full 分支之前：仅在根文件缺失、旧文件待迁移或显式复查时运行，使用宿主原生临时目录，按 layout/`.gitignore`/scan buckets 发现非闭集候选，当前 run 复用 approved CLI patterns；不得恢复 generator/validator。用独立 skill review 验证 Windows、Git HEAD 与无规则项目路径。
-- [ ] 7.4 只跑两个 cebreo 项目的轻量 before/after scanner，确认新增 defaults 与项目候选零 `.cs/.xaml/.csproj/.feature` 损失且不写真实项目；运行 focused tests、skill 校验、OpenSpec strict 与必要 build/test 后分阶段提交，并再次确认主 checkout 未改。
+- [x] 7.4 只跑两个 cebreo 项目的轻量 before/after scanner，确认新增 defaults 与项目候选零 `.cs/.xaml/.csproj/.feature` 损失且不写真实项目；运行 focused tests、skill 校验、OpenSpec strict 与必要 build/test 后分阶段提交，并再次确认主 checkout 未改。
