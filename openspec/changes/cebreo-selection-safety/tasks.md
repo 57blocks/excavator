@@ -37,7 +37,7 @@
 
 ## 6. 集成验收与独立 acceptor
 
-- [ ] 6.1 跑完整合成端到端：三 adapter、direct scan、Lazy、增量、facts、source index/search；验证零 canary 泄漏、零遗漏桶、零非批准语言漂移、zip 有无 factsDigest 相同。
-- [ ] 6.2 以 `CEBREO_ROOT` opt-in 运行 skill 选择层校验，不写真实源码/路径/输出：agent 基于现有扫描证据确认建议配方移除的 `.cs/.xaml/.csproj/.feature` 为 0、敏感候选仅计数、`unmc.zip` 是否仍存在都不影响结论；完整 cebreo 质量指标留给最后一个 ordered change。
-- [ ] 6.3 由 acceptor 在干净 worktree 独立复跑冻结 oracle，审计 Git 临时树未落敏感文件、scanner 无 cebreo 特判、TypeScript/Dockerfile 走 registry 且既有分类债务零漂移、framework 未越界，并逐个产品改动复核 D0；任何“编造/泄漏”失败或 AI 可做却落代码的模块为硬阻断，coverage 遗漏单列。
-- [ ] 6.4 运行 `openspec validate --strict cebreo-selection-safety`、`pnpm install --frozen-lockfile && pnpm -r build && pnpm test`；全部通过后提交 gate/记录 commit，并确认主 checkout 与其他活跃 change 未被修改。
+- [x] 6.1 跑完整合成端到端：三 adapter、direct scan、Lazy、增量、facts、source index/search；验证零 canary 泄漏、零遗漏桶、零非批准语言漂移、zip 有无 factsDigest 相同。
+- [x] 6.2 以 `CEBREO_ROOT` opt-in 运行 skill 选择层校验，不写真实源码/路径/输出：agent 基于现有扫描证据确认建议配方移除的 `.cs/.xaml/.csproj/.feature` 为 0、敏感候选仅计数、`unmc.zip` 是否仍存在都不影响结论；完整 cebreo 质量指标留给最后一个 ordered change。
+- [x] 6.3 由 acceptor 在干净 worktree 独立复跑冻结 oracle，审计 Git 临时树未落敏感文件、scanner 无 cebreo 特判、TypeScript/Dockerfile 走 registry 且既有分类债务零漂移、framework 未越界，并逐个产品改动复核 D0；任何“编造/泄漏”失败或 AI 可做却落代码的模块为硬阻断，coverage 遗漏单列。
+- [x] 6.4 运行 `openspec validate --strict cebreo-selection-safety`、`pnpm install --frozen-lockfile && pnpm -r build && pnpm test`；全部通过后提交 gate/记录 commit，并确认主 checkout 与其他活跃 change 未被修改。
