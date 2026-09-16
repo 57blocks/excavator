@@ -13,7 +13,7 @@ Excavator v2 是在 Understand Anything（上游提交 5feed1f2，MIT，详见 N
 - 零编造是硬指标，覆盖是软指标；汇报时「编造 vs 遗漏」分开算。
 - 零兼容：不保留 UA 旧目录/旧名的兼容分支；不沿用旧 excavator 的契约。数据目录唯一：`.excavator/`。
 - 钉死上游 5feed1f2；不同步上游、不提上游 PR；NOTICE 常在。
-- 语料只有 wcp 与 cebreo；真实项目的源码、路径、输出不提交。
+- 默认真实验收语料为 wcp 与 cebreo；四个 Lazy 检索强化 change 例外使用 `test-repo/conduit-realworld-example-app` 的固定提交 `5e127d8569b300e0a21dc2c20ea680da4967b1aa`。真实项目的源码、路径、输出不提交。
 
 ## 工具链
 Node ≥ 22，pnpm（版本按 `package.json` 的 `packageManager`），vitest。三件套：`pnpm install --frozen-lockfile && pnpm -r build && pnpm test`。

@@ -107,10 +107,8 @@ export function resolveMode({ argv = [], config = {} } = {}) {
   // false — the "existing full graph not wiped" scenario holds because this
   // branch never signals a rebuild/wipe of any kind, whether or not a full
   // graph already sits on disk from a prior run. `persist` bootstraps the
-  // now-explicit default into config.json (mirrors the existing
-  // `outputLanguage` first-run persistence in SKILL.md Phase 0, "Persist the
-  // resolved $OUTPUT_LANGUAGE ... so it never re-prompts for this project")
-  // so subsequent runs read an explicit value instead of re-deriving it.
+  // now-explicit default into config.json so subsequent runs read an explicit
+  // value instead of re-deriving it.
   return { mode: 'lazy', forceRebuild: false, persist: { analysisMode: 'lazy' } };
 }
 

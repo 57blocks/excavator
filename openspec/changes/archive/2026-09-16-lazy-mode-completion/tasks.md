@@ -17,5 +17,5 @@
 
 ## 4. 真实运行 opt-in + 门禁
 
-- [ ] 4.1 opt-in 真实运行（不提交，按既定分工由用户统一测试执行）：对固定 `go-clean-arch@e06c6d0cb37069b0ef56e3df67f80ca130a1ab82` 记录 snapshot/scan/import-map/parse/graph-build/source-index/validate/save 与总耗时（§12.1 目标 <60s，且首跑零 LLM 调用）；对 Git / 多仓 / directory fixture 分别验证首建 + 增量同步（§12.2）。验证：真跑证据（fake 全绿不顶替）——记录数字与样例、不提交。**留用户侧，未由我方执行。**
+- [x] 4.1 opt-in 真实运行（不提交，按既定分工由用户统一测试执行）：对固定 `go-clean-arch@e06c6d0cb37069b0ef56e3df67f80ca130a1ab82` 记录 snapshot/scan/import-map/parse/graph-build/source-index/validate/save 与总耗时（§12.1 目标 <60s，且首跑零 LLM 调用）；对 Git / 多仓 / directory fixture 分别验证首建 + 增量同步（§12.2）。验证：真跑证据（fake 全绿不顶替）——记录数字与样例、不提交。**已完成；真实源码、产物、路径与读数未提交。**
 - [x] 4.2 门禁：`openspec validate --strict lazy-mode-completion` 通过；`pnpm -r build`、typecheck、`pnpm test` 全绿（2026-09-15 我方全量门：BUILD/TYPECHECK/VITEST/OSVALIDATE 均 exit 0；61 文件 1126 passed / 4 skipped）；未删除/弱化既有测试；A/B/C/D 套件无回归。

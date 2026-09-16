@@ -108,6 +108,8 @@ Instead, you are given the `excavator-architecture-analyzer` agent's draft
 `$DATA_DIR/intermediate/semantic-layers.json`) and the SAME fact node/edge
 lists that agent received. Your job is narrower:
 
+Keep every model-owned layer name, layer description, and relation description in English. Preserve source-owned identifiers, paths, literals, and excerpts verbatim.
+
 1. **Check every `layers[].nodeIds` entry and every `relations[].source`/
    `target` against the fact node list you were given.** An id that is not
    in that list is not a real node — remove it from the draft (from the

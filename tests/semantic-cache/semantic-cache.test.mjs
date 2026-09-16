@@ -21,7 +21,10 @@ import {
   validateCacheableFields,
   commitSemanticCacheEntry,
   CACHEABLE_FIELDS,
+  SEMANTIC_CACHE_VERSION,
+  CANONICAL_CONTENT_LANGUAGE,
 } from '../../skills/excavator/semantic-cache.mjs';
+import { auditSemanticCacheFields } from '../../skills/excavator/semantic-language-audit.mjs';
 
 const NODE_ID = 'function:src/orderService.ts:createOrder()';
 const FILE_PATH = 'src/orderService.ts';
@@ -71,7 +74,8 @@ describe('semantic-cache — cacheable write then reuse on second lookup', () =>
     const result = await commitSemanticCacheEntry({
       projectRoot: root, nodeId: NODE_ID, filePath: FILE_PATH, fields: validFields(),
     });
-    expect(result).toEqual({ ok: true, status: 'committed' });
+    expect(result).toMatchObject({ ok: true, status: 'committed' });
+    expect(result.languageAudit).toMatchObject({ status: 'accepted', inspected: 3, rejected: [] });
 
     // Second, independent read (simulating a later question about the same node).
     const cache = await readSemanticCache(root);
@@ -80,14 +84,206 @@ describe('semantic-cache — cacheable write then reuse on second lookup', () =>
 
     const currentHash = await currentSourceHashFor(root, FILE_PATH);
     expect(currentHash).toBe(HASH_V1);
-    expect(isFresh(entry, currentHash)).toBe(true);
-    expect(freshnessOf(entry, currentHash)).toBe('fresh');
+    expect(isFresh(entry, currentHash, cache)).toBe(true);
+    expect(freshnessOf(entry, currentHash, cache)).toBe('fresh');
   });
 
   it('a missing entry is reported as "missing", not silently treated as stale or fresh', () => {
     expect(freshnessOf(null, HASH_V1)).toBe('missing');
     expect(freshnessOf(undefined, HASH_V1)).toBe('missing');
     expect(isFresh(null, HASH_V1)).toBe(false);
+  });
+});
+
+describe('semantic-cache — canonical-language oracle (red before implementation)', () => {
+  let root;
+  beforeEach(() => { root = makeProject(); writeManifest(root, [{ path: FILE_PATH, contentHash: HASH_V1 }]); });
+  afterEach(() => { rmSync(root, { recursive: true, force: true }); });
+
+  it('the deterministic writer rejects Chinese model prose without creating a cache', async () => {
+    const result = await commitSemanticCacheEntry({
+      projectRoot: root,
+      nodeId: NODE_ID,
+      filePath: FILE_PATH,
+      fields: validFields({
+        summary: '在写入订单前验证请求。',
+        tags: ['order', '验证'],
+      }),
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.status).toBe('noncanonical-language');
+    expect(existsSync(join(root, '.excavator', 'semantic-cache.json'))).toBe(false);
+  });
+
+  it('freshness requires a cache-level English marker in addition to a matching source hash', () => {
+    const unauditedEntry = validFields();
+    const entry = {
+      ...unauditedEntry,
+      languageAudit: auditSemanticCacheFields({ fields: unauditedEntry }),
+    };
+
+    expect(freshnessOf(entry, HASH_V1, 'en')).toBe('fresh');
+    expect(freshnessOf(unauditedEntry, HASH_V1, 'en')).toBe('noncanonical-language');
+    expect(freshnessOf(entry, HASH_V1, undefined)).toBe('noncanonical-language');
+    expect(freshnessOf(entry, HASH_V1, 'zh')).toBe('noncanonical-language');
+    expect(isFresh(entry, HASH_V1, undefined)).toBe(false);
+  });
+
+  it('rejects an entry whose prose changed after its accepted audit was created', () => {
+    const fields = validFields();
+    const entry = {
+      ...fields,
+      languageAudit: auditSemanticCacheFields({ fields }),
+    };
+    entry.summary = '在写入订单前验证请求。';
+
+    expect(freshnessOf(entry, HASH_V1, {
+      version: SEMANTIC_CACHE_VERSION,
+      contentLanguage: CANONICAL_CONTENT_LANGUAGE,
+    })).toBe('noncanonical-language');
+  });
+
+  it('rejects a legacy object-shaped entry on read even when its empty audit and cache marker look accepted', () => {
+    const entry = {
+      summary: { text: '在写入订单前验证请求。' },
+      tags: [{ text: '验证' }],
+      semanticSourceHash: HASH_V1,
+      languageAudit: { status: 'accepted', inspected: 0, accepted: [], rejected: [] },
+    };
+
+    expect(freshnessOf(entry, HASH_V1, {
+      version: SEMANTIC_CACHE_VERSION,
+      contentLanguage: CANONICAL_CONTENT_LANGUAGE,
+    })).toBe('noncanonical-language');
+  });
+
+  it('an accepted English write stamps the cache-level marker itself', async () => {
+    const result = await commitSemanticCacheEntry({
+      projectRoot: root, nodeId: NODE_ID, filePath: FILE_PATH, fields: validFields(),
+    });
+
+    expect(result).toMatchObject({ ok: true, status: 'committed' });
+    expect(readCacheFileRaw(root)).toMatchObject({
+      version: SEMANTIC_CACHE_VERSION,
+      contentLanguage: CANONICAL_CONTENT_LANGUAGE,
+    });
+  });
+
+  it('the first canonical write drops every unaudited entry from an old cache', async () => {
+    const oldNodeId = 'function:src/legacy.ts:oldFlow()';
+    writeFileSync(
+      join(root, '.excavator', 'semantic-cache.json'),
+      JSON.stringify({
+        version: '1.0.0',
+        entries: {
+          [oldNodeId]: {
+            summary: '旧的未审计摘要。',
+            tags: ['旧数据'],
+            semanticSourceHash: 'sha256:legacy',
+          },
+        },
+      }, null, 2),
+      'utf-8',
+    );
+
+    const result = await commitSemanticCacheEntry({
+      projectRoot: root, nodeId: NODE_ID, filePath: FILE_PATH, fields: validFields(),
+    });
+
+    expect(result).toMatchObject({ ok: true, status: 'committed' });
+    const cache = readCacheFileRaw(root);
+    expect(cache).toMatchObject({
+      version: SEMANTIC_CACHE_VERSION,
+      contentLanguage: CANONICAL_CONTENT_LANGUAGE,
+    });
+    expect(Object.keys(cache.entries)).toEqual([NODE_ID]);
+    expect(cache.entries[oldNodeId]).toBeUndefined();
+  });
+
+  it('a canonical write drops pre-digest entries even when the old cache marker is current', async () => {
+    const oldNodeId = 'function:src/legacy.ts:oldFlow()';
+    writeFileSync(
+      join(root, '.excavator', 'semantic-cache.json'),
+      JSON.stringify({
+        version: SEMANTIC_CACHE_VERSION,
+        contentLanguage: CANONICAL_CONTENT_LANGUAGE,
+        entries: {
+          [oldNodeId]: {
+            summary: 'Old English prose.',
+            semanticSourceHash: HASH_V1,
+            languageAudit: {
+              status: 'accepted', inspected: 1,
+              accepted: [{ fieldPath: 'summary' }], rejected: [],
+            },
+          },
+        },
+      }, null, 2),
+      'utf-8',
+    );
+
+    const result = await commitSemanticCacheEntry({
+      projectRoot: root, nodeId: NODE_ID, filePath: FILE_PATH, fields: validFields(),
+    });
+
+    expect(result).toMatchObject({ ok: true, status: 'committed' });
+    expect(Object.keys(readCacheFileRaw(root).entries)).toEqual([NODE_ID]);
+  });
+
+  it('does not rewrite a source-owned non-English node id', async () => {
+    const sourceOwnedNodeId = 'function:src/orderService.ts:提交订单()';
+    const result = await commitSemanticCacheEntry({
+      projectRoot: root,
+      nodeId: sourceOwnedNodeId,
+      filePath: FILE_PATH,
+      fields: validFields(),
+    });
+
+    expect(result).toMatchObject({ ok: true, status: 'committed' });
+    const cache = readCacheFileRaw(root);
+    expect(Object.keys(cache.entries)).toEqual([sourceOwnedNodeId]);
+    expect(cache.entries[sourceOwnedNodeId].summary).toBe(validFields().summary);
+  });
+
+  it('accepts and preserves an exact non-English span from the current source file', async () => {
+    const source = 'export function 提交请假() {}\n';
+    const hash = sha256(source);
+    mkdirSync(join(root, 'src'), { recursive: true });
+    writeFileSync(join(root, FILE_PATH), source, 'utf-8');
+    writeManifest(root, [{ path: FILE_PATH, contentHash: hash }]);
+
+    const result = await commitSemanticCacheEntry({
+      projectRoot: root,
+      nodeId: 'function:src/orderService.ts:提交请假()',
+      filePath: FILE_PATH,
+      fields: validFields({
+        summary: 'Calls 提交请假 after validation.',
+        tags: ['validation'],
+        semanticSourceHash: hash,
+      }),
+    });
+
+    expect(result).toMatchObject({ ok: true, status: 'committed' });
+    expect(result.languageAudit.accepted[0]).toMatchObject({
+      fieldPath: 'summary', maskedSourceSpans: ['提交请假'],
+    });
+    expect(result.languageAudit.accepted[0].valueDigest).toMatch(/^sha256:[a-f0-9]{64}$/);
+    const entry = readCacheFileRaw(root).entries['function:src/orderService.ts:提交请假()'];
+    expect(entry.summary).toBe('Calls 提交请假 after validation.');
+    expect(entry.languageAudit).toEqual(result.languageAudit);
+  });
+
+  it('both semantic-cache writer prompts require English model prose', () => {
+    const fullSkill = readFileSync(join(process.cwd(), 'skills/excavator/SKILL.md'), 'utf-8');
+    const phaseF2 = fullSkill.slice(
+      fullSkill.indexOf('### Phase F2'),
+      fullSkill.indexOf('### Phase F3'),
+    );
+    const chatSkill = readFileSync(join(process.cwd(), 'skills/excavator-chat/SKILL.md'), 'utf-8');
+
+    expect(phaseF2).toContain('Write every model-owned `summary` and `tags` value in English');
+    expect(phaseF2).not.toContain('$LANGUAGE_DIRECTIVE');
+    expect(chatSkill).toContain('write the model-owned `summary` and `tags` in **English**');
   });
 });
 
@@ -105,8 +301,8 @@ describe('semantic-cache — a file\'s source-hash change invalidates its entry'
     writeManifest(root, [{ path: FILE_PATH, contentHash: HASH_V2 }]);
     const currentHash = await currentSourceHashFor(root, FILE_PATH);
 
-    expect(freshnessOf(entry, currentHash)).toBe('stale');
-    expect(isFresh(entry, currentHash)).toBe(false);
+    expect(freshnessOf(entry, currentHash, cache)).toBe('stale');
+    expect(isFresh(entry, currentHash, cache)).toBe(false);
   });
 });
 
@@ -144,7 +340,7 @@ describe('semantic-cache — verify the instrument: a concurrent stale-hash writ
     const result = await commitSemanticCacheEntry({
       projectRoot: root, nodeId: NODE_ID, filePath: FILE_PATH, fields: validFields(),
     });
-    expect(result).toEqual({ ok: true, status: 'committed' });
+    expect(result).toMatchObject({ ok: true, status: 'committed' });
   });
 });
 
@@ -176,6 +372,27 @@ describe('semantic-cache — field whitelist', () => {
     expect(result.ok).toBe(false);
     expect(result.status).toBe('rejected-fields');
     expect(result.rejectedFields).toEqual(['answer']);
+  });
+
+  it('rejects non-string summaries and tags before language audit or persistence', async () => {
+    const fields = validFields({
+      summary: { text: '在写入文章前验证请求。' },
+      tags: [{ text: '验证' }],
+    });
+
+    expect(validateCacheableFields(fields)).toEqual({
+      ok: false,
+      rejectedFields: ['summary', 'tags'],
+    });
+    const result = await commitSemanticCacheEntry({
+      projectRoot: root, nodeId: NODE_ID, filePath: FILE_PATH, fields,
+    });
+    expect(result).toEqual({
+      ok: false,
+      status: 'rejected-fields',
+      rejectedFields: ['summary', 'tags'],
+    });
+    expect(existsSync(join(root, '.excavator', 'semantic-cache.json'))).toBe(false);
   });
 });
 
@@ -268,7 +485,7 @@ describe('semantic-cache — lock: a live holder rejects a write; a stale holder
       ttlMs: 30_000,
     });
 
-    expect(result).toEqual({ ok: true, status: 'committed' });
+    expect(result).toMatchObject({ ok: true, status: 'committed' });
     // The lock is released again once the commit completes.
     expect(existsSync(lockPath)).toBe(false);
     const cache = await readSemanticCache(root);

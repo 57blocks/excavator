@@ -37,7 +37,7 @@ The knowledge graph JSON has this structure:
    - If on a feature branch: `git diff main...HEAD --name-only` (or the base branch)
    - If the user specifies a PR number: get the diff from that PR
 
-3. **Read project metadata and check graph freshness** (openspec: changes/full-semantic-isolation, capability `consumer-freshness`) — use Grep or Read with a line limit to extract the `"project"` section for name/description/languages/frameworks, then check freshness via the ONE shared, deterministic freshness helper instead of this skill computing its own gitCommitHash/git-diff comparison:
+3. **Read project metadata and check graph freshness** — use Grep or Read with a line limit to extract the `"project"` section for name/description/languages/frameworks, then check freshness via the ONE shared, deterministic freshness helper instead of computing a separate gitCommitHash/git-diff comparison in this skill:
    - Resolve `$PROJECT_ROOT` and `$PLUGIN_ROOT`:
      ```bash
      PROJECT_ROOT="$(pwd)"
@@ -57,7 +57,7 @@ The knowledge graph JSON has this structure:
      ```
    - It prints `{ status, currentSourceRevision, manifestSourceRevision, reason }` as JSON. `status` is `fresh`, `stale`, or `missing`: it compares the CURRENT `sourceRevision` — resolved via SourceSnapshot, so a git project reads HEAD only (an uncommitted working-tree change never flips this — no working-tree leak) and a plain-directory project is guarded by a content hash over every tracked file (any content drift is caught) — against the `sourceRevision` persisted in `.excavator/source-manifest.json`.
    - `stale`: warn before impact analysis that the graph may omit recent changes. Suggest: Run `/excavator` to refresh the graph.
-   - `missing` (no `source-manifest.json` yet — an older project, or one built before this capability): give a brief best-effort note and continue instead of blocking.
+   - `missing` (no `source-manifest.json` yet): give a brief best-effort note and continue instead of blocking.
    - `fresh`: proceed with no warning.
 
 4. **Find nodes for changed files** — for each changed file path, use Grep to search the knowledge graph for:

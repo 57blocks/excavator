@@ -12,7 +12,7 @@
  * excavator-file-analyzer subagent SKILL.md dispatches (over only the files
  * select-stale-semantics.mjs marked stale); this file only decides whether
  * each patch's `nodeId` is a REAL fact-graph node id before handing it to the
- * existing `commitSemanticCacheEntry` (semantic-cache.mjs, unchanged). A patch
+ * `commitSemanticCacheEntry` (semantic-cache.mjs). A patch
  * naming a nodeId with no fact-graph counterpart is NEVER committed — it is
  * recorded as a semantic gap instead, so a hallucinated id can never become a
  * fact anchor by riding in through the cache (spec Requirement "unmappable model

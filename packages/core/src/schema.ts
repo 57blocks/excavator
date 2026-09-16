@@ -559,8 +559,25 @@ export const ProjectMetaSchema = z.object({
   model: z.string().optional(),
 }).passthrough();
 
+export const SemanticLanguageAuditFieldSchema = z.object({
+  fieldPath: z.string(),
+  valueDigest: z.string().regex(/^sha256:[a-f0-9]{64}$/),
+  maskedSourceSpans: z.array(z.string()).optional(),
+  reason: z.literal("noncanonical-language").optional(),
+  unverifiedSpans: z.array(z.string()).optional(),
+});
+
+export const SemanticLanguageAuditSchema = z.object({
+  status: z.enum(["accepted", "rejected"]),
+  inspected: z.number().int().nonnegative(),
+  accepted: z.array(SemanticLanguageAuditFieldSchema),
+  rejected: z.array(SemanticLanguageAuditFieldSchema),
+});
+
 export const KnowledgeGraphSchema = z.object({
   version: z.string(),
+  contentLanguage: z.string().optional(),
+  languageAudit: SemanticLanguageAuditSchema.optional(),
   kind: z.enum(["codebase", "knowledge", "design"]).optional(),
   project: ProjectMetaSchema,
   nodes: z.array(GraphNodeSchema),
@@ -993,9 +1010,26 @@ export function validateGraph(data: unknown): ValidationResult {
   }
 
   const kindResult = z.enum(["codebase", "knowledge", "design"]).safeParse(fixed.kind);
+  const languageAuditResult = fixed.languageAudit === undefined
+    ? null
+    : SemanticLanguageAuditSchema.safeParse(fixed.languageAudit);
+  if (languageAuditResult && !languageAuditResult.success) {
+    issues.push({
+      level: "dropped",
+      category: "invalid-language-audit",
+      message: `languageAudit: ${languageAuditResult.error.issues[0]?.message ?? "validation failed"} — removed`,
+      path: "languageAudit",
+    });
+  }
 
   const graph: KnowledgeGraph = {
     version: typeof fixed.version === "string" ? fixed.version : "1.0.0",
+    ...(typeof fixed.contentLanguage === "string"
+      ? { contentLanguage: fixed.contentLanguage }
+      : {}),
+    ...(languageAuditResult?.success
+      ? { languageAudit: languageAuditResult.data }
+      : {}),
     // `kind` decides which alias table service consumers apply —
     // dropping it here silently turned design/knowledge graphs into codebase
     // graphs (each caller had to re-attach it).
