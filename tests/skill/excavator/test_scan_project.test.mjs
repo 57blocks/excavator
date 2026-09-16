@@ -13,7 +13,7 @@ import { tmpdir } from 'node:os';
 import { join, dirname, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { createIgnoreFilter } from '@excavator/core';
+import { createIgnoreFilter, LanguageRegistry } from '@excavator/core';
 import scanProject from '../../../skills/excavator/scan-project.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -230,6 +230,66 @@ describe('scan-project.mjs — language detection', () => {
     expect(byPath(r.output, 'b.bat').language).toBe('batch');
     expect(byPath(r.output, 'Dockerfile').language).toBe('dockerfile');
     expect(byPath(r.output, 'Dockerfile.dev').language).toBe('dockerfile');
+  });
+
+  it('uses the canonical registry for TypeScript and Dockerfile variants', () => {
+    const registry = LanguageRegistry.createDefault();
+    const expected = [
+      ['src/app.ts', 'typescript', 'code'],
+      ['src/view.tsx', 'typescript', 'code'],
+      ['Dockerfile', 'dockerfile', 'infra'],
+      ['Dockerfile.dev', 'dockerfile', 'infra'],
+      ['Dockerfile-prod', 'dockerfile', 'infra'],
+      ['Dockerfile-qa', 'dockerfile', 'infra'],
+      ['Dockerfile-test', 'dockerfile', 'infra'],
+    ];
+
+    for (const [path, language, category] of expected) {
+      expect(scanProject.classifyLanguage(path).language, path).toBe(language);
+      expect(registry.getForFile(path)?.id, path).toBe(language);
+      expect(scanProject.detectCategory(path), path).toBe(category);
+    }
+    expect(scanProject.classifyLanguage('MyDockerfile-prod')).toEqual({
+      language: 'unknown',
+      declared: false,
+    });
+    expect(registry.getForFile('MyDockerfile-prod')).toBeNull();
+  });
+
+  it.each([
+    ['config.jsonc', 'jsonc', 'config'],
+    ['.env', 'config', 'config'],
+    ['.env.local', 'config', 'config'],
+    ['icon.svg', 'svg', 'code'],
+    ['rules.mk', 'mk', 'code'],
+    ['openapi.yaml', 'yaml', 'config'],
+    ['docker-compose.yml', 'yaml', 'infra'],
+    ['guide.rst', 'markdown', 'docs'],
+    ['notes.txt', 'txt', 'docs'],
+    ['notes.text', 'text', 'docs'],
+  ])('freezes compatibility classification for %s as %s/%s', (path, language, category) => {
+    expect(scanProject.classifyLanguage(path).language).toBe(language);
+    expect(scanProject.detectCategory(path)).toBe(category);
+  });
+
+  it('scans hyphenated Dockerfiles and keeps the arbitrary-name negative out', () => {
+    projectRoot = setupTree({
+      'Dockerfile-prod': 'FROM node:22\n',
+      'Dockerfile-qa': 'FROM node:22\n',
+      'Dockerfile-test': 'FROM node:22\n',
+      'MyDockerfile-prod': 'not a Dockerfile\n',
+    });
+    const r = runScript(projectRoot);
+    expect(r.status).toBe(0);
+    for (const path of ['Dockerfile-prod', 'Dockerfile-qa', 'Dockerfile-test']) {
+      expect(byPath(r.output, path)).toMatchObject({ language: 'dockerfile', fileCategory: 'infra' });
+    }
+    expect(byPath(r.output, 'MyDockerfile-prod')).toBeUndefined();
+    expect(r.output.skipped).toContainEqual({
+      path: 'MyDockerfile-prod',
+      reason: 'unknown-language',
+      language: 'unknown',
+    });
   });
 
   // A file whose language cannot be NAMED at all (no extension, no filename
@@ -500,7 +560,72 @@ describe('scan-project.mjs — .excavatorignore handling', () => {
   });
 });
 
-describe('scan-project.mjs — data-dir resolution (.excavator, no fallback)', () => {
+describe('scan-project.mjs — pre-extraction selection safety', () => {
+  let projectRoot;
+
+  afterEach(() => {
+    if (projectRoot) {
+      rmSync(projectRoot, { recursive: true, force: true });
+      projectRoot = null;
+    }
+  });
+
+  it('contains extension/header secrets, preserves a same-size control, and rejects hard-safety negation', () => {
+    const privateKey = Buffer.from(
+      '-----BEGIN PRIVATE KEY-----\nEXCAVATOR_FAKE_SECRET_CANARY_scan\n-----END PRIVATE KEY-----\n',
+    );
+    const sameSizeControl = Buffer.alloc(privateKey.byteLength, 0x61);
+    projectRoot = setupTree({
+      '.excavatorignore': [
+        '!LICENSE',
+        '!unmc.zip',
+        '!config/extension-only.key',
+        'generated/',
+      ].join('\n'),
+      'LICENSE': 'selected ordinary default\n',
+      'unmc.zip': 'archive bytes that must never be selected\n',
+      'config/privatekey3072.txt': privateKey,
+      'config/extension-only.key': 'synthetic extension-only credential fixture\n',
+      'config/same-size-control.txt': sameSizeControl,
+      'generated/client.ts': 'export const generated = true;\n',
+      'src/app.ts': 'export const app = true;\n',
+    });
+
+    const r = runScript(projectRoot);
+    expect(r.status, r.stderr).toBe(0);
+    const decision = (path) => r.output.selection.entries.find((entry) => entry.path === path);
+    const skip = (path) => r.output.skipped.find((entry) => entry.path === path);
+
+    expect(decision('LICENSE')?.kind).toBe('selected');
+    expect(decision('config/same-size-control.txt')?.kind).toBe('selected');
+    expect(decision('generated/client.ts')?.kind).toBe('filtered-by-ignore');
+    expect(decision('unmc.zip')?.kind).toBe('filtered-by-defaults');
+    expect(decision('config/privatekey3072.txt')).toMatchObject({
+      kind: 'sensitive', reason: 'sensitive', detail: 'private-key-header', size: privateKey.byteLength,
+    });
+    expect(decision('config/extension-only.key')).toMatchObject({
+      kind: 'sensitive', reason: 'sensitive', detail: 'sensitive-extension',
+    });
+    expect(skip('config/privatekey3072.txt')?.reason).toBe('sensitive');
+    expect(skip('config/extension-only.key')?.reason).toBe('sensitive');
+    expect(JSON.stringify(r.output)).not.toContain('EXCAVATOR_FAKE_SECRET_CANARY_scan');
+    expect(r.stderr).not.toContain('EXCAVATOR_FAKE_SECRET_CANARY_scan');
+    for (const record of [decision('config/privatekey3072.txt'), decision('config/extension-only.key')]) {
+      expect(record).not.toHaveProperty('content');
+      expect(record).not.toHaveProperty('excerpt');
+      expect(record).not.toHaveProperty('contentHash');
+    }
+    expect(r.output.selection.candidates).toBe(r.output.selection.entries.length);
+    expect(r.output.selection.candidates).toBe(
+      r.output.selection.selected
+      + r.output.selection.filteredByDefaults
+      + r.output.selection.filteredByIgnore
+      + r.output.selection.sensitive,
+    );
+  });
+});
+
+describe('scan-project.mjs — root-only .excavatorignore', () => {
   let projectRoot;
 
   // Built from parts rather than written as a literal so this file, which
@@ -516,9 +641,7 @@ describe('scan-project.mjs — data-dir resolution (.excavator, no fallback)', (
     }
   });
 
-  it('honors .excavator/.excavatorignore', () => {
-    // scan-project delegates ignore handling to core's createIgnoreFilter,
-    // which reads resolveDataDir(projectRoot)/.excavatorignore — .excavator/.
+  it('does not honor .excavator/.excavatorignore', () => {
     projectRoot = setupTree({
       '.excavator/.excavatorignore': 'fixtures/\n',
       'src/index.ts': 'export const x = 1;\n',
@@ -527,10 +650,9 @@ describe('scan-project.mjs — data-dir resolution (.excavator, no fallback)', (
     });
     const r = runScript(projectRoot);
     expect(r.status).toBe(0);
-    expect(byPath(r.output, 'fixtures/snap1.json')).toBeUndefined();
-    expect(byPath(r.output, 'fixtures/snap2.json')).toBeUndefined();
-    // Counted as user-driven drops (dual-filter accounting saw the ignore).
-    expect(r.output.filteredByIgnore).toBe(2);
+    expect(byPath(r.output, 'fixtures/snap1.json')).toBeDefined();
+    expect(byPath(r.output, 'fixtures/snap2.json')).toBeDefined();
+    expect(r.output.filteredByIgnore).toBe(0);
   });
 
   it('does NOT honor a .excavatorignore under a pre-rename data directory — no fallback', () => {
@@ -1007,6 +1129,15 @@ describe('scan-project.mjs — output schema invariants', () => {
     expect(out.totalFiles).toBe(out.files.length);
     expect(typeof out.filteredByIgnore).toBe('number');
     expect(typeof out.filteredByDefaults).toBe('number');
+    expect(out.selection).toEqual(expect.objectContaining({
+      policyVersion: 'source-selection-v1',
+      candidates: expect.any(Number),
+      selected: expect.any(Number),
+      filteredByDefaults: expect.any(Number),
+      filteredByIgnore: expect.any(Number),
+      sensitive: expect.any(Number),
+      entries: expect.any(Array),
+    }));
     expect(out.contentDigest).toMatch(/^[0-9a-f]{64}$/);
     expect(['small', 'moderate', 'large', 'very-large']).toContain(
       out.estimatedComplexity,

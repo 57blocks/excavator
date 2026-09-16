@@ -11,7 +11,7 @@
  */
 
 import { spawnSync } from 'node:child_process';
-import { realpathSync, mkdirSync } from 'node:fs';
+import { realpathSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 const MAX_BUFFER = 1024 * 1024 * 1024; // 1GB — matches the ceiling other bundled scripts use for big repos.
@@ -71,11 +71,21 @@ export function headSha(dir) {
  * @returns {string[]}
  */
 export function listTrackedFiles(dir, sha) {
-  const result = run(['ls-tree', '-r', '-z', '--name-only', sha], dir, { encoding: 'utf-8' });
+  return listTrackedEntries(dir, sha).map((entry) => entry.path);
+}
+
+/** Fixed-tree entries with Git mode preserved so symlinks never become
+ * regular files when a snapshot is materialized path-by-path. */
+export function listTrackedEntries(dir, sha) {
+  const result = run(['ls-tree', '-r', '-z', sha], dir, { encoding: 'utf-8' });
   if (result.status !== 0) {
     throw new Error(`git ls-tree failed for ${sha} in ${dir}: ${result.stderr || result.status}`);
   }
-  return result.stdout.split('\0').filter(Boolean);
+  return result.stdout.split('\0').filter(Boolean).map((record) => {
+    const match = record.match(/^(\d+)\s+(\S+)\s+([0-9a-f]+)\t([\s\S]+)$/);
+    if (!match) throw new Error(`git ls-tree returned an invalid entry for ${sha} in ${dir}`);
+    return { mode: match[1], type: match[2], oid: match[3], path: match[4] };
+  });
 }
 
 /**
@@ -95,50 +105,46 @@ export function showFileAt(dir, sha, path) {
 }
 
 /**
- * Fixed-string, line-numbered search over the tree at `sha` for each term in
- * `terms`. Best-effort per term: a term git can't search (or that matches
- * nothing — git grep exits 1 for "no matches", which is not an error) never
- * aborts the whole search.
- *
- * @param {string} dir
- * @param {string} sha
- * @param {string[]} terms
- * @returns {Array<{path: string, line: number, text: string, term: string}>}
+ * Read at most `maxBytes` from one committed blob. A short-lived helper owns
+ * the streaming git process and stops it once the prefix is full, so the
+ * caller never materializes or buffers the rest of a potentially sensitive
+ * blob merely to inspect its header.
  */
-export function grepAt(dir, sha, terms) {
-  const results = [];
-  for (const term of terms) {
-    const result = run(['grep', '-n', '-I', '--fixed-strings', '-e', term, sha], dir, { encoding: 'utf-8' });
-    if (result.status !== 0 && result.status !== 1) continue; // real error on this term — skip, keep going.
-    if (!result.stdout) continue;
-    for (const line of result.stdout.split('\n')) {
-      if (!line) continue;
-      // `git grep <rev>` output: "<rev>:<path>:<lineno>:<text>"
-      const match = line.match(/^[^:]+:([^:]+):(\d+):(.*)$/);
-      if (match) results.push({ path: match[1], line: Number(match[2]), text: match[3], term });
-    }
-  }
-  return results;
+export function showFilePrefixAt(dir, sha, path, maxBytes) {
+  const helper = String.raw`
+const { spawn } = require('node:child_process');
+const [cwd, spec, rawLimit] = process.argv.slice(1);
+const limit = Number(rawLimit);
+const child = spawn('git', ['show', '--no-textconv', spec], { cwd, stdio: ['ignore', 'pipe', 'ignore'] });
+const chunks = [];
+let remaining = limit;
+let settled = false;
+function finish(code) {
+  if (settled) return;
+  settled = true;
+  if (code !== 0) process.exit(code);
+  process.stdout.write(Buffer.concat(chunks), () => process.exit(0));
 }
-
-/**
- * Materialize the tree at `sha` into `destDir` via `git archive | tar -x`
- * (plan-approved: build-free, read-only against the source repo). `destDir`
- * is created if needed; existing content is not cleared (callers pass a
- * fresh mkdtemp'd directory).
- *
- * @param {string} repoDir
- * @param {string} sha
- * @param {string} destDir
- */
-export function archiveToDir(repoDir, sha, destDir) {
-  mkdirSync(destDir, { recursive: true });
-  const archive = spawnSync('git', ['archive', sha], { cwd: repoDir, maxBuffer: MAX_BUFFER });
-  if (archive.status !== 0) {
-    throw new Error(`git archive failed for ${sha} in ${repoDir}: ${archive.stderr?.toString('utf-8') || archive.status}`);
+child.on('error', () => finish(2));
+child.stdout.on('readable', () => {
+  while (remaining > 0) {
+    const chunk = child.stdout.read(remaining);
+    if (chunk === null) break;
+    chunks.push(chunk);
+    remaining -= chunk.length;
   }
-  const extract = spawnSync('tar', ['-x', '-C', destDir], { input: archive.stdout, maxBuffer: MAX_BUFFER });
-  if (extract.status !== 0) {
-    throw new Error(`tar extraction failed into ${destDir}: ${extract.stderr?.toString('utf-8') || extract.status}`);
+  if (remaining === 0) {
+    child.kill();
+    finish(0);
   }
+});
+child.on('close', (code) => finish(code === 0 ? 0 : 2));
+`;
+  const result = spawnSync(
+    process.execPath,
+    ['-e', helper, dir, `${sha}:${path}`, String(maxBytes)],
+    { maxBuffer: maxBytes + 1024 },
+  );
+  if (result.status !== 0) return null;
+  return result.stdout;
 }

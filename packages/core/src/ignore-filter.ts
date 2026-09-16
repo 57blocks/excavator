@@ -1,11 +1,9 @@
 import ignore, { type Ignore } from "ignore";
 import { readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
-import { resolveDataDir } from "./persistence/index.js";
 
 /**
- * Hardcoded default ignore patterns matching the project-scanner agent's
- * exclusion rules, plus bin/obj for .NET projects.
+ * Conservative universal exclusions shared by every source consumer.
  */
 export const DEFAULT_IGNORE_PATTERNS: string[] = [
   // Dependency directories
@@ -63,6 +61,21 @@ export const DEFAULT_IGNORE_PATTERNS: string[] = [
   ".idea/",
   ".vscode/",
 
+  // Operating-system metadata
+  ".DS_Store",
+  "._*",
+  "__MACOSX/",
+  "Thumbs.db",
+  "ehthumbs.db",
+  "ehthumbs_vista.db",
+  "Desktop.ini",
+  "$RECYCLE.BIN/",
+  "System Volume Information/",
+
+  // Unambiguous IDE/tool caches
+  ".vs/",
+  ".gradle/",
+
   // Misc
   "LICENSE",
   ".gitignore",
@@ -99,13 +112,12 @@ export interface IgnoreFilter {
 
 /**
  * Creates an IgnoreFilter that merges hardcoded defaults with user-defined
- * patterns from .excavatorignore files and CLI-provided exclude patterns.
+ * patterns from the root .excavatorignore and CLI-provided exclude patterns.
  *
  * Pattern load order (later entries can override earlier ones via ! negation):
  * 1. Hardcoded defaults
- * 2. <project>/.excavator/.excavatorignore (if exists)
- * 3. .excavatorignore at project root (if exists)
- * 4. CLI --exclude patterns (highest priority)
+ * 2. .excavatorignore at project root (if exists)
+ * 3. CLI --exclude patterns (highest priority)
  */
 export function createIgnoreFilter(projectRoot: string, extraPatterns: string[] = []): IgnoreFilter {
   const ig: Ignore = ignore();
@@ -113,28 +125,21 @@ export function createIgnoreFilter(projectRoot: string, extraPatterns: string[] 
   // Layer 1: hardcoded defaults
   ig.add(DEFAULT_IGNORE_PATTERNS);
 
-  // Layer 2: <project>/.excavator/.excavatorignore
-  const projectIgnorePath = join(resolveDataDir(projectRoot), ".excavatorignore");
-  if (existsSync(projectIgnorePath)) {
-    const content = readFileSync(projectIgnorePath, "utf-8");
-    ig.add(content);
-  }
-
-  // Layer 3: .excavatorignore at project root
+  // Layer 2: .excavatorignore at project root
   const rootIgnorePath = join(projectRoot, ".excavatorignore");
   if (existsSync(rootIgnorePath)) {
     const content = readFileSync(rootIgnorePath, "utf-8");
     ig.add(content);
   }
 
-  // Layer 4: CLI --exclude patterns (highest priority)
+  // Layer 3: CLI --exclude patterns (highest priority)
   if (extraPatterns.length > 0) {
     ig.add(extraPatterns);
   }
 
   return {
     isIgnored(relativePath: string): boolean {
-      return ig.ignores(relativePath);
+      return ig.ignores(relativePath.replaceAll("\\", "/"));
     },
   };
 }

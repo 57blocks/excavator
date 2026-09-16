@@ -150,6 +150,38 @@ Determine whether to run a full analysis or incremental update.
 5. Check if `$DATA_DIR/knowledge-graph.json` exists. If it does, read it.
 6. Check if `$DATA_DIR/meta.json` exists. If it does, read its `gitCommitHash` and store it as `$LAST_COMMIT_HASH`.
 
+6.4. **Agent-owned ignore preflight (before the Lazy/Full branch).** Run this lightweight review only when at least one condition is true:
+   - `$PROJECT_ROOT/.excavatorignore` is absent;
+   - the obsolete `$DATA_DIR/.excavatorignore` exists; or
+   - the user explicitly requested an ignore-rule review for this run.
+
+   Otherwise skip directly to step 6.5. The root file is the only runtime rule source. If the obsolete file exists, tell the user it is no longer consumed; read its active rules only as migration candidates, never as fallback configuration, and do not delete it without a separate request.
+
+   1. Create `$IGNORE_REVIEW_DIR` with the host's native temporary-directory facility and always clean it up with the matching native operation. POSIX `mktemp`/cleanup and PowerShell `[System.IO.Path]::GetTempPath()` plus `New-Item`/`Remove-Item` are both acceptable implementations; choose for the actual host instead of requiring either command.
+   2. Inspect the project layout, `.gitignore`, the obsolete file when present, and existing deterministic evidence such as `$DATA_DIR/intermediate/scan-result.json` or `$DATA_DIR/source-manifest.json`. Run the existing scanner for a fresh baseline, preserving the user's existing CLI exclusions:
+      ```bash
+      node "<SKILL_DIR>/scan-project.mjs" "$PROJECT_ROOT" "$IGNORE_REVIEW_DIR/before.json" [--exclude "$EXCLUDE_PATTERNS"]
+      ```
+      The bracketed segment is optional argv notation, not literal shell syntax. Only when `$EXCLUDE_PATTERNS` is non-empty, use the host-native invocation mechanism to append `--exclude` and its value as two arguments; neither PowerShell nor POSIX should pass `[` or `]`.
+   3. Discover candidates by clustering repeated directories and path shapes across the layout, `.gitignore`, and the baseline manifest's selection and processing buckets (`selection.entries`, `skipped`, and `failures`). Example project candidates such as `bin/`, `.unit-test/`, `TestResults/`, `.scratch/`, or package caches are illustrative, not a closed registry. `.vs/` and `.gradle/` are already universal defaults and are not project candidates. A name alone is never evidence that a path is generated; `bin/` can contain source such as `bin/rails`.
+   4. If candidates exist, form `$REVIEW_PATTERNS` by appending them to the existing `$EXCLUDE_PATTERNS` in order and removing exact duplicates. Show the proposed additions, then create the comparison manifest without editing either ignore file:
+      ```bash
+      node "<SKILL_DIR>/scan-project.mjs" "$PROJECT_ROOT" "$IGNORE_REVIEW_DIR/after.json" --exclude "$REVIEW_PATTERNS"
+      ```
+   5. Compare `before.json` and `after.json`. Review every path that was `selected` before and is not `selected` after, using the layout, `.gitignore`, and scan buckets to explain why it is generated output. If any dropped path ends in `.cs`, `.xaml`, `.csproj`, or `.feature` (case-insensitive), or any dropped path is unexplained, reject the candidate set and do not write those rules. Do not encode this judgment in a runtime profile, registry, classifier, generator, or validator.
+   6. If no project rule is approved and the root file is absent, create it directly with this stable review marker, then clean up the temporary directory and continue to step 6.5:
+      ```text
+      # Excavator ignore review complete; no project-specific rules approved.
+      ```
+      If the root file already exists, preserve it unchanged.
+   7. If rules are approved, directly edit `$PROJECT_ROOT/.excavatorignore` with the host's normal file-editing capability. Preserve existing comments and rules, append each approved rule once, and migrate only reviewed rules from the obsolete file. Verify the edited root file by rescanning with only the user's original CLI exclusions; its selected paths must equal `after.json`:
+      ```bash
+      node "<SKILL_DIR>/scan-project.mjs" "$PROJECT_ROOT" "$IGNORE_REVIEW_DIR/verified.json" [--exclude "$EXCLUDE_PATTERNS"]
+      ```
+      The bracketed segment is optional argv notation, not literal shell syntax. Only when `$EXCLUDE_PATTERNS` is non-empty, use the host-native invocation mechanism to append `--exclude` and its value as two arguments; neither PowerShell nor POSIX should pass `[` or `]`.
+      If they differ, restore the previous root-file content, report the mismatch, and continue without the candidate rules.
+   8. For a non-Git project, the edited root file applies directly. For a Git project whose edited root file or approved rules are not yet in `HEAD`, merge the approved rules into `$EXCLUDE_PATTERNS` in order with exact duplicates removed. This makes the current Lazy or Full run use them immediately. Tell the user that Git snapshot persistence begins only after the root file is committed to `HEAD`; until then, later runs must receive the same CLI rules or explicitly repeat the review. Clean up the temporary directory, report the approved rules and dropped-path evidence, then continue to step 6.5.
+
 6.5. **Resolve the analysis mode (lazy vs. full).** Read `$DATA_DIR/config.json`'s `analysisMode` field (if present). Parse `$ARGUMENTS` for `--mode=lazy|full` (a single-run override that does NOT change `config.json`) and `--full` (equivalent to `--mode=full` plus a forced rebuild — the pre-existing `--full` flag, unchanged). Apply `resolveMode()`'s rule, defined once in `<SKILL_DIR>/resolve-mode.mjs` (a pure function — see its own tests for every scenario):
 
    - `--full` present → mode `full`, forced rebuild.
@@ -159,11 +191,12 @@ Determine whether to run a full analysis or incremental update.
 
    Store the resolved value as `$ANALYSIS_MODE`.
 
-   **If `$ANALYSIS_MODE` is `lazy`:** run the Lazy driver instead of the rest of Phase 0 and Phases 0.5–6:
+   **If `$ANALYSIS_MODE` is `lazy`:** run the Lazy driver instead of the rest of Phase 0 and Phases 1–6:
    ```bash
-   node "<SKILL_DIR>/lazy-analyze.mjs" "$PROJECT_ROOT" ${EXCLUDE_PATTERNS:+--exclude "$EXCLUDE_PATTERNS"}
+   node "<SKILL_DIR>/lazy-analyze.mjs" "$PROJECT_ROOT" [--exclude "$EXCLUDE_PATTERNS"]
    ```
-   This single script performs Phase 1 SCAN via `scan-project.mjs` (the deterministic script — never the `excavator-project-scanner` subagent), Phase 1.2 STRUCTURE-ALL, the deterministic Fact Builder (`build-fact-graph.mjs`), a deterministic validate pass, and Phase 7 SAVE, with zero LLM/subagent calls: no `file-analyzer`, `summary-verifier`, `assemble-reviewer`, `architecture-analyzer`, or `graph-reviewer` dispatch, no LLM batch file, no HTML, no Tour. It never wipes or downgrades an already-existing full graph's `summary`/`tags`/`layers` — a prior Full run's semantics are merged forward, not overwritten. Report its printed summary to the user and **STOP**. Do not continue to Phase 0.5 or any phase below.
+   The bracketed segment is optional argv notation, not literal shell syntax. Only when `$EXCLUDE_PATTERNS` is non-empty, use the host-native invocation mechanism to append `--exclude` and its value as two arguments; neither PowerShell nor POSIX should pass `[` or `]`.
+   This single script performs Phase 1 SCAN via `scan-project.mjs` (the deterministic script — never the `excavator-project-scanner` subagent), Phase 1.2 STRUCTURE-ALL, the deterministic Fact Builder (`build-fact-graph.mjs`), a deterministic validate pass, and Phase 7 SAVE, with zero LLM/subagent calls: no `file-analyzer`, `summary-verifier`, `assemble-reviewer`, `architecture-analyzer`, or `graph-reviewer` dispatch, no LLM batch file, no HTML, no Tour. It never wipes or downgrades an already-existing full graph's `summary`/`tags`/`layers` — a prior Full run's semantics are merged forward, not overwritten. Report its printed summary to the user and **STOP**.
 
    **If `$ANALYSIS_MODE` is `full`:** continue with the existing pipeline unchanged, starting at step 7 below (a mode forced by `--full` behaves exactly like the existing `--full` row in the decision table).
 
@@ -178,7 +211,7 @@ Determine whether to run a full analysis or incremental update.
    | Existing graph + unchanged commit hash | Ask the user: "The graph is up to date at this commit. Would you like to: **(a)** run a full rebuild (`--full`), **(b)** run the LLM graph reviewer (`--review`), or **(c)** do nothing?" Then follow their choice. If they pick (c), STOP. |
    | Existing graph + changed files | Run deterministic incremental preparation below |
 
-   **Full-analysis routing.** "Full analysis (all phases)" and `FULL_UPDATE` mean **Phase F**, placed after Phase 0.5. Phase 1 through Phase 7 govern the `PARTIAL_UPDATE` / `ARCHITECTURE_UPDATE` / `SKIP` destinations and the `--review` review-only path. Phase F uses the same deterministic fact build as Lazy mode; file-analyzer never authors `knowledge-graph.json` nodes, edges, or layers for a Full run.
+   **Full-analysis routing.** "Full analysis (all phases)" and `FULL_UPDATE` mean **Phase F** below. Phase 1 through Phase 7 govern the `PARTIAL_UPDATE` / `ARCHITECTURE_UPDATE` / `SKIP` destinations and the `--review` review-only path. Phase F uses the same deterministic fact build as Lazy mode; file-analyzer never authors `knowledge-graph.json` nodes, edges, or layers for a Full run.
 
    **Review-only path:** Copy the existing `knowledge-graph.json` to `$DATA_DIR/intermediate/assembled-graph.json`, then jump directly to Phase 6 step 3.
 
@@ -209,9 +242,9 @@ Determine whether to run a full analysis or incremental update.
    | Prepared action | Next step |
    |---|---|
    | `SKIP` | Run `node "<SKILL_DIR>/finalize-incremental.mjs" "$PROJECT_ROOT"`. It updates graph metadata, scan, fingerprints, and meta for cosmetic or irrelevant changes, but intentionally advances nothing for generated-artifact-only commits. Without `--review`, report zero LLM tokens spent and **STOP**. With explicit `--review`, copy `$DATA_DIR/knowledge-graph.json` to `$DATA_DIR/intermediate/assembled-graph.json` and jump to the `--review` graph-reviewer path in Phase 6 instead of stopping. |
-   | `PARTIAL_UPDATE` | Skip Phase 0.5 and Phase 1; continue with the incremental Phase 1.5/2 path. |
-   | `ARCHITECTURE_UPDATE` | Skip Phase 0.5 and Phase 1; continue with incremental analysis, then rerun Phase 4. |
-   | `FULL_UPDATE` | Run Phase 0.5, then **Phase F** below, following the full-analysis routing above. Do not patch fingerprints or metadata from the incremental helper; Phase F's own Phase F1 (re)writes them. |
+   | `PARTIAL_UPDATE` | Skip Phase 1; continue with the incremental Phase 1.5/2 path. |
+   | `ARCHITECTURE_UPDATE` | Skip Phase 1; continue with incremental analysis, then rerun Phase 4. |
+   | `FULL_UPDATE` | Run **Phase F** below, following the full-analysis routing above. Do not patch fingerprints or metadata from the incremental helper; Phase F's own Phase F1 (re)writes them. |
 
    `filesToReanalyze` contains only current, non-ignored files with structural changes. Deletions, newly ignored files, cosmetic changes, and generated artifacts are never passed to file-analyzer.
 
@@ -251,25 +284,6 @@ Determine whether to run a full analysis or incremental update.
 
 ---
 
-## Phase 0.5 — Ignore Configuration (full analysis only)
-
-Set up and verify the `.excavatorignore` file before a full scan. Incremental preparation already applies the current ignore rules and must skip this confirmation phase.
-
-1. Check if `$DATA_DIR/.excavatorignore` exists.
-2. **If it does NOT exist**, generate a starter file by invoking the bundled script (delegates to `generateStarterIgnoreFile` in `@excavator/core`, which reads `.gitignore`, deduplicates against built-in defaults, and emits language-grouped test-file suggestions). Pass `$PLUGIN_ROOT` via the env so the script doesn't have to re-derive it from its own path (which breaks for copied skill installs):
-     ```bash
-     PLUGIN_ROOT="$PLUGIN_ROOT" node "<SKILL_DIR>/generate-ignore.mjs" "$PROJECT_ROOT"
-     ```
-   - Report to the user:
-     > Generated `$DATA_DIR/.excavatorignore` with suggested exclusions based on your project structure. Please review it and uncomment any patterns you'd like to exclude from analysis. When ready, confirm to continue.
-   - **Wait for user confirmation before proceeding.**
-3. **If it already exists**, report:
-   > Found `$DATA_DIR/.excavatorignore`. Review it if needed, then confirm to continue.
-   - **Wait for user confirmation before proceeding.**
-4. After confirmation, proceed to **Phase F** below, following the full-analysis routing in Phase 0 step 7.
-
----
-
 ## Phase F — Full Semantic Generation
 
 For "Full analysis (all phases)" and `FULL_UPDATE`, `/excavator --mode=full`
@@ -304,8 +318,10 @@ Report: `[Phase F1] Building the deterministic fact graph...`
 Run the EXACT SAME driver Phase 0 step 6.5 documents for Lazy mode:
 
 ```bash
-node "<SKILL_DIR>/lazy-analyze.mjs" "$PROJECT_ROOT" ${EXCLUDE_PATTERNS:+--exclude "$EXCLUDE_PATTERNS"}
+node "<SKILL_DIR>/lazy-analyze.mjs" "$PROJECT_ROOT" [--exclude "$EXCLUDE_PATTERNS"]
 ```
+
+The bracketed segment is optional argv notation, not literal shell syntax. Only when `$EXCLUDE_PATTERNS` is non-empty, use the host-native invocation mechanism to append `--exclude` and its value as two arguments; neither PowerShell nor POSIX should pass `[` or `]`.
 
 This performs SCAN, STRUCTURE-ALL, import-map extraction, the deterministic
 Fact Builder, a deterministic validate pass, and SAVE (`knowledge-graph.json`

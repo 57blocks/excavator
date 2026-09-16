@@ -11,16 +11,34 @@
  * `.excavator/` is always excluded (never `git init`, never auto-committed).
  */
 
-import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, rmSync, readdirSync, lstatSync } from 'node:fs';
+import {
+  closeSync,
+  lstatSync,
+  mkdirSync,
+  mkdtempSync,
+  openSync,
+  readFileSync,
+  readSync,
+  readdirSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname, sep } from 'node:path';
 
 import { contentHash, manifestDigest, diffEntries } from './manifest.mjs';
-import { ignoreRulesFromDisk } from './ignore-rules.mjs';
+import { ignoreRulesFromDisk, selectionLedger, selectionPrefixBytes } from './ignore-rules.mjs';
 
 /** Directory names never worth descending into — a pure walk-time
  *  optimization; the ignore filter would exclude their content anyway. */
 const HARD_SKIP_DIRS = new Set(['node_modules', '.git', '.svn', '.hg', '__pycache__']);
+
+function isAnalysisDataDir(name) {
+  return name === '.excavator'
+    || name.startsWith('.excavator.')
+    || name.startsWith('.excavator-')
+    || name.startsWith('.trash-');
+}
 
 function toPosix(p) {
   return p.split(sep).join('/');
@@ -35,7 +53,7 @@ function compareStableStrings(a, b) {
 /** Recursively list every regular file under `root`, project-relative POSIX,
  *  not yet filtered. Symlinks are never followed (same rationale as
  *  scan-project.mjs: avoids recursion bombs and repo-external reads). */
-function walk(root) {
+function walk(root, structuralExcludeDirs = new Set()) {
   const out = [];
   function step(absDir, relDir) {
     let entries;
@@ -49,6 +67,10 @@ function walk(root) {
     for (const ent of entries) {
       const relPath = relDir ? `${relDir}/${ent.name}` : ent.name;
       if (ent.isDirectory()) {
+        if (!relDir && structuralExcludeDirs.has(ent.name)) continue;
+        // Runtime analysis output is not project input. Keep it outside the
+        // candidate universe so a second run cannot grow its own ledger.
+        if (isAnalysisDataDir(ent.name)) continue;
         if (HARD_SKIP_DIRS.has(ent.name)) continue;
         step(join(absDir, ent.name), relPath);
       } else if (ent.isFile()) {
@@ -64,45 +86,82 @@ function walk(root) {
 /** Build the `{path, contentHash}` manifest entries for `root` under the
  *  effective ignore filter. Per-file read failures are skipped with a
  *  warning (never crash the whole snapshot over one unreadable file). */
-function buildEntries(root, filter) {
+function readBoundedPrefix(path) {
+  let fd;
+  try {
+    fd = openSync(path, 'r');
+    const buffer = Buffer.allocUnsafe(selectionPrefixBytes);
+    const bytesRead = readSync(fd, buffer, 0, buffer.length, 0);
+    return buffer.subarray(0, bytesRead);
+  } catch {
+    return undefined;
+  } finally {
+    if (fd !== undefined) closeSync(fd);
+  }
+}
+
+function buildSnapshot(root, policy, structuralExcludeDirs) {
   const entries = [];
-  for (const relPath of walk(root).sort(compareStableStrings)) {
-    if (filter.isIgnored(relPath)) continue;
+  const decisions = [];
+  const processingSkips = [];
+  for (const relPath of walk(root, structuralExcludeDirs).sort(compareStableStrings)) {
     let stat;
     try {
       stat = lstatSync(join(root, relPath));
     } catch (err) {
       process.stderr.write(`Warning: DirectorySnapshot: ${relPath} — lstat failed (${err.message}) — file skipped\n`);
+      const decision = policy.decide({ path: relPath });
+      decisions.push(decision);
+      if (decision.kind === 'selected') processingSkips.push({ path: relPath, reason: 'read-failed' });
       continue;
     }
     if (stat.isSymbolicLink()) continue;
+    const initial = policy.decide({ path: relPath, size: stat.size });
+    const mayNeedHeader = stat.isFile()
+      && initial.kind !== 'sensitive'
+      && !(initial.kind === 'filtered-by-defaults' && ['analysis-data', 'archive'].includes(initial.detail));
+    const prefix = mayNeedHeader ? readBoundedPrefix(join(root, relPath)) : undefined;
+    const decision = mayNeedHeader && prefix !== undefined
+      ? policy.decide({ path: relPath, size: stat.size, contentPrefix: prefix })
+      : initial;
+    decisions.push(decision);
+    if (decision.kind !== 'selected') continue;
+    if (mayNeedHeader && prefix === undefined) {
+      processingSkips.push({ path: relPath, reason: 'read-failed' });
+      continue;
+    }
     let buf;
     try {
       buf = readFileSync(join(root, relPath));
     } catch (err) {
       process.stderr.write(`Warning: DirectorySnapshot: ${relPath} — read failed (${err.message}) — file skipped\n`);
+      processingSkips.push({ path: relPath, reason: 'read-failed' });
       continue;
     }
     entries.push({ path: relPath, contentHash: contentHash(buf) });
   }
-  return entries;
+  return { entries, selection: selectionLedger(decisions), processingSkips };
 }
 
 export class DirectorySnapshot {
   /**
    * @param {string} root absolute path to a real, non-git directory
-   * @param {{ extraExcludePatterns?: string[] }} [options]
+   * @param {{ extraExcludePatterns?: string[], structuralExcludeDirs?: string[] }} [options]
    */
   constructor(root, options = {}) {
     this.kind = 'directory';
     this.root = root;
     this._extraExcludePatterns = options.extraExcludePatterns ?? [];
+    this._structuralExcludeDirs = new Set(options.structuralExcludeDirs ?? []);
 
     const rules = ignoreRulesFromDisk(root, this._extraExcludePatterns);
-    this._filter = rules.filter;
+    this._selectionDescriptors = rules.descriptors;
     this.selectionDigest = rules.digest;
 
-    this._entries = buildEntries(root, this._filter);
+    const built = buildSnapshot(root, rules.policy, this._structuralExcludeDirs);
+    this._entries = built.entries;
+    this.selection = built.selection;
+    this.processingSkips = built.processingSkips;
     this._entriesByPath = new Map(this._entries.map((e) => [e.path, e]));
     this.revision = `directory:${manifestDigest(this._entries)}`;
   }
@@ -243,7 +302,10 @@ export class DirectorySnapshot {
             reason: `source changed while materializing (drift on: ${materialized.driftedPaths.join(', ')})`,
           };
         }
-        snapshot = new DirectorySnapshot(snapshot.root, { extraExcludePatterns: snapshot._extraExcludePatterns });
+        snapshot = new DirectorySnapshot(snapshot.root, {
+          extraExcludePatterns: snapshot._extraExcludePatterns,
+          structuralExcludeDirs: [...snapshot._structuralExcludeDirs],
+        });
         continue;
       }
 
@@ -254,8 +316,14 @@ export class DirectorySnapshot {
         materialized.cleanup();
       }
 
-      const fresh = new DirectorySnapshot(snapshot.root, { extraExcludePatterns: snapshot._extraExcludePatterns });
-      if (fresh.revision === snapshot.revision) {
+      const fresh = new DirectorySnapshot(snapshot.root, {
+        extraExcludePatterns: snapshot._extraExcludePatterns,
+        structuralExcludeDirs: [...snapshot._structuralExcludeDirs],
+      });
+      if (
+        fresh.revision === snapshot.revision
+        && fresh.selectionDigest === snapshot.selectionDigest
+      ) {
         await publish(product, snapshot);
         return { ok: true, attempts: attempt, product, revision: snapshot.revision };
       }

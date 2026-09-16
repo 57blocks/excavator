@@ -129,4 +129,17 @@ export {
   DEFAULT_IGNORE_PATTERNS,
   type IgnoreFilter,
 } from "./ignore-filter.js";
-export { generateStarterIgnoreFile } from "./ignore-generator.js";
+export {
+  SOURCE_SELECTION_POLICY_VERSION,
+  PRIVATE_KEY_PREFIX_BYTES,
+  SENSITIVE_EXTENSIONS,
+  PRIVATE_KEY_HEADERS,
+  createSourceSelectionPolicy,
+  buildSourceSelectionLedger,
+  sourceSelectionConservationViolations,
+  type SourceSelectionCandidate,
+  type SourceSelectionDecision,
+  type SourceSelectionPolicyOptions,
+  type SourceSelectionPolicy,
+  type SourceSelectionLedger,
+} from "./source-selection.js";

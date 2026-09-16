@@ -82,6 +82,10 @@ describe("IgnoreFilter", () => {
       expect(filter.isIgnored(".trash-1234/bar.ts")).toBe(true);
     });
 
+    it("normalizes Windows separators before matching ordinary defaults", () => {
+      expect(createIgnoreFilter(testDir).isIgnored(".VS\\cache.bin")).toBe(true);
+    });
+
     it("selection-hardening scenario: a root .excavatorignore is still read and effective alongside a stray .excavator.bak/ (does not misfire on the ignore-rules file itself)", () => {
       // Mirrors openspec/changes/lazy-mode-completion/specs/selection-hardening
       // scenario "`.excavatorignore` 仍被读取" — both a real .excavatorignore
@@ -132,14 +136,14 @@ describe("IgnoreFilter", () => {
   });
 
   describe("createIgnoreFilter with user .excavatorignore", () => {
-    it("reads patterns from .excavator/.excavatorignore", () => {
+    it("does not read patterns from .excavator/.excavatorignore", () => {
       writeFileSync(
         join(testDir, ".excavator", ".excavatorignore"),
         "# Exclude tests\n__tests__/\n*.test.ts\n"
       );
       const filter = createIgnoreFilter(testDir);
-      expect(filter.isIgnored("__tests__/foo.test.ts")).toBe(true);
-      expect(filter.isIgnored("src/utils.test.ts")).toBe(true);
+      expect(filter.isIgnored("__tests__/foo.test.ts")).toBe(false);
+      expect(filter.isIgnored("src/utils.test.ts")).toBe(false);
       expect(filter.isIgnored("src/utils.ts")).toBe(false);
     });
 
@@ -155,7 +159,7 @@ describe("IgnoreFilter", () => {
 
     it("handles # comments and blank lines", () => {
       writeFileSync(
-        join(testDir, ".excavator", ".excavatorignore"),
+        join(testDir, ".excavatorignore"),
         "# This is a comment\n\n\nfixtures/\n\n# Another comment\n"
       );
       const filter = createIgnoreFilter(testDir);
@@ -165,7 +169,7 @@ describe("IgnoreFilter", () => {
 
     it("supports ! negation to override defaults", () => {
       writeFileSync(
-        join(testDir, ".excavator", ".excavatorignore"),
+        join(testDir, ".excavatorignore"),
         "!dist/\n"
       );
       const filter = createIgnoreFilter(testDir);
@@ -174,7 +178,7 @@ describe("IgnoreFilter", () => {
 
     it("supports ** recursive matching", () => {
       writeFileSync(
-        join(testDir, ".excavator", ".excavatorignore"),
+        join(testDir, ".excavatorignore"),
         "**/snapshots/\n"
       );
       const filter = createIgnoreFilter(testDir);
@@ -182,7 +186,7 @@ describe("IgnoreFilter", () => {
       expect(filter.isIgnored("snapshots/foo.snap")).toBe(true);
     });
 
-    it("merges .excavator/ and root .excavatorignore", () => {
+    it("uses only root .excavatorignore when both locations exist", () => {
       writeFileSync(
         join(testDir, ".excavator", ".excavatorignore"),
         "__tests__/\n"
@@ -192,7 +196,7 @@ describe("IgnoreFilter", () => {
         "fixtures/\n"
       );
       const filter = createIgnoreFilter(testDir);
-      expect(filter.isIgnored("__tests__/foo.ts")).toBe(true);
+      expect(filter.isIgnored("__tests__/foo.ts")).toBe(false);
       expect(filter.isIgnored("fixtures/data.json")).toBe(true);
       expect(filter.isIgnored("src/index.ts")).toBe(false);
     });
@@ -214,7 +218,7 @@ describe("IgnoreFilter", () => {
     it("CLI patterns have highest priority over .excavatorignore files", () => {
       // .excavatorignore says to include docs/
       writeFileSync(
-        join(testDir, ".excavator", ".excavatorignore"),
+        join(testDir, ".excavatorignore"),
         "!docs/\n"
       );
       // CLI --exclude says to exclude docs/

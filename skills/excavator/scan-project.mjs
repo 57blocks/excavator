@@ -16,8 +16,7 @@
  *
  * What this script owns:
  *   - File enumeration (git ls-files preferred, recursive walk fallback)
- *   - `.excavatorignore` and CLI exclusion filtering (delegated to core's
- *     createIgnoreFilter, which reads the data dir — `.excavator/`)
+ *   - Versioned pre-extraction selection, including sensitive-file containment
  *   - Per-file language detection (extension + filename table)
  *   - Per-file category assignment (priority-ordered rules from
  *     project-scanner.md Step 4)
@@ -43,7 +42,8 @@
  *     "totalFiles": N,
  *     "filteredByIgnore": M,
  *     "filteredByDefaults": K,
- *     "skipped": [{ "path": "...", "reason": "symlink|read-failed|unknown-language|binary|too-large|ignored", "language": "..." }, ...],
+ *     "selection": { "policyVersion": "...", "candidates": N, "selected": N, "entries": [...] },
+ *     "skipped": [{ "path": "...", "reason": "filtered-by-defaults|filtered-by-ignore|sensitive|symlink|read-failed|unknown-language|binary|too-large", "language": "..." }, ...],
  *     "coverage": { "limits": { "maxFileLines": N, "maxFileBytes": N } },
  *     "estimatedComplexity": "small" | "moderate" | "large" | "very-large",
  *     "stats": { "filesScanned": N, "byCategory": {...}, "byLanguage": {...} }
@@ -65,8 +65,11 @@ import { dirname, resolve, join, basename, extname, relative, sep } from 'node:p
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import {
   existsSync,
+  closeSync,
   lstatSync,
+  openSync,
   readFileSync,
+  readSync,
   readdirSync,
   realpathSync,
   statSync,
@@ -94,7 +97,14 @@ try {
   core = await import(pathToFileURL(resolve(pluginRoot, 'packages/core/dist/index.js')).href);
 }
 
-const { createIgnoreFilter, resolveDataDir } = core;
+const {
+  PRIVATE_KEY_PREFIX_BYTES,
+  LanguageRegistry,
+  buildSourceSelectionLedger,
+  createSourceSelectionPolicy,
+} = core;
+
+const canonicalLanguageRegistry = LanguageRegistry.createDefault();
 
 // ---------------------------------------------------------------------------
 // Skip limits and binary detection
@@ -150,14 +160,11 @@ export function looksBinary(buf) {
 // ---------------------------------------------------------------------------
 // Language detection
 //
-// Mirrors the canonical extension list from
-// excavator-plugin/packages/core/src/languages/configs/* and the
-// project-scanner.md Step 3 table. Extensions are matched lowercase;
-// filenames (Dockerfile, Makefile, etc.) are matched case-sensitively because
-// the projects-in-the-wild use canonical capitalizations.
-//
-// Where the core configs and project-scanner.md diverge (rare), project-
-// scanner.md wins because it is the user-facing contract.
+// TypeScript and Dockerfile use LanguageRegistry as their authority. The
+// compatibility tables retain the scanner's established output for other
+// languages, including the explicitly frozen registry/scanner debt for
+// jsonc, env/dot-env, svg, mk, OpenAPI, docker-compose, rst, and txt/text.
+// Those differences require a separate contract migration.
 // ---------------------------------------------------------------------------
 
 /**
@@ -167,9 +174,7 @@ export function looksBinary(buf) {
  * for these extensions is handled separately in CATEGORY_BY_EXT.
  */
 const LANGUAGE_BY_EXT = Object.freeze({
-  // TypeScript / JavaScript
-  '.ts': 'typescript',
-  '.tsx': 'typescript',
+  // JavaScript (TypeScript is canonical-registry-owned)
   '.js': 'javascript',
   '.jsx': 'javascript',
   '.mjs': 'javascript',
@@ -264,9 +269,6 @@ const LANGUAGE_BY_EXT = Object.freeze({
  * basename(path). Includes the most common no-extension conventions; anything
  * NOT in this table with no extension falls back to `unknown`.
  *
- * Dockerfile.* variants (Dockerfile.dev, Dockerfile.prod) are handled by a
- * startsWith check in `detectLanguage()` so we don't have to enumerate every
- * possible suffix.
  */
 const LANGUAGE_BY_FILENAME = Object.freeze({
   // Conventional extension-less text files. Named here so they keep a
@@ -289,7 +291,6 @@ const LANGUAGE_BY_FILENAME = Object.freeze({
   TODO: 'text',
   VERSION: 'text',
   CODEOWNERS: 'text',
-  Dockerfile: 'dockerfile',
   Makefile: 'makefile',
   GNUmakefile: 'makefile',
   makefile: 'makefile',
@@ -323,9 +324,12 @@ export function classifyLanguage(filePath) {
   const base = basename(filePath);
   const ext = extname(filePath).toLowerCase();
 
-  // Dockerfile.dev, Dockerfile.prod, etc. — common variant form.
-  if (base === 'Dockerfile' || base.startsWith('Dockerfile.')) {
-    return { language: 'dockerfile', declared: true };
+  // These two migrated languages share the core registry's exact filename ->
+  // basename pattern -> extension matcher. No scanner-local TS/Dockerfile
+  // rule is authoritative.
+  const canonical = canonicalLanguageRegistry.getForFile(filePath);
+  if (canonical?.id === 'typescript' || canonical?.id === 'dockerfile') {
+    return { language: canonical.id, declared: true };
   }
 
   // Dotfile names like .env, .env.local — path.extname returns '' for
@@ -449,7 +453,6 @@ const CATEGORY_BY_EXT = Object.freeze({
  * against basename(path).
  */
 const INFRA_FILENAMES = new Set([
-  'Dockerfile',
   '.dockerignore',
   'Makefile',
   'GNUmakefile',
@@ -468,15 +471,15 @@ const INFRA_FILENAMES = new Set([
  *    exclusion table normally removes LICENSE, but if a project chooses to
  *    re-include it via `.excavatorignore` negation, it should NOT land in
  *    docs. We classify as `code` rather than inventing a new bucket.
- * 2. Filename-based infra (Dockerfile, Makefile, Jenkinsfile,
- *    docker-compose.*, Vagrantfile, Procfile, .gitlab-ci.yml,
+ * 2. Canonical Dockerfile language or filename-based infra (Makefile,
+ *    Jenkinsfile, docker-compose.*, Vagrantfile, Procfile, .gitlab-ci.yml,
  *    .dockerignore).
  * 3. Path-based infra (.github/workflows/, .circleci/, k8s/, kubernetes/,
  *    *.k8s.yml, *.k8s.yaml).
  * 4. Extension-based mapping (CATEGORY_BY_EXT).
  * 5. Fallback: `code` (matches the spec — "All other extensions").
  */
-export function detectCategory(filePath) {
+export function detectCategory(filePath, canonicalLanguage = classifyLanguage(filePath).language) {
   const base = basename(filePath);
   const ext = extname(filePath).toLowerCase();
   const posix = filePath.split(sep).join('/');
@@ -484,11 +487,12 @@ export function detectCategory(filePath) {
   // Rule 1: LICENSE exception (project-scanner.md Step 4 table comment).
   if (base === 'LICENSE') return 'code';
 
-  // Rule 2: infra by filename — Dockerfile + variants, Makefile,
-  // Jenkinsfile, docker-compose.*, Procfile, Vagrantfile, .gitlab-ci.yml,
-  // .dockerignore.
+  // Canonical Dockerfile matching includes exact, dot, and hyphen variants.
+  if (canonicalLanguage === 'dockerfile') return 'infra';
+
+  // Rule 2: infra by filename — Makefile, Jenkinsfile, docker-compose.*,
+  // Procfile, Vagrantfile, .gitlab-ci.yml, .dockerignore.
   if (INFRA_FILENAMES.has(base)) return 'infra';
-  if (base === 'Dockerfile' || base.startsWith('Dockerfile.')) return 'infra';
   if (base.startsWith('docker-compose.')) return 'infra';
   if (base === 'compose.yml' || base === 'compose.yaml') return 'infra';
 
@@ -520,6 +524,72 @@ export function detectCategory(filePath) {
   // gets handled by the language map's no-extension entries upstream.
   // Anything not matched falls through to `code`.
   return 'code';
+}
+
+/**
+ * Merge an authoritative SourceSnapshot selection ledger with processing
+ * outcomes produced by scanning its selected-only materialization. Excluded
+ * candidates are restored as safe metadata records; their bytes never need
+ * to exist in the materialized tree.
+ */
+export function mergeSnapshotSelection(scan, selection, snapshotProcessingSkips = []) {
+  if (!selection || !Array.isArray(selection.entries)) {
+    throw new Error('mergeSnapshotSelection: selection.entries must be an array');
+  }
+  const decisionByPath = new Map(selection.entries.map((entry) => [entry.path, entry]));
+  if (decisionByPath.size !== selection.entries.length) {
+    throw new Error('mergeSnapshotSelection: duplicate snapshot selection path');
+  }
+
+  const processing = [
+    ...(scan.skipped ?? []).filter((entry) => ![
+      'filtered-by-defaults', 'filtered-by-ignore', 'sensitive',
+    ].includes(entry.reason)),
+    ...snapshotProcessingSkips.map((entry) => ({
+      ...entry,
+      language: entry.language ?? detectLanguage(entry.path),
+    })),
+  ];
+  const outcomes = new Set((scan.files ?? []).map((entry) => entry.path));
+  for (const entry of processing) {
+    if (outcomes.has(entry.path)) {
+      throw new Error(`mergeSnapshotSelection: duplicate processing outcome for ${entry.path}`);
+    }
+    outcomes.add(entry.path);
+  }
+  for (const path of outcomes) {
+    if (decisionByPath.get(path)?.kind !== 'selected') {
+      throw new Error(`mergeSnapshotSelection: processing outcome ${path} is not snapshot-selected`);
+    }
+  }
+  for (const decision of selection.entries) {
+    if (decision.kind === 'selected' && !outcomes.has(decision.path)) {
+      throw new Error(`mergeSnapshotSelection: selected candidate ${decision.path} has no processing outcome`);
+    }
+  }
+
+  const excluded = selection.entries
+    .filter((entry) => entry.kind !== 'selected')
+    .map((entry) => ({
+      path: entry.path,
+      reason: entry.reason,
+      language: detectLanguage(entry.path),
+      detail: entry.detail,
+      ...(entry.kind === 'sensitive' && entry.size !== undefined ? { size: entry.size } : {}),
+    }));
+  const skipped = [...excluded, ...processing]
+    .sort((a, b) => compareStableStrings(a.path, b.path) || compareStableStrings(a.reason, b.reason));
+  const skippedByReason = {};
+  for (const entry of skipped) skippedByReason[entry.reason] = (skippedByReason[entry.reason] || 0) + 1;
+
+  return {
+    ...scan,
+    selection: JSON.parse(JSON.stringify(selection)),
+    filteredByIgnore: selection.filteredByIgnore,
+    filteredByDefaults: selection.filteredByDefaults,
+    skipped,
+    stats: { ...(scan.stats ?? {}), skippedByReason },
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -699,54 +769,30 @@ function enumerateFiles(projectRoot) {
 }
 
 // ---------------------------------------------------------------------------
-// Filter accounting
-//
-// The project-scanner.md contract requires `filteredByIgnore` to count files
-// dropped specifically by user `.excavatorignore` or CLI `--exclude`
-// patterns (the delta beyond what the hardcoded defaults would have removed).
-// We accomplish this by building TWO filters:
-//   - `defaultOnly`: defaults only, no user patterns
-//   - `combined`: defaults + user patterns (createIgnoreFilter)
-// and counting paths that the combined filter excludes but the defaults-only
-// filter would have kept.
-//
-// Negation (`!pattern`) is correctly handled by the combined filter — a file
-// re-included via `!` won't be in the combined-excluded set, so it WON'T be
-// counted in filteredByIgnore (it's "kept", not "additionally filtered").
+// Selection inputs
 // ---------------------------------------------------------------------------
 
-/**
- * Build a defaults-only IgnoreFilter — same patterns as createIgnoreFilter
- * would apply, minus any user .excavatorignore content. We synthesize this
- * via a temp directory with no .excavatorignore files so the core function
- * still drives the matcher. (Re-implementing the ignore-package wiring here
- * would risk subtle behavior drift from core's matcher.)
- */
-function buildDefaultsOnlyFilter() {
-  // Use the createIgnoreFilter with a path that we KNOW has no .excavatorignore.
-  // `os.tmpdir()`-based fresh dir guarantees no user patterns leak in.
-  // The directory doesn't need to exist on disk because createIgnoreFilter
-  // only checks existsSync() before reading.
-  const fakeProjectRoot = join(
-    require('node:os').tmpdir(),
-    `excavator-scan-defaults-${process.pid}-${Date.now()}`,
-  );
-  return createIgnoreFilter(fakeProjectRoot);
+function ignoreLines(path) {
+  if (!existsSync(path)) return [];
+  return readFileSync(path, 'utf-8').split('\n').filter((line) => line.length > 0);
 }
 
-/**
- * Determine whether `projectRoot` has any user .excavatorignore files.
- * When neither file exists, the combined and defaults-only filters are
- * identical, so we can skip the dual-filter accounting entirely.
- *
- * Mirrors core's createIgnoreFilter, which reads the data dir — `.excavator/`
- * (see resolveDataDir).
- */
-function hasUserIgnoreFile(projectRoot) {
-  return (
-    existsSync(join(projectRoot, '.excavatorignore'))
-    || existsSync(join(resolveDataDir(projectRoot), '.excavatorignore'))
-  );
+function currentProjectPatterns(projectRoot) {
+  return ignoreLines(join(projectRoot, '.excavatorignore'));
+}
+
+function readBoundedPrefix(absPath) {
+  let descriptor;
+  try {
+    descriptor = openSync(absPath, 'r');
+    const buffer = Buffer.alloc(PRIVATE_KEY_PREFIX_BYTES);
+    const bytesRead = readSync(descriptor, buffer, 0, buffer.byteLength, 0);
+    return buffer.subarray(0, bytesRead);
+  } catch {
+    return undefined;
+  } finally {
+    if (descriptor !== undefined) closeSync(descriptor);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -809,13 +855,12 @@ async function main() {
   const args = process.argv.slice(2);
   let projectRoot;
   let outputPath;
-  let excludeAnalysisData = false;
   const excludePatterns = [];
 
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
     if (arg === '--exclude-analysis-data') {
-      excludeAnalysisData = true;
+      // Kept as a caller-facing spelling; hard safety always excludes it.
       continue;
     }
     if (arg === '--exclude') {
@@ -874,45 +919,53 @@ async function main() {
   const failures = [];
 
   // 1. Enumerate. Either git ls-files or recursive walk.
-  const candidates = enumerateFiles(projectRoot).filter(
-    rel => !excludeAnalysisData || !rel.startsWith('.excavator/'),
-  );
+  const candidates = enumerateFiles(projectRoot);
 
-  // 2. Filter via createIgnoreFilter (defaults + .excavatorignore + CLI excludes).
-  //    Build a defaults-only filter in parallel so every drop lands in a
-  //    visible bucket — baseline default drops (node_modules/, .excavator/,
-  //    .claude/, etc.) are never silently absorbed into "not counted".
-  const combined = createIgnoreFilter(projectRoot, excludePatterns);
-  const userIgnoresPresent = hasUserIgnoreFile(projectRoot) || excludePatterns.length > 0;
-  const defaultsOnly = buildDefaultsOnlyFilter();
-
-  let filteredByIgnore = 0;
-  let filteredByDefaults = 0;
+  // 2. Apply the shared pre-extraction policy. Only a bounded prefix may be
+  //    read here, and no sensitive decision contains those bytes or a hash.
+  const selectionPolicy = createSourceSelectionPolicy({
+    projectPatterns: currentProjectPatterns(projectRoot),
+    cliPatterns: excludePatterns,
+  });
+  const selectionDecisions = [];
   const kept = [];
   // Every enumerated file that is not emitted lands here with the reason it
   // was dropped, so the coverage ledger can account for it by name.
   const skipped = [];
-  const recordSkip = (rel, reason) => {
-    skipped.push({ path: rel, reason, language: detectLanguage(rel) });
+  const recordSkip = (rel, reason, safeMetadata = {}) => {
+    skipped.push({ path: rel, reason, language: detectLanguage(rel), ...safeMetadata });
   };
   for (const rel of candidates) {
-    const isIgnoredCombined = combined.isIgnored(rel);
-    if (!isIgnoredCombined) {
+    const absPath = join(projectRoot, rel);
+    let stat;
+    try {
+      stat = lstatSync(absPath);
+    } catch {
+      // The processing pass below owns the visible read-failed result.
+    }
+    const initial = selectionPolicy.decide({ path: rel, size: stat?.size });
+    const mayNeedHeader = stat?.isFile()
+      && initial.kind !== 'sensitive'
+      && !(initial.kind === 'filtered-by-defaults' && ['analysis-data', 'archive'].includes(initial.detail));
+    const decision = mayNeedHeader
+      ? selectionPolicy.decide({ path: rel, size: stat.size, contentPrefix: readBoundedPrefix(absPath) })
+      : initial;
+    selectionDecisions.push(decision);
+    if (decision.kind === 'selected') {
       kept.push(rel);
-      continue;
+    } else {
+      recordSkip(
+        rel,
+        decision.reason,
+        decision.kind === 'sensitive'
+          ? { detail: decision.detail, ...(decision.size === undefined ? {} : { size: decision.size }) }
+          : { detail: decision.detail },
+      );
     }
-    // Dropped by combined filter. If defaults-only would have ALSO dropped
-    // it, this is a baseline default drop (reason: ignored — counted here,
-    // not silently dropped). If defaults-only would have KEPT it, this drop
-    // is attributable to the user's .excavatorignore content or CLI
-    // --exclude patterns.
-    if (defaultsOnly.isIgnored(rel)) {
-      filteredByDefaults++;
-    } else if (userIgnoresPresent) {
-      filteredByIgnore++;
-    }
-    recordSkip(rel, 'ignored');
   }
+  const selection = buildSourceSelectionLedger(selectionDecisions);
+  const filteredByDefaults = selection.filteredByDefaults;
+  const filteredByIgnore = selection.filteredByIgnore;
 
   // The per-file pass, output, stats key insertion, and content fingerprint
   // all consume this one locale-independent path order.
@@ -1006,7 +1059,7 @@ async function main() {
       path: rel,
       language,
       sizeLines: scanned.sizeLines,
-      fileCategory: detectCategory(rel),
+      fileCategory: detectCategory(rel, language),
     });
   }
 
@@ -1034,6 +1087,7 @@ async function main() {
   const output = {
     scriptCompleted: true,
     contentDigest,
+    selection,
     files: fileEntries,
     totalFiles: fileEntries.length,
     filteredByIgnore,
@@ -1105,6 +1159,7 @@ export default {
   detectLanguage,
   classifyLanguage,
   detectCategory,
+  mergeSnapshotSelection,
   estimateComplexity,
   hasBinaryExtension,
   looksBinary,
