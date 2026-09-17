@@ -6,7 +6,7 @@ import { resolveSourceSnapshot } from './source-snapshot.mjs';
 import { PIPELINE_VERSION } from './lazy-analyze.mjs';
 import { syncFactGraph } from './sync-fact-graph.mjs';
 import { bm25Search, boundedBFS, boundedShortestPath, mergeCandidates, oneHop } from './retrieve.mjs';
-import { isFresh, readSemanticCache, commitSemanticCacheEntry } from './semantic-cache.mjs';
+import { isFresh, commitSemanticCacheEntry } from './semantic-cache.mjs';
 import { planSemanticCacheReuse } from './semantic-cache-reuse.mjs';
 
 const LIMITS = Object.freeze({ terms: 12, termLength: 80, exactIds: 20, candidates: 50, offset: 500,
@@ -150,6 +150,7 @@ export function createProjectService(projectRoot, { snapshotFactory = resolveSou
       }
       const status = start.identity.freshness === 'fresh' && graph ? 'ok' : 'unavailable';
       return finish(start, status, {
+        projectRoot: root,
         analysisMode: graph?.project?.analysisMode ?? (graph?.project?.pipelineVersion === PIPELINE_VERSION ? 'lazy' : 'unknown'),
         factsDigest: graph?.project?.factsDigest ?? null,
         nodeCount: graph?.nodes?.length ?? 0,
@@ -208,7 +209,7 @@ export function createProjectService(projectRoot, { snapshotFactory = resolveSou
       const sourceSearch = terms.length ? start.snapshot.search(terms).filter((r) => manifestPaths.has(r.path)).slice(0, 200).map((r) => ({
         nodeId: files.get(r.path)?.id, path: r.path, line: r.line, text: r.text.slice(0, 160), term: r.term,
       })) : [];
-      const cache = await readSemanticCache(root);
+      const cache = readJsonProduct(root, 'semantic-cache.json', null, start.gaps) ?? { entries: {} };
       const nodeById = new Map(graph.nodes.map((n) => [n.id, n]));
       const hashByPath = new Map(start.manifest.entries.map((e) => [e.path, e.contentHash]));
       const semanticCacheText = Object.entries(cache.entries ?? {}).flatMap(([nodeId, entry]) => {
@@ -273,9 +274,15 @@ export function createProjectService(projectRoot, { snapshotFactory = resolveSou
       const chars = boundedInt(maxChars, 8_000, LIMITS.evidenceChars, 'maxChars');
       const start = open(expectedRevision);
       if (start.stale) return start.stale;
-      const facts = requiredFacts(start);
-      if (facts.unavailable) return facts.unavailable;
-      const node = nodeId ? facts.graph.nodes.find((n) => n.id === nodeId) : null;
+      if (start.identity.freshness !== 'fresh') return finish(start, 'stale-snapshot', null, {
+        gaps: [{ kind: 'facts-not-current', freshness: start.identity.freshness }],
+        error: { code: 'stale-snapshot', retryable: true },
+      });
+      const graph = nodeId ? readJsonProduct(root, 'knowledge-graph.json', 'nodes', start.gaps) : null;
+      if (nodeId && !graph) return finish(start, 'unavailable', null, {
+        error: { code: 'missing-product', retryable: true },
+      });
+      const node = nodeId ? graph.nodes.find((n) => n.id === nodeId) : null;
       if (nodeId && !node) return finish(start, 'unavailable', null, {
         gaps: [{ kind: 'unknown-node', nodeId }], error: { code: 'unknown-node' },
       });
@@ -313,7 +320,7 @@ export function createProjectService(projectRoot, { snapshotFactory = resolveSou
       if (start.stale) return start.stale;
       const facts = requiredFacts(start);
       if (facts.unavailable) return facts.unavailable;
-      const cache = await readSemanticCache(root);
+      const cache = readJsonProduct(root, 'semantic-cache.json', null, start.gaps) ?? { entries: {} };
       const plan = planSemanticCacheReuse({ requestedNodeIds: nodeIds, nodes: facts.graph.nodes,
         manifestEntries: start.manifest.entries, semanticCache: cache });
       const byId = new Map(facts.graph.nodes.map((n) => [n.id, n]));

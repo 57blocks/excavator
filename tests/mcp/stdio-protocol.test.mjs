@@ -41,6 +41,10 @@ describe('real stdio MCP protocol', () => {
     expect(plan.structuredContent.data.counts).toMatchObject({ requested: 2, reuse: 1, generate: 1 });
     const evidence = await client.callTool({ name: 'read_evidence', arguments: { nodeId: IDS.missing } });
     expect(evidence.structuredContent.data.text).toContain('load');
+    const tooLarge = await client.callTool({ name: 'read_evidence', arguments: { path: 'src/owners.ts',
+      startLine: 1, endLine: 1000 } });
+    expect(tooLarge.isError).toBe(true);
+    expect(tooLarge.structuredContent.error.code).toBe('invalid-request');
     const recall = await client.callTool({ name: 'recall', arguments: { terms: ['save'], limit: 1 } });
     expect(recall.structuredContent.budget.used).toBe(1);
     const traverse = await client.callTool({ name: 'traverse', arguments: { seedIds: [IDS.a], maxNodes: 2 } });

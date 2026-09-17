@@ -43,6 +43,9 @@ describe('shared deterministic project service', () => {
     expect(plan.data.generate[0].evidence).toMatchObject({ path: 'src/owners.ts', complete: true });
     expect(plan.data.unavailable).toContainEqual({ nodeId: IDS.orphan, filePath: 'src/orphan.ts', reason: 'path-not-in-manifest' });
     expect(fixture.readCacheBytes()).toEqual(before);
+    const tiny = await service.semanticPlan({ nodeIds: [IDS.missing], maxEvidenceChars: 1 });
+    expect(tiny.boundary).toMatchObject({ truncated: true, nodeIdsNeedingMoreEvidence: [IDS.missing] });
+    expect(tiny.gaps).toContainEqual({ kind: 'evidence-truncated', nodeId: IDS.missing });
   });
 
   it('reads current line evidence and rejects stale client revisions or path escape', () => {
