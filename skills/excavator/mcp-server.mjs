@@ -8,7 +8,6 @@ import { serveStdio } from '@modelcontextprotocol/server/stdio';
 import * as z from 'zod/v4';
 
 import { createProjectService } from './project-service.mjs';
-import { resolveSourceSnapshot } from './source-snapshot.mjs';
 
 const revision = z.string().min(1).max(180).optional();
 const nodeId = z.string().min(1).max(300);
@@ -34,17 +33,15 @@ export function createMcpServer(projectRoot) {
         const result = await handler(args);
         return toolResult(result, ['error', 'containment'].includes(result.status));
       } catch (error) {
-        let snapshot = null;
-        try {
-          const current = resolveSourceSnapshot(service.root);
-          snapshot = { revision: current.revision, kind: current.kind,
-            selectionDigest: current.selectionDigest, manifestRevision: null, freshness: 'unknown' };
-        } catch { /* preserve the error bucket even if source cannot be resolved */ }
+        // A request rejected for invalid input or path containment did no
+        // project work, so it has no snapshot to report. Never resolve the
+        // source snapshot on the error path: on a large repo that makes a
+        // rejected call as expensive as a real one (resolve is O(files)).
+        const code = error.code === 'containment' ? 'containment' : 'invalid-request';
         return toolResult({ status: error.code === 'containment' ? 'containment' : 'error',
-          snapshot, data: null, coverage: { gapsCount: 1 },
-          gaps: [{ kind: error.code === 'containment' ? 'containment' : 'invalid-request' }],
-          budget: null, boundary: null,
-          error: { code: error.code === 'containment' ? 'containment' : 'invalid-request', message: error.message } }, true);
+          snapshot: null, data: null, coverage: { gapsCount: 1 },
+          gaps: [{ kind: code }], budget: null, boundary: null,
+          error: { code, message: error.message } }, true);
       }
     });
   }
