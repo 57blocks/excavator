@@ -106,9 +106,9 @@ describe("FrameworkRegistry", () => {
   });
 
   describe("createDefault", () => {
-    it("registers all 11 built-in framework configs", () => {
+    it("registers all 12 built-in framework configs", () => {
       const registry = FrameworkRegistry.createDefault();
-      expect(registry.getAllFrameworks()).toHaveLength(11);
+      expect(registry.getAllFrameworks()).toHaveLength(12);
     });
 
     it("detects .NET MAUI from a .csproj (glob manifest match)", () => {
@@ -136,6 +136,34 @@ describe("FrameworkRegistry", () => {
       expect(maui.layerHints?.viewmodels).toBe("service");
       expect(maui.entryPoints).toContain("MauiProgram.cs");
       expect(registry.getForLanguage("csharp").some((f) => f.id === "maui")).toBe(true);
+    });
+
+    it("detects Angular from package.json (@angular/core)", () => {
+      const registry = FrameworkRegistry.createDefault();
+      const detected = registry.detectFrameworks({
+        "package.json":
+          '{"dependencies": {"@angular/core": "^17.0.0", "@angular/common": "^17.0.0"}}',
+      });
+      expect(detected.some((f) => f.id === "angular")).toBe(true);
+    });
+
+    it("does not detect Angular from a plain package.json", () => {
+      const registry = FrameworkRegistry.createDefault();
+      const detected = registry.detectFrameworks({
+        "package.json": '{"dependencies": {"lodash": "^4.17.0"}}',
+      });
+      expect(detected.some((f) => f.id === "angular")).toBe(false);
+    });
+
+    it("exposes angular layer hints, entry points, and typescript language", () => {
+      const registry = FrameworkRegistry.createDefault();
+      const angular = registry.getById("angular")!;
+      expect(angular.layerHints?.components).toBe("ui");
+      expect(angular.layerHints?.services).toBe("service");
+      expect(angular.entryPoints).toContain("src/main.ts");
+      expect(
+        registry.getForLanguage("typescript").some((f) => f.id === "angular")
+      ).toBe(true);
     });
 
     it("includes frameworks for multiple languages", () => {
