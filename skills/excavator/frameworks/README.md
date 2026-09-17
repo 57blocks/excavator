@@ -39,12 +39,14 @@ ANNOTATE and VALIDATE phases never treat a convention as a fact.
 
 ## Present today
 
-`django.md`, `express.md`, `fastapi.md`, `flask.md`, `gin.md`, `maui.md`,
-`nextjs.md`, `rails.md`, `react.md`, `spring.md`, `vue.md`.
+`angular.md`, `django.md`, `express.md`, `fastapi.md`, `flask.md`, `gin.md`,
+`maui.md`, `nextjs.md`, `rails.md`, `react.md`, `spring.md`, `vue.md`.
 
 Deterministic readers for framework-specific file types — parser plugins that
 emit anchored structure rather than prose conventions — are tracked as OpenSpec
-changes under `openspec/changes/`, not authored in this directory. `angular` and
-`maui` are the first two targets; the MAUI reader set (`.xaml`/`.csproj`/
-`.feature`) is added by the `mobile-maui-support` change, and until it lands a
-project using them gets the base rules only.
+changes under `openspec/changes/`, not authored in this directory. `maui` is the
+target that needs them: its markup (`.xaml`/`.csproj`/`.feature`) is read by the
+`mobile-maui-support` change. `angular` deliberately gets **no** such reader — its
+separate `.html` templates are handled by the addendum above plus the analyzing
+AI, the same way other split-template front-end frameworks (`react`, `vue`) are;
+the `web-angular-support` change adds the addendum, not a parser.
