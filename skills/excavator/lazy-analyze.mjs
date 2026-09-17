@@ -121,6 +121,7 @@ import { createRequire } from 'node:module';
 import { buildFactGraph } from './build-fact-graph.mjs';
 import { buildSourceIndex } from './build-source-index.mjs';
 import { conservationViolations } from './coverage-ledger.mjs';
+import { mergeSnapshotSelection } from './scan-project.mjs';
 import { resolveSourceSnapshot } from './source-snapshot.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -406,7 +407,7 @@ export async function runLazyAnalysis({
   // --- Produce: run the existing Scan -> Structure-All -> Import-Map ->
   // Build Fact Graph -> Deterministic Validate pipeline against the
   // MATERIALIZED snapshot content (never `root` directly). ------------------
-  async function produce(materializedDir) {
+  async function produce(materializedDir, activeSnapshot) {
     const timings = {};
     function time(label, fn) {
       const start = Date.now();
@@ -427,7 +428,12 @@ export async function runLazyAnalysis({
         throw new Error(`lazy-analyze: scan-project.mjs failed: ${result.stderr || result.status}`);
       }
     });
-    const scan = readJsonRequired(scanPath, 'scan-result.json');
+    const scan = mergeSnapshotSelection(
+      readJsonRequired(scanPath, 'scan-result.json'),
+      activeSnapshot.selection,
+      activeSnapshot.processingSkips,
+    );
+    writeFileSync(scanPath, JSON.stringify(scan, null, 2), 'utf-8');
 
     // --- Phase 1.2 STRUCTURE-ALL ---------------------------------------------
     const structurePath = join(intermediateDir, 'structure-all.json');
@@ -468,7 +474,7 @@ export async function runLazyAnalysis({
     let sourceIndex;
     time('sourceIndex', () => {
       const readFile = (relPath) => readFileSync(join(materializedDir, relPath), 'utf-8');
-      sourceIndex = buildSourceIndexStep({ scan, structureAll, readFile, sourceRevision: snapshot.revision });
+      sourceIndex = buildSourceIndexStep({ scan, structureAll, readFile, sourceRevision: activeSnapshot.revision });
     });
 
     // --- Deterministic validate ----------------------------------------------
@@ -499,7 +505,7 @@ export async function runLazyAnalysis({
           {
             projectRoot: materializedDir,
             filePaths: scan.files.map((f) => f.path),
-            gitCommitHash: snapshot.kind === 'git' ? snapshot.sha : null,
+            gitCommitHash: activeSnapshot.kind === 'git' ? activeSnapshot.sha : null,
           },
           null,
           2,
@@ -522,7 +528,7 @@ export async function runLazyAnalysis({
     // a second `git rev-parse HEAD` call — for a GitCommitSnapshot this is
     // exactly the sha `revision` already names; for Directory/MultiRepo there
     // is no single commit to report, so it is honestly null.
-    const gitCommitHash = snapshot.kind === 'git' ? snapshot.sha : null;
+    const gitCommitHash = activeSnapshot.kind === 'git' ? activeSnapshot.sha : null;
     const { name, description } = deterministicProjectMeta(materializedDir);
     const languages = Object.keys(scan.stats?.byLanguage ?? {}).sort();
 
@@ -561,7 +567,7 @@ export async function runLazyAnalysis({
   // --- Publish: non-destructive merge already happened above; this step is
   // ONLY reached once `runGuarded` has confirmed nothing about the source
   // changed for the whole duration of `produce` (design D7). --------------
-  async function publish(product) {
+  async function publish(product, activeSnapshot) {
     const saveStart = Date.now();
 
     try {
@@ -618,10 +624,11 @@ export async function runLazyAnalysis({
       join(dataDir, 'source-manifest.json'),
       JSON.stringify(
         {
-          sourceRevision: snapshot.revision,
-          selectionDigest: snapshot.selectionDigest,
+          sourceRevision: activeSnapshot.revision,
+          selectionDigest: activeSnapshot.selectionDigest,
           pipelineVersion: PIPELINE_VERSION,
-          entries: snapshot.entries(),
+          entries: activeSnapshot.entries(),
+          selection: activeSnapshot.selection,
         },
         null,
         2,
@@ -634,8 +641,8 @@ export async function runLazyAnalysis({
   }
 
   const guardResult = await snapshot.runGuarded(
-    (materializedDir) => produce(materializedDir),
-    (product) => publish(product),
+    (materializedDir, activeSnapshot) => produce(materializedDir, activeSnapshot),
+    (product, activeSnapshot) => publish(product, activeSnapshot),
   );
 
   if (!guardResult.ok) {
@@ -661,7 +668,7 @@ export async function runLazyAnalysis({
     nodeCount: product?.knowledgeGraph?.nodes?.length ?? 0,
     edgeCount: product?.knowledgeGraph?.edges?.length ?? 0,
     timings,
-    sourceRevision: snapshot.revision,
+    sourceRevision: guardResult.revision ?? snapshot.revision,
   };
 }
 

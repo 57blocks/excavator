@@ -444,6 +444,7 @@ export const GapSchema = z.object({
 // Scan-time skip reasons plus the two extraction outcomes that leave a file
 // unparsed. One map, so `files = parsed + zeroSymbol + Σ skipped` holds.
 const SKIP_REASONS = [
+  "filtered-by-defaults", "filtered-by-ignore", "sensitive",
   "symlink", "read-failed", "unknown-language", "binary", "too-large", "ignored",
   "no-extractor", "parse-failed",
 ] as const;
@@ -472,6 +473,14 @@ export const CoverageSchema = z.object({
   byLanguage: z.record(z.string(), LanguageCoverageSchema),
   ignored: z.number(),
   limits: z.object({ maxFileLines: z.number(), maxFileBytes: z.number() }).passthrough().optional(),
+  selection: z.object({
+    policyVersion: z.string(),
+    candidates: z.number().int().nonnegative(),
+    selected: z.number().int().nonnegative(),
+    filteredByDefaults: z.number().int().nonnegative(),
+    filteredByIgnore: z.number().int().nonnegative(),
+    sensitive: z.number().int().nonnegative(),
+  }).passthrough().optional(),
 }).passthrough();
 
 /** Node types whose identity is a declaration: an audit expects a file AND a

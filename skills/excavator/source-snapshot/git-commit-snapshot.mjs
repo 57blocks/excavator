@@ -12,13 +12,17 @@
  * in-flight analysis run within one process invocation.
  */
 
-import { mkdtempSync, rmSync, readdirSync, rmSync as rmPath } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 
 import { contentHash, manifestDigest, diffEntries } from './manifest.mjs';
-import { ignoreRulesFromContent } from './ignore-rules.mjs';
-import { listTrackedFiles, showFileAt, grepAt, archiveToDir } from './git-utils.mjs';
+import {
+  ignoreRulesFromContent,
+  selectionLedger,
+  selectionPrefixBytes,
+} from './ignore-rules.mjs';
+import { listTrackedEntries, showFileAt, showFilePrefixAt } from './git-utils.mjs';
 
 const EXCAVATORIGNORE_PATH = '.excavatorignore';
 
@@ -40,11 +44,40 @@ export class GitCommitSnapshot {
       ignoreFileBuf ? ignoreFileBuf.toString('utf-8') : null,
       this._extraExcludePatterns,
     );
-    this._filter = rules.filter;
+    this._selectionDescriptors = rules.descriptors;
     this.selectionDigest = rules.digest;
 
-    this._trackedPaths = listTrackedFiles(root, sha).filter((p) => !this._filter.isIgnored(p));
-    this._trackedPaths.sort();
+    const decisions = [];
+    this._trackedPaths = [];
+    this.processingSkips = [];
+    for (const entry of listTrackedEntries(root, sha).sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0))) {
+      const { path } = entry;
+      const initial = rules.policy.decide({ path });
+      if (entry.mode === '120000') {
+        decisions.push(initial);
+        if (initial.kind === 'selected') this.processingSkips.push({ path, reason: 'symlink' });
+        continue;
+      }
+      if (entry.type !== 'blob') {
+        decisions.push(initial);
+        if (initial.kind === 'selected') this.processingSkips.push({ path, reason: 'read-failed' });
+        continue;
+      }
+      const mayNeedHeader = initial.kind !== 'sensitive'
+        && !(initial.kind === 'filtered-by-defaults' && ['analysis-data', 'archive'].includes(initial.detail));
+      const prefix = mayNeedHeader
+        ? showFilePrefixAt(root, sha, path, selectionPrefixBytes) ?? undefined
+        : undefined;
+      const decision = mayNeedHeader && prefix !== undefined
+        ? rules.policy.decide({ path, contentPrefix: prefix })
+        : initial;
+      decisions.push(decision);
+      if (decision.kind === 'selected') {
+        if (mayNeedHeader && prefix === undefined) this.processingSkips.push({ path, reason: 'read-failed' });
+        else this._trackedPaths.push(path);
+      }
+    }
+    this.selection = selectionLedger(decisions);
   }
 
   /** Terminal notice required by the "HEAD-only" contract — printed by
@@ -71,8 +104,20 @@ export class GitCommitSnapshot {
 
   /** @param {string[]} terms */
   search(terms) {
-    const tracked = new Set(this._trackedPaths);
-    return grepAt(this.root, this.sha, terms).filter((r) => tracked.has(r.path));
+    const results = [];
+    for (const path of this._trackedPaths) {
+      const bytes = this.readFile(path);
+      if (bytes.includes(0)) continue;
+      const lines = bytes.toString('utf-8').split('\n');
+      for (let index = 0; index < lines.length; index++) {
+        for (const term of terms) {
+          if (lines[index].includes(term)) {
+            results.push({ path, line: index + 1, text: lines[index], term });
+          }
+        }
+      }
+    }
+    return results;
   }
 
   /** The `{path, contentHash}` entries for this revision, computed on
@@ -87,20 +132,20 @@ export class GitCommitSnapshot {
   }
 
   /**
-   * `git archive <sha> | tar -x` into a fresh temp directory — HEAD-only by
-   * construction, no staged/unstaged/untracked content can appear. Ignored
-   * paths (selection rules) are removed by simply never asking for them:
-   * the archive itself is filtered down to `this._trackedPaths` by
-   * re-extracting only into paths this snapshot lists... in practice it is
-   * simplest and still correct to archive the WHOLE tree and then delete
-   * ignored paths that made it in, so that is what happens here.
+   * Write only selected paths from the fixed commit into a fresh directory.
+   * Rejected paths are never requested from git and therefore never cross the
+   * materialization boundary, even transiently.
    *
    * @returns {{ dir: string, cleanup: () => void }}
    */
   materialize() {
     const dest = mkdtempSync(join(tmpdir(), 'excavator-snapshot-git-'));
-    archiveToDir(this.root, this.sha, dest);
-    pruneToTracked(dest, this._trackedPaths);
+    for (const path of this._trackedPaths) {
+      const bytes = this.readFile(path);
+      const destination = join(dest, path);
+      mkdirSync(dirname(destination), { recursive: true });
+      writeFileSync(destination, bytes);
+    }
     return { dir: dest, cleanup: () => rmSync(dest, { recursive: true, force: true }) };
   }
 
@@ -124,39 +169,4 @@ export class GitCommitSnapshot {
     await publish(product, this);
     return { ok: true, attempts: 1, product, revision: this.revision };
   }
-}
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-/** Remove from `dir` (recursively) any file whose project-relative POSIX
- *  path is not in `keepPaths`, and any directory left empty as a result.
- *  Used because `git archive` has no per-path exclude flag we can drive
- *  from an arbitrary `IgnoreFilter`. */
-function pruneToTracked(dir, keepPaths) {
-  const keep = new Set(keepPaths);
-  function walk(absDir, relDir) {
-    let entries;
-    try {
-      entries = readdirSync(absDir, { withFileTypes: true });
-    } catch {
-      return;
-    }
-    for (const ent of entries) {
-      const relPath = relDir ? `${relDir}/${ent.name}` : ent.name;
-      const absPath = join(absDir, ent.name);
-      if (ent.isDirectory()) {
-        walk(absPath, relPath);
-        try {
-          if (readdirSync(absPath).length === 0) rmPath(absPath, { recursive: true, force: true });
-        } catch {
-          // ignore — best-effort cleanup of now-empty directories.
-        }
-      } else if (ent.isFile() && !keep.has(relPath)) {
-        rmPath(absPath, { force: true });
-      }
-    }
-  }
-  walk(dir, '');
 }

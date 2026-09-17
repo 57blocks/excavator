@@ -222,7 +222,7 @@ describe("StrictLanguageConfigSchema", () => {
     expect(result.success).toBe(false);
     if (!result.success) {
       expect(result.error.issues[0].message).toContain(
-        "at least one extension or filename"
+        "at least one extension, filename, or basename pattern"
       );
     }
   });

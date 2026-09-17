@@ -5,6 +5,7 @@ export const dockerfileConfig = {
   displayName: "Dockerfile",
   extensions: [],
   filenames: ["Dockerfile", "Dockerfile.dev", "Dockerfile.prod", "Dockerfile.test"],
+  basenamePatterns: ["Dockerfile.*", "Dockerfile-*"],
   concepts: ["multi-stage builds", "layers", "base images", "COPY/ADD", "EXPOSE", "ENTRYPOINT", "CMD", "ARG", "ENV"],
   filePatterns: {
     entryPoints: ["Dockerfile"],

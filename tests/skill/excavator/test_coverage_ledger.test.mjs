@@ -19,6 +19,7 @@ import {
   conservationViolations,
   SCAN_SKIP_REASONS,
 } from '../../../skills/excavator/coverage-ledger.mjs';
+import scanProject from '../../../skills/excavator/scan-project.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const SKILL_DIR = resolve(__dirname, '../../../skills/excavator');
@@ -84,6 +85,7 @@ function runImportMap(projectRoot, scan) {
  */
 function everyBucketProject() {
   const root = setupTree({
+    '.excavatorignore': 'project-drop/\n',
     'src/good.ts': "import { helper } from './helper';\nexport const run = () => helper();\n",
     'src/helper.ts': 'export function helper() { return 1; }\n',
     'src/broken.ts': 'export function oops( {{{ \n',
@@ -92,6 +94,9 @@ function everyBucketProject() {
     'src/unreadable.ts': 'export const secret = 1;\n',
     'bin/native.dll': 'MZ\u0000\u0000binary-ish\n',
     '.claude/settings.json': '{"hooks":[]}\n',
+    'project-drop/generated.ts': 'export const generated = true;\n',
+    'config/extension-only.key': 'synthetic sensitive extension fixture\n',
+    'config/header-only.txt': '-----BEGIN PRIVATE KEY-----\nEXCAVATOR_FAKE_SECRET_CANARY_ledger\n',
     'src/huge.ts': `${'// filler line\n'.repeat(20050)}export const huge = 1;\n`,
     // extension says text, content says otherwise: only the NUL sniff
     // can catch this one, so it proves the sniff and not the table
@@ -119,12 +124,15 @@ describe('coverage ledger — every input lands in exactly one bucket', () => {
     // caught by the content sniff, not the extension table
     expect(skipOf('src/sneaky.ts')?.reason).toBe('binary');
     expect(skipOf('src/huge.ts')?.reason).toBe('too-large');
-    expect(skipOf('.claude/settings.json')?.reason).toBe('ignored');
+    expect(skipOf('.claude/settings.json')?.reason).toBe('filtered-by-defaults');
+    expect(skipOf('project-drop/generated.ts')?.reason).toBe('filtered-by-ignore');
+    expect(skipOf('config/extension-only.key')?.reason).toBe('sensitive');
+    expect(skipOf('config/header-only.txt')?.reason).toBe('sensitive');
     // An unrecognised EXTENSION still names a language, keeps its census row,
     // and comes back from extraction as `no-extractor`.
     expect(skipOf('src/data.xyz')).toBeUndefined();
 
-    // every skip reason is one of the six, and every entry has a language
+    // every skip reason is named, and every entry has a language
     for (const entry of scan.skipped) {
       expect(SCAN_SKIP_REASONS).toContain(entry.reason);
       expect(typeof entry.language).toBe('string');
@@ -155,6 +163,23 @@ describe('coverage ledger — every input lands in exactly one bucket', () => {
     expect(coverage.files).toBe(scan.files.length + scan.skipped.length);
     expect(coverage.limits).toEqual({ maxFileLines: 20000, maxFileBytes: 2 * 1024 * 1024 });
     expect(coverage.ignored).toBeGreaterThanOrEqual(1);
+    expect(coverage.selection).toEqual(expect.objectContaining({
+      policyVersion: 'source-selection-v1',
+      candidates: scan.selection.candidates,
+      selected: scan.selection.selected,
+      filteredByDefaults: scan.selection.filteredByDefaults,
+      filteredByIgnore: scan.selection.filteredByIgnore,
+      sensitive: scan.selection.sensitive,
+    }));
+    expect(coverage.selection.candidates).toBe(
+      coverage.selection.selected
+      + coverage.selection.filteredByDefaults
+      + coverage.selection.filteredByIgnore
+      + coverage.selection.sensitive,
+    );
+    expect(coverage.selection.filteredByDefaults).toBeGreaterThan(0);
+    expect(coverage.selection.filteredByIgnore).toBeGreaterThan(0);
+    expect(coverage.selection.sensitive).toBe(2);
 
     // typescript: good + helper parsed; link/unreadable/huge skipped
     const ts = coverage.byLanguage.typescript;
@@ -215,13 +240,48 @@ describe('coverage ledger — every input lands in exactly one bucket', () => {
     ).toThrow(/unknown status/);
   });
 
-  it('fails closed on a scan skip reason outside the six', () => {
+  it('fails closed on a scan skip reason outside the named set', () => {
     expect(() =>
       buildCoverageLedger({
         scan: { files: [], skipped: [{ path: 'a.ts', reason: 'meh', language: 'typescript' }] },
         structure: { results: [] },
       }),
     ).toThrow(/unknown scan skip reason/);
+  });
+
+  it('fails closed when a selected candidate has no processing outcome', () => {
+    const root = everyBucketProject();
+    const scan = runScan(root);
+    const structure = runStructure(root, scan);
+    const selected = scan.selection.entries.find((entry) => entry.kind === 'selected');
+    scan.files = scan.files.filter((file) => file.path !== selected.path);
+    scan.skipped = scan.skipped.filter((entry) => entry.path !== selected.path);
+
+    expect(() => buildCoverageLedger({ scan, structure })).toThrow(/has no scan outcome/);
+  });
+
+  it('conserves a snapshot-selected candidate whose bounded/full read failed', () => {
+    const selection = {
+      policyVersion: 'source-selection-v1',
+      candidates: 1,
+      selected: 1,
+      filteredByDefaults: 0,
+      filteredByIgnore: 0,
+      sensitive: 0,
+      entries: [{ kind: 'selected', path: 'unreadable.ts' }],
+    };
+    const merged = scanProject.mergeSnapshotSelection(
+      { files: [], skipped: [], coverage: { limits: {} }, stats: {} },
+      selection,
+      [{ path: 'unreadable.ts', reason: 'read-failed' }],
+    );
+    const { coverage } = buildCoverageLedger({ scan: merged, structure: { results: [] } });
+    expect(merged.skipped).toContainEqual({
+      path: 'unreadable.ts',
+      reason: 'read-failed',
+      language: 'typescript',
+    });
+    expect(conservationViolations(coverage)).toEqual([]);
   });
 });
 

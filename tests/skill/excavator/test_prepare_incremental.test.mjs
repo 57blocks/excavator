@@ -1036,6 +1036,14 @@ describe('prepare-incremental.mjs', { timeout: 30_000 }, () => {
     expect(plan.filesToReanalyze).toEqual([]);
     expect(plan.deletedFiles).toEqual(['feature/old.ts']);
     expect(scan.files.map(file => file.path)).not.toContain('feature/old.ts');
+    expect(scan.selection.entries).toContainEqual(expect.objectContaining({
+      path: 'feature/old.ts',
+      kind: 'filtered-by-ignore',
+    }));
+    expect(scan.skipped).toContainEqual(expect.objectContaining({
+      path: 'feature/old.ts',
+      reason: 'filtered-by-ignore',
+    }));
   });
 
   it('conservatively analyzes an existing non-code file missing from a legacy fingerprint baseline', () => {
@@ -1119,6 +1127,20 @@ describe('prepare-incremental.mjs', { timeout: 30_000 }, () => {
     expect(plan.deletedFiles).toEqual(['legacy/old.ts']);
     expect(plan.ignoredFiles).toContain('.excavatorignore');
     expect(plan.action).toBe('ARCHITECTURE_UPDATE');
+  });
+
+  it('does not remove files named only by the obsolete data-dir ignore file', () => {
+    const { root, baseCommit } = setupRepository({
+      'src/a.ts': 'export const a = 1;\n',
+      'src/b.ts': 'export const b = 2;\n',
+      'src/c.ts': 'export const c = 3;\n',
+      'legacy/old.ts': 'export const old = true;\n',
+    });
+    writeProjectFile(root, '.excavator/.excavatorignore', 'legacy/\n');
+
+    const { plan, scan } = prepare(root, baseCommit);
+    expect(scan.files.map(file => file.path)).toContain('legacy/old.ts');
+    expect(plan.deletedFiles).not.toContain('legacy/old.ts');
   });
 
   it('makes architecture updates save an empty compatibility tour without tour input', () => {

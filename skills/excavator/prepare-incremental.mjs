@@ -743,9 +743,14 @@ async function main() {
   const refreshedScan = {
     ...oldScan,
     contentDigest: currentScan.contentDigest,
+    selection: currentScan.selection,
     files: currentScan.files,
     totalFiles: currentScan.totalFiles,
     filteredByIgnore: currentScan.filteredByIgnore,
+    filteredByDefaults: currentScan.filteredByDefaults,
+    skipped: currentScan.skipped,
+    failures: currentScan.failures,
+    coverage: currentScan.coverage,
     estimatedComplexity: currentScan.estimatedComplexity,
     importMap,
   };

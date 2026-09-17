@@ -9,17 +9,28 @@
  *     files = parsed + zeroSymbol + Σ skipped[reason]
  *
  * so no scanned input can sit in an unaccounted-for state. `skipped` therefore
- * carries BOTH scan-time reasons (symlink / read-failed / unknown-language /
- * binary / too-large / ignored) and the extraction outcomes that produced no
+ * carries pre-extraction reasons, scan-time reasons (symlink / read-failed /
+ * unknown-language / binary / too-large), and extraction outcomes that produced no
  * symbols for a reason other than the file being empty (`no-extractor`,
  * `parse-failed`) — one map answering "why was this file not parsed?".
  *
  * No model, no I/O: pure functions over already-produced JSON.
  */
 
-/** Reasons the scanner can attach to a file it did not emit. */
-export const SCAN_SKIP_REASONS = Object.freeze([
+/** Pre-extraction decisions: these candidates were never selected. */
+export const PRE_EXTRACTION_REASONS = Object.freeze([
+  'filtered-by-defaults', 'filtered-by-ignore', 'sensitive',
+]);
+
+/** Reasons a selected file can fail before extraction. */
+export const PROCESSING_SKIP_REASONS = Object.freeze([
   'symlink', 'read-failed', 'unknown-language', 'binary', 'too-large', 'ignored',
+]);
+
+/** Every reason the scanner can attach to a file it did not emit. */
+export const SCAN_SKIP_REASONS = Object.freeze([
+  ...PRE_EXTRACTION_REASONS,
+  ...PROCESSING_SKIP_REASONS,
 ]);
 
 /** Extraction statuses that mean "handed to a reader, produced no symbols". */
@@ -53,6 +64,67 @@ function arrayLength(value) {
   return Array.isArray(value) ? value.length : 0;
 }
 
+function validateSelectionLedger(scan) {
+  const ledger = scan.selection;
+  if (ledger === undefined) return null;
+  if (!ledger || !Array.isArray(ledger.entries)) {
+    throw new Error('buildCoverageLedger: scan.selection.entries must be an array');
+  }
+  const bucketCount = ledger.selected + ledger.filteredByDefaults + ledger.filteredByIgnore + ledger.sensitive;
+  if (bucketCount !== ledger.candidates || ledger.entries.length !== ledger.candidates) {
+    throw new Error('buildCoverageLedger: selection candidate conservation violated');
+  }
+
+  const decisions = new Map();
+  const derivedCounts = { selected: 0, filteredByDefaults: 0, filteredByIgnore: 0, sensitive: 0 };
+  const countKeyByKind = {
+    selected: 'selected',
+    'filtered-by-defaults': 'filteredByDefaults',
+    'filtered-by-ignore': 'filteredByIgnore',
+    sensitive: 'sensitive',
+  };
+  for (const entry of ledger.entries) {
+    if (decisions.has(entry.path)) {
+      throw new Error(`buildCoverageLedger: duplicate selection entry for ${entry.path}`);
+    }
+    decisions.set(entry.path, entry);
+    const countKey = countKeyByKind[entry.kind];
+    if (!countKey) {
+      throw new Error(`buildCoverageLedger: unknown selection decision "${entry.kind}" for ${entry.path}`);
+    }
+    derivedCounts[countKey] += 1;
+  }
+  for (const [key, value] of Object.entries(derivedCounts)) {
+    if (ledger[key] !== value) {
+      throw new Error(`buildCoverageLedger: selection ${key}=${ledger[key]} but entries=${value}`);
+    }
+  }
+  const outcomes = new Map();
+  for (const file of scan.files) {
+    if (outcomes.has(file.path)) throw new Error(`buildCoverageLedger: duplicate scan outcome for ${file.path}`);
+    outcomes.set(file.path, { kind: 'emitted' });
+  }
+  for (const skipped of scan.skipped ?? []) {
+    if (outcomes.has(skipped.path)) throw new Error(`buildCoverageLedger: duplicate scan outcome for ${skipped.path}`);
+    outcomes.set(skipped.path, { kind: 'skipped', reason: skipped.reason });
+  }
+  for (const [path, decision] of decisions) {
+    const outcome = outcomes.get(path);
+    if (!outcome) throw new Error(`buildCoverageLedger: selection candidate ${path} has no scan outcome`);
+    if (decision.kind === 'selected') {
+      if (outcome.kind === 'skipped' && !PROCESSING_SKIP_REASONS.includes(outcome.reason)) {
+        throw new Error(`buildCoverageLedger: selected candidate ${path} has pre-extraction outcome ${outcome.reason}`);
+      }
+    } else if (outcome.kind !== 'skipped' || outcome.reason !== decision.reason) {
+      throw new Error(`buildCoverageLedger: excluded candidate ${path} does not match its selection decision`);
+    }
+  }
+  for (const path of outcomes.keys()) {
+    if (!decisions.has(path)) throw new Error(`buildCoverageLedger: scan outcome ${path} has no selection decision`);
+  }
+  return ledger;
+}
+
 /**
  * Build the coverage table and the gaps it implies.
  *
@@ -70,6 +142,7 @@ export function buildCoverageLedger({ scan, structure, importMap, sampleLimit = 
   if (!structure || !Array.isArray(structure.results)) {
     throw new Error('buildCoverageLedger: structure.results must be an array');
   }
+  const selection = validateSelectionLedger(scan);
 
   const byLanguage = {};
   const languageOfPath = new Map();
@@ -144,8 +217,20 @@ export function buildCoverageLedger({ scan, structure, importMap, sampleLimit = 
   const coverage = {
     files: Object.values(byLanguage).reduce((sum, row) => sum + row.files, 0),
     byLanguage: sortObjectKeys(byLanguage),
-    ignored: (scan.skipped ?? []).filter((e) => e.reason === 'ignored').length,
+    ignored: (scan.skipped ?? []).filter((e) =>
+      ['filtered-by-defaults', 'filtered-by-ignore', 'ignored'].includes(e.reason),
+    ).length,
     ...(scan.coverage?.limits ? { limits: scan.coverage.limits } : {}),
+    ...(selection ? {
+      selection: {
+        policyVersion: selection.policyVersion,
+        candidates: selection.candidates,
+        selected: selection.selected,
+        filteredByDefaults: selection.filteredByDefaults,
+        filteredByIgnore: selection.filteredByIgnore,
+        sensitive: selection.sensitive,
+      },
+    } : {}),
   };
 
   const gaps = [];
@@ -170,7 +255,7 @@ export function buildCoverageLedger({ scan, structure, importMap, sampleLimit = 
         samples: statusSamples[`parse-failed|${language}`] ?? [],
       });
     }
-    for (const reason of SCAN_SKIP_REASONS) {
+    for (const reason of PROCESSING_SKIP_REASONS) {
       const count = row.skipped[reason] || 0;
       if (count > 0 && reason !== 'ignored') {
         gaps.push({
@@ -225,6 +310,30 @@ export function conservationViolations(coverage) {
       row.parsed + row.zeroSymbol + Object.values(row.skipped).reduce((a, b) => a + b, 0);
     if (accounted !== row.files) {
       violations.push({ language, files: row.files, accounted });
+    }
+  }
+  if (coverage.selection) {
+    const selection = coverage.selection;
+    const bucketCount = selection.selected
+      + selection.filteredByDefaults
+      + selection.filteredByIgnore
+      + selection.sensitive;
+    if (bucketCount !== selection.candidates) {
+      violations.push({ language: '$selection', files: selection.candidates, accounted: bucketCount });
+    }
+    const preExtraction = Object.values(coverage.byLanguage ?? {}).reduce(
+      (sum, row) => sum + PRE_EXTRACTION_REASONS.reduce(
+        (subtotal, reason) => subtotal + (row.skipped?.[reason] ?? 0),
+        0,
+      ),
+      0,
+    );
+    const selectedAccounted = coverage.files - preExtraction;
+    if (selectedAccounted !== selection.selected) {
+      violations.push({ language: '$selected', files: selection.selected, accounted: selectedAccounted });
+    }
+    if (coverage.files !== selection.candidates) {
+      violations.push({ language: '$candidates', files: selection.candidates, accounted: coverage.files });
     }
   }
   return violations;

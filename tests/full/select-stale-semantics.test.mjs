@@ -81,16 +81,14 @@ describe('select-stale-semantics.mjs — selectStaleFiles', () => {
     expect(staleFiles).toEqual(['a.ts']);
   });
 
-  it('forceAll marks every file stale regardless of cache freshness', () => {
+  it('rejects forceAll because a fresh Full node must be reused', () => {
     const semanticCache = canonicalCache({ 'file:a.ts': auditedEntry('x', 'h1') });
-    const { staleFiles, freshFiles } = selectStaleFiles({
+    expect(() => selectStaleFiles({
       knowledgeGraph: kg(['a.ts']),
       semanticCache,
       manifest: { entries: [{ path: 'a.ts', contentHash: 'h1' }] },
       forceAll: true,
-    });
-    expect(staleFiles).toEqual(['a.ts']);
-    expect(freshFiles).toEqual([]);
+    })).toThrow(/forceAll would regenerate/);
   });
 
   it('treats a hash-matching entry without the canonical marker as stale', () => {

@@ -26,6 +26,38 @@ describe("LanguageRegistry", () => {
     expect(registry.getForFile("app/models.py")?.id).toBe("python");
   });
 
+  it("matches exact filename before basename pattern before extension", () => {
+    const registry = new LanguageRegistry();
+    const filePatterns = { entryPoints: [], barrels: [], tests: [], config: [] };
+    registry.register({
+      id: "extension",
+      displayName: "Extension",
+      extensions: [".conf"],
+      concepts: ["extension"],
+      filePatterns,
+    });
+    registry.register({
+      id: "pattern",
+      displayName: "Pattern",
+      extensions: [],
+      basenamePatterns: ["Service*.conf"],
+      concepts: ["pattern"],
+      filePatterns,
+    });
+    registry.register({
+      id: "exact",
+      displayName: "Exact",
+      extensions: [],
+      filenames: ["Service.prod.conf"],
+      concepts: ["exact"],
+      filePatterns,
+    });
+
+    expect(registry.getForFile("Service.prod.conf")?.id).toBe("exact");
+    expect(registry.getForFile("Service.qa.conf")?.id).toBe("pattern");
+    expect(registry.getForFile("Other.conf")?.id).toBe("extension");
+  });
+
   it("returns null for unknown extensions", () => {
     const registry = new LanguageRegistry();
     registry.register(typescriptConfig);
@@ -142,6 +174,23 @@ describe("LanguageRegistry", () => {
       expect(registry.getForFile("build/Makefile")?.id).toBe("makefile");
     });
 
+    it.each([
+      "Dockerfile.dev",
+      "Dockerfile-prod",
+      "Dockerfile-qa",
+      "Dockerfile-test",
+    ])("detects Dockerfile basename pattern %s", (path) => {
+      expect(LanguageRegistry.createDefault().getForFile(path)?.id).toBe("dockerfile");
+    });
+
+    it("does not treat an arbitrary Dockerfile substring as a basename match", () => {
+      expect(LanguageRegistry.createDefault().getForFile("MyDockerfile-prod")).toBeNull();
+    });
+
+    it.each(["src/app.ts", "src/view.tsx"])("keeps TypeScript extension matching for %s", (path) => {
+      expect(LanguageRegistry.createDefault().getForFile(path)?.id).toBe("typescript");
+    });
+
     it("detects filename-based configs for docker-compose", () => {
       const registry = LanguageRegistry.createDefault();
       expect(registry.getForFile("docker-compose.yml")?.id).toBe("docker-compose");
@@ -168,7 +217,7 @@ describe("LanguageRegistry", () => {
       });
       expect(result.success).toBe(false);
       if (!result.success) {
-        expect(result.error.issues[0].message).toContain("at least one extension or filename");
+        expect(result.error.issues[0].message).toContain("at least one extension, filename, or basename pattern");
       }
     });
 
@@ -201,6 +250,18 @@ describe("LanguageRegistry", () => {
         displayName: "FilenameLang",
         extensions: [],
         filenames: ["Specialfile"],
+        concepts: ["something"],
+        filePatterns: { entryPoints: [], barrels: [], tests: [], config: [] },
+      });
+      expect(result.success).toBe(true);
+    });
+
+    it("accepts configs with basename patterns but no extensions or filenames", () => {
+      const result = StrictLanguageConfigSchema.safeParse({
+        id: "pattern-lang",
+        displayName: "PatternLang",
+        extensions: [],
+        basenamePatterns: ["Special-*"],
         concepts: ["something"],
         filePatterns: { entryPoints: [], barrels: [], tests: [], config: [] },
       });

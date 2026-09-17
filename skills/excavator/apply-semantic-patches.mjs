@@ -116,7 +116,8 @@ export async function applySemanticPatches({
       ...(isNonEmptyString(patch.model) ? { model: patch.model } : {}),
       ...(isNonEmptyString(patch.generatedAt) ? { generatedAt: patch.generatedAt } : {}),
     };
-    const result = await commit({ projectRoot, nodeId, filePath: patch.filePath, fields });
+    const result = await commit({ projectRoot, nodeId, filePath: patch.filePath, fields,
+      verifyNodePath: true, onlyIfNotFresh: true });
     results.push({ nodeId, ...result });
     if (result.ok) {
       committed += 1;

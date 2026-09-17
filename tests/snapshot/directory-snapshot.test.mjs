@@ -65,6 +65,49 @@ describe('DirectorySnapshot — revision shape and file listing', () => {
     const afterDelete = resolveSourceSnapshot(root).revision;
     expect(afterDelete).toBe(initial);
   });
+
+  it('excludes sensitive bytes from revision and exposes only safe ledger metadata', () => {
+    const secretPath = join(root, 'private.txt');
+    writeFileSync(secretPath, '-----BEGIN PRIVATE KEY-----\nCANARY_ONE\n');
+    const before = resolveSourceSnapshot(root);
+    const record = before.selection.entries.find((entry) => entry.path === 'private.txt');
+    expect(record).toMatchObject({ kind: 'sensitive', reason: 'sensitive', detail: 'private-key-header' });
+    expect(record).not.toHaveProperty('content');
+    expect(record).not.toHaveProperty('contentHash');
+    expect(before.listFiles()).not.toContain('private.txt');
+
+    writeFileSync(secretPath, '-----BEGIN PRIVATE KEY-----\nCANARY_TWO\n');
+    const after = resolveSourceSnapshot(root);
+    expect(after.revision).toBe(before.revision);
+    expect(after.selection.sensitive).toBe(1);
+  });
+
+  it('selectionDigest covers raw rule content, CLI order, policy, and language filename semantics', () => {
+    writeFileSync(join(root, '.excavatorignore'), '# comment one\nsrc/ignored.ts\n');
+    const first = resolveSourceSnapshot(root, { extraExcludePatterns: ['tmp/', 'logs/'] });
+    writeFileSync(join(root, '.excavatorignore'), '# comment two\nsrc/ignored.ts\n');
+    const rawChanged = resolveSourceSnapshot(root, { extraExcludePatterns: ['tmp/', 'logs/'] });
+    const cliReordered = resolveSourceSnapshot(root, { extraExcludePatterns: ['logs/', 'tmp/'] });
+
+    expect(rawChanged.listFiles()).toEqual(first.listFiles());
+    expect(rawChanged.selectionDigest).not.toBe(first.selectionDigest);
+    expect(cliReordered.selectionDigest).not.toBe(rawChanged.selectionDigest);
+    expect(first._selectionDescriptors).toContain('policy:source-selection-v1');
+    expect(first._selectionDescriptors).toContain('language-match-precedence:exact-filename>basename-pattern>extension');
+    expect(first._selectionDescriptors.some((entry) => entry.includes('basename-patterns:Dockerfile.*,Dockerfile-*'))).toBe(true);
+  });
+
+  it('ignores data-dir rules for both selection and selectionDigest', () => {
+    mkdirSync(join(root, '.excavator'));
+    writeFileSync(join(root, '.excavator', '.excavatorignore'), 'src/a.ts\n');
+    const first = resolveSourceSnapshot(root);
+
+    expect(first.listFiles()).toContain('src/a.ts');
+    writeFileSync(join(root, '.excavator', '.excavatorignore'), 'README.md\n');
+    const changedOldFile = resolveSourceSnapshot(root);
+    expect(changedOldFile.listFiles()).toEqual(first.listFiles());
+    expect(changedOldFile.selectionDigest).toBe(first.selectionDigest);
+  });
 });
 
 describe('DirectorySnapshot — readFile read-time hash check', () => {
@@ -124,6 +167,21 @@ describe('DirectorySnapshot — runGuarded (D7 consistency guard)', () => {
     );
     expect(result.ok).toBe(false);
     expect(published).toHaveLength(0); // never published an inconsistent result.
+  });
+
+  it('detects selection rule drift even when the selected content revision stays unchanged', async () => {
+    const snapshot = resolveSourceSnapshot(root);
+    let calls = 0;
+    const result = await snapshot.runGuarded(
+      async () => {
+        calls += 1;
+        writeFileSync(join(root, '.excavatorignore'), `# raw rule revision ${calls}\n`);
+        return 'product';
+      },
+      async () => { throw new Error('must not publish across rule drift'); },
+    );
+    expect(result.ok).toBe(false);
+    expect(result.attempts).toBe(2);
   });
 
   it('recovers after exactly one drift: mutates only on the first attempt, then succeeds on retry', async () => {
