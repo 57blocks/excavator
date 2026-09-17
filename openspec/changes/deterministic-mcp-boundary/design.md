@@ -68,7 +68,7 @@ Claude 插件在根目录声明 `.mcp.json` 的本地 stdio server（利用宿�
 
 ## Risks / Trade-offs
 
-- [同步构建在大仓库超过 MCP 默认工具超时] → 提供 progress、取消/失败可见状态和有界的宿主超时配置；不暗中启动不可追踪后台任务。
+- [每次工具调用都重解析源码快照，在大 Git 仓上超过 MCP 默认工具超时] → 真实 wcp 验收实测（约 2000 跟踪文件、5 个 member git 仓）：单次 `resolveSourceSnapshot` ≈75–115s，因共享 Git 快照 adapter 逐跟踪文件经子进程读内容前缀；每个读工具 `open`+`finish` 解析两次 ≈150–230s，超过 SDK 默认 60s 请求超时，wcp 默认配置下工具调用返回 REQUEST_TIMEOUT。缓解：错误路径不再解析快照（本 change 已修）；宿主放大工具超时（Codex `tool_timeout_sec`、Claude `MCP_TOOL_TIMEOUT`）；冷/过期项目先用 CLI `/excavator` 建一次（只解析一次），`sync_facts` 会重建全部事实、大仓可能数分钟。根因在共享 `source-snapshot` 层（同样拖慢 Lazy/Full 与 session freshness hook），非 MCP 协议层；批量化读取（`git cat-file --batch`、search 用 `git grep`）另立 change `snapshot-resolve-performance`——先冻新旧实现的身份/selection 逐字相等再改，不改身份公式。中小 Git 仓与非 Git 目录项目解析 <1s，不受影响。
 - [现有 writer 只按 manifest hash CAS，可能在另一个入口已写 fresh 时再次覆盖同 hash 内容] → 在同一 writer 锁内增加可选 `only-if-not-fresh` 条件，并先用已知假样本证明重复提交被测试捕获。
 - [路径/符号链接/工作树使证据越界或错配] → server 单根绑定；root 和 source path 做 realpath containment；校验 node id、file path 与当前 snapshot 的关系，并在负例夹具中覆盖同内容异路径/同名异 owner。
 - [检索或大范围遍历返回过多 token，或截断被误读为完整答案] → 输入/输出双预算、显式 boundary/gaps、调用方按问题范围分轮探索；AI 最终回源核实。

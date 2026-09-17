@@ -11,27 +11,24 @@
  * for those files — Full mode's incremental behavior at the semantic layer,
  * independent of whether the fact layer itself changed.
  *
- * Calls no model. Reuses `semantic-cache.mjs`'s `freshnessOf` — the exact same
- * cache identity plus hash comparison the on-demand chat path uses — rather
- * than inventing a second freshness rule.
+ * Calls no model. Reuses `planSemanticCacheReuse`, the same node identity,
+ * cache language and source-hash decision used by Lazy and MCP.
  *
  * A file is stale when ANY of its fact-graph nodes (the file node itself,
  * plus any function/class node it owns) has a missing or stale semantic-cache
- * entry, OR when `forceAll` is set (the `--full` CLI flag's new meaning for
- * the semantic layer: treat every file as needing regeneration, matching its
- * historical "ignore any existing graph" intent).
+ * entry. Even an explicit Full run must not regenerate an already-fresh node.
  *
  * Contract: openspec/changes/full-semantic-isolation/specs/full-semantic-isolation/spec.md
  *
  * Usage (CLI):
- *   node select-stale-semantics.mjs <projectRoot> [--force-all] [--out <path>] [--files-out <path>]
+ *   node select-stale-semantics.mjs <projectRoot> [--out <path>] [--files-out <path>]
  */
 
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
-import { freshnessOf } from './semantic-cache.mjs';
+import { planSemanticCacheReuse } from './semantic-cache-reuse.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const pluginRoot = resolve(__dirname, '../..');
@@ -63,33 +60,22 @@ function compareStrings(a, b) {
  * @returns {{ staleFiles: string[], freshFiles: string[], counts: { stale: number, fresh: number, total: number } }}
  */
 export function selectStaleFiles({ knowledgeGraph, semanticCache, manifest, forceAll = false }) {
-  const contentHashByPath = new Map((manifest?.entries ?? []).map((e) => [e.path, e.contentHash]));
-  const entries = semanticCache?.entries ?? {};
-
-  const nodesByPath = new Map();
-  for (const node of knowledgeGraph?.nodes ?? []) {
-    if (typeof node?.filePath !== 'string' || node.filePath.length === 0) continue;
-    if (!nodesByPath.has(node.filePath)) nodesByPath.set(node.filePath, []);
-    nodesByPath.get(node.filePath).push(node);
-  }
-
-  const stale = [];
-  const fresh = [];
-  for (const [filePath, nodes] of nodesByPath) {
-    if (forceAll) {
-      stale.push(filePath);
-      continue;
-    }
-    const currentHash = contentHashByPath.get(filePath) ?? null;
-    const anyMissingOrStale = nodes.some(
-      (n) => freshnessOf(entries[n.id], currentHash, semanticCache) !== 'fresh',
-    );
-    (anyMissingOrStale ? stale : fresh).push(filePath);
-  }
+  if (forceAll) throw new Error('forceAll would regenerate hash-fresh semantics; use the shared reuse plan');
+  const nodes = (knowledgeGraph?.nodes ?? []).filter((node) => typeof node?.id === 'string');
+  const plan = planSemanticCacheReuse({
+    requestedNodeIds: nodes.map((node) => node.id), nodes,
+    manifestEntries: manifest?.entries ?? [], semanticCache,
+  });
+  const eligiblePaths = new Set([...plan.reuse, ...plan.generate].map((entry) => entry.filePath));
+  const stalePaths = new Set(plan.generate.map((entry) => entry.filePath));
+  const stale = [...stalePaths];
+  const fresh = [...eligiblePaths].filter((path) => !stalePaths.has(path));
 
   stale.sort(compareStrings);
   fresh.sort(compareStrings);
-  return { staleFiles: stale, freshFiles: fresh, counts: { stale: stale.length, fresh: fresh.length, total: stale.length + fresh.length } };
+  return { staleFiles: stale, freshFiles: fresh,
+    unavailableNodes: plan.unavailable, plan,
+    counts: { stale: stale.length, fresh: fresh.length, total: stale.length + fresh.length } };
 }
 
 // ---------------------------------------------------------------------------
@@ -97,10 +83,9 @@ export function selectStaleFiles({ knowledgeGraph, semanticCache, manifest, forc
 // ---------------------------------------------------------------------------
 
 function parseArgs(argv) {
-  const args = { projectRoot: null, forceAll: false, out: null, filesOut: null };
+  const args = { projectRoot: null, out: null, filesOut: null };
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
-    if (arg === '--force-all') { args.forceAll = true; continue; }
     if (arg === '--out') { args.out = argv[++i]; continue; }
     if (arg === '--files-out') { args.filesOut = argv[++i]; continue; }
     if (arg.startsWith('--')) throw new Error(`select-stale-semantics: unknown option: ${arg}`);
@@ -108,7 +93,7 @@ function parseArgs(argv) {
     throw new Error(`select-stale-semantics: unexpected argument: ${arg}`);
   }
   if (!args.projectRoot) {
-    throw new Error('Usage: node select-stale-semantics.mjs <projectRoot> [--force-all] [--out <path>] [--files-out <path>]');
+    throw new Error('Usage: node select-stale-semantics.mjs <projectRoot> [--out <path>] [--files-out <path>]');
   }
   return args;
 }
@@ -134,7 +119,7 @@ async function main() {
   const semanticCache = readJson(join(dataDir, 'semantic-cache.json'), 'semantic-cache.json', false);
   const manifest = readJson(join(dataDir, 'source-manifest.json'), 'source-manifest.json', false);
 
-  const result = selectStaleFiles({ knowledgeGraph, semanticCache, manifest, forceAll: args.forceAll });
+  const result = selectStaleFiles({ knowledgeGraph, semanticCache, manifest });
 
   const outPath = resolve(args.out ?? join(intermediate, 'stale-semantics.json'));
   mkdirSync(dirname(outPath), { recursive: true });
@@ -149,7 +134,7 @@ async function main() {
 
   process.stderr.write(
     `select-stale-semantics: stale=${result.counts.stale} fresh=${result.counts.fresh} ` +
-    `total=${result.counts.total} forceAll=${args.forceAll} -> ${outPath}\n`,
+    `total=${result.counts.total} unavailableNodes=${result.unavailableNodes.length} -> ${outPath}\n`,
   );
 }
 

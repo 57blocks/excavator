@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "excavator": {
+      "command": "node",
+      "args": [
+        "${CLAUDE_PLUGIN_ROOT}/skills/excavator/mcp-server.mjs",
+        "--project-root",
+        "${CLAUDE_PROJECT_DIR}"
+      ],
+      "cwd": "${CLAUDE_PLUGIN_ROOT}"
+    }
+  }
+}

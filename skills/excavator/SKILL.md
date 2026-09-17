@@ -307,10 +307,6 @@ recorded as a semantic gap — never a fact anchor, never silently kept. See
 `semantic-graph.mjs` and `apply-semantic-patches.mjs` (next to this file) for
 the enforcing code.
 
-Set `$FULL_MODE_FORCED` once, at the start of this section: `1` if `--full`
-is in `$ARGUMENTS` (the same flag Phase 0 step 7 already checked to route
-here), else `0`. Phase F2 and Phase F3 below both read it.
-
 ### Phase F1 — FACT BUILD
 
 Report: `[Phase F1] Building the deterministic fact graph...`
@@ -339,17 +335,17 @@ there is no fact graph to generate semantics against.
 
 Report: `[Phase F2] Selecting files needing semantic (re)generation...`
 
-1. **Select stale/missing files.** Pass `--force-all` when `--full` is in
-   `$ARGUMENTS` — that flag's meaning here is "regenerate every file's
-   semantics" (the fact layer itself is already unconditionally rebuilt
-   fresh every run by Phase F1, so `--full` no longer needs to force that
-   part):
+1. **Select missing/stale nodes using the shared reuse plan.** Even when
+   `--full` is explicit, hash-fresh canonical node summaries must not be
+   regenerated. `--full` controls the overall Full workflow, not a semantic
+   cache override:
 
    ```bash
-   node "<SKILL_DIR>/select-stale-semantics.mjs" "$PROJECT_ROOT" $([ "$FULL_MODE_FORCED" = 1 ] && echo --force-all)
+   node "<SKILL_DIR>/select-stale-semantics.mjs" "$PROJECT_ROOT"
    ```
 
-   Writes `$DATA_DIR/intermediate/stale-semantics.json` (counts) and
+   Writes `$DATA_DIR/intermediate/stale-semantics.json` (counts and the
+   exact node-level `plan.reuse/generate/unavailable`) and
    `$DATA_DIR/intermediate/stale-files.json` (a plain JSON array of paths).
    Report: `{stale} of {total} files need semantic (re)generation.` If
    `{stale}` is 0, skip straight to Phase F3 — the zero-token path for an
@@ -370,8 +366,11 @@ Report: `[Phase F2] Selecting files needing semantic (re)generation...`
    batch, dispatch a subagent using the `excavator-file-analyzer` agent
    definition (`agents/excavator-file-analyzer.md`). Run up to **5**
    subagents concurrently. Read `knowledge-graph.json` and, for this batch's
-   files, list every fact node's `{id, type, name, filePath, lineRange}` —
-   this is the ONLY set of ids the dispatch may use.
+   files, list ONLY nodes whose id occurs in
+   `$DATA_DIR/intermediate/stale-semantics.json`'s `plan.generate[]` as
+   `{id, type, name, filePath, lineRange}`. Do not send `plan.reuse[]` nodes
+   to the analyzer, even when they share a file with a stale node. Report
+   `plan.unavailable[]` as gaps, never generate for them.
 
    > Produce a semantic patch for each fact node below: a `summary` and
    > `tags` describing what it does, from reading its source at the given
