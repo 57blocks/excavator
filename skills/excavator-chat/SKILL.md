@@ -8,6 +8,8 @@ argument-hint: "[query]"
 
 Answer questions about this codebase using the knowledge graph in the project's data directory (`.excavator/knowledge-graph.json`).
 
+When the seven `excavator` MCP tools are available and `project_status.data.projectRoot` matches this project, use the same request-local AI routing below with the MCP workflow: `project_status` → explicit-term `recall` → explicit-seed `traverse` as needed → `read_evidence` → `semantic_plan`/`semantic_commit` only for trustworthy node-local English summaries. The host AI still chooses route, search terms, evidence sufficiency, and final answer language. Never treat a truncated `boundary` as complete. If MCP is not registered or is bound to another root, use the CLI/Skill path below; installing this Skill alone does not install MCP. See `docs/mcp.md` at the plugin root.
+
 ## Graph Structure Reference
 
 The knowledge graph JSON has this structure:

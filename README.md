@@ -119,6 +119,8 @@ Excavator is service-only: it generates nodes, edges, architecture layers, and e
 
 > **Heads up on token usage:** By default, the initial `/excavator` run only builds a deterministic fact index (files, symbols, imports, calls) — it's fast and makes zero LLM calls. Summaries and other semantic detail are then generated on demand as you ask questions with `/excavator-chat`, and cached for next time. If you'd rather pre-generate everything up front (e.g. before a review), run `/excavator --full`; on large projects this can consume a significant number of tokens, so we recommend a token plan / subscription or a local model (see above) for that path. See [Lazy Mode](docs/lazy-mode.md) for details.
 
+For host-owned AI exploration through seven bounded local MCP tools, see [MCP setup](docs/mcp.md). Installing the Skill alone does not register MCP in Codex; the MCP server also needs the checkout's Node dependencies and core build.
+
 **Language behavior:** Persisted model-generated semantics use English so incremental analysis and shared caches stay consistent. Source-owned identifiers, paths, and literal excerpts remain unchanged. `/excavator-chat` answers follow the language of each question, so you can ask in Chinese without mixing storage languages.
 
 ### 3. Ask and analyze
