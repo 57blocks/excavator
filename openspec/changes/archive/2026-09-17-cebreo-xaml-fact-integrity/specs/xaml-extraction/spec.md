@@ -1,29 +1,4 @@
-# xaml-extraction Specification
-
-## Purpose
-让 `.xaml` 从 `no-extractor` 变成带锚点事实：产 View 记录、`x:Class` code-behind 关联、`x:DataType`、绑定 / 命令 / `x:Name`，作为移动端文档「Description of the UI / 导航」章节的证据源。
-
-**诚实边界**：这是**单文件** parser，只抽取 XAML 里文本可见的事实（带行号）。`{Binding Path=Foo}` 到 ViewModel **成员**的连边需要另一份 `.cs` 里的符号，单文件 parser 无法确认，故**不在 parser 内做**；parser 只记录每条绑定的**词法作用域 DataType 上下文**（本元素或最近祖先可见的 `x:DataType`；无可见类型、该类型显式置空、或绑定显式使用 `Source`/`RelativeSource` 时记 `none`）。成员级解析与 `binding-unresolved` gap 由后续 resolver 阶段（另一切片，结合 C# 符号与 node-identity）产出。
-
-产物一律落 `analyzeFile` 返回的 `StructuralAnalysis`（`sections` / `definitions`），因为流水线只消费该结构；`extractReferences` 当前不被消费，故不依赖它。
-
-## Requirements
-
-### Requirement: .xaml 被识别并分发到 XAML parser
-
-系统 SHALL 为 `.xaml` 注册语言 id `xaml`，使其分发到专用 XAML parser 而非 `no-extractor`，且优先级高于通用 `xml`（`.xaml` MUST NOT 落成 `xml`）。
-
-#### Scenario: .xaml 映射到 xaml 语言与 parser
-- **WHEN** 对一个 `.xaml` 文件取语言与 plugin
-- **THEN** 语言 id 为 `xaml`（非 `xml`）且存在处理它的 parser（非 null）
-
-### Requirement: View 与 x:Class 带锚点
-
-parser SHALL 把根元素 / 页面抽成一条 `sections`（`name` 取 `x:Class` 短名或根元素名，带 `lineRange`），把 `x:Class` 抽成一条 `definitions`（`kind:"code-behind"`，`name` 为类 FQN，带 `lineRange`）。
-
-#### Scenario: x:Class 成为 code-behind 定义
-- **WHEN** `.xaml` 根元素声明 `x:Class="App.Views.FooPage"`
-- **THEN** 产一条 `sections`（name `FooPage`）与一条 `definitions{kind:"code-behind", name:"App.Views.FooPage"}`，行号命中
+## ADDED Requirements
 
 ### Requirement: 仅活动 XAML 标记可成为事实
 
@@ -36,6 +11,8 @@ parser SHALL 从活动 XAML 标记抽取 View、`x:Class`、`x:DataType`、`x:Na
 #### Scenario: 注释的类型声明不改变活动绑定
 - **WHEN** 活动页面有 `x:DataType="vm:Page"`，注释中有 `x:DataType="vm:Ghost"`
 - **THEN** 活动页面绑定的上下文仍为 `context=vm:Page`，且不产 `vm:Ghost` 的 datatype definition
+
+## MODIFIED Requirements
 
 ### Requirement: 绑定 / 命令 / x:Name 带锚点与 DataType 上下文（零编造）
 
@@ -60,11 +37,3 @@ parser SHALL 把活动标记中的 `x:Name`、`{Binding}`、`Command="{Binding �
 #### Scenario: 显式来源覆盖元素上下文
 - **WHEN** 一个带 `x:DataType="vm:Row"` 的模板内绑定写有 `Source={x:Reference RootPage}` 或 `RelativeSource=...`
 - **THEN** 该绑定记 `context=none`，仍保留绑定路径与 file:line，且不宣称路径属于 `vm:Row`
-
-### Requirement: 确定性
-
-对同一 `.xaml` 内容重复运行，`sections` 与 `definitions` SHALL 逐字节相同。
-
-#### Scenario: 重复运行稳定
-- **WHEN** 对同一内容运行两次
-- **THEN** 两次输出逐字节相同
