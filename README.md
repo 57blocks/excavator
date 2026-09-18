@@ -144,6 +144,9 @@ For host-owned AI exploration through seven bounded local MCP tools, see [MCP se
 # Analyze a Karpathy-pattern LLM wiki knowledge base
 /excavator-knowledge ~/path/to/wiki
 
+# Generate an As-Is PRD for a feature (default audience: product manager)
+/excavator-prd
+
 # Re-run anytime — incremental by default (only re-analyzes changed files)
 /excavator
 
