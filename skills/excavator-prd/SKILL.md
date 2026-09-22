@@ -75,7 +75,8 @@ The inventory is the anti-cherry-pick device. Build it **before** writing anythi
 - Find **entrypoints**: route/endpoint/handler registrations, UI pages/routers, CLI/`main` entries, and job entrypoints.
   - **Graph-assisted:** use `recall` with the framework's route/controller/handler vocabulary to locate entrypoint nodes (`endpoint`, `service` types; files under `routes`/`controllers`/`handlers`), then `traverse` (`bfs` over `calls`/`contains`) to map each chain.
   - **Source-only (no graph):** `Grep` the source for the same entrypoints (route/controller/handler registration, page router config, `main`/CLI, job registration), then read the files and follow their imports/calls by hand to map each chain.
-- Record each as a flow: **name · trigger · entrypoint · participating modules**.
+- **Resolve each UI page's real route from the router, not from its file location.** A page component often lives in one feature's directory but is *registered* in a shared router/outlet/layout file elsewhere (a hub that groups several features as tabs). Trace the route registration to record each page's actual URL and navigation context — the hub/tab it sits under and any default-landing route — and never infer the route from the directory path. A page whose component is in scope but whose mount lives outside it is still in scope.
+- Record each as a flow: **name · trigger · entrypoint (real route) · participating modules**.
 
 ### 1b. Off-graph behavior from the source (do not skip)
 
