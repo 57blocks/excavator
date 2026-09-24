@@ -18,12 +18,12 @@ commit 序列：
 
 ## 2. 快照改走批量读取
 
-- [ ] 2.1 `git-commit-snapshot.mjs` 按 design D3 改写：构造时一次批量取回需要的文件头，判定顺序与分支保持不变；`entries()`、`materialize()`、`search()` 改走批量读取，批次只含选中路径；`readFile()` 用 `Set` 做成员检查。同时从 `git-utils.mjs` 删除 `showFilePrefixAt`。验证：现有测试一个不改、全部通过，包括：
+- [x] 2.1 `git-commit-snapshot.mjs` 按 design D3 改写：构造时一次批量取回需要的文件头，判定顺序与分支保持不变；`entries()`、`materialize()`、`search()` 改走批量读取，批次只含选中路径；`readFile()` 用 `Set` 做成员检查。同时从 `git-utils.mjs` 删除 `showFilePrefixAt`。验证：现有测试一个不改、全部通过，包括：
   - `tests/snapshot/*`；
   - `tests/selection-safety/selection-safety.oracle.test.mjs`；
   - `tests/revision-sync/cross-adapter-identity.test.mjs` 与 `e2e-three-adapters.test.mjs`；
   - `tests/mcp/*`。
-- [ ] 2.2 新旧对照测试：夹具仓库覆盖符号链接、非 blob 条目、按扩展名与按文件头判定的敏感文件、被默认规则过滤的文件和普通文件。以测试内保留的逐文件读取实现为对照，逐字节比较选择台账、处理跳过记录、选中路径、`entries()`、复制出的文件和检索结果。另外断言复制、哈希、检索的批次里不含未选中路径（O3）。验证：新测试通过。
+- [x] 2.2 新旧对照测试：夹具仓库覆盖符号链接、非 blob 条目、按扩展名与按文件头判定的敏感文件、被默认规则过滤的文件和普通文件。以测试内保留的逐文件读取实现为对照，逐字节比较选择台账、处理跳过记录、选中路径、`entries()`、复制出的文件和检索结果。另外断言复制、哈希、检索的批次里不含未选中路径（O3）。验证：新测试通过。
 
 ## 3. 文档
 
