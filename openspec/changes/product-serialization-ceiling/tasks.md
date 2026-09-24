@@ -35,7 +35,7 @@ commit 序列：
 
 ## 5. 计时自报与输出
 
-- [ ] 5.1 按 design D7 新增 `snapshotResolve`、`snapshotMaterialize`、`manifestEntries`，`timings.total` 改为墙钟时间；CLI 在现有汇总行之外打印各阶段耗时与按百分比排序的余量表。验证：新测试断言三项存在且 `total` 不小于各阶段之和；在夹具 git 仓库上跑 CLI，两段输出可见。
+- [x] 5.1 按 design D7 新增 `snapshotResolve`、`snapshotMaterialize`、`manifestEntries`，`timings.total` 改为墙钟时间；CLI 在现有汇总行之外打印各阶段耗时与按百分比排序的余量表。验证：新测试断言三项存在且 `total` 不小于各阶段之和；在夹具 git 仓库上跑 CLI，两段输出可见。
 
 ## 6. Skill 与文档
 

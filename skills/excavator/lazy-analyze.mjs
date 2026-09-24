@@ -123,6 +123,7 @@ import {
 } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { createRequire } from 'node:module';
+import { performance } from 'node:perf_hooks';
 
 import { buildFactGraph } from './build-fact-graph.mjs';
 import { buildSourceIndex } from './build-source-index.mjs';
@@ -479,6 +480,11 @@ export async function runLazyAnalysis({
   publishFs = defaultPublishFs,
   serializationLimit = DEFAULT_LIMIT_CHARS,
 } = {}) {
+  // Wall-clock total (design D7): the WHOLE run, not a sum of stage timers —
+  // measured from the very first line so it also covers time no per-stage
+  // timer attributes to itself (module/`@excavator/core` resolution, ...).
+  const runStartedAt = performance.now();
+
   if (!projectRoot) throw new Error('runLazyAnalysis: projectRoot is required');
   const root = resolve(projectRoot);
 
@@ -495,16 +501,28 @@ export async function runLazyAnalysis({
   // analysis content; every read below goes through the snapshot's
   // `materialize()`-produced temp directory instead.
   const extraExcludePatterns = parseExcludePatterns(argv);
+  const preProduceTimings = {}; // merged into product.timings once a product exists (see the very end of this function)
+  const snapshotResolveStart = Date.now();
   const snapshot = resolveSourceSnapshot(root, { extraExcludePatterns });
+  preProduceTimings.snapshotResolve = Date.now() - snapshotResolveStart;
 
   const saveState = { metaAdvanced: false, saveError: null };
   let lastProduct = null;
+  /** Set immediately before the `runGuarded` call below; read at the very
+   *  start of `produce()` to measure "snapshotMaterialize" (design D7: the
+   *  time from entering runGuarded to produce starting) — the time
+   *  `runGuarded` itself spends in `materialize()` before invoking this
+   *  producer callback. On the (rare)
+   *  D7-guard retry path this also folds in the discarded first attempt's
+   *  materialize+drift-detection time; that is an accepted simplification
+   *  for what is a performance OBSERVATION, not a correctness gate. */
+  let beforeRunGuardedAt = null;
 
   // --- Produce: run the existing Scan -> Structure-All -> Import-Map ->
   // Build Fact Graph -> Deterministic Validate pipeline against the
   // MATERIALIZED snapshot content (never `root` directly). ------------------
   async function produce(materializedDir, activeSnapshot) {
-    const timings = {};
+    const timings = { snapshotMaterialize: Date.now() - beforeRunGuardedAt };
     function time(label, fn) {
       const start = Date.now();
       const value = fn();
@@ -781,9 +799,17 @@ export async function runLazyAnalysis({
     try {
       // `entries()` runs HERE, at the point of writing the manifest — not
       // earlier — per design D4; it is the run's single most expensive save
-      // step at scale, so it must never be duplicated or hoisted into
-      // `produce()`.
+      // step at scale (design.md's risk log: ~11ms/file on Hadoop), so it
+      // must never be duplicated or hoisted into `produce()`. `manifestEntries`
+      // is a NESTED sub-breakdown of `save` (design D7: the save stage
+      // SHALL separately record the manifest's per-file content hashing) —
+      // `save`'s own duration (measured across the whole of `publish()`, see
+      // `saveStart` above) already spans this call; a caller summing every
+      // timings value must exclude `manifestEntries` to avoid double-counting
+      // this overlap.
+      const entriesStart = Date.now();
       const entries = activeSnapshot.entries();
+      product.timings.manifestEntries = Date.now() - entriesStart;
       const manifestContent = {
         sourceRevision: activeSnapshot.revision,
         selectionDigest: activeSnapshot.selectionDigest,
@@ -851,6 +877,7 @@ export async function runLazyAnalysis({
     product.timings.save = Date.now() - saveStart;
   }
 
+  beforeRunGuardedAt = Date.now();
   const guardResult = await snapshot.runGuarded(
     (materializedDir, activeSnapshot) => produce(materializedDir, activeSnapshot),
     (product, activeSnapshot) => publish(product, activeSnapshot),
@@ -865,7 +892,13 @@ export async function runLazyAnalysis({
 
   const product = guardResult.ok ? guardResult.product : lastProduct;
   const timings = product?.timings ?? {};
-  timings.total = Object.values(timings).reduce((sum, ms) => sum + ms, 0);
+  Object.assign(timings, preProduceTimings); // snapshotResolve — measured before produce() ever existed.
+  // Wall-clock total (design D7): the WHOLE runLazyAnalysis call, not a sum
+  // of the stage timers above (that sum used to silently miss anything a
+  // stage timer does not itself cover, e.g. `@excavator/core` resolution —
+  // on Hadoop-scale runs the snapshot/materialize stages alone were ~87% of
+  // real wall time, which a pure sum of the OTHER stages could never show).
+  timings.total = Math.round(performance.now() - runStartedAt);
 
   return {
     mode: 'lazy',
@@ -907,6 +940,15 @@ async function main() {
     `gaps=${result.gaps.length} factsDigest=${result.factsDigest.slice(0, 12)}… ` +
     `metaAdvanced=${result.metaAdvanced} totalMs=${result.timings.total}\n`,
   );
+  const stageLine = Object.entries(result.timings)
+    .filter(([stage]) => stage !== 'total')
+    .map(([stage, ms]) => `${stage}=${ms}ms`)
+    .join(' ');
+  process.stderr.write(`lazy-analyze: stages ${stageLine}\n`);
+  const headroomLine = result.serialization
+    .map((entry) => `${entry.product}=${entry.percentOfLimit.toFixed(2)}%(${entry.measuredAs})`)
+    .join(' ') || '(none)';
+  process.stderr.write(`lazy-analyze: headroom ${headroomLine}\n`);
   if (!result.validation.ok) {
     process.stderr.write(`lazy-analyze: deterministic validate found ${result.validation.issues.length} issue(s):\n`);
     for (const issue of result.validation.issues) process.stderr.write(`  - ${issue}\n`);

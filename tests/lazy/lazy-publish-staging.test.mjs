@@ -259,3 +259,48 @@ describe('runLazyAnalysis — result.serialization (task 4.3)', () => {
     }
   });
 });
+
+// ---------------------------------------------------------------------------
+// Timings — design D7, task 5.1: snapshotResolve, snapshotMaterialize,
+// manifestEntries, and a WALL-CLOCK total.
+// ---------------------------------------------------------------------------
+describe('runLazyAnalysis — timings (task 5.1)', () => {
+  let root;
+  beforeEach(() => { root = makeFixtureProject(); });
+  afterEach(() => { rmSync(root, { recursive: true, force: true }); });
+
+  it('records snapshotResolve, snapshotMaterialize and manifestEntries, and total is wall-clock (>= the sum of every stage)', async () => {
+    const result = await runLazyAnalysis({ projectRoot: root, now: FIXED_NOW });
+
+    expect(result.saveError).toBeNull();
+    for (const stage of ['snapshotResolve', 'snapshotMaterialize', 'manifestEntries']) {
+      expect(typeof result.timings[stage]).toBe('number');
+      expect(result.timings[stage]).toBeGreaterThanOrEqual(0);
+    }
+    // Existing stage names are all still present (design D7: existing stage
+    // names are unchanged).
+    for (const stage of ['scan', 'structureAll', 'importMap', 'factGraph', 'sourceIndex', 'validate', 'fingerprints', 'save']) {
+      expect(typeof result.timings[stage]).toBe('number');
+    }
+
+    // `manifestEntries` is a NESTED sub-breakdown of `save` (design D7: the
+    // save stage SHALL separately record the manifest's per-file content
+    // hashing — save separately/additionally reports it, it is not a sibling
+    // stage) — `save`'s own measured duration
+    // already spans the `entries()` call inside it. Excluded here so the
+    // "sum of stages" is a sum of MUTUALLY EXCLUSIVE intervals; including it
+    // would double-count that overlap and could make the naive sum exceed
+    // total on a fast run, which is exactly the bug this test would
+    // otherwise be unable to distinguish from a real regression. Verified
+    // against a real run's numbers before writing this exclusion.
+    const sumOfStages = Object.entries(result.timings)
+      .filter(([stage]) => stage !== 'total' && stage !== 'manifestEntries')
+      .reduce((sum, [, ms]) => sum + ms, 0);
+    // A small tolerance absorbs `Date.now()`'s 1ms-integer rounding across
+    // ~10 separate stage measurements against `total`'s sub-millisecond
+    // `performance.now()` basis — this is about clock-resolution slop, not
+    // about hiding a real accounting error (the manifestEntries exclusion
+    // above is the one substantive fix; this is a few ms of jitter margin).
+    expect(result.timings.total).toBeGreaterThanOrEqual(sumOfStages - 5);
+  });
+});
