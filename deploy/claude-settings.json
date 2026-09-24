@@ -1,0 +1,9 @@
+{
+  "skipWebFetchPreflight": true,
+  "permissions": {
+    "deny": [
+      "WebFetch",
+      "WebSearch"
+    ]
+  }
+}
