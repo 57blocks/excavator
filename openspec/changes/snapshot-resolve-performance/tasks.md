@@ -9,10 +9,10 @@ commit 序列：
 
 ## 1. 批量读取器
 
-- [ ] 1.1 新增 `skills/excavator/source-snapshot/blob-batch-worker.mjs`（辅助进程，按 design D1 流式解析 `git cat-file --batch`，支持 `prefix`、`hash`、`write`、`search` 四种模式）与 `skills/excavator/source-snapshot/blob-batch.mjs`（同步父进程接口：`readBlobPrefixes`、`hashBlobs`、`writeBlobs`、`searchBlobs`；每批最多 4,096 个对象；失败时抛具名 `BlobBatchError`）。验证：在夹具 git 仓库上，四种模式的结果与逐个 `git show` 的结果逐字节相同，夹具覆盖：
+- [x] 1.1 新增 `skills/excavator/source-snapshot/blob-batch-worker.mjs`（辅助进程，按 design D1 流式解析 `git cat-file --batch`，支持 `prefix`、`hash`、`write`、`search` 四种模式）与 `skills/excavator/source-snapshot/blob-batch.mjs`（同步父进程接口：`readBlobPrefixes`、`hashBlobs`、`writeBlobs`、`searchBlobs`；每批最多 4,096 个对象；失败时抛具名 `BlobBatchError`）。验证：在夹具 git 仓库上，四种模式的结果与逐个 `git show` 的结果逐字节相同，夹具覆盖：
   - 空文件、含 NUL 的二进制、中文与 emoji、跨读取块边界的大文件；
   - 重复 oid（同内容不同路径）、缺失对象（前缀模式返回缺失标记，其余模式抛具名错误）。
-- [ ] 1.2 隔离与分批。验证：
+- [x] 1.2 隔离与分批。验证：
   - 新测试：一个大文件在 4096 字节之后含假私钥，前缀模式返回的字节数不超过前缀长度，且不含该私钥；
   - 超过 4,096 个对象时，按批次拆成多次辅助进程调用（通过可注入的进程启动接缝计数），结果与一次读取相同。
 
