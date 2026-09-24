@@ -66,7 +66,7 @@
 - 用 apt 仓库装 Claude Code：只能按渠道安装，不能钉到具体版本。
 - 单阶段构建：会把构建工具与缓存带进运行镜像。
 
-**多架构**：用 buildx 同时构建 `linux/amd64` 与 `linux/arm64`。
+**架构**：只构建 `linux/amd64`。镜像用于部署到 AWS，EC2 默认是 x86；Dockerfile 本身不区分架构（构建阶段的编译工具链也覆盖 arm64），若改用 Graviton，只需在 CI 里加一个原生 `ubuntu-24.04-arm` 的构建与自检。
 
 ### D3 full 模式的启动方式与隔离
 
@@ -151,13 +151,14 @@ claude -p "/excavator:excavator /work/repo --mode=full"      # 需要强制重�
 ### D6 CI 与发布
 
 新建 `.github/workflows/runner-image.yml`：
-- **触发**：推送 `runner-v*` tag，或手动触发，走完整流程；PR 改到 `deploy/**`、`.dockerignore` 或这个 workflow 文件时，只构建 amd64 并自检。
+- **触发**：三种触发都跑同一套完整流程——推送 `runner-v*` tag、手动触发，以及改到 `deploy/**`、`.dockerignore`、这个 workflow 文件、`package.json` 或 `pnpm-lock.yaml` 的 PR。PR 也跑完整流程，是因为 GitHub 的手动触发只对已在默认分支上的 workflow 有效，合并前唯一能验证全流程的就是 PR 运行。
 - **完整流程**：
   1. 用 Node 22 与 pnpm 跑仓库三件套（用 `setup-python` 提供 `python` 命令）；
-  2. QEMU + buildx 构建两种架构；
-  3. 两种架构分别运行 `selftest.sh`；
-  4. 全部通过后，用 OIDC 取得 AWS 角色，推送 `<package.json 版本>-<短 commit>` 标签到 ECR。
-- **仓库变量**：`AWS_ACCOUNT_ID`、`ECR_REGION`、`ECR_REPOSITORY`、`AWS_ROLE_ARN`。缺任何一个就跳过推送，并在运行摘要里写明"push skipped"。
+  2. 断言检出是干净的（`git status --porcelain` 为空），保证镜像标签里的 commit 与内容一致；
+  3. 用 buildx 构建 `linux/amd64` 镜像（`ubuntu-latest`），并写入 GitHub Actions 的构建缓存；
+  4. 对这个镜像运行 `selftest.sh`；
+  5. 推送：只在 tag 或手动触发、且四个仓库变量齐全时执行。执行时用 OIDC 取得 AWS 角色，把刚通过自检的同一个镜像打上 `<package.json 版本>-<短 commit>` 标签推送到 ECR，不重新构建。
+- **仓库变量**：`AWS_ACCOUNT_ID`、`ECR_REGION`、`ECR_REPOSITORY`、`AWS_ROLE_ARN`。不满足推送条件时，推送这一步照样运行，并在运行摘要里写明"push skipped"及原因（不是发布触发，或缺少哪些变量）。
 - **第三方 action**：一律按 commit SHA 钉住。
 - **不可覆盖**：由 ECR 的 tag 不可变设置保证；这个设置属于 DevOps，写进部署契约。
 
@@ -179,7 +180,7 @@ claude -p "/excavator:excavator /work/repo --mode=full"      # 需要强制重�
 - **[风险] Claude Code 升级后 init 字段名变化（例如 `Task` 改名为 `Agent`）** → 版本钉死；每次升级 Claude Code 都必须重跑自检里的加载探针；检查逻辑同时接受两种工具名，其余字段缺失即判失败，不猜测。
 - **[权衡] 结构完整性问题数大于 0 就判失败，首次真实运行可能过严** → 先按严格标准执行，如需放宽以真实运行的证据为依据，不预先放宽。
 - **[风险] eu-central-1 上 prompt caching 不可用，成本明显上升** → 摘要给出警告；发布门实测缓存读取 token 并把结果写进记录。
-- **[风险] arm64 在 QEMU 下构建与自检很慢** → 可以接受；必要时改用原生 arm64 runner，不影响契约。
+- **[已发生] arm64 在 QEMU 下太慢，自检超时；随后收窄为只构建 amd64** → 第一版 CI 在 x86 runner 上用 QEMU 模拟 arm64：lazy 一步就要 29 秒（原生约 2 秒），加载探针与隔离检查撞上 2 分钟的探针超时。考虑到镜像只为部署到 AWS、EC2 默认是 x86，不再构建 arm64，CI 也不再需要 QEMU 和多架构拼接；推送的就是自检通过的那个镜像。本地仍验证过 arm64 能构建并通过自检，需要 Graviton 时再加原生 arm64 runner。
 - **[权衡] 摘要里的花费是 Claude Code 客户端按官方单价的估算，不含 EU 区域的 10% 溢价** → 契约文档注明，实际账单以 AWS 为准。
 
 ## Migration Plan
@@ -198,7 +199,7 @@ claude -p "/excavator:excavator /work/repo --mode=full"      # 需要强制重�
 - **O6 lazy 与 MCP**：
   - 在 wcp-auth 的副本上（不动用户语料），镜像内 lazy 的 `factsDigest` 等于镜像外同一 commit 的 lazy 结果；
   - 在镜像内通过 stdio 调用 MCP 七个工具各一次，`project_status` 返回的 `data.projectRoot` 是挂载的仓库。
-- **O7 CI**：PR 上的构建与自检通过；无 ECR 变量时手动触发完整流程，两种架构构建与自检都通过，推送步骤报告 skipped。
+- **O7 CI**：本地用 actionlint 检查 workflow 通过；PR 上的完整流程（三件套、干净检出断言、amd64 构建与自检）全部通过，推送步骤报告 push skipped 及原因。合并后在 main 上手动触发一次，确认手动触发同样报告 push skipped（缺少 ECR 变量）；这一步只能在合并后做，失败则另起修复 PR。
 - **O8 全量门**：三件套全绿，`openspec validate --all --strict` 通过。新文件先 `git add -N` 再跑门。
 
 发布门（R1），不阻塞合并：

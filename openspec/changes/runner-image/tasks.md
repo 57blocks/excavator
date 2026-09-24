@@ -42,23 +42,38 @@ commit 序列：
 
 ## 3. CI
 
-- [ ] 3.1 新增 `.github/workflows/runner-image.yml`，按 design D6：
-  - 触发条件：`runner-v*` tag、手动触发、改到 `deploy/**` 等路径的 PR；
+- [x] 3.1 新增 `.github/workflows/runner-image.yml`，按 design D6：
+  - 三种触发（`runner-v*` tag、手动触发、改到 D6 所列路径的 PR）都跑同一套完整流程；
   - 三件套使用 Node 22、pnpm 与 `setup-python`；
-  - QEMU + buildx 构建两种架构，每种架构都跑 `selftest.sh`；
+  - 断言检出是干净的；
+  - 构建 `linux/amd64` 镜像并跑 `selftest.sh`，推送时推的就是这个通过自检的镜像；
   - 用 OIDC 推送 `<package.json 版本>-<短 commit>` 标签；
   - 第三方 action 按 commit SHA 钉住。
 
-  验证：本地解析 YAML 无误；PR 上的 workflow 通过。
-- [ ] 3.2 推送前检查四个仓库变量：缺任何一个就跳过推送，并在运行摘要里写 "push skipped"；自检失败时不推送。验证：没有 ECR 变量时手动触发完整流程，两种架构的构建与自检都通过，摘要显示 push skipped（O7）。
+  验证：本地 actionlint 通过；PR 上的完整流程通过。
+- [x] 3.2 推送前检查触发类型和四个仓库变量：不是发布触发、或缺任何一个变量，就跳过推送，并在运行摘要里写 "push skipped" 及原因；前面任一步失败都不推送。验证：PR 运行的摘要显示 push skipped 及原因（O7）。合并后在 main 上手动触发一次、确认同样报告 push skipped，属于合并后的补充验证，不在本 change 的任务内。
 
 ## 4. 部署契约文档
 
-- [ ] 4.1 新增 `docs/deploy.md`，按 design D7 写：`docker run` 示例、两类环境变量表、退出码表、产物说明、IAM 与 VPC 端点清单、安全前提、发布门 R1 与升级流程，以及一张空的发布记录表。验证：新增单测，断言运行脚本导出的运行时参数名集合与文档里运行时参数表的集合完全相同，任何一边多出或缺少都失败；先把文档里一个参数名故意改错，确认单测会失败。
+- [x] 4.1 新增 `docs/deploy.md`，按 design D7 写：`docker run` 示例、两类环境变量表、退出码表、产物说明、IAM 与 VPC 端点清单、安全前提、发布门 R1 与升级流程，以及一张空的发布记录表。验证：新增单测，断言运行脚本导出的运行时参数名集合与文档里运行时参数表的集合完全相同，任何一边多出或缺少都失败；先把文档里一个参数名故意改错，确认单测会失败。
 
 ## 5. 验收（acceptor 亲自执行，不采信 coder 自报）
 
-- [ ] 5.1 全量门（O8）：在干净检出上运行 `pnpm install --frozen-lockfile && pnpm -r build && pnpm test` 与 `openspec validate --all --strict`；新文件先 `git add -N` 再跑。
-- [ ] 5.2 亲自重跑 O1–O7：两种架构构建与自检、镜像卫生、诱饵隔离及其对照、零凭证加载探针及删掉 agent 的反例、wcp-auth 副本上的 lazy 一致性与 MCP 七个工具、CI 的 push skipped。
-- [ ] 5.3 PR 描述写明镜像大小、两种架构的自检结果、构建阶段需要编译工具链的原因、wcp-auth 的脱敏计数；不含真实路径与产物。
-- [ ] 5.4 PR 以 merge commit 合入 `main`，保留 commit 序列 0–4。
+- [x] 5.1 全量门（O8）：在干净检出上运行 `pnpm install --frozen-lockfile && pnpm -r build && pnpm test` 与 `openspec validate --all --strict`；新文件先 `git add -N` 再跑。
+- [x] 5.2 亲自重跑 O1–O7：镜像构建与自检（本地 arm64 与 amd64 都验过）、镜像卫生、诱饵隔离及其对照、零凭证加载探针及删掉 agent 的反例、wcp-auth 副本上的 lazy 一致性与 MCP 七个工具、CI 的 push skipped。
+- [x] 5.3 PR 描述写明镜像大小、自检结果、构建阶段需要编译工具链的原因、wcp-auth 的脱敏计数；不含真实路径与产物。
+- [ ] 5.4 PR 以 merge commit 合入 `main`，保留全部 commit（0–4 以及验收中追加的修正 commit）。
+
+验收记录（acceptor，2026-09-24）：
+- 5.1：合并 `origin/main`（`244f5b58`）后的 `56018565` 上，三件套 89 个测试文件、1532 通过、4 跳过（均为既有跳过）；`openspec validate --all --strict` 35/35。PR CI（run 36007594791，head `210dc5f1`）的测试门同样全绿。
+- 5.2：
+  - O1：本地 arm64 与 amd64 镜像都构建成功，自检 11/11；CI 上 amd64 镜像自检 11/11；标签等于构建 commit 与 Claude Code 2.1.281，默认用户 10001。
+  - O2：构建时放入诱饵，镜像内查不到，也没有任何凭证文件。
+  - O3：`tests/deploy` 100 个测试。
+  - O4：加载探针通过；把某个 agent 的 `name:` 改成与文件名不一致后，自检以 1 退出。
+  - O5：隔离检查通过，对照组暴露泄漏。
+  - O6：wcp-auth 副本上，镜像内外 lazy 相同（229 节点 / 481 边 / 9 缺口，`factsDigest` 前 12 位 `cb6ea0b51a87`），MCP 七个工具 7/7。
+  - O7：actionlint 无告警，PR 运行报告 push skipped。
+- CI 过程中发现并修正了两处：
+  - 测试门在 CI 上需要显式拉取 `excavator-v2` 基线 ref；
+  - QEMU 模拟 arm64 太慢，导致探针超时。随后按"只为部署到 AWS"收窄为只构建 amd64。
