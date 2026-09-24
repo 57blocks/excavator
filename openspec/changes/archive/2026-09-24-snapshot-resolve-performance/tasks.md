@@ -41,4 +41,4 @@ commit 序列：
   - `snapshotResolve`、`snapshotMaterialize`、`manifestEntries` 各在 10 秒内；
   - 通过 stdio 调一次 MCP `project_status` 和 `recall`，记录耗时；
   - 结果以脱敏摘要写进 PR 描述。
-- [ ] 4.4 PR 以 merge commit 合入 `main`，保留 commit 序列。
+- [x] 4.4 PR 以 merge commit 合入 `main`，保留 commit 序列。
