@@ -11,8 +11,8 @@ commit 序列：
 
 ## 1. 序列化辅助
 
-- [ ] 1.1 新增 `skills/excavator/product-serialization.mjs`：`serializeJsonProduct(name, value, { indent, limit })` 返回字符串并记录 `{product, chars, limitChars, percentOfLimit}`；结果长度超过上限，或 `JSON.stringify` 抛 `RangeError` 时，用不建串的递归长度累加算出所需字符数，抛具名 `ProductTooLargeError`（`product` / `requiredChars` / `limitChars`）；默认上限取 `buffer.constants.MAX_STRING_LENGTH`。验证：新测试覆盖成功记录、注入小上限触发具名错误、用 spy 让第一次 `JSON.stringify` 抛 `RangeError` 模拟真实超限，以及长度累加在含引号、转义、Unicode、`undefined`、`NaN`、空容器、嵌套缩进的样本上与 `JSON.stringify(v)`、`JSON.stringify(v, null, 2)` 的长度逐一相等。
-- [ ] 1.2 余量记录器：汇总多次序列化的条目，并接受子脚本产物的 `stat` 字节数条目（标 `measuredAs: 'bytes'`），按占上限百分比降序输出。验证：单测。
+- [x] 1.1 新增 `skills/excavator/product-serialization.mjs`：`serializeJsonProduct(name, value, { indent, limit })` 返回字符串并记录 `{product, chars, limitChars, percentOfLimit}`；结果长度超过上限，或 `JSON.stringify` 抛 `RangeError` 时，用不建串的递归长度累加算出所需字符数，抛具名 `ProductTooLargeError`（`product` / `requiredChars` / `limitChars`）；默认上限取 `buffer.constants.MAX_STRING_LENGTH`。验证：新测试覆盖成功记录、注入小上限触发具名错误、用 spy 让第一次 `JSON.stringify` 抛 `RangeError` 模拟真实超限，以及长度累加在含引号、转义、Unicode、`undefined`、`NaN`、空容器、嵌套缩进的样本上与 `JSON.stringify(v)`、`JSON.stringify(v, null, 2)` 的长度逐一相等。
+- [x] 1.2 余量记录器：汇总多次序列化的条目，并接受子脚本产物的 `stat` 字节数条目（标 `measuredAs: 'bytes'`），按占上限百分比降序输出。验证：单测。
 
 ## 2. source index 按行存储
 
