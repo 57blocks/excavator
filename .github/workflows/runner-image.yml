@@ -39,6 +39,14 @@ jobs:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
+      # tests/skill/excavator/test_prompt_evidence_sections.test.mjs proves the
+      # UA prompt files are only ever appended to by reading them as of the
+      # `excavator-v2` branch, and fails (by design, not skips) when that ref
+      # is missing. actions/checkout fetches only the triggering ref, so fetch
+      # the baseline explicitly.
+      - name: Fetch prompt baseline ref
+        run: git fetch --no-tags --depth=1 origin +refs/heads/excavator-v2:refs/remotes/origin/excavator-v2
+
       # Reads the pnpm version straight from package.json's "packageManager"
       # field (no `version:` input) so this workflow can never drift from
       # the version the repo itself pins.
