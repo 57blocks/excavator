@@ -72,90 +72,16 @@ jobs:
       - name: Install, build, test
         run: pnpm install --frozen-lockfile && pnpm -r build && pnpm test
 
+
   # ---------------------------------------------------------------------
-  # Build + self-test both architectures (design D6 steps 2-4 / O1).
+  # Build the linux/amd64 image, self-test it, and — only on a release
+  # trigger with the repo's ECR variables set — push that same tested
+  # image (design D6). AWS hosts are x86 by default; arm64 (Graviton)
+  # would be one more job on a native `ubuntu-24.04-arm` runner.
   # ---------------------------------------------------------------------
   image:
-    name: Image (${{ matrix.platform }})
+    name: Image (linux/amd64)
     needs: test
-    runs-on: ${{ matrix.runner }}
-    timeout-minutes: 60
-    strategy:
-      fail-fast: false
-      matrix:
-        # Native runners for both architectures (GitHub-hosted arm64 runners
-        # have been available to private repos since 2026-01-29) — QEMU's
-        # TCG emulation was too slow for the self-test's fixed timeouts
-        # (e.g. lazy-analyze alone: ~29s emulated vs ~2s native), which
-        # turned a slow build into a flaky one (see the runner-image PR's
-        # arm64 load-probe/isolation timeout failures on an x86 runner).
-        include:
-          - platform: linux/amd64
-            runner: ubuntu-latest
-          - platform: linux/arm64
-            runner: ubuntu-24.04-arm
-    steps:
-      - name: Checkout
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-
-      # The image's OCI revision label must match the content actually
-      # built. Asserted here, right after checkout and before anything
-      # else touches the tree.
-      - name: Assert clean checkout
-        run: |
-          if [ -n "$(git status --porcelain)" ]; then
-            echo "::error::checkout is not clean; the image commit label would not match its content" >&2
-            git status --porcelain >&2
-            exit 1
-          fi
-
-      # On `pull_request`, `github.sha` is the ephemeral merge commit, which
-      # is correct here too (it IS the commit actually checked out and
-      # built) — but we read it back from git rather than trust the event
-      # payload, so this stays correct regardless of trigger type.
-      - name: Resolve checked-out commit
-        id: commit
-        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
-
-      - name: Compute platform slug
-        id: platform
-        run: echo "slug=$(echo '${{ matrix.platform }}' | tr '/' '-')" >> "$GITHUB_OUTPUT"
-
-      # No QEMU here: each matrix entry now runs on a runner native to its
-      # own platform (see the matrix above), so buildx never needs to
-      # emulate. The push job below still sets up QEMU — it builds both
-      # platforms together on one runner for the final multi-arch push.
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
-
-      - name: Build (${{ matrix.platform }})
-        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
-        with:
-          context: .
-          file: deploy/Dockerfile
-          platforms: ${{ matrix.platform }}
-          load: true
-          build-args: |
-            EXCAVATOR_COMMIT=${{ steps.commit.outputs.sha }}
-          tags: excavator-runner-image:ci
-          cache-from: type=gha,scope=runner-image-${{ steps.platform.outputs.slug }}
-          cache-to: type=gha,mode=max,scope=runner-image-${{ steps.platform.outputs.slug }}
-
-      - name: Self-test (${{ matrix.platform }})
-        run: docker run --rm --platform ${{ matrix.platform }} --entrypoint excavator-selftest excavator-runner-image:ci
-
-  # ---------------------------------------------------------------------
-  # Push to ECR, but only on a release trigger with the repo's ECR
-  # parameters configured (design D6 step 5 / spec "镜像可自检且按固定规则
-  # 发布"). Always runs after `image` succeeds; internally decides
-  # push-vs-skip and reports which either way, so a PR run (or a
-  # workflow_dispatch before DevOps configures the repo variables) always
-  # finishes successfully with a clear reason instead of failing or being
-  # silently skipped by GitHub.
-  # ---------------------------------------------------------------------
-  push:
-    name: Push
-    needs: image
     runs-on: ubuntu-latest
     timeout-minutes: 60
     permissions:
@@ -165,14 +91,42 @@ jobs:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
+      # The image's OCI revision label must match the content actually
+      # built.
+      - name: Assert clean checkout
+        run: |
+          if [ -n "$(git status --porcelain)" ]; then
+            echo "::error::checkout is not clean; the image commit label would not match its content" >&2
+            git status --porcelain >&2
+            exit 1
+          fi
+
       - name: Resolve checked-out commit
         id: commit
         run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
+      - name: Build
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          file: deploy/Dockerfile
+          platforms: linux/amd64
+          load: true
+          build-args: |
+            EXCAVATOR_COMMIT=${{ steps.commit.outputs.sha }}
+          tags: excavator-runner-image:ci
+          cache-from: type=gha,scope=runner-image-linux-amd64
+          cache-to: type=gha,mode=max,scope=runner-image-linux-amd64
+
+      - name: Self-test
+        run: docker run --rm --entrypoint excavator-selftest excavator-runner-image:ci
+
       # Eligibility = (tag push OR workflow_dispatch) AND all four repo
       # variables set. Values come in through env:, never interpolated
-      # directly into the script, and the decision is the only thing this
-      # step does — every step after it is a plain `if:` on the output.
+      # directly into the script.
       - name: Decide push eligibility
         id: decide
         env:
@@ -184,17 +138,9 @@ jobs:
           VAR_AWS_ROLE_ARN: ${{ vars.AWS_ROLE_ARN }}
         run: |
           reasons=()
-
-          is_release=false
-          if [[ "$EVENT_NAME" == "push" && "$REF" == refs/tags/runner-v* ]]; then
-            is_release=true
-          elif [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
-            is_release=true
-          fi
-          if [[ "$is_release" != "true" ]]; then
+          if [[ "$EVENT_NAME" != "workflow_dispatch" && ! ( "$EVENT_NAME" == "push" && "$REF" == refs/tags/runner-v* ) ]]; then
             reasons+=("not a release trigger (event=$EVENT_NAME, ref=$REF)")
           fi
-
           missing=()
           [[ -z "$VAR_AWS_ACCOUNT_ID" ]] && missing+=("AWS_ACCOUNT_ID")
           [[ -z "$VAR_ECR_REGION" ]] && missing+=("ECR_REGION")
@@ -203,7 +149,6 @@ jobs:
           if [[ ${#missing[@]} -gt 0 ]]; then
             reasons+=("missing repository variable(s): ${missing[*]}")
           fi
-
           if [[ ${#reasons[@]} -eq 0 ]]; then
             echo "eligible=true" >> "$GITHUB_OUTPUT"
           else
@@ -212,13 +157,12 @@ jobs:
             echo "reason=$joined" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Compute image tag
-        if: steps.decide.outputs.eligible == 'true'
-        id: tag
+      - name: Report push skipped
+        if: steps.decide.outputs.eligible != 'true'
+        env:
+          REASON: ${{ steps.decide.outputs.reason }}
         run: |
-          version=$(jq -r .version package.json)
-          short_sha=$(echo "${{ steps.commit.outputs.sha }}" | cut -c1-8)
-          echo "tag=${version}-${short_sha}" >> "$GITHUB_OUTPUT"
+          echo "push skipped: $REASON" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Configure AWS credentials
         if: steps.decide.outputs.eligible == 'true'
@@ -234,40 +178,16 @@ jobs:
         with:
           registries: ${{ vars.AWS_ACCOUNT_ID }}
 
-      - name: Set up QEMU
+      # Pushes the exact image that just passed the self-test. ECR tag
+      # immutability is a DevOps-side repository setting.
+      - name: Push tested image
         if: steps.decide.outputs.eligible == 'true'
-        uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
-
-      - name: Set up Docker Buildx
-        if: steps.decide.outputs.eligible == 'true'
-        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
-
-      # Reuses the per-platform caches the `image` job just wrote
-      # (cache-from only — this job does not need to refresh them) to build
-      # both architectures once more and push them together. ECR tag
-      # immutability (so this tag can never be overwritten) is a DevOps-side
-      # ECR repository setting, not something this workflow enforces.
-      - name: Build and push
-        if: steps.decide.outputs.eligible == 'true'
-        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
-        with:
-          context: .
-          file: deploy/Dockerfile
-          platforms: linux/amd64,linux/arm64
-          push: true
-          build-args: |
-            EXCAVATOR_COMMIT=${{ steps.commit.outputs.sha }}
-          tags: ${{ steps.ecr-login.outputs.registry }}/${{ vars.ECR_REPOSITORY }}:${{ steps.tag.outputs.tag }}
-          cache-from: |
-            type=gha,scope=runner-image-linux-amd64
-            type=gha,scope=runner-image-linux-arm64
-
-      - name: Report push skipped
-        if: steps.decide.outputs.eligible != 'true'
+        env:
+          REGISTRY: ${{ steps.ecr-login.outputs.registry }}
+          REPOSITORY: ${{ vars.ECR_REPOSITORY }}
+          COMMIT: ${{ steps.commit.outputs.sha }}
         run: |
-          echo "push skipped: ${{ steps.decide.outputs.reason }}" >> "$GITHUB_STEP_SUMMARY"
-
-      - name: Report pushed tag
-        if: steps.decide.outputs.eligible == 'true'
-        run: |
-          echo "pushed image tag: ${{ steps.ecr-login.outputs.registry }}/${{ vars.ECR_REPOSITORY }}:${{ steps.tag.outputs.tag }}" >> "$GITHUB_STEP_SUMMARY"
+          tag="$REGISTRY/$REPOSITORY:$(jq -r .version package.json)-${COMMIT:0:8}"
+          docker tag excavator-runner-image:ci "$tag"
+          docker push "$tag"
+          echo "pushed image tag: $tag" >> "$GITHUB_STEP_SUMMARY"

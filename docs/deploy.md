@@ -186,7 +186,7 @@ If Bedrock model-invocation logging is enabled on the account, the logged payloa
 
 ## CI and release
 
-Tags matching `runner-v*` (and manual `workflow_dispatch` runs) trigger `.github/workflows/runner-image.yml`'s full flow: the repository's test gate, then a build and self-test of both `linux/amd64` and `linux/arm64`, then — only on that release trigger, and only once DevOps has configured the four repository variables below — a push to ECR via OIDC (no long-lived AWS credentials stored in GitHub). A PR touching deploy-relevant files runs the same flow but never pushes.
+Tags matching `runner-v*` (and manual `workflow_dispatch` runs) trigger `.github/workflows/runner-image.yml`: the repository's test gate, then a `linux/amd64` build and self-test of the image, then — only on that release trigger, and only once DevOps has configured the four repository variables below — a push of that same tested image to ECR via OIDC (no long-lived AWS credentials stored in GitHub). A PR touching deploy-relevant files runs the same flow but never pushes. The image is built for `linux/amd64` (x86 EC2 instances); for Graviton (arm64) hosts, tell the Excavator team — the Dockerfile already builds on arm64 and only a native arm64 CI job needs to be added.
 
 DevOps must provide, as GitHub **repository variables**:
 
