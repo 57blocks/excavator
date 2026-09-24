@@ -12,17 +12,18 @@
  * in-flight analysis run within one process invocation.
  */
 
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { join } from 'node:path';
 
-import { contentHash, manifestDigest, diffEntries } from './manifest.mjs';
+import * as realBatchReader from './blob-batch.mjs';
+import { diffEntries } from './manifest.mjs';
 import {
   ignoreRulesFromContent,
   selectionLedger,
   selectionPrefixBytes,
 } from './ignore-rules.mjs';
-import { listTrackedEntries, showFileAt, showFilePrefixAt } from './git-utils.mjs';
+import { listTrackedEntries, showFileAt } from './git-utils.mjs';
 
 const EXCAVATORIGNORE_PATH = '.excavatorignore';
 
@@ -30,7 +31,9 @@ export class GitCommitSnapshot {
   /**
    * @param {string} root absolute path to the repo's working-tree root
    * @param {string} sha full HEAD commit sha, already resolved by the caller
-   * @param {{ extraExcludePatterns?: string[] }} [options]
+   * @param {{ extraExcludePatterns?: string[], batchReader?: typeof realBatchReader }} [options]
+   *   `batchReader` defaults to the real `blob-batch.mjs` module; tests inject
+   *   a spy/fake to observe exactly which paths reach each batch (design D3).
    */
   constructor(root, sha, options = {}) {
     this.kind = 'git';
@@ -38,6 +41,7 @@ export class GitCommitSnapshot {
     this.sha = sha;
     this.revision = `git:${sha}`;
     this._extraExcludePatterns = options.extraExcludePatterns ?? [];
+    this._batchReader = options.batchReader ?? realBatchReader;
 
     const ignoreFileBuf = showFileAt(root, sha, EXCAVATORIGNORE_PATH);
     const rules = ignoreRulesFromContent(
@@ -47,12 +51,34 @@ export class GitCommitSnapshot {
     this._selectionDescriptors = rules.descriptors;
     this.selectionDigest = rules.digest;
 
+    const entries = listTrackedEntries(root, sha).sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
+    this._oidByPath = new Map(entries.map((entry) => [entry.path, entry.oid]));
+
+    // D3: compute each entry's initial decision and whether its header is
+    // needed FIRST, fetch every needed header in batches (one `git cat-file
+    // --batch` per BLOB_BATCH_SIZE headers, not one subprocess per file),
+    // and only THEN run the decision loop below in the original order and
+    // branches — batching only changes how a header's bytes are fetched,
+    // never the decision logic itself.
+    const preDecided = entries.map((entry) => {
+      const initial = rules.policy.decide({ path: entry.path });
+      const mayNeedHeader = entry.mode !== '120000'
+        && entry.type === 'blob'
+        && initial.kind !== 'sensitive'
+        && !(initial.kind === 'filtered-by-defaults' && ['analysis-data', 'archive'].includes(initial.detail));
+      return { entry, initial, mayNeedHeader };
+    });
+    const headerWantList = preDecided
+      .filter((item) => item.mayNeedHeader)
+      .map((item) => ({ oid: item.entry.oid, path: item.entry.path }));
+    const prefixes = this._batchReader.readBlobPrefixes(root, headerWantList, selectionPrefixBytes);
+    const prefixByPath = new Map(headerWantList.map((item, i) => [item.path, prefixes[i]]));
+
     const decisions = [];
     this._trackedPaths = [];
     this.processingSkips = [];
-    for (const entry of listTrackedEntries(root, sha).sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0))) {
+    for (const { entry, initial, mayNeedHeader } of preDecided) {
       const { path } = entry;
-      const initial = rules.policy.decide({ path });
       if (entry.mode === '120000') {
         decisions.push(initial);
         if (initial.kind === 'selected') this.processingSkips.push({ path, reason: 'symlink' });
@@ -63,11 +89,7 @@ export class GitCommitSnapshot {
         if (initial.kind === 'selected') this.processingSkips.push({ path, reason: 'read-failed' });
         continue;
       }
-      const mayNeedHeader = initial.kind !== 'sensitive'
-        && !(initial.kind === 'filtered-by-defaults' && ['analysis-data', 'archive'].includes(initial.detail));
-      const prefix = mayNeedHeader
-        ? showFilePrefixAt(root, sha, path, selectionPrefixBytes) ?? undefined
-        : undefined;
+      const prefix = mayNeedHeader ? prefixByPath.get(path) ?? undefined : undefined;
       const decision = mayNeedHeader && prefix !== undefined
         ? rules.policy.decide({ path, contentPrefix: prefix })
         : initial;
@@ -78,6 +100,12 @@ export class GitCommitSnapshot {
       }
     }
     this.selection = selectionLedger(decisions);
+    this._trackedPathSet = new Set(this._trackedPaths);
+  }
+
+  /** `{oid, path}` items for `paths`, in the given order, for a batch call. */
+  _batchItems(paths) {
+    return paths.map((path) => ({ oid: this._oidByPath.get(path), path }));
   }
 
   /** Terminal notice required by the "HEAD-only" contract — printed by
@@ -92,7 +120,7 @@ export class GitCommitSnapshot {
 
   /** @param {string} path @returns {Buffer} */
   readFile(path) {
-    if (!this._trackedPaths.includes(path)) {
+    if (!this._trackedPathSet.has(path)) {
       throw new Error(`GitCommitSnapshot.readFile: ${path} is not part of this snapshot (${this.revision})`);
     }
     const buf = showFileAt(this.root, this.sha, path);
@@ -104,26 +132,17 @@ export class GitCommitSnapshot {
 
   /** @param {string[]} terms */
   search(terms) {
-    const results = [];
-    for (const path of this._trackedPaths) {
-      const bytes = this.readFile(path);
-      if (bytes.includes(0)) continue;
-      const lines = bytes.toString('utf-8').split('\n');
-      for (let index = 0; index < lines.length; index++) {
-        for (const term of terms) {
-          if (lines[index].includes(term)) {
-            results.push({ path, line: index + 1, text: lines[index], term });
-          }
-        }
-      }
-    }
-    return results;
+    // Batch only the selected paths — a rejected path's content is never
+    // requested from git, matching readFile()'s per-file behavior before
+    // this change.
+    return this._batchReader.searchBlobs(this.root, this._batchItems(this._trackedPaths), terms);
   }
 
   /** The `{path, contentHash}` entries for this revision, computed on
    *  demand (not needed for `revision`/`listFiles`, only for `diff()`). */
   entries() {
-    return this._trackedPaths.map((path) => ({ path, contentHash: contentHash(this.readFile(path)) }));
+    const hashes = this._batchReader.hashBlobs(this.root, this._batchItems(this._trackedPaths));
+    return this._trackedPaths.map((path, i) => ({ path, contentHash: hashes[i] }));
   }
 
   /** @param {{entries?: Array<{path:string,contentHash:string}>}} previousManifest */
@@ -140,12 +159,7 @@ export class GitCommitSnapshot {
    */
   materialize() {
     const dest = mkdtempSync(join(tmpdir(), 'excavator-snapshot-git-'));
-    for (const path of this._trackedPaths) {
-      const bytes = this.readFile(path);
-      const destination = join(dest, path);
-      mkdirSync(dirname(destination), { recursive: true });
-      writeFileSync(destination, bytes);
-    }
+    this._batchReader.writeBlobs(this.root, this._batchItems(this._trackedPaths), dest);
     return { dir: dest, cleanup: () => rmSync(dest, { recursive: true, force: true }) };
   }
 
