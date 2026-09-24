@@ -78,12 +78,22 @@ jobs:
   image:
     name: Image (${{ matrix.platform }})
     needs: test
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:
-        platform: [linux/amd64, linux/arm64]
+        # Native runners for both architectures (GitHub-hosted arm64 runners
+        # have been available to private repos since 2026-01-29) — QEMU's
+        # TCG emulation was too slow for the self-test's fixed timeouts
+        # (e.g. lazy-analyze alone: ~29s emulated vs ~2s native), which
+        # turned a slow build into a flaky one (see the runner-image PR's
+        # arm64 load-probe/isolation timeout failures on an x86 runner).
+        include:
+          - platform: linux/amd64
+            runner: ubuntu-latest
+          - platform: linux/arm64
+            runner: ubuntu-24.04-arm
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -111,9 +121,10 @@ jobs:
         id: platform
         run: echo "slug=$(echo '${{ matrix.platform }}' | tr '/' '-')" >> "$GITHUB_OUTPUT"
 
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
-
+      # No QEMU here: each matrix entry now runs on a runner native to its
+      # own platform (see the matrix above), so buildx never needs to
+      # emulate. The push job below still sets up QEMU — it builds both
+      # platforms together on one runner for the final multi-arch push.
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
 
