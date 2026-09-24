@@ -15,11 +15,11 @@ commit 序列：
 
 ## 1. 镜像本体
 
-- [ ] 1.1 新增 `.dockerignore` 与 `deploy/Dockerfile`，按 design D2 做两阶段构建：`ARG CLAUDE_CODE_VERSION=2.1.281`；`ARG EXCAVATOR_COMMIT` 为空时构建失败；写入 OCI 标签；创建 uid 为 10001 的用户及 `$HOME/.excavator-plugin → /opt/excavator` 软链；设置系统级 `safe.directory=*`；写死 D2 列出的开关类环境变量，并把两个版本号同时写进镜像环境变量，供自检比对。验证：本机 arm64 `docker build` 成功，`docker inspect` 的标签等于传入的 commit 与版本。
-- [ ] 1.2 新增 `deploy/claude-settings.json`，放到默认用户的 `~/.claude/settings.json`（内容：`skipWebFetchPreflight: true`，`permissions.deny` 禁用 `WebFetch` 与 `WebSearch`）。验证：容器内 `claude --version` 等于钉的版本；`claude doctor` 显示更新已关闭。
-- [ ] 1.3 新增 `deploy/selftest.sh`：检查两个版本号与镜像环境变量一致、`claude plugin validate /opt/excavator` 通过、`python --version` 可用、`$HOME/.excavator-plugin` 指向检出、系统 git 配置里有 `safe.directory=*`、在临时 git 仓库上跑 lazy 能产出 `knowledge-graph.json`；每项输出 PASS/FAIL，任一 FAIL 以非 0 退出。验证：镜像内自检通过；运行时把期望版本覆盖成错误值，自检必须失败，以证明它能发现不一致。
-- [ ] 1.4 镜像卫生（O2）：在工作区放诱饵 `.excavator/` 与 `.claude/settings.local.json` 后构建，确认镜像内不存在它们，也不存在 `~/.aws` 与 `~/.claude/.credentials.json`，默认用户 uid 为 10001，`/opt/excavator` 之外没有任何 Excavator 的 skill 或 agent 文件；验证后删除诱饵。验证：检查命令的输出记入任务证据。
-- [ ] 1.5 用 buildx（QEMU）构建 `linux/amd64`，并在模拟环境里跑 `selftest.sh`（O1）。验证：两种架构的自检都通过。
+- [x] 1.1 新增 `.dockerignore` 与 `deploy/Dockerfile`，按 design D2 做两阶段构建：`ARG CLAUDE_CODE_VERSION=2.1.281`；`ARG EXCAVATOR_COMMIT` 为空时构建失败；写入 OCI 标签；创建 uid 为 10001 的用户及 `$HOME/.excavator-plugin → /opt/excavator` 软链；设置系统级 `safe.directory=*`；写死 D2 列出的开关类环境变量，并把两个版本号同时写进镜像环境变量，供自检比对。验证：本机 arm64 `docker build` 成功，`docker inspect` 的标签等于传入的 commit 与版本。
+- [x] 1.2 新增 `deploy/claude-settings.json`，放到默认用户的 `~/.claude/settings.json`（内容：`skipWebFetchPreflight: true`，`permissions.deny` 禁用 `WebFetch` 与 `WebSearch`）。验证：容器内 `claude --version` 等于钉的版本；`claude doctor` 显示更新已关闭。
+- [x] 1.3 新增 `deploy/selftest.sh`：检查两个版本号与镜像环境变量一致、`claude plugin validate /opt/excavator` 通过、`python --version` 可用、`$HOME/.excavator-plugin` 指向检出、系统 git 配置里有 `safe.directory=*`、在临时 git 仓库上跑 lazy 能产出 `knowledge-graph.json`；每项输出 PASS/FAIL，任一 FAIL 以非 0 退出。验证：镜像内自检通过；运行时把期望版本覆盖成错误值，自检必须失败，以证明它能发现不一致。
+- [x] 1.4 镜像卫生（O2）：在工作区放诱饵 `.excavator/` 与 `.claude/settings.local.json` 后构建，确认镜像内不存在它们，也不存在 `~/.aws` 与 `~/.claude/.credentials.json`，默认用户 uid 为 10001，`/opt/excavator` 之外没有任何 Excavator 的 skill 或 agent 文件；验证后删除诱饵。验证：检查命令的输出记入任务证据。
+- [x] 1.5 用 buildx（QEMU）构建 `linux/amd64`，并在模拟环境里跑 `selftest.sh`（O1）。验证：两种架构的自检都通过。
 
 ## 2. 运行脚本与检查
 

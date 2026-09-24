@@ -1,0 +1,18 @@
+# Docker build context excludes for the runner image (deploy/Dockerfile).
+#
+# The build stage rebuilds node_modules and packages/core/dist itself
+# (`pnpm install --frozen-lockfile && pnpm -r build`), so the host's copies
+# must never reach the image. The commit recorded in the image comes from
+# the EXCAVATOR_COMMIT build arg, never from .git, so .git is excluded too.
+
+.git
+**/.excavator
+**/node_modules
+**/dist
+.claude/settings.local.json
+.codex
+test-repo
+.worktrees
+coverage
+*.log
+.DS_Store

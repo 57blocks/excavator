@@ -2,7 +2,7 @@
 
 动机见 proposal.md「Why」，行为契约见 `specs/runner-image/spec.md`。这里只列影响做法的现状与约束。
 
-- **插件的可运行形态**：Git 检出里没有 `node_modules` 与 `packages/core/dist`，MCP 与各个脚本都依赖构建产物。skill 找插件根时只探测三处：`${CLAUDE_PLUGIN_ROOT}`、`$HOME/.excavator-plugin`、`~/.agents/skills` 的 realpath（`plugin-identity`）。skill 里有 4 处调用 `python`（不是 `python3`）；Python 脚本只用标准库。tree-sitter 语法包自带 linux-x64 与 linux-arm64 预编译，不需要编译工具链。
+- **插件的可运行形态**：Git 检出里没有 `node_modules` 与 `packages/core/dist`，MCP 与各个脚本都依赖构建产物。skill 找插件根时只探测三处：`${CLAUDE_PLUGIN_ROOT}`、`$HOME/.excavator-plugin`、`~/.agents/skills` 的 realpath（`plugin-identity`）。skill 里有 4 处调用 `python`（不是 `python3`）；Python 脚本只用标准库。tree-sitter 语法包都带 linux-x64 与 linux-arm64 预编译，但实现时查 ELF 头发现：锁文件里 tree-sitter-java、-ruby、-cpp、-typescript 与 -javascript@0.23.1 这 5 个包的 `linux-arm64` 预编译实际是 x86-64 二进制，在 arm64 上加载失败，会回退到 node-gyp 源码编译。所以构建阶段需要 python3 与 C/C++ 工具链；运行阶段不需要。
 - **运行时事实**：
   - lazy 由 `skills/excavator/lazy-analyze.mjs` 单独完成，不调用模型。
   - full 由宿主按 `skills/excavator/SKILL.md` 编排子 agent；跑完会清理 `.excavator/intermediate/`（只保留 `scan-result.json`），所以"每个批次都有产物"只能由编排过程自己保证，事后看不到。
@@ -45,7 +45,7 @@
 ### D2 镜像构成
 
 **两阶段构建**，基础镜像为 `node:22-bookworm-slim`：
-- 构建阶段：`corepack` 启用仓库钉的 pnpm，执行 `pnpm install --frozen-lockfile && pnpm -r build`。
+- 构建阶段：安装 python3、make、g++、gcc（原因见 Context），`corepack` 启用仓库钉的 pnpm，执行 `pnpm install --frozen-lockfile && pnpm -r build`。工具链只存在于构建阶段，不进运行镜像。
 - 运行阶段：安装 git、python3、python-is-python3、ca-certificates；用 `npm install -g @anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}` 装 Claude Code（ARG 默认 `2.1.281`）；拷入构建好的检出到 `/opt/excavator`；创建 uid 为 10001 的非 root 用户，并在其 `$HOME` 下建软链 `.excavator-plugin → /opt/excavator`；以 root 执行 `git config --system --add safe.directory '*'`。
 
 关于 `safe.directory`：挂载进来的仓库属主通常不是 10001，git 会报 dubious ownership。这项检查防的是不可信的 `.git/config`，例如用 `core.fsmonitor` 执行命令。契约要求 `/work/repo` 是运维方自己 clone 的仓库：clone 不会复制远端的配置与 hooks，所以 `.git` 可信，系统级放行是安全的。`/work/repo` 不能是随意拷来的 `.git`，这一点写进契约。
