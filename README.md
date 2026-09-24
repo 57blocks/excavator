@@ -7,28 +7,10 @@
 </p>
 
 <p align="center">
-  <em>AI should help people, not replace them.</em>
-</p>
-
-<p align="center">
-  <a href="README.md">English</a> | <a href="READMEs/README.zh-CN.md">简体中文</a> | <a href="READMEs/README.zh-TW.md">繁體中文</a> | <a href="READMEs/README.ja-JP.md">日本語</a> | <a href="READMEs/README.ko-KR.md">한국어</a> | <a href="READMEs/README.es-ES.md">Español</a> | <a href="READMEs/README.tr-TR.md">Türkçe</a> | <a href="READMEs/README.ru-RU.md">Русский</a>
-</p>
-
-<p align="center">
   <a href="#-quick-start"><img src="https://img.shields.io/badge/Quick_Start-blue" alt="Quick Start" /></a>
   <a href="https://github.com/Jingqi-57blocks/excavator/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-MIT-yellow" alt="License: MIT" /></a>
   <a href="https://docs.anthropic.com/en/docs/claude-code"><img src="https://img.shields.io/badge/Claude_Code-8A2BE2" alt="Claude Code" /></a>
   <a href="#codex"><img src="https://img.shields.io/badge/Codex-000000" alt="Codex" /></a>
-</p>
-
-<p align="center">
-  <img src="assets/hero.png" alt="Excavator — Turn any codebase into a queryable knowledge graph" width="800" />
-</p>
-
-<p align="center">
-  <strong>An open-source project from <a href="https://github.com/Egonex-AI">Egonex</a></strong>
-  <br />
-  <em>Originally created by <a href="https://github.com/Lum1104">Lum1104</a>.</em>
 </p>
 
 ---
@@ -191,8 +173,6 @@ Uninstall: `~/.excavator-plugin/install.sh --uninstall` (or run `install.sh --un
 
 The graph is just JSON — **commit it once, and teammates skip the pipeline**. Good for onboarding, PR reviews, and docs-as-code.
 
-> **Example:** [GoogleCloudPlatform/microservices-demo](https://github.com/GoogleCloudPlatform/microservices-demo) — Go / Java / Python / Node reference with a committed graph.
-
 **What to commit:** everything in `.excavator/` except `intermediate/` (local scratch).
 
 ```gitignore
@@ -237,21 +217,6 @@ File analyzers run in parallel, up to 5 concurrent workers and 20–30 files per
 
 The pipeline also supports incremental updates: only files changed since the last run are re-analyzed.
 
-
----
-
-## 🎥 Community
-
-A community-made walkthrough by **Better Stack**.
-
-<p align="center">
-  <a href="https://www.youtube.com/watch?v=VmIUXVlt7_I"><img src="https://img.youtube.com/vi/VmIUXVlt7_I/maxresdefault.jpg" alt="Community walkthrough by Better Stack — watch on YouTube" width="480" /></a>
-  <br />
-  <em><a href="https://www.youtube.com/watch?v=VmIUXVlt7_I">Watch on YouTube &rarr;</a></em>
-</p>
-
-Made a video, blog post, or tutorial? Open an issue or PR — happy to feature it here.
-
 ---
 
 ## 🤝 Contributing
@@ -264,27 +229,3 @@ Contributions are welcome! Here's how to get started:
 4. Commit your changes and open a pull request
 
 Please open an issue first for major changes so we can discuss the approach.
-
----
-
-<p align="center">
-  <strong>Stop reading code blind. Start understanding everything.</strong>
-</p>
-
-## Star History
-
-<a href="https://www.star-history.com/?repos=Jingqi-57blocks%2Fexcavator&type=date&legend=top-left">
- <picture>
-   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/image?repos=Jingqi-57blocks/excavator&type=date&theme=dark&legend=top-left" />
-   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/image?repos=Jingqi-57blocks/excavator&type=date&legend=top-left" />
-   <img alt="Star History Chart" src="https://api.star-history.com/image?repos=Jingqi-57blocks/excavator&type=date&legend=top-left" />
- </picture>
-</a>
-
-<p align="center">
-  <em>Thanks to everyone who's used and contributed — knowing this saves people time is what made it worth building.</em>
-</p>
-
-<p align="center">
-  MIT License &copy; Yuxiang Lin and Infinite Universe, Inc.
-</p>
