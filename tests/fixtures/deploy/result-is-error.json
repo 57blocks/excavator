@@ -1,0 +1,45 @@
+{
+  "type": "result",
+  "subtype": "success",
+  "session_id": "00000000-0000-0000-0000-000000000002",
+  "is_error": true,
+  "terminal_reason": "api_error",
+  "permission_denials": [],
+  "subagent_stats": {
+    "spawned": 6,
+    "requested": {
+      "background": 0,
+      "foreground": 6,
+      "unset": 0
+    },
+    "started_in_background": 0,
+    "max_depth": 1,
+    "spawned_by_subagents": 0,
+    "completed": 6,
+    "failed": 0,
+    "killed": {
+      "parent": 0,
+      "user": 0,
+      "system": 0
+    },
+    "refused": {
+      "depth_limit": 0,
+      "concurrency_limit": 0,
+      "budget": 0
+    },
+    "by_type": {}
+  },
+  "modelUsage": {
+    "eu.anthropic.claude-sonnet-5": {
+      "inputTokens": 12000,
+      "outputTokens": 3400,
+      "cacheReadInputTokens": 8000,
+      "cacheCreationInputTokens": 500,
+      "costUSD": 0.42
+    }
+  },
+  "total_cost_usd": 0.42,
+  "num_turns": 12,
+  "result": "Analysis complete.",
+  "duration_ms": 120000
+}

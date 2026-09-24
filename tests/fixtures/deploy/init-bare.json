@@ -1,0 +1,32 @@
+{
+  "type": "system",
+  "subtype": "init",
+  "cwd": "/work/repo",
+  "session_id": "00000000-0000-0000-0000-000000000007",
+  "tools": [
+    "Bash",
+    "Edit",
+    "Read"
+  ],
+  "mcp_servers": [],
+  "model": "eu.anthropic.claude-sonnet-5",
+  "permissionMode": "bypassPermissions",
+  "apiKeySource": "none",
+  "claude_code_version": "2.1.281",
+  "agents": [
+    "claude",
+    "claude-code-guide",
+    "Explore",
+    "general-purpose",
+    "Plan",
+    "statusline-setup"
+  ],
+  "plugins": [
+    {
+      "name": "excavator",
+      "path": "/opt/excavator",
+      "source": "excavator@inline",
+      "version": "2.9.6"
+    }
+  ]
+}

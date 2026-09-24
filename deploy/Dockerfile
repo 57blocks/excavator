@@ -88,6 +88,13 @@ RUN echo "$EXCAVATOR_COMMIT" > /opt/excavator/.image-commit
 COPY deploy/selftest.sh /usr/local/bin/excavator-selftest
 RUN chmod +x /usr/local/bin/excavator-selftest
 
+# The runner is the image's entrypoint (design D4): a thin shell wrapper so
+# `docker run <image> -e EXCAVATOR_MODE=...` and `docker run --entrypoint
+# excavator-selftest <image>` both work without a shell-form CMD hiding the
+# real argv from run-excavator.mjs.
+RUN printf '#!/bin/sh\nexec node /opt/excavator/deploy/run-excavator.mjs "$@"\n' > /usr/local/bin/excavator-run \
+    && chmod +x /usr/local/bin/excavator-run
+
 RUN groupadd --gid 10001 excavator \
     && useradd --uid 10001 --gid 10001 --create-home --home-dir /home/excavator --shell /bin/bash excavator \
     && ln -s /opt/excavator /home/excavator/.excavator-plugin \
@@ -100,7 +107,4 @@ USER 10001
 WORKDIR /home/excavator
 ENV HOME=/home/excavator
 
-# No ENTRYPOINT runner yet — deploy/run-excavator.mjs is added in a later
-# task group. Defaulting CMD to the self-test keeps `docker run <image>`
-# meaningful on its own.
-CMD ["excavator-selftest"]
+ENTRYPOINT ["excavator-run"]

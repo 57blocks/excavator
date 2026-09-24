@@ -103,7 +103,12 @@ claude -p "/excavator:excavator /work/repo --mode=full"      # 需要强制重�
 
 用 Node 编写 `deploy/run-excavator.mjs`，与仓库其他脚本同栈，检查逻辑都拆成纯函数，便于用 vitest 测试。
 
-**运行参数**：`EXCAVATOR_MODE`（`lazy`｜`full`）、`EXCAVATOR_MAX_BUDGET_USD`、`EXCAVATOR_FORCE`、`EXCAVATOR_MAX_CONTRADICTED`（默认 0）、`EXCAVATOR_TIMEOUT_MINUTES`（默认 180），以及 Claude Code 自己的 `AWS_REGION`、`ANTHROPIC_MODEL`、`ANTHROPIC_DEFAULT_*_MODEL`。full 模式必须提供区域、模型 ID 与预算。
+**运行参数**：`EXCAVATOR_MODE`（`lazy`｜`full`）、`EXCAVATOR_MAX_BUDGET_USD`、`EXCAVATOR_FORCE`、`EXCAVATOR_MAX_CONTRADICTED`（默认 0）、`EXCAVATOR_TIMEOUT_MINUTES`（默认 180），以及 Claude Code 自己的 `AWS_REGION`、`ANTHROPIC_MODEL`。full 模式必须提供区域、模型 ID 与预算。`ANTHROPIC_DEFAULT_*_MODEL` 等别名钉版变量由运维按需传入，运行脚本不读取，只随环境原样传给 Claude Code。
+
+凡是检查的输入缺失，一律判失败，不判通过（没有第四态）：
+- 期望 agent 集合为空；
+- 复核报告或复核后的图不存在，或 `validate-graph` 以非 0 退出（运行前先删除输出目录里残留的旧复核文件）；
+- `result` 事件里缺少 `permission_denials` 或 `subagent_stats.failed`（Claude Code 版本已钉死，字段缺失说明它的输出格式变了）。
 
 **执行流程：**
 1. 校验参数；记录 HEAD（git 的属主放行已在镜像的系统配置里完成，见 D2）。
@@ -134,9 +139,14 @@ claude -p "/excavator:excavator /work/repo --mode=full"      # 需要强制重�
 - `claude plugin validate /opt/excavator` 通过；
 - `python --version` 可用；`$HOME/.excavator-plugin` 指向检出；系统 git 配置里有 `safe.directory=*`；
 - 新建一个临时 git 仓库，跑 lazy 能产出 `knowledge-graph.json`（属主不同的真实挂载由 O6 覆盖）；
-- **加载探针**：不给凭证，以 full 模式启动一次，要求 `system/init` 通过加载检查，随后因没有凭证而以运行失败结束。
+- **加载探针**：以 full 模式启动一次，要求 `system/init` 通过加载检查，随后运行以失败结束。
 
-如果实测发现没有凭证时拿不到 `system/init`，就把 `ANTHROPIC_BEDROCK_BASE_URL` 指向容器内一个立即返回 403 的本地端口，保证初始化完成后再失败。
+加载探针不依赖"没有凭证"：在带实例角色的 EC2 上，容器能从 IMDS 取到真实凭证，那样就会真的调用 Bedrock。所以探针固定这样做：
+- 把 `ANTHROPIC_BEDROCK_BASE_URL` 指向容器内一个立即返回 403 的本地端口；
+- 给一组假的静态凭证；
+- 设 `AWS_EC2_METADATA_DISABLED=true`，关掉 IMDS。
+
+这样在任何宿主上都不会发出真实的模型请求，而且初始化完成后运行一定失败。
 
 ### D6 CI 与发布
 
@@ -165,7 +175,7 @@ claude -p "/excavator:excavator /work/repo --mode=full"      # 需要强制重�
 ## Risks / Trade-offs
 
 - **[风险] 提示注入借助 bypass 在容器内执行命令** → 边界放在容器与 VM 层（D3），契约文档把这些条件列为运行前提；输出目录与产物只是数据，不会反向影响宿主机。
-- **[风险] 没有凭证时拿不到 `system/init`，加载探针与隔离验收无法零成本完成** → 用 D5 的本地 403 端点兜底。
+- **[风险] 加载探针或隔离验收在带实例角色的宿主上意外调用了真实模型** → D5 固定使用本地 403 端点、假凭证并关闭 IMDS，不依赖"宿主上没有凭证"。
 - **[风险] Claude Code 升级后 init 字段名变化（例如 `Task` 改名为 `Agent`）** → 版本钉死；每次升级 Claude Code 都必须重跑自检里的加载探针；检查逻辑同时接受两种工具名，其余字段缺失即判失败，不猜测。
 - **[权衡] 结构完整性问题数大于 0 就判失败，首次真实运行可能过严** → 先按严格标准执行，如需放宽以真实运行的证据为依据，不预先放宽。
 - **[风险] eu-central-1 上 prompt caching 不可用，成本明显上升** → 摘要给出警告；发布门实测缓存读取 token 并把结果写进记录。
