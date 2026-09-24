@@ -39,7 +39,7 @@ commit 序列：
 
 ## 6. Skill 与文档
 
-- [ ] 6.1 `skills/excavator-chat/SKILL.md` 的内联代码改为导入 `source-index-store.mjs` 的读取器，降级判断改为检查 `source-index.jsonl`；`skills/excavator/SKILL.md` 与 `docs/lazy-mode-plan.md` 更新文件名。验证：`node scripts/check-refs.mjs` 通过；在 `skills/` 与 `docs/` 下搜索 `source-index.json`，只剩说明旧文件已废弃的语句。
+- [x] 6.1 `skills/excavator-chat/SKILL.md` 的内联代码改为导入 `source-index-store.mjs` 的读取器，降级判断改为检查 `source-index.jsonl`；`skills/excavator/SKILL.md` 与 `docs/lazy-mode-plan.md` 更新文件名。验证：`node scripts/check-refs.mjs` 通过；在 `skills/` 与 `docs/` 下搜索 `source-index.json`，只剩说明旧文件已废弃的语句。
 
 ## 7. 验收（acceptor 亲自执行，不采信 coder 自报）
 

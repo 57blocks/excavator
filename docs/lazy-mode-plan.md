@@ -225,7 +225,7 @@ Lazy 图谱允许：
 |---|---|---|
 | `source-manifest.json` | sourceRevision、selectionDigest、pipelineVersion、文件路径和 content hash | SourceSnapshot |
 | `knowledge-graph.json` | 确定性节点、边、证据、coverage、gaps、factDigest | Fact Builder |
-| `source-index.json` | symbol-aware source chunks 的确定性词法索引 | Source Index Builder |
+| `source-index.jsonl` | symbol-aware source chunks 的确定性词法索引 | Source Index Builder |
 | `semantic-cache.json` | 节点局部 summary、tags、sourceHash、provenance | Chat / Full |
 | `semantic-graph.json` | Full 生成的语义节点、关系和 layers | Full |
 | `domain-graph.json` | 显式 Domain 分析产物 | Domain |
@@ -309,7 +309,7 @@ Chat 使用同一次推理把用户问题展开成少量代码检索词，包括
 候选节点由以下结果合并排序：
 
 - 精确 symbol / node ID / file path 匹配；
-- `source-index.json` 中 symbol-aware chunks 的 BM25 检索；
+- `source-index.jsonl` 中 symbol-aware chunks 的 BM25 检索；
 - SourceSnapshot 的源码搜索；
 - `semantic-cache.json` 中有效 summary / tags 的文本检索；
 - revision 匹配的 `domain-graph.json` 提示。
@@ -434,7 +434,7 @@ Full 不以逐字保持旧图里所有 module / concept 节点数量为兼容目
 |---|---|---|---:|
 | A | 节点身份契约（§4.1，去重支柱，最先落）+ Lazy 首次运行（事实层 = `structure-all` + import-map 的投影）+ 只答**结构类**问题的 chat | 立刻消除 >1h 首跑；身份夹具 + go-clean-arch 首跑 <60s + 结构问答（§7 结构路径）全绿 | 10–16 小时 |
 | B | SourceSnapshot 契约与三种 adapter（Git / Multi-repo / Directory）+ revision 增量同步（复用 `prepare-incremental.mjs`）+ 快照一致性 guard | 增量、非 Git、多仓的首建与同步（§12.2）全绿；factDigest 跨 adapter 一致（§12.4.1） | 10–14 小时 |
-| C | 检索引擎：`source-index.json`（symbol-aware BM25）+ 查询扩展 + 有预算多跳遍历 + 按需语义 + 并发缓存（锁 + CAS + 陈旧处理）| 中文问题命中英文代码（§12.3.1）+ 多跳路径（§12.3.2）+ 并发无丢更新（§12.4.5） | 14–20 小时 |
+| C | 检索引擎：`source-index.jsonl`（symbol-aware BM25）+ 查询扩展 + 有预算多跳遍历 + 按需语义 + 并发缓存（锁 + CAS + 陈旧处理）| 中文问题命中英文代码（§12.3.1）+ 多跳路径（§12.3.2）+ 并发无丢更新（§12.4.5） | 14–20 小时 |
 | D | Full 语义物理隔离 + Domain 新鲜度 + 所有消费 skill（chat / diff / explain / onboard / domain / 自动更新 hook）迁移到 sourceRevision | Full 与 Lazy 事实投影一致且不改 canonical graph（§12.5）+ 消费端一致（§12.6） | 10–14 小时 |
 | E | 端到端验收、性能记录、文档、清理 Phase 0 的 worktree 重定向（§10）| §13 完成定义全过 | 5–8 小时 |
 
