@@ -16,8 +16,8 @@ commit 序列：
 
 ## 2. source index 按行存储
 
-- [ ] 2.1 新增 `skills/excavator/source-index-store.mjs`：导出 `SOURCE_INDEX_FILE = 'source-index.jsonl'`；`writeSourceIndex(path, index)` 按 design D1 的记录顺序缓冲写入，返回 `{bytes, lines, maxLineChars}`；`readSourceIndex(path, { blockSize })` 按 D2 同步分块读取、做全部校验，失败抛具名 `SourceIndexFormatError`，重建出与构建产物形状一致的对象（`postings` 普通对象、`docLengths` 无原型）。验证：新测试——夹具索引往返 `isDeepStrictEqual` 为真，且比较器先对单字段改动判为不等；同一索引写两次逐字节相同；`blockSize` 设为几字节时，含中文和 emoji 的 chunk 仍往返相等；缺文件头、计数不符、序号越界、序号非递增、`chunks` 与 `tf` 不等长、未知记录各自抛具名错误。
-- [ ] 2.2 检索等价：同一组检索词下，`bm25Search` 在构建出的内存索引与写出再读回的索引上结果逐项相同。验证：新测试。
+- [x] 2.1 新增 `skills/excavator/source-index-store.mjs`：导出 `SOURCE_INDEX_FILE = 'source-index.jsonl'`；`writeSourceIndex(path, index)` 按 design D1 的记录顺序缓冲写入，返回 `{bytes, lines, maxLineChars}`；`readSourceIndex(path, { blockSize })` 按 D2 同步分块读取、做全部校验，失败抛具名 `SourceIndexFormatError`，重建出与构建产物形状一致的对象（`postings` 普通对象、`docLengths` 无原型）。验证：新测试——夹具索引往返 `isDeepStrictEqual` 为真，且比较器先对单字段改动判为不等；同一索引写两次逐字节相同；`blockSize` 设为几字节时，含中文和 emoji 的 chunk 仍往返相等；缺文件头、计数不符、序号越界、序号非递增、`chunks` 与 `tf` 不等长、未知记录各自抛具名错误。
+- [x] 2.2 检索等价：同一组检索词下，`bm25Search` 在构建出的内存索引与写出再读回的索引上结果逐项相同。验证：新测试。
 
 ## 3. 读写方切换与版本号
 
