@@ -123,6 +123,7 @@ import { buildSourceIndex } from './build-source-index.mjs';
 import { conservationViolations } from './coverage-ledger.mjs';
 import { mergeSnapshotSelection } from './scan-project.mjs';
 import { resolveSourceSnapshot } from './source-snapshot.mjs';
+import { SOURCE_INDEX_FILE, writeSourceIndex } from './source-index-store.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const pluginRoot = resolve(__dirname, '../..');
@@ -130,8 +131,12 @@ const pluginRoot = resolve(__dirname, '../..');
 /** Version stamped into every Lazy-produced KnowledgeGraph / meta.json. */
 export const KNOWLEDGE_GRAPH_VERSION = '1.0.0';
 /** Stamped into `project.pipelineVersion` — bump when the fact projection's
- *  shape changes in a way downstream consumers should be able to tell apart. */
-export const PIPELINE_VERSION = 'lazy-fact-graph/1';
+ *  shape changes in a way downstream consumers should be able to tell apart.
+ *  Bumped to /2 by openspec change product-serialization-ceiling: source
+ *  index persistence changed from a single whole-document `source-index.json`
+ *  to line-oriented `source-index.jsonl` (design D1/D6) — an already-analyzed
+ *  project's next run must rebuild rather than try to read the old file. */
+export const PIPELINE_VERSION = 'lazy-fact-graph/2';
 
 /** Same two-step @excavator/core resolution every sibling script uses. */
 async function resolveCore(root) {
@@ -598,11 +603,14 @@ export async function runLazyAnalysis({
     }
     writeFileSync(join(dataDir, 'fingerprints.json'), product.fingerprints.raw, 'utf-8');
 
-    // source-index.json (openspec: changes/hybrid-retrieval, capability
-    // `source-index`) — gated the same as source-manifest.json/meta.json
-    // below: it is likewise keyed by `sourceRevision` and must never advance
-    // out of step with the manifest it is paired with.
-    writeFileSync(join(dataDir, 'source-index.json'), JSON.stringify(product.sourceIndex, null, 2), 'utf-8');
+    // source-index.jsonl (openspec: changes/hybrid-retrieval, capability
+    // `source-index`; line-oriented persistence from changes/product-
+    // serialization-ceiling, design D1) — gated the same as
+    // source-manifest.json/meta.json below: it is likewise keyed by
+    // `sourceRevision` and must never advance out of step with the manifest
+    // it is paired with. Written record by record through the store, never
+    // as one whole-document string.
+    writeSourceIndex(join(dataDir, SOURCE_INDEX_FILE), product.sourceIndex);
 
     saveMeta(root, {
       lastAnalyzedAt: now(),

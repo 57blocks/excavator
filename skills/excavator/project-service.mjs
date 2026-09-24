@@ -5,6 +5,7 @@ import { assertDataFile, assertDataTree, assertSourcePath, bindProjectRoot, Proj
 import { resolveSourceSnapshot } from './source-snapshot.mjs';
 import { PIPELINE_VERSION } from './lazy-analyze.mjs';
 import { syncFactGraph } from './sync-fact-graph.mjs';
+import { LEGACY_SOURCE_INDEX_FILE, SOURCE_INDEX_FILE, readSourceIndex } from './source-index-store.mjs';
 import { bm25Search, boundedBFS, boundedShortestPath, mergeCandidates, oneHop } from './retrieve.mjs';
 import { isFresh, commitSemanticCacheEntry } from './semantic-cache.mjs';
 import { planSemanticCacheReuse } from './semantic-cache-reuse.mjs';
@@ -40,6 +41,31 @@ function readJsonProduct(root, name, expectedArray, gaps) {
     return parsed;
   } catch (error) {
     gaps.push({ kind: 'invalid-product', product: name, reason: error.message });
+    return null;
+  }
+}
+
+/** The source index reads through the line-oriented store (design D1/D2),
+ *  never a bare `JSON.parse` — the whole index can be gigabytes as a single
+ *  string. Missing/invalid gap shapes mirror `readJsonProduct`'s contract
+ *  (design D3): a `missing-product` gap additionally names whether a stale
+ *  legacy `source-index.json` is the only thing present (its content is
+ *  never parsed — zero-compat), and an `invalid-product` gap carries the
+ *  store's own validation failure reason. */
+function readSourceIndexProduct(root, gaps) {
+  const path = assertDataFile(root, SOURCE_INDEX_FILE);
+  if (!existsSync(path)) {
+    const gap = { kind: 'missing-product', product: SOURCE_INDEX_FILE };
+    if (existsSync(assertDataFile(root, LEGACY_SOURCE_INDEX_FILE))) {
+      gap.legacyProductPresent = LEGACY_SOURCE_INDEX_FILE;
+    }
+    gaps.push(gap);
+    return null;
+  }
+  try {
+    return readSourceIndex(path);
+  } catch (error) {
+    gaps.push({ kind: 'invalid-product', product: SOURCE_INDEX_FILE, reason: error.message });
     return null;
   }
 }
@@ -125,7 +151,7 @@ export function createProjectService(projectRoot, { snapshotFactory = resolveSou
       }) };
     }
     const graph = readJsonProduct(root, 'knowledge-graph.json', 'nodes', start.gaps);
-    const sourceIndex = index ? readJsonProduct(root, 'source-index.json', 'chunks', start.gaps) : null;
+    const sourceIndex = index ? readSourceIndexProduct(root, start.gaps) : null;
     if (!graph || (index && !sourceIndex)) {
       return { unavailable: finish(start, 'unavailable', null, { error: { code: 'missing-product', retryable: true } }) };
     }
@@ -144,7 +170,7 @@ export function createProjectService(projectRoot, { snapshotFactory = resolveSou
       const start = open(expectedRevision);
       if (start.stale) return start.stale;
       const graph = readJsonProduct(root, 'knowledge-graph.json', 'nodes', start.gaps);
-      const index = readJsonProduct(root, 'source-index.json', 'chunks', start.gaps);
+      const index = readSourceIndexProduct(root, start.gaps);
       if (index && index.sourceRevision !== start.identity.revision) {
         start.gaps.push({ kind: 'stale-index', sourceRevision: index.sourceRevision ?? null });
       }

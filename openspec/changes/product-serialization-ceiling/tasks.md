@@ -21,11 +21,11 @@ commit 序列：
 
 ## 3. 读写方切换与版本号
 
-- [ ] 3.1 `lazy-analyze.mjs` 发布改写 `source-index.jsonl`（本组先直接写，第 4 组再接入暂存）；`PIPELINE_VERSION` 升为 `lazy-fact-graph/2`。验证：`tests/lazy/source-index-pipeline.test.mjs` 改为经读取器断言并通过。
-- [ ] 3.2 `project-service.mjs` 用读取器读索引，缺失、只剩旧文件、无效三种情况按 design D3 映射为可见缺口。验证：`tests/mcp/project-service.test.mjs` 更新，并新增「只有旧 `source-index.json`」与「损坏的 `.jsonl`」两个用例；`tests/mcp/fixture.mjs` 改用写入器并导入 `PIPELINE_VERSION`。
-- [ ] 3.3 `sync-fact-graph.mjs` 读上一版索引改用读取器，读取失败仍退回全量重建。验证：增量同步的现有测试仍证明只重建变化文件的 chunks。
-- [ ] 3.4 `build-source-index.mjs` CLI：`--previous` 读取与输出改用读写器，默认输出 `source-index.jsonl`。验证：`tests/retrieval/build-source-index.test.mjs` 中相应用例通过。
-- [ ] 3.5 `tests/lazy/lazy-to-full-e2e.test.mjs` 改用读取器；`tests/semantic-cache/semantic-cache.test.mjs` 的版本号字面量改为导入常量。验证：两个测试通过。
+- [x] 3.1 `lazy-analyze.mjs` 发布改写 `source-index.jsonl`（本组先直接写，第 4 组再接入暂存）；`PIPELINE_VERSION` 升为 `lazy-fact-graph/2`。验证：`tests/lazy/source-index-pipeline.test.mjs` 改为经读取器断言并通过。
+- [x] 3.2 `project-service.mjs` 用读取器读索引，缺失、只剩旧文件、无效三种情况按 design D3 映射为可见缺口。验证：`tests/mcp/project-service.test.mjs` 更新，并新增「只有旧 `source-index.json`」与「损坏的 `.jsonl`」两个用例；`tests/mcp/fixture.mjs` 改用写入器并导入 `PIPELINE_VERSION`。
+- [x] 3.3 `sync-fact-graph.mjs` 读上一版索引改用读取器，读取失败仍退回全量重建。验证：增量同步的现有测试仍证明只重建变化文件的 chunks。
+- [x] 3.4 `build-source-index.mjs` CLI：`--previous` 读取与输出改用读写器，默认输出 `source-index.jsonl`。验证：`tests/retrieval/build-source-index.test.mjs` 中相应用例通过。
+- [x] 3.5 `tests/lazy/lazy-to-full-e2e.test.mjs` 改用读取器；`tests/semantic-cache/semantic-cache.test.mjs` 的版本号字面量改为导入常量。验证：两个测试通过。
 
 ## 4. 暂存发布与回滚
 

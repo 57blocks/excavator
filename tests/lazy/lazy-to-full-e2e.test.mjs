@@ -37,6 +37,7 @@ import { createHash } from 'node:crypto';
 
 import { runLazyAnalysis } from '../../skills/excavator/lazy-analyze.mjs';
 import { bm25Search, mergeCandidates } from '../../skills/excavator/retrieve.mjs';
+import { SOURCE_INDEX_FILE, readSourceIndex } from '../../skills/excavator/source-index-store.mjs';
 import { applySemanticPatches } from '../../skills/excavator/apply-semantic-patches.mjs';
 import { selectStaleFiles } from '../../skills/excavator/select-stale-semantics.mjs';
 import { isFresh } from '../../skills/excavator/semantic-cache.mjs';
@@ -92,7 +93,7 @@ describe('Lazy -> structural retrieval -> on-demand semantics -> Full -> Domain 
     expect(lazyResult.saveError).toBeNull();
 
     expect(existsSync(join(dataDir, 'knowledge-graph.json'))).toBe(true);
-    expect(existsSync(join(dataDir, 'source-index.json'))).toBe(true);
+    expect(existsSync(join(dataDir, SOURCE_INDEX_FILE))).toBe(true);
     expect(existsSync(join(dataDir, 'source-manifest.json'))).toBe(true);
     // No semantic products, no LLM batch file yet. The DEEP proof (zero
     // subagent-name tokens in the driver, forced-empty tour/layers, etc.) is
@@ -113,15 +114,15 @@ describe('Lazy -> structural retrieval -> on-demand semantics -> Full -> Domain 
     const factHashAfterLazy = sha256OfFile(join(dataDir, 'knowledge-graph.json'));
 
     // ── 2. A structural question stays structural ──────────────────────────
-    // "Where is `run`?" is answered from source-index.json + the fact graph
+    // "Where is `run`?" is answered from source-index.jsonl + the fact graph
     // alone. bm25Search/mergeCandidates' own ranking behavior is unit-tested
     // in tests/retrieval/*; what's owned HERE is that running them over
-    // THIS project's real, on-disk source-index.json still resolves to the
+    // THIS project's real, on-disk source-index.jsonl still resolves to the
     // right fact node (source-index and fact-graph node ids must agree —
     // build-source-index.mjs's own header names this as a design invariant,
     // not merely a coincidence) and creates no semantic product as a side
     // effect.
-    const sourceIndex = readJson(join(dataDir, 'source-index.json'));
+    const sourceIndex = readSourceIndex(join(dataDir, SOURCE_INDEX_FILE));
     const bm25Hits = bm25Search(sourceIndex, ['run'], 5);
     expect(bm25Hits.length).toBeGreaterThan(0);
     expect(bm25Hits[0].chunk?.nodeId).toBe(runNode.id);
