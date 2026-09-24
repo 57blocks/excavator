@@ -43,8 +43,8 @@ commit 序列：
 
 ## 7. 验收（acceptor 亲自执行，不采信 coder 自报）
 
-- [ ] 7.1 全量门（O7）：在干净检出上跑 `pnpm install --frozen-lockfile && pnpm -r build && pnpm test`、`node scripts/check-refs.mjs`、`openspec validate product-serialization-ceiling --strict`，全部通过。
-- [ ] 7.2 conduit（固定提交 `5e127d85`）副本（O1、O2）：`main` 与本分支分别跑 lazy；本分支的索引往返严格相等；对一组固定检索词通过 stdio 调用 MCP `recall`，去掉快照与耗时字段后两边逐项相同；再用 stdio 调用 `project_status`、`sync_facts`、`traverse`、`read_evidence`、`semantic_plan`，核对索引可用性与缺口字段。
-- [ ] 7.3 wcp、cebreo 副本（O3）：`main` 与本分支的 lazy `factsDigest` 相同，census 与缺口分布一致。
-- [ ] 7.4 Hadoop `2014707f8c31`（O1、O3、O6）：重跑 lazy 首跑，要求完成且确定性校验通过、五个最终产物齐全、`factsDigest` 等于 `88c3219d31de0315e87fb4303fed5fa0bced8faae9ebb940dcc0233c13c5eae7`、索引往返严格相等、余量报告与三项新计时出现、`total` 与外部墙钟相差不超过 2 秒；把各阶段耗时、峰值内存与余量以脱敏摘要写进 PR 描述。
+- [x] 7.1 全量门（O7）：在干净检出上跑 `pnpm install --frozen-lockfile && pnpm -r build && pnpm test`、`node scripts/check-refs.mjs`、`openspec validate product-serialization-ceiling --strict`，全部通过。
+- [x] 7.2 conduit（固定提交 `5e127d85`）副本（O1、O2）：`main` 与本分支分别跑 lazy；本分支的索引往返严格相等；对一组固定检索词通过 stdio 调用 MCP `recall`，去掉快照与耗时字段后两边逐项相同；再用 stdio 调用 `project_status`、`sync_facts`、`traverse`、`read_evidence`、`semantic_plan`，核对索引可用性与缺口字段。
+- [x] 7.3 wcp、cebreo 副本（O3）：`main` 与本分支的 lazy `factsDigest` 相同，census 与缺口分布一致。
+- [x] 7.4 Hadoop `2014707f8c31`（O1、O3、O6）：重跑 lazy 首跑，要求完成且确定性校验通过、五个最终产物齐全、`factsDigest` 等于 `88c3219d31de0315e87fb4303fed5fa0bced8faae9ebb940dcc0233c13c5eae7`、索引往返严格相等、余量报告与三项新计时出现、`total` 与外部墙钟相差不超过 2 秒；把各阶段耗时、峰值内存与余量以脱敏摘要写进 PR 描述。
 - [ ] 7.5 PR 以 merge commit 合入 `main`，保留 commit 序列 0–6。
