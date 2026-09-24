@@ -95,17 +95,20 @@
  * NOT add revision-based incremental sync (group 5 / `revision-sync`) — every
  * run here is still a full deterministic re-projection.
  *
- * source-index.json (openspec: changes/hybrid-retrieval, capability
- * `source-index`, D2): built here alongside the knowledge graph, from the
- * SAME `scan`/`structureAll` this run already produced, via an injectable
- * `buildSourceIndexStep` (defaulting to a plain `buildSourceIndex` full
- * build). `sync-fact-graph.mjs` overrides this step for an incremental sync
- * so it can reuse `updateSourceIndex` against the previously-persisted index
- * and the already-computed changed-file set, instead of always rebuilding
- * every chunk — this driver itself stays agnostic to that choice. Written in
- * `publish()` gated the same as `source-manifest.json`/`meta.json` (only
- * once the fingerprints baseline succeeds), since it is likewise keyed by
- * `sourceRevision` and must never advance out of step with the manifest.
+ * source-index.jsonl (openspec: changes/hybrid-retrieval, capability
+ * `source-index`, D2; line-oriented persistence added by changes/product-
+ * serialization-ceiling, design D1): built here alongside the knowledge
+ * graph, from the SAME `scan`/`structureAll` this run already produced, via
+ * an injectable `buildSourceIndexStep` (defaulting to a plain
+ * `buildSourceIndex` full build). `sync-fact-graph.mjs` overrides this step
+ * for an incremental sync so it can reuse `updateSourceIndex` against the
+ * previously-persisted index and the already-computed changed-file set,
+ * instead of always rebuilding every chunk — this driver itself stays
+ * agnostic to that choice. Staged and replaced in `publish()` as one of the
+ * five products in the same all-or-nothing publish (design D4) as
+ * `knowledge-graph.json`/`fingerprints.json`/`meta.json`/
+ * `source-manifest.json` — it is likewise keyed by `sourceRevision` and must
+ * never advance out of step with the manifest.
  *
  * Contract: openspec/changes/lazy-first-run/specs/lazy-analysis/spec.md
  *           openspec/changes/source-snapshot/specs/source-snapshot/spec.md
@@ -114,7 +117,10 @@
 
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { existsSync, mkdirSync, readFileSync, writeFileSync, realpathSync } from 'node:fs';
+import {
+  existsSync, mkdirSync, readFileSync, writeFileSync, realpathSync,
+  linkSync, copyFileSync, renameSync, rmSync, readdirSync, unlinkSync, statSync,
+} from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { createRequire } from 'node:module';
 
@@ -123,7 +129,8 @@ import { buildSourceIndex } from './build-source-index.mjs';
 import { conservationViolations } from './coverage-ledger.mjs';
 import { mergeSnapshotSelection } from './scan-project.mjs';
 import { resolveSourceSnapshot } from './source-snapshot.mjs';
-import { SOURCE_INDEX_FILE, writeSourceIndex } from './source-index-store.mjs';
+import { LEGACY_SOURCE_INDEX_FILE, SOURCE_INDEX_FILE, writeSourceIndex } from './source-index-store.mjs';
+import { DEFAULT_LIMIT_CHARS, ProductTooLargeError, createHeadroomRecorder, serializeJsonProduct } from './product-serialization.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const pluginRoot = resolve(__dirname, '../..');
@@ -366,6 +373,88 @@ function defaultBuildSourceIndexStep({ scan, structureAll, readFile, sourceRevis
 }
 
 // ---------------------------------------------------------------------------
+// Staged publish (openspec: changes/product-serialization-ceiling, design
+// D4) — write every final product into a staging directory first, then
+// replace the final files one at a time only once every staged write
+// succeeded; a failure anywhere leaves every final product untouched. See
+// `publish()` below for the full sequence.
+// ---------------------------------------------------------------------------
+
+/** The five products a publish stages/replaces, and their fixed replace
+ *  order (spec: "graph -> fingerprints -> source-index -> meta -> manifest"). */
+const PUBLISH_PRODUCT_ORDER = ['graph', 'fingerprints', 'sourceIndex', 'meta', 'manifest'];
+const PUBLISH_PRODUCT_FILENAME = Object.freeze({
+  graph: 'knowledge-graph.json',
+  fingerprints: 'fingerprints.json',
+  sourceIndex: SOURCE_INDEX_FILE,
+  meta: 'meta.json',
+  manifest: 'source-manifest.json',
+});
+
+/** Narrow, real-fs-backed seam (design D4's "FAULT INJECTION" requirement):
+ *  every disk operation `publish()` performs goes through this object, so a
+ *  test can override exactly one operation (optionally only for one path) to
+ *  simulate a failure at exactly one staged product or one replace step,
+ *  without touching production behavior at all — every method here is a
+ *  thin, literal wrapper around the real `node:fs` call. */
+export const defaultPublishFs = Object.freeze({
+  mkdir: (path) => mkdirSync(path, { recursive: true }),
+  writeFile: (path, content) => writeFileSync(path, content, 'utf-8'),
+  writeSourceIndex: (path, index) => writeSourceIndex(path, index),
+  exists: (path) => existsSync(path),
+  link: (existingPath, newPath) => linkSync(existingPath, newPath),
+  copyFile: (src, dest) => copyFileSync(src, dest),
+  rename: (oldPath, newPath) => renameSync(oldPath, newPath),
+  rm: (path) => rmSync(path, { recursive: true, force: true }),
+  unlink: (path) => unlinkSync(path),
+  readdir: (path) => readdirSync(path),
+});
+
+/** `true` iff a process with this pid is currently running (checked via the
+ *  zero-signal `process.kill(pid, 0)` probe — sends no actual signal, only
+ *  tests existence/permission). An error OTHER than ESRCH (e.g. EPERM: the
+ *  process exists but we lack permission to signal it) is treated as "still
+ *  alive" — the conservative direction, since a live pid's staging directory
+ *  must never be removed out from under it. */
+function pidIsAlive(pid) {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (err) {
+    return err.code !== 'ESRCH';
+  }
+}
+
+/** Removes `.publish-staging-<pid>-<random>` directories left behind by a
+ *  publish that was killed mid-replace (design D4, step 3: the NEXT publish
+ *  cleans up same-prefix staging directories whose process no longer
+ *  exists). Called at the very start of
+ *  EVERY `publish()`, before this run's own staging directory is created, so
+ *  there is no risk of this scan ever seeing (and needing to specially
+ *  exclude) its own not-yet-created directory. A directory whose pid is
+ *  still alive, or whose name does not match this exact naming scheme, is
+ *  left alone unconditionally. */
+export function cleanupStalePublishStagingDirs(dataDir, publishFs) {
+  let entries;
+  try {
+    entries = publishFs.readdir(dataDir);
+  } catch {
+    return; // dataDir does not exist yet (very first run ever) — nothing to clean.
+  }
+  for (const entry of entries) {
+    const match = /^\.publish-staging-(\d+)-/.exec(entry);
+    if (!match) continue;
+    if (pidIsAlive(Number(match[1]))) continue;
+    try {
+      publishFs.rm(join(dataDir, entry));
+    } catch {
+      // Best-effort: a stale directory that resists cleanup is left for the
+      // NEXT publish to retry — never fatal to the current run.
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
 // The driver.
 // ---------------------------------------------------------------------------
 
@@ -387,12 +476,14 @@ export async function runLazyAnalysis({
   now = () => new Date().toISOString(),
   runScript = defaultRunScript,
   buildSourceIndexStep = defaultBuildSourceIndexStep,
+  publishFs = defaultPublishFs,
+  serializationLimit = DEFAULT_LIMIT_CHARS,
 } = {}) {
   if (!projectRoot) throw new Error('runLazyAnalysis: projectRoot is required');
   const root = resolve(projectRoot);
 
   const core = await resolveCore(pluginRoot);
-  const { resolveDataDir, saveGraph, loadGraph, saveMeta } = core;
+  const { resolveDataDir, loadGraph, sanitiseFilePaths } = core;
 
   const dataDir = resolveDataDir(root);
   const intermediateDir = join(dataDir, 'intermediate');
@@ -420,6 +511,12 @@ export async function runLazyAnalysis({
       timings[label] = Date.now() - start;
       return value;
     }
+    // One recorder per produce ATTEMPT (not shared across a D7-guard retry —
+    // a discarded attempt's entries must not leak into the winning one's
+    // report). Carried to `publish()` via `product.recorder` so the final
+    // five products' own serializeJsonProduct calls add to the SAME table.
+    const recorder = createHeadroomRecorder();
+    const limit = serializationLimit;
 
     // --- Phase 1 SCAN (script, never the excavator-project-scanner subagent) -
     const scanPath = join(intermediateDir, 'scan-result.json');
@@ -438,7 +535,7 @@ export async function runLazyAnalysis({
       activeSnapshot.selection,
       activeSnapshot.processingSkips,
     );
-    writeFileSync(scanPath, JSON.stringify(scan, null, 2), 'utf-8');
+    writeFileSync(scanPath, serializeJsonProduct('scan-result.json', scan, { indent: 2, limit, recorder }), 'utf-8');
 
     // --- Phase 1.2 STRUCTURE-ALL ---------------------------------------------
     const structurePath = join(intermediateDir, 'structure-all.json');
@@ -449,6 +546,9 @@ export async function runLazyAnalysis({
       }
     });
     const structureAll = readJsonRequired(structurePath, 'structure-all.json');
+    // structure-all.mjs is a child-process (script) output, not something we
+    // serialize in-process — record at least its disk byte count (design D5).
+    recorder.recordBytes('structure-all.json', statSync(structurePath).size, limit);
 
     // --- Import map (deterministic, extract-import-map.mjs) ------------------
     const importMapInputPath = join(intermediateDir, 'lazy-import-map-input.json');
@@ -456,7 +556,7 @@ export async function runLazyAnalysis({
     time('importMap', () => {
       writeFileSync(
         importMapInputPath,
-        JSON.stringify({ projectRoot: materializedDir, files: scan.files }, null, 2),
+        serializeJsonProduct('lazy-import-map-input.json', { projectRoot: materializedDir, files: scan.files }, { indent: 2, limit, recorder }),
         'utf-8',
       );
       const result = runScript('extract-import-map.mjs', [importMapInputPath, importMapPath]);
@@ -465,12 +565,18 @@ export async function runLazyAnalysis({
       }
     });
     const importMap = readJsonRequired(importMapPath, 'import-map.json');
+    // import-map.json is likewise a child-process output — byte count only.
+    recorder.recordBytes('import-map.json', statSync(importMapPath).size, limit);
 
     // --- Build Fact Graph (in-process — design D1: a projection, not a CLI) -
     let projection;
     time('factGraph', () => {
-      projection = buildFactGraph({ scan, structureAll, importMap });
-      writeFileSync(join(intermediateDir, 'fact-graph.json'), JSON.stringify(projection, null, 2), 'utf-8');
+      projection = buildFactGraph({ scan, structureAll, importMap, serializationLimit: limit, headroomRecorder: recorder });
+      writeFileSync(
+        join(intermediateDir, 'fact-graph.json'),
+        serializeJsonProduct('fact-graph.json', projection, { indent: 2, limit, recorder }),
+        'utf-8',
+      );
     });
 
     // --- source-index (deterministic lexical index, hybrid-retrieval D2) ----
@@ -486,7 +592,11 @@ export async function runLazyAnalysis({
     let validation;
     time('validate', () => {
       validation = validateFactGraphIntegrity(projection);
-      writeFileSync(join(intermediateDir, 'lazy-validation.json'), JSON.stringify(validation, null, 2), 'utf-8');
+      writeFileSync(
+        join(intermediateDir, 'lazy-validation.json'),
+        serializeJsonProduct('lazy-validation.json', validation, { indent: 2, limit, recorder }),
+        'utf-8',
+      );
     });
 
     // --- Structural fingerprints baseline (Fix B, openspec change
@@ -506,15 +616,11 @@ export async function runLazyAnalysis({
       const fingerprintInputPath = join(intermediateDir, 'fingerprint-input.json');
       writeFileSync(
         fingerprintInputPath,
-        JSON.stringify(
-          {
-            projectRoot: materializedDir,
-            filePaths: scan.files.map((f) => f.path),
-            gitCommitHash: activeSnapshot.kind === 'git' ? activeSnapshot.sha : null,
-          },
-          null,
-          2,
-        ),
+        serializeJsonProduct('fingerprint-input.json', {
+          projectRoot: materializedDir,
+          filePaths: scan.files.map((f) => f.path),
+          gitCommitHash: activeSnapshot.kind === 'git' ? activeSnapshot.sha : null,
+        }, { indent: 2, limit, recorder }),
         'utf-8',
       );
       const fpResult = runScript('build-fingerprints.mjs', [fingerprintInputPath]);
@@ -522,10 +628,14 @@ export async function runLazyAnalysis({
         fingerprints = { ok: false, error: `build-fingerprints.mjs failed: ${fpResult.stderr || fpResult.status}` };
         return;
       }
+      const fingerprintsFilePath = join(materializedDir, '.excavator', 'fingerprints.json');
       fingerprints = {
         ok: true,
-        raw: readFileSync(join(materializedDir, '.excavator', 'fingerprints.json'), 'utf-8'),
+        raw: readFileSync(fingerprintsFilePath, 'utf-8'),
       };
+      // fingerprints.json is likewise a child-script (build-fingerprints.mjs)
+      // output — byte count via stat, same as structure-all.json/import-map.json.
+      recorder.recordBytes('fingerprints.json', statSync(fingerprintsFilePath).size, limit);
     });
 
     // --- Assemble the (not-yet-published) knowledge graph --------------------
@@ -564,85 +674,178 @@ export async function runLazyAnalysis({
       gaps: projection.gaps,
     };
 
-    const product = { knowledgeGraph, validation, scan, structureAll, projection, sourceIndex, timings, fingerprints };
+    const product = { knowledgeGraph, validation, scan, structureAll, projection, sourceIndex, timings, fingerprints, recorder };
     lastProduct = product; // kept for diagnostics even if the guard later discards it.
     return product;
   }
 
   // --- Publish: non-destructive merge already happened above; this step is
   // ONLY reached once `runGuarded` has confirmed nothing about the source
-  // changed for the whole duration of `produce` (design D7). --------------
+  // changed for the whole duration of `produce` (design D7).
+  //
+  // Staged publish (openspec: changes/product-serialization-ceiling, design
+  // D4): every final product is written to a staging directory FIRST; only
+  // once every one of the five staged writes has succeeded do we replace the
+  // final files, one at a time, in the fixed order graph -> fingerprints ->
+  // source-index -> meta -> manifest. Any failure — staging OR replacing —
+  // leaves EVERY final product byte-for-byte unchanged: a failed stage
+  // aborts before any final file is touched at all; a failed replace rolls
+  // back every replace step already completed, in reverse, before aborting.
+  // This is why the fingerprints-failure gate now runs FIRST, before any
+  // staging begins at all — it is a precondition, not itself a staged write,
+  // and the modified lazy-analysis/revision-sync specs require that its
+  // failure leave knowledge-graph.json (and everything else) untouched,
+  // which was NOT true before this slice (saveGraph used to run
+  // unconditionally, ahead of this check). --------------------------------
   async function publish(product, activeSnapshot) {
     const saveStart = Date.now();
 
+    if (!product.fingerprints.ok) {
+      saveState.saveError = product.fingerprints.error;
+      product.timings.save = Date.now() - saveStart;
+      return; // Nothing staged, nothing touched — spec Scenario "a failed
+      // save must not advance metadata" now covers knowledge-graph.json too.
+    }
+
+    // Clear out any staging directory a past run left behind because it was
+    // killed mid-replace (design D4 step 3) — before creating THIS run's own,
+    // so this scan can never need to special-case excluding its own
+    // not-yet-created directory.
+    cleanupStalePublishStagingDirs(dataDir, publishFs);
+
+    const stagingDir = join(dataDir, `.publish-staging-${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+    const previousDir = join(stagingDir, 'previous');
+
+    /** Aborts the whole publish: clean up the staging directory (best-effort
+     *  — a cleanup failure must never mask the real error) and record a
+     *  named `saveError`. A `ProductTooLargeError`'s own message (already
+     *  names product/requiredChars/limitChars) is used verbatim; anything
+     *  else is wrapped with which phase/product failed. */
+    function abort(phase, productName, err) {
+      const message = err instanceof ProductTooLargeError
+        ? err.message
+        : `${phase} ${productName} failed: ${err.message}`;
+      try {
+        publishFs.rm(stagingDir);
+      } catch {
+        // Best-effort: the ORIGINAL failure above is what gets reported.
+      }
+      saveState.saveError = message;
+      product.timings.save = Date.now() - saveStart;
+    }
+
     try {
-      saveGraph(root, product.knowledgeGraph);
+      publishFs.mkdir(previousDir); // recursive: creates stagingDir too.
     } catch (err) {
-      saveState.saveError = `writing knowledge-graph.json failed: ${err.message}`;
+      saveState.saveError = `creating publish staging directory failed: ${err.message}`;
       product.timings.save = Date.now() - saveStart;
       return;
     }
 
-    // Fingerprints baseline MUST succeed before meta.json is written — the
-    // same gate Phase 7 step 2 already enforces (see build-fingerprints.mjs
-    // / issue #152: otherwise a future incremental run sees a fresh commit
-    // hash with no fingerprints to compare against). The baseline itself was
-    // already BUILT (via `runScript('build-fingerprints.mjs', ...)`) against
-    // the materialized snapshot content in `produce()` (Fix B) — it cannot be
-    // built here because the materialized temp dir is already gone by the
-    // time `publish` runs (runGuarded's cleanup happens right after
-    // `produce` returns). This step only relocates that already-built
-    // fingerprints.json into the REAL root's `.excavator/`, or — on a
-    // build-fingerprints failure — withholds meta.json exactly as before.
-    if (!product.fingerprints.ok) {
-      saveState.saveError = product.fingerprints.error;
-      product.timings.save = Date.now() - saveStart;
-      return; // Do NOT advance meta.json/source-manifest.json — they all stay
-      // at their last successful state (spec Scenario "a failed save must
-      // not advance metadata").
+    const staged = {};
+    const final = {};
+    for (const key of PUBLISH_PRODUCT_ORDER) {
+      staged[key] = join(stagingDir, PUBLISH_PRODUCT_FILENAME[key]);
+      final[key] = join(dataDir, PUBLISH_PRODUCT_FILENAME[key]);
     }
-    writeFileSync(join(dataDir, 'fingerprints.json'), product.fingerprints.raw, 'utf-8');
 
-    // source-index.jsonl (openspec: changes/hybrid-retrieval, capability
-    // `source-index`; line-oriented persistence from changes/product-
-    // serialization-ceiling, design D1) — gated the same as
-    // source-manifest.json/meta.json below: it is likewise keyed by
-    // `sourceRevision` and must never advance out of step with the manifest
-    // it is paired with. Written record by record through the store, never
-    // as one whole-document string.
-    writeSourceIndex(join(dataDir, SOURCE_INDEX_FILE), product.sourceIndex);
+    // --- STAGE (design D4, step 1): all five, in this fixed order. ---------
+    const { recorder } = product;
+    const limit = serializationLimit;
 
-    saveMeta(root, {
-      lastAnalyzedAt: now(),
-      gitCommitHash: product.knowledgeGraph.project.gitCommitHash ?? '',
-      version: KNOWLEDGE_GRAPH_VERSION,
-      analyzedFiles: product.structureAll.filesAnalyzed,
-    });
+    try {
+      const sanitised = sanitiseFilePaths(product.knowledgeGraph, root);
+      const content = serializeJsonProduct('knowledge-graph.json', sanitised, { indent: 2, limit, recorder });
+      publishFs.writeFile(staged.graph, content);
+    } catch (err) { return abort('staging', 'knowledge-graph.json', err); }
 
-    // source-manifest.json — the new artifact this slice adds, written
-    // alongside knowledge-graph.json/meta.json/fingerprints.json, and only
-    // ever advanced together with them (same gate as meta.json above).
-    // `entries` (the snapshot's own `{path, contentHash}` list) is persisted
-    // too, beyond the three required fields — it is the previous-manifest
-    // baseline `sync-fact-graph.mjs` (openspec: changes/source-snapshot,
-    // capability `revision-sync`) needs to compute a real diff instead of
-    // guessing one; the spec's "at-least" ("contains AT LEAST") wording leaves
-    // room for it on the same artifact rather than a second file.
-    writeFileSync(
-      join(dataDir, 'source-manifest.json'),
-      JSON.stringify(
-        {
-          sourceRevision: activeSnapshot.revision,
-          selectionDigest: activeSnapshot.selectionDigest,
-          pipelineVersion: PIPELINE_VERSION,
-          entries: activeSnapshot.entries(),
-          selection: activeSnapshot.selection,
-        },
-        null,
-        2,
-      ),
-      'utf-8',
-    );
+    try {
+      publishFs.writeFile(staged.fingerprints, product.fingerprints.raw);
+    } catch (err) { return abort('staging', 'fingerprints.json', err); }
+
+    try {
+      publishFs.writeSourceIndex(staged.sourceIndex, product.sourceIndex);
+    } catch (err) { return abort('staging', SOURCE_INDEX_FILE, err); }
+
+    try {
+      const metaContent = {
+        lastAnalyzedAt: now(),
+        gitCommitHash: product.knowledgeGraph.project.gitCommitHash ?? '',
+        version: KNOWLEDGE_GRAPH_VERSION,
+        analyzedFiles: product.structureAll.filesAnalyzed,
+      };
+      const content = serializeJsonProduct('meta.json', metaContent, { indent: 2, limit, recorder });
+      publishFs.writeFile(staged.meta, content);
+    } catch (err) { return abort('staging', 'meta.json', err); }
+
+    try {
+      // `entries()` runs HERE, at the point of writing the manifest — not
+      // earlier — per design D4; it is the run's single most expensive save
+      // step at scale, so it must never be duplicated or hoisted into
+      // `produce()`.
+      const entries = activeSnapshot.entries();
+      const manifestContent = {
+        sourceRevision: activeSnapshot.revision,
+        selectionDigest: activeSnapshot.selectionDigest,
+        pipelineVersion: PIPELINE_VERSION,
+        entries,
+        selection: activeSnapshot.selection,
+      };
+      const content = serializeJsonProduct('source-manifest.json', manifestContent, { indent: 2, limit, recorder });
+      publishFs.writeFile(staged.manifest, content);
+    } catch (err) { return abort('staging', 'source-manifest.json', err); }
+
+    // --- REPLACE (design D4, step 2): fixed order, one product at a time. --
+    // A final path is NEVER deleted first — only ever hard-linked-or-copied
+    // into a backup and then atomically renamed over — so a concurrent
+    // reader (e.g. an MCP server) never observes a product as missing.
+    const completed = []; // { key, hadPrevious } — for reverse rollback on failure.
+    for (const key of PUBLISH_PRODUCT_ORDER) {
+      const hadPrevious = publishFs.exists(final[key]);
+      try {
+        if (hadPrevious) {
+          const backupPath = join(previousDir, PUBLISH_PRODUCT_FILENAME[key]);
+          try {
+            publishFs.link(final[key], backupPath);
+          } catch {
+            publishFs.copyFile(final[key], backupPath); // hard link unavailable — fall back to a copy.
+          }
+        }
+        publishFs.rename(staged[key], final[key]);
+        completed.push({ key, hadPrevious });
+      } catch (err) {
+        for (let i = completed.length - 1; i >= 0; i--) {
+          const { key: doneKey, hadPrevious: donePrevious } = completed[i];
+          try {
+            if (donePrevious) {
+              publishFs.rename(join(previousDir, PUBLISH_PRODUCT_FILENAME[doneKey]), final[doneKey]);
+            } else {
+              publishFs.unlink(final[doneKey]); // it did not exist before this publish — restore that.
+            }
+          } catch {
+            // Best-effort rollback; the ORIGINAL replace failure is what gets reported.
+          }
+        }
+        return abort('replacing', PUBLISH_PRODUCT_FILENAME[key], err);
+      }
+    }
+
+    // --- FINALIZE (design D4, step 3): only once every replace succeeded. --
+    if (publishFs.exists(join(dataDir, LEGACY_SOURCE_INDEX_FILE))) {
+      try {
+        publishFs.unlink(join(dataDir, LEGACY_SOURCE_INDEX_FILE));
+      } catch {
+        // Best-effort — a leftover legacy file is inert (never read) even if
+        // this cleanup itself fails; it is retried on the next publish.
+      }
+    }
+    try {
+      publishFs.rm(stagingDir);
+    } catch {
+      // Best-effort — a fully-replaced publish has already succeeded;
+      // leftover staging-dir cleanup is retried by the next publish's
+      // `cleanupStalePublishStagingDirs` once this pid exits.
+    }
 
     saveState.metaAdvanced = true;
     product.timings.save = Date.now() - saveStart;
@@ -677,6 +880,11 @@ export async function runLazyAnalysis({
     edgeCount: product?.knowledgeGraph?.edges?.length ?? 0,
     timings,
     sourceRevision: guardResult.revision ?? snapshot.revision,
+    // Sorted (percent of the runtime single-string ceiling, descending) —
+    // design D5/product-serialization: every whole-document product this run
+    // serialized in-process, plus the byte counts of the three child-script
+    // outputs. Empty when the run never reached `produce()` at all.
+    serialization: product?.recorder?.entries() ?? [],
   };
 }
 
@@ -732,6 +940,8 @@ export default {
   validateFactGraphIntegrity,
   mergeFactProjectionIntoGraph,
   defaultRunScript,
+  defaultPublishFs,
+  cleanupStalePublishStagingDirs,
   KNOWLEDGE_GRAPH_VERSION,
   PIPELINE_VERSION,
 };

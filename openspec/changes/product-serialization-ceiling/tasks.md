@@ -29,9 +29,9 @@ commit 序列：
 
 ## 4. 暂存发布与回滚
 
-- [ ] 4.1 core 导出 `saveGraph` 内部已有的路径净化步骤，`saveGraph` 行为不变。验证：core 测试通过，新增断言证明 `saveGraph` 的输出与改动前逐字节相同。
-- [ ] 4.2 `lazy-analyze.mjs` 按 design D4 实现「暂存 → 按序替换 → 失败回滚 → 收尾」：收尾时删除旧 `source-index.json`、清理暂存目录，以及同前缀且对应进程已不存在的旧暂存目录；五个最终产物中的整文档 JSON 全部经过第 1 组的辅助；故障注入通过可注入的文件操作接缝完成，不修改生产路径的行为。验证：新故障注入测试在暂存阶段的每个产物、替换阶段的每一步分别注入失败，`.excavator/` 下全部最终产物的哈希与运行前一致、暂存目录不存在、`metaAdvanced` 为 false、`saveError` 为具名信息（O4）；注入小上限时具名失败且产物不变（O5）。
-- [ ] 4.3 `lazy-analyze.mjs` 自己写的中间产物、`build-fact-graph.mjs` 的事实摘要输入也经过辅助（摘要值不变）；子脚本输出（`structure-all.json`、`import-map.json`、`fingerprints.json`）记录 `stat` 字节数。验证：测试断言运行结果含这些余量条目，且夹具上的 `factsDigest` 与改动前相同。
+- [x] 4.1 core 导出 `saveGraph` 内部已有的路径净化步骤，`saveGraph` 行为不变。验证：core 测试通过，新增断言证明 `saveGraph` 的输出与改动前逐字节相同。
+- [x] 4.2 `lazy-analyze.mjs` 按 design D4 实现「暂存 → 按序替换 → 失败回滚 → 收尾」：收尾时删除旧 `source-index.json`、清理暂存目录，以及同前缀且对应进程已不存在的旧暂存目录；五个最终产物中的整文档 JSON 全部经过第 1 组的辅助；故障注入通过可注入的文件操作接缝完成，不修改生产路径的行为。验证：新故障注入测试在暂存阶段的每个产物、替换阶段的每一步分别注入失败，`.excavator/` 下全部最终产物的哈希与运行前一致、暂存目录不存在、`metaAdvanced` 为 false、`saveError` 为具名信息（O4）；注入小上限时具名失败且产物不变（O5）。
+- [x] 4.3 `lazy-analyze.mjs` 自己写的中间产物、`build-fact-graph.mjs` 的事实摘要输入也经过辅助（摘要值不变）；子脚本输出（`structure-all.json`、`import-map.json`、`fingerprints.json`）记录 `stat` 字节数。验证：测试断言运行结果含这些余量条目，且夹具上的 `factsDigest` 与改动前相同。
 
 ## 5. 计时自报与输出
 

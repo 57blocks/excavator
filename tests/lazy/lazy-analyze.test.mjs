@@ -8,13 +8,14 @@
 // production. Nothing here is a real project's source — see AGENTS.md's
 // "purpose-built synthetic projects only" rule.
 import { describe, expect, it, beforeEach, afterEach } from 'vitest';
-import { mkdtempSync, rmSync, mkdirSync, writeFileSync, readFileSync, existsSync } from 'node:fs';
+import { mkdtempSync, rmSync, mkdirSync, writeFileSync, readFileSync, existsSync, readdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 
 import { runLazyAnalysis, defaultRunScript } from '../../skills/excavator/lazy-analyze.mjs';
+import { SOURCE_INDEX_FILE } from '../../skills/excavator/source-index-store.mjs';
 
 /** A fixed clock so two runs over an unchanged project are byte-identical
  *  (real wall-clock time would otherwise make `project.analyzedAt` differ
@@ -109,10 +110,21 @@ describe('lazy-analyze driver — first-run pipeline', () => {
 
     expect(result.metaAdvanced).toBe(false);
     expect(result.saveError).toMatch(/build-fingerprints/);
-    // The graph write is unconditional (matches Phase 7 step 1); only the
-    // fingerprints-gated meta.json write is withheld.
-    expect(existsSync(join(root, '.excavator', 'knowledge-graph.json'))).toBe(true);
+    // Staged publish (design D4, product-serialization-ceiling): the
+    // fingerprints-failure gate is now checked BEFORE anything is staged —
+    // it leaves every final product untouched, knowledge-graph.json
+    // included (this is a first-ever run, so "untouched" means "still does
+    // not exist at all"). This is a deliberate behavior change from the
+    // pre-staged-publish driver, where the graph write ran unconditionally
+    // ahead of this gate; the modified lazy-analysis/revision-sync specs now
+    // require the all-or-nothing guarantee to cover every final product.
+    expect(existsSync(join(root, '.excavator', 'knowledge-graph.json'))).toBe(false);
     expect(existsSync(join(root, '.excavator', 'meta.json'))).toBe(false);
+    expect(existsSync(join(root, '.excavator', SOURCE_INDEX_FILE))).toBe(false);
+    expect(existsSync(join(root, '.excavator', 'source-manifest.json'))).toBe(false);
+    // No staging directory leaks either.
+    const leftovers = readdirSync(join(root, '.excavator')).filter((name) => name.startsWith('.publish-staging-'));
+    expect(leftovers).toEqual([]);
   });
 
   it('does not wipe or downgrade an existing full graph\'s summaries/tags/layers', async () => {
