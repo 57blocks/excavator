@@ -31,11 +31,11 @@ commit 序列：
 
 ## 4. 验收（acceptor 亲自执行，不采信 coder 自报）
 
-- [ ] 4.1 门禁（O5）：三件套与 `openspec validate --all --strict` 通过。
-- [ ] 4.2 conduit（`5e127d85`）、wcp、cebreo 副本（O1、O2）：
+- [x] 4.1 门禁（O5）：三件套与 `openspec validate --all --strict` 通过。
+- [x] 4.2 conduit（`5e127d85`）、wcp、cebreo 副本（O1、O2）：
   - `main` 与本分支分别跑 lazy 首跑，`factsDigest`、`source-manifest.json` 的 `selection` 与 `entries` 完全相同；
   - conduit 上通过 stdio 调 MCP `recall`（固定检索词），结果与 `main` 逐项相同。
-- [ ] 4.3 Hadoop `2014707f8c31`（O1、O4）：
+- [x] 4.3 Hadoop `2014707f8c31`（O1、O4）：
   - 一次快照解析不超过 10 秒；
   - lazy 首跑的 `factsDigest` 等于 `88c3219d31de0315e87fb4303fed5fa0bced8faae9ebb940dcc0233c13c5eae7`，manifest 的 `selection` 与 `entries` 与现有持久化版本相同；
   - `snapshotResolve`、`snapshotMaterialize`、`manifestEntries` 各在 10 秒内；
