@@ -338,6 +338,52 @@ EOF
   printf '%s\t%s\n' "$repo" "$marker_file"
 }
 
+# Prints run-excavator.mjs's own failure reasons for a completed run, so a
+# CI log shows WHY load-probe/isolation failed instead of just that they
+# did. Reads two independent sources, each best-effort (never fails the
+# caller): summary.json's checks.load.reasons/checks.run.reasons, and — "if
+# available", since summary.json does not carry the raw init event —
+# run.jsonl's own system/init event for the per-server MCP connection
+# status. Missing/unreadable input prints one line saying so rather than
+# aborting the diagnostic dump.
+print_run_diagnostics() {
+  local out_dir="$1"
+  node -e '
+    const fs = require("fs");
+    const outDir = process.argv[1];
+
+    try {
+      const summary = JSON.parse(fs.readFileSync(outDir + "/summary.json", "utf-8"));
+      console.log("  checks.load.reasons: " + JSON.stringify(summary?.checks?.load?.reasons ?? []));
+      console.log("  checks.run.reasons: " + JSON.stringify(summary?.checks?.run?.reasons ?? []));
+    } catch (e) {
+      console.log("  summary.json diagnostics unavailable: " + e.message);
+    }
+
+    try {
+      const raw = fs.readFileSync(outDir + "/run.jsonl", "utf-8");
+      let initEvent = null;
+      for (const line of raw.split("\n")) {
+        const trimmed = line.trim();
+        if (!trimmed) continue;
+        let event;
+        try { event = JSON.parse(trimmed); } catch { continue; }
+        if (event && event.type === "system" && event.subtype === "init") { initEvent = event; break; }
+      }
+      if (initEvent) {
+        const servers = Array.isArray(initEvent.mcp_servers)
+          ? initEvent.mcp_servers.map((s) => `${s?.name ?? "?"}=${s?.status ?? "?"}`)
+          : [];
+        console.log("  init mcp_servers: " + JSON.stringify(servers));
+      } else {
+        console.log("  init mcp_servers: unavailable (no system/init event in run.jsonl)");
+      }
+    } catch (e) {
+      console.log("  init mcp_servers: unavailable (" + e.message + ")");
+    }
+  ' "$out_dir"
+}
+
 # 8. Load probe (O4): full mode against the stub must pass the load check
 # and still end the run in failure (the stub always 403s).
 check_load_probe() {
@@ -368,18 +414,21 @@ check_load_probe() {
 
   if [[ "$status" -ne 3 ]]; then
     echo "expected exit code 3 (run failure against the stubbed endpoint), got $status"
+    print_run_diagnostics "$out"
     rm -rf "$repo" "$out"
     return 1
   fi
 
   load_status="$(node -e 'try { console.log(JSON.parse(require("fs").readFileSync(process.argv[1], "utf-8")).checks.load.status); } catch (e) { console.log("unavailable: " + e.message); }' "$out/summary.json")"
   count="$(stub_request_count)"
-  rm -rf "$repo" "$out"
 
   if [[ "$load_status" != "passed" ]]; then
     echo "summary.json checks.load.status = '$load_status', expected 'passed'"
+    print_run_diagnostics "$out"
+    rm -rf "$repo" "$out"
     return 1
   fi
+  rm -rf "$repo" "$out"
   if [[ "$count" -lt 1 ]]; then
     echo "stub endpoint received $count request(s), expected at least 1"
     return 1
@@ -438,6 +487,9 @@ check_isolation() {
     leaked=1
   fi
 
+  if [[ "$leaked" -ne 0 ]]; then
+    print_run_diagnostics "$out"
+  fi
   rm -rf "$repo" "$out" "$(dirname "$marker_file")"
 
   if [[ "$leaked" -eq 0 ]]; then
