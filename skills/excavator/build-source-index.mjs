@@ -28,8 +28,10 @@
  * whole fact-graph orchestration file; same reasoning fact-graph-resolve.mjs
  * documents for its own small mirrors of annotate-graph.mjs helpers.)
  *
- * Persistence: `source-index.json` is keyed by `sourceRevision` (the same
- * SourceSnapshot revision source-manifest.json carries). `updateSourceIndex`
+ * Persistence: `source-index.jsonl` (line-oriented — see source-index-
+ * store.mjs, openspec: changes/product-serialization-ceiling, design D1) is
+ * keyed by `sourceRevision` (the same SourceSnapshot revision
+ * source-manifest.json carries). `updateSourceIndex`
  * accepts exactly the `{added, modified, removed}` shape
  * `sync-fact-graph.mjs`'s `computeChangedFileSet`/`syncFactGraph().changed`
  * already returns, and rebuilds ONLY those files' chunks — every chunk for
@@ -42,8 +44,8 @@
  * Usage (CLI):
  *   node build-source-index.mjs <projectRoot>
  *     [--scan <scan-result.json>] [--structure <structure-all.json>]
- *     [--out <source-index.json>] [--source-revision <rev>]
- *     [--previous <prior source-index.json>] [--changed <changed-file-set.json>]
+ *     [--out <source-index.jsonl>] [--source-revision <rev>]
+ *     [--previous <prior source-index.jsonl>] [--changed <changed-file-set.json>]
  *
  * Programmatic:
  *   import { buildSourceIndex, updateSourceIndex } from './build-source-index.mjs';
@@ -60,12 +62,13 @@
 
 import { basename, dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, realpathSync } from 'node:fs';
 import { createRequire } from 'node:module';
 
 import { deriveNodeId } from './node-identity.mjs';
 import { assignOrdinals, compareStrings, mapDeclarationKind } from './fact-graph-resolve.mjs';
 import { sortObjectKeys } from './coverage-ledger.mjs';
+import { SOURCE_INDEX_FILE, readSourceIndex, writeSourceIndex } from './source-index-store.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -557,7 +560,7 @@ async function main() {
 
   const scanPath = args.scan ? resolve(args.scan) : join(intermediate, 'scan-result.json');
   const structurePath = args.structure ? resolve(args.structure) : join(intermediate, 'structure-all.json');
-  const outPath = args.out ? resolve(args.out) : join(dataDir, 'source-index.json');
+  const outPath = args.out ? resolve(args.out) : join(dataDir, SOURCE_INDEX_FILE);
   const manifestPath = join(dataDir, 'source-manifest.json');
 
   const scan = existsSync(scanPath) ? readJson(scanPath, 'scan result') : { files: [] };
@@ -573,7 +576,11 @@ async function main() {
 
   let index;
   if (args.previous && args.changed) {
-    const previousIndex = readJson(args.previous, 'previous source-index.json');
+    const previousPath = resolve(args.previous);
+    if (!existsSync(previousPath)) {
+      throw new Error(`build-source-index: previous source-index.jsonl not found: ${previousPath}`);
+    }
+    const previousIndex = readSourceIndex(previousPath);
     const changed = readJson(args.changed, 'changed-file-set');
     index = updateSourceIndex({ previousIndex, structureAll, changed, readFile, sourceRevision });
   } else {
@@ -581,7 +588,7 @@ async function main() {
   }
 
   mkdirSync(dirname(outPath), { recursive: true });
-  writeFileSync(outPath, JSON.stringify(index, null, 2), 'utf-8');
+  writeSourceIndex(outPath, index);
   if (!existsSync(outPath)) throw new Error(`output file missing after write: ${outPath}`);
 
   process.stderr.write(

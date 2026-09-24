@@ -291,11 +291,15 @@ describe('syncFactGraph — a failed save does not advance the manifest', () => 
     expect(result.metaAdvanced).toBe(false);
     expect(result.saveError).toMatch(/build-fingerprints/);
     expect(readFileSync(join(root, '.excavator', 'source-manifest.json'), 'utf-8')).toBe(manifestBefore);
-    // The graph write is unconditional (matches lazy-analyze.mjs's own gate) —
-    // it WILL have been overwritten with the new content even though the
-    // manifest was withheld; that is existing, already-tested behavior, not
-    // something this test re-asserts beyond confirming the manifest itself.
+    // Staged publish (openspec: changes/product-serialization-ceiling, design
+    // D4): the fingerprints-failure gate is checked BEFORE anything is
+    // staged, so knowledge-graph.json is byte-identical to before this
+    // failed sync — not merely still present, but literally untouched. This
+    // replaces the prior (pre-staged-publish) behavior, where the graph
+    // write ran unconditionally ahead of this gate and WOULD have been
+    // overwritten even on a withheld manifest.
     expect(existsSync(join(root, '.excavator', 'knowledge-graph.json'))).toBe(true);
+    expect(readFileSync(join(root, '.excavator', 'knowledge-graph.json'), 'utf-8')).toBe(graphBefore);
 
     // Recovery: a subsequent sync WITHOUT the injected failure must succeed
     // and finally advance the manifest — proving the earlier failure really
@@ -303,7 +307,6 @@ describe('syncFactGraph — a failed save does not advance the manifest', () => 
     const recovered = await syncFactGraph({ projectRoot: root, now: LATER_NOW });
     expect(recovered.metaAdvanced).toBe(true);
     expect(readFileSync(join(root, '.excavator', 'source-manifest.json'), 'utf-8')).not.toBe(manifestBefore);
-    void graphBefore;
   });
 });
 

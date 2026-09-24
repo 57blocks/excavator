@@ -59,6 +59,7 @@ import {
   sha256Hex,
   createGapCollector,
 } from './fact-graph-resolve.mjs';
+import { DEFAULT_LIMIT_CHARS, serializeJsonProduct } from './product-serialization.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -113,13 +114,23 @@ function ordinalGroupKey(entry) {
 }
 
 /**
- * The deterministic projection. Pure function of its three arguments; no I/O,
- * no model call, no source re-read.
+ * The deterministic projection. Pure function of its arguments; no I/O, no
+ * model call, no source re-read.
  *
- * @param {{ scan: object, structureAll: object, importMap?: object|null }} args
+ * @param {{
+ *   scan: object, structureAll: object, importMap?: object|null,
+ *   serializationLimit?: number,
+ *   headroomRecorder?: ReturnType<typeof import('./product-serialization.mjs').createHeadroomRecorder>,
+ * }} args `serializationLimit`/`headroomRecorder` route the facts-digest
+ *   input string through `serializeJsonProduct` (openspec: changes/product-
+ *   serialization-ceiling, capability `product-serialization`) instead of a
+ *   bare `JSON.stringify` — both optional so this pure function's existing
+ *   callers (tests, the CLI) are unaffected; `serializationLimit` defaults
+ *   to the runtime ceiling and `headroomRecorder`, when omitted, simply
+ *   means no headroom entry is recorded for this call.
  * @returns {{ nodes: object[], edges: object[], coverage: object, gaps: object[], factsDigest: string }}
  */
-export function buildFactGraph({ scan, structureAll, importMap }) {
+export function buildFactGraph({ scan, structureAll, importMap, serializationLimit = DEFAULT_LIMIT_CHARS, headroomRecorder = null }) {
   if (!scan || !Array.isArray(scan.files)) {
     throw new Error('buildFactGraph: scan.files must be an array');
   }
@@ -458,9 +469,22 @@ export function buildFactGraph({ scan, structureAll, importMap }) {
   digestCoverage.files -= preExtractionFiles;
   digestCoverage.ignored = Math.max(0, (digestCoverage.ignored ?? 0) - preExtractionIgnored);
 
-  const factsDigest = sha256Hex(
-    JSON.stringify(canonicalizeForDigest({ nodes, edges: sortedEdges, coverage: digestCoverage, gaps })),
+  // The digest input string itself goes through serializeJsonProduct (design
+  // D5) rather than a bare JSON.stringify — this joined text is exactly the
+  // joined fact-summary text the product-serialization spec (Scenario:
+  // overflow during the facts-summary step) names as one of the
+  // ceiling-checked products (it was ~50% of the runtime limit on Hadoop's
+  // real fact graph). The digest VALUE is unchanged: `sha256Hex` is still
+  // hashing the identical compact-JSON bytes `JSON.stringify(...)` would
+  // have produced — serializeJsonProduct returns that same string on the
+  // success path (see its own header doc: the success path pays nothing
+  // extra).
+  const factsDigestInput = serializeJsonProduct(
+    'facts-digest-input',
+    canonicalizeForDigest({ nodes, edges: sortedEdges, coverage: digestCoverage, gaps }),
+    { indent: 0, limit: serializationLimit, recorder: headroomRecorder },
   );
+  const factsDigest = sha256Hex(factsDigestInput);
 
   return {
     nodes,

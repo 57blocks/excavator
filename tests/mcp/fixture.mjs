@@ -4,6 +4,8 @@ import { dirname, join } from 'node:path';
 
 import { auditSemanticCacheFields } from '../../skills/excavator/semantic-language-audit.mjs';
 import { resolveSourceSnapshot } from '../../skills/excavator/source-snapshot.mjs';
+import { PIPELINE_VERSION } from '../../skills/excavator/lazy-analyze.mjs';
+import { SOURCE_INDEX_FILE, writeSourceIndex } from '../../skills/excavator/source-index-store.mjs';
 
 export const IDS = Object.freeze({
   a: 'function:src/same-a.ts:save()',
@@ -77,7 +79,7 @@ export function makeMcpFixture({ escapedDataDir = false } = {}) {
   const manifest = {
     sourceRevision: snapshot.revision,
     selectionDigest: snapshot.selectionDigest,
-    pipelineVersion: 'lazy-fact-graph/1',
+    pipelineVersion: PIPELINE_VERSION,
     entries,
   };
 
@@ -89,10 +91,11 @@ export function makeMcpFixture({ escapedDataDir = false } = {}) {
     writeFileSync(join(root, '.excavator', 'source-manifest.json'), JSON.stringify(manifest));
     writeFileSync(join(root, '.excavator', 'semantic-cache.json'), JSON.stringify(cache));
     const chunks = [{ id: 'chunk:a', nodeId: IDS.a, path: 'src/same-a.ts', symbol: 'save', lineRange: [1, 1] }];
-    const sourceIndex = { sourceRevision: snapshot.revision, chunks,
+    const sourceIndex = { sourceRevision: snapshot.revision, k1: 1.5, b: 0.75, chunks,
       postings: { save: [{ chunkId: 'chunk:a', tf: 1 }] },
-      docLengths: { 'chunk:a': 1 }, avgDocLength: 1, N: 1 };
-    writeFileSync(join(root, '.excavator', 'source-index.json'), JSON.stringify(sourceIndex));
+      docLengths: { 'chunk:a': 1 }, avgDocLength: 1, N: 1,
+      filesIndexed: ['src/same-a.ts'], filesContentUnavailable: [] };
+    writeSourceIndex(join(root, '.excavator', SOURCE_INDEX_FILE), sourceIndex);
   }
   return {
     root,

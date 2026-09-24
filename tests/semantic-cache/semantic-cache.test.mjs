@@ -25,6 +25,7 @@ import {
   CANONICAL_CONTENT_LANGUAGE,
 } from '../../skills/excavator/semantic-cache.mjs';
 import { auditSemanticCacheFields } from '../../skills/excavator/semantic-language-audit.mjs';
+import { PIPELINE_VERSION } from '../../skills/excavator/lazy-analyze.mjs';
 
 const NODE_ID = 'function:src/orderService.ts:createOrder()';
 const FILE_PATH = 'src/orderService.ts';
@@ -40,7 +41,7 @@ function makeProject() {
 function writeManifest(root, entries) {
   writeFileSync(
     join(root, '.excavator', 'source-manifest.json'),
-    JSON.stringify({ sourceRevision: 'directory:test', selectionDigest: 'sd1', pipelineVersion: 'lazy-fact-graph/1', entries }, null, 2),
+    JSON.stringify({ sourceRevision: 'directory:test', selectionDigest: 'sd1', pipelineVersion: PIPELINE_VERSION, entries }, null, 2),
     'utf-8',
   );
 }

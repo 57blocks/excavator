@@ -62,17 +62,19 @@
  * which is why `lazy-analyze.mjs`'s publish step now persists `entries` on
  * `source-manifest.json` (see that file's own comment at the write site).
  *
- * source-index.json incremental reuse (openspec: changes/hybrid-retrieval,
- * capability `source-index`, D2): a sync that already computed a
- * changed-file set (branch 4 above) also reuses `updateSourceIndex` — via
- * `buildOrUpdateSourceIndex` below — to rebuild ONLY the touched files'
- * chunks against the previously-persisted `source-index.json`, instead of
- * `lazy-analyze.mjs`'s default full `buildSourceIndex`. This is passed to
- * `runLazyAnalysis` as its `buildSourceIndexStep` override; a first build or
- * an adapter-type-change full rebuild (branches 1/3, `changed === null`)
- * gets no override and falls back to lazy-analyze's own full-build default,
- * as does a project with no previously-persisted `source-index.json` yet
- * (a Slice-C upgrade of an existing Slice-A/B project).
+ * source-index.jsonl incremental reuse (openspec: changes/hybrid-retrieval,
+ * capability `source-index`, D2; line-oriented persistence added by
+ * changes/product-serialization-ceiling, design D1): a sync that already
+ * computed a changed-file set (branch 4 above) also reuses
+ * `updateSourceIndex` — via `buildOrUpdateSourceIndex` below — to rebuild
+ * ONLY the touched files' chunks against the previously-persisted
+ * `source-index.jsonl`, instead of `lazy-analyze.mjs`'s default full
+ * `buildSourceIndex`. This is passed to `runLazyAnalysis` as its
+ * `buildSourceIndexStep` override; a first build or an adapter-type-change
+ * full rebuild (branches 1/3, `changed === null`) gets no override and falls
+ * back to lazy-analyze's own full-build default, as does a project with no
+ * previously-persisted `source-index.jsonl` yet (a Slice-C upgrade of an
+ * existing Slice-A/B project, or one upgrading from `PIPELINE_VERSION` `/1`).
  *
  * Contract: openspec/changes/source-snapshot/specs/revision-sync/spec.md
  *           openspec/changes/hybrid-retrieval/specs/source-index/spec.md
@@ -88,6 +90,7 @@ import { resolveSourceSnapshot } from './source-snapshot.mjs';
 import { parseNameStatusZ } from './prepare-incremental.mjs';
 import { runLazyAnalysis, defaultRunScript, PIPELINE_VERSION } from './lazy-analyze.mjs';
 import { buildSourceIndex, updateSourceIndex } from './build-source-index.mjs';
+import { SOURCE_INDEX_FILE, readSourceIndex } from './source-index-store.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const pluginRoot = resolve(__dirname, '../..');
@@ -193,13 +196,13 @@ export function computeChangedFileSet(snapshot, persistedManifest) {
 }
 
 /**
- * Decide how `source-index.json` should be produced for this run (openspec:
+ * Decide how `source-index.jsonl` should be produced for this run (openspec:
  * changes/hybrid-retrieval, capability `source-index`, D2): reuse
  * `updateSourceIndex`'s single-file incremental rebuild whenever there IS a
- * computed changed-file-set AND a previously-persisted `source-index.json`
+ * computed changed-file-set AND a previously-persisted `source-index.jsonl`
  * to update against; otherwise fall back to a full `buildSourceIndex` (first
  * build, an adapter-type-change full rebuild, or a project with no
- * source-index.json yet). Pure and exported so this decision is directly
+ * source-index.jsonl yet). Pure and exported so this decision is directly
  * unit-testable (inject fake `buildFn`/`updateFn` and assert which one was
  * called) without needing to run the real pipeline.
  *
@@ -220,14 +223,29 @@ export function buildOrUpdateSourceIndex({
   return buildFn({ scan, structureAll, readFile, sourceRevision });
 }
 
-/** Read a previously-persisted `source-index.json`, if any. A corrupt file
- *  is treated the same as a missing one — `buildOrUpdateSourceIndex` then
- *  safely falls back to a full rebuild rather than failing the whole sync
- *  over a damaged incidental artifact. */
-function readPreviousSourceIndex(sourceIndexPath) {
+/** Read a previously-persisted `source-index.jsonl`, if any. ANY failure to
+ *  read it — missing, malformed content (`SourceIndexFormatError`), or a
+ *  plain filesystem error (EACCES/EISDIR/EIO/...) — is treated the same as
+ *  "no previous index": `buildOrUpdateSourceIndex` then safely falls back to
+ *  a full rebuild rather than failing the whole sync over a damaged
+ *  incidental artifact (design D3: treat it as if there were no previous
+ *  version at all and fall back to a full rebuild — no exception for WHY the
+ *  read failed). This is a catch-all deliberately, not a
+ *  catch-only-format-errors: this read runs BEFORE `syncFactGraph`'s
+ *  freshness-skip check below, so an unreadable/odd `.jsonl` (a directory
+ *  left at that path, a permission error, ...) must not fail even a sync
+ *  that should have been skipped entirely — its result is discarded on that
+ *  path regardless. The legacy whole-document `source-index.json` is never
+ *  read here even if it is the only thing present (zero-compat, design
+ *  D3/D6) — a project upgrading from `PIPELINE_VERSION` `/1` to `/2`
+ *  legitimately has no `.jsonl` yet, which this same "no previous index ->
+ *  full rebuild" path already handles correctly. Exported for direct unit
+ *  testing of this catch-all (mirrors `computeChangedFileSet`/
+ *  `buildOrUpdateSourceIndex` below, exported for the same reason). */
+export function readPreviousSourceIndex(sourceIndexPath) {
   if (!existsSync(sourceIndexPath)) return null;
   try {
-    return JSON.parse(readFileSync(sourceIndexPath, 'utf-8'));
+    return readSourceIndex(sourceIndexPath);
   } catch {
     return null;
   }
@@ -268,7 +286,7 @@ export async function syncFactGraph({
   const { resolveDataDir } = core;
   const dataDir = resolveDataDir(root);
   const manifestPath = join(dataDir, 'source-manifest.json');
-  const sourceIndexPath = join(dataDir, 'source-index.json');
+  const sourceIndexPath = join(dataDir, SOURCE_INDEX_FILE);
 
   const extraExcludePatterns = parseExcludePatterns(argv);
   const snapshot = resolveSourceSnapshot(root, { extraExcludePatterns });
@@ -397,4 +415,5 @@ export default {
   syncFactGraph,
   computeChangedFileSet,
   buildOrUpdateSourceIndex,
+  readPreviousSourceIndex,
 };

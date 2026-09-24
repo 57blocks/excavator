@@ -322,7 +322,7 @@ The bracketed segment is optional argv notation, not literal shell syntax. Only 
 This performs SCAN, STRUCTURE-ALL, import-map extraction, the deterministic
 Fact Builder, a deterministic validate pass, and SAVE (`knowledge-graph.json`
 fact fields, `meta.json`, `fingerprints.json`, `source-manifest.json`,
-`source-index.json`) — zero LLM/subagent calls. It is non-destructive: a
+`source-index.jsonl`) — zero LLM/subagent calls. It is non-destructive: a
 node's prior semantic fields (if any) are preserved,
 not wiped, though Full no longer writes semantics there going forward.
 

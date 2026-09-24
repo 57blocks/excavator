@@ -171,19 +171,19 @@ for candidate in "${CLAUDE_PLUGIN_ROOT}" "$HOME/.excavator-plugin" "$SELF_RELATI
 done
 ```
 
-If `$PLUGIN_ROOT` cannot be resolved, or `$DATA_DIR/source-index.json` does not exist, fall back to the honest degrade: say plainly that this semantics has not been generated/retrieved yet and suggest `/excavator --mode=full` or re-running `/excavator` to produce a `source-index.json`. **Do not auto-trigger Full** — whether to fill semantics for the whole project is the user's explicit choice.
+If `$PLUGIN_ROOT` cannot be resolved, or `$DATA_DIR/source-index.jsonl` does not exist, fall back to the honest degrade: say plainly that this semantics has not been generated/retrieved yet and suggest `/excavator --mode=full` or re-running `/excavator` to produce a `source-index.jsonl`. **Do not auto-trigger Full** — whether to fill semantics for the whole project is the user's explicit choice.
 
 **(a) Use the request-local search expressions — same inference, no subagent.** Use `$ENGLISH_RETRIEVAL_EXPRESSIONS` and `$LITERAL_IDENTIFIERS` captured before retrieval. For example, a non-English business question about placing an order might produce English/code expressions such as `order`, `createOrder`, `checkout`, `placeOrder`, while `$ORIGINAL_QUESTION` remains byte-for-byte unchanged. Do **not** dispatch a separate query-expansion agent/subagent for this — the whole point of same-inference expansion is that it costs no extra model round trip.
 
 **(b) Retrieve — merge candidates, then traverse within budget.**
 
 1. Exact hits: grep the term list (and any literal identifiers) against `nodes[].id` / `.name` / `.type` in `$DATA_DIR/knowledge-graph.json`, exactly as the structural search above already does.
-2. BM25 hits over `$DATA_DIR/source-index.json`:
+2. BM25 hits over `$DATA_DIR/source-index.jsonl` (line-oriented — read it through the store's own reader, never a bare `JSON.parse`; a whole index can be gigabytes as a single string):
    ```bash
    node --input-type=module -e "
-   import { readFileSync } from 'node:fs';
+   import { readSourceIndex } from '$PLUGIN_ROOT/skills/excavator/source-index-store.mjs';
    import { bm25Search } from '$PLUGIN_ROOT/skills/excavator/retrieve.mjs';
-   const index = JSON.parse(readFileSync('$DATA_DIR/source-index.json', 'utf-8'));
+   const index = readSourceIndex('$DATA_DIR/source-index.jsonl');
    const terms = process.argv.slice(1);
    console.log(JSON.stringify(bm25Search(index, terms, 20)));
    " -- <term1> <term2> ...
