@@ -1,0 +1,254 @@
+# Build, self-test and (on a release trigger) push the Excavator runner
+# image. See openspec/changes/runner-image/design.md D6 for the decisions
+# this workflow implements verbatim; this is the repository's only workflow.
+#
+# All three triggers run the exact same flow (test -> image -> push): a tag
+# push or a manual dispatch is a release candidate, and a PR touching
+# deploy-relevant files is the only place that flow can be exercised before
+# merge, since GitHub only allows workflow_dispatch on the default branch.
+name: Runner image
+
+on:
+  push:
+    tags:
+      - 'runner-v*'
+  workflow_dispatch: {}
+  pull_request:
+    paths:
+      - 'deploy/**'
+      - '.dockerignore'
+      - '.github/workflows/runner-image.yml'
+      - 'package.json'
+      - 'pnpm-lock.yaml'
+
+# Least privilege at the workflow level; only the push job escalates to
+# request an OIDC token (design D6: "第三方 action 一律按 commit SHA 钉住").
+permissions:
+  contents: read
+
+jobs:
+  # ---------------------------------------------------------------------
+  # Repository three-piece gate (design D6 step 1): the same commands
+  # AGENTS.md documents as the repo's own build/test contract.
+  # ---------------------------------------------------------------------
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # Reads the pnpm version straight from package.json's "packageManager"
+      # field (no `version:` input) so this workflow can never drift from
+      # the version the repo itself pins.
+      - name: Set up pnpm
+        uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+
+      # Must run after pnpm/action-setup: actions/setup-node's pnpm cache
+      # needs pnpm already on PATH to resolve the cache key.
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          cache: pnpm
+
+      # Some tree-sitter grammar packages fall back to a node-gyp source
+      # build (see design D2/context), which shells out to `python`, not
+      # `python3`. setup-python provides both on PATH.
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.x'
+
+      - name: Install, build, test
+        run: pnpm install --frozen-lockfile && pnpm -r build && pnpm test
+
+  # ---------------------------------------------------------------------
+  # Build + self-test both architectures (design D6 steps 2-4 / O1).
+  # ---------------------------------------------------------------------
+  image:
+    name: Image (${{ matrix.platform }})
+    needs: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        platform: [linux/amd64, linux/arm64]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # The image's OCI revision label must match the content actually
+      # built. Asserted here, right after checkout and before anything
+      # else touches the tree.
+      - name: Assert clean checkout
+        run: |
+          if [ -n "$(git status --porcelain)" ]; then
+            echo "::error::checkout is not clean; the image commit label would not match its content" >&2
+            git status --porcelain >&2
+            exit 1
+          fi
+
+      # On `pull_request`, `github.sha` is the ephemeral merge commit, which
+      # is correct here too (it IS the commit actually checked out and
+      # built) — but we read it back from git rather than trust the event
+      # payload, so this stays correct regardless of trigger type.
+      - name: Resolve checked-out commit
+        id: commit
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Compute platform slug
+        id: platform
+        run: echo "slug=$(echo '${{ matrix.platform }}' | tr '/' '-')" >> "$GITHUB_OUTPUT"
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
+      - name: Build (${{ matrix.platform }})
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          file: deploy/Dockerfile
+          platforms: ${{ matrix.platform }}
+          load: true
+          build-args: |
+            EXCAVATOR_COMMIT=${{ steps.commit.outputs.sha }}
+          tags: excavator-runner-image:ci
+          cache-from: type=gha,scope=runner-image-${{ steps.platform.outputs.slug }}
+          cache-to: type=gha,mode=max,scope=runner-image-${{ steps.platform.outputs.slug }}
+
+      - name: Self-test (${{ matrix.platform }})
+        run: docker run --rm --platform ${{ matrix.platform }} --entrypoint excavator-selftest excavator-runner-image:ci
+
+  # ---------------------------------------------------------------------
+  # Push to ECR, but only on a release trigger with the repo's ECR
+  # parameters configured (design D6 step 5 / spec "镜像可自检且按固定规则
+  # 发布"). Always runs after `image` succeeds; internally decides
+  # push-vs-skip and reports which either way, so a PR run (or a
+  # workflow_dispatch before DevOps configures the repo variables) always
+  # finishes successfully with a clear reason instead of failing or being
+  # silently skipped by GitHub.
+  # ---------------------------------------------------------------------
+  push:
+    name: Push
+    needs: image
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Resolve checked-out commit
+        id: commit
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      # Eligibility = (tag push OR workflow_dispatch) AND all four repo
+      # variables set. Values come in through env:, never interpolated
+      # directly into the script, and the decision is the only thing this
+      # step does — every step after it is a plain `if:` on the output.
+      - name: Decide push eligibility
+        id: decide
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          REF: ${{ github.ref }}
+          VAR_AWS_ACCOUNT_ID: ${{ vars.AWS_ACCOUNT_ID }}
+          VAR_ECR_REGION: ${{ vars.ECR_REGION }}
+          VAR_ECR_REPOSITORY: ${{ vars.ECR_REPOSITORY }}
+          VAR_AWS_ROLE_ARN: ${{ vars.AWS_ROLE_ARN }}
+        run: |
+          reasons=()
+
+          is_release=false
+          if [[ "$EVENT_NAME" == "push" && "$REF" == refs/tags/runner-v* ]]; then
+            is_release=true
+          elif [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
+            is_release=true
+          fi
+          if [[ "$is_release" != "true" ]]; then
+            reasons+=("not a release trigger (event=$EVENT_NAME, ref=$REF)")
+          fi
+
+          missing=()
+          [[ -z "$VAR_AWS_ACCOUNT_ID" ]] && missing+=("AWS_ACCOUNT_ID")
+          [[ -z "$VAR_ECR_REGION" ]] && missing+=("ECR_REGION")
+          [[ -z "$VAR_ECR_REPOSITORY" ]] && missing+=("ECR_REPOSITORY")
+          [[ -z "$VAR_AWS_ROLE_ARN" ]] && missing+=("AWS_ROLE_ARN")
+          if [[ ${#missing[@]} -gt 0 ]]; then
+            reasons+=("missing repository variable(s): ${missing[*]}")
+          fi
+
+          if [[ ${#reasons[@]} -eq 0 ]]; then
+            echo "eligible=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "eligible=false" >> "$GITHUB_OUTPUT"
+            joined=$(IFS='; '; echo "${reasons[*]}")
+            echo "reason=$joined" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Compute image tag
+        if: steps.decide.outputs.eligible == 'true'
+        id: tag
+        run: |
+          version=$(jq -r .version package.json)
+          short_sha=$(echo "${{ steps.commit.outputs.sha }}" | cut -c1-8)
+          echo "tag=${version}-${short_sha}" >> "$GITHUB_OUTPUT"
+
+      - name: Configure AWS credentials
+        if: steps.decide.outputs.eligible == 'true'
+        uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ vars.ECR_REGION }}
+
+      - name: Log in to Amazon ECR
+        if: steps.decide.outputs.eligible == 'true'
+        id: ecr-login
+        uses: aws-actions/amazon-ecr-login@03f1aad4c6c7ffd436567f42f9384779290529bd # v2.1.7
+        with:
+          registries: ${{ vars.AWS_ACCOUNT_ID }}
+
+      - name: Set up QEMU
+        if: steps.decide.outputs.eligible == 'true'
+        uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
+
+      - name: Set up Docker Buildx
+        if: steps.decide.outputs.eligible == 'true'
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
+      # Reuses the per-platform caches the `image` job just wrote
+      # (cache-from only — this job does not need to refresh them) to build
+      # both architectures once more and push them together. ECR tag
+      # immutability (so this tag can never be overwritten) is a DevOps-side
+      # ECR repository setting, not something this workflow enforces.
+      - name: Build and push
+        if: steps.decide.outputs.eligible == 'true'
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          file: deploy/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          build-args: |
+            EXCAVATOR_COMMIT=${{ steps.commit.outputs.sha }}
+          tags: ${{ steps.ecr-login.outputs.registry }}/${{ vars.ECR_REPOSITORY }}:${{ steps.tag.outputs.tag }}
+          cache-from: |
+            type=gha,scope=runner-image-linux-amd64
+            type=gha,scope=runner-image-linux-arm64
+
+      - name: Report push skipped
+        if: steps.decide.outputs.eligible != 'true'
+        run: |
+          echo "push skipped: ${{ steps.decide.outputs.reason }}" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Report pushed tag
+        if: steps.decide.outputs.eligible == 'true'
+        run: |
+          echo "pushed image tag: ${{ steps.ecr-login.outputs.registry }}/${{ vars.ECR_REPOSITORY }}:${{ steps.tag.outputs.tag }}" >> "$GITHUB_STEP_SUMMARY"
