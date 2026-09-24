@@ -10,7 +10,7 @@ From the Excavator checkout, run `pnpm install --frozen-lockfile && pnpm -r buil
 
 The root `.mcp.json` is a Claude plugin declaration. It uses `${CLAUDE_PLUGIN_ROOT}` for the server program and `${CLAUDE_PROJECT_DIR}` as the fixed project root. From a target project directory, load the prepared local plugin checkout with `claude --plugin-dir /absolute/path/to/excavator`. In Claude, `/mcp` must show the plugin server; call `project_status` once to verify that `data.projectRoot` is the intended checkout. The Skill remains available if MCP is not loaded.
 
-Claude Code applies its own MCP tool-call timeout (60s by default) that `.mcp.json` cannot raise per server. On a large Git project, export `MCP_TOOL_TIMEOUT` (milliseconds, e.g. `300000`) before launching Claude — otherwise the first tool call can return a request timeout (see [Performance and host timeouts](#performance-and-host-timeouts)).
+Claude Code applies its own MCP tool-call timeout (60s by default) that `.mcp.json` cannot raise per server. Ordinary calls now fit within that default even on large Git projects (see [Performance and host timeouts](#performance-and-host-timeouts)). The exception is `sync_facts` doing a full rebuild on a large repository, which can take a couple of minutes — export `MCP_TOOL_TIMEOUT` (milliseconds, e.g. `300000`) before launching Claude if you plan to call it cold on such a project, or build once with the CLI `/excavator` instead.
 
 ## Codex
 
@@ -25,19 +25,28 @@ startup_timeout_sec = 20
 tool_timeout_sec = 600
 ```
 
-`tool_timeout_sec = 600` is deliberate: on a large Git repository a single tool call re-resolves the source snapshot (see [Performance and host timeouts](#performance-and-host-timeouts)), which is slow today. `sync_facts` rebuilds all facts and can exceed even that — build a cold or stale project once with the CLI `/excavator` instead.
+`tool_timeout_sec = 600` is deliberate: ordinary tool calls now complete in seconds even on a large Git repository (see [Performance and host timeouts](#performance-and-host-timeouts)). The raised timeout exists for `sync_facts`, which rebuilds all facts on a cold or stale project and can take a couple of minutes on a large repository — build a cold or stale project once with the CLI `/excavator` instead.
 
 Restart the Codex app/session after adding it. Check `/mcp` for `excavator` and call `project_status` to verify the bound `data.projectRoot`. Alternatively, `codex mcp add excavator -- node /absolute/path/to/excavator/skills/excavator/mcp-server.mjs --project-root /absolute/path/to/target-project` registers a user-level server; do not use that form if you need different simultaneous project roots. `install.sh` only installs Skills and does not register MCP.
 
 ## Performance and host timeouts
 
-Every tool call resolves the current source snapshot to report a comparable identity and to detect drift during the call. On a Git-backed project that resolve is O(tracked files) today, because the shared Git snapshot adapter reads each tracked file through a per-file subprocess. Measured on the `wcp` corpus (a parent directory holding five member Git repositories, ~2,000 tracked files), one `resolveSourceSnapshot` takes roughly 75–115 s. A read tool resolves twice (once to read, once to confirm the source did not change mid-call), so a single call is ~150–230 s and exceeds the 60 s default MCP request timeout — with the bundled MCP client a large-repo call returns a request timeout under default settings.
+Every tool call resolves the current source snapshot to report a comparable identity and to detect drift during the call. The Git snapshot adapter now reads committed blobs in batches through one `git cat-file --batch` stream per batch (at most 4,096 objects per batch); its cost no longer grows as one subprocess per file.
+
+Measured on apache/hadoop (16,575 tracked files, ~3M Java lines):
+
+- one snapshot resolve: 1.4 s (was ~629 s);
+- Lazy first run: 125 s (was 1,121 s), of which snapshot resolve is 1.4 s, materialize is 2.8 s, and manifest hashing is 1.6 s;
+- real stdio MCP `project_status`: 5.5 s; `recall`: 7.8 s.
+
+Measured on `wcp` (five member Git repositories, ~2,300 tracked files): Lazy first run is 13 s (was 145 s).
+
+A read tool still resolves twice per call (once to read, once to confirm the source did not change mid-call). At Hadoop scale a read call now fits within Claude Code's 60 s default MCP request timeout.
 
 Consequences and guidance:
 
-- Small-to-medium Git repositories and non-Git directory projects resolve in well under a second and are unaffected.
-- For a large Git repository, raise the host tool timeout (`tool_timeout_sec` for Codex, `MCP_TOOL_TIMEOUT` for Claude Code) and build a cold or stale project once with the CLI `/excavator` (a single resolve) before querying it over MCP.
-- The cost is in the shared source-snapshot layer (per-file `git show` via a Node helper), not in the MCP protocol layer; the same resolve also runs in the Lazy/Full CLI and the session freshness hook. A follow-up change, `snapshot-resolve-performance`, tracks batching those reads (`git cat-file --batch`, `git grep` for search) so a resolve drops to seconds without changing any snapshot identity. Until it lands, prefer MCP on projects where one resolve completes within the host timeout.
+- Non-Git directory projects are unaffected; they were already seconds-scale.
+- `sync_facts` on a cold or stale project rebuilds all facts, which takes about two minutes at Hadoop scale. Keep a raised host timeout (`MCP_TOOL_TIMEOUT` for Claude Code, `tool_timeout_sec` for Codex) for `sync_facts` on large repositories, or build once with the CLI `/excavator` instead.
 
 ## Host workflow
 
