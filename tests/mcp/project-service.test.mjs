@@ -5,6 +5,7 @@ import { join } from 'node:path';
 
 import { createProjectService } from '../../skills/excavator/project-service.mjs';
 import { resolveSourceSnapshot } from '../../skills/excavator/source-snapshot.mjs';
+import { LEGACY_SOURCE_INDEX_FILE, SOURCE_INDEX_FILE } from '../../skills/excavator/source-index-store.mjs';
 import { IDS, makeMcpFixture } from './fixture.mjs';
 
 const cleanup = [];
@@ -25,10 +26,43 @@ describe('shared deterministic project service', () => {
     expect(fresh.snapshot).toMatchObject({ revision: fixture.snapshot.revision, freshness: 'fresh' });
     expect(fresh.data.indexAvailable).toBe(true);
 
-    unlinkSync(join(fixture.root, '.excavator', 'source-index.json'));
+    unlinkSync(join(fixture.root, '.excavator', SOURCE_INDEX_FILE));
     const missing = service.projectStatus();
     expect(missing.data.indexAvailable).toBe(false);
-    expect(missing.gaps).toContainEqual({ kind: 'missing-product', product: 'source-index.json' });
+    expect(missing.gaps).toContainEqual({ kind: 'missing-product', product: SOURCE_INDEX_FILE });
+  });
+
+  it('reports whether a stale legacy source-index.json is the only thing present, but never reads it', () => {
+    const { fixture, service } = fixtureService();
+    unlinkSync(join(fixture.root, '.excavator', SOURCE_INDEX_FILE));
+    // Deliberately invalid content: if the legacy file were ever mistakenly
+    // parsed as the current format, this would throw instead of the gap
+    // simply naming it present.
+    writeFileSync(join(fixture.root, '.excavator', LEGACY_SOURCE_INDEX_FILE), 'not a jsonl file at all');
+
+    const status = service.projectStatus();
+    expect(status.data.indexAvailable).toBe(false);
+    expect(status.gaps).toContainEqual({
+      kind: 'missing-product', product: SOURCE_INDEX_FILE, legacyProductPresent: LEGACY_SOURCE_INDEX_FILE,
+    });
+  });
+
+  it('reports a corrupted source-index.jsonl as an invalid product, not a crash or a partial index', async () => {
+    const { fixture, service } = fixtureService();
+    writeFileSync(join(fixture.root, '.excavator', SOURCE_INDEX_FILE), '{"record":"header","format":"not-the-real-format"}\n');
+
+    const status = service.projectStatus();
+    expect(status.status).toBe('ok'); // the knowledge graph itself is still fine
+    expect(status.data.indexAvailable).toBe(false);
+    const gap = status.gaps.find((g) => g.kind === 'invalid-product' && g.product === SOURCE_INDEX_FILE);
+    expect(gap).toBeDefined();
+    expect(typeof gap.reason).toBe('string');
+    expect(gap.reason.length).toBeGreaterThan(0);
+
+    // recall (which requires the source index) surfaces the same unavailability
+    // rather than silently searching an empty/partial index.
+    const recall = await service.recall({ terms: ['save'] });
+    expect(recall.status).toBe('unavailable');
   });
 
   it('plans distinct identities, only generate nodes have bounded evidence, and plan is read-only', async () => {

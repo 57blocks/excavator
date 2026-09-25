@@ -17,3 +17,20 @@ Excavator v2 是在 Understand Anything（上游提交 5feed1f2，MIT，详见 N
 
 ## 工具链
 Node ≥ 22，pnpm（版本按 `package.json` 的 `packageManager`），vitest。三件套：`pnpm install --frozen-lockfile && pnpm -r build && pnpm test`。
+
+## 验证：按改动内容选检查
+验证的是内容，不是动作。测过的内容没变就不重跑，提交、开 PR、合并、归档本身都不触发重跑；内容变了，只跑与改动相关的检查。
+
+| 改动范围 | 要跑的检查 |
+|---|---|
+| 只动 `openspec/`（提案、spec 同步、归档） | `openspec validate --all --strict`。没有测试读 `openspec/`，不跑代码测试 |
+| `docs/` 下的散文 | 不跑。例外：`docs/benchmarks/` 的 schema 被测试读取，改它跑 `pnpm test` |
+| 根目录 Markdown（`AGENTS.md`、`README.md`、`CLAUDE.md`） | `pnpm vitest run tests/refs/legacy-literals.test.mjs`（旧名字门禁扫描 `docs/`、`openspec/` 以外的所有跟踪文件） |
+| `skills/**/SKILL.md`、`agents/`、`hooks/`、插件清单 | `node scripts/check-refs.mjs` + `pnpm test`（多个测试读这些文件） |
+| `skills/**/*.mjs`、`src/`、`tests/` | 三件套 |
+| `packages/core/` | 三件套 + `pnpm --filter @excavator/core test` + `pnpm run typecheck`。根目录的 `pnpm test` 不含 core 测试 |
+
+内容没改也要重跑的三种情况：
+- 提交生成了没测过的内容：拆分 commit 时重建的中间版本，要逐个在临时检出里跑对应检查。原样提交已测过的工作区则不重跑。
+- 合并前 `main` 已前进：合并结果是新内容，先合入最新 `main` 再跑。`main` 没动就直接合并。
+- 有未跟踪的新文件：`tests/refs/legacy-literals` 等门禁按 `git ls-files` 取文件，未跟踪文件会被跳过、造成假绿。先 `git add -N <文件>` 再跑门（跑完 `git reset -- <文件>` 还原），或提交后再跑。

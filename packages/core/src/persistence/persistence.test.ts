@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync, existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { writeFileSync } from "node:fs";
-import { saveGraph, loadGraph, saveMeta, loadMeta, saveFingerprints, loadFingerprints, saveConfig, loadConfig, resolveDataDir } from "./index.js";
+import { saveGraph, loadGraph, saveMeta, loadMeta, saveFingerprints, loadFingerprints, saveConfig, loadConfig, resolveDataDir, sanitiseFilePaths } from "./index.js";
 import { mkdirSync } from "node:fs";
 import type { KnowledgeGraph, AnalysisMeta } from "../types.js";
 import type { FingerprintStore } from "../fingerprint.js";
@@ -119,6 +119,27 @@ describe("persistence", () => {
       const loaded = loadGraph(tempDir, { validate: false });
       expect(loaded).not.toBeNull();
       expect(loaded?.version).toBe(123);
+    });
+  });
+
+  describe("sanitiseFilePaths (exported for reuse by a staged publish outside this module)", () => {
+    it("saveGraph's written bytes equal JSON.stringify(sanitiseFilePaths(graph, projectRoot), null, 2) exactly", () => {
+      // An absolute, in-project-root filePath — the case sanitiseFilePaths
+      // actually rewrites (not a no-op), so this test is load-bearing rather
+      // than accidentally passing for a graph sanitising leaves untouched.
+      const graphWithAbsolutePath: KnowledgeGraph = {
+        ...sampleGraph,
+        nodes: [
+          { ...sampleGraph.nodes[0], filePath: join(tempDir, "src", "index.ts") },
+        ],
+      };
+
+      saveGraph(tempDir, graphWithAbsolutePath);
+      const writtenBytes = readFileSync(join(tempDir, ".excavator", "knowledge-graph.json"), "utf-8");
+
+      const sanitised = sanitiseFilePaths(graphWithAbsolutePath, tempDir);
+      expect(sanitised.nodes[0].filePath).toBe(join("src", "index.ts")); // proves the fixture exercises real sanitising
+      expect(writtenBytes).toBe(JSON.stringify(sanitised, null, 2));
     });
   });
 

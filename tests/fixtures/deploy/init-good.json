@@ -1,0 +1,33 @@
+{
+  "type": "system",
+  "subtype": "init",
+  "cwd": "/tmp/excavator-run-xxxxxx",
+  "session_id": "00000000-0000-0000-0000-000000000001",
+  "tools": ["Task", "Bash", "Read", "Edit", "Skill", "mcp__plugin_excavator_excavator__project_status"],
+  "mcp_servers": [
+    { "name": "plugin:excavator:excavator", "status": "connected", "source": "plugin" }
+  ],
+  "model": "eu.anthropic.claude-sonnet-5",
+  "permissionMode": "bypassPermissions",
+  "apiKeySource": "none",
+  "claude_code_version": "2.1.281",
+  "agents": [
+    "excavator:excavator-architecture-analyzer",
+    "excavator:excavator-article-analyzer",
+    "excavator:excavator-assemble-reviewer",
+    "excavator:excavator-design-analyzer",
+    "excavator:excavator-domain-analyzer",
+    "excavator:excavator-file-analyzer",
+    "excavator:excavator-graph-reviewer",
+    "excavator:excavator-knowledge-graph-guide",
+    "excavator:excavator-project-scanner",
+    "excavator:excavator-summary-verifier",
+    "claude",
+    "Explore",
+    "general-purpose",
+    "Plan"
+  ],
+  "plugins": [
+    { "name": "excavator", "path": "/opt/excavator", "source": "excavator@inline", "version": "2.9.6" }
+  ]
+}

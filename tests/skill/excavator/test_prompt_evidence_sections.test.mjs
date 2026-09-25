@@ -5,13 +5,16 @@
  * means new sections at the END and not one changed or removed line above.
  *
  * "No removed lines" is asserted structurally rather than by parsing a diff:
- * the file as of `excavator-v2` (the integration branch these commits target)
- * must be a byte-exact PREFIX of the working copy. A prefix cannot have had a
- * line deleted, reworded, or reordered — every `git diff` hunk against that
- * ref is necessarily an append.
+ * the frozen baseline below (the file's UTF-8 byte length and SHA-256 as of
+ * commit 5a10e468 on main's history, before the ②b additions) must match the
+ * first bytes of the working copy exactly. A byte-exact prefix cannot have
+ * had a line deleted, reworded, or reordered — every change since is
+ * necessarily an append. The baseline lives here rather than behind a git
+ * ref so the check needs no branch and no network fetch, and it can never
+ * silently skip.
  */
 import { describe, expect, it } from 'vitest';
-import { execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { readdirSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -19,77 +22,32 @@ import { fileURLToPath } from 'node:url';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(__dirname, '../../..');
 
-/** The UA-semantics files this step is only allowed to append to. */
-const ADDITIVE_ONLY_FILES = [
-  'agents/excavator-file-analyzer.md',
+/** The UA-semantics files this step is only allowed to append to, with their frozen baselines. */
+const ADDITIVE_ONLY_BASELINES = [
+  {
+    path: 'agents/excavator-file-analyzer.md',
+    bytes: 34886,
+    sha256: '872620f1344acf255469d14c4569ee2900bcf7bcd8385fad37a7612575d00301',
+  },
 ];
-
-/** Candidate refs for "the branch these commits are based on", in order. */
-const BASE_REFS = ['excavator-v2', 'origin/excavator-v2'];
 
 function readRepoFile(relPath) {
   return readFileSync(resolve(repoRoot, relPath), 'utf-8');
-}
-
-function git(args) {
-  return execFileSync('git', ['-C', repoRoot, ...args], {
-    encoding: 'utf-8',
-    maxBuffer: 32 * 1024 * 1024,
-  });
-}
-
-/**
- * The base branch's copy of a file. Fails loudly when no base ref resolves:
- * an additive-only check that quietly skips itself is worse than no check,
- * because it is green in exactly the situation it cannot see.
- */
-function readBaseVersion(relPath) {
-  const tried = [];
-  for (const ref of BASE_REFS) {
-    try {
-      git(['rev-parse', '--verify', '--quiet', `${ref}^{commit}`]);
-    } catch {
-      tried.push(`${ref} (no such ref)`);
-      continue;
-    }
-    try {
-      return git(['show', `${ref}:${relPath}`]);
-    } catch (err) {
-      tried.push(`${ref} (git show failed: ${err.message})`);
-    }
-  }
-  throw new Error(
-    `cannot read the base version of ${relPath}: tried ${tried.join(', ')}. ` +
-    'The additive-only guarantee for the UA prompt files cannot be checked ' +
-    'without it, so this is a failure, not a skip.',
-  );
 }
 
 const fileAnalyzer = readRepoFile('agents/excavator-file-analyzer.md');
 const domainAnalyzer = readRepoFile('agents/excavator-domain-analyzer.md');
 
 describe('UA prompt files are only ever appended to', () => {
-  it.each(ADDITIVE_ONLY_FILES)('%s: the base version is a byte-exact prefix', relPath => {
-    const base = readBaseVersion(relPath);
-    const current = readRepoFile(relPath);
+  it.each(ADDITIVE_ONLY_BASELINES)('$path: the frozen baseline is a byte-exact prefix', ({ path, bytes, sha256 }) => {
+    const current = readFileSync(resolve(repoRoot, path));
 
-    expect(current.length).toBeGreaterThan(base.length);
-    // slice + equality rather than startsWith so a mismatch reports where.
-    expect(current.slice(0, base.length)).toBe(base);
-  });
-
-  it.each(ADDITIVE_ONLY_FILES)('%s: git diff against the base shows no removed lines', relPath => {
-    const base = readBaseVersion(relPath);
-    const current = readRepoFile(relPath);
-    const baseLines = base.split('\n');
-    const currentLines = current.split('\n');
-
-    // A prefix relationship at line granularity: every base line survives at
-    // its original index. This is the same property `git diff` would report
-    // as "no `-` lines", derived from content rather than from diff output.
-    expect(currentLines.length).toBeGreaterThanOrEqual(baseLines.length);
-    const removed = baseLines.filter((line, i) => currentLines[i] !== line);
-    expect(removed).toEqual([]);
+    expect(current.length).toBeGreaterThan(bytes);
+    const prefixHash = createHash('sha256').update(current.subarray(0, bytes)).digest('hex');
+    expect(
+      prefixHash,
+      `the first ${bytes} bytes of ${path} no longer match the frozen UA baseline: a line above the appended sections was changed or removed`,
+    ).toBe(sha256);
   });
 });
 

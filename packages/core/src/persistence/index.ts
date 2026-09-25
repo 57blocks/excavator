@@ -40,8 +40,15 @@ function ensureDir(projectRoot: string): string {
  *
  * This means the developer's home directory, username, and company
  * directory layout are never written to knowledge-graph.json.
+ *
+ * Exported (openspec: changes/product-serialization-ceiling, design D4) so a
+ * staged publish outside this module (skills/excavator/lazy-analyze.mjs) can
+ * apply the EXACT same sanitising step before running its own serialization-
+ * ceiling-aware write, instead of re-deriving or duplicating this logic.
+ * `saveGraph`'s own behavior is unchanged — it calls this same function
+ * exactly as before.
  */
-function sanitiseFilePaths(
+export function sanitiseFilePaths(
   graph: KnowledgeGraph,
   projectRoot: string,
 ): KnowledgeGraph {

@@ -10,6 +10,7 @@
 import { describe, expect, it } from 'vitest';
 import { buildFactGraph } from '../../skills/excavator/build-fact-graph.mjs';
 import { conservationViolations } from '../../skills/excavator/coverage-ledger.mjs';
+import { canonicalizeForDigest, sha256Hex } from '../../skills/excavator/fact-graph-resolve.mjs';
 
 // ---------------------------------------------------------------------------
 // Fixture: a small two-file project with one uniquely-resolvable call, one
@@ -121,6 +122,43 @@ describe('zero-model determinism', () => {
     expect(pb.factsDigest).toBe(pa.factsDigest);
     expect(pb.nodes).toEqual(pa.nodes);
     expect(pb.edges).toEqual(pa.edges);
+  });
+
+  // openspec: changes/product-serialization-ceiling, task 4.3 — the digest
+  // input string is now built via serializeJsonProduct('facts-digest-input',
+  // ..., {indent: 0}) instead of a bare JSON.stringify. The digest VALUE
+  // must be unchanged: reconstructs the pre-change formula independently
+  // (from the public return value: `digestCoverage` is a deep clone of
+  // `coverage` with `.selection` deleted and the three pre-extraction skip
+  // reasons pruned per language, exactly mirroring build-fact-graph.mjs's own
+  // — otherwise-private — steps) and compares against the real factsDigest.
+  it('factsDigest is byte-identical to the pre-change JSON.stringify + sha256Hex formula', () => {
+    const { scan, structureAll, importMap } = baseFixture();
+    const result = buildFactGraph({ scan, structureAll, importMap });
+
+    const digestCoverage = JSON.parse(JSON.stringify(result.coverage));
+    delete digestCoverage.selection;
+    let preExtractionFiles = 0;
+    let preExtractionIgnored = 0;
+    for (const row of Object.values(digestCoverage.byLanguage ?? {})) {
+      for (const reason of ['filtered-by-defaults', 'filtered-by-ignore', 'sensitive']) {
+        const count = row.skipped?.[reason] ?? 0;
+        preExtractionFiles += count;
+        if (reason !== 'sensitive') preExtractionIgnored += count;
+        if (row.skipped) delete row.skipped[reason];
+        row.files -= count;
+      }
+    }
+    for (const [language, row] of Object.entries(digestCoverage.byLanguage ?? {})) {
+      if (row.files === 0) delete digestCoverage.byLanguage[language];
+    }
+    digestCoverage.files -= preExtractionFiles;
+    digestCoverage.ignored = Math.max(0, (digestCoverage.ignored ?? 0) - preExtractionIgnored);
+
+    const preChangeDigest = sha256Hex(
+      JSON.stringify(canonicalizeForDigest({ nodes: result.nodes, edges: result.edges, coverage: digestCoverage, gaps: result.gaps })),
+    );
+    expect(result.factsDigest).toBe(preChangeDigest);
   });
 });
 

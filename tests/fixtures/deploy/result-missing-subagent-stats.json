@@ -1,0 +1,21 @@
+{
+  "type": "result",
+  "subtype": "success",
+  "session_id": "00000000-0000-0000-0000-000000000007",
+  "is_error": false,
+  "terminal_reason": "completed",
+  "permission_denials": [],
+  "modelUsage": {
+    "eu.anthropic.claude-sonnet-5": {
+      "inputTokens": 12000,
+      "outputTokens": 3400,
+      "cacheReadInputTokens": 8000,
+      "cacheCreationInputTokens": 500,
+      "costUSD": 0.42
+    }
+  },
+  "total_cost_usd": 0.42,
+  "num_turns": 12,
+  "result": "Analysis complete.",
+  "duration_ms": 120000
+}
