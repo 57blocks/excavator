@@ -31,7 +31,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "cmd=$(jq -r '.tool_input.command // empty'); case \"$cmd\" in *\"git push\"*) : ;; *) exit 0 ;; esac; if printf ' %s ' \"$cmd\" | grep -qE '[^-A-Za-z0-9_](main|excavator-v2)[^-A-Za-z0-9_]'; then echo 'Blocked: direct push to main or excavator-v2 is forbidden (docs/development.md). Merge via PR instead.' 1>&2; exit 2; fi; br=$(cd \"${CLAUDE_PROJECT_DIR:-.}\" && git branch --show-current 2>/dev/null); if [ \"$br\" = \"main\" ] || [ \"$br\" = \"excavator-v2\" ]; then echo 'Blocked: current branch is main or excavator-v2; switch to a feat branch before pushing.' 1>&2; exit 2; fi",
+            "command": "cmd=$(jq -r '.tool_input.command // empty'); case \"$cmd\" in *\"git push\"*) : ;; *) exit 0 ;; esac; if printf ' %s ' \"$cmd\" | grep -qE '[^-A-Za-z0-9_]main[^-A-Za-z0-9_]'; then echo 'Blocked: direct push to main is forbidden (docs/development.md). Merge via PR instead.' 1>&2; exit 2; fi; br=$(cd \"${CLAUDE_PROJECT_DIR:-.}\" && git branch --show-current 2>/dev/null); if [ \"$br\" = \"main\" ]; then echo 'Blocked: current branch is main; switch to a feat branch before pushing.' 1>&2; exit 2; fi",
             "timeout": 10,
             "statusMessage": "Checking push target"
           }
