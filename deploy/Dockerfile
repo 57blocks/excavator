@@ -107,4 +107,12 @@ USER 10001
 WORKDIR /home/excavator
 ENV HOME=/home/excavator
 
+# V8's default heap limit is about a quarter of the memory the container
+# sees (~2 GB under 8 GB), and a Lazy run on a ~3M-line repository needs
+# more than that: it died with a V8 OOM at the publish step. Size the heap
+# to 75% of the container's memory instead (the flag follows a docker
+# --memory limit). Every node process in the image, including the skill
+# scripts Claude Code runs, inherits it; an operator can still override it.
+ENV NODE_OPTIONS=--max-old-space-size-percentage=75
+
 ENTRYPOINT ["excavator-run"]

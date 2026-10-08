@@ -123,6 +123,23 @@ check_safe_directory() {
   esac
 }
 
+# 6b. The V8 heap is sized from the container's memory (the image's
+# NODE_OPTIONS), not V8's ~25% default that a ~3M-line repository outgrows.
+check_node_heap() {
+  node -e '
+    const os = require("os");
+    const v8 = require("v8");
+    const constrained = typeof process.constrainedMemory === "function" ? process.constrainedMemory() : 0;
+    const memory = constrained > 0 && constrained < os.totalmem() ? constrained : os.totalmem();
+    const heap = v8.getHeapStatistics().heap_size_limit;
+    const ratio = heap / memory;
+    if (ratio < 0.6) {
+      console.log(`heap limit ${Math.round(heap / 1048576)} MiB is ${Math.round(ratio * 100)}% of ${Math.round(memory / 1048576)} MiB; expected about 75% (NODE_OPTIONS=${process.env.NODE_OPTIONS || "unset"})`);
+      process.exit(1);
+    }
+  '
+}
+
 # 7. Lazy analysis runs end-to-end on a freshly created repo (no model,
 # no credentials) and produces a knowledge graph. Every step is checked
 # explicitly (see the run_check note above) so a failing git or node step
@@ -581,6 +598,7 @@ run_check "plugin-validate" check_plugin_validate
 run_check "python" check_python
 run_check "plugin-symlink" check_plugin_symlink
 run_check "safe-directory" check_safe_directory
+run_check "node-heap" check_node_heap
 run_check "lazy-analyze" check_lazy_analyze
 run_check "load-probe" check_load_probe
 run_check "isolation" check_isolation
