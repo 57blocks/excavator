@@ -77,3 +77,8 @@ commit 序列：
 - CI 过程中发现并修正了两处：
   - 测试门在 CI 上需要显式拉取 `excavator-v2` 基线 ref；
   - QEMU 模拟 arm64 太慢，导致探针超时。随后按"只为部署到 AWS"收窄为只构建 amd64。
+
+## 6. 部署前补充（本地验证）
+
+- [x] 6.1 镜像内置 `NODE_OPTIONS=--max-old-space-size-percentage=75`，自检新增 `node-heap` 检查。验证：hadoop lazy 在默认参数下成功（约 2 分钟，事实摘要与固定值一致）；清空 `NODE_OPTIONS` 时 `node-heap` 报 FAIL；`--network none` 下自检 12/12、hadoop lazy 均通过。
+- [x] 6.2 `docs/deploy.md` 新增「压缩包交接」处理步骤与「大仓库规格」。验证：带恶意 `core.fsmonitor` 的合成压缩包按步骤处理后，诱饵从未触发，镜像 lazy 成功，full 的加载检查通过（无模型调用，按预期以运行失败结束）。
