@@ -182,6 +182,9 @@ claude -p "/excavator:excavator /work/repo --mode=full"      # 需要强制重�
 - **[风险] eu-central-1 上 prompt caching 不可用，成本明显上升** → 摘要给出警告；发布门实测缓存读取 token 并把结果写进记录。
 - **[已发生] arm64 在 QEMU 下太慢，自检超时；随后收窄为只构建 amd64** → 第一版 CI 在 x86 runner 上用 QEMU 模拟 arm64：lazy 一步就要 29 秒（原生约 2 秒），加载探针与隔离检查撞上 2 分钟的探针超时。考虑到镜像只为部署到 AWS、EC2 默认是 x86，不再构建 arm64，CI 也不再需要 QEMU 和多架构拼接；推送的就是自检通过的那个镜像。本地仍验证过 arm64 能构建并通过自检，需要 Graviton 时再加原生 arm64 runner。
 - **[权衡] 摘要里的花费是 Claude Code 客户端按官方单价的估算，不含 EU 区域的 10% 溢价** → 契约文档注明，实际账单以 AWS 为准。
+- **[已发生] 大仓库在容器里触发 V8 堆内存溢出** → 本地在 hadoop（16575 个跟踪文件、约 300 万行 Java）上跑镜像的 lazy：Docker 分到 8 GB 内存时，V8 默认堆上限只有约 2 GB（约为可用内存的四分之一），运行在发布阶段 OOM 退出。镜像现在内置 `NODE_OPTIONS=--max-old-space-size-percentage=75`，按容器内存的 75% 设定堆上限（会遵守 `docker run --memory`）。之后在默认参数下用时约 2 分钟，事实摘要与固定值 `88c3219d31de…` 一致；自检新增堆上限检查，清空 `NODE_OPTIONS` 时报 FAIL。
+- **[已确认] 镜像运行时不需要外网** → 部署 VM 明确禁止出网。容器在 `--network none` 下自检 12/12、hadoop lazy 均通过；full 模式只需要 Bedrock 的 VPC 端点。
+- **[新增场景] 代码以压缩包交接** → 压缩包里对方的 `.git` 不可信（`core.fsmonitor` 可让一次 `git status` 执行命令），而镜像对 `safe.directory` 全部放行。`docs/deploy.md` 新增处理步骤：不在其中执行任何 git 命令，先删除所有 `.git`，再 `git init` 并提交一次，使 full 模式需要的 HEAD 存在。本地用带恶意 `core.fsmonitor` 的合成压缩包验证：诱饵未触发，lazy 成功，full 的加载检查通过。
 
 ## Migration Plan
 
