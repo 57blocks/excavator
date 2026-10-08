@@ -8,7 +8,7 @@ The runner image bundles a pinned Excavator checkout (built: dependencies and `p
 
 **One container processes one mounted repository and performs one run.** There is no batching, no scheduling, and no repository cloning inside the container — the operator (a VM, ECS task, or CodeBuild job) supplies an already-cloned repository and reads the results back from a mounted output directory. Two fixed mount points:
 
-- `/work/repo` — the target repository. **Must be a clone the operator made and maintains** (created with `git clone`, updated only with `git fetch`/`git checkout` by the operator), never a copy of someone's working tree and never a directory whose `.git` was copied in from elsewhere (the image trusts this directory's `.git/config`; see [Security preconditions](#security-preconditions)). It may persist between runs so that `.excavator/` from the previous run enables incremental `full` runs and the unchanged-HEAD skip. Writable — products are written into its `.excavator/`.
+- `/work/repo` — the target repository. **Must be a clone the operator made and maintains** (created with `git clone`, updated only with `git fetch`/`git checkout` by the operator) or a repository prepared from a code archive as described in [Preparing `/work/repo` from a code archive](#preparing-workrepo-from-a-code-archive); never a copy of someone's working tree and never a directory whose `.git` was copied in from elsewhere (the image trusts this directory's `.git/config`; see [Security preconditions](#security-preconditions)). It may persist between runs so that `.excavator/` from the previous run enables incremental `full` runs and the unchanged-HEAD skip. Writable — products are written into its `.excavator/`.
 - `/work/out` — run output. Writable — `run.jsonl`, `summary.json`, `validation.json`, `validated-graph.json` land here (see [Exit codes and output files](#exit-codes-and-output-files)).
 
 The container **always runs as uid 10001** (baked in; the entrypoint needs to write to its own `$HOME`). Do not pass `--user` to override it. Both mount points must be writable by uid 10001 on the host (or in the volume backing them).
@@ -87,6 +87,33 @@ Set at build time in `deploy/Dockerfile`; not operator-configurable. Listed so t
 | `MCP_TOOL_TIMEOUT` | `600000` (ms) | |
 | `BASH_DEFAULT_TIMEOUT_MS` | `600000` | |
 | `BASH_MAX_TIMEOUT_MS` | `1800000` | |
+| `NODE_OPTIONS` | `--max-old-space-size-percentage=75` | sizes the Node heap to 75% of the container's memory (follows `docker run --memory`); V8's ~25% default is too small for very large repositories. Can be overridden with `-e NODE_OPTIONS=...` |
+
+## Preparing `/work/repo` from a code archive
+
+When code arrives as an archive (for example a zip uploaded to S3) rather than as a git clone you make yourself:
+
+```sh
+sha256sum -c repo.zip.sha256                       # if the sender provided a checksum
+mkdir -p /srv/excavator/<name> && unzip -q repo.zip -d /srv/excavator/<name>
+cd /srv/excavator/<name>/<project-root>            # the directory that holds the project's files
+find . -name .git -prune -exec rm -rf {} +         # BEFORE running any git command here
+git init -q && git add -A && git -c user.name=excavator -c user.email=excavator@localhost commit -qm "handover <name>"
+chmod -R a+rwX .                                   # writable by the container's uid 10001
+```
+
+- **Delete the archive's `.git` before running any git command in it.** A `.git/config` from someone else can make an ordinary `git status` execute a command (for example via `core.fsmonitor`); the image also allows every directory in git's `safe.directory`, which is only safe for a repository you created yourself.
+- The fresh `git init` + commit gives the project a HEAD, which `full` mode requires. The analysis needs only the current files, not the sender's history.
+- `git add -A` follows the project's own `.gitignore`, so ignored content (dependencies, build output) is not analysed.
+
+## Sizing for large repositories
+
+Measured on a ~3M-line Java repository (16,575 tracked files), Lazy mode in the image on 8 vCPU / 8 GB:
+
+- Wall clock: about 2 minutes. Peak container memory: about 2.7 GB; the Node heap needs more than 2 GB (with V8's default heap limit the run failed with an out-of-memory error at the publish step).
+- Products in `.excavator/`: about 1.2 GB (knowledge graph ~324 MB, source index ~274 MB, fingerprints ~73 MB).
+
+For repositories of that size, plan for at least 16 GB of RAM and disk for the repository, about 1.5 GB of products per repository, and the ~1.5 GB image. A `full` run on such a repository takes far longer and costs far more than Lazy: raise `EXCAVATOR_TIMEOUT_MINUTES` above its 180-minute default and set `EXCAVATOR_MAX_BUDGET_USD` deliberately.
 
 ## Exit codes and output files
 
