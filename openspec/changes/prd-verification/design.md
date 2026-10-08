@@ -38,7 +38,7 @@
 
 ### D6 无第四态
 
-每个候选必须落入判定桶：说法类 verified / contradicted / misattributed / unverifiable；未决项类 resolved / still-open / contradicted。子代理漏回的候选计为 not-checked 并在报告中计数，不得静默消失。
+每个候选必须落入判定桶：说法类 verified / contradicted / misattributed / unverifiable；未决项类 resolved-right / resolved-wrong / still-open——把「暂定说法是否正确」并入判定本身，使 resolved-wrong 与 contradicted 一起计入错误。子代理漏回的候选计为 not-checked 并在报告中计数，不得静默消失。
 
 ### D7 `--fix` 只改错、不扩写
 

@@ -77,14 +77,14 @@ Document language: <LANGUAGE>.
      class: N | R | T | A | O
      subject: <short subject, e.g. "Reschedule approval → delinquency recalculation">
      quote: <the statement, verbatim, shortened only with … if very long>
-     verdict: verified | contradicted | misattributed | unverifiable   (for class O: resolved | still-open | contradicted)
+     verdict: verified | contradicted | misattributed | unverifiable   (for class O: resolved-right | resolved-wrong | still-open)
      evidence: <file:line[, file:line]> and, for N or still-open, the searched scope
-     correction: <for contradicted, misattributed, resolved: the replacement statement in <LANGUAGE>, matching the document's style, stating only what the evidence supports; otherwise empty>
-   "contradicted" means the code says otherwise; "misattributed" means the behavior exists but the statement assigns it to the wrong flow, component, condition or case; "resolved" means an open item the code settles (whether or not the document's tentative guess was right — say which in the correction).
+     correction: <for contradicted, misattributed, resolved-right, resolved-wrong: the replacement statement in <LANGUAGE>, matching the document's style, stating only what the evidence supports; otherwise empty>
+   "contradicted" means the code says otherwise; "misattributed" means the behavior exists but the statement assigns it to the wrong flow, component, condition or case; "resolved-right" / "resolved-wrong" mean the code settles an open item and the document's tentative guess was right / wrong.
    End with counts per class and per verdict, and the number of candidates you selected.
 ```
 
-When all subagents return, check the books: for each group, the returned entries must equal the number of candidates it reported selecting. Any candidate a subagent selected but did not return is counted as **not-checked**. A group whose subagent failed entirely is reported as not-checked with its line range.
+Wait until every section verifier has returned before you continue — do not end your turn or write the report while any of them is still running, and do not stop one to save budget unless the user told you to. When all subagents return, check the books: for each group, the returned entries must equal the number of candidates it reported selecting. Any candidate a subagent selected but did not return is counted as **not-checked**. A group whose subagent failed entirely is reported as not-checked with its line range.
 
 ## Phase 2 — Cross-section consistency
 
@@ -97,7 +97,7 @@ Write the report to the `--report` path in the document's language:
 1. **Scope** — the five classes plus cross-section consistency; other statements were not checked. Baseline and document path.
 2. **Counts** — a table of class × verdict, plus not-checked and conflicts. The totals must equal the number of selected candidates.
 3. **Errors** — every contradicted and misattributed entry and every conflict: line, quote, evidence, correction.
-4. **Open items** — resolved (with the settled statement, and whether the original guess was right), still-open (with the searched scope), contradicted.
+4. **Open items** — resolved-right and resolved-wrong (with the settled statement), still-open (with the searched scope). A resolved-wrong item is a wrong statement the document made, and counts with the errors.
 5. **Run** — number of section groups and subagents.
 
 In the final message, give the counts and the errors list (line + one-line summary each).
@@ -105,14 +105,14 @@ In the final message, give the counts and the errors list (line + one-line summa
 ## Phase 4 — Self-check
 
 - Counts add up to the selected-candidate total; not-checked is reported, not hidden.
-- Every contradicted, misattributed, resolved and conflict entry has `file:line` evidence.
+- Every contradicted, misattributed, resolved-right, resolved-wrong and conflict entry has `file:line` evidence.
 - The report states the verification scope.
 
 ## Phase 5 — Fix (only with `--fix`)
 
 Edit `DOC` in place, one entry at a time:
 - **contradicted / misattributed / conflict** — replace the wrong statement (sentence, list item or table cell) with the correction. Keep the surrounding structure.
-- **resolved open item** — replace the tentative statement and its open marker with the settled statement.
+- **resolved-right / resolved-wrong open item** — replace the tentative statement and its open marker with the settled statement.
 - **still-open** — leave it, and make sure the open marker says what was searched.
 - Where the flow has an evidence `<details>` block, add the new evidence lines to it.
 

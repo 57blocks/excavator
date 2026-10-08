@@ -22,7 +22,7 @@
 
 ### Requirement: 判定无第四态
 
-每个候选 SHALL 落入且仅落入一个可见判定桶：说法类为 verified / contradicted / misattributed / unverifiable，未决项为 resolved / still-open / contradicted；子代理未返回的候选 SHALL 计为 not-checked。报告 SHALL 给出各桶计数且计数之和等于候选总数；contradicted / misattributed 条目 SHALL 附原文引用与源码 `file:line`。
+每个候选 SHALL 落入且仅落入一个可见判定桶：说法类为 verified / contradicted / misattributed / unverifiable，未决项为 resolved-right / resolved-wrong / still-open（resolved-wrong 表示代码已定论且文档的暂定说法错误，计入错误）；子代理未返回的候选 SHALL 计为 not-checked。报告 SHALL 给出各桶计数且计数之和等于候选总数；contradicted / misattributed 条目 SHALL 附原文引用与源码 `file:line`。
 
 #### Scenario: 子代理漏项
 - **WHEN** 某章节的核对子代理未返回其中一条候选
