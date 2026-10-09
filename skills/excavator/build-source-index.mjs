@@ -166,7 +166,7 @@ function declEntriesForRow(row) {
   for (const fn of row.functions ?? []) {
     entries.push({
       kind: 'function', path: row.path, name: fn.name, owner: fn.owner ?? null,
-      params: fn.params ?? [], returnType: fn.returnType,
+      params: fn.params ?? [], paramTypes: fn.paramTypes, returnType: fn.returnType,
       lineRange: [fn.startLine, fn.endLine],
       identifierSeeds: [fn.name, fn.owner, ...(fn.params ?? []), fn.returnType],
     });
@@ -231,6 +231,7 @@ function nodeIdFor(entry) {
     name: entry.name,
     owner: entry.owner,
     params: entry.kind === 'function' ? entry.params : undefined,
+    paramTypes: entry.kind === 'function' ? entry.paramTypes : undefined,
     returnType: entry.kind === 'function' ? entry.returnType : undefined,
     ordinal: entry.ordinal,
   });

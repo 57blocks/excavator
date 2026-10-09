@@ -136,6 +136,85 @@ describe("JavaExtractor", () => {
     });
   });
 
+  // ---- Parameter types and owner (node identity of overloads) ----
+
+  describe("extractStructure - paramTypes and owner", () => {
+    it("gives overloads with the same parameter names different parameter types", () => {
+      const { tree, parser, root } = parse(`public class Rule {
+    void handle(JsonCommand command, Map<String, Object> changes) {}
+    void handle(String command, Map<String, Object> changes) {}
+}
+`);
+      const result = extractor.extractStructure(root);
+
+      expect(result.functions.map((f) => f.params)).toEqual([
+        ["command", "changes"],
+        ["command", "changes"],
+      ]);
+      expect(result.functions.map((f) => f.paramTypes)).toEqual([
+        ["JsonCommand", "Map<String, Object>"],
+        ["String", "Map<String, Object>"],
+      ]);
+
+      tree.delete();
+      parser.delete();
+    });
+
+    it("records arrays, trailing dimensions and varargs, without annotations or modifiers", () => {
+      const { tree, parser, root } = parse(`public class Arrays {
+    void a(final @NonNull String[] names, int matrix[][], Object... rest) {}
+}
+`);
+      const result = extractor.extractStructure(root);
+
+      expect(result.functions[0].paramTypes).toEqual(["String[]", "int[][]", "Object..."]);
+
+      tree.delete();
+      parser.delete();
+    });
+
+    it("erases a method's own type variables to their first bound, or Object", () => {
+      const { tree, parser, root } = parse(`public abstract class Metrics {
+    public abstract <T> T register(String name, String desc, T source);
+    public abstract <T extends MetricsSink> T register(String name, String desc, T sink);
+    public <K extends Comparable<K>, V> void put(Map<K, V> map, List<V> values) {}
+}
+`);
+      const result = extractor.extractStructure(root);
+
+      expect(result.functions.map((f) => f.paramTypes)).toEqual([
+        ["String", "String", "Object"],
+        ["String", "String", "MetricsSink"],
+        ["Map<Comparable<K>, Object>", "List<Object>"],
+      ]);
+
+      tree.delete();
+      parser.delete();
+    });
+
+    it("sets the declaring type as owner for methods and constructors, including enum members", () => {
+      const { tree, parser, root } = parse(`class First {
+    First(int a) {}
+    void run() {}
+}
+enum Second {
+    A, B;
+    void run() {}
+}
+`);
+      const result = extractor.extractStructure(root);
+
+      expect(result.functions.map((f) => [f.owner, f.name, f.paramTypes])).toEqual([
+        ["First", "First", ["int"]],
+        ["First", "run", []],
+        ["Second", "run", []],
+      ]);
+
+      tree.delete();
+      parser.delete();
+    });
+  });
+
   // ---- Classes ----
 
   describe("extractStructure - classes", () => {

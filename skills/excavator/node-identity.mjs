@@ -61,9 +61,13 @@ const FUNCTION_LIKE = new Set(['function', 'method']);
 
 /**
  * Derive a stable node id.
+ *
+ * The signature segment of a function comes from, in order: an explicit
+ * `signature`; `paramTypes` (languages whose overloads differ by parameter
+ * type, e.g. Java — the names alone would collapse such overloads); `params`.
  * @param {{
  *   type: string, path: string, name?: string, owner?: string|null,
- *   params?: string[], returnType?: string, signature?: string,
+ *   params?: string[], paramTypes?: string[], returnType?: string, signature?: string,
  *   ordinal?: number, memberId?: string|null,
  * }} d
  * @returns {string}
@@ -98,6 +102,8 @@ export function deriveNodeId(d) {
   if (FUNCTION_LIKE.has(d.type)) {
     if (typeof d.signature === 'string' && d.signature.length > 0) {
       sigSeg = d.signature;
+    } else if (Array.isArray(d.paramTypes)) {
+      sigSeg = normalizeSignature(d.paramTypes, d.returnType);
     } else if (d.params !== undefined) {
       sigSeg = normalizeSignature(d.params, d.returnType);
     }

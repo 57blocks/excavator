@@ -56,6 +56,22 @@ describe('R3 可区分维度不坍缩', () => {
     expect(normalizeSignature([' a ', 'b'])).toBe(normalizeSignature(['a', 'b']));
     expect(normalizeSignature([])).toBe('()');
   });
+
+  it('参数名相同、类型不同的重载（Java）→ 不同 ID，且不报身份冲突', () => {
+    const base = { type: 'function', path: 'src/Rule.java', name: 'handle', owner: 'Rule', params: ['command'] };
+    const a = { ...base, paramTypes: ['JsonCommand'], lineRange: [2, 4] };
+    const b = { ...base, paramTypes: ['String'], lineRange: [5, 7] };
+    expect(deriveNodeId(a)).toBe('function:src/Rule.java:Rule#handle(JsonCommand)');
+    expect(deriveNodeId(b)).toBe('function:src/Rule.java:Rule#handle(String)');
+    expect(collectNodeIds([a, b]).collisions).toHaveLength(0);
+  });
+
+  it('有 paramTypes 时签名用类型，没有时仍用参数名（其它语言不变）', () => {
+    const d = { type: 'function', path: 'src/a.ts', name: 'add', owner: 'Calc', params: ['a', 'b'] };
+    expect(deriveNodeId(d)).toBe('function:src/a.ts:Calc#add(a,b)');
+    expect(deriveNodeId({ ...d, paramTypes: ['int', 'int'] })).toBe('function:src/a.ts:Calc#add(int,int)');
+    expect(deriveNodeId({ ...d, paramTypes: [], signature: '(x)' })).toBe('function:src/a.ts:Calc#add(x)');
+  });
 });
 
 describe('R4 匿名与难命名构造的稳定兜底', () => {
