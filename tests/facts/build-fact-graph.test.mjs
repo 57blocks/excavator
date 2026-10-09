@@ -8,7 +8,8 @@
 // extract-structure-result.mjs's buildResult() and extract-import-map.mjs's
 // output for the authoritative row shapes); no CLI process is spawned.
 import { describe, expect, it } from 'vitest';
-import { buildFactGraph } from '../../skills/excavator/build-fact-graph.mjs';
+import { buildFactGraph, computeFactsDigest, FACTS_DIGEST_RECORD } from '../../skills/excavator/build-fact-graph.mjs';
+import { createHeadroomRecorder, ProductTooLargeError } from '../../skills/excavator/product-serialization.mjs';
 import { buildSourceIndex } from '../../skills/excavator/build-source-index.mjs';
 import { conservationViolations } from '../../skills/excavator/coverage-ledger.mjs';
 import { canonicalizeForDigest, sha256Hex } from '../../skills/excavator/fact-graph-resolve.mjs';
@@ -399,5 +400,71 @@ describe('contains edges', () => {
     );
     expect(containsEdge).toBeDefined();
     expect(containsEdge.provenance).toBe('extracted');
+  });
+});
+
+// openspec: changes/knowledge-graph-line-store, design D3 — the facts digest
+// is hashed record by record. The pre-change formula (one joined string) is
+// the oracle: the digest must match it exactly on every shape.
+describe('computeFactsDigest — record-by-record hash, byte-identical to the joined-string formula', () => {
+  const oracle = (parts) => sha256Hex(JSON.stringify(canonicalizeForDigest(parts)));
+
+  it('the oracle sees a one-field difference', () => {
+    const a = { nodes: [{ id: 'n', b: 1, a: 2 }], edges: [], coverage: { files: 1 }, gaps: [] };
+    const b = { nodes: [{ id: 'n', b: 1, a: 3 }], edges: [], coverage: { files: 1 }, gaps: [] };
+    expect(oracle(a)).not.toBe(oracle(b));
+    expect(computeFactsDigest(a)).not.toBe(computeFactsDigest(b));
+  });
+
+  const cases = {
+    'empty arrays': { nodes: [], edges: [], coverage: {}, gaps: [] },
+    'nested unsorted keys and unicode': {
+      nodes: [{ z: 1, id: 'function:src/a.ts:run', summary: '处理订单 😀', lineRange: [1, 2] }, { id: 'file:src/a.ts' }],
+      edges: [{ type: 'calls', source: 'a', target: 'b', evidence: [{ line: 3, file: 'src/a.ts' }] }],
+      coverage: { files: 2, byLanguage: { ts: { parsed: 2, files: 2 } } },
+      gaps: [{ kind: 'k', count: 1, samples: ['x'] }],
+    },
+    'undefined values and elements': {
+      nodes: [{ id: 'n', summary: undefined }, undefined],
+      edges: [],
+      coverage: { files: 0, extra: undefined },
+      gaps: undefined,
+    },
+  };
+  for (const [name, parts] of Object.entries(cases)) {
+    it(`matches the oracle: ${name}`, () => {
+      expect(computeFactsDigest(parts)).toBe(oracle(parts));
+    });
+  }
+
+  it('matches the oracle on a real buildFactGraph projection', () => {
+    const { scan, structureAll, importMap } = baseFixture();
+    const result = buildFactGraph({ scan, structureAll, importMap });
+    const parts = { nodes: result.nodes, edges: result.edges, coverage: { files: 1 }, gaps: result.gaps };
+    expect(computeFactsDigest(parts)).toBe(oracle(parts));
+  });
+
+  it('reports the longest record as a max-record headroom entry, and never a joined-text entry', () => {
+    const recorder = createHeadroomRecorder();
+    const parts = cases['nested unsorted keys and unicode'];
+    computeFactsDigest(parts, { recorder });
+    const longest = Math.max(
+      ...[...parts.nodes, ...parts.edges, ...parts.gaps, parts.coverage].map((r) => JSON.stringify(canonicalizeForDigest(r)).length),
+    );
+    expect(recorder.entries()).toEqual([
+      expect.objectContaining({ product: FACTS_DIGEST_RECORD, maxRecordChars: longest, measuredAs: 'max-record' }),
+    ]);
+  });
+
+  it('a digest input far larger than the limit succeeds when every record fits', () => {
+    const parts = { nodes: Array.from({ length: 200 }, (_, i) => ({ id: `file:src/f${i}.ts` })), edges: [], coverage: {}, gaps: [] };
+    expect(JSON.stringify(parts).length).toBeGreaterThan(500);
+    expect(computeFactsDigest(parts, { limit: 500 })).toBe(oracle(parts));
+  });
+
+  it('a single record longer than the limit fails as a named ProductTooLargeError', () => {
+    const parts = { nodes: [{ id: 'n', summary: 'x'.repeat(600) }], edges: [], coverage: {}, gaps: [] };
+    expect(() => computeFactsDigest(parts, { limit: 500 })).toThrow(ProductTooLargeError);
+    expect(() => computeFactsDigest(parts, { limit: 500 })).toThrow(FACTS_DIGEST_RECORD);
   });
 });

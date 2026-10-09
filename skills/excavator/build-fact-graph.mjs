@@ -46,6 +46,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { dirname } from 'node:path';
 import { existsSync, readFileSync, realpathSync, writeFileSync, mkdirSync } from 'node:fs';
 import { createRequire } from 'node:module';
+import { createHash } from 'node:crypto';
 import { deriveNodeId, collectNodeIds } from './node-identity.mjs';
 import { buildCoverageLedger, compareGaps } from './coverage-ledger.mjs';
 import {
@@ -56,7 +57,6 @@ import {
   assignOrdinals,
   lookupCandidates,
   canonicalizeForDigest,
-  sha256Hex,
   createGapCollector,
 } from './fact-graph-resolve.mjs';
 import { DEFAULT_LIMIT_CHARS, serializeJsonProduct } from './product-serialization.mjs';
@@ -469,22 +469,15 @@ export function buildFactGraph({ scan, structureAll, importMap, serializationLim
   digestCoverage.files -= preExtractionFiles;
   digestCoverage.ignored = Math.max(0, (digestCoverage.ignored ?? 0) - preExtractionIgnored);
 
-  // The digest input string itself goes through serializeJsonProduct (design
-  // D5) rather than a bare JSON.stringify — this joined text is exactly the
-  // joined fact-summary text the product-serialization spec (Scenario:
-  // overflow during the facts-summary step) names as one of the
-  // ceiling-checked products (it was ~50% of the runtime limit on Hadoop's
-  // real fact graph). The digest VALUE is unchanged: `sha256Hex` is still
-  // hashing the identical compact-JSON bytes `JSON.stringify(...)` would
-  // have produced — serializeJsonProduct returns that same string on the
-  // success path (see its own header doc: the success path pays nothing
-  // extra).
-  const factsDigestInput = serializeJsonProduct(
-    'facts-digest-input',
-    canonicalizeForDigest({ nodes, edges: sortedEdges, coverage: digestCoverage, gaps }),
-    { indent: 0, limit: serializationLimit, recorder: headroomRecorder },
+  // Hashed record by record (openspec: changes/knowledge-graph-line-store,
+  // design D3): the joined digest text was 66% of the runtime single-string
+  // limit on Hadoop's real fact graph. The digest VALUE is unchanged —
+  // computeFactsDigest feeds the hash exactly the bytes that
+  // `JSON.stringify(canonicalizeForDigest({...}))` would have produced.
+  const factsDigest = computeFactsDigest(
+    { nodes, edges: sortedEdges, coverage: digestCoverage, gaps },
+    { limit: serializationLimit, recorder: headroomRecorder },
   );
-  const factsDigest = sha256Hex(factsDigestInput);
 
   return {
     nodes,
@@ -493,6 +486,55 @@ export function buildFactGraph({ scan, structureAll, importMap, serializationLim
     gaps,
     factsDigest,
   };
+}
+
+/** Product name for one record of the facts digest input, in headroom
+ *  entries and in a ProductTooLargeError. */
+export const FACTS_DIGEST_RECORD = 'facts-digest-record';
+
+/**
+ * sha256 over the canonical compact JSON of `parts` — the same bytes as
+ * `JSON.stringify(canonicalizeForDigest(parts))` — without ever building that
+ * string. Top-level keys are visited in canonical order; a top-level array is
+ * hashed one element at a time, any other top-level value in one piece. Each
+ * piece is serialized through serializeJsonProduct, so a single record longer
+ * than `limit` fails as a named ProductTooLargeError; the longest record is
+ * reported to `recorder` as a `max-record` headroom entry.
+ *
+ * @param {Record<string, *>} parts
+ * @param {{ limit?: number, recorder?: ReturnType<typeof import('./product-serialization.mjs').createHeadroomRecorder> | null }} [options]
+ * @returns {string} lowercase hex sha256
+ */
+export function computeFactsDigest(parts, { limit = DEFAULT_LIMIT_CHARS, recorder = null } = {}) {
+  const hash = createHash('sha256');
+  let maxRecordChars = 0;
+  const serialize = (value) => {
+    const text = serializeJsonProduct(FACTS_DIGEST_RECORD, canonicalizeForDigest(value), { indent: 0, limit });
+    if (text.length > maxRecordChars) maxRecordChars = text.length;
+    return text;
+  };
+
+  // JSON.stringify drops an undefined-valued key and writes an undefined
+  // array element as null; mirror both so the bytes stay identical.
+  const keys = Object.keys(parts).filter((key) => parts[key] !== undefined).sort(compareStrings);
+  hash.update('{');
+  keys.forEach((key, i) => {
+    hash.update(`${i > 0 ? ',' : ''}${JSON.stringify(key)}:`);
+    const value = parts[key];
+    if (Array.isArray(value)) {
+      hash.update('[');
+      value.forEach((item, j) => {
+        if (j > 0) hash.update(',');
+        hash.update(item === undefined ? 'null' : serialize(item));
+      });
+      hash.update(']');
+    } else {
+      hash.update(serialize(value));
+    }
+  });
+  hash.update('}');
+  recorder?.recordMaxRecord(FACTS_DIGEST_RECORD, maxRecordChars, limit);
+  return hash.digest('hex');
 }
 
 /** Human-readable reason text per resolution-gap kind (`count` is a separate

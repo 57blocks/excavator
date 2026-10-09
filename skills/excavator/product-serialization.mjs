@@ -260,8 +260,14 @@ export function serializeJsonProduct(name, value, { indent = 0, limit = DEFAULT_
  * @returns {{
  *   recordChars: (product: string, chars: number, limitChars: number) => void,
  *   recordBytes: (product: string, bytes: number, limitChars: number) => void,
- *   entries: () => Array<{ product: string, chars?: number, bytes?: number, limitChars: number, percentOfLimit: number, measuredAs: 'chars'|'bytes' }>,
+ *   recordMaxRecord: (product: string, maxRecordChars: number, limitChars: number) => void,
+ *   entries: () => Array<{ product: string, chars?: number, bytes?: number, maxRecordChars?: number, limitChars: number, percentOfLimit: number, measuredAs: 'chars'|'bytes'|'max-record' }>,
  * }}
+ *
+ * `recordMaxRecord` is for line-oriented products (`*.jsonl`) and for the
+ * record-by-record facts digest: no single string ever holds the whole
+ * product, so the figure that can reach the limit is the longest single
+ * record (openspec: changes/knowledge-graph-line-store, design D6).
  */
 export function createHeadroomRecorder() {
   const entries = [];
@@ -271,6 +277,9 @@ export function createHeadroomRecorder() {
     },
     recordBytes(product, bytes, limitChars) {
       entries.push({ product, bytes, limitChars, percentOfLimit: (bytes / limitChars) * 100, measuredAs: 'bytes' });
+    },
+    recordMaxRecord(product, maxRecordChars, limitChars) {
+      entries.push({ product, maxRecordChars, limitChars, percentOfLimit: (maxRecordChars / limitChars) * 100, measuredAs: 'max-record' });
     },
     /** Snapshot of every entry recorded so far, sorted by percent of limit descending. */
     entries() {

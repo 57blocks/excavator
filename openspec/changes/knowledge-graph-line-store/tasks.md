@@ -21,12 +21,12 @@
 
 ## 3. 增量事实摘要
 
-- [ ] 3.1 `build-fact-graph.mjs` 按 design D3 逐段计算 `factsDigest`，不再拼整份文本。验证：单测以原整份算法为 oracle，在多个夹具上摘要逐字相同；所有固定摘要测试不变。
-- [ ] 3.2 `product-serialization.mjs` 增加按行产物的最长记录余量；余量表去掉整份摘要文本这一项，加入 `source-index.jsonl`。验证：余量单测。
+- [x] 3.1 `build-fact-graph.mjs` 按 design D3 逐段计算 `factsDigest`，不再拼整份文本。验证：单测以原整份算法为 oracle，在多个夹具上摘要逐字相同；所有固定摘要测试不变。
+- [x] 3.2 `product-serialization.mjs` 增加按行产物的最长记录余量（`max-record`）；余量表去掉整份摘要文本这一项，改报摘要的最长记录。验证：余量单测与暂存发布测试。
 
 ## 4. Lazy 发布
 
-- [ ] 4.1 `lazy-analyze.mjs` 的暂存发布改写 `knowledge-graph.jsonl`（新的写入接缝），发布成功后删除旧 `knowledge-graph.json`；`intermediate/fact-graph.json` 改为 `intermediate/fact-graph.jsonl`；`PIPELINE_VERSION` 升为 `lazy-fact-graph/3`；读取上一份图改用存储模块，不再调用 core `loadGraph`。验证：Lazy 测试与暂存发布的故障注入测试覆盖新接缝。
+- [ ] 4.1 `lazy-analyze.mjs` 的暂存发布改写 `knowledge-graph.jsonl`（新的写入接缝），发布成功后删除旧 `knowledge-graph.json`；`intermediate/fact-graph.json` 改为 `intermediate/fact-graph.jsonl`；`PIPELINE_VERSION` 升为 `lazy-fact-graph/3`；余量表加入 `knowledge-graph.jsonl`、`intermediate/fact-graph.jsonl` 与 `source-index.jsonl` 的最长记录；读取上一份图改用存储模块，不再调用 core `loadGraph`。验证：Lazy 测试与暂存发布的故障注入测试覆盖新接缝。
 - [ ] 4.2 删除 core `persistence` 的 `loadGraph`/`saveGraph` 及其测试，其余持久化函数不动。验证：core 测试与 typecheck 通过。
 - [ ] 4.3 上限绊线：注入小上限时，整图超限但最长记录不超限的夹具发布成功；单条记录超限的夹具具名失败且最终产物不变。验证：对应测试。
 

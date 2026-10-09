@@ -249,7 +249,11 @@ describe('runLazyAnalysis — result.serialization (task 4.3)', () => {
       expect(byProduct.get(name)).toMatchObject({ measuredAs: 'bytes' });
       expect(typeof byProduct.get(name).bytes).toBe('number');
     }
-    expect(byProduct.get('facts-digest-input')).toMatchObject({ measuredAs: 'chars' });
+    // The facts digest is hashed record by record (knowledge-graph-line-store,
+    // design D3): its longest record is reported, and the joined text no
+    // longer exists.
+    expect(byProduct.get('facts-digest-record')).toMatchObject({ measuredAs: 'max-record' });
+    expect(byProduct.has('facts-digest-input')).toBe(false);
     // source-index.jsonl is NOT in this table — it never goes through
     // serializeJsonProduct at all (line-oriented store, no single-string form).
     expect(byProduct.has(SOURCE_INDEX_FILE)).toBe(false);
