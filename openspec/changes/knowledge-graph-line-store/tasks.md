@@ -48,7 +48,7 @@
 
 ## 7. 散文
 
-- [ ] 7.1 skill、agent、hooks 提示、README 与 docs 中的旧文件名、内联整文件读取代码与 jq 示例改为新文件与新模块。验证：`node scripts/check-refs.mjs` 通过；design D8 的 grep 门通过。
+- [x] 7.1 skill、agent、hooks 提示、README 与 docs 中的旧文件名、内联整文件读取代码与 jq 示例改为新文件与新模块。验证：`node scripts/check-refs.mjs` 通过；design D8 的 grep 门通过。
 - [ ] 7.2 `openspec/specs` 中受影响的要求按本变更的规格增量同步（归档时完成）。验证：`openspec validate --all --strict`。
 
 ## 8. 验收

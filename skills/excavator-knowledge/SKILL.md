@@ -97,7 +97,10 @@ Dispatch `article-analyzer` subagents to extract implicit knowledge:
    - Every node must have: id, type, name, summary, tags, complexity
    - Remove any edges with dangling references
 
-3. Copy the validated graph to `$DATA_DIR/knowledge-graph.json`
+3. Write the validated graph back to `$DATA_DIR/intermediate/assembled-graph.json`, then store it line by line as `$DATA_DIR/knowledge-graph.jsonl` (never copy the JSON file into place):
+   ```bash
+   node "<SKILL_DIR>/../../skills/excavator/knowledge-graph-store.mjs" from-json "$DATA_DIR/intermediate/assembled-graph.json" "$DATA_DIR/knowledge-graph.jsonl"
+   ```
 
 4. Write metadata to `$DATA_DIR/meta.json`:
    ```json

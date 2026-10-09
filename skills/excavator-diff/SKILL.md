@@ -5,32 +5,33 @@ description: Use when you need to analyze git diffs or pull requests to understa
 
 # /excavator-diff
 
-Analyze the current code changes against the knowledge graph in the project's data directory (`.excavator/knowledge-graph.json`).
+Analyze the current code changes against the knowledge graph in the project's data directory (`.excavator/knowledge-graph.jsonl`).
 
 ## Graph Structure Reference
 
-The knowledge graph JSON has this structure:
-- `project` — {name, description, languages, frameworks, analyzedAt, gitCommitHash}
-- `nodes[]` — each has {id, type, name, filePath?, summary, tags[], complexity, languageNotes?}
+The knowledge graph `knowledge-graph.jsonl` stores one JSON record per line:
+- Line 1 — `{"record":"header", "fields":{…}, "counts":{…}}`: `fields.project` is {name, description, languages, frameworks, analyzedAt, gitCommitHash}; `counts` gives the number of nodes, edges, layers and gaps
+- `{"record":"node","node":{…}}` — one line per node: {id, type, name, filePath?, summary, tags[], complexity, languageNotes?}
   - Code node types: file, function, class, module, concept
   - Non-code node types: config, document, service, table, endpoint, pipeline, schema, resource
   - Domain/knowledge node types: domain, flow, step, article, entity, topic, claim, source
   - IDs use the node type as prefix, e.g. `file:path`, `function:path:name`, `config:path`, `article:path`
-- `edges[]` — each has {source, target, type, direction, weight}
+- `{"record":"edge","edge":{…}}` — one line per edge: {source, target, type, direction, weight}
   - Key types: imports, contains, calls, depends_on, configures, documents, deploys, triggers, contains_flow, flow_step, related, cites
-- `layers[]` — each has {id, name, description, nodeIds[]}
-- `tour[]` — compatibility field; new service graphs store an empty array
+- `{"record":"layer","layer":{…}}` — one line per layer: {id, name, description, nodeIds[]}
+- `{"record":"tour","step":{…}}` — compatibility records; new service graphs have none
+- `{"record":"coverage",…}` and `{"record":"gap",…}` — the coverage ledger and the named gaps
 
 ## How to Read Efficiently
 
-1. Use Grep to search within the JSON for relevant entries BEFORE reading the full file
-2. Only read sections you need — don't dump the entire graph into context
+1. Grep the file for relevant entries BEFORE reading anything else — every node and edge is one line, so a hit is a whole record (e.g. `grep '"record":"node"' "$DATA_DIR/knowledge-graph.jsonl" | grep 'src/index.ts'`)
+2. Only read the lines you need — never read the whole file into context; it can be hundreds of megabytes
 3. Node names and summaries are the most useful fields for understanding
 4. Edges tell you how components connect — follow imports and calls for dependency chains
 
 ## Instructions
 
-1. **Check that `.excavator/knowledge-graph.json` exists.** If not, tell the user to run `/excavator` first.
+1. **Check that `.excavator/knowledge-graph.jsonl` exists.** If not, tell the user to run `/excavator` first.
 
 2. **Get the changed files list** (do NOT read the graph yet):
    - If on a branch with uncommitted changes: `git diff --name-only`

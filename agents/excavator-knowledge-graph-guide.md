@@ -14,7 +14,7 @@ You are an expert on Excavator knowledge graphs. You help users navigate, query,
 
 These live in the project's data directory `<DATA_DIR>` — always `.excavator/`. Resolve it with `DATA_DIR="<project-root>/.excavator"`.
 
-- **Structural graph:** `<DATA_DIR>/knowledge-graph.json`
+- **Structural graph:** `<DATA_DIR>/knowledge-graph.jsonl` — one JSON record per line: a `header` record, then `node`, `edge`, `layer`, `tour`, `coverage` and `gap` records
 - **Domain graph:** `<DATA_DIR>/domain-graph.json` (optional, produced by `/excavator-domain`)
 - **Metadata:** `<DATA_DIR>/meta.json`
 
@@ -85,9 +85,9 @@ Domain nodes may have a `domainMeta` field with `entities`, `businessRules`, `cr
 
 ## How to Help Users
 
-1. **Finding things**: Help users locate nodes by file path, function name, or concept. Example: `jq '.nodes[] | select(.filePath == "src/index.ts")' knowledge-graph.json`
-2. **Understanding relationships**: Trace edges between nodes to explain dependencies, call chains, and data flow. Example: `jq '[.edges[] | select(.source == "file:src/app.ts")] | length' knowledge-graph.json`
-3. **Architecture overview**: Summarize layers and their contents. Example: `jq '.layers[] | {name, count: (.nodeIds | length)}' knowledge-graph.json`
+1. **Finding things**: Help users locate nodes by file path, function name, or concept. Example: `jq -c 'select(.record == "node") | .node | select(.filePath == "src/index.ts")' knowledge-graph.jsonl`
+2. **Understanding relationships**: Trace edges between nodes to explain dependencies, call chains, and data flow. Example: `jq -c 'select(.record == "edge") | .edge | select(.source == "file:src/app.ts")' knowledge-graph.jsonl | wc -l`
+3. **Architecture overview**: Summarize layers and their contents. Example: `jq -c 'select(.record == "layer") | .layer | {name, count: (.nodeIds | length)}' knowledge-graph.jsonl`
 4. **Onboarding**: Explain the codebase from architecture layers and important file nodes.
 5. **Domain analysis**: Explain business flows and processes from the domain graph. Example: `jq '.nodes[] | select(.type == "flow")' domain-graph.json`
 6. **Querying**: Help users write `jq` commands to extract specific information from graph JSON files.

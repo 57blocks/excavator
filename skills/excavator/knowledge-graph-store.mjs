@@ -42,10 +42,23 @@
  * `LEGACY_KNOWLEDGE_GRAPH_FILE` is exported only so a caller can name it in
  * an honest gap ("only the legacy file is present").
  *
+ * CLI (for skill prose, so no step has to hand-write graph I/O):
+ *   node knowledge-graph-store.mjs header <graph.jsonl>
+ *     prints the header (key order, non-stream fields, stream counts) as JSON
+ *   node knowledge-graph-store.mjs to-json <graph.jsonl> <out.json>
+ *     writes the graph as one JSON document (for the Full pipeline's
+ *     whole-document intermediates such as assembled-graph.json)
+ *   node knowledge-graph-store.mjs from-json <in.json> <graph.jsonl>
+ *     writes a JSON graph as line records, atomically; when the target is a
+ *     knowledge-graph.jsonl, a leftover knowledge-graph.json next to it is
+ *     deleted
+ *
  * Contract: openspec/changes/knowledge-graph-line-store/specs/fact-graph/spec.md
  */
 
-import { renameSync, rmSync } from 'node:fs';
+import { readFileSync, realpathSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { basename, dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { DEFAULT_READ_BLOCK_SIZE, readLineFile, writeLineFile } from './jsonl-lines.mjs';
 import { DEFAULT_LIMIT_CHARS, serializeJsonProduct } from './product-serialization.mjs';
 
@@ -279,6 +292,48 @@ export function readKnowledgeGraph(path, { blockSize = DEFAULT_READ_BLOCK_SIZE }
     Object.defineProperty(graph, key, { value, enumerable: true, writable: true, configurable: true });
   }
   return graph;
+}
+
+// ---------------------------------------------------------------------------
+// CLI
+// ---------------------------------------------------------------------------
+
+const USAGE = 'Usage: node knowledge-graph-store.mjs header <graph.jsonl> | '
+  + 'to-json <graph.jsonl> <out.json> | from-json <in.json> <graph.jsonl>';
+
+function main(argv) {
+  const [command, input, output] = argv;
+  if (command === 'header' && input && !output) {
+    process.stdout.write(`${JSON.stringify(readKnowledgeGraphHeader(input), null, 2)}\n`);
+  } else if (command === 'to-json' && input && output) {
+    writeFileSync(output, JSON.stringify(readKnowledgeGraph(input), null, 2), 'utf-8');
+  } else if (command === 'from-json' && input && output) {
+    const result = writeKnowledgeGraphAtomic(output, JSON.parse(readFileSync(input, 'utf-8')));
+    if (basename(output) === KNOWLEDGE_GRAPH_FILE) {
+      rmSync(join(dirname(output), LEGACY_KNOWLEDGE_GRAPH_FILE), { force: true });
+    }
+    process.stderr.write(`knowledge-graph-store: wrote ${result.lines} lines (${result.bytes} bytes) to ${output}\n`);
+  } else {
+    throw new Error(USAGE);
+  }
+}
+
+function isCliEntry() {
+  if (!process.argv[1]) return false;
+  try {
+    return realpathSync(fileURLToPath(import.meta.url)) === realpathSync(process.argv[1]);
+  } catch {
+    return false;
+  }
+}
+
+if (isCliEntry()) {
+  try {
+    main(process.argv.slice(2));
+  } catch (error) {
+    process.stderr.write(`knowledge-graph-store.mjs failed: ${error.message}\n`);
+    process.exit(1);
+  }
 }
 
 export default {

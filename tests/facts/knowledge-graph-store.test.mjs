@@ -6,6 +6,7 @@
 // Purpose-built synthetic fixtures only (AGENTS.md).
 import { describe, expect, it, beforeEach, afterEach } from 'vitest';
 import { isDeepStrictEqual } from 'node:util';
+import { spawnSync } from 'node:child_process';
 import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -344,5 +345,43 @@ describe('readKnowledgeGraph — named format failures, never a partial graph', 
     writeFileSync(legacy, JSON.stringify(lazyGraph()));
     expect(() => readKnowledgeGraph(join(dir, KNOWLEDGE_GRAPH_FILE))).toThrow(/ENOENT/);
     expect(existsSync(legacy)).toBe(true);
+  });
+});
+
+// The CLI the skill prose uses instead of hand-written graph I/O.
+describe('knowledge-graph-store.mjs CLI', () => {
+  const STORE = new URL('../../skills/excavator/knowledge-graph-store.mjs', import.meta.url).pathname;
+  const run = (...args) => spawnSync(process.execPath, [STORE, ...args], { encoding: 'utf-8' });
+
+  it('header prints the key order, fields and counts without the records', () => {
+    const path = join(dir, KNOWLEDGE_GRAPH_FILE);
+    writeKnowledgeGraph(path, fullGraph());
+    const result = run('header', path);
+    expect(result.status, result.stderr).toBe(0);
+    const header = JSON.parse(result.stdout);
+    expect(header.keys).toEqual(Object.keys(fullGraph()));
+    expect(header.fields.project.name).toBe('demo');
+    expect(header.counts).toEqual({ nodes: 2, edges: 1, layers: 1, tour: 1, gaps: 1 });
+  });
+
+  it('to-json and from-json round-trip, and from-json removes a leftover legacy graph', () => {
+    const path = join(dir, KNOWLEDGE_GRAPH_FILE);
+    const json = join(dir, 'assembled-graph.json');
+    writeKnowledgeGraph(path, fullGraph());
+    expect(run('to-json', path, json).status).toBe(0);
+    expect(JSON.parse(readFileSync(json, 'utf-8'))).toEqual(fullGraph());
+
+    writeFileSync(join(dir, LEGACY_KNOWLEDGE_GRAPH_FILE), '{}');
+    rmSync(path);
+    const result = run('from-json', json, path);
+    expect(result.status, result.stderr).toBe(0);
+    expect(isDeepStrictEqual(readKnowledgeGraph(path), fullGraph())).toBe(true);
+    expect(existsSync(join(dir, LEGACY_KNOWLEDGE_GRAPH_FILE))).toBe(false);
+  });
+
+  it('an unknown command fails with the usage text', () => {
+    const result = run('bogus');
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain('Usage: node knowledge-graph-store.mjs');
   });
 });

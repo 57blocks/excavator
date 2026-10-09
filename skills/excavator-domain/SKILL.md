@@ -10,7 +10,7 @@ Extracts business domain knowledge — domains, business flows, and process step
 
 ## How It Works
 
-- If a knowledge graph already exists (`.excavator/knowledge-graph.json`), derives domain knowledge from it (cheap, no file scanning)
+- If a knowledge graph already exists (`.excavator/knowledge-graph.jsonl`), derives domain knowledge from it (cheap, no file scanning)
 - If no knowledge graph exists, performs a lightweight scan: file tree + entry point detection + sampled files
 - Use `--full` flag to force a fresh scan even if a knowledge graph exists
 
@@ -78,7 +78,7 @@ Use `$PLUGIN_ROOT` for every reference to agent definitions in subsequent phases
 
 ### Phase 1: Detect Existing Graph
 
-1. Check if `$DATA_DIR/knowledge-graph.json` exists
+1. Check if `$DATA_DIR/knowledge-graph.jsonl` exists
 2. If it exists AND `--full` was NOT passed, check freshness before deriving from it via the ONE shared, deterministic freshness helper (`$PLUGIN_ROOT` was already resolved in Phase 0), instead of computing a separate gitCommitHash/git-diff comparison in this skill:
    ```bash
    node "$PLUGIN_ROOT/skills/excavator/consumer-freshness.mjs" "$PROJECT_ROOT"
@@ -109,7 +109,7 @@ The preprocessing script does NOT produce a domain graph — it produces **raw m
 
 ### Phase 3: Derive from Existing Graph (Path 2)
 
-1. Read `$DATA_DIR/knowledge-graph.json`
+1. Read `$DATA_DIR/knowledge-graph.jsonl` — one JSON record per line: a header, then `node`, `edge`, `layer` and `gap` records. For a large graph, select the records you need with `grep` or `jq -c 'select(.record=="node") | .node'` instead of reading the whole file
 2. Format the graph data as structured context:
    - All nodes with their types, names, summaries, and tags
    - All edges with their types (especially `calls`, `imports`, `contains`)
@@ -135,7 +135,7 @@ node "<SKILL_DIR>/annotate-domain.mjs" "$PROJECT_ROOT"
 ```
 
 Reads `$DATA_DIR/intermediate/domain-analysis.json` and
-`$DATA_DIR/knowledge-graph.json`, and updates the analysis in place:
+`$DATA_DIR/knowledge-graph.jsonl`, and updates the analysis in place:
 
 - `nodeIds` the domain-analyzer supplied are **checked** against the knowledge
   graph. Ones that resolve stay, in the model's order; ones that do not move to

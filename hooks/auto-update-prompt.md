@@ -19,7 +19,7 @@ said yes.
    DATA_DIR="$PROJECT_ROOT/.excavator"
    ```
 
-2. Require `$DATA_DIR/knowledge-graph.json` and `$DATA_DIR/meta.json`. If either is missing, report that `/excavator` must create a baseline and **STOP**.
+2. Require `$DATA_DIR/knowledge-graph.jsonl` and `$DATA_DIR/meta.json`. If either is missing, report that `/excavator` must create a baseline and **STOP**.
 3. Read `gitCommitHash` from meta as `$LAST_COMMIT_HASH`; get `$HEAD_COMMIT` with `git rev-parse HEAD`. If they match, report that the graph is current and **STOP**.
 4. Resolve `$PLUGIN_ROOT` from `$CLAUDE_PLUGIN_ROOT`, then `$HOME/.excavator-plugin`, validating that it contains `skills/excavator/prepare-incremental.mjs`. If it cannot be found, report the error and **STOP** without changing metadata.
 5. Ensure core is built, then run the bundled helper with parameterized arguments:
@@ -101,7 +101,7 @@ node "$PLUGIN_ROOT/skills/excavator/prepare-symbol-retry.mjs" "$PROJECT_ROOT"
 
 Dispatch only `batches[]` from `incremental-symbol-retry.json`, with the usual file-analyzer prompt and its supplied `files`, `batchIndex`, `batchImportData`, `neighborMap`, `previousSymbols`, and `missingSymbols`. Reanalyze those files completely. The helper preserves other merged results in `batch-0.json`, removes affected nodes and outgoing edges, and clears old numeric shards before repair. Current inbound edges from other files remain candidates until merge reconciles their replacement targets and drops dangling references. Rerun merge after this one repair. Never paste old nodes or semantic edges back into the candidate. The attempt is recorded for the base/head commits, even across repeated prepare calls.
 
-If the helper, repair dispatch, or second merge fails, **STOP** with diagnostics and leave `knowledge-graph.json`, `fingerprints.json`, and `meta.json` unchanged. Other merge failures without eligible unresolved files also stop immediately.
+If the helper, repair dispatch, or second merge fails, **STOP** with diagnostics and leave `knowledge-graph.jsonl`, `fingerprints.json`, and `meta.json` unchanged. Other merge failures without eligible unresolved files also stop immediately.
 
 Languages without a deterministic structural parser (including `.sh`, `.ps1`, and `.bat`) cannot have missing symbols automatically confirmed as deleted. Callables without explicit class containment also require source verification when their IDs/names are unchanged, regardless of whether class nodes were emitted; unverified identities block publication. These cases remain `unknown` and require manual investigation or parser support. Do not use supplemental LLM inspection or regex guesses to waive the gate.
 
@@ -122,7 +122,7 @@ Run:
 node "$PLUGIN_ROOT/skills/excavator/finalize-incremental.mjs" "$PROJECT_ROOT"
 ```
 
-The finalizer performs deterministic graph/layer/tour validation and independently reruns the shared symbol check on the exact graph before writing. It atomically saves `knowledge-graph.json`, patches changed fingerprints while preserving untouched entries, removes deleted fingerprints, and only then writes `meta.json`. A graph-save failure must never advance the fingerprint or commit baseline. If symbol loss is first detected here, follow the same one-retry procedure, rerun merge and any required architecture/tour phases, then finalize; an already-used or unsuccessful repair must stop with the old graph and baselines intact.
+The finalizer performs deterministic graph/layer/tour validation and independently reruns the shared symbol check on the exact graph before writing. It atomically saves `knowledge-graph.jsonl`, patches changed fingerprints while preserving untouched entries, removes deleted fingerprints, and only then writes `meta.json`. A graph-save failure must never advance the fingerprint or commit baseline. If symbol loss is first detected here, follow the same one-retry procedure, rerun merge and any required architecture/tour phases, then finalize; an already-used or unsuccessful repair must stop with the old graph and baselines intact.
 
 Report:
 

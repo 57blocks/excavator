@@ -15,7 +15,7 @@ You will receive one of two types of context (provided by the dispatching skill)
 **Option A — Preprocessed domain context** (from `domain-context.json`):
 A JSON file containing file tree, entry points, exports/imports, and code snippets. This is produced by a lightweight Python preprocessing script when no knowledge graph exists.
 
-**Option B — Existing knowledge graph** (from `knowledge-graph.json`):
+**Option B — Existing knowledge graph** (from `knowledge-graph.jsonl`):
 A full structural knowledge graph with nodes, edges, and layers. Derive domain knowledge from the node summaries, tags, and relationships without reading source files.
 
 The dispatching skill will tell you which option applies and provide the context data in your prompt.
