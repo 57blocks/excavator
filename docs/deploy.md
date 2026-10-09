@@ -309,7 +309,7 @@ Files in `/work/out` (none on exit `2`; `run.jsonl`, `validation.json` and `vali
 
 ## 12. CI and release (ECR)
 
-`.github/workflows/runner-image.yml` runs on tags `runner-v*`, on manual `workflow_dispatch`, and on pull requests touching deploy files. It runs the test gate, then builds and self-tests the `linux/amd64` image. On a tag or dispatch, it then pushes the tested image to ECR through OIDC, once these GitHub repository variables are set:
+`.github/workflows/runner-image.yml` runs on tags `runner-v*`, on manual `workflow_dispatch`, and on pull requests touching deploy files. Pull requests run only the test gate; the image job shows as skipped, so verify an image change before merge with the build and self-test in [§5](#5-image). On a tag or dispatch, it runs the test gate, builds and self-tests the `linux/amd64` image, then pushes the tested image to ECR through OIDC, once these GitHub repository variables are set:
 
 | Variable | Meaning |
 |---|---|

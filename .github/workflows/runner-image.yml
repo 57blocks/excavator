@@ -2,10 +2,11 @@
 # image. See openspec/changes/archive/2026-10-09-runner-image/design.md D6 for the decisions
 # this workflow implements verbatim; this is the repository's only workflow.
 #
-# All three triggers run the exact same flow (test -> image -> push): a tag
-# push or a manual dispatch is a release candidate, and a PR touching
-# deploy-relevant files is the only place that flow can be exercised before
-# merge, since GitHub only allows workflow_dispatch on the default branch.
+# A tag push or a manual dispatch is a release candidate and runs the whole
+# flow (test -> image -> push). A PR touching deploy-relevant files runs only
+# the test gate; its image job shows as skipped (openspec change
+# runner-image-release-only). To build images on PRs again, delete the
+# image job's `if`.
 name: Runner image
 
 on:
@@ -69,10 +70,13 @@ jobs:
   # Build the linux/amd64 image, self-test it, and — only on a release
   # trigger with the repo's ECR variables set — push that same tested
   # image (design D6). AWS hosts are x86 by default; arm64 (Graviton)
-  # would be one more job on a native `ubuntu-24.04-arm` runner.
+  # would be one more job on a native `ubuntu-24.04-arm` runner. Runs on
+  # release triggers only; the list matches "release trigger" in the push
+  # eligibility step, so a newly added trigger is skipped by default.
   # ---------------------------------------------------------------------
   image:
     name: Image (linux/amd64)
+    if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/runner-v')
     needs: test
     runs-on: ubuntu-latest
     timeout-minutes: 60
