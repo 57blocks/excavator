@@ -28,7 +28,7 @@
  *
  * Usage:
  *   node annotate-graph.mjs <projectRoot>
- *     [--graph <assembled-graph.json>] [--structure <structure-all.json>]
+ *     [--graph <assembled-graph.json>] [--structure <structure-all.jsonl>]
  *     [--scan <scan-result.json>] [--import-map <import-map.json>]
  *     [--plan <incremental-plan.json>] [--fingerprints <fingerprints.json>]
  *     [--meta <meta.json>] [--no-meta] [--model <name>]
@@ -67,6 +67,7 @@ import {
   compareGaps,
 } from './coverage-ledger.mjs';
 import { mergeVerification } from './verification-state.mjs';
+import { STRUCTURE_ALL_FILE, readStructureAllPath } from './structure-all-store.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const pluginRoot = resolve(__dirname, '../..');
@@ -947,7 +948,7 @@ async function main() {
   const intermediate = join(resolveDataDir(projectRoot), 'intermediate');
   const dataDir = resolveDataDir(projectRoot);
   const graphPath = resolve(args.graph ?? join(intermediate, 'assembled-graph.json'));
-  const structurePath = resolve(args.structure ?? join(intermediate, 'structure-all.json'));
+  const structurePath = resolve(args.structure ?? join(intermediate, STRUCTURE_ALL_FILE));
   const scanPath = resolve(args.scan ?? join(intermediate, 'scan-result.json'));
   const importMapPath = resolve(args.importMap ?? join(intermediate, 'import-map.json'));
   const planPath = resolve(args.plan ?? join(intermediate, 'incremental-plan.json'));
@@ -957,7 +958,8 @@ async function main() {
   const auditPath = resolve(args.auditOut ?? join(intermediate, 'audit.json'));
 
   const graph = readJson(graphPath, 'graph');
-  const structure = readJson(structurePath, 'structure-all');
+  if (!existsSync(structurePath)) throw new Error(`annotate-graph: structure-all not found: ${structurePath}`);
+  const structure = readStructureAllPath(structurePath);
   const scan = readJson(scanPath, 'scan result');
   const importMap = existsSync(importMapPath) ? JSON.parse(readFileSync(importMapPath, 'utf-8')) : null;
   if (!importMap) {

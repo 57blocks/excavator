@@ -18,10 +18,11 @@
  *
  * Usage:
  *   node structure-all.mjs <projectRoot>
- *     [--scan <scan-result.json>] [--out <structure-all.json>]
+ *     [--scan <scan-result.json>] [--out <structure-all.jsonl>]
  *     [--chunk-size <n>]
  *
- * Output JSON (`intermediate/structure-all.json`):
+ * Output (`intermediate/structure-all.jsonl`, one record per line through
+ * structure-all-store.mjs; the value it reads back as):
  *   {
  *     scriptCompleted: true,
  *     chunkSize: N,
@@ -52,6 +53,7 @@ import {
   rmSync,
   writeFileSync,
 } from 'node:fs';
+import { LEGACY_STRUCTURE_ALL_FILE, STRUCTURE_ALL_FILE, writeStructureAll } from './structure-all-store.mjs';
 import { spawnSync } from 'node:child_process';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -175,7 +177,7 @@ async function main() {
   const projectRoot = resolve(args.projectRoot);
   const dataDir = resolveDataDir(projectRoot);
   const scanPath = args.scan ? resolve(args.scan) : join(dataDir, 'intermediate', 'scan-result.json');
-  const outputPath = args.out ? resolve(args.out) : join(dataDir, 'intermediate', 'structure-all.json');
+  const outputPath = args.out ? resolve(args.out) : join(dataDir, 'intermediate', STRUCTURE_ALL_FILE);
 
   if (!existsSync(scanPath)) {
     throw new Error(`structure-all: scan result not found: ${scanPath}`);
@@ -286,10 +288,12 @@ async function main() {
     );
   }
 
-  writeFileSync(outputPath, JSON.stringify(output, null, 2), 'utf-8');
+  writeStructureAll(outputPath, output);
   if (!existsSync(outputPath)) {
     throw new Error(`output file missing after write: ${outputPath}`);
   }
+  // The retired whole-document copy next to it is never read; remove it.
+  rmSync(join(dirname(outputPath), LEGACY_STRUCTURE_ALL_FILE), { force: true });
 
   const statuses = Object.entries(output.byStatus)
     .map(([status, count]) => `${status}=${count}`)

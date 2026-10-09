@@ -274,12 +274,12 @@ describe('runLazyAnalysis — result.serialization (task 4.3)', () => {
     }
     // Line-oriented products report their longest record
     // (knowledge-graph-line-store, design D6).
-    for (const name of [KNOWLEDGE_GRAPH_FILE, 'fact-graph.jsonl', SOURCE_INDEX_FILE]) {
+    for (const name of [KNOWLEDGE_GRAPH_FILE, 'fact-graph.jsonl', SOURCE_INDEX_FILE, 'structure-all.jsonl']) {
       expect(byProduct.get(name)).toMatchObject({ measuredAs: 'max-record' });
       expect(typeof byProduct.get(name).maxRecordChars).toBe('number');
     }
     expect(byProduct.has('knowledge-graph.json')).toBe(false);
-    for (const name of ['structure-all.json', 'import-map.json', 'fingerprints.json']) {
+    for (const name of ['import-map.json', 'fingerprints.json']) {
       expect(byProduct.get(name)).toMatchObject({ measuredAs: 'bytes' });
       expect(typeof byProduct.get(name).bytes).toBe('number');
     }

@@ -44,7 +44,7 @@
 
 ## 6. 结构抽取结果
 
-- [ ] 6.1 新增 `structure-all-store.mjs`；`structure-all.mjs` 写出 `intermediate/structure-all.jsonl` 并删除旧文件；`lazy-analyze.mjs`、`annotate-graph.mjs`、`build-source-index.mjs`、`build-fact-graph.mjs` 经该模块读入。验证：往返单测；相关测试全绿；factsDigest 不变。
+- [x] 6.1 新增 `structure-all-store.mjs`；`structure-all.mjs` 写出 `intermediate/structure-all.jsonl` 并删除旧文件；`lazy-analyze.mjs`、`annotate-graph.mjs`、`build-source-index.mjs`、`build-fact-graph.mjs` 经该模块读入。验证：往返单测；相关测试全绿；factsDigest 不变。
 
 ## 7. 散文
 

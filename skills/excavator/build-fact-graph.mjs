@@ -24,8 +24,8 @@
  *
  * Usage (CLI):
  *   node build-fact-graph.mjs <projectRoot>
- *     [--scan <scan-result.json>] [--structure <structure-all.json>]
- *     [--import-map <import-map.json>] [--out <fact-graph.json>]
+ *     [--scan <scan-result.json>] [--structure <structure-all.jsonl>]
+ *     [--import-map <import-map.json>] [--out <fact-graph.jsonl>]
  *
  * Programmatic:
  *   import { buildFactGraph } from './build-fact-graph.mjs';
@@ -60,6 +60,8 @@ import {
   createGapCollector,
 } from './fact-graph-resolve.mjs';
 import { DEFAULT_LIMIT_CHARS, serializeJsonProduct } from './product-serialization.mjs';
+import { STRUCTURE_ALL_FILE, readStructureAllPath } from './structure-all-store.mjs';
+import { writeKnowledgeGraph } from './knowledge-graph-store.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -605,18 +607,23 @@ async function main() {
   const intermediate = join(dataDir, 'intermediate');
 
   const scanPath = args.scan ? resolve(args.scan) : join(intermediate, 'scan-result.json');
-  const structurePath = args.structure ? resolve(args.structure) : join(intermediate, 'structure-all.json');
+  const structurePath = args.structure ? resolve(args.structure) : join(intermediate, STRUCTURE_ALL_FILE);
   const importMapPath = args.importMap ? resolve(args.importMap) : join(intermediate, 'import-map.json');
-  const outPath = args.out ? resolve(args.out) : join(intermediate, 'fact-graph.json');
+  const outPath = args.out ? resolve(args.out) : join(intermediate, 'fact-graph.jsonl');
 
   const scan = readJson(scanPath, 'scan result');
-  const structureAll = readJson(structurePath, 'structure-all result');
+  if (!existsSync(structurePath)) throw new Error(`build-fact-graph: structure-all result not found: ${structurePath}`);
+  const structureAll = readStructureAllPath(structurePath);
   const importMap = existsSync(importMapPath) ? JSON.parse(readFileSync(importMapPath, 'utf-8')) : null;
 
   const projection = buildFactGraph({ scan, structureAll, importMap });
 
   mkdirSync(dirname(outPath), { recursive: true });
-  writeFileSync(outPath, JSON.stringify(projection, null, 2), 'utf-8');
+  if (outPath.endsWith('.jsonl')) {
+    writeKnowledgeGraph(outPath, projection, { product: 'fact-graph.jsonl' });
+  } else {
+    writeFileSync(outPath, JSON.stringify(projection, null, 2), 'utf-8');
+  }
   if (!existsSync(outPath)) throw new Error(`output file missing after write: ${outPath}`);
 
   process.stderr.write(

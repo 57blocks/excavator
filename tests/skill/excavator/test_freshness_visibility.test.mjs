@@ -26,6 +26,7 @@ import {
   annotate, cosmeticDirtyFiles, hostModelName, HOST_MODEL_ENV_VARS, PIPELINE_VERSION,
 } from '../../../skills/excavator/annotate-graph.mjs';
 import { readKnowledgeGraph, writeKnowledgeGraph } from '../../../skills/excavator/knowledge-graph-store.mjs';
+import { STRUCTURE_ALL_FILE, writeStructureAll } from '../../../skills/excavator/structure-all-store.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(__dirname, '../../..');
@@ -276,8 +277,7 @@ describe('annotate publishes dirtyFiles into meta.json', () => {
     writeFile(root, 'src/a.ts', 'export const a = 1;\n');
     writeFileSync(join(intermediate, 'assembled-graph.json'),
       JSON.stringify(graphOf([fileNode('src/a.ts')])), 'utf-8');
-    writeFileSync(join(intermediate, 'structure-all.json'),
-      JSON.stringify(structureOf(['src/a.ts'])), 'utf-8');
+    writeStructureAll(join(intermediate, STRUCTURE_ALL_FILE), structureOf(['src/a.ts']));
     writeFileSync(join(intermediate, 'scan-result.json'),
       JSON.stringify(scanOf(['src/a.ts'])), 'utf-8');
     writeFileSync(join(intermediate, 'import-map.json'), JSON.stringify({ importMap: {} }), 'utf-8');
@@ -630,8 +630,7 @@ describe('project.model says which model wrote the prose', () => {
     writeFile(root, 'src/a.ts', 'export const a = 1;\n');
     writeFileSync(join(intermediate, 'assembled-graph.json'),
       JSON.stringify(graphOf([fileNode('src/a.ts')])), 'utf-8');
-    writeFileSync(join(intermediate, 'structure-all.json'),
-      JSON.stringify(structureOf(['src/a.ts'])), 'utf-8');
+    writeStructureAll(join(intermediate, STRUCTURE_ALL_FILE), structureOf(['src/a.ts']));
     writeFileSync(join(intermediate, 'scan-result.json'),
       JSON.stringify(scanOf(['src/a.ts'])), 'utf-8');
 

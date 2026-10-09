@@ -15,6 +15,7 @@ import { join, dirname, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { chunk, mergeChunkOutput, isWithinRoot, DEFAULT_CHUNK_SIZE } from '../../../skills/excavator/structure-all.mjs';
+import { STRUCTURE_ALL_FILE, readStructureAll } from '../../../skills/excavator/structure-all-store.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const SKILL_DIR = resolve(__dirname, '../../../skills/excavator');
@@ -49,9 +50,9 @@ function runScan(projectRoot) {
 function runStructureAll(projectRoot, extraArgs = []) {
   const r = spawnSync('node', [STRUCTURE_ALL, projectRoot, ...extraArgs], { encoding: 'utf-8' });
   if (r.status !== 0) throw new Error(`structure-all failed: ${r.stderr}`);
-  const outPath = join(projectRoot, '.excavator', 'intermediate', 'structure-all.json');
+  const outPath = join(projectRoot, '.excavator', 'intermediate', STRUCTURE_ALL_FILE);
   return {
-    output: JSON.parse(readFileSync(outPath, 'utf-8')),
+    output: readStructureAll(outPath),
     bytes: readFileSync(outPath),
     stderr: r.stderr,
     outPath,

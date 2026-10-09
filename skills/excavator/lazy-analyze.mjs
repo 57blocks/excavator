@@ -139,6 +139,7 @@ import { conservationViolations } from './coverage-ledger.mjs';
 import { mergeSnapshotSelection } from './scan-project.mjs';
 import { resolveSourceSnapshot } from './source-snapshot.mjs';
 import { LEGACY_SOURCE_INDEX_FILE, SOURCE_INDEX_FILE, writeSourceIndex } from './source-index-store.mjs';
+import { STRUCTURE_ALL_FILE, readStructureAll } from './structure-all-store.mjs';
 import {
   KNOWLEDGE_GRAPH_FILE, LEGACY_KNOWLEDGE_GRAPH_FILE, readKnowledgeGraph, writeKnowledgeGraph,
 } from './knowledge-graph-store.mjs';
@@ -570,17 +571,20 @@ export async function runLazyAnalysis({
     writeFileSync(scanPath, serializeJsonProduct('scan-result.json', scan, { indent: 2, limit, recorder }), 'utf-8');
 
     // --- Phase 1.2 STRUCTURE-ALL ---------------------------------------------
-    const structurePath = join(intermediateDir, 'structure-all.json');
+    const structurePath = join(intermediateDir, STRUCTURE_ALL_FILE);
     time('structureAll', () => {
       const result = runScript('structure-all.mjs', [materializedDir, '--scan', scanPath, '--out', structurePath]);
       if (result.status !== 0) {
         throw new Error(`lazy-analyze: structure-all.mjs failed: ${result.stderr || result.status}`);
       }
     });
-    const structureAll = readJsonRequired(structurePath, 'structure-all.json');
-    // structure-all.mjs is a child-process (script) output, not something we
-    // serialize in-process — record at least its disk byte count (design D5).
-    recorder.recordBytes('structure-all.json', statSync(structurePath).size, limit);
+    if (!existsSync(structurePath)) throw new Error(`lazy-analyze: ${STRUCTURE_ALL_FILE} not found: ${structurePath}`);
+    const structureStats = {};
+    const structureAll = readStructureAll(structurePath, { stats: structureStats });
+    // structure-all.mjs is a child-process (script) output written one record
+    // per line; what can reach the limit is its longest record
+    // (knowledge-graph-line-store, design D6).
+    recorder.recordMaxRecord(STRUCTURE_ALL_FILE, structureStats.maxLineChars, limit);
 
     // --- Import map (deterministic, extract-import-map.mjs) ------------------
     const importMapInputPath = join(intermediateDir, 'lazy-import-map-input.json');
@@ -664,7 +668,7 @@ export async function runLazyAnalysis({
         raw: readFileSync(fingerprintsFilePath, 'utf-8'),
       };
       // fingerprints.json is likewise a child-script (build-fingerprints.mjs)
-      // output — byte count via stat, same as structure-all.json/import-map.json.
+      // output — byte count via stat, same as import-map.json.
       recorder.recordBytes('fingerprints.json', statSync(fingerprintsFilePath).size, limit);
     });
 

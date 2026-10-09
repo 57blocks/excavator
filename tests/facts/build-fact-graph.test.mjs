@@ -2,7 +2,7 @@
 // (openspec: changes/lazy-first-run/specs/fact-graph).
 //
 // build-fact-graph.mjs is a PROJECTION of already-produced JSON
-// (scan-result.json + structure-all.json + import-map.json) — it must call no
+// (scan-result.json + structure-all + import-map.json) — it must call no
 // model and re-parse no source. These fixtures are small, synthetic, in-memory
 // objects shaped exactly like the real scripts' output (see
 // extract-structure-result.mjs's buildResult() and extract-import-map.mjs's
