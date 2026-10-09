@@ -1,54 +1,217 @@
-# Runner image: deploy contract
+# Runner image: deployment
 
-This is the operator (DevOps) entry point for running Excavator as a container on AWS Bedrock. It documents what the image is, what `docker run -e ...` accepts, what it produces, and the security and release preconditions. The decisions behind this contract are in the OpenSpec change `runner-image` (its `design.md`, under `openspec/changes/` or, once archived, `openspec/changes/archive/`); this document only states the contract itself.
+The runner image bundles a pinned Excavator checkout (built) and a pinned Claude Code into one non-root container. It has no build toolchain, no cloud or git credentials, and no target-repository source or `.excavator/` products baked in. One container processes one mounted repository and performs one run.
 
-## What the image is
+This document lists what a deployment needs and how to configure it. The design decisions are in the OpenSpec change `runner-image` (under `openspec/changes/`, or `openspec/changes/archive/` once archived).
 
-The runner image bundles a pinned Excavator checkout (built: dependencies and `packages/core/dist` are already present) and a pinned Claude Code install into a single non-root container. It has no build toolchain, no cloud credentials, no git credentials, and no target-repo source or `.excavator/` products baked in.
+## 1. Requirements
 
-**One container processes one mounted repository and performs one run.** There is no batching, no scheduling, and no repository cloning inside the container — the operator (a VM, ECS task, or CodeBuild job) supplies an already-cloned repository and reads the results back from a mounted output directory. Two fixed mount points:
+| Item | Requirement |
+|---|---|
+| AWS region | A Bedrock region with an EU cross-region inference profile, e.g. `eu-central-1`. |
+| Bedrock model access | Account-level access to the Anthropic model must be completed: Bedrock model access / AWS Marketplace subscription, plus the one-time Anthropic use-case form. An IAM invoke permission alone is not enough. |
+| Inference profile | An EU inference profile, e.g. `eu.anthropic.claude-opus-5-5` (written `<PROFILE>` below). Service Quotas for it confirmed. |
+| Host | EC2, x86_64 (the image is `linux/amd64`), Linux with Docker. |
+| Memory | At least 16 GB; 32 GB for repositories of about 3M lines. |
+| Disk | About 1.5 GB per image version, plus the repository, plus about 1.5 GB of products per 3M-line repository, plus the image tarball while it is being delivered. |
+| Instance metadata | IMDSv2 with a hop limit of at least 2 (the container reaches the instance role through IMDS). |
+| Host software | Docker Engine, AWS CLI v2, `unzip`, `sha256sum`, `git`. Installed before internet egress is closed. |
+| Access | AWS Systems Manager Session Manager. No SSH and no public IP needed. |
+| Network | No general internet egress; the VPC endpoints in [§3](#3-network). |
+| Instance role | The permissions in [§4](#4-iam). |
+| Handover storage | An S3 bucket (SSE-KMS, versioning, Block Public Access, TLS-only) for code archives and the image tarball. ECR is an alternative for the image ([§11](#11-ci-and-release-ecr)). |
 
-- `/work/repo` — the target repository. **Must be a clone the operator made and maintains** (created with `git clone`, updated only with `git fetch`/`git checkout` by the operator) or a repository prepared from a code archive as described in [Preparing `/work/repo` from a code archive](#preparing-workrepo-from-a-code-archive); never a copy of someone's working tree and never a directory whose `.git` was copied in from elsewhere (the image trusts this directory's `.git/config`; see [Security preconditions](#security-preconditions)). It may persist between runs so that `.excavator/` from the previous run enables incremental `full` runs and the unchanged-HEAD skip. Writable — products are written into its `.excavator/`.
-- `/work/out` — run output. Writable — `run.jsonl`, `summary.json`, `validation.json`, `validated-graph.json` land here (see [Exit codes and output files](#exit-codes-and-output-files)).
+## 2. Host setup
 
-The container **always runs as uid 10001** (baked in; the entrypoint needs to write to its own `$HOME`). Do not pass `--user` to override it. Both mount points must be writable by uid 10001 on the host (or in the volume backing them).
-
-On EC2, the **IMDSv2 hop limit must be at least 2** — Claude Code inside the container needs to reach the instance metadata service through the container network to pick up the instance role's Bedrock credentials, which is one network hop further than IMDSv2's default hop limit of 1 allows.
-
-## `docker run` examples
-
-Lazy mode calls Excavator's deterministic analysis directly, never starts Claude Code, and needs no AWS credentials or region/model configuration:
+Install the host software while egress is still available, then close egress:
 
 ```sh
-docker run --rm \
-  -v /path/to/clean-clone:/work/repo \
-  -v /path/to/out:/work/out \
+sudo apt-get update
+sudo apt-get install -y --no-install-recommends docker.io unzip
+sudo systemctl enable --now docker
+aws --version            # AWS CLI v2; install it if the AMI does not ship it
+curl -sS -m 6 https://www.google.com -o /dev/null   # after egress is closed this must fail
+```
+
+Directory layout used in the examples:
+
+| Path | Content |
+|---|---|
+| `/srv/excavator/artifacts` | downloaded image tarballs, code archives, checksums |
+| `/srv/excavator/<name>` | one prepared repository per project (mounted as `/work/repo`) |
+| `/srv/excavator/out/<name>` | run output per project (mounted as `/work/out`) |
+
+Both mounted directories must be writable by uid 10001 (the container always runs as uid 10001; do not pass `--user`).
+
+## 3. Network
+
+| VPC endpoint | Type | Required | Used by |
+|---|---|---|---|
+| `bedrock-runtime` | Interface | Yes | container: model calls |
+| `s3` | Gateway | Yes, when code or the image is delivered through S3 | host |
+| `ssm`, `ssmmessages`, `ec2messages` | Interface | Yes, for Session Manager | host |
+| `ecr.api`, `ecr.dkr` | Interface | Only when the image is pulled from ECR | host |
+| `bedrock` | Interface | Not required | Claude Code falls back to its built-in model list when it cannot list inference profiles |
+
+- Security groups: allow TCP 443 from the host to the interface endpoints and to the S3 gateway prefix list.
+- Close general egress by removing the `0.0.0.0/0` route (recommended: calls to anything else fail immediately). Blocking only in the security group also works.
+
+## 4. IAM
+
+Instance role policy. Replace the placeholders; tighten `Resource` to the profiles actually used.
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "BedrockInvokeEuProfile",
+      "Effect": "Allow",
+      "Action": ["bedrock:InvokeModel", "bedrock:InvokeModelWithResponseStream"],
+      "Resource": "arn:aws:bedrock:eu-central-1:<ACCOUNT_ID>:inference-profile/<PROFILE>"
+    },
+    {
+      "Sid": "BedrockInvokeProfileFoundationModels",
+      "Effect": "Allow",
+      "Action": ["bedrock:InvokeModel", "bedrock:InvokeModelWithResponseStream"],
+      "Resource": "arn:aws:bedrock:eu-*::foundation-model/<MODEL_ID>",
+      "Condition": {
+        "StringEquals": { "bedrock:InferenceProfileArn": "arn:aws:bedrock:eu-central-1:<ACCOUNT_ID>:inference-profile/<PROFILE>" }
+      }
+    },
+    {
+      "Sid": "HandoverBucketKmsViaS3",
+      "Effect": "Allow",
+      "Action": ["kms:Decrypt", "kms:GenerateDataKey"],
+      "Resource": "<BUCKET_KMS_KEY_ARN>",
+      "Condition": { "StringEquals": { "kms:ViaService": "s3.eu-central-1.amazonaws.com" } }
+    }
+  ]
+}
+```
+
+- `<MODEL_ID>` is the foundation model behind the profile, e.g. `anthropic.claude-opus-5-5`.
+- S3 access to the handover prefix (`s3:GetObject`, `s3:PutObject`, `s3:ListBucket`) comes from the bucket policy or an equivalent role statement.
+- No other AWS permissions should be reachable from the container.
+- If data must not leave the EU, add this deny statement against `global.*` profiles:
+
+```json
+{
+  "Sid": "DenyGlobalCrossRegionInference",
+  "Effect": "Deny",
+  "Action": "bedrock:*",
+  "Resource": "*",
+  "Condition": {
+    "StringEquals": { "aws:RequestedRegion": "unspecified" },
+    "ArnLike": { "bedrock:InferenceProfileArn": "arn:aws:bedrock:*:*:inference-profile/global.*" }
+  }
+}
+```
+
+If Bedrock model-invocation logging is enabled, the logged payloads contain the analyzed source code; give that log destination the same access control and retention as the source code.
+
+## 5. Image
+
+### Build (any machine with Docker Buildx)
+
+```sh
+COMMIT=$(git rev-parse HEAD); TAG=${COMMIT:0:8}-amd64
+docker buildx build --platform linux/amd64 --load -f deploy/Dockerfile \
+  --build-arg EXCAVATOR_COMMIT=$COMMIT -t excavator-runner:$TAG .
+docker run --rm --network none --entrypoint excavator-selftest excavator-runner:$TAG   # 12 PASS lines
+docker save excavator-runner:$TAG | gzip > excavator-runner-$TAG.tar.gz
+sha256sum excavator-runner-$TAG.tar.gz > excavator-runner-$TAG.tar.gz.sha256          # macOS: shasum -a 256
+aws s3 cp excavator-runner-$TAG.tar.gz        s3://<BUCKET>/<PREFIX>/
+aws s3 cp excavator-runner-$TAG.tar.gz.sha256 s3://<BUCKET>/<PREFIX>/
+```
+
+### Install on the host
+
+```sh
+cd /srv/excavator/artifacts
+aws s3 cp s3://<BUCKET>/<PREFIX>/excavator-runner-<TAG>.tar.gz .
+aws s3 cp s3://<BUCKET>/<PREFIX>/excavator-runner-<TAG>.tar.gz.sha256 .
+sha256sum -c excavator-runner-<TAG>.tar.gz.sha256
+docker load -i excavator-runner-<TAG>.tar.gz
+docker run --rm --network none --entrypoint excavator-selftest excavator-runner:<TAG>   # 12 PASS lines
+```
+
+The self-test makes no model call and needs no credentials. It checks the Claude Code version, the image commit, plugin validity and loading, Python, the git safe-directory setting, the Node heap limit, a Lazy run, settings isolation and the MCP server.
+
+## 6. Preparing `/work/repo`
+
+`/work/repo` must be either a clone the operator made and maintains (`git clone`, then only `git fetch` / `git checkout`), or a repository prepared from a code archive as below. It must never be someone's working copy or a directory with a `.git` copied in from elsewhere. Keep it between runs so `.excavator/` enables incremental `full` runs.
+
+From a code archive:
+
+```sh
+cd /srv/excavator/artifacts && sha256sum -c repo.zip.sha256     # if a checksum was provided
+mkdir -p /srv/excavator/<name> && unzip -q repo.zip -d /srv/excavator/<name>
+cd /srv/excavator/<name>/<project-root>
+find . -name .git -prune -exec rm -rf {} +                      # before running any git command here
+git init -q && git add -A && git -c user.name=excavator -c user.email=excavator@localhost commit -qm "handover <name>"
+git ls-files --others --ignored --exclude-standard              # files left out by .gitignore
+chmod -R a+rwX .
+```
+
+- Delete every `.git` from the archive before running any git command in it.
+- `git add -A` follows the project's `.gitignore`. Review the listed ignored files. Add a file with `git add -f <path>` only if it is source that must be analyzed.
+- The commit gives the repository a HEAD, which `full` mode requires.
+
+## 7. Running
+
+Lazy mode (deterministic, no model call, no credentials; can run with `--network none`):
+
+```sh
+docker run --rm --network none \
+  -v /srv/excavator/<name>:/work/repo \
+  -v /srv/excavator/out/<name>:/work/out \
   -e EXCAVATOR_MODE=lazy \
-  <registry>/<repository>:<tag>
+  excavator-runner:<TAG>
 ```
 
-Full mode starts Claude Code against Bedrock in the EU:
+Full mode (Claude Code against Bedrock):
 
 ```sh
 docker run --rm \
-  -v /path/to/clean-clone:/work/repo \
-  -v /path/to/out:/work/out \
+  -v /srv/excavator/<name>:/work/repo \
+  -v /srv/excavator/out/<name>:/work/out \
   -e EXCAVATOR_MODE=full \
+  -e EXCAVATOR_MAX_BUDGET_USD=<USD> \
   -e AWS_REGION=eu-central-1 \
-  -e ANTHROPIC_MODEL=eu.anthropic.claude-sonnet-5 \
-  -e EXCAVATOR_MAX_BUDGET_USD=5 \
-  <registry>/<repository>:<tag>
+  -e ANTHROPIC_MODEL=<PROFILE> \
+  -e ANTHROPIC_DEFAULT_OPUS_MODEL=<PROFILE> \
+  -e ANTHROPIC_DEFAULT_SONNET_MODEL=<PROFILE> \
+  -e ANTHROPIC_DEFAULT_HAIKU_MODEL=<PROFILE> \
+  excavator-runner:<TAG>
 ```
 
-On EC2/ECS with an instance/task role, no `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY` are needed — Claude Code picks up Bedrock credentials from the role via IMDS (see the hop-limit note above).
+- Credentials come from the instance role through IMDS. Do not pass access keys.
+- Set the three `ANTHROPIC_DEFAULT_*_MODEL` variables to a profile the role may invoke.
 
-The image's self-test (no model call, no credentials needed) runs by overriding the entrypoint:
+Other Excavator skills (for example `/excavator-prd`) run with Claude Code as the entrypoint, against a repository that already has Lazy products:
 
 ```sh
-docker run --rm --entrypoint excavator-selftest <registry>/<repository>:<tag>
+docker run -d --name prd-<name> \
+  -v /srv/excavator/<name>:/work/repo \
+  -v /srv/excavator/out/<name>:/work/out \
+  -e AWS_REGION=eu-central-1 \
+  -e ANTHROPIC_MODEL=<PROFILE> \
+  -e ANTHROPIC_DEFAULT_OPUS_MODEL=<PROFILE> \
+  -e ANTHROPIC_DEFAULT_SONNET_MODEL=<PROFILE> \
+  -e ANTHROPIC_DEFAULT_HAIKU_MODEL=<PROFILE> \
+  --entrypoint claude excavator-runner:<TAG> \
+  -p "/excavator:excavator-prd /work/repo --scope <subdir> --language <lang>
+Write the PRD to /work/out/PRD.md without asking for confirmation." \
+  --plugin-dir /opt/excavator --setting-sources user --settings '{"disableAllHooks": true}' \
+  --model <PROFILE> --permission-mode bypassPermissions --permission-prompts none \
+  --max-budget-usd <USD> --no-session-persistence --output-format stream-json --verbose
+docker logs -f prd-<name> > /srv/excavator/out/<name>/run.jsonl    # or: docker wait prd-<name>
 ```
 
-## Environment variables
+Run long jobs detached (`docker run -d`) so they do not depend on an interactive Session Manager session.
+
+## 8. Environment variables
 
 ### (a) Runtime parameters the operator passes
 
@@ -66,183 +229,104 @@ This is the exact set exported by `deploy/run-excavator.mjs`'s `RUNTIME_PARAMS` 
 | `ANTHROPIC_MODEL` | Only in `full` mode | — | Claude Code's own variable; the model/inference-profile ID, e.g. `eu.anthropic.claude-sonnet-5`. Recorded into the knowledge graph as the run's model. |
 <!-- runtime-params-table:end -->
 
-Any required parameter that is missing or invalid ends the run with the configuration-error exit code before anything is written or any process is started (see the exit-code table below).
+A missing or invalid required parameter ends the run with exit code `2` before anything is written.
 
-**Claude Code's own model-alias pins** — such as `ANTHROPIC_DEFAULT_SONNET_MODEL` or `ANTHROPIC_DEFAULT_HAIKU_MODEL` — may be passed through to `docker run -e ...` like any other environment variable and Claude Code will honor them, but `run-excavator.mjs` itself never reads them; they are not part of the table above.
+Claude Code's model-alias variables — `ANTHROPIC_DEFAULT_OPUS_MODEL`, `ANTHROPIC_DEFAULT_SONNET_MODEL` and `ANTHROPIC_DEFAULT_HAIKU_MODEL` — are passed through to Claude Code unchanged. `run-excavator.mjs` does not read them. Set them to a profile the instance role may invoke.
 
-**Testing-only seams** (never set these against the real image; they exist so `tests/deploy/` and `deploy/selftest.sh` can point the runner at fixtures instead of the fixed mount points and the real `claude` binary): `EXCAVATOR_REPO_ROOT_OVERRIDE`, `EXCAVATOR_OUT_DIR_OVERRIDE`, `EXCAVATOR_PLUGIN_DIR_OVERRIDE`, `EXCAVATOR_CLAUDE_BIN_OVERRIDE`, `EXCAVATOR_TIMEOUT_GRACE_SECONDS_OVERRIDE`.
+Testing-only seams (never set against the real image): `EXCAVATOR_REPO_ROOT_OVERRIDE`, `EXCAVATOR_OUT_DIR_OVERRIDE`, `EXCAVATOR_PLUGIN_DIR_OVERRIDE`, `EXCAVATOR_CLAUDE_BIN_OVERRIDE`, `EXCAVATOR_TIMEOUT_GRACE_SECONDS_OVERRIDE`.
 
-### (b) Values baked into the image (informational)
+### (b) Values baked into the image
 
-Set at build time in `deploy/Dockerfile`; not operator-configurable. Listed so the values in a `docker inspect` or a self-test failure are legible, not as a `docker run -e ...` reference.
+Set in `deploy/Dockerfile`; not operator-configurable.
 
-| Variable | Baked value | Source |
+| Variable | Baked value | Meaning |
 |---|---|---|
-| `EXCAVATOR_IMAGE_COMMIT` | the `EXCAVATOR_COMMIT` build arg (required, no default) | records the Excavator commit the image was built from; also the OCI label `org.opencontainers.image.revision` |
-| `EXCAVATOR_IMAGE_CLAUDE_CODE_VERSION` | the `CLAUDE_CODE_VERSION` build arg (default `2.1.281`) | records the pinned Claude Code version; also the label `com.excavator.claude-code-version` |
-| `CLAUDE_CODE_USE_BEDROCK` | `1` | routes Claude Code at Bedrock instead of the Anthropic API |
+| `EXCAVATOR_IMAGE_COMMIT` | the `EXCAVATOR_COMMIT` build arg (required) | the Excavator commit; also the label `org.opencontainers.image.revision` |
+| `EXCAVATOR_IMAGE_CLAUDE_CODE_VERSION` | the `CLAUDE_CODE_VERSION` build arg (default `2.1.281`) | the pinned Claude Code version; also the label `com.excavator.claude-code-version` |
+| `CLAUDE_CODE_USE_BEDROCK` | `1` | Claude Code uses Bedrock |
 | `DISABLE_UPDATES` | `1` | Claude Code never self-updates |
 | `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC` | `1` | |
 | `CLAUDE_CODE_DISABLE_OFFICIAL_MARKETPLACE_AUTOINSTALL` | `1` | |
 | `MCP_TOOL_TIMEOUT` | `600000` (ms) | |
 | `BASH_DEFAULT_TIMEOUT_MS` | `600000` | |
 | `BASH_MAX_TIMEOUT_MS` | `1800000` | |
-| `NODE_OPTIONS` | `--max-old-space-size-percentage=75` | sizes the Node heap to 75% of the container's memory (follows `docker run --memory`); V8's ~25% default is too small for very large repositories. Can be overridden with `-e NODE_OPTIONS=...` |
+| `NODE_OPTIONS` | `--max-old-space-size-percentage=75` | Node heap = 75% of container memory (follows `docker run --memory`); override with `-e NODE_OPTIONS=...` |
 
-## Preparing `/work/repo` from a code archive
+## 9. Sizing
 
-When code arrives as an archive (for example a zip uploaded to S3) rather than as a git clone you make yourself:
+Measured on an 8 vCPU / 32 GB x86_64 host with the image above:
 
-```sh
-sha256sum -c repo.zip.sha256                       # if the sender provided a checksum
-mkdir -p /srv/excavator/<name> && unzip -q repo.zip -d /srv/excavator/<name>
-cd /srv/excavator/<name>/<project-root>            # the directory that holds the project's files
-find . -name .git -prune -exec rm -rf {} +         # BEFORE running any git command here
-git init -q && git add -A && git -c user.name=excavator -c user.email=excavator@localhost commit -qm "handover <name>"
-chmod -R a+rwX .                                   # writable by the container's uid 10001
-```
+| Workload | Wall clock | Memory / disk | Model cost |
+|---|---|---|---|
+| Lazy, ~3M-line Java repository (16.5k files) | about 2–2.5 min | peak about 2.7 GB; products about 1.2 GB | none |
+| Lazy, Java repository with 8.1k files (about 0.57M lines of main Java) | about 1 min | products about 0.6 GB | none |
+| MCP read tool call on the ~3M-line repository | 6–10 s per call | — | none |
+| `/excavator-prd` with verification, 81-file scope (~15k lines), Opus 5.5 on Bedrock | about 45 min | — | about 25 USD |
 
-- **Delete the archive's `.git` before running any git command in it.** A `.git/config` from someone else can make an ordinary `git status` execute a command (for example via `core.fsmonitor`); the image also allows every directory in git's `safe.directory`, which is only safe for a repository you created yourself.
-- The fresh `git init` + commit gives the project a HEAD, which `full` mode requires. The analysis needs only the current files, not the sender's history.
-- `git add -A` follows the project's own `.gitignore`, so ignored content (dependencies, build output) is not analysed.
+- For `full` runs on large repositories, raise `EXCAVATOR_TIMEOUT_MINUTES` above 180.
+- Set `EXCAVATOR_MAX_BUDGET_USD` per run.
+- Cost figures are Claude Code's client-side estimates at list prices. AWS billing is authoritative.
 
-## Sizing for large repositories
-
-Measured on a ~3M-line Java repository (16,575 tracked files), Lazy mode in the image on 8 vCPU / 8 GB:
-
-- Wall clock: about 2 minutes. Peak container memory: about 2.7 GB; the Node heap needs more than 2 GB (with V8's default heap limit the run failed with an out-of-memory error at the publish step).
-- Products in `.excavator/`: about 1.2 GB (knowledge graph ~324 MB, source index ~274 MB, fingerprints ~73 MB).
-
-For repositories of that size, plan for at least 16 GB of RAM and disk for the repository, about 1.5 GB of products per repository, and the ~1.5 GB image. A `full` run on such a repository takes far longer and costs far more than Lazy: raise `EXCAVATOR_TIMEOUT_MINUTES` above its 180-minute default and set `EXCAVATOR_MAX_BUDGET_USD` deliberately.
-
-## Exit codes and output files
+## 10. Exit codes and output files
 
 | Exit code | Meaning |
 |---|---|
 | `0` | Success, or a `full` run skipped because existing products already match HEAD. |
 | `2` | Configuration error: a required parameter was missing or invalid. Nothing is written; the reason goes to stderr only. |
-| `3` | Run failure: Claude Code failed to start, errored, timed out, stopped at the budget cap or another non-success terminal state, recorded permission denials, or reported failed subagents (or its result lacked the fields needed to tell). `lazy`: the Lazy driver exited non-zero. |
+| `3` | Run failure: Claude Code failed to start, errored, timed out, stopped at the budget cap or another non-success terminal state, recorded permission denials, or reported failed subagents. `lazy`: the Lazy driver exited non-zero. The underlying API error is in `run.jsonl`. |
 | `4` | Load or product/structural-integrity failure: the plugin, its MCP server, its agents, or the subagent-dispatch tool did not fully load; the produced commit or model stamp did not match; or the independent re-validation found structural integrity issues or could not run. |
+| `5` | Fabrication over threshold: the independent re-validation found more `contradicted` nodes/edges than `EXCAVATOR_MAX_CONTRADICTED` allows, or summary verification was skipped entirely. |
 
-When several stages fail, the exit code is the first failing stage in the order configuration → load → run → products/integrity → fabrication; `summary.json` still records every check that could be evaluated.
-| `5` | Fabrication over threshold: the independent re-validation found more `contradicted` nodes/edges than `EXCAVATOR_MAX_CONTRADICTED` allows, or summary verification was skipped entirely (a skip is never counted as zero fabrication). |
+When several stages fail, the exit code is the first failing stage in the order configuration → load → run → products/integrity → fabrication.
 
-**Products already in `/work/repo/.excavator/` are never deleted or modified by the runner on any failure path** — a failing run always leaves the last good product (or none) in place.
+Products already in `/work/repo/.excavator/` are never deleted or modified on a failure path.
 
-Files written to `/work/out` (all absent on a `2` exit; `run.jsonl`/`validation.json`/`validated-graph.json` absent on a skipped `0` exit, since no Claude Code run happened):
+Files in `/work/out` (none on exit `2`; `run.jsonl`, `validation.json` and `validated-graph.json` absent on a skipped `0` exit):
 
-- `summary.json` — the deterministic verdict: image commit and Claude Code version, target repo HEAD, mode, model, one status + reasons per check, token counts by kind (input/cache-write/cache-read/output), estimated cost, contradicted/unverified counts, and a cache-read warning. Written for every run except a configuration error.
-- `run.jsonl` — the raw `stream-json` events from the Claude Code `-p` session. `full` mode only.
-- `validation.json` — `validate-graph.mjs`'s independent structural-integrity report for the post-run graph (an `issues[]` array; non-empty means a `4` exit).
-- `validated-graph.json` — the knowledge graph re-annotated by that same independent pass with a per-node/per-edge `verification` status (`verified` / `unverified` / `contradicted` / `dirty`).
+| File | Content |
+|---|---|
+| `summary.json` | image commit and Claude Code version, repository HEAD, mode, model, one status + reasons per check, token counts by kind, estimated cost, contradicted/unverified counts |
+| `run.jsonl` | raw `stream-json` events of the Claude Code session (`full` only) |
+| `validation.json` | independent structural-integrity report (`issues[]`; non-empty means exit `4`) |
+| `validated-graph.json` | the knowledge graph with a per-node/per-edge `verification` status |
 
-**Cost figures are estimates, not a bill.** `summary.json`'s `estimatedCostUsd` (and the underlying `result` event's own `total_cost_usd`) is Claude Code's client-side estimate at official list prices. It does not reflect Bedrock's EU-region pricing, which runs roughly 10% above the price this estimate assumes. Treat AWS's own billing as authoritative for actual spend.
+## 11. Security preconditions
 
-## Security preconditions
+`full` mode runs Claude Code with `--permission-mode bypassPermissions`; the isolation boundary is the container and the host:
 
-`full` mode runs Claude Code with `--permission-mode bypassPermissions` (see design D3): Excavator executes shell commands the analyzed repository's content can influence, without per-command confirmation. This is a deliberate tradeoff — the alternative (an allowlist, or an auto-classifying permission mode) is either too brittle for Excavator's varied shell usage or itself calls a model with unpredictable results. The isolation boundary is therefore pushed to the container and the host, not the permission prompt:
+- The instance role is limited to [§4](#4-iam).
+- No git credentials in the container or the image; host credentials used to clone are read-only.
+- No general internet egress from the host or the container.
+- Each `/work/repo` is dedicated to this image and written only by the operator's clone/fetch or archive preparation. If its state is in doubt, delete it and prepare it again.
 
-- The instance/task role attached to the host **must be limited to Bedrock invocation** (see [IAM minimum permissions](#iam-minimum-permissions) below) — no other AWS credentials should be reachable from inside the container.
-- No git credentials live in the container or the image; the host's git credentials (used only to produce the clone at `/work/repo`) should be read-only.
-- Network egress from the container should be restricted to what Bedrock and its VPC endpoints need (see below); no general internet access.
-- Each `/work/repo` must be dedicated to this image: a clone the operator created and updates only with `git fetch`/`git checkout`, not a developer's checkout and not shared with other tools. Nothing else should write to it between runs; if a run's output is ever in doubt, delete the directory and clone again (the next `full` run then rebuilds from scratch).
+## 12. CI and release (ECR)
 
-## IAM minimum permissions
-
-Minimal, EU-only Bedrock invoke access. Replace `<ACCOUNT_ID>` and tighten `Resource` to the specific inference profile(s) in use; this is an example, not a policy to paste in unmodified.
-
-```json
-{
-  "Version": "2012-10-17",
-  "Statement": [
-    {
-      "Sid": "BedrockInvokeEuOnly",
-      "Effect": "Allow",
-      "Action": [
-        "bedrock:InvokeModel",
-        "bedrock:InvokeModelWithResponseStream"
-      ],
-      "Resource": [
-        "arn:aws:bedrock:eu-central-1:<ACCOUNT_ID>:inference-profile/eu.*",
-        "arn:aws:bedrock:eu-*::foundation-model/*"
-      ]
-    },
-    {
-      "Sid": "BedrockDiscoverInferenceProfiles",
-      "Effect": "Allow",
-      "Action": [
-        "bedrock:ListInferenceProfiles",
-        "bedrock:GetInferenceProfile"
-      ],
-      "Resource": "*"
-    },
-    {
-      "Sid": "DenyGlobalCrossRegionInference",
-      "Effect": "Deny",
-      "Action": "bedrock:*",
-      "Resource": "*",
-      "Condition": {
-        "StringEquals": { "aws:RequestedRegion": "unspecified" },
-        "ArnLike": { "bedrock:InferenceProfileArn": "arn:aws:bedrock:*:*:inference-profile/global.*" }
-      }
-    }
-  ]
-}
-```
-
-The deny statement is only needed when data must not leave the EU. A `global.*` inference profile can route a request to any commercial AWS region; when Bedrock authorizes such a request, it evaluates the region-agnostic foundation-model resource with `aws:RequestedRegion` set to the literal string `unspecified` (it is not absent, so a `Null` condition would never match). The statement above follows AWS's documented pattern for disabling global cross-Region inference; the `eu.*` profiles used here keep routing inside EU regions and are unaffected. Omit it if global routing is acceptable. If your organization restricts regions with SCPs, the same condition key applies there (see AWS's "Global cross-Region inference" documentation).
-
-Additional preconditions:
-- A **one-time Anthropic model use-case form** must be completed per AWS account before Bedrock will serve Anthropic models in it.
-- **Service Quotas** for the EU cross-region inference profile must be requested/confirmed before the first real run; the default quota may be too low for a `full` run's burst of tool-call turns.
-
-### VPC endpoints
-
-If the host runs without general internet egress, these VPC endpoints are required:
-
-- `bedrock-runtime` — model invocation (the container).
-- `bedrock` — Claude Code lists inference profiles at startup (the container).
-- `ecr.api`, `ecr.dkr`, and the S3 gateway endpoint — pulling this image from ECR (the host; ECR serves image layers from S3).
-- `ssm`, `ssmmessages`, `ec2messages` — Systems Manager Session Manager access to the host, if you use it instead of SSH (the host, not the container).
-
-The host additionally needs whatever route it uses to clone target repositories (for example, to your git hosting); the container itself needs no git access.
-
-### Bedrock invocation logging
-
-If Bedrock model-invocation logging is enabled on the account, the logged payloads contain the analyzed repository's source code (it is sent to the model as context). Treat that log destination (S3/CloudWatch) as sensitive, with access control and retention matching the source code's own classification — not merely "AWS logs."
-
-## CI and release
-
-Tags matching `runner-v*` (and manual `workflow_dispatch` runs) trigger `.github/workflows/runner-image.yml`: the repository's test gate, then a `linux/amd64` build and self-test of the image, then — only on that release trigger, and only once DevOps has configured the four repository variables below — a push of that same tested image to ECR via OIDC (no long-lived AWS credentials stored in GitHub). A PR touching deploy-relevant files runs the same flow but never pushes. The image is built for `linux/amd64` (x86 EC2 instances); for Graviton (arm64) hosts, tell the Excavator team — the Dockerfile already builds on arm64 and only a native arm64 CI job needs to be added.
-
-DevOps must provide, as GitHub **repository variables**:
+`.github/workflows/runner-image.yml` runs on tags `runner-v*`, on manual `workflow_dispatch`, and on pull requests touching deploy files. It runs the test gate, then builds and self-tests the `linux/amd64` image. On a tag or dispatch, it then pushes the tested image to ECR through OIDC, once these GitHub repository variables are set:
 
 | Variable | Meaning |
 |---|---|
-| `AWS_ACCOUNT_ID` | account owning the ECR repository (passed to the ECR login step) |
+| `AWS_ACCOUNT_ID` | account owning the ECR repository |
 | `ECR_REGION` | region of the ECR repository |
 | `ECR_REPOSITORY` | ECR repository name |
-| `AWS_ROLE_ARN` | IAM role the GitHub Actions OIDC provider assumes to push |
+| `AWS_ROLE_ARN` | IAM role the GitHub OIDC provider assumes to push |
 
-The assumed role needs ECR push permissions on that repository; scoping that role (and setting up the GitHub OIDC trust relationship) is DevOps's IaC, not part of this repository. **ECR tag immutability is a DevOps-side setting on the repository** — this workflow relies on it to guarantee a pushed tag can never be silently overwritten, but does not itself enforce it.
+- The role needs ECR push permission on that repository.
+- Enable ECR tag immutability on the repository.
+- Image tag format: `<package.json version>-<first 8 chars of the commit>`, e.g. `2.9.6-3dc3467a`.
 
-**Image tag format:** `<Excavator package version>-<first 8 chars of the commit>`, e.g. `2.9.6-3dc3467a`. The version comes from the repository's own `package.json`.
+Without ECR, deliver the image as a tarball through S3 ([§5](#5-image)).
 
-## Release gate (R1)
+## 13. Release gate (R1)
 
-An image tag reaching CI (built and pushed) is **not yet cleared for customer repositories**. Before first use, DevOps must run two real-model checks on a VM using the pushed ECR image, and record the results below:
+Before an image tag is used on a customer repository, run on the host with that image and record the result below:
 
-1. **Full run against the designated smoke repository** (not a customer repository — an internal repository DevOps and the Excavator team have agreed to use for this check), model `eu.anthropic.claude-sonnet-5`, budget `$5` USD. Must exit `0`. Record: token counts by kind (input/cache-write/cache-read/output), whether cache-read tokens are greater than 0, estimated cost, and wall-clock time.
-2. **Full run against a small decoy repository** whose `CLAUDE.md` instructs writing a marker file, budget `$1` USD. The marker file must **not** appear (this is the one isolation check that needs a real model call — see design D5/O5 for the zero-credential checks that cover everything else).
-
-**An image tag must not be used against any customer repository until its R1 row is recorded below.**
-
-### Release record
+1. `full` run against an agreed internal smoke repository, model `<PROFILE>`, budget 5 USD. Must exit `0`. Record token counts by kind, whether cache-read tokens are above 0, estimated cost and wall clock.
+2. `full` run against a small decoy repository whose `CLAUDE.md` instructs writing a marker file, budget 1 USD. The marker file must not appear.
 
 | Image tag | Date | R1 result | Tokens (in / cache-write / cache-read / out) | Cache read > 0? | Est. cost (USD) | Wall clock | Notes |
 |---|---|---|---|---|---|---|---|
 | | | | | | | | |
 
-## Upgrade procedure
+## 14. Upgrade
 
-To move to a newer Claude Code or a newer Excavator commit: bump the `CLAUDE_CODE_VERSION` build arg default in `deploy/Dockerfile` (or simply build from the new commit — `EXCAVATOR_COMMIT` is supplied by CI, not hardcoded), cut a new `runner-vX.Y.Z` tag, let CI build/self-test/push it, then run R1 again against the new tag before it is used on any customer repository. There is no in-place upgrade of a running container; every upgrade is a new image tag through the same release gate.
+Build a new image from the new commit (or bump `CLAUDE_CODE_VERSION` in `deploy/Dockerfile`), deliver it ([§5](#5-image) or [§12](#12-ci-and-release-ecr)), run the self-test, and pass R1 again before using it on customer repositories. Running containers are never upgraded in place.
