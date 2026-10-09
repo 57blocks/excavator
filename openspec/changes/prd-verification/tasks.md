@@ -1,0 +1,43 @@
+本变更零产品代码：新增 `skills/excavator-verify/SKILL.md`，修改 `skills/excavator-prd/SKILL.md`。门禁以 `check-refs`、`pnpm test`、`openspec validate --strict` 为准；验收以 design.md「验收」节的固定标准在 Fineract 上实测。
+
+## 1. 计划
+
+- [x] 1.1 提交 proposal / design / specs / tasks，`openspec validate prd-verification --strict` 通过。
+
+## 2. 核对 skill
+
+- [x] 2.1 新增 `skills/excavator-verify/SKILL.md`：五类候选、全仓取证规则、按章节并行、跨章节一致性、无第四态判定桶、报告格式、`--fix` 改正规则与核对摘要。
+- [x] 2.2 `name: excavator-verify` 与目录名一致，引用可解析（`check-refs`）。
+
+## 3. PRD 集成
+
+- [x] 3.1 `skills/excavator-prd/SKILL.md`：写作阶段的高风险陈述取证规则；Phase 4 保存前按 `excavator-verify` 流程 `--fix` 并报告计数。
+
+## 4. 文档与测试
+
+- [x] 4.1 README 增加 `/excavator-verify` 用法。
+- [x] 4.2 `tests/install/install.test.mjs`：skill 数 9 → 10，断言包含 `excavator-verify`。
+
+## 5. 门禁
+
+- [x] 5.1 `node scripts/check-refs.mjs` 通过。
+- [x] 5.2 `pnpm -r build && pnpm test` 全绿。
+
+## 6. 验收（Fineract 实测，输出不提交）
+
+- [x] 6.1 装置自检：植入 P1–P4 的 PRD 副本上单独运行 `excavator-verify`，4/4 判为 contradicted 或 misattributed；报告 P5 是否被发现。
+  - 全文运行（9,857 行，预算上限 40 美元）在 14 个章节组中只完成 3 组即被协调者以预算为由中止（9.5 分钟、34.61 美元），报告如实标注「不完整核对」并列出未核行段；植入与已知错误均落在未完成组，未被核到。
+  - 改用「12 个含植入/已知错误的小节」组成的探针文档（473 行）单独运行：P1–P4 4/4 判为 contradicted；类别外的 P5 也被发现（contradicted）。
+- [x] 6.2 真实错误召回 ≥ 6/7；A/B 以外的 contradicted/misattributed 逐条复核，精确度目标 ≥ 80%；报告未决项消解数与章节冲突发现数。
+  - 召回 7/7（探针文档）：3851、4966、8491、9420 判为 contradicted/misattributed；4205、5309、9050 三处待确认判为「已定论且原推测错误」。
+  - 精确度：探针另报 8 处错误与 3 处新增章节冲突，全文运行在已完成的 1,880 行中另报 19 处错误；协调者复核 5 处、人工复核 4 处，全部成立（其中 2–3 处为表述不准确级别的修正，如「最多重试 3 次」实为「共执行 3 次含首次」）。
+  - 未决项：探针 5 处中 4 处定论（3 处原推测错误）、1 处保留；全文已完成部分 6 处中 5 处定论、1 处保留。
+  - 章节冲突：探针发现 10 组（7 组与已计错误重叠、3 组新增）；已知的 4 组远距离冲突不在探针范围内，未测。
+  - 对照：Sonnet 5 在同一探针上花费 7.05 美元（Opus 4.62 美元）且协调者在一个子代理未返回时提前结束、未写报告 → 核对保持 Opus；随后在 skill 中补充「等待全部子代理、不得为省预算中止」。
+- [x] 6.3 时间与费用：与生成时间（21 分钟）、费用（约 62 美元）对比，目标各 ≤ 50%；如实记录。
+  - **未达标。** 探针 473 行：7.8 分钟、4.62 美元（74 个候选）；全文 3/14 组即耗 34.61 美元。高风险陈述密度约每百行 8–16 条，按此推算全文核对约 50–100 美元、15–20 分钟，与生成本身相当。五类均有错误，无法靠删减类别降本；零编造为硬指标，接受该成本，缩小 PRD 范围是主要的降本手段。
+- [x] 6.4 集成：修改后的 `excavator-prd` 在 `fineract-progressive-loan` 范围重跑，对比改前约 12 分钟 / 13.68 美元，报告增量与 `--fix` 改正条数。
+  - 本地订阅运行在研究阶段（20.32 美元）触发订阅会话用量上限，未产出 PRD；改在部署 VM 上以 Bedrock（`eu.anthropic.claude-opus-5-5`，镜像 f3fae810 + 挂载本分支两个 SKILL.md）运行。
+  - 结果：45 分钟、24.68 美元（Claude Code 按标价估算；实际账单以 AWS 为准）；研究约 17 分钟、写作约 8 分钟、核对与改正约 19 分钟；7 个子代理（研究 3、核对 3、一致性 1）；PRD 1,569 行；未读取任何仓库文档。
+  - 核对：225 条候选，186 证实，12 矛盾、5 错归属、1 无法核实（已改为非绝对表述）；待确认 13 推测正确、3 推测错误、5 保留（合并为 2 项）；7 组章节冲突；错误与冲突全部在保存前改正。
+- [x] 6.5 把 6.1–6.4 的数字写回本文件，分阶段提交（计划、核对 skill、PRD 集成、文档测试、验收记录），PR 以 merge commit 合入 main。

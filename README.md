@@ -129,6 +129,9 @@ For host-owned AI exploration through seven bounded local MCP tools, see [MCP se
 # Generate an As-Is PRD for a feature (default audience: product manager)
 /excavator-prd
 
+# Verify an As-Is document (e.g. a PRD) against the code; --fix corrects it in place
+/excavator-verify docs/PRD.md
+
 # Re-run anytime — incremental by default (only re-analyzes changed files)
 /excavator
 
