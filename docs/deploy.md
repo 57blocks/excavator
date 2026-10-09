@@ -211,6 +211,14 @@ docker logs -f prd-<name> > /srv/excavator/out/<name>/run.jsonl    # or: docker 
 
 Run long jobs detached (`docker run -d`) so they do not depend on an interactive Session Manager session.
 
+Measure how much of the scope a skill run actually read (lower and upper bound, in lines):
+
+```sh
+docker run --rm -v /srv/excavator/<name>:/work/repo -v /srv/excavator/out/<name>:/work/out \
+  --entrypoint node excavator-runner:<TAG> /opt/excavator/deploy/read-coverage.mjs \
+  --run /work/out/run.jsonl --repo /work/repo --scope <subdir>/
+```
+
 ## 8. Environment variables
 
 ### (a) Runtime parameters the operator passes
@@ -285,7 +293,7 @@ Files in `/work/out` (none on exit `2`; `run.jsonl`, `validation.json` and `vali
 
 | File | Content |
 |---|---|
-| `summary.json` | image commit and Claude Code version, repository HEAD, mode, model, one status + reasons per check, token counts by kind, estimated cost, contradicted/unverified counts |
+| `summary.json` | image commit and Claude Code version, repository HEAD, mode, model, one status + reasons per check (a failed model call carries the provider's error message and HTTP status), token counts by kind, estimated cost, contradicted/unverified counts, and `readCoverage` (`full` only: how many lines of the repository the run read, lower and upper bound) |
 | `run.jsonl` | raw `stream-json` events of the Claude Code session (`full` only) |
 | `validation.json` | independent structural-integrity report (`issues[]`; non-empty means exit `4`) |
 | `validated-graph.json` | the knowledge graph with a per-node/per-edge `verification` status |

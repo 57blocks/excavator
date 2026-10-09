@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { checkRun } from '../../deploy/run-excavator.mjs';
+import { checkRun, describeApiError } from '../../deploy/run-excavator.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const fixturesDir = resolve(__dirname, '../fixtures/deploy');
@@ -77,5 +77,38 @@ describe('checkRun (task 2.3, design D4 "运行" / O3)', () => {
     const result = checkRun({ resultEvent: loadFixture('result-error-subtype.json'), processExitCode: 0, timedOut: false });
     expect(result.ok).toBe(false);
     expect(result.reasons.some((r) => r.includes('subtype') && r.includes('error_max_budget_usd'))).toBe(true);
+  });
+
+  // A real Bedrock 403 (account not subscribed to the model through AWS
+  // Marketplace). Claude Code's result text leads with "AWS authentication
+  // failed", which points the operator at credentials; the reason must carry
+  // the provider's own message and status instead.
+  it('reports the provider message and HTTP status of an api_error result', () => {
+    const result = checkRun({ resultEvent: loadFixture('result-api-error.json'), processExitCode: 1, timedOut: false });
+    expect(result.ok).toBe(false);
+    const apiReason = result.reasons.find((r) => r.startsWith('model API error'));
+    expect(apiReason).toBeDefined();
+    expect(apiReason).toContain('(HTTP 403)');
+    expect(apiReason).toContain('Model access is denied');
+    expect(apiReason).toContain('AWS Marketplace');
+    expect(apiReason).not.toContain('AWS authentication failed');
+  });
+
+  it('adds no API error reason when the result is not an API error', () => {
+    const result = checkRun({ resultEvent: loadFixture('result-error-subtype.json'), processExitCode: 0, timedOut: false });
+    expect(result.reasons.some((r) => r.startsWith('model API error'))).toBe(false);
+  });
+});
+
+describe('describeApiError', () => {
+  it('falls back to the whole result text when there is no "API Error:" marker, and truncates long messages', () => {
+    const reason = describeApiError({ terminal_reason: 'api_error', result: 'x'.repeat(1000) });
+    expect(reason.startsWith('model API error: ')).toBe(true);
+    expect(reason.length).toBeLessThan(450);
+  });
+
+  it('returns null for a result without terminal_reason "api_error" or api_error_status', () => {
+    expect(describeApiError({ terminal_reason: 'completed', result: 'API Error: nope' })).toBeNull();
+    expect(describeApiError(null)).toBeNull();
   });
 });

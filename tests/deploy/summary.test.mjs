@@ -139,4 +139,21 @@ describe('buildSummary (spec "每次运行恰好落入一个可见结果", task 
     expect(summary.checks.product.status).toBe('not-applicable');
     expect(summary.exitCode).toBe(3);
   });
+
+  it('records read coverage when given and null when no Claude Code run happened', () => {
+    const coverage = { scope: { prefixes: [], files: 2, lines: 30 }, lower: { files: 1, lines: 10 }, upper: { files: 1, lines: 12 } };
+    const withRun = buildSummary({
+      ...base, skipped: false, skipReason: null,
+      loadCheck: { ok: true, reasons: [] }, runCheck: { ok: true, reasons: [] },
+      productCheck: null, fabricationCheck: null,
+      modelUsage: {}, exitCode: EXIT_CODES.OK, readCoverage: coverage,
+    });
+    expect(withRun.readCoverage).toEqual(coverage);
+    const skipped = buildSummary({
+      ...base, skipped: true, skipReason: 'existing full product already matches HEAD',
+      loadCheck: null, runCheck: null, productCheck: null, fabricationCheck: null,
+      modelUsage: {}, exitCode: EXIT_CODES.OK,
+    });
+    expect(skipped.readCoverage).toBeNull();
+  });
 });
