@@ -16,6 +16,9 @@ import { createHash } from 'node:crypto';
 
 import { runLazyAnalysis, defaultRunScript } from '../../skills/excavator/lazy-analyze.mjs';
 import { SOURCE_INDEX_FILE } from '../../skills/excavator/source-index-store.mjs';
+import {
+  KNOWLEDGE_GRAPH_FILE, LEGACY_KNOWLEDGE_GRAPH_FILE, readKnowledgeGraph, writeKnowledgeGraph,
+} from '../../skills/excavator/knowledge-graph-store.mjs';
 
 /** A fixed clock so two runs over an unchanged project are byte-identical
  *  (real wall-clock time would otherwise make `project.analyzedAt` differ
@@ -60,7 +63,7 @@ describe('lazy-analyze driver — first-run pipeline', () => {
     expect(result.metaAdvanced).toBe(true);
     expect(result.validation.ok).toBe(true);
 
-    const graph = JSON.parse(readFileSync(join(root, '.excavator', 'knowledge-graph.json'), 'utf-8'));
+    const graph = readKnowledgeGraph(join(root, '.excavator', KNOWLEDGE_GRAPH_FILE));
     expect(graph.nodes.length).toBeGreaterThan(0);
     for (const node of graph.nodes) {
       expect(node.summary).toBe('');
@@ -90,10 +93,10 @@ describe('lazy-analyze driver — first-run pipeline', () => {
 
   it('is deterministic: a second run over an unchanged project is byte-identical', async () => {
     await runLazyAnalysis({ projectRoot: root, now: FIXED_NOW });
-    const first = readFileSync(join(root, '.excavator', 'knowledge-graph.json'), 'utf-8');
+    const first = readFileSync(join(root, '.excavator', KNOWLEDGE_GRAPH_FILE), 'utf-8');
 
     await runLazyAnalysis({ projectRoot: root, now: FIXED_NOW });
-    const second = readFileSync(join(root, '.excavator', 'knowledge-graph.json'), 'utf-8');
+    const second = readFileSync(join(root, '.excavator', KNOWLEDGE_GRAPH_FILE), 'utf-8');
 
     expect(second).toBe(first);
   });
@@ -112,13 +115,13 @@ describe('lazy-analyze driver — first-run pipeline', () => {
     expect(result.saveError).toMatch(/build-fingerprints/);
     // Staged publish (design D4, product-serialization-ceiling): the
     // fingerprints-failure gate is now checked BEFORE anything is staged —
-    // it leaves every final product untouched, knowledge-graph.json
+    // it leaves every final product untouched, knowledge-graph.jsonl
     // included (this is a first-ever run, so "untouched" means "still does
     // not exist at all"). This is a deliberate behavior change from the
     // pre-staged-publish driver, where the graph write ran unconditionally
     // ahead of this gate; the modified lazy-analysis/revision-sync specs now
     // require the all-or-nothing guarantee to cover every final product.
-    expect(existsSync(join(root, '.excavator', 'knowledge-graph.json'))).toBe(false);
+    expect(existsSync(join(root, '.excavator', KNOWLEDGE_GRAPH_FILE))).toBe(false);
     expect(existsSync(join(root, '.excavator', 'meta.json'))).toBe(false);
     expect(existsSync(join(root, '.excavator', SOURCE_INDEX_FILE))).toBe(false);
     expect(existsSync(join(root, '.excavator', 'source-manifest.json'))).toBe(false);
@@ -129,8 +132,8 @@ describe('lazy-analyze driver — first-run pipeline', () => {
 
   it('does not wipe or downgrade an existing full graph\'s summaries/tags/layers', async () => {
     await runLazyAnalysis({ projectRoot: root, now: FIXED_NOW });
-    const graphPath = join(root, '.excavator', 'knowledge-graph.json');
-    const graph = JSON.parse(readFileSync(graphPath, 'utf-8'));
+    const graphPath = join(root, '.excavator', KNOWLEDGE_GRAPH_FILE);
+    const graph = readKnowledgeGraph(graphPath);
 
     // Simulate a prior Full run's model-authored semantics on one node, plus
     // an architecture layer grouping (Lazy never produces either).
@@ -138,15 +141,36 @@ describe('lazy-analyze driver — first-run pipeline', () => {
     target.summary = 'Runs the fixture entry point.';
     target.tags = ['entrypoint'];
     graph.layers = [{ id: 'layer:app', name: 'App', description: 'application code', nodeIds: [target.id] }];
-    writeFileSync(graphPath, JSON.stringify(graph, null, 2), 'utf-8');
+    writeKnowledgeGraph(graphPath, graph);
 
     await runLazyAnalysis({ projectRoot: root, now: FIXED_NOW });
 
-    const after = JSON.parse(readFileSync(graphPath, 'utf-8'));
+    const after = readKnowledgeGraph(graphPath);
     const afterTarget = after.nodes.find((n) => n.id === target.id);
     expect(afterTarget.summary).toBe('Runs the fixture entry point.');
     expect(afterTarget.tags).toEqual(['entrypoint']);
     expect(after.layers).toEqual(graph.layers);
+  });
+
+  // openspec: changes/knowledge-graph-line-store, design D5 — zero compat.
+  it('ignores a leftover whole-document knowledge-graph.json and deletes it on a successful publish', async () => {
+    const dataDir = join(root, '.excavator');
+    mkdirSync(dataDir, { recursive: true });
+    // A legacy graph carrying a summary: it must not be carried forward,
+    // because the legacy file is never read.
+    writeFileSync(join(dataDir, LEGACY_KNOWLEDGE_GRAPH_FILE), JSON.stringify({
+      version: '1.0.0', project: { name: 'legacy' },
+      nodes: [{ id: 'file:src/a.ts', type: 'file', name: 'a.ts', filePath: 'src/a.ts', summary: 'legacy summary', tags: [] }],
+      edges: [], layers: [], tour: [],
+    }), 'utf-8');
+
+    const result = await runLazyAnalysis({ projectRoot: root, now: FIXED_NOW });
+
+    expect(result.saveError).toBeNull();
+    expect(existsSync(join(dataDir, LEGACY_KNOWLEDGE_GRAPH_FILE))).toBe(false);
+    const graph = readKnowledgeGraph(join(dataDir, KNOWLEDGE_GRAPH_FILE));
+    expect(graph.project.name).not.toBe('legacy');
+    expect(graph.nodes.find((n) => n.id === 'file:src/a.ts').summary).toBe('');
   });
 
   it('re-run over a GIT target with an existing .excavator is byte-identical (data dir dropped from scan)', async () => {

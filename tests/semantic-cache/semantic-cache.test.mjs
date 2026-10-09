@@ -404,15 +404,15 @@ describe('semantic-cache — the fact layer is never touched', () => {
 
   it('a semantic write leaves knowledge-graph.json byte-identical', async () => {
     const graphContent = JSON.stringify({ version: '1.0.0', nodes: [{ id: NODE_ID, type: 'function' }], edges: [] }, null, 2);
-    writeFileSync(join(root, '.excavator', 'knowledge-graph.json'), graphContent, 'utf-8');
-    const shaBefore = sha256(readFileSync(join(root, '.excavator', 'knowledge-graph.json')));
+    writeFileSync(join(root, '.excavator', 'knowledge-graph.jsonl'), graphContent, 'utf-8');
+    const shaBefore = sha256(readFileSync(join(root, '.excavator', 'knowledge-graph.jsonl')));
 
     const result = await commitSemanticCacheEntry({ projectRoot: root, nodeId: NODE_ID, filePath: FILE_PATH, fields: validFields() });
     expect(result.ok).toBe(true);
 
-    const shaAfter = sha256(readFileSync(join(root, '.excavator', 'knowledge-graph.json')));
+    const shaAfter = sha256(readFileSync(join(root, '.excavator', 'knowledge-graph.jsonl')));
     expect(shaAfter).toBe(shaBefore);
-    expect(readFileSync(join(root, '.excavator', 'knowledge-graph.json'), 'utf-8')).toBe(graphContent);
+    expect(readFileSync(join(root, '.excavator', 'knowledge-graph.jsonl'), 'utf-8')).toBe(graphContent);
   });
 });
 

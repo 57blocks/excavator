@@ -16,6 +16,7 @@ import { execFileSync } from 'node:child_process';
 
 import { runLazyAnalysis } from '../../skills/excavator/lazy-analyze.mjs';
 import { syncFactGraph } from '../../skills/excavator/sync-fact-graph.mjs';
+import { readKnowledgeGraph } from '../../skills/excavator/knowledge-graph-store.mjs';
 
 const FIXED_NOW = () => '2024-01-01T00:00:00.000Z';
 const LATER_NOW = () => '2024-06-01T00:00:00.000Z';
@@ -25,7 +26,7 @@ function git(dir, args) {
 }
 
 function readGraph(root) {
-  return JSON.parse(readFileSync(join(root, '.excavator', 'knowledge-graph.json'), 'utf-8'));
+  return readKnowledgeGraph(join(root, '.excavator', 'knowledge-graph.jsonl'));
 }
 
 function readManifest(root) {

@@ -4,11 +4,10 @@
 1. `refactor(store): extract shared jsonl line reader`：任务 1.1。
 2. `feat(graph): line-oriented knowledge-graph store with strict round trip`：任务 2.1–2.2。
 3. `feat(facts): incremental facts digest with byte-identical input`：任务 3.1–3.2。
-4. `feat(lazy): publish knowledge-graph.jsonl through staged publish`：任务 4.1–4.3。
-5. `feat(readers): move every graph reader and writer to the store`：任务 5.1–5.4。
-6. `feat(structure-all): line-oriented structure-all.jsonl`：任务 6.1。
-7. `docs: point prose, examples and docs at knowledge-graph.jsonl`：任务 7.1–7.2。
-8. `docs(openspec): record knowledge-graph-line-store acceptance and archive`：任务 8.x、9.1。
+4. `feat(graph): publish knowledge-graph.jsonl and move every reader and writer to the store`：任务 4.1–4.3、5.1–5.4。原计划拆成两个 commit，但 Lazy 一旦改写 `.jsonl`，所有还读 `.json` 的地方都会失败，单独的第 4 步 commit 会让测试变红、无法按步 revert，所以合为一个。
+5. `feat(structure-all): line-oriented structure-all.jsonl`：任务 6.1。
+6. `docs: point prose, examples and docs at knowledge-graph.jsonl`：任务 7.1–7.2。
+7. `docs(openspec): record knowledge-graph-line-store acceptance and archive`：任务 8.x、9.1。
 
 ## 1. 共享按行读取
 
@@ -26,21 +25,22 @@
 
 ## 4. Lazy 发布
 
-- [ ] 4.1 `lazy-analyze.mjs` 的暂存发布改写 `knowledge-graph.jsonl`（新的写入接缝），发布成功后删除旧 `knowledge-graph.json`；`intermediate/fact-graph.json` 改为 `intermediate/fact-graph.jsonl`；`PIPELINE_VERSION` 升为 `lazy-fact-graph/3`；余量表加入 `knowledge-graph.jsonl`、`intermediate/fact-graph.jsonl` 与 `source-index.jsonl` 的最长记录；读取上一份图改用存储模块，不再调用 core `loadGraph`。验证：Lazy 测试与暂存发布的故障注入测试覆盖新接缝。
-- [ ] 4.2 删除 core `persistence` 的 `loadGraph`/`saveGraph` 及其测试，其余持久化函数不动。验证：core 测试与 typecheck 通过。
-- [ ] 4.3 上限绊线：注入小上限时，整图超限但最长记录不超限的夹具发布成功；单条记录超限的夹具具名失败且最终产物不变。验证：对应测试。
+- [x] 4.1 `lazy-analyze.mjs` 的暂存发布改写 `knowledge-graph.jsonl`（新的写入接缝），发布成功后删除旧 `knowledge-graph.json`；`intermediate/fact-graph.json` 改为 `intermediate/fact-graph.jsonl`；`PIPELINE_VERSION` 升为 `lazy-fact-graph/3`；余量表加入 `knowledge-graph.jsonl`、`intermediate/fact-graph.jsonl` 与 `source-index.jsonl` 的最长记录；读取上一份图改用存储模块，不再调用 core `loadGraph`。验证：Lazy 测试与暂存发布的故障注入测试覆盖新接缝。
+- [x] 4.2 删除 core `persistence` 的 `loadGraph`/`saveGraph` 及其测试，其余持久化函数不动。验证：core 测试与 typecheck 通过。
+- [x] 4.3 上限绊线：注入小上限时，整图超限但最长记录不超限的夹具发布成功；单条记录超限的夹具具名失败且最终产物不变。验证：对应测试。
 
 ## 5. 所有读写方
 
-- [ ] 5.1 MCP 与服务：`project-service.mjs` 改用存储模块；格式错误报告为无效产物；只剩旧文件时报告 `missing-product` 并带 `legacyProductPresent`。验证：MCP 测试；wcp-auth 上改前改后 7 个工具逐项相同。
-- [ ] 5.2 语义、增量与 Full 发布脚本：`semantic-cache.mjs`、`semantic-cache-reuse.mjs`、`select-stale-semantics.mjs`、`apply-semantic-patches.mjs`、`semantic-graph.mjs`、`prepare-incremental.mjs`、`finalize-incremental.mjs`、`publish-annotations.mjs`、`apply-verification.mjs`、`mark-dirty.mjs`、`consumer-freshness.mjs`、`project-paths.mjs` 改用存储模块。验证：`tests/full/*`、`tests/lazy/lazy-to-full-e2e.test.mjs`、语义缓存与增量测试全绿。
-- [ ] 5.3 领域图、Figma、Python、hooks、deploy：
+- [x] 5.1 MCP 与服务：`project-service.mjs` 改用存储模块；格式错误报告为无效产物；只剩旧文件时报告 `missing-product` 并带 `legacyProductPresent`。验证：MCP 测试；wcp-auth 上改前改后 7 个工具逐项相同。
+- [x] 5.2 语义、增量与 Full 发布脚本：`semantic-cache.mjs`、`semantic-cache-reuse.mjs`、`select-stale-semantics.mjs`、`apply-semantic-patches.mjs`、`semantic-graph.mjs`、`prepare-incremental.mjs`、`finalize-incremental.mjs`、`publish-annotations.mjs`、`apply-verification.mjs`、`mark-dirty.mjs`、`consumer-freshness.mjs`、`project-paths.mjs` 改用存储模块。验证：`tests/full/*`、`tests/lazy/lazy-to-full-e2e.test.mjs`、语义缓存与增量测试全绿。
+- [x] 5.3 领域图、Figma、Python、hooks、deploy：
   - `annotate-domain.mjs`、`domain-freshness.mjs`（只读文件头）、`figma-merge.mjs` 改用存储模块；
   - `merge-subdomain-graphs.py` 改为按行读写；
-  - `hooks/*.mjs`、`deploy/run-excavator.mjs`（只读文件头）、`deploy/mcp-smoke.mjs`、`deploy/selftest.sh` 改用新文件。
+  - `hooks/*.mjs`、`deploy/run-excavator.mjs`（只读文件头）、`deploy/mcp-smoke.mjs`、`deploy/selftest.sh` 改用新文件；
+  - `validate-graph.mjs` 经 `--graph` 接收路径，按扩展名读写（`.jsonl` 走存储模块，Full 流程的中间图仍是 JSON）；runner 的独立复核输出改为 `validated-graph.jsonl`，清理残留时新旧文件名都清。
 
   验证：各自测试；Python 跨实现往返测试。
-- [ ] 5.4 测试：直接读写旧文件名的测试改用存储模块。验证：全量测试全绿，且没有任何固定摘要变化。
+- [x] 5.4 测试：直接读写旧文件名的测试改用存储模块。验证：全量测试全绿，且没有任何固定摘要变化。
 
 ## 6. 结构抽取结果
 
@@ -53,7 +53,7 @@
 
 ## 8. 验收
 
-- [ ] 8.1 全量门：`pnpm install --frozen-lockfile && pnpm -r build && pnpm test`、`pnpm typecheck`、`pnpm lint`、`node scripts/check-refs.mjs`。
+- [ ] 8.1 全量门：`pnpm install --frozen-lockfile && pnpm -r build && pnpm test`、core 测试、`pnpm typecheck`、Python 单测、`node scripts/check-refs.mjs`。`pnpm lint` 不列入：仓库没有 ESLint 9 所需的 `eslint.config.js`，main 上同样无法运行，CI 也不跑它。
 - [ ] 8.2 摘要不变：design「验收」2 列出的 6 个语料的 factsDigest 与改前相同。
 - [ ] 8.3 hadoop 真实运行：按 design「验收」6，包括默认堆下的最大常驻内存，以及与改前 3,638,018,048 字节的对比。
 - [ ] 8.4 MCP：wcp-auth 改前改后 7 个工具逐项相同；hadoop 上 `deploy/mcp-smoke.mjs` 通过；记录各工具前后耗时。

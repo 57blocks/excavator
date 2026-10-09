@@ -73,9 +73,9 @@ export function assertDataDir(root) {
 }
 
 /** Prevent a symlinked product file from turning a read into an external read.
- *  Accepts both whole-document products (`.json`, e.g. `knowledge-graph.json`)
- *  and the line-oriented source index (`.jsonl`, `source-index.jsonl` —
- *  openspec: changes/product-serialization-ceiling, design D1). */
+ *  Accepts both whole-document products (`.json`, e.g. `source-manifest.json`)
+ *  and line-oriented products (`.jsonl`: `knowledge-graph.jsonl`,
+ *  `source-index.jsonl`). */
 export function assertDataFile(root, name) {
   if (!/^[a-z][a-z0-9-]*\.jsonl?$/.test(name)) {
     throw new ProjectBoundaryError('unrecognized data product name');

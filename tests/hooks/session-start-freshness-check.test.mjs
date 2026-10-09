@@ -35,14 +35,14 @@ function writeConfig(autoUpdate = true) {
 describe('session-start-freshness-check.mjs — the decision, not the message', () => {
   it('exits non-zero (silent) when autoUpdate is disabled', () => {
     writeConfig(false);
-    writeFileSync(join(root, '.excavator', 'knowledge-graph.json'), '{}');
+    writeFileSync(join(root, '.excavator', 'knowledge-graph.jsonl'), '{}');
     const result = run(root);
     expect(result.status).not.toBe(0);
   });
 
   it('exits non-zero when there is no config.json at all', () => {
     mkdirSync(join(root, '.excavator'), { recursive: true });
-    writeFileSync(join(root, '.excavator', 'knowledge-graph.json'), '{}');
+    writeFileSync(join(root, '.excavator', 'knowledge-graph.jsonl'), '{}');
     const result = run(root);
     expect(result.status).not.toBe(0);
   });
@@ -50,7 +50,7 @@ describe('session-start-freshness-check.mjs — the decision, not the message', 
   it('exits non-zero for a malformed config.json', () => {
     mkdirSync(join(root, '.excavator'), { recursive: true });
     writeFileSync(join(root, '.excavator', 'config.json'), '{not-json');
-    writeFileSync(join(root, '.excavator', 'knowledge-graph.json'), '{}');
+    writeFileSync(join(root, '.excavator', 'knowledge-graph.jsonl'), '{}');
     const result = run(root);
     expect(result.status).not.toBe(0);
   });

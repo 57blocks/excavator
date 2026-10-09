@@ -6,7 +6,6 @@ import { validateGraph } from "../schema.js";
 
 /** Single source of truth for the project data directory name. No fallback. */
 export const EXCAVATOR_DIR = ".excavator";
-const GRAPH_FILE = "knowledge-graph.json";
 const META_FILE = "meta.json";
 const FINGERPRINT_FILE = "fingerprints.json";
 const CONFIG_FILE = "config.json";
@@ -39,14 +38,12 @@ function ensureDir(projectRoot: string): string {
  *   3. Path is already relative        → leave it untouched
  *
  * This means the developer's home directory, username, and company
- * directory layout are never written to knowledge-graph.json.
+ * directory layout are never written to the persisted knowledge graph.
  *
- * Exported (openspec: changes/product-serialization-ceiling, design D4) so a
- * staged publish outside this module (skills/excavator/lazy-analyze.mjs) can
- * apply the EXACT same sanitising step before running its own serialization-
- * ceiling-aware write, instead of re-deriving or duplicating this logic.
- * `saveGraph`'s own behavior is unchanged — it calls this same function
- * exactly as before.
+ * The graph itself is read and written by skills/excavator/
+ * knowledge-graph-store.mjs (openspec: changes/knowledge-graph-line-store);
+ * the staged publish in skills/excavator/lazy-analyze.mjs applies this
+ * function before writing.
  */
 export function sanitiseFilePaths(
   graph: KnowledgeGraph,
@@ -77,44 +74,6 @@ export function sanitiseFilePaths(
   });
 
   return { ...graph, nodes: sanitisedNodes };
-}
-
-export function saveGraph(projectRoot: string, graph: KnowledgeGraph): void {
-  const dir = ensureDir(projectRoot);
-
-  // FIX — sanitise absolute file paths before persisting.
-  // Without this, absolute paths like /Users/alice/company/src/auth.ts
-  // are written verbatim into knowledge-graph.json, leaking the developer's
-  // directory layout to any downstream consumer.
-  const sanitised = sanitiseFilePaths(graph, projectRoot);
-
-  writeFileSync(
-    join(dir, GRAPH_FILE),
-    JSON.stringify(sanitised, null, 2),
-    "utf-8",
-  );
-}
-
-export function loadGraph(
-  projectRoot: string,
-  options?: { validate?: boolean },
-): KnowledgeGraph | null {
-  const filePath = join(resolveDataDir(projectRoot), GRAPH_FILE);
-  if (!existsSync(filePath)) return null;
-
-  const data = JSON.parse(readFileSync(filePath, "utf-8"));
-
-  if (options?.validate !== false) {
-    const result = validateGraph(data);
-    if (!result.success) {
-      throw new Error(
-        `Invalid knowledge graph: ${result.fatal ?? "unknown error"}`,
-      );
-    }
-    return result.data as KnowledgeGraph;
-  }
-
-  return data as KnowledgeGraph;
 }
 
 export function saveMeta(projectRoot: string, meta: AnalysisMeta): void {

@@ -5,7 +5,7 @@
  * Save sub-step 7.1 (added). The supplement layer had a hole at the end of the
  * pipeline: phases 2.3 / 2.5 / 6b write their findings into
  * `intermediate/annotated-graph.json` and `validated-graph.json`, but the file
- * a consumer reads is `knowledge-graph.json`, written from the assembled graph
+ * a consumer reads is `knowledge-graph.jsonl`, written from the assembled graph
  * — and the SAVE phase then moves `intermediate/` into `.trash-*`. So
  * `coverage`, `gaps`, edge `provenance`/`evidence`, node `verification` /
  * `owner` / `anchorSource`, the digests, and the domain steps' `nodeIds`
@@ -40,7 +40,7 @@
  *
  * Usage:
  *   node publish-annotations.mjs <projectRoot>
- *     [--graph <knowledge-graph.json>] [--annotated <path>]
+ *     [--graph <knowledge-graph.jsonl>] [--annotated <path>]
  *     [--domain-graph <domain-graph.json>] [--domain-annotated <path>]
  *     [--reports-dir <dir>] [--report <path>] [--no-reports]
  *
@@ -75,6 +75,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import {
   copyFileSync, existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync,
 } from 'node:fs';
+import { KNOWLEDGE_GRAPH_FILE, readKnowledgeGraph, writeKnowledgeGraphAtomic } from './knowledge-graph-store.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const pluginRoot = resolve(__dirname, '../..');
@@ -115,7 +116,7 @@ export const ROOT_FIELDS = Object.freeze(['coverage', 'gaps']);
  * intermediate/ into .trash-*" exposure this whole script exists to close for
  * `coverage`/`gaps` — so they are carried across the same way. Kept SEPARATE
  * from `ROOT_FIELDS` (used for both graphs) rather than added to it, so a
- * knowledge-graph.json fixture/test with no domain semantics is unaffected.
+ * knowledge-graph fixture/test with no domain semantics is unaffected.
  */
 export const DOMAIN_ROOT_FIELDS = Object.freeze([
   'version', 'contentLanguage', 'languageAudit', 'sourceRevision', 'factDigest',
@@ -313,7 +314,13 @@ function pickAnnotated(intermediate, override) {
   return null;
 }
 
-function publishPair({ label, publishedPath, annotatedPath, rootFields }) {
+function writeJson(path, value) {
+  writeFileSync(path, `${JSON.stringify(value, null, 2)}\n`, 'utf-8');
+}
+
+/** `read`/`write` default to whole-document JSON (the domain graph); the
+ *  knowledge graph passes the line-oriented store's reader and writer. */
+function publishPair({ label, publishedPath, annotatedPath, rootFields, read = readJson, write = writeJson }) {
   if (!existsSync(publishedPath)) {
     process.stderr.write(
       `publish-annotations: no ${label} at ${publishedPath} — nothing to publish into\n`,
@@ -327,11 +334,11 @@ function publishPair({ label, publishedPath, annotatedPath, rootFields }) {
     return null;
   }
   const { merged, counts, samples } = mergeAnnotations({
-    published: readJson(publishedPath),
+    published: read(publishedPath),
     annotated: readJson(annotatedPath),
     rootFields,
   });
-  writeFileSync(publishedPath, `${JSON.stringify(merged, null, 2)}\n`, 'utf-8');
+  write(publishedPath, merged);
   process.stderr.write(
     `publish-annotations: ${label} nodes=${counts.nodesMatched}/${counts.nodesPublished} ` +
     `edges=${counts.edgesMatched}/${counts.edgesPublished} ` +
@@ -351,9 +358,11 @@ async function main() {
   const reportsDir = resolve(args.reportsDir ?? join(dataDir, 'excavator'));
 
   const knowledge = publishPair({
-    label: 'knowledge-graph.json',
-    publishedPath: resolve(args.graph ?? join(dataDir, 'knowledge-graph.json')),
+    label: KNOWLEDGE_GRAPH_FILE,
+    publishedPath: resolve(args.graph ?? join(dataDir, KNOWLEDGE_GRAPH_FILE)),
     annotatedPath: pickAnnotated(intermediate, args.annotated),
+    read: readKnowledgeGraph,
+    write: writeKnowledgeGraphAtomic,
   });
 
   const domainAnnotated = args.domainAnnotated

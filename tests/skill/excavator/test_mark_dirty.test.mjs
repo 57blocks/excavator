@@ -19,6 +19,7 @@ import { join, resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { markDirty, OWNED_GAP_KINDS } from '../../../skills/excavator/mark-dirty.mjs';
 import { annotate } from '../../../skills/excavator/annotate-graph.mjs';
+import { readKnowledgeGraph, writeKnowledgeGraph } from '../../../skills/excavator/knowledge-graph-store.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(__dirname, '../../..');
@@ -178,7 +179,7 @@ describe('the SKIP path end to end', () => {
     const dataDir = join(root, '.excavator');
     const intermediate = join(dataDir, 'intermediate');
     mkdirSync(intermediate, { recursive: true });
-    writeFileSync(join(dataDir, 'knowledge-graph.json'), JSON.stringify(graphOf(), null, 2), 'utf-8');
+    writeKnowledgeGraph(join(dataDir, 'knowledge-graph.jsonl'), graphOf());
     writeFileSync(join(dataDir, 'fingerprints.json'), JSON.stringify(fingerprintsOf(), null, 2), 'utf-8');
     writeFileSync(join(dataDir, 'meta.json'), JSON.stringify({
       lastAnalyzedAt: '2026-01-01T00:00:00.000Z',
@@ -209,7 +210,7 @@ describe('the SKIP path end to end', () => {
     ]);
     expect(published.status, published.stderr).toBe(0);
 
-    const graph = JSON.parse(readFileSync(join(dataDir, 'knowledge-graph.json'), 'utf-8'));
+    const graph = readKnowledgeGraph(join(dataDir, 'knowledge-graph.jsonl'));
     const byId = new Map(graph.nodes.map(n => [n.id, n]));
     expect(byId.get('file:src/threshold.ts').verification).toBe('dirty');
     expect(byId.get('function:src/threshold.ts:overLimit').verification).toBe('dirty');
@@ -228,11 +229,11 @@ describe('the SKIP path end to end', () => {
 
   it('prints a note and changes nothing when the plan has no analysed cosmetic file', () => {
     const { root, dataDir } = fixture({ cosmetic: [] });
-    const before = readFileSync(join(dataDir, 'knowledge-graph.json'), 'utf-8');
+    const before = readFileSync(join(dataDir, 'knowledge-graph.jsonl'), 'utf-8');
     const result = run(MARK_DIRTY, root);
     expect(result.status, result.stderr).toBe(0);
     expect(result.stderr).toContain('nothing marked');
-    expect(readFileSync(join(dataDir, 'knowledge-graph.json'), 'utf-8')).toBe(before);
+    expect(readFileSync(join(dataDir, 'knowledge-graph.jsonl'), 'utf-8')).toBe(before);
   });
 
   it('refuses to mark without the scan inventory rather than guessing', () => {

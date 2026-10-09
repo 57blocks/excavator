@@ -14,6 +14,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { readKnowledgeGraph, writeKnowledgeGraph } from '../../../skills/excavator/knowledge-graph-store.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(__dirname, '../../..');
@@ -142,9 +143,7 @@ function buildBaseline(root, baseCommit) {
         weight: 0.7,
       })),
   );
-  writeFileSync(
-    join(root, '.excavator', 'knowledge-graph.json'),
-    JSON.stringify({
+  writeKnowledgeGraph(join(root, '.excavator', 'knowledge-graph.jsonl'), {
       version: '1.0.0',
       project: {
         name: 'fixture',
@@ -168,9 +167,7 @@ function buildBaseline(root, baseCommit) {
         description: 'Read the project',
         nodeIds: nodes.map(node => node.id),
       }],
-    }),
-    'utf-8',
-  );
+    });
   writeFileSync(
     join(root, '.excavator', 'meta.json'),
     JSON.stringify({ gitCommitHash: baseCommit, analyzedFiles: nodes.length, version: '1.0.0' }),
@@ -202,8 +199,8 @@ function symbolFixture(count = 20, extraFiles = {}) {
   const { root } = fixture;
   const dataDir = join(root, '.excavator');
   const intermediate = join(dataDir, 'intermediate');
-  const graphPath = join(dataDir, 'knowledge-graph.json');
-  const graph = JSON.parse(readFileSync(graphPath, 'utf8'));
+  const graphPath = join(dataDir, 'knowledge-graph.jsonl');
+  const graph = readKnowledgeGraph(graphPath);
   const classNode = {
     id: 'class:src/a.ts:Service', name: 'Service', type: 'class', filePath: 'src/a.ts',
     summary: 'Service', tags: [], complexity: 'simple',
@@ -215,13 +212,14 @@ function symbolFixture(count = 20, extraFiles = {}) {
   graph.edges.push(...methodNodes.map(node => ({
     source: classNode.id, target: node.id, type: 'contains', direction: 'forward', weight: 1,
   })));
-  writeFileSync(graphPath, JSON.stringify(graph));
+  writeKnowledgeGraph(graphPath, graph);
   const fileNode = graph.nodes.find(node => node.id === 'file:src/a.ts');
   const read = name => JSON.parse(readFileSync(join(intermediate, name), 'utf8'));
   const write = (name, value) => writeFileSync(join(intermediate, name), JSON.stringify(value));
-  const persisted = () => ['knowledge-graph.json', 'fingerprints.json', 'meta.json']
+  const persisted = () => ['knowledge-graph.jsonl', 'fingerprints.json', 'meta.json']
     .map(name => readFileSync(join(dataDir, name), 'utf8'));
-  return { ...fixture, intermediate, dataDir, source, names, fileNode, classNode, methodNodes, read, write, persisted };
+  const persistedGraph = () => readKnowledgeGraph(graphPath);
+  return { ...fixture, intermediate, dataDir, source, names, fileNode, classNode, methodNodes, read, write, persisted, persistedGraph };
 }
 
 afterEach(async () => {
@@ -240,17 +238,17 @@ describe('incremental symbol publication gate', { timeout: 30_000 }, () => {
   ])('publishes a genuine deletion while another %s owner installs the same name', (extension, oldSource, newSource) => {
     const path = `src/scopes.${extension}`;
     const f = symbolFixture(2, { [path]: oldSource });
-    const previous = JSON.parse(f.persisted()[0]);
+    const previous = f.persistedGraph();
     const method = { ...f.methodNodes[0], id: `function:${path}:A.run`, name: 'A.run', filePath: path };
     previous.nodes.push(method);
-    writeFileSync(join(f.dataDir, 'knowledge-graph.json'), JSON.stringify(previous));
+    writeKnowledgeGraph(join(f.dataDir, 'knowledge-graph.jsonl'), previous);
     writeProjectFile(f.root, path, newSource);
     const head = commit(f.root, 'delete one owner method');
     prepare(f.root, f.baseCommit);
     f.write('batch-1.json', { nodes: [previous.nodes.find(node => node.id === `file:${path}`)], edges: [] });
     run(python, [mergeScript, f.root], f.root);
     run(process.execPath, [finalizeScript, f.root], f.root);
-    const [graph, fingerprints, meta] = f.persisted().map(JSON.parse);
+    const [graph, fingerprints, meta] = [f.persistedGraph(), ...f.persisted().slice(1).map(JSON.parse)];
     expect(graph.nodes.some(node => node.id === method.id)).toBe(false);
     for (const baseline of [graph.project, fingerprints, meta]) expect(baseline.gitCommitHash).toBe(head);
   });
@@ -258,17 +256,17 @@ describe('incremental symbol publication gate', { timeout: 30_000 }, () => {
   it.each(['attr :name', 'attr_writer "run"', 'attr_writer :"run"'])('publishes genuine Ruby reader deletion beside %s and an ordinary attr call', accessor => {
     const path = 'src/accessor.rb';
     const f = symbolFixture(2, { [path]: `class A\n def run; end\n ${accessor}\nend\nobj.attr\n` });
-    const previous = JSON.parse(f.persisted()[0]);
+    const previous = f.persistedGraph();
     const method = { ...f.methodNodes[0], id: `function:${path}:A.run`, name: 'A.run', filePath: path };
     previous.nodes.push(method);
-    writeFileSync(join(f.dataDir, 'knowledge-graph.json'), JSON.stringify(previous));
+    writeKnowledgeGraph(join(f.dataDir, 'knowledge-graph.jsonl'), previous);
     writeProjectFile(f.root, path, `class A\n def keep; end\n ${accessor}\nend\nobj.attr\n`);
     const head = commit(f.root, 'delete method beside static accessor');
     prepare(f.root, f.baseCommit);
     f.write('batch-1.json', { nodes: [previous.nodes.find(node => node.id === `file:${path}`)], edges: [] });
     run(python, [mergeScript, f.root], f.root);
     run(process.execPath, [finalizeScript, f.root], f.root);
-    const published = JSON.parse(f.persisted()[0]);
+    const published = f.persistedGraph();
     expect(published.project.gitCommitHash).toBe(head);
     expect(published.nodes.some(node => node.id === method.id)).toBe(false);
   });
@@ -280,10 +278,10 @@ describe('incremental symbol publication gate', { timeout: 30_000 }, () => {
   ])('blocks publication of omitted runtime-installed %s methods', (extension, oldSource, newSource) => {
     const path = `src/dynamic.${extension}`;
     const f = symbolFixture(2, { [path]: oldSource });
-    const previous = JSON.parse(f.persisted()[0]);
+    const previous = f.persistedGraph();
     const method = { ...f.methodNodes[0], id: `function:${path}:A.run`, name: 'A.run', filePath: path };
     previous.nodes.push(method);
-    writeFileSync(join(f.dataDir, 'knowledge-graph.json'), JSON.stringify(previous));
+    writeKnowledgeGraph(join(f.dataDir, 'knowledge-graph.jsonl'), previous);
     writeProjectFile(f.root, path, newSource);
     commit(f.root, 'install method dynamically');
     const before = f.persisted();
@@ -298,10 +296,10 @@ describe('incremental symbol publication gate', { timeout: 30_000 }, () => {
   it('reanalyzes changed Rust trait identities and blocks publication with unresolved receivers', () => {
     const path = 'src/method.rs';
     const f = symbolFixture(2, { [path]: 'impl TraitA for A { fn run(&self) {} }\n' });
-    const previous = JSON.parse(f.persisted()[0]);
+    const previous = f.persistedGraph();
     const method = { ...f.methodNodes[0], id: `function:${path}:run`, name: 'run', filePath: path, lineRange: [1, 1] };
     previous.nodes.push(method);
-    writeFileSync(join(f.dataDir, 'knowledge-graph.json'), JSON.stringify(previous));
+    writeKnowledgeGraph(join(f.dataDir, 'knowledge-graph.jsonl'), previous);
     writeProjectFile(f.root, path, 'impl TraitB for B { fn run(&self) {} }\n');
     commit(f.root, 'change trait and receiver');
     const before = f.persisted();
@@ -339,11 +337,11 @@ describe('incremental symbol publication gate', { timeout: 30_000 }, () => {
   it('checks generic method identity against source when both graphs omit every class node', () => {
     const f = symbolFixture(2, { 'src/a.ts': 'export class A { run() {} }\n' });
     const generic = { ...f.methodNodes[0], id: 'function:src/a.ts:run', name: 'run', lineRange: [1, 1] };
-    const previous = JSON.parse(f.persisted()[0]);
+    const previous = f.persistedGraph();
     previous.nodes = previous.nodes.filter(node => node.filePath !== 'src/a.ts' || node.type === 'file');
     previous.nodes.push(generic);
     previous.edges = [];
-    writeFileSync(join(f.dataDir, 'knowledge-graph.json'), JSON.stringify(previous));
+    writeKnowledgeGraph(join(f.dataDir, 'knowledge-graph.jsonl'), previous);
     writeProjectFile(f.root, 'src/a.ts', 'export class B { run() {} }\n');
     commit(f.root, 'change owning class');
     const before = f.persisted();
@@ -375,12 +373,12 @@ describe('incremental symbol publication gate', { timeout: 30_000 }, () => {
     const aThird = cls(a, 'Third');
     const bService = cls(b, 'Service');
     const bOther = cls(b, 'Other');
-    const previous = JSON.parse(f.persisted()[0]);
+    const previous = f.persistedGraph();
     previous.nodes = previous.nodes.map(node => node.id === f.methodNodes[0].id ? oldA : node);
     previous.nodes.push(aOther, aThird, bService, bOther, oldB);
     previous.edges = previous.edges.map(edge => edge.target === f.methodNodes[0].id ? { ...edge, target: oldA.id } : edge);
     previous.edges.push(contains(bService, oldB));
-    writeFileSync(join(f.dataDir, 'knowledge-graph.json'), JSON.stringify(previous));
+    writeKnowledgeGraph(join(f.dataDir, 'knowledge-graph.jsonl'), previous);
     writeProjectFile(f.root, a, service([...f.names, 'added']) + other + third);
     writeProjectFile(f.root, b, service(['method0', 'added']) + other);
     commit(f.root, 'change both services');
@@ -412,7 +410,7 @@ describe('incremental symbol publication gate', { timeout: 30_000 }, () => {
     for (const batch of retry.batches) f.write(`batch-${batch.batchIndex}.json`, { nodes: repairedNodes, edges: repairedEdges });
     run(python, [mergeScript, f.root], f.root);
     run(process.execPath, [finalizeScript, f.root], f.root);
-    expect(JSON.parse(f.persisted()[0]).edges.filter(edge => edge.type === 'calls')).toEqual([
+    expect(f.persistedGraph().edges.filter(edge => edge.type === 'calls')).toEqual([
       { source: bOtherRun.id, target: restoredOther.id, type: 'calls', direction: 'forward', weight: 0.8 },
     ]);
   });
@@ -424,11 +422,11 @@ describe('incremental symbol publication gate', { timeout: 30_000 }, () => {
     });
     const generic = { ...f.methodNodes[0], id: 'function:src/a.ts:method0', name: 'method0' };
     const otherClass = { ...f.classNode, id: 'class:src/a.ts:Other', name: 'Other' };
-    const previous = JSON.parse(f.persisted()[0]);
+    const previous = f.persistedGraph();
     previous.nodes = previous.nodes.map(node => node.id === f.methodNodes[0].id ? generic : node);
     previous.nodes.push(otherClass);
     previous.edges = previous.edges.map(edge => edge.target === f.methodNodes[0].id ? { ...edge, target: generic.id } : edge);
-    writeFileSync(join(f.dataDir, 'knowledge-graph.json'), JSON.stringify(previous));
+    writeKnowledgeGraph(join(f.dataDir, 'knowledge-graph.jsonl'), previous);
     writeProjectFile(f.root, 'src/a.ts', f.source([...f.names, 'added']) + otherSource);
     commit(f.root, 'add method');
     const before = f.persisted();
@@ -455,9 +453,9 @@ describe('incremental symbol publication gate', { timeout: 30_000 }, () => {
     const f = symbolFixture(2, { [path]: source });
     const first = prefix.split('\n').length;
     const generic = { ...f.methodNodes[0], id: `function:${path}:${name}`, name, filePath: path, lineRange: [first, first] };
-    const previous = JSON.parse(f.persisted()[0]);
+    const previous = f.persistedGraph();
     previous.nodes.push(generic);
-    writeFileSync(join(f.dataDir, 'knowledge-graph.json'), JSON.stringify(previous));
+    writeKnowledgeGraph(join(f.dataDir, 'knowledge-graph.jsonl'), previous);
     writeProjectFile(f.root, path, source + method('C'));
     commit(f.root, 'add receiver method');
     const before = f.persisted();
@@ -478,9 +476,9 @@ describe('incremental symbol publication gate', { timeout: 30_000 }, () => {
   it('reconciles accepted replacement IDs on the first pass without requiring a retry', () => {
     const f = symbolFixture(2, { 'src/b.ts': 'export function b() {}\n' });
     const oldSource = { ...f.methodNodes[0], id: 'func:src/b.ts:b', filePath: 'src/b.ts', name: 'b' };
-    const previous = JSON.parse(f.persisted()[0]);
+    const previous = f.persistedGraph();
     previous.nodes.push(oldSource);
-    writeFileSync(join(f.dataDir, 'knowledge-graph.json'), JSON.stringify(previous));
+    writeKnowledgeGraph(join(f.dataDir, 'knowledge-graph.jsonl'), previous);
     writeProjectFile(f.root, 'src/a.ts', f.source([...f.names, 'added']));
     writeProjectFile(f.root, 'src/b.ts', 'export function b(value: number) { return value; }\n');
     commit(f.root, 'add method');
@@ -505,7 +503,7 @@ describe('incremental symbol publication gate', { timeout: 30_000 }, () => {
     assembled.edges = assembled.edges.filter(edge => edge.type !== 'calls');
     f.write('assembled-graph.json', assembled);
     run(process.execPath, [finalizeScript, f.root], f.root);
-    expect(JSON.parse(f.persisted()[0]).edges.some(edge => edge.source === source
+    expect(f.persistedGraph().edges.some(edge => edge.source === source
       && edge.target === replacements[1].id && edge.weight === 0.7)).toBe(true);
   });
 
@@ -597,7 +595,7 @@ describe('incremental symbol publication gate', { timeout: 30_000 }, () => {
     if (outcome !== 'failure') {
       expect(merged.status, merged.stderr).toBe(0);
       expect(finalized.status, finalized.stderr).toBe(0);
-      const graph = JSON.parse(f.persisted()[0]);
+      const graph = f.persistedGraph();
       expect(graph.project.gitCommitHash).toBe(head);
       expect(graph.nodes.find(node => node.id === otherFunction.id)?.summary).toBe(otherFunction.summary);
       expect(graph.nodes.some(node => node.id === obsolete.id)).toBe(false);
@@ -614,7 +612,7 @@ describe('incremental symbol publication gate', { timeout: 30_000 }, () => {
         candidate.edges = candidate.edges.filter(edge => edge.target !== repairedMethods[0].id);
         f.write('assembled-graph.json', candidate);
         run(process.execPath, [finalizeScript, f.root], f.root);
-        expect(JSON.parse(f.persisted()[0]).edges.some(edge => edge.source === otherFunction.id
+        expect(f.persistedGraph().edges.some(edge => edge.source === otherFunction.id
           && edge.target === repairedMethods[0].id)).toBe(true);
       }
     } else {
@@ -663,11 +661,11 @@ describe('incremental symbol publication gate', { timeout: 30_000 }, () => {
     prepare(f.root, f.baseCommit);
     const original = f.read('incremental-symbol-baseline.json');
     // Simulate a graph save followed by a failure before fingerprints/meta.
-    const graphPath = join(f.dataDir, 'knowledge-graph.json');
-    const partial = JSON.parse(readFileSync(graphPath, 'utf8'));
+    const graphPath = join(f.dataDir, 'knowledge-graph.jsonl');
+    const partial = readKnowledgeGraph(graphPath);
     partial.project.gitCommitHash = headCommit;
     partial.nodes = partial.nodes.filter(node => node.id !== f.methodNodes[1].id);
-    writeFileSync(graphPath, JSON.stringify(partial));
+    writeKnowledgeGraph(graphPath, partial);
     for (const name of ['batch-0.json', 'batch-0-part-1.json', 'batch-0-part-2.json']) {
       f.write(name, { nodes: [f.methodNodes[1]], edges: [] });
     }
@@ -687,7 +685,7 @@ describe('incremental symbol publication gate', { timeout: 30_000 }, () => {
     run(python, [mergeScript, f.root], f.root);
     expect(f.read('incremental-symbol-report.json').files[0].missing[0].status).toBe('deleted');
     run(process.execPath, [finalizeScript, f.root], f.root);
-    const graph = JSON.parse(f.persisted()[0]);
+    const graph = f.persistedGraph();
     expect(graph.project.gitCommitHash).toBe(head);
     expect(graph.nodes.some(node => node.id === f.methodNodes[1].id)).toBe(false);
     expect(graph.edges.some(edge => edge.target === f.methodNodes[1].id)).toBe(false);
@@ -703,7 +701,7 @@ describe('incremental symbol publication gate', { timeout: 30_000 }, () => {
     expect(f.read('incremental-symbol-baseline.json').files).toEqual([]);
     run(python, [mergeScript, f.root], f.root);
     run(process.execPath, [finalizeScript, f.root], f.root);
-    expect(JSON.parse(f.persisted()[0]).nodes.some(node => node.filePath === 'src/a.ts')).toBe(false);
+    expect(f.persistedGraph().nodes.some(node => node.filePath === 'src/a.ts')).toBe(false);
   });
 
   it('does not fall back to a pre-rename data directory — fails cleanly instead of reading it', () => {
@@ -725,9 +723,9 @@ describe('incremental symbol publication gate', { timeout: 30_000 }, () => {
     expect(result.stderr).toMatch(/Working tree has relevant uncommitted changes|A valid previous graph is required/);
     // .excavator/intermediate/ may exist (created unconditionally before the
     // failing check), but it was never populated from the renamed directory.
-    expect(existsSync(join(f.root, '.excavator', 'knowledge-graph.json'))).toBe(false);
+    expect(existsSync(join(f.root, '.excavator', 'knowledge-graph.jsonl'))).toBe(false);
     // The pre-rename directory is left exactly as it was — never read from.
-    expect(readFileSync(join(preRenameDir, 'knowledge-graph.json'), 'utf8')).toBeTruthy();
+    expect(readFileSync(join(preRenameDir, 'knowledge-graph.jsonl'), 'utf8')).toBeTruthy();
   });
 
   it('refuses a missing or mismatched symbol snapshot', () => {
@@ -803,7 +801,7 @@ describe('prepare-incremental.mjs', { timeout: 30_000 }, () => {
 
     run(python, [mergeScript, root], root);
     run(process.execPath, [finalizeScript, root], root);
-    const graph = JSON.parse(readFileSync(join(root, '.excavator', 'knowledge-graph.json'), 'utf-8'));
+    const graph = readKnowledgeGraph(join(root, '.excavator', 'knowledge-graph.jsonl'));
     const fingerprints = JSON.parse(
       readFileSync(join(root, '.excavator', 'fingerprints.json'), 'utf-8'),
     );
@@ -955,7 +953,7 @@ describe('prepare-incremental.mjs', { timeout: 30_000 }, () => {
       'src/foo.ts': 'export const value = 1;\n',
       'src/a.ts': 'export const a = 1;\n',
     });
-    const graphPath = join(root, '.excavator', 'knowledge-graph.json');
+    const graphPath = join(root, '.excavator', 'knowledge-graph.jsonl');
     const fingerprintPath = join(root, '.excavator', 'fingerprints.json');
     const metaPath = join(root, '.excavator', 'meta.json');
     const scanPath = join(root, '.excavator', 'intermediate', 'scan-result.json');
@@ -1000,7 +998,7 @@ describe('prepare-incremental.mjs', { timeout: 30_000 }, () => {
     expect(plan.filesToReanalyze).toEqual([]);
     expect(scan.importMap['src/index.js']).toEqual(['src/b.js']);
     run(process.execPath, [finalizeScript, root], root);
-    const graph = JSON.parse(readFileSync(join(root, '.excavator', 'knowledge-graph.json'), 'utf-8'));
+    const graph = readKnowledgeGraph(join(root, '.excavator', 'knowledge-graph.jsonl'));
     expect(graph.edges.filter(edge => edge.source === 'file:src/index.js')).toEqual([
       expect.objectContaining({ target: 'file:src/b.js', type: 'imports' }),
     ]);
@@ -1102,9 +1100,7 @@ describe('prepare-incremental.mjs', { timeout: 30_000 }, () => {
     const fingerprints = JSON.parse(
       readFileSync(join(root, '.excavator', 'fingerprints.json'), 'utf-8'),
     );
-    const graph = JSON.parse(
-      readFileSync(join(root, '.excavator', 'knowledge-graph.json'), 'utf-8'),
-    );
+    const graph = readKnowledgeGraph(join(root, '.excavator', 'knowledge-graph.jsonl'));
     expect(meta.gitCommitHash).toBe(headCommit);
     expect(fingerprints.gitCommitHash).toBe(headCommit);
     expect(Object.keys(fingerprints.files)).toHaveLength(4);
@@ -1177,7 +1173,7 @@ describe('prepare-incremental.mjs', { timeout: 30_000 }, () => {
     );
 
     run(process.execPath, [finalizeScript, root], root);
-    const graph = JSON.parse(readFileSync(join(root, '.excavator', 'knowledge-graph.json'), 'utf-8'));
+    const graph = readKnowledgeGraph(join(root, '.excavator', 'knowledge-graph.jsonl'));
     expect(graph.project.gitCommitHash).toBe(headCommit);
     expect(graph.tour).toEqual([]);
   });
@@ -1367,7 +1363,7 @@ describe('prepare-incremental.mjs', { timeout: 30_000 }, () => {
       'src/c.ts': 'export const c = 3;\n',
       'src/d.ts': 'export const d = 4;\n',
     });
-    const graphPath = join(root, '.excavator', 'knowledge-graph.json');
+    const graphPath = join(root, '.excavator', 'knowledge-graph.jsonl');
     const metaPath = join(root, '.excavator', 'meta.json');
     const graphBefore = readFileSync(graphPath, 'utf-8');
     const metaBefore = readFileSync(metaPath, 'utf-8');
@@ -1397,8 +1393,8 @@ describe('finalize-incremental.mjs', { timeout: 30_000 }, () => {
       'src/other.ts': 'export const other = 1;\n',
       'docs/readme.md': '# Docs\n',
     });
-    const graphPath = join(root, '.excavator', 'knowledge-graph.json');
-    const previousGraph = JSON.parse(readFileSync(graphPath, 'utf-8'));
+    const graphPath = join(root, '.excavator', 'knowledge-graph.jsonl');
+    const previousGraph = readKnowledgeGraph(graphPath);
     previousGraph.layers = [
       {
         id: 'layer:api',
@@ -1414,7 +1410,7 @@ describe('finalize-incremental.mjs', { timeout: 30_000 }, () => {
       },
     ];
     previousGraph.tour[0].nodeIds.push('file:missing.ts');
-    writeFileSync(graphPath, JSON.stringify(previousGraph), 'utf-8');
+    writeKnowledgeGraph(graphPath, previousGraph);
     writeProjectFile(root, 'src/api/new.ts', "import { a } from './a';\nexport const value = a;\n");
     const headCommit = commit(root, 'add api file');
     const { plan } = prepare(root, baseCommit);
@@ -1442,7 +1438,7 @@ describe('finalize-incremental.mjs', { timeout: 30_000 }, () => {
     );
 
     run(process.execPath, [finalizeScript, root], root);
-    const graph = JSON.parse(readFileSync(join(root, '.excavator', 'knowledge-graph.json'), 'utf-8'));
+    const graph = readKnowledgeGraph(join(root, '.excavator', 'knowledge-graph.jsonl'));
     expect(graph.project.gitCommitHash).toBe(headCommit);
     expect(graph.layers.find(layer => layer.id === 'layer:api').nodeIds).toContain(newNode.id);
     expect(graph.layers.flatMap(layer => layer.nodeIds)).not.toContain('file:missing.ts');
@@ -1462,7 +1458,7 @@ describe('finalize-incremental.mjs', { timeout: 30_000 }, () => {
       'src/c.ts': 'export const c = 3;\n',
       'src/d.ts': 'export const d = 4;\n',
     });
-    const graphPath = join(root, '.excavator', 'knowledge-graph.json');
+    const graphPath = join(root, '.excavator', 'knowledge-graph.jsonl');
     const fingerprintPath = join(root, '.excavator', 'fingerprints.json');
     const metaPath = join(root, '.excavator', 'meta.json');
     const graphBefore = readFileSync(graphPath, 'utf-8');
@@ -1521,7 +1517,7 @@ describe('finalize-incremental.mjs', { timeout: 30_000 }, () => {
     );
     run(process.execPath, [finalizeScript, root], root);
 
-    const graph = JSON.parse(readFileSync(join(root, '.excavator', 'knowledge-graph.json'), 'utf-8'));
+    const graph = readKnowledgeGraph(join(root, '.excavator', 'knowledge-graph.jsonl'));
     expect(graph.project.gitCommitHash).toBe(headCommit);
     expect(graph.nodes).toContainEqual(expect.objectContaining({ id: analyzedNode.id }));
   });
@@ -1560,7 +1556,7 @@ describe('finalize-incremental.mjs', { timeout: 30_000 }, () => {
     );
     run(process.execPath, [finalizeScript, root], root);
 
-    const graph = JSON.parse(readFileSync(join(root, '.excavator', 'knowledge-graph.json'), 'utf-8'));
+    const graph = readKnowledgeGraph(join(root, '.excavator', 'knowledge-graph.jsonl'));
     expect(graph.project.languages).toEqual(['python', 'typescript']);
   });
 
@@ -1577,7 +1573,7 @@ describe('finalize-incremental.mjs', { timeout: 30_000 }, () => {
     run(python, [mergeScript, root], root);
     run(process.execPath, [finalizeScript, root], root);
 
-    const graph = JSON.parse(readFileSync(join(root, '.excavator', 'knowledge-graph.json'), 'utf-8'));
+    const graph = readKnowledgeGraph(join(root, '.excavator', 'knowledge-graph.jsonl'));
     expect(graph.project.languages).toEqual(['typescript']);
   });
 
@@ -1588,7 +1584,7 @@ describe('finalize-incremental.mjs', { timeout: 30_000 }, () => {
       'src/c.ts': 'export const c = 3;\n',
       'src/d.ts': 'export const d = 4;\n',
     });
-    const graphPath = join(root, '.excavator', 'knowledge-graph.json');
+    const graphPath = join(root, '.excavator', 'knowledge-graph.jsonl');
     const fingerprintPath = join(root, '.excavator', 'fingerprints.json');
     const metaPath = join(root, '.excavator', 'meta.json');
     const graphBefore = readFileSync(graphPath, 'utf-8');

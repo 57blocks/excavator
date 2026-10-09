@@ -29,6 +29,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { planSemanticCacheReuse } from './semantic-cache-reuse.mjs';
+import { KNOWLEDGE_GRAPH_FILE, readKnowledgeGraph } from './knowledge-graph-store.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const pluginRoot = resolve(__dirname, '../..');
@@ -113,7 +114,9 @@ async function main() {
   const dataDir = resolveDataDir(projectRoot);
   const intermediate = join(dataDir, 'intermediate');
 
-  const knowledgeGraph = readJson(join(dataDir, 'knowledge-graph.json'), 'knowledge-graph.json');
+  const graphPath = join(dataDir, KNOWLEDGE_GRAPH_FILE);
+  if (!existsSync(graphPath)) throw new Error(`select-stale-semantics: ${KNOWLEDGE_GRAPH_FILE} not found: ${graphPath}`);
+  const knowledgeGraph = readKnowledgeGraph(graphPath);
   // Both are optional: a first Full run has neither yet, and every file is
   // correctly treated as missing semantics (not an error).
   const semanticCache = readJson(join(dataDir, 'semantic-cache.json'), 'semantic-cache.json', false);

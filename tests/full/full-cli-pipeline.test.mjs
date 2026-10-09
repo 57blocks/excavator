@@ -14,6 +14,7 @@ import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { execFileSync } from 'node:child_process';
+import { readKnowledgeGraph } from '../../skills/excavator/knowledge-graph-store.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const skillDir = join(__dirname, '../../skills/excavator');
@@ -43,7 +44,7 @@ describe('Phase F CLI pipeline (child processes, not just programmatic exports)'
   it('runs select-stale-semantics -> apply-semantic-patches -> semantic-graph write/check/merge-gaps -> apply-verification semantic actions end to end', () => {
     const dataDir = join(root, '.excavator');
     const intermediate = join(dataDir, 'intermediate');
-    const graph = JSON.parse(readFileSync(join(dataDir, 'knowledge-graph.json'), 'utf-8'));
+    const graph = readKnowledgeGraph(join(dataDir, 'knowledge-graph.jsonl'));
     const runNode = graph.nodes.find((n) => n.type === 'function' && n.name === 'run');
 
     // select-stale-semantics: first run, nothing cached -> everything stale.
@@ -108,7 +109,7 @@ describe('Phase F CLI pipeline (child processes, not just programmatic exports)'
     expect(cacheAfterVerify.entries[runNode.id].verification).toBe('verified');
 
     // The whole exercise never touched the fact graph's node fields.
-    const finalGraph = JSON.parse(readFileSync(join(dataDir, 'knowledge-graph.json'), 'utf-8'));
+    const finalGraph = readKnowledgeGraph(join(dataDir, 'knowledge-graph.jsonl'));
     for (const node of finalGraph.nodes) {
       expect(node.summary).toBe('');
       expect(node.tags).toEqual([]);

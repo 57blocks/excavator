@@ -2,20 +2,25 @@
 """
 merge-subdomain-graphs.py — Merge subdomain knowledge-graph files into one.
 
-Auto-discovers *knowledge-graph*.json files in the project's data dir
-(`.excavator/`) excluding knowledge-graph.json itself, loads the existing
-knowledge-graph.json as a base if present, and merges everything
-into a single knowledge-graph.json.
+Auto-discovers *knowledge-graph*.json subdomain files in the project's data
+dir (`.excavator/`), loads the existing line-oriented knowledge-graph.jsonl as
+a base if present, and merges everything into knowledge-graph.jsonl.
 
 Usage:
     python merge-subdomain-graphs.py <project-root> [file1.json file2.json ...]
 
-If no files are specified, auto-discovers subdomain graphs. The main
-knowledge-graph.json is loaded as a base but never as a discovery input
-(prevents self-merging on repeated runs).
+If no files are specified, auto-discovers subdomain graphs. The retired
+whole-document knowledge-graph.json is never read (zero compat) and is deleted
+once the merged graph is written.
+
+knowledge-graph.jsonl is one JSON record per line: a header (the graph's key
+order, its non-stream fields and stream counts), then one record per node,
+edge, layer, tour step and gap, plus the coverage ledger. This is the same
+contract skills/excavator/knowledge-graph-store.mjs implements (openspec:
+changes/knowledge-graph-line-store, design D1/D7); keep the two in step.
 
 Output:
-    .excavator/knowledge-graph.json
+    .excavator/knowledge-graph.jsonl
 """
 
 import json
@@ -35,6 +40,101 @@ def resolve_data_dir(root: Path) -> Path:
 # subdomain graph files are cleaned up after assembly, so a drop would
 # otherwise be permanent even once the missing endpoint's subdomain arrives.
 STRUCTURAL_EDGE_TYPES = {"contains_flow", "flow_step", "cross_domain"}
+
+
+KNOWLEDGE_GRAPH_FILE = "knowledge-graph.jsonl"
+LEGACY_KNOWLEDGE_GRAPH_FILE = "knowledge-graph.json"
+KNOWLEDGE_GRAPH_FORMAT = "excavator-knowledge-graph-lines/1"
+# Top-level array key -> (record type, value key); see knowledge-graph-store.mjs.
+GRAPH_STREAMS = {
+    "nodes": ("node", "node"),
+    "edges": ("edge", "edge"),
+    "layers": ("layer", "layer"),
+    "tour": ("tour", "step"),
+    "gaps": ("gap", "gap"),
+}
+GRAPH_STREAM_BY_RECORD = {record: (key, field) for key, (record, field) in GRAPH_STREAMS.items()}
+
+
+class KnowledgeGraphFormatError(Exception):
+    """The knowledge-graph.jsonl file does not match the line contract."""
+
+
+def _dump_line(record: dict[str, Any]) -> str:
+    return json.dumps(record, ensure_ascii=False, separators=(",", ":"))
+
+
+def write_knowledge_graph(path: Path, graph: dict[str, Any]) -> None:
+    """Write `graph` as knowledge-graph.jsonl, one record per line, atomically."""
+    keys = list(graph)
+    fields: dict[str, Any] = {}
+    counts: dict[str, int] = {}
+    for key in keys:
+        if key in GRAPH_STREAMS:
+            if not isinstance(graph[key], list):
+                raise TypeError(f"graph.{key} must be a list")
+            counts[key] = len(graph[key])
+        elif key != "coverage":
+            fields[key] = graph[key]
+    tmp = path.with_name(f"{path.name}.tmp")
+    with tmp.open("w", encoding="utf-8") as out:
+        out.write(_dump_line({"record": "header", "format": KNOWLEDGE_GRAPH_FORMAT,
+                              "keys": keys, "fields": fields, "counts": counts}) + "\n")
+        for key in keys:
+            if key in GRAPH_STREAMS:
+                record, field = GRAPH_STREAMS[key]
+                for element in graph[key]:
+                    out.write(_dump_line({"record": record, field: element}) + "\n")
+            elif key == "coverage":
+                out.write(_dump_line({"record": "coverage", "coverage": graph[key]}) + "\n")
+    tmp.replace(path)
+
+
+def read_knowledge_graph(path: Path) -> dict[str, Any]:
+    """Read knowledge-graph.jsonl, validating header, record types and counts."""
+    header: dict[str, Any] | None = None
+    streams: dict[str, list[Any]] = {}
+    coverage: list[Any] = []
+    with path.open("r", encoding="utf-8") as src:
+        for line_no, line in enumerate(src, start=1):
+            line = line.rstrip("\n")
+            if not line:
+                continue
+            try:
+                record = json.loads(line)
+            except json.JSONDecodeError as e:
+                raise KnowledgeGraphFormatError(f"{path}: invalid JSON (line {line_no}): {e}") from e
+            if header is None:
+                if not isinstance(record, dict) or record.get("record") != "header" \
+                        or record.get("format") != KNOWLEDGE_GRAPH_FORMAT:
+                    raise KnowledgeGraphFormatError(f"{path}: line 1 is not a {KNOWLEDGE_GRAPH_FORMAT} header")
+                header = record
+                streams = {k: [] for k in header["keys"] if k in GRAPH_STREAMS}
+                continue
+            kind = record.get("record") if isinstance(record, dict) else None
+            if kind == "coverage" and "coverage" in header["keys"]:
+                coverage.append(record.get("coverage"))
+            elif kind in GRAPH_STREAM_BY_RECORD and GRAPH_STREAM_BY_RECORD[kind][0] in streams:
+                key, field = GRAPH_STREAM_BY_RECORD[kind]
+                streams[key].append(record.get(field))
+            else:
+                raise KnowledgeGraphFormatError(f"{path}: unexpected record {kind!r} (line {line_no})")
+    if header is None:
+        raise KnowledgeGraphFormatError(f"{path}: missing header record (file is empty)")
+    for key, values in streams.items():
+        if len(values) != header["counts"].get(key):
+            raise KnowledgeGraphFormatError(f"{path}: {key} count mismatch")
+    if len(coverage) != (1 if "coverage" in header["keys"] else 0):
+        raise KnowledgeGraphFormatError(f"{path}: coverage record count mismatch")
+    graph: dict[str, Any] = {}
+    for key in header["keys"]:
+        if key in streams:
+            graph[key] = streams[key]
+        elif key == "coverage":
+            graph[key] = coverage[0]
+        else:
+            graph[key] = header["fields"][key]
+    return graph
 
 
 def _num(v: Any) -> float:
@@ -284,18 +384,19 @@ def main() -> None:
         print(f"Error: {data_dir} does not exist", file=sys.stderr)
         sys.exit(1)
 
-    output_path = data_dir / "knowledge-graph.json"
+    output_path = data_dir / KNOWLEDGE_GRAPH_FILE
 
     # Determine which files to merge
     if len(sys.argv) > 2:
         # Explicit file list
         graph_files = [Path(f).resolve() for f in sys.argv[2:]]
     else:
-        # Auto-discover subdomain graphs — exclude the main output file
-        # to avoid self-merging on repeated runs
+        # Auto-discover subdomain graphs. The glob only matches `.json`, so
+        # the line-oriented main graph is never a discovery input; the
+        # retired whole-document main graph is excluded explicitly.
         graph_files = sorted(
             p for p in data_dir.glob("*knowledge-graph*.json")
-            if p.name != "knowledge-graph.json"
+            if p.name != LEGACY_KNOWLEDGE_GRAPH_FILE
         )
 
     if not graph_files:
@@ -320,14 +421,19 @@ def main() -> None:
         print("Error: no valid subdomain graphs loaded", file=sys.stderr)
         sys.exit(1)
 
-    # Load the existing main graph as base (if it exists)
+    # Load the existing main graph as base (if it exists). A base that does
+    # not read back is an error: merging without it would overwrite the
+    # published graph with the subdomains alone.
     if output_path.exists():
-        base = load_graph(output_path)
-        if base:
-            node_count = len(base.get("nodes", []))
-            edge_count = len(base.get("edges", []))
-            print(f"    Loaded base knowledge-graph.json: {node_count} nodes, {edge_count} edges", file=sys.stderr)
-            graphs.insert(0, base)  # Base first — subdomain data wins on conflict
+        try:
+            base = read_knowledge_graph(output_path)
+        except (OSError, KnowledgeGraphFormatError) as e:
+            print(f"Error: cannot read base {KNOWLEDGE_GRAPH_FILE}: {e}", file=sys.stderr)
+            sys.exit(1)
+        node_count = len(base.get("nodes", []))
+        edge_count = len(base.get("edges", []))
+        print(f"    Loaded base {KNOWLEDGE_GRAPH_FILE}: {node_count} nodes, {edge_count} edges", file=sys.stderr)
+        graphs.insert(0, base)  # Base first — subdomain data wins on conflict
 
     # Re-inject structural edges a previous run had to drop; if their missing
     # endpoints have arrived in the meantime, this run resolves them.
@@ -355,7 +461,8 @@ def main() -> None:
         print(f"Recovered {recovered} structural edges dropped by a previous run", file=sys.stderr)
 
     # Write output
-    output_path.write_text(json.dumps(merged, indent=2, ensure_ascii=False), encoding="utf-8")
+    write_knowledge_graph(output_path, merged)
+    (data_dir / LEGACY_KNOWLEDGE_GRAPH_FILE).unlink(missing_ok=True)
     write_merge_report(report_path, merged, dropped_edges, recovered)
     print(f"Merge report written to {report_path}", file=sys.stderr)
 

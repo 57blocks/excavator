@@ -3,18 +3,20 @@
  *
  * Serialization-ceiling helper (openspec: changes/product-serialization-
  * ceiling, capability `product-serialization`, design D5). Every whole-
- * document JSON product Lazy builds in-process (`knowledge-graph.json`,
- * `meta.json`, `source-manifest.json`, Lazy's own intermediate products, and
- * the joined text `build-fact-graph.mjs` measures for its facts digest) is
+ * document JSON product Lazy builds in-process (`meta.json`,
+ * `source-manifest.json` and Lazy's own whole-document intermediate
+ * products), and every single record of a line-oriented product
+ * (`knowledge-graph.jsonl`, `intermediate/fact-graph.jsonl`, each facts-digest
+ * record; openspec: changes/knowledge-graph-line-store), is
  * meant to go through `serializeJsonProduct` instead of a bare
  * `JSON.stringify`, so the runtime's own single-string ceiling
  * (`buffer.constants.MAX_STRING_LENGTH`) is visible before it is hit, and —
  * when it IS hit — the run fails with a named error naming the product, the
  * characters required and the limit, instead of an anonymous
  * `RangeError: Invalid string length` mid-publish (see proposal.md's Hadoop
- * incident: `knowledge-graph.json`/`fingerprints.json` had already been
- * written to their final location when `source-index.json` blew past the
- * limit and crashed with no product name attached).
+ * incident: the then whole-document graph and `fingerprints.json` had
+ * already been written to their final location when `source-index.json`
+ * blew past the limit and crashed with no product name attached).
  *
  * Success path has no extra cost (design D5's own framing: the success path
  * pays nothing extra): `JSON.stringify` runs exactly once, and its own
@@ -216,7 +218,7 @@ export function computeSerializedLength(value, indent = 0) {
  * anonymous `RangeError` mid-publish.
  *
  * @param {string} name product name, used verbatim in the thrown error and
- *   in any headroom entry recorded (e.g. `"knowledge-graph.json"`).
+ *   in any headroom entry recorded (e.g. `"meta.json"`).
  * @param {*} value the value to serialize.
  * @param {{ indent?: number, limit?: number, recorder?: ReturnType<typeof createHeadroomRecorder> }} [options]
  *   `limit` defaults to `DEFAULT_LIMIT_CHARS`; tests inject a smaller one to

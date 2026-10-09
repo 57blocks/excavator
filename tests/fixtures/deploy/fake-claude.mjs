@@ -20,6 +20,7 @@ import { mkdirSync, readdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { PIPELINE_VERSION } from '../../../skills/excavator/annotate-graph.mjs';
+import { writeKnowledgeGraph } from '../../../skills/excavator/knowledge-graph-store.mjs';
 
 function parseArgs(argv) {
   const get = (flag) => {
@@ -55,7 +56,7 @@ function writeProducts(repoPath, { gitCommitHash, model, verification = 'verifie
     project: { pipelineVersion: PIPELINE_VERSION, gitCommitHash, model, verification },
     nodes: [], edges: [], layers: [], coverage: {}, gaps: [],
   };
-  writeFileSync(join(dataDir, 'knowledge-graph.json'), JSON.stringify(graph, null, 2));
+  writeKnowledgeGraph(join(dataDir, 'knowledge-graph.jsonl'), graph);
   writeFileSync(join(dataDir, 'meta.json'), JSON.stringify({
     lastAnalyzedAt: '2026-09-24T00:00:00.000Z', gitCommitHash, version: '1', analyzedFiles: 0,
   }, null, 2));

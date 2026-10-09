@@ -42,6 +42,7 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { spawnSync } from 'node:child_process';
+import { KNOWLEDGE_GRAPH_FILE, readKnowledgeGraph } from './knowledge-graph-store.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const pluginRoot = resolve(__dirname, '../..');
@@ -582,7 +583,15 @@ async function main() {
 
   const scanPath = join(intermediateDir, 'scan-result.json');
   const oldScan = readJson(scanPath, {});
-  const graph = readJson(join(dataDir, 'knowledge-graph.json'), {});
+  const graphPath = join(dataDir, KNOWLEDGE_GRAPH_FILE);
+  let graph = {};
+  if (existsSync(graphPath)) {
+    try {
+      graph = readKnowledgeGraph(graphPath);
+    } catch (error) {
+      throw new Error(`Could not parse ${graphPath}: ${error.message}`);
+    }
+  }
   const oldFingerprints = normalizeFingerprintStore(
     readJson(join(dataDir, 'fingerprints.json'), null),
     baseCommit,

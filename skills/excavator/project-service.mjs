@@ -6,6 +6,7 @@ import { resolveSourceSnapshot } from './source-snapshot.mjs';
 import { PIPELINE_VERSION } from './lazy-analyze.mjs';
 import { syncFactGraph } from './sync-fact-graph.mjs';
 import { LEGACY_SOURCE_INDEX_FILE, SOURCE_INDEX_FILE, readSourceIndex } from './source-index-store.mjs';
+import { KNOWLEDGE_GRAPH_FILE, LEGACY_KNOWLEDGE_GRAPH_FILE, readKnowledgeGraph } from './knowledge-graph-store.mjs';
 import { bm25Search, boundedBFS, boundedShortestPath, mergeCandidates, oneHop } from './retrieve.mjs';
 import { isFresh, commitSemanticCacheEntry } from './semantic-cache.mjs';
 import { planSemanticCacheReuse } from './semantic-cache-reuse.mjs';
@@ -66,6 +67,29 @@ function readSourceIndexProduct(root, gaps) {
     return readSourceIndex(path);
   } catch (error) {
     gaps.push({ kind: 'invalid-product', product: SOURCE_INDEX_FILE, reason: error.message });
+    return null;
+  }
+}
+
+/** The knowledge graph reads through the line-oriented store
+ *  (openspec: changes/knowledge-graph-line-store, design D5), with the same
+ *  gap contract as the source index: a `missing-product` gap names a stale
+ *  legacy `knowledge-graph.json` when that is all there is (never parsed),
+ *  and an `invalid-product` gap carries the store's validation failure. */
+function readGraphProduct(root, gaps) {
+  const path = assertDataFile(root, KNOWLEDGE_GRAPH_FILE);
+  if (!existsSync(path)) {
+    const gap = { kind: 'missing-product', product: KNOWLEDGE_GRAPH_FILE };
+    if (existsSync(assertDataFile(root, LEGACY_KNOWLEDGE_GRAPH_FILE))) {
+      gap.legacyProductPresent = LEGACY_KNOWLEDGE_GRAPH_FILE;
+    }
+    gaps.push(gap);
+    return null;
+  }
+  try {
+    return readKnowledgeGraph(path);
+  } catch (error) {
+    gaps.push({ kind: 'invalid-product', product: KNOWLEDGE_GRAPH_FILE, reason: error.message });
     return null;
   }
 }
@@ -150,7 +174,7 @@ export function createProjectService(projectRoot, { snapshotFactory = resolveSou
         error: { code: 'stale-snapshot', retryable: true },
       }) };
     }
-    const graph = readJsonProduct(root, 'knowledge-graph.json', 'nodes', start.gaps);
+    const graph = readGraphProduct(root, start.gaps);
     const sourceIndex = index ? readSourceIndexProduct(root, start.gaps) : null;
     if (!graph || (index && !sourceIndex)) {
       return { unavailable: finish(start, 'unavailable', null, { error: { code: 'missing-product', retryable: true } }) };
@@ -169,7 +193,7 @@ export function createProjectService(projectRoot, { snapshotFactory = resolveSou
     projectStatus({ expectedRevision = null } = {}) {
       const start = open(expectedRevision);
       if (start.stale) return start.stale;
-      const graph = readJsonProduct(root, 'knowledge-graph.json', 'nodes', start.gaps);
+      const graph = readGraphProduct(root, start.gaps);
       const index = readSourceIndexProduct(root, start.gaps);
       if (index && index.sourceRevision !== start.identity.revision) {
         start.gaps.push({ kind: 'stale-index', sourceRevision: index.sourceRevision ?? null });
@@ -190,7 +214,7 @@ export function createProjectService(projectRoot, { snapshotFactory = resolveSou
       try {
         const result = await syncFactGraph({ projectRoot: root });
         const after = open();
-        const graph = readJsonProduct(root, 'knowledge-graph.json', 'nodes', after.gaps);
+        const graph = readGraphProduct(root, after.gaps);
         const status = result.saveError ? 'error' : after.identity.freshness === 'fresh' && graph ? 'ok' : 'stale-snapshot';
         return envelope(status, after.identity, {
           kind: result.kind, changed: result.changed, metaAdvanced: result.metaAdvanced,
@@ -304,7 +328,7 @@ export function createProjectService(projectRoot, { snapshotFactory = resolveSou
         gaps: [{ kind: 'facts-not-current', freshness: start.identity.freshness }],
         error: { code: 'stale-snapshot', retryable: true },
       });
-      const graph = nodeId ? readJsonProduct(root, 'knowledge-graph.json', 'nodes', start.gaps) : null;
+      const graph = nodeId ? readGraphProduct(root, start.gaps) : null;
       if (nodeId && !graph) return finish(start, 'unavailable', null, {
         error: { code: 'missing-product', retryable: true },
       });

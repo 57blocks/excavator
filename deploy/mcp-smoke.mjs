@@ -16,9 +16,10 @@
  *
  * Usage: node mcp-smoke.mjs --project-root <path>
  */
-import { existsSync, readFileSync, realpathSync } from 'node:fs';
+import { existsSync, realpathSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { KNOWLEDGE_GRAPH_FILE, readKnowledgeGraph } from '../skills/excavator/knowledge-graph-store.mjs';
 
 import { Client } from '@modelcontextprotocol/client';
 import { StdioClientTransport } from '@modelcontextprotocol/client/stdio';
@@ -68,13 +69,13 @@ async function main() {
   // assertion is not thrown off by e.g. macOS's /tmp -> /private/tmp symlink.
   const expectedProjectRoot = realpathSync(resolve(projectRoot));
 
-  const graphPath = join(expectedProjectRoot, '.excavator', 'knowledge-graph.json');
+  const graphPath = join(expectedProjectRoot, '.excavator', KNOWLEDGE_GRAPH_FILE);
   if (!existsSync(graphPath)) {
-    process.stderr.write(`mcp-smoke: no .excavator/knowledge-graph.json under ${expectedProjectRoot} — run lazy or full first\n`);
+    process.stderr.write(`mcp-smoke: no .excavator/${KNOWLEDGE_GRAPH_FILE} under ${expectedProjectRoot} — run lazy or full first\n`);
     process.exitCode = 1;
     return;
   }
-  const graph = JSON.parse(readFileSync(graphPath, 'utf-8'));
+  const graph = readKnowledgeGraph(graphPath);
   const smokeNode = pickSmokeNode(graph);
   if (!smokeNode) {
     process.stderr.write('mcp-smoke: knowledge graph has no nodes to exercise recall/traverse/read_evidence with\n');

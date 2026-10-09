@@ -19,7 +19,7 @@
  *     (`skills/excavator/consumer-freshness.mjs`); Domain does not invent
  *     its own sourceRevision comparison, per design D5;
  *   - `factDigest` — compared directly against the current
- *     `knowledge-graph.json`'s `project.factsDigest` (the SAME digest
+ *     `knowledge-graph.jsonl`'s `project.factsDigest` (the SAME digest
  *     `semantic-graph.mjs`'s factDigest gate reads). A knowledge graph can
  *     in principle be rebuilt from the same sourceRevision with a different
  *     fact projection (e.g. a pipeline-version bump), and a domain step's
@@ -27,7 +27,7 @@
  *     alone is not sufficient.
  *
  * MUST NOT call any model, MUST NOT read source files directly (only
- * `domain-graph.json`/`knowledge-graph.json`, and `sourceRevision` only via
+ * `domain-graph.json` and the header line of `knowledge-graph.jsonl`, and `sourceRevision` only via
  * the shared helper's own SourceSnapshot resolution). domain/flow/step nodes
  * remain hints even when `usable` is true — a consumer answering a
  * business-flow question re-checks against the fact graph / source before
@@ -51,6 +51,7 @@ import { createRequire } from 'node:module';
 import { existsSync, readFileSync, realpathSync } from 'node:fs';
 
 import { resolveFreshness } from '../excavator/consumer-freshness.mjs';
+import { KNOWLEDGE_GRAPH_FILE, readKnowledgeGraphHeader } from '../excavator/knowledge-graph-store.mjs';
 import { hasCanonicalDomainIdentity } from './domain-contract.mjs';
 import {
   auditDomainGraphFields,
@@ -127,7 +128,7 @@ export function isDomainGraphUsable({ domainGraph, currentSourceRevision, curren
   }
 
   if (typeof currentFactDigest !== 'string' || currentFactDigest.length === 0) {
-    return { usable: false, status: 'stale', reason: 'no current knowledge-graph.json / factsDigest to compare against' };
+    return { usable: false, status: 'stale', reason: 'no current knowledge-graph.jsonl / factsDigest to compare against' };
   }
   if (domainFactDigest !== currentFactDigest) {
     return {
@@ -140,7 +141,7 @@ export function isDomainGraphUsable({ domainGraph, currentSourceRevision, curren
 }
 
 /**
- * The I/O wrapper: reads `domain-graph.json` and `knowledge-graph.json` from
+ * The I/O wrapper: reads `domain-graph.json` and the header of `knowledge-graph.jsonl` from
  * `projectRoot`'s data directory, resolves the current sourceRevision via
  * the shared `resolveFreshness` helper, and applies {@link isDomainGraphUsable}.
  * Never throws.
@@ -175,17 +176,18 @@ export async function resolveDomainFreshness(projectRoot) {
     return { usable: false, status: 'missing', reason: `domain-graph.json is not valid JSON: ${err.message}`, domainGraph: null };
   }
 
-  const graphPath = join(dataDir, 'knowledge-graph.json');
+  const graphPath = join(dataDir, KNOWLEDGE_GRAPH_FILE);
   let currentFactDigest = null;
   if (existsSync(graphPath)) {
     try {
-      const knowledgeGraph = JSON.parse(readFileSync(graphPath, 'utf-8'));
-      if (typeof knowledgeGraph?.project?.factsDigest === 'string') {
-        currentFactDigest = knowledgeGraph.project.factsDigest;
+      // Only the header line is needed for the digest; never the whole graph.
+      const project = readKnowledgeGraphHeader(graphPath).fields.project;
+      if (typeof project?.factsDigest === 'string') {
+        currentFactDigest = project.factsDigest;
       }
     } catch {
       // leave currentFactDigest null — isDomainGraphUsable reports this as
-      // "no current knowledge-graph.json / factsDigest to compare against".
+      // "no current knowledge-graph.jsonl / factsDigest to compare against".
     }
   }
 

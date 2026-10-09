@@ -17,6 +17,7 @@ import {
   DOMAIN_GRAPH_VERSION,
 } from '../../skills/excavator-domain/domain-contract.mjs';
 import { auditDomainGraphFields } from '../../skills/excavator/semantic-language-audit.mjs';
+import { writeKnowledgeGraph } from '../../skills/excavator/knowledge-graph-store.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(__dirname, '../..');
@@ -70,9 +71,9 @@ describe('publish-annotations CLI — domain-graph.json gains identity/freshness
     const intermediate = join(dataDir, 'intermediate');
     mkdirSync(intermediate, { recursive: true });
 
-    writeFileSync(join(dataDir, 'knowledge-graph.json'), JSON.stringify({
+    writeKnowledgeGraph(join(dataDir, 'knowledge-graph.jsonl'), {
       version: '1.0.0', project: { name: 'x' }, nodes: [], edges: [], layers: [], tour: [],
-    }), 'utf-8');
+    });
     // The "published" domain-graph.json, exactly as a naive "Save" step would
     // have written it BEFORE this capability existed — no freshness keys.
     writeFileSync(join(dataDir, 'domain-graph.json'), JSON.stringify({

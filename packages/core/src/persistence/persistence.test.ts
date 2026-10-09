@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync, existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { writeFileSync } from "node:fs";
-import { saveGraph, loadGraph, saveMeta, loadMeta, saveFingerprints, loadFingerprints, saveConfig, loadConfig, resolveDataDir, sanitiseFilePaths } from "./index.js";
+import { saveMeta, loadMeta, saveFingerprints, loadFingerprints, saveConfig, loadConfig, resolveDataDir, sanitiseFilePaths } from "./index.js";
 import { mkdirSync } from "node:fs";
 import type { KnowledgeGraph, AnalysisMeta } from "../types.js";
 import type { FingerprintStore } from "../fingerprint.js";
@@ -76,70 +76,21 @@ describe("persistence", () => {
     analyzedFiles: 42,
   };
 
-  describe("saveGraph / loadGraph", () => {
-    it("should write knowledge-graph.json to .excavator/", () => {
-      saveGraph(tempDir, sampleGraph);
-
-      const filePath = join(tempDir, ".excavator", "knowledge-graph.json");
-      expect(existsSync(filePath)).toBe(true);
-    });
-
-    it("should read back the saved graph correctly", () => {
-      saveGraph(tempDir, sampleGraph);
-      const loaded = loadGraph(tempDir);
-
-      expect(loaded).not.toBeNull();
-      // loadGraph validates, and validation defaults the v2 ledger fields so
-      // no consumer sees a missing coverage/gaps.
-      expect(loaded).toEqual({
-        ...sampleGraph,
-        coverage: { files: 0, byLanguage: {}, ignored: 0 },
-        gaps: [],
-      });
-    });
-
-    it("should return null when no graph exists", () => {
-      const loaded = loadGraph(tempDir);
-      expect(loaded).toBeNull();
-    });
-
-    it("should throw error when loading a fatally invalid graph", () => {
-      const invalidGraph = { ...sampleGraph, project: null };
-      saveGraph(tempDir, invalidGraph as unknown as KnowledgeGraph);
-
-      expect(() => {
-        loadGraph(tempDir);
-      }).toThrow(/Invalid knowledge graph/);
-    });
-
-    it("should skip validation when validate option is false", () => {
-      const invalidGraph = { ...sampleGraph, version: 123 };
-      saveGraph(tempDir, invalidGraph as unknown as KnowledgeGraph);
-
-      const loaded = loadGraph(tempDir, { validate: false });
-      expect(loaded).not.toBeNull();
-      expect(loaded?.version).toBe(123);
-    });
-  });
-
-  describe("sanitiseFilePaths (exported for reuse by a staged publish outside this module)", () => {
-    it("saveGraph's written bytes equal JSON.stringify(sanitiseFilePaths(graph, projectRoot), null, 2) exactly", () => {
-      // An absolute, in-project-root filePath — the case sanitiseFilePaths
-      // actually rewrites (not a no-op), so this test is load-bearing rather
-      // than accidentally passing for a graph sanitising leaves untouched.
-      const graphWithAbsolutePath: KnowledgeGraph = {
+  describe("sanitiseFilePaths", () => {
+    it("makes an in-root absolute path relative, keeps only the name of an outside path, and leaves a relative path alone", () => {
+      const graph: KnowledgeGraph = {
         ...sampleGraph,
         nodes: [
-          { ...sampleGraph.nodes[0], filePath: join(tempDir, "src", "index.ts") },
+          { ...sampleGraph.nodes[0], id: "a", filePath: join(tempDir, "src", "index.ts") },
+          { ...sampleGraph.nodes[0], id: "b", filePath: "/elsewhere/secret/layout/util.ts" },
+          { ...sampleGraph.nodes[0], id: "c", filePath: "src/already.ts" },
         ],
       };
 
-      saveGraph(tempDir, graphWithAbsolutePath);
-      const writtenBytes = readFileSync(join(tempDir, ".excavator", "knowledge-graph.json"), "utf-8");
+      const sanitised = sanitiseFilePaths(graph, tempDir);
 
-      const sanitised = sanitiseFilePaths(graphWithAbsolutePath, tempDir);
-      expect(sanitised.nodes[0].filePath).toBe(join("src", "index.ts")); // proves the fixture exercises real sanitising
-      expect(writtenBytes).toBe(JSON.stringify(sanitised, null, 2));
+      expect(sanitised.nodes.map((n) => n.filePath)).toEqual([join("src", "index.ts"), "util.ts", "src/already.ts"]);
+      expect(graph.nodes[0].filePath).toBe(join(tempDir, "src", "index.ts")); // the input is not mutated
     });
   });
 
@@ -293,24 +244,10 @@ describe("no legacy data-directory fallback (single source of truth: .excavator/
     expect(loadMeta(tempDir)?.gitCommitHash).toBe("abc");
   });
 
-  it("does not read a graph saved under the pre-rename long-form data directory", () => {
-    const graph = {
-      version: "1.0.0",
-      project: { name: "p", languages: [], frameworks: [], description: "d", analyzedAt: "t", gitCommitHash: "" },
-      nodes: [{ id: "file:a.ts", type: "file", name: "a.ts", summary: "s", tags: [], complexity: "simple" }],
-      edges: [],
-      layers: [],
-      tour: [],
-    } as never;
-    // Write the graph directly under the pre-rename directory name (bypassing
-    // saveGraph, which always targets .excavator/) to simulate a pre-rename
-    // project that was never re-analysed.
+  it("ignores an existing pre-rename long-form data directory — the data directory is still .excavator/", () => {
     mkdirSync(join(tempDir, preRenameLongDir), { recursive: true });
-    writeFileSync(
-      join(tempDir, preRenameLongDir, "knowledge-graph.json"),
-      JSON.stringify(graph),
-      "utf-8",
-    );
-    expect(loadGraph(tempDir)).toBeNull();
+    writeFileSync(join(tempDir, preRenameLongDir, "meta.json"), JSON.stringify({ gitCommitHash: "old" }), "utf-8");
+    expect(resolveDataDir(tempDir)).toBe(join(tempDir, ".excavator"));
+    expect(loadMeta(tempDir)).toBeNull();
   });
 });

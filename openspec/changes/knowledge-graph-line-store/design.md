@@ -139,5 +139,5 @@
 7. **零兼容：** 只含旧 `knowledge-graph.json` 的数据目录，`project_status` 不可用，并带 `missing-product` 与 `legacyProductPresent`；一次发布后旧文件消失。
 8. **Python：** JS 写出的基图与子域图经 `merge-subdomain-graphs.py` 合并后，JS 读回与预期严格相等。
 9. **全量门：**
-   - `pnpm install --frozen-lockfile && pnpm -r build && pnpm test`、`pnpm typecheck`、`pnpm lint`、`node scripts/check-refs.mjs`、`openspec validate --all --strict` 全绿；
+   - `pnpm install --frozen-lockfile && pnpm -r build && pnpm test`、core 测试、`pnpm typecheck`、Python 单测、`node scripts/check-refs.mjs`、`openspec validate --all --strict` 全绿（`pnpm lint` 在 main 上即因缺少 ESLint 配置无法运行，不列入）；
    - D8 的 grep 门通过。

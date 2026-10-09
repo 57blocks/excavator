@@ -11,6 +11,7 @@ import { join } from 'node:path';
 import { execFileSync } from 'node:child_process';
 
 import { runLazyAnalysis } from '../../skills/excavator/lazy-analyze.mjs';
+import { readKnowledgeGraph } from '../../skills/excavator/knowledge-graph-store.mjs';
 
 function git(dir, args) {
   return execFileSync('git', ['-c', 'user.email=t@t', '-c', 'user.name=t', ...args], { cwd: dir, encoding: 'utf-8' });
@@ -30,7 +31,7 @@ function writeSharedContent(root) {
 }
 
 function readGraph(root) {
-  return JSON.parse(readFileSync(join(root, '.excavator', 'knowledge-graph.json'), 'utf-8'));
+  return readKnowledgeGraph(join(root, '.excavator', 'knowledge-graph.jsonl'));
 }
 
 const FIXED_NOW = () => '2024-01-01T00:00:00.000Z';

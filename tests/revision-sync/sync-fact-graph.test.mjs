@@ -11,6 +11,7 @@ import { execFileSync } from 'node:child_process';
 import { syncFactGraph, computeChangedFileSet } from '../../skills/excavator/sync-fact-graph.mjs';
 import { runLazyAnalysis, defaultRunScript } from '../../skills/excavator/lazy-analyze.mjs';
 import { resolveSourceSnapshot } from '../../skills/excavator/source-snapshot.mjs';
+import { readKnowledgeGraph } from '../../skills/excavator/knowledge-graph-store.mjs';
 
 const FIXED_NOW = () => '2024-01-01T00:00:00.000Z';
 const LATER_NOW = () => '2024-06-01T00:00:00.000Z';
@@ -48,7 +49,7 @@ function readManifest(root) {
 }
 
 function readGraph(root) {
-  return JSON.parse(readFileSync(join(root, '.excavator', 'knowledge-graph.json'), 'utf-8'));
+  return readKnowledgeGraph(join(root, '.excavator', 'knowledge-graph.jsonl'));
 }
 
 function findNode(graph, name) {
@@ -65,7 +66,7 @@ describe('syncFactGraph — freshness match skips the rebuild', () => {
   it('skips when sourceRevision/selectionDigest/pipelineVersion all match the persisted manifest', async () => {
     await runLazyAnalysis({ projectRoot: root, now: FIXED_NOW });
     const manifestBefore = readFileSync(join(root, '.excavator', 'source-manifest.json'), 'utf-8');
-    const graphBefore = readFileSync(join(root, '.excavator', 'knowledge-graph.json'), 'utf-8');
+    const graphBefore = readFileSync(join(root, '.excavator', 'knowledge-graph.jsonl'), 'utf-8');
 
     // verify-the-instrument: count runScript invocations — a real skip must
     // invoke NOTHING, so this positively proves no rebuild ran (not merely
@@ -80,7 +81,7 @@ describe('syncFactGraph — freshness match skips the rebuild', () => {
     expect(result.changed).toBeNull();
     expect(calls).toBe(0);
     expect(readFileSync(join(root, '.excavator', 'source-manifest.json'), 'utf-8')).toBe(manifestBefore);
-    expect(readFileSync(join(root, '.excavator', 'knowledge-graph.json'), 'utf-8')).toBe(graphBefore);
+    expect(readFileSync(join(root, '.excavator', 'knowledge-graph.jsonl'), 'utf-8')).toBe(graphBefore);
   });
 });
 
@@ -280,7 +281,7 @@ describe('syncFactGraph — a failed save does not advance the manifest', () => 
     // Now the real assertion: an injected build-fingerprints failure on the
     // SAME kind of change must leave the manifest untouched.
     const manifestBefore = readFileSync(join(root, '.excavator', 'source-manifest.json'), 'utf-8');
-    const graphBefore = readFileSync(join(root, '.excavator', 'knowledge-graph.json'), 'utf-8');
+    const graphBefore = readFileSync(join(root, '.excavator', 'knowledge-graph.jsonl'), 'utf-8');
     const failingRunScript = (scriptName, args) => {
       if (scriptName === 'build-fingerprints.mjs') return { status: 1, stdout: '', stderr: 'simulated fingerprints failure' };
       return defaultRunScript(scriptName, args);
@@ -298,8 +299,8 @@ describe('syncFactGraph — a failed save does not advance the manifest', () => 
     // replaces the prior (pre-staged-publish) behavior, where the graph
     // write ran unconditionally ahead of this gate and WOULD have been
     // overwritten even on a withheld manifest.
-    expect(existsSync(join(root, '.excavator', 'knowledge-graph.json'))).toBe(true);
-    expect(readFileSync(join(root, '.excavator', 'knowledge-graph.json'), 'utf-8')).toBe(graphBefore);
+    expect(existsSync(join(root, '.excavator', 'knowledge-graph.jsonl'))).toBe(true);
+    expect(readFileSync(join(root, '.excavator', 'knowledge-graph.jsonl'), 'utf-8')).toBe(graphBefore);
 
     // Recovery: a subsequent sync WITHOUT the injected failure must succeed
     // and finally advance the manifest — proving the earlier failure really

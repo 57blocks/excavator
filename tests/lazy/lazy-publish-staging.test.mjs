@@ -11,11 +11,12 @@ import { createHash } from 'node:crypto';
 
 import { runLazyAnalysis, defaultPublishFs, cleanupStalePublishStagingDirs } from '../../skills/excavator/lazy-analyze.mjs';
 import { SOURCE_INDEX_FILE } from '../../skills/excavator/source-index-store.mjs';
+import { KNOWLEDGE_GRAPH_FILE } from '../../skills/excavator/knowledge-graph-store.mjs';
 
 const FIXED_NOW = () => '2024-01-01T00:00:00.000Z';
 const LATER_NOW = () => '2024-06-01T00:00:00.000Z';
 
-const FINAL_PRODUCT_FILES = Object.freeze(['knowledge-graph.json', 'fingerprints.json', SOURCE_INDEX_FILE, 'meta.json', 'source-manifest.json']);
+const FINAL_PRODUCT_FILES = Object.freeze([KNOWLEDGE_GRAPH_FILE, 'fingerprints.json', SOURCE_INDEX_FILE, 'meta.json', 'source-manifest.json']);
 
 function makeFixtureProject() {
   const root = mkdtempSync(join(tmpdir(), 'excavator-publish-staging-'));
@@ -82,7 +83,7 @@ describe('lazy-analyze publish() — staged publish, fault injection (design D4,
   afterEach(() => { rmSync(root, { recursive: true, force: true }); });
 
   const PRODUCTS = Object.freeze([
-    { filename: 'knowledge-graph.json', stagingMethod: 'writeFile' },
+    { filename: KNOWLEDGE_GRAPH_FILE, stagingMethod: 'writeKnowledgeGraph' },
     { filename: 'fingerprints.json', stagingMethod: 'writeFile' },
     { filename: SOURCE_INDEX_FILE, stagingMethod: 'writeSourceIndex' },
     { filename: 'meta.json', stagingMethod: 'writeFile' },
@@ -135,25 +136,51 @@ describe('lazy-analyze publish() — staged publish, fault injection (design D4,
     expect(hashAllFinalProducts(root)).not.toEqual(baselineHashes); // the run really did produce new content
   });
 
-  it('an injected small serializationLimit fires ProductTooLargeError; every final product stays byte-identical (O5)', async () => {
+  // openspec: changes/knowledge-graph-line-store, design「验收」4 — the limit
+  // now applies per record of a line-oriented product, not to the whole graph.
+  it('a graph larger than the limit publishes when every record and every whole-document product fits', async () => {
     changeSource(root);
-    // Just under the BASELINE run's own knowledge-graph.json size: every
-    // produce-phase intermediate (scan-result.json, fact-graph.json, the
-    // facts-digest-input, ...) is comfortably smaller than the graph itself
-    // (verified: on this fixture the largest intermediate, fact-graph.json,
-    // is ~4.5KB against a ~5KB graph — a change to one console.log string
-    // cannot plausibly close that gap), so this limit passes produce() and
-    // fails specifically at knowledge-graph.json's STAGING write — exactly
-    // the staged-publish abort path, not the unrelated produce-phase one.
-    const graphEntry = baselineSerialization.find((e) => e.product === 'knowledge-graph.json');
-    const limit = graphEntry.chars - 1;
+    const fits = Math.max(...baselineSerialization
+      .filter((e) => e.measuredAs !== 'bytes')
+      .map((e) => e.chars ?? e.maxRecordChars));
+    const limit = fits + 200; // headroom for the one-line source change
+    const graphChars = readFileSync(join(root, '.excavator', KNOWLEDGE_GRAPH_FILE), 'utf-8').length;
+    expect(graphChars).toBeGreaterThan(limit); // precondition: the whole graph would NOT fit in one string
 
     const result = await runLazyAnalysis({ projectRoot: root, now: LATER_NOW, serializationLimit: limit });
 
-    expect(result.metaAdvanced).toBe(false);
-    expect(result.saveError).toContain('knowledge-graph.json');
-    expect(result.saveError).toMatch(/requires \d+ characters to serialize/);
-    expect(result.saveError).toContain(`exceeds the runtime single-string limit of ${limit} characters`);
+    expect(result.saveError).toBeNull();
+    expect(result.metaAdvanced).toBe(true);
+    const graphEntry = result.serialization.find((e) => e.product === KNOWLEDGE_GRAPH_FILE);
+    expect(graphEntry).toMatchObject({ measuredAs: 'max-record' });
+    expect(graphEntry.maxRecordChars).toBeLessThanOrEqual(limit);
+  });
+
+  it('a single record longer than the limit fails as a named ProductTooLargeError; every final product stays byte-identical (O5)', async () => {
+    // One function with a very long name makes one node record far longer
+    // than any whole-document product of this fixture.
+    const longName = `handle${'X'.repeat(3_000)}`;
+    writeFileSync(join(root, 'src', 'b.ts'), `export function helper(): void {}\nexport function ${longName}(): void {}\n`);
+    const fits = Math.max(...baselineSerialization
+      .filter((e) => e.measuredAs !== 'bytes')
+      .map((e) => e.chars ?? e.maxRecordChars));
+    const limit = fits + 500;
+    expect(limit).toBeLessThan(longName.length);
+
+    let result = null;
+    let thrown = null;
+    try {
+      result = await runLazyAnalysis({ projectRoot: root, now: LATER_NOW, serializationLimit: limit });
+    } catch (error) {
+      thrown = error;
+    }
+    const message = thrown?.message ?? result?.saveError ?? '';
+
+    expect(result?.metaAdvanced ?? false).toBe(false);
+    // The first per-record product to meet the long node record names it:
+    // the facts digest, the intermediate projection or the graph itself.
+    expect(message).toMatch(/"(facts-digest-record|fact-graph\.jsonl|knowledge-graph\.jsonl)" requires \d+ characters to serialize/);
+    expect(message).toContain(`exceeds the runtime single-string limit of ${limit} characters`);
     expect(hashAllFinalProducts(root)).toEqual(baselineHashes);
     expect(stagingDirsIn(root)).toEqual([]);
   });
@@ -241,10 +268,17 @@ describe('runLazyAnalysis — result.serialization (task 4.3)', () => {
     // The five final products this run publishes, plus lazy-analyze's own
     // intermediate writes, plus build-fact-graph's digest input, plus the
     // three child-script byte counts.
-    for (const name of ['knowledge-graph.json', 'meta.json', 'source-manifest.json']) {
+    for (const name of ['meta.json', 'source-manifest.json']) {
       expect(byProduct.get(name)).toMatchObject({ measuredAs: 'chars' });
       expect(typeof byProduct.get(name).chars).toBe('number');
     }
+    // Line-oriented products report their longest record
+    // (knowledge-graph-line-store, design D6).
+    for (const name of [KNOWLEDGE_GRAPH_FILE, 'fact-graph.jsonl', SOURCE_INDEX_FILE]) {
+      expect(byProduct.get(name)).toMatchObject({ measuredAs: 'max-record' });
+      expect(typeof byProduct.get(name).maxRecordChars).toBe('number');
+    }
+    expect(byProduct.has('knowledge-graph.json')).toBe(false);
     for (const name of ['structure-all.json', 'import-map.json', 'fingerprints.json']) {
       expect(byProduct.get(name)).toMatchObject({ measuredAs: 'bytes' });
       expect(typeof byProduct.get(name).bytes).toBe('number');
@@ -254,9 +288,6 @@ describe('runLazyAnalysis — result.serialization (task 4.3)', () => {
     // longer exists.
     expect(byProduct.get('facts-digest-record')).toMatchObject({ measuredAs: 'max-record' });
     expect(byProduct.has('facts-digest-input')).toBe(false);
-    // source-index.jsonl is NOT in this table — it never goes through
-    // serializeJsonProduct at all (line-oriented store, no single-string form).
-    expect(byProduct.has(SOURCE_INDEX_FILE)).toBe(false);
 
     for (let i = 1; i < result.serialization.length; i++) {
       expect(result.serialization[i - 1].percentOfLimit).toBeGreaterThanOrEqual(result.serialization[i].percentOfLimit);

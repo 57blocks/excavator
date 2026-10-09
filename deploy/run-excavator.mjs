@@ -39,6 +39,10 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { PIPELINE_VERSION } from '../skills/excavator/annotate-graph.mjs';
+import { KNOWLEDGE_GRAPH_FILE, readKnowledgeGraph, readKnowledgeGraphHeader } from '../skills/excavator/knowledge-graph-store.mjs';
+
+/** The runner's own copy of the independently re-validated graph, line-oriented like the graph itself. */
+const VALIDATED_GRAPH_FILE = 'validated-graph.jsonl';
 import { measureReadCoverage } from './read-coverage.mjs';
 
 export { PIPELINE_VERSION };
@@ -488,7 +492,7 @@ export function checkFabrication({ validationReport, validatedGraph, maxContradi
   if (reportOk && issuesCount > 0) reasons.push(`${issuesCount} structural integrity issue(s) found`);
 
   const graphOk = !!validatedGraph && Array.isArray(validatedGraph.nodes);
-  if (!graphOk) reasons.push('validated graph is missing or unreadable (validated-graph.json)');
+  if (!graphOk) reasons.push('validated graph is missing or unreadable (validated-graph.jsonl)');
   const contradictedCount = graphOk
     ? countByVerification(validatedGraph.nodes, 'contradicted') + countByVerification(validatedGraph.edges, 'contradicted')
     : null;
@@ -652,9 +656,19 @@ export function runLazyAnalyzeScript({ pluginDir, repoRoot, spawnSyncFn = spawnS
   return { status: result.status ?? 1, stdout: result.stdout ?? '', stderr: result.stderr ?? '' };
 }
 
+/** Read a line-oriented graph, or null when it is absent or unreadable. */
+function readGraphIfExists(path) {
+  if (!existsSync(path)) return null;
+  try {
+    return readKnowledgeGraph(path);
+  } catch {
+    return null;
+  }
+}
+
 export function runValidateGraphScript({ pluginDir, repoRoot, graphPath, outDir, spawnSyncFn = spawnSync }) {
   const scriptPath = join(pluginDir, 'skills/excavator/validate-graph.mjs');
-  const outPath = join(outDir, 'validated-graph.json');
+  const outPath = join(outDir, VALIDATED_GRAPH_FILE);
   const reportPath = join(outDir, 'validation.json');
   const result = spawnSyncFn(process.execPath, [
     scriptPath, repoRoot, '--graph', graphPath, '--out', outPath, '--report', reportPath,
@@ -671,16 +685,17 @@ export function stderrTail(text, maxChars = 4000) {
 
 /**
  * Runs the independent re-validation with no fourth state: `/work/out` can
- * be reused across runs, so any validation.json/validated-graph.json already
- * there is deleted BEFORE invoking validate-graph.mjs — a stale file from a
+ * be reused across runs, so any validation.json/validated-graph.jsonl already
+ * there (and a retired validated-graph.json) is deleted BEFORE invoking
+ * validate-graph.mjs — a stale file from a
  * previous run must never be read as this run's verdict. A non-zero exit
  * from the script is reported as `scriptFailure` (with a stderr tail) rather
  * than silently falling through to whatever (if anything) got written.
  */
 export function runIndependentValidation({ pluginDir, repoRoot, graphPath, outDir, spawnSyncFn = spawnSync }) {
-  const outPath = join(outDir, 'validated-graph.json');
+  const outPath = join(outDir, VALIDATED_GRAPH_FILE);
   const reportPath = join(outDir, 'validation.json');
-  for (const stale of [outPath, reportPath]) {
+  for (const stale of [outPath, reportPath, join(outDir, 'validated-graph.json')]) {
     if (existsSync(stale)) rmSync(stale);
   }
 
@@ -697,7 +712,7 @@ export function runIndependentValidation({ pluginDir, repoRoot, graphPath, outDi
   return {
     scriptFailure: null,
     validationReport: readJsonIfExists(reportPath),
-    validatedGraph: readJsonIfExists(outPath),
+    validatedGraph: readGraphIfExists(outPath),
   };
 }
 
@@ -783,10 +798,19 @@ async function runFull(config, env) {
   ensureDir(config.outDir);
   const repoHead = resolveHead(config.repoRoot);
   const dataDir = join(config.repoRoot, '.excavator');
-  const graphPath = join(dataDir, 'knowledge-graph.json');
+  const graphPath = join(dataDir, KNOWLEDGE_GRAPH_FILE);
   const metaPath = join(dataDir, 'meta.json');
 
-  const existingGraph = readJsonIfExists(graphPath);
+  // planFullRun only looks at project.pipelineVersion: read the header line,
+  // never the whole graph. An unreadable graph counts as absent.
+  let existingGraph = null;
+  if (existsSync(graphPath)) {
+    try {
+      existingGraph = { project: readKnowledgeGraphHeader(graphPath).fields.project };
+    } catch {
+      existingGraph = null;
+    }
+  }
   const existingMeta = readJsonIfExists(metaPath);
   const plan = planFullRun({ graph: existingGraph, meta: existingMeta, headSha: repoHead, force: config.force, pipelineVersion: PIPELINE_VERSION });
 
@@ -827,7 +851,7 @@ async function runFull(config, env) {
     resultEvent, processExitCode: runResult.processExitCode, timedOut: runResult.timedOut, spawnError: runResult.spawnError,
   });
 
-  const postGraph = readJsonIfExists(graphPath);
+  const postGraph = readGraphIfExists(graphPath);
   const postMeta = readJsonIfExists(metaPath);
 
   let productCheck = null;
