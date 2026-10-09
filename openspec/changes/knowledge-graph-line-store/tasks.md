@@ -16,8 +16,8 @@
 
 ## 2. 图谱存储模块
 
-- [ ] 2.1 新增 `skills/excavator/knowledge-graph-store.mjs`，按 design D1、D2 实现写、读、只读文件头，以及 `KnowledgeGraphFormatError`。验证：单测覆盖往返严格相等（旧形状、Full 形状）、比较器先验、写两次逐字节相同、几字节分块下的中文与 emoji、缺文件头、计数不符、未知记录类型、重复文件头。
-- [ ] 2.2 写出时返回最长单条记录长度；单条记录超过上限时以 `ProductTooLargeError` 具名失败。验证：注入小上限的单测。
+- [x] 2.1 新增 `skills/excavator/knowledge-graph-store.mjs`，按 design D1、D2 实现写、读、只读文件头，以及 `KnowledgeGraphFormatError`。验证：单测覆盖往返严格相等（旧形状、Full 形状）、比较器先验、写两次逐字节相同、几字节分块下的中文与 emoji、缺文件头、计数不符、未知记录类型、重复文件头。
+- [x] 2.2 写出时返回最长单条记录长度；单条记录超过上限时以 `ProductTooLargeError` 具名失败。验证：注入小上限的单测。
 
 ## 3. 增量事实摘要
 

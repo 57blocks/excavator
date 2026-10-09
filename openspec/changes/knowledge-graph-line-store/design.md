@@ -30,22 +30,27 @@
 **D1：记录布局。** 紧凑 JSON，一行一条：
 
 ```
-{"record":"header","format":"excavator-knowledge-graph-lines/1",<根级标量字段>,"nodeCount":N,"edgeCount":M,"layerCount":L,"tourCount":T,"gapCount":G,"hasCoverage":bool,"hasGaps":bool}
-{"record":"node","node":{…}}        × N，原数组顺序
-{"record":"edge","edge":{…}}        × M
-{"record":"layer","layer":{…}}      × L
-{"record":"tour","step":{…}}        × T
-{"record":"coverage","coverage":{…}} 至多一条
-{"record":"gap","gap":{…}}          × G
+{"record":"header","format":"excavator-knowledge-graph-lines/1","keys":[<根级字段名，原顺序>],"fields":{<非记录流的根级字段>},"counts":{"nodes":N,"edges":M,…}}
+{"record":"node","node":{…}}          × N，原数组顺序
+{"record":"edge","edge":{…}}          × M
+{"record":"layer","layer":{…}}        × L
+{"record":"tour","step":{…}}          × T
+{"record":"coverage","coverage":{…}}  图有 coverage 时一条
+{"record":"gap","gap":{…}}            × G
 ```
 
-- **文件头带全部根级标量字段**（`version`、`project`、`kind`、`contentLanguage`、`languageAudit` 等）。所以只关心新鲜度的读取方（领域图新鲜度、runner 的 `planFullRun`）只读第一行。
-- **`hasCoverage`/`hasGaps`** 区分「没有该字段」与「空数组」，保证缺 coverage/gaps 的旧形状也能往返严格相等。
+- **记录流的顺序：** 按 `keys` 的顺序写出，流内按原数组顺序。
+- **文件头三部分：**
+  - `keys` 记下根级字段的原始顺序。读回的图字段顺序不变，读后再写与原文件逐字节相同，「语义写入后图谱 SHA-256 不变」这类约束继续成立。
+  - `fields` 带全部非记录流的根级字段（`version`、`project`、`kind`、`contentLanguage`、`languageAudit` 及任何其它字段）。只关心新鲜度的读取方（领域图新鲜度、runner 的 `planFullRun`）只读第一行。
+  - `counts` 只列图里存在的记录流。缺 `coverage`/`gaps` 的旧形状因此能往返严格相等。
 - **读取校验：**
   - 第一行必须是格式匹配的文件头；
-  - 各类记录数等于声明；
-  - 记录类型未知或出现重复文件头即失败。
+  - `keys` 中每个非流字段在 `fields` 里有值；
+  - 各流记录数等于 `counts`，coverage 记录恰好与 `keys` 一致；
+  - 记录类型未知、记录属于未列出的流、或出现重复文件头即失败。
 - **具名错误** `KnowledgeGraphFormatError`；`project-service` 把它映射为无效产物缺口。
+- **根级字段一律用 `defineProperty` 还原**，名为 `__proto__` 的字段成为普通自有属性。
 
 备选：
 - 只去缩进、删可推导字段。只是把悬崖推远，删 evidence/provenance 还违反证据规格，所以不选。
