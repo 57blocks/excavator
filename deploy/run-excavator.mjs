@@ -39,6 +39,7 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { PIPELINE_VERSION } from '../skills/excavator/annotate-graph.mjs';
+import { measureReadCoverage } from './read-coverage.mjs';
 
 export { PIPELINE_VERSION };
 
@@ -558,7 +559,7 @@ export function buildSummary({
   imageCommit, imageClaudeCodeVersion, repoHead, mode, model,
   skipped, skipReason,
   loadCheck, runCheck, productCheck, fabricationCheck,
-  modelUsage, exitCode,
+  modelUsage, exitCode, readCoverage = null,
 }) {
   const tokens = aggregateModelUsage(modelUsage);
   const hasModelUsage = !!modelUsage && Object.keys(modelUsage).length > 0;
@@ -599,6 +600,9 @@ export function buildSummary({
     contradictedCount: fabricationCheck?.contradictedCount ?? null,
     unverifiedCount: fabricationCheck?.unverifiedCount ?? null,
     cacheWarning: hasModelUsage && tokens.cacheReadInputTokens === 0,
+    // How much of the repository the run actually read (deploy/read-coverage.mjs):
+    // lower/upper bounds over tracked text files. null when no Claude Code run happened.
+    readCoverage: readCoverage ?? null,
   };
 }
 
@@ -842,10 +846,19 @@ async function runFull(config, env) {
     productOk: productStageOk, fabricationOk: !!fabricationCheck?.fabricationOk,
   });
 
+  // Informational only: never changes the exit code. A failure to measure is
+  // recorded rather than hidden.
+  let readCoverage;
+  try {
+    readCoverage = measureReadCoverage({ rawEvents, repoRoot: config.repoRoot });
+  } catch (err) {
+    readCoverage = { error: err.message };
+  }
+
   const summary = buildSummary({
     ...baseSummaryFields, skipped: false, skipReason: null,
     loadCheck, runCheck, productCheck, fabricationCheck,
-    modelUsage: resultEvent?.modelUsage ?? {}, exitCode,
+    modelUsage: resultEvent?.modelUsage ?? {}, exitCode, readCoverage,
   });
   writeSummary(config.outDir, summary);
   return exitCode;
