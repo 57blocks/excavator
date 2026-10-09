@@ -312,6 +312,26 @@ export function checkLoad({ initEvent, expectedAgentIds, expectedPluginPath }) {
 // process's own exit status (design D4 "运行").
 // ---------------------------------------------------------------------------
 
+const API_ERROR_MESSAGE_MAX = 400;
+
+/**
+ * The model-call error behind an `api_error` result, in a form an operator can
+ * act on. Claude Code's own result text leads with a generic hint (for a
+ * Bedrock 403 it says "AWS authentication failed ...") and puts the provider's
+ * message after "API Error:"; the status code is `api_error_status`. Returns
+ * null when the result is not an API error.
+ */
+export function describeApiError(resultEvent) {
+  if (!resultEvent || typeof resultEvent !== 'object') return null;
+  const status = typeof resultEvent.api_error_status === 'number' ? resultEvent.api_error_status : null;
+  if (resultEvent.terminal_reason !== 'api_error' && status === null) return null;
+  const text = typeof resultEvent.result === 'string' ? resultEvent.result : '';
+  const marker = text.indexOf('API Error:');
+  let message = (marker >= 0 ? text.slice(marker + 'API Error:'.length) : text).trim();
+  if (message.length > API_ERROR_MESSAGE_MAX) message = `${message.slice(0, API_ERROR_MESSAGE_MAX)}…`;
+  return `model API error${status === null ? '' : ` (HTTP ${status})`}: ${message || '(no message in the result event)'}`;
+}
+
 export function checkRun({ resultEvent, processExitCode, timedOut, spawnError }) {
   const reasons = [];
 
@@ -329,6 +349,8 @@ export function checkRun({ resultEvent, processExitCode, timedOut, spawnError })
     if (resultEvent.is_error) {
       reasons.push(`result event reports is_error=true (terminal_reason=${JSON.stringify(resultEvent.terminal_reason ?? null)})`);
     }
+    const apiError = describeApiError(resultEvent);
+    if (apiError) reasons.push(apiError);
     // A terminal result can stop for a reason that never sets is_error —
     // e.g. hitting --max-budget-usd or a max-turns cap — so subtype must be
     // checked on its own, not inferred from is_error being false.
