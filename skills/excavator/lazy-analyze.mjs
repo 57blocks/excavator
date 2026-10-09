@@ -120,7 +120,7 @@
  * Contract: openspec/changes/lazy-first-run/specs/lazy-analysis/spec.md
  *           openspec/changes/source-snapshot/specs/source-snapshot/spec.md
  *           openspec/changes/hybrid-retrieval/specs/source-index/spec.md
- *           openspec/changes/knowledge-graph-line-store/specs/fact-graph/spec.md
+ *           openspec/specs/fact-graph/spec.md (knowledge-graph-line-store)
  */
 
 import { dirname, join, resolve } from 'node:path';

@@ -49,16 +49,40 @@
 ## 7. 散文
 
 - [x] 7.1 skill、agent、hooks 提示、README 与 docs 中的旧文件名、内联整文件读取代码与 jq 示例改为新文件与新模块。验证：`node scripts/check-refs.mjs` 通过；design D8 的 grep 门通过。
-- [ ] 7.2 `openspec/specs` 中受影响的要求按本变更的规格增量同步（归档时完成）。验证：`openspec validate --all --strict`。
+- [x] 7.2 `openspec/specs` 中受影响的要求按本变更的规格增量同步（归档时完成）。验证：`openspec validate --all --strict`。
 
 ## 8. 验收
 
-- [ ] 8.1 全量门：`pnpm install --frozen-lockfile && pnpm -r build && pnpm test`、core 测试、`pnpm typecheck`、Python 单测、`node scripts/check-refs.mjs`。`pnpm lint` 不列入：仓库没有 ESLint 9 所需的 `eslint.config.js`，main 上同样无法运行，CI 也不跑它。
-- [ ] 8.2 摘要不变：design「验收」2 列出的 6 个语料的 factsDigest 与改前相同。
-- [ ] 8.3 hadoop 真实运行：按 design「验收」6，包括默认堆下的最大常驻内存，以及与改前 3,638,018,048 字节的对比。
-- [ ] 8.4 MCP：wcp-auth 改前改后 7 个工具逐项相同；hadoop 上 `deploy/mcp-smoke.mjs` 通过；记录各工具前后耗时。
-- [ ] 8.5 零兼容：只含旧文件的数据目录被报告为缺失产物；一次发布后旧文件消失。
+- [x] 8.1 全量门：`pnpm install --frozen-lockfile && pnpm -r build && pnpm test`、core 测试、`pnpm typecheck`、Python 单测、`node scripts/check-refs.mjs`。`pnpm lint` 不列入：仓库没有 ESLint 9 所需的 `eslint.config.js`，main 上同样无法运行，CI 也不跑它。结果：
+  - 94 个测试文件、1,616 个测试通过（4 个跳过）；core 49 个文件、1,049 个测试通过；
+  - typecheck 退出码 0；Python 单测通过；check-refs 全部解析；`openspec validate --all --strict` 37 项通过。
+- [x] 8.2 摘要不变：design「验收」2 列出的 6 个语料，改后 factsDigest 与改前逐字相同：hadoop、Fineract、wcp-auth、wcp-service-v2、cebreo/unmc、cebreo/uneeg-managementportal。所有固定摘要测试未改动即通过。
+- [x] 8.3 hadoop 真实运行（2014707f8c31，默认堆，不设 `--max-old-space-size`）：完成，确定性校验通过，`metaAdvanced=true`。
+
+  | | 改前（main 19391644） | 改后 |
+  |---|---|---|
+  | 总用时 | 141.3 秒 | 118.6 秒 |
+  | 最大常驻内存 | 3,638,018,048 字节 | 3,220,865,024 字节 |
+  | macOS 峰值内存占用 | 5,141,252,032 字节 | 3,703,904,512 字节 |
+  | 图谱文件 | 430,541,060 字符（JSON，带缩进） | 371,664,636 字节（按行） |
+  | 余量表最高一项 | `knowledge-graph.json` 80.19%（字符） | `fingerprints.json` 14.53%（字节） |
+
+  - 改后余量表按字符计的条目最高 1.33%（`source-manifest.json`）；整份摘要文本这一项已不存在。
+  - 各按行产物的最长记录占上限比例：`knowledge-graph.jsonl` 0.0027%、`fact-graph.jsonl` 0.00%、`source-index.jsonl` 0.22%、`structure-all.jsonl` 0.10%。
+  - **与原验收标准的偏差：** design 原写「三个按行产物的最长记录都低于 0.01%」，`source-index.jsonl` 与 `structure-all.jsonl` 未达到。原因是这条标准在实测前定得过严：
+    - 源码索引一条倒排记录的长度与该词出现的代码块数成正比（source-index 规格已写明），按 hadoop 现规模约需再大 450 倍才触顶；
+    - 结构抽取结果一行是一个文件，受单文件大小上限约束，与仓库大小无关（Fineract 最长一行 0.72% 即为单个大文件）。
+    - 图谱本身的最长记录 0.0027%，满足原标准。design「验收」6 与风险 6 已按实测改写。
+  - Fineract（f9c2fcd，默认堆）：54.5 秒（改前 64 秒），最大常驻内存 1,723,301,888 字节，余量表最高一项 `fingerprints.json` 6.03%（字节）。
+- [x] 8.4 MCP：
+  - wcp-auth 两份副本分别用 main 19391644 与本分支做 Lazy 分析，再经 stdio 调用全部 7 个工具（`project_status`、两次 `recall`、两次 `traverse`、`read_evidence`、`semantic_plan`、`semantic_commit`、提交后再一次 `semantic_plan`、`sync_facts`）；去掉耗时与时间戳、统一副本路径和 `pipelineVersion` 后 10/10 逐项相同。
+  - 装置先验：对源码多一个函数的副本，同一比较报 0/10 相同。
+  - hadoop 上 `deploy/mcp-smoke.mjs` 7 个工具全部 PASS（36 秒）。每次调用读图耗时：改前整份 `JSON.parse` 1,024 ms，改后按行读取 1,011 ms。
+- [x] 8.5 零兼容：
+  - 测试覆盖：只含旧文件的数据目录，`project_status` 不可用并报 `missing-product` + `legacyProductPresent`，旧文件不被解析；
+  - Lazy 发布后旧 `knowledge-graph.json` 与 `intermediate/structure-all.json` 被删除；
+  - 真实语料（hadoop、Fineract、wcp、cebreo）改后的 `.excavator/` 中均已不存在旧文件。
 
 ## 9. 归档
 
-- [ ] 9.1 规格增量同步到 `openspec/specs/`，变更移入 `openspec/changes/archive/`，`openspec validate --all --strict` 通过。
+- [x] 9.1 规格增量同步到 `openspec/specs/`，变更移入 `openspec/changes/archive/`，`openspec validate --all --strict` 通过。

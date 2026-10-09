@@ -52,7 +52,7 @@ semantic cache、semantic graph 与 domain graph 的 freshness SHALL 同时校�
 
 #### Scenario: 旧架构或领域语义整体失效
 - **WHEN** semantic graph 或 domain graph 的其他 freshness key 匹配但 `contentLanguage` 不是 `en`
-- **THEN** 对应语义产物不可用并报告 `noncanonical-language`，而 `knowledge-graph.json` 保持逐字不变
+- **THEN** 对应语义产物不可用并报告 `noncanonical-language`，而 `knowledge-graph.jsonl` 保持逐字不变
 
 ### Requirement: 回答语言由当前请求决定
 
