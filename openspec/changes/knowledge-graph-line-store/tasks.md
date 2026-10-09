@@ -12,7 +12,7 @@
 
 ## 1. 共享按行读取
 
-- [ ] 1.1 从 `source-index-store.mjs` 抽出分块按行读取到 `skills/excavator/jsonl-lines.mjs`，`source-index-store.mjs` 改用它。验证：source index 现有测试全绿；同一索引改前改后写出的文件逐字节相同。
+- [x] 1.1 从 `source-index-store.mjs` 抽出分块按行读取到 `skills/excavator/jsonl-lines.mjs`，`source-index-store.mjs` 改用它。验证：source index 现有测试全绿；同一索引改前改后写出的文件逐字节相同。
 
 ## 2. 图谱存储模块
 
