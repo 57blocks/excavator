@@ -1,6 +1,6 @@
 # Excavator runner image: a two-stage build that bakes a pinned Excavator
 # checkout and a pinned Claude Code into a single non-root image with no
-# credentials and no target-repo artifacts. See openspec/changes/runner-image
+# credentials and no target-repo artifacts. See openspec/changes/archive/2026-10-09-runner-image
 # (design.md D2) for the decisions this file implements verbatim.
 
 ARG CLAUDE_CODE_VERSION=2.1.281

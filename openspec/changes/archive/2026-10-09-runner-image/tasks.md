@@ -62,7 +62,7 @@ commit 序列：
 - [x] 5.1 全量门（O8）：在干净检出上运行 `pnpm install --frozen-lockfile && pnpm -r build && pnpm test` 与 `openspec validate --all --strict`；新文件先 `git add -N` 再跑。
 - [x] 5.2 亲自重跑 O1–O7：镜像构建与自检（本地 arm64 与 amd64 都验过）、镜像卫生、诱饵隔离及其对照、零凭证加载探针及删掉 agent 的反例、wcp-auth 副本上的 lazy 一致性与 MCP 七个工具、CI 的 push skipped。
 - [x] 5.3 PR 描述写明镜像大小、自检结果、构建阶段需要编译工具链的原因、wcp-auth 的脱敏计数；不含真实路径与产物。
-- [ ] 5.4 PR 以 merge commit 合入 `main`，保留全部 commit（0–4 以及验收中追加的修正 commit）。
+- [x] 5.4 PR 以 merge commit 合入 `main`，保留全部 commit（0–4 以及验收中追加的修正 commit）。组织仓库：57blocks/excavator#2（`d586a540`）；后续修正 #3（`0fa0cf88`）、#6（`55ba1626`）同样以 merge commit 合入。
 
 验收记录（acceptor，2026-09-24）：
 - 5.1：合并 `origin/main`（`244f5b58`）后的 `56018565` 上，三件套 89 个测试文件、1532 通过、4 跳过（均为既有跳过）；`openspec validate --all --strict` 35/35。PR CI（run 36007594791，head `210dc5f1`）的测试门同样全绿。

@@ -2,7 +2,7 @@
 /**
  * run-excavator.mjs
  *
- * Runner-image entrypoint (openspec: changes/runner-image, capability
+ * Runner-image entrypoint (openspec: changes/archive/2026-10-09-runner-image, capability
  * `runner-image`, design.md D3/D4). One container processes one mounted
  * repository and performs one run: `lazy` calls the zero-model Lazy driver
  * directly and never starts Claude Code; `full` starts Claude Code once,

@@ -1,5 +1,5 @@
 # Build, self-test and (on a release trigger) push the Excavator runner
-# image. See openspec/changes/runner-image/design.md D6 for the decisions
+# image. See openspec/changes/archive/2026-10-09-runner-image/design.md D6 for the decisions
 # this workflow implements verbatim; this is the repository's only workflow.
 #
 # All three triggers run the exact same flow (test -> image -> push): a tag

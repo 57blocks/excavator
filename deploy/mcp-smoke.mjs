@@ -2,7 +2,7 @@
 /**
  * mcp-smoke.mjs
  *
- * O6's MCP half (openspec: changes/runner-image, design.md D4/D5): calls
+ * O6's MCP half (openspec: changes/archive/2026-10-09-runner-image, design.md D4/D5): calls
  * each of the seven Excavator MCP tools once, over the real stdio protocol,
  * against a project root that already has facts (a prior `lazy` or `full`
  * run). Prints one PASS/FAIL line per tool and exits non-zero on any
