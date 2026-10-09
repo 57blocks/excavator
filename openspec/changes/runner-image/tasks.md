@@ -82,3 +82,9 @@ commit 序列：
 
 - [x] 6.1 镜像内置 `NODE_OPTIONS=--max-old-space-size-percentage=75`，自检新增 `node-heap` 检查。验证：hadoop lazy 在默认参数下成功（约 2 分钟，事实摘要与固定值一致）；清空 `NODE_OPTIONS` 时 `node-heap` 报 FAIL；`--network none` 下自检 12/12、hadoop lazy 均通过。
 - [x] 6.2 `docs/deploy.md` 新增「压缩包交接」处理步骤与「大仓库规格」。验证：带恶意 `core.fsmonitor` 的合成压缩包按步骤处理后，诱饵从未触发，镜像 lazy 成功，full 的加载检查通过（无模型调用，按预期以运行失败结束）。
+
+## 7. 部署实测后的修正（本地验证，不再操作 VM）
+
+- [x] 7.1 模型调用错误时，运行检查的原因写出模型服务的 HTTP 状态与原始错误信息（`describeApiError`）。验证：以部署试运行的真实 `result` 事件（Bedrock 403、账号未开通 Marketplace 订阅）为夹具，原因含 `HTTP 403` 与「Model access is denied」，不含「AWS authentication failed」。
+- [x] 7.2 新增 `deploy/read-coverage.mjs`：从 `run.jsonl` 统计实际读到的仓库行数（下限 / 上限、范围内外、占比），可作命令行工具；`full` 运行的 `summary.json` 增加 `readCoverage`。验证：单元测试覆盖各类读法、路径解析、去重、范围划分与真实 Git 临时仓库；对部署 VM 取回的 PRD 运行记录复算，与人工统计一致。
+- [x] 7.3 `docs/deploy.md` 补充 `readCoverage` 字段与统计命令。
