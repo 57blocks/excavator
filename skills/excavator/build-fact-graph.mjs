@@ -154,7 +154,7 @@ export function buildFactGraph({ scan, structureAll, importMap, serializationLim
     for (const fn of row.functions ?? []) {
       declEntries.push({
         path: row.path, type: 'function', name: fn.name, owner: fn.owner,
-        params: fn.params ?? [], returnType: fn.returnType,
+        params: fn.params ?? [], paramTypes: fn.paramTypes, returnType: fn.returnType,
         lineRange: [fn.startLine, fn.endLine], __anchor: 'tree-sitter',
       });
     }

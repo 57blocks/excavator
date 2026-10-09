@@ -54,6 +54,7 @@ const STRUCTURE_ENTRY_VALIDATORS = {
     typeof entry.name === 'string' &&
     isLineRange(entry.lineRange) &&
     isStringArray(entry.params) &&
+    hasValidOptionalField(entry, 'paramTypes', isStringArray) &&
     hasValidOptionalField(entry, 'returnType', value => typeof value === 'string'),
   classes: entry =>
     typeof entry.name === 'string' &&
@@ -284,6 +285,9 @@ export function buildResult(file, totalLines, nonEmptyLines, analysis, callGraph
       startLine: fn.lineRange[0],
       endLine: fn.lineRange[1],
       params: fn.params || [],
+      // Parameter types, from extractors whose language overloads by type
+      // (Java); node identity uses them in place of the parameter names.
+      ...(Array.isArray(fn.paramTypes) ? { paramTypes: fn.paramTypes } : {}),
     }));
   }
 

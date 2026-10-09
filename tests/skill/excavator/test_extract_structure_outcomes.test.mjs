@@ -101,6 +101,10 @@ const MALFORMED_STRUCTURE_ENTRIES = [
     ...VALID_STRUCTURE_ENTRIES.functions,
     params: ['value', 2],
   }],
+  ['a function with non-string paramTypes', 'functions', {
+    ...VALID_STRUCTURE_ENTRIES.functions,
+    paramTypes: ['String', 2],
+  }],
   ['a function with a non-string return type', 'functions', {
     ...VALID_STRUCTURE_ENTRIES.functions,
     returnType: false,

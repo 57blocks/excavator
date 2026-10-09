@@ -31,6 +31,85 @@ function extractParams(paramsNode: TreeSitterNode | null): string[] {
   return params;
 }
 
+const NON_TYPE_CHILDREN = new Set(["modifiers", "variable_declarator", "annotation", "marker_annotation"]);
+
+/**
+ * Extract parameter types from a Java `formal_parameters` node, in declaration
+ * order. Java overloads are told apart by parameter types, not names, so these
+ * feed node identity. Array dimensions written after the name (`int x[]`) are
+ * appended to the type, varargs end in `...`, and modifiers and annotations
+ * are not part of the type. A receiver parameter (`Foo this`) is skipped.
+ */
+function extractParamTypes(paramsNode: TreeSitterNode | null): string[] {
+  if (!paramsNode) return [];
+  const types: string[] = [];
+
+  for (let i = 0; i < paramsNode.childCount; i++) {
+    const child = paramsNode.child(i);
+    if (!child) continue;
+
+    if (child.type === "formal_parameter") {
+      const typeNode = child.childForFieldName("type");
+      if (!typeNode) continue;
+      const dimensions = child.childForFieldName("dimensions");
+      types.push(`${typeNode.text}${dimensions ? dimensions.text : ""}`);
+    } else if (child.type === "spread_parameter") {
+      for (let j = 0; j < child.childCount; j++) {
+        const part = child.child(j);
+        if (part && part.isNamed && !NON_TYPE_CHILDREN.has(part.type)) {
+          types.push(`${part.text}...`);
+          break;
+        }
+      }
+    }
+  }
+
+  return types;
+}
+
+/**
+ * Map a method's or constructor's own type variables to what they erase to:
+ * the first bound, or `Object`. Java tells generic overloads apart by their
+ * erased parameter types (`<T> f(T)` vs `<T extends Sink> f(T)`), so the
+ * variable names alone would collapse them.
+ */
+function typeVariableErasures(node: TreeSitterNode): Map<string, string> {
+  const erasures = new Map<string, string>();
+  const typeParameters = node.childForFieldName("type_parameters");
+  if (!typeParameters) return erasures;
+
+  for (let i = 0; i < typeParameters.childCount; i++) {
+    const parameter = typeParameters.child(i);
+    if (!parameter || parameter.type !== "type_parameter") continue;
+    let name: string | null = null;
+    let bound = "Object";
+    for (let j = 0; j < parameter.childCount; j++) {
+      const part = parameter.child(j);
+      if (!part) continue;
+      if (part.type === "type_identifier" && name === null) {
+        name = part.text;
+      } else if (part.type === "type_bound") {
+        for (let k = 0; k < part.childCount; k++) {
+          const boundType = part.child(k);
+          if (boundType && boundType.isNamed) {
+            bound = boundType.text;
+            break;
+          }
+        }
+      }
+    }
+    if (name !== null) erasures.set(name, bound);
+  }
+
+  return erasures;
+}
+
+/** Replace a method's own type variables in a parameter type with their erasure. */
+function eraseTypeVariables(type: string, erasures: Map<string, string>): string {
+  if (erasures.size === 0) return type;
+  return type.replace(/[A-Za-z_$][A-Za-z0-9_$]*/g, (word) => erasures.get(word) ?? word);
+}
+
 /**
  * Extract the return type text from a method_declaration node.
  *
@@ -258,6 +337,7 @@ export class JavaExtractor implements LanguageExtractor {
         properties,
         functions,
         exports,
+        nameNode.text,
       );
     }
 
@@ -342,6 +422,7 @@ export class JavaExtractor implements LanguageExtractor {
     properties: string[],
     functions: StructuralAnalysis["functions"],
     exports: StructuralAnalysis["exports"],
+    owner: string,
   ): void {
     for (let i = 0; i < body.childCount; i++) {
       const child = body.child(i);
@@ -357,15 +438,16 @@ export class JavaExtractor implements LanguageExtractor {
             properties,
             functions,
             exports,
+            owner,
           );
           break;
 
         case "method_declaration":
-          this.extractMethod(child, methods, functions, exports);
+          this.extractMethod(child, methods, functions, exports, owner);
           break;
 
         case "constructor_declaration":
-          this.extractConstructor(child, methods, functions, exports);
+          this.extractConstructor(child, methods, functions, exports, owner);
           break;
 
         case "field_declaration":
@@ -380,12 +462,15 @@ export class JavaExtractor implements LanguageExtractor {
     methods: string[],
     functions: StructuralAnalysis["functions"],
     exports: StructuralAnalysis["exports"],
+    owner: string,
   ): void {
     const nameNode = node.childForFieldName("name");
     if (!nameNode) return;
 
     const paramsNode = node.childForFieldName("parameters");
     const params = extractParams(paramsNode ?? null);
+    const erasures = typeVariableErasures(node);
+    const paramTypes = extractParamTypes(paramsNode ?? null).map((type) => eraseTypeVariables(type, erasures));
     const returnType = extractReturnType(node);
 
     methods.push(nameNode.text);
@@ -397,7 +482,9 @@ export class JavaExtractor implements LanguageExtractor {
         node.endPosition.row + 1,
       ],
       params,
+      paramTypes,
       returnType,
+      owner,
     });
 
     if (hasModifier(node, "public")) {
@@ -413,12 +500,15 @@ export class JavaExtractor implements LanguageExtractor {
     methods: string[],
     functions: StructuralAnalysis["functions"],
     exports: StructuralAnalysis["exports"],
+    owner: string,
   ): void {
     const nameNode = node.childForFieldName("name");
     if (!nameNode) return;
 
     const paramsNode = node.childForFieldName("parameters");
     const params = extractParams(paramsNode ?? null);
+    const erasures = typeVariableErasures(node);
+    const paramTypes = extractParamTypes(paramsNode ?? null).map((type) => eraseTypeVariables(type, erasures));
 
     methods.push(nameNode.text);
 
@@ -429,7 +519,9 @@ export class JavaExtractor implements LanguageExtractor {
         node.endPosition.row + 1,
       ],
       params,
+      paramTypes,
       // Constructors have no return type
+      owner,
     });
 
     if (hasModifier(node, "public")) {

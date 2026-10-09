@@ -9,6 +9,7 @@
 // output for the authoritative row shapes); no CLI process is spawned.
 import { describe, expect, it } from 'vitest';
 import { buildFactGraph } from '../../skills/excavator/build-fact-graph.mjs';
+import { buildSourceIndex } from '../../skills/excavator/build-source-index.mjs';
 import { conservationViolations } from '../../skills/excavator/coverage-ledger.mjs';
 import { canonicalizeForDigest, sha256Hex } from '../../skills/excavator/fact-graph-resolve.mjs';
 
@@ -313,6 +314,60 @@ describe('identity collisions — surfaced, never silently merged', () => {
     expect(gap.count).toBe(2);
     expect(gap.samples).toContain('src/collide.ts:1-5');
     expect(gap.samples).toContain('src/collide.ts:20-25');
+  });
+});
+
+describe('Java overloads — told apart by parameter types', () => {
+  function javaFixture() {
+    const path = 'src/Rule.java';
+    const scan = {
+      files: [{ path, language: 'java', sizeLines: 8, fileCategory: 'code' }],
+      skipped: [],
+      coverage: { limits: { maxFileLines: 20000, maxFileBytes: 2097152 } },
+    };
+    const structureAll = {
+      results: [{
+        path, language: 'java', fileCategory: 'code', totalLines: 8, nonEmptyLines: 8, status: 'parsed',
+        functions: [
+          { name: 'handle', owner: 'Rule', startLine: 2, endLine: 4, params: ['command'], paramTypes: ['JsonCommand'] },
+          { name: 'handle', owner: 'Rule', startLine: 5, endLine: 7, params: ['command'], paramTypes: ['String'] },
+        ],
+        metrics: {},
+      }],
+    };
+    const importMap = { importMap: { [path]: [] }, unresolved: {} };
+    const source = [
+      'public class Rule {',
+      '  void handle(JsonCommand command) {',
+      '  }',
+      '  }',
+      '  void handle(String command) {',
+      '  }',
+      '  }',
+      '}',
+    ].join('\n');
+    return { scan, structureAll, importMap, readFile: () => source };
+  }
+
+  it('same parameter names, different types: two nodes and no identity-collision gap', () => {
+    const { scan, structureAll, importMap } = javaFixture();
+    const { nodes, gaps } = buildFactGraph({ scan, structureAll, importMap });
+    const ids = nodes.filter((n) => n.type === 'function').map((n) => n.id).sort();
+    expect(ids).toEqual([
+      'function:src/Rule.java:Rule#handle(JsonCommand)',
+      'function:src/Rule.java:Rule#handle(String)',
+    ]);
+    expect(gaps.filter((g) => g.kind === 'identity-collision')).toEqual([]);
+  });
+
+  it('the source index derives the same node ids as the fact graph', () => {
+    const { scan, structureAll, importMap, readFile } = javaFixture();
+    const { nodes } = buildFactGraph({ scan, structureAll, importMap });
+    const factIds = new Set(nodes.map((n) => n.id));
+    const index = buildSourceIndex({ scan, structureAll, readFile, sourceRevision: 'rev-1' });
+    const functionChunks = index.chunks.filter((c) => c.type === 'function');
+    expect(functionChunks).toHaveLength(2);
+    for (const chunk of functionChunks) expect(factIds.has(chunk.nodeId)).toBe(true);
   });
 });
 

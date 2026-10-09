@@ -327,6 +327,10 @@ export interface StructuralAnalysis {
     name: string;
     lineRange: [number, number];
     params: string[];
+    /** Parameter types in declaration order, for languages whose overloads are
+     * distinguished by type (Java). When present, node identity uses these
+     * instead of the parameter names. */
+    paramTypes?: string[];
     returnType?: string;
     /** Declaring type/scope; empty means free function, null means unresolved.
      * Omitted by extractors that only represent methods in classes[].methods. */
