@@ -11,8 +11,8 @@
 
 ## 2. 验收
 
-- [ ] 2.1 本变更 PR 的 CI 运行里 `Test` 通过、`Image (linux/amd64)` 显示为 skipped；记录运行 id。
+- [x] 2.1 本变更 PR 的 CI 运行里 `Test` 通过、`Image (linux/amd64)` 显示为 skipped；记录运行 id。结果：57blocks/excavator#10 的运行 `37900287698`（head `3653206b`，事件 `pull_request`）：`Test` 成功（3 分 47 秒），`Image (linux/amd64)` 为 skipped。
 
 ## 3. 归档
 
-- [ ] 3.1 规格增量同步到 `openspec/specs/runner-image/spec.md`，变更移入 `openspec/changes/archive/`，`openspec validate --all --strict` 通过。
+- [x] 3.1 规格增量同步到 `openspec/specs/runner-image/spec.md`，变更移入 `openspec/changes/archive/`，`openspec validate --all --strict` 通过。
