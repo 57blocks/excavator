@@ -112,7 +112,20 @@ Map **every** inventory item (1a + 1b) to an outline section. If something has n
 
 ## Phase 3 — Write the PRD
 
-Write in `--language`, in product language for `--role`. Start with a short **Doc Info** block (version, date, project/domain, source baseline/revision, audience) — localized to `--language`. Then cover **every** inventoried flow — no exceptions.
+Write in `--language`, in product language for `--role`. Start with a short **Doc Info** block (version, date, project/domain, source baseline/revision, audience, and **scope size**) — localized to `--language`. Then cover **every** inventoried flow — no exceptions.
+
+Scope size is counted by command, never estimated: run the following (`SCOPE` is the `--scope` path, or `.` for the whole project) and copy the two numbers into Doc Info as "N files, M lines":
+```bash
+cd "$PROJECT_ROOT"
+if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+  git ls-files -- "$SCOPE" | wc -l                               # files
+  git ls-files -z -- "$SCOPE" | xargs -0 cat -- | wc -l           # lines
+else
+  find "$SCOPE" -type f -not -path '*/.git/*' -not -path '*/.excavator/*' | wc -l
+  find "$SCOPE" -type f -not -path '*/.git/*' -not -path '*/.excavator/*' -exec cat -- {} + | wc -l
+fi
+```
+If `--scope` names a domain rather than a directory, list the directories it covers and count each.
 
 **No code in the body.** The PRD describes behavior, not implementation. Do not paste code, function/route signatures, SQL, or config literals into the prose. Name an identifier only when it is genuinely user-facing (a status label, an on-screen field); otherwise describe it in business terms. Anything code-level (snippets, `file:line`) belongs only in the fold-away `<details>` blocks described below.
 

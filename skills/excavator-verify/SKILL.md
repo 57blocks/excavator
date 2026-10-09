@@ -95,7 +95,7 @@ The same fact is often stated in two chapters. Dispatch one subagent with the li
 Write the report to the `--report` path in the document's language:
 
 1. **Scope** — the five classes plus cross-section consistency; other statements were not checked. Baseline and document path.
-2. **Counts** — a table of class × verdict, plus not-checked and conflicts. The totals must equal the number of selected candidates.
+2. **Counts** — a table of class × verdict, plus not-checked and conflicts. Fill every cell yourself by counting the returned entries (each entry carries its class and verdict); never copy a subagent's own summary counts, which do not always match its entries. Row totals must equal the candidates selected per class, and the grand total must equal the number of selected candidates.
 3. **Errors** — every contradicted and misattributed entry and every conflict: line, quote, evidence, correction.
 4. **Open items** — resolved-right and resolved-wrong (with the settled statement), still-open (with the searched scope). A resolved-wrong item is a wrong statement the document made, and counts with the errors.
 5. **Run** — number of section groups and subagents.
@@ -104,7 +104,7 @@ In the final message, give the counts and the errors list (line + one-line summa
 
 ## Phase 4 — Self-check
 
-- Counts add up to the selected-candidate total; not-checked is reported, not hidden.
+- The class × verdict table is filled cell by cell from the entries, and its rows and columns add up to the selected-candidate total; not-checked is reported, not hidden.
 - Every contradicted, misattributed, resolved-right, resolved-wrong and conflict entry has `file:line` evidence.
 - The report states the verification scope.
 
