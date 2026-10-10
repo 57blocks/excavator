@@ -399,10 +399,44 @@ export interface ImportResolution {
   specifiers: string[];
 }
 
+/**
+ * What a Java call site is invoked on, as far as the file alone can tell
+ * (openspec: changes/java-member-call-resolution, design D2). Local names are
+ * bound by the extractor; fields, supertypes and other files' types are left
+ * for the fact graph.
+ */
+export type CallReceiver =
+  /** A bare call `m()`. */
+  | { kind: "none" }
+  | { kind: "this" }
+  | { kind: "super" }
+  /** A local, parameter or pattern variable; `type` is `null` when the
+   *  declaration does not state it (lambda parameter, most `var`). */
+  | { kind: "local"; type: string | null }
+  /** An identifier no local binds: a field or a type name. */
+  | { kind: "name"; name: string }
+  | { kind: "field"; object: CallReceiver; name: string }
+  /** The result of another call; `site` indexes this file's call graph. */
+  | { kind: "call"; site: number }
+  /** `new X(...).m()`. */
+  | { kind: "new"; type: string }
+  /** A cast, a string literal (`String`) or a class literal (`Class`). */
+  | { kind: "type"; type: string }
+  /** On an object creation site: the type being constructed. */
+  | { kind: "construct"; type: string }
+  | { kind: "unknown" };
+
 export interface CallGraphEntry {
   caller: string;
   callee: string;
   lineNumber: number;
+  /** Java only, from here down. */
+  receiver?: CallReceiver;
+  /** Number of arguments at the call site. */
+  argCount?: number;
+  /** The top-level type the call is written in; `null` inside an anonymous
+   *  class, a local or nested type, or an enum constant body. */
+  enclosingType?: string | null;
 }
 
 export interface AnalyzerPlugin {

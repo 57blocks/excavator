@@ -111,3 +111,37 @@ describe('structure row: other languages unchanged', () => {
     }
   });
 });
+
+describe('structure row: Java call sites', () => {
+  it('carries receiver, argument count and enclosing type', () => {
+    const source = [
+      'package p;',
+      'class Svc {',
+      '  private Helper helper;',
+      '  void run(Loan loan) {',
+      '    loan.pay(1);',
+      '    helper.assist().done();',
+      '  }',
+      '}',
+      '',
+    ].join('\n');
+    const { callGraph } = row({ path: 'src/p/Svc.java', language: 'java', fileCategory: 'code' }, source);
+    expect(callGraph).toEqual([
+      { caller: 'run', callee: 'loan.pay', lineNumber: 5, receiver: { kind: 'local', type: 'Loan' }, argCount: 1, enclosingType: 'Svc' },
+      { caller: 'run', callee: 'helper.assist().done', lineNumber: 6, receiver: { kind: 'call', site: 2 }, argCount: 0, enclosingType: 'Svc' },
+      { caller: 'run', callee: 'helper.assist', lineNumber: 6, receiver: { kind: 'name', name: 'helper' }, argCount: 0, enclosingType: 'Svc' },
+    ]);
+  });
+
+  it('fails the call graph of a file whose extractor reports a receiver shape outside the closed set', () => {
+    const file = { path: 'src/p/X.java', language: 'java', fileCategory: 'code' };
+    const structure = { functions: [], classes: [], imports: [], exports: [] };
+    const fake = (receiver) => {
+      const plugin = { analyzeFileFull: () => ({ structure, callGraph: [{ caller: 'a', callee: 'b', lineNumber: 1, receiver }] }) };
+      return { getPluginForFile: () => plugin, analyzeFileFull: plugin.analyzeFileFull };
+    };
+    expect(analyzeFileWithOutcomes(fake({ kind: 'local', type: 'Loan' }), file, '').callGraphOutcome).toBe('succeeded');
+    expect(analyzeFileWithOutcomes(fake({ kind: 'guess', type: 'Loan' }), file, '').callGraphOutcome).toBe('failed');
+    expect(analyzeFileWithOutcomes(fake({ kind: 'field', name: 'f', object: { kind: 'call', site: -1 } }), file, '').callGraphOutcome).toBe('failed');
+  });
+});

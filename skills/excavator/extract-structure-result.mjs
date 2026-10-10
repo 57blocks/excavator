@@ -149,12 +149,38 @@ function isValidStructuralAnalysis(analysis) {
       ));
 }
 
+// What a Java call site is invoked on (java-member-call-resolution, D2). The
+// kinds and their fields are closed: an unknown shape fails the file rather
+// than reaching the fact graph as something it would have to guess about.
+const RECEIVER_VALIDATORS = {
+  none: () => true,
+  this: () => true,
+  super: () => true,
+  unknown: () => true,
+  local: r => r.type === null || typeof r.type === 'string',
+  name: r => typeof r.name === 'string',
+  field: r => typeof r.name === 'string' && isValidReceiver(r.object),
+  call: r => isFiniteInteger(r.site) && r.site >= 0,
+  new: r => typeof r.type === 'string',
+  type: r => typeof r.type === 'string',
+  construct: r => typeof r.type === 'string',
+};
+
+function isValidReceiver(receiver) {
+  return isPlainObject(receiver) &&
+    Object.hasOwn(RECEIVER_VALIDATORS, receiver.kind) &&
+    RECEIVER_VALIDATORS[receiver.kind](receiver);
+}
+
 function isValidCallGraph(callGraph) {
   return Array.isArray(callGraph) && callGraph.every(entry =>
     isPlainObject(entry) &&
     typeof entry.caller === 'string' &&
     typeof entry.callee === 'string' &&
-    isFiniteInteger(entry.lineNumber));
+    isFiniteInteger(entry.lineNumber) &&
+    hasValidOptionalField(entry, 'receiver', isValidReceiver) &&
+    hasValidOptionalField(entry, 'argCount', value => isFiniteInteger(value) && value >= 0) &&
+    hasValidOptionalField(entry, 'enclosingType', value => value === null || typeof value === 'string'));
 }
 
 function mapCallGraph(callGraph) {
@@ -163,6 +189,11 @@ function mapCallGraph(callGraph) {
         caller: entry.caller,
         callee: entry.callee,
         lineNumber: entry.lineNumber,
+        // Java only: the receiver, argument count and enclosing type the fact
+        // graph resolves member calls with.
+        ...(entry.receiver === undefined ? {} : { receiver: entry.receiver }),
+        ...(entry.argCount === undefined ? {} : { argCount: entry.argCount }),
+        ...(entry.enclosingType === undefined ? {} : { enclosingType: entry.enclosingType }),
       }))
     : null;
 }

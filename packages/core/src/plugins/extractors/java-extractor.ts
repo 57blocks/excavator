@@ -1,6 +1,7 @@
 import type {
   StructuralAnalysis,
   CallGraphEntry,
+  CallReceiver,
   JavaFieldType,
   JavaSupertype,
   JavaTypeParameter,
@@ -230,6 +231,60 @@ interface TypeBodyFacts {
   memberTypes: string[];
 }
 
+/** Names a method body declares, innermost scope last. */
+interface LocalScope {
+  /** Variable name to declared type; `null` when the type is not stated. */
+  vars: Map<string, string | null>;
+  /** Local classes, which shadow any type of the same name. */
+  types: Set<string>;
+  /** Pattern variables bound in this scope by the statement being walked. */
+  patterns: string[];
+}
+
+/** Nodes that open a scope for the names declared inside them. */
+const SCOPE_NODES = new Set([
+  "method_declaration",
+  "constructor_declaration",
+  "compact_constructor_declaration",
+  "lambda_expression",
+  "block",
+  "constructor_body",
+  "for_statement",
+  "enhanced_for_statement",
+  "catch_clause",
+  "try_with_resources_statement",
+  "switch_block_statement_group",
+  "switch_rule",
+  "class_body",
+]);
+
+/** Scopes whose children are statements: a pattern variable a statement
+ *  declares stops being typed once that statement ends. */
+const SETTLING_SCOPES = new Set(["block", "constructor_body", "switch_block_statement_group"]);
+
+const UNKNOWN_RECEIVER: CallReceiver = Object.freeze({ kind: "unknown" }) as CallReceiver;
+
+const COMMENT_NODES = new Set(["line_comment", "block_comment"]);
+
+/** Arguments at a call or object creation site, comments excluded. */
+function countArguments(node: TreeSitterNode): number {
+  const args = node.childForFieldName("arguments");
+  if (!args) return 0;
+  let count = 0;
+  for (let i = 0; i < args.childCount; i++) {
+    const child = args.child(i);
+    if (child && child.isNamed && !COMMENT_NODES.has(child.type)) count++;
+  }
+  return count;
+}
+
+/** The leading simple name of a type as written: `Map` for `Map.Entry<K, V>`. */
+function baseTypeName(typeText: string): string {
+  const withoutAnnotations = typeText.replace(/@[\w.]+(\([^)]*\))?\s*/g, "").trim();
+  const match = /^[A-Za-z_$][A-Za-z0-9_$]*/.exec(withoutAnnotations);
+  return match ? match[0] : withoutAnnotations;
+}
+
 /**
  * Extract the return type text from a method_declaration node.
  *
@@ -330,12 +385,213 @@ export class JavaExtractor implements LanguageExtractor {
     return { functions, classes, imports, exports };
   }
 
+  /**
+   * Call sites, each with what it is invoked on (openspec:
+   * changes/java-member-call-resolution, design D1/D2). Names declared inside
+   * a method — parameters, locals, for-each, catch and resource variables,
+   * pattern variables, lambda parameters, local classes — are bound here with
+   * a scope stack, because only the syntax tree knows those scopes. Fields,
+   * supertypes and other files' types are left for the fact graph.
+   */
   extractCallGraph(rootNode: TreeSitterNode): CallGraphEntry[] {
     const entries: CallGraphEntry[] = [];
     const functionStack: string[] = [];
+    // The top-level type a call is written in; null inside anonymous, local
+    // and nested types and enum constant bodies.
+    const typeStack: Array<string | null> = [];
+    const scopes: LocalScope[] = [];
+    const siteOfNode = new Map<number, number>();
+    const pendingCalls: Array<{ receiver: { kind: string; site?: number }; nodeId: number }> = [];
 
-    const walkForCalls = (node: TreeSitterNode) => {
+    const lookupLocal = (name: string): { type: string | null } | null => {
+      for (let i = scopes.length - 1; i >= 0; i--) {
+        const vars = scopes[i].vars;
+        if (vars.has(name)) return { type: vars.get(name) ?? null };
+      }
+      return null;
+    };
+    const isLocalType = (name: string): boolean => scopes.some((scope) => scope.types.has(name));
+    // A declared type, or null when it is `var` or names a local class.
+    const declared = (typeText: string): string | null => {
+      if (typeText === "var") return null;
+      return isLocalType(baseTypeName(typeText)) ? null : typeText;
+    };
+    const bind = (name: string, type: string | null) => {
+      scopes[scopes.length - 1]?.vars.set(name, type);
+    };
+    // Pattern variables are typed only within the statement that declares
+    // them; after it they are bound with no type, so a later use is never
+    // misread as a field of the same name.
+    const bindPattern = (name: string, type: string | null) => {
+      const scope = scopes[scopes.length - 1];
+      if (!scope) return;
+      scope.vars.set(name, type);
+      scope.patterns.push(name);
+    };
+    const settlePatterns = (scope: LocalScope) => {
+      for (const name of scope.patterns) scope.vars.set(name, null);
+      scope.patterns.length = 0;
+    };
+
+    const bindParameters = (params: TreeSitterNode | null) => {
+      if (!params) return;
+      for (let i = 0; i < params.childCount; i++) {
+        const child = params.child(i);
+        if (!child) continue;
+        if (child.type === "formal_parameter") {
+          const nameNode = child.childForFieldName("name");
+          const typeNode = child.childForFieldName("type");
+          if (!nameNode) continue;
+          const dimensions = child.childForFieldName("dimensions");
+          bind(nameNode.text, typeNode ? declared(`${typeNode.text}${dimensions ? dimensions.text : ""}`) : null);
+        } else if (child.type === "spread_parameter") {
+          const declarator = findChild(child, "variable_declarator");
+          const nameNode = declarator?.childForFieldName("name");
+          if (!nameNode) continue;
+          let type: string | null = null;
+          for (let j = 0; j < child.childCount; j++) {
+            const part = child.child(j);
+            if (part && part.isNamed && !NON_TYPE_CHILDREN.has(part.type)) {
+              type = declared(`${part.text}[]`);
+              break;
+            }
+          }
+          bind(nameNode.text, type);
+        }
+      }
+    };
+
+    const bindLambdaParameters = (params: TreeSitterNode | null) => {
+      if (!params) return;
+      if (params.type === "identifier") {
+        bind(params.text, null);
+      } else if (params.type === "inferred_parameters") {
+        for (const id of findChildren(params, "identifier")) bind(id.text, null);
+      } else if (params.type === "formal_parameters") {
+        bindParameters(params);
+      }
+    };
+
+    const bindLocalDeclaration = (node: TreeSitterNode) => {
+      const typeNode = node.childForFieldName("type");
+      for (const declarator of findChildren(node, "variable_declarator")) {
+        const nameNode = declarator.childForFieldName("name");
+        if (!nameNode) continue;
+        let type: string | null = null;
+        if (typeNode && typeNode.text !== "var") {
+          type = declared(declaratorType(typeNode, declarator));
+        } else {
+          // `var x = new X(...)` is the one `var` whose type the line states.
+          const value = declarator.childForFieldName("value");
+          const created = value?.type === "object_creation_expression" && !findChild(value, "class_body")
+            ? value.childForFieldName("type")
+            : null;
+          type = created ? declared(created.text) : null;
+        }
+        bind(nameNode.text, type);
+      }
+    };
+
+    // `name` and `type` fields: enhanced for, resource.
+    const bindNamedTyped = (node: TreeSitterNode) => {
+      const nameNode = node.childForFieldName("name");
+      const typeNode = node.childForFieldName("type");
+      if (!nameNode) return;
+      const dimensions = node.childForFieldName("dimensions");
+      bind(nameNode.text, typeNode ? declared(`${typeNode.text}${dimensions ? dimensions.text : ""}`) : null);
+    };
+
+    const bindCatchParameter = (node: TreeSitterNode) => {
+      const parameter = findChild(node, "catch_formal_parameter");
+      const nameNode = parameter?.childForFieldName("name");
+      if (!parameter || !nameNode) return;
+      const catchType = findChild(parameter, "catch_type");
+      const types: string[] = [];
+      for (let i = 0; i < (catchType?.childCount ?? 0); i++) {
+        const type = catchType!.child(i);
+        if (type && type.isNamed) types.push(type.text);
+      }
+      // A multi-catch variable's type is the union's least upper bound.
+      bind(nameNode.text, types.length === 1 ? declared(types[0]) : null);
+    };
+
+    // `type_pattern` and `record_pattern_component`: a type, then the name.
+    const bindPatternNode = (node: TreeSitterNode) => {
+      let type: string | null = null;
+      let name: string | null = null;
+      for (let i = 0; i < node.childCount; i++) {
+        const part = node.child(i);
+        if (!part || !part.isNamed || part.type === "modifiers") continue;
+        if (part.type === "identifier") name = part.text;
+        else if (type === null && part.type !== "record_pattern") type = part.text;
+      }
+      if (name !== null) bindPattern(name, type === null ? null : declared(type));
+    };
+
+    const describe = (node: TreeSitterNode): CallReceiver => {
+      switch (node.type) {
+        case "parenthesized_expression": {
+          const inner = node.namedChild(0);
+          return inner ? describe(inner) : UNKNOWN_RECEIVER;
+        }
+        case "this":
+          return { kind: "this" };
+        case "super":
+          return { kind: "super" };
+        case "identifier": {
+          const local = lookupLocal(node.text);
+          if (local) return { kind: "local", type: local.type };
+          if (isLocalType(node.text)) return UNKNOWN_RECEIVER;
+          return { kind: "name", name: node.text };
+        }
+        case "field_access": {
+          const object = node.childForFieldName("object");
+          const field = node.childForFieldName("field");
+          // `Outer.this` and the like are not plain fields.
+          if (!object || !field || field.type !== "identifier") return UNKNOWN_RECEIVER;
+          return { kind: "field", object: describe(object), name: field.text };
+        }
+        case "method_invocation": {
+          const receiver = { kind: "call", site: -1 };
+          pendingCalls.push({ receiver, nodeId: node.id });
+          return receiver as CallReceiver;
+        }
+        case "object_creation_expression": {
+          const typeNode = node.childForFieldName("type");
+          const type = typeNode && !findChild(node, "class_body") ? declared(typeNode.text) : null;
+          return type === null ? UNKNOWN_RECEIVER : { kind: "new", type };
+        }
+        case "cast_expression": {
+          const types = node.childrenForFieldName("type");
+          const type = types.length === 1 && types[0] ? declared(types[0].text) : null;
+          return type === null ? UNKNOWN_RECEIVER : { kind: "type", type };
+        }
+        case "string_literal":
+          return { kind: "type", type: "String" };
+        case "class_literal":
+          return { kind: "type", type: "Class" };
+        default:
+          return UNKNOWN_RECEIVER;
+      }
+    };
+
+    const describeInvocation = (node: TreeSitterNode): CallReceiver => {
+      const object = node.childForFieldName("object");
+      // `X.super.m()`: an interface's default method or an outer class's
+      // super; neither is resolved.
+      for (let i = 0; i < node.childCount; i++) {
+        const child = node.child(i);
+        if (child?.type === "super" && (!object || child.startIndex !== object.startIndex)) {
+          return UNKNOWN_RECEIVER;
+        }
+      }
+      return object ? describe(object) : { kind: "none" };
+    };
+
+    const walk = (node: TreeSitterNode, parentType: string | null) => {
       let pushedName = false;
+      let pushedType = false;
+      let scope: LocalScope | null = null;
 
       // Track entering method/constructor declarations
       if (
@@ -349,15 +605,72 @@ export class JavaExtractor implements LanguageExtractor {
         }
       }
 
+      if (TYPE_DECLARATIONS.has(node.type)) {
+        const nameNode = node.childForFieldName("name");
+        const topLevel = parentType === "program";
+        typeStack.push(topLevel ? nameNode?.text ?? null : null);
+        pushedType = true;
+        // A local class shadows any type of the same name for the rest of
+        // its block.
+        if (!topLevel && nameNode && scopes.length > 0) scopes[scopes.length - 1].types.add(nameNode.text);
+      } else if (
+        node.type === "class_body" &&
+        (parentType === "object_creation_expression" || parentType === "enum_constant")
+      ) {
+        typeStack.push(null);
+        pushedType = true;
+      }
+
+      if (SCOPE_NODES.has(node.type)) {
+        scope = { vars: new Map(), types: new Set(), patterns: [] };
+        scopes.push(scope);
+      }
+
+      switch (node.type) {
+        case "method_declaration":
+        case "constructor_declaration":
+          bindParameters(node.childForFieldName("parameters"));
+          break;
+        case "lambda_expression":
+          bindLambdaParameters(node.childForFieldName("parameters"));
+          break;
+        case "catch_clause":
+          bindCatchParameter(node);
+          break;
+        case "enhanced_for_statement":
+        case "resource":
+          bindNamedTyped(node);
+          break;
+        case "local_variable_declaration":
+          bindLocalDeclaration(node);
+          break;
+        case "instanceof_expression": {
+          const nameNode = node.childForFieldName("name");
+          const typeNode = node.childForFieldName("right");
+          if (nameNode) bindPattern(nameNode.text, typeNode ? declared(typeNode.text) : null);
+          break;
+        }
+        case "type_pattern":
+        case "record_pattern_component":
+          bindPatternNode(node);
+          break;
+      }
+
+      const enclosingType = typeStack.length > 0 ? typeStack[typeStack.length - 1] : null;
+
       // Extract method invocations: e.g. fetchFromDb(limit), System.out.println(msg)
       if (node.type === "method_invocation") {
         if (functionStack.length > 0) {
           const callee = this.extractMethodInvocationName(node);
           if (callee) {
+            siteOfNode.set(node.id, entries.length);
             entries.push({
               caller: functionStack[functionStack.length - 1],
               callee,
               lineNumber: node.startPosition.row + 1,
+              receiver: describeInvocation(node),
+              argCount: countArguments(node),
+              enclosingType,
             });
           }
         }
@@ -368,29 +681,51 @@ export class JavaExtractor implements LanguageExtractor {
         if (functionStack.length > 0) {
           const typeNode = node.childForFieldName("type");
           if (typeNode) {
+            const type = declared(typeNode.text);
             entries.push({
               caller: functionStack[functionStack.length - 1],
               callee: `new ${typeNode.text}`,
               lineNumber: node.startPosition.row + 1,
+              receiver: type === null ? UNKNOWN_RECEIVER : { kind: "construct", type },
+              argCount: countArguments(node),
+              enclosingType,
             });
           }
         }
       }
 
+      const settlesPerChild = SETTLING_SCOPES.has(node.type);
       for (let i = 0; i < node.childCount; i++) {
         const child = node.child(i);
-        if (child) walkForCalls(child);
+        if (!child) continue;
+        walk(child, node.type);
+        // A switch group's labels bind its pattern variables for the group's
+        // statements; every other settling scope ends them per statement.
+        if (scope && settlesPerChild && child.type !== "switch_label") settlePatterns(scope);
       }
 
+      if (scope) scopes.pop();
+      if (pushedType) typeStack.pop();
       if (pushedName) {
         functionStack.pop();
       }
     };
 
-    walkForCalls(rootNode);
+    walk(rootNode, null);
+
+    for (const { receiver, nodeId } of pendingCalls) {
+      const site = siteOfNode.get(nodeId);
+      if (site === undefined) {
+        receiver.kind = "unknown";
+        delete receiver.site;
+      } else {
+        receiver.site = site;
+      }
+    }
 
     return entries;
   }
+
 
   // ---- Private helpers ----
 

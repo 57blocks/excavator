@@ -39,15 +39,20 @@
   - `{kind:'this'}`、`{kind:'super'}`；
   - `{kind:'local', type}`：局部绑定，`type` 为声明类型文本；`var` 声明且初始化为 `new X(...)` 时取 `X`，否则 `type: null`；
   - `{kind:'name', name}`：未被局部绑定的标识符，留给事实图判定是字段还是类名；
-  - `{kind:'field', object, name}`：`a.b`、`this.b`；
-  - `{kind:'call', object, name, argCount}`：链式调用中的前一个调用；
-  - `{kind:'new', type}`；
-  - `{kind:'type', type}`：强制转换、字符串字面量为 `String`；
-  - `{kind:'unknown'}`：数组元素、lambda 返回值等。
-- `argCount`：本次调用的实参个数。
+  - `{kind:'field', object, name}`：`a.b`、`this.b`，`object` 是同样形状的接收者描述；
+  - `{kind:'call', site}`：链式调用中的前一个调用，`site` 是它在本文件调用列表里的下标。前一个调用本身也是调用点，用下标引用而不是把整条链嵌套展开，记录大小随链长线性增长；
+  - `{kind:'new', type}`：`new X(...).m()`；
+  - `{kind:'type', type}`：强制转换、字符串字面量为 `String`、类字面量为 `Class`；
+  - `{kind:'construct', type}`：只用于对象创建调用点本身，`type` 是被构造的类型；
+  - `{kind:'unknown'}`：数组元素、lambda 返回值、`X.super.m()` 等。
+- `argCount`：本次调用的实参个数，不计注释。
 - `enclosingType`：调用所在的顶层类型名；位于匿名类、局部类、枚举常量体或嵌套类型内时为 `null`。
 
-原有的 `callee` 文字不变，其它使用者不受影响。
+类型文字指向局部类时，抽取器把它当作未知（`type: null` 或 `unknown`），因为事实图看不到局部类，按名字查只会查到同名的其它类型。模式变量（`instanceof`、`switch` 的类型模式与记录模式）只在声明它的那条语句内带类型；语句结束后仍绑定但类型为 `null`，这样后面同名的字段不会被误读成模式变量的类型。代价是「先判否后提前返回」写法里的模式变量解析不了，记入可见桶。
+
+接收者描述的种类和字段是封闭集合，结构结果对它做校验；形状不对的调用列表整体判为失败，不会把需要猜测的输入交给事实图。
+
+原有的 `callee` 文字不变，其它使用者不受影响。方法的返回类型以 `declaredReturnType` 进入结构结果，而不是 `returnType`：节点 ID 与源码索引读的是 `returnType`，带上它会改掉每个 Java 节点的 ID。
 
 **D3：类型名解析顺序遵循 Java 规则。**
 1. 单类型导入；

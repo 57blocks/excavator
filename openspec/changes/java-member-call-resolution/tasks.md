@@ -16,8 +16,8 @@
 
 ## 2. 调用点的接收者
 
-- [ ] 2.1 `extractCallGraph` 按作用域栈绑定局部名字（参数、局部变量、for-each、catch、try-with-resources、`instanceof` 模式变量），为每个调用点输出 D2 的 `receiver`、`argCount`、`enclosingType`；`new X(...)` 也带 `argCount`。验证：抽取器单测覆盖 D2 的每种形态、遮蔽、lambda 参数、匿名类与嵌套类型内的调用（`enclosingType: null`）。
-- [ ] 2.2 `extract-structure-result.mjs` 校验并透传 `receiver`、`argCount`、`enclosingType`。验证：结构结果单测；非 Java 调用点与改前相同。
+- [x] 2.1 `extractCallGraph` 按作用域栈绑定局部名字（参数、局部变量、for-each、catch、try-with-resources、`instanceof` 模式变量），为每个调用点输出 D2 的 `receiver`、`argCount`、`enclosingType`；`new X(...)` 也带 `argCount`。验证：抽取器单测覆盖 D2 的每种形态、遮蔽、lambda 参数、匿名类与嵌套类型内的调用（`enclosingType: null`）。
+- [x] 2.2 `extract-structure-result.mjs` 校验并透传 `receiver`、`argCount`、`enclosingType`。验证：结构结果单测；非 Java 调用点与改前相同。
 
 ## 3. 成员调用解析
 
