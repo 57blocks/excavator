@@ -522,17 +522,17 @@ public class Foo {}
       parser.delete();
     });
 
-    it("ignores calls outside methods (no caller)", () => {
-      // Java doesn't really allow top-level calls, but field initializers
-      // can have method calls. We skip those without a method context.
+    it("records a call outside every method with the sentinel caller of its initializer", () => {
+      // A field initializer has no declaration of its own: its calls are
+      // attributed to object initialization (dead-code-detection).
       const { tree, parser, root } = parse(`public class Foo {
     private String value = String.valueOf(42);
 }
 `);
       const result = extractor.extractCallGraph(root);
 
-      // No enclosing method, so these are skipped
-      expect(result).toHaveLength(0);
+      expect(result).toHaveLength(1);
+      expect(result[0]).toMatchObject({ caller: "<init>", callee: "String.valueOf", lineNumber: 2, enclosingType: "Foo" });
 
       tree.delete();
       parser.delete();

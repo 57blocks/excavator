@@ -279,13 +279,17 @@ interface Api extends java.io.Closeable, Comparable<Api> {
 }
 `;
 
-  // Frozen from the extractor before qualified names were rebuilt from tokens.
-  const UNWRAPPED_SHA256 = "ff22a01b1b49cfa4da270a3156dd743fc64f87d6d85bae35a8eb1efe7735b36a";
+  // Frozen from the extractor before qualified names were rebuilt from tokens,
+  // then refrozen when call sites outside method bodies became recorded: the
+  // only difference is the two field initializer sites (`new
+  // java.util.HashMap<>` as `<init>`, `LoggerFactory.getLogger` as `<clinit>`).
+  const UNWRAPPED_SHA256 = "4605cbaac6df9e536d566978c26cea07bccc4d0b714ad4e2c9f87bf93350a9c4";
 
   it("produces byte-identical structure and call graph output", () => {
     const json = JSON.stringify(extract(UNWRAPPED));
     expect(json).toContain('"type":"Map<String,\\n      List<Foo>>"');
     expect(json).toContain('"callee":"foos.stream()\\n        .map(x -> x).count"');
+    expect(json).toContain('"caller":"<clinit>","callee":"LoggerFactory.getLogger"');
     expect(createHash("sha256").update(json).digest("hex"), json).toBe(UNWRAPPED_SHA256);
   });
 });

@@ -274,8 +274,13 @@ describe('report mode', () => {
     const records = resolve(`${P}/Coll.java`, { report: true, nullCallers: [[`${P}/Coll.java`, 0]] });
     expect(records).toEqual([
       { site: '4 helper.assist', outcome: 'calls-caller-unresolved', target: 'Helper#assist()', receiverType: 'p.Helper' },
-      // Ambiguous: no single target.
-      { site: '4 helper.pick', outcome: 'calls-caller-unresolved', receiverType: 'p.Helper' },
+      // Ambiguous: no single target, the candidates instead.
+      {
+        site: '4 helper.pick',
+        outcome: 'calls-caller-unresolved',
+        candidates: ['Helper#pick(Long)', 'Helper#pick(String)'],
+        receiverType: 'p.Helper',
+      },
       { site: '4 new Loan', outcome: 'calls-caller-unresolved', target: 'Loan#Loan()', receiverType: 'p.Loan' },
       // A chained call types its receiver through the inner call, which has the same unknown caller.
       { site: '4 helper.self().assist', outcome: 'calls-caller-unresolved', target: 'Helper#assist()', receiverType: 'p.Helper' },

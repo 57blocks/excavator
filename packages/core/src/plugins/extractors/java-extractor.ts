@@ -11,6 +11,7 @@ import type { LanguageExtractor, TreeSitterNode } from "./types.js";
 import { findChild, findChildren } from "./base-extractor.js";
 import { extractAnnotationNames, extractClassLiterals, memberDeclarationFacts } from "./java-declaration-facts.js";
 import { methodReferenceSite } from "./java-method-references.js";
+import { STATIC_INITIALIZER_CALLER, initializerCaller } from "./java-initializer-callers.js";
 import { dottedName, typeText } from "./java-names.js";
 
 /**
@@ -388,10 +389,17 @@ export class JavaExtractor implements LanguageExtractor {
    * pattern variables, lambda parameters, local classes — are bound here with
    * a scope stack, because only the syntax tree knows those scopes. Fields,
    * supertypes and other files' types are left for the fact graph.
+   *
+   * A site outside every method and constructor body (a field initializer,
+   * an initializer block, an enum constant argument, a record compact
+   * constructor) has the sentinel caller of its initializer, `<clinit>` or
+   * `<init>` (openspec: changes/dead-code-detection).
    */
   extractCallGraph(rootNode: TreeSitterNode): CallGraphEntry[] {
     const entries: CallGraphEntry[] = [];
     const functionStack: string[] = [];
+    // Sentinel callers of the initializers being walked, innermost last.
+    const initializerStack: string[] = [];
     // The top-level type a call is written in; null inside anonymous, local
     // and nested types and enum constant bodies.
     const typeStack: Array<string | null> = [];
@@ -584,10 +592,18 @@ export class JavaExtractor implements LanguageExtractor {
       return object ? describe(object) : { kind: "none" };
     };
 
+    // The enclosing method or constructor; outside every one, the innermost
+    // initializer's sentinel. A site no initializer contains either (a type's
+    // annotation, code the parser could not place) is static context.
+    const currentCaller = (): string =>
+      functionStack[functionStack.length - 1] ?? initializerStack[initializerStack.length - 1] ?? STATIC_INITIALIZER_CALLER;
+
     const walk = (node: TreeSitterNode, parentType: string | null) => {
       let pushedName = false;
       let pushedType = false;
       let scope: LocalScope | null = null;
+      const initializer = initializerCaller(node, parentType);
+      if (initializer !== null) initializerStack.push(initializer);
 
       // Track entering method/constructor declarations
       if (
@@ -656,28 +672,26 @@ export class JavaExtractor implements LanguageExtractor {
 
       // Extract method invocations: e.g. fetchFromDb(limit), System.out.println(msg)
       if (node.type === "method_invocation") {
-        if (functionStack.length > 0) {
-          const callee = this.extractMethodInvocationName(node);
-          if (callee) {
-            siteOfNode.set(node.id, entries.length);
-            entries.push({
-              caller: functionStack[functionStack.length - 1],
-              callee,
-              lineNumber: node.startPosition.row + 1,
-              receiver: describeInvocation(node),
-              argCount: countArguments(node),
-              enclosingType,
-            });
-          }
+        const callee = this.extractMethodInvocationName(node);
+        if (callee) {
+          siteOfNode.set(node.id, entries.length);
+          entries.push({
+            caller: currentCaller(),
+            callee,
+            lineNumber: node.startPosition.row + 1,
+            receiver: describeInvocation(node),
+            argCount: countArguments(node),
+            enclosingType,
+          });
         }
       }
 
       // Method references: `X::m`, `expr::m`, `this::m`, `super::m`, `X::new`.
-      if (node.type === "method_reference" && functionStack.length > 0) {
+      if (node.type === "method_reference") {
         const reference = methodReferenceSite(node, { describe, declared });
         if (reference) {
           entries.push({
-            caller: functionStack[functionStack.length - 1],
+            caller: currentCaller(),
             callee: reference.callee,
             lineNumber: node.startPosition.row + 1,
             receiver: reference.receiver,
@@ -689,20 +703,18 @@ export class JavaExtractor implements LanguageExtractor {
 
       // Extract object creation: e.g. new Foo()
       if (node.type === "object_creation_expression") {
-        if (functionStack.length > 0) {
-          const typeNode = node.childForFieldName("type");
-          if (typeNode) {
-            const typeName = typeText(typeNode);
-            const type = declared(typeName);
-            entries.push({
-              caller: functionStack[functionStack.length - 1],
-              callee: `new ${typeName}`,
-              lineNumber: node.startPosition.row + 1,
-              receiver: type === null ? UNKNOWN_RECEIVER : { kind: "construct", type },
-              argCount: countArguments(node),
-              enclosingType,
-            });
-          }
+        const typeNode = node.childForFieldName("type");
+        if (typeNode) {
+          const typeName = typeText(typeNode);
+          const type = declared(typeName);
+          entries.push({
+            caller: currentCaller(),
+            callee: `new ${typeName}`,
+            lineNumber: node.startPosition.row + 1,
+            receiver: type === null ? UNKNOWN_RECEIVER : { kind: "construct", type },
+            argCount: countArguments(node),
+            enclosingType,
+          });
         }
       }
 
@@ -721,6 +733,7 @@ export class JavaExtractor implements LanguageExtractor {
       if (pushedName) {
         functionStack.pop();
       }
+      if (initializer !== null) initializerStack.pop();
     };
 
     walk(rootNode, null);

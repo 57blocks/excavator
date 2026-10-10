@@ -659,6 +659,7 @@ const JAVA_CALL_GAP_REASONS = Object.freeze({
   'calls-ambiguous': 'Java call site(s) with more than one candidate declaration (same-arity overloads, duplicate type names, or a source the repository cannot see)',
   'calls-external': 'Java call site(s) whose target type is outside the repository',
   'calls-generated': 'Java call site(s) to methods the source does not declare (accessors of declared fields, record members, Lombok builders and constructors, implicit constructors, enum values/valueOf)',
+  'calls-caller-unresolved': 'Java call site(s) with no calling declaration node: calls in nested, anonymous and local types, and calls in field initializers, initializer blocks, enum constant arguments and record compact constructors (caller <clinit> or <init>)',
   'override-uncertain': 'Java method pair(s) with the same name and parameter count across a repository supertype where either side\'s erased parameter types cannot all be determined (a type variable, a nested or unresolvable type, an outside type from an on-demand import): no implements/overrides edge is drawn',
 });
 

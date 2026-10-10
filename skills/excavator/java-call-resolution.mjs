@@ -1504,6 +1504,10 @@ export function createJavaCallResolver({ rows, functionIds, classIds = new Map()
       if (probe) {
         lookupType = probe.lookupType;
         if (probe.result.outcome === 'edge') record.target = probe.result.target.id;
+        else if (probe.result.outcome === AMBIGUOUS) {
+          const ids = candidateIds(probe.result.candidates);
+          if (ids) record.candidates = ids;
+        }
       }
     }
     if (lookupType) record.receiverType = lookupType.fqn;
@@ -1553,7 +1557,10 @@ export function createJavaCallResolver({ rows, functionIds, classIds = new Map()
      *   declaration the call may bind to — absent means the set is unknown,
      *   never that it is empty;
      * - `target` (`calls-caller-unresolved`): the id of the one declaration
-     *   the call resolves to in its enclosing type's scope.
+     *   the call resolves to in its enclosing type's scope; when it resolves
+     *   there to several, their `candidates` instead. A site outside every
+     *   method and constructor body (caller `<clinit>` / `<init>`) is such a
+     *   site: no declaration has its caller's name.
      */
     resolveFileCalls(row, { report = false } = {}) {
       const state = stateOf(row);

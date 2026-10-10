@@ -167,7 +167,11 @@ export const KNOWLEDGE_GRAPH_VERSION = '1.0.0';
  *  new `calls` edges and call-site buckets; and the Java type hierarchy is
  *  completed — `overrides` edges, inherited and interface `default`
  *  `implements` edges, and `override-uncertain` gaps for pairs whose
- *  erased signatures cannot be compared. */
+ *  erased signatures cannot be compared. Still /5, same change: Java call
+ *  sites outside method and constructor bodies (field initializers,
+ *  initializer blocks, enum constant arguments, record compact
+ *  constructors) become call sites with the caller `<clinit>` or `<init>`,
+ *  in `calls-caller-unresolved`. */
 export const PIPELINE_VERSION = 'lazy-fact-graph/5';
 
 /** Same two-step @excavator/core resolution every sibling script uses. */

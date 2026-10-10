@@ -3,7 +3,7 @@
 - 事实图（`build-fact-graph.mjs`）对 Java 调用点按接收者静态类型解析（java-member-call-resolution 已归档）：每个调用点落入成边或五个桶之一（`calls-external`、`calls-generated`、`calls-ambiguous`、`calls-unresolved`、`calls-caller-unresolved`），守恒 fail-closed。`resolveFileCalls(row, { report: true })` 对成边的调用点给出 `outsideHierarchy`；对不成边的调用点只给桶名。
 - 类型层次边（`hierarchyEdges()`，读码核实）：类到类的 `inherits` / `implements`；方法级只为「类型自己声明的具体方法 → 祖先的抽象方法」连 `implements`，且 `erasedSignature` 为 null（类型变量、嵌套或无法解析的类型、按需导入的外部类型）时直接 `break`，静默不连边。接口被整体跳过（`default` 方法不参与）。继承来的实现（`class C extends Base implements I {}`）没有边。具体方法之间的覆写没有边。
 - Java 函数条目字段：`name`、`owner`、`lineRange`、`params`、`paramTypes`、`declaredReturnType`、`abstract`、`typeParameters`。没有可见性、修饰符、方法注解。类条目有 `kind`（`class` / `interface` / `enum` / `record`，封闭集合）、`qualifiedName`、`supertypes`（`{relation, type, line}`）、`fieldTypes`、`annotations`。顶层 `annotation_type_declaration` 完全不抽取：注解类型与其元素今天不是节点。
-- 抽取器不记录方法引用 `::`、不记录类字面量 `X.class` 的位置；静态初始化块与嵌套类型、匿名类、局部类内的调用点落 `calls-caller-unresolved`。
+- 抽取器不记录方法引用 `::`、不记录类字面量 `X.class` 的位置；嵌套类型、匿名类、局部类内的调用点落 `calls-caller-unresolved`；方法与构造器体之外的调用点（字段初始化、初始化块、枚举常量实参、record 紧凑构造器）完全不记录，既不成边也不入桶（切片 A 验收实测：Fineract 方法调用 1,920、对象创建 1,327、方法引用 59；hadoop 10,271、7,110、40）。
 - 遍历（`retrieve.mjs`）不分方向，沿 `contains` / `imports` / `exports` / `calls` / `inherits` / `implements`。
 - 项目根目录已有人工维护、skill 经确认后写入的声明文件先例：`.excavatorignore`（data-directory 规格）。MCP 的写入限于 `.excavator/`。
 - 验收语料：wcp 是 Go，cebreo/unmc 是 C#，cebreo/uneeg-managementportal 是 Kotlin + TypeScript（含 8 个 Java 文件；380 个 Kotlin 行里 235 个带调用点，共 16,001 个）。只有 Fineract 与 hadoop 是 Java。
@@ -71,7 +71,7 @@
 - `calls-ambiguous`：解析器报告模式给出的候选列表；没有候选列表时退回名字规则。
 - `calls-generated`：接收者静态类型的仓库内子类型里名字相同、参数个数适用的声明——Lombok 生成的 `getStatus()` 可能被子类显式覆写，经父类型的调用会分派到它。解析器报告模式要给出接收者类型。
 - `calls-external`：目标类型在仓库外，经它分派到仓库内方法的情形已由 `may-override-external` 覆盖（那些方法本来就是 `undetermined`），不再加可能引用。
-- `calls-caller-unresolved`：调用方未知（匿名类、嵌套类型、枚举常量体、静态初始化块），其目标视为被未归属来源引用：进入 `undetermined` 的出发集合。解析器报告模式要给出已解析目标（有则用，没有则按名字）。
+- `calls-caller-unresolved`：调用方未知（匿名类、嵌套类型、枚举常量体，以及调用者为 `<clinit>` / `<init>` 的方法体之外的调用点），其目标视为被未归属来源引用：进入 `undetermined` 的出发集合。解析器报告模式要给出已解析目标（有则用，没有则按名字）。
 - 可能覆写配对（`override-uncertain`，D8）：同名、同参数个数、擦除签名不能确定的祖先 / 后代方法对，含继承来的实现。不是事实边（事实图不猜），在引擎里是双向的可能引用：祖先被任何东西到达 ⇒ 后代不能 dead（可能分派）；后代被到达 ⇒ 祖先不能 dead（声明依赖）。`COBBusinessStep<T>.execute(T)` 的 15 个实现因此至少是 `undetermined`，而不是 dead。
 - 可见性收窄是精度的免费午餐：`private` 方法只能被同一编译单元引用（含其嵌套类与 lambda，都在同一文件），包私有方法只能被同一包引用（按 `qualifiedName` 的包名，不按目录——拆分包在仓库内是同一个包）。反射的例外由文本否决覆盖（全仓）。`protected` 不收窄。
 - 备选：把 `calls-caller-unresolved` 归属到最外层方法（抽取器可以记录）。更精确，但要改抽取器与解析器两处，且基线里这类调用点在 Fineract 有 1.4 万个；先按来源处理，普查里报这类目标的数量，作为后续精度改进的依据。
@@ -95,6 +95,7 @@
 - 类字面量进文件条目（`classLiterals`，带 `annotation` / `code` 上下文）：D4 的类字面量规则与普查都靠它。
 - 方法引用作为调用点：基线里 `PlatformCache::isEhcacheEnabled` 是确认的假阳性来源。`argCount: null`，解析按名字、任意参数个数，多个候选记 `calls-ambiguous`——歧义只降低精度，不破坏可靠性。数组构造引用 `int[]::new` 记 `calls-external`，否则「名为 `new`、接收者未知」会给所有构造器加可能引用。
 - 层次边补齐：(1) `overrides` 边（具体 → 具体，含接口 `default` 方法在两侧）：基线 126 个无入边方法是具体覆写，它们经父类型的静态调用被分派到；(2) 继承来的实现：对每个具体类型 C，祖先的每个抽象方法 A 若 C 没有自己声明，取 C 父类链里最近的同名同参数个数具体声明 M（类优先于接口 `default`），签名确定即 `M → A` 的 `implements` 边，证据为 C 的父类型声明行；(3) 接口不再整体跳过，`default` 方法实现父接口抽象方法也连边；继承来的覆写（类优先：`class C extends B implements J {}` 里 `B.m()` 覆盖 `J` 的 `default m()`）同 (2) 的走法生成 `M → A` 的 `overrides` 边，否则经 `J` 的调用分派不到 `B.m()`；(4) 擦除签名不能确定（类型变量、嵌套或无法解析的类型、按需导入的外部类型）的同名同参数个数配对不再 `break` 丢弃，记可见缺口 `override-uncertain`，并由解析器报告模式交给引擎作可能覆写。事实图不猜边，但也不许静默丢。
+- 方法体之外的调用点（切片 A 验收发现）：字段初始化、初始化块、枚举常量实参与 record 紧凑构造器里的方法调用、方法引用与对象创建都记为调用点，调用者为哨兵 `<clinit>`（静态上下文）或 `<init>`（实例上下文），落 `calls-caller-unresolved`，报告模式给出已解析目标。只被字段初始化引用的方法因此至少是 `undetermined`，而不是没有任何证据。
 - 判定模块读结构结果里的这些字段，不把它们投影到节点上：图谱只增加方法引用调用点产生的边、`overrides` 边、继承实现的 `implements` 边与 `override-uncertain` 缺口。
 
 **D9：产物与计算位置——CLI 构建、按行存储、守恒 fail-closed；MCP 只读；不做增量。** `skills/excavator/dead-code.mjs` 是纯函数引擎加 CLI：输入图谱、结构结果、源码清单、声明与目录，经语言表选适配器，输出 `.excavator/dead-code.jsonl`（头部 + 每函数节点一条记录；读写都校验五桶守恒）。头部记录 `factsDigest`、声明摘要、目录摘要、快照身份、各语言覆盖声明、计数、按原因计数、普查、残余假设。复杂度：解析边可达性 O(V+E)；可能引用按名字懒构造；文本扫描对被选中源码集合单遍（Fineract 8,341 文件、96 MB），候选名字集合为所有未证明活的节点名。hadoop 要在默认堆下完成，用时单独报告，不计入 Lazy 的 30% 上限。
@@ -106,7 +107,7 @@
 **D11：skill 层只做判断题的提议与解释，不碰判定。** `skills/excavator-dead-code/SKILL.md`（英文散文）：(1) 确认事实新鲜（必要时 `sync_facts` / Lazy）；(2) 用 `dead_code census` 读 `suspect` 按路径的了结声明、未分类注解、外部父类型的计数，结合构建文件与依赖坐标（只读文本，不执行构建）提出 `.excavator-liveness.json`，每条带理由与证据；(3) 向人展示并确认后写入项目根目录（与 `.excavatorignore` 同样的流程）；(4) 运行 CLI；(5) 汇报：`dead` 簇按模块分组、`suspect` 按了结声明分组、`undetermined` 普查里收益最大的未声明项、残余假设。skill MUST NOT 改写任何判定，不把 `undetermined` 或 `suspect` 说成 dead。
 
 **D12：先验装置，全部 build-free。**
-- 夹具绊线 `tests/fixtures/liveness-java/`：每种引用形态一个只经该形态引用的已知活方法（方法引用、构造器引用、反射字面量、`@MethodSource`、注解根、无 `@Override` 的外部接口实现、带 `@Override` 的外部覆写、具体覆写经父类型调用、继承来的实现经接口调用、继承来的方法满足子类的外部接口、实现另一个类的嵌套接口、类型变量参数的实现、嵌套类型参数的覆写、按需导入类型参数的实现、匿名类内调用、lambda 内调用、静态初始化块内调用、Kotlin 文件调用、XML / properties / YAML 引用、注解实参里的类字面量、同一行里解析调用加字面量、解析到另一个同名方法的调用、数据类访问器、`main`、`readResolve`、`toString`、静态导入调用、同参数个数重载、泛名字 `run`、Lombok getter 被子类覆写）；外加已知 dead：A/B 对、孤岛环、从未调用的接口方法与其实现、名字只在声明处出现的私有方法；已知 `suspect`：零证据的公开方法及其私有被调用者。断言：活方法都不是 `dead` / `suspect`，dead 方法都是 `dead`，suspect 方法都是 `suspect` 且了结声明正确（装置能发出每个桶，不是只会绿）。
+- 夹具绊线 `tests/fixtures/liveness-java/`：每种引用形态一个只经该形态引用的已知活方法（方法引用、构造器引用、反射字面量、`@MethodSource`、注解根、无 `@Override` 的外部接口实现、带 `@Override` 的外部覆写、具体覆写经父类型调用、继承来的实现经接口调用、继承来的方法满足子类的外部接口、实现另一个类的嵌套接口、类型变量参数的实现、嵌套类型参数的覆写、按需导入类型参数的实现、匿名类内调用、lambda 内调用、静态初始化块内调用、静态字段初始化里的方法引用、实例字段初始化里的调用、Kotlin 文件调用、XML / properties / YAML 引用、注解实参里的类字面量、同一行里解析调用加字面量、解析到另一个同名方法的调用、数据类访问器、`main`、`readResolve`、`toString`、静态导入调用、同参数个数重载、泛名字 `run`、Lombok getter 被子类覆写）；外加已知 dead：A/B 对、孤岛环、从未调用的接口方法与其实现、名字只在声明处出现的私有方法；已知 `suspect`：零证据的公开方法及其私有被调用者。断言：活方法都不是 `dead` / `suspect`，dead 方法都是 `dead`，suspect 方法都是 `suspect` 且了结声明正确（装置能发出每个桶，不是只会绿）。
 - 变异测试：去掉方法引用调用点并关闭文本否决后，方法引用绊线必须变 `dead`；去掉 `overrides` 边后具体覆写绊线必须变 `dead`；去掉 `override-uncertain` 配对后类型变量绊线必须变 `dead`；守恒测试制造一个漏桶变体必须变红。
 - 夹具项目全链路变异（比纯引擎单测强：走真实的选择、抽取、解析与扫描路径）：测试在临时目录里生成 `tests/fixtures/liveness-java/` 的变体，只改源码文本、不构建——对每种引用形态各加一行引用某个已知 `dead` 方法（`::` 引用、反射字符串、`@MethodSource`、注解实参类字面量、一个 Kotlin 文件里的调用、一条 XML 条目），跑 Lazy 与 CLI，该方法必须离开 `dead`；反向，删掉某个已知 `live` 方法的唯一引用行，它必须变成 `dead` / `suspect` / `undetermined`。不复制、不改动任何真实语料：用户否决了「副本删除」类操作，真实语料只读。
 
