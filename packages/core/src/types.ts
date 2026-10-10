@@ -321,6 +321,30 @@ export interface ReferenceResolution {
   line?: number;
 }
 
+// Java type facts (openspec: changes/java-member-call-resolution). Only the
+// Java extractor fills these; the fact graph resolves member calls with them.
+
+/** One entry of a Java type's `extends` / `implements` clause, as written. */
+export interface JavaSupertype {
+  /** `extends` for class→class and interface→interface, `implements` for a
+   *  class, enum or record implementing an interface. */
+  relation: "extends" | "implements";
+  type: string;
+  line: number;
+}
+
+/** A declared type variable and its first bound (`null` when unbounded). */
+export interface JavaTypeParameter {
+  name: string;
+  bound: string | null;
+}
+
+/** A field, interface constant, record component or enum constant. */
+export interface JavaFieldType {
+  name: string;
+  type: string;
+}
+
 // Plugin interfaces
 export interface StructuralAnalysis {
   functions: Array<{
@@ -335,9 +359,30 @@ export interface StructuralAnalysis {
     /** Declaring type/scope; empty means free function, null means unresolved.
      * Omitted by extractors that only represent methods in classes[].methods. */
     owner?: string | null;
+    /** Java: declared without a body (interface or abstract method). */
+    abstract?: boolean;
+    /** Java: the method's own type variables, when it declares any. */
+    typeParameters?: JavaTypeParameter[];
   }>;
-  classes: Array<{ name: string; lineRange: [number, number]; methods: string[]; properties: string[] }>;
-  imports: Array<{ source: string; specifiers: string[]; lineNumber: number }>;
+  classes: Array<{
+    name: string;
+    lineRange: [number, number];
+    methods: string[];
+    properties: string[];
+    /** Java top-level types only, from here down. */
+    kind?: "class" | "interface" | "enum" | "record";
+    /** Package plus type name, or the bare name in the default package. */
+    qualifiedName?: string;
+    supertypes?: JavaSupertype[];
+    fieldTypes?: JavaFieldType[];
+    /** Type annotation names as written (`Builder`, `lombok.Builder`). */
+    annotations?: string[];
+    typeParameters?: JavaTypeParameter[];
+    /** Names of the type declarations nested directly in this type's body. */
+    memberTypes?: string[];
+  }>;
+  /** `isStatic` marks a Java `import static`. */
+  imports: Array<{ source: string; specifiers: string[]; lineNumber: number; isStatic?: boolean }>;
   exports: Array<{ name: string; lineNumber: number; isDefault?: boolean }>;
   // Non-code structural data (all optional for backward compat)
   sections?: SectionInfo[];

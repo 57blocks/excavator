@@ -10,9 +10,9 @@
 
 ## 1. 类型事实
 
-- [ ] 1.1 `java-extractor.ts` 为每个顶层类型输出 `kind`（class / interface / enum / record）、`qualifiedName`（包名 + 类名）、`supertypes`（`extends` 与 `implements` 的类型文本）、`fieldTypes`（字段名到声明类型）与 `annotations`（类注解名）。验证：抽取器单测覆盖类、接口（继承多个接口）、枚举（实现接口）、记录、带注解的类。
-- [ ] 1.2 接口方法（无方法体的、`default`、`static`）与抽象方法进入 `functions`，带 `owner`、参数类型、返回类型，无方法体的标 `abstract: true`。验证：抽取器单测；接口方法的节点 ID 为 `Owner#name(types)`。
-- [ ] 1.3 `types.ts` 加上述可选字段；`extract-structure-result.mjs` 校验并透传 `kind`、`qualifiedName`、`supertypes`、`fieldTypes`、`annotations`、`returnType`、`abstract`。验证：结构结果单测；对只含非 Java 文件的夹具，结构结果与改前相同。
+- [x] 1.1 `java-extractor.ts` 为每个顶层类型输出 `kind`（class / interface / enum / record）、`qualifiedName`（包名 + 类名）、`supertypes`（`extends` 与 `implements` 的类型文本）、`fieldTypes`（字段名到声明类型）与 `annotations`（类注解名）。验证：抽取器单测覆盖类、接口（继承多个接口）、枚举（实现接口）、记录、带注解的类。
+- [x] 1.2 接口方法（无方法体的、`default`、`static`）与抽象方法进入 `functions`，带 `owner`、参数类型、返回类型，无方法体的标 `abstract: true`。验证：抽取器单测；接口方法的节点 ID 为 `Owner#name(types)`。
+- [x] 1.3 `types.ts` 加上述可选字段；`extract-structure-result.mjs` 校验并透传 `kind`、`qualifiedName`、`supertypes`、`fieldTypes`、`annotations`、`returnType`、`abstract`。验证：结构结果单测；对只含非 Java 文件的夹具，结构结果与改前相同。
 
 ## 2. 调用点的接收者
 

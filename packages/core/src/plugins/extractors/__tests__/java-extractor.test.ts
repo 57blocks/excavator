@@ -570,10 +570,11 @@ interface Repository {
 `);
       const result = extractor.extractStructure(root);
 
-      // Functions: UserService (constructor), getUsers, log
-      expect(result.functions).toHaveLength(3);
+      // Functions: UserService (constructor), getUsers, log, and the
+      // interface's two abstract methods
+      expect(result.functions).toHaveLength(5);
       expect(result.functions.map((f) => f.name).sort()).toEqual(
-        ["UserService", "getUsers", "log"].sort(),
+        ["UserService", "getUsers", "log", "findAll", "findById"].sort(),
       );
 
       // Constructor has params but no return type
@@ -678,5 +679,149 @@ describe("JavaExtractor - modern type declarations", () => {
 
     tree.delete();
     parser.delete();
+  });
+});
+
+describe("JavaExtractor - type facts for member-call resolution", () => {
+  const extractor = new JavaExtractor();
+
+  function structure(code: string) {
+    const { tree, parser, root } = parse(code);
+    const result = extractor.extractStructure(root);
+    tree.delete();
+    parser.delete();
+    return result;
+  }
+
+  it("records kind, qualified name, supertypes with lines, field types, annotations and type parameters of a class", () => {
+    const result = structure(`package com.acme.loan;
+
+import java.util.List;
+
+@Entity
+@lombok.Builder
+public class Loan<T extends Money> extends BaseEntity<T>
+    implements Payable, com.acme.Auditable<Loan<T>> {
+  private final Helper helper, backup[];
+  List<String> notes;
+  T amount;
+  static class Inner {}
+  enum Kind { A }
+}
+`);
+    const loan = result.classes.find((c) => c.name === "Loan")!;
+    expect(loan.kind).toBe("class");
+    expect(loan.qualifiedName).toBe("com.acme.loan.Loan");
+    expect(loan.supertypes).toEqual([
+      { relation: "extends", type: "BaseEntity<T>", line: 7 },
+      { relation: "implements", type: "Payable", line: 8 },
+      { relation: "implements", type: "com.acme.Auditable<Loan<T>>", line: 8 },
+    ]);
+    expect(loan.fieldTypes).toEqual([
+      { name: "helper", type: "Helper" },
+      { name: "backup", type: "Helper[]" },
+      { name: "notes", type: "List<String>" },
+      { name: "amount", type: "T" },
+    ]);
+    expect(loan.annotations).toEqual(["Entity", "lombok.Builder"]);
+    expect(loan.typeParameters).toEqual([{ name: "T", bound: "Money" }]);
+    expect(loan.memberTypes).toEqual(["Inner", "Kind"]);
+    // Nested types stay out of classes[]; only the top-level type is listed.
+    expect(result.classes.map((c) => c.name)).toEqual(["Loan"]);
+  });
+
+  it("records an interface that extends several interfaces, with its constants", () => {
+    const result = structure(`package p;
+public interface Repo<T> extends Reader<T>, Writer {
+  int LIMIT = 10;
+  T find(long id);
+}
+`);
+    const repo = result.classes[0];
+    expect(repo.kind).toBe("interface");
+    expect(repo.qualifiedName).toBe("p.Repo");
+    expect(repo.supertypes).toEqual([
+      { relation: "extends", type: "Reader<T>", line: 2 },
+      { relation: "extends", type: "Writer", line: 2 },
+    ]);
+    expect(repo.fieldTypes).toEqual([{ name: "LIMIT", type: "int" }]);
+    expect(repo.typeParameters).toEqual([{ name: "T", bound: null }]);
+  });
+
+  it("records an enum that implements an interface, with its constants as fields of the enum type", () => {
+    const result = structure(`package p;
+enum Status implements Labelled {
+  ACTIVE, CLOSED;
+  private String label;
+  public String label() { return label; }
+}
+`);
+    const status = result.classes[0];
+    expect(status.kind).toBe("enum");
+    expect(status.supertypes).toEqual([{ relation: "implements", type: "Labelled", line: 2 }]);
+    expect(status.fieldTypes).toEqual([
+      { name: "ACTIVE", type: "Status" },
+      { name: "CLOSED", type: "Status" },
+      { name: "label", type: "String" },
+    ]);
+  });
+
+  it("records a record's components as its fields and a type in the default package by bare name", () => {
+    const result = structure(`record Point(int x, Coordinate y) implements Shape {}
+`);
+    const point = result.classes[0];
+    expect(point.kind).toBe("record");
+    expect(point.qualifiedName).toBe("Point");
+    expect(point.fieldTypes).toEqual([
+      { name: "x", type: "int" },
+      { name: "y", type: "Coordinate" },
+    ]);
+    expect(point.supertypes).toEqual([{ relation: "implements", type: "Shape", line: 1 }]);
+  });
+
+  it("lists interface methods as functions with owner and types, marking those without a body abstract", () => {
+    const result = structure(`interface PaymentService {
+  void pay(long amount);
+  default int fee(int x) { return x; }
+  static PaymentService none() { return null; }
+  <R extends Receipt> R receipt(String id);
+}
+`);
+    expect(result.functions.map((f) => [f.owner, f.name, f.paramTypes, f.returnType, f.abstract])).toEqual([
+      ["PaymentService", "pay", ["long"], "void", true],
+      ["PaymentService", "fee", ["int"], "int", undefined],
+      ["PaymentService", "none", [], "PaymentService", undefined],
+      ["PaymentService", "receipt", ["String"], "R", true],
+    ]);
+    expect(result.functions[3].typeParameters).toEqual([{ name: "R", bound: "Receipt" }]);
+    expect(result.classes[0].methods).toEqual(["pay", "fee", "none", "receipt"]);
+    // Interface methods are not added to exports.
+    expect(result.exports).toEqual([]);
+  });
+
+  it("marks abstract class methods abstract but not native ones", () => {
+    const result = structure(`abstract class Base {
+  abstract void run(String s);
+  native void peek();
+  void go() {}
+}
+`);
+    expect(result.functions.map((f) => [f.name, f.abstract])).toEqual([
+      ["run", true],
+      ["peek", undefined],
+      ["go", undefined],
+    ]);
+  });
+
+  it("marks static imports", () => {
+    const result = structure(`import static p.Util.helper;
+import static p.Constants.*;
+import p.Loan;
+`);
+    expect(result.imports).toEqual([
+      { source: "p.Util.helper", specifiers: ["helper"], lineNumber: 1, isStatic: true },
+      { source: "p.Constants", specifiers: ["*"], lineNumber: 2, isStatic: true },
+      { source: "p.Loan", specifiers: ["Loan"], lineNumber: 3 },
+    ]);
   });
 });

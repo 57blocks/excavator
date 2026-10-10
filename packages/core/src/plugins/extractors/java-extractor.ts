@@ -1,4 +1,10 @@
-import type { StructuralAnalysis, CallGraphEntry } from "../../types.js";
+import type {
+  StructuralAnalysis,
+  CallGraphEntry,
+  JavaFieldType,
+  JavaSupertype,
+  JavaTypeParameter,
+} from "../../types.js";
 import type { LanguageExtractor, TreeSitterNode } from "./types.js";
 import { findChild, findChildren } from "./base-extractor.js";
 
@@ -111,6 +117,120 @@ function eraseTypeVariables(type: string, erasures: Map<string, string>): string
 }
 
 /**
+ * The type variables a declaration introduces, each with its first bound or
+ * `null`. Unlike {@link typeVariableErasures}, an unbounded variable stays
+ * `null` here: the fact graph treats its type as unknown rather than `Object`.
+ */
+function extractTypeParameters(node: TreeSitterNode): JavaTypeParameter[] {
+  const result: JavaTypeParameter[] = [];
+  const typeParameters = node.childForFieldName("type_parameters")
+    ?? findChild(node, "type_parameters");
+  if (!typeParameters) return result;
+
+  for (let i = 0; i < typeParameters.childCount; i++) {
+    const parameter = typeParameters.child(i);
+    if (!parameter || parameter.type !== "type_parameter") continue;
+    let name: string | null = null;
+    let bound: string | null = null;
+    for (let j = 0; j < parameter.childCount; j++) {
+      const part = parameter.child(j);
+      if (!part) continue;
+      if (part.type === "type_identifier" && name === null) {
+        name = part.text;
+      } else if (part.type === "type_bound") {
+        for (let k = 0; k < part.childCount; k++) {
+          const boundType = part.child(k);
+          if (boundType && boundType.isNamed) {
+            bound = boundType.text;
+            break;
+          }
+        }
+      }
+    }
+    if (name !== null) result.push({ name, bound });
+  }
+
+  return result;
+}
+
+const TYPE_DECLARATIONS = new Set([
+  "class_declaration",
+  "interface_declaration",
+  "enum_declaration",
+  "record_declaration",
+  "annotation_type_declaration",
+]);
+
+/** Type annotation names (`Entity`, `lombok.Builder`), in source order. */
+function extractAnnotationNames(node: TreeSitterNode): string[] {
+  const modifiers = findChild(node, "modifiers");
+  if (!modifiers) return [];
+  const names: string[] = [];
+  for (let i = 0; i < modifiers.childCount; i++) {
+    const child = modifiers.child(i);
+    if (!child || (child.type !== "marker_annotation" && child.type !== "annotation")) continue;
+    const nameNode = child.childForFieldName("name");
+    if (nameNode) names.push(nameNode.text);
+  }
+  return names;
+}
+
+/** Each type named in a `type_list` node, with the line it is written on. */
+function typeListEntries(
+  typeList: TreeSitterNode | null,
+  relation: JavaSupertype["relation"],
+): JavaSupertype[] {
+  if (!typeList) return [];
+  const entries: JavaSupertype[] = [];
+  for (let i = 0; i < typeList.childCount; i++) {
+    const type = typeList.child(i);
+    if (type && type.isNamed) {
+      entries.push({ relation, type: type.text, line: type.startPosition.row + 1 });
+    }
+  }
+  return entries;
+}
+
+/**
+ * The supertypes a type declaration names: a class's `extends` and
+ * `implements`, an interface's `extends`, an enum's or record's `implements`.
+ */
+function extractSupertypes(node: TreeSitterNode): JavaSupertype[] {
+  const supertypes: JavaSupertype[] = [];
+  const superclass = node.childForFieldName("superclass");
+  if (superclass) {
+    for (let i = 0; i < superclass.childCount; i++) {
+      const type = superclass.child(i);
+      if (type && type.isNamed) {
+        supertypes.push({ relation: "extends", type: type.text, line: type.startPosition.row + 1 });
+        break;
+      }
+    }
+  }
+  const interfaces = node.childForFieldName("interfaces");
+  if (interfaces) {
+    supertypes.push(...typeListEntries(findChild(interfaces, "type_list"), "implements"));
+  }
+  const extendsInterfaces = findChild(node, "extends_interfaces");
+  if (extendsInterfaces) {
+    supertypes.push(...typeListEntries(findChild(extendsInterfaces, "type_list"), "extends"));
+  }
+  return supertypes;
+}
+
+/** A field's declared type, with array dimensions written after the name. */
+function declaratorType(typeNode: TreeSitterNode, declarator: TreeSitterNode): string {
+  const dimensions = declarator.childForFieldName("dimensions");
+  return `${typeNode.text}${dimensions ? dimensions.text : ""}`;
+}
+
+/** Facts gathered from one type body for the fact graph. */
+interface TypeBodyFacts {
+  fieldTypes: JavaFieldType[];
+  memberTypes: string[];
+}
+
+/**
  * Extract the return type text from a method_declaration node.
  *
  * In tree-sitter-java, the return type is the `type` named field on method_declaration.
@@ -181,6 +301,11 @@ export class JavaExtractor implements LanguageExtractor {
     const imports: StructuralAnalysis["imports"] = [];
     const exports: StructuralAnalysis["exports"] = [];
 
+    const packageDeclaration = findChild(rootNode, "package_declaration");
+    const packageName = packageDeclaration
+      ? (findChild(packageDeclaration, "scoped_identifier") ?? findChild(packageDeclaration, "identifier"))?.text ?? ""
+      : "";
+
     for (let i = 0; i < rootNode.childCount; i++) {
       const node = rootNode.child(i);
       if (!node) continue;
@@ -193,11 +318,11 @@ export class JavaExtractor implements LanguageExtractor {
         case "class_declaration":
         case "enum_declaration":
         case "record_declaration":
-          this.extractClass(node, functions, classes, exports);
+          this.extractClass(node, functions, classes, exports, packageName);
           break;
 
         case "interface_declaration":
-          this.extractInterface(node, functions, classes, exports);
+          this.extractInterface(node, functions, classes, exports, packageName);
           break;
       }
     }
@@ -299,6 +424,11 @@ export class JavaExtractor implements LanguageExtractor {
     if (!scopedId) return;
 
     const fullPath = extractScopedIdentifierPath(scopedId);
+    // `import static`: the fact graph resolves bare calls and names through it.
+    let isStatic = false;
+    for (let i = 0; i < node.childCount; i++) {
+      if (node.child(i)?.type === "static") isStatic = true;
+    }
 
     if (hasAsterisk) {
       // Wildcard import: source is the full scope, specifier is "*"
@@ -306,6 +436,7 @@ export class JavaExtractor implements LanguageExtractor {
         source: fullPath,
         specifiers: ["*"],
         lineNumber: node.startPosition.row + 1,
+        ...(isStatic ? { isStatic } : {}),
       });
     } else {
       // Regular import: source is the full path, specifier is the last component
@@ -313,6 +444,7 @@ export class JavaExtractor implements LanguageExtractor {
         source: fullPath,
         specifiers: [lastComponent(fullPath)],
         lineNumber: node.startPosition.row + 1,
+        ...(isStatic ? { isStatic } : {}),
       });
     }
   }
@@ -322,15 +454,39 @@ export class JavaExtractor implements LanguageExtractor {
     functions: StructuralAnalysis["functions"],
     classes: StructuralAnalysis["classes"],
     exports: StructuralAnalysis["exports"],
+    packageName: string,
   ): void {
     const nameNode = node.childForFieldName("name");
     if (!nameNode) return;
 
     const methods: string[] = [];
     const properties: string[] = [];
+    const facts: TypeBodyFacts = { fieldTypes: [], memberTypes: [] };
+    const kind = node.type === "enum_declaration"
+      ? "enum"
+      : node.type === "record_declaration" ? "record" : "class";
+
+    // Record components are the record's fields.
+    if (kind === "record") {
+      const components = node.childForFieldName("parameters");
+      if (components) {
+        const names = extractParams(components);
+        const types = extractParamTypes(components);
+        names.forEach((name, i) => {
+          if (types[i] !== undefined) facts.fieldTypes.push({ name, type: types[i] });
+        });
+      }
+    }
 
     const body = node.childForFieldName("body");
     if (body) {
+      // Enum constants are static fields of the enum's own type.
+      if (kind === "enum") {
+        for (const constant of findChildren(body, "enum_constant")) {
+          const constantName = constant.childForFieldName("name");
+          if (constantName) facts.fieldTypes.push({ name: constantName.text, type: nameNode.text });
+        }
+      }
       this.extractClassBodyMembers(
         body,
         methods,
@@ -338,6 +494,7 @@ export class JavaExtractor implements LanguageExtractor {
         functions,
         exports,
         nameNode.text,
+        facts,
       );
     }
 
@@ -349,6 +506,7 @@ export class JavaExtractor implements LanguageExtractor {
       ],
       methods,
       properties,
+      ...this.typeFacts(node, kind, nameNode.text, packageName, facts),
     });
 
     if (hasModifier(node, "public")) {
@@ -364,33 +522,37 @@ export class JavaExtractor implements LanguageExtractor {
     functions: StructuralAnalysis["functions"],
     classes: StructuralAnalysis["classes"],
     exports: StructuralAnalysis["exports"],
+    packageName: string,
   ): void {
     const nameNode = node.childForFieldName("name");
     if (!nameNode) return;
 
     const methods: string[] = [];
     const properties: string[] = [];
+    const facts: TypeBodyFacts = { fieldTypes: [], memberTypes: [] };
 
     const body = node.childForFieldName("body");
     if (body) {
-      // Interface body contains method_declaration nodes (signatures without bodies)
-      const methodNodes = findChildren(body, "method_declaration");
-      for (const methodNode of methodNodes) {
-        const methNameNode = methodNode.childForFieldName("name");
-        if (methNameNode) {
-          methods.push(methNameNode.text);
-        }
-      }
+      for (let i = 0; i < body.childCount; i++) {
+        const child = body.child(i);
+        if (!child) continue;
 
-      // Interface can also contain constant_declaration (fields)
-      const fields = findChildren(body, "constant_declaration");
-      for (const field of fields) {
-        const declarators = findChildren(field, "variable_declarator");
-        for (const decl of declarators) {
-          const declName = decl.childForFieldName("name");
-          if (declName) {
+        if (child.type === "method_declaration") {
+          // Interface methods (abstract, default, static) are function entries
+          // like class methods. They are not added to `exports`: the export
+          // list predates them and keeps its meaning.
+          this.extractMethod(child, methods, functions, exports, nameNode.text, false);
+        } else if (child.type === "constant_declaration") {
+          const typeNode = child.childForFieldName("type");
+          for (const decl of findChildren(child, "variable_declarator")) {
+            const declName = decl.childForFieldName("name");
+            if (!declName) continue;
             properties.push(declName.text);
+            if (typeNode) facts.fieldTypes.push({ name: declName.text, type: declaratorType(typeNode, decl) });
           }
+        } else if (TYPE_DECLARATIONS.has(child.type)) {
+          const memberName = child.childForFieldName("name");
+          if (memberName) facts.memberTypes.push(memberName.text);
         }
       }
     }
@@ -403,6 +565,7 @@ export class JavaExtractor implements LanguageExtractor {
       ],
       methods,
       properties,
+      ...this.typeFacts(node, "interface", nameNode.text, packageName, facts),
     });
 
     if (hasModifier(node, "public")) {
@@ -411,6 +574,28 @@ export class JavaExtractor implements LanguageExtractor {
         lineNumber: node.startPosition.row + 1,
       });
     }
+  }
+
+  /** The type facts the fact graph resolves member calls with. */
+  private typeFacts(
+    node: TreeSitterNode,
+    kind: "class" | "interface" | "enum" | "record",
+    name: string,
+    packageName: string,
+    facts: TypeBodyFacts,
+  ): Pick<
+    StructuralAnalysis["classes"][number],
+    "kind" | "qualifiedName" | "supertypes" | "fieldTypes" | "annotations" | "typeParameters" | "memberTypes"
+  > {
+    return {
+      kind,
+      qualifiedName: packageName ? `${packageName}.${name}` : name,
+      supertypes: extractSupertypes(node),
+      fieldTypes: facts.fieldTypes,
+      annotations: extractAnnotationNames(node),
+      typeParameters: extractTypeParameters(node),
+      memberTypes: facts.memberTypes,
+    };
   }
 
   /**
@@ -423,6 +608,7 @@ export class JavaExtractor implements LanguageExtractor {
     functions: StructuralAnalysis["functions"],
     exports: StructuralAnalysis["exports"],
     owner: string,
+    facts: TypeBodyFacts,
   ): void {
     for (let i = 0; i < body.childCount; i++) {
       const child = body.child(i);
@@ -439,11 +625,12 @@ export class JavaExtractor implements LanguageExtractor {
             functions,
             exports,
             owner,
+            facts,
           );
           break;
 
         case "method_declaration":
-          this.extractMethod(child, methods, functions, exports, owner);
+          this.extractMethod(child, methods, functions, exports, owner, true);
           break;
 
         case "constructor_declaration":
@@ -451,8 +638,14 @@ export class JavaExtractor implements LanguageExtractor {
           break;
 
         case "field_declaration":
-          this.extractField(child, properties, exports);
+          this.extractField(child, properties, exports, facts);
           break;
+
+        default:
+          if (TYPE_DECLARATIONS.has(child.type)) {
+            const memberName = child.childForFieldName("name");
+            if (memberName) facts.memberTypes.push(memberName.text);
+          }
       }
     }
   }
@@ -463,6 +656,7 @@ export class JavaExtractor implements LanguageExtractor {
     functions: StructuralAnalysis["functions"],
     exports: StructuralAnalysis["exports"],
     owner: string,
+    exportPublic: boolean,
   ): void {
     const nameNode = node.childForFieldName("name");
     if (!nameNode) return;
@@ -472,6 +666,9 @@ export class JavaExtractor implements LanguageExtractor {
     const erasures = typeVariableErasures(node);
     const paramTypes = extractParamTypes(paramsNode ?? null).map((type) => eraseTypeVariables(type, erasures));
     const returnType = extractReturnType(node);
+    const typeParameters = extractTypeParameters(node);
+    // No body and not native: an interface method or an abstract method.
+    const isAbstract = !node.childForFieldName("body") && !hasModifier(node, "native");
 
     methods.push(nameNode.text);
 
@@ -485,9 +682,11 @@ export class JavaExtractor implements LanguageExtractor {
       paramTypes,
       returnType,
       owner,
+      ...(isAbstract ? { abstract: true } : {}),
+      ...(typeParameters.length > 0 ? { typeParameters } : {}),
     });
 
-    if (hasModifier(node, "public")) {
+    if (exportPublic && hasModifier(node, "public")) {
       exports.push({
         name: nameNode.text,
         lineNumber: node.startPosition.row + 1,
@@ -509,6 +708,7 @@ export class JavaExtractor implements LanguageExtractor {
     const params = extractParams(paramsNode ?? null);
     const erasures = typeVariableErasures(node);
     const paramTypes = extractParamTypes(paramsNode ?? null).map((type) => eraseTypeVariables(type, erasures));
+    const typeParameters = extractTypeParameters(node);
 
     methods.push(nameNode.text);
 
@@ -522,6 +722,7 @@ export class JavaExtractor implements LanguageExtractor {
       paramTypes,
       // Constructors have no return type
       owner,
+      ...(typeParameters.length > 0 ? { typeParameters } : {}),
     });
 
     if (hasModifier(node, "public")) {
@@ -536,12 +737,15 @@ export class JavaExtractor implements LanguageExtractor {
     node: TreeSitterNode,
     properties: string[],
     exports: StructuralAnalysis["exports"],
+    facts: TypeBodyFacts,
   ): void {
+    const typeNode = node.childForFieldName("type");
     const declarators = findChildren(node, "variable_declarator");
     for (const decl of declarators) {
       const nameNode = decl.childForFieldName("name");
       if (nameNode) {
         properties.push(nameNode.text);
+        if (typeNode) facts.fieldTypes.push({ name: nameNode.text, type: declaratorType(typeNode, decl) });
 
         if (hasModifier(node, "public")) {
           exports.push({
