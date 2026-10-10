@@ -19,9 +19,9 @@
 
 ## 1. 方法声明事实与类字面量（切片 A）
 
-- [ ] 1.1 `java-extractor.ts` 为每个方法与构造器条目输出 `visibility`（`public` / `protected` / `package` / `private`；接口成员默认 `public`）、`modifiers`（`static`、`final`、`native`、`default`、`synchronized`、`abstract`，源码顺序）与 `annotations`（方法注解名，复用类注解的提取，去掉包前缀）；`types.ts` 加对应可选字段。验证：抽取器单测覆盖四种可见性、接口的 `default` / `static` 方法、带多个注解的方法、构造器；Java 节点 ID 与改前相同（身份测试不变）。
-- [ ] 1.2 `java-extractor.ts` 为每个文件输出 `classLiterals`：每个 `X.class` 的类型文本、行号与上下文（`annotation`：位于注解实参内，含嵌套的数组与注解实参；`code`：其它位置）；`types.ts` 加字段。验证：抽取器单测覆盖 `@Mapper(uses = Helper.class)`、`uses = {A.class, B.class}`、方法注解实参、方法体与字段初始化里的 `Foo.class`。
-- [ ] 1.3 `extract-structure-result.mjs` 校验并透传 `visibility`、`modifiers`、`annotations`、`classLiterals`；`visibility` 与 `context` 的取值是封闭集合，形状不对整体判失败。验证：结构结果单测；只含非 Java 文件的夹具结构结果逐字节不变。
+- [x] 1.1 `java-extractor.ts` 为每个方法与构造器条目输出 `visibility`（`public` / `protected` / `package` / `private`；接口成员默认 `public`）、`modifiers`（`static`、`final`、`native`、`default`、`synchronized`、`abstract`，源码顺序）与 `annotations`（方法注解名，复用类注解的提取，去掉包前缀）；`types.ts` 加对应可选字段。验证：抽取器单测覆盖四种可见性、接口的 `default` / `static` 方法、带多个注解的方法、构造器；Java 节点 ID 与改前相同（身份测试不变）。
+- [x] 1.2 `java-extractor.ts` 为每个文件输出 `classLiterals`：每个 `X.class` 的类型文本、行号与上下文（`annotation`：位于注解实参内，含嵌套的数组与注解实参；`code`：其它位置）；`types.ts` 加字段。验证：抽取器单测覆盖 `@Mapper(uses = Helper.class)`、`uses = {A.class, B.class}`、方法注解实参、方法体与字段初始化里的 `Foo.class`。
+- [x] 1.3 `extract-structure-result.mjs` 校验并透传 `visibility`、`modifiers`、`annotations`、`classLiterals`；`visibility` 与 `context` 的取值是封闭集合，形状不对整体判失败。验证：结构结果单测；只含非 Java 文件的夹具结构结果逐字节不变。
 
 ## 2. 方法引用作为调用点（切片 A）
 

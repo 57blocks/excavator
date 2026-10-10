@@ -5,9 +5,11 @@ import type {
   JavaFieldType,
   JavaSupertype,
   JavaTypeParameter,
+  JavaVisibility,
 } from "../../types.js";
 import type { LanguageExtractor, TreeSitterNode } from "./types.js";
 import { findChild, findChildren } from "./base-extractor.js";
+import { extractAnnotationNames, extractClassLiterals, memberDeclarationFacts } from "./java-declaration-facts.js";
 
 /**
  * Extract parameter names from a Java `formal_parameters` node.
@@ -161,20 +163,6 @@ const TYPE_DECLARATIONS = new Set([
   "record_declaration",
   "annotation_type_declaration",
 ]);
-
-/** Type annotation names (`Entity`, `lombok.Builder`), in source order. */
-function extractAnnotationNames(node: TreeSitterNode): string[] {
-  const modifiers = findChild(node, "modifiers");
-  if (!modifiers) return [];
-  const names: string[] = [];
-  for (let i = 0; i < modifiers.childCount; i++) {
-    const child = modifiers.child(i);
-    if (!child || (child.type !== "marker_annotation" && child.type !== "annotation")) continue;
-    const nameNode = child.childForFieldName("name");
-    if (nameNode) names.push(nameNode.text);
-  }
-  return names;
-}
 
 /** Each type named in a `type_list` node, with the line it is written on. */
 function typeListEntries(
@@ -382,7 +370,7 @@ export class JavaExtractor implements LanguageExtractor {
       }
     }
 
-    return { functions, classes, imports, exports };
+    return { functions, classes, imports, exports, classLiterals: extractClassLiterals(rootNode) };
   }
 
   /**
@@ -830,6 +818,8 @@ export class JavaExtractor implements LanguageExtractor {
         exports,
         nameNode.text,
         facts,
+        // An enum constructor with no access keyword is implicitly private.
+        kind === "enum" ? "private" : "package",
       );
     }
 
@@ -876,7 +866,7 @@ export class JavaExtractor implements LanguageExtractor {
           // Interface methods (abstract, default, static) are function entries
           // like class methods. They are not added to `exports`: the export
           // list predates them and keeps its meaning.
-          this.extractMethod(child, methods, functions, exports, nameNode.text, false);
+          this.extractMethod(child, methods, functions, exports, nameNode.text, false, "public");
         } else if (child.type === "constant_declaration") {
           const typeNode = child.childForFieldName("type");
           for (const decl of findChildren(child, "variable_declarator")) {
@@ -944,6 +934,7 @@ export class JavaExtractor implements LanguageExtractor {
     exports: StructuralAnalysis["exports"],
     owner: string,
     facts: TypeBodyFacts,
+    constructorAccess: JavaVisibility,
   ): void {
     for (let i = 0; i < body.childCount; i++) {
       const child = body.child(i);
@@ -961,15 +952,16 @@ export class JavaExtractor implements LanguageExtractor {
             exports,
             owner,
             facts,
+            constructorAccess,
           );
           break;
 
         case "method_declaration":
-          this.extractMethod(child, methods, functions, exports, owner, true);
+          this.extractMethod(child, methods, functions, exports, owner, true, "package");
           break;
 
         case "constructor_declaration":
-          this.extractConstructor(child, methods, functions, exports, owner);
+          this.extractConstructor(child, methods, functions, exports, owner, constructorAccess);
           break;
 
         case "field_declaration":
@@ -992,6 +984,7 @@ export class JavaExtractor implements LanguageExtractor {
     exports: StructuralAnalysis["exports"],
     owner: string,
     exportPublic: boolean,
+    defaultAccess: JavaVisibility,
   ): void {
     const nameNode = node.childForFieldName("name");
     if (!nameNode) return;
@@ -1019,6 +1012,7 @@ export class JavaExtractor implements LanguageExtractor {
       owner,
       ...(isAbstract ? { abstract: true } : {}),
       ...(typeParameters.length > 0 ? { typeParameters } : {}),
+      ...memberDeclarationFacts(node, defaultAccess),
     });
 
     if (exportPublic && hasModifier(node, "public")) {
@@ -1035,6 +1029,7 @@ export class JavaExtractor implements LanguageExtractor {
     functions: StructuralAnalysis["functions"],
     exports: StructuralAnalysis["exports"],
     owner: string,
+    defaultAccess: JavaVisibility,
   ): void {
     const nameNode = node.childForFieldName("name");
     if (!nameNode) return;
@@ -1058,6 +1053,7 @@ export class JavaExtractor implements LanguageExtractor {
       // Constructors have no return type
       owner,
       ...(typeParameters.length > 0 ? { typeParameters } : {}),
+      ...memberDeclarationFacts(node, defaultAccess),
     });
 
     if (hasModifier(node, "public")) {
