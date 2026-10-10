@@ -21,10 +21,10 @@
 
 ## 3. 成员调用解析
 
-- [ ] 3.1 新增纯函数模块 `skills/excavator/java-call-resolution.mjs`：按 D3 建类型表、解析类型名；按 D4 解析接收者类型与方法；按 D6、D9 分类。验证：模块单测覆盖规格「Java 成员调用按接收者的声明类型解析」的每个场景。
-- [ ] 3.2 `build-fact-graph.mjs` 对 `language === 'java'` 的行改用该模块（D7、D8、D11），新增缺口类型 `calls-external`、`calls-generated` 及其说明；其它语言走原路径。验证：事实图单测；用已知答案的小 Java 样例逐条核对边与桶。
-- [ ] 3.3 守恒：测试断言 Java 调用点总数 = 成边的调用点数 + 五个桶的计数。验证：守恒测试，并制造一个故意漏桶的变体，确认测试能变红。
-- [ ] 3.4 非 Java 不变：已有非 Java 夹具的 factsDigest 不变。验证：现有固定摘要测试中非 Java 部分保持绿。
+- [x] 3.1 新增纯函数模块 `skills/excavator/java-call-resolution.mjs`：按 D3 建类型表、解析类型名；按 D4 解析接收者类型与方法；按 D6、D9 分类。验证：模块单测覆盖规格「Java 成员调用按接收者的声明类型解析」的每个场景。
+- [x] 3.2 `build-fact-graph.mjs` 对 `language === 'java'` 的行改用该模块（D7、D8、D11），新增缺口类型 `calls-external`、`calls-generated` 及其说明；其它语言走原路径。验证：事实图单测；用已知答案的小 Java 样例逐条核对边与桶。
+- [x] 3.3 守恒：测试断言 Java 调用点总数 = 成边的调用点数 + 五个桶的计数。验证：守恒测试，并制造一个故意漏桶的变体，确认测试能变红。
+- [x] 3.4 非 Java 不变：已有非 Java 夹具的 factsDigest 不变。验证：现有固定摘要测试中非 Java 部分保持绿。
 
 ## 4. 类型层次边
 
@@ -40,7 +40,7 @@
 - [ ] 6.1 全量门：`pnpm -r build`、`pnpm test`、`pnpm typecheck`、Python 测试、`check-refs`、`openspec validate --all --strict`。`pnpm lint` 不列入：main 上缺 ESLint 9 所需的配置文件，本来就跑不了，已另立待办。
 - [ ] 6.2 Fineract 与 hadoop 前后对比：调用点去向分布与守恒、解析率、贷款范围入口可达文件数。
 - [ ] 6.3 改前的每条 Java `calls` 边在改后的去向，逐条解释。
-- [ ] 6.4 独立代理抽查 Fineract 50 条新边，0 错。
+- [ ] 6.4 独立代理抽查 Fineract 50 条新边（至少 20 条的目标层次含仓库外父类型），0 错；报告这类边的总数。
 - [ ] 6.5 非 Java 不变：wcp-auth、wcp-service-v2、cebreo/unmc 的 factsDigest 前后相同；cebreo/uneeg-managementportal 的变化逐项解释。
 - [ ] 6.6 hadoop 的 Lazy 必须在默认堆（不设 `NODE_OPTIONS`）下成功；用时、最大常驻内存、图谱大小与序列化余量和 line-store 合入后的基线（118.6 秒、3.22 GB）对比，用时增幅不超过 30%。单字符串上限已由 knowledge-graph-line-store 消除；若堆溢出，先完成降低 Lazy 峰值堆占用的前置变更（见 design「Risks」），不靠调大堆过关。
 - [ ] 6.7 对改后的 Fineract 运行 `deploy/mcp-smoke.mjs`，7 个工具全部通过。
