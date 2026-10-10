@@ -10,7 +10,7 @@
 
 ### Requirement: Java 类型层次边
 
-系统 SHALL 为能解析到仓库内类型的 `extends` / `implements` 生成类到类的边：类继承类、接口继承接口为 `inherits`，类实现接口为 `implements`。系统 SHALL 为具体方法（含接口的 `default` 方法）生成指向它所实现的仓库内抽象方法（接口方法或抽象方法，同名且擦除后参数类型相同）的 `implements` 边。对每个具体类型 C，其仓库内祖先的每个抽象方法 A，若 C 自身没有声明同名同参数个数的方法，SHALL 以 C 的父类链中最近的同名同参数个数具体声明 M（类的方法优先于接口 `default` 方法）为实现：擦除签名相同即生成 `M → A` 的 `implements` 边，证据为 C 的该父类型声明行。同名、同参数个数、但任一方擦除签名不能确定（类型变量、嵌套或无法解析的类型、按需导入的外部类型）的配对 MUST NOT 生成边，也 MUST NOT 静默丢弃：SHALL 记为可见缺口 `override-uncertain`（scope `java`，样例为两个声明）。这些边 SHALL 带声明行证据，SHALL 作为确定性事实边参与遍历。父类型在仓库外时 MUST NOT 生成边。
+系统 SHALL 为能解析到仓库内类型的 `extends` / `implements` 生成类到类的边：类继承类、接口继承接口为 `inherits`，类实现接口为 `implements`。系统 SHALL 为具体方法（含接口的 `default` 方法）生成指向它所实现的仓库内抽象方法（接口方法或抽象方法，同名且擦除后参数类型相同）的 `implements` 边。对每个具体类型 C，其仓库内祖先的每个抽象方法 A，若 C 自身没有声明同名同参数个数的方法，SHALL 以 C 的父类链中最近的同名同参数个数具体声明 M（类的方法优先于接口 `default` 方法）为实现：擦除签名相同即生成 `M → A` 的 `implements` 边，证据为 C 的该父类型声明行。同名、同参数个数、但任一方擦除签名不能确定（类型变量、嵌套或无法解析的类型、按需导入的外部类型）的配对 MUST NOT 生成边，也 MUST NOT 静默丢弃：SHALL 记为可见缺口 `override-uncertain`（scope `java`，样例为两个声明）。`private`、`static` 方法与构造器不参与配对；包访问的方法只与同包的方法配对。这些边 SHALL 带声明行证据，SHALL 作为确定性事实边参与遍历。父类型在仓库外时 MUST NOT 生成边。
 
 #### Scenario: 类实现接口
 - **WHEN** 仓库内类 `PaymentServiceImpl implements PaymentService`，并实现了 `pay(long)`
@@ -72,7 +72,7 @@ Java 抽取器 SHALL 为每个函数条目输出 `visibility`（`public` / `prot
 
 ### Requirement: Java 具体方法覆写边
 
-系统 SHALL 为仓库内的具体方法 M（含接口的 `default` 方法）生成指向它覆写的仓库内祖先类型中具体方法 A（同名、擦除后参数类型相同、A 非 `private` 非 `static`，含接口 `default` 方法）的 `overrides` 边，取离 M 最近的祖先声明。同名、同参数个数但任一方擦除签名不能确定的配对 MUST NOT 生成边，SHALL 记入 `override-uncertain` 缺口。边 SHALL 带 M 的声明行证据，SHALL 作为确定性事实边参与遍历。祖先在仓库外时 MUST NOT 生成边。
+系统 SHALL 为仓库内的具体方法 M（含接口的 `default` 方法）生成指向它覆写的仓库内祖先类型中具体方法 A（同名、擦除后参数类型相同、A 非 `private` 非 `static`，包访问的 A 只与同包的 M 配对，含接口 `default` 方法）的 `overrides` 边，每条父类型路径上取离 M 最近的祖先声明。对每个类、枚举或 record 类型 C（含抽象类），其仓库内接口祖先的每个 `default` 方法 A，若 C 自身没有声明同名同参数个数的方法，SHALL 以 C 的父类链中最近的同名同参数个数具体类方法 M 为继承来的覆写（类优先于接口 `default`）：擦除签名相同即生成 `M → A` 的 `overrides` 边，证据为 C 引入 A 的那条父类型声明行；父类链中擦除签名相同的抽象重声明使 A 不被继承，不生成边。同名、同参数个数但任一方擦除签名不能确定的配对 MUST NOT 生成边，SHALL 记入 `override-uncertain` 缺口。边 SHALL 带 M 的声明行证据，SHALL 作为确定性事实边参与遍历。祖先在仓库外时 MUST NOT 生成边。
 
 #### Scenario: 子类覆写父类的具体方法
 - **WHEN** `Base` 声明具体方法 `fallback(Long, String)`，`Sub extends Base` 也声明了具体的 `fallback(Long, String)`
@@ -85,6 +85,10 @@ Java 抽取器 SHALL 为每个函数条目输出 `visibility`（`public` / `prot
 #### Scenario: 经父类型的调用可遍历到覆写
 - **WHEN** 从调用 `Base#fallback(Long,String)` 的方法出发做有界遍历
 - **THEN** 遍历经 `calls` 与 `overrides` 边到达 `Sub#fallback(Long,String)`
+
+#### Scenario: 继承来的覆写（类优先）
+- **WHEN** `class C extends B implements J {}`，`B` 声明具体方法 `m()`，`J` 声明 `default void m()`，`C` 自身不声明 `m()`
+- **THEN** 生成 `B#m()` 到 `J#m()` 的 `overrides` 边，证据为 `C` 声明 `implements J` 的那一行；从调用 `J#m()` 的方法出发的遍历经 `calls` 与 `overrides` 到达 `B#m()`
 
 #### Scenario: 参数类型为嵌套类型的覆写记缺口
 - **WHEN** `Base` 声明 `handle(Outer.Event)`，`Sub extends Base` 声明 `handle(Outer.Event)`，`Outer.Event` 是解析器不读的成员类型

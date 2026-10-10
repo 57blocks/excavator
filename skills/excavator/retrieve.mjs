@@ -161,8 +161,11 @@ export function mergeCandidates({ exact = [], bm25 = [], sourceSearch = [], sema
  *  before adjacency is even built — it can never contribute a path edge.
  *  `inherits` / `implements` are declared type hierarchy facts (openspec:
  *  changes/java-member-call-resolution, D12): through them a call to an
- *  interface method reaches the implementations. */
-export const DETERMINISTIC_EDGE_TYPES = Object.freeze(['contains', 'imports', 'exports', 'calls', 'inherits', 'implements']);
+ *  interface method reaches the implementations. `overrides` links a
+ *  concrete method to the concrete method it overrides (openspec:
+ *  changes/dead-code-detection, D8): through it a call to a base method
+ *  reaches the overrides. */
+export const DETERMINISTIC_EDGE_TYPES = Object.freeze(['contains', 'imports', 'exports', 'calls', 'inherits', 'implements', 'overrides']);
 
 export const DEFAULT_TRAVERSAL_BUDGETS = Object.freeze({ maxSeeds: 5, maxNodes: 80, maxEdges: 160 });
 export const DEFAULT_BFS_MAX_HOPS = 4;

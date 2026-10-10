@@ -30,6 +30,11 @@
  * more are ambiguous — including a method or constructor the source does not
  * declare but that exists at another arity (an `Object` method, a generated
  * accessor or constructor). An array constructor `T[]::new` is external.
+ *
+ * Report mode (design D13) adds what a caller of the resolver needs to
+ * reason past a bucket — the receiver type, the candidates of an ambiguous
+ * call when they are known, the target of a call whose caller is not — and
+ * never changes an outcome.
  */
 
 /** Every outcome a Java call site can have. */
@@ -166,6 +171,21 @@ function repoRef(type, isStatic) {
   return { status: 'repo', type, isStatic };
 }
 
+/**
+ * Ambiguous among resolution results. When every alternative is a repository
+ * type (or several), `types` lists them, so report mode can name the
+ * candidates (D13); anything unknown among them leaves the set unknown.
+ */
+function ambiguousAmong(results) {
+  const types = [];
+  for (const res of results) {
+    if (res.status === 'repo') types.push(res.type);
+    else if (res.status === 'ambiguous' && res.types) types.push(...res.types);
+    else return R_AMBIGUOUS;
+  }
+  return { status: 'ambiguous', types: [...new Set(types)] };
+}
+
 function asInstance(res) {
   if (res.status === 'repo') return res.isStatic ? repoRef(res.type, false) : res;
   if (res.status === 'external') return R_EXTERNAL;
@@ -244,6 +264,10 @@ export function createJavaCallResolver({ rows, functionIds, classIds = new Map()
           paramTypes,
           varargs: paramTypes.length > 0 && paramTypes[paramTypes.length - 1].endsWith('...'),
           abstract: fn.abstract === true,
+          // Null when the row predates these facts: then nothing is known,
+          // which is never read as `static` or `private`.
+          visibility: typeof fn.visibility === 'string' ? fn.visibility : null,
+          modifiers: Array.isArray(fn.modifiers) ? fn.modifiers : null,
           declaredReturnType: fn.declaredReturnType,
           typeParams: new Map((fn.typeParameters ?? []).map((p) => [p.name, p.bound])),
           lineRange: [fn.startLine, fn.endLine],
@@ -312,7 +336,7 @@ export function createJavaCallResolver({ rows, functionIds, classIds = new Map()
     if (!hits) return null;
     if (hits.length === 1) return repoRef(hits[0], true);
     const local = hits.filter((t) => t.ctx.sourceRoot === ctx.sourceRoot);
-    return local.length === 1 ? repoRef(local[0], true) : R_AMBIGUOUS;
+    return local.length === 1 ? repoRef(local[0], true) : ambiguousAmong(hits.map((t) => repoRef(t, true)));
   }
 
   const otherJvmDirsByPackage = new Map();
@@ -404,7 +428,8 @@ export function createJavaCallResolver({ rows, functionIds, classIds = new Map()
       if (hit) found.push(hit);
     }
     if (found.length > 0) {
-      if (found.length > 1 || JAVA_LANG.has(name) || found[0].status === 'ambiguous') return R_AMBIGUOUS;
+      // A java.lang type of that name adds no repository declaration.
+      if (found.length > 1 || JAVA_LANG.has(name) || found[0].status === 'ambiguous') return ambiguousAmong(found);
       return found[0];
     }
     if (JAVA_LANG.has(name)) return R_EXTERNAL_STATIC;
@@ -622,6 +647,26 @@ export function createJavaCallResolver({ rows, functionIds, classIds = new Map()
     return UNRESOLVED;
   }
 
+  /** An ambiguous outcome; `candidates` (methods) when the full set is known. */
+  function ambiguousResult(candidates) {
+    return candidates ? { outcome: AMBIGUOUS, candidates } : { outcome: AMBIGUOUS };
+  }
+
+  /**
+   * The declarations a call may bind to when its receiver is one of several
+   * repository types: the union of the lookup on each, or undefined when any
+   * lookup cannot say (D13). External and generated targets add none.
+   */
+  function unionOfCandidates(results) {
+    const union = [];
+    for (const r of results) {
+      if (r.outcome === 'edge') union.push(r.target);
+      else if (r.outcome === AMBIGUOUS && r.candidates) union.push(...r.candidates);
+      else if (r.outcome !== EXTERNAL && r.outcome !== GENERATED) return undefined;
+    }
+    return [...new Set(union)];
+  }
+
   const lookupCache = new Map();
   /**
    * Method lookup on a resolved repository type: an outcome plus its target.
@@ -639,9 +684,13 @@ export function createJavaCallResolver({ rows, functionIds, classIds = new Map()
     const candidates = findMethods(type, name, argCount);
     // `outsideHierarchy` is for reporting: an outside supertype of the
     // lookup type could declare a same-arity overload we cannot see (Risks).
-    if (candidates.length === 1 && argCount === null && undeclaredOverloadMayExist(type, name, candidates[0])) result = { outcome: AMBIGUOUS };
+    // `candidates` too (D13): the declarations an ambiguous call may bind
+    // to, unless a supertype the repository declares but this resolver
+    // cannot read could add one.
+    const known = !hierarchy(type).hasUnknown;
+    if (candidates.length === 1 && argCount === null && undeclaredOverloadMayExist(type, name, candidates[0])) result = ambiguousResult(known ? candidates : undefined);
     else if (candidates.length === 1) result = { outcome: 'edge', target: candidates[0], outsideHierarchy: methodsMaybeOutside(type) };
-    else if (candidates.length > 1) result = { outcome: AMBIGUOUS };
+    else if (candidates.length > 1) result = ambiguousResult(known ? candidates : undefined);
     else result = { outcome: classifyMissing(type, name, argCount) };
     perType.set(key, result);
     return result;
@@ -785,7 +834,10 @@ export function createJavaCallResolver({ rows, functionIds, classIds = new Map()
         return fieldOf(resolveReceiver(receiver.object, site, file), receiver.name);
       }
       case 'call': {
-        const inner = resolveSite(file, receiver.site);
+        // A report-mode probe (D13) also types a receiver whose own call has
+        // no resolvable caller: the same unknown caller as the outer call.
+        let inner = resolveSite(file, receiver.site);
+        if (site.probe === true && inner.outcome === CALLER_UNRESOLVED) inner = probeSite(file, receiver.site)?.result ?? inner;
         if (inner.outcome !== 'edge' || inner.target.declaredReturnType === undefined) return R_UNKNOWN;
         const method = inner.target;
         // A type variable in a return type is instantiated by the caller: unknown.
@@ -834,6 +886,8 @@ export function createJavaCallResolver({ rows, functionIds, classIds = new Map()
         declarations,
         outcomes: [],
         resolving: new Set(),
+        probes: new Map(),
+        probing: new Set(),
       };
       fileState.set(row.path, state);
     }
@@ -847,14 +901,33 @@ export function createJavaCallResolver({ rows, functionIds, classIds = new Map()
     return matches.length === 1 ? matches[0] : null;
   }
 
-  /** Outcome of one call site, memoized: `{ outcome, callerId?, target? }`. */
+  /** The enclosing type of a call site, when it is a type this resolver reads. */
+  function ownerOf(state, site) {
+    return typeof site.enclosingType === 'string' ? state.types.get(site.enclosingType) ?? null : null;
+  }
+
+  /** Names in scope at a call site: the enclosing type's and, when known, the caller's type variables. */
+  function callerScope(state, owner, caller) {
+    return {
+      ctx: state.ctx,
+      owner,
+      typeVars: new Map([...owner.typeParams, ...(caller?.fn.typeParameters ?? []).map((p) => [p.name, p.bound])]),
+      exact: true,
+    };
+  }
+
+  /**
+   * Outcome of one call site, memoized: `{ outcome, callerId?, target?,
+   * candidates?, lookupType? }`. `lookupType` is the repository type the
+   * method lookup ran on.
+   */
   function resolveSite(state, index) {
     const cached = state.outcomes[index];
     if (cached) return cached;
     const site = state.row.callGraph[index];
     if (state.resolving.has(index) || !site) return { outcome: UNRESOLVED };
     state.resolving.add(index);
-    const owner = typeof site.enclosingType === 'string' ? state.types.get(site.enclosingType) ?? null : null;
+    const owner = ownerOf(state, site);
     const caller = owner ? resolveCaller(state, site, owner) : null;
     let result;
     // A null id is a node shared with another declaration (identity
@@ -862,19 +935,39 @@ export function createJavaCallResolver({ rows, functionIds, classIds = new Map()
     if (!caller || caller.id == null) {
       result = { outcome: CALLER_UNRESOLVED };
     } else {
-      const scope = {
-        ctx: state.ctx,
-        owner,
-        typeVars: new Map([...owner.typeParams, ...(caller.fn.typeParameters ?? []).map((p) => [p.name, p.bound])]),
-        exact: true,
-      };
+      const context = { scope: callerScope(state, owner, caller) };
       // Lookup results are shared through caches; copy before adding the caller.
-      result = { ...resolveTarget(state, site, { scope }, owner), callerId: caller.id };
+      result = { ...resolveTarget(state, site, context, owner), callerId: caller.id };
       if (result.outcome === 'edge' && result.target.id == null) result = { outcome: AMBIGUOUS, target: result.target };
+      if (context.lookupType) result.lookupType = context.lookupType;
     }
     state.resolving.delete(index);
     state.outcomes[index] = result;
     return result;
+  }
+
+  /**
+   * Report mode only (D13): the target of a call whose caller cannot be
+   * attributed, resolved in its enclosing type's scope as if the caller were
+   * known. Null when the enclosing type is itself not one this resolver reads
+   * (a nested, local or anonymous type), where resolving would be a guess.
+   * Never feeds an outcome.
+   */
+  function probeSite(state, index) {
+    if (state.probes.has(index)) return state.probes.get(index);
+    const site = state.row.callGraph[index];
+    const owner = site ? ownerOf(state, site) : null;
+    let probe = null;
+    if (owner && !state.probing.has(index)) {
+      state.probing.add(index);
+      const context = { scope: callerScope(state, owner, resolveCaller(state, site, owner)), probe: true };
+      let result = resolveTarget(state, site, context, owner);
+      if (result.outcome === 'edge' && result.target.id == null) result = { outcome: AMBIGUOUS };
+      probe = { result, lookupType: context.lookupType ?? null };
+      state.probing.delete(index);
+    }
+    state.probes.set(index, probe);
+    return probe;
   }
 
   function resolveTarget(state, site, context, owner) {
@@ -882,28 +975,32 @@ export function createJavaCallResolver({ rows, functionIds, classIds = new Map()
     // null: a method reference, applicable at any arity. Absent or malformed: unresolved.
     const argCount = site.argCount === null ? null : Number.isInteger(site.argCount) ? site.argCount : undefined;
     if (!receiver || argCount === undefined) return { outcome: UNRESOLVED };
-    if (receiver.kind === 'construct') return resolveConstruction(receiver.type, context.scope, argCount);
+    if (receiver.kind === 'construct') return resolveConstruction(receiver.type, context, argCount);
     const name = methodName(site);
     switch (receiver.kind) {
       case 'none':
-        return resolveBareCall(owner, name, argCount, context.scope);
+        return resolveBareCall(owner, name, argCount, context);
       case 'this':
+        context.lookupType = owner;
         return lookupOn(owner, name, argCount);
       case 'super':
-        return resolveSuperCall(owner, name, argCount);
+        return resolveSuperCall(owner, name, argCount, context);
       default:
-        return callOn(resolveReceiver(receiver, context, state), name, argCount);
+        return callOn(resolveReceiver(receiver, context, state), name, argCount, context);
     }
   }
 
-  function callOn(res, name, argCount) {
+  function callOn(res, name, argCount, context) {
     switch (res.status) {
       case 'repo':
+        context.lookupType = res.type;
         return lookupOn(res.type, name, argCount);
       case 'external':
         return { outcome: EXTERNAL };
       case 'ambiguous':
-        return { outcome: AMBIGUOUS };
+        // Several repository types of that name: the call may bind in any.
+        if (!res.types || res.types.some((t) => hierarchy(t).hasUnknown)) return { outcome: AMBIGUOUS };
+        return ambiguousResult(unionOfCandidates(res.types.map((t) => lookupOn(t, name, argCount))));
       case 'array':
         return { outcome: isObjectMethod(name, argCount) ? EXTERNAL : UNRESOLVED };
       default:
@@ -912,11 +1009,11 @@ export function createJavaCallResolver({ rows, functionIds, classIds = new Map()
   }
 
   /** `super.m()`: the superclass's hierarchy. */
-  function resolveSuperCall(owner, name, argCount) {
+  function resolveSuperCall(owner, name, argCount, context) {
     const superclass = owner.kind === 'class'
       ? supertypesOf(owner).find((s) => s.relation === 'extends')
       : null;
-    if (superclass) return callOn(superclass.res, name, argCount);
+    if (superclass) return callOn(superclass.res, name, argCount, context);
     if (owner.kind === 'enum') return { outcome: EXTERNAL };
     return { outcome: isObjectMethod(name, argCount) ? EXTERNAL : UNRESOLVED };
   }
@@ -926,41 +1023,53 @@ export function createJavaCallResolver({ rows, functionIds, classIds = new Map()
    * method of that name is declared there, single then on-demand static
    * imports.
    */
-  function resolveBareCall(owner, name, argCount, scope) {
-    if (declaresMethodNamed(owner, name)) return lookupOn(owner, name, argCount);
+  function resolveBareCall(owner, name, argCount, context) {
+    const scope = context.scope;
+    if (declaresMethodNamed(owner, name)) {
+      context.lookupType = owner;
+      return lookupOn(owner, name, argCount);
+    }
     const h = hierarchy(owner);
     // A method an outside or unresolvable supertype declares would shadow
     // the static imports.
     const hidden = methodsMaybeOutside(owner);
 
     // Imported types whose methods this resolver cannot see: `opaque` when
-    // any, `unknown` when one of them is in the repository.
+    // any, `unknown` when one of them is in the repository; `partial` when
+    // an imported type's own supertypes may hide a candidate.
     const fromImports = (typeNames) => {
       const candidates = [];
       let opaque = false;
       let unknown = false;
+      let partial = false;
       for (const typeName of typeNames) {
         const res = resolveFqn(typeName, scope.ctx);
         if (res.status === 'repo') {
           for (const m of findMethods(res.type, name, argCount)) candidates.push(m);
+          if (hierarchy(res.type).hasUnknown) partial = true;
         } else {
           opaque = true;
           if (res.status !== 'external') unknown = true;
         }
       }
-      return { candidates, opaque, unknown };
+      return { candidates, opaque, unknown, partial };
     };
+    // The imported candidates are the whole set only when nothing else may shadow or add one.
+    const ambiguousImport = ({ candidates, opaque, partial }) =>
+      ambiguousResult(!opaque && !hidden && !partial ? candidates : undefined);
 
     const single = scope.ctx.staticSingle.get(name);
     if (single) {
-      const { candidates, opaque, unknown } = fromImports(single);
+      const imported = fromImports(single);
+      const { candidates, opaque, unknown } = imported;
       if (candidates.length === 1 && !opaque && !hidden) return { outcome: 'edge', target: candidates[0] };
-      if (candidates.length > 0) return { outcome: AMBIGUOUS };
+      if (candidates.length > 0) return ambiguousImport(imported);
       if (opaque) return { outcome: h.hasUnknown || unknown ? UNRESOLVED : EXTERNAL };
     }
-    const { candidates, opaque, unknown } = fromImports(scope.ctx.staticOnDemand);
+    const imported = fromImports(scope.ctx.staticOnDemand);
+    const { candidates, opaque, unknown } = imported;
     if (candidates.length === 1 && !opaque && !hidden) return { outcome: 'edge', target: candidates[0] };
-    if (candidates.length > 0) return { outcome: AMBIGUOUS };
+    if (candidates.length > 0) return ambiguousImport(imported);
     if (isObjectMethod(name, argCount)) return { outcome: EXTERNAL };
     if (isGenerated(owner, name, argCount)) return { outcome: GENERATED };
     if (h.hasUnknown || unknown) return { outcome: UNRESOLVED };
@@ -969,27 +1078,35 @@ export function createJavaCallResolver({ rows, functionIds, classIds = new Map()
   }
 
   /** `new X(...)` (D9) and the constructor reference `X::new` (argCount null). */
-  function resolveConstruction(typeText, scope, argCount) {
-    const res = asInstance(resolveType(typeText, scope));
+  function resolveConstruction(typeText, context, argCount) {
+    const res = asInstance(resolveType(typeText, context.scope));
     // `T[]::new`: the array constructor, never a repository declaration.
     if (res.status === 'array') return { outcome: EXTERNAL };
     if (res.status === 'external') return { outcome: EXTERNAL };
-    if (res.status === 'ambiguous') return { outcome: AMBIGUOUS };
+    if (res.status === 'ambiguous') {
+      // Constructors are not inherited: each candidate type's own are the whole set.
+      return ambiguousResult(res.types ? unionOfCandidates(res.types.map((t) => constructOn(t, argCount))) : undefined);
+    }
     if (res.status !== 'repo') return { outcome: UNRESOLVED };
-    const type = res.type;
+    context.lookupType = res.type;
+    return constructOn(res.type, argCount);
+  }
+
+  /** Constructor lookup on a resolved repository type. */
+  function constructOn(type, argCount) {
     const mayGenerate = type.kind === 'record' || [...type.annotations].some((a) => CONSTRUCTOR_ANNOTATIONS.has(a));
     const candidates = type.constructors.filter((c) => applicable(c, argCount));
     // A reference may also bind to a constructor the source does not declare.
-    if (candidates.length === 1 && argCount === null && mayGenerate) return { outcome: AMBIGUOUS };
+    if (candidates.length === 1 && argCount === null && mayGenerate) return ambiguousResult(candidates);
     if (candidates.length === 1) return { outcome: 'edge', target: candidates[0] };
-    if (candidates.length > 1) return { outcome: AMBIGUOUS };
+    if (candidates.length > 1) return ambiguousResult(candidates);
     if (type.constructors.length === 0 && arityMatches(argCount, 0)) return { outcome: GENERATED };
     if (mayGenerate) return { outcome: GENERATED };
     return { outcome: UNRESOLVED };
   }
 
   // ---------------------------------------------------------------------------
-  // Type hierarchy edges (D10)
+  // Type hierarchy edges (D10; dead-code-detection D8)
   // ---------------------------------------------------------------------------
 
   /**
@@ -1021,69 +1138,365 @@ export function createJavaCallResolver({ rows, functionIds, classIds = new Map()
     return method.erasedSignature;
   }
 
-  return {
-    /**
-     * Type hierarchy edges between repository declarations (D10):
-     * - `typeEdges`: a type to each supertype that resolves into the
-     *   repository, `inherits` for `extends` and `implements` for
-     *   `implements`, at the supertype's line;
-     * - `methodEdges`: a concrete method of a class, enum or record to each
-     *   abstract method of a repository ancestor with the same name and the
-     *   same erased parameter types, at the method's first line.
-     */
-    hierarchyEdges() {
-      const typeEdges = [];
-      const methodEdges = [];
-      for (const types of typesByFqn.values()) {
-        for (const type of types) {
-          if (type.id === null) continue;
-          for (const s of supertypesOf(type)) {
-            if (s.res.status !== 'repo' || s.res.type.id === null) continue;
-            typeEdges.push({
-              source: type.id,
-              target: s.res.type.id,
-              type: s.relation === 'extends' ? 'inherits' : 'implements',
-              file: type.path,
-              line: s.line,
-            });
+  /** How two same-arity methods' erased parameter types compare: equal, different, or not known. */
+  function compareErased(a, b) {
+    const left = erasedSignature(a);
+    const right = erasedSignature(b);
+    if (left === null || right === null) return 'uncertain';
+    return left === right ? 'equal' : 'different';
+  }
+
+  /** Declared `static`. A row without modifiers says nothing, so: not static. */
+  function isStaticMethod(m) {
+    return m.modifiers !== null && m.modifiers.includes('static');
+  }
+
+  /** A method dispatch can select: neither `static` nor `private`. */
+  function isOverridable(m) {
+    return m.visibility !== 'private' && !isStaticMethod(m);
+  }
+
+  /**
+   * A method with a body: a class method that is not abstract, or an
+   * interface `default` method. Without extracted modifiers an interface
+   * method with a body counts as `default` (static and private are unknown).
+   */
+  function isConcrete(m) {
+    if (m.abstract) return false;
+    if (m.owner.kind !== 'interface') return true;
+    return m.modifiers === null || m.modifiers.includes('default');
+  }
+
+  /** A package-access method is overridden or implemented only from its own package. */
+  function reachableFrom(target, type) {
+    return target.visibility !== 'package' || target.owner.ctx.pkg === type.ctx.pkg;
+  }
+
+  const abstractCache = new Map();
+  /** The abstract methods a type declares that can be paired (they have an id). */
+  function abstractMethodsOf(type) {
+    let list = abstractCache.get(type);
+    if (!list) {
+      list = [];
+      for (const methods of type.methodsByName.values()) {
+        for (const m of methods) if (m.abstract && m.id != null && isOverridable(m)) list.push(m);
+      }
+      abstractCache.set(type, list);
+    }
+    return list;
+  }
+
+  const defaultCache = new Map();
+  /** The `default` methods an interface declares that can be paired (they have an id). */
+  function defaultMethodsOf(type) {
+    let list = defaultCache.get(type);
+    if (!list) {
+      list = [];
+      if (type.kind === 'interface') {
+        for (const methods of type.methodsByName.values()) {
+          for (const m of methods) if (m.id != null && isConcrete(m) && isOverridable(m)) list.push(m);
+        }
+      }
+      defaultCache.set(type, list);
+    }
+    return list;
+  }
+
+  const superclassCache = new Map();
+  /**
+   * A class's repository superclasses through `extends`, nearest first,
+   * ending where the chain leaves the repository.
+   */
+  function superclassChain(type) {
+    let chain = superclassCache.get(type);
+    if (chain) return chain;
+    chain = [];
+    const seen = new Set([type]);
+    let current = type;
+    while (current.kind === 'class') {
+      const ext = supertypesOf(current).find((s) => s.relation === 'extends');
+      if (!ext || ext.res.status !== 'repo' || seen.has(ext.res.type)) break;
+      seen.add(ext.res.type);
+      chain.push(ext.res.type);
+      current = ext.res.type;
+    }
+    superclassCache.set(type, chain);
+    return chain;
+  }
+
+  /**
+   * For each repository ancestor of a type, the line of the type's own
+   * supertype declaration it is reached through (the first in source order
+   * when several reach it).
+   */
+  function supertypeLines(type) {
+    const lines = new Map();
+    const direct = supertypesOf(type).filter((s) => s.res.status === 'repo').sort((a, b) => a.line - b.line);
+    for (const s of direct) {
+      for (const t of hierarchy(s.res.type).types) if (!lines.has(t)) lines.set(t, s.line);
+    }
+    return lines;
+  }
+
+  const ancestorSets = new Map();
+  /** Whether `ancestor` is the type itself or one of its repository ancestors. */
+  function isSubtypeOf(type, ancestor) {
+    let set = ancestorSets.get(type);
+    if (!set) {
+      set = new Set(hierarchy(type).types);
+      ancestorSets.set(type, set);
+    }
+    return set.has(ancestor);
+  }
+
+  /** Whether a type declares a method that may be the one `target` names (an equal or an uncertain signature). */
+  function declaresOwn(type, target) {
+    for (const own of type.methodsByName.get(target.name) ?? []) {
+      if (own.paramTypes.length === target.paramTypes.length && compareErased(own, target) !== 'different') return true;
+    }
+    return false;
+  }
+
+  /**
+   * Type hierarchy edges and the pairs that cannot be told apart
+   * (dead-code-detection D8). Every pair is a same-name, same-arity method
+   * pair; an erased signature that cannot be named on either side makes it
+   * an uncertain pair, never an edge and never dropped.
+   */
+  function computeHierarchy() {
+    const typeEdges = [];
+    const methodEdges = [];
+    const overrideEdges = [];
+    const pairKey = (m, a) => `${m.id}\u0000${a.id}`;
+    /** relation -> key -> edge bound through a type that inherits the method */
+    const inherited = { implements: new Map(), overrides: new Map() };
+    /** key -> { pair, own } */
+    const uncertain = new Map();
+    const byEvidence = (x, y) => (x.file < y.file ? -1 : x.file > y.file ? 1 : x.line - y.line);
+
+    const noteUncertain = (m, a, relation, file, line, own) => {
+      const key = pairKey(m, a);
+      const pair = { source: m.id, target: a.id, relation, file, line };
+      const seen = uncertain.get(key);
+      // A pair a method's own declaration states keeps its evidence; one
+      // seen through several inheriting types keeps the smallest.
+      if (!seen || (own && !seen.own) || (!own && !seen.own && byEvidence(pair, seen.pair) < 0)) uncertain.set(key, { pair, own });
+    };
+
+    // (1) A concrete method (an interface `default` method included) and the
+    // methods it is declared over: every abstract one it implements, and the
+    // nearest concrete one on each supertype path that it overrides.
+    const pairOwnMethod = (type, method, ancestors) => {
+      const covered = new Set();
+      for (const ancestor of ancestors) {
+        const targets = ancestor.methodsByName.get(method.name);
+        if (!targets) continue;
+        const overridesHere = !covered.has(ancestor);
+        let overridden = false;
+        for (const target of targets) {
+          if (target.id == null || target.paramTypes.length !== method.paramTypes.length) continue;
+          if (!isOverridable(target) || !reachableFrom(target, type)) continue;
+          if (target.abstract) {
+            const cmp = compareErased(method, target);
+            if (cmp === 'equal') {
+              methodEdges.push({ source: method.id, target: target.id, file: type.path, line: method.lineRange[0] });
+            } else if (cmp === 'uncertain') {
+              noteUncertain(method, target, 'implements', type.path, method.lineRange[0], true);
+            }
+          } else if (overridesHere && isConcrete(target)) {
+            const cmp = compareErased(method, target);
+            if (cmp === 'equal') {
+              overrideEdges.push({ source: method.id, target: target.id, file: type.path, line: method.lineRange[0] });
+              overridden = true;
+            } else if (cmp === 'uncertain') {
+              // It may be an overload: a further ancestor may still be the one overridden.
+              noteUncertain(method, target, 'overrides', type.path, method.lineRange[0], true);
+            }
           }
-          if (type.kind === 'interface') continue;
-          const ancestors = hierarchy(type).types.slice(1);
-          if (ancestors.length === 0) continue;
-          for (const methods of type.methodsByName.values()) {
-            for (const method of methods) {
-              if (method.abstract || method.id == null) continue;
-              let signature;
-              for (const ancestor of ancestors) {
-                for (const target of ancestor.methodsByName.get(method.name) ?? []) {
-                  if (!target.abstract || target.id == null || target.paramTypes.length !== method.paramTypes.length) continue;
-                  signature ??= erasedSignature(method);
-                  if (signature === null) break;
-                  if (erasedSignature(target) !== signature) continue;
-                  methodEdges.push({ source: method.id, target: target.id, file: type.path, line: method.lineRange[0] });
-                }
-              }
+        }
+        // What the overridden method itself overrides is its own edge.
+        if (overridden) for (const t of hierarchy(ancestor).types) covered.add(t);
+      }
+    };
+
+    const noteInherited = (relation, m, a, file, line) => {
+      const key = pairKey(m, a);
+      const edge = { source: m.id, target: a.id, file, line };
+      const seen = inherited[relation].get(key);
+      if (!seen || byEvidence(edge, seen) < 0) inherited[relation].set(key, edge);
+    };
+
+    // (2) A method `target` of an ancestor that a class, enum or record does
+    // not declare itself, bound to the method the type inherits from its
+    // superclass chain instead: for an abstract `target` the implementation
+    // (`implements`), for an interface `default` `target` the class method
+    // that wins over it (`overrides`). The walk ends at the type declaring
+    // `target` and at an abstract re-declaration of it. A method whose own
+    // type is a subtype of `target`'s is left to (1), so no pair is repeated
+    // with other evidence. Evidence is the type's supertype declaration that
+    // brings `target` in. An interface `default` method can implement an
+    // abstract `target` only from a sub-interface of the one declaring it,
+    // where (1) already pairs it: javac rejects a class that inherits an
+    // abstract method and an unrelated default one of the same signature,
+    // and a default above `target`'s interface is re-abstracted by it.
+    const bindInherited = (type, target, line, relation) => {
+      for (const superclass of superclassChain(type)) {
+        // The abstract declaration itself: its other methods are overloads.
+        if (superclass === target.owner) return;
+        let found = false;
+        for (const m of superclass.methodsByName.get(target.name) ?? []) {
+          if (m.paramTypes.length !== target.paramTypes.length || !isOverridable(m)) continue;
+          const cmp = compareErased(m, target);
+          if (m.abstract) {
+            if (cmp === 'equal') found = true; // declared abstract again: nothing is inherited
+            continue;
+          }
+          if (!reachableFrom(target, superclass)) continue;
+          // A method whose own type already has `target`'s type as an
+          // ancestor is paired with it by (1), which keeps only the nearest
+          // override on each supertype path.
+          const paired = isSubtypeOf(superclass, target.owner);
+          if (cmp === 'equal') {
+            if (m.id != null && !paired) noteInherited(relation, m, target, type.path, line);
+            found = true;
+          } else if (cmp === 'uncertain' && m.id != null && !paired) {
+            noteUncertain(m, target, relation, type.path, line, false);
+          }
+        }
+        if (found) return;
+      }
+    };
+
+    for (const types of typesByFqn.values()) {
+      for (const type of types) {
+        if (type.id === null) continue;
+        for (const s of supertypesOf(type)) {
+          if (s.res.status !== 'repo' || s.res.type.id === null) continue;
+          typeEdges.push({
+            source: type.id,
+            target: s.res.type.id,
+            type: s.relation === 'extends' ? 'inherits' : 'implements',
+            file: type.path,
+            line: s.line,
+          });
+        }
+        const ancestors = hierarchy(type).types.slice(1);
+        if (ancestors.length === 0) continue;
+        for (const methods of type.methodsByName.values()) {
+          for (const method of methods) {
+            if (method.id == null || !isConcrete(method) || !isOverridable(method)) continue;
+            pairOwnMethod(type, method, ancestors);
+          }
+        }
+      }
+    }
+
+    // Inherited pairs. An abstract class binds them too: its anonymous
+    // subclasses are not types.
+    for (const types of typesByFqn.values()) {
+      for (const type of types) {
+        if (type.id === null || type.kind === 'interface') continue;
+        const ancestors = hierarchy(type).types.slice(1);
+        let lines = null;
+        for (const ancestor of ancestors) {
+          for (const [targets, relation] of [[abstractMethodsOf(ancestor), 'implements'], [defaultMethodsOf(ancestor), 'overrides']]) {
+            for (const target of targets) {
+              if (declaresOwn(type, target)) continue;
+              lines ??= supertypeLines(type);
+              bindInherited(type, target, lines.get(ancestor), relation);
             }
           }
         }
       }
-      return { typeEdges, methodEdges };
+    }
+
+    const byPair = (x, y) => (x.source < y.source ? -1 : x.source > y.source ? 1 : x.target < y.target ? -1 : x.target > y.target ? 1 : 0);
+    methodEdges.push(...[...inherited.implements.values()].sort(byPair));
+    overrideEdges.push(...[...inherited.overrides.values()].sort(byPair));
+    const uncertainPairs = [...uncertain.values()].map((u) => u.pair).sort(byPair);
+    return { typeEdges, methodEdges, overrideEdges, uncertainPairs };
+  }
+
+  /** Sorted distinct ids of candidate methods; undefined when any has no id of its own. */
+  function candidateIds(candidates) {
+    if (!candidates || candidates.some((m) => m.id == null)) return undefined;
+    return [...new Set(candidates.map((m) => m.id))].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
+  }
+
+  /** One site's report-mode record (D13). */
+  function reportSite(state, index, result) {
+    const record = result.outcome === 'edge'
+      ? { outcome: 'edge', callerId: result.callerId, targetId: result.target.id, outsideHierarchy: result.outsideHierarchy === true }
+      : { outcome: result.outcome };
+    let lookupType = result.lookupType ?? null;
+    if (result.outcome === AMBIGUOUS) {
+      const ids = candidateIds(result.candidates);
+      if (ids) record.candidates = ids;
+    } else if (result.outcome === CALLER_UNRESOLVED) {
+      const probe = probeSite(state, index);
+      if (probe) {
+        lookupType = probe.lookupType;
+        if (probe.result.outcome === 'edge') record.target = probe.result.target.id;
+      }
+    }
+    if (lookupType) record.receiverType = lookupType.fqn;
+    return record;
+  }
+
+  return {
+    /**
+     * Type hierarchy facts between repository declarations (D10;
+     * dead-code-detection D8):
+     * - `typeEdges`: a type to each supertype that resolves into the
+     *   repository, `inherits` for `extends` and `implements` for
+     *   `implements`, at the supertype's line;
+     * - `methodEdges` (`implements`): a concrete method (an interface
+     *   `default` method included) to each abstract method of a repository
+     *   ancestor with the same name and erased parameter types, at the
+     *   method's first line; and an inherited implementation — the method a
+     *   class, enum or record inherits from its superclass chain for an
+     *   abstract method of an ancestor it does not declare itself — at that
+     *   type's supertype declaration;
+     * - `overrideEdges` (`overrides`): a concrete method to the nearest
+     *   concrete method it overrides on each supertype path, at the method's
+     *   first line; and an inherited override — the class method a class,
+     *   enum or record inherits from its superclass chain for an interface
+     *   `default` method of an ancestor it does not declare itself (the class
+     *   method wins) — at that type's supertype declaration;
+     * - `uncertainPairs`: same-name, same-arity ancestor/descendant pairs
+     *   either rule would relate but where either side's erased parameter
+     *   types cannot all be determined,
+     *   `{ source, target, relation, file, line }`, one per pair, by ids.
+     * `static` and `private` methods and constructors take part in none.
+     */
+    hierarchyEdges() {
+      return computeHierarchy();
     },
 
     /**
      * Outcomes for every call site of one Java row, index for index with
      * `row.callGraph`: `{ outcome: 'edge', callerId, targetId }` or
-     * `{ outcome: <bucket> }`. With `{ report: true }` an edge also says
-     * whether its lookup type's hierarchy reaches outside the repository.
+     * `{ outcome: <bucket> }`. With `{ report: true }` (D13) a site also
+     * carries, when known:
+     * - `outsideHierarchy` (edges): whether the lookup type's hierarchy
+     *   reaches outside the repository;
+     * - `receiverType`: the qualified name of the repository type the
+     *   method lookup ran on;
+     * - `candidates` (`calls-ambiguous`): the sorted ids of every
+     *   declaration the call may bind to — absent means the set is unknown,
+     *   never that it is empty;
+     * - `target` (`calls-caller-unresolved`): the id of the one declaration
+     *   the call resolves to in its enclosing type's scope.
      */
     resolveFileCalls(row, { report = false } = {}) {
       const state = stateOf(row);
       const out = (row.callGraph ?? []).map((_, index) => {
         const result = resolveSite(state, index);
-        if (result.outcome !== 'edge') return { outcome: result.outcome };
-        const edge = { outcome: 'edge', callerId: result.callerId, targetId: result.target.id };
-        if (report) edge.outsideHierarchy = result.outsideHierarchy === true;
-        return edge;
+        if (!report) {
+          if (result.outcome !== 'edge') return { outcome: result.outcome };
+          return { outcome: 'edge', callerId: result.callerId, targetId: result.target.id };
+        }
+        return reportSite(state, index, result);
       });
       fileState.delete(row.path);
       return out;

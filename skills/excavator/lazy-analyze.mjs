@@ -164,7 +164,10 @@ export const KNOWLEDGE_GRAPH_VERSION = '1.0.0';
  *  re-projected once to pick them up.
  *  Bumped to /5 by openspec change dead-code-detection: Java method
  *  references become call sites, so an unchanged Java source tree projects
- *  new `calls` edges and call-site buckets. */
+ *  new `calls` edges and call-site buckets; and the Java type hierarchy is
+ *  completed — `overrides` edges, inherited and interface `default`
+ *  `implements` edges, and `override-uncertain` gaps for pairs whose
+ *  erased signatures cannot be compared. */
 export const PIPELINE_VERSION = 'lazy-fact-graph/5';
 
 /** Same two-step @excavator/core resolution every sibling script uses. */

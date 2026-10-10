@@ -31,10 +31,10 @@
 
 ## 3. 层次边补齐（切片 A）
 
-- [ ] 3.1 `java-call-resolution.mjs` 的 `hierarchyEdges()`：(a) 具体方法（含接口 `default`）到最近仓库内具体祖先方法（非 `private` 非 `static`，含 `default`）的 `overrides` 配对；(b) 继承来的实现——对每个具体类型 C，祖先的每个抽象方法 A，C 没有自己声明同名同参数个数方法时，取 C 父类链里最近的同名同参数个数具体声明 M（类优先于接口 `default`），配对 `M → A`，证据为 C 的该父类型声明行；(c) 接口不再整体跳过，`default` 方法实现父接口抽象方法也配对；(d) 任一方擦除签名为 null 的同名同参数个数配对进入 `uncertainPairs`，不再 `break` 丢弃。验证：模块单测覆盖规格「Java 类型层次边」与「Java 具体方法覆写边」的每个场景，含类型变量、嵌套类型参数、按需导入参数三种不确定配对。
-- [ ] 3.2 `build-fact-graph.mjs` 投影 `overrides` 边与继承实现的 `implements` 边，`uncertainPairs` 记为 `override-uncertain` 缺口（scope `java`，样例为两个声明）；`retrieve.mjs` 的 `DETERMINISTIC_EDGE_TYPES` 加 `overrides`。验证：事实图单测；遍历单测从调用 `Base#fallback` 的方法走到 `Sub#fallback`，从调用 `I#m` 的方法走到继承来的 `Base#m`；制造一个把不确定配对静默丢弃的变体，缺口计数测试必须变红。
-- [ ] 3.3 D13：`resolveFileCalls(row, { report: true })` 对每个调用点补充 `receiverType`、`candidates`、`target`（仅 `calls-caller-unresolved`）；`hierarchyEdges()` 返回 `uncertainPairs`；非报告模式逐字节不变。验证：模块单测；现有事实图测试全部不变。
-- [ ] 3.4 Java 夹具的固定摘要用生成器整块重冻，commit 说明列出变化的摘要与原因；非 Java 夹具不得变化。验证：全量测试通过。
+- [x] 3.1 `java-call-resolution.mjs` 的 `hierarchyEdges()`：(a) 具体方法（含接口 `default`）到最近仓库内具体祖先方法（非 `private` 非 `static`，含 `default`）的 `overrides` 配对；(b) 继承来的实现——对每个具体类型 C，祖先的每个抽象方法 A，C 没有自己声明同名同参数个数方法时，取 C 父类链里最近的同名同参数个数具体声明 M（类优先于接口 `default`），配对 `M → A`，证据为 C 的该父类型声明行；(c) 接口不再整体跳过，`default` 方法实现父接口抽象方法也配对；(d) 任一方擦除签名为 null 的同名同参数个数配对进入 `uncertainPairs`，不再 `break` 丢弃；(e) 继承来的覆写——对每个类、枚举、record 类型 C，接口祖先的每个 `default` 方法 A，C 没有自己声明时取父类链里最近的同名同参数个数具体类方法 M，配对 `M → A`（`overrides`），证据为 C 引入 A 的父类型声明行，抽象重声明阻断。验证：模块单测覆盖规格「Java 类型层次边」与「Java 具体方法覆写边」的每个场景，含类型变量、嵌套类型参数、按需导入参数三种不确定配对。
+- [x] 3.2 `build-fact-graph.mjs` 投影 `overrides` 边与继承实现的 `implements` 边，`uncertainPairs` 记为 `override-uncertain` 缺口（scope `java`，样例为两个声明）；`retrieve.mjs` 的 `DETERMINISTIC_EDGE_TYPES` 加 `overrides`。验证：事实图单测；遍历单测从调用 `Base#fallback` 的方法走到 `Sub#fallback`，从调用 `I#m` 的方法走到继承来的 `Base#m`；制造一个把不确定配对静默丢弃的变体，缺口计数测试必须变红。
+- [x] 3.3 D13：`resolveFileCalls(row, { report: true })` 对每个调用点补充 `receiverType`、`candidates`、`target`（仅 `calls-caller-unresolved`）；`hierarchyEdges()` 返回 `uncertainPairs`；非报告模式逐字节不变。验证：模块单测；现有事实图测试全部不变。
+- [x] 3.4 Java 夹具的固定摘要用生成器整块重冻，commit 说明列出变化的摘要与原因；非 Java 夹具不得变化。验证：全量测试通过。（实施结果：没有任何固定摘要变化，提交 4 按约定省略；`NON_JAVA_ROWS_SHA256` 不变。）
 
 ## 4. 活性声明与语言规则数据（切片 B）
 

@@ -445,11 +445,21 @@ export function buildFactGraph({ scan, structureAll, importMap, serializationLim
       });
     }
 
-    // Type hierarchy (D10): supertypes inside the repository, and concrete
-    // methods to the abstract methods they implement. Traversal follows
-    // these, so a call to an interface method reaches its implementations.
-    const { typeEdges, methodEdges } = resolver.hierarchyEdges();
-    for (const edge of [...typeEdges, ...methodEdges.map((e) => ({ ...e, type: 'implements' }))]) {
+    // Type hierarchy (D10; dead-code-detection D8): supertypes inside the
+    // repository, concrete methods to the abstract methods they implement
+    // (inherited implementations included) and to the concrete methods they
+    // override. Traversal follows these, so a call to an interface or base
+    // method reaches its implementations and overrides.
+    const { typeEdges, methodEdges, overrideEdges, uncertainPairs } = resolver.hierarchyEdges();
+    const hierarchyFacts = [
+      ...typeEdges,
+      ...methodEdges.map((e) => ({ ...e, type: 'implements' })),
+      ...overrideEdges.map((e) => ({ ...e, type: 'overrides' })),
+    ];
+    // A same-name, same-arity pair whose erased signatures cannot both be
+    // determined is neither an edge nor dropped: one visible gap entry per pair.
+    for (const pair of uncertainPairs) gapCollector.add('override-uncertain', 'java', `${pair.source} ~ ${pair.target}`);
+    for (const edge of hierarchyFacts) {
       addEdge({
         source: edge.source,
         target: edge.target,
@@ -642,12 +652,14 @@ const GAP_REASONS = Object.freeze({
 });
 
 /** Reasons for the Java call-site buckets (scope `java`), which resolve by
- *  the receiver's declared type rather than by name in scope. */
+ *  the receiver's declared type rather than by name in scope, and for the
+ *  Java method pairs the type hierarchy cannot decide. */
 const JAVA_CALL_GAP_REASONS = Object.freeze({
   'calls-unresolved': 'Java call site(s) whose receiver type, type or method could not be determined from the repository\'s declarations',
   'calls-ambiguous': 'Java call site(s) with more than one candidate declaration (same-arity overloads, duplicate type names, or a source the repository cannot see)',
   'calls-external': 'Java call site(s) whose target type is outside the repository',
   'calls-generated': 'Java call site(s) to methods the source does not declare (accessors of declared fields, record members, Lombok builders and constructors, implicit constructors, enum values/valueOf)',
+  'override-uncertain': 'Java method pair(s) with the same name and parameter count across a repository supertype where either side\'s erased parameter types cannot all be determined (a type variable, a nested or unresolvable type, an outside type from an on-demand import): no implements/overrides edge is drawn',
 });
 
 // -----------------------------------------------------------------------------
