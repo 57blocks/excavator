@@ -162,11 +162,13 @@ function asInstance(res) {
  *
  * @param {{
  *   rows: object[],
- *   functionIds: Map<string, string[]>,
- * }} args `functionIds` maps a row's path to the node ids of its `functions`
- *   entries, index for index.
+ *   functionIds: Map<string, (string|null)[]>,
+ *   classIds?: Map<string, (string|null)[]>,
+ * }} args `functionIds` / `classIds` map a row's path to the node ids of its
+ *   `functions` / `classes` entries, index for index; null marks an id shared
+ *   with another declaration, which is never an edge endpoint.
  */
-export function createJavaCallResolver({ rows, functionIds }) {
+export function createJavaCallResolver({ rows, functionIds, classIds = new Map() }) {
   /** fqn -> TypeInfo[] (more than one when two files declare the same name) */
   const typesByFqn = new Map();
   const packages = new Set();
@@ -184,9 +186,11 @@ export function createJavaCallResolver({ rows, functionIds }) {
       if (!methodsByOwner.has(fn.owner)) methodsByOwner.set(fn.owner, []);
       methodsByOwner.get(fn.owner).push({ fn, id: ids[index] });
     });
-    for (const cls of row.classes ?? []) {
-      if (typeof cls.qualifiedName !== 'string' || typeof cls.kind !== 'string') continue;
+    const typeIds = classIds.get(row.path) ?? [];
+    (row.classes ?? []).forEach((cls, classIndex) => {
+      if (typeof cls.qualifiedName !== 'string' || typeof cls.kind !== 'string') return;
       const type = {
+        id: typeIds[classIndex] ?? null,
         fqn: cls.qualifiedName,
         name: cls.name,
         kind: cls.kind,
@@ -226,7 +230,7 @@ export function createJavaCallResolver({ rows, functionIds }) {
       if (!typesByPath.has(row.path)) typesByPath.set(row.path, new Map());
       typesByPath.get(row.path).set(type.name, type);
       if (ctx.pkg) packages.add(ctx.pkg);
-    }
+    });
   }
 
   function fileContext(row) {
@@ -876,7 +880,88 @@ export function createJavaCallResolver({ rows, functionIds }) {
     return { outcome: UNRESOLVED };
   }
 
+  // ---------------------------------------------------------------------------
+  // Type hierarchy edges (D10)
+  // ---------------------------------------------------------------------------
+
+  /**
+   * A parameter type, erased, as a key two declarations can be compared by:
+   * the qualified name of a repository type, the imported or written name of
+   * an outside one, a primitive as written. Null when the type cannot be
+   * named for certain (a type variable, a nested or unresolvable type, an
+   * outside type from an on-demand import).
+   */
+  function erasedTypeKey(text, owner) {
+    const { base, dims } = stripTypeText(text);
+    const suffix = '[]'.repeat(dims);
+    if (PRIMITIVES.has(base)) return base + suffix;
+    const res = resolveType(base, typeScope(owner, false));
+    if (res.status === 'repo') return res.type.fqn + suffix;
+    if (res.status !== 'external') return null;
+    const segments = base.split('.');
+    const imported = owner.ctx.singleImports.get(segments[0]);
+    if (imported) return [imported, ...segments.slice(1)].join('.') + suffix;
+    if (segments.length > 1) return base + suffix;
+    return JAVA_LANG.has(base) ? `java.lang.${base}${suffix}` : null;
+  }
+
+  function erasedSignature(method) {
+    if (method.erasedSignature === undefined) {
+      const keys = method.paramTypes.map((t) => erasedTypeKey(t, method.owner));
+      method.erasedSignature = keys.includes(null) ? null : keys.join(',');
+    }
+    return method.erasedSignature;
+  }
+
   return {
+    /**
+     * Type hierarchy edges between repository declarations (D10):
+     * - `typeEdges`: a type to each supertype that resolves into the
+     *   repository, `inherits` for `extends` and `implements` for
+     *   `implements`, at the supertype's line;
+     * - `methodEdges`: a concrete method of a class, enum or record to each
+     *   abstract method of a repository ancestor with the same name and the
+     *   same erased parameter types, at the method's first line.
+     */
+    hierarchyEdges() {
+      const typeEdges = [];
+      const methodEdges = [];
+      for (const types of typesByFqn.values()) {
+        for (const type of types) {
+          if (type.id === null) continue;
+          for (const s of supertypesOf(type)) {
+            if (s.res.status !== 'repo' || s.res.type.id === null) continue;
+            typeEdges.push({
+              source: type.id,
+              target: s.res.type.id,
+              type: s.relation === 'extends' ? 'inherits' : 'implements',
+              file: type.path,
+              line: s.line,
+            });
+          }
+          if (type.kind === 'interface') continue;
+          const ancestors = hierarchy(type).types.slice(1);
+          if (ancestors.length === 0) continue;
+          for (const methods of type.methodsByName.values()) {
+            for (const method of methods) {
+              if (method.abstract || method.id == null) continue;
+              let signature;
+              for (const ancestor of ancestors) {
+                for (const target of ancestor.methodsByName.get(method.name) ?? []) {
+                  if (!target.abstract || target.id == null || target.paramTypes.length !== method.paramTypes.length) continue;
+                  signature ??= erasedSignature(method);
+                  if (signature === null) break;
+                  if (erasedSignature(target) !== signature) continue;
+                  methodEdges.push({ source: method.id, target: target.id, file: type.path, line: method.lineRange[0] });
+                }
+              }
+            }
+          }
+        }
+      }
+      return { typeEdges, methodEdges };
+    },
+
     /**
      * Outcomes for every call site of one Java row, index for index with
      * `row.callGraph`: `{ outcome: 'edge', callerId, targetId }` or

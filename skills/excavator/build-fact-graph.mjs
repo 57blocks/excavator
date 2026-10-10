@@ -154,7 +154,8 @@ export function buildFactGraph({ scan, structureAll, importMap, serializationLim
   // -------------------------------------------------------------------------
   const declEntries = [];
   // path -> index of the row's first function entry in declEntries; the
-  // row's function entries follow it in `row.functions` order.
+  // row's function entries follow it in `row.functions` order, then its
+  // class entries in `row.classes` order.
   const firstFunctionEntry = new Map();
   for (const row of fileRows) {
     firstFunctionEntry.set(row.path, declEntries.length);
@@ -404,15 +405,19 @@ export function buildFactGraph({ scan, structureAll, importMap, serializationLim
     // null where the id is shared with another declaration (an identity
     // collision), so neither caller nor target can be that node.
     const collided = new Set(collisions.map((c) => c.id));
+    const uniqueId = (index) => {
+      const id = idOf.get(withOrdinals[index]);
+      return collided.has(id) ? null : id;
+    };
     const functionIds = new Map();
+    const classIds = new Map();
     for (const row of javaRows) {
       const first = firstFunctionEntry.get(row.path);
-      functionIds.set(row.path, (row.functions ?? []).map((_, i) => {
-        const id = idOf.get(withOrdinals[first + i]);
-        return collided.has(id) ? null : id;
-      }));
+      const functionCount = (row.functions ?? []).length;
+      functionIds.set(row.path, (row.functions ?? []).map((_, i) => uniqueId(first + i)));
+      classIds.set(row.path, (row.classes ?? []).map((_, i) => uniqueId(first + functionCount + i)));
     }
-    const resolver = createJavaCallResolver({ rows: javaRows, functionIds });
+    const resolver = createJavaCallResolver({ rows: javaRows, functionIds, classIds });
     for (const row of javaRows) {
       const sites = row.callGraph ?? [];
       const outcomes = resolver.resolveFileCalls(row);
@@ -433,6 +438,22 @@ export function buildFactGraph({ scan, structureAll, importMap, serializationLim
           evidence: [{ file: row.path, line: site.lineNumber, source: 'tree-sitter' }],
           provenance: 'extracted',
         });
+      });
+    }
+
+    // Type hierarchy (D10): supertypes inside the repository, and concrete
+    // methods to the abstract methods they implement. Traversal follows
+    // these, so a call to an interface method reaches its implementations.
+    const { typeEdges, methodEdges } = resolver.hierarchyEdges();
+    for (const edge of [...typeEdges, ...methodEdges.map((e) => ({ ...e, type: 'implements' }))]) {
+      addEdge({
+        source: edge.source,
+        target: edge.target,
+        type: edge.type,
+        direction: 'forward',
+        weight: 0.9,
+        evidence: [{ file: edge.file, line: edge.line, source: 'tree-sitter' }],
+        provenance: 'extracted',
       });
     }
   }

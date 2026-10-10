@@ -28,8 +28,8 @@
 
 ## 4. 类型层次边
 
-- [ ] 4.1 事实图按 D10 生成类到类的 `inherits` / `implements` 边，以及方法到方法的 `implements` 边，带声明行证据；仓库外父类型不成边。验证：事实图单测覆盖规格「Java 类型层次边」的三个场景。
-- [ ] 4.2 `retrieve.mjs` 的确定性边类型加入 `inherits`、`implements`。验证：遍历单测——从调用接口方法的函数出发，经 `calls` 与 `implements` 走到实现方法。
+- [x] 4.1 事实图按 D10 生成类到类的 `inherits` / `implements` 边，以及方法到方法的 `implements` 边，带声明行证据；仓库外父类型不成边。验证：事实图单测覆盖规格「Java 类型层次边」的三个场景。
+- [x] 4.2 `retrieve.mjs` 的确定性边类型加入 `inherits`、`implements`。验证：遍历单测——从调用接口方法的函数出发，经 `calls` 与 `implements` 走到实现方法。
 
 ## 5. 固定摘要
 
