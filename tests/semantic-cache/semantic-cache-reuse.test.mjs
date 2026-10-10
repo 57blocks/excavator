@@ -40,6 +40,7 @@ import {
   commitSemanticCacheEntry,
   readSemanticCache,
 } from '../../skills/excavator/semantic-cache.mjs';
+import { readKnowledgeGraph, writeKnowledgeGraph } from '../../skills/excavator/knowledge-graph-store.mjs';
 
 // Exact cache identity frozen by acceptance-oracle.md. Planner expectations
 // keep these fixture values explicit; the disk integration below separately
@@ -190,11 +191,7 @@ function makeCliProject(fixture = makeFixture(), { cache = fixture.semanticCache
   const root = mkdtempSync(join(tmpdir(), 'excavator-semantic-reuse-'));
   const dataDir = join(root, '.excavator');
   mkdirSync(dataDir, { recursive: true });
-  writeFileSync(
-    join(dataDir, 'knowledge-graph.json'),
-    JSON.stringify({ version: '1.0.0', nodes: fixture.nodes, edges: [] }, null, 2),
-    'utf-8',
-  );
+  writeKnowledgeGraph(join(dataDir, 'knowledge-graph.jsonl'), { version: '1.0.0', nodes: fixture.nodes, edges: [] });
   writeFileSync(
     join(dataDir, 'source-manifest.json'),
     JSON.stringify({ sourceRevision: 'directory:oracle', entries: fixture.manifestEntries }, null, 2),
@@ -338,15 +335,15 @@ async function makeIntegrationProject({ seedNodeIds = [ID.A, ID.B, ID.S, ID.T] }
   writeFileSync(join(root, PATH.S), SHARED_1, 'utf-8');
 
   const nodes = makeFixture().nodes.filter((node) => [ID.A, ID.B, ID.M, ID.S, ID.T].includes(node.id));
-  const graphRaw = JSON.stringify({
+  writeKnowledgeGraph(join(dataDir, 'knowledge-graph.jsonl'), {
     version: '1.0.0',
     nodes: nodes.map((node) => ({
       ...node,
       lineRange: node.id === ID.T ? [2, 2] : [1, 1],
     })),
     edges: [],
-  }, null, 2);
-  writeFileSync(join(dataDir, 'knowledge-graph.json'), graphRaw, 'utf-8');
+  });
+  const graphRaw = readFileSync(join(dataDir, 'knowledge-graph.jsonl'), 'utf-8');
   writeIntegrationManifest(root, SHARED_1);
 
   const seeds = [
@@ -370,15 +367,15 @@ async function makeIntegrationProject({ seedNodeIds = [ID.A, ID.B, ID.S, ID.T] }
     });
     if (!result.ok) throw new Error(`failed to seed ${nodeId}: ${JSON.stringify(result)}`);
   }
-  if (readFileSync(join(dataDir, 'knowledge-graph.json'), 'utf-8') !== graphRaw) {
-    throw new Error('semantic-cache seed changed knowledge-graph.json');
+  if (readFileSync(join(dataDir, 'knowledge-graph.jsonl'), 'utf-8') !== graphRaw) {
+    throw new Error('semantic-cache seed changed knowledge-graph.jsonl');
   }
   return { root, dataDir, nodes, graphRaw };
 }
 
 async function planFromIntegrationDisk(root, requestedNodeIds) {
   const dataDir = join(root, '.excavator');
-  const graph = JSON.parse(readFileSync(join(dataDir, 'knowledge-graph.json'), 'utf-8'));
+  const graph = readKnowledgeGraph(join(dataDir, 'knowledge-graph.jsonl'));
   const manifest = JSON.parse(readFileSync(join(dataDir, 'source-manifest.json'), 'utf-8'));
   const semanticCache = await readSemanticCache(root);
   return getPlanner()({
@@ -391,7 +388,7 @@ async function planFromIntegrationDisk(root, requestedNodeIds) {
 
 function verifyPlannedFileSnapshotAndExtractNodeRange(root, item) {
   const dataDir = join(root, '.excavator');
-  const graph = JSON.parse(readFileSync(join(dataDir, 'knowledge-graph.json'), 'utf-8'));
+  const graph = readKnowledgeGraph(join(dataDir, 'knowledge-graph.jsonl'));
   const node = graph.nodes.find((candidate) => candidate.id === item.nodeId);
   if (!node) return { fullLocalSourceVerified: false, status: 'unknown-node' };
 
@@ -921,7 +918,7 @@ describe('semantic-cache reuse — disk integration through verification and exi
   it('checks the frozen whole-file hash before extracting a node range from the same snapshot', async () => {
     const project = await makeIntegrationProject();
     const { root, dataDir, graphRaw } = project;
-    const graphPath = join(dataDir, 'knowledge-graph.json');
+    const graphPath = join(dataDir, 'knowledge-graph.jsonl');
 
     try {
       writeFileSync(join(root, PATH.S), SHARED_2, 'utf-8');
@@ -971,7 +968,7 @@ describe('semantic-cache reuse — disk integration through verification and exi
   it('regenerates every needed node in one changed file, preserves unchanged entries, then fully reuses', async () => {
     const project = await makeIntegrationProject();
     const { root, dataDir, graphRaw } = project;
-    const graphPath = join(dataDir, 'knowledge-graph.json');
+    const graphPath = join(dataDir, 'knowledge-graph.jsonl');
     const cachePath = join(dataDir, 'semantic-cache.json');
     const graphSha = H(graphRaw);
 
@@ -1094,7 +1091,7 @@ describe('semantic-cache reuse — disk integration through verification and exi
   it('commits only a missing overlap difference and preserves every existing entry byte', async () => {
     const project = await makeIntegrationProject({ seedNodeIds: [ID.A, ID.B, ID.T] });
     const { root, dataDir, graphRaw } = project;
-    const graphPath = join(dataDir, 'knowledge-graph.json');
+    const graphPath = join(dataDir, 'knowledge-graph.jsonl');
     const cachePath = join(dataDir, 'semantic-cache.json');
     const graphSha = H(graphRaw);
 
@@ -1224,7 +1221,7 @@ describe('semantic-cache reuse — disk integration through verification and exi
   it('returns the verified answer summary when post-plan source drift makes the existing CAS reject', async () => {
     const project = await makeIntegrationProject();
     const { root, dataDir, graphRaw } = project;
-    const graphPath = join(dataDir, 'knowledge-graph.json');
+    const graphPath = join(dataDir, 'knowledge-graph.jsonl');
     const cachePath = join(dataDir, 'semantic-cache.json');
     const graphSha = H(graphRaw);
 
@@ -1462,20 +1459,16 @@ describe('semantic-cache reuse CLI — current disk inputs and zero writes', () 
         generate: [{ nodeId: ID.A, currentContentHash: H(changedA), reason: 'stale' }],
       });
 
-      const graphPath = join(root, '.excavator', 'knowledge-graph.json');
-      const graph = JSON.parse(readFileSync(graphPath, 'utf-8'));
-      writeFileSync(
-        graphPath,
-        JSON.stringify({ ...graph, nodes: graph.nodes.filter((node) => node.id !== ID.A) }, null, 2),
-        'utf-8',
-      );
+      const graphPath = join(root, '.excavator', 'knowledge-graph.jsonl');
+      const graph = readKnowledgeGraph(graphPath);
+      writeKnowledgeGraph(graphPath, { ...graph, nodes: graph.nodes.filter((node) => node.id !== ID.A) });
       const unknown = runCliReadOnly(root, [ID.A]);
       expect(unknown.status, unknown.stderr).toBe(0);
       expect(JSON.parse(unknown.stdout).unavailable).toEqual([{
         nodeId: ID.A, filePath: null, reason: 'unknown-node',
       }]);
 
-      writeFileSync(graphPath, JSON.stringify(graph, null, 2), 'utf-8');
+      writeKnowledgeGraph(graphPath, graph);
       writeFileSync(
         join(root, '.excavator', 'source-manifest.json'),
         JSON.stringify({
@@ -1526,13 +1519,13 @@ describe('semantic-cache reuse CLI — current disk inputs and zero writes', () 
     const cases = [
       {
         label: 'missing graph',
-        alter: (root) => unlinkSync(join(root, '.excavator', 'knowledge-graph.json')),
-        error: /knowledge-graph\.json not found/,
+        alter: (root) => unlinkSync(join(root, '.excavator', 'knowledge-graph.jsonl')),
+        error: /knowledge-graph\.jsonl not found/,
       },
       {
         label: 'corrupt graph',
-        alter: (root) => writeFileSync(join(root, '.excavator', 'knowledge-graph.json'), '{ nope', 'utf-8'),
-        error: /invalid knowledge-graph\.json/,
+        alter: (root) => writeFileSync(join(root, '.excavator', 'knowledge-graph.jsonl'), '{ nope', 'utf-8'),
+        error: /invalid knowledge-graph\.jsonl/,
       },
       {
         label: 'missing manifest',

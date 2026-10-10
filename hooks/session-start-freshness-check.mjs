@@ -50,7 +50,7 @@ async function main() {
   const dataDir = `${projectRoot}/${DATA_DIR}`;
 
   if (!autoUpdateEnabled(dataDir)) process.exit(1);
-  if (!existsSync(`${dataDir}/knowledge-graph.json`)) process.exit(1);
+  if (!existsSync(`${dataDir}/knowledge-graph.jsonl`)) process.exit(1);
 
   // Resolved relative to THIS file's own location (a sibling of skills/ under
   // the plugin root) rather than via $CLAUDE_PLUGIN_ROOT, so this works the

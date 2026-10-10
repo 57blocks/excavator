@@ -31,6 +31,7 @@ import {
   resolveArchitectureAction,
   collectFactNodeIds,
 } from '../../skills/excavator/semantic-graph.mjs';
+import { readKnowledgeGraph } from '../../skills/excavator/knowledge-graph-store.mjs';
 
 const FIXED_NOW = () => '2024-01-01T00:00:00.000Z';
 
@@ -56,7 +57,7 @@ function sha256OfFile(path) {
 }
 
 function readGraph(root) {
-  return JSON.parse(readFileSync(join(root, '.excavator', 'knowledge-graph.json'), 'utf-8'));
+  return readKnowledgeGraph(join(root, '.excavator', 'knowledge-graph.jsonl'));
 }
 
 describe('full-semantic-isolation — Full and Lazy share the same deterministic fact build', () => {
@@ -110,7 +111,7 @@ describe('full-semantic-isolation — physical isolation of a Full semantic writ
     graph = readGraph(root);
     runNode = graph.nodes.find((n) => n.type === 'function' && n.name === 'run');
     helperNode = graph.nodes.find((n) => n.type === 'function' && n.name === 'helper');
-    factHashBefore = sha256OfFile(join(root, '.excavator', 'knowledge-graph.json'));
+    factHashBefore = sha256OfFile(join(root, '.excavator', 'knowledge-graph.jsonl'));
   });
   afterEach(() => {
     rmSync(root, { recursive: true, force: true });
@@ -150,7 +151,7 @@ describe('full-semantic-isolation — physical isolation of a Full semantic writ
     writeSemanticGraph(join(root, '.excavator'), semanticGraph);
 
     // ── The core assertion: fact fields did not move. ──────────────────────
-    const factHashAfter = sha256OfFile(join(root, '.excavator', 'knowledge-graph.json'));
+    const factHashAfter = sha256OfFile(join(root, '.excavator', 'knowledge-graph.jsonl'));
     expect(factHashAfter).toBe(factHashBefore);
 
     const graphAfter = readGraph(root);

@@ -7,6 +7,7 @@ import { join } from 'node:path';
 import {
   checkFabrication, runValidateGraphScript, runIndependentValidation, PIPELINE_VERSION,
 } from '../../deploy/run-excavator.mjs';
+import { readKnowledgeGraph, writeKnowledgeGraph } from '../../skills/excavator/knowledge-graph-store.mjs';
 
 const repoRoot = process.cwd();
 const cleanup = [];
@@ -151,7 +152,7 @@ describe('runIndependentValidation (task 2.4, no stale-report fourth state)', ()
     };
 
     runIndependentValidation({
-      pluginDir: repoRoot, repoRoot: '/does/not/matter', graphPath: '/does/not/matter/knowledge-graph.json',
+      pluginDir: repoRoot, repoRoot: '/does/not/matter', graphPath: '/does/not/matter/knowledge-graph.jsonl',
       outDir, spawnSyncFn,
     });
 
@@ -166,7 +167,7 @@ describe('runIndependentValidation (task 2.4, no stale-report fourth state)', ()
 
     const spawnSyncFn = () => ({ status: 1, stdout: '', stderr: 'validate-graph.mjs: graph not found\n', error: null });
     const result = runIndependentValidation({
-      pluginDir: repoRoot, repoRoot: '/does/not/matter', graphPath: '/does/not/matter/knowledge-graph.json',
+      pluginDir: repoRoot, repoRoot: '/does/not/matter', graphPath: '/does/not/matter/knowledge-graph.jsonl',
       outDir, spawnSyncFn,
     });
 
@@ -179,15 +180,16 @@ describe('runIndependentValidation (task 2.4, no stale-report fourth state)', ()
   it('a successful (status 0) run reads back the freshly-written report and graph', () => {
     const outDir = mkTmp('excavator-fab-fresh-out-');
     const spawnSyncFn = (cmd, args) => {
-      // Simulate what the real script does: write outPath/reportPath, exit 0.
+      // Simulate what the real script does: write outPath (line-oriented,
+      // like the graph) and reportPath, exit 0.
       const outIdx = args.indexOf('--out');
       const reportIdx = args.indexOf('--report');
-      writeFileSync(args[outIdx + 1], JSON.stringify({ nodes: [], edges: [], project: {} }));
+      writeKnowledgeGraph(args[outIdx + 1], { nodes: [], edges: [], project: {} });
       writeFileSync(args[reportIdx + 1], JSON.stringify({ issues: [] }));
       return { status: 0, stdout: '', stderr: '', error: null };
     };
     const result = runIndependentValidation({
-      pluginDir: repoRoot, repoRoot: '/does/not/matter', graphPath: '/does/not/matter/knowledge-graph.json',
+      pluginDir: repoRoot, repoRoot: '/does/not/matter', graphPath: '/does/not/matter/knowledge-graph.jsonl',
       outDir, spawnSyncFn,
     });
     expect(result.scriptFailure).toBeNull();
@@ -234,14 +236,14 @@ describe('runValidateGraphScript wiring + .excavator/ hash invariance (task 2.4)
       }],
       edges: [], layers: [], coverage: {}, gaps: [],
     };
-    writeFileSync(join(dataDir, 'knowledge-graph.json'), JSON.stringify(graph, null, 2));
+    writeKnowledgeGraph(join(dataDir, 'knowledge-graph.jsonl'), graph);
     writeFileSync(join(dataDir, 'meta.json'), JSON.stringify({ gitCommitHash: 'deadbeef' }, null, 2));
     writeFileSync(join(dataDir, 'fingerprints.json'), JSON.stringify({ some: 'baseline' }, null, 2));
 
     const beforeHashes = hashTree(dataDir);
 
     const outDir = mkTmp('excavator-fab-out-');
-    const graphPath = join(dataDir, 'knowledge-graph.json');
+    const graphPath = join(dataDir, 'knowledge-graph.jsonl');
     const result = runValidateGraphScript({ pluginDir: repoRoot, repoRoot: projectRoot, graphPath, outDir });
     expect(result.status).toBe(0);
 
@@ -249,7 +251,7 @@ describe('runValidateGraphScript wiring + .excavator/ hash invariance (task 2.4)
     expect(afterHashes).toEqual(beforeHashes);
 
     const report = JSON.parse(readFileSync(result.reportPath, 'utf-8'));
-    const validatedGraph = JSON.parse(readFileSync(result.outPath, 'utf-8'));
+    const validatedGraph = readKnowledgeGraph(result.outPath);
     expect(report.issues).toEqual([]);
     expect(validatedGraph.nodes[0].verification).toBe('contradicted');
 

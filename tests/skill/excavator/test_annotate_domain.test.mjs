@@ -19,6 +19,7 @@ import {
   annotateDomain, deriveStepNodes, indexKnowledge, usableRange,
 } from '../../../skills/excavator-domain/annotate-domain.mjs';
 import { validateAgainstSource, createSourceReader } from '../../../skills/excavator/validate-graph.mjs';
+import { writeKnowledgeGraph } from '../../../skills/excavator/knowledge-graph-store.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(__dirname, '../../..');
@@ -285,7 +286,7 @@ describe('annotate-domain CLI', () => {
       step('step:create-order:ghost', { nodeIds: ['function:src/ghost.ts:nope'], filePath: 'src/ghost.ts' }),
     ])), 'utf-8');
     if (withKnowledge) {
-      writeFileSync(join(root, '.excavator', 'knowledge-graph.json'), JSON.stringify(knowledge()), 'utf-8');
+      writeKnowledgeGraph(join(root, '.excavator', 'knowledge-graph.jsonl'), knowledge());
     }
     return { root, intermediate };
   }

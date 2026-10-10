@@ -7,6 +7,7 @@ import { createProjectService } from '../../skills/excavator/project-service.mjs
 import { resolveSourceSnapshot } from '../../skills/excavator/source-snapshot.mjs';
 import { LEGACY_SOURCE_INDEX_FILE, SOURCE_INDEX_FILE } from '../../skills/excavator/source-index-store.mjs';
 import { IDS, makeMcpFixture } from './fixture.mjs';
+import { KNOWLEDGE_GRAPH_FILE, LEGACY_KNOWLEDGE_GRAPH_FILE, writeKnowledgeGraph } from '../../skills/excavator/knowledge-graph-store.mjs';
 
 const cleanup = [];
 afterEach(() => { while (cleanup.length) cleanup.pop()(); });
@@ -45,6 +46,31 @@ describe('shared deterministic project service', () => {
     expect(status.gaps).toContainEqual({
       kind: 'missing-product', product: SOURCE_INDEX_FILE, legacyProductPresent: LEGACY_SOURCE_INDEX_FILE,
     });
+  });
+
+  // openspec: changes/knowledge-graph-line-store, design D5 — zero compat.
+  it('reports a stale legacy knowledge-graph.json as the only graph present, but never reads it', () => {
+    const { fixture, service } = fixtureService();
+    unlinkSync(join(fixture.root, '.excavator', KNOWLEDGE_GRAPH_FILE));
+    // Invalid content: parsing it as the current format would fail instead of
+    // the gap simply naming it present.
+    writeFileSync(join(fixture.root, '.excavator', LEGACY_KNOWLEDGE_GRAPH_FILE), 'not a jsonl file at all');
+
+    const status = service.projectStatus();
+    expect(status.status).toBe('unavailable');
+    expect(status.gaps).toContainEqual({
+      kind: 'missing-product', product: KNOWLEDGE_GRAPH_FILE, legacyProductPresent: LEGACY_KNOWLEDGE_GRAPH_FILE,
+    });
+    expect(service.traverse({ seedIds: [IDS.a] }).error).toMatchObject({ code: 'missing-product' });
+  });
+
+  it('reports a corrupted knowledge-graph.jsonl as an invalid product, not a crash or a partial graph', () => {
+    const { fixture, service } = fixtureService();
+    writeFileSync(join(fixture.root, '.excavator', KNOWLEDGE_GRAPH_FILE), '{"record":"header","format":"not-the-real-format"}\n');
+
+    const status = service.projectStatus();
+    expect(status.status).toBe('unavailable');
+    expect(status.gaps).toContainEqual(expect.objectContaining({ kind: 'invalid-product', product: KNOWLEDGE_GRAPH_FILE }));
   });
 
   it('reports a corrupted source-index.jsonl as an invalid product, not a crash or a partial index', async () => {
@@ -121,7 +147,7 @@ describe('shared deterministic project service', () => {
       nodes: ids.map((id, i) => ({ id, type: 'function', name: `step${i}`, filePath: 'src/same-a.ts', lineRange: [1, 1] })),
       edges: ids.slice(1).map((id) => ({ type: 'calls', source: ids[0], target: id })),
     };
-    writeFileSync(join(fixture.root, '.excavator', 'knowledge-graph.json'), JSON.stringify(graph));
+    writeKnowledgeGraph(join(fixture.root, '.excavator', 'knowledge-graph.jsonl'), graph);
     const first = service.traverse({ seedIds: [ids[0]] });
     expect(first.budget.usedNodes).toBe(80);
     expect(first.boundary).toMatchObject({ truncated: true, reason: 'node-budget' });
@@ -136,19 +162,19 @@ describe('shared deterministic project service', () => {
   it('keeps cache and fact graph byte-identical for a duplicate fresh commit', async () => {
     const { fixture, service } = fixtureService();
     const beforeCache = fixture.readCacheBytes();
-    const beforeGraph = sha(readFileSync(join(fixture.root, '.excavator', 'knowledge-graph.json')));
+    const beforeGraph = sha(readFileSync(join(fixture.root, '.excavator', 'knowledge-graph.jsonl')));
     const fields = { summary: 'New but redundant description.', tags: ['redundant'],
       semanticSourceHash: fixture.manifest.entries.find((e) => e.path === 'src/same-a.ts').contentHash,
       model: 'caller', generatedAt: '2026-09-16T01:00:00.000Z' };
     const result = await service.semanticCommit({ nodeId: IDS.a, filePath: 'src/same-a.ts', fields });
     expect(result.status).toBe('already-fresh');
     expect(fixture.readCacheBytes()).toEqual(beforeCache);
-    expect(sha(readFileSync(join(fixture.root, '.excavator', 'knowledge-graph.json')))).toBe(beforeGraph);
+    expect(sha(readFileSync(join(fixture.root, '.excavator', 'knowledge-graph.jsonl')))).toBe(beforeGraph);
   });
 
   it('rejects forged node/path, stale hash, and Chinese model prose without changing facts', async () => {
     const { fixture, service } = fixtureService();
-    const beforeGraph = sha(readFileSync(join(fixture.root, '.excavator', 'knowledge-graph.json')));
+    const beforeGraph = sha(readFileSync(join(fixture.root, '.excavator', 'knowledge-graph.jsonl')));
     const fields = { summary: 'Loads a local value.', tags: ['load'],
       semanticSourceHash: fixture.manifest.entries.find((e) => e.path === 'src/missing.ts').contentHash,
       model: 'caller', generatedAt: '2026-09-16T01:00:00.000Z' };
@@ -158,7 +184,7 @@ describe('shared deterministic project service', () => {
     expect((await service.semanticCommit({ nodeId: IDS.missing, filePath: 'src/missing.ts',
       fields: { ...fields, summary: '加载本地值。' } })).status).toBe('noncanonical-language');
     expect((await service.semanticCommit({ nodeId: IDS.missing, filePath: 'src/missing.ts', fields })).status).toBe('ok');
-    expect(sha(readFileSync(join(fixture.root, '.excavator', 'knowledge-graph.json')))).toBe(beforeGraph);
+    expect(sha(readFileSync(join(fixture.root, '.excavator', 'knowledge-graph.jsonl')))).toBe(beforeGraph);
   });
 
   it('detects source drift instead of claiming stale artifacts are fresh', () => {

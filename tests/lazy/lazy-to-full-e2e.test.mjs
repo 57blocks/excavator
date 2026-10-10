@@ -50,6 +50,7 @@ import {
 } from '../../skills/excavator/semantic-graph.mjs';
 import { annotateDomain } from '../../skills/excavator-domain/annotate-domain.mjs';
 import { resolveDomainFreshness } from '../../skills/excavator-domain/domain-freshness.mjs';
+import { readKnowledgeGraph } from '../../skills/excavator/knowledge-graph-store.mjs';
 
 const FIXED_NOW = () => '2024-01-01T00:00:00.000Z';
 
@@ -92,7 +93,7 @@ describe('Lazy -> structural retrieval -> on-demand semantics -> Full -> Domain 
     const lazyResult = await runLazyAnalysis({ projectRoot: root, now: FIXED_NOW });
     expect(lazyResult.saveError).toBeNull();
 
-    expect(existsSync(join(dataDir, 'knowledge-graph.json'))).toBe(true);
+    expect(existsSync(join(dataDir, 'knowledge-graph.jsonl'))).toBe(true);
     expect(existsSync(join(dataDir, SOURCE_INDEX_FILE))).toBe(true);
     expect(existsSync(join(dataDir, 'source-manifest.json'))).toBe(true);
     // No semantic products, no LLM batch file yet. The DEEP proof (zero
@@ -104,14 +105,14 @@ describe('Lazy -> structural retrieval -> on-demand semantics -> Full -> Domain 
     expect(existsSync(join(dataDir, 'semantic-graph.json'))).toBe(false);
     expect(existsSync(join(dataDir, 'intermediate', 'batches.json'))).toBe(false);
 
-    const graph = readJson(join(dataDir, 'knowledge-graph.json'));
+    const graph = readKnowledgeGraph(join(dataDir, 'knowledge-graph.jsonl'));
     expect(graph.tour).toEqual([]);
     const runNode = graph.nodes.find((n) => n.type === 'function' && n.name === 'run');
     const helperNode = graph.nodes.find((n) => n.type === 'function' && n.name === 'helper');
     expect(runNode).toBeDefined();
     expect(helperNode).toBeDefined();
 
-    const factHashAfterLazy = sha256OfFile(join(dataDir, 'knowledge-graph.json'));
+    const factHashAfterLazy = sha256OfFile(join(dataDir, 'knowledge-graph.jsonl'));
 
     // ── 2. A structural question stays structural ──────────────────────────
     // "Where is `run`?" is answered from source-index.jsonl + the fact graph
@@ -161,7 +162,7 @@ describe('Lazy -> structural retrieval -> on-demand semantics -> Full -> Domain 
     // The load-bearing invariant of the whole design (plan §4.4, "physical
     // product boundary"): an on-demand semantic write lands ONLY in
     // semantic-cache.json — knowledge-graph.json's fact fields never move.
-    expect(sha256OfFile(join(dataDir, 'knowledge-graph.json'))).toBe(factHashAfterLazy);
+    expect(sha256OfFile(join(dataDir, 'knowledge-graph.jsonl'))).toBe(factHashAfterLazy);
 
     // "a second lookup reuses the cached entry, no re-generation": the
     // node's cache entry is fresh against the CURRENT manifest hash.
@@ -215,8 +216,8 @@ describe('Lazy -> structural retrieval -> on-demand semantics -> Full -> Domain 
     // the core cross-stage assertion of this whole spine (see the "red-when-
     // broken" evidence in the task report: flipping this to `.not.toBe(...)`
     // was verified to fail before being reverted to this form).
-    expect(sha256OfFile(join(dataDir, 'knowledge-graph.json'))).toBe(factHashAfterLazy);
-    const graphAfterFull = readJson(join(dataDir, 'knowledge-graph.json'));
+    expect(sha256OfFile(join(dataDir, 'knowledge-graph.jsonl'))).toBe(factHashAfterLazy);
+    const graphAfterFull = readKnowledgeGraph(join(dataDir, 'knowledge-graph.jsonl'));
     for (const node of graphAfterFull.nodes) {
       expect(node.summary).toBe('');
       expect(node.tags).toEqual([]);
@@ -267,6 +268,6 @@ describe('Lazy -> structural retrieval -> on-demand semantics -> Full -> Domain 
     const staleResult = await resolveDomainFreshness(root);
     expect(staleResult.usable).toBe(false);
     expect(staleResult.status).toBe('stale');
-    expect(sha256OfFile(join(dataDir, 'knowledge-graph.json'))).toBe(factHashAfterLazy);
+    expect(sha256OfFile(join(dataDir, 'knowledge-graph.jsonl'))).toBe(factHashAfterLazy);
   });
 });

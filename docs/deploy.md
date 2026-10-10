@@ -289,14 +289,14 @@ When several stages fail, the exit code is the first failing stage in the order 
 
 Products already in `/work/repo/.excavator/` are never deleted or modified on a failure path.
 
-Files in `/work/out` (none on exit `2`; `run.jsonl`, `validation.json` and `validated-graph.json` absent on a skipped `0` exit):
+Files in `/work/out` (none on exit `2`; `run.jsonl`, `validation.json` and `validated-graph.jsonl` absent on a skipped `0` exit):
 
 | File | Content |
 |---|---|
 | `summary.json` | image commit and Claude Code version, repository HEAD, mode, model, one status + reasons per check (a failed model call carries the provider's error message and HTTP status), token counts by kind, estimated cost, contradicted/unverified counts, and `readCoverage` (`full` only: how many lines of the repository the run read, lower and upper bound) |
 | `run.jsonl` | raw `stream-json` events of the Claude Code session (`full` only) |
 | `validation.json` | independent structural-integrity report (`issues[]`; non-empty means exit `4`) |
-| `validated-graph.json` | the knowledge graph with a per-node/per-edge `verification` status |
+| `validated-graph.jsonl` | the knowledge graph with a per-node/per-edge `verification` status, one JSON record per line like `.excavator/knowledge-graph.jsonl` |
 
 ## 11. Security preconditions
 

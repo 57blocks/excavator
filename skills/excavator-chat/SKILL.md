@@ -6,28 +6,29 @@ argument-hint: "[query]"
 
 # /excavator-chat
 
-Answer questions about this codebase using the knowledge graph in the project's data directory (`.excavator/knowledge-graph.json`).
+Answer questions about this codebase using the knowledge graph in the project's data directory (`.excavator/knowledge-graph.jsonl`).
 
 When the seven `excavator` MCP tools are available and `project_status.data.projectRoot` matches this project, use the same request-local AI routing below with the MCP workflow: `project_status` → explicit-term `recall` → explicit-seed `traverse` as needed → `read_evidence` → `semantic_plan`/`semantic_commit` only for trustworthy node-local English summaries. The host AI still chooses route, search terms, evidence sufficiency, and final answer language. Never treat a truncated `boundary` as complete. If MCP is not registered or is bound to another root, use the CLI/Skill path below; installing this Skill alone does not install MCP. See `docs/mcp.md` at the plugin root.
 
 ## Graph Structure Reference
 
-The knowledge graph JSON has this structure:
-- `project` — {name, description, languages, frameworks, analyzedAt, gitCommitHash}
-- `nodes[]` — each has {id, type, name, filePath?, summary, tags[], complexity, languageNotes?}
+The knowledge graph `knowledge-graph.jsonl` stores one JSON record per line:
+- Line 1 — `{"record":"header", "fields":{…}, "counts":{…}}`: `fields.project` is {name, description, languages, frameworks, analyzedAt, gitCommitHash}; `counts` gives the number of nodes, edges, layers and gaps
+- `{"record":"node","node":{…}}` — one line per node: {id, type, name, filePath?, summary, tags[], complexity, languageNotes?}
   - Code node types: file, function, class, module, concept
   - Non-code node types: config, document, service, table, endpoint, pipeline, schema, resource
   - Domain/knowledge node types: domain, flow, step, article, entity, topic, claim, source
   - IDs use the node type as prefix, e.g. `file:path`, `function:path:name`, `config:path`, `article:path`
-- `edges[]` — each has {source, target, type, direction, weight}
+- `{"record":"edge","edge":{…}}` — one line per edge: {source, target, type, direction, weight}
   - Key types: imports, contains, calls, depends_on, configures, documents, deploys, triggers, contains_flow, flow_step, related, cites
-- `layers[]` — each has {id, name, description, nodeIds[]}
-- `tour[]` — compatibility field; new service graphs always store an empty array and Q&A does not read it
+- `{"record":"layer","layer":{…}}` — one line per layer: {id, name, description, nodeIds[]}
+- `{"record":"tour","step":{…}}` — compatibility records; new service graphs have none and Q&A does not read them
+- `{"record":"coverage",…}` and `{"record":"gap",…}` — the coverage ledger and the named gaps
 
 ## How to Read Efficiently
 
-1. Use Grep to search within the JSON for relevant entries BEFORE reading the full file
-2. Only read sections you need — don't dump the entire graph into context
+1. Grep the file for relevant entries BEFORE reading anything else — every node and edge is one line, so a hit is a whole record (e.g. `grep '"record":"node"' "$DATA_DIR/knowledge-graph.jsonl" | grep 'src/index.ts'`)
+2. Only read the lines you need — never read the whole file into context; it can be hundreds of megabytes
 3. Node names and summaries are the most useful fields for understanding
 4. Edges tell you how components connect — follow imports and calls for dependency chains
 
@@ -41,7 +42,7 @@ The knowledge graph JSON has this structure:
 
    After `$PLUGIN_ROOT` is resolved in step 2, pass those values to `createChatRequestState()` from `<PLUGIN_ROOT>/skills/excavator-chat/request-language.mjs`. Keep the returned state in memory. It deliberately has no `answerLanguage` yet. If an English retrieval expression is rejected, regenerate that expression in English while keeping `$ORIGINAL_QUESTION` and `$LITERAL_IDENTIFIERS` unchanged. **Do not persist request or answer language** to config, cache, graph, metadata, or any other `.excavator/` file.
 
-1. **Check that `.excavator/knowledge-graph.json` exists** in the current project root. If not, tell the user to run `/excavator` first.
+1. **Check that `.excavator/knowledge-graph.jsonl` exists** in the current project root. If not, tell the user to run `/excavator` first.
 
 2. **Check graph freshness before using graph-derived context** — use the ONE shared, deterministic freshness helper instead of computing a separate gitCommitHash/git-diff comparison in this skill:
    - Resolve `$PROJECT_ROOT` and `$PLUGIN_ROOT`:
@@ -96,7 +97,7 @@ This gate applies to every route above and below, including direct structural an
 1. **Evidence verification gate:** before producing answer prose, check every code or business claim against current fact nodes/edges or current source text. A semantic cache entry, summary, layer description, domain result, or English retrieval expression can select where to inspect, but is not evidence by itself. Preserve exact code identifiers and quoted source spans in their source language.
 2. Only after that check, call `finalizeVerifiedAnswerLanguage($CHAT_REQUEST_STATE, { evidenceVerified: true })` from `request-language.mjs`. The helper applies this precedence: explicit answer-language request → current question's predominant natural language → recent identifiable conversation language → English. An identifier-only question therefore falls back to recent conversation language, then English.
 3. Write the final answer in the returned `answerLanguage`. Restate the verified conclusions naturally in that language; do not translate a cached English summary and present the translation as evidence.
-4. Do not persist the selected answer language or rewritten answer. Answer-language changes must leave `.excavator/config.json`, `knowledge-graph.json`, and every semantic product unchanged except for independently justified English node-local cache writes from step (c).
+4. Do not persist the selected answer language or rewritten answer. Answer-language changes must leave `.excavator/config.json`, `knowledge-graph.jsonl`, and every semantic product unchanged except for independently justified English node-local cache writes from step (c).
 
 ## Lazy mode: answer structural questions directly, retrieve on-demand for semantic ones
 
@@ -177,7 +178,7 @@ If `$PLUGIN_ROOT` cannot be resolved, or `$DATA_DIR/source-index.jsonl` does not
 
 **(b) Retrieve — merge candidates, then traverse within budget.**
 
-1. Exact hits: grep the term list (and any literal identifiers) against `nodes[].id` / `.name` / `.type` in `$DATA_DIR/knowledge-graph.json`, exactly as the structural search above already does.
+1. Exact hits: grep the term list (and any literal identifiers) against the node records' `id` / `name` / `type` in `$DATA_DIR/knowledge-graph.jsonl` (one node per line), exactly as the structural search above already does.
 2. BM25 hits over `$DATA_DIR/source-index.jsonl` (line-oriented — read it through the store's own reader, never a bare `JSON.parse`; a whole index can be gigabytes as a single string):
    ```bash
    node --input-type=module -e "
@@ -277,7 +278,7 @@ node "$PLUGIN_ROOT/skills/excavator/semantic-cache-reuse.mjs" "$PROJECT_ROOT" \
 The planner reads the current fact graph, source manifest, and semantic cache for this invocation, then returns `reuse[]`, `generate[]`, `unavailable[]`, and conserving `counts`:
 
 - `reuse[]` is seed/context only. Recheck current facts or source before using any related claim. Never send a reused node to the generator or semantic-cache writer, and never restamp or rewrite its entry.
-- `generate[]` is the only semantic generation loop. Treat each generate item as frozen for this turn. For each item, first read the containing file's complete bytes and confirm their SHA-256 equals that item's `currentContentHash`; this whole-file comparison is the file-level freshness authority. If it does not match, stop processing that item and re-plan. Once it matches, keep that verified file snapshot fixed and extract the node's full local source range from the same snapshot using its `filePath`/`lineRange` in `knowledge-graph.json` (a file node uses the whole file). Do not compare a node-range hash to `currentContentHash` and do not reread a different snapshot for generation. Then write the model-owned `summary` and `tags` in **English**, regardless of the user's question language. Preserve source-owned identifiers and literals verbatim and describe ONLY that node's own responsibility.
+- `generate[]` is the only semantic generation loop. Treat each generate item as frozen for this turn. For each item, first read the containing file's complete bytes and confirm their SHA-256 equals that item's `currentContentHash`; this whole-file comparison is the file-level freshness authority. If it does not match, stop processing that item and re-plan. Once it matches, keep that verified file snapshot fixed and extract the node's full local source range from the same snapshot using its `filePath`/`lineRange` in `knowledge-graph.jsonl` (a file node uses the whole file). Do not compare a node-range hash to `currentContentHash` and do not reread a different snapshot for generation. Then write the model-owned `summary` and `tags` in **English**, regardless of the user's question language. Preserve source-owned identifiers and literals verbatim and describe ONLY that node's own responsibility.
 - `unavailable[]` is a visible degraded result. Report each unavailable node id and its `unknown-node` or `path-not-in-manifest` reason; never generate or write semantics for it.
 
 An all-fresh plan means zero generator calls, zero semantic-cache writer calls, and a byte-identical `semantic-cache.json`, including every existing entry's model, `generatedAt`, and audit. For an overlapping question, preserve every `reuse[]` intersection entry byte-for-byte and generate/commit only the `generate[]` difference. A repeated plan after that commit should reuse the newly fresh entries without another write.

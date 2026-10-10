@@ -29,7 +29,7 @@
  * than a whole file's content hash. The optional strict node/path gate for
  * MCP/Skill callers now rereads the fact graph under the same short lock as
  * the manifest and cache, preventing a forged node id plus valid file path
- * from entering the cache. It reads but never writes knowledge-graph.json.
+ * from entering the cache. It reads but never writes knowledge-graph.jsonl.
  *
  * A commit failure (lock contention, a stale CAS hash, a rejected field, or
  * any I/O error) returns a status object; this module NEVER throws, so a
@@ -55,6 +55,7 @@ import {
   auditSemanticCacheFields,
   isAcceptedLanguageAudit,
 } from './semantic-language-audit.mjs';
+import { KNOWLEDGE_GRAPH_FILE, readKnowledgeGraph } from './knowledge-graph-store.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const pluginRoot = resolve(__dirname, '../..');
@@ -77,7 +78,7 @@ export const DEFAULT_LOCK_TTL_MS = 30_000;
  *  four-state field `verification-state.mjs` already governs for a
  *  knowledge-graph node — so Full mode's Summary-Verifier can record that
  *  verdict beside the cached summary it checked, without ever touching
- *  `knowledge-graph.json`. */
+ *  `knowledge-graph.jsonl`. */
 export const CACHEABLE_FIELDS = Object.freeze([
   'summary', 'tags', 'semanticSourceHash', 'model', 'generatedAt', 'verification',
 ]);
@@ -418,11 +419,11 @@ export async function commitSemanticCacheEntry({
       }
 
       if (verifyNodePath) {
-        const graphPath = join(dataDir, 'knowledge-graph.json');
+        const graphPath = join(dataDir, KNOWLEDGE_GRAPH_FILE);
         if (!fsImpl.existsSync(graphPath)) return { ok: false, status: 'graph-missing' };
         let graph;
         try {
-          graph = JSON.parse(fsImpl.readFileSync(graphPath, 'utf-8'));
+          graph = readKnowledgeGraph(graphPath);
         } catch {
           return { ok: false, status: 'graph-missing' };
         }

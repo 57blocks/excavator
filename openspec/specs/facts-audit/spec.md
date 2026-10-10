@@ -11,7 +11,7 @@ The structural extraction handed to the model SHALL include, per file, functions
 
 #### Scenario: 全量结构抽取可用
 - **WHEN** an analysis run reaches the batching phase
-- **THEN** `intermediate/structure-all.json` exists and covers every file the scanner marked as code
+- **THEN** `intermediate/structure-all.jsonl` exists and covers every file the scanner marked as code
 
 ### Requirement: 身份冲突可见但不改 id
 

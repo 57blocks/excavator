@@ -16,6 +16,7 @@ import { join } from 'node:path';
 import { runLazyAnalysis } from '../../skills/excavator/lazy-analyze.mjs';
 import { applySemanticPatches } from '../../skills/excavator/apply-semantic-patches.mjs';
 import { collectFactNodeIds } from '../../skills/excavator/semantic-graph.mjs';
+import { readKnowledgeGraph } from '../../skills/excavator/knowledge-graph-store.mjs';
 
 const FIXED_NOW = () => '2024-01-01T00:00:00.000Z';
 
@@ -38,7 +39,7 @@ describe('apply-semantic-patches.mjs', () => {
   beforeEach(async () => {
     root = makeFixtureProject();
     await runLazyAnalysis({ projectRoot: root, now: FIXED_NOW });
-    graph = JSON.parse(readFileSync(join(root, '.excavator', 'knowledge-graph.json'), 'utf-8'));
+    graph = readKnowledgeGraph(join(root, '.excavator', 'knowledge-graph.jsonl'));
     runNode = graph.nodes.find((n) => n.type === 'function' && n.name === 'run');
     expect(runNode).toBeDefined();
   });

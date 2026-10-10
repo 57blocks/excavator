@@ -23,6 +23,7 @@ import {
   mergeAnnotations, isEvidenceSuperset,
   NODE_FIELDS, EDGE_FIELDS, PROJECT_FIELDS, ROOT_FIELDS, REPORT_FILES,
 } from '../../../skills/excavator/publish-annotations.mjs';
+import { readKnowledgeGraph, writeKnowledgeGraph } from '../../../skills/excavator/knowledge-graph-store.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(__dirname, '../../..');
@@ -277,7 +278,7 @@ describe('publish-annotations CLI', () => {
     const dataDir = join(root, '.excavator');
     const intermediate = join(dataDir, 'intermediate');
     mkdirSync(intermediate, { recursive: true });
-    writeFileSync(join(dataDir, 'knowledge-graph.json'), JSON.stringify(publishedGraph(), null, 2), 'utf-8');
+    writeKnowledgeGraph(join(dataDir, 'knowledge-graph.jsonl'), publishedGraph());
     if (withAnnotated) {
       writeFileSync(join(intermediate, 'annotated-graph.json'), JSON.stringify(annotatedGraph(), null, 2), 'utf-8');
     }
@@ -330,10 +331,10 @@ describe('publish-annotations CLI', () => {
     const { root, dataDir } = fixture();
     const result = run(root);
     expect(result.status, result.stderr).toBe(0);
-    expect(result.stderr).toContain('knowledge-graph.json');
+    expect(result.stderr).toContain('knowledge-graph.jsonl');
     expect(result.stderr).toContain('node-not-published=1');
 
-    const graph = readJson(join(dataDir, 'knowledge-graph.json'));
+    const graph = readKnowledgeGraph(join(dataDir, 'knowledge-graph.jsonl'));
     expect(graph.nodes.find(n => n.id === 'file:src/app.ts').verification).toBe('dirty');
     expect(graph.edges[0].provenance).toBe('extracted');
     expect(graph.coverage.files).toBe(2);
@@ -353,7 +354,7 @@ describe('publish-annotations CLI', () => {
     const { root, dataDir } = fixture({ withValidated: true });
     const result = run(root);
     expect(result.status, result.stderr).toBe(0);
-    const graph = readJson(join(dataDir, 'knowledge-graph.json'));
+    const graph = readKnowledgeGraph(join(dataDir, 'knowledge-graph.jsonl'));
     expect(graph.gaps.some(g => g.kind === 'anchor-mismatch')).toBe(true);
     const report = readJson(join(dataDir, 'excavator', 'publish.json'));
     expect(report.knowledgeGraph.source).toBe('validated-graph.json');
@@ -375,12 +376,12 @@ describe('publish-annotations CLI', () => {
 
   it('is a no-op with a printed note when the supplement outputs are gone', () => {
     const { root, dataDir } = fixture({ withAnnotated: false, withReports: false });
-    const before = readFileSync(join(dataDir, 'knowledge-graph.json'), 'utf-8');
+    const before = readFileSync(join(dataDir, 'knowledge-graph.jsonl'), 'utf-8');
     const result = run(root);
     expect(result.status, result.stderr).toBe(0);
-    expect(result.stderr).toContain('no annotated knowledge-graph.json found');
+    expect(result.stderr).toContain('no annotated knowledge-graph.jsonl found');
     expect(result.stderr).toContain('no audit or validation report found');
-    expect(readFileSync(join(dataDir, 'knowledge-graph.json'), 'utf-8')).toBe(before);
+    expect(readFileSync(join(dataDir, 'knowledge-graph.jsonl'), 'utf-8')).toBe(before);
   });
 
   it('says so when there is no published graph to publish into', () => {
@@ -395,10 +396,10 @@ describe('publish-annotations CLI', () => {
   it('rewrites the same bytes on a second run', () => {
     const { root, dataDir } = fixture({ withValidated: true, withDomain: true });
     expect(run(root).status).toBe(0);
-    const once = readFileSync(join(dataDir, 'knowledge-graph.json'), 'utf-8');
+    const once = readFileSync(join(dataDir, 'knowledge-graph.jsonl'), 'utf-8');
     const onceDomain = readFileSync(join(dataDir, 'domain-graph.json'), 'utf-8');
     expect(run(root).status).toBe(0);
-    expect(readFileSync(join(dataDir, 'knowledge-graph.json'), 'utf-8')).toBe(once);
+    expect(readFileSync(join(dataDir, 'knowledge-graph.jsonl'), 'utf-8')).toBe(once);
     expect(readFileSync(join(dataDir, 'domain-graph.json'), 'utf-8')).toBe(onceDomain);
   });
 

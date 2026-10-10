@@ -17,6 +17,7 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 import { freshnessOf, readSemanticCache } from './semantic-cache.mjs';
+import { KNOWLEDGE_GRAPH_FILE, readKnowledgeGraph } from './knowledge-graph-store.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const pluginRoot = resolve(__dirname, '../..');
@@ -133,6 +134,17 @@ function parseArgs(argv) {
   return { projectRoot, requestedNodeIds };
 }
 
+function readRequiredGraph(path) {
+  if (!existsSync(path)) {
+    throw new Error(`semantic-cache-reuse: ${KNOWLEDGE_GRAPH_FILE} not found: ${path}`);
+  }
+  try {
+    return readKnowledgeGraph(path);
+  } catch (error) {
+    throw new Error(`semantic-cache-reuse: invalid ${KNOWLEDGE_GRAPH_FILE}: ${error.message}`);
+  }
+}
+
 function readRequiredJson(path, label, expectedArrayField) {
   if (!existsSync(path)) {
     throw new Error(`semantic-cache-reuse: ${label} not found: ${path}`);
@@ -154,7 +166,7 @@ async function main() {
   const projectRoot = resolve(projectRootArg);
   const { resolveDataDir } = await resolveCore(pluginRoot);
   const dataDir = resolveDataDir(projectRoot);
-  const graph = readRequiredJson(join(dataDir, 'knowledge-graph.json'), 'knowledge-graph.json', 'nodes');
+  const graph = readRequiredGraph(join(dataDir, KNOWLEDGE_GRAPH_FILE));
   const manifest = readRequiredJson(join(dataDir, 'source-manifest.json'), 'source-manifest.json', 'entries');
   const semanticCache = await readSemanticCache(projectRoot);
 

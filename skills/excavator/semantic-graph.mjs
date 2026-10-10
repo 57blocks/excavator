@@ -5,7 +5,7 @@
  * The `semantic-graph.json` product and its deterministic write module
  * (openspec: changes/full-semantic-isolation, capability
  * `full-semantic-isolation`, design D2). It is an OVERLAY on top of the
- * deterministic fact graph (`knowledge-graph.json`, built by
+ * deterministic fact graph (`knowledge-graph.jsonl`, built by
  * build-fact-graph.mjs / lazy-analyze.mjs — the SAME builder Full mode now
  * reuses, design D1): it stores architecture `layers` (each `nodeIds[]` a set
  * of REAL fact-graph node ids, resolved via the shared node-identity
@@ -14,7 +14,7 @@
  * `contentLanguage: "en"`, and a `factDigest` freshness field.
  *
  * Naming note: `factDigest` here is the SAME value build-fact-graph.mjs
- * computes and knowledge-graph.json publishes as `project.factsDigest` — this
+ * computes and knowledge-graph.jsonl publishes as `project.factsDigest` — this
  * module names the field `factDigest` (singular "fact") to match the openspec
  * spec/design text for THIS artifact; it is not a second, independently
  * computed digest.
@@ -59,6 +59,7 @@ import {
   auditSemanticGraphFields,
   isAcceptedLanguageAudit,
 } from './semantic-language-audit.mjs';
+import { KNOWLEDGE_GRAPH_FILE, readKnowledgeGraph, readKnowledgeGraphHeader } from './knowledge-graph-store.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const pluginRoot = resolve(__dirname, '../..');
@@ -238,7 +239,7 @@ export function buildSemanticGraph({
   // `extraGaps` lets an upstream step (e.g. apply-semantic-patches.mjs's
   // node-local patch gaps) merge into the SAME overlay artifact rather than
   // inventing a second gap sink — semantic-graph.json is the one place Full
-  // mode's semantic-generation-time gaps live, mirroring how knowledge-graph.json
+  // mode's semantic-generation-time gaps live, mirroring how knowledge-graph.jsonl
   // is the one place fact-layer gaps live.
   const gaps = [...ownGaps, ...(Array.isArray(extraGaps) ? extraGaps : [])].sort(compareGaps);
 
@@ -298,7 +299,7 @@ export function resolveArchitectureAction({ currentFactDigest, existing }) {
   };
 }
 
-/** Every fact-graph node id, as a Set, from an already-loaded knowledge-graph.json. */
+/** Every fact-graph node id, as a Set, from an already-loaded knowledge graph. */
 export function collectFactNodeIds(knowledgeGraph) {
   return new Set((knowledgeGraph?.nodes ?? []).map((n) => n.id));
 }
@@ -423,11 +424,12 @@ async function main() {
   const { resolveDataDir } = await resolveCore(pluginRoot);
   const dataDir = resolveDataDir(projectRoot);
 
-  const graphPath = join(dataDir, 'knowledge-graph.json');
-  const knowledgeGraph = readJson(graphPath, 'knowledge-graph.json');
-  const currentFactDigest = knowledgeGraph?.project?.factsDigest;
+  const graphPath = join(dataDir, KNOWLEDGE_GRAPH_FILE);
+  if (!existsSync(graphPath)) throw new Error(`semantic-graph: ${KNOWLEDGE_GRAPH_FILE} not found: ${graphPath}`);
+  // Only the project header is needed here; never parse the whole graph.
+  const currentFactDigest = readKnowledgeGraphHeader(graphPath).fields.project?.factsDigest;
   if (typeof currentFactDigest !== 'string' || currentFactDigest.length === 0) {
-    throw new Error('semantic-graph: knowledge-graph.json has no project.factsDigest — run the fact build first');
+    throw new Error(`semantic-graph: ${KNOWLEDGE_GRAPH_FILE} has no project.factsDigest — run the fact build first`);
   }
 
   const existing = readSemanticGraph(dataDir);
@@ -456,6 +458,8 @@ async function main() {
   const relations = args.relations ? readJson(resolve(args.relations), 'relations file') : [];
   const extraGaps = args.extraGaps ? readJson(resolve(args.extraGaps), 'extra-gaps file') : [];
 
+  // Writing needs every fact node id, so this action reads the whole graph.
+  const knowledgeGraph = readKnowledgeGraph(graphPath);
   const factNodeIds = collectFactNodeIds(knowledgeGraph);
   let sourceSnapshot = null;
   let factGraphForLanguageAudit = null;

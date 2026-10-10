@@ -48,7 +48,7 @@
 - 现有 `/excavator --full` 保留为一次性别名，等价于 `--mode=full` 加强制重建事实，不持久化配置。
 - `/excavator-chat` 不要求用户选择更新策略；它始终先做轻量的新鲜度检查。
 
-**存量迁移**：默认值翻转为 `lazy` 不得破坏已存在的 `.excavator/` 产物。若项目已有完整的 `knowledge-graph.json`（含非空 summary / layers）与 `semantic-graph.json`，切到 lazy 默认后：事实层照常按 sourceRevision 增量同步，已有语义按 §7.4 的 hash 规则复用或失效，**不清空、不降级**已生成的语义；只有显式 `/excavator --mode=full` 才会主动补齐。首次从 pre-lazy 布局升级时，若缺 `source-manifest.json` / `factDigest`，做一次性确定性重建补齐这些键，语义缓存按新 manifest 重新判断新鲜度。
+**存量迁移**：默认值翻转为 `lazy` 不得破坏已存在的 `.excavator/` 产物。若项目已有完整的 `knowledge-graph.jsonl`（含非空 summary / layers）与 `semantic-graph.json`，切到 lazy 默认后：事实层照常按 sourceRevision 增量同步，已有语义按 §7.4 的 hash 规则复用或失效，**不清空、不降级**已生成的语义；只有显式 `/excavator --mode=full` 才会主动补齐。首次从 pre-lazy 布局升级时，若缺 `source-manifest.json` / `factDigest`，做一次性确定性重建补齐这些键，语义缓存按新 manifest 重新判断新鲜度。
 
 ## 3. SourceSnapshot 与源码版本
 
@@ -148,7 +148,7 @@ skills/excavator/build-fact-graph.mjs
 
 输出：
 
-- `knowledge-graph.json` 的确定性事实投影；
+- `knowledge-graph.jsonl` 的确定性事实投影；
 - coverage 与 gaps；
 - fingerprints；
 - fact digest。
@@ -224,13 +224,13 @@ Lazy 图谱允许：
 | 文件 | 权威内容 | 写入者 |
 |---|---|---|
 | `source-manifest.json` | sourceRevision、selectionDigest、pipelineVersion、文件路径和 content hash | SourceSnapshot |
-| `knowledge-graph.json` | 确定性节点、边、证据、coverage、gaps、factDigest | Fact Builder |
+| `knowledge-graph.jsonl` | 确定性节点、边、证据、coverage、gaps、factDigest | Fact Builder |
 | `source-index.jsonl` | symbol-aware source chunks 的确定性词法索引 | Source Index Builder |
 | `semantic-cache.json` | 节点局部 summary、tags、sourceHash、provenance | Chat / Full |
 | `semantic-graph.json` | Full 生成的语义节点、关系和 layers | Full |
 | `domain-graph.json` | 显式 Domain 分析产物 | Domain |
 
-`knowledge-graph.json` 中的 `summary`、`tags`、`layers` 保持为空或确定性值。LLM 输出只能写入后三个语义产物，不能通过 merge、annotate 或 publish 回写 canonical fact graph。
+`knowledge-graph.jsonl` 中的 `summary`、`tags`、`layers` 保持为空或确定性值。LLM 输出只能写入后三个语义产物，不能通过 merge、annotate 或 publish 回写 canonical fact graph。
 
 ## 5. Lazy 首次运行
 
@@ -360,7 +360,7 @@ source chunk 至少记录 path、owner、symbol、line range、拆分后的 iden
 
 **为什么按需补充不产生重复数据**。缓存的最小单位是**节点自身**（按节点 ID + source hash 去重），不是"路径"或"流程"，所以根本不存在"B→C"这样一条可被重复写入的记录：
 
-- **A→B→C，先问 B→C 再问 A→C**：问 B→C 时缓存 `summary(B)`、`summary(C)`；再问 A→C 时 B、C 按 ID 命中且 hash 未变 → 直接复用，只新算 `summary(A)`。A→B、B→C 这些边是**确定性事实**，由 Fact Builder 去重后写在 `knowledge-graph.json`，chat 只读不写。流程级理解（"A→B→C 合起来做了什么"）**按设计不落缓存**，每次基于事实边 + 节点摘要 + 源码证据重新推理——这是重算，不是重复存储；节点摘要（真正贵的逐文件读取）已被复用。需要流程级复用请走 Domain overlay（§7.5），它按 sourceRevision + factDigest 显式产出并去重。
+- **A→B→C，先问 B→C 再问 A→C**：问 B→C 时缓存 `summary(B)`、`summary(C)`；再问 A→C 时 B、C 按 ID 命中且 hash 未变 → 直接复用，只新算 `summary(A)`。A→B、B→C 这些边是**确定性事实**，由 Fact Builder 去重后写在 `knowledge-graph.jsonl`，chat 只读不写。流程级理解（"A→B→C 合起来做了什么"）**按设计不落缓存**，每次基于事实边 + 节点摘要 + 源码证据重新推理——这是重算，不是重复存储；节点摘要（真正贵的逐文件读取）已被复用。需要流程级复用请走 Domain overlay（§7.5），它按 sourceRevision + factDigest 显式产出并去重。
 - **两个 session 并发问 B→C**：两边都会**各自计算** `summary(B)`（重复的是算力 / token，不是数据）；写入时按 §8 的锁串行化，第二个 session 重读后对同一 node ID 做**幂等 upsert**（覆盖为等价值），不追加第二条。锁只协调"写"、不协调"生成"——即接受偶发重复计算，换取无需跨 session 的生成锁（生成锁会让一个 session 阻塞等另一个，且持有者崩溃会卡死）。
 
 ### 7.4 语义新鲜度
@@ -379,7 +379,7 @@ Git 项目的工作区修改不会改变 HEAD manifest，因此不会让缓存�
 
 ## 8. 缓存并发与持久化
 
-语义缓存写入必须在返回最终回答前尝试完成，但缓存失败不得阻塞回答。`knowledge-graph.json` 不参与这次写入。
+语义缓存写入必须在返回最终回答前尝试完成，但缓存失败不得阻塞回答。`knowledge-graph.jsonl` 不参与这次写入。
 
 最小安全写入协议：
 
@@ -474,7 +474,7 @@ Full 不以逐字保持旧图里所有 module / concept 节点数量为兼容目
 ### 12.4 一致性与缓存
 
 1. 同一源码内容经 GitCommitSnapshot 或 DirectorySnapshot 分析时，确定性事实投影及 factDigest 完全一致。
-2. Chat 或 Full 写入语义后，`knowledge-graph.json` 的 SHA-256 不变。
+2. Chat 或 Full 写入语义后，`knowledge-graph.jsonl` 的 SHA-256 不变。
 3. 可靠的局部语义问题会写入 `semantic-cache.json`，第二次可复用。
 4. 文件 source hash 变化后对应语义立即失效。
 5. 两个并发 Chat 不丢更新；旧 hash 的写入被拒绝。

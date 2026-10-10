@@ -29,17 +29,12 @@
  *      build-source-index.mjs), a term's ordinals are always strictly
  *      increasing — the reader validates this instead of merely assuming it.
  *
- * Writer: buffers lines in memory and flushes them through one file
- * descriptor roughly every 8 MB (a batching heuristic, not a correctness
- * requirement) — it never joins or stringifies the whole index at once.
- *
- * Reader: synchronous (every caller — MCP project-service, sync-fact-graph,
- * the build-source-index CLI, excavator-chat's inline read — uses the index
- * synchronously already, so there is no reason to fan this out into an async
- * streaming API). Reads the file in fixed-size blocks via `readSync`,
- * decodes each block through a `StringDecoder('utf8')` (so a multi-byte
- * UTF-8 character split across a block boundary is never misread), and
- * splits on `\n`. Every record is validated as it is read (D2): the first
+ * Writer and reader: the line-level I/O (buffered ~8 MB flushes on write;
+ * synchronous block reads through a `StringDecoder('utf8')` on read) lives in
+ * `jsonl-lines.mjs`, shared with the knowledge-graph and structure-all
+ * stores. Every caller — MCP project-service, sync-fact-graph, the
+ * build-source-index CLI, excavator-chat's inline read — uses the index
+ * synchronously. Every record is validated as it is read (D2): the first
  * line must be a `header` with the expected `format`; the actual number of
  * chunk/term/file-indexed/file-content-unavailable records read must equal
  * what the header declared; every posting's `chunks`/`tf` arrays must be the
@@ -88,8 +83,7 @@
  *           source-index/spec.md
  */
 
-import { closeSync, openSync, readSync, statSync, writeSync } from 'node:fs';
-import { StringDecoder } from 'node:string_decoder';
+import { DEFAULT_READ_BLOCK_SIZE, readLineFile, writeLineFile } from './jsonl-lines.mjs';
 
 /** The current on-disk file name. One line per record; never a single
  *  whole-document JSON value. */
@@ -103,15 +97,6 @@ export const LEGACY_SOURCE_INDEX_FILE = 'source-index.json';
 /** The `format` value stamped on every header record. Bumping the line
  *  layout in an incompatible way means bumping this string. */
 export const SOURCE_INDEX_FORMAT = 'excavator-source-index-lines/1';
-
-/** Flush the writer's line buffer roughly every this many characters (a
- *  cheap proxy for bytes — see the module doc's "Writer" paragraph). */
-const FLUSH_THRESHOLD_CHARS = 8 * 1024 * 1024;
-
-/** Default read block size for `readSourceIndex`. Callers (mainly tests)
- *  may pass a much smaller `blockSize` to exercise multi-byte characters
- *  split across a block boundary. */
-const DEFAULT_READ_BLOCK_SIZE = 4 * 1024 * 1024;
 
 export class SourceIndexFormatError extends Error {
   constructor(message) {
@@ -137,8 +122,7 @@ function compareStrings(a, b) {
 /**
  * Persist a source index (the shape `buildSourceIndex`/`updateSourceIndex`
  * return) to `path` as `source-index.jsonl`. Never builds the whole index as
- * one string — lines are buffered and flushed through one file descriptor in
- * ~8 MB batches.
+ * one string — one line per record, written through `writeLineFile`.
  *
  * @param {string} path
  * @param {{
@@ -154,29 +138,8 @@ export function writeSourceIndex(path, index) {
   const chunkOrdinalById = new Map(index.chunks.map((chunk, ordinal) => [chunk.id, ordinal]));
   const terms = Object.keys(index.postings).sort(compareStrings);
 
-  const fd = openSync(path, 'w');
-  let buffered = [];
-  let bufferedChars = 0;
-  let lineCount = 0;
-  let maxLineChars = 0;
-
-  function flush() {
-    if (buffered.length === 0) return;
-    writeSync(fd, buffered.join('\n') + '\n');
-    buffered = [];
-    bufferedChars = 0;
-  }
-
-  function emit(record) {
-    const line = JSON.stringify(record);
-    if (line.length > maxLineChars) maxLineChars = line.length;
-    buffered.push(line);
-    bufferedChars += line.length + 1; // +1 for the '\n' this line will get on flush
-    lineCount += 1;
-    if (bufferedChars >= FLUSH_THRESHOLD_CHARS) flush();
-  }
-
-  try {
+  return writeLineFile(path, (push) => {
+    const emit = (record) => push(JSON.stringify(record));
     emit({
       record: 'header',
       format: SOURCE_INDEX_FORMAT,
@@ -204,15 +167,7 @@ export function writeSourceIndex(path, index) {
         tf: postingList.map((entry) => entry.tf),
       });
     }
-    flush();
-  } finally {
-    closeSync(fd);
-  }
-
-  // Read back the real on-disk size rather than accumulating an estimate —
-  // `bytes` must reflect exactly what landed on disk (UTF-8 byte length can
-  // differ from the char-based flush heuristic above for non-ASCII content).
-  return { bytes: statSync(path).size, lines: lineCount, maxLineChars };
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -235,25 +190,8 @@ export function writeSourceIndex(path, index) {
  * }}
  */
 export function readSourceIndex(path, { blockSize = DEFAULT_READ_BLOCK_SIZE } = {}) {
-  const fd = openSync(path, 'r');
-  try {
-    return readRecords(fd, blockSize, path);
-  } finally {
-    closeSync(fd);
-  }
-}
-
-/** Reads and validates every record from an already-open fd, in one
- *  sequential pass. Split out from `readSourceIndex` only so the `finally
- *  closeSync` above stays visually adjacent to the `openSync` that opened
- *  it. */
-function readRecords(fd, blockSize, path) {
-  const decoder = new StringDecoder('utf8');
-  const block = Buffer.allocUnsafe(blockSize);
-
   let header = null;
   let lineNo = 0;
-  let carry = '';
 
   const chunks = [];
   const filesIndexed = [];
@@ -351,26 +289,7 @@ function readRecords(fd, blockSize, path) {
     }
   }
 
-  // Buffers text across block reads, splitting on '\n'; only a complete line
-  // (one with a following '\n') is dispatched to handleLine as it is found.
-  // The one exception is the FINAL call (`final: true`, made once after
-  // `decoder.end()`): a non-empty leftover there is itself the last line of
-  // a file that happens not to end in '\n' — still a real record — but an
-  // EMPTY leftover there is just the harmless trailing split artifact every
-  // well-formed file has (every flush ends in '\n', so splitting always
-  // yields one final empty segment) and must NOT be treated as a spurious
-  // blank line.
-  function consumeText(text, { final = false } = {}) {
-    const parts = (carry + text).split('\n');
-    carry = parts.pop();
-    for (const part of parts) handleLine(part);
-    if (final && carry.length > 0) handleLine(carry);
-  }
-
-  for (let bytesRead; (bytesRead = readSync(fd, block, 0, block.length, null)) > 0;) {
-    consumeText(decoder.write(block.subarray(0, bytesRead)));
-  }
-  consumeText(decoder.end(), { final: true });
+  readLineFile(path, handleLine, { blockSize });
 
   if (header === null) fail('missing header record (file is empty)');
   if (chunks.length !== header.chunkCount) {

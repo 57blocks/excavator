@@ -7,7 +7,7 @@
  * Every consumer of a persisted analysis product — `excavator-chat`,
  * `-diff`, `-explain`, `-onboard`, `-domain`, and the SessionStart
  * auto-update hook — used to compute its OWN staleness signal, each reading
- * `project.gitCommitHash` out of `knowledge-graph.json` and re-deriving a
+ * `project.gitCommitHash` out of the knowledge graph and re-deriving a
  * `git diff`/`git rev-parse HEAD` comparison by hand. That is exactly the ad
  * hoc, per-consumer logic this module replaces: it is the ONE place that
  * decides "is the persisted analysis still current", by comparing the

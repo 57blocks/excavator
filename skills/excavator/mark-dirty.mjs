@@ -24,7 +24,7 @@
  *
  * Usage:
  *   node mark-dirty.mjs <projectRoot>
- *     [--graph <knowledge-graph.json>] [--plan <incremental-plan.json>]
+ *     [--graph <knowledge-graph.jsonl>] [--plan <incremental-plan.json>]
  *     [--fingerprints <fingerprints.json>] [--scan <scan-result.json>]
  *     [--out <intermediate/dirty-graph.json>] [--meta <meta.json>] [--no-meta]
  *
@@ -40,6 +40,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { cosmeticDirtyFiles, publishSupplementMeta, PIPELINE_VERSION } from './annotate-graph.mjs';
 import { mergeVerification } from './verification-state.mjs';
+import { KNOWLEDGE_GRAPH_FILE, readKnowledgeGraph } from './knowledge-graph-store.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const pluginRoot = resolve(__dirname, '../..');
@@ -170,14 +171,14 @@ async function main() {
   const projectRoot = resolve(args.projectRoot);
   const dataDir = resolveDataDir(projectRoot);
   const intermediate = join(dataDir, 'intermediate');
-  const graphPath = resolve(args.graph ?? join(dataDir, 'knowledge-graph.json'));
+  const graphPath = resolve(args.graph ?? join(dataDir, KNOWLEDGE_GRAPH_FILE));
   const planPath = resolve(args.plan ?? join(intermediate, 'incremental-plan.json'));
   const fingerprintPath = resolve(args.fingerprints ?? join(dataDir, 'fingerprints.json'));
   const scanPath = resolve(args.scan ?? join(intermediate, 'scan-result.json'));
   const outPath = resolve(args.out ?? join(intermediate, 'dirty-graph.json'));
   const metaPath = resolve(args.meta ?? join(dataDir, 'meta.json'));
 
-  const graph = readJsonOrNull(graphPath);
+  const graph = existsSync(graphPath) ? readKnowledgeGraph(graphPath) : null;
   if (!graph) {
     process.stderr.write(`mark-dirty: no graph at ${graphPath} — nothing to mark\n`);
     return;

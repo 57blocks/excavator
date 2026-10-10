@@ -7,7 +7,7 @@
  * For PARTIAL_UPDATE / ARCHITECTURE_UPDATE, reads assembled-graph.json plus
  * either the previous or regenerated layers, performs deterministic
  * dangling-reference cleanup and local layer placement, forces `tour: []`, then atomically saves
- * knowledge-graph.json. Only after that succeeds does it patch fingerprints
+ * knowledge-graph.jsonl. Only after that succeeds does it patch fingerprints
  * and advance meta.json. SKIP applies the fingerprint/meta patch only; a
  * generated-artifact-only SKIP deliberately advances nothing.
  */
@@ -23,6 +23,7 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { validateIncrementalSymbols, formatSymbolReport } from './validate-incremental-symbols.mjs';
+import { KNOWLEDGE_GRAPH_FILE, readKnowledgeGraph, writeKnowledgeGraphAtomic } from './knowledge-graph-store.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const pluginRoot = resolve(__dirname, '../..');
@@ -60,6 +61,17 @@ const WHOLE_FILE_TYPES = new Set([
 function readJson(path, fallback = null) {
   if (!existsSync(path)) return fallback;
   return JSON.parse(readFileSync(path, 'utf-8'));
+}
+
+function readGraph(path, fallback = null) {
+  return existsSync(path) ? readKnowledgeGraph(path) : fallback;
+}
+
+/** Atomically write the line-oriented graph, then verify the durable
+ *  target reads back, as atomicWriteJson does for whole-document files. */
+function atomicWriteGraph(path, graph) {
+  writeKnowledgeGraphAtomic(path, graph);
+  readKnowledgeGraph(path);
 }
 
 function atomicWriteJson(path, value) {
@@ -371,29 +383,29 @@ async function main() {
     return;
   }
 
-  const graphPath = join(dataDir, 'knowledge-graph.json');
+  const graphPath = join(dataDir, KNOWLEDGE_GRAPH_FILE);
   const importMapRefreshPaths = Array.isArray(plan.importMapRefreshPaths)
     ? plan.importMapRefreshPaths
     : [];
 
   if (plan.action === 'SKIP') {
-    const previousGraph = readJson(graphPath);
+    const previousGraph = readGraph(graphPath);
     if (!previousGraph || !Array.isArray(previousGraph.nodes) || !Array.isArray(previousGraph.edges)) {
-      throw new Error('knowledge-graph.json is missing or invalid; baseline not advanced');
+      throw new Error(`${KNOWLEDGE_GRAPH_FILE} is missing or invalid; baseline not advanced`);
     }
     const refreshedGraph = refreshGraphImports(
       previousGraph,
       scan.importMap ?? {},
       importMapRefreshPaths,
     );
-    atomicWriteJson(graphPath, {
+    atomicWriteGraph(graphPath, {
       ...refreshedGraph,
       project: projectMetadata(previousGraph.project, plan, scan),
     });
   }
 
   if (plan.action !== 'SKIP') {
-    const previousGraph = readJson(graphPath, {});
+    const previousGraph = readGraph(graphPath, {});
     const assembledRaw = readJson(join(intermediateDir, 'assembled-graph.json'));
     if (!assembledRaw || !Array.isArray(assembledRaw.nodes) || !Array.isArray(assembledRaw.edges)) {
       throw new Error('assembled-graph.json is missing or invalid; baseline not advanced');
@@ -438,7 +450,7 @@ async function main() {
     const symbolReport = await validateIncrementalSymbols(projectRoot, { graph, intermediateDir });
     process.stderr.write(`${formatSymbolReport(symbolReport)}\n`);
     if (!symbolReport.ok) throw new Error('Unresolved incremental symbol loss; baseline not advanced');
-    atomicWriteJson(graphPath, graph);
+    atomicWriteGraph(graphPath, graph);
   }
 
   patchFingerprints(dataDir, plan, patch);

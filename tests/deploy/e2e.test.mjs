@@ -6,6 +6,7 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { PIPELINE_VERSION } from '../../skills/excavator/annotate-graph.mjs';
+import { writeKnowledgeGraph } from '../../skills/excavator/knowledge-graph-store.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(__dirname, '../..');
@@ -99,7 +100,7 @@ describe('run-excavator.mjs end to end, against a fake claude executable (task 2
     expect(summary.tokens.cacheReadInputTokens).toBe(0);
     expect(summary.cacheWarning).toBe(true); // fake-claude always reports zero cache reads
     expect(existsSync(join(outDir, 'run.jsonl'))).toBe(true);
-    expect(existsSync(join(outDir, 'validated-graph.json'))).toBe(true);
+    expect(existsSync(join(outDir, 'validated-graph.jsonl'))).toBe(true);
     expect(existsSync(join(outDir, 'validation.json'))).toBe(true);
   });
 
@@ -111,10 +112,10 @@ describe('run-excavator.mjs end to end, against a fake claude executable (task 2
     // a literal, so this fixture cannot silently drift from it.
     const dataDir = join(repoDir, '.excavator');
     mkdirSync(dataDir, { recursive: true });
-    writeFileSync(join(dataDir, 'knowledge-graph.json'), JSON.stringify({
+    writeKnowledgeGraph(join(dataDir, 'knowledge-graph.jsonl'), {
       project: { pipelineVersion: PIPELINE_VERSION, gitCommitHash: head, model: 'fake-model-e2e', verification: 'verified' },
       nodes: [], edges: [], layers: [], coverage: {}, gaps: [],
-    }, null, 2));
+    });
     writeFileSync(join(dataDir, 'meta.json'), JSON.stringify({ gitCommitHash: head }, null, 2));
 
     // Point at a nonexistent claude binary: if the runner tried to spawn it
@@ -177,7 +178,8 @@ describe('run-excavator.mjs end to end, against a fake claude executable (task 2
   }, 20_000);
 
   // Acceptor review finding: a reused /work/out must never let a stale
-  // validation.json/validated-graph.json from a PRIOR run be read as this
+  // validation.json/validated-graph.jsonl (or a retired validated-graph.json)
+  // from a PRIOR run be read as this
   // run's verdict, and a real validate-graph.mjs failure must be an
   // integrity failure (exit 4), not silently ignored. Uses a fake plugin
   // dir whose validate-graph.mjs always fails, so the failure path is
@@ -187,6 +189,7 @@ describe('run-excavator.mjs end to end, against a fake claude executable (task 2
     const outDir = mkTmp('excavator-e2e-out-');
     writeFileSync(join(outDir, 'validation.json'), JSON.stringify({ issues: [], sentinel: 'STALE-SHOULD-BE-DELETED' }));
     writeFileSync(join(outDir, 'validated-graph.json'), JSON.stringify({ sentinel: 'STALE-SHOULD-BE-DELETED', nodes: [], edges: [], project: {} }));
+    writeFileSync(join(outDir, 'validated-graph.jsonl'), '{"sentinel":"STALE-SHOULD-BE-DELETED"}\n');
 
     const result = runRunner({
       ...baseEnv({ repoDir, outDir, scenario: 'success', head }),
@@ -199,6 +202,7 @@ describe('run-excavator.mjs end to end, against a fake claude executable (task 2
     // run's verdict.
     expect(existsSync(join(outDir, 'validation.json'))).toBe(false);
     expect(existsSync(join(outDir, 'validated-graph.json'))).toBe(false);
+    expect(existsSync(join(outDir, 'validated-graph.jsonl'))).toBe(false);
 
     const summary = readSummary(outDir);
     expect(summary.checks.load.status).toBe('passed');

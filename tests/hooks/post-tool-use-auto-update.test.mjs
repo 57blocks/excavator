@@ -44,7 +44,7 @@ function runHook({
       configContents ?? JSON.stringify({ autoUpdate }),
     );
   }
-  if (createGraph) writeFileSync(join(dataDir, 'knowledge-graph.json'), '{}');
+  if (createGraph) writeFileSync(join(dataDir, 'knowledge-graph.jsonl'), '{}');
 
   const resolvedPluginRoot = pluginRoot ?? join(projectRoot, 'plugin root');
   const result = spawnSync(process.execPath, [hookScript], {

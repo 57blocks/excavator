@@ -58,7 +58,7 @@ Precedence, highest first: `--full` > `--mode=lazy|full` > stored
 
 Either way, the semantic layer never overwrites the fact layer: summaries and
 tags live in `semantic-cache.json` and `semantic-graph.json`, separate from
-`knowledge-graph.json`'s facts.
+`knowledge-graph.jsonl`'s facts.
 
 ## Worktree behavior
 

@@ -35,6 +35,7 @@ import { commitSemanticCacheEntry } from './semantic-cache.mjs';
 import { collectFactNodeIds } from './semantic-graph.mjs';
 import { createGapCollector } from './fact-graph-resolve.mjs';
 import { compareGaps } from './coverage-ledger.mjs';
+import { KNOWLEDGE_GRAPH_FILE, readKnowledgeGraph } from './knowledge-graph-store.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const pluginRoot = resolve(__dirname, '../..');
@@ -172,8 +173,9 @@ async function main() {
   const dataDir = resolveDataDir(projectRoot);
   const intermediate = join(dataDir, 'intermediate');
 
-  const graphPath = join(dataDir, 'knowledge-graph.json');
-  const knowledgeGraph = readJson(graphPath, 'knowledge-graph.json');
+  const graphPath = join(dataDir, KNOWLEDGE_GRAPH_FILE);
+  if (!existsSync(graphPath)) throw new Error(`apply-semantic-patches: ${KNOWLEDGE_GRAPH_FILE} not found: ${graphPath}`);
+  const knowledgeGraph = readKnowledgeGraph(graphPath);
   const factNodeIds = collectFactNodeIds(knowledgeGraph);
 
   const patchesRaw = readJson(resolve(args.patches), 'patches file');

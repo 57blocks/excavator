@@ -49,6 +49,7 @@ import { basename, dirname, extname, isAbsolute, join, resolve, sep } from 'node
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { compareGaps } from './coverage-ledger.mjs';
+import { readKnowledgeGraph, writeKnowledgeGraph } from './knowledge-graph-store.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const pluginRoot = resolve(__dirname, '../..');
@@ -576,7 +577,11 @@ async function main() {
   const reportPath = resolve(args.report ?? join(intermediate, 'validation.json'));
 
   if (!existsSync(graphPath)) throw new Error(`validate-graph: graph not found: ${graphPath}`);
-  const graph = JSON.parse(readFileSync(graphPath, 'utf-8'));
+  // The published graph is line-oriented (knowledge-graph.jsonl); the Full
+  // pipeline's intermediate graphs are still whole-document JSON.
+  const graph = graphPath.endsWith('.jsonl')
+    ? readKnowledgeGraph(graphPath)
+    : JSON.parse(readFileSync(graphPath, 'utf-8'));
 
   const { validated, report } = validateAgainstSource({
     graph,
@@ -586,7 +591,11 @@ async function main() {
 
   mkdirSync(dirname(outPath), { recursive: true });
   mkdirSync(dirname(reportPath), { recursive: true });
-  writeFileSync(outPath, JSON.stringify(validated, null, 2), 'utf-8');
+  if (outPath.endsWith('.jsonl')) {
+    writeKnowledgeGraph(outPath, validated);
+  } else {
+    writeFileSync(outPath, JSON.stringify(validated, null, 2), 'utf-8');
+  }
   writeFileSync(reportPath, JSON.stringify(report, null, 2), 'utf-8');
 
   const c = report.counts;

@@ -18,6 +18,7 @@ import { fileURLToPath } from 'node:url';
 import {
   annotate, matchImportLine, PIPELINE_VERSION,
 } from '../../../skills/excavator/annotate-graph.mjs';
+import { STRUCTURE_ALL_FILE, writeStructureAll } from '../../../skills/excavator/structure-all-store.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const SKILL_DIR = resolve(__dirname, '../../../skills/excavator');
@@ -514,7 +515,7 @@ describe('annotate-graph — determinism and the printed totals', () => {
     tempDirs.push(root);
     const inter = join(root, '.excavator', 'intermediate');
     mkdirSync(inter, { recursive: true });
-    writeFileSync(join(inter, 'structure-all.json'), JSON.stringify(facts()));
+    writeStructureAll(join(inter, STRUCTURE_ALL_FILE), facts());
     writeFileSync(join(inter, 'scan-result.json'), JSON.stringify(scanResult()));
     writeFileSync(join(inter, 'import-map.json'), JSON.stringify(importMapResult()));
     const graph = modelGraph();

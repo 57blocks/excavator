@@ -57,7 +57,7 @@ It writes `$DATA_DIR/intermediate/scan-manifest.json` and prints the node counts
 node <SKILL_DIR>/figma-merge.mjs "$PROJECT_ROOT"
 ```
 
-It combines `scan-manifest.json` + `analysis-batch-*.json`, runs `mergeDesignGraph` (validates, re-attaches `kind:"design"`), and writes `knowledge-graph.json` + `meta.json`. Relay the printed stats and any non-`auto-corrected` issues.
+It combines `scan-manifest.json` + `analysis-batch-*.json`, runs `mergeDesignGraph` (validates, re-attaches `kind:"design"`), and writes `knowledge-graph.jsonl` + `meta.json`. Relay the printed stats and any non-`auto-corrected` issues.
 
 ## Phase 4 — SAVE
 
@@ -66,5 +66,5 @@ It combines `scan-manifest.json` + `analysis-batch-*.json`, runs `mergeDesignGra
    INTER="$DATA_DIR/intermediate"
    find "$INTER" -mindepth 1 -maxdepth 1 -not -name 'scan-manifest.json' -exec rm -rf {} +
    ```
-2. Report a summary: project name, counts by node type, edges by type, layers, and the path `$DATA_DIR/knowledge-graph.json`.
+2. Report a summary: project name, counts by node type, edges by type, layers, and the path `$DATA_DIR/knowledge-graph.jsonl`.
 3. Report that the graph is ready for terminal queries. Do not start a browser or HTTP server.

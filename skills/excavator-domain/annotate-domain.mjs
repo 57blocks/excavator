@@ -38,14 +38,14 @@
  * Domain analysis was anchored against" has exactly one meaning across the
  * codebase). Neither field is invented when its source is unavailable: a
  * project with no `source-manifest.json` yet (never analyzed) or no
- * `knowledge-graph.json` gets NO `sourceRevision`/`factDigest` key at all,
+ * `knowledge-graph.jsonl` gets NO `sourceRevision`/`factDigest` key at all,
  * which `domain-freshness.mjs`'s gate then correctly reads as "never
  * usable" rather than a fabricated match. See `domain-freshness.mjs` for the
  * consumption side of this contract.
  *
  * Usage:
  *   node annotate-domain.mjs <projectRoot>
- *     [--domain <domain-analysis.json>] [--graph <knowledge-graph.json>]
+ *     [--domain <domain-analysis.json>] [--graph <knowledge-graph.jsonl>]
  *     [--out <path>] [--report <path>] [--samples <n>]
  *
  * `--out` defaults to the domain input path, so the save phase picks the
@@ -66,6 +66,7 @@ import {
   DOMAIN_GRAPH_VERSION,
 } from './domain-contract.mjs';
 import { resolveSourceSnapshot } from '../excavator/source-snapshot.mjs';
+import { KNOWLEDGE_GRAPH_FILE, readKnowledgeGraph } from '../excavator/knowledge-graph-store.mjs';
 import {
   auditDomainGraphFields,
   isAcceptedLanguageAudit,
@@ -422,7 +423,7 @@ async function main() {
   const dataDir = resolveDataDir(projectRoot);
   const intermediate = join(dataDir, 'intermediate');
   const domainPath = resolve(args.domain ?? join(intermediate, 'domain-analysis.json'));
-  const graphPath = resolve(args.graph ?? join(dataDir, 'knowledge-graph.json'));
+  const graphPath = resolve(args.graph ?? join(dataDir, KNOWLEDGE_GRAPH_FILE));
   const outPath = resolve(args.out ?? domainPath);
   const reportPath = resolve(args.report ?? join(intermediate, 'domain-annotation.json'));
 
@@ -431,9 +432,7 @@ async function main() {
   // error — the standalone path builds the domain graph from a lightweight
   // scan — but every step then comes back unanchored, said out loud rather
   // than looking anchored.
-  const knowledgeGraph = existsSync(graphPath)
-    ? JSON.parse(readFileSync(graphPath, 'utf-8'))
-    : null;
+  const knowledgeGraph = existsSync(graphPath) ? readKnowledgeGraph(graphPath) : null;
   if (!knowledgeGraph) {
     process.stderr.write(
       `Warning: annotate-domain: no knowledge graph at ${graphPath} — steps cannot be anchored to node ids\n`,

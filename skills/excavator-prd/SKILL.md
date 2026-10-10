@@ -34,7 +34,7 @@ Phase 1 therefore has two halves: read the graph for call-flows, **and** hunt th
 
 ## Graph tools
 
-The graph is an **accelerator, not a dependency**: it speeds up flow discovery (Phase 1a), but the source tree is the ground truth and the skill runs fully without a graph (source-only mode, see Phase 0). Prefer the excavator MCP graph tools when connected; otherwise fall back to `Grep`/`Read` over `.excavator/knowledge-graph.json` and the source tree.
+The graph is an **accelerator, not a dependency**: it speeds up flow discovery (Phase 1a), but the source tree is the ground truth and the skill runs fully without a graph (source-only mode, see Phase 0). Prefer the excavator MCP graph tools when connected; otherwise fall back to `Grep` over `.excavator/knowledge-graph.jsonl` (one node or edge per line) and the source tree.
 
 - `project_status` — snapshot, freshness, gaps.
 - `recall` — find nodes by terms / ids / paths.
@@ -48,7 +48,7 @@ Read efficiently: grep for the entries you need, follow edges for chains, don't 
 ## Phase 0 — Setup
 
 1. Resolve `PROJECT_ROOT` from the path argument (default: `pwd`). Parse `--role` (default `product manager`), `--language`, `--scope`.
-2. Detect whether a graph exists: `project_status`, or check `.excavator/knowledge-graph.json`. Pick the mode — do **not** stop when it is missing:
+2. Detect whether a graph exists: `project_status`, or check `.excavator/knowledge-graph.jsonl`. Pick the mode — do **not** stop when it is missing:
    - **Graph present → graph-assisted mode** (default): use the graph to accelerate flow discovery in Phase 1a, then run the freshness check below.
    - **Graph missing → source-only mode**: skip the freshness check (step 3), tell the user no graph was found so flows will be discovered by reading source directly (offer `/excavator` as a faster future option, but continue now), and treat the source tree as the sole ground truth. Everything else applies unchanged — Phase 1b is already source-based, and Phase 1a has a source-only path.
 3. **Graph-assisted mode only** — check freshness (reuse the shared helper, same pattern as `excavator-onboard`):

@@ -210,8 +210,8 @@ EOF
     return 1
   }
 
-  if [[ ! -f "$tmp_repo/.excavator/knowledge-graph.json" ]]; then
-    echo "$tmp_repo/.excavator/knowledge-graph.json was not produced"
+  if [[ ! -f "$tmp_repo/.excavator/knowledge-graph.jsonl" ]]; then
+    echo "$tmp_repo/.excavator/knowledge-graph.jsonl was not produced"
     rm -rf "$tmp_repo"
     return 1
   fi

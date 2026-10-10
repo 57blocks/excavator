@@ -6,7 +6,7 @@ argument-hint: ["[path] [--mode lazy|full|--full|--auto-update|--no-auto-update|
 
 # /excavator
 
-Analyze the current codebase and produce a `knowledge-graph.json` file in the project's data directory (`.excavator/`). The graph powers terminal question answering through `/excavator-chat`.
+Analyze the current codebase and produce a `knowledge-graph.jsonl` file (one JSON record per line) in the project's data directory (`.excavator/`). The graph powers terminal question answering through `/excavator-chat`.
 
 ## Options
 
@@ -141,13 +141,13 @@ Determine whether to run a full analysis or incremental update.
     - Incremental preparation re-scans the current inventory, so newly supplied exclusions take effect immediately and remove any previously analyzed files they now cover.
 
 4. **Check for subdomain knowledge graphs to merge:**
-   List all `*knowledge-graph*.json` files in `$DATA_DIR/` **excluding** `knowledge-graph.json` itself (e.g. `frontend-knowledge-graph.json`, `backend-knowledge-graph.json`). If any subdomain graphs exist, run the merge script bundled with this skill (located next to this SKILL.md file — use the skill directory path, not the project root):
+   List all `*knowledge-graph*.json` subdomain files in `$DATA_DIR/` (e.g. `frontend-knowledge-graph.json`, `backend-knowledge-graph.json`). The main graph is `knowledge-graph.jsonl` and is never one of them; a leftover whole-document `knowledge-graph.json` is retired and is not a subdomain graph. If any subdomain graphs exist, run the merge script bundled with this skill (located next to this SKILL.md file — use the skill directory path, not the project root):
    ```bash
    python "<SKILL_DIR>/merge-subdomain-graphs.py" "$PROJECT_ROOT"
    ```
-   The script discovers subdomain graphs, loads the existing `knowledge-graph.json` as a base (if present), and merges everything into `knowledge-graph.json` (deduplicating nodes and edges). Report the merge summary to the user, then continue with the merged graph.
+   The script discovers subdomain graphs, loads the existing `knowledge-graph.jsonl` as a base (if present), and merges everything into `knowledge-graph.jsonl` (deduplicating nodes and edges). Report the merge summary to the user, then continue with the merged graph.
 
-5. Check if `$DATA_DIR/knowledge-graph.json` exists. If it does, read it.
+5. Check if `$DATA_DIR/knowledge-graph.jsonl` exists. If it does, read its header — project metadata and node/edge counts — with `node "<SKILL_DIR>/knowledge-graph-store.mjs" header "$DATA_DIR/knowledge-graph.jsonl"`. Never read the whole file into context; it can be hundreds of megabytes.
 6. Check if `$DATA_DIR/meta.json` exists. If it does, read its `gitCommitHash` and store it as `$LAST_COMMIT_HASH`.
 
 6.4. **Agent-owned ignore preflight (before the Lazy/Full branch).** Run this lightweight review only when at least one condition is true:
@@ -211,9 +211,9 @@ Determine whether to run a full analysis or incremental update.
    | Existing graph + unchanged commit hash | Ask the user: "The graph is up to date at this commit. Would you like to: **(a)** run a full rebuild (`--full`), **(b)** run the LLM graph reviewer (`--review`), or **(c)** do nothing?" Then follow their choice. If they pick (c), STOP. |
    | Existing graph + changed files | Run deterministic incremental preparation below |
 
-   **Full-analysis routing.** "Full analysis (all phases)" and `FULL_UPDATE` mean **Phase F** below. Phase 1 through Phase 7 govern the `PARTIAL_UPDATE` / `ARCHITECTURE_UPDATE` / `SKIP` destinations and the `--review` review-only path. Phase F uses the same deterministic fact build as Lazy mode; file-analyzer never authors `knowledge-graph.json` nodes, edges, or layers for a Full run.
+   **Full-analysis routing.** "Full analysis (all phases)" and `FULL_UPDATE` mean **Phase F** below. Phase 1 through Phase 7 govern the `PARTIAL_UPDATE` / `ARCHITECTURE_UPDATE` / `SKIP` destinations and the `--review` review-only path. Phase F uses the same deterministic fact build as Lazy mode; file-analyzer never authors `knowledge-graph.jsonl` nodes, edges, or layers for a Full run.
 
-   **Review-only path:** Copy the existing `knowledge-graph.json` to `$DATA_DIR/intermediate/assembled-graph.json`, then jump directly to Phase 6 step 3.
+   **Review-only path:** Export the existing graph as the review input with `node "<SKILL_DIR>/knowledge-graph-store.mjs" to-json "$DATA_DIR/knowledge-graph.jsonl" "$DATA_DIR/intermediate/assembled-graph.json"`, then jump directly to Phase 6 step 3.
 
    For incremental updates, do **not** construct the changed-file list by hand. Run the bundled reconciliation helper with the previous analyzed commit. Pass `--exclude "$EXCLUDE_PATTERNS"` only when the option is non-empty:
    ```bash
@@ -241,7 +241,7 @@ Determine whether to run a full analysis or incremental update.
 
    | Prepared action | Next step |
    |---|---|
-   | `SKIP` | Run `node "<SKILL_DIR>/finalize-incremental.mjs" "$PROJECT_ROOT"`. It updates graph metadata, scan, fingerprints, and meta for cosmetic or irrelevant changes, but intentionally advances nothing for generated-artifact-only commits. Without `--review`, report zero LLM tokens spent and **STOP**. With explicit `--review`, copy `$DATA_DIR/knowledge-graph.json` to `$DATA_DIR/intermediate/assembled-graph.json` and jump to the `--review` graph-reviewer path in Phase 6 instead of stopping. |
+   | `SKIP` | Run `node "<SKILL_DIR>/finalize-incremental.mjs" "$PROJECT_ROOT"`. It updates graph metadata, scan, fingerprints, and meta for cosmetic or irrelevant changes, but intentionally advances nothing for generated-artifact-only commits. Without `--review`, report zero LLM tokens spent and **STOP**. With explicit `--review`, export the graph with `node "<SKILL_DIR>/knowledge-graph-store.mjs" to-json "$DATA_DIR/knowledge-graph.jsonl" "$DATA_DIR/intermediate/assembled-graph.json"` and jump to the `--review` graph-reviewer path in Phase 6 instead of stopping. |
    | `PARTIAL_UPDATE` | Skip Phase 1; continue with the incremental Phase 1.5/2 path. |
    | `ARCHITECTURE_UPDATE` | Skip Phase 1; continue with incremental analysis, then rerun Phase 4. |
    | `FULL_UPDATE` | Run **Phase F** below, following the full-analysis routing above. Do not patch fingerprints or metadata from the incremental helper; Phase F's own Phase F1 (re)writes them. |
@@ -265,7 +265,7 @@ Determine whether to run a full analysis or incremental update.
    marking), writes `meta.json`'s `excavator.dirtyFiles`, and emits a
    supplement copy at `$DATA_DIR/intermediate/dirty-graph.json`.
    `publish-annotations.mjs` then merges only those fields into
-   `$DATA_DIR/knowledge-graph.json`. Both exit 0 with a printed note when the
+   `$DATA_DIR/knowledge-graph.jsonl`. Both exit 0 with a printed note when the
    plan has no still-analysed cosmetic file, which is the ordinary case for a
    `SKIP` caused by ignored or generated files.
 
@@ -295,7 +295,7 @@ destinations and the `--review` review-only path; those routes skip Phase 1's
 subagent-dispatch SCAN.
 
 The LLM writes only two things here, and never a node id, a source range, a
-structural edge, `coverage`, or `gaps` in `knowledge-graph.json`:
+structural edge, `coverage`, or `gaps` in `knowledge-graph.jsonl`:
 - node-local `summary`/`tags` for an EXISTING fact node, into
   `$DATA_DIR/semantic-cache.json` (Phase F2);
 - architecture `layers` and cross-node `relations`, into the new
@@ -320,14 +320,14 @@ node "<SKILL_DIR>/lazy-analyze.mjs" "$PROJECT_ROOT" [--exclude "$EXCLUDE_PATTERN
 The bracketed segment is optional argv notation, not literal shell syntax. Only when `$EXCLUDE_PATTERNS` is non-empty, use the host-native invocation mechanism to append `--exclude` and its value as two arguments; neither PowerShell nor POSIX should pass `[` or `]`.
 
 This performs SCAN, STRUCTURE-ALL, import-map extraction, the deterministic
-Fact Builder, a deterministic validate pass, and SAVE (`knowledge-graph.json`
+Fact Builder, a deterministic validate pass, and SAVE (`knowledge-graph.jsonl`
 fact fields, `meta.json`, `fingerprints.json`, `source-manifest.json`,
 `source-index.jsonl`) — zero LLM/subagent calls. It is non-destructive: a
 node's prior semantic fields (if any) are preserved,
 not wiped, though Full no longer writes semantics there going forward.
 
-Read the driver's printed `factsDigest`, or re-read
-`$DATA_DIR/knowledge-graph.json`'s `project.factsDigest`; store as
+Read the driver's printed `factsDigest`, or `project.factsDigest` from the
+graph header (`node "<SKILL_DIR>/knowledge-graph-store.mjs" header "$DATA_DIR/knowledge-graph.jsonl"`); store as
 `$FACTS_DIGEST`. On a non-zero exit or a printed `SAVE FAILED`, **STOP** —
 there is no fact graph to generate semantics against.
 
@@ -365,8 +365,10 @@ Report: `[Phase F2] Selecting files needing semantic (re)generation...`
 3. **Dispatch file-analyzer for node-local patches, not a graph.** For each
    batch, dispatch a subagent using the `excavator-file-analyzer` agent
    definition (`agents/excavator-file-analyzer.md`). Run up to **5**
-   subagents concurrently. Read `knowledge-graph.json` and, for this batch's
-   files, list ONLY nodes whose id occurs in
+   subagents concurrently. Read the fact nodes from `knowledge-graph.jsonl`
+   (one record per line, e.g. `jq -c 'select(.record=="node") | .node |
+   {id, type, name, filePath, lineRange}' "$DATA_DIR/knowledge-graph.jsonl"`)
+   and, for this batch's files, list ONLY nodes whose id occurs in
    `$DATA_DIR/intermediate/stale-semantics.json`'s `plan.generate[]` as
    `{id, type, name, filePath, lineRange}`. Do not send `plan.reuse[]` nodes
    to the analyzer, even when they share a file with a stale node. Report
@@ -398,13 +400,15 @@ Report: `[Phase F2] Selecting files needing semantic (re)generation...`
    one (recorded as a semantic gap instead):
 
    ```bash
-   node - "$PROJECT_ROOT" "$DATA_DIR/intermediate/semantic-patch-batch-<i>.json" <<'NODE'
-   const fs = require('fs');
-   const path = require('path');
-   const [projectRoot, batchPath] = process.argv.slice(2);
+   node --input-type=module - "<SKILL_DIR>" "$PROJECT_ROOT" "$DATA_DIR/intermediate/semantic-patch-batch-<i>.json" <<'NODE'
+   import fs from 'node:fs';
+   import path from 'node:path';
+   import { pathToFileURL } from 'node:url';
+   const [skillDir, projectRoot, batchPath] = process.argv.slice(2);
+   const { readKnowledgeGraph } = await import(pathToFileURL(path.join(skillDir, 'knowledge-graph-store.mjs')).href);
    const dataDir = path.join(projectRoot, '.excavator');
    const manifest = JSON.parse(fs.readFileSync(path.join(dataDir, 'source-manifest.json'), 'utf-8'));
-   const graph = JSON.parse(fs.readFileSync(path.join(dataDir, 'knowledge-graph.json'), 'utf-8'));
+   const graph = readKnowledgeGraph(path.join(dataDir, 'knowledge-graph.jsonl'));
    const nodeById = new Map(graph.nodes.map(n => [n.id, n]));
    const hashByPath = new Map(manifest.entries.map(e => [e.path, e.contentHash]));
    const batch = JSON.parse(fs.readFileSync(batchPath, 'utf-8'));
@@ -462,8 +466,8 @@ to Phase 4's own steps 2-3), retargeted at fact nodes and this artifact:
 > — an id that is not in this list is not a real node and will be dropped.
 > Write every model-owned layer name and description in English. Preserve source-owned identifiers, paths, literals, and excerpts verbatim.
 > Project root: `$PROJECT_ROOT`
-> Fact nodes: `<{id, type, name, filePath} for every node in knowledge-graph.json>`
-> Import edges: `<edges with type "imports" from knowledge-graph.json>`
+> Fact nodes: `<{id, type, name, filePath} for every node in knowledge-graph.jsonl>`
+> Import edges: `<edges with type "imports" from knowledge-graph.jsonl>`
 > Write output to: `$DATA_DIR/intermediate/semantic-layers.json` as
 > `{ "layers": [{"id","name","description","nodeIds"}], "relations": [{"id","type","source","target","description"?,"evidence"?}] }`
 
@@ -500,7 +504,7 @@ Report: `[Phase F4] Verifying cached summaries against the source...`
 
 Same three-step shape as Phase 2.5 below, retargeted at
 `semantic-cache.json` via `apply-verification.mjs`'s semantic actions —
-these never read or write a `knowledge-graph.json` node:
+these never read or write a `knowledge-graph.jsonl` node:
 
 ```bash
 node "<SKILL_DIR>/apply-verification.mjs" "$PROJECT_ROOT" prepare-semantic
@@ -597,7 +601,7 @@ node "<SKILL_DIR>/structure-all.mjs" "$PROJECT_ROOT"
 
 Reads `$DATA_DIR/intermediate/scan-result.json`, calls
 `<SKILL_DIR>/extract-structure.mjs` in chunks, and writes
-`$DATA_DIR/intermediate/structure-all.json` — one row per scanned file with
+`$DATA_DIR/intermediate/structure-all.jsonl` — one record per scanned file with
 its `status` (`parsed` / `zero-symbol` / `no-extractor` / `parse-failed`),
 declarations with line ranges, imports and exports with line numbers, and call
 sites.
@@ -740,7 +744,7 @@ node "<SKILL_DIR>/prepare-symbol-retry.mjs" "$PROJECT_ROOT"
 
 This helper revalidates the candidate, records attempt 1/1 for the base/head commits, removes the affected files' new nodes and outgoing edges, clears old numeric batch shards, and preserves other merged results in `batch-0.json`. Current inbound edges from other files remain candidates until merge reconciles their targets against the replacement nodes; candidates with missing targets are dropped. Dispatch only `batches[]` from `incremental-symbol-retry.json`, using each batch's `files`, `batchIndex`, `batchImportData`, `neighborMap`, `previousSymbols`, and `missingSymbols`. Use the normal file-analyzer prompt and output names. The repair must reanalyze each affected file completely, not just append missing nodes. Then rerun merge. Do not rerun prepare to obtain another retry; the attempt remains used for those commits.
 
-If repair preparation, the repair dispatch, or the second merge fails, **STOP** and retain diagnostics. Do not publish or advance `knowledge-graph.json`, `fingerprints.json`, or `meta.json`. Never concatenate old nodes or old semantic edges into the candidate to satisfy the gate. Other merge failures without eligible unresolved files stop immediately. On success, continue to the applicable architecture phase.
+If repair preparation, the repair dispatch, or the second merge fails, **STOP** and retain diagnostics. Do not publish or advance `knowledge-graph.jsonl`, `fingerprints.json`, or `meta.json`. Never concatenate old nodes or old semantic edges into the candidate to satisfy the gate. Other merge failures without eligible unresolved files stop immediately. On success, continue to the applicable architecture phase.
 
 Parser limitation: automatic deletion requires both a deterministic parser and a declaration-coverage adapter. Current adapters cover JavaScript/JSX, TypeScript/TSX, Ruby, Python, Go, Rust, and C++; other grammars remain conservative even if parsing succeeds. Languages without a deterministic structural parser (including `.sh`, `.ps1`, and `.bat`) cannot have missing symbols automatically confirmed as deleted. Such omissions remain `unknown`, even for genuine deletions, and stop publication pending manual investigation or parser support. Supplemental LLM source inspection and regex guesses are not deletion evidence. Callables without explicit class containment require source identity verification even when their IDs/names stay unchanged and neither graph emits class nodes; unsupported or unextractable callables therefore also block in this case. Dots in an opaque ID are not ownership evidence. Stable explicit class ownership can establish preservation without parsing. Identical current descriptors within one HEAD may preserve repair references; this does not waive verification of the previous published symbols across revisions.
 
@@ -754,14 +758,14 @@ This phase is **additive and non-authoring**. The model wrote the graph; this
 step compares it with the structural facts from Phase 1.2 and records what it
 finds. It never deletes or rewrites a node, an edge, an id or a field.
 
-Skip this phase if `$DATA_DIR/intermediate/structure-all.json` does not exist
+Skip this phase if `$DATA_DIR/intermediate/structure-all.jsonl` does not exist
 (Phase 1.2 was skipped or failed).
 
 ```bash
 node "<SKILL_DIR>/annotate-graph.mjs" "$PROJECT_ROOT"
 ```
 
-Inputs (all already on disk): `assembled-graph.json`, `structure-all.json`,
+Inputs (all already on disk): `assembled-graph.json`, `structure-all.jsonl`,
 `scan-result.json`, `import-map.json`. Outputs
 `$DATA_DIR/intermediate/annotated-graph.json` and
 `$DATA_DIR/intermediate/audit.json`.
@@ -1010,7 +1014,7 @@ node "<SKILL_DIR>/finalize-incremental.mjs" "$PROJECT_ROOT"
 This helper validates/deduplicates nodes and edges, reconciles layers, forces `tour: []`, and independently reruns the shared symbol validator on the exact graph to be saved. It then atomically saves the graph, patches only changed fingerprints while preserving all others, removes deleted fingerprints, and only then advances `meta.json`. A cached successful merge report cannot bypass the save check. If symbol loss is first detected here, use the same one-retry procedure above, rerun merge and any required architecture phase, then finalize again; if the retry was already used or remains unresolved, **STOP** with the old graph and baselines intact.
 
 - Without `--review`, report the incremental summary and **STOP**. Do not run Phase 6 or the full-save Phase 7; this is what prevents the ordinary local update from paying for whole-graph review.
-- With `--review`, copy the newly saved `$DATA_DIR/knowledge-graph.json` to `$DATA_DIR/intermediate/assembled-graph.json`, then continue to the full graph-reviewer path in Phase 6. Do not run the inline default reviewer.
+- With `--review`, export the newly saved graph with `node "<SKILL_DIR>/knowledge-graph-store.mjs" to-json "$DATA_DIR/knowledge-graph.jsonl" "$DATA_DIR/intermediate/assembled-graph.json"`, then continue to the full graph-reviewer path in Phase 6. Do not run the inline default reviewer.
 
 ---
 
@@ -1215,7 +1219,11 @@ and continue.
 
 Report to the user: `[Phase 7/7] Saving knowledge graph...`
 
-1. Write the final knowledge graph to `$DATA_DIR/knowledge-graph.json`.
+1. Write the final knowledge graph as one JSON document to `$DATA_DIR/intermediate/final-graph.json`, then store it line by line:
+   ```bash
+   node "<SKILL_DIR>/knowledge-graph-store.mjs" from-json "$DATA_DIR/intermediate/final-graph.json" "$DATA_DIR/knowledge-graph.jsonl"
+   ```
+   This writes `knowledge-graph.jsonl` atomically and removes a leftover whole-document `knowledge-graph.json`.
 
 2. **Generate structural fingerprints baseline.** This creates the basis for future automatic incremental updates and **must succeed before `meta.json` is written** — otherwise auto-update sees a fresh commit hash with no fingerprints to compare against, classifies every file as STRUCTURAL, and escalates to `FULL_UPDATE` on every subsequent commit (issue #152).
 
@@ -1308,7 +1316,7 @@ Phase 7.1 warning and continue with the cleanup; the graph is already saved.
    - Layers identified (with names)
    - Terminal Q&A status through `/excavator-chat`
    - Any warnings from the reviewer
-   - Path to the output file: `$DATA_DIR/knowledge-graph.json`
+   - Path to the output file: `$DATA_DIR/knowledge-graph.jsonl`
 
 6. Report that terminal Q&A is ready through `/excavator-chat`. Do not start a browser or HTTP server.
 

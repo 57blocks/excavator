@@ -1,0 +1,88 @@
+提交序列（一个逻辑步一个 commit，PR 以 merge commit 合入）：
+
+0. `docs(openspec): propose knowledge-graph-line-store`：proposal、design、规格增量、tasks。
+1. `refactor(store): extract shared jsonl line reader`：任务 1.1。
+2. `feat(graph): line-oriented knowledge-graph store with strict round trip`：任务 2.1–2.2。
+3. `feat(facts): incremental facts digest with byte-identical input`：任务 3.1–3.2。
+4. `feat(graph): publish knowledge-graph.jsonl and move every reader and writer to the store`：任务 4.1–4.3、5.1–5.4。原计划拆成两个 commit，但 Lazy 一旦改写 `.jsonl`，所有还读 `.json` 的地方都会失败，单独的第 4 步 commit 会让测试变红、无法按步 revert，所以合为一个。
+5. `feat(structure-all): line-oriented structure-all.jsonl`：任务 6.1。
+6. `docs: point prose, examples and docs at knowledge-graph.jsonl`：任务 7.1–7.2。
+7. `docs(openspec): record knowledge-graph-line-store acceptance and archive`：任务 8.x、9.1。
+
+## 1. 共享按行读取
+
+- [x] 1.1 从 `source-index-store.mjs` 抽出分块按行读取到 `skills/excavator/jsonl-lines.mjs`，`source-index-store.mjs` 改用它。验证：source index 现有测试全绿；同一索引改前改后写出的文件逐字节相同。
+
+## 2. 图谱存储模块
+
+- [x] 2.1 新增 `skills/excavator/knowledge-graph-store.mjs`，按 design D1、D2 实现写、读、只读文件头，以及 `KnowledgeGraphFormatError`。验证：单测覆盖往返严格相等（旧形状、Full 形状）、比较器先验、写两次逐字节相同、几字节分块下的中文与 emoji、缺文件头、计数不符、未知记录类型、重复文件头。
+- [x] 2.2 写出时返回最长单条记录长度；单条记录超过上限时以 `ProductTooLargeError` 具名失败。验证：注入小上限的单测。
+
+## 3. 增量事实摘要
+
+- [x] 3.1 `build-fact-graph.mjs` 按 design D3 逐段计算 `factsDigest`，不再拼整份文本。验证：单测以原整份算法为 oracle，在多个夹具上摘要逐字相同；所有固定摘要测试不变。
+- [x] 3.2 `product-serialization.mjs` 增加按行产物的最长记录余量（`max-record`）；余量表去掉整份摘要文本这一项，改报摘要的最长记录。验证：余量单测与暂存发布测试。
+
+## 4. Lazy 发布
+
+- [x] 4.1 `lazy-analyze.mjs` 的暂存发布改写 `knowledge-graph.jsonl`（新的写入接缝），发布成功后删除旧 `knowledge-graph.json`；`intermediate/fact-graph.json` 改为 `intermediate/fact-graph.jsonl`；`PIPELINE_VERSION` 升为 `lazy-fact-graph/3`；余量表加入 `knowledge-graph.jsonl`、`intermediate/fact-graph.jsonl` 与 `source-index.jsonl` 的最长记录；读取上一份图改用存储模块，不再调用 core `loadGraph`。验证：Lazy 测试与暂存发布的故障注入测试覆盖新接缝。
+- [x] 4.2 删除 core `persistence` 的 `loadGraph`/`saveGraph` 及其测试，其余持久化函数不动。验证：core 测试与 typecheck 通过。
+- [x] 4.3 上限绊线：注入小上限时，整图超限但最长记录不超限的夹具发布成功；单条记录超限的夹具具名失败且最终产物不变。验证：对应测试。
+
+## 5. 所有读写方
+
+- [x] 5.1 MCP 与服务：`project-service.mjs` 改用存储模块；格式错误报告为无效产物；只剩旧文件时报告 `missing-product` 并带 `legacyProductPresent`。验证：MCP 测试；wcp-auth 上改前改后 7 个工具逐项相同。
+- [x] 5.2 语义、增量与 Full 发布脚本：`semantic-cache.mjs`、`semantic-cache-reuse.mjs`、`select-stale-semantics.mjs`、`apply-semantic-patches.mjs`、`semantic-graph.mjs`、`prepare-incremental.mjs`、`finalize-incremental.mjs`、`publish-annotations.mjs`、`apply-verification.mjs`、`mark-dirty.mjs`、`consumer-freshness.mjs`、`project-paths.mjs` 改用存储模块。验证：`tests/full/*`、`tests/lazy/lazy-to-full-e2e.test.mjs`、语义缓存与增量测试全绿。
+- [x] 5.3 领域图、Figma、Python、hooks、deploy：
+  - `annotate-domain.mjs`、`domain-freshness.mjs`（只读文件头）、`figma-merge.mjs` 改用存储模块；
+  - `merge-subdomain-graphs.py` 改为按行读写；
+  - `hooks/*.mjs`、`deploy/run-excavator.mjs`（只读文件头）、`deploy/mcp-smoke.mjs`、`deploy/selftest.sh` 改用新文件；
+  - `validate-graph.mjs` 经 `--graph` 接收路径，按扩展名读写（`.jsonl` 走存储模块，Full 流程的中间图仍是 JSON）；runner 的独立复核输出改为 `validated-graph.jsonl`，清理残留时新旧文件名都清。
+
+  验证：各自测试；Python 跨实现往返测试。
+- [x] 5.4 测试：直接读写旧文件名的测试改用存储模块。验证：全量测试全绿，且没有任何固定摘要变化。
+
+## 6. 结构抽取结果
+
+- [x] 6.1 新增 `structure-all-store.mjs`；`structure-all.mjs` 写出 `intermediate/structure-all.jsonl` 并删除旧文件；`lazy-analyze.mjs`、`annotate-graph.mjs`、`build-source-index.mjs`、`build-fact-graph.mjs` 经该模块读入。验证：往返单测；相关测试全绿；factsDigest 不变。
+
+## 7. 散文
+
+- [x] 7.1 skill、agent、hooks 提示、README 与 docs 中的旧文件名、内联整文件读取代码与 jq 示例改为新文件与新模块。验证：`node scripts/check-refs.mjs` 通过；design D8 的 grep 门通过。
+- [x] 7.2 `openspec/specs` 中受影响的要求按本变更的规格增量同步（归档时完成）。验证：`openspec validate --all --strict`。
+
+## 8. 验收
+
+- [x] 8.1 全量门：`pnpm install --frozen-lockfile && pnpm -r build && pnpm test`、core 测试、`pnpm typecheck`、Python 单测、`node scripts/check-refs.mjs`。`pnpm lint` 不列入：仓库没有 ESLint 9 所需的 `eslint.config.js`，main 上同样无法运行，CI 也不跑它。结果：
+  - 94 个测试文件、1,616 个测试通过（4 个跳过）；core 49 个文件、1,049 个测试通过；
+  - typecheck 退出码 0；Python 单测通过；check-refs 全部解析；`openspec validate --all --strict` 37 项通过。
+- [x] 8.2 摘要不变：design「验收」2 列出的 6 个语料，改后 factsDigest 与改前逐字相同：hadoop、Fineract、wcp-auth、wcp-service-v2、cebreo/unmc、cebreo/uneeg-managementportal。所有固定摘要测试未改动即通过。
+- [x] 8.3 hadoop 真实运行（2014707f8c31，默认堆，不设 `--max-old-space-size`）：完成，确定性校验通过，`metaAdvanced=true`。
+
+  | | 改前（main 19391644） | 改后 |
+  |---|---|---|
+  | 总用时 | 141.3 秒 | 118.6 秒 |
+  | 最大常驻内存 | 3,638,018,048 字节 | 3,220,865,024 字节 |
+  | macOS 峰值内存占用 | 5,141,252,032 字节 | 3,703,904,512 字节 |
+  | 图谱文件 | 430,541,060 字符（JSON，带缩进） | 371,664,636 字节（按行） |
+  | 余量表最高一项 | `knowledge-graph.json` 80.19%（字符） | `fingerprints.json` 14.53%（字节） |
+
+  - 改后余量表按字符计的条目最高 1.33%（`source-manifest.json`）；整份摘要文本这一项已不存在。
+  - 各按行产物的最长记录占上限比例：`knowledge-graph.jsonl` 0.0027%、`fact-graph.jsonl` 0.00%、`source-index.jsonl` 0.22%、`structure-all.jsonl` 0.10%。
+  - **与原验收标准的偏差：** design 原写「三个按行产物的最长记录都低于 0.01%」，`source-index.jsonl` 与 `structure-all.jsonl` 未达到。原因是这条标准在实测前定得过严：
+    - 源码索引一条倒排记录的长度与该词出现的代码块数成正比（source-index 规格已写明），按 hadoop 现规模约需再大 450 倍才触顶；
+    - 结构抽取结果一行是一个文件，受单文件大小上限约束，与仓库大小无关（Fineract 最长一行 0.72% 即为单个大文件）。
+    - 图谱本身的最长记录 0.0027%，满足原标准。design「验收」6 与风险 6 已按实测改写。
+  - Fineract（f9c2fcd，默认堆）：54.5 秒（改前 64 秒），最大常驻内存 1,723,301,888 字节，余量表最高一项 `fingerprints.json` 6.03%（字节）。
+- [x] 8.4 MCP：
+  - wcp-auth 两份副本分别用 main 19391644 与本分支做 Lazy 分析，再经 stdio 调用全部 7 个工具（`project_status`、两次 `recall`、两次 `traverse`、`read_evidence`、`semantic_plan`、`semantic_commit`、提交后再一次 `semantic_plan`、`sync_facts`）；去掉耗时与时间戳、统一副本路径和 `pipelineVersion` 后 10/10 逐项相同。
+  - 装置先验：对源码多一个函数的副本，同一比较报 0/10 相同。
+  - hadoop 上 `deploy/mcp-smoke.mjs` 7 个工具全部 PASS（36 秒）。每次调用读图耗时：改前整份 `JSON.parse` 1,024 ms，改后按行读取 1,011 ms。
+- [x] 8.5 零兼容：
+  - 测试覆盖：只含旧文件的数据目录，`project_status` 不可用并报 `missing-product` + `legacyProductPresent`，旧文件不被解析；
+  - Lazy 发布后旧 `knowledge-graph.json` 与 `intermediate/structure-all.json` 被删除；
+  - 真实语料（hadoop、Fineract、wcp、cebreo）改后的 `.excavator/` 中均已不存在旧文件。
+
+## 9. 归档
+
+- [x] 9.1 规格增量同步到 `openspec/specs/`，变更移入 `openspec/changes/archive/`，`openspec validate --all --strict` 通过。

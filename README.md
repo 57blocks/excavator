@@ -89,7 +89,7 @@ Point `/excavator-knowledge` at a [Karpathy-pattern LLM wiki](https://gist.githu
 /excavator
 ```
 
-A multi-agent pipeline scans your project, extracts every file, function, class, and dependency, then builds a knowledge graph saved to `.excavator/knowledge-graph.json`.
+A multi-agent pipeline scans your project, extracts every file, function, class, and dependency, then builds a knowledge graph saved to `.excavator/knowledge-graph.jsonl` (one JSON record per line).
 
 Then ask questions directly:
 

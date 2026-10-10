@@ -25,6 +25,8 @@ import { fileURLToPath } from 'node:url';
 import {
   annotate, cosmeticDirtyFiles, hostModelName, HOST_MODEL_ENV_VARS, PIPELINE_VERSION,
 } from '../../../skills/excavator/annotate-graph.mjs';
+import { readKnowledgeGraph, writeKnowledgeGraph } from '../../../skills/excavator/knowledge-graph-store.mjs';
+import { STRUCTURE_ALL_FILE, writeStructureAll } from '../../../skills/excavator/structure-all-store.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(__dirname, '../../..');
@@ -275,8 +277,7 @@ describe('annotate publishes dirtyFiles into meta.json', () => {
     writeFile(root, 'src/a.ts', 'export const a = 1;\n');
     writeFileSync(join(intermediate, 'assembled-graph.json'),
       JSON.stringify(graphOf([fileNode('src/a.ts')])), 'utf-8');
-    writeFileSync(join(intermediate, 'structure-all.json'),
-      JSON.stringify(structureOf(['src/a.ts'])), 'utf-8');
+    writeStructureAll(join(intermediate, STRUCTURE_ALL_FILE), structureOf(['src/a.ts']));
     writeFileSync(join(intermediate, 'scan-result.json'),
       JSON.stringify(scanOf(['src/a.ts'])), 'utf-8');
     writeFileSync(join(intermediate, 'import-map.json'), JSON.stringify({ importMap: {} }), 'utf-8');
@@ -372,7 +373,7 @@ function buildBaseline(root, { gitCommitHash }) {
   run(process.execPath, [FINGERPRINTS, fingerprintInput], root);
 
   const nodes = rawScan.files.map(file => fileNode(file.path));
-  writeFileSync(join(dataDir, 'knowledge-graph.json'), JSON.stringify({
+  writeKnowledgeGraph(join(dataDir, 'knowledge-graph.jsonl'), {
     version: '1.0.0',
     project: {
       name: 'fixture', languages: ['typescript'], frameworks: [],
@@ -383,7 +384,7 @@ function buildBaseline(root, { gitCommitHash }) {
     edges: [],
     layers: [{ id: 'layer:source', name: 'Source', description: 'src', nodeIds: nodes.map(n => n.id) }],
     tour: [{ order: 1, title: 'Overview', description: 'read', nodeIds: nodes.map(n => n.id) }],
-  }), 'utf-8');
+  });
   writeFileSync(join(dataDir, 'meta.json'), JSON.stringify({
     gitCommitHash, analyzedFiles: nodes.length, version: '1.0.0',
   }), 'utf-8');
@@ -438,7 +439,7 @@ describe('the cosmetic-change scenario end to end', { timeout: 60_000 }, () => {
 
     run(process.execPath, [STRUCTURE_ALL, root], root);
     // The graph under audit stands in for the merge output of this run.
-    const graph = readJson(join(dataDir, 'knowledge-graph.json'));
+    const graph = readKnowledgeGraph(join(dataDir, 'knowledge-graph.jsonl'));
     graph.nodes.push({
       id: 'function:src/threshold.ts:overLimit', type: 'function', name: 'overLimit',
       filePath: 'src/threshold.ts', lineRange: [1, 3],
@@ -629,8 +630,7 @@ describe('project.model says which model wrote the prose', () => {
     writeFile(root, 'src/a.ts', 'export const a = 1;\n');
     writeFileSync(join(intermediate, 'assembled-graph.json'),
       JSON.stringify(graphOf([fileNode('src/a.ts')])), 'utf-8');
-    writeFileSync(join(intermediate, 'structure-all.json'),
-      JSON.stringify(structureOf(['src/a.ts'])), 'utf-8');
+    writeStructureAll(join(intermediate, STRUCTURE_ALL_FILE), structureOf(['src/a.ts']));
     writeFileSync(join(intermediate, 'scan-result.json'),
       JSON.stringify(scanOf(['src/a.ts'])), 'utf-8');
 

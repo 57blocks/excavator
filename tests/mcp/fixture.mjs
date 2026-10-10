@@ -6,6 +6,7 @@ import { auditSemanticCacheFields } from '../../skills/excavator/semantic-langua
 import { resolveSourceSnapshot } from '../../skills/excavator/source-snapshot.mjs';
 import { PIPELINE_VERSION } from '../../skills/excavator/lazy-analyze.mjs';
 import { SOURCE_INDEX_FILE, writeSourceIndex } from '../../skills/excavator/source-index-store.mjs';
+import { writeKnowledgeGraph } from '../../skills/excavator/knowledge-graph-store.mjs';
 
 export const IDS = Object.freeze({
   a: 'function:src/same-a.ts:save()',
@@ -87,7 +88,7 @@ export function makeMcpFixture({ escapedDataDir = false } = {}) {
     symlinkSync(outside, join(root, '.excavator'));
   } else {
     mkdirSync(join(root, '.excavator'));
-    writeFileSync(join(root, '.excavator', 'knowledge-graph.json'), JSON.stringify(graph));
+    writeKnowledgeGraph(join(root, '.excavator', 'knowledge-graph.jsonl'), graph);
     writeFileSync(join(root, '.excavator', 'source-manifest.json'), JSON.stringify(manifest));
     writeFileSync(join(root, '.excavator', 'semantic-cache.json'), JSON.stringify(cache));
     const chunks = [{ id: 'chunk:a', nodeId: IDS.a, path: 'src/same-a.ts', symbol: 'save', lineRange: [1, 1] }];

@@ -84,14 +84,14 @@
  * scan/structure/import-map scripts perform below goes through that
  * snapshot's `materialize()`-produced temp directory, never `root` directly.
  * The whole produce step runs under `snapshot.runGuarded(producer, publish)`
- * (D7's consistency guard): `publish` — the actual `saveGraph`/fingerprints/
- * `saveMeta`/`source-manifest.json` writes — only ever runs once the guard
+ * (D7's consistency guard): `publish` — the actual knowledge-graph/
+ * fingerprints/meta/`source-manifest.json` writes — only ever runs once the guard
  * has confirmed nothing about the source changed for the run's whole
  * duration; a DirectorySnapshot that keeps drifting retries once and then
  * fails visibly (`saveError` set, `metaAdvanced` false, nothing published).
  * `source-manifest.json` (`sourceRevision`/`selectionDigest`/
  * `pipelineVersion`) is written in the same publish step, right alongside
- * `knowledge-graph.json`/`meta.json`/`fingerprints.json`. This slice does
+ * `knowledge-graph.jsonl`/`meta.json`/`fingerprints.json`. This slice does
  * NOT add revision-based incremental sync (group 5 / `revision-sync`) — every
  * run here is still a full deterministic re-projection.
  *
@@ -106,13 +106,21 @@
  * instead of always rebuilding every chunk — this driver itself stays
  * agnostic to that choice. Staged and replaced in `publish()` as one of the
  * five products in the same all-or-nothing publish (design D4) as
- * `knowledge-graph.json`/`fingerprints.json`/`meta.json`/
+ * `knowledge-graph.jsonl`/`fingerprints.json`/`meta.json`/
  * `source-manifest.json` — it is likewise keyed by `sourceRevision` and must
  * never advance out of step with the manifest.
+ *
+ * knowledge-graph.jsonl (openspec: changes/knowledge-graph-line-store, design
+ * D5): the graph and the intermediate fact projection are written one record
+ * per line through `knowledge-graph-store.mjs`, never as one string; the
+ * previous graph is read back through the same store. A successful publish
+ * deletes a leftover whole-document `knowledge-graph.json`, which nothing
+ * reads.
  *
  * Contract: openspec/changes/lazy-first-run/specs/lazy-analysis/spec.md
  *           openspec/changes/source-snapshot/specs/source-snapshot/spec.md
  *           openspec/changes/hybrid-retrieval/specs/source-index/spec.md
+ *           openspec/specs/fact-graph/spec.md (knowledge-graph-line-store)
  */
 
 import { dirname, join, resolve } from 'node:path';
@@ -131,6 +139,10 @@ import { conservationViolations } from './coverage-ledger.mjs';
 import { mergeSnapshotSelection } from './scan-project.mjs';
 import { resolveSourceSnapshot } from './source-snapshot.mjs';
 import { LEGACY_SOURCE_INDEX_FILE, SOURCE_INDEX_FILE, writeSourceIndex } from './source-index-store.mjs';
+import { STRUCTURE_ALL_FILE, readStructureAll } from './structure-all-store.mjs';
+import {
+  KNOWLEDGE_GRAPH_FILE, LEGACY_KNOWLEDGE_GRAPH_FILE, readKnowledgeGraph, writeKnowledgeGraph,
+} from './knowledge-graph-store.mjs';
 import { DEFAULT_LIMIT_CHARS, ProductTooLargeError, createHeadroomRecorder, serializeJsonProduct } from './product-serialization.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -143,8 +155,10 @@ export const KNOWLEDGE_GRAPH_VERSION = '1.0.0';
  *  Bumped to /2 by openspec change product-serialization-ceiling: source
  *  index persistence changed from a single whole-document `source-index.json`
  *  to line-oriented `source-index.jsonl` (design D1/D6) — an already-analyzed
- *  project's next run must rebuild rather than try to read the old file. */
-export const PIPELINE_VERSION = 'lazy-fact-graph/2';
+ *  project's next run must rebuild rather than try to read the old file.
+ *  Bumped to /3 by openspec change knowledge-graph-line-store: the graph is
+ *  now line-oriented `knowledge-graph.jsonl` (design D5). */
+export const PIPELINE_VERSION = 'lazy-fact-graph/3';
 
 /** Same two-step @excavator/core resolution every sibling script uses. */
 async function resolveCore(root) {
@@ -385,7 +399,7 @@ function defaultBuildSourceIndexStep({ scan, structureAll, readFile, sourceRevis
  *  order (spec: "graph -> fingerprints -> source-index -> meta -> manifest"). */
 const PUBLISH_PRODUCT_ORDER = ['graph', 'fingerprints', 'sourceIndex', 'meta', 'manifest'];
 const PUBLISH_PRODUCT_FILENAME = Object.freeze({
-  graph: 'knowledge-graph.json',
+  graph: KNOWLEDGE_GRAPH_FILE,
   fingerprints: 'fingerprints.json',
   sourceIndex: SOURCE_INDEX_FILE,
   meta: 'meta.json',
@@ -401,6 +415,7 @@ const PUBLISH_PRODUCT_FILENAME = Object.freeze({
 export const defaultPublishFs = Object.freeze({
   mkdir: (path) => mkdirSync(path, { recursive: true }),
   writeFile: (path, content) => writeFileSync(path, content, 'utf-8'),
+  writeKnowledgeGraph: (path, graph, options) => writeKnowledgeGraph(path, graph, options),
   writeSourceIndex: (path, index) => writeSourceIndex(path, index),
   exists: (path) => existsSync(path),
   link: (existingPath, newPath) => linkSync(existingPath, newPath),
@@ -489,12 +504,12 @@ export async function runLazyAnalysis({
   const root = resolve(projectRoot);
 
   const core = await resolveCore(pluginRoot);
-  const { resolveDataDir, loadGraph, sanitiseFilePaths } = core;
+  const { resolveDataDir, sanitiseFilePaths } = core;
 
   const dataDir = resolveDataDir(root);
   const intermediateDir = join(dataDir, 'intermediate');
   mkdirSync(intermediateDir, { recursive: true });
-  const graphPath = join(dataDir, 'knowledge-graph.json');
+  const graphPath = join(dataDir, KNOWLEDGE_GRAPH_FILE);
 
   // SourceSnapshot decides WHAT gets analyzed (design D2/D5) — this driver
   // no longer calls `git rev-parse HEAD` or reads `root` directly to decide
@@ -556,17 +571,20 @@ export async function runLazyAnalysis({
     writeFileSync(scanPath, serializeJsonProduct('scan-result.json', scan, { indent: 2, limit, recorder }), 'utf-8');
 
     // --- Phase 1.2 STRUCTURE-ALL ---------------------------------------------
-    const structurePath = join(intermediateDir, 'structure-all.json');
+    const structurePath = join(intermediateDir, STRUCTURE_ALL_FILE);
     time('structureAll', () => {
       const result = runScript('structure-all.mjs', [materializedDir, '--scan', scanPath, '--out', structurePath]);
       if (result.status !== 0) {
         throw new Error(`lazy-analyze: structure-all.mjs failed: ${result.stderr || result.status}`);
       }
     });
-    const structureAll = readJsonRequired(structurePath, 'structure-all.json');
-    // structure-all.mjs is a child-process (script) output, not something we
-    // serialize in-process — record at least its disk byte count (design D5).
-    recorder.recordBytes('structure-all.json', statSync(structurePath).size, limit);
+    if (!existsSync(structurePath)) throw new Error(`lazy-analyze: ${STRUCTURE_ALL_FILE} not found: ${structurePath}`);
+    const structureStats = {};
+    const structureAll = readStructureAll(structurePath, { stats: structureStats });
+    // structure-all.mjs is a child-process (script) output written one record
+    // per line; what can reach the limit is its longest record
+    // (knowledge-graph-line-store, design D6).
+    recorder.recordMaxRecord(STRUCTURE_ALL_FILE, structureStats.maxLineChars, limit);
 
     // --- Import map (deterministic, extract-import-map.mjs) ------------------
     const importMapInputPath = join(intermediateDir, 'lazy-import-map-input.json');
@@ -590,11 +608,9 @@ export async function runLazyAnalysis({
     let projection;
     time('factGraph', () => {
       projection = buildFactGraph({ scan, structureAll, importMap, serializationLimit: limit, headroomRecorder: recorder });
-      writeFileSync(
-        join(intermediateDir, 'fact-graph.json'),
-        serializeJsonProduct('fact-graph.json', projection, { indent: 2, limit, recorder }),
-        'utf-8',
-      );
+      const written = writeKnowledgeGraph(join(intermediateDir, 'fact-graph.jsonl'), projection, { limit, product: 'fact-graph.jsonl' });
+      recorder.recordMaxRecord('fact-graph.jsonl', written.maxLineChars, limit);
+      rmSync(join(intermediateDir, 'fact-graph.json'), { force: true }); // the retired whole-document copy
     });
 
     // --- source-index (deterministic lexical index, hybrid-retrieval D2) ----
@@ -652,7 +668,7 @@ export async function runLazyAnalysis({
         raw: readFileSync(fingerprintsFilePath, 'utf-8'),
       };
       // fingerprints.json is likewise a child-script (build-fingerprints.mjs)
-      // output — byte count via stat, same as structure-all.json/import-map.json.
+      // output — byte count via stat, same as import-map.json.
       recorder.recordBytes('fingerprints.json', statSync(fingerprintsFilePath).size, limit);
     });
 
@@ -665,7 +681,10 @@ export async function runLazyAnalysis({
     const { name, description } = deterministicProjectMeta(materializedDir);
     const languages = Object.keys(scan.stats?.byLanguage ?? {}).sort();
 
-    const existingGraph = loadGraph(root, { validate: false });
+    // A previous graph only carries semantic fields forward; a corrupt one
+    // fails the run loudly (KnowledgeGraphFormatError), as a corrupt
+    // whole-document file used to.
+    const existingGraph = existsSync(graphPath) ? readKnowledgeGraph(graphPath) : null;
     const merged = mergeFactProjectionIntoGraph(existingGraph, projection);
 
     const knowledgeGraph = {
@@ -712,7 +731,7 @@ export async function runLazyAnalysis({
   // This is why the fingerprints-failure gate now runs FIRST, before any
   // staging begins at all — it is a precondition, not itself a staged write,
   // and the modified lazy-analysis/revision-sync specs require that its
-  // failure leave knowledge-graph.json (and everything else) untouched,
+  // failure leave knowledge-graph.jsonl (and everything else) untouched,
   // which was NOT true before this slice (saveGraph used to run
   // unconditionally, ahead of this check). --------------------------------
   async function publish(product, activeSnapshot) {
@@ -722,7 +741,7 @@ export async function runLazyAnalysis({
       saveState.saveError = product.fingerprints.error;
       product.timings.save = Date.now() - saveStart;
       return; // Nothing staged, nothing touched — spec Scenario "a failed
-      // save must not advance metadata" now covers knowledge-graph.json too.
+      // save must not advance metadata" now covers knowledge-graph.jsonl too.
     }
 
     // Clear out any staging directory a past run left behind because it was
@@ -773,16 +792,22 @@ export async function runLazyAnalysis({
 
     try {
       const sanitised = sanitiseFilePaths(product.knowledgeGraph, root);
-      const content = serializeJsonProduct('knowledge-graph.json', sanitised, { indent: 2, limit, recorder });
-      publishFs.writeFile(staged.graph, content);
-    } catch (err) { return abort('staging', 'knowledge-graph.json', err); }
+      const written = publishFs.writeKnowledgeGraph(staged.graph, sanitised, { limit });
+      recorder.recordMaxRecord(KNOWLEDGE_GRAPH_FILE, written.maxLineChars, limit);
+    } catch (err) { return abort('staging', KNOWLEDGE_GRAPH_FILE, err); }
 
     try {
       publishFs.writeFile(staged.fingerprints, product.fingerprints.raw);
     } catch (err) { return abort('staging', 'fingerprints.json', err); }
 
     try {
-      publishFs.writeSourceIndex(staged.sourceIndex, product.sourceIndex);
+      const written = publishFs.writeSourceIndex(staged.sourceIndex, product.sourceIndex);
+      // The source index serializes its own records; hold it to the same
+      // per-record limit as every other line-oriented product (design D6).
+      if (written.maxLineChars > limit) {
+        throw new ProductTooLargeError({ product: SOURCE_INDEX_FILE, requiredChars: written.maxLineChars, limitChars: limit });
+      }
+      recorder.recordMaxRecord(SOURCE_INDEX_FILE, written.maxLineChars, limit);
     } catch (err) { return abort('staging', SOURCE_INDEX_FILE, err); }
 
     try {
@@ -857,9 +882,10 @@ export async function runLazyAnalysis({
     }
 
     // --- FINALIZE (design D4, step 3): only once every replace succeeded. --
-    if (publishFs.exists(join(dataDir, LEGACY_SOURCE_INDEX_FILE))) {
+    for (const legacyFile of [LEGACY_SOURCE_INDEX_FILE, LEGACY_KNOWLEDGE_GRAPH_FILE]) {
+      if (!publishFs.exists(join(dataDir, legacyFile))) continue;
       try {
-        publishFs.unlink(join(dataDir, LEGACY_SOURCE_INDEX_FILE));
+        publishFs.unlink(join(dataDir, legacyFile));
       } catch {
         // Best-effort — a leftover legacy file is inert (never read) even if
         // this cleanup itself fails; it is retried on the next publish.

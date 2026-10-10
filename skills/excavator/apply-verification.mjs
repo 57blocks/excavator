@@ -54,7 +54,7 @@
  *   node apply-verification.mjs <projectRoot> prepare-semantic [--sample <n>] [--batch-size <n>]
  *   node apply-verification.mjs <projectRoot> apply-semantic
  *   node apply-verification.mjs <projectRoot> skip-semantic
- * These NEVER read or write `knowledge-graph.json`'s node fields — see
+ * These NEVER read or write `knowledge-graph.jsonl`'s node fields — see
  * `prepareSemanticVerification`/`applySemanticVerification` below.
  *
  * Determinism: no timestamps; nodes ordered by id; sampling is a fixed stride,
@@ -78,6 +78,7 @@ import {
 import { compareGaps } from './coverage-ledger.mjs';
 import { resolveWithinRoot } from './validate-graph.mjs';
 import { VERIFICATION_SEVERITY, mergeVerification } from './verification-state.mjs';
+import { KNOWLEDGE_GRAPH_FILE, readKnowledgeGraph } from './knowledge-graph-store.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const pluginRoot = resolve(__dirname, '../..');
@@ -359,7 +360,7 @@ export function prepareSemanticVerification({
 
 /**
  * Write the verdicts into semantic-cache entries' `verification` field.
- * NEVER touches `knowledge-graph.json` — it does not even take a graph as an
+ * NEVER touches `knowledge-graph.jsonl` — it does not even take a graph as an
  * argument. Returns a new semantic-cache object; the caller persists it.
  *
  * @param {{
@@ -804,7 +805,7 @@ export function readVerdictFiles(dir) {
   return { verdicts, files };
 }
 
-/** Fact nodes usable as verification anchors, straight from knowledge-graph.json. */
+/** Fact nodes usable as verification anchors, straight from knowledge-graph.jsonl. */
 function factNodesFrom(knowledgeGraph) {
   return (knowledgeGraph?.nodes ?? []).map((n) => ({ id: n.id, filePath: n.filePath, lineRange: n.lineRange }));
 }
@@ -817,7 +818,9 @@ async function runSemanticAction(args, projectRoot, dataDir, intermediate) {
   const archivePath = resolve(args.archive ?? join(intermediate, 'semantic-contradicted-summaries.json'));
   const cachePath = join(dataDir, 'semantic-cache.json');
 
-  const knowledgeGraph = readJson(join(dataDir, 'knowledge-graph.json'), 'knowledge-graph.json');
+  const graphPath = join(dataDir, KNOWLEDGE_GRAPH_FILE);
+  if (!existsSync(graphPath)) throw new Error(`apply-verification: ${KNOWLEDGE_GRAPH_FILE} not found: ${graphPath}`);
+  const knowledgeGraph = readKnowledgeGraph(graphPath);
   const factNodes = factNodesFrom(knowledgeGraph);
 
   if (args.action === 'prepare-semantic') {

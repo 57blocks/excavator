@@ -21,6 +21,7 @@ import {
   DOMAIN_GRAPH_VERSION,
 } from '../../skills/excavator-domain/domain-contract.mjs';
 import { runLazyAnalysis } from '../../skills/excavator/lazy-analyze.mjs';
+import { readKnowledgeGraph, writeKnowledgeGraph } from '../../skills/excavator/knowledge-graph-store.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(__dirname, '../..');
@@ -135,7 +136,7 @@ describe('annotateDomain stamps domain freshness keys at the top level', () => {
     const dataDir = join(root, '.excavator');
     const intermediate = join(dataDir, 'intermediate');
     mkdirSync(intermediate, { recursive: true });
-    writeFileSync(join(dataDir, 'knowledge-graph.json'), JSON.stringify(knowledge('d'.repeat(64))), 'utf-8');
+    writeKnowledgeGraph(join(dataDir, 'knowledge-graph.jsonl'), knowledge('d'.repeat(64)));
     writeFileSync(
       join(dataDir, 'source-manifest.json'),
       JSON.stringify({ sourceRevision: 'directory:' + 'e'.repeat(64), selectionDigest: 'x', pipelineVersion: 1 }),
@@ -156,7 +157,7 @@ describe('annotateDomain stamps domain freshness keys at the top level', () => {
     const dataDir = join(root, '.excavator');
     const intermediate = join(dataDir, 'intermediate');
     mkdirSync(intermediate, { recursive: true });
-    writeFileSync(join(dataDir, 'knowledge-graph.json'), JSON.stringify(knowledge()), 'utf-8');
+    writeKnowledgeGraph(join(dataDir, 'knowledge-graph.jsonl'), knowledge());
     writeFileSync(join(intermediate, 'domain-analysis.json'), JSON.stringify(domain()), 'utf-8');
 
     const result = spawnSync(process.execPath, [ANNOTATE_DOMAIN, root], { encoding: 'utf-8', cwd: repoRoot });
@@ -171,7 +172,7 @@ describe('annotateDomain stamps domain freshness keys at the top level', () => {
     const dataDir = join(root, '.excavator');
     const intermediate = join(dataDir, 'intermediate');
     mkdirSync(intermediate, { recursive: true });
-    writeFileSync(join(dataDir, 'knowledge-graph.json'), JSON.stringify(knowledge()), 'utf-8');
+    writeKnowledgeGraph(join(dataDir, 'knowledge-graph.jsonl'), knowledge());
     writeFileSync(join(intermediate, 'domain-analysis.json'), JSON.stringify(domain([{
       id: 'domain:leave', type: 'domain', name: 'Leave',
       summary: '处理请假请求。', tags: ['leave'], complexity: 'simple',
@@ -291,7 +292,7 @@ describe('resolveDomainFreshness — end-to-end over real files', () => {
 
     await runLazyAnalysis({ projectRoot: root, now: FIXED_NOW });
     const dataDir = join(root, '.excavator');
-    const graph = JSON.parse(readFileSync(join(dataDir, 'knowledge-graph.json'), 'utf-8'));
+    const graph = readKnowledgeGraph(join(dataDir, 'knowledge-graph.jsonl'));
     const manifest = JSON.parse(readFileSync(join(dataDir, 'source-manifest.json'), 'utf-8'));
 
     const { annotated } = annotateDomain({
@@ -312,7 +313,7 @@ describe('resolveDomainFreshness — end-to-end over real files', () => {
 
     await runLazyAnalysis({ projectRoot: root, now: FIXED_NOW });
     const dataDir = join(root, '.excavator');
-    const graph = JSON.parse(readFileSync(join(dataDir, 'knowledge-graph.json'), 'utf-8'));
+    const graph = readKnowledgeGraph(join(dataDir, 'knowledge-graph.jsonl'));
     const manifest = JSON.parse(readFileSync(join(dataDir, 'source-manifest.json'), 'utf-8'));
 
     const { annotated } = annotateDomain({
@@ -331,7 +332,7 @@ describe('resolveDomainFreshness — end-to-end over real files', () => {
 
   it('is missing when no domain-graph.json exists yet', async () => {
     mkdirSync(join(root, '.excavator'), { recursive: true });
-    writeFileSync(join(root, '.excavator', 'knowledge-graph.json'), JSON.stringify(knowledge()), 'utf-8');
+    writeKnowledgeGraph(join(root, '.excavator', 'knowledge-graph.jsonl'), knowledge());
     const result = await resolveDomainFreshness(root);
     expect(result.usable).toBe(false);
     expect(result.status).toBe('missing');
@@ -343,7 +344,7 @@ describe('resolveDomainFreshness — end-to-end over real files', () => {
     writeFileSync(join(root, 'src', 'a.ts'), 'export function run(): void {}\n');
     await runLazyAnalysis({ projectRoot: root, now: FIXED_NOW });
     const dataDir = join(root, '.excavator');
-    const graph = JSON.parse(readFileSync(join(dataDir, 'knowledge-graph.json'), 'utf-8'));
+    const graph = readKnowledgeGraph(join(dataDir, 'knowledge-graph.jsonl'));
     const manifest = JSON.parse(readFileSync(join(dataDir, 'source-manifest.json'), 'utf-8'));
     const { annotated } = annotateDomain({ domainGraph: domain(), knowledgeGraph: graph, sourceRevision: manifest.sourceRevision });
     writeFileSync(join(dataDir, 'domain-graph.json'), JSON.stringify(annotated), 'utf-8');

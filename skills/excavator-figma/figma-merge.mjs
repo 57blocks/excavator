@@ -1,7 +1,8 @@
 #!/usr/bin/env node
-import { readFileSync, writeFileSync, readdirSync } from "node:fs";
+import { readFileSync, writeFileSync, readdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { mergeDesignGraph } from "@excavator/core/figma";
+import { KNOWLEDGE_GRAPH_FILE, LEGACY_KNOWLEDGE_GRAPH_FILE, writeKnowledgeGraph } from "../excavator/knowledge-graph-store.mjs";
 
 // The project's data directory — single source of truth: `.excavator/`.
 const dataDir = (root) => join(root, ".excavator");
@@ -24,7 +25,8 @@ if (!result.success || !result.data) {
 }
 
 const outDir = dataDir(projectRoot);
-writeFileSync(join(outDir, "knowledge-graph.json"), JSON.stringify(result.data, null, 2));
+writeKnowledgeGraph(join(outDir, KNOWLEDGE_GRAPH_FILE), result.data);
+rmSync(join(outDir, LEGACY_KNOWLEDGE_GRAPH_FILE), { force: true }); // the retired whole-document file
 writeFileSync(join(outDir, "meta.json"), JSON.stringify({
   lastAnalyzedAt: new Date().toISOString(),
   gitCommitHash: "",

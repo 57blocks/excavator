@@ -33,7 +33,7 @@ async function main() {
 
   const dataDir = DATA_DIR;
   if (!autoUpdateEnabled(dataDir)) return;
-  if (!existsSync(`${dataDir}/knowledge-graph.json`)) return;
+  if (!existsSync(`${dataDir}/knowledge-graph.jsonl`)) return;
 
   const pluginRoot = process.env.CLAUDE_PLUGIN_ROOT ?? '';
   const additionalContext =

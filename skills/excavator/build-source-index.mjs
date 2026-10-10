@@ -4,7 +4,7 @@
  *
  * Deterministic symbol-aware lexical (BM25) source index (openspec: changes/
  * hybrid-retrieval, capability `source-index`, design D2). This is a
- * PROJECTION, like build-fact-graph.mjs: it reads `structure-all.json`'s
+ * PROJECTION, like build-fact-graph.mjs: it reads `structure-all.jsonl`'s
  * already-extracted declarations (path/owner/symbol/line-range — see
  * extract-structure-result.mjs's buildResult() row shape) to decide WHERE
  * each chunk's boundaries are, then reads that exact line range's own source
@@ -43,7 +43,7 @@
  *
  * Usage (CLI):
  *   node build-source-index.mjs <projectRoot>
- *     [--scan <scan-result.json>] [--structure <structure-all.json>]
+ *     [--scan <scan-result.json>] [--structure <structure-all.jsonl>]
  *     [--out <source-index.jsonl>] [--source-revision <rev>]
  *     [--previous <prior source-index.jsonl>] [--changed <changed-file-set.json>]
  *
@@ -69,6 +69,7 @@ import { deriveNodeId } from './node-identity.mjs';
 import { assignOrdinals, compareStrings, mapDeclarationKind } from './fact-graph-resolve.mjs';
 import { sortObjectKeys } from './coverage-ledger.mjs';
 import { SOURCE_INDEX_FILE, readSourceIndex, writeSourceIndex } from './source-index-store.mjs';
+import { STRUCTURE_ALL_FILE, readStructureAllPath } from './structure-all-store.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -560,12 +561,13 @@ async function main() {
   const intermediate = join(dataDir, 'intermediate');
 
   const scanPath = args.scan ? resolve(args.scan) : join(intermediate, 'scan-result.json');
-  const structurePath = args.structure ? resolve(args.structure) : join(intermediate, 'structure-all.json');
+  const structurePath = args.structure ? resolve(args.structure) : join(intermediate, STRUCTURE_ALL_FILE);
   const outPath = args.out ? resolve(args.out) : join(dataDir, SOURCE_INDEX_FILE);
   const manifestPath = join(dataDir, 'source-manifest.json');
 
   const scan = existsSync(scanPath) ? readJson(scanPath, 'scan result') : { files: [] };
-  const structureAll = readJson(structurePath, 'structure-all result');
+  if (!existsSync(structurePath)) throw new Error(`build-source-index: structure-all result not found: ${structurePath}`);
+  const structureAll = readStructureAllPath(structurePath);
 
   const sourceRevision = args.sourceRevision
     ?? (existsSync(manifestPath) ? JSON.parse(readFileSync(manifestPath, 'utf-8')).sourceRevision : null);

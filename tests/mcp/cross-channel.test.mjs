@@ -91,7 +91,7 @@ describe('one semantic cache across Lazy, Full and MCP', () => {
 
   it('shared lock rejects a forged node/path and preserves the first of two same-hash submissions', async () => {
     const { fixture, filePath, fields } = make();
-    const graphBefore = sha(readFileSync(join(fixture.root, '.excavator', 'knowledge-graph.json')));
+    const graphBefore = sha(readFileSync(join(fixture.root, '.excavator', 'knowledge-graph.jsonl')));
     const forged = await commitSemanticCacheEntry({ projectRoot: fixture.root, nodeId: IDS.ownerB,
       filePath: 'src/same-a.ts', fields: { ...fields,
         semanticSourceHash: fixture.manifest.entries.find((entry) => entry.path === 'src/same-a.ts').contentHash },
@@ -106,6 +106,6 @@ describe('one semantic cache across Lazy, Full and MCP', () => {
       verifyNodePath: true, onlyIfNotFresh: true });
     expect(second.status).toBe('already-fresh');
     expect(fixture.readCacheBytes()).toEqual(bytes);
-    expect(sha(readFileSync(join(fixture.root, '.excavator', 'knowledge-graph.json')))).toBe(graphBefore);
+    expect(sha(readFileSync(join(fixture.root, '.excavator', 'knowledge-graph.jsonl')))).toBe(graphBefore);
   });
 });
