@@ -447,9 +447,11 @@ export type CallReceiver =
   | { kind: "call"; site: number }
   /** `new X(...).m()`. */
   | { kind: "new"; type: string }
-  /** A cast, a string literal (`String`) or a class literal (`Class`). */
+  /** A cast, a string literal (`String`), a class literal (`Class`), or the
+   *  type a method reference names (`List<String>::size`). */
   | { kind: "type"; type: string }
-  /** On an object creation site: the type being constructed. */
+  /** On an object creation site or a constructor reference (`X::new`,
+   *  `int[]::new`): the type being constructed. */
   | { kind: "construct"; type: string }
   | { kind: "unknown" };
 
@@ -459,8 +461,9 @@ export interface CallGraphEntry {
   lineNumber: number;
   /** Java only, from here down. */
   receiver?: CallReceiver;
-  /** Number of arguments at the call site. */
-  argCount?: number;
+  /** Number of arguments at the call site; `null` for a method reference
+   *  (`X::m`, `X::new`), which does not write its arguments. */
+  argCount?: number | null;
   /** The top-level type the call is written in; `null` inside an anonymous
    *  class, a local or nested type, or an enum constant body. */
   enclosingType?: string | null;

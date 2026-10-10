@@ -161,8 +161,11 @@ export const KNOWLEDGE_GRAPH_VERSION = '1.0.0';
  *  Bumped to /4 by openspec change java-member-call-resolution: Java call
  *  sites resolve by receiver type and Java declarations gain interface
  *  methods and type hierarchy edges — an unchanged source tree must still be
- *  re-projected once to pick them up. */
-export const PIPELINE_VERSION = 'lazy-fact-graph/4';
+ *  re-projected once to pick them up.
+ *  Bumped to /5 by openspec change dead-code-detection: Java method
+ *  references become call sites, so an unchanged Java source tree projects
+ *  new `calls` edges and call-site buckets. */
+export const PIPELINE_VERSION = 'lazy-fact-graph/5';
 
 /** Same two-step @excavator/core resolution every sibling script uses. */
 async function resolveCore(root) {

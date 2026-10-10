@@ -25,9 +25,9 @@
 
 ## 2. 方法引用作为调用点（切片 A）
 
-- [ ] 2.1 `extractCallGraph` 把 `method_reference` 记为调用点：`X::m` / `expr::m` / `this::m` / `super::m` 的 `callee` 为 `m`，接收者按 D2（java-member-call-resolution）描述；`X::new` 记为对 `X` 的构造调用；`argCount: null`；数组类型的构造引用接收者带数组类型文本。验证：抽取器单测覆盖每种形态与 lambda 内的方法引用；`extract-structure-result.mjs` 接受 `argCount: null`。
-- [ ] 2.2 `java-call-resolution.mjs`：`argCount: null` 视为适用任意参数个数；恰好一个声明成边，多个记 `calls-ambiguous`；数组类型的构造引用记 `calls-external`。验证：模块单测覆盖规格「Java 方法引用作为调用点」三个场景；守恒测试计入方法引用调用点。
-- [ ] 2.3 事实图单测：含 `PlatformCache::isEhcacheEnabled` 形态的小 Java 样例产生指向目标的 `calls` 边，证据行正确。验证：单测通过；非 Java 夹具 factsDigest 不变。
+- [x] 2.1 `extractCallGraph` 把 `method_reference` 记为调用点：`X::m` / `expr::m` / `this::m` / `super::m` 的 `callee` 为 `m`，接收者按 D2（java-member-call-resolution）描述；`X::new` 记为对 `X` 的构造调用；`argCount: null`；数组类型的构造引用接收者带数组类型文本。验证：抽取器单测覆盖每种形态与 lambda 内的方法引用；`extract-structure-result.mjs` 接受 `argCount: null`。
+- [x] 2.2 `java-call-resolution.mjs`：`argCount: null` 视为适用任意参数个数；恰好一个声明成边，多个记 `calls-ambiguous`；数组类型的构造引用记 `calls-external`。验证：模块单测覆盖规格「Java 方法引用作为调用点」三个场景；守恒测试计入方法引用调用点。
+- [x] 2.3 事实图单测：含 `PlatformCache::isEhcacheEnabled` 形态的小 Java 样例产生指向目标的 `calls` 边，证据行正确。验证：单测通过；非 Java 夹具 factsDigest 不变。
 
 ## 3. 层次边补齐（切片 A）
 

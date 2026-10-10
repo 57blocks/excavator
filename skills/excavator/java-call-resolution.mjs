@@ -23,6 +23,13 @@
  * (a type variable from another declaration is unknown), choosing among
  * same-arity overloads, inferring lambda parameter types, or resolving inside
  * anonymous, local or nested types.
+ *
+ * A method reference (`X::m`, `X::new`) is a site with `argCount: null`
+ * (openspec: changes/dead-code-detection, design D8): it applies to a
+ * declaration of any arity, so one candidate of that name is an edge and
+ * more are ambiguous — including a method or constructor the source does not
+ * declare but that exists at another arity (an `Object` method, a generated
+ * accessor or constructor). An array constructor `T[]::new` is external.
  */
 
 /** Every outcome a Java call site can have. */
@@ -98,8 +105,15 @@ const CONSTRUCTOR_ANNOTATIONS = new Set([
   'NoArgsConstructor', 'AllArgsConstructor', 'RequiredArgsConstructor', 'Data', 'Value', 'Builder', 'SuperBuilder',
 ]);
 
+/** `argCount` null (a method reference) matches every arity. */
+function arityMatches(argCount, arity) {
+  return argCount === null || argCount === arity;
+}
+
 function isObjectMethod(name, argCount) {
-  return OBJECT_METHODS.get(name)?.includes(argCount) ?? false;
+  const arities = OBJECT_METHODS.get(name);
+  if (!arities) return false;
+  return argCount === null || arities.includes(argCount);
 }
 
 function capitalize(name) {
@@ -131,8 +145,9 @@ function signatureToken(text) {
   return `${lastSegment(base)}${'[]'.repeat(dims)}`;
 }
 
-/** Argument counts a method accepts: exactly its arity, or more with varargs. */
+/** Argument counts a method accepts: exactly its arity, or more with varargs; any for a method reference. */
 function applicable(method, argCount) {
+  if (argCount === null) return true;
   const n = method.paramTypes.length;
   if (method.varargs) return argCount >= n - 1;
   return argCount === n;
@@ -563,24 +578,37 @@ export function createJavaCallResolver({ rows, functionIds, classIds = new Map()
     return null;
   }
 
-  /** Whether `name` is a method the source does not declare (D6). */
+  /** Whether `name` is a method the source does not declare (D6); any arity when `argCount` is null. */
   function isGenerated(type, name, argCount) {
     for (const t of hierarchy(type).types) {
-      if (t.kind === 'enum' && ((name === 'values' && argCount === 0) || (name === 'valueOf' && argCount === 1))) return true;
-      if (t.kind === 'record' && argCount === 0 && t.fields.has(name)) return true;
-      if ((name === 'builder' || name === 'toBuilder') && argCount === 0
+      if (t.kind === 'enum' && ((name === 'values' && arityMatches(argCount, 0)) || (name === 'valueOf' && arityMatches(argCount, 1)))) return true;
+      if (t.kind === 'record' && arityMatches(argCount, 0) && t.fields.has(name)) return true;
+      if ((name === 'builder' || name === 'toBuilder') && arityMatches(argCount, 0)
         && [...t.annotations].some((a) => BUILDER_ANNOTATIONS.has(a))) return true;
       for (const field of t.fields.keys()) {
         const cap = capitalize(field);
-        if (argCount === 0 && (name === `get${cap}` || name === `is${cap}`)) return true;
-        if (argCount === 1 && name === `set${cap}`) return true;
+        if (arityMatches(argCount, 0) && (name === `get${cap}` || name === `is${cap}`)) return true;
+        if (arityMatches(argCount, 1) && name === `set${cap}`) return true;
         // Lombok names a boolean `isActive` field's accessors isActive / setActive.
         if (/^is[A-Z]/.test(field)) {
-          if (argCount === 0 && name === field) return true;
-          if (argCount === 1 && name === `set${field.slice(2)}`) return true;
+          if (arityMatches(argCount, 0) && name === field) return true;
+          if (arityMatches(argCount, 1) && name === `set${field.slice(2)}`) return true;
         }
       }
     }
+    return false;
+  }
+
+  /**
+   * For a method reference, whether a method named `name` that the source
+   * does not declare — an `Object` method or a generated one — may exist at
+   * an arity other than the one declared candidate's: then the reference
+   * may bind to either, and choosing would be a guess.
+   */
+  function undeclaredOverloadMayExist(type, name, candidate) {
+    const arity = candidate.paramTypes.length;
+    for (const a of OBJECT_METHODS.get(name) ?? []) if (a !== arity) return true;
+    for (const a of [0, 1]) if (a !== arity && isGenerated(type, name, a)) return true;
     return false;
   }
 
@@ -611,7 +639,8 @@ export function createJavaCallResolver({ rows, functionIds, classIds = new Map()
     const candidates = findMethods(type, name, argCount);
     // `outsideHierarchy` is for reporting: an outside supertype of the
     // lookup type could declare a same-arity overload we cannot see (Risks).
-    if (candidates.length === 1) result = { outcome: 'edge', target: candidates[0], outsideHierarchy: methodsMaybeOutside(type) };
+    if (candidates.length === 1 && argCount === null && undeclaredOverloadMayExist(type, name, candidates[0])) result = { outcome: AMBIGUOUS };
+    else if (candidates.length === 1) result = { outcome: 'edge', target: candidates[0], outsideHierarchy: methodsMaybeOutside(type) };
     else if (candidates.length > 1) result = { outcome: AMBIGUOUS };
     else result = { outcome: classifyMissing(type, name, argCount) };
     perType.set(key, result);
@@ -850,8 +879,9 @@ export function createJavaCallResolver({ rows, functionIds, classIds = new Map()
 
   function resolveTarget(state, site, context, owner) {
     const receiver = site.receiver;
-    const argCount = Number.isInteger(site.argCount) ? site.argCount : null;
-    if (!receiver || argCount === null) return { outcome: UNRESOLVED };
+    // null: a method reference, applicable at any arity. Absent or malformed: unresolved.
+    const argCount = site.argCount === null ? null : Number.isInteger(site.argCount) ? site.argCount : undefined;
+    if (!receiver || argCount === undefined) return { outcome: UNRESOLVED };
     if (receiver.kind === 'construct') return resolveConstruction(receiver.type, context.scope, argCount);
     const name = methodName(site);
     switch (receiver.kind) {
@@ -938,19 +968,23 @@ export function createJavaCallResolver({ rows, functionIds, classIds = new Map()
     return { outcome: UNRESOLVED };
   }
 
-  /** `new X(...)` (D9). */
+  /** `new X(...)` (D9) and the constructor reference `X::new` (argCount null). */
   function resolveConstruction(typeText, scope, argCount) {
     const res = asInstance(resolveType(typeText, scope));
+    // `T[]::new`: the array constructor, never a repository declaration.
+    if (res.status === 'array') return { outcome: EXTERNAL };
     if (res.status === 'external') return { outcome: EXTERNAL };
     if (res.status === 'ambiguous') return { outcome: AMBIGUOUS };
     if (res.status !== 'repo') return { outcome: UNRESOLVED };
     const type = res.type;
+    const mayGenerate = type.kind === 'record' || [...type.annotations].some((a) => CONSTRUCTOR_ANNOTATIONS.has(a));
     const candidates = type.constructors.filter((c) => applicable(c, argCount));
+    // A reference may also bind to a constructor the source does not declare.
+    if (candidates.length === 1 && argCount === null && mayGenerate) return { outcome: AMBIGUOUS };
     if (candidates.length === 1) return { outcome: 'edge', target: candidates[0] };
     if (candidates.length > 1) return { outcome: AMBIGUOUS };
-    if (type.constructors.length === 0 && argCount === 0) return { outcome: GENERATED };
-    if (type.kind === 'record') return { outcome: GENERATED };
-    if ([...type.annotations].some((a) => CONSTRUCTOR_ANNOTATIONS.has(a))) return { outcome: GENERATED };
+    if (type.constructors.length === 0 && arityMatches(argCount, 0)) return { outcome: GENERATED };
+    if (mayGenerate) return { outcome: GENERATED };
     return { outcome: UNRESOLVED };
   }
 

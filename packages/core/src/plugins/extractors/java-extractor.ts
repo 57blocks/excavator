@@ -10,6 +10,7 @@ import type {
 import type { LanguageExtractor, TreeSitterNode } from "./types.js";
 import { findChild, findChildren } from "./base-extractor.js";
 import { extractAnnotationNames, extractClassLiterals, memberDeclarationFacts } from "./java-declaration-facts.js";
+import { methodReferenceSite } from "./java-method-references.js";
 
 /**
  * Extract parameter names from a Java `formal_parameters` node.
@@ -661,6 +662,21 @@ export class JavaExtractor implements LanguageExtractor {
               enclosingType,
             });
           }
+        }
+      }
+
+      // Method references: `X::m`, `expr::m`, `this::m`, `super::m`, `X::new`.
+      if (node.type === "method_reference" && functionStack.length > 0) {
+        const reference = methodReferenceSite(node, { describe, declared });
+        if (reference) {
+          entries.push({
+            caller: functionStack[functionStack.length - 1],
+            callee: reference.callee,
+            lineNumber: node.startPosition.row + 1,
+            receiver: reference.receiver,
+            argCount: null,
+            enclosingType,
+          });
         }
       }
 

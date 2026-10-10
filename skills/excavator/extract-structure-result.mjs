@@ -203,7 +203,9 @@ function isValidCallGraph(callGraph) {
     typeof entry.callee === 'string' &&
     isFiniteInteger(entry.lineNumber) &&
     hasValidOptionalField(entry, 'receiver', isValidReceiver) &&
-    hasValidOptionalField(entry, 'argCount', value => isFiniteInteger(value) && value >= 0) &&
+    // null: a method reference, which does not write its arguments
+    // (dead-code-detection, D8).
+    hasValidOptionalField(entry, 'argCount', value => value === null || (isFiniteInteger(value) && value >= 0)) &&
     hasValidOptionalField(entry, 'enclosingType', value => value === null || typeof value === 'string'));
 }
 
