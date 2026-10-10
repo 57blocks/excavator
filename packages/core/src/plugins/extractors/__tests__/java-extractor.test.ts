@@ -570,10 +570,11 @@ interface Repository {
 `);
       const result = extractor.extractStructure(root);
 
-      // Functions: UserService (constructor), getUsers, log
-      expect(result.functions).toHaveLength(3);
+      // Functions: UserService (constructor), getUsers, log, and the
+      // interface's two abstract methods
+      expect(result.functions).toHaveLength(5);
       expect(result.functions.map((f) => f.name).sort()).toEqual(
-        ["UserService", "getUsers", "log"].sort(),
+        ["UserService", "getUsers", "log", "findAll", "findById"].sort(),
       );
 
       // Constructor has params but no return type
@@ -678,5 +679,333 @@ describe("JavaExtractor - modern type declarations", () => {
 
     tree.delete();
     parser.delete();
+  });
+});
+
+describe("JavaExtractor - type facts for member-call resolution", () => {
+  const extractor = new JavaExtractor();
+
+  function structure(code: string) {
+    const { tree, parser, root } = parse(code);
+    const result = extractor.extractStructure(root);
+    tree.delete();
+    parser.delete();
+    return result;
+  }
+
+  it("records kind, qualified name, supertypes with lines, field types, annotations and type parameters of a class", () => {
+    const result = structure(`package com.acme.loan;
+
+import java.util.List;
+
+@Entity
+@lombok.Builder
+public class Loan<T extends Money> extends BaseEntity<T>
+    implements Payable, com.acme.Auditable<Loan<T>> {
+  private final Helper helper, backup[];
+  List<String> notes;
+  T amount;
+  static class Inner {}
+  enum Kind { A }
+}
+`);
+    const loan = result.classes.find((c) => c.name === "Loan")!;
+    expect(loan.kind).toBe("class");
+    expect(loan.qualifiedName).toBe("com.acme.loan.Loan");
+    expect(loan.supertypes).toEqual([
+      { relation: "extends", type: "BaseEntity<T>", line: 7 },
+      { relation: "implements", type: "Payable", line: 8 },
+      { relation: "implements", type: "com.acme.Auditable<Loan<T>>", line: 8 },
+    ]);
+    expect(loan.fieldTypes).toEqual([
+      { name: "helper", type: "Helper" },
+      { name: "backup", type: "Helper[]" },
+      { name: "notes", type: "List<String>" },
+      { name: "amount", type: "T" },
+    ]);
+    expect(loan.annotations).toEqual(["Entity", "lombok.Builder"]);
+    expect(loan.typeParameters).toEqual([{ name: "T", bound: "Money" }]);
+    expect(loan.memberTypes).toEqual(["Inner", "Kind"]);
+    // Nested types stay out of classes[]; only the top-level type is listed.
+    expect(result.classes.map((c) => c.name)).toEqual(["Loan"]);
+  });
+
+  it("records an interface that extends several interfaces, with its constants", () => {
+    const result = structure(`package p;
+public interface Repo<T> extends Reader<T>, Writer {
+  int LIMIT = 10;
+  T find(long id);
+}
+`);
+    const repo = result.classes[0];
+    expect(repo.kind).toBe("interface");
+    expect(repo.qualifiedName).toBe("p.Repo");
+    expect(repo.supertypes).toEqual([
+      { relation: "extends", type: "Reader<T>", line: 2 },
+      { relation: "extends", type: "Writer", line: 2 },
+    ]);
+    expect(repo.fieldTypes).toEqual([{ name: "LIMIT", type: "int" }]);
+    expect(repo.typeParameters).toEqual([{ name: "T", bound: null }]);
+  });
+
+  it("records an enum that implements an interface, with its constants as fields of the enum type", () => {
+    const result = structure(`package p;
+enum Status implements Labelled {
+  ACTIVE, CLOSED;
+  private String label;
+  public String label() { return label; }
+}
+`);
+    const status = result.classes[0];
+    expect(status.kind).toBe("enum");
+    expect(status.supertypes).toEqual([{ relation: "implements", type: "Labelled", line: 2 }]);
+    expect(status.fieldTypes).toEqual([
+      { name: "ACTIVE", type: "Status" },
+      { name: "CLOSED", type: "Status" },
+      { name: "label", type: "String" },
+    ]);
+  });
+
+  it("records a record's components as its fields and a type in the default package by bare name", () => {
+    const result = structure(`record Point(int x, Coordinate y) implements Shape {}
+`);
+    const point = result.classes[0];
+    expect(point.kind).toBe("record");
+    expect(point.qualifiedName).toBe("Point");
+    expect(point.fieldTypes).toEqual([
+      { name: "x", type: "int" },
+      { name: "y", type: "Coordinate" },
+    ]);
+    expect(point.supertypes).toEqual([{ relation: "implements", type: "Shape", line: 1 }]);
+  });
+
+  it("lists interface methods as functions with owner and types, marking those without a body abstract", () => {
+    const result = structure(`interface PaymentService {
+  void pay(long amount);
+  default int fee(int x) { return x; }
+  static PaymentService none() { return null; }
+  <R extends Receipt> R receipt(String id);
+}
+`);
+    expect(result.functions.map((f) => [f.owner, f.name, f.paramTypes, f.returnType, f.abstract])).toEqual([
+      ["PaymentService", "pay", ["long"], "void", true],
+      ["PaymentService", "fee", ["int"], "int", undefined],
+      ["PaymentService", "none", [], "PaymentService", undefined],
+      ["PaymentService", "receipt", ["String"], "R", true],
+    ]);
+    expect(result.functions[3].typeParameters).toEqual([{ name: "R", bound: "Receipt" }]);
+    expect(result.classes[0].methods).toEqual(["pay", "fee", "none", "receipt"]);
+    // Interface methods are not added to exports.
+    expect(result.exports).toEqual([]);
+  });
+
+  it("marks abstract class methods abstract but not native ones", () => {
+    const result = structure(`abstract class Base {
+  abstract void run(String s);
+  native void peek();
+  void go() {}
+}
+`);
+    expect(result.functions.map((f) => [f.name, f.abstract])).toEqual([
+      ["run", true],
+      ["peek", undefined],
+      ["go", undefined],
+    ]);
+  });
+
+  it("marks static imports", () => {
+    const result = structure(`import static p.Util.helper;
+import static p.Constants.*;
+import p.Loan;
+`);
+    expect(result.imports).toEqual([
+      { source: "p.Util.helper", specifiers: ["helper"], lineNumber: 1, isStatic: true },
+      { source: "p.Constants", specifiers: ["*"], lineNumber: 2, isStatic: true },
+      { source: "p.Loan", specifiers: ["Loan"], lineNumber: 3 },
+    ]);
+  });
+});
+
+describe("JavaExtractor - call receivers", () => {
+  const extractor = new JavaExtractor();
+
+  function calls(code: string) {
+    const { tree, parser, root } = parse(code);
+    const result = extractor.extractCallGraph(root);
+    tree.delete();
+    parser.delete();
+    return result;
+  }
+
+  /** The entry for the call written as `callee` on line `line`. */
+  function site(entries: ReturnType<typeof calls>, callee: string, line?: number) {
+    const found = entries.filter((e) => e.callee === callee && (line === undefined || e.lineNumber === line));
+    expect(found, `${callee}@${line}`).toHaveLength(1);
+    return found[0];
+  }
+
+  it("describes each receiver form", () => {
+    const entries = calls(`class Svc {
+  void run(Helper p, String... rest) {
+    go();
+    this.go();
+    super.go();
+    p.assist();
+    Loan local = null;
+    local.pay();
+    var made = new Loan(1);
+    made.pay();
+    var other = repo.find();
+    other.pay();
+    helper.assist();
+    this.helper.assist();
+    Util.make(1, 2);
+    repo.find(1L).orElseThrow();
+    new Loan().pay();
+    ((Loan) o).pay();
+    "abc".length();
+    Loan.class.getName();
+    arr[0].toString();
+    rest.clone();
+    new Loan(1, 2);
+  }
+}
+`);
+    expect(site(entries, "go").receiver).toEqual({ kind: "none" });
+    expect(site(entries, "this.go").receiver).toEqual({ kind: "this" });
+    expect(site(entries, "super.go").receiver).toEqual({ kind: "super" });
+    expect(site(entries, "p.assist").receiver).toEqual({ kind: "local", type: "Helper" });
+    expect(site(entries, "local.pay").receiver).toEqual({ kind: "local", type: "Loan" });
+    expect(site(entries, "made.pay").receiver).toEqual({ kind: "local", type: "Loan" });
+    expect(site(entries, "other.pay").receiver).toEqual({ kind: "local", type: null });
+    expect(site(entries, "helper.assist").receiver).toEqual({ kind: "name", name: "helper" });
+    expect(site(entries, "this.helper.assist").receiver).toEqual({ kind: "field", object: { kind: "this" }, name: "helper" });
+    expect(site(entries, "Util.make")).toMatchObject({ receiver: { kind: "name", name: "Util" }, argCount: 2 });
+    const find = entries.findIndex((e) => e.callee === "repo.find" && e.lineNumber === 16);
+    expect(site(entries, "repo.find(1L).orElseThrow").receiver).toEqual({ kind: "call", site: find });
+    expect(entries[find]).toMatchObject({ receiver: { kind: "name", name: "repo" }, argCount: 1 });
+    expect(site(entries, "new Loan().pay").receiver).toEqual({ kind: "new", type: "Loan" });
+    expect(site(entries, "((Loan) o).pay").receiver).toEqual({ kind: "type", type: "Loan" });
+    expect(site(entries, "\"abc\".length").receiver).toEqual({ kind: "type", type: "String" });
+    expect(site(entries, "Loan.class.getName").receiver).toEqual({ kind: "type", type: "Class" });
+    expect(site(entries, "arr[0].toString").receiver).toEqual({ kind: "unknown" });
+    expect(site(entries, "rest.clone").receiver).toEqual({ kind: "local", type: "String[]" });
+    expect(site(entries, "new Loan", 23)).toMatchObject({ receiver: { kind: "construct", type: "Loan" }, argCount: 2 });
+    expect(site(entries, "new Loan", 9)).toMatchObject({ receiver: { kind: "construct", type: "Loan" }, argCount: 1 });
+    for (const entry of entries) expect(entry.enclosingType).toBe("Svc");
+  });
+
+  it("binds for-each, catch, resource and pattern variables, and lets a local shadow a field", () => {
+    const entries = calls(`class Svc {
+  void run(java.util.List<Loan> loans, Object o) {
+    for (Loan l : loans) l.pay();
+    try (Res r = open()) { r.close(); }
+    catch (IOException e) { e.getMessage(); }
+    catch (IllegalStateException | IllegalArgumentException m) { m.getMessage(); }
+    if (o instanceof Loan k) { k.pay(); }
+    k.after();
+    switch (o) { case Payment q -> q.settle(); default -> {} }
+    Helper helper = null;
+    helper.assist();
+  }
+  void other() { helper.assist(); }
+}
+`);
+    expect(site(entries, "l.pay").receiver).toEqual({ kind: "local", type: "Loan" });
+    expect(site(entries, "r.close").receiver).toEqual({ kind: "local", type: "Res" });
+    expect(site(entries, "e.getMessage").receiver).toEqual({ kind: "local", type: "IOException" });
+    // A multi-catch variable's type is not one of the listed types.
+    expect(site(entries, "m.getMessage").receiver).toEqual({ kind: "local", type: null });
+    expect(site(entries, "k.pay").receiver).toEqual({ kind: "local", type: "Loan" });
+    // After the statement that declared it, a pattern variable is untyped,
+    // never a field of the same name.
+    expect(site(entries, "k.after").receiver).toEqual({ kind: "local", type: null });
+    expect(site(entries, "q.settle").receiver).toEqual({ kind: "local", type: "Payment" });
+    expect(site(entries, "helper.assist", 11).receiver).toEqual({ kind: "local", type: "Helper" });
+    // The local does not leak into another method.
+    expect(site(entries, "helper.assist", 13).receiver).toEqual({ kind: "name", name: "helper" });
+  });
+
+  it("leaves lambda parameters untyped unless declared, and attributes lambda calls to the method", () => {
+    const entries = calls(`class Svc {
+  void run(java.util.List<Loan> loans) {
+    loans.forEach(x -> x.pay());
+    loans.forEach((Loan y) -> y.pay());
+  }
+}
+`);
+    expect(site(entries, "x.pay")).toMatchObject({ caller: "run", receiver: { kind: "local", type: null }, enclosingType: "Svc" });
+    expect(site(entries, "y.pay")).toMatchObject({ caller: "run", receiver: { kind: "local", type: "Loan" } });
+  });
+
+  it("marks calls inside anonymous classes, nested types and enum constant bodies with no enclosing type", () => {
+    const entries = calls(`class Outer {
+  void run() {
+    new Runnable() { public void run() { inner(); } };
+    outer();
+  }
+  static class Nested { void go() { nested(); } }
+}
+enum Kind {
+  A { void act() { constant(); } };
+  void act() { member(); }
+}
+`);
+    expect(site(entries, "inner").enclosingType).toBeNull();
+    expect(site(entries, "outer").enclosingType).toBe("Outer");
+    expect(site(entries, "nested").enclosingType).toBeNull();
+    expect(site(entries, "constant").enclosingType).toBeNull();
+    expect(site(entries, "member").enclosingType).toBe("Kind");
+    // The anonymous class creation itself is in Outer.run.
+    expect(site(entries, "new Runnable")).toMatchObject({ enclosingType: "Outer", receiver: { kind: "construct", type: "Runnable" } });
+  });
+
+  it("does not resolve a local class through same-named types", () => {
+    const entries = calls(`class Svc {
+  void run() {
+    class Loan { void pay() {} }
+    Loan a = new Loan();
+    a.pay();
+    new Loan().pay();
+    Loan.make();
+  }
+}
+`);
+    expect(site(entries, "a.pay").receiver).toEqual({ kind: "local", type: null });
+    expect(site(entries, "new Loan().pay").receiver).toEqual({ kind: "unknown" });
+    expect(site(entries, "new Loan", 4)).toMatchObject({ receiver: { kind: "unknown" } });
+    expect(site(entries, "new Loan", 6)).toMatchObject({ receiver: { kind: "unknown" } });
+    expect(site(entries, "Loan.make").receiver).toEqual({ kind: "unknown" });
+  });
+
+  it("counts arguments without comments and leaves qualified super calls unresolved", () => {
+    const entries = calls(`class Svc implements Api {
+  void run() {
+    go(/* first */ 1, 2);
+    Api.super.run();
+  }
+}
+`);
+    expect(site(entries, "go").argCount).toBe(2);
+    expect(site(entries, "Api.run").receiver).toEqual({ kind: "unknown" });
+  });
+
+  it("keeps caller, callee and line of every entry as before", () => {
+    const entries = calls(`public class Foo {
+    public void process(int data) {
+        transform(data);
+        System.out.println(data);
+        Bar b = new Bar();
+    }
+}
+`);
+    expect(entries.map((e) => [e.caller, e.callee, e.lineNumber])).toEqual([
+      ["process", "transform", 3],
+      ["process", "System.out.println", 4],
+      ["process", "new Bar", 5],
+    ]);
+    expect(entries[1].receiver).toEqual({
+      kind: "field", object: { kind: "name", name: "System" }, name: "out",
+    });
   });
 });

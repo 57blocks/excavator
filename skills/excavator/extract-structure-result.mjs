@@ -49,22 +49,59 @@ function isValidEntryArray(value, validator) {
     value.every(entry => isPlainObject(entry) && validator(entry));
 }
 
+// Java type facts (openspec: changes/java-member-call-resolution). Optional:
+// only the Java extractor emits them.
+const JAVA_TYPE_KINDS = new Set(['class', 'interface', 'enum', 'record']);
+const JAVA_SUPERTYPE_RELATIONS = new Set(['extends', 'implements']);
+
+function isTypeParameterArray(value) {
+  return Array.isArray(value) && value.every(item =>
+    isPlainObject(item) &&
+    typeof item.name === 'string' &&
+    (item.bound === null || typeof item.bound === 'string'));
+}
+
+function isSupertypeArray(value) {
+  return Array.isArray(value) && value.every(item =>
+    isPlainObject(item) &&
+    JAVA_SUPERTYPE_RELATIONS.has(item.relation) &&
+    typeof item.type === 'string' &&
+    isFiniteInteger(item.line));
+}
+
+function isFieldTypeArray(value) {
+  return Array.isArray(value) && value.every(item =>
+    isPlainObject(item) &&
+    typeof item.name === 'string' &&
+    typeof item.type === 'string');
+}
+
 const STRUCTURE_ENTRY_VALIDATORS = {
   functions: entry =>
     typeof entry.name === 'string' &&
     isLineRange(entry.lineRange) &&
     isStringArray(entry.params) &&
     hasValidOptionalField(entry, 'paramTypes', isStringArray) &&
-    hasValidOptionalField(entry, 'returnType', value => typeof value === 'string'),
+    hasValidOptionalField(entry, 'returnType', value => typeof value === 'string') &&
+    hasValidOptionalField(entry, 'abstract', value => typeof value === 'boolean') &&
+    hasValidOptionalField(entry, 'typeParameters', isTypeParameterArray),
   classes: entry =>
     typeof entry.name === 'string' &&
     isLineRange(entry.lineRange) &&
     isStringArray(entry.methods) &&
-    isStringArray(entry.properties),
+    isStringArray(entry.properties) &&
+    hasValidOptionalField(entry, 'kind', value => JAVA_TYPE_KINDS.has(value)) &&
+    hasValidOptionalField(entry, 'qualifiedName', value => typeof value === 'string') &&
+    hasValidOptionalField(entry, 'supertypes', isSupertypeArray) &&
+    hasValidOptionalField(entry, 'fieldTypes', isFieldTypeArray) &&
+    hasValidOptionalField(entry, 'annotations', isStringArray) &&
+    hasValidOptionalField(entry, 'typeParameters', isTypeParameterArray) &&
+    hasValidOptionalField(entry, 'memberTypes', isStringArray),
   imports: entry =>
     typeof entry.source === 'string' &&
     isStringArray(entry.specifiers) &&
-    isFiniteInteger(entry.lineNumber),
+    isFiniteInteger(entry.lineNumber) &&
+    hasValidOptionalField(entry, 'isStatic', value => typeof value === 'boolean'),
   exports: entry =>
     typeof entry.name === 'string' &&
     isFiniteInteger(entry.lineNumber) &&
@@ -112,12 +149,38 @@ function isValidStructuralAnalysis(analysis) {
       ));
 }
 
+// What a Java call site is invoked on (java-member-call-resolution, D2). The
+// kinds and their fields are closed: an unknown shape fails the file rather
+// than reaching the fact graph as something it would have to guess about.
+const RECEIVER_VALIDATORS = {
+  none: () => true,
+  this: () => true,
+  super: () => true,
+  unknown: () => true,
+  local: r => r.type === null || typeof r.type === 'string',
+  name: r => typeof r.name === 'string',
+  field: r => typeof r.name === 'string' && isValidReceiver(r.object),
+  call: r => isFiniteInteger(r.site) && r.site >= 0,
+  new: r => typeof r.type === 'string',
+  type: r => typeof r.type === 'string',
+  construct: r => typeof r.type === 'string',
+};
+
+function isValidReceiver(receiver) {
+  return isPlainObject(receiver) &&
+    Object.hasOwn(RECEIVER_VALIDATORS, receiver.kind) &&
+    RECEIVER_VALIDATORS[receiver.kind](receiver);
+}
+
 function isValidCallGraph(callGraph) {
   return Array.isArray(callGraph) && callGraph.every(entry =>
     isPlainObject(entry) &&
     typeof entry.caller === 'string' &&
     typeof entry.callee === 'string' &&
-    isFiniteInteger(entry.lineNumber));
+    isFiniteInteger(entry.lineNumber) &&
+    hasValidOptionalField(entry, 'receiver', isValidReceiver) &&
+    hasValidOptionalField(entry, 'argCount', value => isFiniteInteger(value) && value >= 0) &&
+    hasValidOptionalField(entry, 'enclosingType', value => value === null || typeof value === 'string'));
 }
 
 function mapCallGraph(callGraph) {
@@ -126,6 +189,11 @@ function mapCallGraph(callGraph) {
         caller: entry.caller,
         callee: entry.callee,
         lineNumber: entry.lineNumber,
+        // Java only: the receiver, argument count and enclosing type the fact
+        // graph resolves member calls with.
+        ...(entry.receiver === undefined ? {} : { receiver: entry.receiver }),
+        ...(entry.argCount === undefined ? {} : { argCount: entry.argCount }),
+        ...(entry.enclosingType === undefined ? {} : { enclosingType: entry.enclosingType }),
       }))
     : null;
 }
@@ -258,6 +326,19 @@ export function deriveStatus(analysis, outcome) {
   return { status: symbols > 0 ? 'parsed' : 'zero-symbol' };
 }
 
+/** Java type facts a class entry carries through to the structure row. */
+const JAVA_TYPE_FACT_FIELDS = Object.freeze([
+  'kind', 'qualifiedName', 'supertypes', 'fieldTypes', 'annotations', 'typeParameters', 'memberTypes',
+]);
+
+function pickDefined(source, fields) {
+  const out = {};
+  for (const field of fields) {
+    if (source[field] !== undefined) out[field] = source[field];
+  }
+  return out;
+}
+
 export function buildResult(file, totalLines, nonEmptyLines, analysis, callGraph, batchImportData, outcome) {
   const { status, statusReason } = deriveStatus(analysis, outcome);
   const base = {
@@ -288,6 +369,14 @@ export function buildResult(file, totalLines, nonEmptyLines, analysis, callGraph
       // Parameter types, from extractors whose language overloads by type
       // (Java); node identity uses them in place of the parameter names.
       ...(Array.isArray(fn.paramTypes) ? { paramTypes: fn.paramTypes } : {}),
+      // Java facts for member-call resolution. The return type travels as
+      // `declaredReturnType`, never `returnType`: node identity and the source
+      // index read `returnType`, so carrying it would rename every Java node.
+      ...(file.language === 'java' && typeof fn.returnType === 'string'
+        ? { declaredReturnType: fn.returnType }
+        : {}),
+      ...(fn.abstract === true ? { abstract: true } : {}),
+      ...(fn.typeParameters === undefined ? {} : { typeParameters: fn.typeParameters }),
     }));
   }
 
@@ -298,6 +387,7 @@ export function buildResult(file, totalLines, nonEmptyLines, analysis, callGraph
       endLine: cls.lineRange[1],
       methods: cls.methods || [],
       properties: cls.properties || [],
+      ...pickDefined(cls, JAVA_TYPE_FACT_FIELDS),
     }));
   }
 
@@ -306,6 +396,7 @@ export function buildResult(file, totalLines, nonEmptyLines, analysis, callGraph
       source: imp.source,
       specifiers: imp.specifiers || [],
       line: imp.lineNumber,
+      ...(imp.isStatic === true ? { static: true } : {}),
     }));
   }
 

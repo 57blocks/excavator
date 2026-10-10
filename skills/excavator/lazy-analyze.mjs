@@ -157,8 +157,12 @@ export const KNOWLEDGE_GRAPH_VERSION = '1.0.0';
  *  to line-oriented `source-index.jsonl` (design D1/D6) — an already-analyzed
  *  project's next run must rebuild rather than try to read the old file.
  *  Bumped to /3 by openspec change knowledge-graph-line-store: the graph is
- *  now line-oriented `knowledge-graph.jsonl` (design D5). */
-export const PIPELINE_VERSION = 'lazy-fact-graph/3';
+ *  now line-oriented `knowledge-graph.jsonl` (design D5).
+ *  Bumped to /4 by openspec change java-member-call-resolution: Java call
+ *  sites resolve by receiver type and Java declarations gain interface
+ *  methods and type hierarchy edges — an unchanged source tree must still be
+ *  re-projected once to pick them up. */
+export const PIPELINE_VERSION = 'lazy-fact-graph/4';
 
 /** Same two-step @excavator/core resolution every sibling script uses. */
 async function resolveCore(root) {

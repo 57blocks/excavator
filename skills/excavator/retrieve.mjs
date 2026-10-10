@@ -158,8 +158,11 @@ export function mergeCandidates({ exact = [], bm25 = [], sourceSearch = [], sema
 
 /** Fact edge types traversal is allowed to follow. Anything else (a
  *  semantic-similarity edge, a domain overlay edge, ...) is filtered out
- *  before adjacency is even built — it can never contribute a path edge. */
-export const DETERMINISTIC_EDGE_TYPES = Object.freeze(['contains', 'imports', 'exports', 'calls']);
+ *  before adjacency is even built — it can never contribute a path edge.
+ *  `inherits` / `implements` are declared type hierarchy facts (openspec:
+ *  changes/java-member-call-resolution, D12): through them a call to an
+ *  interface method reaches the implementations. */
+export const DETERMINISTIC_EDGE_TYPES = Object.freeze(['contains', 'imports', 'exports', 'calls', 'inherits', 'implements']);
 
 export const DEFAULT_TRAVERSAL_BUDGETS = Object.freeze({ maxSeeds: 5, maxNodes: 80, maxEdges: 160 });
 export const DEFAULT_BFS_MAX_HOPS = 4;

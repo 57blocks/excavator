@@ -321,6 +321,30 @@ export interface ReferenceResolution {
   line?: number;
 }
 
+// Java type facts (openspec: changes/java-member-call-resolution). Only the
+// Java extractor fills these; the fact graph resolves member calls with them.
+
+/** One entry of a Java type's `extends` / `implements` clause, as written. */
+export interface JavaSupertype {
+  /** `extends` for class→class and interface→interface, `implements` for a
+   *  class, enum or record implementing an interface. */
+  relation: "extends" | "implements";
+  type: string;
+  line: number;
+}
+
+/** A declared type variable and its first bound (`null` when unbounded). */
+export interface JavaTypeParameter {
+  name: string;
+  bound: string | null;
+}
+
+/** A field, interface constant, record component or enum constant. */
+export interface JavaFieldType {
+  name: string;
+  type: string;
+}
+
 // Plugin interfaces
 export interface StructuralAnalysis {
   functions: Array<{
@@ -335,9 +359,30 @@ export interface StructuralAnalysis {
     /** Declaring type/scope; empty means free function, null means unresolved.
      * Omitted by extractors that only represent methods in classes[].methods. */
     owner?: string | null;
+    /** Java: declared without a body (interface or abstract method). */
+    abstract?: boolean;
+    /** Java: the method's own type variables, when it declares any. */
+    typeParameters?: JavaTypeParameter[];
   }>;
-  classes: Array<{ name: string; lineRange: [number, number]; methods: string[]; properties: string[] }>;
-  imports: Array<{ source: string; specifiers: string[]; lineNumber: number }>;
+  classes: Array<{
+    name: string;
+    lineRange: [number, number];
+    methods: string[];
+    properties: string[];
+    /** Java top-level types only, from here down. */
+    kind?: "class" | "interface" | "enum" | "record";
+    /** Package plus type name, or the bare name in the default package. */
+    qualifiedName?: string;
+    supertypes?: JavaSupertype[];
+    fieldTypes?: JavaFieldType[];
+    /** Type annotation names as written (`Builder`, `lombok.Builder`). */
+    annotations?: string[];
+    typeParameters?: JavaTypeParameter[];
+    /** Names of the type declarations nested directly in this type's body. */
+    memberTypes?: string[];
+  }>;
+  /** `isStatic` marks a Java `import static`. */
+  imports: Array<{ source: string; specifiers: string[]; lineNumber: number; isStatic?: boolean }>;
   exports: Array<{ name: string; lineNumber: number; isDefault?: boolean }>;
   // Non-code structural data (all optional for backward compat)
   sections?: SectionInfo[];
@@ -354,10 +399,44 @@ export interface ImportResolution {
   specifiers: string[];
 }
 
+/**
+ * What a Java call site is invoked on, as far as the file alone can tell
+ * (openspec: changes/java-member-call-resolution, design D2). Local names are
+ * bound by the extractor; fields, supertypes and other files' types are left
+ * for the fact graph.
+ */
+export type CallReceiver =
+  /** A bare call `m()`. */
+  | { kind: "none" }
+  | { kind: "this" }
+  | { kind: "super" }
+  /** A local, parameter or pattern variable; `type` is `null` when the
+   *  declaration does not state it (lambda parameter, most `var`). */
+  | { kind: "local"; type: string | null }
+  /** An identifier no local binds: a field or a type name. */
+  | { kind: "name"; name: string }
+  | { kind: "field"; object: CallReceiver; name: string }
+  /** The result of another call; `site` indexes this file's call graph. */
+  | { kind: "call"; site: number }
+  /** `new X(...).m()`. */
+  | { kind: "new"; type: string }
+  /** A cast, a string literal (`String`) or a class literal (`Class`). */
+  | { kind: "type"; type: string }
+  /** On an object creation site: the type being constructed. */
+  | { kind: "construct"; type: string }
+  | { kind: "unknown" };
+
 export interface CallGraphEntry {
   caller: string;
   callee: string;
   lineNumber: number;
+  /** Java only, from here down. */
+  receiver?: CallReceiver;
+  /** Number of arguments at the call site. */
+  argCount?: number;
+  /** The top-level type the call is written in; `null` inside an anonymous
+   *  class, a local or nested type, or an enum constant body. */
+  enclosingType?: string | null;
 }
 
 export interface AnalyzerPlugin {

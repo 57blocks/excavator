@@ -62,6 +62,7 @@ import {
 import { DEFAULT_LIMIT_CHARS, serializeJsonProduct } from './product-serialization.mjs';
 import { STRUCTURE_ALL_FILE, readStructureAllPath } from './structure-all-store.mjs';
 import { writeKnowledgeGraph } from './knowledge-graph-store.mjs';
+import { assertCallConservation, createJavaCallResolver, JAVA_CALL_OUTCOMES } from './java-call-resolution.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -152,7 +153,12 @@ export function buildFactGraph({ scan, structureAll, importMap, serializationLim
   // Pass 1: collect every declaration, in source order, across all files.
   // -------------------------------------------------------------------------
   const declEntries = [];
+  // path -> index of the row's first function entry in declEntries; the
+  // row's function entries follow it in `row.functions` order, then its
+  // class entries in `row.classes` order.
+  const firstFunctionEntry = new Map();
   for (const row of fileRows) {
+    firstFunctionEntry.set(row.path, declEntries.length);
     for (const fn of row.functions ?? []) {
       declEntries.push({
         path: row.path, type: 'function', name: fn.name, owner: fn.owner,
@@ -386,7 +392,78 @@ export function buildFactGraph({ scan, structureAll, importMap, serializationLim
   // annotate-graph.mjs's resolveUniqueCallSites, so a dotted/member call
   // (`this.save`, `repo.Save`) does not spuriously match a bare declaration
   // name; it is an honest gap instead.
+  //
+  // Java rows resolve by the receiver's declared type instead (openspec:
+  // changes/java-member-call-resolution, D7/D8/D11): every site becomes one
+  // edge or one gap in JAVA_CALL_OUTCOMES, checked fail-closed below.
+  const languageOfRow = (row) => languageOfPath.get(row.path) ?? row.language;
+  const isJava = (row) => languageOfRow(row) === 'java';
+  const javaRows = fileRows.filter(isJava);
+  let javaSiteCount = 0;
+  let javaEdgeSites = 0;
+  if (javaRows.length > 0) {
+    // Node id per function entry, index for index with `row.functions`;
+    // null where the id is shared with another declaration (an identity
+    // collision), so neither caller nor target can be that node.
+    const collided = new Set(collisions.map((c) => c.id));
+    const uniqueId = (index) => {
+      const id = idOf.get(withOrdinals[index]);
+      return collided.has(id) ? null : id;
+    };
+    const functionIds = new Map();
+    const classIds = new Map();
+    for (const row of javaRows) {
+      const first = firstFunctionEntry.get(row.path);
+      const functionCount = (row.functions ?? []).length;
+      functionIds.set(row.path, (row.functions ?? []).map((_, i) => uniqueId(first + i)));
+      classIds.set(row.path, (row.classes ?? []).map((_, i) => uniqueId(first + functionCount + i)));
+    }
+    // Kotlin and Scala types are in the repository even though Java calls
+    // into them are not resolved: never outside it.
+    const otherJvmRows = fileRows.filter((row) => ['kotlin', 'scala'].includes(languageOfRow(row)));
+    const resolver = createJavaCallResolver({ rows: javaRows, functionIds, classIds, otherJvmRows });
+    for (const row of javaRows) {
+      const sites = row.callGraph ?? [];
+      const outcomes = resolver.resolveFileCalls(row);
+      javaSiteCount += sites.length;
+      sites.forEach((site, i) => {
+        const result = outcomes[i];
+        if (result.outcome !== 'edge') {
+          gapCollector.add(result.outcome, 'java', `${row.path}:${site.lineNumber} -> ${site.callee}`);
+          return;
+        }
+        javaEdgeSites += 1;
+        addEdge({
+          source: result.callerId,
+          target: result.targetId,
+          type: 'calls',
+          direction: 'forward',
+          weight: 0.8,
+          evidence: [{ file: row.path, line: site.lineNumber, source: 'tree-sitter' }],
+          provenance: 'extracted',
+        });
+      });
+    }
+
+    // Type hierarchy (D10): supertypes inside the repository, and concrete
+    // methods to the abstract methods they implement. Traversal follows
+    // these, so a call to an interface method reaches its implementations.
+    const { typeEdges, methodEdges } = resolver.hierarchyEdges();
+    for (const edge of [...typeEdges, ...methodEdges.map((e) => ({ ...e, type: 'implements' }))]) {
+      addEdge({
+        source: edge.source,
+        target: edge.target,
+        type: edge.type,
+        direction: 'forward',
+        weight: 0.9,
+        evidence: [{ file: edge.file, line: edge.line, source: 'tree-sitter' }],
+        provenance: 'extracted',
+      });
+    }
+  }
+
   for (const row of fileRows) {
+    if (isJava(row)) continue;
     const scope = [row.path, ...(importMapSafe.importMap?.[row.path] ?? [])];
     const lang = languageOfPath.get(row.path) ?? row.language ?? 'unknown';
     for (const site of row.callGraph ?? []) {
@@ -434,7 +511,19 @@ export function buildFactGraph({ scan, structureAll, importMap, serializationLim
   // -------------------------------------------------------------------------
   const ledger = buildCoverageLedger({ scan, structure: structureAll, importMap: importMapSafe });
 
-  const resolutionGaps = gapCollector.toArray((kind) => GAP_REASONS[kind] ?? `unrecognized gap kind ${kind}`);
+  const resolutionGaps = gapCollector.toArray((kind, scope) =>
+    (scope === 'java' ? JAVA_CALL_GAP_REASONS[kind] : undefined) ?? GAP_REASONS[kind] ?? `unrecognized gap kind ${kind}`);
+
+  // Every Java call site is one edge or one gap: read the gap counts back
+  // from what was recorded, so a dropped or misnamed bucket fails the build
+  // instead of silently shrinking the call graph.
+  if (javaSiteCount > 0) {
+    const tally = { edge: javaEdgeSites };
+    for (const gap of resolutionGaps) {
+      if (gap.scope === 'java' && JAVA_CALL_OUTCOMES.includes(gap.kind)) tally[gap.kind] = gap.count;
+    }
+    assertCallConservation(javaSiteCount, tally);
+  }
   const gaps = [...ledger.gaps, ...resolutionGaps].sort(compareGaps);
 
   // -------------------------------------------------------------------------
@@ -550,6 +639,15 @@ const GAP_REASONS = Object.freeze({
   'imports-target-missing': 'resolved import target(s) have no fact node (no matching scanned file)',
   'methods-name-only': 'class method(s) the extractor listed by name only (no line range) could not be projected as fact nodes',
   'identity-collision': 'declaration(s) mapped to the same node id as another distinguishable declaration',
+});
+
+/** Reasons for the Java call-site buckets (scope `java`), which resolve by
+ *  the receiver's declared type rather than by name in scope. */
+const JAVA_CALL_GAP_REASONS = Object.freeze({
+  'calls-unresolved': 'Java call site(s) whose receiver type, type or method could not be determined from the repository\'s declarations',
+  'calls-ambiguous': 'Java call site(s) with more than one candidate declaration (same-arity overloads, duplicate type names, or a source the repository cannot see)',
+  'calls-external': 'Java call site(s) whose target type is outside the repository',
+  'calls-generated': 'Java call site(s) to methods the source does not declare (accessors of declared fields, record members, Lombok builders and constructors, implicit constructors, enum values/valueOf)',
 });
 
 // -----------------------------------------------------------------------------
