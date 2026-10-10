@@ -545,7 +545,9 @@ export function createJavaCallResolver({ rows, functionIds, classIds = new Map()
     let result = perType.get(key);
     if (result) return result;
     const candidates = findMethods(type, name, argCount);
-    if (candidates.length === 1) result = { outcome: 'edge', target: candidates[0] };
+    // `outsideHierarchy` is for reporting: an outside supertype of the
+    // lookup type could declare a same-arity overload we cannot see (Risks).
+    if (candidates.length === 1) result = { outcome: 'edge', target: candidates[0], outsideHierarchy: methodsMaybeOutside(type) };
     else if (candidates.length > 1) result = { outcome: AMBIGUOUS };
     else result = { outcome: classifyMissing(type, name, argCount) };
     perType.set(key, result);
@@ -965,15 +967,17 @@ export function createJavaCallResolver({ rows, functionIds, classIds = new Map()
     /**
      * Outcomes for every call site of one Java row, index for index with
      * `row.callGraph`: `{ outcome: 'edge', callerId, targetId }` or
-     * `{ outcome: <bucket> }`.
+     * `{ outcome: <bucket> }`. With `{ report: true }` an edge also says
+     * whether its lookup type's hierarchy reaches outside the repository.
      */
-    resolveFileCalls(row) {
+    resolveFileCalls(row, { report = false } = {}) {
       const state = stateOf(row);
       const out = (row.callGraph ?? []).map((_, index) => {
         const result = resolveSite(state, index);
-        return result.outcome === 'edge'
-          ? { outcome: 'edge', callerId: result.callerId, targetId: result.target.id }
-          : { outcome: result.outcome };
+        if (result.outcome !== 'edge') return { outcome: result.outcome };
+        const edge = { outcome: 'edge', callerId: result.callerId, targetId: result.target.id };
+        if (report) edge.outsideHierarchy = result.outsideHierarchy === true;
+        return edge;
       });
       fileState.delete(row.path);
       return out;

@@ -376,6 +376,16 @@ describe('Java hierarchy, shadowing and type names', () => {
     expect(resolve('c/src/main/java/q/Other.java')).toEqual([{ outcome: 'calls-ambiguous' }]);
   });
 
+  it('reports edges whose lookup type has a supertype outside the repository', () => {
+    const rows = extract(PROJECT);
+    const functionIds = new Map(rows.map((row) => [row.path, (row.functions ?? []).map(label)]));
+    const row = rows.find((r) => r.path === `${P}/Svc.java`);
+    const result = createJavaCallResolver({ rows, functionIds }).resolveFileCalls(row, { report: true });
+    const flag = (line, callee) => result[row.callGraph.findIndex((s) => s.lineNumber === line && s.callee === callee)].outsideHierarchy;
+    expect(flag(16, 'loan.principal')).toBe(true); // Loan extends an outside class
+    expect(flag(9, 'helper.assist')).toBe(false);
+  });
+
   it('a call site whose receiver the extractor did not describe is unresolved', () => {
     const rows = extract({ [`${P}/Money.java`]: PROJECT[`${P}/Money.java`] });
     rows[0].callGraph = [{ caller: 'plus', callee: 'other.plus', lineNumber: 3, enclosingType: 'Money' }];
