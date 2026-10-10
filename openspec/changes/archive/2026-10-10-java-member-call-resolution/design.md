@@ -146,3 +146,130 @@
 4. **非 Java 不变：** wcp-auth、wcp-service-v2、cebreo/unmc 的 factsDigest 前后相同；cebreo/uneeg-managementportal（含 8 个 Java 文件）的变化逐项解释。
 5. **性能与上限：** hadoop 的 Lazy 必须在默认堆下成功；报告用时、最大常驻内存、图谱大小与各产物的序列化余量的前后对比。
 6. **MCP：** 对改后的 Fineract 运行 `deploy/mcp-smoke.mjs`，7 个工具全部通过。
+
+## 验收结果
+
+2026-10-10 在本地实测。改后为本分支 c3b49985，改前为 main c16d67b2，两者都在默认堆下运行。以下各项分别对应上面「验收」的编号。
+
+### 1. 调用点去向与可达性
+
+| | Fineract 改前 | Fineract 改后 | hadoop 改前 | hadoop 改后 |
+|---|---|---|---|---|
+| Java 调用点 | 416,822 | 416,822 | 1,003,609 | 1,003,609 |
+| 成边的调用点 | 36,041（8.65%） | 142,833（34.27%） | 70,448（7.02%） | 437,330（43.58%） |
+| `calls-external` | — | 140,032 | — | 316,336 |
+| `calls-generated` | — | 26,135 | — | 2,900 |
+| `calls-ambiguous` | 16,750 | 13,970 | 25,011 | 53,365 |
+| `calls-unresolved` | 363,287 | 79,895 | 905,613 | 112,560 |
+| `calls-caller-unresolved` | 744 | 13,957 | 2,537 | 81,118 |
+| `calls` 边（去重） | 23,229 | 98,836 | 52,509 | 316,542 |
+| `methods-name-only` | 3,225 | 0 | 4,163 | 0 |
+| 节点 / 边 | 66,993 / 174,249 | 70,218 / 262,918 | 150,368 / 474,437 | 154,531 / 767,818 |
+| `inherits` / 类型 `implements` / 方法 `implements` | — | 1,579 / 1,307 / 3,726 | — | 4,448 / 1,710 / 14,864 |
+
+- **守恒：** 四列的成边数与各桶之和都等于调用点总数。
+- **一致性：** 用解析模块对改后的结构结果重新解析，得到的 `calls` 边与图谱逐条一致（缺 0、多 0），各桶计数也与图谱的缺口一致。
+- **`calls-caller-unresolved` 上升的原因：** 旧规则只凭唯一名字归调用方，不看行号。现在按 D8 要求所在类型与行范围都对上。位于匿名类、局部类、枚举常量体和嵌套类型中的调用，都归入这个桶。
+- **贷款范围可达性（Fineract，157 个 `*ApiResource` 入口）：** 接口方法成为节点后，范围内有函数的文件从 444 个增至 533 个。可达文件数：
+  - 改前：13 个；
+  - 改后只走 `calls`：83 个；
+  - 改后走 `calls` 与 `implements`：397 个（可达函数 11,532 个）。
+
+### 2. 旧调用边的去向
+
+**Fineract 的 23,229 条旧边：** 23,091 条保留，138 条变化。
+- **99 条 → `calls-generated`：** Lombok 生成的访问器，例如 `@Getter AbstractPersistableCustom` 的 `getId`。旧边按名字连到别的声明，例如把 0 参调用连到 1 参重载。旧边错。
+- **17 条 → 指向另一个声明：** 例如 5 参调用现在指向父类的 5 参方法。旧边是连到本类 4 参方法的错误自环。
+- **13 条 → `calls-ambiguous`：** 所在类实现仓库外接口（Spring Batch），调用经单个静态导入。按 D7，仓库外父类型可能声明同名方法遮蔽静态导入。旧边多半是对的，这是保守规则的召回代价。
+- **6 条 → 指向新节点：** `LoanTransactionEnumData` 的裸调用 `isChargeAdjustment()` 等，现在连到它实现的仓库内接口方法。旧边连到一个无关的枚举。
+- **2 条 → `calls-generated` 与 `calls-unresolved`：** 都是 `getId` 调用点。
+- **1 条 → `calls-external`：** 调用的是 JUnit 静态导入的 `fail`，旧边连到 `FeignCalls#fail`。旧边错。
+
+**hadoop 的 52,509 条旧边：** 50,079 条保留，2,430 条变化。
+- **1,240 条 → 指向另一个声明：** 几乎都是裸调用。旧规则按名字匹配到导入文件里的同名方法，常常连参数个数都不对，例如 0 参 `getFileSystem()` 连到 `Path#getFileSystem(Configuration)`。新边指向所在类层次中的声明，例如 `AbstractFSContractTestBase#getFileSystem()`。旧边错。
+- **824 条 → `calls-ambiguous`：** 全是裸调用，共 1,022 个调用点。其中 929 个经静态导入，而所在类的层次含仓库外或无法解析的父类型（D7）；93 个是仓库内层次中参数个数相同的重载（D4）。旧边多半是对的，这是不猜测的召回代价，全部在 `calls-ambiguous` 中可见。
+- **162 条 → 没有对应的调用点：** 逐条核对 162 条，旧边的调用点全部在旧调用方的行范围之外。旧规则按唯一名字，把匿名类、枚举常量体中的调用归给了外层方法。旧边错。
+- **154 条 → `calls-external`：** 例如 `FSInputStream` 中的 3 参 `read` 实为继承自仓库外的 `InputStream#read`，旧边是错误自环；再如 JUnit 静态导入的 `fail`、`Object#getClass`。旧边错。
+- **14 条 → `calls-caller-unresolved`：** 调用位于匿名类内，例如 `PrivilegedExceptionAction`（D8）。
+- **11 条 → 指向新的接口方法或抽象方法节点。**
+- **10 条 → `calls-unresolved`：** 例如 `CACHE.closeAll()` 的接收者类型是嵌套类型 `FileSystem.Cache`，旧边是错误自环。
+- **15 条 → 混合：** 同一条边的多个调用点分别落入上述类别。
+
+### 3. 正确性
+
+由独立代理（Opus）读 Fineract 源码，逐条核对目标是否就是接收者静态类型选中的声明，调用方是否正确。
+- **随机样本：** 50 条新边，种子 20261010，其中 28 条的查找类型层次含仓库外父类型。结果 50/50 正确。
+- **分层补抽：** 第一次抽查的代理指出随机样本偏易，于是补抽 36 条，与前 50 条不重叠。六类各 6 条：继承来的裸调用、经静态导入的裸调用、`super` 调用、链式接收者、目标为接口或抽象方法、构造器。结果 36/36 正确。
+- **遮蔽规则的确定性核对：** Fineract 中 `FeignIntegrationTest` 自己声明了 `ok(...)`，它的子类里 46 处裸调用 `ok(...)` 全部连到继承来的 `FeignIntegrationTest#ok`。静态导入 `FeignCalls.ok` 的 154 个文件都不继承该类，其中 1,337 处调用连到 `FeignCalls#ok`。
+- **样本的局限：** 两次抽查中，每个调用点按名字与参数个数过滤后都只剩一个候选。这是设计使然，同参数个数的多个候选不成边。跨仓库边界的同参数个数重载仍按 Risks 接受。
+- **查找类型层次含仓库外父类型的边：**
+  - Fineract：18,252 条（23,090 个调用点）；
+  - hadoop：120,087 条（166,225 个调用点）。
+
+### 4. 非 Java 不变，以及 uneeg-managementportal
+
+wcp-auth（`cb6ea0b51a87`）、wcp-service-v2（`e1833975bf5d`）、cebreo/unmc（`b6f10267c77d`）的 factsDigest 前后相同。
+
+uneeg-managementportal 的 factsDigest 从 `f22350702217` 变为 `7abaa14d274c`，节点 3,859 → 3,866，边 8,577 → 8,594，缺口条目 47 → 49：
+- **+7 个节点：** MapStruct 接口 `ClientDetailsMapper` 的 7 个接口方法。
+- **+17 条边：**
+  - 这 7 个方法的文件 `contains` 与类 `contains` 各 7 条；
+  - `ClientDetailsMapperDecorator` 到 `ClientDetailsMapper` 的 `implements` 1 条；
+  - 方法级 `implements` 2 条。
+  - 没有边被删除。
+- **152 个 Java 调用点：** 改前全部是 `calls-unresolved`。改后：
+  - `calls-external` 91 个；
+  - `calls-unresolved` 58 个；
+  - `calls-caller-unresolved` 2 个，位于嵌套类 `ProfileInfoVM` 内；
+  - `calls-ambiguous` 1 个，`clientDetailsToClientDetailsDTO` 有两个 1 参重载。
+  - 没有成边：被调用的都是 JDK、Spring、AspectJ 类型或 Kotlin 写的仓库类型。
+- **缺口条目 +2：** 去掉 Java 的 `methods-name-only`，新增 Java 的 `calls-external`、`calls-ambiguous`、`calls-caller-unresolved`。
+- **在本项验收中发现并修正：** Java 调用 Kotlin 写的仓库类型（如 `UserRepository`）原先落进 `calls-external`，已修正（c3b49985，见 D3）。修正后剩下的 91 个 `calls-external` 调用点已逐个核对，全部是 JDK、Spring、AspectJ、OAuth2 的类型。这次修正同样影响纯 Java 项目：经按需导入或静态导入引入的仓库内成员类型不再判为外部。Fineract 因此有 134 个、hadoop 有 151 个调用点从 `calls-external` 改记 `calls-unresolved`，边不变。
+
+### 5. 性能与上限
+
+- **hadoop 在默认堆下成功**（不设 `NODE_OPTIONS`）。
+- **用时与内存（同条件 A/B）：** 同一台机器上改前、改后交替各跑两次。最终版本另跑一次，阶段耗时与 A/B 中的改后版本一致。
+
+  | | 改前 | 改后 | 最终版本 |
+  |---|---|---|---|
+  | 用时 | 204.8 / 197.0 秒 | 213.0 / 208.7 秒 | 212.1 秒 |
+  | 最大常驻内存 | 3.54 / 3.60 GB | 3.45 / 3.54 GB | 3.86 GB |
+  | 峰值内存占用 | 4.21 / 4.13 GB | 3.80 / 3.81 GB | 4.10 GB |
+
+  - 均值用时增幅 +5.0%。
+  - 结构抽取约 62.6 → 83.6 秒（新增接收者与类型事实），事实图约 25.8 → 15.8 秒。
+  - 内存在改前的波动范围之内。
+- **30% 上限按同条件 A/B 判定（+5.0%，满足）：** 本机整体变慢，同一份改前代码现在要跑 197–205 秒，所以不能与 line-store 时的基线（118.6 秒）比绝对值。
+- **Fineract：**
+
+  | | 改前 | 改后 | 最终版本 |
+  |---|---|---|---|
+  | 用时 | 89.0 秒 | 97.1 秒（+9%） | 98.4 秒 |
+  | 最大常驻内存 | 2.52 GB | 2.12 GB | 2.20 GB |
+- **图谱大小（`knowledge-graph.jsonl`）：** 改前按紧凑记录估算。
+  - hadoop：约 372 MB → 577 MB（+55%）；
+  - Fineract：约 142 MB → 205 MB（+44%）。
+- **序列化余量（相对 V8 单串上限 536,870,888 字符）：**
+  - 最大的单串产物是 `fingerprints.json`，占 14.72%（改前 14.53%）。
+  - 按行存储的产物，最长一行占比：
+    - 图谱：14,282 字节（0.0027%）；
+    - `source-index`：1.21 MB（0.23%）；
+    - `structure-all`：0.99 MB（0.19%）。
+
+### 6. MCP
+
+对改后的 Fineract 运行 `deploy/mcp-smoke.mjs`，7 个工具全部 PASS。
+
+### 全量门（任务 6.1）
+
+在 HEAD c3b49985 上运行：`pnpm install --frozen-lockfile`、`pnpm -r build`、`pnpm --filter @excavator/core test`、`pnpm run typecheck`、`node scripts/check-refs.mjs`、`openspec validate --all --strict`、`pytest tests/skill` 全部通过。
+
+`pnpm test` 跑了三次：
+1. **第一次：** 1 个失败。`tests/deploy/e2e.test.mjs` 的墙钟超时用例在并发负载下返回状态 4 而非 3；单独跑 3/3 通过，本分支不改 `deploy/`。另有一个已知的 vitest RPC `onTaskUpdate` 超时。
+2. **第二次：** 7 个文件超时，都在同一时段卡住约 340 秒，属于整机停顿。这 7 个文件单独重跑 286/286 通过。
+3. **第三次：** 97/97 个文件、1,658 个用例通过，4 个跳过。
+
+拆分时重建的中间提交 2b44cbbc，在另一个检出中跑三件套：97/97 个文件通过。
+
+固定摘要：没有 Java 夹具的固定摘要发生变化，所以任务 5.1 无需重冻，提交序列中的第 5 步省略。

@@ -33,18 +33,20 @@
 
 ## 5. 固定摘要
 
-- [ ] 5.1 Java 夹具的固定摘要用生成器整块重冻，并在 commit 说明里列出变化的摘要及原因。验证：全量测试通过。
+- [x] 5.1 Java 夹具的固定摘要用生成器整块重冻，并在 commit 说明里列出变化的摘要及原因。验证：全量测试通过。结果：没有固定摘要变化，无需重冻，第 5 步提交省略。
 
 ## 6. 验收
 
-- [ ] 6.1 全量门：`pnpm -r build`、`pnpm test`、`pnpm typecheck`、Python 测试、`check-refs`、`openspec validate --all --strict`。`pnpm lint` 不列入：main 上缺 ESLint 9 所需的配置文件，本来就跑不了，已另立待办。
-- [ ] 6.2 Fineract 与 hadoop 前后对比：调用点去向分布与守恒、解析率、贷款范围入口可达文件数。
-- [ ] 6.3 改前的每条 Java `calls` 边在改后的去向，逐条解释。
-- [ ] 6.4 独立代理抽查 Fineract 50 条新边（至少 20 条的目标层次含仓库外父类型），0 错；报告这类边的总数。
-- [ ] 6.5 非 Java 不变：wcp-auth、wcp-service-v2、cebreo/unmc 的 factsDigest 前后相同；cebreo/uneeg-managementportal 的变化逐项解释。
-- [ ] 6.6 hadoop 的 Lazy 必须在默认堆（不设 `NODE_OPTIONS`）下成功；用时、最大常驻内存、图谱大小与序列化余量和 line-store 合入后的基线（118.6 秒、3.22 GB）对比，用时增幅不超过 30%。单字符串上限已由 knowledge-graph-line-store 消除；若堆溢出，先完成降低 Lazy 峰值堆占用的前置变更（见 design「Risks」），不靠调大堆过关。
-- [ ] 6.7 对改后的 Fineract 运行 `deploy/mcp-smoke.mjs`，7 个工具全部通过。
+- [x] 6.1 全量门：`pnpm -r build`、`pnpm test`、`pnpm typecheck`、Python 测试、`check-refs`、`openspec validate --all --strict`。`pnpm lint` 不列入：main 上缺 ESLint 9 所需的配置文件，本来就跑不了，已另立待办。
+- [x] 6.2 Fineract 与 hadoop 前后对比：调用点去向分布与守恒、解析率、贷款范围入口可达文件数。
+- [x] 6.3 改前的每条 Java `calls` 边在改后的去向，逐条解释。
+- [x] 6.4 独立代理抽查 Fineract 50 条新边（至少 20 条的目标层次含仓库外父类型），0 错；报告这类边的总数。
+- [x] 6.5 非 Java 不变：wcp-auth、wcp-service-v2、cebreo/unmc 的 factsDigest 前后相同；cebreo/uneeg-managementportal 的变化逐项解释。
+- [x] 6.6 hadoop 的 Lazy 必须在默认堆（不设 `NODE_OPTIONS`）下成功；用时、最大常驻内存、图谱大小与序列化余量和 line-store 合入后的基线（118.6 秒、3.22 GB）对比，用时增幅不超过 30%。单字符串上限已由 knowledge-graph-line-store 消除；若堆溢出，先完成降低 Lazy 峰值堆占用的前置变更（见 design「Risks」），不靠调大堆过关。
+- [x] 6.7 对改后的 Fineract 运行 `deploy/mcp-smoke.mjs`，7 个工具全部通过。
+
+验收结果见 design.md「验收结果」。
 
 ## 7. 归档
 
-- [ ] 7.1 规格增量同步到 `openspec/specs/fact-graph/spec.md`，变更移入 `openspec/changes/archive/`，`openspec validate --all --strict` 通过。
+- [x] 7.1 规格增量同步到 `openspec/specs/fact-graph/spec.md`，变更移入 `openspec/changes/archive/`，`openspec validate --all --strict` 通过。
