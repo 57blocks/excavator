@@ -11,6 +11,7 @@ import type { LanguageExtractor, TreeSitterNode } from "./types.js";
 import { findChild, findChildren } from "./base-extractor.js";
 import { extractAnnotationNames, extractClassLiterals, memberDeclarationFacts } from "./java-declaration-facts.js";
 import { methodReferenceSite } from "./java-method-references.js";
+import { dottedName, typeText } from "./java-names.js";
 
 /**
  * Extract parameter names from a Java `formal_parameters` node.
@@ -62,12 +63,12 @@ function extractParamTypes(paramsNode: TreeSitterNode | null): string[] {
       const typeNode = child.childForFieldName("type");
       if (!typeNode) continue;
       const dimensions = child.childForFieldName("dimensions");
-      types.push(`${typeNode.text}${dimensions ? dimensions.text : ""}`);
+      types.push(`${typeText(typeNode)}${dimensions ? typeText(dimensions) : ""}`);
     } else if (child.type === "spread_parameter") {
       for (let j = 0; j < child.childCount; j++) {
         const part = child.child(j);
         if (part && part.isNamed && !NON_TYPE_CHILDREN.has(part.type)) {
-          types.push(`${part.text}...`);
+          types.push(`${typeText(part)}...`);
           break;
         }
       }
@@ -102,7 +103,7 @@ function typeVariableErasures(node: TreeSitterNode): Map<string, string> {
         for (let k = 0; k < part.childCount; k++) {
           const boundType = part.child(k);
           if (boundType && boundType.isNamed) {
-            bound = boundType.text;
+            bound = typeText(boundType);
             break;
           }
         }
@@ -145,7 +146,7 @@ function extractTypeParameters(node: TreeSitterNode): JavaTypeParameter[] {
         for (let k = 0; k < part.childCount; k++) {
           const boundType = part.child(k);
           if (boundType && boundType.isNamed) {
-            bound = boundType.text;
+            bound = typeText(boundType);
             break;
           }
         }
@@ -175,7 +176,7 @@ function typeListEntries(
   for (let i = 0; i < typeList.childCount; i++) {
     const type = typeList.child(i);
     if (type && type.isNamed) {
-      entries.push({ relation, type: type.text, line: type.startPosition.row + 1 });
+      entries.push({ relation, type: typeText(type), line: type.startPosition.row + 1 });
     }
   }
   return entries;
@@ -192,7 +193,7 @@ function extractSupertypes(node: TreeSitterNode): JavaSupertype[] {
     for (let i = 0; i < superclass.childCount; i++) {
       const type = superclass.child(i);
       if (type && type.isNamed) {
-        supertypes.push({ relation: "extends", type: type.text, line: type.startPosition.row + 1 });
+        supertypes.push({ relation: "extends", type: typeText(type), line: type.startPosition.row + 1 });
         break;
       }
     }
@@ -211,7 +212,7 @@ function extractSupertypes(node: TreeSitterNode): JavaSupertype[] {
 /** A field's declared type, with array dimensions written after the name. */
 function declaratorType(typeNode: TreeSitterNode, declarator: TreeSitterNode): string {
   const dimensions = declarator.childForFieldName("dimensions");
-  return `${typeNode.text}${dimensions ? dimensions.text : ""}`;
+  return `${typeText(typeNode)}${dimensions ? typeText(dimensions) : ""}`;
 }
 
 /** Facts gathered from one type body for the fact graph. */
@@ -283,7 +284,7 @@ function baseTypeName(typeText: string): string {
 function extractReturnType(node: TreeSitterNode): string | undefined {
   const typeNode = node.childForFieldName("type");
   if (!typeNode) return undefined;
-  return typeNode.text;
+  return typeText(typeNode);
 }
 
 /**
@@ -306,10 +307,16 @@ function hasModifier(node: TreeSitterNode, modifier: string): boolean {
  * `java.util.List` is scoped_identifier(scope: scoped_identifier(scope: identifier "java",
  * name: identifier "util"), name: identifier "List")
  *
- * This returns the full path as a dotted string.
+ * This returns the full path as a dotted string, built from the identifiers:
+ * a path wrapped across lines or with a comment inside reads as one line.
  */
 function extractScopedIdentifierPath(node: TreeSitterNode): string {
-  return node.text;
+  return dottedName(node);
+}
+
+/** A package name as a dotted string, or "" when the declaration names none. */
+function dottedNameOf(node: TreeSitterNode | null): string {
+  return node ? dottedName(node) : "";
 }
 
 /**
@@ -347,7 +354,7 @@ export class JavaExtractor implements LanguageExtractor {
 
     const packageDeclaration = findChild(rootNode, "package_declaration");
     const packageName = packageDeclaration
-      ? (findChild(packageDeclaration, "scoped_identifier") ?? findChild(packageDeclaration, "identifier"))?.text ?? ""
+      ? dottedNameOf(findChild(packageDeclaration, "scoped_identifier") ?? findChild(packageDeclaration, "identifier"))
       : "";
 
     for (let i = 0; i < rootNode.childCount; i++) {
@@ -432,7 +439,7 @@ export class JavaExtractor implements LanguageExtractor {
           const typeNode = child.childForFieldName("type");
           if (!nameNode) continue;
           const dimensions = child.childForFieldName("dimensions");
-          bind(nameNode.text, typeNode ? declared(`${typeNode.text}${dimensions ? dimensions.text : ""}`) : null);
+          bind(nameNode.text, typeNode ? declared(`${typeText(typeNode)}${dimensions ? typeText(dimensions) : ""}`) : null);
         } else if (child.type === "spread_parameter") {
           const declarator = findChild(child, "variable_declarator");
           const nameNode = declarator?.childForFieldName("name");
@@ -441,7 +448,7 @@ export class JavaExtractor implements LanguageExtractor {
           for (let j = 0; j < child.childCount; j++) {
             const part = child.child(j);
             if (part && part.isNamed && !NON_TYPE_CHILDREN.has(part.type)) {
-              type = declared(`${part.text}[]`);
+              type = declared(`${typeText(part)}[]`);
               break;
             }
           }
@@ -475,7 +482,7 @@ export class JavaExtractor implements LanguageExtractor {
           const created = value?.type === "object_creation_expression" && !findChild(value, "class_body")
             ? value.childForFieldName("type")
             : null;
-          type = created ? declared(created.text) : null;
+          type = created ? declared(typeText(created)) : null;
         }
         bind(nameNode.text, type);
       }
@@ -487,7 +494,7 @@ export class JavaExtractor implements LanguageExtractor {
       const typeNode = node.childForFieldName("type");
       if (!nameNode) return;
       const dimensions = node.childForFieldName("dimensions");
-      bind(nameNode.text, typeNode ? declared(`${typeNode.text}${dimensions ? dimensions.text : ""}`) : null);
+      bind(nameNode.text, typeNode ? declared(`${typeText(typeNode)}${dimensions ? typeText(dimensions) : ""}`) : null);
     };
 
     const bindCatchParameter = (node: TreeSitterNode) => {
@@ -498,7 +505,7 @@ export class JavaExtractor implements LanguageExtractor {
       const types: string[] = [];
       for (let i = 0; i < (catchType?.childCount ?? 0); i++) {
         const type = catchType!.child(i);
-        if (type && type.isNamed) types.push(type.text);
+        if (type && type.isNamed) types.push(typeText(type));
       }
       // A multi-catch variable's type is the union's least upper bound.
       bind(nameNode.text, types.length === 1 ? declared(types[0]) : null);
@@ -512,7 +519,7 @@ export class JavaExtractor implements LanguageExtractor {
         const part = node.child(i);
         if (!part || !part.isNamed || part.type === "modifiers") continue;
         if (part.type === "identifier") name = part.text;
-        else if (type === null && part.type !== "record_pattern") type = part.text;
+        else if (type === null && part.type !== "record_pattern") type = typeText(part);
       }
       if (name !== null) bindPattern(name, type === null ? null : declared(type));
     };
@@ -547,12 +554,12 @@ export class JavaExtractor implements LanguageExtractor {
         }
         case "object_creation_expression": {
           const typeNode = node.childForFieldName("type");
-          const type = typeNode && !findChild(node, "class_body") ? declared(typeNode.text) : null;
+          const type = typeNode && !findChild(node, "class_body") ? declared(typeText(typeNode)) : null;
           return type === null ? UNKNOWN_RECEIVER : { kind: "new", type };
         }
         case "cast_expression": {
           const types = node.childrenForFieldName("type");
-          const type = types.length === 1 && types[0] ? declared(types[0].text) : null;
+          const type = types.length === 1 && types[0] ? declared(typeText(types[0])) : null;
           return type === null ? UNKNOWN_RECEIVER : { kind: "type", type };
         }
         case "string_literal":
@@ -636,7 +643,7 @@ export class JavaExtractor implements LanguageExtractor {
         case "instanceof_expression": {
           const nameNode = node.childForFieldName("name");
           const typeNode = node.childForFieldName("right");
-          if (nameNode) bindPattern(nameNode.text, typeNode ? declared(typeNode.text) : null);
+          if (nameNode) bindPattern(nameNode.text, typeNode ? declared(typeText(typeNode)) : null);
           break;
         }
         case "type_pattern":
@@ -685,10 +692,11 @@ export class JavaExtractor implements LanguageExtractor {
         if (functionStack.length > 0) {
           const typeNode = node.childForFieldName("type");
           if (typeNode) {
-            const type = declared(typeNode.text);
+            const typeName = typeText(typeNode);
+            const type = declared(typeName);
             entries.push({
               caller: functionStack[functionStack.length - 1],
-              callee: `new ${typeNode.text}`,
+              callee: `new ${typeName}`,
               lineNumber: node.startPosition.row + 1,
               receiver: type === null ? UNKNOWN_RECEIVER : { kind: "construct", type },
               argCount: countArguments(node),

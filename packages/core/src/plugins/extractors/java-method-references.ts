@@ -1,5 +1,6 @@
 import type { CallReceiver } from "../../types.js";
 import type { TreeSitterNode } from "./types.js";
+import { typeText } from "./java-names.js";
 
 /**
  * Method references as call sites (openspec: changes/dead-code-detection,
@@ -42,21 +43,23 @@ export function methodReferenceSite(node: TreeSitterNode, context: MethodReferen
   const last = node.child(node.childCount - 1);
   if (!qualifier || !last || qualifier.startIndex === last.startIndex) return null;
 
+  // A qualifier wrapped across lines reads as one line (java-names).
+  const qualifierText = typeText(qualifier);
   if (last.type === "new") {
-    const callee = `new ${qualifier.text}`;
+    const callee = `new ${qualifierText}`;
     // An array constructor: the array type is the whole story, whatever its
     // element type names.
-    if (qualifier.type === "array_type") return { callee, receiver: { kind: "construct", type: qualifier.text } };
-    const type = context.declared(qualifier.text);
+    if (qualifier.type === "array_type") return { callee, receiver: { kind: "construct", type: qualifierText } };
+    const type = context.declared(qualifierText);
     return { callee, receiver: type === null ? UNKNOWN : { kind: "construct", type } };
   }
 
   if (last.type !== "identifier") return null;
   const callee = last.text;
-  if (qualifier.type === "array_type") return { callee, receiver: { kind: "type", type: qualifier.text } };
+  if (qualifier.type === "array_type") return { callee, receiver: { kind: "type", type: qualifierText } };
   if (TYPE_QUALIFIERS.has(qualifier.type)) {
     if (isQualifiedSuper(qualifier)) return { callee, receiver: UNKNOWN };
-    const type = context.declared(qualifier.text);
+    const type = context.declared(qualifierText);
     return { callee, receiver: type === null ? UNKNOWN : { kind: "type", type } };
   }
   return { callee, receiver: context.describe(qualifier) };

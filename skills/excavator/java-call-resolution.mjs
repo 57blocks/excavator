@@ -130,6 +130,29 @@ function lastSegment(dotted) {
   return i < 0 ? dotted : dotted.slice(i + 1);
 }
 
+// Names as the fact graph compares them (dead-code-detection, "Java type
+// hierarchy edges"). A name with anything else in it — whitespace or a
+// comment an older extractor kept from a name wrapped across lines — cannot
+// be read: it resolves to nothing known and never to a different type.
+const IDENTIFIER = String.raw`[\p{ID_Start}_$][\p{ID_Continue}$]*`;
+const IDENTIFIER_PATTERN = new RegExp(`^${IDENTIFIER}$`, 'u');
+const DOTTED_NAME_PATTERN = new RegExp(`^${IDENTIFIER}(?:\\.${IDENTIFIER})*$`, 'u');
+const ERASED_KEY_PATTERN = new RegExp(`^${IDENTIFIER}(?:\\.${IDENTIFIER})*(?:\\[\\])*$`, 'u');
+
+function isIdentifier(text) {
+  return IDENTIFIER_PATTERN.test(text);
+}
+
+/** A well-formed dotted Java name: identifiers joined by `.`, nothing else. */
+function isDottedName(text) {
+  return typeof text === 'string' && DOTTED_NAME_PATTERN.test(text);
+}
+
+/** A package name as the fact graph can compare it: the default package or a dotted name. */
+function isPackageName(pkg) {
+  return pkg === '' || isDottedName(pkg);
+}
+
 /**
  * A type as written, reduced to its name: annotations and type arguments
  * removed, array dimensions and varargs counted.
@@ -298,22 +321,38 @@ export function createJavaCallResolver({ rows, functionIds, classIds = new Map()
     const onDemand = [];
     const staticSingle = new Map();
     const staticOnDemand = [];
+    // A malformed package or import (whitespace or a comment inside the name,
+    // as an older extractor wrote a wrapped one) hides what the file's simple
+    // type names refer to: names no well-formed single import binds are then
+    // unknown (`opaque`). A malformed name itself resolves to unknown.
+    let opaque = !isPackageName(pkg);
     for (const imp of row.imports ?? []) {
       const star = imp.specifiers?.length === 1 && imp.specifiers[0] === '*';
+      const wellFormed = isDottedName(imp.source);
       if (imp.static === true) {
         if (star) {
           staticOnDemand.push(imp.source);
         } else {
           const i = imp.source.lastIndexOf('.');
           if (i < 0) continue;
-          const member = imp.source.slice(i + 1);
+          const member = wellFormed ? imp.source.slice(i + 1) : imp.source.slice(i + 1).trim();
+          if (!wellFormed && !isIdentifier(member)) {
+            // Which member it imports is unknown: it may bring in any name.
+            staticOnDemand.push(imp.source);
+            continue;
+          }
           if (!staticSingle.has(member)) staticSingle.set(member, []);
           staticSingle.get(member).push(imp.source.slice(0, i));
         }
       } else if (star) {
         onDemand.push(imp.source);
-      } else {
+        if (!wellFormed) opaque = true;
+      } else if (wellFormed) {
         singleImports.set(lastSegment(imp.source), imp.source);
+      } else {
+        const name = lastSegment(imp.source).trim();
+        if (isIdentifier(name)) singleImports.set(name, imp.source);
+        else opaque = true;
       }
     }
     // The directory the package path starts in: types declared under the
@@ -323,7 +362,7 @@ export function createJavaCallResolver({ rows, functionIds, classIds = new Map()
     const sourceRoot = pkgDir && (dir === pkgDir || dir.endsWith(`/${pkgDir}`))
       ? dir.slice(0, dir.length - pkgDir.length)
       : dir;
-    return { row, path: row.path, pkg, singleImports, onDemand, staticSingle, staticOnDemand, sourceRoot };
+    return { row, path: row.path, pkg, singleImports, onDemand, staticSingle, staticOnDemand, sourceRoot, opaque };
   }
 
   // ---------------------------------------------------------------------------
@@ -389,8 +428,9 @@ export function createJavaCallResolver({ rows, functionIds, classIds = new Map()
     return isOtherJvmType(container, name);
   }
 
-  /** A fully qualified name written in an import or in code. */
+  /** A fully qualified name written in an import or in code; a malformed one is unknown. */
   function resolveFqn(fqn, ctx) {
+    if (!isDottedName(fqn)) return R_UNKNOWN;
     const hit = lookupFqn(fqn, ctx);
     if (hit) return hit;
     const segments = fqn.split('.');
@@ -419,6 +459,7 @@ export function createJavaCallResolver({ rows, functionIds, classIds = new Map()
     const ctx = scope.ctx;
     const single = ctx.singleImports.get(name);
     if (single) return resolveFqn(single, ctx);
+    if (ctx.opaque) return R_UNKNOWN;
     const samePackage = lookupFqn(ctx.pkg ? `${ctx.pkg}.${name}` : name, ctx);
     if (samePackage) return samePackage;
     if (isOtherJvmType(ctx.pkg, name)) return R_UNKNOWN;
@@ -474,6 +515,7 @@ export function createJavaCallResolver({ rows, functionIds, classIds = new Map()
     if (!base) return R_UNKNOWN;
     if (dims > 0) return R_ARRAY;
     if (PRIMITIVES.has(base)) return R_PRIMITIVE;
+    if (!isDottedName(base)) return R_UNKNOWN;
     const segments = base.split('.');
     if (segments.length === 1) {
       if (scope.typeVars?.has(base)) {
@@ -1114,9 +1156,16 @@ export function createJavaCallResolver({ rows, functionIds, classIds = new Map()
    * the qualified name of a repository type, the imported or written name of
    * an outside one, a primitive as written. Null when the type cannot be
    * named for certain (a type variable, a nested or unresolvable type, an
-   * outside type from an on-demand import).
+   * outside type from an on-demand import), and whenever the key would not be
+   * a dotted name with `[]` dimensions: a malformed name is unknown, never a
+   * different type.
    */
   function erasedTypeKey(text, owner) {
+    const key = erasedTypeName(text, owner);
+    return key !== null && ERASED_KEY_PATTERN.test(key) ? key : null;
+  }
+
+  function erasedTypeName(text, owner) {
     const { base, dims } = stripTypeText(text);
     const suffix = '[]'.repeat(dims);
     if (PRIMITIVES.has(base)) return base + suffix;
@@ -1167,9 +1216,18 @@ export function createJavaCallResolver({ rows, functionIds, classIds = new Map()
     return m.modifiers === null || m.modifiers.includes('default');
   }
 
-  /** A package-access method is overridden or implemented only from its own package. */
-  function reachableFrom(target, type) {
-    return target.visibility !== 'package' || target.owner.ctx.pkg === type.ctx.pkg;
+  /**
+   * Whether `target` can be overridden or implemented from `type`: a
+   * package-access method only from its own package. 'unknown' when either
+   * package name is malformed, which never reads as a different package.
+   * @returns {'yes'|'no'|'unknown'}
+   */
+  function packageReach(target, type) {
+    if (target.visibility !== 'package') return 'yes';
+    const own = target.owner.ctx.pkg;
+    const other = type.ctx.pkg;
+    if (own === other) return 'yes';
+    return isPackageName(own) && isPackageName(other) ? 'no' : 'unknown';
   }
 
   const abstractCache = new Map();
@@ -1295,20 +1353,22 @@ export function createJavaCallResolver({ rows, functionIds, classIds = new Map()
         let overridden = false;
         for (const target of targets) {
           if (target.id == null || target.paramTypes.length !== method.paramTypes.length) continue;
-          if (!isOverridable(target) || !reachableFrom(target, type)) continue;
+          if (!isOverridable(target)) continue;
+          const reach = packageReach(target, type);
+          if (reach === 'no') continue;
           if (target.abstract) {
             const cmp = compareErased(method, target);
-            if (cmp === 'equal') {
+            if (cmp === 'equal' && reach === 'yes') {
               methodEdges.push({ source: method.id, target: target.id, file: type.path, line: method.lineRange[0] });
-            } else if (cmp === 'uncertain') {
+            } else if (cmp !== 'different') {
               noteUncertain(method, target, 'implements', type.path, method.lineRange[0], true);
             }
           } else if (overridesHere && isConcrete(target)) {
             const cmp = compareErased(method, target);
-            if (cmp === 'equal') {
+            if (cmp === 'equal' && reach === 'yes') {
               overrideEdges.push({ source: method.id, target: target.id, file: type.path, line: method.lineRange[0] });
               overridden = true;
-            } else if (cmp === 'uncertain') {
+            } else if (cmp !== 'different') {
               // It may be an overload: a further ancestor may still be the one overridden.
               noteUncertain(method, target, 'overrides', type.path, method.lineRange[0], true);
             }
@@ -1340,6 +1400,9 @@ export function createJavaCallResolver({ rows, functionIds, classIds = new Map()
     // abstract method and an unrelated default one of the same signature,
     // and a default above `target`'s interface is re-abstracted by it.
     const bindInherited = (type, target, line, relation) => {
+      // Once a nearer method may have been the one inherited, a further one
+      // is no longer certain.
+      let doubtful = false;
       for (const superclass of superclassChain(type)) {
         // The abstract declaration itself: its other methods are overloads.
         if (superclass === target.owner) return;
@@ -1351,17 +1414,21 @@ export function createJavaCallResolver({ rows, functionIds, classIds = new Map()
             if (cmp === 'equal') found = true; // declared abstract again: nothing is inherited
             continue;
           }
-          if (!reachableFrom(target, superclass)) continue;
+          const reach = packageReach(target, superclass);
+          if (reach === 'no') continue;
           // A method whose own type already has `target`'s type as an
           // ancestor is paired with it by (1), which keeps only the nearest
           // override on each supertype path.
           const paired = isSubtypeOf(superclass, target.owner);
-          if (cmp === 'equal') {
+          if (cmp === 'different') continue;
+          const certain = cmp === 'equal' && reach === 'yes';
+          if (certain && !doubtful) {
             if (m.id != null && !paired) noteInherited(relation, m, target, type.path, line);
-            found = true;
-          } else if (cmp === 'uncertain' && m.id != null && !paired) {
+          } else if (m.id != null && !paired) {
             noteUncertain(m, target, relation, type.path, line, false);
           }
+          if (certain) found = true;
+          else if (cmp === 'equal') doubtful = true;
         }
         if (found) return;
       }

@@ -1,6 +1,7 @@
 import type { JavaClassLiteral, JavaMethodModifier, JavaVisibility } from "../../types.js";
 import type { TreeSitterNode } from "./types.js";
 import { findChild } from "./base-extractor.js";
+import { dottedName, typeText } from "./java-names.js";
 
 /**
  * Java declaration facts liveness analysis reads (openspec:
@@ -24,7 +25,7 @@ export function extractAnnotationNames(node: TreeSitterNode): string[] {
     const child = modifiers.child(i);
     if (!child || (child.type !== "marker_annotation" && child.type !== "annotation")) continue;
     const nameNode = child.childForFieldName("name");
-    if (nameNode) names.push(nameNode.text);
+    if (nameNode) names.push(dottedName(nameNode));
   }
   return names;
 }
@@ -71,7 +72,7 @@ const COMMENT_NODES = new Set(["line_comment", "block_comment"]);
 function classLiteralType(literal: TreeSitterNode): string {
   for (let i = 0; i < literal.namedChildCount; i++) {
     const child = literal.namedChild(i);
-    if (child && !COMMENT_NODES.has(child.type)) return child.text;
+    if (child && !COMMENT_NODES.has(child.type)) return typeText(child);
   }
   return literal.text.replace(/\s*\.\s*class$/, "");
 }

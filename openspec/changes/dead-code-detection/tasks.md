@@ -5,6 +5,9 @@
 2. `feat(java): record method references as call sites`：任务 2.1–2.3。
 3. `feat(facts): complete Java hierarchy edges and record uncertain overrides`：任务 3.1–3.3。
 4. `test: refreeze Java fact digests`：任务 3.4（若无固定摘要变化则省略）。
+4a. `fix(java): normalize wrapped qualified names and fail closed on malformed type keys`：任务 3.5（切片 A 验收发现 D2）。
+4b. `feat(java): record call sites outside method bodies`：任务 3.6（切片 A 验收发现 D1）。
+4c. `docs(openspec): record slice A acceptance`：验收记录与基线数字更正。
 5. `feat(liveness): declaration file and language rule catalog`：任务 4.1–4.3。
 6. `feat(liveness): language-agnostic engine, resolved reachability and verdict order`：任务 5.1–5.2。
 7. `feat(liveness): may-reference graph, evidence and stance conditions, suspect propagation`：任务 5.3–5.5。
@@ -15,7 +18,7 @@
 12. `feat(skill): excavator-dead-code`：任务 7.1。
 13. `docs(openspec): record dead-code-detection acceptance and archive`：任务 8.x、9.1。
 
-切片 A = 提交 1–4（引用覆盖补齐，本身就改善图谱与遍历）；切片 B = 提交 5–11（判定与工具面）；切片 C = 提交 12。切片 B 的第 10 个 commit 之前不产出任何判定产物。
+切片 A = 提交 1–4c（引用覆盖补齐，本身就改善图谱与遍历）；切片 B = 提交 5–11（判定与工具面）；切片 C = 提交 12。切片 B 的第 10 个 commit 之前不产出任何判定产物。
 
 ## 1. 方法声明事实与类字面量（切片 A）
 
@@ -35,6 +38,11 @@
 - [x] 3.2 `build-fact-graph.mjs` 投影 `overrides` 边与继承实现的 `implements` 边，`uncertainPairs` 记为 `override-uncertain` 缺口（scope `java`，样例为两个声明）；`retrieve.mjs` 的 `DETERMINISTIC_EDGE_TYPES` 加 `overrides`。验证：事实图单测；遍历单测从调用 `Base#fallback` 的方法走到 `Sub#fallback`，从调用 `I#m` 的方法走到继承来的 `Base#m`；制造一个把不确定配对静默丢弃的变体，缺口计数测试必须变红。
 - [x] 3.3 D13：`resolveFileCalls(row, { report: true })` 对每个调用点补充 `receiverType`、`candidates`、`target`（仅 `calls-caller-unresolved`）；`hierarchyEdges()` 返回 `uncertainPairs`；非报告模式逐字节不变。验证：模块单测；现有事实图测试全部不变。
 - [x] 3.4 Java 夹具的固定摘要用生成器整块重冻，commit 说明列出变化的摘要与原因；非 Java 夹具不得变化。验证：全量测试通过。（实施结果：没有任何固定摘要变化，提交 4 按约定省略；`NON_JAVA_ROWS_SHA256` 不变。）
+
+## 3A. 切片 A 验收发现的修复（切片 A）
+
+- [x] 3.5 D2：跨行书写的限定名（`import a.b\n    .C;`、限定名里的注释）在结构结果里保留了空白，`erasedTypeKey()` 把它当作确定的键，`compareErased()` 判为「不同」，配对既不成边也不入缺口（静默丢失）。抽取器从标识符记号重建点分名（import、package、注解名），类型文本去掉注释与 `.` 两侧的空白；解析器对不是合法点分名的键、包名与 import 一律判未知（配对进入 `override-uncertain`，不判不同）。参数类型里含跨行限定名的函数节点 ID 随之规范化（只影响 ID 原本含换行的节点；只差空白的类型不是不同类型，不会合并重载）。验证：抽取器与事实单测（修前红）；hadoop 只读重抽 199 个含跨行名的文件，层次边 +5 type / +19 implements / +6 overrides、无丢失；fineract 所有 Java 行逐字节不变。
+- [ ] 3.6 D1：方法体之外（字段初始化、初始化块、枚举常量实参、record 紧凑构造器）的调用点——方法引用、方法调用与对象创建——完全不记录，既不成边也不入桶。改为记录，调用者记为 `<clinit>`（静态上下文）或 `<init>`（实例上下文），归入 `calls-caller-unresolved`，报告模式给出已解析目标。验证：抽取器单测覆盖每种上下文；守恒；Fineract / hadoop 只读普查里方法引用记录数等于 tree-sitter 总数。
 
 ## 4. 活性声明与语言规则数据（切片 B）
 
