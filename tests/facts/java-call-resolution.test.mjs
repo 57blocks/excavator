@@ -20,11 +20,11 @@ beforeAll(async () => {
   registerAllParsers(registry);
 });
 
-/** Structure rows for `{ path: source }`, through the real extractor. */
+/** Structure rows for `{ path: source }`, through the real extractor; `.kt` files are Kotlin. */
 function extract(files) {
   return Object.entries(files).map(([path, lines]) => {
     const source = [...lines, ''].join('\n');
-    const file = { path, language: 'java', fileCategory: 'code' };
+    const file = { path, language: path.endsWith('.kt') ? 'kotlin' : 'java', fileCategory: 'code' };
     const extracted = analyzeFileWithOutcomes(registry, file, source);
     expect(extracted.structureOutcome).toBe('succeeded');
     expect(extracted.callGraphOutcome).toBe('succeeded');
@@ -40,9 +40,10 @@ const label = (fn) => `${fn.owner}#${fn.name}(${(fn.paramTypes ?? []).join(',')}
  * the expectations read like the source.
  */
 function outcomes(files, path) {
-  const rows = extract(files);
+  const all = extract(files);
+  const rows = all.filter((row) => row.language === 'java');
   const functionIds = new Map(rows.map((row) => [row.path, (row.functions ?? []).map(label)]));
-  const resolver = createJavaCallResolver({ rows, functionIds });
+  const resolver = createJavaCallResolver({ rows, functionIds, otherJvmRows: all.filter((row) => row.language === 'kotlin') });
   const row = rows.find((r) => r.path === path);
   return resolver.resolveFileCalls(row).map((result, i) => {
     const site = row.callGraph[i];
@@ -376,6 +377,70 @@ describe('Java hierarchy, shadowing and type names', () => {
     expect(resolve('c/src/main/java/q/Other.java')).toEqual([{ outcome: 'calls-ambiguous' }]);
   });
 
+  it('a type the repository declares in Kotlin is unresolved, never external', () => {
+    const files = {
+      'src/main/kotlin/q/UserRepository.kt': ['package q', 'interface UserRepository { fun findByLogin(login: String): Any? }'],
+      'src/main/kotlin/q/User.kt': ['package q', 'class User { class Builder { fun build(): User = User() } }'],
+      'src/main/kotlin/q/Claims.kt': ['package q', 'object Claims { @JvmStatic fun check(a: Any) {} }'],
+      'src/main/kotlin/q/Tokens.kt': ['package q', 'object Tokens { @JvmStatic fun verify() {} }'],
+      [`${P}/Account.kt`]: ['package p', 'class Account { fun close() {} }'],
+      [`${P}/Utils.kt`]: ['package p', 'fun helper() {}'],
+      [`${P}/Svc.java`]: [
+        'package p;',
+        'import java.util.*;',
+        'import q.UserRepository;',
+        'import q.User.Builder;',
+        'import static q.Claims.check;',
+        'import static q.Tokens.*;',
+        'public class Svc {',
+        '  private UserRepository users;',
+        '  void go(Account a, Builder b, List<String> l) {',
+        '    users.findByLogin("x");', // a single import of a Kotlin type
+        '    a.close();', // a Kotlin type of the same package, beside an outside on-demand import
+        '    b.build();', // a member type of a Kotlin type
+        '    check(a);', // a single static import from a Kotlin type
+        '    verify();', // a static on-demand import of a Kotlin type
+        '    UtilsKt.helper();', // the class Kotlin compiles top-level functions into
+        '    l.size();',
+        '  }',
+        '}',
+      ],
+    };
+    expect(outcomes(files, `${P}/Svc.java`)).toEqual([
+      '10 users.findByLogin -> calls-unresolved',
+      '11 a.close -> calls-unresolved',
+      '12 b.build -> calls-unresolved',
+      '13 check -> calls-unresolved',
+      '14 verify -> calls-unresolved',
+      '15 UtilsKt.helper -> calls-unresolved',
+      '16 l.size -> calls-external',
+    ]);
+  });
+
+  it('a member type of a repository type, imported on demand or statically, is unresolved, never external', () => {
+    const files = {
+      [`${P}/Outer.java`]: [
+        'package p;',
+        'public class Outer {',
+        '  public static class Inner { public static void run() {} public void stop() {} }',
+        '}',
+      ],
+      'src/main/java/r/User.java': [
+        'package r;',
+        'import java.util.*;',
+        'import p.Outer.*;',
+        'import static p.Outer.Inner.run;',
+        'public class User {',
+        '  void go(Inner i) { i.stop(); run(); }',
+        '}',
+      ],
+    };
+    expect(outcomes(files, 'src/main/java/r/User.java')).toEqual([
+      '6 i.stop -> calls-unresolved',
+      '6 run -> calls-unresolved',
+    ]);
+  });
+
   it('reports edges whose lookup type has a supertype outside the repository', () => {
     const rows = extract(PROJECT);
     const functionIds = new Map(rows.map((row) => [row.path, (row.functions ?? []).map(label)]));
@@ -406,7 +471,7 @@ describe('Java call sites in the fact graph', () => {
   function graphOf(files) {
     const rows = extract(files);
     const scan = {
-      files: rows.map((r) => ({ path: r.path, language: 'java', fileCategory: 'code', sizeLines: r.totalLines })),
+      files: rows.map((r) => ({ path: r.path, language: r.language, fileCategory: 'code', sizeLines: r.totalLines })),
       skipped: [],
       coverage: { limits: { maxFileLines: 20000, maxFileBytes: 2097152 } },
     };
@@ -469,6 +534,23 @@ describe('Java call sites in the fact graph', () => {
     expect(() => assertCallConservation(siteCount, leaky)).toThrow(/call site/);
     // So is an outcome outside the known set.
     expect(() => assertCallConservation(siteCount, { ...leaky, 'calls-guessed': tally['calls-generated'] })).toThrow(/outside the known set/);
+  });
+
+  it('passes the repository\'s Kotlin sources to the resolver: calls into them are unresolved, not external', () => {
+    const files = {
+      'src/main/kotlin/q/UserRepository.kt': ['package q', 'interface UserRepository { fun findByLogin(login: String): Any? }'],
+      [`${P}/Svc.java`]: [
+        'package p;',
+        'import q.UserRepository;',
+        'public class Svc {',
+        '  void go(UserRepository users, java.util.List<String> l) { users.findByLogin("x"); l.size(); }',
+        '}',
+      ],
+    };
+    const { graph } = graphOf(files);
+    expect(javaTally(graph)).toEqual({ 'calls-external': 1, 'calls-unresolved': 1 });
+    const gap = graph.gaps.find((g) => g.scope === 'java' && g.kind === 'calls-unresolved');
+    expect(gap.samples).toEqual([`${P}/Svc.java:4 -> users.findByLogin`]);
   });
 
   it('gives Java call gaps Java reasons, and never resolves a Java call by name alone', () => {

@@ -18,7 +18,7 @@
 - `calls-external`：目标类型可证明在仓库外（经导入或 `java.lang` 解析到仓库外的类型；`Object` 的方法；或方法不在仓库内的类型层次中，而该层次显式继承了仓库外的类型，或是隐式继承 `java.lang.Enum` 的枚举）；
 - `calls-generated`：目标是源码中没有声明的生成方法（声明字段的访问器、记录的分量访问器与规范构造器、Lombok 构建器方法与构造器、隐式默认构造器、枚举的 `values` / `valueOf`）；
 - `calls-ambiguous`：多个候选；
-- `calls-unresolved`：接收者类型无法确定，或类型找不到；
+- `calls-unresolved`：接收者类型无法确定，或类型找不到，或类型在仓库内但解析器不读（仓库内类型的成员类型、仓库内 Kotlin / Scala 源码声明的类型）；
 - `calls-caller-unresolved`：调用方无法确定。
 
 非 Java 语言的调用解析 SHALL 保持不变。
@@ -42,6 +42,10 @@
 #### Scenario: 生成的访问器
 - **WHEN** 调用 `loan.getStatus()`，`Loan` 在仓库内的类型层次中声明了字段 `status`，但没有声明 `getStatus`
 - **THEN** 该调用点记入 `calls-generated`，而不是 `calls-external`
+
+#### Scenario: 仓库内其它 JVM 语言的类型
+- **WHEN** Java 方法调用 `users.findByLogin(...)`，`users` 的声明类型是仓库内 Kotlin 源码声明的 `UserRepository`
+- **THEN** 该调用点记入 `calls-unresolved`，不记入 `calls-external`
 
 #### Scenario: 接收者类型无法确定
 - **WHEN** 接收者是没有声明类型的 lambda 参数

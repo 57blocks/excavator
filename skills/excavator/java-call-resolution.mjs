@@ -164,17 +164,34 @@ function asInstance(res) {
  *   rows: object[],
  *   functionIds: Map<string, (string|null)[]>,
  *   classIds?: Map<string, (string|null)[]>,
+ *   otherJvmRows?: object[],
  * }} args `functionIds` / `classIds` map a row's path to the node ids of its
  *   `functions` / `classes` entries, index for index; null marks an id shared
- *   with another declaration, which is never an edge endpoint.
+ *   with another declaration, which is never an edge endpoint. `otherJvmRows`
+ *   are the structure rows of the repository's Kotlin and Scala sources.
  */
-export function createJavaCallResolver({ rows, functionIds, classIds = new Map() }) {
+export function createJavaCallResolver({ rows, functionIds, classIds = new Map(), otherJvmRows = [] }) {
   /** fqn -> TypeInfo[] (more than one when two files declare the same name) */
   const typesByFqn = new Map();
   const packages = new Set();
   const contextByPath = new Map();
   /** path -> simple name -> TypeInfo, for the types a file declares */
   const typesByPath = new Map();
+
+  // Java code can use the types of the repository's Kotlin and Scala sources,
+  // which this resolver does not read: by directory, the type names declared
+  // there. A type or package found there is in the repository, not outside.
+  const otherJvmNamesByDir = new Map();
+  for (const row of otherJvmRows) {
+    const slash = row.path.lastIndexOf('/');
+    const dir = slash < 0 ? '' : row.path.slice(0, slash);
+    if (!otherJvmNamesByDir.has(dir)) otherJvmNamesByDir.set(dir, new Set());
+    const names = otherJvmNamesByDir.get(dir);
+    const file = row.path.slice(slash + 1).replace(/\.[^.]+$/, '');
+    names.add(file);
+    names.add(`${file}Kt`); // the class Kotlin compiles a file's top-level declarations into
+    for (const cls of row.classes ?? []) if (typeof cls.name === 'string') names.add(cls.name);
+  }
 
   for (const row of rows) {
     const ctx = fileContext(row);
@@ -283,18 +300,54 @@ export function createJavaCallResolver({ rows, functionIds, classIds = new Map()
     return local.length === 1 ? repoRef(local[0], true) : R_AMBIGUOUS;
   }
 
+  const otherJvmDirsByPackage = new Map();
+  /** Directories of Kotlin and Scala sources laid out in the package's path. */
+  function otherJvmDirs(pkg) {
+    let dirs = otherJvmDirsByPackage.get(pkg);
+    if (dirs) return dirs;
+    const pkgDir = pkg.replace(/\./g, '/');
+    dirs = !pkgDir ? [] : [...otherJvmNamesByDir.keys()].filter((d) => d === pkgDir || d.endsWith(`/${pkgDir}`));
+    otherJvmDirsByPackage.set(pkg, dirs);
+    return dirs;
+  }
+
+  /** A type the repository's Kotlin or Scala sources declare in package `pkg`. */
+  function isOtherJvmType(pkg, name) {
+    return otherJvmDirs(pkg).some((d) => otherJvmNamesByDir.get(d).has(name));
+  }
+
+  function isRepoType(fqn) {
+    if (typesByFqn.has(fqn)) return true;
+    const i = fqn.lastIndexOf('.');
+    return i > 0 && isOtherJvmType(fqn.slice(0, i), fqn.slice(i + 1));
+  }
+
+  function isRepoPackage(pkg) {
+    return packages.has(pkg) || otherJvmDirs(pkg).length > 0;
+  }
+
   function isRepoTypePrefix(segments) {
     for (let i = segments.length - 1; i > 0; i--) {
-      if (typesByFqn.has(segments.slice(0, i).join('.'))) return true;
+      if (isRepoType(segments.slice(0, i).join('.'))) return true;
     }
     return false;
   }
 
   function isRepoPackagePrefix(segments) {
     for (let i = segments.length - 1; i > 0; i--) {
-      if (packages.has(segments.slice(0, i).join('.'))) return true;
+      if (isRepoPackage(segments.slice(0, i).join('.'))) return true;
     }
     return false;
+  }
+
+  /**
+   * A type `name` that an on-demand import of `container` brings in, which
+   * the repository declares but this resolver does not: a member type of a
+   * repository type, or a Kotlin or Scala type.
+   */
+  function isUnresolvedRepoType(container, name) {
+    if ((typesByFqn.get(container) ?? []).some((t) => t.memberTypes.has(name))) return true;
+    return isOtherJvmType(container, name);
   }
 
   /** A fully qualified name written in an import or in code. */
@@ -302,10 +355,10 @@ export function createJavaCallResolver({ rows, functionIds, classIds = new Map()
     const hit = lookupFqn(fqn, ctx);
     if (hit) return hit;
     const segments = fqn.split('.');
-    // A nested type of a repository type, or a type missing from a
-    // repository package: in the repository, but not resolvable.
+    // A nested type of a repository type, a type missing from a repository
+    // package, or a Kotlin or Scala type: in the repository, but not resolvable.
     if (isRepoTypePrefix(segments)) return R_UNKNOWN;
-    if (packages.has(segments.slice(0, -1).join('.'))) return R_UNKNOWN;
+    if (isRepoPackage(segments.slice(0, -1).join('.'))) return R_UNKNOWN;
     return R_EXTERNAL_STATIC;
   }
 
@@ -329,13 +382,14 @@ export function createJavaCallResolver({ rows, functionIds, classIds = new Map()
     if (single) return resolveFqn(single, ctx);
     const samePackage = lookupFqn(ctx.pkg ? `${ctx.pkg}.${name}` : name, ctx);
     if (samePackage) return samePackage;
+    if (isOtherJvmType(ctx.pkg, name)) return R_UNKNOWN;
     const found = [];
     for (const prefix of ctx.onDemand) {
-      const hit = lookupFqn(`${prefix}.${name}`, ctx);
+      const hit = lookupFqn(`${prefix}.${name}`, ctx) ?? (isUnresolvedRepoType(prefix, name) ? R_UNKNOWN : null);
       if (hit) found.push(hit);
     }
     if (found.length > 0) {
-      if (found.length > 1 || JAVA_LANG.has(name) || found[0].status !== 'repo') return R_AMBIGUOUS;
+      if (found.length > 1 || JAVA_LANG.has(name) || found[0].status === 'ambiguous') return R_AMBIGUOUS;
       return found[0];
     }
     if (JAVA_LANG.has(name)) return R_EXTERNAL_STATIC;
@@ -343,7 +397,7 @@ export function createJavaCallResolver({ rows, functionIds, classIds = new Map()
   }
 
   function isOutsideScope(name) {
-    return !packages.has(name) && !typesByFqn.has(name) && !isRepoTypePrefix(name.split('.'));
+    return !isRepoPackage(name) && !isRepoType(name) && !isRepoTypePrefix(name.split('.'));
   }
 
   /** An on-demand import of something outside the repository. */
@@ -352,10 +406,20 @@ export function createJavaCallResolver({ rows, functionIds, classIds = new Map()
     return ctx.externalOnDemand;
   }
 
-  /** A static on-demand import of a type outside the repository. */
-  function hasExternalStaticOnDemand(ctx) {
-    ctx.externalStaticOnDemand ??= ctx.staticOnDemand.some((t) => resolveFqn(t, ctx).status !== 'repo');
-    return ctx.externalStaticOnDemand;
+  /**
+   * What the static on-demand imports may bring in besides the repository
+   * types this resolver reads: members of a type outside the repository
+   * (`outside`), or of one it declares but cannot resolve (`unknown`).
+   */
+  function staticOnDemandReach(ctx) {
+    if (!ctx.staticOnDemandReach) {
+      const statuses = ctx.staticOnDemand.map((t) => resolveFqn(t, ctx).status);
+      ctx.staticOnDemandReach = {
+        outside: statuses.includes('external'),
+        unknown: statuses.some((s) => s === 'unknown' || s === 'ambiguous'),
+      };
+    }
+    return ctx.staticOnDemandReach;
   }
 
   /**
@@ -583,8 +647,9 @@ export function createJavaCallResolver({ rows, functionIds, classIds = new Map()
         }
         if (!cur) {
           // Neither variable nor type nor package of the repository: a static
-          // field or a type an outside on-demand import brings in, or a
-          // package outside the repository.
+          // field or a type an on-demand import brings in, or a package
+          // outside the repository.
+          if (variable.unknown) return R_UNKNOWN;
           if (segments.length === 1) return variable.outside || hasExternalOnDemand(scope.ctx) ? R_EXTERNAL : R_UNKNOWN;
           return isRepoPackagePrefix(segments) || isRepoTypePrefix(segments) ? R_UNKNOWN : R_EXTERNAL;
         }
@@ -598,7 +663,8 @@ export function createJavaCallResolver({ rows, functionIds, classIds = new Map()
    * A field visible by simple name: declared in the enclosing type's
    * hierarchy, else statically imported. Returns `res: null` when neither
    * declares it, with whether a supertype the repository does not declare
-   * (`hidden`) or an outside static on-demand import (`outside`) may.
+   * (`hidden`), a static on-demand import of an unresolvable repository type
+   * (`unknown`) or of an outside type (`outside`) may.
    */
   function resolveVariable(name, scope) {
     const owner = scope.owner;
@@ -611,7 +677,8 @@ export function createJavaCallResolver({ rows, functionIds, classIds = new Map()
       if (!hidden) return { res: imported };
       return { res: imported.status === 'repo' ? R_AMBIGUOUS : R_UNKNOWN };
     }
-    return { res: null, hidden, outside: hasExternalStaticOnDemand(scope.ctx) };
+    const { unknown, outside } = staticOnDemandReach(scope.ctx);
+    return { res: null, hidden, unknown, outside };
   }
 
   /**
@@ -625,9 +692,10 @@ export function createJavaCallResolver({ rows, functionIds, classIds = new Map()
       if (res.status === 'repo') {
         const imported = findField(res.type, name);
         if (imported) return fieldValue(imported, false);
-      } else if (res.status === 'external') {
-        // A static field of an outside type has an outside type.
-        return R_EXTERNAL;
+      } else {
+        // A static field of an outside type has an outside type; of a type
+        // the repository declares but cannot resolve, an unknown one.
+        return res.status === 'external' ? R_EXTERNAL : R_UNKNOWN;
       }
     }
     const found = new Set();
@@ -835,34 +903,38 @@ export function createJavaCallResolver({ rows, functionIds, classIds = new Map()
     // the static imports.
     const hidden = methodsMaybeOutside(owner);
 
+    // Imported types whose methods this resolver cannot see: `opaque` when
+    // any, `unknown` when one of them is in the repository.
     const fromImports = (typeNames) => {
       const candidates = [];
-      let outside = false;
+      let opaque = false;
+      let unknown = false;
       for (const typeName of typeNames) {
         const res = resolveFqn(typeName, scope.ctx);
         if (res.status === 'repo') {
           for (const m of findMethods(res.type, name, argCount)) candidates.push(m);
         } else {
-          outside = true;
+          opaque = true;
+          if (res.status !== 'external') unknown = true;
         }
       }
-      return { candidates, outside };
+      return { candidates, opaque, unknown };
     };
 
     const single = scope.ctx.staticSingle.get(name);
     if (single) {
-      const { candidates, outside } = fromImports(single);
-      if (candidates.length === 1 && !outside && !hidden) return { outcome: 'edge', target: candidates[0] };
+      const { candidates, opaque, unknown } = fromImports(single);
+      if (candidates.length === 1 && !opaque && !hidden) return { outcome: 'edge', target: candidates[0] };
       if (candidates.length > 0) return { outcome: AMBIGUOUS };
-      if (outside) return { outcome: h.hasUnknown ? UNRESOLVED : EXTERNAL };
+      if (opaque) return { outcome: h.hasUnknown || unknown ? UNRESOLVED : EXTERNAL };
     }
-    const { candidates, outside } = fromImports(scope.ctx.staticOnDemand);
-    if (candidates.length === 1 && !outside && !hidden) return { outcome: 'edge', target: candidates[0] };
+    const { candidates, opaque, unknown } = fromImports(scope.ctx.staticOnDemand);
+    if (candidates.length === 1 && !opaque && !hidden) return { outcome: 'edge', target: candidates[0] };
     if (candidates.length > 0) return { outcome: AMBIGUOUS };
     if (isObjectMethod(name, argCount)) return { outcome: EXTERNAL };
     if (isGenerated(owner, name, argCount)) return { outcome: GENERATED };
-    if (h.hasUnknown) return { outcome: UNRESOLVED };
-    if (h.hasExternal || h.implicitExternal || outside) return { outcome: EXTERNAL };
+    if (h.hasUnknown || unknown) return { outcome: UNRESOLVED };
+    if (h.hasExternal || h.implicitExternal || opaque) return { outcome: EXTERNAL };
     return { outcome: UNRESOLVED };
   }
 

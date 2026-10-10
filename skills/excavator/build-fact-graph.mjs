@@ -396,7 +396,8 @@ export function buildFactGraph({ scan, structureAll, importMap, serializationLim
   // Java rows resolve by the receiver's declared type instead (openspec:
   // changes/java-member-call-resolution, D7/D8/D11): every site becomes one
   // edge or one gap in JAVA_CALL_OUTCOMES, checked fail-closed below.
-  const isJava = (row) => (languageOfPath.get(row.path) ?? row.language) === 'java';
+  const languageOfRow = (row) => languageOfPath.get(row.path) ?? row.language;
+  const isJava = (row) => languageOfRow(row) === 'java';
   const javaRows = fileRows.filter(isJava);
   let javaSiteCount = 0;
   let javaEdgeSites = 0;
@@ -417,7 +418,10 @@ export function buildFactGraph({ scan, structureAll, importMap, serializationLim
       functionIds.set(row.path, (row.functions ?? []).map((_, i) => uniqueId(first + i)));
       classIds.set(row.path, (row.classes ?? []).map((_, i) => uniqueId(first + functionCount + i)));
     }
-    const resolver = createJavaCallResolver({ rows: javaRows, functionIds, classIds });
+    // Kotlin and Scala types are in the repository even though Java calls
+    // into them are not resolved: never outside it.
+    const otherJvmRows = fileRows.filter((row) => ['kotlin', 'scala'].includes(languageOfRow(row)));
+    const resolver = createJavaCallResolver({ rows: javaRows, functionIds, classIds, otherJvmRows });
     for (const row of javaRows) {
       const sites = row.callGraph ?? [];
       const outcomes = resolver.resolveFileCalls(row);
