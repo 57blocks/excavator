@@ -36,12 +36,14 @@
 - 不建 bean 节点或「名字」节点。边直接指向类节点，名字留在证据里。
 - 不解析 Kotlin / Scala / Groovy 源文件上的注解，也不读嵌套类型和成员（producer / factory）上的注解。被它们绑定的名字落「无绑定」，原因写在缺口说明里。
 - 不展开元注解：以 `@Component` 或 `@Named` 为元注解的自定义构造型（如 CDI 的自定义 stereotype、Spring 的自定义 `@Service` 变体）不产生绑定。展开需要读仓库里的注解类型声明，属于后续步骤。
+- 不读容器注解里嵌套的注解（如 Seam 的 `@Roles({@Role(...)})`）。Core 对数组与嵌套注解参数只记 `null`。
+- 不跨文件传播局部名：静态 include（`<%@ include file=… %>`）的被包含片段、`jsp:useBean scope="session"` 在别的页面创建的对象，在片段里仍按本文件规则分桶，多落「无绑定」或「他处」。
 
 ## Decisions
 
 **D0：为什么落代码，而不是交给 skill / prompt。**
 
-- 绑定与引用是结构化的代码事实。探针统计：Sakai 12.7 约有 163 个 `<managed-bean>`、985 个带名字的 Spring `<bean>`，Dataverse 约有 195 个 `@Named`；页面里的 EL 根名以万计。按「结构化代码事实不让模型转写」，这类事实由确定性抽取原样产出。
+- 绑定与引用是结构化的代码事实。探针统计：Sakai 12.7 约有 163 个 `<managed-bean>`、985 个带名字的 Spring `<bean>`，Dataverse 约有 139 个类上的 `@Named`；页面里的 EL 根名以万计。按「结构化代码事实不让模型转写」，这类事实由确定性抽取原样产出。
 - 下游的遍历、死代码判定（R5）和审计都需要可复现、可校验的边。
 - 什么算绑定、默认名怎么来、EL 看得见什么，属于判断。这些判断写成目录数据，代码只执行。
 
@@ -54,32 +56,42 @@
   - `rootNamespace`：可选，根元素命名空间 URI 的白名单。
   - `element`：元素本地名。
   - `parent`：直接父元素本地名。这一项排除 Spring 的内部 bean，它的 `id` 不注册为名字。
-  - `name`：取自某个直接子元素的文本（`child`），或取自属性列表（`attribute: [...]`）。`split` 可选，声明拆分别名的分隔字符，供 Spring 的 `name="a,b c"` 使用。
+  - `name`：取自某个直接子元素的文本（`child`），或取自属性列表（`attribute: [...]`）。`split` 可选，是「属性名 → 分隔字符」的映射，只对所列属性拆分，供 Spring 的 `name="a,b c"` 使用；`id` 不拆。键必须是 `attribute` 里列出的属性。
   - `target`：`kind` 取 `class` 或 `bundle`，值取自 `child` 或 `attribute`。
+  - `missingTarget`：必填，元素有名字却没有目标时的含义。`unknown` 表示这是一个目标未知的绑定（Spring 只有 `parent` 或 `factory-bean` 的 `<bean>`）；`configures` 表示该元素是在配置别处声明的同名组件（Seam 不写 `class` 的 `<component>`），详见 D4、D7。
 - **注解绑定器**的字段：
   - `annotations`：注解全限定名列表。
   - `nameArguments`：读名字的参数键列表；单个无键参数视为 `value`。
   - `defaultName`：`lowercase-first`、`java-beans-decapitalize` 或 `null`（必须显式写名字）。
+- 两种绑定器都有必填的 `namespacedNames`（布尔）：该框架的 EL 解析器是否把点分名当作命名空间。CDI 与 Seam 是：名为 `x.y` 的 bean 经 `#{x.y.z}` 访问，`x` 解析为命名空间。JSF managed bean 与 Spring 的 EL 桥接不是：它们只按整个根名查找，点分名从 EL 访问不到。
 - **表达式语言**的字段：
   - `delimiters`；
   - `files`：`extensions`，以及 `xmlRoots`（每项 `root` 加可选 `rootNamespace`）；
   - `implicitNames`；
-  - `localDeclarations`：每项为 `attribute`，可选限定 `element` 本地名；
+  - `localDeclarations`：每项为 `attribute`，可选限定 `element` 本地名，以及：
+    - `elementNamespaces`：可选，元素命名空间 URI 列表，要求同时给 `element`。元素的前缀在本文件中经 `xmlns:前缀` 或 JSP `<%@ taglib prefix uri %>` 绑定到列表中的某个 URI 时才算；不带前缀的元素取默认命名空间。一个前缀在文件里绑定多个 URI 时，任一命中即算（多认局部名只会少成边，不会编造）。
+    - `declares`：可选，`literal`（缺省，属性值本身就是名字）或 `expression-root`（属性值里 EL 表达式的根名被声明为局部名，如 Tomahawk `aliasBean` 的 `alias="#{bean}"`）。
   - `sees`：可见命名空间。每项 `namespace` 加可选 `when`，`when` 当前只支持一种形状：`elementTextIn: { root, elements, anyOf }`，即同单元某个该根元素的文件里，所列元素之一的文本等于 `anyOf` 中的一个值。
 - **随附条目**（依据写进 `basis`）：
 
   | 框架 | XML 绑定器 | 注解绑定器 |
   |---|---|---|
   | JSF | faces-config 的 `managed-bean`（父 `faces-config`）；`resource-bundle` 的 `var` → `base-name`，`kind: bundle`，父 `application` | `javax.faces.bean.ManagedBean`（`name`，`lowercase-first`） |
-  | CDI | — | `javax.inject.Named` / `jakarta.inject.Named`（`value`，`lowercase-first`）；`javax.enterprise.inject.Model` / `jakarta.enterprise.inject.Model`（无参数，`lowercase-first`） |
-  | Seam | `components.xml` 的 `component`（父 `components`，根命名空间 `http://jboss.com/products/seam/components`） | `org.jboss.seam.annotations.Name`（`value`，`null`）；`org.jboss.seam.annotations.Role`（`name`，`null`，为同一个类再声明一个名字） |
-  | Spring | `beans/bean`（`id` 与 `name`，`split: ",; "`） | `org.springframework.stereotype.Component` / `Service` / `Repository` / `Controller`（`value`，`java-beans-decapitalize`） |
+  | CDI | — | `javax.inject.Named` / `jakarta.inject.Named`（`value`，`lowercase-first`）；`javax.enterprise.inject.Model` / `jakarta.enterprise.inject.Model`（无参数，`lowercase-first`）；都是 `namespacedNames: true` |
+  | Seam | `components.xml` 的 `component`（父 `components`，根命名空间 `http://jboss.com/products/seam/components`，`missingTarget: configures`） | `org.jboss.seam.annotations.Name`（`value`，`null`）；`org.jboss.seam.annotations.Role`（`name`，`null`，为同一个类再声明一个名字）；都是 `namespacedNames: true` |
+  | Spring | `beans/bean`（`id` 与 `name`，只拆 `name`：`split: { name: ",; " }`，`missingTarget: unknown`） | `org.springframework.stereotype.Component` / `Service` / `Repository` / `Controller`（`value`，`java-beans-decapitalize`） |
+
+  JSF 与 Spring 的绑定器 `namespacedNames: false`；JSF 两个 XML 绑定器 `missingTarget: unknown`。
 
   另有一条表达式语言 `jsf-jsp-el`：
   - 分隔符：`#{`、`${`。
   - 文件：扩展名 `xhtml`、`jsp`、`jspx`、`jspf`、`tag`、`tagx`；根元素 `faces-config`；根元素 `pages` / `page`（Seam 页面命名空间）。
-  - 隐式名：JSF 与 JSP EL 隐式对象的并集。
-  - 局部声明：任意元素的 `var`、`varStatus`；`param` 元素的 `name`；`useBean` 元素的 `id`。
+  - 隐式名：JSP 2.x 与 JSF 2.0–4.0 隐式对象的并集，共 23 个（含 JSF 2.2 的 `resource`、`flowScope` 与 JSF 2.3 的 `externalContext`）。仓库用的是哪个版本无法确定，取并集。代价：老版本应用里恰好叫 `resource` 或 `externalContext` 的 bean 落「隐式」，不成边；覆盖里的 `implicitWithBinding` 让这种情形可见。
+  - 局部声明：
+    - 任意元素的 `var`、`varStatus`；
+    - Facelets `ui` 命名空间（`http://java.sun.com/jsf/facelets`、`http://xmlns.jcp.org/jsf/facelets`、`jakarta.faces.facelets`）下 `param` 元素的 `name`。`f:param`、`c:param`、`jsp:param` 的 `name` 是请求参数名，不是 EL 变量；
+    - `useBean` 元素的 `id`，不限命名空间，因为经典 JSP 的 `jsp:` 前缀不声明命名空间；
+    - Tomahawk（`http://myfaces.apache.org/tomahawk`）`aliasBean` 元素 `alias` 属性里表达式的根名（`declares: expression-root`）。
   - 可见命名空间：`el` 恒可见。`spring` 仅当同单元某个 faces-config 在 `el-resolver` 或 `variable-resolver` 中声明了 `SpringBeanFacesELResolver`、`DelegatingVariableResolver` 或 `SpringBeanVariableResolver` 时可见（不含 `WebApplicationContextFacesELResolver`，它不把名字解析为 Spring bean）。
   - 单元描述符：`pom.xml`、`build.gradle`、`build.gradle.kts`、`build.xml`、`build.sbt`。
 - 被否决的方案：把这些规则写成代码里的分支。那样技术栈就硬编码在代码里，每加一个框架都要改代码；而且规则散落在代码中，无法逐条复核依据。
@@ -113,13 +125,17 @@
   - 参数缺省或为空串时，按 `defaultName` 从类的简单名推出（CDI、JSF、Spring 的规范都把空串当作未指定）。
   - 参数为非字面量时，不产生绑定，计入 `nonLiteralNames`。
   - 必须显式写名却没写的，计入 `missingNames`。
-  - XML 名字取文本或属性值，去掉首尾空白，再按 `split` 拆分。
-  - 名字不是 EL 标识符（`[A-Za-z_$][A-Za-z0-9_$]*`）的，计入 `nonIdentifierNames`，不进绑定表，例如 Seam 的点分名、含 `/` 的 Spring 名。
+  - XML 名字取文本或属性值，去掉首尾空白，再按 `split` 拆分；同一元素产出的相同名字只算一次。匹配到绑定器、却没有任何名字的元素（Spring 匿名 `<bean class>`、Seam 只写 `class` 的 `<component>`），不产生绑定，按绑定器计入 `missingNames`。
+  - 名字是 EL 标识符（`[A-Za-z_$][A-Za-z0-9_$]*`）的，进绑定表。
+  - 名字是点分名、每段都是 EL 标识符、且绑定器 `namespacedNames: true` 的，作为命名空间名进绑定表，例如 CDI 的 `@Named("admin.track")`、Seam 的 `org.jboss.seam.core.manager`。
+  - 其余名字计入 `nonIdentifierNames`，不进绑定表，例如 Spring 的点分名或含 `/` 的名字。它们从 EL 访问不到。
 - 目标：
   - 注解绑定的目标是被注解的类节点。该类没有节点（`identity-collision`）时，目标为「未建索引」。
   - XML 的 `class` 目标沿用第 1 步的类名解析：`$` 归一为 `.`，对顶层类型取最长前缀，至少两段。结果分四种：唯一类节点；多个声明（歧义）；仓库有声明但不是节点（未建索引）；仓库外。
   - `bundle` 目标不解析成文件，只表示「名字已被声明为资源包」。
-  - 匹配到绑定器元素、有名字却没有目标的（如 Spring 只有 `parent` 或 `factory-bean` 的 `<bean>`），记为目标未知。
+  - 匹配到绑定器元素、有名字却没有目标的，按绑定器的 `missingTarget`：
+    - `unknown`：目标未知的绑定，如 Spring 只有 `parent` 或 `factory-bean` 的 `<bean>`。Spring 会用它覆盖同名的扫描组件，实际的类可能来自 `parent`，所以与同名注解绑定并存时按歧义处理。
+    - `configures`：目标未知、并标为「配置」的绑定，如 Seam 用 `<component name="x">` 给 `@Name("x")` 的组件设属性。它在 D7 归类时让位于同名的已知目标绑定。
 - 证据位置：XML 绑定记名字文本或名字属性值所在行；注解绑定记注解所在行。
 
 **D5：部署单元。**
@@ -137,7 +153,9 @@
 - **遮蔽**：标记语言注释（复用第 1 步）；JSP 脚本段 `<% … %>`（`<%@` 指令除外）；`jsp:scriptlet`、`jsp:expression`、`jsp:declaration` 元素体。CDATA 与 `<script>` 不遮蔽，Facelets 与 JSP 都会对模板文本里的 EL 求值。
 - **定界**：
   - 分隔符前一个字符是 `\` 时，该处不是表达式，计入 `escaped`。
-  - 向后找匹配的 `}`，跳过 EL 字符串字面量（`'…'`、`"…"`，`\` 转义），并计嵌套的 `{}`。到文件末尾仍未闭合的，计入 `unterminated`，不产生根名。
+  - 表达式在所在的文本段内定界：一个属性值，或两个标签之间的文本（段落划分沿用第 1 步的 `markupSegments`）。这与 Facelets 先做 XML 解析、再在文本与属性值里找 EL 的做法一致，也让引号失配的表达式不会越过标签吞进后文。
+  - 段内向后找匹配的 `}`，跳过 EL 字符串字面量（`'…'`、`"…"`，`\` 转义），并计嵌套的 `{}`。段内未闭合的，计入 `unterminated`，不产生根名，并从该分隔符之后继续扫描，所以一处漏写的 `}` 不会吞掉后面的表达式。每个未闭合的分隔符计一次。最坏情形的耗时与「分隔符数 × 段长」成正比。
+  - 代价：经典 JSP 的模板文本里，HTML 标签的属性值中 EL 再嵌同种引号（`"${m["k"]}"`）时，会被切成未闭合，计数可见。
 - **根名**：表达式内的标识符同时满足以下条件时，才是根名：
   - 前面（跳过空白）不是 `.`；
   - 不是关键字（`and or not eq ne lt gt le ge div mod empty true false null instanceof`）；
@@ -146,26 +164,29 @@
   - 不是 lambda 参数：紧跟 `->` 的标识符，或紧跟 `->` 的括号参数表里的标识符，是本表达式内的局部名。
 - **实体与字面量**：表达式里的 XML 实体与字符引用（`&amp;`、`&lt;`、`&gt;`、`&quot;`、`&apos;`、数字引用）按其代表的字符处理。XHTML 属性值里的 `&amp;&amp;` 很常见，不处理的话会产生根名 `amp`。数字字面量（含指数写法）里的字母不是标识符。
 - **成员链**：根名之后连续的 `.标识符`，记为 `chain`，本步只记录、不解析。行号取根名所在行，多行表达式也能逐行复核。
-- **局部名**：本文件中由 `localDeclarations` 声明的名字，加本表达式内的 lambda 参数。局部名只在本文件内有效，不扩到整个单元。理由与代价见风险一节。
+- **局部名**：本文件中由 `localDeclarations` 声明的名字，加本表达式内的 lambda 参数。局部名只在本文件内有效，不扩到整个单元。理由与代价见风险一节。元素命名空间按 D1 的 `elementNamespaces` 判定：本文件里的 `xmlns:前缀="URI"`（任意元素上）与 JSP `taglib` 指令的 `prefix` / `uri` 组成前缀表，不按作用域细分。`declares: expression-root` 的属性，其表达式根名记为局部名，这些根名本身也落「局部」。
 
 **D7：根名的分桶（顺序即优先级）。**
 
 1. **局部**：名字是局部名。
-2. **隐式**：名字在 `implicitNames` 里。JSF 与 JSP 都先解析隐式对象，所以排在绑定之前。
-3. 取本单元、本语言可见命名空间里同名的全部绑定，按目标归类：
+2. **隐式**：名字在 `implicitNames` 里。JSF 与 JSP 都先解析隐式对象，所以排在绑定之前。隐式根名在本单元可见命名空间里另有同名绑定的，计入 `implicitWithBinding`。
+3. 候选名字是根名本身，加上成员链的每个点分前缀（`#{admin.track.list}` 的候选为 `admin`、`admin.track`、`admin.track.list`）；点分名只来自 `namespacedNames` 的绑定器（D4）。取本单元、本语言可见命名空间里名字等于某个候选的全部绑定：
+   - 命中的绑定分属不止一个候选名字（如同时有 `admin` 与 `admin.track`）：**歧义**，样例列出各名字及其目标。运行时由哪个解析器先答无法静态确定。
+   - 否则先去掉让位的绑定：同时有已知目标的绑定时，`missingTarget: configures` 的目标未知绑定不参与归类，但仍列在证据的绑定处里。
+   - 再按目标归类：
    - 全部指向同一个类节点：**成边**，证据列出这些绑定处。
    - 全部是 `bundle`：**资源包**，不成边、不算缺口，名字已有归属。
    - 全部指向同一个仓库外的类：**仓库外**，不成边、不算缺口，与第 1 步口径一致。
    - 全部指向同一个已声明但不是节点的类：**未建索引**，缺口 `name-reference-target-unindexed`。
    - 全部目标未知：**目标未知**，缺口 `name-reference-target-unknown`。
    - 其余情形（指向不同的类、目标种类混杂、XML 类名本身歧义）：**歧义**，缺口 `name-reference-ambiguous`，样例列出各候选。
-4. **他处**：本单元不可见，但别的单元或不可见的命名空间里有同名绑定。缺口 `name-reference-elsewhere`，样例列出候选单元与命名空间。
-5. **无绑定**：缺口 `name-reference-unbound`。它的说明写明本步不读的绑定来源：库里的组件、调用方传入的参数、producer / factory 方法、嵌套类型、非 Java 源文件、运行时属性。
+4. **他处**：本单元不可见，但别的单元或不可见的命名空间里有名字等于某个候选的绑定。缺口 `name-reference-elsewhere`，样例列出候选单元与命名空间。
+5. **无绑定**：缺口 `name-reference-unbound`。它的说明写明本步不读的绑定来源：库里的组件、调用方传入的参数、静态 include 的包含方、producer / factory 方法、嵌套类型、非 Java 源文件、运行时属性。这些来源绑定的名字，若别的单元恰好有同名绑定，落「他处」而不是这里。
 
 **D8：`references` 边。**
 
 - 每个（页面文件，类）一条边，`type: "references"`，`provenance: "extracted"`，权重与 `mentions` 相同。
-- 每处引用一条证据：`{ line, token: 根名, chain, bindings: [{ file, line, binder }] }`，按行与 token 排序去重。
+- 每处引用一条证据：`{ line, token: 根名, chain, name: 命中的绑定名, bindings: [{ file, line, binder }] }`，按行与 token 排序去重。`name` 通常等于 `token`；命名空间名时是成员链的点分前缀。
 - `validate-graph.mjs` 对 `references` 要求被引行包含 `token`。`retrieve.mjs` 把 `references` 加入 `DETERMINISTIC_EDGE_TYPES`。
 - 不改 `mentions`：`mentions` 表示「字面写出了名字」，`references` 表示「经绑定解析到」，消费者可以分开过滤。
 
@@ -175,7 +196,7 @@
   - 表达式站点：按文件给出根名列表，以及 `escaped`、`unterminated`；
   - XML 绑定：文件、绑定器、名字、行、目标文本；
   - 条件事实：满足 `elementTextIn` 的文件与单元；
-  - 目录外文件计数：含 `#{` 却不在表达式文件范围内的非代码文件，XML 按 `xml:<根元素>`，其余按扩展名。
+  - 目录外文件计数：原文（不做注释遮蔽）含 `#{` 却不在表达式文件范围内的非代码文件。扩展名为 `.xml` 的按 `xml:<根元素本地名>` 计（读不到根元素时计 `xml`），其余按小写扩展名计，没有扩展名的计为 `(none)`；以标签开头的 HTML 片段仍计 `html`，DTD 计 `dtd`。用原文是因为它只提示「这里可能有没读的 EL」，多报不会产生边。
 - lazy 驱动在 `mentions` 之后新增一个计时阶段 `nameReferences`，把站点与目录一起交给 `buildFactGraph({ ..., nameReferenceSites, nameBindingCatalog })`。两者必须同时给或同时不给；都不给时，覆盖记 `nameReferences.status: "not-run"`。
 - 注解绑定在投影里从 `structureAll` 读出，用 D3 规则确认。解析放在 `name-reference-resolution.mjs`，提供与第 1 步相同形式的变异测试接口 `mutations`。
 
@@ -185,12 +206,14 @@
 
 - `status`
 - `files`：按语言计
-- `units`：单元数
+- `units`：至少拥有一个表达式文件或一个绑定的单元数，仓库单元满足条件时也计入
 - `repositoryUnitFiles`：表达式文件中属于仓库单元的个数
 - `bindings`：按绑定器 id 计
-- `nonLiteralNames`、`missingNames`、`nonIdentifierNames`
+- `nonLiteralNames`、`nonIdentifierNames`：总数
+- `missingNames`：按绑定器计（含 XML 无名元素与没有缺省名规则的注解），每个绑定器都列出，没有的记 0
 - `unconfirmedAnnotations`：按写法计
-- `roots`：十个桶
+- `roots`：十个桶；`rootCount`：根名总数，守恒等式的另一边
+- `implicitWithBinding`
 - `escaped`、`unterminated`
 - `outsideFiles`
 
@@ -217,6 +240,8 @@
 - `ignoreSeesConditions`：Spring 恒可见；
 - `anyParent`：不查 `parent`；
 - `noCommentMask`
+- `shortestPrefix`：多个候选名字命中时取最短的，即根名；
+- `noExpressionLocals`：不把 `declares: expression-root` 的根名记为局部名。
 
 ## 验收 Oracle（动手前写死）
 
@@ -241,7 +266,12 @@
     - 测试源里的同名 bean；
     - 绑定到仓库外类和 Kotlin 类；
     - 注释、转义、函数调用、三元运算、lambda、字符串里的标识符、多行表达式；
-    - `ui:repeat var` 与 `ui:param name`。
+    - `ui:repeat var` 与 `ui:param name`，以及 `f:param` / `c:param` 的 `name` 不算局部名；
+    - Tomahawk `aliasBean` 的 `alias`，且同单元有与别名同名的绑定；
+    - CDI 点分名 `@Named("admin.track")` 被 `#{admin.track.x}` 使用；同单元同时有 `admin` 与 `admin.track` 时的歧义；`namespacedNames: false` 的点分名不参与匹配；
+    - Seam 不写 `class` 的 `<component name>` 与同名 `@Name` 并存；只写 `class` 的 `<component>` 与匿名 Spring `<bean class>`；
+    - 未闭合的 `#{` 之后还有正常表达式；
+    - `externalContext` 与同名绑定并存。
   - 断言精确的边列表与十个桶的计数。D12 的每个变异至少让一条测试变红。
 - **O2 全量精度审计**（acceptor 独立实现，不复用被测代码）：
   - 对每个语料每条 `references` 边的每条证据：读快照中的页面行，要求它在一个 EL 表达式内含 `token`；读每个绑定处的行，要求含该名字（或属于产生缺省名的注解）。
@@ -284,7 +314,9 @@
   - 同名不同类会落歧义，不会编造。剩下的风险是：A 应用的页面用到只在 B 应用里声明的名字。
 - **Gradle 子项目可以不写自己的 build 文件**，由根项目的 `subprojects {}` 配置。这样的子项目会并入上层单元，若几个子项目各有同名 bean，就可能互相可见。随附语料都是 Maven、Ant 或各子项目自带描述符。读 `settings.gradle` 的 `include` 来划分单元，属于后续步骤。
 - **测试源与主源同单元，同名 bean 互相歧义**（如 Seam quartz 的 `paymentHome`）。这是仓库里真实存在的二义，按歧义缺口报出；不按「main 优先」去猜。
-- **Spring 桥接只认目录列出的解析器。** 自定义解析器（Sakai 的 `org_sakaiproject_*` 前缀名）不被认出，相关根名落「无绑定」。企业内部的解析器与注解要靠项目自定义目录，属于后续步骤。
+- **XML 类名按仓库范围解析（沿用第 1 步）。** 同一全限定名在两个模块各声明一次时，绑定歧义，即使页面与描述符在同一单元。同单元优先需要类路径语义，本步不做；探针语料中没有页面受影响。
+- **共享的 JSF jar 模块**（自带 faces-config、被各应用依赖）里的名字对依赖方落「他处」，等按模块依赖放开可见性的后续步骤解决。
+- **Spring 桥接只认目录列出的解析器。** 自定义解析器（Sakai 的 `org_sakaiproject_*` 前缀名）不被认出：不可见的 `spring` 命名空间里有同名 bean 的根名落「他处」，没有的落「无绑定」。企业内部的解析器与注解要靠项目自定义目录，属于后续步骤。
 - **默认名规则写在目录里，规则写错会成批产生错边。** 每条规则的 `basis` 写明出处；O6 按绑定器分层抽查，缺省名单独一层；夹具里有 `URLHelper` 这类边界写法。
 - **Core 新字段会让每个 Java 文件的结构变大。** 只记参数，只在有注解的顶层类型上记，耗时由 O5 兜住。
 

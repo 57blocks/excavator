@@ -29,6 +29,12 @@
   验证：2.2 的测试加载随附目录，断言绑定器 id 集合与 D1 一致。
 - [ ] 2.2 新建 `skills/excavator/name-binding-catalog.mjs`，提供加载与严格校验：未知键、缺字段、类型不符、重复 id 都抛错并指出位置；结果深度冻结。
   验证：`tests/facts/name-binding-catalog.test.mjs` 覆盖规格场景「目录格式错误」，另加缺字段、错类型、重复 id、`when` 形状错误；随附目录加载成功。
+- [ ] 2.3 预登记后的修订（design D1）：
+  - 绑定器加必填 `namespacedNames`；XML 绑定器加必填 `missingTarget`（`unknown` | `configures`）；`split` 改为「属性名 → 分隔字符」，键必须在 `attribute` 里；
+  - `localDeclarations` 加可选 `elementNamespaces`（须同时给 `element`）与 `declares`（`literal` | `expression-root`）；
+  - 随附条目按 D1 表格更新：隐式名 23 个（加 `externalContext`）；`param` 限 Facelets `ui` 命名空间；Tomahawk `aliasBean` 的 `alias`。
+
+  验证：上述新字段各有一条非法输入测试；随附目录断言新字段取值。
 
 ## 3. 单文件词法
 
@@ -49,6 +55,14 @@
   验证：`tests/facts/xml-name-bindings.test.mjs` 覆盖规格场景「faces-config 声明的 managed bean」「Spring 内部 bean 的 id 不是名字」「只有 parent 的 bean 定义」，另加：带前缀的元素名；DOCTYPE 与注释在根元素之前；根命名空间不符时 Seam 条目不生效；被注释掉的 `<el-resolver>` 不满足条件。
 - [ ] 3.3 收集器：对每个非代码文件读一次，产出表达式站点、XML 绑定、条件事实与目录外文件计数，按 design D9。
   验证：`tests/facts/name-reference-sites.test.mjs` 覆盖规格场景「不在表达式文件范围内的 EL 可见」，以及代码语言文件不被读取、读失败时报错（不静默为空）。变异绊线 `noCommentMask` 至少让一条测试变红。
+- [ ] 3.4 预登记后的修订（design D4 / D6 / D9）：
+  - 前缀表：本文件的 `xmlns:前缀` 与 JSP `taglib` 指令；`elementNamespaces` 按它判定；
+  - `declares: expression-root` 的属性，其表达式根名记为局部名；
+  - 未闭合的分隔符计一次，从其后继续扫描；
+  - XML：无名元素按绑定器计入 `missingNames`；`split` 只拆所列属性；同一元素的相同名字去重；`missingTarget` 原样带进绑定；
+  - 目录外文件：用原文判断是否含 `#{`；读得到根元素的计 `xml:<根元素>`，否则计小写扩展名或 `(none)`。
+
+  验证：规格场景「未闭合的表达式不吞掉后文」「请求参数名不是局部名」「别名标签声明的名字是局部名」「匿名 bean 不产生绑定」「id 不按别名分隔符拆分」各一条测试，另加 DTD 文件按 `dtd` 计入目录外文件。
 
 ## 4. 跨文件解析
 
@@ -67,6 +81,13 @@
   验证：测试对守恒失败、`not-run`、站点与目录只给其一时抛错，各有一条断言。
 - [ ] 4.5 变异绊线：`ignoreUnits`、`noLocals`、`bindingsBeforeImplicit`、`firstBinding`、`simpleNameAnnotations`、`ignoreSeesConditions`、`anyParent` 每个至少让一条测试变红，不改生产默认值。
   验证：测试里逐个打开开关，断言结果变化。
+- [ ] 4.6 预登记后的修订（design D4 / D7 / D8 / D10 / D12）：
+  - 点分名：`namespacedNames` 绑定器的点分名（每段为标识符）进绑定表，其余计 `nonIdentifierNames`；候选名字为根名加成员链的每个点分前缀；命中不止一个候选名字为歧义；他处判定用同一候选集；
+  - `configures` 绑定在有已知目标的同名绑定时不参与归类，仍列在证据绑定处里；
+  - 证据加 `name`；覆盖加 `implicitWithBinding`；`units` 按 D10 新定义计；
+  - 变异 `shortestPrefix`、`noExpressionLocals` 各让至少一条测试变红。
+
+  验证：规格场景「点分名按成员链前缀匹配」「根名与点分名同时命中」「不按命名空间解析的点分名访问不到」「配置型组件让位于注解声明的同名组件」「目标未知的 Spring bean 与同名注解并存为歧义」，以及「隐式对象优先于同名 bean」的新计数，各一条测试。
 
 ## 5. 接入流水线与夹具
 
@@ -78,6 +99,8 @@
   验证：测试覆盖规格场景「从 bean 类遍历到页面」；在 5.1 的夹具产物上跑图校验，没有新增告警。
 - [ ] 5.4 检查其它可能拒绝或误判新边、新覆盖段的位置，按需最小修改。位置包括：schema、`annotate-graph.mjs`、`project-service.mjs` 的状态输出、MCP `project_status`。
   验证：逐处说明查过的位置及结论；夹具产物经 `project_status` 能看到 `nameReferences` 覆盖。
+- [ ] 5.5 夹具按 design O1 新增的条目补齐，管道测试的精确边列表与桶计数随之更新。
+  验证：同 5.2。
 
 ## 6. 验收与记录
 
