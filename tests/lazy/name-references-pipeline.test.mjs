@@ -162,12 +162,16 @@ describe('the name-reference stage in the real Lazy driver', () => {
     expect(edge.evidence.map((e) => [e.line, e.token, e.chain])).toEqual([[3, 'mailer', 'mailer.name'], [4, 'mailer', 'mailer.subject']]);
   });
 
+  it('reads a loop variable an action declares inside a classic JSP page\'s script block as local, though legacy binds the same name', () => {
+    expect(linksOf(graph).some((l) => l.startsWith('legacy/view/script.jsp'))).toBe(false);
+  });
+
   it('counts the ten buckets, and every root lands in exactly one', () => {
     const { nameReferences } = graph.coverage;
     expect(nameReferences.roots).toEqual({
-      local: 8, implicit: 3, edge: 34, bundle: 2, external: 1, unindexed: 1, unknown: 1, ambiguous: 3, elsewhere: 8, unbound: 10,
+      local: 9, implicit: 4, edge: 34, bundle: 2, external: 1, unindexed: 1, unknown: 1, ambiguous: 3, elsewhere: 8, unbound: 10,
     });
-    expect(nameReferences.rootCount).toBe(71);
+    expect(nameReferences.rootCount).toBe(73);
     expect(Object.values(nameReferences.roots).reduce((a, b) => a + b, 0)).toBe(nameReferences.rootCount);
   });
 
@@ -175,7 +179,7 @@ describe('the name-reference stage in the real Lazy driver', () => {
     const { nameReferences } = graph.coverage;
     expect(nameReferences).toMatchObject({
       status: 'ran',
-      files: { xhtml: 9, jsp: 3, xml: 3 },
+      files: { xhtml: 9, jsp: 4, xml: 3 },
       units: 4,
       repositoryUnitFiles: 1,
       nonLiteralNames: 1,
@@ -337,7 +341,7 @@ describe('the name-reference stage in the real Lazy driver', () => {
   it('reports the name-reference coverage and its gaps through project_status', () => {
     const status = createProjectService(root).projectStatus();
     expect(status.status).toBe('ok');
-    expect(status.data.factCoverage.nameReferences).toMatchObject({ status: 'ran', rootCount: 71, roots: { edge: 34, unbound: 10 } });
+    expect(status.data.factCoverage.nameReferences).toMatchObject({ status: 'ran', rootCount: 73, roots: { edge: 34, unbound: 10 } });
     expect(status.gaps.map((g) => g.kind)).toEqual(expect.arrayContaining([
       'name-reference-ambiguous', 'name-reference-elsewhere', 'name-reference-target-unindexed', 'name-reference-target-unknown', 'name-reference-unbound',
     ]));

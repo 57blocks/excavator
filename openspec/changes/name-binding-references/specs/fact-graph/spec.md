@@ -128,6 +128,10 @@ XML 绑定：
 - **WHEN** JSP 页面以 `<%@ taglib prefix="t" uri="http://myfaces.apache.org/tomahawk" %>` 引入 Tomahawk，写 `<t:aliasBean alias="#{bean}" value="#{orders}">` 与 `#{bean.save}`，同一单元有名为 `bean` 的绑定
 - **THEN** 两处 `bean` 都落局部，不生成指向名为 `bean` 的类的边；`orders` 按绑定解析
 
+#### Scenario: 脚本块里的动作声明局部名
+- **WHEN** 经典 JSP 页面在 `<script>` 体内写 `<c:forEach items="${paramValues.to}" var="mailer">` 与 `${mailer.name}`，同一单元有名为 `mailer` 的绑定
+- **THEN** `mailer` 落局部，不生成该页面指向名为 `mailer` 的类的边
+
 #### Scenario: 点分名按成员链前缀匹配
 - **WHEN** 类带 `@jakarta.inject.Named("admin.track")`，同一单元的页面写 `#{admin.track.trackingId}`
 - **THEN** 生成指向该类的 `references` 边，证据的 `token` 为 `admin`，命中的绑定名为 `admin.track`

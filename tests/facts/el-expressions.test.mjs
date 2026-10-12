@@ -409,6 +409,33 @@ describe('template-text files and delimiters outside the runs (classic JSP is re
     ]);
   });
 
+  it('reads the local declarations of actions written inside a script, a style block or CDATA, as the JSP compiler runs them', () => {
+    const result = jsp([
+      '<script type="text/javascript">',
+      '<c:forEach items="${prefs.entries}" var="su" varStatus="sus">',
+      "  add('${su.key}', ${sus.last});",
+      '</c:forEach>',
+      '</SCRIPT>',
+      '<style><c:if test="${theme.dark}"><c:set var="shade" value="#000"/></c:if></style>',
+      '${su.after} ${shade.x}',
+      '<div><![CDATA[<c:set var="raw" value="1"/>]]></div>${raw.y}',
+    ]);
+    expect(brief(result)).toEqual([
+      ['prefs', 'prefs.entries', false, 2],
+      ['su', 'su.key', true, 3],
+      ['sus', 'sus.last', true, 3],
+      ['theme', 'theme.dark', false, 6],
+      ['su', 'su.after', true, 7],
+      ['shade', 'shade.x', true, 7],
+      ['raw', 'raw.y', true, 8],
+    ]);
+  });
+
+  it('does not take an unprefixed tag inside a script for a declaration', () => {
+    const result = jsp(['<script>if (a<b var="z">0) {}</script>', '#{z.y}']);
+    expect(brief(result)).toEqual([['z', 'z.y', false, 2]]);
+  });
+
   it('decodes references and keeps the line of each root', () => {
     expect(brief(jsp(['<p>', '#{a.open &amp;&amp; b.ready}', '</p>']))).toEqual([
       ['a', 'a.open', false, 2],

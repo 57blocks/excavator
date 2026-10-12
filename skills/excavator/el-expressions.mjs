@@ -20,7 +20,9 @@
  *                `orders.items` (it stops at `[`, `(` or anything else); recorded,
  *                never resolved
  *     local      the name is declared locally: by a catalog `localDeclarations`
- *                attribute anywhere in this file (an element-limited one only
+ *                attribute anywhere in this file (in a template-text file, on an
+ *                action inside a `<script>` or `<style>` body or a CDATA section
+ *                too; an element-limited one only
  *                when the element's prefix is bound, by an `xmlns:` declaration
  *                or a JSP `taglib` directive of this file, to one of the
  *                namespaces the declaration lists; and an `expression-root` one
@@ -387,7 +389,8 @@ export function lexElExpressions(text, { language, expressionLanguage, template 
   const commentMasked = maskScripting(mutations.noCommentMask ? text : maskMarkupComments(text));
   const segments = markupSegments(commentMasked, language);
   const starts = lineStarts(text);
-  const fileLocals = declaredLocals(commentMasked, segments, localDeclarations, delimiters, mutations);
+  const declarationSegments = template ? [...segments, ...actionsInText(commentMasked, segments)] : segments;
+  const fileLocals = declaredLocals(commentMasked, declarationSegments, localDeclarations, delimiters, mutations);
 
   // The bodies of the scripting elements are Java, not template text.
   let masked = commentMasked;
@@ -417,6 +420,28 @@ export function lexElExpressions(text, { language, expressionLanguage, template 
   for (const [start, end] of runs) lexAt(start, masked.slice(start, end));
   result.unscanned = delimitersOutside(masked, runs, delimiters);
   return result;
+}
+
+/**
+ * The attribute segments of the prefixed elements (the page's actions, such as
+ * `c:forEach`) that a template-text file writes inside what the markup scanner
+ * keeps as text: a `<script>` or `<style>` body, which HTML reads as raw text,
+ * and a CDATA section. A JSP compiler treats all of that as template text and
+ * runs the actions in it, so their `var` declares a name the expressions after
+ * it use. Unprefixed tags there are left alone: they are script or character
+ * data, and reading them could only declare more local names.
+ */
+function actionsInText(text, segments) {
+  const found = [];
+  for (const { start, end, context } of segments) {
+    if (context?.attribute || !text.slice(start, end).includes('<')) continue;
+    for (const inner of markupSegments(text.slice(start, end), 'jspx')) {
+      if (inner.context?.attribute && inner.context.element.includes(':')) {
+        found.push({ start: start + inner.start, end: start + inner.end, context: inner.context });
+      }
+    }
+  }
+  return found;
 }
 
 /** How many delimiters `text` writes outside every one of the `[start, end)` runs. */
