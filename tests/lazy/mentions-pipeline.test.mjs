@@ -135,8 +135,16 @@ describe('the mentions stage in the real Lazy driver', () => {
     expect(gap('mention-ambiguous', 'xml').samples).toEqual([
       'app/src/main/resources/spring/beans.xml:4 com.acme.Config -> [app/src/main/java/com/acme/Config.java, legacy/src/main/java/com/acme/Config.java]',
     ]);
-    expect(gap('path-mention-unresolved', 'xhtml')).toMatchObject({ count: 1 });
-    expect(gap('path-mention-unresolved', 'xhtml').samples).toEqual([`${APP}/orders/detail.xhtml:5 /WEB-INF/missing/footer.xhtml -> []`]);
+    expect(gap('path-mention-unresolved', 'xhtml')).toMatchObject({ count: 2 });
+    expect(gap('path-mention-unresolved', 'xhtml').samples).toEqual([
+      `${APP}/orders/detail.xhtml:5 /WEB-INF/missing/footer.xhtml -> []`,
+      // a relative href that misses in this application, while the other application has a file of that shape
+      `${APP}/orders/detail.xhtml:6 style/date.css -> []`,
+    ]);
+    // an Ant include led by `**`: it hits under any directory, so it is not expanded from legacy/ (it would reach
+    // legacy/src/main/java/com/acme/Config.java)
+    expect(gap('path-mention-unresolved', 'xml')).toMatchObject({ count: 1 });
+    expect(gap('path-mention-unresolved', 'xml').samples).toEqual(['legacy/build.xml:3 **/acme/**/*.java -> []']);
     expect(linksOf(graph).some((l) => l.includes('Audited') || l.includes('Huge') || l.includes('catalog'))).toBe(false);
     expect(graph.nodes.some((n) => n.type === 'class' && ['Audited', 'Huge'].includes(n.name))).toBe(false); // the premise
   });
@@ -150,9 +158,10 @@ describe('the mentions stage in the real Lazy driver', () => {
       'app/src/main/resources/spring/beans.xml:7 com.acme.Audited -> [com.acme.Audited]',
       'app/src/main/resources/spring/beans.xml:8 com.acme.gen.Huge -> [com.acme.gen.Huge]',
     ]);
-    // a path to a file the scanner skipped as too large exists: named with its reason, not "no such file"
-    expect(unindexed('properties')).toMatchObject({ count: 1 });
-    expect(unindexed('properties').samples).toEqual([`app/src/main/resources/app.properties:3 WEB-INF/catalog.xml -> [${APP}/WEB-INF/catalog.xml (too-large)]`]);
+    // a page includes `/WEB-INF/catalog.xml` (rule 1: under its web root), a file the scanner skipped as too large:
+    // it exists, named with its reason, not "no such file"
+    expect(unindexed('xhtml')).toMatchObject({ count: 1 });
+    expect(unindexed('xhtml').samples).toEqual([`${APP}/orders/list.xhtml:5 /WEB-INF/catalog.xml -> [${APP}/WEB-INF/catalog.xml (too-large)]`]);
   });
 
   it('does not take a directory named like a package for a declaration', () => {
@@ -165,14 +174,14 @@ describe('the mentions stage in the real Lazy driver', () => {
   it('records the stage in coverage, with every candidate accounted for', () => {
     const mentions = graph.coverage.mentions;
     expect(mentions.status).toBe('ran');
-    expect(mentions.files).toEqual({ properties: 1, xhtml: 6, xml: 4, jsp: 2 });
+    expect(mentions.files).toEqual({ properties: 1, xhtml: 6, xml: 5, jsp: 2, css: 1 });
     // the generated too-large catalog.xml was not lexed; the too-large Java file is code and is not counted here
     expect(mentions.skipped).toEqual({ 'too-large': 1 });
     const { fqn, path } = mentions;
     expect(fqn.edge + fqn.ambiguous + fqn.unindexed + fqn.external).toBe(fqn.candidates);
     expect(path.edge + path.ambiguous + path.unresolved + path.self + path.unindexed).toBe(path.candidates);
     expect(fqn.unindexed).toBe(2);
-    expect(path).toMatchObject({ unindexed: 1, unindexedHits: 0 });
+    expect(path).toMatchObject({ candidates: 15, edge: 11, unresolved: 3, unindexed: 1, unindexedHits: 0 });
     expect(result.coverage.mentions).toEqual(mentions);
   });
 
@@ -233,7 +242,7 @@ describe('the mentions stage reads the snapshot, not the live tree', () => {
       // the same files, skipped as too large in the HEAD snapshot, are read from it too
       const unindexed = product.gaps.filter((g) => g.kind === 'mention-target-unindexed').flatMap((g) => g.samples);
       expect(unindexed).toContain('app/src/main/resources/spring/beans.xml:8 com.acme.gen.Huge -> [com.acme.gen.Huge]');
-      expect(unindexed).toContain(`app/src/main/resources/app.properties:3 WEB-INF/catalog.xml -> [${APP}/WEB-INF/catalog.xml (too-large)]`);
+      expect(unindexed).toContain(`${APP}/orders/list.xhtml:5 /WEB-INF/catalog.xml -> [${APP}/WEB-INF/catalog.xml (too-large)]`);
     } finally {
       rmSync(root, { recursive: true, force: true });
     }

@@ -50,7 +50,9 @@
 1. 以 `/` 开头且提及文件位于某个 web 根之下时，相对该 web 根解析。web 根是包含 `WEB-INF/` 目录的最近祖先目录，提及文件自身在 `WEB-INF/` 下时同样适用。
 2. 不以 `/` 开头时，相对提及文件所在目录解析。
 3. 不以 `/` 开头、上一条无命中、且提及文件位于某个 web 根之下时，相对该 web 根解析（Servlet 规范中 `welcome-file`、`jsp-file` 这类值相对上下文根）。
-4. 以上无命中或带 classpath 前缀时，去掉开头的 `/`、`./`、`../` 段，按路径段边界做后缀匹配。后缀匹配只用于两类 token：带 `classpath:` / `classpath*:` 前缀的；以及不是模式、且去掉开头那些段后仍至少含一个目录段的。不带 classpath 前缀的模式和裸文件名 MUST NOT 做后缀匹配：它们的基准目录不可见，后缀会匹配到别的模块里形状相同的文件。
+4. 带 `classpath:` / `classpath*:` 前缀的 token 不走前三条，去掉开头的 `/`、`./`、`../` 段后按路径段边界做后缀匹配：类路径的语义就是「在任一类路径根下」。其它 token 在前三条都没有命中时 MUST NOT 做后缀匹配，记入 `path-mention-unresolved`：它们的基准目录不可见，后缀会匹配到别的模块、别的应用里形状相同的文件。
+
+不带 classpath 前缀的模式按规则 1–3 展开时，开头的 `/`、`./`、`../` 之后的第一段 MUST 是字面目录（不含通配，也不是 `.` / `..`）。以 `*` 或 `**` 开头的模式在任何目录下都能命中，无法确认基准目录就在这里，所以 MUST NOT 展开，记入 `path-mention-unresolved`。
 
 开头的 `/`、`./`、`../` 之后若还出现 `.` 或 `..` 段，该 token 不按任何规则解析，记入 `path-mention-unresolved`：这样的段可能抵消一个不是字面目录的段（如 `$VAR/..`），解析结果靠运气。
 
@@ -83,6 +85,14 @@
 #### Scenario: 构建描述符里的模式不跨模块
 - **WHEN** `modA/pom.xml` 写 `<include>java/**/*.java</include>`，`modA/java/` 不存在，`modB/src/main/java/` 下有 Java 文件
 - **THEN** 不生成任何边，记入 `path-mention-unresolved`
+
+#### Scenario: 相对路径落空不按后缀猜
+- **WHEN** `appA/view/template.xhtml` 写 `<link href="style/date.css"/>`，`appA/view/style/date.css` 不存在，`appB/view/style/date.css` 存在
+- **THEN** 不生成边，记入 `path-mention-unresolved`
+
+#### Scenario: 以通配开头的模式不从所在目录展开
+- **WHEN** `jrcs/build.xml` 写 `<include name="**/jrcs/diff/**/*.java"/>`，`jrcs/src/java/org/x/jrcs/diff/` 与 `jrcs/src/test/org/x/jrcs/diff/` 下都有 Java 文件
+- **THEN** 不生成边，记入 `path-mention-unresolved`
 
 #### Scenario: 裸文件名不按后缀匹配
 - **WHEN** 根目录的 `CHANGELOG.txt` 写 `unistd.h`，仓库里唯一的 `unistd.h` 在 `native/os/windows/` 下

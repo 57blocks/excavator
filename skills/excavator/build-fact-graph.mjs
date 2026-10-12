@@ -712,7 +712,7 @@ const GAP_REASONS = Object.freeze({
   'identity-collision': 'declaration(s) mapped to the same node id as another distinguishable declaration',
   'mention-ambiguous': 'name mention(s) in non-code files that name more than one repository declaration or file (the same class name declared twice, or a path matching several files): no mentions edge is drawn',
   'mention-target-unindexed': 'name mention(s) in non-code files of something the repository has but the index has no node for (a Kotlin or Scala type, a Java annotation type, a file the scanner skipped as too large or binary): no mentions edge is drawn',
-  'path-mention-unresolved': 'path mention(s) in non-code files that match no file in the repository',
+  'path-mention-unresolved': 'path mention(s) in non-code files that no resolution rule anchors to a known file (relative to the mentioning file, to its web root, or on the classpath); files excluded by ignore rules or default filters are not consulted, and a same-named file elsewhere is not guessed',
 });
 
 /** Reasons for the Java call-site buckets (scope `java`), which resolve by

@@ -238,16 +238,19 @@ function createPathIndex(manifestPaths, skippedFiles) {
 
 /**
  * Resolve one path candidate to the files it names, by the first rule that
- * has a hit: web root, mentioning file's directory, web-root fallback, then a
- * suffix match. A `classpath:` / `classpath*:` token goes to the suffix rule
- * alone: it is relative to the classpath, not to the mentioning file.
+ * has a hit: web root, mentioning file's directory, web-root fallback, then -
+ * for a classpath token only - a suffix match. A `classpath:` / `classpath*:`
+ * token goes to the suffix rule alone: it is relative to the classpath, not to
+ * the mentioning file, and "in any classpath root" is what a suffix match says.
  *
- * The suffix rule is a guess about where a base directory nobody can see
- * lies, so it is kept to what has a base by meaning: a classpath token (any
- * classpath root), and a non-pattern path with a directory segment of its
- * own. A pattern without a classpath prefix (a build descriptor's
- * `java/**` + `/*.java` is relative to its own module) and a bare file name
- * (`unistd.h` in a changelog) would match same-shaped files in other modules.
+ * Every other token is anchored to a base the mention itself implies (the
+ * mentioning file's directory, its web root) or it is unresolved. A suffix
+ * match would guess a base nobody can see, and finds a same-shaped file in
+ * another module or application (a broken `href="style/date.css"`, a path in a
+ * changelog, a build file's `META-INF/orm.xml` relative to another directory).
+ * Likewise a pattern led by a wildcard (`**` + `/jrcs/diff/**` + `/*.java`)
+ * hits under any directory, so a hit under the mentioning file's directory
+ * does not show that directory is its base: it is not expanded.
  *
  * A `.` or `..` segment after the leading run of `/`, `./` and `../` is not
  * resolved at all: it may cancel a segment that is no directory (`$VAR/..`),
@@ -271,6 +274,13 @@ function resolvePath(candidate, file, index, mutations) {
     return hits.length > 0 ? { resolution: pattern ? 'pattern' : rule, hits } : null;
   };
 
+  // A pattern that starts with a wildcard names no base: it is not expanded
+  // from a directory it merely might be relative to. (Classpath patterns are
+  // anchored by the classpath.)
+  const ledByWildcard = wildcard && !classpath && tail.split('/')[0].includes('*');
+  // Tripwire seam: such a pattern expanded under the relative rules too.
+  if (ledByWildcard && !mutations.leadingWildcardPatterns) return none;
+
   if (!classpath) {
     // Tripwire seam: the web-root rules switched off.
     const root = mutations.noWebRootRule ? null : index.webRootOf(file);
@@ -284,9 +294,8 @@ function resolvePath(candidate, file, index, mutations) {
     if (found) return found;
   }
 
-  // Tripwire seam: the pre-2.6 fall-through, for patterns and bare names too.
-  const mayMatchSuffix = classpath || (!wildcard && tail.includes('/')) || mutations.suffixForPatterns;
-  if (!tail || !mayMatchSuffix) return none;
+  // Tripwire seam: the suffix fall-through for every token, not only classpath ones.
+  if (!tail || !(classpath || mutations.suffixForNonClasspath)) return none;
   return { resolution: none.resolution, hits: wildcard ? index.matchGlob(tail, true) : index.matchSuffix(tail) };
 }
 
@@ -316,7 +325,7 @@ function evidenceOrder(a, b) {
  *   skippedNonCode: Record<string, number>,
  *   fileIdOf: (path: string) => string,
  *   languageOf?: (path: string) => string|undefined,
- *   mutations?: { firstDeclaration?: boolean, noWebRootRule?: boolean, shortestPrefix?: boolean, noJavaFileIndex?: boolean, suffixForPatterns?: boolean },
+ *   mutations?: { firstDeclaration?: boolean, noWebRootRule?: boolean, shortestPrefix?: boolean, noJavaFileIndex?: boolean, suffixForNonClasspath?: boolean, leadingWildcardPatterns?: boolean },
  * }} args
  *   `sites` has one row per scanned non-code file, each with the lexer's
  *   candidate lists. `javaTypes` is every Java top-level type declaration

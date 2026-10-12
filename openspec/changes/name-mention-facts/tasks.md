@@ -9,7 +9,8 @@
 4. `fix(facts): count non-node Java declarations as unindexed mentions`：任务 2.5（验收阶段 A 的发现，规格与 design 同步修订）。
 5. `fix(mentions): stop suffix fall-through for patterns and bare names`：任务 2.6（验收阶段 B 的编造来源）。
 6. `fix(facts): ground unindexed mentions in what the repository holds`：任务 2.7（验收阶段 B 的错误声明与不可见遗漏）。
-7. `docs(openspec): record name-mention-facts acceptance`：任务 4.1–4.2。
+7. `fix(mentions): keep suffix matching to classpath and anchor patterns on a literal segment`：任务 2.8（验收阶段 C 的编造来源，启用 D5 预定的后退方案）。
+8. `docs(openspec): record name-mention-facts acceptance`：任务 4.1–4.2。
 
 ## 1. 单文件词法
 
@@ -26,6 +27,7 @@
 - [x] 2.5 仓库内存在、却不在 Java 字典里的声明计入 `unindexed`，不计入 `external`。验收阶段 A 发现 Core 不为注解类型 `@interface` 建 class 节点，这类类型于是被当成仓库外。按「目录以包路径结尾、文件名为类型名」判定 Java 源文件，与 Kotlin / Scala 的判定一致；Java 文件不带 `Kt` 规则。验证：测试覆盖规格场景「不是节点的仓库声明不算仓库外」，包括带成员后缀的注解类型；输入行的形状取自 Core 对只含注解类型的文件的真实输出。夹具新增一个注解类型及其提及，Lazy 产物里出现该 `mention-target-unindexed` 缺口；冻结摘要如受影响则整块重冻。
 - [x] 2.6 路径解析按修订后的 D3 / D5 执行。第 4 条规则只收带 classpath 前缀的 token，以及非模式、含目录段的 token；不带 classpath 前缀的模式与裸文件名不做后缀匹配。开头的 `/`、`./`、`../` 之后再出现 `.` / `..` 段的 token 记未解析。判断通配候选时，`.` / `..` 不算字面目录段。JSP 指令的上下文取指令本身，不取外层元素。D3 的右边界只改 design 文字，与实现对齐，不改代码。验证：测试覆盖规格场景「构建描述符里的模式不跨模块」「裸文件名不按后缀匹配」，另加：`./*.ts` 不是候选；相对目录有命中时 `./` 前缀的普通路径照常成边；`$VAR/../x.sh` 记未解析；`classpath:` 裸文件名与 `classpath*:` 模式仍走后缀；`<script>` 内的 `<%@ include file %>` 上下文为 `%@include`。变异绊线：恢复模式的后缀兜底，至少一条测试变红。
 - [x] 2.7 「未建索引」只对仓库里确实存在的东西成立。（a）类名：Java 侧改读文件自己声明的 `package`，不再看目录后缀。Lazy 的 `mentions` 阶段为文件名对应类型不在字典里的 Java 文件读出包声明（读前遮蔽注释），连同被跳过的 `.java` 文件一并传给 `buildFactGraph`。Kotlin / Scala 不变。（b）路径：目标范围加入以处理原因被跳过的文件；唯一命中这类文件记 `mention-target-unindexed`；模式命中里这类文件计入 `path.unindexedHits`，只命中这类文件时记未建索引；路径守恒加入未建索引。（c）覆盖新增 `skipped`：按原因统计未扫描的非代码文件数。验证：测试覆盖规格场景「目录名像包名不等于声明了该类型」「存在但被跳过的文件不算不存在」，以及模式命中混有被跳过文件的情形、守恒失败的断言。夹具与 Lazy 管道测试各加一个端到端断言。变异绊线：改回目录后缀判定，至少一条测试变红。
+- [x] 2.8 按阶段 C 修订的 D5 / D6 执行。（a）后缀规则只收带 classpath 前缀的 token；其它 token 在规则 1–3 都落空时记未解析。（b）不带 classpath 前缀的模式按规则 1–3 展开时，开头的 `/`、`./`、`../` 之后的第一段必须是字面目录，以 `*` / `**` 开头的记未解析。（c）`path-mention-unresolved` 的缺口说明改为「没有按规则锚定到已知文件」，写明被忽略、被默认过滤的文件不参与，别处同名文件不猜。验证：测试覆盖规格场景「相对路径落空不按后缀猜」「以通配开头的模式不从所在目录展开」；改写或删除依赖非 classpath 后缀的既有用例，并逐条说明；`classpath:` 与 `classpath*:` 的后缀用例保持绿。变异绊线两条：恢复非 classpath 的后缀；允许通配开头的模式按相对规则展开。各自至少让一条测试变红。
 
 ## 3. 接入流水线
 

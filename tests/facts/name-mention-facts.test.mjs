@@ -469,7 +469,10 @@ describe('path mentions', () => {
     expect(gap.samples).toEqual(['webapp/pages/a.xhtml:2 /WEB-INF/missing.xhtml -> []']);
   });
 
-  it('falls back to the suffix rule when the web-root path has no file', () => {
+  // Task 2.8: this was 'falls back to the suffix rule when the web-root path has no file'. A non-classpath
+  // token that misses the web root has no base to be found under elsewhere: a same-shaped file in another
+  // module is not what the page named.
+  it('does not fall back to a suffix match when the web-root path has no file', () => {
     const p = project({
       files: {
         'webapp/pages/a.xhtml': '<ui:include src="/shared/footer.xhtml"/>',
@@ -477,8 +480,8 @@ describe('path mentions', () => {
         'lib/shared/footer.xhtml': '<f/>',
       },
     });
-    expect(p.links).toEqual(['webapp/pages/a.xhtml -> lib/shared/footer.xhtml']);
-    expect(p.mentions[0].evidence[0].resolution).toBe('suffix');
+    expect(p.mentions).toEqual([]);
+    expect(p.gaps('path-mention-unresolved')[0].samples).toEqual(['webapp/pages/a.xhtml:1 /shared/footer.xhtml -> []']);
   });
 
   it('matches a suffix only at a segment boundary', () => {
@@ -492,16 +495,29 @@ describe('path mentions', () => {
     expect(p.links).toEqual(['x.xml -> b/spring/beans.xml']);
   });
 
-  it('strips leading ./ and ../ segments before a suffix match', () => {
+  // Task 2.8: this was 'strips leading ./ and ../ segments before a suffix match' with a plain `../../shared/common.xml`;
+  // only a classpath token is matched by suffix now, so the stripping is shown on one.
+  it('strips leading ./ and ../ segments of a classpath token before the suffix match', () => {
+    const p = project({
+      files: {
+        'a/b/x.xml': ['<import resource="classpath:../../shared/common.xml"/>', '<import resource="classpath:./shared/other.xml"/>'],
+        'lib/shared/common.xml': '<c/>',
+        'lib/shared/other.xml': '<c/>',
+      },
+    });
+    expect(p.links).toEqual(['a/b/x.xml -> lib/shared/common.xml', 'a/b/x.xml -> lib/shared/other.xml']);
+    expect(p.mentions.flatMap((e) => e.evidence.map((x) => x.resolution))).toEqual(['suffix', 'suffix']);
+  });
+
+  it('leaves a plain ../ path that misses unresolved, however much the same-shaped file elsewhere looks like it', () => {
     const p = project({
       files: {
         'a/b/x.xml': '<import resource="../../shared/common.xml"/>',
         'lib/shared/common.xml': '<c/>',
       },
     });
-    // a/b/../../shared/common.xml would leave the project root's `a`: no direct hit, suffix wins
-    expect(p.links).toEqual(['a/b/x.xml -> lib/shared/common.xml']);
-    expect(p.mentions[0].evidence[0].resolution).toBe('suffix');
+    expect(p.mentions).toEqual([]);
+    expect(p.gaps('path-mention-unresolved')).toHaveLength(1);
   });
 
   it('prefers a direct ../ hit over the suffix rule', () => {
@@ -556,10 +572,37 @@ describe('path mentions', () => {
     expect(p.mentions.flatMap((e) => e.evidence.map((x) => x.resolution)).sort()).toEqual(['pattern', 'pattern', 'suffix']);
   });
 
-  it('still matches a path with a directory of its own by suffix', () => {
-    const p = project({ files: { 'a/x.xml': '<i src="views/footer.xhtml"/>', 'lib/views/footer.xhtml': '<f/>' } });
-    expect(p.links).toEqual(['a/x.xml -> lib/views/footer.xhtml']);
-    expect(p.mentions[0].evidence[0].resolution).toBe('suffix');
+  // Task 2.8: this was 'still matches a path with a directory of its own by suffix'.
+  it('does not take a same-shaped file in another application for a broken relative path', () => {
+    const p = project({
+      files: {
+        'appA/view/template.xhtml': '<link href="style/date.css"/>',
+        'appB/view/style/date.css': '.d {}',
+      },
+    });
+    expect(p.mentions).toEqual([]);
+    const [gap] = p.gaps('path-mention-unresolved');
+    expect(gap).toMatchObject({ scope: 'xhtml', count: 1 });
+    expect(gap.samples).toEqual(['appA/view/template.xhtml:1 style/date.css -> []']);
+    expect(mentionGaps(p).filter((g) => g.kind !== 'path-mention-unresolved')).toEqual([]);
+  });
+
+  it('keeps the relative rule: the same path resolves when the file is where it is relative to', () => {
+    const p = project({
+      files: {
+        'appA/view/template.xhtml': '<link href="style/date.css"/>',
+        'appA/view/style/date.css': '.d {}',
+        'appB/view/style/date.css': '.d {}',
+      },
+    });
+    expect(p.links).toEqual(['appA/view/template.xhtml -> appA/view/style/date.css']);
+    expect(p.mentions[0].evidence[0].resolution).toBe('relative');
+  });
+
+  it('treats a file: token like any other non-classpath one', () => {
+    const p = project({ files: { 'a/x.xml': '<i r="file:conf/app.xml"/>', 'b/conf/app.xml': '<a/>' } });
+    expect(p.mentions).toEqual([]);
+    expect(p.gaps('path-mention-unresolved')).toHaveLength(1);
   });
 
   it('takes a ./ prefix as the same directory when the relative rule has a hit', () => {
@@ -774,6 +817,60 @@ describe('path patterns', () => {
     expect(p.links).toEqual(['a/x.xml -> a/conf/1.xml']);
   });
 
+  it('does not expand a pattern led by a wildcard from the mentioning file directory', () => {
+    // an Ant include whose base directory (`srcdir`) is set elsewhere: the pattern hits under any directory
+    const p = project({
+      java: {
+        'jrcs/src/java/org/x/jrcs/diff/Diff.java': 'org.x.jrcs.diff.Diff',
+        'jrcs/src/test/org/x/jrcs/diff/DiffTest.java': 'org.x.jrcs.diff.DiffTest',
+      },
+      files: { 'jrcs/build.xml': '<javac srcdir="${java.dir}"><include name="**/jrcs/diff/**/*.java"/></javac>' },
+    });
+    expect(p.mentions).toEqual([]);
+    const [gap] = p.gaps('path-mention-unresolved');
+    expect(gap.samples).toEqual(['jrcs/build.xml:1 **/jrcs/diff/**/*.java -> []']);
+    expect(p.coverage.path).toMatchObject({ candidates: 1, edge: 0, unresolved: 1 });
+  });
+
+  it('wants a literal first segment to expand a pattern, after the leading / ./ ../ run', () => {
+    const files = {
+      'm/build.xml': [
+        '<i n="**/conf/*.xml"/>', // unresolved: leads with **
+        '<i n="*/conf/*.xml"/>', // unresolved: leads with *
+        '<i n="/**/conf/*.xml"/>', // unresolved: the leading / is not a segment
+        '<i n="./*/conf/*.xml"/>', // unresolved: nor is ./
+        '<i n="sub/conf/*.xml"/>', // expands: `sub` is a literal directory
+        '<i n="./sub/conf/*.xml"/>', // expands
+        '<i n="s*/conf/*.xml"/>', // unresolved: the first segment is not literal
+      ],
+      'm/sub/conf/one.xml': '<a/>',
+    };
+    const p = project({ files });
+    expect(p.links).toEqual(['m/build.xml -> m/sub/conf/one.xml']);
+    expect(p.mentions[0].evidence.map((e) => [e.line, e.token, e.resolution])).toEqual([
+      [5, 'sub/conf/*.xml', 'pattern'],
+      [6, './sub/conf/*.xml', 'pattern'],
+    ]);
+    expect(p.coverage.path).toMatchObject({ candidates: 7, edge: 2, unresolved: 5 });
+  });
+
+  it('still expands a pattern from a web root when it is led by a literal directory', () => {
+    const p = project({
+      files: {
+        'webapp/WEB-INF/web.xml': '<param-value>/WEB-INF/spring/*-context.xml</param-value>',
+        'webapp/WEB-INF/spring/a-context.xml': '<a/>',
+      },
+    });
+    expect(p.links).toEqual(['webapp/WEB-INF/web.xml -> webapp/WEB-INF/spring/a-context.xml']);
+  });
+
+  it('still expands a classpath pattern led by a wildcard, by suffix', () => {
+    const p = project({
+      files: { 'm/ctx.xml': '<i r="classpath*:**/conf/*.xml"/>', 'lib/a/conf/one.xml': '<a/>', 'lib/b/conf/two.xml': '<a/>' },
+    });
+    expect(p.links).toEqual(['m/ctx.xml -> lib/a/conf/one.xml', 'm/ctx.xml -> lib/b/conf/two.xml']);
+  });
+
   it('is unresolved when a pattern matches nothing, and self when it matches only itself', () => {
     const p = project({
       files: { 'a/x.xml': '<i resource="nothing/*.xml"/>', 'b/y.xml': '<i resource="*/*.xml"/>', 'c/z.xml': '<i resource="../c/*.xml"/>' },
@@ -868,6 +965,7 @@ describe('coverage and conservation', () => {
       'webapp/index.jsp': ['<jsp:include page="WEB-INF/web.xml"/>', '<jsp:include page="shared/x.xml"/>'],
       'a/shared/x.xml': '<x/>',
       'b/shared/x.xml': '<x/>',
+      'conf/ctx.xml': '<import resource="classpath:shared/x.xml"/>',
       'conf/app.properties': ['# comment com.acme.Svc', 'svc=com.acme.Svc'],
     },
   });
@@ -878,12 +976,12 @@ describe('coverage and conservation', () => {
     expect(fqn.edge + fqn.ambiguous + fqn.unindexed + fqn.external).toBe(fqn.candidates);
     expect(path.edge + path.ambiguous + path.unresolved + path.self).toBe(path.candidates);
     expect(p.coverage.status).toBe('ran');
-    expect(p.coverage.files).toEqual({ xml: 3, jsp: 1, properties: 1 });
+    expect(p.coverage.files).toEqual({ xml: 4, jsp: 1, properties: 1 });
     // the exact counts on this fixture
-    expect(fqn).toEqual({ candidates: 11, edge: 3, ambiguous: 1, unindexed: 1, external: 6 });
-    // `../web.xml` (welcome-file) names a file nothing shows to be at that place: unresolved, no longer
-    // matched to web.xml by suffix
-    expect(path).toEqual({ candidates: 5, edge: 2, ambiguous: 1, unresolved: 2, self: 0, unindexed: 0, unindexedHits: 0 });
+    expect(fqn).toEqual({ candidates: 12, edge: 3, ambiguous: 1, unindexed: 1, external: 7 });
+    // `../web.xml` (welcome-file) and `shared/x.xml` (a relative include that misses) are unresolved: no suffix
+    // guess. The one ambiguous path is the classpath `classpath:shared/x.xml`, which two modules hold.
+    expect(path).toEqual({ candidates: 6, edge: 2, ambiguous: 1, unresolved: 3, self: 0, unindexed: 0, unindexedHits: 0 });
   });
 
   it('reads the gap counts back from what was recorded', () => {
@@ -1077,17 +1175,30 @@ describe('tripwires: a broken rule turns a scenario red', () => {
       }),
       holds: (p) => p.mentions.length === 0 && p.gaps('mention-target-unindexed').length === 1 && p.coverage.fqn.external === 0,
     },
-    noSuffixForPatternsOrBareNames: {
-      mutation: { suffixForPatterns: true },
+    noSuffixForNonClasspath: {
+      mutation: { suffixForNonClasspath: true },
       spec: () => ({
         java: { 'modB/src/main/java/x/Foo.java': 'x.Foo' },
         files: {
           'modA/pom.xml': '<include>java/**/*.java</include>',
           'CHANGELOG.txt': 'fixes unistd.h',
           'native/os/windows/unistd.h': '/* header */',
+          'appA/view/template.xhtml': '<link href="style/date.css"/>',
+          'appB/view/style/date.css': '.d {}',
         },
       }),
-      holds: (p) => p.mentions.length === 0 && p.coverage.path.unresolved === 2 && p.coverage.path.edge === 0,
+      holds: (p) => p.mentions.length === 0 && p.coverage.path.unresolved === 3 && p.coverage.path.edge === 0,
+    },
+    noLeadingWildcardExpansion: {
+      mutation: { leadingWildcardPatterns: true },
+      spec: () => ({
+        java: {
+          'jrcs/src/java/org/x/jrcs/diff/Diff.java': 'org.x.jrcs.diff.Diff',
+          'jrcs/src/test/org/x/jrcs/diff/DiffTest.java': 'org.x.jrcs.diff.DiffTest',
+        },
+        files: { 'jrcs/build.xml': '<include name="**/jrcs/diff/**/*.java"/>' },
+      }),
+      holds: (p) => p.mentions.length === 0 && p.coverage.path.unresolved === 1,
     },
     longestPrefix: {
       mutation: { shortestPrefix: true },
