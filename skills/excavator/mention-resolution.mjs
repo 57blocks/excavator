@@ -87,7 +87,7 @@ export function assertMentionConservation(mentions, gapCounts) {
  * `$` is a nesting separator. Nested types are not nodes, so `Outer$Inner`
  * and `Outer.CONSTANT` both name `Outer`.
  */
-function resolveClassName(token, typesByFqn, otherJvm, declaredJavaTypes, mutations) {
+export function resolveClassName(token, typesByFqn, otherJvm, declaredJavaTypes, mutations) {
   const segments = token.replace(/\$/g, '.').split('.');
   const lengths = [];
   for (let k = segments.length; k >= 2; k--) lengths.push(k);
@@ -111,6 +111,23 @@ function resolveClassName(token, typesByFqn, otherJvm, declaredJavaTypes, mutati
     if (otherJvm.isType(pkg, name) || declared) return { kind: 'unindexed', type: `${pkg}.${name}` };
   }
   return { kind: 'external' };
+}
+
+/**
+ * The dictionary `resolveClassName` reads: every Java top-level type
+ * declaration by its fully-qualified name (a name declared twice has two
+ * entries).
+ *
+ * @param {Array<{ fqn: string, path: string, id: string|null }>} javaTypes
+ * @returns {Map<string, Array<{ fqn: string, path: string, id: string|null }>>}
+ */
+export function indexJavaTypes(javaTypes) {
+  const typesByFqn = new Map();
+  for (const type of javaTypes) {
+    if (!typesByFqn.has(type.fqn)) typesByFqn.set(type.fqn, []);
+    typesByFqn.get(type.fqn).push(type);
+  }
+  return typesByFqn;
 }
 
 /**
@@ -357,11 +374,7 @@ export function resolveMentions({
     }
   }
   const index = createPathIndex(manifestPaths, skippedFiles);
-  const typesByFqn = new Map();
-  for (const type of javaTypes) {
-    if (!typesByFqn.has(type.fqn)) typesByFqn.set(type.fqn, []);
-    typesByFqn.get(type.fqn).push(type);
-  }
+  const typesByFqn = indexJavaTypes(javaTypes);
 
   const edges = [];
   const gaps = [];
