@@ -11,6 +11,7 @@ import {
   boundedBFS,
   boundedShortestPath,
   DEFAULT_TRAVERSAL_BUDGETS,
+  DETERMINISTIC_EDGE_TYPES,
 } from '../../skills/excavator/retrieve.mjs';
 
 describe('bm25Search — recall remains separate from traversal seeds', () => {
@@ -102,6 +103,23 @@ describe('oneHop', () => {
     expect(new Set(result.nodes)).toEqual(new Set([CONTROLLER, SERVICE]));
     expect(result.edges).toHaveLength(1);
     expect(result.boundary.reason).toBe('max-hops'); // 1-hop cap, more graph exists beyond it
+  });
+});
+
+describe('mentions edges are traversable (openspec: changes/name-mention-facts, D7)', () => {
+  const edges = [
+    { type: 'mentions', source: 'file:WEB-INF/web.xml', target: 'class:src/OrderServlet.java:OrderServlet', direction: 'forward' },
+    { type: 'related', source: 'class:src/OrderServlet.java:OrderServlet', target: 'file:semantic-only', direction: 'forward' },
+  ];
+
+  it('is one of the deterministic edge types', () => {
+    expect(DETERMINISTIC_EDGE_TYPES).toContain('mentions');
+  });
+
+  it('takes a class to the descriptor that names it, against the edge direction', () => {
+    const result = oneHop(edges, ['class:src/OrderServlet.java:OrderServlet']);
+    expect(new Set(result.nodes)).toEqual(new Set(['class:src/OrderServlet.java:OrderServlet', 'file:WEB-INF/web.xml']));
+    expect(result.edges.map((e) => e.type)).toEqual(['mentions']); // the non-fact edge stays out
   });
 });
 

@@ -223,6 +223,11 @@ export function expectedTokens(edge, source, target, evidenceEntry) {
       if (!path) return [target?.name].filter(Boolean);
       return [stripExtension(basename(path)), basename(dirname(path))].filter(Boolean);
     }
+    case 'mentions':
+      // The line names what the mention WROTE: the evidence entry's own token.
+      // The target's name is not on that line when a pattern (`spring/*.xml`)
+      // or a classpath suffix hit the file (openspec: changes/name-mention-facts).
+      return [evidenceEntry?.token].filter(Boolean);
     default:
       return [source?.name, target?.name].filter(Boolean);
   }

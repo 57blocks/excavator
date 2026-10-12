@@ -1,4 +1,4 @@
-执行约束：一 coder（Sonnet）一 acceptor（Opus）；验收 oracle 见 design.md「验收 Oracle」，动手前已写死。代码、测试与注释用英文，OpenSpec 用中文。全程 build-free：不编译、不安装运行时、不下载依赖。分支 `feat/name-mention-facts` 叠在 `feat/dead-code-detection` 上（共用 `build-fact-graph.mjs`、`retrieve.mjs` 与版本号）；dead-code-detection 的 PR 合入后再 rebase 到 `main`。
+执行约束：一 coder（Sonnet）一 acceptor（Opus）；验收 oracle 见 design.md「验收 Oracle」，动手前已写死。代码、测试与注释用英文，OpenSpec 用中文。全程 build-free：不编译、不安装运行时、不下载依赖。分支 `feat/name-mention-facts` 基于 `main`（dead-code-detection 切片 A 已合入，与本变更共用 `build-fact-graph.mjs`、`retrieve.mjs` 与版本号）。
 
 提交序列（一个逻辑步一个 commit，PR 以 merge commit 合入，每个 commit 单独可测）：
 
@@ -23,10 +23,10 @@
 
 ## 3. 接入流水线
 
-- [ ] 3.1 `lazy-analyze.mjs` 在 importMap 之后新增 `mentions` 阶段：按 manifest 从物化快照读内容，跳过代码语言，产出逐文件候选传给 `buildFactGraph`；阶段计入 `time()` 与 stages 输出。验证：在小型 JSF 夹具项目上跑 Lazy，产物里出现预期的 `mentions` 边，stages 行含 `mentions=`。
-- [ ] 3.2 `retrieve.mjs` 的 `DETERMINISTIC_EDGE_TYPES` 加入 `mentions`，注释写明来源与理由。验证：测试覆盖规格场景「从类遍历到装配它的描述符」。
-- [ ] 3.3 `PIPELINE_VERSION` 升到 `lazy-fact-graph/6`，注释写明新增的事实；因新边、新覆盖段变化的冻结摘要整块重冻。验证：三件套、core 测试与 typecheck 全绿；commit 说明列出每个变化的摘要及原因。
-- [ ] 3.4 检查是否有其它边类型白名单或校验（schema、`validate-graph.mjs` 的期望 token、`annotate-graph.mjs`）会拒绝或误判 `mentions` 边，按需最小修改。`validate-graph.mjs` 对 `mentions` 的期望 token 取证据里的原 token：模式命中的目标文件名不在证据行上。验证：在 3.1 的夹具产物上跑图校验，无新增告警；说明每处查过的位置及结论。
+- [x] 3.1 `lazy-analyze.mjs` 在 importMap 之后新增 `mentions` 阶段：按 manifest 从物化快照读内容，跳过代码语言，产出逐文件候选传给 `buildFactGraph`；阶段计入 `time()` 与 stages 输出。验证：在小型 JSF 夹具项目上跑 Lazy，产物里出现预期的 `mentions` 边，stages 行含 `mentions=`。
+- [x] 3.2 `retrieve.mjs` 的 `DETERMINISTIC_EDGE_TYPES` 加入 `mentions`，注释写明来源与理由。验证：测试覆盖规格场景「从类遍历到装配它的描述符」。
+- [x] 3.3 `PIPELINE_VERSION` 升到 `lazy-fact-graph/6`，注释写明新增的事实；因新边、新覆盖段变化的冻结摘要整块重冻。验证：三件套、core 测试与 typecheck 全绿；commit 说明列出每个变化的摘要及原因。
+- [x] 3.4 检查是否有其它边类型白名单或校验（schema、`validate-graph.mjs` 的期望 token、`annotate-graph.mjs`）会拒绝或误判 `mentions` 边，按需最小修改。`validate-graph.mjs` 对 `mentions` 的期望 token 取证据里的原 token：模式命中的目标文件名不在证据行上。验证：在 3.1 的夹具产物上跑图校验，无新增告警；说明每处查过的位置及结论。
 
 ## 4. 验收与记录
 

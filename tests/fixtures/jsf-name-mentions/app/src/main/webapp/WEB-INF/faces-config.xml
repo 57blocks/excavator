@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<faces-config version="2.2">
+  <managed-bean>
+    <managed-bean-name>orderBean</managed-bean-name>
+    <managed-bean-class>com.acme.web.OrderBean</managed-bean-class>
+    <managed-bean-scope>request</managed-bean-scope>
+  </managed-bean>
+  <navigation-rule>
+    <from-view-id>/orders/list.xhtml</from-view-id>
+    <navigation-case>
+      <from-outcome>detail</from-outcome>
+      <to-view-id>/orders/detail.xhtml</to-view-id>
+    </navigation-case>
+  </navigation-rule>
+</faces-config>

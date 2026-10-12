@@ -1,0 +1,7 @@
+<beans>
+  <bean id="service" class="com.acme.service.OrderService"/>
+  <bean id="handler" class="com.acme.service.OrderService$Handler"/>
+  <bean id="config" class="com.acme.Config"/>
+  <!-- <bean id="old" class="com.acme.Legacy"/> -->
+  <bean id="client" class="org.thirdparty.Client"/>
+</beans>

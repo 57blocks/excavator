@@ -268,6 +268,15 @@ describe('validate-graph — evidence lines', () => {
     expect(findToken(reader, 'src/app.ts', 4, ['Runner'])).toBeNull();
   });
 
+  it('expects the token a mention wrote, not the name of what it resolved to', () => {
+    // a pattern or classpath hit names a file whose own name is not on the line
+    const source = { id: 'file:app.xml', type: 'file', name: 'app.xml', filePath: 'app.xml' };
+    const target = { id: 'file:conf/one.xml', type: 'file', name: 'one.xml', filePath: 'conf/one.xml' };
+    const evidence = { file: 'app.xml', line: 3, source: 'lexical', token: 'conf/*.xml', context: null, resolution: 'pattern' };
+    expect(expectedTokens({ type: 'mentions' }, source, target, evidence)).toEqual(['conf/*.xml']);
+    expect(expectedTokens({ type: 'mentions' }, source, target, { ...evidence, token: undefined })).toEqual([]);
+  });
+
   it('passes a model-cited judgement edge whose line mentions an endpoint', () => {
     const root = fixtureProject();
     const graph = cleanGraph();

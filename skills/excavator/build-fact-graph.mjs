@@ -779,6 +779,9 @@ async function main() {
   const structureAll = readStructureAllPath(structurePath);
   const importMap = existsSync(importMapPath) ? JSON.parse(readFileSync(importMapPath, 'utf-8')) : null;
 
+  // This standalone entry reads the intermediate files only, so it runs no
+  // mentions stage (that reads source content, which lazy-analyze.mjs does
+  // from the materialized snapshot): its product says `mentions: not-run`.
   const projection = buildFactGraph({ scan, structureAll, importMap });
 
   mkdirSync(dirname(outPath), { recursive: true });

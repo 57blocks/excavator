@@ -319,8 +319,8 @@ node "<SKILL_DIR>/lazy-analyze.mjs" "$PROJECT_ROOT" [--exclude "$EXCLUDE_PATTERN
 
 The bracketed segment is optional argv notation, not literal shell syntax. Only when `$EXCLUDE_PATTERNS` is non-empty, use the host-native invocation mechanism to append `--exclude` and its value as two arguments; neither PowerShell nor POSIX should pass `[` or `]`.
 
-This performs SCAN, STRUCTURE-ALL, import-map extraction, the deterministic
-Fact Builder, a deterministic validate pass, and SAVE (`knowledge-graph.jsonl`
+This performs SCAN, STRUCTURE-ALL, import-map extraction, name-mention
+extraction from non-code files, the deterministic Fact Builder, a deterministic validate pass, and SAVE (`knowledge-graph.jsonl`
 fact fields, `meta.json`, `fingerprints.json`, `source-manifest.json`,
 `source-index.jsonl`) — zero LLM/subagent calls. It is non-destructive: a
 node's prior semantic fields (if any) are preserved,
