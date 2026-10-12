@@ -1,0 +1,210 @@
+{
+  "version": 1,
+  "unitDescriptors": ["pom.xml", "build.gradle", "build.gradle.kts", "build.xml", "build.sbt"],
+  "xmlBinders": [
+    {
+      "id": "jsf-xml-managed-bean",
+      "namespace": "el",
+      "basis": "JSF faces-config: a managed-bean element binds its managed-bean-name to its managed-bean-class, and the managed-bean resolver makes the whole name visible to EL (a dotted name is not a namespace there).",
+      "root": "faces-config",
+      "element": "managed-bean",
+      "parent": "faces-config",
+      "name": {
+        "child": "managed-bean-name"
+      },
+      "target": {
+        "kind": "class",
+        "child": "managed-bean-class"
+      },
+      "namespacedNames": false,
+      "missingTarget": "unknown"
+    },
+    {
+      "id": "jsf-xml-resource-bundle",
+      "namespace": "el",
+      "basis": "JSF faces-config: a resource-bundle element in application exposes the bundle named by base-name to EL under its var.",
+      "root": "faces-config",
+      "element": "resource-bundle",
+      "parent": "application",
+      "name": {
+        "child": "var"
+      },
+      "target": {
+        "kind": "bundle",
+        "child": "base-name"
+      },
+      "namespacedNames": false,
+      "missingTarget": "unknown"
+    },
+    {
+      "id": "seam-xml-component",
+      "namespace": "el",
+      "basis": "Seam components.xml: a component element in the Seam components namespace registers its class under its name, Seam's EL resolver looks component names up (a dotted name is a namespace), and a component with a name and no class configures the component of that name declared elsewhere, for instance by an annotation.",
+      "root": "components",
+      "rootNamespace": ["http://jboss.com/products/seam/components"],
+      "element": "component",
+      "parent": "components",
+      "name": {
+        "attribute": ["name"]
+      },
+      "target": {
+        "kind": "class",
+        "attribute": "class"
+      },
+      "namespacedNames": true,
+      "missingTarget": "configures"
+    },
+    {
+      "id": "spring-xml-bean",
+      "namespace": "spring",
+      "basis": "Spring XML configuration: a bean element directly under beans registers its class under its id and each of the aliases in name, which can be separated by comma, semicolon or space but are not in id; a bean nested in a property or constructor argument is an inner bean and registers no name, and a bean with a name but no class (only a parent or a factory) is a definition whose class comes from elsewhere. Spring's EL bridge looks a name up whole, so a dotted name is not reachable from EL.",
+      "root": "beans",
+      "element": "bean",
+      "parent": "beans",
+      "name": {
+        "attribute": ["id", "name"],
+        "split": {
+          "name": ",; "
+        }
+      },
+      "target": {
+        "kind": "class",
+        "attribute": "class"
+      },
+      "namespacedNames": false,
+      "missingTarget": "unknown"
+    }
+  ],
+  "annotationBinders": [
+    {
+      "id": "jsf-annotation-managed-bean",
+      "namespace": "el",
+      "basis": "JSF ManagedBean annotation: name gives the managed bean's name, which the managed-bean resolver looks up whole; left out, it is the unqualified class name with its first character in lower case.",
+      "annotations": ["javax.faces.bean.ManagedBean"],
+      "nameArguments": ["name"],
+      "defaultName": "lowercase-first",
+      "namespacedNames": false
+    },
+    {
+      "id": "cdi-annotation-named",
+      "namespace": "el",
+      "basis": "CDI Named annotation: value is the bean's EL name, and a dotted name is a namespace to the EL resolver (the bean named admin.track is reached by #{admin.track}); left out, it is the unqualified class name with its first character in lower case.",
+      "annotations": ["javax.inject.Named", "jakarta.inject.Named"],
+      "nameArguments": ["value"],
+      "defaultName": "lowercase-first",
+      "namespacedNames": true
+    },
+    {
+      "id": "cdi-annotation-model",
+      "namespace": "el",
+      "basis": "CDI Model stereotype: it is a request-scoped Named bean with the default name, the unqualified class name with its first character in lower case.",
+      "annotations": ["javax.enterprise.inject.Model", "jakarta.enterprise.inject.Model"],
+      "nameArguments": [],
+      "defaultName": "lowercase-first",
+      "namespacedNames": true
+    },
+    {
+      "id": "seam-annotation-name",
+      "namespace": "el",
+      "basis": "Seam Name annotation: value is the component's name, and a component has no default name.",
+      "annotations": ["org.jboss.seam.annotations.Name"],
+      "nameArguments": ["value"],
+      "defaultName": null,
+      "namespacedNames": true
+    },
+    {
+      "id": "seam-annotation-role",
+      "namespace": "el",
+      "basis": "Seam Role annotation: name is one more name the component is registered under, and a role has no default name.",
+      "annotations": ["org.jboss.seam.annotations.Role"],
+      "nameArguments": ["name"],
+      "defaultName": null,
+      "namespacedNames": true
+    },
+    {
+      "id": "spring-annotation-stereotype",
+      "namespace": "spring",
+      "basis": "Spring stereotype annotations: value is the bean name; left out, it is the unqualified class name decapitalized the way java.beans.Introspector does, which keeps a name whose first two characters are upper case.",
+      "annotations": [
+        "org.springframework.stereotype.Component", "org.springframework.stereotype.Service",
+        "org.springframework.stereotype.Repository", "org.springframework.stereotype.Controller"
+      ],
+      "nameArguments": ["value"],
+      "defaultName": "java-beans-decapitalize",
+      "namespacedNames": false
+    }
+  ],
+  "expressionLanguages": [
+    {
+      "id": "jsf-jsp-el",
+      "basis": "Unified EL as JSF and JSP evaluate it: #{...} and ${...} in view templates, with the implicit objects of JSP 2.x and JSF 2.0-4.0 resolved before any named bean (the union of both, as the version in use is not known), and the variables a tag declares local to the page: var and varStatus, the Facelets ui:param name (not the request parameter name of f:param or c:param), jsp:useBean id, and the expression roots Tomahawk aliasBean gives its alias.",
+      "delimiters": ["#{", "${"],
+      "files": {
+        "extensions": ["xhtml", "jsp", "jspx", "jspf", "tag", "tagx"],
+        "xmlRoots": [
+          {
+            "root": "faces-config"
+          },
+          {
+            "root": "pages",
+            "rootNamespace": ["http://jboss.com/products/seam/pages"]
+          },
+          {
+            "root": "page",
+            "rootNamespace": ["http://jboss.com/products/seam/pages"]
+          }
+        ]
+      },
+      "implicitNames": [
+        "application", "applicationScope", "cc", "component", "cookie", "externalContext",
+        "facesContext", "flash", "flowScope", "header", "headerValues", "initParam", "pageContext",
+        "pageScope", "param", "paramValues", "request", "requestScope", "resource", "session",
+        "sessionScope", "view", "viewScope"
+      ],
+      "localDeclarations": [
+        {
+          "attribute": "var"
+        },
+        {
+          "attribute": "varStatus"
+        },
+        {
+          "attribute": "name",
+          "element": "param",
+          "elementNamespaces": [
+            "http://java.sun.com/jsf/facelets", "http://xmlns.jcp.org/jsf/facelets", "jakarta.faces.facelets"
+          ]
+        },
+        {
+          "attribute": "id",
+          "element": "useBean"
+        },
+        {
+          "attribute": "alias",
+          "element": "aliasBean",
+          "elementNamespaces": ["http://myfaces.apache.org/tomahawk"],
+          "declares": "expression-root"
+        }
+      ],
+      "sees": [
+        {
+          "namespace": "el"
+        },
+        {
+          "namespace": "spring",
+          "when": {
+            "elementTextIn": {
+              "root": "faces-config",
+              "elements": ["el-resolver", "variable-resolver"],
+              "anyOf": [
+                "org.springframework.web.jsf.el.SpringBeanFacesELResolver",
+                "org.springframework.web.jsf.DelegatingVariableResolver",
+                "org.springframework.web.jsf.SpringBeanVariableResolver"
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}
