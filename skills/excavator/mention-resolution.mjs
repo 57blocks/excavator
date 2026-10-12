@@ -202,12 +202,27 @@ function createPathIndex(manifestPaths) {
  * suffix match. A `classpath:` / `classpath*:` token goes to the suffix rule
  * alone: it is relative to the classpath, not to the mentioning file.
  *
+ * The suffix rule is a guess about where a base directory nobody can see
+ * lies, so it is kept to what has a base by meaning: a classpath token (any
+ * classpath root), and a non-pattern path with a directory segment of its
+ * own. A pattern without a classpath prefix (a build descriptor's
+ * `java/**` + `/*.java` is relative to its own module) and a bare file name
+ * (`unistd.h` in a changelog) would match same-shaped files in other modules.
+ *
+ * A `.` or `..` segment after the leading run of `/`, `./` and `../` is not
+ * resolved at all: it may cancel a segment that is no directory (`$VAR/..`),
+ * and normalizing it away would be luck.
+ *
  * @returns {{ resolution: string, hits: string[] }}
  */
 function resolvePath(candidate, file, index, mutations) {
   const { path: written, prefix, pattern } = candidate;
   const wildcard = written.includes('*');
   const classpath = prefix === 'classpath' || prefix === 'classpath*';
+  const none = { resolution: pattern ? 'pattern' : 'suffix', hits: [] };
+
+  const tail = stripLeadingRelative(written).replace(/\/{2,}/g, '/');
+  if (tail.split('/').some((segment) => segment === '.' || segment === '..')) return none;
 
   const lookup = (rel, rule) => {
     const target = joinInside(rel.base, rel.rest);
@@ -229,11 +244,10 @@ function resolvePath(candidate, file, index, mutations) {
     if (found) return found;
   }
 
-  const tail = stripLeadingRelative(posix.normalize(stripLeadingRelative(written)));
-  const hits = !tail || tail === '.'
-    ? []
-    : wildcard ? index.matchGlob(tail, true) : index.matchSuffix(tail);
-  return { resolution: pattern ? 'pattern' : 'suffix', hits };
+  // Tripwire seam: the pre-2.6 fall-through, for patterns and bare names too.
+  const mayMatchSuffix = classpath || (!wildcard && tail.includes('/')) || mutations.suffixForPatterns;
+  if (!tail || !mayMatchSuffix) return none;
+  return { resolution: none.resolution, hits: wildcard ? index.matchGlob(tail, true) : index.matchSuffix(tail) };
 }
 
 // ---------------------------------------------------------------------------
@@ -258,7 +272,7 @@ function evidenceOrder(a, b) {
  *   javaSources: { isType(pkg: string, name: string): boolean },
  *   fileIdOf: (path: string) => string,
  *   languageOf?: (path: string) => string|undefined,
- *   mutations?: { firstDeclaration?: boolean, noWebRootRule?: boolean, shortestPrefix?: boolean, noJavaFileIndex?: boolean },
+ *   mutations?: { firstDeclaration?: boolean, noWebRootRule?: boolean, shortestPrefix?: boolean, noJavaFileIndex?: boolean, suffixForPatterns?: boolean },
  * }} args
  *   `sites` has one row per scanned non-code file, each with the lexer's
  *   candidate lists. `javaTypes` is every Java top-level type declaration

@@ -26,7 +26,9 @@
  *   context: `{ element, attribute }` in a markup file, else null
  *     - inside a start-tag attribute value: that element and attribute
  *     - inside element text: nearest unclosed element, attribute null
- *     - JSP directive `<%@ page import="..." %>`: element "%@page"
+ *     - JSP directive `<%@ page import="..." %>`: element "%@page" (likewise
+ *       "%@include", "%@taglib"), whatever element encloses it - even a
+ *       `<script>` body
  *     - outside every element, or a non-markup file: null
  *
  * What is a comment (and therefore never a candidate):
@@ -246,6 +248,22 @@ function markupSegments(text, language) {
     }
   };
 
+  /**
+   * A JSP directive `<%@ name attr="..." %>` at `lt` whose `%>` is at
+   * `closeAt`: its attributes are segments whose context is the directive
+   * itself (`%@include`), whatever element encloses it.
+   */
+  function addDirective(lt, closeAt) {
+    NAME_RE.lastIndex = lt + 3;
+    while (isSpace(text[NAME_RE.lastIndex])) NAME_RE.lastIndex++;
+    const directive = NAME_RE.exec(text);
+    if (directive && directive.index < closeAt) {
+      addAttributes(`%@${directive[0]}`, directive.index + directive[0].length, closeAt);
+    } else {
+      addText(lt + 3, closeAt);
+    }
+  }
+
   while (cursor < text.length) {
     const lt = text.indexOf('<', cursor);
     if (lt < 0) break;
@@ -283,14 +301,7 @@ function markupSegments(text, language) {
           continue;
         }
         flush(lt);
-        NAME_RE.lastIndex = lt + 3;
-        while (isSpace(text[NAME_RE.lastIndex])) NAME_RE.lastIndex++;
-        const directive = NAME_RE.exec(text);
-        if (directive && directive.index < closeAt) {
-          addAttributes(`%@${directive[0]}`, directive.index + directive[0].length, closeAt);
-        } else {
-          addText(lt + 3, closeAt);
-        }
+        addDirective(lt, closeAt);
         consume(closeAt + 2);
       } else {
         // Scriptlet, expression or declaration: its text is scanned like any
@@ -343,7 +354,16 @@ function markupSegments(text, language) {
       rawEnd.lastIndex = end + 1;
       const found = rawEnd.exec(text);
       const closeAt = found ? found.index : text.length;
-      addText(end + 1, closeAt);
+      // A JSP directive inside the body is still a directive, not script text.
+      let at = end + 1;
+      for (let d = text.indexOf('<%@', at); d >= 0 && d < closeAt; d = text.indexOf('<%@', at)) {
+        const directiveEnd = findClose(text, d + 3, '%>');
+        if (directiveEnd < 0 || directiveEnd + 2 > closeAt) break;
+        addText(at, d);
+        addDirective(d, directiveEnd);
+        at = directiveEnd + 2;
+      }
+      addText(at, closeAt);
       consume(closeAt);
     }
   }
@@ -393,10 +413,12 @@ function pathCandidate(token, extensions) {
   const extension = posix.extname(segments[segments.length - 1]).slice(1).toLowerCase();
   if (!extension || !extensions.has(extension)) return null;
 
-  // A wildcard with no literal directory segment (`*.xhtml`, `**/*.xml`) is a
-  // URL mapping or a global glob; it points at no particular file.
+  // A wildcard with no literal directory segment (`*.xhtml`, `**/*.xml`,
+  // `./*.ts`: `.` and `..` name no directory) is a URL mapping or a global
+  // glob; it points at no particular file.
   const wildcard = rest.includes('*');
-  if (wildcard && !segments.slice(0, -1).some((segment) => segment !== '' && !segment.includes('*'))) return null;
+  const literalDirectory = (segment) => segment !== '' && segment !== '.' && segment !== '..' && !segment.includes('*');
+  if (wildcard && !segments.slice(0, -1).some(literalDirectory)) return null;
   return { token, path: rest, prefix, pattern: wildcard || prefix === 'classpath*' };
 }
 

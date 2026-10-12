@@ -161,6 +161,34 @@ describe('context', () => {
     ]);
   });
 
+  it('gives a directive its own context, even inside a script body', () => {
+    const { fqn, path } = lex('a.jsp', 'jsp', [
+      '<script>',
+      '  <%@ include file="/WEB-INF/a.jspx" %>',
+      '  var x = "com.acme.InScript";',
+      '  <%@ include file="/WEB-INF/b.jspx" %>',
+      '</script>',
+      '<p>com.acme.After</p>',
+    ]);
+    expect(path.map((c) => [c.token, c.line, c.context])).toEqual([
+      ['/WEB-INF/a.jspx', 2, { element: '%@include', attribute: 'file' }],
+      ['/WEB-INF/b.jspx', 4, { element: '%@include', attribute: 'file' }],
+    ]);
+    expect(fqn.filter((c) => c.token.startsWith('com.acme.')).map((c) => [c.token, c.line, c.context.element])).toEqual([
+      ['com.acme.InScript', 3, 'script'],
+      ['com.acme.After', 6, 'p'],
+    ]);
+    // candidates stay in document order
+    const ordered = (list) => list.map((c) => c.line).every((line, i, all) => i === 0 || line >= all[i - 1]);
+    expect(ordered(fqn)).toBe(true);
+    expect(ordered(path)).toBe(true);
+  });
+
+  it('gives a directive its own context inside any enclosing element', () => {
+    const { path } = lex('a.jsp', 'jsp', ['<c:if test="x">', '  <%@ include file="/WEB-INF/c.jspx" %>', '</c:if>']);
+    expect(path[0].context).toEqual({ element: '%@include', attribute: 'file' });
+  });
+
   it('is null in a file that is not markup', () => {
     const { fqn, path } = lex('app.properties', 'properties', ['handler=com.acme.H', 'page=/WEB-INF/x.xml']);
     expect(fqn[0].context).toBeNull();
@@ -179,7 +207,7 @@ describe('context', () => {
   });
 
   it('treats script bodies as raw text, not markup', () => {
-    const { fqn } = lex('a.html', 'html', ['<script>', '  if (a<b) { go("com.acme.InScript"); }', '</script>', '<p>com.acme.AfterScript</p>']);
+    const { fqn } = lex('a.html', 'html', ['<script>', '  if (a<b && c>d) { go("com.acme.InScript"); }', '</script>', '<p>com.acme.AfterScript</p>']);
     expect(named(fqn, 'com.acme.InScript')[0].context).toEqual({ element: 'script', attribute: null });
     expect(named(fqn, 'com.acme.AfterScript')[0].context).toEqual({ element: 'p', attribute: null });
   });
@@ -294,6 +322,11 @@ describe('path candidates', () => {
       ['a/**/b.xml', true],
       ['../conf/*.xml', true],
     ]);
+  });
+
+  it('does not count . or .. as a literal directory of a wildcard', () => {
+    const found = lexMentions('f', 'xml', '<a b="./*.ts" c="../*.ts" d="./src/*.ts" e="../src/*.ts"/>', { extensions: new Set(['ts']) }).path;
+    expect(tokens(found)).toEqual(['./src/*.ts', '../src/*.ts']);
   });
 
   it('reads the url-pattern of a descriptor as no path', () => {

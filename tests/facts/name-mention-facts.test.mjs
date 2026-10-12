@@ -453,6 +453,75 @@ describe('path mentions', () => {
     expect(p.gaps('path-mention-unresolved')).toHaveLength(1);
   });
 
+  it('does not expand a build descriptor pattern into another module', () => {
+    // modA's `java/` does not exist; modB has Java files in a directory of the same shape
+    const p = project({
+      java: { 'modB/src/main/java/x/Foo.java': 'x.Foo' },
+      files: { 'modA/pom.xml': '<includes><include>java/**/*.java</include></includes>' },
+    });
+    expect(p.mentions).toEqual([]);
+    const [gap] = p.gaps('path-mention-unresolved');
+    expect(gap).toMatchObject({ scope: 'xml', count: 1 });
+    expect(gap.samples).toEqual(['modA/pom.xml:1 java/**/*.java -> []']);
+    expect(p.coverage.path).toMatchObject({ candidates: 1, edge: 0, unresolved: 1 });
+  });
+
+  it('does not match a bare file name by suffix', () => {
+    const p = project({
+      files: { 'CHANGELOG.txt': 'fixes unistd.h on the build', 'native/os/windows/unistd.h': '/* header */' },
+    });
+    expect(p.mentions).toEqual([]);
+    expect(p.gaps('path-mention-unresolved')[0].samples).toEqual(['CHANGELOG.txt:1 unistd.h -> []']);
+  });
+
+  it('still matches a classpath token by suffix, bare name and pattern alike', () => {
+    const p = project({
+      files: {
+        'a/app.xml': ['<p r="classpath:app.properties"/>', '<p r="classpath*:conf/*.xml"/>'],
+        'lib/conf/app.properties': 'k=v',
+        'lib/conf/one.xml': '<a/>',
+        'other/conf/two.xml': '<a/>',
+      },
+    });
+    expect(p.links).toEqual(['a/app.xml -> lib/conf/app.properties', 'a/app.xml -> lib/conf/one.xml', 'a/app.xml -> other/conf/two.xml']);
+    expect(p.mentions.flatMap((e) => e.evidence.map((x) => x.resolution)).sort()).toEqual(['pattern', 'pattern', 'suffix']);
+  });
+
+  it('still matches a path with a directory of its own by suffix', () => {
+    const p = project({ files: { 'a/x.xml': '<i src="views/footer.xhtml"/>', 'lib/views/footer.xhtml': '<f/>' } });
+    expect(p.links).toEqual(['a/x.xml -> lib/views/footer.xhtml']);
+    expect(p.mentions[0].evidence[0].resolution).toBe('suffix');
+  });
+
+  it('takes a ./ prefix as the same directory when the relative rule has a hit', () => {
+    const p = project({ files: { 'a/x.xml': '<i resource="./row.xml"/>', 'a/row.xml': '<r/>', 'z/row.xml': '<r/>' } });
+    expect(p.links).toEqual(['a/x.xml -> a/row.xml']);
+    expect(p.mentions[0].evidence[0].resolution).toBe('relative');
+  });
+
+  it('does not resolve a token with a . or .. segment after its leading run', () => {
+    const p = project({
+      files: {
+        '.github/ci.yaml': ['run: $GITHUB_ACTION_PATH/../../scripts/x.sh', 'run: curl -d@../../api/x.json', 'run: shared/../common.yaml'],
+        'scripts/x.sh': 'echo',
+        'api/x.json': '{}',
+        '.github/common.yaml': 'k: v',
+      },
+    });
+    expect(p.mentions).toEqual([]);
+    expect(p.gaps('path-mention-unresolved')[0].samples).toEqual([
+      '.github/ci.yaml:1 $GITHUB_ACTION_PATH/../../scripts/x.sh -> []',
+      '.github/ci.yaml:2 -d@../../api/x.json -> []',
+      '.github/ci.yaml:3 shared/../common.yaml -> []',
+    ]);
+  });
+
+  it('still joins a leading ../ run onto the mentioning file directory', () => {
+    const p = project({ files: { 'a/b/x.xml': '<i resource="../../common.xml"/>', 'common.xml': '<c/>' } });
+    expect(p.links).toEqual(['a/b/x.xml -> common.xml']);
+    expect(p.mentions[0].evidence[0].resolution).toBe('relative');
+  });
+
   it('draws no edge for a file that mentions itself', () => {
     const p = project({ files: { 'pages/a.xhtml': '<ui:include src="a.xhtml"/>' } });
     expect(p.mentions).toEqual([]);
@@ -538,7 +607,7 @@ describe('path patterns', () => {
 
   it('is unresolved when a pattern matches nothing, and self when it matches only itself', () => {
     const p = project({
-      files: { 'a/x.xml': '<i resource="nothing/*.xml"/>', 'b/y.xml': '<i resource="*/*.xml"/>', 'c/conf/z.xml': '<i resource="conf/*.xml"/>' },
+      files: { 'a/x.xml': '<i resource="nothing/*.xml"/>', 'b/y.xml': '<i resource="*/*.xml"/>', 'c/z.xml': '<i resource="../c/*.xml"/>' },
     });
     expect(p.coverage.path).toMatchObject({ candidates: 2, edge: 0, unresolved: 1, self: 1 });
   });
@@ -643,7 +712,9 @@ describe('coverage and conservation', () => {
     expect(p.coverage.files).toEqual({ xml: 3, jsp: 1, properties: 1 });
     // the exact counts on this fixture
     expect(fqn).toEqual({ candidates: 11, edge: 3, ambiguous: 1, unindexed: 1, external: 6 });
-    expect(path).toEqual({ candidates: 5, edge: 2, ambiguous: 1, unresolved: 1, self: 1 });
+    // `../web.xml` (welcome-file) names a file nothing shows to be at that place: unresolved, no longer
+    // matched to web.xml by suffix
+    expect(path).toEqual({ candidates: 5, edge: 2, ambiguous: 1, unresolved: 2, self: 0 });
   });
 
   it('reads the gap counts back from what was recorded', () => {
@@ -809,6 +880,18 @@ describe('tripwires: a broken rule turns a scenario red', () => {
         files: { 'beans.xml': '<include-filter expression="com.acme.Audited"/>' },
       }),
       holds: (p) => p.mentions.length === 0 && p.gaps('mention-target-unindexed').length === 1 && p.coverage.fqn.external === 0,
+    },
+    noSuffixForPatternsOrBareNames: {
+      mutation: { suffixForPatterns: true },
+      spec: () => ({
+        java: { 'modB/src/main/java/x/Foo.java': 'x.Foo' },
+        files: {
+          'modA/pom.xml': '<include>java/**/*.java</include>',
+          'CHANGELOG.txt': 'fixes unistd.h',
+          'native/os/windows/unistd.h': '/* header */',
+        },
+      }),
+      holds: (p) => p.mentions.length === 0 && p.coverage.path.unresolved === 2 && p.coverage.path.edge === 0,
     },
     longestPrefix: {
       mutation: { shortestPrefix: true },
