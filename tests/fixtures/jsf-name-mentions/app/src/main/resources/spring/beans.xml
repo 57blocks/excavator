@@ -5,4 +5,5 @@
   <!-- <bean id="old" class="com.acme.Legacy"/> -->
   <bean id="client" class="org.thirdparty.Client"/>
   <include-filter type="annotation" expression="com.acme.Audited"/>
+  <bean id="generated" class="com.acme.gen.Huge"/>
 </beans>

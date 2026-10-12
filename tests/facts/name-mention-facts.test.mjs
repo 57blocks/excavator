@@ -1,13 +1,16 @@
-// name-mention-facts, tasks 2.1-2.4: cross-file resolution of name mentions
+// name-mention-facts, tasks 2.1-2.7: cross-file resolution of name mentions
 // into `mentions` edges, gaps and coverage, inside buildFactGraph.
 //
 // Every fixture is a small synthetic project built in memory: Java rows with
-// top-level types, plus non-code files whose text goes through the real lexer
-// (text-mentions.mjs) so these tests also pin the lexer-to-resolver handoff.
+// top-level types, plus non-code files whose text goes through the real
+// mentions stage (mention-sites.mjs, which lexes them and reads the package
+// of Java files the dictionary has no type for), so these tests also pin the
+// stage-to-resolver handoff.
 import { describe, expect, it } from 'vitest';
 import { extname } from 'node:path';
 import { buildFactGraph } from '../../skills/excavator/build-fact-graph.mjs';
-import { assertMentionConservation } from '../../skills/excavator/mention-resolution.mjs';
+import { assertMentionConservation, createDeclaredJavaTypeIndex, resolveMentions } from '../../skills/excavator/mention-resolution.mjs';
+import { collectMentionSites } from '../../skills/excavator/mention-sites.mjs';
 import { lexMentions } from '../../skills/excavator/text-mentions.mjs';
 
 const LANGUAGE_OF_EXTENSION = {
@@ -18,7 +21,9 @@ const LANGUAGE_OF_EXTENSION = {
  * @param {{
  *   java?: Record<string, string|string[]>,     path -> top-level type(s) it declares, as qualified names
  *   javaMembers?: Record<string, string[]>,     qualified name -> member type names
- *   annotations?: string[],                     paths of Java files whose only top-level type is an annotation
+ *   annotations?: Record<string, string|null>, path -> declared package of a Java file whose only top-level type is an annotation (null: none)
+ *   skipped?: Array<{ path, reason, language?, text? }>, files the scanner skipped; `text` is what the snapshot holds
+ *   reads?: string[],                           collects the paths the stage reads
  *   kotlin?: Record<string, string[]>,          path -> top-level type names
  *   files?: Record<string, string|string[]>,    path -> text of a non-code file
  *   sites?: (default: object[]) => object[],    adjust the lexed mention sites
@@ -26,9 +31,10 @@ const LANGUAGE_OF_EXTENSION = {
  *   mutations?: object,
  * }} spec
  */
-function project({ java = {}, javaMembers = {}, annotations = [], kotlin = {}, files = {}, sites, omitSites = false, mutations } = {}) {
+function project({ java = {}, javaMembers = {}, annotations = {}, kotlin = {}, files = {}, skipped = [], reads = [], sites, omitSites = false, mutations } = {}) {
   const scanFiles = [];
   const results = [];
+  const texts = {};
   const row = (path, language, extra) => {
     scanFiles.push({ path, language, sizeLines: 5, fileCategory: 'code' });
     results.push({ path, language, fileCategory: 'code', totalLines: 5, nonEmptyLines: 5, functions: [], metrics: {}, ...extra });
@@ -43,8 +49,10 @@ function project({ java = {}, javaMembers = {}, annotations = [], kotlin = {}, f
       memberTypes: javaMembers[qualifiedName] ?? [],
     }));
     row(path, 'java', { status: 'parsed', classes });
+    const stem = path.slice(path.lastIndexOf('/') + 1).replace(/\.java$/, '');
+    texts[path] = `package ${classes[0].qualifiedName.replace(/\.[^.]+$/, '')};\n\nclass ${stem} {}\n`;
   }
-  for (const path of annotations) {
+  for (const [path, pkg] of Object.entries(annotations)) {
     // The row Core really emits for such a file: parsed, and no `classes`,
     // `functions` or `exports` at all (an annotation type is not a class entry).
     scanFiles.push({ path, language: 'java', sizeLines: 9, fileCategory: 'code' });
@@ -54,29 +62,37 @@ function project({ java = {}, javaMembers = {}, annotations = [], kotlin = {}, f
       classLiterals: [],
       metrics: { importCount: 0, exportCount: 0, functionCount: 0, classCount: 0 },
     });
+    const name = path.slice(path.lastIndexOf('/') + 1).replace(/\.java$/, '');
+    texts[path] = `${pkg ? `package ${pkg};\n\n` : ''}public @interface ${name} {}\n`;
   }
   for (const [path, names] of Object.entries(kotlin)) {
     row(path, 'kotlin', { status: 'parsed', classes: names.map((name) => ({ name, startLine: 1, endLine: 3 })) });
   }
-  const texts = {};
   for (const [path, text] of Object.entries(files)) {
     texts[path] = Array.isArray(text) ? text.join('\n') : text;
     row(path, LANGUAGE_OF_EXTENSION[extname(path).slice(1)] ?? 'unknown', { status: 'no-extractor' });
   }
-  const scan = { files: scanFiles, skipped: [], coverage: { limits: { maxFileLines: 20000, maxFileBytes: 2097152 } } };
+  const skippedEntries = skipped.map(({ path, reason, language, text }) => {
+    if (text !== undefined) texts[path] = text;
+    const ext = extname(path).slice(1);
+    return { path, reason, language: language ?? (ext === 'java' ? 'java' : ext === 'h' ? 'c' : LANGUAGE_OF_EXTENSION[ext] ?? (ext || 'unknown')) };
+  });
+  const scan = { files: scanFiles, skipped: skippedEntries, coverage: { limits: { maxFileLines: 20000, maxFileBytes: 2097152 } } };
   const structureAll = { results };
   const importMap = { importMap: Object.fromEntries(scanFiles.map((f) => [f.path, []])), unresolved: {} };
 
-  // what the Lazy driver will do: every non-code file through the lexer, with
-  // the extensions the manifest has
-  const extensions = new Set(scanFiles.map((f) => extname(f.path).slice(1).toLowerCase()).filter(Boolean));
-  const lexed = Object.entries(texts).map(([file, text]) => {
-    const language = LANGUAGE_OF_EXTENSION[extname(file).slice(1)] ?? 'unknown';
-    return { file, language, ...lexMentions(file, language, text, { extensions }) };
-  });
-  const mentionSites = omitSites ? undefined : sites ? sites(lexed) : lexed;
+  // what the Lazy driver does: the mentions stage over the manifest and what
+  // the snapshot holds
+  const readFile = (path) => {
+    reads.push(path);
+    if (!(path in texts)) throw new Error(`the snapshot holds no ${path}`);
+    return texts[path];
+  };
+  const stage = collectMentionSites({ scan, structureAll, readFile });
+  const mentionSites = omitSites ? undefined : sites ? sites(stage.sites) : stage.sites;
+  const mentionInputs = omitSites ? undefined : stage.inputs;
 
-  const graph = buildFactGraph({ scan, structureAll, importMap, mentionSites, mentionMutations: mutations });
+  const graph = buildFactGraph({ scan, structureAll, importMap, mentionSites, mentionInputs, mentionMutations: mutations });
   const byId = new Map(graph.nodes.map((n) => [n.id, n]));
   const label = (id) => {
     const node = byId.get(id);
@@ -91,6 +107,7 @@ function project({ java = {}, javaMembers = {}, annotations = [], kotlin = {}, f
     edge: (from, to) => mentions.find((e) => label(e.source) === from && label(e.target) === to),
     gaps: (kind) => graph.gaps.filter((g) => g.kind === kind),
     coverage: graph.coverage.mentions,
+    stage,
   };
 }
 
@@ -216,7 +233,8 @@ describe('class-name mentions', () => {
   });
 
   describe('a repository declaration that is not a class node is not outside the repository', () => {
-    const audited = ['module/src/main/java/com/acme/Audited.java'];
+    // the directory is a module's source root; the file declares the package
+    const audited = { 'module/src/main/java/com/acme/Audited.java': 'com.acme' };
 
     it('records an annotation type as unindexed, not external', () => {
       const p = project({
@@ -266,12 +284,63 @@ describe('class-name mentions', () => {
     it('never matches the default package, and gives a Java file no Kotlin file-class name', () => {
       const p = project({
         java: { 'src/com/acme/Util.java': 'com.acme.Util' },
-        annotations: ['src/Marker.java'],
-        files: { 'x.properties': ['a=Marker.value', 'b=com.acme.UtilKt'] },
+        annotations: { 'src/Marker.java': null },
+        files: { 'x.properties': ['a=Marker.value', 'b=com.acme.UtilKt', 'c=src.Marker'] },
       });
       expect(p.mentions).toEqual([]);
       expect(p.gaps('mention-target-unindexed')).toEqual([]);
-      expect(p.coverage.fqn).toMatchObject({ candidates: 2, unindexed: 0, external: 2 });
+      expect(p.coverage.fqn).toMatchObject({ candidates: 3, unindexed: 0, external: 3 });
+    });
+
+    it('does not take a directory named like a package for a declaration', () => {
+      // `ejb3.Foo` is a servlet name; org/acme/ejb3/ holds Foo.java declaring org.acme.ejb3
+      const p = project({
+        java: { 'src/main/java/org/acme/ejb3/Foo.java': 'org.acme.ejb3.Foo' },
+        annotations: { 'src/main/java/org/acme/ejb3/Marker.java': 'org.acme.ejb3' },
+        files: { 'WEB-INF/web.xml': ['<servlet-name>ejb3.Foo</servlet-name>', '<servlet-name>ejb3.Marker</servlet-name>', '<a class="org.acme.ejb3.Marker"/>'] },
+      });
+      expect(p.mentions).toEqual([]);
+      const [gap] = p.gaps('mention-target-unindexed');
+      expect(gap.samples).toEqual(['WEB-INF/web.xml:3 org.acme.ejb3.Marker -> [org.acme.ejb3.Marker]']);
+      expect(p.coverage.fqn).toEqual({ candidates: 3, edge: 0, ambiguous: 0, unindexed: 1, external: 2 });
+    });
+
+    it('takes the package the file declares, not the one its directory suggests', () => {
+      const p = project({
+        annotations: { 'src/legacy/Audited.java': 'com.acme' },
+        files: { 'x.xml': '<a e="com.acme.Audited" f="legacy.Audited"/>' },
+      });
+      expect(p.gaps('mention-target-unindexed')[0].samples).toEqual(['x.xml:1 com.acme.Audited -> [com.acme.Audited]']);
+      expect(p.coverage.fqn).toMatchObject({ candidates: 2, unindexed: 1, external: 1 });
+    });
+
+    it('reads the package only of Java files the dictionary has no type for', () => {
+      const reads = [];
+      project({
+        java: { 'src/com/acme/Svc.java': 'com.acme.Svc' },
+        annotations: audited,
+        files: { 'x.xml': '<a/>' },
+        reads,
+      });
+      expect(reads.sort()).toEqual(['module/src/main/java/com/acme/Audited.java', 'x.xml']);
+    });
+
+    it('takes a type declared in a Java file the scanner skipped as too large', () => {
+      const reads = [];
+      const p = project({
+        skipped: [
+          { path: 'gen/com/acme/Huge.java', reason: 'too-large', text: '/* ... */\npackage com.acme;\npublic class Huge {}\n' },
+          // the snapshot does not hold, or must not be read for, these
+          { path: 'gen/com/acme/Link.java', reason: 'symlink' },
+          { path: 'gen/com/acme/Broken.java', reason: 'read-failed' },
+          { path: 'gen/com/acme/Blob.java', reason: 'binary' },
+        ],
+        files: { 'x.xml': '<a a="com.acme.Huge" b="com.acme.Link" c="com.acme.Broken" d="com.acme.Blob"/>' },
+        reads,
+      });
+      expect(p.gaps('mention-target-unindexed')[0].samples).toEqual(['x.xml:1 com.acme.Huge -> [com.acme.Huge]']);
+      expect(p.coverage.fqn).toMatchObject({ candidates: 4, unindexed: 1, external: 3 });
+      expect(reads.sort()).toEqual(['gen/com/acme/Huge.java', 'x.xml']);
     });
   });
 
@@ -526,7 +595,7 @@ describe('path mentions', () => {
     const p = project({ files: { 'pages/a.xhtml': '<ui:include src="a.xhtml"/>' } });
     expect(p.mentions).toEqual([]);
     expect(mentionGaps(p)).toEqual([]);
-    expect(p.coverage.path).toEqual({ candidates: 1, edge: 0, ambiguous: 0, unresolved: 0, self: 1 });
+    expect(p.coverage.path).toEqual({ candidates: 1, edge: 0, ambiguous: 0, unresolved: 0, self: 1, unindexed: 0, unindexedHits: 0 });
   });
 
   it('does not take a path in a URL or an expression', () => {
@@ -544,6 +613,106 @@ describe('path mentions', () => {
     const p = project({ files: { 'a.xml': '<a src="logo.gif" other="b.xml"/>', 'b.xml': '<b/>' } });
     expect(p.links).toEqual(['a.xml -> b.xml']);
     expect(p.coverage.path.candidates).toBe(1);
+  });
+});
+
+describe('files the scanner skipped', () => {
+  const header = (extra = {}) => ({
+    skipped: [{ path: 'native/gtest/gtest.h', reason: 'too-large' }],
+    files: { 'LICENSE.txt': 'see native/gtest/gtest.h for the test header', 'native/other.h': '/* header */', ...extra },
+  });
+
+  it('does not call an existing but skipped file missing: the mention is unindexed', () => {
+    const p = project(header());
+    expect(p.mentions).toEqual([]);
+    expect(p.gaps('path-mention-unresolved')).toEqual([]);
+    const [gap] = p.gaps('mention-target-unindexed');
+    expect(gap).toMatchObject({ scope: 'unknown', count: 1 });
+    expect(gap.samples).toEqual(['LICENSE.txt:1 native/gtest/gtest.h -> [native/gtest/gtest.h (too-large)]']);
+    expect(p.coverage.path).toEqual({ candidates: 1, edge: 0, ambiguous: 0, unresolved: 0, self: 0, unindexed: 1, unindexedHits: 0 });
+  });
+
+  it('counts every per-file skip reason as a file that exists', () => {
+    for (const reason of ['too-large', 'binary', 'unknown-language', 'read-failed', 'symlink']) {
+      const p = project({ skipped: [{ path: 'native/x.h', reason }], files: { 'a.xml': '<i src="native/x.h"/>', 'native/y.h': '' } });
+      expect(p.gaps('mention-target-unindexed')[0].samples, reason).toEqual([`a.xml:1 native/x.h -> [native/x.h (${reason})]`]);
+    }
+  });
+
+  it('does not count a file a policy excluded: it was never looked at', () => {
+    for (const reason of ['filtered-by-ignore', 'filtered-by-defaults', 'sensitive', 'ignored']) {
+      const p = project({ skipped: [{ path: 'native/x.h', reason }], files: { 'a.xml': '<i src="native/x.h"/>', 'native/y.h': '' } });
+      expect(p.gaps('path-mention-unresolved'), reason).toHaveLength(1);
+      expect(p.gaps('mention-target-unindexed'), reason).toEqual([]);
+    }
+  });
+
+  it('resolves a node first: a skipped file elsewhere with another name is no competitor', () => {
+    const p = project({ skipped: [{ path: 'big/other.xml', reason: 'too-large' }], files: { 'a/x.xml': '<i r="row.xml"/>', 'a/row.xml': '<r/>' } });
+    expect(p.links).toEqual(['a/x.xml -> a/row.xml']);
+  });
+
+  it('counts a skipped file and a node alike when deciding what is ambiguous', () => {
+    const p = project({
+      skipped: [{ path: 'b/spring/beans.xml', reason: 'too-large' }],
+      files: { 'a/app.xml': '<import resource="classpath:spring/beans.xml"/>', 'a/spring/beans.xml': '<beans/>' },
+    });
+    expect(p.mentions).toEqual([]);
+    expect(p.gaps('mention-ambiguous')[0].samples).toEqual([
+      'a/app.xml:1 classpath:spring/beans.xml -> [a/spring/beans.xml, b/spring/beans.xml (too-large)]',
+    ]);
+    expect(p.gaps('mention-target-unindexed')).toEqual([]);
+  });
+
+  it('draws the edges to a pattern\'s nodes and counts its skipped matches', () => {
+    const p = project({
+      skipped: [{ path: 'lib/conf/big.xml', reason: 'too-large' }, { path: 'lib/conf/blob.xml', reason: 'binary' }],
+      files: { 'a/app.xml': '<i r="classpath*:conf/*.xml"/>', 'lib/conf/one.xml': '<a/>' },
+    });
+    expect(p.links).toEqual(['a/app.xml -> lib/conf/one.xml']);
+    expect(p.gaps('mention-target-unindexed')).toEqual([]);
+    expect(p.coverage.path).toEqual({ candidates: 1, edge: 1, ambiguous: 0, unresolved: 0, self: 0, unindexed: 0, unindexedHits: 2 });
+  });
+
+  it('records a pattern that matched only skipped files as unindexed, naming a few', () => {
+    const skipped = Array.from({ length: 7 }, (_, i) => ({ path: `lib/conf/big${i}.xml`, reason: 'too-large' }));
+    const p = project({ skipped, files: { 'a/app.xml': '<i r="classpath*:conf/*.xml"/>' } });
+    expect(p.mentions).toEqual([]);
+    expect(p.gaps('path-mention-unresolved')).toEqual([]);
+    const [gap] = p.gaps('mention-target-unindexed');
+    expect(gap.count).toBe(1);
+    expect(gap.samples[0]).toBe(
+      'a/app.xml:1 classpath*:conf/*.xml -> [lib/conf/big0.xml (too-large), lib/conf/big1.xml (too-large), lib/conf/big2.xml (too-large), '
+      + 'lib/conf/big3.xml (too-large), lib/conf/big4.xml (too-large), +2 more]',
+    );
+    expect(p.coverage.path).toMatchObject({ candidates: 1, edge: 0, unindexed: 1, unindexedHits: 7 });
+  });
+
+  it('does not let a skipped file make a web root', () => {
+    // only a jar is under WEB-INF: `webapp` is no web root, so index.jsp is not looked up there
+    const p = project({
+      skipped: [{ path: 'webapp/WEB-INF/lib/x.jar', reason: 'binary' }],
+      files: { 'webapp/pages/p.xhtml': '<a src="index.jsp"/>', 'webapp/index.jsp': '<h/>' },
+    });
+    expect(p.mentions).toEqual([]);
+    expect(p.gaps('path-mention-unresolved')).toHaveLength(1);
+  });
+
+  it('counts the non-code files it skipped, by reason, in the coverage', () => {
+    const p = project({
+      skipped: [
+        { path: 'a/big1.xml', reason: 'too-large' },
+        { path: 'a/big2.xml', reason: 'too-large' },
+        { path: 'a/blob.bin', reason: 'binary', language: 'unknown' },
+        { path: 'a/noext', reason: 'unknown-language', language: 'unknown' },
+        { path: 'a/big.java', reason: 'too-large', text: 'package a;\nclass big {}\n' }, // code: not lexed either way, not counted here
+        { path: 'a/ignored.xml', reason: 'filtered-by-ignore' },
+        { path: 'a/secret.xml', reason: 'sensitive' },
+      ],
+      files: { 'x.xml': '<a/>' },
+    });
+    expect(p.coverage.skipped).toEqual({ 'too-large': 2, binary: 1, 'unknown-language': 1 });
+    expect(p.coverage.files).toEqual({ xml: 1 });
   });
 });
 
@@ -714,20 +883,20 @@ describe('coverage and conservation', () => {
     expect(fqn).toEqual({ candidates: 11, edge: 3, ambiguous: 1, unindexed: 1, external: 6 });
     // `../web.xml` (welcome-file) names a file nothing shows to be at that place: unresolved, no longer
     // matched to web.xml by suffix
-    expect(path).toEqual({ candidates: 5, edge: 2, ambiguous: 1, unresolved: 2, self: 0 });
+    expect(path).toEqual({ candidates: 5, edge: 2, ambiguous: 1, unresolved: 2, self: 0, unindexed: 0, unindexedHits: 0 });
   });
 
   it('reads the gap counts back from what was recorded', () => {
     const p = full();
     const count = (kind) => p.gaps(kind).reduce((sum, g) => sum + g.count, 0);
     expect(count('mention-ambiguous')).toBe(p.coverage.fqn.ambiguous + p.coverage.path.ambiguous);
-    expect(count('mention-target-unindexed')).toBe(p.coverage.fqn.unindexed);
+    expect(count('mention-target-unindexed')).toBe(p.coverage.fqn.unindexed + p.coverage.path.unindexed);
     expect(count('path-mention-unresolved')).toBe(p.coverage.path.unresolved);
   });
 
   it('throws when a class-name candidate has no outcome', () => {
     const run = (fqnEdge) => assertMentionConservation(
-      { fqn: { candidates: 4, edge: fqnEdge, ambiguous: 1, unindexed: 1, external: 1 }, path: { candidates: 0, edge: 0, ambiguous: 0, unresolved: 0, self: 0 } },
+      { fqn: { candidates: 4, edge: fqnEdge, ambiguous: 1, unindexed: 1, external: 1 }, path: { candidates: 0, edge: 0, ambiguous: 0, unresolved: 0, self: 0, unindexed: 0 } },
       { ambiguous: 1, unindexed: 1, unresolved: 0 },
     );
     expect(() => run(1)).not.toThrow();
@@ -736,17 +905,43 @@ describe('coverage and conservation', () => {
 
   it('throws when a path candidate has no outcome', () => {
     const run = (self) => assertMentionConservation(
-      { fqn: { candidates: 0, edge: 0, ambiguous: 0, unindexed: 0, external: 0 }, path: { candidates: 4, edge: 1, ambiguous: 1, unresolved: 1, self } },
-      { ambiguous: 1, unindexed: 0, unresolved: 1 },
+      { fqn: { candidates: 0, edge: 0, ambiguous: 0, unindexed: 0, external: 0 }, path: { candidates: 5, edge: 1, ambiguous: 1, unresolved: 1, self, unindexed: 1 } },
+      { ambiguous: 1, unindexed: 1, unresolved: 1 },
     );
     expect(() => run(1)).not.toThrow();
-    expect(() => run(2)).toThrow(/4 path candidate\(s\) but 5 outcome\(s\)/);
+    expect(() => run(2)).toThrow(/5 path candidate\(s\) but 6 outcome\(s\)/);
+    expect(() => run(0)).toThrow(/5 path candidate\(s\) but 4 outcome\(s\)/);
+  });
+
+  it('counts a path candidate that matched a skipped file in the unindexed gaps', () => {
+    const mentions = {
+      fqn: { candidates: 1, edge: 0, ambiguous: 0, unindexed: 1, external: 0 },
+      path: { candidates: 1, edge: 0, ambiguous: 0, unresolved: 0, self: 0, unindexed: 1 },
+    };
+    expect(() => assertMentionConservation(mentions, { ambiguous: 0, unindexed: 2, unresolved: 0 })).not.toThrow();
+    expect(() => assertMentionConservation(mentions, { ambiguous: 0, unindexed: 1, unresolved: 0 })).toThrow(/mention-target-unindexed/);
+  });
+
+  it('wants every input it is given a stage for', () => {
+    const base = {
+      sites: [], manifestPaths: [], javaTypes: [], otherJvm: { isType: () => false }, fileIdOf: (p) => p,
+      declaredJavaTypes: createDeclaredJavaTypeIndex([]), skippedFiles: [], skippedNonCode: {},
+    };
+    expect(() => resolveMentions(base)).not.toThrow();
+    for (const missing of ['declaredJavaTypes', 'skippedFiles', 'skippedNonCode']) {
+      expect(() => resolveMentions({ ...base, [missing]: undefined }), missing).toThrow(new RegExp(`${missing} is required`));
+    }
+    expect(() => resolveMentions({ ...base, skippedFiles: [{ path: 'a', reason: 'filtered-by-ignore' }] })).toThrow(/names no repository file/);
+    // buildFactGraph: sites and the inputs the stage computed with them go together
+    const scan = { files: [], skipped: [], coverage: {} };
+    expect(() => buildFactGraph({ scan, structureAll: { results: [] }, mentionSites: [] })).toThrow(/go together/);
+    expect(() => buildFactGraph({ scan, structureAll: { results: [] }, mentionInputs: { javaPackages: [], skippedNonCode: {} } })).toThrow(/go together/);
   });
 
   it('throws when a recorded gap disagrees with the outcome it came from', () => {
     const mentions = {
       fqn: { candidates: 2, edge: 0, ambiguous: 1, unindexed: 1, external: 0 },
-      path: { candidates: 2, edge: 0, ambiguous: 1, unresolved: 1, self: 0 },
+      path: { candidates: 2, edge: 0, ambiguous: 1, unresolved: 1, self: 0, unindexed: 0 },
     };
     expect(() => assertMentionConservation(mentions, { ambiguous: 2, unindexed: 1, unresolved: 1 })).not.toThrow();
     expect(() => assertMentionConservation(mentions, { ambiguous: 1, unindexed: 1, unresolved: 1 })).toThrow(/mention-ambiguous/);
@@ -767,8 +962,9 @@ describe('coverage and conservation', () => {
     expect(empty.coverage).toEqual({
       status: 'ran',
       files: {},
+      skipped: {},
       fqn: { candidates: 0, edge: 0, ambiguous: 0, unindexed: 0, external: 0 },
-      path: { candidates: 0, edge: 0, ambiguous: 0, unresolved: 0, self: 0 },
+      path: { candidates: 0, edge: 0, ambiguous: 0, unresolved: 0, self: 0, unindexed: 0, unindexedHits: 0 },
     });
   });
 
@@ -876,7 +1072,7 @@ describe('tripwires: a broken rule turns a scenario red', () => {
     annotationType: {
       mutation: { noJavaFileIndex: true },
       spec: () => ({
-        annotations: ['src/com/acme/Audited.java'],
+        annotations: { 'src/com/acme/Audited.java': 'com.acme' },
         files: { 'beans.xml': '<include-filter expression="com.acme.Audited"/>' },
       }),
       holds: (p) => p.mentions.length === 0 && p.gaps('mention-target-unindexed').length === 1 && p.coverage.fqn.external === 0,
@@ -902,6 +1098,43 @@ describe('tripwires: a broken rule turns a scenario red', () => {
       holds: (p) => p.links.join() === 'x.properties -> src/com/acme/Foo/Bar.java#Bar',
     },
   };
+
+  // Task 2.7: the Java declarations the resolver trusts are the ones a file
+  // makes by its own `package`. Decided by directory suffix (what 2.5 did) it
+  // calls a servlet name like `ejb3.Foo` a declaration. The index is an input of
+  // the resolver, so this tripwire swaps in that older rule.
+  describe('declaredJavaTypes: a directory suffix is not a declaration', () => {
+    const javaFiles = ['src/main/java/org/acme/ejb3/Foo.java', 'src/main/java/org/acme/ejb3/Marker.java'];
+    const directorySuffixIndex = {
+      isType: (pkg, name) => javaFiles.some((file) => {
+        const dir = file.slice(0, file.lastIndexOf('/'));
+        const stem = file.slice(file.lastIndexOf('/') + 1).replace(/\.java$/, '');
+        return stem === name && pkg !== '' && (dir === pkg.replace(/\./g, '/') || dir.endsWith(`/${pkg.replace(/\./g, '/')}`));
+      }),
+    };
+    const run = (declaredJavaTypes) => resolveMentions({
+      sites: [{ file: 'WEB-INF/web.xml', language: 'xml', fqn: [{ token: 'ejb3.Marker', line: 1, context: null }], path: [] }],
+      manifestPaths: ['WEB-INF/web.xml'],
+      javaTypes: [],
+      otherJvm: { isType: () => false },
+      declaredJavaTypes,
+      skippedFiles: [],
+      skippedNonCode: {},
+      fileIdOf: (path) => path,
+    });
+
+    it('holds as shipped: a servlet name the directory resembles is outside the repository', () => {
+      const result = run(createDeclaredJavaTypeIndex([{ file: javaFiles[1], package: 'org.acme.ejb3' }]));
+      expect(result.gaps).toEqual([]);
+      expect(result.coverage.fqn).toMatchObject({ unindexed: 0, external: 1 });
+    });
+
+    it('breaks when decided by directory suffix', () => {
+      const result = run(directorySuffixIndex);
+      expect(result.gaps.map((g) => g.kind)).toEqual(['mention-target-unindexed']);
+      expect(result.coverage.fqn).toMatchObject({ unindexed: 1, external: 0 });
+    });
+  });
 
   for (const [name, scenario] of Object.entries(scenarios)) {
     it(`${name}: holds as shipped`, () => {

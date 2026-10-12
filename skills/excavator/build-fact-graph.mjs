@@ -62,10 +62,10 @@ import {
 import { DEFAULT_LIMIT_CHARS, serializeJsonProduct } from './product-serialization.mjs';
 import { STRUCTURE_ALL_FILE, readStructureAllPath } from './structure-all-store.mjs';
 import { writeKnowledgeGraph } from './knowledge-graph-store.mjs';
+import { assertCallConservation, createJavaCallResolver, createOtherJvmIndex, JAVA_CALL_OUTCOMES } from './java-call-resolution.mjs';
 import {
-  assertCallConservation, createJavaCallResolver, createJavaSourceIndex, createOtherJvmIndex, JAVA_CALL_OUTCOMES,
-} from './java-call-resolution.mjs';
-import { assertMentionConservation, resolveMentions } from './mention-resolution.mjs';
+  assertMentionConservation, createDeclaredJavaTypeIndex, resolveMentions, TARGET_SKIP_REASONS,
+} from './mention-resolution.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -126,13 +126,17 @@ function ordinalGroupKey(entry) {
  * @param {{
  *   scan: object, structureAll: object, importMap?: object|null,
  *   mentionSites?: Array<{ file: string, language?: string, fqn: object[], path: object[] }>|null,
+ *   mentionInputs?: { javaPackages: Array<{ file: string, package: string }>, skippedNonCode: Record<string, number> },
  *   mentionMutations?: object,
  *   serializationLimit?: number,
  *   headroomRecorder?: ReturnType<typeof import('./product-serialization.mjs').createHeadroomRecorder>,
  * }} args `mentionSites` is one row per scanned non-code file with the
  *   candidates text-mentions.mjs lexed from it (openspec: changes/
  *   name-mention-facts); omitted, the mention stage is recorded as
- *   not-run and adds no edge or gap. `mentionMutations` is the test seam of
+ *   not-run and adds no edge or gap. `mentionInputs` is required with it:
+ *   the packages Java source files declare for the types the dictionary has no
+ *   entry for, and the non-code files the scanner skipped by reason (both
+ *   from mention-sites.mjs). `mentionMutations` is the test seam of
  *   mention-resolution.mjs's mutation tripwires; leave it unset.
  *   `serializationLimit`/`headroomRecorder` route the facts-digest
  *   input string through `serializeJsonProduct` (openspec: changes/product-
@@ -143,7 +147,7 @@ function ordinalGroupKey(entry) {
  *   means no headroom entry is recorded for this call.
  * @returns {{ nodes: object[], edges: object[], coverage: object, gaps: object[], factsDigest: string }}
  */
-export function buildFactGraph({ scan, structureAll, importMap, mentionSites, mentionMutations, serializationLimit = DEFAULT_LIMIT_CHARS, headroomRecorder = null }) {
+export function buildFactGraph({ scan, structureAll, importMap, mentionSites, mentionInputs, mentionMutations, serializationLimit = DEFAULT_LIMIT_CHARS, headroomRecorder = null }) {
   if (!scan || !Array.isArray(scan.files)) {
     throw new Error('buildFactGraph: scan.files must be an array');
   }
@@ -534,6 +538,9 @@ export function buildFactGraph({ scan, structureAll, importMap, mentionSites, me
   // coverage says in so many words.
   // -------------------------------------------------------------------------
   let mentionCoverage = { status: 'not-run' };
+  if (Array.isArray(mentionSites) !== (mentionInputs !== undefined && mentionInputs !== null)) {
+    throw new Error('buildFactGraph: mentionSites and mentionInputs go together');
+  }
   if (Array.isArray(mentionSites)) {
     const javaTypes = [];
     for (const row of javaRows) {
@@ -547,7 +554,9 @@ export function buildFactGraph({ scan, structureAll, importMap, mentionSites, me
       manifestPaths: fileRowByPath.keys(),
       javaTypes,
       otherJvm: createOtherJvmIndex(otherJvmRows),
-      javaSources: createJavaSourceIndex(javaRows),
+      declaredJavaTypes: createDeclaredJavaTypeIndex(mentionInputs.javaPackages),
+      skippedFiles: (scan.skipped ?? []).filter((entry) => TARGET_SKIP_REASONS.includes(entry.reason)),
+      skippedNonCode: mentionInputs.skippedNonCode,
       fileIdOf,
       languageOf: (path) => languageOfPath.get(path),
       mutations: mentionMutations ?? {},
@@ -702,7 +711,7 @@ const GAP_REASONS = Object.freeze({
   'methods-name-only': 'class method(s) the extractor listed by name only (no line range) could not be projected as fact nodes',
   'identity-collision': 'declaration(s) mapped to the same node id as another distinguishable declaration',
   'mention-ambiguous': 'name mention(s) in non-code files that name more than one repository declaration or file (the same class name declared twice, or a path matching several files): no mentions edge is drawn',
-  'mention-target-unindexed': 'name mention(s) in non-code files of a declaration the repository has but the index has no class node for (a Kotlin or Scala type, a Java annotation type): no mentions edge is drawn',
+  'mention-target-unindexed': 'name mention(s) in non-code files of something the repository has but the index has no node for (a Kotlin or Scala type, a Java annotation type, a file the scanner skipped as too large or binary): no mentions edge is drawn',
   'path-mention-unresolved': 'path mention(s) in non-code files that match no file in the repository',
 });
 

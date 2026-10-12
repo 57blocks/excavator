@@ -216,40 +216,6 @@ function asInstance(res) {
 }
 
 /**
- * Names by directory, over a set of source rows: `namesOf(row, fileStem)` says
- * which type names a row declares for lookup purposes. `isType(pkg, name)` answers
- * "does a row in a directory laid out as package `pkg` declare `name`?" -
- * the directory is equal to, or ends with `/`, the package as a path. An
- * empty package matches nothing.
- */
-function createDirectoryNameIndex(rows, namesOf) {
-  const namesByDir = new Map();
-  for (const row of rows) {
-    const slash = row.path.lastIndexOf('/');
-    const dir = slash < 0 ? '' : row.path.slice(0, slash);
-    if (!namesByDir.has(dir)) namesByDir.set(dir, new Set());
-    const names = namesByDir.get(dir);
-    for (const name of namesOf(row, row.path.slice(slash + 1).replace(/\.[^.]+$/, ''))) names.add(name);
-  }
-
-  const dirsByPackage = new Map();
-  /** Directories of sources laid out in the package's path. */
-  function dirsOf(pkg) {
-    let dirs = dirsByPackage.get(pkg);
-    if (dirs) return dirs;
-    const pkgDir = pkg.replace(/\./g, '/');
-    dirs = !pkgDir ? [] : [...namesByDir.keys()].filter((d) => d === pkgDir || d.endsWith(`/${pkgDir}`));
-    dirsByPackage.set(pkg, dirs);
-    return dirs;
-  }
-
-  return {
-    isType: (pkg, name) => dirsOf(pkg).some((d) => namesByDir.get(d).has(name)),
-    hasPackage: (pkg) => dirsOf(pkg).length > 0,
-  };
-}
-
-/**
  * The types the repository's Kotlin and Scala sources declare, by directory.
  * Java can use these even though no Java resolver reads them: a type or a
  * package found here is in the repository, never outside it. Shared by call
@@ -261,27 +227,34 @@ function createDirectoryNameIndex(rows, namesOf) {
  * @returns {{ isType(pkg: string, name: string): boolean, hasPackage(pkg: string): boolean }}
  */
 export function createOtherJvmIndex(otherJvmRows = []) {
-  return createDirectoryNameIndex(otherJvmRows, (row, file) => [
-    file,
-    `${file}Kt`, // the class Kotlin compiles a file's top-level declarations into
-    ...(row.classes ?? []).map((cls) => cls.name).filter((name) => typeof name === 'string'),
-  ]);
-}
+  const namesByDir = new Map();
+  for (const row of otherJvmRows) {
+    const slash = row.path.lastIndexOf('/');
+    const dir = slash < 0 ? '' : row.path.slice(0, slash);
+    if (!namesByDir.has(dir)) namesByDir.set(dir, new Set());
+    const names = namesByDir.get(dir);
+    const file = row.path.slice(slash + 1).replace(/\.[^.]+$/, '');
+    names.add(file);
+    names.add(`${file}Kt`); // the class Kotlin compiles a file's top-level declarations into
+    for (const cls of row.classes ?? []) if (typeof cls.name === 'string') names.add(cls.name);
+  }
 
-/**
- * The Java source files of the repository, by directory and file name: a
- * `Name.java` laid out under package `pkg` is a declaration of `pkg.Name`
- * whether or not the extractor made a class entry for it. Core emits none for
- * an annotation type (`@interface`), so name-mention resolution reads this
- * where the type dictionary is silent (openspec: changes/name-mention-facts,
- * D4). No Kotlin `Kt` rule: that file-class belongs to Kotlin only.
- *
- * @param {object[]} javaRows structure rows of Java files
- * @returns {{ isType(pkg: string, name: string): boolean }}
- */
-export function createJavaSourceIndex(javaRows = []) {
-  const index = createDirectoryNameIndex(javaRows, (_row, file) => [file]);
-  return { isType: index.isType };
+  const dirsByPackage = new Map();
+  /** Directories of Kotlin and Scala sources laid out in the package's path. */
+  function dirsOf(pkg) {
+    let dirs = dirsByPackage.get(pkg);
+    if (dirs) return dirs;
+    const pkgDir = pkg.replace(/\./g, '/');
+    dirs = !pkgDir ? [] : [...namesByDir.keys()].filter((d) => d === pkgDir || d.endsWith(`/${pkgDir}`));
+    dirsByPackage.set(pkg, dirs);
+    return dirs;
+  }
+
+  return {
+    /** A type the repository's Kotlin or Scala sources declare in package `pkg`. */
+    isType: (pkg, name) => dirsOf(pkg).some((d) => namesByDir.get(d).has(name)),
+    hasPackage: (pkg) => dirsOf(pkg).length > 0,
+  };
 }
 
 /**

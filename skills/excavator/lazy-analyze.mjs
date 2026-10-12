@@ -627,19 +627,21 @@ export async function runLazyAnalysis({
     recorder.recordBytes('import-map.json', statSync(importMapPath).size, limit);
 
     // --- Name mentions (openspec: changes/name-mention-facts, D1/D2) --------
-    // Every non-code manifest file is lexed for class names and file paths.
-    // `readFile` reads the MATERIALIZED snapshot, never `root`: a git target's
-    // uncommitted edit must not become a fact about HEAD.
-    let mentionSites;
+    // Every non-code manifest file is lexed for class names and file paths,
+    // and the package is read of Java files the structure rows have no type
+    // for (annotation types, files skipped as too large). `readFile` reads the
+    // MATERIALIZED snapshot, never `root`: a git target's uncommitted edit must
+    // not become a fact about HEAD.
+    let mentionStage;
     time('mentions', () => {
       const readFile = (relPath) => readFileSync(join(materializedDir, relPath), 'utf-8');
-      mentionSites = collectMentionSites({ scan, readFile });
+      mentionStage = collectMentionSites({ scan, structureAll, readFile });
     });
 
     // --- Build Fact Graph (in-process — design D1: a projection, not a CLI) -
     let projection;
     time('factGraph', () => {
-      projection = buildFactGraph({ scan, structureAll, importMap, mentionSites, serializationLimit: limit, headroomRecorder: recorder });
+      projection = buildFactGraph({ scan, structureAll, importMap, mentionSites: mentionStage.sites, mentionInputs: mentionStage.inputs, serializationLimit: limit, headroomRecorder: recorder });
       const written = writeKnowledgeGraph(join(intermediateDir, 'fact-graph.jsonl'), projection, { limit, product: 'fact-graph.jsonl' });
       recorder.recordMaxRecord('fact-graph.jsonl', written.maxLineChars, limit);
       rmSync(join(intermediateDir, 'fact-graph.json'), { force: true }); // the retired whole-document copy

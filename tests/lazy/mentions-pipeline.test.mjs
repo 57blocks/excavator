@@ -4,7 +4,7 @@
 // (tests/fixtures/jsf-name-mentions); it is copied to a temp directory
 // because a Lazy run writes `.excavator/` next to the source.
 import { beforeAll, afterAll, describe, expect, it } from 'vitest';
-import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync, appendFileSync } from 'node:fs';
+import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync, appendFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { execFileSync, spawnSync } from 'node:child_process';
@@ -26,6 +26,12 @@ const JAVA = 'app/src/main/java/com/acme';
 function copyFixture() {
   const root = mkdtempSync(join(tmpdir(), 'excavator-mentions-'));
   cpSync(FIXTURE, root, { recursive: true });
+  // Two files the scanner skips as too large. They are generated, not checked
+  // in; the fixture mentions both (beans.xml and app.properties), so without
+  // them those mentions would be unresolved.
+  writeFileSync(join(root, APP, 'WEB-INF', 'catalog.xml'), `<catalog>\n${'<entry/>\n'.repeat(20_000)}</catalog>\n`); // more than 20,000 lines
+  mkdirSync(join(root, JAVA, 'gen'), { recursive: true });
+  writeFileSync(join(root, JAVA, 'gen', 'Huge.java'), `/*${'x'.repeat(2_200_000)}*/\npackage com.acme.gen;\n\npublic class Huge {\n}\n`); // more than 2 MB
   return root;
 }
 
@@ -124,27 +130,49 @@ describe('the mentions stage in the real Lazy driver', () => {
   });
 
   it('makes what it could not resolve visible, by kind', () => {
-    const gap = (kind) => graph.gaps.find((g) => g.kind === kind);
-    expect(gap('mention-ambiguous')).toMatchObject({ scope: 'xml', count: 1 });
-    expect(gap('mention-ambiguous').samples).toEqual([
+    const gap = (kind, scope) => graph.gaps.find((g) => g.kind === kind && g.scope === scope);
+    expect(gap('mention-ambiguous', 'xml')).toMatchObject({ count: 1 });
+    expect(gap('mention-ambiguous', 'xml').samples).toEqual([
       'app/src/main/resources/spring/beans.xml:4 com.acme.Config -> [app/src/main/java/com/acme/Config.java, legacy/src/main/java/com/acme/Config.java]',
     ]);
-    expect(gap('path-mention-unresolved')).toMatchObject({ scope: 'xhtml', count: 1 });
-    expect(gap('path-mention-unresolved').samples).toEqual([`${APP}/orders/detail.xhtml:5 /WEB-INF/missing/footer.xhtml -> []`]);
-    // an annotation type: Core makes no class node for it, so it is in the repository but not in the index
-    expect(gap('mention-target-unindexed')).toMatchObject({ scope: 'xml', count: 1 });
-    expect(gap('mention-target-unindexed').samples).toEqual(['app/src/main/resources/spring/beans.xml:7 com.acme.Audited -> [com.acme.Audited]']);
-    expect(graph.nodes.some((n) => n.type === 'class' && n.name === 'Audited')).toBe(false); // the premise
-    expect(linksOf(graph).some((l) => l.includes('Audited'))).toBe(false);
+    expect(gap('path-mention-unresolved', 'xhtml')).toMatchObject({ count: 1 });
+    expect(gap('path-mention-unresolved', 'xhtml').samples).toEqual([`${APP}/orders/detail.xhtml:5 /WEB-INF/missing/footer.xhtml -> []`]);
+    expect(linksOf(graph).some((l) => l.includes('Audited') || l.includes('Huge') || l.includes('catalog'))).toBe(false);
+    expect(graph.nodes.some((n) => n.type === 'class' && ['Audited', 'Huge'].includes(n.name))).toBe(false); // the premise
+  });
+
+  it('calls what the repository has but the index has no node for unindexed, not outside', () => {
+    const unindexed = (scope) => graph.gaps.find((g) => g.kind === 'mention-target-unindexed' && g.scope === scope);
+    // an annotation type (Core makes no class node for it) and a Java file the scanner skipped as too large:
+    // their packages are the ones the files declare, read from the snapshot
+    expect(unindexed('xml')).toMatchObject({ count: 2 });
+    expect(unindexed('xml').samples).toEqual([
+      'app/src/main/resources/spring/beans.xml:7 com.acme.Audited -> [com.acme.Audited]',
+      'app/src/main/resources/spring/beans.xml:8 com.acme.gen.Huge -> [com.acme.gen.Huge]',
+    ]);
+    // a path to a file the scanner skipped as too large exists: named with its reason, not "no such file"
+    expect(unindexed('properties')).toMatchObject({ count: 1 });
+    expect(unindexed('properties').samples).toEqual([`app/src/main/resources/app.properties:3 WEB-INF/catalog.xml -> [${APP}/WEB-INF/catalog.xml (too-large)]`]);
+  });
+
+  it('does not take a directory named like a package for a declaration', () => {
+    // org/acme/ejb3/Foo.java is indexed, and app.properties says `ejb3.Foo`: that is no type of the repository
+    const sample = graph.gaps.filter((g) => g.kind.startsWith('mention')).flatMap((g) => g.samples);
+    expect(sample.some((line) => line.includes('ejb3.Foo'))).toBe(false);
+    expect(graph.nodes.some((n) => n.type === 'class' && n.name === 'Foo')).toBe(true);
   });
 
   it('records the stage in coverage, with every candidate accounted for', () => {
     const mentions = graph.coverage.mentions;
     expect(mentions.status).toBe('ran');
     expect(mentions.files).toEqual({ properties: 1, xhtml: 6, xml: 4, jsp: 2 });
+    // the generated too-large catalog.xml was not lexed; the too-large Java file is code and is not counted here
+    expect(mentions.skipped).toEqual({ 'too-large': 1 });
     const { fqn, path } = mentions;
     expect(fqn.edge + fqn.ambiguous + fqn.unindexed + fqn.external).toBe(fqn.candidates);
-    expect(path.edge + path.ambiguous + path.unresolved + path.self).toBe(path.candidates);
+    expect(path.edge + path.ambiguous + path.unresolved + path.self + path.unindexed).toBe(path.candidates);
+    expect(fqn.unindexed).toBe(2);
+    expect(path).toMatchObject({ unindexed: 1, unindexedHits: 0 });
     expect(result.coverage.mentions).toEqual(mentions);
   });
 
@@ -200,8 +228,12 @@ describe('the mentions stage reads the snapshot, not the live tree', () => {
       writeFileSync(join(root, 'app/src/main/resources/extra.properties'), 'k=com.acme.Legacy\n');
       const result = await runLazyAnalysis({ projectRoot: root, now: FIXED_NOW });
       expect(result.saveError).toBeNull();
-      const links = linksOf(readProduct(root));
-      expect(links).toEqual(EXPECTED_LINKS);
+      const product = readProduct(root);
+      expect(linksOf(product)).toEqual(EXPECTED_LINKS);
+      // the same files, skipped as too large in the HEAD snapshot, are read from it too
+      const unindexed = product.gaps.filter((g) => g.kind === 'mention-target-unindexed').flatMap((g) => g.samples);
+      expect(unindexed).toContain('app/src/main/resources/spring/beans.xml:8 com.acme.gen.Huge -> [com.acme.gen.Huge]');
+      expect(unindexed).toContain(`app/src/main/resources/app.properties:3 WEB-INF/catalog.xml -> [${APP}/WEB-INF/catalog.xml (too-large)]`);
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
