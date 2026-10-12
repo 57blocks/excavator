@@ -10,6 +10,7 @@ import type {
 import type { LanguageExtractor, TreeSitterNode } from "./types.js";
 import { findChild, findChildren } from "./base-extractor.js";
 import { extractAnnotationNames, extractClassLiterals, memberDeclarationFacts } from "./java-declaration-facts.js";
+import { extractAnnotationUses } from "./java-annotation-arguments.js";
 import { methodReferenceSite } from "./java-method-references.js";
 import { STATIC_INITIALIZER_CALLER, initializerCaller } from "./java-initializer-callers.js";
 import { dottedName, typeText } from "./java-names.js";
@@ -947,7 +948,7 @@ export class JavaExtractor implements LanguageExtractor {
     facts: TypeBodyFacts,
   ): Pick<
     StructuralAnalysis["classes"][number],
-    "kind" | "qualifiedName" | "supertypes" | "fieldTypes" | "annotations" | "typeParameters" | "memberTypes"
+    "kind" | "qualifiedName" | "supertypes" | "fieldTypes" | "annotations" | "annotationArguments" | "typeParameters" | "memberTypes"
   > {
     return {
       kind,
@@ -955,6 +956,7 @@ export class JavaExtractor implements LanguageExtractor {
       supertypes: extractSupertypes(node),
       fieldTypes: facts.fieldTypes,
       annotations: extractAnnotationNames(node),
+      annotationArguments: extractAnnotationUses(node),
       typeParameters: extractTypeParameters(node),
       memberTypes: facts.memberTypes,
     };

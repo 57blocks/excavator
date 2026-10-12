@@ -52,6 +52,7 @@ describe('structure row: Java type facts', () => {
         ],
         fieldTypes: [{ name: 'helper', type: 'Helper' }],
         annotations: ['lombok.Builder'],
+        annotationArguments: [{ name: 'lombok.Builder', line: 4, arguments: [] }],
         typeParameters: [{ name: 'T', bound: 'Money' }],
         memberTypes: ['Inner'],
       },
@@ -59,7 +60,7 @@ describe('structure row: Java type facts', () => {
         name: 'Payable', startLine: undefined, endLine: undefined,
         methods: ['pay'], properties: [],
         kind: 'interface', qualifiedName: 'p.Payable',
-        supertypes: [], fieldTypes: [], annotations: [], typeParameters: [], memberTypes: [],
+        supertypes: [], fieldTypes: [], annotations: [], annotationArguments: [], typeParameters: [], memberTypes: [],
       },
     ]);
   });

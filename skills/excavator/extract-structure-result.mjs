@@ -87,6 +87,21 @@ function isModifierArray(value) {
   return Array.isArray(value) && value.every(item => JAVA_METHOD_MODIFIERS.has(item));
 }
 
+// A type's annotations with their arguments (openspec: changes/
+// name-binding-references, D2): a value is the string a single string literal
+// wrote, or null for any other way of writing it - never undefined.
+function isAnnotationUseArray(value) {
+  return Array.isArray(value) && value.every(item =>
+    isPlainObject(item) &&
+    typeof item.name === 'string' &&
+    isFiniteInteger(item.line) &&
+    Array.isArray(item.arguments) &&
+    item.arguments.every(argument =>
+      isPlainObject(argument) &&
+      typeof argument.key === 'string' &&
+      (argument.value === null || typeof argument.value === 'string')));
+}
+
 function isClassLiteralArray(value) {
   return Array.isArray(value) && value.every(item =>
     isPlainObject(item) &&
@@ -117,6 +132,7 @@ const STRUCTURE_ENTRY_VALIDATORS = {
     hasValidOptionalField(entry, 'supertypes', isSupertypeArray) &&
     hasValidOptionalField(entry, 'fieldTypes', isFieldTypeArray) &&
     hasValidOptionalField(entry, 'annotations', isStringArray) &&
+    hasValidOptionalField(entry, 'annotationArguments', isAnnotationUseArray) &&
     hasValidOptionalField(entry, 'typeParameters', isTypeParameterArray) &&
     hasValidOptionalField(entry, 'memberTypes', isStringArray),
   imports: entry =>
@@ -354,7 +370,7 @@ export function deriveStatus(analysis, outcome) {
 
 /** Java type facts a class entry carries through to the structure row. */
 const JAVA_TYPE_FACT_FIELDS = Object.freeze([
-  'kind', 'qualifiedName', 'supertypes', 'fieldTypes', 'annotations', 'typeParameters', 'memberTypes',
+  'kind', 'qualifiedName', 'supertypes', 'fieldTypes', 'annotations', 'annotationArguments', 'typeParameters', 'memberTypes',
 ]);
 
 /** Java declaration facts a method or constructor entry carries through. */
