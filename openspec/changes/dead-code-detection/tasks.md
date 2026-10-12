@@ -44,6 +44,8 @@
 - [x] 3.5 D2：跨行书写的限定名（`import a.b\n    .C;`、限定名里的注释）在结构结果里保留了空白，`erasedTypeKey()` 把它当作确定的键，`compareErased()` 判为「不同」，配对既不成边也不入缺口（静默丢失）。抽取器从标识符记号重建点分名（import、package、注解名），类型文本去掉注释与 `.` 两侧的空白；解析器对不是合法点分名的键、包名与 import 一律判未知（配对进入 `override-uncertain`，不判不同）。参数类型里含跨行限定名的函数节点 ID 随之规范化（只影响 ID 原本含换行的节点；只差空白的类型不是不同类型，不会合并重载）。验证：抽取器与事实单测（修前红）；hadoop 只读重抽 199 个含跨行名的文件，层次边 +5 type / +19 implements / +6 overrides、无丢失；fineract 所有 Java 行逐字节不变。
 - [x] 3.6 D1：方法体之外（字段初始化、初始化块、枚举常量实参、record 紧凑构造器）的调用点——方法引用、方法调用与对象创建——完全不记录，既不成边也不入桶。改为记录，调用者记为 `<clinit>`（静态上下文）或 `<init>`（实例上下文），归入 `calls-caller-unresolved`，报告模式给出已解析目标。验证：抽取器单测覆盖每种上下文；守恒；Fineract / hadoop 只读普查里方法引用记录数等于 tree-sitter 总数。
 
+切片 A 验收记录（9381b2da 对基线 ca2eba01，独立 Opus 验收代理，全部 build-free、语料只读，报告在本地 `excavator-test-runs/dead-code-slice-a/summary.md`，不进仓库）：9 项检查全部通过；源码审读 128 条（方法引用边 30、`overrides` 边 30、新 `implements` 边 19、`override-uncertain` 配对 30、歧义方法引用 10 等）0 条编造；wcp-auth / wcp-service-v2 / unmc 的 factsDigest 与基线相同，uneeg 只有 Java 变化；Fineract / hadoop 基线边 0 丢失；`PlatformCache::isEhcacheEnabled` 成边，`COBBusinessStep` 的 21 个实现全部记 `override-uncertain`；hadoop Lazy 用时 +8.2% / +8.9%；MCP 冒烟 7 个工具通过。验收发现 D1、D2 两处静默丢失，由 3.5、3.6 修复；修复后的 Fineract / hadoop 只读重抽：方法引用、方法调用、对象创建的记录数等于 tree-sitter 总数，原有调用点逐字节不变，守恒成立。设计里的「126 个具体覆写」实为 97 个（其余 29 个是 static 隐藏、private 与重载），已更正。
+
 ## 4. 活性声明与语言规则数据（切片 B）
 
 - [ ] 4.1 新增 `skills/excavator/liveness-declaration.mjs`：读取并严格校验项目根目录的 `.excavator-liveness.json`（`version`、`publicApi[]{paths,stance}`、`testScope[]`、`annotations.method` / `annotations.class`、`beanAccessors`、`roots[]`），未知键或未知取值以具名错误失败；缺文件返回「全部未声明」；计算声明摘要。验证：单测覆盖合法、缺失、未知键、非法分类值。

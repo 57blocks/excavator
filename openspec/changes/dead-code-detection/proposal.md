@@ -2,7 +2,7 @@
 
 用户要求能检查 dead code，并且三条硬要求：定义要明确（例如 A 只被 B 引用、B 无人引用时，A 与 B 是否都算 dead）；检测必须严谨——绝不能把还在使用的代码报成 dead；整个能力必须 build-free——适配多种语言，不安装 Java 之类的运行环境，不做副本删除再编译这样的操作。「dead」是一个关于*不存在*的断言，只有在代码可能被引用的每一种方式都被看见时才允许发出；现有事实图做不到这一点。在 Apache Fineract（f9c2fcd，当前 main 的图谱）上只读实测与读码核对：
 
-- 非测试 Java 方法 23,692 个，其中 8,654 个没有任何入边。这 8,654 个里有 126 个覆写了仓库内祖先类的**具体**方法（如 `*Handler.fallback(2)`、`AcmeLoanRepaymentScheduleTransactionProcessor.getCode()`），经父类型静态调用会分派到它们；图里没有这种覆写边，按入边判断会把它们全部误报为 dead。
+- 非测试 Java 方法 23,692 个，其中 8,654 个没有任何入边。这 8,654 个里有 126 个与仓库内祖先类的**具体**方法同名同参数个数，其中 97 个是真正的覆写（如 `*Handler.fallback(2)`、`AcmeLoanRepaymentScheduleTransactionProcessor.getCode()`；其余 29 个是 static 隐藏、private 方法或参数类型不同的重载，切片 A 验收核实），经父类型静态调用会分派到它们；图里没有这种覆写边，按入边判断会把它们全部误报为 dead。
 - 方法级 `implements` 边在擦除签名不能确定时**静默不连**（类型变量、嵌套类型、按需导入的外部类型）：`COBBusinessStep<T>.execute(T)` 的 15 个实现 `execute(Loan)` 一条边都没有，而它们全部经接口被调用。继承来的实现也没有边：`class C extends Base implements I {}` 里 `Base.m()` 满足 `I.m()`，图里看不到。
 - Java 抽取器完全不记录方法引用（`X::m`）：主代码约 821 行用到 `::`，例如 `PlatformCache::isEhcacheEnabled` 的目标在图里没有任何入边。
 - 函数条目没有修饰符与注解：分不出 `private` / `public`，看不见 `@GET`、`@Bean`、`@Scheduled`、`@Override`、`@Test`，而这些正是框架入口与外部契约所在。注解实参里的类字面量（`@Mapper(uses = Helper.class)`）也没有记录，而生成代码会按类型调用 `Helper` 的方法。
