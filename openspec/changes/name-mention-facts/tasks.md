@@ -10,9 +10,9 @@
 
 ## 1. 单文件词法
 
-- [ ] 1.1 新建 `skills/excavator/text-mentions.mjs`，导出纯函数 `(path, language, text, { extensions }) → { fqn: [], path: [] }`。候选包含 token、行号与上下文。注释遮蔽与切分规则按 design D3：遮蔽保留行号；路径候选按 manifest 扩展名集合过滤；URL 与 EL 不算路径。验证：`tests/facts/text-mentions.test.mjs` 覆盖规格「非代码文件中的名称提及」的三个场景，以及 CRLF、多行注释夹活动标记的行号、JSP 指令上下文、属性值与元素文本两种上下文。
-- [ ] 1.2 导出「是否代码语言」判定，从语言注册表的 tree-sitter 配置派生，不手写清单。验证：测试断言 `java`、`typescript`、`kotlin` 是代码语言，`xml`、`jsp`、`xhtml`、`properties`、`shell`、`sql` 不是。断言要读注册表，不能硬编码 15 这个数。
-- [ ] 1.3 变异绊线：关掉注释遮蔽后至少一条测试变红。验证：在测试里用注入开关或等价方式证明（不改生产默认值）。
+- [x] 1.1 新建 `skills/excavator/text-mentions.mjs`，导出纯函数 `(path, language, text, { extensions }) → { fqn: [], path: [] }`。候选包含 token、行号与上下文。注释遮蔽与切分规则按 design D3：遮蔽保留行号；路径候选按 manifest 扩展名集合过滤；URL 与 EL 不算路径。验证：`tests/facts/text-mentions.test.mjs` 覆盖规格「非代码文件中的名称提及」的三个场景，以及 CRLF、多行注释夹活动标记的行号、JSP 指令上下文、属性值与元素文本两种上下文。
+- [x] 1.2 导出「是否代码语言」判定，从语言注册表的 tree-sitter 配置派生，不手写清单。验证：测试断言 `java`、`typescript`、`kotlin` 是代码语言，`xml`、`jsp`、`xhtml`、`properties`、`shell`、`sql` 不是。断言要读注册表，不能硬编码 15 这个数。
+- [x] 1.3 变异绊线：关掉注释遮蔽后至少一条测试变红。验证：在测试里用注入开关或等价方式证明（不改生产默认值）。
 
 ## 2. 跨文件解析
 
