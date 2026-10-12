@@ -1,0 +1,301 @@
+// name-binding-references, task 3.2: reading the root element and the name
+// bindings of an XML descriptor, by the binders of the shipped catalog. Pure
+// input and output; what a binding's target class is, is a later stage.
+import { describe, expect, it } from 'vitest';
+import {
+  parseXml,
+  readElementTextConditions,
+  readRootElement,
+  readXmlBindings,
+} from '../../skills/excavator/xml-name-bindings.mjs';
+import { loadNameBindingCatalog } from '../../skills/excavator/name-binding-catalog.mjs';
+
+const catalog = loadNameBindingCatalog();
+const BINDERS = catalog.xmlBinders;
+const SPRING_BRIDGE = catalog.expressionLanguages[0].sees[1].when.elementTextIn;
+
+const readAll = (lines, options) => readXmlBindings(Array.isArray(lines) ? lines.join('\n') : lines, BINDERS, options);
+const read = (lines, options) => readAll(lines, options).bindings;
+const shown = (bindings) => bindings.map((b) => [b.binder, b.name, b.line, b.target]);
+const cls = (text) => ({ kind: 'class', text });
+
+describe('the root element', () => {
+  it('reads the local name and the default namespace', () => {
+    expect(readRootElement('<?xml version="1.0"?>\n<faces-config xmlns="http://java.sun.com/xml/ns/javaee" version="2.0"></faces-config>'))
+      .toEqual({ local: 'faces-config', prefix: null, namespace: 'http://java.sun.com/xml/ns/javaee' });
+  });
+
+  it('reads the namespace the root prefix is bound to', () => {
+    expect(readRootElement('<c:components xmlns:c="urn:c" xmlns="urn:other"/>')).toEqual({ local: 'components', prefix: 'c', namespace: 'urn:c' });
+  });
+
+  it('has no namespace when none is declared', () => {
+    expect(readRootElement('<beans/>')).toEqual({ local: 'beans', prefix: null, namespace: null });
+    expect(readRootElement('<p:beans xmlns="urn:default"/>')).toEqual({ local: 'beans', prefix: 'p', namespace: null });
+  });
+
+  it('skips a byte-order mark, the prolog, comments, a DOCTYPE with an internal subset and processing instructions', () => {
+    const text = [
+      '﻿<?xml version="1.0" encoding="UTF-8"?>',
+      '<!-- <not-the-root/> -->',
+      '<!DOCTYPE faces-config PUBLIC "-//Sun//DTD" "http://x/y.dtd" [',
+      '  <!ENTITY e "v">',
+      ']>',
+      '<?target data?>',
+      '<faces-config>',
+      '</faces-config>',
+    ].join('\n');
+    expect(readRootElement(text)).toEqual({ local: 'faces-config', prefix: null, namespace: null });
+  });
+
+  it('is null for text that is not markup, and for markup with no element', () => {
+    expect(readRootElement('')).toBeNull();
+    expect(readRootElement('just text <a/>')).toBeNull();
+    expect(readRootElement('<!-- only a comment -->')).toBeNull();
+  });
+});
+
+describe('faces-config (spec: a managed bean declared in faces-config)', () => {
+  it('binds the name to the class, at the line of the name text', () => {
+    const bindings = read([
+      '<faces-config>',
+      '  <managed-bean>',
+      '    <managed-bean-name>orders</managed-bean-name>',
+      '    <managed-bean-class>com.acme.web.OrderBean</managed-bean-class>',
+      '    <managed-bean-scope>request</managed-bean-scope>',
+      '  </managed-bean>',
+      '</faces-config>',
+    ]);
+    expect(shown(bindings)).toEqual([['jsf-xml-managed-bean', 'orders', 3, cls('com.acme.web.OrderBean')]]);
+  });
+
+  it('takes the first non-blank line of a name written across lines, trimmed', () => {
+    const bindings = read([
+      '<faces-config><managed-bean><managed-bean-name>',
+      '   orders ',
+      '</managed-bean-name><managed-bean-class>',
+      '   com.acme.web.OrderBean',
+      '</managed-bean-class></managed-bean></faces-config>',
+    ]);
+    expect(shown(bindings)).toEqual([['jsf-xml-managed-bean', 'orders', 2, cls('com.acme.web.OrderBean')]]);
+  });
+
+  it('is a binding with no target when the class is missing or blank', () => {
+    expect(shown(read('<faces-config><managed-bean><managed-bean-name>a</managed-bean-name></managed-bean></faces-config>')))
+      .toEqual([['jsf-xml-managed-bean', 'a', 1, null]]);
+    expect(shown(read('<faces-config><managed-bean><managed-bean-name>a</managed-bean-name><managed-bean-class>  </managed-bean-class></managed-bean></faces-config>')))
+      .toEqual([['jsf-xml-managed-bean', 'a', 1, null]]);
+  });
+
+  it('makes no binding of an element with no name, and counts it for its binder (spec: an anonymous bean)', () => {
+    const result = readAll([
+      '<faces-config>',
+      '  <managed-bean><managed-bean-class>a.B</managed-bean-class></managed-bean>',
+      '  <managed-bean><managed-bean-name>  </managed-bean-name><managed-bean-class>a.C</managed-bean-class></managed-bean>',
+      '</faces-config>',
+    ]);
+    expect(result.bindings).toEqual([]);
+    expect(result.missing).toEqual({ 'jsf-xml-managed-bean': 2 });
+  });
+
+  it('reads a resource bundle by its var, whose target is a bundle', () => {
+    const bindings = read([
+      '<faces-config>',
+      '  <application>',
+      '    <resource-bundle><base-name>msgs.Messages</base-name><var>msgs</var></resource-bundle>',
+      '  </application>',
+      '</faces-config>',
+    ]);
+    expect(shown(bindings)).toEqual([['jsf-xml-resource-bundle', 'msgs', 3, { kind: 'bundle', text: 'msgs.Messages' }]]);
+  });
+
+  it('reads nothing from a managed-bean under another parent, or from another root', () => {
+    expect(read('<faces-config><application><managed-bean><managed-bean-name>a</managed-bean-name></managed-bean></application></faces-config>')).toEqual([]);
+    expect(read('<web-app><managed-bean><managed-bean-name>a</managed-bean-name></managed-bean></web-app>')).toEqual([]);
+    expect(read('<faces-config><resource-bundle><var>v</var><base-name>b</base-name></resource-bundle></faces-config>')).toEqual([]);
+  });
+
+  it('decodes entities and CDATA in a name', () => {
+    expect(shown(read('<faces-config><managed-bean><managed-bean-name>a&amp;b</managed-bean-name></managed-bean></faces-config>'))[0][1]).toBe('a&b');
+    expect(shown(read('<faces-config><managed-bean><managed-bean-name><![CDATA[cd]]></managed-bean-name></managed-bean></faces-config>'))[0][1]).toBe('cd');
+  });
+});
+
+describe('Spring beans', () => {
+  it('reads id and class of a bean under beans', () => {
+    expect(shown(read(['<beans>', '  <bean id="orderService" class="com.acme.OrderService"/>', '</beans>']))).toEqual([
+      ['spring-xml-bean', 'orderService', 2, cls('com.acme.OrderService')],
+    ]);
+  });
+
+  it('splits the name attribute into aliases on comma, semicolon and space', () => {
+    const bindings = read('<beans><bean id="a" name="b, c;d  e" class="x.Y"/></beans>');
+    expect(bindings.map((b) => b.name)).toEqual(['a', 'b', 'c', 'd', 'e']);
+    expect(bindings.every((b) => b.target.text === 'x.Y' && b.line === 1)).toBe(true);
+  });
+
+  it('does not split the id on the alias separators, only the attribute the catalog lists (spec: an id is not split)', () => {
+    const bindings = read('<beans><bean id="a;b" name="c d" class="com.acme.X"/></beans>');
+    expect(bindings.map((b) => b.name)).toEqual(['a;b', 'c', 'd']);
+  });
+
+  it('splits what the binder\'s split map lists and nothing else, whatever attribute order it names', () => {
+    const custom = [{ ...BINDERS[3], name: { attribute: ['name', 'id'], split: { id: '|' } } }];
+    const names = (text) => readXmlBindings(text, custom).bindings.map((b) => b.name);
+    expect(names('<beans><bean id="a|b" name="c d" class="x.Y"/></beans>')).toEqual(['c d', 'a', 'b']);
+  });
+
+  it('counts a name once when id and name write it twice', () => {
+    expect(read('<beans><bean id="a" name="a" class="x.Y"/></beans>').map((b) => b.name)).toEqual(['a']);
+  });
+
+  it('gives an inner bean no name (spec: an inner bean\'s id is not a name)', () => {
+    const bindings = read([
+      '<beans>',
+      '  <bean id="outer" class="com.acme.Outer">',
+      '    <property name="p"><bean id="inner" class="com.acme.Inner"/></property>',
+      '  </bean>',
+      '</beans>',
+    ]);
+    expect(bindings.map((b) => b.name)).toEqual(['outer']);
+  });
+
+  it('reads a bean nested in nested beans, whose parent is still beans', () => {
+    expect(read('<beans><beans profile="p"><bean id="b" class="x.B"/></beans></beans>').map((b) => b.name)).toEqual(['b']);
+  });
+
+  it('is a binding with no target for a bean that only has a parent (spec: a bean definition with only a parent)', () => {
+    expect(shown(read('<beans><bean id="child" parent="base"/></beans>'))).toEqual([['spring-xml-bean', 'child', 1, null]]);
+  });
+
+  it('says in each binding what its binder means by a missing target', () => {
+    expect(read('<beans><bean id="child" parent="base"/></beans>')[0].missingTarget).toBe('unknown');
+    expect(read('<faces-config><managed-bean><managed-bean-name>a</managed-bean-name></managed-bean></faces-config>')[0].missingTarget).toBe('unknown');
+    expect(read('<beans><bean id="withClass" class="a.B"/></beans>')[0].missingTarget).toBe('unknown'); // carried as is, target or not
+  });
+
+  it('makes no binding for a bean without id or name, and counts it (spec: an anonymous bean)', () => {
+    const result = readAll(['<beans>', '  <bean class="com.acme.Audit"/>', '  <bean id="named" class="com.acme.Named"/>', '  <bean id=" " name=" ,; " class="x.Y"/>', '</beans>']);
+    expect(result.bindings.map((b) => b.name)).toEqual(['named']);
+    expect(result.missing).toEqual({ 'spring-xml-bean': 2 });
+  });
+
+  it('does not count a bean nested in another, whose parent is not beans, as an anonymous bean', () => {
+    const result = readAll('<beans><bean id="o" class="a.O"><property name="p"><bean class="a.Inner"/></property></bean></beans>');
+    expect(result.missing).toEqual({});
+  });
+
+  it('matches element names by their local part, prefix or not', () => {
+    expect(shown(read('<sp:beans xmlns:sp="urn:s"><sp:bean id="x" class="a.B"/></sp:beans>'))).toEqual([['spring-xml-bean', 'x', 1, cls('a.B')]]);
+  });
+
+  it('reads past a DOCTYPE and comments before the root, and not a commented-out bean', () => {
+    const bindings = read([
+      '<?xml version="1.0"?>',
+      '<!DOCTYPE beans PUBLIC "-//SPRING//DTD BEAN//EN" "http://www.springframework.org/dtd/spring-beans.dtd">',
+      '<!-- <bean id="gone" class="a.Gone"/> -->',
+      '<beans>',
+      '  <bean id="live" class="a.Live"/>',
+      '</beans>',
+    ]);
+    expect(shown(bindings)).toEqual([['spring-xml-bean', 'live', 5, cls('a.Live')]]);
+  });
+
+  it('reads the commented-out bean as live when the mask is switched off (mutation tripwire)', () => {
+    const bindings = read(['<beans>', '  <!-- <bean id="gone" class="a.Gone"/> -->', '</beans>'], { mutations: { noCommentMask: true } });
+    expect(bindings.map((b) => b.name)).toEqual(['gone']);
+  });
+
+  it('reads an inner bean as a name when the parent check is switched off (mutation tripwire)', () => {
+    const text = '<beans><bean id="outer" class="a.O"><property name="p"><bean id="inner" class="a.I"/></property></bean></beans>';
+    expect(read(text, { mutations: { anyParent: true } }).map((b) => b.name)).toEqual(['outer', 'inner']);
+  });
+});
+
+describe('Seam components.xml (the root namespace limits a binder)', () => {
+  const SEAM = 'http://jboss.com/products/seam/components';
+
+  it('reads a component of the Seam components namespace', () => {
+    const text = `<components xmlns="${SEAM}">\n  <component name="orders" class="com.acme.OrderHome"/>\n</components>`;
+    expect(shown(read(text))).toEqual([['seam-xml-component', 'orders', 2, cls('com.acme.OrderHome')]]);
+  });
+
+  it('reads a component with a name and no class as configuring a component declared elsewhere', () => {
+    const [binding] = read(`<components xmlns="${SEAM}"><component name="numberGuess"/></components>`);
+    expect(binding).toMatchObject({ binder: 'seam-xml-component', name: 'numberGuess', target: null, missingTarget: 'configures' });
+  });
+
+  it('makes no binding of a component with only a class, and counts it', () => {
+    const result = readAll(`<components xmlns="${SEAM}"><component class="com.acme.Mailer"/></components>`);
+    expect(result.bindings).toEqual([]);
+    expect(result.missing).toEqual({ 'seam-xml-component': 1 });
+  });
+
+  it('reads nothing when the root is in another namespace, or in none', () => {
+    expect(read('<components xmlns="urn:other"><component name="orders" class="a.B"/></components>')).toEqual([]);
+    expect(read('<components><component name="orders" class="a.B"/></components>')).toEqual([]);
+  });
+
+  it('reads a root whose prefix is bound to the Seam namespace', () => {
+    expect(read(`<c:components xmlns:c="${SEAM}"><c:component name="x" class="a.B"/></c:components>`).map((b) => b.name)).toEqual(['x']);
+  });
+});
+
+describe('a tolerant reading', () => {
+  it('reads what comes before a malformed place and does not throw', () => {
+    const text = '<beans><bean id="a" class="x.A"/><bean id="b" class="x.B"<bean id="c" class="x.C"/></beans>';
+    expect(read(text).map((b) => b.name)).toContain('a');
+  });
+
+  it('ignores an end tag with no open element', () => {
+    expect(read('</stray><beans><bean id="a" class="x.A"/></beans>').map((b) => b.name)).toEqual(['a']);
+  });
+
+  it('reads an empty or non-XML text as no bindings', () => {
+    expect(read('')).toEqual([]);
+    expect(read('plain text')).toEqual([]);
+  });
+
+  it('builds a tree whose elements know their parent and line', () => {
+    const { root, elements } = parseXml('<a>\n<b/>\n<c><d/></c></a>');
+    expect(root.local).toBe('a');
+    expect(elements.map((e) => [e.local, e.parent?.local ?? null, e.line])).toEqual([['a', null, 1], ['b', 'a', 2], ['c', 'a', 3], ['d', 'c', 3]]);
+  });
+});
+
+describe('the Spring bridge condition (elementTextIn)', () => {
+  const faces = (resolver, element = 'el-resolver') =>
+    ['<faces-config>', '  <application>', `    <${element}>`, `      ${resolver}`, `    </${element}>`, '  </application>', '</faces-config>'].join('\n');
+  const hits = (text) => readElementTextConditions(text, SPRING_BRIDGE);
+
+  it('is met by a declared el-resolver, at the line of its text', () => {
+    expect(hits(faces('org.springframework.web.jsf.el.SpringBeanFacesELResolver'))).toEqual([
+      { line: 4, text: 'org.springframework.web.jsf.el.SpringBeanFacesELResolver' },
+    ]);
+  });
+
+  it('is met by a variable-resolver of the older kind', () => {
+    expect(hits(faces('org.springframework.web.jsf.DelegatingVariableResolver', 'variable-resolver')).map((h) => h.line)).toEqual([4]);
+    expect(hits(faces('org.springframework.web.jsf.SpringBeanVariableResolver', 'variable-resolver')).map((h) => h.line)).toEqual([4]);
+  });
+
+  it('is not met by the resolver that does not resolve Spring beans', () => {
+    expect(hits(faces('org.springframework.web.jsf.el.WebApplicationContextFacesELResolver'))).toEqual([]);
+  });
+
+  it('is not met by a commented-out el-resolver', () => {
+    const text = '<faces-config><application><!-- <el-resolver>org.springframework.web.jsf.el.SpringBeanFacesELResolver</el-resolver> --></application></faces-config>';
+    expect(hits(text)).toEqual([]);
+    expect(readElementTextConditions(text, SPRING_BRIDGE, { mutations: { noCommentMask: true } })).toHaveLength(1);
+  });
+
+  it('is not met when the text is in another element, or the root is not the named one', () => {
+    expect(hits(faces('org.springframework.web.jsf.el.SpringBeanFacesELResolver', 'managed-bean-class'))).toEqual([]);
+    expect(hits('<web-app><el-resolver>org.springframework.web.jsf.el.SpringBeanFacesELResolver</el-resolver></web-app>')).toEqual([]);
+    expect(hits('')).toEqual([]);
+  });
+
+  it('wants the whole text to be the class name', () => {
+    expect(hits(faces('org.springframework.web.jsf.el.SpringBeanFacesELResolverX'))).toEqual([]);
+  });
+});
