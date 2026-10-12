@@ -515,14 +515,18 @@ describe('Java call sites in the fact graph', () => {
     const { rows, graph } = graphOf(PROJECT);
     const siteCount = rows.reduce((n, r) => n + (r.callGraph?.length ?? 0), 0);
     // Known answers (see the per-site expectations above): 14 of Svc's 34
-    // sites and PaymentService.payTwice's one resolve to an edge.
+    // sites and PaymentService.payTwice's one resolve to an edge. Util's
+    // static field initializer `new Helper()` is a site too, with the caller
+    // `<clinit>`: caller-unresolved.
     const edgeSites = 14 + 1;
     const tally = { edge: edgeSites, ...javaTally(graph) };
-    expect(siteCount).toBe(36);
+    expect(siteCount).toBe(37);
+    expect(rows.flatMap((r) => r.callGraph ?? []).filter((s) => s.caller === '<clinit>').map((s) => `${s.lineNumber} ${s.callee}`))
+      .toEqual(['4 new Helper']);
     expect(tally).toEqual({
       edge: 15,
       'calls-ambiguous': 1,
-      'calls-caller-unresolved': 1,
+      'calls-caller-unresolved': 2,
       'calls-external': 10,
       'calls-generated': 6,
       'calls-unresolved': 3,

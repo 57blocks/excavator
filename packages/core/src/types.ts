@@ -345,6 +345,25 @@ export interface JavaFieldType {
   type: string;
 }
 
+// Java declaration facts (openspec: changes/dead-code-detection, design D8).
+// Read by liveness analysis; never part of node identity.
+
+/** Effective access of a Java method or constructor. `package` is the
+ *  default access; interface members default to `public`. */
+export type JavaVisibility = "public" | "protected" | "package" | "private";
+
+/** Method modifier keywords recorded, as written. */
+export type JavaMethodModifier = "static" | "final" | "native" | "default" | "synchronized" | "abstract";
+
+/** One `X.class` in a Java file. `annotation` means it sits inside an
+ *  annotation's arguments (or an annotation element's default value). */
+export interface JavaClassLiteral {
+  /** The type as written before `.class`: `Helper`, `java.util.List`, `int[]`. */
+  type: string;
+  line: number;
+  context: "annotation" | "code";
+}
+
 // Plugin interfaces
 export interface StructuralAnalysis {
   functions: Array<{
@@ -363,6 +382,12 @@ export interface StructuralAnalysis {
     abstract?: boolean;
     /** Java: the method's own type variables, when it declares any. */
     typeParameters?: JavaTypeParameter[];
+    /** Java: every method and constructor states these three. */
+    visibility?: JavaVisibility;
+    /** Java: modifier keywords in source order. */
+    modifiers?: JavaMethodModifier[];
+    /** Java: annotation simple names in source order, without `@`. */
+    annotations?: string[];
   }>;
   classes: Array<{
     name: string;
@@ -384,6 +409,8 @@ export interface StructuralAnalysis {
   /** `isStatic` marks a Java `import static`. */
   imports: Array<{ source: string; specifiers: string[]; lineNumber: number; isStatic?: boolean }>;
   exports: Array<{ name: string; lineNumber: number; isDefault?: boolean }>;
+  /** Java: every class literal in the file, in source order. */
+  classLiterals?: JavaClassLiteral[];
   // Non-code structural data (all optional for backward compat)
   sections?: SectionInfo[];
   definitions?: DefinitionInfo[];
@@ -420,9 +447,11 @@ export type CallReceiver =
   | { kind: "call"; site: number }
   /** `new X(...).m()`. */
   | { kind: "new"; type: string }
-  /** A cast, a string literal (`String`) or a class literal (`Class`). */
+  /** A cast, a string literal (`String`), a class literal (`Class`), or the
+   *  type a method reference names (`List<String>::size`). */
   | { kind: "type"; type: string }
-  /** On an object creation site: the type being constructed. */
+  /** On an object creation site or a constructor reference (`X::new`,
+   *  `int[]::new`): the type being constructed. */
   | { kind: "construct"; type: string }
   | { kind: "unknown" };
 
@@ -432,8 +461,9 @@ export interface CallGraphEntry {
   lineNumber: number;
   /** Java only, from here down. */
   receiver?: CallReceiver;
-  /** Number of arguments at the call site. */
-  argCount?: number;
+  /** Number of arguments at the call site; `null` for a method reference
+   *  (`X::m`, `X::new`), which does not write its arguments. */
+  argCount?: number | null;
   /** The top-level type the call is written in; `null` inside an anonymous
    *  class, a local or nested type, or an enum constant body. */
   enclosingType?: string | null;

@@ -76,6 +76,25 @@ function isFieldTypeArray(value) {
     typeof item.type === 'string');
 }
 
+// Java declaration facts (openspec: changes/dead-code-detection, D8). Access,
+// modifier keywords and class-literal contexts are closed sets: an unknown
+// value fails the file instead of reaching liveness analysis as a guess.
+const JAVA_VISIBILITIES = new Set(['public', 'protected', 'package', 'private']);
+const JAVA_METHOD_MODIFIERS = new Set(['static', 'final', 'native', 'default', 'synchronized', 'abstract']);
+const JAVA_CLASS_LITERAL_CONTEXTS = new Set(['annotation', 'code']);
+
+function isModifierArray(value) {
+  return Array.isArray(value) && value.every(item => JAVA_METHOD_MODIFIERS.has(item));
+}
+
+function isClassLiteralArray(value) {
+  return Array.isArray(value) && value.every(item =>
+    isPlainObject(item) &&
+    typeof item.type === 'string' &&
+    isFiniteInteger(item.line) &&
+    JAVA_CLASS_LITERAL_CONTEXTS.has(item.context));
+}
+
 const STRUCTURE_ENTRY_VALIDATORS = {
   functions: entry =>
     typeof entry.name === 'string' &&
@@ -84,7 +103,10 @@ const STRUCTURE_ENTRY_VALIDATORS = {
     hasValidOptionalField(entry, 'paramTypes', isStringArray) &&
     hasValidOptionalField(entry, 'returnType', value => typeof value === 'string') &&
     hasValidOptionalField(entry, 'abstract', value => typeof value === 'boolean') &&
-    hasValidOptionalField(entry, 'typeParameters', isTypeParameterArray),
+    hasValidOptionalField(entry, 'typeParameters', isTypeParameterArray) &&
+    hasValidOptionalField(entry, 'visibility', value => JAVA_VISIBILITIES.has(value)) &&
+    hasValidOptionalField(entry, 'modifiers', isModifierArray) &&
+    hasValidOptionalField(entry, 'annotations', isStringArray),
   classes: entry =>
     typeof entry.name === 'string' &&
     isLineRange(entry.lineRange) &&
@@ -146,7 +168,9 @@ function isValidStructuralAnalysis(analysis) {
         analysis,
         field,
         value => isValidEntryArray(value, STRUCTURE_ENTRY_VALIDATORS[field]),
-      ));
+      )) &&
+    // Not a symbol array: class literals reference types, they declare none.
+    hasValidOptionalField(analysis, 'classLiterals', isClassLiteralArray);
 }
 
 // What a Java call site is invoked on (java-member-call-resolution, D2). The
@@ -179,7 +203,9 @@ function isValidCallGraph(callGraph) {
     typeof entry.callee === 'string' &&
     isFiniteInteger(entry.lineNumber) &&
     hasValidOptionalField(entry, 'receiver', isValidReceiver) &&
-    hasValidOptionalField(entry, 'argCount', value => isFiniteInteger(value) && value >= 0) &&
+    // null: a method reference, which does not write its arguments
+    // (dead-code-detection, D8).
+    hasValidOptionalField(entry, 'argCount', value => value === null || (isFiniteInteger(value) && value >= 0)) &&
     hasValidOptionalField(entry, 'enclosingType', value => value === null || typeof value === 'string'));
 }
 
@@ -331,6 +357,9 @@ const JAVA_TYPE_FACT_FIELDS = Object.freeze([
   'kind', 'qualifiedName', 'supertypes', 'fieldTypes', 'annotations', 'typeParameters', 'memberTypes',
 ]);
 
+/** Java declaration facts a method or constructor entry carries through. */
+const JAVA_MEMBER_FACT_FIELDS = Object.freeze(['visibility', 'modifiers', 'annotations']);
+
 function pickDefined(source, fields) {
   const out = {};
   for (const field of fields) {
@@ -377,6 +406,8 @@ export function buildResult(file, totalLines, nonEmptyLines, analysis, callGraph
         : {}),
       ...(fn.abstract === true ? { abstract: true } : {}),
       ...(fn.typeParameters === undefined ? {} : { typeParameters: fn.typeParameters }),
+      // Java declaration facts for liveness analysis; never node identity.
+      ...pickDefined(fn, JAVA_MEMBER_FACT_FIELDS),
     }));
   }
 
@@ -458,6 +489,16 @@ export function buildResult(file, totalLines, nonEmptyLines, analysis, callGraph
       kind: r.kind,
       startLine: r.lineRange[0],
       endLine: r.lineRange[1],
+    }));
+  }
+
+  // Java: every class literal of the file, an empty list included, so "none
+  // in this file" is told apart from "not extracted".
+  if (Array.isArray(analysis.classLiterals)) {
+    base.classLiterals = analysis.classLiterals.map(literal => ({
+      type: literal.type,
+      line: literal.line,
+      context: literal.context,
     }));
   }
 
