@@ -1,0 +1,6 @@
+<web-app>
+  <context-param>
+    <param-name>title</param-name>
+    <param-value>#{home.title}</param-value>
+  </context-param>
+</web-app>

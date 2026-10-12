@@ -1,0 +1,5 @@
+<pages xmlns="http://jboss.com/products/seam/pages">
+  <page view-id="/home.xhtml" action="#{orderHome.load}">
+    <param name="id" value="#{currentOrder.id}"/>
+  </page>
+</pages>

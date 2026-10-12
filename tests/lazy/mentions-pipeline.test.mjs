@@ -93,7 +93,7 @@ describe('the mentions stage in the real Lazy driver', () => {
     try {
       const run = spawnSync('node', [resolve(FIXTURE, '../../../skills/excavator/lazy-analyze.mjs'), other], { encoding: 'utf-8' });
       expect(run.status).toBe(0);
-      expect(run.stderr).toMatch(/lazy-analyze: stages .*importMap=\d+ms mentions=\d+ms factGraph=\d+ms/);
+      expect(run.stderr).toMatch(/lazy-analyze: stages .*importMap=\d+ms mentions=\d+ms nameReferences=\d+ms factGraph=\d+ms/);
     } finally {
       rmSync(other, { recursive: true, force: true });
     }

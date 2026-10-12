@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml"
+      xmlns:h="http://java.sun.com/jsf/html"
+      xmlns:f="http://java.sun.com/jsf/core"
+      xmlns:ui="http://java.sun.com/jsf/facelets"
+      xmlns:fn="http://java.sun.com/jsp/jstl/functions">
+<!-- #{commented.out} is a comment -->
+<h:form>
+  <h:commandButton value="#{msgs['save']}" action="#{orders.save}"/>
+  <p>\#{escaped.expr} is text</p>
+  <ui:repeat value="#{orders.items}" var="item" varStatus="row">
+    <h:outputText value="#{item.price} #{row.index} #{customerBean.name}"/>
+  </ui:repeat>
+  <ui:param name="title" value="#{checkoutBean.title}"/>
+  <h:outputText value="#{title}" rendered="#{fn:length(cart.items) gt 0 ? paymentBean.total : invoices.count}"/>
+  <h:outputText value="#{param.id} #{reports.owner}" rendered="#{orders.open &amp;&amp; not cartBean.empty}"/>
+  <h:outputText value="#{'it is #{not.a.root}' ne msgs['x']}"/>
+  <h:outputText value="#{orders.items.stream().map(x -> x.price).sum() + payments.total}"/>
+  <h:outputText value="#{catalogService.list} #{gateway.url} #{kotlinBean.k} #{classless.c} #{dynamicBean.d} #{badName.b} #{audit.a} #{guiced.g}"/>
+  <h:outputText value="#{unbound.value} #{orderHome.id}"
+                rendered="#{customerBean.name
+                            eq checkoutBean.title}"/>
+</h:form>
+</html>

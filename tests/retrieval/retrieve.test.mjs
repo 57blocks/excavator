@@ -123,6 +123,31 @@ describe('mentions edges are traversable (openspec: changes/name-mention-facts, 
   });
 });
 
+describe('references edges are traversable (openspec: changes/name-binding-references, D8)', () => {
+  const BEAN = 'class:src/OrderBean.java:OrderBean';
+  const edges = [
+    { type: 'references', source: 'file:web/orders/list.xhtml', target: BEAN, direction: 'forward' },
+    { type: 'mentions', source: 'file:WEB-INF/faces-config.xml', target: BEAN, direction: 'forward' },
+    { type: 'related', source: BEAN, target: 'file:semantic-only', direction: 'forward' },
+  ];
+
+  it('is one of the deterministic edge types, beside mentions', () => {
+    expect(DETERMINISTIC_EDGE_TYPES).toContain('references');
+    expect(DETERMINISTIC_EDGE_TYPES).toContain('mentions');
+  });
+
+  it('takes a bean class to the page that uses it, in one hop (spec: from a bean class to a page)', () => {
+    const result = oneHop(edges, [BEAN]);
+    expect(new Set(result.nodes)).toEqual(new Set([BEAN, 'file:web/orders/list.xhtml', 'file:WEB-INF/faces-config.xml']));
+    expect(result.edges.map((e) => e.type).sort()).toEqual(['mentions', 'references']);
+  });
+
+  it('reaches the page from the class within the default bounded search too', () => {
+    const result = boundedBFS(edges, [BEAN], { maxHops: 1 });
+    expect(result.nodes).toContain('file:web/orders/list.xhtml');
+  });
+});
+
 describe('boundedBFS — full deterministic path within budget', () => {
   it('reaches the whole Controller -> Service -> Handler -> EventBus chain within the default budget', () => {
     const result = boundedBFS(chainEdges(), [CONTROLLER], { maxHops: 4 });

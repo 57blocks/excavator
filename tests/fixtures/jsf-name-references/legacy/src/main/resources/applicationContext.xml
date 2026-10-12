@@ -1,0 +1,9 @@
+<beans xmlns="http://www.springframework.org/schema/beans">
+  <bean id="orderService" name="svc, orderSvc" class="com.acme.legacy.OrderService">
+    <property name="helper">
+      <bean id="innerHelper" class="com.acme.legacy.Helper"/>
+    </property>
+  </bean>
+  <bean id="childService" parent="orderService"/>
+  <bean class="com.acme.legacy.Helper"/>
+</beans>
