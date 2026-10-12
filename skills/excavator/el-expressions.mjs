@@ -13,7 +13,7 @@
  * catalog's expression language; the syntax of the expressions themselves
  * (strings, braces, the operator words, `->`) is the language's and lives here.
  *
- * Output: `{ roots, escaped, unterminated }`
+ * Output: `{ roots, escaped, unterminated, unscanned }`
  *   roots        document order, `{ line, token, chain, local }`
  *     token      the root name
  *     chain      the root and the `.member` accesses that follow it, written
@@ -30,6 +30,9 @@
  *   escaped      delimiters written `\#{`, which are text
  *   unterminated expressions with no closing brace in their run of text; each
  *                unterminated delimiter counts once, and the scan goes on after it
+ *   unscanned    delimiters an XML-form file writes outside every run (inside a
+ *                tag's own syntax), which yield no root and are counted, so that
+ *                no delimiter disappears without a trace
  *
  * What is not an expression, and so yields no root:
  *   - a markup comment, a JSP scripting segment (`<% %>`, but not a `<%@`
@@ -40,8 +43,14 @@
  * operator word, a function prefix or name (`fn:length(`), a lambda parameter
  * at its declaration, and any letter of a string or a number.
  *
- * Text is read in runs: an attribute value, or the text between two tags. An
- * expression is closed within its run; one that is not is `unterminated`.
+ * An XML-form file (Facelets, a JSP document, a descriptor) is read in runs: an
+ * attribute value, or the text between two tags, the way an XML parser hands
+ * them to the expression evaluator. An expression is closed within its run; one
+ * that is not is `unterminated`. A template-text file (`template: true`, the
+ * catalog's `templateExtensions`: a classic JSP page) is one run: its compiler
+ * treats HTML tags as text and finds expressions anywhere in it, so an action
+ * nested in an HTML attribute value, or a `\"` inside an action's attribute,
+ * still holds expressions.
  * References like `&amp;` are read as the character they stand for, so
  * `&amp;&amp;` is `&&`, not the name `amp`.
  */
@@ -359,34 +368,77 @@ function lexRun(run, delimiters, fileLocals, counts) {
  * @param {{
  *   language: string,
  *   expressionLanguage: { delimiters: string[], localDeclarations: Array<{ attribute: string, element?: string, elementNamespaces?: string[], declares?: string }> },
+ *   template?: boolean,
  *   mutations?: { noCommentMask?: boolean, noExpressionLocals?: boolean },
  * }} options
  *   `language` is the file's manifest language (it decides how the markup
- *   scanner reads element names). `mutations` is a test seam for the mutation
- *   tripwire; production callers leave it empty.
- * @returns {{ roots: Array<{ line: number, token: string, chain: string, local: boolean }>, escaped: number, unterminated: number }}
+ *   scanner reads element names). `template` says the file is template text
+ *   (one run) rather than an XML form (a run per attribute value or text).
+ *   `mutations` is a test seam for the mutation tripwire; production callers
+ *   leave it empty.
+ * @returns {{ roots: Array<{ line: number, token: string, chain: string, local: boolean }>, escaped: number, unterminated: number, unscanned: number }}
  */
-export function lexElExpressions(text, { language, expressionLanguage, mutations = {} }) {
-  const result = { roots: [], escaped: 0, unterminated: 0 };
+export function lexElExpressions(text, { language, expressionLanguage, template = false, mutations = {} }) {
+  const result = { roots: [], escaped: 0, unterminated: 0, unscanned: 0 };
   if (!text) return result;
 
   const { delimiters, localDeclarations } = expressionLanguage;
   // Tripwire seam: markup comments not masked.
-  const masked = maskScripting(mutations.noCommentMask ? text : maskMarkupComments(text));
-  const segments = markupSegments(masked, language);
+  const commentMasked = maskScripting(mutations.noCommentMask ? text : maskMarkupComments(text));
+  const segments = markupSegments(commentMasked, language);
   const starts = lineStarts(text);
-  const fileLocals = declaredLocals(masked, segments, localDeclarations, delimiters, mutations);
+  const fileLocals = declaredLocals(commentMasked, segments, localDeclarations, delimiters, mutations);
 
+  // The bodies of the scripting elements are Java, not template text.
+  let masked = commentMasked;
   for (const { start, end, context } of segments) {
-    if (context && context.attribute === null && SCRIPTING_ELEMENTS.has(context.element)) continue;
-    const raw = masked.slice(start, end);
-    if (!raw.includes('&') && !delimiters.some((d) => raw.includes(d))) continue;
+    if (context && context.attribute === null && SCRIPTING_ELEMENTS.has(context.element)) {
+      masked = masked.slice(0, start) + blank(masked.slice(start, end)) + masked.slice(end);
+    }
+  }
 
+  const lexAt = (start, raw) => {
+    if (!raw.includes('&') && !delimiters.some((d) => raw.includes(d))) return;
     const { text: run, rawIndex } = decodeRun(raw);
     const lineOf = (at) => lineAt(starts, start + (rawIndex ? rawIndex[at] : at));
     for (const root of lexRun(run, delimiters, fileLocals, result)) {
       result.roots.push({ line: lineOf(root.at), token: root.token, chain: root.chain, local: root.local });
     }
+  };
+
+  if (template) {
+    lexAt(0, masked);
+    return result;
   }
+
+  const runs = segments
+    .filter(({ context }) => !(context && context.attribute === null && SCRIPTING_ELEMENTS.has(context.element)))
+    .map(({ start, end }) => [start, end]);
+  for (const [start, end] of runs) lexAt(start, masked.slice(start, end));
+  result.unscanned = delimitersOutside(masked, runs, delimiters);
   return result;
+}
+
+/** How many delimiters `text` writes outside every one of the `[start, end)` runs. */
+function delimitersOutside(text, runs, delimiters) {
+  const sorted = runs.slice().sort((a, b) => a[0] - b[0]);
+  const inRun = (at, length) => {
+    let low = 0;
+    let high = sorted.length - 1;
+    while (low <= high) {
+      const mid = (low + high) >> 1;
+      const [start, end] = sorted[mid];
+      if (at < start) high = mid - 1;
+      else if (at >= end) low = mid + 1;
+      else return at + length <= end;
+    }
+    return false;
+  };
+  let outside = 0;
+  for (const delimiter of delimiters) {
+    for (let at = text.indexOf(delimiter); at >= 0; at = text.indexOf(delimiter, at + delimiter.length)) {
+      if (!inRun(at, delimiter.length)) outside += 1;
+    }
+  }
+  return outside;
 }

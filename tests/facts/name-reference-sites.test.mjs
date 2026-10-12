@@ -126,7 +126,7 @@ describe('collectNameReferenceSites', () => {
 
   it('uses the catalog it is given: another extension, no Spring bridge condition', () => {
     const custom = structuredClone(JSON.parse(JSON.stringify(catalog)));
-    custom.expressionLanguages[0].files = { extensions: ['html'], xmlRoots: [] };
+    custom.expressionLanguages[0].files = { extensions: ['html'], templateExtensions: [], xmlRoots: [] };
     const result = collect({ catalog: custom });
     expect(result.files.map((f) => f.file)).toEqual(['a/plain.html', 'a/page.html']);
     expect(result.outsideFiles.html).toBeUndefined();

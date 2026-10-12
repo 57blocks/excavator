@@ -66,7 +66,7 @@
 - 两种绑定器都有必填的 `namespacedNames`（布尔）：该框架的 EL 解析器是否把点分名当作命名空间。CDI 与 Seam 是：名为 `x.y` 的 bean 经 `#{x.y.z}` 访问，`x` 解析为命名空间。JSF managed bean 与 Spring 的 EL 桥接不是：它们只按整个根名查找，点分名从 EL 访问不到。
 - **表达式语言**的字段：
   - `delimiters`；
-  - `files`：`extensions`，以及 `xmlRoots`（每项 `root` 加可选 `rootNamespace`）；
+  - `files`：`extensions`；`templateExtensions`（`extensions` 的子集，整篇作为模板文本扫描的文件，见 D6）；`xmlRoots`（每项 `root` 加可选 `rootNamespace`）；
   - `implicitNames`；
   - `localDeclarations`：每项为 `attribute`，可选限定 `element` 本地名，以及：
     - `elementNamespaces`：可选，元素命名空间 URI 列表，要求同时给 `element`。元素的前缀在本文件中经 `xmlns:前缀` 或 JSP `<%@ taglib prefix uri %>` 绑定到列表中的某个 URI 时才算；不带前缀的元素取默认命名空间。一个前缀在文件里绑定多个 URI 时，任一命中即算（多认局部名只会少成边，不会编造）。
@@ -85,7 +85,7 @@
 
   另有一条表达式语言 `jsf-jsp-el`：
   - 分隔符：`#{`、`${`。
-  - 文件：扩展名 `xhtml`、`jsp`、`jspx`、`jspf`、`tag`、`tagx`；根元素 `faces-config`；根元素 `pages` / `page`（Seam 页面命名空间）。
+  - 文件：扩展名 `xhtml`、`jsp`、`jspx`、`jspf`、`tag`、`tagx`，其中经典 JSP 的 `jsp`、`jspf`、`tag` 是模板文本扩展名；根元素 `faces-config`；根元素 `pages` / `page`（Seam 页面命名空间）。
   - 隐式名：JSP 2.x 与 JSF 2.0–4.0 隐式对象的并集，共 23 个（含 JSF 2.2 的 `resource`、`flowScope` 与 JSF 2.3 的 `externalContext`）。仓库用的是哪个版本无法确定，取并集。代价：老版本应用里恰好叫 `resource` 或 `externalContext` 的 bean 落「隐式」，不成边；覆盖里的 `implicitWithBinding` 让这种情形可见。
   - 局部声明：
     - 任意元素的 `var`、`varStatus`，以及 Tomahawk 与 PrimeFaces 数据表的 `rowIndexVar`；
@@ -153,9 +153,12 @@
 - **遮蔽**：标记语言注释（复用第 1 步）；JSP 脚本段 `<% … %>`（`<%@` 指令除外）；`jsp:scriptlet`、`jsp:expression`、`jsp:declaration` 元素体。CDATA 与 `<script>` 不遮蔽，Facelets 与 JSP 都会对模板文本里的 EL 求值。
 - **定界**：
   - 分隔符前一个字符是 `\` 时，该处不是表达式，计入 `escaped`。
-  - 表达式在所在的文本段内定界：一个属性值，或两个标签之间的文本（段落划分沿用第 1 步的 `markupSegments`）。这与 Facelets 先做 XML 解析、再在文本与属性值里找 EL 的做法一致，也让引号失配的表达式不会越过标签吞进后文。
+  - 扫描范围按文件语法分两种：
+    - XML 形式（Facelets、JSP 文档 `jspx` / `tagx`、描述符）：表达式在所在的文本段内定界，即一个属性值或两个标签之间的文本（段落划分沿用第 1 步的 `markupSegments`）。这与先做 XML 解析、再在文本与属性值里找 EL 的做法一致，也让引号失配的表达式不会越过标签吞进后文。落在任何文本段之外（标签自身语法里）的分隔符不产生根名，计入 `unscanned`。
+    - 模板文本（目录 `templateExtensions`，即经典 JSP）：遮蔽注释与脚本后整篇作为一个文本段。JSP 编译器把 HTML 标签当模板文本，在全文里找表达式，所以嵌在 HTML 属性值里的动作（`<div title="<h:outputText value="#{x}"/>">`）、动作属性里 `\"` 转义后的表达式都照样生效。按 XML 文本段切会把这些分隔符丢进标签语法；验收在 Sakai 上实测因此丢了 185 个根名，且不留计数。
+    - 每个分隔符因此必落其一：产生根名的表达式、无根名的表达式、`escaped`、`unterminated`、`unscanned`。
   - 段内向后找匹配的 `}`，跳过 EL 字符串字面量（`'…'`、`"…"`，`\` 转义），并计嵌套的 `{}`。段内未闭合的，计入 `unterminated`，不产生根名，并从该分隔符之后继续扫描，所以一处漏写的 `}` 不会吞掉后面的表达式。每个未闭合的分隔符计一次。最坏情形的耗时与「分隔符数 × 段长」成正比。
-  - 代价：经典 JSP 的模板文本里，HTML 标签的属性值中 EL 再嵌同种引号（`"${m["k"]}"`）时，会被切成未闭合，计数可见。
+  - 代价：模板文本整篇扫描时，表达式内引号失配会让字符串一路吞到下一个同种引号，其后的模板文本可能被当成表达式读出根名。运行时这样的页面同样编译失败；O6 的随机层与无绑定层覆盖 JSP 页面。
 - **根名**：表达式内的标识符同时满足以下条件时，才是根名：
   - 前面（跳过空白）不是 `.`；
   - 不是关键字（`and or not eq ne lt gt le ge div mod empty true false null instanceof`）；
@@ -193,7 +196,7 @@
 **D9：阶段与接口。**
 
 - 新的词法收集器 `collectNameReferenceSites({ scan, readFile, catalog })`，对每个非代码文件读一次，产出：
-  - 表达式站点：按文件给出根名列表，以及 `escaped`、`unterminated`；
+  - 表达式站点：按文件给出根名列表，以及 `escaped`、`unterminated`、`unscanned`；
   - XML 绑定：文件、绑定器、名字、行、目标文本；
   - 条件事实：满足 `elementTextIn` 的文件与单元；
   - 目录外文件计数：原文（不做注释遮蔽）含 `#{` 却不在表达式文件范围内的非代码文件。扩展名为 `.xml` 的按 `xml:<根元素本地名>` 计（读不到根元素时计 `xml`），其余按小写扩展名计，没有扩展名的计为 `(none)`；以标签开头的 HTML 片段仍计 `html`，DTD 计 `dtd`。用原文是因为它只提示「这里可能有没读的 EL」，多报不会产生边。
@@ -214,7 +217,7 @@
 - `unconfirmedAnnotations`：按写法计
 - `roots`：十个桶；`rootCount`：根名总数，守恒等式的另一边
 - `implicitWithBinding`
-- `escaped`、`unterminated`
+- `escaped`、`unterminated`、`unscanned`
 - `outsideFiles`
 
 守恒有两条：

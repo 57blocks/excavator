@@ -153,8 +153,12 @@ function checkExpressionLanguage(path, language) {
   checkStrings(`${path}.delimiters`, language.delimiters, { atLeastOne: true });
 
   const files = `${path}.files`;
-  checkObject(files, language.files, ['extensions', 'xmlRoots']);
+  checkObject(files, language.files, ['extensions', 'templateExtensions', 'xmlRoots']);
   checkStrings(`${files}.extensions`, language.files.extensions);
+  checkStrings(`${files}.templateExtensions`, language.files.templateExtensions);
+  language.files.templateExtensions.forEach((extension, i) => {
+    if (!language.files.extensions.includes(extension)) fail(`${files}.templateExtensions[${i}]`, `${JSON.stringify(extension)} is not one of the extensions`);
+  });
   checkArray(`${files}.xmlRoots`, language.files.xmlRoots);
   language.files.xmlRoots.forEach((entry, i) => {
     checkObject(`${files}.xmlRoots[${i}]`, entry, ['root'], ['rootNamespace']);

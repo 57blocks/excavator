@@ -156,12 +156,18 @@ describe('the name-reference stage in the real Lazy driver', () => {
     expect(graph.gaps.find((g) => g.kind === 'name-reference-elsewhere').samples).toContain('legacy/view/home.xhtml:3 orders -> [shop [el]]');
   });
 
+  it('reads a classic JSP page whole: an action nested in an HTML attribute value still references its bean', () => {
+    const label = labeller(graph);
+    const edge = graph.edges.find((e) => e.type === 'references' && label(e.source) === 'legacy/view/page.jsp');
+    expect(edge.evidence.map((e) => [e.line, e.token, e.chain])).toEqual([[3, 'mailer', 'mailer.name'], [4, 'mailer', 'mailer.subject']]);
+  });
+
   it('counts the ten buckets, and every root lands in exactly one', () => {
     const { nameReferences } = graph.coverage;
     expect(nameReferences.roots).toEqual({
-      local: 8, implicit: 3, edge: 33, bundle: 2, external: 1, unindexed: 1, unknown: 1, ambiguous: 3, elsewhere: 8, unbound: 10,
+      local: 8, implicit: 3, edge: 34, bundle: 2, external: 1, unindexed: 1, unknown: 1, ambiguous: 3, elsewhere: 8, unbound: 10,
     });
-    expect(nameReferences.rootCount).toBe(70);
+    expect(nameReferences.rootCount).toBe(71);
     expect(Object.values(nameReferences.roots).reduce((a, b) => a + b, 0)).toBe(nameReferences.rootCount);
   });
 
@@ -178,6 +184,8 @@ describe('the name-reference stage in the real Lazy driver', () => {
       implicitWithBinding: 1, // externalContext, which shop also binds
       escaped: 1,
       unterminated: 1,
+      // page.jsp nests an action in an HTML attribute value; a classic JSP page is read whole, so nothing is left unscanned
+      unscanned: 0,
       // about.html counts by its extension even though it starts with a tag; admin's web.xml holds one in a param-value
       outsideFiles: { html: 1, 'xml:web-app': 1 },
     });
@@ -329,7 +337,7 @@ describe('the name-reference stage in the real Lazy driver', () => {
   it('reports the name-reference coverage and its gaps through project_status', () => {
     const status = createProjectService(root).projectStatus();
     expect(status.status).toBe('ok');
-    expect(status.data.factCoverage.nameReferences).toMatchObject({ status: 'ran', rootCount: 70, roots: { edge: 33, unbound: 10 } });
+    expect(status.data.factCoverage.nameReferences).toMatchObject({ status: 'ran', rootCount: 71, roots: { edge: 34, unbound: 10 } });
     expect(status.gaps.map((g) => g.kind)).toEqual(expect.arrayContaining([
       'name-reference-ambiguous', 'name-reference-elsewhere', 'name-reference-target-unindexed', 'name-reference-target-unknown', 'name-reference-unbound',
     ]));

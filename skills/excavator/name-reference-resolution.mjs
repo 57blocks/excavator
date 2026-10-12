@@ -439,6 +439,7 @@ export function resolveNameReferences({
   let repositoryUnitFiles = 0;
   let escaped = 0;
   let unterminated = 0;
+  let unscanned = 0;
   const rowFiles = new Set();
 
   for (const site of sites.files) {
@@ -456,6 +457,8 @@ export function resolveNameReferences({
     if (unit === null) repositoryUnitFiles += 1;
     escaped += site.escaped;
     unterminated += site.unterminated;
+    if (!Number.isInteger(site.unscanned)) throw new Error(`name-reference-resolution: the row of ${file} has no unscanned count`);
+    unscanned += site.unscanned;
     const visible = visibleNamespaces(unit, language);
     const implicit = new Set(language.implicitNames);
 
@@ -565,6 +568,7 @@ export function resolveNameReferences({
     implicitWithBinding,
     escaped,
     unterminated,
+    unscanned,
     outsideFiles: { ...sites.outsideFiles },
   };
   return { edges, gaps, coverage };

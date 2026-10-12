@@ -28,7 +28,7 @@ describe('what is an expression', () => {
   });
 
   it('ignores a lone # or $ and a delimiter-free text', () => {
-    expect(lex('<p>price $5 # 3 {not} </p>')).toEqual({ roots: [], escaped: 0, unterminated: 0 });
+    expect(lex('<p>price $5 # 3 {not} </p>')).toEqual({ roots: [], escaped: 0, unterminated: 0, unscanned: 0 });
   });
 
   it('reads text with no markup at all', () => {
@@ -39,7 +39,7 @@ describe('what is an expression', () => {
 describe('comments and escapes (spec: expressions in comments and escapes do not count)', () => {
   it('skips a markup comment and an escaped delimiter, counting the escape', () => {
     const result = lex(['<!-- #{orders.secret} -->', '\\#{orders.raw}']);
-    expect(result).toEqual({ roots: [], escaped: 1, unterminated: 0 });
+    expect(result).toEqual({ roots: [], escaped: 1, unterminated: 0, unscanned: 0 });
   });
 
   it('skips a JSP comment and keeps the lines of what follows a multi-line comment', () => {
@@ -342,8 +342,8 @@ describe('lines and unterminated expressions', () => {
   });
 
   it('counts an expression with no closing brace and makes no root of it', () => {
-    expect(lex('<p>text #{orders.items')).toEqual({ roots: [], escaped: 0, unterminated: 1 });
-    expect(lex('<p>#{orders.items</p><p>#{ok.one}</p>')).toEqual({ roots: [{ line: 1, token: 'ok', chain: 'ok.one', local: false }], escaped: 0, unterminated: 1 });
+    expect(lex('<p>text #{orders.items')).toEqual({ roots: [], escaped: 0, unterminated: 1, unscanned: 0 });
+    expect(lex('<p>#{orders.items</p><p>#{ok.one}</p>')).toEqual({ roots: [{ line: 1, token: 'ok', chain: 'ok.one', local: false }], escaped: 0, unterminated: 1, unscanned: 0 });
   });
 
   it('goes on reading after the delimiter of an unterminated expression, so a missing brace does not swallow what follows (spec)', () => {
@@ -354,16 +354,72 @@ describe('lines and unterminated expressions', () => {
   });
 
   it('counts each unterminated delimiter once', () => {
-    expect(lex('<p>#{a #{b #{c</p>')).toEqual({ roots: [], escaped: 0, unterminated: 3 });
+    expect(lex('<p>#{a #{b #{c</p>')).toEqual({ roots: [], escaped: 0, unterminated: 3, unscanned: 0 });
     expect(brief(lex('<p>#{a.b #{c.d} #{e.f</p>'))).toEqual([['c', 'c.d', false, 1]]);
     expect(lex('<p>#{a.b #{c.d} #{e.f</p>').unterminated).toBe(2);
   });
 
   it('counts an unterminated string in an expression as unterminated', () => {
-    expect(lex("<p>#{a.b eq 'oops}</p>")).toEqual({ roots: [], escaped: 0, unterminated: 1 });
+    expect(lex("<p>#{a.b eq 'oops}</p>")).toEqual({ roots: [], escaped: 0, unterminated: 1, unscanned: 0 });
   });
 
   it('is empty for an empty text', () => {
-    expect(lex('')).toEqual({ roots: [], escaped: 0, unterminated: 0 });
+    expect(lex('')).toEqual({ roots: [], escaped: 0, unterminated: 0, unscanned: 0 });
   });
 });
+
+describe('template-text files and delimiters outside the runs (classic JSP is read whole; nothing disappears)', () => {
+  const jsp = (lines, options = {}) => lex(lines, { language: 'jsp', template: true, ...options });
+  const NESTED = [
+    '<div title="<h:outputText value="#{nested.title}"/>">',
+    '<h:outputText value="\\"#{quoted.label}\\""/>',
+    '<h:commandLink onclick="return f(\\"#{handler.id}\\");"/>',
+    '<input value="${map["key"].value}"/>',
+  ];
+
+  it('finds the expressions of an action nested in an HTML attribute value, behind a \\" escape, and with a same-quote string', () => {
+    expect(brief(jsp(NESTED))).toEqual([
+      ['nested', 'nested.title', false, 1],
+      ['quoted', 'quoted.label', false, 2],
+      ['handler', 'handler.id', false, 3],
+      ['map', 'map', false, 4],
+    ]);
+    expect(jsp(NESTED)).toMatchObject({ unterminated: 0, unscanned: 0 });
+  });
+
+  it('read as an XML form, the same text drops none of its delimiters silently: each is a root, unterminated or unscanned', () => {
+    const result = lex(NESTED, { language: 'jsp' });
+    expect(result.unscanned).toBeGreaterThan(0);
+    const delimiters = NESTED.join('\n').match(/[#$]\{/g).length;
+    const rootExpressions = new Set(result.roots.map((r) => r.line)).size;
+    expect(rootExpressions + result.unterminated + result.unscanned + result.escaped).toBe(delimiters);
+  });
+
+  it('still masks JSP comments, scriptlets and jsp:scriptlet bodies, and still reads local declarations', () => {
+    const result = jsp([
+      '<%-- #{hidden.a} --%>',
+      '<% String s = "#{script.b}"; %>',
+      '<jsp:scriptlet>out.print("#{body.c}");</jsp:scriptlet>',
+      '<c:forEach items="#{orders.items}" var="item">#{item.price}</c:forEach>',
+      '<!-- #{comment.d} -->',
+    ]);
+    expect(brief(result)).toEqual([
+      ['orders', 'orders.items', false, 4],
+      ['item', 'item.price', true, 4],
+    ]);
+  });
+
+  it('decodes references and keeps the line of each root', () => {
+    expect(brief(jsp(['<p>', '#{a.open &amp;&amp; b.ready}', '</p>']))).toEqual([
+      ['a', 'a.open', false, 2],
+      ['b', 'b.ready', false, 2],
+    ]);
+  });
+
+  it('counts a delimiter an XML form writes inside a tag, outside any attribute value or text', () => {
+    const result = lex('<p #{stray.x} class="#{ok.y}">t</p>');
+    expect(tokens(result)).toEqual(['ok']);
+    expect(result.unscanned).toBe(1);
+  });
+});
+

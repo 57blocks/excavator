@@ -212,8 +212,10 @@ describe('a malformed catalog does not load', () => {
   });
 
   it('rejects an expression-language file class with neither extensions nor roots, and a bad root entry', () => {
-    rejects((c) => { c.expressionLanguages[0].files = { extensions: [], xmlRoots: [] }; }, /files: expected at least one extension or XML root/);
+    rejects((c) => { c.expressionLanguages[0].files = { extensions: [], templateExtensions: [], xmlRoots: [] }; }, /files: expected at least one extension or XML root/);
     rejects((c) => { c.expressionLanguages[0].files.xmlRoots[0] = { rootNamespace: [] }; }, /xmlRoots\[0\]: missing "root"/);
+    rejects((c) => { delete c.expressionLanguages[0].files.templateExtensions; }, /files: missing "templateExtensions"/);
+    rejects((c) => { c.expressionLanguages[0].files.templateExtensions = ['vm']; }, /templateExtensions\[0\]: "vm" is not one of the extensions/);
   });
 
   it('fails on a file that is not JSON or is missing, naming it', () => {

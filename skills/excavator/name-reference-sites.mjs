@@ -8,7 +8,8 @@
  *   files         per expression file (by extension, or by XML root and
  *                 namespace, as the catalog's expression language says): the
  *                 root names its expressions write, and how many expressions
- *                 were escaped or never closed;
+ *                 were escaped, never closed, or written where no run is read
+ *                 (a template-text extension of the catalog is read whole);
  *   bindings      the name bindings XML descriptors declare, by the catalog's
  *                 XML binders, each with what its binder means by a missing
  *                 target (annotation bindings are the projection's: they come
@@ -60,7 +61,7 @@ const compareText = (a, b) => (a < b ? -1 : a > b ? 1 : 0);
  *   (name-reference-resolution.mjs has the resolution-stage ones); production
  *   callers leave it empty.
  * @returns {{
- *   files: Array<{ file: string, language: string, expressionLanguage: string, roots: object[], escaped: number, unterminated: number }>,
+ *   files: Array<{ file: string, language: string, expressionLanguage: string, roots: object[], escaped: number, unterminated: number, unscanned: number }>,
  *   bindings: Array<{ file: string, binder: string, name: string, line: number, target: { kind: string, text: string }|null, missingTarget: string }>,
  *   missingNames: Record<string, number>,
  *   conditions: Array<{ file: string, expressionLanguage: string, namespace: string, line: number, text: string }>,
@@ -113,7 +114,8 @@ export function collectNameReferenceSites({ scan, catalog, readFile, mutations =
     }
 
     if (language) {
-      const lexed = lexElExpressions(text, { language: file.language, expressionLanguage: language, mutations });
+      const template = language.files.templateExtensions.some((e) => e.toLowerCase() === extension);
+      const lexed = lexElExpressions(text, { language: file.language, expressionLanguage: language, template, mutations });
       result.files.push({ file: file.path, language: file.language, expressionLanguage: language.id, ...lexed });
     } else if (text.includes(OUTSIDE_PROBE)) {
       const key = extension === 'xml' && info ? `xml:${info.local}` : (extension || '(none)');

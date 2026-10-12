@@ -1101,7 +1101,7 @@ describe('coverage, gaps and conservation (design D10)', () => {
     const { coverage } = mixed();
     expect(Object.keys(coverage).sort()).toEqual([
       'bindings', 'escaped', 'files', 'implicitWithBinding', 'missingNames', 'nonIdentifierNames', 'nonLiteralNames', 'outsideFiles',
-      'repositoryUnitFiles', 'rootCount', 'roots', 'status', 'unconfirmedAnnotations', 'units', 'unterminated',
+      'repositoryUnitFiles', 'rootCount', 'roots', 'status', 'unconfirmedAnnotations', 'units', 'unscanned', 'unterminated',
     ]);
     expect(coverage.status).toBe('ran');
     const binderIds = [
