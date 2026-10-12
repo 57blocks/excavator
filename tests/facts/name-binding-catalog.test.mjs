@@ -85,11 +85,12 @@ describe('the shipped catalog', () => {
     expect(implicitNames).toEqual(expect.arrayContaining(['externalContext', 'resource', 'flowScope', 'param', 'pageContext']));
   });
 
-  it('declares local names: var, varStatus, Facelets param, useBean, and the expression roots of Tomahawk aliasBean', () => {
+  it('declares local names: var, varStatus, rowIndexVar, Facelets param, useBean, and the expression roots of Tomahawk aliasBean', () => {
     const FACELETS = ['http://java.sun.com/jsf/facelets', 'http://xmlns.jcp.org/jsf/facelets', 'jakarta.faces.facelets'];
     expect(catalog.expressionLanguages[0].localDeclarations).toEqual([
       { attribute: 'var' },
       { attribute: 'varStatus' },
+      { attribute: 'rowIndexVar' },
       { attribute: 'name', element: 'param', elementNamespaces: FACELETS },
       { attribute: 'id', element: 'useBean' },
       { attribute: 'alias', element: 'aliasBean', elementNamespaces: ['http://myfaces.apache.org/tomahawk'], declares: 'expression-root' },
@@ -168,12 +169,15 @@ describe('a malformed catalog does not load', () => {
 
   it('rejects local-name declarations whose element namespaces or `declares` are malformed', () => {
     const declaration = (c) => c.expressionLanguages[0].localDeclarations;
+    const declarations = loadNameBindingCatalog().expressionLanguages[0].localDeclarations;
+    const param = declarations.findIndex((d) => d.element === 'param');
+    const alias = declarations.findIndex((d) => d.element === 'aliasBean');
     rejects((c) => { declaration(c)[0].elementNamespaces = ['urn:x']; }, /localDeclarations\[0\]: "elementNamespaces" needs "element"/);
-    rejects((c) => { declaration(c)[2].elementNamespaces = []; }, /localDeclarations\[2\]\.elementNamespaces: expected at least one entry/);
-    rejects((c) => { declaration(c)[2].elementNamespaces = 'urn:x'; }, /localDeclarations\[2\]\.elementNamespaces: expected an array/);
-    rejects((c) => { declaration(c)[2].elementNamespaces = [3]; }, /localDeclarations\[2\]\.elementNamespaces\[0\]: expected a string/);
-    rejects((c) => { declaration(c)[4].declares = 'root'; }, /localDeclarations\[4\]\.declares: expected "literal" or "expression-root"/);
-    rejects((c) => { declaration(c)[4].declares = true; }, /localDeclarations\[4\]\.declares: expected "literal" or "expression-root"/);
+    rejects((c) => { declaration(c)[param].elementNamespaces = []; }, new RegExp(`localDeclarations\\[${param}\\]\\.elementNamespaces: expected at least one entry`));
+    rejects((c) => { declaration(c)[param].elementNamespaces = 'urn:x'; }, new RegExp(`localDeclarations\\[${param}\\]\\.elementNamespaces: expected an array`));
+    rejects((c) => { declaration(c)[param].elementNamespaces = [3]; }, new RegExp(`localDeclarations\\[${param}\\]\\.elementNamespaces\\[0\\]: expected a string`));
+    rejects((c) => { declaration(c)[alias].declares = 'root'; }, new RegExp(`localDeclarations\\[${alias}\\]\\.declares: expected "literal" or "expression-root"`));
+    rejects((c) => { declaration(c)[alias].declares = true; }, new RegExp(`localDeclarations\\[${alias}\\]\\.declares: expected "literal" or "expression-root"`));
     rejects((c) => { declaration(c)[0].scope = 'file'; }, /localDeclarations\[0\]: unknown key "scope"/);
     expect(() => parseNameBindingCatalog(mutate((c) => { declaration(c)[0].declares = 'literal'; }))).not.toThrow();
   });

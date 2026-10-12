@@ -231,6 +231,13 @@ describe('names a tag declares', () => {
     expect(local(result, 'theme')).toEqual([false]);
   });
 
+  it('marks the row index a data table declares with rowIndexVar local', () => {
+    const result = lex(['<t:dataTable value="#{orders.rows}" var="row" rowIndexVar="index">', '#{index + 1} #{row.total}', '</t:dataTable>']);
+    expect(local(result, 'index')).toEqual([true]);
+    expect(local(result, 'row')).toEqual([true]);
+    expect(local(result, 'orders')).toEqual([false]);
+  });
+
   it('does not take a name attribute of another element or an id of another element for a declaration', () => {
     const result = lex(page);
     expect(local(result, 'plain')).toEqual([false]);

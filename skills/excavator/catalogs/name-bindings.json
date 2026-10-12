@@ -137,7 +137,7 @@
   "expressionLanguages": [
     {
       "id": "jsf-jsp-el",
-      "basis": "Unified EL as JSF and JSP evaluate it: #{...} and ${...} in view templates, with the implicit objects of JSP 2.x and JSF 2.0-4.0 resolved before any named bean (the union of both, as the version in use is not known), and the variables a tag declares local to the page: var and varStatus, the Facelets ui:param name (not the request parameter name of f:param or c:param), jsp:useBean id, and the expression roots Tomahawk aliasBean gives its alias.",
+      "basis": "Unified EL as JSF and JSP evaluate it: #{...} and ${...} in view templates, with the implicit objects of JSP 2.x and JSF 2.0-4.0 resolved before any named bean (the union of both, as the version in use is not known), and the variables a tag declares local to the page: var and varStatus, the rowIndexVar of the Tomahawk and PrimeFaces data tables, the Facelets ui:param name (not the request parameter name of f:param or c:param), jsp:useBean id, and the expression roots Tomahawk aliasBean gives its alias.",
       "delimiters": ["#{", "${"],
       "files": {
         "extensions": ["xhtml", "jsp", "jspx", "jspf", "tag", "tagx"],
@@ -167,6 +167,9 @@
         },
         {
           "attribute": "varStatus"
+        },
+        {
+          "attribute": "rowIndexVar"
         },
         {
           "attribute": "name",

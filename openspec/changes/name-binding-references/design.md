@@ -88,7 +88,7 @@
   - 文件：扩展名 `xhtml`、`jsp`、`jspx`、`jspf`、`tag`、`tagx`；根元素 `faces-config`；根元素 `pages` / `page`（Seam 页面命名空间）。
   - 隐式名：JSP 2.x 与 JSF 2.0–4.0 隐式对象的并集，共 23 个（含 JSF 2.2 的 `resource`、`flowScope` 与 JSF 2.3 的 `externalContext`）。仓库用的是哪个版本无法确定，取并集。代价：老版本应用里恰好叫 `resource` 或 `externalContext` 的 bean 落「隐式」，不成边；覆盖里的 `implicitWithBinding` 让这种情形可见。
   - 局部声明：
-    - 任意元素的 `var`、`varStatus`；
+    - 任意元素的 `var`、`varStatus`，以及 Tomahawk 与 PrimeFaces 数据表的 `rowIndexVar`；
     - Facelets `ui` 命名空间（`http://java.sun.com/jsf/facelets`、`http://xmlns.jcp.org/jsf/facelets`、`jakarta.faces.facelets`）下 `param` 元素的 `name`。`f:param`、`c:param`、`jsp:param` 的 `name` 是请求参数名，不是 EL 变量；
     - `useBean` 元素的 `id`，不限命名空间，因为经典 JSP 的 `jsp:` 前缀不声明命名空间；
     - Tomahawk（`http://myfaces.apache.org/tomahawk`）`aliasBean` 元素 `alias` 属性里表达式的根名（`declares: expression-root`）。
@@ -315,6 +315,7 @@
 - **Gradle 子项目可以不写自己的 build 文件**，由根项目的 `subprojects {}` 配置。这样的子项目会并入上层单元，若几个子项目各有同名 bean，就可能互相可见。随附语料都是 Maven、Ant 或各子项目自带描述符。读 `settings.gradle` 的 `include` 来划分单元，属于后续步骤。
 - **测试源与主源同单元，同名 bean 互相歧义**（如 Seam quartz 的 `paymentHome`）。这是仓库里真实存在的二义，按歧义缺口报出；不按「main 优先」去猜。
 - **XML 类名按仓库范围解析（沿用第 1 步）。** 同一全限定名在两个模块各声明一次时，绑定歧义，即使页面与描述符在同一单元。同单元优先需要类路径语义，本步不做；探针语料中没有页面受影响。
+- **前缀表只读本文件。** 经 `web.xml` 的 JSP `include-prelude` 统一引入 taglib 的页面，自身没有 `taglib` 指令，`elementNamespaces` 限定的局部声明（如 Tomahawk `aliasBean`）在这些页面上不生效，别名落「他处」或「无绑定」。若同单元恰有与别名同名的绑定，会成错边；验收语料中没有这种情形，O6 的别名层会专门抽查。读 `include-prelude` 属于跨文件传播，和静态 include 一起放到后续步骤。
 - **共享的 JSF jar 模块**（自带 faces-config、被各应用依赖）里的名字对依赖方落「他处」，等按模块依赖放开可见性的后续步骤解决。
 - **Spring 桥接只认目录列出的解析器。** 自定义解析器（Sakai 的 `org_sakaiproject_*` 前缀名）不被认出：不可见的 `spring` 命名空间里有同名 bean 的根名落「他处」，没有的落「无绑定」。企业内部的解析器与注解要靠项目自定义目录，属于后续步骤。
 - **默认名规则写在目录里，规则写错会成批产生错边。** 每条规则的 `basis` 写明出处；O6 按绑定器分层抽查，缺省名单独一层；夹具里有 `URLHelper` 这类边界写法。
