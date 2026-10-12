@@ -18,7 +18,7 @@
 
 ### Requirement: 类全限定名提及生成 mentions 边
 
-类名候选 SHALL 先把 `$` 归一为 `.`，再对仓库内 Java 顶层类型的全限定名取最长前缀匹配，前缀至少两段。因此候选带成员、`.class` 后缀或嵌套类型名时，命中所在的顶层类型；嵌套类型不是节点。默认包里的类型（全限定名只有一段）不参与匹配。恰好命中一个仓库类型时，SHALL 生成一条从提及文件的 file 节点指向该类型 class 节点的 `mentions` 边。同一全限定名由多个仓库声明共有时 MUST NOT 生成边，SHALL 记入 `mention-ambiguous` 缺口，样例列出各候选。命中仓库内非 Java 的 JVM 声明（其类型不在字典中）时，SHALL 记入 `mention-target-unindexed` 缺口。不命中任何仓库类型的候选（仓库外的类名）不成边。
+类名候选 SHALL 先把 `$` 归一为 `.`，再对仓库内 Java 顶层类型的全限定名取最长前缀匹配，前缀至少两段。因此候选带成员、`.class` 后缀或嵌套类型名时，命中所在的顶层类型；嵌套类型不是节点。默认包里的类型（全限定名只有一段）不参与匹配。恰好命中一个仓库类型时，SHALL 生成一条从提及文件的 file 节点指向该类型 class 节点的 `mentions` 边。同一全限定名由多个仓库声明共有时 MUST NOT 生成边，SHALL 记入 `mention-ambiguous` 缺口，样例列出各候选。前缀不在字典中、却是仓库内存在但不是节点的声明时，SHALL 记入 `mention-target-unindexed` 缺口。这类声明包括 Kotlin / Scala 的类型和 Java 注解类型，按源文件的包路径与文件名判定。只有不命中任何仓库声明的候选才算仓库外，仓库外的类名不成边。
 
 #### Scenario: servlet 类被 web.xml 提及
 - **WHEN** `web.xml` 提及 `com.acme.web.OrderServlet`，且仓库内恰有一个该名类型
@@ -31,6 +31,10 @@
 #### Scenario: 成员后缀取类型前缀
 - **WHEN** properties 值为 `com.acme.Limits.MAX_SIZE`，`com.acme.Limits` 是仓库类型
 - **THEN** 生成指向 `com.acme.Limits` 的 `mentions` 边
+
+#### Scenario: 不是节点的仓库声明不算仓库外
+- **WHEN** Spring XML 写 `expression="com.acme.Audited"`，仓库内有 `com/acme/Audited.java` 声明注解类型 `@interface Audited`（注解类型不是节点）
+- **THEN** 不生成边，记入 `mention-target-unindexed`，不计入仓库外
 
 #### Scenario: 同名类型不猜
 - **WHEN** 两个模块各自声明了 `com.acme.Config`，某 XML 提及 `com.acme.Config`

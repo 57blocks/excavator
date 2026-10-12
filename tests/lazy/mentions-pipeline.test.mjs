@@ -131,7 +131,11 @@ describe('the mentions stage in the real Lazy driver', () => {
     ]);
     expect(gap('path-mention-unresolved')).toMatchObject({ scope: 'xhtml', count: 1 });
     expect(gap('path-mention-unresolved').samples).toEqual([`${APP}/orders/detail.xhtml:5 /WEB-INF/missing/footer.xhtml -> []`]);
-    expect(gap('mention-target-unindexed')).toBeUndefined();
+    // an annotation type: Core makes no class node for it, so it is in the repository but not in the index
+    expect(gap('mention-target-unindexed')).toMatchObject({ scope: 'xml', count: 1 });
+    expect(gap('mention-target-unindexed').samples).toEqual(['app/src/main/resources/spring/beans.xml:7 com.acme.Audited -> [com.acme.Audited]']);
+    expect(graph.nodes.some((n) => n.type === 'class' && n.name === 'Audited')).toBe(false); // the premise
+    expect(linksOf(graph).some((l) => l.includes('Audited'))).toBe(false);
   });
 
   it('records the stage in coverage, with every candidate accounted for', () => {

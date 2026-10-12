@@ -18,6 +18,7 @@ const LANGUAGE_OF_EXTENSION = {
  * @param {{
  *   java?: Record<string, string|string[]>,     path -> top-level type(s) it declares, as qualified names
  *   javaMembers?: Record<string, string[]>,     qualified name -> member type names
+ *   annotations?: string[],                     paths of Java files whose only top-level type is an annotation
  *   kotlin?: Record<string, string[]>,          path -> top-level type names
  *   files?: Record<string, string|string[]>,    path -> text of a non-code file
  *   sites?: (default: object[]) => object[],    adjust the lexed mention sites
@@ -25,7 +26,7 @@ const LANGUAGE_OF_EXTENSION = {
  *   mutations?: object,
  * }} spec
  */
-function project({ java = {}, javaMembers = {}, kotlin = {}, files = {}, sites, omitSites = false, mutations } = {}) {
+function project({ java = {}, javaMembers = {}, annotations = [], kotlin = {}, files = {}, sites, omitSites = false, mutations } = {}) {
   const scanFiles = [];
   const results = [];
   const row = (path, language, extra) => {
@@ -42,6 +43,17 @@ function project({ java = {}, javaMembers = {}, kotlin = {}, files = {}, sites, 
       memberTypes: javaMembers[qualifiedName] ?? [],
     }));
     row(path, 'java', { status: 'parsed', classes });
+  }
+  for (const path of annotations) {
+    // The row Core really emits for such a file: parsed, and no `classes`,
+    // `functions` or `exports` at all (an annotation type is not a class entry).
+    scanFiles.push({ path, language: 'java', sizeLines: 9, fileCategory: 'code' });
+    results.push({
+      path, language: 'java', fileCategory: 'code', totalLines: 9, nonEmptyLines: 7, status: 'parsed',
+      imports: [{ source: 'java.lang.annotation.Retention', specifiers: ['Retention'], line: 3 }],
+      classLiterals: [],
+      metrics: { importCount: 0, exportCount: 0, functionCount: 0, classCount: 0 },
+    });
   }
   for (const [path, names] of Object.entries(kotlin)) {
     row(path, 'kotlin', { status: 'parsed', classes: names.map((name) => ({ name, startLine: 1, endLine: 3 })) });
@@ -201,6 +213,66 @@ describe('class-name mentions', () => {
     const [gap] = p.gaps('mention-target-unindexed');
     expect(gap).toMatchObject({ scope: 'xml', count: 1 });
     expect(gap.samples).toEqual(['x.xml:1 com.acme.K -> [com.acme.K]']);
+  });
+
+  describe('a repository declaration that is not a class node is not outside the repository', () => {
+    const audited = ['module/src/main/java/com/acme/Audited.java'];
+
+    it('records an annotation type as unindexed, not external', () => {
+      const p = project({
+        annotations: audited,
+        files: { 'beans.xml': '<include-filter type="annotation" expression="com.acme.Audited"/>' },
+      });
+      expect(p.mentions).toEqual([]);
+      const [gap] = p.gaps('mention-target-unindexed');
+      expect(gap).toMatchObject({ scope: 'xml', count: 1 });
+      expect(gap.samples).toEqual(['beans.xml:1 com.acme.Audited -> [com.acme.Audited]']);
+      expect(p.coverage.fqn).toEqual({ candidates: 1, edge: 0, ambiguous: 0, unindexed: 1, external: 0 });
+    });
+
+    it('takes the type from a member-suffixed or nested name', () => {
+      const p = project({
+        annotations: audited,
+        files: { 'x.properties': ['a=com.acme.Audited.value', 'b=com.acme.Audited$Marker', 'c=com.acme.Audited.class'] },
+      });
+      expect(p.mentions).toEqual([]);
+      const [gap] = p.gaps('mention-target-unindexed');
+      expect(gap.count).toBe(3);
+      expect(gap.samples.map((s) => s.split(' -> ')[1])).toEqual(['[com.acme.Audited]', '[com.acme.Audited]', '[com.acme.Audited]']);
+      expect(p.coverage.fqn.external).toBe(0);
+    });
+
+    it('leaves a type that is a node alone: it resolves to an edge', () => {
+      const p = project({
+        java: { 'module/src/main/java/com/acme/Svc.java': 'com.acme.Svc' },
+        annotations: audited,
+        files: { 'x.xml': '<a class="com.acme.Svc" expr="com.acme.Audited"/>' },
+      });
+      expect(p.links).toEqual(['x.xml -> module/src/main/java/com/acme/Svc.java#Svc']);
+      expect(p.coverage.fqn).toEqual({ candidates: 2, edge: 1, ambiguous: 0, unindexed: 1, external: 0 });
+    });
+
+    it('keeps a name outside the repository external when only its package directory exists', () => {
+      const p = project({
+        java: { 'src/com/acme/Svc.java': 'com.acme.Svc' },
+        annotations: audited,
+        files: { 'x.xml': '<a class="com.acme.Missing" expr="com.other.Audited"/>' },
+      });
+      expect(p.mentions).toEqual([]);
+      expect(p.gaps('mention-target-unindexed')).toEqual([]);
+      expect(p.coverage.fqn).toMatchObject({ candidates: 2, unindexed: 0, external: 2 });
+    });
+
+    it('never matches the default package, and gives a Java file no Kotlin file-class name', () => {
+      const p = project({
+        java: { 'src/com/acme/Util.java': 'com.acme.Util' },
+        annotations: ['src/Marker.java'],
+        files: { 'x.properties': ['a=Marker.value', 'b=com.acme.UtilKt'] },
+      });
+      expect(p.mentions).toEqual([]);
+      expect(p.gaps('mention-target-unindexed')).toEqual([]);
+      expect(p.coverage.fqn).toMatchObject({ candidates: 2, unindexed: 0, external: 2 });
+    });
   });
 
   it('counts a class name outside the repository as external, with no edge and no gap', () => {
@@ -729,6 +801,14 @@ describe('tripwires: a broken rule turns a scenario red', () => {
         },
       }),
       holds: (p) => p.links.join() === 'webapp/WEB-INF/web.xml -> webapp/index.jsp',
+    },
+    annotationType: {
+      mutation: { noJavaFileIndex: true },
+      spec: () => ({
+        annotations: ['src/com/acme/Audited.java'],
+        files: { 'beans.xml': '<include-filter expression="com.acme.Audited"/>' },
+      }),
+      holds: (p) => p.mentions.length === 0 && p.gaps('mention-target-unindexed').length === 1 && p.coverage.fqn.external === 0,
     },
     longestPrefix: {
       mutation: { shortestPrefix: true },

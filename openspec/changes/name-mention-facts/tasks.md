@@ -6,7 +6,8 @@
 1. `feat(mentions): lex class-name and path mentions from non-code files`：任务 1.1–1.3。
 2. `feat(facts): resolve mentions into edges, gaps and coverage`：任务 2.1–2.4。
 3. `feat(lazy): run the mention stage and traverse mentions edges`：任务 3.1–3.4。
-4. `docs(openspec): record name-mention-facts acceptance`：任务 4.1–4.2。
+4. `fix(facts): count non-node Java declarations as unindexed mentions`：任务 2.5（验收阶段 A 的发现，规格与 design 同步修订）。
+5. `docs(openspec): record name-mention-facts acceptance`：任务 4.1–4.2。
 
 ## 1. 单文件词法
 
@@ -20,6 +21,7 @@
 - [x] 2.2 路径解析按 design D5：web 根、相对、web 根兜底、后缀；模式展开；自指不成边。验证：同一测试文件覆盖规格「路径提及生成 mentions 边」的七个场景，另加 `classpath*:` 与 `*` 模式全收、`**` 跨段、后缀按段边界、`../` 开头的后缀匹配、自指。
 - [x] 2.3 边、缺口、覆盖与守恒按 design D6：每对（source, target）一条边，证据逐行升序去重，字段齐全；三类缺口的样例格式与计数单位符合规定；覆盖记 `status`、按语言的文件数、候选数与去向计数；两条守恒等式不平衡时抛错；`mentionSites` 缺省时覆盖为 `not-run`、无边。验证：测试覆盖规格「mentions 边的证据与遍历」的「同一文件多次提及合为一条边」，并对守恒失败与 `not-run` 各有一条断言。
 - [x] 2.4 变异绊线：关掉歧义判断（多声明时取第一个）、关掉 web 根规则、最长前缀改成最短前缀，每个变异各自至少让一条测试变红。验证：同 1.3 的方式证明。
+- [x] 2.5 仓库内存在、却不在 Java 字典里的声明计入 `unindexed`，不计入 `external`。验收阶段 A 发现 Core 不为注解类型 `@interface` 建 class 节点，这类类型于是被当成仓库外。按「目录以包路径结尾、文件名为类型名」判定 Java 源文件，与 Kotlin / Scala 的判定一致；Java 文件不带 `Kt` 规则。验证：测试覆盖规格场景「不是节点的仓库声明不算仓库外」，包括带成员后缀的注解类型；输入行的形状取自 Core 对只含注解类型的文件的真实输出。夹具新增一个注解类型及其提及，Lazy 产物里出现该 `mention-target-unindexed` 缺口；冻结摘要如受影响则整块重冻。
 
 ## 3. 接入流水线
 

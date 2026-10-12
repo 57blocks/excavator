@@ -13,7 +13,9 @@
  * resolves to nothing.
  *
  * Every candidate has exactly one fate:
- *   class-name: edge | ambiguous | unindexed (a Kotlin/Scala type) | external
+ *   class-name: edge | ambiguous | unindexed (a declaration in the repository
+ *               that is not a class node: a Kotlin/Scala type, a Java
+ *               annotation type) | external
  *   path:       edge | ambiguous | unresolved | self
  * `assertMentionConservation` checks that the fates add up to the candidates.
  * Counts are candidate occurrences; a pattern that matches ten files is one
@@ -71,7 +73,7 @@ export function assertMentionConservation(mentions, gapCounts) {
  * `$` is a nesting separator. Nested types are not nodes, so `Outer$Inner`
  * and `Outer.CONSTANT` both name `Outer`.
  */
-function resolveClassName(token, typesByFqn, otherJvm, mutations) {
+function resolveClassName(token, typesByFqn, otherJvm, javaSources, mutations) {
   const segments = token.replace(/\$/g, '.').split('.');
   const lengths = [];
   for (let k = segments.length; k >= 2; k--) lengths.push(k);
@@ -82,10 +84,16 @@ function resolveClassName(token, typesByFqn, otherJvm, mutations) {
     const declarations = typesByFqn.get(segments.slice(0, k).join('.'));
     if (declarations) return { kind: 'repo', declarations };
   }
+  // The dictionary is silent about a declaration that is not a class node. One
+  // that exists in the repository can only be unknown, never "outside": a
+  // Kotlin or Scala type, or a Java file Core made no class entry for (an
+  // annotation type), found by package path and file name.
   for (const k of lengths) {
     const pkg = segments.slice(0, k - 1).join('.');
     const name = segments[k - 1];
-    if (otherJvm.isType(pkg, name)) return { kind: 'unindexed', type: `${pkg}.${name}` };
+    // Tripwire seam: Java source files not consulted.
+    const javaFile = !mutations.noJavaFileIndex && javaSources.isType(pkg, name);
+    if (otherJvm.isType(pkg, name) || javaFile) return { kind: 'unindexed', type: `${pkg}.${name}` };
   }
   return { kind: 'external' };
 }
@@ -247,14 +255,16 @@ function evidenceOrder(a, b) {
  *   manifestPaths: Iterable<string>,
  *   javaTypes: Array<{ fqn: string, path: string, id: string|null }>,
  *   otherJvm: { isType(pkg: string, name: string): boolean },
+ *   javaSources: { isType(pkg: string, name: string): boolean },
  *   fileIdOf: (path: string) => string,
  *   languageOf?: (path: string) => string|undefined,
- *   mutations?: { firstDeclaration?: boolean, noWebRootRule?: boolean, shortestPrefix?: boolean },
+ *   mutations?: { firstDeclaration?: boolean, noWebRootRule?: boolean, shortestPrefix?: boolean, noJavaFileIndex?: boolean },
  * }} args
  *   `sites` has one row per scanned non-code file, each with the lexer's
  *   candidate lists. `javaTypes` is every Java top-level type declaration
  *   with its class node id (null where the id is shared with another
- *   declaration). `mutations` is a test seam for the mutation tripwires
+ *   declaration). `javaSources` answers whether a Java file named for a type
+ *   exists under a package path. `mutations` is a test seam for the mutation tripwires
  *   (task 2.4); production callers leave it empty.
  * @returns {{
  *   edges: object[],
@@ -262,7 +272,9 @@ function evidenceOrder(a, b) {
  *   coverage: object,
  * }}
  */
-export function resolveMentions({ sites, manifestPaths, javaTypes, otherJvm, fileIdOf, languageOf = () => undefined, mutations = {} }) {
+export function resolveMentions({
+  sites, manifestPaths, javaTypes, otherJvm, javaSources, fileIdOf, languageOf = () => undefined, mutations = {},
+}) {
   const index = createPathIndex(manifestPaths);
   const typesByFqn = new Map();
   for (const type of javaTypes) {
@@ -299,7 +311,7 @@ export function resolveMentions({ sites, manifestPaths, javaTypes, otherJvm, fil
 
     for (const candidate of site.fqn ?? []) {
       fqn.candidates += 1;
-      const found = resolveClassName(candidate.token, typesByFqn, otherJvm, mutations);
+      const found = resolveClassName(candidate.token, typesByFqn, otherJvm, javaSources, mutations);
       if (found.kind === 'external') {
         fqn.external += 1;
       } else if (found.kind === 'unindexed') {

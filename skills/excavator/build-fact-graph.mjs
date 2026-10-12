@@ -62,7 +62,9 @@ import {
 import { DEFAULT_LIMIT_CHARS, serializeJsonProduct } from './product-serialization.mjs';
 import { STRUCTURE_ALL_FILE, readStructureAllPath } from './structure-all-store.mjs';
 import { writeKnowledgeGraph } from './knowledge-graph-store.mjs';
-import { assertCallConservation, createJavaCallResolver, createOtherJvmIndex, JAVA_CALL_OUTCOMES } from './java-call-resolution.mjs';
+import {
+  assertCallConservation, createJavaCallResolver, createJavaSourceIndex, createOtherJvmIndex, JAVA_CALL_OUTCOMES,
+} from './java-call-resolution.mjs';
 import { assertMentionConservation, resolveMentions } from './mention-resolution.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -545,6 +547,7 @@ export function buildFactGraph({ scan, structureAll, importMap, mentionSites, me
       manifestPaths: fileRowByPath.keys(),
       javaTypes,
       otherJvm: createOtherJvmIndex(otherJvmRows),
+      javaSources: createJavaSourceIndex(javaRows),
       fileIdOf,
       languageOf: (path) => languageOfPath.get(path),
       mutations: mentionMutations ?? {},
@@ -699,7 +702,7 @@ const GAP_REASONS = Object.freeze({
   'methods-name-only': 'class method(s) the extractor listed by name only (no line range) could not be projected as fact nodes',
   'identity-collision': 'declaration(s) mapped to the same node id as another distinguishable declaration',
   'mention-ambiguous': 'name mention(s) in non-code files that name more than one repository declaration or file (the same class name declared twice, or a path matching several files): no mentions edge is drawn',
-  'mention-target-unindexed': 'name mention(s) in non-code files of a Kotlin or Scala type the repository declares but whose types are not indexed as nodes: no mentions edge is drawn',
+  'mention-target-unindexed': 'name mention(s) in non-code files of a declaration the repository has but the index has no class node for (a Kotlin or Scala type, a Java annotation type): no mentions edge is drawn',
   'path-mention-unresolved': 'path mention(s) in non-code files that match no file in the repository',
 });
 
