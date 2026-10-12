@@ -216,6 +216,48 @@ function asInstance(res) {
 }
 
 /**
+ * The types the repository's Kotlin and Scala sources declare, by directory.
+ * Java can use these even though no Java resolver reads them: a type or a
+ * package found here is in the repository, never outside it. Shared by call
+ * resolution and by name-mention resolution (openspec: changes/
+ * name-mention-facts, D4), so both mean the same thing by "another JVM
+ * declaration".
+ *
+ * @param {object[]} otherJvmRows structure rows of Kotlin and Scala files
+ * @returns {{ isType(pkg: string, name: string): boolean, hasPackage(pkg: string): boolean }}
+ */
+export function createOtherJvmIndex(otherJvmRows = []) {
+  const namesByDir = new Map();
+  for (const row of otherJvmRows) {
+    const slash = row.path.lastIndexOf('/');
+    const dir = slash < 0 ? '' : row.path.slice(0, slash);
+    if (!namesByDir.has(dir)) namesByDir.set(dir, new Set());
+    const names = namesByDir.get(dir);
+    const file = row.path.slice(slash + 1).replace(/\.[^.]+$/, '');
+    names.add(file);
+    names.add(`${file}Kt`); // the class Kotlin compiles a file's top-level declarations into
+    for (const cls of row.classes ?? []) if (typeof cls.name === 'string') names.add(cls.name);
+  }
+
+  const dirsByPackage = new Map();
+  /** Directories of Kotlin and Scala sources laid out in the package's path. */
+  function dirsOf(pkg) {
+    let dirs = dirsByPackage.get(pkg);
+    if (dirs) return dirs;
+    const pkgDir = pkg.replace(/\./g, '/');
+    dirs = !pkgDir ? [] : [...namesByDir.keys()].filter((d) => d === pkgDir || d.endsWith(`/${pkgDir}`));
+    dirsByPackage.set(pkg, dirs);
+    return dirs;
+  }
+
+  return {
+    /** A type the repository's Kotlin or Scala sources declare in package `pkg`. */
+    isType: (pkg, name) => dirsOf(pkg).some((d) => namesByDir.get(d).has(name)),
+    hasPackage: (pkg) => dirsOf(pkg).length > 0,
+  };
+}
+
+/**
  * Build a resolver over a set of Java structure rows.
  *
  * @param {{
@@ -237,19 +279,8 @@ export function createJavaCallResolver({ rows, functionIds, classIds = new Map()
   const typesByPath = new Map();
 
   // Java code can use the types of the repository's Kotlin and Scala sources,
-  // which this resolver does not read: by directory, the type names declared
-  // there. A type or package found there is in the repository, not outside.
-  const otherJvmNamesByDir = new Map();
-  for (const row of otherJvmRows) {
-    const slash = row.path.lastIndexOf('/');
-    const dir = slash < 0 ? '' : row.path.slice(0, slash);
-    if (!otherJvmNamesByDir.has(dir)) otherJvmNamesByDir.set(dir, new Set());
-    const names = otherJvmNamesByDir.get(dir);
-    const file = row.path.slice(slash + 1).replace(/\.[^.]+$/, '');
-    names.add(file);
-    names.add(`${file}Kt`); // the class Kotlin compiles a file's top-level declarations into
-    for (const cls of row.classes ?? []) if (typeof cls.name === 'string') names.add(cls.name);
-  }
+  // which this resolver does not read: see createOtherJvmIndex.
+  const otherJvm = createOtherJvmIndex(otherJvmRows);
 
   for (const row of rows) {
     const ctx = fileContext(row);
@@ -378,21 +409,7 @@ export function createJavaCallResolver({ rows, functionIds, classIds = new Map()
     return local.length === 1 ? repoRef(local[0], true) : ambiguousAmong(hits.map((t) => repoRef(t, true)));
   }
 
-  const otherJvmDirsByPackage = new Map();
-  /** Directories of Kotlin and Scala sources laid out in the package's path. */
-  function otherJvmDirs(pkg) {
-    let dirs = otherJvmDirsByPackage.get(pkg);
-    if (dirs) return dirs;
-    const pkgDir = pkg.replace(/\./g, '/');
-    dirs = !pkgDir ? [] : [...otherJvmNamesByDir.keys()].filter((d) => d === pkgDir || d.endsWith(`/${pkgDir}`));
-    otherJvmDirsByPackage.set(pkg, dirs);
-    return dirs;
-  }
-
-  /** A type the repository's Kotlin or Scala sources declare in package `pkg`. */
-  function isOtherJvmType(pkg, name) {
-    return otherJvmDirs(pkg).some((d) => otherJvmNamesByDir.get(d).has(name));
-  }
+  const isOtherJvmType = otherJvm.isType;
 
   function isRepoType(fqn) {
     if (typesByFqn.has(fqn)) return true;
@@ -401,7 +418,7 @@ export function createJavaCallResolver({ rows, functionIds, classIds = new Map()
   }
 
   function isRepoPackage(pkg) {
-    return packages.has(pkg) || otherJvmDirs(pkg).length > 0;
+    return packages.has(pkg) || otherJvm.hasPackage(pkg);
   }
 
   function isRepoTypePrefix(segments) {

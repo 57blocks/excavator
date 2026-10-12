@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<web-app version="3.0">
+  <context-param>
+    <param-name>contextConfigLocation</param-name>
+    <param-value>classpath*:spring/*.xml /WEB-INF/spring/extra-context.xml</param-value>
+  </context-param>
+  <listener>
+    <listener-class>com.acme.web.OrderListener</listener-class>
+  </listener>
+  <filter>
+    <filter-name>orderFilter</filter-name>
+    <filter-class>com.acme.web.OrderFilter</filter-class>
+  </filter>
+  <servlet>
+    <servlet-name>orders</servlet-name>
+    <servlet-class>com.acme.web.OrderServlet</servlet-class>
+  </servlet>
+  <servlet-mapping>
+    <servlet-name>orders</servlet-name>
+    <url-pattern>*.xhtml</url-pattern>
+  </servlet-mapping>
+  <welcome-file-list>
+    <welcome-file>index.jsp</welcome-file>
+  </welcome-file-list>
+</web-app>

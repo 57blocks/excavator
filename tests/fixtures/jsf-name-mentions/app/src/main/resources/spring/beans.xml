@@ -1,0 +1,9 @@
+<beans>
+  <bean id="service" class="com.acme.service.OrderService"/>
+  <bean id="handler" class="com.acme.service.OrderService$Handler"/>
+  <bean id="config" class="com.acme.Config"/>
+  <!-- <bean id="old" class="com.acme.Legacy"/> -->
+  <bean id="client" class="org.thirdparty.Client"/>
+  <include-filter type="annotation" expression="com.acme.Audited"/>
+  <bean id="generated" class="com.acme.gen.Huge"/>
+</beans>

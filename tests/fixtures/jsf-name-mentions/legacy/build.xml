@@ -1,0 +1,5 @@
+<project name="legacy">
+  <javac srcdir="src/main/java">
+    <include name="**/acme/**/*.java"/>
+  </javac>
+</project>

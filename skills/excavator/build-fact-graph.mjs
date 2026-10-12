@@ -62,7 +62,10 @@ import {
 import { DEFAULT_LIMIT_CHARS, serializeJsonProduct } from './product-serialization.mjs';
 import { STRUCTURE_ALL_FILE, readStructureAllPath } from './structure-all-store.mjs';
 import { writeKnowledgeGraph } from './knowledge-graph-store.mjs';
-import { assertCallConservation, createJavaCallResolver, JAVA_CALL_OUTCOMES } from './java-call-resolution.mjs';
+import { assertCallConservation, createJavaCallResolver, createOtherJvmIndex, JAVA_CALL_OUTCOMES } from './java-call-resolution.mjs';
+import {
+  assertMentionConservation, createDeclaredJavaTypeIndex, resolveMentions, TARGET_SKIP_REASONS,
+} from './mention-resolution.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -122,9 +125,20 @@ function ordinalGroupKey(entry) {
  *
  * @param {{
  *   scan: object, structureAll: object, importMap?: object|null,
+ *   mentionSites?: Array<{ file: string, language?: string, fqn: object[], path: object[] }>|null,
+ *   mentionInputs?: { javaPackages: Array<{ file: string, package: string }>, skippedNonCode: Record<string, number> },
+ *   mentionMutations?: object,
  *   serializationLimit?: number,
  *   headroomRecorder?: ReturnType<typeof import('./product-serialization.mjs').createHeadroomRecorder>,
- * }} args `serializationLimit`/`headroomRecorder` route the facts-digest
+ * }} args `mentionSites` is one row per scanned non-code file with the
+ *   candidates text-mentions.mjs lexed from it (openspec: changes/
+ *   name-mention-facts); omitted, the mention stage is recorded as
+ *   not-run and adds no edge or gap. `mentionInputs` is required with it:
+ *   the packages Java source files declare for the types the dictionary has no
+ *   entry for, and the non-code files the scanner skipped by reason (both
+ *   from mention-sites.mjs). `mentionMutations` is the test seam of
+ *   mention-resolution.mjs's mutation tripwires; leave it unset.
+ *   `serializationLimit`/`headroomRecorder` route the facts-digest
  *   input string through `serializeJsonProduct` (openspec: changes/product-
  *   serialization-ceiling, capability `product-serialization`) instead of a
  *   bare `JSON.stringify` — both optional so this pure function's existing
@@ -133,7 +147,7 @@ function ordinalGroupKey(entry) {
  *   means no headroom entry is recorded for this call.
  * @returns {{ nodes: object[], edges: object[], coverage: object, gaps: object[], factsDigest: string }}
  */
-export function buildFactGraph({ scan, structureAll, importMap, serializationLimit = DEFAULT_LIMIT_CHARS, headroomRecorder = null }) {
+export function buildFactGraph({ scan, structureAll, importMap, mentionSites, mentionInputs, mentionMutations, serializationLimit = DEFAULT_LIMIT_CHARS, headroomRecorder = null }) {
   if (!scan || !Array.isArray(scan.files)) {
     throw new Error('buildFactGraph: scan.files must be an array');
   }
@@ -399,28 +413,29 @@ export function buildFactGraph({ scan, structureAll, importMap, serializationLim
   const languageOfRow = (row) => languageOfPath.get(row.path) ?? row.language;
   const isJava = (row) => languageOfRow(row) === 'java';
   const javaRows = fileRows.filter(isJava);
+  // Node id per function and class entry of a Java row, index for index with
+  // `row.functions` / `row.classes`; null where the id is shared with another
+  // declaration (an identity collision), so neither caller nor target can be
+  // that node.
+  const collided = new Set(collisions.map((c) => c.id));
+  const uniqueId = (index) => {
+    const id = idOf.get(withOrdinals[index]);
+    return collided.has(id) ? null : id;
+  };
+  const functionIds = new Map();
+  const classIds = new Map();
+  for (const row of javaRows) {
+    const first = firstFunctionEntry.get(row.path);
+    const functionCount = (row.functions ?? []).length;
+    functionIds.set(row.path, (row.functions ?? []).map((_, i) => uniqueId(first + i)));
+    classIds.set(row.path, (row.classes ?? []).map((_, i) => uniqueId(first + functionCount + i)));
+  }
+  // Kotlin and Scala types are in the repository even though Java calls
+  // into them are not resolved: never outside it.
+  const otherJvmRows = fileRows.filter((row) => ['kotlin', 'scala'].includes(languageOfRow(row)));
   let javaSiteCount = 0;
   let javaEdgeSites = 0;
   if (javaRows.length > 0) {
-    // Node id per function entry, index for index with `row.functions`;
-    // null where the id is shared with another declaration (an identity
-    // collision), so neither caller nor target can be that node.
-    const collided = new Set(collisions.map((c) => c.id));
-    const uniqueId = (index) => {
-      const id = idOf.get(withOrdinals[index]);
-      return collided.has(id) ? null : id;
-    };
-    const functionIds = new Map();
-    const classIds = new Map();
-    for (const row of javaRows) {
-      const first = firstFunctionEntry.get(row.path);
-      const functionCount = (row.functions ?? []).length;
-      functionIds.set(row.path, (row.functions ?? []).map((_, i) => uniqueId(first + i)));
-      classIds.set(row.path, (row.classes ?? []).map((_, i) => uniqueId(first + functionCount + i)));
-    }
-    // Kotlin and Scala types are in the repository even though Java calls
-    // into them are not resolved: never outside it.
-    const otherJvmRows = fileRows.filter((row) => ['kotlin', 'scala'].includes(languageOfRow(row)));
     const resolver = createJavaCallResolver({ rows: javaRows, functionIds, classIds, otherJvmRows });
     for (const row of javaRows) {
       const sites = row.callGraph ?? [];
@@ -516,6 +531,42 @@ export function buildFactGraph({ scan, structureAll, importMap, serializationLim
   }
 
   // -------------------------------------------------------------------------
+  // Name mentions (openspec: changes/name-mention-facts): a non-code file that
+  // writes a repository class's name or a repository file's path. The lexer
+  // ran before this projection; here each candidate becomes an edge or a
+  // visible bucket. Without `mentionSites` the stage did not run, which the
+  // coverage says in so many words.
+  // -------------------------------------------------------------------------
+  let mentionCoverage = { status: 'not-run' };
+  if (Array.isArray(mentionSites) !== (mentionInputs !== undefined && mentionInputs !== null)) {
+    throw new Error('buildFactGraph: mentionSites and mentionInputs go together');
+  }
+  if (Array.isArray(mentionSites)) {
+    const javaTypes = [];
+    for (const row of javaRows) {
+      (row.classes ?? []).forEach((cls, i) => {
+        if (typeof cls.qualifiedName !== 'string') return;
+        javaTypes.push({ fqn: cls.qualifiedName, path: row.path, id: classIds.get(row.path)[i] });
+      });
+    }
+    const resolved = resolveMentions({
+      sites: mentionSites,
+      manifestPaths: fileRowByPath.keys(),
+      javaTypes,
+      otherJvm: createOtherJvmIndex(otherJvmRows),
+      declaredJavaTypes: createDeclaredJavaTypeIndex(mentionInputs.javaPackages),
+      skippedFiles: (scan.skipped ?? []).filter((entry) => TARGET_SKIP_REASONS.includes(entry.reason)),
+      skippedNonCode: mentionInputs.skippedNonCode,
+      fileIdOf,
+      languageOf: (path) => languageOfPath.get(path),
+      mutations: mentionMutations ?? {},
+    });
+    for (const edge of resolved.edges) addEdge(edge);
+    for (const gap of resolved.gaps) gapCollector.add(gap.kind, gap.scope, gap.sample);
+    mentionCoverage = resolved.coverage;
+  }
+
+  // -------------------------------------------------------------------------
   // Coverage + gaps: reuse the existing conservation ledger (every scanned
   // input lands in exactly one bucket) and append the resolution gaps above.
   // -------------------------------------------------------------------------
@@ -533,6 +584,16 @@ export function buildFactGraph({ scan, structureAll, importMap, serializationLim
       if (gap.scope === 'java' && JAVA_CALL_OUTCOMES.includes(gap.kind)) tally[gap.kind] = gap.count;
     }
     assertCallConservation(javaSiteCount, tally);
+  }
+  const coverage = { ...ledger.coverage, mentions: mentionCoverage };
+  if (mentionCoverage.status === 'ran') {
+    // The gap counts are read back from what was recorded, as for Java calls.
+    const recorded = (kind) => resolutionGaps.filter((gap) => gap.kind === kind).reduce((sum, gap) => sum + gap.count, 0);
+    assertMentionConservation(mentionCoverage, {
+      ambiguous: recorded('mention-ambiguous'),
+      unindexed: recorded('mention-target-unindexed'),
+      unresolved: recorded('path-mention-unresolved'),
+    });
   }
   const gaps = [...ledger.gaps, ...resolutionGaps].sort(compareGaps);
 
@@ -553,7 +614,7 @@ export function buildFactGraph({ scan, structureAll, importMap, serializationLim
   // are not source facts. Keep them visible in `coverage` while excluding
   // them from facts identity, so adding an archive or rotating an excluded
   // secret cannot invalidate an otherwise identical fact graph.
-  const digestCoverage = JSON.parse(JSON.stringify(ledger.coverage));
+  const digestCoverage = JSON.parse(JSON.stringify(coverage));
   delete digestCoverage.selection;
   let preExtractionFiles = 0;
   let preExtractionIgnored = 0;
@@ -583,7 +644,7 @@ export function buildFactGraph({ scan, structureAll, importMap, serializationLim
   return {
     nodes,
     edges: sortedEdges,
-    coverage: ledger.coverage,
+    coverage,
     gaps,
     factsDigest,
   };
@@ -649,6 +710,9 @@ const GAP_REASONS = Object.freeze({
   'imports-target-missing': 'resolved import target(s) have no fact node (no matching scanned file)',
   'methods-name-only': 'class method(s) the extractor listed by name only (no line range) could not be projected as fact nodes',
   'identity-collision': 'declaration(s) mapped to the same node id as another distinguishable declaration',
+  'mention-ambiguous': 'name mention(s) in non-code files that name more than one repository declaration or file (the same class name declared twice, or a path matching several files): no mentions edge is drawn',
+  'mention-target-unindexed': 'name mention(s) in non-code files of something the repository has but the index has no node for (a Kotlin or Scala type, a Java annotation type, a file the scanner skipped as too large or binary): no mentions edge is drawn',
+  'path-mention-unresolved': 'path mention(s) in non-code files that no resolution rule anchors to a known file (relative to the mentioning file, to its web root, or on the classpath); files excluded by ignore rules or default filters are not consulted, and a same-named file elsewhere is not guessed',
 });
 
 /** Reasons for the Java call-site buckets (scope `java`), which resolve by
@@ -727,6 +791,9 @@ async function main() {
   const structureAll = readStructureAllPath(structurePath);
   const importMap = existsSync(importMapPath) ? JSON.parse(readFileSync(importMapPath, 'utf-8')) : null;
 
+  // This standalone entry reads the intermediate files only, so it runs no
+  // mentions stage (that reads source content, which lazy-analyze.mjs does
+  // from the materialized snapshot): its product says `mentions: not-run`.
   const projection = buildFactGraph({ scan, structureAll, importMap });
 
   mkdirSync(dirname(outPath), { recursive: true });

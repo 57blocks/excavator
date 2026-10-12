@@ -134,6 +134,7 @@ import { createRequire } from 'node:module';
 import { performance } from 'node:perf_hooks';
 
 import { buildFactGraph } from './build-fact-graph.mjs';
+import { collectMentionSites } from './mention-sites.mjs';
 import { buildSourceIndex } from './build-source-index.mjs';
 import { conservationViolations } from './coverage-ledger.mjs';
 import { mergeSnapshotSelection } from './scan-project.mjs';
@@ -171,8 +172,14 @@ export const KNOWLEDGE_GRAPH_VERSION = '1.0.0';
  *  sites outside method and constructor bodies (field initializers,
  *  initializer blocks, enum constant arguments, record compact
  *  constructors) become call sites with the caller `<clinit>` or `<init>`,
- *  in `calls-caller-unresolved`. */
-export const PIPELINE_VERSION = 'lazy-fact-graph/5';
+ *  in `calls-caller-unresolved`.
+ *  Bumped to /6 by openspec change name-mention-facts: non-code files
+ *  (XML, JSP, Facelets, properties, ...) are lexed for class names and file
+ *  paths, so an unchanged source tree projects new `mentions` edges, the gap
+ *  kinds `mention-ambiguous`, `mention-target-unindexed` and
+ *  `path-mention-unresolved`, and a `coverage.mentions` section (which reads
+ *  `not-run` for a projection built without the stage). */
+export const PIPELINE_VERSION = 'lazy-fact-graph/6';
 
 /** Same two-step @excavator/core resolution every sibling script uses. */
 async function resolveCore(root) {
@@ -490,7 +497,8 @@ export function cleanupStalePublishStagingDirs(dataDir, publishFs) {
 
 /**
  * Run the Lazy first-run pipeline once, synchronously in sequence:
- * Scan -> Structure-All -> Import-Map -> Build Fact Graph -> Validate -> Save.
+ * Scan -> Structure-All -> Import-Map -> Mentions -> Build Fact Graph ->
+ * Validate -> Save.
  *
  * @param {{
  *   projectRoot: string,
@@ -618,10 +626,22 @@ export async function runLazyAnalysis({
     // import-map.json is likewise a child-process output — byte count only.
     recorder.recordBytes('import-map.json', statSync(importMapPath).size, limit);
 
+    // --- Name mentions (openspec: changes/name-mention-facts, D1/D2) --------
+    // Every non-code manifest file is lexed for class names and file paths,
+    // and the package is read of Java files the structure rows have no type
+    // for (annotation types, files skipped as too large). `readFile` reads the
+    // MATERIALIZED snapshot, never `root`: a git target's uncommitted edit must
+    // not become a fact about HEAD.
+    let mentionStage;
+    time('mentions', () => {
+      const readFile = (relPath) => readFileSync(join(materializedDir, relPath), 'utf-8');
+      mentionStage = collectMentionSites({ scan, structureAll, readFile });
+    });
+
     // --- Build Fact Graph (in-process — design D1: a projection, not a CLI) -
     let projection;
     time('factGraph', () => {
-      projection = buildFactGraph({ scan, structureAll, importMap, serializationLimit: limit, headroomRecorder: recorder });
+      projection = buildFactGraph({ scan, structureAll, importMap, mentionSites: mentionStage.sites, mentionInputs: mentionStage.inputs, serializationLimit: limit, headroomRecorder: recorder });
       const written = writeKnowledgeGraph(join(intermediateDir, 'fact-graph.jsonl'), projection, { limit, product: 'fact-graph.jsonl' });
       recorder.recordMaxRecord('fact-graph.jsonl', written.maxLineChars, limit);
       rmSync(join(intermediateDir, 'fact-graph.json'), { force: true }); // the retired whole-document copy
