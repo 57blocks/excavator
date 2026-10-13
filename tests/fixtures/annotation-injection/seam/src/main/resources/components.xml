@@ -1,0 +1,3 @@
+<components xmlns="http://jboss.com/products/seam/components">
+  <component name="mailer" class="com.acme.seam.MailerImpl"/>
+</components>

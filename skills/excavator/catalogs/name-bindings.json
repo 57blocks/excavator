@@ -1,5 +1,5 @@
 {
-  "version": 2,
+  "version": 3,
   "unitDescriptors": ["pom.xml", "build.gradle", "build.gradle.kts", "build.xml", "build.sbt"],
   "xmlBinders": [
     {
@@ -145,12 +145,38 @@
     {
       "id": "spring-annotation-stereotype",
       "namespace": "spring",
-      "basis": "Spring stereotype annotations: value is the bean name; left out, it is the unqualified class name decapitalized the way java.beans.Introspector does, which keeps a name whose first two characters are upper case.",
+      "basis": "Spring stereotype annotations: value is the bean name; left out, it is the unqualified class name decapitalized the way java.beans.Introspector does, which keeps a name whose first two characters are upper case. Configuration and RestController are stereotypes too, because each is meta-annotated with Component (RestController through Controller) and is scanned like it, and on both value is an alias of the name. ControllerAdvice and RestControllerAdvice are scanned the same way, but their value is the base packages, so they are spring-annotation-advice.",
       "annotations": [
         "org.springframework.stereotype.Component", "org.springframework.stereotype.Service",
-        "org.springframework.stereotype.Repository", "org.springframework.stereotype.Controller"
+        "org.springframework.stereotype.Repository", "org.springframework.stereotype.Controller",
+        "org.springframework.context.annotation.Configuration",
+        "org.springframework.web.bind.annotation.RestController"
       ],
       "nameArguments": ["value"],
+      "defaultName": "java-beans-decapitalize",
+      "namespacedNames": false
+    },
+    {
+      "id": "ejb-annotation-session",
+      "namespace": "ejb",
+      "basis": "EJB session bean annotations: name on Stateless, Stateful and Singleton is the bean's ejb-name, the name another bean addresses it by (the beanName of EJB); left out, the ejb-name is the unqualified class name as it is written, with no change of case. An ejb-name is not an EL name, so a dotted one is not a namespace.",
+      "annotations": [
+        "javax.ejb.Stateless", "javax.ejb.Stateful", "javax.ejb.Singleton",
+        "jakarta.ejb.Stateless", "jakarta.ejb.Stateful", "jakarta.ejb.Singleton"
+      ],
+      "nameArguments": ["name"],
+      "defaultName": "simple-name",
+      "namespacedNames": false
+    },
+    {
+      "id": "spring-annotation-advice",
+      "namespace": "spring",
+      "basis": "Spring controller advice annotations, meta-annotated with Component (RestControllerAdvice through ControllerAdvice) and scanned like the stereotypes: value is an alias of basePackages, not a name, and name (Spring 6.1 and later, an alias of the Component value) is the bean name; left out, it is the unqualified class name decapitalized the way java.beans.Introspector does.",
+      "annotations": [
+        "org.springframework.web.bind.annotation.ControllerAdvice",
+        "org.springframework.web.bind.annotation.RestControllerAdvice"
+      ],
+      "nameArguments": ["name"],
       "defaultName": "java-beans-decapitalize",
       "namespacedNames": false
     }
@@ -261,6 +287,79 @@
         "attributeSuffixes": ["-ref"],
         "elements": ["ref", "idref"]
       }
+    }
+  ],
+  "annotationInjections": [
+    {
+      "id": "spring-annotation-injection",
+      "namespace": "spring",
+      "basis": "Spring annotation injection by name: a Qualifier on a field or a parameter and a Resource on a field or a setter method each name a bean that the container supplies to the class it instantiates, so the consumer is a class one of the Spring binders manages (a bean element, or a stereotype annotation), and the name is looked up among the beans of the context that instantiated it, in whichever unit declares that bean; a class no Spring binder manages is not injected by Spring, and its Resource, in an EJB or CDI class, names a JNDI resource instead of a bean.",
+      "consumer": {
+        "managedBy": ["spring-xml-bean", "spring-annotation-stereotype", "spring-annotation-advice"]
+      },
+      "sites": [
+        {
+          "id": "spring-qualifier",
+          "basis": "Spring Qualifier: value on an injected field or constructor or method parameter is the name of the bean wanted; there is no name to default to, an unqualified injection point is injected by type, and on a method it is mostly the qualifier of the bean that an annotated method declares rather than of an injection (only a method that returns nothing, a setter, qualifies what is injected), so a method is not a position this site reads.",
+          "annotations": ["org.springframework.beans.factory.annotation.Qualifier"],
+          "on": ["field", "parameter"],
+          "nameArguments": ["value"],
+          "defaultName": null,
+          "fallbackToType": false,
+          "expressionPrefix": null
+        },
+        {
+          "id": "spring-resource",
+          "basis": "Resource in the Common Annotations: name is the bean name; left out, it is the field name, or the property a setter method stands for (the method name after set, decapitalized the way java.beans.Introspector does), and the method name itself for any other method, and when no bean has that default name Spring injects by type instead, so a name taken by default and bound to nothing is not a missing bean.",
+          "annotations": ["javax.annotation.Resource", "jakarta.annotation.Resource"],
+          "on": ["field", "method"],
+          "nameArguments": ["name"],
+          "defaultName": "member-java-beans",
+          "fallbackToType": true,
+          "expressionPrefix": null
+        }
+      ]
+    },
+    {
+      "id": "seam-annotation-injection",
+      "namespace": "el",
+      "basis": "Seam annotation injection: In on a field or a setter method of a Seam component has Seam inject the context variable of that name, which is looked up among Seam component names (the Name and Role annotations and components.xml) and not among the other beans that share the el namespace, JSF managed beans and CDI named beans, which Seam does not inject; Seam injects into its own components only, so the consumer is declared by the same binders.",
+      "binders": ["seam-annotation-name", "seam-annotation-role", "seam-xml-component"],
+      "consumer": {
+        "managedBy": ["seam-annotation-name", "seam-annotation-role", "seam-xml-component"]
+      },
+      "sites": [
+        {
+          "id": "seam-in",
+          "basis": "Seam In: value is the name of the context variable; left out, it is the name of the field, or of the property a setter method stands for (the method name after set with its first letter lower case), and no other method has one; a value that starts with #{ is an EL expression that Seam evaluates to get the value, not the name of a component.",
+          "annotations": ["org.jboss.seam.annotations.In"],
+          "on": ["field", "method"],
+          "nameArguments": ["value"],
+          "defaultName": "member-seam",
+          "fallbackToType": false,
+          "expressionPrefix": "#{"
+        }
+      ]
+    },
+    {
+      "id": "ejb-annotation-injection",
+      "namespace": "ejb",
+      "basis": "EJB annotation injection by name: the EJB annotation names another enterprise bean by its ejb-name, which the Java EE container looks up among the beans of the application and injects into any class it manages, a servlet, a CDI bean or a JSF bean as much as a session bean, and a static reading has no sure way to tell which classes those are, so the consumer is not required to be managed.",
+      "consumer": {
+        "managedBy": []
+      },
+      "sites": [
+        {
+          "id": "ejb-bean-name",
+          "basis": "EJB: beanName is the ejb-name of the bean wanted; with none written the container injects by type, and there is no name to default to.",
+          "annotations": ["javax.ejb.EJB", "jakarta.ejb.EJB"],
+          "on": ["field", "method"],
+          "nameArguments": ["beanName"],
+          "defaultName": null,
+          "fallbackToType": false,
+          "expressionPrefix": null
+        }
+      ]
     }
   ]
 }

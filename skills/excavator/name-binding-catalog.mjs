@@ -2,13 +2,16 @@
  * name-binding-catalog.mjs
  *
  * Loads and validates the name-binding catalog (openspec: changes/
- * name-binding-references and changes/xml-injection-references, capability
- * `fact-graph`, design D1 of each). The catalog is the only place that says which
- * XML elements and annotations declare a name, how a name is defaulted, which
- * files hold expressions and what an expression can see, and - version 2 - which
- * XML attributes and elements write the name of another declaration (an
- * injection site) and which element is the consumer it is injected into; the
- * stages that read bindings and resolve names only execute it.
+ * name-binding-references, changes/xml-injection-references and changes/
+ * annotation-injection-references, capability `fact-graph`, design D1 of the
+ * first two and D3 of the third).
+ * The catalog is the only place that says which XML elements and annotations
+ * declare a name, how a name is defaulted, which files hold expressions and what
+ * an expression can see, and - version 2 - which XML attributes and elements
+ * write the name of another declaration (an injection site) and which element is
+ * the consumer it is injected into, and - version 3 - which annotations on which
+ * members of a Java class do the same, and which bindings manage the class they
+ * are on; the stages that read bindings and resolve names only execute it.
  *
  * Validation is strict and total: an unknown key, a missing field, a wrong type
  * or a repeated id throws, naming where. There is no partial catalog - a typo
@@ -26,10 +29,24 @@ import { fileURLToPath } from 'node:url';
 /** The catalog that ships with the skill. */
 export const SHIPPED_NAME_BINDING_CATALOG = join(dirname(fileURLToPath(import.meta.url)), 'catalogs', 'name-bindings.json');
 
-const CATALOG_VERSION = 2;
+const CATALOG_VERSION = 3;
 const ROOT = 'name-bindings';
 const TARGET_KINDS = ['class', 'bundle', 'name'];
 const SITE_SCOPES = ['unit', 'file', 'outside'];
+
+/** The members of a Java type an annotation injection site can sit on (the Core extractor's `on`). */
+export const MEMBER_KINDS = Object.freeze(['field', 'method', 'constructor', 'parameter', 'component']);
+const MEMBER_KINDS_TEXT = `${MEMBER_KINDS.slice(0, -1).map((kind) => JSON.stringify(kind)).join(', ')} or ${JSON.stringify(MEMBER_KINDS.at(-1))}`;
+
+/**
+ * The named rules an annotation injection site's `defaultName` may select: how a
+ * member that writes no name gets one. Not the class rules of `DEFAULT_NAME_RULES`
+ * - those name a class, these name what a field or a setter stands for - so the
+ * loader keeps the two sets apart. The rules themselves are the resolver's.
+ */
+export const MEMBER_DEFAULT_NAME_RULES = Object.freeze(['member-java-beans', 'member-seam']);
+
+const QUALIFIED_NAME = /^[A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)+$/;
 
 const isUpper = (ch) => ch !== ch.toLowerCase() && ch === ch.toUpperCase();
 
@@ -39,6 +56,8 @@ const isUpper = (ch) => ch !== ch.toLowerCase() && ch === ch.toUpperCase();
  * are plain string functions with no framework in them.
  */
 export const DEFAULT_NAME_RULES = Object.freeze({
+  /** The simple name as written, for a name that is the class's own (an EJB's default ejb-name). */
+  'simple-name': (simpleName) => simpleName,
   /** First character lower case, the rest as written. */
   'lowercase-first': (simpleName) => simpleName.charAt(0).toLowerCase() + simpleName.slice(1),
   /** As `java.beans.Introspector.decapitalize`: unchanged when the first two characters are both upper case. */
@@ -83,6 +102,15 @@ function checkBoolean(path, value) {
 function checkStrings(path, value, options) {
   checkArray(path, value, options);
   value.forEach((item, i) => checkString(`${path}[${i}]`, item));
+}
+
+/** No item of an already validated list of strings is written twice; `what` names the item in the message. */
+function checkNoRepeats(path, value, what) {
+  const seen = new Set();
+  value.forEach((item, i) => {
+    if (seen.has(item)) fail(`${path}[${i}]`, `duplicate ${what} ${JSON.stringify(item)}`);
+    seen.add(item);
+  });
 }
 
 /**
@@ -227,6 +255,85 @@ function checkConsumerBinder(path, family, xmlBinders) {
   }
 }
 
+/**
+ * One annotation injection site: the annotations it is, the members they sit
+ * on, where the name is written and how it is defaulted (design D3).
+ */
+function checkAnnotationInjectionSite(path, site) {
+  checkObject(path, site, ['id', 'basis', 'annotations', 'on', 'nameArguments', 'defaultName', 'fallbackToType', 'expressionPrefix']);
+  for (const key of ['id', 'basis']) checkString(`${path}.${key}`, site[key]);
+
+  // A simple name would match the annotation of any package: the identity of an annotation is its qualified name.
+  checkStrings(`${path}.annotations`, site.annotations, { atLeastOne: true });
+  site.annotations.forEach((name, i) => {
+    if (!QUALIFIED_NAME.test(name)) fail(`${path}.annotations[${i}]`, 'expected a qualified name');
+  });
+  checkNoRepeats(`${path}.annotations`, site.annotations, 'annotation');
+
+  checkStrings(`${path}.on`, site.on, { atLeastOne: true });
+  site.on.forEach((kind, i) => {
+    if (!MEMBER_KINDS.includes(kind)) fail(`${path}.on[${i}]`, `expected ${MEMBER_KINDS_TEXT}`);
+  });
+  checkNoRepeats(`${path}.on`, site.on, 'member kind');
+
+  // May be empty: a site that reads no name still counts, as a site with no name.
+  checkStrings(`${path}.nameArguments`, site.nameArguments);
+  checkNoRepeats(`${path}.nameArguments`, site.nameArguments, 'name argument');
+
+  const rule = site.defaultName;
+  if (rule !== null) {
+    if (typeof rule !== 'string') fail(`${path}.defaultName`, 'expected a rule name or null');
+    if (!MEMBER_DEFAULT_NAME_RULES.includes(rule)) fail(`${path}.defaultName`, `unknown rule ${JSON.stringify(rule)}`);
+  }
+  checkBoolean(`${path}.fallbackToType`, site.fallbackToType);
+  // The container falls back to the type only for a name it defaulted.
+  if (site.fallbackToType && rule === null) fail(path, '"fallbackToType" needs a "defaultName" that is not null');
+
+  // A prefix that is the empty string would make every name an expression.
+  if (site.expressionPrefix !== null && (typeof site.expressionPrefix !== 'string' || site.expressionPrefix === '')) {
+    fail(`${path}.expressionPrefix`, 'expected a non-empty string or null');
+  }
+}
+
+function checkAnnotationInjection(path, family) {
+  checkObject(path, family, ['id', 'namespace', 'basis', 'consumer', 'sites'], ['binders']);
+  for (const key of ['id', 'namespace', 'basis']) checkString(`${path}.${key}`, family[key]);
+  if (family.binders !== undefined) {
+    checkStrings(`${path}.binders`, family.binders, { atLeastOne: true });
+    checkNoRepeats(`${path}.binders`, family.binders, 'binder id');
+  }
+
+  checkObject(`${path}.consumer`, family.consumer, ['managedBy']);
+  // May be empty: a family that does not ask for a managed consumer.
+  checkStrings(`${path}.consumer.managedBy`, family.consumer.managedBy);
+  checkNoRepeats(`${path}.consumer.managedBy`, family.consumer.managedBy, 'binder id');
+
+  checkArray(`${path}.sites`, family.sites, { atLeastOne: true });
+  family.sites.forEach((site, i) => checkAnnotationInjectionSite(`${path}.sites[${i}]`, site));
+}
+
+/**
+ * The binders a family names - the ones its names are looked up in and the ones
+ * that manage its consumer - exist and are of the family's namespace. A binder
+ * that manages a consumer has bindings that land on a class, so an XML binder
+ * of that kind has a target of kind "class" (an annotation binder always does).
+ */
+function checkFamilyBinders(path, family, { xmlBinders, annotationBinders }) {
+  const byId = new Map([...xmlBinders, ...annotationBinders].map((binder) => [binder.id, binder]));
+  const check = (where, id, { managing }) => {
+    const binder = byId.get(id);
+    if (binder === undefined) fail(where, `no binder with the id ${JSON.stringify(id)}`);
+    if (binder.namespace !== family.namespace) {
+      fail(where, `${JSON.stringify(id)} is in the namespace ${JSON.stringify(binder.namespace)}, not ${JSON.stringify(family.namespace)}`);
+    }
+    if (managing && binder.target !== undefined && binder.target.kind !== 'class') {
+      fail(where, `${JSON.stringify(id)} must have a target of kind "class", not ${JSON.stringify(binder.target.kind)}`);
+    }
+  };
+  (family.binders ?? []).forEach((id, i) => check(`${path}.binders[${i}]`, id, { managing: false }));
+  family.consumer.managedBy.forEach((id, i) => check(`${path}.consumer.managedBy[${i}]`, id, { managing: true }));
+}
+
 function checkWhen(path, when) {
   checkObject(path, when, ['elementTextIn']);
   const condition = `${path}.elementTextIn`;
@@ -303,7 +410,7 @@ export function parseNameBindingCatalog(value) {
   if (isPlainObject(value) && value.version !== undefined && value.version !== CATALOG_VERSION) {
     fail(`${ROOT}.version`, `expected the number ${CATALOG_VERSION}`);
   }
-  checkObject(ROOT, value, ['version', 'unitDescriptors', 'xmlBinders', 'annotationBinders', 'expressionLanguages', 'xmlInjections']);
+  checkObject(ROOT, value, ['version', 'unitDescriptors', 'xmlBinders', 'annotationBinders', 'expressionLanguages', 'xmlInjections', 'annotationInjections']);
   checkStrings(`${ROOT}.unitDescriptors`, value.unitDescriptors);
 
   const lists = [
@@ -311,6 +418,7 @@ export function parseNameBindingCatalog(value) {
     ['annotationBinders', checkAnnotationBinder],
     ['expressionLanguages', checkExpressionLanguage],
     ['xmlInjections', checkXmlInjection],
+    ['annotationInjections', checkAnnotationInjection],
   ];
   // An id is what the coverage and the evidence name a binder, a language or a
   // family by: one space for all of them.
@@ -324,15 +432,29 @@ export function parseNameBindingCatalog(value) {
     });
   }
 
-  // The coverage counts the injection sites by id: a space of its own.
+  // The coverage counts the injection sites by id: a space of its own, shared by
+  // the XML sites and the annotation sites.
   const siteIds = new Set();
+  const checkSiteIds = (path, family) => family.sites.forEach((site, j) => {
+    if (siteIds.has(site.id)) fail(`${path}.sites[${j}]`, `duplicate site id ${JSON.stringify(site.id)}`);
+    siteIds.add(site.id);
+  });
   value.xmlInjections.forEach((family, i) => {
     const path = `${ROOT}.xmlInjections[${i}]`;
-    family.sites.forEach((site, j) => {
-      if (siteIds.has(site.id)) fail(`${path}.sites[${j}]`, `duplicate site id ${JSON.stringify(site.id)}`);
-      siteIds.add(site.id);
-    });
+    checkSiteIds(path, family);
     checkConsumerBinder(path, family, value.xmlBinders);
+  });
+
+  // An annotation belongs to one site: what a use of it is read as must not depend on the order of the sites.
+  const readBy = new Map();
+  value.annotationInjections.forEach((family, i) => {
+    const path = `${ROOT}.annotationInjections[${i}]`;
+    checkSiteIds(path, family);
+    family.sites.forEach((site, j) => site.annotations.forEach((name, k) => {
+      if (readBy.has(name)) fail(`${path}.sites[${j}].annotations[${k}]`, `${JSON.stringify(name)} is already read by the site ${JSON.stringify(readBy.get(name))}`);
+      readBy.set(name, site.id);
+    }));
+    checkFamilyBinders(path, family, value);
   });
   return deepFreeze(structuredClone(value));
 }

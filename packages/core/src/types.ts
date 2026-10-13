@@ -381,6 +381,33 @@ export interface JavaAnnotationUse {
   }>;
 }
 
+/** One annotation on a Java type member, with the member it is attached to
+ *  (openspec: changes/annotation-injection-references, design D1). Type-level
+ *  annotations stay in `JavaAnnotationUse`; local variables, lambda and catch
+ *  parameters, type-use annotations, receiver parameters, enum constants and
+ *  annotation element defaults are not members and are never recorded. */
+export interface JavaMemberAnnotationUse {
+  /** As written, like `JavaAnnotationUse.name`: `Resource` or `javax.annotation.Resource`. */
+  name: string;
+  /** The line the annotation starts on. */
+  line: number;
+  /** Keys and values as in `JavaAnnotationUse`; `line` is where the value
+   *  starts, which differs from the annotation's line when it spans several. */
+  arguments: Array<{ key: string; value: string | null; line: number }>;
+  on: "field" | "method" | "constructor" | "parameter" | "component";
+  /** Simple name of the top-level type the member is declared in, however
+   *  deeply nested or anonymous the declaring type is. */
+  owner: string;
+  /** The declaring type is not a top-level type (nested, local or anonymous). */
+  nested: boolean;
+  /** A field's declarator, a method or constructor, or for a parameter or
+   *  component the method, constructor or record it belongs to; `line` is the
+   *  line of the name. */
+  member: { name: string; line: number };
+  /** Set for `on: "parameter"` and `on: "component"`. `index` counts from 0. */
+  parameter?: { name: string; index: number; line: number };
+}
+
 // Plugin interfaces
 export interface StructuralAnalysis {
   functions: Array<{
@@ -430,6 +457,9 @@ export interface StructuralAnalysis {
   exports: Array<{ name: string; lineNumber: number; isDefault?: boolean }>;
   /** Java: every class literal in the file, in source order. */
   classLiterals?: JavaClassLiteral[];
+  /** Java: every annotation on a field, method, constructor, parameter or
+   *  record component, at any depth of type nesting, in source order. */
+  memberAnnotations?: JavaMemberAnnotationUse[];
   // Non-code structural data (all optional for backward compat)
   sections?: SectionInfo[];
   definitions?: DefinitionInfo[];

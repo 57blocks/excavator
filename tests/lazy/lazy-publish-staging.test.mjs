@@ -158,12 +158,14 @@ describe('lazy-analyze publish() — staged publish, fault injection (design D4,
 
   it('a single record longer than the limit fails as a named ProductTooLargeError; every final product stays byte-identical (O5)', async () => {
     // One function with a very long name makes one node record far longer
-    // than any whole-document product of this fixture.
-    const longName = `handle${'X'.repeat(3_000)}`;
-    writeFileSync(join(root, 'src', 'b.ts'), `export function helper(): void {}\nexport function ${longName}(): void {}\n`);
+    // than any whole-document product of this fixture. The name is as long as
+    // the largest record the baseline has plus a margin, so a coverage section
+    // that grows the facts-digest record does not need this test recalibrated.
     const fits = Math.max(...baselineSerialization
       .filter((e) => e.measuredAs !== 'bytes')
       .map((e) => e.chars ?? e.maxRecordChars));
+    const longName = `handle${'X'.repeat(fits + 1_000)}`;
+    writeFileSync(join(root, 'src', 'b.ts'), `export function helper(): void {}\nexport function ${longName}(): void {}\n`);
     const limit = fits + 500;
     expect(limit).toBeLessThan(longName.length);
 
