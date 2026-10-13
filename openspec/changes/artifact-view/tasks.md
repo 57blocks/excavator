@@ -8,10 +8,13 @@
 5. `docs(openspec): record artifact-view slice A acceptance`：任务 4.5。
 5a. `fix(view): slice A acceptance fixes`：任务 4A.1–4A.6（验收发现，design D13）。
 5b. `docs(openspec): record artifact-view 4A results`：D5 / D13 按实测更新，4A 复选框。
+5c. `fix(view): make the smoke exit check hermetic`：4A.4 的用例在并行负载下非封闭，改为按 SingletonSocket 定位本次启动的目录。
 6. `feat(view): structure treemap and search`：任务 5.1–5.3。
-7. `feat(view): graph explorer and node detail`：任务 6.1–6.4。
-8. `feat(view): evidence text and source excerpts`：任务 7.1–7.2。
+7. `feat(view): CSR adjacency and directory aggregation`：任务 6.1。
+7a. `feat(view): graph explorer and node detail`：任务 6.2–6.4、7.2 与 5.1 跟进（图谱过渡依赖 reduced-motion 开关，所以 7.2 随 7a）。
+8. `feat(view): evidence text and source excerpts`：任务 7.1。
 9. `docs(openspec): record artifact-view slice B acceptance`：任务 7.3。
+9a. `fix(view): slice B acceptance fixes`：任务 7A.1–7A.5。
 10. `feat(view): semantic layers when present`：任务 8.1–8.3。
 11. `feat(view): drag-and-drop data directory`：任务 9.1–9.2。
 12. `feat(view): motion pass, reduced motion and CSP`：任务 10.1–10.3。
@@ -62,22 +65,32 @@
 
 ## 5. 结构与搜索（切片 B）
 
-- [ ] 5.1 Structure：d3-hierarchy squarify 目录 treemap，按 `totalLines` 定大小（缺 fingerprints 时按文件数并标注）、按语言着色、带标签；点击下钻与返回有缩放过渡；文件格子显示符号列表并可跳到节点。验证：夹具页面下钻两层并返回；`totalLines` 缺失夹具显示标注。
-- [ ] 5.2 Search：名字 / 路径 / id 的子序列匹配（Worker 内建索引）；存在 `index` 段时支持词项精确匹配（posting → chunk → 节点）；结果列表跳转并写 hash。验证：夹具搜一个只在 identifiers 里出现的词命中节点；无 `index` 段时该搜索显示「标识符搜索不可用」。
-- [ ] 5.3 深链接：`#/node/<id>` 打开定位并展开详情；`#/dir/<path>` 定位 treemap。验证：冒烟脚本带片段打开夹具页，DOM 里详情面板出现该 id。
+- [x] 5.1 Structure：d3-hierarchy squarify 目录 treemap，按 `totalLines` 定大小（缺 fingerprints 时按文件数并标注）、按语言着色、带标签；点击下钻与返回有缩放过渡；文件格子显示符号列表并可跳到节点。验证：夹具页面下钻两层并返回；`totalLines` 缺失夹具显示标注。
+- [x] 5.2 Search：名字 / 路径 / id 的子序列匹配（Worker 内建索引）；存在 `index` 段时支持词项精确匹配（posting → chunk → 节点）；结果列表跳转并写 hash。验证：夹具搜一个只在 identifiers 里出现的词命中节点；无 `index` 段时该搜索显示「标识符搜索不可用」。
+- [x] 5.3 深链接：`#/node/<id>` 打开定位并展开详情；`#/dir/<path>` 定位 treemap。验证：冒烟脚本带片段打开夹具页，DOM 里详情面板出现该 id。
 
 ## 6. 图谱探索与详情（切片 B）
 
-- [ ] 6.1 Worker 建 CSR 邻接表（出边、入边，按边类型分段）；目录级与成员级聚合（节点数、边数按类型）。验证：单测对夹具的邻域查询与手算一致。
-- [ ] 6.2 Graph 视图三级：聚合级 d3-force（≤ 400 节点，Canvas 2D）、展开目录后的文件级、选中节点的 1–2 跳邻域；聚合边带计数、按类型开关、方向粒子；展开 / 收起有过渡。验证：夹具页面展开一个目录出现其文件；hadoop 烘焙页首屏只画聚合节点（O7，验收时记录）。
-- [ ] 6.3 节点详情面板：事实字段、按类型分组的出入边与证据 file:line、chunk 的 identifiers / comments / strings、跳转到对端；缺 `index` 段时词项区标「不可用」。验证：夹具页面选一个类节点列出全部存在的边类型。
-- [ ] 6.4 边类型图例与遍历边集合与 `retrieve.mjs` 的确定性边类型一致（contains、imports、exports、calls、inherits、implements、mentions、references、injects）。验证：单测从 `retrieve.mjs` 读边类型集合对照页面常量。
+- [x] 6.1 Worker 建 CSR 邻接表（出边、入边，按边类型分段）；目录级与成员级聚合（节点数、边数按类型）。验证：单测对夹具的邻域查询与手算一致。
+- [x] 6.2 Graph 视图逐层下钻的节点图：聚合级 d3-force（≤ 400 节点，Canvas 2D）→ 点击目录进入子目录与文件 → 点击文件进入符号层 → 点击符号显示 1–2 跳邻域并开详情；面包屑逐级返回且上一层节点位置不变，层级写入 hash；画布拖拽平移、滚轮与双指缩放、双击背景适配、节点可拖动且松手后保持位置；聚合边带计数、按类型开关、方向粒子；层级切换有过渡，`prefers-reduced-motion` 下直接切换、粒子停止。验证：夹具页面点击目录出现其文件、点击文件出现其符号、面包屑回退；冒烟用 CDP 模拟拖拽、滚轮与点击下钻后读 `data-graph-*` 断言变换与层级（去掉下钻的点击处理后必须红）；hadoop 烘焙页首屏只画聚合节点（O7，验收时记录）。
+- [x] 6.3 节点详情面板：事实字段、按类型分组的出入边与证据 file:line、chunk 的 identifiers / comments / strings、跳转到对端；缺 `index` 段时词项区标「不可用」。验证：夹具页面选一个类节点列出全部存在的边类型。
+- [x] 6.4 边类型图例与遍历边集合与 `retrieve.mjs` 的确定性边类型一致（contains、imports、exports、calls、inherits、implements、mentions、references、injects）。验证：单测从 `retrieve.mjs` 读边类型集合对照页面常量。
 
 ## 7. 证据与源码（切片 B）
 
-- [ ] 7.1 证据行原文与节点源码片段渲染（等宽、行号、证据行高亮）；两段任一缺失时对应位置显示「未嵌入源码」并指向清点里的原因（`--no-source` / 预算裁剪 / hash 不一致）。验证：默认烘焙夹具显示原文；`--no-source` 夹具显示占位与原因。
-- [ ] 7.2 `prefers-reduced-motion` 的基础落地：所有过渡读同一个开关。验证：冒烟脚本以 `--force-prefers-reduced-motion` 打开，DOM 标记为静止模式。
-- [ ] 7.3 切片 B 验收（acceptor）：wcp 烘焙页的结构、搜索、图谱、详情、证据逐项核对（抽 20 个节点对照源码与 JSONL：边对端、证据行、原文 0 错）；hadoop 烘焙 O7 数字；记录进本节末尾。
+- [x] 7.1 证据行原文与节点源码片段渲染（等宽、行号、证据行高亮）；两段任一缺失时对应位置显示「未嵌入源码」并指向清点里的原因（`--no-source` / 预算裁剪 / hash 不一致）。验证：默认烘焙夹具显示原文；`--no-source` 夹具显示占位与原因。
+- [x] 7.2 `prefers-reduced-motion` 的基础落地：所有过渡读同一个开关。验证：冒烟脚本以 `--force-prefers-reduced-motion` 打开，DOM 标记为静止模式。
+- [x] 7.3 切片 B 验收（acceptor）：wcp 烘焙页的结构、搜索、图谱、详情、证据逐项核对（抽 20 个节点对照源码与 JSONL：边对端、证据行、原文 0 错）；hadoop 烘焙 O7 数字；记录进本节末尾。
+
+切片 B 验收记录（74047706，独立 Opus 验收代理在分离检出里只读核查，报告与截图在仓库外）：有条件通过，一个阻塞项，编造为 0。规格符合性：四层下钻、面包屑、URL 片段、返回后位置不变、拖拽平移、滚轮缩放、双击适配、节点拖动钉住、过渡与 reduced-motion、详情、证据原文、`--no-source` 原因全部符合；双指缩放只审了代码未实测。阻塞项：文件层与邻域层用「前 400 / 最近 400」而不是 D14 的 399 + `more` 桶，连到未索引符号的边既不画也不计数（hadoop `FSNamesystem.java` 460 个符号、同文件内 1,442 条边，页面画 1,140 条、302 条无处可见）。非阻塞：图例每类计数只算画出的链接且未标明（namenode 层 inherits 显示 3、真值 26，某类全被裁时显示 0 并禁用）；邻域层只报未画节点数、不报连到它们的边数；两个变异未被测试抓到（目录层 outsideIn 置 0、文件层 outsideOut 不计数）；冒烟未覆盖双击适配与钉住后保持位置（验收实测补上）。wcp 冒烟 9 条路由全部 ready、0 错误、0 CSP 违规，交互：拖拽 +120/+60、滚轮 k ×1.568、双击回适配、点击 handlers 下钻、hash 返回后 transform 与钉住位置（990）恢复。零编造抽查：20 个节点 142 条证据、603 行片段与源码逐字一致，聚合边 wcp-auth/internal 13 条、v2/internal 53 条、hadoop namenode 861 条与 JSONL 一致，`refreshToken` 名字 8 / 标识符 33 与复算一致，核对器先用 3 处篡改证明能抓。hadoop O7：`--no-source` 16.76 MB / 8.9 s / RSS 735 MB，各路由 ready 339–435 ms，CSR 72–82 ms，首屏 31 / 151 / 400 节点，倒排表在 ready 之后 89 ms。无残留：全部 `chrome.exit=closed`，但 Chrome 另在用户临时目录留下 22 个空的 `com.google.Chrome.chrome_chrome_url_fetcher_.*`，4A.4 覆盖不到。范围外：JS/TS 有 256 条 `imports` 边 `evidence` 为空却标 `extracted`，是事实层缺陷，已另开任务。
+
+## 7A. 切片 B 验收发现的修复（切片 B）
+
+- [ ] 7A.1 文件层与邻域层改为与目录层相同的有界规则：最重的 399 项加一个可见的 `more` 桶；连到被收拢符号的边计入可见桶，守恒 `drawn + collapsed + outside = total` 在页面与自报里给出。验证：460 个符号的合成夹具单测断言各桶相加等于总边数（先对「静默 continue」的变体红）；hadoop `FSNamesystem.java` 复跑，1,442 条边全部有去向。
+- [ ] 7A.2 图例每类显示 `drawn / total`，总数按当前范围内的全部边计，某类有边时开关不禁用。验证：单测与 namenode 层复跑（inherits 显示 3 / 26）。
+- [ ] 7A.3 邻域层按跳数分配配额（1 跳与 2 跳各有保底，高扇入节点不能占满 400），并报告连到未画节点的边数。验证：合成夹具里一个 500 入度节点的 `?hops=2` 仍能看到 2 跳节点；自报项断言。
+- [ ] 7A.4 补两条正向断言：目录层 `outsideIn`、文件层 `outsideOut` 的计数来自夹具的已知值。验证：对应变异必须红。
+- [ ] 7A.5 冒烟脚本启动 Chrome 时设 `TMPDIR=<profile>/tmp` 并随 profile 一起清理；4A.4 的检查扩展到 `chrome_url_fetcher` 目录。验证：跑前跑后用户临时目录里以 `com.google.Chrome.` 开头的目录数不增加（本机其它会话也在跑 Chrome，断言只针对本次 profile 下的 tmp 目录为空且被删除）。
 
 ## 8. 语义层（切片 C）
 
@@ -92,6 +105,7 @@
 
 ## 10. 动效与隐私（切片 C）
 
+- [ ] 10.0 图谱节点视觉语言（design D15）：形状按节点种类、填充按语言色径向渐变、目录与成员节点带语言环与计数徽章、入度刻度；边改二次曲线、箭头与线宽按计数、聚焦模式降噪；标签按缩放分细节层次并带底衬与类型字形；悬停柔光、选中脉冲环、拖动阴影、进入一层时从被点节点交错弹出；画布网格与晕影；深浅主题令牌；`prefers-reduced-motion` 下保留形状颜色、去掉动画；图例同形状。验收建议并入：标签只给最大的约 20 个节点并做碰撞剔除、其余悬停显示；同一对节点的多类型边默认合并为一条带类型分段的边；边透明度按 log 计数；2 跳节点在深色下提高对比度；目录层可选按子目录分簇着色。验证：wcp `wcp-auth/internal` 目录层、一个符号邻域、hadoop namenode 目录层三张截图逐项对照 D15；冒烟读 `data-graph-*` 确认聚焦模式与标签层次切换；页面模型单测断言形状与颜色映射。
 - [ ] 10.1 动效清单落地：计数器、滚动显现、treemap 缩放、图谱展开过渡、边上粒子、面板切换；每项有一个 `data-motion` 标记，`prefers-reduced-motion` 下全部静止。验证：冒烟脚本两种模式各打开一次，统计 `data-motion` 元素数与静止标记。
 - [ ] 10.2 CSP 元标签最终形态（`default-src 'none'`；内联脚本与样式；`img-src data:`；`worker-src blob:`）与无网络自检；深色主题与系统字体栈定稿。验证：1.2 的测试断言 CSP 字面；冒烟脚本断言控制台无 CSP 违规。
 - [ ] 10.3 性能护栏：hadoop 烘焙页打开到总览可交互 ≤ 10 s、图谱首屏 ≤ 400 节点；解码与 CSR 在 Worker。验证：O7 记录。

@@ -112,6 +112,26 @@
 - **WHEN** 打开 hadoop 规模的烘焙页面并进入图谱视图
 - **THEN** 首屏只画目录级聚合节点与聚合边，展开一个目录后才画其中的文件与符号
 
+### Requirement: 图谱逐层下钻与直接操作
+
+图谱视图 SHALL 以节点图呈现，并支持逐层下钻：点击一个成员或目录节点 SHALL 进入它的下一层（其子目录与文件），点击一个文件节点 SHALL 进入其符号层，点击一个符号节点 SHALL 显示其邻域并打开详情；每一层 SHALL 有面包屑可逐级返回，当前层级 SHALL 写入 URL 片段。画布 SHALL 支持拖拽平移、滚轮与双指缩放、双击背景缩放到适配，节点 SHALL 可拖动并在松手后保持位置。层级切换 SHALL 有过渡动画，`prefers-reduced-motion` 下直接切换。
+
+#### Scenario: 点击下钻
+- **WHEN** 在聚合层点击目录节点 `wcp-auth/internal`
+- **THEN** 图谱切换到该目录的子目录与文件，面包屑显示 `wcp-auth › internal`，URL 片段指向该目录
+
+#### Scenario: 文件到符号
+- **WHEN** 在目录层点击一个文件节点
+- **THEN** 图谱显示该文件包含的函数与类及它们之间的边，点击其中一个符号打开详情与邻域
+
+#### Scenario: 平移缩放与拖动
+- **WHEN** 拖拽画布空白处、滚动滚轮、双击背景、拖动一个节点
+- **THEN** 画布分别平移、缩放、缩放到适配，节点随指针移动并在松手后停在新位置
+
+#### Scenario: 面包屑返回
+- **WHEN** 在符号层点击面包屑的上一级
+- **THEN** 图谱回到目录层，之前展开的节点位置不变
+
 ### Requirement: view skill 的行为
 
 `/excavator-view` SHALL：确认 `.excavator/knowledge-graph.jsonl` 存在，否则提示运行 `/excavator` 并停止；用共享的新鲜度助手判定并提示；模板缺失时先构建；运行烘焙；报告输出路径、文件大小、嵌入的产物清单、被裁剪的项与新鲜度状态；默认用宿主的系统打开器打开文件，`--no-open` 时只打印路径。skill MUST NOT 调用模型，MUST NOT 修改 `.excavator/` 里除输出文件之外的任何产物，MUST NOT 起常驻进程或监听端口。
