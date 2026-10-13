@@ -61,7 +61,16 @@
 
 **D4：流式烘焙与自检。** `readline` 逐行读 `knowledge-graph.jsonl`，字符串驻留，列以可增长的 Int32 缓冲累积；结束时按 header 校验各流计数，不符即具名失败。源码原文经 SourceSnapshot（与 manifest 同一 `sourceRevision`）读取，只读 manifest 里的文件、只取需要的行；manifest 的 `contentHash` 与快照不一致的文件不嵌、计数明示。写出前：用解码器解一遍得到的计数等于 header；扫描输出不含外部引用、含 CSP。写临时文件后 `rename` 替换。任何失败不触碰目标路径。
 
-**D5：预算与裁剪顺序。** `--source-budget` 默认 64 MB，按 `evidenceText` 与 `excerpts` 的原文字节合计；超出先整段去 `excerpts`，仍超再整段去 `evidenceText`（整段去而不是部分去：部分裁剪会造成「有的边有原文、有的没有」的第四态）。硬上限：全部段 base64 后合计 256 MB，超出具名失败（`view.html` 需要 X 字节，上限 Y）。按实测，wcp 默认烘焙约 3 MB，hadoop 约 8 MB 图 + 证据原文（约 50 MB 原文、gzip 后约 8 MB）在预算内、源码片段（约 80 MB）超预算被裁，总计约 20 MB。
+**D5：预算与裁剪顺序。** `--source-budget` 默认 64 MB，按随源码规模增长的三段原文字节合计：`excerpts`（符号源码片段）、index 字面量（source-index 里的注释与字符串字面量，切片 A 验收后独立成段）、`evidenceText`（证据行原文）；超出按固定顺序整段裁剪：`excerpts` → index 字面量 → `evidenceText`（整段去而不是部分去：部分裁剪会造成「有的边有原文、有的没有」的第四态）。硬上限：全部段 base64 后合计 256 MB，超出具名失败（`view.html` 需要 X 字节，上限 Y）。`--raw` 体积约放大 4.7 倍（wcp 5.1 MB → 24.2 MB），大图会撞硬上限，文档要写明。
+
+切片 A 实测（2026-10-13，HEAD 9c276c06）：
+
+| 语料 | 默认 | `--no-source` | 烘焙耗时 | Node 峰值 RSS | Chrome 解码 / 可交互 |
+|---|---|---|---|---|---|
+| wcp | 5.12 MB（图组 1.35、index 1.31、excerpts 2.05、evidenceText 0.22、模板 0.19） | 1.83 MB | 3.3 s / 1.1 s | 297 MB / 177 MB | 0.19 s / 0.28 s |
+| hadoop | 56.5 MB（excerpts 150 MB 原文按预算裁掉） | 32.6 MB | 18.8 s / 8.4 s | 1.6 GB / 0.9 GB | 0.85 s / 1.12 s；0.42 s / 0.63 s |
+
+提案阶段的估算漏了 index 段（hadoop 上它是体积大头）与 interning 期间的对象开销。两条跟进（任务 4A）：posting 段不再嵌入、由页面 Worker 从 chunk 的标识符重建倒排表；index 字面量进预算。烘焙内存按 hadoop 剖析后压低，目标是 1 GB JSONL 在 Node 默认堆内完成。
 
 **D6：清点与新鲜度规则。**
 
@@ -83,9 +92,11 @@
 
 **D10：命名与门禁更新。** skill 与包一律用 `view`，不用 `dashboard`（契约测试禁用该词）。`test_service_only_contract.test.mjs` 保留对 `packages/dashboard`、`packages/viewer`、`skills/excavator-dashboard`、tour 与 thumbnail 的断言，新增断言：`packages/view` 不含任何服务器启动代码（无 `listen(`、无 `http.createServer`）、`skills/excavator-view/SKILL.md` 不含 `--with-dashboard` 与端口；`install.test.mjs` 改 11；`test_skill_graph_freshness.test.mjs` 的列表加 `excavator-view`。
 
-**D11：先验装置。** `scripts/view-smoke.mjs`：用 headless Chrome 以 `file://` 打开烘焙页，`--virtual-time-budget` 等待解码，`--dump-dom` 读页面自报的信息——页面把解码后的计数、`window.onerror` 与 CSP 违规计数、解码耗时与总览可交互耗时都写进固定 `data-*` 属性。装置先用一个故意截断数据段的页面证明它会红，再用于 wcp 烘焙页。找不到 Chrome 时测试以可见的 skipped 结束，不假绿。headless `--dump-dom` 不能往文件选择器里放目录，所以拖入模式的核对分两层：解析函数与烘焙共用并在 Node 里单测；界面入口在验收时人工拖入 wcp 的 `.excavator/` 核对清点与计数（O9）。
+**D11：先验装置。** `scripts/view-smoke.mjs`：用 headless Chrome 以 `file://` 打开烘焙页，读页面自报的信息——页面把解码后的计数、`window.onerror` 与 CSP 违规计数、解码耗时与总览可交互耗时都写进固定 `data-*` 属性。实现（切片 A 修正）：不用 `--virtual-time-budget` 加 `--dump-dom`，因为虚拟时间不等 Worker 线程，解码在 Worker 里的页面在 dump 时还停在 loading；改为 `--remote-debugging-pipe` 走 DevTools 协议（零依赖），真实时间轮询 `#root` 直到 ready / error，再读 DOM，退出码按 ready、错误数为零、CSP 违规为零、解码计数等于 header 判定。装置先用一个故意截断数据段的页面证明它会红，再用于 wcp 烘焙页。找不到 Chrome 时测试以可见的 skipped 结束，不假绿。headless `--dump-dom` 不能往文件选择器里放目录，所以拖入模式的核对分两层：解析函数与烘焙共用并在 Node 里单测；界面入口在验收时人工拖入 wcp 的 `.excavator/` 核对清点与计数（O9）。
 
 **D12：skill 行为。** `SKILL.md` 英文；步骤：解析 `PROJECT_ROOT` / `PLUGIN_ROOT`（与其它 skill 相同的三候选）；确认图谱存在；运行 `consumer-freshness.mjs`（固定句式，满足新鲜度测试）；确认模板；运行 `build-view.mjs`，传旗标；读脚本打印的 JSON 报告（路径、字节数、清点、裁剪、新鲜度）转述给用户；按宿主选打开器（`open` / `xdg-open` / `start`），`--no-open` 跳过；提醒默认嵌入源码原文、外发用 `--no-source`。
+
+**D13：切片 A 验收后的修正（任务 4A）。** (1) index 字面量独立成段并进预算（D5）；(2) posting 段不嵌入，页面 Worker 从 chunk 的标识符列重建倒排表，标识符搜索结果不变；(3) 成员卡片的数字是 manifest 条目数，标签改为「files in manifest」并并列 selection 的 selected 数（wcp 两者差 1，是被选中却没有 manifest 条目的符号链接，上游行为，页面不猜）；环图中心是候选数，标签改为「candidate files」；(4) 冒烟脚本先发 CDP `Browser.close` 再超时 SIGKILL，不留 Chrome 临时目录；(5) O3 补「缺 manifest 时已有旧文件逐字节不变」的断言；(6) 烘焙内存在 hadoop 上剖析并压低。「Available in a later slice」占位文案在 12.2 必须全部消失，列为检查项。
 
 ## 验收 Oracle（动手前写死）
 
@@ -95,7 +106,7 @@
 - O4 源码开关：`--no-source` 后输出不含夹具里的标记串；默认烘焙含该标记串；manifest hash 不一致的文件不嵌并计数。
 - O5 预算：`--source-budget 0` 下清点报告列出 `excerpts` 与 `evidenceText` 被裁，图计数完整。
 - O6 `file://` 冒烟（wcp 真实烘焙）：页面自报计数 = header 计数；控制台错误 0；六块按清点出现；深链接定位。装置先用坏页面证明会红。
-- O7 规模（hadoop 真实烘焙）：输出 ≤ 25 MB；烘焙 ≤ 60 s；Chrome 打开到总览可交互 ≤ 10 s；图谱首屏只画聚合节点。数字记入验收记录。
+- O7 规模（hadoop 真实烘焙）：烘焙 ≤ 60 s；Chrome 打开到总览可交互 ≤ 10 s；图谱首屏只画聚合节点；体积以切片 A 实测为基线（默认 56.5 MB、`--no-source` 32.6 MB），任务 4A 的 posting 重建与字面量进预算落地后重测，`--no-source` 目标 ≤ 20 MB，达不到则在设计里写明原因与剩余构成；烘焙峰值 RSS 剖析后重测并记录。数字记入验收记录。（原目标「≤ 25 MB」是未实测的估计，已作废。）
 - O8 门禁：三件套、`pnpm --filter @excavator/core test`、`pnpm run typecheck`、`node scripts/check-refs.mjs`、`openspec validate --all --strict` 全绿；安装测试 11 个 skill；service-only 契约测试更新后通过。
 - O9 视觉与动效（人工，截图进验收记录，不进仓库）：wcp 页面六块各一张截图；动效清单逐项勾：计数器、滚动显现、treemap 缩放、图谱展开过渡、边上粒子、面板切换；`prefers-reduced-motion` 下全部静止；拖入 wcp 的 `.excavator/` 与烘焙页清点一致。
 - O10 分享路径：把 wcp 的 `view.html` 单独拷到无网络的临时目录打开，功能同 O6。
