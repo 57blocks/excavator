@@ -172,7 +172,7 @@ export function createUnitIndex(manifestPaths, descriptorNames) {
 }
 
 const unitKey = (unit) => (unit === null ? 'repository' : `unit:${unit}`);
-const unitLabel = (unit) => (unit === null ? '(repository)' : unit === '' ? '.' : unit);
+export const unitLabel = (unit) => (unit === null ? '(repository)' : unit === '' ? '.' : unit);
 
 // ---------------------------------------------------------------------------
 // Binding targets
@@ -402,13 +402,20 @@ function classify(all) {
  *   named: (name: string) => object[],
  *   bindingsNamed: (name: string, scope: { unit: string|null, namespace: string, file?: string }) => object[],
  *   resolveName: (name: string, scope: { unit: string|null, namespace: string, file?: string }) => { hits: object[], target: object, via: object[] },
+ *   resolveHits: (hits: object[]) => { hits: object[], target: object, via: object[] },
+ *   resolveDeclared: (declared: { declared: { kind: string, text: string }|null, unknownBecause: string|null, inherits: string|null, unit: string|null, namespace: string }) => object,
  * }}
  *   `elByName` is the bindings an expression can reach, by name; `named` every
  *   binding of a name, in any unit and namespace; `bindingsNamed` those of one
  *   unit and namespace (and one file, when `file` is given); `resolveName` what
  *   a name comes to there (D3): its `hits`, the `target` they come to - unknown
  *   with a reason when there is no binding - and `via`, the sites of the hits
- *   and of every binding their resolution went through, by file, line and binder.
+ *   and of every binding their resolution went through, by file, line and binder;
+ *   `resolveHits` the same for any bindings (a caller that picks its own hits);
+ *   `resolveDeclared` the target of what an element declared - its class text,
+ *   its `unknownBecause` and `inherits`, in a unit and namespace - by the rules a
+ *   binding's target follows, for an element that declares no binding (the
+ *   consumer of an injection). Arrays the table returns are read-only.
  */
 export function buildNameBindingTable({
   sites, catalog, manifestPaths, javaRows, classIds, javaTypes, otherJvm, declaredJavaTypes, mutations = {},
@@ -484,12 +491,17 @@ export function buildNameBindingTable({
     if (binding.target !== undefined) return binding.target;
     if (resolving.has(binding)) return CYCLE;
     resolving.add(binding);
-    binding.target = targetOfBinding(binding);
+    binding.target = resolveDeclared(binding);
     resolving.delete(binding);
     return binding.target;
   };
 
-  function targetOfBinding({ declared, unknownBecause, inherits, unit, namespace }) {
+  /**
+   * The target of what an element declared (D3): the same rules for a binding
+   * and, for an element that declares none (an inner or anonymous bean that
+   * consumes an injection), for the element itself.
+   */
+  function resolveDeclared({ declared, unknownBecause, inherits, unit, namespace }) {
     // A factory builds the bean: the class written, if any, is the factory's. Tripwire seam: it is the bean's.
     if (unknownBecause !== null && !mutations.ignoreUnknownWhen) return unknownTarget(unknownBecause);
     if (declared !== null && declared.kind !== 'name') return xmlTarget(declared, targetContext);
@@ -499,9 +511,8 @@ export function buildNameBindingTable({
     return through === null ? unknownTarget() : resolveName(through, { unit, namespace }).target;
   }
 
-  function resolveName(name, scope) {
-    const hits = bindingsNamed(name, scope);
-    if (hits.length === 0) return { hits, target: unknownTarget(`${name} has no binding in this unit`), via: NO_VIA };
+  /** What bindings come to together: `{ hits, target, via }`, `hits` being the bindings as given (at least one). */
+  function resolveHits(hits) {
     const entries = hits.map((hit) => ({ target: resolveBinding(hit), configures: hit.configures }));
     const via = new Set(hits.map((hit) => hit.site));
     for (const { target } of entries) for (const site of target.via) via.add(site);
@@ -518,10 +529,16 @@ export function buildNameBindingTable({
     return { hits, target: { ...fate.target, via: sortedVia }, via: sortedVia };
   }
 
+  function resolveName(name, scope) {
+    const hits = bindingsNamed(name, scope);
+    if (hits.length === 0) return { hits, target: unknownTarget(`${name} has no binding in this unit`), via: NO_VIA };
+    return resolveHits(hits);
+  }
+
   for (const binding of bindings) resolveBinding(binding);
   tally.nonIdentifierNames = bindings.filter((binding) => !binding.el).length;
 
-  return { unitOf, bindings, elByName, tally, named, bindingsNamed, resolveName };
+  return { unitOf, bindings, elByName, tally, named, bindingsNamed, resolveName, resolveHits, resolveDeclared };
 }
 
 /**

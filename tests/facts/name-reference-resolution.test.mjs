@@ -1353,6 +1353,54 @@ describe('the binding table (design D2, D3)', () => {
     expect(kinds({ ignoreUnknownWhen: true })).toEqual({ orders: 'node', child: 'node', svc: 'node' });
   });
 
+  it('resolves what an element declared without a binding of its own, as a binding is resolved: resolveDeclared (design D5)', () => {
+    const table = tableOf({ 'app/pom.xml': POM, 'app/ctx.xml': ctx('  <bean id="orderDao" class="com.acme.OrderDaoImpl"/>', '  <bean id="svc" class="com.acme.Locator" factory-method="make"/>') });
+    const resolve = (rules) => table.resolveDeclared({ declared: null, unknownBecause: null, inherits: null, ...SPRING_APP, ...rules });
+    // its own class
+    expect(resolve({ declared: { kind: 'class', text: 'com.acme.OrderDaoImpl' } })).toMatchObject({ kind: 'node', id: 'class:app/src/OrderDaoImpl.java:OrderDaoImpl', via: [] });
+    expect(resolve({ declared: { kind: 'class', text: 'org.other.Outside' } })).toMatchObject({ kind: 'external' });
+    // a factory attribute wins over the class it writes
+    expect(resolve({ declared: { kind: 'class', text: 'com.acme.OrderDaoImpl' }, unknownBecause: 'factory-method' })).toMatchObject({ kind: 'unknown', reason: 'factory-method' });
+    // no class: the parent's, with the bindings gone through
+    const inherited = resolve({ inherits: 'orderDao' });
+    expect(inherited).toMatchObject({ kind: 'node', id: 'class:app/src/OrderDaoImpl.java:OrderDaoImpl' });
+    expect(sitesOf(inherited.via)).toEqual([['app/ctx.xml', 2, 'spring-xml-bean']]);
+    expect(resolve({ inherits: 'svc' })).toMatchObject({ kind: 'unknown', reason: 'factory-method' });
+    expect(resolve({ inherits: 'missing' })).toMatchObject({ kind: 'unknown', reason: 'missing has no binding in this unit' });
+    // nothing to go on
+    expect(resolve({})).toMatchObject({ kind: 'unknown', key: 'unknown', via: [] });
+    expect(resolve({}).reason).toBeUndefined();
+    // the name is looked up in the unit and namespace it is given
+    expect(resolve({ inherits: 'orderDao', unit: 'other' })).toMatchObject({ kind: 'unknown', reason: 'orderDao has no binding in this unit' });
+    expect(resolve({ inherits: 'orderDao', namespace: 'el' })).toMatchObject({ kind: 'unknown' });
+  });
+
+  it('acts on what is declared without a binding the way it acts on a binding: the seams noInheritance, ignoreUnknownWhen and noAliases', () => {
+    const files = { 'app/pom.xml': POM, 'app/ctx.xml': ctx('  <bean id="orderDao" class="com.acme.OrderDaoImpl"/>') };
+    const resolve = (mutations, rules) => tableOf(files, { mutations }).resolveDeclared({ declared: null, unknownBecause: null, inherits: null, ...SPRING_APP, ...rules });
+    expect(resolve({}, { inherits: 'orderDao' }).kind).toBe('node');
+    expect(resolve({ noInheritance: true }, { inherits: 'orderDao' }).kind).toBe('unknown');
+    const factory = { declared: { kind: 'class', text: 'com.acme.Locator' }, unknownBecause: 'factory-bean' };
+    expect(resolve({}, factory).kind).toBe('unknown');
+    expect(resolve({ ignoreUnknownWhen: true }, factory).kind).toBe('node');
+    const alias = { declared: { kind: 'name', text: 'orderDao' } };
+    expect(resolve({}, alias).kind).toBe('node');
+    expect(resolve({ noAliases: true }, alias).kind).toBe('unknown');
+  });
+
+  it('classifies any list of bindings: resolveHits, which resolveName is over the bindings of one name', () => {
+    const table = tableOf({
+      'app/pom.xml': POM,
+      'app/ctx.xml': ctx('  <bean id="x" class="com.acme.OrderDaoImpl"/>', '  <bean id="y" class="com.acme.Locator"/>', '  <bean id="z" class="com.acme.OrderDaoImpl"/>'),
+    });
+    const [x, y, z] = ['x', 'y', 'z'].map((name) => table.bindingsNamed(name, SPRING_APP)[0]);
+    expect(table.resolveHits([x, z]).target.kind).toBe('node');
+    expect(table.resolveHits([x, y]).target.kind).toBe('ambiguous');
+    expect(sitesOf(table.resolveHits([x, y]).via)).toEqual([['app/ctx.xml', 2, 'spring-xml-bean'], ['app/ctx.xml', 3, 'spring-xml-bean']]);
+    expect(table.resolveHits([x]).hits).toEqual([x]);
+    expect(table.resolveName('x', SPRING_APP)).toEqual(table.resolveHits([x]));
+  });
+
   it('fails on a binding of a binder the catalog does not have, or in a file outside the manifest', () => {
     const files = { 'app/pom.xml': POM, 'app/ctx.xml': ctx('  <bean id="x" class="com.acme.OrderDaoImpl"/>') };
     const scanFiles = Object.keys(files).map((path) => ({ path, language: 'xml' }));

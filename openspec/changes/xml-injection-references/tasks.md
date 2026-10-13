@@ -67,13 +67,13 @@
 
 ## 4. 注入解析
 
-- [ ] 4.1 新模块 `xml-injection-resolution.mjs` 的 `resolveXmlInjections`，按 design D6 分桶：顺序为静态不可见、可见绑定的目标归类、他处 / 无绑定、消费者。`scope: file` 只看同文件绑定，同单元其它文件的同名绑定算「他处」。
+- [x] 4.1 新模块 `xml-injection-resolution.mjs` 的 `resolveXmlInjections`，按 design D6 分桶：顺序为静态不可见、可见绑定的目标归类、他处 / 无绑定、消费者。`scope: file` 只看同文件绑定，同单元其它文件的同名绑定算「他处」。
   验证：`tests/facts/xml-injection-resolution.test.mjs` 覆盖规格「XML 注入点」的其余场景：property 的 ref 成边、注解声明的目标、经别名的目标、ref local 只看本文件、ref parent 静态不可见、名字只在别的单元、同名两个类为歧义、目标在仓库外、工厂方法定义作目标、消费者继承父定义的类、工厂方法定义作消费者、没有外层 bean、消费者在仓库外。
-- [ ] 4.2 `injects` 边与证据按 design D7：每个（消费者类，目标类）一条；证据含文件、行、`token`、`site`、消费者行与继承经过的绑定处、目标解析经过的全部绑定处；排序去重；自环照画。
+- [x] 4.2 `injects` 边与证据按 design D7：每个（消费者类，目标类）一条；证据含文件、行、`token`、`site`、消费者行与继承经过的绑定处、目标解析经过的全部绑定处；排序去重；自环照画。
   验证：测试断言精确的边与证据；规格场景「证据可复核」在夹具产物上读行核对。
-- [ ] 4.3 覆盖、缺口与守恒按 design D8：五类缺口的说明文字与样例形式；两条守恒不平衡时抛错；未收到站点与目录时为 `not-run`。
+- [x] 4.3 覆盖、缺口与守恒按 design D8：五类缺口的说明文字与样例形式；两条守恒不平衡时抛错；未收到站点与目录时为 `not-run`。
   验证：测试分别构造桶之和不等、缺口回读不等，断言抛错；`not-run` 一条断言；规格场景「守恒不平衡时构建失败」。
-- [ ] 4.4 变异绊线 `injectionIgnoreUnits`、`injectionFirstBinding`、`ignoreFileScope` 各让至少一条测试变红；第 2 步的十条绊线在共用绑定表上仍各让至少一条测试变红。不改生产默认值。
+- [x] 4.4 变异绊线 `injectionIgnoreUnits`、`injectionFirstBinding`、`ignoreFileScope` 各让至少一条测试变红；第 2 步的十条绊线在共用绑定表上仍各让至少一条测试变红。不改生产默认值。
   验证：测试里逐个打开开关，断言结果变化。
 
 ## 5. 接入流水线与夹具
