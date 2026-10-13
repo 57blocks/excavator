@@ -2,7 +2,8 @@
 // fact-layer freshness banner, the semantic-layer badges and the inventory.
 // Every status the bake can record maps to a visible state; an unrecognised
 // status is shown verbatim, never dropped.
-import type { DecodedCounts, InventoryItem, Meta } from '../data';
+import type { DecodedCounts, InventoryItem, Meta, Segments } from '../data';
+import { summaryCoverage } from './semantics';
 
 export interface CountRow {
   key: string;
@@ -64,6 +65,8 @@ export interface SemanticBadge {
   stateLabel: string;
   detail: string;
   command: string | null;
+  /** Summaries only: "<nodes with a summary>/<all nodes>", when the cache is present. */
+  summaries?: string;
 }
 
 const SEMANTIC = [
@@ -72,7 +75,12 @@ const SEMANTIC = [
   { artifact: 'domain-graph.json', label: 'Domain flows', refresh: '/excavator-domain' },
 ] as const;
 
-export function semanticBadges(meta: Meta): SemanticBadge[] {
+/**
+ * One badge per semantic product. With the decoded segments, the summaries
+ * badge counts the graph's nodes that have a cached summary against all of
+ * its nodes (task 8.1); without them it falls back to the bake's summary.
+ */
+export function semanticBadges(meta: Meta, segments?: Segments, totalNodes?: number): SemanticBadge[] {
   const inventory = meta.inventory ?? [];
   return SEMANTIC.map(({ artifact, label, refresh }): SemanticBadge => {
     const item = inventory.find((i) => i.name === artifact);
@@ -88,6 +96,15 @@ export function semanticBadges(meta: Meta): SemanticBadge[] {
     }
     const f = meta.freshness ?? {};
     if (artifact === 'semantic-cache.json') {
+      if (segments && typeof totalNodes === 'number') {
+        const c = summaryCoverage(segments, totalNodes);
+        const extra = [c.untrusted > 0 ? `${c.untrusted} not trusted` : '', c.notInGraph > 0 ? `${c.notInGraph} for nodes not in this graph` : ''].filter(Boolean);
+        const detail = `${c.withSummary} of ${c.total} nodes have a summary; ${c.fresh} fresh, ${c.stale} stale${extra.length > 0 ? `; ${extra.join(', ')}` : ''}`;
+        const summaries = `${c.withSummary}/${c.total}`;
+        return c.stale > 0 || c.untrusted > 0
+          ? { artifact, label, state: 'stale', stateLabel: 'Partly stale', detail, command: `run ${refresh}`, summaries }
+          : { artifact, label, state: 'present', stateLabel: 'Present', detail, command: null, summaries };
+      }
       const s = f.semanticCache;
       if (!s) return { artifact, label, state: 'present', stateLabel: 'Present', detail: 'no freshness summary recorded', command: null };
       const covered = `${s.entries} summaries for ${s.nodesInGraph} nodes; ${s.fresh} fresh, ${s.stale} stale`;

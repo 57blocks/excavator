@@ -127,3 +127,24 @@ export let lastActivation: { level: string; x: number; y: number } | null = null
 export function setLastActivation(value: { level: string; x: number; y: number } | null): void {
   lastActivation = value;
 }
+
+// --- layer coloring (task 8.2) -----------------------------------------------
+
+let layerColoring = false;
+const layerListeners = new Set<() => void>();
+
+/** Whether graph nodes are colored by architecture layer, for every level. */
+export function useLayerColoring(): [boolean, () => void] {
+  const value = useSyncExternalStore(
+    (l) => {
+      layerListeners.add(l);
+      return () => layerListeners.delete(l);
+    },
+    () => layerColoring,
+  );
+  const toggle = () => {
+    layerColoring = !layerColoring;
+    for (const l of layerListeners) l();
+  };
+  return [value, toggle];
+}

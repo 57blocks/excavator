@@ -11,12 +11,15 @@ import type { EdgeGroup, NeighborhoodResult, NodeEdgesResult } from '../model/gr
 import { chunkTerms, edgeEvidence, evidenceLocation, nodeFacts, nodeRowIndex, type NodeFacts } from '../model/node-detail';
 import { evidenceLineText, nodeExcerpt, reasonMessage } from '../model/source-text';
 import { dirHash, graphDirHash, graphFileHash, nodeHash, sectionHash } from '../routes';
-import { clearBusy, markBusy } from '../instrument';
+import { clearBusy, markBusy, report } from '../instrument';
 import { EdgeLegend } from './EdgeLegend';
 import { Breadcrumbs, GraphFrame, filterLinks, typeCounts, useLevelReport } from './Graph';
 import { GraphCanvas, type CanvasLink, type CanvasNode } from './GraphCanvas';
-import { runQuery, useCsr, useDisabledTypes } from './graph-state';
+import { runQuery, useCsr, useDisabledTypes, useLayerColoring } from './graph-state';
 import { SourceBlock } from './SourceBlock';
+import { LayerLegend } from './LayerLegend';
+import { Badge } from '../components/Badge';
+import { layerColoring, layerModel, nodeLayerNames, nodeSummary, summaryTooltip } from '../model/semantics';
 
 /** Evidence rows shown per edge in the detail. */
 const EVIDENCE_PER_EDGE = 3;
@@ -45,6 +48,8 @@ export function NodeRoute({ data, id, hops }: { data: ViewData; id: string; hops
 function NodeView({ data, id, row, hops }: { data: ViewData; id: string; row: number; hops: number }) {
   const csr = useCsr(data);
   const [disabled, toggle] = useDisabledTypes();
+  const [coloring, toggleColoring] = useLayerColoring();
+  const layers = useMemo(() => layerModel(data.segments, data.strings), [data]);
   const facts = useMemo(() => nodeFacts(data.segments, data.strings, row), [data, row]);
   const [hood, setHood] = useState<{ key: string; result: NeighborhoodResult } | null>(null);
   const [edges, setEdges] = useState<{ row: number; result: NodeEdgesResult } | null>(null);
@@ -97,12 +102,21 @@ function NodeView({ data, id, row, hops }: { data: ViewData; id: string; row: nu
     const str = (column: string, r: number) => (isTable(table) ? cellText(data.strings, table.columns[column]?.[r] ?? -1) : undefined);
     const nodes: CanvasNode[] = shownHood.rows.map((r, i) => {
       const d = shownHood.distance[i];
+      const nodeId = str('id', r) ?? '';
+      const summary = summaryTooltip(data.segments, nodeId);
+      const layerNames = layers ? nodeLayerNames(layers, nodeId) : [];
       return {
         key: str('id', r) ?? `row:${r}`,
         label: str('name', r) ?? str('id', r) ?? '?',
         size: 1,
         tone: d === 0 ? 'center' : d === 1 ? 'hop1' : 'hop2',
-        tooltip: [str('id', r) ?? '', `${str('type', r) ?? '—'} · ${d === 0 ? 'this node' : `${d} ${d === 1 ? 'hop' : 'hops'} away`}`, ...(d === 0 ? [] : ['Click to open it'])],
+        tooltip: [
+          nodeId,
+          `${str('type', r) ?? '—'} · ${d === 0 ? 'this node' : `${d} ${d === 1 ? 'hop' : 'hops'} away`}`,
+          ...(summary ? [summary] : []),
+          ...(layerNames.length > 0 ? [`Layer: ${layerNames.join(', ')}${layers?.stale ? ' (stale)' : ''}`] : []),
+          ...(d === 0 ? [] : ['Click to open it']),
+        ],
         activatable: d !== 0,
       };
     });
@@ -114,7 +128,8 @@ function NodeView({ data, id, row, hops }: { data: ViewData; id: string; row: nu
       else merged.set(k, { source: shownHood.edges[i + 1], target: shownHood.edges[i + 2], type: shownHood.types[shownHood.edges[i + 3]], count: 1 });
     }
     return { nodes, links: [...merged.values()], key: `node:${str('id', shownHood.row)}:${shownHood.hops}` };
-  }, [shownHood, data]);
+  }, [shownHood, data, layers]);
+  const colored = useMemo(() => (canvas && layers && coloring ? layerColoring(layers, canvas.nodes.map((n) => n.key)) : null), [canvas, layers, coloring]);
   const shownLinks = useMemo(() => (canvas ? filterLinks(canvas.links, disabled) : []), [canvas, disabled]);
 
   const groupsReport = currentEdges
@@ -139,6 +154,7 @@ function NodeView({ data, id, row, hops }: { data: ViewData; id: string; row: nu
               {[1, 2].map((h) => (h === hops ? <strong key={h} data-hops={h}>{h} {h === 1 ? 'hop' : 'hops'}</strong> : <a key={h} href={nodeHash(id, h)} data-hops={h}>{h} {h === 1 ? 'hop' : 'hops'}</a>))}
             </span>
             {canvas && <EdgeLegend counts={typeCounts(canvas.links)} disabled={disabled} onToggle={toggle} />}
+            <LayerLegend model={layers} on={coloring} onToggle={toggleColoring} colored={colored?.perLayer ?? new Map()} unlayered={colored?.unlayered ?? 0} aggregates={0} />
           </div>
         }
       >
@@ -150,6 +166,7 @@ function NodeView({ data, id, row, hops }: { data: ViewData; id: string; row: nu
             nodes={canvas.nodes}
             links={shownLinks}
             selectedKey={id}
+            nodeColors={colored?.colors ?? null}
             onActivate={(i) => {
               window.location.hash = nodeHash(canvas.nodes[i].key, hops);
             }}
@@ -231,6 +248,7 @@ function NodeDetail({ data, id, row, facts, edges }: { data: ViewData; id: strin
         </section>
         <TermsCard terms={terms} />
       </div>
+      <SummaryCard data={data} id={id} />
       <section className="card" data-excerpt={id}>
         <h2>Source</h2>
         {facts.line0 < 0 ? (
@@ -241,6 +259,64 @@ function NodeDetail({ data, id, row, facts, edges }: { data: ViewData; id: strin
       </section>
       <EdgesCard data={data} edges={edges} />
     </div>
+  );
+}
+
+/** The node's cached summary and tags with the bake's freshness verdict, and its layers (tasks 8.1, 8.2). */
+function SummaryCard({ data, id }: { data: ViewData; id: string }) {
+  const summary = nodeSummary(data.meta, data.segments, id);
+  const layers = layerModel(data.segments, data.strings);
+  const layerNames = layers ? nodeLayerNames(layers, id) : null;
+  const state = summary.state === 'entry' ? summary.badge.state : summary.state;
+  useEffect(() => {
+    report('data-semantics-node-summary', state);
+    report('data-semantics-node-layers', layerNames === null ? null : layerNames.length === 0 ? 'unlayered' : layerNames.join(','));
+    return () => {
+      report('data-semantics-node-summary', null);
+      report('data-semantics-node-layers', null);
+    };
+  }, [state, layerNames?.join(',')]);
+  return (
+    <section className="card" data-node-summary={state}>
+      <h2>Summary</h2>
+      {summary.state === 'not-generated' && (
+        <p className="muted">
+          <Badge state="not-generated">Not generated</Badge> <span className="mono">{summary.command}</span>
+        </p>
+      )}
+      {summary.state === 'invalid' && (
+        <p>
+          <Badge state="invalid">Invalid</Badge> semantic-cache.json could not be read: {summary.reason}
+        </p>
+      )}
+      {summary.state === 'none' && <p className="muted">Not summarized: the semantic cache has no entry for this node.</p>}
+      {summary.state === 'entry' && (
+        <>
+          <p>
+            <Badge state={summary.badge.state}>{summary.badge.label}</Badge>
+            {summary.badge.state === 'stale' && <span className="secondary"> The file changed after this summary was written.</span>}
+          </p>
+          <p className="summary-text">{text(summary.entry.summary)}</p>
+          {summary.entry.tags.length > 0 && (
+            <ul className="tag-list">
+              {summary.entry.tags.map((tag) => (
+                <li key={tag}>{tag}</li>
+              ))}
+            </ul>
+          )}
+          <p className="muted">
+            Model {text(summary.entry.model)} · generated {text(summary.entry.generatedAt)}
+            {summary.entry.verification !== null && summary.entry.verification !== undefined && <> · verification {text(summary.entry.verification)}</>}
+          </p>
+        </>
+      )}
+      {layerNames !== null && (
+        <p className="secondary" data-node-layers={layerNames.length === 0 ? 'unlayered' : layerNames.join(',')}>
+          Layer: {layerNames.length === 0 ? 'unlayered' : layerNames.join(', ')}
+          {layers?.stale && ' (the semantic graph is stale)'}
+        </p>
+      )}
+    </section>
   );
 }
 

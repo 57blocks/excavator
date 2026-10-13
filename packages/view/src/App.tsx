@@ -4,7 +4,7 @@ import type { ViewData } from './data';
 import { Nav } from './components/Nav';
 import { Overview } from './views/Overview';
 import { Coverage } from './views/Coverage';
-import { Placeholder } from './views/Placeholder';
+import { Semantics } from './views/Semantics';
 import { Graph } from './views/Graph';
 import { useReducedMotion } from './motion';
 import { NodeRoute } from './views/NodeRoute';
@@ -34,7 +34,7 @@ function View({ data, route }: { data: ViewData; route: Route }) {
   if (route.section === 'structure') return <Structure data={data} path="" />;
   if (route.section === 'graph') return <Graph data={data} level={{ kind: 'member', path: '' }} />;
   if (route.section === 'search') return <Search data={data} query={route.params.get('q') ?? ''} />;
-  return <Placeholder section={route.section} />;
+  return <Semantics data={data} flowParam={route.params.get('flow')} stepParam={route.params.get('step')} />;
 }
 
 export function App({ data, onFirstView }: { data: ViewData; onFirstView: () => void }) {

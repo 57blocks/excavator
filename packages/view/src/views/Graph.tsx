@@ -12,7 +12,9 @@ import { graphDirHash, graphFileHash, nodeHash } from '../routes';
 import { clearBusy, markBusy, report } from '../instrument';
 import { EdgeLegend } from './EdgeLegend';
 import { GraphCanvas, type CanvasLink, type CanvasNode } from './GraphCanvas';
-import { runQuery, useCsr, useDisabledTypes, type CsrState } from './graph-state';
+import { runQuery, useCsr, useDisabledTypes, useLayerColoring, type CsrState } from './graph-state';
+import { LayerLegend } from './LayerLegend';
+import { layerColoring, layerModel, nodeLayerNames, summaryTooltip } from '../model/semantics';
 
 export type GraphLevel = { kind: 'member'; path: '' } | { kind: 'directory'; path: string } | { kind: 'file'; path: string };
 
@@ -119,6 +121,8 @@ function itemTooltip(item: GraphItem): string[] {
 export function Graph({ data, level }: { data: ViewData; level: GraphLevel }) {
   const csr = useCsr(data);
   const [disabled, toggle] = useDisabledTypes();
+  const [coloring, toggleColoring] = useLayerColoring();
+  const layers = useMemo(() => layerModel(data.segments, data.strings), [data]);
   const [view, setView] = useState<{ key: string; result: GraphViewResult | FileViewResult } | { key: string; error: string } | null>(null);
   const key = `${level.kind}:${level.path}`;
 
@@ -159,19 +163,31 @@ export function Graph({ data, level }: { data: ViewData; level: GraphLevel }) {
         activatable: item.kind === 'dir' || item.kind === 'file',
       }));
       const links: CanvasLink[] = result.links.map((l) => ({ source: l.source, target: l.target, type: result.types[l.type], count: l.count }));
-      return { nodes, links, found: true as const };
+      // A file item is one graph node (its file node); a directory is an aggregate.
+      const table = data.segments.nodes;
+      const ids = result.items.map((item) => (item.kind === 'file' && item.fileRow !== undefined && isTable(table) ? (cellText(data.strings, table.columns.id?.[item.fileRow] ?? -1) ?? null) : null));
+      return { nodes, links, ids, found: true as const };
     }
     if ('rows' in result && result.found) {
       const table = data.segments.nodes;
       const str = (column: string, row: number) => (isTable(table) ? cellText(data.strings, table.columns[column]?.[row] ?? -1) : undefined);
       const nodes: CanvasNode[] = result.rows.map((row) => {
         const line0 = isTable(table) ? (table.columns.line0?.[row] ?? -1) : -1;
+        const nodeId = str('id', row) ?? '';
+        const summary = summaryTooltip(data.segments, nodeId);
+        const layerNames = layers ? nodeLayerNames(layers, nodeId) : [];
         return {
           key: str('id', row) ?? `row:${row}`,
           label: str('name', row) ?? str('id', row) ?? '?',
           size: 1,
           tone: 'symbol',
-          tooltip: [str('id', row) ?? '', `${str('type', row) ?? '—'}${line0 >= 0 ? ` · line ${line0}` : ''}`, 'Click to open its neighborhood and detail'],
+          tooltip: [
+            nodeId,
+            `${str('type', row) ?? '—'}${line0 >= 0 ? ` · line ${line0}` : ''}`,
+            ...(summary ? [summary] : []),
+            ...(layerNames.length > 0 ? [`Layer: ${layerNames.join(', ')}${layers?.stale ? ' (stale)' : ''}`] : []),
+            'Click to open its neighborhood and detail',
+          ],
           activatable: true,
         };
       });
@@ -182,10 +198,11 @@ export function Graph({ data, level }: { data: ViewData; level: GraphLevel }) {
         if (hit) hit.count += 1;
         else merged.set(k, { source: result.edges[i + 1], target: result.edges[i + 2], type: result.types[result.edges[i + 3]], count: 1 });
       }
-      return { nodes, links: [...merged.values()], found: true as const };
+      return { nodes, links: [...merged.values()], ids: nodes.map((n) => n.key), found: true as const };
     }
-    return { nodes: [], links: [], found: false as const };
-  }, [result, data, members]);
+    return { nodes: [], links: [], ids: [], found: false as const };
+  }, [result, data, members, layers]);
+  const colored = useMemo(() => (model?.found && layers && coloring ? layerColoring(layers, model.ids) : null), [model, layers, coloring]);
 
   const shownLinks = useMemo(() => (model ? filterLinks(model.links, disabled) : []), [model, disabled]);
   const levelName: LevelName = level.kind;
@@ -212,7 +229,21 @@ export function Graph({ data, level }: { data: ViewData; level: GraphLevel }) {
         title={title}
         crumbs={<Breadcrumbs kind={levelName} path={level.path} />}
         csr={csr}
-        legend={model?.found ? <EdgeLegend counts={typeCounts(model.links)} disabled={disabled} onToggle={toggle} /> : null}
+        legend={
+          model?.found ? (
+            <>
+              <EdgeLegend counts={typeCounts(model.links)} disabled={disabled} onToggle={toggle} />
+              <LayerLegend
+                model={layers}
+                on={coloring}
+                onToggle={toggleColoring}
+                colored={colored?.perLayer ?? new Map()}
+                unlayered={colored?.unlayered ?? 0}
+                aggregates={colored?.aggregates ?? 0}
+              />
+            </>
+          ) : null
+        }
       >
         {failed && <p className="bad-text">This level could not be computed: {failed}</p>}
         {csr.state === 'ready' && !current && !failed && <p className="muted">Computing this level…</p>}
@@ -227,6 +258,7 @@ export function Graph({ data, level }: { data: ViewData; level: GraphLevel }) {
             nodes={model.nodes}
             links={shownLinks}
             selectedKey={null}
+            nodeColors={colored?.colors ?? null}
             onActivate={activate}
             ariaLabel={`${title}: ${model.nodes.length} nodes, ${shownLinks.length} links`}
           />

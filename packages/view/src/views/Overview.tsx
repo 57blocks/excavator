@@ -101,8 +101,8 @@ export function Overview({ data }: { data: ViewData }) {
         <section className="card" aria-labelledby="semantic-heading">
           <h2 id="semantic-heading">Semantic layers</h2>
           <div className="semantic-badges">
-            {semanticBadges(meta).map((badge) => (
-              <div className="semantic-badge" key={badge.artifact} data-semantic={badge.artifact} data-state={badge.state}>
+            {semanticBadges(meta, data.segments, data.counts.nodes).map((badge) => (
+              <div className="semantic-badge" key={badge.artifact} data-semantic={badge.artifact} data-state={badge.state} data-summaries={badge.summaries}>
                 <div className="label">{badge.label}</div>
                 <Badge state={badge.state}>{badge.stateLabel}</Badge>
                 <div className="muted mono">{badge.artifact}</div>
@@ -111,6 +111,9 @@ export function Overview({ data }: { data: ViewData }) {
               </div>
             ))}
           </div>
+          <p className="muted">
+            <a href="#/semantics">Open the semantics section</a>
+          </p>
         </section>
       </div>
 

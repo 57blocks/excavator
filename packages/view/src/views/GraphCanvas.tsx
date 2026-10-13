@@ -102,7 +102,7 @@ interface Probe {
 }
 
 export function GraphCanvas({
-  level, nodes, links, selectedKey, onActivate, ariaLabel,
+  level, nodes, links, selectedKey, onActivate, ariaLabel, nodeColors = null,
 }: {
   level: string;
   nodes: CanvasNode[];
@@ -110,6 +110,12 @@ export function GraphCanvas({
   selectedKey: string | null;
   onActivate: (index: number) => void;
   ariaLabel: string;
+  /**
+   * Optional fill per node (a CSS custom property name, or null for the
+   * tone's color), indexed like `nodes`: the layer coloring (task 8.2). Kept
+   * out of `nodes` so switching it recolors without a new layout.
+   */
+  nodeColors?: Array<string | null> | null;
 }) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -139,6 +145,7 @@ export function GraphCanvas({
     reported: '',
     onActivate,
     linkSlots: [] as number[],
+    nodeFills: null as Array<string | null> | null,
   });
   st.current.onActivate = onActivate;
   st.current.selected = selectedKey;
@@ -273,6 +280,21 @@ export function GraphCanvas({
     report('data-graph-canvas-level', level);
   }, [level, nodes, links, width]);
 
+  // Layer colors: resolved against the page's tokens, redrawn without a new layout.
+  const colorsKey = nodeColors ? nodeColors.join('|') : '';
+  useEffect(() => {
+    const s = st.current;
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    if (!nodeColors) {
+      s.nodeFills = null;
+    } else {
+      const style = getComputedStyle(canvas);
+      s.nodeFills = nodeColors.map((name) => (name ? style.getPropertyValue(name).trim() || null : null));
+    }
+    s.dirty = true;
+  }, [colorsKey, width]);
+
   // Save the level when the explorer goes away (a route outside the graph).
   useEffect(() => () => save(), []);
 
@@ -346,7 +368,8 @@ export function GraphCanvas({
         const x = s.enter ? s.enter.ox + ((n.x ?? 0) - s.enter.ox) * e : (n.x ?? 0);
         const y = s.enter ? s.enter.oy + ((n.y ?? 0) - s.enter.oy) * e : (n.y ?? 0);
         const tone = s.nodes[i].tone;
-        const fill = tone === 'center' ? (colors.get('accent') as string) : (colors.get(tone === 'more' || tone === 'nopath' ? 'surface' : tone) ?? (colors.get('symbol') as string));
+        const layerFill = s.nodeFills?.[i] ?? null;
+        const fill = layerFill ?? (tone === 'center' ? (colors.get('accent') as string) : (colors.get(tone === 'more' || tone === 'nopath' ? 'surface' : tone) ?? (colors.get('symbol') as string)));
         return { sx: x * t.k + t.x, sy: y * t.k + t.y, rs: Math.max(2, n.r * Math.min(2.5, Math.max(0.35, t.k))), fill };
       });
       const hovered = s.hovered;
@@ -637,6 +660,7 @@ export function GraphCanvas({
       data-motion-state={reduced ? 'static' : 'animated'}
       data-canvas-nodes={nodes.length}
       data-canvas-links={links.length}
+      data-canvas-colored={nodeColors ? nodeColors.filter(Boolean).length : 0}
     >
       <canvas ref={canvasRef} style={{ width: '100%', height: HEIGHT, touchAction: 'none' }} role="img" aria-label={ariaLabel} />
       {tooltip && (

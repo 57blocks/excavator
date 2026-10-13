@@ -144,7 +144,19 @@ export function viewReport(attrs) {
     detailEdges: a['data-detail-edges'] ?? null,
     neighborhoodTotal: intOrNull(a['data-neighborhood-total']),
     motionMode: a['data-motion-mode'] ?? null,
+    semantics: semanticsReport(a),
   };
+}
+
+/** Every `data-semantics-*` attribute, camelCased (`data-semantics-layers-freshness` -> `layersFreshness`). */
+function semanticsReport(attrs) {
+  /** @type {Record<string, string>} */
+  const out = {};
+  for (const [name, value] of Object.entries(attrs)) {
+    if (!name.startsWith('data-semantics-')) continue;
+    out[name.slice('data-semantics-'.length).replace(/-([a-z])/g, (_, c) => c.toUpperCase())] = value;
+  }
+  return out;
 }
 
 /** The smoke verdict from the root element's attributes (null when there is no root). */
@@ -293,12 +305,14 @@ const ROOT_TAG = `(() => {
 /**
  * @typedef {{ type: 'drag', from?: [number, number], node?: string, by: [number, number] }
  *   | { type: 'wheel', at?: [number, number], deltaY: number }
- *   | { type: 'click', at?: [number, number], node?: string }
+ *   | { type: 'click', at?: [number, number], node?: string, selector?: string }
  *   | { type: 'dblclick', at?: [number, number] }
  *   | { type: 'hash', hash: string }} GraphAction
  * Points are canvas-relative CSS pixels (default: the canvas centre); `node`
  * targets a drawn node by key; `by` is the drag distance; `hash` sets the
- * location hash (a breadcrumb or back navigation) between inputs.
+ * location hash (a breadcrumb or back navigation) between inputs; a click
+ * with `selector` clicks the centre of that page element instead (a button
+ * outside the canvas).
  */
 
 const CANVAS_RECT = `(() => {
@@ -308,6 +322,16 @@ const CANVAS_RECT = `(() => {
   const r = c.getBoundingClientRect();
   return [r.left, r.top, r.width, r.height];
 })()`;
+
+function elementRect(selector) {
+  return `(() => {
+    const e = document.querySelector(${JSON.stringify(selector)});
+    if (!e) return null;
+    e.scrollIntoView({ block: 'center' });
+    const r = e.getBoundingClientRect();
+    return [r.left, r.top, r.width, r.height];
+  })()`;
+}
 
 /**
  * Dispatch one GraphAction as real mouse input.
@@ -321,8 +345,9 @@ async function performAction(action, evaluate, send) {
     await evaluate(`window.location.hash = ${JSON.stringify(action.hash)}`);
     return { point: null };
   }
-  const rect = await evaluate(CANVAS_RECT);
-  if (!rect) return { point: null, problem: 'no graph canvas on the page' };
+  const selector = /** @type {any} */ (action).selector;
+  const rect = await evaluate(selector === undefined ? CANVAS_RECT : elementRect(selector));
+  if (!rect) return { point: null, problem: selector === undefined ? 'no graph canvas on the page' : `no element matches ${selector}` };
   const [left, top, width, height] = rect;
   /** @type {[number, number]} */
   let point = [left + width / 2, top + height / 2];

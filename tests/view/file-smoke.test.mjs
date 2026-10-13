@@ -14,6 +14,7 @@ import { findChrome, smoke } from '../../scripts/view-smoke.mjs';
 import { decodeBundle } from '../../skills/excavator-view/bundle-codec.mjs';
 import { extractBundleText } from '../../skills/excavator-view/bake/html-output.mjs';
 import { nodeHash } from '../../packages/view/src/routes.ts';
+import { makeSemanticProject, SEMANTIC_IDS } from './fixtures/make-semantic-project.mjs';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const smokeScript = join(repoRoot, 'scripts/view-smoke.mjs');
@@ -34,6 +35,8 @@ if (!chrome.path) {
     let analyzed;
     let goodPage;
     let report;
+    let semanticPage;
+    let semanticNodes;
 
     const runSmoke = (page, ...flags) => {
       const run = spawnSync(process.execPath, [smokeScript, page, ...flags], { encoding: 'utf-8', timeout: 90_000 });
@@ -58,6 +61,14 @@ if (!chrome.path) {
       execFileSync(process.execPath, [lazyScript, analyzed], { stdio: 'pipe' });
       goodPage = join(scratch, 'good.html');
       report = bake(analyzed, goodPage);
+    }, 180_000);
+
+    // Tasks 8.1-8.3: a page baked from the sample project with all three
+    // semantic products written by their real writers.
+    beforeAll(async () => {
+      const made = await makeSemanticProject(join(scratch, 'semantic-project'));
+      semanticPage = join(scratch, 'semantic.html');
+      semanticNodes = bake(made.project, semanticPage).counts.header.nodes;
     }, 180_000);
 
     afterAll(() => {
@@ -167,11 +178,97 @@ if (!chrome.path) {
       expect(missing.dom).toContain('data-node-found="false"');
     }, 90_000);
 
-    it('shows a placeholder, not fake content, for the section still to come (4.1)', async () => {
+    it('says "Not generated" for every semantic product on a Lazy-only page, never a placeholder (8.1-8.3)', async () => {
       const result = await smoke(goodPage, { hash: '#/semantics' });
-      expect(result.ok).toBe(true);
-      expect(result.dom).toContain('data-section="semantics" data-placeholder="true"');
-      expect(result.dom).toContain('Available in a later slice.');
+      expect(result).toMatchObject({ ok: true, route: 'semantics' });
+      expect(result.view.semantics).toEqual({ summaries: 'not-generated', layers: 'not-generated', domain: 'not-generated' });
+      expect(result.dom.match(/data-product-state="not-generated"/g)).toHaveLength(3);
+      expect(result.dom).not.toContain('data-placeholder="true"');
+    }, 90_000);
+
+    it('shows summaries, stale layers and a fresh two-step flow with one unanchored id (8.1-8.3)', async () => {
+      const result = await smoke(semanticPage, { hash: '#/semantics' });
+      expect(result).toMatchObject({ ok: true, route: 'semantics' });
+      expect(result.view.semantics).toEqual({
+        summaries: `2/${semanticNodes}`, summariesFresh: '1', summariesStale: '1',
+        layers: '2', layersFreshness: 'stale', relations: '1',
+        domain: 'fresh', flows: '1', steps: '2', unanchored: '1',
+      });
+      const dom = result.dom;
+      expect(dom).toContain(`data-summary-entry="${SEMANTIC_IDS.fresh}" data-freshness="fresh"`);
+      expect(dom).toContain(`data-summary-entry="${SEMANTIC_IDS.stale}" data-freshness="stale"`);
+      expect(dom).toContain('data-semantics-block="layers" data-stale="true"');
+      expect(dom).toContain('data-hint="layers-stale"');
+      expect(dom).toContain('data-layer="layer:entry" data-layer-nodes="2"');
+      expect(dom).toContain('data-layer="layer:support" data-layer-nodes="4"');
+      expect(dom).toContain('data-domain-freshness="fresh"');
+      // Steps in flow_step order, and the id the graph lacks labelled, not guessed.
+      expect(dom.indexOf('data-step-id="step:greet-user:count-visit"')).toBeLessThan(dom.indexOf('data-step-id="step:greet-user:format-greeting"'));
+      expect(dom.match(/data-anchor="unanchored"/g)).toHaveLength(1);
+      expect(dom).toContain(SEMANTIC_IDS.missingAnchor);
+    }, 90_000);
+
+    it('plays the flow steps in order, then jumps from a step to its anchored node (8.3)', async () => {
+      const result = await smoke(semanticPage, {
+        hash: '#/semantics',
+        actions: [
+          { type: 'click', selector: '[data-flow-play="flow:greet-user"]' },
+          { type: 'click', selector: '[data-step-locate="step:greet-user:format-greeting"]' },
+        ],
+      });
+      expect(result.ok, result.problem).toBe(true);
+      const [play, locate] = result.actions;
+      for (const a of result.actions) expect(a.problem, JSON.stringify(a)).toBeUndefined();
+      // Playback ran to the last step and stopped.
+      expect(play.view.semantics).toMatchObject({ flow: 'flow:greet-user', step: '2' });
+      expect(play.view.semantics.playing).toBeUndefined();
+      expect(play.view.hash).toBe('#/semantics?flow=flow%3Agreet-user&step=2');
+      expect(locate.view).toMatchObject({ route: 'node', selectedNode: SEMANTIC_IDS.stale });
+      expect(locate.view.semantics).toMatchObject({ nodeSummary: 'stale', nodeLayers: 'Support' });
+    }, 120_000);
+
+    it('only highlights the current step under prefers-reduced-motion (8.3)', async () => {
+      const result = await smoke(semanticPage, {
+        hash: '#/semantics',
+        reducedMotion: true,
+        actions: [{ type: 'click', selector: '[data-flow-play="flow:greet-user"]' }],
+      });
+      expect(result.ok, result.problem).toBe(true);
+      expect(result.actions[0].view.semantics).toMatchObject({ flow: 'flow:greet-user', step: '1' });
+      expect(result.dom).toContain('data-motion="flow" data-motion-state="static"');
+      expect(result.dom).toContain('data-step-id="step:greet-user:count-visit" data-step-order="1" data-current="true"');
+      expect(result.dom).toContain('data-step-id="step:greet-user:format-greeting" data-step-order="2" data-current="false"');
+    }, 90_000);
+
+    it('shows a node\'s summary with its freshness and its layer, and colors the neighborhood by layer (8.1, 8.2)', async () => {
+      const result = await smoke(semanticPage, {
+        hash: nodeHash(SEMANTIC_IDS.fresh),
+        actions: [{ type: 'click', selector: '[data-layer-toggle]' }],
+      });
+      expect(result.ok, result.problem).toBe(true);
+      expect(result.view.semantics).toEqual({ nodeSummary: 'fresh', nodeLayers: 'Entry' });
+      const dom = result.dom;
+      expect(dom).toContain('data-node-summary="fresh"');
+      expect(dom).toContain('Builds a counter, increments it once and formats the greeting for the given name.');
+      expect(dom).toContain('data-layer-legend="on" data-layer-stale="true"');
+      expect(Number(/data-canvas-colored="(\d+)"/.exec(dom)[1])).toBeGreaterThan(0);
+      const plain = await smoke(semanticPage, { hash: nodeHash(SEMANTIC_IDS.unsummarized) });
+      expect(plain.view.semantics).toEqual({ nodeSummary: 'none', nodeLayers: 'Support' });
+      expect(plain.dom).toContain('data-layer-legend="off"');
+      expect(plain.dom).toContain('data-canvas-colored="0"');
+    }, 120_000);
+
+    it('colors the file level by layer with unlayered symbols counted in the legend (8.2)', async () => {
+      const result = await smoke(semanticPage, {
+        hash: '#/graph/file/src/util/format.ts',
+        actions: [{ type: 'click', selector: '[data-layer-toggle]' }],
+      });
+      expect(result.ok, result.problem).toBe(true);
+      const dom = result.dom;
+      expect(result.actions[0].view.graphVisibleNodes).toBe(3);
+      expect(dom).toContain('data-canvas-colored="3"');
+      expect(dom).toContain('data-layer-swatch="layer:support" data-layer-drawn="2"');
+      expect(dom).toContain('data-layer-swatch="unlayered" data-layer-drawn="1"');
     }, 90_000);
 
     it('opens the graph at the member level with the CSR built lazily and at most 400 nodes (6.2)', async () => {

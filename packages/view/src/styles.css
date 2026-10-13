@@ -63,6 +63,7 @@
   --graph-symbol: #4f4d47;
   --graph-hop1: #4b6385;
   --graph-hop2: #343f4f;
+  --graph-unlayered: #3d3c38;
 
   --font-sans: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
   --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace;
@@ -121,6 +122,7 @@
     --graph-symbol: #d6d4cc;
     --graph-hop1: #b9cbe3;
     --graph-hop2: #e3e9f2;
+    --graph-unlayered: #ebeae6;
   }
 }
 
@@ -817,4 +819,98 @@ select {
 .source-missing {
   color: var(--text-muted);
   font-style: italic;
+}
+
+/* Semantics (tasks 8.1-8.3) */
+.layer-legend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  margin-top: 8px;
+}
+.summary-text {
+  margin: 4px 0;
+}
+.tag-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 6px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.tag-list li {
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 0 8px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+.flow {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 12px;
+  margin-top: 12px;
+  background: var(--surface-2);
+}
+.flow-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+}
+.flow-progress {
+  height: 4px;
+  border-radius: 2px;
+  background: var(--grid);
+  margin: 10px 0;
+  overflow: hidden;
+}
+.flow-progress span {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+}
+.flow-steps {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 8px;
+}
+.flow-step {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 8px 10px;
+  background: var(--surface-1);
+}
+.flow-step[data-current='true'] {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+.flow-step .order {
+  display: inline-block;
+  min-width: 1.6em;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+.anchor-list {
+  margin: 4px 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: 13px;
+}
+.play-button {
+  border: 1px solid var(--accent);
+  background: transparent;
+  color: var(--text-primary);
+  border-radius: 999px;
+  padding: 2px 12px;
+  font: inherit;
+  cursor: pointer;
+}
+.play-button:disabled {
+  opacity: 0.5;
+  cursor: default;
 }
