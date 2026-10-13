@@ -19,6 +19,8 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { DETERMINISTIC_EDGE_TYPES } from '../../../skills/excavator/retrieve.mjs';
+
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(__dirname, '../../..');
 
@@ -34,6 +36,9 @@ const ADDITIVE_ONLY_BASELINES = [
 function readRepoFile(relPath) {
   return readFileSync(resolve(repoRoot, relPath), 'utf-8');
 }
+
+/** One line: hard-wrapped prose and bold markers do not break a phrase match. */
+const flat = (text) => text.replace(/\*\*/g, '').replace(/\s+/g, ' ');
 
 const fileAnalyzer = readRepoFile('agents/excavator-file-analyzer.md');
 const domainAnalyzer = readRepoFile('agents/excavator-domain-analyzer.md');
@@ -156,10 +161,29 @@ describe('file-analyzer framework guidance hook', () => {
 describe('frameworks/README.md explains the hook', () => {
   const readme = readRepoFile('skills/excavator/frameworks/README.md');
 
-  it('names both readers and the file-naming rule', () => {
+  it('names both readers and the file-naming rule: the FrameworkConfig id', () => {
     expect(readme).toContain('excavator-architecture-analyzer');
     expect(readme).toContain('excavator-file-analyzer');
-    expect(readme).toContain('lower-cased framework id');
+    expect(flat(readme)).toContain("The file name is the `id` of the framework's `FrameworkConfig`, plus `.md`.");
+    expect(readme).not.toContain('lower-cased framework id');
+  });
+
+  it('says the fact build writes the detected ids into the header and both readers take files by them', () => {
+    const naming = flat(readme.slice(readme.indexOf('## Naming'), readme.indexOf('## A missing file')));
+    expect(naming).toContain("graph header's `project.frameworks`");
+    expect(naming).toContain('Both readers take files by that id.');
+    expect(naming).toContain('every registered config has an addendum of that name');
+    expect(naming).toContain('every addendum here belongs to a registered config');
+    expect(flat(readme)).toContain('for every id in the graph header\'s `project.frameworks`');
+  });
+
+  it('lists javaee.md and jsf.md as present, and says where their knowledge lives', () => {
+    const present = readme.slice(readme.indexOf('## Present today'));
+    expect(present).toContain('`javaee.md`');
+    expect(present).toContain('`jsf.md`');
+    const where = readme.slice(readme.indexOf('What is where today:'), readme.indexOf('## Present today'));
+    expect(where).toContain('`javaee.md`');
+    expect(where).toContain('`jsf.md`');
   });
 
   it('states that a missing addendum is skipped, not reconstructed', () => {
@@ -200,5 +224,189 @@ describe('domain-analyzer step anchors', () => {
     expect(section()).toContain('omit `nodeIds`');
     expect(section()).toContain('"provenance": "inferred"');
     expect(section()).toMatch(/a `nodeIds`\s+entry that is not in the graph is not/);
+  });
+});
+
+describe('SKILL.md injects framework addenda by the graph header ids (javaee-jsf-framework-knowledge, D5)', () => {
+  const skill = readRepoFile('skills/excavator/SKILL.md');
+  const between = (from, to) => {
+    const start = skill.indexOf(from);
+    expect(start, `SKILL.md should contain ${from}`).toBeGreaterThanOrEqual(0);
+    const end = skill.indexOf(to, start);
+    expect(end, `SKILL.md should contain ${to} after ${from}`).toBeGreaterThan(start);
+    return flat(skill.slice(start, end));
+  };
+
+  it('Phase 4 step 3 takes the ids from project.frameworks, reads frameworks/<id>.md and skips a missing file silently', () => {
+    const step = between('3. **Framework addendum injection:**', 'Append the language/framework context');
+    expect(step).toContain("graph header's `project.frameworks`");
+    expect(step).toContain('knowledge-graph-store.mjs');
+    expect(step).toContain('read the file at `./frameworks/<id>.md`');
+    expect(step).toContain('append its full content after the language context');
+    expect(step).toContain('skip it silently and continue');
+    expect(step).not.toContain('Phase 1');
+  });
+
+  it('the Additional context of Phase 4 reports the header ids', () => {
+    const context = between('> **Additional context from main session:**', 'Directory tree');
+    expect(context).toContain('Frameworks detected: `<project.frameworks from the graph header>`');
+    expect(skill).not.toContain('<frameworks from Phase 1>');
+  });
+
+  it('the Phase F2 dispatch prompt lists the header ids for the file-analyzer', () => {
+    const prompt = between('> Produce a semantic patch for each fact node below', 'Write output to:');
+    expect(prompt).toContain('Frameworks detected: `<project.frameworks from the graph header>`');
+    // the line sits with the project root, ahead of the fact node list
+    expect(prompt.indexOf('Frameworks detected:')).toBeLessThan(prompt.indexOf('Fact nodes for this batch:'));
+    expect(prompt.indexOf('Project root:')).toBeLessThan(prompt.indexOf('Frameworks detected:'));
+  });
+
+  it('Phase F3 still takes the context injection from Phase 4 itself', () => {
+    expect(flat(skill)).toContain("language/framework context injection identical to Phase 4's own steps 2-3");
+  });
+});
+
+describe('the javaee and jsf addenda (javaee-jsf-framework-knowledge, D8)', () => {
+  const catalog = JSON.parse(readRepoFile('skills/excavator/catalogs/name-bindings.json'));
+  const catalogIds = new Set(
+    ['xmlBinders', 'annotationBinders', 'xmlInjections', 'annotationInjections', 'expressionLanguages']
+      .flatMap((key) => catalog[key].map((entry) => entry.id)),
+  );
+  const ADDENDA = {
+    javaee: {
+      // one rule per kind of relation an addendum infers; every one has an "exactly one / zero or several" pair
+      rules: 4,
+      edgeTypes: ['injects', 'references', 'mentions', 'implements', 'calls'],
+      roles: ['Session bean', 'Message-driven bean', 'JAX-RS resource', 'JAX-RS provider', 'Interceptor', 'Entity', 'Producer', 'Descriptor'],
+    },
+    jsf: {
+      rules: 3,
+      edgeTypes: ['references', 'mentions', 'implements', 'calls'],
+      roles: ['Page', 'Template', 'Composite component', 'Backing bean', 'Converter', 'Validator', 'Descriptor'],
+    },
+  };
+
+  for (const [id, expected] of Object.entries(ADDENDA)) {
+    describe(`${id}.md`, () => {
+      const raw = readRepoFile(`skills/excavator/frameworks/${id}.md`);
+      const text = flat(raw);
+      const section = (heading) => {
+        const start = raw.indexOf(heading);
+        expect(start, `${id}.md should contain ${heading}`).toBeGreaterThanOrEqual(0);
+        const end = raw.indexOf('\n### ', start + heading.length);
+        return raw.slice(start, end === -1 ? undefined : end);
+      };
+
+      it('has an "Already in the fact graph" section, before the edge patterns, that says not to redraw', () => {
+        expect(raw).toContain('### Already in the fact graph');
+        expect(raw.indexOf('### Already in the fact graph')).toBeLessThan(raw.indexOf('### Edge Patterns to Look For'));
+        expect(flat(section('### Already in the fact graph'))).toContain('Do not redraw any of them');
+      });
+
+      it('lists only edge types and name-binding catalog entries that exist, and every deterministic one it should', () => {
+        const rows = section('### Already in the fact graph').split('\n').filter((line) => line.startsWith('| `'));
+        const listed = new Set();
+        for (const row of rows) {
+          const [, edges, , source] = row.split('|').map((cell) => cell.trim());
+          for (const [, type] of edges.matchAll(/`([a-z]+)`/g)) {
+            listed.add(type);
+            expect(DETERMINISTIC_EDGE_TYPES, `${type} is not a deterministic edge type`).toContain(type);
+          }
+          for (const [, catalogId] of source.matchAll(/`([a-z-]+)`/g)) {
+            expect(catalogIds.has(catalogId), `${catalogId} is not an entry of name-bindings.json`).toBe(true);
+          }
+        }
+        for (const type of expected.edgeTypes) expect(listed.has(type), `${type} should be listed`).toBe(true);
+      });
+
+      it('phrases every inference rule as exactly one candidate connects, zero or several do not', () => {
+        const exactlyOne = raw.match(/Exactly one/g) ?? [];
+        const zeroOrSeveral = raw.match(/Zero or several/g) ?? [];
+        expect(exactlyOne.length).toBe(expected.rules);
+        expect(zeroOrSeveral.length).toBe(expected.rules);
+        expect(text).toContain('Connect only when the set has exactly one member.');
+        expect(text).toContain('For zero or several candidates, draw nothing and say so');
+      });
+
+      it('marks what it infers as inferred and without evidence', () => {
+        expect(text).toContain('Every relation drawn from these conventions is `"provenance": "inferred"` with no `evidence`.');
+        expect(text).toContain('Conventions are not evidence');
+      });
+
+      it('names every component role', () => {
+        const roles = section('### Canonical File Roles');
+        for (const role of expected.roles) expect(roles, `${role} should be a role`).toContain(role);
+        expect(raw).toContain('### Architectural Layers for');
+      });
+
+      it('writes no line number', () => {
+        expect(raw).not.toMatch(/:\d+/);
+        expect(raw).not.toMatch(/\blines? \d+/i);
+      });
+    });
+  }
+
+  describe('javaee.md, the points its spec requires', () => {
+    const text = flat(readRepoFile('skills/excavator/frameworks/javaee.md'));
+
+    it('does not redraw by-name injection, EL references, descriptor mentions, implements and calls', () => {
+      expect(text).toContain('`@EJB(beanName = "…")`');
+      expect(text).toContain('`@Named`');
+      for (const name of ['ejb-jar.xml', 'persistence.xml', 'web.xml', '`implements`', '`calls`']) expect(text).toContain(name);
+    });
+
+    it('infers an injection by type only from exactly one non-abstract implementation, producers counted, and never guesses qualifiers', () => {
+      expect(text).toContain('every non-abstract class in the repository that `implements` or extends the declared type');
+      expect(text).toContain('producer methods count as candidates');
+      expect(text).toContain('Qualifiers, `@Alternative`');
+      expect(text).toContain('decided at deployment');
+      expect(text).toContain('Never use them to pick one of several candidates');
+    });
+
+    it('assembles a JAX-RS route from its four parts into the method description and makes no route node', () => {
+      for (const part of ['`@ApplicationPath` value', 'class-level `@Path`', 'method-level `@Path`', 'HTTP method annotation']) expect(text).toContain(part);
+      expect(text).toContain("into the handler method's semantic description");
+      expect(text).toContain('Create no route nodes');
+    });
+
+    it('pairs message-driven beans and CDI events only on the same destination literal or the same event type', () => {
+      expect(text).toContain('both ends name the same destination literal');
+      expect(text).toContain('both ends name the same event type');
+    });
+  });
+
+  describe('jsf.md, the points its spec requires', () => {
+    const text = flat(readRepoFile('skills/excavator/frameworks/jsf.md'));
+
+    it('does not redraw page EL references, template and navigation mentions, or faces-config class mentions', () => {
+      for (const name of ['`@ManagedBean`', '`@Named`', '`managed-bean`', '`template=`', '`ui:include`', '`ui:decorate`', '`to-view-id`', '`managed-bean-class`']) {
+        expect(text).toContain(name);
+      }
+    });
+
+    it('resolves an outcome only to exactly one page, from-outcome first, a relative outcome from the current directory', () => {
+      expect(text).toContain('`from-outcome` comes before implicit navigation');
+      expect(text).toContain('An outcome with no leading `/` is relative to the directory of the current view');
+      expect(text).toContain('Exactly one page file in the repository matches');
+      expect(text).toContain('Zero or several page files match');
+      expect(text).toContain('a `detail.xhtml` in the current view\'s directory and another in the web root');
+    });
+
+    it('maps a composite component to resources/<library>/<tag>.xhtml', () => {
+      expect(text).toContain('`resources/<library>/<tag>.xhtml`');
+      expect(text).toContain('Exactly one such file in the repository');
+    });
+
+    it('treats the tags of component libraries as opaque, every named prefix included', () => {
+      expect(text).toContain('Component library tags are opaque');
+      for (const prefix of ['`h:`', '`f:`', '`ui:`', '`p:`', '`rich:`', '`a4j:`', '`ice:`', '`t:`', '`o:`']) expect(text).toContain(prefix);
+      expect(text).toContain("Do not connect a page to a library's internals");
+      expect(text).toContain('Only the EL in a tag\'s attributes carries meaning, and EL is already a fact.');
+    });
+
+    it('connects a converter or validator by id only when exactly one declaration uses the id', () => {
+      expect(text).toContain('Exactly one declaration uses the id');
+      expect(text).toContain('Zero or several declarations use the id');
+    });
   });
 });

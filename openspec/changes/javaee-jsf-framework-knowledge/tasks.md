@@ -91,18 +91,18 @@
 
 ## 5. 附录与注入
 
-- [ ] 5.1 新增 `skills/excavator/frameworks/javaee.md` 与 `jsf.md`，按 design D8 与两份 spec 的「SHALL 写明」逐条落段落。
+- [x] 5.1 新增 `skills/excavator/frameworks/javaee.md` 与 `jsf.md`，按 design D8 与两份 spec 的「SHALL 写明」逐条落段落。
   验证：散文契约测试断言两份附录含以下各点的关键语句，并且不含行号模式（如 `:\d+`）：
   - 「Already in the fact graph」一节及其边类型；
   - 每条推断规则的「零个或多个候选不连」；
   - 组件库标签不透明（jsf）；
   - `inferred` 与无 evidence。
-- [ ] 5.2 `SKILL.md` 的 Phase 4 第 3 步与「Additional context」、Phase F2 派发提示，按 design D5 改为取图头 `project.frameworks`；`frameworks/README.md` 的命名一节、「What is where today」表与「Present today」列表更新。
+- [x] 5.2 `SKILL.md` 的 Phase 4 第 3 步与「Additional context」、Phase F2 派发提示，按 design D5 改为取图头 `project.frameworks`；`frameworks/README.md` 的命名一节、「What is where today」表与「Present today」列表更新。
   验证：散文契约测试断言：
   - SKILL.md 两处含 `project.frameworks`；
   - README 写明文件名即 `FrameworkConfig` 的 `id`，并列出 `javaee.md`、`jsf.md`；
   - 既有的 framework guidance 契约测试按新措辞更新后仍绿。
-- [ ] 5.3 新增配置与附录的双向契约测试，按 spec「附录按框架配置 id 命名并由图头驱动注入」的第一个场景。
+- [x] 5.3 新增配置与附录的双向契约测试，按 spec「附录按框架配置 id 命名并由图头驱动注入」的第一个场景。
   验证：测试读 core dist 的 `builtinFrameworkConfigs`，断言 id 集合等于附录文件名集合，每个 `promptSnippetPath` 等于 `./frameworks/<id>.md`；临时注册一个无附录的 id 时测试变红（在测试内用变异副本证明，不改产品代码）。
 
 ## 6. 验收与门禁
