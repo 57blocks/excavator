@@ -102,6 +102,37 @@ function isAnnotationUseArray(value) {
       (argument.value === null || typeof argument.value === 'string')));
 }
 
+// Annotations on a Java type's members (openspec: changes/
+// annotation-injection-references, D1). The member kinds are a closed set, and
+// `parameter` is there for a parameter or component and nowhere else: a record
+// that disagrees fails the file instead of reaching name resolution with a
+// missing or stray position.
+const JAVA_MEMBER_KINDS = new Set(['field', 'method', 'constructor', 'parameter', 'component']);
+
+function isNameAtLine(value) {
+  return isPlainObject(value) && typeof value.name === 'string' && isFiniteInteger(value.line);
+}
+
+function isMemberAnnotationArray(value) {
+  return Array.isArray(value) && value.every(item =>
+    isPlainObject(item) &&
+    typeof item.name === 'string' &&
+    isFiniteInteger(item.line) &&
+    Array.isArray(item.arguments) &&
+    item.arguments.every(argument =>
+      isPlainObject(argument) &&
+      typeof argument.key === 'string' &&
+      (argument.value === null || typeof argument.value === 'string') &&
+      isFiniteInteger(argument.line)) &&
+    JAVA_MEMBER_KINDS.has(item.on) &&
+    typeof item.owner === 'string' &&
+    typeof item.nested === 'boolean' &&
+    isNameAtLine(item.member) &&
+    (item.on === 'parameter' || item.on === 'component'
+      ? isNameAtLine(item.parameter) && isFiniteInteger(item.parameter.index) && item.parameter.index >= 0
+      : item.parameter === undefined));
+}
+
 function isClassLiteralArray(value) {
   return Array.isArray(value) && value.every(item =>
     isPlainObject(item) &&
@@ -186,7 +217,8 @@ function isValidStructuralAnalysis(analysis) {
         value => isValidEntryArray(value, STRUCTURE_ENTRY_VALIDATORS[field]),
       )) &&
     // Not a symbol array: class literals reference types, they declare none.
-    hasValidOptionalField(analysis, 'classLiterals', isClassLiteralArray);
+    hasValidOptionalField(analysis, 'classLiterals', isClassLiteralArray) &&
+    hasValidOptionalField(analysis, 'memberAnnotations', isMemberAnnotationArray);
 }
 
 // What a Java call site is invoked on (java-member-call-resolution, D2). The
@@ -515,6 +547,23 @@ export function buildResult(file, totalLines, nonEmptyLines, analysis, callGraph
       type: literal.type,
       line: literal.line,
       context: literal.context,
+    }));
+  }
+
+  // Java: the annotations on every field, method, constructor, parameter and
+  // record component, an empty list included, for the same reason.
+  if (Array.isArray(analysis.memberAnnotations)) {
+    base.memberAnnotations = analysis.memberAnnotations.map(use => ({
+      name: use.name,
+      line: use.line,
+      arguments: use.arguments.map(argument => ({ key: argument.key, value: argument.value, line: argument.line })),
+      on: use.on,
+      owner: use.owner,
+      nested: use.nested,
+      member: { name: use.member.name, line: use.member.line },
+      ...(use.parameter === undefined
+        ? {}
+        : { parameter: { name: use.parameter.name, index: use.parameter.index, line: use.parameter.line } }),
     }));
   }
 

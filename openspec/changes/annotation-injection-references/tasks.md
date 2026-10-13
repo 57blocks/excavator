@@ -18,7 +18,7 @@
 
 ## 1. Core：成员上的注解
 
-- [ ] 1.1 `types.ts` 新增 `JavaMemberAnnotationUse` 与 `StructuralAnalysis.memberAnnotations`，按 design D1。`java-extractor.ts` 遍历文件里任意深度的类型体，记录以下位置上的注解：字段（每个声明符一条，含接口常量）、方法、构造器、方法与构造器参数（含可变参数 `...` 之前的注解）、record 组件。
+- [x] 1.1 `types.ts` 新增 `JavaMemberAnnotationUse` 与 `StructuralAnalysis.memberAnnotations`，按 design D1。`java-extractor.ts` 遍历文件里任意深度的类型体，记录以下位置上的注解：字段（每个声明符一条，含接口常量）、方法、构造器、方法与构造器参数（含可变参数 `...` 之前的注解）、record 组件。
   - 每条记录带：写法、行、参数（键、值、值所在行）、`on`、`owner`（顶层类型简单名）、`nested`、`member`，参数位置还带 `parameter`。
   - 参数的键与值沿用 `extractAnnotationUses` 的规则。
   - 类型上的注解与 `functions[].annotations` 不变。
@@ -31,9 +31,10 @@
   - 嵌套、局部、匿名类型（`owner` 为顶层类型，`nested` 为真）；
   - 顶层 `@interface` 的成员；
   - 不记录的位置：局部变量、lambda 参数、catch 参数、类型使用注解。
-- [ ] 1.2 `extract-structure-result.mjs` 透传 `memberAnnotations` 并校验形状，坏形状报错并指出位置。核对结构抽取有没有按内容或版本的缓存。如果有，确认形状变化会让旧缓存失效，在本任务下写明结论。
-  验证：`tests/` 里结构行的测试断言字段透传，坏形状的测试报错；冻结摘要若受影响，用生成器整块重冻并列出。
-- [ ] 1.3 重建 core dist；core 测试、typecheck、根测试全绿。
+- [x] 1.2 `extract-structure-result.mjs` 透传 `memberAnnotations` 并校验形状，坏形状与其它 Java 事实字段一样让该文件落 `parse-failed`。核对结构抽取有没有按内容或版本的缓存。如果有，确认形状变化会让旧缓存失效，在本任务下写明结论。
+  验证：`tests/` 里结构行的测试断言字段透传，坏形状的测试断言结构行为 `parse-failed`；冻结摘要若受影响，用生成器整块重冻并列出。
+  缓存结论：结构抽取没有按内容或版本的缓存。`structure-all.mjs` 每次 Lazy 运行都对物化快照里的全部文件重新抽取；跨运行唯一的复用闸是 `source-manifest.json` 的 `pipelineVersion`（`sync-fact-graph.mjs`、`project-service.mjs` 比较）。本步没有任何读者消费 `memberAnnotations`，旧产物与 `/8` 的投影一致；`PIPELINE_VERSION` 随第一个消费者在任务 4.2 升到 `/9`，那时所有旧 manifest 因版本不符整体重投影。
+- [x] 1.3 重建 core dist；core 测试、typecheck、根测试全绿。
   验证：命令输出计数写进交付报告。
 
 ## 2. 目录

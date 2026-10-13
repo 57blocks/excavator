@@ -285,8 +285,10 @@ interface Api extends java.io.Closeable, Comparable<Api> {
   // java.util.HashMap<>` as `<init>`, `LoggerFactory.getLogger` as `<clinit>`),
   // and again when top-level types gained `annotationArguments`
   // (name-binding-references): with that one field removed the output hashes to
-  // the previous value, 4605cbaac6df9e53...
-  const UNWRAPPED_SHA256 = "809861bf0062d212fd4c3daa1276f67ff5ca7f2ed5555cda8a39504bea0bbbfe";
+  // the previous value, 4605cbaac6df9e53...; and again when a Java file gained
+  // `memberAnnotations` (annotation-injection-references): with that one field
+  // removed the output hashes to the previous value, 809861bf0062d212....
+  const UNWRAPPED_SHA256 = "8855a9412d14aaf60a667d4aff83fef6bdd72c8691d67c6dc780853dcf161aa2";
 
   it("produces byte-identical structure and call graph output", () => {
     const json = JSON.stringify(extract(UNWRAPPED));

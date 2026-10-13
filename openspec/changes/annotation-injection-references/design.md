@@ -67,20 +67,21 @@ interface JavaMemberAnnotationUse {
 
   每个参数多记一个 `line`，即值开始的行。注解跨行时，名字所在行由此可查。
 - **附着位置**：
-  - 字段：`field_declaration`，以及接口里的常量声明。每个声明符一条记录，`member` 是声明符的名字与名字所在行。同一注解附着几个声明符，就有几条记录。
-  - 方法与构造器：`member` 是方法名或构造器名及其所在行。
+  - 字段：`field_declaration`，以及接口里的常量声明。每个声明符一条记录，`member` 是声明符的名字与名字所在行。同一注解附着几个声明符，就有几条记录。记录按注解排列：`@A @B int x, y;` 依次是 A-x、A-y、B-x、B-y，注解行因此不倒退。
+  - 方法与构造器：`member` 是方法名或构造器名及其所在行。record 的紧凑构造器（`R { ... }`）也是构造器，`on: "constructor"`。
   - 参数：方法与构造器的 `formal_parameter`，以及可变参数 `...` 之前写的注解。记录：
     - `on: "parameter"`；
     - `member`：所在的方法或构造器；
     - `parameter`：参数名、从 0 起的位置、参数名所在行。
   - record 组件：`on: "component"`，`member` 是 record 本身，`parameter` 是组件。
-- **范围**：文件里任意深度的类型体都要遍历，包括嵌套、局部与匿名类型。
+- **范围**：文件里任意深度的类型体都要遍历，包括嵌套、局部与匿名类型，以及带类体的枚举常量（按匿名类型算）。
   - `owner` 永远是包含它的顶层类型的简单名。
-  - `nested` 标出直接所在的类型是不是顶层类型。
-  - 顶层注解类型（`@interface`）的成员也记录，`owner` 为该注解类型的名字。
-- **不记录**：类型上的注解（第 2 步已有）、局部变量、lambda 与 catch 参数、类型使用注解、receiver 参数、可变参数 `...` 之后的注解、枚举常量、注解类型元素的缺省值。这些位置上没有容器注入。
+  - `nested` 标出直接所在的类型是不是顶层类型。record 组件的 `nested` 取声明它的 record。
+  - 顶层注解类型（`@interface`）里的常量与嵌套类型也记录，`owner` 为该注解类型的名字。
+- **不记录**：类型上的注解（第 2 步已有）、局部变量、lambda 与 catch 参数、类型使用注解、receiver 参数、可变参数 `...` 之后的注解、枚举常量、注解类型的元素（`String value() default ""`）。这些位置上没有容器注入。
+  - 写在 `modifiers` 里的注解在语法上分不出声明注解与类型使用注解，`@Foo List<String> m()` 按方法注解记录。写在类型内部的（`List<@Foo String>`、`throws @Foo X`）不在 `modifiers` 里，不记录。
 - `functions[].annotations` 保持不变。dead-code-detection 等已有读者不受影响。
-- `extract-structure-result.mjs` 透传 `memberAnnotations` 并校验形状。
+- `extract-structure-result.mjs` 透传 `memberAnnotations` 并校验形状。坏形状与其它 Java 事实字段走同一条路：该文件的结构结果判为失败，结构行落 `parse-failed`，带文件路径。
 - 结构行的体积：每处成员注解约 150 字节，hadoop 约增加 13 MB。O5 报告 `structure-all.jsonl` 的体积变化。
 - 结构抽取若有按内容缓存，缓存键要随抽取输出的形状变化而失效。coder 核对，并在 tasks 里写明结论。
 
