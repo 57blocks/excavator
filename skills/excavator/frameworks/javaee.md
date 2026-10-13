@@ -36,7 +36,7 @@ The deterministic fact build has already drawn the relationships below. Query th
 | `@Interceptor` and `@Decorator` classes, classes with an `@AroundInvoke` method, servlet `Filter` classes | Interceptor — cross-cutting behavior around calls or requests | `middleware` |
 | `@Produces` methods and fields, `*Producer.java` | Producer — supplies an injectable type that no constructor shows | `factory` |
 | Classes with an `@Observes` or `@ObservesAsync` parameter | CDI event observer | `event-handler` |
-| `@Named` or `@Model` classes that pages bind by EL (they have incoming `references` edges from view files) | Backing bean — the same role as in the JSF addendum, in `layer:ui` | `ui` |
+| `@Named` or `@Model` classes that pages bind by EL (they have incoming `references` edges from view files) and that are not session beans | Backing bean — the same role as in the JSF addendum, in `layer:ui` | `ui` |
 | Other `@ApplicationScoped`, `@RequestScoped`, `@SessionScoped`, `@Dependent` and `@Named` classes | CDI managed bean | `service` |
 | `ejb-jar.xml` | Descriptor — session beans, message-driven beans, interceptors and their bindings; an entry overrides the matching annotation | `config` |
 | `persistence.xml` | Descriptor — persistence units, their provider and entity classes | `config` |
@@ -45,7 +45,7 @@ The deterministic fact build has already drawn the relationships below. Query th
 | `application.xml` | Descriptor — the modules of an enterprise archive | `config`, `entry-point` |
 | `*Test.java`, `*IT.java` | Unit and integration tests | `test` |
 
-The suffix `Bean` is used for session beans and for JSF backing beans alike, so `*Bean.java` alone decides neither role: decide by the annotation, the `ejb-jar.xml` entry, or the incoming `references` edges from view files.
+The suffix `Bean` is used for session beans and for JSF backing beans alike, so `*Bean.java` alone decides neither role: decide by the annotation, the `ejb-jar.xml` entry, or the incoming `references` edges from view files. A session bean — a class with `@Stateless`, `@Stateful` or `@Singleton`, or one listed as a session bean in `ejb-jar.xml` — stays a session bean in `layer:service` even when pages bind it by EL; only the other page-bound classes are backing beans.
 
 ### Edge Patterns to Look For
 
@@ -77,9 +77,9 @@ Assign nodes to these layers when detected:
 
 | Layer ID | Layer Name | What Goes Here |
 |---|---|---|
-| `layer:ui` | UI Layer | Backing beans: the `@Named` and `@Model` classes that view files bind by EL, as the JSF addendum assigns them |
+| `layer:ui` | UI Layer | Backing beans: the `@Named` and `@Model` classes that view files bind by EL and that are not session beans, as the JSF addendum assigns them |
 | `layer:api` | API Layer | JAX-RS resources and their activator, servlets |
-| `layer:service` | Service Layer | Session beans, message-driven beans, the other CDI managed beans (those no page binds), event observers, business interfaces |
+| `layer:service` | Service Layer | Session beans (also those pages bind by EL), message-driven beans, the other CDI managed beans (those no page binds), event observers, business interfaces |
 | `layer:data` | Data Layer | Entities, `*Dao.java`, JPA mappings, producers of `EntityManager` |
 | `layer:middleware` | Middleware Layer | Interceptors, decorators, servlet filters, JAX-RS providers |
 | `layer:config` | Config Layer | `ejb-jar.xml`, `persistence.xml`, `web.xml`, `beans.xml`, `application.xml` |
