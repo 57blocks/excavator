@@ -86,6 +86,7 @@ detectWithEvidence(files: Array<{ path: string; content: string }>): FrameworkDe
 - 在遮蔽后的小写文本里找每个关键字的最早位置。一个文件的命中位置取所有关键字里最早的那个；同一位置的平手按配置里的关键字顺序。行号由原文偏移换算（遮蔽不改换行，见 D2）。
 - 结果按 `id` 排序。
 - `detectFrameworks(manifests: Record<string, string>)` 保留签名：转成数组调 `detectWithEvidence`，再按注册顺序映射回配置对象。既有测试的期望不变。
+- `isManifestPath(path): boolean` 公开同一条文件名匹配规则，扫描用它挑 manifest，不另抄一份规则。
 
 **D2：按 manifest 格式遮蔽，而不是解析依赖坐标。**
 
@@ -101,7 +102,14 @@ detectWithEvidence(files: Array<{ path: string; content: string }>): FrameworkDe
     - `go.mod` 的 `exclude (` 到下一个 `)`。
   - `requirements.txt`、`Pipfile`、`pyproject.toml`、`setup.cfg`、`setup.py`、`Gemfile`：`#` 到行尾。
   - 其余（`package.json`、`angular.json` 等）原样返回。
-- 只遮蔽、不增补，所以遮蔽只会让命中变少。最坏情况是漏检，而漏检在验收里可见。例如字符串里的 `//` 把同一行后面的声明遮掉。
+- C 风格与 `#` 两类格式在找注释记号与 `exclude` 时跳过单行字符串：
+  - `'` 或 `"` 开始的字符串到同一行里同种引号的下一次出现为止，`\` 转义下一个字符；字符串里的 `//`、`/*`、`#`、`exclude` 不算。
+  - 引号在本行没有闭合时，它只是普通字符，不开字符串。
+  - 已经进入注释或 `exclude` 遮蔽的范围里不再看引号。
+  - 理由：Gradle 的文件通配常写成 `'**/*.md'`、`include("…/**/*.class")`。不认字符串时，其中的 `/*` 会开一个块注释，一直遮到下一个 `*/` 或文件尾，把后面真正的依赖声明全部吞掉。fineract 有 32 个 Gradle 文件含这种写法，根 `build.gradle` 第 244–283 行的通配位于第 875 行起的 Spring 声明之前；私有 Spring 应用的 `build.gradle` 也有。
+  - 引号配对正确时，跳过字符串只会让遮蔽变少，被放出来的是注释之外的真实文本；Gradle 与 Python 的依赖坐标本来就写在字符串里。
+  - 配对可能错位的只有跨行的三引号字符串与 Groovy 的斜杠字符串（如 `~/it's/`）。错位时，后面注释里的另一个引号可能与它配成一对，把注释的一段当成字符串放出来。这要求构建文件同一行里同时有这种字符串与带引号的注释，探针语料里没有出现；O2 的零编造检查兜底，出现就归入下一步按格式解析的提案。
+- 只遮蔽、不增补，所以遮蔽只会让命中变少。最坏情况是漏检，而漏检在验收里可见。例如跨行的三引号字符串里出现 `//`，仍可能遮掉该行后面的文本。
 - 考虑过的替代：
   - **单词边界匹配**：探针里没有拦下任何一处误检，却会改变既有关键字（`"next":`、`@angular/core`）的语义。不采用。
   - **按格式解析依赖坐标**（pom 的 `dependency`、`package.json` 的依赖键）：要把 12 个配置的关键字全部改写成坐标，改动扩散到所有框架。本步只需要拦住注释与排除。不采用，以后若要进一步收紧再单独提出。
@@ -109,9 +117,11 @@ detectWithEvidence(files: Array<{ path: string; content: string }>): FrameworkDe
 
 **D3：扫描接入。**
 
-- 扫描循环里，对通过全部跳过检查、即将写入 `files` 的文件，若文件名匹配任一已注册配置的 manifest 名，就保留 `{ path, content }`。内容由已读入的字节按 UTF-8 解码，不另读盘。
+- 扫描循环里，文件读入成功、且没有因过大或二进制被跳过时，若文件名匹配任一已注册配置的 manifest 名（`isManifestPath`），就保留 `{ path, content }`。内容由已读入的字节按 UTF-8 解码，不另读盘。
+  - 收集发生在「未知语言」跳过之前。`Gemfile`、`Pipfile` 没有扩展名，也不在扫描的文件名表里，按普查规则落 `unknown-language`、不进 `files`；它们仍是 manifest，照常参与检测，证据路径可在 `skipped` 里找到。
+  - 不为此把它们声明成扫描语言：那会改变普查与产物，超出本步。
 - 循环结束后调 `FrameworkRegistry.createDefault().detectWithEvidence(...)`，写入输出的 `detectedFrameworks`。该字段总是存在，没有检出时是 `[]`。
-- 被忽略、默认过滤、敏感、过大、二进制、读取失败的文件不在 `files` 里，自然不参与。
+- 被忽略、默认过滤、敏感、过大、二进制、读取失败的文件在读入或体积检查之前就被跳过，不参与。
 - 文件头注释的输出示例补上该字段。
 
 **D4：图头。**
@@ -207,7 +217,9 @@ detectWithEvidence(files: Array<{ path: string; content: string }>): FrameworkDe
 7. 图头沿用旧图的 `frameworks`；
 8. 不升 `PIPELINE_VERSION`；
 9. 删掉某个附录或某个配置的注册；
-10. `.jspf` 的语言 id 改成 `jsp`。
+10. `.jspf` 的语言 id 改成 `jsp`；
+11. C 风格遮蔽不跳过字符串（通配 `'**/*.java'` 后面的声明被吞掉）；
+12. 扫描只在通过未知语言跳过之后才收集 manifest（`Gemfile` 不再参与）。
 
 coder 逐个手工施加、确认变红、还原，并在报告里列出变红的测试。
 
@@ -268,7 +280,7 @@ coder 逐个手工施加、确认变红、还原，并在报告里列出变红�
   - 检测的含义是「仓库里被扫描的 manifest 声明了它」，不是「主程序用了它」。
   - 每个检出都报 manifest 数与第一处证据，读者能判断。
   - 不想要的目录用 `.excavatorignore` 排除，排除后自然不参与。
-- **[遮蔽过度导致漏检]** 例如 Gradle 行内字符串含 `//` 时会遮掉同一行后面的声明。只会漏不会编，O3 列出漏检。
+- **[遮蔽过度导致漏检]** 单行字符串已跳过（D2），剩下跨行的三引号字符串与 Groovy 的斜杠字符串：其中的 `//` 或 `/*` 仍会被当成注释。只会漏不会编，O3 列出漏检。
 - **[图头不再沿用旧值]** 如果某个旧的 Full 图头写过 `["React", "Vite"]` 这样的叙述，下次事实构建后会被换成检出的 id。叙述性的工具名（Vite、Docker）从图头消失。今天没有读者依赖它们（D4）。
 - **[附录被送给只用了 JAX-RS 的项目]** hadoop、fineract 会收到 `javaee.md`。附录按角色分节，模型只在看到对应注解时套用，且一切推断都是 `inferred`。
 - **[类别变化影响遗留 Phase 2 分批]** 视图文件从代码批移到非代码批，只影响遗留路径的分组，不影响事实。

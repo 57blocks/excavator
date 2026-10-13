@@ -38,6 +38,10 @@
 - **WHEN** 唯一声明 `spring-boot` 的 `samples/pom.xml` 被 `.excavatorignore` 排除
 - **THEN** 不检出 `spring`
 
+#### Scenario: 没有扩展名的 manifest 照常参与
+- **WHEN** 仓库根目录的 `Gemfile` 写 `gem 'rails'`，扫描按普查规则把 `Gemfile` 记为未知语言、不列入文件清单
+- **THEN** 仍检出 `rails`，证据为 `Gemfile` 的该行
+
 #### Scenario: 没有命中不报告
 - **WHEN** 仓库没有任何配置声明的 manifest，或 manifest 里没有任何关键字
 - **THEN** 检出结果为空列表
@@ -53,6 +57,8 @@
 | `requirements.txt`、`Pipfile`、`pyproject.toml`、`setup.cfg`、`setup.py`、`Gemfile` | `#` 到行尾 |
 | 其他（如 `package.json`） | 不遮蔽 |
 
+Gradle、`go.mod` 与 `#` 注释格式里，单行的 `'…'` 或 `"…"` 字符串中出现的 `//`、`/*`、`#`、`exclude` 不是注释或排除的起点。引号在本行没有闭合时不构成字符串。
+
 遮蔽 MUST 保持行号不变。遮蔽只能减少命中，MUST NOT 产生原文没有的命中。
 
 #### Scenario: Maven 排除不算使用
@@ -66,6 +72,10 @@
 #### Scenario: Gradle 排除语句不算
 - **WHEN** `build.gradle` 只在 `exclude group: 'org.springframework.boot'` 一行写到 `spring-boot`
 - **THEN** 该文件不为 `spring` 提供命中
+
+#### Scenario: 字符串里的通配不遮蔽后文
+- **WHEN** `build.gradle` 第 5 行写 `include '**/*.java'`，第 9 行写 `implementation 'org.springframework:spring-core:5.3.0'`，第 5 行的 `/*` 之后文件里再没有 `*/`
+- **THEN** 检出 `spring`，证据为第 9 行
 
 #### Scenario: 注释外的声明照常检出且行号不偏移
 - **WHEN** `pom.xml` 第 10 行是含 `primefaces` 的注释，第 40 行是 `<artifactId>primefaces</artifactId>`

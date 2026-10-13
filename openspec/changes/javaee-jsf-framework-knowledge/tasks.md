@@ -24,8 +24,9 @@
   验证：core 单元测试逐格式断言：
   - XML：注释、未闭合注释、`exclusions` 成对元素、`exclude` 自闭合、`excludes`、大小写变体、缺结束标签时不遮蔽；
   - Gradle：`//`、`/* */`、行内 `exclude group:`；
+  - Gradle 单行字符串：`'**/*.java'`、`"http://…"`、`'exclude'` 不开注释或排除；转义引号；未闭合引号不算字符串；
   - `go.mod`：`exclude` 行与 `exclude ( … )` 块；
-  - `#` 注释格式；
+  - `#` 注释格式，以及字符串里的 `#` 不算注释；
   - `package.json` 原样返回。
 
   每个用例同时断言输出长度与换行位置等于输入。
