@@ -5,10 +5,13 @@ import { Overview } from './views/Overview';
 import { Coverage } from './views/Coverage';
 import { Placeholder } from './views/Placeholder';
 import { NodeRoute } from './views/NodeRoute';
+import { Structure } from './views/Structure';
+import { Search } from './views/Search';
 import { routeName, sectionHash, useRoute, type Route } from './routes';
 
 function View({ data, route }: { data: ViewData; route: Route }) {
   if (route.kind === 'node') return <NodeRoute data={data} id={route.id} />;
+  if (route.kind === 'dir') return <Structure data={data} path={route.path} />;
   if (route.kind === 'unknown') {
     return (
       <div className="content" data-section="unknown">
@@ -23,13 +26,18 @@ function View({ data, route }: { data: ViewData; route: Route }) {
   }
   if (route.section === 'overview') return <Overview data={data} />;
   if (route.section === 'coverage') return <Coverage data={data} scope={route.params.get('scope')} />;
+  if (route.section === 'structure') return <Structure data={data} path="" />;
+  if (route.section === 'search') return <Search data={data} query={route.params.get('q') ?? ''} />;
   return <Placeholder section={route.section} />;
 }
 
 export function App({ data, onFirstView }: { data: ViewData; onFirstView: () => void }) {
   const route = useRoute();
   useEffect(() => {
-    document.getElementById('root')?.setAttribute('data-route', routeName(route));
+    const root = document.getElementById('root');
+    root?.setAttribute('data-route', routeName(route));
+    // The hash this render answers, so a smoke step that changes the hash can wait for it.
+    root?.setAttribute('data-hash', window.location.hash);
   }, [route]);
   useEffect(onFirstView, []);
   const project = data.meta.graph?.fields?.project as { name?: unknown } | undefined;

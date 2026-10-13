@@ -1,9 +1,7 @@
 import { SECTIONS, type SectionId } from '../routes';
 
 const PLANNED: Partial<Record<SectionId, string>> = {
-  structure: 'A directory treemap sized by line count.',
   graph: 'Directory-level aggregation with expandable files and symbol neighborhoods.',
-  search: 'Name, path and id search, plus identifier search over the source index.',
   semantics: 'Summaries, architecture layers and domain flows, each with its freshness.',
 };
 

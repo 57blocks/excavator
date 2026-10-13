@@ -1,7 +1,7 @@
-import { SECTIONS, sectionHash, type Route } from '../routes';
+import { SECTIONS, routeSection, sectionHash, type Route } from '../routes';
 
 export function Nav({ route, projectName }: { route: Route; projectName: string | null }) {
-  const current = route.kind === 'section' ? route.section : null;
+  const current = routeSection(route);
   return (
     <header className="topbar">
       <div className="brand">

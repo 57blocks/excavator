@@ -1,6 +1,8 @@
 // Page state lives in location.hash (no history API, works from file://).
 // Shapes: #/overview, #/structure, #/graph, #/coverage[?scope=<scope>],
-// #/search, #/semantics, #/node/<encoded id>. An empty hash is the overview;
+// #/search[?q=<query>], #/semantics, #/node/<encoded id>, #/dir/<path> (a
+// directory or file in the structure treemap, each path segment
+// URI-encoded; `#/dir/` alone is the tree root). An empty hash is the overview;
 // anything else is an explicit "unknown" route, never a silent redirect.
 import { useEffect, useState } from 'react';
 
@@ -18,6 +20,7 @@ export type SectionId = (typeof SECTIONS)[number]['id'];
 export type Route =
   | { kind: 'section'; section: SectionId; params: URLSearchParams }
   | { kind: 'node'; id: string }
+  | { kind: 'dir'; path: string }
   | { kind: 'unknown'; hash: string };
 
 const SECTION_IDS = new Set<string>(SECTIONS.map((s) => s.id));
@@ -32,6 +35,14 @@ export function parseHash(hash: string): Route {
     if (encoded === '') return { kind: 'unknown', hash };
     try {
       return { kind: 'node', id: decodeURIComponent(encoded) };
+    } catch {
+      return { kind: 'unknown', hash };
+    }
+  }
+  if (path === 'dir' || path.startsWith('dir/')) {
+    const encoded = path.slice('dir'.length).replace(/^\/+|\/+$/g, '');
+    try {
+      return { kind: 'dir', path: encoded === '' ? '' : encoded.split('/').map(decodeURIComponent).join('/') };
     } catch {
       return { kind: 'unknown', hash };
     }
@@ -51,6 +62,11 @@ export function nodeHash(id: string): string {
   return `#/node/${encodeURIComponent(id)}`;
 }
 
+/** `#/dir/<path>`; the root ('') is the plain structure section. */
+export function dirHash(path: string): string {
+  return path === '' ? '#/structure' : `#/dir/${path.split('/').map(encodeURIComponent).join('/')}`;
+}
+
 function splitOnce(text: string, separator: string): [string, string?] {
   const at = text.indexOf(separator);
   return at < 0 ? [text] : [text.slice(0, at), text.slice(at + 1)];
@@ -68,4 +84,10 @@ export function useRoute(): Route {
 
 export function routeName(route: Route): string {
   return route.kind === 'section' ? route.section : route.kind;
+}
+
+/** The nav section a route belongs to (a directory is part of Structure). */
+export function routeSection(route: Route): SectionId | null {
+  if (route.kind === 'section') return route.section;
+  return route.kind === 'dir' ? 'structure' : null;
 }

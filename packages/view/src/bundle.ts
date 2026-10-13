@@ -15,6 +15,6 @@ export function readEmbeddedPayload(): string {
 export async function readEmbeddedBundle(): Promise<ViewData | null> {
   const payload = readEmbeddedPayload();
   if (payload.trim() === '') return null;
-  const { segments, mode } = await decodePayload(payload);
-  return toViewData(segments, mode);
+  const { segments, mode, queries } = await decodePayload(payload);
+  return { ...toViewData(segments, mode), queries };
 }

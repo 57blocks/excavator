@@ -13,6 +13,7 @@ import { execFileSync, spawnSync } from 'node:child_process';
 import { findChrome, smoke } from '../../scripts/view-smoke.mjs';
 import { decodeBundle } from '../../skills/excavator-view/bundle-codec.mjs';
 import { extractBundleText } from '../../skills/excavator-view/bake/html-output.mjs';
+import { nodeHash } from '../../packages/view/src/routes.ts';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const smokeScript = join(repoRoot, 'scripts/view-smoke.mjs');
@@ -38,7 +39,7 @@ if (!chrome.path) {
       const run = spawnSync(process.execPath, [smokeScript, page, ...flags], { encoding: 'utf-8', timeout: 90_000 });
       return { status: run.status, result: JSON.parse(run.stdout.trim().split('\n').at(-1)), stderr: run.stderr };
     };
-    const bake = (project, out) => JSON.parse(execFileSync(process.execPath, [bakeScript, project, '--template', template, '--out', out], { encoding: 'utf-8' }));
+    const bake = (project, out, ...flags) => JSON.parse(execFileSync(process.execPath, [bakeScript, project, '--template', template, '--out', out, ...flags], { encoding: 'utf-8' }));
     const copyProject = () => {
       const dir = mkdtempSync(join(scratch, 'project-'));
       cpSync(analyzed, dir, { recursive: true });
@@ -167,13 +168,117 @@ if (!chrome.path) {
     }, 90_000);
 
     it('shows a placeholder, not fake content, for the later sections (4.1)', async () => {
-      for (const section of ['structure', 'graph', 'search', 'semantics']) {
+      for (const section of ['graph', 'semantics']) {
         const result = await smoke(goodPage, { hash: `#/${section}` });
         expect(result.ok, section).toBe(true);
         expect(result.dom).toContain(`data-section="${section}" data-placeholder="true"`);
         expect(result.dom).toContain('Available in a later slice.');
       }
     }, 120_000);
+
+    it('draws the structure treemap of the manifest files, sized by lines and colored by language (5.1)', async () => {
+      const result = await smoke(goodPage, { hash: '#/structure' });
+      expect(result).toMatchObject({ ok: true, route: 'structure' });
+      expect(result.view).toMatchObject({ route: 'structure', treemapPath: '', postings: null });
+      const dom = result.dom;
+      expect(dom).toContain('data-dir-found="true"');
+      expect(dom).toContain('data-sizing="lines"');
+      expect(dom).toContain('data-cells="3"');
+      expect(dom).toMatch(/data-cell="src" data-kind="dir"/);
+      expect(dom).toMatch(/data-cell="package\.json" data-kind="file"[^>]*data-language="json"/);
+      expect(dom).toContain('data-legend-language="typescript"');
+      expect(dom).toContain('data-motion-state="animated"');
+      expect(dom).not.toContain('data-structure-note=');
+      expect(dom).not.toContain('data-placeholder="true"');
+    }, 90_000);
+
+    it('drills two levels into the treemap and back in one page (5.1)', async () => {
+      const result = await smoke(goodPage, { hash: '#/structure', steps: ['#/dir/src', '#/dir/src/util', '#/dir/src'] });
+      expect(result.ok, result.problem).toBe(true);
+      expect(result.steps.map((s) => [s.settled, s.view.route, s.view.treemapPath])).toEqual([
+        [true, 'dir', 'src'], [true, 'dir', 'src/util'], [true, 'dir', 'src'],
+      ]);
+      expect(result.dom).toContain('data-treemap-path="src"');
+      expect(result.dom).toMatch(/data-cell="src\/util" data-kind="dir"/);
+    }, 90_000);
+
+    it('opens #/dir/<path> on that directory, and a file path selected with its symbols linking to their nodes (5.3)', async () => {
+      const dir = await smoke(goodPage, { hash: '#/dir/src/util' });
+      expect(dir).toMatchObject({ ok: true, route: 'dir' });
+      expect(dir.view.treemapPath).toBe('src/util');
+      expect(dir.dom).toMatch(/data-cell="src\/util\/format\.ts" data-kind="file"/);
+      const greeting = nodeHash('function:src/util/format.ts:formatGreeting(name,times)');
+      expect(dir.dom).toContain(`class="tm-symbol" href="${greeting}"`);
+      const file = await smoke(goodPage, { hash: '#/dir/src/util/format.ts' });
+      expect(file.view.treemapPath).toBe('src/util');
+      expect(file.dom).toContain('data-file-panel="src/util/format.ts"');
+      expect(file.dom).toContain('data-symbols="2"');
+      expect(file.dom).toContain(`href="${nodeHash('function:src/util/format.ts:shout(text)')}"`);
+      expect(file.dom).toMatch(/data-cell="src\/util\/format\.ts" data-kind="file" data-selected="true"/);
+      const missing = await smoke(goodPage, { hash: '#/dir/src/nope' });
+      expect(missing).toMatchObject({ ok: true, route: 'dir' });
+      expect(missing.dom).toContain('data-dir-found="false"');
+    }, 90_000);
+
+    it('sizes the treemap by file count and says so when fingerprints.json is missing (5.1)', async () => {
+      const project = copyProject();
+      rmSync(join(project, '.excavator', 'fingerprints.json'));
+      const page = join(scratch, 'no-fingerprints.html');
+      bake(project, page);
+      const result = await smoke(page, { hash: '#/structure' });
+      expect(result.ok).toBe(true);
+      expect(result.dom).toContain('data-sizing="files"');
+      expect(result.dom).toContain('data-structure-note="sizing"');
+      expect(result.dom).toContain('Sized by file count: none of the 5 files has a line count');
+    }, 90_000);
+
+    it('keeps the treemap static under prefers-reduced-motion (5.1)', async () => {
+      const result = await smoke(goodPage, { hash: '#/structure', reducedMotion: true });
+      expect(result.ok).toBe(true);
+      expect(result.dom).toContain('data-motion-state="static"');
+    }, 90_000);
+
+    it('finds nodes by name subsequence and by identifier term, with the query in the hash (5.2)', async () => {
+      const idle = await smoke(goodPage, { hash: '#/search' });
+      expect(idle).toMatchObject({ ok: true, route: 'search' });
+      expect(idle.view).toMatchObject({ postings: 'idle', searchQuery: null });
+      const names = await smoke(goodPage, { hash: '#/search?q=frmtgrt' });
+      expect(names.ok).toBe(true);
+      expect(names.view).toMatchObject({ searchQuery: 'frmtgrt', searchResults: 1, searchIdentifierResults: 0, postings: 'ready', busy: null });
+      expect(names.dom).toContain('data-result="function:src/util/format.ts:formatGreeting(name,times)"');
+      // "increment" is only in the source index identifiers (a method with no node).
+      const identifier = await smoke(goodPage, { hash: '#/search?q=increment' });
+      expect(identifier.view).toMatchObject({ searchResults: 0, searchIdentifierResults: 1, postings: 'ready' });
+      expect(identifier.dom).toContain('data-result="class:src/counter.ts:Counter"');
+      expect(identifier.dom).toContain('data-identifier-scope="identifiers+literals"');
+      expect(identifier.dom).not.toContain('data-scope-note=');
+      // A term from a string literal is found while the literal text is embedded.
+      expect((await smoke(goodPage, { hash: '#/search?q=hello' })).view.searchIdentifierResults).toBe(2);
+    }, 90_000);
+
+    it('marks identifier search "identifiers only" on a --no-source page (5.2)', async () => {
+      const page = join(scratch, 'no-source.html');
+      bake(analyzed, page, '--no-source');
+      const literal = await smoke(page, { hash: '#/search?q=hello' });
+      expect(literal.ok).toBe(true);
+      expect(literal.view).toMatchObject({ searchIdentifierResults: 0, postings: 'ready' });
+      expect(literal.dom).toContain('data-identifier-scope="identifiers"');
+      expect(literal.dom).toContain('data-scope-note="identifiers-only"');
+      expect(literal.dom).toContain('Identifiers only: comment and string-literal terms are not in this page');
+      expect((await smoke(page, { hash: '#/search?q=increment' })).view.searchIdentifierResults).toBe(1);
+    }, 90_000);
+
+    it('says identifier search is not available when the page has no source index (5.2)', async () => {
+      const project = copyProject();
+      rmSync(join(project, '.excavator', 'source-index.jsonl'));
+      const page = join(scratch, 'no-index.html');
+      bake(project, page);
+      const result = await smoke(page, { hash: '#/search?q=increment' });
+      expect(result.ok).toBe(true);
+      expect(result.view).toMatchObject({ postings: 'unavailable', searchResults: 0, searchIdentifierResults: null });
+      expect(result.dom).toContain('data-identifier-search="unavailable"');
+      expect(result.dom).toContain('Identifier search not available');
+    }, 90_000);
 
     // Task 4A.4: the smoke run closes Chrome over the DevTools protocol before
     // falling back to SIGKILL, so Chrome removes its own temporary

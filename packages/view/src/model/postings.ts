@@ -37,8 +37,19 @@ function compare(a: string, b: string): number {
   return a < b ? -1 : a > b ? 1 : 0;
 }
 
-/** The rebuilt index, or null when the bundle carries no source index. */
-export function rebuildPostings(segments: Segments, strings: string[]): TermIndex | null {
+/** How often `rebuildPostings` reports progress, in chunk rows. */
+export const PROGRESS_EVERY_ROWS = 8192;
+
+/**
+ * The rebuilt index, or null when the bundle carries no source index.
+ * `onProgress(done, total)` is called every PROGRESS_EVERY_ROWS chunk rows and
+ * once at the end (the rebuild takes seconds on a large graph).
+ */
+export function rebuildPostings(
+  segments: Segments,
+  strings: string[],
+  onProgress?: (done: number, total: number) => void,
+): TermIndex | null {
   const chunks = segments['index.chunks'];
   const tokens = segments['index.tokens'];
   if (!isTable(chunks) || !isTable(tokens)) return null;
@@ -79,7 +90,9 @@ export function rebuildPostings(segments: Segments, strings: string[]): TermInde
     }
     if (commentOffset && commentCount) postLiterals(commentOffset[row], commentCount[row], row);
     if (stringOffset && stringCount) postLiterals(stringOffset[row], stringCount[row], row);
+    if (onProgress && (row + 1) % PROGRESS_EVERY_ROWS === 0) onProgress(row + 1, (chunks as Table).rows);
   }
+  onProgress?.((chunks as Table).rows, (chunks as Table).rows);
 
   const terms = [...byTerm.keys()].sort(compare);
   const offsets = new Int32Array(terms.length + 1);

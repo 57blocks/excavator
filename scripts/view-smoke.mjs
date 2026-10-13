@@ -10,7 +10,16 @@
  * `data-excavator-view` (ready / error / empty / loading), the decoded
  * counts, the graph header counts, `data-errors` (window errors and
  * unhandled rejections, plus decode/render failures the page caught),
- * `data-csp-violations`, `data-decode-ms` and `data-ready-ms`.
+ * `data-csp-violations`, `data-decode-ms` and `data-ready-ms`. A page that
+ * has asynchronous work pending (a search running in its Worker) marks
+ * `data-busy`; the page counts as settled only once that is gone. Views report
+ * what they show (`data-route`, `data-hash`, `data-treemap-path`,
+ * `data-search-*`, `data-postings`), collected under `view` in the result.
+ *
+ * `--then '#/...'` (repeatable) changes the hash in the same page after it
+ * settles, the way a click on a link would, and waits until the page has
+ * rendered that hash (`data-hash`) and settled again; each step's view report
+ * is listed under `steps`, and the DOM and screenshot are taken after the last.
  *
  * Chrome is closed with the DevTools `Browser.close` command so it removes
  * its own temporary directories; SIGKILL only after a 5 s grace period
@@ -31,7 +40,7 @@
  * `google-chrome` then `chromium` on PATH.
  *
  * Usage:
- *   node scripts/view-smoke.mjs <page.html> [--hash '#/node/<id>'] [--reduced-motion]
+ *   node scripts/view-smoke.mjs <page.html> [--hash '#/node/<id>'] [--then '#/...']... [--reduced-motion]
  *     [--budget <ms>] [--dom <path>] [--screenshot <path.png>] [--color-scheme light|dark]
  *   --budget  real-time wait for the page to settle (default 15000 ms)
  *   --dom     also write the page DOM to <path> (for content checks)
@@ -105,6 +114,21 @@ function intOrNull(value) {
   return Number.isInteger(n) ? n : null;
 }
 
+/** What the current view reports about itself on #root (null for an attribute it did not write). */
+export function viewReport(attrs) {
+  const a = attrs ?? {};
+  return {
+    route: a['data-route'] ?? null,
+    hash: a['data-hash'] ?? null,
+    treemapPath: a['data-treemap-path'] ?? null,
+    searchQuery: a['data-search-query'] ?? null,
+    searchResults: intOrNull(a['data-search-results']),
+    searchIdentifierResults: intOrNull(a['data-search-identifier-results']),
+    postings: a['data-postings'] ?? null,
+    busy: a['data-busy'] ?? null,
+  };
+}
+
 /** The smoke verdict from the root element's attributes (null when there is no root). */
 export function verdict(attrs) {
   const a = attrs ?? {};
@@ -129,6 +153,7 @@ export function verdict(attrs) {
     decodeMode: a['data-decode-mode'] ?? null,
     route: a['data-route'] ?? null,
     reducedMotion: a['data-reduced-motion'] === undefined ? null : a['data-reduced-motion'] === 'true',
+    view: viewReport(a),
     error: a['data-error'] ?? null,
     ok: ready && errors === 0 && cspViolations === 0 && countsMatchHeader,
   };
@@ -226,11 +251,25 @@ async function closeChrome(child, cdp) {
   return 'closed';
 }
 
-/** Returns the page's outerHTML once #root reports a terminal state (or null while it does not). */
-const SETTLED_DOM = `(() => {
+/**
+ * True once #root reports a terminal state, has no pending work and has
+ * rendered the current hash. An error state settles at once. (A boolean, not
+ * the DOM: a baked page carries its whole data segment in the DOM.)
+ */
+const SETTLED = `(() => {
   const root = document.getElementById('root');
   const state = root && root.getAttribute('data-excavator-view');
-  return state === 'ready' || state === 'error' || state === 'empty' ? document.documentElement.outerHTML : null;
+  if (state === 'error' || state === 'empty') return true;
+  if (state !== 'ready' || root.hasAttribute('data-busy')) return false;
+  return root.getAttribute('data-hash') === window.location.hash;
+})()`;
+
+/** The #root opening tag, rebuilt from its attributes (what rootAttributes parses). */
+const ROOT_TAG = `(() => {
+  const root = document.getElementById('root');
+  if (!root) return '';
+  const esc = (v) => v.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  return '<div ' + [...root.attributes].map((a) => a.name + '="' + esc(a.value) + '"').join(' ') + '>';
 })()`;
 
 /**
@@ -240,10 +279,11 @@ const SETTLED_DOM = `(() => {
  * dumped while still "loading".
  *
  * @param {string} page
- * @param {{ hash?: string, reducedMotion?: boolean, budgetMs?: number, chrome?: string, screenshot?: string|null, colorScheme?: 'light'|'dark'|null }} [options]
+ * @param {{ hash?: string, steps?: string[], reducedMotion?: boolean, budgetMs?: number, chrome?: string, screenshot?: string|null, colorScheme?: 'light'|'dark'|null }} [options]
+ *   `steps`: hashes set one after another once the page settles (see --then)
  *   `screenshot`: also save a 1440x1000 viewport PNG to this path once settled
  */
-export async function smoke(page, { hash = '', reducedMotion = false, budgetMs = DEFAULT_BUDGET_MS, chrome, screenshot = null, colorScheme = null } = {}) {
+export async function smoke(page, { hash = '', steps = [], reducedMotion = false, budgetMs = DEFAULT_BUDGET_MS, chrome, screenshot = null, colorScheme = null } = {}) {
   const found = chrome ? { path: chrome, source: 'argument' } : findChrome();
   if (!found.path) return { skipped: true, reason: /** @type {any} */ (found).reason, dom: null };
   const url = `${pathToFileURL(resolve(page)).href}${hash}`;
@@ -259,6 +299,8 @@ export async function smoke(page, { hash = '', reducedMotion = false, budgetMs =
   let dom = '';
   let problem = null;
   let settled = false;
+  /** @type {Array<{ hash: string, settled: boolean, view: ReturnType<typeof viewReport> }>} */
+  const stepReports = [];
   /** @type {'closed'|'killed'|'already-exited'} */
   let chromeExit = 'already-exited';
   /** @type {string | null} */
@@ -282,16 +324,23 @@ export async function smoke(page, { hash = '', reducedMotion = false, budgetMs =
       const { result } = await cdp.send('Runtime.evaluate', { expression, returnByValue: true }, sessionId);
       return result?.value ?? null;
     };
-    while (Date.now() < deadline) {
-      const html = await evaluate(SETTLED_DOM);
-      if (html !== null) {
-        settled = true;
-        break;
+    const waitSettled = async () => {
+      while (Date.now() < deadline) {
+        if ((await evaluate(SETTLED)) === true) return true;
+        await sleep(100);
       }
-      await sleep(100);
-    }
+      return false;
+    };
+    settled = await waitSettled();
     // A short settle period so errors right after the first view are counted.
     if (settled) await sleep(300);
+    for (const step of steps) {
+      if (!settled) break;
+      await evaluate(`window.location.hash = ${JSON.stringify(step)}`);
+      settled = await waitSettled();
+      if (settled) await sleep(300);
+      stepReports.push({ hash: step, settled, view: viewReport(rootAttributes((await evaluate(ROOT_TAG)) ?? '')) });
+    }
     dom = (await evaluate('document.documentElement.outerHTML')) ?? '';
     if (screenshot) {
       const { data } = await cdp.send('Page.captureScreenshot', { format: 'png' }, sessionId);
@@ -313,15 +362,16 @@ export async function smoke(page, { hash = '', reducedMotion = false, budgetMs =
     ...result,
     ok: result.ok && problem === null,
     chrome: { path: found.path, source: /** @type {any} */ (found).source, exit: chromeExit, singletonDir: chromeSingletonDir, profile },
+    ...(steps.length > 0 ? { steps: stepReports } : {}),
     ...(problem ? { problem } : {}),
     dom,
   };
 }
 
-const USAGE = "Usage: node scripts/view-smoke.mjs <page.html> [--hash '#/...'] [--reduced-motion] [--budget <ms>] [--dom <path>] [--screenshot <path.png>] [--color-scheme light|dark]";
+const USAGE = "Usage: node scripts/view-smoke.mjs <page.html> [--hash '#/...'] [--then '#/...']... [--reduced-motion] [--budget <ms>] [--dom <path>] [--screenshot <path.png>] [--color-scheme light|dark]";
 
 function parseArgs(argv) {
-  const options = { page: '', hash: '', reducedMotion: false, budgetMs: DEFAULT_BUDGET_MS, dom: null, screenshot: null, colorScheme: null };
+  const options = { page: '', hash: '', steps: /** @type {string[]} */ ([]), reducedMotion: false, budgetMs: DEFAULT_BUDGET_MS, dom: null, screenshot: null, colorScheme: null };
   const positional = [];
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
@@ -330,6 +380,11 @@ function parseArgs(argv) {
       return argv[++i];
     };
     if (arg === '--hash') options.hash = value();
+    else if (arg === '--then') {
+      const step = value();
+      if (!step.startsWith('#')) throw new Error('--then must start with #');
+      options.steps.push(step);
+    }
     else if (arg === '--reduced-motion') options.reducedMotion = true;
     else if (arg === '--budget') options.budgetMs = Number(value());
     else if (arg === '--dom') options.dom = value();

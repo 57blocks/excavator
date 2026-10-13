@@ -1,12 +1,19 @@
-// Messages between the page and its decode Worker.
+// Messages between the page and its data Worker. The Worker decodes the
+// bundle once, hands the decoded segments to the page by transfer, and stays
+// alive to answer queries (search) over its own copy of the columns it needs.
+import type { Query, QueryResult } from '../model/engine';
 
-export interface DecodeRequest {
-  payload: string;
-}
+export type WorkerRequest =
+  | { type: 'decode'; payload: string }
+  | { type: 'query'; id: number; query: Query };
 
-export type DecodeResponse =
-  | { ok: true; segments: Record<string, unknown> }
-  | { ok: false; name: string; message: string };
+export type WorkerMessage =
+  | { type: 'decoded'; ok: true; segments: Record<string, unknown> }
+  | { type: 'decoded'; ok: false; name: string; message: string }
+  /** A long query (the first identifier search rebuilds the term index) reports progress. */
+  | { type: 'progress'; id: number; done: number; total: number }
+  | { type: 'result'; id: number; ok: true; result: QueryResult }
+  | { type: 'result'; id: number; ok: false; name: string; message: string };
 
 /** Every column buffer of every decoded table, for a zero-copy transfer. */
 export function transferables(segments: Record<string, unknown>): ArrayBuffer[] {

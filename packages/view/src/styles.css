@@ -524,3 +524,138 @@ select {
   color: var(--text-muted);
   font-size: 12px;
 }
+
+/* Structure treemap */
+.crumbs {
+  font-family: var(--font-mono);
+  font-size: 13px;
+}
+
+.treemap {
+  position: relative;
+  overflow: hidden;
+  border-radius: 6px;
+  background: var(--page);
+}
+
+.treemap-level {
+  position: absolute;
+  inset: 0;
+}
+
+.treemap-empty {
+  padding: 16px;
+}
+
+.tm-cell {
+  position: absolute;
+  overflow: hidden;
+  border-radius: 3px;
+  cursor: pointer;
+  font-size: 11px;
+  line-height: 16px;
+}
+
+.tm-dir {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+}
+
+.tm-dir:hover,
+.tm-file:hover {
+  outline: 2px solid var(--focus);
+  outline-offset: -2px;
+}
+
+.tm-file {
+  display: flex;
+  flex-direction: column;
+  padding: 2px 4px;
+  color: #ffffff;
+}
+
+.tm-file[data-language='unknown'] {
+  color: var(--text-primary);
+  border: 1px dashed var(--baseline);
+}
+
+.tm-file[data-selected='true'] {
+  outline: 2px solid var(--text-primary);
+  outline-offset: -2px;
+}
+
+.tm-label {
+  display: block;
+  color: inherit;
+  text-decoration: none;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tm-dir > .tm-label {
+  padding: 0 4px;
+  color: var(--text-primary);
+}
+
+.tm-tag {
+  color: var(--text-muted);
+  font-weight: 400;
+}
+
+.tm-inner {
+  position: absolute;
+  border-radius: 2px;
+  opacity: 0.85;
+  pointer-events: none;
+}
+
+.tm-symbol,
+.tm-more {
+  display: block;
+  color: inherit;
+  opacity: 0.9;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-family: var(--font-mono);
+}
+
+.treemap-legend {
+  margin-top: 12px;
+}
+
+.symbol-list {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 13px;
+}
+
+/* Search */
+.search-input {
+  width: 100%;
+  padding: 8px 12px;
+  font: inherit;
+  font-size: 15px;
+  color: var(--text-primary);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+.results {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.result {
+  padding: 6px 0;
+  border-bottom: 1px solid var(--grid);
+}
+
+.result-path {
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}

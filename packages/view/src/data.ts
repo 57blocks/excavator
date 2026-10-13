@@ -143,6 +143,12 @@ export interface ViewData {
   counts: DecodedCounts;
   /** Where decoding ran: a blob Worker, or the main thread as fallback. */
   decodeMode: 'worker' | 'main';
+  /**
+   * The search service (the data Worker, or the main-thread engine). Absent
+   * on data built outside the page bootstrap (tests); views then fall back to
+   * a main-thread engine over `segments`.
+   */
+  queries?: import('./decode/queries').QueryService;
 }
 
 export function isTable(value: unknown): value is Table {
