@@ -107,7 +107,38 @@
 
 ## 6. 验收与门禁
 
-- [ ] 6.1 acceptor 按 design「验收 Oracle」O2–O8 在 13 个语料上执行，产物与脚本留在仓库外的验收工作区，不提交任何真实项目产物；D10 的变异由 coder 报告、acceptor 复核。
+- [x] 6.1 acceptor 按 design「验收 Oracle」O2–O8 在 13 个语料上执行，产物与脚本留在仓库外的验收工作区，不提交任何真实项目产物；D10 的变异由 coder 报告、acceptor 复核。
   验证：每个 oracle 给出 PASS / FAIL、计数与证据路径；编造计数为 0；漏检逐条归因。
-- [ ] 6.2 全量门（O9）通过后，把验收摘要写进本文件末尾。
+- [x] 6.2 全量门（O9）通过后，把验收摘要写进本文件末尾。
   验证：门禁命令与计数写入摘要；`openspec validate --all --strict` 通过；提交前 grep 客户信息为零命中。
+
+## 验收摘要
+
+最终验收在 `fbbe6ba9` 上完成。O2–O5、O7、O8 在 `dde922e0` 或更早的提交上执行，此后只改了 OpenSpec、两份附录与散文测试，没有可执行代码变化，结论沿用；O6 在 `fbbe6ba9` 上重审通过。
+
+语料 13 个：Seam 2.2 examples、TomEE 8.x examples、Cargo Tracker、Dataverse、OSCAR、OpenMRS core、Sakai 12.7、fineract、hadoop，以及四个私有项目（两个 Go 服务、一个 MAUI 应用、一个 Angular + Spring 应用）。`/9` 基线复用上一步验收的产物；该基线的检出目录在验收中途被清理，acceptor 用 `git archive 844905c2` 原样重建，并在 Cargo Tracker 上核对与基线逐字节一致后继续。
+
+acceptor 的检测仪器（遮蔽、关键字匹配、证据选取）独立于被测代码实现，先用埋入的已知差异证明能报出差异；预期在任何候选产物出现之前登记。两处仪器自身的错误都以失败告终，没有产生无效结论：O8 的启动脚本重复传了标签；O4 脚本把 hadoop 的整张图读成一个字符串，超过 V8 的上限，改为只读图头。
+
+| oracle | 结论 | 计数 |
+|---|---|---|
+| O1 夹具与绊线 | 通过 | D10 的 14 个变异由 coder 逐个手工施加，各至少让一条测试变红，报告列出变红的测试后还原；acceptor 另对附录与夹具做了变异，对应测试变红；另有遮蔽新旧实现的差分模糊测试（XML、Gradle、`go.mod` 各 2 万个随机输入），新实现放出旧实现遮住的字符 0 次 |
+| O2 检测零编造 | 通过 | 13/13 与预登记一致，并与按候选关键字表的独立重算一致；编造 0。合成用例 59/59；与 `6fa433e7` 相比只有 c13、a08 两例按「先遮注释」改变，其余不变。语料 1,196 个 manifest 与 80 个合成 manifest 上，遮蔽相对 `6fa433e7` 没有少遮任何字符 |
+| O3 预登记期望 | 通过 | 差异 0。漏检与预登记一致：OSCAR 与 Sakai 12.7 的 `javaee`、Seam 的 `spring`；fineract 的 `javaee` 只靠一处命中。预登记的 4 处首个证据不是依赖声明行（Dataverse 与 TomEE 的 `jsf`、TomEE 的 `spring`、hadoop 的 `react`），复现一致 |
+| O4 事实不变 | 通过 | 13/13：记录与顺序、`factsDigest`、事实图字节均与 `/9` 相同；选中的文件集合相同，`selectionDigest` 因注册 `xhtml` 而变，符合预期；图头只有 `frameworks`、`pipelineVersion`、`analyzedAt` 与快照名不同，`frameworks` 等于扫描检出的 id。中间产物的差异全部是视图文件类别变化，计数与 O5 一致。Sakai 12.7 与 hadoop 的重复运行结果相同 |
+| O5 视图普查 | 通过 | 类别变化的文件数与预登记一致：Sakai 12.7 599、OSCAR 1,777、Dataverse 83、Seam 418、Cargo Tracker 23、TomEE 60、fineract 1，其余 0；语言 id 与文件集合不变 |
+| O6 附录审读 | 通过（第 4 轮） | 前三轮各发现措辞缺陷，均已修正并入本变更（见下）。终审：所有推断规则只会减少边；无行号；引用的绑定器、缺口种类、边类型都存在。Dataverse 12 个被页面绑定的 session bean 归服务层；7 个 Spring `@Controller` 不再被 `jsf.md` 认领；Seam 456 个 action 绑定里跨 action 的唯一目标 0 个 |
+| O7 真实 MCP | 通过 | Cargo Tracker 上基线与候选各走 12 步、覆盖 7 个工具，差异只有 `selectionDigest`；图头为 `["javaee", "jsf"]`、`lazy-fact-graph/10`。`/10` 服务把源码未变的 `/9` 产物报为 `stale`，`sync_facts` 重建后图头为 `["javaee", "jsf"]`，事实与 `/9` 相同 |
+| O8 扫描耗时 | 通过 | 3 次交错运行的中位数：Sakai 12.7 1,928 → 1,865 ms（−3.3%），hadoop 2,231 → 2,155 ms（−3.4%）；允许增幅 1,000 ms |
+| O9 全量门 | 通过 | core 1,261；根测试 2,733 通过 / 4 跳过；typecheck；check-refs；`openspec validate --all --strict` 38/38；core dist 由源码重建后测试 |
+
+验收中发现并在本变更内修正的产品缺陷：
+- 遮蔽顺序：单趟扫描时，注释里的 `</exclusions>` 会提前结束真实的排除元素，`exclude` 行尾的 `/*` 不开块注释，两者都把注释或排除里的依赖当成检测证据。改为先遮注释、再在遮完的文本里找排除声明（D2、D10 的 13、14）。语料不受影响，合成用例两例。
+- 夹具只锁住规格所列 12 个描述符元素中的 6 个，补齐到 12 个。
+- 附录：按类型注入的候选改为沿入向 `implements`、`inherits` 边传递收集；导航规则认前缀形式的 `from-view-id`、`faces-config.xml` 之外声明的导航与没有 `from-outcome` 的条目，带 `from-action` 的条目只对该 action 生效；有规则却无法判定时不退回隐式导航；隐式导航只在当前视图所在 web 模块是 JSF 2.0 及以上时使用；被页面绑定的 `@Named` 类与 session bean 的分层在两份附录里一致；`*Bean.java`、`*Controller.java` 这类与其他框架共用的后缀不单独决定角色。
+
+后续覆盖候选（都是可见的漏，不是编造）：
+- 字面量 `action="x"` 应匹配写着同一字面量的 `from-action`：本步的写法更严，Seam 示例里一个向导的 10 条真实导航被报为无法解析，没有画错的边。
+- `spring.md` 仍按 `*Controller` 后缀判断角色；Sakai 12.7 有 1 个类同时是 faces-config 声明的托管 bean，靠 `jsf.md` 的说明裁决。
+- 遮蔽的已知不精确：跨行三引号字符串与 Groovy 斜杠字符串里的注释记号；唯一结束标签写在注释里的畸形排除元素不遮；没有闭合的 `go.mod` `exclude (` 块不遮。语料里出现次数均为 0。
+- 旧版 Phase 1 扫描器与 Phase 6 模板的散文仍描述显示名形式的框架列表，现行路径不读它们。
