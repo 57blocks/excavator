@@ -8,50 +8,12 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 
+// The same guards the bake applies to every page before writing it.
+import { DATA_PLACEHOLDER, contentSecurityPolicy, cspProblems, externalReferences } from '../../skills/excavator-view/html-guards.mjs';
+import { loadTemplate } from '../../skills/excavator-view/bake/html-output.mjs';
+
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const templatePath = join(repoRoot, 'packages/view/dist/index.html');
-const PLACEHOLDER = '<script type="text/plain" id="excavator-view-data"></script>';
-
-// The reference scanner below is the same rule set the bake applies before
-// writing a page. Inline script bodies are blanked before markup is scanned:
-// minified JavaScript is full of `x.src=` assignments and `href==`
-// comparisons that are not references. Script bodies are scanned only for a
-// literal dynamic import(), the one way bundled code could load another file.
-const DOCUMENTATION_IMPORT_TEXTS = new Set(["import('./MyComponent')"]); // React lazy() error-message prose
-
-function isInlineTarget(target) {
-  const value = target.trim();
-  return value === '' || value.startsWith('#') || /^(data|blob|about):/i.test(value);
-}
-
-function externalReferences(html) {
-  const scripts = [];
-  const markup = html.replace(/(<script\b[^>]*>)([\s\S]*?)(<\/script\s*>)/gi, (_m, open, body, close) => {
-    scripts.push(body);
-    return `${open}${close}`;
-  });
-  const found = [];
-  const markupPatterns = [
-    /\b(?:src|href)\s*=\s*"([^"]*)"/gi,
-    /\b(?:src|href)\s*=\s*'([^']*)'/gi,
-    /\b(?:src|href)\s*=\s*([^\s"'>]+)/gi,
-    /url\(\s*["']?([^"')]*)["']?\s*\)/gi,
-    /@import\s+["']([^"']*)["']/gi,
-  ];
-  for (const pattern of markupPatterns) {
-    for (const match of markup.matchAll(pattern)) {
-      if (!isInlineTarget(match[1])) found.push(match[0]);
-    }
-  }
-  for (const body of scripts) {
-    for (const match of body.matchAll(/\bimport\s*\(\s*(["'`])([^"'`]*)\1\s*\)/g)) {
-      if (DOCUMENTATION_IMPORT_TEXTS.has(match[0]) || isInlineTarget(match[2])) continue;
-      found.push(match[0]);
-    }
-    for (const match of body.matchAll(/\bimportScripts\s*\(/g)) found.push(match[0]);
-  }
-  return found;
-}
 
 describe('view template build', () => {
   let html;
@@ -72,27 +34,27 @@ describe('view template build', () => {
   });
 
   it('carries exactly one empty data placeholder', () => {
-    expect(html.split(PLACEHOLDER).length - 1).toBe(1);
+    expect(html.split(DATA_PLACEHOLDER).length - 1).toBe(1);
   });
 
   it('declares a content security policy that allows no network source', () => {
-    const csp = html.match(/<meta\s+http-equiv="Content-Security-Policy"\s+content="([^"]*)"/i);
-    expect(csp, 'CSP meta tag').not.toBeNull();
-    const directives = new Map(
-      csp[1].split(';').map((d) => d.trim()).filter(Boolean).map((d) => {
-        const [name, ...values] = d.split(/\s+/);
-        return [name, values];
-      }),
-    );
-    expect(directives.get('default-src')).toEqual(["'none'"]);
-    expect(directives.get('script-src')).toEqual(["'unsafe-inline'"]);
-    expect(directives.get('style-src')).toEqual(["'unsafe-inline'"]);
-    expect(directives.get('img-src')).toEqual(['data:']);
-    expect(directives.get('worker-src')).toEqual(['blob:']);
-    expect(directives.get('connect-src')).toEqual(["'none'"]);
-    for (const values of directives.values()) {
-      for (const value of values) expect(value).not.toMatch(/^(https?:|\*|'self'|\/\/)/i);
-    }
+    expect(cspProblems(html)).toEqual([]);
+    const csp = contentSecurityPolicy(html);
+    expect(csp.get('default-src')).toEqual(["'none'"]);
+    expect(csp.get('connect-src')).toEqual(["'none'"]);
+    expect(csp.get('img-src')).toEqual(['data:']);
+    expect(csp.get('worker-src')).toEqual(['blob:']);
+  });
+
+  it('the CSP check sees a policy that opens the network (instrument check)', () => {
+    expect(cspProblems(html.replace("connect-src 'none'", 'connect-src https://example.invalid'))).not.toEqual([]);
+    expect(cspProblems(html.replace(/<meta\s+http-equiv="Content-Security-Policy"[^>]*>/, ''))).toEqual(['no Content-Security-Policy meta tag']);
+  });
+
+  it('is accepted by the bake as a view template', () => {
+    const { prefix, suffix } = loadTemplate(templatePath);
+    expect(prefix.endsWith('<script type="text/plain" id="excavator-view-data">\n')).toBe(true);
+    expect(suffix.startsWith('\n</script>')).toBe(true);
   });
 
   it('ships the production React build even when built under vitest (NODE_ENV=test)', () => {

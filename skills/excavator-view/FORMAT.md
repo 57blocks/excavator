@@ -90,3 +90,6 @@ Present only when their source exists:
 
 Any change a version-1 decoder would misread (a new cell meaning, a column reinterpreted, a different layout) changes the identifier to `excavator-view-bundle/2`. Adding a segment or a column does not: decoders look segments and columns up by name.
 
+## Dev fixture
+
+`packages/view/fixtures/sample.bundle.txt` is the payload of a bake of the synthetic project in `tests/view/fixtures/sample-project`, for the page's development server. It holds no real project content.
