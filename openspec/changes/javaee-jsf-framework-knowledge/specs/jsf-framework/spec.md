@@ -46,13 +46,13 @@ manifest：`pom.xml`、`build.gradle`、`build.gradle.kts`、`ivy.xml`、`faces-
   - `template=`、`ui:include`、`ui:decorate` 与导航规则 view id 的 `mentions`；
   - faces-config 里类名的 `mentions`。
 - action 方法返回的 outcome 与隐式导航（outcome 即 view id，无前导 `/` 时相对当前视图目录），只在仓库内恰好一个页面文件匹配时推断页面关系。
-  - 导航规则的 `from-outcome` 先于隐式导航。`from-view-id` 为前缀模式（如 `/admin/*`）的规则同样算数；`faces-config.xml` 之外声明的导航（如 Seam 的 `pages.xml`）也是规则。
+  - 导航规则的 `from-outcome` 先于隐式导航。`from-view-id` 为前缀模式（如 `/admin/*`）的规则同样算数；没有 `from-outcome` 的导航条目适用于所有 outcome；`faces-config.xml` 之外声明的导航（如 Seam 的 `pages.xml`）也是规则。
   - 存在写着该 outcome、却无法判定是否适用的规则时，MUST NOT 退回隐式导航。
-  - 隐式导航从 JSF 2.0 起才有：只在看得出项目是 JSF 2.0 及以上时使用（`faces-config.xml` 的 `version` 为 2.0 及以上，或 JSF 2.x 及以上的 API 依赖）；JSF 1.x 或看不出版本时不用。
+  - 隐式导航从 JSF 2.0 起才有：只在看得出当前视图所在的 web 模块是 JSF 2.0 及以上时使用（该模块的 `faces-config.xml` 的 `version` 为 2.0 及以上，或其构建文件声明 JSF 2.x 及以上的 API 依赖）；JSF 1.x 或看不出版本时不用。按 web 模块判断，不按整个仓库。
 - 复合组件标签按其命名空间里的库名，对应到 `resources/<library>/<tag>.xhtml`。
 - 组件库标签不透明：`h:`、`f:`、`ui:`、`p:`、`rich:`、`a4j:`、`ice:`、`t:`、`o:` 等。MUST NOT 为它们连到库内部的边，只有其属性里的 EL 有意义，而 EL 已是确定性事实。
 - converter / validator 按 id 引用时，只在恰好一个声明使用该 id 时推断。
-- 组件角色与分层：页面、模板、复合组件、backing bean、converter、validator、描述符。
+- 组件角色与分层：页面、模板、复合组件、backing bean、converter、validator、描述符。被页面 EL 绑定的 session bean 不是 backing bean，归服务层；`*Bean.java`、`*Controller.java` 这类与其他框架共用的文件名后缀不单独决定角色。
 
 #### Scenario: 约定不产可引用锚点
 - **WHEN** 某关系仅由 `jsf.md` 的约定推出

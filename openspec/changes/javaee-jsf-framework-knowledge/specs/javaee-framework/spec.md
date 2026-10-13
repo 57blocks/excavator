@@ -52,7 +52,7 @@ MUST NOT 以 Servlet、JPA、JMS 的 API 作为 `javaee` 的关键字：这些 A
 - 按类型注入（不写名字的 `@Inject`、`@EJB`）只在仓库内恰好一个非抽象实现时推断依赖。实现按传递的子类型计：实现类的子类、子接口的实现类都算候选。生产者方法也计入候选。零个或多个候选时不连边：限定符、`@Alternative` 由部署决定，MUST NOT 猜。
 - JAX-RS 路由由 `@ApplicationPath`、类上与方法上的 `@Path`、HTTP 方法注解拼出，写进方法的语义描述，不为路由造节点。
 - MDB 与 CDI 事件的发布订阅关系，只在两端写着同一个目的地字面量、或同一个事件类型时推断。
-- 组件角色与分层：session bean、MDB、resource、provider、interceptor、entity、producer、描述符。被页面 EL 绑定的 `@Named` 类是 backing bean，分层与 `jsf.md` 一致；其余 CDI bean 归服务层。
+- 组件角色与分层：session bean、MDB、resource、provider、interceptor、entity、producer、描述符。被页面 EL 绑定的 `@Named` 类是 backing bean，分层与 `jsf.md` 一致；其余 CDI bean 归服务层。session bean（由注解或 `ejb-jar.xml` 条目认定）即使被页面 EL 绑定也仍是 session bean、归服务层。`*Bean.java` 这类两种角色共用的文件名后缀不单独决定角色。
 
 #### Scenario: 约定不产可引用锚点
 - **WHEN** 某关系仅由 `javaee.md` 的约定推出
