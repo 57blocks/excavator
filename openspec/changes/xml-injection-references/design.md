@@ -111,7 +111,7 @@
 **D2：一张绑定表，名字过滤移到 EL 匹配。**
 
 - 建表时所有绑定都进表，包括点分名、含 `/` 的名字，以及新的别名绑定。每个绑定记一个标志：EL 能不能访问到它。判定沿用第 2 步的规则：EL 标识符；或者每段都是标识符的点分名，且绑定器 `namespacedNames: true`。
-- EL 匹配只用可访问的绑定。`nonIdentifierNames` 的含义不变，仍是 EL 访问不到的绑定数。`coverage.nameReferences.bindings` 仍只计 EL 可访问的绑定，所以第 2 步的覆盖计数不受影响，只多一个键 `spring-xml-alias`。
+- EL 匹配只用可访问的绑定。`nonIdentifierNames` 的含义不变，仍是 EL 访问不到的绑定数；新的别名绑定是点分名时也计入，所以这个计数可能增加。`coverage.nameReferences.bindings` 仍只计 EL 可访问的绑定，所以第 2 步的覆盖计数不受影响；`bindings` 与 `missingNames` 各多一个键 `spring-xml-alias`。
 - EL 匹配时，「他处」的判定也只看 EL 可访问的绑定。第 2 步就是这样做的，因为不可访问的名字根本不在表里。
 - 注入点按名字原文匹配，不做任何过滤。
 - 被否决的方案：注入另建一张表。两张表会对同一个名字给出不同的绑定，同一份 Spring XML 的别名与继承也要解析两次。
@@ -300,7 +300,7 @@
   - 按注入点 id 的计数与普查未读计数，与独立的 XML 统计一致（同样遮蔽注释）。
 - **O4 不回归**：wcp、cebreo、hadoop、fineract 各自与同一检出、`lazy-fact-graph/7` 的基线对比：
   - 节点集合、非 `injects` 边集合、既有缺口完全一致；
-  - 覆盖只多 `injections` 一段，以及 `nameReferences.bindings` 的 `spring-xml-alias` 键；
+  - 覆盖只多 `injections` 一段，以及 `nameReferences` 的 `bindings` 与 `missingNames` 各一个 `spring-xml-alias` 键；
   - 新增的 `injects` 边与缺口逐语料列出计数，每一个都说明来源。
 - **O4b 第 2 步回归**：Dataverse、Sakai 12.7、Seam 2.2 examples、Cargo Tracker、TomEE 8.x examples 各自与同一快照、`lazy-fact-graph/7` 的基线对比：
   - 节点与非 `injects` 边一致；

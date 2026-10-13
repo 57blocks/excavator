@@ -29,7 +29,7 @@ Spring XML 用名字装配依赖：`<property name="dao" ref="orderDao"/>` 把�
     - `inheritFrom`：元素没有目标时，从该属性所名的同单元、同命名空间绑定继承目标。用于 Spring 只写 `parent` 的 bean 定义。
   - 目标种类新增 `name`：绑定把名字转给另一个名字，用于 Spring `<alias>`。
   - 随附条目：Spring 注入族 `spring-xml-injection`，共 11 个注入点；新绑定器 `spring-xml-alias`；`spring-xml-bean` 加根命名空间与上面两条目标规则。
-- **绑定表**：绑定表保留所有名字。点分名或含其它字符的名字不再在建表时丢弃，改为在 EL 匹配时按第 2 步的规则过滤。所以第 2 步的 EL 结果与 `nonIdentifierNames` 计数不变，而 Sakai 这类用接口全限定名作 bean id 的 `ref` 能匹配上。绑定的目标在建表后统一解析一次，经过别名与定义继承，最后落到类、仓库外、未建索引、未知或歧义。EL 与注入读同一张表。
+- **绑定表**：绑定表保留所有名字。点分名或含其它字符的名字不再在建表时丢弃，改为在 EL 匹配时按第 2 步的规则过滤。所以第 2 步的 EL 匹配范围不变，`nonIdentifierNames` 仍是 EL 访问不到的绑定数（新绑定器 `spring-xml-alias` 读到的点分别名也计入），而 Sakai 这类用接口全限定名作 bean id 的 `ref` 能匹配上。绑定的目标在建表后统一解析一次，经过别名与定义继承，最后落到类、仓库外、未建索引、未知或歧义。EL 与注入读同一张表。
 - **注入点读取**：对根元素命中注入族的 XML 文件，读出每个注入点的名字、行、可见范围，以及消费者：最近的、名为消费者元素的自身或祖先元素，及其按绑定器目标规则读出的类、继承名与未知原因。普查规则命中、却没有注入点读的引用形状，按「元素@属性」计数，例如 `idref`、`custom-filter@ref`。
 - **解析与新边 `injects`**：注入点的名字在本单元、注入族命名空间的绑定里解析；可见范围为本文件时只看本文件；静态不可见时直接落桶。目标唯一落到仓库类、且消费者也唯一落到仓库类时，画一条 `injects` 边，从消费者类指向目标类。语义为定义级：目标是被绑定的定义声明的类（FactoryBean 不展开为其产物）。证据为注入点所在的 XML 行、名字、注入点 id、消费者行与解析经过的绑定处。`injects` 进入可遍历的确定性边集合，验证器按名字核对证据行。
 - **覆盖与缺口**：新增 `coverage.injections`，含 14 个桶、普查未读计数与守恒断言。新增五类缺口：`injection-target-unresolved`、`injection-ambiguous`、`injection-elsewhere`、`injection-unbound`、`injection-consumer-unresolved`。
@@ -70,6 +70,6 @@ Spring XML 用名字装配依赖：`<property name="dao" ref="orderDao"/>` 把�
   - `name-reference-resolution.mjs`（抽出共用的绑定表，目标解析经别名与继承；EL 匹配时过滤名字）；
   - 新模块 `xml-injection-resolution.mjs`；
   - `build-fact-graph.mjs`、`lazy-analyze.mjs`、`retrieve.mjs`、`validate-graph.mjs`。
-- **产物**：knowledge graph 新增 `injects` 边、五类缺口与 `coverage.injections`；`coverage.nameReferences.bindings` 多一个 `spring-xml-alias` 键。旧产物因版本号变化，在下次同步时整体重投影。
+- **产物**：knowledge graph 新增 `injects` 边、五类缺口与 `coverage.injections`；`coverage.nameReferences` 的 `bindings` 与 `missingNames` 各多一个 `spring-xml-alias` 键。旧产物因版本号变化，在下次同步时整体重投影。
 - **不影响**：既有节点与边（含 `mentions`、`references` 的形状），以及 MCP 工具的参数与形状。
 - **语料**：验收用 Sakai 12.7、OSCAR、OpenMRS core 的固定提交。第 2 步回归用 Dataverse、Sakai 12.7、Seam 2.2 examples、Cargo Tracker、TomEE 8.x examples，不回归用 wcp、cebreo、hadoop、fineract。真实项目的源码、路径与输出不提交。
