@@ -20,7 +20,7 @@
 
 ## 1. Core：带证据的检测
 
-- [x] 1.1 新增 `packages/core/src/languages/manifest-mask.ts`，导出 `maskManifestText(path, text)`，按 design D2 的格式表遮蔽。被遮蔽的字符换成空格，换行保留。
+- [ ] 1.1 新增 `packages/core/src/languages/manifest-mask.ts`，导出 `maskManifestText(path, text)`，按 design D2 的格式表遮蔽。被遮蔽的字符换成空格，换行保留。
   验证：core 单元测试逐格式断言：
   - XML：注释、未闭合注释、`exclusions` 成对元素、`exclude` 自闭合、`excludes`、大小写变体、缺结束标签时不遮蔽；
   - Gradle：`//`、`/* */`、行内 `exclude group:`；
@@ -79,11 +79,11 @@
   - 对夹具首次运行，图头为 `["javaee", "jsf"]`；
   - 预置一个图头为 `["Spring Boot"]` 的旧图，再运行后被替换为检出值；
   - 夹具去掉全部关键字后为 `[]`。
-- [x] 4.2 用同一夹具锁定 Java EE 描述符的提及，按 spec「Java EE 描述符里的类名经 mentions 连边」。
+- [ ] 4.2 用同一夹具锁定 Java EE 描述符的提及，按 spec「Java EE 描述符里的类名经 mentions 连边」。
   验证：管线测试断言精确的 `mentions` 边列表与证据行：
-  - `ejb-jar.xml` 到 bean 类、业务接口、拦截器；
+  - `ejb-jar.xml` 的 `ejb-class`、`home`、`remote`、`local-home`、`local`、`business-local`、`business-remote`、`interceptor-class` 各至少一条；
   - `persistence.xml` 到实体；
-  - `web.xml` 到夹具里的 servlet、filter、listener（若有）；
+  - `web.xml` 的 `servlet-class`、`filter-class`、`listener-class` 各至少一条（夹具含仓库内的 servlet 类）；
 
   并断言 `provider` 计入仓库外、不成边。
 - [x] 4.3 核对既有 Lazy 夹具的管线测试：凡夹具里有 manifest 的，图头的 `frameworks` 变化逐个列出并更新期望；冻结摘要若受影响，用生成器整块重冻并列出；`factsDigest` 不得因本步变化。
@@ -91,7 +91,7 @@
 
 ## 5. 附录与注入
 
-- [x] 5.1 新增 `skills/excavator/frameworks/javaee.md` 与 `jsf.md`，按 design D8 与两份 spec 的「SHALL 写明」逐条落段落。
+- [ ] 5.1 新增 `skills/excavator/frameworks/javaee.md` 与 `jsf.md`，按 design D8 与两份 spec 的「SHALL 写明」逐条落段落。
   验证：散文契约测试断言两份附录含以下各点的关键语句，并且不含行号模式（如 `:\d+`）：
   - 「Already in the fact graph」一节及其边类型；
   - 每条推断规则的「零个或多个候选不连」；

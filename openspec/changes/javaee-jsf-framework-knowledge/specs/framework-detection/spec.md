@@ -59,6 +59,8 @@
 
 Gradle、`go.mod` 与 `#` 注释格式里，单行的 `'…'` 或 `"…"` 字符串中出现的 `//`、`/*`、`#`、`exclude` 不是注释或排除的起点。引号在本行没有闭合时不构成字符串。
 
+注释先于排除声明判定：排除声明的范围在遮掉注释之后的文本里确定，注释里的结束标签不结束排除元素；排除声明所在的行里出现的注释照常是注释。
+
 遮蔽 MUST 保持行号不变。遮蔽只能减少命中，MUST NOT 产生原文没有的命中。
 
 #### Scenario: Maven 排除不算使用
@@ -76,6 +78,14 @@ Gradle、`go.mod` 与 `#` 注释格式里，单行的 `'…'` 或 `"…"` 字符
 #### Scenario: 字符串里的通配不遮蔽后文
 - **WHEN** `build.gradle` 第 5 行写 `include '**/*.java'`，第 9 行写 `implementation 'org.springframework:spring-core:5.3.0'`，第 5 行的 `/*` 之后文件里再没有 `*/`
 - **THEN** 检出 `spring`，证据为第 9 行
+
+#### Scenario: 注释里的结束标签不结束排除元素
+- **WHEN** `pom.xml` 的 `<exclusions>` 里先有一行 `<!-- </exclusions> -->`，其后仍在同一个 `<exclusions>` 元素里写 `<groupId>org.springframework</groupId>`，文件没有其他 `spring` 关键字
+- **THEN** 不检出 `spring`
+
+#### Scenario: 排除语句行尾的块注释照常打开
+- **WHEN** `build.gradle` 一行写 `exclude group: 'x' /* old`，下一行写 `implementation 'org.springframework:spring-core:5.3.0'`，再下一行是 `*/`，文件没有其他 `spring` 关键字
+- **THEN** 不检出 `spring`
 
 #### Scenario: 注释外的声明照常检出且行号不偏移
 - **WHEN** `pom.xml` 第 10 行是含 `primefaces` 的注释，第 40 行是 `<artifactId>primefaces</artifactId>`
