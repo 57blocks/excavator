@@ -1,7 +1,8 @@
 // javaee-jsf-framework-knowledge, tasks 4.1-4.2: the detected framework ids in the
 // graph header, and the Java EE descriptor mentions, in the real Lazy driver. The
 // fixture is a purpose-built synthetic project (tests/fixtures/javaee-jsf-app): two
-// Maven modules, an EJB descriptor, a persistence unit, a web descriptor and JSF
+// Maven modules, an EJB descriptor with a 3.x and a 2.x style session bean, a
+// persistence unit, a web descriptor with a servlet, a filter and a listener, and JSF
 // views. It is copied to a temp directory because a Lazy run writes `.excavator/`
 // next to the source.
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -177,11 +178,17 @@ describe('Java EE descriptor class names in the real Lazy driver (task 4.2)', ()
       .sort();
   };
 
-  it('draws the ejb-jar.xml edges to the bean class, the business interface and the interceptor', () => {
+  it('draws the ejb-jar.xml edges: bean classes, home, remote, local-home, local, business interfaces and the interceptor', () => {
     expect(mentionsOf(EJB)).toEqual([
-      `${EJB_JAVA}/AuditInterceptor.java#AuditInterceptor @ 13 com.acme.orders.AuditInterceptor (interceptor-class)`,
-      `${EJB_JAVA}/OrderProcessorBean.java#OrderProcessorBean @ 7 com.acme.orders.OrderProcessorBean (ejb-class)`,
+      `${EJB_JAVA}/AuditInterceptor.java#AuditInterceptor @ 23 com.acme.orders.AuditInterceptor (interceptor-class)`,
+      `${EJB_JAVA}/LegacyOrderBean.java#LegacyOrderBean @ 17 com.acme.orders.LegacyOrderBean (ejb-class)`,
+      `${EJB_JAVA}/LegacyOrderHome.java#LegacyOrderHome @ 13 com.acme.orders.LegacyOrderHome (home)`,
+      `${EJB_JAVA}/LegacyOrderLocal.java#LegacyOrderLocal @ 16 com.acme.orders.LegacyOrderLocal (local)`,
+      `${EJB_JAVA}/LegacyOrderLocalHome.java#LegacyOrderLocalHome @ 15 com.acme.orders.LegacyOrderLocalHome (local-home)`,
+      `${EJB_JAVA}/LegacyOrderRemote.java#LegacyOrderRemote @ 14 com.acme.orders.LegacyOrderRemote (remote)`,
+      `${EJB_JAVA}/OrderProcessorBean.java#OrderProcessorBean @ 8 com.acme.orders.OrderProcessorBean (ejb-class)`,
       `${EJB_JAVA}/OrderProcessorLocal.java#OrderProcessorLocal @ 6 com.acme.orders.OrderProcessorLocal (business-local)`,
+      `${EJB_JAVA}/OrderProcessorRemote.java#OrderProcessorRemote @ 7 com.acme.orders.OrderProcessorRemote (business-remote)`,
     ]);
   });
 
@@ -191,19 +198,32 @@ describe('Java EE descriptor class names in the real Lazy driver (task 4.2)', ()
     ]);
   });
 
-  it('draws the web.xml edges to the filter and the listener in the repository, and to the welcome page', () => {
-    // The fixture declares no servlet class of its own: its one servlet is FacesServlet, outside the repository.
+  it('draws the web.xml edges to the servlet, the filter and the listener in the repository, and to the welcome page', () => {
+    // The other servlet, FacesServlet, is outside the repository: no edge, one more name counted below.
     expect(mentionsOf(WEB)).toEqual([
       `${WEB_JAVA}/AuditFilter.java#AuditFilter @ 8 com.acme.orders.web.AuditFilter (filter-class)`,
       `${WEB_JAVA}/OrderListener.java#OrderListener @ 4 com.acme.orders.web.OrderListener (listener-class)`,
-      'orders-web/src/main/webapp/orders/list.xhtml @ 23 orders/list.xhtml (welcome-file)',
+      `${WEB_JAVA}/OrderServlet.java#OrderServlet @ 24 com.acme.orders.web.OrderServlet (servlet-class)`,
+      'orders-web/src/main/webapp/orders/list.xhtml @ 31 orders/list.xhtml (welcome-file)',
     ]);
+  });
+
+  it('locks every element the spec lists, each with at least one edge', () => {
+    const label = labeller(graph);
+    const elementsOf = (descriptor) => [...new Set(graph.edges
+      .filter((e) => e.type === 'mentions' && label(e.source) === descriptor)
+      .flatMap((e) => e.evidence.filter((x) => x.resolution === 'fqn').map((x) => x.context.element)))].sort();
+    expect(elementsOf(EJB)).toEqual(
+      ['business-local', 'business-remote', 'ejb-class', 'home', 'interceptor-class', 'local', 'local-home', 'remote'],
+    );
+    expect(elementsOf(PERSISTENCE)).toEqual(['class']);
+    expect(elementsOf(WEB)).toEqual(['filter-class', 'listener-class', 'servlet-class']);
   });
 
   it('draws every one of them as an extracted, forward edge whose evidence is the descriptor line', () => {
     const label = labeller(graph);
     const edges = graph.edges.filter((e) => e.type === 'mentions' && [EJB, PERSISTENCE, WEB].includes(label(e.source)));
-    expect(edges).toHaveLength(7);
+    expect(edges).toHaveLength(14);
     for (const edge of edges) {
       expect(edge.provenance).toBe('extracted');
       expect(edge.direction).toBe('forward');
@@ -217,10 +237,10 @@ describe('Java EE descriptor class names in the real Lazy driver (task 4.2)', ()
 
   it('counts a name outside the repository where the class-name rule counts them, and draws no edge for it', async () => {
     const fqn = graph.coverage.mentions.fqn;
-    // Eight names resolve to a type of the repository: the descriptor edges above, the converter of faces-config.xml
-    // and the page-bean import of legacy.jsp. The 42 others are the provider, FacesServlet and every other
-    // dotted name the non-code files carry.
-    expect(fqn).toEqual({ candidates: 50, edge: 8, ambiguous: 0, unindexed: 0, external: 42 });
+    // Fifteen names resolve to a type of the repository: the thirteen class names of the descriptors above, the
+    // converter of faces-config.xml and the page-bean import of legacy.jsp. The 42 others are the provider,
+    // FacesServlet and every other dotted name the non-code files carry.
+    expect(fqn).toEqual({ candidates: 57, edge: 15, ambiguous: 0, unindexed: 0, external: 42 });
     expect(fqn.edge + fqn.ambiguous + fqn.unindexed + fqn.external).toBe(fqn.candidates);
 
     // The provider is one of the 42: without its line there is one fewer, and nothing else moves.
@@ -229,7 +249,7 @@ describe('Java EE descriptor class names in the real Lazy driver (task 4.2)', ()
       const file = join(other, PERSISTENCE);
       writeFileSync(file, readFileSync(file, 'utf-8').split('\n').filter((line) => !line.includes('<provider>')).join('\n'));
       await runLazyAnalysis({ projectRoot: other, now: FIXED_NOW });
-      expect(readProduct(other).coverage.mentions.fqn).toEqual({ candidates: 49, edge: 8, ambiguous: 0, unindexed: 0, external: 41 });
+      expect(readProduct(other).coverage.mentions.fqn).toEqual({ candidates: 56, edge: 15, ambiguous: 0, unindexed: 0, external: 41 });
     } finally {
       rmSync(other, { recursive: true, force: true });
     }

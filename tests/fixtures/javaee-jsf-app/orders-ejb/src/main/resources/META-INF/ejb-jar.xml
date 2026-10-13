@@ -4,7 +4,17 @@
     <session>
       <ejb-name>OrderProcessor</ejb-name>
       <business-local>com.acme.orders.OrderProcessorLocal</business-local>
+      <business-remote>com.acme.orders.OrderProcessorRemote</business-remote>
       <ejb-class>com.acme.orders.OrderProcessorBean</ejb-class>
+      <session-type>Stateless</session-type>
+    </session>
+    <session>
+      <ejb-name>LegacyOrder</ejb-name>
+      <home>com.acme.orders.LegacyOrderHome</home>
+      <remote>com.acme.orders.LegacyOrderRemote</remote>
+      <local-home>com.acme.orders.LegacyOrderLocalHome</local-home>
+      <local>com.acme.orders.LegacyOrderLocal</local>
+      <ejb-class>com.acme.orders.LegacyOrderBean</ejb-class>
       <session-type>Stateless</session-type>
     </session>
   </enterprise-beans>

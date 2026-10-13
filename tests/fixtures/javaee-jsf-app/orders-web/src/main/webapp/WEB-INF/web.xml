@@ -19,6 +19,14 @@
     <servlet-name>faces</servlet-name>
     <url-pattern>*.xhtml</url-pattern>
   </servlet-mapping>
+  <servlet>
+    <servlet-name>export</servlet-name>
+    <servlet-class>com.acme.orders.web.OrderServlet</servlet-class>
+  </servlet>
+  <servlet-mapping>
+    <servlet-name>export</servlet-name>
+    <url-pattern>/orders/export</url-pattern>
+  </servlet-mapping>
   <welcome-file-list>
     <welcome-file>orders/list.xhtml</welcome-file>
   </welcome-file-list>

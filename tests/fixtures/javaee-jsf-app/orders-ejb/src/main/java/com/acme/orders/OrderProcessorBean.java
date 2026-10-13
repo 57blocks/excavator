@@ -6,7 +6,7 @@ import javax.persistence.EntityManager;
 import javax.persistence.PersistenceContext;
 
 @Stateless
-public class OrderProcessorBean implements OrderProcessorLocal {
+public class OrderProcessorBean implements OrderProcessorLocal, OrderProcessorRemote {
     @PersistenceContext
     private EntityManager em;
 

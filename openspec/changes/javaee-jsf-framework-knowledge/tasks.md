@@ -79,7 +79,7 @@
   - 对夹具首次运行，图头为 `["javaee", "jsf"]`；
   - 预置一个图头为 `["Spring Boot"]` 的旧图，再运行后被替换为检出值；
   - 夹具去掉全部关键字后为 `[]`。
-- [ ] 4.2 用同一夹具锁定 Java EE 描述符的提及，按 spec「Java EE 描述符里的类名经 mentions 连边」。
+- [x] 4.2 用同一夹具锁定 Java EE 描述符的提及，按 spec「Java EE 描述符里的类名经 mentions 连边」。
   验证：管线测试断言精确的 `mentions` 边列表与证据行：
   - `ejb-jar.xml` 的 `ejb-class`、`home`、`remote`、`local-home`、`local`、`business-local`、`business-remote`、`interceptor-class` 各至少一条；
   - `persistence.xml` 到实体；
