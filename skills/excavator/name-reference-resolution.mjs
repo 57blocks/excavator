@@ -61,7 +61,14 @@
  *
  * Annotation identity follows Java's scope rules (D3), not the simple name: a
  * `@Named` the file imports from Guice, or one the repository declares in the
- * class's own package, is not the catalog's.
+ * class's own package, is not the catalog's. One function decides it for every
+ * reader of annotations (`createAnnotationIdentity`): the annotation bindings
+ * here and the annotation injection sites of annotation-injection-resolution.mjs.
+ *
+ * The table also answers the converse of a name lookup: which bindings come to a
+ * given class node (`bindingsOfClass`), which is how a stage tells that a class is
+ * declared a component by a binder (openspec: changes/annotation-injection-
+ * references, design D5).
  */
 
 import { DEFAULT_NAME_RULES } from './name-binding-catalog.mjs';
@@ -191,6 +198,7 @@ export const unitLabel = (unit) => (unit === null ? '(repository)' : unit === ''
  *   ambiguous   a class name that several declarations carry
  */
 const NO_VIA = Object.freeze([]);
+const NO_BINDINGS = Object.freeze([]);
 const nodeTarget = (id, path, name) => ({ kind: 'node', key: `node:${id}`, id, labels: [`${path}#${name}`], via: NO_VIA });
 const unindexedTarget = (type) => ({ kind: 'unindexed', key: `unindexed:${type}`, labels: [type], via: NO_VIA });
 /** All unknown targets share one key: they are the same fate, whatever the reason. */
@@ -243,57 +251,102 @@ function importsOf(row) {
 }
 
 /**
- * Annotation bindings of every Java type, with the counts of what was not one.
- * A written annotation `W` in package `P` is, in order (D3): the qualified name
- * as written; the single-type import `x.W`; a type the repository declares as
- * `P.W` (which shadows an on-demand import); the one on-demand import `p.*`
- * that provides a catalog annotation `p.W`. Anything else is not confirmed.
+ * The package a Java type is in, from its qualified name: empty for the default
+ * package, and for a name that does not end in the type's own (a nested spelling).
  */
-function annotationBindings({ catalog, javaRows, classIds, typesByFqn, otherJvm, declaredJavaTypes, unitOf, mutations, tally }) {
-  const binderByFqn = new Map();
+export const packageOf = (cls) => (cls.qualifiedName.endsWith(`.${cls.name}`) ? cls.qualifiedName.slice(0, -(cls.name.length + 1)) : '');
+
+const CONFIRMED_OTHER = Object.freeze({ kind: 'other' });
+const UNCONFIRMED = Object.freeze({ kind: 'unconfirmed' });
+
+/**
+ * The identity of an annotation as a file writes it, against a set of the
+ * catalog's annotations (openspec: changes/name-binding-references D3, shared by
+ * the annotation bindings and, with changes/annotation-injection-references D2,
+ * by the annotation injection sites). A written annotation `W` in package `P` is,
+ * in order: the qualified name as written; the single-type import `x.W`; a type
+ * the repository declares as `P.W` (which shadows an on-demand import); the one
+ * on-demand import `p.*` that provides a catalog annotation `p.W`. Anything else
+ * is not confirmed. A written name that no catalog annotation shares a simple
+ * name with is not the catalog's whatever it is, and is not counted.
+ *
+ * @param {{
+ *   fqns: Iterable<string>,
+ *   typesByFqn: Map<string, object[]>,
+ *   otherJvm: { isType(pkg: string, name: string): boolean },
+ *   declaredJavaTypes: { isType(pkg: string, name: string): boolean },
+ *   simpleNames?: boolean,
+ * }} args
+ *   `fqns` are the qualified names of the annotations the caller looks for, in
+ *   catalog order. `simpleNames` is a test seam for the mutation tripwires (a
+ *   simple name alone is taken for the catalog's); production callers leave it off.
+ * @returns {(row: object, written: string, pkg: string) => { kind: 'catalog', fqn: string } | { kind: 'other' } | { kind: 'unconfirmed' }}
+ *   `catalog`: it is that annotation; `other`: confirmed not to be one of them
+ *   (a type of another package or of the repository's own, same-package
+ *   shadowing included); `unconfirmed`: a spelling that could be one, and the
+ *   imports cannot say (a name two single-type imports claim, or on-demand
+ *   imports that provide none or several). `row` is the structure row of the
+ *   file (its imports are read), `pkg` the package the annotation is written in.
+ */
+export function createAnnotationIdentity({ fqns, typesByFqn, otherJvm, declaredJavaTypes, simpleNames = false }) {
+  const known = new Set(fqns);
   const firstBySimple = new Map();
-  for (const binder of catalog.annotationBinders) {
-    for (const fqn of binder.annotations) {
-      binderByFqn.set(fqn, binder);
-      if (!firstBySimple.has(lastSegment(fqn))) firstBySimple.set(lastSegment(fqn), binder);
-    }
+  for (const fqn of known) {
+    if (!firstBySimple.has(lastSegment(fqn))) firstBySimple.set(lastSegment(fqn), fqn);
   }
 
   const declaredInPackage = (pkg, simple) => {
     if (typesByFqn.has(pkg ? `${pkg}.${simple}` : simple)) return true;
     return pkg !== '' && (declaredJavaTypes.isType(pkg, simple) || otherJvm.isType(pkg, simple));
   };
+  const importsByRow = new WeakMap();
+  const importsFor = (row) => {
+    if (!importsByRow.has(row)) importsByRow.set(row, importsOf(row));
+    return importsByRow.get(row);
+  };
+  const confirmed = (fqn) => (known.has(fqn) ? { kind: 'catalog', fqn } : CONFIRMED_OTHER);
+
+  return (row, written, pkg) => {
+    if (written.includes('.')) return confirmed(written); // written qualified: it is that name
+    if (!firstBySimple.has(written)) return CONFIRMED_OTHER;
+    // Tripwire seam: the simple name alone is taken for the catalog's.
+    if (simpleNames) return { kind: 'catalog', fqn: firstBySimple.get(written) };
+    const imports = importsFor(row);
+    if (imports.singles.has(written)) {
+      const imported = imports.singles.get(written);
+      return imported.size === 1 ? confirmed([...imported][0]) : UNCONFIRMED;
+    }
+    if (declaredInPackage(pkg, written)) return CONFIRMED_OTHER; // the repository's own type of that name: not a failed confirmation
+    const providers = [...imports.onDemand].filter((p) => known.has(`${p}.${written}`));
+    return providers.length === 1 ? confirmed(`${providers[0]}.${written}`) : UNCONFIRMED;
+  };
+}
+
+/**
+ * Annotation bindings of every Java type, with the counts of what was not one.
+ * The annotation's identity is `createAnnotationIdentity`'s (D3).
+ */
+function annotationBindings({ catalog, javaRows, classIds, typesByFqn, otherJvm, declaredJavaTypes, unitOf, mutations, tally }) {
+  const binderByFqn = new Map();
+  for (const binder of catalog.annotationBinders) {
+    for (const fqn of binder.annotations) binderByFqn.set(fqn, binder);
+  }
+  const confirm = createAnnotationIdentity({ fqns: binderByFqn.keys(), typesByFqn, otherJvm, declaredJavaTypes, simpleNames: Boolean(mutations.simpleNameAnnotations) });
 
   const bindings = [];
   for (const row of javaRows) {
-    const imports = importsOf(row);
     const unit = unitOf(row.path);
     (row.classes ?? []).forEach((cls, index) => {
       if (typeof cls.qualifiedName !== 'string') return;
-      const pkg = cls.qualifiedName.endsWith(`.${cls.name}`) ? cls.qualifiedName.slice(0, -(cls.name.length + 1)) : '';
+      const pkg = packageOf(cls);
       for (const use of cls.annotationArguments ?? []) {
-        let binder = null;
-        if (use.name.includes('.')) {
-          binder = binderByFqn.get(use.name) ?? null; // written qualified: it is that name
-        } else if (firstBySimple.has(use.name)) {
-          if (mutations.simpleNameAnnotations) {
-            // Tripwire seam: the simple name alone is taken for the catalog's.
-            binder = firstBySimple.get(use.name);
-          } else if (imports.singles.has(use.name)) {
-            const imported = imports.singles.get(use.name);
-            binder = imported.size === 1 ? binderByFqn.get([...imported][0]) ?? null : undefined;
-          } else if (declaredInPackage(pkg, use.name)) {
-            binder = null; // the repository's own type of that name: no binding, and not a failed confirmation
-          } else {
-            const providers = [...imports.onDemand].filter((p) => binderByFqn.has(`${p}.${use.name}`));
-            binder = providers.length === 1 ? binderByFqn.get(`${providers[0]}.${use.name}`) : undefined;
-          }
-          if (binder === undefined) {
-            tally.unconfirmed[use.name] = (tally.unconfirmed[use.name] ?? 0) + 1;
-            continue;
-          }
+        const identity = confirm(row, use.name, pkg);
+        if (identity.kind === 'unconfirmed') {
+          tally.unconfirmed[use.name] = (tally.unconfirmed[use.name] ?? 0) + 1;
+          continue;
         }
-        if (binder === null) continue;
+        if (identity.kind === 'other') continue;
+        const binder = binderByFqn.get(identity.fqn);
 
         const named = nameOf(binder, use, cls);
         if (named === null) {
@@ -404,6 +457,8 @@ function classify(all) {
  *   resolveName: (name: string, scope: { unit: string|null, namespace: string, file?: string }) => { hits: object[], target: object, via: object[] },
  *   resolveHits: (hits: object[]) => { hits: object[], target: object, via: object[] },
  *   resolveDeclared: (declared: { declared: { kind: string, text: string }|null, unknownBecause: string|null, inherits: string|null, unit: string|null, namespace: string }) => object,
+ *   bindingsOfClass: (classId: string) => readonly object[],
+ *   annotationIdentity: (args: { fqns: Iterable<string>, simpleNames?: boolean }) => ReturnType<typeof createAnnotationIdentity>,
  * }}
  *   `elByName` is the bindings an expression can reach, by name; `named` every
  *   binding of a name, in any unit and namespace; `bindingsNamed` those of one
@@ -415,7 +470,12 @@ function classify(all) {
  *   `resolveDeclared` the target of what an element declared - its class text,
  *   its `unknownBecause` and `inherits`, in a unit and namespace - by the rules a
  *   binding's target follows, for an element that declares no binding (the
- *   consumer of an injection). Arrays the table returns are read-only.
+ *   consumer of an injection); `bindingsOfClass` every binding, of any binder, whose
+ *   target resolved to that class node (its own declaration, an alias, a parent's
+ *   inheritor), worked out once after the targets are resolved and empty for a
+ *   class nothing names; `annotationIdentity` the annotation identity function
+ *   over this repository's type dictionaries, for the annotations the caller names.
+ *   Arrays the table returns are read-only.
  */
 export function buildNameBindingTable({
   sites, catalog, manifestPaths, javaRows, classIds, javaTypes, otherJvm, declaredJavaTypes, mutations = {},
@@ -538,7 +598,15 @@ export function buildNameBindingTable({
   for (const binding of bindings) resolveBinding(binding);
   tally.nonIdentifierNames = bindings.filter((binding) => !binding.el).length;
 
-  return { unitOf, bindings, elByName, tally, named, bindingsNamed, resolveName, resolveHits, resolveDeclared };
+  // The converse of a lookup, once the targets are final (annotation-injection-references D5).
+  const byClass = new Map();
+  for (const binding of bindings) {
+    if (binding.target.kind === 'node') addTo(byClass, binding.target.id, binding);
+  }
+  const bindingsOfClass = (classId) => byClass.get(classId) ?? NO_BINDINGS;
+  const annotationIdentity = ({ fqns, simpleNames = false }) => createAnnotationIdentity({ fqns, typesByFqn, otherJvm, declaredJavaTypes, simpleNames });
+
+  return { unitOf, bindings, elByName, tally, named, bindingsNamed, resolveName, resolveHits, resolveDeclared, bindingsOfClass, annotationIdentity };
 }
 
 /**

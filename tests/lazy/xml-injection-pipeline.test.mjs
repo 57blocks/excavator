@@ -93,8 +93,8 @@ describe('XML injection sites in the real Lazy driver', () => {
 
   it('stamps the product with the new pipeline version', () => {
     expect(result.saveError).toBeNull();
-    expect(PIPELINE_VERSION).toBe('lazy-fact-graph/8');
-    expect(graph.project.pipelineVersion).toBe('lazy-fact-graph/8');
+    expect(PIPELINE_VERSION).toBe('lazy-fact-graph/9');
+    expect(graph.project.pipelineVersion).toBe('lazy-fact-graph/9');
   });
 
   it('keeps the name-reference stage where it was in the stages row: after mentions, before the fact graph, timed', () => {

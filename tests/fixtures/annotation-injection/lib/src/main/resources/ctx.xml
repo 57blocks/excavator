@@ -1,0 +1,4 @@
+<beans xmlns="http://www.springframework.org/schema/beans">
+  <bean id="orderDao" class="com.acme.lib.LibDao"/>
+  <bean id="libOnly" class="com.acme.lib.LibDao"/>
+</beans>

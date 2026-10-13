@@ -11,6 +11,7 @@ import type { LanguageExtractor, TreeSitterNode } from "./types.js";
 import { findChild, findChildren } from "./base-extractor.js";
 import { extractAnnotationNames, extractClassLiterals, memberDeclarationFacts } from "./java-declaration-facts.js";
 import { extractAnnotationUses } from "./java-annotation-arguments.js";
+import { extractMemberAnnotations } from "./java-member-annotations.js";
 import { methodReferenceSite } from "./java-method-references.js";
 import { STATIC_INITIALIZER_CALLER, initializerCaller } from "./java-initializer-callers.js";
 import { dottedName, typeText } from "./java-names.js";
@@ -380,7 +381,14 @@ export class JavaExtractor implements LanguageExtractor {
       }
     }
 
-    return { functions, classes, imports, exports, classLiterals: extractClassLiterals(rootNode) };
+    return {
+      functions,
+      classes,
+      imports,
+      exports,
+      classLiterals: extractClassLiterals(rootNode),
+      memberAnnotations: extractMemberAnnotations(rootNode),
+    };
   }
 
   /**

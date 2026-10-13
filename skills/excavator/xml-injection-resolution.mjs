@@ -45,10 +45,13 @@
  *
  * `assertInjectionConservation` checks that the fourteen buckets add up to the
  * sites, and that the gaps recorded for each of the five gap kinds add up to
- * their buckets.
+ * their buckets - those of the XML sites and, when the annotation stage
+ * (annotation-injection-resolution.mjs) ran as well, those of its fifteen
+ * buckets: the two sources record into the same five kinds.
  */
 
 import { unitLabel } from './name-reference-resolution.mjs';
+import { ANNOTATION_INJECTION_BUCKETS, ANNOTATION_INJECTION_GAP_KINDS } from './annotation-injection-resolution.mjs';
 
 /** Same weight as `references` and `mentions`: every edge is extracted from cited lines. */
 const INJECTS_EDGE_WEIGHT = 0.5;
@@ -76,10 +79,12 @@ export const XML_INJECTION_GAP_KINDS = Object.freeze({
 });
 
 /** The gap kinds, each with the buckets whose sites it records. */
-const BUCKETS_OF_GAP_KIND = Object.freeze(Object.entries(XML_INJECTION_GAP_KINDS).reduce((kinds, [bucket, kind]) => {
+const bucketsOfGapKind = (gapKinds) => Object.entries(gapKinds).reduce((kinds, [bucket, kind]) => {
   (kinds[kind] ??= []).push(bucket);
   return kinds;
-}, {}));
+}, {});
+const XML_BUCKETS_OF_GAP_KIND = Object.freeze(bucketsOfGapKind(XML_INJECTION_GAP_KINDS));
+const ANNOTATION_BUCKETS_OF_GAP_KIND = Object.freeze(bucketsOfGapKind(ANNOTATION_INJECTION_GAP_KINDS));
 
 const TARGET_BUCKET = Object.freeze({ bundle: 'bundle', external: 'external', unindexed: 'unindexed', unknown: 'unknown', ambiguous: 'ambiguous' });
 const CONSUMER_BUCKET = Object.freeze({ external: 'consumerExternal', unindexed: 'consumerUnindexed', unknown: 'consumerUnknown', ambiguous: 'consumerAmbiguous' });
@@ -89,21 +94,41 @@ const sum = (values) => values.reduce((total, value) => total + value, 0);
 
 /**
  * Fail-closed check that every site landed in exactly one bucket, and that the
- * gaps recorded for each gap kind add up to the buckets that kind covers.
+ * gaps recorded for each gap kind add up to the buckets that kind covers - the
+ * XML sites' and the annotation sites' together, as both record into the same
+ * five kinds.
  *
  * @param {{ buckets: Record<string, number>, siteCount: number }} coverage
  *   the `coverage.injections` section of a run
  * @param {Record<string, number>} gapCounts the counts read back from the
  *   recorded gaps, by gap kind (`injection-target-unresolved` and the others)
+ * @param {{ status: string, buckets?: Record<string, number>, siteCount?: number }} [annotationCoverage]
+ *   the `coverage.annotationInjections` section of the run. Left out, or when the
+ *   stage did not run (`not-run`), the gaps are checked against the XML sites alone.
  */
-export function assertInjectionConservation(coverage, gapCounts) {
+export function assertInjectionConservation(coverage, gapCounts, annotationCoverage = undefined) {
   const { buckets, siteCount } = coverage;
   const total = sum(XML_INJECTION_BUCKETS.map((bucket) => buckets[bucket]));
   if (total !== siteCount) {
     throw new Error(`xml-injection-resolution: ${siteCount} injection site(s) but ${total} outcome(s)`);
   }
-  for (const [kind, covered] of Object.entries(BUCKETS_OF_GAP_KIND)) {
-    const expected = sum(covered.map((bucket) => buckets[bucket]));
+
+  let annotation = null;
+  if (annotationCoverage !== undefined && annotationCoverage !== null && annotationCoverage.status !== 'not-run') {
+    if (annotationCoverage.status !== 'ran') {
+      throw new Error(`xml-injection-resolution: the annotation injection coverage says status ${JSON.stringify(annotationCoverage.status)}`);
+    }
+    annotation = annotationCoverage;
+    const annotationTotal = sum(ANNOTATION_INJECTION_BUCKETS.map((bucket) => annotation.buckets[bucket]));
+    if (annotationTotal !== annotation.siteCount) {
+      throw new Error(`annotation-injection-resolution: ${annotation.siteCount} annotation injection site(s) but ${annotationTotal} outcome(s)`);
+    }
+  }
+
+  for (const kind of new Set([...Object.keys(XML_BUCKETS_OF_GAP_KIND), ...Object.keys(ANNOTATION_BUCKETS_OF_GAP_KIND)])) {
+    const xml = (XML_BUCKETS_OF_GAP_KIND[kind] ?? []).map((bucket) => buckets[bucket]);
+    const annotated = annotation === null ? [] : (ANNOTATION_BUCKETS_OF_GAP_KIND[kind] ?? []).map((bucket) => annotation.buckets[bucket]);
+    const expected = sum(xml) + sum(annotated);
     if (expected !== gapCounts[kind]) {
       throw new Error(`xml-injection-resolution: ${expected} ${kind} outcome(s) but ${gapCounts[kind]} recorded gap occurrence(s)`);
     }

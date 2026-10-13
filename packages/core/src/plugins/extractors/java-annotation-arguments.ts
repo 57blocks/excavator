@@ -14,6 +14,11 @@ import { dottedName } from "./java-names.js";
  * concatenation, an array, a class literal, a nested annotation, a text block
  * - is `null`: the value exists but is not a string this extractor can read,
  * and a consumer must be able to tell that from an argument that is absent.
+ *
+ * The same reading serves the annotations on a type's members (openspec:
+ * changes/annotation-injection-references, design D1), where each argument
+ * also states the line its value starts on; a type's own `annotationArguments`
+ * keeps the shape without it.
  */
 
 const COMMENT_NODES = new Set(["line_comment", "block_comment"]);
@@ -56,33 +61,59 @@ function argumentValue(expression: TreeSitterNode | null): string | null {
   return expression?.type === "string_literal" ? stringLiteralValue(expression) : null;
 }
 
+/** One annotation as written: its arguments carry the line each value starts on. */
+export interface AnnotationNodeUse {
+  name: string;
+  line: number;
+  arguments: Array<{ key: string; value: string | null; line: number }>;
+}
+
 /**
- * Every annotation on a declaration, in source order: `name` as written, the
- * line the annotation starts on, and its arguments (`[]` for no parentheses or
- * empty ones). A lone unnamed argument is the annotation's `value`.
+ * Every annotation in a `modifiers` node, in source order: `name` as written,
+ * the line the annotation starts on, and its arguments (`[]` for no
+ * parentheses or empty ones). A lone unnamed argument is the annotation's
+ * `value`. Each argument also states the line its value starts on, which is
+ * not the annotation's line when the annotation spans several.
  */
-export function extractAnnotationUses(node: TreeSitterNode): JavaAnnotationUse[] {
-  const modifiers = findChild(node, "modifiers");
+export function extractModifierAnnotations(modifiers: TreeSitterNode | null): AnnotationNodeUse[] {
   if (!modifiers) return [];
-  const uses: JavaAnnotationUse[] = [];
+  const uses: AnnotationNodeUse[] = [];
   for (let i = 0; i < modifiers.childCount; i++) {
     const annotation = modifiers.child(i);
     if (!annotation || (annotation.type !== "marker_annotation" && annotation.type !== "annotation")) continue;
     const nameNode = annotation.childForFieldName("name");
     if (!nameNode) continue;
 
-    const args: JavaAnnotationUse["arguments"] = [];
+    const args: AnnotationNodeUse["arguments"] = [];
     const list = annotation.childForFieldName("arguments");
     for (let j = 0; j < (list?.namedChildCount ?? 0); j++) {
       const item = list!.namedChild(j);
       if (!item || COMMENT_NODES.has(item.type)) continue;
       if (item.type === "element_value_pair") {
-        args.push({ key: item.childForFieldName("key")?.text ?? "", value: argumentValue(item.childForFieldName("value")) });
+        const value = item.childForFieldName("value");
+        args.push({
+          key: item.childForFieldName("key")?.text ?? "",
+          value: argumentValue(value),
+          line: (value ?? item).startPosition.row + 1,
+        });
       } else {
-        args.push({ key: "value", value: argumentValue(item) });
+        args.push({ key: "value", value: argumentValue(item), line: item.startPosition.row + 1 });
       }
     }
     uses.push({ name: dottedName(nameNode), line: annotation.startPosition.row + 1, arguments: args });
   }
   return uses;
+}
+
+/**
+ * Every annotation on a type declaration, in source order, without the
+ * per-argument lines: the shape `classes[].annotationArguments` has had since
+ * openspec changes/name-binding-references.
+ */
+export function extractAnnotationUses(node: TreeSitterNode): JavaAnnotationUse[] {
+  return extractModifierAnnotations(findChild(node, "modifiers")).map((use) => ({
+    name: use.name,
+    line: use.line,
+    arguments: use.arguments.map(({ key, value }) => ({ key, value })),
+  }));
 }
