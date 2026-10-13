@@ -3,7 +3,10 @@ import { Badge } from '../components/Badge';
 import { foldSlices, Ring } from '../components/Ring';
 import { fmtBytes, fmtNumber, text } from '../format';
 import { languageColors, languageOrder } from '../model/colors';
-import { countRows, freshnessBanner, inventoryRows, semanticBadges } from '../model/overview';
+import {
+  LANGUAGE_RING_CENTER, MEMBER_FILES_LABEL, MEMBER_SELECTED_LABEL, countRows, freshnessBanner, indexLiteralsStatus, inventoryRows,
+  memberCards, semanticBadges,
+} from '../model/overview';
 
 export function Overview({ data }: { data: ViewData }) {
   const { meta } = data;
@@ -17,7 +20,7 @@ export function Overview({ data }: { data: ViewData }) {
   const fileCounts = new Map(order.map((l) => [l, Number(data.coverage?.byLanguage?.[l]?.files) || 0]));
   const slices = foldSlices(order, fileCounts, colors);
   const isMultiRepo = typeof source.sourceRevision === 'string' && source.sourceRevision.startsWith('multi-repo:');
-  const members = meta.members ?? [];
+  const members = memberCards(meta);
 
   return (
     <div className="content" data-section="overview">
@@ -89,7 +92,7 @@ export function Overview({ data }: { data: ViewData }) {
         <section className="card" aria-labelledby="languages-heading">
           <h2 id="languages-heading">Files by language</h2>
           {order.length > 0 ? (
-            <Ring slices={slices} centerLabel="files" />
+            <Ring slices={slices} centerLabel={LANGUAGE_RING_CENTER} />
           ) : (
             <p className="muted">The graph has no coverage record, so files by language are unavailable.</p>
           )}
@@ -119,7 +122,12 @@ export function Overview({ data }: { data: ViewData }) {
               {members.map((m) => (
                 <div className="member" key={m.name} data-member={m.name}>
                   <div className="title">{m.name}</div>
-                  <div className="muted">{fmtNumber(m.files)} selected files</div>
+                  <div className="muted" data-member-files={m.manifestFiles ?? ''}>
+                    {fmtNumber(m.manifestFiles)} {MEMBER_FILES_LABEL}
+                  </div>
+                  <div className="muted" data-member-selected={m.selectedFiles ?? ''}>
+                    {m.selectedFiles === null ? 'selected count not recorded' : `${fmtNumber(m.selectedFiles)} ${MEMBER_SELECTED_LABEL}`}
+                  </div>
                 </div>
               ))}
             </div>
@@ -139,6 +147,7 @@ function Inventory({ data }: { data: ViewData }) {
   const rows = inventoryRows(meta);
   const dropped = meta.dropped ?? [];
   const embedding = meta.source?.embedding ?? null;
+  const literals = indexLiteralsStatus(meta);
   const unembedded = Object.entries(meta.unembedded ?? {}).flatMap(([kind, keys]) =>
     Object.entries(keys ?? {}).map(([key, n]) => ({ kind, key, n })),
   );
@@ -185,6 +194,9 @@ function Inventory({ data }: { data: ViewData }) {
           </li>
         ))}
       </ul>
+      <p className="secondary" data-field="index-literals" data-state={literals.state}>
+        Source index comment and string-literal text: {literals.label}
+      </p>
       {dropped.length > 0 ? (
         <div data-field="dropped">
           <h3>Dropped</h3>

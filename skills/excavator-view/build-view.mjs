@@ -18,7 +18,8 @@
  *      (stale still bakes)
  *   -> optional artifacts with per-item freshness
  *   -> source text through SourceSnapshot (unless --no-source)
- *   -> source budget: drop `excerpts`, then `evidenceText`, whole segments
+ *   -> source budget: drop `excerpts`, then `indexLiterals`, then
+ *      `evidenceText`, whole segments
  *   -> encode, hard size limit, decode self-check, page checks
  *   -> temp file + rename; one JSON report line on stdout
  *
@@ -34,7 +35,7 @@ import { existsSync, readFileSync, realpathSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { BUNDLE_FORMAT, Interner, decodeBundle, encodeBundle, isTable } from './bundle-codec.mjs';
+import { BUNDLE_FORMAT, Interner, decodeSegments, encodeBundle, isTable } from './bundle-codec.mjs';
 import { takeInventory } from './bake/inventory.mjs';
 import { streamKnowledgeGraph } from './bake/graph-stream.mjs';
 import {
@@ -55,7 +56,9 @@ export const DEFAULT_SOURCE_BUDGET_BYTES = 64 * MB;
 export const DEFAULT_HARD_LIMIT_BYTES = 256 * MB;
 
 /** Order in which source segments are dropped when over budget. */
-const TRIM_ORDER = Object.freeze(['excerpts', 'evidenceText']);
+const TRIM_ORDER = Object.freeze(['excerpts', 'indexLiterals', 'evidenceText']);
+/** Order source segments are listed in `meta.embeds`. */
+const EMBED_ORDER = Object.freeze(['evidenceText', 'excerpts', 'indexLiterals']);
 
 /**
  * @param {{
@@ -125,12 +128,14 @@ export async function buildView(options) {
 
   const manifestEntries = manifest.entries.filter((/** @type {any} */ e) => e && typeof e.path === 'string');
   let filesResult = await optional('fingerprints.json', () => buildFilesTable(manifestEntries, join(dataDir, 'fingerprints.json'), interner));
-  if (!filesResult) filesResult = buildFilesTable(manifestEntries, null, interner);
+  if (!filesResult) filesResult = await buildFilesTable(manifestEntries, null, interner);
 
   const index = await optional('source-index.jsonl', () => streamSourceIndex(
     join(dataDir, 'source-index.jsonl'), interner, { includeLiterals: !options.noSource },
   ));
   if (index) Object.assign(optionalSegments, index.segments);
+  // `indexLiterals` is a source segment only when a source index was read.
+  const sourceSegmentNames = new Set(index ? TRIM_ORDER : TRIM_ORDER.filter((s) => s !== 'indexLiterals'));
 
   const strings = interner.strings;
   /** @type {Map<string, string>} */
@@ -160,29 +165,38 @@ export async function buildView(options) {
   let sourceSegments = {};
   let sourceStats = null;
   if (options.noSource) {
-    for (const segment of TRIM_ORDER) dropped.push({ segment, reason: 'no-source', bytes: 0 });
+    for (const segment of TRIM_ORDER) {
+      if (sourceSegmentNames.has(segment)) dropped.push({ segment, reason: 'no-source', bytes: 0 });
+    }
   } else {
     const text = collectSourceText({ projectRoot, manifest, strings, nodes: graph.nodes, evidence: graph.evidence });
     sourceStats = text.stats;
+    /** @type {Record<string, { bytes: number, segments: Record<string, unknown> }>} */
     const parts = { evidenceText: text.evidenceText, excerpts: text.excerpts };
-    let total = parts.evidenceText.bytes + parts.excerpts.bytes;
-    const kept = new Set(TRIM_ORDER);
-    for (const segment of TRIM_ORDER) {
+    if (index?.literals) parts.indexLiterals = index.literals;
+    const order = TRIM_ORDER.filter((segment) => Object.hasOwn(parts, segment));
+    let total = order.reduce((sum, segment) => sum + parts[segment].bytes, 0);
+    const kept = new Set(order);
+    for (const segment of order) {
       if (total <= sourceBudgetBytes) break;
       kept.delete(segment);
       total -= parts[segment].bytes;
       dropped.push({ segment, reason: 'budget', bytes: parts[segment].bytes });
     }
-    for (const segment of ['evidenceText', 'excerpts']) {
-      if (kept.has(segment)) Object.assign(sourceSegments, parts[/** @type {'evidenceText'|'excerpts'} */ (segment)].segments);
+    for (const segment of EMBED_ORDER) {
+      if (kept.has(segment)) Object.assign(sourceSegments, parts[segment].segments);
     }
+  }
+  if (index && dropped.some((d) => d.segment === 'indexLiterals')) {
+    index.dropLiterals();
+    index.meta.literals = options.noSource ? 'omitted' : 'trimmed';
   }
 
   // --- meta and segments ---------------------------------------------------
   const sourceRevision = typeof manifest.sourceRevision === 'string' ? manifest.sourceRevision : null;
   const selection = manifest.selection && typeof manifest.selection === 'object' ? manifest.selection : null;
-  const members = sourceRevision?.startsWith('multi-repo:') ? memberRepositories(manifestEntries) : [];
-  const embeds = ['evidenceText', 'excerpts'].map((segment) => {
+  const members = sourceRevision?.startsWith('multi-repo:') ? memberRepositories(manifestEntries, selection) : [];
+  const embeds = EMBED_ORDER.filter((segment) => sourceSegmentNames.has(segment)).map((segment) => {
     const drop = dropped.find((d) => d.segment === segment);
     return drop ? { segment, status: 'dropped', reason: drop.reason } : { segment, status: 'embedded' };
   });
@@ -262,39 +276,55 @@ export async function buildView(options) {
 }
 
 /**
- * Members of a multi-repo target: the first path segment of every selected
- * file, with file counts.
+ * Members of a multi-repo target by first path segment: `files` counts the
+ * manifest entries, `selected` the selection funnel's `selected` entries
+ * (null when the manifest records no selection entries). The two can differ
+ * (a selected path with no manifest entry); neither is adjusted to match.
  * @param {Array<{ path: string }>} entries
+ * @param {any} selection
  */
-function memberRepositories(entries) {
-  /** @type {Map<string, number>} */
-  const counts = new Map();
-  for (const { path } of entries) {
-    const first = path.split('/')[0];
-    if (path.includes('/')) counts.set(first, (counts.get(first) ?? 0) + 1);
-  }
-  return [...counts].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)).map(([name, files]) => ({ name, files }));
+function memberRepositories(entries, selection) {
+  const firstSegments = (/** @type {Iterable<string>} */ paths) => {
+    /** @type {Map<string, number>} */
+    const counts = new Map();
+    for (const path of paths) {
+      if (path.includes('/')) {
+        const first = path.split('/')[0];
+        counts.set(first, (counts.get(first) ?? 0) + 1);
+      }
+    }
+    return counts;
+  };
+  const files = firstSegments(entries.map((e) => e.path));
+  const selectionEntries = Array.isArray(selection?.entries) ? selection.entries : null;
+  const selected = selectionEntries
+    ? firstSegments(selectionEntries.filter((/** @type {any} */ e) => e?.kind === 'selected' && typeof e.path === 'string').map((/** @type {any} */ e) => e.path))
+    : null;
+  const names = [...new Set([...files.keys(), ...(selected ? selected.keys() : [])])];
+  return names.sort((a, b) => (a < b ? -1 : a > b ? 1 : 0)).map((name) => ({
+    name,
+    files: files.get(name) ?? 0,
+    selected: selected ? (selected.get(name) ?? 0) : null,
+  }));
 }
 
 /**
  * Decode the encoded payload with the page's decoder and compare counts.
+ * Segments are decoded one at a time and only their counts are kept, so the
+ * check never holds a second copy of the bundle.
  * @param {string[]} lines
  * @param {{ header: { counts: Record<string, number> }, counts: { evidence: number } }} graph
  */
 export async function selfCheck(lines, graph) {
-  let decoded;
+  const counts = { nodes: -1, edges: -1, evidence: -1, gaps: -1 };
   try {
-    decoded = (await decodeBundle(lines)).segments;
+    for await (const { name, value } of decodeSegments(lines)) {
+      if (name === 'nodes' || name === 'edges' || name === 'evidence') counts[name] = isTable(value) ? /** @type {any} */ (value).rows : -1;
+      else if (name === 'gaps') counts.gaps = Array.isArray(value) ? value.length : -1;
+    }
   } catch (error) {
     throw new ViewSelfCheckError([`the bundle does not decode: ${/** @type {Error} */ (error).message}`]);
   }
-  const rows = (/** @type {string} */ name) => (isTable(decoded[name]) ? /** @type {any} */ (decoded[name]).rows : -1);
-  const counts = {
-    nodes: rows('nodes'),
-    edges: rows('edges'),
-    evidence: rows('evidence'),
-    gaps: Array.isArray(decoded.gaps) ? decoded.gaps.length : -1,
-  };
   const header = graph.header.counts;
   const problems = [];
   for (const key of ['nodes', 'edges', 'gaps']) {

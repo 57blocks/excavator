@@ -3,7 +3,8 @@
  *
  * Readers for the bake's optional inputs (openspec change `artifact-view`,
  * design D3/D6): `fingerprints.json` (per-file line counts), the streamed
- * `source-index.jsonl` (chunk terms and postings), and the three semantic
+ * `source-index.jsonl` (chunk tokens and literal text; postings are
+ * rebuilt by the page), and the three semantic
  * products with their per-item freshness. Each reader returns the segments it
  * contributes; an artifact that exists but cannot be read becomes an
  * `invalid` inventory entry with its reason (never an empty section passed
@@ -20,7 +21,9 @@
 import { createReadStream, readFileSync } from 'node:fs';
 import { createInterface } from 'node:readline';
 
-import { Int32Builder, table } from '../bundle-codec.mjs';
+import { CELL_ABSENT, Int32Builder, table } from '../bundle-codec.mjs';
+import { TextTable } from './text-table.mjs';
+import { FingerprintFormatError, readFingerprintLineCounts } from './fingerprint-lines.mjs';
 import { SOURCE_INDEX_FORMAT } from '../../excavator/source-index-store.mjs';
 import { freshnessOf } from '../../excavator/semantic-cache.mjs';
 import { isDomainGraphUsable } from '../../excavator-domain/domain-freshness.mjs';
@@ -44,21 +47,24 @@ function readJson(path) {
 
 /**
  * The `files` table: one row per manifest entry (the selected files), with
- * `totalLines` from fingerprints when available (-1 otherwise).
+ * `totalLines` from fingerprints when available (-1 otherwise). Only the
+ * line counts are read from `fingerprints.json`, by a streaming scanner, so
+ * the document's per-file structure lists are never materialized.
  *
  * @param {Array<{ path: string, contentHash: string }>} manifestEntries
  * @param {string|null} fingerprintsPath
  * @param {import('../bundle-codec.mjs').Interner} interner
  */
-export function buildFilesTable(manifestEntries, fingerprintsPath, interner) {
-  /** @type {Record<string, any> | null} */
-  let fingerprints = null;
+export async function buildFilesTable(manifestEntries, fingerprintsPath, interner) {
+  /** @type {Map<string, number> | null} */
+  let lineCounts = null;
   if (fingerprintsPath) {
-    const parsed = readJson(fingerprintsPath);
-    if (parsed === null || typeof parsed !== 'object' || parsed.files === null || typeof parsed.files !== 'object') {
-      throw new OptionalArtifactError('has no "files" object');
+    try {
+      lineCounts = await readFingerprintLineCounts(fingerprintsPath);
+    } catch (error) {
+      if (error instanceof FingerprintFormatError) throw new OptionalArtifactError(error.message);
+      throw error;
     }
-    fingerprints = parsed.files;
   }
   const path = new Int32Builder(manifestEntries.length);
   const totalLines = new Int32Builder(manifestEntries.length);
@@ -67,8 +73,7 @@ export function buildFilesTable(manifestEntries, fingerprintsPath, interner) {
   for (const entry of manifestEntries) {
     path.push(interner.cell(entry.path));
     contentHash.push(interner.cell(entry.contentHash));
-    const fp = fingerprints && Object.hasOwn(fingerprints, entry.path) ? fingerprints[entry.path] : null;
-    const lines = fp && Number.isInteger(fp.totalLines) && fp.totalLines >= 0 ? fp.totalLines : -1;
+    const lines = lineCounts?.get(entry.path) ?? -1;
     if (lines === -1) withoutLineCount += 1;
     totalLines.push(lines);
   }
@@ -78,15 +83,27 @@ export function buildFilesTable(manifestEntries, fingerprintsPath, interner) {
   };
 }
 
+/** Every posting line the source-index writer produces starts with this. */
+const POSTING_PREFIX = '{"record":"posting"';
+
 /**
- * Stream `source-index.jsonl` into four tables: chunk rows, their flat token
- * list, term rows, and the flat posting list (chunk ordinals). Validates the
- * header format and the declared chunk/term counts.
+ * Stream `source-index.jsonl` into the chunk table and its flat token list,
+ * plus (unless `includeLiterals` is false) the comment and string-literal
+ * text in a separate, droppable `indexLiterals` segment. Validates the header
+ * format and the declared chunk/term counts.
  *
- * A chunk's `comments` and `strings` are verbatim source text (comment and
- * string-literal content). With `includeLiterals: false` (the bake's
- * --no-source) they are not embedded and their offset/count columns are -1,
- * which the page reads as "not embedded", distinct from an empty list.
+ * Postings are not embedded: the page rebuilds the term -> chunk index from
+ * the chunk tokens (and the literals, when embedded). Posting lines are only
+ * counted against the header's `termCount`, never parsed.
+ *
+ * A chunk's `comments` and `strings` are verbatim source text, so they live
+ * in their own string table (`indexLiterals.strings`) and count toward the
+ * source budget. `commentOffset`/`stringOffset` index rows of the
+ * `indexLiterals` table. With `includeLiterals: false` (the bake's
+ * --no-source) they are not read at all, and when the literals are not
+ * embedded (`dropLiterals()`, used by --no-source and by the budget) the four
+ * offset/count columns are -1, which the page reads as "not embedded",
+ * distinct from an empty list.
  *
  * @param {string} indexPath
  * @param {import('../bundle-codec.mjs').Interner} interner
@@ -103,8 +120,9 @@ export async function streamSourceIndex(indexPath, interner, { includeLiterals =
     stringOffset: new Int32Builder(), stringCount: new Int32Builder(),
   };
   const tokens = new Int32Builder();
-  const term = { term: new Int32Builder(), offset: new Int32Builder(), count: new Int32Builder() };
-  const postings = new Int32Builder();
+  const literalText = new TextTable();
+  const literals = new Int32Builder();
+  let postingLines = 0;
   let filesIndexed = 0;
   let filesContentUnavailable = 0;
 
@@ -113,11 +131,19 @@ export async function streamSourceIndex(indexPath, interner, { includeLiterals =
     throw new OptionalArtifactError(`${message} (line ${lineNo})`);
   };
   /** @param {unknown} list @param {Int32Builder} offset @param {Int32Builder} count */
-  const pushList = (list, offset, count) => {
+  const pushTokens = (list, offset, count) => {
     const items = Array.isArray(list) ? list : [];
     offset.push(tokens.length);
     count.push(items.length);
     for (const item of items) tokens.push(interner.cell(item));
+  };
+  /** @param {unknown} list @param {Int32Builder} offset @param {Int32Builder} count */
+  const pushLiterals = (list, offset, count) => {
+    const items = Array.isArray(list) ? list : [];
+    offset.push(literals.length);
+    count.push(items.length);
+    // Non-string items (never written by the index builder) stay visible as absent.
+    for (const item of items) literals.push(typeof item === 'string' ? literalText.id(item) : CELL_ABSENT);
   };
 
   const input = createReadStream(indexPath, { encoding: 'utf-8' });
@@ -126,6 +152,10 @@ export async function streamSourceIndex(indexPath, interner, { includeLiterals =
     for await (const line of lines) {
       lineNo += 1;
       if (line.length === 0) continue;
+      if (header !== null && line.startsWith(POSTING_PREFIX)) {
+        postingLines += 1;
+        continue;
+      }
       let record;
       try {
         record = JSON.parse(line);
@@ -147,23 +177,19 @@ export async function streamSourceIndex(indexPath, interner, { includeLiterals =
           chunk.node.push(interner.cell(c.nodeId));
           chunk.language.push(interner.cell(c.language));
           chunk.docLength.push(Number.isInteger(record.docLength) ? record.docLength : -1);
-          pushList(c.identifiers, chunk.idOffset, chunk.idCount);
+          pushTokens(c.identifiers, chunk.idOffset, chunk.idCount);
           if (includeLiterals) {
-            pushList(c.comments, chunk.commentOffset, chunk.commentCount);
-            pushList(c.strings, chunk.stringOffset, chunk.stringCount);
+            pushLiterals(c.comments, chunk.commentOffset, chunk.commentCount);
+            pushLiterals(c.strings, chunk.stringOffset, chunk.stringCount);
           } else {
             for (const col of [chunk.commentOffset, chunk.commentCount, chunk.stringOffset, chunk.stringCount]) col.push(-1);
           }
           break;
         }
-        case 'posting': {
-          term.term.push(interner.cell(record.term));
-          const ordinals = Array.isArray(record.chunks) ? record.chunks : [];
-          term.offset.push(postings.length);
-          term.count.push(ordinals.length);
-          for (const ordinal of ordinals) postings.push(Number.isInteger(ordinal) ? ordinal : -1);
+        case 'posting':
+          // A posting line in an unexpected spelling: counted, not embedded.
+          postingLines += 1;
           break;
-        }
         default:
           fail(`unknown record type ${JSON.stringify(record?.record)}`);
       }
@@ -174,12 +200,17 @@ export async function streamSourceIndex(indexPath, interner, { includeLiterals =
   }
   if (header === null) fail('missing header record (file is empty)');
   if (chunk.node.length !== header.chunkCount) fail(`chunk count mismatch: header declares ${header.chunkCount}, found ${chunk.node.length}`);
-  if (term.term.length !== header.termCount) fail(`term count mismatch: header declares ${header.termCount}, found ${term.term.length}`);
+  if (postingLines !== header.termCount) fail(`term count mismatch: header declares ${header.termCount}, found ${postingLines}`);
 
   const finish = (/** @type {Record<string, Int32Builder>} */ cols) => {
     const entries = Object.entries(cols).map(([k, b]) => [k, b.finish()]);
     return table(entries[0][1].length, Object.fromEntries(entries));
   };
+  const chunks = finish(chunk);
+  const literalsSegments = includeLiterals ? {
+    'indexLiterals.strings': literalText.strings,
+    indexLiterals: table(literals.length, { text: literals.finish() }),
+  } : null;
   return {
     meta: {
       sourceRevision: header.sourceRevision ?? null,
@@ -189,10 +220,14 @@ export async function streamSourceIndex(indexPath, interner, { includeLiterals =
       literals: includeLiterals ? 'embedded' : 'omitted',
     },
     segments: {
-      'index.chunks': finish(chunk),
+      'index.chunks': chunks,
       'index.tokens': table(tokens.length, { token: tokens.finish() }),
-      'index.terms': finish(term),
-      'index.postings': table(postings.length, { chunk: postings.finish() }),
+    },
+    /** Comment/string-literal text, or null when it was not read (--no-source). */
+    literals: literalsSegments ? { bytes: literalText.bytes, segments: literalsSegments } : null,
+    /** Mark the literals not embedded: offset/count columns become -1. */
+    dropLiterals() {
+      for (const name of ['commentOffset', 'commentCount', 'stringOffset', 'stringCount']) chunks.columns[name].fill(-1);
     },
   };
 }

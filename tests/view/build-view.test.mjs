@@ -115,6 +115,18 @@ describe('inventory (3.1)', () => {
     expect(existsSync(viewPath(project))).toBe(false);
   });
 
+  it('leaves an existing view byte-identical when the source manifest is missing', () => {
+    const project = copyProject();
+    expect(bake(project).status).toBe(0);
+    const before = readFileSync(viewPath(project));
+    rmSync(join(project, '.excavator', 'source-manifest.json'));
+    const result = bake(project);
+    expect(result.status).toBe(1);
+    expect(result.stderr).toMatch(/MissingArtifactError: source-manifest\.json/);
+    expect(readFileSync(viewPath(project)).equals(before)).toBe(true);
+    expect(leftoverTemps(project)).toEqual([]);
+  });
+
   it('bakes with every optional artifact missing and marks each one missing with its hint', async () => {
     const project = copyProject();
     rmSync(join(project, '.excavator', 'fingerprints.json'));
@@ -132,6 +144,28 @@ describe('inventory (3.1)', () => {
     expect(Object.keys(segments).filter((name) => name.startsWith('index.'))).toEqual([]);
     expect(Array.from(segments.files.columns.totalLines).every((n) => n === -1)).toBe(true);
     expect(segments.meta.inventory.find((i) => i.name === 'fingerprints.json').status).toBe('missing');
+  });
+
+  it('takes each file\'s totalLines from fingerprints, and marks malformed fingerprints invalid', async () => {
+    const project = copyProject();
+    const fpPath = join(project, '.excavator', 'fingerprints.json');
+    const fingerprints = JSON.parse(readFileSync(fpPath, 'utf-8'));
+    const good = bake(project);
+    expect(good.status, good.stderr).toBe(0);
+    const segments = await decodePage(viewPath(project));
+    const { path, totalLines } = segments.files.columns;
+    const baked = Object.fromEntries(Array.from(path, (cell, row) => [segments.strings[cell], totalLines[row]]));
+    const expected = Object.fromEntries(Object.entries(fingerprints.files).map(([p, fp]) => [p, fp.totalLines]));
+    expect(Object.keys(baked).length).toBeGreaterThan(0);
+    expect(baked).toEqual(expected);
+    writeFileSync(fpPath, readFileSync(fpPath, 'utf-8').replace(/"totalLines": ?(\d+)/, '"totalLines": 0$1'));
+    const bad = bake(project);
+    expect(bad.status, bad.stderr).toBe(0);
+    const item = bad.report.inventory.find((i) => i.name === 'fingerprints.json');
+    expect(item.status).toBe('invalid');
+    expect(item.reason).toMatch(/not valid JSON/);
+    const after = await decodePage(viewPath(project));
+    expect(Array.from(after.files.columns.totalLines).every((n) => n === -1)).toBe(true);
   });
 
   it('marks an unreadable optional artifact invalid instead of passing off an empty section', async () => {
@@ -216,7 +250,7 @@ describe('streaming graph read (3.2)', () => {
     expect(status, stderr).toBe(0);
     expect(report.source.sourceRevision).toMatch(/^multi-repo:/);
     const { meta } = await decodePage(viewPath(root));
-    expect(meta.members).toEqual([{ name: 'alpha', files: 3 }, { name: 'beta', files: 3 }]);
+    expect(meta.members).toEqual([{ name: 'alpha', files: 3, selected: 3 }, { name: 'beta', files: 3, selected: 3 }]);
   }, 60_000);
 
   it('judges semantic products per item with their owners\' rules', async () => {
@@ -260,7 +294,11 @@ describe('source text (3.3)', () => {
   it('embeds evidence lines and node excerpts by default, including the marker line', async () => {
     const project = copyProject();
     const { report } = bake(project);
-    expect(report.embeds).toEqual([{ segment: 'evidenceText', status: 'embedded' }, { segment: 'excerpts', status: 'embedded' }]);
+    expect(report.embeds).toEqual([
+      { segment: 'evidenceText', status: 'embedded' },
+      { segment: 'excerpts', status: 'embedded' },
+      { segment: 'indexLiterals', status: 'embedded' },
+    ]);
     expect(report.source.embedding).toMatchObject({ filesHashMismatch: 0, filesNotInManifest: 0, filesUnreadable: 0 });
     const segments = await decodePage(viewPath(project));
     const strings = segments.strings;
@@ -273,18 +311,45 @@ describe('source text (3.3)', () => {
     expect(segments['evidenceText.strings'][segments.evidenceText.columns.text[evRow]]).toBe('  return formatGreeting(name, counter.value());');
   });
 
+  it('embeds index literals in their own segment, round-tripping every chunk\'s comments and strings, and no postings', async () => {
+    const project = copyProject();
+    const { status, report, stderr } = bake(project);
+    expect(status, stderr).toBe(0);
+    const segments = await decodePage(viewPath(project));
+    expect(Object.keys(segments).filter((name) => name.startsWith('index'))).toEqual([
+      'index.chunks', 'index.tokens', 'indexLiterals.strings', 'indexLiterals',
+    ]);
+    expect(segments.meta.index.literals).toBe('embedded');
+    // The literal text is not in the global string table.
+    expect(segments.strings).not.toContain(MARKER);
+    const chunks = readFileSync(join(project, '.excavator', 'source-index.jsonl'), 'utf-8').trimEnd().split('\n')
+      .map((line) => JSON.parse(line)).filter((r) => r.record === 'chunk').map((r) => r.chunk);
+    const t = segments['index.chunks'].columns;
+    const texts = segments['indexLiterals.strings'];
+    const cells = segments.indexLiterals.columns.text;
+    const list = (offset, count) => Array.from(cells.subarray(offset, offset + count), (cell) => texts[cell]);
+    expect(segments['index.chunks'].rows).toBe(chunks.length);
+    chunks.forEach((chunk, row) => {
+      expect(segments.strings[t.node[row]]).toBe(chunk.nodeId);
+      expect(list(t.commentOffset[row], t.commentCount[row])).toEqual(chunk.comments);
+      expect(list(t.stringOffset[row], t.stringCount[row])).toEqual(chunk.strings);
+    });
+    expect(texts).toContain(MARKER);
+  });
+
   it('--no-source embeds no source text at all', async () => {
     const project = copyProject();
     const { status, report } = bake(project, '--no-source');
     expect(status).toBe(0);
     expect(report.dropped).toEqual([
       { segment: 'excerpts', reason: 'no-source', bytes: 0 },
+      { segment: 'indexLiterals', reason: 'no-source', bytes: 0 },
       { segment: 'evidenceText', reason: 'no-source', bytes: 0 },
     ]);
     const segments = await decodePage(viewPath(project));
     expect(decodedText(segments)).not.toContain(MARKER);
     expect(decodedText(segments)).not.toContain('counter.value()');
-    expect(Object.keys(segments).filter((name) => /^(evidenceText|excerpts)/.test(name))).toEqual([]);
+    expect(Object.keys(segments).filter((name) => /^(evidenceText|excerpts|indexLiterals)/.test(name))).toEqual([]);
     expect(segments.evidence.rows).toBeGreaterThan(0);
     expect(readFileSync(viewPath(project), 'utf-8')).not.toContain(MARKER);
     // Comment and string-literal text from the source index is source text too.
@@ -342,11 +407,13 @@ describe('source text: untrusted paths', () => {
 });
 
 describe('budget and hard limit (3.4)', () => {
-  it('--source-budget 0 drops excerpts then evidenceText and keeps the graph complete', async () => {
+  it('--source-budget 0 drops excerpts, then index literals, then evidenceText and keeps the graph complete', async () => {
     const project = copyProject();
     const { status, report } = bake(project, '--source-budget', '0');
     expect(status).toBe(0);
-    expect(report.dropped.map((d) => [d.segment, d.reason])).toEqual([['excerpts', 'budget'], ['evidenceText', 'budget']]);
+    expect(report.dropped.map((d) => [d.segment, d.reason])).toEqual([
+      ['excerpts', 'budget'], ['indexLiterals', 'budget'], ['evidenceText', 'budget'],
+    ]);
     expect(report.dropped.every((d) => d.bytes > 0)).toBe(true);
     expect(report.counts.decoded).toMatchObject({
       nodes: report.counts.header.nodes, edges: report.counts.header.edges, gaps: report.counts.header.gaps,
@@ -355,20 +422,53 @@ describe('budget and hard limit (3.4)', () => {
     expect(segments.meta.embeds).toEqual([
       { segment: 'evidenceText', status: 'dropped', reason: 'budget' },
       { segment: 'excerpts', status: 'dropped', reason: 'budget' },
+      { segment: 'indexLiterals', status: 'dropped', reason: 'budget' },
     ]);
-    expect(Object.keys(segments).filter((name) => /^(evidenceText|excerpts)/.test(name))).toEqual([]);
+    expect(Object.keys(segments).filter((name) => /^(evidenceText|excerpts|indexLiterals)/.test(name))).toEqual([]);
+    // Literal text is source text: nothing of it survives in the global string table.
+    expect(decodedText(segments)).not.toContain(MARKER);
+    expect(segments.meta.index.literals).toBe('trimmed');
+    const { commentOffset, commentCount, stringOffset, stringCount } = segments['index.chunks'].columns;
+    expect([...commentOffset, ...commentCount, ...stringOffset, ...stringCount].every((n) => n === -1)).toBe(true);
   });
 
-  it('drops only excerpts when evidence text alone fits the budget', async () => {
+  it('--source-budget 0 output carries no more than --no-source plus the graph segments', async () => {
+    const project = copyProject();
+    const out = mkdtempSync(join(scratch, 'out-'));
+    const zero = bake(project, '--out', join(out, 'zero.html'), '--source-budget', '0');
+    const none = bake(project, '--out', join(out, 'none.html'), '--no-source');
+    expect(zero.status, zero.stderr).toBe(0);
+    expect(none.status, none.stderr).toBe(0);
+    const sizes = (report) => Object.fromEntries(report.segments.map((s) => [s.name, s]));
+    const a = sizes(zero.report);
+    const b = sizes(none.report);
+    expect(Object.keys(a)).toEqual(Object.keys(b));
+    // Every segment but meta (which records why each was dropped) is the same size.
+    for (const name of Object.keys(a).filter((n) => n !== 'meta')) expect(a[name].rawBytes, name).toBe(b[name].rawBytes);
+    const metaDelta = Math.abs(a.meta.storedBytes - b.meta.storedBytes) * 2 + 16;
+    expect(zero.report.bytes).toBeLessThanOrEqual(none.report.bytes + metaDelta);
+    const decodedZero = await decodePage(join(out, 'zero.html'));
+    const decodedNone = await decodePage(join(out, 'none.html'));
+    expect(decodedZero.strings).toEqual(decodedNone.strings);
+  });
+
+  it('trims at exact segment sizes: excerpts, then index literals, then evidenceText', async () => {
     const project = copyProject();
     const probe = join(mkdtempSync(join(scratch, 'out-')), 'probe.html');
     const full = bake(project, '--out', probe).report;
     expect(full.dropped).toEqual([]);
     const segments = await decodePage(probe);
-    const evidenceBytes = segments['evidenceText.strings'].reduce((sum, s) => sum + Buffer.byteLength(s), 0);
-    const report = await buildView({ projectRoot: project, templatePath, sourceBudgetBytes: evidenceBytes });
-    expect(report.dropped.map((d) => d.segment)).toEqual(['excerpts']);
-    expect(report.embeds.find((e) => e.segment === 'evidenceText').status).toBe('embedded');
+    const bytesOf = (list) => list.reduce((sum, s) => sum + Buffer.byteLength(s), 0);
+    const evidence = bytesOf(segments['evidenceText.strings']);
+    const literals = bytesOf(segments['indexLiterals.strings']);
+    expect(evidence).toBeGreaterThan(0);
+    expect(literals).toBeGreaterThan(0);
+    const dropsAt = async (budget) => (await buildView({ projectRoot: project, templatePath, sourceBudgetBytes: budget, out: probe }))
+      .dropped.map((d) => d.segment);
+    expect(await dropsAt(evidence + literals)).toEqual(['excerpts']);
+    expect(await dropsAt(evidence + literals - 1)).toEqual(['excerpts', 'indexLiterals']);
+    expect(await dropsAt(evidence)).toEqual(['excerpts', 'indexLiterals']);
+    expect(await dropsAt(evidence - 1)).toEqual(['excerpts', 'indexLiterals', 'evidenceText']);
   });
 
   it('fails above the hard limit with ViewTooLargeError and leaves an existing view byte-identical', async () => {

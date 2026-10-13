@@ -315,34 +315,36 @@ function parseSegmentHeader(line) {
 }
 
 /**
- * Decode a bundle payload (the placeholder's text content, or the `lines`
- * array `encodeBundle` returned). Throws `BundleFormatError` for an unknown
- * version or malformed structure, `BundleDecodeError` when a segment cannot
- * be decompressed.
+ * Decode a bundle payload one segment at a time, in payload order: yields
+ * `{ name, value, rawBytes, storedBytes, compressed }` and keeps nothing, so
+ * a caller that only inspects each segment (the bake's pre-write
+ * self-check) never holds a second copy of the whole bundle. Same checks and
+ * failures as `decodeBundle`, which is built on it.
  *
  * @param {string | string[]} payload
- * @returns {Promise<{ format: string, segments: Record<string, unknown>, sizes: Array<{ name: string, rawBytes: number, storedBytes: number, compressed: boolean }> }>}
+ * @returns {AsyncGenerator<{ name: string, value: unknown, rawBytes: number, storedBytes: number, compressed: boolean }>}
  */
-export async function decodeBundle(payload) {
+export async function* decodeSegments(payload) {
   assertLittleEndian();
   const lines = (Array.isArray(payload) ? payload : payload.split('\n'))
     .map((line) => (line.endsWith('\r') ? line.slice(0, -1) : line));
   // Only surrounding blank lines are insignificant: an empty raw segment's
   // payload line is legitimately empty and must keep its position.
-  while (lines.length > 0 && lines[0].trim() === '') lines.shift();
-  while (lines.length > 0 && lines[lines.length - 1].trim() === '' && (lines.length - 1) % 2 === 1) lines.pop();
-  if (lines.length === 0) throw new BundleFormatError('empty view bundle');
-  if (lines[0] !== BUNDLE_FORMAT) {
-    throw new BundleFormatError(`unsupported view bundle version ${JSON.stringify(lines[0].slice(0, 80))}; this page reads ${BUNDLE_FORMAT}`);
+  let first = 0;
+  let last = lines.length;
+  while (first < last && lines[first].trim() === '') first += 1;
+  while (last > first && lines[last - 1].trim() === '' && (last - 1 - first) % 2 === 1) last -= 1;
+  if (first === last) throw new BundleFormatError('empty view bundle');
+  if (lines[first] !== BUNDLE_FORMAT) {
+    throw new BundleFormatError(`unsupported view bundle version ${JSON.stringify(lines[first].slice(0, 80))}; this page reads ${BUNDLE_FORMAT}`);
   }
-  if ((lines.length - 1) % 2 !== 0) throw new BundleFormatError('view bundle has a segment header without a payload line');
+  if ((last - first - 1) % 2 !== 0) throw new BundleFormatError('view bundle has a segment header without a payload line');
 
-  /** @type {Record<string, unknown>} */
-  const segments = {};
-  const sizes = [];
-  for (let i = 1; i < lines.length; i += 2) {
+  const seen = new Set();
+  for (let i = first + 1; i < last; i += 2) {
     const header = parseSegmentHeader(lines[i]);
-    if (Object.hasOwn(segments, header.name)) throw new BundleFormatError(`duplicate segment ${header.name}`);
+    if (seen.has(header.name)) throw new BundleFormatError(`duplicate segment ${header.name}`);
+    seen.add(header.name);
     const stored = fromBase64(lines[i + 1]);
     if (stored.length !== header.storedBytes) {
       throw new BundleFormatError(`segment ${header.name}: expected ${header.storedBytes} stored bytes, found ${stored.length}`);
@@ -368,8 +370,26 @@ export async function decodeBundle(payload) {
         throw new BundleFormatError(`segment ${header.name}: invalid JSON (${/** @type {Error} */ (error).message})`);
       }
     }
-    Object.defineProperty(segments, header.name, { value, enumerable: true, writable: true, configurable: true });
-    sizes.push({ name: header.name, rawBytes: header.rawBytes, storedBytes: header.storedBytes, compressed: header.compressed });
+    yield { name: header.name, value, rawBytes: header.rawBytes, storedBytes: header.storedBytes, compressed: header.compressed };
+  }
+}
+
+/**
+ * Decode a bundle payload (the placeholder's text content, or the `lines`
+ * array `encodeBundle` returned). Throws `BundleFormatError` for an unknown
+ * version or malformed structure, `BundleDecodeError` when a segment cannot
+ * be decompressed.
+ *
+ * @param {string | string[]} payload
+ * @returns {Promise<{ format: string, segments: Record<string, unknown>, sizes: Array<{ name: string, rawBytes: number, storedBytes: number, compressed: boolean }> }>}
+ */
+export async function decodeBundle(payload) {
+  /** @type {Record<string, unknown>} */
+  const segments = {};
+  const sizes = [];
+  for await (const { name, value, rawBytes, storedBytes, compressed } of decodeSegments(payload)) {
+    Object.defineProperty(segments, name, { value, enumerable: true, writable: true, configurable: true });
+    sizes.push({ name, rawBytes, storedBytes, compressed });
   }
   return { format: BUNDLE_FORMAT, segments, sizes };
 }

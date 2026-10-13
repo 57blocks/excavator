@@ -55,7 +55,7 @@ Always present:
 
 | Segment | Kind | Content |
 |---|---|---|
-| `meta` | json | `format`, `bakedAt`; `graph` (the knowledge-graph header's `keys`, `fields`, `counts`); `counts` (records actually streamed, plus `evidence`); `inventory` (each artifact: `present` / `missing` with the command that generates it / `invalid` with the reason); `embeds` and `dropped` (source segments and why one was dropped: `no-source` or `budget`); `freshness` (`factLayer` from the shared consumer-freshness helper, and summaries for the semantic cache, semantic graph and domain graph); `source` (manifest `sourceRevision`, `selectionDigest`, `pipelineVersion`, source-embedding statistics including files not embedded because their content no longer matches the manifest); `selection` (the manifest's selection funnel with only non-selected entries); `members` (multi-repo targets: first path segment of the selected files, with file counts); `index` (source-index header values, and whether comment/string-literal text is `embedded` or `omitted`); `unembedded` (per record kind, keys the columns do not carry, with counts); `anomalies` (values a column could not represent, with counts) |
+| `meta` | json | `format`, `bakedAt`; `graph` (the knowledge-graph header's `keys`, `fields`, `counts`); `counts` (records actually streamed, plus `evidence`); `inventory` (each artifact: `present` / `missing` with the command that generates it / `invalid` with the reason); `embeds` and `dropped` (source segments `evidenceText`, `excerpts` and, when a source index was read, `indexLiterals`, and why one was dropped: `no-source` or `budget`); `freshness` (`factLayer` from the shared consumer-freshness helper, and summaries for the semantic cache, semantic graph and domain graph); `source` (manifest `sourceRevision`, `selectionDigest`, `pipelineVersion`, source-embedding statistics including files not embedded because their content no longer matches the manifest); `selection` (the manifest's selection funnel with only non-selected entries); `members` (multi-repo targets, by first path segment: `files`, the manifest entries, and `selected`, the selection funnel's selected entries, or `null` when the manifest records none; the two can differ and are not reconciled); `index` (source-index header values, and whether comment/string-literal text is `embedded`, `trimmed` by the budget, or `omitted` by `--no-source`); `unembedded` (per record kind, keys the columns do not carry, with counts); `anomalies` (values a column could not represent, with counts) |
 | `strings` | json | the global string table |
 | `values` | json | distinct non-string JSON values referenced by cells (for example edge weights) |
 | `nodes` | i32 | `id`, `type`, `name`, `path`, `line0`, `line1`, `owner`, `complexity`, `anchorSource`, `summary`, `tagOffset`, `tagCount`; in graph order |
@@ -72,10 +72,8 @@ Present only when their source exists:
 |---|---|---|
 | `graphLayers` | json | the graph's own `layer` records (Full graphs) |
 | `tour` | json | the graph's `tour` records, when not empty |
-| `index.chunks` | i32 | `node`, `language`, `docLength`, `idOffset`, `idCount`, `commentOffset`, `commentCount`, `stringOffset`, `stringCount`; one row per source-index chunk, in file order (a posting's chunk ordinal is the row) |
-| `index.tokens` | i32 | `token`; the flat list the chunk offset/count pairs index |
-| `index.terms` | i32 | `term`, `offset`, `count`; one row per posting term, in file order |
-| `index.postings` | i32 | `chunk`; the flat chunk-ordinal list the term rows index (term frequencies are not embedded) |
+| `index.chunks` | i32 | `node`, `language`, `docLength`, `idOffset`, `idCount`, `commentOffset`, `commentCount`, `stringOffset`, `stringCount`; one row per source-index chunk, in file order (the row is the source index's chunk ordinal). `idOffset`/`idCount` index `index.tokens`; `commentOffset`/`commentCount` and `stringOffset`/`stringCount` index rows of `indexLiterals`, and are all `-1` when the literals are not embedded |
+| `index.tokens` | i32 | `token`; the flat identifier-token list (global string cells) |
 | `semantic` | json | `version`, `contentLanguage`, `entries[]` of `{ nodeId, summary, tags, model, generatedAt, verification, freshness, inGraph }`, where `freshness` is the semantic cache's own verdict (`fresh` / `stale` / `missing` / `noncanonical-language`) against the manifest's per-file `contentHash` |
 | `layers` | json | from `semantic-graph.json`: `factDigest`, `headerFactsDigest`, `freshness` (`fresh` when it equals the graph header's `factsDigest`), `contentLanguage`, `layers`, `relations`, `gaps` |
 | `domain` | json | `freshness` and `reason` from the domain graph's own usability check against the manifest's `sourceRevision` and the header's `factsDigest`, and the domain `graph` verbatim |
@@ -83,8 +81,12 @@ Present only when their source exists:
 | `evidenceText` | i32 | `text`: per evidence row, an index into `evidenceText.strings`, or `-1` |
 | `excerpts.strings` | json | the distinct node source excerpts (the node's `lineRange`, lines joined by `\n`) |
 | `excerpts` | i32 | `text`: per node row, an index into `excerpts.strings`, or `-1` |
+| `indexLiterals.strings` | json | the distinct comment and string-literal texts of the source-index chunks |
+| `indexLiterals` | i32 | `text`: the flat literal list the chunk comment/string offset/count pairs index; an index into `indexLiterals.strings`, or `-1` |
 
-`evidenceText*` and `excerpts*` are the only segments that grow with source size. They are absent under `--no-source`; over the source budget the bake drops `excerpts*` first, then `evidenceText*`, always whole, and records it in `meta.dropped` and `meta.embeds`. Source text comes only from files whose content matches the manifest.
+`evidenceText*`, `excerpts*` and `indexLiterals*` are the only segments that grow with source size, and the source budget (`--source-budget`) is checked against the UTF-8 bytes of their three string tables combined. They are absent under `--no-source`; over the budget the bake drops `excerpts*` first, then `indexLiterals*`, then `evidenceText*`, always whole, and records it in `meta.dropped`, `meta.embeds` and `meta.index.literals`. Source text comes only from files whose content matches the manifest.
+
+The source index's postings (term -> chunk lists) are not embedded. They are derivable: a chunk's terms are its identifier tokens plus, when `indexLiterals` is present, the subword split of its comment and string texts, and the page rebuilds the term index from them. Without `indexLiterals` the rebuilt index covers identifier tokens only.
 
 ## Versioning
 

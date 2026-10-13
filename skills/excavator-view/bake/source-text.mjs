@@ -25,30 +25,8 @@ import { readFileSync } from 'node:fs';
 import { resolve, sep } from 'node:path';
 
 import { CELL_ABSENT, table } from '../bundle-codec.mjs';
+import { TextTable } from './text-table.mjs';
 import { resolveSourceSnapshot, GitCommitSnapshot, isGitRepoRoot, contentHash } from '../../excavator/source-snapshot.mjs';
-
-/** A per-segment string table with byte accounting. */
-class TextTable {
-  constructor() {
-    /** @type {Map<string, number>} */
-    this._ids = new Map();
-    /** @type {string[]} */
-    this.strings = [];
-    this.bytes = 0;
-  }
-
-  /** @param {string} text */
-  id(text) {
-    let id = this._ids.get(text);
-    if (id === undefined) {
-      id = this.strings.length;
-      this.strings.push(text);
-      this._ids.set(text, id);
-      this.bytes += Buffer.byteLength(text, 'utf-8');
-    }
-    return id;
-  }
-}
 
 /**
  * @param {string} projectRoot

@@ -12,6 +12,10 @@
  * unhandled rejections, plus decode/render failures the page caught),
  * `data-csp-violations`, `data-decode-ms` and `data-ready-ms`.
  *
+ * Chrome is closed with the DevTools `Browser.close` command so it removes
+ * its own temporary directories; SIGKILL only after a 2 s grace period
+ * (`chrome.exit` in the result says which happened).
+ *
  * Prints one JSON line. Exit code: 0 when the page is ready, reports no
  * errors and no CSP violations, and its decoded counts equal the header
  * counts; 1 otherwise; 2 when no Chrome was found (a visible skip, never a
@@ -171,6 +175,36 @@ function pipeClient(child) {
 
 const sleep = (/** @type {number} */ ms) => new Promise((r) => setTimeout(r, ms));
 
+export const CLOSE_GRACE_MS = 2000;
+
+/**
+ * Close Chrome through the DevTools protocol so it removes its own temporary
+ * directories (a SIGKILLed Chrome leaves a com.google.Chrome.* directory in
+ * the temp dir per run); SIGKILL only when it has not exited within
+ * CLOSE_GRACE_MS.
+ * @param {import('node:child_process').ChildProcess} child
+ * @param {{ send(method: string, params?: object): Promise<any> }} cdp
+ * @returns {Promise<'closed'|'killed'|'already-exited'>}
+ */
+async function closeChrome(child, cdp) {
+  const exited = () => child.exitCode !== null || child.signalCode !== null;
+  if (exited()) return 'already-exited';
+  const exit = new Promise((r) => child.once('exit', r));
+  // The reply may never arrive (Chrome exits first); the exit is what counts.
+  cdp.send('Browser.close').catch(() => {});
+  /** @type {NodeJS.Timeout | undefined} */
+  let handle;
+  const timer = new Promise((r) => { handle = setTimeout(r, CLOSE_GRACE_MS, 'timeout'); });
+  const outcome = await Promise.race([exit, timer]);
+  clearTimeout(handle);
+  if (outcome === 'timeout' && !exited()) {
+    child.kill('SIGKILL');
+    await exit;
+    return 'killed';
+  }
+  return 'closed';
+}
+
 /** Returns the page's outerHTML once #root reports a terminal state (or null while it does not). */
 const SETTLED_DOM = `(() => {
   const root = document.getElementById('root');
@@ -204,6 +238,8 @@ export async function smoke(page, { hash = '', reducedMotion = false, budgetMs =
   let dom = '';
   let problem = null;
   let settled = false;
+  /** @type {'closed'|'killed'|'already-exited'} */
+  let chromeExit = 'already-exited';
   try {
     const { targetInfos } = await cdp.send('Target.getTargets');
     const target = targetInfos.find((t) => t.type === 'page');
@@ -242,8 +278,7 @@ export async function smoke(page, { hash = '', reducedMotion = false, budgetMs =
   } catch (error) {
     problem = `Chrome session failed: ${/** @type {Error} */ (error).message}`;
   } finally {
-    child.kill('SIGKILL');
-    await new Promise((r) => (child.exitCode !== null || child.signalCode !== null ? r(null) : child.once('exit', r)));
+    chromeExit = await closeChrome(child, cdp);
     rmSync(profile, { recursive: true, force: true });
   }
   const attrs = rootAttributes(dom);
@@ -253,7 +288,7 @@ export async function smoke(page, { hash = '', reducedMotion = false, budgetMs =
     skipped: false,
     ...result,
     ok: result.ok && problem === null,
-    chrome: { path: found.path, source: /** @type {any} */ (found).source },
+    chrome: { path: found.path, source: /** @type {any} */ (found).source, exit: chromeExit },
     ...(problem ? { problem } : {}),
     dom,
   };

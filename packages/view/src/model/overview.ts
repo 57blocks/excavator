@@ -119,3 +119,44 @@ export function inventoryRows(meta: Meta): InventoryRow[] {
     return { name: item.name, required: item.required, state, bytes: typeof item.bytes === 'number' ? item.bytes : null, note };
   });
 }
+
+/** Ring center label: the ring sums the coverage record's per-language files, the candidate set. */
+export const LANGUAGE_RING_CENTER = 'candidate files';
+
+export const MEMBER_FILES_LABEL = 'files in manifest';
+export const MEMBER_SELECTED_LABEL = 'selected';
+
+export interface MemberCard {
+  name: string;
+  /** Manifest entries under this member. */
+  manifestFiles: number | null;
+  /** The selection funnel's selected entries under this member; null when not recorded. */
+  selectedFiles: number | null;
+}
+
+/** Member cards with both counts as the bake recorded them; the two may differ and are never reconciled. */
+export function memberCards(meta: Meta): MemberCard[] {
+  const num = (v: unknown) => (typeof v === 'number' && Number.isInteger(v) && v >= 0 ? v : null);
+  return (meta.members ?? []).map((m) => ({ name: m.name, manifestFiles: num(m.files), selectedFiles: num(m.selected) }));
+}
+
+export interface LiteralsStatus {
+  state: 'embedded' | 'trimmed' | 'omitted' | 'unavailable' | string;
+  label: string;
+}
+
+/**
+ * Whether the source index's comment and string-literal text is in this
+ * bundle: embedded, trimmed by the source budget, omitted by --no-source, or
+ * unavailable (no source index). The node term view shows this label instead
+ * of an empty list.
+ */
+export function indexLiteralsStatus(meta: Meta): LiteralsStatus {
+  const index = meta.index ?? null;
+  if (!index) return { state: 'unavailable', label: 'no source index' };
+  const state = typeof index.literals === 'string' ? index.literals : 'not-recorded';
+  if (state === 'embedded') return { state, label: 'literals embedded' };
+  if (state === 'trimmed') return { state, label: 'literals trimmed' };
+  if (state === 'omitted') return { state, label: 'literals not embedded (baked with --no-source)' };
+  return { state, label: `literals: ${state}` };
+}

@@ -13,7 +13,10 @@ import { languageColors, languageOrder, OTHER_COLOR } from '../../packages/view/
 import {
   conservationText, coverageRows, excludedEntries, groupGaps, selectionFunnel,
 } from '../../packages/view/src/model/coverage.ts';
-import { countRows, freshnessBanner, inventoryRows, semanticBadges } from '../../packages/view/src/model/overview.ts';
+import {
+  LANGUAGE_RING_CENTER, MEMBER_FILES_LABEL, MEMBER_SELECTED_LABEL, countRows, freshnessBanner, indexLiteralsStatus, inventoryRows,
+  memberCards, semanticBadges,
+} from '../../packages/view/src/model/overview.ts';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
 const sample = readFileSync(join(repoRoot, 'packages/view/fixtures/sample.bundle.txt'), 'utf-8');
@@ -187,5 +190,39 @@ describe('overview (4.2)', () => {
     expect(rows).toHaveLength(7);
     expect(rows.find((r) => r.name === 'domain-graph.json')).toMatchObject({ state: 'missing', note: expect.stringMatching(/excavator-domain/) });
     expect(inventoryRows({ inventory: [{ name: 'x', required: true, status: 'missing', missing: 'run' }] })[0].state).toBe('missing-required');
+  });
+});
+
+describe('slice A acceptance fixes (4A.1, 4A.3)', () => {
+  it('labels member cards with manifest files and shows the selected count beside it, from their own sources', () => {
+    const meta = { members: [{ name: 'alpha', files: 12, selected: 13 }, { name: 'beta', files: 4, selected: null }, { name: 'gamma', files: 2 }] };
+    const cards = memberCards(meta);
+    expect(MEMBER_FILES_LABEL).toBe('files in manifest');
+    expect(MEMBER_SELECTED_LABEL).toBe('selected');
+    // The two numbers are reported as recorded, never reconciled.
+    expect(cards).toEqual([
+      { name: 'alpha', manifestFiles: 12, selectedFiles: 13 },
+      { name: 'beta', manifestFiles: 4, selectedFiles: null },
+      { name: 'gamma', manifestFiles: 2, selectedFiles: null },
+    ]);
+    expect(memberCards({})).toEqual([]);
+  });
+
+  it('names the ring center "candidate files"', () => {
+    expect(LANGUAGE_RING_CENTER).toBe('candidate files');
+  });
+
+  it('reports the index literal state, including "literals trimmed" over budget', async () => {
+    const { meta } = await sampleData();
+    expect(indexLiteralsStatus(meta)).toEqual({ state: 'embedded', label: 'literals embedded' });
+    const index = { literals: 'trimmed' };
+    const trimmed = {
+      index, embeds: [{ segment: 'indexLiterals', status: 'dropped', reason: 'budget' }],
+    };
+    expect(indexLiteralsStatus(trimmed)).toEqual({ state: 'trimmed', label: 'literals trimmed' });
+    const omitted = { index: { literals: 'omitted' }, embeds: [{ segment: 'indexLiterals', status: 'dropped', reason: 'no-source' }] };
+    expect(indexLiteralsStatus(omitted)).toEqual({ state: 'omitted', label: 'literals not embedded (baked with --no-source)' });
+    expect(indexLiteralsStatus({ index: null })).toEqual({ state: 'unavailable', label: 'no source index' });
+    expect(indexLiteralsStatus({ index: { literals: 'weird' } })).toEqual({ state: 'weird', label: 'literals: weird' });
   });
 });

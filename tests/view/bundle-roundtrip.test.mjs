@@ -16,6 +16,7 @@ import {
   Interner,
   cellValue,
   decodeBundle,
+  decodeSegments,
   encodeBundle,
   isTable,
   table,
@@ -166,6 +167,33 @@ describe('bundle codec: decode round trip', () => {
     const { lines } = await encodeBundle(fixture, { compress: false });
     expect(lines[2]).toBe('');
     expect((await decodeBundle(`${lines.join('\n')}\n`)).segments).toEqual(fixture);
+  });
+});
+
+describe('bundle codec: segment-at-a-time decode (4A.6)', () => {
+  it('yields every segment in order, equal to decodeBundle, one at a time', async () => {
+    for (const compress of [true, false]) {
+      const { lines } = await encodeBundle(fullFixture(), { compress });
+      const seen = [];
+      for await (const segment of decodeSegments(lines)) seen.push([segment.name, segment.value, segment.rawBytes]);
+      const whole = await decodeBundle(lines);
+      expect(seen.map(([name]) => name)).toEqual(Object.keys(whole.segments));
+      expect(Object.fromEntries(seen.map(([name, value]) => [name, value]))).toEqual(whole.segments);
+      expect(seen.map(([, , raw]) => raw)).toEqual(whole.sizes.map((s) => s.rawBytes));
+    }
+  });
+
+  it('fails like decodeBundle on a version mismatch, a truncated payload and a duplicate segment', async () => {
+    const drain = async (payload) => {
+      for await (const _segment of decodeSegments(payload)) { /* consume */ }
+    };
+    const { lines } = await encodeBundle(fullFixture());
+    await expect(drain(['excavator-view-bundle/9'])).rejects.toThrow(BundleFormatError);
+    await expect(drain(lines.slice(0, -1))).rejects.toThrow(/segment header without a payload line/);
+    const truncated = [...lines];
+    truncated[2] = truncated[2].slice(0, 8);
+    await expect(drain(truncated)).rejects.toThrow(BundleFormatError);
+    await expect(drain([lines[0], lines[1], lines[2], lines[1], lines[2]])).rejects.toThrow(/duplicate segment/);
   });
 });
 

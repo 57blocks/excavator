@@ -23,7 +23,7 @@ Flags:
 - `--out <path>`: write somewhere other than `$PROJECT_ROOT/.excavator/view.html`.
 - `--no-source`: embed no source text (no evidence lines, no excerpts, no comment or string-literal text from the source index). Use it before sending the file outside the team.
 - `--raw`: store the data uncompressed, for browsers without `DecompressionStream`.
-- `--source-budget <MB>`: budget for embedded source text (default 64). Over budget, the excerpts are dropped first, then the evidence lines, each as a whole.
+- `--source-budget <MB>`: budget for embedded source text (default 64). It covers the excerpts, the source index's comment and string-literal text, and the evidence lines; over budget they are dropped in that order, each as a whole.
 - `--template <path>`: use another page template.
 
 On success the script prints one JSON line: the output `path`, its `bytes`, the artifact `inventory` (present, missing with the command that generates it, or invalid with the reason), what was `dropped` and why, `freshness` (the fact layer via the shared freshness helper, plus per-item freshness of semantic products), and the header, streamed and decoded `counts`. A stale fact layer still bakes; tell the user to run `/excavator` to refresh. Failures are named (`MissingArtifactError`, `KnowledgeGraphFormatError`, `ViewTooLargeError`, `ViewTemplateError`, `ViewSelfCheckError`) and leave any existing `view.html` byte-identical.

@@ -94,7 +94,8 @@ export interface Meta {
     budgetBytes?: number;
   };
   selection?: SelectionFunnel | null;
-  members?: Array<{ name: string; files: number }>;
+  /** `files`: manifest entries; `selected`: the selection funnel's selected entries (null when not recorded). */
+  members?: Array<{ name: string; files: number; selected?: number | null }>;
   index?: Record<string, unknown> | null;
   unembedded?: Record<string, Record<string, number>>;
   anomalies?: Record<string, number>;

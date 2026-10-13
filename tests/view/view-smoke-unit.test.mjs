@@ -49,3 +49,4 @@ describe('Chrome discovery', () => {
     expect(found.reason).toMatch(/no Chrome found/);
   });
 });
+
