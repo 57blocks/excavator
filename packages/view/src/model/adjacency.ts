@@ -55,7 +55,15 @@ function csr(from: Int32Array, type: Int32Array, nodeCount: number, typeCount: n
   return { offsets, edges };
 }
 
-export function buildAdjacency(segments: Segments, strings: string[]): Adjacency {
+/** How often `buildAdjacency` reports progress while resolving edges, in edge rows. */
+export const ADJACENCY_PROGRESS_EVERY = 65536;
+
+/**
+ * `onProgress(done, total)` counts in edge passes: resolving the endpoints
+ * (reported every ADJACENCY_PROGRESS_EVERY edges), then the out- and the
+ * in-direction CSR; `total` is three times the edge count.
+ */
+export function buildAdjacency(segments: Segments, strings: string[], onProgress?: (done: number, total: number) => void): Adjacency {
   const nodes = segments.nodes;
   const edgesTable = segments.edges;
   const nodeCount = isTable(nodes) ? nodes.rows : 0;
@@ -81,7 +89,9 @@ export function buildAdjacency(segments: Segments, strings: string[]): Adjacency
   const dst = new Int32Array(edgeCount);
   const type = new Int32Array(edgeCount);
   let unresolvedEdges = 0;
+  const total = edgeCount * 3;
   for (let e = 0; e < edgeCount; e += 1) {
+    if (onProgress && e > 0 && e % ADJACENCY_PROGRESS_EVERY === 0) onProgress(e, total);
     const s = rowByIdCell.get((edgesTable as { columns: Record<string, Int32Array> }).columns.src[e]);
     const d = rowByIdCell.get((edgesTable as { columns: Record<string, Int32Array> }).columns.dst[e]);
     type[e] = typeIndex.get(text(strings, typeCells?.[e]) ?? UNTYPED) as number;
@@ -95,8 +105,11 @@ export function buildAdjacency(segments: Segments, strings: string[]): Adjacency
     }
   }
 
+  onProgress?.(edgeCount, total);
   const out = csr(src, type, nodeCount, types.length);
+  onProgress?.(edgeCount * 2, total);
   const inn = csr(dst, type, nodeCount, types.length);
+  onProgress?.(total, total);
   return {
     nodeCount, edgeCount, types, src, dst, type,
     outOffsets: out.offsets, outEdges: out.edges, inOffsets: inn.offsets, inEdges: inn.edges,

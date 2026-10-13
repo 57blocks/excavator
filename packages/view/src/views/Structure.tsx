@@ -9,9 +9,10 @@ import { hierarchy, treemap, treemapSquarify, type HierarchyRectangularNode } fr
 import { cellText, isTable, type ViewData } from '../data';
 import { fmtNumber } from '../format';
 import { OTHER_COLOR, languageColors, languageOrder } from '../model/colors';
-import { breadcrumbs, buildStructure, entryWeight, locate, type StructureModel, type TreeDir, type TreeEntry, type TreeFile } from '../model/tree';
+import { breadcrumbs, buildStructure, compressedDir, entryWeight, locate, type StructureModel, type TreeDir, type TreeEntry, type TreeFile } from '../model/tree';
 import { dirHash, nodeHash } from '../routes';
-import { reducedMotion, report } from '../instrument';
+import { report } from '../instrument';
+import { useReducedMotion } from '../motion';
 
 const UNKNOWN_COLOR = 'var(--surface-2)';
 const DIR_HEADER = 18;
@@ -27,7 +28,9 @@ type Cell = HierarchyRectangularNode<TreeEntry>;
 
 /** Squarified layout of one directory level: its children and, inside directories, their children. */
 function layoutLevel(dir: TreeDir, sizing: StructureModel['sizing'], width: number, height: number): Cell | null {
-  const root = hierarchy<TreeEntry>(dir, (e) => (e.kind === 'dir' ? e.children : undefined))
+  // Below the shown level, single-subdirectory chains collapse into one cell
+  // whose inner cells are the chain end's children.
+  const root = hierarchy<TreeEntry>(dir, (e) => (e.kind === 'dir' ? (e === dir ? e.children : compressedDir(e).children) : undefined))
     .sum((e) => (e.kind === 'file' ? entryWeight(e, sizing) : 0))
     .sort((a, b) => (b.value ?? 0) - (a.value ?? 0));
   if (!root.value) return null;
@@ -199,7 +202,7 @@ function Treemap({ model, dir, selected, colors, symbol }: { model: StructureMod
   // Zoom transition: entering a child starts from that child's rect in the
   // previous level; going up starts zoomed so the child we left fills the view.
   const previous = useRef<string | null>(null);
-  const reduce = reducedMotion();
+  const reduce = useReducedMotion();
   const from = previous.current;
   let initial: false | { x: number; y: number; scaleX: number; scaleY: number } = false;
   if (!reduce && width > 0 && from !== null && from !== dir.path) {
@@ -260,7 +263,9 @@ function TreemapCell({ cell, sizing, colors, selected, symbol }: { cell: Cell; s
   const entry = cell.data;
   const size = box(cell);
   if (size.width < 1 || size.height < 1) return null;
-  const target = dirHash(entry.path);
+  const end = entry.kind === 'dir' ? compressedDir(entry) : null;
+  const compressed = end !== null && end !== entry ? end : null;
+  const target = dirHash(compressed ? compressed.path : entry.path);
   const onClick = (event: MouseEvent<HTMLDivElement>) => {
     if ((event.target as HTMLElement).closest('a')) return;
     go(target);
@@ -283,9 +288,11 @@ function TreemapCell({ cell, sizing, colors, selected, symbol }: { cell: Cell; s
         data-cell={entry.path}
         data-kind="dir"
         data-member={entry.member ? 'true' : undefined}
+        data-compressed={compressed ? compressed.path : undefined}
       >
         <a className="tm-label" href={target}>
-          {entry.name}/{entry.member && <span className="tm-tag"> member</span>}
+          {entry.name}/{compressed ? `${compressed.path.slice(entry.path.length + 1)}/` : ''}
+          {entry.member && <span className="tm-tag"> member</span>}
         </a>
         {(cell.children ?? []).map((inner) => {
           const s = box(inner, cell);

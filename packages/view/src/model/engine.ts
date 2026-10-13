@@ -9,10 +9,19 @@
 import { isTable, type Segments, type Table } from '../data';
 import { lookupTerm, rebuildPostings, splitIdentifier, type TermIndex } from './postings';
 import { buildNameIndex, searchNames, type NameIndex, type NameSearchResult } from './search';
+import { GraphEngine, type FileViewResult, type GraphInitResult, type GraphViewResult, type NeighborhoodResult, type NodeEdgesResult } from './graph-model';
 
 export type Query =
   | { op: 'names'; text: string; limit: number }
-  | { op: 'identifiers'; text: string; limit: number };
+  | { op: 'identifiers'; text: string; limit: number }
+  /** Builds the CSR adjacency on first use (with progress); later calls return at once. */
+  | { op: 'graph-init' }
+  /** `scope` null: the member level; otherwise a directory. */
+  | { op: 'graph-view'; scope: string | null }
+  | { op: 'graph-file'; path: string }
+  /** `types` null: every edge type. */
+  | { op: 'neighborhood'; row: number; hops: number; types: string[] | null }
+  | { op: 'node-edges'; row: number };
 
 export type IdentifierSearchResult =
   | { available: false; query: string }
@@ -33,11 +42,19 @@ export type IdentifierSearchResult =
     buildMs: number;
   };
 
-export type QueryResult = NameSearchResult | IdentifierSearchResult;
+export type QueryResult =
+  | NameSearchResult
+  | IdentifierSearchResult
+  | GraphInitResult
+  | GraphViewResult
+  | FileViewResult
+  | NeighborhoodResult
+  | NodeEdgesResult;
 
 /** Table columns the engine reads; everything else stays out of its copy. */
 const RETAINED: Record<string, string[]> = {
   nodes: ['id', 'name', 'path', 'type'],
+  edges: ['src', 'dst', 'type'],
   'index.chunks': ['node', 'idOffset', 'idCount', 'commentOffset', 'commentCount', 'stringOffset', 'stringCount'],
   'index.tokens': ['token'],
   indexLiterals: ['text'],
@@ -87,6 +104,7 @@ export class QueryEngine {
   private termsState: PostingsState;
   private rowByIdCell: Map<number, number> | null = null;
   private readonly strings: string[];
+  private graph: GraphEngine | null = null;
 
   constructor(private readonly segments: Segments) {
     this.strings = Array.isArray(segments.strings) ? (segments.strings as string[]) : [];
@@ -102,7 +120,13 @@ export class QueryEngine {
       this.names ??= buildNameIndex(this.segments, this.strings);
       return searchNames(this.names, query.text, query.limit);
     }
-    return this.identifiers(query.text, query.limit, onProgress, now);
+    if (query.op === 'identifiers') return this.identifiers(query.text, query.limit, onProgress, now);
+    this.graph ??= new GraphEngine(this.segments, this.strings);
+    if (query.op === 'graph-init') return this.graph.init(onProgress, now);
+    if (query.op === 'graph-view') return this.graph.graphView(query.scope);
+    if (query.op === 'graph-file') return this.graph.fileView(query.path);
+    if (query.op === 'neighborhood') return this.graph.neighborhoodView(query.row, query.hops, query.types);
+    return this.graph.nodeEdges(query.row);
   }
 
   private identifiers(text: string, limit: number, onProgress: ((done: number, total: number) => void) | undefined, now: () => number): IdentifierSearchResult {

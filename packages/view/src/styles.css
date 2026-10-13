@@ -43,6 +43,27 @@
   --skip-5: #7d3214;
   --skip-6: #c97b5b;
 
+  /* edge types: fixed, one per legend entry (task 6.4) */
+  --edge-contains: #6b6a65;
+  --edge-imports: #3987e5;
+  --edge-exports: #199e70;
+  --edge-calls: #d95926;
+  --edge-inherits: #9085e9;
+  --edge-implements: #d55181;
+  --edge-overrides: #c98500;
+  --edge-mentions: #8fa6bf;
+  --edge-references: #0ca3a3;
+  --edge-injects: #e6c229;
+  --edge-other: #a3a19a;
+
+  /* graph nodes */
+  --graph-dir: #2d4058;
+  --graph-member: #1f5591;
+  --graph-file: #45443f;
+  --graph-symbol: #4f4d47;
+  --graph-hop1: #4b6385;
+  --graph-hop2: #343f4f;
+
   --font-sans: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
   --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace;
   --radius: 8px;
@@ -83,6 +104,23 @@
     --skip-4: #8f3a15;
     --skip-5: #f7bfa3;
     --skip-6: #b8673f;
+    --edge-contains: #a3a19a;
+    --edge-imports: #2a78d6;
+    --edge-exports: #1baf7a;
+    --edge-calls: #eb6834;
+    --edge-inherits: #4a3aa7;
+    --edge-implements: #e87ba4;
+    --edge-overrides: #b37800;
+    --edge-mentions: #6f8aa8;
+    --edge-references: #008f8f;
+    --edge-injects: #b89400;
+    --edge-other: #6f6d67;
+    --graph-dir: #c9d8ea;
+    --graph-member: #9cc0ea;
+    --graph-file: #e1e0d9;
+    --graph-symbol: #d6d4cc;
+    --graph-hop1: #b9cbe3;
+    --graph-hop2: #e3e9f2;
   }
 }
 
@@ -659,3 +697,89 @@ select {
   font-size: 12px;
   overflow-wrap: anywhere;
 }
+
+/* Graph explorer (tasks 6.2-6.4) */
+.graph-canvas {
+  position: relative;
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  overflow: hidden;
+  margin-top: 8px;
+}
+.graph-canvas canvas {
+  display: block;
+  cursor: default;
+}
+.graph-tooltip {
+  position: absolute;
+  max-width: 260px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  font-size: 12px;
+  pointer-events: none;
+  overflow-wrap: anywhere;
+}
+.graph-hint {
+  position: absolute;
+  left: 8px;
+  bottom: 6px;
+  font-size: 11px;
+  pointer-events: none;
+}
+.edge-legend {
+  margin: 8px 0 0;
+}
+.legend-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-primary);
+  border-radius: 999px;
+  padding: 2px 10px;
+  font: inherit;
+  cursor: pointer;
+}
+.legend-toggle[aria-pressed='false'] {
+  color: var(--text-muted);
+  text-decoration: line-through;
+}
+.legend-toggle:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+.hop-switch {
+  display: inline-flex;
+  gap: 10px;
+}
+.edge-group h4 {
+  margin: 12px 0 4px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.edge-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.edge-list > li {
+  padding: 4px 0;
+  border-bottom: 1px solid var(--grid);
+}
+.evidence {
+  margin-top: 2px;
+}
+.term-list {
+  margin: 0;
+  padding-left: 18px;
+  max-height: 200px;
+  overflow: auto;
+}
+.term-cloud {
+  overflow-wrap: anywhere;
+}
+

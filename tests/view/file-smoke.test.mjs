@@ -167,14 +167,102 @@ if (!chrome.path) {
       expect(missing.dom).toContain('data-node-found="false"');
     }, 90_000);
 
-    it('shows a placeholder, not fake content, for the later sections (4.1)', async () => {
-      for (const section of ['graph', 'semantics']) {
-        const result = await smoke(goodPage, { hash: `#/${section}` });
-        expect(result.ok, section).toBe(true);
-        expect(result.dom).toContain(`data-section="${section}" data-placeholder="true"`);
-        expect(result.dom).toContain('Available in a later slice.');
-      }
+    it('shows a placeholder, not fake content, for the section still to come (4.1)', async () => {
+      const result = await smoke(goodPage, { hash: '#/semantics' });
+      expect(result.ok).toBe(true);
+      expect(result.dom).toContain('data-section="semantics" data-placeholder="true"');
+      expect(result.dom).toContain('Available in a later slice.');
+    }, 90_000);
+
+    it('opens the graph at the member level with the CSR built lazily and at most 400 nodes (6.2)', async () => {
+      const structure = await smoke(goodPage, { hash: '#/structure' });
+      // The CSR is not built on the ready path.
+      expect(structure.view.csr).toBe(null);
+      const result = await smoke(goodPage, { hash: '#/graph' });
+      expect(result).toMatchObject({ ok: true, route: 'graph' });
+      expect(result.view).toMatchObject({ graphLevel: 'member', graphPath: '', graphVisibleNodes: 3, csr: 'ready', motionMode: 'animated' });
+      expect(result.view.csrMs).toBeGreaterThanOrEqual(0);
+      expect(result.view.graphTransform).toMatch(/^\d+\.\d{3},-?\d+\.\d,-?\d+\.\d$/);
+      const dom = result.dom;
+      for (const key of ['d:docs', 'd:src', 'p:package.json']) expect(dom).toContain(`data-graph-item="${key}"`);
+      expect(dom).toContain('data-motion="graph" data-motion-state="animated"');
+      expect(dom).toContain('data-edge-legend="calls"');
+      expect(dom).toContain('data-edge-legend="other"');
+      expect(dom).not.toContain('data-placeholder="true"');
+    }, 90_000);
+
+    it('pans, zooms and drills down with real mouse input, and restores a level on the way back (6.2)', async () => {
+      const result = await smoke(goodPage, {
+        hash: '#/graph',
+        actions: [
+          { type: 'drag', from: [20, 20], by: [120, 60] },
+          { type: 'wheel', deltaY: -400 },
+          { type: 'click', node: 'd:src' },
+          { type: 'click', node: 'd:src/util' },
+          { type: 'click', node: 'p:src/util/format.ts' },
+          { type: 'click', node: 'function:src/util/format.ts:shout(text)' },
+          { type: 'hash', hash: '#/graph' },
+        ],
+      });
+      expect(result.ok, result.problem).toBe(true);
+      const [drag, wheel, toDir, toSubdir, toFile, toSymbol, back] = result.actions;
+      for (const a of result.actions) expect(a.problem, JSON.stringify(a)).toBeUndefined();
+      const parse = (t) => t.split(',').map(Number);
+      // A drag keeps the level and the zoom; the wheel zooms in (the pan's distance is checked below).
+      expect(drag.view.graphLevel).toBe('member');
+      const [k0] = parse(drag.view.graphTransform);
+      const [k1] = parse(wheel.view.graphTransform);
+      expect(k1).toBeGreaterThan(k0);
+      expect(toDir.view).toMatchObject({ graphLevel: 'directory', graphPath: 'src', graphVisibleNodes: 3, hash: '#/graph/src' });
+      expect(toSubdir.view).toMatchObject({ graphLevel: 'directory', graphPath: 'src/util', graphVisibleNodes: 1 });
+      expect(toFile.view).toMatchObject({ graphLevel: 'file', graphPath: 'src/util/format.ts', graphVisibleNodes: 2 });
+      expect(toSymbol.view).toMatchObject({ graphLevel: 'symbol', selectedNode: 'function:src/util/format.ts:shout(text)' });
+      // Back at the member level: the viewport (and so the node positions) as left.
+      expect(back.view.graphLevel).toBe('member');
+      expect(back.view.graphTransform).toBe(wheel.view.graphTransform);
     }, 120_000);
+
+    it('measures the drag against the opening viewport (instrument check for the pan)', async () => {
+      // The first action changes nothing and records the opening viewport at the same window size.
+      const run = await smoke(goodPage, { hash: '#/graph', actions: [{ type: 'hash', hash: '#/graph' }, { type: 'drag', from: [20, 20], by: [120, 60] }] });
+      const [k0, x0, y0] = run.actions[0].view.graphTransform.split(',').map(Number);
+      const [k1, x1, y1] = run.actions[1].view.graphTransform.split(',').map(Number);
+      expect(k1).toBe(k0);
+      expect(x1 - x0).toBeCloseTo(120, 0);
+      expect(y1 - y0).toBeCloseTo(60, 0);
+    }, 120_000);
+
+    it('opens a file level from its hash with the symbols in it (6.2)', async () => {
+      const result = await smoke(goodPage, { hash: '#/graph/file/src/util/format.ts' });
+      expect(result.view).toMatchObject({ route: 'graph-file', graphLevel: 'file', graphVisibleNodes: 2 });
+      expect(result.dom).toContain('data-graph-item="function:src/util/format.ts:formatGreeting(name,times)"');
+      expect(result.dom).toContain('data-graph-note="outside"');
+      const missing = await smoke(goodPage, { hash: '#/graph/nope' });
+      expect(missing.ok).toBe(true);
+      expect(missing.dom).toContain('data-graph-missing="nope"');
+    }, 90_000);
+
+    it('lists every edge type a class node has, with the evidence file and line (6.3)', async () => {
+      const result = await smoke(goodPage, { hash: `#/node/${encodeURIComponent('class:src/counter.ts:Counter')}` });
+      expect(result).toMatchObject({ ok: true, route: 'node' });
+      expect(result.view).toMatchObject({ graphLevel: 'symbol', selectedNode: 'class:src/counter.ts:Counter', detailEdges: 'in:contains=1,in:exports=1', neighborhoodTotal: 2 });
+      const dom = result.dom;
+      expect(dom).toContain('data-edge-group="in:contains" data-total="1"');
+      expect(dom).toContain('data-edge-group="in:exports" data-total="1"');
+      expect(dom).toContain('data-peer="file:src/counter.ts"');
+      expect(dom).toContain('src/counter.ts:1-11');
+      expect(dom).toContain('data-terms="chunk"');
+      expect(dom).toContain('data-terms-literals="comments" data-state="empty"');
+      expect(dom).toContain('data-link="graph-file"');
+    }, 90_000);
+
+    it('keeps the graph static and marks the page static under prefers-reduced-motion (7.2)', async () => {
+      const result = await smoke(goodPage, { hash: '#/graph/src', reducedMotion: true });
+      expect(result.ok).toBe(true);
+      expect(result.view.motionMode).toBe('static');
+      expect(result.dom).toContain('data-motion="graph" data-motion-state="static"');
+      expect(result.dom).toContain('data-reduced-motion="true"');
+    }, 90_000);
 
     it('draws the structure treemap of the manifest files, sized by lines and colored by language (5.1)', async () => {
       const result = await smoke(goodPage, { hash: '#/structure' });

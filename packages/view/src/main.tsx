@@ -3,7 +3,7 @@ import { createRoot } from 'react-dom/client';
 import './styles.css';
 import { readEmbeddedBundle } from './bundle';
 import { App, ErrorBoundary, Message } from './App';
-import { countError, reducedMotion } from './instrument';
+import { countError, watchReducedMotion } from './instrument';
 
 // Bootstrap: decode the embedded bundle (in a Worker), publish what the page
 // decoded on the root element's data-* attributes for the file:// smoke
@@ -14,7 +14,7 @@ const rootElement = document.getElementById('root');
 if (rootElement) {
   const root = createRoot(rootElement);
   const dataset = rootElement.dataset;
-  dataset.reducedMotion = String(reducedMotion());
+  watchReducedMotion();
   const started = performance.now();
   readEmbeddedBundle()
     .then((data) => {

@@ -1,7 +1,6 @@
 import { SECTIONS, type SectionId } from '../routes';
 
 const PLANNED: Partial<Record<SectionId, string>> = {
-  graph: 'Directory-level aggregation with expandable files and symbol neighborhoods.',
   semantics: 'Summaries, architecture layers and domain flows, each with its freshness.',
 };
 

@@ -225,8 +225,10 @@ describe('query engine (5.2)', () => {
   it('keeps its own copy of the columns it reads (the Worker transfers the originals away)', async () => {
     const segments = await sampleSegments();
     const kept = retainForQueries(segments);
-    expect(Object.keys(kept).sort()).toEqual(['index.chunks', 'index.tokens', 'indexLiterals', 'indexLiterals.strings', 'nodes', 'strings']);
+    // `edges` (src, dst, type) is kept for the graph engine's CSR (task 6.2).
+    expect(Object.keys(kept).sort()).toEqual(['edges', 'index.chunks', 'index.tokens', 'indexLiterals', 'indexLiterals.strings', 'nodes', 'strings']);
     expect(Object.keys(kept.nodes.columns).sort()).toEqual(['id', 'name', 'path', 'type']);
+    expect(Object.keys(kept.edges.columns).sort()).toEqual(['dst', 'src', 'type']);
     expect(kept.nodes.columns.name.buffer).not.toBe(segments.nodes.columns.name.buffer);
     const before = new QueryEngine(kept).run({ op: 'names', text: 'shout', limit: 5 });
     segments.nodes.columns.name.fill(-1);

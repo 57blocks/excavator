@@ -206,3 +206,15 @@ export function locate(model: StructureModel, path: string): Located | null {
   const parent = model.byPath.get(at < 0 ? '' : path.slice(0, at));
   return parent && parent.kind === 'dir' ? { dir: parent, file: entry } : null;
 }
+
+/**
+ * The end of a single-subdirectory chain starting at `dir` (a directory whose
+ * only child is a directory is shown as one cell, `a/b/c`, so a level never
+ * degenerates into one undivided block); `dir` itself when it has files or
+ * several children.
+ */
+export function compressedDir(dir: TreeDir): TreeDir {
+  let at = dir;
+  while (at.children.length === 1 && at.children[0].kind === 'dir') at = at.children[0];
+  return at;
+}

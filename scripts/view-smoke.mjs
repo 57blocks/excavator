@@ -16,6 +16,12 @@
  * what they show (`data-route`, `data-hash`, `data-treemap-path`,
  * `data-search-*`, `data-postings`), collected under `view` in the result.
  *
+ * `actions` (programmatic only; see `smoke`) drive the graph canvas with
+ * real input events (CDP `Input.dispatchMouseEvent`): a drag, a wheel turn,
+ * a click or a double-click, at a canvas-relative point or on a drawn node
+ * (located through the page's `window.__excavatorViewGraph` probe); each
+ * action's view report is listed under `actions`.
+ *
  * `--then '#/...'` (repeatable) changes the hash in the same page after it
  * settles, the way a click on a link would, and waits until the page has
  * rendered that hash (`data-hash`) and settled again; each step's view report
@@ -126,6 +132,18 @@ export function viewReport(attrs) {
     searchIdentifierResults: intOrNull(a['data-search-identifier-results']),
     postings: a['data-postings'] ?? null,
     busy: a['data-busy'] ?? null,
+    graphLevel: a['data-graph-level'] ?? null,
+    graphPath: a['data-graph-path'] ?? null,
+    graphVisibleNodes: intOrNull(a['data-graph-visible-nodes']),
+    graphItemsTotal: intOrNull(a['data-graph-items-total']),
+    graphLinks: intOrNull(a['data-graph-links']),
+    graphTransform: a['data-graph-transform'] ?? null,
+    csr: a['data-csr'] ?? null,
+    csrMs: intOrNull(a['data-csr-ms']),
+    selectedNode: a['data-selected-node'] ?? null,
+    detailEdges: a['data-detail-edges'] ?? null,
+    neighborhoodTotal: intOrNull(a['data-neighborhood-total']),
+    motionMode: a['data-motion-mode'] ?? null,
   };
 }
 
@@ -273,17 +291,85 @@ const ROOT_TAG = `(() => {
 })()`;
 
 /**
+ * @typedef {{ type: 'drag', from?: [number, number], node?: string, by: [number, number] }
+ *   | { type: 'wheel', at?: [number, number], deltaY: number }
+ *   | { type: 'click', at?: [number, number], node?: string }
+ *   | { type: 'dblclick', at?: [number, number] }
+ *   | { type: 'hash', hash: string }} GraphAction
+ * Points are canvas-relative CSS pixels (default: the canvas centre); `node`
+ * targets a drawn node by key; `by` is the drag distance; `hash` sets the
+ * location hash (a breadcrumb or back navigation) between inputs.
+ */
+
+const CANVAS_RECT = `(() => {
+  const c = document.querySelector('.graph-canvas canvas');
+  if (!c) return null;
+  c.scrollIntoView({ block: 'center' });
+  const r = c.getBoundingClientRect();
+  return [r.left, r.top, r.width, r.height];
+})()`;
+
+/**
+ * Dispatch one GraphAction as real mouse input.
+ * @param {GraphAction} action
+ * @param {(expression: string) => Promise<any>} evaluate
+ * @param {(method: string, params: object) => Promise<any>} send
+ * @returns {Promise<{ point: [number, number] | null, problem?: string }>}
+ */
+async function performAction(action, evaluate, send) {
+  if (action.type === 'hash') {
+    await evaluate(`window.location.hash = ${JSON.stringify(action.hash)}`);
+    return { point: null };
+  }
+  const rect = await evaluate(CANVAS_RECT);
+  if (!rect) return { point: null, problem: 'no graph canvas on the page' };
+  const [left, top, width, height] = rect;
+  /** @type {[number, number]} */
+  let point = [left + width / 2, top + height / 2];
+  const at = /** @type {any} */ (action).at ?? /** @type {any} */ (action).from;
+  if (at) point = [left + at[0], top + at[1]];
+  const node = /** @type {any} */ (action).node;
+  if (node !== undefined) {
+    const p = await evaluate(`(() => { const g = window.__excavatorViewGraph; return g ? g.position(${JSON.stringify(node)}) : null; })()`);
+    if (!p) return { point: null, problem: `node ${node} is not drawn` };
+    point = [p.x, p.y];
+  }
+  const [x, y] = point;
+  const mouse = (type, px, py, extra = {}) => send('Input.dispatchMouseEvent', { type, x: px, y: py, ...extra });
+  if (action.type === 'wheel') {
+    await mouse('mouseMoved', x, y);
+    await mouse('mouseWheel', x, y, { deltaX: 0, deltaY: action.deltaY });
+  } else if (action.type === 'click' || action.type === 'dblclick') {
+    await mouse('mouseMoved', x, y);
+    await mouse('mousePressed', x, y, { button: 'left', buttons: 1, clickCount: 1 });
+    await mouse('mouseReleased', x, y, { button: 'left', buttons: 0, clickCount: 1 });
+    if (action.type === 'dblclick') {
+      await mouse('mousePressed', x, y, { button: 'left', buttons: 1, clickCount: 2 });
+      await mouse('mouseReleased', x, y, { button: 'left', buttons: 0, clickCount: 2 });
+    }
+  } else {
+    const [dx, dy] = action.by;
+    await mouse('mouseMoved', x, y);
+    await mouse('mousePressed', x, y, { button: 'left', buttons: 1, clickCount: 1 });
+    for (let i = 1; i <= 8; i += 1) await mouse('mouseMoved', x + (dx * i) / 8, y + (dy * i) / 8, { button: 'left', buttons: 1 });
+    await mouse('mouseReleased', x + dx, y + dy, { button: 'left', buttons: 0, clickCount: 1 });
+  }
+  return { point: [Math.round(x), Math.round(y)] };
+}
+
+/**
  * Open the page from file:// in headless Chrome and wait, in real time, for
  * the page to settle. Real time rather than --virtual-time-budget: virtual
  * time races ahead of Worker threads, so a page that decodes in a Worker is
  * dumped while still "loading".
  *
  * @param {string} page
- * @param {{ hash?: string, steps?: string[], reducedMotion?: boolean, budgetMs?: number, chrome?: string, screenshot?: string|null, colorScheme?: 'light'|'dark'|null }} [options]
+ * @param {{ hash?: string, steps?: string[], actions?: GraphAction[], reducedMotion?: boolean, budgetMs?: number, chrome?: string, screenshot?: string|null, colorScheme?: 'light'|'dark'|null }} [options]
  *   `steps`: hashes set one after another once the page settles (see --then)
+ *   `actions`: input on the graph canvas after the steps (see GraphAction)
  *   `screenshot`: also save a 1440x1000 viewport PNG to this path once settled
  */
-export async function smoke(page, { hash = '', steps = [], reducedMotion = false, budgetMs = DEFAULT_BUDGET_MS, chrome, screenshot = null, colorScheme = null } = {}) {
+export async function smoke(page, { hash = '', steps = [], actions = [], reducedMotion = false, budgetMs = DEFAULT_BUDGET_MS, chrome, screenshot = null, colorScheme = null } = {}) {
   const found = chrome ? { path: chrome, source: 'argument' } : findChrome();
   if (!found.path) return { skipped: true, reason: /** @type {any} */ (found).reason, dom: null };
   const url = `${pathToFileURL(resolve(page)).href}${hash}`;
@@ -301,6 +387,8 @@ export async function smoke(page, { hash = '', steps = [], reducedMotion = false
   let settled = false;
   /** @type {Array<{ hash: string, settled: boolean, view: ReturnType<typeof viewReport> }>} */
   const stepReports = [];
+  /** @type {Array<Record<string, unknown>>} */
+  const actionReports = [];
   /** @type {'closed'|'killed'|'already-exited'} */
   let chromeExit = 'already-exited';
   /** @type {string | null} */
@@ -315,7 +403,7 @@ export async function smoke(page, { hash = '', steps = [], reducedMotion = false
       ...(colorScheme ? [{ name: 'prefers-color-scheme', value: colorScheme }] : []),
     ];
     if (features.length > 0) await cdp.send('Emulation.setEmulatedMedia', { features }, sessionId);
-    if (screenshot) {
+    if (screenshot || actions.length > 0) {
       await cdp.send('Emulation.setDeviceMetricsOverride', { width: 1440, height: 1000, deviceScaleFactor: 1, mobile: false }, sessionId);
     }
     await cdp.send('Page.navigate', { url }, sessionId);
@@ -341,6 +429,15 @@ export async function smoke(page, { hash = '', steps = [], reducedMotion = false
       if (settled) await sleep(300);
       stepReports.push({ hash: step, settled, view: viewReport(rootAttributes((await evaluate(ROOT_TAG)) ?? '')) });
     }
+    for (const action of actions) {
+      if (!settled) break;
+      const done = await performAction(action, evaluate, (method, params) => cdp.send(method, params, sessionId));
+      await sleep(200);
+      settled = await waitSettled();
+      // Let a level transition (450 ms) and any zoom-to-fit (320 ms) finish.
+      if (settled) await sleep(600);
+      actionReports.push({ action, ...done, settled, view: viewReport(rootAttributes((await evaluate(ROOT_TAG)) ?? '')) });
+    }
     dom = (await evaluate('document.documentElement.outerHTML')) ?? '';
     if (screenshot) {
       const { data } = await cdp.send('Page.captureScreenshot', { format: 'png' }, sessionId);
@@ -363,6 +460,7 @@ export async function smoke(page, { hash = '', steps = [], reducedMotion = false
     ok: result.ok && problem === null,
     chrome: { path: found.path, source: /** @type {any} */ (found).source, exit: chromeExit, singletonDir: chromeSingletonDir, profile },
     ...(steps.length > 0 ? { steps: stepReports } : {}),
+    ...(actions.length > 0 ? { actions: actionReports } : {}),
     ...(problem ? { problem } : {}),
     dom,
   };
