@@ -11,7 +11,25 @@
     <title>Excavator View</title>
   </head>
   <body>
-    <div id="root" data-excavator-view="loading"></div>
+    <div id="root" data-excavator-view="loading" data-errors="0" data-csp-violations="0"></div>
+    <script>
+      // Count page errors and CSP violations from the very first moment, for
+      // the file:// smoke check (scripts/view-smoke.mjs reads these attributes).
+      (function () {
+        var root = document.getElementById('root');
+        var c = (window.__excavatorViewCounters = window.__excavatorViewCounters || { errors: 0, csp: 0 });
+        function error() {
+          c.errors += 1;
+          root.setAttribute('data-errors', String(c.errors));
+        }
+        window.addEventListener('error', error);
+        window.addEventListener('unhandledrejection', error);
+        document.addEventListener('securitypolicyviolation', function () {
+          c.csp += 1;
+          root.setAttribute('data-csp-violations', String(c.csp));
+        });
+      })();
+    </script>
     <script type="text/plain" id="excavator-view-data"></script>
     <script type="module" src="./src/main.tsx"></script>
   </body>
