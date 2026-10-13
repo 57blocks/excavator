@@ -49,13 +49,13 @@
 
 ## 2. Core：配置与语言
 
-- [ ] 2.1 新增 `frameworks/javaee.ts`、`frameworks/jsf.ts`，字段按 design D6，`promptSnippetPath` 为 `./frameworks/<id>.md`，在 `frameworks/index.ts` 的数组与导出两处注册。新增 `configs/xhtml.ts`（id `xhtml`，扩展名 `.xhtml`，无 tree-sitter）并注册。
+- [x] 2.1 新增 `frameworks/javaee.ts`、`frameworks/jsf.ts`，字段按 design D6，`promptSnippetPath` 为 `./frameworks/<id>.md`，在 `frameworks/index.ts` 的数组与导出两处注册。新增 `configs/xhtml.ts`（id `xhtml`，扩展名 `.xhtml`，无 tree-sitter）并注册。
   验证：core 测试覆盖：
   - 内建框架数 12→14；
   - spec `javaee-framework` 与 `jsf-framework` 第一条需求的每个场景（用 `detectWithEvidence` 与内存中的 manifest）；
   - 两个配置的 `layerHints` 至少含 spec 列出的映射，`entryPoints` 含 spec 列出的项；
   - 语言注册表按 `.xhtml` 找到 `xhtml`，且它没有 tree-sitter 配置。
-- [ ] 2.2 重建 core dist；core 测试、typecheck、根测试全绿。核对 `text-mentions.mjs` 的 `isCodeLanguage('xhtml')` 仍为假，既有名字提及与 EL 引用的管线测试不改仍绿。
+- [x] 2.2 重建 core dist；core 测试、typecheck、根测试全绿。核对 `text-mentions.mjs` 的 `isCodeLanguage('xhtml')` 仍为假，既有名字提及与 EL 引用的管线测试不改仍绿。
   验证：命令输出计数写进交付报告。
 
 ## 3. 扫描
