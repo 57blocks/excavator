@@ -28,7 +28,7 @@ The deterministic fact build has already drawn the relationships below. Query th
 | `*.xhtml` under the web root, outside `WEB-INF` | Page — a Facelets view, addressed by its path | `ui` |
 | `*.xhtml` with `ui:insert`, usually under `WEB-INF/templates` | Template — a layout whose `ui:insert` slots the pages fill with `ui:define` | `ui` |
 | `resources/<library>/<tag>.xhtml`, also under `META-INF/resources` | Composite component — a page fragment used as the tag `<prefix:tag>` | `ui`, `component` |
-| `@ManagedBean` and `@Named` classes with a scope annotation, `*Bean.java`, `*Controller.java` | Backing bean — the state and the action methods a page binds by EL | `ui` |
+| `@ManagedBean` classes, and `@Named` or `@Model` classes that pages bind by EL (they have incoming `references` edges from view files), classes a `managed-bean` entry names, `*Controller.java` | Backing bean — the state and the action methods a page binds by EL | `ui` |
 | `@FacesConverter` classes, `*Converter.java`, `converter` entries | Converter — turns a submitted string into an object and back | `utility` |
 | `@FacesValidator` classes, `*Validator.java`, `validator` entries | Validator — checks a submitted value | `validation` |
 | `faces-config.xml` | Descriptor — managed beans, navigation rules, converters, validators, resource bundles, phase listeners | `config`, `entry-point` |
@@ -36,13 +36,17 @@ The deterministic fact build has already drawn the relationships below. Query th
 | `*.taglib.xml`, `*.tld`, `*.tag`, `*.tagx` | Tag library and tag files — custom tags for pages | `ui`, `config` |
 | `*.properties` used as resource bundles | Messages and labels the pages read through EL | `config` |
 
+The suffix `Bean` is used for backing beans and for Java EE session beans alike, so `*Bean.java` alone decides neither role: decide by the annotation, the descriptor entry, or the incoming `references` edges from view files.
+
 ### Edge Patterns to Look For
 
 Every relation drawn from these conventions is `"provenance": "inferred"` with no `evidence`. Each rule below names its candidate set. Connect only when the set has exactly one member. For zero or several candidates, draw nothing and say so in the node's summary.
 
 **Outcomes and navigation** — an action method returns a string literal (`return "detail";`), or a page writes a literal outcome in `action="detail"`, `outcome="detail"` or a navigation component's `outcome` attribute. The container turns the outcome into a view. Resolve it in this order:
-1. A navigation rule of `faces-config.xml` whose `from-outcome` is this outcome (its `from-view-id` is the current view, or `*`, or absent). `from-outcome` comes before implicit navigation. The rule's `to-view-id` is already a `mentions` fact: do not redraw it.
-2. Implicit navigation, when no rule matches: the outcome is itself a view id. An outcome with no leading `/` is relative to the directory of the current view; one with a leading `/` starts at the web root. Add the extension the project's pages use when the outcome has none (`detail` names `detail.xhtml`). Strip a `?faces-redirect=true` suffix first.
+1. A navigation rule whose `from-outcome` is this outcome. A rule applies to the current view when its `from-view-id` equals the current view, is `*`, is absent, or is a prefix pattern such as `/admin/*` that covers the current view. Rules are read in `faces-config.xml` and in any other place the project declares navigation, for example Seam's `pages.xml` and `*.page.xml`. `from-outcome` comes before implicit navigation. When a rule applies, the page it names is the match. The descriptor's own path mention of that page is already a `mentions` fact: do not redraw that edge.
+   - If any rule names this outcome but you cannot decide whether it applies to the current view (a pattern you cannot evaluate, a condition, an EL expression in the rule), do **not** fall back to implicit navigation. Draw nothing and say the outcome is unresolved.
+2. Implicit navigation, when no rule names the outcome: the outcome is itself a view id. An outcome with no leading `/` is relative to the directory of the current view; one with a leading `/` starts at the web root. Add the extension the project's pages use when the outcome has none (`detail` names `detail.xhtml`). Strip a `?faces-redirect=true` suffix first.
+   - Implicit navigation exists only from JSF 2.0. Use it only when the project visibly targets JSF 2.0 or later: a `faces-config.xml` whose `version` is 2.0 or later, or a JSF 2.x (or later) or Jakarta Faces API dependency. With JSF 1.x, or when no version is visible, do not use implicit navigation: draw nothing and say so.
 - Exactly one page file in the repository matches: connect the page that binds the action to it with an `inferred` `depends_on` edge.
 - Zero or several page files match: do not connect, and say the outcome is unresolved. For example, the outcome `detail` with a `detail.xhtml` in the current view's directory and another in the web root, and no matching navigation rule, does not resolve to one page. A bean method bound from pages in different directories reaches different files, so it does not resolve either. Neither does an outcome computed at run time.
 
@@ -67,11 +71,11 @@ Assign nodes to these layers when detected:
 
 | Layer ID | Layer Name | What Goes Here |
 |---|---|---|
-| `layer:ui` | UI Layer | Pages, templates, composite components, tag files, backing beans |
+| `layer:ui` | UI Layer | Pages, templates, composite components, tag files, backing beans (a `@Named` or `@Model` class counts only when view files bind it: it has incoming `references` edges from them) |
 | `layer:utility` | Utility Layer | Converters and validators |
 | `layer:config` | Config Layer | `faces-config.xml`, `web.xml`, `*.taglib.xml`, `*.tld`, resource bundles |
 
-Business logic that a backing bean calls (session beans, services, data access) is assigned by the project's own structure and by the other framework addenda, not here.
+A `@Named` class that no view file binds is not a backing bean: leave it to the Java EE addendum, which puts the other CDI beans in the service layer. Business logic that a backing bean calls (session beans, services, data access) is assigned by the project's own structure and by the other framework addenda, not here.
 
 ### Notable Patterns to Capture in languageLesson
 

@@ -356,11 +356,31 @@ describe('the javaee and jsf addenda (javaee-jsf-framework-knowledge, D8)', () =
     });
 
     it('infers an injection by type only from exactly one non-abstract implementation, producers counted, and never guesses qualifiers', () => {
-      expect(text).toContain('every non-abstract class in the repository that `implements` or extends the declared type');
       expect(text).toContain('producer methods count as candidates');
       expect(text).toContain('Qualifiers, `@Alternative`');
       expect(text).toContain('decided at deployment');
       expect(text).toContain('Never use them to pick one of several candidates');
+    });
+
+    it('counts the candidates of an injection by type through the incoming implements and inherits edges, transitively', () => {
+      // the edges point from the subtype to the type: the walk goes against them
+      expect(text).toContain('an `implements` or `inherits` edge points from the subtype to the type');
+      expect(text).toContain('follow its incoming `implements` and `inherits` edges transitively');
+      expect(text).toContain('collect every non-abstract class you reach');
+      expect(text).toContain('The implementation of a sub-interface counts, and so does a subclass of an implementation.');
+      expect(text).toContain('The declared type itself counts when it is a concrete class.');
+      expect(text).toContain('with interface `A`, `B implements A` and `C extends B`, there are two candidates (`B` and `C`): draw no edge');
+      expect(text).toContain('whose type is the declared type or one of those subtypes');
+    });
+
+    it('puts a @Named class that pages bind by EL in layer:ui, as jsf.md does, and the other CDI beans in layer:service', () => {
+      const roles = flat(readRepoFile('skills/excavator/frameworks/javaee.md').split('### Canonical File Roles')[1].split('### Edge Patterns')[0]);
+      expect(roles).toContain('`@Named` or `@Model` classes that pages bind by EL (they have incoming `references` edges from view files)');
+      expect(roles).toContain('Backing bean — the same role as in the JSF addendum, in `layer:ui`');
+      expect(roles).toContain('Other `@ApplicationScoped`');
+      const layers = flat(readRepoFile('skills/excavator/frameworks/javaee.md').split('### Architectural Layers for Java EE')[1].split('### Notable Patterns')[0]);
+      expect(layers).toContain('| `layer:ui` | UI Layer | Backing beans: the `@Named` and `@Model` classes that view files bind by EL');
+      expect(layers).toContain('the other CDI managed beans (those no page binds)');
     });
 
     it('assembles a JAX-RS route from its four parts into the method description and makes no route node', () => {
@@ -390,6 +410,33 @@ describe('the javaee and jsf addenda (javaee-jsf-framework-knowledge, D8)', () =
       expect(text).toContain('Exactly one page file in the repository matches');
       expect(text).toContain('Zero or several page files match');
       expect(text).toContain('a `detail.xhtml` in the current view\'s directory and another in the web root');
+    });
+
+    it('matches a navigation rule by an equal, absent, wildcard or prefix-pattern from-view-id, in faces-config.xml or elsewhere', () => {
+      expect(text).toContain('`from-view-id` equals the current view, is `*`, is absent, or is a prefix pattern such as `/admin/*` that covers the current view');
+      expect(text).toContain("Seam's `pages.xml` and `*.page.xml`");
+    });
+
+    it('does not fall back to implicit navigation past a rule it cannot decide', () => {
+      expect(text).toContain('If any rule names this outcome but you cannot decide whether it applies to the current view');
+      expect(text).toContain('a pattern you cannot evaluate, a condition, an EL expression in the rule');
+      expect(text).toContain('do not fall back to implicit navigation. Draw nothing and say the outcome is unresolved.');
+    });
+
+    it('uses implicit navigation only when the project visibly targets JSF 2.0 or later', () => {
+      expect(text).toContain('Implicit navigation exists only from JSF 2.0.');
+      expect(text).toContain('a `faces-config.xml` whose `version` is 2.0 or later, or a JSF 2.x (or later) or Jakarta Faces API dependency');
+      expect(text).toContain('With JSF 1.x, or when no version is visible, do not use implicit navigation: draw nothing and say so.');
+    });
+
+    it('treats a @Named class as a backing bean only when view files bind it, in layer:ui as javaee.md says', () => {
+      const raw = readRepoFile('skills/excavator/frameworks/jsf.md');
+      const roles = flat(raw.split('### Canonical File Roles')[1].split('### Edge Patterns')[0]);
+      expect(roles).toContain('`@Named` or `@Model` classes that pages bind by EL (they have incoming `references` edges from view files)');
+      const layers = flat(raw.split('### Architectural Layers for JSF')[1].split('### Notable Patterns')[0]);
+      expect(layers).toContain('a `@Named` or `@Model` class counts only when view files bind it: it has incoming `references` edges from them');
+      expect(layers).toContain('A `@Named` class that no view file binds is not a backing bean');
+      expect(layers).toContain('which puts the other CDI beans in the service layer');
     });
 
     it('maps a composite component to resources/<library>/<tag>.xhtml', () => {

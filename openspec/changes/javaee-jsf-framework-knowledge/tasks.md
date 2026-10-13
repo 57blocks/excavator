@@ -91,7 +91,7 @@
 
 ## 5. 附录与注入
 
-- [ ] 5.1 新增 `skills/excavator/frameworks/javaee.md` 与 `jsf.md`，按 design D8 与两份 spec 的「SHALL 写明」逐条落段落。
+- [x] 5.1 新增 `skills/excavator/frameworks/javaee.md` 与 `jsf.md`，按 design D8 与两份 spec 的「SHALL 写明」逐条落段落。
   验证：散文契约测试断言两份附录含以下各点的关键语句，并且不含行号模式（如 `:\d+`）：
   - 「Already in the fact graph」一节及其边类型；
   - 每条推断规则的「零个或多个候选不连」；

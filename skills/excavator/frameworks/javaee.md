@@ -28,7 +28,7 @@ The deterministic fact build has already drawn the relationships below. Query th
 | Class extending `Application` with `@ApplicationPath` | JAX-RS activator — the base path of every `@Path` resource | `entry-point`, `config` |
 | Classes with a class-level `@Path`, `*Resource.java`, `*Rest.java`, `*Endpoint.java` | JAX-RS resource — HTTP methods mapped to Java methods by annotation | `api-handler` |
 | Classes with `@Provider` (`ExceptionMapper`, `MessageBodyWriter`, `ContainerRequestFilter`, …) | JAX-RS provider — cross-cutting request, response and error handling | `middleware` |
-| `@Stateless`, `@Stateful` and `@Singleton` classes, `*Bean.java`, `*EJB.java`, `*Facade.java` | Session bean — business operations under container-managed transactions | `service` |
+| `@Stateless`, `@Stateful` and `@Singleton` classes, session beans listed in `ejb-jar.xml`, `*EJB.java`, `*Facade.java` | Session bean — business operations under container-managed transactions | `service` |
 | `@MessageDriven` classes, `*MDB.java` | Message-driven bean — the container calls it for each message of one JMS destination | `service`, `event-handler` |
 | `*Local.java`, `*Remote.java`, interfaces with `@Local` or `@Remote` | EJB business interface | `service`, `type-definition` |
 | `@Entity`, `@MappedSuperclass` and `@Embeddable` classes | Entity — JPA mapping to a table | `data-model` |
@@ -36,7 +36,8 @@ The deterministic fact build has already drawn the relationships below. Query th
 | `@Interceptor` and `@Decorator` classes, classes with an `@AroundInvoke` method, servlet `Filter` classes | Interceptor — cross-cutting behavior around calls or requests | `middleware` |
 | `@Produces` methods and fields, `*Producer.java` | Producer — supplies an injectable type that no constructor shows | `factory` |
 | Classes with an `@Observes` or `@ObservesAsync` parameter | CDI event observer | `event-handler` |
-| `@ApplicationScoped`, `@RequestScoped`, `@SessionScoped`, `@Dependent` and `@Named` classes | CDI managed bean | `service` |
+| `@Named` or `@Model` classes that pages bind by EL (they have incoming `references` edges from view files) | Backing bean — the same role as in the JSF addendum, in `layer:ui` | `ui` |
+| Other `@ApplicationScoped`, `@RequestScoped`, `@SessionScoped`, `@Dependent` and `@Named` classes | CDI managed bean | `service` |
 | `ejb-jar.xml` | Descriptor — session beans, message-driven beans, interceptors and their bindings; an entry overrides the matching annotation | `config` |
 | `persistence.xml` | Descriptor — persistence units, their provider and entity classes | `config` |
 | `web.xml` | Descriptor — servlets, filters, listeners, mappings, welcome files | `config`, `entry-point` |
@@ -44,11 +45,13 @@ The deterministic fact build has already drawn the relationships below. Query th
 | `application.xml` | Descriptor — the modules of an enterprise archive | `config`, `entry-point` |
 | `*Test.java`, `*IT.java` | Unit and integration tests | `test` |
 
+The suffix `Bean` is used for session beans and for JSF backing beans alike, so `*Bean.java` alone decides neither role: decide by the annotation, the `ejb-jar.xml` entry, or the incoming `references` edges from view files.
+
 ### Edge Patterns to Look For
 
 Every relation drawn from these conventions is `"provenance": "inferred"` with no `evidence`. Each rule below names its candidate set. Connect only when the set has exactly one member. For zero or several candidates, draw nothing and say so in the node's summary.
 
-**Injection by type** — an `@Inject` point (field, constructor parameter or setter), or an `@EJB` with no `beanName`, asks the container for a bean of the declared type. Name-based injection is already a fact (see above); this rule is only for the type-based form. Build the candidate set from the graph: every non-abstract class in the repository that `implements` or extends the declared type (follow the `implements` and `inherits` edges from the type's node; the type itself counts when it is a concrete class), plus every `@Produces` method or field whose type is the declared type — producer methods count as candidates.
+**Injection by type** — an `@Inject` point (field, constructor parameter or setter), or an `@EJB` with no `beanName`, asks the container for a bean of the declared type. Name-based injection is already a fact (see above); this rule is only for the type-based form. Build the candidate set from the graph. In the graph an `implements` or `inherits` edge points from the subtype to the type, so start at the declared type's node and follow its **incoming** `implements` and `inherits` edges transitively, and collect every non-abstract class you reach. The implementation of a sub-interface counts, and so does a subclass of an implementation. The declared type itself counts when it is a concrete class. Add every `@Produces` method or field whose type is the declared type or one of those subtypes — producer methods count as candidates. For example, with interface `A`, `B implements A` and `C extends B`, there are two candidates (`B` and `C`): draw no edge.
 - Exactly one candidate: connect with an `inferred` `depends_on` edge from the injecting class to it. When the injection point carries a qualifier, connect only if that candidate visibly carries the same qualifier annotation.
 - Zero or several candidates: do not connect, and say in the summary that the bean is chosen at deployment.
 - Qualifiers, `@Alternative`, `@Specializes` and the alternatives enabled in `beans.xml` are decided at deployment. Never use them to pick one of several candidates: several candidates still mean no edge.
@@ -74,8 +77,9 @@ Assign nodes to these layers when detected:
 
 | Layer ID | Layer Name | What Goes Here |
 |---|---|---|
+| `layer:ui` | UI Layer | Backing beans: the `@Named` and `@Model` classes that view files bind by EL, as the JSF addendum assigns them |
 | `layer:api` | API Layer | JAX-RS resources and their activator, servlets |
-| `layer:service` | Service Layer | Session beans, message-driven beans, CDI managed beans, event observers, business interfaces |
+| `layer:service` | Service Layer | Session beans, message-driven beans, the other CDI managed beans (those no page binds), event observers, business interfaces |
 | `layer:data` | Data Layer | Entities, `*Dao.java`, JPA mappings, producers of `EntityManager` |
 | `layer:middleware` | Middleware Layer | Interceptors, decorators, servlet filters, JAX-RS providers |
 | `layer:config` | Config Layer | `ejb-jar.xml`, `persistence.xml`, `web.xml`, `beans.xml`, `application.xml` |
