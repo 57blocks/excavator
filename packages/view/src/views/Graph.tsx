@@ -17,6 +17,9 @@ import { GraphCanvas, type CanvasLink, type CanvasNode } from './GraphCanvas';
 import { runQuery, useCsr, useDisabledTypes, useLayerColoring, type CsrState } from './graph-state';
 import { LayerLegend } from './LayerLegend';
 import { layerColoring, layerModel, nodeLayerNames, summaryTooltip } from '../model/semantics';
+import { itemVisual, symbolVisual } from '../model/graph-visual';
+import { visualData } from './visual-data';
+import { NodeLegend } from './NodeLegend';
 
 export type GraphLevel = { kind: 'member'; path: '' } | { kind: 'directory'; path: string } | { kind: 'file'; path: string };
 
@@ -111,6 +114,7 @@ export function moreCanvasLinks(moreLinks: number[], types: string[]): CanvasLin
 export function moreNode(folded: number, what: string, which: string): CanvasNode {
   return {
     key: 'more',
+    kind: 'more',
     label: `${fmtNumber(folded)} more`,
     size: folded,
     tone: 'more',
@@ -141,9 +145,9 @@ function sumTypes(byType: number[]): number {
   return byType.reduce((n, c) => n + c, 0);
 }
 
-function itemTooltip(item: GraphItem): string[] {
+function itemTooltip(item: GraphItem, files: number | null, language: string | null): string[] {
   const lines = [item.kind === 'dir' ? `${item.path}/` : item.kind === 'file' ? item.path : item.label];
-  lines.push(`${fmtNumber(item.nodes)} nodes · ${fmtNumber(item.internal)} edges inside`);
+  lines.push(`${fmtNumber(item.nodes)} nodes · ${fmtNumber(item.internal)} edges inside${files !== null ? ` · ${fmtNumber(files)} files` : ''}${item.kind === 'file' ? ` · ${language ?? 'language unknown'}` : ''}`);
   if (item.kind === 'dir') lines.push('Click to open this directory');
   else if (item.kind === 'file') lines.push('Click to open its symbols');
   else if (item.kind === 'more') lines.push(`The ${fmtNumber(item.folded ?? 0)} lightest items, folded to stay within 400 drawn nodes`);
@@ -183,18 +187,27 @@ export function Graph({ data, level }: { data: ViewData; level: GraphLevel }) {
     return () => clearBusy(busyKey);
   }, [current]);
   const members = useMemo(() => new Set((data.meta.members ?? []).map((m) => m.name)), [data]);
+  const visual = visualData(data);
 
   const model = useMemo(() => {
     if (!result) return null;
     if ('items' in result && result.found) {
-      const nodes: CanvasNode[] = result.items.map((item) => ({
-        key: item.key,
-        label: item.label,
-        size: item.nodes,
-        tone: item.kind === 'dir' ? (members.has(item.path) ? 'member' : 'dir') : item.kind === 'file' ? 'file' : item.kind,
-        tooltip: itemTooltip(item),
-        activatable: item.kind === 'dir' || item.kind === 'file',
-      }));
+      const nodes: CanvasNode[] = result.items.map((item) => {
+        const tone = item.kind === 'dir' ? (members.has(item.path) ? 'member' : 'dir') : item.kind === 'file' ? 'file' : item.kind;
+        const look = itemVisual(tone, item.path, visual.structure, visual.colors);
+        return {
+          key: item.key,
+          label: item.label,
+          size: item.nodes,
+          tone,
+          tooltip: itemTooltip(item, look.badge, look.language),
+          activatable: item.kind === 'dir' || item.kind === 'file',
+          kind: look.kind,
+          fill: look.fill,
+          ring: look.ring,
+          badge: look.badge,
+        };
+      });
       const links: CanvasLink[] = result.links.map((l) => ({ source: l.source, target: l.target, type: result.types[l.type], count: l.count }));
       // A file item is one graph node (its file node); a directory is an aggregate.
       const table = data.segments.nodes;
@@ -209,11 +222,14 @@ export function Graph({ data, level }: { data: ViewData; level: GraphLevel }) {
         const nodeId = str('id', row) ?? '';
         const summary = summaryTooltip(data.segments, nodeId);
         const layerNames = layers ? nodeLayerNames(layers, nodeId) : [];
+        const look = symbolVisual(str('type', row) ?? null, str('path', row) ?? null, visual.structure, visual.colors);
         return {
           key: str('id', row) ?? `row:${row}`,
           label: str('name', row) ?? str('id', row) ?? '?',
           size: 1,
           tone: 'symbol',
+          kind: look.kind,
+          fill: look.fill,
           tooltip: [
             nodeId,
             `${str('type', row) ?? '—'}${line0 >= 0 ? ` · line ${line0}` : ''}`,
@@ -229,7 +245,7 @@ export function Graph({ data, level }: { data: ViewData; level: GraphLevel }) {
       return { nodes, links, ids: nodes.map((n) => (n.tone === 'more' ? null : n.key)), found: true as const };
     }
     return { nodes: [], links: [], ids: [], found: false as const };
-  }, [result, data, members, layers]);
+  }, [result, data, members, layers, visual]);
   const colored = useMemo(() => (model?.found && layers && coloring ? layerColoring(layers, model.ids) : null), [model, layers, coloring]);
 
   const shownLinks = useMemo(() => (model ? filterLinks(model.links, disabled) : []), [model, disabled]);
@@ -262,7 +278,8 @@ export function Graph({ data, level }: { data: ViewData; level: GraphLevel }) {
         legend={
           model?.found ? (
             <>
-              <EdgeLegend drawn={typeCounts(model.links)} totals={result && result.found ? bucketTotalsByType(result.types, result.buckets) : new Map()} disabled={disabled} onToggle={toggle} />
+              <NodeLegend nodes={model.nodes} />
+              <EdgeLegend drawn={typeCounts(shownLinks)} totals={result && result.found ? bucketTotalsByType(result.types, result.buckets) : new Map()} disabled={disabled} onToggle={toggle} />
               <LayerLegend
                 model={layers}
                 on={coloring}

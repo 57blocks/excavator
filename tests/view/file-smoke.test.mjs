@@ -4,7 +4,7 @@
 // data segment is truncated, then used on a page baked from the synthetic
 // fixture. Without Chrome the test is a visible skip, never a pass.
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { cpSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync, appendFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync, appendFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -565,6 +565,128 @@ if (!chrome.path) {
       expect(result.dom).toContain('data-identifier-search="unavailable"');
       expect(result.dom).toContain('Identifier search not available');
     }, 90_000);
+
+    // Task 10.0 (design D15): a synthetic level wider than the label budget
+    // (30 files in one directory, each importing and calling the first), so
+    // the label level of detail and the focus mode are visible in the page's
+    // own reports.
+    const widePage = (() => {
+      let page = null;
+      return () => {
+        if (page) return page;
+        const project = mkdtempSync(join(scratch, 'wide-'));
+        cpSync(fixtureProject, project, { recursive: true });
+        rmSync(join(project, '.excavator'), { recursive: true, force: true });
+        mkdirSync(join(project, 'src', 'many'), { recursive: true });
+        writeFileSync(join(project, 'src', 'many', 'f00.ts'), 'export function base(n: number): number {\n  return n + 1;\n}\n');
+        for (let i = 1; i < 30; i += 1) {
+          const name = `f${String(i).padStart(2, '0')}`;
+          writeFileSync(join(project, 'src', 'many', `${name}.ts`), `import { base } from './f00';\n\nexport function ${name}(n: number): number {\n  return base(n) * ${i};\n}\n`);
+        }
+        execFileSync(process.execPath, [lazyScript, project], { stdio: 'pipe' });
+        page = join(scratch, 'wide.html');
+        bake(project, page);
+        return page;
+      };
+    })();
+
+    it('draws a level wider than the label budget with culled labels, then every label zoomed in (10.0)', async () => {
+      const result = await smoke(widePage(), { hash: '#/graph/src/many', actions: [{ type: 'hash', hash: '#/graph/src/many' }, { type: 'wheel', at: [6, 6], deltaY: -900 }] });
+      expect(result.ok, result.problem).toBe(true);
+      const [opened, zoomed] = result.actions;
+      expect(opened.view).toMatchObject({ graphLevel: 'directory', graphVisibleNodes: 30, graphFocus: 'none' });
+      const lod = /^lod:(\d+)\/30$/.exec(opened.view.graphLabels);
+      expect(lod, opened.view.graphLabels).not.toBeNull();
+      expect(Number(lod[1])).toBeGreaterThan(0);
+      expect(Number(lod[1])).toBeLessThanOrEqual(20);
+      expect(zoomed.view.graphLabels).toBe('all:30/30');
+      // One drawn path per linked pair (imports + calls between the same two files merge).
+      expect(opened.view.graphPaths).toBe(29);
+      expect(opened.view.graphLinks).toBeGreaterThan(29);
+      expect(opened.view.graphParticles).toBeGreaterThan(0);
+      expect(opened.view.graphFrameMs).toBeGreaterThanOrEqual(0);
+      expect(opened.view.graphRaf).toBe('running');
+      expect(result.dom).toContain('data-node-shape="rounded-square" data-node-shape-count="30"');
+    }, 180_000);
+
+    it('focuses the hovered node and its neighbors, and drops the focus when the pointer leaves (10.0)', async () => {
+      const result = await smoke(widePage(), {
+        hash: '#/graph/src/many',
+        actions: [{ type: 'hover', node: 'p:src/many/f00.ts' }, { type: 'hover', at: [4, 4] }],
+      });
+      expect(result.ok, result.problem).toBe(true);
+      const [hovered, away] = result.actions;
+      expect(hovered.problem).toBeUndefined();
+      expect(hovered.view.graphFocus).toBe('p:src/many/f00.ts');
+      // The hovered node's label is always drawn, whatever the budget.
+      expect(hovered.view.graphLabels).toMatch(/^lod:\d+\/30$/);
+      expect(away.view.graphFocus).toBe('none');
+    }, 180_000);
+
+    it('keeps shapes and colors but stops every animation under prefers-reduced-motion (10.0, 10.1)', async () => {
+      const result = await smoke(widePage(), { hash: '#/graph/src/many', reducedMotion: true });
+      expect(result.ok, result.problem).toBe(true);
+      expect(result.view).toMatchObject({ motionMode: 'static', graphParticles: 0, graphRaf: 'idle', graphPaths: 29 });
+      expect(result.view.graphLabels).toMatch(/^lod:\d+\/30$/);
+      expect(result.motion.elements).toBeGreaterThanOrEqual(2);
+      expect(result.motion.static).toBe(result.motion.elements);
+      expect(result.dom).toContain('data-node-shape="rounded-square"');
+    }, 180_000);
+
+    // Task 10.1: every item of the motion inventory carries data-motion and
+    // a state; under prefers-reduced-motion every one of them is static.
+    it('marks every motion item, animated by default and static under prefers-reduced-motion (10.1)', async () => {
+      const kinds = new Set();
+      for (const hash of ['#/overview', '#/structure', '#/graph', `#/node/${encodeURIComponent('class:src/counter.ts:Counter')}`]) {
+        const animated = await smoke(goodPage, { hash });
+        expect(animated.ok, hash).toBe(true);
+        expect(animated.motion.elements, hash).toBeGreaterThan(0);
+        expect(animated.motion.animated, hash).toBe(animated.motion.elements);
+        const still = await smoke(goodPage, { hash, reducedMotion: true });
+        expect(still.ok, hash).toBe(true);
+        expect(still.motion.elements, hash).toBe(animated.motion.elements);
+        expect(still.motion.static, hash).toBe(still.motion.elements);
+        for (const kind of animated.motion.kinds) kinds.add(kind);
+      }
+      expect([...kinds].sort()).toEqual(['counter', 'graph', 'graph-particles', 'panel', 'reveal', 'treemap-zoom']);
+    }, 240_000);
+
+    // Task 10.0: the legend keeps a switched-off type's total.
+    it('keeps a switched-off edge type\'s total in the neighborhood legend (10.0)', async () => {
+      const result = await smoke(goodPage, {
+        hash: `#/node/${encodeURIComponent('class:src/counter.ts:Counter')}`,
+        actions: [{ type: 'hash', hash: `#/node/${encodeURIComponent('class:src/counter.ts:Counter')}` }, { type: 'click', selector: '[data-edge-legend="contains"] button' }],
+      });
+      expect(result.ok, result.problem).toBe(true);
+      const row = (dom) => /data-edge-legend="contains" data-edge-count="(\d+)" data-edge-total="(\d+)" data-enabled="(\w+)"/.exec(dom);
+      const after = row(result.dom);
+      expect(after).not.toBeNull();
+      expect(after[3]).toBe('false');
+      expect(Number(after[2])).toBeGreaterThan(0);
+      expect(after[1]).toBe('0');
+    }, 120_000);
+
+    // Task 9.4: a directory opened over the data resets the graph state: the
+    // CSR goes back to "not built" and is built again for the new data, and no
+    // remembered level survives.
+    it('resets the CSR and the remembered levels when a dropped directory replaces the data (9.4)', async () => {
+      const result = await smoke(goodPage, {
+        hash: '#/graph',
+        actions: [
+          { type: 'hash', hash: '#/graph' },
+          { type: 'hash', hash: '#/open' },
+          { type: 'files', selector: '[data-drop-input]', paths: [semanticDataDir] },
+          { type: 'hash', hash: '#/graph' },
+        ],
+      });
+      expect(result.ok, result.problem).toBe(true);
+      const [before, left, replaced, again] = result.actions;
+      expect(before.view).toMatchObject({ csr: 'ready', csrBuilds: 1 });
+      // Leaving the graph saves the member level.
+      expect(left.view.graphMemoryLevels).toBe(1);
+      expect(replaced.view).toMatchObject({ origin: 'drop', csr: 'idle', graphMemoryLevels: 0 });
+      expect(again.view).toMatchObject({ csr: 'ready', csrBuilds: 2, graphLevel: 'member' });
+    }, 120_000);
 
     // Task 4A.4: the smoke run closes Chrome over the DevTools protocol before
     // falling back to SIGKILL, so Chrome removes its own temporary

@@ -3,6 +3,8 @@ import { Badge } from '../components/Badge';
 import { foldSlices, Ring } from '../components/Ring';
 import { fmtBytes, fmtNumber, text } from '../format';
 import { languageColors, languageOrder } from '../model/colors';
+import { CountUp } from '../components/CountUp';
+import { Reveal } from '../components/Reveal';
 import {
   LANGUAGE_RING_CENTER, MEMBER_FILES_LABEL, MEMBER_SELECTED_LABEL, countRows, freshnessBanner, indexLiteralsStatus, inventoryRows,
   memberCards, semanticBadges,
@@ -39,6 +41,25 @@ export function Overview({ data }: { data: ViewData }) {
         </div>
       </section>
 
+      <section className="stat-strip" aria-label="Headline counts" data-field="headline">
+        {[
+          { key: 'nodes', label: 'nodes', value: data.counts.nodes },
+          { key: 'edges', label: 'edges', value: data.counts.edges },
+          { key: 'evidence', label: 'evidence items', value: data.counts.evidence },
+          { key: 'files', label: 'candidate files', value: Number(data.coverage?.files) || 0 },
+          { key: 'languages', label: 'languages', value: order.length },
+          { key: 'gaps', label: 'gaps recorded', value: data.counts.gaps },
+        ].map((stat) => (
+          <div className="stat" key={stat.key} data-stat={stat.key}>
+            <div className="stat-value">
+              <CountUp value={stat.value} />
+            </div>
+            <div className="muted">{stat.label}</div>
+          </div>
+        ))}
+      </section>
+
+      <Reveal order={0}>
       <div className="grid-2">
         <section className="card" aria-labelledby="project-heading">
           <h2 id="project-heading">Project</h2>
@@ -87,7 +108,9 @@ export function Overview({ data }: { data: ViewData }) {
           <p className="muted">The evidence row compares with the bake's streamed count; the graph header does not count evidence.</p>
         </section>
       </div>
+      </Reveal>
 
+      <Reveal order={1}>
       <div className="grid-2">
         <section className="card" aria-labelledby="languages-heading">
           <h2 id="languages-heading">Files by language</h2>
@@ -116,8 +139,10 @@ export function Overview({ data }: { data: ViewData }) {
           </p>
         </section>
       </div>
+      </Reveal>
 
       {isMultiRepo && (
+        <Reveal order={2}>
         <section className="card" aria-labelledby="members-heading">
           <h2 id="members-heading">Member repositories</h2>
           {members.length > 0 ? (
@@ -138,9 +163,12 @@ export function Overview({ data }: { data: ViewData }) {
             <p className="muted">This is a multi-repository target, but the bake recorded no member repositories.</p>
           )}
         </section>
+        </Reveal>
       )}
 
-      <Inventory data={data} />
+      <Reveal order={3}>
+        <Inventory data={data} />
+      </Reveal>
     </div>
   );
 }

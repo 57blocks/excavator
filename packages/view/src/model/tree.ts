@@ -39,6 +39,8 @@ export interface TreeDir {
   lines: number;
   /** The language with the most weight (sizing unit) under this directory; null when none is known. */
   language: string | null;
+  /** Weight (sizing unit) per known language under this directory, heaviest first. */
+  languageWeights: Array<[string, number]>;
   /** A member repository of a multi-repo target (top level only). */
   member: boolean;
 }
@@ -70,7 +72,7 @@ function cell(strings: string[], value: number | undefined): string | null {
 }
 
 export function buildStructure(segments: Segments, strings: string[], meta: Meta): StructureModel {
-  const root: TreeDir = { kind: 'dir', name: '', path: '', children: [], files: 0, lines: 0, language: null, member: false };
+  const root: TreeDir = { kind: 'dir', name: '', path: '', children: [], files: 0, lines: 0, language: null, languageWeights: [], member: false };
   const byPath = new Map<string, TreeEntry>([['', root]]);
   const filesTable = segments.files;
   const nodes = segments.nodes;
@@ -97,7 +99,7 @@ export function buildStructure(segments: Segments, strings: string[], meta: Meta
     if (existing && existing.kind === 'dir') return existing;
     const at = path.lastIndexOf('/');
     const parent = dirFor(at < 0 ? '' : path.slice(0, at));
-    const dir: TreeDir = { kind: 'dir', name: at < 0 ? path : path.slice(at + 1), path, children: [], files: 0, lines: 0, language: null, member: false };
+    const dir: TreeDir = { kind: 'dir', name: at < 0 ? path : path.slice(at + 1), path, children: [], files: 0, lines: 0, language: null, languageWeights: [], member: false };
     parent.children.push(dir);
     byPath.set(path, dir);
     return dir;
@@ -165,6 +167,7 @@ export function buildStructure(segments: Segments, strings: string[], meta: Meta
       if (best === null || weight > (weights.get(best) as number) || (weight === weights.get(best) && language < best)) best = language;
     }
     dir.language = best;
+    dir.languageWeights = [...weights].sort((a, b) => b[1] - a[1] || (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0));
     dir.children.sort((a, b) => entryWeight(b, sizing) - entryWeight(a, sizing) || (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
     return weights;
   };

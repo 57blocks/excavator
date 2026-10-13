@@ -2,7 +2,7 @@
 // discovery, without launching Chrome.
 import { describe, expect, it } from 'vitest';
 
-import { findChrome, rootAttributes, verdict } from '../../scripts/view-smoke.mjs';
+import { findChrome, motionReport, rootAttributes, verdict, viewReport } from '../../scripts/view-smoke.mjs';
 
 describe('view-smoke parsing', () => {
   const ready = '<html><body><div id="root" data-excavator-view="ready" data-errors="0" data-csp-violations="0" '
@@ -29,6 +29,24 @@ describe('view-smoke parsing', () => {
 
   it('decodes entities in attribute values', () => {
     expect(rootAttributes('<div id="root" data-error="A &amp; &quot;B&quot;">')['data-error']).toBe('A & "B"');
+  });
+});
+
+describe('view-smoke reports (10.0, 10.1, 9.4)', () => {
+  it('reads the graph canvas reports', () => {
+    const attrs = rootAttributes('<div id="root" data-graph-labels="lod:18/151" data-graph-focus="none" data-graph-paths="518" '
+      + 'data-graph-particles="360" data-graph-frame-ms="1.25" data-graph-raf="running" data-graph-memory-levels="2" data-csr-builds="1">');
+    expect(viewReport(attrs)).toMatchObject({
+      graphLabels: 'lod:18/151', graphFocus: 'none', graphPaths: 518, graphParticles: 360, graphFrameMs: 1.25, graphRaf: 'running', graphMemoryLevels: 2, csrBuilds: 1,
+    });
+    expect(viewReport({})).toMatchObject({ graphLabels: null, graphFrameMs: null, csrBuilds: null });
+  });
+
+  it('summarizes the motion inventory, counting an element without a state as neither', () => {
+    expect(motionReport([['counter', 'animated'], ['reveal', 'static'], ['graph', null], ['counter', 'animated']])).toEqual({
+      elements: 4, static: 1, animated: 2, kinds: ['counter', 'graph', 'reveal'],
+    });
+    expect(motionReport(null)).toEqual({ elements: 0, static: 0, animated: 0, kinds: [] });
   });
 });
 

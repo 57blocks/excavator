@@ -22,6 +22,11 @@ import { SourceBlock } from './SourceBlock';
 import { LayerLegend } from './LayerLegend';
 import { Badge } from '../components/Badge';
 import { layerColoring, layerModel, nodeLayerNames, nodeSummary, summaryTooltip } from '../model/semantics';
+import { symbolVisual } from '../model/graph-visual';
+import { legendTotals } from '../model/legend';
+import { useReducedMotion } from '../motion';
+import { visualData } from './visual-data';
+import { NodeLegend } from './NodeLegend';
 
 /** Evidence rows shown per edge in the detail. */
 const EVIDENCE_PER_EDGE = 3;
@@ -56,6 +61,9 @@ function NodeView({ data, id, row, hops }: { data: ViewData; id: string; row: nu
   const [hood, setHood] = useState<{ key: string; result: NeighborhoodResult } | null>(null);
   const [edges, setEdges] = useState<{ row: number; result: NodeEdgesResult } | null>(null);
   const [failure, setFailure] = useState<string | null>(null);
+  const [unfiltered, setUnfiltered] = useState<{ key: string; totals: Map<string, number> } | null>(null);
+  const reduced = useReducedMotion();
+  const visual = visualData(data);
 
   const enabledTypes = useMemo(() => {
     if (csr.state !== 'ready' || disabled.size === 0) return null;
@@ -74,6 +82,21 @@ function NodeView({ data, id, row, hops }: { data: ViewData; id: string; row: nu
       live = false;
     };
   }, [csr.state, data, row, hops, hoodKey]);
+
+  // With types switched off the neighborhood is walked over the others only;
+  // the legend keeps the switched-off types' totals from the unfiltered walk.
+  const unfilteredKey = `node:${id}:${hops}`;
+  useEffect(() => {
+    if (csr.state !== 'ready' || enabledTypes === null || unfiltered?.key === unfilteredKey) return;
+    let live = true;
+    runQuery<NeighborhoodResult>(data, `hood-all:${unfilteredKey}`, { op: 'neighborhood', row, hops, types: null }).then(
+      (result) => live && setUnfiltered({ key: unfilteredKey, totals: bucketTotalsByType(result.types, result.buckets) }),
+      (error: unknown) => live && setFailure(error instanceof Error ? error.message : String(error)),
+    );
+    return () => {
+      live = false;
+    };
+  }, [csr.state, data, row, hops, enabledTypes === null, unfilteredKey]);
 
   useEffect(() => {
     if (csr.state !== 'ready') return;
@@ -107,11 +130,14 @@ function NodeView({ data, id, row, hops }: { data: ViewData; id: string; row: nu
       const nodeId = str('id', r) ?? '';
       const summary = summaryTooltip(data.segments, nodeId);
       const layerNames = layers ? nodeLayerNames(layers, nodeId) : [];
+      const look = symbolVisual(str('type', r) ?? null, str('path', r) ?? null, visual.structure, visual.colors);
       return {
         key: str('id', r) ?? `row:${r}`,
         label: str('name', r) ?? str('id', r) ?? '?',
         size: 1,
         tone: d === 0 ? 'center' : d === 1 ? 'hop1' : 'hop2',
+        kind: look.kind,
+        fill: look.fill,
         tooltip: [
           nodeId,
           `${str('type', r) ?? '—'} · ${d === 0 ? 'this node' : `${d} ${d === 1 ? 'hop' : 'hops'} away`}`,
@@ -125,7 +151,7 @@ function NodeView({ data, id, row, hops }: { data: ViewData; id: string; row: nu
     if (shownHood.folded > 0) nodes.push(moreNode(shownHood.folded, 'nodes within reach', 'nodes past each hop\'s share'));
     const links: CanvasLink[] = [...mergeEdges(shownHood.edges, shownHood.types), ...moreCanvasLinks(shownHood.moreLinks, shownHood.types)];
     return { nodes, links, key: `node:${str('id', shownHood.row)}:${shownHood.hops}` };
-  }, [shownHood, data, layers]);
+  }, [shownHood, data, layers, visual]);
   const colored = useMemo(() => (canvas && layers && coloring ? layerColoring(layers, canvas.nodes.map((n) => (n.tone === 'more' ? null : n.key))) : null), [canvas, layers, coloring]);
   const ledger = useMemo(() => (currentHood ? ledgerSums(currentHood.buckets) : null), [currentHood]);
   const shownLinks = useMemo(() => (canvas ? filterLinks(canvas.links, disabled) : []), [canvas, disabled]);
@@ -153,7 +179,15 @@ function NodeView({ data, id, row, hops }: { data: ViewData; id: string; row: nu
             <span className="hop-switch" role="group" aria-label="Hops">
               {[1, 2].map((h) => (h === hops ? <strong key={h} data-hops={h}>{h} {h === 1 ? 'hop' : 'hops'}</strong> : <a key={h} href={nodeHash(id, h)} data-hops={h}>{h} {h === 1 ? 'hop' : 'hops'}</a>))}
             </span>
-            {canvas && shownHood && <EdgeLegend drawn={typeCounts(canvas.links)} totals={bucketTotalsByType(shownHood.types, shownHood.buckets)} disabled={disabled} onToggle={toggle} />}
+            {canvas && <NodeLegend nodes={canvas.nodes} />}
+            {canvas && shownHood && (
+              <EdgeLegend
+                drawn={typeCounts(shownLinks)}
+                totals={legendTotals(bucketTotalsByType(shownHood.types, shownHood.buckets), unfiltered?.key === unfilteredKey ? unfiltered.totals : null, disabled)}
+                disabled={disabled}
+                onToggle={toggle}
+              />
+            )}
             <LayerLegend model={layers} on={coloring} onToggle={toggleColoring} colored={colored?.perLayer ?? new Map()} unlayered={colored?.unlayered ?? 0} aggregates={0} />
           </div>
         }
@@ -185,7 +219,7 @@ function NodeView({ data, id, row, hops }: { data: ViewData; id: string; row: nu
         )}
         {ledger && <EdgeLedger sums={ledger} scope={`to nodes beyond ${hops} ${hops === 1 ? 'hop' : 'hops'}`} />}
       </GraphFrame>
-      <motion.div key={id} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.25 }} data-motion="panel">
+      <motion.div key={id} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: reduced ? 0 : 0.25 }} data-motion="panel" data-motion-state={reduced ? 'static' : 'animated'}>
         <NodeDetail data={data} id={id} row={row} facts={facts} edges={currentEdges} />
       </motion.div>
     </div>

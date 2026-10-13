@@ -32,3 +32,17 @@ export function legendRows(drawn: Map<string, number>, totals: Map<string, numbe
     return { key, drawn: drawnByKey.get(key) ?? 0, total, off, disabled: total === 0 && !off, otherTypes: key === 'other' ? otherTypes : [] };
   });
 }
+
+/**
+ * Scope totals for the legend when the scope itself depends on the switches
+ * (a neighborhood is walked over the enabled types only): enabled types count
+ * in the filtered scope, switched-off types keep their total from the
+ * unfiltered scope, so turning a type off never shows it as 0 / 0.
+ */
+export function legendTotals(filtered: Map<string, number>, unfiltered: Map<string, number> | null, disabled: ReadonlySet<string>): Map<string, number> {
+  if (disabled.size === 0 || unfiltered === null) return filtered;
+  const out = new Map<string, number>();
+  for (const [type, n] of filtered) if (!disabled.has(edgeTypeKey(type))) out.set(type, n);
+  for (const [type, n] of unfiltered) if (disabled.has(edgeTypeKey(type))) out.set(type, n);
+  return out;
+}

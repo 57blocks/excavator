@@ -46,6 +46,14 @@ describe('view template build', () => {
     expect(csp.get('worker-src')).toEqual(['blob:']);
   });
 
+  it('carries the final CSP literally: nothing from the network, inline script and style, data: images, blob: workers (10.2)', () => {
+    const meta = /<meta\s+http-equiv="Content-Security-Policy"\s+content="([^"]*)"/.exec(html);
+    expect(meta).not.toBeNull();
+    expect(meta[1]).toBe(
+      "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; worker-src blob:; connect-src 'none'; font-src 'none'; base-uri 'none'; form-action 'none'",
+    );
+  });
+
   it('the CSP check sees a policy that opens the network (instrument check)', () => {
     expect(cspProblems(html.replace("connect-src 'none'", 'connect-src https://example.invalid'))).not.toEqual([]);
     expect(cspProblems(html.replace(/<meta\s+http-equiv="Content-Security-Policy"[^>]*>/, ''))).toEqual(['no Content-Security-Policy meta tag']);

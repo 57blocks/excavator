@@ -15,8 +15,11 @@
  * `data-busy`; the page counts as settled only once that is gone. Views report
  * what they show (`data-route`, `data-hash`, `data-treemap-path`,
  * `data-search-*`, `data-postings`, the graph level's edge ledger
- * `data-graph-edges-*`, the live data Workers `data-workers`), collected
- * under `view` in the result.
+ * `data-graph-edges-*`, the live data Workers `data-workers`, the graph
+ * canvas's `data-graph-labels` / `-focus` / `-paths` / `-particles` /
+ * `-frame-ms` / `-raf`, the CSR builds and remembered levels), collected
+ * under `view` in the result. `motion` counts the page's motion inventory
+ * (`data-motion` elements and how many say static / animated, task 10.1).
  *
  * `actions` (programmatic only; see `smoke`) drive the graph canvas with
  * real input events (CDP `Input.dispatchMouseEvent`): a drag, a wheel turn,
@@ -59,7 +62,8 @@
  *
  * Usage:
  *   node scripts/view-smoke.mjs <page.html> [--hash '#/node/<id>'] [--then '#/...']... [--reduced-motion]
- *     [--budget <ms>] [--dom <path>] [--screenshot <path.png>] [--color-scheme light|dark]
+ *     [--actions '<json array>'] [--budget <ms>] [--dom <path>] [--screenshot <path.png>] [--color-scheme light|dark]
+ *   --actions  graph actions (see GraphAction) after the steps, as a JSON array
  *   --budget  real-time wait for the page to settle (default 15000 ms)
  *   --dom     also write the page DOM to <path> (for content checks)
  *   --screenshot  also save a 1440x1000 viewport PNG
@@ -150,6 +154,14 @@ export function viewReport(attrs) {
     graphItemsTotal: intOrNull(a['data-graph-items-total']),
     graphLinks: intOrNull(a['data-graph-links']),
     graphTransform: a['data-graph-transform'] ?? null,
+    graphLabels: a['data-graph-labels'] ?? null,
+    graphFocus: a['data-graph-focus'] ?? null,
+    graphPaths: intOrNull(a['data-graph-paths']),
+    graphParticles: intOrNull(a['data-graph-particles']),
+    graphFrameMs: a['data-graph-frame-ms'] === undefined ? null : Number(a['data-graph-frame-ms']),
+    graphRaf: a['data-graph-raf'] ?? null,
+    graphMemoryLevels: intOrNull(a['data-graph-memory-levels']),
+    csrBuilds: intOrNull(a['data-csr-builds']),
     csr: a['data-csr'] ?? null,
     csrMs: intOrNull(a['data-csr-ms']),
     selectedNode: a['data-selected-node'] ?? null,
@@ -343,6 +355,25 @@ const SETTLED = `(() => {
   return root.getAttribute('data-hash') === window.location.hash;
 })()`;
 
+/** Every element of the motion inventory (task 10.1): its `data-motion` name and `data-motion-state`. */
+const MOTION = `[...document.querySelectorAll('[data-motion]')].map((e) => [e.getAttribute('data-motion'), e.getAttribute('data-motion-state')])`;
+
+/**
+ * Motion inventory summary from [name, state] pairs: how many elements, how
+ * many say static / animated (an element without a state counts as neither),
+ * and the names present.
+ * @param {Array<[string, string | null]>} pairs
+ */
+export function motionReport(pairs) {
+  const list = Array.isArray(pairs) ? pairs : [];
+  return {
+    elements: list.length,
+    static: list.filter(([, state]) => state === 'static').length,
+    animated: list.filter(([, state]) => state === 'animated').length,
+    kinds: [...new Set(list.map(([name]) => name))].sort(),
+  };
+}
+
 /** The #root opening tag, rebuilt from its attributes (what rootAttributes parses). */
 const ROOT_TAG = `(() => {
   const root = document.getElementById('root');
@@ -355,6 +386,7 @@ const ROOT_TAG = `(() => {
  * @typedef {{ type: 'drag', from?: [number, number], node?: string, by: [number, number] }
  *   | { type: 'wheel', at?: [number, number], deltaY: number }
  *   | { type: 'click', at?: [number, number], node?: string, selector?: string }
+ *   | { type: 'hover', at?: [number, number], node?: string }
  *   | { type: 'dblclick', at?: [number, number] }
  *   | { type: 'hash', hash: string }
  *   | { type: 'files', selector: string, paths: string[] }} GraphAction
@@ -363,7 +395,8 @@ const ROOT_TAG = `(() => {
  * location hash (a breadcrumb or back navigation) between inputs; a click
  * with `selector` clicks the centre of that page element instead (a button
  * outside the canvas); `files` sets local files on a file input (the drop
- * zone's directory picker) as a user's choice would.
+ * zone's directory picker) as a user's choice would; `hover` moves the
+ * pointer there and leaves it (the graph's focus mode).
  */
 
 const CANVAS_RECT = `(() => {
@@ -419,7 +452,10 @@ async function performAction(action, evaluate, send) {
   }
   const [x, y] = point;
   const mouse = (type, px, py, extra = {}) => send('Input.dispatchMouseEvent', { type, x: px, y: py, ...extra });
-  if (action.type === 'wheel') {
+  if (action.type === 'hover') {
+    await mouse('mouseMoved', x - 2, y - 2);
+    await mouse('mouseMoved', x, y);
+  } else if (action.type === 'wheel') {
     await mouse('mouseMoved', x, y);
     await mouse('mouseWheel', x, y, { deltaX: 0, deltaY: action.deltaY });
   } else if (action.type === 'click' || action.type === 'dblclick') {
@@ -488,6 +524,8 @@ export async function smoke(page, { hash = '', steps = [], actions = [], reduced
   const child = spawn(found.path, args, { stdio: ['ignore', 'ignore', 'ignore', 'pipe', 'pipe'], env: { ...process.env, TMPDIR: `${chromeTmp}/` } });
   const cdp = pipeClient(child);
   let dom = '';
+  /** @type {ReturnType<typeof motionReport> | null} */
+  let motion = null;
   let problem = null;
   let settled = false;
   /** @type {Array<{ hash: string, settled: boolean, view: ReturnType<typeof viewReport> }>} */
@@ -545,6 +583,7 @@ export async function smoke(page, { hash = '', steps = [], actions = [], reduced
       if (settled) await sleep(600);
       actionReports.push({ action, ...done, settled, view: viewReport(rootAttributes((await evaluate(ROOT_TAG)) ?? '')) });
     }
+    motion = motionReport(await evaluate(MOTION));
     dom = (await evaluate('document.documentElement.outerHTML')) ?? '';
     if (screenshot) {
       const { data } = await cdp.send('Page.captureScreenshot', { format: 'png' }, sessionId);
@@ -569,6 +608,7 @@ export async function smoke(page, { hash = '', steps = [], actions = [], reduced
     ...result,
     ok: result.ok && problem === null,
     chrome: { path: found.path, source: /** @type {any} */ (found).source, exit: chromeExit, singletonDir: chromeSingletonDir, profile, tmpDir: chromeTmp, tmpLeft: chromeTmpLeft, userTmpLeft: watcher === null ? null : [...appeared].filter((name) => existsSync(join(userTmp, name))).sort() },
+    motion,
     ...(steps.length > 0 ? { steps: stepReports } : {}),
     ...(actions.length > 0 ? { actions: actionReports } : {}),
     ...(problem ? { problem } : {}),
@@ -576,10 +616,10 @@ export async function smoke(page, { hash = '', steps = [], actions = [], reduced
   };
 }
 
-const USAGE = "Usage: node scripts/view-smoke.mjs <page.html> [--hash '#/...'] [--then '#/...']... [--reduced-motion] [--budget <ms>] [--dom <path>] [--screenshot <path.png>] [--color-scheme light|dark]";
+const USAGE = "Usage: node scripts/view-smoke.mjs <page.html> [--hash '#/...'] [--then '#/...']... [--actions '<json array>'] [--reduced-motion] [--budget <ms>] [--dom <path>] [--screenshot <path.png>] [--color-scheme light|dark]";
 
 function parseArgs(argv) {
-  const options = { page: '', hash: '', steps: /** @type {string[]} */ ([]), reducedMotion: false, budgetMs: DEFAULT_BUDGET_MS, dom: null, screenshot: null, colorScheme: null };
+  const options = { page: '', hash: '', steps: /** @type {string[]} */ ([]), actions: /** @type {GraphAction[]} */ ([]), reducedMotion: false, budgetMs: DEFAULT_BUDGET_MS, dom: null, screenshot: null, colorScheme: null };
   const positional = [];
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
@@ -592,6 +632,11 @@ function parseArgs(argv) {
       const step = value();
       if (!step.startsWith('#')) throw new Error('--then must start with #');
       options.steps.push(step);
+    }
+    else if (arg === '--actions') {
+      const parsed = JSON.parse(value());
+      if (!Array.isArray(parsed)) throw new Error('--actions must be a JSON array of graph actions');
+      options.actions.push(...parsed);
     }
     else if (arg === '--reduced-motion') options.reducedMotion = true;
     else if (arg === '--budget') options.budgetMs = Number(value());

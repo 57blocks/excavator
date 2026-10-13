@@ -36,6 +36,10 @@ export type CsrState =
   | { state: 'error'; message: string };
 
 let csr: CsrState = { state: 'idle' };
+/** The data set the CSR state belongs to, and a generation so an answer for replaced data is dropped. */
+let csrData: ViewData | null = null;
+let csrGeneration = 0;
+let csrBuilds = 0;
 const csrListeners = new Set<() => void>();
 
 function setCsr(next: CsrState) {
@@ -46,14 +50,39 @@ function setCsr(next: CsrState) {
 }
 
 function startCsr(data: ViewData) {
+  if (csrData !== data) resetGraphState(data);
   if (csr.state !== 'idle') return;
+  const generation = csrGeneration;
+  const current = () => generation === csrGeneration;
+  csrBuilds += 1;
+  report('data-csr-builds', csrBuilds);
   setCsr({ state: 'building', done: 0, total: 0 });
   runQuery<GraphInitResult>(data, 'csr', { op: 'graph-init' }, (done, total) => {
-    if (csr.state === 'building') setCsr({ state: 'building', done, total });
+    if (current() && csr.state === 'building') setCsr({ state: 'building', done, total });
   }).then(
-    (result) => setCsr({ state: 'ready', result }),
-    (error: unknown) => setCsr({ state: 'error', message: error instanceof Error ? error.message : String(error) }),
+    (result) => current() && setCsr({ state: 'ready', result }),
+    (error: unknown) => current() && setCsr({ state: 'error', message: error instanceof Error ? error.message : String(error) }),
   );
+}
+
+/**
+ * New data mounted over the old (a dropped directory, task 9.4): the CSR
+ * goes back to "not built" (a pending build for the old data is ignored when
+ * it answers), and the remembered level positions, pins, viewports and edge
+ * type switches are dropped so nothing of the old graph is applied to the new
+ * one. The next graph route builds the CSR again, with its progress bar.
+ */
+export function resetGraphState(data: ViewData | null): void {
+  csrData = data;
+  csrGeneration += 1;
+  memory.clear();
+  report('data-graph-memory-levels', 0);
+  lastActivation = null;
+  if (disabled.size > 0) {
+    disabled = new Set();
+    for (const l of typeListeners) l();
+  }
+  if (csr.state !== 'idle') setCsr({ state: 'idle' });
 }
 
 /** The CSR build state; the first caller starts the build. */
@@ -119,6 +148,7 @@ export function levelMemory(level: string): LevelMemory | undefined {
 
 export function saveLevel(level: string, saved: LevelMemory): void {
   memory.set(level, saved);
+  report('data-graph-memory-levels', memory.size);
 }
 
 /** Where (in screen pixels inside the canvas) the reader last opened a node, for the next level's expand transition. */

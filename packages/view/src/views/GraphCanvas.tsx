@@ -1,24 +1,42 @@
-// The graph explorer's Canvas 2D surface (artifact-view task 6.2): one
-// viewport transform (k, x, y) for pan and zoom, drawn at devicePixelRatio,
-// with text at a fixed screen size so labels stay readable at any zoom.
+// The graph explorer's Canvas 2D surface (artifact-view tasks 6.2, 10.0,
+// 10.3): one viewport transform (k, x, y) for pan and zoom, drawn at
+// devicePixelRatio, with text at a fixed screen size so labels stay readable
+// at any zoom.
 //
 // Layout: d3-force, computed to rest synchronously when a level opens (so the
-// zoom-to-fit target is known at once), then animated from the clicked node's
-// position outward while the previous level fades out. Returning to a level
-// restores its saved node positions, pins and viewport unchanged. Dragging a
-// node pins it (fx/fy) where it is dropped; the simulation is reheated only
-// while dragging. Particles flow along every drawn edge in its direction.
+// zoom-to-fit target is known at once). Nodes then pop out of the clicked
+// node's position one after another (20 ms steps, nearest first) while the
+// previous level fades out. Returning to a level restores its saved node
+// positions, pins and viewport unchanged. Dragging a node pins it (fx/fy)
+// where it is dropped; the simulation is reheated only while dragging.
 //
-// Interaction: drag the background to pan; wheel or pinch to zoom around the
-// pointer; double-click the background to zoom to fit; drag a node to move
-// it; click a node to open it. Under the page's reduced-motion switch nothing
-// animates: levels switch at once, there are no particles, zoom-to-fit jumps,
-// and the canvas is redrawn only when something changes.
+// Visual language (design D15, mappings in model/node-visual.ts): shape by
+// kind, language-colored radial gradients, a language ring and a file-count
+// badge on directories, in-degree ticks, one curved path per node pair with
+// its edge types as colored segments, width / arrow / opacity by log count,
+// particles in the edge's direction (capped per level), a focus mode on hover
+// (everything outside the hovered node's neighborhood drops to 25%), labels
+// on plates with a type glyph and a zoom level of detail with collision
+// culling, a hover glow, a pulsing ring on the selected node, a shadow under a
+// dragged node, and a faint world-space grid.
+//
+// Frames: requested only while the canvas is on screen and the page is
+// visible; a frame loop runs only while something moves (particles, pulse,
+// transitions, a drag), otherwise the canvas is redrawn on change. Under the
+// page's reduced-motion switch shapes and colors stay and nothing animates.
+// The canvas reports itself on #root: data-graph-labels (`lod|all:drawn/n`),
+// data-graph-focus, data-graph-paths, data-graph-particles,
+// data-graph-frame-ms (mean draw time of recent frames) and data-graph-raf.
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { forceCollide, forceLink, forceManyBody, forceSimulation, forceX, forceY, type Simulation, type SimulationNodeDatum } from 'd3-force';
 import { edgeColorVar } from '../model/edge-types';
-import { report } from '../instrument';
+import { clearBusy, markBusy, report } from '../instrument';
 import { useReducedMotion } from '../motion';
+import {
+  FOCUS_DIM, arrowSize, compactCount, glyphForKind, inDegreeTicks, labelMode, linkAlpha, linkWidth, mergeLinkPairs, particleCounts, pickLabels,
+  shapeForKind, staggerDelay, type LabelBox, type MergedLink, type NodeShape, type RingSegment, type VisualKind,
+} from '../model/node-visual';
+import { GradientCache, drawGrid, drawRing, drawTicks, fillShape, shapePath, subCurve } from './canvas-draw';
 import { lastActivation, levelMemory, saveLevel, setLastActivation, type Transform } from './graph-state';
 
 export type NodeTone = 'dir' | 'member' | 'file' | 'more' | 'nopath' | 'symbol' | 'center' | 'hop1' | 'hop2';
@@ -32,6 +50,14 @@ export interface CanvasNode {
   tooltip: string[];
   /** Whether a click opens it. */
   activatable: boolean;
+  /** Visual kind (shape and glyph); defaults from the tone. */
+  kind?: VisualKind;
+  /** Custom property of the fill before layer coloring; defaults from the tone. */
+  fill?: string;
+  /** Directory / member language ring. */
+  ring?: RingSegment[];
+  /** Directory / member count badge (files under it). */
+  badge?: number | null;
 }
 
 export interface CanvasLink {
@@ -53,22 +79,53 @@ interface Drawn {
   fill: string;
 }
 
+type Line = [number, number, number, number, string];
+
 const HEIGHT = 560;
-const ENTER_MS = 450;
+const ENTER_MS = 420;
+const FADE_MS = 360;
 const FIT_MS = 320;
+const HOVER_MS = 140;
 const CLICK_SLOP = 4;
 const MIN_K = 0.05;
 const MAX_K = 8;
+const LABEL_FONT = '11px system-ui, -apple-system, "Segoe UI", sans-serif';
+const LABEL_FONT_BOLD = `600 ${LABEL_FONT}`;
+const LABEL_H = 16;
+
+const SYMBOL_TONES = new Set<NodeTone>(['symbol', 'center', 'hop1', 'hop2']);
+
+function defaultKind(tone: NodeTone): VisualKind {
+  if (tone === 'member' || tone === 'dir' || tone === 'file' || tone === 'more' || tone === 'nopath') return tone;
+  return 'function';
+}
+
+function defaultFill(tone: NodeTone): string {
+  if (tone === 'center') return '--accent';
+  if (tone === 'more' || tone === 'nopath') return '--surface-2';
+  return `--graph-${tone}`;
+}
 
 /** Aggregated nodes: area proportional to node count, relative to the heaviest in the level. */
-function radius(node: CanvasNode, maxSize: number): number {
+function radius(node: CanvasNode, maxSize: number, symbolLevel: boolean): number {
   if (node.tone === 'center') return 10;
-  if (node.tone === 'symbol' || node.tone === 'hop1' || node.tone === 'hop2') return 6;
+  // Distance shows in size: direct neighbors a little larger than the second hop.
+  if (node.tone === 'hop1') return 7;
+  if (node.tone === 'hop2') return 5.5;
+  if (SYMBOL_TONES.has(node.tone)) return 6;
+  // A folded bucket among symbols stays symbol-sized, so it never buries the center's label.
+  if (symbolLevel && (node.tone === 'more' || node.tone === 'nopath')) return 9;
   return 6 + 24 * Math.sqrt(Math.max(0, node.size) / Math.max(1, maxSize));
 }
 
 function ease(t: number): number {
   return 1 - (1 - t) ** 3;
+}
+
+/** Ease-out with a little overshoot (the pop). */
+function backOut(t: number): number {
+  const c = 1.70158;
+  return 1 + (c + 1) * (t - 1) ** 3 + c * (t - 1) ** 2;
 }
 
 function clampK(k: number): number {
@@ -101,6 +158,27 @@ interface Probe {
   position(key: string): { x: number; y: number } | null;
 }
 
+/** Per-level precomputation that does not change from frame to frame. */
+interface LevelLook {
+  shapes: NodeShape[];
+  glyphs: string[];
+  fills: string[];
+  rings: Array<Array<RingSegment & { resolved: string }>>;
+  ticks: number[];
+  /** Neighbors (either direction) per node, for the focus mode. */
+  neighbors: Array<Set<number>>;
+  merged: MergedLink[];
+  particles: number[];
+  maxCount: number;
+  /** Draw order: largest first, so small nodes stay on top. */
+  drawOrder: number[];
+  /** Label priority: the center, then by radius, folded buckets last. */
+  labelOrder: number[];
+  labelWidth: Array<number | null>;
+}
+
+const REPORTS = ['data-graph-labels', 'data-graph-focus', 'data-graph-paths', 'data-graph-particles', 'data-graph-frame-ms', 'data-graph-raf'];
+
 export function GraphCanvas({
   level, nodes, links, selectedKey, onActivate, ariaLabel, nodeColors = null,
 }: {
@@ -112,8 +190,9 @@ export function GraphCanvas({
   ariaLabel: string;
   /**
    * Optional fill per node (a CSS custom property name, or null for the
-   * tone's color), indexed like `nodes`: the layer coloring (task 8.2). Kept
-   * out of `nodes` so switching it recolors without a new layout.
+   * node's own fill), indexed like `nodes`: the layer coloring (task 8.2).
+   * Kept out of `nodes` so switching it recolors without a new layout; the
+   * language ring stays.
    */
   nodeColors?: Array<string | null> | null;
 }) {
@@ -128,24 +207,33 @@ export function GraphCanvas({
     level: '',
     nodes: [] as CanvasNode[],
     links: [] as CanvasLink[],
+    look: null as LevelLook | null,
     sim: null as Simulation<SimNode, undefined> | null,
     simNodes: [] as SimNode[],
     transform: { k: 1, x: 0, y: 0 } as Transform,
+    fitK: 1,
     fitAnim: null as null | { from: Transform; to: Transform; start: number },
-    enter: null as null | { start: number; ox: number; oy: number },
-    fading: null as null | { start: number; nodes: Drawn[]; links: Array<[number, number, number, number, string]> },
+    enter: null as null | { start: number; ox: number; oy: number; delays: Float64Array; end: number },
+    fading: null as null | { start: number; nodes: Drawn[]; links: Line[] },
     lastDrawn: [] as Drawn[],
-    lastLinks: [] as Array<[number, number, number, number, string]>,
+    lastLinks: [] as Line[],
     hovered: -1,
+    hoverStart: 0,
+    dragging: -1,
     selected: null as string | null,
     colors: new Map<string, string>(),
     width: 0,
     reduced: false,
     dirty: true,
-    reported: '',
+    reported: new Map<string, string>(),
     onActivate,
-    linkSlots: [] as number[],
     nodeFills: null as Array<string | null> | null,
+    frame: 0,
+    visible: true,
+    frameTimes: [] as number[],
+    frameReportedAt: 0,
+    kick: () => {},
+    enterTimer: 0,
   });
   st.current.onActivate = onActivate;
   st.current.selected = selectedKey;
@@ -176,21 +264,30 @@ export function GraphCanvas({
     const canvas = canvasRef.current;
     if (!canvas) return;
     const style = getComputedStyle(canvas);
-    const color = (name: string, fallback: string) => style.getPropertyValue(name).trim() || fallback;
+    const cache = new Map<string, string>();
+    const resolve = (name: string, fallback: string) => {
+      let v = cache.get(name);
+      if (v === undefined) {
+        v = style.getPropertyValue(name).trim() || fallback;
+        cache.set(name, v);
+      }
+      return v;
+    };
     s.colors = new Map([
-      ['text', color('--text-primary', '#fff')],
-      ['muted', color('--text-muted', '#888')],
-      ['surface', color('--surface-2', '#333')],
-      ['accent', color('--accent', '#3987e5')],
-      ['dir', color('--graph-dir', '#3a4a5e')],
-      ['member', color('--graph-member', '#2e5d8f')],
-      ['file', color('--graph-file', '#4a4a46')],
-      ['symbol', color('--graph-symbol', '#55534d')],
-      ['hop1', color('--graph-hop1', '#5f6f86')],
-      ['hop2', color('--graph-hop2', '#46505e')],
-      ['border', color('--baseline', '#555')],
+      ['text', resolve('--text-primary', '#fff')],
+      ['secondary', resolve('--text-secondary', '#ccc')],
+      ['muted', resolve('--text-muted', '#888')],
+      ['accent', resolve('--accent', '#3987e5')],
+      ['outline', resolve('--graph-outline', 'rgba(255,255,255,0.35)')],
+      ['grid', resolve('--graph-grid-line', 'rgba(255,255,255,0.04)')],
+      ['plate', resolve('--graph-label-plate', 'rgba(13,13,13,0.72)')],
+      ['badge', resolve('--graph-badge-text', '#fff')],
+      ['tick', resolve('--graph-tick', '#898781')],
+      ['hop2', resolve('--graph-hop2-ring', '#9fb4d0')],
+      ['glow', resolve('--graph-glow', 'rgba(134,182,239,0.9)')],
+      ['shadow', resolve('--graph-shadow', 'rgba(0,0,0,0.6)')],
     ]);
-    for (const link of links) if (!s.colors.has(link.type)) s.colors.set(link.type, color(edgeColorVar(link.type), '#888'));
+    for (const link of links) if (!s.colors.has(link.type)) s.colors.set(link.type, resolve(edgeColorVar(link.type), '#888'));
 
     const previousLevel = s.level;
     if (previousLevel && previousLevel !== level) save();
@@ -202,9 +299,10 @@ export function GraphCanvas({
 
     const memory = levelMemory(level);
     const maxSize = nodes.reduce((m, n) => Math.max(m, n.size), 1);
+    const symbolLevel = nodes.some((n) => SYMBOL_TONES.has(n.tone));
     const simNodes: SimNode[] = nodes.map((node, index) => {
       const saved = memory?.nodes.get(node.key);
-      const n: SimNode = { index, r: radius(node, maxSize) };
+      const n: SimNode = { index, r: radius(node, maxSize, symbolLevel) };
       if (saved) {
         n.x = saved.x;
         n.y = saved.y;
@@ -248,36 +346,79 @@ export function GraphCanvas({
     sim.alpha(0);
     sim.on('tick', () => {
       s.dirty = true;
+      s.kick();
     });
     s.sim = sim;
     s.simNodes = simNodes;
     s.nodes = nodes;
     s.links = links;
     s.hovered = -1;
+    s.dragging = -1;
     s.level = level;
     s.width = width;
-    // Edge slots: links between the same ordered pair fan out side by side.
-    const slotCounter = new Map<string, number>();
-    s.linkSlots = links.map((link) => {
-      const key = `${link.source}>${link.target}`;
-      const slot = slotCounter.get(key) ?? 0;
-      slotCounter.set(key, slot + 1);
-      return slot;
-    });
 
-    const target = memory?.transform ?? fitTransform(simNodes, width, HEIGHT);
+    // Per-level look.
+    const merged = mergeLinkPairs(links);
+    const inDegree = new Array<number>(nodes.length).fill(0);
+    const neighbors = nodes.map(() => new Set<number>());
+    for (const m of merged) {
+      inDegree[m.target] += m.total;
+      neighbors[m.source].add(m.target);
+      neighbors[m.target].add(m.source);
+    }
+    const byRadius = nodes.map((_, i) => i).sort((a, b) => simNodes[b].r - simNodes[a].r || a - b);
+    // The neighborhood's center is drawn last, above its neighbors.
+    const drawOrder = [...byRadius.filter((i) => nodes[i].tone !== 'center'), ...byRadius.filter((i) => nodes[i].tone === 'center')];
+    const folded = (i: number) => nodes[i].tone === 'more' || nodes[i].tone === 'nopath';
+    s.look = {
+      shapes: nodes.map((n) => shapeForKind(n.kind ?? defaultKind(n.tone))),
+      glyphs: nodes.map((n) => glyphForKind(n.kind ?? defaultKind(n.tone))),
+      fills: nodes.map((n) => resolve(n.fill ?? defaultFill(n.tone), '#55534d')),
+      rings: nodes.map((n) => (n.ring ?? []).map((seg) => ({ ...seg, resolved: resolve(seg.color, '#5f5e5a') }))),
+      ticks: inDegree.map(inDegreeTicks),
+      neighbors,
+      merged,
+      particles: particleCounts(merged.map((m) => m.total)),
+      maxCount: merged.reduce((m, l) => Math.max(m, l.total), 1),
+      drawOrder,
+      labelOrder: [...byRadius.filter((i) => nodes[i].tone === 'center'), ...byRadius.filter((i) => nodes[i].tone !== 'center' && !folded(i)), ...byRadius.filter(folded)],
+      labelWidth: nodes.map(() => null),
+    };
+
+    const fit = fitTransform(simNodes, width, HEIGHT);
+    s.fitK = fit.k;
+    const target = memory?.transform ?? fit;
     s.transform = { ...target };
     s.fitAnim = null;
     const activation = lastActivation;
-    s.enter = !reduce && !allSaved && activation !== null
-      ? { start: performance.now(), ox: (activation.x - target.x) / target.k, oy: (activation.y - target.y) / target.k }
-      : !reduce && !allSaved
-        ? { start: performance.now(), ox: (width / 2 - target.x) / target.k, oy: (HEIGHT / 2 - target.y) / target.k }
-        : null;
+    const origin = activation !== null
+      ? { ox: (activation.x - target.x) / target.k, oy: (activation.y - target.y) / target.k }
+      : { ox: (width / 2 - target.x) / target.k, oy: (HEIGHT / 2 - target.y) / target.k };
+    if (!reduce && !allSaved) {
+      // Nearest the origin pops first.
+      const rank = simNodes.map((n, i) => [Math.hypot((n.x ?? 0) - origin.ox, (n.y ?? 0) - origin.oy), i]).sort((a, b) => a[0] - b[0]);
+      const delays = new Float64Array(simNodes.length);
+      rank.forEach(([, i], r) => {
+        delays[i] = staggerDelay(r, simNodes.length);
+      });
+      const end = (delays.length > 0 ? Math.max(...delays) : 0) + ENTER_MS;
+      s.enter = { start: performance.now(), ...origin, delays, end };
+      // The smoke check waits for the entry to finish (by the clock, so an off-screen canvas cannot hold it).
+      markBusy('graph-enter');
+      clearTimeout(s.enterTimer);
+      s.enterTimer = window.setTimeout(() => clearBusy('graph-enter'), end + 50);
+    } else {
+      s.enter = null;
+      clearTimeout(s.enterTimer);
+      clearBusy('graph-enter');
+    }
     setLastActivation(null);
     s.dirty = true;
     setTooltip(null);
     report('data-graph-canvas-level', level);
+    report('data-graph-paths', merged.length);
+    report('data-graph-particles', reduce ? 0 : s.look.particles.reduce((n, c) => n + c, 0));
+    s.kick();
   }, [level, nodes, links, width]);
 
   // Layer colors: resolved against the page's tokens, redrawn without a new layout.
@@ -293,10 +434,19 @@ export function GraphCanvas({
       s.nodeFills = nodeColors.map((name) => (name ? style.getPropertyValue(name).trim() || null : null));
     }
     s.dirty = true;
+    s.kick();
   }, [colorsKey, width]);
 
-  // Save the level when the explorer goes away (a route outside the graph).
-  useEffect(() => () => save(), []);
+  // Save the level and drop the canvas's reports when the explorer goes away.
+  useEffect(
+    () => () => {
+      save();
+      clearTimeout(st.current.enterTimer);
+      clearBusy('graph-enter');
+      for (const name of REPORTS) report(name, null);
+    },
+    [],
+  );
 
   // Frame loop.
   useEffect(() => {
@@ -304,9 +454,9 @@ export function GraphCanvas({
     if (!canvas || width <= 0) return;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
-    let frame = 0;
     let alive = true;
     const s = st.current;
+    const gradients = new GradientCache(ctx);
     const probe: Probe = {
       level,
       position(key) {
@@ -319,7 +469,26 @@ export function GraphCanvas({
     };
     (window as unknown as { __excavatorViewGraph?: Probe }).__excavatorViewGraph = probe;
 
+    const put = (name: string, value: string) => {
+      if (s.reported.get(name) === value) return;
+      s.reported.set(name, value);
+      report(name, value);
+    };
+
+    /** Whether the next frame needs drawing even when nothing changed. */
+    const moving = () => {
+      if (s.fitAnim || s.enter || s.fading || s.dragging >= 0) return true;
+      if (s.reduced) return false;
+      const look = s.look;
+      const hasParticles = look !== null && look.particles.some((n) => n > 0);
+      const pulsing = s.selected !== null;
+      const hoverTween = s.hovered >= 0 && performance.now() - s.hoverStart < HOVER_MS;
+      return hasParticles || pulsing || hoverTween;
+    };
+
     const draw = (now: number) => {
+      const started = performance.now();
+      const look = s.look;
       const dpr = window.devicePixelRatio || 1;
       const w = width;
       if (canvas.width !== Math.round(w * dpr) || canvas.height !== Math.round(HEIGHT * dpr)) {
@@ -334,21 +503,22 @@ export function GraphCanvas({
         if (p >= 1) s.fitAnim = null;
       }
       const t = s.transform;
-      const enterP = s.enter ? Math.min(1, (now - s.enter.start) / ENTER_MS) : 1;
-      if (s.enter && enterP >= 1) s.enter = null;
-      const fadeP = s.fading ? Math.min(1, (now - s.fading.start) / ENTER_MS) : 1;
+      const elapsed = s.enter ? now - s.enter.start : Infinity;
+      if (s.enter && elapsed >= s.enter.end) s.enter = null;
+      const fadeP = s.fading ? Math.min(1, (now - s.fading.start) / FADE_MS) : 1;
       if (s.fading && fadeP >= 1) s.fading = null;
 
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       ctx.clearRect(0, 0, w, HEIGHT);
       const colors = s.colors;
+      drawGrid(ctx, w, HEIGHT, t, colors.get('grid') as string);
 
       // The previous level, fading out.
       if (s.fading) {
         ctx.globalAlpha = 1 - ease(fadeP);
+        ctx.lineWidth = 1;
         for (const [x0, y0, x1, y1, c] of s.fading.links) {
           ctx.strokeStyle = c;
-          ctx.lineWidth = 1;
           ctx.beginPath();
           ctx.moveTo(x0, y0);
           ctx.lineTo(x1, y1);
@@ -362,132 +532,285 @@ export function GraphCanvas({
         }
         ctx.globalAlpha = 1;
       }
+      if (!look) return;
 
-      const e = ease(enterP);
-      const drawn: Drawn[] = s.simNodes.map((n, i) => {
-        const x = s.enter ? s.enter.ox + ((n.x ?? 0) - s.enter.ox) * e : (n.x ?? 0);
-        const y = s.enter ? s.enter.oy + ((n.y ?? 0) - s.enter.oy) * e : (n.y ?? 0);
-        const tone = s.nodes[i].tone;
-        const layerFill = s.nodeFills?.[i] ?? null;
-        const fill = layerFill ?? (tone === 'center' ? (colors.get('accent') as string) : (colors.get(tone === 'more' || tone === 'nopath' ? 'surface' : tone) ?? (colors.get('symbol') as string)));
-        return { sx: x * t.k + t.x, sy: y * t.k + t.y, rs: Math.max(2, n.r * Math.min(2.5, Math.max(0.35, t.k))), fill };
-      });
+      // Node placement, with the staggered pop from the origin while entering.
+      const enter = s.enter;
+      const pops: number[] = new Array(s.simNodes.length);
+      const zoomScale = Math.min(2.5, Math.max(0.35, t.k));
       const hovered = s.hovered;
+      const hoverScale = hovered < 0 ? 1 : 1 + 0.1 * (s.reduced ? 1 : ease(Math.min(1, (now - s.hoverStart) / HOVER_MS)));
+      const drawn: Drawn[] = s.simNodes.map((n, i) => {
+        let x = n.x ?? 0;
+        let y = n.y ?? 0;
+        let scale = 1;
+        if (enter) {
+          const p = Math.max(0, Math.min(1, (elapsed - enter.delays[i]) / ENTER_MS));
+          const e = ease(p);
+          x = enter.ox + (x - enter.ox) * e;
+          y = enter.oy + (y - enter.oy) * e;
+          scale = Math.max(0, backOut(p));
+          pops[i] = p;
+        } else pops[i] = 1;
+        if (i === hovered) scale *= hoverScale;
+        const layer = s.nodeFills?.[i] ?? null;
+        return { sx: x * t.k + t.x, sy: y * t.k + t.y, rs: Math.max(2, n.r * zoomScale) * scale, fill: layer ?? look.fills[i] };
+      });
       const selectedIndex = s.selected === null ? -1 : s.nodes.findIndex((n) => n.key === s.selected);
-      const focus = hovered >= 0 ? hovered : selectedIndex;
-      const showAllCounts = s.links.length <= 40;
-      const linkLines: Array<[number, number, number, number, string]> = [];
+      // The focus: the hovered node, or a selection that is not a neighborhood's own center.
+      const focus = hovered >= 0 ? hovered : selectedIndex >= 0 && s.nodes[selectedIndex].tone !== 'center' ? selectedIndex : -1;
+      const related = (i: number) => focus < 0 || i === focus || look.neighbors[focus].has(i);
+      const showAllCounts = look.merged.length <= 40;
+      const linkLines: Line[] = [];
 
-      ctx.globalAlpha = s.enter ? e : 1;
-      s.links.forEach((link, li) => {
-        const a = drawn[link.source];
-        const b = drawn[link.target];
-        if (!a || !b) return;
+      // Links: one path per ordered pair, its types as colored segments.
+      look.merged.forEach((m, li) => {
+        const a = drawn[m.source];
+        const b = drawn[m.target];
+        if (!a || !b || m.source === m.target) return;
+        const entryAlpha = Math.min(pops[m.source], pops[m.target]);
+        if (entryAlpha <= 0) return;
         const dx = b.sx - a.sx;
         const dy = b.sy - a.sy;
         const len = Math.hypot(dx, dy) || 1;
-        // Left of the direction of travel, one slot per type: a->b and b->a never overlap.
-        const offset = 6 + s.linkSlots[li] * 7;
-        const cx = (a.sx + b.sx) / 2 - (dy / len) * offset;
-        const cy = (a.sy + b.sy) / 2 + (dx / len) * offset;
-        const attached = focus >= 0 && (link.source === focus || link.target === focus);
-        const c = colors.get(link.type) ?? '#888';
-        ctx.strokeStyle = c;
-        ctx.globalAlpha = (s.enter ? e : 1) * (focus >= 0 && !attached ? 0.18 : 0.75);
-        ctx.lineWidth = Math.min(5, 1 + Math.log2(link.count) * 0.6);
-        ctx.beginPath();
-        ctx.moveTo(a.sx, a.sy);
-        ctx.quadraticCurveTo(cx, cy, b.sx, b.sy);
-        ctx.stroke();
-        linkLines.push([a.sx, a.sy, b.sx, b.sy, c]);
-        const at = (u: number) => [(1 - u) * (1 - u) * a.sx + 2 * (1 - u) * u * cx + u * u * b.sx, (1 - u) * (1 - u) * a.sy + 2 * (1 - u) * u * cy + u * u * b.sy];
-        // Arrowhead at the target's rim.
+        // Left of the direction of travel: a->b and b->a curve apart.
+        const offset = Math.min(len * 0.25, m.reverse ? 18 : 10);
+        const c: [number, number] = [(a.sx + b.sx) / 2 - (dy / len) * offset, (a.sy + b.sy) / 2 + (dx / len) * offset];
+        const p0: [number, number] = [a.sx, a.sy];
+        const p2: [number, number] = [b.sx, b.sy];
+        const attached = focus >= 0 && (m.source === focus || m.target === focus);
+        const base = linkAlpha(m.total, look.maxCount);
+        const alpha = entryAlpha * (focus < 0 ? base : attached ? 1 : base * FOCUS_DIM);
+        ctx.globalAlpha = alpha;
+        ctx.lineWidth = linkWidth(m.total) + (attached ? 1 : 0);
+        ctx.lineCap = 'round';
+        let acc = 0;
+        const bounds: Array<[number, number, string]> = [];
+        for (const seg of m.segments) {
+          const t0 = acc / m.total;
+          acc += seg.count;
+          const t1 = acc / m.total;
+          const color = colors.get(seg.type) ?? '#888';
+          bounds.push([t0, t1, color]);
+          const sc = subCurve(p0, c, p2, t0, t1);
+          ctx.strokeStyle = color;
+          ctx.beginPath();
+          ctx.moveTo(sc.from[0], sc.from[1]);
+          ctx.quadraticCurveTo(sc.control[0], sc.control[1], sc.to[0], sc.to[1]);
+          ctx.stroke();
+        }
+        const lastColor = bounds[bounds.length - 1][2];
+        linkLines.push([a.sx, a.sy, b.sx, b.sy, bounds[0][2]]);
+        const at = (u: number): [number, number] => [(1 - u) * (1 - u) * p0[0] + 2 * (1 - u) * u * c[0] + u * u * p2[0], (1 - u) * (1 - u) * p0[1] + 2 * (1 - u) * u * c[1] + u * u * p2[1]];
+        // Arrowhead at the target's rim, sized by count.
+        const size = arrowSize(m.total);
         const uEnd = Math.max(0.5, 1 - (b.rs + 3) / len);
         const [hx, hy] = at(uEnd);
         const [px, py] = at(uEnd - 0.02);
         const angle = Math.atan2(hy - py, hx - px);
-        ctx.fillStyle = c;
+        ctx.fillStyle = lastColor;
         ctx.beginPath();
         ctx.moveTo(hx, hy);
-        ctx.lineTo(hx - 7 * Math.cos(angle - 0.4), hy - 7 * Math.sin(angle - 0.4));
-        ctx.lineTo(hx - 7 * Math.cos(angle + 0.4), hy - 7 * Math.sin(angle + 0.4));
+        ctx.lineTo(hx - size * Math.cos(angle - 0.42), hy - size * Math.sin(angle - 0.42));
+        ctx.lineTo(hx - size * Math.cos(angle + 0.42), hy - size * Math.sin(angle + 0.42));
         ctx.closePath();
         ctx.fill();
-        // Particles in the edge's direction (none under reduced motion).
-        if (!s.reduced) {
-          const n = Math.min(3, 1 + Math.floor(Math.log10(link.count)));
+        // Particles in the edge's direction, colored by the segment they cross (none under reduced motion).
+        const count = s.reduced ? 0 : look.particles[li];
+        if (count > 0) {
           const speed = 45 / len;
-          for (let i = 0; i < n; i += 1) {
-            const u = ((now / 1000) * speed + i / n + (li * 0.137) % 1) % 1;
+          ctx.globalAlpha = Math.min(1, alpha + 0.15);
+          for (let i = 0; i < count; i += 1) {
+            const u = ((now / 1000) * speed + i / count + ((li * 0.137) % 1)) % 1;
             const [qx, qy] = at(u);
+            const seg = bounds.find(([t0, t1]) => u >= t0 && u < t1) ?? bounds[bounds.length - 1];
+            ctx.fillStyle = seg[2];
             ctx.beginPath();
-            ctx.arc(qx, qy, 2, 0, Math.PI * 2);
+            ctx.arc(qx, qy, attached ? 2.6 : 2, 0, Math.PI * 2);
             ctx.fill();
           }
         }
-        if ((showAllCounts && link.count > 1) || attached) {
-          ctx.globalAlpha = s.enter ? e : 1;
+        if ((showAllCounts && m.total > 1) || attached) {
+          ctx.globalAlpha = entryAlpha * (focus < 0 || attached ? 1 : FOCUS_DIM);
           ctx.fillStyle = colors.get('muted') as string;
           ctx.font = '11px ui-monospace, Menlo, monospace';
           ctx.textAlign = 'center';
-          ctx.fillText(String(link.count), cx, cy - 3);
+          ctx.fillText(String(m.total), c[0], c[1] - 3);
         }
       });
 
-      const labelAll = s.nodes.length <= 150;
-      drawn.forEach((d, i) => {
+      // Nodes, largest first so small ones stay on top.
+      const pulse = s.reduced ? 0.5 : (Math.sin(now / 320) + 1) / 2;
+      for (const i of look.drawOrder) {
+        const d = drawn[i];
+        if (pops[i] <= 0) continue;
         const node = s.nodes[i];
-        ctx.globalAlpha = (s.enter ? e : 1) * (focus >= 0 && i !== focus && !s.links.some((l) => (l.source === focus && l.target === i) || (l.target === focus && l.source === i)) ? 0.45 : 1);
-        ctx.fillStyle = d.fill;
-        ctx.beginPath();
-        ctx.arc(d.sx, d.sy, d.rs, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.lineWidth = i === selectedIndex || i === hovered ? 2.5 : 1;
-        ctx.strokeStyle = i === selectedIndex || i === hovered ? (colors.get('accent') as string) : (colors.get('border') as string);
-        if (node.tone === 'more' || node.tone === 'nopath') ctx.setLineDash([3, 3]);
+        const shape = look.shapes[i];
+        const hop2 = node.tone === 'hop2';
+        const nodeAlpha = (related(i) ? 1 : FOCUS_DIM) * (hop2 ? 0.88 : 1) * Math.min(1, pops[i] * 2);
+        ctx.globalAlpha = nodeAlpha;
+        // Glow on hover, a drop shadow under a dragged node.
+        if (i === s.dragging) {
+          ctx.shadowColor = colors.get('shadow') as string;
+          ctx.shadowBlur = 18;
+          ctx.shadowOffsetY = 6;
+        } else if (i === hovered) {
+          ctx.shadowColor = colors.get('glow') as string;
+          ctx.shadowBlur = 16;
+        }
+        if (shape === 'dashed-circle') {
+          shapePath(ctx, shape, d.sx, d.sy, d.rs);
+          ctx.fillStyle = d.fill;
+          ctx.fill();
+        } else fillShape(ctx, gradients, shape, d.sx, d.sy, d.rs, d.fill, dpr);
+        ctx.shadowColor = 'transparent';
+        ctx.shadowBlur = 0;
+        ctx.shadowOffsetY = 0;
+        // Outline.
+        shapePath(ctx, shape, d.sx, d.sy, d.rs);
+        const emphasized = i === selectedIndex || i === hovered;
+        ctx.lineWidth = i === selectedIndex ? 3 : emphasized ? 2.2 : hop2 ? 1.4 : 1;
+        ctx.strokeStyle = emphasized ? (colors.get('accent') as string) : hop2 ? (colors.get('hop2') as string) : (colors.get('outline') as string);
+        if (shape === 'dashed-circle') ctx.setLineDash([3, 3]);
         ctx.stroke();
         ctx.setLineDash([]);
+        // Language ring (directories, members) and in-degree ticks.
+        const ringR = d.rs + 3;
+        if (look.rings[i].length > 0) drawRing(ctx, d.sx, d.sy, ringR, look.rings[i], Math.max(2, Math.min(4, d.rs * 0.22)));
+        drawTicks(ctx, d.sx, d.sy, (look.rings[i].length > 0 ? ringR + 2.5 : d.rs + 2) + (shape === 'diamond' ? d.rs * 0.2 : 0), look.ticks[i], colors.get('tick') as string);
+        // Count badge.
+        if (node.badge !== undefined && node.badge !== null && d.rs >= 10) {
+          ctx.fillStyle = colors.get('badge') as string;
+          ctx.font = `600 ${Math.min(13, Math.max(9, d.rs * 0.55))}px system-ui, -apple-system, sans-serif`;
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(compactCount(node.badge), d.sx, d.sy + 0.5);
+          ctx.textBaseline = 'alphabetic';
+        }
         const pinned = s.simNodes[i].fx !== undefined && s.simNodes[i].fx !== null;
         if (pinned) {
           ctx.fillStyle = colors.get('text') as string;
           ctx.beginPath();
-          ctx.arc(d.sx + d.rs * 0.7, d.sy - d.rs * 0.7, 2.5, 0, Math.PI * 2);
+          ctx.arc(d.sx + d.rs * 0.75, d.sy - d.rs * 0.75, 2.5, 0, Math.PI * 2);
           ctx.fill();
         }
-        if (labelAll || d.rs >= 10 || i === focus || node.tone === 'center') {
-          ctx.fillStyle = colors.get('text') as string;
-          ctx.font = `${i === focus || node.tone === 'center' ? '600 ' : ''}12px system-ui, -apple-system, sans-serif`;
-          ctx.textAlign = 'center';
-          ctx.fillText(truncate(node.label, i === focus ? 80 : 28), d.sx, d.sy + d.rs + 13);
+        // The selected node's pulsing ring (static under reduced motion).
+        if (i === selectedIndex) {
+          ctx.globalAlpha = nodeAlpha * (0.85 - 0.6 * pulse);
+          ctx.strokeStyle = colors.get('accent') as string;
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.arc(d.sx, d.sy, d.rs + 6 + 6 * pulse, 0, Math.PI * 2);
+          ctx.stroke();
         }
-      });
+      }
+
+      // Labels on plates, above everything: level of detail by zoom, collision culled.
+      const mode = labelMode(t.k, s.fitK, s.nodes.length);
+      const boxes: LabelBox[] = [];
+      const texts: string[] = [];
+      for (const i of look.labelOrder) {
+        const d = drawn[i];
+        const node = s.nodes[i];
+        const strong = i === focus || node.tone === 'center';
+        const text = truncate(node.label, strong ? 80 : 28);
+        ctx.font = strong ? LABEL_FONT_BOLD : LABEL_FONT;
+        let tw = strong ? null : look.labelWidth[i];
+        if (tw === null) {
+          tw = ctx.measureText(text).width;
+          if (!strong) look.labelWidth[i] = tw;
+        }
+        const wBox = tw + 20;
+        const top = d.sy + d.rs + (look.rings[i].length > 0 ? 7 : 4);
+        boxes.push({ x: d.sx - wBox / 2, y: top, w: wBox, h: LABEL_H, forced: i === hovered || i === focus || node.tone === 'center' });
+        texts.push(text);
+      }
+      const picked = pickLabels(boxes, mode);
+      ctx.textBaseline = 'middle';
+      for (const p of picked) {
+        const i = look.labelOrder[p];
+        if (pops[i] < 0.6) continue;
+        const box = boxes[p];
+        const node = s.nodes[i];
+        const strong = i === focus || node.tone === 'center';
+        ctx.globalAlpha = related(i) ? 1 : FOCUS_DIM;
+        ctx.fillStyle = colors.get('plate') as string;
+        ctx.beginPath();
+        if (typeof ctx.roundRect === 'function') ctx.roundRect(box.x, box.y, box.w, box.h, 4);
+        else ctx.rect(box.x, box.y, box.w, box.h);
+        ctx.fill();
+        ctx.font = LABEL_FONT_BOLD;
+        ctx.textAlign = 'center';
+        ctx.fillStyle = look.rings[i].length > 0 ? look.rings[i][0].resolved : drawn[i].fill;
+        ctx.fillText(look.glyphs[i], box.x + 8, box.y + box.h / 2 + 0.5);
+        ctx.font = strong ? LABEL_FONT_BOLD : LABEL_FONT;
+        ctx.textAlign = 'left';
+        ctx.fillStyle = node.tone === 'hop2' ? (colors.get('secondary') as string) : (colors.get('text') as string);
+        ctx.fillText(texts[p], box.x + 15, box.y + box.h / 2 + 0.5);
+      }
+      ctx.textBaseline = 'alphabetic';
       ctx.globalAlpha = 1;
       s.lastDrawn = drawn;
       s.lastLinks = linkLines;
 
-      const reportText = `${t.k.toFixed(3)},${t.x.toFixed(1)},${t.y.toFixed(1)}`;
-      if (reportText !== s.reported) {
-        s.reported = reportText;
-        report('data-graph-transform', reportText);
+      put('data-graph-transform', `${t.k.toFixed(3)},${t.x.toFixed(1)},${t.y.toFixed(1)}`);
+      put('data-graph-labels', `${mode}:${picked.length}/${s.nodes.length}`);
+      put('data-graph-focus', focus >= 0 ? s.nodes[focus].key : 'none');
+      // Mean draw time of the recent frames, reported at most four times a second.
+      s.frameTimes.push(performance.now() - started);
+      if (s.frameTimes.length > 60) s.frameTimes.shift();
+      if (started - s.frameReportedAt > 250) {
+        s.frameReportedAt = started;
+        put('data-graph-frame-ms', (s.frameTimes.reduce((n, v) => n + v, 0) / s.frameTimes.length).toFixed(2));
       }
     };
 
+    const paused = () => !s.visible || document.hidden;
     const loop = (now: number) => {
+      s.frame = 0;
       if (!alive) return;
-      const s2 = st.current;
-      const animating = !s2.reduced || s2.dirty || s2.fitAnim !== null || s2.enter !== null || s2.fading !== null;
-      if (animating) {
-        s2.dirty = false;
+      if (paused()) {
+        put('data-graph-raf', 'paused');
+        return;
+      }
+      if (s.dirty || moving()) {
+        s.dirty = false;
         draw(now);
       }
-      frame = requestAnimationFrame(loop);
+      if (moving()) {
+        s.frame = requestAnimationFrame(loop);
+        put('data-graph-raf', 'running');
+      } else put('data-graph-raf', 'idle');
     };
-    frame = requestAnimationFrame(loop);
+    s.kick = () => {
+      if (!alive || s.frame !== 0) return;
+      if (paused()) {
+        put('data-graph-raf', 'paused');
+        return;
+      }
+      s.frame = requestAnimationFrame(loop);
+    };
+    const onVisibility = () => s.kick();
+    document.addEventListener('visibilitychange', onVisibility);
+    let observer: IntersectionObserver | null = null;
+    if (typeof IntersectionObserver !== 'undefined') {
+      observer = new IntersectionObserver((entries) => {
+        s.visible = entries.some((e) => e.isIntersecting);
+        s.dirty = true;
+        s.kick();
+      });
+      observer.observe(canvas);
+    }
     // Draw once synchronously so the first report is there without waiting for a frame.
     draw(performance.now());
+    s.kick();
     return () => {
       alive = false;
-      cancelAnimationFrame(frame);
+      cancelAnimationFrame(s.frame);
+      s.frame = 0;
+      s.kick = () => {};
+      observer?.disconnect();
+      document.removeEventListener('visibilitychange', onVisibility);
       const w = window as unknown as { __excavatorViewGraph?: Probe };
       if (w.__excavatorViewGraph === probe) delete w.__excavatorViewGraph;
     };
@@ -507,15 +830,22 @@ export function GraphCanvas({
       return { x: event.clientX - rect.left, y: event.clientY - rect.top };
     };
     const hit = (p: { x: number; y: number }) => {
-      for (let i = s.lastDrawn.length - 1; i >= 0; i -= 1) {
+      const order = s.look?.drawOrder ?? [];
+      // Topmost first: the reverse of the draw order.
+      for (let j = order.length - 1; j >= 0; j -= 1) {
+        const i = order[j];
         const d = s.lastDrawn[i];
-        if (Math.hypot(d.sx - p.x, d.sy - p.y) <= d.rs + 3) return i;
+        if (d && Math.hypot(d.sx - p.x, d.sy - p.y) <= d.rs + 3) return i;
       }
       return -1;
     };
+    const changed = () => {
+      s.dirty = true;
+      s.kick();
+    };
     const userMoved = () => {
       s.fitAnim = null;
-      s.dirty = true;
+      changed();
     };
     const zoomAt = (p: { x: number; y: number }, k: number, base: Transform = s.transform) => {
       const nk = clampK(k);
@@ -523,6 +853,12 @@ export function GraphCanvas({
       const wy = (p.y - base.y) / base.k;
       s.transform = { k: nk, x: p.x - wx * nk, y: p.y - wy * nk };
       userMoved();
+    };
+    const setHovered = (i: number) => {
+      if (i === s.hovered) return;
+      s.hovered = i;
+      s.hoverStart = performance.now();
+      changed();
     };
 
     const onDown = (event: PointerEvent) => {
@@ -549,7 +885,10 @@ export function GraphCanvas({
       if (gesture && gesture.id === event.pointerId) {
         if (!gesture.moved && Math.hypot(p.x - gesture.startX, p.y - gesture.startY) > CLICK_SLOP) {
           gesture.moved = true;
-          if (gesture.kind === 'node' && !s.reduced) s.sim?.alphaTarget(0.3).restart();
+          if (gesture.kind === 'node') {
+            s.dragging = gesture.node;
+            if (!s.reduced) s.sim?.alphaTarget(0.3).restart();
+          }
         }
         if (gesture.moved) {
           if (gesture.kind === 'pan') {
@@ -563,7 +902,7 @@ export function GraphCanvas({
             n.x = n.fx;
             n.y = n.fy;
             s.enter = null;
-            s.dirty = true;
+            changed();
           }
         }
         gesture.lastX = p.x;
@@ -572,11 +911,8 @@ export function GraphCanvas({
       }
       if (pointers.size === 0) {
         const i = hit(p);
-        if (i !== s.hovered) {
-          s.hovered = i;
-          s.dirty = true;
-          canvas.style.cursor = i >= 0 ? (s.nodes[i].activatable ? 'pointer' : 'grab') : 'default';
-        }
+        if (i !== s.hovered) canvas.style.cursor = i >= 0 ? (s.nodes[i].activatable ? 'pointer' : 'grab') : 'default';
+        setHovered(i);
         setTooltip(i >= 0 ? { x: p.x, y: p.y, lines: s.nodes[i].tooltip } : null);
       }
     };
@@ -589,6 +925,10 @@ export function GraphCanvas({
       }
       const g = gesture;
       gesture = null;
+      if (s.dragging >= 0) {
+        s.dragging = -1;
+        changed();
+      }
       if (g.kind === 'node' && g.moved) {
         s.sim?.alphaTarget(0);
         save();
@@ -619,14 +959,11 @@ export function GraphCanvas({
         s.transform = to;
         s.fitAnim = null;
       } else s.fitAnim = { from: { ...s.transform }, to, start: performance.now() };
-      s.dirty = true;
+      changed();
       setTimeout(save, s.reduced ? 0 : FIT_MS + 20);
     };
     const onLeave = () => {
-      if (s.hovered !== -1) {
-        s.hovered = -1;
-        s.dirty = true;
-      }
+      setHovered(-1);
       setTooltip(null);
     };
     canvas.addEventListener('pointerdown', onDown);
@@ -649,6 +986,7 @@ export function GraphCanvas({
 
   useEffect(() => {
     st.current.dirty = true;
+    st.current.kick();
   }, [selectedKey, reduced]);
 
   return (
@@ -663,6 +1001,7 @@ export function GraphCanvas({
       data-canvas-colored={nodeColors ? nodeColors.filter(Boolean).length : 0}
     >
       <canvas ref={canvasRef} style={{ width: '100%', height: HEIGHT, touchAction: 'none' }} role="img" aria-label={ariaLabel} />
+      <span hidden data-motion="graph-particles" data-motion-state={reduced ? 'static' : 'animated'} />
       {tooltip && (
         <div className="graph-tooltip" style={{ left: Math.min(tooltip.x + 14, Math.max(0, width - 260)), top: tooltip.y + 14 }} role="tooltip">
           {tooltip.lines.map((line, i) => (

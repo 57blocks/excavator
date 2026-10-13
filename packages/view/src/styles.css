@@ -64,6 +64,19 @@
   --graph-hop1: #4b6385;
   --graph-hop2: #343f4f;
   --graph-unlayered: #3d3c38;
+  /* graph visual language (task 10.0) */
+  --graph-unknown: #5a5953;
+  --graph-outline: rgba(255, 255, 255, 0.32);
+  --graph-grid-line: rgba(255, 255, 255, 0.035);
+  --graph-vignette: rgba(0, 0, 0, 0.55);
+  --graph-canvas-bg: #121211;
+  --graph-label-plate: rgba(13, 13, 13, 0.74);
+  --graph-badge-text: #ffffff;
+  --graph-tick: #9a988f;
+  --graph-hop2-ring: #a9bfdc;
+  --graph-glow: rgba(134, 182, 239, 0.95);
+  --graph-shadow: rgba(0, 0, 0, 0.7);
+  --graph-legend-fill: #3a3a37;
 
   --font-sans: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
   --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace;
@@ -123,6 +136,18 @@
     --graph-hop1: #b9cbe3;
     --graph-hop2: #e3e9f2;
     --graph-unlayered: #ebeae6;
+    --graph-unknown: #c9c7bf;
+    --graph-outline: rgba(11, 11, 11, 0.28);
+    --graph-grid-line: rgba(11, 11, 11, 0.05);
+    --graph-vignette: rgba(120, 118, 110, 0.18);
+    --graph-canvas-bg: #fbfbf9;
+    --graph-label-plate: rgba(252, 252, 251, 0.86);
+    --graph-badge-text: #0b0b0b;
+    --graph-tick: #6f6d67;
+    --graph-hop2-ring: #6f8aa8;
+    --graph-glow: rgba(42, 120, 214, 0.75);
+    --graph-shadow: rgba(0, 0, 0, 0.3);
+    --graph-legend-fill: #e1e0d9;
   }
 }
 
@@ -704,9 +729,24 @@ select {
 .graph-canvas {
   position: relative;
   border-radius: var(--radius);
-  background: var(--surface-2);
+  /* a soft vignette over the canvas background; the faint grid is drawn on the canvas, in world space */
+  background:
+    radial-gradient(ellipse at center, transparent 55%, var(--graph-vignette) 100%),
+    var(--graph-canvas-bg);
+  border: 1px solid var(--border);
   overflow: hidden;
   margin-top: 8px;
+}
+.node-legend {
+  margin: 8px 0 0;
+}
+.node-legend li {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.shape-icon {
+  flex: none;
 }
 .graph-canvas canvas {
   display: block;
@@ -937,4 +977,38 @@ select {
   width: 1px;
   height: 1px;
   opacity: 0;
+}
+
+/* Motion inventory (task 10.1): headline counters and scroll reveal. */
+.stat-strip {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: var(--gap);
+}
+.stat {
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+}
+.stat-value {
+  font-size: 26px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.2;
+}
+.reveal {
+  min-width: 0;
+  opacity: 0;
+  transform: translateY(14px);
+  transition: opacity 480ms ease-out, transform 480ms ease-out;
+}
+.reveal.in {
+  opacity: 1;
+  transform: none;
+}
+#root[data-reduced-motion='true'] .reveal {
+  opacity: 1;
+  transform: none;
+  transition: none;
 }

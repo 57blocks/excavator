@@ -6,6 +6,7 @@ import { App, ErrorBoundary, Message } from './App';
 import type { ViewData } from './data';
 import { setDataMount } from './drop/host';
 import { countError, watchReducedMotion } from './instrument';
+import { resetGraphState } from './views/graph-state';
 import { DropZone } from './views/DropZone';
 
 // Bootstrap: decode the embedded bundle (in a Worker), publish what the page
@@ -29,6 +30,8 @@ if (rootElement) {
     // A directory opened over the current data replaces its query service (task 9.3).
     const previous = mounted;
     mounted = data;
+    // Nothing of the previous data's graph (CSR, level positions) carries over (task 9.4).
+    if (previous) resetGraphState(data);
     dataset.decodeMode = data.decodeMode;
     dataset.nodes = String(data.counts.nodes);
     dataset.edges = String(data.counts.edges);
