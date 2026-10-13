@@ -1,28 +1,35 @@
 /**
- * graph-stream.mjs
+ * graph-lines.mjs
  *
- * Streams `knowledge-graph.jsonl` line by line into interned Int32 columns
- * (openspec change `artifact-view`, design D3/D4). The graph is never
+ * Reads `knowledge-graph.jsonl` one line at a time into interned Int32
+ * columns (openspec change `artifact-view`, design D3/D4). The graph is never
  * materialized as an object graph and never held as one string: memory grows
- * with the columns and the string table only.
+ * with the columns and the string table only. Pure: the caller supplies the
+ * lines (the bake from Node's readline, the page from a dropped File), so the
+ * bake and a dropped directory apply the same rules.
  *
  * Validation follows the graph store's read contract
  * (`knowledge-graph-store.mjs`): line 1 must be a header with the store's
  * format; every record type must be known and belong to a stream the header
  * lists; a second header fails; per-stream record counts must equal the
- * header's `counts`. Every failure throws the store's own
- * `KnowledgeGraphFormatError`.
+ * header's `counts`. Every failure throws the error `makeError` builds (the
+ * bake passes the store's own `KnowledgeGraphFormatError`).
  *
  * Fields the columns do not carry are never dropped silently: each unknown
  * key is counted per record kind in `unembedded`, and each value a column
  * could not represent (a non-integer line number) is counted in `anomalies`.
  */
 
-import { createReadStream } from 'node:fs';
-import { createInterface } from 'node:readline';
-
 import { Int32Builder, table } from '../bundle-codec.mjs';
-import { KNOWLEDGE_GRAPH_FORMAT, KnowledgeGraphFormatError } from '../../excavator/knowledge-graph-store.mjs';
+import { KNOWLEDGE_GRAPH_FORMAT } from './formats.mjs';
+
+export class GraphLinesError extends Error {
+  /** @param {string} message */
+  constructor(message) {
+    super(message);
+    this.name = 'KnowledgeGraphFormatError';
+  }
+}
 
 const STREAM_BY_RECORD = Object.freeze({
   node: { key: 'nodes', field: 'node' },
@@ -58,10 +65,11 @@ function finishTable(cols) {
 }
 
 /**
- * @param {string} path
  * @param {import('../bundle-codec.mjs').Interner} interner
+ * @param {{ source: string, makeError?: (message: string) => Error }} options
+ *   `source` names the file in error messages
  */
-export async function streamKnowledgeGraph(path, interner) {
+export function createGraphReader(interner, { source, makeError = (message) => new GraphLinesError(message) }) {
   /** @type {any} */
   let header = null;
   let lineNo = 0;
@@ -82,7 +90,7 @@ export async function streamKnowledgeGraph(path, interner) {
 
   /** @param {string} message */
   const fail = (message) => {
-    throw new KnowledgeGraphFormatError(`${path}: ${message} (line ${lineNo})`);
+    throw makeError(`${source}: ${message} (line ${lineNo})`);
   };
   /** @param {string} kind @param {object} value @param {Set<string>} known */
   const noteUnknown = (kind, value, known) => {
@@ -151,82 +159,79 @@ export async function streamKnowledgeGraph(path, interner) {
     }
   };
 
-  const input = createReadStream(path, { encoding: 'utf-8' });
-  const lines = createInterface({ input, crlfDelay: Infinity });
-  try {
-    for await (const line of lines) {
-      lineNo += 1;
-      if (line.length === 0) continue;
-      let record;
-      try {
-        record = JSON.parse(line);
-      } catch (error) {
-        fail(`invalid JSON (${/** @type {Error} */ (error).message})`);
-      }
-      if (header === null) {
-        if (record === null || typeof record !== 'object' || record.record !== 'header' || record.format !== KNOWLEDGE_GRAPH_FORMAT) {
-          fail(`expected the first line to be a header record with format "${KNOWLEDGE_GRAPH_FORMAT}"`);
-        }
-        if (!Array.isArray(record.keys) || record.fields === null || typeof record.fields !== 'object'
-          || record.counts === null || typeof record.counts !== 'object') {
-          fail('header must carry "keys" (array), "fields" (object) and "counts" (object)');
-        }
-        for (const key of record.keys) {
-          if (KNOWN_STREAMS.has(key) && (!Number.isInteger(record.counts[key]) || record.counts[key] < 0)) {
-            fail(`header count for "${key}" must be a non-negative integer`);
-          }
-        }
-        header = record;
-        continue;
-      }
-      const kind = record !== null && typeof record === 'object' ? record.record : undefined;
-      if (kind === 'header') fail('a second header record is not allowed after line 1');
-      if (kind === 'coverage') {
-        if (!header.keys.includes('coverage')) fail('coverage record present but the header does not list "coverage"');
-        coverageRecords += 1;
-        coverage = record.coverage;
-        continue;
-      }
-      const stream = Object.hasOwn(STREAM_BY_RECORD, kind) ? STREAM_BY_RECORD[kind] : undefined;
-      if (!stream) fail(`unknown record type: ${JSON.stringify(kind)}`);
-      if (!header.keys.includes(stream.key)) fail(`${kind} record present but the header does not list "${stream.key}"`);
-      if (!Object.hasOwn(record, stream.field)) fail(`${kind} record has no "${stream.field}" value`);
-      seen[stream.key] += 1;
-      const value = record[stream.field];
-      if (kind === 'node') addNode(value);
-      else if (kind === 'edge') addEdge(value);
-      else if (kind === 'gap') gaps.push(value);
-      else if (kind === 'layer') layers.push(value);
-      else tour.push(value);
+  /** @param {string} line one line of the file, without its line break */
+  const read = (line) => {
+    lineNo += 1;
+    if (line.length === 0) return;
+    let record;
+    try {
+      record = JSON.parse(line);
+    } catch (error) {
+      fail(`invalid JSON (${/** @type {Error} */ (error).message})`);
     }
-  } finally {
-    lines.close();
-    input.destroy();
-  }
-
-  if (header === null) fail('missing header record (file is empty)');
-  for (const key of header.keys) {
-    if (KNOWN_STREAMS.has(key) && seen[key] !== header.counts[key]) {
-      fail(`${key} count mismatch: header declares ${header.counts[key]}, found ${seen[key]}`);
+    if (header === null) {
+      if (record === null || typeof record !== 'object' || record.record !== 'header' || record.format !== KNOWLEDGE_GRAPH_FORMAT) {
+        fail(`expected the first line to be a header record with format "${KNOWLEDGE_GRAPH_FORMAT}"`);
+      }
+      if (!Array.isArray(record.keys) || record.fields === null || typeof record.fields !== 'object'
+        || record.counts === null || typeof record.counts !== 'object') {
+        fail('header must carry "keys" (array), "fields" (object) and "counts" (object)');
+      }
+      for (const key of record.keys) {
+        if (KNOWN_STREAMS.has(key) && (!Number.isInteger(record.counts[key]) || record.counts[key] < 0)) {
+          fail(`header count for "${key}" must be a non-negative integer`);
+        }
+      }
+      header = record;
+      return;
     }
-  }
-  const coverageExpected = header.keys.includes('coverage') ? 1 : 0;
-  if (coverageRecords !== coverageExpected) {
-    fail(`coverage record count mismatch: expected ${coverageExpected}, found ${coverageRecords}`);
-  }
-
-  return {
-    header: { keys: header.keys, fields: header.fields, counts: header.counts },
-    nodes: finishTable(nodes),
-    nodeTags: finishTable(nodeTags),
-    edges: finishTable(edges),
-    evidence: finishTable(evidence),
-    coverage: coverage ?? null,
-    gaps,
-    layers,
-    tour,
-    counts: { ...seen, evidence: evidence.file.length },
-    unembedded,
-    anomalies,
+    const kind = record !== null && typeof record === 'object' ? record.record : undefined;
+    if (kind === 'header') fail('a second header record is not allowed after line 1');
+    if (kind === 'coverage') {
+      if (!header.keys.includes('coverage')) fail('coverage record present but the header does not list "coverage"');
+      coverageRecords += 1;
+      coverage = record.coverage;
+      return;
+    }
+    const stream = Object.hasOwn(STREAM_BY_RECORD, kind) ? STREAM_BY_RECORD[kind] : undefined;
+    if (!stream) fail(`unknown record type: ${JSON.stringify(kind)}`);
+    if (!header.keys.includes(stream.key)) fail(`${kind} record present but the header does not list "${stream.key}"`);
+    if (!Object.hasOwn(record, stream.field)) fail(`${kind} record has no "${stream.field}" value`);
+    seen[stream.key] += 1;
+    const value = record[stream.field];
+    if (kind === 'node') addNode(value);
+    else if (kind === 'edge') addEdge(value);
+    else if (kind === 'gap') gaps.push(value);
+    else if (kind === 'layer') layers.push(value);
+    else tour.push(value);
   };
+
+  const finish = () => {
+    if (header === null) fail('missing header record (file is empty)');
+    for (const key of header.keys) {
+      if (KNOWN_STREAMS.has(key) && seen[key] !== header.counts[key]) {
+        fail(`${key} count mismatch: header declares ${header.counts[key]}, found ${seen[key]}`);
+      }
+    }
+    const coverageExpected = header.keys.includes('coverage') ? 1 : 0;
+    if (coverageRecords !== coverageExpected) {
+      fail(`coverage record count mismatch: expected ${coverageExpected}, found ${coverageRecords}`);
+    }
+
+    return {
+      header: { keys: header.keys, fields: header.fields, counts: header.counts },
+      nodes: finishTable(nodes),
+      nodeTags: finishTable(nodeTags),
+      edges: finishTable(edges),
+      evidence: finishTable(evidence),
+      coverage: coverage ?? null,
+      gaps,
+      layers,
+      tour,
+      counts: { ...seen, evidence: evidence.file.length },
+      unembedded,
+      anomalies,
+    };
+  };
+  return { line: read, finish };
 }

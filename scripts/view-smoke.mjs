@@ -144,6 +144,8 @@ export function viewReport(attrs) {
     detailEdges: a['data-detail-edges'] ?? null,
     neighborhoodTotal: intOrNull(a['data-neighborhood-total']),
     motionMode: a['data-motion-mode'] ?? null,
+    origin: a['data-origin'] ?? null,
+    dropState: a['data-drop-state'] ?? null,
     semantics: semanticsReport(a),
   };
 }
@@ -289,7 +291,9 @@ async function closeChrome(child, cdp) {
 const SETTLED = `(() => {
   const root = document.getElementById('root');
   const state = root && root.getAttribute('data-excavator-view');
-  if (state === 'error' || state === 'empty') return true;
+  if (state === 'error') return true;
+  // An unbaked template is settled unless it is reading a directory it was given.
+  if (state === 'empty') return !root.hasAttribute('data-busy');
   if (state !== 'ready' || root.hasAttribute('data-busy')) return false;
   return root.getAttribute('data-hash') === window.location.hash;
 })()`;
@@ -307,12 +311,14 @@ const ROOT_TAG = `(() => {
  *   | { type: 'wheel', at?: [number, number], deltaY: number }
  *   | { type: 'click', at?: [number, number], node?: string, selector?: string }
  *   | { type: 'dblclick', at?: [number, number] }
- *   | { type: 'hash', hash: string }} GraphAction
+ *   | { type: 'hash', hash: string }
+ *   | { type: 'files', selector: string, paths: string[] }} GraphAction
  * Points are canvas-relative CSS pixels (default: the canvas centre); `node`
  * targets a drawn node by key; `by` is the drag distance; `hash` sets the
  * location hash (a breadcrumb or back navigation) between inputs; a click
  * with `selector` clicks the centre of that page element instead (a button
- * outside the canvas).
+ * outside the canvas); `files` sets local files on a file input (the drop
+ * zone's directory picker) as a user's choice would.
  */
 
 const CANVAS_RECT = `(() => {
@@ -343,6 +349,13 @@ function elementRect(selector) {
 async function performAction(action, evaluate, send) {
   if (action.type === 'hash') {
     await evaluate(`window.location.hash = ${JSON.stringify(action.hash)}`);
+    return { point: null };
+  }
+  if (action.type === 'files') {
+    const { root } = await send('DOM.getDocument', { depth: 0 });
+    const { nodeId } = await send('DOM.querySelector', { nodeId: root.nodeId, selector: action.selector });
+    if (!nodeId) return { point: null, problem: `no element matches ${action.selector}` };
+    await send('DOM.setFileInputFiles', { nodeId, files: action.paths });
     return { point: null };
   }
   const selector = /** @type {any} */ (action).selector;

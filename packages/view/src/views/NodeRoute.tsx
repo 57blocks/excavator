@@ -381,7 +381,7 @@ function EdgesCard({ data, edges }: { data: ViewData; edges: NodeEdgesResult | n
   }
   const evidenceEntry = (data.meta.embeds ?? []).find((e) => e.segment === 'evidenceText');
   const dropped = (data.meta.dropped ?? []).find((d) => d.segment === 'evidenceText');
-  const pageReason = dropped?.reason === 'no-source' || dropped?.reason === 'budget' ? dropped.reason : evidenceEntry?.status === 'embedded' ? null : 'not-recorded';
+  const pageReason = dropped?.reason === 'no-source' || dropped?.reason === 'budget' || dropped?.reason === 'drop-mode' ? dropped.reason : evidenceEntry?.status === 'embedded' ? null : 'not-recorded';
   const outTotal = edges.out.reduce((n, g) => n + g.total, 0);
   const inTotal = edges.in.reduce((n, g) => n + g.total, 0);
   return (

@@ -53,6 +53,9 @@ export function freshnessBanner(meta: Meta): Banner {
   if (f.status === 'missing') {
     return { state: 'missing', title: 'Fact-layer freshness could not be determined', detail, command: 'run /excavator', manifestRevision, currentRevision };
   }
+  if (f.status === 'not-checked') {
+    return { state: 'unknown', title: 'Fact-layer freshness was not checked', detail, command: null, manifestRevision, currentRevision };
+  }
   return { state: 'unknown', title: `Fact-layer status: ${String(f.status)}`, detail, command: null, manifestRevision, currentRevision };
 }
 

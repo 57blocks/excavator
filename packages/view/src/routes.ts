@@ -1,7 +1,8 @@
 // Page state lives in location.hash (no history API, works from file://).
 // Shapes: #/overview, #/structure, #/graph, #/graph/<dir> (a directory level
 // of the graph), #/graph/file/<path> (a file's symbols), #/coverage[?scope=<scope>],
-// #/search[?q=<query>], #/semantics, #/node/<encoded id>[?hops=2], #/dir/<path> (a
+// #/search[?q=<query>], #/semantics, #/open (open a local .excavator
+// directory), #/node/<encoded id>[?hops=2], #/dir/<path> (a
 // directory or file in the structure treemap, each path segment
 // URI-encoded; `#/dir/` alone is the tree root). An empty hash is the overview;
 // anything else is an explicit "unknown" route, never a silent redirect.
@@ -24,6 +25,8 @@ export type Route =
   | { kind: 'graph-dir'; path: string }
   | { kind: 'graph-file'; path: string }
   | { kind: 'dir'; path: string }
+  /** Open a local .excavator directory (task 9.2). */
+  | { kind: 'open' }
   | { kind: 'unknown'; hash: string };
 
 const SECTION_IDS = new Set<string>(SECTIONS.map((s) => s.id));
@@ -65,6 +68,7 @@ export function parseHash(hash: string): Route {
       return { kind: 'unknown', hash };
     }
   }
+  if (path === 'open') return { kind: 'open' };
   if (SECTION_IDS.has(path)) return { kind: 'section', section: path as SectionId, params: new URLSearchParams(query) };
   return { kind: 'unknown', hash };
 }

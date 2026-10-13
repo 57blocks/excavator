@@ -158,6 +158,12 @@ function Inventory({ data }: { data: ViewData }) {
   return (
     <section className="card" aria-labelledby="inventory-heading" data-section="inventory">
       <h2 id="inventory-heading">Inventory</h2>
+      {meta.origin?.mode === 'drop' && (
+        <p className="secondary" data-origin="drop">
+          Loaded from a dropped directory (<span className="mono">{meta.origin.directory}</span>) in this browser at {text(meta.origin.loadedAt)}, read
+          with the same rules as a bake; nothing was uploaded. Source text is not embedded.
+        </p>
+      )}
       <div className="table-wrap">
         <table>
           <thead>
@@ -193,7 +199,7 @@ function Inventory({ data }: { data: ViewData }) {
         {(meta.embeds ?? []).map((e) => (
           <li key={e.segment}>
             <span className="mono">{e.segment}</span>:{' '}
-            {e.status === 'embedded' ? 'embedded' : `dropped (${e.reason === 'no-source' ? 'baked with --no-source' : e.reason === 'budget' ? 'over the source budget' : text(e.reason)})`}
+            {e.status === 'embedded' ? 'embedded' : `dropped (${e.reason === 'no-source' ? 'baked with --no-source' : e.reason === 'budget' ? 'over the source budget' : e.reason === 'drop-mode' ? 'loaded from a dropped directory' : text(e.reason)})`}
           </li>
         ))}
       </ul>

@@ -11,6 +11,8 @@ export type NotEmbeddedReason =
   | 'no-source'
   /** The segment was dropped whole to fit --source-budget. */
   | 'budget'
+  /** The data was read from a dropped directory, which holds no source text (task 9.1). */
+  | 'drop-mode'
   /** The segment is in the page, but this file's content no longer matched the manifest. */
   | 'hash-mismatch'
   /** The segment is in the page, but this row has no text; the bake's counts are all that is known. */
@@ -27,6 +29,7 @@ function segmentState(meta: Meta, segments: Segments, segment: SourceSegment): {
   const dropped = (meta.dropped ?? []).find((d) => d.segment === segment);
   if (dropped?.reason === 'no-source' || entry?.reason === 'no-source') return { embedded: false, reason: 'no-source' };
   if (dropped?.reason === 'budget' || entry?.reason === 'budget') return { embedded: false, reason: 'budget' };
+  if (dropped?.reason === 'drop-mode' || entry?.reason === 'drop-mode') return { embedded: false, reason: 'drop-mode' };
   if (entry?.status === 'embedded' && isTable(segments[segment]) && Array.isArray(segments[`${segment}.strings`])) return { embedded: true };
   return { embedded: false, reason: 'not-recorded' };
 }
@@ -43,6 +46,7 @@ export function reasonMessage(meta: Meta, segment: SourceSegment, reason: NotEmb
   const what = WHAT[segment];
   if (reason === 'no-source') return 'Source not embedded: this page was baked with --no-source.';
   if (reason === 'budget') return `Source not embedded: the ${what} were dropped to fit the source budget${budgetText(meta)}.`;
+  if (reason === 'drop-mode') return 'Source not embedded: this page was loaded from a dropped .excavator directory, which holds no source text.';
   if (reason === 'hash-mismatch') return `Source not embedded: ${file ?? 'this file'} no longer matched its manifest content hash when the page was baked.`;
   if (reason === 'not-embedded-for-file') {
     const e = meta.source?.embedding ?? {};

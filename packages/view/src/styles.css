@@ -914,3 +914,27 @@ select {
   opacity: 0.5;
   cursor: default;
 }
+
+/* Open a local .excavator directory (task 9.2) */
+.drop-zone {
+  margin-top: 12px;
+  padding: 20px;
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+  color: var(--text-primary);
+}
+.drop-zone[data-drop-over='true'] {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+.drop-pick {
+  color: var(--accent);
+  text-decoration: underline;
+  cursor: pointer;
+}
+.drop-pick input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+}

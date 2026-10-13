@@ -10,6 +10,7 @@ import { useReducedMotion } from './motion';
 import { NodeRoute } from './views/NodeRoute';
 import { Structure } from './views/Structure';
 import { Search } from './views/Search';
+import { DropZone } from './views/DropZone';
 import { routeName, sectionHash, useRoute, type Route } from './routes';
 
 function View({ data, route }: { data: ViewData; route: Route }) {
@@ -17,6 +18,17 @@ function View({ data, route }: { data: ViewData; route: Route }) {
   if (route.kind === 'graph-dir') return <Graph data={data} level={{ kind: 'directory', path: route.path }} />;
   if (route.kind === 'graph-file') return <Graph data={data} level={{ kind: 'file', path: route.path }} />;
   if (route.kind === 'dir') return <Structure data={data} path={route.path} />;
+  if (route.kind === 'open') {
+    return (
+      <div className="content" data-section="open">
+        <section className="card">
+          <h2>Open a directory</h2>
+          <p className="secondary">Replace this page's data with a local .excavator directory. Reload the page to return to the embedded data.</p>
+          <DropZone />
+        </section>
+      </div>
+    );
+  }
   if (route.kind === 'unknown') {
     return (
       <div className="content" data-section="unknown">

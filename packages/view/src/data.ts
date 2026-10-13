@@ -69,6 +69,8 @@ export interface SourceEmbedding {
 export interface Meta {
   format?: string;
   bakedAt?: string;
+  /** Present when the data was read from a dropped directory in the browser (task 9.1), not baked. */
+  origin?: { mode: 'drop'; directory: string; loadedAt: string };
   graph?: {
     keys?: string[];
     fields?: { version?: string; project?: Record<string, unknown> } & Record<string, unknown>;

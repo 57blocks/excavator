@@ -1,10 +1,18 @@
 // Messages between the page and its data Worker. The Worker decodes the
-// bundle once, hands the decoded segments to the page by transfer, and stays
+// bundle (or reads a dropped directory) once, hands the decoded segments to the page by transfer, and stays
 // alive to answer queries (search) over its own copy of the columns it needs.
 import type { Query, QueryResult } from '../model/engine';
 
+/** One file of a dropped or picked directory: its path relative to what was dropped, and the File itself. */
+export interface DroppedFile {
+  path: string;
+  file: File;
+}
+
 export type WorkerRequest =
   | { type: 'decode'; payload: string }
+  /** Read a dropped `.excavator/` directory with the bake's rules (task 9.1); answered like `decode`. */
+  | { type: 'parse-dir'; files: DroppedFile[] }
   | { type: 'query'; id: number; query: Query };
 
 export type WorkerMessage =

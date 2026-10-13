@@ -14,6 +14,9 @@ export function Nav({ route, projectName }: { route: Route; projectName: string 
             {section.label}
           </a>
         ))}
+        <a href="#/open" aria-current={route.kind === 'open' ? 'page' : undefined} data-nav="open">
+          Open directory
+        </a>
       </nav>
     </header>
   );

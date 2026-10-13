@@ -31,19 +31,20 @@
  * never launches anything.
  */
 
-import { existsSync, readFileSync, realpathSync } from 'node:fs';
+import { existsSync, realpathSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { BUNDLE_FORMAT, Interner, decodeSegments, encodeBundle, isTable } from './bundle-codec.mjs';
+import { decodeSegments, encodeBundle, isTable } from './bundle-codec.mjs';
 import { takeInventory } from './bake/inventory.mjs';
-import { streamKnowledgeGraph } from './bake/graph-stream.mjs';
+import { nodeDataDirReader } from './bake/node-reader.mjs';
 import {
-  buildFilesTable, readDomainGraph, readSemanticCache, readSemanticGraph, streamSourceIndex,
-} from './bake/optional-artifacts.mjs';
+  EMBED_ORDER, TRIM_ORDER, composeView, parseDataDirectory, requireArtifacts,
+} from './shared/parse-data-dir.mjs';
+import { KnowledgeGraphFormatError } from '../excavator/knowledge-graph-store.mjs';
 import { collectSourceText } from './bake/source-text.mjs';
 import { loadTemplate, writePageAtomic } from './bake/html-output.mjs';
-import { MissingArtifactError, ViewBakeError, ViewSelfCheckError, ViewTooLargeError } from './bake/errors.mjs';
+import { ViewBakeError, ViewSelfCheckError, ViewTooLargeError } from './bake/errors.mjs';
 import { resolveFreshness } from '../excavator/consumer-freshness.mjs';
 
 const pluginRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
@@ -54,11 +55,6 @@ export const DEFAULT_TEMPLATE = join(pluginRoot, 'packages/view/dist/index.html'
 const MB = 1024 * 1024;
 export const DEFAULT_SOURCE_BUDGET_BYTES = 64 * MB;
 export const DEFAULT_HARD_LIMIT_BYTES = 256 * MB;
-
-/** Order in which source segments are dropped when over budget. */
-const TRIM_ORDER = Object.freeze(['excerpts', 'indexLiterals', 'evidenceText']);
-/** Order source segments are listed in `meta.embeds`. */
-const EMBED_ORDER = Object.freeze(['evidenceText', 'excerpts', 'indexLiterals']);
 
 /**
  * @param {{
@@ -80,89 +76,30 @@ export async function buildView(options) {
   const hardLimitBytes = options.hardLimitBytes ?? DEFAULT_HARD_LIMIT_BYTES;
   const now = options.now ?? (() => new Date().toISOString());
 
-  // --- inventory -----------------------------------------------------------
+  // --- inventory, then the template (fails before any heavy work) ---------
   const inventory = takeInventory(dataDir);
-  const item = (/** @type {string} */ name) => /** @type {any} */ (inventory.find((i) => i.name === name));
-  for (const required of inventory.filter((i) => i.required)) {
-    if (required.status !== 'present') throw new MissingArtifactError(required.name, `not found in ${dataDir}`);
-  }
+  requireArtifacts(inventory, dataDir);
   const template = loadTemplate(options.templatePath ?? DEFAULT_TEMPLATE);
 
-  let manifest;
-  try {
-    manifest = JSON.parse(readFileSync(join(dataDir, 'source-manifest.json'), 'utf-8'));
-  } catch (error) {
-    throw new MissingArtifactError('source-manifest.json', `not valid JSON (${/** @type {Error} */ (error).message})`);
-  }
-  if (manifest === null || typeof manifest !== 'object' || !Array.isArray(manifest.entries)) {
-    throw new MissingArtifactError('source-manifest.json', 'has no "entries" array');
-  }
-
-  // --- graph ---------------------------------------------------------------
-  const interner = new Interner();
-  const graph = await streamKnowledgeGraph(join(dataDir, 'knowledge-graph.jsonl'), interner);
-  const headerFactsDigest = typeof graph.header.fields?.project?.factsDigest === 'string'
-    ? graph.header.fields.project.factsDigest
-    : null;
+  // --- the directory, read by the rules shared with the page's drop mode ---
+  const parsed = await parseDataDirectory(nodeDataDirReader(dataDir), {
+    inventory,
+    includeLiterals: !options.noSource,
+    makeGraphError: (message) => new KnowledgeGraphFormatError(message),
+  });
+  const { manifest, graph, index } = parsed;
+  const strings = parsed.interner.strings;
 
   // --- fact-layer freshness (never throws; stale still bakes) --------------
   const freshness = await resolveFreshness(projectRoot);
-
-  // --- optional artifacts --------------------------------------------------
-  /** @type {Record<string, unknown>} */
-  const optionalSegments = {};
-  const markInvalid = (/** @type {string} */ name, /** @type {unknown} */ error) => {
-    const entry = item(name);
-    entry.status = 'invalid';
-    entry.reason = /** @type {Error} */ (error).message;
-  };
-  const optional = async (/** @type {string} */ name, /** @type {() => unknown} */ read) => {
-    if (item(name).status !== 'present') return null;
-    try {
-      return await read();
-    } catch (error) {
-      markInvalid(name, error);
-      return null;
-    }
-  };
-
-  const manifestEntries = manifest.entries.filter((/** @type {any} */ e) => e && typeof e.path === 'string');
-  let filesResult = await optional('fingerprints.json', () => buildFilesTable(manifestEntries, join(dataDir, 'fingerprints.json'), interner));
-  if (!filesResult) filesResult = await buildFilesTable(manifestEntries, null, interner);
-
-  const index = await optional('source-index.jsonl', () => streamSourceIndex(
-    join(dataDir, 'source-index.jsonl'), interner, { includeLiterals: !options.noSource },
-  ));
-  if (index) Object.assign(optionalSegments, index.segments);
   // `indexLiterals` is a source segment only when a source index was read.
   const sourceSegmentNames = new Set(index ? TRIM_ORDER : TRIM_ORDER.filter((s) => s !== 'indexLiterals'));
-
-  const strings = interner.strings;
-  /** @type {Map<string, string>} */
-  const nodeFile = new Map();
-  if (item('semantic-cache.json').status === 'present') {
-    const { id, path } = graph.nodes.columns;
-    for (let row = 0; row < graph.nodes.rows; row += 1) {
-      if (id[row] >= 0 && path[row] >= 0) nodeFile.set(strings[id[row]], strings[path[row]]);
-    }
-  }
-  const manifestHash = new Map(manifestEntries.map((/** @type {any} */ e) => [e.path, e.contentHash]));
-  const semantic = await optional('semantic-cache.json', () => readSemanticCache(join(dataDir, 'semantic-cache.json'), nodeFile, manifestHash));
-  if (semantic) optionalSegments.semantic = semantic.segment;
-  const layers = await optional('semantic-graph.json', () => readSemanticGraph(join(dataDir, 'semantic-graph.json'), headerFactsDigest));
-  if (layers) optionalSegments.layers = layers.segment;
-  const domain = await optional('domain-graph.json', () => readDomainGraph(
-    join(dataDir, 'domain-graph.json'),
-    typeof manifest.sourceRevision === 'string' ? manifest.sourceRevision : null,
-    headerFactsDigest,
-  ));
-  if (domain) optionalSegments.domain = domain.segment;
 
   // --- source text and budget ----------------------------------------------
   /** @type {Array<{ segment: string, reason: 'no-source'|'budget', bytes: number }>} */
   const dropped = [];
   /** @type {Record<string, unknown>} */
-  let sourceSegments = {};
+  const sourceSegments = {};
   let sourceStats = null;
   if (options.noSource) {
     for (const segment of TRIM_ORDER) {
@@ -193,63 +130,19 @@ export async function buildView(options) {
   }
 
   // --- meta and segments ---------------------------------------------------
-  const sourceRevision = typeof manifest.sourceRevision === 'string' ? manifest.sourceRevision : null;
-  const selection = manifest.selection && typeof manifest.selection === 'object' ? manifest.selection : null;
-  const members = sourceRevision?.startsWith('multi-repo:') ? memberRepositories(manifestEntries, selection) : [];
   const embeds = EMBED_ORDER.filter((segment) => sourceSegmentNames.has(segment)).map((segment) => {
     const drop = dropped.find((d) => d.segment === segment);
     return drop ? { segment, status: 'dropped', reason: drop.reason } : { segment, status: 'embedded' };
   });
-  const meta = {
-    format: BUNDLE_FORMAT,
+  const { meta, segments } = composeView(parsed, {
     bakedAt: now(),
-    graph: { keys: graph.header.keys, fields: graph.header.fields, counts: graph.header.counts },
-    counts: graph.counts,
-    inventory,
+    factLayer: freshness,
     embeds,
     dropped,
-    freshness: {
-      factLayer: freshness,
-      semanticCache: semantic?.summary ?? null,
-      semanticGraph: layers?.summary ?? null,
-      domainGraph: domain?.summary ?? null,
-    },
-    source: {
-      sourceRevision,
-      selectionDigest: manifest.selectionDigest ?? null,
-      pipelineVersion: manifest.pipelineVersion ?? null,
-      manifestEntries: manifestEntries.length,
-      filesWithoutLineCount: filesResult.withoutLineCount,
-      embedding: options.noSource ? null : sourceStats,
-      budgetBytes: sourceBudgetBytes,
-    },
-    selection: selection ? {
-      ...Object.fromEntries(Object.entries(selection).filter(([key]) => key !== 'entries')),
-      entries: Array.isArray(selection.entries) ? selection.entries.filter((/** @type {any} */ e) => e?.kind !== 'selected') : [],
-    } : null,
-    members,
-    index: index?.meta ?? null,
-    unembedded: graph.unembedded,
-    anomalies: graph.anomalies,
-  };
-
-  /** @type {Record<string, unknown>} */
-  const segments = {
-    meta,
-    strings,
-    values: interner.values(),
-    nodes: graph.nodes,
-    nodeTags: graph.nodeTags,
-    edges: graph.edges,
-    evidence: graph.evidence,
-    coverage: graph.coverage,
-    gaps: graph.gaps,
-    ...(graph.layers.length > 0 ? { graphLayers: graph.layers } : {}),
-    ...(graph.tour.length > 0 ? { tour: graph.tour } : {}),
-    files: filesResult.files,
-    ...optionalSegments,
-    ...sourceSegments,
-  };
+    sourceSegments,
+    embedding: options.noSource ? null : sourceStats,
+    budgetBytes: sourceBudgetBytes,
+  });
 
   // --- encode, hard limit, self-check, write --------------------------------
   const encoded = await encodeBundle(segments, { compress: !options.raw });
@@ -273,39 +166,6 @@ export async function buildView(options) {
     source: meta.source,
     segments: encoded.segments.map(({ name, rawBytes, storedBytes }) => ({ name, rawBytes, storedBytes })),
   };
-}
-
-/**
- * Members of a multi-repo target by first path segment: `files` counts the
- * manifest entries, `selected` the selection funnel's `selected` entries
- * (null when the manifest records no selection entries). The two can differ
- * (a selected path with no manifest entry); neither is adjusted to match.
- * @param {Array<{ path: string }>} entries
- * @param {any} selection
- */
-function memberRepositories(entries, selection) {
-  const firstSegments = (/** @type {Iterable<string>} */ paths) => {
-    /** @type {Map<string, number>} */
-    const counts = new Map();
-    for (const path of paths) {
-      if (path.includes('/')) {
-        const first = path.split('/')[0];
-        counts.set(first, (counts.get(first) ?? 0) + 1);
-      }
-    }
-    return counts;
-  };
-  const files = firstSegments(entries.map((e) => e.path));
-  const selectionEntries = Array.isArray(selection?.entries) ? selection.entries : null;
-  const selected = selectionEntries
-    ? firstSegments(selectionEntries.filter((/** @type {any} */ e) => e?.kind === 'selected' && typeof e.path === 'string').map((/** @type {any} */ e) => e.path))
-    : null;
-  const names = [...new Set([...files.keys(), ...(selected ? selected.keys() : [])])];
-  return names.sort((a, b) => (a < b ? -1 : a > b ? 1 : 0)).map((name) => ({
-    name,
-    files: files.get(name) ?? 0,
-    selected: selected ? (selected.get(name) ?? 0) : null,
-  }));
 }
 
 /**

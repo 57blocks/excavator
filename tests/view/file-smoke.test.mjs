@@ -37,6 +37,7 @@ if (!chrome.path) {
     let report;
     let semanticPage;
     let semanticNodes;
+    let semanticDataDir;
 
     const runSmoke = (page, ...flags) => {
       const run = spawnSync(process.execPath, [smokeScript, page, ...flags], { encoding: 'utf-8', timeout: 90_000 });
@@ -69,6 +70,7 @@ if (!chrome.path) {
       const made = await makeSemanticProject(join(scratch, 'semantic-project'));
       semanticPage = join(scratch, 'semantic.html');
       semanticNodes = bake(made.project, semanticPage).counts.header.nodes;
+      semanticDataDir = made.dataDir;
     }, 180_000);
 
     afterAll(() => {
@@ -269,6 +271,58 @@ if (!chrome.path) {
       expect(dom).toContain('data-canvas-colored="3"');
       expect(dom).toContain('data-layer-swatch="layer:support" data-layer-drawn="2"');
       expect(dom).toContain('data-layer-swatch="unlayered" data-layer-drawn="1"');
+    }, 90_000);
+
+    // Task 9.2: opening a local .excavator directory. The directory picker is
+    // given the directory (DOM.setFileInputFiles), as a user's choice would.
+
+    it('offers a directory picker on the unbaked template, and at #/open on a baked page (9.2)', async () => {
+      const empty = await smoke(template);
+      expect(empty.state).toBe('empty');
+      expect(empty.dom).toMatch(/<input type="file" data-drop-input="" webkitdirectory="" directory="" multiple="">/);
+      expect(empty.dom).toContain('data-drop-note="local"');
+      expect(empty.dom).toContain('never leave it');
+      const open = await smoke(goodPage, { hash: '#/open' });
+      expect(open).toMatchObject({ ok: true, route: 'open' });
+      expect(open.dom).toContain('data-drop-input=""');
+      expect(open.dom).toContain('data-nav="open"');
+      // Opening a directory from there replaces the embedded data and lands on its overview.
+      const replaced = await smoke(goodPage, { hash: '#/open', actions: [{ type: 'files', selector: '[data-drop-input]', paths: [semanticDataDir] }] });
+      expect(replaced.actions[0].view).toMatchObject({ origin: 'drop', dropState: 'loaded', route: 'overview', hash: '#/overview' });
+      expect(replaced.counts.nodes).toBe(semanticNodes);
+      expect(replaced.dom).toContain('data-origin="drop"');
+      expect(replaced.dom).toContain('evidenceText</span>: dropped (loaded from a dropped directory)');
+    }, 120_000);
+
+    it('reads a picked directory in the page with source text not embedded (9.1, 9.2)', async () => {
+      const result = await smoke(template, {
+        actions: [
+          { type: 'files', selector: '[data-drop-input]', paths: [semanticDataDir] },
+          { type: 'hash', hash: '#/semantics' },
+          { type: 'hash', hash: nodeHash(SEMANTIC_IDS.fresh) },
+        ],
+      });
+      expect(result.problem).toBeUndefined();
+      const [loaded, semantics, node] = result.actions;
+      expect(loaded.view).toMatchObject({ origin: 'drop', dropState: 'loaded', route: 'overview' });
+      expect(result).toMatchObject({ ready: true, errors: 0, cspViolations: 0, countsMatchHeader: true, decodeMode: 'worker' });
+      expect(result.counts.nodes).toBe(semanticNodes);
+      expect(semantics.view.semantics).toMatchObject({ summaries: `2/${semanticNodes}`, layersFreshness: 'stale', domain: 'fresh', unanchored: '1' });
+      expect(node.view.semantics).toMatchObject({ nodeSummary: 'fresh', nodeLayers: 'Entry' });
+      expect(result.dom).toContain('data-source="not-embedded" data-source-reason="drop-mode"');
+    }, 120_000);
+
+    it('shows a visible error for a picked directory with a truncated graph (9.1)', async () => {
+      const dir = join(mkdtempSync(join(scratch, 'truncated-drop-')), '.excavator');
+      cpSync(semanticDataDir, dir, { recursive: true });
+      const graph = join(dir, 'knowledge-graph.jsonl');
+      const text = readFileSync(graph, 'utf-8');
+      writeFileSync(graph, text.slice(0, Math.floor(text.length * 0.6)));
+      const result = await smoke(template, { actions: [{ type: 'files', selector: '[data-drop-input]', paths: [dir] }] });
+      expect(result.state).toBe('empty');
+      expect(result.actions[0].view.dropState).toBe('error');
+      expect(result.errors).toBeGreaterThan(0);
+      expect(result.dom).toMatch(/data-drop-error="">Could not read this directory\. KnowledgeGraphFormatError: \.excavator\/knowledge-graph\.jsonl: /);
     }, 90_000);
 
     it('opens the graph at the member level with the CSR built lazily and at most 400 nodes (6.2)', async () => {

@@ -30,8 +30,13 @@ export default defineConfig(({ command }) => {
     base: './',
     plugins: [react(), viteSingleFile({ removeViteModuleLoader: true }), devFixture()],
     resolve: {
-      // The shared codec's encoder (never used by the page) imports node:zlib.
-      alias: { 'node:zlib': fileURLToPath(new URL('./src/zlib-stub.ts', import.meta.url)) },
+      // The shared codec's encoder (never used by the page) imports node:zlib;
+      // the semantic language audit (run for a dropped directory) hashes
+      // with node:crypto's sha256.
+      alias: {
+        'node:zlib': fileURLToPath(new URL('./src/zlib-stub.ts', import.meta.url)),
+        'node:crypto': fileURLToPath(new URL('./src/crypto-stub.ts', import.meta.url)),
+      },
     },
     worker: {
       // The decode Worker is inlined and started from a blob URL; a classic
