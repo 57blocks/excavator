@@ -35,13 +35,13 @@
 
 ## 2. 共用绑定表与目标解析
 
-- [ ] 2.1 `xml-name-bindings.mjs` 的绑定读取：
+- [x] 2.1 `xml-name-bindings.mjs` 的绑定读取：
   - 根命名空间列表含 `null` 时，匹配没有声明命名空间的根；
   - 绑定行带上 `unknownBecause`（命中的 `unknownWhen` 属性名，或 null）与 `inherits`（`inheritFrom` 属性的值，或 null）；
   - `kind: name` 的目标按 `child` / `attribute` 读出文本。
 
   验证：`tests/facts/xml-name-bindings.test.mjs` 覆盖 DTD 无命名空间文件、Java EE 命名空间的 `beans.xml` 不被 `spring-xml-bean` 读、工厂方法定义、只写 `parent` 的定义、`<alias>`。
-- [ ] 2.2 `name-reference-resolution.mjs` 抽出 `buildNameBindingTable`，按 design D2 / D3 实现：
+- [x] 2.2 `name-reference-resolution.mjs` 抽出 `buildNameBindingTable`，按 design D2 / D3 实现：
   - 所有名字进表，每个绑定带「EL 可访问」标志；
   - 目标解析一次并缓存：`unknownWhen`、类名解析、`inheritFrom` 与 `kind: name` 在同单元同命名空间解析所名的名字、成环与无绑定为未知；
   - 返回解析经过的绑定处。
@@ -49,7 +49,7 @@
   `resolveNameReferences` 改为接收这张表，EL 匹配与「他处」判定只用 EL 可访问的绑定；`nonIdentifierNames` 与 `coverage.nameReferences.bindings` 的含义不变。
 
   验证：`tests/facts/name-reference-resolution.test.mjs` 覆盖 MODIFIED 规格「名字绑定」的新场景，即父定义继承、父定义不在本单元、工厂方法、别名、别名成环、点分 id 进表但 EL 访问不到；第 2 步的既有测试不改断言仍全绿。
-- [ ] 2.3 第 2 步夹具 `tests/fixtures/jsf-name-references/` 加一个声明了 Spring 桥接的单元，含工厂方法定义、只写 `parent` 的定义与别名，各被一个 EL 根名使用。
+- [x] 2.3 第 2 步夹具 `tests/fixtures/jsf-name-references/` 加一个声明了 Spring 桥接的单元，含工厂方法定义、只写 `parent` 的定义与别名，各被一个 EL 根名使用。
   验证：`tests/lazy/name-references-pipeline.test.mjs` 断言这三个根名分别落「目标未知」、成边到父定义的类、成边到别名所名的类；既有单元的边、证据与桶不变，总计数的变化恰好等于新单元的贡献；变异 `noAliases`、`noInheritance`、`ignoreUnknownWhen` 各让至少一条测试变红。
 
 ## 3. 注入点读取

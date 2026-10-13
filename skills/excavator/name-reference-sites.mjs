@@ -12,8 +12,10 @@
  *                 (a template-text extension of the catalog is read whole);
  *   bindings      the name bindings XML descriptors declare, by the catalog's
  *                 XML binders, each with what its binder means by a missing
- *                 target (annotation bindings are the projection's: they come
- *                 from the structure rows);
+ *                 target and the target rules it wrote (the attribute of the
+ *                 binder's `unknownWhen` it carries, the value of its
+ *                 `inheritFrom` attribute); annotation bindings are the
+ *                 projection's: they come from the structure rows;
  *   missingNames  the elements a binder matched that gave no name, by binder;
  *   conditions    the descriptors that open a namespace to expressions (the
  *                 catalog's `elementTextIn`), as facts: file, language,
@@ -62,7 +64,7 @@ const compareText = (a, b) => (a < b ? -1 : a > b ? 1 : 0);
  *   callers leave it empty.
  * @returns {{
  *   files: Array<{ file: string, language: string, expressionLanguage: string, roots: object[], escaped: number, unterminated: number, unscanned: number }>,
- *   bindings: Array<{ file: string, binder: string, name: string, line: number, target: { kind: string, text: string }|null, missingTarget: string }>,
+ *   bindings: Array<{ file: string, binder: string, name: string, line: number, target: { kind: string, text: string }|null, missingTarget: string, unknownBecause: string|null, inherits: string|null }>,
  *   missingNames: Record<string, number>,
  *   conditions: Array<{ file: string, expressionLanguage: string, namespace: string, line: number, text: string }>,
  *   outsideFiles: Record<string, number>,

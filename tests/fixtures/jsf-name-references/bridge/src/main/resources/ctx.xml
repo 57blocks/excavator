@@ -1,0 +1,7 @@
+<beans xmlns="http://www.springframework.org/schema/beans">
+  <bean id="locatedService" class="com.acme.bridge.Locator" factory-method="lookup"/>
+  <bean id="baseDao" class="com.acme.bridge.BaseDao"/>
+  <bean id="childDao" parent="baseDao"/>
+  <bean id="orderDao" class="com.acme.bridge.OrderDaoImpl"/>
+  <alias name="orderDao" alias="bridgedOrders"/>
+</beans>

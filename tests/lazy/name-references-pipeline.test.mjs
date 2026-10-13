@@ -1,9 +1,10 @@
 // name-binding-references, tasks 5.1-5.4: the name-reference stage in the real
 // Lazy driver, the traversal of `references` edges, the graph validator and the
 // project status on the product. The fixture is a purpose-built synthetic
-// project (tests/fixtures/jsf-name-references): three deployment units (a JSF /
-// CDI shop, a Seam and Spring XML legacy module, a Spring-bridged admin) and a
-// page that belongs to none. It is copied to a temp directory because a Lazy
+// project (tests/fixtures/jsf-name-references): four deployment units (a JSF /
+// CDI shop, a Seam and Spring XML legacy module, a Spring-bridged admin, and a
+// Spring-bridged module of factory-method, parent-only and alias definitions)
+// and a page that belongs to none. It is copied to a temp directory because a Lazy
 // run writes `.excavator/` next to the source.
 import { beforeAll, afterAll, describe, expect, it } from 'vitest';
 import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync, appendFileSync } from 'node:fs';
@@ -18,6 +19,7 @@ import { createProjectService } from '../../skills/excavator/project-service.mjs
 import { KNOWLEDGE_GRAPH_FILE, readKnowledgeGraph } from '../../skills/excavator/knowledge-graph-store.mjs';
 import { readStructureAll } from '../../skills/excavator/structure-all-store.mjs';
 import { loadNameBindingCatalog } from '../../skills/excavator/name-binding-catalog.mjs';
+import { collectNameReferenceSites } from '../../skills/excavator/name-reference-sites.mjs';
 import { createSourceReader, validateAgainstSource } from '../../skills/excavator/validate-graph.mjs';
 import { boundedBFS, oneHop } from '../../skills/excavator/retrieve.mjs';
 
@@ -48,10 +50,13 @@ const SHOP = 'shop/src/main/java/com/acme/shop';
 const WEB = 'shop/src/main/webapp';
 const LEGACY = 'legacy/src/main/java/com/acme/legacy';
 const ADMIN = 'admin/src/main/java/com/acme/admin';
+const BRIDGE = 'bridge/src/main/java/com/acme/bridge';
+const BRIDGE_CTX = 'bridge/src/main/resources/ctx.xml';
+const BRIDGE_PAGE = 'bridge/src/main/webapp/index.xhtml';
 
 // Every edge the fixture's pages draw, written out: what each page writes in
 // its expressions, resolved inside the page's own deployment unit.
-const EXPECTED_LINKS = [
+const EARLIER_LINKS = [
   `admin/src/main/webapp/index.xhtml -> ${ADMIN}/AdminService.java#AdminService`,
   `admin/src/main/webapp/index.xhtml -> ${ADMIN}/URLHelper.java#URLHelper`,
   `legacy/view/home.xhtml -> ${LEGACY}/Mailer.java#Mailer`,
@@ -78,7 +83,14 @@ const EXPECTED_LINKS = [
   `${WEB}/orders/params.xhtml -> ${SHOP}/CheckoutBean.java#CheckoutBean`,
   `${WEB}/orders/params.xhtml -> ${SHOP}/CustomerBean.java#CustomerBean`,
   `${WEB}/orders/params.xhtml -> ${SHOP}/OrderBean.java#OrderBean`,
-].sort();
+];
+// The bridge unit: `childDao` has only a parent, `bridgedOrders` is an alias, and `locatedService` is built by a
+// factory method, so it is no edge to the factory's class.
+const BRIDGE_LINKS = [
+  `${BRIDGE_PAGE} -> ${BRIDGE}/BaseDao.java#BaseDao`,
+  `${BRIDGE_PAGE} -> ${BRIDGE}/OrderDaoImpl.java#OrderDaoImpl`,
+];
+const EXPECTED_LINKS = [...EARLIER_LINKS, ...BRIDGE_LINKS].sort();
 
 describe('the name-reference stage in the real Lazy driver', () => {
   let root;
@@ -169,9 +181,10 @@ describe('the name-reference stage in the real Lazy driver', () => {
   it('counts the ten buckets, and every root lands in exactly one', () => {
     const { nameReferences } = graph.coverage;
     expect(nameReferences.roots).toEqual({
-      local: 9, implicit: 4, edge: 34, bundle: 2, external: 1, unindexed: 1, unknown: 1, ambiguous: 3, elsewhere: 8, unbound: 10,
+      // the bridge unit's three roots: two edges and one unknown
+      local: 9, implicit: 4, edge: 36, bundle: 2, external: 1, unindexed: 1, unknown: 2, ambiguous: 3, elsewhere: 8, unbound: 10,
     });
-    expect(nameReferences.rootCount).toBe(73);
+    expect(nameReferences.rootCount).toBe(76);
     expect(Object.values(nameReferences.roots).reduce((a, b) => a + b, 0)).toBe(nameReferences.rootCount);
   });
 
@@ -179,8 +192,8 @@ describe('the name-reference stage in the real Lazy driver', () => {
     const { nameReferences } = graph.coverage;
     expect(nameReferences).toMatchObject({
       status: 'ran',
-      files: { xhtml: 9, jsp: 4, xml: 3 },
-      units: 4,
+      files: { xhtml: 10, jsp: 4, xml: 4 },
+      units: 5,
       repositoryUnitFiles: 1,
       nonLiteralNames: 1,
       nonIdentifierNames: 2, // bad-name, and the Spring bean legacy.service: Spring's resolver does not read a dotted name
@@ -197,8 +210,8 @@ describe('the name-reference stage in the real Lazy driver', () => {
       'jsf-xml-managed-bean': 4,
       'jsf-xml-resource-bundle': 1,
       'seam-xml-component': 2,
-      'spring-xml-bean': 5,
-      'spring-xml-alias': 0,
+      'spring-xml-bean': 9,
+      'spring-xml-alias': 1,
       'jsf-annotation-managed-bean': 2,
       'cdi-annotation-named': 9,
       'cdi-annotation-model': 1,
@@ -238,7 +251,12 @@ describe('the name-reference stage in the real Lazy driver', () => {
       `${WEB}/orders/names.xhtml:3 billing -> [billing -> ${SHOP}/BillingBean.java#BillingBean, billing.invoice -> ${SHOP}/InvoiceLineBean.java#InvoiceLineBean]`,
     ]);
     expect(gap('name-reference-target-unindexed').samples).toEqual([`${WEB}/orders/list.xhtml:19 kotlinBean -> [com.acme.shop.kt.KotlinBean]`]);
-    expect(gap('name-reference-target-unknown').samples).toEqual([`${WEB}/orders/list.xhtml:19 classless -> [${WEB}/WEB-INF/faces-config.xml:21]`]);
+    expect(gap('name-reference-target-unknown')).toMatchObject({ count: 2 });
+    expect(gap('name-reference-target-unknown').samples).toEqual([
+      // a bean built by a factory method: the class it writes is the factory's, and the sample says which attribute
+      `${BRIDGE_PAGE}:2 locatedService -> [${BRIDGE_CTX}:2 (factory-method)]`,
+      `${WEB}/orders/list.xhtml:19 classless -> [${WEB}/WEB-INF/faces-config.xml:21]`,
+    ]);
     expect(gap('name-reference-elsewhere')).toMatchObject({ count: 8 });
     expect(gap('name-reference-elsewhere').samples).toEqual([
       'admin/src/main/webapp/index.xhtml:2 customerBean -> [shop [el]]',
@@ -261,6 +279,56 @@ describe('the name-reference stage in the real Lazy driver', () => {
     // `\\#{escaped.expr}`, a comment and a string that holds #{ yield no root
     const references = graph.edges.filter((e) => e.type === 'references').flatMap((e) => e.evidence);
     expect(references.some((e) => ['escaped', 'commented', 'not'].includes(e.token))).toBe(false);
+  });
+
+  describe('the Spring definitions of the bridged unit (xml-injection-references, design D3)', () => {
+    const label = (id) => labeller(graph)(id);
+    const edgesOf = (page) => graph.edges.filter((e) => e.type === 'references' && label(e.source) === page);
+
+    it('reads a bean that only has a parent as the class of the definition it names', () => {
+      const edge = edgesOf(BRIDGE_PAGE).find((e) => label(e.target) === `${BRIDGE}/BaseDao.java#BaseDao`);
+      expect(edge.evidence).toEqual([expect.objectContaining({
+        line: 2, token: 'childDao', name: 'childDao', bindings: [{ file: BRIDGE_CTX, line: 4, binder: 'spring-xml-bean' }],
+      })]);
+    });
+
+    it('reads an alias as the class of the bean it names, citing the alias', () => {
+      const edge = edgesOf(BRIDGE_PAGE).find((e) => label(e.target) === `${BRIDGE}/OrderDaoImpl.java#OrderDaoImpl`);
+      expect(edge.evidence).toEqual([expect.objectContaining({
+        line: 2, token: 'bridgedOrders', name: 'bridgedOrders', bindings: [{ file: BRIDGE_CTX, line: 6, binder: 'spring-xml-alias' }],
+      })]);
+    });
+
+    it('draws no edge to the class a factory-method bean writes: that class is the factory', () => {
+      expect(linksOf(graph).some((l) => l.endsWith('Locator.java#Locator'))).toBe(false);
+      expect(edgesOf(BRIDGE_PAGE).map((e) => label(e.target)).sort()).toEqual([`${BRIDGE}/BaseDao.java#BaseDao`, `${BRIDGE}/OrderDaoImpl.java#OrderDaoImpl`]);
+    });
+
+    it('leaves what the other units draw as it was: the edges of the earlier units are the earlier list, and the bridge adds exactly its own', () => {
+      const links = linksOf(graph);
+      expect(links.filter((l) => !l.startsWith('bridge/'))).toEqual([...EARLIER_LINKS].sort());
+      expect(links.filter((l) => l.startsWith('bridge/'))).toEqual([...BRIDGE_LINKS].sort());
+    });
+
+    // The three target rules each change what the bridge's page reaches: with the rule off, its edges differ.
+    it('depends on each target rule: without aliases, parents or the factory attributes the bridge\'s edges change', () => {
+      const intermediate = join(root, '.excavator', 'intermediate');
+      const scan = JSON.parse(readFileSync(join(intermediate, 'scan-result.json'), 'utf-8'));
+      const structureAll = readStructureAll(join(intermediate, 'structure-all.jsonl'));
+      const importMap = JSON.parse(readFileSync(join(intermediate, 'import-map.json'), 'utf-8'));
+      const catalog = loadNameBindingCatalog();
+      const nameReferenceSites = collectNameReferenceSites({ scan, catalog, readFile: (path) => readFileSync(join(root, path), 'utf-8') });
+      const bridgeLinks = (mutations) => {
+        const built = buildFactGraph({ scan, structureAll, importMap, nameReferenceSites, nameBindingCatalog: catalog, nameReferenceMutations: mutations });
+        const name = labeller(built);
+        return built.edges.filter((e) => e.type === 'references' && name(e.source) === BRIDGE_PAGE).map((e) => name(e.target)).sort();
+      };
+      const plain = [`${BRIDGE}/BaseDao.java#BaseDao`, `${BRIDGE}/OrderDaoImpl.java#OrderDaoImpl`];
+      expect(bridgeLinks({})).toEqual(plain);
+      expect(bridgeLinks({ noAliases: true })).toEqual([`${BRIDGE}/BaseDao.java#BaseDao`]);
+      expect(bridgeLinks({ noInheritance: true })).toEqual([`${BRIDGE}/OrderDaoImpl.java#OrderDaoImpl`]);
+      expect(bridgeLinks({ ignoreUnknownWhen: true })).toEqual([...plain, `${BRIDGE}/Locator.java#Locator`].sort());
+    });
   });
 
   it('reaches a bean named with a dot by the prefix of the chain, and cites the name that matched (spec: dotted names)', () => {
@@ -343,7 +411,7 @@ describe('the name-reference stage in the real Lazy driver', () => {
   it('reports the name-reference coverage and its gaps through project_status', () => {
     const status = createProjectService(root).projectStatus();
     expect(status.status).toBe('ok');
-    expect(status.data.factCoverage.nameReferences).toMatchObject({ status: 'ran', rootCount: 73, roots: { edge: 34, unbound: 10 } });
+    expect(status.data.factCoverage.nameReferences).toMatchObject({ status: 'ran', rootCount: 76, roots: { edge: 36, unbound: 10 } });
     expect(status.gaps.map((g) => g.kind)).toEqual(expect.arrayContaining([
       'name-reference-ambiguous', 'name-reference-elsewhere', 'name-reference-target-unindexed', 'name-reference-target-unknown', 'name-reference-unbound',
     ]));
@@ -363,7 +431,8 @@ describe('the name-reference stage in the real Lazy driver', () => {
     const reached = new Set(graph.edges.filter((e) => e.type === 'references').flatMap((e) => [e.source, e.target]));
     expect(baseline.warnings.filter((w) => !report.warnings.includes(w)).sort())
       .toEqual([...reached].map((id) => `Node '${id}' has no edges (orphan)`).filter((w) => baseline.warnings.includes(w)).sort());
-    expect(baseline.warnings.length - report.warnings.length).toBe(9);
+    // the nine of the earlier units, and the bridge unit's page, which no other edge reached
+    expect(baseline.warnings.length - report.warnings.length).toBe(10);
     expect(report.counts).toEqual({
       ...baseline.counts,
       edgesChecked: baseline.counts.edgesChecked + linksOf(graph).length,

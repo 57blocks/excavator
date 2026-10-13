@@ -67,7 +67,7 @@ import {
   assertMentionConservation, createDeclaredJavaTypeIndex, resolveMentions, TARGET_SKIP_REASONS,
 } from './mention-resolution.mjs';
 import {
-  NAME_REFERENCE_GAP_KINDS, assertNameReferenceConservation, resolveNameReferences,
+  NAME_REFERENCE_GAP_KINDS, assertNameReferenceConservation, buildNameBindingTable, resolveNameReferences,
 } from './name-reference-resolution.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -596,15 +596,24 @@ export function buildFactGraph({ scan, structureAll, importMap, mentionSites, me
     throw new Error('buildFactGraph: nameReferenceSites and nameBindingCatalog go together');
   }
   if (nameReferenceSites) {
-    const resolved = resolveNameReferences({
+    const manifestPaths = [...fileRowByPath.keys()];
+    // One table of every name binding, whatever reads it (openspec: changes/xml-injection-references, design D2, D9).
+    const bindingTable = buildNameBindingTable({
       sites: nameReferenceSites,
       catalog: nameBindingCatalog,
-      manifestPaths: fileRowByPath.keys(),
+      manifestPaths,
       javaRows,
       classIds,
       javaTypes,
       otherJvm,
       declaredJavaTypes: createDeclaredJavaTypeIndex(mentionInputs?.javaPackages ?? []),
+      mutations: nameReferenceMutations ?? {},
+    });
+    const resolved = resolveNameReferences({
+      sites: nameReferenceSites,
+      catalog: nameBindingCatalog,
+      table: bindingTable,
+      manifestPaths,
       fileIdOf,
       languageOf: (path) => languageOfPath.get(path),
       mutations: nameReferenceMutations ?? {},
@@ -768,7 +777,7 @@ const GAP_REASONS = Object.freeze({
   'mention-target-unindexed': 'name mention(s) in non-code files of something the repository has but the index has no node for (a Kotlin or Scala type, a Java annotation type, a file the scanner skipped as too large or binary): no mentions edge is drawn',
   'path-mention-unresolved': 'path mention(s) in non-code files that no resolution rule anchors to a known file (relative to the mentioning file, to its web root, or on the classpath); files excluded by ignore rules or default filters are not consulted, and a same-named file elsewhere is not guessed',
   'name-reference-target-unindexed': 'expression name(s) in view files whose binding in the page\'s deployment unit names a repository class the index has no node for (a Java annotation type, a Kotlin or Scala type, a class whose node id another declaration shares): no references edge is drawn',
-  'name-reference-target-unknown': 'expression name(s) in view files whose binding in the page\'s deployment unit declares the name but no class (a bean definition that only has a parent, a managed bean with no class element): no references edge is drawn',
+  'name-reference-target-unknown': 'expression name(s) in view files whose binding in the page\'s deployment unit declares the name but no class that can be told (a bean definition whose parent or aliased name has no binding in the unit, a bean built by a factory method or another bean, a managed bean with no class element): no references edge is drawn',
   'name-reference-ambiguous': 'expression name(s) in view files that bind to more than one thing in the page\'s deployment unit (two classes, a class and a resource bundle, or a class name that several declarations carry): no references edge is drawn and none of the candidates is preferred',
   'name-reference-elsewhere': 'expression name(s) in view files that no binding of the page\'s deployment unit declares in a namespace its expression language sees, but another unit or an invisible namespace does (a Spring bean in a unit with no JSF bridge, a bean of another module): no references edge is drawn, since the name is only known to be bound where the page cannot see it',
   'name-reference-unbound': 'expression name(s) in view files that no binding this analysis reads declares: components of libraries, parameters the caller passes in, a page that includes this one statically, producer and factory methods, nested types, sources that are not Java, and values set at runtime are not read, so the name may well be bound there',

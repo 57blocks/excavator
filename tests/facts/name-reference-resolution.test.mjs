@@ -18,6 +18,7 @@ import { loadNameBindingCatalog } from '../../skills/excavator/name-binding-cata
 import {
   NAME_REFERENCE_BUCKETS,
   assertNameReferenceConservation,
+  buildNameBindingTable,
   createUnitIndex,
 } from '../../skills/excavator/name-reference-resolution.mjs';
 
@@ -275,7 +276,7 @@ describe('annotation bindings (spec: name binding)', () => {
     expect(p.coverage.bindings['cdi-annotation-named']).toBe(0);
   });
 
-  it('keeps a name that is no EL identifier out of the table, and counts it', () => {
+  it('keeps a name that is no EL identifier away from expressions, and counts it', () => {
     const p = project({
       java: { [BEAN_PATH('Dotted')]: BEAN('com.acme.web', 'Dotted', '@Named("order-home")') },
       files: page('#{order.a}'),
@@ -974,6 +975,397 @@ describe('a component that only configures another (spec: Seam components.xml wi
   });
 });
 
+// ---------------------------------------------------------------------------
+// xml-injection-references, design D2 and D3: one binding table, targets
+// resolved through aliases, parents and factories
+// ---------------------------------------------------------------------------
+
+describe('Spring definitions: parent, factory method and alias (design D3; spec: name binding)', () => {
+  const BRIDGE = '<faces-config><application><el-resolver>org.springframework.web.jsf.el.SpringBeanFacesELResolver</el-resolver></application></faces-config>';
+  const BEANS_OPEN = '<beans xmlns="http://www.springframework.org/schema/beans">';
+  const CTX = 'app/WEB-INF/ctx.xml';
+  const javaOf = (...names) => Object.fromEntries(names.map((n) => [`app/src/com/acme/${n}.java`, javaSource('com.acme', [], `public class ${n} {}`)]));
+  const CLASS = (n) => `app/src/com/acme/${n}.java#${n}`;
+  /** One unit with a page, the Spring bridge and a context whose first bean is on line 2. */
+  const unit = (definitions, expressions, extra = {}) => ({
+    'app/pom.xml': POM,
+    'app/web/p.xhtml': `<p>${expressions}</p>`,
+    'app/web/WEB-INF/faces-config.xml': BRIDGE,
+    [CTX]: [BEANS_OPEN, ...[definitions].flat(), '</beans>'].join('\n'),
+    ...extra,
+  });
+  const unknownSamples = (p) => p.samples('name-reference-target-unknown');
+
+  describe('a bean with only a parent', () => {
+    it('is the class of the definition its parent names (spec)', () => {
+      const p = project({ java: javaOf('BaseDao'), files: unit(['  <bean id="base" class="com.acme.BaseDao"/>', '  <bean id="child" parent="base"/>'], '#{child.run}') });
+      expect(p.links).toEqual([`app/web/p.xhtml -> ${CLASS('BaseDao')}`]);
+      // the evidence cites the binding the page's name hit, not the ones its resolution went through
+      expect(p.edge('app/web/p.xhtml', CLASS('BaseDao')).evidence[0].bindings).toEqual([{ file: CTX, line: 3, binder: 'spring-xml-bean' }]);
+      expect(p.roots.edge).toBe(1);
+    });
+
+    it('follows a chain of parents', () => {
+      const p = project({
+        java: javaOf('BaseDao'),
+        files: unit(['  <bean id="base" class="com.acme.BaseDao"/>', '  <bean id="mid" parent="base"/>', '  <bean id="leaf" parent="mid"/>'], '#{leaf.run}'),
+      });
+      expect(p.links).toEqual([`app/web/p.xhtml -> ${CLASS('BaseDao')}`]);
+    });
+
+    it('is "unknown" when no bean of the unit has the parent\'s name, and says so (spec)', () => {
+      const p = project({ files: unit('  <bean id="child" parent="base"/>', '#{child.run}') });
+      expect(p.links).toEqual([]);
+      expect(p.roots.unknown).toBe(1);
+      expect(unknownSamples(p)).toEqual([`app/web/p.xhtml:1 child -> [${CTX}:2 (base has no binding in this unit)]`]);
+    });
+
+    it('does not look for the parent in another unit', () => {
+      const p = project({
+        java: javaOf('BaseDao'),
+        files: unit('  <bean id="child" parent="base"/>', '#{child.run}', {
+          'other/pom.xml': POM,
+          'other/ctx.xml': `${BEANS_OPEN}\n  <bean id="base" class="com.acme.BaseDao"/>\n</beans>`,
+        }),
+      });
+      expect(p.links).toEqual([]);
+      expect(p.roots.unknown).toBe(1);
+    });
+
+    it('keeps the class it writes itself: the parent is for a bean with no class', () => {
+      const p = project({
+        java: javaOf('BaseDao', 'OwnDao'),
+        files: unit(['  <bean id="base" class="com.acme.BaseDao"/>', '  <bean id="child" class="com.acme.OwnDao" parent="base"/>'], '#{child.run}'),
+      });
+      expect(p.links).toEqual([`app/web/p.xhtml -> ${CLASS('OwnDao')}`]);
+    });
+
+    it('takes the class of an annotated parent, which XML and annotations both declare names for', () => {
+      const p = project({
+        java: { 'app/src/com/acme/Repo.java': BEAN('com.acme', 'Repo', '@Repository("baseDao")', ['import org.springframework.stereotype.Repository;']) },
+        files: unit('  <bean id="child" parent="baseDao"/>', '#{child.run}'),
+      });
+      expect(p.links).toEqual([`app/web/p.xhtml -> ${CLASS('Repo')}`]);
+    });
+
+    it('is ambiguous when its parent\'s name is declared for two classes', () => {
+      const p = project({
+        java: javaOf('OneDao', 'TwoDao'),
+        files: unit(['  <bean id="base" class="com.acme.OneDao"/>', '  <bean id="base" class="com.acme.TwoDao"/>', '  <bean id="child" parent="base"/>'], '#{child.run}'),
+      });
+      expect(p.links).toEqual([]);
+      expect(p.roots.ambiguous).toBe(1);
+      expect(p.samples('name-reference-ambiguous')[0]).toContain(CLASS('OneDao'));
+      expect(p.samples('name-reference-ambiguous')[0]).toContain(CLASS('TwoDao'));
+    });
+
+    it('is "unknown" when its parent is a factory-method bean, and passes the reason on', () => {
+      const p = project({ java: javaOf('Locator'), files: unit(['  <bean id="svc" class="com.acme.Locator" factory-method="lookup"/>', '  <bean id="child" parent="svc"/>'], '#{child.run}') });
+      expect(p.links).toEqual([]);
+      expect(unknownSamples(p)).toEqual([`app/web/p.xhtml:1 child -> [${CTX}:3 (factory-method)]`]);
+    });
+  });
+
+  describe('a bean built by a factory', () => {
+    it('is "unknown", not the factory\'s class: the class a factory-method bean writes is the factory (spec)', () => {
+      const p = project({ java: javaOf('ServiceLocator'), files: unit('  <bean id="svc" class="com.acme.ServiceLocator" factory-method="lookup"/>', '#{svc.run}') });
+      expect(p.links).toEqual([]);
+      expect(p.roots).toMatchObject({ unknown: 1, edge: 0 });
+      expect(unknownSamples(p)).toEqual([`app/web/p.xhtml:1 svc -> [${CTX}:2 (factory-method)]`]);
+    });
+
+    it('is "unknown" when the factory is another bean and no class is written', () => {
+      const p = project({ files: unit('  <bean id="made" factory-bean="locator" factory-method="make"/>', '#{made.run}') });
+      expect(p.roots.unknown).toBe(1);
+      expect(unknownSamples(p)).toEqual([`app/web/p.xhtml:1 made -> [${CTX}:2 (factory-method)]`]);
+      const other = project({ files: unit('  <bean id="made" factory-bean="locator"/>', '#{made.run}') });
+      expect(unknownSamples(other)).toEqual([`app/web/p.xhtml:1 made -> [${CTX}:2 (factory-bean)]`]);
+    });
+
+    it('makes a same-named annotated component an ambiguity: unknown and a class do not agree', () => {
+      const p = project({
+        java: { 'app/src/com/acme/Svc.java': BEAN('com.acme', 'Svc', '@Service("svc")', ['import org.springframework.stereotype.Service;']), ...javaOf('Locator') },
+        files: unit('  <bean id="svc" class="com.acme.Locator" factory-method="lookup"/>', '#{svc.run}'),
+      });
+      expect(p.links).toEqual([]);
+      expect(p.roots.ambiguous).toBe(1);
+    });
+  });
+
+  describe('an alias', () => {
+    it('is the class of the bean it names (spec)', () => {
+      const p = project({ java: javaOf('OrderDaoImpl'), files: unit(['  <bean id="orderDao" class="com.acme.OrderDaoImpl"/>', '  <alias name="orderDao" alias="orders"/>'], '#{orders.save}') });
+      expect(p.links).toEqual([`app/web/p.xhtml -> ${CLASS('OrderDaoImpl')}`]);
+      expect(p.edge('app/web/p.xhtml', CLASS('OrderDaoImpl')).evidence[0]).toMatchObject({
+        token: 'orders', name: 'orders', bindings: [{ file: CTX, line: 3, binder: 'spring-xml-alias' }],
+      });
+      expect(p.coverage.bindings).toMatchObject({ 'spring-xml-bean': 1, 'spring-xml-alias': 1 });
+    });
+
+    it('leaves the bean\'s own name working', () => {
+      const p = project({ java: javaOf('OrderDaoImpl'), files: unit(['  <bean id="orderDao" class="com.acme.OrderDaoImpl"/>', '  <alias name="orderDao" alias="orders"/>'], '#{orderDao.save} #{orders.save}') });
+      expect(p.roots.edge).toBe(2);
+      expect(p.references).toHaveLength(1);
+    });
+
+    it('follows an alias of an alias', () => {
+      const p = project({
+        java: javaOf('OrderDaoImpl'),
+        files: unit(['  <alias name="orders" alias="purchases"/>', '  <alias name="orderDao" alias="orders"/>', '  <bean id="orderDao" class="com.acme.OrderDaoImpl"/>'], '#{purchases.save}'),
+      });
+      expect(p.links).toEqual([`app/web/p.xhtml -> ${CLASS('OrderDaoImpl')}`]);
+    });
+
+    it('names a component an annotation declares', () => {
+      const p = project({
+        java: { 'app/src/com/acme/JdbcDao.java': BEAN('com.acme', 'JdbcDao', '@Repository("orderDao")', ['import org.springframework.stereotype.Repository;']) },
+        files: unit('  <alias name="orderDao" alias="orders"/>', '#{orders.save}'),
+      });
+      expect(p.links).toEqual([`app/web/p.xhtml -> ${CLASS('JdbcDao')}`]);
+    });
+
+    it('names a bean whose own name no expression can reach (a dotted id)', () => {
+      const p = project({
+        java: javaOf('OrderDaoImpl'),
+        files: unit(['  <bean id="com.acme.OrderDao" class="com.acme.OrderDaoImpl"/>', '  <alias name="com.acme.OrderDao" alias="orders"/>'], '#{orders.save} #{com.acme.OrderDao.save}'),
+      });
+      expect(p.links).toEqual([`app/web/p.xhtml -> ${CLASS('OrderDaoImpl')}`]);
+      expect(p.coverage.nonIdentifierNames).toBe(1); // the dotted id, as before
+      expect(p.coverage.bindings).toMatchObject({ 'spring-xml-bean': 0, 'spring-xml-alias': 1 });
+      expect(p.roots).toMatchObject({ edge: 1, unbound: 1 }); // `com` names nothing
+    });
+
+    it('is itself out of reach of expressions when its own name is dotted, and counted so', () => {
+      const p = project({ java: javaOf('OrderDaoImpl'), files: unit(['  <bean id="orderDao" class="com.acme.OrderDaoImpl"/>', '  <alias name="orderDao" alias="orders.v2"/>'], '#{orders.v2.save}') });
+      expect(p.links).toEqual([]);
+      expect(p.coverage.nonIdentifierNames).toBe(1);
+      expect(p.coverage.bindings['spring-xml-alias']).toBe(0);
+    });
+
+    it('is "unknown" when the name it gives has no binding in the unit, and says so (spec)', () => {
+      const p = project({ files: unit('  <alias name="orderDao" alias="orders"/>', '#{orders.save}') });
+      expect(p.roots.unknown).toBe(1);
+      expect(unknownSamples(p)).toEqual([`app/web/p.xhtml:1 orders -> [${CTX}:2 (orderDao has no binding in this unit)]`]);
+    });
+
+    it('does not name a bean of another unit', () => {
+      const p = project({
+        java: javaOf('OrderDaoImpl'),
+        files: unit('  <alias name="orderDao" alias="orders"/>', '#{orders.save}', {
+          'other/pom.xml': POM,
+          'other/ctx.xml': `${BEANS_OPEN}\n  <bean id="orderDao" class="com.acme.OrderDaoImpl"/>\n</beans>`,
+        }),
+      });
+      expect(p.links).toEqual([]);
+      expect(p.roots.unknown).toBe(1);
+    });
+
+    it('does not name a binding of another namespace: Spring aliases name Spring beans', () => {
+      const p = project({
+        java: javaOf('OrderBean'),
+        files: unit('  <alias name="orderBean" alias="orders"/>', '#{orders.save}', {
+          'app/web/WEB-INF/faces-config.xml': `<faces-config><application><el-resolver>org.springframework.web.jsf.el.SpringBeanFacesELResolver</el-resolver></application><managed-bean><managed-bean-name>orderBean</managed-bean-name><managed-bean-class>com.acme.OrderBean</managed-bean-class></managed-bean></faces-config>`,
+        }),
+      });
+      expect(p.links).toEqual([]);
+      expect(p.roots.unknown).toBe(1);
+    });
+
+    it('is "unknown" in a cycle, for both names, and stops (spec)', () => {
+      const p = project({ files: unit(['  <alias name="a" alias="b"/>', '  <alias name="b" alias="a"/>'], '#{a.x} #{b.x}') });
+      expect(p.links).toEqual([]);
+      expect(p.roots.unknown).toBe(2);
+      expect(unknownSamples(p)).toEqual([`app/web/p.xhtml:1 a -> [${CTX}:3 (cycle)]`, `app/web/p.xhtml:1 b -> [${CTX}:2 (cycle)]`]);
+    });
+
+    it('is "unknown" when a bean names itself as parent', () => {
+      const p = project({ files: unit('  <bean id="loop" parent="loop"/>', '#{loop.x}') });
+      expect(p.roots.unknown).toBe(1);
+      expect(unknownSamples(p)).toEqual([`app/web/p.xhtml:1 loop -> [${CTX}:2 (cycle)]`]);
+    });
+
+    it('is one edge with both bindings\' evidence when the bean and its alias are used on one page', () => {
+      const p = project({ java: javaOf('OrderDaoImpl'), files: unit(['  <bean id="orderDao" class="com.acme.OrderDaoImpl"/>', '  <alias name="orderDao" alias="orders"/>'], '#{orderDao.a}\n#{orders.b}') });
+      expect(p.references).toHaveLength(1);
+      expect(p.references[0].evidence.map((e) => [e.token, e.bindings.map((b) => b.binder)])).toEqual([['orderDao', ['spring-xml-bean']], ['orders', ['spring-xml-alias']]]);
+    });
+  });
+
+  it('does not make a name another unit declares as a dotted Spring id an "elsewhere": EL cannot reach it, so it is not there (D2)', () => {
+    const p = project({
+      java: javaOf('OrderDaoImpl'),
+      files: {
+        'a/pom.xml': POM, 'a/web/p.xhtml': '<p>#{admin.track.x}</p>',
+        'b/pom.xml': POM, 'b/ctx.xml': `${BEANS_OPEN}\n  <bean id="admin.track" class="com.acme.OrderDaoImpl"/>\n</beans>`,
+      },
+    });
+    expect(p.roots).toMatchObject({ elsewhere: 0, unbound: 1 });
+    // the same name as a binding EL can reach (a CDI Named bean's dotted name is a namespace) in another unit is "elsewhere", as before
+    const q = project({
+      java: { 'b/src/com/b/Track.java': BEAN('com.b', 'Track', '@Named("admin.track")') },
+      files: { 'a/pom.xml': POM, 'a/web/p.xhtml': '<p>#{admin.track.x}</p>', 'b/pom.xml': POM },
+    });
+    expect(q.roots.elsewhere).toBe(1);
+  });
+});
+
+describe('the binding table (design D2, D3)', () => {
+  const BEANS_OPEN = '<beans xmlns="http://www.springframework.org/schema/beans">';
+  const TYPES = [
+    { fqn: 'com.acme.OrderDaoImpl', path: 'app/src/OrderDaoImpl.java', id: 'class:app/src/OrderDaoImpl.java:OrderDaoImpl' },
+    { fqn: 'com.acme.Locator', path: 'app/src/Locator.java', id: 'class:app/src/Locator.java:Locator' },
+  ];
+  const NO_TYPES = { isType: () => false };
+
+  /** The table of in-memory descriptors, built the way buildFactGraph builds it, with no Java rows. */
+  function tableOf(files, { javaTypes = TYPES, mutations } = {}) {
+    const scanFiles = Object.keys(files).map((path) => ({ path, language: LANGUAGE_OF_EXTENSION[extname(path).slice(1)] ?? 'unknown' }));
+    const sites = collectNameReferenceSites({ scan: { files: scanFiles }, catalog: CATALOG, readFile: (path) => files[path] });
+    return buildNameBindingTable({
+      sites, catalog: CATALOG, manifestPaths: Object.keys(files), javaRows: [], classIds: new Map(), javaTypes, otherJvm: NO_TYPES, declaredJavaTypes: NO_TYPES, mutations,
+    });
+  }
+  const ctx = (...lines) => [BEANS_OPEN, ...lines, '</beans>'].join('\n');
+  const FILES = {
+    'app/pom.xml': POM,
+    'app/ctx.xml': ctx(
+      '  <bean id="orderDao" class="com.acme.OrderDaoImpl"/>',
+      '  <alias name="orderDao" alias="orders"/>',
+      '  <bean id="com.acme.api.OrderDao" class="com.acme.OrderDaoImpl"/>',
+      '  <bean id="a/b" class="com.acme.OrderDaoImpl"/>',
+      '  <bean id="svc" class="com.acme.Locator" factory-method="make"/>',
+    ),
+  };
+  const SPRING_APP = { unit: 'app', namespace: 'spring' };
+  const sitesOf = (via) => via.map((s) => [s.file, s.line, s.binder]);
+
+  it('holds every name, dotted and slashed ones included, each flagged by whether an expression can reach it', () => {
+    const table = tableOf(FILES);
+    expect(table.bindings.map((b) => [b.name, b.binder, b.el])).toEqual([
+      ['orderDao', 'spring-xml-bean', true],
+      ['com.acme.api.OrderDao', 'spring-xml-bean', false],
+      ['a/b', 'spring-xml-bean', false],
+      ['svc', 'spring-xml-bean', true],
+      ['orders', 'spring-xml-alias', true],
+    ]);
+  });
+
+  it('counts the names an expression cannot reach in the tally, as it counted the names it dropped', () => {
+    expect(tableOf(FILES).tally.nonIdentifierNames).toBe(2);
+    expect(tableOf(FILES).tally.nonLiteralNames).toBe(0);
+  });
+
+  it('finds the bindings of a name by unit and namespace, and by file', () => {
+    const table = tableOf({
+      ...FILES,
+      'app/more.xml': ctx('  <bean id="orderDao" class="com.acme.Locator"/>'),
+      'other/pom.xml': POM,
+      'other/ctx.xml': ctx('  <bean id="orderDao" class="com.acme.OrderDaoImpl"/>'),
+    });
+    expect(table.bindingsNamed('orderDao', SPRING_APP).map((b) => b.file).sort()).toEqual(['app/ctx.xml', 'app/more.xml']);
+    expect(table.bindingsNamed('orderDao', { ...SPRING_APP, file: 'app/more.xml' }).map((b) => b.file)).toEqual(['app/more.xml']);
+    expect(table.bindingsNamed('orderDao', { unit: 'app', namespace: 'el' })).toEqual([]);
+    expect(table.bindingsNamed('orderDao', { unit: 'other', namespace: 'spring' }).map((b) => b.file)).toEqual(['other/ctx.xml']);
+    expect(table.named('orderDao')).toHaveLength(3); // anywhere
+    expect(table.named('nothing')).toEqual([]);
+  });
+
+  it('resolves a name to the class its bindings come to, and lists every binding it went through', () => {
+    const table = tableOf(FILES);
+    const direct = table.resolveName('orderDao', SPRING_APP);
+    expect(direct.target).toMatchObject({ kind: 'node', id: 'class:app/src/OrderDaoImpl.java:OrderDaoImpl' });
+    expect(sitesOf(direct.via)).toEqual([['app/ctx.xml', 2, 'spring-xml-bean']]);
+
+    const alias = table.resolveName('orders', SPRING_APP);
+    expect(alias.hits.map((b) => b.binder)).toEqual(['spring-xml-alias']);
+    expect(alias.target).toMatchObject({ kind: 'node', id: 'class:app/src/OrderDaoImpl.java:OrderDaoImpl' });
+    // the name's own binding, and the binding it names
+    expect(sitesOf(alias.via)).toEqual([['app/ctx.xml', 2, 'spring-xml-bean'], ['app/ctx.xml', 3, 'spring-xml-alias']]);
+  });
+
+  it('resolves a dotted or slashed name, which the table holds though expressions cannot reach it', () => {
+    const table = tableOf(FILES);
+    for (const name of ['com.acme.api.OrderDao', 'a/b']) {
+      expect(table.resolveName(name, SPRING_APP).target).toMatchObject({ kind: 'node', id: 'class:app/src/OrderDaoImpl.java:OrderDaoImpl' });
+    }
+  });
+
+  it('resolves a name with no binding in the unit as unknown, with the reason and no bindings', () => {
+    const table = tableOf(FILES);
+    const none = table.resolveName('missing', SPRING_APP);
+    expect(none.hits).toEqual([]);
+    expect(none.target).toMatchObject({ kind: 'unknown', key: 'unknown', reason: 'missing has no binding in this unit' });
+    expect(none.via).toEqual([]);
+    expect(table.resolveName('orderDao', { unit: 'elsewhere', namespace: 'spring' }).target.reason).toBe('orderDao has no binding in this unit');
+  });
+
+  it('limits the hits of a name to one file and still resolves their targets in the unit', () => {
+    const table = tableOf({
+      'app/pom.xml': POM,
+      'app/a.xml': ctx('  <alias name="orderDao" alias="orders"/>'),
+      'app/b.xml': ctx('  <bean id="orderDao" class="com.acme.OrderDaoImpl"/>'),
+    });
+    expect(table.resolveName('orders', { ...SPRING_APP, file: 'app/a.xml' }).target.kind).toBe('node');
+    expect(table.resolveName('orderDao', { ...SPRING_APP, file: 'app/a.xml' }).hits).toEqual([]);
+    expect(table.resolveName('orderDao', { ...SPRING_APP, file: 'app/a.xml' }).target.reason).toBe('orderDao has no binding in this unit');
+  });
+
+  it('gives a factory-method bean the unknown target with the attribute as the reason, though it writes a class', () => {
+    const [svc] = tableOf(FILES).bindingsNamed('svc', SPRING_APP);
+    expect(svc.target).toMatchObject({ kind: 'unknown', key: 'unknown', reason: 'factory-method', via: [] });
+  });
+
+  it('resolves each binding once: the target of a binding is the same object each time it is asked for', () => {
+    const table = tableOf(FILES);
+    const [a] = table.bindingsNamed('orders', SPRING_APP);
+    expect(table.resolveName('orders', SPRING_APP).hits[0].target).toBe(a.target);
+  });
+
+  it('ends a cycle in unknown, with the reason "cycle", whichever binding it starts from', () => {
+    for (const lines of [['  <alias name="a" alias="b"/>', '  <alias name="b" alias="a"/>'], ['  <alias name="b" alias="a"/>', '  <alias name="a" alias="b"/>']]) {
+      const table = tableOf({ 'app/pom.xml': POM, 'app/ctx.xml': ctx(...lines) });
+      for (const name of ['a', 'b']) expect(table.resolveName(name, SPRING_APP).target).toMatchObject({ kind: 'unknown', reason: 'cycle' });
+    }
+  });
+
+  it('classifies several bindings of one name as the expression stage does: agreeing, ambiguous or unknown', () => {
+    const agree = tableOf({ 'app/pom.xml': POM, 'app/ctx.xml': ctx('  <bean id="x" class="com.acme.OrderDaoImpl"/>', '  <bean id="x" class="com.acme.OrderDaoImpl"/>') });
+    expect(agree.resolveName('x', SPRING_APP).target.kind).toBe('node');
+    const differ = tableOf({ 'app/pom.xml': POM, 'app/ctx.xml': ctx('  <bean id="x" class="com.acme.OrderDaoImpl"/>', '  <bean id="x" class="com.acme.Locator"/>') });
+    expect(differ.resolveName('x', SPRING_APP).target).toMatchObject({ kind: 'ambiguous' });
+    expect(differ.resolveName('x', SPRING_APP).target.labels).toEqual(['app/src/Locator.java#Locator', 'app/src/OrderDaoImpl.java#OrderDaoImpl']);
+    const unknown = tableOf({ 'app/pom.xml': POM, 'app/ctx.xml': ctx('  <bean id="x" parent="p"/>', '  <bean id="x" factory-bean="f"/>') });
+    expect(unknown.resolveName('x', SPRING_APP).target).toMatchObject({ kind: 'unknown', reason: 'factory-bean; p has no binding in this unit' });
+  });
+
+  it('follows no alias when the mutation noAliases says so, and no parent for noInheritance, and honours factory attributes unless ignoreUnknownWhen', () => {
+    const files = {
+      'app/pom.xml': POM,
+      'app/ctx.xml': ctx('  <bean id="orderDao" class="com.acme.OrderDaoImpl"/>', '  <alias name="orderDao" alias="orders"/>', '  <bean id="child" parent="orderDao"/>', '  <bean id="svc" class="com.acme.Locator" factory-method="make"/>'),
+    };
+    const kinds = (mutations) => {
+      const table = tableOf(files, { mutations });
+      return Object.fromEntries(['orders', 'child', 'svc'].map((name) => [name, table.resolveName(name, SPRING_APP).target.kind]));
+    };
+    expect(kinds({})).toEqual({ orders: 'node', child: 'node', svc: 'unknown' });
+    expect(kinds({ noAliases: true })).toEqual({ orders: 'unknown', child: 'node', svc: 'unknown' });
+    expect(kinds({ noInheritance: true })).toEqual({ orders: 'node', child: 'unknown', svc: 'unknown' });
+    expect(kinds({ ignoreUnknownWhen: true })).toEqual({ orders: 'node', child: 'node', svc: 'node' });
+  });
+
+  it('fails on a binding of a binder the catalog does not have, or in a file outside the manifest', () => {
+    const files = { 'app/pom.xml': POM, 'app/ctx.xml': ctx('  <bean id="x" class="com.acme.OrderDaoImpl"/>') };
+    const scanFiles = Object.keys(files).map((path) => ({ path, language: 'xml' }));
+    const sites = collectNameReferenceSites({ scan: { files: scanFiles }, catalog: CATALOG, readFile: (path) => files[path] });
+    const build = (edit) => () => buildNameBindingTable({
+      sites: edit(structuredClone(sites)), catalog: CATALOG, manifestPaths: Object.keys(files), javaRows: [], classIds: new Map(), javaTypes: TYPES, otherJvm: NO_TYPES, declaredJavaTypes: NO_TYPES,
+    });
+    expect(build((x) => x)).not.toThrow();
+    expect(build((x) => { x.bindings[0].binder = 'nope'; return x; })).toThrow(/binder "nope", which the catalog does not have/);
+    expect(build((x) => { x.bindings[0].file = 'elsewhere.xml'; return x; })).toThrow(/outside the manifest: elsewhere\.xml/);
+  });
+});
+
 describe('implicit objects with a binding of the same name (spec)', () => {
   const FACES = (name) => `<faces-config><managed-bean><managed-bean-name>${name}</managed-bean-name><managed-bean-class>com.acme.Param</managed-bean-class></managed-bean></faces-config>`;
   const PARAM = { 'app/src/com/acme/Param.java': javaSource('com.acme', [], 'public class Param {}') };
@@ -1213,6 +1605,43 @@ describe('mutation tripwires', () => {
     `<faces-config><managed-bean><managed-bean-name>${name}</managed-bean-name><managed-bean-class>${cls}</managed-bean-class></managed-bean></faces-config>`;
   const ORDER = { 'app/src/com/acme/web/OrderBean.java': javaSource('com.acme.web', [], 'public class OrderBean {}') };
   const ORDER_LINK = 'app/web/p.xhtml -> app/src/com/acme/web/OrderBean.java#OrderBean';
+
+  describe('the target rules of Spring definitions (xml-injection-references)', () => {
+    const BRIDGE = '<faces-config><application><el-resolver>org.springframework.web.jsf.el.SpringBeanFacesELResolver</el-resolver></application></faces-config>';
+    const spec = (definitions, expressions) => ({
+      java: {
+        'app/src/com/acme/OrderDaoImpl.java': javaSource('com.acme', [], 'public class OrderDaoImpl {}'),
+        'app/src/com/acme/Locator.java': javaSource('com.acme', [], 'public class Locator {}'),
+      },
+      files: {
+        'app/pom.xml': POM, 'app/web/p.xhtml': `<p>${expressions}</p>`, 'app/web/WEB-INF/faces-config.xml': BRIDGE,
+        'app/WEB-INF/ctx.xml': ['<beans xmlns="http://www.springframework.org/schema/beans">', ...definitions, '</beans>'].join('\n'),
+      },
+    });
+    const DAO = '  <bean id="orderDao" class="com.acme.OrderDaoImpl"/>';
+
+    it('noAliases: an alias is not followed to the bean it names', () => {
+      const alias = spec([DAO, '  <alias name="orderDao" alias="orders"/>'], '#{orders.x}');
+      expect(project(alias).links).toEqual(['app/web/p.xhtml -> app/src/com/acme/OrderDaoImpl.java#OrderDaoImpl']);
+      const mutated = project({ ...alias, mutations: { noAliases: true } });
+      expect(mutated.links).toEqual([]);
+      expect(mutated.roots.unknown).toBe(1);
+    });
+
+    it('noInheritance: a bean with only a parent does not take the parent\'s class', () => {
+      const child = spec([DAO, '  <bean id="child" parent="orderDao"/>'], '#{child.x}');
+      expect(project(child).links).toEqual(['app/web/p.xhtml -> app/src/com/acme/OrderDaoImpl.java#OrderDaoImpl']);
+      const mutated = project({ ...child, mutations: { noInheritance: true } });
+      expect(mutated.links).toEqual([]);
+      expect(mutated.roots.unknown).toBe(1);
+    });
+
+    it('ignoreUnknownWhen: a factory-method bean is taken for an instance of the class it writes', () => {
+      const factory = spec(['  <bean id="svc" class="com.acme.Locator" factory-method="make"/>'], '#{svc.x}');
+      expect(project(factory).links).toEqual([]);
+      expect(project({ ...factory, mutations: { ignoreUnknownWhen: true } }).links).toEqual(['app/web/p.xhtml -> app/src/com/acme/Locator.java#Locator']);
+    });
+  });
 
   it('ignoreUnits: a name another unit declares reaches the page', () => {
     const spec = { java: ORDER, files: { 'a/pom.xml': POM, 'a/web/p.xhtml': '#{orders.x}', 'app/pom.xml': POM, 'app/web/WEB-INF/faces-config.xml': FACES('orders') } };

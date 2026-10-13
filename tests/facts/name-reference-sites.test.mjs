@@ -78,6 +78,27 @@ describe('collectNameReferenceSites', () => {
     ]);
   });
 
+  it('carries the target rules of each Spring binding: the factory attribute it writes, the parent it names, and an alias as a name target', () => {
+    const files = {
+      'b/ctx.xml': [
+        '<beans xmlns="http://www.springframework.org/schema/beans">',
+        '  <bean id="svc" class="b.Locator" factory-method="make"/>',
+        '  <bean id="child" parent="base"/>',
+        '  <alias name="base" alias="alias1"/>',
+        '</beans>',
+      ].join('\n'),
+      'b/cdi/beans.xml': '<beans xmlns="http://xmlns.jcp.org/xml/ns/javaee"><bean id="ignored" class="b.X"/></beans>',
+    };
+    const { bindings } = collectNameReferenceSites({
+      scan: scanOf([['b/ctx.xml', 'xml'], ['b/cdi/beans.xml', 'xml']]), catalog, readFile: (path) => files[path],
+    });
+    expect(bindings.map((b) => [b.binder, b.name, b.target, b.unknownBecause, b.inherits])).toEqual([
+      ['spring-xml-bean', 'svc', { kind: 'class', text: 'b.Locator' }, 'factory-method', null],
+      ['spring-xml-bean', 'child', null, null, 'base'],
+      ['spring-xml-alias', 'alias1', { kind: 'name', text: 'base' }, null, null],
+    ]);
+  });
+
   it('counts the elements a binder matched that gave no name, for their binder (the anonymous bean)', () => {
     expect(collect().missingNames).toEqual({ 'spring-xml-bean': 1 });
   });

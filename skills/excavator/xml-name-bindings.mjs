@@ -184,7 +184,11 @@ function rootInfo(root) {
   return { local: root.local, prefix: root.prefix, namespace: declared ? declared.value : null };
 }
 
-/** Does the root satisfy a binder's (or an expression language's) `root` and `rootNamespace`? */
+/**
+ * Does the root satisfy a binder's (or an expression language's) `root` and
+ * `rootNamespace`? A `null` in the namespace list stands for a root that
+ * declares no namespace (`info.namespace` is null then), as in a DTD-form file.
+ */
 export function rootMatches(info, rootName, rootNamespace) {
   return info.local === rootName && (rootNamespace === undefined || rootNamespace.includes(info.namespace));
 }
@@ -214,6 +218,20 @@ function namesOf(element, source, starts) {
   return found.filter((entry, i) => found.findIndex((other) => other.name === entry.name) === i);
 }
 
+/**
+ * What the catalog's target rules say about an element: the first of the
+ * `unknownWhen` attributes (in the catalog's order, not the file's) the element
+ * writes, whether or not it has a value; and the trimmed value of the
+ * `inheritFrom` attribute, null when it is not written or blank. Whether either
+ * decides the binding's target is the resolution stage's business.
+ */
+function targetRulesOf(element, target) {
+  const written = (name) => element.attributes.find((candidate) => candidate.name === name);
+  const unknownBecause = (target.unknownWhen ?? []).find((name) => written(name) !== undefined) ?? null;
+  const inherited = target.inheritFrom === undefined ? '' : written(target.inheritFrom)?.value.trim() ?? '';
+  return { unknownBecause, inherits: inherited === '' ? null : inherited };
+}
+
 function targetOf(element, target) {
   let text = '';
   if (target.child !== undefined) {
@@ -228,10 +246,14 @@ function targetOf(element, target) {
 /**
  * The name bindings of a parsed descriptor, by the catalog's XML binders: for
  * each element a binder names whose direct parent is the binder's parent, one
- * `{ binder, name, line, target, missingTarget }` per name (`target` is
- * `{ kind, text }`, or null for a name with no target text; `missingTarget` is
- * what the binder means by that, as the catalog says it). An element with no
- * name declares no binding and is counted for its binder in `missing`.
+ * `{ binder, name, line, target, missingTarget, unknownBecause, inherits }` per
+ * name (`target` is `{ kind, text }`, or null for a name with no target text;
+ * `missingTarget` is what the binder means by that, as the catalog says it;
+ * `unknownBecause` is the attribute of the binder's `unknownWhen` the element
+ * writes, `inherits` the value of its `inheritFrom` attribute - both null when
+ * the binder has no such rule or the element does not write the attribute). An
+ * element with no name declares no binding and is counted for its binder in
+ * `missing`.
  *
  * @param {{ root: object|null, elements: object[], starts?: number[] }} tree
  * @param {Array<object>} xmlBinders the catalog's
@@ -254,8 +276,9 @@ export function bindingsOfTree(tree, xmlBinders, { mutations = {} } = {}) {
         continue;
       }
       const target = targetOf(element, binder.target);
+      const { unknownBecause, inherits } = targetRulesOf(element, binder.target);
       for (const { name, line } of names) {
-        result.bindings.push({ binder: binder.id, name, line, target, missingTarget: binder.missingTarget });
+        result.bindings.push({ binder: binder.id, name, line, target, missingTarget: binder.missingTarget, unknownBecause, inherits });
       }
     }
   }

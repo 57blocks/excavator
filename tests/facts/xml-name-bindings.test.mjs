@@ -212,6 +212,76 @@ describe('Spring beans', () => {
   });
 });
 
+describe('Spring beans: which roots are read, target rules and aliases (xml-injection-references, task 2.1)', () => {
+  const BEANS = 'http://www.springframework.org/schema/beans';
+  const JAVAEE = 'http://xmlns.jcp.org/xml/ns/javaee';
+
+  it('reads a beans root in the Spring namespace, and a DTD-form root that declares no namespace', () => {
+    expect(read(`<beans xmlns="${BEANS}"><bean id="a" class="x.A"/></beans>`).map((b) => b.name)).toEqual(['a']);
+    expect(read([
+      '<?xml version="1.0"?>',
+      '<!DOCTYPE beans PUBLIC "-//SPRING//DTD BEAN//EN" "http://www.springframework.org/dtd/spring-beans.dtd">',
+      '<beans><bean id="dtd" class="x.D"/><alias name="dtd" alias="legacy"/></beans>',
+    ]).map((b) => b.name)).toEqual(['dtd', 'legacy']);
+  });
+
+  it('does not read a beans root in another namespace: a CDI beans.xml is not Spring configuration', () => {
+    const cdi = `<beans xmlns="${JAVAEE}" version="1.1"><bean id="a" class="x.A"/><alias name="a" alias="b"/></beans>`;
+    expect(readAll(cdi)).toEqual({ bindings: [], missing: {} });
+    expect(readAll('<beans xmlns="urn:other"><bean class="x.A"/></beans>')).toEqual({ bindings: [], missing: {} });
+  });
+
+  it('records the first listed unknownWhen attribute a bean writes, whatever order they are written in', () => {
+    const [method] = read('<beans><bean id="svc" class="x.Locator" factory-method="lookup"/></beans>');
+    expect(method).toMatchObject({ name: 'svc', unknownBecause: 'factory-method', target: cls('x.Locator') });
+    const [bean] = read('<beans><bean id="made" factory-bean="locator"/></beans>');
+    expect(bean).toMatchObject({ name: 'made', unknownBecause: 'factory-bean', target: null });
+    for (const attributes of ['factory-bean="f" factory-method="m"', 'factory-method="m" factory-bean="f"']) {
+      expect(read(`<beans><bean id="both" ${attributes}/></beans>`)[0].unknownBecause).toBe('factory-method');
+    }
+  });
+
+  it('has no unknownBecause for a bean with neither factory attribute, nor for a binder that lists none', () => {
+    expect(read('<beans><bean id="plain" class="x.P"/></beans>')[0].unknownBecause).toBeNull();
+    expect(read('<faces-config><managed-bean><managed-bean-name>a</managed-bean-name><managed-bean-class>x.A</managed-bean-class></managed-bean></faces-config>')[0])
+      .toMatchObject({ unknownBecause: null, inherits: null });
+  });
+
+  it('gives every name of a bean the same unknownBecause and the same inherits', () => {
+    const rows = read('<beans><bean id="a" name="b c" class="x.X" factory-method="m"/><bean id="d" name="e" parent="base"/></beans>');
+    expect(rows.map((b) => [b.name, b.unknownBecause, b.inherits])).toEqual([
+      ['a', 'factory-method', null], ['b', 'factory-method', null], ['c', 'factory-method', null], ['d', null, 'base'], ['e', null, 'base'],
+    ]);
+  });
+
+  it('records the parent a bean names, trimmed, even when it also writes a class; a blank parent is none', () => {
+    expect(read('<beans><bean id="child" parent=" base "/></beans>')[0]).toMatchObject({ target: null, inherits: 'base' });
+    expect(read('<beans><bean id="both" class="x.B" parent="base"/></beans>')[0]).toMatchObject({ target: cls('x.B'), inherits: 'base' });
+    expect(read('<beans><bean id="blank" parent="  "/></beans>')[0].inherits).toBeNull();
+    expect(read('<beans><bean id="none" class="x.N"/></beans>')[0].inherits).toBeNull();
+  });
+
+  it('reads an alias element under beans: the alias is the name, the name attribute is a target of kind name', () => {
+    const [alias] = read(['<beans xmlns="' + BEANS + '">', '  <bean id="orderDao" class="x.Dao"/>', '  <alias name="orderDao" alias="orders"/>', '</beans>']).slice(1);
+    expect(alias).toMatchObject({ binder: 'spring-xml-alias', name: 'orders', line: 3, target: { kind: 'name', text: 'orderDao' }, missingTarget: 'unknown', unknownBecause: null, inherits: null });
+  });
+
+  it('reads an alias under a nested beans element, trims its name, and gives a blank name no target', () => {
+    expect(shown(read('<beans><beans profile="p"><alias name=" a " alias=" b "/></beans></beans>'))).toEqual([['spring-xml-alias', 'b', 1, { kind: 'name', text: 'a' }]]);
+    expect(shown(read('<beans><alias name=" " alias="b"/></beans>'))).toEqual([['spring-xml-alias', 'b', 1, null]]);
+  });
+
+  it('counts an alias with no alias attribute as missing a name, and reads no alias that is not directly under beans', () => {
+    const result = readAll('<beans><alias name="a"/><bean id="x" class="y.Z"><property name="p"><alias name="a" alias="b"/></property></bean></beans>');
+    expect(result.bindings.map((b) => b.name)).toEqual(['x']);
+    expect(result.missing).toEqual({ 'spring-xml-alias': 1 });
+  });
+
+  it('reads an alias in a DTD-form file and not in a commented-out line', () => {
+    expect(read('<beans>\n<!-- <alias name="a" alias="gone"/> -->\n<alias name="a" alias="live"/></beans>').map((b) => [b.name, b.line])).toEqual([['live', 3]]);
+  });
+});
+
 describe('Seam components.xml (the root namespace limits a binder)', () => {
   const SEAM = 'http://jboss.com/products/seam/components';
 
