@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ejb-jar xmlns="http://xmlns.jcp.org/xml/ns/javaee" version="3.2">
+  <enterprise-beans>
+    <session>
+      <ejb-name>OrderProcessor</ejb-name>
+      <business-local>com.acme.orders.OrderProcessorLocal</business-local>
+      <ejb-class>com.acme.orders.OrderProcessorBean</ejb-class>
+      <session-type>Stateless</session-type>
+    </session>
+  </enterprise-beans>
+  <interceptors>
+    <interceptor>
+      <interceptor-class>com.acme.orders.AuditInterceptor</interceptor-class>
+    </interceptor>
+  </interceptors>
+</ejb-jar>

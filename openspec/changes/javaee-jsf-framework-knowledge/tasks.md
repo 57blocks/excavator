@@ -60,16 +60,16 @@
 
 ## 3. 扫描
 
-- [ ] 3.1 `scan-project.mjs` 按 design D7 扩充语言表与类别表；`agents/excavator-project-scanner.md` 的类别表同步。
+- [x] 3.1 `scan-project.mjs` 按 design D7 扩充语言表与类别表；`agents/excavator-project-scanner.md` 的类别表同步。
   验证：`tests/skill/excavator/test_scan_project.test.mjs` 断言七个扩展名的语言 id 与类别（spec「Facelets 与 JSP 视图按 markup 普查」的前两个场景及其余扩展名），以及 `classifyLanguage` 对它们报 `declared: true`。
-- [ ] 3.2 `scan-project.mjs` 按 design D3 输出 `detectedFrameworks`，更新文件头注释的输出示例。
+- [x] 3.2 `scan-project.mjs` 按 design D3 输出 `detectedFrameworks`，更新文件头注释的输出示例。
   验证：扫描测试覆盖：
   - 检出的精确值（id、manifest 数、证据路径与行）；
   - 被 `.excavatorignore` 排除的 manifest 不参与（spec 场景「被忽略的 manifest 不参与」）；
   - 默认过滤目录（如 `node_modules/`、`target/`）里的 manifest 不参与；
   - 没有 manifest 时为 `[]`；
   - 同一输入两次扫描输出逐字节相同。
-- [ ] 3.3 新增夹具 `tests/fixtures/javaee-jsf-app/`，按 design D9。扫描测试对它断言 `detectedFrameworks` 恰为 `javaee`（manifest 数 2）与 `jsf`（manifest 数 3），没有 `spring`；断言视图文件的语言与类别。
+- [x] 3.3 新增夹具 `tests/fixtures/javaee-jsf-app/`，按 design D9。扫描测试对它断言 `detectedFrameworks` 恰为 `javaee`（manifest 数 2）与 `jsf`（manifest 数 3），没有 `spring`；断言视图文件的语言与类别。
   验证：测试通过；临时让 `maskManifestText` 原样返回，确认 `spring` 出现、测试变红，再还原。
 
 ## 4. 图头
