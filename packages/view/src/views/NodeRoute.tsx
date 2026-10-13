@@ -1,6 +1,7 @@
 // #/node/<id>[?hops=2]: the graph explorer's symbol level (task 6.2), the
 // node's 1- or 2-hop neighborhood over the CSR adjacency, above the node
-// detail panel (task 6.3). An unknown id says so plainly.
+// detail panel (task 6.3) with its source excerpt and each edge's evidence
+// line text (task 7.1). An unknown id says so plainly.
 import { useEffect, useMemo, useState } from 'react';
 import { motion } from 'framer-motion';
 import { cellText, isTable, type ViewData } from '../data';
@@ -8,12 +9,14 @@ import { fmtNumber, text } from '../format';
 import { edgeTypeKey } from '../model/edge-types';
 import type { EdgeGroup, NeighborhoodResult, NodeEdgesResult } from '../model/graph-model';
 import { chunkTerms, edgeEvidence, evidenceLocation, nodeFacts, nodeRowIndex, type NodeFacts } from '../model/node-detail';
+import { evidenceLineText, nodeExcerpt, reasonMessage } from '../model/source-text';
 import { dirHash, graphDirHash, graphFileHash, nodeHash, sectionHash } from '../routes';
 import { clearBusy, markBusy } from '../instrument';
 import { EdgeLegend } from './EdgeLegend';
 import { Breadcrumbs, GraphFrame, filterLinks, typeCounts, useLevelReport } from './Graph';
 import { GraphCanvas, type CanvasLink, type CanvasNode } from './GraphCanvas';
 import { runQuery, useCsr, useDisabledTypes } from './graph-state';
+import { SourceBlock } from './SourceBlock';
 
 /** Evidence rows shown per edge in the detail. */
 const EVIDENCE_PER_EDGE = 3;
@@ -176,6 +179,19 @@ function parentDir(path: string): string {
 
 function NodeDetail({ data, id, row, facts, edges }: { data: ViewData; id: string; row: number; facts: NodeFacts; edges: NodeEdgesResult | null }) {
   const terms = useMemo(() => chunkTerms(data.segments, data.strings, data.meta, row), [data, row]);
+  // Evidence lines of this node's out-edges that fall inside its excerpt.
+  const highlight = useMemo(() => {
+    const lines = new Set<number>();
+    if (!edges || facts.path === null) return lines;
+    for (const group of edges.out) {
+      for (let i = 0; i < group.edges.length; i += 2) {
+        for (const ev of edgeEvidence(data.segments, data.strings, group.edges[i], EVIDENCE_PER_EDGE).rows) {
+          if (ev.file === facts.path && ev.line >= facts.line0 && ev.line <= facts.line1) lines.add(ev.line);
+        }
+      }
+    }
+    return lines;
+  }, [edges, data, facts]);
   const dir = facts.path === null ? null : parentDir(facts.path);
   return (
     <div className="detail" data-node-detail={id}>
@@ -215,6 +231,14 @@ function NodeDetail({ data, id, row, facts, edges }: { data: ViewData; id: strin
         </section>
         <TermsCard terms={terms} />
       </div>
+      <section className="card" data-excerpt={id}>
+        <h2>Source</h2>
+        {facts.line0 < 0 ? (
+          <p className="muted" data-source="no-line-range">This node has no line range, so there is no excerpt.</p>
+        ) : (
+          <SourceBlock source={nodeExcerpt(data.meta, data.segments, row, facts.path)} startLine={facts.line0} highlight={highlight} />
+        )}
+      </section>
       <EdgesCard data={data} edges={edges} />
     </div>
   );
@@ -279,11 +303,19 @@ function EdgesCard({ data, edges }: { data: ViewData; edges: NodeEdgesResult | n
       </section>
     );
   }
+  const evidenceEntry = (data.meta.embeds ?? []).find((e) => e.segment === 'evidenceText');
+  const dropped = (data.meta.dropped ?? []).find((d) => d.segment === 'evidenceText');
+  const pageReason = dropped?.reason === 'no-source' || dropped?.reason === 'budget' ? dropped.reason : evidenceEntry?.status === 'embedded' ? null : 'not-recorded';
   const outTotal = edges.out.reduce((n, g) => n + g.total, 0);
   const inTotal = edges.in.reduce((n, g) => n + g.total, 0);
   return (
     <section className="card" data-edges-out={outTotal} data-edges-in={inTotal}>
       <h2>Edges</h2>
+      {pageReason !== null && (
+        <p className="source-missing" data-source="not-embedded" data-source-reason={pageReason}>
+          {reasonMessage(data.meta, 'evidenceText', pageReason)} Evidence keeps its file and line.
+        </p>
+      )}
       <div className="grid-2">
         <div>
           <h3>Outgoing ({fmtNumber(outTotal)})</h3>
@@ -333,6 +365,7 @@ function EdgeGroupList({ data, group, direction }: { data: ViewData; group: Edge
               {ev.rows.map((e) => (
                 <div key={e.row} className="evidence" data-evidence={e.row}>
                   <span className="mono muted">{evidenceLocation(e)}</span>
+                  {e.line >= 0 && <SourceBlock source={evidenceLineText(data.meta, data.segments, e.row, e.file)} startLine={e.line} highlight={new Set([e.line])} compact />}
                 </div>
               ))}
               {ev.total > ev.rows.length && <div className="muted">+{fmtNumber(ev.total - ev.rows.length)} more evidence</div>}

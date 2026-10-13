@@ -1,6 +1,7 @@
-// artifact-view tasks 6.2-6.4: the graph explorer's levels (member,
+// artifact-view tasks 6.2-6.4 and 7.1: the graph explorer's levels (member,
 // directory, file, symbol neighborhood), the node detail's edge lists, the
-// edge-type legend against retrieve.mjs and the graph routes. Checked against hand-computed
+// edge-type legend against retrieve.mjs, the graph routes, and the source
+// text lookups with their recorded reasons. Checked against hand-computed
 // answers on the committed dev fixture and on hand-built segments.
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
@@ -15,6 +16,7 @@ import {
 } from '../../packages/view/src/model/graph-model.ts';
 import { QueryEngine, retainForQueries } from '../../packages/view/src/model/engine.ts';
 import { chunkTerms, edgeEvidence, evidenceLocation, nodeFacts, nodeRowIndex } from '../../packages/view/src/model/node-detail.ts';
+import { evidenceLineText, nodeExcerpt } from '../../packages/view/src/model/source-text.ts';
 import { graphDirHash, graphFileHash, nodeHash, parseHash, routeSection } from '../../packages/view/src/routes.ts';
 import { buildStructure, compressedDir } from '../../packages/view/src/model/tree.ts';
 
@@ -247,6 +249,37 @@ describe('node detail model (6.3)', () => {
     const meta = { ...segments.meta, index: { ...segments.meta.index, literals: 'omitted' } };
     const terms = chunkTerms(trimmed, segments.strings, meta, 0);
     expect(terms).toMatchObject({ state: 'chunk', comments: null, strings: null, literals: { state: 'omitted' } });
+  });
+});
+
+describe('source text and its recorded reasons (7.1)', () => {
+  it('returns evidence line text and excerpts when embedded', async () => {
+    const segments = await sampleSegments();
+    expect(evidenceLineText(segments.meta, segments, 0, 'src/main.ts')).toEqual({ state: 'embedded', text: '  return formatGreeting(name, counter.value());' });
+    const excerpt = nodeExcerpt(segments.meta, segments, 0, 'src/counter.ts');
+    expect(excerpt.state).toBe('embedded');
+    expect(excerpt.text.split('\n')).toHaveLength(11);
+  });
+
+  it('points to --no-source, the budget, a hash mismatch, or the bake counts, never a guess', async () => {
+    const segments = await sampleSegments();
+    const strip = (...names) => {
+      const copy = { ...segments };
+      for (const n of names) delete copy[n];
+      return copy;
+    };
+    const noSource = { ...segments.meta, embeds: segments.meta.embeds.map((e) => ({ segment: e.segment, status: 'dropped', reason: 'no-source' })), dropped: [{ segment: 'excerpts', reason: 'no-source' }, { segment: 'evidenceText', reason: 'no-source' }] };
+    expect(nodeExcerpt(noSource, strip('excerpts', 'excerpts.strings'), 0, 'src/counter.ts')).toMatchObject({ state: 'not-embedded', reason: 'no-source', message: 'Source not embedded: this page was baked with --no-source.' });
+    const budget = { ...segments.meta, embeds: [{ segment: 'excerpts', status: 'dropped', reason: 'budget' }], dropped: [{ segment: 'excerpts', reason: 'budget' }] };
+    expect(nodeExcerpt(budget, strip('excerpts', 'excerpts.strings'), 0, 'x').message).toBe('Source not embedded: the symbol excerpts were dropped to fit the source budget (64 MB).');
+    // Embedded segment, but this row has no text.
+    const holes = { ...segments, evidenceText: { rows: segments.evidenceText.rows, columns: { text: new Int32Array(segments.evidenceText.rows).fill(-1) } } };
+    const mismatchMeta = { ...segments.meta, source: { ...segments.meta.source, embedding: { ...segments.meta.source.embedding, filesHashMismatch: 1, hashMismatchSamples: ['src/main.ts'] } } };
+    expect(evidenceLineText(mismatchMeta, holes, 0, 'src/main.ts')).toMatchObject({ reason: 'hash-mismatch' });
+    const other = evidenceLineText(mismatchMeta, holes, 1, 'src/counter.ts');
+    expect(other.reason).toBe('not-embedded-for-file');
+    expect(other.message).toContain('1 with a content hash mismatch');
+    expect(nodeExcerpt({ ...segments.meta, embeds: [], dropped: [] }, strip('excerpts', 'excerpts.strings'), 0, 'x').reason).toBe('not-recorded');
   });
 });
 

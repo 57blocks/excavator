@@ -242,7 +242,7 @@ if (!chrome.path) {
       expect(missing.dom).toContain('data-graph-missing="nope"');
     }, 90_000);
 
-    it('lists every edge type a class node has, with the evidence file and line (6.3)', async () => {
+    it('lists every edge type a class node has, with evidence lines highlighted (6.3, 7.1)', async () => {
       const result = await smoke(goodPage, { hash: `#/node/${encodeURIComponent('class:src/counter.ts:Counter')}` });
       expect(result).toMatchObject({ ok: true, route: 'node' });
       expect(result.view).toMatchObject({ graphLevel: 'symbol', selectedNode: 'class:src/counter.ts:Counter', detailEdges: 'in:contains=1,in:exports=1', neighborhoodTotal: 2 });
@@ -251,9 +251,42 @@ if (!chrome.path) {
       expect(dom).toContain('data-edge-group="in:exports" data-total="1"');
       expect(dom).toContain('data-peer="file:src/counter.ts"');
       expect(dom).toContain('src/counter.ts:1-11');
+      // The evidence line, monospaced with its number, highlighted.
+      expect(dom).toMatch(/<span class="code-line" data-line="1" data-highlight="true"><span class="ln">1<\/span><span class="lt">export class Counter \{<\/span>/);
+      // The excerpt: the class's 11 lines.
+      expect(dom).toMatch(/data-source="embedded" data-source-lines="11"/);
       expect(dom).toContain('data-terms="chunk"');
       expect(dom).toContain('data-terms-literals="comments" data-state="empty"');
       expect(dom).toContain('data-link="graph-file"');
+    }, 90_000);
+
+    it('highlights a function\'s own call evidence inside its excerpt (7.1)', async () => {
+      const result = await smoke(goodPage, { hash: `#/node/${encodeURIComponent('function:src/main.ts:run(name)')}` });
+      expect(result.view.detailEdges).toBe('out:calls=1,in:contains=1,in:exports=1');
+      expect(result.dom).toMatch(/data-source="embedded" data-source-lines="5" data-highlighted="1"/);
+      expect(result.dom).toContain('<span class="code-line" data-line="7" data-highlight="true"><span class="ln">7</span><span class="lt">  return formatGreeting(name, counter.value());</span>');
+    }, 90_000);
+
+    it('says "Source not embedded" with the --no-source reason, and literals not embedded (7.1)', async () => {
+      const page = join(scratch, 'no-source-detail.html');
+      bake(analyzed, page, '--no-source');
+      const result = await smoke(page, { hash: `#/node/${encodeURIComponent('function:src/main.ts:run(name)')}` });
+      expect(result.ok).toBe(true);
+      const dom = result.dom;
+      expect(dom).toContain('data-source="not-embedded" data-source-reason="no-source"');
+      expect(dom).toContain('Source not embedded: this page was baked with --no-source.');
+      expect(dom).not.toContain('data-source="embedded"');
+      expect(dom).toContain('src/main.ts:7');
+      expect(dom).toContain('data-terms-literals="comments" data-state="not-embedded"');
+    }, 90_000);
+
+    it('names the source budget when the excerpts were dropped to fit it (7.1)', async () => {
+      const page = join(scratch, 'budget-0.html');
+      bake(analyzed, page, '--source-budget', '0');
+      const result = await smoke(page, { hash: `#/node/${encodeURIComponent('function:src/main.ts:run(name)')}` });
+      expect(result.ok).toBe(true);
+      expect(result.dom).toContain('data-source="not-embedded" data-source-reason="budget"');
+      expect(result.dom).toContain('were dropped to fit the source budget');
     }, 90_000);
 
     it('keeps the graph static and marks the page static under prefers-reduced-motion (7.2)', async () => {
