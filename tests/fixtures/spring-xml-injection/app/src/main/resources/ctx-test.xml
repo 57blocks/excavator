@@ -1,0 +1,7 @@
+<beans xmlns="http://www.springframework.org/schema/beans">
+  <bean id="store" class="com.acme.BaseDao"/>
+  <bean id="localDao" class="com.acme.OrderDaoImpl"/>
+  <bean class="com.acme.Node">
+    <property name="dao"><ref local="localDao"/></property>
+  </bean>
+</beans>

@@ -148,6 +148,30 @@ describe('references edges are traversable (openspec: changes/name-binding-refer
   });
 });
 
+describe('injects edges are traversable (openspec: changes/xml-injection-references, D7)', () => {
+  const DAO = 'class:src/OrderDaoImpl.java:OrderDaoImpl';
+  const SERVICE = 'class:src/OrderServiceImpl.java:OrderServiceImpl';
+  const edges = [
+    { type: 'injects', source: SERVICE, target: DAO, direction: 'forward' },
+    { type: 'related', source: DAO, target: 'file:semantic-only', direction: 'forward' },
+  ];
+
+  it('is one of the deterministic edge types, beside references and mentions', () => {
+    expect(DETERMINISTIC_EDGE_TYPES).toContain('injects');
+    expect(DETERMINISTIC_EDGE_TYPES).toContain('references');
+  });
+
+  it('takes the injected class to the class that consumes it, against the edge direction (spec: from the injected class)', () => {
+    const result = oneHop(edges, [DAO]);
+    expect(new Set(result.nodes)).toEqual(new Set([DAO, SERVICE]));
+    expect(result.edges.map((e) => e.type)).toEqual(['injects']); // the non-fact edge stays out
+  });
+
+  it('takes the consumer to what it is injected with, along the edge, within the bounded search', () => {
+    expect(boundedBFS(edges, [SERVICE], { maxHops: 1 }).nodes).toContain(DAO);
+  });
+});
+
 describe('boundedBFS — full deterministic path within budget', () => {
   it('reaches the whole Controller -> Service -> Handler -> EventBus chain within the default budget', () => {
     const result = boundedBFS(chainEdges(), [CONTROLLER], { maxHops: 4 });

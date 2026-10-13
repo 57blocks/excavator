@@ -2,8 +2,9 @@
  * name-reference-sites.mjs
  *
  * The name-reference stage of the Lazy driver (openspec: changes/
- * name-binding-references, design D9): read every non-code file of the manifest
- * once and gather what the projection needs to resolve expression names -
+ * name-binding-references, design D9; changes/xml-injection-references, design
+ * D9): read every non-code file of the manifest once and gather what the
+ * projection needs to resolve expression names and XML injection sites -
  *
  *   files         per expression file (by extension, or by XML root and
  *                 namespace, as the catalog's expression language says): the
@@ -12,9 +13,18 @@
  *                 (a template-text extension of the catalog is read whole);
  *   bindings      the name bindings XML descriptors declare, by the catalog's
  *                 XML binders, each with what its binder means by a missing
- *                 target (annotation bindings are the projection's: they come
- *                 from the structure rows);
+ *                 target and the target rules it wrote (the attribute of the
+ *                 binder's `unknownWhen` it carries, the value of its
+ *                 `inheritFrom` attribute); annotation bindings are the
+ *                 projection's: they come from the structure rows;
  *   missingNames  the elements a binder matched that gave no name, by binder;
+ *   injections    the injection sites the catalog's XML injection families
+ *                 read, one row each, with its file (xml-name-bindings.mjs,
+ *                 `injectionsOfTree`);
+ *   injectionFiles  per family id (every family of the catalog, zero included),
+ *                 the files whose root the family reads;
+ *   uncoveredReferences  what the families' census counts and no site read,
+ *                 merged over the files, by key, keys in order;
  *   conditions    the descriptors that open a namespace to expressions (the
  *                 catalog's `elementTextIn`), as facts: file, language,
  *                 namespace, line;
@@ -28,15 +38,17 @@
  *
  * Scope is the whole manifest minus code languages (tree-sitter languages of
  * the registry). Content comes from the injected `readFile`, which the driver
- * binds to the MATERIALIZED snapshot - never to the live tree. Pure otherwise:
- * no model, no build.
+ * binds to the MATERIALIZED snapshot - never to the live tree. A file is read
+ * once and, when a binder, a condition or an injection family reads its root,
+ * parsed once: everything is taken from that one tree. Pure otherwise: no
+ * model, no build.
  */
 
 import { extname } from 'node:path';
 import { lexElExpressions } from './el-expressions.mjs';
 import { isCodeLanguage } from './text-mentions.mjs';
 import {
-  bindingsOfTree, parseXml, readRootElement, rootMatches, textConditionHitsOfTree,
+  bindingsOfTree, injectionsOfTree, parseXml, readRootElement, rootMatches, textConditionHitsOfTree,
 } from './xml-name-bindings.mjs';
 
 /**
@@ -55,15 +67,18 @@ const compareText = (a, b) => (a < b ? -1 : a > b ? 1 : 0);
  *   scan: { files: Array<{ path: string, language: string }> },
  *   catalog: object,
  *   readFile: (path: string) => string,
- *   mutations?: { noCommentMask?: boolean, anyParent?: boolean },
+ *   mutations?: { noCommentMask?: boolean, anyParent?: boolean, outermostConsumer?: boolean, anyRootNamespace?: boolean, noCensus?: boolean },
  * }} args
  *   `mutations` is the test seam of the reading-stage mutation tripwires
  *   (name-reference-resolution.mjs has the resolution-stage ones); production
  *   callers leave it empty.
  * @returns {{
  *   files: Array<{ file: string, language: string, expressionLanguage: string, roots: object[], escaped: number, unterminated: number, unscanned: number }>,
- *   bindings: Array<{ file: string, binder: string, name: string, line: number, target: { kind: string, text: string }|null, missingTarget: string }>,
+ *   bindings: Array<{ file: string, binder: string, name: string, line: number, target: { kind: string, text: string }|null, missingTarget: string, unknownBecause: string|null, inherits: string|null }>,
  *   missingNames: Record<string, number>,
+ *   injections: Array<{ file: string, family: string, site: string, name: string, line: number, scope: string, consumer: { line: number, target: { kind: string, text: string }|null, unknownBecause: string|null, inherits: string|null }|null }>,
+ *   injectionFiles: Record<string, number>,
+ *   uncoveredReferences: Record<string, number>,
  *   conditions: Array<{ file: string, expressionLanguage: string, namespace: string, line: number, text: string }>,
  *   outsideFiles: Record<string, number>,
  * }}
@@ -83,7 +98,16 @@ export function collectNameReferenceSites({ scan, catalog, readFile, mutations =
 
   const languages = catalog.expressionLanguages;
   const conditionsOf = (language) => language.sees.filter((entry) => entry.when).map((entry) => ({ namespace: entry.namespace, ...entry.when.elementTextIn }));
-  const result = { files: [], bindings: [], missingNames: {}, conditions: [], outsideFiles: {} };
+  const result = {
+    files: [],
+    bindings: [],
+    missingNames: {},
+    injections: [],
+    injectionFiles: Object.fromEntries(catalog.xmlInjections.map((family) => [family.id, 0])),
+    uncoveredReferences: {},
+    conditions: [],
+    outsideFiles: {},
+  };
 
   for (const file of scan.files) {
     if (isCodeLanguage(file.language)) continue;
@@ -95,15 +119,20 @@ export function collectNameReferenceSites({ scan, catalog, readFile, mutations =
       candidate.files.extensions.some((e) => e.toLowerCase() === extension)
       || (info !== null && candidate.files.xmlRoots.some((entry) => rootMatches(info, entry.root, entry.rootNamespace))));
 
-    // The descriptor is parsed once, and only when a binder or a condition reads its root.
+    // The descriptor is parsed once, and only when a binder, a condition or an injection family reads its root.
     const reads = info !== null && (
       catalog.xmlBinders.some((binder) => rootMatches(info, binder.root, binder.rootNamespace))
+      || catalog.xmlInjections.some((family) => rootMatches(info, family.root, mutations.anyRootNamespace ? undefined : family.rootNamespace))
       || languages.some((candidate) => conditionsOf(candidate).some((condition) => condition.root === info.local)));
     if (reads) {
       const tree = parseXml(text, { maskComments: !mutations.noCommentMask });
       const declared = bindingsOfTree(tree, catalog.xmlBinders, { mutations });
       for (const binding of declared.bindings) result.bindings.push({ file: file.path, ...binding });
       for (const [binder, count] of Object.entries(declared.missing)) result.missingNames[binder] = (result.missingNames[binder] ?? 0) + count;
+      const injected = injectionsOfTree(tree, catalog, { mutations });
+      for (const site of injected.sites) result.injections.push({ file: file.path, ...site });
+      for (const family of injected.families) result.injectionFiles[family] += 1;
+      for (const [key, count] of Object.entries(injected.uncovered)) result.uncoveredReferences[key] = (result.uncoveredReferences[key] ?? 0) + count;
       for (const candidate of languages) {
         for (const condition of conditionsOf(candidate)) {
           for (const hit of textConditionHitsOfTree(tree, condition)) {
@@ -124,5 +153,6 @@ export function collectNameReferenceSites({ scan, catalog, readFile, mutations =
   }
 
   result.outsideFiles = Object.fromEntries(Object.entries(result.outsideFiles).sort(([a], [b]) => compareText(a, b)));
+  result.uncoveredReferences = Object.fromEntries(Object.entries(result.uncoveredReferences).sort(([a], [b]) => compareText(a, b)));
   return result;
 }

@@ -37,6 +37,69 @@ convention implies it carries no citable record. Such an edge is
 edge (see the file-analyzer's "Evidence Fields" section). The deterministic
 ANNOTATE and VALIDATE phases never treat a convention as a fact.
 
+## Where framework knowledge lives
+
+Framework knowledge has three homes. Each piece goes to the lowest one that can
+carry it correctly, so that every language and framework is handled the same
+way.
+
+1. **Detection and layer hints: a `FrameworkConfig`.** This is
+   `packages/core/src/languages/frameworks/<id>.ts`. It holds detection
+   keywords, manifest files, entry-point file names and directory-to-layer
+   hints. It is data only. A framework never gets its own detection or dispatch
+   code.
+2. **Conventions the analysing model applies: an addendum here.** Anything a
+   model can settle by reading one file and querying the graph goes here:
+   - dependency injection by type (`@Inject FooService`, an Angular constructor
+     parameter, FastAPI `Depends`). The `imports` and `calls` edges already
+     link the two classes;
+   - component roles and layers;
+   - route registration (Express `app.use`, Gin `r.Group`, Spring or JAX-RS
+     annotations);
+   - interface to implementation. The graph's `implements` edges answer "how
+     many implementations".
+
+   Edges drawn from these conventions are `inferred`.
+3. **Deterministic facts in the fact graph.** Use this home only for a
+   relationship that one file plus the graph cannot settle, where a guess would
+   be a fabrication. The typical case is a string name in one file that a
+   declaration in another file binds: EL `#{orders}`, Spring `ref="svc"`,
+   `@EJB(beanName = "…")`. Even then the framework knowledge stays data. It is
+   a declarative catalog (`../catalogs/name-bindings.json`) read by a
+   framework-neutral engine. That engine scopes names to the deployment unit,
+   turns an ambiguity into a visible gap and counts every input. Product code
+   never branches on a framework.
+
+Language-level facts belong to no framework and are deterministic for every
+language. They are:
+- imports, including tsconfig path aliases and go.mod module paths;
+- calls, inheritance, `implements` and `overrides`;
+- literal class names and paths written in non-code files.
+
+A framework's own file type (XAML) gets a parser like any other language.
+
+**Moving a relationship up to the third home.** First ask: can a model reading
+this file, with `traverse` and `read_evidence`, decide it? If yes, it stays in
+the addendum. A structural fact may still need determinism, for two reasons:
+- an absence claim needs the complete set (dead-code roots);
+- a model would otherwise have to copy it out at volume (a route table).
+
+In that case, propose a catalog for the whole family as its own OpenSpec
+change, for example every annotation-based route framework together. Never do
+it for one framework alone.
+
+What is where today:
+
+| Knowledge | Home |
+|---|---|
+| Detection and layer hints for every framework listed below | `FrameworkConfig` |
+| DI by type, component roles, HTTP routes (Spring, Angular, Express, Gin, FastAPI, …) | addenda |
+| Endpoints from schema files (GraphQL, protobuf) | deterministic parsers |
+| EL names to bean classes (JSF, JSP, Seam, the Spring EL bridge) | deterministic, `catalogs/name-bindings.json` |
+| XML injection names to the classes they wire (Spring `ref=`, `p:`/`c:` refs, `lookup-method`) | deterministic, `catalogs/name-bindings.json` |
+| Literal class names and paths in descriptors and pages | deterministic, framework-neutral `mentions` |
+| MAUI markup (`.xaml`, `.csproj`, `.feature`) | deterministic parsers |
+
 ## Present today
 
 `angular.md`, `django.md`, `express.md`, `fastapi.md`, `flask.md`, `gin.md`,

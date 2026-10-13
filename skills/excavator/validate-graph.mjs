@@ -225,12 +225,15 @@ export function expectedTokens(edge, source, target, evidenceEntry) {
     }
     case 'mentions':
     case 'references':
+    case 'injects':
       // The line names what the mention WROTE: the evidence entry's own token.
       // The target's name is not on that line when a pattern (`spring/*.xml`)
       // or a classpath suffix hit the file (openspec: changes/name-mention-facts);
       // nor is it for a name an expression writes, which a binding resolved to a
       // class of another name (`#{orders.save}` -> `OrderBean`, openspec:
-      // changes/name-binding-references).
+      // changes/name-binding-references); nor is it for a name a descriptor
+      // writes in an injection (`ref="orders"` -> `OrderDaoImpl`, `injects`,
+      // openspec: changes/xml-injection-references).
       return [evidenceEntry?.token].filter(Boolean);
     default:
       return [source?.name, target?.name].filter(Boolean);

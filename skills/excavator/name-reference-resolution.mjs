@@ -2,15 +2,36 @@
  * name-reference-resolution.mjs
  *
  * Cross-file resolution of the names expressions write (openspec: changes/
- * name-binding-references, capability `fact-graph`, design D3-D8, D10). The
+ * name-binding-references and changes/xml-injection-references, capability
+ * `fact-graph`, design D3-D8 and D10 of the first, D2-D3 of the second). The
  * lexers (el-expressions.mjs, xml-name-bindings.mjs) record what pages write
  * and what descriptors declare; this module reads the annotation bindings from
- * the structure rows, divides the repository into deployment units, and decides
- * for each root name which class it names - and when it cannot say, which
- * visible bucket it lands in.
+ * the structure rows, divides the repository into deployment units, builds the
+ * one table of every name binding with the class each binding comes to
+ * (`buildNameBindingTable`), and decides for each root name which class it
+ * names - and when it cannot say, which visible bucket it lands in
+ * (`resolveNameReferences`).
  *
  * Pure and build-free: it reads the catalog, the lexers' output and the
  * structure rows only. It never reads a file.
+ *
+ * The table holds every name, whether an expression can reach it or not (a
+ * dotted Spring id, a name with a slash): other stages match names as they are
+ * written. Each binding says whether EL can reach it (`el`), and expression
+ * matching reads those only.
+ *
+ * The target of a binding is resolved once, after all bindings are read (D3):
+ *   - an element with an attribute of the binder's `unknownWhen` is unknown,
+ *     even when it writes a class: that class is a factory's;
+ *   - a class or a bundle is what its text names;
+ *   - no target and an `inheritFrom` attribute: what the name that attribute
+ *     writes comes to, in the same unit and namespace;
+ *   - a target of kind `name` (an alias): likewise;
+ *   - anything else is unknown.
+ * What a name comes to is the fate of all its bindings in that unit and
+ * namespace (`classify`); a name with no binding, and a cycle, are unknown, with
+ * the reason. The bindings a resolution went through are kept (`via`), for the
+ * evidence of a later stage.
  *
  * The scope of a name is the deployment unit (D5): a page sees the bindings of
  * its own unit, in the namespaces its expression language sees there. A binding
@@ -66,12 +87,13 @@ export const NAME_REFERENCE_GAP_KINDS = Object.freeze({
 const EL_IDENTIFIER = /^[A-Za-z_$][A-Za-z0-9_$]*$/;
 
 /**
- * May this name go into the binding table? An EL identifier does. A dotted name
- * of which every segment is one does only for a binder whose resolver reads
- * dotted names as namespaces (`namespacedNames`); for any other binder it
- * cannot be reached from EL, which looks a name up whole.
+ * Can an expression reach a binding of this name? An EL identifier can. A dotted
+ * name of which every segment is one can only for a binder whose resolver reads
+ * dotted names as namespaces (`namespacedNames`); for any other binder it cannot
+ * be reached from EL, which looks a name up whole. Names that cannot be reached
+ * are in the table all the same (design D2).
  */
-const isBindableName = (name, binder) =>
+const isElReachable = (name, binder) =>
   EL_IDENTIFIER.test(name) || (binder.namespacedNames && name.includes('.') && name.split('.').every((segment) => EL_IDENTIFIER.test(segment)));
 
 /** The names a root with this member chain can reach: the root, and each dotted prefix of the chain. */
@@ -150,30 +172,35 @@ export function createUnitIndex(manifestPaths, descriptorNames) {
 }
 
 const unitKey = (unit) => (unit === null ? 'repository' : `unit:${unit}`);
-const unitLabel = (unit) => (unit === null ? '(repository)' : unit === '' ? '.' : unit);
+export const unitLabel = (unit) => (unit === null ? '(repository)' : unit === '' ? '.' : unit);
 
 // ---------------------------------------------------------------------------
 // Binding targets
 // ---------------------------------------------------------------------------
 
 /**
- * A target is `{ kind, key, labels }`: `key` is what makes two targets the same
- * one, `labels` is what a gap sample names.
+ * A target is `{ kind, key, labels, via }` (and `reason` for an unknown one):
+ * `key` is what makes two targets the same one, `labels` is what a gap sample
+ * names, `via` the bindings a resolution went through to get there - sites
+ * `{ file, line, binder }`, none for a target written in the binding itself.
  *   node        a repository class with a node
  *   unindexed   a repository class that has no node
  *   external    a class outside the repository
  *   bundle      a resource bundle
- *   unknown     no target text
+ *   unknown     no target text, or none that can be told (`reason` says why)
  *   ambiguous   a class name that several declarations carry
  */
-const nodeTarget = (id, path, name) => ({ kind: 'node', key: `node:${id}`, id, labels: [`${path}#${name}`] });
-const unindexedTarget = (type) => ({ kind: 'unindexed', key: `unindexed:${type}`, labels: [type] });
+const NO_VIA = Object.freeze([]);
+const nodeTarget = (id, path, name) => ({ kind: 'node', key: `node:${id}`, id, labels: [`${path}#${name}`], via: NO_VIA });
+const unindexedTarget = (type) => ({ kind: 'unindexed', key: `unindexed:${type}`, labels: [type], via: NO_VIA });
+/** All unknown targets share one key: they are the same fate, whatever the reason. */
+const unknownTarget = (reason) => ({ kind: 'unknown', key: 'unknown', labels: ['(no target)'], ...(reason === undefined ? {} : { reason }), via: NO_VIA });
 
+/** The target a class or bundle text names (a target of kind `name` is resolved through names, not here). */
 function xmlTarget(target, { typesByFqn, otherJvm, declaredJavaTypes }) {
-  if (target === null) return { kind: 'unknown', key: 'unknown', labels: ['(no target)'] };
-  if (target.kind === 'bundle') return { kind: 'bundle', key: 'bundle', labels: [`bundle ${target.text}`] };
+  if (target.kind === 'bundle') return { kind: 'bundle', key: 'bundle', labels: [`bundle ${target.text}`], via: NO_VIA };
   const found = resolveClassName(target.text, typesByFqn, otherJvm, declaredJavaTypes, {});
-  if (found.kind === 'external') return { kind: 'external', key: `external:${target.text}`, labels: [`${target.text} (outside the repository)`] };
+  if (found.kind === 'external') return { kind: 'external', key: `external:${target.text}`, labels: [`${target.text} (outside the repository)`], via: NO_VIA };
   if (found.kind === 'unindexed') return unindexedTarget(found.type);
   const { declarations } = found;
   if (declarations.length === 1) {
@@ -181,8 +208,18 @@ function xmlTarget(target, { typesByFqn, otherJvm, declaredJavaTypes }) {
     return declaration.id != null ? nodeTarget(declaration.id, declaration.path, lastSegment(declaration.fqn)) : unindexedTarget(declaration.fqn);
   }
   const labels = declarations.map((d) => `${d.path}#${lastSegment(d.fqn)}`).sort(compareText);
-  return { kind: 'ambiguous', key: `ambiguous:${labels.join('|')}`, labels };
+  return { kind: 'ambiguous', key: `ambiguous:${labels.join('|')}`, labels, via: NO_VIA };
 }
+
+/**
+ * A row of the binding table. `site` is the binding's place as evidence cites it
+ * (`{ file, line, binder }`); `target` is set once the binding is resolved - at
+ * once for an annotation, which names its own class. `declared`, `unknownBecause`
+ * and `inherits` are what an XML descriptor wrote about the target.
+ */
+const makeBinding = ({ unit, namespace, name, binder, file, line, el, configures = false, target, declared = null, unknownBecause = null, inherits = null }) => ({
+  unit, namespace, name, binder, file, line, el, configures, target, declared, unknownBecause, inherits, site: { file, line, binder },
+});
 
 // ---------------------------------------------------------------------------
 // Annotation bindings (D3, D4)
@@ -267,20 +304,17 @@ function annotationBindings({ catalog, javaRows, classIds, typesByFqn, otherJvm,
           tally.missingNames[binder.id] += 1;
           continue;
         }
-        if (!isBindableName(named, binder)) {
-          tally.nonIdentifierNames += 1;
-          continue;
-        }
         const id = classIds.get(row.path)?.[index] ?? null;
-        bindings.push({
+        bindings.push(makeBinding({
           unit,
           namespace: binder.namespace,
           name: named,
           binder: binder.id,
           file: row.path,
           line: use.line,
+          el: isElReachable(named, binder),
           target: id != null ? nodeTarget(id, row.path, cls.name) : unindexedTarget(cls.qualifiedName),
-        });
+        }));
       }
     });
   }
@@ -330,8 +364,19 @@ function classify(all) {
 }
 
 /**
+ * The table of every name binding of the repository, each with the class (or
+ * other fate) it comes to - annotation bindings from the structure rows, XML
+ * bindings from the descriptors the name-reference stage read - and what is
+ * needed to ask it about a name.
+ *
+ * A binding is `{ unit, namespace, name, binder, file, line, el, configures,
+ * target, site, ... }`: `el` says whether an expression can reach the name,
+ * `target` is `{ kind, key, labels, via, reason? }` (see `xmlTarget`), `site`
+ * the binding's place for evidence. The table is built once; expression
+ * resolution and, later, injection resolution both read it.
+ *
  * @param {{
- *   sites: { files: object[], bindings: object[], missingNames: Record<string, number>, conditions: object[], outsideFiles: Record<string, number> },
+ *   sites: { bindings: object[], missingNames: Record<string, number> },
  *   catalog: object,
  *   manifestPaths: Iterable<string>,
  *   javaRows: object[],
@@ -339,29 +384,44 @@ function classify(all) {
  *   javaTypes: Array<{ fqn: string, path: string, id: string|null }>,
  *   otherJvm: { isType(pkg: string, name: string): boolean },
  *   declaredJavaTypes: { isType(pkg: string, name: string): boolean },
- *   fileIdOf: (path: string) => string,
- *   languageOf?: (path: string) => string|undefined,
- *   mutations?: { ignoreUnits?: boolean, noLocals?: boolean, bindingsBeforeImplicit?: boolean, firstBinding?: boolean, simpleNameAnnotations?: boolean, ignoreSeesConditions?: boolean, shortestPrefix?: boolean },
+ *   mutations?: { simpleNameAnnotations?: boolean, noAliases?: boolean, noInheritance?: boolean, ignoreUnknownWhen?: boolean },
  * }} args
- *   `sites` is the output of name-reference-sites.mjs. `javaRows` are the
- *   structure rows of the Java files, `classIds` the node ids of their `classes`
- *   entries index for index (null where an id is shared with another declaration
- *   and so names no node). `javaTypes`, `otherJvm` and `declaredJavaTypes` are
- *   the type dictionaries mention-resolution.mjs reads. `mutations` is a test
- *   seam for the mutation tripwires (design D12); production callers leave it
- *   empty.
+ *   `sites` is the output of name-reference-sites.mjs (its `bindings` and
+ *   `missingNames` are read here). `javaRows` are the structure rows of the Java
+ *   files, `classIds` the node ids of their `classes` entries index for index
+ *   (null where an id is shared with another declaration and so names no node).
+ *   `javaTypes`, `otherJvm` and `declaredJavaTypes` are the type dictionaries
+ *   mention-resolution.mjs reads. `mutations` is a test seam for the mutation
+ *   tripwires (design D12; xml-injection-references D11); production callers
+ *   leave it empty.
  * @returns {{
- *   edges: object[],
- *   gaps: Array<{ kind: string, scope: string, sample: string }>,
- *   coverage: object,
+ *   unitOf: (path: string) => string|null,
+ *   bindings: object[],
+ *   elByName: Map<string, object[]>,
+ *   tally: { nonLiteralNames: number, nonIdentifierNames: number, missingNames: Record<string, number>, unconfirmed: Record<string, number> },
+ *   named: (name: string) => object[],
+ *   bindingsNamed: (name: string, scope: { unit: string|null, namespace: string, file?: string }) => object[],
+ *   resolveName: (name: string, scope: { unit: string|null, namespace: string, file?: string }) => { hits: object[], target: object, via: object[] },
+ *   resolveHits: (hits: object[]) => { hits: object[], target: object, via: object[] },
+ *   resolveDeclared: (declared: { declared: { kind: string, text: string }|null, unknownBecause: string|null, inherits: string|null, unit: string|null, namespace: string }) => object,
  * }}
+ *   `elByName` is the bindings an expression can reach, by name; `named` every
+ *   binding of a name, in any unit and namespace; `bindingsNamed` those of one
+ *   unit and namespace (and one file, when `file` is given); `resolveName` what
+ *   a name comes to there (D3): its `hits`, the `target` they come to - unknown
+ *   with a reason when there is no binding - and `via`, the sites of the hits
+ *   and of every binding their resolution went through, by file, line and binder;
+ *   `resolveHits` the same for any bindings (a caller that picks its own hits);
+ *   `resolveDeclared` the target of what an element declared - its class text,
+ *   its `unknownBecause` and `inherits`, in a unit and namespace - by the rules a
+ *   binding's target follows, for an element that declares no binding (the
+ *   consumer of an injection). Arrays the table returns are read-only.
  */
-export function resolveNameReferences({
-  sites, catalog, manifestPaths, javaRows, classIds, javaTypes, otherJvm, declaredJavaTypes, fileIdOf, languageOf = () => undefined, mutations = {},
+export function buildNameBindingTable({
+  sites, catalog, manifestPaths, javaRows, classIds, javaTypes, otherJvm, declaredJavaTypes, mutations = {},
 }) {
   const manifest = new Set(manifestPaths);
   const { unitOf } = createUnitIndex(manifest, catalog.unitDescriptors);
-  const languages = new Map(catalog.expressionLanguages.map((language) => [language.id, language]));
   const xmlBinders = new Map(catalog.xmlBinders.map((binder) => [binder.id, binder]));
   const typesByFqn = indexJavaTypes(javaTypes);
   const targetContext = { typesByFqn, otherJvm, declaredJavaTypes };
@@ -373,7 +433,7 @@ export function resolveNameReferences({
     missingNames: Object.fromEntries(allBinders.map((binder) => [binder.id, 0])),
     unconfirmed: {},
   };
-  const table = annotationBindings({ catalog, javaRows, classIds, typesByFqn, otherJvm, declaredJavaTypes, unitOf, mutations, tally });
+  const bindings = annotationBindings({ catalog, javaRows, classIds, typesByFqn, otherJvm, declaredJavaTypes, unitOf, mutations, tally });
 
   for (const [binderId, count] of Object.entries(sites.missingNames ?? {})) {
     if (!xmlBinders.has(binderId)) throw new Error(`name-reference-resolution: names missing for the binder ${JSON.stringify(binderId)}, which the catalog does not have`);
@@ -386,29 +446,136 @@ export function resolveNameReferences({
     if (site.missingTarget !== 'unknown' && site.missingTarget !== 'configures') {
       throw new Error(`name-reference-resolution: binding in ${site.file} says ${JSON.stringify(site.missingTarget)} for a missing target`);
     }
-    if (!isBindableName(site.name, binder)) {
-      tally.nonIdentifierNames += 1;
-      continue;
-    }
-    table.push({
+    bindings.push(makeBinding({
       unit: unitOf(site.file),
       namespace: binder.namespace,
       name: site.name,
       binder: binder.id,
       file: site.file,
       line: site.line,
-      target: xmlTarget(site.target, targetContext),
+      el: isElReachable(site.name, binder),
       // A name with no target that only configures a component declared elsewhere.
       configures: site.target === null && site.missingTarget === 'configures',
-    });
+      declared: site.target,
+      unknownBecause: site.unknownBecause ?? null,
+      inherits: site.inherits ?? null,
+    }));
   }
 
   const byName = new Map();
+  const elByName = new Map();
+  const byScope = new Map(); // unit, namespace and name -> the bindings
+  const scopeKey = (unit, namespace, name) => JSON.stringify([unitKey(unit), namespace, name]);
+  const addTo = (map, key, binding) => {
+    if (!map.has(key)) map.set(key, []);
+    map.get(key).push(binding);
+  };
+  for (const binding of bindings) {
+    addTo(byName, binding.name, binding);
+    if (binding.el) addTo(elByName, binding.name, binding);
+    addTo(byScope, scopeKey(binding.unit, binding.namespace, binding.name), binding);
+  }
+
+  const named = (name) => byName.get(name) ?? [];
+  const bindingsNamed = (name, { unit, namespace, file }) => {
+    const found = byScope.get(scopeKey(unit, namespace, name)) ?? [];
+    return file === undefined ? found : found.filter((binding) => binding.file === file);
+  };
+
+  // Targets are resolved once each, after every binding is read (D3). A binding
+  // that is being resolved and is asked for again is a cycle.
+  const resolving = new Set();
+  const CYCLE = unknownTarget('cycle');
+
+  const resolveBinding = (binding) => {
+    if (binding.target !== undefined) return binding.target;
+    if (resolving.has(binding)) return CYCLE;
+    resolving.add(binding);
+    binding.target = resolveDeclared(binding);
+    resolving.delete(binding);
+    return binding.target;
+  };
+
+  /**
+   * The target of what an element declared (D3): the same rules for a binding
+   * and, for an element that declares none (an inner or anonymous bean that
+   * consumes an injection), for the element itself.
+   */
+  function resolveDeclared({ declared, unknownBecause, inherits, unit, namespace }) {
+    // A factory builds the bean: the class written, if any, is the factory's. Tripwire seam: it is the bean's.
+    if (unknownBecause !== null && !mutations.ignoreUnknownWhen) return unknownTarget(unknownBecause);
+    if (declared !== null && declared.kind !== 'name') return xmlTarget(declared, targetContext);
+    // No class: the target is what another name comes to - the one an alias names, or the parent's.
+    // Tripwire seams: aliases are not followed, parents are not followed.
+    const through = declared !== null ? (mutations.noAliases ? null : declared.text) : (mutations.noInheritance ? null : inherits);
+    return through === null ? unknownTarget() : resolveName(through, { unit, namespace }).target;
+  }
+
+  /** What bindings come to together: `{ hits, target, via }`, `hits` being the bindings as given (at least one). */
+  function resolveHits(hits) {
+    const entries = hits.map((hit) => ({ target: resolveBinding(hit), configures: hit.configures }));
+    const via = new Set(hits.map((hit) => hit.site));
+    for (const { target } of entries) for (const site of target.via) via.add(site);
+    const sortedVia = [...via].sort(bindingOrder);
+
+    const fate = classify(entries);
+    if (fate.bucket === 'ambiguous') {
+      return { hits, target: { kind: 'ambiguous', key: `ambiguous:${fate.labels.join('|')}`, labels: fate.labels, via: sortedVia }, via: sortedVia };
+    }
+    if (fate.bucket === 'unknown') {
+      const reasons = [...new Set(entries.map((entry) => entry.target.reason).filter((reason) => reason !== undefined))].sort(compareText);
+      return { hits, target: { ...unknownTarget(reasons.length > 0 ? reasons.join('; ') : undefined), via: sortedVia }, via: sortedVia };
+    }
+    return { hits, target: { ...fate.target, via: sortedVia }, via: sortedVia };
+  }
+
+  function resolveName(name, scope) {
+    const hits = bindingsNamed(name, scope);
+    if (hits.length === 0) return { hits, target: unknownTarget(`${name} has no binding in this unit`), via: NO_VIA };
+    return resolveHits(hits);
+  }
+
+  for (const binding of bindings) resolveBinding(binding);
+  tally.nonIdentifierNames = bindings.filter((binding) => !binding.el).length;
+
+  return { unitOf, bindings, elByName, tally, named, bindingsNamed, resolveName, resolveHits, resolveDeclared };
+}
+
+/**
+ * Resolve the root names of the expression files into `references` edges, gaps
+ * and coverage, over the binding table.
+ *
+ * @param {{
+ *   sites: { files: object[], conditions: object[], outsideFiles: Record<string, number> },
+ *   catalog: object,
+ *   table: ReturnType<typeof buildNameBindingTable>,
+ *   manifestPaths: Iterable<string>,
+ *   fileIdOf: (path: string) => string,
+ *   languageOf?: (path: string) => string|undefined,
+ *   mutations?: { ignoreUnits?: boolean, noLocals?: boolean, bindingsBeforeImplicit?: boolean, firstBinding?: boolean, ignoreSeesConditions?: boolean, shortestPrefix?: boolean },
+ * }} args
+ *   `sites` is the output of name-reference-sites.mjs; `table` is built from it
+ *   by `buildNameBindingTable`. `mutations` is a test seam for the mutation
+ *   tripwires (design D12); production callers leave it empty.
+ * @returns {{
+ *   edges: object[],
+ *   gaps: Array<{ kind: string, scope: string, sample: string }>,
+ *   coverage: object,
+ * }}
+ */
+export function resolveNameReferences({
+  sites, catalog, table, manifestPaths, fileIdOf, languageOf = () => undefined, mutations = {},
+}) {
+  const manifest = new Set(manifestPaths);
+  const { unitOf, elByName: byName, tally } = table;
+  const languages = new Map(catalog.expressionLanguages.map((language) => [language.id, language]));
+
+  // Expressions reach only the names EL can reach: the others are in the table for other stages.
+  const allBinders = [...catalog.xmlBinders, ...catalog.annotationBinders];
   const bindingCounts = Object.fromEntries(allBinders.map((binder) => [binder.id, 0]));
   const units = new Set();
-  for (const binding of table) {
-    if (!byName.has(binding.name)) byName.set(binding.name, []);
-    byName.get(binding.name).push(binding);
+  for (const binding of table.bindings) {
+    if (!binding.el) continue;
     bindingCounts[binding.binder] += 1;
     units.add(unitKey(binding.unit));
   }
@@ -520,7 +687,8 @@ export function resolveNameReferences({
             bindings: used.map((b) => ({ file: b.file, line: b.line, binder: b.binder })).sort(bindingOrder),
           });
         } else if (fate.bucket === 'unknown') {
-          gap('unknown', root, [...new Set(used.map((b) => `${b.file}:${b.line}`))].sort(compareText));
+          // Where the bindings are, and why each has no target when it can say.
+          gap('unknown', root, [...new Set(used.map((b) => `${b.file}:${b.line}${b.target.reason === undefined ? '' : ` (${b.target.reason})`}`))].sort(compareText));
         } else if (fate.bucket !== 'bundle' && fate.bucket !== 'external') {
           gap(fate.bucket, root, fate.labels);
         }

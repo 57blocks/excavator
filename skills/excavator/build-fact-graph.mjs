@@ -67,8 +67,11 @@ import {
   assertMentionConservation, createDeclaredJavaTypeIndex, resolveMentions, TARGET_SKIP_REASONS,
 } from './mention-resolution.mjs';
 import {
-  NAME_REFERENCE_GAP_KINDS, assertNameReferenceConservation, resolveNameReferences,
+  NAME_REFERENCE_GAP_KINDS, assertNameReferenceConservation, buildNameBindingTable, resolveNameReferences,
 } from './name-reference-resolution.mjs';
+import {
+  XML_INJECTION_GAP_KINDS, assertInjectionConservation, resolveXmlInjections,
+} from './xml-injection-resolution.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -145,10 +148,13 @@ function ordinalGroupKey(entry) {
  *   `nameReferenceSites` is the output of name-reference-sites.mjs: the root
  *   names of the expressions the expression files write, the name bindings
  *   XML descriptors declare, and the conditions that open a namespace to
- *   expressions. `nameBindingCatalog` is the loaded catalog
+ *   expressions, and the XML injection sites (`injections`,
+ *   `injectionFiles`, `uncoveredReferences`; openspec: changes/
+ *   xml-injection-references). `nameBindingCatalog` is the loaded catalog
  *   (name-binding-catalog.mjs) they were read with and are resolved by
  *   (openspec: changes/name-binding-references). The two go together; omitted,
- *   the stage is recorded as not-run and adds no edge or gap. Annotation
+ *   the stage is recorded as not-run (`coverage.nameReferences` and
+ *   `coverage.injections`) and adds no edge or gap. Annotation
  *   bindings are read here from the structure rows. `nameReferenceMutations`
  *   is the test seam of name-reference-resolution.mjs's mutation tripwires;
  *   leave it unset.
@@ -590,21 +596,37 @@ export function buildFactGraph({ scan, structureAll, importMap, mentionSites, me
   // page is in. Each root name becomes an edge or a visible bucket. Without
   // `nameReferenceSites` and the catalog the stage did not run, which the
   // coverage says in so many words.
+  //
+  // XML injection sites (openspec: changes/xml-injection-references): the names
+  // descriptors write where a bean is wired to another (Spring `ref="orderDao"`),
+  // resolved over the same binding table, each becoming an `injects` edge from
+  // the consumer's class or a visible bucket. Same inputs, same rule for a stage
+  // that did not run.
   // -------------------------------------------------------------------------
   let nameReferenceCoverage = { status: 'not-run' };
+  let injectionCoverage = { status: 'not-run' };
   if ((nameReferenceSites !== undefined && nameReferenceSites !== null) !== (nameBindingCatalog !== undefined && nameBindingCatalog !== null)) {
     throw new Error('buildFactGraph: nameReferenceSites and nameBindingCatalog go together');
   }
   if (nameReferenceSites) {
-    const resolved = resolveNameReferences({
+    const manifestPaths = [...fileRowByPath.keys()];
+    // One table of every name binding, whatever reads it (openspec: changes/xml-injection-references, design D2, D9).
+    const bindingTable = buildNameBindingTable({
       sites: nameReferenceSites,
       catalog: nameBindingCatalog,
-      manifestPaths: fileRowByPath.keys(),
+      manifestPaths,
       javaRows,
       classIds,
       javaTypes,
       otherJvm,
       declaredJavaTypes: createDeclaredJavaTypeIndex(mentionInputs?.javaPackages ?? []),
+      mutations: nameReferenceMutations ?? {},
+    });
+    const resolved = resolveNameReferences({
+      sites: nameReferenceSites,
+      catalog: nameBindingCatalog,
+      table: bindingTable,
+      manifestPaths,
       fileIdOf,
       languageOf: (path) => languageOfPath.get(path),
       mutations: nameReferenceMutations ?? {},
@@ -612,6 +634,18 @@ export function buildFactGraph({ scan, structureAll, importMap, mentionSites, me
     for (const edge of resolved.edges) addEdge(edge);
     for (const gap of resolved.gaps) gapCollector.add(gap.kind, gap.scope, gap.sample);
     nameReferenceCoverage = resolved.coverage;
+
+    const injected = resolveXmlInjections({
+      sites: nameReferenceSites,
+      catalog: nameBindingCatalog,
+      table: bindingTable,
+      manifestPaths,
+      languageOf: (path) => languageOfPath.get(path),
+      mutations: nameReferenceMutations ?? {},
+    });
+    for (const edge of injected.edges) addEdge(edge);
+    for (const gap of injected.gaps) gapCollector.add(gap.kind, gap.scope, gap.sample);
+    injectionCoverage = injected.coverage;
   }
 
   // -------------------------------------------------------------------------
@@ -633,7 +667,7 @@ export function buildFactGraph({ scan, structureAll, importMap, mentionSites, me
     }
     assertCallConservation(javaSiteCount, tally);
   }
-  const coverage = { ...ledger.coverage, mentions: mentionCoverage, nameReferences: nameReferenceCoverage };
+  const coverage = { ...ledger.coverage, mentions: mentionCoverage, nameReferences: nameReferenceCoverage, injections: injectionCoverage };
   if (mentionCoverage.status === 'ran') {
     // The gap counts are read back from what was recorded, as for Java calls.
     const recorded = (kind) => resolutionGaps.filter((gap) => gap.kind === kind).reduce((sum, gap) => sum + gap.count, 0);
@@ -647,6 +681,13 @@ export function buildFactGraph({ scan, structureAll, importMap, mentionSites, me
     const recorded = (kind) => resolutionGaps.filter((gap) => gap.kind === kind).reduce((sum, gap) => sum + gap.count, 0);
     assertNameReferenceConservation(nameReferenceCoverage, Object.fromEntries(
       Object.entries(NAME_REFERENCE_GAP_KINDS).map(([bucket, kind]) => [bucket, recorded(kind)]),
+    ));
+  }
+  if (injectionCoverage.status === 'ran') {
+    // Read back from what was recorded into the graph, by gap kind, not from the resolver's own list.
+    const recorded = (kind) => resolutionGaps.filter((gap) => gap.kind === kind).reduce((sum, gap) => sum + gap.count, 0);
+    assertInjectionConservation(injectionCoverage, Object.fromEntries(
+      [...new Set(Object.values(XML_INJECTION_GAP_KINDS))].map((kind) => [kind, recorded(kind)]),
     ));
   }
   const gaps = [...ledger.gaps, ...resolutionGaps].sort(compareGaps);
@@ -768,10 +809,15 @@ const GAP_REASONS = Object.freeze({
   'mention-target-unindexed': 'name mention(s) in non-code files of something the repository has but the index has no node for (a Kotlin or Scala type, a Java annotation type, a file the scanner skipped as too large or binary): no mentions edge is drawn',
   'path-mention-unresolved': 'path mention(s) in non-code files that no resolution rule anchors to a known file (relative to the mentioning file, to its web root, or on the classpath); files excluded by ignore rules or default filters are not consulted, and a same-named file elsewhere is not guessed',
   'name-reference-target-unindexed': 'expression name(s) in view files whose binding in the page\'s deployment unit names a repository class the index has no node for (a Java annotation type, a Kotlin or Scala type, a class whose node id another declaration shares): no references edge is drawn',
-  'name-reference-target-unknown': 'expression name(s) in view files whose binding in the page\'s deployment unit declares the name but no class (a bean definition that only has a parent, a managed bean with no class element): no references edge is drawn',
+  'name-reference-target-unknown': 'expression name(s) in view files whose binding in the page\'s deployment unit declares the name but no class that can be told (a bean definition whose parent or aliased name has no binding in the unit, a bean built by a factory method or another bean, a managed bean with no class element): no references edge is drawn',
   'name-reference-ambiguous': 'expression name(s) in view files that bind to more than one thing in the page\'s deployment unit (two classes, a class and a resource bundle, or a class name that several declarations carry): no references edge is drawn and none of the candidates is preferred',
   'name-reference-elsewhere': 'expression name(s) in view files that no binding of the page\'s deployment unit declares in a namespace its expression language sees, but another unit or an invisible namespace does (a Spring bean in a unit with no JSF bridge, a bean of another module): no references edge is drawn, since the name is only known to be bound where the page cannot see it',
   'name-reference-unbound': 'expression name(s) in view files that no binding this analysis reads declares: components of libraries, parameters the caller passes in, a page that includes this one statically, producer and factory methods, nested types, sources that are not Java, and values set at runtime are not read, so the name may well be bound there',
+  'injection-target-unresolved': 'XML injection site(s) (a Spring ref and the like) whose name is where a static read cannot look (a ref to a parent container), whose binding in the site\'s deployment unit names a repository class the index has no node for, or declares the name but no class that can be told (a bean built by a factory method, a parent or an alias with no binding in the unit, a cycle): no injects edge is drawn',
+  'injection-ambiguous': 'XML injection site(s) whose name binds to more than one thing in the site\'s deployment unit (two classes, or a class name that several declarations carry): no injects edge is drawn and none of the candidates is preferred',
+  'injection-elsewhere': 'XML injection site(s) whose name no binding of the site\'s deployment unit declares in the family\'s namespace (for a ref local, in the site\'s own file), but another unit, namespace or file does (a bean of another module, a component another framework\'s annotation declares): no injects edge is drawn, since the name is only known to be bound where the site cannot see it',
+  'injection-unbound': 'XML injection site(s) whose name no binding this analysis reads declares: beans of libraries or of a parent context, names set at runtime and components of sources that are not Java are not read, so the name may well be bound there',
+  'injection-consumer-unresolved': 'XML injection site(s) whose name is a repository class but whose consumer has no class that can be told: no enclosing bean element, a bean built by a factory method or with no class, one whose parent has no binding in the unit, an unindexed class or a class name that several declarations carry: no injects edge is drawn (a consumer whose class is outside the repository is no gap)',
 });
 
 /** Reasons for the Java call-site buckets (scope `java`), which resolve by

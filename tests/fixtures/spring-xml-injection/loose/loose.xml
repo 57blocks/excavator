@@ -1,0 +1,7 @@
+<beans xmlns="http://www.springframework.org/schema/beans">
+  <bean id="looseTarget" class="com.acme.MainDs"/>
+  <bean class="com.acme.Node">
+    <property name="ds" ref="looseTarget"/>
+    <property name="dao" ref="orderDao"/>
+  </bean>
+</beans>
