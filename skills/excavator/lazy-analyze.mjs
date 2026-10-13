@@ -205,8 +205,24 @@ export const KNOWLEDGE_GRAPH_VERSION = '1.0.0';
  *  definition with only a `parent` takes its parent's class, and the new
  *  `spring-xml-alias` binder makes an alias a name; and a `beans` root in the
  *  Java EE namespace (a CDI `beans.xml`) is no longer read as Spring
- *  configuration. */
-export const PIPELINE_VERSION = 'lazy-fact-graph/8';
+ *  configuration.
+ *  Bumped to /9 by openspec change annotation-injection-references: the
+ *  names that Java annotations on fields, methods, constructors, parameters
+ *  and record components write where one declaration is wired to another
+ *  (Spring `@Qualifier("orderDao")` and `@Resource`, Seam `@In`, EJB
+ *  `@EJB(beanName)`) are resolved through the same binding table, so an
+ *  unchanged source tree projects new `injects` edges whose evidence is a Java
+ *  line (one edge per pair of classes, merged with an XML source's evidence
+ *  where both draw the pair), more of the `injection-*` gap kinds in scope
+ *  `java`, and a `coverage.annotationInjections` section (which reads
+ *  `not-run` for a projection built without the stage). Structure rows of
+ *  Java files also gain `memberAnnotations`. The binding table gains the
+ *  `ejb-annotation-session` and `spring-annotation-advice` binders and the
+ *  `Configuration` and `RestController` stereotypes, so a name that was
+ *  `unbound` can now be `elsewhere` or a `references` edge, and
+ *  `coverage.nameReferences.bindings` and `missingNames` count the two new
+ *  binders. */
+export const PIPELINE_VERSION = 'lazy-fact-graph/9';
 
 /** Same two-step @excavator/core resolution every sibling script uses. */
 async function resolveCore(root) {

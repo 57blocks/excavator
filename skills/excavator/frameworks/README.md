@@ -97,6 +97,7 @@ What is where today:
 | Endpoints from schema files (GraphQL, protobuf) | deterministic parsers |
 | EL names to bean classes (JSF, JSP, Seam, the Spring EL bridge) | deterministic, `catalogs/name-bindings.json` |
 | XML injection names to the classes they wire (Spring `ref=`, `p:`/`c:` refs, `lookup-method`) | deterministic, `catalogs/name-bindings.json` |
+| Java annotation injection names to the classes they wire (Spring `@Qualifier` and `@Resource`, Seam `@In`, `@EJB(beanName)`) | deterministic, `catalogs/name-bindings.json` |
 | Literal class names and paths in descriptors and pages | deterministic, framework-neutral `mentions` |
 | MAUI markup (`.xaml`, `.csproj`, `.feature`) | deterministic parsers |
 

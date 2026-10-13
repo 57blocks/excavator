@@ -86,9 +86,10 @@
 
 ## 4. 接入流水线与夹具
 
-- [ ] 4.1 新夹具 `tests/fixtures/annotation-injection/`，内容覆盖 design O1 列出的全部情形。
+- [x] 4.1 新夹具 `tests/fixtures/annotation-injection/`，内容覆盖 design O1 列出的全部情形。
   验证：4.2 的管道测试断言精确的边列表、证据、十五个桶与计数。
-- [ ] 4.2 `build-fact-graph.mjs`：
+  夹具：三个部署单元（`app`、`lib`、`seam`，各有 `pom.xml`），38 个注入点，12 条 `injects` 边。除 `bundle` 外每个桶都有至少一个站点；`bundle` 在随附目录里不可达（没有注入族读的绑定器声明资源包），留给单元测试。注解身份的两种结果各有一例：同包的自定义 `Qualifier` 是「他类型」（不计数），按需导入里没有它的 `Qualifier` 是「未确认」。
+- [x] 4.2 `build-fact-graph.mjs`：
   - 在同一张绑定表上依次跑 EL、XML 注入、注解注入；
   - 两种来源的 `injects` 边在加入图之前按（消费者，目标）合并，证据取并集、排序去重；
   - 写 `coverage.annotationInjections`；
@@ -101,10 +102,25 @@
   - 每条证据的行含 `token`。
 
   第 3 步的 `xml-injection-pipeline` 测试只允许版本号字符串变化。
-- [ ] 4.3 图校验与遍历：在夹具产物上跑图校验，没有新增告警；从被注入的类经 `injects` 1 跳到达注解来源的消费者。
+  完成：
+  - 合计守恒由 `tests/lazy/annotation-injection-conservation.test.mjs` 断言（缺一类缺口、多记一条、桶和不等都抛错；不带注解覆盖时 XML 单段守恒对同一份计数不成立；三个绊线开关经同一个 mutations 对象到达注解解析与合并）。
+  - 五类 `injection-*` 缺口的原因文字改为同时说明 XML 与 Java 注解来源。`java` 范围先查 `JAVA_CALL_GAP_REASONS`，它的键（`calls-*`、`override-uncertain`）与五类不相交，不冲突；测试断言。
+  - 没有冻结摘要受影响：没有任何固定摘要哈希 Lazy 投影、覆盖或版本号；`NON_JAVA_ROWS_SHA256` 不变。没有重冻。
+  - 既有断言的变化只有三处：`xml-injection-pipeline` 与 `name-references-pipeline` 两个测试里各两处版本号字符串 `/8` → `/9`；`lazy-publish-staging` 的「单条记录超限」测试，超长函数名由固定 3000 个字符改为「基线最大记录长度 + 1000」。原因：facts digest 的覆盖记录随 `annotationInjections` 段增长，固定的 3006 字符不再大于 `limit`（基线最大记录 + 500），前置断言 `limit < longName.length` 先失败；断言本身不变。
+- [x] 4.3 图校验与遍历：在夹具产物上跑图校验，没有新增告警；从被注入的类经 `injects` 1 跳到达注解来源的消费者。
   验证：测试覆盖以上两点，并覆盖规格场景「两种来源合成一条边」。
-- [ ] 4.4 检查其它可能误判新字段、新覆盖段的位置：schema、`project-service.mjs`、MCP `project_status`、dead-code-detection 读 `functions[].annotations` 的地方。按需最小修改。
+  结论：`validate-graph.mjs` 的 `case 'injects'` 本来就取证据的 `token`，Java 证据的 `token` 在所引的行上（缺省名时是成员的写法），不需要放宽。测试在夹具产物上跑图校验，与去掉全部 `injects` 边的同一图相比：`issues`、`warnings` 不变，`edgesChecked` 与 `edgeConfirmed` 各多 12；只有 `setInventory` 一行、不含名字 `inventory` 的边照样被确认；把 `LibClient` 那条边的证据行改到第 1 行则被报出且只有这一条。遍历：从 `AuditLog` 1 跳到 `OrderService`（两种来源合成的边）与 `AppConfig`（只有注解），从 `OrderDaoImpl` 1 跳到四个消费者，经项目服务与真实 stdio MCP 服务器同样。
+- [x] 4.4 检查其它可能误判新字段、新覆盖段的位置：schema、`project-service.mjs`、MCP `project_status`、dead-code-detection 读 `functions[].annotations` 的地方。按需最小修改。
   验证：逐处说明查过的位置及结论；夹具产物经 `project_status` 能看到 `annotationInjections` 覆盖。
+  逐处结论（除最后一项文档行外，都不需要改代码）：
+  - 图 schema（`packages/core/src/schema.ts`）：`CoverageSchema` 与 `EvidenceSchema` 都是 `passthrough`，新覆盖段与证据里的 `name`、`consumer`、`bindings` 照常通过；`EdgeTypeSchema` 本来就没有 `mentions`、`references`、`injects`，Lazy 产物不经它解析；唯一的使用者 `auditGraphShape`（`annotate-graph.mjs`）只查溯源与非模型证据。测试：夹具产物上 `auditGraphShape` 对 `injects` 边没有发现。
+  - `project-service.mjs`：`projectStatus` 与 `syncFacts` 把 `graph.coverage` 整段作为 `factCoverage` 返回；`snapshotIdentity` 把 manifest 与 `PIPELINE_VERSION` 比较，`/8` 产物读作 `stale`，`sync-fact-graph.mjs` 用同一判据整体重投影。测试：把产物与 manifest 改回 `/8`，`projectStatus` 为 `unavailable`，`syncFacts` 之后覆盖段与注解边回来。
+  - MCP `project_status`：`mcp-server.mjs` 没有限制 `factCoverage` 的输出 schema。测试：真实 stdio 服务器返回 `annotationInjections` 覆盖与 `java` 范围的 `injection-*` 缺口，`traverse` 返回合成边，`read_evidence` 返回 Java 原行。
+  - dead-code-detection 与 `functions[].annotations`：`memberAnnotations` 是独立字段，`functions[].annotations`（裸名）及其校验没动；仓库里还没有读 `functions[].annotations` 的代码（该变更的判定引擎从任务 4.1 起尚未实现），`java-call-resolution.mjs` 只读 `classes[].annotations`。
+  - 枚举覆盖段键的位置：在 `skills/`、`agents/`、`hooks/`、`scripts/`、`src/`、`packages/core/src` 里搜 `coverage.mentions`、`nameReferences`、`injections`，只有 `build-fact-graph.mjs`、`lazy-analyze.mjs` 与各解析模块；`factsDigest` 整段哈希 `coverage`，新段是投影事实，进摘要。
+  - 结构行的其它读者：`build-source-index.mjs`、`annotate-graph.mjs`、`java-call-resolution.mjs`、`mention-sites.mjs` 按字段名取值，不遍历行；`structure-all-store.mjs`、`jsonl-lines.mjs` 整行读写；Core 的 `fingerprint.ts` 只读 `functions`、`classes`、`imports`、`exports`。没有读者在 `memberAnnotations` 上出错。
+  - `validate-graph.mjs`、`retrieve.mjs`：见 4.3，`injects` 都已在其中。
+  - `skills/excavator/frameworks/README.md`：「现在什么在哪」表加一行，说明 Java 注解注入的名字解析在目录里（与第 3 步的 XML 一行并列）。
 
 ## 5. 验收与记录
 

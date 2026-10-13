@@ -1,0 +1,6 @@
+<faces-config>
+  <managed-bean>
+    <managed-bean-name>jsfOnly</managed-bean-name>
+    <managed-bean-class>com.acme.seam.JsfBean</managed-bean-class>
+  </managed-bean>
+</faces-config>

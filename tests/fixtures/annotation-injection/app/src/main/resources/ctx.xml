@@ -1,0 +1,18 @@
+<beans xmlns="http://www.springframework.org/schema/beans">
+  <!-- targets: a class of the unit, one built by a factory, an annotation type, a library class, and a name two files declare -->
+  <bean id="orderDao" class="com.acme.OrderDaoImpl"/>
+  <bean id="dataSource" class="org.apache.commons.dbcp.BasicDataSource"/>
+  <bean id="marker" class="com.acme.Marker"/>
+  <bean id="svc" class="com.acme.ServiceLocator" factory-method="lookup"/>
+  <bean id="store" class="com.acme.OrderDaoImpl"/>
+
+  <!-- consumers: a class a stereotype manages too, a class of another unit, and a class only descriptors wire -->
+  <bean id="orderServiceXml" class="com.acme.OrderService">
+    <property name="audit" ref="auditLog"/>
+  </bean>
+  <bean id="libClient" class="com.acme.lib.LibClient"/>
+  <bean id="xmlWired" class="com.acme.XmlWired">
+    <property name="dao" ref="orderDao"/>
+    <property name="ghost" ref="ghost"/>
+  </bean>
+</beans>
