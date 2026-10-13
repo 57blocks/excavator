@@ -20,7 +20,7 @@
 
 ## 1. Core：带证据的检测
 
-- [ ] 1.1 新增 `packages/core/src/languages/manifest-mask.ts`，导出 `maskManifestText(path, text)`，按 design D2 的格式表遮蔽。被遮蔽的字符换成空格，换行保留。
+- [x] 1.1 新增 `packages/core/src/languages/manifest-mask.ts`，导出 `maskManifestText(path, text)`，按 design D2 的格式表遮蔽。被遮蔽的字符换成空格，换行保留。
   验证：core 单元测试逐格式断言：
   - XML：注释、未闭合注释、`exclusions` 成对元素、`exclude` 自闭合、`excludes`、大小写变体、缺结束标签时不遮蔽；
   - Gradle：`//`、`/* */`、行内 `exclude group:`；

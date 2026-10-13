@@ -131,6 +131,38 @@ describe("maskManifestText: XML", () => {
     expect(masked).toContain("keep");
   });
 
+  it("does not end an exclusions element at an end tag written inside a comment", () => {
+    const text = [
+      "<exclusions>",
+      "  <!-- </exclusions> -->",
+      "  <exclusion><groupId>org.springframework</groupId></exclusion>",
+      "</exclusions>",
+      "<artifactId>keep</artifactId>",
+      "",
+    ].join("\n");
+    const masked = mask("pom.xml", text);
+    expect(masked).not.toContain("springframework");
+    expect(masked).not.toContain("exclusion");
+    expect(masked).toContain("<artifactId>keep</artifactId>");
+  });
+
+  it("does not open an exclusions element at a start tag written inside a comment", () => {
+    const text = [
+      "<!-- <exclusions> -->",
+      "<groupId>org.springframework</groupId>",
+      "</exclusions>",
+      "",
+    ].join("\n");
+    const masked = mask("pom.xml", text);
+    expect(masked).toContain("<groupId>org.springframework</groupId>");
+    expect(masked.split("\n")[0].trim()).toBe("");
+  });
+
+  it("treats an exclusions start tag inside CDATA as text", () => {
+    const text = "<d><![CDATA[ <exclusions> ]]></d>\n<groupId>org.springframework</groupId>\n</exclusions>\n";
+    expect(mask("pom.xml", text)).toBe(text);
+  });
+
   it("applies the XML rules to every .xml and .csproj path, at any depth", () => {
     const text = "<!-- UseMaui -->\n<UseMaui>true</UseMaui>\n";
     for (const path of ["orders/ejb/pom.xml", "ivy.xml", "faces-config.xml", "App/App.csproj", "A.CSPROJ"]) {
@@ -198,6 +230,36 @@ describe("maskManifestText: Gradle", () => {
     expect(masked).toContain("implementation 'spring-boot'");
   });
 
+  it("opens a block comment that starts at the end of an exclude line", () => {
+    const text = [
+      "exclude group: 'x' /* old",
+      "implementation 'org.springframework:spring-core:5.3.0'",
+      "*/",
+      "implementation 'jsf-api'",
+      "",
+    ].join("\n");
+    const masked = mask("build.gradle", text);
+    expect(masked).not.toContain("springframework");
+    expect(masked).toContain("implementation 'jsf-api'");
+    expect(masked.split("\n")[0].trim()).toBe("");
+  });
+
+  it("does not extend masking past the end of a block comment that contains exclude", () => {
+    const one = "/* exclude this */ implementation 'jsf-api'\n";
+    expect(mask("build.gradle", one)).toBe(" ".repeat("/* exclude this */".length) + " implementation 'jsf-api'\n");
+    const many = "/* old\n   exclude group: 'x'\n*/ implementation 'jsf-api'\n";
+    const masked = mask("build.gradle", many);
+    expect(masked).not.toContain("exclude");
+    expect(masked.split("\n")[2]).toBe("   implementation 'jsf-api'");
+  });
+
+  it("masks an exclude statement that follows a comment on its line, and the comment before it", () => {
+    const text = "/* a */ exclude group: 'org.springframework'\nimplementation 'jsf-api'\n";
+    const masked = mask("build.gradle", text);
+    expect(masked.split("\n")[0].trim()).toBe("");
+    expect(masked.split("\n")[1]).toBe("implementation 'jsf-api'");
+  });
+
   it("applies to settings.gradle and nested paths", () => {
     const masked = mask("app/settings.gradle", "// spring-boot\ninclude 'a'\n");
     expect(masked).not.toContain("spring-boot");
@@ -243,6 +305,22 @@ describe("maskManifestText: go.mod", () => {
     const masked = mask("go.mod", text);
     expect(masked).toContain("github.com/gin-gonic/gin");
     expect(masked.split("\n")[0].trim()).toBe("");
+  });
+
+  it("does not close an exclude block at a ) inside a // or a block comment", () => {
+    const text = [
+      "exclude (",
+      "  example.com/a v1.0.0 // retired (2020)",
+      "  example.com/b v1.0.0 /* gone ) */",
+      "  example.com/gin-gonic/gin v1.6.0",
+      ")",
+      "require example.com/d v1.0.0",
+      "",
+    ].join("\n");
+    const masked = mask("go.mod", text);
+    expect(masked).not.toContain("gin-gonic");
+    expect(masked).not.toContain("example.com/b");
+    expect(masked.split("\n")[5]).toBe("require example.com/d v1.0.0");
   });
 
   it("does not read a go.mod block into a Gradle file", () => {

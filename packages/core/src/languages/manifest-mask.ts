@@ -9,8 +9,17 @@
  * offsets and line numbers of the unmasked text are unchanged. Masking can
  * remove a hit and can never create one.
  *
- * Gradle, go.mod and `#` files are scanned for their comment markers (and
- * `exclude`) outside single-line strings, so a file glob in quotes does not
+ * Masking runs in two passes, comments first. The second pass looks for
+ * exclusion declarations (an XML exclusion element, a Gradle `exclude`
+ * statement, a go.mod `exclude ( ... )` block) in the text the first pass has
+ * already blanked. Both passes only blank, so offsets stay put and the result
+ * is the union of the two. The order matters in both directions: an end tag
+ * written inside a comment must not end an exclusion element, and a block
+ * comment that opens at the end of an `exclude` line must still open. `#`
+ * formats have no exclusion pass.
+ *
+ * Gradle, go.mod and `#` files are scanned for their markers (comment starts,
+ * and `exclude`) outside single-line strings, so a file glob in quotes does not
  * open a block comment. Known imprecision, accepted because it can only lose a
  * hit: no format is parsed, so a multi-line string that holds a `//` still
  * blanks the rest of that line.
@@ -39,9 +48,14 @@ const HASH_COMMENT_FILES = new Set([
  */
 export function maskManifestText(path: string, text: string): string {
   const name = (path.split(/[\\/]/).pop() ?? path).toLowerCase();
-  if (XML_FILE.test(name)) return blank(text, xmlRanges(text));
-  if (GRADLE_FILE.test(name)) return blank(text, cStyleRanges(text, false));
-  if (name === "go.mod") return blank(text, cStyleRanges(text, true));
+  if (XML_FILE.test(name)) {
+    const commentFree = blank(text, xmlCommentRanges(text));
+    return blank(commentFree, xmlExclusionRanges(commentFree));
+  }
+  if (GRADLE_FILE.test(name) || name === "go.mod") {
+    const commentFree = blank(text, cStyleCommentRanges(text));
+    return blank(commentFree, cStyleExclusionRanges(commentFree, name === "go.mod"));
+  }
   if (HASH_COMMENT_FILES.has(name)) return blank(text, hashRanges(text));
   return text;
 }
@@ -70,16 +84,16 @@ const EXCLUSION_CLOSERS = new Map<string, RegExp>([
 ]);
 const TAG_NAME = /<([^\s/>!?]+)/y;
 
-function xmlRanges(text: string): Range[] {
+/** First pass: `<!-- -->` comments, an unclosed one running to the end of the text. */
+function xmlCommentRanges(text: string): Range[] {
   const ranges: Range[] = [];
   let cursor = 0;
   for (;;) {
     const lt = text.indexOf("<", cursor);
     if (lt < 0) break;
     if (text.startsWith("<![CDATA[", lt)) {
-      // Character data: a comment or element opener inside it is just text.
-      const close = text.indexOf("]]>", lt + 9);
-      cursor = close < 0 ? text.length : close + 3;
+      // Character data: a comment opener inside it is just text.
+      cursor = cdataEnd(text, lt);
       continue;
     }
     if (text.startsWith("<!--", lt)) {
@@ -87,6 +101,22 @@ function xmlRanges(text: string): Range[] {
       const end = close < 0 ? text.length : close + 3;
       ranges.push([lt, end]);
       cursor = end;
+      continue;
+    }
+    cursor = lt + 1;
+  }
+  return ranges;
+}
+
+/** Second pass, over comment-free text: the exclusion elements. */
+function xmlExclusionRanges(text: string): Range[] {
+  const ranges: Range[] = [];
+  let cursor = 0;
+  for (;;) {
+    const lt = text.indexOf("<", cursor);
+    if (lt < 0) break;
+    if (text.startsWith("<![CDATA[", lt)) {
+      cursor = cdataEnd(text, lt);
       continue;
     }
     const end = exclusionElementEnd(text, lt);
@@ -98,6 +128,11 @@ function xmlRanges(text: string): Range[] {
     cursor = end;
   }
   return ranges;
+}
+
+function cdataEnd(text: string, open: number): number {
+  const close = text.indexOf("]]>", open + 9);
+  return close < 0 ? text.length : close + 3;
 }
 
 /**
@@ -164,22 +199,23 @@ function skipString(tokens: RegExp, text: string, open: number): void {
 }
 
 // ---------------------------------------------------------------------------
-// Gradle and go.mod: comments and exclude statements
+// Gradle and go.mod: comments, then exclude statements
 // ---------------------------------------------------------------------------
 
-const C_STYLE_TOKEN = /\/\/|\/\*|\bexclude\b|["']/g;
+const C_STYLE_COMMENT_TOKEN = /\/\/|\/\*|["']/g;
+const C_STYLE_EXCLUDE_TOKEN = /\bexclude\b|["']/g;
 const GO_MOD_BLOCK_OPEN = /[ \t]*\(/y;
-const GO_MOD_BLOCK_TOKEN = /\)|\/\/[^\n]*/g;
 
-function cStyleRanges(text: string, goMod: boolean): Range[] {
+/** First pass: line comments, and block comments (an unclosed one runs to the end of the text). */
+function cStyleCommentRanges(text: string): Range[] {
   const ranges: Range[] = [];
-  C_STYLE_TOKEN.lastIndex = 0;
+  C_STYLE_COMMENT_TOKEN.lastIndex = 0;
   for (;;) {
-    const token = C_STYLE_TOKEN.exec(text);
+    const token = C_STYLE_COMMENT_TOKEN.exec(text);
     if (!token) break;
     const start = token.index;
     if (isQuote(token[0])) {
-      skipString(C_STYLE_TOKEN, text, start);
+      skipString(C_STYLE_COMMENT_TOKEN, text, start);
       continue;
     }
     let end: number;
@@ -187,33 +223,54 @@ function cStyleRanges(text: string, goMod: boolean): Range[] {
       const close = text.indexOf("*/", start + 2);
       end = close < 0 ? text.length : close + 2;
     } else {
-      // `//` comment or exclude statement: to the end of the line, unless a
-      // go.mod `exclude (` opens a block.
-      const block = goMod && token[0] === "exclude" ? goModBlockEnd(text, start + token[0].length) : -1;
-      const newline = text.indexOf("\n", start);
-      end = block >= 0 ? block : newline < 0 ? text.length : newline;
+      end = lineEnd(text, start);
     }
     ranges.push([start, end]);
-    C_STYLE_TOKEN.lastIndex = end;
+    C_STYLE_COMMENT_TOKEN.lastIndex = end;
   }
   return ranges;
 }
 
 /**
+ * Second pass, over comment-free text: the word `exclude` to the end of the
+ * line, or for go.mod an `exclude ( ... )` block to its closing parenthesis.
+ */
+function cStyleExclusionRanges(text: string, goMod: boolean): Range[] {
+  const ranges: Range[] = [];
+  C_STYLE_EXCLUDE_TOKEN.lastIndex = 0;
+  for (;;) {
+    const token = C_STYLE_EXCLUDE_TOKEN.exec(text);
+    if (!token) break;
+    const start = token.index;
+    if (isQuote(token[0])) {
+      skipString(C_STYLE_EXCLUDE_TOKEN, text, start);
+      continue;
+    }
+    const block = goMod ? goModBlockEnd(text, start + token[0].length) : -1;
+    const end = block >= 0 ? block : lineEnd(text, start);
+    ranges.push([start, end]);
+    C_STYLE_EXCLUDE_TOKEN.lastIndex = end;
+  }
+  return ranges;
+}
+
+function lineEnd(text: string, from: number): number {
+  const newline = text.indexOf("\n", from);
+  return newline < 0 ? text.length : newline;
+}
+
+/**
  * End offset (exclusive) of a go.mod `exclude ( ... )` block whose keyword ends
- * at `afterKeyword`, or -1 when no block opens there or it never closes. A
- * `)` inside a `//` comment does not close the block.
+ * at `afterKeyword`, or -1 when no block opens there or it never closes. The
+ * text is already free of comments, so a `)` in a `//` comment is not there to
+ * close the block.
  */
 function goModBlockEnd(text: string, afterKeyword: number): number {
   GO_MOD_BLOCK_OPEN.lastIndex = afterKeyword;
   const open = GO_MOD_BLOCK_OPEN.exec(text);
   if (!open) return -1;
-  GO_MOD_BLOCK_TOKEN.lastIndex = afterKeyword + open[0].length;
-  for (;;) {
-    const token = GO_MOD_BLOCK_TOKEN.exec(text);
-    if (!token) return -1;
-    if (token[0] === ")") return token.index + 1;
-  }
+  const close = text.indexOf(")", afterKeyword + open[0].length);
+  return close < 0 ? -1 : close + 1;
 }
 
 // ---------------------------------------------------------------------------

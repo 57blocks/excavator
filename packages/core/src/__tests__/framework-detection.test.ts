@@ -250,6 +250,32 @@ describe("FrameworkRegistry.detectWithEvidence: comments and exclusions do not c
     ]);
   });
 
+  it("does not count a dependency left in an exclusions element by an end tag inside a comment", () => {
+    const registry = registryOf(springConfig);
+    const pom = [
+      "<dependency>",
+      "  <artifactId>widget</artifactId>",
+      "  <exclusions>",
+      "    <!-- </exclusions> -->",
+      "    <exclusion><groupId>org.springframework</groupId></exclusion>",
+      "  </exclusions>",
+      "</dependency>",
+      "",
+    ].join("\n");
+    expect(registry.detectWithEvidence([{ path: "pom.xml", content: pom }])).toEqual([]);
+  });
+
+  it("does not count a dependency inside a block comment that opens at the end of an exclude line", () => {
+    const registry = registryOf(springConfig);
+    const gradle = [
+      "exclude group: 'x' /* old",
+      "implementation 'org.springframework:spring-core:5.3.0'",
+      "*/",
+      "",
+    ].join("\n");
+    expect(registry.detectWithEvidence([{ path: "build.gradle", content: gradle }])).toEqual([]);
+  });
+
   it("counts a declaration after a commented one and keeps its line", () => {
     const registry = registryOf(faces);
     const lines = Array.from({ length: 50 }, () => "<x/>");
