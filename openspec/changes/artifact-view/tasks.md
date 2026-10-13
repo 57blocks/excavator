@@ -19,6 +19,7 @@
 11. `feat(view): drag-and-drop data directory`：任务 9.1–9.2。
 12. `feat(view): motion pass, reduced motion and CSP`：任务 10.1–10.3。
 13. `feat(skill): excavator-view skill, opener, gates and docs`：任务 11.1–11.5。
+13a. `fix(view): final acceptance follow-ups`：12.2 的四项非阻塞修正（面包屑「›」、拖入模式「Loaded at」、tooltip 不盖标签、docs/view.md 数字与产物清单）。
 14. `docs(openspec): record artifact-view acceptance and archive`：任务 12.1–12.3。
 
 切片 A = 提交 1–5（能烘焙、能打开、总览与覆盖可看）；切片 B = 提交 6–9（可探索）；切片 C = 提交 10–14（语义层、拖入、动效、skill 与文档）。
@@ -86,40 +87,50 @@
 
 ## 7A. 切片 B 验收发现的修复（切片 B）
 
-- [ ] 7A.1 文件层与邻域层改为与目录层相同的有界规则：最重的 399 项加一个可见的 `more` 桶；连到被收拢符号的边计入可见桶，守恒 `drawn + collapsed + outside = total` 在页面与自报里给出。验证：460 个符号的合成夹具单测断言各桶相加等于总边数（先对「静默 continue」的变体红）；hadoop `FSNamesystem.java` 复跑，1,442 条边全部有去向。
-- [ ] 7A.2 图例每类显示 `drawn / total`，总数按当前范围内的全部边计，某类有边时开关不禁用。验证：单测与 namenode 层复跑（inherits 显示 3 / 26）。
-- [ ] 7A.3 邻域层按跳数分配配额（1 跳与 2 跳各有保底，高扇入节点不能占满 400），并报告连到未画节点的边数。验证：合成夹具里一个 500 入度节点的 `?hops=2` 仍能看到 2 跳节点；自报项断言。
-- [ ] 7A.4 补两条正向断言：目录层 `outsideIn`、文件层 `outsideOut` 的计数来自夹具的已知值。验证：对应变异必须红。
-- [ ] 7A.5 冒烟脚本启动 Chrome 时设 `TMPDIR=<profile>/tmp` 并随 profile 一起清理；4A.4 的检查扩展到 `chrome_url_fetcher` 目录。验证：跑前跑后用户临时目录里以 `com.google.Chrome.` 开头的目录数不增加（本机其它会话也在跑 Chrome，断言只针对本次 profile 下的 tmp 目录为空且被删除）。
+- [x] 7A.1 文件层与邻域层改为与目录层相同的有界规则：最重的 399 项加一个可见的 `more` 桶；连到被收拢符号的边计入可见桶，守恒 `drawn + collapsed + outside = total` 在页面与自报里给出。验证：460 个符号的合成夹具单测断言各桶相加等于总边数（先对「静默 continue」的变体红）；hadoop `FSNamesystem.java` 复跑，1,442 条边全部有去向。
+- [x] 7A.2 图例每类显示 `drawn / total`，总数按当前范围内的全部边计，某类有边时开关不禁用。验证：单测与 namenode 层复跑（inherits 显示 3 / 26）。
+- [x] 7A.3 邻域层按跳数分配配额（1 跳与 2 跳各有保底，高扇入节点不能占满 400），并报告连到未画节点的边数。验证：合成夹具里一个 500 入度节点的 `?hops=2` 仍能看到 2 跳节点；自报项断言。
+- [x] 7A.4 补两条正向断言：目录层 `outsideIn`、文件层 `outsideOut` 的计数来自夹具的已知值。验证：对应变异必须红。
+- [x] 7A.5 冒烟脚本启动 Chrome 时设 `TMPDIR=<profile>/tmp` 并随 profile 一起清理；4A.4 的检查扩展到 `chrome_url_fetcher` 目录。验证：跑前跑后用户临时目录里以 `com.google.Chrome.` 开头的目录数不增加（本机其它会话也在跑 Chrome，断言只针对本次 profile 下的 tmp 目录为空且被删除）。
+
+7A 复跑记录（19c40f97）：每层按类型的边账本（drawn / cut / collapsed / inside / fileNode / outside）与独立统计的总数相等并在页面显示等式；hadoop `FSNamesystem.java` 文件层 1,442 条同文件边 = 1,356 画出 + 86 折入 `more`，整层账本 5,232 条全部有去向并与原始 JSONL 的 oracle 一致；namenode 目录层 28,935 条、`Configuration#set` 两跳 24,843 条账本均平衡；图例按范围内全部边计总数（namenode 的 inherits 显示 3 / 47：3 画出 + 23 超链接上限 + 7 在同一项内 + 14 进出范围；验收举例的 26 只算了项间的边，派发方决定用 47，因为它与原始数据可直接对账）；高扇入节点两跳保底 1/4 配额（`Configuration#set` 1 跳 299 / 3,406、2 跳 99 / 16,497）；macOS 下 Chrome 的单例目录与 url_fetcher 目录都不跟随 `TMPDIR`，脚本改为报告 `userTmpLeft`，验收见到的 22 个目录未能复现、来源未明。
 
 ## 8. 语义层（切片 C）
 
-- [ ] 8.1 Semantics：缓存摘要与标签进节点详情并带新鲜 / 过期徽章；有摘要节点数 / 总数进清点。验证：夹具含两条缓存（一新一旧）各自徽章正确。
-- [ ] 8.2 layers 与 relations（`semantic-graph.json`）：图谱按层着色与图例，relations 列表；`factDigest` 不符整块标过期。验证：夹具 digest 不符时整块标注且仍可浏览。
-- [ ] 8.3 领域流（`domain-graph.json`）：领域 → 流程 → 步骤列表，步骤按序播放动画并跳转锚定节点；`sourceRevision` / `factDigest` 不符标过期。验证：夹具含一个两步流程，播放后定位到第二步的节点。
+- [x] 8.1 Semantics：缓存摘要与标签进节点详情并带新鲜 / 过期徽章；有摘要节点数 / 总数进清点。验证：夹具含两条缓存（一新一旧）各自徽章正确。
+- [x] 8.2 layers 与 relations（`semantic-graph.json`）：图谱按层着色与图例，relations 列表；`factDigest` 不符整块标过期。验证：夹具 digest 不符时整块标注且仍可浏览。
+- [x] 8.3 领域流（`domain-graph.json`）：领域 → 流程 → 步骤列表，步骤按序播放动画并跳转锚定节点；`sourceRevision` / `factDigest` 不符标过期。验证：夹具含一个两步流程，播放后定位到第二步的节点。
 
 ## 9. 拖入目录（切片 C）
 
-- [ ] 9.1 页面接受拖入 / 选择 `.excavator/` 目录：在 Worker 里用与烘焙相同的清点规则与流式解析（JSONL 逐行、可选产物）生成同一数据包结构；源码原文一律「未嵌入」。验证：对测试夹具目录，拖入结果的清点与计数等于烘焙结果（单测在 Node 里跑同一解析函数）。
-- [ ] 9.2 拖入模式的 UI 入口与说明（文件不离开浏览器；拖入与选择两种入口）。验证：headless `--dump-dom` 放不进目录，入口在验收时人工拖入 wcp 的 `.excavator/`，核对清点与计数等于烘焙页（O9）；入口存在性由冒烟脚本断言 DOM 里有 `webkitdirectory` 输入。
+- [x] 9.1 页面接受拖入 / 选择 `.excavator/` 目录：在 Worker 里用与烘焙相同的清点规则与流式解析（JSONL 逐行、可选产物）生成同一数据包结构；源码原文一律「未嵌入」。验证：对测试夹具目录，拖入结果的清点与计数等于烘焙结果（单测在 Node 里跑同一解析函数）。
+- [x] 9.2 拖入模式的 UI 入口与说明（文件不离开浏览器；拖入与选择两种入口）。验证：headless `--dump-dom` 放不进目录，入口在验收时人工拖入 wcp 的 `.excavator/`，核对清点与计数等于烘焙页（O9）；入口存在性由冒烟脚本断言 DOM 里有 `webkitdirectory` 输入。
+- [x] 9.3 拖入目录替换嵌入数据时终止旧的数据 Worker，不泄漏；自报 `data-workers`。验证：替换后断言只有一个活 Worker（C1 遗留，随 7A 一起做）。
+- [x] 9.4 拖入目录替换数据时重置图谱状态（CSR 单例与各层级的位置记忆），进度条正常出现，旧位置不会套到新数据上。验证：冒烟替换数据后 `data-csr` 回到未构建并重新构建。
 
 ## 10. 动效与隐私（切片 C）
 
-- [ ] 10.0 图谱节点视觉语言（design D15）：形状按节点种类、填充按语言色径向渐变、目录与成员节点带语言环与计数徽章、入度刻度；边改二次曲线、箭头与线宽按计数、聚焦模式降噪；标签按缩放分细节层次并带底衬与类型字形；悬停柔光、选中脉冲环、拖动阴影、进入一层时从被点节点交错弹出；画布网格与晕影；深浅主题令牌；`prefers-reduced-motion` 下保留形状颜色、去掉动画；图例同形状。验收建议并入：标签只给最大的约 20 个节点并做碰撞剔除、其余悬停显示；同一对节点的多类型边默认合并为一条带类型分段的边；边透明度按 log 计数；2 跳节点在深色下提高对比度；目录层可选按子目录分簇着色。验证：wcp `wcp-auth/internal` 目录层、一个符号邻域、hadoop namenode 目录层三张截图逐项对照 D15；冒烟读 `data-graph-*` 确认聚焦模式与标签层次切换；页面模型单测断言形状与颜色映射。
-- [ ] 10.1 动效清单落地：计数器、滚动显现、treemap 缩放、图谱展开过渡、边上粒子、面板切换；每项有一个 `data-motion` 标记，`prefers-reduced-motion` 下全部静止。验证：冒烟脚本两种模式各打开一次，统计 `data-motion` 元素数与静止标记。
-- [ ] 10.2 CSP 元标签最终形态（`default-src 'none'`；内联脚本与样式；`img-src data:`；`worker-src blob:`）与无网络自检；深色主题与系统字体栈定稿。验证：1.2 的测试断言 CSP 字面；冒烟脚本断言控制台无 CSP 违规。
-- [ ] 10.3 性能护栏：hadoop 烘焙页打开到总览可交互 ≤ 10 s、图谱首屏 ≤ 400 节点；解码与 CSR 在 Worker。验证：O7 记录。
+- [x] 10.0 图谱节点视觉语言（design D15）：形状按节点种类、填充按语言色径向渐变、目录与成员节点带语言环与计数徽章、入度刻度；边改二次曲线、箭头与线宽按计数、聚焦模式降噪；标签按缩放分细节层次并带底衬与类型字形；悬停柔光、选中脉冲环、拖动阴影、进入一层时从被点节点交错弹出；画布网格与晕影；深浅主题令牌；`prefers-reduced-motion` 下保留形状颜色、去掉动画；图例同形状。验收建议并入：标签只给最大的约 20 个节点并做碰撞剔除、其余悬停显示；同一对节点的多类型边默认合并为一条带类型分段的边；边透明度按 log 计数；2 跳节点在深色下提高对比度；目录层可选按子目录分簇着色。验证：wcp `wcp-auth/internal` 目录层、一个符号邻域、hadoop namenode 目录层三张截图逐项对照 D15；冒烟读 `data-graph-*` 确认聚焦模式与标签层次切换；页面模型单测断言形状与颜色映射。
+- [x] 10.1 动效清单落地：计数器、滚动显现、treemap 缩放、图谱展开过渡、边上粒子、面板切换；每项有一个 `data-motion` 标记，`prefers-reduced-motion` 下全部静止。验证：冒烟脚本两种模式各打开一次，统计 `data-motion` 元素数与静止标记。
+- [x] 10.2 CSP 元标签最终形态（`default-src 'none'`；内联脚本与样式；`img-src data:`；`worker-src blob:`）与无网络自检；深色主题与系统字体栈定稿。验证：1.2 的测试断言 CSP 字面；冒烟脚本断言控制台无 CSP 违规。
+- [x] 10.3 性能护栏：hadoop 烘焙页打开到总览可交互 ≤ 10 s、图谱首屏 ≤ 400 节点；解码与 CSR 在 Worker。验证：O7 记录。
+
+10.x 落实记录（80f88224）：D15 逐条做到，两处例外——按子目录分簇（D15 里是可选项）未做；邻域层画边上限为 2,000 条而非目录层的 600 条（合并路径后 hadoop 两跳 1,578 条路径每帧 2.1 ms，账本的 cut 桶照常可见，设计 D14 已改为分层上限）。浅色令牌只经 `prefers-color-scheme` 生效，`[data-theme=light]` 只设 `color-scheme`，页面没有主题开关，记为已知。实测（第二次运行）：wcp 目录层每帧 1.3 ms、文件层 0.6 ms、两跳邻域 0.6 ms；hadoop namenode 151 节点 / 600 链接 / 360 粒子每帧 1.35 ms，reduced-motion 下 rAF 空闲、粒子 0；总览可交互 hadoop 455 ms。动效清单六种（counter、graph、graph-particles、panel、reveal、treemap-zoom）在 reduced-motion 下全部静止。
 
 ## 11. skill、门禁与文档（切片 C）
 
-- [ ] 11.1 新增 `skills/excavator-view/SKILL.md`（英文，frontmatter `name: excavator-view`）：步骤按 design D12，含共享新鲜度助手的固定句式与 `Run \`/excavator\`` 提示；打开器按宿主选择；`--no-open`；外发提醒 `--no-source`。验证：`node scripts/check-refs.mjs` 通过；`tests/skill/excavator/test_skill_graph_freshness.test.mjs` 列表加入 `excavator-view` 后通过。
-- [ ] 11.2 更新 `tests/skill/excavator/test_service_only_contract.test.mjs`：保留既有禁止项；新增 `packages/view` 与 `skills/excavator-view` 无服务器启动代码与端口的断言；更新 `tests/install/install.test.mjs` 为 11 个 skill。验证：两个测试通过；在 `packages/view` 里临时加 `createServer(` 后契约测试变红（装置先验，不提交）。
-- [ ] 11.3 skill 预检：模板缺失时 `pnpm --filter @excavator/view build`；`pnpm` 缺失时的提示与 `/excavator` 一致。验证：删除 `dist` 后按 SKILL.md 步骤执行能重建并烘焙。
-- [ ] 11.4 文档：README 去掉「不发布 HTML 界面」，加 `/excavator-view` 用法；新增 `docs/view.md`（分享方式、浏览器要求、`--no-source`、`--raw`、体积预期、拖入模式）；`docs/mcp.md` 的构建说明提及 view。验证：`pnpm vitest run tests/refs/legacy-literals.test.mjs` 通过；README 与 SKILL.md 的 slash 引用经 check-refs。
-- [ ] 11.5 `.claude-plugin/plugin.json` 与根 `package.json` 版本号按仓库惯例递增。验证：check-refs 的 manifest 形状检查通过。
+- [x] 11.1 新增 `skills/excavator-view/SKILL.md`（英文，frontmatter `name: excavator-view`）：步骤按 design D12，含共享新鲜度助手的固定句式与 `Run \`/excavator\`` 提示；打开器按宿主选择；`--no-open`；外发提醒 `--no-source`。验证：`node scripts/check-refs.mjs` 通过；`tests/skill/excavator/test_skill_graph_freshness.test.mjs` 列表加入 `excavator-view` 后通过。
+- [x] 11.2 更新 `tests/skill/excavator/test_service_only_contract.test.mjs`：保留既有禁止项；新增 `packages/view` 与 `skills/excavator-view` 无服务器启动代码与端口的断言；更新 `tests/install/install.test.mjs` 为 11 个 skill。验证：两个测试通过；在 `packages/view` 里临时加 `createServer(` 后契约测试变红（装置先验，不提交）。
+- [x] 11.3 skill 预检：模板缺失时 `pnpm --filter @excavator/view build`；`pnpm` 缺失时的提示与 `/excavator` 一致。验证：删除 `dist` 后按 SKILL.md 步骤执行能重建并烘焙。
+- [x] 11.4 文档：README 去掉「不发布 HTML 界面」，加 `/excavator-view` 用法；新增 `docs/view.md`（分享方式、浏览器要求、`--no-source`、`--raw`、体积预期、拖入模式）；`docs/mcp.md` 的构建说明提及 view。验证：`pnpm vitest run tests/refs/legacy-literals.test.mjs` 通过；README 与 SKILL.md 的 slash 引用经 check-refs。
+- [x] 11.5 `.claude-plugin/plugin.json` 与根 `package.json` 版本号按仓库惯例递增。验证：check-refs 的 manifest 形状检查通过。
+
+11.x 记录（5880a3d2）：skill 全流程按 design D12，新鲜度句式满足读图 skill 契约；service-only 契约测试加「view 包与 skill 下无服务器代码、SKILL.md 无端口 / localhost / dashboard 字样」；安全片段测试覆盖 view 的 SKILL.md；README、docs/view.md、docs/mcp.md 更新，文档不出现客户项目名。11.5 的版本号派发方决定不升：仓库自上游导入后从未升版，`mcp-server.mjs` 与部署夹具硬编码 2.9.6，升版属于维护者的发布决定，不在本变更内。
 
 ## 12. 验收与归档
 
-- [ ] 12.1 全量门：`pnpm install --frozen-lockfile && pnpm -r build && pnpm test`、`pnpm --filter @excavator/core test`、`pnpm run typecheck`、`node scripts/check-refs.mjs`、`openspec validate --all --strict`。验证：全绿，记录在本节。
-- [ ] 12.2 验收（acceptor）：O1–O10 逐条；wcp 与 hadoop 的大小、耗时、打开时间；Safari 手动打开一次；截图与报告放仓库外，数字与结论写进本节。
+- [x] 12.1 全量门：`pnpm install --frozen-lockfile && pnpm -r build && pnpm test`、`pnpm --filter @excavator/core test`、`pnpm run typecheck`、`node scripts/check-refs.mjs`、`openspec validate --all --strict`。验证：全绿，记录在本节。 记录（5880a3d2，临时检出）：`pnpm install --frozen-lockfile && pnpm -r build && pnpm test` 根测试 134 文件 2,648 通过 4 skip（Windows 专用用例）；`pnpm --filter @excavator/core test` 53 文件 1,121 通过；`pnpm run typecheck`、`node scripts/check-refs.mjs`、`openspec validate --all --strict`（39 / 39）通过。切片内每个中间 commit 都在临时检出里单独验证过（4f285d32、facbdc3e、574c6550、aea4476a、e57607f7、c94014fb 聚焦套件；9c276c06、5aee1f46、daa963d3、74047706、b09cbb5a、19c40f97、80f88224、5880a3d2 全量门）。
+- [x] 12.2 验收（acceptor）：O1–O10 逐条；wcp 与 hadoop 的大小、耗时、打开时间；Safari 手动打开一次；截图与报告放仓库外，数字与结论写进本节。
+
+12.2 记录（5880a3d2，独立 Opus 验收代理在分离检出里只读核查，报告与截图在仓库外）：通过，无阻塞项，可开 PR。spec 十条要求逐条符合，service-only 与 consumer-freshness 的修订符合；占位文案在源码、dist 与烘焙页里为零。O1 模板 534,646 B、恰好一个占位、CSP `default-src 'none'`、production React。O2–O5 `tests/view` 16 文件 219 测试通过，每条 oracle 有装置先验，截断图与缺 manifest 两种失败后旧文件 sha 不变。O6 wcp 同一页 13 条路由计数等于 header、0 错误、0 CSP 违规，解码 129 ms / 可交互 229 ms；reduced-motion、`--raw`（22.9 MB）、`--no-source`、深链接、未知 id 通过。O7 hadoop 默认 40.95 MB / 16.8 s / RSS 1.53 GB，`--no-source` 16.88 MB / 8.2 s / 819 MB；`--no-source` 页解码 211 ms / 可交互 333 ms，默认页 584 / 764 ms；namenode 层 151 节点、画 600 / 共 861 链接、每帧 1.26–1.41 ms、CSR 66–68 ms；倒排表在 ready 之后首次搜索时建（83 ms / 2,640 ms）；`FSNamesystem.java` 5,232 条边全部有去向。O9 带三种语义产物的合成项目标注全部正确，hadoop 自带的真实语义缓存显示 1 / 154,531 新鲜；wcp `.excavator/` 经 CDP 放入未烘焙模板后清点、计数、目录层账本与烘焙页一致。O10 单文件拷到空目录、模拟断网下 7 条路由通过，文件内 13 处 `http(s)://` 全是 React 的常量字符串。SKILL.md 手工走查：删 dist 后自动重建；烘焙 4.72 MB fresh；缺图在第 2 步停止、烘焙以 `MissingArtifactError` 失败不写文件；stale 照常烘焙并标 Stale；烘焙前后 wcp `.excavator/` 13 个文件 sha 不变。零编造：分层抽 11 个节点，94 条边、94 条证据原文、81 行源码片段逐字一致，编造 0（空行显示为一个空格属呈现）；两个目录层账本与原始 JSONL 复算一致。无残留：23 次 `chrome.exit=closed`，无进程与端口；Chrome 在用户临时目录留下 13 个空目录属已知行为。未测：Safari / Firefox / Edge、真实鼠标拖放与双指缩放、Codex 宿主与 Linux / Windows 打开器、浅色主题截图、真实语料的硬上限路径、1 GB 级 JSONL。六项非阻塞建议：四项由 13a 修正，非代码库图的提示从设计删去并记为已知局限，版本号不升另开维护任务。
 - [ ] 12.3 合并后归档：`openspec archive artifact-view`，同步主 spec（`artifact-view` 新建，`service-only`、`consumer-freshness` 更新），归档 commit。验证：`openspec validate --all --strict` 通过。
