@@ -13,8 +13,13 @@
  * `data-csp-violations`, `data-decode-ms` and `data-ready-ms`.
  *
  * Chrome is closed with the DevTools `Browser.close` command so it removes
- * its own temporary directories; SIGKILL only after a 2 s grace period
- * (`chrome.exit` in the result says which happened).
+ * its own temporary directories; SIGKILL only after a 5 s grace period
+ * (`chrome.exit` in the result says which happened). Before closing, the
+ * `SingletonSocket` symlink Chrome puts in our --user-data-dir is read: it
+ * points into this run's process-singleton directory
+ * (`<user temp dir>/com.google.Chrome.XXXXXX/`), reported as
+ * `chrome.singletonDir` (null when Chrome made none) so a caller can check
+ * that exactly this run's directory is gone.
  *
  * Prints one JSON line. Exit code: 0 when the page is ready, reports no
  * errors and no CSP violations, and its decoded counts equal the header
@@ -38,9 +43,9 @@
  * threads, so the dump shows "loading"), hence the DevTools pipe.
  */
 
-import { accessSync, constants, existsSync, mkdtempSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { accessSync, constants, existsSync, mkdtempSync, readlinkSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { delimiter, join, resolve } from 'node:path';
+import { delimiter, dirname, join, resolve } from 'node:path';
 import { spawn } from 'node:child_process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
@@ -175,7 +180,23 @@ function pipeClient(child) {
 
 const sleep = (/** @type {number} */ ms) => new Promise((r) => setTimeout(r, ms));
 
-export const CLOSE_GRACE_MS = 2000;
+// Browser.close can be slow when the machine is loaded (parallel test runs).
+export const CLOSE_GRACE_MS = 5000;
+
+/**
+ * This run's Chrome process-singleton directory: the directory of the target
+ * of the `SingletonSocket` symlink in the user data dir, or null when there is
+ * no such link (Chrome never got that far, or a platform without one).
+ * @param {string} profile
+ * @returns {string | null}
+ */
+export function singletonDir(profile) {
+  try {
+    return dirname(resolve(profile, readlinkSync(join(profile, 'SingletonSocket'))));
+  } catch {
+    return null;
+  }
+}
 
 /**
  * Close Chrome through the DevTools protocol so it removes its own temporary
@@ -240,6 +261,8 @@ export async function smoke(page, { hash = '', reducedMotion = false, budgetMs =
   let settled = false;
   /** @type {'closed'|'killed'|'already-exited'} */
   let chromeExit = 'already-exited';
+  /** @type {string | null} */
+  let chromeSingletonDir = null;
   try {
     const { targetInfos } = await cdp.send('Target.getTargets');
     const target = targetInfos.find((t) => t.type === 'page');
@@ -278,6 +301,7 @@ export async function smoke(page, { hash = '', reducedMotion = false, budgetMs =
   } catch (error) {
     problem = `Chrome session failed: ${/** @type {Error} */ (error).message}`;
   } finally {
+    chromeSingletonDir = singletonDir(profile);
     chromeExit = await closeChrome(child, cdp);
     rmSync(profile, { recursive: true, force: true });
   }
@@ -288,7 +312,7 @@ export async function smoke(page, { hash = '', reducedMotion = false, budgetMs =
     skipped: false,
     ...result,
     ok: result.ok && problem === null,
-    chrome: { path: found.path, source: /** @type {any} */ (found).source, exit: chromeExit },
+    chrome: { path: found.path, source: /** @type {any} */ (found).source, exit: chromeExit, singletonDir: chromeSingletonDir, profile },
     ...(problem ? { problem } : {}),
     dom,
   };

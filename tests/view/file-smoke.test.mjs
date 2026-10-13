@@ -4,7 +4,7 @@
 // data segment is truncated, then used on a page baked from the synthetic
 // fixture. Without Chrome the test is a visible skip, never a pass.
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { cpSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync, appendFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync, appendFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -177,25 +177,18 @@ if (!chrome.path) {
 
     // Task 4A.4: the smoke run closes Chrome over the DevTools protocol before
     // falling back to SIGKILL, so Chrome removes its own temporary
-    // directories; a killed Chrome leaves com.google.Chrome.* directories in
-    // the user temp dir on every run. This file runs its Chrome sessions one
-    // at a time, but other processes may add such directories concurrently,
-    // so only directories still present a second later count, and one of
-    // three attempts must add none (a leaking script adds some every time).
-    it('closes Chrome over the protocol and adds no com.google.Chrome.* or profile directory (4A.4)', async () => {
-      const chromeTemps = () => new Set(readdirSync(tmpdir()).filter((n) => n.startsWith('com.google.Chrome.') || n.startsWith('excavator-view-smoke-')));
-      const attempts = [];
-      for (let attempt = 0; attempt < 3; attempt += 1) {
-        const before = chromeTemps();
-        const result = await smoke(goodPage);
-        expect(result.ok).toBe(true);
-        expect(result.chrome.exit).toBe('closed');
-        await new Promise((r) => setTimeout(r, 1000));
-        const added = [...chromeTemps()].filter((n) => !before.has(n));
-        attempts.push(added);
-        if (added.length === 0) break;
-      }
-      expect(attempts.at(-1), JSON.stringify(attempts)).toEqual([]);
+    // directories (a killed Chrome leaves its com.google.Chrome.* singleton
+    // directory behind). The script reports which singleton directory this
+    // run used (from the SingletonSocket link in the user data dir), so the
+    // check looks at exactly that directory, never at the shared temp dir.
+    it('closes Chrome over the protocol and leaves neither its singleton directory nor the profile (4A.4)', async () => {
+      const result = await smoke(goodPage);
+      expect(result.ok).toBe(true);
+      expect(result.chrome.exit).toBe('closed');
+      expect(result.chrome.singletonDir).toMatch(/com\.google\.Chrome\.[^/]+$/);
+      expect(existsSync(result.chrome.singletonDir)).toBe(false);
+      expect(result.chrome.profile).toMatch(/excavator-view-smoke-/);
+      expect(existsSync(result.chrome.profile)).toBe(false);
     }, 90_000);
 
     it('reports prefers-reduced-motion when asked to emulate it', () => {
