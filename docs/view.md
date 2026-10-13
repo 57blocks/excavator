@@ -2,7 +2,7 @@
 
 `/excavator-view` writes the project's analysis into one self-contained HTML file, `.excavator/view.html`, and opens it in the default browser. The file holds both the page and the data. It opens from `file://` by double-click: no server, no network, no installed tools on the reader's machine.
 
-The bake is a deterministic script. It makes no model calls, never builds or runs the analyzed project, and writes nothing but the output file. It needs `.excavator/knowledge-graph.jsonl` and `.excavator/source-manifest.json` (run `/excavator` first); every other artifact (source index, architecture layers, domain graph, coverage) is embedded when present and listed as missing, with the command that produces it, when not.
+The bake is a deterministic script. It makes no model calls, never builds or runs the analyzed project, and writes nothing but the output file. It needs `.excavator/knowledge-graph.jsonl` and `.excavator/source-manifest.json` (run `/excavator` first); coverage and gaps are records inside `knowledge-graph.jsonl`, not separate files. The optional artifacts, `fingerprints.json`, `source-index.jsonl`, `semantic-cache.json` (summaries), `semantic-graph.json` (architecture layers) and `domain-graph.json` (domain flows), are embedded when present; a missing one is listed with the command that produces it.
 
 ## Usage
 
@@ -46,8 +46,10 @@ The data is stored column-wise with interned strings, gzip-compressed and base64
 
 | Project | Default | `--no-source` |
 |---|---|---|
-| Web application, about 2,100 files and 370,000 lines | 4–5 MB | about 1.1 MB |
+| Web application, about 2,100 files and 370,000 lines | 4–5 MB | about 1.5 MB |
 | Apache Hadoop, about 3 million lines of Java | about 41 MB (symbol excerpts dropped by the default budget) | about 17 MB |
+
+The page template itself accounts for about 0.53 MB of each file.
 
 `--raw` multiplies these by about 4.7; on very large projects that can exceed the bake's hard limit of 256 MB of encoded data, which fails with a named `ViewTooLargeError` and leaves any existing file unchanged.
 
@@ -64,4 +66,5 @@ The page carries a Content-Security-Policy that blocks every network request: no
 - Very dense directories (hundreds of nodes and links in one level) still render as a crowded graph; drill into a file or a symbol neighbourhood for a readable picture. Each level draws at most 400 items and a bounded number of links, and reports what it left out.
 - The full-text search index is built on the first search; on a project of Hadoop's size with source text embedded that takes a few seconds.
 - Semantic products (architecture layers, domain graph) are marked fresh or stale by their content hashes only.
+- Graphs that are not of a codebase (a `kind` of `knowledge` or `design`) render with the same views, but those views have not been validated against such graphs.
 - The file is a snapshot. It does not follow later changes to the project; bake again after re-running `/excavator`.

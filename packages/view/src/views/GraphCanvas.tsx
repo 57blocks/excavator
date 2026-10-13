@@ -38,6 +38,7 @@ import {
 } from '../model/node-visual';
 import { GradientCache, drawGrid, drawRing, drawTicks, fillShape, shapePath, subCurve } from './canvas-draw';
 import { lastActivation, levelMemory, saveLevel, setLastActivation, type Transform } from './graph-state';
+import { clearOfBand, placeTooltip, type TooltipAnchor, type TooltipPlacement } from './tooltip-place';
 
 export type NodeTone = 'dir' | 'member' | 'file' | 'more' | 'nopath' | 'symbol' | 'center' | 'hop1' | 'hop2';
 
@@ -148,6 +149,56 @@ function fitTransform(nodes: SimNode[], width: number, height: number): Transfor
   return { k, x: width / 2 - ((x0 + x1) / 2) * k, y: height / 2 - ((y0 + y1) / 2) * k };
 }
 
+interface HoverTip {
+  key: string;
+  lines: string[];
+  anchor: TooltipAnchor;
+}
+
+/**
+ * The hovered node's tooltip, anchored to the node's band on screen: its top
+ * edge at full hover scale down to the bottom of the label drawn under it.
+ */
+function hoverTip(node: CanvasNode, d: Drawn | undefined, ringed: boolean): HoverTip {
+  const r = (d?.rs ?? 0) * 1.1;
+  const x = d?.sx ?? 0;
+  const y = d?.sy ?? 0;
+  return { key: node.key, lines: node.tooltip, anchor: { x, top: y - r, bottom: y + r + (ringed ? 7 : 4) + LABEL_H } };
+}
+
+/**
+ * Measured, then placed before paint (above the node, or below its label);
+ * `data-tooltip-clear` reports whether the laid-out box stays clear of that band.
+ */
+function NodeTooltip({ tip, width }: { tip: HoverTip; width: number }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [place, setPlace] = useState<TooltipPlacement | null>(null);
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (el) setPlace(placeTooltip(tip.anchor, { w: el.offsetWidth, h: el.offsetHeight }, { w: width, h: HEIGHT }));
+  }, [tip, width]);
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (el && place) el.dataset.tooltipClear = String(clearOfBand({ top: el.offsetTop, height: el.offsetHeight }, tip.anchor));
+  }, [place, tip]);
+  return (
+    <div
+      ref={ref}
+      className="graph-tooltip"
+      role="tooltip"
+      style={place ? { left: place.left, top: place.top } : { left: 0, top: 0, visibility: 'hidden' }}
+      data-tooltip-node={tip.key}
+      data-tooltip-side={place?.side}
+    >
+      {tip.lines.map((line, i) => (
+        <div key={i} className={i === 0 ? 'mono' : 'muted'}>
+          {line}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function truncate(text: string, max: number): string {
   return text.length <= max ? text : `${text.slice(0, max - 1)}…`;
 }
@@ -200,7 +251,7 @@ export function GraphCanvas({
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [width, setWidth] = useState(0);
   const reduced = useReducedMotion();
-  const [tooltip, setTooltip] = useState<{ x: number; y: number; lines: string[] } | null>(null);
+  const [tooltip, setTooltip] = useState<HoverTip | null>(null);
 
   // Everything the frame loop reads lives in one mutable ref.
   const st = useRef({
@@ -713,7 +764,8 @@ export function GraphCanvas({
         const d = drawn[i];
         const node = s.nodes[i];
         const strong = i === focus || node.tone === 'center';
-        const text = truncate(node.label, strong ? 80 : 28);
+        // The hovered node's label is drawn in full (its tooltip sits clear of it).
+        const text = i === hovered ? node.label : truncate(node.label, strong ? 80 : 28);
         ctx.font = strong ? LABEL_FONT_BOLD : LABEL_FONT;
         let tw = strong ? null : look.labelWidth[i];
         if (tw === null) {
@@ -913,7 +965,7 @@ export function GraphCanvas({
         const i = hit(p);
         if (i !== s.hovered) canvas.style.cursor = i >= 0 ? (s.nodes[i].activatable ? 'pointer' : 'grab') : 'default';
         setHovered(i);
-        setTooltip(i >= 0 ? { x: p.x, y: p.y, lines: s.nodes[i].tooltip } : null);
+        setTooltip(i >= 0 ? hoverTip(s.nodes[i], s.lastDrawn[i], (s.look?.rings[i].length ?? 0) > 0) : null);
       }
     };
     const onUp = (event: PointerEvent) => {
@@ -1003,13 +1055,7 @@ export function GraphCanvas({
       <canvas ref={canvasRef} style={{ width: '100%', height: HEIGHT, touchAction: 'none' }} role="img" aria-label={ariaLabel} />
       <span hidden data-motion="graph-particles" data-motion-state={reduced ? 'static' : 'animated'} />
       {tooltip && (
-        <div className="graph-tooltip" style={{ left: Math.min(tooltip.x + 14, Math.max(0, width - 260)), top: tooltip.y + 14 }} role="tooltip">
-          {tooltip.lines.map((line, i) => (
-            <div key={i} className={i === 0 ? 'mono' : 'muted'}>
-              {line}
-            </div>
-          ))}
-        </div>
+        <NodeTooltip tip={tooltip} width={width} />
       )}
       <div className="graph-hint muted">Drag to pan · wheel or pinch to zoom · double-click to fit · drag a node to pin it · click to open</div>
     </div>

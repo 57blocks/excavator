@@ -47,7 +47,7 @@ function crumbsFor(kind: LevelName, path: string): Array<{ label: string; href: 
   if (path === '' || kind === 'member') return crumbs;
   const parts = path.split('/');
   const dirParts = kind === 'directory' ? parts : parts.slice(0, -1);
-  dirParts.forEach((part, i) => crumbs.push({ label: `${part}/`, href: graphDirHash(dirParts.slice(0, i + 1).join('/')) }));
+  dirParts.forEach((part, i) => crumbs.push({ label: part, href: graphDirHash(dirParts.slice(0, i + 1).join('/')) }));
   if (kind !== 'directory') crumbs.push({ label: parts[parts.length - 1], href: graphFileHash(path) });
   return crumbs;
 }
@@ -61,7 +61,7 @@ export function Breadcrumbs({ kind, path, tail }: { kind: LevelName; path: strin
         const last = i === crumbs.length - 1;
         return (
           <span key={i}>
-            {i > 0 && <span className="muted"> / </span>}
+            {i > 0 && <span className="muted crumb-sep"> › </span>}
             {last || c.href === null ? <strong data-graph-crumb={i}>{c.label}</strong> : <a href={c.href} data-graph-crumb={i}>{c.label}</a>}
           </span>
         );

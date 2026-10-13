@@ -176,7 +176,7 @@ function Breadcrumbs({ path, model }: { path: string; model: StructureModel }) {
           const name = p === '' ? 'root' : (model.byPath.get(p)?.name ?? p);
           return (
             <span key={p}>
-              {i > 0 && <span className="muted"> / </span>}
+              {i > 0 && <span className="muted crumb-sep"> › </span>}
               {i === trail.length - 1 ? <strong data-crumb={p}>{name}</strong> : <a href={dirHash(p)} data-crumb={p}>{name}</a>}
             </span>
           );

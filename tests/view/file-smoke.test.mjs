@@ -110,6 +110,7 @@ if (!chrome.path) {
       expect(result.ok).toBe(true);
       const dom = result.dom;
       expect(dom).toContain('data-field="project-name">view-sample-project<');
+      expect(dom).toMatch(/<dt>Baked at<\/dt><dd data-field="baked-at">\d{4}-/);
       expect(dom).toContain('data-counts-match="true"');
       expect(dom).toContain('data-freshness="fresh"');
       for (const artifact of ['semantic-cache.json', 'semantic-graph.json', 'domain-graph.json']) {
@@ -294,6 +295,9 @@ if (!chrome.path) {
       expect(replaced.actions[0].view.workers).toBe(1);
       expect(replaced.counts.nodes).toBe(semanticNodes);
       expect(replaced.dom).toContain('data-origin="drop"');
+      // A dropped directory says when it was loaded, not baked.
+      expect(replaced.dom).toMatch(/<dt>Loaded at<\/dt><dd data-field="loaded-at">\d{4}-/);
+      expect(replaced.dom).not.toContain('<dt>Baked at</dt>');
       expect(replaced.dom).toContain('evidenceText</span>: dropped (loaded from a dropped directory)');
     }, 120_000);
 
@@ -391,6 +395,9 @@ if (!chrome.path) {
       expect(result.view).toMatchObject({ route: 'graph-file', graphLevel: 'file', graphVisibleNodes: 2 });
       expect(result.dom).toContain('data-graph-item="function:src/util/format.ts:formatGreeting(name,times)"');
       expect(result.dom).toContain('data-graph-note="outside"');
+      // Breadcrumbs separate levels with a chevron: Graph › src › util › format.ts.
+      const crumbText = /<nav class="crumbs" aria-label="Graph level"[^>]*>(.*?)<\/nav>/.exec(result.dom)[1].replace(/<[^>]+>/g, '');
+      expect(crumbText).toBe('Graph › src › util › format.ts');
       // format.ts: two symbols, no edge between them; contains + exports from the file node (4),
       // run -calls-> formatGreeting from main.ts (1). Every edge in its bucket (7A.1).
       expect(result.view.graphEdges).toEqual({ total: 5, drawn: 0, cut: 0, collapsed: 0, inside: 0, fileNode: 4, outside: 1, balanced: true });
@@ -485,6 +492,8 @@ if (!chrome.path) {
         [true, 'dir', 'src'], [true, 'dir', 'src/util'], [true, 'dir', 'src'],
       ]);
       expect(result.dom).toContain('data-treemap-path="src"');
+      const crumbText = /<nav class="crumbs" aria-label="Directory">(.*?)<\/nav>/.exec(result.dom)[1].replace(/<[^>]+>/g, '');
+      expect(crumbText).toBe('root › src');
       expect(result.dom).toMatch(/data-cell="src\/util" data-kind="dir"/);
     }, 90_000);
 
@@ -621,6 +630,13 @@ if (!chrome.path) {
       // The hovered node's label is always drawn, whatever the budget.
       expect(hovered.view.graphLabels).toMatch(/^lod:\d+\/30$/);
       expect(away.view.graphFocus).toBe('none');
+      // While the pointer stays, the tooltip is laid out clear of the node and the label under it.
+      const held = await smoke(widePage(), { hash: '#/graph/src/many', actions: [{ type: 'hover', node: 'p:src/many/f00.ts' }] });
+      expect(held.actions[0].problem).toBeUndefined();
+      const tip = /<div[^>]*class="graph-tooltip"[^>]*>/.exec(held.dom)?.[0];
+      expect(tip).toContain('data-tooltip-node="p:src/many/f00.ts"');
+      expect(tip).toMatch(/data-tooltip-side="(above|below)"/);
+      expect(tip).toContain('data-tooltip-clear="true"');
     }, 180_000);
 
     it('keeps shapes and colors but stops every animation under prefers-reduced-motion (10.0, 10.1)', async () => {

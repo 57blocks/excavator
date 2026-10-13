@@ -15,7 +15,7 @@ import {
 } from '../../packages/view/src/model/coverage.ts';
 import {
   LANGUAGE_RING_CENTER, MEMBER_FILES_LABEL, MEMBER_SELECTED_LABEL, countRows, freshnessBanner, indexLiteralsStatus, inventoryRows,
-  memberCards, semanticBadges,
+  memberCards, semanticBadges, timestampFact,
 } from '../../packages/view/src/model/overview.ts';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
@@ -182,6 +182,13 @@ describe('overview (4.2)', () => {
     expect(freshnessBanner({ freshness: { factLayer: { status: 'missing' } } }).state).toBe('missing');
     expect(freshnessBanner({ freshness: { factLayer: { status: 'weird' } } }).title).toMatch(/weird/);
     expect(freshnessBanner({}).state).toBe('unknown');
+  });
+
+  it('labels the time a baked page was baked and a dropped directory was loaded', async () => {
+    const { meta } = await sampleData();
+    expect(timestampFact(meta)).toEqual({ label: 'Baked at', field: 'baked-at', value: meta.bakedAt });
+    const dropped = { bakedAt: '2026-10-13T08:00:00.000Z', origin: { mode: 'drop', directory: '.excavator', loadedAt: '2026-10-13T08:00:00.000Z' } };
+    expect(timestampFact(dropped)).toEqual({ label: 'Loaded at', field: 'loaded-at', value: '2026-10-13T08:00:00.000Z' });
   });
 
   it('lists every inventory item with its state and note', async () => {

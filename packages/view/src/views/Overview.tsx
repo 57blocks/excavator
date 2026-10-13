@@ -7,7 +7,7 @@ import { CountUp } from '../components/CountUp';
 import { Reveal } from '../components/Reveal';
 import {
   LANGUAGE_RING_CENTER, MEMBER_FILES_LABEL, MEMBER_SELECTED_LABEL, countRows, freshnessBanner, indexLiteralsStatus, inventoryRows,
-  memberCards, semanticBadges,
+  memberCards, semanticBadges, timestampFact,
 } from '../model/overview';
 
 export function Overview({ data }: { data: ViewData }) {
@@ -23,6 +23,7 @@ export function Overview({ data }: { data: ViewData }) {
   const slices = foldSlices(order, fileCounts, colors);
   const isMultiRepo = typeof source.sourceRevision === 'string' && source.sourceRevision.startsWith('multi-repo:');
   const members = memberCards(meta);
+  const stamp = timestampFact(meta);
 
   return (
     <div className="content" data-section="overview">
@@ -68,8 +69,8 @@ export function Overview({ data }: { data: ViewData }) {
             <dd data-field="project-name">{text(project.name)}</dd>
             <dt>Source revision</dt>
             <dd className="mono" data-field="source-revision">{text(source.sourceRevision)}</dd>
-            <dt>Baked at</dt>
-            <dd data-field="baked-at">{text(meta.bakedAt)}</dd>
+            <dt>{stamp.label}</dt>
+            <dd data-field={stamp.field}>{text(stamp.value)}</dd>
             <dt>Pipeline</dt>
             <dd className="mono" data-field="pipeline-version">{text(source.pipelineVersion ?? project.pipelineVersion)}</dd>
             <dt>Analyzed at</dt>

@@ -27,6 +27,18 @@ export function countRows(meta: Meta, decoded: DecodedCounts): CountRow[] {
   return rows;
 }
 
+export interface TimestampFact {
+  label: 'Baked at' | 'Loaded at';
+  field: 'baked-at' | 'loaded-at';
+  value: string | undefined;
+}
+
+/** The page's own timestamp: when it was baked, or when a dropped directory was read in this browser. */
+export function timestampFact(meta: Meta): TimestampFact {
+  if (meta.origin?.mode === 'drop') return { label: 'Loaded at', field: 'loaded-at', value: meta.origin.loadedAt };
+  return { label: 'Baked at', field: 'baked-at', value: meta.bakedAt };
+}
+
 export interface Banner {
   state: 'fresh' | 'stale' | 'missing' | 'unknown';
   title: string;
