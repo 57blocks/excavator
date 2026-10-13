@@ -2,11 +2,14 @@
  * xml-name-bindings.mjs
  *
  * Reads XML descriptors for the name-binding stage (openspec: changes/
- * name-binding-references, capability `fact-graph`, design D1, D4): the root
- * element of a file, the name bindings its elements declare by the catalog's
- * XML binders, and the elements whose text opens a namespace to expressions
- * (the catalog's `elementTextIn` condition). Pure and build-free: text in,
- * facts out; what a binding's class text names is a later stage's business.
+ * name-binding-references, capability `fact-graph`, design D1, D4; changes/
+ * xml-injection-references, design D4, D5): the root element of a file, the name
+ * bindings its elements declare by the catalog's XML binders, the injection
+ * sites its elements write (an attribute that names another declaration) by the
+ * catalog's injection families, and the elements whose text opens a namespace to
+ * expressions (the catalog's `elementTextIn` condition). Pure and build-free:
+ * text in, facts out; what a binding's class text names, and what a site's name
+ * names, is a later stage's business.
  *
  * The reading is tolerant: the files are real descriptors, some of them not
  * well-formed. It builds the tree from what it can read and never throws; text
@@ -288,6 +291,132 @@ export function bindingsOfTree(tree, xmlBinders, { mutations = {} } = {}) {
 /** `bindingsOfTree` over a text. */
 export function readXmlBindings(text, xmlBinders, { mutations = {} } = {}) {
   return bindingsOfTree(parseXml(text, { maskComments: !mutations.noCommentMask }), xmlBinders, { mutations });
+}
+
+const compareText = (a, b) => (a < b ? -1 : a > b ? 1 : 0);
+
+/** `xmlns` and `xmlns:*` declare a namespace; they are never a site and never a census item. */
+const isNamespaceDeclaration = (name) => name === 'xmlns' || name.startsWith('xmlns:');
+
+/** The namespace a prefix is bound to at `element`: the nearest `xmlns:prefix` on it or its ancestors, or null. */
+function namespaceOfPrefix(element, prefix) {
+  const declaration = `xmlns:${prefix}`;
+  for (let node = element; node; node = node.parent) {
+    const declared = node.attributes.find((attribute) => attribute.name === declaration);
+    if (declared) return declared.value;
+  }
+  return null;
+}
+
+/**
+ * Does `attribute` of `element` write this site? An element and attribute site
+ * wants the element's local name and the attribute exactly as written (a
+ * prefixed attribute is another attribute); a namespace site wants the
+ * attribute's prefix to be bound, where it is written, to the namespace and its
+ * local name to end with the suffix. An attribute with no prefix is in no
+ * namespace.
+ */
+function siteMatches(site, element, attribute, local) {
+  if (site.element !== undefined) return element.local === site.element && attribute.name === site.attribute;
+  const prefix = prefixOf(attribute.name);
+  return prefix !== null && local.endsWith(site.attributeSuffix) && namespaceOfPrefix(element, prefix) === site.attributeNamespace;
+}
+
+/** Is this attribute, by its local name, one of the reference shapes the family's census counts? */
+const isCensusAttribute = (census, local) => census.attributes.includes(local) || census.attributeSuffixes.some((suffix) => local.endsWith(suffix));
+
+/**
+ * The injection sites of a parsed descriptor, by the catalog's injection
+ * families whose root (local name, and namespace - a `null` in the family's list
+ * is a root with none) it has: the attributes that write the name of another
+ * declaration, and what the family's census counts and no site read.
+ *
+ * A site is an attribute whose element and name, or namespace and name suffix,
+ * a site of the family lists; its name is the value, trimmed. Its row is
+ * `{ family, site, name, line, scope, consumer }`: `line` is the attribute's,
+ * `scope` the site's (`unit` when the catalog does not say), `consumer` the
+ * element itself or the nearest ancestor with the family's consumer element's
+ * local name - an inner or anonymous bean included - as `{ line, target,
+ * unknownBecause, inherits }`, read by the consumer binder's target rules as a
+ * binding's are, or null when no element around is one. An element may write
+ * several sites. An empty value is no site and is counted under
+ * `element@attribute`.
+ *
+ * The census counts, per family, what looks like a reference and no site read:
+ * an element whose local name is in `census.elements`, by that name, unless a
+ * site came from it; an attribute whose local name is in `census.attributes` or
+ * ends with one of `census.attributeSuffixes`, as `element@attribute` (the
+ * element's local name, the attribute as written), unless a site came from it.
+ * Keys come out in order.
+ *
+ * @param {{ root: object|null, elements: object[] }} tree
+ * @param {{ xmlBinders: object[], xmlInjections: object[] }} catalog
+ * @param {{ mutations?: { outermostConsumer?: boolean, anyRootNamespace?: boolean, noCensus?: boolean } }} [options]
+ *   `mutations` are the test seams of the mutation tripwires: the outermost
+ *   consumer element instead of the nearest; the family's root namespace not
+ *   consulted; nothing counted.
+ * @returns {{ sites: object[], uncovered: Record<string, number>, families: string[] }}
+ *   `families` are the ids of the families whose root the file has, whether or
+ *   not it wrote a site: the files a family read
+ */
+export function injectionsOfTree(tree, catalog, { mutations = {} } = {}) {
+  const result = { sites: [], uncovered: {}, families: [] };
+  if (tree.root === null) return result;
+  const info = rootInfo(tree.root);
+  const binders = new Map(catalog.xmlBinders.map((binder) => [binder.id, binder]));
+  const count = mutations.noCensus ? () => {} : (key) => { result.uncovered[key] = (result.uncovered[key] ?? 0) + 1; };
+
+  for (const family of catalog.xmlInjections) {
+    if (!rootMatches(info, family.root, mutations.anyRootNamespace ? undefined : family.rootNamespace)) continue;
+    result.families.push(family.id);
+    const binder = binders.get(family.consumer.binder);
+
+    const consumers = new Map();
+    const consumerOf = (element) => {
+      let consumer = null;
+      for (let node = element; node; node = node.parent) {
+        if (node.local !== family.consumer.element) continue;
+        consumer = node;
+        if (!mutations.outermostConsumer) break; // the nearest; the seam walks on to the outermost
+      }
+      if (consumer === null) return null;
+      if (!consumers.has(consumer)) {
+        consumers.set(consumer, { line: consumer.line, target: targetOf(consumer, binder.target), ...targetRulesOf(consumer, binder.target) });
+      }
+      return consumers.get(consumer);
+    };
+
+    for (const element of tree.elements) {
+      let produced = 0;
+      for (const attribute of element.attributes) {
+        if (isNamespaceDeclaration(attribute.name)) continue;
+        const local = localNameOf(attribute.name);
+        const matching = family.sites.filter((site) => siteMatches(site, element, attribute, local));
+        const asWritten = `${element.local}@${attribute.name}`;
+        if (matching.length > 0) {
+          const name = attribute.value.trim();
+          if (name === '') {
+            count(asWritten);
+            continue;
+          }
+          for (const site of matching) {
+            result.sites.push({ family: family.id, site: site.id, name, line: attribute.line, scope: site.scope ?? 'unit', consumer: consumerOf(element) });
+            produced += 1;
+          }
+        } else if (isCensusAttribute(family.census, local)) {
+          count(asWritten);
+        }
+      }
+      if (produced === 0 && family.census.elements.includes(element.local)) count(element.local);
+    }
+  }
+  result.uncovered = Object.fromEntries(Object.entries(result.uncovered).sort(([a], [b]) => compareText(a, b)));
+  return result;
+}
+
+/** `injectionsOfTree` over a text. */
+export function readXmlInjections(text, catalog, { mutations = {} } = {}) {
+  return injectionsOfTree(parseXml(text, { maskComments: !mutations.noCommentMask }), catalog, { mutations });
 }
 
 /**

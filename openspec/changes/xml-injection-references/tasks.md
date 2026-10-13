@@ -54,7 +54,7 @@
 
 ## 3. 注入点读取
 
-- [ ] 3.1 `xml-name-bindings.mjs` 新增注入点读取，按 design D4 / D5：
+- [x] 3.1 `xml-name-bindings.mjs` 新增注入点读取，按 design D4 / D5：
   - 根元素按本地名与 `rootNamespace` 命中注入族；
   - 元素加属性形状按本地名匹配；属性命名空间形状按作用域内最近的 `xmlns:前缀` 解析；`xmlns` 声明不是注入点、不进普查；
   - 名字去首尾空白，空值计入普查未读；
@@ -62,7 +62,7 @@
   - 普查已读与未读按 D4 计。
 
   验证：`tests/facts/xml-name-bindings.test.mjs` 覆盖规格场景「集合里的 ref 消费者是最近的 bean」「内部 bean 的注入点属于内部 bean」「p 命名空间的引用属性」「非 Spring 命名空间的 beans 根不读」「普查记下没有读的引用形状」「注释里的注入点不算」，另加：前缀在祖先元素上声明；同一元素两个注入点；空的 `ref=""`。变异 `outermostConsumer`、`anyRootNamespace`、`noCensus` 各让至少一条测试变红。
-- [ ] 3.2 `name-reference-sites.mjs` 在同一次解析里收集 `injections`、`injectionFiles`、`uncoveredReferences`，按 design D9。
+- [x] 3.2 `name-reference-sites.mjs` 在同一次解析里收集 `injections`、`injectionFiles`、`uncoveredReferences`，按 design D9。
   验证：`tests/facts/name-reference-sites.test.mjs` 断言一个 Spring 文件只被读一次、只被解析一次；注入族文件不在表达式文件范围内时不产生表达式行；读失败时报错。
 
 ## 4. 注入解析
