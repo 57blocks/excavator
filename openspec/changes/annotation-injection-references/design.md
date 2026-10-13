@@ -96,13 +96,17 @@ interface JavaMemberAnnotationUse {
   - 命名空间 `ejb`；
   - 注解 `javax.ejb.Stateless`、`Stateful`、`Singleton` 及对应的 `jakarta.ejb.*`；
   - 名字参数 `name`，缺省名规则 `simple-name`，`namespacedNames: false`。
-- **`spring-annotation-stereotype`** 补四个注解：
+- **`spring-annotation-stereotype`** 补两个注解：
   - `org.springframework.context.annotation.Configuration`；
-  - `org.springframework.web.bind.annotation.RestController`；
-  - `org.springframework.web.bind.annotation.ControllerAdvice`；
-  - `org.springframework.web.bind.annotation.RestControllerAdvice`。
+  - `org.springframework.web.bind.annotation.RestController`。
 
-  它们都以 `@Component` 为元注解，bean 名规则相同。依据写进 `basis`。
+  它们都以 `@Component` 为元注解，`value` 是 bean 名的别名，bean 名规则相同。依据写进 `basis`。
+- **新绑定器** `spring-annotation-advice`：
+  - 命名空间 `spring`；
+  - 注解 `org.springframework.web.bind.annotation.ControllerAdvice`、`RestControllerAdvice`；
+  - 名字参数 `name`，缺省名规则 `java-beans-decapitalize`，`namespacedNames: false`。
+
+  它们也以 `@Component` 为元注解，但 `value` 是 `basePackages` 的别名，不是名字；bean 名写在 `name`（Spring 6.1 起）。并进构造型绑定器会把包名读成 bean 名，所以单列。
 - **新顶层 `annotationInjections`**，每个注入族的字段：
 
   | 键 | 含义 |
@@ -128,7 +132,7 @@ interface JavaMemberAnnotationUse {
 
   | 注入族 | 命名空间 | `binders` | `managedBy` | 注入点 |
   |---|---|---|---|---|
-  | `spring-annotation-injection` | `spring` | 不限 | `spring-xml-bean`、`spring-annotation-stereotype` | `spring-qualifier`：`org.springframework.beans.factory.annotation.Qualifier`，`on` 字段与参数，参数 `value`，无缺省名，不退回<br>`spring-resource`：`javax.annotation.Resource`、`jakarta.annotation.Resource`，`on` 字段与方法，参数 `name`，`member-java-beans`，退回按类型 |
+  | `spring-annotation-injection` | `spring` | 不限 | `spring-xml-bean`、`spring-annotation-stereotype`、`spring-annotation-advice` | `spring-qualifier`：`org.springframework.beans.factory.annotation.Qualifier`，`on` 字段与参数，参数 `value`，无缺省名，不退回<br>`spring-resource`：`javax.annotation.Resource`、`jakarta.annotation.Resource`，`on` 字段与方法，参数 `name`，`member-java-beans`，退回按类型 |
   | `seam-annotation-injection` | `el` | `seam-annotation-name`、`seam-annotation-role`、`seam-xml-component` | 同 `binders` | `seam-in`：`org.jboss.seam.annotations.In`，`on` 字段与方法，参数 `value`，`member-seam`，不退回，表达式前缀 `#{` |
   | `ejb-annotation-injection` | `ejb` | 不限 | 空 | `ejb-bean-name`：`javax.ejb.EJB`、`jakarta.ejb.EJB`，`on` 字段与方法，参数 `beanName`，无缺省名，不退回 |
 
@@ -141,6 +145,12 @@ interface JavaMemberAnnotationUse {
   - `on` 为空或含未知种类，拒绝加载；
   - `defaultName` 不是已知规则，拒绝加载。
   - 版本 2 的目录被拒绝。
+  - 以下几条设计没有明说，取最严的读法，日后放宽不破坏兼容：
+    - `binders` 给出时不能为空；
+    - 各个 id 列表、`annotations`、`on`、`nameArguments` 都不许重复；
+    - 注入点的注解必须是全限定名，一个注解在整个目录里只属于一个注入点，读法因此与注入点顺序无关；
+    - `fallbackToType` 为真时 `defaultName` 不能为 `null`；
+    - `managedBy` 里的 XML 绑定器，目标种类必须是类。
 
 **D4：读注入点。**
 
@@ -316,14 +326,16 @@ interface JavaMemberAnnotationUse {
   - 站点数与独立的 Java 源码统计一致（同样遮蔽注释与字符串）。
 - **O4 不回归**：Dataverse、Cargo Tracker、wcp、cebreo、hadoop 各自与同一检出、`lazy-fact-graph/8` 的基线对比：
   - 节点集合、全部边（含 XML 来源的 `injects` 及其证据）、既有缺口完全一致；
-  - 覆盖只多 `annotationInjections` 一段，`nameReferences` 的 `bindings` 与 `missingNames` 各多一个 `ejb-annotation-session` 键；`bindings` 中 `spring-annotation-stereotype` 的计数可以因补充的四个注解而增加，增量要等于这四个注解在该语料上产生的绑定数；
+  - 覆盖只多 `annotationInjections` 一段，`nameReferences` 的 `bindings` 与 `missingNames` 各多 `ejb-annotation-session`、`spring-annotation-advice` 两个键；
+  - `bindings` 中 `spring-annotation-stereotype` 的计数可以因补充的两个注解而增加，增量要等于这两个注解在该语料上产生的绑定数；
+  - `nameReferences` 的其它计数若有变化，只能来自这三个注解来源的新绑定，逐项说明；
   - 新增的注解来源边与缺口逐语料列出计数，每一个都说明来源。
 - **O4b 前两步回归**：Seam、OSCAR、OpenMRS core、Sakai 12.7、TomEE、fineract 与 `/8` 基线对比：
   - 节点与非 `injects` 边一致；
   - XML 来源的 `injects` 证据一致；
   - `references` 与 `nameReferences` 的桶一致。
   - 差异只能来自两处，每处逐条列出：
-    - 新绑定器 `ejb-annotation-session` 与补充的构造型注解让某个名字多了绑定，可能让 XML 注入点从「无绑定」变成「他处」，或改变 EL 结果；
+    - 新绑定器 `ejb-annotation-session`、`spring-annotation-advice` 与补充的构造型注解让某个名字多了绑定，可能让 XML 注入点从「无绑定」变成「他处」，或改变 EL 结果；
     - 边合并让 XML 来源的边多出注解证据。
 - **O5 耗时**：Sakai `master` 与 hadoop 的 Lazy 总耗时，与同一会话、同一提交新测的 `/8` 基线相比，增幅不超过 10%（各取 3 次中位数）。`structureAll` 与 `factGraph` 阶段单独报告，`structure-all.jsonl` 的体积变化单独报告。
 - **O6 分层人工抽查**（acceptor，Seam、OSCAR、OpenMRS core、TomEE、fineract）：

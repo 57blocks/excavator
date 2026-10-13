@@ -218,6 +218,8 @@ describe('the name-reference stage in the real Lazy driver', () => {
       'seam-annotation-name': 2,
       'seam-annotation-role': 1,
       'spring-annotation-stereotype': 4,
+      'ejb-annotation-session': 0,
+      'spring-annotation-advice': 0,
     });
     // an anonymous Spring bean, and a Seam component with only a class
     expect(nameReferences.missingNames).toEqual({
@@ -232,6 +234,8 @@ describe('the name-reference stage in the real Lazy driver', () => {
       'seam-annotation-name': 0,
       'seam-annotation-role': 0,
       'spring-annotation-stereotype': 0,
+      'ejb-annotation-session': 0,
+      'spring-annotation-advice': 0,
     });
     expect(result.coverage.nameReferences).toEqual(nameReferences);
   });

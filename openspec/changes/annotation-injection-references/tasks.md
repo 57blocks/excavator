@@ -39,7 +39,7 @@
 
 ## 2. 目录
 
-- [ ] 2.1 `name-binding-catalog.mjs` 支持目录版本 3，按 design D3：
+- [x] 2.1 `name-binding-catalog.mjs` 支持目录版本 3，按 design D3：
   - 注解绑定器缺省名规则新增 `simple-name`；
   - 新顶层 `annotationInjections`。注入族字段为 `id`、`namespace`、`basis`、可选 `binders`、`consumer.managedBy`、`sites`。注入点字段为 `id`、`basis`、`annotations`、`on`、`nameArguments`、`defaultName`、`fallbackToType`、`expressionPrefix`。
   - 校验规则：
@@ -50,9 +50,10 @@
     - 版本 2 被拒绝。
 
   验证：`tests/facts/name-binding-catalog.test.mjs` 对每条新规则各有一条非法输入测试，错误信息指出位置。
-- [ ] 2.2 随附目录升到版本 3：
+- [x] 2.2 随附目录升到版本 3：
   - 新绑定器 `ejb-annotation-session`；
-  - `spring-annotation-stereotype` 加四个注解；
+  - `spring-annotation-stereotype` 加 `@Configuration`、`@RestController`；
+  - 新绑定器 `spring-annotation-advice`（`@ControllerAdvice`、`@RestControllerAdvice`，读 `name`，不读 `value`）；
   - 三个注入族按 design D3 表格；
   - 每项带 `basis`。
 
@@ -62,7 +63,7 @@
 
 - [ ] 3.1 `name-reference-resolution.mjs`：
   - 把注解身份确认抽成共用函数，注解绑定器改为调用它，行为不变；
-  - `ejb-annotation-session` 与补充的构造型注解按既有规则产生绑定；
+  - `ejb-annotation-session`、`spring-annotation-advice` 与补充的构造型注解按既有规则产生绑定（第 2 步提交时已生效，测试随目录一起提交）；
   - 绑定表新增查询「解析到某个类节点的全部绑定」，在目标解析完成后一次算出。
 
   验证：`tests/facts/name-reference-resolution.test.mjs` 既有断言不改仍全绿；新增 `simple-name` 缺省名、`@Configuration` 绑定、反查查询的测试。

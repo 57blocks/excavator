@@ -71,6 +71,10 @@ XML 绑定：
 - **WHEN** 类 `com.acme.AppConfig` 带 `@org.springframework.context.annotation.Configuration`，没有参数
 - **THEN** 产生 `spring` 命名空间的绑定 `appConfig` → 该类
 
+#### Scenario: 控制器增强的 value 不是名字
+- **WHEN** 类 `com.acme.Faults` 带 `@org.springframework.web.bind.annotation.ControllerAdvice("com.acme.web")`
+- **THEN** 产生 `spring` 命名空间的绑定 `faults` → 该类，不产生名为 `com.acme.web` 的绑定
+
 #### Scenario: 非字面量名字
 - **WHEN** 类上写 `@Named(Names.ORDERS)`
 - **THEN** 不产生绑定，计入非字面量名字计数

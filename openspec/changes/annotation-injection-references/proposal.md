@@ -41,7 +41,8 @@
     - 注入点列表。每个注入点声明：注解全限定名、可附着的成员种类、读名字的参数键、缺省名规则、名字缺省且没有绑定时容器是否退回按类型注入、表达式前缀。
   - 注解绑定器新增缺省名规则 `simple-name`（类的简单名原样）。
   - 新绑定器 `ejb-annotation-session`：`@Stateless`、`@Stateful`、`@Singleton` 的 `name`，命名空间 `ejb`。
-  - `spring-annotation-stereotype` 补上同样经 `@Component` 元注解成为 bean 的 `@Configuration`、`@RestController`、`@ControllerAdvice`、`@RestControllerAdvice`。
+  - `spring-annotation-stereotype` 补上同样经 `@Component` 元注解成为 bean、`value` 即 bean 名的 `@Configuration`、`@RestController`。
+  - 新绑定器 `spring-annotation-advice`：`@ControllerAdvice`、`@RestControllerAdvice` 也是 bean，但 `value` 是扫描包，bean 名写在 `name`。
   - 随附三个注入族：
     - `spring-annotation-injection`：`@Qualifier`、`@Resource`；
     - `seam-annotation-injection`：`@In`；
@@ -86,7 +87,7 @@
 - **产物**：
   - knowledge graph 新增注解来源的 `injects` 边与 `injection-*` 缺口，以及 `coverage.annotationInjections`；
   - 结构行多出 `memberAnnotations`；
-  - `coverage.nameReferences.bindings` 与 `missingNames` 各多一个 `ejb-annotation-session` 键。
+  - `coverage.nameReferences.bindings` 与 `missingNames` 各多 `ejb-annotation-session`、`spring-annotation-advice` 两个键。
   - 旧产物因版本号变化，在下次同步时整体重投影。
 - **不影响**：
   - 既有节点；

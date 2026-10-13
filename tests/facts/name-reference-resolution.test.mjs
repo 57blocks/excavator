@@ -398,6 +398,164 @@ describe('annotation bindings (spec: name binding)', () => {
 });
 
 // ---------------------------------------------------------------------------
+// annotation-injection-references, tasks 2.2 and 3.1: the binders catalog
+// version 3 adds - EJB session beans, and the Spring stereotypes that carry
+// Component as a meta-annotation - produce bindings through the annotation
+// binder code that was already there.
+// ---------------------------------------------------------------------------
+
+describe('annotation bindings the version 3 catalog adds (annotation-injection-references design D3)', () => {
+  const NO_TYPES = { isType: () => false };
+  const SRC = (name) => `app/src/com/acme/${name}.java`;
+
+  /** The binding table of Java sources, as buildFactGraph builds it for them, with ids that name the class. */
+  function javaTable(java) {
+    const rows = Object.entries(java).map(([path, source]) => {
+      const text = lines(source);
+      const file = { path, language: 'java', fileCategory: 'code' };
+      const extracted = analyzeFileWithOutcomes(registry, file, text);
+      expect(extracted.structureOutcome).toBe('succeeded');
+      const split = text.split('\n');
+      return buildResult(file, split.length, split.filter((l) => l.trim()).length, extracted.analysis, extracted.callGraph, null, extracted.structureOutcome);
+    });
+    const classIds = new Map(rows.map((row) => [row.path, (row.classes ?? []).map((cls) => `class:${row.path}:${cls.name}`)]));
+    const javaTypes = rows.flatMap((row) => (row.classes ?? []).map((cls, i) => ({ fqn: cls.qualifiedName, path: row.path, id: classIds.get(row.path)[i] })));
+    return buildNameBindingTable({
+      sites: { bindings: [], missingNames: {} },
+      catalog: CATALOG,
+      manifestPaths: [...rows.map((row) => row.path), 'app/pom.xml'],
+      javaRows: rows,
+      classIds,
+      javaTypes,
+      otherJvm: NO_TYPES,
+      declaredJavaTypes: NO_TYPES,
+    });
+  }
+  /** `[name, namespace, binder, line]` of each binding of the table. */
+  const summary = (table) => table.bindings.map((b) => [b.name, b.namespace, b.binder, b.line]);
+  const EJB = ['import javax.ejb.Stateless;'];
+
+  it('names a @Stateless class with no name by its simple name, unchanged, in the ejb namespace', () => {
+    const table = javaTable({ [SRC('OrderBean')]: BEAN('com.acme', 'OrderBean', '@Stateless', EJB) });
+    expect(summary(table)).toEqual([['OrderBean', 'ejb', 'ejb-annotation-session', 4]]);
+    expect(table.bindings[0]).toMatchObject({ unit: 'app', target: { kind: 'node', id: `class:${SRC('OrderBean')}:OrderBean` } });
+    // the rule is the class name as written, not a decapitalized one
+    expect(table.named('orderBean')).toEqual([]);
+  });
+
+  it('leaves the case of the class name alone, leading capitals and a lower-case first letter included', () => {
+    const table = javaTable({
+      [SRC('URLBean')]: BEAN('com.acme', 'URLBean', '@Stateless', EJB),
+      [SRC('lowerBean')]: BEAN('com.acme', 'lowerBean', '@Stateless', EJB),
+    });
+    expect(summary(table).map(([name]) => name).sort()).toEqual(['URLBean', 'lowerBean']);
+  });
+
+  it('takes the name of @Stateless(name = ...), and an empty one, or an element other than name, as no name', () => {
+    const table = javaTable({
+      [SRC('A')]: BEAN('com.acme', 'A', '@Stateless(name = "x")', EJB),
+      [SRC('B')]: BEAN('com.acme', 'B', '@Stateless(name = "")', EJB),
+      [SRC('C')]: BEAN('com.acme', 'C', '@Stateless(mappedName = "m")', EJB),
+    });
+    expect(summary(table).map(([name, , , line]) => [name, line]).sort()).toEqual([['B', 4], ['C', 4], ['x', 4]]);
+    expect(table.named('A')).toEqual([]);
+  });
+
+  it('binds @Stateful and @Singleton, javax and jakarta, written imported or qualified, all as ejb-annotation-session', () => {
+    const table = javaTable({
+      [SRC('Cart')]: BEAN('com.acme', 'Cart', '@Stateful', ['import javax.ejb.Stateful;']),
+      [SRC('Registry')]: BEAN('com.acme', 'Registry', '@Singleton', ['import jakarta.ejb.Singleton;']),
+      [SRC('Quote')]: BEAN('com.acme', 'Quote', '@jakarta.ejb.Stateless(name = "quotes")', []),
+      [SRC('Bill')]: BEAN('com.acme', 'Bill', '@javax.ejb.Singleton', []),
+    });
+    expect(summary(table).map(([name, namespace, binder]) => [name, namespace, binder]).sort()).toEqual([
+      ['Bill', 'ejb', 'ejb-annotation-session'],
+      ['Cart', 'ejb', 'ejb-annotation-session'],
+      ['Registry', 'ejb', 'ejb-annotation-session'],
+      ['quotes', 'ejb', 'ejb-annotation-session'],
+    ]);
+  });
+
+  it('counts a @Stateless name that is not a string literal, and makes no binding of it', () => {
+    const table = javaTable({ [SRC('Dyn')]: BEAN('com.acme', 'Dyn', '@Stateless(name = Names.X)', EJB) });
+    expect(table.bindings).toEqual([]);
+    expect(table.tally.nonLiteralNames).toBe(1);
+  });
+
+  it('does not take a @Stateless it cannot confirm: one the repository declares in the class\'s own package is not the catalog\'s', () => {
+    const table = javaTable({
+      [SRC('Stateless')]: javaSource('com.acme', [], ['public @interface Stateless {}']),
+      [SRC('Own')]: BEAN('com.acme', 'Own', '@Stateless', []),
+    });
+    expect(table.bindings).toEqual([]);
+  });
+
+  it('names a @Configuration class by its class name decapitalized, in the spring namespace', () => {
+    const table = javaTable({
+      [SRC('AppConfig')]: BEAN('com.acme', 'AppConfig', '@Configuration', ['import org.springframework.context.annotation.Configuration;']),
+    });
+    expect(summary(table)).toEqual([['appConfig', 'spring', 'spring-annotation-stereotype', 4]]);
+    expect(table.bindings[0].target).toMatchObject({ kind: 'node', id: `class:${SRC('AppConfig')}:AppConfig` });
+  });
+
+  it('gives the added stereotypes and the controller advice binder the Spring rules: an explicit name wins, a leading run of capitals is kept', () => {
+    const web = (name) => `import org.springframework.web.bind.annotation.${name};`;
+    const table = javaTable({
+      [SRC('Settings')]: BEAN('com.acme', 'Settings', '@Configuration("cfg")', ['import org.springframework.context.annotation.Configuration;']),
+      [SRC('OrdersApi')]: BEAN('com.acme', 'OrdersApi', '@RestController', [web('RestController')]),
+      [SRC('Named')]: BEAN('com.acme', 'Named', '@RestController("namedApi")', [web('RestController')]),
+      [SRC('Faults')]: BEAN('com.acme', 'Faults', '@ControllerAdvice', [web('ControllerAdvice')]),
+      [SRC('RestFaults')]: BEAN('com.acme', 'RestFaults', '@RestControllerAdvice', [web('RestControllerAdvice')]),
+      [SRC('URLConfig')]: BEAN('com.acme', 'URLConfig', '@Configuration', ['import org.springframework.context.annotation.Configuration;']),
+    });
+    expect(summary(table).map(([name, namespace]) => [name, namespace]).sort()).toEqual([
+      ['URLConfig', 'spring'], ['cfg', 'spring'], ['faults', 'spring'], ['namedApi', 'spring'], ['ordersApi', 'spring'], ['restFaults', 'spring'],
+    ]);
+    expect(Object.fromEntries(summary(table).map(([name, , binder]) => [name, binder]))).toMatchObject({
+      cfg: 'spring-annotation-stereotype', ordersApi: 'spring-annotation-stereotype', namedApi: 'spring-annotation-stereotype',
+      URLConfig: 'spring-annotation-stereotype', faults: 'spring-annotation-advice', restFaults: 'spring-annotation-advice',
+    });
+  });
+
+  it('never reads the value of a controller advice as its name: it is the base packages, and name is the bean name', () => {
+    const web = (name) => `import org.springframework.web.bind.annotation.${name};`;
+    const table = javaTable({
+      [SRC('Faults')]: BEAN('com.acme', 'Faults', '@ControllerAdvice("com.acme.web")', [web('ControllerAdvice')]),
+      [SRC('RestFaults')]: BEAN('com.acme', 'RestFaults', '@RestControllerAdvice(basePackages = "com.acme.api")', [web('RestControllerAdvice')]),
+      [SRC('Handler')]: BEAN('com.acme', 'Handler', '@ControllerAdvice(name = "errors", value = "com.acme")', [web('ControllerAdvice')]),
+    });
+    expect(summary(table).map(([name, namespace, binder]) => [name, namespace, binder]).sort()).toEqual([
+      ['errors', 'spring', 'spring-annotation-advice'],
+      ['faults', 'spring', 'spring-annotation-advice'],
+      ['restFaults', 'spring', 'spring-annotation-advice'],
+    ]);
+  });
+
+  it('keeps EJB names out of expressions: the ejb namespace is not one the expression language sees', () => {
+    const p = project({
+      java: { [SRC('OrderBean')]: BEAN('com.acme', 'OrderBean', '@Stateless', EJB) },
+      files: { 'app/pom.xml': POM, 'app/web/p.xhtml': '<p>#{OrderBean.total}</p>' },
+    });
+    expect(p.links).toEqual([]);
+    expect(p.roots.elsewhere).toBe(1);
+    expect(p.samples('name-reference-elsewhere')).toEqual(['app/web/p.xhtml:1 OrderBean -> [app [ejb]]']);
+  });
+
+  it('counts the EJB binder in the coverage like any binder, with a missing-names key of its own', () => {
+    const p = project({
+      java: {
+        [SRC('OrderBean')]: BEAN('com.acme', 'OrderBean', '@Stateless', EJB),
+        [SRC('Quote')]: BEAN('com.acme', 'Quote', '@Stateless(name = "quotes")', EJB),
+        [SRC('Plain')]: javaSource('com.acme', [], ['public class Plain {}']),
+      },
+      files: { 'app/pom.xml': POM },
+    });
+    expect(p.coverage.bindings['ejb-annotation-session']).toBe(2);
+    expect(p.coverage.missingNames['ejb-annotation-session']).toBe(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Requirement: EL names produce references edges
 // ---------------------------------------------------------------------------
 
@@ -1545,8 +1703,9 @@ describe('coverage, gaps and conservation (design D10)', () => {
     ]);
     expect(coverage.status).toBe('ran');
     const binderIds = [
-      'cdi-annotation-model', 'cdi-annotation-named', 'jsf-annotation-managed-bean', 'jsf-xml-managed-bean', 'jsf-xml-resource-bundle',
-      'seam-annotation-name', 'seam-annotation-role', 'seam-xml-component', 'spring-annotation-stereotype', 'spring-xml-alias', 'spring-xml-bean',
+      'cdi-annotation-model', 'cdi-annotation-named', 'ejb-annotation-session', 'jsf-annotation-managed-bean', 'jsf-xml-managed-bean', 'jsf-xml-resource-bundle',
+      'seam-annotation-name', 'seam-annotation-role', 'seam-xml-component', 'spring-annotation-advice', 'spring-annotation-stereotype', 'spring-xml-alias',
+      'spring-xml-bean',
     ];
     expect(Object.keys(coverage.bindings).sort()).toEqual(binderIds);
     expect(Object.keys(coverage.missingNames).sort()).toEqual(binderIds);
