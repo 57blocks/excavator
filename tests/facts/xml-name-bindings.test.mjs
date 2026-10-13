@@ -186,7 +186,7 @@ describe('Spring beans', () => {
   });
 
   it('matches element names by their local part, prefix or not', () => {
-    expect(shown(read('<sp:beans xmlns:sp="urn:s"><sp:bean id="x" class="a.B"/></sp:beans>'))).toEqual([['spring-xml-bean', 'x', 1, cls('a.B')]]);
+    expect(shown(read('<sp:beans xmlns:sp="http://www.springframework.org/schema/beans"><sp:bean id="x" class="a.B"/></sp:beans>'))).toEqual([['spring-xml-bean', 'x', 1, cls('a.B')]]);
   });
 
   it('reads past a DOCTYPE and comments before the root, and not a commented-out bean', () => {

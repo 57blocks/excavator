@@ -1106,7 +1106,7 @@ describe('coverage, gaps and conservation (design D10)', () => {
     expect(coverage.status).toBe('ran');
     const binderIds = [
       'cdi-annotation-model', 'cdi-annotation-named', 'jsf-annotation-managed-bean', 'jsf-xml-managed-bean', 'jsf-xml-resource-bundle',
-      'seam-annotation-name', 'seam-annotation-role', 'seam-xml-component', 'spring-annotation-stereotype', 'spring-xml-bean',
+      'seam-annotation-name', 'seam-annotation-role', 'seam-xml-component', 'spring-annotation-stereotype', 'spring-xml-alias', 'spring-xml-bean',
     ];
     expect(Object.keys(coverage.bindings).sort()).toEqual(binderIds);
     expect(Object.keys(coverage.missingNames).sort()).toEqual(binderIds);

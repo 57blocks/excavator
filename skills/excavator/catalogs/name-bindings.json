@@ -1,5 +1,5 @@
 {
-  "version": 1,
+  "version": 2,
   "unitDescriptors": ["pom.xml", "build.gradle", "build.gradle.kts", "build.xml", "build.sbt"],
   "xmlBinders": [
     {
@@ -57,8 +57,9 @@
     {
       "id": "spring-xml-bean",
       "namespace": "spring",
-      "basis": "Spring XML configuration: a bean element directly under beans registers its class under its id and each of the aliases in name, which can be separated by comma, semicolon or space but are not in id; a bean nested in a property or constructor argument is an inner bean and registers no name, and a bean with a name but no class (only a parent or a factory) is a definition whose class comes from elsewhere. Spring's EL bridge looks a name up whole, so a dotted name is not reachable from EL.",
+      "basis": "Spring XML configuration: a bean element directly under beans registers its class under its id and each of the aliases in name, which can be separated by comma, semicolon or space but are not in id; a bean nested in a property or constructor argument is an inner bean and registers no name; a bean built by a factory-method or a factory-bean writes the class of the factory (or none), not the class of what the factory returns, so its target is unknown even when a class is written; a bean with a name and a parent but no class of its own takes the class of the definition its parent names, and any other bean with a name and no class is a definition whose class comes from elsewhere; the root is a beans element in the Spring beans namespace or, in the DTD form, in no namespace, while a beans root in another namespace (the Java EE CDI beans.xml) is not Spring configuration. Spring's EL bridge looks a name up whole, so a dotted name is not reachable from EL.",
       "root": "beans",
+      "rootNamespace": ["http://www.springframework.org/schema/beans", null],
       "element": "bean",
       "parent": "beans",
       "name": {
@@ -69,7 +70,27 @@
       },
       "target": {
         "kind": "class",
-        "attribute": "class"
+        "attribute": "class",
+        "unknownWhen": ["factory-method", "factory-bean"],
+        "inheritFrom": "parent"
+      },
+      "namespacedNames": false,
+      "missingTarget": "unknown"
+    },
+    {
+      "id": "spring-xml-alias",
+      "namespace": "spring",
+      "basis": "Spring XML configuration: an alias element directly under beans gives the bean named by its name attribute one more name, written in its alias attribute, which is looked up whole like a bean name and stands for the bean it names.",
+      "root": "beans",
+      "rootNamespace": ["http://www.springframework.org/schema/beans", null],
+      "element": "alias",
+      "parent": "beans",
+      "name": {
+        "attribute": ["alias"]
+      },
+      "target": {
+        "kind": "name",
+        "attribute": "name"
       },
       "namespacedNames": false,
       "missingTarget": "unknown"
@@ -209,6 +230,37 @@
           }
         }
       ]
+    }
+  ],
+  "xmlInjections": [
+    {
+      "id": "spring-xml-injection",
+      "namespace": "spring",
+      "basis": "Spring XML configuration: a property or constructor-arg ref, a ref element's bean, local or parent, an entry's key-ref or value-ref, a lookup-method bean, a replaced-method replacer, and an attribute of the p or c namespace ending in -ref each name another bean that the container supplies to the nearest enclosing bean definition (ref local looks only in the same file and ref parent only in the parent container, which a static reading cannot see); idref is deliberately not a site, because it passes the id of the other bean as a string and does not inject the bean, and lookup-method and replaced-method are method injection, in which the container overrides a method to return the named bean or implements the method by the named bean.",
+      "root": "beans",
+      "rootNamespace": ["http://www.springframework.org/schema/beans", null],
+      "consumer": {
+        "element": "bean",
+        "binder": "spring-xml-bean"
+      },
+      "sites": [
+        { "id": "spring-property-ref", "scope": "unit", "element": "property", "attribute": "ref" },
+        { "id": "spring-constructor-arg-ref", "scope": "unit", "element": "constructor-arg", "attribute": "ref" },
+        { "id": "spring-ref-bean", "scope": "unit", "element": "ref", "attribute": "bean" },
+        { "id": "spring-ref-local", "scope": "file", "element": "ref", "attribute": "local" },
+        { "id": "spring-ref-parent", "scope": "outside", "element": "ref", "attribute": "parent" },
+        { "id": "spring-entry-key-ref", "scope": "unit", "element": "entry", "attribute": "key-ref" },
+        { "id": "spring-entry-value-ref", "scope": "unit", "element": "entry", "attribute": "value-ref" },
+        { "id": "spring-lookup-method", "scope": "unit", "element": "lookup-method", "attribute": "bean" },
+        { "id": "spring-replaced-method", "scope": "unit", "element": "replaced-method", "attribute": "replacer" },
+        { "id": "spring-p-ref", "scope": "unit", "attributeNamespace": "http://www.springframework.org/schema/p", "attributeSuffix": "-ref" },
+        { "id": "spring-c-ref", "scope": "unit", "attributeNamespace": "http://www.springframework.org/schema/c", "attributeSuffix": "-ref" }
+      ],
+      "census": {
+        "attributes": ["ref"],
+        "attributeSuffixes": ["-ref"],
+        "elements": ["ref", "idref"]
+      }
     }
   ]
 }

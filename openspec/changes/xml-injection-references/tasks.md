@@ -18,14 +18,14 @@
 
 ## 1. 目录
 
-- [ ] 1.1 `name-binding-catalog.mjs` 按 design D1 支持目录版本 2：
+- [x] 1.1 `name-binding-catalog.mjs` 按 design D1 支持目录版本 2：
   - `rootNamespace` 的元素可为 `null`；
   - `target.kind` 新增 `name`；
   - `target.unknownWhen` 与 `target.inheritFrom` 只在 `kind: class` 时允许；
   - 新顶层 `xmlInjections`：`consumer.binder` 必须存在、同命名空间、目标种类为 `class`；注入点两种形状二选一；`scope` 取 `unit`、`file` 或 `outside`；注入点 id 全局唯一；普查三项至少一个非空。
 
   验证：`tests/facts/name-binding-catalog.test.mjs` 对每条新规则各有一条非法输入测试，错误信息指出位置；版本 1 的目录被拒绝。
-- [ ] 1.2 随附目录升到版本 2：
+- [x] 1.2 随附目录升到版本 2：
   - `spring-xml-bean` 加根命名空间、`unknownWhen`、`inheritFrom`；
   - 新绑定器 `spring-xml-alias`；
   - 新注入族 `spring-xml-injection`，11 个注入点与普查规则按 design D1 表格；

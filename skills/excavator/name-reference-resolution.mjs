@@ -172,6 +172,8 @@ const unindexedTarget = (type) => ({ kind: 'unindexed', key: `unindexed:${type}`
 function xmlTarget(target, { typesByFqn, otherJvm, declaredJavaTypes }) {
   if (target === null) return { kind: 'unknown', key: 'unknown', labels: ['(no target)'] };
   if (target.kind === 'bundle') return { kind: 'bundle', key: 'bundle', labels: [`bundle ${target.text}`] };
+  // A target that is another name (an alias) is not a class name; until names are resolved it is unknown.
+  if (target.kind === 'name') return { kind: 'unknown', key: 'unknown', labels: [`name ${target.text}`] };
   const found = resolveClassName(target.text, typesByFqn, otherJvm, declaredJavaTypes, {});
   if (found.kind === 'external') return { kind: 'external', key: `external:${target.text}`, labels: [`${target.text} (outside the repository)`] };
   if (found.kind === 'unindexed') return unindexedTarget(found.type);
