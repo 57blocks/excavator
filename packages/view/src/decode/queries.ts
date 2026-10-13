@@ -5,6 +5,8 @@ import { QueryEngine, type Query, type QueryResult } from '../model/engine';
 /** Answers search queries; `onProgress` reports a long first build (the identifier term index). */
 export interface QueryService {
   run(query: Query, onProgress?: (done: number, total: number) => void): Promise<QueryResult>;
+  /** Stop the service (the data Worker is terminated); pending queries are rejected. */
+  dispose?(): void;
 }
 
 /** The query engine on the main thread, yielding once so a caller can render its "building" state first. */

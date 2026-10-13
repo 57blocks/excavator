@@ -287,8 +287,11 @@ if (!chrome.path) {
       expect(open.dom).toContain('data-drop-input=""');
       expect(open.dom).toContain('data-nav="open"');
       // Opening a directory from there replaces the embedded data and lands on its overview.
+      expect(open.view.workers).toBe(1);
       const replaced = await smoke(goodPage, { hash: '#/open', actions: [{ type: 'files', selector: '[data-drop-input]', paths: [semanticDataDir] }] });
       expect(replaced.actions[0].view).toMatchObject({ origin: 'drop', dropState: 'loaded', route: 'overview', hash: '#/overview' });
+      // The embedded data's Worker is stopped once the directory's data is mounted (9.3).
+      expect(replaced.actions[0].view.workers).toBe(1);
       expect(replaced.counts.nodes).toBe(semanticNodes);
       expect(replaced.dom).toContain('data-origin="drop"');
       expect(replaced.dom).toContain('evidenceText</span>: dropped (loaded from a dropped directory)');
@@ -388,6 +391,14 @@ if (!chrome.path) {
       expect(result.view).toMatchObject({ route: 'graph-file', graphLevel: 'file', graphVisibleNodes: 2 });
       expect(result.dom).toContain('data-graph-item="function:src/util/format.ts:formatGreeting(name,times)"');
       expect(result.dom).toContain('data-graph-note="outside"');
+      // format.ts: two symbols, no edge between them; contains + exports from the file node (4),
+      // run -calls-> formatGreeting from main.ts (1). Every edge in its bucket (7A.1).
+      expect(result.view.graphEdges).toEqual({ total: 5, drawn: 0, cut: 0, collapsed: 0, inside: 0, fileNode: 4, outside: 1, balanced: true });
+      expect(result.dom).toContain('data-graph-note="ledger" data-balanced="true"');
+      // The legend counts edges in drawn links against the scope (7A.2): exports 0 / 2, still switchable.
+      const exportsButton = /data-edge-legend="exports" data-edge-count="0" data-edge-total="2" data-enabled="true"><button([^>]*)>/.exec(result.dom);
+      expect(exportsButton).not.toBeNull();
+      expect(exportsButton[1]).not.toContain('disabled');
       const missing = await smoke(goodPage, { hash: '#/graph/nope' });
       expect(missing.ok).toBe(true);
       expect(missing.dom).toContain('data-graph-missing="nope"');
@@ -397,6 +408,9 @@ if (!chrome.path) {
       const result = await smoke(goodPage, { hash: `#/node/${encodeURIComponent('class:src/counter.ts:Counter')}` });
       expect(result).toMatchObject({ ok: true, route: 'node' });
       expect(result.view).toMatchObject({ graphLevel: 'symbol', selectedNode: 'class:src/counter.ts:Counter', detailEdges: 'in:contains=1,in:exports=1', neighborhoodTotal: 2 });
+      expect(result.view).toMatchObject({ neighborhoodHop1: '1/1', neighborhoodHop2: null, neighborhoodFolded: 0 });
+      // Counter and counter.ts drawn; counter.ts -imports- main.ts leads beyond one hop (7A.1).
+      expect(result.view.graphEdges).toMatchObject({ drawn: 2, collapsed: 0, outside: 1, total: 3, balanced: true });
       const dom = result.dom;
       expect(dom).toContain('data-edge-group="in:contains" data-total="1"');
       expect(dom).toContain('data-edge-group="in:exports" data-total="1"');
@@ -566,6 +580,11 @@ if (!chrome.path) {
       expect(existsSync(result.chrome.singletonDir)).toBe(false);
       expect(result.chrome.profile).toMatch(/excavator-view-smoke-/);
       expect(existsSync(result.chrome.profile)).toBe(false);
+      // Chrome ran with TMPDIR under the profile: empty once it closed, and removed with it (7A.5).
+      expect(result.chrome.tmpDir).toBe(join(result.chrome.profile, 'tmp'));
+      expect(result.chrome.tmpLeft).toEqual([]);
+      expect(existsSync(result.chrome.tmpDir)).toBe(false);
+      expect(Array.isArray(result.chrome.userTmpLeft)).toBe(true);
     }, 90_000);
 
     it('reports prefers-reduced-motion when asked to emulate it', () => {

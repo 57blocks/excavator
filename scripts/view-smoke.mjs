@@ -14,7 +14,9 @@
  * has asynchronous work pending (a search running in its Worker) marks
  * `data-busy`; the page counts as settled only once that is gone. Views report
  * what they show (`data-route`, `data-hash`, `data-treemap-path`,
- * `data-search-*`, `data-postings`), collected under `view` in the result.
+ * `data-search-*`, `data-postings`, the graph level's edge ledger
+ * `data-graph-edges-*`, the live data Workers `data-workers`), collected
+ * under `view` in the result.
  *
  * `actions` (programmatic only; see `smoke`) drive the graph canvas with
  * real input events (CDP `Input.dispatchMouseEvent`): a drag, a wheel turn,
@@ -35,6 +37,16 @@
  * (`<user temp dir>/com.google.Chrome.XXXXXX/`), reported as
  * `chrome.singletonDir` (null when Chrome made none) so a caller can check
  * that exactly this run's directory is gone.
+ *
+ * Chrome runs with TMPDIR=<profile>/tmp (task 7A.5), so whatever it puts in
+ * TMPDIR is removed with the profile; `chrome.tmpLeft` lists what was in that
+ * directory when Chrome had closed. Chrome on macOS does not take its
+ * singleton directory or its `com.google.Chrome.chrome_chrome_url_fetcher_.*`
+ * directory from TMPDIR (measured: one empty url_fetcher directory per run
+ * stays in the user temp dir); `chrome.userTmpLeft` lists the
+ * `com.google.Chrome.*` entries that appeared in the user temp dir during
+ * the run and are still there (another Chrome running at the same time can
+ * add to it; nothing is deleted there).
  *
  * Prints one JSON line. Exit code: 0 when the page is ready, reports no
  * errors and no CSP violations, and its decoded counts equal the header
@@ -58,7 +70,7 @@
  * threads, so the dump shows "loading"), hence the DevTools pipe.
  */
 
-import { accessSync, constants, existsSync, mkdtempSync, readlinkSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { accessSync, constants, existsSync, mkdirSync, mkdtempSync, readdirSync, readlinkSync, rmSync, statSync, watch, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { delimiter, dirname, join, resolve } from 'node:path';
 import { spawn } from 'node:child_process';
@@ -144,10 +156,30 @@ export function viewReport(attrs) {
     detailEdges: a['data-detail-edges'] ?? null,
     neighborhoodTotal: intOrNull(a['data-neighborhood-total']),
     motionMode: a['data-motion-mode'] ?? null,
+    neighborhoodHop1: a['data-neighborhood-hop1'] ?? null,
+    neighborhoodHop2: a['data-neighborhood-hop2'] ?? null,
+    neighborhoodFolded: intOrNull(a['data-neighborhood-folded']),
+    graphEdges: graphEdgesReport(a),
+    workers: intOrNull(a['data-workers']),
     origin: a['data-origin'] ?? null,
     dropState: a['data-drop-state'] ?? null,
     semantics: semanticsReport(a),
   };
+}
+
+/**
+ * The graph level's edge ledger (`data-graph-edges-*`, task 7A.1) as numbers,
+ * `balanced` as a boolean; null when the level reports none.
+ */
+function graphEdgesReport(attrs) {
+  /** @type {Record<string, number | boolean | null>} */
+  const out = {};
+  for (const [name, value] of Object.entries(attrs)) {
+    if (!name.startsWith('data-graph-edges-')) continue;
+    const key = name.slice('data-graph-edges-'.length).replace(/-([a-z])/g, (_, c) => c.toUpperCase());
+    out[key] = key === 'balanced' ? value === 'true' : intOrNull(value);
+  }
+  return Object.keys(out).length > 0 ? out : null;
 }
 
 /** Every `data-semantics-*` attribute, camelCased (`data-semantics-layers-freshness` -> `layersFreshness`). */
@@ -252,6 +284,19 @@ export function singletonDir(profile) {
     return dirname(resolve(profile, readlinkSync(join(profile, 'SingletonSocket'))));
   } catch {
     return null;
+  }
+}
+
+/**
+ * Every entry under `dir` (relative paths, sorted), [] when it is missing.
+ * @param {string} dir
+ * @returns {string[]}
+ */
+export function listTree(dir) {
+  try {
+    return readdirSync(dir, { recursive: true }).map(String).sort();
+  } catch {
+    return [];
   }
 }
 
@@ -412,13 +457,35 @@ export async function smoke(page, { hash = '', steps = [], actions = [], reduced
   if (!found.path) return { skipped: true, reason: /** @type {any} */ (found).reason, dom: null };
   const url = `${pathToFileURL(resolve(page)).href}${hash}`;
   const profile = mkdtempSync(join(tmpdir(), 'excavator-view-smoke-'));
+  // Chrome's own temporary files (its process-singleton directory, the URL
+  // fetcher's directories) go under the profile, removed with it (task 7A.5).
+  const chromeTmp = join(profile, 'tmp');
+  mkdirSync(chromeTmp);
   const args = [
     '--headless=new', '--disable-gpu', '--no-first-run', '--no-default-browser-check',
     `--user-data-dir=${profile}`, '--remote-debugging-pipe',
     ...(reducedMotion ? ['--force-prefers-reduced-motion'] : []),
     'about:blank',
   ];
-  const child = spawn(found.path, args, { stdio: ['ignore', 'ignore', 'ignore', 'pipe', 'pipe'] });
+  // Chrome on macOS ignores TMPDIR for some directories (measured: its
+  // process-singleton directory and one empty
+  // com.google.Chrome.chrome_chrome_url_fetcher_.* per run land in the user
+  // temp dir regardless). Record what appears there while this run's Chrome
+  // is up and is still there after it closed; another Chrome running at the
+  // same time can add to this list, so it is a report, never cleaned up.
+  const userTmp = tmpdir();
+  /** @type {Set<string>} */
+  const appeared = new Set();
+  /** @type {import('node:fs').FSWatcher | null} */
+  let watcher = null;
+  try {
+    watcher = watch(userTmp, (_event, name) => {
+      if (name && String(name).startsWith('com.google.Chrome.')) appeared.add(String(name));
+    });
+  } catch {
+    watcher = null;
+  }
+  const child = spawn(found.path, args, { stdio: ['ignore', 'ignore', 'ignore', 'pipe', 'pipe'], env: { ...process.env, TMPDIR: `${chromeTmp}/` } });
   const cdp = pipeClient(child);
   let dom = '';
   let problem = null;
@@ -431,6 +498,8 @@ export async function smoke(page, { hash = '', steps = [], actions = [], reduced
   let chromeExit = 'already-exited';
   /** @type {string | null} */
   let chromeSingletonDir = null;
+  /** @type {string[]} */
+  let chromeTmpLeft = [];
   try {
     const { targetInfos } = await cdp.send('Target.getTargets');
     const target = targetInfos.find((t) => t.type === 'page');
@@ -487,7 +556,10 @@ export async function smoke(page, { hash = '', steps = [], actions = [], reduced
   } finally {
     chromeSingletonDir = singletonDir(profile);
     chromeExit = await closeChrome(child, cdp);
+    chromeTmpLeft = listTree(chromeTmp);
     rmSync(profile, { recursive: true, force: true });
+    await sleep(300);
+    watcher?.close();
   }
   const attrs = rootAttributes(dom);
   const result = verdict(attrs);
@@ -496,7 +568,7 @@ export async function smoke(page, { hash = '', steps = [], actions = [], reduced
     skipped: false,
     ...result,
     ok: result.ok && problem === null,
-    chrome: { path: found.path, source: /** @type {any} */ (found).source, exit: chromeExit, singletonDir: chromeSingletonDir, profile },
+    chrome: { path: found.path, source: /** @type {any} */ (found).source, exit: chromeExit, singletonDir: chromeSingletonDir, profile, tmpDir: chromeTmp, tmpLeft: chromeTmpLeft, userTmpLeft: watcher === null ? null : [...appeared].filter((name) => existsSync(join(userTmp, name))).sort() },
     ...(steps.length > 0 ? { steps: stepReports } : {}),
     ...(actions.length > 0 ? { actions: actionReports } : {}),
     ...(problem ? { problem } : {}),

@@ -22,9 +22,13 @@ if (rootElement) {
   watchReducedMotion();
   const started = performance.now();
   let mounts = 0;
+  let mounted: ViewData | null = null;
 
   const mount = (data: ViewData) => {
     mounts += 1;
+    // A directory opened over the current data replaces its query service (task 9.3).
+    const previous = mounted;
+    mounted = data;
     dataset.decodeMode = data.decodeMode;
     dataset.nodes = String(data.counts.nodes);
     dataset.edges = String(data.counts.edges);
@@ -61,6 +65,7 @@ if (rootElement) {
         </ErrorBoundary>
       </StrictMode>,
     );
+    if (previous && previous.queries !== data.queries) previous.queries?.dispose?.();
   };
   setDataMount(mount);
 

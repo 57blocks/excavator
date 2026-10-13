@@ -13,7 +13,9 @@ import { evidenceLineText, nodeExcerpt, reasonMessage } from '../model/source-te
 import { dirHash, graphDirHash, graphFileHash, nodeHash, sectionHash } from '../routes';
 import { clearBusy, markBusy, report } from '../instrument';
 import { EdgeLegend } from './EdgeLegend';
-import { Breadcrumbs, GraphFrame, filterLinks, typeCounts, useLevelReport } from './Graph';
+import { Breadcrumbs, GraphFrame, filterLinks, mergeEdges, moreCanvasLinks, moreNode, typeCounts, useLevelReport } from './Graph';
+import { EdgeLedger } from './EdgeLedger';
+import { bucketTotalsByType, ledgerReport, ledgerSums, neighborhoodReport } from '../model/edge-ledger';
 import { GraphCanvas, type CanvasLink, type CanvasNode } from './GraphCanvas';
 import { runQuery, useCsr, useDisabledTypes, useLayerColoring } from './graph-state';
 import { SourceBlock } from './SourceBlock';
@@ -120,26 +122,24 @@ function NodeView({ data, id, row, hops }: { data: ViewData; id: string; row: nu
         activatable: d !== 0,
       };
     });
-    const merged = new Map<string, CanvasLink>();
-    for (let i = 0; i < shownHood.edges.length; i += 4) {
-      const k = `${shownHood.edges[i + 1]}>${shownHood.edges[i + 2]}>${shownHood.edges[i + 3]}`;
-      const hit = merged.get(k);
-      if (hit) hit.count += 1;
-      else merged.set(k, { source: shownHood.edges[i + 1], target: shownHood.edges[i + 2], type: shownHood.types[shownHood.edges[i + 3]], count: 1 });
-    }
-    return { nodes, links: [...merged.values()], key: `node:${str('id', shownHood.row)}:${shownHood.hops}` };
+    if (shownHood.folded > 0) nodes.push(moreNode(shownHood.folded, 'nodes within reach', 'nodes past each hop\'s share'));
+    const links: CanvasLink[] = [...mergeEdges(shownHood.edges, shownHood.types), ...moreCanvasLinks(shownHood.moreLinks, shownHood.types)];
+    return { nodes, links, key: `node:${str('id', shownHood.row)}:${shownHood.hops}` };
   }, [shownHood, data, layers]);
-  const colored = useMemo(() => (canvas && layers && coloring ? layerColoring(layers, canvas.nodes.map((n) => n.key)) : null), [canvas, layers, coloring]);
+  const colored = useMemo(() => (canvas && layers && coloring ? layerColoring(layers, canvas.nodes.map((n) => (n.tone === 'more' ? null : n.key))) : null), [canvas, layers, coloring]);
+  const ledger = useMemo(() => (currentHood ? ledgerSums(currentHood.buckets) : null), [currentHood]);
   const shownLinks = useMemo(() => (canvas ? filterLinks(canvas.links, disabled) : []), [canvas, disabled]);
 
   const groupsReport = currentEdges
     ? [...currentEdges.out.map((g) => `out:${g.type}=${g.total}`), ...currentEdges.in.map((g) => `in:${g.type}=${g.total}`)].join(',')
     : null;
-  useLevelReport('symbol', id, currentHood ? currentHood.rows.length : null, {
+  useLevelReport('symbol', id, currentHood ? currentHood.rows.length + (currentHood.folded > 0 ? 1 : 0) : null, {
     'data-selected-node': id,
     'data-detail-edges': groupsReport,
     'data-neighborhood-total': currentHood ? currentHood.total : null,
     'data-neighborhood-hops': hops,
+    ...neighborhoodReport(currentHood),
+    ...ledgerReport(ledger),
   });
 
   return (
@@ -153,7 +153,7 @@ function NodeView({ data, id, row, hops }: { data: ViewData; id: string; row: nu
             <span className="hop-switch" role="group" aria-label="Hops">
               {[1, 2].map((h) => (h === hops ? <strong key={h} data-hops={h}>{h} {h === 1 ? 'hop' : 'hops'}</strong> : <a key={h} href={nodeHash(id, h)} data-hops={h}>{h} {h === 1 ? 'hop' : 'hops'}</a>))}
             </span>
-            {canvas && <EdgeLegend counts={typeCounts(canvas.links)} disabled={disabled} onToggle={toggle} />}
+            {canvas && shownHood && <EdgeLegend drawn={typeCounts(canvas.links)} totals={bucketTotalsByType(shownHood.types, shownHood.buckets)} disabled={disabled} onToggle={toggle} />}
             <LayerLegend model={layers} on={coloring} onToggle={toggleColoring} colored={colored?.perLayer ?? new Map()} unlayered={colored?.unlayered ?? 0} aggregates={0} />
           </div>
         }
@@ -173,14 +173,17 @@ function NodeView({ data, id, row, hops }: { data: ViewData; id: string; row: nu
             ariaLabel={`Neighborhood of ${id}: ${canvas.nodes.length} nodes, ${shownLinks.length} links`}
           />
         )}
-        {currentHood && currentHood.total > currentHood.rows.length && (
+        {currentHood && currentHood.folded > 0 && (
           <p className="muted" data-graph-note="collapsed">
-            Drawing the nearest {fmtNumber(currentHood.rows.length)} of {fmtNumber(currentHood.total)} nodes within {hops} {hops === 1 ? 'hop' : 'hops'} (breadth-first order).
+            {fmtNumber(currentHood.total)} nodes within {hops} {hops === 1 ? 'hop' : 'hops'}; drawing{' '}
+            {currentHood.hopTotals.slice(1).map((n, i) => `${fmtNumber(currentHood.hopDrawn[i + 1])} of ${fmtNumber(n)} at ${i + 1} ${i === 0 ? 'hop' : 'hops'}`).join(' and ')}{' '}
+            (each hop past the first keeps at least a quarter of the room), the other {fmtNumber(currentHood.folded)} are folded into one "more" node.
           </p>
         )}
         {currentHood && currentHood.edgesTotal > currentHood.edges.length / 4 && (
-          <p className="muted" data-graph-note="links">Drawing {fmtNumber(currentHood.edges.length / 4)} of {fmtNumber(currentHood.edgesTotal)} edges among them.</p>
+          <p className="muted" data-graph-note="links">Drawing {fmtNumber(currentHood.edges.length / 4)} of {fmtNumber(currentHood.edgesTotal)} edges among the drawn nodes.</p>
         )}
+        {ledger && <EdgeLedger sums={ledger} scope={`to nodes beyond ${hops} ${hops === 1 ? 'hop' : 'hops'}`} />}
       </GraphFrame>
       <motion.div key={id} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.25 }} data-motion="panel">
         <NodeDetail data={data} id={id} row={row} facts={facts} edges={currentEdges} />

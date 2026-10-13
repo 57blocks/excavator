@@ -11,6 +11,7 @@ import DecodeWorker from './worker?worker&inline';
 import type { QueryResult } from '../model/engine';
 import type { DroppedFile, WorkerMessage, WorkerRequest } from './protocol';
 import { mainThreadQueries, type QueryService } from './queries';
+import { report } from '../instrument';
 
 export class BundleError extends Error {
   constructor(name: string, message: string) {
@@ -30,6 +31,23 @@ type Load = { request: WorkerRequest; onMainThread: () => Promise<Record<string,
 async function loadOnMainThread(load: Load): Promise<Decoded> {
   const segments = await load.onMainThread();
   return { segments, mode: 'main', queries: mainThreadQueries(segments) };
+}
+
+// Data Workers alive in this page, self-reported as #root data-workers: a
+// directory opened over the embedded data replaces the old Worker (task 9.3).
+let liveWorkers = 0;
+
+function startWorker(): Worker {
+  const worker = new DecodeWorker();
+  liveWorkers += 1;
+  report('data-workers', liveWorkers);
+  return worker;
+}
+
+function stopWorker(worker: Worker): void {
+  worker.terminate();
+  liveWorkers -= 1;
+  report('data-workers', liveWorkers);
 }
 
 function workerQueries(worker: Worker): QueryService {
@@ -54,13 +72,23 @@ function workerQueries(worker: Worker): QueryService {
     for (const waiter of pending.values()) waiter.reject(error);
     pending.clear();
   };
+  let stopped = false;
   return {
     run(query, onProgress) {
+      if (stopped) return Promise.reject(new BundleError('QueryWorkerStopped', 'the data worker was replaced'));
       const id = nextId++;
       return new Promise((resolve, reject) => {
         pending.set(id, { resolve, reject, onProgress });
         worker.postMessage({ type: 'query', id, query });
       });
+    },
+    dispose() {
+      if (stopped) return;
+      stopped = true;
+      stopWorker(worker);
+      const error = new BundleError('QueryWorkerStopped', 'the data worker was replaced');
+      for (const waiter of pending.values()) waiter.reject(error);
+      pending.clear();
     },
   };
 }
@@ -69,7 +97,7 @@ function loadInWorker(load: Load): Promise<Decoded> | null {
   if (typeof Worker === 'undefined') return null;
   let worker: Worker;
   try {
-    worker = new DecodeWorker();
+    worker = startWorker();
   } catch {
     return null;
   }
@@ -79,14 +107,14 @@ function loadInWorker(load: Load): Promise<Decoded> | null {
       if (data.type !== 'decoded') return;
       if (data.ok) resolve({ segments: data.segments, mode: 'worker', queries: workerQueries(worker) });
       else {
-        worker.terminate();
+        stopWorker(worker);
         reject(new BundleError(data.name, data.message));
       }
     };
     worker.onerror = (event) => {
       // The Worker itself failed (not the data): fall back to the main thread.
       event.preventDefault();
-      worker.terminate();
+      stopWorker(worker);
       loadOnMainThread(load).then(resolve, reject);
     };
     worker.postMessage(load.request);

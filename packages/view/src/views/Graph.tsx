@@ -11,6 +11,8 @@ import type { FileViewResult, GraphItem, GraphViewResult } from '../model/graph-
 import { graphDirHash, graphFileHash, nodeHash } from '../routes';
 import { clearBusy, markBusy, report } from '../instrument';
 import { EdgeLegend } from './EdgeLegend';
+import { EdgeLedger } from './EdgeLedger';
+import { bucketTotalsByType, ledgerReport, ledgerSums } from '../model/edge-ledger';
 import { GraphCanvas, type CanvasLink, type CanvasNode } from './GraphCanvas';
 import { runQuery, useCsr, useDisabledTypes, useLayerColoring, type CsrState } from './graph-state';
 import { LayerLegend } from './LayerLegend';
@@ -84,6 +86,37 @@ export function typeCounts(links: Array<{ type: string; count: number }>): Map<s
   const counts = new Map<string, number>();
   for (const l of links) counts.set(l.type, (counts.get(l.type) ?? 0) + l.count);
   return counts;
+}
+
+/** One canvas link per (source, target, type) from flat [edge row, source, target, type] quads. */
+export function mergeEdges(edges: number[], types: string[]): CanvasLink[] {
+  const merged = new Map<string, CanvasLink>();
+  for (let i = 0; i < edges.length; i += 4) {
+    const k = `${edges[i + 1]}>${edges[i + 2]}>${edges[i + 3]}`;
+    const hit = merged.get(k);
+    if (hit) hit.count += 1;
+    else merged.set(k, { source: edges[i + 1], target: edges[i + 2], type: types[edges[i + 3]], count: 1 });
+  }
+  return [...merged.values()];
+}
+
+/** Canvas links to and from the "more" item, from flat [source, target, type, count] quads. */
+export function moreCanvasLinks(moreLinks: number[], types: string[]): CanvasLink[] {
+  const links: CanvasLink[] = [];
+  for (let i = 0; i < moreLinks.length; i += 4) links.push({ source: moreLinks[i], target: moreLinks[i + 1], type: types[moreLinks[i + 2]], count: moreLinks[i + 3] });
+  return links;
+}
+
+/** The "more" node of a symbol-level view: `folded` nodes not drawn. */
+export function moreNode(folded: number, what: string, which: string): CanvasNode {
+  return {
+    key: 'more',
+    label: `${fmtNumber(folded)} more`,
+    size: folded,
+    tone: 'more',
+    tooltip: [`${fmtNumber(folded)} more ${what}`, `The ${which}, folded to stay within 400 drawn nodes`, 'Their edges to drawn nodes are the links to this node'],
+    activatable: false,
+  };
 }
 
 export function filterLinks<T extends { type: string }>(links: T[], disabled: ReadonlySet<string>): T[] {
@@ -191,24 +224,21 @@ export function Graph({ data, level }: { data: ViewData; level: GraphLevel }) {
           activatable: true,
         };
       });
-      const merged = new Map<string, CanvasLink>();
-      for (let i = 0; i < result.edges.length; i += 4) {
-        const k = `${result.edges[i + 1]}>${result.edges[i + 2]}>${result.edges[i + 3]}`;
-        const hit = merged.get(k);
-        if (hit) hit.count += 1;
-        else merged.set(k, { source: result.edges[i + 1], target: result.edges[i + 2], type: result.types[result.edges[i + 3]], count: 1 });
-      }
-      return { nodes, links: [...merged.values()], ids: nodes.map((n) => n.key), found: true as const };
+      if (result.folded > 0) nodes.push(moreNode(result.folded, 'symbols', 'with the fewest edges'));
+      const links = [...mergeEdges(result.edges, result.types), ...moreCanvasLinks(result.moreLinks, result.types)];
+      return { nodes, links, ids: nodes.map((n) => (n.tone === 'more' ? null : n.key)), found: true as const };
     }
     return { nodes: [], links: [], ids: [], found: false as const };
   }, [result, data, members, layers]);
   const colored = useMemo(() => (model?.found && layers && coloring ? layerColoring(layers, model.ids) : null), [model, layers, coloring]);
 
   const shownLinks = useMemo(() => (model ? filterLinks(model.links, disabled) : []), [model, disabled]);
+  const ledger = useMemo(() => (current && result && result.found ? ledgerSums(result.buckets) : null), [current, result]);
   const levelName: LevelName = level.kind;
   useLevelReport(levelName, level.path, current && model?.found ? model.nodes.length : null, {
     'data-graph-items-total': result && 'itemsTotal' in result && result.found ? result.itemsTotal : result && 'total' in result ? result.total : null,
     'data-graph-links': model?.found ? shownLinks.length : null,
+    ...ledgerReport(ledger),
   });
 
   const activate = (index: number) => {
@@ -232,7 +262,7 @@ export function Graph({ data, level }: { data: ViewData; level: GraphLevel }) {
         legend={
           model?.found ? (
             <>
-              <EdgeLegend counts={typeCounts(model.links)} disabled={disabled} onToggle={toggle} />
+              <EdgeLegend drawn={typeCounts(model.links)} totals={result && result.found ? bucketTotalsByType(result.types, result.buckets) : new Map()} disabled={disabled} onToggle={toggle} />
               <LayerLegend
                 model={layers}
                 on={coloring}
@@ -282,11 +312,14 @@ function LevelNotes({ result, shownLinks }: { result: GraphViewResult | FileView
     }
     if (result.unresolvedEdges > 0) notes.push({ key: 'unresolved', text: `${fmtNumber(result.unresolvedEdges)} edges of the graph have an endpoint that is not a node and are not drawn at any level.` });
   } else if ('rows' in result && result.found) {
-    if (result.total > result.rows.length) notes.push({ key: 'collapsed', text: `Drawing the first ${fmtNumber(result.rows.length)} of ${fmtNumber(result.total)} symbols.` });
-    if (result.edgesTotal > result.edges.length / 4) notes.push({ key: 'links', text: `Drawing ${fmtNumber(result.edges.length / 4)} of ${fmtNumber(result.edgesTotal)} edges.` });
-    notes.push({ key: 'outside', text: `${fmtNumber(sumTypes(result.outsideOut))} edges leave these symbols for other files and ${fmtNumber(sumTypes(result.outsideIn))} arrive from them (not drawn); edges of the file node itself are on its node page.` });
+    if (result.folded > 0) {
+      notes.push({ key: 'collapsed', text: `${fmtNumber(result.total)} symbols here; drawing the ${fmtNumber(result.rows.length)} with the most edges, the other ${fmtNumber(result.folded)} are folded into one "more" node to stay within 400 drawn nodes.` });
+    }
+    if (result.edgesTotal > result.edges.length / 4) notes.push({ key: 'links', text: `Drawing ${fmtNumber(result.edges.length / 4)} of ${fmtNumber(result.edgesTotal)} edges between drawn symbols.` });
+    notes.push({ key: 'outside', text: `${fmtNumber(sumTypes(result.outsideOut))} edges leave these symbols for other files and ${fmtNumber(sumTypes(result.outsideIn))} arrive from them (not drawn); the file node's own edges to other files are on its node page.` });
   }
   notes.push({ key: 'shown', text: `${fmtNumber(shownLinks)} links drawn with the current edge type switches.` });
+  const scope = 'items' in result && result.level === 'member' ? 'outside the graph' : 'items' in result ? 'leaving or entering this directory' : 'to or from other files';
   return (
     <section className="banner" data-state="fresh">
       <div>
@@ -295,6 +328,7 @@ function LevelNotes({ result, shownLinks }: { result: GraphViewResult | FileView
             {n.text}
           </div>
         ))}
+        {result.found && <EdgeLedger sums={ledgerSums(result.buckets)} scope={scope} />}
       </div>
     </section>
   );
@@ -339,7 +373,13 @@ function ItemTable({ data, result, model }: { data: ViewData; result: GraphViewR
                     </tr>
                   );
                 })
-                : model.nodes.map((node) => (
+                : model.nodes.map((node) => (node.tone === 'more' ? (
+                  <tr key={node.key} data-graph-item={node.key}>
+                    <td className="mono">{node.label}</td>
+                    <td>more</td>
+                    <td className="num">{fmtNumber(node.size)}</td>
+                  </tr>
+                ) : (
                   <tr key={node.key} data-graph-item={node.key}>
                     <td className="mono">
                       <a href={nodeHash(node.key)}>{node.label}</a>
@@ -347,7 +387,7 @@ function ItemTable({ data, result, model }: { data: ViewData; result: GraphViewR
                     <td>{node.tooltip[1]}</td>
                     <td className="num">1</td>
                   </tr>
-                ))}
+                )))}
             </tbody>
           </table>
         </div>

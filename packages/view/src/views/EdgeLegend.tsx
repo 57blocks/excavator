@@ -1,33 +1,33 @@
-// Edge type legend with switches (artifact-view task 6.4): every listed type
-// in fixed order with its fixed color and how many edges of it the current
-// level draws; types the page does not list are counted under "other" (and
-// named), never dropped.
+// Edge type legend with switches (artifact-view tasks 6.4, 7A.2): every
+// listed type in fixed order with its fixed color, how many edges the current
+// level's drawn links carry and how many its scope holds (`drawn / total`);
+// types the page does not list are counted under "other" (and named), never
+// dropped. A type with edges in the scope stays switchable even when none is drawn.
 import { fmtNumber } from '../format';
-import { LEGEND_KEYS, edgeTypeKey } from '../model/edge-types';
+import { legendRows } from '../model/legend';
 
-export function EdgeLegend({ counts, disabled, onToggle }: { counts: Map<string, number>; disabled: ReadonlySet<string>; onToggle: (key: string) => void }) {
-  const byKey = new Map<string, number>();
-  const otherTypes: string[] = [];
-  for (const [type, n] of counts) {
-    const key = edgeTypeKey(type);
-    byKey.set(key, (byKey.get(key) ?? 0) + n);
-    if (key === 'other') otherTypes.push(type);
-  }
+export function EdgeLegend({ drawn, totals, disabled, onToggle }: { drawn: Map<string, number>; totals: Map<string, number>; disabled: ReadonlySet<string>; onToggle: (key: string) => void }) {
   return (
-    <ul className="legend edge-legend" aria-label="Edge types">
-      {LEGEND_KEYS.map((key) => {
-        const n = byKey.get(key) ?? 0;
-        const off = disabled.has(key);
-        return (
-          <li key={key} data-edge-legend={key} data-edge-count={n} data-enabled={off ? 'false' : 'true'}>
-            <button type="button" className="legend-toggle" aria-pressed={!off} onClick={() => onToggle(key)} disabled={n === 0 && !off}>
-              <span className="swatch" style={{ background: `var(--edge-${key})`, opacity: off ? 0.3 : 1 }} />
-              {key}
-              {key === 'other' && otherTypes.length > 0 && <span className="muted"> ({otherTypes.sort().join(', ')})</span>} <span className="muted">{fmtNumber(n)}</span>
-            </button>
-          </li>
-        );
-      })}
+    <ul className="legend edge-legend" aria-label="Edge types (drawn / in this scope)">
+      {legendRows(drawn, totals, disabled).map((row) => (
+        <li key={row.key} data-edge-legend={row.key} data-edge-count={row.drawn} data-edge-total={row.total} data-enabled={row.off ? 'false' : 'true'}>
+          <button
+            type="button"
+            className="legend-toggle"
+            aria-pressed={!row.off}
+            onClick={() => onToggle(row.key)}
+            disabled={row.disabled}
+            title={`${fmtNumber(row.drawn)} edges in drawn links of ${fmtNumber(row.total)} in this scope`}
+          >
+            <span className="swatch" style={{ background: `var(--edge-${row.key})`, opacity: row.off ? 0.3 : 1 }} />
+            {row.key}
+            {row.key === 'other' && row.otherTypes.length > 0 && <span className="muted"> ({row.otherTypes.join(', ')})</span>}{' '}
+            <span className="muted">
+              {fmtNumber(row.drawn)} / {fmtNumber(row.total)}
+            </span>
+          </button>
+        </li>
+      ))}
     </ul>
   );
 }

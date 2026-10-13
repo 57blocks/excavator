@@ -16,18 +16,30 @@
 // with a single subdirectory and no files is shown as one item
 // (`a/b/c`), so no level degenerates into one undivided block.
 //
+// The file and symbol levels follow the same rule: the 399 heaviest symbols
+// (by edge count; per-hop quotas in a neighborhood) plus one "more" item.
+//
 // Every node lands in a visible bucket: an item, the "more" item, the
 // no-path item, or (directory level) the outside-the-directory totals; edges
-// whose endpoint is not a node are counted, never drawn as if resolved.
+// whose endpoint is not a node are counted, never drawn as if resolved. Every
+// edge in a level's scope lands in one bucket of its EdgeBuckets ledger
+// (task 7A.1), checked against a total counted in a separate pass.
 import { isTable, type Segments } from '../data';
 import { aggregate, buildAdjacency, edgesAt, neighborhood, NO_PATH, type Adjacency } from './adjacency';
+import { emptyBuckets, type EdgeBuckets } from './edge-ledger';
 
 /** Hard cap on items drawn at any level. */
 export const MAX_VISIBLE = 400;
 /** Aggregated links drawn at most (the heaviest first). */
 export const MAX_LINKS = 600;
-/** Neighborhood nodes drawn at most (breadth-first order). */
+/** Neighborhood nodes drawn at most, the "more" item included. */
 export const NEIGHBORHOOD_LIMIT = MAX_VISIBLE;
+/**
+ * Past the cap, each hop beyond the first keeps at least this share of the
+ * neighborhood's slots (split evenly among those hops), so a node with
+ * hundreds of direct neighbors still shows its second hop (task 7A.3).
+ */
+export const FAR_HOPS_SHARE = 1 / 4;
 /** Neighborhood edges drawn at most. */
 export const NEIGHBORHOOD_EDGE_LIMIT = 2000;
 /** Edges listed per type and direction in the node detail. */
@@ -190,6 +202,8 @@ export type GraphViewResult =
     outsideOut: number[];
     outsideIn: number[];
     unresolvedEdges: number;
+    /** Where every edge with an end in the shown directory went (the whole graph at the top). */
+    buckets: EdgeBuckets;
   };
 
 export interface NeighborhoodResult {
@@ -197,14 +211,23 @@ export interface NeighborhoodResult {
   row: number;
   hops: number;
   types: string[];
-  /** Node rows in breadth-first order (the start first), and their distances. */
+  /** Drawn node rows by distance (the start first), breadth-first within a hop, and their distances. */
   rows: number[];
   distance: number[];
   /** Nodes within reach before the limit. */
   total: number;
+  /** Nodes within reach that are not drawn, held by the "more" item (index `rows.length`). */
+  folded: number;
+  /** Per distance (0 = the start): nodes within reach, and how many of them are drawn. */
+  hopTotals: number[];
+  hopDrawn: number[];
   /** Flat [edge row, source index, target index, type index] per edge among the drawn nodes. */
   edges: number[];
   edgesTotal: number;
+  /** Flat [source index, target index, type index, count] per aggregated link to or from "more". */
+  moreLinks: number[];
+  /** Where every edge with an end at a drawn node went (`outside`: the other end is beyond the hops). */
+  buckets: EdgeBuckets;
 }
 
 export interface EdgeGroup {
@@ -220,16 +243,29 @@ export interface FileViewResult {
   types: string[];
   /** The file's own node row, or -1. */
   fileRow: number;
-  /** Rows of the symbols anchored in the file (its file node excluded), in graph order, at most MAX_VISIBLE. */
+  /**
+   * Rows of the symbols anchored in the file (its file node excluded), in
+   * graph order: all of them up to MAX_VISIBLE, else the MAX_VISIBLE - 1
+   * heaviest (most edges) and a "more" item at index `rows.length`.
+   */
   rows: number[];
   /** Symbols in the file before the cap. */
   total: number;
+  /** Symbols held by the "more" item (0: there is none). */
+  folded: number;
   /** Flat [edge row, source index, target index, type index] per edge between drawn symbols. */
   edges: number[];
+  /** Edges between drawn symbols (drawn or past the limit). */
   edgesTotal: number;
+  /** Flat [source index, target index, type index, count] per aggregated link to or from "more". */
+  moreLinks: number[];
+  /** Edges with both ends folded into "more". */
+  moreInternal: number;
   /** Edges from the file's symbols to nodes outside the file, and into them, per type. */
   outsideOut: number[];
   outsideIn: number[];
+  /** Where every edge with an end at one of the file's symbols went. */
+  buckets: EdgeBuckets;
 }
 
 export interface NodeEdgesResult {
@@ -248,6 +284,43 @@ export interface GraphInitResult {
   nodes: number;
   edges: number;
   unresolvedEdges: number;
+}
+
+/**
+ * How many nodes of each hop (index 0 = the start) a neighborhood draws:
+ * everything when it fits in NEIGHBORHOOD_LIMIT; otherwise the start, then
+ * NEIGHBORHOOD_LIMIT - 2 slots (one is kept for "more") where every hop past
+ * the first is guaranteed FAR_HOPS_SHARE of the slots (split evenly), the
+ * first hop fills what is left, and slots the first hop leaves go outward.
+ */
+export function hopQuotas(counts: number[], limit = NEIGHBORHOOD_LIMIT): number[] {
+  const total = counts.reduce((n, c) => n + c, 0);
+  if (total <= limit) return [...counts];
+  const quota = counts.map(() => 0);
+  if (counts.length === 0) return quota;
+  quota[0] = Math.min(counts[0], 1);
+  let slots = limit - 1 - quota[0];
+  const far = counts.length - 2;
+  const floor = far > 0 ? Math.floor((slots * FAR_HOPS_SHARE) / far) : 0;
+  const reserved = counts.slice(2).reduce((n, c) => n + Math.min(c, floor), 0);
+  if (counts.length > 1) {
+    quota[1] = Math.min(counts[1], slots - reserved);
+    slots -= quota[1];
+  }
+  for (let d = 2; d < counts.length; d += 1) {
+    quota[d] = Math.min(counts[d], slots);
+    slots -= quota[d];
+  }
+  return quota;
+}
+
+/** `${source}>${target}>${type}` -> count, as flat [source, target, type, count] in key order. */
+function flattenMoreLinks(counts: Map<string, number>): number[] {
+  const out: number[] = [];
+  const entries = [...counts.entries()].map(([k, n]) => [...k.split('>').map(Number), n]);
+  entries.sort((a, b) => a[0] - b[0] || a[1] - b[1] || a[2] - b[2]);
+  for (const entry of entries) out.push(...entry);
+  return out;
 }
 
 function cellString(strings: string[], cell: number | undefined): string | null {
@@ -357,15 +430,39 @@ export class GraphEngine {
       if (i < 0) continue;
       items[i] = { ...items[i], internal: agg.groups[g].internalByType.reduce((n, c) => n + c, 0) };
     }
+    const buckets = emptyBuckets(T);
+    for (let g = 0; g < agg.groups.length; g += 1) {
+      const i = groupItem[g];
+      if (i < 0) continue;
+      const bucket = items[i].kind === 'more' ? buckets.collapsed : buckets.inside;
+      agg.groups[g].internalByType.forEach((n, t) => {
+        bucket[t] += n;
+      });
+    }
     const links: ViewLink[] = [];
     for (const link of agg.links) {
-      if (link.source === outsideGroup) outsideIn[link.type] += link.count;
-      else if (link.target === outsideGroup) outsideOut[link.type] += link.count;
+      if (link.source === outsideGroup) {
+        outsideIn[link.type] += link.count;
+        buckets.outside[link.type] += link.count;
+      } else if (link.target === outsideGroup) {
+        outsideOut[link.type] += link.count;
+        buckets.outside[link.type] += link.count;
+      }
       const s = groupItem[link.source];
       const t = groupItem[link.target];
       if (s >= 0 && t >= 0) links.push({ source: s, target: t, type: link.type, count: link.count });
     }
     links.sort((a, b) => b.count - a.count || a.source - b.source || a.target - b.target || a.type - b.type);
+    links.forEach((link, rank) => {
+      const bucket = items[link.source].kind === 'more' || items[link.target].kind === 'more' ? buckets.collapsed : rank < MAX_LINKS ? buckets.drawn : buckets.cut;
+      bucket[link.type] += link.count;
+    });
+    // The scope's edges, counted apart from the buckets: any edge with an end
+    // in the shown directory (every resolved edge at the top).
+    for (let e = 0; e < adj.edgeCount; e += 1) {
+      if (adj.src[e] < 0) continue;
+      if (agg.groupOf[adj.src[e]] !== outsideGroup || agg.groupOf[adj.dst[e]] !== outsideGroup) buckets.total[adj.type[e]] += 1;
+    }
     return {
       found: true,
       level: scope === null ? 'member' : 'directory',
@@ -379,6 +476,7 @@ export class GraphEngine {
       outsideOut,
       outsideIn,
       unresolvedEdges: adj.unresolvedEdges,
+      buckets,
     };
   }
 
@@ -389,32 +487,76 @@ export class GraphEngine {
     const T = adj.types.length;
     const outsideOut = new Array<number>(T).fill(0);
     const outsideIn = new Array<number>(T).fill(0);
+    const buckets = emptyBuckets(T);
     const found = tree.fileNodes.has(path);
     const fileRow = tree.fileRow.get(path) ?? -1;
     const paths = this.nodePaths();
     const all: number[] = [];
     if (found) for (let r = 0; r < paths.length; r += 1) if (paths[r] === path && r !== fileRow) all.push(r);
-    const rows = all.slice(0, MAX_VISIBLE);
+    const degree = (r: number) => adj.outOffsets[(r + 1) * T] - adj.outOffsets[r * T] + adj.inOffsets[(r + 1) * T] - adj.inOffsets[r * T];
+    let rows = all;
+    if (all.length > MAX_VISIBLE) {
+      const keep = new Set([...all].sort((a, b) => degree(b) - degree(a) || a - b).slice(0, MAX_VISIBLE - 1));
+      rows = all.filter((r) => keep.has(r));
+    }
+    const folded = all.length - rows.length;
+    const more = rows.length;
     const index = new Map(rows.map((r, i) => [r, i]));
     const inFile = (r: number) => r >= 0 && paths[r] === path;
     const edges: number[] = [];
     let edgesTotal = 0;
+    const moreCounts = new Map<string, number>();
+    let moreInternal = 0;
     for (const r of all) {
       for (const e of edgesAt(adj, r, 'out')) {
         const d = adj.dst[e];
+        const t = adj.type[e];
         if (!inFile(d)) {
-          outsideOut[adj.type[e]] += 1;
+          outsideOut[t] += 1;
+          buckets.outside[t] += 1;
           continue;
         }
-        const s = index.get(r);
-        const t = index.get(d);
-        if (s === undefined || t === undefined) continue;
+        if (d === fileRow) {
+          buckets.fileNode[t] += 1;
+          continue;
+        }
+        const si = index.get(r);
+        const ti = index.get(d);
+        if (si === undefined || ti === undefined) {
+          // An end folded into "more": an aggregated link to it, or inside it.
+          buckets.collapsed[t] += 1;
+          if (si === undefined && ti === undefined) moreInternal += 1;
+          else {
+            const k = `${si ?? more}>${ti ?? more}>${t}`;
+            moreCounts.set(k, (moreCounts.get(k) ?? 0) + 1);
+          }
+          continue;
+        }
         edgesTotal += 1;
-        if (edges.length / 4 < NEIGHBORHOOD_EDGE_LIMIT) edges.push(e, s, t, adj.type[e]);
+        if (edges.length / 4 < NEIGHBORHOOD_EDGE_LIMIT) {
+          edges.push(e, si, ti, t);
+          buckets.drawn[t] += 1;
+        } else buckets.cut[t] += 1;
       }
-      for (const e of edgesAt(adj, r, 'in')) if (!inFile(adj.src[e])) outsideIn[adj.type[e]] += 1;
+      for (const e of edgesAt(adj, r, 'in')) {
+        const s = adj.src[e];
+        const t = adj.type[e];
+        if (!inFile(s)) {
+          outsideIn[t] += 1;
+          buckets.outside[t] += 1;
+        } else if (s === fileRow) buckets.fileNode[t] += 1;
+        // Otherwise both ends are symbols of the file: counted on the out side.
+      }
     }
-    return { found, path, types: adj.types, fileRow, rows, total: all.length, edges, edgesTotal, outsideOut, outsideIn };
+    // The scope's edges, counted apart from the buckets: any edge with an end at one of the file's symbols.
+    const isSymbol = (r: number) => r >= 0 && r !== fileRow && paths[r] === path;
+    if (found) {
+      for (let e = 0; e < adj.edgeCount; e += 1) if (isSymbol(adj.src[e]) || isSymbol(adj.dst[e])) buckets.total[adj.type[e]] += 1;
+    }
+    return {
+      found, path, types: adj.types, fileRow, rows, total: all.length, folded, edges, edgesTotal,
+      moreLinks: flattenMoreLinks(moreCounts), moreInternal, outsideOut, outsideIn, buckets,
+    };
   }
 
   private typeIndexes(types: string[] | null): number[] | undefined {
@@ -429,26 +571,65 @@ export class GraphEngine {
     const found = row >= 0 && row < adj.nodeCount;
     const typeIdx = this.typeIndexes(types);
     const reach = found ? neighborhood(adj, row, hops, { types: typeIdx }) : new Map<number, number>();
+    const byHop: number[][] = [];
+    for (const [r, d] of reach) (byHop[d] ??= []).push(r);
+    for (let d = 0; d < byHop.length; d += 1) byHop[d] ??= [];
+    const quota = hopQuotas(byHop.map((list) => list.length));
     const rows: number[] = [];
     const distance: number[] = [];
     const index = new Map<number, number>();
-    for (const [r, d] of reach) {
-      if (rows.length >= NEIGHBORHOOD_LIMIT) break;
-      index.set(r, rows.length);
-      rows.push(r);
-      distance.push(d);
-    }
+    byHop.forEach((list, d) => {
+      for (const r of list.slice(0, quota[d])) {
+        index.set(r, rows.length);
+        rows.push(r);
+        distance.push(d);
+      }
+    });
+    const more = rows.length;
+    const T = adj.types.length;
+    const buckets = emptyBuckets(T);
+    const moreCounts = new Map<string, number>();
     const edges: number[] = [];
     let edgesTotal = 0;
     for (const r of rows) {
+      const i = index.get(r) as number;
       for (const e of edgesAt(adj, r, 'out', typeIdx)) {
-        const t = index.get(adj.dst[e]);
-        if (t === undefined) continue;
-        edgesTotal += 1;
-        if (edges.length / 4 < NEIGHBORHOOD_EDGE_LIMIT) edges.push(e, index.get(r) as number, t, adj.type[e]);
+        const t = adj.type[e];
+        const ti = index.get(adj.dst[e]);
+        if (ti !== undefined) {
+          edgesTotal += 1;
+          if (edges.length / 4 < NEIGHBORHOOD_EDGE_LIMIT) {
+            edges.push(e, i, ti, t);
+            buckets.drawn[t] += 1;
+          } else buckets.cut[t] += 1;
+        } else if (reach.has(adj.dst[e])) {
+          buckets.collapsed[t] += 1;
+          const k = `${i}>${more}>${t}`;
+          moreCounts.set(k, (moreCounts.get(k) ?? 0) + 1);
+        } else buckets.outside[t] += 1;
+      }
+      for (const e of edgesAt(adj, r, 'in', typeIdx)) {
+        const t = adj.type[e];
+        const s = adj.src[e];
+        if (index.has(s)) continue; // counted on the out side
+        if (reach.has(s)) {
+          buckets.collapsed[t] += 1;
+          const k = `${more}>${i}>${t}`;
+          moreCounts.set(k, (moreCounts.get(k) ?? 0) + 1);
+        } else buckets.outside[t] += 1;
       }
     }
-    return { found, row, hops, types: adj.types, rows, distance, total: reach.size, edges, edgesTotal };
+    // The scope's edges, counted apart from the buckets: any edge (of the
+    // selected types) with an end at a drawn node.
+    const wanted = typeIdx === undefined ? null : new Set(typeIdx);
+    for (let e = 0; e < adj.edgeCount; e += 1) {
+      if (adj.src[e] < 0 || (wanted !== null && !wanted.has(adj.type[e]))) continue;
+      if (index.has(adj.src[e]) || index.has(adj.dst[e])) buckets.total[adj.type[e]] += 1;
+    }
+    return {
+      found, row, hops, types: adj.types, rows, distance, total: reach.size, folded: reach.size - rows.length,
+      hopTotals: byHop.map((list) => list.length), hopDrawn: quota, edges, edgesTotal, moreLinks: flattenMoreLinks(moreCounts), buckets,
+    };
   }
 
   private unresolvedAt(): { out: Map<number, number[]>; in: Map<number, number[]> } {
