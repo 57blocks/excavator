@@ -61,13 +61,13 @@
 
 ## 3. 注解注入解析
 
-- [ ] 3.1 `name-reference-resolution.mjs`：
+- [x] 3.1 `name-reference-resolution.mjs`：
   - 把注解身份确认抽成共用函数，注解绑定器改为调用它，行为不变；
   - `ejb-annotation-session`、`spring-annotation-advice` 与补充的构造型注解按既有规则产生绑定（第 2 步提交时已生效，测试随目录一起提交）；
   - 绑定表新增查询「解析到某个类节点的全部绑定」，在目标解析完成后一次算出。
 
   验证：`tests/facts/name-reference-resolution.test.mjs` 既有断言不改仍全绿；新增 `simple-name` 缺省名、`@Configuration` 绑定、反查查询的测试。
-- [ ] 3.2 新模块 `annotation-injection-resolution.mjs` 的 `resolveAnnotationInjections`：
+- [x] 3.2 新模块 `annotation-injection-resolution.mjs` 的 `resolveAnnotationInjections`：
   - 按 D4 读名字；
   - 按 D5 定消费者与解析范围；
   - 按 D6 分十五个桶，顺序即优先级。
@@ -77,11 +77,11 @@
   - 空串名字取缺省名；
   - `member-seam` 对非 setter 方法没有缺省名；
   - 写法未确认的注解计入 `unconfirmed`。
-- [ ] 3.3 `injects` 边与证据按 D7：每个（消费者类，目标类）一条；证据含 `file`、`line`、`token`、`name`、`site`、管理绑定处、目标解析经过的绑定处；排序去重；自环照画。
+- [x] 3.3 `injects` 边与证据按 D7：每个（消费者类，目标类）一条；证据含 `file`、`line`、`token`、`name`、`site`、管理绑定处、目标解析经过的绑定处；排序去重；自环照画。
   验证：测试断言精确的边与证据，包括缺省名证据的 `token` 与 `name` 不同的情形。
-- [ ] 3.4 覆盖与缺口按 D8：五类缺口的样例形式，十五个桶之和等于 `siteCount`，`nested` 与 `unconfirmed` 计数，`not-run`。`xml-injection-resolution.mjs` 的守恒函数改为接收两段覆盖，缺口按两种来源合计核对。
+- [x] 3.4 覆盖与缺口按 D8：五类缺口的样例形式，十五个桶之和等于 `siteCount`，`nested` 与 `unconfirmed` 计数，`not-run`。`xml-injection-resolution.mjs` 的守恒函数改为接收两段覆盖，缺口按两种来源合计核对。
   验证：测试构造桶之和不等、合计缺口不等，断言抛错；XML 单独运行时守恒仍成立。
-- [ ] 3.5 变异绊线：D11 的六个开关各让至少一条测试变红；第 2、3 步的绊线在共用绑定表上仍各让至少一条测试变红。不改生产默认值。
+- [x] 3.5 变异绊线：D11 的六个开关各让至少一条测试变红；第 2、3 步的绊线在共用绑定表上仍各让至少一条测试变红。不改生产默认值。
   验证：测试里逐个打开开关，断言结果变化。
 
 ## 4. 接入流水线与夹具
