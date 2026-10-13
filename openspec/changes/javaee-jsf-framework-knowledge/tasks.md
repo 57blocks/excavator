@@ -20,7 +20,7 @@
 
 ## 1. Core：带证据的检测
 
-- [ ] 1.1 新增 `packages/core/src/languages/manifest-mask.ts`，导出 `maskManifestText(path, text)`，按 design D2 的格式表遮蔽。被遮蔽的字符换成空格，换行保留。
+- [x] 1.1 新增 `packages/core/src/languages/manifest-mask.ts`，导出 `maskManifestText(path, text)`，按 design D2 的格式表遮蔽。被遮蔽的字符换成空格，换行保留。
   验证：core 单元测试逐格式断言：
   - XML：注释、未闭合注释、`exclusions` 成对元素、`exclude` 自闭合、`excludes`、大小写变体、缺结束标签时不遮蔽；
   - Gradle：`//`、`/* */`、行内 `exclude group:`；
@@ -30,7 +30,7 @@
   - `package.json` 原样返回。
 
   每个用例同时断言输出长度与换行位置等于输入。
-- [ ] 1.2 `FrameworkRegistry` 新增 `detectWithEvidence(files)`，按 design D1；`detectFrameworks` 改为委托，签名与注册顺序不变。
+- [x] 1.2 `FrameworkRegistry` 新增 `detectWithEvidence(files)`，按 design D1；`detectFrameworks` 改为委托，签名与注册顺序不变。
   验证：core 单元测试覆盖 spec `framework-detection` 前两条需求的每个场景：
   - 子模块检出；
   - 多文件取稳定序第一个；
@@ -44,7 +44,7 @@
   - 同一位置两个关键字平手按配置顺序；
   - 输入顺序打乱结果不变；
   - 既有 `detectFrameworks` 测试全部不改仍绿。
-- [ ] 1.3 重建 core dist；core 测试、typecheck、根测试全绿。
+- [x] 1.3 重建 core dist；core 测试、typecheck、根测试全绿。
   验证：命令输出计数写进交付报告。
 
 ## 2. Core：配置与语言
