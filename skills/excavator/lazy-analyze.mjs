@@ -190,8 +190,23 @@ export const KNOWLEDGE_GRAPH_VERSION = '1.0.0';
  *  `name-reference-ambiguous`, `name-reference-elsewhere` and
  *  `name-reference-unbound`, and a `coverage.nameReferences` section (which
  *  reads `not-run` for a projection built without the stage). Java type
- *  entries of the structure rows also gain `annotationArguments`. */
-export const PIPELINE_VERSION = 'lazy-fact-graph/7';
+ *  entries of the structure rows also gain `annotationArguments`.
+ *  Bumped to /8 by openspec change xml-injection-references: the names that
+ *  XML descriptors write where one bean is wired to another (Spring
+ *  `ref="orderDao"`, `p:` and `c:` attributes, `lookup-method`) are resolved
+ *  through the same binding table, so an unchanged source tree projects new
+ *  `injects` edges from the consumer's class to the injected class, the gap
+ *  kinds `injection-target-unresolved`, `injection-ambiguous`,
+ *  `injection-elsewhere`, `injection-unbound` and
+ *  `injection-consumer-unresolved`, and a `coverage.injections` section (which
+ *  reads `not-run` for a projection built without the stage). The binding
+ *  table also changes what the `references` edges of /7 are drawn from: a bean
+ *  built by a factory method is no longer taken for the factory's class, a
+ *  definition with only a `parent` takes its parent's class, and the new
+ *  `spring-xml-alias` binder makes an alias a name; and a `beans` root in the
+ *  Java EE namespace (a CDI `beans.xml`) is no longer read as Spring
+ *  configuration. */
+export const PIPELINE_VERSION = 'lazy-fact-graph/8';
 
 /** Same two-step @excavator/core resolution every sibling script uses. */
 async function resolveCore(root) {

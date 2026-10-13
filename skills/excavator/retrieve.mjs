@@ -174,8 +174,12 @@ export function mergeCandidates({ exact = [], bm25 = [], sourceSearch = [], sema
  *  name-binding-references, D8): through it a bean class reaches the pages
  *  that use it, which no Java caller shows. `mentions` says a name was written
  *  literally, `references` that it was resolved through a binding, so a
- *  consumer can filter them apart. */
-export const DETERMINISTIC_EDGE_TYPES = Object.freeze(['contains', 'imports', 'exports', 'calls', 'inherits', 'implements', 'overrides', 'mentions', 'references']);
+ *  consumer can filter them apart. `injects` links the class a descriptor wires
+ *  (a Spring bean) to the class it is injected with, by a name in the
+ *  descriptor that a binding of the deployment unit resolves (openspec:
+ *  changes/xml-injection-references, D7): through it an injected class reaches
+ *  the classes that consume it, which no Java caller shows. */
+export const DETERMINISTIC_EDGE_TYPES = Object.freeze(['contains', 'imports', 'exports', 'calls', 'inherits', 'implements', 'overrides', 'mentions', 'references', 'injects']);
 
 export const DEFAULT_TRAVERSAL_BUDGETS = Object.freeze({ maxSeeds: 5, maxNodes: 80, maxEdges: 160 });
 export const DEFAULT_BFS_MAX_HOPS = 4;

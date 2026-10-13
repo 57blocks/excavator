@@ -289,6 +289,41 @@ describe('validate-graph — evidence lines', () => {
     expect(expectedTokens({ type: 'references' }, source, target, { ...evidence, token: undefined })).toEqual([]);
   });
 
+  it('expects the name a descriptor wrote on an injects edge, not the names of the two classes', () => {
+    // `ref="orders"` is injected as OrderDaoImpl: neither class's name is on the descriptor line
+    const source = { id: 'class:src/OrderServiceImpl.java:OrderServiceImpl', type: 'class', name: 'OrderServiceImpl', filePath: 'src/OrderServiceImpl.java' };
+    const target = { id: 'class:src/OrderDaoImpl.java:OrderDaoImpl', type: 'class', name: 'OrderDaoImpl', filePath: 'src/OrderDaoImpl.java' };
+    const evidence = {
+      file: 'ctx.xml', line: 4, source: 'lexical', token: 'orders', site: 'spring-property-ref',
+      consumer: { line: 3, bindings: [] }, bindings: [{ file: 'ctx.xml', line: 2, binder: 'spring-xml-bean' }],
+    };
+    expect(expectedTokens({ type: 'injects' }, source, target, evidence)).toEqual(['orders']);
+    expect(expectedTokens({ type: 'injects' }, source, target, { ...evidence, token: undefined })).toEqual([]);
+  });
+
+  it('confirms an injects edge whose cited descriptor line holds the name, and contradicts one whose line does not', () => {
+    const root = mkdtempSync(join(tmpdir(), 'excavator-validate-injects-'));
+    try {
+      writeFileSync(join(root, 'ctx.xml'), '<beans>\n  <property name="dao" ref="orders"/>\n</beans>\n');
+      writeFileSync(join(root, 'Service.java'), 'class Service {}\n');
+      writeFileSync(join(root, 'Dao.java'), 'class Dao {}\n');
+      const nodes = [
+        { id: 'class:Service.java:Service', type: 'class', name: 'Service', filePath: 'Service.java', lineRange: [1, 1], summary: '', tags: [] },
+        { id: 'class:Dao.java:Dao', type: 'class', name: 'Dao', filePath: 'Dao.java', lineRange: [1, 1], summary: '', tags: [] },
+      ];
+      const edge = (line) => ({
+        source: 'class:Service.java:Service', target: 'class:Dao.java:Dao', type: 'injects', direction: 'forward', weight: 0.5,
+        provenance: 'extracted',
+        evidence: [{ file: 'ctx.xml', line, source: 'lexical', token: 'orders', site: 'spring-property-ref', consumer: { line: 1, bindings: [] }, bindings: [] }],
+      });
+      const check = (line) => validateAgainstSource({ graph: { nodes, edges: [edge(line)] }, reader: createSourceReader(root) }).report.counts;
+      expect(check(2)).toMatchObject({ edgeConfirmed: 1, edgeContradicted: 0 });
+      expect(check(1)).toMatchObject({ edgeConfirmed: 0, edgeContradicted: 1 });
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   it('confirms a references edge whose cited page line holds the token, and contradicts one whose line does not', () => {
     const root = mkdtempSync(join(tmpdir(), 'excavator-validate-references-'));
     try {

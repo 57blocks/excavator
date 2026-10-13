@@ -1,0 +1,91 @@
+<beans xmlns="http://www.springframework.org/schema/beans"
+       xmlns:p="http://www.springframework.org/schema/p"
+       xmlns:c="http://www.springframework.org/schema/c"
+       xmlns:util="http://www.springframework.org/schema/util"
+       xmlns:sec="http://www.springframework.org/schema/security">
+  <!-- targets: an alias, a parent-only definition, a dotted id, a factory method, and names that cannot be told -->
+  <bean id="orderDao" class="com.acme.OrderDaoImpl"/>
+  <alias name="orderDao" alias="orders"/>
+  <bean id="baseDao" class="com.acme.BaseDao"/>
+  <bean id="childDao" parent="baseDao"/>
+  <bean id="com.acme.api.MainDs" class="com.acme.MainDs"/>
+  <bean id="store" class="com.acme.OrderDaoImpl"/>
+  <bean id="svc" class="com.acme.ServiceLocator" factory-method="lookup"/>
+  <bean id="orphanChild" parent="missingBase"/>
+  <alias name="b" alias="a"/>
+  <alias name="a" alias="b"/>
+  <alias name="userDirectory" alias="dir"/>
+  <bean id="dataSource" class="org.apache.commons.dbcp.BasicDataSource"/>
+  <bean id="marker" class="com.acme.Marker"/>
+
+  <!-- the consumer of most sites: every site shape, and one name per way it can end -->
+  <bean id="orderService" class="com.acme.OrderServiceImpl" p:cache-ref="orderDao" c:ds-ref="com.acme.api.MainDs">
+    <constructor-arg ref="childDao"/>
+    <property name="dao" ref="orders"/>
+    <property name="audit" ref="auditLog"/>
+    <property name="handlers"><list><ref bean="orderDao"/></list></property>
+    <property name="byKey"><map><entry key-ref="orderDao" value-ref="childDao"/></map></property>
+    <lookup-method name="makeAudit" bean="auditLog"/>
+    <replaced-method name="calc" replacer="orderDao"/>
+    <property name="store" ref="store"/>
+    <property name="locator" ref="svc"/>
+    <property name="orphan" ref="orphanChild"/>
+    <property name="cyclic" ref="a"/>
+    <property name="directory" ref="dir"/>
+    <property name="ds" ref="dataSource"/>
+    <property name="marker" ref="marker"/>
+    <property name="users" ref="userDirectory"/>
+    <property name="cdi" ref="cdiDao"/>
+    <property name="missing" ref="nothing"/>
+    <property name="local"><ref local="localDao"/></property>
+    <property name="parentContext"><ref parent="orderDao"/></property>
+    <property name="blank" ref=""/>
+    <property name="filter"><idref bean="orderDao"/></property>
+    <!-- <property name="commented" ref="orderDao"/> -->
+  </bean>
+
+  <!-- a bean that refers to another bean of its own class, and an inner bean that is a consumer of its own -->
+  <bean id="node1" class="com.acme.Node">
+    <property name="next" ref="node2"/>
+    <property name="inner">
+      <bean class="com.acme.BaseDao">
+        <property name="dao" ref="orderDao"/>
+      </bean>
+    </property>
+  </bean>
+  <bean id="node2" class="com.acme.Node"/>
+
+  <!-- the name reaches a repository class, the consumer does not -->
+  <util:list id="top">
+    <ref bean="orderDao"/>
+  </util:list>
+  <bean id="locatorCtx" class="com.acme.ServiceLocator" factory-method="getInstance">
+    <property name="dao" ref="orderDao"/>
+  </bean>
+  <bean parent="missingBase">
+    <property name="dao" ref="orderDao"/>
+  </bean>
+  <bean class="org.springframework.transaction.interceptor.TransactionProxyFactoryBean">
+    <property name="target" ref="orderDao"/>
+  </bean>
+  <bean class="com.acme.Marker">
+    <property name="dao" ref="orderDao"/>
+  </bean>
+  <bean parent="store">
+    <property name="dao" ref="orderDao"/>
+  </bean>
+
+  <!-- the consumer takes its class from its parent -->
+  <bean id="userDao" parent="baseDao">
+    <property name="ds" ref="com.acme.api.MainDs"/>
+  </bean>
+
+  <!-- reference shapes that are no site -->
+  <sec:custom-filter ref="authFilter"/>
+  <sec:http entry-point-ref="entryPoint"/>
+
+  <!-- the consumer and the target are both outside the repository -->
+  <bean class="org.springframework.orm.jpa.LocalContainerEntityManagerFactoryBean">
+    <property name="dataSource" ref="dataSource"/>
+  </bean>
+</beans>

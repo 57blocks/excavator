@@ -78,13 +78,13 @@
 
 ## 5. 接入流水线与夹具
 
-- [ ] 5.1 新夹具 `tests/fixtures/spring-xml-injection/`，内容覆盖 design O1 列出的全部情形。
+- [x] 5.1 新夹具 `tests/fixtures/spring-xml-injection/`，内容覆盖 design O1 列出的全部情形。
   验证：5.2 的管道测试断言精确的边列表、证据、十四个桶与普查计数。
-- [ ] 5.2 `build-fact-graph.mjs` 构建一次绑定表，依次跑 EL 与注入，写 `coverage.injections`、缺口与守恒；`lazy-analyze.mjs` 的 `nameReferences` 阶段传入注入点。`PIPELINE_VERSION` 升到 `lazy-fact-graph/8`，注释写明新增的事实；冻结摘要用生成器整块重冻。
+- [x] 5.2 `build-fact-graph.mjs` 构建一次绑定表，依次跑 EL 与注入，写 `coverage.injections`、缺口与守恒；`lazy-analyze.mjs` 的 `nameReferences` 阶段传入注入点。`PIPELINE_VERSION` 升到 `lazy-fact-graph/8`，注释写明新增的事实；冻结摘要用生成器整块重冻。
   验证：`tests/lazy/xml-injection-pipeline.test.mjs` 在夹具上跑 Lazy，断言边、桶与 stages 行；三件套全绿；commit 说明列出每个重冻的摘要及原因。
-- [ ] 5.3 `retrieve.mjs` 的 `DETERMINISTIC_EDGE_TYPES` 加入 `injects`；`validate-graph.mjs` 对 `injects` 的期望 token 取证据的 `token`。
+- [x] 5.3 `retrieve.mjs` 的 `DETERMINISTIC_EDGE_TYPES` 加入 `injects`；`validate-graph.mjs` 对 `injects` 的期望 token 取证据的 `token`。
   验证：测试覆盖规格场景「从被注入的类遍历到消费者」「证据行不含名字时校验报出」；在 5.1 的夹具产物上跑图校验，没有新增告警。
-- [ ] 5.4 检查其它可能拒绝或误判新边、新覆盖段的位置，按需最小修改。位置包括：schema、`annotate-graph.mjs`、`project-service.mjs` 的状态输出、MCP `project_status`、活跃变更 `dead-code-detection` 读入边的地方。
+- [x] 5.4 检查其它可能拒绝或误判新边、新覆盖段的位置，按需最小修改。位置包括：schema、`annotate-graph.mjs`、`project-service.mjs` 的状态输出、MCP `project_status`、活跃变更 `dead-code-detection` 读入边的地方。
   验证：逐处说明查过的位置及结论；夹具产物经 `project_status` 能看到 `injections` 覆盖。
 
 ## 6. 验收与记录

@@ -69,6 +69,9 @@ import {
 import {
   NAME_REFERENCE_GAP_KINDS, assertNameReferenceConservation, buildNameBindingTable, resolveNameReferences,
 } from './name-reference-resolution.mjs';
+import {
+  XML_INJECTION_GAP_KINDS, assertInjectionConservation, resolveXmlInjections,
+} from './xml-injection-resolution.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -145,10 +148,13 @@ function ordinalGroupKey(entry) {
  *   `nameReferenceSites` is the output of name-reference-sites.mjs: the root
  *   names of the expressions the expression files write, the name bindings
  *   XML descriptors declare, and the conditions that open a namespace to
- *   expressions. `nameBindingCatalog` is the loaded catalog
+ *   expressions, and the XML injection sites (`injections`,
+ *   `injectionFiles`, `uncoveredReferences`; openspec: changes/
+ *   xml-injection-references). `nameBindingCatalog` is the loaded catalog
  *   (name-binding-catalog.mjs) they were read with and are resolved by
  *   (openspec: changes/name-binding-references). The two go together; omitted,
- *   the stage is recorded as not-run and adds no edge or gap. Annotation
+ *   the stage is recorded as not-run (`coverage.nameReferences` and
+ *   `coverage.injections`) and adds no edge or gap. Annotation
  *   bindings are read here from the structure rows. `nameReferenceMutations`
  *   is the test seam of name-reference-resolution.mjs's mutation tripwires;
  *   leave it unset.
@@ -590,8 +596,15 @@ export function buildFactGraph({ scan, structureAll, importMap, mentionSites, me
   // page is in. Each root name becomes an edge or a visible bucket. Without
   // `nameReferenceSites` and the catalog the stage did not run, which the
   // coverage says in so many words.
+  //
+  // XML injection sites (openspec: changes/xml-injection-references): the names
+  // descriptors write where a bean is wired to another (Spring `ref="orderDao"`),
+  // resolved over the same binding table, each becoming an `injects` edge from
+  // the consumer's class or a visible bucket. Same inputs, same rule for a stage
+  // that did not run.
   // -------------------------------------------------------------------------
   let nameReferenceCoverage = { status: 'not-run' };
+  let injectionCoverage = { status: 'not-run' };
   if ((nameReferenceSites !== undefined && nameReferenceSites !== null) !== (nameBindingCatalog !== undefined && nameBindingCatalog !== null)) {
     throw new Error('buildFactGraph: nameReferenceSites and nameBindingCatalog go together');
   }
@@ -621,6 +634,18 @@ export function buildFactGraph({ scan, structureAll, importMap, mentionSites, me
     for (const edge of resolved.edges) addEdge(edge);
     for (const gap of resolved.gaps) gapCollector.add(gap.kind, gap.scope, gap.sample);
     nameReferenceCoverage = resolved.coverage;
+
+    const injected = resolveXmlInjections({
+      sites: nameReferenceSites,
+      catalog: nameBindingCatalog,
+      table: bindingTable,
+      manifestPaths,
+      languageOf: (path) => languageOfPath.get(path),
+      mutations: nameReferenceMutations ?? {},
+    });
+    for (const edge of injected.edges) addEdge(edge);
+    for (const gap of injected.gaps) gapCollector.add(gap.kind, gap.scope, gap.sample);
+    injectionCoverage = injected.coverage;
   }
 
   // -------------------------------------------------------------------------
@@ -642,7 +667,7 @@ export function buildFactGraph({ scan, structureAll, importMap, mentionSites, me
     }
     assertCallConservation(javaSiteCount, tally);
   }
-  const coverage = { ...ledger.coverage, mentions: mentionCoverage, nameReferences: nameReferenceCoverage };
+  const coverage = { ...ledger.coverage, mentions: mentionCoverage, nameReferences: nameReferenceCoverage, injections: injectionCoverage };
   if (mentionCoverage.status === 'ran') {
     // The gap counts are read back from what was recorded, as for Java calls.
     const recorded = (kind) => resolutionGaps.filter((gap) => gap.kind === kind).reduce((sum, gap) => sum + gap.count, 0);
@@ -656,6 +681,13 @@ export function buildFactGraph({ scan, structureAll, importMap, mentionSites, me
     const recorded = (kind) => resolutionGaps.filter((gap) => gap.kind === kind).reduce((sum, gap) => sum + gap.count, 0);
     assertNameReferenceConservation(nameReferenceCoverage, Object.fromEntries(
       Object.entries(NAME_REFERENCE_GAP_KINDS).map(([bucket, kind]) => [bucket, recorded(kind)]),
+    ));
+  }
+  if (injectionCoverage.status === 'ran') {
+    // Read back from what was recorded into the graph, by gap kind, not from the resolver's own list.
+    const recorded = (kind) => resolutionGaps.filter((gap) => gap.kind === kind).reduce((sum, gap) => sum + gap.count, 0);
+    assertInjectionConservation(injectionCoverage, Object.fromEntries(
+      [...new Set(Object.values(XML_INJECTION_GAP_KINDS))].map((kind) => [kind, recorded(kind)]),
     ));
   }
   const gaps = [...ledger.gaps, ...resolutionGaps].sort(compareGaps);

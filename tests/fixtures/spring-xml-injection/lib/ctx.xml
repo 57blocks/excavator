@@ -1,0 +1,4 @@
+<beans xmlns="http://www.springframework.org/schema/beans">
+  <bean id="userDirectory" class="com.acme.OrderDaoImpl"/>
+  <bean id="orderDao" class="com.acme.BaseDao"/>
+</beans>
