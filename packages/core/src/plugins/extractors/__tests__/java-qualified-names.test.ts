@@ -282,8 +282,11 @@ interface Api extends java.io.Closeable, Comparable<Api> {
   // Frozen from the extractor before qualified names were rebuilt from tokens,
   // then refrozen when call sites outside method bodies became recorded: the
   // only difference is the two field initializer sites (`new
-  // java.util.HashMap<>` as `<init>`, `LoggerFactory.getLogger` as `<clinit>`).
-  const UNWRAPPED_SHA256 = "4605cbaac6df9e536d566978c26cea07bccc4d0b714ad4e2c9f87bf93350a9c4";
+  // java.util.HashMap<>` as `<init>`, `LoggerFactory.getLogger` as `<clinit>`),
+  // and again when top-level types gained `annotationArguments`
+  // (name-binding-references): with that one field removed the output hashes to
+  // the previous value, 4605cbaac6df9e53...
+  const UNWRAPPED_SHA256 = "809861bf0062d212fd4c3daa1276f67ff5ca7f2ed5555cda8a39504bea0bbbfe";
 
   it("produces byte-identical structure and call graph output", () => {
     const json = JSON.stringify(extract(UNWRAPPED));

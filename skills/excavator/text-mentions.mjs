@@ -39,6 +39,10 @@
  * yields candidates. The coverage description says so; masking per format is a
  * later, separate decision.
  *
+ * The comment mask, the markup scanner and the line helpers are exported for
+ * the sibling lexers that read the same markup (name-binding-references: the EL
+ * lexer and the XML binding reader); their behavior is unchanged.
+ *
  * "Markup" is decided by language: the xml family, html, jsp, xhtml (and their
  * template siblings), plus any language the registry does not declare
  * whose first non-blank character is `<` (.ftl, .vm, .wsdl, ...). Everything
@@ -112,7 +116,7 @@ function isMarkup(language, text) {
 
 const blank = (text) => text.replace(/[^\r\n]/g, ' ');
 
-function maskMarkupComments(text) {
+export function maskMarkupComments(text) {
   let out = '';
   let last = 0;
   let cursor = 0;
@@ -167,7 +171,7 @@ const isSpace = (ch) => ch === ' ' || ch === '\t' || ch === '\n' || ch === '\r' 
  * An unquoted `<` ends the search too - a tag has none, so the opener was text
  * (or a malformed tag) and each failed search stays short.
  */
-function findClose(text, from, closer) {
+export function findClose(text, from, closer) {
   let quote = '';
   for (let i = from; i < text.length; i++) {
     const ch = text[i];
@@ -185,7 +189,7 @@ function findClose(text, from, closer) {
 }
 
 /** Attribute values in `text[from, end)`; a valueless attribute has none. */
-function parseAttributes(text, from, end) {
+export function parseAttributes(text, from, end) {
   const attributes = [];
   let i = from;
   while (i < end) {
@@ -224,7 +228,7 @@ function parseAttributes(text, from, end) {
   return attributes;
 }
 
-function markupSegments(text, language) {
+export function markupSegments(text, language) {
   const htmlLike = HTML_LIKE_LANGUAGES.has(language);
   const norm = (name) => (htmlLike ? name.toLowerCase() : name);
   const segments = [];
@@ -422,13 +426,13 @@ function pathCandidate(token, extensions) {
   return { token, path: rest, prefix, pattern: wildcard || prefix === 'classpath*' };
 }
 
-function lineStarts(text) {
+export function lineStarts(text) {
   const starts = [0];
   for (let i = text.indexOf('\n'); i >= 0; i = text.indexOf('\n', i + 1)) starts.push(i + 1);
   return starts;
 }
 
-function lineAt(starts, offset) {
+export function lineAt(starts, offset) {
   let lo = 0;
   let hi = starts.length;
   while (lo < hi) {

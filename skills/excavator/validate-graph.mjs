@@ -224,9 +224,13 @@ export function expectedTokens(edge, source, target, evidenceEntry) {
       return [stripExtension(basename(path)), basename(dirname(path))].filter(Boolean);
     }
     case 'mentions':
+    case 'references':
       // The line names what the mention WROTE: the evidence entry's own token.
       // The target's name is not on that line when a pattern (`spring/*.xml`)
-      // or a classpath suffix hit the file (openspec: changes/name-mention-facts).
+      // or a classpath suffix hit the file (openspec: changes/name-mention-facts);
+      // nor is it for a name an expression writes, which a binding resolved to a
+      // class of another name (`#{orders.save}` -> `OrderBean`, openspec:
+      // changes/name-binding-references).
       return [evidenceEntry?.token].filter(Boolean);
     default:
       return [source?.name, target?.name].filter(Boolean);

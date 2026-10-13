@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<faces-config xmlns="http://java.sun.com/xml/ns/javaee" version="2.0">
+  <!-- <managed-bean><managed-bean-name>retired</managed-bean-name><managed-bean-class>com.acme.shop.CustomerBean</managed-bean-class></managed-bean> -->
+  <managed-bean>
+    <managed-bean-name>reports</managed-bean-name>
+    <managed-bean-class>com.acme.shop.ReportBean</managed-bean-class>
+    <managed-property>
+      <property-name>owner</property-name>
+      <value>#{customerBean}</value>
+    </managed-property>
+  </managed-bean>
+  <managed-bean>
+    <managed-bean-name>gateway</managed-bean-name>
+    <managed-bean-class>org.example.lib.Gateway</managed-bean-class>
+  </managed-bean>
+  <managed-bean>
+    <managed-bean-name>kotlinBean</managed-bean-name>
+    <managed-bean-class>com.acme.shop.kt.KotlinBean</managed-bean-class>
+  </managed-bean>
+  <managed-bean>
+    <managed-bean-name>classless</managed-bean-name>
+  </managed-bean>
+  <application>
+    <resource-bundle>
+      <base-name>com.acme.shop.messages</base-name>
+      <var>msgs</var>
+    </resource-bundle>
+  </application>
+</faces-config>

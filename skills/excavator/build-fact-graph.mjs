@@ -66,6 +66,9 @@ import { assertCallConservation, createJavaCallResolver, createOtherJvmIndex, JA
 import {
   assertMentionConservation, createDeclaredJavaTypeIndex, resolveMentions, TARGET_SKIP_REASONS,
 } from './mention-resolution.mjs';
+import {
+  NAME_REFERENCE_GAP_KINDS, assertNameReferenceConservation, resolveNameReferences,
+} from './name-reference-resolution.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -128,6 +131,7 @@ function ordinalGroupKey(entry) {
  *   mentionSites?: Array<{ file: string, language?: string, fqn: object[], path: object[] }>|null,
  *   mentionInputs?: { javaPackages: Array<{ file: string, package: string }>, skippedNonCode: Record<string, number> },
  *   mentionMutations?: object,
+ *   nameReferenceSites?: object|null, nameBindingCatalog?: object|null, nameReferenceMutations?: object,
  *   serializationLimit?: number,
  *   headroomRecorder?: ReturnType<typeof import('./product-serialization.mjs').createHeadroomRecorder>,
  * }} args `mentionSites` is one row per scanned non-code file with the
@@ -138,6 +142,16 @@ function ordinalGroupKey(entry) {
  *   entry for, and the non-code files the scanner skipped by reason (both
  *   from mention-sites.mjs). `mentionMutations` is the test seam of
  *   mention-resolution.mjs's mutation tripwires; leave it unset.
+ *   `nameReferenceSites` is the output of name-reference-sites.mjs: the root
+ *   names of the expressions the expression files write, the name bindings
+ *   XML descriptors declare, and the conditions that open a namespace to
+ *   expressions. `nameBindingCatalog` is the loaded catalog
+ *   (name-binding-catalog.mjs) they were read with and are resolved by
+ *   (openspec: changes/name-binding-references). The two go together; omitted,
+ *   the stage is recorded as not-run and adds no edge or gap. Annotation
+ *   bindings are read here from the structure rows. `nameReferenceMutations`
+ *   is the test seam of name-reference-resolution.mjs's mutation tripwires;
+ *   leave it unset.
  *   `serializationLimit`/`headroomRecorder` route the facts-digest
  *   input string through `serializeJsonProduct` (openspec: changes/product-
  *   serialization-ceiling, capability `product-serialization`) instead of a
@@ -147,7 +161,7 @@ function ordinalGroupKey(entry) {
  *   means no headroom entry is recorded for this call.
  * @returns {{ nodes: object[], edges: object[], coverage: object, gaps: object[], factsDigest: string }}
  */
-export function buildFactGraph({ scan, structureAll, importMap, mentionSites, mentionInputs, mentionMutations, serializationLimit = DEFAULT_LIMIT_CHARS, headroomRecorder = null }) {
+export function buildFactGraph({ scan, structureAll, importMap, mentionSites, mentionInputs, mentionMutations, nameReferenceSites, nameBindingCatalog, nameReferenceMutations, serializationLimit = DEFAULT_LIMIT_CHARS, headroomRecorder = null }) {
   if (!scan || !Array.isArray(scan.files)) {
     throw new Error('buildFactGraph: scan.files must be an array');
   }
@@ -541,19 +555,22 @@ export function buildFactGraph({ scan, structureAll, importMap, mentionSites, me
   if (Array.isArray(mentionSites) !== (mentionInputs !== undefined && mentionInputs !== null)) {
     throw new Error('buildFactGraph: mentionSites and mentionInputs go together');
   }
+  // Every Java top-level type declaration with its class node id (null where
+  // the id is shared): the dictionary both name stages resolve class names by.
+  const javaTypes = [];
+  for (const row of javaRows) {
+    (row.classes ?? []).forEach((cls, i) => {
+      if (typeof cls.qualifiedName !== 'string') return;
+      javaTypes.push({ fqn: cls.qualifiedName, path: row.path, id: classIds.get(row.path)[i] });
+    });
+  }
+  const otherJvm = createOtherJvmIndex(otherJvmRows);
   if (Array.isArray(mentionSites)) {
-    const javaTypes = [];
-    for (const row of javaRows) {
-      (row.classes ?? []).forEach((cls, i) => {
-        if (typeof cls.qualifiedName !== 'string') return;
-        javaTypes.push({ fqn: cls.qualifiedName, path: row.path, id: classIds.get(row.path)[i] });
-      });
-    }
     const resolved = resolveMentions({
       sites: mentionSites,
       manifestPaths: fileRowByPath.keys(),
       javaTypes,
-      otherJvm: createOtherJvmIndex(otherJvmRows),
+      otherJvm,
       declaredJavaTypes: createDeclaredJavaTypeIndex(mentionInputs.javaPackages),
       skippedFiles: (scan.skipped ?? []).filter((entry) => TARGET_SKIP_REASONS.includes(entry.reason)),
       skippedNonCode: mentionInputs.skippedNonCode,
@@ -564,6 +581,37 @@ export function buildFactGraph({ scan, structureAll, importMap, mentionSites, me
     for (const edge of resolved.edges) addEdge(edge);
     for (const gap of resolved.gaps) gapCollector.add(gap.kind, gap.scope, gap.sample);
     mentionCoverage = resolved.coverage;
+  }
+
+  // -------------------------------------------------------------------------
+  // Name references (openspec: changes/name-binding-references): the names the
+  // expressions of pages write (`#{orders.save}`), resolved through the name
+  // bindings of descriptors and annotations, inside the deployment unit the
+  // page is in. Each root name becomes an edge or a visible bucket. Without
+  // `nameReferenceSites` and the catalog the stage did not run, which the
+  // coverage says in so many words.
+  // -------------------------------------------------------------------------
+  let nameReferenceCoverage = { status: 'not-run' };
+  if ((nameReferenceSites !== undefined && nameReferenceSites !== null) !== (nameBindingCatalog !== undefined && nameBindingCatalog !== null)) {
+    throw new Error('buildFactGraph: nameReferenceSites and nameBindingCatalog go together');
+  }
+  if (nameReferenceSites) {
+    const resolved = resolveNameReferences({
+      sites: nameReferenceSites,
+      catalog: nameBindingCatalog,
+      manifestPaths: fileRowByPath.keys(),
+      javaRows,
+      classIds,
+      javaTypes,
+      otherJvm,
+      declaredJavaTypes: createDeclaredJavaTypeIndex(mentionInputs?.javaPackages ?? []),
+      fileIdOf,
+      languageOf: (path) => languageOfPath.get(path),
+      mutations: nameReferenceMutations ?? {},
+    });
+    for (const edge of resolved.edges) addEdge(edge);
+    for (const gap of resolved.gaps) gapCollector.add(gap.kind, gap.scope, gap.sample);
+    nameReferenceCoverage = resolved.coverage;
   }
 
   // -------------------------------------------------------------------------
@@ -585,7 +633,7 @@ export function buildFactGraph({ scan, structureAll, importMap, mentionSites, me
     }
     assertCallConservation(javaSiteCount, tally);
   }
-  const coverage = { ...ledger.coverage, mentions: mentionCoverage };
+  const coverage = { ...ledger.coverage, mentions: mentionCoverage, nameReferences: nameReferenceCoverage };
   if (mentionCoverage.status === 'ran') {
     // The gap counts are read back from what was recorded, as for Java calls.
     const recorded = (kind) => resolutionGaps.filter((gap) => gap.kind === kind).reduce((sum, gap) => sum + gap.count, 0);
@@ -594,6 +642,12 @@ export function buildFactGraph({ scan, structureAll, importMap, mentionSites, me
       unindexed: recorded('mention-target-unindexed'),
       unresolved: recorded('path-mention-unresolved'),
     });
+  }
+  if (nameReferenceCoverage.status === 'ran') {
+    const recorded = (kind) => resolutionGaps.filter((gap) => gap.kind === kind).reduce((sum, gap) => sum + gap.count, 0);
+    assertNameReferenceConservation(nameReferenceCoverage, Object.fromEntries(
+      Object.entries(NAME_REFERENCE_GAP_KINDS).map(([bucket, kind]) => [bucket, recorded(kind)]),
+    ));
   }
   const gaps = [...ledger.gaps, ...resolutionGaps].sort(compareGaps);
 
@@ -713,6 +767,11 @@ const GAP_REASONS = Object.freeze({
   'mention-ambiguous': 'name mention(s) in non-code files that name more than one repository declaration or file (the same class name declared twice, or a path matching several files): no mentions edge is drawn',
   'mention-target-unindexed': 'name mention(s) in non-code files of something the repository has but the index has no node for (a Kotlin or Scala type, a Java annotation type, a file the scanner skipped as too large or binary): no mentions edge is drawn',
   'path-mention-unresolved': 'path mention(s) in non-code files that no resolution rule anchors to a known file (relative to the mentioning file, to its web root, or on the classpath); files excluded by ignore rules or default filters are not consulted, and a same-named file elsewhere is not guessed',
+  'name-reference-target-unindexed': 'expression name(s) in view files whose binding in the page\'s deployment unit names a repository class the index has no node for (a Java annotation type, a Kotlin or Scala type, a class whose node id another declaration shares): no references edge is drawn',
+  'name-reference-target-unknown': 'expression name(s) in view files whose binding in the page\'s deployment unit declares the name but no class (a bean definition that only has a parent, a managed bean with no class element): no references edge is drawn',
+  'name-reference-ambiguous': 'expression name(s) in view files that bind to more than one thing in the page\'s deployment unit (two classes, a class and a resource bundle, or a class name that several declarations carry): no references edge is drawn and none of the candidates is preferred',
+  'name-reference-elsewhere': 'expression name(s) in view files that no binding of the page\'s deployment unit declares in a namespace its expression language sees, but another unit or an invisible namespace does (a Spring bean in a unit with no JSF bridge, a bean of another module): no references edge is drawn, since the name is only known to be bound where the page cannot see it',
+  'name-reference-unbound': 'expression name(s) in view files that no binding this analysis reads declares: components of libraries, parameters the caller passes in, a page that includes this one statically, producer and factory methods, nested types, sources that are not Java, and values set at runtime are not read, so the name may well be bound there',
 });
 
 /** Reasons for the Java call-site buckets (scope `java`), which resolve by
@@ -792,8 +851,9 @@ async function main() {
   const importMap = existsSync(importMapPath) ? JSON.parse(readFileSync(importMapPath, 'utf-8')) : null;
 
   // This standalone entry reads the intermediate files only, so it runs no
-  // mentions stage (that reads source content, which lazy-analyze.mjs does
-  // from the materialized snapshot): its product says `mentions: not-run`.
+  // mentions or name-reference stage (those read source content, which
+  // lazy-analyze.mjs does from the materialized snapshot): its product says
+  // `mentions: not-run` and `nameReferences: not-run`.
   const projection = buildFactGraph({ scan, structureAll, importMap });
 
   mkdirSync(dirname(outPath), { recursive: true });

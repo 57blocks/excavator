@@ -1,0 +1,6 @@
+<html xmlns:ui="http://java.sun.com/jsf/facelets">
+  <ui:include src="row.xhtml">
+    <ui:param name="orders" value="#{customerBean}"/>
+  </ui:include>
+  <p>#{orders.total}</p>
+</html>

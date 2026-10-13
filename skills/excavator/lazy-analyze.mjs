@@ -135,6 +135,8 @@ import { performance } from 'node:perf_hooks';
 
 import { buildFactGraph } from './build-fact-graph.mjs';
 import { collectMentionSites } from './mention-sites.mjs';
+import { loadNameBindingCatalog } from './name-binding-catalog.mjs';
+import { collectNameReferenceSites } from './name-reference-sites.mjs';
 import { buildSourceIndex } from './build-source-index.mjs';
 import { conservationViolations } from './coverage-ledger.mjs';
 import { mergeSnapshotSelection } from './scan-project.mjs';
@@ -178,8 +180,18 @@ export const KNOWLEDGE_GRAPH_VERSION = '1.0.0';
  *  paths, so an unchanged source tree projects new `mentions` edges, the gap
  *  kinds `mention-ambiguous`, `mention-target-unindexed` and
  *  `path-mention-unresolved`, and a `coverage.mentions` section (which reads
- *  `not-run` for a projection built without the stage). */
-export const PIPELINE_VERSION = 'lazy-fact-graph/6';
+ *  `not-run` for a projection built without the stage).
+ *  Bumped to /7 by openspec change name-binding-references: the names that
+ *  view files (Facelets, JSP, faces-config, Seam pages) write in their
+ *  expressions (`#{orders.save}`) are resolved through the name bindings of
+ *  descriptors and class annotations, per deployment unit, so an unchanged
+ *  source tree projects new `references` edges, the gap kinds
+ *  `name-reference-target-unindexed`, `name-reference-target-unknown`,
+ *  `name-reference-ambiguous`, `name-reference-elsewhere` and
+ *  `name-reference-unbound`, and a `coverage.nameReferences` section (which
+ *  reads `not-run` for a projection built without the stage). Java type
+ *  entries of the structure rows also gain `annotationArguments`. */
+export const PIPELINE_VERSION = 'lazy-fact-graph/7';
 
 /** Same two-step @excavator/core resolution every sibling script uses. */
 async function resolveCore(root) {
@@ -497,8 +509,8 @@ export function cleanupStalePublishStagingDirs(dataDir, publishFs) {
 
 /**
  * Run the Lazy first-run pipeline once, synchronously in sequence:
- * Scan -> Structure-All -> Import-Map -> Mentions -> Build Fact Graph ->
- * Validate -> Save.
+ * Scan -> Structure-All -> Import-Map -> Mentions -> Name References ->
+ * Build Fact Graph -> Validate -> Save.
  *
  * @param {{
  *   projectRoot: string,
@@ -506,7 +518,10 @@ export function cleanupStalePublishStagingDirs(dataDir, publishFs) {
  *   now?: () => string,
  *   runScript?: (scriptName: string, args: string[]) => { status: number, stdout: string, stderr: string },
  *   buildSourceIndexStep?: (args: { scan: object, structureAll: object, readFile: (p: string) => string, sourceRevision: string }) => object,
- * }} options
+ *   nameBindingCatalog?: object,
+ * }} options `nameBindingCatalog` is a loaded name-binding catalog
+ *   (name-binding-catalog.mjs); the catalog that ships with the skill when
+ *   omitted. A test passes its own.
  */
 export async function runLazyAnalysis({
   projectRoot,
@@ -516,6 +531,7 @@ export async function runLazyAnalysis({
   buildSourceIndexStep = defaultBuildSourceIndexStep,
   publishFs = defaultPublishFs,
   serializationLimit = DEFAULT_LIMIT_CHARS,
+  nameBindingCatalog = null,
 } = {}) {
   // Wall-clock total (design D7): the WHOLE run, not a sum of stage timers —
   // measured from the very first line so it also covers time no per-stage
@@ -638,10 +654,28 @@ export async function runLazyAnalysis({
       mentionStage = collectMentionSites({ scan, structureAll, readFile });
     });
 
+    // --- Name references (openspec: changes/name-binding-references, D9) ----
+    // Every non-code manifest file is read once for the names its expressions
+    // write and the names descriptors declare, by the catalog's rules - from
+    // the MATERIALIZED snapshot, like the mentions stage above. Annotation
+    // bindings and the resolution itself are the projection's.
+    let nameReferenceStage;
+    let catalog;
+    time('nameReferences', () => {
+      const readFile = (relPath) => readFileSync(join(materializedDir, relPath), 'utf-8');
+      catalog = nameBindingCatalog ?? loadNameBindingCatalog();
+      nameReferenceStage = collectNameReferenceSites({ scan, catalog, readFile });
+    });
+
     // --- Build Fact Graph (in-process — design D1: a projection, not a CLI) -
     let projection;
     time('factGraph', () => {
-      projection = buildFactGraph({ scan, structureAll, importMap, mentionSites: mentionStage.sites, mentionInputs: mentionStage.inputs, serializationLimit: limit, headroomRecorder: recorder });
+      projection = buildFactGraph({
+        scan, structureAll, importMap,
+        mentionSites: mentionStage.sites, mentionInputs: mentionStage.inputs,
+        nameReferenceSites: nameReferenceStage, nameBindingCatalog: catalog,
+        serializationLimit: limit, headroomRecorder: recorder,
+      });
       const written = writeKnowledgeGraph(join(intermediateDir, 'fact-graph.jsonl'), projection, { limit, product: 'fact-graph.jsonl' });
       recorder.recordMaxRecord('fact-graph.jsonl', written.maxLineChars, limit);
       rmSync(join(intermediateDir, 'fact-graph.json'), { force: true }); // the retired whole-document copy

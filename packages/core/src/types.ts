@@ -364,6 +364,23 @@ export interface JavaClassLiteral {
   context: "annotation" | "code";
 }
 
+/** One annotation on a Java type, with the arguments it was written with
+ *  (openspec: changes/name-binding-references, design D2). */
+export interface JavaAnnotationUse {
+  /** As written, like `annotations`: `Named` or `javax.inject.Named`. */
+  name: string;
+  /** The line the annotation starts on. */
+  line: number;
+  /** `[]` for no parentheses or empty ones. A lone unnamed argument has the key `value`. */
+  arguments: Array<{
+    key: string;
+    /** The decoded string when the argument is a single string literal; `null`
+     *  for anything else (a constant, a concatenation, an array, a class
+     *  literal, a nested annotation, a text block). */
+    value: string | null;
+  }>;
+}
+
 // Plugin interfaces
 export interface StructuralAnalysis {
   functions: Array<{
@@ -402,6 +419,8 @@ export interface StructuralAnalysis {
     fieldTypes?: JavaFieldType[];
     /** Type annotation names as written (`Builder`, `lombok.Builder`). */
     annotations?: string[];
+    /** The same annotations with their line and arguments, in the same order. */
+    annotationArguments?: JavaAnnotationUse[];
     typeParameters?: JavaTypeParameter[];
     /** Names of the type declarations nested directly in this type's body. */
     memberTypes?: string[];

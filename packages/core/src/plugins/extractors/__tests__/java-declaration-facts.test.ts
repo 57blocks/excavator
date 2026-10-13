@@ -220,3 +220,142 @@ class M {
 `).classLiterals).toEqual([]);
   });
 });
+
+// name-binding-references, task 1.1: a top-level type records every annotation
+// with its line and arguments. A single string literal is read as its decoded
+// value; every other way of writing an argument is a null value.
+describe("JavaExtractor - type annotation arguments", () => {
+  const uses = (code: string) => structure(code).classes[0].annotationArguments;
+
+  it("records an annotation with no parentheses and one with empty parentheses as having no arguments", () => {
+    expect(uses(`@Named
+@Named()
+class A {}
+`)).toEqual([
+      { name: "Named", line: 1, arguments: [] },
+      { name: "Named", line: 2, arguments: [] },
+    ]);
+  });
+
+  it("reads a single string literal as the `value` argument", () => {
+    expect(uses(`@Named("x")
+class A {}
+`)).toEqual([{ name: "Named", line: 1, arguments: [{ key: "value", value: "x" }] }]);
+  });
+
+  it("reads an explicit `value = \"x\"` the same way", () => {
+    expect(uses(`@Named(value = "x")
+class A {}
+`)).toEqual([{ name: "Named", line: 1, arguments: [{ key: "value", value: "x" }] }]);
+  });
+
+  it("keeps every key of a multi-argument annotation, a non-string literal being null", () => {
+    expect(uses(`@ManagedBean(name = "x", eager = true)
+class A {}
+`)).toEqual([{
+      name: "ManagedBean",
+      line: 1,
+      arguments: [{ key: "name", value: "x" }, { key: "eager", value: null }],
+    }]);
+  });
+
+  it("gives a constant, a concatenation, an array, a class literal and a nested annotation a null value", () => {
+    expect(uses(`@Named(Names.X)
+@Named("a" + "b")
+@Named({"a", "b"})
+@Named(value = {"a"})
+@Named(Helper.class)
+@Named(name = @Foo("x"))
+@Named(("x"))
+@Named('c')
+class A {}
+`)).toEqual([
+      { name: "Named", line: 1, arguments: [{ key: "value", value: null }] },
+      { name: "Named", line: 2, arguments: [{ key: "value", value: null }] },
+      { name: "Named", line: 3, arguments: [{ key: "value", value: null }] },
+      { name: "Named", line: 4, arguments: [{ key: "value", value: null }] },
+      { name: "Named", line: 5, arguments: [{ key: "value", value: null }] },
+      { name: "Named", line: 6, arguments: [{ key: "name", value: null }] },
+      { name: "Named", line: 7, arguments: [{ key: "value", value: null }] },
+      { name: "Named", line: 8, arguments: [{ key: "value", value: null }] },
+    ]);
+  });
+
+  it("decodes escape sequences of a string literal", () => {
+    const [use] = uses(String.raw`@Named("q\"uote\\nA\t\101")
+class A {}
+`)!;
+    // \" quote, \\ backslash then n, A 'A', \t tab, \101 octal 'A'
+    expect(use.arguments).toEqual([{ key: "value", value: 'q"uote\\nA\tA' }]);
+  });
+
+  it("gives a string literal with an escape it cannot decode a null value, not a guess", () => {
+    expect(uses(String.raw`@Named("a\qb")
+class A {}
+`)![0].arguments).toEqual([{ key: "value", value: null }]);
+  });
+
+  it("gives a text block a null value", () => {
+    expect(uses(`@Named("""
+  x
+  """)
+class A {}
+`)![0].arguments).toEqual([{ key: "value", value: null }]);
+  });
+
+  it("reads an empty string literal as an empty value", () => {
+    expect(uses(`@Named("")
+class A {}
+`)![0].arguments).toEqual([{ key: "value", value: "" }]);
+  });
+
+  it("writes the name as written, including a fully-qualified one", () => {
+    expect(uses(`@javax.inject.Named("x")
+class A {}
+`)).toEqual([{ name: "javax.inject.Named", line: 1, arguments: [{ key: "value", value: "x" }] }]);
+  });
+
+  it("takes the line the annotation starts on, whatever it spans", () => {
+    expect(uses(`package p;
+
+public
+@Named(
+  value =
+    "multi")
+@Entity class A {}
+`)).toEqual([
+      { name: "Named", line: 4, arguments: [{ key: "value", value: "multi" }] },
+      { name: "Entity", line: 7, arguments: [] },
+    ]);
+  });
+
+  it("ignores a comment between the parentheses", () => {
+    expect(uses(`@Named(/* the name */ "x" /* end */)
+class A {}
+`)![0].arguments).toEqual([{ key: "value", value: "x" }]);
+  });
+
+  it("covers interfaces, enums and records, and leaves `annotations` as it was", () => {
+    const result = structure(`@Named("i") interface I {}
+@Named("e") enum E { A }
+@Named("r") record R() {}
+`);
+    expect(result.classes.map((c) => [c.name, c.annotations, c.annotationArguments])).toEqual([
+      ["I", ["Named"], [{ name: "Named", line: 1, arguments: [{ key: "value", value: "i" }] }]],
+      ["E", ["Named"], [{ name: "Named", line: 2, arguments: [{ key: "value", value: "e" }] }]],
+      ["R", ["Named"], [{ name: "Named", line: 3, arguments: [{ key: "value", value: "r" }] }]],
+    ]);
+  });
+
+  it("gives an unannotated type an empty list and records nothing for nested types or members", () => {
+    const result = structure(`class Outer {
+  @Named("inner") static class Inner {}
+  @Named("m") void run() {}
+}
+`);
+    expect(result.classes).toHaveLength(1);
+    expect(result.classes[0].annotationArguments).toEqual([]);
+    expect(result.functions[0].annotations).toEqual(["Named"]);
+    expect(result.functions[0]).not.toHaveProperty("annotationArguments");
+  });
+});

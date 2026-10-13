@@ -1,0 +1,8 @@
+<html xmlns:f="http://xmlns.jcp.org/jsf/core"
+      xmlns:c="http://java.sun.com/jsp/jstl/core"
+      xmlns:ui="http://xmlns.jcp.org/jsf/facelets">
+  <f:param name="cartBean" value="#{customerBean.id}"/>
+  <c:param name="checkoutBean" value="1"/>
+  <ui:param name="invoices" value="#{orders}"/>
+  <p>#{cartBean.total} #{checkoutBean.title} #{invoices.count}</p>
+</html>

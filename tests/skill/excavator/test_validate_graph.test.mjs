@@ -277,6 +277,40 @@ describe('validate-graph — evidence lines', () => {
     expect(expectedTokens({ type: 'mentions' }, source, target, { ...evidence, token: undefined })).toEqual([]);
   });
 
+  it('expects the root name an expression wrote on a references edge, not the class it resolved to', () => {
+    // `#{orders.save}` resolves to OrderBean: the class's name is not on the page line
+    const source = { id: 'file:list.xhtml', type: 'file', name: 'list.xhtml', filePath: 'list.xhtml' };
+    const target = { id: 'class:src/OrderBean.java:OrderBean', type: 'class', name: 'OrderBean', filePath: 'src/OrderBean.java' };
+    const evidence = {
+      file: 'list.xhtml', line: 8, source: 'lexical', token: 'orders', chain: 'orders.save',
+      bindings: [{ file: 'faces-config.xml', line: 2, binder: 'jsf-xml-managed-bean' }],
+    };
+    expect(expectedTokens({ type: 'references' }, source, target, evidence)).toEqual(['orders']);
+    expect(expectedTokens({ type: 'references' }, source, target, { ...evidence, token: undefined })).toEqual([]);
+  });
+
+  it('confirms a references edge whose cited page line holds the token, and contradicts one whose line does not', () => {
+    const root = mkdtempSync(join(tmpdir(), 'excavator-validate-references-'));
+    try {
+      writeFileSync(join(root, 'list.xhtml'), '<html>\n  <h:commandButton action="#{orders.save}"/>\n</html>\n');
+      writeFileSync(join(root, 'OrderBean.java'), 'class OrderBean {}\n');
+      const nodes = [
+        { id: 'file:list.xhtml', type: 'file', name: 'list.xhtml', filePath: 'list.xhtml', summary: '', tags: [] },
+        { id: 'class:OrderBean.java:OrderBean', type: 'class', name: 'OrderBean', filePath: 'OrderBean.java', lineRange: [1, 1], summary: '', tags: [] },
+      ];
+      const edge = (line) => ({
+        source: 'file:list.xhtml', target: 'class:OrderBean.java:OrderBean', type: 'references', direction: 'forward', weight: 0.5,
+        provenance: 'extracted',
+        evidence: [{ file: 'list.xhtml', line, source: 'lexical', token: 'orders', chain: 'orders.save', bindings: [] }],
+      });
+      const check = (line) => validateAgainstSource({ graph: { nodes, edges: [edge(line)] }, reader: createSourceReader(root) }).report.counts;
+      expect(check(2)).toMatchObject({ edgeConfirmed: 1, edgeContradicted: 0 });
+      expect(check(1)).toMatchObject({ edgeConfirmed: 0, edgeContradicted: 1 });
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   it('passes a model-cited judgement edge whose line mentions an endpoint', () => {
     const root = fixtureProject();
     const graph = cleanGraph();

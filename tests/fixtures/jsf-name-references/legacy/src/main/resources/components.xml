@@ -1,0 +1,5 @@
+<components xmlns="http://jboss.com/products/seam/components">
+  <component name="mailer" class="com.acme.legacy.Mailer"/>
+  <component name="numberGuess"/>
+  <component class="com.acme.legacy.Helper"/>
+</components>
