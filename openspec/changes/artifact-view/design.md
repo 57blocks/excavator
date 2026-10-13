@@ -70,7 +70,16 @@
 | wcp | 5.12 MB（图组 1.35、index 1.31、excerpts 2.05、evidenceText 0.22、模板 0.19） | 1.83 MB | 3.3 s / 1.1 s | 297 MB / 177 MB | 0.19 s / 0.28 s |
 | hadoop | 56.5 MB（excerpts 150 MB 原文按预算裁掉） | 32.6 MB | 18.8 s / 8.4 s | 1.6 GB / 0.9 GB | 0.85 s / 1.12 s；0.42 s / 0.63 s |
 
-提案阶段的估算漏了 index 段（hadoop 上它是体积大头）与 interning 期间的对象开销。两条跟进（任务 4A）：posting 段不再嵌入、由页面 Worker 从 chunk 的标识符重建倒排表；index 字面量进预算。烘焙内存按 hadoop 剖析后压低，目标是 1 GB JSONL 在 Node 默认堆内完成。
+提案阶段的估算漏了 index 段（hadoop 上它是体积大头）与 interning 期间的对象开销。任务 4A 落地后（5aee1f46）复测：
+
+| 语料 / 模式 | 4A 前 | 4A 后 | 剩余构成（存储字节） |
+|---|---|---|---|
+| wcp 默认 | 5.12 MB / 3.7 s / 277 MB | 4.38 MB / 3.9 s / 266 MB | — |
+| wcp `--no-source` | 1.83 MB / 1.3 s / 175 MB | 1.13 MB / 1.3 s / 157 MB | — |
+| hadoop 默认 | 59.3 MB / 18.5 s / 1.68 GB | 40.6 MB / 17.8 s / 1.37 GB | 默认模式 RSS 由源码收集主导：全量 materialize，收集了 150 MB 片段再被预算裁掉 |
+| hadoop `--no-source` | 34.2 MB / 8.3–9.1 s / 785–862 MB | 16.5 MB / 7.5–8.0 s / 703–757 MB | 图表 6.71、全局字符串 2.54、index chunk 与 token 2.89、files 0.11、模板 0.19 |
+
+内存剖析（hadoop `--no-source`）：最大瞬态是整份 `JSON.parse` 79 MB 的 `fingerprints.json`（单独 457 MB），改为只取 `totalLines` 的流式扫描后 90 MB；其次是末尾自检一次性解码（+170 MB），改为经 codec 的 `decodeSegments` 逐段流式；共享的新鲜度助手自身占 253 MB / 1.6 s，是广泛引用的模块，不在本变更动。RSS 只降 10–15%，因为 V8 堆之外的原生内存不归还；更准的指标是完成烘焙所需的最小 `--max-old-space-size`：256 MB → 192 MB。1 GB JSONL 线性外推约 340 MB 堆加 150 MB ArrayBuffer，默认堆上限 4 GB。Chrome 侧 hadoop 页解码 / 可交互：默认 0.67 / 0.89 s，`--no-source` 0.26 / 0.40 s。
 
 **D6：清点与新鲜度规则。**
 
@@ -96,7 +105,7 @@
 
 **D12：skill 行为。** `SKILL.md` 英文；步骤：解析 `PROJECT_ROOT` / `PLUGIN_ROOT`（与其它 skill 相同的三候选）；确认图谱存在；运行 `consumer-freshness.mjs`（固定句式，满足新鲜度测试）；确认模板；运行 `build-view.mjs`，传旗标；读脚本打印的 JSON 报告（路径、字节数、清点、裁剪、新鲜度）转述给用户；按宿主选打开器（`open` / `xdg-open` / `start`），`--no-open` 跳过；提醒默认嵌入源码原文、外发用 `--no-source`。
 
-**D13：切片 A 验收后的修正（任务 4A）。** (1) index 字面量独立成段并进预算（D5）；(2) posting 段不嵌入，页面 Worker 从 chunk 的标识符列重建倒排表，标识符搜索结果不变；(3) 成员卡片的数字是 manifest 条目数，标签改为「files in manifest」并并列 selection 的 selected 数（wcp 两者差 1，是被选中却没有 manifest 条目的符号链接，上游行为，页面不猜）；环图中心是候选数，标签改为「candidate files」；(4) 冒烟脚本先发 CDP `Browser.close` 再超时 SIGKILL，不留 Chrome 临时目录；(5) O3 补「缺 manifest 时已有旧文件逐字节不变」的断言；(6) 烘焙内存在 hadoop 上剖析并压低。「Available in a later slice」占位文案在 12.2 必须全部消失，列为检查项。
+**D13：切片 A 验收后的修正（任务 4A）。** (1) index 字面量独立成段并进预算（D5）；(2) posting 段不嵌入，页面从 chunk 的标识符列加 index 字面量重建倒排表（source-index 的 posting 同时索引标识符、注释与字符串字面量，只凭标识符列重建不出来）：字面量已嵌入时重建结果与原 posting 逐项相同（wcp 9,134 / 9,134、hadoop 68,023 / 68,023 个词项核对相同），字面量被裁或 `--no-source` 时倒排表只含标识符并在页面标明「identifiers only」；重建在 hadoop 上需 2.9 s 与 351 MB 堆，切片 B 接入 Worker 时必须在首次搜索时惰性构建，不进 ready 路径；(3) 成员卡片的数字是 manifest 条目数，标签改为「files in manifest」并并列 selection 的 selected 数（wcp 两者差 1，是被选中却没有 manifest 条目的符号链接，上游行为，页面不猜）；环图中心是候选数，标签改为「candidate files」；(4) 冒烟脚本先发 CDP `Browser.close` 再超时 SIGKILL，不留 Chrome 临时目录；(5) O3 补「缺 manifest 时已有旧文件逐字节不变」的断言；(6) 烘焙内存在 hadoop 上剖析并压低。「Available in a later slice」占位文案在 12.2 必须全部消失，列为检查项。
 
 ## 验收 Oracle（动手前写死）
 

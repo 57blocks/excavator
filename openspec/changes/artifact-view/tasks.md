@@ -7,6 +7,7 @@
 4. `feat(view): overview, inventory, freshness and coverage sections`：任务 4.1–4.4。
 5. `docs(openspec): record artifact-view slice A acceptance`：任务 4.5。
 5a. `fix(view): slice A acceptance fixes`：任务 4A.1–4A.6（验收发现，design D13）。
+5b. `docs(openspec): record artifact-view 4A results`：D5 / D13 按实测更新，4A 复选框。
 6. `feat(view): structure treemap and search`：任务 5.1–5.3。
 7. `feat(view): graph explorer and node detail`：任务 6.1–6.4。
 8. `feat(view): evidence text and source excerpts`：任务 7.1–7.2。
@@ -52,12 +53,12 @@
 
 ## 4A. 切片 A 验收发现的修复（切片 A）
 
-- [ ] 4A.1 index 字面量（source-index 的 comments / strings）从全局字符串表移到独立的 `indexLiterals` 段，纳入 `--source-budget`，裁剪顺序 `excerpts` → `indexLiterals` → `evidenceText`；页面在词项区显示「literals trimmed」状态；FORMAT.md 更新。验证：`--source-budget 0` 三段都裁且 wcp 输出小于 `--no-source` 基线加图组；预算测试覆盖新顺序；往返测试覆盖新段。
-- [ ] 4A.2 posting 段不再嵌入：页面 Worker 从 chunk 的标识符列重建倒排表；烘焙不再读 source-index 的 posting 记录。验证：标识符搜索的单测结果与重建前相同；hadoop `--no-source` 重测并记录体积（目标 ≤ 20 MB，达不到写明构成）。
-- [ ] 4A.3 文案：成员卡片改「files in manifest」并并列 selection 的 selected 数；环图中心改「candidate files」。验证：页面模型单测断言两个标签与两个数字来源。
-- [ ] 4A.4 冒烟脚本退出：先 CDP `Browser.close`，超时再 SIGKILL；跑后 `$TMPDIR` 不新增 Chrome 目录。验证：单测或脚本自检对比跑前跑后的临时目录数。
-- [ ] 4A.5 O3 补测：缺 manifest 时已有旧 `view.html` 逐字节不变。验证：测试先对「失败后仍写出」的变体红。
-- [ ] 4A.6 烘焙内存：在 hadoop 上剖析峰值来源（interning、index 对象、evidenceText 字符串、materialize），压低最大的一项，前后数字记入 design D5；外推 1 GB JSONL 不超过 Node 默认堆。验证：hadoop `--no-source` 重测 RSS 记录；单测不变。
+- [x] 4A.1 index 字面量（source-index 的 comments / strings）从全局字符串表移到独立的 `indexLiterals` 段，纳入 `--source-budget`，裁剪顺序 `excerpts` → `indexLiterals` → `evidenceText`；页面在词项区显示「literals trimmed」状态；FORMAT.md 更新。验证：`--source-budget 0` 三段都裁且 wcp 输出小于 `--no-source` 基线加图组；预算测试覆盖新顺序；往返测试覆盖新段。
+- [x] 4A.2 posting 段不再嵌入：页面 Worker 从 chunk 的标识符列重建倒排表；烘焙不再读 source-index 的 posting 记录。验证：标识符搜索的单测结果与重建前相同；hadoop `--no-source` 重测并记录体积（目标 ≤ 20 MB，达不到写明构成）。
+- [x] 4A.3 文案：成员卡片改「files in manifest」并并列 selection 的 selected 数；环图中心改「candidate files」。验证：页面模型单测断言两个标签与两个数字来源。
+- [x] 4A.4 冒烟脚本退出：先 CDP `Browser.close`，超时再 SIGKILL；跑后 `$TMPDIR` 不新增 Chrome 目录。验证：单测或脚本自检对比跑前跑后的临时目录数。
+- [x] 4A.5 O3 补测：缺 manifest 时已有旧 `view.html` 逐字节不变。验证：测试先对「失败后仍写出」的变体红。
+- [x] 4A.6 烘焙内存：在 hadoop 上剖析峰值来源（interning、index 对象、evidenceText 字符串、materialize），压低最大的一项，前后数字记入 design D5；外推 1 GB JSONL 不超过 Node 默认堆。验证：hadoop `--no-source` 重测 RSS 记录；单测不变。
 
 ## 5. 结构与搜索（切片 B）
 
