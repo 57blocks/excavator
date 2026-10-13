@@ -74,19 +74,19 @@
 
 ## 4. 图头
 
-- [ ] 4.1 `lazy-analyze.mjs` 按 design D4 写 `project.frameworks`，扫描结果缺 `detectedFrameworks` 时抛错；`PIPELINE_VERSION` 升到 `lazy-fact-graph/10`，同步更新只断言版本字符串的既有测试。
+- [x] 4.1 `lazy-analyze.mjs` 按 design D4 写 `project.frameworks`，扫描结果缺 `detectedFrameworks` 时抛错；`PIPELINE_VERSION` 升到 `lazy-fact-graph/10`，同步更新只断言版本字符串的既有测试。
   验证：`tests/lazy/` 新增管线测试，覆盖 spec「检测结果写入图头」的场景：
   - 对夹具首次运行，图头为 `["javaee", "jsf"]`；
   - 预置一个图头为 `["Spring Boot"]` 的旧图，再运行后被替换为检出值；
   - 夹具去掉全部关键字后为 `[]`。
-- [ ] 4.2 用同一夹具锁定 Java EE 描述符的提及，按 spec「Java EE 描述符里的类名经 mentions 连边」。
+- [x] 4.2 用同一夹具锁定 Java EE 描述符的提及，按 spec「Java EE 描述符里的类名经 mentions 连边」。
   验证：管线测试断言精确的 `mentions` 边列表与证据行：
   - `ejb-jar.xml` 到 bean 类、业务接口、拦截器；
   - `persistence.xml` 到实体；
   - `web.xml` 到夹具里的 servlet、filter、listener（若有）；
 
   并断言 `provider` 计入仓库外、不成边。
-- [ ] 4.3 核对既有 Lazy 夹具的管线测试：凡夹具里有 manifest 的，图头的 `frameworks` 变化逐个列出并更新期望；冻结摘要若受影响，用生成器整块重冻并列出；`factsDigest` 不得因本步变化。
+- [x] 4.3 核对既有 Lazy 夹具的管线测试：凡夹具里有 manifest 的，图头的 `frameworks` 变化逐个列出并更新期望；冻结摘要若受影响，用生成器整块重冻并列出；`factsDigest` 不得因本步变化。
   验证：根测试全绿；交付报告列出每个更新了期望的测试及原因。
 
 ## 5. 附录与注入

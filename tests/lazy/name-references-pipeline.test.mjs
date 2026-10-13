@@ -123,8 +123,13 @@ describe('the name-reference stage in the real Lazy driver', () => {
   });
 
   it('stamps the product with the new pipeline version', () => {
-    expect(PIPELINE_VERSION).toBe('lazy-fact-graph/9');
-    expect(graph.project.pipelineVersion).toBe('lazy-fact-graph/9');
+    expect(PIPELINE_VERSION).toBe('lazy-fact-graph/10');
+    expect(graph.project.pipelineVersion).toBe('lazy-fact-graph/10');
+  });
+
+  it('records the framework its faces-config descriptors declare in the header', () => {
+    // Before /10 the header carried the previous graph's value, `[]` here.
+    expect(graph.project.frameworks).toEqual(['jsf']);
   });
 
   it('draws exactly the expected references edges, resolved inside each page\'s own unit', () => {
