@@ -4,7 +4,7 @@ Excavator's MCP server is deterministic: it builds facts and returns current, bo
 
 ## Prepare the plugin checkout
 
-From the Excavator checkout, run `pnpm install --frozen-lockfile && pnpm -r build`. Node 22+ and the checked-in pnpm version are required. The plugin's Git checkout does not contain `node_modules` or `packages/core/dist`; a source-only plugin copy cannot start the MCP server until those are built there. This is a local-development setup, not a claim that marketplace installation already bootstraps dependencies.
+From the Excavator checkout, run `pnpm install --frozen-lockfile && pnpm -r build`. Node 22+ and the checked-in pnpm version are required. The plugin's Git checkout does not contain `node_modules` or `packages/core/dist`; a source-only plugin copy cannot start the MCP server until those are built there. This is a local-development setup, not a claim that marketplace installation already bootstraps dependencies. The same build also produces the static view's page template, `packages/view/dist/index.html`, which `/excavator-view` bakes into `view.html` (see [Static view](view.md)); the skill builds it on first use if it is missing.
 
 ## Claude Code
 

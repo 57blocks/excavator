@@ -17,7 +17,7 @@
 
 **You just joined a new team. The codebase is 200,000 lines of code. Where do you even start?**
 
-Excavator is a [Claude Code Plugin](https://code.claude.com/docs/en/plugins-reference#plugins-reference) that analyzes your project with a multi-agent pipeline, builds a knowledge graph of every file, function, class, and dependency, then answers questions against that graph in the terminal.
+Excavator is a [Claude Code Plugin](https://code.claude.com/docs/en/plugins-reference#plugins-reference) that analyzes your project with a multi-agent pipeline, builds a knowledge graph of every file, function, class, and dependency, then answers questions against that graph in the terminal. A single static HTML file lets you browse the same analysis in a browser.
 
 > **The goal isn't a graph that wows you with how complex your codebase is — it's a graph that quietly teaches you how every piece fits together.**
 
@@ -32,6 +32,10 @@ Ask about files, functions, classes, dependencies, and request flows. Answers us
 ### Understand business logic
 
 Extract how code maps to real business processes — domains, flows, and steps — and query those relationships from the terminal.
+
+### Browse the analysis in one HTML file
+
+`/excavator-view` bakes the analysis into `.excavator/view.html`: one self-contained file with the structure, graph, layers, domain flows, gaps and search. It opens from disk in any modern browser, with no server and no network, so you can share it by sending the file. See [Static view](docs/view.md).
 
 ### Analyze knowledge bases
 
@@ -97,7 +101,13 @@ Then ask questions directly:
 /excavator-chat How does the request flow work?
 ```
 
-Excavator is service-only: it generates nodes, edges, architecture layers, and evidence for terminal Q&A. It does not ship or launch an HTML interface.
+Excavator generates nodes, edges, architecture layers, and evidence for terminal Q&A. To browse them, bake a static page:
+
+```bash
+/excavator-view
+```
+
+This writes `.excavator/view.html` and opens it in your browser. By default the file embeds source excerpts and evidence lines; use `/excavator-view --no-source` before sending it outside your team. Nothing runs in the background: no server is started.
 
 > **Heads up on token usage:** By default, the initial `/excavator` run only builds a deterministic fact index (files, symbols, imports, calls) — it's fast and makes zero LLM calls. Summaries and other semantic detail are then generated on demand as you ask questions with `/excavator-chat`, and cached for next time. If you'd rather pre-generate everything up front (e.g. before a review), run `/excavator --full`; on large projects this can consume a significant number of tokens, so we recommend a token plan / subscription or a local model (see above) for that path. See [Lazy Mode](docs/lazy-mode.md) for details.
 
@@ -132,6 +142,9 @@ For host-owned AI exploration through seven bounded local MCP tools, see [MCP se
 # Verify an As-Is document (e.g. a PRD) against the code; --fix corrects it in place
 /excavator-verify docs/PRD.md
 
+# Bake the analysis into one static HTML file and open it
+/excavator-view
+
 # Re-run anytime — incremental by default (only re-analyzes changed files)
 /excavator
 
@@ -164,7 +177,9 @@ git clone https://github.com/Jingqi-57blocks/excavator.git ~/.excavator-plugin
 ~/.excavator-plugin/install.sh
 ```
 
-This symlinks each skill into `~/.agents/skills/` and links `~/.excavator-plugin` to the repository (if you cloned elsewhere, run `install.sh` from that clone instead — it links wherever it's run from). Restart Codex afterwards.
+Then build the checkout once: `cd ~/.excavator-plugin && pnpm install --frozen-lockfile && pnpm -r build` (Node.js 22+ and pnpm). This produces the core library and the page template that `/excavator-view` needs; the skills also build them on first use if they are missing.
+
+`install.sh` symlinks each skill into `~/.agents/skills/` and links `~/.excavator-plugin` to the repository (if you cloned elsewhere, run `install.sh` from that clone instead — it links wherever it's run from). Restart Codex afterwards.
 
 > **Note on invoking skills:** Codex uses `$` instead of `/` — type `$excavator`, not `/excavator`. If neither prefix is recognized, just ask in plain language: *"Use the excavator skill to analyze this project."*
 
