@@ -426,6 +426,7 @@ describe('the javaee and jsf addenda (javaee-jsf-framework-knowledge, D8)', () =
       expect(text).toContain('`from-view-id` equals the current view, is `*`, is absent, or is a prefix pattern such as `/admin/*` that covers the current view');
       expect(text).toContain("Seam's `pages.xml` and `*.page.xml`");
       expect(text).toContain('A navigation case with no `from-outcome` (in Seam, a `rule` with no `if-outcome`) applies to every outcome, so it names this outcome too.');
+      expect(text).toContain('A case (or a Seam `<navigation>`) with a `from-action` applies only to the outcome of that action expression: a literal `action="…"` matches no `from-action`, and when you cannot tell which action produced the outcome, the rule cannot be decided.');
     });
 
     it('does not fall back to implicit navigation past a rule it cannot decide', () => {

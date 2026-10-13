@@ -46,7 +46,7 @@ manifest：`pom.xml`、`build.gradle`、`build.gradle.kts`、`ivy.xml`、`faces-
   - `template=`、`ui:include`、`ui:decorate` 与导航规则 view id 的 `mentions`；
   - faces-config 里类名的 `mentions`。
 - action 方法返回的 outcome 与隐式导航（outcome 即 view id，无前导 `/` 时相对当前视图目录），只在仓库内恰好一个页面文件匹配时推断页面关系。
-  - 导航规则的 `from-outcome` 先于隐式导航。`from-view-id` 为前缀模式（如 `/admin/*`）的规则同样算数；没有 `from-outcome` 的导航条目适用于所有 outcome；`faces-config.xml` 之外声明的导航（如 Seam 的 `pages.xml`）也是规则。
+  - 导航规则的 `from-outcome` 先于隐式导航。`from-view-id` 为前缀模式（如 `/admin/*`）的规则同样算数；没有 `from-outcome` 的导航条目适用于所有 outcome；带 `from-action` 的条目只适用于该 action 表达式产生的 outcome，字面量 `action="…"` 不匹配任何 `from-action`，看不出 outcome 由哪个 action 产生时该规则无法判定；`faces-config.xml` 之外声明的导航（如 Seam 的 `pages.xml`）也是规则。
   - 存在写着该 outcome、却无法判定是否适用的规则时，MUST NOT 退回隐式导航。
   - 隐式导航从 JSF 2.0 起才有：只在看得出当前视图所在的 web 模块是 JSF 2.0 及以上时使用（该模块的 `faces-config.xml` 的 `version` 为 2.0 及以上，或其构建文件声明 JSF 2.x 及以上的 API 依赖）；JSF 1.x 或看不出版本时不用。按 web 模块判断，不按整个仓库。
 - 复合组件标签按其命名空间里的库名，对应到 `resources/<library>/<tag>.xhtml`。
