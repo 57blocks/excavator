@@ -1,0 +1,56 @@
+{
+  "version": 1,
+  "injectionFamilies": [
+    {
+      "id": "jsr330-inject",
+      "basis": "JSR 330 injection points: a field, a constructor or a method that carries Inject is filled by the container with a bean of the declared type (a constructor or method gets one bean per parameter), and no name is written, so the candidates are the repository types that can satisfy the declared type and the point is a fact only when exactly one is left; the annotations beside Inject are qualifiers that narrow the choice, except a Spring Qualifier, which names the bean and is resolved by the by-name stage.",
+      "annotations": ["javax.inject.Inject", "jakarta.inject.Inject", "com.google.inject.Inject"],
+      "on": ["field", "method", "constructor"],
+      "readsQualifiers": true,
+      "singleParameterMethods": false,
+      "nameArguments": [],
+      "nameAnnotations": ["org.springframework.beans.factory.annotation.Qualifier"],
+      "lookupArguments": [],
+      "typeArgument": null
+    },
+    {
+      "id": "ejb-inject",
+      "basis": "EJB injection points: a field, or a method with one parameter, that carries EJB is filled by the container with a session bean of the declared type, or of the type that beanInterface states, when the annotation names no bean (beanName) and no JNDI name (lookup, mappedName); with such a name the point is by name and belongs to the by-name stage, and the container resolves the bean by its business interface, so no qualifier beside EJB is read.",
+      "annotations": ["javax.ejb.EJB", "jakarta.ejb.EJB"],
+      "on": ["field", "method"],
+      "readsQualifiers": false,
+      "singleParameterMethods": true,
+      "nameArguments": ["beanName"],
+      "nameAnnotations": [],
+      "lookupArguments": ["lookup", "mappedName"],
+      "typeArgument": "beanInterface"
+    }
+  ],
+  "namedQualifier": {
+    "basis": "Named is the qualifier by name: an injection point that carries it asks for the bean of that name, and on a class its value is the bean's name, or the simple class name with a lower-case first letter when it has no value; a stereotype in defaultNameStereotypes carries Named with no value, so a class that carries it has that default name; the value therefore only rules a candidate out when the candidate cannot have the name, and never rules one in.",
+    "annotations": ["javax.inject.Named", "jakarta.inject.Named"],
+    "argument": "value",
+    "defaultNameStereotypes": ["javax.enterprise.inject.Model", "jakarta.enterprise.inject.Model"]
+  },
+  "producers": {
+    "basis": "A method or field that carries one of these annotations supplies an instance of its declared type to the container, so it satisfies an injection point of that type or of a supertype just as a class does; when it is the only candidate the edge goes to the producer method, which makes the value, and a field declares no node to point at.",
+    "annotations": ["javax.enterprise.inject.Produces", "jakarta.enterprise.inject.Produces", "com.google.inject.Provides", "dagger.Provides", "org.springframework.context.annotation.Bean"]
+  },
+  "providerTypes": {
+    "basis": "A class that implements one of these types can be what supplies instances of its first type argument: Spring asks a FactoryBean for its object, and Guice binds a provider class to the type it provides, so it is counted as a candidate for an injection point of that argument type or of a supertype even where the container would not use it; the class is not itself an instance of that type, so such a candidate has no node to point at and is counted, not drawn.",
+    "types": ["javax.inject.Provider", "jakarta.inject.Provider", "com.google.inject.Provider", "org.springframework.beans.factory.FactoryBean"]
+  },
+  "deploymentDependent": {
+    "basis": "Whether a class that carries one of these annotations is a bean at all is decided by the deployment, which the sources do not state: an alternative is enabled by the deployment descriptor or a priority, a specialization or a restricted bean type changes which type the bean answers to, a vetoed class is no bean, and a decorator or interceptor is applied to beans and is not injected; a single candidate that carries one of them is therefore not taken for the injected object.",
+    "annotations": ["javax.enterprise.inject.Alternative", "jakarta.enterprise.inject.Alternative", "javax.enterprise.inject.Specializes", "jakarta.enterprise.inject.Specializes", "javax.enterprise.inject.Typed", "jakarta.enterprise.inject.Typed", "javax.enterprise.inject.Vetoed", "jakarta.enterprise.inject.Vetoed", "javax.decorator.Decorator", "jakarta.decorator.Decorator", "javax.interceptor.Interceptor", "jakarta.interceptor.Interceptor"]
+  },
+  "notQualifiers": {
+    "basis": "These annotations are never used as qualifiers: they generate accessors or state that a value may be absent, and the container does not read them when it picks a bean, so an injection point that carries one of them is not constrained by it; any other annotation beside the injection could be a qualifier the sources do not declare here, which leaves the point unresolved.",
+    "annotations": ["lombok.Getter", "lombok.Setter", "javax.annotation.Nullable"]
+  },
+  "businessInterfaces": {
+    "basis": "Local and Remote list the business interfaces of a session bean as class literals in their value argument, and the container exposes the bean through each of them whether or not its source says implements, so the bean is a candidate for an injection point of such an interface; the relation is read from the line of the class literal.",
+    "annotations": ["javax.ejb.Local", "javax.ejb.Remote", "jakarta.ejb.Local", "jakarta.ejb.Remote"],
+    "argument": "value"
+  }
+}

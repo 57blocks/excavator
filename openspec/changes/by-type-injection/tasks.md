@@ -59,7 +59,7 @@
 
 ## 2. 按类型注入目录
 
-- [ ] 2.1 新模块 `skills/excavator/type-injection-catalog.mjs`，提供 `parseTypeInjectionCatalog(value)` 与 `loadTypeInjectionCatalog(path = SHIPPED_TYPE_INJECTION_CATALOG)`，按 design D4 严格校验。测试覆盖每一种失败：
+- [x] 2.1 新模块 `skills/excavator/type-injection-catalog.mjs`，提供 `parseTypeInjectionCatalog(value)` 与 `loadTypeInjectionCatalog(path = SHIPPED_TYPE_INJECTION_CATALOG)`，按 design D4 严格校验。测试覆盖每一种失败：
   - 未知键、缺字段、类型不符；
   - 空的 `annotations` 或 `on`；
   - `on` 里出现未知的成员种类；
@@ -67,7 +67,7 @@
   - 不是点分名；
   - 同一全限定名出现在两个角色里；
   - 版本不符。
-- [ ] 2.2 随附 `skills/excavator/catalogs/type-injections.json`，内容照 D4，每个族与每个角色一句 `basis`。
+- [x] 2.2 随附 `skills/excavator/catalogs/type-injections.json`，内容照 D4，每个族与每个角色一句 `basis`。
 
 ## 3. 解析
 
