@@ -33,20 +33,20 @@
 
 ## 2. 路由解析
 
-- [ ] 2.1 新模块 `skills/excavator/route-resolution.mjs` 的 `resolveRoutes({ javaRows, catalog, identity, handlerIdOf, mutations })`：
+- [x] 2.1 新模块 `skills/excavator/route-resolution.mjs` 的 `resolveRoutes({ javaRows, catalog, identity, handlerIdOf, mutations })`：
   - 按 design D4 读取注解、确认身份、分组成路由点；
   - 按 D5 的顺序落九个桶；
   - 按 D6 拼路由；
   - 返回端点条目（按 D7 分组）、待画的 `routes` 边（处理方法 id 已知）、缺口与覆盖。
   - 模块是纯函数，不读文件，代码里不出现任何框架名字。
-- [ ] 2.2 `routes` 边与证据按 D8：
+- [x] 2.2 `routes` 边与证据按 D8：
   - 证据为 `{ file, line, source: 'tree-sitter', token, role, value? }`，按（文件，行，角色）排序去重；
   - 端点的 `contains` 证据为第一个处理方法的动词行，带 `token`。
-- [ ] 2.3 覆盖、缺口与守恒按 D9：
+- [x] 2.3 覆盖、缺口与守恒按 D9：
   - 四类 `route-*` 缺口的样例为 `<file>:<line> <Owner>.<method>`；
   - 提供 `assertRouteConservation`；
   - 没有目录时为 `not-run`。
-- [ ] 2.4 变异绊线：D11 的五个开关，每个至少让一条测试变红。不改生产默认值。
+- [x] 2.4 变异绊线：D11 的五个开关，每个至少让一条测试变红。不改生产默认值。
 
 ## 3. 接入流水线与夹具
 
