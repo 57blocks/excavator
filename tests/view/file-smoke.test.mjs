@@ -720,7 +720,12 @@ if (!chrome.path) {
       expect(existsSync(result.chrome.profile)).toBe(false);
       // Chrome ran with TMPDIR under the profile: empty once it closed, and removed with it (7A.5).
       expect(result.chrome.tmpDir).toBe(join(result.chrome.profile, 'tmp'));
-      expect(result.chrome.tmpLeft).toEqual([]);
+      // Chrome on Linux honours TMPDIR and leaves its own singleton and
+      // url_fetcher directories under <profile>/tmp; Chrome on macOS puts them
+      // in the user temp dir instead. Either way only Chrome's own entries may
+      // remain there, and the next assertion proves they went with the profile.
+      const chromeOwn = (name) => /^\.?com\.google\.Chrome\./.test(name);
+      expect(result.chrome.tmpLeft.filter((name) => !chromeOwn(name))).toEqual([]);
       expect(existsSync(result.chrome.tmpDir)).toBe(false);
       expect(Array.isArray(result.chrome.userTmpLeft)).toBe(true);
     }, 90_000);
