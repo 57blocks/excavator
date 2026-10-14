@@ -326,7 +326,7 @@ route = verb + ' ' + path
 - **由部署配置注册的资源全部落缺口。** Sakai 这类 CXF 项目的资源类不写类上的 `@Path`，169 个路由点全部记 `route-root-unresolved`。这是漏，不是编造，桶里可见。读 CXF / Spring 的 `jaxrs:server` 是后续候选。
 - **路径常量落缺口。** hadoop 约一半的路径是常量，记 `route-path-unresolved`。求值仓库内的 `static final String` 常量是后续候选。
 - **注解继承不读。** 实现类不写注解、靠接口方法上的注解生效时：
-  - 接口有类上 `@Path`，端点画在接口方法上，实现方法经 `overrides` 可达；
+  - 接口有类上 `@Path`，端点画在接口方法上，实现方法经方法级 `implements` 边可达（接口的 default 方法被覆写时经 `overrides`）；
   - 接口没有，而实现类有，接口方法落「没有根路径」。
 
   两种情况都不编造。

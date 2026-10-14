@@ -97,7 +97,7 @@
 
 #### Scenario: 接口上声明的路由
 - **WHEN** 接口 `OrderApi` 写 `@Path("/v2/orders")`，其方法 `list` 写 `@GET`；实现类 `OrderApiImpl` 的 `list` 不写任何注解
-- **THEN** 端点 `GET /v2/orders` 的 `routes` 边指向接口方法 `OrderApi.list`；实现方法经既有的 `overrides` 边可达，不另画端点
+- **THEN** 端点 `GET /v2/orders` 的 `routes` 边指向接口方法 `OrderApi.list`；实现方法经既有的方法级 `implements` 边可达，不另画端点
 
 #### Scenario: 子资源定位方法
 - **WHEN** 方法 `items` 写 `@Path("{id}/items")`，没有 HTTP 方法注解
@@ -158,10 +158,12 @@
 
 每条证据带 `token`，即该行上注解的写法（如 `GET`、`javax.ws.rs.GET`、`Path`），并标明角色：动词、方法路径或根路径。路径证据另记读到的值。同一条边的证据按文件、行与角色排序去重。
 
-图校验 SHALL 要求：
+图校验 SHALL 按证据自身的 `token` 核对：
 - `routes` 证据的行包含它的 `token`；
 - 带 `token` 的 `contains` 证据的行包含它的 `token`；
 - 不带 `token` 的 `contains` 证据，校验规则不变。
+
+与其它边类型相同，一条边只要有一条证据的行含它的 `token`，图校验就确认这条边。
 
 `routes` SHALL 属于可遍历的确定性边类型：
 - 从处理方法沿入边可以找到端点；
@@ -176,7 +178,7 @@
 - **THEN** 结果包含经 `routes` 到达的端点 `GET /orders/{id}`
 
 #### Scenario: 证据行不含 token 时校验报出
-- **WHEN** 一条 `routes` 边的证据行号被改成不含 `token` 的行
+- **WHEN** 一条 `routes` 边的每条证据，行号都被改成不含各自 `token` 的行
 - **THEN** 图校验对这条边报出证据不符
 
 #### Scenario: 端点的 contains 证据可复核
