@@ -33,14 +33,27 @@
   - 顶层注解类型里的嵌套类型；
   - 顶层类型各种修饰符组合；
   - 带注解的修饰符列表（注解不进列表）。
-- [ ] 1.2 按 D3 补另外两项：
+- [x] 1.2 按 D3 补另外两项：
   - 注解参数的 `classLiterals`：类型注解与成员注解两处都补。单个类字面量、数组初始化器、混有非类字面量的数组、跨行的数组、全限定写法、带泛型或数组维度的类字面量，各有精确断言；`value` 仍为 `null`。
   - `memberAnnotations[].member.type`：字段（含声明符上的数组维度、一行多个声明符）、方法返回类型、构造器（没有）、参数与 record 组件所属成员的取值，各有精确断言。
-- [ ] 1.3 `extract-structure-result.mjs` 透传并校验三处新形状：`modifiers`、`nestedTypes`、参数 `classLiterals` 与 `member.type`。坏形状让该文件落 `parse-failed`，每种坏形状一条测试。
+- [x] 1.3 `extract-structure-result.mjs` 透传并校验三处新形状：`modifiers`、`nestedTypes`、参数 `classLiterals` 与 `member.type`。坏形状让该文件落 `parse-failed`，每种坏形状一条测试。
 
   在本任务下写明两项核查结论：
   - 结构抽取有没有按内容或版本的缓存；
   - 结构行的其它读者在新字段上会不会出错：`build-source-index.mjs`、`annotate-graph.mjs`、`java-call-resolution.mjs`、`mention-sites.mjs`、`fingerprint.ts`。
+
+  核查结论：
+  - 缓存：结构抽取没有按内容或版本的缓存，旧行不会被当成带新字段的行复用。
+    - `skills/excavator/lazy-analyze.mjs:681` 每次生产都跑 `structure-all.mjs`，由它对每个扫描到的文件重新调用 `extract-structure.mjs`。`extract-structure.mjs`、`extract-structure-result.mjs`、`structure-all.mjs`、`structure-all-store.mjs` 里没有结果缓存（`extract-structure.mjs:57`、`:186` 的 “cache” 字样只是插件安装目录的注释）。
+    - Core 里唯一的缓存是 `packages/core/src/plugins/tree-sitter-plugin.ts:47` 复用的解析器实例，不保存任何解析结果。
+    - 跨运行的复用闸只有 `skills/excavator/sync-fact-graph.mjs:304-308`：`sourceRevision`、`selectionDigest`、`PIPELINE_VERSION` 三者都相同才跳过，跳过的是整张图的投影；不跳过时按 `sync-fact-graph.mjs:332` 起的路径整体重投影，结构行重新抽取。`PIPELINE_VERSION`（`lazy-analyze.mjs:242`，现为 `lazy-fact-graph/11`）等第一个读新字段的消费者，在任务 4.3 升。
+  - 其它读者：都按名字取固定字段，不遍历键，新字段不会让它们出错，输出也不变。
+    - `build-source-index.mjs:175`：类条目只取 `name`、`startLine`、`endLine`、`methods`、`properties`。
+    - `annotate-graph.mjs:262-263`：只取 `name`、`startLine`、`endLine`、`owner`。
+    - `java-call-resolution.mjs:296-309`：从类行只取 `qualifiedName`、`kind`、`name`、`fieldTypes`、`annotations`、`typeParameters`、`memberTypes`；整行存进 `type.cls`，只读它的 `supertypes`（`:574`）。类行的 `modifiers` 与行上的 `nestedTypes` 不被碰到，`callGraph` 的下标对应也不受影响。
+    - `mention-sites.mjs:65-66`：只取类的 `name` 与 `qualifiedName`。
+    - `packages/core/src/fingerprint.ts:89-131`：`extractFileFingerprint` 只取 `exports`、`functions`、`classes` 的名字、方法、属性与行数、`imports`，新字段不进指纹，也不报错。附带一个既有盲区：只改了新字段所涉写法（如 `@Local(X.class)` 的类字面量、匿名类）的 Java 文件，在旧增量路径（`prepare-incremental.mjs:360`、`build-fingerprints.mjs:97`）里被判为 COSMETIC，与 `supertypes`、`fieldTypes`、`memberAnnotations` 今天的情形一样；Lazy 路径每次整体重投影，不受影响。这不属本变更。
+    - 读 `memberAnnotations` 与类型注解参数的阶段（`annotation-injection-resolution.mjs:235`、`route-resolution.mjs:252`）只按 `value` 与 `member.name`、`member.line` 取值；`value` 对类字面量仍为 `null`，行为不变。
 
   重建 core dist；core 测试、typecheck、根测试全绿。
 

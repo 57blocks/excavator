@@ -364,6 +364,15 @@ export interface JavaClassLiteral {
   context: "annotation" | "code";
 }
 
+/** One class literal written as an annotation argument's value, or as an
+ *  element of an array initializer that is the value (openspec:
+ *  changes/by-type-injection, design D3). `type` is spelled as in
+ *  `JavaClassLiteral.type`; `line` is where the literal starts. */
+export interface JavaAnnotationClassLiteral {
+  type: string;
+  line: number;
+}
+
 /** One annotation on a Java type, with the arguments it was written with
  *  (openspec: changes/name-binding-references, design D2). */
 export interface JavaAnnotationUse {
@@ -378,6 +387,10 @@ export interface JavaAnnotationUse {
      *  for anything else (a constant, a concatenation, an array, a class
      *  literal, a nested annotation, a text block). */
     value: string | null;
+    /** Set when the value is a class literal or an array initializer holding
+     *  class literals: each of them in source order, the other elements of a
+     *  mixed array left out. `value` stays `null`. Absent otherwise. */
+    classLiterals?: JavaAnnotationClassLiteral[];
   }>;
 }
 
@@ -393,7 +406,12 @@ export interface JavaMemberAnnotationUse {
   line: number;
   /** Keys and values as in `JavaAnnotationUse`; `line` is where the value
    *  starts, which differs from the annotation's line when it spans several. */
-  arguments: Array<{ key: string; value: string | null; line: number }>;
+  arguments: Array<{
+    key: string;
+    value: string | null;
+    line: number;
+    classLiterals?: JavaAnnotationClassLiteral[];
+  }>;
   on: "field" | "method" | "constructor" | "parameter" | "component";
   /** Simple name of the top-level type the member is declared in, however
    *  deeply nested or anonymous the declaring type is. */
@@ -402,8 +420,11 @@ export interface JavaMemberAnnotationUse {
   nested: boolean;
   /** A field's declarator, a method or constructor, or for a parameter or
    *  component the method, constructor or record it belongs to; `line` is the
-   *  line of the name. */
-  member: { name: string; line: number };
+   *  line of the name. `type` is a field's declared type with the array
+   *  dimensions written on its declarator, or a method's return type; for a
+   *  parameter it is that of the method it belongs to. A constructor, a
+   *  compact constructor and a record (the member of a component) have none. */
+  member: { name: string; line: number; type?: string };
   /** Set for `on: "parameter"` and `on: "component"`. `index` counts from 0. */
   parameter?: { name: string; index: number; line: number };
 }

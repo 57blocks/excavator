@@ -46,24 +46,24 @@ describe('structure row: Java member annotations', () => {
     expect(memberAnnotations).toEqual([
       {
         name: 'Resource', line: 3, arguments: [{ key: 'name', value: 'orderDao', line: 4 }],
-        on: 'field', owner: 'OrderService', nested: false, member: { name: 'dao', line: 5 },
+        on: 'field', owner: 'OrderService', nested: false, member: { name: 'dao', line: 5, type: 'OrderDao' },
       },
       {
         name: 'Resource', line: 3, arguments: [{ key: 'name', value: 'orderDao', line: 4 }],
-        on: 'field', owner: 'OrderService', nested: false, member: { name: 'other', line: 5 },
+        on: 'field', owner: 'OrderService', nested: false, member: { name: 'other', line: 5, type: 'OrderDao' },
       },
       {
         name: 'Autowired', line: 6, arguments: [],
-        on: 'method', owner: 'OrderService', nested: false, member: { name: 'setAudit', line: 7 },
+        on: 'method', owner: 'OrderService', nested: false, member: { name: 'setAudit', line: 7, type: 'void' },
       },
       {
         name: 'Qualifier', line: 7, arguments: [{ key: 'value', value: 'audit', line: 7 }],
         on: 'parameter', owner: 'OrderService', nested: false,
-        member: { name: 'setAudit', line: 7 }, parameter: { name: 'audit', index: 0, line: 7 },
+        member: { name: 'setAudit', line: 7, type: 'void' }, parameter: { name: 'audit', index: 0, line: 7 },
       },
       {
         name: 'In', line: 9, arguments: [],
-        on: 'field', owner: 'OrderService', nested: true, member: { name: 'inner', line: 9 },
+        on: 'field', owner: 'OrderService', nested: true, member: { name: 'inner', line: 9, type: 'Dao' },
       },
     ]);
   });

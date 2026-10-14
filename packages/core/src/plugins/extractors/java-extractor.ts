@@ -15,7 +15,7 @@ import { extractMemberAnnotations } from "./java-member-annotations.js";
 import { extractNestedTypes, typeModifierKeywords } from "./java-nested-types.js";
 import { methodReferenceSite } from "./java-method-references.js";
 import { STATIC_INITIALIZER_CALLER, initializerCaller } from "./java-initializer-callers.js";
-import { dottedName, typeText } from "./java-names.js";
+import { declaratorType, dottedName, typeText } from "./java-names.js";
 
 /**
  * Extract parameter names from a Java `formal_parameters` node.
@@ -211,12 +211,6 @@ function extractSupertypes(node: TreeSitterNode): JavaSupertype[] {
     supertypes.push(...typeListEntries(findChild(extendsInterfaces, "type_list"), "extends"));
   }
   return supertypes;
-}
-
-/** A field's declared type, with array dimensions written after the name. */
-function declaratorType(typeNode: TreeSitterNode, declarator: TreeSitterNode): string {
-  const dimensions = declarator.childForFieldName("dimensions");
-  return `${typeText(typeNode)}${dimensions ? typeText(dimensions) : ""}`;
 }
 
 /** Facts gathered from one type body for the fact graph. */

@@ -168,13 +168,13 @@ describe('the member annotations Core emits (design D1) and the rules the stage 
       },
     });
     expect(p.rows[0].memberAnnotations).toEqual([
-      { name: 'Resource', line: 6, arguments: [], on: 'field', owner: 'OrderService', nested: false, member: { name: 'orderDao', line: 7 } },
-      { name: 'Resource', line: 8, arguments: [{ key: 'name', value: 'x', line: 8 }], on: 'method', owner: 'OrderService', nested: false, member: { name: 'setOrderDao', line: 9 } },
+      { name: 'Resource', line: 6, arguments: [], on: 'field', owner: 'OrderService', nested: false, member: { name: 'orderDao', line: 7, type: 'OrderDao' } },
+      { name: 'Resource', line: 8, arguments: [{ key: 'name', value: 'x', line: 8 }], on: 'method', owner: 'OrderService', nested: false, member: { name: 'setOrderDao', line: 9, type: 'void' } },
       {
         name: 'Qualifier', line: 10, arguments: [{ key: 'value', value: 'mainDs', line: 10 }], on: 'parameter', owner: 'OrderService', nested: false,
         member: { name: 'OrderService', line: 10 }, parameter: { name: 'ds', index: 0, line: 10 },
       },
-      { name: 'Resource', line: 11, arguments: [{ key: 'name', value: 'y', line: 11 }], on: 'field', owner: 'OrderService', nested: true, member: { name: 'z', line: 11 } },
+      { name: 'Resource', line: 11, arguments: [{ key: 'name', value: 'y', line: 11 }], on: 'field', owner: 'OrderService', nested: true, member: { name: 'z', line: 11, type: 'Object' } },
     ]);
     // all four are sites of the catalog's, whatever fate they have
     expect(p.coverage.siteCount).toBe(4);

@@ -45,7 +45,7 @@ describe("JavaExtractor - member annotations: fields", () => {
       on: "field",
       owner: "Svc",
       nested: false,
-      member: { name: "dao", line: 3 },
+      member: { name: "dao", line: 3, type: "OrderDao" },
     }]);
   });
 
@@ -55,8 +55,8 @@ describe("JavaExtractor - member annotations: fields", () => {
   @In() private Dao b;
 }
 `)).toEqual([
-      { name: "In", line: 2, arguments: [], on: "field", owner: "Svc", nested: false, member: { name: "a", line: 2 } },
-      { name: "In", line: 3, arguments: [], on: "field", owner: "Svc", nested: false, member: { name: "b", line: 3 } },
+      { name: "In", line: 2, arguments: [], on: "field", owner: "Svc", nested: false, member: { name: "a", line: 2, type: "Dao" } },
+      { name: "In", line: 3, arguments: [], on: "field", owner: "Svc", nested: false, member: { name: "b", line: 3, type: "Dao" } },
     ]);
   });
 
@@ -71,7 +71,7 @@ describe("JavaExtractor - member annotations: fields", () => {
       on: "field",
       owner: "Svc",
       nested: false,
-      member: { name: "dao", line: 2 },
+      member: { name: "dao", line: 2, type: "Dao" },
     }]);
   });
 
@@ -82,20 +82,20 @@ describe("JavaExtractor - member annotations: fields", () => {
       third[];
 }
 `)).toEqual([
-      { name: "A", line: 2, arguments: [], on: "field", owner: "Svc", nested: false, member: { name: "first", line: 2 } },
-      { name: "A", line: 2, arguments: [], on: "field", owner: "Svc", nested: false, member: { name: "second", line: 3 } },
-      { name: "A", line: 2, arguments: [], on: "field", owner: "Svc", nested: false, member: { name: "third", line: 4 } },
+      { name: "A", line: 2, arguments: [], on: "field", owner: "Svc", nested: false, member: { name: "first", line: 2, type: "Dao" } },
+      { name: "A", line: 2, arguments: [], on: "field", owner: "Svc", nested: false, member: { name: "second", line: 3, type: "Dao" } },
+      { name: "A", line: 2, arguments: [], on: "field", owner: "Svc", nested: false, member: { name: "third", line: 4, type: "Dao[]" } },
       {
         name: "B", line: 2, arguments: [{ key: "value", value: "x", line: 2 }],
-        on: "field", owner: "Svc", nested: false, member: { name: "first", line: 2 },
+        on: "field", owner: "Svc", nested: false, member: { name: "first", line: 2, type: "Dao" },
       },
       {
         name: "B", line: 2, arguments: [{ key: "value", value: "x", line: 2 }],
-        on: "field", owner: "Svc", nested: false, member: { name: "second", line: 3 },
+        on: "field", owner: "Svc", nested: false, member: { name: "second", line: 3, type: "Dao" },
       },
       {
         name: "B", line: 2, arguments: [{ key: "value", value: "x", line: 2 }],
-        on: "field", owner: "Svc", nested: false, member: { name: "third", line: 4 },
+        on: "field", owner: "Svc", nested: false, member: { name: "third", line: 4, type: "Dao[]" },
       },
     ]);
   });
@@ -105,8 +105,8 @@ describe("JavaExtractor - member annotations: fields", () => {
   @Deprecated String A = "a", B = "b";
 }
 `)).toEqual([
-      { name: "Deprecated", line: 2, arguments: [], on: "field", owner: "Names", nested: false, member: { name: "A", line: 2 } },
-      { name: "Deprecated", line: 2, arguments: [], on: "field", owner: "Names", nested: false, member: { name: "B", line: 2 } },
+      { name: "Deprecated", line: 2, arguments: [], on: "field", owner: "Names", nested: false, member: { name: "A", line: 2, type: "String" } },
+      { name: "Deprecated", line: 2, arguments: [], on: "field", owner: "Names", nested: false, member: { name: "B", line: 2, type: "String" } },
     ]);
   });
 
@@ -117,7 +117,7 @@ describe("JavaExtractor - member annotations: fields", () => {
   @Resource Dao dao;
 }
 `)).toEqual([
-      { name: "Resource", line: 4, arguments: [], on: "field", owner: "Mode", nested: false, member: { name: "dao", line: 4 } },
+      { name: "Resource", line: 4, arguments: [], on: "field", owner: "Mode", nested: false, member: { name: "dao", line: 4, type: "Dao" } },
     ]);
   });
 });
@@ -135,13 +135,13 @@ describe("JavaExtractor - member annotations: arguments", () => {
       name: "Resource",
       line: 2,
       arguments: [
-        { key: "type", value: null, line: 3 },
+        { key: "type", value: null, line: 3, classLiterals: [{ type: "Dao", line: 3 }] },
         { key: "name", value: "orderDao", line: 5 },
       ],
       on: "field",
       owner: "Svc",
       nested: false,
-      member: { name: "dao", line: 6 },
+      member: { name: "dao", line: 6, type: "Dao" },
     }]);
   });
 
@@ -157,12 +157,12 @@ describe("JavaExtractor - member annotations: arguments", () => {
       """) Dao f;
 }
 `)).toEqual([
-      { name: "Qualifier", line: 2, arguments: [{ key: "value", value: null, line: 2 }], on: "field", owner: "Svc", nested: false, member: { name: "a", line: 2 } },
-      { name: "Qualifier", line: 3, arguments: [{ key: "value", value: null, line: 3 }], on: "field", owner: "Svc", nested: false, member: { name: "b", line: 3 } },
-      { name: "Qualifier", line: 4, arguments: [{ key: "value", value: null, line: 4 }], on: "field", owner: "Svc", nested: false, member: { name: "c", line: 4 } },
-      { name: "Qualifier", line: 5, arguments: [{ key: "name", value: null, line: 5 }], on: "field", owner: "Svc", nested: false, member: { name: "d", line: 5 } },
-      { name: "Qualifier", line: 6, arguments: [{ key: "value", value: null, line: 6 }], on: "field", owner: "Svc", nested: false, member: { name: "e", line: 6 } },
-      { name: "Qualifier", line: 7, arguments: [{ key: "value", value: null, line: 7 }], on: "field", owner: "Svc", nested: false, member: { name: "f", line: 9 } },
+      { name: "Qualifier", line: 2, arguments: [{ key: "value", value: null, line: 2 }], on: "field", owner: "Svc", nested: false, member: { name: "a", line: 2, type: "Dao" } },
+      { name: "Qualifier", line: 3, arguments: [{ key: "value", value: null, line: 3 }], on: "field", owner: "Svc", nested: false, member: { name: "b", line: 3, type: "Dao" } },
+      { name: "Qualifier", line: 4, arguments: [{ key: "value", value: null, line: 4 }], on: "field", owner: "Svc", nested: false, member: { name: "c", line: 4, type: "Dao" } },
+      { name: "Qualifier", line: 5, arguments: [{ key: "name", value: null, line: 5 }], on: "field", owner: "Svc", nested: false, member: { name: "d", line: 5, type: "Dao" } },
+      { name: "Qualifier", line: 6, arguments: [{ key: "value", value: null, line: 6 }], on: "field", owner: "Svc", nested: false, member: { name: "e", line: 6, type: "Dao" } },
+      { name: "Qualifier", line: 7, arguments: [{ key: "value", value: null, line: 7 }], on: "field", owner: "Svc", nested: false, member: { name: "f", line: 9, type: "Dao" } },
     ]);
   });
 
@@ -202,10 +202,10 @@ describe("JavaExtractor - member annotations: methods and constructors", () => {
   Svc() {}
 }
 `)).toEqual([
-      { name: "Autowired", line: 2, arguments: [], on: "method", owner: "Svc", nested: false, member: { name: "setDao", line: 4 } },
+      { name: "Autowired", line: 2, arguments: [], on: "method", owner: "Svc", nested: false, member: { name: "setDao", line: 4, type: "void" } },
       {
         name: "Qualifier", line: 3, arguments: [{ key: "value", value: "orderDao", line: 3 }],
-        on: "method", owner: "Svc", nested: false, member: { name: "setDao", line: 4 },
+        on: "method", owner: "Svc", nested: false, member: { name: "setDao", line: 4, type: "void" },
       },
       { name: "Inject", line: 7, arguments: [], on: "constructor", owner: "Svc", nested: false, member: { name: "Svc", line: 8 } },
     ]);
@@ -220,8 +220,8 @@ enum Mode {
   @Override public String toString() { return ""; }
 }
 `)).toEqual([
-      { name: "Deprecated", line: 2, arguments: [], on: "method", owner: "Port", nested: false, member: { name: "send", line: 2 } },
-      { name: "Override", line: 6, arguments: [], on: "method", owner: "Mode", nested: false, member: { name: "toString", line: 6 } },
+      { name: "Deprecated", line: 2, arguments: [], on: "method", owner: "Port", nested: false, member: { name: "send", line: 2, type: "void" } },
+      { name: "Override", line: 6, arguments: [], on: "method", owner: "Mode", nested: false, member: { name: "toString", line: 6, type: "String" } },
     ]);
   });
 
@@ -262,7 +262,7 @@ describe("JavaExtractor - member annotations: parameters and components", () => 
       {
         name: "In", line: 5, arguments: [],
         on: "parameter", owner: "Svc", nested: false,
-        member: { name: "run", line: 5 }, parameter: { name: "s", index: 0, line: 5 },
+        member: { name: "run", line: 5, type: "void" }, parameter: { name: "s", index: 0, line: 5 },
       },
     ]);
   });
@@ -274,7 +274,7 @@ describe("JavaExtractor - member annotations: parameters and components", () => 
 `)).toEqual([{
       name: "Named", line: 2, arguments: [{ key: "value", value: "x", line: 2 }],
       on: "parameter", owner: "Svc", nested: false,
-      member: { name: "run", line: 2 }, parameter: { name: "rest", index: 1, line: 2 },
+      member: { name: "run", line: 2, type: "void" }, parameter: { name: "rest", index: 1, line: 2 },
     }]);
     // An annotation after `...` is not a declaration annotation: not recorded.
     expect(members(`class Svc {
@@ -290,7 +290,7 @@ describe("JavaExtractor - member annotations: parameters and components", () => 
 `)).toEqual([{
       name: "In", line: 2, arguments: [],
       on: "parameter", owner: "Svc", nested: false,
-      member: { name: "run", line: 2 }, parameter: { name: "s", index: 0, line: 2 },
+      member: { name: "run", line: 2, type: "void" }, parameter: { name: "s", index: 0, line: 2 },
     }]);
   });
 
@@ -330,9 +330,9 @@ describe("JavaExtractor - member annotations: nesting", () => {
   }
 }
 `)).toEqual([
-      { name: "In", line: 2, arguments: [], on: "field", owner: "Outer", nested: false, member: { name: "outerField", line: 2 } },
-      { name: "In", line: 4, arguments: [], on: "field", owner: "Outer", nested: true, member: { name: "innerField", line: 4 } },
-      { name: "In", line: 6, arguments: [], on: "method", owner: "Outer", nested: true, member: { name: "deeper", line: 6 } },
+      { name: "In", line: 2, arguments: [], on: "field", owner: "Outer", nested: false, member: { name: "outerField", line: 2, type: "Dao" } },
+      { name: "In", line: 4, arguments: [], on: "field", owner: "Outer", nested: true, member: { name: "innerField", line: 4, type: "Dao" } },
+      { name: "In", line: 6, arguments: [], on: "method", owner: "Outer", nested: true, member: { name: "deeper", line: 6, type: "void" } },
     ]);
   });
 
@@ -346,12 +346,12 @@ describe("JavaExtractor - member annotations: nesting", () => {
   }
 }
 `)).toEqual([
-      { name: "In", line: 4, arguments: [], on: "field", owner: "Outer", nested: true, member: { name: "dao", line: 4 } },
-      { name: "In", line: 5, arguments: [], on: "method", owner: "Outer", nested: true, member: { name: "set", line: 5 } },
+      { name: "In", line: 4, arguments: [], on: "field", owner: "Outer", nested: true, member: { name: "dao", line: 4, type: "Dao" } },
+      { name: "In", line: 5, arguments: [], on: "method", owner: "Outer", nested: true, member: { name: "set", line: 5, type: "void" } },
       {
         name: "Qualifier", line: 5, arguments: [{ key: "value", value: "q", line: 5 }],
         on: "parameter", owner: "Outer", nested: true,
-        member: { name: "set", line: 5 }, parameter: { name: "d", index: 0, line: 5 },
+        member: { name: "set", line: 5, type: "void" }, parameter: { name: "d", index: 0, line: 5 },
       },
     ]);
   });
@@ -369,12 +369,12 @@ describe("JavaExtractor - member annotations: nesting", () => {
   }
 }
 `)).toEqual([
-      { name: "In", line: 3, arguments: [], on: "field", owner: "Outer", nested: true, member: { name: "inField", line: 3 } },
-      { name: "Override", line: 8, arguments: [], on: "method", owner: "Outer", nested: true, member: { name: "handle", line: 8 } },
+      { name: "In", line: 3, arguments: [], on: "field", owner: "Outer", nested: true, member: { name: "inField", line: 3, type: "Dao" } },
+      { name: "Override", line: 8, arguments: [], on: "method", owner: "Outer", nested: true, member: { name: "handle", line: 8, type: "void" } },
       {
         name: "In", line: 8, arguments: [],
         on: "parameter", owner: "Outer", nested: true,
-        member: { name: "handle", line: 8 }, parameter: { name: "d", index: 0, line: 8 },
+        member: { name: "handle", line: 8, type: "void" }, parameter: { name: "d", index: 0, line: 8 },
       },
     ]);
   });
@@ -388,7 +388,7 @@ describe("JavaExtractor - member annotations: nesting", () => {
   void f() {}
 }
 `)).toEqual([
-      { name: "Override", line: 3, arguments: [], on: "method", owner: "Mode", nested: true, member: { name: "f", line: 3 } },
+      { name: "Override", line: 3, arguments: [], on: "method", owner: "Mode", nested: true, member: { name: "f", line: 3, type: "void" } },
     ]);
   });
 
@@ -425,8 +425,8 @@ record D(@In Dao d) {}
   }
 }
 `)).toEqual([
-      { name: "Deprecated", line: 2, arguments: [], on: "field", owner: "Marker", nested: false, member: { name: "NAME", line: 2 } },
-      { name: "In", line: 5, arguments: [], on: "field", owner: "Marker", nested: true, member: { name: "dao", line: 5 } },
+      { name: "Deprecated", line: 2, arguments: [], on: "field", owner: "Marker", nested: false, member: { name: "NAME", line: 2, type: "String" } },
+      { name: "In", line: 5, arguments: [], on: "field", owner: "Marker", nested: true, member: { name: "dao", line: 5, type: "Dao" } },
     ]);
   });
 });
@@ -492,7 +492,7 @@ describe("JavaExtractor - member annotations: key order", () => {
 `)!;
     expect(Object.keys(field)).toEqual(["name", "line", "arguments", "on", "owner", "nested", "member"]);
     expect(Object.keys(field.arguments[0])).toEqual(["key", "value", "line"]);
-    expect(Object.keys(field.member)).toEqual(["name", "line"]);
+    expect(Object.keys(field.member)).toEqual(["name", "line", "type"]);
     expect(Object.keys(parameter)).toEqual(["name", "line", "arguments", "on", "owner", "nested", "member", "parameter"]);
     expect(Object.keys(parameter.parameter!)).toEqual(["name", "index", "line"]);
   });

@@ -1,6 +1,7 @@
-import type { JavaAnnotationUse } from "../../types.js";
+import type { JavaAnnotationClassLiteral, JavaAnnotationUse } from "../../types.js";
 import type { TreeSitterNode } from "./types.js";
 import { findChild } from "./base-extractor.js";
+import { classLiteralType } from "./java-declaration-facts.js";
 import { dottedName } from "./java-names.js";
 
 /**
@@ -14,6 +15,13 @@ import { dottedName } from "./java-names.js";
  * concatenation, an array, a class literal, a nested annotation, a text block
  * - is `null`: the value exists but is not a string this extractor can read,
  * and a consumer must be able to tell that from an argument that is absent.
+ *
+ * An argument that is a class literal, or an array initializer holding some,
+ * also lists them in `classLiterals` (openspec: changes/by-type-injection,
+ * design D3), each with the type as written and the line it starts on; `value`
+ * stays `null`. Only the literals the value itself writes are listed: not
+ * those of a nested annotation, and not the other elements of a mixed array.
+ * An argument with no class literal has no `classLiterals`.
  *
  * The same reading serves the annotations on a type's members (openspec:
  * changes/annotation-injection-references, design D1), where each argument
@@ -61,11 +69,34 @@ function argumentValue(expression: TreeSitterNode | null): string | null {
   return expression?.type === "string_literal" ? stringLiteralValue(expression) : null;
 }
 
+/** The class literals an argument's value writes: the value itself, or the
+ *  elements of an array initializer that are class literals, in source order. */
+function argumentClassLiterals(expression: TreeSitterNode | null): JavaAnnotationClassLiteral[] {
+  if (!expression) return [];
+  const elements: TreeSitterNode[] = [];
+  if (expression.type === "element_value_array_initializer") {
+    for (let i = 0; i < expression.namedChildCount; i++) {
+      const element = expression.namedChild(i);
+      if (element) elements.push(element);
+    }
+  } else {
+    elements.push(expression);
+  }
+  return elements
+    .filter((element) => element.type === "class_literal")
+    .map((literal) => ({ type: classLiteralType(literal), line: literal.startPosition.row + 1 }));
+}
+
 /** One annotation as written: its arguments carry the line each value starts on. */
 export interface AnnotationNodeUse {
   name: string;
   line: number;
-  arguments: Array<{ key: string; value: string | null; line: number }>;
+  arguments: Array<{
+    key: string;
+    value: string | null;
+    line: number;
+    classLiterals?: JavaAnnotationClassLiteral[];
+  }>;
 }
 
 /**
@@ -91,13 +122,21 @@ export function extractModifierAnnotations(modifiers: TreeSitterNode | null): An
       if (!item || COMMENT_NODES.has(item.type)) continue;
       if (item.type === "element_value_pair") {
         const value = item.childForFieldName("value");
+        const classLiterals = argumentClassLiterals(value);
         args.push({
           key: item.childForFieldName("key")?.text ?? "",
           value: argumentValue(value),
           line: (value ?? item).startPosition.row + 1,
+          ...(classLiterals.length > 0 ? { classLiterals } : {}),
         });
       } else {
-        args.push({ key: "value", value: argumentValue(item), line: item.startPosition.row + 1 });
+        const classLiterals = argumentClassLiterals(item);
+        args.push({
+          key: "value",
+          value: argumentValue(item),
+          line: item.startPosition.row + 1,
+          ...(classLiterals.length > 0 ? { classLiterals } : {}),
+        });
       }
     }
     uses.push({ name: dottedName(nameNode), line: annotation.startPosition.row + 1, arguments: args });
@@ -114,6 +153,10 @@ export function extractAnnotationUses(node: TreeSitterNode): JavaAnnotationUse[]
   return extractModifierAnnotations(findChild(node, "modifiers")).map((use) => ({
     name: use.name,
     line: use.line,
-    arguments: use.arguments.map(({ key, value }) => ({ key, value })),
+    arguments: use.arguments.map(({ key, value, classLiterals }) => ({
+      key,
+      value,
+      ...(classLiterals ? { classLiterals } : {}),
+    })),
   }));
 }
