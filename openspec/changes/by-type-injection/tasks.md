@@ -71,7 +71,7 @@
 
 ## 3. 解析
 
-- [ ] 3.1 `java-call-resolution.mjs` 的返回对象新增 D6 的只读类型查询，复用内部的 `resolveType`、`supertypesOf`、`hierarchy`，不改既有行为：
+- [x] 3.1 `java-call-resolution.mjs` 的返回对象新增 D6 的只读类型查询，复用内部的 `resolveType`、`supertypesOf`、`hierarchy`，不改既有行为：
   - 在给定文件与所属顶层类型的作用域里解析类型文本，可附加方法的类型参数；
   - 列出全部顶层类型；
   - 列出一个类型已解析的父类型。
