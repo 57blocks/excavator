@@ -19,12 +19,12 @@
 
 ## 1. 路由目录
 
-- [ ] 1.1 新模块 `skills/excavator/route-catalog.mjs`，提供 `parseRouteCatalog(value)`、`loadRouteCatalog(path = SHIPPED_ROUTE_CATALOG)`，按 design D3 严格校验：
+- [x] 1.1 新模块 `skills/excavator/route-catalog.mjs`，提供 `parseRouteCatalog(value)`、`loadRouteCatalog(path = SHIPPED_ROUTE_CATALOG)`，按 design D3 严格校验：
   - 未知键、缺字段、类型不符、空列表（`clientAnnotations` 除外）都抛错；
   - 族 id 重复、动词重复都抛错；
   - 同一个全限定名在一个族里既是动词又是路径注解，抛错。
   - 测试覆盖每一种失败。
-- [ ] 1.2 随附 `skills/excavator/catalogs/routes.json`，版本 1，族 `jaxrs`：
+- [x] 1.2 随附 `skills/excavator/catalogs/routes.json`，版本 1，族 `jaxrs`：
   - 根路径与方法路径注解为 `javax.ws.rs.Path`、`jakarta.ws.rs.Path`，参数键 `value`；
   - 七个动词，每个列出 `javax.ws.rs` 与 `jakarta.ws.rs` 两个全限定名；
   - `clientAnnotations` 为 `org.eclipse.microprofile.rest.client.inject.RegisterRestClient`；

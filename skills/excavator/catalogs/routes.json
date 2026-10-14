@@ -1,0 +1,28 @@
+{
+  "version": 1,
+  "routeFamilies": [
+    {
+      "id": "jaxrs",
+      "basis": "JAX-RS resource methods: a public method of a root resource class (a type that carries Path) that carries a request method designator (GET, POST, PUT, DELETE, HEAD, OPTIONS or PATCH) is dispatched by the container for the path of the class followed by the path of the method (Path on the method, empty when it has none); a method with a Path and no designator is a sub-resource locator, and a type that carries RegisterRestClient declares a client of a remote service, not an entry point of this application.",
+      "rootPath": {
+        "annotations": ["javax.ws.rs.Path", "jakarta.ws.rs.Path"],
+        "argument": "value"
+      },
+      "methodPath": {
+        "annotations": ["javax.ws.rs.Path", "jakarta.ws.rs.Path"],
+        "argument": "value"
+      },
+      "verbs": [
+        { "verb": "GET", "annotations": ["javax.ws.rs.GET", "jakarta.ws.rs.GET"] },
+        { "verb": "POST", "annotations": ["javax.ws.rs.POST", "jakarta.ws.rs.POST"] },
+        { "verb": "PUT", "annotations": ["javax.ws.rs.PUT", "jakarta.ws.rs.PUT"] },
+        { "verb": "DELETE", "annotations": ["javax.ws.rs.DELETE", "jakarta.ws.rs.DELETE"] },
+        { "verb": "HEAD", "annotations": ["javax.ws.rs.HEAD", "jakarta.ws.rs.HEAD"] },
+        { "verb": "OPTIONS", "annotations": ["javax.ws.rs.OPTIONS", "jakarta.ws.rs.OPTIONS"] },
+        { "verb": "PATCH", "annotations": ["javax.ws.rs.PATCH", "jakarta.ws.rs.PATCH"] }
+      ],
+      "clientAnnotations": ["org.eclipse.microprofile.rest.client.inject.RegisterRestClient"],
+      "publicOnly": true
+    }
+  ]
+}
