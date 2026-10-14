@@ -136,6 +136,7 @@ import { performance } from 'node:perf_hooks';
 import { buildFactGraph } from './build-fact-graph.mjs';
 import { collectMentionSites } from './mention-sites.mjs';
 import { loadNameBindingCatalog } from './name-binding-catalog.mjs';
+import { loadRouteCatalog } from './route-catalog.mjs';
 import { collectNameReferenceSites } from './name-reference-sites.mjs';
 import { buildSourceIndex } from './build-source-index.mjs';
 import { conservationViolations } from './coverage-ledger.mjs';
@@ -226,8 +227,19 @@ export const KNOWLEDGE_GRAPH_VERSION = '1.0.0';
  *  `project.frameworks` is now recomputed on every run from the scan's detected
  *  framework ids instead of carried over from the previous graph. No fact
  *  changes, but the bump makes an artifact whose source is unchanged rebuild
- *  once, so its header picks up the detected ids rather than staying `[]`. */
-export const PIPELINE_VERSION = 'lazy-fact-graph/10';
+ *  once, so its header picks up the detected ids rather than staying `[]`.
+ *  Bumped to /11 by openspec change jaxrs-route-facts: the Java methods that
+ *  carry the annotations of the route catalog (a type's root path, a method's
+ *  own path, the annotation naming an HTTP method) are where a container
+ *  dispatches a request, so an unchanged source tree projects new `endpoint`
+ *  nodes in Java files - named by the route, `<verb> <path>`, relative to the
+ *  application's root - each with a `contains` edge from its file and a `routes`
+ *  edge to the method that handles it, the gap kinds `route-handler-unresolved`,
+ *  `route-verb-unresolved`, `route-root-unresolved` and `route-path-unresolved`,
+ *  and a `coverage.routes` section (which reads `not-run` for a projection built
+ *  without the stage). A `contains` edge whose evidence has a `token` is checked
+ *  against it by the graph validator. */
+export const PIPELINE_VERSION = 'lazy-fact-graph/11';
 
 /**
  * The framework ids the scan detected, for the graph header. A scan result
@@ -570,9 +582,11 @@ export function cleanupStalePublishStagingDirs(dataDir, publishFs) {
  *   runScript?: (scriptName: string, args: string[]) => { status: number, stdout: string, stderr: string },
  *   buildSourceIndexStep?: (args: { scan: object, structureAll: object, readFile: (p: string) => string, sourceRevision: string }) => object,
  *   nameBindingCatalog?: object,
+ *   routeCatalog?: object,
  * }} options `nameBindingCatalog` is a loaded name-binding catalog
  *   (name-binding-catalog.mjs); the catalog that ships with the skill when
- *   omitted. A test passes its own.
+ *   omitted. A test passes its own. `routeCatalog` is a loaded route catalog
+ *   (route-catalog.mjs), likewise.
  */
 export async function runLazyAnalysis({
   projectRoot,
@@ -583,6 +597,7 @@ export async function runLazyAnalysis({
   publishFs = defaultPublishFs,
   serializationLimit = DEFAULT_LIMIT_CHARS,
   nameBindingCatalog = null,
+  routeCatalog = null,
 } = {}) {
   // Wall-clock total (design D7): the WHOLE run, not a sum of stage timers —
   // measured from the very first line so it also covers time no per-stage
@@ -714,9 +729,12 @@ export async function runLazyAnalysis({
     // bindings and the resolution itself are the projection's.
     let nameReferenceStage;
     let catalog;
+    let routes;
     time('nameReferences', () => {
       const readFile = (relPath) => readFileSync(join(materializedDir, relPath), 'utf-8');
       catalog = nameBindingCatalog ?? loadNameBindingCatalog();
+      // The other catalog the fact graph reads is loaded with this one: a broken file fails the run here, before the slow stages.
+      routes = routeCatalog ?? loadRouteCatalog();
       nameReferenceStage = collectNameReferenceSites({ scan, catalog, readFile });
     });
 
@@ -727,6 +745,7 @@ export async function runLazyAnalysis({
         scan, structureAll, importMap,
         mentionSites: mentionStage.sites, mentionInputs: mentionStage.inputs,
         nameReferenceSites: nameReferenceStage, nameBindingCatalog: catalog,
+        routeCatalog: routes,
         serializationLimit: limit, headroomRecorder: recorder,
       });
       const written = writeKnowledgeGraph(join(intermediateDir, 'fact-graph.jsonl'), projection, { limit, product: 'fact-graph.jsonl' });

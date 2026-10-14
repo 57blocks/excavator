@@ -61,7 +61,7 @@ way.
      parameter, FastAPI `Depends`). The `imports` and `calls` edges already
      link the two classes;
    - component roles and layers;
-   - route registration (Express `app.use`, Gin `r.Group`, Spring or JAX-RS
+   - route registration (Express `app.use`, Gin `r.Group`, Spring
      annotations);
    - interface to implementation. The graph's `implements` edges answer "how
      many implementations".
@@ -71,11 +71,13 @@ way.
    relationship that one file plus the graph cannot settle, where a guess would
    be a fabrication. The typical case is a string name in one file that a
    declaration in another file binds: EL `#{orders}`, Spring `ref="svc"`,
-   `@EJB(beanName = "…")`. Even then the framework knowledge stays data. It is
-   a declarative catalog (`../catalogs/name-bindings.json`) read by a
-   framework-neutral engine. That engine scopes names to the deployment unit,
-   turns an ambiguity into a visible gap and counts every input. Product code
-   never branches on a framework.
+   `@EJB(beanName = "…")`. Another is a route written on annotations: which
+   method serves `GET /orders/{id}`. Even then the framework knowledge stays
+   data. It is a declarative catalog (`../catalogs/name-bindings.json` for
+   names, `../catalogs/routes.json` for routes) read by a framework-neutral
+   engine. That engine scopes names to the deployment unit, turns an ambiguity
+   into a visible gap and counts every input. Product code never branches on a
+   framework.
 
 Language-level facts belong to no framework and are deterministic for every
 language. They are:
@@ -93,7 +95,9 @@ the addendum. A structural fact may still need determinism, for two reasons:
 
 In that case, propose a catalog for the whole family as its own OpenSpec
 change, for example every annotation-based route framework together. Never do
-it for one framework alone.
+it for one framework alone. The route catalog is such a catalog: its engine
+knows no framework, one family ships with it, and the annotations of another
+framework are one more family of data.
 
 What is where today:
 
@@ -101,13 +105,14 @@ What is where today:
 |---|---|
 | Which frameworks a project uses (`project.frameworks` in the graph header, with the evidence in the scan result) | deterministic, over the registered `FrameworkConfig`s |
 | Detection and layer hints for every framework listed below | `FrameworkConfig` |
-| DI by type, component roles, HTTP routes (Spring, Java EE, Angular, Express, Gin, FastAPI, …) | addenda |
-| JMS and CDI event pairs, JAX-RS route assembly (`javaee.md`) | addenda |
+| DI by type, component roles, HTTP routes (Spring, Java EE, Angular, Express, Gin, FastAPI, …), JAX-RS routes excepted | addenda |
+| JMS and CDI event pairs, the application prefix of JAX-RS routes (`javaee.md`) | addenda |
 | JSF navigation outcomes, composite components, converters and validators by id (`jsf.md`) | addenda |
 | Endpoints from schema files (GraphQL, protobuf) | deterministic parsers |
 | EL names to bean classes (JSF, JSP, Seam, the Spring EL bridge) | deterministic, `catalogs/name-bindings.json` |
 | XML injection names to the classes they wire (Spring `ref=`, `p:`/`c:` refs, `lookup-method`) | deterministic, `catalogs/name-bindings.json` |
 | Java annotation injection names to the classes they wire (Spring `@Qualifier` and `@Resource`, Seam `@In`, `@EJB(beanName)`) | deterministic, `catalogs/name-bindings.json` |
+| JAX-RS route (class and method `@Path`, HTTP method annotation) to the method that handles it | deterministic, `catalogs/routes.json` |
 | Literal class names and paths in descriptors and pages | deterministic, framework-neutral `mentions` |
 | MAUI markup (`.xaml`, `.csproj`, `.feature`) | deterministic parsers |
 

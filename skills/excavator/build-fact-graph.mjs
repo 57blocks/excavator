@@ -64,10 +64,10 @@ import { STRUCTURE_ALL_FILE, readStructureAllPath } from './structure-all-store.
 import { writeKnowledgeGraph } from './knowledge-graph-store.mjs';
 import { assertCallConservation, createJavaCallResolver, createOtherJvmIndex, JAVA_CALL_OUTCOMES } from './java-call-resolution.mjs';
 import {
-  assertMentionConservation, createDeclaredJavaTypeIndex, resolveMentions, TARGET_SKIP_REASONS,
+  assertMentionConservation, createDeclaredJavaTypeIndex, indexJavaTypes, resolveMentions, TARGET_SKIP_REASONS,
 } from './mention-resolution.mjs';
 import {
-  NAME_REFERENCE_GAP_KINDS, assertNameReferenceConservation, buildNameBindingTable, resolveNameReferences,
+  NAME_REFERENCE_GAP_KINDS, assertNameReferenceConservation, buildNameBindingTable, createAnnotationIdentity, resolveNameReferences,
 } from './name-reference-resolution.mjs';
 import {
   XML_INJECTION_GAP_KINDS, assertInjectionConservation, resolveXmlInjections,
@@ -75,6 +75,7 @@ import {
 import {
   ANNOTATION_INJECTION_GAP_KINDS, mergeInjectsEdges, resolveAnnotationInjections,
 } from './annotation-injection-resolution.mjs';
+import { ROUTE_GAP_KINDS, assertRouteConservation, resolveRoutes } from './route-resolution.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -118,6 +119,31 @@ function nonCodeEntries(row) {
   return out;
 }
 
+/** The fact node of one declaration entry. */
+function declarationNode(entry, id) {
+  return {
+    id,
+    type: entry.type,
+    name: entry.name,
+    filePath: entry.path,
+    ...(entry.lineRange ? { lineRange: entry.lineRange } : {}),
+    ...(entry.owner ? { owner: entry.owner } : {}),
+    anchorSource: entry.__anchor,
+    summary: '',
+    tags: [],
+    // Per-declaration complexity uses the line-SPAN as its non-blank-line
+    // proxy: build-fact-graph reads only scan/structure-all/import-map JSON
+    // and never re-opens source files, so it has no way to count actual
+    // blank lines inside a declaration's range. The FILE node below uses
+    // structure-all's exact `nonEmptyLines` instead, because that count is
+    // already computed there without a re-read. Documented assumption —
+    // see the task report.
+    complexity: complexityFromLoc(
+      entry.lineRange ? entry.lineRange[1] - entry.lineRange[0] + 1 : 0,
+    ),
+  };
+}
+
 // A separator that cannot appear in a path/owner/type segment, built via
 // fromCharCode (not a literal escape in this source file) so nothing in the
 // authoring/transport path can turn it into a stray control byte.
@@ -138,6 +164,7 @@ function ordinalGroupKey(entry) {
  *   mentionInputs?: { javaPackages: Array<{ file: string, package: string }>, skippedNonCode: Record<string, number> },
  *   mentionMutations?: object,
  *   nameReferenceSites?: object|null, nameBindingCatalog?: object|null, nameReferenceMutations?: object,
+ *   routeCatalog?: object|null, routeMutations?: object,
  *   serializationLimit?: number,
  *   headroomRecorder?: ReturnType<typeof import('./product-serialization.mjs').createHeadroomRecorder>,
  * }} args `mentionSites` is one row per scanned non-code file with the
@@ -164,6 +191,16 @@ function ordinalGroupKey(entry) {
  *   test seam of the mutation tripwires of name-reference-resolution.mjs,
  *   xml-injection-resolution.mjs and annotation-injection-resolution.mjs;
  *   leave it unset.
+ *   `routeCatalog` is the loaded route catalog (route-catalog.mjs; openspec:
+ *   changes/jaxrs-route-facts): the Java methods that carry the annotations it
+ *   lists become `endpoint` nodes, each with a `contains` edge from its file and
+ *   a `routes` edge to the method that handles it, or land in a visible bucket
+ *   (`coverage.routes`). Annotations are confirmed against the type dictionaries
+ *   of the repository, so it needs `mentionInputs` (the packages of the Java types
+ *   the dictionary has no entry for, an annotation type among them) and throws
+ *   without. Omitted, the stage is recorded as not-run and adds no node, edge or
+ *   gap. `routeMutations` is the test seam of the mutation tripwires of
+ *   route-resolution.mjs; leave it unset.
  *   `serializationLimit`/`headroomRecorder` route the facts-digest
  *   input string through `serializeJsonProduct` (openspec: changes/product-
  *   serialization-ceiling, capability `product-serialization`) instead of a
@@ -173,7 +210,7 @@ function ordinalGroupKey(entry) {
  *   means no headroom entry is recorded for this call.
  * @returns {{ nodes: object[], edges: object[], coverage: object, gaps: object[], factsDigest: string }}
  */
-export function buildFactGraph({ scan, structureAll, importMap, mentionSites, mentionInputs, mentionMutations, nameReferenceSites, nameBindingCatalog, nameReferenceMutations, serializationLimit = DEFAULT_LIMIT_CHARS, headroomRecorder = null }) {
+export function buildFactGraph({ scan, structureAll, importMap, mentionSites, mentionInputs, mentionMutations, nameReferenceSites, nameBindingCatalog, nameReferenceMutations, routeCatalog, routeMutations, serializationLimit = DEFAULT_LIMIT_CHARS, headroomRecorder = null }) {
   if (!scan || !Array.isArray(scan.files)) {
     throw new Error('buildFactGraph: scan.files must be an array');
   }
@@ -247,27 +284,7 @@ export function buildFactGraph({ scan, structureAll, importMap, mentionSites, me
     const id = deriveNodeId(entry);
     idOf.set(entry, id);
     if (nodesById.has(id)) continue;
-    nodesById.set(id, {
-      id,
-      type: entry.type,
-      name: entry.name,
-      filePath: entry.path,
-      ...(entry.lineRange ? { lineRange: entry.lineRange } : {}),
-      ...(entry.owner ? { owner: entry.owner } : {}),
-      anchorSource: entry.__anchor,
-      summary: '',
-      tags: [],
-      // Per-declaration complexity uses the line-SPAN as its non-blank-line
-      // proxy: build-fact-graph reads only scan/structure-all/import-map JSON
-      // and never re-opens source files, so it has no way to count actual
-      // blank lines inside a declaration's range. The FILE node below uses
-      // structure-all's exact `nonEmptyLines` instead, because that count is
-      // already computed there without a re-read. Documented assumption —
-      // see the task report.
-      complexity: complexityFromLoc(
-        entry.lineRange ? entry.lineRange[1] - entry.lineRange[0] + 1 : 0,
-      ),
-    });
+    nodesById.set(id, declarationNode(entry, id));
   }
 
   for (const row of fileRows) {
@@ -312,11 +329,13 @@ export function buildFactGraph({ scan, structureAll, importMap, mentionSites, me
   // -------------------------------------------------------------------------
   const edges = [];
   const edgeKeys = new Set();
+  /** Adds the edge unless one of its type and ends is there already; says whether it was added. */
   function addEdge(edge) {
     const key = `${edge.type}|${edge.source}|${edge.target}`;
-    if (edgeKeys.has(key)) return;
+    if (edgeKeys.has(key)) return false;
     edgeKeys.add(key);
     edges.push(edge);
+    return true;
   }
 
   const fileIdOf = (path) => deriveNodeId({ type: 'file', path });
@@ -567,6 +586,11 @@ export function buildFactGraph({ scan, structureAll, importMap, mentionSites, me
   if (Array.isArray(mentionSites) !== (mentionInputs !== undefined && mentionInputs !== null)) {
     throw new Error('buildFactGraph: mentionSites and mentionInputs go together');
   }
+  // The route stage confirms annotations by the types the repository declares, an annotation type included
+  // (a same-package type of a catalog annotation's name is not the catalog's): without the packages it cannot tell.
+  if (routeCatalog && !Array.isArray(mentionInputs?.javaPackages)) {
+    throw new Error('buildFactGraph: routeCatalog needs mentionInputs (the packages of the Java types that have no entry of their own)');
+  }
   // Every Java top-level type declaration with its class node id (null where
   // the id is shared): the dictionary both name stages resolve class names by.
   const javaTypes = [];
@@ -672,6 +696,69 @@ export function buildFactGraph({ scan, structureAll, importMap, mentionSites, me
   }
 
   // -------------------------------------------------------------------------
+  // Java routes (openspec: changes/jaxrs-route-facts): a method that carries an
+  // annotation the route catalog reads is where a container dispatches a
+  // request. Each becomes an `endpoint` node (named by its route, owned by the
+  // top-level type, in the file), a `contains` edge from the file and a `routes`
+  // edge from the endpoint to the handler, or lands in a visible bucket. The
+  // declarations of the structure rows have their ids, ordinals and collisions
+  // above and are not touched: the resolution needs to know which handler has
+  // a unique id, and the endpoints are added afterwards, as a group of their own
+  // (path, owner, type) in the ordinal count. Without the catalog the stage did
+  // not run, which the coverage says in so many words.
+  // -------------------------------------------------------------------------
+  let routeCoverage = { status: 'not-run' };
+  const routeEdgesDrawn = {}; // family id -> routes edges the graph got
+  if (routeCatalog) {
+    const typesByFqn = indexJavaTypes(javaTypes);
+    const declaredJavaTypes = createDeclaredJavaTypeIndex(mentionInputs.javaPackages);
+    const routed = resolveRoutes({
+      javaRows,
+      catalog: routeCatalog,
+      identity: ({ fqns, simpleNames }) => createAnnotationIdentity({ fqns, typesByFqn, otherJvm, declaredJavaTypes, simpleNames }),
+      handlerIdOf: (path, index) => functionIds.get(path)?.[index] ?? null,
+      mutations: routeMutations ?? {},
+    });
+
+    const endpointEntries = assignOrdinals(routed.endpoints.map((endpoint) => ({
+      path: endpoint.file, type: 'endpoint', name: endpoint.route, owner: endpoint.owner, lineRange: endpoint.lineRange, __anchor: 'rule',
+    })), ordinalGroupKey);
+    const endpointIds = new Map(); // resolved endpoint -> node id
+    routed.endpoints.forEach((endpoint, i) => {
+      const entry = endpointEntries[i];
+      const id = deriveNodeId(entry);
+      // An endpoint is one per (file, type, route), and no declaration of a Java row has this type or shape of name.
+      if (nodesById.has(id)) throw new Error(`buildFactGraph: the endpoint ${JSON.stringify(endpoint.route)} of ${endpoint.file} has the node id of another declaration: ${id}`);
+      endpointIds.set(endpoint, id);
+      nodesById.set(id, declarationNode(entry, id));
+      addEdge({
+        source: fileIdOf(endpoint.file),
+        target: id,
+        type: 'contains',
+        direction: 'forward',
+        weight: 1,
+        // The line of the verb annotation, and what is written there: validation checks the token, not the route.
+        evidence: endpoint.evidence,
+        provenance: 'extracted',
+      });
+    });
+    for (const edge of routed.edges) {
+      const added = addEdge({
+        source: endpointIds.get(edge.endpoint),
+        target: edge.target,
+        type: edge.type,
+        direction: edge.direction,
+        weight: edge.weight,
+        evidence: edge.evidence,
+        provenance: edge.provenance,
+      });
+      if (added) routeEdgesDrawn[edge.endpoint.family] = (routeEdgesDrawn[edge.endpoint.family] ?? 0) + 1;
+    }
+    for (const gap of routed.gaps) gapCollector.add(gap.kind, gap.scope, gap.sample);
+    routeCoverage = routed.coverage;
+  }
+
+  // -------------------------------------------------------------------------
   // Coverage + gaps: reuse the existing conservation ledger (every scanned
   // input lands in exactly one bucket) and append the resolution gaps above.
   // -------------------------------------------------------------------------
@@ -696,6 +783,7 @@ export function buildFactGraph({ scan, structureAll, importMap, mentionSites, me
     nameReferences: nameReferenceCoverage,
     injections: injectionCoverage,
     annotationInjections: annotationInjectionCoverage,
+    routes: routeCoverage,
   };
   if (mentionCoverage.status === 'ran') {
     // The gap counts are read back from what was recorded, as for Java calls.
@@ -720,6 +808,16 @@ export function buildFactGraph({ scan, structureAll, importMap, mentionSites, me
     assertInjectionConservation(injectionCoverage, Object.fromEntries(
       [...new Set([...Object.values(XML_INJECTION_GAP_KINDS), ...Object.values(ANNOTATION_INJECTION_GAP_KINDS)])].map((kind) => [kind, recorded(kind)]),
     ), annotationInjectionCoverage);
+  }
+  if (routeCoverage.status === 'ran') {
+    // Read back from what was recorded into the graph, by family and gap kind, and from the edges the graph got.
+    const recordedGaps = {};
+    const routeGapKinds = new Set(Object.values(ROUTE_GAP_KINDS));
+    for (const gap of resolutionGaps) {
+      if (!routeGapKinds.has(gap.kind)) continue;
+      recordedGaps[gap.scope] = { ...recordedGaps[gap.scope], [gap.kind]: (recordedGaps[gap.scope]?.[gap.kind] ?? 0) + gap.count };
+    }
+    assertRouteConservation(routeCoverage, { edges: routeEdgesDrawn, gaps: recordedGaps });
   }
   const gaps = [...ledger.gaps, ...resolutionGaps].sort(compareGaps);
 
@@ -848,6 +946,10 @@ const GAP_REASONS = Object.freeze({
   'injection-ambiguous': 'injection site(s), in an XML descriptor or in a Java annotation, whose name binds to more than one thing in the deployment unit(s) it is looked up in (two classes, or a class name that several declarations carry): no injects edge is drawn and none of the candidates is preferred',
   'injection-elsewhere': 'injection site(s), in an XML descriptor or in a Java annotation, whose name no binding of the deployment unit(s) it is looked up in declares in the family\'s namespace (for an XML ref local, in the site\'s own file; for a Seam In, among the Seam components), but another unit, namespace, file or kind of binding does (a bean of another module, a JSF or CDI bean that Seam does not inject, a component another framework\'s annotation declares): no injects edge is drawn, since the name is only known to be bound where the site cannot see it',
   'injection-unbound': 'injection site(s), in an XML descriptor or in a Java annotation, whose name no binding this analysis reads declares: beans of libraries or of a parent context, built-in Seam components and context variables, beans a factory or producer method declares, names set at runtime and components of sources that are not Java are not read, so the name may well be bound there',
+  'route-handler-unresolved': 'Java route site(s) - a method that carries an annotation of the route catalog - whose handler has no method node an edge can point at: the method is in a nested, local or anonymous type (which have no method nodes), or its node id is shared with another declaration, or the structure row has no single entry for it: no endpoint and no routes edge is drawn',
+  'route-verb-unresolved': 'Java route site(s) that do not name one HTTP method: the method writes none (a locator of a sub-resource, a path with no method, or a custom method the catalog does not know) or writes two or more different ones, and none of them is preferred: no endpoint is drawn',
+  'route-root-unresolved': 'Java route site(s) whose top-level type writes no root path the catalog reads (a sub-resource, a resource that a descriptor or a configuration registers, a path an interface or a parent type gives): the root path is not completed from any other place, and no endpoint is drawn',
+  'route-path-unresolved': 'Java route site(s) whose root path or method path is not written as a string literal (a constant, a concatenation, an array, no argument at all): a constant is not evaluated, and no endpoint is drawn',
   'injection-consumer-unresolved': 'injection site(s) whose name is a repository class (an XML descriptor) or is written (a Java annotation) but whose consumer has no class that can be told: for XML, no enclosing bean element, a bean built by a factory method or with no class, one whose parent has no binding in the unit, an unindexed class or a class name that several declarations carry (a consumer whose class is outside the repository is no gap); for a Java annotation, a top-level type with no class node (an annotation type, or a name that several declarations carry): no injects edge is drawn',
 });
 
@@ -929,9 +1031,10 @@ async function main() {
 
   // This standalone entry reads the intermediate files only, so it runs no
   // mentions or name-reference stage (those read source content, which
-  // lazy-analyze.mjs does from the materialized snapshot): its product says
-  // `mentions`, `nameReferences`, `injections` and `annotationInjections`
-  // are `not-run`.
+  // lazy-analyze.mjs does from the materialized snapshot) and no route stage
+  // (which needs the packages the mention stage reads): its product says
+  // `mentions`, `nameReferences`, `injections`, `annotationInjections` and
+  // `routes` are `not-run`.
   const projection = buildFactGraph({ scan, structureAll, importMap });
 
   mkdirSync(dirname(outPath), { recursive: true });

@@ -324,6 +324,64 @@ describe('validate-graph — evidence lines', () => {
     }
   });
 
+  it('expects the annotation a routes edge cites by its own token, not the names of the endpoint and the handler (openspec: changes/jaxrs-route-facts)', () => {
+    // the endpoint is named by its route, `GET /orders/{id}`: that is not written on the line of `@GET`
+    const source = { id: 'endpoint:src/R.java:R#GET /orders/{id}', type: 'endpoint', name: 'GET /orders/{id}', filePath: 'src/R.java' };
+    const target = { id: 'function:src/R.java:R#find(long)', type: 'function', name: 'find', filePath: 'src/R.java' };
+    const evidence = { file: 'src/R.java', line: 7, source: 'tree-sitter', token: 'GET', role: 'verb' };
+    expect(expectedTokens({ type: 'routes' }, source, target, evidence)).toEqual(['GET']);
+    expect(expectedTokens({ type: 'routes' }, source, target, { ...evidence, token: 'javax.ws.rs.Path', role: 'method-path', value: '{id}' })).toEqual(['javax.ws.rs.Path']);
+    expect(expectedTokens({ type: 'routes' }, source, target, { ...evidence, token: undefined })).toEqual([]);
+  });
+
+  it('expects the token of a contains entry that has one, and the target\'s name of one that has none (openspec: changes/jaxrs-route-facts, D8)', () => {
+    const source = { id: 'file:src/R.java', type: 'file', name: 'R.java', filePath: 'src/R.java' };
+    const target = { id: 'endpoint:src/R.java:R#GET /orders', type: 'endpoint', name: 'GET /orders', filePath: 'src/R.java' };
+    const entry = { file: 'src/R.java', line: 7, source: 'tree-sitter' };
+    expect(expectedTokens({ type: 'contains' }, source, target, { ...entry, token: 'GET' })).toEqual(['GET']);
+    // an entry that says nothing about its line: the declared name, as before
+    expect(expectedTokens({ type: 'contains' }, source, target, entry)).toEqual(['GET /orders']);
+    expect(expectedTokens({ type: 'contains' }, source, target, { ...entry, endLine: 9 })).toEqual(['GET /orders']);
+    expect(expectedTokens({ type: 'contains' }, source, { ...target, name: 'find' }, undefined)).toEqual(['find']);
+    // `exports` keeps the declared name whatever the entry holds
+    expect(expectedTokens({ type: 'exports' }, source, { ...target, name: 'find' }, { ...entry, token: 'GET' })).toEqual(['find']);
+  });
+
+  it('confirms a routes edge and a contains edge to an endpoint whose cited lines hold their tokens, and contradicts those whose lines do not', () => {
+    const root = mkdtempSync(join(tmpdir(), 'excavator-validate-routes-'));
+    try {
+      writeFileSync(join(root, 'R.java'), 'package p;\n@Path("/orders")\npublic class R {\n  @GET\n  public String list() { return ""; }\n}\n');
+      const nodes = [
+        { id: 'file:R.java', type: 'file', name: 'R.java', filePath: 'R.java', summary: '', tags: [] },
+        { id: 'endpoint:R.java:R#GET /orders', type: 'endpoint', name: 'GET /orders', owner: 'R', filePath: 'R.java', lineRange: [4, 5], summary: '', tags: [] },
+        { id: 'function:R.java:R#list()', type: 'function', name: 'list', owner: 'R', filePath: 'R.java', lineRange: [4, 5], summary: '', tags: [] },
+      ];
+      const routes = (lines) => ({
+        source: 'endpoint:R.java:R#GET /orders', target: 'function:R.java:R#list()', type: 'routes', direction: 'forward', weight: 0.5, provenance: 'extracted',
+        evidence: [
+          { file: 'R.java', line: lines.root, source: 'tree-sitter', token: 'Path', role: 'root-path', value: '/orders' },
+          { file: 'R.java', line: lines.verb, source: 'tree-sitter', token: 'GET', role: 'verb' },
+        ],
+      });
+      const contains = (line) => ({
+        source: 'file:R.java', target: 'endpoint:R.java:R#GET /orders', type: 'contains', direction: 'forward', weight: 1, provenance: 'extracted',
+        evidence: [{ file: 'R.java', line, source: 'tree-sitter', token: 'GET' }],
+      });
+      const check = (edge) => validateAgainstSource({ graph: { nodes, edges: [edge] }, reader: createSourceReader(root) }).report.counts;
+      expect(check(routes({ root: 2, verb: 4 }))).toMatchObject({ edgeConfirmed: 1, edgeContradicted: 0 });
+      expect(check(contains(4))).toMatchObject({ edgeConfirmed: 1, edgeContradicted: 0 });
+      // every cited line moved to one with none of the tokens: the edge is not backed by its source
+      expect(check(routes({ root: 1, verb: 1 }))).toMatchObject({ edgeConfirmed: 0, edgeContradicted: 1 });
+      expect(check(contains(1))).toMatchObject({ edgeConfirmed: 0, edgeContradicted: 1 });
+      // an entry without a token is checked against the endpoint's name, which is not on the line of the annotation
+      const untokened = contains(4);
+      delete untokened.evidence[0].token;
+      expect(check(untokened)).toMatchObject({ edgeConfirmed: 0, edgeContradicted: 1 });
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   it('confirms a references edge whose cited page line holds the token, and contradicts one whose line does not', () => {
     const root = mkdtempSync(join(tmpdir(), 'excavator-validate-references-'));
     try {

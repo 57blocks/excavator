@@ -15,10 +15,12 @@
  *   2. evidence — for every `extracted` edge, the cited line must contain the
  *      expected token: the callee name (`calls`), the target module segment
  *      (`imports`), the symbol name (`exports`), the declared name
- *      (`contains`); for a model-cited entry, either endpoint's name or file
- *      name. `imports` is checked across the whole statement (a multi-line ES
- *      import names its specifier several lines below its start); every other
- *      type is checked on the cited line alone. Otherwise: gap
+ *      (`contains`, or what the entry's own `token` says its line holds, as
+ *      for `mentions`, `references`, `injects` and `routes`); for a
+ *      model-cited entry, either endpoint's name or file name. `imports` is
+ *      checked across the whole statement (a multi-line ES import names its
+ *      specifier several lines below its start); every other type is checked
+ *      on the cited line alone. Otherwise: gap
  *      `edge-contradicted`, edge `verification: "contradicted"`.
  *   3. `inferred` edges pass — being marked as judgement IS the honest state.
  *   4. referential integrity — the same checks UA's inline validator makes
@@ -216,8 +218,13 @@ export function expectedTokens(edge, source, target, evidenceEntry) {
     case 'calls':
       return [target?.name].filter(Boolean);
     case 'exports':
-    case 'contains':
       return [target?.name].filter(Boolean);
+    case 'contains':
+      // The declared name, unless the entry says what its line holds: the
+      // contains edge to an endpoint cites the annotation that names its HTTP
+      // method, and the endpoint's name (its route) is not written on that
+      // line (openspec: changes/jaxrs-route-facts, D8).
+      return [evidenceEntry?.token ?? target?.name].filter(Boolean);
     case 'imports': {
       const path = target?.filePath;
       if (!path) return [target?.name].filter(Boolean);
@@ -226,6 +233,7 @@ export function expectedTokens(edge, source, target, evidenceEntry) {
     case 'mentions':
     case 'references':
     case 'injects':
+    case 'routes':
       // The line names what the mention WROTE: the evidence entry's own token.
       // The target's name is not on that line when a pattern (`spring/*.xml`)
       // or a classpath suffix hit the file (openspec: changes/name-mention-facts);
@@ -233,7 +241,9 @@ export function expectedTokens(edge, source, target, evidenceEntry) {
       // class of another name (`#{orders.save}` -> `OrderBean`, openspec:
       // changes/name-binding-references); nor is it for a name a descriptor
       // writes in an injection (`ref="orders"` -> `OrderDaoImpl`, `injects`,
-      // openspec: changes/xml-injection-references).
+      // openspec: changes/xml-injection-references); nor is the endpoint's name
+      // (`GET /orders/{id}`) on the line of the annotation a `routes` edge cites
+      // (openspec: changes/jaxrs-route-facts).
       return [evidenceEntry?.token].filter(Boolean);
     default:
       return [source?.name, target?.name].filter(Boolean);

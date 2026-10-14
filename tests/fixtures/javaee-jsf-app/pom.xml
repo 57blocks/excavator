@@ -7,6 +7,7 @@
   <modules>
     <module>orders-ejb</module>
     <module>orders-web</module>
+    <module>orders-rest</module>
   </modules>
   <dependencyManagement>
     <dependencies>
