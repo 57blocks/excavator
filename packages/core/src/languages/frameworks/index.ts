@@ -12,6 +12,8 @@ import { railsConfig } from "./rails.js";
 import { ginConfig } from "./gin.js";
 import { mauiConfig } from "./maui.js";
 import { angularConfig } from "./angular.js";
+import { javaeeConfig } from "./javaee.js";
+import { jsfConfig } from "./jsf.js";
 
 export const builtinFrameworkConfigs: FrameworkConfig[] = [
   djangoConfig,
@@ -26,6 +28,8 @@ export const builtinFrameworkConfigs: FrameworkConfig[] = [
   ginConfig,
   mauiConfig,
   angularConfig,
+  javaeeConfig,
+  jsfConfig,
 ];
 
 export {
@@ -41,4 +45,6 @@ export {
   ginConfig,
   mauiConfig,
   angularConfig,
+  javaeeConfig,
+  jsfConfig,
 };

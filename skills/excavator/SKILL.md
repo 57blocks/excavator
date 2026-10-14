@@ -374,13 +374,17 @@ Report: `[Phase F2] Selecting files needing semantic (re)generation...`
    `$DATA_DIR/intermediate/stale-semantics.json`'s `plan.generate[]` as
    `{id, type, name, filePath, lineRange}`. Do not send `plan.reuse[]` nodes
    to the analyzer, even when they share a file with a stale node. Report
-   `plan.unavailable[]` as gaps, never generate for them.
+   `plan.unavailable[]` as gaps, never generate for them. Read
+   `project.frameworks` once from the graph header (the same `header` call
+   Phase F1 reads `project.factsDigest` from) and put it in every dispatch
+   prompt; the file-analyzer reads `frameworks/<id>.md` for each id itself.
 
    > Produce a semantic patch for each fact node below: a `summary` and
    > `tags` describing what it does, from reading its source at the given
    > `filePath`/`lineRange`. Copy each `nodeId` VERBATIM from the list — do
    > NOT invent a node, an edge, a layer, or an id that is not in this list.
    > Project root: `$PROJECT_ROOT`
+   > Frameworks detected: `<project.frameworks from the graph header>`
    > Fact nodes for this batch:
    > ```json
    > <filtered {id, type, name, filePath, lineRange} list>
@@ -925,12 +929,12 @@ Report to the user: `[Phase 4/7] Identifying architectural layers...`
 **Build the combined prompt template:**
  1. Use the `excavator-architecture-analyzer` agent definition (at `agents/excavator-architecture-analyzer.md`).
  2. **Language context injection:** For each language detected in Phase 1 (e.g., `python`, `markdown`, `dockerfile`, `yaml`, `sql`, `terraform`, `graphql`, `protobuf`, `shell`, `html`, `css`), read the file at `./languages/<language-id>.md` (e.g., `./languages/python.md`, `./languages/dockerfile.md`) and append its content after the base template under a `## Language Context` header. If the file does not exist for a detected language, skip it silently and continue. These files are in the `languages/` subdirectory next to this SKILL.md file. **Include non-code language snippets** — they provide edge patterns and summary styles for non-code files.
- 3. **Framework addendum injection:** For each framework detected in Phase 1 (e.g., `Django`), read the file at `./frameworks/<framework-id-lowercase>.md` (e.g., `./frameworks/django.md`) and append its full content after the language context. If the file does not exist for a detected framework, skip it silently and continue. These files are in the `frameworks/` subdirectory next to this SKILL.md file.
+ 3. **Framework addendum injection:** Take the framework ids from the graph header's `project.frameworks` — the ids the fact build detected from the scanned manifests, e.g. `django` or `javaee` (`node "<SKILL_DIR>/knowledge-graph-store.mjs" header "$DATA_DIR/knowledge-graph.jsonl"` prints it under `fields.project.frameworks`). For each id, read the file at `./frameworks/<id>.md` (e.g., `./frameworks/django.md`) and append its full content after the language context. If the file does not exist for an id, skip it silently and continue. These files are in the `frameworks/` subdirectory next to this SKILL.md file.
 Append the language/framework context and the following additional context to the agent's prompt:
 
 > **Additional context from main session:**
 >
-> Frameworks detected: `<frameworks from Phase 1>`
+> Frameworks detected: `<project.frameworks from the graph header>`
 >
 > Directory tree (top 2 levels):
 > ```

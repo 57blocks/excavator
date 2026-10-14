@@ -1,0 +1,28 @@
+<project xmlns="http://maven.apache.org/POM/4.0.0">
+  <modelVersion>4.0.0</modelVersion>
+  <parent>
+    <groupId>com.acme.orders</groupId>
+    <artifactId>orders-parent</artifactId>
+    <version>1.0.0</version>
+  </parent>
+  <artifactId>orders-web</artifactId>
+  <packaging>war</packaging>
+  <dependencies>
+    <dependency>
+      <groupId>com.acme.orders</groupId>
+      <artifactId>orders-ejb</artifactId>
+      <version>1.0.0</version>
+    </dependency>
+    <!-- Replaced by the component library below:
+    <dependency>
+      <groupId>org.apache.myfaces.core</groupId>
+      <artifactId>myfaces-impl</artifactId>
+    </dependency>
+    -->
+    <dependency>
+      <groupId>org.primefaces</groupId>
+      <artifactId>primefaces</artifactId>
+      <version>8.0</version>
+    </dependency>
+  </dependencies>
+</project>

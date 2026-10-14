@@ -81,10 +81,10 @@ describe("LanguageRegistry", () => {
   });
 
   describe("createDefault", () => {
-    it("registers all 45 built-in language configs", () => {
+    it("registers all 46 built-in language configs", () => {
       const registry = LanguageRegistry.createDefault();
       const all = registry.getAllLanguages();
-      expect(all.length).toBe(45);
+      expect(all.length).toBe(46);
       expect(all.map((c) => c.id)).toContain("csproj");
       expect(all.map((c) => c.id)).toContain("feature");
       expect(all.map((c) => c.id)).toContain("xaml");
@@ -108,6 +108,14 @@ describe("LanguageRegistry", () => {
       expect(registry.getByExtension(".h")?.id).toBe("c");
       expect(registry.getByExtension(".lua")?.id).toBe("lua");
       expect(registry.getByExtension(".js")?.id).toBe("javascript");
+    });
+
+    it("registers xhtml for .xhtml as markup without a tree-sitter grammar", () => {
+      const registry = LanguageRegistry.createDefault();
+      expect(registry.getByExtension(".xhtml")?.id).toBe("xhtml");
+      expect(registry.getForFile("src/main/webapp/orders/list.xhtml")?.id).toBe("xhtml");
+      expect(registry.getById("xhtml")?.treeSitter).toBeUndefined();
+      expect(registry.getByExtension(".html")?.id).toBe("html");
     });
 
     it("registers Swift with tree-sitter grammar metadata", () => {

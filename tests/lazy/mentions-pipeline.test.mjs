@@ -88,6 +88,11 @@ describe('the mentions stage in the real Lazy driver', () => {
     expect(Number.isInteger(result.timings.mentions)).toBe(true);
   });
 
+  it('records the framework its faces-config.xml declares in the header', () => {
+    // Before /10 the header carried the previous graph's value, `[]` here.
+    expect(graph.project.frameworks).toEqual(['jsf']);
+  });
+
   it('prints mentions= on the CLI stages line', () => {
     const other = copyFixture();
     try {
