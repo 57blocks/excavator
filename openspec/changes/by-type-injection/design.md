@@ -145,20 +145,36 @@ type?: string;   // 字段：声明类型，声明符上的数组维度并入；
     }
   ],
   "namedQualifier": {
+    "basis": "…",
     "annotations": ["javax.inject.Named", "jakarta.inject.Named"],
     "argument": "value",
     "defaultNameStereotypes": ["javax.enterprise.inject.Model", "jakarta.enterprise.inject.Model"]
   },
-  "producers": ["javax.enterprise.inject.Produces", "jakarta.enterprise.inject.Produces", "com.google.inject.Provides", "dagger.Provides", "org.springframework.context.annotation.Bean"],
-  "providerTypes": ["javax.inject.Provider", "jakarta.inject.Provider", "com.google.inject.Provider", "org.springframework.beans.factory.FactoryBean"],
-  "deploymentDependent": ["javax.enterprise.inject.Alternative", "jakarta.enterprise.inject.Alternative", "javax.enterprise.inject.Specializes", "jakarta.enterprise.inject.Specializes", "javax.enterprise.inject.Typed", "jakarta.enterprise.inject.Typed", "javax.enterprise.inject.Vetoed", "jakarta.enterprise.inject.Vetoed", "javax.decorator.Decorator", "jakarta.decorator.Decorator", "javax.interceptor.Interceptor", "jakarta.interceptor.Interceptor"],
-  "notQualifiers": ["lombok.Getter", "lombok.Setter", "javax.annotation.Nullable"],
+  "producers": {
+    "basis": "…",
+    "annotations": ["javax.enterprise.inject.Produces", "jakarta.enterprise.inject.Produces", "com.google.inject.Provides", "dagger.Provides", "org.springframework.context.annotation.Bean"]
+  },
+  "providerTypes": {
+    "basis": "…",
+    "types": ["javax.inject.Provider", "jakarta.inject.Provider", "com.google.inject.Provider", "org.springframework.beans.factory.FactoryBean"]
+  },
+  "deploymentDependent": {
+    "basis": "…",
+    "annotations": ["javax.enterprise.inject.Alternative", "jakarta.enterprise.inject.Alternative", "javax.enterprise.inject.Specializes", "jakarta.enterprise.inject.Specializes", "javax.enterprise.inject.Typed", "jakarta.enterprise.inject.Typed", "javax.enterprise.inject.Vetoed", "jakarta.enterprise.inject.Vetoed", "javax.decorator.Decorator", "jakarta.decorator.Decorator", "javax.interceptor.Interceptor", "jakarta.interceptor.Interceptor"]
+  },
+  "notQualifiers": {
+    "basis": "…",
+    "annotations": ["lombok.Getter", "lombok.Setter", "javax.annotation.Nullable"]
+  },
   "businessInterfaces": {
+    "basis": "…",
     "annotations": ["javax.ejb.Local", "javax.ejb.Remote", "jakarta.ejb.Local", "jakarta.ejb.Remote"],
     "argument": "value"
   }
 }
 ```
+
+- 每个族与每个角色都是带 `basis` 的对象：一句话写明这条知识的出处与含义，与 `routes.json` 的族一样。
 
 - 加载器 `type-injection-catalog.mjs` 照 `route-catalog.mjs` 的样子：严格、全量、深冻结。以下都抛错，并指明位置：
   - 未知键、缺字段、类型不符；
