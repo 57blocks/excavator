@@ -23,7 +23,7 @@
 
 ## 1. Core：Java 结构行的四项事实
 
-- [ ] 1.1 按 design D3，`types.ts` 与 Java 抽取器补两项：
+- [x] 1.1 按 design D3，`types.ts` 与 Java 抽取器补两项：
   - `classes[].modifiers`：顶层类型声明上的修饰符关键字，源码顺序，不含注解；
   - `nestedTypes`：顶层以下的每个类型声明与匿名类，源码顺序。字段为 `kind`、`name`、`line`、`owner`、`local`、`modifiers`、`supertypes`，匿名类另有 `instantiates`。枚举常量体不记。
 

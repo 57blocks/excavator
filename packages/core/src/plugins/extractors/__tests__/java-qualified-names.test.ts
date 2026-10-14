@@ -287,8 +287,11 @@ interface Api extends java.io.Closeable, Comparable<Api> {
   // (name-binding-references): with that one field removed the output hashes to
   // the previous value, 4605cbaac6df9e53...; and again when a Java file gained
   // `memberAnnotations` (annotation-injection-references): with that one field
-  // removed the output hashes to the previous value, 809861bf0062d212....
-  const UNWRAPPED_SHA256 = "8855a9412d14aaf60a667d4aff83fef6bdd72c8691d67c6dc780853dcf161aa2";
+  // removed the output hashes to the previous value, 809861bf0062d212...; and
+  // again when top-level types gained `modifiers` and a Java file gained
+  // `nestedTypes` (by-type-injection): with those two fields removed the output
+  // hashes to the previous value, 8855a9412d14aaf6....
+  const UNWRAPPED_SHA256 = "dbe65f4725cb410b54fa48256fcb808233f0b49ef5088febb1803d6b46aef41e";
 
   it("produces byte-identical structure and call graph output", () => {
     const json = JSON.stringify(extract(UNWRAPPED));

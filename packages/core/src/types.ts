@@ -408,6 +408,31 @@ export interface JavaMemberAnnotationUse {
   parameter?: { name: string; index: number; line: number };
 }
 
+/** A Java type declared below top level, or an anonymous class body
+ *  (openspec: changes/by-type-injection, design D3). A top-level type is a
+ *  `classes[]` entry; this is every other type, at any depth. An enum
+ *  constant body (`A { ... }`) is not recorded. */
+export interface JavaNestedType {
+  kind: "class" | "interface" | "enum" | "record" | "annotation" | "anonymous";
+  /** `null` for an anonymous class. */
+  name: string | null;
+  /** The line of the name; for an anonymous class, the line of `new`. */
+  line: number;
+  /** Simple name of the top-level type it is written in, however deep. */
+  owner: string;
+  /** Written in a method, constructor, initializer or lambda body, or an
+   *  anonymous class, or inside such a type: not reachable from the top-level
+   *  type through member types alone. */
+  local: boolean;
+  /** Modifier keywords in source order, annotations excluded (`public`,
+   *  `abstract`, `static`, `final`, `sealed`, `non-sealed`, `strictfp`, ...). */
+  modifiers: string[];
+  /** As `classes[].supertypes`; empty for an anonymous class. */
+  supertypes: JavaSupertype[];
+  /** Anonymous classes only: the type written after `new`, and its line. */
+  instantiates?: { type: string; line: number };
+}
+
 // Plugin interfaces
 export interface StructuralAnalysis {
   functions: Array<{
@@ -442,6 +467,9 @@ export interface StructuralAnalysis {
     kind?: "class" | "interface" | "enum" | "record";
     /** Package plus type name, or the bare name in the default package. */
     qualifiedName?: string;
+    /** Modifier keywords of the type declaration in source order, annotations
+     *  excluded (`public`, `abstract`, `final`, `sealed`, ...). */
+    modifiers?: string[];
     supertypes?: JavaSupertype[];
     fieldTypes?: JavaFieldType[];
     /** Type annotation names as written (`Builder`, `lombok.Builder`). */
@@ -460,6 +488,9 @@ export interface StructuralAnalysis {
   /** Java: every annotation on a field, method, constructor, parameter or
    *  record component, at any depth of type nesting, in source order. */
   memberAnnotations?: JavaMemberAnnotationUse[];
+  /** Java: every type declaration below top level and every anonymous class
+   *  body, in source order. */
+  nestedTypes?: JavaNestedType[];
   // Non-code structural data (all optional for backward compat)
   sections?: SectionInfo[];
   definitions?: DefinitionInfo[];
