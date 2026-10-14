@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<taglib xmlns="http://xmlns.jcp.org/xml/ns/javaee" version="2.1">
+  <tlib-version>1.0</tlib-version>
+  <short-name>orders</short-name>
+  <uri>http://acme.example/orders</uri>
+  <tag-file>
+    <name>orderRow</name>
+    <path>/WEB-INF/tags/orderRow.tag</path>
+  </tag-file>
+</taglib>

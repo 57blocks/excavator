@@ -6,6 +6,7 @@ import {
   readFileSync,
   rmSync,
   chmodSync,
+  cpSync,
   existsSync,
   symlinkSync,
 } from 'node:fs';
@@ -21,6 +22,7 @@ const SCRIPT = resolve(
   __dirname,
   '../../../skills/excavator/scan-project.mjs',
 );
+const JAVAEE_JSF_FIXTURE = resolve(__dirname, '../../fixtures/javaee-jsf-app');
 
 /**
  * Build a project tree from a `{ relPath: contents }` object. Creates parent
@@ -71,12 +73,14 @@ function runScript(projectRoot, extraArgs = [], envOverrides = {}) {
     env: { ...process.env, ...envOverrides },
   });
   let output = null;
+  let raw = null;
   try {
-    output = JSON.parse(readFileSync(outputPath, 'utf-8'));
+    raw = readFileSync(outputPath, 'utf-8');
+    output = JSON.parse(raw);
   } catch {
     /* output missing on hard failure */
   }
-  return { status: result.status, stdout: result.stdout, stderr: result.stderr, output };
+  return { status: result.status, stdout: result.stdout, stderr: result.stderr, output, raw };
 }
 
 /**
@@ -1173,5 +1177,333 @@ describe('scan-project.mjs — output schema invariants', () => {
     expect(r.status).toBe(0);
     const paths = r.output.files.map(f => f.path);
     expect(paths).toEqual(['!bang.ts', '0.ts', '_under.ts', 'a.ts', 'ä.ts']);
+  });
+});
+
+describe('scan-project.mjs — Facelets and JSP view files (markup census)', () => {
+  let projectRoot;
+
+  afterEach(() => {
+    if (projectRoot) {
+      rmSync(projectRoot, { recursive: true, force: true });
+      projectRoot = null;
+    }
+  });
+
+  // [extension, language id, category]. The language id is the bare extension
+  // that the unknown-extension fallback produced before these were declared.
+  const VIEW_FILES = [
+    ['.xhtml', 'xhtml', 'markup'],
+    ['.jsp', 'jsp', 'markup'],
+    ['.jspx', 'jspx', 'markup'],
+    ['.jspf', 'jspf', 'markup'],
+    ['.tag', 'tag', 'markup'],
+    ['.tagx', 'tagx', 'markup'],
+    ['.tld', 'tld', 'config'],
+  ];
+
+  it('declares the seven view extensions as languages with their categories', () => {
+    for (const [ext, language, category] of VIEW_FILES) {
+      const path = `src/main/webapp/WEB-INF/sample${ext}`;
+      expect(scanProject.classifyLanguage(path), ext).toEqual({ language, declared: true });
+      expect(scanProject.detectCategory(path), ext).toBe(category);
+      // same id the bare-extension fallback gave, so mention syntax modes do not change
+      expect(language).toBe(ext.slice(1));
+    }
+  });
+
+  it('reports a Facelets page as xhtml / markup', () => {
+    projectRoot = setupTree({
+      'src/main/webapp/orders/list.xhtml': '<ui:composition xmlns:ui="http://xmlns.jcp.org/jsf/facelets"/>\n',
+    });
+    const r = runScript(projectRoot);
+    expect(r.status).toBe(0);
+    const page = byPath(r.output, 'src/main/webapp/orders/list.xhtml');
+    expect(page).toMatchObject({ language: 'xhtml', fileCategory: 'markup' });
+  });
+
+  it('keeps jspf as its own language id', () => {
+    projectRoot = setupTree({ 'WEB-INF/jspf/header.jspf': '<h1>Orders</h1>\n' });
+    const r = runScript(projectRoot);
+    expect(r.status).toBe(0);
+    expect(byPath(r.output, 'WEB-INF/jspf/header.jspf')).toMatchObject({ language: 'jspf', fileCategory: 'markup' });
+  });
+
+  it('scans every view extension with its language and category, none skipped', () => {
+    const tree = {};
+    for (const [ext] of VIEW_FILES) tree[`web/view${ext}`] = '<a/>\n';
+    projectRoot = setupTree(tree);
+    const r = runScript(projectRoot);
+    expect(r.status).toBe(0);
+    for (const [ext, language, category] of VIEW_FILES) {
+      expect(byPath(r.output, `web/view${ext}`), ext).toMatchObject({ language, fileCategory: category });
+    }
+    expect(r.output.skipped).toEqual([]);
+    expect(r.output.stats.byCategory).toEqual({ config: 1, markup: 6 });
+  });
+
+  it('matches the extension case-insensitively', () => {
+    projectRoot = setupTree({ 'web/Page.XHTML': '<a/>\n', 'web/Old.JSP': '<a/>\n' });
+    const r = runScript(projectRoot);
+    expect(byPath(r.output, 'web/Page.XHTML')).toMatchObject({ language: 'xhtml', fileCategory: 'markup' });
+    expect(byPath(r.output, 'web/Old.JSP')).toMatchObject({ language: 'jsp', fileCategory: 'markup' });
+  });
+});
+
+describe('scan-project.mjs — detectedFrameworks', () => {
+  let projectRoot;
+
+  afterEach(() => {
+    if (projectRoot) {
+      rmSync(projectRoot, { recursive: true, force: true });
+      projectRoot = null;
+    }
+  });
+
+  const detected = (r) => {
+    expect(r.status).toBe(0);
+    return r.output.detectedFrameworks;
+  };
+
+  it('is always present, and empty when the project has no manifest', () => {
+    projectRoot = setupTree({ 'src/a.ts': 'export const a = 1;\n', 'README.md': '# x\n' });
+    const r = runScript(projectRoot);
+    expect(detected(r)).toEqual([]);
+    expect(Object.keys(r.output)).toContain('detectedFrameworks');
+  });
+
+  it('is empty for an empty project and for manifests that declare nothing', () => {
+    projectRoot = setupTree({});
+    expect(detected(runScript(projectRoot))).toEqual([]);
+    rmSync(projectRoot, { recursive: true, force: true });
+    projectRoot = setupTree({
+      'pom.xml': '<project><artifactId>plain</artifactId></project>\n',
+      'package.json': '{"dependencies": {"lodash": "^4"}}\n',
+    });
+    expect(detected(runScript(projectRoot))).toEqual([]);
+  });
+
+  it('detects a framework declared only in a submodule manifest, with exact evidence', () => {
+    projectRoot = setupTree({
+      'pom.xml': '<project>\n<modules><module>orders</module></modules>\n</project>\n',
+      'orders/pom.xml': '<project>\n<dependencies>\n<dependency>\n<artifactId>spring-boot-starter</artifactId>\n</dependency>\n</dependencies>\n</project>\n',
+    });
+    expect(detected(runScript(projectRoot))).toEqual([
+      { id: 'spring', manifests: 1, evidence: { path: 'orders/pom.xml', line: 4, keyword: 'spring-boot' } },
+    ]);
+  });
+
+  it('counts every hit manifest and takes the evidence from the first in stable path order', () => {
+    projectRoot = setupTree({
+      'c/pom.xml': '<artifactId>org.springframework</artifactId>\n',
+      'a/pom.xml': '\n<artifactId>org.springframework</artifactId>\n',
+      'B/pom.xml': '<artifactId>org.springframework</artifactId>\n',
+    });
+    // "B" sorts before "a" by UTF-16 code unit (and the tree must not need a
+    // case-sensitive file system, so no two directories differ only by case)
+    expect(detected(runScript(projectRoot))).toEqual([
+      { id: 'spring', manifests: 3, evidence: { path: 'B/pom.xml', line: 1, keyword: 'org.springframework' } },
+    ]);
+  });
+
+  it('sorts the result by id', () => {
+    projectRoot = setupTree({
+      'pom.xml': '<artifactId>spring-boot</artifactId>\n',
+      'package.json': '{"dependencies": {"react": "^18"}}\n',
+      'requirements.txt': 'django==4.2\n',
+    });
+    expect(detected(runScript(projectRoot)).map((d) => d.id)).toEqual(['django', 'react', 'spring']);
+  });
+
+  it('does not use a manifest excluded by .excavatorignore', () => {
+    projectRoot = setupTree({
+      '.excavatorignore': 'samples/\n',
+      'pom.xml': '<project/>\n',
+      'samples/pom.xml': '<artifactId>spring-boot</artifactId>\n',
+    });
+    const r = runScript(projectRoot);
+    expect(detected(r)).toEqual([]);
+    expect(r.output.filteredByIgnore).toBe(1);
+  });
+
+  it('does not use manifests under default-filtered directories', () => {
+    projectRoot = setupTree({
+      'pom.xml': '<project/>\n',
+      'node_modules/lib/package.json': '{"dependencies": {"react": "^18"}}\n',
+      'target/generated/pom.xml': '<artifactId>spring-boot</artifactId>\n',
+      'build/pom.xml': '<artifactId>spring-boot</artifactId>\n',
+    });
+    const r = runScript(projectRoot);
+    expect(detected(r)).toEqual([]);
+    expect(r.output.filteredByDefaults).toBeGreaterThanOrEqual(3);
+  });
+
+  it('does not use a manifest that was skipped as too large or binary', () => {
+    projectRoot = setupTree({
+      'pom.xml': '<project/>\n',
+      'big/pom.xml': `<artifactId>spring-boot</artifactId>\n${'<x/>\n'.repeat(20_001)}`,
+      'bin/pom.xml': '<artifactId>spring-boot</artifactId>\n\u0000\u0000',
+    });
+    const r = runScript(projectRoot);
+    expect(detected(r)).toEqual([]);
+    expect(r.output.skipped.map((s) => [s.path, s.reason]).sort()).toEqual([
+      ['big/pom.xml', 'too-large'],
+      ['bin/pom.xml', 'binary'],
+    ]);
+  });
+
+  it('detects rails from an extension-less Gemfile that the census records as unknown-language', () => {
+    projectRoot = setupTree({
+      Gemfile: "# gem 'rails' is commented out here\nsource 'https://rubygems.org'\ngem 'rails', '~> 7.0'\n",
+      'README.md': '# x\n',
+    });
+    const r = runScript(projectRoot);
+    expect(detected(r)).toEqual([
+      { id: 'rails', manifests: 1, evidence: { path: 'Gemfile', line: 3, keyword: 'rails' } },
+    ]);
+    // the census is unchanged: the Gemfile is skipped, named, and not in files
+    expect(byPath(r.output, 'Gemfile')).toBeUndefined();
+    expect(r.output.skipped.map((e) => [e.path, e.reason])).toEqual([['Gemfile', 'unknown-language']]);
+    expect(r.output.stats.skippedByReason).toEqual({ 'unknown-language': 1 });
+  });
+
+  it('detects django from an extension-less Pipfile that the census records as unknown-language', () => {
+    projectRoot = setupTree({
+      Pipfile: '# flask is not used\n[packages]\ndjango = "*"\n',
+    });
+    const r = runScript(projectRoot);
+    expect(detected(r)).toEqual([
+      { id: 'django', manifests: 1, evidence: { path: 'Pipfile', line: 3, keyword: 'django' } },
+    ]);
+    expect(byPath(r.output, 'Pipfile')).toBeUndefined();
+    expect(r.output.skipped.map((e) => [e.path, e.reason])).toEqual([['Pipfile', 'unknown-language']]);
+    expect(r.output.totalFiles).toBe(0);
+  });
+
+  it('does not use an extension-less manifest that the selection excluded', () => {
+    projectRoot = setupTree({
+      '.excavatorignore': 'samples/\n',
+      'samples/Gemfile': "gem 'rails'\n",
+    });
+    const r = runScript(projectRoot);
+    expect(detected(r)).toEqual([]);
+    expect(r.output.skipped.filter((e) => e.path === 'samples/Gemfile').map((e) => e.reason)).toEqual(['filtered-by-ignore']);
+  });
+
+  it('does not use a manifest over the byte limit', () => {
+    projectRoot = setupTree({
+      'pom.xml': '<project/>\n',
+      // a single huge line stays under MAX_FILE_LINES, so only the byte limit stops it
+      'big/pom.xml': `<artifactId>spring-boot</artifactId>${' '.repeat(scanProject.MAX_FILE_BYTES + 1)}\n`,
+    });
+    const r = runScript(projectRoot);
+    expect(detected(r)).toEqual([]);
+    expect(r.output.skipped.map((e) => [e.path, e.reason])).toEqual([['big/pom.xml', 'too-large']]);
+  });
+
+  it('ignores comments and exclusions in the scanned manifests', () => {
+    projectRoot = setupTree({
+      'pom.xml': [
+        '<project>',
+        '<!-- <artifactId>spring-boot</artifactId> -->',
+        '<exclusions><exclusion><groupId>org.springframework</groupId></exclusion></exclusions>',
+        '</project>',
+        '',
+      ].join('\n'),
+      'build.gradle': "implementation('x:y:1') {\n  exclude group: 'org.springframework.boot'\n}\n",
+    });
+    expect(detected(runScript(projectRoot))).toEqual([]);
+  });
+
+  it('reads a manifest as UTF-8 text with the original line numbers (CRLF, multi-byte)', () => {
+    projectRoot = setupTree({
+      'pom.xml': '<!-- ü ü -->\r\n<name>Ünïcode</name>\r\n<artifactId>spring-boot</artifactId>\r\n',
+    });
+    expect(detected(runScript(projectRoot))).toEqual([
+      { id: 'spring', manifests: 1, evidence: { path: 'pom.xml', line: 3, keyword: 'spring-boot' } },
+    ]);
+  });
+
+  it('is byte-identical across two scans of the same tree', () => {
+    projectRoot = setupTree({
+      'a/pom.xml': '<artifactId>org.springframework</artifactId>\n',
+      'b/pom.xml': '<artifactId>primefaces</artifactId>\n',
+      'c/package.json': '{"dependencies": {"react": "^18"}}\n',
+    });
+    const r1 = runScript(projectRoot);
+    const r2 = runScript(projectRoot);
+    expect(r1.status).toBe(0);
+    expect(r1.raw).toBe(r2.raw);
+    expect(r1.output.detectedFrameworks.map((d) => d.id)).toEqual(['jsf', 'react', 'spring']);
+  });
+});
+
+describe('scan-project.mjs — the javaee-jsf-app fixture', () => {
+  let projectRoot;
+
+  afterEach(() => {
+    if (projectRoot) {
+      rmSync(projectRoot, { recursive: true, force: true });
+      projectRoot = null;
+    }
+  });
+
+  function copyFixture() {
+    const root = mkdtempSync(join(tmpdir(), 'excavator-scan-javaee-jsf-'));
+    cpSync(JAVAEE_JSF_FIXTURE, root, { recursive: true });
+    return root;
+  }
+
+  it('detects javaee from two manifests and jsf from three, and not spring', () => {
+    projectRoot = copyFixture();
+    const r = runScript(projectRoot);
+    expect(r.status).toBe(0);
+    expect(r.output.detectedFrameworks).toEqual([
+      {
+        id: 'javaee',
+        manifests: 2,
+        evidence: { path: 'orders-ejb/pom.xml', line: 13, keyword: 'jakarta.jakartaee-api' },
+      },
+      {
+        id: 'jsf',
+        manifests: 3,
+        evidence: { path: 'orders-web/pom.xml', line: 23, keyword: 'primefaces' },
+      },
+    ]);
+  });
+
+  it('puts evidence on a line that really declares the keyword, not on the masked ones', () => {
+    projectRoot = copyFixture();
+    const r = runScript(projectRoot);
+    for (const { evidence } of r.output.detectedFrameworks) {
+      const lines = readFileSync(join(projectRoot, evidence.path), 'utf-8').split('\n');
+      expect(lines[evidence.line - 1]).toContain(evidence.keyword);
+    }
+    // the commented-out myfaces dependency sits above the primefaces one
+    const web = readFileSync(join(projectRoot, 'orders-web/pom.xml'), 'utf-8').split('\n');
+    expect(web.findIndex((l) => l.includes('myfaces')) + 1).toBeLessThan(23);
+    // the root pom only mentions the Spring group inside <exclusions>
+    expect(readFileSync(join(projectRoot, 'pom.xml'), 'utf-8')).toContain('org.springframework');
+  });
+
+  it('reports the view files with their language and category', () => {
+    projectRoot = copyFixture();
+    const r = runScript(projectRoot);
+    const web = 'orders-web/src/main/webapp';
+    expect(byPath(r.output, `${web}/orders/list.xhtml`)).toMatchObject({ language: 'xhtml', fileCategory: 'markup' });
+    expect(byPath(r.output, `${web}/WEB-INF/templates/layout.xhtml`)).toMatchObject({ language: 'xhtml', fileCategory: 'markup' });
+    expect(byPath(r.output, `${web}/orders/legacy.jsp`)).toMatchObject({ language: 'jsp', fileCategory: 'markup' });
+    expect(byPath(r.output, `${web}/WEB-INF/jspf/header.jspf`)).toMatchObject({ language: 'jspf', fileCategory: 'markup' });
+    expect(byPath(r.output, `${web}/WEB-INF/tags/orderRow.tag`)).toMatchObject({ language: 'tag', fileCategory: 'markup' });
+    expect(byPath(r.output, `${web}/WEB-INF/orders.tld`)).toMatchObject({ language: 'tld', fileCategory: 'config' });
+    expect(byPath(r.output, `${web}/WEB-INF/web.xml`)).toMatchObject({ language: 'xml', fileCategory: 'config' });
+    expect(r.output.skipped).toEqual([]);
+  });
+
+  it('is byte-identical across two scans', () => {
+    projectRoot = copyFixture();
+    const r1 = runScript(projectRoot);
+    const r2 = runScript(projectRoot);
+    expect(r1.raw).toBe(r2.raw);
   });
 });

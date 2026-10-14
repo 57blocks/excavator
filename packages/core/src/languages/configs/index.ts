@@ -34,6 +34,7 @@ import { githubActionsConfig } from "./github-actions.js";
 import { makefileConfig } from "./makefile.js";
 import { shellConfig } from "./shell.js";
 import { htmlConfig } from "./html.js";
+import { xhtmlConfig } from "./xhtml.js";
 import { cssConfig } from "./css.js";
 import { openapiConfig } from "./openapi.js";
 import { kubernetesConfig } from "./kubernetes.js";
@@ -83,6 +84,7 @@ export const builtinLanguageConfigs: LanguageConfig[] = [
   makefileConfig,
   shellConfig,
   htmlConfig,
+  xhtmlConfig,
   cssConfig,
   openapiConfig,
   kubernetesConfig,
@@ -133,6 +135,7 @@ export {
   makefileConfig,
   shellConfig,
   htmlConfig,
+  xhtmlConfig,
   cssConfig,
   openapiConfig,
   kubernetesConfig,

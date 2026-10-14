@@ -16,6 +16,7 @@ export {
 // Registries
 export { LanguageRegistry } from "./language-registry.js";
 export { FrameworkRegistry } from "./framework-registry.js";
+export type { FrameworkDetection } from "./framework-registry.js";
 
 // Built-in configs
 export { builtinLanguageConfigs } from "./configs/index.js";

@@ -106,9 +106,9 @@ describe("FrameworkRegistry", () => {
   });
 
   describe("createDefault", () => {
-    it("registers all 12 built-in framework configs", () => {
+    it("registers all 14 built-in framework configs", () => {
       const registry = FrameworkRegistry.createDefault();
-      expect(registry.getAllFrameworks()).toHaveLength(12);
+      expect(registry.getAllFrameworks()).toHaveLength(14);
     });
 
     it("detects .NET MAUI from a .csproj (glob manifest match)", () => {

@@ -1,0 +1,18 @@
+<ui:composition xmlns="http://www.w3.org/1999/xhtml"
+                xmlns:ui="http://xmlns.jcp.org/jsf/facelets"
+                xmlns:h="http://xmlns.jcp.org/jsf/html"
+                xmlns:p="http://primefaces.org/ui"
+                template="/WEB-INF/templates/layout.xhtml">
+  <ui:define name="body">
+    <h:form>
+      <p:dataTable value="#{orders.list}" var="order">
+        <p:column headerText="Customer">
+          <h:outputText value="#{order.customer}"/>
+        </p:column>
+        <p:column>
+          <h:commandButton value="Open" action="#{orders.detail}"/>
+        </p:column>
+      </p:dataTable>
+    </h:form>
+  </ui:define>
+</ui:composition>

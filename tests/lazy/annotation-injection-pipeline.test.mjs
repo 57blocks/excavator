@@ -107,8 +107,13 @@ describe('Java annotation injection sites in the real Lazy driver', () => {
 
   it('stamps the product with the new pipeline version', () => {
     expect(result.saveError).toBeNull();
-    expect(PIPELINE_VERSION).toBe('lazy-fact-graph/9');
-    expect(graph.project.pipelineVersion).toBe('lazy-fact-graph/9');
+    expect(PIPELINE_VERSION).toBe('lazy-fact-graph/10');
+    expect(graph.project.pipelineVersion).toBe('lazy-fact-graph/10');
+  });
+
+  it('records the framework its Seam descriptor declares in the header', () => {
+    // Before /10 the header carried the previous graph's value, `[]` here.
+    expect(graph.project.frameworks).toEqual(['jsf']);
   });
 
   it('keeps the stages where they were in the stages row: the annotation sites add no stage and no file read', () => {
@@ -573,7 +578,7 @@ describe('a product of the previous pipeline version (design D10, task 4.4)', ()
     expect(synced.data.kind).toBe('synced');
     expect(synced.data.factCoverage.annotationInjections).toMatchObject({ status: 'ran', siteCount: 38 });
     const graph = readProduct(root);
-    expect(graph.project.pipelineVersion).toBe('lazy-fact-graph/9');
+    expect(graph.project.pipelineVersion).toBe('lazy-fact-graph/10');
     expect(graph.edges.filter((e) => e.type === 'injects')).toHaveLength(EXPECTED_INJECTS.length);
     expect(service.projectStatus().snapshot.freshness).toBe('fresh');
   });

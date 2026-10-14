@@ -282,10 +282,11 @@ Lazy 事实节点 SHALL 允许 `summary: ""`、`tags: []`、`layers: []`。`comp
   - 目标来源与目标种类：类、资源包，或名字（把名字转给另一个名字）。
   - 可选的目标规则：带有所列属性之一时目标未知；没有目标时，从某个属性所名的绑定继承目标。
   - 缺少目标时的含义：目标未知，或配置别处声明的同名组件。
-- 注解绑定器：注解全限定名、读名字的参数键、缺省名规则；
+- 注解绑定器：注解全限定名、读名字的参数键、缺省名规则（首字母小写、Java Beans 规则，或类的简单名原样）；
 - 两种绑定器都声明点分名是否按命名空间解析；
 - 表达式语言：分隔符、文件类别（含整篇作为模板文本扫描的扩展名）、隐式名字、声明局部名的属性（可限定元素及其命名空间，可声明属性值里表达式的根名为局部名）、可见命名空间及其条件；
 - XML 注入族，见「XML 注入点」；
+- 注解注入族，见「Java 注解注入点」；
 - 部署单元描述符的文件名。
 
 每个绑定器与注入族 SHALL 带 id、命名空间与一句依据说明。目录出现未知键、缺少字段或类型不符时，加载 MUST 失败，不得带着部分目录运行。
@@ -332,6 +333,18 @@ XML 绑定：
 #### Scenario: 无法确认的注解
 - **WHEN** 类上写 `@Named("x")`，文件只有按需导入 `import com.google.inject.name.*;`，同包也没有 `Named`
 - **THEN** 不产生绑定，`Named` 计入未确认注解计数
+
+#### Scenario: EJB 缺省名为类的简单名
+- **WHEN** 类 `com.acme.OrderBean` 带 `@javax.ejb.Stateless`，没有参数
+- **THEN** 产生 `ejb` 命名空间的绑定 `OrderBean` → 该类
+
+#### Scenario: Configuration 类是 Spring 组件
+- **WHEN** 类 `com.acme.AppConfig` 带 `@org.springframework.context.annotation.Configuration`，没有参数
+- **THEN** 产生 `spring` 命名空间的绑定 `appConfig` → 该类
+
+#### Scenario: 控制器增强的 value 不是名字
+- **WHEN** 类 `com.acme.Faults` 带 `@org.springframework.web.bind.annotation.ControllerAdvice("com.acme.web")`
+- **THEN** 产生 `spring` 命名空间的绑定 `faults` → 该类，不产生名为 `com.acme.web` 的绑定
 
 #### Scenario: 非字面量名字
 - **WHEN** 类上写 `@Named(Names.ORDERS)`
@@ -586,7 +599,7 @@ XML 绑定：
 守恒有两条：
 
 - 十四个桶之和等于注入点总数；
-- 五类缺口回读的计数分别等于对应桶之和。
+- 五类缺口回读的计数，分别等于 XML 注入点与「Java 注解注入点」对应桶之和。
 
 任一不等，构建 MUST 失败。没有收到注入点与目录时，覆盖记 `not-run`。
 
@@ -667,23 +680,32 @@ XML 绑定：
 - **THEN** 不产生注入点，也不进普查
 
 #### Scenario: 守恒不平衡时构建失败
-- **WHEN** 某个注入点没有落入任何桶，或某类缺口回读的计数与对应桶之和不等
+- **WHEN** 某个注入点没有落入任何桶，或某类缺口回读的计数与两种来源对应桶之和不等
 - **THEN** 构建失败，不写出产物
 
 ### Requirement: injects 边的证据与遍历
 
-`injects` 边 SHALL 带 `provenance: "extracted"`。每个成边的注入点一条证据，内容为：
+`injects` 边 SHALL 带 `provenance: "extracted"`。同一对（消费者类，目标类）只有一条边：XML 注入点与 Java 注解注入点都成边时，证据合并，MUST NOT 丢失任何一方的证据。
+
+XML 注入点每个成边一条证据，内容为：
 
 - 注入点所在的 XML 文件与行；
 - 名字（`token`）与注入点 id；
 - 消费者元素所在行，以及消费者类经继承属性解析时经过的绑定处；
 - 目标解析经过的全部绑定处：名字直接命中的绑定、别名所名的绑定与继承所名的绑定，每处给出文件、行与绑定器。
 
-同一条边的证据按文件、行、名字与注入点 id 排序去重。图校验 SHALL 要求证据行包含 `token`。`injects` SHALL 属于可遍历的确定性边类型，可以从目标类沿入边找到被注入它的消费者类。
+Java 注解注入点每个成边一条证据，内容为：
+
+- 名字写出的 Java 文件与行：显式名字为参数值所在行，缺省名为成员名所在行；
+- 该行上写出的文字（`token`）、解析用的名字与注入点 id。缺省名时 `token` 是成员名的原样写法，如 `setOrderDao`；
+- 管理消费者类的绑定处；注入族不要求管理时为空；
+- 目标解析经过的全部绑定处，同 XML 注入点。
+
+同一条边的证据按文件、行、`token` 与注入点 id 排序去重。图校验 SHALL 要求证据行包含 `token`。`injects` SHALL 属于可遍历的确定性边类型，可以从目标类沿入边找到被注入它的消费者类。
 
 #### Scenario: 证据可复核
 - **WHEN** 读 `injects` 边每条证据的文件与行
-- **THEN** 该行含证据里的 `token`；证据里的每个绑定处所在行，含该绑定声明的名字，或是产生缺省名的注解
+- **THEN** 该行含证据里的 `token`；证据里的每个绑定处与管理绑定处所在行，含该绑定声明的名字，或是产生缺省名的注解
 
 #### Scenario: 从被注入的类遍历到消费者
 - **WHEN** 从 `com.acme.OrderDaoImpl` 的 class 节点做 1 跳入边遍历
@@ -692,3 +714,156 @@ XML 绑定：
 #### Scenario: 证据行不含名字时校验报出
 - **WHEN** 一条 `injects` 边的证据行号被改成不含 `token` 的行
 - **THEN** 图校验对这条边报出证据不符
+
+#### Scenario: 两种来源合成一条边
+- **WHEN** 同一单元的 Spring XML 写 `<bean id="orderService" class="com.acme.OrderService"><property name="dao" ref="orderDao"/></bean>`，`com.acme.OrderService` 的另一个字段又写 `@Resource(name = "orderDao")`，`orderDao` 绑定到仓库类 `com.acme.JdbcOrderDao`
+- **THEN** 只有一条 `com.acme.OrderService` → `com.acme.JdbcOrderDao` 的 `injects` 边，证据同时含 XML 行与 Java 行
+
+### Requirement: Java 注解注入点
+
+系统 SHALL 按目录的注解注入族，从 Java 类型成员上的注解读出注入点，并把每个注入点解析成一条 `injects` 边或一个可见桶。注解来自 Core 对成员注解的抽取：
+
+- 字段，每个声明符一条；
+- 方法与构造器；
+- 方法与构造器的参数；
+- record 组件。
+
+文件里任意深度的类型体都读，包括嵌套、局部与匿名类型。
+
+注入族声明：
+
+- 命名空间；
+- 名字只在哪些绑定器的绑定里解析（可选）；
+- 消费者类必须由哪些绑定器管理（可为空）；
+- 注入点。每个注入点声明：
+  - 注解全限定名；
+  - 可附着的成员种类；
+  - 读名字的参数键；
+  - 缺省名规则；
+  - 名字取缺省、又没有绑定时容器是否退回按类型注入；
+  - 表达式前缀。
+
+注解的身份 SHALL 按「名字绑定」的 Java 作用域规则确认。写法与目录中某个注入点注解的简单名相同、却没有确认的，SHALL 按写法计数，不是注入点。
+
+注入点的名字 SHALL 按以下规则取：
+
+- 第一个出现的名字参数是非空的字符串字面量时，名字为它的值，写出的行为参数值所在行；
+- 没写名字参数或为空串时，按注入点的缺省名规则从成员推出，写出的行为成员名所在行：
+  - 字段：字段名；
+  - `set` 开头且长于 3 个字符的方法：去掉 `set` 后的部分，Java Beans 规则下前两个字符都大写时保持原样、否则首字母小写，Seam 规则下只把首字母小写；
+  - 其它方法：Java Beans 规则取方法名，Seam 规则没有缺省名；
+  - 参数、构造器与 record 组件：没有缺省名。
+
+消费者 SHALL 是成员所在的顶层类型的 class 节点；嵌套、局部与匿名类型的成员归到顶层类型，并计数。
+
+注入族声明了管理绑定器时：
+
+- 只有当某个这类绑定解析到消费者类时，消费者才受管理；
+- 名字 SHALL 在这些管理绑定所在的全部部署单元里解析；
+- 消费者不受管理时 MUST NOT 解析名字。没有名字的组件定义（如匿名的 Spring `<bean class>`）不产生绑定，所以不使类受管理。
+
+注入族没有声明管理绑定器时，名字在类文件所在的单元里解析。
+
+每个注入点 SHALL 恰好落入一个桶，按以下顺序：
+
+1. 成员种类不在注入点声明里：**位置不读**；
+2. 名字参数不是字符串字面量：**名字非字面量**；
+3. 没写名字、也没有缺省名：**无名字**，即按类型注入，不算缺口；
+4. 名字以表达式前缀开头：**表达式**；
+5. 消费者类没有节点：**消费者未建索引**；
+6. 消费者不受管理：**不受管理**，不算缺口；
+7. 解析范围内、注入族命名空间里（声明了绑定器时只看这些绑定器）名字相等的绑定，按「名字绑定」解析后的目标归类，规则同 XML 注入点：成边、资源包、仓库外、目标未建索引、目标未知、歧义；
+8. 没有这样的绑定时：
+   - 名字取缺省、注入点声明退回按类型：**按类型**，不算缺口；
+   - 解析范围以外有这个名字（别的单元、别的命名空间，或不在注入族所限绑定器里的绑定）：**他处**；
+   - 否则：**无绑定**。
+
+成边的注入点生成从消费者类节点指向目标类节点的 `injects` 边，与 XML 注入点共用边类型，每个（消费者类，目标类）一条。缺口复用 XML 注入点的五类：
+
+| 缺口 | 对应的桶 |
+|---|---|
+| `injection-target-unresolved` | 名字非字面量、表达式、目标未建索引、目标未知 |
+| `injection-ambiguous` | 歧义 |
+| `injection-elsewhere` | 他处 |
+| `injection-unbound` | 无绑定 |
+| `injection-consumer-unresolved` | 消费者未建索引 |
+
+样例 SHALL 写出注入点的文件、行与名字，歧义与他处的样例列出候选。MUST NOT 为了成边而放宽到解析范围以外的单元、其它命名空间、其它绑定器或第一个候选。
+
+`coverage.annotationInjections` SHALL 给出：
+
+- 运行状态；
+- 按注入点 id 计的注入点数；
+- 十五个桶的计数与注入点总数；
+- 位于嵌套、局部或匿名类型里的注入点数；
+- 未确认注解的计数。
+
+十五个桶之和 SHALL 等于注入点总数。没有收到名字引用阶段的结果与目录时，覆盖记 `not-run`。
+
+#### Scenario: Qualifier 字段成边
+- **WHEN** 类 `com.acme.OrderService` 带 `@org.springframework.stereotype.Service`，字段写 `@Autowired @Qualifier("orderDao") private OrderDao dao;`，同单元 Spring XML 有 `<bean id="orderDao" class="com.acme.JdbcOrderDao"/>`
+- **THEN** 生成 `com.acme.OrderService` → `com.acme.JdbcOrderDao` 的 `injects` 边，证据为 `"orderDao"` 所在行，`token` 与 `name` 都是 `orderDao`，管理绑定处为 `@Service` 所在行
+
+#### Scenario: 构造器参数上的 Qualifier
+- **WHEN** 受管理的类 `com.acme.Report` 的构造器写 `Report(@Qualifier("mainDs") DataSource ds)`，`mainDs` 在管理单元绑定到仓库类 `com.acme.MainDs`
+- **THEN** 生成 `com.acme.Report` → `com.acme.MainDs` 的 `injects` 边，证据行为参数所在行
+
+#### Scenario: Resource 字段的缺省名
+- **WHEN** 受管理的类上写 `@Resource private OrderDao orderDao;`，管理单元有名为 `orderDao` 的绑定，目标为仓库类 `com.acme.JdbcOrderDao`
+- **THEN** 生成到 `com.acme.JdbcOrderDao` 的 `injects` 边，证据行为字段名所在行，`token` 为 `orderDao`
+
+#### Scenario: setter 上 Resource 的缺省名
+- **WHEN** 受管理的类上写 `@Resource public void setOrderDao(OrderDao d)`，管理单元有 `orderDao` 绑定到仓库类
+- **THEN** 解析的名字为 `orderDao`，证据的 `token` 为 `setOrderDao`
+
+#### Scenario: Resource 缺省名退回按类型
+- **WHEN** 受管理的类上写 `@Resource private Clock clock;`，管理单元与任何单元都没有名为 `clock` 的绑定
+- **THEN** 不生成边、不记缺口；落「按类型」
+
+#### Scenario: 不受 Spring 管理的类上的 Resource
+- **WHEN** 类 `com.acme.OrderBean` 只带 `@javax.ejb.Stateless`，字段写 `@Resource(name = "jdbc/orders") private DataSource ds;`
+- **THEN** 不解析名字，不生成边、不记缺口；落「不受管理」
+
+#### Scenario: 由别的单元 XML 管理的类
+- **WHEN** 单元 `core` 里的类 `com.acme.OrderService` 没有构造型注解，字段写 `@Resource(name = "orderDao")`；单元 `web` 的 Spring XML 写 `<bean id="orderService" class="com.acme.OrderService"/>` 与 `<bean id="orderDao" class="com.acme.JdbcOrderDao"/>`
+- **THEN** 名字在单元 `web` 里解析，生成 `com.acme.OrderService` → `com.acme.JdbcOrderDao` 的 `injects` 边，管理绑定处为 `web` 里 `orderService` 定义所在行
+
+#### Scenario: 方法上的 Qualifier 不读
+- **WHEN** 受管理的类里写 `@Bean @Qualifier("primary") public DataSource ds()`
+- **THEN** 不生成边、不记缺口；落「位置不读」
+
+#### Scenario: Seam 缺省名成边
+- **WHEN** 类 `com.acme.Checkout` 带 `@org.jboss.seam.annotations.Name("checkout")`，字段写 `@In private Cart cart;`，同单元类 `com.acme.Cart` 带 `@Name("cart")`
+- **THEN** 生成 `com.acme.Checkout` → `com.acme.Cart` 的 `injects` 边，证据行为字段名所在行
+
+#### Scenario: Seam 注入点不命中 JSF bean
+- **WHEN** Seam 组件的字段写 `@In private Prefs prefs;`，同单元只有 `faces-config.xml` 声明了名为 `prefs` 的 managed bean，没有 Seam 组件叫 `prefs`
+- **THEN** 不生成边；落「他处」，样例列出该 managed bean 的单元与命名空间
+
+#### Scenario: Seam 表达式
+- **WHEN** Seam 组件的字段写 `@In("#{preferences.get('wiki')}") private Object pref;`
+- **THEN** 不生成边；落「表达式」，记缺口 `injection-target-unresolved`
+
+#### Scenario: Seam 内置组件
+- **WHEN** Seam 组件的字段写 `@In private FacesMessages facesMessages;`，仓库里没有名为 `facesMessages` 的绑定
+- **THEN** 不生成边；落「无绑定」，记缺口 `injection-unbound`
+
+#### Scenario: EJB beanName
+- **WHEN** 字段写 `@EJB(beanName = "OrderBean") private Orders orders;`，同单元类 `com.acme.OrderBean` 带 `@javax.ejb.Stateless`、没有参数
+- **THEN** 生成声明该字段的类 → `com.acme.OrderBean` 的 `injects` 边
+
+#### Scenario: 按类型的 EJB
+- **WHEN** 字段写 `@EJB private Orders orders;`，没有 `beanName`
+- **THEN** 不生成边、不记缺口；落「无名字」
+
+#### Scenario: 非字面量的名字
+- **WHEN** 受管理的类上写 `@Qualifier(Beans.ORDER_DAO) private OrderDao dao;`
+- **THEN** 不生成边；落「名字非字面量」，记缺口 `injection-target-unresolved`
+
+#### Scenario: 同包同名的自定义注解不是注入点
+- **WHEN** 仓库在类所在的包里声明了注解类型 `Resource`，字段写 `@Resource(name = "x")`，没有导入 `javax.annotation.Resource`
+- **THEN** 该注解不是注入点，不进任何桶
+
+#### Scenario: 嵌套类型里的注入点
+- **WHEN** 受管理的顶层类 `com.acme.Outer` 里的静态嵌套类的字段写 `@Resource(name = "orderDao")`
+- **THEN** 消费者为 `com.acme.Outer` 的 class 节点，注入点计入嵌套计数

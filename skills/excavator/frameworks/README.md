@@ -9,16 +9,23 @@ they are not read at all for a project where the framework is absent.
 
 | Reader | When | How |
 |---|---|---|
-| `excavator-architecture-analyzer` | Phase 4 (ARCHITECTURE) | The `excavator` skill injects the full file content into the dispatch prompt for every framework Phase 1 detected (SKILL.md Phase 4, step 3). |
-| `excavator-file-analyzer` | Phase 2 (ANALYZE) | The agent itself checks for `<SKILL_DIR>/frameworks/<framework-id-lowercase>.md` and reads it before writing summaries and edges ("Framework Guidance" section of the agent). |
+| `excavator-architecture-analyzer` | Phase 4 (ARCHITECTURE), Phase F3 | The `excavator` skill injects the full file content into the dispatch prompt for every id in the graph header's `project.frameworks` (SKILL.md Phase 4, step 3). |
+| `excavator-file-analyzer` | Phase 2 (ANALYZE), Phase F2 | The dispatch prompt lists the ids from the same header (`Frameworks detected:`). The agent itself checks for `<SKILL_DIR>/frameworks/<framework-id-lowercase>.md` for each and reads it before writing summaries and edges ("Framework Guidance" section of the agent). |
 
 ## Naming
 
-The file name is the **lower-cased framework id as the project scanner reports
-it**, plus `.md`. `Spring Boot` detected as `spring` reads `spring.md`;
-`Next.js` detected as `nextjs` reads `nextjs.md`. Nothing normalises the id
-beyond lower-casing, so a new addendum has to match the scanner's spelling
-exactly or it will never be found.
+The file name is the `id` of the framework's `FrameworkConfig`, plus `.md`.
+The config for `Spring Boot` has the id `spring` and its addendum is
+`spring.md`; the config for `Next.js` has the id `nextjs` and its addendum is
+`nextjs.md`.
+
+The fact build detects frameworks from the scanned manifests with the
+registered configs and writes the detected ids, sorted, into the graph header's
+`project.frameworks`. Both readers take files by that id. Nothing maps a
+display name to an id, so a new addendum has to be named exactly like its
+config's `id` or it will never be found. A test enforces both directions:
+every registered config has an addendum of that name and a `promptSnippetPath`
+that points at it, and every addendum here belongs to a registered config.
 
 ## A missing file is silence, not a licence
 
@@ -92,8 +99,11 @@ What is where today:
 
 | Knowledge | Home |
 |---|---|
+| Which frameworks a project uses (`project.frameworks` in the graph header, with the evidence in the scan result) | deterministic, over the registered `FrameworkConfig`s |
 | Detection and layer hints for every framework listed below | `FrameworkConfig` |
-| DI by type, component roles, HTTP routes (Spring, Angular, Express, Gin, FastAPI, …) | addenda |
+| DI by type, component roles, HTTP routes (Spring, Java EE, Angular, Express, Gin, FastAPI, …) | addenda |
+| JMS and CDI event pairs, JAX-RS route assembly (`javaee.md`) | addenda |
+| JSF navigation outcomes, composite components, converters and validators by id (`jsf.md`) | addenda |
 | Endpoints from schema files (GraphQL, protobuf) | deterministic parsers |
 | EL names to bean classes (JSF, JSP, Seam, the Spring EL bridge) | deterministic, `catalogs/name-bindings.json` |
 | XML injection names to the classes they wire (Spring `ref=`, `p:`/`c:` refs, `lookup-method`) | deterministic, `catalogs/name-bindings.json` |
@@ -104,7 +114,8 @@ What is where today:
 ## Present today
 
 `angular.md`, `django.md`, `express.md`, `fastapi.md`, `flask.md`, `gin.md`,
-`maui.md`, `nextjs.md`, `rails.md`, `react.md`, `spring.md`, `vue.md`.
+`javaee.md`, `jsf.md`, `maui.md`, `nextjs.md`, `rails.md`, `react.md`,
+`spring.md`, `vue.md`.
 
 Deterministic readers for framework-specific file types — parser plugins that
 emit anchored structure rather than prose conventions — are tracked as OpenSpec

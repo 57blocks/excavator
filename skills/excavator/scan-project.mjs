@@ -22,6 +22,11 @@
  *     project-scanner.md Step 4)
  *   - Line counting
  *   - Complexity estimation (project-scanner.md Step 7 thresholds)
+ *   - Framework detection from the scanned manifests (`detectedFrameworks`):
+ *     deterministic, driven only by the registered framework configs, and
+ *     limited to manifests that were read (nothing ignored, filtered,
+ *     sensitive, oversized, binary or unreadable takes part). A manifest the
+ *     census records as `unknown-language` (Gemfile, Pipfile) still takes part.
  *
  * Usage:
  *   node scan-project.mjs <projectRoot> <outputPath>
@@ -46,6 +51,7 @@
  *     "skipped": [{ "path": "...", "reason": "filtered-by-defaults|filtered-by-ignore|sensitive|symlink|read-failed|unknown-language|binary|too-large", "language": "..." }, ...],
  *     "coverage": { "limits": { "maxFileLines": N, "maxFileBytes": N } },
  *     "estimatedComplexity": "small" | "moderate" | "large" | "very-large",
+ *     "detectedFrameworks": [{ "id": "...", "manifests": N, "evidence": { "path": "...", "line": N, "keyword": "..." } }, ...],
  *     "stats": { "filesScanned": N, "byCategory": {...}, "byLanguage": {...} }
  *   }
  *
@@ -99,12 +105,14 @@ try {
 
 const {
   PRIVATE_KEY_PREFIX_BYTES,
+  FrameworkRegistry,
   LanguageRegistry,
   buildSourceSelectionLedger,
   createSourceSelectionPolicy,
 } = core;
 
 const canonicalLanguageRegistry = LanguageRegistry.createDefault();
+const frameworkRegistry = FrameworkRegistry.createDefault();
 
 // ---------------------------------------------------------------------------
 // Skip limits and binary detection
@@ -222,6 +230,16 @@ const LANGUAGE_BY_EXT = Object.freeze({
   // Markup / docs
   '.html': 'html',
   '.htm': 'html',
+  // Facelets and JSP views. Each id is what the bare-extension fallback gave
+  // before they were declared, so the syntax mode that name mentions pick by
+  // language id (HTML-like jsp/jspf/tag, XML-like jspx/tagx/xhtml) is unchanged.
+  '.xhtml': 'xhtml',
+  '.jsp': 'jsp',
+  '.jspx': 'jspx',
+  '.jspf': 'jspf',
+  '.tag': 'tag',
+  '.tagx': 'tagx',
+  '.tld': 'tld',
   '.css': 'css',
   '.scss': 'css',
   '.sass': 'css',
@@ -418,6 +436,7 @@ const CATEGORY_BY_EXT = Object.freeze({
   '.sum': 'config',
   '.gradle': 'config',
   '.sbt': 'config',
+  '.tld': 'config',
   // infra
   '.tf': 'infra',
   '.tfvars': 'infra',
@@ -441,6 +460,12 @@ const CATEGORY_BY_EXT = Object.freeze({
   // markup
   '.html': 'markup',
   '.htm': 'markup',
+  '.xhtml': 'markup',
+  '.jsp': 'markup',
+  '.jspx': 'markup',
+  '.jspf': 'markup',
+  '.tag': 'markup',
+  '.tagx': 'markup',
   '.css': 'markup',
   '.scss': 'markup',
   '.sass': 'markup',
@@ -974,6 +999,8 @@ async function main() {
   // 3. Per-file: language + category + line count.
   //    Drop files that fail line counting (per-file resilience).
   const fileEntries = [];
+  // Manifest files that were read and kept in play, with the text already read.
+  const manifestFiles = [];
   const contentHash = createHash('sha256');
   contentHash.update(CONTENT_DIGEST_DOMAIN);
   for (const rel of kept) {
@@ -1044,6 +1071,15 @@ async function main() {
       continue;
     }
 
+    // A manifest that was read and is neither binary nor too large takes part
+    // in framework detection; the bytes are the ones just read, never read a
+    // second time. This sits BEFORE the unknown-language skip on purpose: an
+    // extension-less manifest (Gemfile, Pipfile) is still a manifest, while the
+    // census below (files / skipped) stays exactly as it was.
+    if (frameworkRegistry.isManifestPath(rel)) {
+      manifestFiles.push({ path: rel, content: scanned.bytes.toString('utf-8') });
+    }
+
     // The scanner cannot even NAME this file's language: no extension and no
     // filename-table match. An unrecognised *extension* is different — it
     // still names a language ("log", "xaml"), keeps its census node, and comes
@@ -1077,6 +1113,9 @@ async function main() {
 
   const estimatedComplexity = estimateComplexity(fileEntries.length);
 
+  // Always present; `[]` when no registered framework is declared.
+  const detectedFrameworks = frameworkRegistry.detectWithEvidence(manifestFiles);
+
   // Deterministic order for the skip ledger, independent of enumeration order.
   skipped.sort((a, b) => compareStableStrings(a.path, b.path) || compareStableStrings(a.reason, b.reason));
   const skippedByReason = {};
@@ -1093,6 +1132,7 @@ async function main() {
     filteredByIgnore,
     filteredByDefaults,
     estimatedComplexity,
+    detectedFrameworks,
     failures,
     skipped,
     coverage: {

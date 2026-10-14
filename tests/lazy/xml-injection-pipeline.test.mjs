@@ -93,8 +93,12 @@ describe('XML injection sites in the real Lazy driver', () => {
 
   it('stamps the product with the new pipeline version', () => {
     expect(result.saveError).toBeNull();
-    expect(PIPELINE_VERSION).toBe('lazy-fact-graph/9');
-    expect(graph.project.pipelineVersion).toBe('lazy-fact-graph/9');
+    expect(PIPELINE_VERSION).toBe('lazy-fact-graph/10');
+    expect(graph.project.pipelineVersion).toBe('lazy-fact-graph/10');
+  });
+
+  it('records no framework in the header: its poms and Spring contexts declare no framework keyword', () => {
+    expect(graph.project.frameworks).toEqual([]);
   });
 
   it('keeps the name-reference stage where it was in the stages row: after mentions, before the fact graph, timed', () => {

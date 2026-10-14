@@ -221,8 +221,28 @@ export const KNOWLEDGE_GRAPH_VERSION = '1.0.0';
  *  `Configuration` and `RestController` stereotypes, so a name that was
  *  `unbound` can now be `elsewhere` or a `references` edge, and
  *  `coverage.nameReferences.bindings` and `missingNames` count the two new
- *  binders. */
-export const PIPELINE_VERSION = 'lazy-fact-graph/9';
+ *  binders.
+ *  Bumped to /10 by openspec change javaee-jsf-framework-knowledge: the header's
+ *  `project.frameworks` is now recomputed on every run from the scan's detected
+ *  framework ids instead of carried over from the previous graph. No fact
+ *  changes, but the bump makes an artifact whose source is unchanged rebuild
+ *  once, so its header picks up the detected ids rather than staying `[]`. */
+export const PIPELINE_VERSION = 'lazy-fact-graph/10';
+
+/**
+ * The framework ids the scan detected, for the graph header. A scan result
+ * without the field means the scan script and this driver do not belong
+ * together; writing `[]` would present that breakage as "no framework".
+ *
+ * @param {{ detectedFrameworks?: Array<{ id: string }> }} scan
+ * @returns {string[]} sorted by id, as the scan emits them
+ */
+function detectedFrameworkIds(scan) {
+  if (!Array.isArray(scan.detectedFrameworks)) {
+    throw new Error('lazy-analyze: scan-result.json has no detectedFrameworks list (scan-project.mjs and this driver are out of step)');
+  }
+  return scan.detectedFrameworks.map((detected) => detected.id);
+}
 
 /** Same two-step @excavator/core resolution every sibling script uses. */
 async function resolveCore(root) {
@@ -638,6 +658,8 @@ export async function runLazyAnalysis({
       activeSnapshot.processingSkips,
     );
     writeFileSync(scanPath, serializeJsonProduct('scan-result.json', scan, { indent: 2, limit, recorder }), 'utf-8');
+    // Read now, so a broken scan result fails before the slow stages rather than after them.
+    const frameworkIds = detectedFrameworkIds(scan);
 
     // --- Phase 1.2 STRUCTURE-ALL ---------------------------------------------
     const structurePath = join(intermediateDir, STRUCTURE_ALL_FILE);
@@ -791,7 +813,7 @@ export async function runLazyAnalysis({
       project: {
         name: existingGraph?.project?.name ?? name,
         languages: existingGraph?.project?.languages?.length ? existingGraph.project.languages : languages,
-        frameworks: existingGraph?.project?.frameworks ?? [],
+        frameworks: frameworkIds,
         description: existingGraph?.project?.description ?? description,
         analyzedAt: now(),
         gitCommitHash,

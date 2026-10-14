@@ -73,6 +73,7 @@ export {
 export type {
   LanguageConfig,
   FrameworkConfig,
+  FrameworkDetection,
   TreeSitterConfig,
   FilePatternConfig,
 } from "./languages/index.js";
