@@ -50,8 +50,13 @@
 
 ## 3. 接入流水线与夹具
 
-- [ ] 3.1 夹具：在 `tests/fixtures/javaee-jsf-app/` 新增模块 `orders-rest/`，有自己的 `pom.xml`，内容覆盖 design O1 列出的全部情形。既有夹具测试锁定的计数如有变化，逐项写明来源。
-- [ ] 3.2 `build-fact-graph.mjs`：
+- [x] 3.1 夹具：在 `tests/fixtures/javaee-jsf-app/` 新增模块 `orders-rest/`，有自己的 `pom.xml`，内容覆盖 design O1 列出的全部情形。既有夹具测试锁定的计数如有变化，逐项写明来源。
+  - 变化的锁定计数，逐项如下：
+    - `tests/lazy/javaee-jsf-pipeline.test.mjs`「声明无框架关键字」：清单文件数 6 改为 7。来源：新增的 `orders-rest/pom.xml`。模块也登记进了父 `pom.xml` 的 `<modules>`，那一行没有清单文件的关键字，也不是点分名字。
+    - 同一个文件「类名规则的名字计数」：`candidates` 57 改为 61，`external` 42 改为 46，`edge` 仍为 15。来源：`orders-rest/pom.xml` 里的四个点分名字，`maven.apache.org`、`com.acme.orders`、`jakarta.platform`、`jakarta.jakartaee`，都不是仓库里的类型。去掉 provider 那一行的副本里，56 与 41 相应改为 60 与 45。
+    - `tests/skill/excavator/test_scan_project.test.mjs`「javaee-jsf-app 夹具」：`javaee` 的 `manifests` 2 改为 3。来源：`orders-rest/pom.xml` 写了 `jakarta.jakartaee-api`。证据仍是按路径排第一的 `orders-ejb/pom.xml` 第 13 行；`jsf` 的 3 不变。
+    - 四个流水线测试里的 `PIPELINE_VERSION` 与产物头 `lazy-fact-graph/10` 改为 `/11`（任务 3.3）：`javaee-jsf-pipeline`、`name-references-pipeline`、`xml-injection-pipeline`、`annotation-injection-pipeline`（后者两处，其中一处是同步后的产物头）。
+- [x] 3.2 `build-fact-graph.mjs`：
   - 新参数 `routeCatalog`。给了它却没给 `mentionInputs` 时抛错。
   - 按 D7 的顺序接入：
     1. 先为结构行的声明派生 id 并检测冲突；
@@ -60,22 +65,35 @@
     4. 最后加 `routes` 边。
   - 缺口进 gap 收集器，`coverage.routes` 进覆盖与 `factsDigest`，守恒失败时抛错。
   - 测试断言：结构行声明的节点 id 与序号不受端点影响。
-- [ ] 3.3 `lazy-analyze.mjs`：
+- [x] 3.3 `lazy-analyze.mjs`：
   - 加载路由目录，可注入；
   - 与 `mentionInputs` 一起传入；
   - `PIPELINE_VERSION` 升到 `lazy-fact-graph/11`。
   - `javaee-jsf-pipeline` 一类的端到端测试断言夹具上的端点、`routes` 边、九个桶与缺口。
-- [ ] 3.4 `validate-graph.mjs` 与 `retrieve.mjs` 按 D8：
+- [x] 3.4 `validate-graph.mjs` 与 `retrieve.mjs` 按 D8：
   - `routes` 证据与带 `token` 的 `contains` 证据核对 `token`；
   - `DETERMINISTIC_EDGE_TYPES` 加 `routes`。
   - 在夹具产物上跑图校验，没有新增告警；
   - 从处理方法经 `routes` 入边 1 跳到达端点，从端点出边 1 跳到达处理方法。
-- [ ] 3.5 检查 D10 列出的位置与其它按节点类型、边类型分支的地方，按需最小修改，并在本任务下写明每处的结论：
+- [x] 3.5 检查 D10 列出的位置与其它按节点类型、边类型分支的地方，按需最小修改，并在本任务下写明每处的结论：
   - `project-service.mjs`；
   - MCP `project_status`；
   - `select-stale-semantics.mjs`、`consumer-freshness.mjs`；
   - lazy 驱动的确定性校验；
   - 所有列举确定性边类型的散文与常量。
+
+  结论，一处一行：
+  - `skills/excavator/project-service.mjs`：`fileNodeMap` 只取 `file` 类型，端点节点（类型 `endpoint`）不进；`traverse` 按清单里的 `filePath` 取节点、取两端都在的边，端点节点（`filePath` 是 Java 文件）与 `routes` 边照常通过；`recall` 能按完整路由名精确命中端点节点，按路由里的词命中处理方法的 chunk；`read_evidence` 按节点取行范围。不改。测试：`tests/lazy/route-facts-pipeline.test.mjs`。
+  - MCP `project_status`（`mcp-server.mjs` 与 `projectStatus`）：原样返回 `graph.coverage` 与 `graph.gaps`，`coverage.routes` 与 `route-*` 缺口（scope 为族 id）自然出现；没有任何 schema 列举覆盖段的键。不改。测试：经项目服务与真实 stdio 服务器各一条。
+  - `select-stale-semantics.mjs`、`semantic-cache-reuse.mjs`：对所有带 `filePath` 的节点一视同仁，不按类型分支。含端点节点的 Java 文件在端点没有语义条目前算过期，与 GraphQL 端点节点相同。不改。
+  - `consumer-freshness.mjs`：只比对修订与流水线版本，不涉及节点与边类型；版本升到 /11 后 /10 的产物读作过期，同步后整体重投影。不改。测试：`route-facts-pipeline` 的「上一个流水线版本」。
+  - lazy 驱动的确定性校验（`validateFactGraphIntegrity`）：只查悬空端点、重复 id 与账本守恒，不按类型分支；夹具一次运行的结果为 `ok`。`mergeFactProjectionIntoGraph` 保留投影里的全部边，并丢弃文件里不再出现的事实节点，改了路由后下次同步旧端点消失。不改。测试：`route-facts-pipeline` 的同步一条。
+  - `build-source-index.mjs`：chunk 来自结构行（非代码行的 `endpoints`），不来自图的节点；Java 端点不建 chunk（D7）。写出的索引里没有 `endpoint:orders-rest` 的 id。不改。
+  - `finalize-incremental.mjs`（`LAYER_NODE_TYPES`、`hasAnalyzedFileCoverage`）与 `validate-graph.mjs`（`FILE_LEVEL_TYPES`）：`endpoint` 本来就是文件级类型，按路径与邻居分层。Lazy 图没有分层，校验器把每个文件级节点都列为「不在任何层」，夹具里多出 12 条端点的同类条目，不是新告警。不改。
+  - `annotate-graph.mjs`：`findRecord` 只认结构类型 `imports`、`exports`、`contains`、`calls`，`routes` 与 `injects` 同样不在其内；文件到端点的 `contains` 没有抽取记录，与 GraphQL 端点相同。不改。
+  - `retrieve.mjs` 的 `DETERMINISTIC_EDGE_TYPES`：加 `routes`（任务 3.4）。`validate-graph.mjs` 的 `expectedTokens`：改（任务 3.4）。`build-fact-graph.mjs` 的独立 CLI 入口：不传目录，`coverage.routes` 为 `not-run`，注释已补，测试：`route-facts-pipeline`。
+  - `agents/excavator-architecture-analyzer.md` 第 349、389 行（「`endpoint` 节点归数据层」）：这条是为模式文件里的端点写的，路由端点应与它的资源类同层。不改代理提示词，由 `javaee.md` 的分层表写明路由端点归 `layer:api`（任务 4.1）。
+  - 列举确定性边类型的散文：`skills/excavator-chat/SKILL.md` 第 106、108、216 行只列 `contains`、`imports`、`exports`、`calls`，对 `inherits`、`implements`、`overrides`、`mentions`、`references`、`injects` 早已过时，`routes` 与它们同样，不在本变更范围内，不改，写进报告。`agents/excavator-graph-reviewer.md` 与 `packages/core/src/schema.ts` 的边类型表里本来就有 `routes`。`src/diff-analyzer.ts`、`src/explain-builder.ts` 只沿 `contains` 取子节点，不按 `endpoint` 分支，端点与声明一样是文件的子节点。不改。
 
 ## 4. 附录
 

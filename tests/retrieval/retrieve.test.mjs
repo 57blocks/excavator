@@ -172,6 +172,38 @@ describe('injects edges are traversable (openspec: changes/xml-injection-referen
   });
 });
 
+describe('routes edges are traversable (openspec: changes/jaxrs-route-facts, D8)', () => {
+  const ENDPOINT = 'endpoint:src/OrderResource.java:OrderResource#GET /orders/{id}';
+  const HANDLER = 'function:src/OrderResource.java:OrderResource#find(long)';
+  const OTHER_HANDLER = 'function:src/OrderResource.java:OrderResource#findText(long)';
+  const edges = [
+    { type: 'routes', source: ENDPOINT, target: HANDLER, direction: 'forward' },
+    { type: 'routes', source: ENDPOINT, target: OTHER_HANDLER, direction: 'forward' },
+    { type: 'related', source: HANDLER, target: 'file:semantic-only', direction: 'forward' },
+  ];
+
+  it('is one of the deterministic edge types, beside injects, references and mentions', () => {
+    expect(DETERMINISTIC_EDGE_TYPES).toContain('routes');
+    for (const type of ['injects', 'references', 'mentions']) expect(DETERMINISTIC_EDGE_TYPES).toContain(type);
+  });
+
+  it('takes a handler to the endpoint it serves, against the edge direction (spec: from a handler to its endpoint)', () => {
+    const result = oneHop(edges, [HANDLER]);
+    expect(new Set(result.nodes)).toEqual(new Set([HANDLER, ENDPOINT]));
+    expect(result.edges.map((e) => e.type)).toEqual(['routes']); // the non-fact edge stays out
+  });
+
+  it('takes an endpoint to its handlers, along the edge, in one hop and within the bounded search', () => {
+    expect(new Set(oneHop(edges, [ENDPOINT]).nodes)).toEqual(new Set([ENDPOINT, HANDLER, OTHER_HANDLER]));
+    expect(boundedBFS(edges, [ENDPOINT], { maxHops: 1 }).nodes).toEqual(expect.arrayContaining([HANDLER, OTHER_HANDLER]));
+  });
+
+  it('reaches the other handler of a shared route from one handler in two hops', () => {
+    expect(oneHop(edges, [HANDLER]).nodes).not.toContain(OTHER_HANDLER);
+    expect(boundedBFS(edges, [HANDLER], { maxHops: 2 }).nodes).toContain(OTHER_HANDLER);
+  });
+});
+
 describe('boundedBFS — full deterministic path within budget', () => {
   it('reaches the whole Controller -> Service -> Handler -> EventBus chain within the default budget', () => {
     const result = boundedBFS(chainEdges(), [CONTROLLER], { maxHops: 4 });

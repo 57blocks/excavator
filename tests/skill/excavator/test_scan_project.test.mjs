@@ -1454,14 +1454,15 @@ describe('scan-project.mjs — the javaee-jsf-app fixture', () => {
     return root;
   }
 
-  it('detects javaee from two manifests and jsf from three, and not spring', () => {
+  it('detects javaee from three manifests and jsf from three, and not spring', () => {
     projectRoot = copyFixture();
     const r = runScript(projectRoot);
     expect(r.status).toBe(0);
     expect(r.output.detectedFrameworks).toEqual([
       {
         id: 'javaee',
-        manifests: 2,
+        // orders-ejb/pom.xml, ejb-jar.xml, and the pom of the orders-rest module (jaxrs-route-facts); the evidence stays the first by path
+        manifests: 3,
         evidence: { path: 'orders-ejb/pom.xml', line: 13, keyword: 'jakarta.jakartaee-api' },
       },
       {

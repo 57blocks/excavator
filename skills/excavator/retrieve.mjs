@@ -178,8 +178,12 @@ export function mergeCandidates({ exact = [], bm25 = [], sourceSearch = [], sema
  *  (a Spring bean) to the class it is injected with, by a name in the
  *  descriptor that a binding of the deployment unit resolves (openspec:
  *  changes/xml-injection-references, D7): through it an injected class reaches
- *  the classes that consume it, which no Java caller shows. */
-export const DETERMINISTIC_EDGE_TYPES = Object.freeze(['contains', 'imports', 'exports', 'calls', 'inherits', 'implements', 'overrides', 'mentions', 'references', 'injects']);
+ *  the classes that consume it, which no Java caller shows. `routes` links an
+ *  endpoint - the route a Java method is dispatched for, written on its
+ *  annotations - to the method that handles it (openspec: changes/jaxrs-route-
+ *  facts, D8): through it a handler reaches its endpoint and an endpoint its
+ *  handlers, which no caller in the source shows. */
+export const DETERMINISTIC_EDGE_TYPES = Object.freeze(['contains', 'imports', 'exports', 'calls', 'inherits', 'implements', 'overrides', 'mentions', 'references', 'injects', 'routes']);
 
 export const DEFAULT_TRAVERSAL_BUDGETS = Object.freeze({ maxSeeds: 5, maxNodes: 80, maxEdges: 160 });
 export const DEFAULT_BFS_MAX_HOPS = 4;
