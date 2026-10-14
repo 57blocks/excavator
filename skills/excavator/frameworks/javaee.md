@@ -15,11 +15,13 @@ The deterministic fact build has already drawn the relationships below. Query th
 |---|---|---|
 | `injects` | The consumer class to the class an injection names **by name**: `@EJB(beanName = "…")` on a field or a method, resolved against the `ejb-name` of the `@Stateless`, `@Stateful` and `@Singleton` classes (the `name` argument, else the simple class name) | Name-binding catalog (`ejb-annotation-session`, `ejb-annotation-injection`) |
 | `references` | A view file's EL name (`#{orders.list}`) to the class that `@Named` or `@Model` gives that name | Name-binding catalog (`cdi-annotation-named`, `cdi-annotation-model`) |
+| `routes` | An `endpoint` node to the method that handles it. The node is named by the route relative to the application's root (`GET /orders/{id}`), is owned by the resource type, and its file contains it. A public method of a type with a class-level `@Path` gets one when it carries an HTTP method annotation and the paths are string literals. An interface method gets one too (the implementing method is reached by the existing `implements` or `overrides` edge), and methods that share a route are the handlers of one endpoint | Route catalog (`jaxrs`) |
 | `mentions` | A descriptor file to a class its text names: `ejb-class`, `home`, `remote`, `local-home`, `local`, `business-local`, `business-remote` and `interceptor-class` in `ejb-jar.xml`; `class` in `persistence.xml`; `servlet-class`, `filter-class` and `listener-class` in `web.xml` | Literal class names in non-code files |
 | `implements`, `inherits`, `overrides`, `calls`, `imports`, `contains`, `exports` | Language-level facts | Structure extraction and the import map |
 
 - A class name the descriptors write that is **outside the repository** (a JPA provider, `FacesServlet`) gets no edge and is counted as outside the repository. Do not look for a node for it.
-- A name the fact build could not resolve is a visible gap (kinds that start with `injection-`, `name-reference-` or `mention-`). Do not close a gap by guessing what the name probably means.
+- A name or a route the fact build could not resolve is a visible gap (kinds that start with `injection-`, `name-reference-`, `mention-` or `route-`). Do not close a gap by guessing what the name probably means.
+- A method that carries JAX-RS annotations and gets no endpoint is counted, not hidden. The `route-` gaps are a locator of a sub-resource or a method with two HTTP methods (`route-verb-unresolved`), a type with no class-level `@Path`, such as a resource that a descriptor or a configuration registers (`route-root-unresolved`), a path written as a constant (`route-path-unresolved`), and a handler in a nested type (`route-handler-unresolved`). Private methods and `@RegisterRestClient` interfaces are counted and are no gap. Do not complete a route for any of them from a parent type, an interface, a constant or a configuration.
 
 ### Canonical File Roles
 
@@ -56,10 +58,10 @@ Every relation drawn from these conventions is `"provenance": "inferred"` with n
 - Zero or several candidates: do not connect, and say in the summary that the bean is chosen at deployment.
 - Qualifiers, `@Alternative`, `@Specializes` and the alternatives enabled in `beans.xml` are decided at deployment. Never use them to pick one of several candidates: several candidates still mean no edge.
 
-**JAX-RS routes** — a route is assembled from four parts, in this order: the `@ApplicationPath` value, the class-level `@Path`, the method-level `@Path` (it may be absent), and the HTTP method annotation on the method (`@GET`, `@POST`, `@PUT`, `@DELETE`, `@PATCH`, `@HEAD`, `@OPTIONS`). Write the result, for example `GET /api/orders/{id}`, into the handler method's semantic description. Create **no route nodes**: the route is a property of the method, not a node of its own.
-- Exactly one `@ApplicationPath` class in the repository: use its value as the prefix.
-- Zero or several `@ApplicationPath` classes: do not prefix. Write the path as the class and method give it, and say the application prefix is unknown.
-- Use only literals. A path built by concatenation or read from a constant you cannot resolve stays unresolved; do not complete it by guessing.
+**JAX-RS application prefix** — the fact graph names every endpoint by its route relative to the application's root, for example `GET /orders/{id}`, built from the class-level `@Path`, the method-level `@Path` (it may be absent) and the HTTP method annotation. What comes before it in the URL a client calls is the application's prefix, written elsewhere: the `@ApplicationPath` value of the activator class, a servlet mapping or a vendor configuration. The endpoint and its `routes` edge are facts: create **no route nodes**, and no inferred edge for a route. Only the prefix is left to you.
+- Exactly one `@ApplicationPath` class in the deployment unit of the handler method (the nearest directory above its file that holds a `pom.xml`, `build.gradle`, `build.gradle.kts`, `build.xml` or `build.sbt`): use its value as the prefix and write the full path, for example `GET /api/orders/{id}` for `@ApplicationPath("api")`, into the semantic description of the endpoint node or of the handler method.
+- Zero or several `@ApplicationPath` classes in that unit: do not prefix. Write the route as the endpoint names it, and say the application prefix is unknown.
+- Use only literals: an `@ApplicationPath` value read from a constant stays unresolved. A method that has a `route-` gap has no route to prefix: do not write one for it.
 
 **Message-driven beans and JMS destinations** — a sender and a message-driven bean are related only when both ends name the **same destination literal**: the bean's `@ActivationConfigProperty` for `destination` or `destinationLookup` (or its `mappedName`), and, at the sender, the `@Resource` `lookup` or `mappedName`, a `@JMSDestinationDefinition` name, or a literal passed to a `createQueue` or `createTopic` call.
 - Exactly one message-driven bean names that literal: connect the sender to it with an `inferred` `publishes` edge.
@@ -78,7 +80,7 @@ Assign nodes to these layers when detected:
 | Layer ID | Layer Name | What Goes Here |
 |---|---|---|
 | `layer:ui` | UI Layer | Backing beans: the `@Named` and `@Model` classes that view files bind by EL and that are not session beans, as the JSF addendum assigns them |
-| `layer:api` | API Layer | JAX-RS resources and their activator, servlets |
+| `layer:api` | API Layer | JAX-RS resources, the `endpoint` nodes of their routes and their activator, servlets |
 | `layer:service` | Service Layer | Session beans (also those pages bind by EL), message-driven beans, the other CDI managed beans (those no page binds), event observers, business interfaces |
 | `layer:data` | Data Layer | Entities, `*Dao.java`, JPA mappings, producers of `EntityManager` |
 | `layer:middleware` | Middleware Layer | Interceptors, decorators, servlet filters, JAX-RS providers |
@@ -87,7 +89,8 @@ Assign nodes to these layers when detected:
 
 ### Notable Patterns to Capture in languageLesson
 
-- **The container calls, the code does not**: a message-driven bean's `onMessage`, an observer method and a JAX-RS resource method have no caller in the source. The annotation is the entry point; the graph's `calls` edges will not reach them.
+- **The container calls, the code does not**: a message-driven bean's `onMessage`, an observer method and a JAX-RS resource method have no caller in the source. The annotation is the entry point; the graph's `calls` edges will not reach them. For a JAX-RS resource method the entry point is also a node: its `endpoint`, whose `routes` edge points at the method.
+- **An endpoint's name is its route below the application's root**: `GET /orders/{id}` is not the URL a client requests. The `@ApplicationPath` value, or a servlet mapping or a vendor configuration, comes before it, and a resource that no class-level `@Path` marks is a gap, not an endpoint.
 - **Injection is by type unless a name is written**: `@Inject` and a bare `@EJB` are resolved by the container against the beans of the deployment. A single implementation makes the wiring readable; several mean the deployment decides.
 - **Descriptors override annotations**: an `ejb-jar.xml` entry can replace the transaction attribute, the bean name or the interceptor order that an annotation sets. Read both when a descriptor lists the class.
 - **Transactions are the container's**: session-bean business methods run in a container-managed transaction by default; `@TransactionAttribute` changes the boundary, and a call between two methods of the same bean does not pass through the container.

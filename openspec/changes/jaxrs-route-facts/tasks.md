@@ -97,7 +97,7 @@
 
 ## 4. 附录
 
-- [ ] 4.1 按 design D12 修改 `skills/excavator/frameworks/javaee.md` 与 `frameworks/README.md`。附录契约测试与提示证据段测试如有锁定的文字，同步更新。
+- [x] 4.1 按 design D12 修改 `skills/excavator/frameworks/javaee.md` 与 `frameworks/README.md`。附录契约测试与提示证据段测试如有锁定的文字，同步更新。
 
 ## 5. 验收与记录
 

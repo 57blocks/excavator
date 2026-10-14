@@ -177,6 +177,17 @@ describe('frameworks/README.md explains the hook', () => {
     expect(flat(readme)).toContain('for every id in the graph header\'s `project.frameworks`');
   });
 
+  it('puts the JAX-RS route to its handler in the deterministic home, the route catalog, and leaves only its application prefix to javaee.md (jaxrs-route-facts)', () => {
+    const where = flat(readme.slice(readme.indexOf('What is where today:'), readme.indexOf('## Present today')));
+    expect(where).toContain('| JAX-RS route (class and method `@Path`, HTTP method annotation) to the method that handles it | deterministic, `catalogs/routes.json` |');
+    expect(where).toContain('| JMS and CDI event pairs, the application prefix of JAX-RS routes (`javaee.md`) | addenda |');
+    expect(where).not.toContain('JAX-RS route assembly');
+    const homes = flat(readme.slice(readme.indexOf('Framework knowledge has three homes'), readme.indexOf('What is where today:')));
+    expect(homes).toContain('route registration (Express `app.use`, Gin `r.Group`, Spring annotations)');
+    expect(homes).toContain('`../catalogs/routes.json` for routes');
+    expect(homes).toContain('The route catalog is such a catalog');
+  });
+
   it('lists javaee.md and jsf.md as present, and says where their knowledge lives', () => {
     const present = readme.slice(readme.indexOf('## Present today'));
     expect(present).toContain('`javaee.md`');
@@ -268,15 +279,18 @@ describe('SKILL.md injects framework addenda by the graph header ids (javaee-jsf
 
 describe('the javaee and jsf addenda (javaee-jsf-framework-knowledge, D8)', () => {
   const catalog = JSON.parse(readRepoFile('skills/excavator/catalogs/name-bindings.json'));
-  const catalogIds = new Set(
-    ['xmlBinders', 'annotationBinders', 'xmlInjections', 'annotationInjections', 'expressionLanguages']
+  const routeCatalog = JSON.parse(readRepoFile('skills/excavator/catalogs/routes.json'));
+  const catalogIds = new Set([
+    ...['xmlBinders', 'annotationBinders', 'xmlInjections', 'annotationInjections', 'expressionLanguages']
       .flatMap((key) => catalog[key].map((entry) => entry.id)),
-  );
+    // the route families of routes.json (jaxrs-route-facts)
+    ...routeCatalog.routeFamilies.map((family) => family.id),
+  ]);
   const ADDENDA = {
     javaee: {
       // one rule per kind of relation an addendum infers; every one has an "exactly one / zero or several" pair
       rules: 4,
-      edgeTypes: ['injects', 'references', 'mentions', 'implements', 'calls'],
+      edgeTypes: ['injects', 'references', 'routes', 'mentions', 'implements', 'calls'],
       roles: ['Session bean', 'Message-driven bean', 'JAX-RS resource', 'JAX-RS provider', 'Interceptor', 'Entity', 'Producer', 'Descriptor'],
     },
     jsf: {
@@ -313,7 +327,7 @@ describe('the javaee and jsf addenda (javaee-jsf-framework-knowledge, D8)', () =
             expect(DETERMINISTIC_EDGE_TYPES, `${type} is not a deterministic edge type`).toContain(type);
           }
           for (const [, catalogId] of source.matchAll(/`([a-z-]+)`/g)) {
-            expect(catalogIds.has(catalogId), `${catalogId} is not an entry of name-bindings.json`).toBe(true);
+            expect(catalogIds.has(catalogId), `${catalogId} is not an entry of name-bindings.json or a family of routes.json`).toBe(true);
           }
         }
         for (const type of expected.edgeTypes) expect(listed.has(type), `${type} should be listed`).toBe(true);
@@ -393,10 +407,38 @@ describe('the javaee and jsf addenda (javaee-jsf-framework-knowledge, D8)', () =
       expect(layers).toContain('| `layer:service` | Service Layer | Session beans (also those pages bind by EL)');
     });
 
-    it('assembles a JAX-RS route from its four parts into the method description and makes no route node', () => {
-      for (const part of ['`@ApplicationPath` value', 'class-level `@Path`', 'method-level `@Path`', 'HTTP method annotation']) expect(text).toContain(part);
-      expect(text).toContain("into the handler method's semantic description");
-      expect(text).toContain('Create no route nodes');
+    it('lists the JAX-RS route as a fact it does not redraw: the endpoint node, the routes edge, the route catalog and the route- gaps', () => {
+      const facts = flat(readRepoFile('skills/excavator/frameworks/javaee.md').split('### Already in the fact graph')[1].split('### Canonical File Roles')[0]);
+      expect(facts).toContain('| `routes` | An `endpoint` node to the method that handles it.');
+      expect(facts).toContain('named by the route relative to the application\'s root (`GET /orders/{id}`)');
+      expect(facts).toContain('| Route catalog (`jaxrs`) |');
+      expect(facts).toContain('(kinds that start with `injection-`, `name-reference-`, `mention-` or `route-`)');
+      for (const kind of ['route-verb-unresolved', 'route-root-unresolved', 'route-path-unresolved', 'route-handler-unresolved']) expect(facts).toContain(`\`${kind}\``);
+      expect(facts).toContain('Private methods and `@RegisterRestClient` interfaces are counted and are no gap.');
+    });
+
+    it('leaves a JAX-RS route to the fact graph and adds only the application prefix, to a description, from exactly one @ApplicationPath of the deployment unit', () => {
+      const rule = flat(readRepoFile('skills/excavator/frameworks/javaee.md').split('**JAX-RS application prefix**')[1].split('**Message-driven beans')[0]);
+      expect(rule).toContain('names every endpoint by its route relative to the application\'s root');
+      expect(rule).toContain('The endpoint and its `routes` edge are facts: create no route nodes, and no inferred edge for a route.');
+      expect(rule).toContain('Exactly one `@ApplicationPath` class in the deployment unit of the handler method');
+      expect(rule).toContain('`pom.xml`, `build.gradle`, `build.gradle.kts`, `build.xml` or `build.sbt`');
+      expect(rule).toContain('write the full path, for example `GET /api/orders/{id}` for `@ApplicationPath("api")`');
+      expect(rule).toContain('into the semantic description of the endpoint node or of the handler method');
+      expect(rule).toContain('Zero or several `@ApplicationPath` classes in that unit: do not prefix. Write the route as the endpoint names it, and say the application prefix is unknown.');
+      expect(rule).toContain('A method that has a `route-` gap has no route to prefix: do not write one for it.');
+      // the old rule, which assembled the route from its parts, is gone
+      const text = flat(readRepoFile('skills/excavator/frameworks/javaee.md'));
+      expect(text).not.toContain('a route is assembled from four parts');
+      expect(text).not.toContain("into the handler method's semantic description");
+    });
+
+    it('says in the languageLesson that an endpoint\'s name is its route below the application\'s root, and puts the endpoint nodes in the API layer', () => {
+      const lessons = flat(readRepoFile('skills/excavator/frameworks/javaee.md').split('### Notable Patterns to Capture in languageLesson')[1]);
+      expect(lessons).toContain("An endpoint's name is its route below the application's root:");
+      expect(lessons).toContain('`GET /orders/{id}` is not the URL a client requests.');
+      const layers = flat(readRepoFile('skills/excavator/frameworks/javaee.md').split('### Architectural Layers for Java EE')[1].split('### Notable Patterns')[0]);
+      expect(layers).toContain('| `layer:api` | API Layer | JAX-RS resources, the `endpoint` nodes of their routes and their activator, servlets |');
     });
 
     it('pairs message-driven beans and CDI events only on the same destination literal or the same event type', () => {
