@@ -51,7 +51,7 @@
  * three-step shape, redirected at `semantic-cache.json` instead of a
  * model-authored graph node, for Full mode's new semantic-generation
  * pipeline:
- *   node apply-verification.mjs <projectRoot> prepare-semantic [--sample <n>] [--batch-size <n>]
+ *   node apply-verification.mjs <projectRoot> prepare-semantic [--sample <n>] [--batch-size <n>] [--scope <dir>]
  *   node apply-verification.mjs <projectRoot> apply-semantic [--batch <i>]
  *   node apply-verification.mjs <projectRoot> skip-semantic
  * These NEVER read or write `knowledge-graph.jsonl`'s node fields — see
@@ -83,6 +83,7 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { compareGaps } from './coverage-ledger.mjs';
+import { scopePredicate } from './project-paths.mjs';
 import { resolveWithinRoot } from './validate-graph.mjs';
 import { VERIFICATION_SEVERITY, mergeVerification } from './verification-state.mjs';
 import { KNOWLEDGE_GRAPH_FILE, readKnowledgeGraph } from './knowledge-graph-store.mjs';
@@ -287,16 +288,21 @@ export function prepareVerification({ graph, sample = null, batchSize = DEFAULT_
  *   semanticCache: { entries: Record<string, object> } | null | undefined,
  *   sample?: number|null, batchSize?: number,
  *   classifyPath: (filePath: string) => 'ok'|'missing'|'out-of-scope',
+ *   scope?: string|null,
  * }} args
  */
 export function prepareSemanticVerification({
-  factNodes, semanticCache, sample = null, batchSize = DEFAULT_BATCH_SIZE, classifyPath,
+  factNodes, semanticCache, sample = null, batchSize = DEFAULT_BATCH_SIZE, classifyPath, scope = null,
 }) {
   if (typeof classifyPath !== 'function') {
     throw new Error('prepareSemanticVerification: classifyPath must be a function');
   }
   const entries = semanticCache?.entries ?? {};
-  const nodes = Array.isArray(factNodes) ? factNodes : [];
+  const inScope = scope === null ? () => true : scopePredicate(scope);
+  const nodes = (Array.isArray(factNodes) ? factNodes : []).filter((node) => scope === null || inScope(node?.filePath));
+  if (scope !== null && nodes.length === 0) {
+    throw new Error(`apply-verification: --scope "${scope}" matches no fact-graph node`);
+  }
   const counts = {
     nodesTotal: nodes.length,
     summariesTotal: 0,
@@ -362,6 +368,7 @@ export function prepareSemanticVerification({
   const manifest = {
     scriptCompleted: true,
     mode,
+    scope,
     batchSize: Math.max(1, batchSize),
     counts,
     outOfScopePaths: outOfScope.sort(compareStrings),
@@ -757,13 +764,13 @@ const SEMANTIC_ACTIONS = Object.freeze(['prepare-semantic', 'apply-semantic', 's
 function parseArgs(argv) {
   const args = {
     projectRoot: null, action: null, graph: null, out: null, manifest: null,
-    batchDir: null, verdictDir: null, report: null, archive: null,
+    batchDir: null, verdictDir: null, report: null, archive: null, scope: null,
     sample: null, batchSize: DEFAULT_BATCH_SIZE, sampleLimit: 5, batch: null,
   };
   const valueFlags = {
     '--graph': 'graph', '--out': 'out', '--manifest': 'manifest',
     '--batch-dir': 'batchDir', '--verdict-dir': 'verdictDir',
-    '--report': 'report', '--archive': 'archive',
+    '--report': 'report', '--archive': 'archive', '--scope': 'scope',
   };
   const intFlags = { '--sample': 'sample', '--batch-size': 'batchSize', '--samples': 'sampleLimit', '--batch': 'batch' };
   for (let i = 0; i < argv.length; i++) {
@@ -804,6 +811,9 @@ function parseArgs(argv) {
   }
   if (args.batch !== null && args.action !== 'apply-semantic') {
     throw new Error('apply-verification: --batch applies only to apply-semantic');
+  }
+  if (args.scope !== null && args.action !== 'prepare-semantic') {
+    throw new Error('apply-verification: --scope applies only to prepare-semantic');
   }
   return args;
 }
@@ -898,6 +908,7 @@ async function runSemanticAction(args, projectRoot, dataDir, intermediate) {
       sample: args.sample,
       batchSize: args.batchSize,
       classifyPath: createPathClassifier(projectRoot),
+      scope: args.scope,
     });
     writeJson(manifestPath, manifest);
     for (const batch of batches) {
@@ -905,7 +916,7 @@ async function runSemanticAction(args, projectRoot, dataDir, intermediate) {
     }
     const c = manifest.counts;
     process.stderr.write(
-      `apply-verification prepare-semantic: mode=${mode} summaries=${c.summariesTotal} ` +
+      `apply-verification prepare-semantic: mode=${mode} scope=${args.scope ?? '(project)'} summaries=${c.summariesTotal} ` +
       `already-checked=${c.alreadyChecked} candidates=${c.candidates} selected=${c.selected} batches=${batches.length} ` +
       `no-anchor=${c.noAnchor} source-missing=${c.sourceMissing} ` +
       `path-out-of-scope=${c.pathOutOfScope}\n`,

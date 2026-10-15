@@ -146,4 +146,16 @@ describe('Phase F CLI pipeline (child processes, not just programmatic exports)'
   it('refuses --batch outside apply-semantic', () => {
     expect(() => run('apply-verification.mjs', [root, 'prepare-semantic', '--batch', '0'])).toThrow(/--batch applies only to apply-semantic/);
   });
+
+  it('scopes selection to a directory and refuses a malformed or empty scope before any dispatch', () => {
+    const intermediate = join(root, '.excavator', 'intermediate');
+    run('select-stale-semantics.mjs', [root, '--scope', 'src']);
+    const stale = JSON.parse(readFileSync(join(intermediate, 'stale-semantics.json'), 'utf-8'));
+    expect(stale.scope).toBe('src');
+    expect(stale.staleFiles).toEqual(['src/a.ts']);
+    expect(() => run('select-stale-semantics.mjs', [root, '--scope', '../src'])).toThrow(/canonical project-relative path/);
+    expect(() => run('select-stale-semantics.mjs', [root, '--scope', 'lib'])).toThrow(/matches no fact-graph node/);
+    expect(() => run('apply-verification.mjs', [root, 'prepare-semantic', '--scope', '/src'])).toThrow(/canonical project-relative path/);
+    expect(() => run('apply-verification.mjs', [root, 'apply-semantic', '--scope', 'src'])).toThrow(/--scope applies only to prepare-semantic/);
+  });
 });

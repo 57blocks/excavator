@@ -53,6 +53,21 @@ describe('apply-verification.mjs — prepareSemanticVerification', () => {
     expect(manifest.counts.summariesTotal).toBe(5);
   });
 
+  it('with a scope, selects only summaries of nodes under that directory', () => {
+    const factNodes = [
+      { id: 'function:m1/a.ts:run', filePath: 'm1/a.ts', lineRange: [1, 2] },
+      { id: 'function:m2/b.ts:run', filePath: 'm2/b.ts', lineRange: [1, 2] },
+    ];
+    const semanticCache = { entries: {
+      'function:m1/a.ts:run': { summary: 'A.' }, 'function:m2/b.ts:run': { summary: 'B.' },
+    } };
+    const { manifest } = prepareSemanticVerification({ factNodes, semanticCache, classifyPath: okClassifier, scope: 'm1' });
+    expect(manifest.selectedIds).toEqual(['function:m1/a.ts:run']);
+    expect(manifest.scope).toBe('m1');
+    expect(() => prepareSemanticVerification({ factNodes, semanticCache, classifyPath: okClassifier, scope: '../m1' }))
+      .toThrow(/canonical project-relative path/);
+  });
+
   it('refuses an out-of-scope path without reading it, same as the graph-based flow', () => {
     const factNodes = [{ id: 'function:a.ts:run', filePath: '../outside.ts', lineRange: [1, 2] }];
     const semanticCache = { entries: { 'function:a.ts:run': { summary: 'x', semanticSourceHash: 'h1' } } };

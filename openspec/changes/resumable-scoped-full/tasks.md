@@ -27,7 +27,13 @@
       - `contradicted`、`unverified` 的缺口改按缓存里的标记计数。续跑时前一次已提交的批不会再出现在本次判定里，按本次判定计数会少算。
       - 矛盾归档带上前一次的记录：条目仍是 `contradicted` 且 summary 没变时保留，否则丢弃。否则续跑会丢掉中断那次的矛盾理由。
     - 测试：单测 7 条、CLI 流水线加逐批提交与遗留判定文件。8 个注入变异都能变红；其中「归档不核对 summary」第一次没变红，因为夹具里重新生成的条目没有标记，补成「重新生成后又被判矛盾」后变红。
-- [ ] 1.2 `select-stale-semantics.mjs` 与 `prepare-semantic` 的 `--scope`。验证：O1 对应单测；全量门。
+- [x] 1.2 `select-stale-semantics.mjs` 与 `prepare-semantic` 的 `--scope`。验证：O1 对应单测；全量门。
+  - 完成记录：
+    - 范围判定只有一份：`project-paths.mjs` 的 `scopePredicate`，用 `canonicalSourcePath` 校验，去掉末尾的 `/`，匹配目录本身或其下的路径。两个脚本都用它。
+    - 范围匹配不到任何事实节点时报错退出。多半是拼错了目录，静默选空会被当成「这个模块已经做完」。
+    - `stale-semantics.json` 与核验清单都记下 `scope`，供预估与报告读。`--scope` 只用于 `prepare-semantic`，用在别的动作上报错。
+    - 测试：单测 6 条，CLI 1 条（选择、不规范、选不到、用错动作）。7 个注入变异都能变红。
+    - 1.1 的全量门：core 1417、仓库 3565 通过，引用、OpenSpec 校验通过。
 - [ ] 1.3 SKILL.md：Phase F 开始移走旧逐批文件、F2 与 F4 逐批提交、`--scope`、`--estimate`；新附录 `full-run-estimate.md`。验证：O1 的 SKILL 契约与附录单测；全量门。
 - [ ] 1.4 `scripts/benchmark-full-run.mjs run`：`--continue`、`--timeout-minutes`、`--skill-args`、产物拷贝。验证：O1 对应单测；全量门。
 
