@@ -747,6 +747,12 @@ describe('scan-project.mjs — default exclusion of plugin/agent and data direct
         '.excavator-old',
         '.trash-9',
         '.trash-1234567890',
+        // Names a default FILE pattern also matches (`*.lock`, `*.map`,
+        // `*.log`): the derived `!<file pattern>/` negations must not
+        // re-include a directory a directory pattern names.
+        '.excavator.bak.lock',
+        '.excavator-old.map',
+        '.trash-9.log',
       ];
       for (const name of representativeDirNames) {
         expect(scanProject.isHardSkipDir(name), `expected walker to hard-skip ${name}`).toBe(true);

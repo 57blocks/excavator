@@ -3,9 +3,10 @@ import { readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 
 /**
- * Conservative universal exclusions shared by every source consumer.
+ * The hand-written exclusions. A pattern ending in `/` is a directory
+ * pattern; any other is a file pattern.
  */
-export const DEFAULT_IGNORE_PATTERNS: string[] = [
+const BASE_IGNORE_PATTERNS: readonly string[] = [
   // Dependency directories
   "node_modules/",
   ".git/",
@@ -103,6 +104,36 @@ export const DEFAULT_IGNORE_PATTERNS: string[] = [
   ".excavator.*/",
   ".excavator-*/",
   ".trash-*/",
+];
+
+function isFilePattern(pattern: string): boolean {
+  return !pattern.endsWith("/") && !pattern.startsWith("!");
+}
+
+function isDirectoryPattern(pattern: string): boolean {
+  return pattern.endsWith("/") && !pattern.startsWith("!");
+}
+
+/**
+ * Conservative universal exclusions shared by every source consumer.
+ *
+ * Under gitignore semantics a file pattern also matches a directory of the
+ * same name at any depth, and the `ignore` package matches case-insensitively,
+ * so `LICENSE` alone would drop a `license/` source package. Each file pattern
+ * therefore gets a derived `!<pattern>/` that withdraws only its directory
+ * match; files are still tested one by one, so `license/LICENSE` stays
+ * excluded. The list is ordered file patterns, negations, directory patterns:
+ * the positive patterns do not depend on each other's order, and for one path
+ * the last matching rule wins, so a directory a directory pattern names
+ * (`.trash-1.log/`) stays excluded even when a file pattern also matches its
+ * name. A parent a directory pattern excludes (`node_modules/`, `build/`) is
+ * decided before its children, so nothing under it comes back. Project and
+ * CLI rules are added after all of these and still apply.
+ */
+export const DEFAULT_IGNORE_PATTERNS: string[] = [
+  ...BASE_IGNORE_PATTERNS.filter(isFilePattern),
+  ...BASE_IGNORE_PATTERNS.filter(isFilePattern).map((pattern) => `!${pattern}/`),
+  ...BASE_IGNORE_PATTERNS.filter(isDirectoryPattern),
 ];
 
 export interface IgnoreFilter {

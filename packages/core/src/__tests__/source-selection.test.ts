@@ -1,5 +1,7 @@
+import ignore from "ignore";
 import { describe, expect, it } from "vitest";
 
+import { DEFAULT_IGNORE_PATTERNS } from "../ignore-filter.js";
 import {
   PRIVATE_KEY_PREFIX_BYTES,
   SOURCE_SELECTION_POLICY_VERSION,
@@ -7,6 +9,28 @@ import {
   createSourceSelectionPolicy,
   sourceSelectionConservationViolations,
 } from "../source-selection.js";
+
+/** Default file patterns, read from the constant itself rather than listed by hand. */
+const FILE_PATTERNS = DEFAULT_IGNORE_PATTERNS.filter(
+  (pattern) => !pattern.endsWith("/") && !pattern.startsWith("!"),
+);
+/**
+ * The defaults without the derived directory negations. With only positive
+ * rules, order and repetition do not matter, so this decides like the rule set
+ * before the negations existed.
+ */
+const POSITIVE_DEFAULTS = DEFAULT_IGNORE_PATTERNS.filter((pattern) => !pattern.startsWith("!"));
+/** Archive names are rejected by the archive check before any pattern is consulted. */
+const ARCHIVE_NAME = /\.(zip|tar|gz)$/i;
+
+/** A concrete name a file pattern matches: every `*` becomes `x`. */
+function concreteName(pattern: string): string {
+  return pattern.replaceAll("*", "x");
+}
+
+function filteredByDefaults(path: string, detail = "default-pattern") {
+  return { kind: "filtered-by-defaults", reason: "filtered-by-defaults", detail, path };
+}
 
 describe("source selection policy", () => {
   it("returns one tagged decision for defaults, project ignores, sensitive inputs, and selected inputs", () => {
@@ -179,6 +203,100 @@ describe("source selection policy", () => {
     expect(decision).not.toHaveProperty("content");
     expect(decision).not.toHaveProperty("excerpt");
     expect(decision).not.toHaveProperty("contentHash");
+  });
+});
+
+describe("default file patterns do not exclude directories", () => {
+  const policy = createSourceSelectionPolicy();
+  const before = createSourceSelectionPolicy({ defaultPatterns: POSITIVE_DEFAULTS });
+
+  it("reads a non-empty set of file patterns whose concrete names they match", () => {
+    expect(FILE_PATTERNS).toEqual(expect.arrayContaining(["LICENSE", "*.lock", "*.log", "*.map", ".eslintrc*"]));
+    for (const pattern of FILE_PATTERNS) {
+      expect(ignore().add([pattern]).ignores(concreteName(pattern)), pattern).toBe(true);
+    }
+  });
+
+  it("keeps the selection policy version: the derived rules reach the digest through the descriptors", () => {
+    expect(SOURCE_SELECTION_POLICY_VERSION).toBe("source-selection-v1");
+    expect(policy.descriptors).toEqual(expect.arrayContaining(["default:LICENSE", "default:!LICENSE/"]));
+  });
+
+  // Scenario: every file pattern lets a directory of the same name through.
+  it.each(FILE_PATTERNS)("file pattern %s excludes files of that name, not directories", (pattern) => {
+    for (const name of [concreteName(pattern).toLowerCase(), concreteName(pattern).toUpperCase()]) {
+      for (const path of [`${name}/Foo.java`, `src/${name}/Foo.java`]) {
+        expect(policy.decide({ path })).toEqual({ kind: "selected", path });
+      }
+      const detail = ARCHIVE_NAME.test(name) ? "archive" : "default-pattern";
+      for (const path of [name, `src/${name}`, `${name}/${name}`]) {
+        expect(policy.decide({ path })).toEqual(filteredByDefaults(path, detail));
+        expect(policy.decide({ path })).toEqual(before.decide({ path }));
+      }
+    }
+  });
+
+  // Scenario: a source directory named license is selected.
+  it.each([
+    "src/main/java/org/example/license/LicenseService.java",
+    "app/Services/License/LicenseService.php",
+    "src/Services/License/ILicenseProvider.cs",
+  ])("selects %s under a directory named like LICENSE", (path) => {
+    expect(policy.decide({ path })).toEqual({ kind: "selected", path });
+  });
+
+  // Scenario: license files are still excluded.
+  it.each([
+    "LICENSE",
+    "docs/LICENSE",
+    "docs/legal/license",
+    "src/main/java/org/example/license/LICENSE",
+  ])("still excludes the license file %s by default pattern", (path) => {
+    expect(policy.decide({ path })).toEqual(filteredByDefaults(path));
+  });
+
+  it.each(["LICENSE.md", "License.txt"])("decides %s exactly as before the directory negations", (path) => {
+    expect(policy.decide({ path })).toEqual(before.decide({ path }));
+    expect(policy.decide({ path })).toEqual({ kind: "selected", path });
+  });
+
+  // Scenario: directory patterns are unchanged.
+  it.each([
+    "node_modules/license/index.js",
+    "build/license/Gen.java",
+    "license/build/Gen.java",
+    "license/node_modules/pkg/index.js",
+  ])("still excludes %s because a directory pattern excludes an ancestor", (path) => {
+    expect(policy.decide({ path })).toEqual(filteredByDefaults(path));
+  });
+
+  // Scenario: a project rule can still exclude the directory.
+  it("lets a project rule exclude a directory named like LICENSE", () => {
+    const projectPolicy = createSourceSelectionPolicy({ projectPatterns: ["license/"] });
+    for (const path of ["src/license/A.java", "src/main/java/org/example/License/LicenseService.java"]) {
+      expect(projectPolicy.decide({ path })).toEqual({
+        kind: "filtered-by-ignore",
+        reason: "filtered-by-ignore",
+        detail: "project-rule",
+        path,
+      });
+    }
+  });
+
+  it("lets a CLI rule exclude a directory named like LICENSE", () => {
+    const path = "src/license/A.java";
+    expect(createSourceSelectionPolicy({ cliPatterns: ["license/"] }).decide({ path })).toEqual({
+      kind: "filtered-by-ignore",
+      reason: "filtered-by-ignore",
+      detail: "cli-rule",
+      path,
+    });
+  });
+
+  it("lets a project negation re-include a license file inside a license directory", () => {
+    const path = "src/main/java/org/example/license/LICENSE";
+    const projectPolicy = createSourceSelectionPolicy({ projectPatterns: ["!LICENSE"] });
+    expect(projectPolicy.decide({ path })).toEqual({ kind: "selected", path });
   });
 });
 
