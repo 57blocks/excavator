@@ -405,7 +405,10 @@ export function applySemanticVerification({
   semanticCache, manifest = null, verdicts = [], mode = null, sampleLimit = 5,
   batchIds = null, previousArchive = [],
 }) {
+  // Keep every top-level field: dropping `contentLanguage` would make every
+  // entry read as noncanonical, and the next Full would regenerate them all.
   const cache = {
+    ...(semanticCache ?? {}),
     version: semanticCache?.version ?? '1.0.0',
     entries: { ...(semanticCache?.entries ?? {}) },
   };

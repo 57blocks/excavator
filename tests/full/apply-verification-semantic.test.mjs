@@ -110,6 +110,15 @@ describe('apply-verification.mjs — applySemanticVerification', () => {
     expect(report.gaps.some((g) => g.kind === 'semantic-summary-contradicted')).toBe(true);
   });
 
+  it('keeps the cache identity, so verified entries stay reusable', () => {
+    const semanticCache = { version: '2.0.0', contentLanguage: 'en', entries: { 'n:a': { summary: 'A.' } } };
+    const { semanticCache: updated } = applySemanticVerification({
+      semanticCache, verdicts: [{ id: 'n:a', verdict: 'verified' }],
+    });
+    expect(updated.version).toBe('2.0.0');
+    expect(updated.contentLanguage).toBe('en');
+  });
+
   it('drops a verdict for a node id absent from semantic-cache.json, counted as unknown-node — never fabricates an entry', () => {
     const semanticCache = { entries: { 'function:a.ts:run': { summary: 'x', semanticSourceHash: 'h1' } } };
     const verdicts = [{ id: 'function:a.ts:ghost', verdict: 'verified' }];

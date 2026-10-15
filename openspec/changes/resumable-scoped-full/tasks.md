@@ -11,6 +11,7 @@
 1. `docs(openspec): propose resumable-scoped-full`：本变更的 proposal、design、规格与 tasks。
 2. `fix(skill): verify only summaries without a verdict and commit verdicts per batch`：任务 1.1。
 3. `feat(skill): select semantics and verification candidates within a directory scope`：任务 1.2。
+3a. `fix(skill): keep the semantic cache's language identity when writing verdicts`：做 1.3 时发现，见 1.2 的完成记录。
 4. `feat(skill): resume, scope and estimate a Full run`：任务 1.3。
 5. `feat(scripts): continue, time out and pass skill arguments in measured runs`：任务 1.4。
 6. `docs(openspec): record resumable-scoped-full acceptance`：任务 2.1–2.3。
@@ -34,6 +35,8 @@
     - `stale-semantics.json` 与核验清单都记下 `scope`，供预估与报告读。`--scope` 只用于 `prepare-semantic`，用在别的动作上报错。
     - 测试：单测 6 条，CLI 1 条（选择、不规范、选不到、用错动作）。7 个注入变异都能变红。
     - 1.1 的全量门：core 1417、仓库 3565 通过，引用、OpenSpec 校验通过。
+    - 1.2 的全量门：仓库 3571 通过，其余同上。
+    - 做 1.3 时发现的既有缺陷，单独提交（3a）：`apply-semantic` 把缓存重写成 `{version, entries}`，丢了顶层的 `contentLanguage: "en"`。此后每个条目都被判为 `noncanonical-language`，下一次 Full 会重新生成全部语义。在上一个变更 cargotracker 跑完的副本上重跑选择，1038 个节点全部落进 `generate`。这会让续跑在 F4 提交过任何一批之后失效，也让 O2 的「每个节点都有新鲜条目」不可能通过。修法：保留缓存的全部顶层字段。单测与 CLI 流水线（核验之后再选择，节点在 `reuse` 里）在旧写法下都变红。
 - [ ] 1.3 SKILL.md：Phase F 开始移走旧逐批文件、F2 与 F4 逐批提交、`--scope`、`--estimate`；新附录 `full-run-estimate.md`。验证：O1 的 SKILL 契约与附录单测；全量门。
 - [ ] 1.4 `scripts/benchmark-full-run.mjs run`：`--continue`、`--timeout-minutes`、`--skill-args`、产物拷贝。验证：O1 对应单测；全量门。
 

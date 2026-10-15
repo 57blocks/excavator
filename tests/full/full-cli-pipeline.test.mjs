@@ -128,6 +128,11 @@ describe('Phase F CLI pipeline (child processes, not just programmatic exports)'
     const verifyReport = JSON.parse(readFileSync(join(intermediate, 'semantic-verification.json'), 'utf-8'));
     expect(verifyReport.verdictFiles).toEqual(['summary-verdicts-0.json']);
 
+    // Writing verdicts keeps the cache reusable: the next Full reuses the entry.
+    run('select-stale-semantics.mjs', [root, '--out', join(intermediate, 'after-verify.json'), '--files-out', join(intermediate, 'after-verify-files.json')]);
+    const afterVerify = JSON.parse(readFileSync(join(intermediate, 'after-verify.json'), 'utf-8'));
+    expect(afterVerify.plan.reuse.map((e) => e.nodeId)).toContain(runNode.id);
+
     // A re-run selects nothing: the summary already carries its verdict.
     run('apply-verification.mjs', [root, 'prepare-semantic']);
     const rerunManifest = JSON.parse(readFileSync(join(intermediate, 'semantic-verify-manifest.json'), 'utf-8'));
