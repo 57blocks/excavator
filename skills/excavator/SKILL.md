@@ -1,7 +1,7 @@
 ---
 name: excavator
 description: Analyze a codebase into a knowledge graph for architecture understanding and terminal question answering
-argument-hint: ["[path] [--mode lazy|full|--full|--auto-update|--no-auto-update|--review|--exclude <patterns>]"]
+argument-hint: ["[path] [--mode lazy|full|--full|--scope <dir>|--estimate|--auto-update|--no-auto-update|--review|--exclude <patterns>]"]
 ---
 
 # /excavator
@@ -13,6 +13,9 @@ Analyze the current codebase and produce a `knowledge-graph.jsonl` file (one JSO
 - `$ARGUMENTS` may contain:
   - `--mode=lazy|full` — Override `analysisMode` for this run only, without changing `$DATA_DIR/config.json`. Default is `lazy` (facts only, zero LLM calls — see Phase 0 step 6.5). `full` runs the existing full pipeline below.
   - `--full` — Force a full rebuild, ignoring any existing graph. Equivalent to `--mode=full` plus a forced rebuild; also not persisted to config.json.
+  - `--scope <dir>` — Only with `--full`. Generate and verify semantics only for fact nodes whose file is `<dir>` or under it (a project-relative directory such as `src/billing`), and skip Phase F3. Phase F1 still builds the whole fact graph, and every scoped run commits into the same `semantic-cache.json`. A later `--full` run without `--scope` then fills in what is left and runs Phase F3 once over the whole graph, so the scoped runs compose into one graph.
+  - `--estimate` — Only with `--full`, optionally with `--scope`. Run Phase F1 and Phase F2's selection and batching, report the estimated cost and wall time as `full-run-estimate.md` (next to this file) says, and **STOP** without dispatching any subagent.
+  - `--scope` or `--estimate` without `--full`: tell the user it requires `--full` and **STOP**.
   - `--auto-update` — Enable automatic graph updates on commit (writes `autoUpdate: true` to `$DATA_DIR/config.json`)
   - `--no-auto-update` — Disable automatic graph updates (writes `autoUpdate: false` to `$DATA_DIR/config.json`)
   - `--review` — Run full LLM graph-reviewer instead of inline deterministic validation
@@ -50,7 +53,7 @@ Determine whether to run a full analysis or incremental update.
    Then **STOP before creating or changing `.excavator/` files**. Do not treat the following token as a project path and do not continue to directory creation or config normalization.
 
 1. **Resolve `PROJECT_ROOT`:**
-   - Parse `$ARGUMENTS` for a non-flag token (any argument that does not start with `--`). If found, treat it as the target directory path.
+   - Parse `$ARGUMENTS` for a non-flag token (any argument that does not start with `--` and is not the value of `--exclude` or `--scope`). If found, treat it as the target directory path.
      - If the path is relative, resolve it against the current working directory.
      - Verify the resolved path exists and is a directory (run `test -d <path>`). If it does not exist or is not a directory, report an error to the user and **STOP**.
      - Set `PROJECT_ROOT` to the resolved absolute path.
@@ -307,6 +310,28 @@ recorded as a semantic gap — never a fact anchor, never silently kept. See
 `semantic-graph.mjs` and `apply-semantic-patches.mjs` (next to this file) for
 the enforcing code.
 
+**Resuming.** Phase F's checkpoint is what it has already committed. A node
+with a fresh `semantic-cache.json` entry is not regenerated (Phase F2 step 1),
+and a summary that already carries a verdict is not verified again (Phase
+F4). So a Full run that stopped part-way, from a timeout, a budget cap or an
+interruption, resumes when the same command is run again. This holds only
+because every batch is committed as soon as it returns, as Phase F2 step 4
+and Phase F4 say. There is no other state file.
+
+**Before Phase F1**, move the previous run's per-batch files out of
+`intermediate/`. Otherwise a batch that writes nothing this time could be
+stood in for by an older file with the same index:
+
+```bash
+TRASH="$DATA_DIR/.trash-$(date +%s)"
+mkdir -p "$TRASH"
+find "$DATA_DIR/intermediate" -maxdepth 1 -type f \( -name 'semantic-patch-batch-*.json' \
+  -o -name 'semantic-patch-report-*.json' -o -name 'semantic-verify-batch-*.json' \
+  -o -name 'summary-verdicts-*.json' \) -exec mv {} "$TRASH/" \; 2>/dev/null || true
+```
+
+Phase 0 step 3.1 purges these trash directories once they are 7 days old.
+
 ### Phase F1 — FACT BUILD
 
 Report: `[Phase F1] Building the deterministic fact graph...`
@@ -343,15 +368,21 @@ Report: `[Phase F2] Selecting files needing semantic (re)generation...`
    cache override:
 
    ```bash
-   node "<SKILL_DIR>/select-stale-semantics.mjs" "$PROJECT_ROOT"
+   node "<SKILL_DIR>/select-stale-semantics.mjs" "$PROJECT_ROOT" [--scope "<dir>"]
    ```
+
+   Pass `--scope` and its directory as two arguments only when `--scope` is
+   in `$ARGUMENTS`; the brackets are not literal. The script refuses a
+   directory that is absolute, contains `..`, or matches no fact node:
+   report its error and **STOP**.
 
    Writes `$DATA_DIR/intermediate/stale-semantics.json` (counts and the
    exact node-level `plan.reuse/generate/unavailable`) and
    `$DATA_DIR/intermediate/stale-files.json` (a plain JSON array of paths).
    Report: `{stale} of {total} files need semantic (re)generation.` If
-   `{stale}` is 0, skip straight to Phase F3 — the zero-token path for an
-   unchanged project.
+   `{stale}` is 0, skip the rest of Phase F2 — the zero-token path for an
+   unchanged project. With `--estimate`, go to the estimate at the end of
+   step 2.
 
 2. **Batch the stale files**, reusing the same batching script Phase 1.5
    below uses (see its own doc for the algorithm):
@@ -363,6 +394,10 @@ Report: `[Phase F2] Selecting files needing semantic (re)generation...`
 
    Writes `$DATA_DIR/intermediate/batches.json`, scoped to only the stale
    files.
+
+   **With `--estimate`, stop here.** Dispatch nothing. Follow
+   `<SKILL_DIR>/full-run-estimate.md` to take the counts, compute the
+   estimate and report it, then **STOP**.
 
 3. **Dispatch file-analyzer for node-local patches, not a graph.** For each
    batch, dispatch a subagent using the `excavator-file-analyzer` agent
@@ -406,7 +441,11 @@ Report: `[Phase F2] Selecting files needing semantic (re)generation...`
    > file pattern), include that row's Tags in the node's `tags`, next to the
    > tags you choose yourself. Phase F3 lays nodes out by these role tags.
 
-4. **Hydrate + commit.** The model was never asked for `filePath` or a
+4. **Hydrate + commit.** Do this for each batch as soon as its analyzer
+   returns, one batch at a time, without waiting for the batches still
+   running. The committed cache is the checkpoint a re-run resumes from; a
+   batch that was written but not committed is lost if the run stops.
+   The model was never asked for `filePath` or a
    content hash — attach both deterministically (`filePath` from the fact
    node id's own entry, `semanticSourceHash` from that file's CURRENT
    `contentHash` in `source-manifest.json`) before calling
@@ -451,6 +490,11 @@ Architecture itself is reused unchanged.
 ### Phase F3 — ARCHITECTURE (factDigest-gated; layers/relations -> `semantic-graph.json`)
 
 Report: `[Phase F3] Checking whether architecture needs to rerun...`
+
+**With `--scope`, skip Phase F3.** Architecture always reads the whole fact
+graph, so a scoped run leaves it to the run without `--scope` that composes
+the modules. Report `Architecture skipped (scoped run).` and continue to
+Phase F4.
 
 ```bash
 node "<SKILL_DIR>/semantic-graph.mjs" "$PROJECT_ROOT" check
@@ -589,24 +633,41 @@ Same three-step shape as Phase 2.5 below, retargeted at
 these never read or write a `knowledge-graph.jsonl` node:
 
 ```bash
-node "<SKILL_DIR>/apply-verification.mjs" "$PROJECT_ROOT" prepare-semantic
+node "<SKILL_DIR>/apply-verification.mjs" "$PROJECT_ROOT" prepare-semantic [--scope "<dir>"]
 ```
 
+Pass `--scope` the same way as Phase F2 step 1. It selects only summaries
+that carry no verdict yet; `alreadyChecked` in the manifest counts the rest.
+
 With `--no-verify`, run `skip-semantic` instead (no dispatch) and continue to
-Phase F5. If the manifest's `selected` count is 0, also skip to Phase F5.
+Phase F5. If the manifest's `selected` count is 0, report
+`No summary needs verification ({alreadyChecked} already carry a verdict).`
+and skip to Phase F5.
 
 Otherwise dispatch `excavator-summary-verifier`
 (`agents/excavator-summary-verifier.md`) per
 `$DATA_DIR/intermediate/semantic-verify-batch-<i>.json`, writing
 `$DATA_DIR/intermediate/summary-verdicts-<i>.json` — identical prompt shape
 to Phase 2.5's Step 2 below (no project description, no graph, no language
-directive: the verifier's independence is the point). Then:
+directive: the verifier's independence is the point).
+
+As soon as a verifier returns, commit its batch, one batch at a time, without
+waiting for the others:
+
+```bash
+node "<SKILL_DIR>/apply-verification.mjs" "$PROJECT_ROOT" apply-semantic --batch <i>
+```
+
+This writes only the ids batch `<i>` lists; an id that came back without a
+verdict stays unmarked, so a re-run selects it again. After every batch has
+returned and been committed, close the phase:
 
 ```bash
 node "<SKILL_DIR>/apply-verification.mjs" "$PROJECT_ROOT" apply-semantic
 ```
 
-Writes verdicts into `semantic-cache.json` entries' `verification` field and
+It reads only this run's verdict files, accepts only this run's selected ids,
+marks a selected id with no verdict `unverified`, and writes
 `$DATA_DIR/intermediate/semantic-verification.json`. Report the counts, same
 format as Phase 2.5's report line below.
 
@@ -616,6 +677,10 @@ Report a summary to the user containing: files with fresh vs. regenerated
 semantics, summaries committed to `semantic-cache.json`, whether Architecture
 reused or rebuilt `semantic-graph.json` (with layer/relation counts), any
 semantic gaps (count and top kinds), and the Phase F4 verification counts.
+With `--scope`, say which directory the run covered, list Phase F2's gaps
+from `semantic-gaps.json` (no `semantic-graph.json` was written to carry
+them), and say that `/excavator --full` without `--scope` composes the
+modules into one graph.
 Then **STOP** — do not run Phase 1 through Phase 7 below.
 
 ---

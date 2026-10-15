@@ -37,7 +37,12 @@
     - 1.1 的全量门：core 1417、仓库 3565 通过，引用、OpenSpec 校验通过。
     - 1.2 的全量门：仓库 3571 通过，其余同上。
     - 做 1.3 时发现的既有缺陷，单独提交（3a）：`apply-semantic` 把缓存重写成 `{version, entries}`，丢了顶层的 `contentLanguage: "en"`。此后每个条目都被判为 `noncanonical-language`，下一次 Full 会重新生成全部语义。在上一个变更 cargotracker 跑完的副本上重跑选择，1038 个节点全部落进 `generate`。这会让续跑在 F4 提交过任何一批之后失效，也让 O2 的「每个节点都有新鲜条目」不可能通过。修法：保留缓存的全部顶层字段。单测与 CLI 流水线（核验之后再选择，节点在 `reuse` 里）在旧写法下都变红。
-- [ ] 1.3 SKILL.md：Phase F 开始移走旧逐批文件、F2 与 F4 逐批提交、`--scope`、`--estimate`；新附录 `full-run-estimate.md`。验证：O1 的 SKILL 契约与附录单测；全量门。
+- [x] 1.3 SKILL.md：Phase F 开始移走旧逐批文件、F2 与 F4 逐批提交、`--scope`、`--estimate`；新附录 `full-run-estimate.md`。验证：O1 的 SKILL 契约与附录单测；全量门。
+  - 完成记录：
+    - SKILL.md：选项里加 `--scope`、`--estimate`，不带 `--full` 时报错停止；Phase 0 认项目路径时跳过 `--exclude`、`--scope` 的值；Phase F 开头写明续跑就是重跑同一条命令，并在 F1 之前把四类逐批文件移进 `.trash-<时间戳>/`；F2 第 4 步与 F4 改成每批一返回就提交；`--estimate` 在 F2 第 2 步后停止；`--scope` 时跳过 F3，F5 列出 F2 的缺口并提示怎么合成。
+    - 附录 `full-run-estimate.md`：计数的 jq、公式、费率表与出处、两条上限与报告格式。计算 `V` 的 jq 在上一个变更 cargotracker 跑完的产物上得 829，与当时核验清单的 `candidates` 相同；用公式回代得 $30.4、墙钟 81 分钟（实际 85.2）。
+    - 契约测试 13 条；4 个注入变异（少移判定文件、预估停在派发之后、F4 不逐批提交、不跳过 F3）都能变红。
+    - 3a 的全量门：仓库 3572 通过，其余同上。
 - [ ] 1.4 `scripts/benchmark-full-run.mjs run`：`--continue`、`--timeout-minutes`、`--skill-args`、产物拷贝。验证：O1 对应单测；全量门。
 
 ## 2. 真实验收与记录
