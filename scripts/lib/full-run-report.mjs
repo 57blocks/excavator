@@ -9,8 +9,10 @@
  * Contract: openspec/changes/full-run-measurement/specs/full-run-measurement/spec.md
  */
 
-import { existsSync, readFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { spawn, spawnSync } from 'node:child_process';
+import { cpSync, existsSync, mkdirSync, mkdtempSync, openSync, readFileSync, realpathSync, statSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { basename, isAbsolute, join, relative, resolve } from 'node:path';
 
 export const REPORT_SCHEMA = 'excavator-full-run-report/1';
 
@@ -120,7 +122,7 @@ function summarizeRoles(events, missing) {
     }
   }
 
-  const orchestrator = { role: 'orchestrator', calls: 0, context: null, selfReported: null, ...inputSide(null) };
+  const orchestrator = { role: 'orchestrator', calls: 0, context: null, ...inputSide(null) };
   const contexts = [];
   const agents = new Map();
   const agentRow = (type) => {
@@ -155,15 +157,6 @@ function summarizeRoles(events, missing) {
     orchestrator.context = { calls: contexts.length, first: contexts[0], max: Math.max(...contexts), last: contexts.at(-1) };
   }
 
-  // The orchestrator's own usage, self-reported per result segment (final output tokens included).
-  const results = events.filter((event) => event.type === 'result' && event.usage);
-  if (results.length) {
-    orchestrator.selfReported = results.reduce(
-      (sum, result) => addInto(sum, { ...inputSide(result.usage), output: result.usage.output_tokens ?? 0 }),
-      { input: 0, cacheCreation: 0, cacheRead: 0, output: 0 },
-    );
-  }
-
   for (const event of events) {
     if (event.type !== 'system' || event.subtype !== 'task_notification' || !event.usage) continue;
     if (!dispatchType.has(event.tool_use_id)) continue;
@@ -180,6 +173,7 @@ function summarizeRoles(events, missing) {
   for (const row of agents.values()) {
     const ended = Object.values(row.endings).reduce((sum, count) => sum + count, 0);
     if (ended < row.dispatches) missing.push(`agent:${row.role}:notification`);
+    if (ended === 0) row.selfReported = null;
   }
   return [orchestrator, ...[...agents.values()].sort((a, b) => a.role.localeCompare(b.role))];
 }
@@ -307,10 +301,17 @@ export function renderMarkdown(report, { title = 'Full run report' } = {}) {
     '',
     `- Cost (self-reported): ${totals.costUsd === null ? '—' : `$${totals.costUsd.toFixed(4)}`}`,
     `- Wall time: ${minutes(totals.wallMs)} (${fmt(totals.firstTimestamp)} → ${fmt(totals.lastTimestamp)})`,
-    `- Result events: ${fmt(totals.resultEvents)}, turns: ${fmt(totals.numTurns)}, any error: ${fmt(totals.anyError)}`,
+    `- Result events: ${fmt(totals.resultEvents)} (${totals.resultSubtypes.join(', ') || '—'}), turns: ${fmt(totals.numTurns)}, any error: ${fmt(totals.anyError)}`,
     `- CLI ${fmt(totals.cliVersion)}, model ${fmt(totals.initModel)}`,
     `- Sample: ${fmt(sample.files)} files, ${fmt(sample.nodes)} nodes, ${fmt(sample.batches)} F2 batches`,
     `- Derived: $${derived.costPerFileUsd === null ? '—' : derived.costPerFileUsd.toFixed(4)} per file, ${minutes(derived.wallMsPerFile)} per file`,
+    ...(report.run
+      ? [
+          `- Run: ${report.run.model}, budget $${report.run.maxBudgetUsd}${report.run.noVerify ? ', --no-verify' : ''}, exit ${fmt(report.run.exitCode)}, process wall ${minutes(report.run.processWallMs)}`,
+          `- Sample ${report.run.sampleSource} at ${fmt(report.run.sampleCommit)}, copied to ${report.run.copy}`,
+          `- Plugin ${report.run.pluginDir} at ${fmt(report.run.pluginCommit)}${report.run.pluginDirty ? ' (uncommitted changes)' : ''}`,
+        ]
+      : []),
     '',
     '## Models',
     '',
@@ -324,15 +325,12 @@ export function renderMarkdown(report, { title = 'Full run report' } = {}) {
     '| Role | Dispatches | Model calls | Cache read | Cache write | Self-reported tokens | Self-reported time |',
     '|---|---|---|---|---|---|---|',
     ...roles.map((row) =>
-      `| ${row.role} | ${fmt(row.dispatches ?? null)} | ${fmt(row.calls)} | ${fmt(row.cacheRead)} | ${fmt(row.cacheCreation)} | ${fmt(row.role === 'orchestrator' ? null : row.selfReported.totalTokens)} | ${row.role === 'orchestrator' ? '—' : minutes(row.selfReported.durationMs)} |`),
+      `| ${row.role} | ${fmt(row.dispatches ?? null)} | ${fmt(row.calls)} | ${fmt(row.cacheRead)} | ${fmt(row.cacheCreation)} | ${fmt(row.selfReported?.totalTokens)} | ${minutes(row.selfReported?.durationMs)} |`),
     '',
   ];
   const orchestrator = roles[0];
   if (orchestrator.context) {
     lines.push(`Orchestrator context per call: first ${fmt(orchestrator.context.first)}, max ${fmt(orchestrator.context.max)}, last ${fmt(orchestrator.context.last)} tokens over ${fmt(orchestrator.context.calls)} calls.`, '');
-  }
-  if (orchestrator.selfReported) {
-    lines.push(`Orchestrator self-reported: output ${fmt(orchestrator.selfReported.output)}, cache read ${fmt(orchestrator.selfReported.cacheRead)}, cache write ${fmt(orchestrator.selfReported.cacheCreation)} tokens.`, '');
   }
   lines.push('## Phases', '', '| Phase | Start | Duration | Includes missing |', '|---|---|---|---|');
   for (const row of phases) lines.push(`| ${row.phase} | ${row.start} | ${minutes(row.ms)} | ${row.includesMissing?.join(', ') ?? ''} |`);
@@ -346,34 +344,186 @@ export function helpText() {
   return [
     'Usage:',
     '  node scripts/benchmark-full-run.mjs report <run.jsonl> [--project <dir>] [--out <dir>]',
+    '  node scripts/benchmark-full-run.mjs run <sample-dir> --model <model> --max-budget-usd <usd> --out <dir> [--no-verify]',
     '',
     'report  Read the stream-json record of one headless Full run and write',
     '        <name>.report.json and <name>.report.md (default: next to the record).',
     '        --project names the analysed project, whose .excavator/ products give',
     '        the sample size; without it the sample size is reported as missing.',
     '',
+    'run     Copy the sample into a new temporary directory, run one headless Full',
+    '        on the copy with the plugin loaded from this checkout, and write',
+    '        run.jsonl, run.stderr and the report into --out. --model and',
+    '        --max-budget-usd are required; nothing is spent without them.',
+    '',
   ].join('\n');
 }
+
+const VALUE_OPTIONS = {
+  report: ['--project', '--out'],
+  run: ['--model', '--max-budget-usd', '--out'],
+};
+const FLAG_OPTIONS = { report: [], run: ['--no-verify'] };
 
 export function parseArgs(argv) {
   const [command, ...rest] = argv;
   if (command === undefined || command === '--help' || command === '-h') return { help: true };
-  if (command !== 'report') throw new CliUsageError(`unknown command "${command}"`);
-  const options = { command, record: null, project: null, out: null };
+  if (!Object.hasOwn(VALUE_OPTIONS, command)) throw new CliUsageError(`unknown command "${command}"`);
+  const values = {};
+  const flags = new Set();
+  let target = null;
   for (let index = 0; index < rest.length; index++) {
     const arg = rest[index];
-    if (arg === '--project' || arg === '--out') {
+    if (VALUE_OPTIONS[command].includes(arg)) {
       const value = rest[++index];
-      if (value === undefined || value.startsWith('--')) throw new CliUsageError(`${arg} needs a directory`);
-      options[arg.slice(2)] = value;
+      if (value === undefined || value.startsWith('--')) throw new CliUsageError(`${arg} needs a value`);
+      values[arg] = value;
+    } else if (FLAG_OPTIONS[command].includes(arg)) {
+      flags.add(arg);
     } else if (arg.startsWith('--')) {
-      throw new CliUsageError(`unknown option "${arg}"`);
-    } else if (options.record === null) {
-      options.record = arg;
+      throw new CliUsageError(`unknown option "${arg}" for ${command}`);
+    } else if (target === null) {
+      target = arg;
     } else {
       throw new CliUsageError(`unexpected argument "${arg}"`);
     }
   }
-  if (options.record === null) throw new CliUsageError('report needs the path of a run record');
-  return options;
+  if (command === 'report') {
+    if (target === null) throw new CliUsageError('report needs the path of a run record');
+    return { command, record: target, project: values['--project'] ?? null, out: values['--out'] ?? null };
+  }
+  if (target === null) throw new CliUsageError('run needs the sample directory');
+  for (const required of VALUE_OPTIONS.run) {
+    if (values[required] === undefined) throw new CliUsageError(`run needs ${required}`);
+  }
+  const budget = Number(values['--max-budget-usd']);
+  if (!Number.isFinite(budget) || budget <= 0) throw new CliUsageError('--max-budget-usd must be a positive number of dollars');
+  return {
+    command,
+    sample: target,
+    model: values['--model'],
+    maxBudgetUsd: budget,
+    out: values['--out'],
+    noVerify: flags.has('--no-verify'),
+  };
+}
+
+/** A name that suggests a test makes the orchestrator look for expectations, so such a copy is called `app`. */
+const SUGGESTIVE_NAME = /test|fixture/i;
+
+export function isolatedName(sampleDir) {
+  const name = basename(resolve(sampleDir));
+  return SUGGESTIVE_NAME.test(name) ? 'app' : name;
+}
+
+const isInside = (child, parent) => {
+  const rel = relative(parent, child);
+  return rel === '' || (!rel.startsWith('..') && !isAbsolute(rel));
+};
+
+function git(cwd, args) {
+  const child = spawnSync('git', ['-C', cwd, ...args], { encoding: 'utf-8' });
+  return child.status === 0 ? child.stdout.trim() : null;
+}
+
+/**
+ * Copy the sample into `<new temp dir>/<name>` next to an empty `cwd/`, and
+ * nothing else. A git sample is exported at HEAD, so the copy has no history,
+ * no untracked files and no `.git`; anything else is copied whole.
+ */
+export function prepareIsolatedCopy(sampleDir, { tmpRoot = tmpdir() } = {}) {
+  const source = resolve(sampleDir);
+  if (!existsSync(source) || !statSync(source).isDirectory()) throw new CliUsageError(`no sample directory at ${source}`);
+  const root = mkdtempSync(join(tmpRoot, 'work-'));
+  if (SUGGESTIVE_NAME.test(root)) throw new CliUsageError(`the temporary directory ${root} has a test-like name; set TMPDIR elsewhere`);
+  const project = join(root, isolatedName(source));
+  const cwd = join(root, 'cwd');
+  mkdirSync(project);
+  mkdirSync(cwd);
+  const commit = git(source, ['rev-parse', '--show-toplevel']) === realpathSync(source) ? git(source, ['rev-parse', 'HEAD']) : null;
+  if (commit) {
+    const archive = spawnSync('sh', ['-c', 'git -C "$1" archive --format=tar HEAD | tar -x -C "$2"', 'sh', source, project]);
+    if (archive.status !== 0) throw new Error(`git archive of ${source} failed: ${archive.stderr}`);
+  } else {
+    cpSync(source, project, { recursive: true });
+  }
+  return { root, project, cwd, source, commit };
+}
+
+function preflight(repoRoot) {
+  const problems = [];
+  const auth = spawnSync('claude', ['auth', 'status'], { encoding: 'utf-8' });
+  let loggedIn = false;
+  try {
+    loggedIn = JSON.parse(auth.stdout).loggedIn === true;
+  } catch {
+    // Not JSON: treated as not logged in.
+  }
+  if (!loggedIn) problems.push('the claude CLI is not logged in (claude auth login)');
+  const validate = spawnSync('claude', ['plugin', 'validate', repoRoot], { encoding: 'utf-8' });
+  if (validate.status !== 0) problems.push(`claude plugin validate ${repoRoot} failed`);
+  if (!existsSync(join(repoRoot, 'packages', 'core', 'dist', 'index.js'))) problems.push('packages/core/dist is not built');
+  return problems;
+}
+
+export function claudeArgs({ project, model, maxBudgetUsd, noVerify, pluginDir }) {
+  return [
+    '-p',
+    `/excavator:excavator ${project} --full${noVerify ? ' --no-verify' : ''}`,
+    '--model', model,
+    '--max-budget-usd', String(maxBudgetUsd),
+    '--plugin-dir', pluginDir,
+    '--setting-sources', 'user',
+    '--settings', JSON.stringify({ disableAllHooks: true }),
+    '--permission-mode', 'auto',
+    '--no-session-persistence',
+    '--output-format', 'stream-json',
+    '--verbose',
+  ];
+}
+
+/** One measured Full run. Returns the report; the temporary directory is kept and named in it. */
+export async function runMeasured(options, { repoRoot, onProgress = () => {} }) {
+  const out = resolve(options.out);
+  if (isInside(out, resolve(options.sample))) throw new CliUsageError('--out must be outside the sample directory');
+  const recordPath = join(out, 'run.jsonl');
+  if (existsSync(recordPath)) throw new CliUsageError(`${recordPath} already exists; give a new --out`);
+  const problems = preflight(repoRoot);
+  if (problems.length) throw new CliUsageError(`preflight failed:\n  - ${problems.join('\n  - ')}`);
+
+  const copy = prepareIsolatedCopy(options.sample);
+  mkdirSync(out, { recursive: true });
+  onProgress(`sample copied to ${copy.project}`);
+  const started = Date.now();
+  const exitCode = await new Promise((resolveExit, reject) => {
+    const child = spawn('claude', claudeArgs({ ...options, project: copy.project, pluginDir: repoRoot }), {
+      cwd: copy.cwd,
+      env: { ...process.env, CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS: '0' },
+      stdio: ['ignore', openSync(recordPath, 'w'), openSync(join(out, 'run.stderr'), 'w')],
+    });
+    child.on('error', reject);
+    child.on('exit', (code) => resolveExit(code));
+  });
+  const ended = Date.now();
+
+  const missing = [];
+  const sample = readSample(copy.project, missing);
+  const report = summarizeRun(parseRunRecord(readFileSync(recordPath, 'utf-8')), { sample });
+  report.missing.push(...missing);
+  report.record = recordPath;
+  report.run = {
+    sampleSource: copy.source,
+    sampleCommit: copy.commit,
+    copy: copy.project,
+    workDir: copy.root,
+    model: options.model,
+    maxBudgetUsd: options.maxBudgetUsd,
+    noVerify: options.noVerify,
+    pluginDir: repoRoot,
+    pluginCommit: git(repoRoot, ['rev-parse', 'HEAD']),
+    pluginDirty: (git(repoRoot, ['status', '--porcelain']) ?? '') !== '',
+    exitCode,
+    processWallMs: ended - started,
+  };
+  return report;
 }

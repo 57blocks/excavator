@@ -1,14 +1,18 @@
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import {
   CliUsageError,
+  claudeArgs,
+  isolatedName,
   parseArgs,
   parseRunRecord,
+  prepareIsolatedCopy,
   readSample,
+  runMeasured,
   summarizeRun,
 } from '../../scripts/lib/full-run-report.mjs';
 
@@ -130,7 +134,7 @@ describe('roles', () => {
     expect(orchestrator.role).toBe('orchestrator');
     expect(orchestrator.calls).toBe(9);
     expect(orchestrator.context).toEqual({ calls: 9, first: 101, max: 101, last: 101 });
-    expect(orchestrator.selfReported.cacheRead).toBe(1000);
+    expect(orchestrator).not.toHaveProperty('selfReported');
 
     expect(files.role).toBe('excavator:excavator-file-analyzer');
     expect(files).toMatchObject({ dispatches: 2, completed: 2, calls: 2, cacheRead: 100, cacheCreation: 10 });
@@ -198,6 +202,7 @@ describe('a run that did not finish', () => {
     expect(report.roles.find((row) => row.role === 'excavator:excavator-file-analyzer')).toMatchObject({
       dispatches: 2,
       calls: 2,
+      selfReported: null,
     });
   });
 });
@@ -269,5 +274,87 @@ describe('command line', () => {
     const child = spawnSync(process.execPath, [SCRIPT, 'report', join(tmpdir(), 'no-such-run.jsonl')], { encoding: 'utf-8' });
     expect(child.status).toBe(2);
     expect(child.stderr).toContain('no run record');
+  });
+});
+
+describe('run', () => {
+  const runArgs = ['run', 'sample', '--model', 'sonnet', '--max-budget-usd', '40', '--out', 'out'];
+
+  it('requires a model, a positive budget and an output directory', () => {
+    expect(parseArgs(runArgs)).toMatchObject({ sample: 'sample', model: 'sonnet', maxBudgetUsd: 40, out: 'out', noVerify: false });
+    expect(parseArgs([...runArgs, '--no-verify']).noVerify).toBe(true);
+    const without = (option) => {
+      const index = runArgs.indexOf(option);
+      return runArgs.filter((_, i) => i !== index && i !== index + 1);
+    };
+    expect(() => parseArgs(without('--model'))).toThrow('run needs --model');
+    expect(() => parseArgs(without('--max-budget-usd'))).toThrow('run needs --max-budget-usd');
+    expect(() => parseArgs(without('--out'))).toThrow('run needs --out');
+    expect(() => parseArgs(['run', 'sample', '--model', 'sonnet', '--max-budget-usd', '0', '--out', 'out'])).toThrow(CliUsageError);
+    expect(() => parseArgs(['run', 'sample', '--model', 'sonnet', '--max-budget-usd', 'lots', '--out', 'out'])).toThrow(CliUsageError);
+    expect(() => parseArgs(['report', 'run.jsonl', '--no-verify'])).toThrow(CliUsageError);
+  });
+
+  it('exits with a usage error and writes nothing when the budget is missing', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'full-run-nobudget-'));
+    const out = join(dir, 'out');
+    const child = spawnSync(process.execPath, [SCRIPT, 'run', dir, '--model', 'sonnet', '--out', out], { encoding: 'utf-8' });
+    expect(child.status).toBe(2);
+    expect(child.stderr).toContain('run needs --max-budget-usd');
+    expect(existsSync(out)).toBe(false);
+  });
+
+  it('refuses an output directory inside the sample before any preflight', async () => {
+    const sample = mkdtempSync(join(tmpdir(), 'full-run-sample-'));
+    const options = parseArgs(['run', sample, '--model', 'sonnet', '--max-budget-usd', '1', '--out', join(sample, 'out')]);
+    await expect(runMeasured(options, { repoRoot: '/nonexistent' })).rejects.toThrow('--out must be outside the sample directory');
+  });
+
+  it('renames a sample whose name suggests a test', () => {
+    expect(isolatedName('/x/cargotracker')).toBe('cargotracker');
+    expect(isolatedName('/x/orders-fixture')).toBe('app');
+    expect(isolatedName('/x/TestApp/')).toBe('app');
+  });
+
+  it('copies only the sample, next to an empty working directory', () => {
+    const parent = mkdtempSync(join(tmpdir(), 'full-run-src-'));
+    const source = join(parent, 'orders-fixture');
+    mkdirSync(join(source, 'src'), { recursive: true });
+    writeFileSync(join(source, 'src', 'Order.java'), 'class Order {}\n');
+    writeFileSync(join(parent, 'pre-registration.md'), 'expected layers\n');
+    const copy = prepareIsolatedCopy(source, { tmpRoot: mkdtempSync(join(tmpdir(), 'iso-')) });
+    expect(readdirSync(copy.root).sort()).toEqual(['app', 'cwd']);
+    expect(readdirSync(copy.cwd)).toEqual([]);
+    expect(readdirSync(join(copy.project, 'src'))).toEqual(['Order.java']);
+    expect(copy.commit).toBeNull();
+  });
+
+  it('exports a git sample at HEAD without history or untracked files', () => {
+    const source = join(mkdtempSync(join(tmpdir(), 'full-run-git-')), 'shop');
+    mkdirSync(source);
+    const git = (...args) => spawnSync('git', ['-C', source, '-c', 'user.name=t', '-c', 'user.email=t@example.com', ...args], { encoding: 'utf-8' });
+    git('init', '-q');
+    writeFileSync(join(source, 'App.java'), 'class App {}\n');
+    git('add', 'App.java');
+    git('commit', '-q', '-m', 'init');
+    writeFileSync(join(source, 'notes.md'), 'not committed\n');
+    const copy = prepareIsolatedCopy(source, { tmpRoot: mkdtempSync(join(tmpdir(), 'iso-')) });
+    expect(readdirSync(copy.project)).toEqual(['App.java']);
+    expect(copy.commit).toBe(git('rev-parse', 'HEAD').stdout.trim());
+  });
+
+  it('pins the model and budget, loads the plugin from the checkout and turns hooks off', () => {
+    const args = claudeArgs({ project: '/w/app', model: 'sonnet', maxBudgetUsd: 40, noVerify: true, pluginDir: '/repo' });
+    const value = (flag) => args[args.indexOf(flag) + 1];
+    expect(args[1]).toBe('/excavator:excavator /w/app --full --no-verify');
+    expect(value('--model')).toBe('sonnet');
+    expect(value('--max-budget-usd')).toBe('40');
+    expect(value('--plugin-dir')).toBe('/repo');
+    expect(value('--setting-sources')).toBe('user');
+    expect(JSON.parse(value('--settings'))).toEqual({ disableAllHooks: true });
+    expect(value('--output-format')).toBe('stream-json');
+    expect(claudeArgs({ project: '/w/app', model: 'sonnet', maxBudgetUsd: 40, noVerify: false, pluginDir: '/repo' })[1]).toBe(
+      '/excavator:excavator /w/app --full',
+    );
   });
 });
