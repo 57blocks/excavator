@@ -43,7 +43,15 @@
     - 附录 `full-run-estimate.md`：计数的 jq、公式、费率表与出处、两条上限与报告格式。计算 `V` 的 jq 在上一个变更 cargotracker 跑完的产物上得 829，与当时核验清单的 `candidates` 相同；用公式回代得 $30.4、墙钟 81 分钟（实际 85.2）。
     - 契约测试 13 条；4 个注入变异（少移判定文件、预估停在派发之后、F4 不逐批提交、不跳过 F3）都能变红。
     - 3a 的全量门：仓库 3572 通过，其余同上。
-- [ ] 1.4 `scripts/benchmark-full-run.mjs run`：`--continue`、`--timeout-minutes`、`--skill-args`、产物拷贝。验证：O1 对应单测；全量门。
+- [x] 1.4 `scripts/benchmark-full-run.mjs run`：`--continue`、`--timeout-minutes`、`--skill-args`、产物拷贝。验证：O1 对应单测；全量门。
+  - 完成记录：
+    - `--continue <工作目录>` 与样本目录二选一；目录必须正好含一份样本副本与空的 `cwd/`，`--out` 不能落在它里面。报告记 `continued`，Markdown 写明续用的副本。
+    - `--timeout-minutes`：等待子进程抽成 `runChild`，到时 SIGTERM，10 秒后仍在就 SIGKILL；报告记 `timedOut`、`signal`，退出码为空，命令以 1 退出但照出报告。
+    - `--skill-args` 的值可以本身以 `--` 开头（如 `--estimate`），原样接在 `--full` 之后。
+    - 产物拷到 `<out>/products/`：`stale-semantics.json`、`batches.json`、`semantic-verify-manifest.json`、`semantic-cache.json`，缺的记为 `products:<路径>`。
+    - 顺手把库头部的契约路径改成归档后的 `openspec/specs/full-run-measurement/spec.md`。
+    - 测试：新增 7 条，其中一条用 PATH 上的替身 `claude` 跑完整个 `runMeasured`（续用副本、透传参数、超时停止、产物拷贝），不花钱。7 个注入变异都能变红。
+    - 1.3 的全量门：仓库 3585 通过，其余同上。
 
 ## 2. 真实验收与记录
 
