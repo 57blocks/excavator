@@ -286,6 +286,13 @@ describe('SKILL.md injects framework addenda by the graph header ids (javaee-jsf
     expect(prompt.indexOf('Project root:')).toBeLessThan(prompt.indexOf('Frameworks detected:'));
   });
 
+  it('the Phase F2 dispatch prompt names the skill directory the addenda are read from (architecture-input)', () => {
+    const prompt = between('> Produce a semantic patch for each fact node below', 'Write output to:');
+    expect(prompt).toContain('Skill directory (for bundled scripts and framework addenda): `<SKILL_DIR>`');
+    expect(prompt.indexOf('Skill directory')).toBeLessThan(prompt.indexOf('Frameworks detected:'));
+    expect(between('Read the fact nodes from `knowledge-graph.jsonl`', '> Produce a semantic patch')).toContain('the file-analyzer reads `<SKILL_DIR>/frameworks/<id>.md` for each id itself');
+  });
+
   it('Phase F3 still takes the context injection from Phase 4 itself', () => {
     expect(flat(skill)).toContain("language/framework context injection identical to Phase 4's own steps 2-3");
   });

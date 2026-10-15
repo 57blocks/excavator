@@ -377,13 +377,17 @@ Report: `[Phase F2] Selecting files needing semantic (re)generation...`
    `plan.unavailable[]` as gaps, never generate for them. Read
    `project.frameworks` once from the graph header (the same `header` call
    Phase F1 reads `project.factsDigest` from) and put it in every dispatch
-   prompt; the file-analyzer reads `frameworks/<id>.md` for each id itself.
+   prompt, with this skill's own directory; the file-analyzer reads
+   `<SKILL_DIR>/frameworks/<id>.md` for each id itself. Without the directory
+   it has to search the disk and may find another installed copy of the
+   skill, whose addenda can be older or missing.
 
    > Produce a semantic patch for each fact node below: a `summary` and
    > `tags` describing what it does, from reading its source at the given
    > `filePath`/`lineRange`. Copy each `nodeId` VERBATIM from the list — do
    > NOT invent a node, an edge, a layer, or an id that is not in this list.
    > Project root: `$PROJECT_ROOT`
+   > Skill directory (for bundled scripts and framework addenda): `<SKILL_DIR>`
    > Frameworks detected: `<project.frameworks from the graph header>`
    > Fact nodes for this batch:
    > ```json

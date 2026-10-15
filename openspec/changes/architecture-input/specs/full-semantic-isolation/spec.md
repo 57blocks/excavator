@@ -14,7 +14,7 @@ Phase F3 交给架构分析的输入 SHALL 包括：
 
 派发 SHALL 全文注入框架附录，不删节、不改写；除模板与输入外不附加编排者自己的内容（Phase 4 的附加上下文、对模块或分层的结论）。
 
-Phase F2 的派发 SHALL 要求：附录「Canonical File Roles」按源码可见的依据给节点指定角色时，节点的 `tags` 含该行 Tags 列的标签。
+Phase F2 的派发 SHALL 给出本 skill 的目录，使文件分析从被运行的那份 skill 读附录；SHALL 要求：附录「Canonical File Roles」按源码可见的依据给节点指定角色时，节点的 `tags` 含该行 Tags 列的标签。
 
 没有新鲜语义条目的节点不带 `tags` 与 `summary`，不补写、不猜测。
 

@@ -13,7 +13,8 @@
 3. `feat(skill): give the architecture analyzer node semantics and page references`：任务 1.1。
 4. `docs(skill): infer page-to-method edges from EL chains`：任务 1.2。
 5. `fix(skill): ask for addendum role tags and an unabridged architecture dispatch`：任务 1.3。
-6. `docs(openspec): record architecture-input acceptance`：任务 2.1–2.2。
+6. `fix(skill): tell the semantic file analyzer where the skill lives`：任务 1.4。
+7. `docs(openspec): record architecture-input acceptance`：任务 2.1–2.2。
 
 ## 1. 提示词与附录
 
@@ -31,6 +32,7 @@
 
 - [x] 1.3 按 O2 首次真实运行的归因修提示词（design D4）：F2 派发要求附录角色标签；F3 派发全文注入附录、不附加编排者内容，角色优先于名字、目录与模块。验证：契约测试在旧 SKILL.md 上红、新的上绿。
   - 完成记录：只改 `SKILL.md` 与契约测试；附录与代理定义未改。
+- [x] 1.4 F2 派发给出 skill 目录（design D4 第二段）。验证：契约测试在旧 SKILL.md 上红、新的上绿；真实验证并入 P0 第 5 步的测量运行。
 
 ## 2. 验收与记录
 
