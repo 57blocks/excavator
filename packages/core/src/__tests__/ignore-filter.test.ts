@@ -65,6 +65,67 @@ describe("IgnoreFilter", () => {
     });
   });
 
+  describe("file patterns do not exclude directories", () => {
+    const negations = DEFAULT_IGNORE_PATTERNS.filter((pattern) => pattern.startsWith("!"));
+    const positives = DEFAULT_IGNORE_PATTERNS.filter((pattern) => !pattern.startsWith("!"));
+    const filePatterns = positives.filter((pattern) => !pattern.endsWith("/"));
+    const directoryPatterns = [...new Set(positives.filter((pattern) => pattern.endsWith("/")))];
+    const lastIndexOf = (pattern: string) => DEFAULT_IGNORE_PATTERNS.lastIndexOf(pattern);
+
+    it("derives exactly one directory negation per file pattern, after every file pattern", () => {
+      expect(filePatterns.length).toBeGreaterThan(0);
+      expect(negations).toEqual(filePatterns.map((pattern) => `!${pattern}/`));
+      const firstNegation = DEFAULT_IGNORE_PATTERNS.indexOf(negations[0]);
+      for (const pattern of filePatterns) expect(lastIndexOf(pattern)).toBeLessThan(firstNegation);
+    });
+
+    it("puts every directory pattern after the negations, once, so it still wins for the directory it names", () => {
+      expect(negations.length).toBeGreaterThan(0);
+      const lastNegation = Math.max(...negations.map(lastIndexOf));
+      for (const pattern of directoryPatterns) expect(lastIndexOf(pattern), pattern).toBeGreaterThan(lastNegation);
+      expect(new Set(DEFAULT_IGNORE_PATTERNS).size, "no pattern is listed twice").toBe(DEFAULT_IGNORE_PATTERNS.length);
+    });
+
+    it.each(filePatterns)("createIgnoreFilter keeps directories named like %s and still ignores the file", (pattern) => {
+      const filter = createIgnoreFilter(testDir);
+      const name = pattern.replaceAll("*", "x");
+      for (const spelling of [name.toLowerCase(), name.toUpperCase()]) {
+        expect(filter.isIgnored(`${spelling}/Foo.java`)).toBe(false);
+        expect(filter.isIgnored(`src/${spelling}/Foo.java`)).toBe(false);
+        expect(filter.isIgnored(spelling)).toBe(true);
+        expect(filter.isIgnored(`src/${spelling}`)).toBe(true);
+        expect(filter.isIgnored(`src/${spelling}/${spelling}`)).toBe(true);
+      }
+    });
+
+    it.each(directoryPatterns.filter((pattern) => pattern.includes("*")))(
+      "the glob directory pattern %s still excludes a directory whose name a file pattern also matches",
+      (directoryPattern) => {
+        const filter = createIgnoreFilter(testDir);
+        for (const filePattern of filePatterns) {
+          const directory = directoryPattern.slice(0, -1).replaceAll("*", filePattern.replaceAll("*", "x"));
+          expect(filter.isIgnored(`${directory}/Foo.java`), directory).toBe(true);
+          expect(filter.isIgnored(`src/${directory}/Foo.java`), directory).toBe(true);
+        }
+      },
+    );
+
+    it("directory patterns still exclude everything under them, including directories named like a file pattern", () => {
+      const filter = createIgnoreFilter(testDir);
+      expect(filter.isIgnored("node_modules/license/index.js")).toBe(true);
+      expect(filter.isIgnored("build/license/Gen.java")).toBe(true);
+      expect(filter.isIgnored("license/build/Gen.java")).toBe(true);
+    });
+
+    it("a root .excavatorignore or CLI rule can still exclude a directory named like a file pattern", () => {
+      writeFileSync(join(testDir, ".excavatorignore"), "license/\n");
+      expect(createIgnoreFilter(testDir).isIgnored("src/license/A.java")).toBe(true);
+      rmSync(join(testDir, ".excavatorignore"));
+      expect(createIgnoreFilter(testDir).isIgnored("src/license/A.java")).toBe(false);
+      expect(createIgnoreFilter(testDir, ["license/"]).isIgnored("src/license/A.java")).toBe(true);
+    });
+  });
+
   describe("createIgnoreFilter with no user file", () => {
     it("ignores files matching default patterns", () => {
       const filter = createIgnoreFilter(testDir);
