@@ -331,13 +331,28 @@ describe('Phase F3 gives the architecture analyzer node semantics and page refer
 
   it('tells the analyzer where the tags come from, what a references edge says, and to layer by the addenda', () => {
     expect(prompt).toContain('were written in Phase F2 by reading its source with the framework addenda injected into this prompt');
-    expect(prompt).toContain('a tag names the role the addendum assigns from annotations, descriptor entries or page references');
+    expect(prompt).toContain("A tag from an addendum's Canonical File Roles table names the role the addendum assigns from the node's annotations, descriptor entries or file pattern.");
     expect(prompt).toContain('A node without `tags` has no fresh semantics in this run.');
     expect(prompt).toContain('A `references` edge runs from a page to a class the page binds through an EL expression; each evidence `chain` names the members the page uses');
+    expect(prompt).toContain('Phase F2 did not see these edges, so a page-bound role shows here, not in the tags.');
     expect(prompt).toContain('Assign layers by the layer table in the framework addenda');
-    expect(prompt).toContain('use the node\'s tags and its page references, not its name or class-name suffix.');
+    expect(prompt).toContain("use the node's tags and its page references, not its name, class-name suffix, directory or module.");
     // the statements sit in the dispatch prompt, ahead of the output instruction
     expect(prompt.indexOf('Assign layers by the layer table')).toBeLessThan(prompt.indexOf('Write output to:'));
+  });
+
+  it('injects every addendum in full and adds nothing of the orchestrator\'s own to the dispatch', () => {
+    const dispatch = rebuild.slice(rebuild.indexOf('Then dispatch the SAME'), rebuild.indexOf('Analyze this codebase'));
+    expect(dispatch).toContain('Append each framework addendum in full, as Phase 4 step 3 says: do not shorten it, drop sections or reword its rules.');
+    expect(dispatch).toContain('no Phase 4 "Additional context" block, and no conclusions of yours about modules, layers or expected relations');
+  });
+
+  it('has Phase F2 put the role tags of the addendum next to its own tags', () => {
+    const start = skill.indexOf('> Produce a semantic patch for each fact node below');
+    const end = skill.indexOf('4. **Hydrate + commit.**', start);
+    const f2 = flat(skill.slice(start, end).replace(/^\s*> ?/gm, ''));
+    expect(f2).toContain("When a framework addendum's Canonical File Roles table gives a node a role from what its source shows (an annotation, a descriptor entry, a file pattern), include that row's Tags in the node's `tags`, next to the tags you choose yourself.");
+    expect(f2).toContain('Phase F3 lays nodes out by these role tags.');
   });
 });
 

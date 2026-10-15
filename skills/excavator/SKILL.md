@@ -396,6 +396,11 @@ Report: `[Phase F2] Selecting files needing semantic (re)generation...`
    > of the analyzer's configured output language. Preserve source-owned
    > identifiers and literals verbatim. The deterministic writer owns the
    > cache-level `contentLanguage: "en"` marker; do not emit that field.
+   >
+   > When a framework addendum's Canonical File Roles table gives a node a
+   > role from what its source shows (an annotation, a descriptor entry, a
+   > file pattern), include that row's Tags in the node's `tags`, next to the
+   > tags you choose yourself. Phase F3 lays nodes out by these role tags.
 
 4. **Hydrate + commit.** The model was never asked for `filePath` or a
    content hash — attach both deterministically (`filePath` from the fact
@@ -512,7 +517,13 @@ semantic-graph.json.` and continue to Phase F4 without dispatching anything.
 
 Then dispatch the SAME `excavator-architecture-analyzer` agent
 definition Phase 4 below uses (language/framework context injection identical
-to Phase 4's own steps 2-3), retargeted at fact nodes and this artifact:
+to Phase 4's own steps 2-3), retargeted at fact nodes and this artifact.
+Append each framework addendum in full, as Phase 4 step 3 says: do not
+shorten it, drop sections or reword its rules. Send the template below with
+its inputs and nothing else of your own: no Phase 4 "Additional context"
+block, and no conclusions of yours about modules, layers or expected
+relations, because the analyzer decides those from the inputs and the
+addenda.
 
 > Analyze this codebase's structure to identify architectural layers and any
 > notable cross-node relations. Every `nodeIds` entry and every relation's
@@ -524,14 +535,16 @@ to Phase 4's own steps 2-3), retargeted at fact nodes and this artifact:
 > Import and page-reference edges: `<the edge list from step 3>`
 >
 > A node's `tags`, and a file node's `summary`, were written in Phase F2 by
-> reading its source with the framework addenda injected into this prompt, so a tag
-> names the role the addendum assigns from annotations, descriptor entries or
-> page references. A node without `tags` has no fresh semantics in this run.
+> reading its source with the framework addenda injected into this prompt. A
+> tag from an addendum's Canonical File Roles table names the role the
+> addendum assigns from the node's annotations, descriptor entries or file
+> pattern. A node without `tags` has no fresh semantics in this run.
 > A `references` edge runs from a page to a class the page binds through an
 > EL expression; each evidence `chain` names the members the page uses, at
-> that `line` of the page. Assign layers by the layer table in the framework
-> addenda: where it assigns a layer by role, use the node's tags and its page
-> references, not its name or class-name suffix.
+> that `line` of the page. Phase F2 did not see these edges, so a page-bound
+> role shows here, not in the tags. Assign layers by the layer table in the
+> framework addenda: where it assigns a layer by role, use the node's tags and
+> its page references, not its name, class-name suffix, directory or module.
 >
 > Write output to: `$DATA_DIR/intermediate/semantic-layers.json` as
 > `{ "layers": [{"id","name","description","nodeIds"}], "relations": [{"id","type","source","target","description"?,"evidence"?}] }`

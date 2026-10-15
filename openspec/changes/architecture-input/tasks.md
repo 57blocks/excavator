@@ -12,7 +12,8 @@
 2. `docs(openspec): replace component-layers with architecture-input`：本变更的 proposal、design、规格增量与 tasks。
 3. `feat(skill): give the architecture analyzer node semantics and page references`：任务 1.1。
 4. `docs(skill): infer page-to-method edges from EL chains`：任务 1.2。
-5. `docs(openspec): record architecture-input acceptance`：任务 2.1–2.2。
+5. `fix(skill): ask for addendum role tags and an unabridged architecture dispatch`：任务 1.3。
+6. `docs(openspec): record architecture-input acceptance`：任务 2.1–2.2。
 
 ## 1. 提示词与附录
 
@@ -27,6 +28,9 @@
     - 规则放在复合组件之后、按 id 连转换器之前；
     - jsf.md 的推断规则从 3 条变成 4 条，「Exactly one / Zero or several」计数测试随之改为 4；
     - 契约测试在旧 jsf.md 上红、新的上绿，`check-refs` 通过。
+
+- [x] 1.3 按 O2 首次真实运行的归因修提示词（design D4）：F2 派发要求附录角色标签；F3 派发全文注入附录、不附加编排者内容，角色优先于名字、目录与模块。验证：契约测试在旧 SKILL.md 上红、新的上绿。
+  - 完成记录：只改 `SKILL.md` 与契约测试；附录与代理定义未改。
 
 ## 2. 验收与记录
 
