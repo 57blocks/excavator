@@ -157,4 +157,19 @@ v1 费率（Sonnet，标定样本 cargotracker；第 3 次夹具运行作检验�
   - 再 `run --continue`，跑默认 Full，上限 $35。
   - 通过条件：花费在估计的 ±30% 内，墙钟在 ±50% 内；第 2 次实际的 `B2`、`B4` 与预估时的计数比对。
   - 不过就如实记录、重标定，不宣称通过。
-- 两次真实验收合计上限 $83，预计 $35–45。只用 Sonnet，不并行。
+- **O4 分块与合成**（conduit 5e127d8，Sonnet；O2、O3 之后补加。原定的 oracle 里 `--scope` 只有单测，没有真实运行）：
+  - 第 1 次 `run --skill-args "--scope backend"`，用新副本，上限 $9；按公式手算 `B2` 2、`B4` 2，约 $6.1、12 分钟；
+  - 第 2 次 `run --continue`，跑不带 scope 的默认 Full，上限 $14。
+  - 通过条件：
+    - 第 1 次：
+      - 记录里没有 architecture-analyzer 与 assemble-reviewer 的派发；
+      - 选择产物的 `scope` 为 `backend`，`plan.generate` 全在 `backend/` 下；
+      - 缓存条目全在 `backend/` 下；
+      - 核验清单的 `scope` 为 `backend`，选中的 id 全在 `backend/` 下。
+    - 第 2 次：
+      - `plan.generate` 与第 1 次之后的缓存条目没有交集；
+      - F3 跑了；
+      - 核验清单的 `alreadyChecked` 等于第 1 次写下的判定数；
+      - 走到 F5，没有报错。
+    - 第 2 次之后：复用计划生成 0；缓存身份不变。
+- 真实验收合计上限 $83，预计 $35–60。只用 Sonnet，不并行。
