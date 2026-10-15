@@ -362,7 +362,8 @@ describe('the javaee and jsf addenda (javaee-jsf-framework-knowledge, D8)', () =
       roles: ['Session bean', 'Message-driven bean', 'JAX-RS resource', 'JAX-RS provider', 'Interceptor', 'Entity', 'Producer', 'Descriptor'],
     },
     jsf: {
-      rules: 3,
+      // outcomes, composite components and converters or validators by id, plus EL members to methods (architecture-input)
+      rules: 4,
       edgeTypes: ['references', 'mentions', 'implements', 'calls'],
       roles: ['Page', 'Template', 'Composite component', 'Backing bean', 'Converter', 'Validator', 'Descriptor'],
     },
@@ -646,6 +647,25 @@ describe('the javaee and jsf addenda (javaee-jsf-framework-knowledge, D8)', () =
     it('connects a converter or validator by id only when exactly one declaration uses the id', () => {
       expect(text).toContain('Exactly one declaration uses the id');
       expect(text).toContain('Zero or several declarations use the id');
+    });
+
+    it('connects a page to the one method its EL chain names, from the node list, first member only (architecture-input)', () => {
+      const raw = readRepoFile('skills/excavator/frameworks/jsf.md');
+      const rule = flat(raw.split('**EL members to methods**')[1].split('**Converters and validators by id**')[0]);
+      // it sits among the edge patterns, after navigation and composite components
+      expect(raw.indexOf('**EL members to methods**')).toBeGreaterThan(raw.indexOf('**Composite components**'));
+      expect(raw.indexOf('**EL members to methods**')).toBeLessThan(raw.indexOf('### Architectural Layers for JSF'));
+      expect(rule).toContain('each evidence item of that edge carries the EL chain the page wrote (`orders.detail`)');
+      expect(rule).toContain('Take the first member after the root name: `detail` from `orders.detail`, `list` from `orders.list`.');
+      expect(rule).toContain('so action methods and properties share one rule');
+      expect(rule).toContain('(`list` names `list`, `getList` or `isList`)');
+      expect(rule).toContain("The candidate set is the `function` nodes in the bean class's file whose `owner` is that class and whose name is one of the three.");
+      expect(rule).toContain('Compare node names and owners only; do not read the source to find the method.');
+      expect(rule).toContain('Exactly one candidate: connect the page to that method node with an `inferred` `depends_on` edge.');
+      expect(rule).toContain('Zero or several candidates: do not connect.');
+      expect(rule).toContain('a parent class outside the repository or is generated (for example by Lombok); several means the method is overloaded');
+      expect(rule).toContain('Resolve only the first member. In `#{orders.selected.name}`');
+      expect(rule).toContain('do not redraw it');
     });
   });
 });

@@ -22,7 +22,11 @@
     - 节点与边用两条 `jq` 示例拼出，已在夹具副本的真实事实图上跑过；
     - 提示词明说不从 `knowledge-graph.jsonl` 节点取 `summary`/`tags`：Full 下它们是空的；
     - 契约测试在旧 SKILL.md 上红、新的上绿。
-- [ ] 1.2 `skills/excavator/frameworks/jsf.md` 增加 EL 到方法的规则，并在「Edge Patterns」里与导航、复合组件并列。验证：O1 的附录契约测试与 `check-refs` 通过。
+- [x] 1.2 `skills/excavator/frameworks/jsf.md` 增加 EL 到方法的规则，并在「Edge Patterns」里与导航、复合组件并列。验证：O1 的附录契约测试与 `check-refs` 通过。
+  - 完成记录：
+    - 规则放在复合组件之后、按 id 连转换器之前；
+    - jsf.md 的推断规则从 3 条变成 4 条，「Exactly one / Zero or several」计数测试随之改为 4；
+    - 契约测试在旧 jsf.md 上红、新的上绿，`check-refs` 通过。
 
 ## 2. 验收与记录
 
