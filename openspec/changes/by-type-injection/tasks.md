@@ -1,0 +1,217 @@
+执行约束：
+- 人员：一个 coder（Sonnet），一个 acceptor（Opus）。
+- 验收 oracle 见 design.md「验收 Oracle」，动手前已写死。
+- 语言：代码、测试与注释用英文，OpenSpec 用中文。
+- build-free：不编译目标项目，不安装运行时，不下载依赖。
+- 分支：`feat/by-type-injection` 基于 `main`；`jaxrs-route-facts` 已归档。
+- 本变更改 Core：每次改完 Core 都要重建 core dist，再跑 skill 测试。
+- 公开仓库：夹具、测试与提交信息里不出现客户、产品或私有语料的名字。
+
+提交序列（一个逻辑步一个 commit，PR 以 merge commit 合入，每个 commit 单独可测）：
+
+0. `docs(openspec): archive jaxrs-route-facts`（已完成）。
+1. `docs(openspec): propose by-type-injection`：proposal、design、规格增量、tasks。
+2. `feat(core): record Java type modifiers and nested type declarations`：任务 1.1。
+3. `feat(core): record class literals in annotation arguments and member types`：任务 1.2–1.3。
+4. `feat(facts): type injection catalog`：任务 2.1–2.2。
+5. `feat(facts): type queries on the Java call resolver`：任务 3.1。
+6. `feat(facts): resolve by-type injection points`：任务 3.2–3.5。
+7. `feat(facts): EJB business interfaces declared by annotation`：任务 3.6。
+8. `feat(lazy): project by-type injects and declared implements into the fact graph`：任务 4.1–4.4。
+9. `docs(skill): by-type injection is a fact in the javaee addendum`：任务 5.1。
+10. `docs(openspec): record by-type-injection acceptance`：任务 6.1–6.2。
+
+## 1. Core：Java 结构行的四项事实
+
+- [x] 1.1 按 design D3，`types.ts` 与 Java 抽取器补两项：
+  - `classes[].modifiers`：顶层类型声明上的修饰符关键字，源码顺序，不含注解；
+  - `nestedTypes`：顶层以下的每个类型声明与匿名类，源码顺序。字段为 `kind`、`name`、`line`、`owner`、`local`、`modifiers`、`supertypes`，匿名类另有 `instantiates`。枚举常量体不记。
+
+  测试精确断言以下情形：
+  - 成员类与静态嵌套类、局部类、匿名类、嵌套接口、嵌套 `enum` 与 `record`；
+  - 嵌套在匿名类里的类型；
+  - 顶层注解类型里的嵌套类型；
+  - 顶层类型各种修饰符组合；
+  - 带注解的修饰符列表（注解不进列表）。
+- [x] 1.2 按 D3 补另外两项：
+  - 注解参数的 `classLiterals`：类型注解与成员注解两处都补。单个类字面量、数组初始化器、混有非类字面量的数组、跨行的数组、全限定写法、带泛型或数组维度的类字面量，各有精确断言；`value` 仍为 `null`。
+  - `memberAnnotations[].member.type`：字段（含声明符上的数组维度、一行多个声明符）、方法返回类型、构造器（没有）、参数与 record 组件所属成员的取值，各有精确断言。
+- [x] 1.3 `extract-structure-result.mjs` 透传并校验三处新形状：`modifiers`、`nestedTypes`、参数 `classLiterals` 与 `member.type`。坏形状让该文件落 `parse-failed`，每种坏形状一条测试。
+
+  在本任务下写明两项核查结论：
+  - 结构抽取有没有按内容或版本的缓存；
+  - 结构行的其它读者在新字段上会不会出错：`build-source-index.mjs`、`annotate-graph.mjs`、`java-call-resolution.mjs`、`mention-sites.mjs`、`fingerprint.ts`。
+
+  核查结论：
+  - 缓存：结构抽取没有按内容或版本的缓存，旧行不会被当成带新字段的行复用。
+    - `skills/excavator/lazy-analyze.mjs:681` 每次生产都跑 `structure-all.mjs`，由它对每个扫描到的文件重新调用 `extract-structure.mjs`。`extract-structure.mjs`、`extract-structure-result.mjs`、`structure-all.mjs`、`structure-all-store.mjs` 里没有结果缓存（`extract-structure.mjs:57`、`:186` 的 “cache” 字样只是插件安装目录的注释）。
+    - Core 里唯一的缓存是 `packages/core/src/plugins/tree-sitter-plugin.ts:47` 复用的解析器实例，不保存任何解析结果。
+    - 跨运行的复用闸只有 `skills/excavator/sync-fact-graph.mjs:304-308`：`sourceRevision`、`selectionDigest`、`PIPELINE_VERSION` 三者都相同才跳过，跳过的是整张图的投影；不跳过时按 `sync-fact-graph.mjs:332` 起的路径整体重投影，结构行重新抽取。`PIPELINE_VERSION`（`lazy-analyze.mjs:242`，现为 `lazy-fact-graph/11`）等第一个读新字段的消费者，在任务 4.3 升。
+  - 其它读者：都按名字取固定字段，不遍历键，新字段不会让它们出错，输出也不变。
+    - `build-source-index.mjs:175`：类条目只取 `name`、`startLine`、`endLine`、`methods`、`properties`。
+    - `annotate-graph.mjs:262-263`：只取 `name`、`startLine`、`endLine`、`owner`。
+    - `java-call-resolution.mjs:296-309`：从类行只取 `qualifiedName`、`kind`、`name`、`fieldTypes`、`annotations`、`typeParameters`、`memberTypes`；整行存进 `type.cls`，只读它的 `supertypes`（`:574`）。类行的 `modifiers` 与行上的 `nestedTypes` 不被碰到，`callGraph` 的下标对应也不受影响。
+    - `mention-sites.mjs:65-66`：只取类的 `name` 与 `qualifiedName`。
+    - `packages/core/src/fingerprint.ts:89-131`：`extractFileFingerprint` 只取 `exports`、`functions`、`classes` 的名字、方法、属性与行数、`imports`，新字段不进指纹，也不报错。附带一个既有盲区：只改了新字段所涉写法（如 `@Local(X.class)` 的类字面量、匿名类）的 Java 文件，在旧增量路径（`prepare-incremental.mjs:360`、`build-fingerprints.mjs:97`）里被判为 COSMETIC，与 `supertypes`、`fieldTypes`、`memberAnnotations` 今天的情形一样；Lazy 路径每次整体重投影，不受影响。这不属本变更。
+    - 读 `memberAnnotations` 与类型注解参数的阶段（`annotation-injection-resolution.mjs:235`、`route-resolution.mjs:252`）只按 `value` 与 `member.name`、`member.line` 取值；`value` 对类字面量仍为 `null`，行为不变。
+
+  重建 core dist；core 测试、typecheck、根测试全绿。
+
+## 2. 按类型注入目录
+
+- [x] 2.1 新模块 `skills/excavator/type-injection-catalog.mjs`，提供 `parseTypeInjectionCatalog(value)` 与 `loadTypeInjectionCatalog(path = SHIPPED_TYPE_INJECTION_CATALOG)`，按 design D4 严格校验。测试覆盖每一种失败：
+  - 未知键、缺字段、类型不符；
+  - 空的 `annotations` 或 `on`；
+  - `on` 里出现未知的成员种类；
+  - 族 id 重复；
+  - 不是点分名；
+  - 同一全限定名出现在两个角色里；
+  - 版本不符。
+- [x] 2.2 随附 `skills/excavator/catalogs/type-injections.json`，内容照 D4，每个族与每个角色一句 `basis`。
+
+## 3. 解析
+
+- [x] 3.1 `java-call-resolution.mjs` 的返回对象新增 D6 的只读类型查询，复用内部的 `resolveType`、`supertypesOf`、`hierarchy`，不改既有行为：
+  - 在给定文件与所属顶层类型的作用域里解析类型文本，可附加方法的类型参数；
+  - 列出全部顶层类型；
+  - 列出一个类型已解析的父类型。
+
+  新查询有单元测试，覆盖仓库内、仓库外、未知、嵌套类型、全限定名重复、类型变量。既有测试一条不改。
+- [x] 3.2 新模块 `skills/excavator/type-injection-resolution.mjs` 的 `resolveTypeInjections({ javaRows, catalog, identity, types, classIdOf, functionIdOf, mutations })`：
+  - 按 D5 读注入点、确认身份、找方法声明；
+  - 按 D7 建子类型闭包与候选集；
+  - 按 D8 处理限定符；
+  - 按规格的顺序落十六个桶，恰一个候选时产出待画的 `injects` 边。
+
+  模块是纯函数，不读文件，代码里不出现任何框架名字。遇到有类型、却没有 `memberAnnotations` 或 `nestedTypes` 的行时抛错，指明可能是旧抽取的产物。
+- [x] 3.3 证据按 D11：每个成边的注入点给出「注入」「成员」两条，按情况加「限定符」「生产者」。本阶段的边先按（源，目标）合并，证据排序去重。
+- [x] 3.4 覆盖、缺口与守恒按 D12：
+  - 五类 `type-injection-*` 缺口的样例格式照 D12；
+  - 提供 `assertTypeInjectionConservation`；
+  - 没有目录时为 `not-run`。
+- [x] 3.5 D14 的变异开关（`noBusinessInterfaces` 除外），每个至少让一条测试变红；不改生产默认值。规格「Java 按类型注入点」的每个场景至少一条单元测试。
+- [x] 3.6 业务接口按 D10：
+  - 八个桶；
+  - `implements` 边及其证据；
+  - 接口进入子类型闭包，解析为未知的进简单名阻断集；
+  - `business-interface-unresolved` 缺口；
+  - 覆盖段与守恒；
+  - 开关 `noBusinessInterfaces`。
+
+  规格「EJB 注解声明的业务接口」的每个场景至少一条单元测试。
+
+## 4. 接入流水线与夹具
+
+- [x] 4.1 `annotation-injection-resolution.mjs` 的 `mergeInjectsEdges` 增加 `typeEdges` 来源，按 D11 合并、排序去重；`noInjectsMerge` 对三个来源同样生效。测试覆盖：
+  - 按名字与按类型落在同一对上；
+  - 只有按类型的边；
+  - 开关打开时的行为。
+- [x] 4.2 `build-fact-graph.mjs` 按 D13：
+  - 新参数 `typeInjectionCatalog`。给了它却没给 `mentionInputs` 时抛错；
+  - 复用已建的调用解析器实例；
+  - 传入 Kotlin 与 Scala 结构行声明的类型数（`otherJvmTypeCount`）；
+  - 业务接口的 `implements` 边跳过已有的同端点边；
+  - 按类型的边经 `mergeInjectsEdges` 与名字阶段的边一起加入；名字阶段没运行时单独加入；
+  - 缺口进 `gapCollector`；
+  - 覆盖进 `coverage.typeInjections`。
+
+  按 D13 逐个检查按边类型或覆盖段分支的位置，在本任务下写明结论。
+
+  核查结论：新覆盖段与指向方法节点的 `injects` 边在这些位置都不出错；没有一处需要改代码。
+  - `project-service.mjs`：`projectStatus` 把 `graph.coverage` 与 `graph.gaps` 原样放进 `factCoverage` 与 `gaps`（`:209`、`:223`，同步结果也一样），不按覆盖段名分支，`typeInjections` 段随图带出。新鲜度只比 `manifest.pipelineVersion === PIPELINE_VERSION`（`:101`），`analysisMode` 只比图头的 `pipelineVersion`（`:204`）：`/11` 的产物读作 `stale`，下一次同步整体重投影（`sync-fact-graph.mjs:304-308` 的复用闸三者须都相同）。`tests/lazy/type-injection-pipeline.test.mjs` 用 `projectStatus()` 断言覆盖与缺口原样出现。
+  - MCP `project_status`：`mcp-server.mjs:49-50` 只给输入定了严格模式，输出不过模式，直接是服务的返回；同一测试经真实 stdio 服务器断言 `factCoverage.typeInjections` 与 `traverse` 从实现类跳到消费者、`read_evidence` 取回 `@Inject` 行。
+  - 语义规划与新鲜度：`consumer-freshness.mjs`、`select-stale-semantics.mjs`、`semantic-cache.mjs`、`semantic-cache-reuse.mjs` 不读边，也不读覆盖段。`semantic-graph.mjs:430` 只读 `project.factsDigest` 决定重建或复用：摘要随新覆盖段与新边变化，`/11` 产物上的语义图因此重建，与先前每个新增覆盖段的情形一样。`annotate-graph.mjs:88`、`:837` 只按 `STRUCTURAL_EDGE_TYPES`（`imports`、`exports`、`contains`、`calls`）分支，且处理的是模型写的边；事实图的 `injects`、`implements` 不经过它。
+  - `factsDigest`：`build-fact-graph.mjs:943` 对 `{ nodes, edges, coverage, gaps }` 取摘要，`digestCoverage`（`:921`）只删 `selection` 与扫描前排除的文件数，所以 `coverage.typeInjections` 在摘要里；不传目录时它恒为 `{ status: 'not-run' }`，同一输入的摘要因此只差这一个键，没有测试钉死摘要字面量（根测试全量绿）。边在 `:913` 按 `(type, source, target)` 排序，证据按 `evidenceOrder` 排序，摘要对相同输入稳定。
+  - 图校验器：`validate-graph.mjs:235-247` 对 `injects` 期望证据条目自己的 `token`，不看目标节点的名字，所以指向生产者方法节点的边不出错；业务接口的 `implements` 走 `:248` 的默认分支，期望源或目标的名字出现在所引行上，`@Local(Quote.class)` 一行有接口名。按「任一条证据行含期望串即确认」（`:417-433`）。流水线测试断言：加入这 15 条边后 `edgesChecked` 与 `edgeConfirmed` 各增 15、问题与警告不变，改掉证据行后两类边各被报为矛盾。
+  - 遍历：`retrieve.mjs:186` 的确定性边类型已含 `injects` 与 `implements`，`:212-214` 双向建邻接，所以从实现类沿入边 1 跳到消费者；测试断言这一点，也断言从生产者方法与会话 Bean 出发的 1 跳。
+  - Core：`schema.ts:5-17` 的 `EdgeTypeSchema` 不含 `injects`（先前的 `mentions` 也不含），`auditGraphShape`（`schema.ts:646`）只查证据是否存在，不查边类型是否在枚举里；`implements` 在枚举里。流水线测试断言审计对这两类边无问题。
+- [x] 4.3 `lazy-analyze.mjs` 加载目录（可注入），`PIPELINE_VERSION` 升到 `lazy-fact-graph/12`。独立 CLI 入口照旧不传目录。
+- [x] 4.4 夹具：在 `tests/fixtures/javaee-jsf-app/` 新增模块 `orders-inject/`，有自己的 `pom.xml`，并登记进父 `pom.xml`。内容覆盖 design O1 列出的全部情形。新增流水线测试 `tests/lazy/type-injection-pipeline.test.mjs`，断言：
+  - 精确的边、证据、桶、缺口与覆盖；
+  - 图校验通过；
+  - 从实现类 1 跳入边遍历能到消费者；
+  - 证据行号被改成不含 `token` 的行时，图校验报出。
+
+  既有测试锁定的计数如有变化（清单文件数、名字计数、版本号字符串等），逐项写明来源。
+
+## 5. 附录
+
+- [x] 5.1 按 D15 修改 `skills/excavator/frameworks/javaee.md` 与 `frameworks/README.md`。若 `test_prompt_evidence_sections` 一类测试锁定了附录的段落，同步更新，并写明变化。
+
+  完成记录：
+  - `javaee.md`：
+    - 「已在事实图」加两行：按类型的 `injects`，业务接口的 `implements`；
+    - 不靠猜补的缺口前缀加 `type-injection-` 与 `business-interface-unresolved`，六种缺口各一行说明；
+    - 「Injection by type」不再是推断规则，改为三条：不重画、缺口不猜目标、业务接口缺口不画边；
+    - languageLesson 同步。
+  - `README.md`：
+    - 归属表加一行确定性归属；
+    - 原「DI by type → 附录」一行注明 JSR 330 `@Inject` 与无名 `@EJB` 除外，第二、第三归属的例子同步。
+  - `spring.md`：「@Autowired injection」原把 `@Inject` 也算进由模型画 `depends_on` 的情形，与本变更冲突。现去掉 `@Inject`，并加一句：它已是事实或缺口，不画边、不猜目标。Spring `@Autowired` 的措辞不动（Non-Goals）。
+  - `test_prompt_evidence_sections` 的变化：
+    - `catalogIds` 加入 `type-injections.json` 的注入族；
+    - 来源 id 的正则允许数字，原先 `jsr330-inject` 会被静默跳过；
+    - javaee 推断规则数 4→3：按类型注入不再有「恰好一个 / 零或多个」一对；
+    - 缺口前缀句随新前缀更新；
+    - 两条锁定旧候选集指令的测试换成四条：两行事实、新规则（旧指令逐条断言不存在）、六种缺口各一行（种类从代码常量派生）、languageLesson；
+    - 新增 README 一条、`spring.md` 一条。
+  - 绊线：分别恢复三个文档的旧版，各自让 6 / 1 / 1 条测试变红。
+
+## 6. 验收与记录
+
+- [x] 6.1 acceptor 按 design「验收 Oracle」O2–O7 执行，产出报告，放在 `excavator-test-runs/by-type-injection/`，不进仓库；O8 由我跑。
+- [x] 6.2 在本文件末尾写「验收摘要」，内容为：
+  - 候选提交与基线；
+  - O2–O8 的结果表；
+  - 每个语料的注入点、边与主要桶；
+  - 已知限制。
+
+  语料用公开名字，私有语料只写「两个私有语料」。
+
+## 验收摘要
+
+被测提交 `354feda5`（`lazy-fact-graph/12`），基线 `037a4be8`（`/11`，与 main 只差 OpenSpec 文档）。`339bc0dc` 只改附录与 prompt 测试，不影响产物，由 O8 覆盖。语料 13 个：
+- 有按类型注入点：Dataverse、TomEE 8.x examples、Cargo Tracker、DayTrader 8、DayTrader 7、Sakai `master`、hadoop、Seam 2.2 examples；
+- 不回归：OSCAR、fineract、JPetStore 6 与两个私有语料。
+
+结论：O2–O8 全部通过，编造 0，F1、F2、F3 都没有触发，没有放宽任何 oracle。
+
+| Oracle | 结论 | 计数 |
+|---|---|---|
+| O2 精度审计 | 通过 | 独立实现（不引用本阶段代码与目录），13 个语料逐条核对 616 条按类型 `injects` 边、1236 条证据，不一致 0。装置先验注入四种错（错目标、错消费者、错证据行、歧义点多一条边），4/4 报出；先验原登记在 TomEE，因其没有边改在 DayTrader 8 |
+| O3 桶与计数对账 | 通过 | 12 个语料的注解、注入点、16 个桶、业务接口 8 个桶与缺口计数差异 0。hadoop 有 8 个点归属不同，逐个读源码归因：7 个是产品把测试代码里继承同文件成员类型的 `App` 当作解析不出的父类型，按简单名阻断了仓库里所有叫 `App` 的类型，属于保守一侧（D7），这 7 个点无论如何都成不了边；1 个是审计脚本自身的限制，产品正确。跨阶段恒等式（名字阶段的「未命名」= `ejb-inject` 注解 − 按名 − `on` 之外成员上的位置与 JNDI）在全部语料成立：Dataverse 884、TomEE 78 = 84 − 6、DayTrader 7 为 11、DayTrader 8 为 2，其余为 0 |
+| O4 不回归 | 通过 | 13 个语料节点集合、既有边（含证据）与既有缺口完全一致，没有任何既有 `injects` 边多出按类型的证据。新增只有按类型的 `injects` 边与 `type-injection-*` 缺口，覆盖只多 `typeInjections` 一段；不用按类型注入的语料该段全为 0。结构行去掉 Core 新字段后一致 |
+| O5 耗时 | 通过 | 交错各 3 次取中位数：Sakai `master` 93.73 s → 99.19 s（+5.8%），hadoop 162.63 s → 169.81 s（+4.4%）。`factGraph` 阶段 5754 → 6021 ms、13185 → 13419 ms；结构抽取 +3.9% / +5.3%，来自 Core 新增的四项事实 |
+| O6 分层抽查 | 通过 | 6 个语料共 345 项，编造 0。抽中的边按 `beans.xml`、`ejb-jar.xml`、`web.xml`、Spring 配置与会话 bean 注解判，均是容器实际注入的对象 |
+| O7 真实 MCP | 通过 | Dataverse，7 个工具 24 项检查。消费者 1 跳出边经按类型 `injects` 到实现，实现 1 跳入边回到消费者；`read_evidence` 返回 `@Inject` 行与字段行；`project_status` 给出 `typeInjections` 与 `type-injection-*` 缺口；`recall` 按名命中消费者 |
+| O8 全量门 | 通过 | core 1318、全仓 3524 通过（4 个跳过与本变更无关），typecheck、`check-refs`、`openspec validate --all --strict` 通过；中间 commit 各自通过 |
+
+每个语料的计数（注入点按两族合计；业务接口 `implements` 边在所有语料都为 0）：
+
+| 语料 | 注入点 | 成边 | 主要的不成边桶 |
+|---|---|---|---|
+| Dataverse | 1160 | 562 | 隐藏候选 504、歧义 56、仓库外类型 36 |
+| TomEE 8.x examples | 236 | 0 | 隐藏候选 125、仓库外类型 50、类型未定 48、限定符未知 7、按名 6 |
+| Cargo Tracker | 72 | 24 | 动态提供 24、仓库外类型 24 |
+| DayTrader 8 | 58 | 19 | 仓库外类型 24、限定符未知 14、歧义 1 |
+| DayTrader 7 | 28 | 4 | JNDI 8、仓库外类型 7、歧义 7 |
+| Sakai `master` | 35 | 3 | 动态提供 15、仓库外类型 9、隐藏候选 7 |
+| hadoop | 154 | 4 | 隐藏候选 66、类型未定 37、嵌套 31、歧义 8 |
+| Seam 2.2 examples | 2 | 0 | 限定符未知 1、动态提供 1 |
+| 其余 5 个 | 0 | 0 | — |
+
+遗漏都在可见的桶里，按影响排序：
+- 测试代码参与候选（design 已接受的风险）：
+  - Dataverse 的 504 个隐藏候选来自 `src/test` 里匿名或嵌套的 mock 子类，56 个歧义来自顶层 mock；
+  - Cargo Tracker 的 24 个动态提供来自测试部署的 `addClass(X.class)`；
+  - Sakai 有 22 个。
+- 其他 JVM 语言规则按全仓生效：TomEE 的 125 个隐藏候选全部来自一个示例模块里的 2 个 Scala 文件，所以 TomEE 没有边。
+- `@Decorator` 类算作候选：DayTrader 7、8 的 `@EJB PingEJBIFace` 因装饰器落歧义。唯一候选是装饰器或拦截器时已由 `deploymentDependent` 拦下，不成边（有单测）。
+- bean 发现模式不读（Non-Goals）：DayTrader 7 有 6 个歧义。
+- 服务定位器的类字面量：DayTrader 7 有 1 个动态提供。
+
+已知限制与后续候选：
+- Core 默认忽略规则里的 `LICENSE` 不区分大小写，也匹配目录，所以名为 `license` 的源码包整个不进分析（Dataverse 3 个 Java 文件，所有阶段都受影响，早于本变更）。对本阶段而言，这样的文件若声明了某个仓库类型的子类型或生产者，候选集就不完整。三个文件里没有这种声明。另立变更修复。
+- 主代码注入点排除测试源码里的候选、其他 JVM 语言按部署单元限定，是两项最大的召回改进候选。
+- 嵌套类型继承同文件的成员类型时父类型解析不出，按简单名保守阻断（hadoop 7 个点）。
+- 真实语料里没有业务接口 `implements` 边，这条路径只有夹具测试覆盖。

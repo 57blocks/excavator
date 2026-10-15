@@ -107,8 +107,9 @@ describe('Java annotation injection sites in the real Lazy driver', () => {
 
   it('stamps the product with the new pipeline version', () => {
     expect(result.saveError).toBeNull();
-    expect(PIPELINE_VERSION).toBe('lazy-fact-graph/11');
-    expect(graph.project.pipelineVersion).toBe('lazy-fact-graph/11');
+    // /12: the by-type injection stage (openspec: changes/by-type-injection)
+    expect(PIPELINE_VERSION).toBe('lazy-fact-graph/12');
+    expect(graph.project.pipelineVersion).toBe('lazy-fact-graph/12');
   });
 
   it('records the framework its Seam descriptor declares in the header', () => {
@@ -208,7 +209,8 @@ describe('Java annotation injection sites in the real Lazy driver', () => {
       bindings: [{ file: CTX, line: 3, binder: 'spring-xml-bean' }],
     }]);
     expect(injects().some((e) => label(e.target) === cls(LIB, 'LibDao'))).toBe(false);
-    expect(injects().some((e) => e.evidence.some((x) => x.bindings.some((b) => b.file === LIB_CTX)))).toBe(false);
+    // an entry of the by-type stage has no bindings: the by-type edge of the pair below merges into an edge of this stage
+    expect(injects().some((e) => e.evidence.some((x) => (x.bindings ?? []).some((b) => b.file === LIB_CTX)))).toBe(false);
   });
 
   it('cites how each consumer is managed: a ControllerAdvice, a Configuration, a Seam Name and, for EJB, no one', () => {
@@ -223,10 +225,17 @@ describe('Java annotation injection sites in the real Lazy driver', () => {
       file: `${APP}/OrderFacade.java`, line: 8, source: 'lexical', token: 'OrderBean', name: 'OrderBean', site: 'ejb-bean-name',
       consumer: { bindings: [] }, bindings: [{ file: `${APP}/OrderBeanImpl.java`, line: 6, binder: 'ejb-annotation-session' }],
     }]);
-    expect(edgeOf(ORDER_FACADE, INVOICE_BEAN).evidence).toEqual([{
-      file: `${APP}/OrderFacade.java`, line: 11, source: 'lexical', token: 'InvoiceBean', name: 'InvoiceBean', site: 'ejb-bean-name',
-      consumer: { bindings: [] }, bindings: [{ file: `${APP}/InvoiceBean.java`, line: 5, binder: 'ejb-annotation-session' }],
-    }]);
+    // the pair is drawn by two sources (openspec: changes/by-type-injection): the name stage, for `invoices` (`beanName`), and the by-type
+    // stage, for `typed` (a bare `EJB`, whose type is the class): one edge, with the evidence of both, the by-type entries after the
+    // line-11 entry of the name stage and in the order of (file, line, token, role)
+    expect(edgeOf(ORDER_FACADE, INVOICE_BEAN).evidence).toEqual([
+      {
+        file: `${APP}/OrderFacade.java`, line: 11, source: 'lexical', token: 'InvoiceBean', name: 'InvoiceBean', site: 'ejb-bean-name',
+        consumer: { bindings: [] }, bindings: [{ file: `${APP}/InvoiceBean.java`, line: 5, binder: 'ejb-annotation-session' }],
+      },
+      { file: `${APP}/OrderFacade.java`, line: 14, source: 'tree-sitter', token: 'EJB', role: 'injection', family: 'ejb-inject', member: 'typed' },
+      { file: `${APP}/OrderFacade.java`, line: 15, source: 'tree-sitter', token: 'typed', role: 'member', family: 'ejb-inject', member: 'typed', type: 'InvoiceBean' },
+    ]);
     expect(edgeOf(ORDER_ACTION, cls(SEAM, 'MailerImpl')).evidence).toEqual([{
       file: `${SEAM}/OrderAction.java`, line: 15, source: 'lexical', token: 'mailer', name: 'mailer', site: 'seam-in',
       consumer: { bindings: [{ file: `${SEAM}/OrderAction.java`, line: 6, binder: 'seam-annotation-name' }] },
@@ -358,10 +367,17 @@ describe('Java annotation injection sites in the real Lazy driver', () => {
     let evidenceChecked = 0;
     let bindingsChecked = 0;
     let defaults = 0;
+    // the entries of the by-type stage (openspec: changes/by-type-injection) carry a role and no name or bindings: only their
+    // lines are checked here, and there are two of them (the one pair both stages draw)
+    const byType = [];
     for (const edge of injects()) {
       for (const evidence of edge.evidence) {
         const text = linesOf(evidence.file)[evidence.line - 1];
         expect(text, `${evidence.file}:${evidence.line}`).toContain(evidence.token);
+        if (evidence.role !== undefined) {
+          byType.push([evidence.role, evidence.token]);
+          continue;
+        }
         evidenceChecked += 1;
         if (evidence.file.endsWith('.java')) {
           // a name written is the token; a default one is the member that stands for it: `setOrderDao` is `orderDao`
@@ -385,6 +401,7 @@ describe('Java annotation injection sites in the real Lazy driver', () => {
         }
       }
     }
+    expect(byType).toEqual([['injection', 'EJB'], ['member', 'typed']]);
     // 15 Java entries (one per edge site) and 2 XML ones; the bindings each cites, and the ones its consumer went through
     expect(evidenceChecked).toBe(17);
     expect(defaults).toBe(2); // setOrderDao and setInventory
@@ -578,7 +595,7 @@ describe('a product of the previous pipeline version (design D10, task 4.4)', ()
     expect(synced.data.kind).toBe('synced');
     expect(synced.data.factCoverage.annotationInjections).toMatchObject({ status: 'ran', siteCount: 38 });
     const graph = readProduct(root);
-    expect(graph.project.pipelineVersion).toBe('lazy-fact-graph/11');
+    expect(graph.project.pipelineVersion).toBe('lazy-fact-graph/12');
     expect(graph.edges.filter((e) => e.type === 'injects')).toHaveLength(EXPECTED_INJECTS.length);
     expect(service.projectStatus().snapshot.freshness).toBe('fresh');
   });

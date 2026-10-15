@@ -87,6 +87,48 @@ function isModifierArray(value) {
   return Array.isArray(value) && value.every(item => JAVA_METHOD_MODIFIERS.has(item));
 }
 
+// Facts for by-type injection (openspec: changes/by-type-injection, D3). The
+// keywords a type declaration can carry and the kinds of nested type are
+// closed sets: an unknown value fails the file instead of reaching candidate
+// resolution as a guess.
+const JAVA_TYPE_MODIFIERS = new Set([
+  'public', 'protected', 'private', 'abstract', 'static', 'final', 'sealed', 'non-sealed', 'strictfp',
+]);
+const JAVA_NESTED_TYPE_KINDS = new Set(['class', 'interface', 'enum', 'record', 'annotation', 'anonymous']);
+
+function isTypeModifierArray(value) {
+  return Array.isArray(value) && value.every(item => JAVA_TYPE_MODIFIERS.has(item));
+}
+
+function isTypeAtLine(value) {
+  return isPlainObject(value) && typeof value.type === 'string' && isFiniteInteger(value.line);
+}
+
+// A type below top level, or an anonymous class body. An anonymous class has
+// no name, is local by definition and states the type it instantiates; every
+// other kind has a name and no `instantiates`.
+function isNestedTypeArray(value) {
+  return Array.isArray(value) && value.every(item => {
+    if (!isPlainObject(item) || !JAVA_NESTED_TYPE_KINDS.has(item.kind)) return false;
+    const anonymous = item.kind === 'anonymous';
+    return (anonymous ? item.name === null : typeof item.name === 'string') &&
+      isFiniteInteger(item.line) &&
+      typeof item.owner === 'string' &&
+      typeof item.local === 'boolean' &&
+      (!anonymous || item.local === true) &&
+      isTypeModifierArray(item.modifiers) &&
+      isSupertypeArray(item.supertypes) &&
+      (anonymous ? isTypeAtLine(item.instantiates) : item.instantiates === undefined);
+  });
+}
+
+// The class literals an annotation argument lists. The value of such an
+// argument is never a string: a string value with class literals disagrees.
+function isArgumentClassLiteralsValid(argument) {
+  return hasValidOptionalField(argument, 'classLiterals', list => Array.isArray(list) && list.every(isTypeAtLine)) &&
+    (argument.classLiterals === undefined || argument.value === null);
+}
+
 // A type's annotations with their arguments (openspec: changes/
 // name-binding-references, D2): a value is the string a single string literal
 // wrote, or null for any other way of writing it - never undefined.
@@ -99,7 +141,8 @@ function isAnnotationUseArray(value) {
     item.arguments.every(argument =>
       isPlainObject(argument) &&
       typeof argument.key === 'string' &&
-      (argument.value === null || typeof argument.value === 'string')));
+      (argument.value === null || typeof argument.value === 'string') &&
+      isArgumentClassLiteralsValid(argument)));
 }
 
 // Annotations on a Java type's members (openspec: changes/
@@ -123,11 +166,16 @@ function isMemberAnnotationArray(value) {
       isPlainObject(argument) &&
       typeof argument.key === 'string' &&
       (argument.value === null || typeof argument.value === 'string') &&
-      isFiniteInteger(argument.line)) &&
+      isFiniteInteger(argument.line) &&
+      isArgumentClassLiteralsValid(argument)) &&
     JAVA_MEMBER_KINDS.has(item.on) &&
     typeof item.owner === 'string' &&
     typeof item.nested === 'boolean' &&
     isNameAtLine(item.member) &&
+    // A field's or method's declared type. A constructor and a record, the
+    // member of its components' annotations, have none.
+    hasValidOptionalField(item.member, 'type', value => typeof value === 'string') &&
+    (item.on === 'constructor' || item.on === 'component' ? item.member.type === undefined : true) &&
     (item.on === 'parameter' || item.on === 'component'
       ? isNameAtLine(item.parameter) && isFiniteInteger(item.parameter.index) && item.parameter.index >= 0
       : item.parameter === undefined));
@@ -160,6 +208,7 @@ const STRUCTURE_ENTRY_VALIDATORS = {
     isStringArray(entry.properties) &&
     hasValidOptionalField(entry, 'kind', value => JAVA_TYPE_KINDS.has(value)) &&
     hasValidOptionalField(entry, 'qualifiedName', value => typeof value === 'string') &&
+    hasValidOptionalField(entry, 'modifiers', isTypeModifierArray) &&
     hasValidOptionalField(entry, 'supertypes', isSupertypeArray) &&
     hasValidOptionalField(entry, 'fieldTypes', isFieldTypeArray) &&
     hasValidOptionalField(entry, 'annotations', isStringArray) &&
@@ -218,7 +267,10 @@ function isValidStructuralAnalysis(analysis) {
       )) &&
     // Not a symbol array: class literals reference types, they declare none.
     hasValidOptionalField(analysis, 'classLiterals', isClassLiteralArray) &&
-    hasValidOptionalField(analysis, 'memberAnnotations', isMemberAnnotationArray);
+    hasValidOptionalField(analysis, 'memberAnnotations', isMemberAnnotationArray) &&
+    // Not a symbol array either: nested types are declarations below a class
+    // the file already lists.
+    hasValidOptionalField(analysis, 'nestedTypes', isNestedTypeArray);
 }
 
 // What a Java call site is invoked on (java-member-call-resolution, D2). The
@@ -402,11 +454,15 @@ export function deriveStatus(analysis, outcome) {
 
 /** Java type facts a class entry carries through to the structure row. */
 const JAVA_TYPE_FACT_FIELDS = Object.freeze([
-  'kind', 'qualifiedName', 'supertypes', 'fieldTypes', 'annotations', 'annotationArguments', 'typeParameters', 'memberTypes',
+  'kind', 'qualifiedName', 'modifiers', 'supertypes', 'fieldTypes', 'annotations', 'annotationArguments', 'typeParameters', 'memberTypes',
 ]);
 
 /** Java declaration facts a method or constructor entry carries through. */
 const JAVA_MEMBER_FACT_FIELDS = Object.freeze(['visibility', 'modifiers', 'annotations']);
+
+function classLiteralsOf(argument) {
+  return argument.classLiterals.map(literal => ({ type: literal.type, line: literal.line }));
+}
 
 function pickDefined(source, fields) {
   const out = {};
@@ -556,14 +612,40 @@ export function buildResult(file, totalLines, nonEmptyLines, analysis, callGraph
     base.memberAnnotations = analysis.memberAnnotations.map(use => ({
       name: use.name,
       line: use.line,
-      arguments: use.arguments.map(argument => ({ key: argument.key, value: argument.value, line: argument.line })),
+      arguments: use.arguments.map(argument => ({
+        key: argument.key,
+        value: argument.value,
+        line: argument.line,
+        ...(argument.classLiterals === undefined ? {} : { classLiterals: classLiteralsOf(argument) }),
+      })),
       on: use.on,
       owner: use.owner,
       nested: use.nested,
-      member: { name: use.member.name, line: use.member.line },
+      member: {
+        name: use.member.name,
+        line: use.member.line,
+        ...(use.member.type === undefined ? {} : { type: use.member.type }),
+      },
       ...(use.parameter === undefined
         ? {}
         : { parameter: { name: use.parameter.name, index: use.parameter.index, line: use.parameter.line } }),
+    }));
+  }
+
+  // Java: every type declared below top level and every anonymous class body,
+  // an empty list included, for the same reason.
+  if (Array.isArray(analysis.nestedTypes)) {
+    base.nestedTypes = analysis.nestedTypes.map(nested => ({
+      kind: nested.kind,
+      name: nested.name,
+      line: nested.line,
+      owner: nested.owner,
+      local: nested.local,
+      modifiers: [...nested.modifiers],
+      supertypes: nested.supertypes.map(supertype => ({ relation: supertype.relation, type: supertype.type, line: supertype.line })),
+      ...(nested.instantiates === undefined
+        ? {}
+        : { instantiates: { type: nested.instantiates.type, line: nested.instantiates.line } }),
     }));
   }
 

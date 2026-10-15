@@ -364,6 +364,15 @@ export interface JavaClassLiteral {
   context: "annotation" | "code";
 }
 
+/** One class literal written as an annotation argument's value, or as an
+ *  element of an array initializer that is the value (openspec:
+ *  changes/by-type-injection, design D3). `type` is spelled as in
+ *  `JavaClassLiteral.type`; `line` is where the literal starts. */
+export interface JavaAnnotationClassLiteral {
+  type: string;
+  line: number;
+}
+
 /** One annotation on a Java type, with the arguments it was written with
  *  (openspec: changes/name-binding-references, design D2). */
 export interface JavaAnnotationUse {
@@ -378,6 +387,10 @@ export interface JavaAnnotationUse {
      *  for anything else (a constant, a concatenation, an array, a class
      *  literal, a nested annotation, a text block). */
     value: string | null;
+    /** Set when the value is a class literal or an array initializer holding
+     *  class literals: each of them in source order, the other elements of a
+     *  mixed array left out. `value` stays `null`. Absent otherwise. */
+    classLiterals?: JavaAnnotationClassLiteral[];
   }>;
 }
 
@@ -393,7 +406,12 @@ export interface JavaMemberAnnotationUse {
   line: number;
   /** Keys and values as in `JavaAnnotationUse`; `line` is where the value
    *  starts, which differs from the annotation's line when it spans several. */
-  arguments: Array<{ key: string; value: string | null; line: number }>;
+  arguments: Array<{
+    key: string;
+    value: string | null;
+    line: number;
+    classLiterals?: JavaAnnotationClassLiteral[];
+  }>;
   on: "field" | "method" | "constructor" | "parameter" | "component";
   /** Simple name of the top-level type the member is declared in, however
    *  deeply nested or anonymous the declaring type is. */
@@ -402,10 +420,38 @@ export interface JavaMemberAnnotationUse {
   nested: boolean;
   /** A field's declarator, a method or constructor, or for a parameter or
    *  component the method, constructor or record it belongs to; `line` is the
-   *  line of the name. */
-  member: { name: string; line: number };
+   *  line of the name. `type` is a field's declared type with the array
+   *  dimensions written on its declarator, or a method's return type; for a
+   *  parameter it is that of the method it belongs to. A constructor, a
+   *  compact constructor and a record (the member of a component) have none. */
+  member: { name: string; line: number; type?: string };
   /** Set for `on: "parameter"` and `on: "component"`. `index` counts from 0. */
   parameter?: { name: string; index: number; line: number };
+}
+
+/** A Java type declared below top level, or an anonymous class body
+ *  (openspec: changes/by-type-injection, design D3). A top-level type is a
+ *  `classes[]` entry; this is every other type, at any depth. An enum
+ *  constant body (`A { ... }`) is not recorded. */
+export interface JavaNestedType {
+  kind: "class" | "interface" | "enum" | "record" | "annotation" | "anonymous";
+  /** `null` for an anonymous class. */
+  name: string | null;
+  /** The line of the name; for an anonymous class, the line of `new`. */
+  line: number;
+  /** Simple name of the top-level type it is written in, however deep. */
+  owner: string;
+  /** Written in a method, constructor, initializer or lambda body, or an
+   *  anonymous class, or inside such a type: not reachable from the top-level
+   *  type through member types alone. */
+  local: boolean;
+  /** Modifier keywords in source order, annotations excluded (`public`,
+   *  `abstract`, `static`, `final`, `sealed`, `non-sealed`, `strictfp`, ...). */
+  modifiers: string[];
+  /** As `classes[].supertypes`; empty for an anonymous class. */
+  supertypes: JavaSupertype[];
+  /** Anonymous classes only: the type written after `new`, and its line. */
+  instantiates?: { type: string; line: number };
 }
 
 // Plugin interfaces
@@ -442,6 +488,9 @@ export interface StructuralAnalysis {
     kind?: "class" | "interface" | "enum" | "record";
     /** Package plus type name, or the bare name in the default package. */
     qualifiedName?: string;
+    /** Modifier keywords of the type declaration in source order, annotations
+     *  excluded (`public`, `abstract`, `final`, `sealed`, ...). */
+    modifiers?: string[];
     supertypes?: JavaSupertype[];
     fieldTypes?: JavaFieldType[];
     /** Type annotation names as written (`Builder`, `lombok.Builder`). */
@@ -460,6 +509,9 @@ export interface StructuralAnalysis {
   /** Java: every annotation on a field, method, constructor, parameter or
    *  record component, at any depth of type nesting, in source order. */
   memberAnnotations?: JavaMemberAnnotationUse[];
+  /** Java: every type declaration below top level and every anonymous class
+   *  body, in source order. */
+  nestedTypes?: JavaNestedType[];
   // Non-code structural data (all optional for backward compat)
   sections?: SectionInfo[];
   definitions?: DefinitionInfo[];

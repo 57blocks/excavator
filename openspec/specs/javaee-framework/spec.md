@@ -49,9 +49,10 @@ MUST NOT 以 Servlet、JPA、JMS 的 API 作为 `javaee` 的关键字：这些 A
   - `@EJB(beanName)` 等按名字注入的 `injects`；
   - `@Named` bean 与 EL 名字之间的 `references`；
   - 描述符里类名的 `mentions`；
+  - JAX-RS 路由：`endpoint` 节点，以及从端点指向处理方法的 `routes` 边；
   - `implements` 与 `calls`。
 - 按类型注入（不写名字的 `@Inject`、`@EJB`）只在仓库内恰好一个非抽象实现时推断依赖。实现按传递的子类型计：实现类的子类、子接口的实现类都算候选。生产者方法也计入候选。零个或多个候选时不连边：限定符、`@Alternative` 由部署决定，MUST NOT 猜。
-- JAX-RS 路由由 `@ApplicationPath`、类上与方法上的 `@Path`、HTTP 方法注解拼出，写进方法的语义描述，不为路由造节点。
+- JAX-RS 端点的名字是相对于应用根的路由。处理方法所在的部署单元里恰好一个 `@ApplicationPath` 类时，把它的值作为前缀，写进端点或处理方法的语义描述；零个或多个时不加前缀，并说明前缀未知。MUST NOT 另造路由节点，MUST NOT 为 `route-*` 缺口猜测路由。
 - MDB 与 CDI 事件的发布订阅关系，只在两端写着同一个目的地字面量、或同一个事件类型时推断。
 - 组件角色与分层：session bean、MDB、resource、provider、interceptor、entity、producer、描述符。被页面 EL 绑定的 `@Named` 类是 backing bean，分层与 `jsf.md` 一致；其余 CDI bean 归服务层。session bean（由注解或 `ejb-jar.xml` 条目认定）即使被页面 EL 绑定也仍是 session bean、归服务层。`*Bean.java` 这类两种角色共用的文件名后缀不单独决定角色。
 
@@ -70,6 +71,10 @@ MUST NOT 以 Servlet、JPA、JMS 的 API 作为 `javaee` 的关键字：这些 A
 #### Scenario: 已有确定性边不重画
 - **WHEN** 图里已有 `@EJB(beanName = "OrderBean")` 产生的 `injects` 边
 - **THEN** 附录指示不再为同一注入画推断边
+
+#### Scenario: 路由不重画、只补前缀
+- **WHEN** 图里已有端点 `GET /orders/{id}` 及其 `routes` 边，处理方法所在的部署单元里恰好一个 `@ApplicationPath("api")` 类
+- **THEN** 附录指示不另造路由节点或推断边，只在语义描述里写出完整路径 `GET /api/orders/{id}`
 
 ### Requirement: Java EE 描述符里的类名经 mentions 连边
 

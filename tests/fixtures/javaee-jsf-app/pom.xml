@@ -8,6 +8,7 @@
     <module>orders-ejb</module>
     <module>orders-web</module>
     <module>orders-rest</module>
+    <module>orders-inject</module>
   </modules>
   <dependencyManagement>
     <dependencies>

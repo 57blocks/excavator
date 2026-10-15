@@ -118,13 +118,26 @@ export const MEMBER_NAME_RULES = Object.freeze({
 
 const compareText = (a, b) => (a < b ? -1 : a > b ? 1 : 0);
 
+/**
+ * The order of the evidence of one edge (openspec: changes/by-type-injection, D11):
+ * file, line, token, then the injection site's id for an entry of the XML and
+ * the annotation stages or the role of an entry of the by-type stage, then the
+ * family, the member and the parameter, which only the by-type entries have. An
+ * entry that has none of the last four sorts as it did before they existed.
+ */
 function evidenceOrder(a, b) {
-  return compareText(a.file, b.file) || a.line - b.line || compareText(a.token, b.token) || compareText(a.site, b.site);
+  return compareText(a.file, b.file) || a.line - b.line || compareText(a.token, b.token)
+    || compareText(a.site ?? a.role, b.site ?? b.role)
+    || compareText(a.family, b.family) || compareText(a.member, b.member)
+    || (a.parameter ?? -1) - (b.parameter ?? -1);
 }
 
-/** Evidence of one edge, without repeats of (file, line, token, site), in the order of `evidenceOrder`. */
+/** Evidence of one edge, without repeats of (file, line, token, site or role, family, member, parameter), in the order of `evidenceOrder`. */
 function uniqueSortedEvidence(evidence) {
-  const unique = new Map(evidence.map((entry) => [JSON.stringify([entry.file, entry.line, entry.token, entry.site]), entry]));
+  const unique = new Map(evidence.map((entry) => [
+    JSON.stringify([entry.file, entry.line, entry.token, entry.site ?? entry.role, entry.family, entry.member, entry.parameter]),
+    entry,
+  ]));
   return [...unique.values()].sort(evidenceOrder);
 }
 
@@ -363,21 +376,22 @@ export function resolveAnnotationInjections({ javaRows, catalog, table, classIds
 }
 
 /**
- * The `injects` edges of the XML stage and of this one, as one edge per
- * (consumer class, target class) with the evidence of both, by file, line, token
- * and site, without repeats (D7). A pair either source draws alone comes through
- * as it is. Done before the edges go into the graph: the graph keeps the first
- * edge of a type and two ends and drops a second, so the second source's evidence
- * would be lost there without a word.
+ * The `injects` edges of the XML stage, of this one and of the by-type stage
+ * (openspec: changes/by-type-injection, D11), as one edge per (consumer class,
+ * target) with the evidence of every source that draws the pair, by file, line,
+ * token and site or role, without repeats (D7). A pair a source draws alone comes
+ * through as it is. Done before the edges go into the graph: the graph keeps the
+ * first edge of a type and two ends and drops a second, so a later source's
+ * evidence would be lost there without a word.
  *
- * @param {{ xmlEdges: object[], annotationEdges: object[], mutations?: { noInjectsMerge?: boolean } }} args
+ * @param {{ xmlEdges: object[], annotationEdges: object[], typeEdges?: object[], mutations?: { noInjectsMerge?: boolean } }} args
  *   `mutations` is the test seam of the mutation tripwires (design D11): the edge
- *   of the second source is dropped, as the graph would; production callers leave it empty.
- * @returns {object[]} new edges in the order each pair is first met, the XML stage's first; the inputs are not changed
+ *   of a later source is dropped, as the graph would; production callers leave it empty.
+ * @returns {object[]} new edges in the order each pair is first met, the XML stage's first, then the annotations', then the by-type stage's; the inputs are not changed
  */
-export function mergeInjectsEdges({ xmlEdges, annotationEdges, mutations = {} }) {
+export function mergeInjectsEdges({ xmlEdges, annotationEdges, typeEdges = [], mutations = {} }) {
   const merged = new Map();
-  for (const edge of [...xmlEdges, ...annotationEdges]) {
+  for (const edge of [...xmlEdges, ...annotationEdges, ...typeEdges]) {
     if (edge.type !== 'injects') throw new Error(`annotation-injection-resolution: an edge of the type ${JSON.stringify(edge.type)} among the injects edges to merge`);
     const key = JSON.stringify([edge.source, edge.target]);
     if (!merged.has(key)) merged.set(key, { ...edge, evidence: [...edge.evidence] });

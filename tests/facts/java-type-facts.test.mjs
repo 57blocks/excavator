@@ -45,7 +45,7 @@ describe('structure row: Java type facts', () => {
       {
         name: 'Loan', startLine: undefined, endLine: undefined,
         methods: ['Loan', 'pay'], properties: ['helper'],
-        kind: 'class', qualifiedName: 'p.Loan',
+        kind: 'class', qualifiedName: 'p.Loan', modifiers: ['public'],
         supertypes: [
           { relation: 'extends', type: 'Base', line: 5 },
           { relation: 'implements', type: 'Payable', line: 5 },
@@ -59,7 +59,7 @@ describe('structure row: Java type facts', () => {
       {
         name: 'Payable', startLine: undefined, endLine: undefined,
         methods: ['pay'], properties: [],
-        kind: 'interface', qualifiedName: 'p.Payable',
+        kind: 'interface', qualifiedName: 'p.Payable', modifiers: [],
         supertypes: [], fieldTypes: [], annotations: [], annotationArguments: [], typeParameters: [], memberTypes: [],
       },
     ]);

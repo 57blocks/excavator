@@ -70,3 +70,13 @@ export function dottedName(node: TreeSitterNode): string {
   if (!scope || !name) return typeText(node);
   return `${dottedName(scope)}.${name.text}`;
 }
+
+/**
+ * A declared type with the array dimensions written after the declared name:
+ * `String names[]` on a field's declarator is `String[]`, `int f()[]` on a
+ * method is `int[]`. `declaration` is the node that carries those dimensions.
+ */
+export function declaratorType(typeNode: TreeSitterNode, declaration: TreeSitterNode): string {
+  const dimensions = declaration.childForFieldName("dimensions");
+  return `${typeText(typeNode)}${dimensions ? typeText(dimensions) : ""}`;
+}

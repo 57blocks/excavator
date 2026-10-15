@@ -274,7 +274,12 @@ class A {}
       { name: "Named", line: 2, arguments: [{ key: "value", value: null }] },
       { name: "Named", line: 3, arguments: [{ key: "value", value: null }] },
       { name: "Named", line: 4, arguments: [{ key: "value", value: null }] },
-      { name: "Named", line: 5, arguments: [{ key: "value", value: null }] },
+      // The class literal is also listed (by-type-injection): the value stays null.
+      {
+        name: "Named",
+        line: 5,
+        arguments: [{ key: "value", value: null, classLiterals: [{ type: "Helper", line: 5 }] }],
+      },
       { name: "Named", line: 6, arguments: [{ key: "name", value: null }] },
       { name: "Named", line: 7, arguments: [{ key: "value", value: null }] },
       { name: "Named", line: 8, arguments: [{ key: "value", value: null }] },

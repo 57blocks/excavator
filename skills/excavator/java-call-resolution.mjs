@@ -37,6 +37,8 @@
  * never changes an outcome.
  */
 
+import { createJavaTypeQueries } from './java-type-queries.mjs';
+
 /** Every outcome a Java call site can have. */
 export const JAVA_CALL_OUTCOMES = Object.freeze([
   'edge',
@@ -277,6 +279,8 @@ export function createJavaCallResolver({ rows, functionIds, classIds = new Map()
   const contextByPath = new Map();
   /** path -> simple name -> TypeInfo, for the types a file declares */
   const typesByPath = new Map();
+  /** every indexed TypeInfo in rows order, then class order (`declaredTypes`) */
+  const allTypes = [];
 
   // Java code can use the types of the repository's Kotlin and Scala sources,
   // which this resolver does not read: see createOtherJvmIndex.
@@ -337,6 +341,7 @@ export function createJavaCallResolver({ rows, functionIds, classIds = new Map()
       }
       if (!typesByFqn.has(type.fqn)) typesByFqn.set(type.fqn, []);
       typesByFqn.get(type.fqn).push(type);
+      allTypes.push(type);
       if (!typesByPath.has(row.path)) typesByPath.set(row.path, new Map());
       typesByPath.get(row.path).set(type.name, type);
       if (ctx.pkg) packages.add(ctx.pkg);
@@ -1531,7 +1536,21 @@ export function createJavaCallResolver({ rows, functionIds, classIds = new Map()
     return record;
   }
 
+  // Read-only queries on the types above, for a stage that reasons about them
+  // (openspec: changes/by-type-injection, D6); see java-type-queries.mjs.
+  const typeQueries = createJavaTypeQueries({
+    types: allTypes,
+    contextOf: (path) => contextByPath.get(path),
+    resolveType,
+    supertypesOf,
+    hierarchy,
+    typeScope,
+    stripTypeText,
+  });
+
   return {
+    ...typeQueries,
+
     /**
      * Type hierarchy facts between repository declarations (D10;
      * dead-code-detection D8):

@@ -31,6 +31,7 @@ import { loadNameBindingCatalog } from '../../skills/excavator/name-binding-cata
 import { collectNameReferenceSites } from '../../skills/excavator/name-reference-sites.mjs';
 import { collectMentionSites } from '../../skills/excavator/mention-sites.mjs';
 import { loadRouteCatalog, parseRouteCatalog } from '../../skills/excavator/route-catalog.mjs';
+import { loadTypeInjectionCatalog } from '../../skills/excavator/type-injection-catalog.mjs';
 import { ROUTE_BUCKETS, ROUTE_GAP_KINDS } from '../../skills/excavator/route-resolution.mjs';
 import { createSourceReader, validateAgainstSource } from '../../skills/excavator/validate-graph.mjs';
 import { DETERMINISTIC_EDGE_TYPES, boundedBFS, oneHop } from '../../skills/excavator/retrieve.mjs';
@@ -46,7 +47,11 @@ const copyFixture = () => {
 };
 const readProduct = (root) => readKnowledgeGraph(join(root, '.excavator', KNOWLEDGE_GRAPH_FILE));
 
-/** The inputs buildFactGraph was given by a run of the driver on `root`, read back from its intermediate products. */
+/**
+ * The inputs buildFactGraph was given by a run of the driver on `root`, read back from its intermediate products. The driver also
+ * gives it the type injection catalog (openspec: changes/by-type-injection), so these do: the graphs these tests build without
+ * the route stage still have the by-type edges the product has, and the comparisons stay about the routes.
+ */
 function inputsOfRun(root) {
   const intermediate = join(root, '.excavator', 'intermediate');
   const scan = JSON.parse(readFileSync(join(intermediate, 'scan-result.json'), 'utf-8'));
@@ -58,6 +63,7 @@ function inputsOfRun(root) {
   return {
     scan, structureAll, importMap, mentionSites: mention.sites, mentionInputs: mention.inputs,
     nameReferenceSites: collectNameReferenceSites({ scan, catalog, readFile }), nameBindingCatalog: catalog,
+    typeInjectionCatalog: loadTypeInjectionCatalog(),
   };
 }
 
@@ -149,8 +155,8 @@ describe('the route stage in the real Lazy driver (tasks 3.1 and 3.3)', () => {
 
   it('stamps the product with the new pipeline version, and keeps the detected frameworks', () => {
     expect(result.saveError).toBeNull();
-    expect(PIPELINE_VERSION).toBe('lazy-fact-graph/11');
-    expect(graph.project.pipelineVersion).toBe('lazy-fact-graph/11');
+    expect(PIPELINE_VERSION).toBe('lazy-fact-graph/12');
+    expect(graph.project.pipelineVersion).toBe('lazy-fact-graph/12');
     expect(graph.project.frameworks).toEqual(['javaee', 'jsf']);
   });
 
@@ -563,7 +569,7 @@ describe('the route catalog of a run, and a product of the previous pipeline ver
       expect(synced.data.kind).toBe('synced');
       expect(synced.data.factCoverage.routes.families.jaxrs).toMatchObject({ sites: 21, endpoints: 12, edges: 13 });
       const graph = readProduct(root);
-      expect(graph.project.pipelineVersion).toBe('lazy-fact-graph/11');
+      expect(graph.project.pipelineVersion).toBe('lazy-fact-graph/12');
       expect(graph.nodes.filter((n) => n.type === 'endpoint')).toHaveLength(12);
       expect(graph.edges.filter((e) => e.type === 'routes')).toHaveLength(13);
       expect(service.projectStatus().snapshot.freshness).toBe('fresh');

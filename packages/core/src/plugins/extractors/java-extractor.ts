@@ -12,9 +12,10 @@ import { findChild, findChildren } from "./base-extractor.js";
 import { extractAnnotationNames, extractClassLiterals, memberDeclarationFacts } from "./java-declaration-facts.js";
 import { extractAnnotationUses } from "./java-annotation-arguments.js";
 import { extractMemberAnnotations } from "./java-member-annotations.js";
+import { extractNestedTypes, typeModifierKeywords } from "./java-nested-types.js";
 import { methodReferenceSite } from "./java-method-references.js";
 import { STATIC_INITIALIZER_CALLER, initializerCaller } from "./java-initializer-callers.js";
-import { dottedName, typeText } from "./java-names.js";
+import { declaratorType, dottedName, typeText } from "./java-names.js";
 
 /**
  * Extract parameter names from a Java `formal_parameters` node.
@@ -212,12 +213,6 @@ function extractSupertypes(node: TreeSitterNode): JavaSupertype[] {
   return supertypes;
 }
 
-/** A field's declared type, with array dimensions written after the name. */
-function declaratorType(typeNode: TreeSitterNode, declarator: TreeSitterNode): string {
-  const dimensions = declarator.childForFieldName("dimensions");
-  return `${typeText(typeNode)}${dimensions ? typeText(dimensions) : ""}`;
-}
-
 /** Facts gathered from one type body for the fact graph. */
 interface TypeBodyFacts {
   fieldTypes: JavaFieldType[];
@@ -388,6 +383,7 @@ export class JavaExtractor implements LanguageExtractor {
       exports,
       classLiterals: extractClassLiterals(rootNode),
       memberAnnotations: extractMemberAnnotations(rootNode),
+      nestedTypes: extractNestedTypes(rootNode, extractSupertypes),
     };
   }
 
@@ -956,11 +952,12 @@ export class JavaExtractor implements LanguageExtractor {
     facts: TypeBodyFacts,
   ): Pick<
     StructuralAnalysis["classes"][number],
-    "kind" | "qualifiedName" | "supertypes" | "fieldTypes" | "annotations" | "annotationArguments" | "typeParameters" | "memberTypes"
+    "kind" | "qualifiedName" | "modifiers" | "supertypes" | "fieldTypes" | "annotations" | "annotationArguments" | "typeParameters" | "memberTypes"
   > {
     return {
       kind,
       qualifiedName: packageName ? `${packageName}.${name}` : name,
+      modifiers: typeModifierKeywords(node),
       supertypes: extractSupertypes(node),
       fieldTypes: facts.fieldTypes,
       annotations: extractAnnotationNames(node),

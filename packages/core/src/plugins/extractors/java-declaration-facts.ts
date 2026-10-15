@@ -69,7 +69,7 @@ export function memberDeclarationFacts(
 const COMMENT_NODES = new Set(["line_comment", "block_comment"]);
 
 /** The type of a class literal as written before `.class`. */
-function classLiteralType(literal: TreeSitterNode): string {
+export function classLiteralType(literal: TreeSitterNode): string {
   for (let i = 0; i < literal.namedChildCount; i++) {
     const child = literal.namedChild(i);
     if (child && !COMMENT_NODES.has(child.type)) return typeText(child);
