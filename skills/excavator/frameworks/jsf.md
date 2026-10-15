@@ -55,6 +55,12 @@ Every relation drawn from these conventions is `"provenance": "inferred"` with n
 - Zero or several such files: do not connect. Zero usually means the library comes from an archive outside the repository; several means the same library path exists in more than one module.
 - Match by the library in the namespace and the tag name together, never by the tag name alone.
 
+**EL members to methods** — a `references` edge already connects a page to the bean class its EL name binds, and each evidence item of that edge carries the EL chain the page wrote (`orders.detail`). Take the first member after the root name: `detail` from `orders.detail`, `list` from `orders.list`. The evidence does not record which attribute the expression sits in, so action methods and properties share one rule: the member `m` names a method called `m`, or `get` or `is` followed by `m` with its first letter in upper case (`list` names `list`, `getList` or `isList`). The candidate set is the `function` nodes in the bean class's file whose `owner` is that class and whose name is one of the three. Compare node names and owners only; do not read the source to find the method.
+- Exactly one candidate: connect the page to that method node with an `inferred` `depends_on` edge.
+- Zero or several candidates: do not connect. Zero usually means the member lives in a parent class outside the repository or is generated (for example by Lombok); several means the method is overloaded.
+- Resolve only the first member. In `#{orders.selected.name}` the type behind `selected` is decided at run time, so `name` names no candidate set.
+- The page-to-class `references` edge is the fact this rule starts from: do not redraw it.
+
 **Converters and validators by id** — `converter="acme.money"`, `<f:converter converterId="…"/>`, `validator="…"` and `<f:validator validatorId="…"/>` name an id. A declaration uses that id when it is `@FacesConverter("…")` or `@FacesValidator("…")` with that value, or a `converter-id` or `validator-id` entry of `faces-config.xml` with its class.
 - Exactly one declaration uses the id: connect the page to the declaring class with an `inferred` `depends_on` edge.
 - Zero or several declarations use the id: do not connect.

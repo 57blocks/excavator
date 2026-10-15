@@ -377,13 +377,17 @@ Report: `[Phase F2] Selecting files needing semantic (re)generation...`
    `plan.unavailable[]` as gaps, never generate for them. Read
    `project.frameworks` once from the graph header (the same `header` call
    Phase F1 reads `project.factsDigest` from) and put it in every dispatch
-   prompt; the file-analyzer reads `frameworks/<id>.md` for each id itself.
+   prompt, with this skill's own directory; the file-analyzer reads
+   `<SKILL_DIR>/frameworks/<id>.md` for each id itself. Without the directory
+   it has to search the disk and may find another installed copy of the
+   skill, whose addenda can be older or missing.
 
    > Produce a semantic patch for each fact node below: a `summary` and
    > `tags` describing what it does, from reading its source at the given
    > `filePath`/`lineRange`. Copy each `nodeId` VERBATIM from the list — do
    > NOT invent a node, an edge, a layer, or an id that is not in this list.
    > Project root: `$PROJECT_ROOT`
+   > Skill directory (for bundled scripts and framework addenda): `<SKILL_DIR>`
    > Frameworks detected: `<project.frameworks from the graph header>`
    > Fact nodes for this batch:
    > ```json
@@ -396,6 +400,11 @@ Report: `[Phase F2] Selecting files needing semantic (re)generation...`
    > of the analyzer's configured output language. Preserve source-owned
    > identifiers and literals verbatim. The deterministic writer owns the
    > cache-level `contentLanguage: "en"` marker; do not emit that field.
+   >
+   > When a framework addendum's Canonical File Roles table gives a node a
+   > role from what its source shows (an annotation, a descriptor entry, a
+   > file pattern), include that row's Tags in the node's `tags`, next to the
+   > tags you choose yourself. Phase F3 lays nodes out by these role tags.
 
 4. **Hydrate + commit.** The model was never asked for `filePath` or a
    content hash — attach both deterministically (`filePath` from the fact
@@ -462,9 +471,63 @@ a reused Architecture must not silently swallow a gap this run actually
 found). Report `Architecture unchanged (factDigest match) — reusing existing
 semantic-graph.json.` and continue to Phase F4 without dispatching anything.
 
-**If `rebuild`:** dispatch the SAME `excavator-architecture-analyzer` agent
+**If `rebuild`:** first build the analyzer's input.
+
+1. **Fresh node semantics.** Re-run the shared reuse plan Phase F2 step 1
+   uses, now that Phase F2 has committed its patches, writing to separate
+   files so Phase F2's own selection stays intact:
+
+   ```bash
+   node "<SKILL_DIR>/select-stale-semantics.mjs" "$PROJECT_ROOT" \
+     --out "$DATA_DIR/intermediate/architecture-semantics.json" \
+     --files-out "$DATA_DIR/intermediate/architecture-stale-files.json"
+   ```
+
+   Its `plan.reuse[]` lists every node with a fresh `semantic-cache.json`
+   entry, with that entry's `summary` and `tags`. A node in `plan.generate[]`
+   or `plan.unavailable[]` has no fresh semantics: it gets no `tags` or
+   `summary` in the input, and you do not write them for it. Never read
+   `summary`/`tags` from `knowledge-graph.jsonl` nodes; Full leaves them empty.
+
+2. **Fact nodes.** One entry per node in `knowledge-graph.jsonl`:
+   `{id, type, name, filePath}`, plus `owner` when the node has one (the
+   class a method or endpoint belongs to), plus `tags` when the node is in
+   `plan.reuse[]`, plus that entry's `summary` when the node is also a `file`
+   node. For example:
+
+   ```bash
+   jq -c -n --slurpfile sem "$DATA_DIR/intermediate/architecture-semantics.json" '
+     ($sem[0].plan.reuse | map({key: .nodeId, value: .}) | from_entries) as $fresh
+     | inputs | select(.record == "node") | .node
+     | {id, type, name, filePath}
+       + (if .owner then {owner} else {} end)
+       + (if $fresh[.id] then {tags: $fresh[.id].tags} else {} end)
+       + (if $fresh[.id] and .type == "file" then {summary: $fresh[.id].summary} else {} end)' \
+     "$DATA_DIR/knowledge-graph.jsonl"
+   ```
+
+3. **Import and page-reference edges.** Every `imports` edge as
+   `{source, target, type}`, and every `references` edge with each evidence
+   item's `line` and `chain` (the EL chain the page wrote, such as
+   `orders.detail`). Leave out the evidence's bindings. For example:
+
+   ```bash
+   jq -c 'select(.record == "edge") | .edge
+     | select(.type == "imports" or .type == "references")
+     | {source, target, type}
+       + (if .type == "references" then {evidence: [.evidence[] | {line, chain}]} else {} end)' \
+     "$DATA_DIR/knowledge-graph.jsonl"
+   ```
+
+Then dispatch the SAME `excavator-architecture-analyzer` agent
 definition Phase 4 below uses (language/framework context injection identical
-to Phase 4's own steps 2-3), retargeted at fact nodes and this artifact:
+to Phase 4's own steps 2-3), retargeted at fact nodes and this artifact.
+Append each framework addendum in full, as Phase 4 step 3 says: do not
+shorten it, drop sections or reword its rules. Send the template below with
+its inputs and nothing else of your own: no Phase 4 "Additional context"
+block, and no conclusions of yours about modules, layers or expected
+relations, because the analyzer decides those from the inputs and the
+addenda.
 
 > Analyze this codebase's structure to identify architectural layers and any
 > notable cross-node relations. Every `nodeIds` entry and every relation's
@@ -472,8 +535,21 @@ to Phase 4's own steps 2-3), retargeted at fact nodes and this artifact:
 > — an id that is not in this list is not a real node and will be dropped.
 > Write every model-owned layer name and description in English. Preserve source-owned identifiers, paths, literals, and excerpts verbatim.
 > Project root: `$PROJECT_ROOT`
-> Fact nodes: `<{id, type, name, filePath} for every node in knowledge-graph.jsonl>`
-> Import edges: `<edges with type "imports" from knowledge-graph.jsonl>`
+> Fact nodes: `<the node list from step 2>`
+> Import and page-reference edges: `<the edge list from step 3>`
+>
+> A node's `tags`, and a file node's `summary`, were written in Phase F2 by
+> reading its source with the framework addenda injected into this prompt. A
+> tag from an addendum's Canonical File Roles table names the role the
+> addendum assigns from the node's annotations, descriptor entries or file
+> pattern. A node without `tags` has no fresh semantics in this run.
+> A `references` edge runs from a page to a class the page binds through an
+> EL expression; each evidence `chain` names the members the page uses, at
+> that `line` of the page. Phase F2 did not see these edges, so a page-bound
+> role shows here, not in the tags. Assign layers by the layer table in the
+> framework addenda: where it assigns a layer by role, use the node's tags and
+> its page references, not its name, class-name suffix, directory or module.
+>
 > Write output to: `$DATA_DIR/intermediate/semantic-layers.json` as
 > `{ "layers": [{"id","name","description","nodeIds"}], "relations": [{"id","type","source","target","description"?,"evidence"?}] }`
 

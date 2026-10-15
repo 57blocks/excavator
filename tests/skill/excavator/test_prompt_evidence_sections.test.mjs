@@ -286,8 +286,80 @@ describe('SKILL.md injects framework addenda by the graph header ids (javaee-jsf
     expect(prompt.indexOf('Project root:')).toBeLessThan(prompt.indexOf('Frameworks detected:'));
   });
 
+  it('the Phase F2 dispatch prompt names the skill directory the addenda are read from (architecture-input)', () => {
+    const prompt = between('> Produce a semantic patch for each fact node below', 'Write output to:');
+    expect(prompt).toContain('Skill directory (for bundled scripts and framework addenda): `<SKILL_DIR>`');
+    expect(prompt.indexOf('Skill directory')).toBeLessThan(prompt.indexOf('Frameworks detected:'));
+    expect(between('Read the fact nodes from `knowledge-graph.jsonl`', '> Produce a semantic patch')).toContain('the file-analyzer reads `<SKILL_DIR>/frameworks/<id>.md` for each id itself');
+  });
+
   it('Phase F3 still takes the context injection from Phase 4 itself', () => {
     expect(flat(skill)).toContain("language/framework context injection identical to Phase 4's own steps 2-3");
+  });
+});
+
+describe('Phase F3 gives the architecture analyzer node semantics and page references (architecture-input)', () => {
+  const skill = readRepoFile('skills/excavator/SKILL.md');
+  const rebuild = (() => {
+    const start = skill.indexOf('**If `rebuild`:** first build');
+    expect(start, 'Phase F3 should open its rebuild branch by building the input').toBeGreaterThanOrEqual(0);
+    const end = skill.indexOf('Then dispatch `excavator-assemble-reviewer`', start);
+    expect(end).toBeGreaterThan(start);
+    // drop the blockquote markers so a phrase of the dispatch prompt matches across its wrapped lines
+    return flat(skill.slice(start, end).replace(/^> ?/gm, ''));
+  })();
+  const prompt = rebuild.slice(rebuild.indexOf('Analyze this codebase'));
+
+  it('takes fresh semantics from the shared reuse plan, into files of its own, and never from the graph nodes', () => {
+    expect(rebuild).toContain('node "<SKILL_DIR>/select-stale-semantics.mjs" "$PROJECT_ROOT"');
+    expect(rebuild).toContain('--out "$DATA_DIR/intermediate/architecture-semantics.json"');
+    expect(rebuild).toContain('--files-out "$DATA_DIR/intermediate/architecture-stale-files.json"');
+    expect(rebuild).toContain("Its `plan.reuse[]` lists every node with a fresh `semantic-cache.json` entry, with that entry's `summary` and `tags`.");
+    expect(rebuild).toContain('it gets no `tags` or `summary` in the input, and you do not write them for it.');
+    expect(rebuild).toContain('Never read `summary`/`tags` from `knowledge-graph.jsonl` nodes');
+  });
+
+  it('lists every node with its owner, the tags of a fresh node and the summary of a fresh file node', () => {
+    expect(rebuild).toContain('One entry per node in `knowledge-graph.jsonl`: `{id, type, name, filePath}`, plus `owner` when the node has one');
+    expect(rebuild).toContain('plus `tags` when the node is in `plan.reuse[]`, plus that entry\'s `summary` when the node is also a `file` node.');
+    expect(rebuild).toContain('(if .owner then {owner} else {} end)');
+    expect(rebuild).toContain('(if $fresh[.id] then {tags: $fresh[.id].tags} else {} end)');
+    expect(rebuild).toContain('(if $fresh[.id] and .type == "file" then {summary: $fresh[.id].summary} else {} end)');
+  });
+
+  it('gives the imports edges and the references edges with the line and chain of each evidence, without the bindings', () => {
+    expect(rebuild).toContain('select(.type == "imports" or .type == "references")');
+    expect(rebuild).toContain('{evidence: [.evidence[] | {line, chain}]}');
+    expect(rebuild).toContain("Leave out the evidence's bindings.");
+    expect(prompt).toContain('Fact nodes: `<the node list from step 2>`');
+    expect(prompt).toContain('Import and page-reference edges: `<the edge list from step 3>`');
+    expect(skill).not.toContain('<{id, type, name, filePath} for every node in knowledge-graph.jsonl>');
+  });
+
+  it('tells the analyzer where the tags come from, what a references edge says, and to layer by the addenda', () => {
+    expect(prompt).toContain('were written in Phase F2 by reading its source with the framework addenda injected into this prompt');
+    expect(prompt).toContain("A tag from an addendum's Canonical File Roles table names the role the addendum assigns from the node's annotations, descriptor entries or file pattern.");
+    expect(prompt).toContain('A node without `tags` has no fresh semantics in this run.');
+    expect(prompt).toContain('A `references` edge runs from a page to a class the page binds through an EL expression; each evidence `chain` names the members the page uses');
+    expect(prompt).toContain('Phase F2 did not see these edges, so a page-bound role shows here, not in the tags.');
+    expect(prompt).toContain('Assign layers by the layer table in the framework addenda');
+    expect(prompt).toContain("use the node's tags and its page references, not its name, class-name suffix, directory or module.");
+    // the statements sit in the dispatch prompt, ahead of the output instruction
+    expect(prompt.indexOf('Assign layers by the layer table')).toBeLessThan(prompt.indexOf('Write output to:'));
+  });
+
+  it('injects every addendum in full and adds nothing of the orchestrator\'s own to the dispatch', () => {
+    const dispatch = rebuild.slice(rebuild.indexOf('Then dispatch the SAME'), rebuild.indexOf('Analyze this codebase'));
+    expect(dispatch).toContain('Append each framework addendum in full, as Phase 4 step 3 says: do not shorten it, drop sections or reword its rules.');
+    expect(dispatch).toContain('no Phase 4 "Additional context" block, and no conclusions of yours about modules, layers or expected relations');
+  });
+
+  it('has Phase F2 put the role tags of the addendum next to its own tags', () => {
+    const start = skill.indexOf('> Produce a semantic patch for each fact node below');
+    const end = skill.indexOf('4. **Hydrate + commit.**', start);
+    const f2 = flat(skill.slice(start, end).replace(/^\s*> ?/gm, ''));
+    expect(f2).toContain("When a framework addendum's Canonical File Roles table gives a node a role from what its source shows (an annotation, a descriptor entry, a file pattern), include that row's Tags in the node's `tags`, next to the tags you choose yourself.");
+    expect(f2).toContain('Phase F3 lays nodes out by these role tags.');
   });
 });
 
@@ -312,7 +384,8 @@ describe('the javaee and jsf addenda (javaee-jsf-framework-knowledge, D8)', () =
       roles: ['Session bean', 'Message-driven bean', 'JAX-RS resource', 'JAX-RS provider', 'Interceptor', 'Entity', 'Producer', 'Descriptor'],
     },
     jsf: {
-      rules: 3,
+      // outcomes, composite components and converters or validators by id, plus EL members to methods (architecture-input)
+      rules: 4,
       edgeTypes: ['references', 'mentions', 'implements', 'calls'],
       roles: ['Page', 'Template', 'Composite component', 'Backing bean', 'Converter', 'Validator', 'Descriptor'],
     },
@@ -596,6 +669,25 @@ describe('the javaee and jsf addenda (javaee-jsf-framework-knowledge, D8)', () =
     it('connects a converter or validator by id only when exactly one declaration uses the id', () => {
       expect(text).toContain('Exactly one declaration uses the id');
       expect(text).toContain('Zero or several declarations use the id');
+    });
+
+    it('connects a page to the one method its EL chain names, from the node list, first member only (architecture-input)', () => {
+      const raw = readRepoFile('skills/excavator/frameworks/jsf.md');
+      const rule = flat(raw.split('**EL members to methods**')[1].split('**Converters and validators by id**')[0]);
+      // it sits among the edge patterns, after navigation and composite components
+      expect(raw.indexOf('**EL members to methods**')).toBeGreaterThan(raw.indexOf('**Composite components**'));
+      expect(raw.indexOf('**EL members to methods**')).toBeLessThan(raw.indexOf('### Architectural Layers for JSF'));
+      expect(rule).toContain('each evidence item of that edge carries the EL chain the page wrote (`orders.detail`)');
+      expect(rule).toContain('Take the first member after the root name: `detail` from `orders.detail`, `list` from `orders.list`.');
+      expect(rule).toContain('so action methods and properties share one rule');
+      expect(rule).toContain('(`list` names `list`, `getList` or `isList`)');
+      expect(rule).toContain("The candidate set is the `function` nodes in the bean class's file whose `owner` is that class and whose name is one of the three.");
+      expect(rule).toContain('Compare node names and owners only; do not read the source to find the method.');
+      expect(rule).toContain('Exactly one candidate: connect the page to that method node with an `inferred` `depends_on` edge.');
+      expect(rule).toContain('Zero or several candidates: do not connect.');
+      expect(rule).toContain('a parent class outside the repository or is generated (for example by Lombok); several means the method is overloaded');
+      expect(rule).toContain('Resolve only the first member. In `#{orders.selected.name}`');
+      expect(rule).toContain('do not redraw it');
     });
   });
 });
