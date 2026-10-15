@@ -76,6 +76,9 @@ import {
   ANNOTATION_INJECTION_GAP_KINDS, mergeInjectsEdges, resolveAnnotationInjections,
 } from './annotation-injection-resolution.mjs';
 import { ROUTE_GAP_KINDS, assertRouteConservation, resolveRoutes } from './route-resolution.mjs';
+import {
+  BUSINESS_INTERFACE_GAP_KIND, TYPE_INJECTION_GAP_KINDS, TYPE_INJECTIONS_NOT_RUN, assertTypeInjectionConservation, resolveTypeInjections,
+} from './type-injection-resolution.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -165,6 +168,7 @@ function ordinalGroupKey(entry) {
  *   mentionMutations?: object,
  *   nameReferenceSites?: object|null, nameBindingCatalog?: object|null, nameReferenceMutations?: object,
  *   routeCatalog?: object|null, routeMutations?: object,
+ *   typeInjectionCatalog?: object|null, typeInjectionMutations?: object,
  *   serializationLimit?: number,
  *   headroomRecorder?: ReturnType<typeof import('./product-serialization.mjs').createHeadroomRecorder>,
  * }} args `mentionSites` is one row per scanned non-code file with the
@@ -201,6 +205,18 @@ function ordinalGroupKey(entry) {
  *   without. Omitted, the stage is recorded as not-run and adds no node, edge or
  *   gap. `routeMutations` is the test seam of the mutation tripwires of
  *   route-resolution.mjs; leave it unset.
+ *   `typeInjectionCatalog` is the loaded type injection catalog (type-injection-
+ *   catalog.mjs; openspec: changes/by-type-injection): the injection points a
+ *   container fills by type become `injects` edges from the consumer's class to the
+ *   one declaration that can satisfy them (a class, or a producer method), merged
+ *   per pair with the edges of the two stages above, or land in a visible bucket
+ *   (`coverage.typeInjections`); the business interfaces a class declares by
+ *   annotation become `implements` edges, unless the hierarchy has drawn the pair.
+ *   It reads the one call resolver of the Java rows, and confirms annotations like
+ *   the route stage does, so it needs `mentionInputs` and throws without. Omitted,
+ *   the stage is recorded as not-run and adds no edge or gap.
+ *   `typeInjectionMutations` is the test seam of the mutation tripwires of
+ *   type-injection-resolution.mjs; leave it unset.
  *   `serializationLimit`/`headroomRecorder` route the facts-digest
  *   input string through `serializeJsonProduct` (openspec: changes/product-
  *   serialization-ceiling, capability `product-serialization`) instead of a
@@ -210,7 +226,7 @@ function ordinalGroupKey(entry) {
  *   means no headroom entry is recorded for this call.
  * @returns {{ nodes: object[], edges: object[], coverage: object, gaps: object[], factsDigest: string }}
  */
-export function buildFactGraph({ scan, structureAll, importMap, mentionSites, mentionInputs, mentionMutations, nameReferenceSites, nameBindingCatalog, nameReferenceMutations, routeCatalog, routeMutations, serializationLimit = DEFAULT_LIMIT_CHARS, headroomRecorder = null }) {
+export function buildFactGraph({ scan, structureAll, importMap, mentionSites, mentionInputs, mentionMutations, nameReferenceSites, nameBindingCatalog, nameReferenceMutations, routeCatalog, routeMutations, typeInjectionCatalog, typeInjectionMutations, serializationLimit = DEFAULT_LIMIT_CHARS, headroomRecorder = null }) {
   if (!scan || !Array.isArray(scan.files)) {
     throw new Error('buildFactGraph: scan.files must be an array');
   }
@@ -480,8 +496,9 @@ export function buildFactGraph({ scan, structureAll, importMap, mentionSites, me
   const otherJvmRows = fileRows.filter((row) => ['kotlin', 'scala'].includes(languageOfRow(row)));
   let javaSiteCount = 0;
   let javaEdgeSites = 0;
-  if (javaRows.length > 0) {
-    const resolver = createJavaCallResolver({ rows: javaRows, functionIds, classIds, otherJvmRows });
+  // The one resolver of the Java rows: call resolution, the type hierarchy and the type queries of the by-type injection stage.
+  const resolver = javaRows.length > 0 ? createJavaCallResolver({ rows: javaRows, functionIds, classIds, otherJvmRows }) : null;
+  if (resolver !== null) {
     for (const row of javaRows) {
       const sites = row.callGraph ?? [];
       const outcomes = resolver.resolveFileCalls(row);
@@ -591,6 +608,10 @@ export function buildFactGraph({ scan, structureAll, importMap, mentionSites, me
   if (routeCatalog && !Array.isArray(mentionInputs?.javaPackages)) {
     throw new Error('buildFactGraph: routeCatalog needs mentionInputs (the packages of the Java types that have no entry of their own)');
   }
+  // The same for the by-type stage, which confirms the annotations of its catalog the same way.
+  if (typeInjectionCatalog && !Array.isArray(mentionInputs?.javaPackages)) {
+    throw new Error('buildFactGraph: typeInjectionCatalog needs mentionInputs (the packages of the Java types that have no entry of their own)');
+  }
   // Every Java top-level type declaration with its class node id (null where
   // the id is shared): the dictionary both name stages resolve class names by.
   const javaTypes = [];
@@ -617,6 +638,46 @@ export function buildFactGraph({ scan, structureAll, importMap, mentionSites, me
     for (const edge of resolved.edges) addEdge(edge);
     for (const gap of resolved.gaps) gapCollector.add(gap.kind, gap.scope, gap.sample);
     mentionCoverage = resolved.coverage;
+  }
+
+  // -------------------------------------------------------------------------
+  // By-type injection (openspec: changes/by-type-injection, D13): the injection
+  // points a container fills by type, and the business interfaces a class
+  // declares by annotation. After the type hierarchy above - the declared
+  // `implements` edges are added now, and the graph keeps the first edge of a
+  // type and two ends, so a pair the hierarchy drew is not drawn twice - and
+  // before the name stages below, whose `injects` edges the by-type edges are
+  // merged with. It asks the one call resolver of the Java rows about types, and
+  // confirms annotations as the route stage does. Without the catalog the stage
+  // did not run, which the coverage says in so many words.
+  // -------------------------------------------------------------------------
+  let typeInjectionCoverage = TYPE_INJECTIONS_NOT_RUN;
+  let typeInjected = null;
+  if (typeInjectionCatalog) {
+    const typesByFqn = indexJavaTypes(javaTypes);
+    const declaredJavaTypes = createDeclaredJavaTypeIndex(mentionInputs.javaPackages);
+    typeInjected = resolveTypeInjections({
+      javaRows,
+      catalog: typeInjectionCatalog,
+      identity: ({ fqns, simpleNames }) => createAnnotationIdentity({ fqns, typesByFqn, otherJvm, declaredJavaTypes, simpleNames }),
+      // A project with no Java row has no resolver: the stage then reads no type.
+      types: resolver ?? createJavaCallResolver({ rows: [], functionIds, classIds, otherJvmRows }),
+      functionIdOf: (path, index) => functionIds.get(path)?.[index] ?? null,
+      // Their types carry no supertypes in the rows, so any of them may extend or implement what a point asks for.
+      otherJvmTypeCount: otherJvmRows.reduce((count, row) => count + (row.classes ?? []).length, 0),
+      mutations: typeInjectionMutations ?? {},
+    });
+    for (const edge of typeInjected.implementsEdges) addEdge(edge);
+    for (const gap of typeInjected.gaps) gapCollector.add(gap.kind, gap.scope, gap.sample);
+    typeInjectionCoverage = typeInjected.coverage;
+  }
+  // The injection entries of the evidence the `injects` edges of the graph carry, by family: what the conservation reads back.
+  const injectionEntriesDrawn = {};
+  function addInjectsEdge(edge) {
+    if (!addEdge(edge)) return;
+    for (const entry of edge.evidence) {
+      if (entry.role === 'injection') injectionEntriesDrawn[entry.family] = (injectionEntriesDrawn[entry.family] ?? 0) + 1;
+    }
   }
 
   // -------------------------------------------------------------------------
@@ -689,10 +750,16 @@ export function buildFactGraph({ scan, structureAll, importMap, mentionSites, me
       classIds,
       mutations: nameReferenceMutations ?? {},
     });
-    for (const edge of mergeInjectsEdges({ xmlEdges: injected.edges, annotationEdges: annotated.edges, mutations: nameReferenceMutations ?? {} })) addEdge(edge);
+    for (const edge of mergeInjectsEdges({
+      xmlEdges: injected.edges, annotationEdges: annotated.edges, typeEdges: typeInjected?.edges ?? [], mutations: nameReferenceMutations ?? {},
+    })) addInjectsEdge(edge);
     for (const gap of [...injected.gaps, ...annotated.gaps]) gapCollector.add(gap.kind, gap.scope, gap.sample);
     injectionCoverage = injected.coverage;
     annotationInjectionCoverage = annotated.coverage;
+  }
+  // Without the name stages the by-type edges are the only `injects` edges to merge.
+  if (!nameReferenceSites && typeInjected !== null) {
+    for (const edge of mergeInjectsEdges({ xmlEdges: [], annotationEdges: [], typeEdges: typeInjected.edges, mutations: nameReferenceMutations ?? {} })) addInjectsEdge(edge);
   }
 
   // -------------------------------------------------------------------------
@@ -784,6 +851,7 @@ export function buildFactGraph({ scan, structureAll, importMap, mentionSites, me
     injections: injectionCoverage,
     annotationInjections: annotationInjectionCoverage,
     routes: routeCoverage,
+    typeInjections: typeInjectionCoverage,
   };
   if (mentionCoverage.status === 'ran') {
     // The gap counts are read back from what was recorded, as for Java calls.
@@ -818,6 +886,18 @@ export function buildFactGraph({ scan, structureAll, importMap, mentionSites, me
       recordedGaps[gap.scope] = { ...recordedGaps[gap.scope], [gap.kind]: (recordedGaps[gap.scope]?.[gap.kind] ?? 0) + gap.count };
     }
     assertRouteConservation(routeCoverage, { edges: routeEdgesDrawn, gaps: recordedGaps });
+  }
+  if (typeInjectionCoverage.status === 'ran') {
+    // Read back from what was recorded into the graph, by scope and gap kind, and from the `injects` edges the graph got; the
+    // declared interfaces are counted in what the stage drew, because the graph may have had the pair from the hierarchy already.
+    const recordedGaps = {};
+    const typeGapKinds = new Set([...Object.values(TYPE_INJECTION_GAP_KINDS), BUSINESS_INTERFACE_GAP_KIND]);
+    for (const gap of resolutionGaps) {
+      if (!typeGapKinds.has(gap.kind)) continue;
+      recordedGaps[gap.scope] = { ...recordedGaps[gap.scope], [gap.kind]: (recordedGaps[gap.scope]?.[gap.kind] ?? 0) + gap.count };
+    }
+    const implementations = typeInjected.implementsEdges.reduce((sum, edge) => sum + edge.evidence.length, 0);
+    assertTypeInjectionConservation(typeInjectionCoverage, { injections: injectionEntriesDrawn, implementations, gaps: recordedGaps });
   }
   const gaps = [...ledger.gaps, ...resolutionGaps].sort(compareGaps);
 
@@ -950,6 +1030,12 @@ const GAP_REASONS = Object.freeze({
   'route-verb-unresolved': 'Java route site(s) that do not name one HTTP method: the method writes none (a locator of a sub-resource, a path with no method, or a custom method the catalog does not know) or writes two or more different ones, and none of them is preferred: no endpoint is drawn',
   'route-root-unresolved': 'Java route site(s) whose top-level type writes no root path the catalog reads (a sub-resource, a resource that a descriptor or a configuration registers, a path an interface or a parent type gives): the root path is not completed from any other place, and no endpoint is drawn',
   'route-path-unresolved': 'Java route site(s) whose root path or method path is not written as a string literal (a constant, a concatenation, an array, no argument at all): a constant is not evaluated, and no endpoint is drawn',
+  'type-injection-point-unresolved': 'Java injection point(s) filled by type that a static read cannot place: one that writes a JNDI name, one in a nested, local or anonymous type (which have no node an edge can start from), or a member the structure row has no single declaration, declared type or class node for: no injects edge is drawn',
+  'type-injection-type-unresolved': 'Java injection point(s) filled by type whose type is a type variable, cannot be resolved, is a nested type, is declared more than once, or is restated by an argument that is not exactly one class literal: no injects edge is drawn',
+  'type-injection-candidates-unresolved': 'Java injection point(s) filled by type whose candidates cannot be settled: a qualifier the catalog does not know, a declaration the rows cannot see that may satisfy the type (a nested, local or anonymous type, a producer or provider in one, a supertype or produced type that cannot be resolved, a type of another JVM language), an interface or abstract class that code binds by class literal, a single candidate whose being a bean depends on the deployment, or one that is no node (a producer field, a provider class): no injects edge is drawn',
+  'type-injection-unbound': 'Java injection point(s) filled by type that no declaration of the repository can satisfy: beans of libraries, beans a container provides and beans created at runtime are not read, so the type may well be provided there: no injects edge is drawn',
+  'type-injection-ambiguous': 'Java injection point(s) filled by type with two or more candidates (classes, producers and provider classes): how a deployment chooses among them (a qualifier, an alternative, a priority) is not read, and none of the candidates is preferred: no injects edge is drawn',
+  'business-interface-unresolved': 'business interface declaration(s) of a class by annotation that cannot be read: a value that is no class literal (a constant), a type that cannot be resolved, is a nested type or is declared more than once, or a class or an interface with no node: no implements edge is drawn',
   'injection-consumer-unresolved': 'injection site(s) whose name is a repository class (an XML descriptor) or is written (a Java annotation) but whose consumer has no class that can be told: for XML, no enclosing bean element, a bean built by a factory method or with no class, one whose parent has no binding in the unit, an unindexed class or a class name that several declarations carry (a consumer whose class is outside the repository is no gap); for a Java annotation, a top-level type with no class node (an annotation type, or a name that several declarations carry): no injects edge is drawn',
 });
 

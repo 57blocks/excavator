@@ -21,7 +21,7 @@ import { loadTypeInjectionCatalog, parseTypeInjectionCatalog } from '../../skill
 import { collectNameReferenceSites } from '../../skills/excavator/name-reference-sites.mjs';
 import { loadNameBindingCatalog } from '../../skills/excavator/name-binding-catalog.mjs';
 import { buildNameBindingTable } from '../../skills/excavator/name-reference-resolution.mjs';
-import { resolveAnnotationInjections } from '../../skills/excavator/annotation-injection-resolution.mjs';
+import { mergeInjectsEdges, resolveAnnotationInjections } from '../../skills/excavator/annotation-injection-resolution.mjs';
 import {
   BUSINESS_INTERFACE_BUCKETS,
   BUSINESS_INTERFACE_GAP_BUCKETS,
@@ -2507,5 +2507,132 @@ describe('business interfaces declared by annotation', () => {
       expect(off.links).toEqual(['com.acme.OrderController -> com.acme.OrderServiceImpl']);
       expect(off.result.gaps).toEqual([]);
     });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The injects edges of the three sources: one edge per pair (task 4.1)
+// ---------------------------------------------------------------------------
+
+describe('mergeInjectsEdges with the by-type source (design D11)', () => {
+  const NAME_CATALOG = loadNameBindingCatalog();
+  const STATELESS = 'import javax.ejb.Stateless;';
+
+  /** The by-name annotation stage over the rows of a project, with no descriptor. */
+  function nameEdges(p) {
+    const sites = collectNameReferenceSites({ scan: { files: [] }, catalog: NAME_CATALOG, readFile: () => '' });
+    const table = buildNameBindingTable({
+      sites, catalog: NAME_CATALOG, manifestPaths: Object.keys(p.texts), javaRows: p.javaRows, classIds: p.classIds, javaTypes: p.javaTypes,
+      otherJvm: { isType: () => false }, declaredJavaTypes: p.declaredJavaTypes,
+    });
+    return resolveAnnotationInjections({ javaRows: p.javaRows, catalog: NAME_CATALOG, table, classIds: p.classIds }).edges;
+  }
+
+  // Two fields of Checkout reach OrderBean: one by the bean name, one by the type.
+  const checkout = () => project({
+    java: javaOf(
+      file('OrderBean', [STATELESS], ['@Stateless', 'public class OrderBean {}']),
+      file('Checkout', [EJB], ['public class Checkout {', '  @EJB(beanName = "OrderBean") private Orders a;', '  @EJB private OrderBean b;', '}']),
+    ),
+  });
+
+  it('is one edge for a pair the by-name stage and the by-type stage both draw, with the evidence of both', () => {
+    const p = checkout();
+    const named = nameEdges(p);
+    expect(named.map((edge) => [edge.source, edge.target])).toEqual([['class:com.acme.Checkout', 'class:com.acme.OrderBean']]);
+    expect(p.links).toEqual(['com.acme.Checkout -> com.acme.OrderBean']);
+
+    const merged = mergeInjectsEdges({ xmlEdges: [], annotationEdges: named, typeEdges: p.edges });
+    expect(merged).toHaveLength(1);
+    const path = SRC('Checkout');
+    expect(merged[0]).toMatchObject({ source: 'class:com.acme.Checkout', target: 'class:com.acme.OrderBean', type: 'injects', direction: 'forward', weight: 0.5, provenance: 'extracted' });
+    expect(merged[0].evidence.map((entry) => [entry.line, entry.token, entry.site ?? entry.role])).toEqual([
+      [p.line(path, 'beanName'), 'OrderBean', 'ejb-bean-name'],
+      [p.line(path, '@EJB private'), 'EJB', 'injection'],
+      [p.line(path, '@EJB private'), 'b', 'member'],
+    ]);
+    // the entries are what each stage drew, untouched
+    expect(merged[0].evidence).toEqual(expect.arrayContaining([...named[0].evidence, ...p.edges[0].evidence]));
+    expect(merged[0].evidence).toHaveLength(named[0].evidence.length + p.edges[0].evidence.length);
+  });
+
+  it('keeps the edge of a pair only the by-type stage draws as it is: the stage\'s own edge, the evidence in the stage\'s order', () => {
+    const p = project({ java: javaOf(iface('OrderService'), impl('OrderServiceImpl', 'OrderService'), consumer(['  @Inject private OrderService a;', '  @Inject private OrderService b;'])) });
+    const merged = mergeInjectsEdges({ xmlEdges: [], annotationEdges: [], typeEdges: p.edges });
+    expect(merged).toEqual(p.edges);
+    expect(merged[0]).not.toBe(p.edges[0]);
+    expect(merged[0].evidence).not.toBe(p.edges[0].evidence);
+  });
+
+  it('keeps the pairs of the sources apart, the first source\'s first', () => {
+    const p = checkout();
+    const other = { ...p.edges[0], target: 'class:com.acme.Other', evidence: [] };
+    const merged = mergeInjectsEdges({ xmlEdges: [], annotationEdges: nameEdges(p), typeEdges: [other, ...p.edges] });
+    expect(merged.map((edge) => edge.target)).toEqual(['class:com.acme.OrderBean', 'class:com.acme.Other']);
+  });
+
+  it('merges the three sources into one edge, sorted by file, line, token, and the site or the role', () => {
+    const p = checkout();
+    const xml = {
+      source: 'class:com.acme.Checkout', target: 'class:com.acme.OrderBean', type: 'injects', direction: 'forward', weight: 0.5, provenance: 'extracted',
+      evidence: [{ file: 'app/ctx.xml', line: 4, source: 'lexical', token: 'orderBean', site: 'spring-ref' }],
+    };
+    const merged = mergeInjectsEdges({ xmlEdges: [xml], annotationEdges: nameEdges(p), typeEdges: p.edges });
+    expect(merged).toHaveLength(1);
+    expect(merged[0].evidence.map((entry) => entry.file)).toEqual(['app/ctx.xml', SRC('Checkout'), SRC('Checkout'), SRC('Checkout')]);
+  });
+
+  it('sorts entries that have no role, family, member or parameter as it did before they existed', () => {
+    const entry = (extra) => ({ file: 'a.java', line: 3, source: 'lexical', token: 't', ...extra });
+    const edge = (evidence) => ({ source: 's', target: 't', type: 'injects', direction: 'forward', weight: 0.5, provenance: 'extracted', evidence });
+    const [merged] = mergeInjectsEdges({
+      xmlEdges: [edge([entry({ site: 'b-site' }), entry({ site: 'a-site' }), entry({ site: 'a-site' })])],
+      annotationEdges: [edge([entry({ line: 2, site: 'z-site' })])],
+    });
+    expect(merged.evidence.map((x) => [x.line, x.site])).toEqual([[2, 'z-site'], [3, 'a-site'], [3, 'b-site']]);
+  });
+
+  it('tells apart the entries of two families, two members and two parameters on one line, and counts one of each twice as one', () => {
+    const entry = (extra) => ({ file: 'a.java', line: 3, source: 'tree-sitter', token: 'x', role: 'member', family: 'f', member: 'm', ...extra });
+    const edge = (evidence) => ({ source: 's', target: 't', type: 'injects', direction: 'forward', weight: 0.5, provenance: 'extracted', evidence });
+    const [merged] = mergeInjectsEdges({
+      xmlEdges: [],
+      annotationEdges: [],
+      typeEdges: [edge([
+        entry({ parameter: 1 }), entry({ parameter: 0 }), entry({ member: 'n' }), entry({ family: 'g' }), entry({ role: 'injection' }), entry({ parameter: 0 }),
+      ])],
+    });
+    expect(merged.evidence.map((x) => [x.role, x.family, x.member, x.parameter])).toEqual([
+      ['injection', 'f', 'm', undefined],
+      ['member', 'f', 'm', 0],
+      ['member', 'f', 'm', 1],
+      ['member', 'f', 'n', undefined],
+      ['member', 'g', 'm', undefined],
+    ]);
+  });
+
+  it('with the switch on drops the by-type edge of a pair another source drew, and with no other source keeps it', () => {
+    const p = checkout();
+    const named = nameEdges(p);
+    const wrong = mergeInjectsEdges({ xmlEdges: [], annotationEdges: named, typeEdges: p.edges, mutations: { noInjectsMerge: true } });
+    expect(wrong).toHaveLength(1);
+    expect(wrong[0].evidence).toEqual(named[0].evidence);
+    // the first source's edge wins whichever source it is: the by-type edge, put first, has the by-type evidence only
+    const typeFirst = mergeInjectsEdges({ xmlEdges: [], annotationEdges: [], typeEdges: [...p.edges, ...named], mutations: { noInjectsMerge: true } });
+    expect(typeFirst[0].evidence).toEqual(p.edges[0].evidence);
+    // alone, nothing is dropped
+    expect(mergeInjectsEdges({ xmlEdges: [], annotationEdges: [], typeEdges: p.edges, mutations: { noInjectsMerge: true } })).toEqual(p.edges);
+  });
+
+  it('refuses an edge that is no injects edge, in any of the three sources', () => {
+    const p = checkout();
+    const bad = { ...p.edges[0], type: 'implements' };
+    expect(() => mergeInjectsEdges({ xmlEdges: [], annotationEdges: [], typeEdges: [bad] })).toThrow(/an edge of the type "implements" among the injects edges to merge/);
+  });
+
+  it('defaults the by-type source to none: the two-source call is as it was', () => {
+    const p = checkout();
+    const named = nameEdges(p);
+    expect(mergeInjectsEdges({ xmlEdges: [], annotationEdges: named })).toEqual(named);
   });
 });

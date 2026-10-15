@@ -54,8 +54,8 @@ describe('the detected frameworks in the graph header (task 4.1)', () => {
   });
 
   it('stamps the product with the new pipeline version', () => {
-    expect(PIPELINE_VERSION).toBe('lazy-fact-graph/11');
-    expect(graph.project.pipelineVersion).toBe('lazy-fact-graph/11');
+    expect(PIPELINE_VERSION).toBe('lazy-fact-graph/12');
+    expect(graph.project.pipelineVersion).toBe('lazy-fact-graph/12');
   });
 
   it('replaces a framework name an older graph carried with the detected ids, and changes no fact', async () => {
@@ -103,8 +103,9 @@ describe('a project that declares no framework keyword (task 4.1)', () => {
       const manifests = readdirSync(root, { recursive: true, withFileTypes: true })
         .filter((e) => e.isFile() && ['pom.xml', 'ejb-jar.xml', 'faces-config.xml', 'web.xml'].includes(e.name))
         .map((e) => join(e.parentPath, e.name));
-      // four poms (the parent and the three modules, orders-rest being the one of jaxrs-route-facts), ejb-jar.xml, faces-config.xml and web.xml
-      expect(manifests.length).toBe(7);
+      // five poms (the parent and the four modules, orders-rest being the one of jaxrs-route-facts and orders-inject the one of
+      // by-type-injection), ejb-jar.xml, faces-config.xml and web.xml
+      expect(manifests.length).toBe(8);
       for (const file of manifests) writeFileSync(file, readFileSync(file, 'utf-8').replace(keywords, 'removed'));
 
       const first = await runLazyAnalysis({ projectRoot: root, now: FIXED_NOW });
@@ -239,20 +240,21 @@ describe('Java EE descriptor class names in the real Lazy driver (task 4.2)', ()
   it('counts a name outside the repository where the class-name rule counts them, and draws no edge for it', async () => {
     const fqn = graph.coverage.mentions.fqn;
     // Fifteen names resolve to a type of the repository: the thirteen class names of the descriptors above, the
-    // converter of faces-config.xml and the page-bean import of legacy.jsp. The 46 others are the provider,
+    // converter of faces-config.xml and the page-bean import of legacy.jsp. The 50 others are the provider,
     // FacesServlet and every other dotted name the non-code files carry - among them the four of the pom of the
     // orders-rest module (the namespace host, the group of the parent, the group and the artifact prefix of the
-    // platform API), which the module of jaxrs-route-facts added to the 42 there were.
-    expect(fqn).toEqual({ candidates: 61, edge: 15, ambiguous: 0, unindexed: 0, external: 46 });
+    // platform API), which the module of jaxrs-route-facts added to the 42 there were, and the same four of the pom of the
+    // orders-inject module (by-type-injection), which has the same dependency.
+    expect(fqn).toEqual({ candidates: 65, edge: 15, ambiguous: 0, unindexed: 0, external: 50 });
     expect(fqn.edge + fqn.ambiguous + fqn.unindexed + fqn.external).toBe(fqn.candidates);
 
-    // The provider is one of the 46: without its line there is one fewer, and nothing else moves.
+    // The provider is one of the 50: without its line there is one fewer, and nothing else moves.
     const other = copyFixture();
     try {
       const file = join(other, PERSISTENCE);
       writeFileSync(file, readFileSync(file, 'utf-8').split('\n').filter((line) => !line.includes('<provider>')).join('\n'));
       await runLazyAnalysis({ projectRoot: other, now: FIXED_NOW });
-      expect(readProduct(other).coverage.mentions.fqn).toEqual({ candidates: 60, edge: 15, ambiguous: 0, unindexed: 0, external: 45 });
+      expect(readProduct(other).coverage.mentions.fqn).toEqual({ candidates: 64, edge: 15, ambiguous: 0, unindexed: 0, external: 49 });
     } finally {
       rmSync(other, { recursive: true, force: true });
     }

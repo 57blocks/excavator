@@ -102,11 +102,11 @@
 
 ## 4. 接入流水线与夹具
 
-- [ ] 4.1 `annotation-injection-resolution.mjs` 的 `mergeInjectsEdges` 增加 `typeEdges` 来源，按 D11 合并、排序去重；`noInjectsMerge` 对三个来源同样生效。测试覆盖：
+- [x] 4.1 `annotation-injection-resolution.mjs` 的 `mergeInjectsEdges` 增加 `typeEdges` 来源，按 D11 合并、排序去重；`noInjectsMerge` 对三个来源同样生效。测试覆盖：
   - 按名字与按类型落在同一对上；
   - 只有按类型的边；
   - 开关打开时的行为。
-- [ ] 4.2 `build-fact-graph.mjs` 按 D13：
+- [x] 4.2 `build-fact-graph.mjs` 按 D13：
   - 新参数 `typeInjectionCatalog`。给了它却没给 `mentionInputs` 时抛错；
   - 复用已建的调用解析器实例；
   - 传入 Kotlin 与 Scala 结构行声明的类型数（`otherJvmTypeCount`）；
@@ -116,8 +116,17 @@
   - 覆盖进 `coverage.typeInjections`。
 
   按 D13 逐个检查按边类型或覆盖段分支的位置，在本任务下写明结论。
-- [ ] 4.3 `lazy-analyze.mjs` 加载目录（可注入），`PIPELINE_VERSION` 升到 `lazy-fact-graph/12`。独立 CLI 入口照旧不传目录。
-- [ ] 4.4 夹具：在 `tests/fixtures/javaee-jsf-app/` 新增模块 `orders-inject/`，有自己的 `pom.xml`，并登记进父 `pom.xml`。内容覆盖 design O1 列出的全部情形。新增流水线测试 `tests/lazy/type-injection-pipeline.test.mjs`，断言：
+
+  核查结论：新覆盖段与指向方法节点的 `injects` 边在这些位置都不出错；没有一处需要改代码。
+  - `project-service.mjs`：`projectStatus` 把 `graph.coverage` 与 `graph.gaps` 原样放进 `factCoverage` 与 `gaps`（`:209`、`:223`，同步结果也一样），不按覆盖段名分支，`typeInjections` 段随图带出。新鲜度只比 `manifest.pipelineVersion === PIPELINE_VERSION`（`:101`），`analysisMode` 只比图头的 `pipelineVersion`（`:204`）：`/11` 的产物读作 `stale`，下一次同步整体重投影（`sync-fact-graph.mjs:304-308` 的复用闸三者须都相同）。`tests/lazy/type-injection-pipeline.test.mjs` 用 `projectStatus()` 断言覆盖与缺口原样出现。
+  - MCP `project_status`：`mcp-server.mjs:49-50` 只给输入定了严格模式，输出不过模式，直接是服务的返回；同一测试经真实 stdio 服务器断言 `factCoverage.typeInjections` 与 `traverse` 从实现类跳到消费者、`read_evidence` 取回 `@Inject` 行。
+  - 语义规划与新鲜度：`consumer-freshness.mjs`、`select-stale-semantics.mjs`、`semantic-cache.mjs`、`semantic-cache-reuse.mjs` 不读边，也不读覆盖段。`semantic-graph.mjs:430` 只读 `project.factsDigest` 决定重建或复用：摘要随新覆盖段与新边变化，`/11` 产物上的语义图因此重建，与先前每个新增覆盖段的情形一样。`annotate-graph.mjs:88`、`:837` 只按 `STRUCTURAL_EDGE_TYPES`（`imports`、`exports`、`contains`、`calls`）分支，且处理的是模型写的边；事实图的 `injects`、`implements` 不经过它。
+  - `factsDigest`：`build-fact-graph.mjs:943` 对 `{ nodes, edges, coverage, gaps }` 取摘要，`digestCoverage`（`:921`）只删 `selection` 与扫描前排除的文件数，所以 `coverage.typeInjections` 在摘要里；不传目录时它恒为 `{ status: 'not-run' }`，同一输入的摘要因此只差这一个键，没有测试钉死摘要字面量（根测试全量绿）。边在 `:913` 按 `(type, source, target)` 排序，证据按 `evidenceOrder` 排序，摘要对相同输入稳定。
+  - 图校验器：`validate-graph.mjs:235-247` 对 `injects` 期望证据条目自己的 `token`，不看目标节点的名字，所以指向生产者方法节点的边不出错；业务接口的 `implements` 走 `:248` 的默认分支，期望源或目标的名字出现在所引行上，`@Local(Quote.class)` 一行有接口名。按「任一条证据行含期望串即确认」（`:417-433`）。流水线测试断言：加入这 15 条边后 `edgesChecked` 与 `edgeConfirmed` 各增 15、问题与警告不变，改掉证据行后两类边各被报为矛盾。
+  - 遍历：`retrieve.mjs:186` 的确定性边类型已含 `injects` 与 `implements`，`:212-214` 双向建邻接，所以从实现类沿入边 1 跳到消费者；测试断言这一点，也断言从生产者方法与会话 Bean 出发的 1 跳。
+  - Core：`schema.ts:5-17` 的 `EdgeTypeSchema` 不含 `injects`（先前的 `mentions` 也不含），`auditGraphShape`（`schema.ts:646`）只查证据是否存在，不查边类型是否在枚举里；`implements` 在枚举里。流水线测试断言审计对这两类边无问题。
+- [x] 4.3 `lazy-analyze.mjs` 加载目录（可注入），`PIPELINE_VERSION` 升到 `lazy-fact-graph/12`。独立 CLI 入口照旧不传目录。
+- [x] 4.4 夹具：在 `tests/fixtures/javaee-jsf-app/` 新增模块 `orders-inject/`，有自己的 `pom.xml`，并登记进父 `pom.xml`。内容覆盖 design O1 列出的全部情形。新增流水线测试 `tests/lazy/type-injection-pipeline.test.mjs`，断言：
   - 精确的边、证据、桶、缺口与覆盖；
   - 图校验通过；
   - 从实现类 1 跳入边遍历能到消费者；

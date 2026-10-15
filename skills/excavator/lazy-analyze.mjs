@@ -137,6 +137,7 @@ import { buildFactGraph } from './build-fact-graph.mjs';
 import { collectMentionSites } from './mention-sites.mjs';
 import { loadNameBindingCatalog } from './name-binding-catalog.mjs';
 import { loadRouteCatalog } from './route-catalog.mjs';
+import { loadTypeInjectionCatalog } from './type-injection-catalog.mjs';
 import { collectNameReferenceSites } from './name-reference-sites.mjs';
 import { buildSourceIndex } from './build-source-index.mjs';
 import { conservationViolations } from './coverage-ledger.mjs';
@@ -238,8 +239,25 @@ export const KNOWLEDGE_GRAPH_VERSION = '1.0.0';
  *  `route-verb-unresolved`, `route-root-unresolved` and `route-path-unresolved`,
  *  and a `coverage.routes` section (which reads `not-run` for a projection built
  *  without the stage). A `contains` edge whose evidence has a `token` is checked
- *  against it by the graph validator. */
-export const PIPELINE_VERSION = 'lazy-fact-graph/11';
+ *  against it by the graph validator.
+ *  Bumped to /12 by openspec change by-type-injection: the injection points a
+ *  container fills by type (a field, or a parameter of a method or constructor,
+ *  that carries an injection annotation of the type injection catalog and names no
+ *  bean) are resolved over the types of the repository, so an unchanged source
+ *  tree projects new `injects` edges from the consumer's class to the one
+ *  declaration that can satisfy the type - a class, or a producer method - merged
+ *  per pair with the edges of the name stages (evidence of every source kept), the
+ *  gap kinds `type-injection-point-unresolved`, `type-injection-type-unresolved`,
+ *  `type-injection-candidates-unresolved`, `type-injection-unbound` and
+ *  `type-injection-ambiguous`, and a `coverage.typeInjections` section (which
+ *  reads `not-run` for a projection built without the stage). The business
+ *  interfaces a class declares by annotation (`@Local(X.class)`) project an
+ *  `implements` edge from the class to the interface, unless the hierarchy has
+ *  drawn the pair, and the gap kind `business-interface-unresolved`. Structure rows
+ *  of Java files gain `modifiers` on their classes, `nestedTypes`, the
+ *  `classLiterals` of annotation arguments and the declared `type` of the member of
+ *  a member annotation. */
+export const PIPELINE_VERSION = 'lazy-fact-graph/12';
 
 /**
  * The framework ids the scan detected, for the graph header. A scan result
@@ -583,10 +601,12 @@ export function cleanupStalePublishStagingDirs(dataDir, publishFs) {
  *   buildSourceIndexStep?: (args: { scan: object, structureAll: object, readFile: (p: string) => string, sourceRevision: string }) => object,
  *   nameBindingCatalog?: object,
  *   routeCatalog?: object,
+ *   typeInjectionCatalog?: object,
  * }} options `nameBindingCatalog` is a loaded name-binding catalog
  *   (name-binding-catalog.mjs); the catalog that ships with the skill when
  *   omitted. A test passes its own. `routeCatalog` is a loaded route catalog
- *   (route-catalog.mjs), likewise.
+ *   (route-catalog.mjs), and `typeInjectionCatalog` a loaded type injection
+ *   catalog (type-injection-catalog.mjs), likewise.
  */
 export async function runLazyAnalysis({
   projectRoot,
@@ -598,6 +618,7 @@ export async function runLazyAnalysis({
   serializationLimit = DEFAULT_LIMIT_CHARS,
   nameBindingCatalog = null,
   routeCatalog = null,
+  typeInjectionCatalog = null,
 } = {}) {
   // Wall-clock total (design D7): the WHOLE run, not a sum of stage timers —
   // measured from the very first line so it also covers time no per-stage
@@ -730,11 +751,13 @@ export async function runLazyAnalysis({
     let nameReferenceStage;
     let catalog;
     let routes;
+    let typeInjections;
     time('nameReferences', () => {
       const readFile = (relPath) => readFileSync(join(materializedDir, relPath), 'utf-8');
       catalog = nameBindingCatalog ?? loadNameBindingCatalog();
       // The other catalog the fact graph reads is loaded with this one: a broken file fails the run here, before the slow stages.
       routes = routeCatalog ?? loadRouteCatalog();
+      typeInjections = typeInjectionCatalog ?? loadTypeInjectionCatalog();
       nameReferenceStage = collectNameReferenceSites({ scan, catalog, readFile });
     });
 
@@ -746,6 +769,7 @@ export async function runLazyAnalysis({
         mentionSites: mentionStage.sites, mentionInputs: mentionStage.inputs,
         nameReferenceSites: nameReferenceStage, nameBindingCatalog: catalog,
         routeCatalog: routes,
+        typeInjectionCatalog: typeInjections,
         serializationLimit: limit, headroomRecorder: recorder,
       });
       const written = writeKnowledgeGraph(join(intermediateDir, 'fact-graph.jsonl'), projection, { limit, product: 'fact-graph.jsonl' });
