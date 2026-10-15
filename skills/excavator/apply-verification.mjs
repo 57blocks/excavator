@@ -52,10 +52,16 @@
  * model-authored graph node, for Full mode's new semantic-generation
  * pipeline:
  *   node apply-verification.mjs <projectRoot> prepare-semantic [--sample <n>] [--batch-size <n>]
- *   node apply-verification.mjs <projectRoot> apply-semantic
+ *   node apply-verification.mjs <projectRoot> apply-semantic [--batch <i>]
  *   node apply-verification.mjs <projectRoot> skip-semantic
  * These NEVER read or write `knowledge-graph.jsonl`'s node fields — see
  * `prepareSemanticVerification`/`applySemanticVerification` below.
+ * `prepare-semantic` selects only entries without a verdict, so a re-run
+ * after an interruption verifies only what is left. `apply-semantic --batch
+ * <i>` commits batch i's verdicts as soon as its verifier returns, accepting
+ * only the ids that batch lists; the closing `apply-semantic` reads only the
+ * verdict files of the manifest's batches and accepts only its selected ids,
+ * so a file left behind by an earlier run cannot land on a new summary.
  *
  * Determinism: no timestamps; nodes ordered by id; sampling is a fixed stride,
  * never random; this script's own gap rows are replaced rather than appended,
@@ -73,6 +79,7 @@ import {
   readdirSync,
   readFileSync,
   realpathSync,
+  renameSync,
   writeFileSync,
 } from 'node:fs';
 import { compareGaps } from './coverage-ledger.mjs';
@@ -296,6 +303,7 @@ export function prepareSemanticVerification({
     noAnchor: 0,
     pathOutOfScope: 0,
     sourceMissing: 0,
+    alreadyChecked: 0,
     candidates: 0,
     selected: 0,
   };
@@ -321,6 +329,13 @@ export function prepareSemanticVerification({
     if (status === 'missing') {
       counts.sourceMissing += 1;
       missing.push(`${node.id} -> ${node.filePath}`);
+      continue;
+    }
+    // A verdict already on the entry belongs to this exact summary: a
+    // regenerated summary replaces the whole entry and arrives without one.
+    // So an interrupted run's committed verdicts are kept, not re-bought.
+    if (VERDICTS.includes(entry.verification)) {
+      counts.alreadyChecked += 1;
       continue;
     }
     candidates.push({
@@ -363,16 +378,33 @@ export function prepareSemanticVerification({
  * NEVER touches `knowledge-graph.jsonl` — it does not even take a graph as an
  * argument. Returns a new semantic-cache object; the caller persists it.
  *
+ * Which ids a verdict may land on: with `batchIds`, only those (a per-batch
+ * commit, which leaves unanswered ids unmarked so a re-run selects them
+ * again); otherwise, with a manifest, only its `selectedIds`, and selected ids
+ * that came back with no verdict become `unverified`. With neither, any id
+ * with a cache entry.
+ *
+ * `previousArchive` carries earlier contradicted records forward while the
+ * entry still holds that same summary and that marking, so a resumed run
+ * does not lose the reasons an interrupted one already committed.
+ *
  * @param {{
  *   semanticCache: { version?: string, entries?: Record<string, object> } | null | undefined,
  *   manifest?: object|null, verdicts?: object[], mode?: string|null, sampleLimit?: number,
+ *   batchIds?: string[]|null, previousArchive?: object[],
  * }} args
  */
-export function applySemanticVerification({ semanticCache, manifest = null, verdicts = [], mode = null, sampleLimit = 5 }) {
+export function applySemanticVerification({
+  semanticCache, manifest = null, verdicts = [], mode = null, sampleLimit = 5,
+  batchIds = null, previousArchive = [],
+}) {
   const cache = {
     version: semanticCache?.version ?? '1.0.0',
     entries: { ...(semanticCache?.entries ?? {}) },
   };
+
+  const selectedIds = Array.isArray(manifest?.selectedIds) ? manifest.selectedIds : null;
+  const accepted = Array.isArray(batchIds) ? new Set(batchIds) : selectedIds ? new Set(selectedIds) : null;
 
   const counts = {
     verdictsRead: verdicts.length,
@@ -381,12 +413,13 @@ export function applySemanticVerification({ semanticCache, manifest = null, verd
     unverified: 0,
     contradicted: 0,
     verdictInvalid: 0,
+    verdictNotSelected: 0,
     verdictUnknownNode: 0,
     verdictDuplicate: 0,
     verdictMissing: 0,
     verificationPreserved: 0,
   };
-  const samples = { contradicted: [], unverified: [], invalid: [], unknownNode: [], missing: [] };
+  const samples = { contradicted: [], unverified: [], invalid: [], notSelected: [], unknownNode: [], missing: [] };
   const archive = [];
 
   const seen = new Set();
@@ -401,6 +434,13 @@ export function applySemanticVerification({ semanticCache, manifest = null, verd
     if (!VERDICTS.includes(verdict)) {
       counts.verdictInvalid += 1;
       if (samples.invalid.length < sampleLimit) samples.invalid.push(`${id}: ${JSON.stringify(verdict)}`);
+      continue;
+    }
+    if (accepted && !accepted.has(id)) {
+      // Not handed to the verifier in this batch or run — most likely a file
+      // from an earlier run. Its verdict was about some other summary text.
+      counts.verdictNotSelected += 1;
+      if (samples.notSelected.length < sampleLimit) samples.notSelected.push(String(id));
       continue;
     }
     const existingEntry = cache.entries[id];
@@ -434,10 +474,11 @@ export function applySemanticVerification({ semanticCache, manifest = null, verd
       if (samples.unverified.length < sampleLimit) samples.unverified.push(id);
     }
   }
-  archive.sort((a, b) => compareStrings(a.id, b.id));
 
-  const selectedIds = Array.isArray(manifest?.selectedIds) ? manifest.selectedIds : [];
-  for (const id of [...selectedIds].sort(compareStrings)) {
+  // Missing verdicts only count at the close of a run: a batch commit leaves
+  // its unanswered ids unmarked, so the next run selects them again.
+  const markMissing = Array.isArray(batchIds) ? [] : selectedIds ?? [];
+  for (const id of [...markMissing].sort(compareStrings)) {
     if (seen.has(id)) continue;
     const existingEntry = cache.entries[id];
     counts.verdictMissing += 1;
@@ -449,21 +490,28 @@ export function applySemanticVerification({ semanticCache, manifest = null, verd
     counts.unverified += 1;
   }
 
+  for (const record of Array.isArray(previousArchive) ? previousArchive : []) {
+    const entry = cache.entries[record?.id];
+    if (seen.has(record?.id) || entry?.verification !== 'contradicted' || entry.summary !== record.summary) continue;
+    archive.push(record);
+  }
+  archive.sort((a, b) => compareStrings(a.id, b.id));
+
+  // Gaps describe the cache, not only this call's verdicts: after a resumed
+  // run, earlier batches' markings are still there and still count.
   const byVerification = { verified: 0, unverified: 0, contradicted: 0, unmarked: 0 };
+  const idsBy = { unverified: [], contradicted: [], unmarked: [] };
   let summariesTotal = 0;
-  const uncheckedSamples = [];
   for (const [id, entry] of Object.entries(cache.entries)) {
     if (typeof entry?.summary !== 'string' || entry.summary.trim().length === 0) continue;
     summariesTotal += 1;
     const value = entry.verification;
-    if (value === undefined || value === null || value === '') {
-      byVerification.unmarked += 1;
-      if (uncheckedSamples.length < sampleLimit) uncheckedSamples.push(id);
-      continue;
-    }
-    if (byVerification[value] === undefined) byVerification[value] = 0;
-    byVerification[value] += 1;
+    const bucket = value === undefined || value === null || value === '' ? 'unmarked' : value;
+    if (byVerification[bucket] === undefined) byVerification[bucket] = 0;
+    byVerification[bucket] += 1;
+    idsBy[bucket]?.push(id);
   }
+  const firstIds = (ids) => ids.sort(compareStrings).slice(0, sampleLimit);
 
   const resolvedMode = mode ?? manifest?.mode ?? 'full';
 
@@ -472,18 +520,21 @@ export function applySemanticVerification({ semanticCache, manifest = null, verd
     if (count <= 0) return;
     gaps.push({ kind, scope: 'semantic-cache', reason, count, samples: (sampleList ?? []).slice().sort(compareStrings) });
   };
-  addGap('semantic-summary-contradicted', counts.contradicted,
-    `${counts.contradicted} cached summary(ies) the verifier found the anchored source contradicts`,
-    samples.contradicted);
-  addGap('semantic-summary-unverified', counts.unverified,
-    `${counts.unverified} cached summary(ies) the anchored source neither supports nor contradicts`,
-    samples.unverified);
+  addGap('semantic-summary-contradicted', byVerification.contradicted,
+    `${byVerification.contradicted} cached summary(ies) the verifier found the anchored source contradicts`,
+    firstIds(idsBy.contradicted));
+  addGap('semantic-summary-unverified', byVerification.unverified,
+    `${byVerification.unverified} cached summary(ies) the anchored source neither supports nor contradicts`,
+    firstIds(idsBy.unverified));
   addGap('semantic-summary-unchecked', byVerification.unmarked,
     `${byVerification.unmarked} non-empty cached summary(ies) carry no verification status`,
-    uncheckedSamples);
+    firstIds(idsBy.unmarked));
   addGap('semantic-summary-verdict-missing', counts.verdictMissing,
     `${counts.verdictMissing} selected summary(ies) came back with no verdict`,
     samples.missing);
+  addGap('semantic-summary-verdict-not-selected', counts.verdictNotSelected,
+    `${counts.verdictNotSelected} verdict(s) name an id this batch or run did not select, and were not written`,
+    samples.notSelected);
   addGap('semantic-summary-verdict-unknown-node', counts.verdictUnknownNode,
     `${counts.verdictUnknownNode} verdict(s) name a node id absent from semantic-cache.json`,
     samples.unknownNode);
@@ -707,19 +758,19 @@ function parseArgs(argv) {
   const args = {
     projectRoot: null, action: null, graph: null, out: null, manifest: null,
     batchDir: null, verdictDir: null, report: null, archive: null,
-    sample: null, batchSize: DEFAULT_BATCH_SIZE, sampleLimit: 5,
+    sample: null, batchSize: DEFAULT_BATCH_SIZE, sampleLimit: 5, batch: null,
   };
   const valueFlags = {
     '--graph': 'graph', '--out': 'out', '--manifest': 'manifest',
     '--batch-dir': 'batchDir', '--verdict-dir': 'verdictDir',
     '--report': 'report', '--archive': 'archive',
   };
-  const intFlags = { '--sample': 'sample', '--batch-size': 'batchSize', '--samples': 'sampleLimit' };
+  const intFlags = { '--sample': 'sample', '--batch-size': 'batchSize', '--samples': 'sampleLimit', '--batch': 'batch' };
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
     if (intFlags[arg]) {
       const value = Number.parseInt(argv[i + 1], 10);
-      const min = arg === '--samples' ? 0 : 1;
+      const min = arg === '--samples' || arg === '--batch' ? 0 : 1;
       if (!Number.isInteger(value) || value < min) {
         throw new Error(`apply-verification: ${arg} requires an integer >= ${min}`);
       }
@@ -751,6 +802,9 @@ function parseArgs(argv) {
       '(see the header comment for the full flag list)',
     );
   }
+  if (args.batch !== null && args.action !== 'apply-semantic') {
+    throw new Error('apply-verification: --batch applies only to apply-semantic');
+  }
   return args;
 }
 
@@ -762,6 +816,14 @@ function readJson(path, label) {
 function writeJson(path, value) {
   mkdirSync(dirname(path), { recursive: true });
   writeFileSync(path, JSON.stringify(value, null, 2), 'utf-8');
+}
+
+/** Temp file + rename: a run killed mid-write must not leave the cache — the resume checkpoint — truncated. */
+function writeJsonAtomic(path, value) {
+  mkdirSync(dirname(path), { recursive: true });
+  const tmp = `${path}.tmp-${process.pid}`;
+  writeFileSync(tmp, JSON.stringify(value, null, 2), 'utf-8');
+  renameSync(tmp, path);
 }
 
 /**
@@ -787,11 +849,16 @@ function createPathClassifier(projectRoot) {
   };
 }
 
-/** Every `summary-verdicts-*.json` in a directory, in index order. */
-export function readVerdictFiles(dir) {
+/**
+ * Every `summary-verdicts-*.json` in a directory, in index order — or, given
+ * `indices`, only the files with those batch indices.
+ */
+export function readVerdictFiles(dir, { indices = null } = {}) {
   if (!existsSync(dir)) return { verdicts: [], files: [] };
+  const wanted = Array.isArray(indices) ? new Set(indices) : null;
   const files = readdirSync(dir)
     .filter((name) => /^summary-verdicts-\d+\.json$/.test(name))
+    .filter((name) => !wanted || wanted.has(Number.parseInt(name.match(/(\d+)/)[1], 10)))
     .sort((a, b) => {
       const ai = Number.parseInt(a.match(/(\d+)/)[1], 10);
       const bi = Number.parseInt(b.match(/(\d+)/)[1], 10);
@@ -839,7 +906,7 @@ async function runSemanticAction(args, projectRoot, dataDir, intermediate) {
     const c = manifest.counts;
     process.stderr.write(
       `apply-verification prepare-semantic: mode=${mode} summaries=${c.summariesTotal} ` +
-      `candidates=${c.candidates} selected=${c.selected} batches=${batches.length} ` +
+      `already-checked=${c.alreadyChecked} candidates=${c.candidates} selected=${c.selected} batches=${batches.length} ` +
       `no-anchor=${c.noAnchor} source-missing=${c.sourceMissing} ` +
       `path-out-of-scope=${c.pathOutOfScope}\n`,
     );
@@ -856,23 +923,49 @@ async function runSemanticAction(args, projectRoot, dataDir, intermediate) {
   }
 
   // apply-semantic
+  const semanticCache = existsSync(cachePath) ? JSON.parse(readFileSync(cachePath, 'utf-8')) : { entries: {} };
+  const previousArchive = existsSync(archivePath)
+    ? JSON.parse(readFileSync(archivePath, 'utf-8'))?.records ?? []
+    : [];
+
+  if (args.batch !== null) {
+    const batch = readJson(join(batchDir, `semantic-verify-batch-${args.batch}.json`), `batch ${args.batch}`);
+    const batchIds = (batch?.nodes ?? []).map((n) => n.id);
+    const { verdicts, files } = readVerdictFiles(verdictDir, { indices: [args.batch] });
+    if (files.length === 0) {
+      process.stderr.write(`Warning: apply-verification: no summary-verdicts-${args.batch}.json in ${verdictDir}\n`);
+    }
+    const { semanticCache: updatedCache, report, archive } = applySemanticVerification({
+      semanticCache, verdicts, batchIds, previousArchive, sampleLimit: args.sampleLimit,
+    });
+    writeJsonAtomic(cachePath, updatedCache);
+    writeJson(archivePath, { scriptCompleted: true, count: archive.length, records: archive });
+    const c = report.counts;
+    process.stderr.write(
+      `apply-verification apply-semantic --batch ${args.batch}: ids=${batchIds.length} verdicts=${c.verdictsRead} ` +
+      `applied=${c.verdictsApplied} verified=${c.verified} unverified=${c.unverified} ` +
+      `contradicted=${c.contradicted} not-selected=${c.verdictNotSelected} invalid=${c.verdictInvalid}\n`,
+    );
+    return;
+  }
+
   const manifest = existsSync(manifestPath) ? JSON.parse(readFileSync(manifestPath, 'utf-8')) : null;
   if (!manifest) {
     process.stderr.write(
       `Warning: apply-verification: no manifest at ${manifestPath} — selected-but-unanswered summaries cannot be counted\n`,
     );
   }
-  const semanticCache = existsSync(cachePath) ? JSON.parse(readFileSync(cachePath, 'utf-8')) : { entries: {} };
-  const { verdicts, files } = readVerdictFiles(verdictDir);
+  const indices = Array.isArray(manifest?.batches) ? manifest.batches.map((b) => b.batchIndex) : null;
+  const { verdicts, files } = readVerdictFiles(verdictDir, { indices });
   if (files.length === 0) {
     process.stderr.write(`Warning: apply-verification: no summary-verdicts-*.json in ${verdictDir}\n`);
   }
 
   const { semanticCache: updatedCache, report, archive } = applySemanticVerification({
-    semanticCache, manifest, verdicts, sampleLimit: args.sampleLimit,
+    semanticCache, manifest, verdicts, previousArchive, sampleLimit: args.sampleLimit,
   });
 
-  writeJson(cachePath, updatedCache);
+  writeJsonAtomic(cachePath, updatedCache);
   writeJson(reportPath, { ...report, verdictFiles: files });
   writeJson(archivePath, { scriptCompleted: true, count: archive.length, records: archive });
 
@@ -880,7 +973,7 @@ async function runSemanticAction(args, projectRoot, dataDir, intermediate) {
   process.stderr.write(
     `apply-verification apply-semantic: mode=${report.mode} verdicts=${c.verdictsRead} applied=${c.verdictsApplied} ` +
     `verified=${c.verified} unverified=${c.unverified} contradicted=${c.contradicted} ` +
-    `verdict-missing=${c.verdictMissing} unknown-node=${c.verdictUnknownNode} ` +
+    `verdict-missing=${c.verdictMissing} not-selected=${c.verdictNotSelected} unknown-node=${c.verdictUnknownNode} ` +
     `invalid=${c.verdictInvalid} preserved=${c.verificationPreserved} ` +
     `unchecked=${report.byVerification.unmarked}\n`,
   );

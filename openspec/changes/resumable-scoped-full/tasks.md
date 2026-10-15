@@ -17,7 +17,16 @@
 
 ## 1. 实现
 
-- [ ] 1.1 `apply-verification.mjs`：`prepare-semantic` 只选没有判定或为 `dirty` 的条目；`apply-semantic --batch <i>`；收尾只认清单选中的 id 与清单批号。验证：O1 对应单测；全量门。
+- [x] 1.1 `apply-verification.mjs`：`prepare-semantic` 只选没有判定或为 `dirty` 的条目；`apply-semantic --batch <i>`；收尾只认清单选中的 id 与清单批号。验证：O1 对应单测；全量门。
+  - 完成记录：
+    - 选择：已有 `verified`/`unverified`/`contradicted` 的条目计入新计数 `alreadyChecked`，不选；`dirty` 与没有判定的照选。
+    - `--batch <i>`：只读第 i 批的核验文件与判定文件，只认该批列出的 id；没回判定的 id 不写，留给续跑。逐批提交不写 `semantic-verification.json`，那是收尾的报告。
+    - 收尾：有清单时只读清单批号的判定文件、只认 `selectedIds`；清单外的判定计入 `verdictNotSelected` 并出缺口 `semantic-summary-verdict-not-selected`。没有清单时照旧放行。
+    - 实现中补的三处，都是续跑才暴露的：
+      - 缓存改为临时文件加改名写入。逐批提交让写缓存的次数从 1 次变成每批 1 次，中途被杀会把检查点写坏。
+      - `contradicted`、`unverified` 的缺口改按缓存里的标记计数。续跑时前一次已提交的批不会再出现在本次判定里，按本次判定计数会少算。
+      - 矛盾归档带上前一次的记录：条目仍是 `contradicted` 且 summary 没变时保留，否则丢弃。否则续跑会丢掉中断那次的矛盾理由。
+    - 测试：单测 7 条、CLI 流水线加逐批提交与遗留判定文件。8 个注入变异都能变红；其中「归档不核对 summary」第一次没变红，因为夹具里重新生成的条目没有标记，补成「重新生成后又被判矛盾」后变红。
 - [ ] 1.2 `select-stale-semantics.mjs` 与 `prepare-semantic` 的 `--scope`。验证：O1 对应单测；全量门。
 - [ ] 1.3 SKILL.md：Phase F 开始移走旧逐批文件、F2 与 F4 逐批提交、`--scope`、`--estimate`；新附录 `full-run-estimate.md`。验证：O1 的 SKILL 契约与附录单测；全量门。
 - [ ] 1.4 `scripts/benchmark-full-run.mjs run`：`--continue`、`--timeout-minutes`、`--skill-args`、产物拷贝。验证：O1 对应单测；全量门。

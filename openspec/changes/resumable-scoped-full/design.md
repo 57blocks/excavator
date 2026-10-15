@@ -49,6 +49,8 @@ F2 的 hydrate 与提交本来就是按批调用的脚本，只是 SKILL 没说�
 - **逐批提交**：`apply-semantic --batch <i>` 读第 i 批的核验文件与判定文件，只写该批列出的 id。没有回判定的 id 留空不写，以便续跑时再选。
 - **收尾**：`apply-semantic` 只读本次清单里各批号的判定文件，只认清单里选中的 id；没回判定的选中 id 照旧记为 `unverified`。
 
+- **随之而来的三处**（实现时补上）：缓存用临时文件加改名写入，中途被杀不会写坏检查点；`contradicted`、`unverified` 缺口按缓存里的标记计数，不只算本次的判定；矛盾归档保留前一次的记录，前提是条目仍是 `contradicted` 且 summary 没变。
+
 代价：被判 `unverified` 的 summary 之后不会自动重核，直到它重新生成。现在每次 Full 都会重核一遍，这一点行为因此改变。
 
 ### D4 旧的逐批文件移进 trash，不删
