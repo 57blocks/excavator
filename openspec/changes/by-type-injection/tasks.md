@@ -159,11 +159,59 @@
 
 ## 6. 验收与记录
 
-- [ ] 6.1 acceptor 按 design「验收 Oracle」O2–O7 执行，产出报告，放在 `excavator-test-runs/by-type-injection/`，不进仓库；O8 由我跑。
-- [ ] 6.2 在本文件末尾写「验收摘要」，内容为：
+- [x] 6.1 acceptor 按 design「验收 Oracle」O2–O7 执行，产出报告，放在 `excavator-test-runs/by-type-injection/`，不进仓库；O8 由我跑。
+- [x] 6.2 在本文件末尾写「验收摘要」，内容为：
   - 候选提交与基线；
   - O2–O8 的结果表；
   - 每个语料的注入点、边与主要桶；
   - 已知限制。
 
   语料用公开名字，私有语料只写「两个私有语料」。
+
+## 验收摘要
+
+被测提交 `354feda5`（`lazy-fact-graph/12`），基线 `037a4be8`（`/11`，与 main 只差 OpenSpec 文档）。`339bc0dc` 只改附录与 prompt 测试，不影响产物，由 O8 覆盖。语料 13 个：
+- 有按类型注入点：Dataverse、TomEE 8.x examples、Cargo Tracker、DayTrader 8、DayTrader 7、Sakai `master`、hadoop、Seam 2.2 examples；
+- 不回归：OSCAR、fineract、JPetStore 6 与两个私有语料。
+
+结论：O2–O8 全部通过，编造 0，F1、F2、F3 都没有触发，没有放宽任何 oracle。
+
+| Oracle | 结论 | 计数 |
+|---|---|---|
+| O2 精度审计 | 通过 | 独立实现（不引用本阶段代码与目录），13 个语料逐条核对 616 条按类型 `injects` 边、1236 条证据，不一致 0。装置先验注入四种错（错目标、错消费者、错证据行、歧义点多一条边），4/4 报出；先验原登记在 TomEE，因其没有边改在 DayTrader 8 |
+| O3 桶与计数对账 | 通过 | 12 个语料的注解、注入点、16 个桶、业务接口 8 个桶与缺口计数差异 0。hadoop 有 8 个点归属不同，逐个读源码归因：7 个是产品把测试代码里继承同文件成员类型的 `App` 当作解析不出的父类型，按简单名阻断了仓库里所有叫 `App` 的类型，属于保守一侧（D7），这 7 个点无论如何都成不了边；1 个是审计脚本自身的限制，产品正确。跨阶段恒等式（名字阶段的「未命名」= `ejb-inject` 注解 − 按名 − `on` 之外成员上的位置与 JNDI）在全部语料成立：Dataverse 884、TomEE 78 = 84 − 6、DayTrader 7 为 11、DayTrader 8 为 2，其余为 0 |
+| O4 不回归 | 通过 | 13 个语料节点集合、既有边（含证据）与既有缺口完全一致，没有任何既有 `injects` 边多出按类型的证据。新增只有按类型的 `injects` 边与 `type-injection-*` 缺口，覆盖只多 `typeInjections` 一段；不用按类型注入的语料该段全为 0。结构行去掉 Core 新字段后一致 |
+| O5 耗时 | 通过 | 交错各 3 次取中位数：Sakai `master` 93.73 s → 99.19 s（+5.8%），hadoop 162.63 s → 169.81 s（+4.4%）。`factGraph` 阶段 5754 → 6021 ms、13185 → 13419 ms；结构抽取 +3.9% / +5.3%，来自 Core 新增的四项事实 |
+| O6 分层抽查 | 通过 | 6 个语料共 345 项，编造 0。抽中的边按 `beans.xml`、`ejb-jar.xml`、`web.xml`、Spring 配置与会话 bean 注解判，均是容器实际注入的对象 |
+| O7 真实 MCP | 通过 | Dataverse，7 个工具 24 项检查。消费者 1 跳出边经按类型 `injects` 到实现，实现 1 跳入边回到消费者；`read_evidence` 返回 `@Inject` 行与字段行；`project_status` 给出 `typeInjections` 与 `type-injection-*` 缺口；`recall` 按名命中消费者 |
+| O8 全量门 | 通过 | core 1318、全仓 3524 通过（4 个跳过与本变更无关），typecheck、`check-refs`、`openspec validate --all --strict` 通过；中间 commit 各自通过 |
+
+每个语料的计数（注入点按两族合计；业务接口 `implements` 边在所有语料都为 0）：
+
+| 语料 | 注入点 | 成边 | 主要的不成边桶 |
+|---|---|---|---|
+| Dataverse | 1160 | 562 | 隐藏候选 504、歧义 56、仓库外类型 36 |
+| TomEE 8.x examples | 236 | 0 | 隐藏候选 125、仓库外类型 50、类型未定 48、限定符未知 7、按名 6 |
+| Cargo Tracker | 72 | 24 | 动态提供 24、仓库外类型 24 |
+| DayTrader 8 | 58 | 19 | 仓库外类型 24、限定符未知 14、歧义 1 |
+| DayTrader 7 | 28 | 4 | JNDI 8、仓库外类型 7、歧义 7 |
+| Sakai `master` | 35 | 3 | 动态提供 15、仓库外类型 9、隐藏候选 7 |
+| hadoop | 154 | 4 | 隐藏候选 66、类型未定 37、嵌套 31、歧义 8 |
+| Seam 2.2 examples | 2 | 0 | 限定符未知 1、动态提供 1 |
+| 其余 5 个 | 0 | 0 | — |
+
+遗漏都在可见的桶里，按影响排序：
+- 测试代码参与候选（design 已接受的风险）：
+  - Dataverse 的 504 个隐藏候选来自 `src/test` 里匿名或嵌套的 mock 子类，56 个歧义来自顶层 mock；
+  - Cargo Tracker 的 24 个动态提供来自测试部署的 `addClass(X.class)`；
+  - Sakai 有 22 个。
+- 其他 JVM 语言规则按全仓生效：TomEE 的 125 个隐藏候选全部来自一个示例模块里的 2 个 Scala 文件，所以 TomEE 没有边。
+- `@Decorator` 类算作候选：DayTrader 7、8 的 `@EJB PingEJBIFace` 因装饰器落歧义。唯一候选是装饰器或拦截器时已由 `deploymentDependent` 拦下，不成边（有单测）。
+- bean 发现模式不读（Non-Goals）：DayTrader 7 有 6 个歧义。
+- 服务定位器的类字面量：DayTrader 7 有 1 个动态提供。
+
+已知限制与后续候选：
+- Core 默认忽略规则里的 `LICENSE` 不区分大小写，也匹配目录，所以名为 `license` 的源码包整个不进分析（Dataverse 3 个 Java 文件，所有阶段都受影响，早于本变更）。对本阶段而言，这样的文件若声明了某个仓库类型的子类型或生产者，候选集就不完整。三个文件里没有这种声明。另立变更修复。
+- 主代码注入点排除测试源码里的候选、其他 JVM 语言按部署单元限定，是两项最大的召回改进候选。
+- 嵌套类型继承同文件的成员类型时父类型解析不出，按简单名保守阻断（hadoop 7 个点）。
+- 真实语料里没有业务接口 `implements` 边，这条路径只有夹具测试覆盖。
