@@ -52,7 +52,7 @@ const result = (cost, turns, extra = {}) => ({
   is_error: false,
   total_cost_usd: cost,
   num_turns: turns,
-  modelUsage: { 'model-a': { inputTokens: 10, outputTokens: 20, costUSD: cost } },
+  modelUsage: { 'model-a': { outputTokens: 20, costUSD: cost } },
   usage: usage(500),
   ...extra,
 });
@@ -156,6 +156,27 @@ describe('roles', () => {
     expect(helper).toMatchObject({ dispatches: 1, completed: 1, cacheRead: 7 });
     expect(reviewer).toMatchObject({ dispatches: 1, completed: 0, endings: { failed: 1 } });
     expect(report.missing.filter((item) => item.startsWith('agent:'))).toEqual([]);
+  });
+});
+
+describe('model calls missing from the record', () => {
+  const billed = (cacheRead) => ({ inputTokens: 2, cacheCreationInputTokens: 0, cacheReadInputTokens: cacheRead, outputTokens: 5, costUSD: 1 });
+  const events = (cacheRead) => [
+    assistant('m1', 0, { use: usage(300) }),
+    assistant('s1', 1, { parent: 'a1', use: usage(200) }),
+    { ...result(1, 1), modelUsage: { 'model-a': billed(cacheRead) } },
+  ];
+
+  it('adds no row when the streamed calls account for the reported usage', () => {
+    const report = summarize(events(500));
+    expect(report.roles.map((row) => row.role)).toEqual(['orchestrator', 'unknown']);
+    expect(report.missing).not.toContain('roles:model-calls-not-in-record');
+  });
+
+  it('shows usage the record does not carry as its own row and lists it as missing', () => {
+    const report = summarize(events(1500));
+    expect(report.roles.at(-1)).toEqual({ role: 'not in record', calls: null, input: 0, cacheCreation: 0, cacheRead: 1000 });
+    expect(report.missing).toContain('roles:model-calls-not-in-record');
   });
 });
 

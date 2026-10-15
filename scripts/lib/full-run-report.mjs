@@ -114,6 +114,31 @@ function summarizeTotals(events, missing) {
   return totals;
 }
 
+const MODEL_USAGE_FIELDS = { input: 'inputTokens', cacheCreation: 'cacheCreationInputTokens', cacheRead: 'cacheReadInputTokens' };
+
+/**
+ * Input-side tokens the self-reported totals count but no streamed call carries.
+ * The record can hold fewer calls than were billed; that remainder belongs to no
+ * role, so it is its own row rather than spread over the others or dropped.
+ */
+function notInRecord(models, roles, missing) {
+  if (!models) return null;
+  const row = { role: 'not in record', calls: null };
+  let differs = false;
+  for (const [key, field] of Object.entries(MODEL_USAGE_FIELDS)) {
+    const reported = Object.values(models).map((usage) => usage?.[field]);
+    if (!reported.every((value) => typeof value === 'number')) {
+      row[key] = null;
+      continue;
+    }
+    row[key] = reported.reduce((sum, value) => sum + value, 0) - roles.reduce((sum, role) => sum + role[key], 0);
+    if (row[key] !== 0) differs = true;
+  }
+  if (!differs) return null;
+  missing.push('roles:model-calls-not-in-record');
+  return row;
+}
+
 function summarizeRoles(events, missing) {
   const dispatchType = new Map();
   for (const event of events) {
@@ -276,6 +301,8 @@ export function summarizeRun({ events, malformedLines = 0 }, { sample = null } =
   const missing = [];
   const totals = summarizeTotals(events, missing);
   const roles = summarizeRoles(events, missing);
+  const unattributed = notInRecord(totals.models, roles, missing);
+  if (unattributed) roles.push(unattributed);
   const phases = summarizePhases(events, missing);
   const sampleSize = sample ?? { files: null, batches: null, nodes: null };
   if (!sample) missing.push('sample');
@@ -331,6 +358,9 @@ export function renderMarkdown(report, { title = 'Full run report' } = {}) {
   const orchestrator = roles[0];
   if (orchestrator.context) {
     lines.push(`Orchestrator context per call: first ${fmt(orchestrator.context.first)}, max ${fmt(orchestrator.context.max)}, last ${fmt(orchestrator.context.last)} tokens over ${fmt(orchestrator.context.calls)} calls.`, '');
+  }
+  if (roles.some((row) => row.role === 'not in record')) {
+    lines.push('"not in record": input-side tokens in the self-reported model usage that no call in the record carries; they belong to no role above.', '');
   }
   lines.push('## Phases', '', '| Phase | Start | Duration | Includes missing |', '|---|---|---|---|');
   for (const row of phases) lines.push(`| ${row.phase} | ${row.start} | ${minutes(row.ms)} | ${row.includesMissing?.join(', ') ?? ''} |`);
