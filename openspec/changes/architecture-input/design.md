@@ -1,0 +1,78 @@
+## Context
+
+动机见 proposal.md。现状：
+- Phase F2 的文件分析读源码与框架附录，为每个事实节点写下 `summary` 与 `tags`，存进 `semantic-cache.json`，按节点 id 索引；
+- Phase F3 的提示词只把 `{id, type, name, filePath}` 与 `imports` 边交给架构分析；
+- 架构分析的代理定义要求它不再读源码，只用给它的输入；
+- 方法节点是 `function` 类型，带 `owner`（所属类名）；
+- `references` 边的证据带 `line`、`token`、`chain`（如 `orders.detail`）与绑定。
+
+## Goals / Non-Goals
+
+**Goals：**
+- 架构分析能按附录的判据（注解、描述符条目、页面引用）分层；
+- 页面到 bean 方法的关系由附录推断。
+
+**Non-Goals：**
+- 不新建确定性阶段，不改事实图，不改 MCP。
+- 不读 `layerHints`。各框架同样没有读取者，与 TS 一致。
+- 不给经典 Full 的 Phase 4 补输入：它本来就带 `summary` 与 `tags`。
+
+## Decisions
+
+### D1 修呈现层，不新建阶段
+
+角色已经由 F2 读源码写成标签，页面绑定已经是 `references` 事实，缺的只是 F3 看不到。
+
+放弃的方案是确定性的「组件角色与所属层」阶段：目录、解析器、节点属性、MCP、审计。coder 25 分钟就写了约 4400 行，而且：
+- 过不了 `frameworks/README.md` 的判据；
+- 与已接受规格「组件角色与分层只作附录指引」冲突；
+- 只给 Java EE 做，与 TS 和 Spring 不一致。
+
+### D2 输入的取舍
+
+- **`tags`**：给每个有新鲜语义条目的节点。标签短，角色就在其中。
+- **`summary`**：只给文件级节点，与经典 Phase 4 相同，控制提示词长度。
+- **`owner`**：节点有时给出。按名字找方法要用到它。
+- **`references` 边**：给出边与每条证据的 `chain` 和 `line`，不给绑定明细。
+- **`mentions` 边不给**：数量大；描述符声明的组件在 F2 读类时已有角色标签。
+
+### D3 EL 到方法的规则
+
+证据不记 EL 写在哪个属性里，所以动作方法与属性用同一条规则：成员 `m` 对应名为 `m`、`getM` 或 `isM` 的方法。
+
+- 候选按 `owner` 与名字从节点列表里取，不读源码；
+- 恰好一个时画 `inferred` 的 `depends_on`；
+- 零个或多个时不连；
+- 只解析第一层成员。
+
+## Risks / Trade-offs
+
+- 这是提示词改动，模型照不照做是概率性的，单测只能证明提示词里写了。所以用真实模型在夹具上冒烟一次（O2）。
+- F3 的输入变长。夹具上记下长度，大仓库的影响留到 P0 第 5 步的测量。
+- 与客户原文的差异：事实图里没有页面到页面的导航边，导航由附录推断。验收摘要写明。
+
+## 验收 Oracle（动手前写死）
+
+- **O1 提示词契约**（我）：
+  - 测试断言：
+    - F3 段落列出 `tags`、文件级 `summary`、`owner`，以及 `references` 边连同 `chain` 与 `line`；
+    - F3 段落写明三句说明；
+    - `jsf.md` 含 EL 到方法的规则与不连的情形。
+  - 全量门：core build、core 测试、typecheck、全仓 vitest、`check-refs`、`openspec validate --all --strict`。
+- **O2 真实模型冒烟**（acceptor，Sonnet，钉模型，不与别的重任务并行）：
+  - 对象：`tests/fixtures/javaee-jsf-app` 的副本，跑 Full 到 F3。
+  - 先在小范围实测花费，再报预算。
+  - 预注册期望：按夹具的注解与描述符，手写每个角色文件的期望层：
+    - 会话 bean：`layer:service`；
+    - 实体：`layer:data`；
+    - 页面绑定的 `OrderBean`：`layer:ui`；
+    - JAX-RS 资源：`layer:api`；
+    - 过滤器与拦截器：`layer:middleware`。
+  - 断言：
+    - 这些文件全部放进期望的层；
+    - 每条从页面到方法的推断边都满足 D3 的「恰好一个」规则；
+    - 至少有一条从 `list.xhtml` 到 `OrderBean` 方法的推断边。
+  - 记录 F3 输入的长度。
+  - 不通过时：先看提示词有没有把信息交给模型，再改提示词，不加代码。
+- **O3 事实不变**：不改代码，事实图不变，不重跑 Lazy。
