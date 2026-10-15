@@ -20,6 +20,7 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { DETERMINISTIC_EDGE_TYPES } from '../../../skills/excavator/retrieve.mjs';
+import { BUSINESS_INTERFACE_GAP_KIND, TYPE_INJECTION_GAP_KINDS } from '../../../skills/excavator/type-injection-resolution.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(__dirname, '../../..');
@@ -188,6 +189,19 @@ describe('frameworks/README.md explains the hook', () => {
     expect(homes).toContain('The route catalog is such a catalog');
   });
 
+  it('puts injection by type (JSR 330 Inject, an unnamed EJB) and the business interfaces to the deterministic home, the type injection catalog, and takes them out of the addenda row (by-type-injection)', () => {
+    const where = flat(readme.slice(readme.indexOf('What is where today:'), readme.indexOf('## Present today')));
+    expect(where).toContain('| Injection by type (JSR 330 `@Inject` and an unnamed `@EJB`) to the one class or producer method that can satisfy the type, and the business interfaces a class declares by `@Local` and `@Remote` class literals | deterministic, `catalogs/type-injections.json` |');
+    expect(where).toContain('| DI by type (Spring, Angular, FastAPI, …; JSR 330 `@Inject` and unnamed `@EJB` excepted), component roles, HTTP routes (Spring, Java EE, Angular, Express, Gin, FastAPI, …), JAX-RS routes excepted | addenda |');
+    const homes = flat(readme.slice(readme.indexOf('Framework knowledge has three homes'), readme.indexOf('What is where today:')));
+    expect(homes).toContain('dependency injection by type (Spring `@Autowired`, an Angular constructor parameter, FastAPI `Depends`)');
+    expect(homes).toContain('JSR 330 `@Inject` and an unnamed `@EJB` on Java are not here: the fact graph has them (third home)');
+    expect(homes).toContain('A third is an injection point filled by type (`@Inject`, an unnamed `@EJB`)');
+    expect(homes).toContain('`../catalogs/type-injections.json` for injection by type');
+    // the catalog the rows name exists
+    expect(readRepoFile('skills/excavator/catalogs/type-injections.json')).toContain('"injectionFamilies"');
+  });
+
   it('lists javaee.md and jsf.md as present, and says where their knowledge lives', () => {
     const present = readme.slice(readme.indexOf('## Present today'));
     expect(present).toContain('`javaee.md`');
@@ -280,16 +294,20 @@ describe('SKILL.md injects framework addenda by the graph header ids (javaee-jsf
 describe('the javaee and jsf addenda (javaee-jsf-framework-knowledge, D8)', () => {
   const catalog = JSON.parse(readRepoFile('skills/excavator/catalogs/name-bindings.json'));
   const routeCatalog = JSON.parse(readRepoFile('skills/excavator/catalogs/routes.json'));
+  const typeCatalog = JSON.parse(readRepoFile('skills/excavator/catalogs/type-injections.json'));
   const catalogIds = new Set([
     ...['xmlBinders', 'annotationBinders', 'xmlInjections', 'annotationInjections', 'expressionLanguages']
       .flatMap((key) => catalog[key].map((entry) => entry.id)),
     // the route families of routes.json (jaxrs-route-facts)
     ...routeCatalog.routeFamilies.map((family) => family.id),
+    // the injection families of type-injections.json (by-type-injection)
+    ...typeCatalog.injectionFamilies.map((family) => family.id),
   ]);
   const ADDENDA = {
     javaee: {
-      // one rule per kind of relation an addendum infers; every one has an "exactly one / zero or several" pair
-      rules: 4,
+      // one rule per kind of relation an addendum infers; every one has an "exactly one / zero or several" pair. javaee.md has
+      // three: the application prefix, the message destinations and the CDI events - injection by type is a fact, no rule (by-type-injection)
+      rules: 3,
       edgeTypes: ['injects', 'references', 'routes', 'mentions', 'implements', 'calls'],
       roles: ['Session bean', 'Message-driven bean', 'JAX-RS resource', 'JAX-RS provider', 'Interceptor', 'Entity', 'Producer', 'Descriptor'],
     },
@@ -326,8 +344,8 @@ describe('the javaee and jsf addenda (javaee-jsf-framework-knowledge, D8)', () =
             listed.add(type);
             expect(DETERMINISTIC_EDGE_TYPES, `${type} is not a deterministic edge type`).toContain(type);
           }
-          for (const [, catalogId] of source.matchAll(/`([a-z-]+)`/g)) {
-            expect(catalogIds.has(catalogId), `${catalogId} is not an entry of name-bindings.json or a family of routes.json`).toBe(true);
+          for (const [, catalogId] of source.matchAll(/`([a-z0-9-]+)`/g)) {
+            expect(catalogIds.has(catalogId), `${catalogId} is not an entry of name-bindings.json or a family of routes.json or type-injections.json`).toBe(true);
           }
         }
         for (const type of expected.edgeTypes) expect(listed.has(type), `${type} should be listed`).toBe(true);
@@ -369,22 +387,70 @@ describe('the javaee and jsf addenda (javaee-jsf-framework-knowledge, D8)', () =
       for (const name of ['ejb-jar.xml', 'persistence.xml', 'web.xml', '`implements`', '`calls`']) expect(text).toContain(name);
     });
 
-    it('infers an injection by type only from exactly one non-abstract implementation, producers counted, and never guesses qualifiers', () => {
-      expect(text).toContain('producer methods count as candidates');
-      expect(text).toContain('Qualifiers, `@Alternative`');
-      expect(text).toContain('decided at deployment');
-      expect(text).toContain('Never use them to pick one of several candidates');
+    it('lists the by-type injects edge and the declared implements edge as facts it does not redraw, with the type injection catalog as their source', () => {
+      const facts = flat(readRepoFile('skills/excavator/frameworks/javaee.md').split('### Already in the fact graph')[1].split('### Canonical File Roles')[0]);
+      expect(facts).toContain('| `injects` | The consumer class to the one class, or the one `@Produces` method, that can satisfy the type an injection point declares:');
+      expect(facts).toContain('`@Inject` on a field, a setter or a constructor (one edge per parameter)');
+      expect(facts).toContain('an `@EJB` that writes no `beanName` and no JNDI name on a field or a one-parameter setter (`@EJB(beanInterface = X.class)` restates the type)');
+      expect(facts).toContain('It is drawn only when the repository has exactly one candidate');
+      expect(facts).toContain('and that candidate is a class or a producer method, the two that have a node | Type injection catalog (`jsr330-inject`, `ejb-inject`) |');
+      expect(facts).toContain('| `implements` | A session bean class to a business interface it declares by annotation: `@Local` or `@Remote` with a class literal as its value, on a class that does not already reach that interface through its Java supertypes.');
+      expect(facts).toContain('| Type injection catalog (`businessInterfaces`) |');
+      // the by-name row is still there, and named as the by-name one
+      expect(facts).toContain('The consumer class to the class an injection names by name');
+      // the sources are the catalog's own: its two families and its business interface section exist
+      expect(typeCatalog.injectionFamilies.map((family) => family.id)).toEqual(['jsr330-inject', 'ejb-inject']);
+      expect(typeCatalog.businessInterfaces.annotations).toEqual(expect.arrayContaining(['javax.ejb.Local', 'javax.ejb.Remote']));
     });
 
-    it('counts the candidates of an injection by type through the incoming implements and inherits edges, transitively', () => {
-      // the edges point from the subtype to the type: the walk goes against them
-      expect(text).toContain('an `implements` or `inherits` edge points from the subtype to the type');
-      expect(text).toContain('follow its incoming `implements` and `inherits` edges transitively');
-      expect(text).toContain('collect every non-abstract class you reach');
-      expect(text).toContain('The implementation of a sub-interface counts, and so does a subclass of an implementation.');
-      expect(text).toContain('The declared type itself counts when it is a concrete class.');
-      expect(text).toContain('with interface `A`, `B implements A` and `C extends B`, there are two candidates (`B` and `C`): draw no edge');
-      expect(text).toContain('whose type is the declared type or one of those subtypes');
+    it('leaves injection by type to the fact graph: an edge in the graph is not redrawn, a point in a type-injection- gap gets no guessed target, and no candidate set is left to the model', () => {
+      const rule = flat(readRepoFile('skills/excavator/frameworks/javaee.md').split('**Injection by type**')[1].split('**JAX-RS application prefix**')[0]);
+      expect(rule).toContain('the `injects` edge from the consumer to the one class or producer method that can satisfy the declared type is a fact');
+      expect(rule).toContain('so is the `implements` edge of a business interface that a `@Local` or `@Remote` class literal declares');
+      expect(rule).toContain('An edge that is already in the graph is not redrawn: no inferred `depends_on` edge for the same injection');
+      expect(rule).toContain('A point in a `type-injection-` gap has no edge because a static read cannot settle its target');
+      expect(rule).toContain('Do not guess the target.');
+      expect(rule).toContain("Do not walk the declared type's `implements` and `inherits` edges to pick an implementation");
+      expect(rule).toContain('do not take the one implementation you can see');
+      expect(rule).toContain('do not use a qualifier, `@Alternative`, `@Specializes` or the alternatives enabled in `beans.xml` to choose');
+      expect(rule).toContain('A semantic description may state the declared type of the point and say the target is decided by the deployment; it must not name a target.');
+      expect(rule).toContain('A business interface in a `business-interface-unresolved` gap is treated the same way: draw no `implements` edge for it.');
+      // the rule infers nothing: no pair of exactly one / zero or several, no inferred edge type
+      expect(rule).not.toContain('Exactly one');
+      expect(rule).not.toContain('Zero or several');
+      expect(rule).not.toContain('connect with an `inferred`');
+      // the old instructions, which built the candidate set in the prompt and connected to the one member, are gone
+      for (const gone of [
+        'Build the candidate set from the graph.',
+        'follow its **incoming** `implements` and `inherits` edges transitively',
+        'collect every non-abstract class you reach',
+        'producer methods count as candidates',
+        'with interface `A`, `B implements A` and `C extends B`, there are two candidates',
+        'Exactly one candidate: connect with an `inferred` `depends_on` edge from the injecting class to it',
+        'connect only if that candidate visibly carries the same qualifier annotation',
+        'Never use them to pick one of several candidates',
+        'A single implementation makes the wiring readable',
+      ]) expect(text, gone).not.toContain(gone);
+      // the intro of the rules says by-type injection is the exception
+      expect(text).toContain('Injection by type is the exception: the fact build settles it, and it asks nothing of you but to leave its gaps alone.');
+    });
+
+    it('explains every type-injection- gap kind and the business interface gap, one line each, and names the prefixes among the gaps not to close by guessing', () => {
+      const facts = readRepoFile('skills/excavator/frameworks/javaee.md').split('### Already in the fact graph')[1].split('### Canonical File Roles')[0];
+      expect(flat(facts)).toContain('(kinds that start with `injection-`, `name-reference-`, `mention-`, `route-` or `type-injection-`, and `business-interface-unresolved`)');
+      const kinds = [...new Set(Object.values(TYPE_INJECTION_GAP_KINDS)), BUSINESS_INTERFACE_GAP_KIND];
+      expect(kinds).toHaveLength(6);
+      for (const kind of kinds) {
+        const lines = facts.split('\n').filter((line) => line.startsWith(`  - \`${kind}\`: `));
+        expect(lines, `one line for ${kind}`).toHaveLength(1);
+      }
+      expect(facts).toContain('An injection point that the fact build could not settle by type gets no edge, and a business interface it could not read gets no `implements` edge.');
+    });
+
+    it('says in the languageLesson that the fact build turns one candidate into an edge and every other case into a type-injection- gap', () => {
+      const lessons = flat(readRepoFile('skills/excavator/frameworks/javaee.md').split('### Notable Patterns to Capture in languageLesson')[1]);
+      expect(lessons).toContain('The fact build turns the case a static read can settle, one candidate in the repository, into an `injects` edge.');
+      expect(lessons).toContain('it records a `type-injection-` gap, because the deployment decides.');
     });
 
     it('puts a @Named class that pages bind by EL in layer:ui, as jsf.md does, and the other CDI beans in layer:service', () => {
@@ -412,7 +478,7 @@ describe('the javaee and jsf addenda (javaee-jsf-framework-knowledge, D8)', () =
       expect(facts).toContain('| `routes` | An `endpoint` node to the method that handles it.');
       expect(facts).toContain('named by the route relative to the application\'s root (`GET /orders/{id}`)');
       expect(facts).toContain('| Route catalog (`jaxrs`) |');
-      expect(facts).toContain('(kinds that start with `injection-`, `name-reference-`, `mention-` or `route-`)');
+      expect(facts).toContain('(kinds that start with `injection-`, `name-reference-`, `mention-`, `route-` or `type-injection-`, and `business-interface-unresolved`)');
       for (const kind of ['route-verb-unresolved', 'route-root-unresolved', 'route-path-unresolved', 'route-handler-unresolved']) expect(facts).toContain(`\`${kind}\``);
       expect(facts).toContain('Private methods and `@RegisterRestClient` interfaces are counted and are no gap.');
     });
@@ -444,6 +510,17 @@ describe('the javaee and jsf addenda (javaee-jsf-framework-knowledge, D8)', () =
     it('pairs message-driven beans and CDI events only on the same destination literal or the same event type', () => {
       expect(text).toContain('both ends name the same destination literal');
       expect(text).toContain('both ends name the same event type');
+    });
+  });
+
+  describe('spring.md and the JSR 330 Inject point (by-type-injection)', () => {
+    const text = flat(readRepoFile('skills/excavator/frameworks/spring.md'));
+
+    it('leaves a JSR 330 Inject point to the fact graph and its gaps, and keeps Autowired and constructor injection as the model\'s to infer', () => {
+      expect(text).toContain('When a class injects a dependency via `@Autowired` or constructor injection, create `depends_on` edges from the consumer to the injected bean.');
+      expect(text).toContain('A JSR 330 `@Inject` point (`javax.inject` or `jakarta.inject`) is not one of them: the fact graph already has an `injects` edge from the consumer to the one class or producer method that can satisfy the declared type, and a point it could not settle is a visible `type-injection-` gap.');
+      expect(text).toContain('Draw no `depends_on` edge for an `@Inject` point, and do not guess the target of one in a gap.');
+      expect(text).not.toContain('constructor injection, or `@Inject`');
     });
   });
 

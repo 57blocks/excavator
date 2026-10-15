@@ -136,7 +136,26 @@
 
 ## 5. 附录
 
-- [ ] 5.1 按 D15 修改 `skills/excavator/frameworks/javaee.md` 与 `frameworks/README.md`。若 `test_prompt_evidence_sections` 一类测试锁定了附录的段落，同步更新，并写明变化。
+- [x] 5.1 按 D15 修改 `skills/excavator/frameworks/javaee.md` 与 `frameworks/README.md`。若 `test_prompt_evidence_sections` 一类测试锁定了附录的段落，同步更新，并写明变化。
+
+  完成记录：
+  - `javaee.md`：
+    - 「已在事实图」加两行：按类型的 `injects`，业务接口的 `implements`；
+    - 不靠猜补的缺口前缀加 `type-injection-` 与 `business-interface-unresolved`，六种缺口各一行说明；
+    - 「Injection by type」不再是推断规则，改为三条：不重画、缺口不猜目标、业务接口缺口不画边；
+    - languageLesson 同步。
+  - `README.md`：
+    - 归属表加一行确定性归属；
+    - 原「DI by type → 附录」一行注明 JSR 330 `@Inject` 与无名 `@EJB` 除外，第二、第三归属的例子同步。
+  - `spring.md`：「@Autowired injection」原把 `@Inject` 也算进由模型画 `depends_on` 的情形，与本变更冲突。现去掉 `@Inject`，并加一句：它已是事实或缺口，不画边、不猜目标。Spring `@Autowired` 的措辞不动（Non-Goals）。
+  - `test_prompt_evidence_sections` 的变化：
+    - `catalogIds` 加入 `type-injections.json` 的注入族；
+    - 来源 id 的正则允许数字，原先 `jsr330-inject` 会被静默跳过；
+    - javaee 推断规则数 4→3：按类型注入不再有「恰好一个 / 零或多个」一对；
+    - 缺口前缀句随新前缀更新；
+    - 两条锁定旧候选集指令的测试换成四条：两行事实、新规则（旧指令逐条断言不存在）、六种缺口各一行（种类从代码常量派生）、languageLesson；
+    - 新增 README 一条、`spring.md` 一条。
+  - 绊线：分别恢复三个文档的旧版，各自让 6 / 1 / 1 条测试变红。
 
 ## 6. 验收与记录
 

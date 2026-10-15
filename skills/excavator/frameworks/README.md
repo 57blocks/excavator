@@ -57,9 +57,10 @@ way.
    code.
 2. **Conventions the analysing model applies: an addendum here.** Anything a
    model can settle by reading one file and querying the graph goes here:
-   - dependency injection by type (`@Inject FooService`, an Angular constructor
+   - dependency injection by type (Spring `@Autowired`, an Angular constructor
      parameter, FastAPI `Depends`). The `imports` and `calls` edges already
-     link the two classes;
+     link the two classes. JSR 330 `@Inject` and an unnamed `@EJB` on Java
+     are not here: the fact graph has them (third home);
    - component roles and layers;
    - route registration (Express `app.use`, Gin `r.Group`, Spring
      annotations);
@@ -72,12 +73,16 @@ way.
    be a fabrication. The typical case is a string name in one file that a
    declaration in another file binds: EL `#{orders}`, Spring `ref="svc"`,
    `@EJB(beanName = "…")`. Another is a route written on annotations: which
-   method serves `GET /orders/{id}`. Even then the framework knowledge stays
+   method serves `GET /orders/{id}`. A third is an injection point filled by
+   type (`@Inject`, an unnamed `@EJB`): its candidates are every type of the
+   repository that can satisfy the declared type, and an edge to one of
+   several would be a guess. Even then the framework knowledge stays
    data. It is a declarative catalog (`../catalogs/name-bindings.json` for
-   names, `../catalogs/routes.json` for routes) read by a framework-neutral
-   engine. That engine scopes names to the deployment unit, turns an ambiguity
-   into a visible gap and counts every input. Product code never branches on a
-   framework.
+   names, `../catalogs/routes.json` for routes,
+   `../catalogs/type-injections.json` for injection by type) read by a
+   framework-neutral engine. That engine scopes names to the deployment unit,
+   turns an ambiguity into a visible gap and counts every input. Product code
+   never branches on a framework.
 
 Language-level facts belong to no framework and are deterministic for every
 language. They are:
@@ -105,7 +110,7 @@ What is where today:
 |---|---|
 | Which frameworks a project uses (`project.frameworks` in the graph header, with the evidence in the scan result) | deterministic, over the registered `FrameworkConfig`s |
 | Detection and layer hints for every framework listed below | `FrameworkConfig` |
-| DI by type, component roles, HTTP routes (Spring, Java EE, Angular, Express, Gin, FastAPI, …), JAX-RS routes excepted | addenda |
+| DI by type (Spring, Angular, FastAPI, …; JSR 330 `@Inject` and unnamed `@EJB` excepted), component roles, HTTP routes (Spring, Java EE, Angular, Express, Gin, FastAPI, …), JAX-RS routes excepted | addenda |
 | JMS and CDI event pairs, the application prefix of JAX-RS routes (`javaee.md`) | addenda |
 | JSF navigation outcomes, composite components, converters and validators by id (`jsf.md`) | addenda |
 | Endpoints from schema files (GraphQL, protobuf) | deterministic parsers |
@@ -113,6 +118,7 @@ What is where today:
 | XML injection names to the classes they wire (Spring `ref=`, `p:`/`c:` refs, `lookup-method`) | deterministic, `catalogs/name-bindings.json` |
 | Java annotation injection names to the classes they wire (Spring `@Qualifier` and `@Resource`, Seam `@In`, `@EJB(beanName)`) | deterministic, `catalogs/name-bindings.json` |
 | JAX-RS route (class and method `@Path`, HTTP method annotation) to the method that handles it | deterministic, `catalogs/routes.json` |
+| Injection by type (JSR 330 `@Inject` and an unnamed `@EJB`) to the one class or producer method that can satisfy the type, and the business interfaces a class declares by `@Local` and `@Remote` class literals | deterministic, `catalogs/type-injections.json` |
 | Literal class names and paths in descriptors and pages | deterministic, framework-neutral `mentions` |
 | MAUI markup (`.xaml`, `.csproj`, `.feature`) | deterministic parsers |
 

@@ -28,7 +28,7 @@ When analyzing a Spring Boot project, apply these additional conventions on top 
 
 ### Edge Patterns to Look For
 
-**@Autowired injection** — When a class injects a dependency via `@Autowired`, constructor injection, or `@Inject`, create `depends_on` edges from the consumer to the injected bean. Constructor injection is preferred and most common in modern Spring.
+**@Autowired injection** — When a class injects a dependency via `@Autowired` or constructor injection, create `depends_on` edges from the consumer to the injected bean. Constructor injection is preferred and most common in modern Spring. A JSR 330 `@Inject` point (`javax.inject` or `jakarta.inject`) is not one of them: the fact graph already has an `injects` edge from the consumer to the one class or producer method that can satisfy the declared type, and a point it could not settle is a visible `type-injection-` gap. Draw no `depends_on` edge for an `@Inject` point, and do not guess the target of one in a gap.
 
 **Controller-Service-Repository chain** — The canonical call chain is `@RestController` -> `@Service` -> `@Repository`. Create `depends_on` edges along this chain to show the layered architecture.
 
