@@ -77,19 +77,19 @@
   - 列出一个类型已解析的父类型。
 
   新查询有单元测试，覆盖仓库内、仓库外、未知、嵌套类型、全限定名重复、类型变量。既有测试一条不改。
-- [ ] 3.2 新模块 `skills/excavator/type-injection-resolution.mjs` 的 `resolveTypeInjections({ javaRows, catalog, identity, types, classIdOf, functionIdOf, mutations })`：
+- [x] 3.2 新模块 `skills/excavator/type-injection-resolution.mjs` 的 `resolveTypeInjections({ javaRows, catalog, identity, types, classIdOf, functionIdOf, mutations })`：
   - 按 D5 读注入点、确认身份、找方法声明；
   - 按 D7 建子类型闭包与候选集；
   - 按 D8 处理限定符；
   - 按规格的顺序落十六个桶，恰一个候选时产出待画的 `injects` 边。
 
   模块是纯函数，不读文件，代码里不出现任何框架名字。遇到有类型、却没有 `memberAnnotations` 或 `nestedTypes` 的行时抛错，指明可能是旧抽取的产物。
-- [ ] 3.3 证据按 D11：每个成边的注入点给出「注入」「成员」两条，按情况加「限定符」「生产者」。本阶段的边先按（源，目标）合并，证据排序去重。
-- [ ] 3.4 覆盖、缺口与守恒按 D12：
+- [x] 3.3 证据按 D11：每个成边的注入点给出「注入」「成员」两条，按情况加「限定符」「生产者」。本阶段的边先按（源，目标）合并，证据排序去重。
+- [x] 3.4 覆盖、缺口与守恒按 D12：
   - 五类 `type-injection-*` 缺口的样例格式照 D12；
   - 提供 `assertTypeInjectionConservation`；
   - 没有目录时为 `not-run`。
-- [ ] 3.5 D14 的变异开关（`noBusinessInterfaces` 除外），每个至少让一条测试变红；不改生产默认值。规格「Java 按类型注入点」的每个场景至少一条单元测试。
+- [x] 3.5 D14 的变异开关（`noBusinessInterfaces` 除外），每个至少让一条测试变红；不改生产默认值。规格「Java 按类型注入点」的每个场景至少一条单元测试。
 - [ ] 3.6 业务接口按 D10：
   - 八个桶；
   - `implements` 边及其证据；
@@ -109,6 +109,7 @@
 - [ ] 4.2 `build-fact-graph.mjs` 按 D13：
   - 新参数 `typeInjectionCatalog`。给了它却没给 `mentionInputs` 时抛错；
   - 复用已建的调用解析器实例；
+  - 传入 Kotlin 与 Scala 结构行声明的类型数（`otherJvmTypeCount`）；
   - 业务接口的 `implements` 边跳过已有的同端点边；
   - 按类型的边经 `mergeInjectsEdges` 与名字阶段的边一起加入；名字阶段没运行时单独加入；
   - 缺口进 `gapCollector`；
