@@ -56,6 +56,14 @@ describe('Phase F resumes from what it has committed', () => {
     expect(flat(intro)).toContain('There is no other state file.');
   });
 
+  it('puts the commit-on-return rule where Phase F2 dispatches, not only in the commit step', () => {
+    // A first real run waited for every batch before committing: the rule
+    // sat only in step 4, after the dispatch instructions it was following.
+    const step3 = flat(section('3. **Dispatch file-analyzer', '4. **Hydrate + commit.**'));
+    expect(step3).toContain('**Each time an analyzer returns, run step 4 for its batch right away, before you dispatch another batch or wait for the rest, and report `Batch <i>/<N> committed.`**');
+    expect(step3).toContain('Do not wait for every batch and commit them together');
+  });
+
   it('commits each Phase F2 batch as soon as its analyzer returns', () => {
     const step4 = flat(section('4. **Hydrate + commit.**', '### Phase F3'));
     expect(step4).toContain('Do this for each batch as soon as its analyzer returns, one batch at a time, without waiting for the batches still running.');
@@ -67,7 +75,8 @@ describe('Phase F resumes from what it has committed', () => {
     const closing = f4.indexOf('apply-semantic\n```');
     expect(perBatch).toBeGreaterThan(0);
     expect(closing).toBeGreaterThan(perBatch);
-    expect(flat(f4)).toContain('As soon as a verifier returns, commit its batch, one batch at a time');
+    expect(flat(f4)).toContain('**Each time a verifier returns, commit its batch right away, before you dispatch another batch or wait for the rest, and report `Verification batch <i>/<N> committed.`**');
+    expect(flat(f4)).toContain('Do not wait for every batch and commit them together');
   });
 });
 

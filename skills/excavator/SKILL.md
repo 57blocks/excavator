@@ -402,7 +402,11 @@ Report: `[Phase F2] Selecting files needing semantic (re)generation...`
 3. **Dispatch file-analyzer for node-local patches, not a graph.** For each
    batch, dispatch a subagent using the `excavator-file-analyzer` agent
    definition (`agents/excavator-file-analyzer.md`). Run up to **5**
-   subagents concurrently. Read the fact nodes from `knowledge-graph.jsonl`
+   subagents concurrently. **Each time an analyzer returns, run step 4 for
+   its batch right away, before you dispatch another batch or wait for the
+   rest, and report `Batch <i>/<N> committed.`** Do not wait for every
+   batch and commit them together: a run that stops while it waits loses
+   every batch that had already finished. Read the fact nodes from `knowledge-graph.jsonl`
    (one record per line, e.g. `jq -c 'select(.record=="node") | .node |
    {id, type, name, filePath, lineRange}' "$DATA_DIR/knowledge-graph.jsonl"`)
    and, for this batch's files, list ONLY nodes whose id occurs in
@@ -651,8 +655,11 @@ Otherwise dispatch `excavator-summary-verifier`
 to Phase 2.5's Step 2 below (no project description, no graph, no language
 directive: the verifier's independence is the point).
 
-As soon as a verifier returns, commit its batch, one batch at a time, without
-waiting for the others:
+**Each time a verifier returns, commit its batch right away, before you
+dispatch another batch or wait for the rest, and report
+`Verification batch <i>/<N> committed.`** Do not wait for every batch and
+commit them together: a run that stops while it waits loses every verdict
+that had already come back.
 
 ```bash
 node "<SKILL_DIR>/apply-verification.mjs" "$PROJECT_ROOT" apply-semantic --batch <i>

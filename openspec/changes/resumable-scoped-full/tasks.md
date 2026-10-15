@@ -13,6 +13,7 @@
 3. `feat(skill): select semantics and verification candidates within a directory scope`：任务 1.2。
 3a. `fix(skill): keep the semantic cache's language identity when writing verdicts`：做 1.3 时发现，见 1.2 的完成记录。
 4. `feat(skill): resume, scope and estimate a Full run`：任务 1.3。
+4a. `fix(skill): commit each Full batch where it is dispatched`：O2 第一次尝试发现编排者没有逐批提交，见 2.1。
 5. `feat(scripts): continue, time out and pass skill arguments in measured runs`：任务 1.4。
 6. `docs(openspec): record resumable-scoped-full acceptance`：任务 2.1–2.3。
 
@@ -56,5 +57,9 @@
 ## 2. 真实验收与记录
 
 - [ ] 2.1 O2 续跑（conduit）。
+  - 第一次尝试（插件 d8eacf0c，Sonnet，上限 $15，超时 13 分钟）：不作数，花 $5.78。
+    - 编排者没有逐批提交：第 1 批返回时它写「等其余 6 批完成再提交」，7 批全回来后才一次性提交。规则只写在第 4 步，而它照着第 3 步的派发说明在等。
+    - 超时也没落在 F2：F2 只用了 7.3 分钟，13 分钟时已在 F3。
+    - 处理：把「每批一返回就提交」挪进 F2 第 3 步与 F4 的派发段落，要求报告 `Batch <i>/<N> committed.`，契约测试跟着断言派发段落里的这句（4a）。第二次尝试改成看记录停：记录里出现第 2 次单独的提交命令时，向无头进程发 SIGTERM，等同于在那一刻超时；`--timeout-minutes` 只作兜底。
 - [ ] 2.2 O3 预估（jpetstore）。
 - [ ] 2.3 在本文件末尾写「验收摘要」：O1–O3 的结果、续跑与预估的数字，以及需求原文第 3 项的完成情况。
