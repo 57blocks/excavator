@@ -104,9 +104,40 @@ describe('Phase F CLI pipeline (child processes, not just programmatic exports)'
       join(intermediate, 'summary-verdicts-0.json'),
       JSON.stringify({ verdicts: [{ id: runNode.id, verdict: 'verified' }] }, null, 2),
     );
+    // A verdict file some earlier run left behind, at a batch index this
+    // manifest does not have. Read, it would raise the marking to contradicted.
+    writeFileSync(
+      join(intermediate, 'summary-verdicts-5.json'),
+      JSON.stringify({ verdicts: [{ id: runNode.id, verdict: 'contradicted', reason: 'old' }] }, null, 2),
+    );
+    // A batch commit accepts only the ids its own batch file lists.
+    writeFileSync(join(intermediate, 'semantic-verify-batch-9.json'), JSON.stringify({ batchIndex: 9, nodes: [] }));
+    writeFileSync(
+      join(intermediate, 'summary-verdicts-9.json'),
+      JSON.stringify({ verdicts: [{ id: runNode.id, verdict: 'contradicted', reason: 'not in batch 9' }] }, null, 2),
+    );
+    run('apply-verification.mjs', [root, 'apply-semantic', '--batch', '9']);
+    const cacheAfterForeign = JSON.parse(readFileSync(join(dataDir, 'semantic-cache.json'), 'utf-8'));
+    expect(cacheAfterForeign.entries[runNode.id].verification).toBeUndefined();
+    run('apply-verification.mjs', [root, 'apply-semantic', '--batch', '0']);
+    const cacheAfterBatch = JSON.parse(readFileSync(join(dataDir, 'semantic-cache.json'), 'utf-8'));
+    expect(cacheAfterBatch.entries[runNode.id].verification).toBe('verified');
     run('apply-verification.mjs', [root, 'apply-semantic']);
     const cacheAfterVerify = JSON.parse(readFileSync(join(dataDir, 'semantic-cache.json'), 'utf-8'));
     expect(cacheAfterVerify.entries[runNode.id].verification).toBe('verified');
+    const verifyReport = JSON.parse(readFileSync(join(intermediate, 'semantic-verification.json'), 'utf-8'));
+    expect(verifyReport.verdictFiles).toEqual(['summary-verdicts-0.json']);
+
+    // Writing verdicts keeps the cache reusable: the next Full reuses the entry.
+    run('select-stale-semantics.mjs', [root, '--out', join(intermediate, 'after-verify.json'), '--files-out', join(intermediate, 'after-verify-files.json')]);
+    const afterVerify = JSON.parse(readFileSync(join(intermediate, 'after-verify.json'), 'utf-8'));
+    expect(afterVerify.plan.reuse.map((e) => e.nodeId)).toContain(runNode.id);
+
+    // A re-run selects nothing: the summary already carries its verdict.
+    run('apply-verification.mjs', [root, 'prepare-semantic']);
+    const rerunManifest = JSON.parse(readFileSync(join(intermediate, 'semantic-verify-manifest.json'), 'utf-8'));
+    expect(rerunManifest.selectedIds).toEqual([]);
+    expect(rerunManifest.counts.alreadyChecked).toBe(1);
 
     // The whole exercise never touched the fact graph's node fields.
     const finalGraph = readKnowledgeGraph(join(dataDir, 'knowledge-graph.jsonl'));
@@ -115,5 +146,21 @@ describe('Phase F CLI pipeline (child processes, not just programmatic exports)'
       expect(node.tags).toEqual([]);
     }
     expect(existsSync(join(dataDir, 'semantic-graph.json'))).toBe(true);
+  });
+
+  it('refuses --batch outside apply-semantic', () => {
+    expect(() => run('apply-verification.mjs', [root, 'prepare-semantic', '--batch', '0'])).toThrow(/--batch applies only to apply-semantic/);
+  });
+
+  it('scopes selection to a directory and refuses a malformed or empty scope before any dispatch', () => {
+    const intermediate = join(root, '.excavator', 'intermediate');
+    run('select-stale-semantics.mjs', [root, '--scope', 'src']);
+    const stale = JSON.parse(readFileSync(join(intermediate, 'stale-semantics.json'), 'utf-8'));
+    expect(stale.scope).toBe('src');
+    expect(stale.staleFiles).toEqual(['src/a.ts']);
+    expect(() => run('select-stale-semantics.mjs', [root, '--scope', '../src'])).toThrow(/canonical project-relative path/);
+    expect(() => run('select-stale-semantics.mjs', [root, '--scope', 'lib'])).toThrow(/matches no fact-graph node/);
+    expect(() => run('apply-verification.mjs', [root, 'prepare-semantic', '--scope', '/src'])).toThrow(/canonical project-relative path/);
+    expect(() => run('apply-verification.mjs', [root, 'apply-semantic', '--scope', 'src'])).toThrow(/--scope applies only to prepare-semantic/);
   });
 });

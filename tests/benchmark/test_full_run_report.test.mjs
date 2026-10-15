@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -7,11 +7,14 @@ import { describe, expect, it } from 'vitest';
 import {
   CliUsageError,
   claudeArgs,
+  continuedCopy,
+  copyProducts,
   isolatedName,
   parseArgs,
   parseRunRecord,
   prepareIsolatedCopy,
   readSample,
+  runChild,
   runMeasured,
   summarizeRun,
 } from '../../scripts/lib/full-run-report.mjs';
@@ -377,5 +380,114 @@ describe('run', () => {
     expect(claudeArgs({ project: '/w/app', model: 'sonnet', maxBudgetUsd: 40, noVerify: false, pluginDir: '/repo' })[1]).toBe(
       '/excavator:excavator /w/app --full',
     );
+  });
+});
+
+describe('run: continue, time out, pass skill arguments', () => {
+  const base = ['--model', 'sonnet', '--max-budget-usd', '5', '--out', 'out'];
+
+  it('takes a sample or --continue, a positive timeout, and skill arguments that are options themselves', () => {
+    expect(parseArgs(['run', '--continue', '/w', ...base])).toMatchObject({ sample: null, continueDir: '/w' });
+    expect(() => parseArgs(['run', 'sample', '--continue', '/w', ...base])).toThrow('not both');
+    expect(() => parseArgs(['run', ...base])).toThrow('run needs the sample directory or --continue');
+    expect(parseArgs(['run', 'sample', ...base, '--timeout-minutes', '7.5']).timeoutMinutes).toBe(7.5);
+    expect(() => parseArgs(['run', 'sample', ...base, '--timeout-minutes', '0'])).toThrow('--timeout-minutes must be a positive number');
+    expect(parseArgs(['run', 'sample', ...base, '--skill-args', '--estimate']).skillArgs).toBe('--estimate');
+    expect(parseArgs(['run', 'sample', ...base, '--skill-args', '--scope src/a']).skillArgs).toBe('--scope src/a');
+    expect(() => parseArgs(['run', 'sample', ...base, '--skill-args'])).toThrow('--skill-args needs a value');
+    expect(parseArgs(['run', 'sample', ...base])).toMatchObject({ continueDir: null, timeoutMinutes: null, skillArgs: null });
+  });
+
+  it('appends the skill arguments to the /excavator command as they are', () => {
+    const args = claudeArgs({ project: '/w/app', model: 'sonnet', maxBudgetUsd: 5, noVerify: false, pluginDir: '/repo', skillArgs: '--estimate --scope src/a' });
+    expect(args[1]).toBe('/excavator:excavator /w/app --full --estimate --scope src/a');
+  });
+
+  it('reuses a work directory from run with its .excavator/ untouched, and refuses anything else', () => {
+    const copy = prepareIsolatedCopy(mkdtempSync(join(tmpdir(), 'full-run-cont-src-')), { tmpRoot: mkdtempSync(join(tmpdir(), 'iso-')) });
+    mkdirSync(join(copy.project, '.excavator'));
+    writeFileSync(join(copy.project, '.excavator', 'semantic-cache.json'), '{"entries":{}}');
+    const reused = continuedCopy(copy.root);
+    expect(reused).toMatchObject({ root: copy.root, project: copy.project, cwd: copy.cwd });
+    expect(readFileSync(join(reused.project, '.excavator', 'semantic-cache.json'), 'utf-8')).toBe('{"entries":{}}');
+
+    writeFileSync(join(copy.cwd, 'stray.txt'), 'x');
+    expect(() => continuedCopy(copy.root)).toThrow('is not empty');
+    const extra = mkdtempSync(join(tmpdir(), 'full-run-cont-'));
+    mkdirSync(join(extra, 'cwd'));
+    mkdirSync(join(extra, 'a'));
+    mkdirSync(join(extra, 'b'));
+    expect(() => continuedCopy(extra)).toThrow('exactly one sample copy and cwd/');
+    expect(() => continuedCopy(join(extra, 'nope'))).toThrow('no work directory');
+  });
+
+  it('refuses an output directory inside the work directory it continues', async () => {
+    const work = mkdtempSync(join(tmpdir(), 'full-run-cont-out-'));
+    const options = parseArgs(['run', '--continue', work, '--model', 'sonnet', '--max-budget-usd', '1', '--out', join(work, 'out')]);
+    await expect(runMeasured(options, { repoRoot: '/nonexistent' })).rejects.toThrow('--out must be outside the work directory');
+  });
+
+  it('copies the products present and lists the absent ones as missing', () => {
+    const project = mkdtempSync(join(tmpdir(), 'full-run-products-'));
+    mkdirSync(join(project, '.excavator', 'intermediate'), { recursive: true });
+    writeFileSync(join(project, '.excavator', 'intermediate', 'stale-semantics.json'), '{}');
+    writeFileSync(join(project, '.excavator', 'semantic-cache.json'), '{}');
+    const out = mkdtempSync(join(tmpdir(), 'full-run-products-out-'));
+    const missing = [];
+    expect(copyProducts(project, out, missing)).toEqual(['intermediate/stale-semantics.json', 'semantic-cache.json']);
+    expect(readdirSync(join(out, 'products')).sort()).toEqual(['semantic-cache.json', 'stale-semantics.json']);
+    expect(missing).toEqual(['products:intermediate/batches.json', 'products:intermediate/semantic-verify-manifest.json']);
+  });
+
+  it('stops a child that runs past the timeout, and kills one that ignores SIGTERM', async () => {
+    const sleeper = await runChild(process.execPath, ['-e', 'setTimeout(() => {}, 60000)'], { timeoutMs: 200, stdio: 'ignore' });
+    expect(sleeper).toEqual({ code: null, signal: 'SIGTERM', timedOut: true });
+    const stubborn = await runChild(
+      process.execPath,
+      ['-e', "process.on('SIGTERM', () => {}); setInterval(() => {}, 1000); process.stdout.write('ready')"],
+      { timeoutMs: 300, graceMs: 300, stdio: 'ignore' },
+    );
+    expect(stubborn).toEqual({ code: null, signal: 'SIGKILL', timedOut: true });
+    const quick = await runChild(process.execPath, ['-e', 'process.exit(3)'], { timeoutMs: 5000, stdio: 'ignore' });
+    expect(quick).toEqual({ code: 3, signal: null, timedOut: false });
+  });
+
+  it('continues in the earlier copy, passes the skill arguments and reports a timeout (stand-in claude)', async () => {
+    // A stand-in `claude` on PATH: passes preflight, logs its -p prompt, then
+    // hangs so that only --timeout-minutes can end it.
+    const bin = mkdtempSync(join(tmpdir(), 'full-run-fake-bin-'));
+    const log = join(bin, 'prompt.log');
+    writeFileSync(join(bin, 'claude'), [
+      '#!/bin/sh',
+      'case "$1" in',
+      '  auth) echo \'{"loggedIn":true}\' ;;',
+      '  plugin) exit 0 ;;',
+      `  -p) printf '%s' "$2" > '${log}'; exec sleep 30 ;;`,
+      'esac',
+    ].join('\n'));
+    chmodSync(join(bin, 'claude'), 0o755);
+    const repoRoot = mkdtempSync(join(tmpdir(), 'full-run-fake-repo-'));
+    mkdirSync(join(repoRoot, 'packages', 'core', 'dist'), { recursive: true });
+    writeFileSync(join(repoRoot, 'packages', 'core', 'dist', 'index.js'), '');
+
+    const copy = prepareIsolatedCopy(mkdtempSync(join(tmpdir(), 'full-run-fake-src-')), { tmpRoot: mkdtempSync(join(tmpdir(), 'iso-')) });
+    mkdirSync(join(copy.project, '.excavator', 'intermediate'), { recursive: true });
+    writeFileSync(join(copy.project, '.excavator', 'semantic-cache.json'), '{"entries":{"n":{}}}');
+    const out = join(mkdtempSync(join(tmpdir(), 'full-run-fake-out-')), 'run2');
+    const options = parseArgs(['run', '--continue', copy.root, '--model', 'sonnet', '--max-budget-usd', '1', '--out', out,
+      '--timeout-minutes', '0.005', '--skill-args', '--estimate']);
+
+    const savedPath = process.env.PATH;
+    process.env.PATH = `${bin}:${savedPath}`;
+    let report;
+    try {
+      report = await runMeasured(options, { repoRoot });
+    } finally {
+      process.env.PATH = savedPath;
+    }
+    expect(readFileSync(log, 'utf-8')).toBe(`/excavator:excavator ${copy.project} --full --estimate`);
+    expect(report.run).toMatchObject({ continued: true, copy: copy.project, timedOut: true, signal: 'SIGTERM', skillArgs: '--estimate' });
+    expect(readFileSync(join(out, 'products', 'semantic-cache.json'), 'utf-8')).toBe('{"entries":{"n":{}}}');
+    expect(report.missing).toContain('products:intermediate/batches.json');
   });
 });

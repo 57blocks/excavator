@@ -9,6 +9,7 @@ import {
   SEMANTIC_CACHE_VERSION,
 } from '../../skills/excavator/semantic-cache.mjs';
 import { auditSemanticCacheFields } from '../../skills/excavator/semantic-language-audit.mjs';
+import { scopePredicate } from '../../skills/excavator/project-paths.mjs';
 
 function kg(paths) {
   return { nodes: paths.map((p) => ({ id: `file:${p}`, type: 'file', filePath: p })) };
@@ -100,5 +101,39 @@ describe('select-stale-semantics.mjs — selectStaleFiles', () => {
 
     expect(staleFiles).toEqual(['a.ts']);
     expect(freshFiles).toEqual([]);
+  });
+});
+
+describe('select-stale-semantics.mjs — --scope', () => {
+  const paths = ['src/a/one.ts', 'src/a/two.ts', 'src/ab/three.ts', 'src/b/four.ts', 'root.ts'];
+  const manifest = { entries: paths.map((p, i) => ({ path: p, contentHash: `h${i}` })) };
+
+  it('plans only the nodes under the scope directory, not a sibling sharing its prefix', () => {
+    const result = selectStaleFiles({ knowledgeGraph: kg(paths), semanticCache: null, manifest, scope: 'src/a' });
+    expect(result.staleFiles).toEqual(['src/a/one.ts', 'src/a/two.ts']);
+    expect(result.plan.generate.map((e) => e.nodeId).sort()).toEqual(['file:src/a/one.ts', 'file:src/a/two.ts']);
+    expect(result.scope).toBe('src/a');
+  });
+
+  it('accepts a trailing slash and a scope naming a single file', () => {
+    expect(selectStaleFiles({ knowledgeGraph: kg(paths), semanticCache: null, manifest, scope: 'src/b/' }).staleFiles)
+      .toEqual(['src/b/four.ts']);
+    expect(selectStaleFiles({ knowledgeGraph: kg(paths), semanticCache: null, manifest, scope: 'root.ts' }).staleFiles)
+      .toEqual(['root.ts']);
+  });
+
+  it('refuses a malformed scope and a scope that matches no node', () => {
+    for (const bad of ['/src', '../src', 'src/../b', './src', '', '/']) {
+      expect(() => selectStaleFiles({ knowledgeGraph: kg(paths), semanticCache: null, manifest, scope: bad }))
+        .toThrow(/canonical project-relative path/);
+    }
+    expect(() => selectStaleFiles({ knowledgeGraph: kg(paths), semanticCache: null, manifest, scope: 'lib' }))
+      .toThrow(/matches no fact-graph node/);
+  });
+
+  it('scopePredicate matches the directory itself and paths below it only', () => {
+    const inScope = scopePredicate('src/a');
+    expect(['src/a', 'src/a/x.ts', 'src/a/deep/y.ts'].every(inScope)).toBe(true);
+    expect(['src/ab/x.ts', 'src', 'other/src/a/x.ts', undefined].some(inScope)).toBe(false);
   });
 });

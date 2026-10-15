@@ -42,6 +42,16 @@ export function canonicalSourcePath(path) {
   return path;
 }
 
+/**
+ * `--scope <dir>` for Full's selection scripts: a canonical project-relative
+ * directory (a trailing `/` is dropped), matching that path itself or any
+ * path under it. A malformed dir throws rather than selecting nothing.
+ */
+export function scopePredicate(dir) {
+  const scope = canonicalSourcePath(typeof dir === 'string' ? dir.replace(/\/+$/, '') : dir);
+  return (filePath) => typeof filePath === 'string' && (filePath === scope || filePath.startsWith(`${scope}/`));
+}
+
 /** The snapshot listing is the read allowlist; real paths cannot escape it. */
 export function assertSourcePath(root, path, snapshot) {
   const rel = canonicalSourcePath(path);

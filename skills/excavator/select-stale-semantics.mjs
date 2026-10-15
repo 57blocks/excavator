@@ -18,10 +18,13 @@
  * plus any function/class node it owns) has a missing or stale semantic-cache
  * entry. Even an explicit Full run must not regenerate an already-fresh node.
  *
+ * `--scope <dir>` plans only the nodes whose file is under `<dir>`, for a
+ * Full run split by module; every scoped run commits into the same cache.
+ *
  * Contract: openspec/changes/full-semantic-isolation/specs/full-semantic-isolation/spec.md
  *
  * Usage (CLI):
- *   node select-stale-semantics.mjs <projectRoot> [--out <path>] [--files-out <path>]
+ *   node select-stale-semantics.mjs <projectRoot> [--out <path>] [--files-out <path>] [--scope <dir>]
  */
 
 import { dirname, join, resolve } from 'node:path';
@@ -30,6 +33,7 @@ import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from
 import { createRequire } from 'node:module';
 import { planSemanticCacheReuse } from './semantic-cache-reuse.mjs';
 import { KNOWLEDGE_GRAPH_FILE, readKnowledgeGraph } from './knowledge-graph-store.mjs';
+import { scopePredicate } from './project-paths.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const pluginRoot = resolve(__dirname, '../..');
@@ -56,13 +60,18 @@ function compareStrings(a, b) {
  *   knowledgeGraph: { nodes: object[] },
  *   semanticCache: { version: string, contentLanguage?: string, entries: Record<string, object> } | null | undefined,
  *   manifest: { entries: Array<{ path: string, contentHash: string }> } | null | undefined,
- *   forceAll?: boolean,
+ *   forceAll?: boolean, scope?: string|null,
  * }} args
  * @returns {{ staleFiles: string[], freshFiles: string[], counts: { stale: number, fresh: number, total: number } }}
  */
-export function selectStaleFiles({ knowledgeGraph, semanticCache, manifest, forceAll = false }) {
+export function selectStaleFiles({ knowledgeGraph, semanticCache, manifest, forceAll = false, scope = null }) {
   if (forceAll) throw new Error('forceAll would regenerate hash-fresh semantics; use the shared reuse plan');
-  const nodes = (knowledgeGraph?.nodes ?? []).filter((node) => typeof node?.id === 'string');
+  const inScope = scope === null ? () => true : scopePredicate(scope);
+  const nodes = (knowledgeGraph?.nodes ?? [])
+    .filter((node) => typeof node?.id === 'string' && (scope === null || inScope(node.filePath)));
+  if (scope !== null && nodes.length === 0) {
+    throw new Error(`select-stale-semantics: --scope "${scope}" matches no fact-graph node`);
+  }
   const plan = planSemanticCacheReuse({
     requestedNodeIds: nodes.map((node) => node.id), nodes,
     manifestEntries: manifest?.entries ?? [], semanticCache,
@@ -74,7 +83,7 @@ export function selectStaleFiles({ knowledgeGraph, semanticCache, manifest, forc
 
   stale.sort(compareStrings);
   fresh.sort(compareStrings);
-  return { staleFiles: stale, freshFiles: fresh,
+  return { scope, staleFiles: stale, freshFiles: fresh,
     unavailableNodes: plan.unavailable, plan,
     counts: { stale: stale.length, fresh: fresh.length, total: stale.length + fresh.length } };
 }
@@ -84,17 +93,23 @@ export function selectStaleFiles({ knowledgeGraph, semanticCache, manifest, forc
 // ---------------------------------------------------------------------------
 
 function parseArgs(argv) {
-  const args = { projectRoot: null, out: null, filesOut: null };
+  const args = { projectRoot: null, out: null, filesOut: null, scope: null };
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
     if (arg === '--out') { args.out = argv[++i]; continue; }
     if (arg === '--files-out') { args.filesOut = argv[++i]; continue; }
+    if (arg === '--scope') {
+      const value = argv[++i];
+      if (!value || value.startsWith('--')) throw new Error('select-stale-semantics: --scope requires a directory');
+      args.scope = value;
+      continue;
+    }
     if (arg.startsWith('--')) throw new Error(`select-stale-semantics: unknown option: ${arg}`);
     if (!args.projectRoot) { args.projectRoot = arg; continue; }
     throw new Error(`select-stale-semantics: unexpected argument: ${arg}`);
   }
   if (!args.projectRoot) {
-    throw new Error('Usage: node select-stale-semantics.mjs <projectRoot> [--out <path>] [--files-out <path>]');
+    throw new Error('Usage: node select-stale-semantics.mjs <projectRoot> [--out <path>] [--files-out <path>] [--scope <dir>]');
   }
   return args;
 }
@@ -122,7 +137,7 @@ async function main() {
   const semanticCache = readJson(join(dataDir, 'semantic-cache.json'), 'semantic-cache.json', false);
   const manifest = readJson(join(dataDir, 'source-manifest.json'), 'source-manifest.json', false);
 
-  const result = selectStaleFiles({ knowledgeGraph, semanticCache, manifest });
+  const result = selectStaleFiles({ knowledgeGraph, semanticCache, manifest, scope: args.scope });
 
   const outPath = resolve(args.out ?? join(intermediate, 'stale-semantics.json'));
   mkdirSync(dirname(outPath), { recursive: true });
@@ -136,7 +151,7 @@ async function main() {
   writeFileSync(filesOutPath, JSON.stringify(result.staleFiles, null, 2), 'utf-8');
 
   process.stderr.write(
-    `select-stale-semantics: stale=${result.counts.stale} fresh=${result.counts.fresh} ` +
+    `select-stale-semantics: scope=${args.scope ?? '(project)'} stale=${result.counts.stale} fresh=${result.counts.fresh} ` +
     `total=${result.counts.total} unavailableNodes=${result.unavailableNodes.length} -> ${outPath}\n`,
   );
 }

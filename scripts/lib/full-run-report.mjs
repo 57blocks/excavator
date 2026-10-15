@@ -6,11 +6,11 @@
  * is priced from tokens. Ratios per file or node are labelled derived. Input
  * the record does not carry is listed under `missing`, never read as zero.
  *
- * Contract: openspec/changes/full-run-measurement/specs/full-run-measurement/spec.md
+ * Contract: openspec/specs/full-run-measurement/spec.md
  */
 
 import { spawn, spawnSync } from 'node:child_process';
-import { cpSync, existsSync, mkdirSync, mkdtempSync, openSync, readFileSync, realpathSync, statSync } from 'node:fs';
+import { copyFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, openSync, readdirSync, readFileSync, realpathSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, isAbsolute, join, relative, resolve } from 'node:path';
 
@@ -334,8 +334,11 @@ export function renderMarkdown(report, { title = 'Full run report' } = {}) {
     `- Derived: $${derived.costPerFileUsd === null ? '—' : derived.costPerFileUsd.toFixed(4)} per file, ${minutes(derived.wallMsPerFile)} per file`,
     ...(report.run
       ? [
-          `- Run: ${report.run.model}, budget $${report.run.maxBudgetUsd}${report.run.noVerify ? ', --no-verify' : ''}, exit ${fmt(report.run.exitCode)}, process wall ${minutes(report.run.processWallMs)}`,
-          `- Sample ${report.run.sampleSource} at ${fmt(report.run.sampleCommit)}, copied to ${report.run.copy}`,
+          `- Run: ${report.run.model}, budget $${report.run.maxBudgetUsd}${report.run.noVerify ? ', --no-verify' : ''}${report.run.skillArgs ? `, skill args \`${report.run.skillArgs}\`` : ''}, exit ${fmt(report.run.exitCode)}, process wall ${minutes(report.run.processWallMs)}`,
+          ...(report.run.timedOut ? [`- Stopped by --timeout-minutes ${report.run.timeoutMinutes} (signal ${fmt(report.run.signal)})`] : []),
+          report.run.continued
+            ? `- Continued in ${report.run.copy}, with the .excavator/ an earlier run left`
+            : `- Sample ${report.run.sampleSource} at ${fmt(report.run.sampleCommit)}, copied to ${report.run.copy}`,
           `- Plugin ${report.run.pluginDir} at ${fmt(report.run.pluginCommit)}${report.run.pluginDirty ? ' (uncommitted changes)' : ''}`,
         ]
       : []),
@@ -374,7 +377,9 @@ export function helpText() {
   return [
     'Usage:',
     '  node scripts/benchmark-full-run.mjs report <run.jsonl> [--project <dir>] [--out <dir>]',
-    '  node scripts/benchmark-full-run.mjs run <sample-dir> --model <model> --max-budget-usd <usd> --out <dir> [--no-verify]',
+    '  node scripts/benchmark-full-run.mjs run <sample-dir> --model <model> --max-budget-usd <usd> --out <dir>',
+    '      [--no-verify] [--timeout-minutes <n>] [--skill-args <string>]',
+    '  node scripts/benchmark-full-run.mjs run --continue <work-dir> --model <model> --max-budget-usd <usd> --out <dir> [...]',
     '',
     'report  Read the stream-json record of one headless Full run and write',
     '        <name>.report.json and <name>.report.md (default: next to the record).',
@@ -385,14 +390,23 @@ export function helpText() {
     '        on the copy with the plugin loaded from this checkout, and write',
     '        run.jsonl, run.stderr and the report into --out. --model and',
     '        --max-budget-usd are required; nothing is spent without them.',
+    '        --continue reuses the work directory an earlier run made, with its',
+    '        .excavator/ as it was left, instead of a new copy. --timeout-minutes',
+    '        stops the run as a runner timeout would (SIGTERM, then SIGKILL after',
+    '        10 s). --skill-args is appended to the /excavator arguments as is.',
+    '        The selection, batch, verification manifest and semantic cache files',
+    '        are copied into <out>/products/.',
     '',
   ].join('\n');
 }
 
 const VALUE_OPTIONS = {
   report: ['--project', '--out'],
-  run: ['--model', '--max-budget-usd', '--out'],
+  run: ['--model', '--max-budget-usd', '--out', '--continue', '--timeout-minutes', '--skill-args'],
 };
+const REQUIRED_RUN_OPTIONS = ['--model', '--max-budget-usd', '--out'];
+/** Values that are themselves option strings, such as `--skill-args --estimate`. */
+const RAW_VALUE_OPTIONS = new Set(['--skill-args']);
 const FLAG_OPTIONS = { report: [], run: ['--no-verify'] };
 
 export function parseArgs(argv) {
@@ -406,7 +420,7 @@ export function parseArgs(argv) {
     const arg = rest[index];
     if (VALUE_OPTIONS[command].includes(arg)) {
       const value = rest[++index];
-      if (value === undefined || value.startsWith('--')) throw new CliUsageError(`${arg} needs a value`);
+      if (value === undefined || (value.startsWith('--') && !RAW_VALUE_OPTIONS.has(arg))) throw new CliUsageError(`${arg} needs a value`);
       values[arg] = value;
     } else if (FLAG_OPTIONS[command].includes(arg)) {
       flags.add(arg);
@@ -422,19 +436,28 @@ export function parseArgs(argv) {
     if (target === null) throw new CliUsageError('report needs the path of a run record');
     return { command, record: target, project: values['--project'] ?? null, out: values['--out'] ?? null };
   }
-  if (target === null) throw new CliUsageError('run needs the sample directory');
-  for (const required of VALUE_OPTIONS.run) {
+  const continueDir = values['--continue'] ?? null;
+  if (target === null && continueDir === null) throw new CliUsageError('run needs the sample directory or --continue');
+  if (target !== null && continueDir !== null) throw new CliUsageError('run takes a sample directory or --continue, not both');
+  for (const required of REQUIRED_RUN_OPTIONS) {
     if (values[required] === undefined) throw new CliUsageError(`run needs ${required}`);
   }
   const budget = Number(values['--max-budget-usd']);
   if (!Number.isFinite(budget) || budget <= 0) throw new CliUsageError('--max-budget-usd must be a positive number of dollars');
+  const timeout = values['--timeout-minutes'] === undefined ? null : Number(values['--timeout-minutes']);
+  if (timeout !== null && (!Number.isFinite(timeout) || timeout <= 0)) throw new CliUsageError('--timeout-minutes must be a positive number');
+  const skillArgs = values['--skill-args'] ?? null;
+  if (skillArgs !== null && skillArgs.trim() === '') throw new CliUsageError('--skill-args needs a value');
   return {
     command,
     sample: target,
+    continueDir,
     model: values['--model'],
     maxBudgetUsd: budget,
     out: values['--out'],
     noVerify: flags.has('--no-verify'),
+    timeoutMinutes: timeout,
+    skillArgs,
   };
 }
 
@@ -480,6 +503,72 @@ export function prepareIsolatedCopy(sampleDir, { tmpRoot = tmpdir() } = {}) {
   return { root, project, cwd, source, commit };
 }
 
+/**
+ * The work directory an earlier `run` made: exactly one sample copy and an
+ * empty `cwd/`. Used as it is; the copy's `.excavator/` is what a resumed
+ * Full run continues from.
+ */
+export function continuedCopy(workDir) {
+  const root = resolve(workDir);
+  if (!existsSync(root) || !statSync(root).isDirectory()) throw new CliUsageError(`no work directory at ${root}`);
+  const entries = readdirSync(root);
+  const projects = entries.filter((name) => name !== 'cwd');
+  if (!entries.includes('cwd') || projects.length !== 1 || !statSync(join(root, projects[0])).isDirectory()) {
+    throw new CliUsageError(`${root} is not a work directory from run: it must hold exactly one sample copy and cwd/`);
+  }
+  const cwd = join(root, 'cwd');
+  if (readdirSync(cwd).length !== 0) throw new CliUsageError(`${cwd} is not empty`);
+  return { root, project: join(root, projects[0]), cwd, source: null, commit: null };
+}
+
+/** The run's products that a resume or an estimate is checked against. */
+export const PRODUCT_FILES = [
+  'intermediate/stale-semantics.json',
+  'intermediate/batches.json',
+  'intermediate/semantic-verify-manifest.json',
+  'semantic-cache.json',
+];
+
+/** Copy the products present into `<out>/products/`; each absent one is a missing item. */
+export function copyProducts(project, out, missing) {
+  const target = join(out, 'products');
+  mkdirSync(target, { recursive: true });
+  const copied = [];
+  for (const file of PRODUCT_FILES) {
+    const source = join(project, '.excavator', file);
+    if (!existsSync(source)) {
+      missing.push(`products:${file}`);
+      continue;
+    }
+    copyFileSync(source, join(target, basename(file)));
+    copied.push(file);
+  }
+  return copied;
+}
+
+/**
+ * Run a child to its end, or stop it after `timeoutMs` as a runner timeout
+ * would: SIGTERM, then SIGKILL when it is still there `graceMs` later.
+ */
+export function runChild(command, args, { timeoutMs = null, graceMs = 10_000, ...spawnOptions } = {}) {
+  return new Promise((resolveExit, reject) => {
+    const child = spawn(command, args, spawnOptions);
+    let timedOut = false;
+    let killTimer = null;
+    const stopTimer = timeoutMs === null ? null : setTimeout(() => {
+      timedOut = true;
+      child.kill('SIGTERM');
+      killTimer = setTimeout(() => child.kill('SIGKILL'), graceMs);
+    }, timeoutMs);
+    child.on('error', reject);
+    child.on('exit', (code, signal) => {
+      clearTimeout(stopTimer);
+      clearTimeout(killTimer);
+      resolveExit({ code, signal, timedOut });
+    });
+  });
+}
+
 function preflight(repoRoot) {
   const problems = [];
   const auth = spawnSync('claude', ['auth', 'status'], { encoding: 'utf-8' });
@@ -496,10 +585,10 @@ function preflight(repoRoot) {
   return problems;
 }
 
-export function claudeArgs({ project, model, maxBudgetUsd, noVerify, pluginDir }) {
+export function claudeArgs({ project, model, maxBudgetUsd, noVerify, pluginDir, skillArgs = null }) {
   return [
     '-p',
-    `/excavator:excavator ${project} --full${noVerify ? ' --no-verify' : ''}`,
+    `/excavator:excavator ${project} --full${noVerify ? ' --no-verify' : ''}${skillArgs ? ` ${skillArgs}` : ''}`,
     '--model', model,
     '--max-budget-usd', String(maxBudgetUsd),
     '--plugin-dir', pluginDir,
@@ -515,28 +604,35 @@ export function claudeArgs({ project, model, maxBudgetUsd, noVerify, pluginDir }
 /** One measured Full run. Returns the report; the temporary directory is kept and named in it. */
 export async function runMeasured(options, { repoRoot, onProgress = () => {} }) {
   const out = resolve(options.out);
-  if (isInside(out, resolve(options.sample))) throw new CliUsageError('--out must be outside the sample directory');
+  const continued = options.continueDir != null;
+  const fenced = resolve(continued ? options.continueDir : options.sample);
+  if (isInside(out, fenced)) {
+    throw new CliUsageError(`--out must be outside the ${continued ? 'work' : 'sample'} directory`);
+  }
   const recordPath = join(out, 'run.jsonl');
   if (existsSync(recordPath)) throw new CliUsageError(`${recordPath} already exists; give a new --out`);
+  const reused = continued ? continuedCopy(options.continueDir) : null;
   const problems = preflight(repoRoot);
   if (problems.length) throw new CliUsageError(`preflight failed:\n  - ${problems.join('\n  - ')}`);
 
-  const copy = prepareIsolatedCopy(options.sample);
+  const copy = reused ?? prepareIsolatedCopy(options.sample);
   mkdirSync(out, { recursive: true });
-  onProgress(`sample copied to ${copy.project}`);
+  onProgress(continued ? `continuing in ${copy.project}` : `sample copied to ${copy.project}`);
   const started = Date.now();
-  const exitCode = await new Promise((resolveExit, reject) => {
-    const child = spawn('claude', claudeArgs({ ...options, project: copy.project, pluginDir: repoRoot }), {
+  const { code: exitCode, signal, timedOut } = await runChild(
+    'claude',
+    claudeArgs({ ...options, project: copy.project, pluginDir: repoRoot }),
+    {
       cwd: copy.cwd,
       env: { ...process.env, CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS: '0' },
       stdio: ['ignore', openSync(recordPath, 'w'), openSync(join(out, 'run.stderr'), 'w')],
-    });
-    child.on('error', reject);
-    child.on('exit', (code) => resolveExit(code));
-  });
+      timeoutMs: options.timeoutMinutes == null ? null : options.timeoutMinutes * 60_000,
+    },
+  );
   const ended = Date.now();
 
   const missing = [];
+  const products = copyProducts(copy.project, out, missing);
   const sample = readSample(copy.project, missing);
   const report = summarizeRun(parseRunRecord(readFileSync(recordPath, 'utf-8')), { sample });
   report.missing.push(...missing);
@@ -549,6 +645,12 @@ export async function runMeasured(options, { repoRoot, onProgress = () => {} }) 
     model: options.model,
     maxBudgetUsd: options.maxBudgetUsd,
     noVerify: options.noVerify,
+    skillArgs: options.skillArgs ?? null,
+    continued,
+    timeoutMinutes: options.timeoutMinutes ?? null,
+    timedOut,
+    signal,
+    products,
     pluginDir: repoRoot,
     pluginCommit: git(repoRoot, ['rev-parse', 'HEAD']),
     pluginDirty: (git(repoRoot, ['status', '--porcelain']) ?? '') !== '',
