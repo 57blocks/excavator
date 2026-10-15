@@ -16,7 +16,12 @@
 
 ## 1. 提示词与附录
 
-- [ ] 1.1 `skills/excavator/SKILL.md` Phase F3，按 full-semantic-isolation 规格补输入与说明。验证：O1 的提示词契约测试通过。
+- [x] 1.1 `skills/excavator/SKILL.md` Phase F3，按 full-semantic-isolation 规格补输入与说明。验证：O1 的提示词契约测试通过。
+  - 完成记录：
+    - 新鲜语义复用 F2 已有的 `select-stale-semantics.mjs`，在 F2 提交后重跑，写到单独的文件，取 `plan.reuse[]`，不加新脚本；
+    - 节点与边用两条 `jq` 示例拼出，已在夹具副本的真实事实图上跑过；
+    - 提示词明说不从 `knowledge-graph.jsonl` 节点取 `summary`/`tags`：Full 下它们是空的；
+    - 契约测试在旧 SKILL.md 上红、新的上绿。
 - [ ] 1.2 `skills/excavator/frameworks/jsf.md` 增加 EL 到方法的规则，并在「Edge Patterns」里与导航、复合组件并列。验证：O1 的附录契约测试与 `check-refs` 通过。
 
 ## 2. 验收与记录

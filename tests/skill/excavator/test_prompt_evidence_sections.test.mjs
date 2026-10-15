@@ -291,6 +291,56 @@ describe('SKILL.md injects framework addenda by the graph header ids (javaee-jsf
   });
 });
 
+describe('Phase F3 gives the architecture analyzer node semantics and page references (architecture-input)', () => {
+  const skill = readRepoFile('skills/excavator/SKILL.md');
+  const rebuild = (() => {
+    const start = skill.indexOf('**If `rebuild`:** first build');
+    expect(start, 'Phase F3 should open its rebuild branch by building the input').toBeGreaterThanOrEqual(0);
+    const end = skill.indexOf('Then dispatch `excavator-assemble-reviewer`', start);
+    expect(end).toBeGreaterThan(start);
+    // drop the blockquote markers so a phrase of the dispatch prompt matches across its wrapped lines
+    return flat(skill.slice(start, end).replace(/^> ?/gm, ''));
+  })();
+  const prompt = rebuild.slice(rebuild.indexOf('Analyze this codebase'));
+
+  it('takes fresh semantics from the shared reuse plan, into files of its own, and never from the graph nodes', () => {
+    expect(rebuild).toContain('node "<SKILL_DIR>/select-stale-semantics.mjs" "$PROJECT_ROOT"');
+    expect(rebuild).toContain('--out "$DATA_DIR/intermediate/architecture-semantics.json"');
+    expect(rebuild).toContain('--files-out "$DATA_DIR/intermediate/architecture-stale-files.json"');
+    expect(rebuild).toContain("Its `plan.reuse[]` lists every node with a fresh `semantic-cache.json` entry, with that entry's `summary` and `tags`.");
+    expect(rebuild).toContain('it gets no `tags` or `summary` in the input, and you do not write them for it.');
+    expect(rebuild).toContain('Never read `summary`/`tags` from `knowledge-graph.jsonl` nodes');
+  });
+
+  it('lists every node with its owner, the tags of a fresh node and the summary of a fresh file node', () => {
+    expect(rebuild).toContain('One entry per node in `knowledge-graph.jsonl`: `{id, type, name, filePath}`, plus `owner` when the node has one');
+    expect(rebuild).toContain('plus `tags` when the node is in `plan.reuse[]`, plus that entry\'s `summary` when the node is also a `file` node.');
+    expect(rebuild).toContain('(if .owner then {owner} else {} end)');
+    expect(rebuild).toContain('(if $fresh[.id] then {tags: $fresh[.id].tags} else {} end)');
+    expect(rebuild).toContain('(if $fresh[.id] and .type == "file" then {summary: $fresh[.id].summary} else {} end)');
+  });
+
+  it('gives the imports edges and the references edges with the line and chain of each evidence, without the bindings', () => {
+    expect(rebuild).toContain('select(.type == "imports" or .type == "references")');
+    expect(rebuild).toContain('{evidence: [.evidence[] | {line, chain}]}');
+    expect(rebuild).toContain("Leave out the evidence's bindings.");
+    expect(prompt).toContain('Fact nodes: `<the node list from step 2>`');
+    expect(prompt).toContain('Import and page-reference edges: `<the edge list from step 3>`');
+    expect(skill).not.toContain('<{id, type, name, filePath} for every node in knowledge-graph.jsonl>');
+  });
+
+  it('tells the analyzer where the tags come from, what a references edge says, and to layer by the addenda', () => {
+    expect(prompt).toContain('were written in Phase F2 by reading its source with the framework addenda injected into this prompt');
+    expect(prompt).toContain('a tag names the role the addendum assigns from annotations, descriptor entries or page references');
+    expect(prompt).toContain('A node without `tags` has no fresh semantics in this run.');
+    expect(prompt).toContain('A `references` edge runs from a page to a class the page binds through an EL expression; each evidence `chain` names the members the page uses');
+    expect(prompt).toContain('Assign layers by the layer table in the framework addenda');
+    expect(prompt).toContain('use the node\'s tags and its page references, not its name or class-name suffix.');
+    // the statements sit in the dispatch prompt, ahead of the output instruction
+    expect(prompt.indexOf('Assign layers by the layer table')).toBeLessThan(prompt.indexOf('Write output to:'));
+  });
+});
+
 describe('the javaee and jsf addenda (javaee-jsf-framework-knowledge, D8)', () => {
   const catalog = JSON.parse(readRepoFile('skills/excavator/catalogs/name-bindings.json'));
   const routeCatalog = JSON.parse(readRepoFile('skills/excavator/catalogs/routes.json'));

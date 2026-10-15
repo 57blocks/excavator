@@ -462,7 +462,55 @@ a reused Architecture must not silently swallow a gap this run actually
 found). Report `Architecture unchanged (factDigest match) — reusing existing
 semantic-graph.json.` and continue to Phase F4 without dispatching anything.
 
-**If `rebuild`:** dispatch the SAME `excavator-architecture-analyzer` agent
+**If `rebuild`:** first build the analyzer's input.
+
+1. **Fresh node semantics.** Re-run the shared reuse plan Phase F2 step 1
+   uses, now that Phase F2 has committed its patches, writing to separate
+   files so Phase F2's own selection stays intact:
+
+   ```bash
+   node "<SKILL_DIR>/select-stale-semantics.mjs" "$PROJECT_ROOT" \
+     --out "$DATA_DIR/intermediate/architecture-semantics.json" \
+     --files-out "$DATA_DIR/intermediate/architecture-stale-files.json"
+   ```
+
+   Its `plan.reuse[]` lists every node with a fresh `semantic-cache.json`
+   entry, with that entry's `summary` and `tags`. A node in `plan.generate[]`
+   or `plan.unavailable[]` has no fresh semantics: it gets no `tags` or
+   `summary` in the input, and you do not write them for it. Never read
+   `summary`/`tags` from `knowledge-graph.jsonl` nodes; Full leaves them empty.
+
+2. **Fact nodes.** One entry per node in `knowledge-graph.jsonl`:
+   `{id, type, name, filePath}`, plus `owner` when the node has one (the
+   class a method or endpoint belongs to), plus `tags` when the node is in
+   `plan.reuse[]`, plus that entry's `summary` when the node is also a `file`
+   node. For example:
+
+   ```bash
+   jq -c -n --slurpfile sem "$DATA_DIR/intermediate/architecture-semantics.json" '
+     ($sem[0].plan.reuse | map({key: .nodeId, value: .}) | from_entries) as $fresh
+     | inputs | select(.record == "node") | .node
+     | {id, type, name, filePath}
+       + (if .owner then {owner} else {} end)
+       + (if $fresh[.id] then {tags: $fresh[.id].tags} else {} end)
+       + (if $fresh[.id] and .type == "file" then {summary: $fresh[.id].summary} else {} end)' \
+     "$DATA_DIR/knowledge-graph.jsonl"
+   ```
+
+3. **Import and page-reference edges.** Every `imports` edge as
+   `{source, target, type}`, and every `references` edge with each evidence
+   item's `line` and `chain` (the EL chain the page wrote, such as
+   `orders.detail`). Leave out the evidence's bindings. For example:
+
+   ```bash
+   jq -c 'select(.record == "edge") | .edge
+     | select(.type == "imports" or .type == "references")
+     | {source, target, type}
+       + (if .type == "references" then {evidence: [.evidence[] | {line, chain}]} else {} end)' \
+     "$DATA_DIR/knowledge-graph.jsonl"
+   ```
+
+Then dispatch the SAME `excavator-architecture-analyzer` agent
 definition Phase 4 below uses (language/framework context injection identical
 to Phase 4's own steps 2-3), retargeted at fact nodes and this artifact:
 
@@ -472,8 +520,19 @@ to Phase 4's own steps 2-3), retargeted at fact nodes and this artifact:
 > — an id that is not in this list is not a real node and will be dropped.
 > Write every model-owned layer name and description in English. Preserve source-owned identifiers, paths, literals, and excerpts verbatim.
 > Project root: `$PROJECT_ROOT`
-> Fact nodes: `<{id, type, name, filePath} for every node in knowledge-graph.jsonl>`
-> Import edges: `<edges with type "imports" from knowledge-graph.jsonl>`
+> Fact nodes: `<the node list from step 2>`
+> Import and page-reference edges: `<the edge list from step 3>`
+>
+> A node's `tags`, and a file node's `summary`, were written in Phase F2 by
+> reading its source with the framework addenda injected into this prompt, so a tag
+> names the role the addendum assigns from annotations, descriptor entries or
+> page references. A node without `tags` has no fresh semantics in this run.
+> A `references` edge runs from a page to a class the page binds through an
+> EL expression; each evidence `chain` names the members the page uses, at
+> that `line` of the page. Assign layers by the layer table in the framework
+> addenda: where it assigns a layer by role, use the node's tags and its page
+> references, not its name or class-name suffix.
+>
 > Write output to: `$DATA_DIR/intermediate/semantic-layers.json` as
 > `{ "layers": [{"id","name","description","nodeIds"}], "relations": [{"id","type","source","target","description"?,"evidence"?}] }`
 
