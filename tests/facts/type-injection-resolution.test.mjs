@@ -23,6 +23,9 @@ import { loadNameBindingCatalog } from '../../skills/excavator/name-binding-cata
 import { buildNameBindingTable } from '../../skills/excavator/name-reference-resolution.mjs';
 import { resolveAnnotationInjections } from '../../skills/excavator/annotation-injection-resolution.mjs';
 import {
+  BUSINESS_INTERFACE_BUCKETS,
+  BUSINESS_INTERFACE_GAP_BUCKETS,
+  BUSINESS_INTERFACE_GAP_KIND,
   TYPE_INJECTIONS_NOT_RUN,
   TYPE_INJECTION_BUCKETS,
   TYPE_INJECTION_GAP_KINDS,
@@ -1216,6 +1219,7 @@ describe('the sixteen buckets', () => {
     expect(() => assertTypeInjectionConservation(p.coverage, measureTypeInjections(p.result))).not.toThrow();
     expect(measureTypeInjections(p.result)).toEqual({
       injections: { [JSR]: 1 },
+      implementations: 0,
       gaps: {
         [JSR]: {
           'type-injection-point-unresolved': 2, 'type-injection-type-unresolved': 2, 'type-injection-candidates-unresolved': 5,
@@ -1355,7 +1359,11 @@ describe('the conservation of a run', () => {
   });
 
   it('counts a gap of every kind the design says in the bucket sums', () => {
-    const coverage = { status: 'ran', families: { f: { points: 12, edges: 0, buckets: Object.fromEntries(TYPE_INJECTION_BUCKETS.map((bucket) => [bucket, TYPE_INJECTION_GAP_KINDS[bucket] === undefined ? 0 : 1])) } } };
+    const coverage = {
+      status: 'ran',
+      families: { f: { points: 12, edges: 0, buckets: Object.fromEntries(TYPE_INJECTION_BUCKETS.map((bucket) => [bucket, TYPE_INJECTION_GAP_KINDS[bucket] === undefined ? 0 : 1])) } },
+      businessInterfaces: { annotations: 0, declarations: 0, buckets: Object.fromEntries(BUSINESS_INTERFACE_BUCKETS.map((bucket) => [bucket, 0])), edges: 0 },
+    };
     const recorded = { injections: {}, gaps: { f: {} } };
     for (const kind of Object.values(TYPE_INJECTION_GAP_KINDS)) recorded.gaps.f[kind] = (recorded.gaps.f[kind] ?? 0) + 1;
     expect(() => assertTypeInjectionConservation(coverage, recorded)).not.toThrow();
@@ -1366,7 +1374,7 @@ describe('a stage that did not run, and rows that cannot be read', () => {
   it('reports "not-run" for a run with no catalog, with no edge and no gap', () => {
     const p = taxonomy();
     for (const catalog of [null, undefined]) {
-      expect(resolveTypeInjections({ ...p.args, catalog })).toEqual({ edges: [], gaps: [], coverage: { status: 'not-run' } });
+      expect(resolveTypeInjections({ ...p.args, catalog })).toEqual({ edges: [], implementsEdges: [], gaps: [], coverage: { status: 'not-run' } });
     }
     expect(TYPE_INJECTIONS_NOT_RUN).toEqual({ status: 'not-run' });
     expect(Object.isFrozen(TYPE_INJECTIONS_NOT_RUN)).toBe(true);
@@ -2121,5 +2129,383 @@ describe('names a filter drops', () => {
       ),
     });
     expect(p.links).toEqual(['com.acme.OrderController -> Producers#named']);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Business interfaces a session class declares by annotation (task 3.6)
+// ---------------------------------------------------------------------------
+
+describe('business interfaces declared by annotation', () => {
+  const STATELESS = 'import javax.ejb.Stateless;';
+  const REMOTE = 'import javax.ejb.Remote;';
+  const zero = Object.fromEntries(BUSINESS_INTERFACE_BUCKETS.map((bucket) => [bucket, 0]));
+  const bean = (annotations, { implementsClause = '', name = 'OrderBean', body = '', imports = [STATELESS, LOCAL, REMOTE] } = {}) => file(
+    name, imports, [...annotations, `public class ${name}${implementsClause} {${body}}`],
+  );
+  const business = (p) => p.coverage.businessInterfaces;
+  const orders = consumer(['  @EJB private OrderService orders;'], { imports: [EJB] });
+
+  it('has the eight buckets in the order of the design, and a gap only for three of them', () => {
+    expect([...BUSINESS_INTERFACE_BUCKETS]).toEqual([
+      'notListed', 'unreadable', 'outsideType', 'typeUndetermined', 'notInterface', 'alreadySupertype', 'unindexed', 'declared',
+    ]);
+    expect(Object.isFrozen(BUSINESS_INTERFACE_BUCKETS)).toBe(true);
+    expect([...BUSINESS_INTERFACE_GAP_BUCKETS]).toEqual(['unreadable', 'typeUndetermined', 'unindexed']);
+    expect(BUSINESS_INTERFACE_GAP_KIND).toBe('business-interface-unresolved');
+  });
+
+  describe('the scenarios of the requirement', () => {
+    it('draws an implements edge for an interface the class does not write, and the by-type point reaches the class', () => {
+      const p = project({ java: javaOf(iface('OrderService'), bean(['@Stateless', '@Local(OrderService.class)']), orders) });
+      const path = SRC('OrderBean');
+      expect(p.result.implementsEdges).toEqual([{
+        source: 'class:com.acme.OrderBean',
+        target: 'class:com.acme.OrderService',
+        type: 'implements',
+        direction: 'forward',
+        weight: 0.9,
+        provenance: 'extracted',
+        evidence: [{ file: path, line: p.line(path, '@Local'), source: 'tree-sitter', token: 'OrderService', role: 'businessInterface' }],
+      }]);
+      expect(p.links).toEqual(['com.acme.OrderController -> com.acme.OrderBean']);
+      expect(business(p)).toEqual({ annotations: 1, declarations: 1, buckets: { ...zero, declared: 1 }, edges: 1 });
+      expect(p.result.gaps).toEqual([]);
+      expect(() => assertTypeInjectionConservation(p.coverage, measureTypeInjections(p.result))).not.toThrow();
+    });
+
+    it('draws no new edge for an interface the class already implements', () => {
+      const p = project({ java: javaOf(iface('OrderService'), bean(['@Local(OrderService.class)'], { implementsClause: ' implements OrderService' }), orders) });
+      expect(p.result.implementsEdges).toEqual([]);
+      expect(business(p)).toEqual({ annotations: 1, declarations: 1, buckets: { ...zero, alreadySupertype: 1 }, edges: 0 });
+      expect(p.links).toEqual(['com.acme.OrderController -> com.acme.OrderBean']);
+    });
+
+    it('lands a constant in "unreadable" and records the gap, with the annotation and its argument in the sample', () => {
+      const p = project({ java: javaOf(iface('OrderService'), bean(['@Local(Interfaces.LOCAL)']), orders) });
+      const path = SRC('OrderBean');
+      expect(p.result.implementsEdges).toEqual([]);
+      expect(business(p)).toEqual({ annotations: 1, declarations: 1, buckets: { ...zero, unreadable: 1 }, edges: 0 });
+      expect(p.gaps('business-interface-unresolved')).toEqual([{
+        kind: 'business-interface-unresolved', scope: 'javax.ejb.Local', sample: `${path}:${p.line(path, '@Local')} OrderBean @Local(value)`,
+      }]);
+      // The class is no candidate of the interface it does not declare: the by-type point finds none.
+      expect(p.buckets(EJB_FAMILY)).toEqual({ noCandidate: 1 });
+    });
+
+    it('lands an interface outside the repository in "outside type", with no gap', () => {
+      const p = project({ java: javaOf(bean(['@Remote(javax.management.MBeanServer.class)'])) });
+      expect(p.result.implementsEdges).toEqual([]);
+      expect(business(p)).toEqual({ annotations: 1, declarations: 1, buckets: { ...zero, outsideType: 1 }, edges: 0 });
+      expect(p.result.gaps).toEqual([]);
+    });
+  });
+
+  describe('all eight buckets', () => {
+    const taxonomyBusiness = (extra = {}) => project({
+      java: javaOf(
+        file('Port', [], 'public interface Port {}'), file('Port2', [], 'public interface Port2 {}'), file('Port3', [], 'public interface Port3 {}'),
+        file('Port4', [], 'public interface Port4 {}'), file('Port5', [], 'public interface Port5 {}'),
+        file('Concrete', [], 'public class Concrete {}'), file('Holder', [], 'public class Holder { public static class Part {} }'),
+        file('NotListedBean', [LOCAL], ['@Local', 'public class NotListedBean {}']),
+        file('UnreadableBean', [LOCAL], ['@Local(Interfaces.LOCAL)', 'public class UnreadableBean {}']),
+        file('OutsideBean', [REMOTE], ['@Remote(javax.management.MBeanServer.class)', 'public class OutsideBean {}']),
+        file('UndeterminedBean', [LOCAL], ['@Local({Holder.Part.class, Mystery.class})', 'public class UndeterminedBean {}']),
+        file('ConcreteBean', [LOCAL], ['@Local(Concrete.class)', 'public class ConcreteBean {}']),
+        file('AlreadyBean', [LOCAL], ['@Local(Port.class)', 'public class AlreadyBean implements Port {}']),
+        file('UnindexedBean', [LOCAL], ['@Local(Port2.class)', 'public class UnindexedBean {}']),
+        file('DeclaredBean', [LOCAL], ['@Local(Port3.class)', 'public class DeclaredBean {}']),
+        file('TwoBean', [REMOTE], ['@Remote({Port4.class, "text", Port5.class})', 'public class TwoBean {}']),
+      ),
+      nullClassIds: ['UnindexedBean'],
+      ...extra,
+    });
+
+    it('lands each declaration in one bucket, with the counts of annotations, declarations and edges', () => {
+      const p = taxonomyBusiness();
+      expect(business(p)).toEqual({
+        annotations: 9,
+        declarations: 11,
+        buckets: { notListed: 1, unreadable: 1, outsideType: 1, typeUndetermined: 2, notInterface: 1, alreadySupertype: 1, unindexed: 1, declared: 3 },
+        edges: 3,
+      });
+      expect(p.result.implementsEdges.map((edge) => `${edge.source.replace('class:com.acme.', '')} -> ${edge.target.replace('class:com.acme.', '')}`)).toEqual([
+        'DeclaredBean -> Port3', 'TwoBean -> Port4', 'TwoBean -> Port5',
+      ]);
+    });
+
+    it('records one gap per declaration that cannot be read, with its sample', () => {
+      const p = taxonomyBusiness();
+      const at = (name, needle) => `${SRC(name)}:${p.line(SRC(name), needle)}`;
+      expect(p.result.gaps.map((gap) => [gap.kind, gap.scope, gap.sample])).toEqual([
+        ['business-interface-unresolved', 'javax.ejb.Local', `${at('UnreadableBean', '@Local')} UnreadableBean @Local(value)`],
+        ['business-interface-unresolved', 'javax.ejb.Local', `${at('UndeterminedBean', '@Local')} UndeterminedBean Holder.Part`],
+        ['business-interface-unresolved', 'javax.ejb.Local', `${at('UndeterminedBean', '@Local')} UndeterminedBean Mystery`],
+        ['business-interface-unresolved', 'javax.ejb.Local', `${at('UnindexedBean', '@Local')} UnindexedBean Port2`],
+      ]);
+    });
+
+    it('balances: the buckets add up to the declarations, the declared ones are the evidence of the implements edges, the gaps are the gap buckets', () => {
+      const p = taxonomyBusiness();
+      const measured = measureTypeInjections(p.result);
+      expect(measured.implementations).toBe(3);
+      expect(measured.gaps['javax.ejb.Local']).toEqual({ 'business-interface-unresolved': 4 });
+      expect(() => assertTypeInjectionConservation(p.coverage, measured)).not.toThrow();
+    });
+  });
+
+  describe('how a declaration is counted and drawn', () => {
+    it('counts a class literal as a declaration, and an annotation with none as one declaration of its own', () => {
+      const p = project({
+        java: javaOf(iface('A'), iface('B'), bean(['@Local({A.class, B.class, C.CONST})', '@Remote(Names.X)', '@Remote'])),
+      });
+      expect(business(p)).toMatchObject({ annotations: 3, declarations: 4, buckets: { ...zero, declared: 2, typeUndetermined: 0, unreadable: 1, notListed: 1 }, edges: 2 });
+    });
+
+    it('draws one edge for a pair, with the evidence of each class literal that names it', () => {
+      const p = project({ java: javaOf(iface('OrderService'), bean(['@Local(OrderService.class)', '@Remote(OrderService.class)'])) });
+      const path = SRC('OrderBean');
+      expect(p.result.implementsEdges).toHaveLength(1);
+      expect(p.result.implementsEdges[0].evidence).toEqual([
+        { file: path, line: p.line(path, '@Local'), source: 'tree-sitter', token: 'OrderService', role: 'businessInterface' },
+        { file: path, line: p.line(path, '@Remote'), source: 'tree-sitter', token: 'OrderService', role: 'businessInterface' },
+      ]);
+      expect(business(p)).toMatchObject({ declarations: 2, edges: 2 });
+      expect(() => assertTypeInjectionConservation(p.coverage, measureTypeInjections(p.result))).not.toThrow();
+    });
+
+    it('counts a class literal written twice at one line once', () => {
+      const p = project({ java: javaOf(iface('OrderService'), bean(['@Local({OrderService.class, OrderService.class})'])) });
+      expect(business(p)).toMatchObject({ declarations: 1, edges: 1 });
+      expect(p.result.implementsEdges[0].evidence).toHaveLength(1);
+      expect(() => assertTypeInjectionConservation(p.coverage, measureTypeInjections(p.result))).not.toThrow();
+    });
+
+    it('writes the type as the class literal spells it: a qualified name stays qualified', () => {
+      const p = project({ java: javaOf(iface('OrderService'), bean(['@Local(com.acme.OrderService.class)'])) });
+      expect(p.result.implementsEdges[0].evidence[0].token).toBe('com.acme.OrderService');
+    });
+
+    it('lands an array type and a primitive in "outside type", and a class that is no interface in "not interface"', () => {
+      const p = project({ java: javaOf(iface('OrderService'), file('Concrete', [], 'public class Concrete {}'), bean(['@Local({OrderService[].class, int.class, Concrete.class})'])) });
+      expect(business(p).buckets).toEqual({ ...zero, outsideType: 2, notInterface: 1 });
+      expect(p.result.gaps).toEqual([]);
+    });
+
+    it('lands an enum and a record in "not interface"', () => {
+      const p = project({ java: javaOf(file('Mode', [], 'public enum Mode { A }'), file('Pair', [], 'public record Pair(int a) {}'), bean(['@Local({Mode.class, Pair.class})'])) });
+      expect(business(p).buckets).toEqual({ ...zero, notInterface: 2 });
+    });
+
+    it('lands a type declared twice, a nested type and an undeclared name in "type undetermined", counted by their spelling', () => {
+      const p = project({
+        java: javaOf(
+          file('Holder', [], 'public class Holder { public interface Inner {} }'),
+          iface('Twin'), ['other/src/main/java/com/acme/Twin.java', javaSource('com.acme', [], 'public interface Twin {}')],
+          bean(['@Local({Twin.class, Holder.Inner.class, Mystery.class})']),
+        ),
+      });
+      expect(business(p).buckets).toEqual({ ...zero, typeUndetermined: 3 });
+      expect(p.samples('business-interface-unresolved').map((sample) => sample.split(' ').pop())).toEqual(['Twin', 'Holder.Inner', 'Mystery']);
+    });
+
+    it('reads the class literal in the scope of the class that writes it: a member type of the class hides the name', () => {
+      const p = project({ java: javaOf(iface('Port'), bean(['@Local(Port.class)'], { body: ' interface Port {} ' })) });
+      expect(business(p).buckets).toEqual({ ...zero, typeUndetermined: 1 });
+    });
+
+    it('does not draw an edge for a class with no node, nor to an interface with none, and both are counted "unindexed"', () => {
+      const noClass = project({ java: javaOf(iface('OrderService'), bean(['@Local(OrderService.class)'])), nullClassIds: ['OrderBean'] });
+      expect(noClass.result.implementsEdges).toEqual([]);
+      expect(business(noClass).buckets).toEqual({ ...zero, unindexed: 1 });
+      const noInterface = project({ java: javaOf(iface('OrderService'), bean(['@Local(OrderService.class)'])), nullClassIds: ['OrderService'] });
+      expect(noInterface.result.implementsEdges).toEqual([]);
+      expect(business(noInterface).buckets).toEqual({ ...zero, unindexed: 1 });
+      expect(noInterface.gaps('business-interface-unresolved')).toHaveLength(1);
+    });
+
+    it('cites the line of each class literal, which is not the line of the annotation when the array spans several', () => {
+      const p = project({ java: javaOf(iface('A'), iface('B'), bean(['@Local({', '    A.class,', '    B.class', '})'])) });
+      const path = SRC('OrderBean');
+      expect(p.result.implementsEdges.map((edge) => [edge.target, edge.evidence.map((entry) => [entry.line, entry.token])])).toEqual([
+        ['class:com.acme.A', [[p.line(path, 'A.class'), 'A']]],
+        ['class:com.acme.B', [[p.line(path, 'B.class'), 'B']]],
+      ]);
+      expect(p.line(path, 'A.class')).toBeGreaterThan(p.line(path, '@Local'));
+    });
+
+    it('counts a class that has no class entry of its own as unindexed: no edge, and no supertype it could be a candidate by', () => {
+      const p = project({ java: javaOf(iface('OrderService'), bean(['@Local(com.acme.OrderService.class)']), orders) });
+      const rows = p.javaRows.map((row) => structuredClone(row));
+      delete rows.find((row) => row.path === SRC('OrderBean')).classes[0].qualifiedName;
+      const resolved = resolveTypeInjections({ ...p.args, javaRows: rows, types: createJavaCallResolver({ rows, functionIds: p.functionIds, classIds: p.classIds }) });
+      expect(resolved.implementsEdges).toEqual([]);
+      expect(resolved.coverage.businessInterfaces.buckets).toEqual({ ...zero, unindexed: 1 });
+      expect(resolved.coverage.families[EJB_FAMILY].buckets.noCandidate).toBe(1);
+    });
+
+    it('takes an interface the class reaches through a superclass for one it already has', () => {
+      const p = project({
+        java: javaOf(iface('OrderService'), file('BaseBean', [], 'public class BaseBean implements OrderService {}'), bean(['@Local(OrderService.class)'], { implementsClause: ' extends BaseBean' })),
+      });
+      expect(business(p).buckets).toEqual({ ...zero, alreadySupertype: 1 });
+    });
+
+    it('does not draw a method-level edge: the only edges of the business interfaces are the implements edges between types', () => {
+      const p = project({
+        java: javaOf(file('OrderService', [], 'public interface OrderService { void place(); }'), bean(['@Local(OrderService.class)'], { body: ' public void place() {} ' })),
+      });
+      expect(p.result.implementsEdges.map((edge) => [edge.source, edge.target])).toEqual([['class:com.acme.OrderBean', 'class:com.acme.OrderService']]);
+    });
+  });
+
+  describe('which annotations are read', () => {
+    it('reads the annotations of a class, and not those of an interface, an enum, a record or a nested class', () => {
+      const p = project({
+        java: javaOf(
+          iface('OrderService'),
+          file('Holder', [LOCAL], ['public class Holder {', '  @Local(OrderService.class) static class Nested {}', '}']),
+          file('Pair', [LOCAL], ['@Local(OrderService.class)', 'public record Pair(int a) {}']),
+          file('Mode', [LOCAL], ['@Local(OrderService.class)', 'public enum Mode { A }']),
+          file('Port', [LOCAL], ['@Local(OrderService.class)', 'public interface Port {}']),
+        ),
+      });
+      expect(business(p)).toEqual({ annotations: 0, declarations: 0, buckets: zero, edges: 0 });
+      expect(p.result.implementsEdges).toEqual([]);
+    });
+
+    it('does not read a spelling it cannot confirm, and counts it', () => {
+      const p = project({ java: javaOf(iface('OrderService'), bean(['@Local(OrderService.class)'], { imports: [] })) });
+      expect(business(p).annotations).toBe(0);
+      expect(p.coverage.unconfirmed).toEqual({ Local: 1 });
+    });
+
+    it('reads the annotations of both namespaces and of a class that is abstract', () => {
+      const p = project({
+        java: javaOf(iface('A'), iface('B'), file('JakartaBean', ['import jakarta.ejb.Local;'], ['@Local(A.class)', 'public class JakartaBean {}']), file('Base', [LOCAL], ['@Local(B.class)', 'public abstract class Base {}'])),
+      });
+      expect(business(p)).toMatchObject({ annotations: 2, buckets: { ...zero, declared: 2 } });
+      expect(p.result.gaps).toEqual([]);
+    });
+  });
+
+  describe('what the declared interfaces do to the by-type points', () => {
+    it('makes the class a candidate for the interfaces of the interface it declares', () => {
+      const p = project({
+        java: javaOf(
+          iface('OrderService'), file('LocalOrderService', [], 'public interface LocalOrderService extends OrderService {}'),
+          bean(['@Local(LocalOrderService.class)']), orders,
+        ),
+      });
+      expect(p.links).toEqual(['com.acme.OrderController -> com.acme.OrderBean']);
+    });
+
+    it('makes the class a candidate when the interface is declared by a class with no node: the point has no node to point at', () => {
+      const p = project({ java: javaOf(iface('OrderService'), bean(['@Local(OrderService.class)']), orders), nullClassIds: ['OrderBean'] });
+      expect(p.buckets(EJB_FAMILY)).toEqual({ noTargetNode: 1 });
+    });
+
+    it('counts the class beside another that implements the interface in Java: two candidates', () => {
+      const p = project({ java: javaOf(iface('OrderService'), impl('OrderServiceImpl', 'OrderService'), bean(['@Local(OrderService.class)']), orders) });
+      expect(p.buckets(EJB_FAMILY)).toEqual({ ambiguous: 1 });
+      expect(p.samples('type-injection-ambiguous')[0]).toMatch(/ -> com\.acme\.OrderBean, com\.acme\.OrderServiceImpl$/);
+    });
+
+    it('is not a class literal in code: the interface the annotation names is not "dynamic"', () => {
+      const p = project({ java: javaOf(iface('OrderService'), bean(['@Local(OrderService.class)']), consumer(['  @Inject private OrderService orders;'])) });
+      expect(p.links).toEqual(['com.acme.OrderController -> com.acme.OrderBean']);
+      expect(p.buckets(JSR)).toEqual({ edge: 1 });
+    });
+
+    it('hides a type for the name of an interface it cannot resolve, as it hides for any supertype it cannot resolve', () => {
+      const p = project({
+        java: javaOf(
+          iface('OrderService'), impl('OrderServiceImpl', 'OrderService'), file('Holder', [], 'public class Holder {}'),
+          bean(['@Local(Holder.OrderService.class)']),
+          consumer(['  @Inject private OrderService service;']),
+        ),
+      });
+      expect(p.buckets(JSR)).toEqual({ hiddenCandidate: 1 });
+    });
+
+    it('does not hide for an interface that cannot be read at all: nothing says what it is', () => {
+      const p = project({
+        java: javaOf(iface('OrderService'), impl('OrderServiceImpl', 'OrderService'), bean(['@Local(Interfaces.LOCAL)']), consumer(['  @Inject private OrderService service;'])),
+      });
+      expect(p.links).toEqual(['com.acme.OrderController -> com.acme.OrderServiceImpl']);
+    });
+  });
+
+  describe('the conservation of the business interfaces', () => {
+    const run = () => project({ java: javaOf(iface('OrderService'), bean(['@Local(OrderService.class)', '@Remote(Interfaces.X)'])) });
+    const tamper = (edit) => {
+      const p = run();
+      const coverage = structuredClone(p.coverage);
+      const recorded = structuredClone(measureTypeInjections(p.result));
+      edit(coverage, recorded);
+      return () => assertTypeInjectionConservation(coverage, recorded);
+    };
+
+    it('passes for a run', () => {
+      expect(tamper(() => {})).not.toThrow();
+      expect(business(run())).toMatchObject({ declarations: 2, buckets: { ...zero, declared: 1, unreadable: 1 }, edges: 1 });
+    });
+
+    it('fails when the buckets do not add up to the declarations', () => {
+      expect(tamper((coverage) => { coverage.businessInterfaces.buckets.notInterface += 1; })).toThrow(/business interfaces: 2 declaration\(s\) but 3 outcome\(s\)/);
+      expect(tamper((coverage) => { coverage.businessInterfaces.declarations += 1; })).toThrow(/business interfaces: 3 declaration\(s\) but 2 outcome\(s\)/);
+    });
+
+    it('fails when the declared ones are not the edges counted', () => {
+      expect(tamper((coverage) => { coverage.businessInterfaces.edges = 2; })).toThrow(/business interfaces: 1 declaration\(s\) became an implements edge but 2 edge\(s\) were counted/);
+    });
+
+    it('fails when the edges drawn are not the entries of the evidence', () => {
+      expect(tamper((_, recorded) => { recorded.implementations = 0; })).toThrow(/business interfaces: 1 implements edge\(s\) drawn but 0 entr\(ies\) in the evidence/);
+      expect(tamper((_, recorded) => { recorded.implementations = 2; })).toThrow(/but 2 entr\(ies\)/);
+    });
+
+    it('fails when the gaps recorded are not the buckets that are gaps', () => {
+      expect(tamper((_, recorded) => { recorded.gaps = {}; })).toThrow(/business interfaces: 1 business-interface-unresolved outcome\(s\) but 0 recorded gap occurrence\(s\)/);
+      expect(tamper((_, recorded) => { recorded.gaps['javax.ejb.Remote'][BUSINESS_INTERFACE_GAP_KIND] += 1; })).toThrow(/outcome\(s\) but 2 recorded gap/);
+    });
+
+    it('counts the gaps of every annotation of the catalog together', () => {
+      const p = project({ java: javaOf(iface('OrderService'), bean(['@Local(Interfaces.X)', '@Remote(Interfaces.Y)'])) });
+      expect(measureTypeInjections(p.result).gaps).toEqual({
+        'javax.ejb.Local': { [BUSINESS_INTERFACE_GAP_KIND]: 1 },
+        'javax.ejb.Remote': { [BUSINESS_INTERFACE_GAP_KIND]: 1 },
+      });
+      expect(() => assertTypeInjectionConservation(p.coverage, measureTypeInjections(p.result))).not.toThrow();
+    });
+
+    it('fails for a run whose coverage has no business interface section', () => {
+      const p = run();
+      const coverage = structuredClone(p.coverage);
+      delete coverage.businessInterfaces;
+      expect(() => assertTypeInjectionConservation(coverage, measureTypeInjections(p.result))).toThrow(/a run has no business interface coverage/);
+    });
+  });
+
+  describe('the switch (D14)', () => {
+    it('noBusinessInterfaces: the annotations are not read: no edge, no supertype, every bucket zero', () => {
+      const java = javaOf(iface('OrderService'), bean(['@Stateless', '@Local(OrderService.class)']), orders);
+      const on = project({ java });
+      expect(on.links).toEqual(['com.acme.OrderController -> com.acme.OrderBean']);
+      const off = project({ java, mutations: { noBusinessInterfaces: true } });
+      expect(off.result.implementsEdges).toEqual([]);
+      expect(off.edges).toEqual([]);
+      expect(business(off)).toEqual({ annotations: 0, declarations: 0, buckets: zero, edges: 0 });
+      expect(off.buckets(EJB_FAMILY)).toEqual({ noCandidate: 1 });
+    });
+
+    it('turns the same off for the unresolvable interface that hides, and for the gaps', () => {
+      const java = javaOf(iface('OrderService'), impl('OrderServiceImpl', 'OrderService'), file('Holder', [], 'public class Holder {}'),
+        bean(['@Local(Holder.OrderService.class)']), consumer(['  @Inject private OrderService service;']));
+      expect(project({ java }).buckets(JSR)).toEqual({ hiddenCandidate: 1 });
+      const off = project({ java, mutations: { noBusinessInterfaces: true } });
+      expect(off.links).toEqual(['com.acme.OrderController -> com.acme.OrderServiceImpl']);
+      expect(off.result.gaps).toEqual([]);
+    });
   });
 });

@@ -65,9 +65,29 @@
  * A method or constructor annotation that is settled by one of the first five
  * counts one point; otherwise each parameter is a point.
  *
+ * The business interfaces a session class declares by annotation (design D10) are
+ * read first, because an interface it declares and Java does not say is a
+ * supertype of the class in the sense of the candidates above. Each class literal
+ * in the value of such an annotation of a top-level class has exactly one fate:
+ *   notListed       the annotation writes no value (once per annotation, no gap)
+ *   unreadable      it writes a value with no class literal in it (once per
+ *                   annotation)
+ *   outsideType     the type is outside the repository (no gap)
+ *   typeUndetermined  the type cannot be resolved, is a nested type, or is declared
+ *                   more than once
+ *   notInterface    the type is a repository type that is no interface (no gap)
+ *   alreadySupertype  the class already has the interface as a supertype in Java
+ *                   (no gap)
+ *   unindexed       the class, or the interface, has no node for an edge to end at
+ *   declared        the rest: an `implements` edge from the class to the interface
+ * The interfaces of the last three are supertypes of the class for the candidates;
+ * the name of one that could not be resolved may be a subtype's.
+ *
  * `assertTypeInjectionConservation` checks that the buckets of each family add up
  * to its points, that the points that became edges are the injection entries of
- * the evidence, and that the gaps recorded add up to the buckets that are gaps.
+ * the evidence, and that the gaps recorded add up to the buckets that are gaps; and
+ * that the buckets of the business interfaces add up to their declarations, that the
+ * declared ones are the entries of the `implements` evidence, and that their gaps add up.
  */
 
 import { DEFAULT_NAME_RULES } from './name-binding-catalog.mjs';
@@ -103,6 +123,18 @@ export const TYPE_INJECTION_GAP_KINDS = Object.freeze({
   ambiguous: 'type-injection-ambiguous',
 });
 
+/** The eight fates of a business interface declaration, in the order the design decides them. */
+export const BUSINESS_INTERFACE_BUCKETS = Object.freeze([
+  'notListed', 'unreadable', 'outsideType', 'typeUndetermined', 'notInterface', 'alreadySupertype', 'unindexed', 'declared',
+]);
+
+/** The gap kind of a business interface declaration that cannot be read, and the buckets that record it. */
+export const BUSINESS_INTERFACE_GAP_KIND = 'business-interface-unresolved';
+export const BUSINESS_INTERFACE_GAP_BUCKETS = Object.freeze(['unreadable', 'typeUndetermined', 'unindexed']);
+
+/** Same weight as the other `implements` edges between repository types. */
+const BUSINESS_INTERFACE_EDGE_WEIGHT = 0.9;
+
 /** The coverage of a run that had no catalog. */
 export const TYPE_INJECTIONS_NOT_RUN = Object.freeze({ status: 'not-run' });
 
@@ -117,6 +149,7 @@ const argumentOf = (use, key) => use.arguments.find((argument) => argument.key =
 const isEmptyLiteral = (argument) => typeof argument.value === 'string' && argument.value === '';
 
 const emptyBuckets = () => Object.fromEntries(TYPE_INJECTION_BUCKETS.map((bucket) => [bucket, 0]));
+const emptyBusinessBuckets = () => Object.fromEntries(BUSINESS_INTERFACE_BUCKETS.map((bucket) => [bucket, 0]));
 
 const IDENTIFIER_PATTERN = /^[\p{ID_Start}_$][\p{ID_Continue}$]*$/u;
 
@@ -220,7 +253,7 @@ function indexCatalog(catalog) {
   claim('deploymentDependent', catalog.deploymentDependent.annotations);
   claim('notQualifier', catalog.notQualifiers.annotations);
   claim('businessInterface', catalog.businessInterfaces.annotations);
-  return { families, familyOfFqn, roleOfFqn, namedArgument: catalog.namedQualifier.argument };
+  return { families, familyOfFqn, roleOfFqn, namedArgument: catalog.namedQualifier.argument, businessArgument: catalog.businessInterfaces.argument };
 }
 
 /**
@@ -296,6 +329,7 @@ export function buildSubtypeIndex({ types, extraSupertypes = new Map() }) {
  */
 export function assertTypeInjectionConservation(coverage, recorded) {
   if (coverage.status !== 'ran') return;
+  assertBusinessInterfaceConservation(coverage.businessInterfaces, recorded);
   for (const [id, family] of Object.entries(coverage.families)) {
     const total = TYPE_INJECTION_BUCKETS.reduce((sum, bucket) => sum + family.buckets[bucket], 0);
     if (total !== family.points) {
@@ -321,25 +355,53 @@ export function assertTypeInjectionConservation(coverage, recorded) {
 }
 
 /**
+ * The balance of the business interface section: its buckets add up to its
+ * declarations, the declared ones are the `implements` edges the run drew (each
+ * is one entry of the evidence), and the gaps recorded add up to the buckets that
+ * are gaps.
+ */
+function assertBusinessInterfaceConservation(business, recorded) {
+  if (business === undefined) throw new Error('type-injection-resolution: a run has no business interface coverage');
+  const total = BUSINESS_INTERFACE_BUCKETS.reduce((sum, bucket) => sum + business.buckets[bucket], 0);
+  if (total !== business.declarations) {
+    throw new Error(`type-injection-resolution: business interfaces: ${business.declarations} declaration(s) but ${total} outcome(s)`);
+  }
+  if (business.buckets.declared !== business.edges) {
+    throw new Error(`type-injection-resolution: business interfaces: ${business.buckets.declared} declaration(s) became an implements edge but ${business.edges} edge(s) were counted`);
+  }
+  const implementations = recorded.implementations ?? 0;
+  if (business.edges !== implementations) {
+    throw new Error(`type-injection-resolution: business interfaces: ${business.edges} implements edge(s) drawn but ${implementations} entr(ies) in the evidence`);
+  }
+  const expected = BUSINESS_INTERFACE_GAP_BUCKETS.reduce((sum, bucket) => sum + business.buckets[bucket], 0);
+  const seen = Object.values(recorded.gaps).reduce((sum, kinds) => sum + (kinds[BUSINESS_INTERFACE_GAP_KIND] ?? 0), 0);
+  if (expected !== seen) {
+    throw new Error(`type-injection-resolution: business interfaces: ${expected} ${BUSINESS_INTERFACE_GAP_KIND} outcome(s) but ${seen} recorded gap occurrence(s)`);
+  }
+}
+
+/**
  * What `assertTypeInjectionConservation` compares a run's coverage with, read
  * from the edges and the gaps a run returned.
  *
- * @param {{ edges: object[], gaps: Array<{ kind: string, scope: string }> }} run
- * @returns {{ injections: Record<string, number>, gaps: Record<string, Record<string, number>> }}
+ * @param {{ edges: object[], gaps: Array<{ kind: string, scope: string }>, implementsEdges?: object[] }} run
+ * @returns {{ injections: Record<string, number>, implementations: number, gaps: Record<string, Record<string, number>> }}
+ *   `implementations` the evidence entries of the `implements` edges of business interfaces
  */
-export function measureTypeInjections({ edges, gaps }) {
+export function measureTypeInjections({ edges, gaps, implementsEdges = [] }) {
   const injections = {};
   for (const edge of edges) {
     for (const entry of edge.evidence) {
       if (entry.role === 'injection') injections[entry.family] = (injections[entry.family] ?? 0) + 1;
     }
   }
+  const implementations = implementsEdges.reduce((sum, edge) => sum + edge.evidence.filter((entry) => entry.role === 'businessInterface').length, 0);
   const recorded = {};
   for (const gap of gaps) {
     recorded[gap.scope] ??= {};
     recorded[gap.scope][gap.kind] = (recorded[gap.scope][gap.kind] ?? 0) + 1;
   }
-  return { injections, gaps: recorded };
+  return { injections, implementations, gaps: recorded };
 }
 
 const lazy = (make) => {
@@ -365,6 +427,7 @@ const lazy = (make) => {
  *   mutations?: {
  *     simpleNameAnnotations?: boolean, abstractCandidates?: boolean, noHiddenCandidates?: boolean,
  *     noDynamicGuard?: boolean, ignoreUnknownQualifiers?: boolean, noNamedFilter?: boolean, firstCandidate?: boolean,
+ *     noBusinessInterfaces?: boolean,
  *   },
  * }} args
  *   `javaRows` are the structure rows of the Java files (their `classes`,
@@ -381,10 +444,18 @@ const lazy = (make) => {
  *   mutation tripwires (design D14); production callers leave it empty.
  * @returns {{
  *   edges: object[],
+ *   implementsEdges: object[],
  *   gaps: Array<{ kind: string, scope: string, sample: string }>,
  *   coverage: object,
  * }}
- *   `edges` are `injects` edges, one per (consumer class, target) with the
+ *   `implementsEdges` are the `implements` edges of the business interfaces a class declares by
+ *   annotation, one per (class, interface): `{ source, target, type, direction, weight, evidence,
+ *   provenance }`, the evidence `{ file, line, source, token, role: 'businessInterface' }` for each
+ *   class literal, at its line, `token` the type as written; the caller adds them to the graph
+ *   unless the hierarchy has drawn the pair. A gap of a business interface has the kind
+ *   `business-interface-unresolved`, the scope the qualified name of the annotation, and the sample
+ *   `<file>:<line> <Class> <type as written>` (an unreadable one: `@<annotation>(<argument>)`, at the
+ *   line of the annotation). `edges` are `injects` edges, one per (consumer class, target) with the
  *   evidence of every point that drew it, `{ file, line, source, token, role,
  *   family, member, parameter?, type?, name? }`: the role `injection` (the
  *   annotation as written), `member` (the member's name, with the declared type
@@ -394,16 +465,18 @@ const lazy = (make) => {
  *   id and `sample` `<file>:<line> <Owner>.<member>[#<parameter>] : <type>`, the
  *   line being that of the member's name and the type left out where the point
  *   has none; an ambiguous one lists its candidates after ` -> `. `coverage` is
- *   `{ status, families, unconfirmed, qualifiers }`, each family `{ annotations,
- *   points, buckets, edges }`.
+ *   `{ status, families, unconfirmed, qualifiers, businessInterfaces }`, each family `{ annotations,
+ *   points, buckets, edges }` and the business interfaces `{ annotations, declarations, buckets, edges }`
+ *   (a class literal is a declaration, and so is an annotation that is not listed or not readable;
+ *   `edges` the declared ones, each an entry of the evidence).
  */
 export function resolveTypeInjections({ javaRows, catalog, identity, types, functionIdOf, otherJvmTypeCount = 0, mutations = {} }) {
-  if (!catalog) return { edges: [], gaps: [], coverage: TYPE_INJECTIONS_NOT_RUN };
+  if (!catalog) return { edges: [], implementsEdges: [], gaps: [], coverage: TYPE_INJECTIONS_NOT_RUN };
   if (!Number.isInteger(otherJvmTypeCount) || otherJvmTypeCount < 0) {
     throw new TypeError(`type-injection-resolution: otherJvmTypeCount must be a count, got ${JSON.stringify(otherJvmTypeCount)}`);
   }
 
-  const { families, familyOfFqn, roleOfFqn, namedArgument } = indexCatalog(catalog);
+  const { families, familyOfFqn, roleOfFqn, namedArgument, businessArgument } = indexCatalog(catalog);
   const confirm = identity({ fqns: roleOfFqn.keys(), simpleNames: Boolean(mutations.simpleNameAnnotations) });
   const roleOf = (found) => (found.kind === 'catalog' ? roleOfFqn.get(found.fqn) : null);
 
@@ -498,9 +571,103 @@ export function resolveTypeInjections({ javaRows, catalog, identity, types, func
   // -------------------------------------------------------------------------
   // The subtypes (D7)
   // -------------------------------------------------------------------------
-  // Declared supertypes of a type, beside the ones it writes: none yet.
+  // Declared supertypes of a type, beside the ones it writes: the business interfaces its annotations declare, read below.
   const extraSupertypes = new Map();
   const subtypeIndex = lazy(() => buildSubtypeIndex({ types, extraSupertypes }));
+
+  // -------------------------------------------------------------------------
+  // The business interfaces a class declares (D10), before anything asks for a subtype
+  // -------------------------------------------------------------------------
+  const business = { annotations: 0, declarations: 0, buckets: emptyBusinessBuckets(), edges: 0 };
+  const businessNames = new Set(); // simple names of the interfaces that could not be resolved
+  const implementsEdges = new Map(); // class node id, interface node id -> the edge
+
+  /** Only the annotations of a top-level class are read: a nested type is no session bean, and neither is an interface, an enum or a record. */
+  function readBusinessInterfaces() {
+    for (const info of infos) {
+      info.classes.forEach((cls, index) => {
+        if (cls.kind !== 'class') return;
+        const view = info.classViews[index];
+        const written = new Set(); // a class literal written twice at one line is one declaration
+        for (const { use, found } of info.classFound[index]) {
+          if (roleOf(found) !== 'businessInterface') continue;
+          business.annotations += 1;
+          const place = (bucket, text, line) => {
+            business.declarations += 1;
+            business.buckets[bucket] += 1;
+            if (BUSINESS_INTERFACE_GAP_BUCKETS.includes(bucket)) {
+              gaps.push({ kind: BUSINESS_INTERFACE_GAP_KIND, scope: found.fqn, sample: `${info.row.path}:${line} ${cls.name} ${text}` });
+            }
+          };
+
+          const argument = argumentOf(use, businessArgument);
+          if (argument === undefined) {
+            place('notListed');
+            continue;
+          }
+          const literals = argument.classLiterals ?? [];
+          if (literals.length === 0) {
+            place('unreadable', `@${use.name}(${argument.key})`, use.line);
+            continue;
+          }
+          for (const literal of literals) {
+            const key = JSON.stringify([literal.line, literal.type]);
+            if (written.has(key)) continue;
+            written.add(key);
+
+            // Written in the scope of the class that declares it.
+            const resolution = resolveIn(info, view, literal.type);
+            if (resolution.status === 'external' || resolution.status === 'primitive' || resolution.status === 'array') {
+              place('outsideType', literal.type, literal.line);
+              continue;
+            }
+            if (resolution.status !== 'repo' || !isDeclaredOnce(resolution.type)) {
+              const name = simpleNameOf(literal.type);
+              if (name !== null) businessNames.add(name);
+              place('typeUndetermined', literal.type, literal.line);
+              continue;
+            }
+            const target = resolution.type;
+            if (target.kind !== 'interface') {
+              place('notInterface', literal.type, literal.line);
+              continue;
+            }
+
+            // An interface of the repository the class declares: a supertype of it for the candidates, whatever becomes of the edge.
+            if (view !== null) {
+              if (!extraSupertypes.has(view)) extraSupertypes.set(view, []);
+              extraSupertypes.get(view).push(target);
+            }
+            if (view !== null && types.ancestors(view).ancestors.includes(target)) {
+              place('alreadySupertype', literal.type, literal.line);
+              continue;
+            }
+            // The edge needs a node at each end.
+            if (view === null || view.id == null || target.id == null) {
+              place('unindexed', literal.type, literal.line);
+              continue;
+            }
+            place('declared', literal.type, literal.line);
+            business.edges += 1;
+            const edgeKey = JSON.stringify([view.id, target.id]);
+            if (!implementsEdges.has(edgeKey)) {
+              implementsEdges.set(edgeKey, {
+                source: view.id,
+                target: target.id,
+                type: 'implements',
+                direction: 'forward',
+                weight: BUSINESS_INTERFACE_EDGE_WEIGHT,
+                evidence: [],
+                provenance: 'extracted',
+              });
+            }
+            implementsEdges.get(edgeKey).evidence.push({ file: info.row.path, line: literal.line, source: 'tree-sitter', token: literal.type, role: 'businessInterface' });
+          }
+        }
+      });
+    }
+  }
+  if (!mutations.noBusinessInterfaces) readBusinessInterfaces();
 
   const isInstantiable = (view) => (view.kind === 'class' || view.kind === 'record')
     && (Boolean(mutations.abstractCandidates) || !view.cls.modifiers.includes('abstract'));
@@ -549,6 +716,7 @@ export function resolveTypeInjections({ javaRows, catalog, identity, types, func
     const providersByType = new Map(); // type view -> classes that provide it
     const literalViews = new Set();
     const literalNames = new Set();
+    for (const name of businessNames) unresolvedNames.add(name);
     const addName = (text) => {
       const name = simpleNameOf(text);
       if (name !== null) unresolvedNames.add(name);
@@ -995,9 +1163,12 @@ export function resolveTypeInjections({ javaRows, catalog, identity, types, func
     families: stats,
     unconfirmed: Object.fromEntries(Object.entries(unconfirmed).sort(([a], [b]) => compareText(a, b))),
     qualifiers: Object.fromEntries(Object.entries(qualifiers).sort(([a], [b]) => compareText(a, b))),
+    businessInterfaces: business,
   };
+  const businessEvidenceOrder = (a, b) => compareText(a.file, b.file) || a.line - b.line || compareText(a.token, b.token);
   return {
     edges: [...edges.values()].map((edge) => ({ ...edge, evidence: uniqueSortedEvidence(edge.evidence) })),
+    implementsEdges: [...implementsEdges.values()].map((edge) => ({ ...edge, evidence: [...edge.evidence].sort(businessEvidenceOrder) })),
     gaps,
     coverage,
   };

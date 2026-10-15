@@ -90,7 +90,7 @@
   - 提供 `assertTypeInjectionConservation`；
   - 没有目录时为 `not-run`。
 - [x] 3.5 D14 的变异开关（`noBusinessInterfaces` 除外），每个至少让一条测试变红；不改生产默认值。规格「Java 按类型注入点」的每个场景至少一条单元测试。
-- [ ] 3.6 业务接口按 D10：
+- [x] 3.6 业务接口按 D10：
   - 八个桶；
   - `implements` 边及其证据；
   - 接口进入子类型闭包，解析为未知的进简单名阻断集；
