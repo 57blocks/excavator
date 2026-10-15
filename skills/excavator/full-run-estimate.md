@@ -69,10 +69,15 @@ F2_wall  = 0 when B2 is 0, otherwise max(6, 1.24 × B2)
 - **Check:** a 70-file fixture project run without Phase F4. Estimated $9.6
   against $8.47 actual (+14%), and 20.8 minutes against 26.2 (−21%). An
   earlier run of the same fixture, on older prompts, cost $6.32 (+53%) and is
-  treated as an outlier.
+  treated as an outlier. A default Full run of a 113-file Java web
+  application: 15 and 15 batches as estimated, $22.38 against $18.98 actual
+  (−15%), and 56.3 minutes against 39.8 (−29%).
 - **Expected accuracy:** cost within ±30%, wall time within ±50%. Wall time
   depends on API latency and on how many subagents run at once. The same
   Phase F2 batch count has taken 6 minutes in one run and 14 in another.
+  Small runs come in under the estimate, because the fixed term dominates
+  them: a 35-file `--scope` run with 2 and 2 batches was estimated at $6.12
+  and cost $3.73 (−39%).
 
 ## 4. Limits
 

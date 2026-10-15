@@ -121,6 +121,12 @@ describe('full-run-estimate.md', () => {
     expect(estimate).toContain('cost within ±30%, wall time within ±50%');
   });
 
+  it('records the checks run after calibration, including the one outside the tolerance', () => {
+    expect(flat(estimate)).toContain('$22.38 against $18.98 actual (−15%), and 56.3 minutes against 39.8 (−29%)');
+    expect(flat(estimate)).toContain('Small runs come in under the estimate, because the fixed term dominates them');
+    expect(flat(estimate)).toContain('was estimated at $6.12 and cost $3.73 (−39%)');
+  });
+
   it('gives the dispatch limit and the runner timeout as hints', () => {
     expect(estimate).toContain('**`B2 + B4` above 100:**');
     expect(estimate).toContain('**Estimated wall time above 180 minutes:**');
