@@ -15,7 +15,9 @@
 
 ## 1. 脚本
 
-- [ ] 1.1 `scripts/benchmark-full-run.mjs report` 与纯函数库：总量、角色、阶段、样本规模、缺失项；JSON 与 Markdown 输出。验证：O1 中解析部分的单测通过；全量门通过。
+- [x] 1.1 `scripts/benchmark-full-run.mjs report` 与纯函数库：总量、角色、阶段、样本规模、缺失项；JSON 与 Markdown 输出。验证：O1 中解析部分的单测通过；全量门通过。
+  - 完成记录：`scripts/lib/full-run-report.mjs` 与 `report` 子命令；15 个单测覆盖去重、累计花费与轮数、截断、阶段边界与缺失阶段、嵌套派发、样本规模。注入变异（不去重、取第一个 result、不设 F5、后出现的标记覆盖、截断不报缺失）各自让对应测试变红。
+  - 对第 3 次运行试跑：花费、轮数、modelUsage 与当时一致；result 事件自报的 usage 之和等于主会话去重后的输入侧 token，说明它只含编排者。墙钟按记录内第一条到最后一条带时间戳事件算，比当时按进程起止算的少约 17 秒（CLI 启动与最后一个 result 无时间戳），留到 2.1 核对。
 - [ ] 1.2 `scripts/benchmark-full-run.mjs run`：参数校验、预检、隔离复制、无头运行、出报告。验证：O1 中 `run` 部分的单测通过；全量门通过。
 
 ## 2. 测量与记录
