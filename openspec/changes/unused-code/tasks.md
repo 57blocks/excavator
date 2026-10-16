@@ -27,7 +27,7 @@
 - [x] 1.2 删除 `tests/facts/java-call-report-mode.test.mjs`。
   - 其它测试里断言报告模式字段的用例同步删除；不改动任何断言非报告模式输出的用例。
   - 验证（O0）：cargotracker 与 dataverse 的副本上，删除前后 Lazy 产出的 `fact-graph.jsonl` 逐字节相同。
-- [ ] 1.3 归档 `dead-code-detection`。
+- [x] 1.3 归档 `dead-code-detection`。
   - 在 proposal、design、tasks 开头写明结局：切片 A 已由 PR 57blocks/excavator#13 合入；判定部分由 `unused-code` 取代、未实施；报告模式（D13）已由本变更删除。
   - 未实施的任务改为说明文字，不留复选框。
   - 删除未实施的 `specs/dead-code/spec.md` 与 `specs/mcp-tool-surface/spec.md` 增量。
