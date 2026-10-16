@@ -39,7 +39,7 @@ Measured on apache/hadoop (16,575 tracked files, ~3M Java lines):
 - Lazy first run: 125 s (was 1,121 s), of which snapshot resolve is 1.4 s, materialize is 2.8 s, and manifest hashing is 1.6 s;
 - real stdio MCP `project_status`: 5.5 s; `recall`: 7.8 s.
 
-Measured on `wcp` (five member Git repositories, ~2,300 tracked files): Lazy first run is 13 s (was 145 s).
+Measured on `go-multirepo` (five member Git repositories, ~2,300 tracked files): Lazy first run is 13 s (was 145 s).
 
 A read tool still resolves twice per call (once to read, once to confirm the source did not change mid-call). At Hadoop scale a read call now fits within Claude Code's 60 s default MCP request timeout.
 
