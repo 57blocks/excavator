@@ -62,12 +62,12 @@
 
 ## 3. 入口决定与可信度（PR 3）
 
-- [ ] 3.1 `report` CLI（`node skills/excavator/unused-code.mjs report <projectRoot> [--decisions <file>]`，默认 `.excavator/unused-decisions.json`）。
+- [x] 3.1 `report` CLI（`node skills/excavator/unused-code.mjs report <projectRoot> [--decisions <file>]`，默认 `.excavator/unused-decisions.json`）。
   - 校验决定文件：种类、理由、查询、id 都在候选集里、不重复、摘要一致。
   - 用候选集里的引用表从决定出发求「经决定移出」与 `test-only`；其余为未使用，标 `unreferenced` 或 `only-reachable-from-unused` 并列出直接引用者；未使用节点按弱连通分量分组，每组列出入口。
   - 守恒不等即非零退出。
   - 验证：单测覆盖规格「入口判断由宿主 skill 承担」与「产物、新鲜度与查询」的场景。
-- [ ] 3.2 可信度规则（D6）与产物 `.excavator/unused-code.json`。
+- [x] 3.2 可信度规则（D6）与产物 `.excavator/unused-code.json`。
   - 头部有摘要、计数、残余假设；全部决定与命中数；全部候选的原因、可信度、信号、簇；`test-only`。
   - 可信度上限在缩点图上按拓扑序计算（D3）。
   - 验证：单测覆盖规格「可信度规则」四个场景、「没有可见性事实的语言不给 `high`」，以及一个经两层成员传递上限的用例。

@@ -815,7 +815,7 @@ describe('candidates CLI', () => {
 
   it('prints usage and exits 1 for a missing root, an unknown subcommand and extra arguments', () => {
     const { root } = projectWith();
-    for (const args of [[], ['candidates'], ['report', root], ['candidates', root, 'extra'], [root]]) {
+    for (const args of [[], ['candidates'], ['frobnicate', root], ['candidates', root, 'extra'], [root]]) {
       const result = run(...args);
       expect(result.status, JSON.stringify(args)).toBe(1);
       expect(result.stderr).toMatch(/Usage: node unused-code\.mjs candidates <projectRoot>/);
