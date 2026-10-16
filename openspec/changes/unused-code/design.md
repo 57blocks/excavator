@@ -143,7 +143,7 @@
 **D7：产物与查询。**
 - `candidates` 写 `.excavator/unused-candidates.json`，`report` 写 `.excavator/unused-code.json`。两者头部都有事实图的 `factsDigest`；`report` 拒绝与当前事实不一致的候选集或决定。
 - 查询走 `excavator-chat`：先比对摘要，再按 id、名字或文件回答状态、原因、可信度与信号。
-- 不加 MCP 工具。需求原文是「chat / MCP 查询」，chat 已满足。代价：只用 MCP 的客户端查不到，需要时另立变更。
+- 不加 MCP 工具。需求原文是「chat / MCP 查询」，chat 已满足。代价：只接 MCP 的宿主查不到，需要时另立变更。
 
 **D8：删除报告模式。**
 - 去掉的部分：
