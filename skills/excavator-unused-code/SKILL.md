@@ -63,11 +63,11 @@ Each candidate has `id`, `name`, `language`, `file`, `lineRange`, `owner` (a key
 
 An **entry** is code something outside the repository's call graph invokes: a framework or container callback (lifecycle, event, message or HTTP handler), a scheduled job, `main` or another launcher, a serialization or reflection convention, a plugin or service-loader hook, the published API of a library. A **test entry** is what a test runner invokes: test methods and their lifecycle hooks.
 
-1. Read the addenda of the detected frameworks. They say which annotations and conventions make the container call code:
+1. Read the addenda of the detected frameworks. They are written for graph analysis: they name the framework's annotations, descriptors and component roles, and some say outright that the container calls a method; most do not list every entry mechanism:
    ```bash
    head -1 "$DATA/knowledge-graph.jsonl" | jq -r '.fields.project.frameworks[]?'
    ```
-   For each id, read `$PLUGIN_ROOT/skills/excavator/frameworks/<id>.md` if it exists. A missing addendum means nobody wrote that framework down; it is not a licence to reconstruct its conventions from memory. Decide those entries from the source you sample.
+   For each id, read `$PLUGIN_ROOT/skills/excavator/frameworks/<id>.md` if it exists. A missing addendum means nobody wrote that framework down; it is not a licence to reconstruct its conventions from memory. What you know about a framework only tells you where to look: a mechanism counts once you have found it in this repository — the annotation on each member the query selects, the descriptor line that registers the class (`web.xml`, a service-loader file under `META-INF/services`), the configuration that names it.
 2. Group the entry candidates by their features. Start with the largest groups:
    ```bash
    # by method annotation
@@ -79,7 +79,7 @@ An **entry** is code something outside the repository's call graph invokes: a fr
    # by name
    jq -r '[.candidates[] | select(.entry) | .name] | group_by(.) | map([length, .[0]]) | sort_by(-.[0]) | .[:30][] | @tsv' "$CANDS"
    # by language and directory
-   jq -r '[.candidates[] | select(.entry) | "\(.language) \(.file | split("/")[:3] | join("/"))"] | group_by(.) | map([length, .[0]]) | sort_by(-.[0]) | .[:30][] | @tsv' "$CANDS"
+   jq -r '[.candidates[] | select(.entry) | "\(.language) \(.file | split("/")[:-1] | join("/"))"] | group_by(.) | map([length, .[0]]) | sort_by(-.[0]) | .[:30][] | @tsv' "$CANDS"
    ```
    To look at a group, list a few members with their location and read those lines of source:
    ```bash
@@ -164,7 +164,7 @@ Report, in this order:
 2. `high`, by group: the group's entries first (removing them is what makes the members unused), each with `file:line`.
 3. `medium`, by directory and class, with the signals that put them there.
 4. `low`: counts by signal only, unless the user asks for the list.
-5. `test-only`: the count and the largest classes.
+5. `test-only`: the count and the files with the most.
 6. Your decisions: kind, reason and hits of each.
 7. The residual assumptions, as the product states them.
 

@@ -59,6 +59,7 @@ describe('excavator-unused-code skill: each rule in its step', () => {
     const s = step.get(3);
     expect(s).toContain('$PLUGIN_ROOT/skills/excavator/frameworks/<id>.md');
     expect(s).toContain('it is not a licence to reconstruct its conventions from memory');
+    expect(s).toContain('What you know about a framework only tells you where to look: a mechanism counts once you have found it in this repository');
     expect(s).toContain('**Decide an entry only when you can name its caller and the mechanism**');
     expect(s).toContain('Read at least three members of the group first');
     expect(s).toContain('**When unsure, do not decide.** A decision can only remove candidates.');
