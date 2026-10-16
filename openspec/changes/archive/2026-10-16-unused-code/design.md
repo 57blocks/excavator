@@ -369,3 +369,7 @@ oracle 在动手前写死，全部 build-free，真实语料只读，只在副�
   - vitest 142 个文件，3,828 条通过、4 条跳过；
   - `check-refs` 通过；
   - `openspec validate --all --strict` 42 项通过。
+
+### 后续
+
+- 审读之后加的规则（测试代码、程序启动、`medium` 措辞）用 headless Sonnet 重跑验证，有三条没有守住，改成了决定脚本里的检查与汇报配方。运行与结果见 `2026-10-16-unused-code-rule-checks` 的验收记录。
