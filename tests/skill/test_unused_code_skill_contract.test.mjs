@@ -66,6 +66,7 @@ describe('excavator-unused-code skill: each rule in its step', () => {
     expect(s).toContain('**Public is not an entry by itself.**');
     expect(s).toContain('A build that publishes every module of an application as an artifact does not make each module an API');
     expect(s).toContain('Do not mark a whole test directory');
+    expect(s).toContain('**Test code is a `test-entry`, whatever calls it.**');
     expect(s).toContain('**A handler the facts did not link is still an entry.**');
   });
 
@@ -82,6 +83,7 @@ describe('excavator-unused-code skill: each rule in its step', () => {
   it('step 5 runs report and leaves confidence to the rules', () => {
     expect(step.get(5)).toContain('node "$UC" report "$PROJECT_ROOT"');
     expect(step.get(5)).toContain('you never assign it');
+    expect(step.get(5)).toContain('`medium` — the rest: its name occurs nowhere else in the selected files');
   });
 
   it('step 6 never calls medium or low unused and never touches project files', () => {
@@ -89,6 +91,13 @@ describe('excavator-unused-code skill: each rule in its step', () => {
     expect(s).toContain('**Never call a `medium` or `low` candidate unused.**');
     expect(s).toContain('**Never edit, move or delete project files.**');
     expect(s).toContain('Do not add items the product does not list.');
+    expect(s).toContain('Say "its name occurs nowhere else; needs confirmation" for `medium`');
+    expect(s).toContain('**A language whose `calls` is 0 has no call facts:**');
+  });
+
+  it('claims for medium only what the name census checked', () => {
+    expect(flat(skill)).not.toContain('nothing in the repository uses it');
+    expect(flat(skill)).not.toContain('no use found in the repository');
   });
 
   it('keeps the step rules out of the preamble, where they would be skipped', () => {
@@ -139,6 +148,9 @@ describe('excavator-chat: unused-code questions', () => {
 
   it('never calls medium or low unused and names only signals the script emits', () => {
     expect(section).toContain('**Never call a `medium` or `low` node unused**');
+    expect(section).toContain('say "its name occurs nowhere else; needs confirmation"');
+    expect(section).not.toContain('nothing in the repository uses it');
+    expect(section).toContain('If `.counts.byLanguage[<its language>].calls` is 0, the facts hold no calls for that language');
     const named = [...section.matchAll(/`([a-z]+(?:-[a-z]+)+)`/g)].map((m) => m[1])
       .filter((name) => !['excavator-unused-code', 'only-reachable-from-unused', 'test-entry'].includes(name));
     expect(named.length).toBeGreaterThanOrEqual(4);

@@ -94,6 +94,7 @@ An **entry** is code something outside the repository's call graph invokes: a fr
    - **An override of an outside type is called by that type's caller.** An `@Override` (or the language's equivalent) in a type whose `outsideSupertypes` are non-empty may implement a method declared outside the repository (`toString`, `run`, a framework interface); decide such a group once you have checked the overridden methods come from those outside types.
    - **Public is not an entry by itself.** Only a module whose purpose is to be consumed by other projects — an SDK, a library other projects link against, a plugin or extension API — makes its public members entries; decide them by module, with the evidence (the manifest that publishes it and what says it is for outside consumers) in the reason. A build that publishes every module of an application as an artifact does not make each module an API: leave those undecided.
    - **Tests:** mark what the runner invokes (test annotations, the runner's naming convention) as `test-entry`. Do not mark a whole test directory: a helper there that no test reaches is unused too.
+   - **Test code is a `test-entry`, whatever calls it.** A method in test sources stays `test-entry` even when a production mechanism invokes it: a test fake implementing a production interface, an extension the test runner loads. As `entry`, it would make the production code it reaches count as used in production.
    - **Members follow their entries.** A candidate with `entry: false` is removed automatically when a decided node reaches it. Decide one individually only with a concrete outside caller (a reflective string, a descriptor line) that you have read.
 
 ## Step 4 — Write the decisions
@@ -142,7 +143,7 @@ The product `$DATA/unused-code.json` has `counts`, `decisions` (each with `hits`
 How confidence is computed (fixed rules; you never assign it):
 - `low` — a sign of use: the name occurs elsewhere (`name-elsewhere`), the owner is referenced by views, descriptors or injection (`owner-referenced`) or named as an annotation class literal (`owner-class-literal`), or a non-private, non-static method's owner touches a supertype the repository does not declare (`visible-with-outside-supertype`).
 - `high` — no sign of use, `private`, no annotation on the method or its owner, the owner and its ancestors declare no outside supertype, and every one of these facts is known.
-- `medium` — the rest: nothing in the repository uses it, but it is visible outside its file, annotated, or its owner inherits an outside type, so a caller outside the repository or a framework may exist. The signals say which.
+- `medium` — the rest: its name occurs nowhere else in the selected files, but it is visible outside its file, annotated, or its owner inherits an outside type, so a caller outside the repository or a framework may exist. The signals say which. A use that does not spell the name (a property `foo` bound to `getFoo`) is not seen.
 - A node is never above any unused node that references it (`capped`).
 
 ## Step 6 — Report to the user
@@ -160,7 +161,7 @@ jq -r '[.unused[] | select(.confidence == "low") | .signals[].signal | select(IN
 ```
 
 Report, in this order:
-1. Counts: candidates, removed by decision, `test-only`, unused by confidence, groups; per language when one language has most of the candidates (its calls may be sparse in the facts — say so).
+1. Counts: candidates, removed by decision, `test-only`, unused by confidence, groups; per language when one language has most of the candidates. **A language whose `calls` is 0 has no call facts:** every function in it is a candidate whatever calls it, so say its results show only that the facts hold no calls for it.
 2. `high`, by group: the group's entries first (removing them is what makes the members unused), each with `file:line`.
 3. `medium`, by directory and class, with the signals that put them there.
 4. `low`: counts by signal only, unless the user asks for the list.
@@ -169,7 +170,7 @@ Report, in this order:
 7. The residual assumptions, as the product states them.
 
 Rules for this step:
-- **Never call a `medium` or `low` candidate unused.** Say "no use found in the repository; needs confirmation" for `medium`, and "signs of use found" with the signal for `low`. Only `high` may be called unused, and even then deleting it is the user's decision.
+- **Never call a `medium` or `low` candidate unused.** Say "its name occurs nowhere else; needs confirmation" for `medium`, and "signs of use found" with the signal for `low`. Only `high` may be called unused, and even then deleting it is the user's decision.
 - **Never edit, move or delete project files.** This skill reports; it does not clean up, refactor or open a change.
 - Every listed item carries `file:line` from the product. Do not add items the product does not list.
 - Point the user at `/excavator-chat` for questions about one method, file or group; it answers from the same product.

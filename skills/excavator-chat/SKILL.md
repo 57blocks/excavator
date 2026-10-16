@@ -127,11 +127,11 @@ Whether code is used is a claim about absence: the graph has no edge from a fram
    jq --arg id "<id>" '.decisions[] | select(.ids | index($id)) | {kind, reason, query}' .excavator/unused-code.json
    ```
 4. **Answer by where it is:**
-   - In `unused`: its `reason` (`unreferenced`, or `only-reachable-from-unused` with the `referrers` that make it so), its group's `entries`, its `confidence` and the `signals` behind it.
+   - In `unused`: its `reason` (`unreferenced`, or `only-reachable-from-unused` with the `referrers` that make it so), its group's `entries`, its `confidence` and the `signals` behind it. If `.counts.byLanguage[<its language>].calls` is 0, the facts hold no calls for that language: say being listed shows only that, not that nothing calls it.
    - In `testOnly`: only tests reach it.
    - In a decision's `ids`: the analysis decided it is an entry (`entry`) or a test entry (`test-entry`); give the decision's `reason`.
    - None of these: if `.excavator/unused-candidates.json` lists it, a decided entry reaches it; otherwise a route reaches it or it is not a function node. Either way the analysis found it used.
-5. **Confidence wording.** `high`: private, no sign of use anywhere in the selected files, no annotation, no outside supertype — it may be called unused. `medium`: nothing in the repository uses it, but it is visible outside its file, annotated, or its owner inherits a type the repository does not declare; say "no use found in the repository; needs confirmation". `low`: a sign of use exists (`name-elsewhere`, `owner-referenced`, `owner-class-literal`, `visible-with-outside-supertype`); name it. `capped` means a referrer that is itself unused has a lower confidence. **Never call a `medium` or `low` node unused**, and never edit code to act on the answer.
+5. **Confidence wording.** `high`: private, no sign of use anywhere in the selected files, no annotation, no outside supertype — it may be called unused. `medium`: its name occurs nowhere else in the selected files, but it is visible outside its file, annotated, or its owner inherits a type the repository does not declare; say "its name occurs nowhere else; needs confirmation" (a use that does not spell the name, such as a property `foo` bound to `getFoo`, is not seen). `low`: a sign of use exists (`name-elsewhere`, `owner-referenced`, `owner-class-literal`, `visible-with-outside-supertype`); name it. `capped` means a referrer that is itself unused has a lower confidence. **Never call a `medium` or `low` node unused**, and never edit code to act on the answer.
 6. Cite `file:line` from the product, and the `residualAssumptions` when the user asks how sure the analysis is.
 
 ### Request-local AI routing contract
