@@ -1,6 +1,6 @@
 ## Why
 
-cebreo currently reaches extraction with generated coverage/build trees and credential-like files mixed into its source set, while alternate Dockerfile names are skipped as unknown. This makes coverage noisy and risks exposing secret material before later C#/XAML and framework improvements can be evaluated safely.
+mixed-suite currently reaches extraction with generated coverage/build trees and credential-like files mixed into its source set, while alternate Dockerfile names are skipped as unknown. This makes coverage noisy and risks exposing secret material before later C#/XAML and framework improvements can be evaluated safely.
 
 ## What Changes
 
@@ -8,11 +8,11 @@ cebreo currently reaches extraction with generated coverage/build trees and cred
 - Add one deterministic pre-extraction selection boundary that classifies every candidate before bytes can reach scanning, extraction, indexing, search, or model context.
 - **BREAKING** Make root `.excavatorignore` the only project ignore source; stop reading the conflicting `.excavator/.excavatorignore` location so snapshot adapters and direct scans cannot select different files.
 - Run the agent-owned ignore preflight before the Lazy/Full branch when the root file is missing or the obsolete data-directory file still exists. The preflight uses the existing scanner only, writes the root file after before/after review, and does not require a Full analysis or restore a rule generator.
-- Expand conservative universal defaults with cross-platform operating-system metadata and unambiguous tool caches: macOS Finder/AppleDouble/archive metadata, Windows Explorer/recycle/system-volume metadata, and `.vs/`/`.gradle/`. Let the Excavator skill inspect cebreo and propose remaining project-specific `bin/`, `.unit-test/`, `TestResults/`, `.scratch/`, or package-cache rules from evidence. Do not add a MAUI/cebreo rule registry, generator, or dedicated validator.
+- Expand conservative universal defaults with cross-platform operating-system metadata and unambiguous tool caches: macOS Finder/AppleDouble/archive metadata, Windows Explorer/recycle/system-volume metadata, and `.vs/`/`.gradle/`. Let the Excavator skill inspect mixed-suite and propose remaining project-specific `bin/`, `.unit-test/`, `TestResults/`, `.scratch/`, or package-cache rules from evidence. Do not add a MAUI/mixed-suite rule registry, generator, or dedicated validator.
 - Add a non-negatable sensitive-file policy for credential/container extensions and recognized private-key material. Record only safe metadata in a visible `sensitive` skip bucket; never persist or return the file bytes.
-- Recognize canonical Dockerfile variants such as `Dockerfile-prod`, `Dockerfile-qa`, and `Dockerfile-test` through the same `LanguageConfig`/`LanguageRegistry` path used by TypeScript and other languages, instead of adding a cebreo-only scanner branch.
+- Recognize canonical Dockerfile variants such as `Dockerfile-prod`, `Dockerfile-qa`, and `Dockerfile-test` through the same `LanguageConfig`/`LanguageRegistry` path used by TypeScript and other languages, instead of adding a mixed-suite-only scanner branch.
 - Reconcile the MAUI specification with the already-decided project-level ignore boundary: `bin/` and `.unit-test/` are not global defaults because they can contain source in other ecosystems.
-- Keep `unmc.zip` out of scope as an input corpus artifact; existing `*.zip` exclusion remains the required behavior even after the local file is deleted.
+- Keep `maui-app.zip` out of scope as an input corpus artifact; existing `*.zip` exclusion remains the required behavior even after the local file is deleted.
 
 ## Capabilities
 

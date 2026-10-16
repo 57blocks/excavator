@@ -27,12 +27,12 @@ commit 序列：
 
 ## 3. 文档
 
-- [x] 3.1 `docs/mcp.md`「Performance and host timeouts」一节改写：删掉「每次调用 O(文件数) 的子进程读取」和「wcp 上 75–115 秒」这类已不成立的描述，写入验收实测的解析耗时与每次调用耗时，并按新数字重新给出超时建议。验证：文中数字与 4.3 的实测一致。
+- [x] 3.1 `docs/mcp.md`「Performance and host timeouts」一节改写：删掉「每次调用 O(文件数) 的子进程读取」和「go-multirepo 上 75–115 秒」这类已不成立的描述，写入验收实测的解析耗时与每次调用耗时，并按新数字重新给出超时建议。验证：文中数字与 4.3 的实测一致。
 
 ## 4. 验收（acceptor 亲自执行，不采信 coder 自报）
 
 - [x] 4.1 门禁（O5）：三件套与 `openspec validate --all --strict` 通过。
-- [x] 4.2 conduit（`5e127d85`）、wcp、cebreo 副本（O1、O2）：
+- [x] 4.2 conduit（`5e127d85`）、go-multirepo、mixed-suite 副本（O1、O2）：
   - `main` 与本分支分别跑 lazy 首跑，`factsDigest`、`source-manifest.json` 的 `selection` 与 `entries` 完全相同；
   - conduit 上通过 stdio 调 MCP `recall`（固定检索词），结果与 `main` 逐项相同。
 - [x] 4.3 Hadoop `2014707f8c31`（O1、O4）：

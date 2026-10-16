@@ -72,4 +72,4 @@ Spring XML 用名字装配依赖：`<property name="dao" ref="orderDao"/>` 把�
   - `build-fact-graph.mjs`、`lazy-analyze.mjs`、`retrieve.mjs`、`validate-graph.mjs`。
 - **产物**：knowledge graph 新增 `injects` 边、五类缺口与 `coverage.injections`；`coverage.nameReferences` 的 `bindings` 与 `missingNames` 各多一个 `spring-xml-alias` 键。旧产物因版本号变化，在下次同步时整体重投影。
 - **不影响**：既有节点与边（含 `mentions`、`references` 的形状），以及 MCP 工具的参数与形状。
-- **语料**：验收用 Sakai 12.7、OSCAR、OpenMRS core 的固定提交。第 2 步回归用 Dataverse、Sakai 12.7、Seam 2.2 examples、Cargo Tracker、TomEE 8.x examples，不回归用 wcp、cebreo、hadoop、fineract。真实项目的源码、路径与输出不提交。
+- **语料**：验收用 Sakai 12.7、OSCAR、OpenMRS core 的固定提交。第 2 步回归用 Dataverse、Sakai 12.7、Seam 2.2 examples、Cargo Tracker、TomEE 8.x examples，不回归用 go-multirepo、mixed-suite、hadoop、fineract。真实项目的源码、路径与输出不提交。

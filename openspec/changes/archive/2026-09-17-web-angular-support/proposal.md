@@ -1,6 +1,6 @@
 ## Why
 
-cebreo 的 web 项目 `uneeg-managementportal` 是 Angular 前端 + Kotlin/Gradle 后端。`.ts` 组件与 Kotlin 后端的结构抽取都正常，但**没有 Angular 的 `FrameworkConfig`**：分析 web 项目时不会检测出 Angular，也没有任何 Angular 约定被注入分析上下文，AI 拿不到「`@Component` 的 `templateUrl` 关联哪个 `.html`、`@Injectable`/`@NgModule`、模板绑定语法」这类指引，组件↔模板↔服务的关系无从可靠推导。mobile 侧的对等能力（`maui`）早已具备；web 侧应对齐同一模式。
+mixed-suite 的 web 项目 `kotlin-portal` 是 Angular 前端 + Kotlin/Gradle 后端。`.ts` 组件与 Kotlin 后端的结构抽取都正常，但**没有 Angular 的 `FrameworkConfig`**：分析 web 项目时不会检测出 Angular，也没有任何 Angular 约定被注入分析上下文，AI 拿不到「`@Component` 的 `templateUrl` 关联哪个 `.html`、`@Injectable`/`@NgModule`、模板绑定语法」这类指引，组件↔模板↔服务的关系无从可靠推导。mobile 侧的对等能力（`maui`）早已具备；web 侧应对齐同一模式。
 
 ## What Changes
 

@@ -127,7 +127,7 @@ core 的改动只有一处：导出 `saveGraph` 内部已有的路径净化步�
 
 - **O1 往返**：夹具索引、conduit（固定提交 `5e127d85`）与 Hadoop 的索引持久化后读回，`isDeepStrictEqual` 为真；比较器必须先证明能看见单字段差异。
 - **O2 检索等价**：在 conduit 上用一组固定检索词，分别用 `main`（旧实现）与新实现调用 MCP `recall`，去掉快照与耗时字段后逐项相同。
-- **O3 事实不变**：Hadoop 新跑的 `factsDigest` 等于失败那次已写出的 `88c3219d31de0315e87fb4303fed5fa0bced8faae9ebb940dcc0233c13c5eae7`；wcp、cebreo 的副本上新旧实现的 `factsDigest` 相同（不动用户语料现有的 `.excavator/`）。
+- **O3 事实不变**：Hadoop 新跑的 `factsDigest` 等于失败那次已写出的 `88c3219d31de0315e87fb4303fed5fa0bced8faae9ebb940dcc0233c13c5eae7`；go-multirepo、mixed-suite 的副本上新旧实现的 `factsDigest` 相同（不动用户语料现有的 `.excavator/`）。
 - **O4 原子发布**：故障注入覆盖暂存阶段的每个产物与替换阶段的每一步，`.excavator/` 最终产物逐字节不变，且无暂存残留。
 - **O5 具名失败**：注入更小的上限触发失败，错误含产物名、所需字符数与上限，最终产物不变。
 - **O6 规模**：Hadoop Lazy 首跑完成、确定性校验通过，五个最终产物齐全，`source-index.jsonl` 可读回；输出含余量报告与 `snapshotResolve`/`snapshotMaterialize`/`manifestEntries`，`total` 与外部量得的墙钟相差不超过 2 秒。

@@ -95,5 +95,5 @@
   - MCP 工具的参数与形状。
 - **语料**：
   - 验收用 Seam 2.2 examples、OSCAR、OpenMRS core、Sakai 12.7、TomEE 8.x examples、fineract；
-  - 回归用 Dataverse、Cargo Tracker、wcp、cebreo、hadoop。
+  - 回归用 Dataverse、Cargo Tracker、go-multirepo、mixed-suite、hadoop。
   - 真实项目的源码、路径与输出不提交。

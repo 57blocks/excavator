@@ -103,7 +103,7 @@ Seam 与 TomEE 是 `blob:none` 稀疏克隆。为避免快照物化时按需拉�
   2. **路径提及：** 以下位置的字面值（不含 EL）必须逐个落在成边、`mention-ambiguous` 或 `path-mention-unresolved`，且成边目标与独立解析一致：
      - Dataverse 的 `ui:include src`、`template`；
      - Sakai 12.7 的 `<to-view-id>`、`<from-view-id>`、`jsp:include page`、`<%@ include file %>`。
-- **O4 不回归**：wcp、cebreo、hadoop、fineract 各自与同一提交、`lazy-fact-graph/5` 的基线对比：
+- **O4 不回归**：go-multirepo、mixed-suite、hadoop、fineract 各自与同一提交、`lazy-fact-graph/5` 的基线对比：
   - 节点集合、非 `mentions` 边集合、既有缺口完全一致；
   - 覆盖只多 `mentions` 一段；
   - 新增的 `mentions` 边与缺口全部列出计数，逐个语料说明来源（比如 hadoop 的 XML 配置）。

@@ -8,7 +8,7 @@
 - **Domain 新鲜度**（§7.5）：`domain-graph.json`（由显式 Domain 分析产出）记录 `sourceRevision` + `factDigest`；Chat/消费端只读与当前事实层一致的 Domain；revision/factDigest 不一致的**过期 Domain 不进回答**。domain/flow/step 仍是语义提示，回答业务流程时用 fact graph + 源码核对。
 - **消费端统一 sourceRevision**（§12.6）：chat / diff / explain / onboard / domain skill 与自动更新 hook 全部用 `source-manifest.json` 的 `sourceRevision` 判新鲜度，不再各用临时 gitCommitHash/sourceDigest。Git 消费端经 GitCommitSnapshot 读源（不泄漏工作区改动）；Directory 消费端经 DirectorySnapshot + content-hash guard。
 
-**诚实边界**：物理隔离 / factDigest 新鲜度 / 消费端 revision 判定都是确定性、可单测；但 Full 生成的**语义内容质量**（summary/layers 是否可靠、零编造）需真 provider 在真语料（wcp）上 opt-in 验收，fake 全绿不顶替。
+**诚实边界**：物理隔离 / factDigest 新鲜度 / 消费端 revision 判定都是确定性、可单测；但 Full 生成的**语义内容质量**（summary/layers 是否可靠、零编造）需真 provider 在真语料（go-multirepo）上 opt-in 验收，fake 全绿不顶替。
 
 **非目标（本切片明确不做）**：`excavator-figma` / `excavator-knowledge`（Figma API / LLM-wiki，不同域，非事实图消费端）；source-index/scan 的 selection 硬化（`.excavator*`/`.trash-*` glob）、worktree 重定向删除、最终端到端与文档（切片 E）。不重造事实层（A/B）与检索/缓存（C），一律复用。
 
@@ -27,4 +27,4 @@
 - 目标分支：`feat/lazy-mode`（经 `lazy/slice-d` PR 合入）。
 - 受影响：`skills/excavator/SKILL.md` full 分支（Phase 2/2.3/2.5/3/4/6/7 改为复用事实构建 + 写独立语义产物）；`annotate-graph.mjs`/`publish-annotations.mjs`/`apply-verification.mjs`（语义合并改为只写 `semantic-graph.json`/`semantic-cache.json`，不碰 fact 字段）；`excavator-architecture-analyzer`/`-assemble-reviewer`/`-summary-verifier`/`-file-analyzer` agent 的产出去向；`excavator-domain` + `annotate-domain` + `domain-graph.json`；消费 skill `excavator-diff`/`-explain`/`-onboard`/`-domain` SKILL.md + `hooks/` 自动更新 hook。复用 A/B/C 的 `build-fact-graph`/`source-snapshot`/`source-manifest`/`semantic-cache`/`node-identity`。
 - 数据产物：新增 `semantic-graph.json`（factDigest 键）；`domain-graph.json` 加 sourceRevision+factDigest；`knowledge-graph.json` 事实字段不被语义写入触碰。
-- 测试：物理隔离（Full 后 fact 字段 SHA-256 不变、语义在独立文件）、factDigest 跳过 Architecture、Domain 过期不用、消费端 sourceRevision 判定、git 无工作区泄漏、directory content-hash guard——确定性单测；Full 语义内容质量走真 provider + wcp opt-in。
+- 测试：物理隔离（Full 后 fact 字段 SHA-256 不变、语义在独立文件）、factDigest 跳过 Architecture、Domain 过期不用、消费端 sourceRevision 判定、git 无工作区泄漏、directory content-hash guard——确定性单测；Full 语义内容质量走真 provider + go-multirepo opt-in。

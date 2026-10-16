@@ -1,4 +1,4 @@
-每组按仓库规则：先写失败验收 → 实现 → 验证 → 单独 commit。合成夹具用 purpose-built 项目，真实语料（go-clean-arch/wcp）验证 opt-in、产物不提交。
+每组按仓库规则：先写失败验收 → 实现 → 验证 → 单独 commit。合成夹具用 purpose-built 项目，真实语料（go-clean-arch/go-multirepo）验证 opt-in、产物不提交。
 
 ## 1. 节点身份契约（先落，去重支柱）
 

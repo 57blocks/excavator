@@ -285,7 +285,7 @@
 - **O3 桶与绑定对账**（acceptor 独立脚本）：
   - 每个语料的十个桶计数与独立重算逐桶一致；
   - 绑定数按绑定器与独立 grep 对账。每个差异必须落在 `unconfirmedAnnotations`、`nonLiteralNames`、`nonIdentifierNames`、`missingNames` 之一，或属于规格明示不读的位置（嵌套类型、非 Java 源文件）。
-- **O4 不回归**：wcp、cebreo、hadoop、fineract 各自与同一提交、`lazy-fact-graph/6` 的基线对比：
+- **O4 不回归**：go-multirepo、mixed-suite、hadoop、fineract 各自与同一提交、`lazy-fact-graph/6` 的基线对比：
   - 节点集合、非 `references` 边集合、既有缺口完全一致；
   - 覆盖只多 `nameReferences` 一段；
   - Core 新字段不改变任何既有字段。

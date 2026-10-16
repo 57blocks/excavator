@@ -38,11 +38,11 @@ maui-framework spec 曾把 `bin/obj/dll` 等移出扫描分母。Angular 的对�
 
 ## Risks / Trade-offs
 
-- [AI 仅因组件与模板同目录/同名就臆造关联] → spec 明确「同置/同名不构成臆造依据」，`angular.md` 要求以 `templateUrl`/`selector` 等证据为准；验收在 cebreo uneeg 上抽查一个组件的关联是否来自证据。
+- [AI 仅因组件与模板同目录/同名就臆造关联] → spec 明确「同置/同名不构成臆造依据」，`angular.md` 要求以 `templateUrl`/`selector` 等证据为准；验收在 mixed-suite kotlin-portal 上抽查一个组件的关联是否来自证据。
 - [注入未生效——检测到 angular 却没读 angular.md] → 复用既有注入链（SKILL.md framework addendum + 子 agent 自读）；验收确认检测命中且 `angular.md` 内容进入分析上下文。
 - [config-schema 测试因新增 framework 未更新期望而红] → 实现时同步更新枚举 framework 的测试期望（与 maui 加入时同法）。
 - [Kotlin/Spring 后端与 Angular 前端混淆分层] → `angular.md` 划清前后端边界；后端已有 `spring` framework 与 Kotlin 抽取，各自检测互不干扰。
 
 ## Migration Plan
 
-无数据迁移，无新依赖。回滚为移除 `angular.ts`、其注册与 `angular.md`；其余框架与抽取不受影响。分阶段落地：先加 config + 注册 + 测试期望（可机器校验），再加 `angular.md` 附录，最后 cebreo uneeg 只读验收（不提交真实源码/路径/产物）。
+无数据迁移，无新依赖。回滚为移除 `angular.ts`、其注册与 `angular.md`；其余框架与抽取不受影响。分阶段落地：先加 config + 注册 + 测试期望（可机器校验），再加 `angular.md` 附录，最后 mixed-suite kotlin-portal 只读验收（不提交真实源码/路径/产物）。

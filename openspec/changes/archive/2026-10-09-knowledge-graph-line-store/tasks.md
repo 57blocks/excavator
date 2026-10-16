@@ -31,7 +31,7 @@
 
 ## 5. 所有读写方
 
-- [x] 5.1 MCP 与服务：`project-service.mjs` 改用存储模块；格式错误报告为无效产物；只剩旧文件时报告 `missing-product` 并带 `legacyProductPresent`。验证：MCP 测试；wcp-auth 上改前改后 7 个工具逐项相同。
+- [x] 5.1 MCP 与服务：`project-service.mjs` 改用存储模块；格式错误报告为无效产物；只剩旧文件时报告 `missing-product` 并带 `legacyProductPresent`。验证：MCP 测试；go-multirepo-auth 上改前改后 7 个工具逐项相同。
 - [x] 5.2 语义、增量与 Full 发布脚本：`semantic-cache.mjs`、`semantic-cache-reuse.mjs`、`select-stale-semantics.mjs`、`apply-semantic-patches.mjs`、`semantic-graph.mjs`、`prepare-incremental.mjs`、`finalize-incremental.mjs`、`publish-annotations.mjs`、`apply-verification.mjs`、`mark-dirty.mjs`、`consumer-freshness.mjs`、`project-paths.mjs` 改用存储模块。验证：`tests/full/*`、`tests/lazy/lazy-to-full-e2e.test.mjs`、语义缓存与增量测试全绿。
 - [x] 5.3 领域图、Figma、Python、hooks、deploy：
   - `annotate-domain.mjs`、`domain-freshness.mjs`（只读文件头）、`figma-merge.mjs` 改用存储模块；
@@ -56,7 +56,7 @@
 - [x] 8.1 全量门：`pnpm install --frozen-lockfile && pnpm -r build && pnpm test`、core 测试、`pnpm typecheck`、Python 单测、`node scripts/check-refs.mjs`。`pnpm lint` 不列入：仓库没有 ESLint 9 所需的 `eslint.config.js`，main 上同样无法运行，CI 也不跑它。结果：
   - 94 个测试文件、1,616 个测试通过（4 个跳过）；core 49 个文件、1,049 个测试通过；
   - typecheck 退出码 0；Python 单测通过；check-refs 全部解析；`openspec validate --all --strict` 37 项通过。
-- [x] 8.2 摘要不变：design「验收」2 列出的 6 个语料，改后 factsDigest 与改前逐字相同：hadoop、Fineract、wcp-auth、wcp-service-v2、cebreo/unmc、cebreo/uneeg-managementportal。所有固定摘要测试未改动即通过。
+- [x] 8.2 摘要不变：design「验收」2 列出的 6 个语料，改后 factsDigest 与改前逐字相同：hadoop、Fineract、go-multirepo-auth、go-multirepo-service-v2、mixed-suite/maui-app、mixed-suite/kotlin-portal。所有固定摘要测试未改动即通过。
 - [x] 8.3 hadoop 真实运行（2014707f8c31，默认堆，不设 `--max-old-space-size`）：完成，确定性校验通过，`metaAdvanced=true`。
 
   | | 改前（main 19391644） | 改后 |
@@ -75,13 +75,13 @@
     - 图谱本身的最长记录 0.0027%，满足原标准。design「验收」6 与风险 6 已按实测改写。
   - Fineract（f9c2fcd，默认堆）：54.5 秒（改前 64 秒），最大常驻内存 1,723,301,888 字节，余量表最高一项 `fingerprints.json` 6.03%（字节）。
 - [x] 8.4 MCP：
-  - wcp-auth 两份副本分别用 main 19391644 与本分支做 Lazy 分析，再经 stdio 调用全部 7 个工具（`project_status`、两次 `recall`、两次 `traverse`、`read_evidence`、`semantic_plan`、`semantic_commit`、提交后再一次 `semantic_plan`、`sync_facts`）；去掉耗时与时间戳、统一副本路径和 `pipelineVersion` 后 10/10 逐项相同。
+  - go-multirepo-auth 两份副本分别用 main 19391644 与本分支做 Lazy 分析，再经 stdio 调用全部 7 个工具（`project_status`、两次 `recall`、两次 `traverse`、`read_evidence`、`semantic_plan`、`semantic_commit`、提交后再一次 `semantic_plan`、`sync_facts`）；去掉耗时与时间戳、统一副本路径和 `pipelineVersion` 后 10/10 逐项相同。
   - 装置先验：对源码多一个函数的副本，同一比较报 0/10 相同。
   - hadoop 上 `deploy/mcp-smoke.mjs` 7 个工具全部 PASS（36 秒）。每次调用读图耗时：改前整份 `JSON.parse` 1,024 ms，改后按行读取 1,011 ms。
 - [x] 8.5 零兼容：
   - 测试覆盖：只含旧文件的数据目录，`project_status` 不可用并报 `missing-product` + `legacyProductPresent`，旧文件不被解析；
   - Lazy 发布后旧 `knowledge-graph.json` 与 `intermediate/structure-all.json` 被删除；
-  - 真实语料（hadoop、Fineract、wcp、cebreo）改后的 `.excavator/` 中均已不存在旧文件。
+  - 真实语料（hadoop、Fineract、go-multirepo、mixed-suite）改后的 `.excavator/` 中均已不存在旧文件。
 
 ## 9. 归档
 

@@ -131,7 +131,7 @@
 
 ## 验收摘要
 
-最终验收在 `844905c2` 上完成，一轮通过。注解注入语料 6 个：Seam 2.2 examples、OSCAR、OpenMRS core、Sakai 12.7、TomEE 8.x examples、fineract。不回归语料：Dataverse、Cargo Tracker、wcp 的两个仓库、cebreo 的两个项目、hadoop。耗时语料为 Sakai `master` 与 hadoop。`/8` 基线复用第 3 步验收在 `df5d3253` 上的产物，该提交的 skill 代码与本变更的父提交 `main` 相同。
+最终验收在 `844905c2` 上完成，一轮通过。注解注入语料 6 个：Seam 2.2 examples、OSCAR、OpenMRS core、Sakai 12.7、TomEE 8.x examples、fineract。不回归语料：Dataverse、Cargo Tracker、go-multirepo 的两个仓库、mixed-suite 的两个项目、hadoop。耗时语料为 Sakai `master` 与 hadoop。`/8` 基线复用第 3 步验收在 `df5d3253` 上的产物，该提交的 skill 代码与本变更的父提交 `main` 相同。
 
 acceptor 的 Java 成员注解扫描器、绑定表引擎、分桶规则、审计与对账脚本都独立于被测代码实现，不引用 `skills/excavator` 与 `packages/core`。每个仪器先用埋入的已知差异证明能报出差异。预期数在任何 `/9` 产物出现之前登记，登记期间目录拆出 `spring-annotation-advice`（`@ControllerAdvice` 的 `value` 是扫描包，不是名字），预登记随之改版。验收中发现两处仪器错误，产品无误：
 - 引擎给注解类型上的 `@Singleton` 也产生了绑定，而 Core 的 `classes` 不含注解类型；

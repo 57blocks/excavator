@@ -96,7 +96,7 @@
 
 ## 验收摘要
 
-最终验收在 `df5d3253` 上完成，一轮通过。注入语料 3 个：Sakai 12.7、OSCAR、OpenMRS core。第 2 步回归语料：Dataverse、Sakai 12.7、Seam 2.2 examples、Cargo Tracker、TomEE 8.x examples。不回归语料：wcp 的两个仓库、cebreo 的两个项目、hadoop、fineract。耗时语料为 Sakai `master` 与 hadoop。
+最终验收在 `df5d3253` 上完成，一轮通过。注入语料 3 个：Sakai 12.7、OSCAR、OpenMRS core。第 2 步回归语料：Dataverse、Sakai 12.7、Seam 2.2 examples、Cargo Tracker、TomEE 8.x examples。不回归语料：go-multirepo 的两个仓库、mixed-suite 的两个项目、hadoop、fineract。耗时语料为 Sakai `master` 与 hadoop。
 
 acceptor 的分桶引擎、审计、对账与 XML 计数脚本都独立于被测代码实现，不引用 `skills/excavator`。每个仪器先用埋入的已知差异证明能报出差异，D11 的每条变异在 selftest 上都能被抓到。预期数在任何 `/8` 产物出现之前登记。登记时发现两处规格措辞与 design 不一致（`nonIdentifierNames` 计数、`missingNames` 的别名键），已裁定并同步修订 proposal 与 design。报告存在仓库外。
 

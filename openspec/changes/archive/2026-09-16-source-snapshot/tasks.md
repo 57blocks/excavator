@@ -1,4 +1,4 @@
-每组：先写失败验收 → 实现 → 验证 → 单独 commit。合成夹具用 purpose-built 项目；真实语料（wcp 多仓、wcp-auth 单仓）opt-in、产物/路径不提交。CODE 与测试用英文，本 openspec 用中文。
+每组：先写失败验收 → 实现 → 验证 → 单独 commit。合成夹具用 purpose-built 项目；真实语料（go-multirepo 多仓、go-multirepo-auth 单仓）opt-in、产物/路径不提交。CODE 与测试用英文，本 openspec 用中文。
 
 ## 1. SourceSnapshot 契约 + DirectorySnapshot + 一致性 guard
 
@@ -30,5 +30,5 @@
 
 - [x] 6.1 写验收（先红）：同一份合成源码内容分别以 Git 仓库与普通目录分析 → 事实节点/边一致且 `factsDigest` 相同（§12.4.1）。验证：先红→实现后绿。
 - [x] 6.2 合成端到端：三 adapter 首建 + 各自增量一轮，确定性、无 LLM、事实齐、缺失可见。验证：端到端套件绿。
-- [x] 6.3 opt-in 真实验证：wcp（多仓，MultiRepoSnapshot）首建 + 一次成员提交后的增量；wcp-auth（单仓，GitCommitSnapshot）首建 + 工作区脏不变；记录耗时与 revision（源码/产物不提交）。验证：产出记录，跨 adapter 一致性在真实语料成立。
+- [x] 6.3 opt-in 真实验证：go-multirepo（多仓，MultiRepoSnapshot）首建 + 一次成员提交后的增量；go-multirepo-auth（单仓，GitCommitSnapshot）首建 + 工作区脏不变；记录耗时与 revision（源码/产物不提交）。验证：产出记录，跨 adapter 一致性在真实语料成立。
 - [x] 6.4 门禁：`openspec validate --strict source-snapshot` 通过；`pnpm test` 与 typecheck 全绿；不删除/弱化既有测试；切片 A 套件无回归。

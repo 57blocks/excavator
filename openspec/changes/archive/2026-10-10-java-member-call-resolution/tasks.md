@@ -41,7 +41,7 @@
 - [x] 6.2 Fineract 与 hadoop 前后对比：调用点去向分布与守恒、解析率、贷款范围入口可达文件数。
 - [x] 6.3 改前的每条 Java `calls` 边在改后的去向，逐条解释。
 - [x] 6.4 独立代理抽查 Fineract 50 条新边（至少 20 条的目标层次含仓库外父类型），0 错；报告这类边的总数。
-- [x] 6.5 非 Java 不变：wcp-auth、wcp-service-v2、cebreo/unmc 的 factsDigest 前后相同；cebreo/uneeg-managementportal 的变化逐项解释。
+- [x] 6.5 非 Java 不变：go-multirepo-auth、go-multirepo-service-v2、mixed-suite/maui-app 的 factsDigest 前后相同；mixed-suite/kotlin-portal 的变化逐项解释。
 - [x] 6.6 hadoop 的 Lazy 必须在默认堆（不设 `NODE_OPTIONS`）下成功；用时、最大常驻内存、图谱大小与序列化余量和 line-store 合入后的基线（118.6 秒、3.22 GB）对比，用时增幅不超过 30%。单字符串上限已由 knowledge-graph-line-store 消除；若堆溢出，先完成降低 Lazy 峰值堆占用的前置变更（见 design「Risks」），不靠调大堆过关。
 - [x] 6.7 对改后的 Fineract 运行 `deploy/mcp-smoke.mjs`，7 个工具全部通过。
 

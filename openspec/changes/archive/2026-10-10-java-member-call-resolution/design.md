@@ -12,7 +12,7 @@
 - 基线：
   - Fineract 的数据见 proposal.md；
   - 统计脚本与验证样例在本地 `excavator-test-runs/java-call-baseline/`，不进仓库；
-  - hadoop、wcp、cebreo 的改前产物同样存在那里。
+  - hadoop、go-multirepo、mixed-suite 的改前产物同样存在那里。
 
 ## Goals / Non-Goals
 
@@ -66,7 +66,7 @@
 - 仓库内类型的成员类型；
 - 仓库内 Kotlin、Scala 源码声明的类型。Java 可以直接使用它们，按目录定位：源码目录路径以包路径结尾，且该目录下的文件声明了这个类名（含 Kotlin 顶层声明编译成的 `文件名Kt` 类）。这样的包也算仓库内的包。
 
-经单个或按需静态导入引入这些类型的成员时同样为未知。这一条是在 uneeg-managementportal 验收中发现的：它的 Java 文件调用 Kotlin 写的仓库类型（如 `UserRepository`），原先落进 `calls-external`，而规格要求该桶只收可证明在仓库外的目标。
+经单个或按需静态导入引入这些类型的成员时同样为未知。这一条是在 kotlin-portal 验收中发现的：它的 Java 文件调用 Kotlin 写的仓库类型（如 `UserRepository`），原先落进 `calls-external`，而规格要求该桶只收可证明在仓库外的目标。
 
 **D4：方法查找与静态目标。** 在静态类型 T 及其仓库内父类型（先父类、后接口，逐层向上）中收集名字相同、参数个数适用（含可变参数）的声明。签名相同的只保留离 T 最近的那个（覆写）。最终恰好一个签名时，`calls` 边指向该声明，可以是接口方法或抽象方法；多于一个记 `calls-ambiguous`。
 
@@ -143,7 +143,7 @@
    - 贷款范围 157 个 API 入口出发可到达的文件数（改前 13 / 444）。
 2. **旧调用边的去向：** 改前的每条 Java `calls` 边，改后要么仍在，要么被逐条解释（例如改为指向静态目标）。
 3. **正确性：** 独立代理从 Fineract 的新边中随机抽 50 条，其中至少 20 条的目标层次含仓库外父类型（见 Risks），读源码核实目标就是接收者静态类型选中的声明；要求 0 错。同时报告目标层次含仓库外父类型的边数。
-4. **非 Java 不变：** wcp-auth、wcp-service-v2、cebreo/unmc 的 factsDigest 前后相同；cebreo/uneeg-managementportal（含 8 个 Java 文件）的变化逐项解释。
+4. **非 Java 不变：** go-multirepo-auth、go-multirepo-service-v2、mixed-suite/maui-app 的 factsDigest 前后相同；mixed-suite/kotlin-portal（含 8 个 Java 文件）的变化逐项解释。
 5. **性能与上限：** hadoop 的 Lazy 必须在默认堆下成功；报告用时、最大常驻内存、图谱大小与各产物的序列化余量的前后对比。
 6. **MCP：** 对改后的 Fineract 运行 `deploy/mcp-smoke.mjs`，7 个工具全部通过。
 
@@ -206,11 +206,11 @@
   - Fineract：18,252 条（23,090 个调用点）；
   - hadoop：120,087 条（166,225 个调用点）。
 
-### 4. 非 Java 不变，以及 uneeg-managementportal
+### 4. 非 Java 不变，以及 kotlin-portal
 
-wcp-auth（`cb6ea0b51a87`）、wcp-service-v2（`e1833975bf5d`）、cebreo/unmc（`b6f10267c77d`）的 factsDigest 前后相同。
+go-multirepo-auth（`cb6ea0b51a87`）、go-multirepo-service-v2（`e1833975bf5d`）、mixed-suite/maui-app（`b6f10267c77d`）的 factsDigest 前后相同。
 
-uneeg-managementportal 的 factsDigest 从 `f22350702217` 变为 `7abaa14d274c`，节点 3,859 → 3,866，边 8,577 → 8,594，缺口条目 47 → 49：
+kotlin-portal 的 factsDigest 从 `f22350702217` 变为 `7abaa14d274c`，节点 3,859 → 3,866，边 8,577 → 8,594，缺口条目 47 → 49：
 - **+7 个节点：** MapStruct 接口 `ClientDetailsMapper` 的 7 个接口方法。
 - **+17 条边：**
   - 这 7 个方法的文件 `contains` 与类 `contains` 各 7 条；

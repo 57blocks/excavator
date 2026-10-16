@@ -27,4 +27,4 @@
 - 代码：新增 `skills/excavator/text-mentions.mjs`（单文件词法）；`skills/excavator/lazy-analyze.mjs`（新阶段、版本号）；`skills/excavator/build-fact-graph.mjs`（解析、边、缺口、覆盖）；`skills/excavator/retrieve.mjs`（可遍历边类型）。
 - 产物：knowledge graph 新增 `mentions` 边与三类缺口；旧产物因版本号变化在下次同步时整体重投影。
 - 不影响：Core 抽取器、代码语言的既有节点与边、MCP 工具的参数与形状。
-- 语料：除默认的 wcp / cebreo 外，验收使用若干公开 Java EE / JSF 项目的固定提交（见 design）；真实项目的源码、路径与输出不提交。
+- 语料：除默认的 go-multirepo / mixed-suite 外，验收使用若干公开 Java EE / JSF 项目的固定提交（见 design）；真实项目的源码、路径与输出不提交。
