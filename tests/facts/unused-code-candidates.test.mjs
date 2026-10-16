@@ -231,6 +231,67 @@ describe('edges that do not take part in method reachability', () => {
 });
 
 // ---------------------------------------------------------------------------
+// Per-language call counts: a language with function nodes and no calls is visible
+// ---------------------------------------------------------------------------
+
+describe('per-language call counts', () => {
+  const javaRow = { path: 'src/X.java', language: 'java', functions: [], classes: [], classLiterals: [] };
+  const shellRow = { path: 'scripts/run.sh', language: 'shell', functions: [], classes: [], classLiterals: [] };
+  const sh = (label) => fnNode(label, 'scripts/run.sh', 'run');
+  const shId = (label) => fnId(label, 'scripts/run.sh', 'run');
+  const loose = (label) => fnNode(label, 'misc/u.txt', 'u');
+  const looseId = (label) => fnId(label, 'misc/u.txt', 'u');
+
+  it('counts function-to-function calls under the source language; a language with functions and no calls has calls 0', () => {
+    const endpoint = endpointNode('GET /b');
+    const product = build({
+      nodes: [endpoint, classNode('K', 'src/K.java'), ...labels(['a', 'b', 'c']), sh('s1'), sh('s2'), loose('u1'), loose('u2')],
+      edges: [
+        // Java -> Java: five calls, the self-call and the calls among route-reachable nodes included.
+        call('a', 'b'), call('b', 'c'), call('a', 'c'), call('c', 'c'),
+        // Java -> shell counts for Java, the language of the caller, and gives shell nothing.
+        edge('calls', fnId('a'), shId('s1')),
+        // No language row for misc/u.txt: its calls land in the 'unknown' bucket.
+        edge('calls', looseId('u1'), looseId('u2')),
+        routeTo(endpoint, fnId('b')),
+        // None of these has a function at both ends of a calls edge.
+        edge('calls', fnId('a'), classId('K', 'src/K.java')),
+        edge('calls', classId('K', 'src/K.java'), fnId('a')),
+        edge('calls', endpoint.id, fnId('a')),
+        edge('calls', fnId('a'), 'function:ghost'),
+        edge('calls', 'function:ghost', shId('s2')),
+        // Function to function, but not calls.
+        edge('references', fnId('a'), shId('s2')),
+        edge('contains', fnId('a'), fnId('b')),
+      ],
+      structure: { results: [javaRow, shellRow] },
+    });
+    expect(product.counts.byLanguage).toEqual({
+      java: { functionNodes: 3, routeReachable: 2, candidates: 1, entries: 1, calls: 5 },
+      shell: { functionNodes: 2, routeReachable: 0, candidates: 2, entries: 1, calls: 0 },
+      unknown: { functionNodes: 2, routeReachable: 0, candidates: 2, entries: 1, calls: 1 },
+    });
+    expect(Object.keys(product.counts.byLanguage.shell)).toEqual(['functionNodes', 'routeReachable', 'candidates', 'entries', 'calls']);
+    expect(Object.keys(product.counts.byLanguage)).toEqual(['java', 'shell', 'unknown']);
+  });
+
+  it('implements and overrides edges between functions are references but not calls', () => {
+    const product = build({
+      nodes: labels(['x', 'y', 'z']),
+      edges: [edge('implements', fnId('x'), fnId('y')), edge('overrides', fnId('y'), fnId('z'))],
+      structure: { results: [javaRow] },
+    });
+    expect(product.counts.byLanguage).toEqual({
+      java: { functionNodes: 3, routeReachable: 0, candidates: 3, entries: 3, calls: 0 },
+    });
+  });
+
+  it('a graph without functions has no language rows', () => {
+    expect(build({ nodes: [classNode('K')], edges: [], structure: { results: [javaRow] } }).counts.byLanguage).toEqual({});
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Conservation (O1: the assertion goes red on a known fault)
 // ---------------------------------------------------------------------------
 
@@ -522,8 +583,8 @@ describe('features from a Java fixture', () => {
       clusters: 7,
       unmatchedStructure: 0,
       byLanguage: {
-        java: { functionNodes: 6, routeReachable: 0, candidates: 6, entries: 6 },
-        python: { functionNodes: 1, routeReachable: 0, candidates: 1, entries: 1 },
+        java: { functionNodes: 6, routeReachable: 0, candidates: 6, entries: 6, calls: 0 },
+        python: { functionNodes: 1, routeReachable: 0, candidates: 1, entries: 1, calls: 0 },
       },
     });
     expect(product.conservation).toEqual({ functionNodes: 7, routeReachable: 0, candidates: 7, holds: true });
@@ -583,7 +644,7 @@ describe('features from a Java fixture', () => {
       language: null, visibility: null, modifiers: null, annotations: null, owner: classId('Base', `${J}/Base.java`),
     });
     expect(partial.counts.unmatchedStructure).toBe(2);
-    expect(partial.counts.byLanguage.unknown).toEqual({ functionNodes: 2, routeReachable: 0, candidates: 2, entries: 2 });
+    expect(partial.counts.byLanguage.unknown).toEqual({ functionNodes: 2, routeReachable: 0, candidates: 2, entries: 2, calls: 0 });
     const base = partial.types[classId('Base', `${J}/Base.java`)];
     expect(base.annotations).toBeNull();
     expect(base.outsideSupertypes).toEqual({ own: null, ancestors: [], descendants: ['Runnable'], unknown: 1 });
@@ -815,7 +876,7 @@ describe('candidates CLI', () => {
 
   it('prints usage and exits 1 for a missing root, an unknown subcommand and extra arguments', () => {
     const { root } = projectWith();
-    for (const args of [[], ['candidates'], ['report', root], ['candidates', root, 'extra'], [root]]) {
+    for (const args of [[], ['candidates'], ['frobnicate', root], ['candidates', root, 'extra'], [root]]) {
       const result = run(...args);
       expect(result.status, JSON.stringify(args)).toBe(1);
       expect(result.stderr).toMatch(/Usage: node unused-code\.mjs candidates <projectRoot>/);

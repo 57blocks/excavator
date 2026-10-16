@@ -13,7 +13,11 @@
   8. `feat(unused-code): apply entry decisions and confidence`：任务 3.1–3.2。
   9. `feat(skill): excavator-unused-code`：任务 4.1。
   10. `docs(skill): chat answers from the unused-code product`：任务 4.2。
-  11. `docs(openspec): record unused-code acceptance and archive`：任务 5.x。
+  11. `fix(unused-code): per-language call counts and the naming-convention assumption`：任务 5.2 的脚本、测试与规格部分。
+  12. `docs(skill): languages without call facts, medium wording and test fakes`：任务 5.2 的 skill 部分。
+  13. `fix(unused-code): unresolved calls as a residual assumption`：任务 5.2 第二轮（Fineract 审读）的脚本、测试与规格部分。
+  14. `docs(skill): program launches and test-only modules in excavator-unused-code`：任务 5.2 第二轮的 skill 部分。
+  15. `docs(openspec): record unused-code acceptance and archive`：任务 5.1、5.3、5.4。
 
 ## 1. 清理已有实现（PR 1）
 
@@ -62,19 +66,19 @@
 
 ## 3. 入口决定与可信度（PR 3）
 
-- [ ] 3.1 `report` CLI（`node skills/excavator/unused-code.mjs report <projectRoot> [--decisions <file>]`，默认 `.excavator/unused-decisions.json`）。
+- [x] 3.1 `report` CLI（`node skills/excavator/unused-code.mjs report <projectRoot> [--decisions <file>]`，默认 `.excavator/unused-decisions.json`）。
   - 校验决定文件：种类、理由、查询、id 都在候选集里、不重复、摘要一致。
   - 用候选集里的引用表从决定出发求「经决定移出」与 `test-only`；其余为未使用，标 `unreferenced` 或 `only-reachable-from-unused` 并列出直接引用者；未使用节点按弱连通分量分组，每组列出入口。
   - 守恒不等即非零退出。
   - 验证：单测覆盖规格「入口判断由宿主 skill 承担」与「产物、新鲜度与查询」的场景。
-- [ ] 3.2 可信度规则（D6）与产物 `.excavator/unused-code.json`。
+- [x] 3.2 可信度规则（D6）与产物 `.excavator/unused-code.json`。
   - 头部有摘要、计数、残余假设；全部决定与命中数；全部候选的原因、可信度、信号、簇；`test-only`。
   - 可信度上限在缩点图上按拓扑序计算（D3）。
   - 验证：单测覆盖规格「可信度规则」四个场景、「没有可见性事实的语言不给 `high`」，以及一个经两层成员传递上限的用例。
 
 ## 4. Skill 与查询（PR 3）
 
-- [ ] 4.1 新增 `skills/excavator-unused-code/SKILL.md`（英文）。
+- [x] 4.1 新增 `skills/excavator-unused-code/SKILL.md`（英文）。
   - 步骤：
     1. 确认事实新鲜，必要时运行 Lazy；
     2. 运行 `candidates`；
@@ -87,16 +91,22 @@
   - 禁止手抄 id；禁止把 `medium` / `low` 说成确定未使用；禁止删改代码。
   - 插件清单登记该 skill。
   - 验证：`node scripts/check-refs.mjs`；读取 skill 文件的契约测试把每条规则钉在它的步骤里。
-- [ ] 4.2 `skills/excavator-chat/SKILL.md`：
+- [x] 4.2 `skills/excavator-chat/SKILL.md`：
   - 问到未使用代码时读 `.excavator/unused-code.json`，先比对 `factsDigest`；
   - 按 id、名字或文件回答；产物缺失或过期时如何回答。
   - 验证：契约测试；`check-refs`。
 
 ## 5. 验收与归档
 
-- [ ] 5.1 真实模型（O3）：Sonnet 在 dataverse 与 Fineract 的副本上执行 skill（限预算，不并行），独立 Opus 代理审读。
+- [x] 5.1 真实模型（O3）：Sonnet 在 dataverse 与 Fineract 的副本上执行 skill（限预算，不并行），独立 Opus 代理审读。
   - 全部 `high` 0 条在用（门）；
   - 30 条 `medium`、20 条 `low` 的信号属实；
   - 20 条决定的理由成立。
-- [ ] 5.2 全量门（O4）：vitest、`check-refs`、`openspec validate --all --strict`。
-- [ ] 5.3 验收记录写入 design.md；规格同步到 `openspec/specs/unused-code/spec.md`，变更移入 `openspec/changes/archive/`。
+- [x] 5.2 按审读发现修正（取舍与理由记入验收记录）。
+  - 候选集头部按语言计 `calls` 边数，`report` 带到产物，拒绝没有它的候选集；skill 与 chat 对 `calls` 为 0 的语言说明结果只说明事实里没有它的调用。
+  - 第 5 条残余假设：不写出方法名的使用（属性名绑定 getter/setter 等）看不见；`medium` 的措辞改为「名字在别处没有出现」，不说「仓库里没有使用」。
+  - skill：测试代码（测试源码目录、只被测试依赖的模块）里的方法即使由生产机制调用也判 `test-entry`。
+  - 第二轮（Fineract 审读）：第 6 条残余假设，事实图没能解析的调用没有边；skill 把程序启动（`main`、脚本顶层调用的函数）规定为每次都判的入口。
+  - 验证：单测与契约测试，各有变异变红；两份真实产物重跑后除新字段外逐字段相同，独立核对脚本通过，且在三种改坏的产物上报错。
+- [x] 5.3 全量门（O4）：vitest、`check-refs`、`openspec validate --all --strict`。
+- [x] 5.4 验收记录写入 design.md；规格同步到 `openspec/specs/unused-code/spec.md`，变更移入 `openspec/changes/archive/`。

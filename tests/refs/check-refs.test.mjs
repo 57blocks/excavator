@@ -3,7 +3,7 @@
 // one broken reference (an instrument, proving the gate can actually see a
 // known-bad state) must fail and name the broken agent.
 import { describe, it, expect, afterEach } from 'vitest';
-import { mkdtempSync, renameSync, rmSync } from 'node:fs';
+import { appendFileSync, mkdtempSync, renameSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { spawnSync } from 'node:child_process';
@@ -72,6 +72,27 @@ describe('check-refs.mjs', () => {
       expect(result.stdout + result.stderr).toMatch(
         /skills\/excavator\/SKILL\.md references agents\/excavator-file-analyzer\.md/,
       );
+    });
+
+    it('sees a slash command with a multi-word suffix and skips run-time `$VAR/` paths only', () => {
+      tempRepo = mkdtempSync(join(tmpdir(), 'check-refs-instrument-'));
+      const rsync = spawnSync(
+        'rsync',
+        ['-a', '--exclude=node_modules', '--exclude=dist', '--exclude=.git', `${repoRoot}/`, `${tempRepo}/`],
+        { encoding: 'utf-8' },
+      );
+      expect(rsync.status, rsync.stderr).toBe(0);
+      appendFileSync(
+        join(tempRepo, 'skills', 'excavator-chat', 'SKILL.md'),
+        '\nRun /excavator-unused-codez. Write `$DATA/made-at-run-time.sh`. Run `skills/excavator/not-there.sh`.\n',
+      );
+
+      const result = runCheckRefs(tempRepo);
+      const out = result.stdout + result.stderr;
+      expect(result.status).not.toBe(0);
+      expect(out).toContain('references /excavator-unused-codez');
+      expect(out).toContain('skills/excavator/not-there.sh');
+      expect(out).not.toContain('made-at-run-time.sh');
     });
   });
 });

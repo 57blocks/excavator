@@ -106,6 +106,33 @@ A Lazy graph carries deterministic facts only: node `summary` is empty and `tags
 - **Structural questions** (which files/symbols exist, which methods a class has, who imports or calls whom, a node's 1-hop neighbours, contains/depends relationships): answer straight from the fact nodes and fact edges — grep `id` / `name` / `type` and the fact `edges`: `contains`, `imports`, `exports`, `calls`, `inherits`, `implements`, `overrides`, `mentions`, `references`, `injects` and `routes`. These are the types in `DETERMINISTIC_EDGE_TYPES`; the comment above it in `$PLUGIN_ROOT/skills/excavator/retrieve.mjs` says what each one links. **No summary is needed, and do not trigger any semantic supplement, hybrid retrieval, or whole-project analysis.**
 - **Semantic questions** (what a module/service is responsible for, business meaning, a cross-file business flow, especially when phrased in a business/domain language such as Chinese over English-named code): follow the **hybrid retrieval** recipe below instead of degrading immediately.
 - Fact edges (every type listed above) and `gaps` are authoritative: to answer "can we be sure A calls B", go by the fact edge; a call the engine could not resolve is recorded in `gaps`, so say "the engine could not determine that connection" rather than guessing.
+- **Unused-code questions** (is this method used, what code is unused, why is X reported as unused): answer from the unused-code product, as **Unused-code questions** below says. Never conclude from the graph that code is unused.
+
+### Unused-code questions
+
+Whether code is used is a claim about absence: the graph has no edge from a framework callback, a reflective call or another language. Answer it only from `.excavator/unused-code.json`, which `/excavator-unused-code` writes after deciding the entries.
+
+1. **Product missing:** say this project has no unused-code analysis yet and suggest running `/excavator-unused-code`. Do not answer from the graph instead.
+2. **Freshness:** compare the product's `factsDigest` with the facts it was computed from:
+   ```bash
+   jq -r .factsDigest .excavator/unused-code.json
+   head -1 .excavator/intermediate/fact-graph.jsonl | jq -r .fields.factsDigest
+   ```
+   Different → say the product is stale (the facts changed since it was computed) and suggest re-running `/excavator-unused-code`. You may still quote it, labelled stale.
+3. **Find the node** by id, name or file with `jq` (never read the product whole):
+   ```bash
+   jq --arg q "<name>" '.unused[] | select(.name == $q)' .excavator/unused-code.json
+   jq --arg f "<path>" '[.unused[] | select(.file == $f) | {name, lineRange, confidence, reason}]' .excavator/unused-code.json
+   jq --arg q "<name>" '.testOnly[] | select(.name == $q)' .excavator/unused-code.json
+   jq --arg id "<id>" '.decisions[] | select(.ids | index($id)) | {kind, reason, query}' .excavator/unused-code.json
+   ```
+4. **Answer by where it is:**
+   - In `unused`: its `reason` (`unreferenced`, or `only-reachable-from-unused` with the `referrers` that make it so), its group's `entries`, its `confidence` and the `signals` behind it. If `.counts.byLanguage[<its language>].calls` is 0, the facts hold no calls for that language: say being listed shows only that, not that nothing calls it.
+   - In `testOnly`: only tests reach it.
+   - In a decision's `ids`: the analysis decided it is an entry (`entry`) or a test entry (`test-entry`); give the decision's `reason`.
+   - None of these: if `.excavator/unused-candidates.json` lists it, a decided entry reaches it; otherwise a route reaches it or it is not a function node. Either way the analysis found it used.
+5. **Confidence wording.** `high`: private, no sign of use anywhere in the selected files, no annotation, no outside supertype — it may be called unused. `medium`: its name occurs nowhere else in the selected files, but it is visible outside its file, annotated, or its owner inherits a type the repository does not declare; say "its name occurs nowhere else; needs confirmation" (a use that does not spell the name, such as a property `foo` bound to `getFoo`, is not seen). `low`: a sign of use exists (`name-elsewhere`, `owner-referenced`, `owner-class-literal`, `visible-with-outside-supertype`); name it. `capped` means a referrer that is itself unused has a lower confidence. **Never call a `medium` or `low` node unused**, and never edit code to act on the answer.
+6. Cite `file:line` from the product, and the `residualAssumptions` when the user asks how sure the analysis is.
 
 ### Request-local AI routing contract
 

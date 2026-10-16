@@ -2,16 +2,22 @@
 /**
  * unused-code.mjs
  *
- * The deterministic half of unused-code detection (openspec: changes/
- * unused-code, capability `unused-code`, design D1-D3, D6, D7). No model, no
- * framework or language branch, no build of the target: it reads the fact
- * graph, the structure result and the source manifest under `.excavator/` and
- * writes the full candidate set. Which candidates are really program entries is
- * a judgment the host skill makes later; this script only supplies the
- * complete set ("nothing references it" is a claim about absence and needs the
- * whole index) and the facts the judgment is made from.
+ * The deterministic halves of unused-code detection (openspec: changes/
+ * unused-code, capability `unused-code`, design D1-D7). No model, no framework
+ * or language branch, no build of the target. Between the two halves the host
+ * skill makes the one judgment the scripts do not: which candidates are really
+ * program entries.
  *
  *   node unused-code.mjs candidates <projectRoot>
+ *   node unused-code.mjs report <projectRoot> [--decisions <file>]
+ *
+ * `candidates` reads the fact graph, the structure result and the source
+ * manifest under `.excavator/` and writes the full candidate set ("nothing
+ * references it" is a claim about absence and needs the whole index) together
+ * with the facts the entry judgment is made from. `report` reads that candidate
+ * set and the skill's decisions file, removes what the decisions name and
+ * everything reachable from it, and writes the unused code with its groups and
+ * a confidence per node. It never reads the fact graph beyond its header digest.
  *
  * Definition. A function node is used when it is reachable from a route handler
  * (the target of a `routes` edge) along references; every other function node is
@@ -47,17 +53,44 @@
  *     candidates }
  * Structure facts the structure result does not carry are `null` (unknown); a
  * present-but-empty field is `[]`. A candidate whose name is not a plain
- * identifier has `census: null` (unknown, never zero).
+ * identifier has `census: null` (unknown, never zero). `counts.byLanguage` has a row per
+ * language of the function nodes, { functionNodes, routeReachable, candidates, entries, calls }:
+ * `calls` is the number of `calls` edges between function nodes whose caller is in that language,
+ * so a language with function nodes and `calls` 0 has no call facts in the fact graph.
  *
- * Contract: openspec/changes/unused-code/specs/unused-code/spec.md
+ * Report (design D3, D4, D6, D7). The decisions file
+ * `.excavator/unused-decisions.json` (or `--decisions <file>`) is
+ *   { factsDigest, decisions: [ { kind: "entry" | "test-entry", reason, query, ids } ] }
+ * and is rejected when the candidate set is stale against the current fact graph,
+ * when it was made on another candidate set, when it is malformed, when an id is
+ * not a candidate, or when an id appears twice. Decisions only remove: every
+ * candidate reachable from an `entry` id (along the referrer table, referrer ->
+ * referenced) is removed; the ones reachable only from `test-entry` ids are
+ * `test-only`; the rest is unused. Unused nodes are grouped by weak connectivity
+ * under the references, each group listing its entries. Each unused node gets a
+ * confidence (`high` / `medium` / `low`) and its signals from fixed rules over
+ * the candidate facts (design D6), capped on the condensation DAG so that no node
+ * is above a node that references it. The three sets and the candidates
+ * conserve; a violation is an Error and nothing is written.
+ *
+ * Product `.excavator/unused-code.json`
+ *   { format, factsDigest, decisionsDigest, sourceRevision, counts, conservation,
+ *     residualAssumptions, decisions, unused, groups, testOnly }
+ * `counts.byLanguage` has a row for every language of the candidates header, { candidates, calls,
+ * unused, high, medium, low }, `candidates` and `calls` copied from the header. A candidates product
+ * without those rows (made before the call counts) is refused: nothing is written.
+ *
+ * Contract: openspec/specs/unused-code/spec.md
  *           (requirements: the definition of unused code, the deterministic
- *           candidate set, the name occurrence census)
+ *           candidate set, the name occurrence census, entry judgment by the
+ *           host skill, the confidence rules, the product / freshness / query)
  */
 
+import { createHash } from 'node:crypto';
 import { existsSync, lstatSync, readFileSync, realpathSync, renameSync, rmSync, writeFileSync } from 'node:fs';
-import { isAbsolute, join, relative, sep } from 'node:path';
+import { isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { readKnowledgeGraph } from './knowledge-graph-store.mjs';
+import { readKnowledgeGraph, readKnowledgeGraphHeader } from './knowledge-graph-store.mjs';
 import { assertDataDir, assertDataFile, assertDataTree, bindProjectRoot, canonicalSourcePath } from './project-paths.mjs';
 import { serializeJsonProduct } from './product-serialization.mjs';
 import { resolveSourceSnapshot } from './source-snapshot.mjs';
@@ -609,7 +642,15 @@ export function buildUnusedCandidates({ graph, structure, sourceRevision }) {
     if (node.type === 'class') classNodes.set(node.id, node);
   }
 
-  // One pass over the edges for everything the class level needs.
+  const byLanguage = new Map();
+  const bucket = (language) => {
+    const key = language ?? 'unknown';
+    if (!byLanguage.has(key)) byLanguage.set(key, { functionNodes: 0, routeReachable: 0, candidates: 0, entries: 0, calls: 0 });
+    return byLanguage.get(key);
+  };
+
+  // One pass over the edges for everything the class level needs, and for the calls per language.
+  const functionIdSet = new Set(set.functionIds);
   const ownerOf = new Map();
   const parentsOf = new Map();
   const childrenOf = new Map();
@@ -641,15 +682,15 @@ export function buildUnusedCandidates({ graph, structure, sourceRevision }) {
           line: Number.isInteger(first?.line) ? first.line : null,
         });
       }
+    } else if (type === 'calls') {
+      // Counted under the caller's language. A language with function nodes and no call edge here has no
+      // call facts at all, and every function in it is then a candidate whatever calls it.
+      if (functionIdSet.has(edge.source) && functionIdSet.has(edge.target)) {
+        bucket(index.languageOf(nodeById.get(edge.source)?.filePath)).calls += 1;
+      }
     }
   }
 
-  const byLanguage = new Map();
-  const bucket = (language) => {
-    const key = language ?? 'unknown';
-    if (!byLanguage.has(key)) byLanguage.set(key, { functionNodes: 0, routeReachable: 0, candidates: 0, entries: 0 });
-    return byLanguage.get(key);
-  };
   set.functionIds.forEach((id, i) => {
     const counts = bucket(index.languageOf(nodeById.get(id).filePath));
     counts.functionNodes += 1;
@@ -1030,10 +1071,546 @@ export function* readSelectedFiles(root, entries) {
 }
 
 // ---------------------------------------------------------------------------
+// Report (design D3, D4, D6, D7)
+// ---------------------------------------------------------------------------
+
+/** Stamped on the report product header. An incompatible shape change bumps it. */
+export const UNUSED_CODE_FORMAT = 'excavator-unused-code/1';
+
+/** The report product's file name, inside `.excavator/`. */
+export const UNUSED_CODE_FILE = 'unused-code.json';
+
+/** The decisions file's default name, inside `.excavator/`; the host skill writes it. */
+export const UNUSED_DECISIONS_FILE = 'unused-decisions.json';
+
+const RESIDUAL_ASSUMPTIONS = [
+  'Files the source manifest did not select take no part in the name census.',
+  'Reflection on names assembled at run time is invisible.',
+  'Code generated at build time and absent from the repository is invisible.',
+  'Callers outside the repository show only through visibility: a non-private member may be called from outside.',
+  'Uses that do not spell the method name are invisible to the name census: a property `foo` bound to `getFoo` or `setFoo` by a view, a template or a JSON mapping, or any other name derived by convention.',
+  'Calls the fact graph could not resolve have no edge; its gaps (`calls-unresolved`, `calls-ambiguous`, `calls-caller-unresolved`, `override-uncertain`) count them. `reason` states what the facts hold, and the name census is what keeps a method called that way out of `high`.',
+];
+
+const DECISION_KINDS = ['entry', 'test-entry'];
+const DECISION_KEYS = ['kind', 'reason', 'query', 'ids'];
+const DECISIONS_DOCUMENT_KEYS = ['factsDigest', 'decisions'];
+
+/** At most this many offending ids are named in one error; the total is always stated next to them. */
+const NAMED_LIMIT = 20;
+
+/** Node status in the report; 0 is "unused" so a fresh array starts there. */
+const UNUSED = 0;
+const REMOVED = 1;
+const TEST_ONLY = 2;
+
+/** Confidence levels in rank order: a node is never above a node that references it. */
+const LEVELS = ['low', 'medium', 'high'];
+const LOW = 0;
+const MEDIUM = 1;
+const HIGH = 2;
+
+const isPlainObject = (value) => value !== null && typeof value === 'object' && !Array.isArray(value);
+const isNonEmptyString = (value) => typeof value === 'string' && value.trim() !== '';
+const nonEmpty = (value) => Array.isArray(value) && value.length > 0;
+const shown = (value) => (typeof value === 'string' ? value : String(JSON.stringify(value)));
+const namedList = (items, total) => `${items.join('; ')}${total > items.length ? `; ... and ${total - items.length} more` : ''}`;
+
+/**
+ * The three outcome sets and the candidate set must partition: pairwise
+ * disjoint, union exactly the candidates. Throws a descriptive Error with the
+ * counts and the offending ids otherwise.
+ *
+ * @param {{ candidateIds: Iterable<string>, removed: Iterable<string>, testOnly: Iterable<string>, unused: Iterable<string> }} sets
+ */
+export function assertReportConservation({ candidateIds, removed, testOnly, unused }) {
+  const asSet = (values) => (values instanceof Set ? values : new Set(values));
+  const all = asSet(candidateIds);
+  const outcomes = [asSet(removed), asSet(testOnly), asSet(unused)];
+  const missing = [];
+  const overlapping = [];
+  const stray = [];
+  for (const id of all) {
+    const holders = outcomes.filter((set) => set.has(id)).length;
+    if (holders === 0) missing.push(id);
+    else if (holders > 1) overlapping.push(id);
+  }
+  for (const set of outcomes) for (const id of set) if (!all.has(id)) stray.push(id);
+
+  const problems = [];
+  const show = (ids) => `${ids.slice(0, 5).join(', ')}${ids.length > 5 ? `, ... (${ids.length} in all)` : ''}`;
+  if (missing.length > 0) problems.push(`${missing.length} candidate(s) in none of the removed, test-only and unused sets: ${show(missing)}`);
+  if (overlapping.length > 0) problems.push(`${overlapping.length} candidate(s) in more than one of them: ${show(overlapping)}`);
+  if (stray.length > 0) problems.push(`${stray.length} id(s) in those sets that are not candidates: ${show(stray)}`);
+  if (problems.length > 0) {
+    throw new Error(`unused-code report conservation violated: candidates=${all.size}, removedByDecision=${outcomes[0].size}, `
+      + `testOnly=${outcomes[1].size}, unused=${outcomes[2].size}; ${problems.join('; ')}`);
+  }
+}
+
+// ---- The candidates product as input ----
+
+const isStringOrNull = (value) => value === null || typeof value === 'string';
+const isArrayOrNull = (value) => value === null || Array.isArray(value);
+const CANDIDATE_FIELDS = {
+  id: (v) => typeof v === 'string' && v !== '',
+  name: (v) => typeof v === 'string',
+  language: isStringOrNull,
+  file: (v) => typeof v === 'string',
+  lineRange: isArrayOrNull,
+  owner: isStringOrNull,
+  visibility: isStringOrNull,
+  modifiers: isArrayOrNull,
+  annotations: isArrayOrNull,
+  entry: (v) => typeof v === 'boolean',
+  component: Number.isInteger,
+  referrers: (v) => Array.isArray(v) && v.every((r) => isPlainObject(r) && typeof r.id === 'string'),
+  census: (v) => v === null || (isPlainObject(v) && Number.isInteger(v.elsewhere) && Array.isArray(v.samples)),
+};
+
+const TYPE_FIELDS = {
+  annotations: isArrayOrNull,
+  outsideSupertypes: (v) => isPlainObject(v) && isArrayOrNull(v.own) && Array.isArray(v.ancestors)
+    && Array.isArray(v.descendants) && Number.isInteger(v.unknown),
+  referencedBy: (v) => isPlainObject(v) && Number.isInteger(v.references) && Number.isInteger(v.injects)
+    && Number.isInteger(v.mentions) && Array.isArray(v.samples),
+  annotationClassLiterals: (v) => isPlainObject(v) && Number.isInteger(v.count) && Array.isArray(v.samples),
+};
+
+function checkCandidateRecord(candidate, position) {
+  const label = isPlainObject(candidate) && typeof candidate.id === 'string' ? ` (${candidate.id})` : '';
+  if (!isPlainObject(candidate)) throw new Error(`candidate ${position}: not an object`);
+  for (const [field, valid] of Object.entries(CANDIDATE_FIELDS)) {
+    if (!valid(candidate[field])) throw new Error(`candidate ${position}${label}: ${field} is missing or malformed`);
+  }
+}
+
+/** The candidates, validated, in id order. The report works in this index space whatever the input order. */
+function orderedCandidates(product) {
+  if (!Array.isArray(product.candidates)) throw new Error('the candidates product has no "candidates" array');
+  if (!isPlainObject(product.types)) throw new Error('the candidates product has no "types" table');
+  product.candidates.forEach(checkCandidateRecord);
+  const ordered = [...product.candidates].sort((a, b) => compareText(a.id, b.id));
+  for (let i = 1; i < ordered.length; i++) {
+    if (ordered[i].id === ordered[i - 1].id) throw new Error(`the candidates product lists ${ordered[i].id} twice`);
+  }
+  return ordered;
+}
+
+/** The owner's row in the types table, shape-checked once per type; null for a candidate without an owner. */
+function ownerTypeFor(candidate, types, checked) {
+  if (candidate.owner === null) return null;
+  const type = Object.hasOwn(types, candidate.owner) ? types[candidate.owner] : undefined;
+  if (!isPlainObject(type)) throw new Error(`candidate ${candidate.id}: owner ${candidate.owner} is not in the types table`);
+  if (!checked.has(candidate.owner)) {
+    for (const [field, valid] of Object.entries(TYPE_FIELDS)) {
+      if (!valid(type[field])) throw new Error(`types[${candidate.owner}]: ${field} is missing or malformed`);
+    }
+    checked.add(candidate.owner);
+  }
+  return type;
+}
+
+/**
+ * The per-language rows of the report, started from the candidates header: one per language the header
+ * counts (candidates and calls copied), the unused counts at zero. A header without those rows is a product
+ * from before the call counts or a damaged one, and it is refused: without `calls` a language the fact graph
+ * has no call edges for would look like any other.
+ */
+function languageRowsOf(product) {
+  const header = product.counts?.byLanguage;
+  const refuse = (why) => new Error(`the candidates product predates per-language call counts or is malformed (${why}); re-run "node skills/excavator/unused-code.mjs candidates <projectRoot>"`);
+  if (!isPlainObject(header)) throw refuse('counts.byLanguage is missing or not an object');
+  const rows = new Map();
+  for (const [language, row] of Object.entries(header)) {
+    if (!isPlainObject(row)) throw refuse(`counts.byLanguage.${language} is not an object`);
+    for (const field of ['candidates', 'calls']) {
+      if (!Number.isInteger(row[field]) || row[field] < 0) {
+        throw refuse(`counts.byLanguage.${language}.${field} is ${shown(row[field])}, not a non-negative integer`);
+      }
+    }
+    rows.set(language, { candidates: row.candidates, calls: row.calls, unused: 0, high: 0, medium: 0, low: 0 });
+  }
+  return rows;
+}
+
+// ---- The decisions file (design D4) ----
+
+/**
+ * Validate the decisions document in the order the spec lists the rejections:
+ * the digest it was made on, its shape, ids that are not candidates, ids named
+ * twice. Returns the candidate indexes each kind names.
+ */
+function checkDecisions({ decisions, candidatesDigest, indexOf }) {
+  if (!isPlainObject(decisions)) throw new Error('the decisions file must hold a JSON object');
+  if (decisions.factsDigest !== candidatesDigest) {
+    throw new Error(`the decisions were made on another candidate set (candidates ${candidatesDigest} vs decisions ${shown(decisions.factsDigest)}); redo the decisions`);
+  }
+  for (const key of Object.keys(decisions)) {
+    if (!DECISIONS_DOCUMENT_KEYS.includes(key)) throw new Error(`the decisions file has an unknown key "${key}"`);
+  }
+  if (!Array.isArray(decisions.decisions)) throw new Error('the decisions file: "decisions" must be an array');
+
+  decisions.decisions.forEach((decision, i) => {
+    if (!isPlainObject(decision)) throw new Error(`decision ${i}: must be an object`);
+    for (const key of Object.keys(decision)) {
+      if (!DECISION_KEYS.includes(key)) throw new Error(`decision ${i}: unknown key "${key}"`);
+    }
+    if (!DECISION_KINDS.includes(decision.kind)) throw new Error(`decision ${i}: kind must be "entry" or "test-entry"`);
+    if (!isNonEmptyString(decision.reason)) throw new Error(`decision ${i}: reason must be a non-empty string`);
+    if (!isNonEmptyString(decision.query)) throw new Error(`decision ${i}: query must be a non-empty string`);
+    if (!nonEmpty(decision.ids)) throw new Error(`decision ${i}: ids must be a non-empty array of strings`);
+    const bad = decision.ids.findIndex((id) => typeof id !== 'string');
+    if (bad >= 0) throw new Error(`decision ${i}: ids must be a non-empty array of strings (ids[${bad}] is not a string)`);
+  });
+
+  const unknown = [];
+  let unknownTotal = 0;
+  const firstDecision = new Map();
+  const repeated = [];
+  let repeatedTotal = 0;
+  const seeds = { entry: [], 'test-entry': [] };
+  decisions.decisions.forEach((decision, i) => {
+    for (const id of decision.ids) {
+      const index = indexOf.get(id);
+      if (index === undefined) {
+        unknownTotal += 1;
+        if (unknown.length < NAMED_LIMIT) unknown.push(`decision ${i}: ${id}`);
+        continue;
+      }
+      seeds[decision.kind].push(index);
+      if (!firstDecision.has(id)) {
+        firstDecision.set(id, i);
+      } else if (firstDecision.get(id) !== -1) {
+        // Report an id once, however often it repeats.
+        repeatedTotal += 1;
+        if (repeated.length < NAMED_LIMIT) {
+          const first = firstDecision.get(id);
+          repeated.push(`${id} (${first === i ? `twice in decision ${i}` : `decisions ${first} and ${i}`})`);
+        }
+        firstDecision.set(id, -1);
+      }
+    }
+  });
+  if (unknownTotal > 0) {
+    throw new Error(`${unknownTotal} decision id(s) are not candidates: ${namedList(unknown, unknownTotal)}`);
+  }
+  if (repeatedTotal > 0) {
+    throw new Error(`${repeatedTotal} id(s) appear more than once in the decisions: ${namedList(repeated, repeatedTotal)}`);
+  }
+  return { entrySeeds: seeds.entry, testSeeds: seeds['test-entry'] };
+}
+
+// ---- Confidence (design D6) ----
+
+/**
+ * The fixed rules, in table order. Every signal that holds is emitted; the
+ * node's own confidence is the lowest level among them (`high` when none).
+ *
+ * @returns {{ level: number, signals: object[] }}
+ */
+function ownConfidence(candidate, type) {
+  const found = [];
+  const add = (level, signal, detail) => found.push({ level, signal: { signal, ...detail } });
+  const { census, visibility, annotations } = candidate;
+  const o = type?.outsideSupertypes;
+  const ownOutside = o && nonEmpty(o.own);
+  const ancestorsOutside = o && nonEmpty(o.ancestors);
+
+  if (census !== null && census.elsewhere > 0) {
+    add(LOW, 'name-elsewhere', { count: census.elsewhere, samples: census.samples, sameNameDeclarationsOnly: census.sameNameDeclarationsOnly });
+  }
+  if (type) {
+    const { references, injects, mentions, samples } = type.referencedBy;
+    if (references + injects + mentions > 0) add(LOW, 'owner-referenced', { references, injects, mentions, samples });
+    if (type.annotationClassLiterals.count > 0) {
+      add(LOW, 'owner-class-literal', { count: type.annotationClassLiterals.count, samples: type.annotationClassLiterals.samples });
+    }
+    if (visibility !== 'private' && !(candidate.modifiers ?? []).includes('static')
+      && (ownOutside || ancestorsOutside || nonEmpty(o.descendants))) {
+      add(LOW, 'visible-with-outside-supertype', { own: o.own ?? [], ancestors: o.ancestors, descendants: o.descendants });
+    }
+  }
+  if (census === null) add(MEDIUM, 'census-unknown', {});
+  if (visibility === null) add(MEDIUM, 'visibility-unknown', {});
+  if (visibility !== null && visibility !== 'private') add(MEDIUM, 'not-private', { visibility });
+  if (annotations === null) add(MEDIUM, 'annotations-unknown', {});
+  if (nonEmpty(annotations)) add(MEDIUM, 'annotated', { annotations });
+  if (type) {
+    if (type.annotations === null) add(MEDIUM, 'owner-annotations-unknown', {});
+    if (nonEmpty(type.annotations)) add(MEDIUM, 'owner-annotated', { annotations: type.annotations });
+    if (o.own === null || o.unknown > 0) add(MEDIUM, 'owner-hierarchy-unknown', { unknown: o.unknown });
+    if (ownOutside || ancestorsOutside) add(MEDIUM, 'owner-outside-supertype', { own: o.own ?? [], ancestors: o.ancestors });
+  }
+
+  return { level: found.reduce((lowest, { level }) => Math.min(lowest, level), HIGH), signals: found.map(({ signal }) => signal) };
+}
+
+// ---- The report ----
+
+/**
+ * Apply the decisions to the candidate set and compute the unused code, its
+ * groups and its confidence. Pure — no filesystem, no clock; every input rule
+ * is checked here, so a violation throws before anything is produced.
+ *
+ * @param {{
+ *   candidates: object,
+ *   decisions: object,
+ *   decisionsDigest: string,
+ *   factsDigest: string,
+ * }} inputs `candidates` is the parsed candidates product, `decisions` the parsed
+ *   decisions document, `decisionsDigest` the sha256 hex of the decisions file's
+ *   bytes, `factsDigest` the digest of the current fact graph.
+ * @returns {object} the report product (see the file header)
+ */
+export function buildUnusedReport({ candidates, decisions, decisionsDigest, factsDigest }) {
+  if (!isNonEmptyString(factsDigest)) throw new Error('the current fact graph carries no factsDigest');
+  if (!isNonEmptyString(decisionsDigest)) throw new Error('the decisions digest is missing');
+  if (!isPlainObject(candidates) || candidates.format !== UNUSED_CANDIDATES_FORMAT) {
+    throw new Error(`the candidates product is not in format ${UNUSED_CANDIDATES_FORMAT} (found ${shown(candidates?.format)})`);
+  }
+  if (candidates.factsDigest !== factsDigest) {
+    throw new Error(`the candidate set is stale (facts ${factsDigest} vs candidates ${shown(candidates.factsDigest)}); run "unused-code.mjs candidates" again`);
+  }
+  const languages = languageRowsOf(candidates);
+
+  const ordered = orderedCandidates(candidates);
+  const n = ordered.length;
+  const ids = ordered.map((candidate) => candidate.id);
+  const indexOf = new Map(ids.map((id, i) => [id, i]));
+  const { entrySeeds, testSeeds } = checkDecisions({ decisions, candidatesDigest: candidates.factsDigest, indexOf });
+
+  // Reference edges, referrer -> referenced, in the candidates' own index space.
+  let edgeCount = 0;
+  for (const candidate of ordered) edgeCount += candidate.referrers.length;
+  const from = new Int32Array(edgeCount);
+  const to = new Int32Array(edgeCount);
+  let e = 0;
+  ordered.forEach((candidate, v) => {
+    for (const referrer of candidate.referrers) {
+      const u = indexOf.get(referrer.id);
+      if (u === undefined) throw new Error(`candidate ${candidate.id} names the referrer ${referrer.id}, which is not a candidate`);
+      from[e] = u;
+      to[e] = v;
+      e += 1;
+    }
+  });
+
+  // Decisions only remove: reachability from the entries, then from the test entries.
+  const references = buildCsr(n, from, to, new Uint8Array(edgeCount));
+  const reachedFromEntries = reachableFrom(n, references, entrySeeds);
+  const reachedFromTests = reachableFrom(n, references, testSeeds);
+  const status = new Uint8Array(n);
+  const removedIds = new Set();
+  const testOnlyIds = new Set();
+  const unusedIds = new Set();
+  for (let v = 0; v < n; v++) {
+    if (reachedFromEntries[v]) {
+      status[v] = REMOVED;
+      removedIds.add(ids[v]);
+    } else if (reachedFromTests[v]) {
+      status[v] = TEST_ONLY;
+      testOnlyIds.add(ids[v]);
+    } else {
+      unusedIds.add(ids[v]);
+    }
+  }
+  assertReportConservation({ candidateIds: ids, removed: removedIds, testOnly: testOnlyIds, unused: unusedIds });
+
+  // Invariants of a well-formed candidate product. Nothing but a corrupt input breaks them.
+  const external = new Uint8Array(n);
+  for (let k = 0; k < edgeCount; k++) {
+    const u = from[k];
+    const v = to[k];
+    if (status[v] !== UNUSED) continue;
+    if (status[u] !== UNUSED) throw new Error(`candidate ${ids[v]} is unused but its referrer ${ids[u]} is not`);
+    if (ordered[u].component !== ordered[v].component) external[v] = 1;
+  }
+  // `entry` is a property of the component. A node of an entry component has no referrer outside it;
+  // a non-entry component has some member with one (not every member: a member may be referenced
+  // only from inside its component).
+  const components = new Map();
+  for (let v = 0; v < n; v++) {
+    if (status[v] !== UNUSED) continue;
+    const { entry, component } = ordered[v];
+    if (entry && external[v]) throw new Error(`candidate ${ids[v]} is an entry but has a referrer outside its component`);
+    const state = components.get(component);
+    if (!state) {
+      components.set(component, { entry, external: external[v] === 1, member: ids[v] });
+    } else {
+      if (state.entry !== entry) throw new Error(`candidates ${state.member} and ${ids[v]} share component ${component} but disagree on entry`);
+      if (external[v]) state.external = true;
+    }
+  }
+  for (const [component, state] of components) {
+    if (!state.entry && !state.external) {
+      throw new Error(`component ${component} (${state.member}) is not an entry but none of its members has a referrer outside it`);
+    }
+  }
+
+  // Groups: weakly connected components of the unused nodes under the references.
+  const parent = new Int32Array(n);
+  for (let v = 0; v < n; v++) parent[v] = v;
+  const find = (x) => {
+    while (parent[x] !== x) {
+      parent[x] = parent[parent[x]];
+      x = parent[x];
+    }
+    return x;
+  };
+  for (let k = 0; k < edgeCount; k++) {
+    if (status[from[k]] !== UNUSED || status[to[k]] !== UNUSED) continue;
+    const a = find(from[k]);
+    const b = find(to[k]);
+    if (a !== b) parent[a] = b;
+  }
+  // Ascending id order: a group is numbered when its smallest member is met.
+  const groupOfRoot = new Map();
+  const groupOf = new Int32Array(n).fill(-1);
+  const groups = [];
+  for (let v = 0; v < n; v++) {
+    if (status[v] !== UNUSED) continue;
+    const root = find(v);
+    if (!groupOfRoot.has(root)) {
+      groupOfRoot.set(root, groups.length);
+      groups.push({ group: groups.length, entries: [], members: [] });
+    }
+    const group = groups[groupOfRoot.get(root)];
+    groupOf[v] = group.group;
+    group.members.push(ids[v]);
+    if (ordered[v].entry) group.entries.push(ids[v]);
+  }
+  for (const group of groups) {
+    if (group.entries.length === 0) throw new Error(`group ${group.group} (${group.members[0]}) has no entry`);
+  }
+
+  // Confidence: own rules per node, then the cap over the condensation DAG (component = SCC).
+  const checkedTypes = new Set();
+  const own = new Uint8Array(n);
+  const signals = new Array(n);
+  const denseOf = new Map();
+  const componentOf = new Int32Array(n).fill(-1);
+  for (let v = 0; v < n; v++) {
+    if (status[v] !== UNUSED) continue;
+    const candidate = ordered[v];
+    const result = ownConfidence(candidate, ownerTypeFor(candidate, candidates.types, checkedTypes));
+    own[v] = result.level;
+    signals[v] = result.signals;
+    if (!denseOf.has(candidate.component)) denseOf.set(candidate.component, denseOf.size);
+    componentOf[v] = denseOf.get(candidate.component);
+  }
+  const componentCount = denseOf.size;
+  const finalOfComponent = new Uint8Array(componentCount).fill(HIGH);
+  for (let v = 0; v < n; v++) {
+    if (status[v] === UNUSED && own[v] < finalOfComponent[componentOf[v]]) finalOfComponent[componentOf[v]] = own[v];
+  }
+  const crossFrom = [];
+  const crossTo = [];
+  for (let k = 0; k < edgeCount; k++) {
+    if (status[to[k]] !== UNUSED || componentOf[from[k]] === componentOf[to[k]]) continue;
+    crossFrom.push(componentOf[from[k]]);
+    crossTo.push(componentOf[to[k]]);
+  }
+  const downstream = buildCsr(componentCount, crossFrom, crossTo, new Uint8Array(crossFrom.length));
+  const waiting = new Int32Array(componentCount);
+  for (const target of crossTo) waiting[target] += 1;
+  const queue = new Int32Array(componentCount);
+  let tail = 0;
+  for (let c = 0; c < componentCount; c++) if (waiting[c] === 0) queue[tail++] = c;
+  for (let head = 0; head < tail; head++) {
+    const c = queue[head];
+    for (let slot = downstream.offsets[c]; slot < downstream.offsets[c + 1]; slot++) {
+      const next = downstream.targets[slot];
+      if (finalOfComponent[c] < finalOfComponent[next]) finalOfComponent[next] = finalOfComponent[c];
+      waiting[next] -= 1;
+      if (waiting[next] === 0) queue[tail++] = next;
+    }
+  }
+  if (tail !== componentCount) {
+    throw new Error(`the component field is inconsistent: the references between components of unused nodes are cyclic (${componentCount - tail} component(s) never became ready)`);
+  }
+
+  const unused = [];
+  const finalOf = (v) => finalOfComponent[componentOf[v]];
+  for (let v = 0; v < n; v++) {
+    if (status[v] !== UNUSED) continue;
+    const candidate = ordered[v];
+    const level = finalOf(v);
+    const nodeSignals = signals[v];
+    if (level < own[v]) {
+      let by = null;
+      for (const referrer of candidate.referrers) {
+        const u = indexOf.get(referrer.id);
+        if (u !== v && finalOf(u) === level && (by === null || compareText(referrer.id, by) < 0)) by = referrer.id;
+      }
+      if (by === null) throw new Error(`candidate ${candidate.id} is capped to ${LEVELS[level]} but no referrer carries that level`);
+      nodeSignals.push({ signal: 'capped', from: LEVELS[own[v]], by });
+    }
+    unused.push({
+      id: candidate.id,
+      name: candidate.name,
+      language: candidate.language,
+      file: candidate.file,
+      lineRange: candidate.lineRange,
+      owner: candidate.owner,
+      visibility: candidate.visibility,
+      reason: candidate.entry ? 'unreferenced' : 'only-reachable-from-unused',
+      referrers: candidate.referrers,
+      group: groupOf[v],
+      confidence: LEVELS[level],
+      signals: nodeSignals,
+    });
+  }
+
+  const byConfidence = { high: 0, medium: 0, low: 0 };
+  let unreferenced = 0;
+  for (const node of unused) {
+    byConfidence[node.confidence] += 1;
+    if (node.reason === 'unreferenced') unreferenced += 1;
+    const key = node.language ?? 'unknown';
+    const row = languages.get(key);
+    if (!row) throw new Error(`candidate ${node.id} is unused but its language ${key} has no row in counts.byLanguage of the candidates product`);
+    row.unused += 1;
+    row[node.confidence] += 1;
+  }
+  const testOnly = [];
+  for (let v = 0; v < n; v++) {
+    if (status[v] !== TEST_ONLY) continue;
+    const { id, name, language, file, lineRange } = ordered[v];
+    testOnly.push({ id, name, language, file, lineRange });
+  }
+
+  return {
+    format: UNUSED_CODE_FORMAT,
+    factsDigest,
+    decisionsDigest,
+    sourceRevision: candidates.sourceRevision,
+    counts: {
+      candidates: n,
+      removedByDecision: removedIds.size,
+      testOnly: testOnly.length,
+      unused: unused.length,
+      unreferenced,
+      onlyReachableFromUnused: unused.length - unreferenced,
+      groups: groups.length,
+      byConfidence,
+      byLanguage: Object.fromEntries([...languages].sort(([a], [b]) => compareText(a, b))),
+    },
+    conservation: { candidates: n, removedByDecision: removedIds.size, testOnly: testOnly.length, unused: unused.length, holds: true },
+    residualAssumptions: [...RESIDUAL_ASSUMPTIONS],
+    decisions: decisions.decisions.map(({ kind, reason, query, ids: named }) => ({ kind, reason, query, hits: named.length, ids: named })),
+    unused,
+    groups,
+    testOnly,
+  };
+}
+
+// ---------------------------------------------------------------------------
 // CLI
 // ---------------------------------------------------------------------------
 
-const USAGE = 'Usage: node unused-code.mjs candidates <projectRoot>\n';
+const USAGE = 'Usage: node unused-code.mjs candidates <projectRoot>\n'
+  + '       node unused-code.mjs report <projectRoot> [--decisions <file>]\n';
 
 function readInputs(root) {
   assertDataTree(root);
@@ -1078,12 +1655,18 @@ function writeAtomic(path, text) {
   }
 }
 
-function main(argv) {
-  const [command, rootArg, ...extra] = argv;
-  if (command !== 'candidates' || !rootArg || extra.length > 0) {
-    process.stderr.write(USAGE);
-    process.exit(1);
-  }
+/** `{ command, root, decisions }` for a recognised argv shape, null otherwise. */
+function parseArgs(argv) {
+  const [command, root, ...rest] = argv;
+  if (!root || root.startsWith('--')) return null;
+  if (command === 'candidates') return rest.length === 0 ? { command, root } : null;
+  if (command !== 'report') return null;
+  if (rest.length === 0) return { command, root, decisions: null };
+  if (rest.length === 2 && rest[0] === '--decisions' && rest[1] !== '') return { command, root, decisions: rest[1] };
+  return null;
+}
+
+function runCandidates(rootArg) {
   const root = bindProjectRoot(rootArg);
   const inputs = readInputs(root);
   const product = addCensus({
@@ -1099,6 +1682,57 @@ function main(argv) {
   process.stderr.write(`unused-code: ${counts.candidates} candidates (${counts.entries} entries in ${counts.entryComponents} components, `
     + `${counts.clusters} clusters) of ${counts.functionNodes} function nodes, ${counts.routeReachable} route-reachable; `
     + `census over ${census.files} files, ${census.candidatesWithElsewhere} candidates with the name elsewhere -> ${path}\n`);
+}
+
+function parseJsonFile(path, bytes) {
+  try {
+    return JSON.parse(bytes.toString('utf-8'));
+  } catch (error) {
+    throw new Error(`${path}: not valid JSON (${error.message})`);
+  }
+}
+
+/** The three inputs of `report`; the fact graph is read for its header digest only. */
+function readReportInputs(root, decisionsArg) {
+  assertDataTree(root);
+  const dataDir = assertDataDir(root);
+  const candidatesPath = assertDataFile(root, UNUSED_CANDIDATES_FILE);
+  if (!existsSync(candidatesPath)) throw new Error(`missing ${candidatesPath}; run "unused-code.mjs candidates" first`);
+  const decisionsPath = decisionsArg === null ? assertDataFile(root, UNUSED_DECISIONS_FILE) : resolve(decisionsArg);
+  if (!existsSync(decisionsPath)) throw new Error(`no decisions file at ${decisionsPath}; the excavator-unused-code skill writes it`);
+  const graphPath = join(dataDir, 'intermediate', 'fact-graph.jsonl');
+  if (!existsSync(graphPath)) throw new Error(`missing input ${graphPath}; run /excavator lazy on this project first`);
+
+  const decisionsBytes = readFileSync(decisionsPath);
+  return {
+    candidates: parseJsonFile(candidatesPath, readFileSync(candidatesPath)),
+    decisions: parseJsonFile(decisionsPath, decisionsBytes),
+    decisionsDigest: createHash('sha256').update(decisionsBytes).digest('hex'),
+    factsDigest: readKnowledgeGraphHeader(graphPath).fields.factsDigest,
+  };
+}
+
+function runReport({ root: rootArg, decisions }) {
+  const root = bindProjectRoot(rootArg);
+  const product = buildUnusedReport(readReportInputs(root, decisions));
+  const path = assertDataFile(root, UNUSED_CODE_FILE);
+  writeAtomic(path, `${serializeJsonProduct(UNUSED_CODE_FILE, product)}\n`);
+
+  const { counts } = product;
+  process.stdout.write(`${JSON.stringify({ product: path, counts })}\n`);
+  process.stderr.write(`unused-code report: ${counts.unused} unused (${counts.byConfidence.high} high, ${counts.byConfidence.medium} medium, `
+    + `${counts.byConfidence.low} low) in ${counts.groups} groups; ${counts.removedByDecision} removed by decision, ${counts.testOnly} test-only `
+    + `of ${counts.candidates} candidates -> ${path}\n`);
+}
+
+function main(argv) {
+  const parsed = parseArgs(argv);
+  if (!parsed) {
+    process.stderr.write(USAGE);
+    process.exit(1);
+  }
+  if (parsed.command === 'candidates') runCandidates(parsed.root);
+  else runReport(parsed);
 }
 
 function isCliEntry() {
@@ -1122,6 +1756,9 @@ if (isCliEntry()) {
 export default {
   UNUSED_CANDIDATES_FORMAT,
   UNUSED_CANDIDATES_FILE,
+  UNUSED_CODE_FORMAT,
+  UNUSED_CODE_FILE,
+  UNUSED_DECISIONS_FILE,
   simpleTypeName,
   assertConservation,
   computeCandidateSet,
@@ -1129,4 +1766,6 @@ export default {
   computeCensus,
   addCensus,
   readSelectedFiles,
+  assertReportConservation,
+  buildUnusedReport,
 };
