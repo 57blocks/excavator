@@ -64,6 +64,7 @@ describe('excavator-unused-code skill: each rule in its step', () => {
     expect(s).toContain('Read at least three members of the group first');
     expect(s).toContain('**When unsure, do not decide.** A decision can only remove candidates.');
     expect(s).toContain('**Public is not an entry by itself.**');
+    expect(s).toContain('A build that publishes every module of an application as an artifact does not make each module an API');
     expect(s).toContain('Do not mark a whole test directory');
     expect(s).toContain('**A handler the facts did not link is still an entry.**');
   });
