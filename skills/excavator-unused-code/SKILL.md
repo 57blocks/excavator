@@ -86,7 +86,14 @@ An **entry** is code something outside the repository's call graph invokes: a fr
    jq -r '<query> | "\(.file):\(.lineRange[0])-\(.lineRange[1])\t\(.id)"' "$CANDS" | head -5
    ```
    A `<query>` is a `jq` expression over the whole candidates product that outputs candidate objects, for example `. as $p | .candidates[] | select(.entry and any(.annotations[]?; . == "Scheduled"))`. Its `select` may use any field above and the `.types` table through `$p`. A pipe binds loosest, so parenthesize it inside a condition: `(.file | test("/src/test/")) and ...`. Put a longer exploratory program in a file under `$DATA` and run it with `jq -f`.
-3. Decide group by group. Rules for this step:
+3. Establish the two things the groups do not show:
+   - **Test code.** Write `TEST_CODE`, a regular expression that matches the `file` of every candidate in test code and of no other: the test source directories (`src/test/`, a `tests` package, `_test.go`, `.spec.ts`) and the modules that only tests depend on — read in the build files which modules depend on a test-support module. With no test code, use `'^$'`. Step 4's script makes it `test_code` and refuses an `entry` that selects test code and a `test-entry` that selects anything else.
+   - **Launches from top-level code.** A name query finds `main`, not a function a script calls from its top-level code. List the script files whose functions nothing in the facts calls:
+     ```bash
+     jq -r '.counts.byLanguage as $l | [.candidates[] | select(.entry and $l[.language].calls > 0 and (.language | IN("python", "javascript", "typescript", "ruby", "php", "shell")))] | group_by(.file)[] | "\(.[0].file)\t\(map(.name) | unique | join(" "))"' "$CANDS"
+     ```
+     Add any other language whose files run top to bottom. Read each listed file's code outside its functions (an `if __name__ == "__main__":` block, module-level statements, shell statements outside any function) and decide the listed functions it calls, by `.file` and `.name`. A language whose `calls` is 0 is not listed: the facts hold no calls for it, so every function in it is a candidate whatever calls it, and Step 6 reports it that way.
+4. Decide group by group. Rules for this step:
    - **Decide an entry only when you can name its caller and the mechanism** — "the scheduler runs methods annotated `@Scheduled`", "JUnit runs `@Test` methods", "the JVM calls `main`". Read at least three members of the group first and check the mechanism applies to each kind of member the query selects.
    - **When unsure, do not decide.** A decision can only remove candidates. An undecided candidate stays in the report with a confidence the rules compute: a non-private or annotated method can reach at most `medium`, which already means "needs confirmation". Leaving it costs nothing; a wrong entry hides unused code.
    - **The same annotation can mean different things.** An HTTP method annotation on a server resource class is an entry; the same annotation on a declarative HTTP interface the code itself calls is not. Narrow the query (owner annotation, owner kind, path) until it selects one meaning.
@@ -94,8 +101,8 @@ An **entry** is code something outside the repository's call graph invokes: a fr
    - **An override of an outside type is called by that type's caller.** An `@Override` (or the language's equivalent) in a type whose `outsideSupertypes` are non-empty may implement a method declared outside the repository (`toString`, `run`, a framework interface); decide such a group once you have checked the overridden methods come from those outside types.
    - **Public is not an entry by itself.** Only a module whose purpose is to be consumed by other projects — an SDK, a library other projects link against, a plugin or extension API — makes its public members entries; decide them by module, with the evidence (the manifest that publishes it and what says it is for outside consumers) in the reason. A build that publishes every module of an application as an artifact does not make each module an API: leave those undecided.
    - **Tests:** mark what the runner invokes (test annotations, the runner's naming convention) as `test-entry`. Do not mark a whole test directory: a helper there that no test reaches is unused too.
-   - **Test code is a `test-entry`, whatever calls it.** A method in test code — test source directories, and modules that only tests depend on — stays `test-entry` even when a production mechanism invokes it: a test fake implementing a production interface, an extension the test runner loads. As `entry`, it would make the production code it reaches count as used in production.
-   - **A program's launch is an entry.** The language's launch method (`main` in Java, Kotlin, C# or Go) and a function that a script's top-level code calls (under a Python `if __name__ == "__main__":`, or a shell statement outside any function) are called by whoever runs the program. Decide them in every run, with the build line or the top-level call in the reason when there is one. Whether anyone still runs a program is not in the repository; deciding it only withholds a report.
+   - **Test code is a `test-entry`, whatever calls it.** A method in test code — what `TEST_CODE` matches: test source directories, and modules that only tests depend on — stays `test-entry` even when a production mechanism invokes it: a test fake implementing a production interface, an extension the test runner loads, an `equals` override. As `entry`, it would make the production code it reaches count as used in production. A mechanism that spans both is two decisions: the `entry` with `(test_code | not)`, the `test-entry` with `test_code`.
+   - **A program's launch is an entry.** The language's launch method (`main` in Java, Kotlin, C# or Go) and a function that a script's top-level code calls (item 3) are called by whoever runs the program. Decide them in every run, with the build line or the top-level call in the reason when there is one. Whether anyone still runs a program is not in the repository; deciding it only withholds a report.
    - **Members follow their entries.** A candidate with `entry: false` is removed automatically when a decided node reaches it. Decide one individually only with a concrete outside caller (a reflective string, a descriptor line) that you have read.
 
 ## Step 4 — Write the decisions
@@ -106,15 +113,21 @@ Write every decision through one script, so the decisions are reproducible and a
 #!/usr/bin/env bash
 set -euo pipefail
 DATA="$1/.excavator"; CANDS="$DATA/unused-candidates.json"; DRAFT="$DATA/unused-decisions.draft.jsonl"
+TEST_CODE='(^|/)src/test/'  # from Step 3: matches the file of every candidate in test code, and of no other
 : > "$DRAFT"
-decide() {  # decide <entry|test-entry> <reason> <query>
-  line=$(jq -c --arg kind "$1" --arg reason "$2" --arg query "$3" \
-    "{kind: \$kind, reason: \$reason, query: \$query, ids: ([ $3 | .id ] | unique)}" "$CANDS")
+decide() {  # decide <entry|test-entry> <reason> <query>; the query may use test_code
+  line=$(jq -c --arg kind "$1" --arg reason "$2" --arg query "$3" --arg tc "$TEST_CODE" \
+    'def test_code: .file | test($tc); [ '"$3"' ] as $hit
+     | {kind: $kind, reason: $reason, query: ("def test_code: .file | test(\($tc | tojson)); " + $query),
+        ids: ([$hit[].id] | unique),
+        misplaced: ([$hit[] | select(if $kind == "entry" then test_code else (test_code | not) end) | .id] | unique | length)}' "$CANDS")
   hits=$(printf '%s' "$line" | jq '.ids | length')
   [ "$hits" -gt 0 ] || { echo "decide: no candidate matches: $3" >&2; exit 1; }
+  misplaced=$(printf '%s' "$line" | jq '.misplaced')
+  [ "$misplaced" -eq 0 ] || { echo "decide: $misplaced ids on the wrong side of TEST_CODE (an entry selects no test code, a test-entry only test code): $3" >&2; exit 1; }
   overlap=$(printf '%s\n' "$line" | jq --slurpfile done "$DRAFT" '([$done[].ids[]] | map({(.): true}) | add // {}) as $seen | [.ids[] | select($seen[.])] | length')
   [ "$overlap" -eq 0 ] || { echo "decide: $overlap ids already decided by an earlier decision: $3" >&2; exit 1; }
-  printf '%s\n' "$line" >> "$DRAFT"; echo "decide: $1 $hits"
+  printf '%s\n' "$line" | jq -c 'del(.misplaced)' >> "$DRAFT"; echo "decide: $1 $hits"
 }
 
 decide test-entry 'JUnit runs methods annotated @Test' \
@@ -130,6 +143,7 @@ Run it with `bash "$DATA/unused-decisions.sh" "$PROJECT_ROOT"`. Rules for this s
 - Write each query in single quotes, so the shell does not expand `$p`.
 - `reason` names the caller and the mechanism you established in Step 3, in one sentence.
 - When `decide` reports an overlap, narrow the later query so the two decisions select disjoint sets (for example add `and (any(.annotations[]?; . == "Test") | not)`). Each id belongs to one decision.
+- **Set `TEST_CODE` before the first decision, and split on it.** When `decide` reports ids on the wrong side of `TEST_CODE`, split that decision: the `entry` with `and (test_code | not)`, and the test part as a `test-entry` with `and test_code`. Widen `TEST_CODE` only for a directory or module you established as test code in Step 3, never to make a decision pass.
 
 ## Step 5 — Run the report
 

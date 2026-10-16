@@ -2,11 +2,14 @@
  * The excavator-unused-code skill is a prompt; its rules only hold if each one
  * sits in the step where the model makes that decision. A rule stated once at
  * the top is skipped under pressure, so these tests pin every rule to its step
- * and check the signal names the skill explains exist in the script.
+ * and check the signal names the skill explains exist in the script. A rule the
+ * decision script enforces is run: the script is taken from the skill as written.
  */
 import { describe, expect, it } from 'vitest';
-import { readFileSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
+import { spawnSync } from 'node:child_process';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -72,12 +75,27 @@ describe('excavator-unused-code skill: each rule in its step', () => {
     expect(s).toContain('**A handler the facts did not link is still an entry.**');
   });
 
-  it('step 4 makes ids the output of the query and refuses overlaps and empty decisions', () => {
+  it('step 3 establishes test code and top-level launches before deciding', () => {
+    const s = step.get(3);
+    expect(s).toContain('**Test code.** Write `TEST_CODE`, a regular expression that matches the `file` of every candidate in test code and of no other');
+    expect(s).toContain('read in the build files which modules depend on a test-support module');
+    expect(s).toContain('A mechanism that spans both is two decisions: the `entry` with `(test_code | not)`, the `test-entry` with `test_code`.');
+    expect(s).toContain('**Launches from top-level code.** A name query finds `main`, not a function a script calls from its top-level code.');
+    expect(s).toContain('select(.entry and $l[.language].calls > 0 and');
+    expect(s).toContain("Read each listed file's code outside its functions");
+    expect(s).toContain('A language whose `calls` is 0 is not listed');
+    expect(s.indexOf('**Launches from top-level code.**')).toBeLessThan(s.indexOf('4. Decide group by group.'));
+  });
+
+  it('step 4 makes ids the output of the query and refuses overlaps, empty and misplaced decisions', () => {
     const s = step.get(4);
     expect(s).toContain('**Never type, paste or edit an id.**');
-    expect(s).toContain('ids: ([ $3 | .id ] | unique)');
+    expect(s).toContain('ids: ([$hit[].id] | unique)');
     expect(s).toContain('decide: no candidate matches');
     expect(s).toContain('ids already decided by an earlier decision');
+    expect(s).toContain('ids on the wrong side of TEST_CODE');
+    expect(s).toContain('**Set `TEST_CODE` before the first decision, and split on it.**');
+    expect(s).toContain('never to make a decision pass');
     expect(s).toContain(`'{factsDigest: $digest, decisions: .}'`);
     expect(s).toContain('"$DATA/unused-decisions.json"');
   });
@@ -120,6 +138,61 @@ describe('excavator-unused-code skill: agrees with the script', () => {
     for (const file of ['unused-candidates.json', 'unused-decisions.json', 'unused-code.json']) {
       expect(script).toContain(`'${file}'`);
       expect(skill).toContain(file);
+    }
+  });
+});
+
+describe('excavator-unused-code skill: the step 4 script runs', () => {
+  // The script as the skill writes it, with the example decision replaced by the case's own.
+  const block = skill.split(/^## Step 4 — /m)[1].split(/^```bash\n/m)[1].split(/^```$/m)[0];
+  const head = block.split(/^decide test-entry 'JUnit/m)[0];
+  const tail = block.slice(block.indexOf('jq -s --arg digest'));
+  const candidates = {
+    factsDigest: 'digest-1',
+    candidates: [
+      { id: 'prod-equals', name: 'equals', file: 'app/src/main/java/A.java', entry: true, annotations: [] },
+      { id: 'fake-equals', name: 'equals', file: 'app/src/test/java/FakeA.java', entry: true, annotations: [] },
+      { id: 'a-test', name: 'checksA', file: 'app/src/test/java/ATest.java', entry: true, annotations: ['Test'] },
+    ],
+  };
+  const run = (decisions) => {
+    const root = mkdtempSync(join(tmpdir(), 'unused-decide-'));
+    mkdirSync(join(root, '.excavator'));
+    writeFileSync(join(root, '.excavator/unused-candidates.json'), JSON.stringify(candidates));
+    writeFileSync(join(root, 'decide.sh'), head + decisions.join('\n') + '\n' + tail);
+    const result = spawnSync('bash', [join(root, 'decide.sh'), root], { encoding: 'utf-8' });
+    const out = join(root, '.excavator/unused-decisions.json');
+    return { ...result, root, decisions: existsSync(out) ? JSON.parse(readFileSync(out, 'utf-8')) : null };
+  };
+  const equals = (extra) => `'.candidates[] | select(.entry and .name == "equals"${extra})'`;
+
+  it('refuses an entry that selects test code and a test-entry that selects anything else', () => {
+    for (const kind of ['entry', 'test-entry']) {
+      const result = run([`decide ${kind} 'equals overrides' ${equals('')}`]);
+      expect(result.status).not.toBe(0);
+      expect(result.stderr).toContain('decide: 1 ids on the wrong side of TEST_CODE');
+      expect(result.decisions).toBeNull();
+    }
+  });
+
+  it('accepts the split, and each recorded query selects exactly its ids', () => {
+    const result = run([
+      `decide test-entry 'JUnit runs methods annotated @Test' '.candidates[] | select(.entry and any(.annotations[]?; . == "Test"))'`,
+      `decide entry 'equals overrides, production' ${equals(' and (test_code | not)')}`,
+      `decide test-entry 'equals overrides, test code' ${equals(' and test_code')}`,
+    ]);
+    expect(result.stderr).toBe('');
+    expect(result.status).toBe(0);
+    expect(result.decisions.factsDigest).toBe('digest-1');
+    expect(result.decisions.decisions.map(({ kind, ids }) => [kind, ids])).toEqual([
+      ['test-entry', ['a-test']],
+      ['entry', ['prod-equals']],
+      ['test-entry', ['fake-equals']],
+    ]);
+    for (const decision of result.decisions.decisions) {
+      expect(Object.keys(decision).sort()).toEqual(['ids', 'kind', 'query', 'reason']);
+      const rerun = spawnSync('jq', ['-c', `[ ${decision.query} | .id ] | unique`, join(result.root, '.excavator/unused-candidates.json')], { encoding: 'utf-8' });
+      expect(JSON.parse(rerun.stdout)).toEqual(decision.ids);
     }
   });
 });
