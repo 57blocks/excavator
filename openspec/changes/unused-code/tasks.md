@@ -38,13 +38,13 @@
 
 ## 2. 确定性候选集（PR 2）
 
-- [ ] 2.1 新增 `skills/excavator/unused-code.mjs` 的纯函数部分与 `candidates` CLI（`node skills/excavator/unused-code.mjs candidates <projectRoot>`）。
+- [x] 2.1 新增 `skills/excavator/unused-code.mjs` 的纯函数部分与 `candidates` CLI（`node skills/excavator/unused-code.mjs candidates <projectRoot>`）。
   - 读 `.excavator/intermediate/fact-graph.jsonl`、`.excavator/intermediate/structure-all.jsonl` 与 `.excavator/source-manifest.json`。
   - 按 D3 求路由可达集、候选、强连通分量、簇入口，以及每个候选在候选之间的直接引用者。
   - 写 `.excavator/unused-candidates.json`：头部有 `factsDigest`、计数（函数节点总数、路由可达、候选、入口、簇，按语言）与守恒；每个候选带特征。
   - 守恒不等即非零退出、不写产物。
   - 验证：合成事实图单测覆盖规格「未使用代码的定义」「确定性候选集」的场景；双向覆写与守恒各有一个变红用例（O1）。
-- [ ] 2.2 候选特征。
+- [x] 2.2 候选特征。
   - 从结构结果按（文件、名字、行区间）对上函数节点，取可见性、修饰符、方法注解；所属类型的注解与父类型文本。
   - 用事实图的 `inherits` / `implements` 类型边判断父类型是否在索引里，沿祖先与后代传播。
   - 所属类型的入边 `references` / `injects` / `mentions` 来源，以及它在注解实参类字面量里的出现。
