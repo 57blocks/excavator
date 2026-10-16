@@ -182,6 +182,8 @@ jq -r '[.unused[] | select(.confidence == "medium") | "\(.file | split("/")[:-1]
 jq -r '[.unused[] | select(.confidence == "medium") | [.signals[].signal] | sort | join("+")] | group_by(.) | map([length, .[0]]) | sort_by(-.[0]) | .[:10][] | @tsv' "$DATA/unused-code.json"
 # low, by the signals that make a node low
 jq -r '[.unused[] | select(.confidence == "low") | .signals[].signal | select(IN("name-elsewhere", "owner-referenced", "owner-class-literal", "visible-with-outside-supertype", "capped"))] | group_by(.) | map([length, .[0]]) | sort_by(-.[0])[] | @tsv' "$DATA/unused-code.json"
+# the residual assumptions, to list as they stand
+jq -r '.residualAssumptions[]' "$DATA/unused-code.json"
 ```
 
 Report, in this order:
@@ -191,7 +193,7 @@ Report, in this order:
 4. `low`: counts by signal only, unless the user asks for the list.
 5. `test-only`: the count and the files with the most.
 6. Your decisions: kind, reason and hits of each.
-7. The residual assumptions, as the product states them.
+7. The residual assumptions, every one, as the product states them.
 
 Rules for this step:
 - **Never call a `medium` or `low` candidate unused.** Say "its name occurs nowhere else; needs confirmation" for `medium`, and "signs of use found" with the signal for `low`. Only `high` may be called unused, and even then deleting it is the user's decision.

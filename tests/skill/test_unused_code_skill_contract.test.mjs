@@ -123,6 +123,8 @@ describe('excavator-unused-code skill: each rule in its step', () => {
     expect(s).toContain('**`unreferenced` is about the facts.**');
     expect(s).toContain('Never turn it into "nothing calls it".');
     expect(s).toContain('**Explain a count only from the product.**');
+    expect(s).toContain(`jq -r '.residualAssumptions[]' "$DATA/unused-code.json"`);
+    expect(s).toContain('7. The residual assumptions, every one, as the product states them.');
   });
 
   it('claims for medium only what the name census checked', () => {
