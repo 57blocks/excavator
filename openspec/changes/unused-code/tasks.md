@@ -74,7 +74,7 @@
 
 ## 4. Skill 与查询（PR 3）
 
-- [ ] 4.1 新增 `skills/excavator-unused-code/SKILL.md`（英文）。
+- [x] 4.1 新增 `skills/excavator-unused-code/SKILL.md`（英文）。
   - 步骤：
     1. 确认事实新鲜，必要时运行 Lazy；
     2. 运行 `candidates`；

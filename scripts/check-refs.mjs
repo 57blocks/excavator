@@ -208,10 +208,11 @@ function checkSlashReferences() {
   let checked = 0;
   // Matches bare `/excavator[-suffix]` and Claude Code-prefixed
   // `/excavator:excavator[-suffix]`, word-bounded so it doesn't also match
-  // inside a longer path or URL segment. Excludes a match immediately
+  // inside a longer path or URL segment. The suffix may have several
+  // hyphenated words (`/excavator-unused-code`). Excludes a match immediately
   // followed by a file extension — that is a filename, not a skill invocation.
   const slashRe =
-    /(?:^|[^a-zA-Z0-9_/])\/excavator(?::excavator)?(-[a-z]+)?\b(?!\.[a-z])/g;
+    /(?:^|[^a-zA-Z0-9_/])\/excavator(?::excavator)?((?:-[a-z]+)*)\b(?!\.[a-z])/g;
   const files = [...corpusFiles, join(REPO_ROOT, 'README.md')].filter(existsSync);
 
   for (const file of files) {
@@ -257,6 +258,9 @@ function checkScriptPaths() {
     for (const m of text.matchAll(pathRe)) {
       const raw = m[0];
       const strippedPath = m[1];
+      // `$DATA/x.sh` names a file the skill creates at run time under a shell
+      // variable other than the plugin root; it is not a path in this repo.
+      if (raw === strippedPath && m.index > 0 && text[m.index - 1] === '$') continue;
       // A bare single-segment filename with no plugin-root/<SKILL_DIR>
       // prefix and no "/" (e.g. "manage.py", "wsgi.py") is virtually always
       // an illustrative example in prose (entry-point conventions, etc.),

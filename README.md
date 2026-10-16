@@ -132,6 +132,9 @@ For host-owned AI exploration through seven bounded local MCP tools, see [MCP se
 # Verify an As-Is document (e.g. a PRD) against the code; --fix corrects it in place
 /excavator-verify docs/PRD.md
 
+# Find the methods and functions nothing uses, each with a confidence (never edits code)
+/excavator-unused-code
+
 # Re-run anytime — incremental by default (only re-analyzes changed files)
 /excavator
 
