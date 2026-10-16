@@ -118,6 +118,11 @@ describe('excavator-unused-code skill: each rule in its step', () => {
     expect(s).toContain('Do not add items the product does not list.');
     expect(s).toContain('Say "its name occurs nowhere else; needs confirmation" for `medium`');
     expect(s).toContain('**A language whose `calls` is 0 has no call facts:**');
+    expect(s).toContain('3. `medium`, headed "its name occurs nowhere else; needs confirmation"');
+    expect(s).toContain('# medium, by the signals that keep it from high');
+    expect(s).toContain('**`unreferenced` is about the facts.**');
+    expect(s).toContain('Never turn it into "nothing calls it".');
+    expect(s).toContain('**Explain a count only from the product.**');
   });
 
   it('claims for medium only what the name census checked', () => {

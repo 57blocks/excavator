@@ -178,6 +178,8 @@ jq '.counts' "$DATA/unused-code.json"
 jq -r '[.unused[] | select(.confidence == "high")] | group_by(.group) | sort_by(-length) | .[:30][] | "group \(.[0].group): " + (map("\(.name) \(.file):\(.lineRange[0]) [\(.reason)]") | join("; "))' "$DATA/unused-code.json"
 # medium, by directory and owner
 jq -r '[.unused[] | select(.confidence == "medium") | "\(.file | split("/")[:-1] | join("/")) \(.owner // "-" | split(":") | last)"] | group_by(.) | map([length, .[0]]) | sort_by(-.[0]) | .[:30][] | @tsv' "$DATA/unused-code.json"
+# medium, by the signals that keep it from high
+jq -r '[.unused[] | select(.confidence == "medium") | [.signals[].signal] | sort | join("+")] | group_by(.) | map([length, .[0]]) | sort_by(-.[0]) | .[:10][] | @tsv' "$DATA/unused-code.json"
 # low, by the signals that make a node low
 jq -r '[.unused[] | select(.confidence == "low") | .signals[].signal | select(IN("name-elsewhere", "owner-referenced", "owner-class-literal", "visible-with-outside-supertype", "capped"))] | group_by(.) | map([length, .[0]]) | sort_by(-.[0])[] | @tsv' "$DATA/unused-code.json"
 ```
@@ -185,7 +187,7 @@ jq -r '[.unused[] | select(.confidence == "low") | .signals[].signal | select(IN
 Report, in this order:
 1. Counts: candidates, removed by decision, `test-only`, unused by confidence, groups; per language when one language has most of the candidates. **A language whose `calls` is 0 has no call facts:** every function in it is a candidate whatever calls it, so say its results show only that the facts hold no calls for it.
 2. `high`, by group: the group's entries first (removing them is what makes the members unused), each with `file:line`.
-3. `medium`, by directory and class, with the signals that put them there.
+3. `medium`, headed "its name occurs nowhere else; needs confirmation", by directory and class, with the signals that keep them from `high`.
 4. `low`: counts by signal only, unless the user asks for the list.
 5. `test-only`: the count and the files with the most.
 6. Your decisions: kind, reason and hits of each.
@@ -193,6 +195,8 @@ Report, in this order:
 
 Rules for this step:
 - **Never call a `medium` or `low` candidate unused.** Say "its name occurs nowhere else; needs confirmation" for `medium`, and "signs of use found" with the signal for `low`. Only `high` may be called unused, and even then deleting it is the user's decision.
+- **`unreferenced` is about the facts.** It means no reference in the facts, and calls the facts did not resolve have no edge (the residual assumptions). Never turn it into "nothing calls it".
+- **Explain a count only from the product.** Why there are few or no `high` items is in the signals tally of the `medium` ones; say that, and not a reason about the codebase you have not counted.
 - **Never edit, move or delete project files.** This skill reports; it does not clean up, refactor or open a change.
 - Every listed item carries `file:line` from the product. Do not add items the product does not list.
 - Point the user at `/excavator-chat` for questions about one method, file or group; it answers from the same product.
