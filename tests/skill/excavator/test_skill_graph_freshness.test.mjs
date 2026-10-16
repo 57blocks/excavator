@@ -19,6 +19,7 @@ const graphConsumerSkills = [
   "excavator-diff",
   "excavator-onboard",
   "excavator-domain",
+  "excavator-view",
 ];
 
 // Every skill must invoke the shared helper the same way, and document the

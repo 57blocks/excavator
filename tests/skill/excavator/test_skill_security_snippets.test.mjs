@@ -14,6 +14,7 @@ describe('skill command hardening', () => {
   it('quotes PROJECT_ROOT in shell command snippets', () => {
     const files = [
       'skills/excavator/SKILL.md',
+      'skills/excavator-view/SKILL.md',
       'hooks/auto-update-prompt.md',
     ];
 

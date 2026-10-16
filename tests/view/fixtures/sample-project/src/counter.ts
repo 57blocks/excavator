@@ -1,0 +1,11 @@
+export class Counter {
+  private count = 0;
+
+  increment(): void {
+    this.count += 1;
+  }
+
+  value(): number {
+    return this.count;
+  }
+}

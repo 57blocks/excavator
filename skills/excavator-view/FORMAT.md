@@ -1,0 +1,101 @@
+# excavator-view-bundle/1
+
+The data format embedded in a baked `view.html`. `bundle-codec.mjs` is the only implementation: the bake script encodes with it and decodes its own output before writing; the page template imports the same file and decodes with it in the browser.
+
+## Placement
+
+The payload is the text content of the page's single data element:
+
+```html
+<script type="text/plain" id="excavator-view-data">
+...payload lines...
+</script>
+```
+
+The unbaked template carries this element empty. A payload line contains only base64 characters, spaces, `@`, `,`, `.`, `_` and `-`, so it can never close the element.
+
+## Lines
+
+```
+excavator-view-bundle/1
+@<name> json <rawBytes> <storedBytes> <gzip|raw>
+<base64 payload>
+@<name> i32 <rawBytes> <storedBytes> <gzip|raw> <rows> <col>,<col>,...
+<base64 payload>
+...
+```
+
+- Line 1 is the format identifier. A decoder that does not know it fails with `BundleFormatError`; it never guesses.
+- Then one header line and one payload line per segment, in the order the encoder received them. Blank lines before the first line and after the last are ignored; a payload line may itself be empty (an empty raw segment).
+- `rawBytes` is the segment's byte length before compression, `storedBytes` after it (equal for `raw`). The decoder checks both.
+- `gzip`: the payload is gzip, then base64. `raw`: base64 of the raw bytes (the bake's `--raw`, for browsers without `DecompressionStream`; decoding compressed data without it fails with `BundleDecodeError`).
+- Segment names match `[a-z][a-zA-Z0-9.]*`; column names match `[a-z][a-zA-Z0-9]*`; a name appears once.
+
+## Segment kinds
+
+- `json`: UTF-8 JSON text.
+- `i32`: a table of Int32 columns, little-endian, column-major: all `rows` values of the first column, then the second, and so on, so `rawBytes = rows * columns * 4`.
+
+## Cells
+
+Every string-valued column holds a cell:
+
+| Cell | Meaning |
+|---|---|
+| `>= 0` | index into the `strings` segment |
+| `-1` | absent (the field was not present) |
+| `-2` | `null` |
+| `<= -3` | a non-string JSON value: index `-3 - cell` into the `values` segment |
+
+Integer columns (`line0`, `line1`, `line`, `endLine`, `totalLines`, `docLength`) hold the number, or `-1` when absent. An offset/count pair indexes a flat table; a count of `-1` means "not embedded" and is distinct from an empty list (`0`).
+
+## Segments written by the bake
+
+Always present:
+
+| Segment | Kind | Content |
+|---|---|---|
+| `meta` | json | `format`, `bakedAt`; `origin` (only for a dropped directory, see below); `graph` (the knowledge-graph header's `keys`, `fields`, `counts`); `counts` (records actually streamed, plus `evidence`); `inventory` (each artifact: `present` / `missing` with the command that generates it / `invalid` with the reason); `embeds` and `dropped` (source segments `evidenceText`, `excerpts` and, when a source index was read, `indexLiterals`, and why one was dropped: `no-source`, `budget`, or `drop-mode`); `freshness` (`factLayer` from the shared consumer-freshness helper, and summaries for the semantic cache, semantic graph and domain graph); `source` (manifest `sourceRevision`, `selectionDigest`, `pipelineVersion`, source-embedding statistics including files not embedded because their content no longer matches the manifest); `selection` (the manifest's selection funnel with only non-selected entries); `members` (multi-repo targets, by first path segment: `files`, the manifest entries, and `selected`, the selection funnel's selected entries, or `null` when the manifest records none; the two can differ and are not reconciled); `index` (source-index header values, and whether comment/string-literal text is `embedded`, `trimmed` by the budget, or `omitted` by `--no-source`); `unembedded` (per record kind, keys the columns do not carry, with counts); `anomalies` (values a column could not represent, with counts) |
+| `strings` | json | the global string table |
+| `values` | json | distinct non-string JSON values referenced by cells (for example edge weights) |
+| `nodes` | i32 | `id`, `type`, `name`, `path`, `line0`, `line1`, `owner`, `complexity`, `anchorSource`, `summary`, `tagOffset`, `tagCount`; in graph order |
+| `nodeTags` | i32 | `tag`; the flat tag list `tagOffset`/`tagCount` index |
+| `edges` | i32 | `src`, `dst` (node id cells), `type`, `direction`, `weight`, `provenance`, `evCount`, `evOffset`; in graph order |
+| `evidence` | i32 | `file`, `line`, `endLine`, `source`, `token`, `context`, `resolution`; contiguous per edge, `evOffset` is the first row |
+| `coverage` | json | the graph's coverage record, verbatim (`null` when the graph has none) |
+| `gaps` | json | the graph's gap records, verbatim, in order |
+| `files` | i32 | `path`, `totalLines`, `contentHash`; one row per manifest entry; `totalLines` is `-1` when `fingerprints.json` is missing or has no count for the file |
+
+Present only when their source exists:
+
+| Segment | Kind | Content |
+|---|---|---|
+| `graphLayers` | json | the graph's own `layer` records (Full graphs) |
+| `tour` | json | the graph's `tour` records, when not empty |
+| `index.chunks` | i32 | `node`, `language`, `docLength`, `idOffset`, `idCount`, `commentOffset`, `commentCount`, `stringOffset`, `stringCount`; one row per source-index chunk, in file order (the row is the source index's chunk ordinal). `idOffset`/`idCount` index `index.tokens`; `commentOffset`/`commentCount` and `stringOffset`/`stringCount` index rows of `indexLiterals`, and are all `-1` when the literals are not embedded |
+| `index.tokens` | i32 | `token`; the flat identifier-token list (global string cells) |
+| `semantic` | json | `version`, `contentLanguage`, `entries[]` of `{ nodeId, summary, tags, model, generatedAt, verification, freshness, inGraph }`, where `freshness` is the semantic cache's own verdict (`fresh` / `stale` / `missing` / `noncanonical-language`) against the manifest's per-file `contentHash` |
+| `layers` | json | from `semantic-graph.json`: `factDigest`, `headerFactsDigest`, `freshness` (`fresh` when it equals the graph header's `factsDigest`), `contentLanguage`, `layers`, `relations`, `gaps` |
+| `domain` | json | `freshness` and `reason` from the domain graph's own usability check against the manifest's `sourceRevision` and the header's `factsDigest`, and the domain `graph` verbatim |
+| `evidenceText.strings` | json | the distinct evidence-line texts |
+| `evidenceText` | i32 | `text`: per evidence row, an index into `evidenceText.strings`, or `-1` |
+| `excerpts.strings` | json | the distinct node source excerpts (the node's `lineRange`, lines joined by `\n`) |
+| `excerpts` | i32 | `text`: per node row, an index into `excerpts.strings`, or `-1` |
+| `indexLiterals.strings` | json | the distinct comment and string-literal texts of the source-index chunks |
+| `indexLiterals` | i32 | `text`: the flat literal list the chunk comment/string offset/count pairs index; an index into `indexLiterals.strings`, or `-1` |
+
+`evidenceText*`, `excerpts*` and `indexLiterals*` are the only segments that grow with source size, and the source budget (`--source-budget`) is checked against the UTF-8 bytes of their three string tables combined. They are absent under `--no-source`; over the budget the bake drops `excerpts*` first, then `indexLiterals*`, then `evidenceText*`, always whole, and records it in `meta.dropped`, `meta.embeds` and `meta.index.literals`. Source text comes only from files whose content matches the manifest.
+
+The source index's postings (term -> chunk lists) are not embedded. They are derivable: a chunk's terms are its identifier tokens plus, when `indexLiterals` is present, the subword split of its comment and string texts, and the page rebuilds the term index from them. Without `indexLiterals` the rebuilt index covers identifier tokens only.
+
+## Dropped directory
+
+The page can also open a local `.excavator/` directory (dropped, or chosen with a directory picker) instead of an embedded payload. Its data Worker reads the directory with the bake's own reading rules (`skills/excavator-view/shared/`, the same modules `build-view.mjs` uses, behind a file-access interface) and builds the same segments a decoded bundle holds, without encoding them. The differences are recorded in `meta`: `origin` is `{ mode: "drop", directory, loadedAt }` (`bakedAt` is the load time); `evidenceText*` and `excerpts*` are absent and listed in `embeds` and `dropped` with reason `drop-mode`, since the browser has no access to the project's source; `indexLiterals*` comes from the source index itself and is embedded; `freshness.factLayer.status` is `not-checked`, with its reason; `source.embedding` and `source.budgetBytes` are `null`. Nothing is uploaded.
+
+## Versioning
+
+Any change a version-1 decoder would misread (a new cell meaning, a column reinterpreted, a different layout) changes the identifier to `excavator-view-bundle/2`. Adding a segment or a column does not: decoders look segments and columns up by name.
+
+## Dev fixture
+
+`packages/view/fixtures/sample.bundle.txt` is the payload of a bake of the synthetic project in `tests/view/fixtures/sample-project`, for the page's development server. It holds no real project content.

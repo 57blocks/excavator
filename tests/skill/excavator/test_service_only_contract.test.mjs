@@ -1,11 +1,33 @@
 import { describe, expect, it } from 'vitest';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(here, '../../..');
 const read = (path) => readFileSync(join(repoRoot, path), 'utf-8');
+
+// Every text source file under a repo-relative directory (node_modules and
+// build output excluded), repo-relative paths.
+function sourceFiles(dir) {
+  const out = [];
+  const walk = (rel) => {
+    for (const entry of readdirSync(join(repoRoot, rel), { withFileTypes: true })) {
+      const child = `${rel}/${entry.name}`;
+      if (entry.isDirectory()) {
+        if (entry.name !== 'node_modules' && entry.name !== 'dist') walk(child);
+      } else if (/\.(?:[cm]?[jt]sx?|md|css|html|json)$/.test(entry.name)) {
+        out.push(child);
+      }
+    }
+  };
+  walk(dir);
+  return out;
+}
+
+// Server-start constructs the static view must never contain: it is one file
+// opened from file://, with nothing listening.
+const SERVER_START_TOKENS = ['listen(', 'createServer(', 'http.createServer', 'express('];
 
 describe('service-only distribution contract', () => {
   it('ships no HTML dashboard, viewer, dashboard skill, tour builder, or thumbnail helper', () => {
@@ -55,5 +77,26 @@ describe('service-only distribution contract', () => {
     const manifest = read('.claude-plugin/plugin.json');
     expect(buildConfig).not.toMatch(/packages\/(dashboard|viewer)/);
     expect(manifest).not.toMatch(/\bdashboard\b/i);
+  });
+
+  it('ships the static view with no server start code', () => {
+    const files = [...sourceFiles('packages/view/src'), ...sourceFiles('skills/excavator-view')];
+    expect(files.length).toBeGreaterThan(0);
+    expect(files).toContain('skills/excavator-view/SKILL.md');
+    for (const path of files) {
+      const text = read(path);
+      for (const token of SERVER_START_TOKENS) {
+        expect(text.includes(token), `${path} contains ${token}`).toBe(false);
+      }
+    }
+  });
+
+  it('keeps the view skill free of presentation flags, ports and local URLs', () => {
+    const skill = read('skills/excavator-view/SKILL.md');
+    expect(skill).not.toContain('--with-dashboard');
+    expect(skill).not.toMatch(/\bdashboard\b/i);
+    expect(skill).not.toMatch(/\bports?\b/i);
+    expect(skill).not.toContain('localhost:');
+    expect(skill).not.toMatch(/localhost|127\.0\.0\.1/i);
   });
 });
