@@ -16,7 +16,7 @@
 
 ## 4. 验收（本地真实语料）
 
-- [x] 4.1 wcp 改前改后 `factsDigest` 逐字节相同；cebreo 非 Java 节点与非 Java 边改前改后完全相同。
+- [x] 4.1 go-multirepo 改前改后 `factsDigest` 逐字节相同；mixed-suite 非 Java 节点与非 Java 边改前改后完全相同。
 - [x] 4.2 Fineract、hadoop 改后 Java 函数的 `identity-collision` 为 0（或逐条说明）；其它冲突数不增加。
 - [x] 4.3 函数节点数按被合并声明数增加（Fineract +171，hadoop +841）；消失的 `calls` / `exports` 边全部由重载解释并进入歧义缺口（见 design 验收 3 的修订说明）；源码索引的函数 `nodeId` 全部能在事实图中找到。
 - [x] 4.4 把 4.1–4.3 的数字写回本文件。
@@ -27,8 +27,8 @@
 
 | 语料 | factsDigest 改前 → 改后 | Java 身份冲突（处 / 声明） | 函数节点 | 其它 |
 |---|---|---|---|---|
-| wcp（无 Java） | `308bd8df06b3` → `308bd8df06b3`（逐字节相同） | 0 → 0 | 6,182 → 6,182 | — |
-| cebreo（含 8 个 Java 文件） | `2eacc97208d2` → `dc97cba1413d` | 1 → 0 | 6,288 → 6,289 | 非 Java 节点 12,867 个、非 Java 边 21,516 条改前改后完全相同 |
+| go-multirepo（无 Java） | `308bd8df06b3` → `308bd8df06b3`（逐字节相同） | 0 → 0 | 6,182 → 6,182 | — |
+| mixed-suite（含 8 个 Java 文件） | `2eacc97208d2` → `dc97cba1413d` | 1 → 0 | 6,288 → 6,289 | 非 Java 节点 12,867 个、非 Java 边 21,516 条改前改后完全相同 |
 | Fineract 测试副本 | `7a30d276d3d8` → `7979657ae7c5` | 122 / 293 → 0 | 35,837 → 36,008（+171） | Gherkin 步骤冲突 7,088 不变（范围外） |
 | hadoop | `88c3219d31de` → `0cef418fc6fa` | 533 / 1,374 → 0 | 119,346 → 120,187（+841） | 剩余 64 处为 C/C++ 冲突（范围外，改前 64 处） |
 

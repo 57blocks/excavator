@@ -31,5 +31,5 @@
 - 目标分支：`feat/lazy-mode`（经 `lazy/slice-b` PR 合入；最终 feat → main）。
 - 受影响：新增 `skills/excavator/source-snapshot.mjs`（契约 + 三 adapter + manifest）与 `sync-fact-graph.mjs`（增量入口）；改 `lazy-analyze.mjs` 经 SourceSnapshot 取源并写 `source-manifest.json`；复用 `prepare-incremental.mjs`、`scan-project.mjs`、`extract-import-map.mjs`、`build-fact-graph.mjs`、`node-identity.mjs`；`@excavator/core` 的 `resolveDataDir`/`saveGraph`/`loadGraph`/`saveMeta`/ignore-filter。
 - 数据产物：新增 `source-manifest.json`；`knowledge-graph.json`/`meta.json`/`fingerprints.json` 的写入改由增量或全量路径统一驱动。
-- 测试：合成夹具覆盖三 adapter 的首建与增量（git 提交增删改重命名、非 git 目录增删改、多仓成员变化）、一致性 guard 的重试/失败、跨 adapter factsDigest 一致（§12.2 / §12.4.1）；真实语料 opt-in 用 wcp（多仓）与其单仓成员（如 wcp-auth）验证，产物不提交。
+- 测试：合成夹具覆盖三 adapter 的首建与增量（git 提交增删改重命名、非 git 目录增删改、多仓成员变化）、一致性 guard 的重试/失败、跨 adapter factsDigest 一致（§12.2 / §12.4.1）；真实语料 opt-in 用 go-multirepo（多仓）与其单仓成员（如 go-multirepo-auth）验证，产物不提交。
 - 契约地基：SourceSnapshot 的 revision 与 selectionDigest 是切片 C（语义新鲜度）与切片 D（Full 复用事实构建）的前置依赖。

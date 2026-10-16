@@ -1,6 +1,6 @@
 ## Why
 
-移动端（`unmc`，.NET MAUI，`net8.0-android;net8.0-ios`）需要出一份与前端同规格的 SW Architecture 文档，但当前确定性抽取对 MAUI 的承重层是盲的。对 `unmc` 实跑 structure-all 的实测：C# 962 文件被完整抽取（类/方法/属性/行号 + 调用图），但
+移动端（`maui-app`，.NET MAUI，`net8.0-android;net8.0-ios`）需要出一份与前端同规格的 SW Architecture 文档，但当前确定性抽取对 MAUI 的承重层是盲的。对 `maui-app` 实跑 structure-all 的实测：C# 962 文件被完整抽取（类/方法/属性/行号 + 调用图），但
 
 - `.xaml`（128）—— MAUI 的 View / 导航 / `{Binding}` / `Command` 全在这里 —— 状态 `no-extractor`；
 - `.csproj`（5，含 48 个 `PackageReference`）—— SOUP / 依赖 —— 状态 `no-extractor`；
@@ -16,7 +16,7 @@
 - 新增 `.csproj` 语言配置 + **csproj parser**：`<PackageReference Include Version>` → 依赖 `definitions`（`kind:"dependency"`，name/version 入 `fields`，带行号）；`<TargetFramework(s)>` / `UseMaui` 等作 `definitions`。SOUP 表由此确定性生成。
 - 新增 `.feature` 语言配置 + **Gherkin parser**：`Feature` → `sections`，`Scenario`/`Scenario Outline` → `sections`，`Given/When/Then/And/But` → `steps`，带行号。24 个行为规格成为「UI 描述 / 流程」章节的可引用事实。
 - 新增 `packages/core/src/languages/frameworks/maui.ts`（`FrameworkConfig`：从 `.csproj` 的 `UseMaui` / `Microsoft.Maui.Controls` / `Prism.Maui` 检测；`layerHints` `Views→ui` / `ViewModels→service` / `Services→service` / `Models→data`；`entryPoints` `MauiProgram.cs` / `App.xaml.cs`）。可选 `skills/excavator/frameworks/maui.md` 约定附录（仅 guidance，产 `inferred`、不产行号）。
-- 扫描去污（**项目级 ignore，不动全局默认**）：`obj/`/`coverage/` 已在全局默认、二进制扩展已落可见 skip 桶；`bin/` 不进全局（别的语料里是真源码）。真实噪声 `.unit-test/` 覆盖报告（`unmc` 实测 502 个 html）属项目 `.excavatorignore`（layer 2）。为 MAUI 项目给出 `.excavatorignore` 配方并以「含/不含」对照证伪（只删噪声不删源码）。
+- 扫描去污（**项目级 ignore，不动全局默认**）：`obj/`/`coverage/` 已在全局默认、二进制扩展已落可见 skip 桶；`bin/` 不进全局（别的语料里是真源码）。真实噪声 `.unit-test/` 覆盖报告（`maui-app` 实测 502 个 html）属项目 `.excavatorignore`（layer 2）。为 MAUI 项目给出 `.excavatorignore` 配方并以「含/不含」对照证伪（只删噪声不删源码）。
 
 **非目标（本切片不做）**：ast-grep 规则包（本变更用手写 parser，不引入 `@ast-grep/napi`）；绑定 → 成员的完整跨文件解析（只做 `x:DataType` 可唯一解析一档，其余入 gap）；Angular / aspnet 规则；C# 抽取器 `owner`/`using` 归属打磨（单列 follow-up，不阻塞）；模型语义叙述质量（属 full 模式模型半场）。
 
@@ -39,7 +39,7 @@
 - 新增文件：`packages/core/src/languages/configs/{xaml,csproj,feature}.ts`、`packages/core/src/plugins/parsers/{xaml-parser,csproj-parser,feature-parser}.ts`（各含 `__tests__`）、`packages/core/src/languages/frameworks/maui.ts`（+ 可选 `skills/excavator/frameworks/maui.md`）。
 - 改动文件：`packages/core/src/plugins/parsers/index.ts`（注册三个 parser）、语言注册入口（`languages/configs/index.ts` 或 language-registry 的扩展→id 映射）、`languages/frameworks/index.ts`、`framework-registry.ts`（`*.ext` glob manifest 匹配）。扫描去污走项目 `.excavatorignore`，不改全局默认 ignore 表。
 - 数据产物：`.xaml`/`.csproj`/`.feature` 由 `no-extractor` → parsed，结构落 `definitions`/`sections`/`steps`/`references`；coverage 分母去污后诚实。
-- 语料：`unmc`（真实，opt-in，源码 / 产物不提交）+ purpose-built 合成 MAUI 夹具。
+- 语料：`maui-app`（真实，opt-in，源码 / 产物不提交）+ purpose-built 合成 MAUI 夹具。
 - 运行时依赖：无新增（parser 全手写）。
 - roadmap：随本变更删除 `docs/v2-plan.md` 并清理三处悬挂引用（AGENTS.md / CLAUDE.md / frameworks README）。
 - 后续（不在本切片）：绑定 → 成员完整解析、C# `owner`/`using` 打磨、Angular 规则、maui.md 约定扩充。

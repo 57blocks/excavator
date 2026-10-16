@@ -1,8 +1,8 @@
 ## Context
 
-See `proposal.md` — Why. Selection is currently split between `createIgnoreFilter`, three SourceSnapshot adapters, and `scan-project.mjs`. DirectorySnapshot hashes selected bytes before scan, GitCommitSnapshot archives the whole tree and prunes afterward, and direct scan repeats its own filtering and language tables. The starter generator writes `.excavator/.excavatorignore` while GitCommitSnapshot reads only root `.excavatorignore`; identical rules can therefore produce different snapshots. The current Dockerfile special case accepts `Dockerfile` and `Dockerfile.*`, but not the hyphenated variants present in cebreo.
+See `proposal.md` — Why. Selection is currently split between `createIgnoreFilter`, three SourceSnapshot adapters, and `scan-project.mjs`. DirectorySnapshot hashes selected bytes before scan, GitCommitSnapshot archives the whole tree and prunes afterward, and direct scan repeats its own filtering and language tables. The starter generator writes `.excavator/.excavatorignore` while GitCommitSnapshot reads only root `.excavatorignore`; identical rules can therefore produce different snapshots. The current Dockerfile special case accepts `Dockerfile` and `Dockerfile.*`, but not the hyphenated variants present in mixed-suite.
 
-The archived MAUI change already proved that globally ignoring `bin/` is unsafe (`bin/rails` is source) and that cebreo's `.unit-test/` name is project-specific. SourceSnapshot and revision-sync are already on `main`; this change must strengthen their selection boundary rather than add a parallel scanner-only fix.
+The archived MAUI change already proved that globally ignoring `bin/` is unsafe (`bin/rails` is source) and that mixed-suite's `.unit-test/` name is project-specific. SourceSnapshot and revision-sync are already on `main`; this change must strengthen their selection boundary rather than add a parallel scanner-only fix.
 
 ## Goals / Non-Goals
 
@@ -18,9 +18,9 @@ The archived MAUI change already proved that globally ignoring `bin/` is unsafe 
 
 - Framework discovery across nested manifests; the next change will extend the existing `FrameworkConfig`/`FrameworkRegistry` path used by Express.
 - C# owner/import or XAML binding resolution, and HTML/XML/Gradle readers.
-- Automatic acceptance of guessed cebreo ignore rules. The host skill proposes and reviews the project recipe; the user-owned root file remains authoritative.
-- A MAUI/cebreo ignore registry, generated-directory classifier, dedicated ignore validator, or other code whose result the host agent can derive from existing scan evidence.
-- Scanning `unmc.zip`; archive exclusion is an invariant, not a fixture dependency.
+- Automatic acceptance of guessed mixed-suite ignore rules. The host skill proposes and reviews the project recipe; the user-owned root file remains authoritative.
+- A MAUI/mixed-suite ignore registry, generated-directory classifier, dedicated ignore validator, or other code whose result the host agent can derive from existing scan evidence.
+- Scanning `maui-app.zip`; archive exclusion is an invariant, not a fixture dependency.
 
 ## Decisions
 
@@ -33,9 +33,9 @@ Before adding code, the coder must show that at least one of these is true:
 3. the result participates in identity, freshness, persistence, or coverage conservation; or
 4. the workload cannot be completed reliably by the host agent within acceptable context, latency, or cost.
 
-If none applies, the behavior belongs in the Excavator skill/prompt. Under this test, sensitive-file containment, SourceSnapshot path selection, selection digests/ledgers, and canonical language matching require code. Discovering cebreo's generated directories, proposing a root ignore file, comparing two scan manifests, and explaining why dropped files are safe belong in the host skill.
+If none applies, the behavior belongs in the Excavator skill/prompt. Under this test, sensitive-file containment, SourceSnapshot path selection, selection digests/ledgers, and canonical language matching require code. Discovering mixed-suite's generated directories, proposing a root ignore file, comparing two scan manifests, and explaining why dropped files are safe belong in the host skill.
 
-Alternative considered: encode every observed cebreo convention as a config or validator. Rejected because the host agent already has filesystem inspection, existing deterministic scanner output, and project context; permanent code would harden one corpus's naming into product policy.
+Alternative considered: encode every observed mixed-suite convention as a config or validator. Rejected because the host agent already has filesystem inspection, existing deterministic scanner output, and project context; permanent code would harden one corpus's naming into product policy.
 
 ### D1. Introduce one pure selection policy and make adapters authoritative
 
@@ -65,7 +65,7 @@ Alternative considered: archive then delete. Rejected because the protected byte
 
 The Excavator skill will inspect the project and write `<project>/.excavatorignore` directly through the host's normal file-editing capability. `createIgnoreFilter`, all SourceSnapshot adapters, incremental preparation, and direct scan will read only that file. The file inside `.excavator/` is no longer consulted. Git snapshots continue to read the root file from the fixed commit, while directory snapshots read it from disk.
 
-Do not add generator logic for MAUI/cebreo or a new validator. Remove the skill's dependency on the current data-directory generator; if its content generator has no remaining production consumer, delete the dead helper/export/tests instead of preserving compatibility. Before branching into Lazy or Full, the skill runs a shared lightweight preflight when the root file is absent or the obsolete data-directory file exists. It explains the one-time move, reviews proposed rules, runs the existing scanner twice, and writes the root file only after the no-source-loss comparison. Approved rules are also passed as current-run CLI exclusions so an uncommitted root file cannot be mistaken for the committed rule source of a Git snapshot.
+Do not add generator logic for MAUI/mixed-suite or a new validator. Remove the skill's dependency on the current data-directory generator; if its content generator has no remaining production consumer, delete the dead helper/export/tests instead of preserving compatibility. Before branching into Lazy or Full, the skill runs a shared lightweight preflight when the root file is absent or the obsolete data-directory file exists. It explains the one-time move, reviews proposed rules, runs the existing scanner twice, and writes the root file only after the no-source-loss comparison. Approved rules are also passed as current-run CLI exclusions so an uncommitted root file cannot be mistaken for the committed rule source of a Git snapshot.
 
 The preflight uses host-native temporary-directory and cleanup operations rather than assuming POSIX `mktemp`/`rm`; `.excavatorignore` patterns and scanner paths remain normalized to `/` on every operating system. A comment-only root file may record a completed first review when no project-specific rule is justified, avoiding a repeated preflight on every Lazy run.
 
@@ -81,7 +81,7 @@ Do not globalize `bin/`, `.unit-test/`, `TestResults/`, `.scratch/`, package dir
 
 ### D5. TypeScript and Dockerfile matching moves to the declarative catalog
 
-Extend `LanguageConfig` with optional basename patterns and give `LanguageRegistry` a single deterministic matcher with precedence: exact filename, basename pattern, then extension. The Dockerfile config declares `Dockerfile.*` and `Dockerfile-*`; TypeScript keeps its existing `.ts`/`.tsx` config. `scan-project.mjs` uses this matcher as the authority for TypeScript and Dockerfile and removes its duplicate rules for those two languages; it does not add a cebreo or hyphen-specific branch. Category assignment treats canonical `dockerfile` language as `infra`.
+Extend `LanguageConfig` with optional basename patterns and give `LanguageRegistry` a single deterministic matcher with precedence: exact filename, basename pattern, then extension. The Dockerfile config declares `Dockerfile.*` and `Dockerfile-*`; TypeScript keeps its existing `.ts`/`.tsx` config. `scan-project.mjs` uses this matcher as the authority for TypeScript and Dockerfile and removes its duplicate rules for those two languages; it does not add a mixed-suite or hyphen-specific branch. Category assignment treats canonical `dockerfile` language as `infra`.
 
 Live-main inspection found pre-existing registry/scanner disagreements for `jsonc`, env/dot-env, `svg`, `mk`, OpenAPI filenames, docker-compose filenames, `rst`, and `txt`/`text`. Migrating all registered languages now would silently change eight established scanner contracts, contradicting this change's zero-unapproved-drift oracle. Those classifications therefore remain on the existing scanner compatibility path and are recorded as explicit migration debt for a dedicated catalog-unification change. This is a scoped exception, not permission to add new duplicate rules.
 
@@ -94,16 +94,16 @@ Alternative considered: add `base.startsWith('Dockerfile-')` beside the existing
 The first implementation commit contains failing synthetic acceptance fixtures only:
 
 1. A fake private key with a unique canary plus a same-sized non-secret control proves the detector sees the prohibited case without rejecting all text.
-2. A fixture with `bin/rails` proves global defaults keep real source; project-specific MAUI/cebreo recipe review remains a skill acceptance exercise over two ordinary scan manifests, not a new product validator.
+2. A fixture with `bin/rails` proves global defaults keep real source; project-specific MAUI/mixed-suite recipe review remains a skill acceptance exercise over two ordinary scan manifests, not a new product validator.
 3. Git, directory, and multi-repo copies of identical content prove selected paths and digests agree; a deliberate adapter-bypass control must make the test fail.
 4. TypeScript files and Dockerfile dot/hyphen variants prove registry parity; `MyDockerfile-prod` is the negative identity fixture.
-5. A present/absent `unmc.zip` pair proves archives cannot affect selected paths or facts.
+5. A present/absent `maui-app.zip` pair proves archives cannot affect selected paths or facts.
 
 No implementation task may weaken these assertions. The acceptor reviews the frozen oracle and final diff independently from the coder, and rejects any product module that fails D0 even when its tests pass.
 
-### D7. Later cebreo changes repeat the same scope gate
+### D7. Later mixed-suite changes repeat the same scope gate
 
-Nested manifest enumeration and framework identity require deterministic code only where multiple consumers need the same result; framework interpretation remains prompt guidance using the existing `FrameworkConfig`/`FrameworkRegistry` pattern exemplified by Express. C#/XAML facts enter code only for stable identities, owners, imports, bindings, and evidence anchors. The proposed non-code-reader change begins with a skill-only experiment: if existing read/search plus prompting answers the target questions with evidence at acceptable cost, that code change is skipped. Final real-corpus acceptance is a skill workflow over deterministic outputs, not a cebreo-specific runtime feature.
+Nested manifest enumeration and framework identity require deterministic code only where multiple consumers need the same result; framework interpretation remains prompt guidance using the existing `FrameworkConfig`/`FrameworkRegistry` pattern exemplified by Express. C#/XAML facts enter code only for stable identities, owners, imports, bindings, and evidence anchors. The proposed non-code-reader change begins with a skill-only experiment: if existing read/search plus prompting answers the target questions with evidence at acceptable cost, that code change is skipped. Final real-corpus acceptance is a skill workflow over deterministic outputs, not a mixed-suite-specific runtime feature.
 
 ## Risks / Trade-offs
 
@@ -121,6 +121,6 @@ Nested manifest enumeration and framework identity require deterministic code on
 3. Move snapshot adapters and direct scan to the shared policy; remove whole-tree Git materialization.
 4. Switch ignore consumption to root `.excavatorignore`, remove the data-directory reader, and move project-rule discovery/writing/comparison into the skill; delete the old generator path if it has no remaining consumer.
 5. Move the lightweight ignore preflight before the Lazy/Full branch and add conservative cross-platform defaults without globalizing `bin/` or project-specific directories.
-6. Use the skill to review the cebreo/MAUI recipe from two existing scans; real cebreo end-to-end metrics remain the final ordered acceptance change.
+6. Use the skill to review the mixed-suite/MAUI recipe from two existing scans; real mixed-suite end-to-end metrics remain the final ordered acceptance change.
 
 Rollback is by logical commit in reverse order. A rollback must restore the prior tests and contract together; it MUST NOT keep a test that claims sensitive containment while restoring whole-tree materialization.

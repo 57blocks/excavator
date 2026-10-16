@@ -46,7 +46,7 @@
 
 - [x] 7.1 `scripts/lib/large-repo-benchmark.mjs` `structureCoverage` 分母 = parsed + zeroSymbol + skipped；验证既有 benchmark 测试更新后绿
 - [x] 7.2 `docs/v2-plan.md` §3 按补充层架构重写（UA 原样、插件口 + 后阶段口、存分支清单）；验证三件套绿
-- [x] 7.3 ②a 冒烟（不提交）：wcp 与 cebreo 两目标各两次 structure-all + annotate + validate；对 wcp 现有 UA 图跑 validateGraph 与 annotate 0 删；数字贴 PR（a2–a5、a7）
+- [x] 7.3 ②a 冒烟（不提交）：go-multirepo 与 mixed-suite 两目标各两次 structure-all + annotate + validate；对 go-multirepo 现有 UA 图跑 validateGraph 与 annotate 0 删；数字贴 PR（a2–a5、a7）
 
 ## 8. 提示词加节（②b commit 8，只加不改）
 
@@ -63,7 +63,7 @@
 ## 10. 新鲜度（②b commit 10）
 
 - [x] 10.1 annotate 从 fingerprints 算 cosmetic dirty 文件 → `meta.json.excavator.dirtyFiles` 与节点 `verification:'dirty'`；UA 的 commit 标记逻辑不动；验证测试：改 `if` 阈值 → dirty 可见，UA 标记行为与之前一致
-- [x] 10.2 `prepare-incremental.mjs` 新增 git 不可用回退（contentHash 变更集），git 可用时行为不变；验证非 git 夹具改一文件 → 变更集恰为该文件；wcp 父目录实跑不 fatal
+- [x] 10.2 `prepare-incremental.mjs` 新增 git 不可用回退（contentHash 变更集），git 可用时行为不变；验证非 git 夹具改一文件 → 变更集恰为该文件；go-multirepo 父目录实跑不 fatal
 - [x] 10.3 非 git 目标 `project.gitCommitHash=null`、`sourceDigest` 存在；验证测试
 
 ## 11. 领域步骤（②b commit 11）
@@ -97,5 +97,5 @@
 
 ## 13. ②b 真实验收（不提交产物；结果贴 PR）
 
-- [ ] 13.1 wcp 在 v2 上全量一次（design「②b 执行注」的 headless 配方；旧 `.excavator/` 先移作 `.excavator-ua-baseline/`）：b1 自报证据核对比例、b6 墙钟与 `total_cost_usd`、与 UA 基线的节点/边/gaps 计数对比
+- [ ] 13.1 go-multirepo 在 v2 上全量一次（design「②b 执行注」的 headless 配方；旧 `.excavator/` 先移作 `.excavator-ua-baseline/`）：b1 自报证据核对比例、b6 墙钟与 `total_cost_usd`、与 UA 基线的节点/边/gaps 计数对比
 - [ ] 13.2 Opus 分层审计（b2）、注入测试（b3）、负向探针「撤销申请」（b4）、新鲜度实操（b5）

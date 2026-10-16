@@ -43,7 +43,7 @@
   - `skills/excavator/mcp-server.mjs`、`skills/excavator/project-service.mjs`、`deploy/mcp-smoke.mjs`；
   - 新增 `skills/excavator-dead-code/SKILL.md`。
 - 产物：Java 项目的事实图变大（方法引用调用点、`overrides` 边、继承实现的 `implements` 边、`override-uncertain` 缺口），Java 夹具的固定摘要整块重冻；新增 `.excavator/dead-code.jsonl`；非 Java 项目的事实图不变。
-- 验收全部 build-free：不编译目标项目、不安装 JDK / Gradle / Go 等工具链、不下载依赖。精度 oracle 为独立代理审读、真实语料绊线、夹具项目全链路变异、夹具变异测试与独立 `git grep -nw` 交叉核对（见 design「验收」）。`dead` 的验收在 Fineract 与 hadoop（规模）上做；wcp 与 cebreo 验的是「未覆盖语言全部 `undetermined` 且守恒」以及 uneeg-managementportal 里 Kotlin 调用 Java 的跨语言否决。
+- 验收全部 build-free：不编译目标项目、不安装 JDK / Gradle / Go 等工具链、不下载依赖。精度 oracle 为独立代理审读、真实语料绊线、夹具项目全链路变异、夹具变异测试与独立 `git grep -nw` 交叉核对（见 design「验收」）。`dead` 的验收在 Fineract 与 hadoop（规模）上做；go-multirepo 与 mixed-suite 验的是「未覆盖语言全部 `undetermined` 且守恒」以及 kotlin-portal 里 Kotlin 调用 Java 的跨语言否决。
 - 不在范围内：
   - 构造器的 `dead`：反射实例化（DI、JPA、序列化、`ServiceLoader`、`Class.forName`、XML）没有类级引用索引可依，构造器一律不判 dead；
   - 类 / 文件 / 模块级的 dead 汇总（需要类型引用索引，不只是方法引用）；字段；

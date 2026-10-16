@@ -274,7 +274,7 @@
 | OSCAR | `0c61438fad7075bb8e17943e41f16caf85c7f52c` | 高成边率语料，`ref local`，无命名空间的 DTD 文件 |
 | OpenMRS core | `142b13f4daa67fb2fd4cbb08e599d1d720ce062b` | 工厂方法消费者，测试上下文，注解声明的目标 |
 | Dataverse、Seam 2.2 examples、Cargo Tracker、TomEE 8.x examples | 同第 2 步验收 | 第 2 步 EL 回归 |
-| wcp、cebreo、hadoop（`2014707f8c31a620bffb4256d7f67245de5b94a3`）、fineract（`f9c2fcdc1c02bdad3b3387f1385391d9ececaea7`） | 固定检出 | 不回归 |
+| go-multirepo、mixed-suite、hadoop（`2014707f8c31a620bffb4256d7f67245de5b94a3`）、fineract（`f9c2fcdc1c02bdad3b3387f1385391d9ececaea7`） | 固定检出 | 不回归 |
 | Sakai `master`（`10a1d904d379df3cb2371ee0e405a4c2d1060588`）、hadoop | 同上 | 耗时 |
 
 - **O1 夹具与绊线**（coder 写，acceptor 审）：
@@ -298,7 +298,7 @@
 - **O3 桶与普查对账**（acceptor 独立脚本）：
   - 每个语料的十四个桶与独立重算逐桶一致；
   - 按注入点 id 的计数与普查未读计数，与独立的 XML 统计一致（同样遮蔽注释）。
-- **O4 不回归**：wcp、cebreo、hadoop、fineract 各自与同一检出、`lazy-fact-graph/7` 的基线对比：
+- **O4 不回归**：go-multirepo、mixed-suite、hadoop、fineract 各自与同一检出、`lazy-fact-graph/7` 的基线对比：
   - 节点集合、非 `injects` 边集合、既有缺口完全一致；
   - 覆盖只多 `injections` 一段，以及 `nameReferences` 的 `bindings` 与 `missingNames` 各一个 `spring-xml-alias` 键；
   - 新增的 `injects` 边与缺口逐语料列出计数，每一个都说明来源。

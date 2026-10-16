@@ -11,7 +11,7 @@ const parser = new XamlParser();
 // 2  <ContentPage ...                (root element)
 // 3    xmlns:x=...
 // 4    xmlns:vm=...
-// 5    x:Class="UNMC.Views.ParticipantsPage"
+// 5    x:Class="SampleApp.Views.ParticipantsPage"
 // 6    x:DataType="vm:ParticipantsViewModel">
 // 7    <StackLayout>
 // 8      <Label x:Name="TitleLabel" Text="{Binding Title}" />
@@ -24,8 +24,8 @@ const parser = new XamlParser();
 const SAMPLE = `<?xml version="1.0" encoding="utf-8" ?>
 <ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
-             xmlns:vm="clr-namespace:UNMC.ViewModels"
-             x:Class="UNMC.Views.ParticipantsPage"
+             xmlns:vm="clr-namespace:SampleApp.ViewModels"
+             x:Class="SampleApp.Views.ParticipantsPage"
              x:DataType="vm:ParticipantsViewModel">
   <StackLayout>
     <Label x:Name="TitleLabel" Text="{Binding Title}" />
@@ -39,7 +39,7 @@ const SAMPLE = `<?xml version="1.0" encoding="utf-8" ?>
 
 const SAMPLE_NO_DT = `<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
-             x:Class="UNMC.Views.HomePage">
+             x:Class="SampleApp.Views.HomePage">
   <Label Text="{Binding Greeting}" />
 </ContentPage>
 `;
@@ -81,7 +81,7 @@ describe("XamlParser", () => {
   it("captures x:Class as an anchored code-behind definition", () => {
     const cb = defsOf(parser.analyzeFile("x.xaml", SAMPLE), "code-behind");
     expect(cb).toHaveLength(1);
-    expect(cb[0]).toMatchObject({ name: "UNMC.Views.ParticipantsPage", lineRange: [5, 5] });
+    expect(cb[0]).toMatchObject({ name: "SampleApp.Views.ParticipantsPage", lineRange: [5, 5] });
   });
 
   it("captures x:DataType and x:Name definitions with anchors", () => {

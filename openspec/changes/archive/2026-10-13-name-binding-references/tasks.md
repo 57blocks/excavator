@@ -116,7 +116,7 @@
 
 ## 验收摘要
 
-最终验收在 `a80eb6f3` 上完成。EL 语料 5 个：Dataverse、Sakai 12.7、Seam 2.2 examples、Cargo Tracker、TomEE 8.x examples。回归语料 6 个：wcp 的两个仓库、cebreo 的两个项目、hadoop、fineract。耗时语料为 Sakai `master` 与 hadoop。acceptor 的分桶引擎、审计与对账脚本独立于被测代码实现，每个仪器先用埋入的已知差异证明能报出差异。每轮的预期数都在产品运行前登记。报告存在仓库外。
+最终验收在 `a80eb6f3` 上完成。EL 语料 5 个：Dataverse、Sakai 12.7、Seam 2.2 examples、Cargo Tracker、TomEE 8.x examples。回归语料 6 个：go-multirepo 的两个仓库、mixed-suite 的两个项目、hadoop、fineract。耗时语料为 Sakai `master` 与 hadoop。acceptor 的分桶引擎、审计与对账脚本独立于被测代码实现，每个仪器先用埋入的已知差异证明能报出差异。每轮的预期数都在产品运行前登记。报告存在仓库外。
 
 | oracle | 结论 | 计数 |
 |---|---|---|

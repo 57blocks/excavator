@@ -67,7 +67,7 @@
  *     as `buildPostings`'s own null-prototype map — a real source token like
  *     `constructor`/`toString` must not resolve to an inherited
  *     `Object.prototype` member (see build-source-index.mjs's own comment on
- *     this; caught on the wcp TS/Vue corpus).
+ *     this; caught on the go-multirepo TS/Vue corpus).
  *   - `chunks` are the original chunk objects, verbatim, in their original
  *     (sorted-by-id) order.
  * `retrieve.mjs`'s `bm25Search` is therefore usable, unmodified, against a

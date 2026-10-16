@@ -563,7 +563,7 @@ check_isolation_control() {
 
 # 11. lazy + MCP (O6's local half): a lazy run followed by mcp-smoke.mjs
 # calling all seven tools over stdio, on a disposable synthetic repo. The
-# wcp-auth comparison this task's spec also asks for is a separate, manual,
+# go-multirepo-auth comparison this task's spec also asks for is a separate, manual,
 # real-corpus check outside this self-test (never run against real
 # workspace data from inside the image's own checks).
 check_mcp_smoke() {

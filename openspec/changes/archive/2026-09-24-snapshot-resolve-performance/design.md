@@ -85,7 +85,7 @@
 
 - **O1 身份一致：**
   - 在夹具上，新旧实现的 revision、selectionDigest、选择台账、处理跳过记录、`entries()` 完全相同；
-  - 在 conduit、wcp、cebreo 的副本上，`main` 与本分支 lazy 首跑的 `factsDigest`、`source-manifest.json` 的 `selection` 与 `entries` 完全相同；
+  - 在 conduit、go-multirepo、mixed-suite 的副本上，`main` 与本分支 lazy 首跑的 `factsDigest`、`source-manifest.json` 的 `selection` 与 `entries` 完全相同；
   - 在 Hadoop 上，与现有持久化的 manifest 一致，`factsDigest` 仍为 `88c3219d31de0315e87fb4303fed5fa0bced8faae9ebb940dcc0233c13c5eae7`。
 - **O2 复制与检索一致：** 复制出的每个文件字节与逐 blob 读取相同；conduit 上通过 stdio 调 MCP `recall`，结果与 `main` 逐项相同（其中包含源码检索的候选）。
 - **O3 隔离：**

@@ -3,7 +3,7 @@
 - 全部工作在 worktree `/Users/57block/Documents/excavator-worktrees/runner-image`（分支 `feat/runner-image`）里进行，只用绝对路径，不动主检出。
 - 代码、注释、脚本输出与 `docs/deploy.md` 用英文，OpenSpec 用中文。
 - 一组一个 commit，按下列顺序提交；PR 以 merge commit 合入，保留每个 commit。
-- 真实语料的源码、路径与输出不提交；wcp-auth 只在副本上跑，不动用户语料现有的 `.excavator/`。
+- 真实语料的源码、路径与输出不提交；go-multirepo-auth 只在副本上跑，不动用户语料现有的 `.excavator/`。
 - 发布门 R1 依赖 DevOps 开通 Bedrock，不属于本 change 的任务，在 `docs/deploy.md` 的发布记录里跟踪。
 
 commit 序列：
@@ -38,7 +38,7 @@ commit 序列：
   验证：用一个回放录制事件的假 `claude` 可执行文件做端到端测试，覆盖成功（0）、跳过（0）、运行失败（3）、加载失败（4）、编造超阈值（5）；摘要包含 spec 要求的全部字段，缓存读取为 0 时有警告。注意：假 `claude` 只证明接线正确，不证明真实模型可用。
 - [x] 2.6 加载探针（O4）：`selftest.sh` 增加一步——按 D5 固定使用本地 403 端点、假凭证并关闭 IMDS，以 full 模式启动运行脚本，要求加载检查通过、运行以 3 结束。验证：镜像内自检通过；403 端点记录到至少一次请求，并且没有向任何外部地址发出模型请求；把镜像里某个 agent 文件 frontmatter 的 `name:` 改成与文件名不一致后重跑，自检必须失败。直接删文件测不出问题：期望集合与 Claude Code 实际加载的集合都从同一目录读取，两边会同时少一个；另外，期望集合为空时检查本身必须判失败。
 - [x] 2.7 隔离（O5）：`selftest.sh` 增加诱饵仓库一步（带写标记文件的 hook、`.mcp.json` server、同名 skill），按 2.6 的方式启动。验证：标记文件不存在，init 里没有诱饵 server 与诱饵 skill，已加载插件的路径为 `/opt/excavator`；对照组用朴素启动（cwd 在仓库内，不加 `--setting-sources user` 与 `disableAllHooks`），标记文件或诱饵必须出现，以证明这个检查能发现泄漏。诱饵 `CLAUDE.md` 放到发布门 R1 用真实模型验证。
-- [x] 2.8 lazy 与 MCP（O6）：新增 `deploy/mcp-smoke.mjs`，通过 stdio 对给定根目录调用 MCP 七个工具各一次（`semantic_commit` 用 `semantic_plan` 返回的哈希，提交一条标为 smoke 的摘要，只作用于一次性副本），并断言 `project_status` 的 `data.projectRoot`；`selftest.sh` 在临时仓库上调用它。验证：自检通过；在 wcp-auth 副本上，镜像内 lazy 的 `factsDigest` 等于镜像外同一 commit 的结果，镜像内 `mcp-smoke` 七个工具全部成功；只在任务证据里记录脱敏的计数。
+- [x] 2.8 lazy 与 MCP（O6）：新增 `deploy/mcp-smoke.mjs`，通过 stdio 对给定根目录调用 MCP 七个工具各一次（`semantic_commit` 用 `semantic_plan` 返回的哈希，提交一条标为 smoke 的摘要，只作用于一次性副本），并断言 `project_status` 的 `data.projectRoot`；`selftest.sh` 在临时仓库上调用它。验证：自检通过；在 go-multirepo-auth 副本上，镜像内 lazy 的 `factsDigest` 等于镜像外同一 commit 的结果，镜像内 `mcp-smoke` 七个工具全部成功；只在任务证据里记录脱敏的计数。
 
 ## 3. CI
 
@@ -60,8 +60,8 @@ commit 序列：
 ## 5. 验收（acceptor 亲自执行，不采信 coder 自报）
 
 - [x] 5.1 全量门（O8）：在干净检出上运行 `pnpm install --frozen-lockfile && pnpm -r build && pnpm test` 与 `openspec validate --all --strict`；新文件先 `git add -N` 再跑。
-- [x] 5.2 亲自重跑 O1–O7：镜像构建与自检（本地 arm64 与 amd64 都验过）、镜像卫生、诱饵隔离及其对照、零凭证加载探针及删掉 agent 的反例、wcp-auth 副本上的 lazy 一致性与 MCP 七个工具、CI 的 push skipped。
-- [x] 5.3 PR 描述写明镜像大小、自检结果、构建阶段需要编译工具链的原因、wcp-auth 的脱敏计数；不含真实路径与产物。
+- [x] 5.2 亲自重跑 O1–O7：镜像构建与自检（本地 arm64 与 amd64 都验过）、镜像卫生、诱饵隔离及其对照、零凭证加载探针及删掉 agent 的反例、go-multirepo-auth 副本上的 lazy 一致性与 MCP 七个工具、CI 的 push skipped。
+- [x] 5.3 PR 描述写明镜像大小、自检结果、构建阶段需要编译工具链的原因、go-multirepo-auth 的脱敏计数；不含真实路径与产物。
 - [x] 5.4 PR 以 merge commit 合入 `main`，保留全部 commit（0–4 以及验收中追加的修正 commit）。组织仓库：57blocks/excavator#2（`d586a540`）；后续修正 #3（`0fa0cf88`）、#6（`55ba1626`）同样以 merge commit 合入。
 
 验收记录（acceptor，2026-09-24）：
@@ -72,7 +72,7 @@ commit 序列：
   - O3：`tests/deploy` 100 个测试。
   - O4：加载探针通过；把某个 agent 的 `name:` 改成与文件名不一致后，自检以 1 退出。
   - O5：隔离检查通过，对照组暴露泄漏。
-  - O6：wcp-auth 副本上，镜像内外 lazy 相同（229 节点 / 481 边 / 9 缺口，`factsDigest` 前 12 位 `cb6ea0b51a87`），MCP 七个工具 7/7。
+  - O6：go-multirepo-auth 副本上，镜像内外 lazy 相同（229 节点 / 481 边 / 9 缺口，`factsDigest` 前 12 位 `cb6ea0b51a87`），MCP 七个工具 7/7。
   - O7：actionlint 无告警，PR 运行报告 push skipped。
 - CI 过程中发现并修正了两处：
   - 测试门在 CI 上需要显式拉取 `excavator-v2` 基线 ref；

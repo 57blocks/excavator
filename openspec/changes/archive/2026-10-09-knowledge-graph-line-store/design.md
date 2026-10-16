@@ -122,11 +122,11 @@
    |---|---|
    | hadoop | `0cef418fc6fa1caad32c02085b3e3dfe47467d31cdfba238bec730f9581455e7` |
    | Fineract | `dc5b25674919f8241bc210744712acbce8fa90002cb90f0080dc32b513023d8f` |
-   | wcp-auth | `cb6ea0b51a87972e290b69f1550973143817427cd2b05c5a31e5b3b2555429a7` |
-   | wcp-service-v2 | `e1833975bf5dafcf5c98eb7bbee45b3b0e164c723575524cf565ac5712f6f868` |
-   | cebreo/unmc | `b6f10267c77d59188eff92edcfe90ec2ced3ce770bfafefed38ee5d3444881c8` |
-   | cebreo/uneeg-managementportal | `f22350702217746c135d5daab325105795de84c54c2e9e49f228975a0c112d26` |
-3. **MCP 等价：** 在 wcp-auth 上，改前与改后经 stdio 调用全部 7 个工具，去掉耗时与快照字段后逐项相同；hadoop 上 `deploy/mcp-smoke.mjs` 通过；记录各工具前后耗时。
+   | go-multirepo-auth | `cb6ea0b51a87972e290b69f1550973143817427cd2b05c5a31e5b3b2555429a7` |
+   | go-multirepo-service-v2 | `e1833975bf5dafcf5c98eb7bbee45b3b0e164c723575524cf565ac5712f6f868` |
+   | mixed-suite/maui-app | `b6f10267c77d59188eff92edcfe90ec2ced3ce770bfafefed38ee5d3444881c8` |
+   | mixed-suite/kotlin-portal | `f22350702217746c135d5daab325105795de84c54c2e9e49f228975a0c112d26` |
+3. **MCP 等价：** 在 go-multirepo-auth 上，改前与改后经 stdio 调用全部 7 个工具，去掉耗时与快照字段后逐项相同；hadoop 上 `deploy/mcp-smoke.mjs` 通过；记录各工具前后耗时。
 4. **上限绊线（先验装置）：** 注入一个很小的上限（如 2,000 字符）。
    - 整图超限但最长记录不超限的夹具：发布成功，余量表按最长记录列出 `knowledge-graph.jsonl`。
    - 单条记录超限的夹具：以 `ProductTooLargeError` 具名失败，最终产物逐字节不变。

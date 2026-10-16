@@ -47,7 +47,7 @@
 
 **D9 push 守卫**：`.claude/settings.json` PreToolUse 守卫从只拦 `main` 扩为拦 `main|excavator-v2` 的直接 push（`gh pr merge` 不经此路径）。
 
-**D10 wcp 复用与冒烟**：先 `cp -R wcp/.ua <excavator-eval>/tools/understand-anything/wcp-quality/baseline-ua/`，再 `mv wcp/.ua wcp/.excavator`、`mv .understandignore .excavatorignore`、删 `.trash-*`；用 `/excavator-dashboard` 打开、用 `hooks/post-tool-use-auto-update.mjs` 的增量路径识别。确定性阶段（scan → import-map → batches → extract-structure）对 wcp 与 cebreo 各跑一次，产物 `.excavator/intermediate/`，记录 cebreo 的每语言文件数/解析数/零符号数/跳过原因计数（供 ③ 用）。产物与真实路径不提交，PR 只贴计数。
+**D10 go-multirepo 复用与冒烟**：先 `cp -R go-multirepo/.ua <excavator-eval>/tools/understand-anything/go-multirepo-quality/baseline-ua/`，再 `mv go-multirepo/.ua go-multirepo/.excavator`、`mv .understandignore .excavatorignore`、删 `.trash-*`；用 `/excavator-dashboard` 打开、用 `hooks/post-tool-use-auto-update.mjs` 的增量路径识别。确定性阶段（scan → import-map → batches → extract-structure）对 go-multirepo 与 mixed-suite 各跑一次，产物 `.excavator/intermediate/`，记录 mixed-suite 的每语言文件数/解析数/零符号数/跳过原因计数（供 ③ 用）。产物与真实路径不提交，PR 只贴计数。
 
 **D11 调用形式**：Claude Code 实际调用是 `/excavator:excavator`、`/excavator:excavator-chat`；Codex 是 `/excavator`、`/excavator-chat`。SKILL.md/agents/hooks 的散文统一写裸名（宿主中立），README 用一段说明 Claude Code 的前缀形式。`${CLAUDE_PLUGIN_DATA}` 可在后续步骤用作缓存位置，本步不用。
 
@@ -70,8 +70,8 @@
 | 2 | 斜杠名与 agent 名零残余 | `grep -rnE '(^\|[^a-z])/understand(-[a-z]+)?\b' skills agents hooks` 为空；`ls agents/` 全为 `excavator-*.md`；`ls skills/` 全为 `excavator*` |
 | 3 | check-refs 绿且装置红 | `node scripts/check-refs.mjs` exit 0；vitest 装置用例通过 |
 | 4 | 三件套绿 | `pnpm install --frozen-lockfile && pnpm -r build && pnpm test && pnpm typecheck`；root 用例数 = 789 − 被替换安装测试数 + 新增数（PR 列明），core = 1013；0 fail |
-| 5 | wcp 复用 | dashboard 打开改名后的 `wcp/.excavator`；增量路径识别并只报预期变更 |
-| 6 | 确定性冒烟 | wcp、cebreo 各产出 `.excavator/intermediate/`；两目标下 `find -name .ua` 为空；cebreo 普查计数表贴 PR |
+| 5 | go-multirepo 复用 | dashboard 打开改名后的 `go-multirepo/.excavator`；增量路径识别并只报预期变更 |
+| 6 | 确定性冒烟 | go-multirepo、mixed-suite 各产出 `.excavator/intermediate/`；两目标下 `find -name .ua` 为空；mixed-suite 普查计数表贴 PR |
 | 7 | hooks 无自动执行 | `grep -rn "Do not ask the user" hooks/` 为空；acceptor 读提示词确认结尾是建议 |
 | 8 | 安装 | 临时 HOME 下 `install.sh` 生成 9 个符号链接 + 通用根；`--uninstall` 清干净 |
 | 9 | 残余 "understand" 抽查 | acceptor 抽 20 处 `grep -rni understand` 命中，全部是英文动词而非产品名 |
@@ -82,8 +82,8 @@
 - [包名变更导致 lock 大 diff] → 单独 commit；`--frozen-lockfile` 复核。
 - [上游安装测试替换被误认为弱化] → PR 逐条列出删/增用例名与理由；用例总数不减。
 - [Claude Code 前缀调用与文档裸名不一致] → README 一段说明；check-refs 两种形式都接受。
-- [wcp 改名后 UA 领域图仍是模型产物] → 本步只验证可打开、可识别，不验内容；内容在第 ② 步重建。
+- [go-multirepo 改名后 UA 领域图仍是模型产物] → 本步只验证可打开、可识别，不验内容；内容在第 ② 步重建。
 
 ## Migration Plan
 
-无外部用户。回滚 = `git revert` 对应 commit（每个 commit 独立绿）或 `git revert -m 1 <merge>` 整个 PR。wcp 的 `.ua/` 基线保存在 excavator-eval 下，可原样恢复。
+无外部用户。回滚 = `git revert` 对应 commit（每个 commit 独立绿）或 `git revert -m 1 <merge>` 整个 PR。go-multirepo 的 `.ua/` 基线保存在 excavator-eval 下，可原样恢复。

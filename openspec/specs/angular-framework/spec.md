@@ -2,7 +2,7 @@
 
 ## Purpose
 
-从 web manifest（`package.json`/`angular.json`）确定性检测出 Angular 框架并提供目录分层提示，并以 `angular.md` 约定附录教分析 agent 理解 Angular 的组件 / 模板 / 服务 / 模块结构，使 web 前端（如 cebreo 的 `uneeg-managementportal`）的组件↔模板↔服务关系可由 AI 依证据推导，而不臆造。约定只作 guidance，绝不成为确定性事实。
+从 web manifest（`package.json`/`angular.json`）确定性检测出 Angular 框架并提供目录分层提示，并以 `angular.md` 约定附录教分析 agent 理解 Angular 的组件 / 模板 / 服务 / 模块结构，使 web 前端（如 mixed-suite 的 `kotlin-portal`）的组件↔模板↔服务关系可由 AI 依证据推导，而不臆造。约定只作 guidance，绝不成为确定性事实。
 
 ## Requirements
 

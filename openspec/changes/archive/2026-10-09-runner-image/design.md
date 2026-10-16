@@ -200,13 +200,13 @@ claude -p "/excavator:excavator /work/repo --mode=full"      # 需要强制重�
 - **O4 真实加载（零凭证）**：在镜像内按 D5 的加载探针启动 full 模式：init 通过全部加载检查，运行以退出码 3 结束，摘要中加载检查为通过。
 - **O5 隔离（零凭证）**：对诱饵仓库（带写标记文件的 hook、`.mcp.json` server、同名 skill）按 O4 的方式启动：标记文件不存在，init 中没有诱饵 server 与诱饵 skill。对照组用朴素启动（cwd 在仓库内，不加 `--setting-sources user` 与 `disableAllHooks`），标记文件或诱饵必须出现，以证明这项检查能发现泄漏。诱饵 `CLAUDE.md` 只有模型真正运行时才可能被读到，零凭证下验证不了，放到 R1。
 - **O6 lazy 与 MCP**：
-  - 在 wcp-auth 的副本上（不动用户语料），镜像内 lazy 的 `factsDigest` 等于镜像外同一 commit 的 lazy 结果；
+  - 在 go-multirepo-auth 的副本上（不动用户语料），镜像内 lazy 的 `factsDigest` 等于镜像外同一 commit 的 lazy 结果；
   - 在镜像内通过 stdio 调用 MCP 七个工具各一次，`project_status` 返回的 `data.projectRoot` 是挂载的仓库。
 - **O7 CI**：本地用 actionlint 检查 workflow 通过；PR 上的完整流程（三件套、干净检出断言、amd64 构建与自检）全部通过，推送步骤报告 push skipped 及原因。合并后在 main 上手动触发一次，确认手动触发同样报告 push skipped（缺少 ECR 变量）；这一步只能在合并后做，失败则另起修复 PR。
 - **O8 全量门**：三件套全绿，`openspec validate --all --strict` 通过。新文件先 `git add -N` 再跑门。
 
 发布门（R1），不阻塞合并：
 - **R1**：DevOps 开通 Bedrock 后，在 VM 上用 ECR 镜像完成两次真实模型运行：
-  1. 对 wcp-auth 副本跑 full（模型 `eu.anthropic.claude-sonnet-5`，预算 5 美元）。要求退出码 0；把四类 token、缓存读取是否为 0、估算花费与墙钟时间登记到发布记录。
+  1. 对 go-multirepo-auth 副本跑 full（模型 `eu.anthropic.claude-sonnet-5`，预算 5 美元）。要求退出码 0；把四类 token、缓存读取是否为 0、估算花费与墙钟时间登记到发布记录。
   2. 对一个带诱饵 `CLAUDE.md` 的小仓库跑 full（预算 1 美元），这个 `CLAUDE.md` 指示写出标记文件。要求标记文件不出现。
 - 没有通过 R1 的 tag 不得用于客户仓库。

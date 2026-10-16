@@ -332,7 +332,7 @@ describe('updateSourceIndex — single-file incremental rebuild', () => {
 
 // Regression: real source tokens like `constructor`/`toString`/`hasOwnProperty`
 // collide with Object.prototype. A plain-object postings map crashed the build
-// (postings["constructor"].push is not a function) on the wcp TS/Vue corpus;
+// (postings["constructor"].push is not a function) on the go-multirepo TS/Vue corpus;
 // a JSON-parsed index also makes an un-indexed colliding query term resolve to
 // an inherited function on the read side. Caught by group-6 real-corpus
 // acceptance, not by Go/synthetic fixtures.

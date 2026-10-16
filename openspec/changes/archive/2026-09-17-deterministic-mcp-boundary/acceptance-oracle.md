@@ -12,6 +12,6 @@ Observed 2026-09-16: red control exited 1 (`1 failed | 1 passed`), and the diff 
 | Containment | Canonical relative source paths, realpath stays under bound root, `.excavator` write target stays under root | `..`, absolute path, external symlink, symlinked `.excavator` accepted |
 | One semantic cache | Lazy/Full/MCP plan same node buckets and use one writer; fresh repeat makes zero generation/writer calls and cache SHA/provenance unchanged | Parallel cache, same-hash rewrite, stale-hash commit, forged node/path commit |
 | Identity and negative fixture | Same bytes at different paths are distinct; same name under different owners is distinct; missing/stale/noncanonical/fresh each has one bucket | Path or name conflation; implicit fourth state |
-| Real acceptance | wcp and cebreo local data; cold/repeat/overlap/update/budget; model work attributed to host; fabrication and omission counted separately | Claims unsupported by current evidence; generated project data committed |
+| Real acceptance | go-multirepo and mixed-suite local data; cold/repeat/overlap/update/budget; model work attributed to host; fabrication and omission counted separately | Claims unsupported by current evidence; generated project data committed |
 
 No automated oracle substitutes for checking the final host answer against current source evidence. A pass on protocol shape alone is not a claim of semantic correctness.

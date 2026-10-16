@@ -1,8 +1,8 @@
-每组：先写失败验收 → 实现 → 验证 → 单独 commit。合成夹具用 purpose-built 项目；真语料（wcp）与真 provider 验收 opt-in、产物/gold/路径不提交。CODE 与测试用英文，本 openspec 用中文。**第 1 组是决策闸——不过闸不建全量索引。**
+每组：先写失败验收 → 实现 → 验证 → 单独 commit。合成夹具用 purpose-built 项目；真语料（go-multirepo）与真 provider 验收 opt-in、产物/gold/路径不提交。CODE 与测试用英文，本 openspec 用中文。**第 1 组是决策闸——不过闸不建全量索引。**
 
 ## 1. 召回原型 / 决策闸（先做）
 
-- [x] 1.1 在 `eval/` 下搭一个 opt-in 原型：一小组 wcp 中文业务问题 + 人工标注 gold（文件/符号），本地不提交。用「标识符子词拆分 + BM25 + 一次 LLM 查询扩展」跑，测 top-20 是否含 gold（§12.3.1）。验证：产出召回率数字与命中/未命中清单。
+- [x] 1.1 在 `eval/` 下搭一个 opt-in 原型：一小组 go-multirepo 中文业务问题 + 人工标注 gold（文件/符号），本地不提交。用「标识符子词拆分 + BM25 + 一次 LLM 查询扩展」跑，测 top-20 是否含 gold（§12.3.1）。验证：产出召回率数字与命中/未命中清单。
 - [x] 1.2 决策并记录：达标 → 词法方案（第 2 组）；不达标 → 本切片改用向量召回（chunk embedding + 近邻），spec 召回门不变、只换实现。把结论写入变更记录（design Open Question 收口）。验证：一条明确的 go/pivot 决策 + 依据数字。
 
 ## 2. source-index（词法索引）
@@ -27,5 +27,5 @@
 ## 6. 端到端 + 真语料 + 门禁
 
 - [x] 6.1 合成端到端：小项目建索引 → 中文查询扩展命中 → 多跳取子图 → 按需 summary 缓存 → 第二次复用；确定性机制全绿。验证：端到端套件绿。
-- [x] 6.2 opt-in 真语料 + 真 provider 验收（不提交）：wcp 上 §12.3.1 中文→英文 top-20 召回达门；抽查按需 summary 只讲该节点自身职责、零编造。记录数字与样例。验证：真跑证据（fake 全绿不顶替）。
+- [x] 6.2 opt-in 真语料 + 真 provider 验收（不提交）：go-multirepo 上 §12.3.1 中文→英文 top-20 召回达门；抽查按需 summary 只讲该节点自身职责、零编造。记录数字与样例。验证：真跑证据（fake 全绿不顶替）。
 - [x] 6.3 门禁：`openspec validate --strict hybrid-retrieval` 通过；`pnpm test` 与 typecheck 全绿；不删除/弱化既有测试；A/B 套件无回归；确认 chat 语义写入前后 `knowledge-graph.json` SHA-256 不变。

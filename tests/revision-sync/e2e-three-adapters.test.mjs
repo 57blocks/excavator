@@ -6,7 +6,7 @@
 // present, gaps visible.
 //
 // Purpose-built synthetic fixtures only (AGENTS.md: no real-project source).
-// Group 6.3 (opt-in real-corpus run against wcp/wcp-auth) is intentionally
+// Group 6.3 (opt-in real-corpus run against go-multirepo/go-multirepo-auth) is intentionally
 // NOT here — acceptance runs it separately, uncommitted.
 import { describe, expect, it, afterEach } from 'vitest';
 import { mkdtempSync, rmSync, mkdirSync, writeFileSync, readFileSync } from 'node:fs';

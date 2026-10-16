@@ -7,8 +7,8 @@
 - `schema.ts`：node schema 有 `.passthrough()`，edge/root 原本没有（②a commit 1 已补；commit `c70d66bb` 把强制锚点/证据校验降级为导出的 `auditGraphShape`）。
 - 脚本：`scan-project.mjs` 无按原因分桶、无二进制/超大检测（②a commit 2 已加 `skipped[{path,reason}]`、`coverage.limits`）；`extract-import-map.mjs` 用 `registry.analyzeFile` 取原始 imports，解析走脚本自带的各语言解析器，**不经** `resolveImports`，未解析静默省略（commit 2 已加 `unresolved`）；`extract-structure.mjs` 失败文件从 `results` 消失（commit 2 已加每文件 `status`）；`registry.register(tsPlugin); registerAllParsers(registry)` 是唯一注册点。
 - 模型层：file-analyzer 撰写全部节点/边与 id，calls「infer from imports + function names when confident」，权重按种类常数；`merge-batch-graphs.py` 按 id 去重保后者、边按 (source,target,type,direction) 去重取高权重、悬挂边丢弃计数。graph-reviewer 与 assemble-reviewer 都不触源码；domain-analyzer 只读知识图，step 无 `nodeIds`。
-- 增量：`finalize-incremental.mjs:408-421,481-482` 在 cosmetic SKIP 上推进 commit 标记；`prepare-incremental.mjs` 在非 git 根上 `fatal`（wcp 父目录复现）；`staleness.ts` 四态。
-- wcp 真实图：7,611 节点 / 24,460 边（imports 13,474、contains 5,627、exports 4,335、calls 739 全为 function→function）；Go 声明 3,497 → 节点 2,825（同文件同名不同接收者合并）。dashboard 用 `weight` 排 `flow_step`。
+- 增量：`finalize-incremental.mjs:408-421,481-482` 在 cosmetic SKIP 上推进 commit 标记；`prepare-incremental.mjs` 在非 git 根上 `fatal`（go-multirepo 父目录复现）；`staleness.ts` 四态。
+- go-multirepo 真实图：7,611 节点 / 24,460 边（imports 13,474、contains 5,627、exports 4,335、calls 739 全为 function→function）；Go 声明 3,497 → 节点 2,825（同文件同名不同接收者合并）。dashboard 用 `weight` 排 `flow_step`。
 
 ## Goals / Non-Goals
 
@@ -57,14 +57,14 @@
 | # | 判据 | 方法 |
 |---|---|---|
 | a1 | 先验装置 | 注入假边 + 错锚点夹具：`edge-contradicted`=1、`anchor-mismatch`=1；干净夹具 0/0 |
-| a2 | 确定性 | wcp 与 cebreo 两目标各跑两次 structure-all + annotate：`annotated-graph.json` 与 `audit.json` sha256 相等 |
-| a3 | 身份可见 | wcp：`identity-collision` 计数与样本进报告（量级对照 3,497 − 2,825） |
+| a2 | 确定性 | go-multirepo 与 mixed-suite 两目标各跑两次 structure-all + annotate：`annotated-graph.json` 与 `audit.json` sha256 相等 |
+| a3 | 身份可见 | go-multirepo：`identity-collision` 计数与样本进报告（量级对照 3,497 − 2,825） |
 | a4 | 归属 | 图中 100% 边有 `provenance`；`extracted` 边 100% 有 evidence；`edge-auto-inferred`、补边数、`edge-missing` 按类型进报告 |
-| a5 | 账本 | cebreo `coverage.byLanguage` 含 html/xaml 为 `no-extractor`；`gaps` 含 `imports-unresolved` 等计数 |
+| a5 | 账本 | mixed-suite `coverage.byLanguage` 含 html/xaml 为 `no-extractor`；`gaps` 含 `imports-unresolved` 等计数 |
 | a6 | 三件套 | `pnpm -r build` 先于其他门；`pnpm test`、core、typecheck、check-refs 0 fail；用例只增 |
-| a7 | **UA 产物原样通过** | 对 wcp 现有 `.excavator/knowledge-graph.json`（UA 产）跑 `validateGraph` 与 annotate：0 节点/0 边被删；annotate 前后模型写的字段逐条相同 |
+| a7 | **UA 产物原样通过** | 对 go-multirepo 现有 `.excavator/knowledge-graph.json`（UA 产）跑 `validateGraph` 与 annotate：0 节点/0 边被删；annotate 前后模型写的字段逐条相同 |
 
-②b：b1 提示词加节后模型自报 evidence 的 `verified:true` 比例与 `evidence-corrected` 计数；b2 Opus 分层审计 10 条 summary + 30 条边中 verified/extracted 类 0 条错；b3 注入测试（往批次输出加一条无证据边 → annotate 标 inferred 并计数）；b4 负向探针「撤销申请」；b5 cosmetic 变更 → dirty 可见且 UA 标记行为不变；非 git 目标增量不 fatal；b6 wcp 全量墙钟与批次 token 对基线 65+60 分钟；b7 三件套 + check-refs。
+②b：b1 提示词加节后模型自报 evidence 的 `verified:true` 比例与 `evidence-corrected` 计数；b2 Opus 分层审计 10 条 summary + 30 条边中 verified/extracted 类 0 条错；b3 注入测试（往批次输出加一条无证据边 → annotate 标 inferred 并计数）；b4 负向探针「撤销申请」；b5 cosmetic 变更 → dirty 可见且 UA 标记行为不变；非 git 目标增量不 fatal；b6 go-multirepo 全量墙钟与批次 token 对基线 65+60 分钟；b7 三件套 + check-refs。
 
 ## Risks / Trade-offs
 
@@ -84,18 +84,18 @@
 
 **13.1 真实全量的运行方式**（本机 Claude Code 2.1.267 已核对：有 `--plugin-dir`、`--permission-mode`、`--output-format`、`-p`；无 `--cwd`、`--max-turns`）：
 ```
-mv /Users/57block/Documents/excavator-test-repos/wcp/.excavator /Users/57block/Documents/excavator-test-repos/wcp/.excavator-ua-baseline
-( cd /Users/57block/Documents/excavator-test-repos/wcp && \
+mv /Users/57block/Documents/excavator-test-repos/go-multirepo/.excavator /Users/57block/Documents/excavator-test-repos/go-multirepo/.excavator-ua-baseline
+( cd /Users/57block/Documents/excavator-test-repos/go-multirepo && \
   CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS=0 \
   claude --plugin-dir /Users/57block/Documents/excavator-wt/excavator-v2 \
          --permission-mode auto --output-format json \
          --model <id> \
-         -p "/excavator:excavator" > /private/tmp/excavator-v2-wcp-run.json )
-jq '.total_cost_usd, .session_id, .duration_ms' /private/tmp/excavator-v2-wcp-run.json
+         -p "/excavator:excavator" > /private/tmp/excavator-v2-go-multirepo-run.json )
+jq '.total_cost_usd, .session_id, .duration_ms' /private/tmp/excavator-v2-go-multirepo-run.json
 ```
 skill 必须在 prompt 里点名（模型不会自动调用）；`total_cost_usd` 含子代理（客户端估算）。
 
-**`--model` 必须显式给。** 不给就用会话默认模型，而 file-analyzer 是这条流水线里最贵的一段（wcp 有 1,984 个文件、83+ 个批次）。2026-09-11 的第一次真实全量没有指定模型，默认落到 `claude-fable-5-1`，跑到约 80% 的批次时撞上账号额度上限：**$71.13、798k 输出 token、没产出 assembled graph**。跑真实语料用哪个模型是用户的花钱决定，不是 coder 的默认值——配方里必须点名，并在动手前把预计费用说清楚。
+**`--model` 必须显式给。** 不给就用会话默认模型，而 file-analyzer 是这条流水线里最贵的一段（go-multirepo 有 1,984 个文件、83+ 个批次）。2026-09-11 的第一次真实全量没有指定模型，默认落到 `claude-fable-5-1`，跑到约 80% 的批次时撞上账号额度上限：**$71.13、798k 输出 token、没产出 assembled graph**。跑真实语料用哪个模型是用户的花钱决定，不是 coder 的默认值——配方里必须点名，并在动手前把预计费用说清楚。
 
 **清单前置**：`.claude-plugin/plugin.json` 的 `agents` 键必须**缺省或为数组**。写成字符串（`"./agents"`）时 `--plugin-dir` 会**静默**什么都不加载：没有报错、`num_turns: 0`、九个 skill 全变 `Unknown command`。跑之前先 `claude plugin validate "$V2"` 看到 `Validation passed`，再用 headless 探针确认能列出 `excavator:excavator`（`check-refs` 的 check 7 与 `tests/refs/plugin-manifest.test.mjs` 现在把这条守住了）。跑完对比 `.excavator/knowledge-graph.json` 与 `.excavator-ua-baseline/knowledge-graph.json`：节点/边/gaps 计数、`provenance` 分布、自报 evidence 的 `verified:true` 比例、`summary-contradicted` 数、墙钟。产物与真实路径不进 PR，只贴计数。
 

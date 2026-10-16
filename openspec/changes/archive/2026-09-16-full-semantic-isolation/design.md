@@ -29,7 +29,7 @@
 新增一个共享的确定性新鲜度助手（`.mjs`）：给定 projectRoot → `resolveSourceSnapshot` 得当前 `sourceRevision`，读 `source-manifest.json` 的持久化 `sourceRevision`，返回 `fresh | stale | missing` + 差异摘要。chat/diff/explain/onboard/domain 的 SKILL.md 与自动更新 hook 全部改用它，删掉各自的 gitCommitHash/sourceDigest 判定。读源统一经 SourceSnapshot（git→GitCommitSnapshot 无工作区泄漏；directory→DirectorySnapshot + content-hash guard）。助手是确定性、可单测；skill 侧是散文改造。
 
 ### D6. 诚实验收：机制可测 ≠ Full 语义可用
-物理隔离（Full 后事实字段 SHA-256 不变、语义在独立文件）、factDigest 跳过架构、Domain 过期不用、消费端 revision 判定、git 无泄漏、directory guard——都用合成夹具 + 注入假 provider 单测。但 **Full 生成的 summary/layers 内容质量**（可靠、零编造、layers 合理）要真 provider 在 wcp 上 opt-in 验收，写进 tasks，不用 fake 全绿顶替。
+物理隔离（Full 后事实字段 SHA-256 不变、语义在独立文件）、factDigest 跳过架构、Domain 过期不用、消费端 revision 判定、git 无泄漏、directory guard——都用合成夹具 + 注入假 provider 单测。但 **Full 生成的 summary/layers 内容质量**（可靠、零编造、layers 合理）要真 provider 在 go-multirepo 上 opt-in 验收，写进 tasks，不用 fake 全绿顶替。
 
 ## Risks / Trade-offs
 

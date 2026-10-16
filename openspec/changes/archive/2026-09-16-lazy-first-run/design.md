@@ -32,7 +32,7 @@
 ### D3. calls 仅做确定性唯一解析，其余入 gap
 用 import-map（已解析项目内部导入）+ 同文件本地绑定，把 call site 解析到唯一目标节点；目标不唯一或不可解 → 写 gap，不猜。
 - 备选：让模型解析 calls（旧 Phase 2 做法）→ 否决：那正是要推迟的 LLM。
-- 代价：Lazy 下 calls 覆盖可能偏低；这是诚实的 gap，深解析留后续。需在 go-clean-arch/wcp 上量 gap 率作为观测。
+- 代价：Lazy 下 calls 覆盖可能偏低；这是诚实的 gap，深解析留后续。需在 go-clean-arch/go-multirepo 上量 gap 率作为观测。
 
 ### D4. Lazy 流水线复用既有阶段、在 Phase 0 按 mode 分支
 在 SKILL.md Phase 0 决策表按 `analysisMode`/`--mode` 分支：Lazy 走 Phase 1 → 1.2 → **build-fact-graph（新）** → 确定性 validate（复用 6b 的触源码校验，去掉 LLM review）→ Phase 7 SAVE（复用既有原子保存门）；**跳过 1.5/2/2.5/3/4/6**。Full 保持现有全链路。

@@ -1,4 +1,4 @@
-每组：先写失败验收 → 实现 → 验证 → 单独 commit。合成夹具用 purpose-built 项目；真语料（wcp/go-clean-arch）与真实运行验收 opt-in、产物/路径/读数不提交。CODE 与测试用英文，本 openspec 用中文。
+每组：先写失败验收 → 实现 → 验证 → 单独 commit。合成夹具用 purpose-built 项目；真语料（go-multirepo/go-clean-arch）与真实运行验收 opt-in、产物/路径/读数不提交。CODE 与测试用英文，本 openspec 用中文。
 
 ## 1. Worktree per-worktree 隔离（删重定向）
 

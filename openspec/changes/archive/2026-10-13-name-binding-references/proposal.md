@@ -59,4 +59,4 @@ JSF 页面不写 bean 的类名，写的是 EL 名字：`#{orderBean.save}`。�
   - skill：`skills/excavator/extract-structure-result.mjs`（字段校验）；新增目录数据文件与它的加载器、绑定与 EL 的词法模块、解析模块；`lazy-analyze.mjs`、`build-fact-graph.mjs`、`retrieve.mjs`、`validate-graph.mjs`。
 - **产物**：knowledge graph 新增 `references` 边、五类缺口与一段覆盖。旧产物因版本号变化，在下次同步时整体重投影。
 - **不影响**：既有节点与边（含第 1 步的 `mentions`），以及 MCP 工具的参数与形状。
-- **语料**：验收使用 Dataverse、Sakai 12.7、Seam 2.2 examples、Cargo Tracker、TomEE 8.x examples 的固定提交，回归用 wcp / cebreo。真实项目的源码、路径与输出不提交。
+- **语料**：验收使用 Dataverse、Sakai 12.7、Seam 2.2 examples、Cargo Tracker、TomEE 8.x examples 的固定提交，回归用 go-multirepo / mixed-suite。真实项目的源码、路径与输出不提交。

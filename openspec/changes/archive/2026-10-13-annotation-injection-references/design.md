@@ -295,7 +295,7 @@ interface JavaMemberAnnotationUse {
 | TomEE 8.x examples | 同第 2 步验收的快照 | `@EJB(beanName)`；EJB 上的 `@Resource` 落「不受管理」 |
 | fineract | `f9c2fcdc1c02bdad3b3387f1385391d9ececaea7` | Spring Java 配置，`@Qualifier` 指向 `@Bean` |
 | Dataverse（`cc6e62e3354492ad1f4127adc64eb22445319b95`）、Cargo Tracker（`4d26b8fd59a7f0bac6e42d5d19a8cd1b379353b5`） | 固定检出 | 按类型的 `@EJB`、EE `@Resource` 不成边 |
-| wcp、cebreo、hadoop（`2014707f8c31a620bffb4256d7f67245de5b94a3`） | 固定检出 | 不回归 |
+| go-multirepo、mixed-suite、hadoop（`2014707f8c31a620bffb4256d7f67245de5b94a3`） | 固定检出 | 不回归 |
 | Sakai `master`（`10a1d904d379df3cb2371ee0e405a4c2d1060588`）、hadoop | 同上 | 耗时 |
 
 - **O1 夹具与绊线**（coder 写，acceptor 审）：
@@ -324,7 +324,7 @@ interface JavaMemberAnnotationUse {
 - **O3 桶与计数对账**（acceptor 独立脚本）：
   - 每个语料的十五个桶、按注入点 id 的计数、`nested` 与 `unconfirmed`，都与独立重算逐项一致；
   - 站点数与独立的 Java 源码统计一致（同样遮蔽注释与字符串）。
-- **O4 不回归**：Dataverse、Cargo Tracker、wcp、cebreo、hadoop 各自与同一检出、`lazy-fact-graph/8` 的基线对比：
+- **O4 不回归**：Dataverse、Cargo Tracker、go-multirepo、mixed-suite、hadoop 各自与同一检出、`lazy-fact-graph/8` 的基线对比：
   - 节点集合、全部边（含 XML 来源的 `injects` 及其证据）、既有缺口完全一致；
   - 覆盖只多 `annotationInjections` 一段，`nameReferences` 的 `bindings` 与 `missingNames` 各多 `ejb-annotation-session`、`spring-annotation-advice` 两个键；
   - `bindings` 中 `spring-annotation-stereotype` 的计数可以因补充的两个注解而增加，增量要等于这两个注解在该语料上产生的绑定数；
