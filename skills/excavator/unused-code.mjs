@@ -1089,6 +1089,7 @@ const RESIDUAL_ASSUMPTIONS = [
   'Code generated at build time and absent from the repository is invisible.',
   'Callers outside the repository show only through visibility: a non-private member may be called from outside.',
   'Uses that do not spell the method name are invisible to the name census: a property `foo` bound to `getFoo` or `setFoo` by a view, a template or a JSON mapping, or any other name derived by convention.',
+  'Calls the fact graph could not resolve have no edge; its gaps (`calls-unresolved`, `calls-ambiguous`, `calls-caller-unresolved`, `override-uncertain`) count them. `reason` states what the facts hold, and the name census is what keeps a method called that way out of `high`.',
 ];
 
 const DECISION_KINDS = ['entry', 'test-entry'];
