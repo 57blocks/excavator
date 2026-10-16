@@ -1102,7 +1102,7 @@ Pass these parameters in the dispatch prompt:
 >
 > File nodes (all node types — includes code files, config, document, service, pipeline, table, schema, resource, endpoint):
 > ```json
-> [list of {id, type, name, filePath, summary, tags} for ALL file-level nodes — omit complexity, languageNotes]
+> [list of {id, type, name, filePath, summary, tags} for ALL file-level nodes, plus `owner` when the node has one (the class an endpoint belongs to) — omit complexity, languageNotes]
 > ```
 >
 > Import edges:

@@ -346,7 +346,8 @@ Use `nodeTypeGroups` and `deploymentTopology` to determine if non-code layers ar
 - **Infrastructure layer:** Create if the project has Dockerfiles, Terraform, K8s manifests, or other deployment files. Include all `service` and `resource` type nodes.
 - **CI/CD layer:** Create if the project has CI/CD configs (.github/workflows, .gitlab-ci.yml, Jenkinsfile). Include all `pipeline` type nodes. May be merged with Infrastructure if few files.
 - **Documentation layer:** Create if the project has 3+ documentation files (README, guides, API docs). Include all `document` type nodes. May be merged with a "Project" or "Root" layer if few files.
-- **Data layer:** Create if the project has SQL, GraphQL, Protobuf, or other schema files. Include `table`, `schema`, and `endpoint` type nodes. May be merged with an existing "Data" or "Models" layer.
+- **Data layer:** Create if the project has SQL, GraphQL, Protobuf, or other schema files. Include `table` and `schema` type nodes, and the `endpoint` nodes that have no `owner`: the operations a GraphQL or Protobuf schema file defines. May be merged with an existing "Data" or "Models" layer.
+- **`endpoint` nodes with an `owner`** are not schema definitions. They are routes declared on a class's annotations, such as a JAX-RS resource method's, and a `routes` edge links each one to the method that handles it. Assign each to the layer of its `owner` class, normally the API layer. When a framework addendum's layer table places these endpoints, follow the addendum.
 - **Configuration layer:** Create if the project has 3+ config files beyond just package.json. Include all `config` type nodes. May be merged with a "Root" or "Project" layer if few files.
 
 **Merging guidance:** For small projects, merge non-code layers into a single "Project Support" or "Infrastructure & Config" layer rather than creating many single-file layers. For larger projects, separate them into distinct layers.
@@ -386,7 +387,8 @@ For non-code files, use the node type as the primary signal:
 - `document` nodes → Documentation layer
 - `service`, `resource` nodes → Infrastructure layer
 - `pipeline` nodes → CI/CD or Infrastructure layer
-- `table`, `schema`, `endpoint` nodes → Data layer
+- `table`, `schema` nodes, and `endpoint` nodes without an `owner` → Data layer
+- `endpoint` nodes with an `owner` → the layer of the owner class (normally the API layer), unless a framework addendum's layer table says otherwise
 
 For files that do not clearly fit any layer, place them in the most relevant layer or create a "Shared" / "Utility" catch-all layer. Do not leave any file unassigned.
 
