@@ -6,7 +6,7 @@
 - 抽取器不记录方法引用 `::`、不记录类字面量 `X.class` 的位置；嵌套类型、匿名类、局部类内的调用点落 `calls-caller-unresolved`；方法与构造器体之外的调用点（字段初始化、初始化块、枚举常量实参、record 紧凑构造器）完全不记录，既不成边也不入桶（切片 A 验收实测：Fineract 方法调用 1,920、对象创建 1,327、方法引用 59；hadoop 10,271、7,110、40）。
 - 遍历（`retrieve.mjs`）不分方向，沿 `contains` / `imports` / `exports` / `calls` / `inherits` / `implements`。
 - 项目根目录已有人工维护、skill 经确认后写入的声明文件先例：`.excavatorignore`（data-directory 规格）。MCP 的写入限于 `.excavator/`。
-- 验收语料：wcp 是 Go，cebreo/unmc 是 C#，cebreo/uneeg-managementportal 是 Kotlin + TypeScript（含 8 个 Java 文件；380 个 Kotlin 行里 235 个带调用点，共 16,001 个）。只有 Fineract 与 hadoop 是 Java。
+- 验收语料：go-multirepo 是 Go，mixed-suite/maui-app 是 C#，mixed-suite/kotlin-portal 是 Kotlin + TypeScript（含 8 个 Java 文件；380 个 Kotlin 行里 235 个带调用点，共 16,001 个）。只有 Fineract 与 hadoop 是 Java。
 - 用户约束：build-free。不编译目标项目、不安装 JDK 之类的运行环境、不做副本删除再编译；能力要适配多种语言。本机也没有 Fineract 要求的 JDK 25 与 Gradle 缓存，这一约束同时也是事实。
 - 基线（Fineract，当前 main 的图谱，只读探针，脚本在本地 scratchpad，不进仓库）：非测试 Java 方法 23,692；有 `calls` / `implements` / `inherits` 入边 15,038；有出向方法级 `implements` 边 3,044；构造器或 `main` 1,167；名字与某个非成边、非外部调用点相同 2,533；完全没有调用证据 1,910。这 1,910 个里：所属类型层次含仓库外或无法解析的父类型 699；`get` / `is` / `set` 约定式访问器 461；所属类型带类注解 1,465；覆写仓库内祖先的具体方法 18；抽象方法 77；五项都不触发 117。对这 117 个随机抽 40 个做全仓整词 `git grep`，22 个在声明之外另有出现。全部 8,654 个无入边方法里，覆写仓库内具体祖先方法的有 126 个；`COBBusinessStep<T>.execute(T)` 有 15 个实现，一条方法级边都没有。
 
@@ -79,7 +79,7 @@
 **D6：文本出现否决——逐行计数、只排除三类位置、独立于解析器的判断。** 对所有未证明活的候选名字（构造器除外），一次扫描被选中源码集合（`source-manifest.json` 列出的文件，排除 `.excavator/`，按 NUL 字节跳过二进制并计数），整词、区分大小写，标识符按 `[A-Za-z_$][A-Za-z0-9_$]*` 切分，**逐行计数**。每行允许的次数 = 该行上以该名字声明的方法条目数 + 该行上被候选所在语言的适配器记账为「指向该候选」（解析边或可能引用）的调用点数；多余即否决，证据为第一处多余出现。三条刻意的严格：
 - 按行计数而不是按行排除：`a.foo(); reflect("foo")` 在一行里，排除整行会把字面量藏掉。
 - 只认指向该候选的调用点：解析到其它同名方法、`calls-external`、`calls-generated` 的调用点都不计入允许次数。它们的「不是这个方法」依赖解析器对仓库外的判断——两天前 Kotlin 类型被判成外部正是这个桶出的错。文本否决是独立的最后一道闸，不能建立在被它守护的判断上。代价是泛名字与 JDK 同名的方法几乎都被否决，它们本来大多已是 `undetermined`；普查报告「仅因解析器已另行解释的行而被否决」的候选数，让这笔代价可见。
-- 只认候选所在语言的适配器记账的调用点：uneeg-managementportal 的 Kotlin 行带 16,001 个调用点，若把它们当成「已解释」，Kotlin 调 Java 的引用会从否决里漏掉、又从来没算成可能引用，正好得出假 dead。
+- 只认候选所在语言的适配器记账的调用点：kotlin-portal 的 Kotlin 行带 16,001 个调用点，若把它们当成「已解释」，Kotlin 调 Java 的引用会从否决里漏掉、又从来没算成可能引用，正好得出假 dead。
 注释与 Javadoc 里的出现也否决是有意的保守：代价是少量召回，收益是不需要为每种文件类型写解析器。
 
 **D7：语言插件模型——引擎通用，每种语言三件套，build-free。** 引擎 `dead-code.mjs` 只认一种引用事实模型，不含任何语言分支：
@@ -154,8 +154,8 @@
    - **独立审读（门）。** 独立代理（Opus，干净上下文，不接触本变更的推理）读源码：`dead` 判定 ≤100 条时全查，否则按可见性 × 所属类型种类 × 簇成员 × 模块分层抽 ≥60 条；对每条按清单猎错——方法引用、反射或字符串字面量、框架约定、注解实参类字面量、生成代码的输入、经子类型与继承实现的分派、其它语言——要求 0 条假阳性。另抽 30 条 `suspect` 核对「确无任何证据、了结声明正确」，30 条 `undetermined` 核对原因与证据位置，30 条 `live` 核对路径每一跳的证据行确有该调用。
    - **真实语料绊线（门）。** 以下已知活方法不得为 `dead` / `suspect`，报告各自的判定与原因：`PlatformCache.isEhcacheEnabled`（方法引用）；`CashierTransactionsWithSummaryData.getSumOutwardCash`（序列化访问器）；`BusinessDateUpdateHandler.fallback`、`AcmeLoanRepaymentScheduleTransactionProcessor.getCode`（具体覆写）；`COBBusinessStep` 的任一实现的 `execute(Loan)`（类型变量签名）；任一 `*ApiResource` 的 `@GET` 方法（注解根）；任一 `@MethodSource` 引用的测试数据方法（文本否决）；用确定性查询找出 Fineract 里 `class C extends Base implements I {}` 形态的继承实现（报告数量），若存在则任取一个核对。
    - **文本交叉核对（门）。** 对每个 `dead` 与 `suspect` 方法独立运行 `git grep -nw`，每一行的出现次数必须不超过该行允许的次数（声明 + 指向它的调用点）。
-3. **cebreo/uneeg-managementportal（跨语言，门）。** 8 个 Java 文件里被 Kotlin 调用的方法不得为 `dead` / `suspect`（应为 `undetermined`，原因 `name-occurs-elsewhere`，证据指向 `.kt` 文件）；Kotlin 行的 16,001 个调用点不得计入任何 Java 候选的允许次数。
-4. **wcp-auth、wcp-service-v2、cebreo/unmc（语言门，门）。** 所有函数节点 `undetermined`（`language-not-covered`），`dead` 与 `suspect` 为 0，守恒成立；三者的 factsDigest 与改前相同。
+3. **mixed-suite/kotlin-portal（跨语言，门）。** 8 个 Java 文件里被 Kotlin 调用的方法不得为 `dead` / `suspect`（应为 `undetermined`，原因 `name-occurs-elsewhere`，证据指向 `.kt` 文件）；Kotlin 行的 16,001 个调用点不得计入任何 Java 候选的允许次数。
+4. **go-multirepo-auth、go-multirepo-service-v2、mixed-suite/maui-app（语言门，门）。** 所有函数节点 `undetermined`（`language-not-covered`），`dead` 与 `suspect` 为 0，守恒成立；三者的 factsDigest 与改前相同。
 5. **hadoop（规模）。** Lazy 与 dead-code CLI 都在默认堆下完成；Lazy 用时同条件 A/B 增幅 ≤30%；dead-code CLI 用时、最大常驻内存、产物大小单独报告。
 6. **MCP（门）。** `deploy/mcp-smoke.mjs` 扩到 8 个工具，对改后的 Fineract 全部通过；`dead_code` 的 `missing-product` 与 `stale-product` 终态各有一个用例。
 7. **build-free（门）。** 验收记录证明整个过程没有调用 `javac` / `gradle` / `go` 等工具链、没有安装运行时、没有依赖下载；CLI 在没有 JDK 的环境里对 Fineract 产出与有 JDK 环境逐字节相同的产物。

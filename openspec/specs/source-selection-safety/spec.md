@@ -58,19 +58,19 @@ Within this change, scanner recognition for TypeScript and Dockerfile SHALL use 
 
 Archive candidates matched by the default archive policy, including `*.zip`, SHALL be excluded before source materialization and SHALL NOT contribute bytes or paths to deterministic facts or source indexes.
 
-#### Scenario: Local cebreo archive is irrelevant
-- **WHEN** `unmc.zip` exists beside cebreo source directories
-- **THEN** analysis selects the same source set and produces the same facts as when `unmc.zip` is absent
+#### Scenario: Local mixed-suite archive is irrelevant
+- **WHEN** `maui-app.zip` exists beside mixed-suite source directories
+- **THEN** analysis selects the same source set and produces the same facts as when `maui-app.zip` is absent
 
 ### Requirement: Project-specific selection judgment remains agent-owned
 
-Project-specific generated-directory discovery, rule proposal, and source-loss review SHALL be performed by the host skill from existing deterministic scan evidence and persisted only as project-owned root `.excavatorignore` rules. The deterministic runtime SHALL provide generic selection and accounting primitives but MUST NOT contain cebreo-, MAUI-, or other project-specific ignore profiles when the host agent can derive those rules reliably.
+Project-specific generated-directory discovery, rule proposal, and source-loss review SHALL be performed by the host skill from existing deterministic scan evidence and persisted only as project-owned root `.excavatorignore` rules. The deterministic runtime SHALL provide generic selection and accounting primitives but MUST NOT contain mixed-suite-, MAUI-, or other project-specific ignore profiles when the host agent can derive those rules reliably.
 
 The host skill SHALL run this lightweight review before choosing Lazy or Full whenever the root file is absent or legacy rules require migration. It SHALL use project layout, `.gitignore`, and scan bucket evidence to discover candidates rather than treating its example names as a closed registry. It SHALL use host-native temporary-file operations on Windows and POSIX, and SHALL pass newly approved rules to the current run when Git HEAD cannot yet contain the edited root file.
 
-#### Scenario: cebreo rules come from evidence, not a product branch
-- **WHEN** cebreo contains generated directories with project-specific names
-- **THEN** the host skill proposes and verifies root ignore rules from scanner evidence without adding a cebreo or MAUI conditional to product code
+#### Scenario: mixed-suite rules come from evidence, not a product branch
+- **WHEN** mixed-suite contains generated directories with project-specific names
+- **THEN** the host skill proposes and verifies root ignore rules from scanner evidence without adding a mixed-suite or MAUI conditional to product code
 
 #### Scenario: Generic safety remains deterministic
 - **WHEN** a candidate matches a non-negatable secret, archive, or analysis-data safety rule
