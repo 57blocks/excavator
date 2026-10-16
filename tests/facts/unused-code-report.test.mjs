@@ -53,8 +53,11 @@ const typeWith = (supertypes) => ownerType({ outsideSupertypes: { own: [], ances
  * `X`); `calls` are [referrer, referenced] name pairs; every name in an `islands`
  * list shares one component, every other name has its own. `entry` follows the
  * component rule of the real product: no reference from another component.
+ * The header's `counts.byLanguage` has one row per language of the candidates;
+ * `languageCalls` sets the header's `calls` of a language (default 0, as for a
+ * language the fact graph has no call edges for).
  */
-function world({ nodes, calls = [], islands = [], types = { [OWNER]: ownerType() }, factsDigest = FACTS }) {
+function world({ nodes, calls = [], islands = [], types = { [OWNER]: ownerType() }, factsDigest = FACTS, languageCalls = {} }) {
   const names = Object.keys(nodes).sort(compare);
   const componentOf = new Map();
   let next = 0;
@@ -86,11 +89,17 @@ function world({ nodes, calls = [], islands = [], types = { [OWNER]: ownerType()
     census: { elsewhere: 0, samples: [], sameNameDeclarationsOnly: false },
     ...nodes[name],
   }));
+  const byLanguage = {};
+  for (const { language } of candidates) {
+    const key = language ?? 'unknown';
+    byLanguage[key] ??= { functionNodes: 0, routeReachable: 0, candidates: 0, entries: 0, calls: languageCalls[key] ?? 0 };
+    byLanguage[key].candidates += 1;
+  }
   return {
     format: UNUSED_CANDIDATES_FORMAT,
     factsDigest,
     sourceRevision: 'rev-1',
-    counts: { candidates: candidates.length },
+    counts: { candidates: candidates.length, byLanguage },
     conservation: { candidates: candidates.length, holds: true },
     census: {},
     types,
@@ -641,6 +650,8 @@ describe('the product', () => {
       u: {},
     },
     calls: [['a', 'b'], ['t', 'u']],
+    // Calls among all function nodes of the language, route-reachable ones included, so not the two pairs above.
+    languageCalls: { java: 7, python: 0, unknown: 3 },
   });
   const list = [entry('e'), testEntry('t')];
 
@@ -666,19 +677,24 @@ describe('the product', () => {
       groups: 3,
       byConfidence: { high: 2, medium: 2, low: 0 },
       byLanguage: {
-        java: { unused: 2, high: 2, medium: 0, low: 0 },
-        python: { unused: 1, high: 0, medium: 1, low: 0 },
-        unknown: { unused: 1, high: 0, medium: 1, low: 0 },
+        java: { candidates: 5, calls: 7, unused: 2, high: 2, medium: 0, low: 0 },
+        python: { candidates: 1, calls: 0, unused: 1, high: 0, medium: 1, low: 0 },
+        unknown: { candidates: 1, calls: 3, unused: 1, high: 0, medium: 1, low: 0 },
       },
     });
     expect(Object.keys(result.counts.byLanguage)).toEqual(['java', 'python', 'unknown']);
+    for (const row of Object.values(result.counts.byLanguage)) {
+      expect(Object.keys(row)).toEqual(['candidates', 'calls', 'unused', 'high', 'medium', 'low']);
+    }
     expect(result.conservation).toEqual({ candidates: 7, removedByDecision: 1, testOnly: 2, unused: 4, holds: true });
     expect(result.residualAssumptions).toEqual([
       'Files the source manifest did not select take no part in the name census.',
       'Reflection on names assembled at run time is invisible.',
       'Code generated at build time and absent from the repository is invisible.',
       'Callers outside the repository show only through visibility: a non-private member may be called from outside.',
+      'Uses that do not spell the method name are invisible to the name census: a property `foo` bound to `getFoo` or `setFoo` by a view, a template or a JSON mapping, or any other name derived by convention.',
     ]);
+    expect(result.residualAssumptions).toHaveLength(5);
     expect(result.decisions).toEqual([
       { kind: 'entry', reason: 'why entry', query: '.candidates[] | .id', hits: 1, ids: idsOf('e') },
       { kind: 'test-entry', reason: 'why test-entry', query: '.candidates[] | .id', hits: 1, ids: idsOf('t') },
@@ -760,6 +776,84 @@ describe('the product', () => {
     expect(result.counts).toMatchObject({ unused: count, unreferenced: 1, groups: 1 });
     expect(result.groups[0].entries).toEqual([idOf('c000000')]);
     expect(nodeOf(result, `c${pad(count - 1)}`).confidence).toBe('high');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Per-language rows: a language with candidates and no call facts must be visible
+// ---------------------------------------------------------------------------
+
+describe('per-language rows', () => {
+  const row = (candidates, calls, over = {}) => ({ candidates, calls, unused: 0, high: 0, medium: 0, low: 0, ...over });
+  const shell = { language: 'shell', file: 'bin/run.sh', owner: null, visibility: null };
+
+  it('has a row for every language of the candidates header, zeros except candidates and calls when nothing is unused', () => {
+    // a is unused; both shell functions are removed by a decision; py1 is a test entry; go has function nodes and no candidates.
+    const candidates = world({
+      nodes: { a: {}, sh1: shell, sh2: shell, py1: { language: 'python', file: 'tools/p.py', owner: null, visibility: null } },
+      languageCalls: { java: 4, shell: 0, python: 2 },
+    });
+    candidates.counts.byLanguage.go = { functionNodes: 9, routeReachable: 9, candidates: 0, entries: 0, calls: 12 };
+    const result = report(candidates, [entry('sh1', 'sh2'), testEntry('py1')]);
+    expect(result.counts.byLanguage).toEqual({
+      go: row(0, 12),
+      java: row(1, 4, { unused: 1, high: 1 }),
+      python: row(1, 2),
+      shell: row(2, 0),
+    });
+    expect(Object.keys(result.counts.byLanguage)).toEqual(['go', 'java', 'python', 'shell']);
+    // Instrument: without the decision the shell row counts its two functions as unused.
+    expect(report(candidates, []).counts.byLanguage.shell).toEqual(row(2, 0, { unused: 2, medium: 2 }));
+  });
+
+  it('keeps the unknown language as the row "unknown"', () => {
+    const candidates = world({ nodes: { d: { language: null, file: 'misc/d.txt', owner: null } }, languageCalls: { unknown: 5 } });
+    expect(Object.keys(candidates.counts.byLanguage)).toEqual(['unknown']);
+    expect(report(candidates).counts.byLanguage).toEqual({ unknown: row(1, 5, { unused: 1, high: 1 }) });
+  });
+
+  describe('fail closed on the header', () => {
+    const rerun = /predates per-language call counts or is malformed.*re-run "node skills\/excavator\/unused-code\.mjs candidates <projectRoot>"/;
+    const withHeader = (change) => {
+      const candidates = world({ nodes: { a: {} }, languageCalls: { java: 3 } });
+      change(candidates);
+      return candidates;
+    };
+
+    it.each([
+      ['counts is missing', (c) => { delete c.counts; }],
+      ['counts.byLanguage is missing (a product from before the call counts)', (c) => { delete c.counts.byLanguage; }],
+      ['counts.byLanguage is null', (c) => { c.counts.byLanguage = null; }],
+      ['counts.byLanguage is an array', (c) => { c.counts.byLanguage = [row(1, 3)]; }],
+      ['a row has no calls', (c) => { delete c.counts.byLanguage.java.calls; }],
+      ['a row has no candidates', (c) => { delete c.counts.byLanguage.java.candidates; }],
+      ['a row is null', (c) => { c.counts.byLanguage.java = null; }],
+      ['a row is an array', (c) => { c.counts.byLanguage.java = [1, 3]; }],
+      ['calls is negative', (c) => { c.counts.byLanguage.java.calls = -1; }],
+      ['calls is fractional', (c) => { c.counts.byLanguage.java.calls = 1.5; }],
+      ['calls is a string', (c) => { c.counts.byLanguage.java.calls = '3'; }],
+      ['candidates is negative', (c) => { c.counts.byLanguage.java.candidates = -1; }],
+      ['candidates is null', (c) => { c.counts.byLanguage.java.candidates = null; }],
+    ])('rejects a product whose %s, telling to re-run candidates', (_label, change) => {
+      expect(() => report(withHeader(change))).toThrow(rerun);
+    });
+
+    it('accepts the header the mutations start from, and rows with zero counts', () => {
+      expect(report(withHeader(() => {})).counts.byLanguage.java).toEqual(row(1, 3, { unused: 1, high: 1 }));
+      expect(report(withHeader((c) => { c.counts.byLanguage.java.calls = 0; })).counts.byLanguage.java.calls).toBe(0);
+    });
+
+    it('rejects an unused node whose language has no row in the header', () => {
+      const candidates = world({ nodes: { a: {}, c: { language: 'python', file: 'tools/c.py', owner: null } } });
+      delete candidates.counts.byLanguage.python;
+      expect(() => report(candidates)).toThrow(/candidate function:src\/X\.java:X#c\(\) is unused but its language python has no row in counts\.byLanguage/);
+    });
+
+    it('rejects an unused node without a language when the header has no "unknown" row', () => {
+      const candidates = world({ nodes: { a: {}, d: { language: null, file: 'misc/d.txt', owner: null } } });
+      delete candidates.counts.byLanguage.unknown;
+      expect(() => report(candidates)).toThrow(/is unused but its language unknown has no row in counts\.byLanguage/);
+    });
   });
 });
 
@@ -909,6 +1003,17 @@ describe('report CLI', () => {
     expect(existsSync(out)).toBe(false);
   });
 
+  it('a candidates product from before the per-language call counts: exit code 1, tells to re-run candidates, nothing written', () => {
+    const legacy = fixtureProduct();
+    delete legacy.counts.byLanguage;
+    const { root, out } = project({ candidates: legacy });
+    const result = run(['report', root]);
+    expect(result.status).toBe(1);
+    expect(result.stderr).toMatch(/^unused-code\.mjs failed: .*predates per-language call counts.*node skills\/excavator\/unused-code\.mjs candidates <projectRoot>/);
+    expect(result.stdout).toBe('');
+    expect(existsSync(out)).toBe(false);
+  });
+
   it('a candidates product in another format: exit code 1', () => {
     const { root, out } = project({ candidates: { ...fixtureProduct(), format: 'something-else' } });
     const result = run(['report', root]);
@@ -992,12 +1097,15 @@ describe('report CLI', () => {
       ]);
       expect(written.unused[1].signals).toEqual([{ signal: 'capped', from: 'high', by: calcId('dead') }]);
       expect(written.groups).toEqual([{ group: 0, entries: [calcId('dead')], members: [calcId('dead'), calcId('helper')] }]);
+      // dead -> helper is the one call between function nodes, and it is counted for Java.
+      expect(written.counts.byLanguage).toEqual({ java: { candidates: 3, calls: 1, unused: 2, high: 0, medium: 2, low: 0 } });
 
       // Instrument: without the decision, recalc is one more high-confidence unused node.
       writeFileSync(join(data, UNUSED_DECISIONS_FILE), JSON.stringify({ factsDigest: candidates.factsDigest, decisions: [] }));
       expect(run(['report', root]).status).toBe(0);
       const undecided = read(join(data, 'unused-code.json'));
       expect(undecided.counts).toMatchObject({ unused: 3, removedByDecision: 0, byConfidence: { high: 1, medium: 2, low: 0 } });
+      expect(undecided.counts.byLanguage).toEqual({ java: { candidates: 3, calls: 1, unused: 3, high: 1, medium: 2, low: 0 } });
     });
 
     it('candidates still prints usage for its own bad argument shapes and works as before', () => {

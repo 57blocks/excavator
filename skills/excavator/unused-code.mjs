@@ -53,7 +53,10 @@
  *     candidates }
  * Structure facts the structure result does not carry are `null` (unknown); a
  * present-but-empty field is `[]`. A candidate whose name is not a plain
- * identifier has `census: null` (unknown, never zero).
+ * identifier has `census: null` (unknown, never zero). `counts.byLanguage` has a row per
+ * language of the function nodes, { functionNodes, routeReachable, candidates, entries, calls }:
+ * `calls` is the number of `calls` edges between function nodes whose caller is in that language,
+ * so a language with function nodes and `calls` 0 has no call facts in the fact graph.
  *
  * Report (design D3, D4, D6, D7). The decisions file
  * `.excavator/unused-decisions.json` (or `--decisions <file>`) is
@@ -73,6 +76,9 @@
  * Product `.excavator/unused-code.json`
  *   { format, factsDigest, decisionsDigest, sourceRevision, counts, conservation,
  *     residualAssumptions, decisions, unused, groups, testOnly }
+ * `counts.byLanguage` has a row for every language of the candidates header, { candidates, calls,
+ * unused, high, medium, low }, `candidates` and `calls` copied from the header. A candidates product
+ * without those rows (made before the call counts) is refused: nothing is written.
  *
  * Contract: openspec/changes/unused-code/specs/unused-code/spec.md
  *           (requirements: the definition of unused code, the deterministic
@@ -636,7 +642,15 @@ export function buildUnusedCandidates({ graph, structure, sourceRevision }) {
     if (node.type === 'class') classNodes.set(node.id, node);
   }
 
-  // One pass over the edges for everything the class level needs.
+  const byLanguage = new Map();
+  const bucket = (language) => {
+    const key = language ?? 'unknown';
+    if (!byLanguage.has(key)) byLanguage.set(key, { functionNodes: 0, routeReachable: 0, candidates: 0, entries: 0, calls: 0 });
+    return byLanguage.get(key);
+  };
+
+  // One pass over the edges for everything the class level needs, and for the calls per language.
+  const functionIdSet = new Set(set.functionIds);
   const ownerOf = new Map();
   const parentsOf = new Map();
   const childrenOf = new Map();
@@ -668,15 +682,15 @@ export function buildUnusedCandidates({ graph, structure, sourceRevision }) {
           line: Number.isInteger(first?.line) ? first.line : null,
         });
       }
+    } else if (type === 'calls') {
+      // Counted under the caller's language. A language with function nodes and no call edge here has no
+      // call facts at all, and every function in it is then a candidate whatever calls it.
+      if (functionIdSet.has(edge.source) && functionIdSet.has(edge.target)) {
+        bucket(index.languageOf(nodeById.get(edge.source)?.filePath)).calls += 1;
+      }
     }
   }
 
-  const byLanguage = new Map();
-  const bucket = (language) => {
-    const key = language ?? 'unknown';
-    if (!byLanguage.has(key)) byLanguage.set(key, { functionNodes: 0, routeReachable: 0, candidates: 0, entries: 0 });
-    return byLanguage.get(key);
-  };
   set.functionIds.forEach((id, i) => {
     const counts = bucket(index.languageOf(nodeById.get(id).filePath));
     counts.functionNodes += 1;
@@ -1074,6 +1088,7 @@ const RESIDUAL_ASSUMPTIONS = [
   'Reflection on names assembled at run time is invisible.',
   'Code generated at build time and absent from the repository is invisible.',
   'Callers outside the repository show only through visibility: a non-private member may be called from outside.',
+  'Uses that do not spell the method name are invisible to the name census: a property `foo` bound to `getFoo` or `setFoo` by a view, a template or a JSON mapping, or any other name derived by convention.',
 ];
 
 const DECISION_KINDS = ['entry', 'test-entry'];
@@ -1193,6 +1208,29 @@ function ownerTypeFor(candidate, types, checked) {
     checked.add(candidate.owner);
   }
   return type;
+}
+
+/**
+ * The per-language rows of the report, started from the candidates header: one per language the header
+ * counts (candidates and calls copied), the unused counts at zero. A header without those rows is a product
+ * from before the call counts or a damaged one, and it is refused: without `calls` a language the fact graph
+ * has no call edges for would look like any other.
+ */
+function languageRowsOf(product) {
+  const header = product.counts?.byLanguage;
+  const refuse = (why) => new Error(`the candidates product predates per-language call counts or is malformed (${why}); re-run "node skills/excavator/unused-code.mjs candidates <projectRoot>"`);
+  if (!isPlainObject(header)) throw refuse('counts.byLanguage is missing or not an object');
+  const rows = new Map();
+  for (const [language, row] of Object.entries(header)) {
+    if (!isPlainObject(row)) throw refuse(`counts.byLanguage.${language} is not an object`);
+    for (const field of ['candidates', 'calls']) {
+      if (!Number.isInteger(row[field]) || row[field] < 0) {
+        throw refuse(`counts.byLanguage.${language}.${field} is ${shown(row[field])}, not a non-negative integer`);
+      }
+    }
+    rows.set(language, { candidates: row.candidates, calls: row.calls, unused: 0, high: 0, medium: 0, low: 0 });
+  }
+  return rows;
 }
 
 // ---- The decisions file (design D4) ----
@@ -1333,6 +1371,7 @@ export function buildUnusedReport({ candidates, decisions, decisionsDigest, fact
   if (candidates.factsDigest !== factsDigest) {
     throw new Error(`the candidate set is stale (facts ${factsDigest} vs candidates ${shown(candidates.factsDigest)}); run "unused-code.mjs candidates" again`);
   }
+  const languages = languageRowsOf(candidates);
 
   const ordered = orderedCandidates(candidates);
   const n = ordered.length;
@@ -1523,14 +1562,13 @@ export function buildUnusedReport({ candidates, decisions, decisionsDigest, fact
   }
 
   const byConfidence = { high: 0, medium: 0, low: 0 };
-  const languages = new Map();
   let unreferenced = 0;
   for (const node of unused) {
     byConfidence[node.confidence] += 1;
     if (node.reason === 'unreferenced') unreferenced += 1;
     const key = node.language ?? 'unknown';
-    if (!languages.has(key)) languages.set(key, { unused: 0, high: 0, medium: 0, low: 0 });
     const row = languages.get(key);
+    if (!row) throw new Error(`candidate ${node.id} is unused but its language ${key} has no row in counts.byLanguage of the candidates product`);
     row.unused += 1;
     row[node.confidence] += 1;
   }
