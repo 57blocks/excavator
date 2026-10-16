@@ -56,11 +56,11 @@ Java 抽取器 SHALL 把方法引用表达式记录为调用点：`X::m`、`expr
 
 ### Requirement: Java 方法体之外的调用点
 
-Java 抽取器 SHALL 记录方法与构造器体之外的调用点——方法调用、方法引用与对象创建——包括字段初始化（含其中的 lambda）、静态与实例初始化块、枚举常量实参与 record 紧凑构造器体。这类调用点的调用者 SHALL 记为不可能是 Java 标识符的哨兵：静态上下文（`static` 字段、接口与注解类型的字段、静态初始化块、枚举常量实参）为 `<clinit>`，实例上下文为 `<init>`。哨兵 MUST NOT 匹配任何声明，这类调用点 SHALL 落入 `calls-caller-unresolved` 并计入守恒；解析器报告模式 SHALL 在所在类型可读时给出其已解析目标。已在方法体内的调用点（含字段初始化里匿名类的方法）保持原调用者。
+Java 抽取器 SHALL 记录方法与构造器体之外的调用点——方法调用、方法引用与对象创建——包括字段初始化（含其中的 lambda）、静态与实例初始化块、枚举常量实参与 record 紧凑构造器体。这类调用点的调用者 SHALL 记为不可能是 Java 标识符的哨兵：静态上下文（`static` 字段、接口与注解类型的字段、静态初始化块、枚举常量实参）为 `<clinit>`，实例上下文为 `<init>`。哨兵 MUST NOT 匹配任何声明，这类调用点 SHALL 落入 `calls-caller-unresolved` 并计入守恒。已在方法体内的调用点（含字段初始化里匿名类的方法）保持原调用者。
 
 #### Scenario: 静态字段初始化里的方法引用
 - **WHEN** 顶层类 `CleanerUtil` 声明 `private static final BufferCleaner CLEANER = CleanerUtil::unmapHackImpl;`，`unmapHackImpl` 只在这里被引用
-- **THEN** 该方法引用记为调用者 `<clinit>` 的调用点，落入 `calls-caller-unresolved`，不生成 `calls` 边；报告模式给出目标 `CleanerUtil#unmapHackImpl(...)`
+- **THEN** 该方法引用记为调用者 `<clinit>` 的调用点，落入 `calls-caller-unresolved`，不生成 `calls` 边
 
 #### Scenario: 实例初始化与紧凑构造器
 - **WHEN** 实例字段初始化 `private final List<X> xs = new ArrayList<>();` 与 record 紧凑构造器体里的 `validate(a)`

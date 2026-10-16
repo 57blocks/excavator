@@ -95,7 +95,7 @@ A framework's own file type (XAML) gets a parser like any other language.
 **Moving a relationship up to the third home.** First ask: can a model reading
 this file, with `traverse` and `read_evidence`, decide it? If yes, it stays in
 the addendum. A structural fact may still need determinism, for two reasons:
-- an absence claim needs the complete set (dead-code roots);
+- an absence claim needs the complete set (unused-code candidates);
 - a model would otherwise have to copy it out at volume (a route table).
 
 In that case, propose a catalog for the whole family as its own OpenSpec

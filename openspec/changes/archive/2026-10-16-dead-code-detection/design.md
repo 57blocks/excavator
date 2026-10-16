@@ -1,3 +1,10 @@
+> **结局（2026-10-16 归档）。**
+> - 切片 A 已由 PR 57blocks/excavator#13 合入，其事实图要求已同步进主规格 `fact-graph`。切片 A 是 Java 引用事实补齐：方法的修饰符、注解与类字面量，方法引用，方法体之外的调用点，`overrides` 边与继承来的实现，`override-uncertain` 缺口，跨行限定名。
+> - 判定部分（切片 B、C）未实施，由变更 `unused-code` 按 AI 优先的设计取代。未实施的内容是：五桶判定、活性声明文件、注解规则目录、语言无关引擎与适配器、产物、MCP 工具 `dead_code` 与 skill。
+> - 解析器报告模式（D13，任务 3.3）没有生产调用方，已由 `unused-code` 删除。
+>
+> 下文保留当时的原文。
+
 ## Context
 
 - 事实图（`build-fact-graph.mjs`）对 Java 调用点按接收者静态类型解析（java-member-call-resolution 已归档）：每个调用点落入成边或五个桶之一（`calls-external`、`calls-generated`、`calls-ambiguous`、`calls-unresolved`、`calls-caller-unresolved`），守恒 fail-closed。`resolveFileCalls(row, { report: true })` 对成边的调用点给出 `outsideHierarchy`；对不成边的调用点只给桶名。
