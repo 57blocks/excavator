@@ -582,12 +582,12 @@ describe('scan-project.mjs — pre-extraction selection safety', () => {
     projectRoot = setupTree({
       '.excavatorignore': [
         '!LICENSE',
-        '!unmc.zip',
+        '!maui-app.zip',
         '!config/extension-only.key',
         'generated/',
       ].join('\n'),
       'LICENSE': 'selected ordinary default\n',
-      'unmc.zip': 'archive bytes that must never be selected\n',
+      'maui-app.zip': 'archive bytes that must never be selected\n',
       'config/privatekey3072.txt': privateKey,
       'config/extension-only.key': 'synthetic extension-only credential fixture\n',
       'config/same-size-control.txt': sameSizeControl,
@@ -603,7 +603,7 @@ describe('scan-project.mjs — pre-extraction selection safety', () => {
     expect(decision('LICENSE')?.kind).toBe('selected');
     expect(decision('config/same-size-control.txt')?.kind).toBe('selected');
     expect(decision('generated/client.ts')?.kind).toBe('filtered-by-ignore');
-    expect(decision('unmc.zip')?.kind).toBe('filtered-by-defaults');
+    expect(decision('maui-app.zip')?.kind).toBe('filtered-by-defaults');
     expect(decision('config/privatekey3072.txt')).toMatchObject({
       kind: 'sensitive', reason: 'sensitive', detail: 'private-key-header', size: privateKey.byteLength,
     });

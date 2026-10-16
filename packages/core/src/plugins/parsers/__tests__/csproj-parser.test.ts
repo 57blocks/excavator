@@ -42,7 +42,7 @@ const deps = (a: StructuralAnalysis) =>
 
 describe("CsprojParser", () => {
   it("extracts each PackageReference as an anchored dependency", () => {
-    const d = deps(parser.analyzeFile("UNMC.csproj", SAMPLE));
+    const d = deps(parser.analyzeFile("SampleApp.csproj", SAMPLE));
     const names = d.map((x) => x.name);
     expect(names).toContain("CommunityToolkit.Maui");
     expect(names).toContain("Newtonsoft.Json");
@@ -97,8 +97,8 @@ describe("CsprojParser", () => {
   it("is registered so .csproj resolves to the csproj parser", () => {
     const registry = new PluginRegistry();
     registerAllParsers(registry);
-    expect(registry.getLanguageForFile("UNMC.csproj")).toBe("csproj");
-    const plugin = registry.getPluginForFile("UNMC.csproj");
+    expect(registry.getLanguageForFile("SampleApp.csproj")).toBe("csproj");
+    const plugin = registry.getPluginForFile("SampleApp.csproj");
     expect(plugin?.name).toBe("csproj-parser");
   });
 });

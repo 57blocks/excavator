@@ -114,7 +114,7 @@ describe("FrameworkRegistry", () => {
     it("detects .NET MAUI from a .csproj (glob manifest match)", () => {
       const registry = FrameworkRegistry.createDefault();
       const detected = registry.detectFrameworks({
-        "src/UNMC/UNMC/UNMC/UNMC.csproj":
+        "src/SampleApp/SampleApp/SampleApp/SampleApp.csproj":
           "<Project><PropertyGroup><UseMaui>true</UseMaui></PropertyGroup>" +
           '<ItemGroup><PackageReference Include="Microsoft.Maui.Controls" Version="8.0.100" /></ItemGroup></Project>',
       });
