@@ -80,7 +80,7 @@
  * unused, high, medium, low }, `candidates` and `calls` copied from the header. A candidates product
  * without those rows (made before the call counts) is refused: nothing is written.
  *
- * Contract: openspec/changes/unused-code/specs/unused-code/spec.md
+ * Contract: openspec/specs/unused-code/spec.md
  *           (requirements: the definition of unused code, the deterministic
  *           candidate set, the name occurrence census, entry judgment by the
  *           host skill, the confidence rules, the product / freshness / query)

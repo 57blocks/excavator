@@ -98,15 +98,15 @@
 
 ## 5. 验收与归档
 
-- [ ] 5.1 真实模型（O3）：Sonnet 在 dataverse 与 Fineract 的副本上执行 skill（限预算，不并行），独立 Opus 代理审读。
+- [x] 5.1 真实模型（O3）：Sonnet 在 dataverse 与 Fineract 的副本上执行 skill（限预算，不并行），独立 Opus 代理审读。
   - 全部 `high` 0 条在用（门）；
   - 30 条 `medium`、20 条 `low` 的信号属实；
   - 20 条决定的理由成立。
-- [ ] 5.2 按审读发现修正（取舍与理由记入验收记录）。
+- [x] 5.2 按审读发现修正（取舍与理由记入验收记录）。
   - 候选集头部按语言计 `calls` 边数，`report` 带到产物，拒绝没有它的候选集；skill 与 chat 对 `calls` 为 0 的语言说明结果只说明事实里没有它的调用。
   - 第 5 条残余假设：不写出方法名的使用（属性名绑定 getter/setter 等）看不见；`medium` 的措辞改为「名字在别处没有出现」，不说「仓库里没有使用」。
   - skill：测试代码（测试源码目录、只被测试依赖的模块）里的方法即使由生产机制调用也判 `test-entry`。
   - 第二轮（Fineract 审读）：第 6 条残余假设，事实图没能解析的调用没有边；skill 把程序启动（`main`、脚本顶层调用的函数）规定为每次都判的入口。
   - 验证：单测与契约测试，各有变异变红；两份真实产物重跑后除新字段外逐字段相同，独立核对脚本通过，且在三种改坏的产物上报错。
-- [ ] 5.3 全量门（O4）：vitest、`check-refs`、`openspec validate --all --strict`。
-- [ ] 5.4 验收记录写入 design.md；规格同步到 `openspec/specs/unused-code/spec.md`，变更移入 `openspec/changes/archive/`。
+- [x] 5.3 全量门（O4）：vitest、`check-refs`、`openspec validate --all --strict`。
+- [x] 5.4 验收记录写入 design.md；规格同步到 `openspec/specs/unused-code/spec.md`，变更移入 `openspec/changes/archive/`。
