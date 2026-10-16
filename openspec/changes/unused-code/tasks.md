@@ -5,14 +5,15 @@
   2. `refactor(facts): drop the Java call-resolution report mode`：任务 1.1–1.2。
   3. `docs(openspec): archive dead-code-detection`：任务 1.3。
 - **PR 2（确定性候选集）**
-  4. `feat(unused-code): candidate set and clusters`：任务 2.1–2.2。
-  5. `feat(unused-code): name occurrence census`：任务 2.3。
-  6. `docs(openspec): record unused-code candidate measurements`：任务 2.4。
+  4. `docs(openspec): refine the unused-code census and candidate product`：普查按直接引用者体内解释、读源码核对摘要、候选集产物形状、O2 的路由绊线移到决定之后。
+  5. `feat(unused-code): candidate set and clusters`：任务 2.1–2.2。
+  6. `feat(unused-code): name occurrence census`：任务 2.3。
+  7. `docs(openspec): record unused-code candidate measurements`：任务 2.4。
 - **PR 3（入口判断、报告与查询）**
-  7. `feat(unused-code): apply entry decisions and confidence`：任务 3.1–3.2。
-  8. `feat(skill): excavator-unused-code`：任务 4.1。
-  9. `docs(skill): chat answers from the unused-code product`：任务 4.2。
-  10. `docs(openspec): record unused-code acceptance and archive`：任务 5.x。
+  8. `feat(unused-code): apply entry decisions and confidence`：任务 3.1–3.2。
+  9. `feat(skill): excavator-unused-code`：任务 4.1。
+  10. `docs(skill): chat answers from the unused-code product`：任务 4.2。
+  11. `docs(openspec): record unused-code acceptance and archive`：任务 5.x。
 
 ## 1. 清理已有实现（PR 1）
 
@@ -37,24 +38,26 @@
 
 ## 2. 确定性候选集（PR 2）
 
-- [ ] 2.1 新增 `skills/excavator/unused-code.mjs` 的纯函数部分与 `candidates` CLI（`node skills/excavator/unused-code.mjs candidates <projectRoot>`）。
+- [x] 2.1 新增 `skills/excavator/unused-code.mjs` 的纯函数部分与 `candidates` CLI（`node skills/excavator/unused-code.mjs candidates <projectRoot>`）。
   - 读 `.excavator/intermediate/fact-graph.jsonl`、`.excavator/intermediate/structure-all.jsonl` 与 `.excavator/source-manifest.json`。
   - 按 D3 求路由可达集、候选、强连通分量、簇入口，以及每个候选在候选之间的直接引用者。
   - 写 `.excavator/unused-candidates.json`：头部有 `factsDigest`、计数（函数节点总数、路由可达、候选、入口、簇，按语言）与守恒；每个候选带特征。
   - 守恒不等即非零退出、不写产物。
   - 验证：合成事实图单测覆盖规格「未使用代码的定义」「确定性候选集」的场景；双向覆写与守恒各有一个变红用例（O1）。
-- [ ] 2.2 候选特征。
+- [x] 2.2 候选特征。
   - 从结构结果按（文件、名字、行区间）对上函数节点，取可见性、修饰符、方法注解；所属类型的注解与父类型文本。
   - 用事实图的 `inherits` / `implements` 类型边判断父类型是否在索引里，沿祖先与后代传播。
   - 所属类型的入边 `references` / `injects` / `mentions` 来源，以及它在注解实参类字面量里的出现。
   - 结构结果没有的字段记为未知。
   - 验证：小型 Java 夹具的单测逐字段核对。
-- [ ] 2.3 名字出现普查（D5）。
-  - 流式读选中文件，跳过含 NUL 的文件并计数；逐行计数与允许次数；记录别处出现总数与位置样例（样例可截断，总数不截断）。
-  - 统计「仅因同名声明而出现」的候选数。
-  - 验证：单测覆盖规格「名字出现普查」三个场景、注释里的出现、同一行一次允许一次多余；关掉普查时反射字符串场景变红（O1）。
-- [ ] 2.4 真实语料确定性运行（O2）：Fineract（f9c2fcd）、dataverse、hadoop 的产物副本上运行 `candidates`。
-  - 报告计数、各特征分布、用时、峰值内存、产物大小；Fineract 绊线的状态。
+- [x] 2.3 名字出现普查（D5）。
+  - 逐个读选中文件：工作区按清单 `contentHash` 核对，不一致改读源码快照，仍不一致即失败；跳过含 NUL 的文件并计数。
+  - 已解释的出现只有本节点声明行上的 1 次与直接引用者体内的出现；其余记为别处出现，总数不截断、位置样例截断。
+  - 名字不是纯标识符的节点普查记为未知；统计「别处出现全在同名声明行上」的候选数。
+  - 验证：单测覆盖规格「名字出现普查」全部场景、注释里的出现、声明行上的第二次出现；去掉反射那一行后计数归零，证明装置看得见（O1）。
+- [x] 2.4 真实语料确定性运行（O2）：Fineract（f9c2fcd）、dataverse、hadoop 的副本上先运行 Lazy，再运行 `candidates`。
+  - build-free：只用 Node 与 Lazy，不编译、不装 Java 运行时或构建工具、不拉依赖。
+  - 报告计数、各特征分布、用时、峰值内存、产物大小；Fineract 绊线中候选集阶段能判的部分（带 HTTP 方法注解的候选都能被路由缺口或 Retrofit 接口解释；三个绊线方法的特征与普查）。
   - 结果写入 design.md「测量记录」。
 
 ## 3. 入口决定与可信度（PR 3）
