@@ -30,11 +30,6 @@
  * more are ambiguous — including a method or constructor the source does not
  * declare but that exists at another arity (an `Object` method, a generated
  * accessor or constructor). An array constructor `T[]::new` is external.
- *
- * Report mode (design D13) adds what a caller of the resolver needs to
- * reason past a bucket — the receiver type, the candidates of an ambiguous
- * call when they are known, the target of a call whose caller is not — and
- * never changes an outcome.
  */
 
 import { createJavaTypeQueries } from './java-type-queries.mjs';
@@ -198,8 +193,8 @@ function repoRef(type, isStatic) {
 
 /**
  * Ambiguous among resolution results. When every alternative is a repository
- * type (or several), `types` lists them, so report mode can name the
- * candidates (D13); anything unknown among them leaves the set unknown.
+ * type (or several), `types` lists them; anything unknown among them leaves
+ * the set unknown.
  */
 function ambiguousAmong(results) {
   const types = [];
@@ -711,26 +706,6 @@ export function createJavaCallResolver({ rows, functionIds, classIds = new Map()
     return UNRESOLVED;
   }
 
-  /** An ambiguous outcome; `candidates` (methods) when the full set is known. */
-  function ambiguousResult(candidates) {
-    return candidates ? { outcome: AMBIGUOUS, candidates } : { outcome: AMBIGUOUS };
-  }
-
-  /**
-   * The declarations a call may bind to when its receiver is one of several
-   * repository types: the union of the lookup on each, or undefined when any
-   * lookup cannot say (D13). External and generated targets add none.
-   */
-  function unionOfCandidates(results) {
-    const union = [];
-    for (const r of results) {
-      if (r.outcome === 'edge') union.push(r.target);
-      else if (r.outcome === AMBIGUOUS && r.candidates) union.push(...r.candidates);
-      else if (r.outcome !== EXTERNAL && r.outcome !== GENERATED) return undefined;
-    }
-    return [...new Set(union)];
-  }
-
   const lookupCache = new Map();
   /**
    * Method lookup on a resolved repository type: an outcome plus its target.
@@ -746,15 +721,9 @@ export function createJavaCallResolver({ rows, functionIds, classIds = new Map()
     let result = perType.get(key);
     if (result) return result;
     const candidates = findMethods(type, name, argCount);
-    // `outsideHierarchy` is for reporting: an outside supertype of the
-    // lookup type could declare a same-arity overload we cannot see (Risks).
-    // `candidates` too (D13): the declarations an ambiguous call may bind
-    // to, unless a supertype the repository declares but this resolver
-    // cannot read could add one.
-    const known = !hierarchy(type).hasUnknown;
-    if (candidates.length === 1 && argCount === null && undeclaredOverloadMayExist(type, name, candidates[0])) result = ambiguousResult(known ? candidates : undefined);
-    else if (candidates.length === 1) result = { outcome: 'edge', target: candidates[0], outsideHierarchy: methodsMaybeOutside(type) };
-    else if (candidates.length > 1) result = ambiguousResult(known ? candidates : undefined);
+    if (candidates.length === 1 && argCount === null && undeclaredOverloadMayExist(type, name, candidates[0])) result = { outcome: AMBIGUOUS };
+    else if (candidates.length === 1) result = { outcome: 'edge', target: candidates[0] };
+    else if (candidates.length > 1) result = { outcome: AMBIGUOUS };
     else result = { outcome: classifyMissing(type, name, argCount) };
     perType.set(key, result);
     return result;
@@ -898,10 +867,7 @@ export function createJavaCallResolver({ rows, functionIds, classIds = new Map()
         return fieldOf(resolveReceiver(receiver.object, site, file), receiver.name);
       }
       case 'call': {
-        // A report-mode probe (D13) also types a receiver whose own call has
-        // no resolvable caller: the same unknown caller as the outer call.
-        let inner = resolveSite(file, receiver.site);
-        if (site.probe === true && inner.outcome === CALLER_UNRESOLVED) inner = probeSite(file, receiver.site)?.result ?? inner;
+        const inner = resolveSite(file, receiver.site);
         if (inner.outcome !== 'edge' || inner.target.declaredReturnType === undefined) return R_UNKNOWN;
         const method = inner.target;
         // A type variable in a return type is instantiated by the caller: unknown.
@@ -950,8 +916,6 @@ export function createJavaCallResolver({ rows, functionIds, classIds = new Map()
         declarations,
         outcomes: [],
         resolving: new Set(),
-        probes: new Map(),
-        probing: new Set(),
       };
       fileState.set(row.path, state);
     }
@@ -980,11 +944,7 @@ export function createJavaCallResolver({ rows, functionIds, classIds = new Map()
     };
   }
 
-  /**
-   * Outcome of one call site, memoized: `{ outcome, callerId?, target?,
-   * candidates?, lookupType? }`. `lookupType` is the repository type the
-   * method lookup ran on.
-   */
+  /** Outcome of one call site, memoized: `{ outcome, callerId?, target? }`. */
   function resolveSite(state, index) {
     const cached = state.outcomes[index];
     if (cached) return cached;
@@ -1003,35 +963,10 @@ export function createJavaCallResolver({ rows, functionIds, classIds = new Map()
       // Lookup results are shared through caches; copy before adding the caller.
       result = { ...resolveTarget(state, site, context, owner), callerId: caller.id };
       if (result.outcome === 'edge' && result.target.id == null) result = { outcome: AMBIGUOUS, target: result.target };
-      if (context.lookupType) result.lookupType = context.lookupType;
     }
     state.resolving.delete(index);
     state.outcomes[index] = result;
     return result;
-  }
-
-  /**
-   * Report mode only (D13): the target of a call whose caller cannot be
-   * attributed, resolved in its enclosing type's scope as if the caller were
-   * known. Null when the enclosing type is itself not one this resolver reads
-   * (a nested, local or anonymous type), where resolving would be a guess.
-   * Never feeds an outcome.
-   */
-  function probeSite(state, index) {
-    if (state.probes.has(index)) return state.probes.get(index);
-    const site = state.row.callGraph[index];
-    const owner = site ? ownerOf(state, site) : null;
-    let probe = null;
-    if (owner && !state.probing.has(index)) {
-      state.probing.add(index);
-      const context = { scope: callerScope(state, owner, resolveCaller(state, site, owner)), probe: true };
-      let result = resolveTarget(state, site, context, owner);
-      if (result.outcome === 'edge' && result.target.id == null) result = { outcome: AMBIGUOUS };
-      probe = { result, lookupType: context.lookupType ?? null };
-      state.probing.delete(index);
-    }
-    state.probes.set(index, probe);
-    return probe;
   }
 
   function resolveTarget(state, site, context, owner) {
@@ -1045,7 +980,6 @@ export function createJavaCallResolver({ rows, functionIds, classIds = new Map()
       case 'none':
         return resolveBareCall(owner, name, argCount, context);
       case 'this':
-        context.lookupType = owner;
         return lookupOn(owner, name, argCount);
       case 'super':
         return resolveSuperCall(owner, name, argCount, context);
@@ -1057,14 +991,12 @@ export function createJavaCallResolver({ rows, functionIds, classIds = new Map()
   function callOn(res, name, argCount, context) {
     switch (res.status) {
       case 'repo':
-        context.lookupType = res.type;
         return lookupOn(res.type, name, argCount);
       case 'external':
         return { outcome: EXTERNAL };
       case 'ambiguous':
         // Several repository types of that name: the call may bind in any.
-        if (!res.types || res.types.some((t) => hierarchy(t).hasUnknown)) return { outcome: AMBIGUOUS };
-        return ambiguousResult(unionOfCandidates(res.types.map((t) => lookupOn(t, name, argCount))));
+        return { outcome: AMBIGUOUS };
       case 'array':
         return { outcome: isObjectMethod(name, argCount) ? EXTERNAL : UNRESOLVED };
       default:
@@ -1089,51 +1021,40 @@ export function createJavaCallResolver({ rows, functionIds, classIds = new Map()
    */
   function resolveBareCall(owner, name, argCount, context) {
     const scope = context.scope;
-    if (declaresMethodNamed(owner, name)) {
-      context.lookupType = owner;
-      return lookupOn(owner, name, argCount);
-    }
+    if (declaresMethodNamed(owner, name)) return lookupOn(owner, name, argCount);
     const h = hierarchy(owner);
     // A method an outside or unresolvable supertype declares would shadow
     // the static imports.
     const hidden = methodsMaybeOutside(owner);
 
     // Imported types whose methods this resolver cannot see: `opaque` when
-    // any, `unknown` when one of them is in the repository; `partial` when
-    // an imported type's own supertypes may hide a candidate.
+    // any, `unknown` when one of them is in the repository.
     const fromImports = (typeNames) => {
       const candidates = [];
       let opaque = false;
       let unknown = false;
-      let partial = false;
       for (const typeName of typeNames) {
         const res = resolveFqn(typeName, scope.ctx);
         if (res.status === 'repo') {
           for (const m of findMethods(res.type, name, argCount)) candidates.push(m);
-          if (hierarchy(res.type).hasUnknown) partial = true;
         } else {
           opaque = true;
           if (res.status !== 'external') unknown = true;
         }
       }
-      return { candidates, opaque, unknown, partial };
+      return { candidates, opaque, unknown };
     };
-    // The imported candidates are the whole set only when nothing else may shadow or add one.
-    const ambiguousImport = ({ candidates, opaque, partial }) =>
-      ambiguousResult(!opaque && !hidden && !partial ? candidates : undefined);
 
     const single = scope.ctx.staticSingle.get(name);
     if (single) {
-      const imported = fromImports(single);
-      const { candidates, opaque, unknown } = imported;
+      const { candidates, opaque, unknown } = fromImports(single);
       if (candidates.length === 1 && !opaque && !hidden) return { outcome: 'edge', target: candidates[0] };
-      if (candidates.length > 0) return ambiguousImport(imported);
+      if (candidates.length > 0) return { outcome: AMBIGUOUS };
       if (opaque) return { outcome: h.hasUnknown || unknown ? UNRESOLVED : EXTERNAL };
     }
-    const imported = fromImports(scope.ctx.staticOnDemand);
-    const { candidates, opaque, unknown } = imported;
+    const { candidates, opaque, unknown } = fromImports(scope.ctx.staticOnDemand);
     if (candidates.length === 1 && !opaque && !hidden) return { outcome: 'edge', target: candidates[0] };
-    if (candidates.length > 0) return ambiguousImport(imported);
+    if (candidates.length > 0) return { outcome: AMBIGUOUS };
     if (isObjectMethod(name, argCount)) return { outcome: EXTERNAL };
     if (isGenerated(owner, name, argCount)) return { outcome: GENERATED };
     if (h.hasUnknown || unknown) return { outcome: UNRESOLVED };
@@ -1147,12 +1068,8 @@ export function createJavaCallResolver({ rows, functionIds, classIds = new Map()
     // `T[]::new`: the array constructor, never a repository declaration.
     if (res.status === 'array') return { outcome: EXTERNAL };
     if (res.status === 'external') return { outcome: EXTERNAL };
-    if (res.status === 'ambiguous') {
-      // Constructors are not inherited: each candidate type's own are the whole set.
-      return ambiguousResult(res.types ? unionOfCandidates(res.types.map((t) => constructOn(t, argCount))) : undefined);
-    }
+    if (res.status === 'ambiguous') return { outcome: AMBIGUOUS };
     if (res.status !== 'repo') return { outcome: UNRESOLVED };
-    context.lookupType = res.type;
     return constructOn(res.type, argCount);
   }
 
@@ -1161,9 +1078,9 @@ export function createJavaCallResolver({ rows, functionIds, classIds = new Map()
     const mayGenerate = type.kind === 'record' || [...type.annotations].some((a) => CONSTRUCTOR_ANNOTATIONS.has(a));
     const candidates = type.constructors.filter((c) => applicable(c, argCount));
     // A reference may also bind to a constructor the source does not declare.
-    if (candidates.length === 1 && argCount === null && mayGenerate) return ambiguousResult(candidates);
+    if (candidates.length === 1 && argCount === null && mayGenerate) return { outcome: AMBIGUOUS };
     if (candidates.length === 1) return { outcome: 'edge', target: candidates[0] };
-    if (candidates.length > 1) return ambiguousResult(candidates);
+    if (candidates.length > 1) return { outcome: AMBIGUOUS };
     if (type.constructors.length === 0 && arityMatches(argCount, 0)) return { outcome: GENERATED };
     if (mayGenerate) return { outcome: GENERATED };
     return { outcome: UNRESOLVED };
@@ -1506,36 +1423,6 @@ export function createJavaCallResolver({ rows, functionIds, classIds = new Map()
     return { typeEdges, methodEdges, overrideEdges, uncertainPairs };
   }
 
-  /** Sorted distinct ids of candidate methods; undefined when any has no id of its own. */
-  function candidateIds(candidates) {
-    if (!candidates || candidates.some((m) => m.id == null)) return undefined;
-    return [...new Set(candidates.map((m) => m.id))].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
-  }
-
-  /** One site's report-mode record (D13). */
-  function reportSite(state, index, result) {
-    const record = result.outcome === 'edge'
-      ? { outcome: 'edge', callerId: result.callerId, targetId: result.target.id, outsideHierarchy: result.outsideHierarchy === true }
-      : { outcome: result.outcome };
-    let lookupType = result.lookupType ?? null;
-    if (result.outcome === AMBIGUOUS) {
-      const ids = candidateIds(result.candidates);
-      if (ids) record.candidates = ids;
-    } else if (result.outcome === CALLER_UNRESOLVED) {
-      const probe = probeSite(state, index);
-      if (probe) {
-        lookupType = probe.lookupType;
-        if (probe.result.outcome === 'edge') record.target = probe.result.target.id;
-        else if (probe.result.outcome === AMBIGUOUS) {
-          const ids = candidateIds(probe.result.candidates);
-          if (ids) record.candidates = ids;
-        }
-      }
-    }
-    if (lookupType) record.receiverType = lookupType.fqn;
-    return record;
-  }
-
   // Read-only queries on the types above, for a stage that reasons about them
   // (openspec: changes/by-type-injection, D6); see java-type-queries.mjs.
   const typeQueries = createJavaTypeQueries({
@@ -1583,30 +1470,14 @@ export function createJavaCallResolver({ rows, functionIds, classIds = new Map()
     /**
      * Outcomes for every call site of one Java row, index for index with
      * `row.callGraph`: `{ outcome: 'edge', callerId, targetId }` or
-     * `{ outcome: <bucket> }`. With `{ report: true }` (D13) a site also
-     * carries, when known:
-     * - `outsideHierarchy` (edges): whether the lookup type's hierarchy
-     *   reaches outside the repository;
-     * - `receiverType`: the qualified name of the repository type the
-     *   method lookup ran on;
-     * - `candidates` (`calls-ambiguous`): the sorted ids of every
-     *   declaration the call may bind to — absent means the set is unknown,
-     *   never that it is empty;
-     * - `target` (`calls-caller-unresolved`): the id of the one declaration
-     *   the call resolves to in its enclosing type's scope; when it resolves
-     *   there to several, their `candidates` instead. A site outside every
-     *   method and constructor body (caller `<clinit>` / `<init>`) is such a
-     *   site: no declaration has its caller's name.
+     * `{ outcome: <bucket> }`.
      */
-    resolveFileCalls(row, { report = false } = {}) {
+    resolveFileCalls(row) {
       const state = stateOf(row);
       const out = (row.callGraph ?? []).map((_, index) => {
         const result = resolveSite(state, index);
-        if (!report) {
-          if (result.outcome !== 'edge') return { outcome: result.outcome };
-          return { outcome: 'edge', callerId: result.callerId, targetId: result.target.id };
-        }
-        return reportSite(state, index, result);
+        if (result.outcome !== 'edge') return { outcome: result.outcome };
+        return { outcome: 'edge', callerId: result.callerId, targetId: result.target.id };
       });
       fileState.delete(row.path);
       return out;

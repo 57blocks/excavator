@@ -16,7 +16,7 @@
 
 ## 1. 清理已有实现（PR 1）
 
-- [ ] 1.1 `skills/excavator/java-call-resolution.mjs` 删除报告模式（design D8）。
+- [x] 1.1 `skills/excavator/java-call-resolution.mjs` 删除报告模式（design D8）。
   - 删除的部分：
     - `resolveFileCalls` 的 `{ report }` 选项；
     - `reportSite`、`candidateIds`、`probeSite` 与 `probes` / `probing` 状态，以及接收者里的 `site.probe` 分支；
@@ -24,7 +24,7 @@
   - 删除文件头与 `hierarchyEdges` / `resolveFileCalls` 文档注释里关于报告模式的段落。
   - 按类型注入的类型查询仍在用的部分不动（`ambiguousAmong` 的 `types`、`methodsMaybeOutside` 等），以 grep 核实。
   - 验证：全量测试通过。
-- [ ] 1.2 删除 `tests/facts/java-call-report-mode.test.mjs`。
+- [x] 1.2 删除 `tests/facts/java-call-report-mode.test.mjs`。
   - 其它测试里断言报告模式字段的用例同步删除；不改动任何断言非报告模式输出的用例。
   - 验证（O0）：cargotracker 与 dataverse 的副本上，删除前后 Lazy 产出的 `fact-graph.jsonl` 逐字节相同。
 - [ ] 1.3 归档 `dead-code-detection`。

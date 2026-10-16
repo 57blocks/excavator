@@ -3,9 +3,8 @@
 // constant argument or a record compact constructor has a sentinel caller
 // (`<clinit>` / `<init>`) that matches no declaration. It is never a `calls`
 // edge; it lands in `calls-caller-unresolved` and counts toward the call-site
-// conservation, and report mode resolves its target in the enclosing type's
-// scope, so a method reached only from a field initializer is visibly
-// referenced. Real tree-sitter extraction throughout.
+// conservation, so a call from a field initializer is never silently lost.
+// Real tree-sitter extraction throughout.
 import { beforeAll, describe, expect, it } from 'vitest';
 import { PluginRegistry, TreeSitterPlugin, builtinLanguageConfigs, registerAllParsers } from '@excavator/core';
 import { analyzeFileWithOutcomes, buildResult } from '../../skills/excavator/extract-structure-result.mjs';
@@ -117,29 +116,7 @@ describe('Java call sites outside method and constructor bodies in the fact grap
     expect(() => assertCallConservation(sites.length, tally)).not.toThrow();
   });
 
-  it('report mode names the target each sentinel-caller site resolves to in its enclosing type', () => {
-    const { rows, graph } = graphOf(PROJECT);
-    const nodeIds = new Set(graph.nodes.map((n) => n.id));
-    const functionIds = new Map(rows.map((row) => [row.path, (row.functions ?? []).map((fn) => idOf(row.path, fn))]));
-    for (const ids of functionIds.values()) for (const fnId of ids) expect(nodeIds.has(fnId), fnId).toBe(true);
-    const row = rows.find((r) => r.path === CLEANER);
-    const records = createJavaCallResolver({ rows, functionIds }).resolveFileCalls(row, { report: true })
-      .map((record, i) => [`${row.callGraph[i].lineNumber} ${row.callGraph[i].callee}`, record]);
-    expect(records).toEqual([
-      ['4 unmapHackImpl', { outcome: 'calls-caller-unresolved', target: id(CLEANER, 'CleanerUtil#unmapHackImpl()'), receiverType: 'p.CleanerUtil' }],
-      ['5 normalize', { outcome: 'calls-caller-unresolved', target: id(`${P}/Names.java`, 'Names#normalize(String)'), receiverType: 'p.Names' }],
-      ['6 new Helper', { outcome: 'calls-caller-unresolved', target: id(`${P}/Helper.java`, 'Helper#Helper()'), receiverType: 'p.Helper' }],
-      // A field receiver.
-      ['7 helper.describe', { outcome: 'calls-caller-unresolved', target: id(`${P}/Helper.java`, 'Helper#describe()'), receiverType: 'p.Helper' }],
-      // `this::m` in an instance field initializer.
-      ['8 tick', { outcome: 'calls-caller-unresolved', target: id(CLEANER, 'CleanerUtil#tick()'), receiverType: 'p.CleanerUtil' }],
-      // A type receiver in a static initializer block.
-      ['9 Names.normalize', { outcome: 'calls-caller-unresolved', target: id(`${P}/Names.java`, 'Names#normalize(String)'), receiverType: 'p.Names' }],
-      ['12 tick', { outcome: 'edge', callerId: id(CLEANER, 'CleanerUtil#go()'), targetId: id(CLEANER, 'CleanerUtil#tick()'), outsideHierarchy: false, receiverType: 'p.CleanerUtil' }],
-    ]);
-  });
-
-  it('an ambiguous sentinel-caller site lists its candidates; one in a nested type has no target', () => {
+  it('a sentinel caller in a nested type keeps no enclosing type, and both sites stay unattributed', () => {
     const files = {
       ...PROJECT,
       [`${P}/Picks.java`]: [
@@ -155,18 +132,11 @@ describe('Java call sites outside method and constructor bodies in the fact grap
     const rows = extract(files);
     const functionIds = new Map(rows.map((row) => [row.path, (row.functions ?? []).map((fn) => idOf(row.path, fn))]));
     const row = rows.find((r) => r.path === `${P}/Picks.java`);
-    const records = createJavaCallResolver({ rows, functionIds }).resolveFileCalls(row, { report: true });
+    const records = createJavaCallResolver({ rows, functionIds }).resolveFileCalls(row);
     expect(row.callGraph.map((s) => `${s.lineNumber} ${s.caller} ${s.callee} ${s.enclosingType}`)).toEqual([
       '3 <clinit> pick Picks',
       '6 <clinit> Names.normalize null',
     ]);
-    expect(records).toEqual([
-      {
-        outcome: 'calls-caller-unresolved',
-        candidates: [id(`${P}/Picks.java`, 'Picks#pick(Long)'), id(`${P}/Picks.java`, 'Picks#pick(String)')],
-        receiverType: 'p.Picks',
-      },
-      { outcome: 'calls-caller-unresolved' },
-    ]);
+    expect(records).toEqual([{ outcome: 'calls-caller-unresolved' }, { outcome: 'calls-caller-unresolved' }]);
   });
 });
