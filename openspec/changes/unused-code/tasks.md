@@ -87,7 +87,7 @@
   - 禁止手抄 id；禁止把 `medium` / `low` 说成确定未使用；禁止删改代码。
   - 插件清单登记该 skill。
   - 验证：`node scripts/check-refs.mjs`；读取 skill 文件的契约测试把每条规则钉在它的步骤里。
-- [ ] 4.2 `skills/excavator-chat/SKILL.md`：
+- [x] 4.2 `skills/excavator-chat/SKILL.md`：
   - 问到未使用代码时读 `.excavator/unused-code.json`，先比对 `factsDigest`；
   - 按 id、名字或文件回答；产物缺失或过期时如何回答。
   - 验证：契约测试；`check-refs`。

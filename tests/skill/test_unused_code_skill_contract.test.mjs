@@ -110,3 +110,36 @@ describe('excavator-unused-code skill: agrees with the script', () => {
     }
   });
 });
+
+describe('excavator-chat: unused-code questions', () => {
+  const chat = readFileSync(resolve(repoRoot, 'skills/excavator-chat/SKILL.md'), 'utf-8');
+  const section = flat(chat.split('### Unused-code questions')[1].split(/^### /m)[0]);
+
+  it('routes unused-code questions to the product, never to the graph', () => {
+    expect(flat(chat)).toContain('- **Unused-code questions** (is this method used, what code is unused, why is X reported as unused): answer from the unused-code product');
+    expect(flat(chat)).toContain('Never conclude from the graph that code is unused.');
+    expect(section).toContain('Answer it only from `.excavator/unused-code.json`');
+  });
+
+  it('handles a missing product and a stale one', () => {
+    expect(section).toContain('**Product missing:** say this project has no unused-code analysis yet and suggest running `/excavator-unused-code`');
+    expect(section).toContain('jq -r .factsDigest .excavator/unused-code.json');
+    expect(section).toContain('head -1 .excavator/intermediate/fact-graph.jsonl | jq -r .fields.factsDigest');
+    expect(section).toContain('say the product is stale');
+  });
+
+  it('answers by id, name or file, and for every place a node can be', () => {
+    expect(section).toContain('**Find the node** by id, name or file');
+    for (const where of ['In `unused`:', 'In `testOnly`:', "In a decision's `ids`:", 'None of these:']) {
+      expect(section).toContain(where);
+    }
+  });
+
+  it('never calls medium or low unused and names only signals the script emits', () => {
+    expect(section).toContain('**Never call a `medium` or `low` node unused**');
+    const named = [...section.matchAll(/`([a-z]+(?:-[a-z]+)+)`/g)].map((m) => m[1])
+      .filter((name) => !['excavator-unused-code', 'only-reachable-from-unused', 'test-entry'].includes(name));
+    expect(named.length).toBeGreaterThanOrEqual(4);
+    for (const signal of named) expect(script).toContain(`'${signal}'`);
+  });
+});
