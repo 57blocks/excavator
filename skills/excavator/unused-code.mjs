@@ -34,22 +34,34 @@
  * Conservation. Every function node is in exactly one of {route-reachable,
  * candidates}. A violation is an Error and nothing is written.
  *
+ * Name census (design D5). For every candidate, how often its name occurs in the
+ * selected source files outside the places the facts already explain: its own
+ * declaration, and the bodies of its direct referrers. Reflective calls, string
+ * references, descriptors and calls from languages the graph has no edges for
+ * all show up there. The files read are the files the facts were built from:
+ * each is checked against the manifest's content hash, read from the working
+ * tree or, when that differs (uncommitted changes), from the source snapshot.
+ *
  * Product `.excavator/unused-candidates.json`
- *   { format, factsDigest, sourceRevision, counts, conservation, types,
+ *   { format, factsDigest, sourceRevision, counts, conservation, census, types,
  *     candidates }
  * Structure facts the structure result does not carry are `null` (unknown); a
- * present-but-empty field is `[]`.
+ * present-but-empty field is `[]`. A candidate whose name is not a plain
+ * identifier has `census: null` (unknown, never zero).
  *
  * Contract: openspec/changes/unused-code/specs/unused-code/spec.md
- *           (requirements: the definition of unused code, the deterministic candidate set)
+ *           (requirements: the definition of unused code, the deterministic
+ *           candidate set, the name occurrence census)
  */
 
-import { existsSync, readFileSync, realpathSync, renameSync, rmSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { existsSync, lstatSync, readFileSync, realpathSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { isAbsolute, join, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { readKnowledgeGraph } from './knowledge-graph-store.mjs';
-import { assertDataDir, assertDataFile, assertDataTree, bindProjectRoot } from './project-paths.mjs';
+import { assertDataDir, assertDataFile, assertDataTree, bindProjectRoot, canonicalSourcePath } from './project-paths.mjs';
 import { serializeJsonProduct } from './product-serialization.mjs';
+import { resolveSourceSnapshot } from './source-snapshot.mjs';
+import { contentHash } from './source-snapshot/manifest.mjs';
 import { readStructureAll } from './structure-all-store.mjs';
 
 /** Stamped on the product header. An incompatible shape change bumps it. */
@@ -701,6 +713,323 @@ export function buildUnusedCandidates({ graph, structure, sourceRevision }) {
 }
 
 // ---------------------------------------------------------------------------
+// Name census (design D5)
+// ---------------------------------------------------------------------------
+
+const TOKEN = /[A-Za-z_$][A-Za-z0-9_$]*/g;
+const IDENTIFIER = /^[A-Za-z_$][A-Za-z0-9_$]*$/;
+const NO_LINES = new Map();
+
+/** Keep `samples` (sorted by file, then line; at most SAMPLE_LIMIT; one entry per line) the smallest ones seen. */
+function addSample(samples, file, line) {
+  if (samples.length === SAMPLE_LIMIT) {
+    const last = samples[SAMPLE_LIMIT - 1];
+    const order = compareText(file, last.file);
+    if (order > 0 || (order === 0 && line >= last.line)) return;
+  }
+  let at = 0;
+  while (at < samples.length) {
+    const order = compareText(samples[at].file, file);
+    if (order > 0 || (order === 0 && samples[at].line >= line)) break;
+    at += 1;
+  }
+  if (at < samples.length && samples[at].file === file && samples[at].line === line) return;
+  samples.splice(at, 0, { file, line });
+  if (samples.length > SAMPLE_LIMIT) samples.pop();
+}
+
+/**
+ * Every whole-token occurrence in `text` of a name in `counted`, as
+ * name -> ascending line numbers (a line repeats once per occurrence on it).
+ * Lines are 1-based and end at `\n`; a `$` or digit inside a token belongs to the
+ * token, so `$foo` is not an occurrence of `foo`.
+ *
+ * @param {string} text
+ * @param {Map<string, unknown>} counted
+ * @returns {Map<string, number[]>}
+ */
+function occurrencesIn(text, counted) {
+  const found = new Map();
+  TOKEN.lastIndex = 0;
+  let line = 1;
+  let nextNewline = text.indexOf('\n');
+  let match;
+  while ((match = TOKEN.exec(text)) !== null) {
+    if (!counted.has(match[0])) continue;
+    while (nextNewline !== -1 && nextNewline < match.index) {
+      line += 1;
+      nextNewline = text.indexOf('\n', nextNewline + 1);
+    }
+    const lines = found.get(match[0]);
+    if (lines) lines.push(line);
+    else found.set(match[0], [line]);
+  }
+  return found;
+}
+
+/** Index of the first element of the ascending array `lines` that is >= `line`. */
+function lowerBound(lines, line) {
+  let low = 0;
+  let high = lines.length;
+  while (low < high) {
+    const mid = (low + high) >>> 1;
+    if (lines[mid] < line) low = mid + 1;
+    else high = mid;
+  }
+  return low;
+}
+
+/** Sorted, merged `[start, end, start, end, ...]` from `[start, end]` pairs. */
+function mergeRanges(pairs) {
+  pairs.sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+  const flat = [];
+  for (const [start, end] of pairs) {
+    const last = flat.length - 1;
+    if (last >= 0 && start <= flat[last] + 1) {
+      if (end > flat[last]) flat[last] = end;
+    } else {
+      flat.push(start, end);
+    }
+  }
+  return flat;
+}
+
+function inRanges(flat, line) {
+  let low = 0;
+  let high = flat.length / 2;
+  while (low < high) {
+    const mid = (low + high) >>> 1;
+    if (flat[2 * mid + 1] < line) low = mid + 1;
+    else high = mid;
+  }
+  return low < flat.length / 2 && flat[2 * low] <= line;
+}
+
+/**
+ * The name census: for every candidate with a plain-identifier name, how many
+ * times that name occurs in `files` outside what the facts explain.
+ *
+ * An occurrence of a candidate's name at (file, line) is explained when it lies
+ * in the line range of one of its direct referrers (a self-call included) in that
+ * file, or on the candidate's own declaration line: the first line within its
+ * range where the name occurs, at most one occurrence there. Everything else is
+ * "elsewhere". Elsewhere is an exact count; `samples` keeps the first five lines
+ * in (file, line) order. `sameNameDeclarationsOnly` says that every elsewhere
+ * occurrence is on the declaration line of another function or class node with
+ * the same name.
+ *
+ * Pure: `files` is any iterable of `{ path, text, fromSnapshot? }`, consumed one
+ * file at a time (`text: null` marks a skipped binary file), so the caller can
+ * stream the files from disk. `nodes` are the graph's nodes; the function and
+ * class nodes among them (and the candidates themselves) give the declaration
+ * lines.
+ *
+ * @param {{
+ *   candidates: Array<{ id: string, name: string, file: string, lineRange: number[] | null, referrers: Array<{ id: string }> }>,
+ *   nodes?: object[],
+ *   files: Iterable<{ path: string, text: string | null, fromSnapshot?: boolean }>,
+ * }} inputs
+ * @returns {{
+ *   byCandidate: Array<null | { elsewhere: number, samples: Array<{ file: string, line: number }>, sameNameDeclarationsOnly: boolean }>,
+ *   header: { files: number, filesSkippedBinary: number, filesReadFromSnapshot: number, namesNotIdentifiers: number,
+ *             candidatesWithElsewhere: number, sameNameDeclarationsOnly: number },
+ * }}
+ */
+export function computeCensus({ candidates, nodes = [], files }) {
+  const n = candidates.length;
+  const byName = new Map();
+  let namesNotIdentifiers = 0;
+  const identifierNamed = new Array(n).fill(false);
+  candidates.forEach((candidate, i) => {
+    if (typeof candidate.name !== 'string' || !IDENTIFIER.test(candidate.name)) {
+      namesNotIdentifiers += 1;
+      return;
+    }
+    identifierNamed[i] = true;
+    if (!byName.has(candidate.name)) byName.set(candidate.name, []);
+    byName.get(candidate.name).push(i);
+  });
+
+  // Declarations that carry a counted name, by file: file -> name -> [{ id, start, end }].
+  const declarations = new Map();
+  const declared = new Set();
+  const declare = (id, type, name, file, lineRange) => {
+    if ((type !== 'function' && type !== 'class') || typeof id !== 'string' || !byName.has(name) || typeof file !== 'string'
+      || !Array.isArray(lineRange) || declared.has(id)) return;
+    declared.add(id);
+    if (!declarations.has(file)) declarations.set(file, new Map());
+    const byNameHere = declarations.get(file);
+    if (!byNameHere.has(name)) byNameHere.set(name, []);
+    byNameHere.get(name).push({ id, start: lineRange[0], end: lineRange[1] });
+  };
+  for (const node of nodes) declare(node?.id, node?.type, node?.name, node?.filePath, node?.lineRange);
+  for (const candidate of candidates) declare(candidate.id, 'function', candidate.name, candidate.file, candidate.lineRange);
+
+  // Per candidate: the line ranges of its direct referrers, by file.
+  const indexById = new Map(candidates.map((candidate, i) => [candidate.id, i]));
+  const referrerRanges = candidates.map((candidate, i) => {
+    if (!identifierNamed[i] || candidate.referrers.length === 0) return new Map();
+    const pairsByFile = new Map();
+    for (const { id } of candidate.referrers) {
+      const referrer = candidates[indexById.get(id)];
+      if (!referrer || !Array.isArray(referrer.lineRange)) continue;
+      if (!pairsByFile.has(referrer.file)) pairsByFile.set(referrer.file, []);
+      pairsByFile.get(referrer.file).push([referrer.lineRange[0], referrer.lineRange[1]]);
+    }
+    return new Map([...pairsByFile].map(([file, pairs]) => [file, mergeRanges(pairs)]));
+  });
+
+  const elsewhere = new Array(n).fill(0);
+  const samples = candidates.map(() => []);
+  const onlyDeclarations = new Uint8Array(n).fill(1);
+  const header = { files: 0, filesSkippedBinary: 0, filesReadFromSnapshot: 0, namesNotIdentifiers, candidatesWithElsewhere: 0, sameNameDeclarationsOnly: 0 };
+
+  for (const file of files) {
+    header.files += 1;
+    if (file.fromSnapshot) header.filesReadFromSnapshot += 1;
+    if (file.text === null) {
+      header.filesSkippedBinary += 1;
+      continue;
+    }
+    const found = occurrencesIn(file.text, byName);
+    const declaredHere = declarations.get(file.path);
+    for (const [name, lines] of found) {
+      // Declaration lines of the nodes named `name` in this file.
+      const declaredNodes = declaredHere?.get(name);
+      const lineOf = declaredNodes ? new Map() : NO_LINES;
+      const idsOnLine = declaredNodes ? new Map() : NO_LINES;
+      for (const { id, start, end } of declaredNodes ?? []) {
+        const at = lowerBound(lines, start);
+        if (at >= lines.length || lines[at] > end) continue;
+        lineOf.set(id, lines[at]);
+        if (!idsOnLine.has(lines[at])) idsOnLine.set(lines[at], []);
+        idsOnLine.get(lines[at]).push(id);
+      }
+      let everyOccurrenceOnDeclaration;
+
+      for (const i of byName.get(name)) {
+        const candidate = candidates[i];
+        const ranges = referrerRanges[i].get(file.path);
+        const own = candidate.file === file.path;
+        if (!own && !ranges) {
+          // Nothing explains any occurrence in this file.
+          elsewhere[i] += lines.length;
+          let added = 0;
+          for (let k = 0; k < lines.length && added < SAMPLE_LIMIT; k++) {
+            if (k > 0 && lines[k] === lines[k - 1]) continue;
+            addSample(samples[i], file.path, lines[k]);
+            added += 1;
+          }
+          if (onlyDeclarations[i]) {
+            everyOccurrenceOnDeclaration ??= lines.every((line) => idsOnLine.has(line));
+            if (!everyOccurrenceOnDeclaration) onlyDeclarations[i] = 0;
+          }
+          continue;
+        }
+        const declarationLine = own ? lineOf.get(candidate.id) : undefined;
+        let declarationUsed = false;
+        for (const line of lines) {
+          if (ranges && inRanges(ranges, line)) continue;
+          if (line === declarationLine && !declarationUsed) {
+            declarationUsed = true;
+            continue;
+          }
+          elsewhere[i] += 1;
+          addSample(samples[i], file.path, line);
+          if (onlyDeclarations[i]) {
+            const here = idsOnLine.get(line);
+            if (!here || !here.some((id) => id !== candidate.id)) onlyDeclarations[i] = 0;
+          }
+        }
+      }
+    }
+  }
+
+  const byCandidate = candidates.map((_, i) => {
+    if (!identifierNamed[i]) return null;
+    const sameName = elsewhere[i] > 0 && onlyDeclarations[i] === 1;
+    if (elsewhere[i] > 0) header.candidatesWithElsewhere += 1;
+    return { elsewhere: elsewhere[i], samples: samples[i], sameNameDeclarationsOnly: sameName };
+  });
+  header.sameNameDeclarationsOnly = byCandidate.filter((census) => census?.sameNameDeclarationsOnly).length;
+  return { byCandidate, header };
+}
+
+/**
+ * The product with the census added: `census` on every candidate and the header
+ * block after `conservation`. Pure apart from consuming `files`.
+ *
+ * @param {{ product: object, nodes?: object[], files: Iterable<object> }} inputs
+ * @returns {object}
+ */
+export function addCensus({ product, nodes, files }) {
+  const { byCandidate, header } = computeCensus({ candidates: product.candidates, nodes, files });
+  return {
+    format: product.format,
+    factsDigest: product.factsDigest,
+    sourceRevision: product.sourceRevision,
+    counts: product.counts,
+    conservation: product.conservation,
+    census: header,
+    types: product.types,
+    candidates: product.candidates.map((candidate, i) => ({ ...candidate, census: byCandidate[i] })),
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Reading the selected files
+// ---------------------------------------------------------------------------
+
+const isInside = (root, target) => {
+  const rel = relative(root, target);
+  return rel === '' || (rel !== '..' && !rel.startsWith(`..${sep}`) && !isAbsolute(rel));
+};
+
+/** The working-tree bytes of `path` when it is a canonical, in-root, regular file; otherwise null. */
+function readWorkingTree(root, path) {
+  try {
+    canonicalSourcePath(path);
+    const absolute = join(root, path);
+    if (!lstatSync(absolute).isFile() || !isInside(root, realpathSync(absolute))) return null;
+    return readFileSync(absolute);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Yield every file the manifest selects, with the content the facts were built
+ * from: the working-tree file when its hash matches the manifest, otherwise the
+ * source snapshot's copy (one snapshot, resolved on first need) when that
+ * matches; any other case throws and the census fails. A file with a NUL byte
+ * yields `text: null`.
+ *
+ * @param {string} root canonical project root
+ * @param {Array<{ path: string, contentHash: string }>} entries
+ * @returns {Generator<{ path: string, text: string | null, fromSnapshot: boolean }>}
+ */
+export function* readSelectedFiles(root, entries) {
+  let snapshot = null;
+  for (const { path, contentHash: expected } of entries) {
+    let bytes = readWorkingTree(root, path);
+    let fromSnapshot = false;
+    if (bytes === null || contentHash(bytes) !== expected) {
+      snapshot ??= resolveSourceSnapshot(root);
+      try {
+        bytes = snapshot.readFile(path);
+      } catch {
+        bytes = null;
+      }
+      fromSnapshot = true;
+    }
+    if (bytes === null || contentHash(bytes) !== expected) {
+      throw new Error(`source differs from the facts (${path}); run Lazy again`);
+    }
+    yield { path, text: bytes.includes(0) ? null : bytes.toString('utf-8'), fromSnapshot };
+  }
+}
+
+// ---------------------------------------------------------------------------
 // CLI
 // ---------------------------------------------------------------------------
 
@@ -725,10 +1054,15 @@ function readInputs(root) {
   } catch (error) {
     throw new Error(`${paths.manifest}: not valid JSON (${error.message})`);
   }
+  const entries = manifest?.entries;
+  if (!Array.isArray(entries) || !entries.every((e) => typeof e?.path === 'string' && typeof e?.contentHash === 'string')) {
+    throw new Error(`${paths.manifest}: "entries" must be an array of { path, contentHash }`);
+  }
   return {
     graph: readKnowledgeGraph(paths.graph),
     structure: readStructureAll(paths.structure),
     sourceRevision: manifest?.sourceRevision,
+    entries,
   };
 }
 
@@ -751,14 +1085,20 @@ function main(argv) {
     process.exit(1);
   }
   const root = bindProjectRoot(rootArg);
-  const product = buildUnusedCandidates(readInputs(root));
+  const inputs = readInputs(root);
+  const product = addCensus({
+    product: buildUnusedCandidates(inputs),
+    nodes: inputs.graph.nodes,
+    files: readSelectedFiles(root, inputs.entries),
+  });
   const path = assertDataFile(root, UNUSED_CANDIDATES_FILE);
   writeAtomic(path, `${serializeJsonProduct(UNUSED_CANDIDATES_FILE, product)}\n`);
 
-  const { counts } = product;
-  process.stdout.write(`${JSON.stringify({ product: path, counts })}\n`);
+  const { counts, census } = product;
+  process.stdout.write(`${JSON.stringify({ product: path, counts, census })}\n`);
   process.stderr.write(`unused-code: ${counts.candidates} candidates (${counts.entries} entries in ${counts.entryComponents} components, `
-    + `${counts.clusters} clusters) of ${counts.functionNodes} function nodes, ${counts.routeReachable} route-reachable -> ${path}\n`);
+    + `${counts.clusters} clusters) of ${counts.functionNodes} function nodes, ${counts.routeReachable} route-reachable; `
+    + `census over ${census.files} files, ${census.candidatesWithElsewhere} candidates with the name elsewhere -> ${path}\n`);
 }
 
 function isCliEntry() {
@@ -786,4 +1126,7 @@ export default {
   assertConservation,
   computeCandidateSet,
   buildUnusedCandidates,
+  computeCensus,
+  addCensus,
+  readSelectedFiles,
 };
