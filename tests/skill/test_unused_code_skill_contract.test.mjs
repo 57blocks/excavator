@@ -80,6 +80,9 @@ describe('excavator-unused-code skill: each rule in its step', () => {
     expect(s).toContain('**Test code.** Write `TEST_CODE`, a regular expression that matches the `file` of every candidate in test code and of no other');
     expect(s).toContain('read in the build files which modules depend on a test-support module');
     expect(s).toContain('A mechanism that spans both is two decisions: the `entry` with `(test_code | not)`, the `test-entry` with `test_code`.');
+    expect(s).toContain('A module the build publishes for other projects (an SDK, with the build or its README saying so) is not test code even when only tests use it inside the repository');
+    expect(s).toContain('**Launch methods.** A candidate named `main` that nothing in the facts calls is a program\'s launch');
+    expect(s).toContain('select(.entry and .name == "main")');
     expect(s).toContain('**Launches from top-level code.** A name query finds `main`, not a function a script calls from its top-level code.');
     expect(s).toContain('select(.entry and $l[.language].calls > 0 and');
     expect(s).toContain("Read each listed file's code outside its functions");
@@ -96,6 +99,8 @@ describe('excavator-unused-code skill: each rule in its step', () => {
     expect(s).toContain('ids on the wrong side of TEST_CODE');
     expect(s).toContain('**Set `TEST_CODE` before the first decision, and split on it.**');
     expect(s).toContain('never to make a decision pass');
+    expect(s).toContain('decide: launch methods not decided');
+    expect(s).toContain('**Every launch method is decided.**');
     expect(s).toContain(`'{factsDigest: $digest, decisions: .}'`);
     expect(s).toContain('"$DATA/unused-decisions.json"');
   });
@@ -146,13 +151,14 @@ describe('excavator-unused-code skill: the step 4 script runs', () => {
   // The script as the skill writes it, with the example decision replaced by the case's own.
   const block = skill.split(/^## Step 4 — /m)[1].split(/^```bash\n/m)[1].split(/^```$/m)[0];
   const head = block.split(/^decide test-entry 'JUnit/m)[0];
-  const tail = block.slice(block.indexOf('jq -s --arg digest'));
+  const tail = block.split(/^# \.\.\. one decide call per group\n/m)[1];
   const candidates = {
     factsDigest: 'digest-1',
     candidates: [
       { id: 'prod-equals', name: 'equals', file: 'app/src/main/java/A.java', entry: true, annotations: [] },
       { id: 'fake-equals', name: 'equals', file: 'app/src/test/java/FakeA.java', entry: true, annotations: [] },
       { id: 'a-test', name: 'checksA', file: 'app/src/test/java/ATest.java', entry: true, annotations: ['Test'] },
+      { id: 'tool-main', name: 'main', file: 'tool/src/main/java/Tool.java', entry: true, annotations: [] },
     ],
   };
   const run = (decisions) => {
@@ -175,12 +181,21 @@ describe('excavator-unused-code skill: the step 4 script runs', () => {
     }
   });
 
+  const split = [
+    `decide test-entry 'JUnit runs methods annotated @Test' '.candidates[] | select(.entry and any(.annotations[]?; . == "Test"))'`,
+    `decide entry 'equals overrides, production' ${equals(' and (test_code | not)')}`,
+    `decide test-entry 'equals overrides, test code' ${equals(' and test_code')}`,
+  ];
+
+  it('refuses to finish while a launch method is undecided', () => {
+    const result = run(split);
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain('decide: launch methods not decided: tool/src/main/java/Tool.java:null');
+    expect(result.decisions).toBeNull();
+  });
+
   it('accepts the split, and each recorded query selects exactly its ids', () => {
-    const result = run([
-      `decide test-entry 'JUnit runs methods annotated @Test' '.candidates[] | select(.entry and any(.annotations[]?; . == "Test"))'`,
-      `decide entry 'equals overrides, production' ${equals(' and (test_code | not)')}`,
-      `decide test-entry 'equals overrides, test code' ${equals(' and test_code')}`,
-    ]);
+    const result = run([...split, `decide entry 'the JVM calls main' '.candidates[] | select(.entry and .name == "main")'`]);
     expect(result.stderr).toBe('');
     expect(result.status).toBe(0);
     expect(result.decisions.factsDigest).toBe('digest-1');
@@ -188,6 +203,7 @@ describe('excavator-unused-code skill: the step 4 script runs', () => {
       ['test-entry', ['a-test']],
       ['entry', ['prod-equals']],
       ['test-entry', ['fake-equals']],
+      ['entry', ['tool-main']],
     ]);
     for (const decision of result.decisions.decisions) {
       expect(Object.keys(decision).sort()).toEqual(['ids', 'kind', 'query', 'reason']);

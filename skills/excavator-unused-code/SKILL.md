@@ -87,7 +87,11 @@ An **entry** is code something outside the repository's call graph invokes: a fr
    ```
    A `<query>` is a `jq` expression over the whole candidates product that outputs candidate objects, for example `. as $p | .candidates[] | select(.entry and any(.annotations[]?; . == "Scheduled"))`. Its `select` may use any field above and the `.types` table through `$p`. A pipe binds loosest, so parenthesize it inside a condition: `(.file | test("/src/test/")) and ...`. Put a longer exploratory program in a file under `$DATA` and run it with `jq -f`.
 3. Establish the two things the groups do not show:
-   - **Test code.** Write `TEST_CODE`, a regular expression that matches the `file` of every candidate in test code and of no other: the test source directories (`src/test/`, a `tests` package, `_test.go`, `.spec.ts`) and the modules that only tests depend on — read in the build files which modules depend on a test-support module. With no test code, use `'^$'`. Step 4's script makes it `test_code` and refuses an `entry` that selects test code and a `test-entry` that selects anything else.
+   - **Test code.** Write `TEST_CODE`, a regular expression that matches the `file` of every candidate in test code and of no other: the test source directories (`src/test/`, a `tests` package, `_test.go`, `.spec.ts`) and the modules that only tests depend on — read in the build files which modules depend on a test-support module. A module the build publishes for other projects (an SDK, with the build or its README saying so) is not test code even when only tests use it inside the repository; the published-API rule in item 4 decides it. With no test code, use `'^$'`. Step 4's script makes it `test_code` and refuses an `entry` that selects test code and a `test-entry` that selects anything else.
+   - **Launch methods.** A candidate named `main` that nothing in the facts calls is a program's launch: `main` in Java, Kotlin, C# or Go, or a script's `main` that its top-level code calls. List them, and check each one's launch (a build line, the top-level call). Step 4's script refuses to finish while one of them is undecided:
+     ```bash
+     jq -r '.candidates[] | select(.entry and .name == "main") | "\(.language)\t\(.file):\(.lineRange[0])"' "$CANDS"
+     ```
    - **Launches from top-level code.** A name query finds `main`, not a function a script calls from its top-level code. List the script files whose functions nothing in the facts calls:
      ```bash
      jq -r '.counts.byLanguage as $l | [.candidates[] | select(.entry and $l[.language].calls > 0 and (.language | IN("python", "javascript", "typescript", "ruby", "php", "shell")))] | group_by(.file)[] | "\(.[0].file)\t\(map(.name) | unique | join(" "))"' "$CANDS"
@@ -134,6 +138,8 @@ decide test-entry 'JUnit runs methods annotated @Test' \
   '.candidates[] | select(.entry and any(.annotations[]?; . == "Test"))'
 # ... one decide call per group
 
+launch=$(jq -r --slurpfile done "$DRAFT" '([$done[].ids[]] | map({(.): true}) | add // {}) as $seen | [.candidates[] | select(.entry and .name == "main" and ($seen[.id] | not)) | "\(.file):\(.lineRange[0])"] | join(" ")' "$CANDS")
+[ -z "$launch" ] || { echo "decide: launch methods not decided: $launch" >&2; exit 1; }
 jq -s --arg digest "$(jq -r .factsDigest "$CANDS")" '{factsDigest: $digest, decisions: .}' "$DRAFT" > "$DATA/unused-decisions.json"
 ```
 
@@ -144,6 +150,7 @@ Run it with `bash "$DATA/unused-decisions.sh" "$PROJECT_ROOT"`. Rules for this s
 - `reason` names the caller and the mechanism you established in Step 3, in one sentence.
 - When `decide` reports an overlap, narrow the later query so the two decisions select disjoint sets (for example add `and (any(.annotations[]?; . == "Test") | not)`). Each id belongs to one decision.
 - **Set `TEST_CODE` before the first decision, and split on it.** When `decide` reports ids on the wrong side of `TEST_CODE`, split that decision: the `entry` with `and (test_code | not)`, and the test part as a `test-entry` with `and test_code`. Widen `TEST_CODE` only for a directory or module you established as test code in Step 3, never to make a decision pass.
+- **Every launch method is decided.** The script refuses to finish while a candidate named `main` that nothing calls is in no decision: decide it as an `entry`, or as a `test-entry` when it is test code.
 
 ## Step 5 — Run the report
 
