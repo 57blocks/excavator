@@ -103,9 +103,9 @@ This gate applies to every route above and below, including direct structural an
 
 A Lazy graph carries deterministic facts only: node `summary` is empty and `tags`/`layers` may be empty. Route by question type:
 
-- **Structural questions** (which files/symbols exist, which methods a class has, who imports or calls whom, a node's 1-hop neighbours, contains/depends relationships): answer straight from the fact nodes and fact edges — grep `id` / `name` / `type` and the `edges` (`contains` / `imports` / `calls` / `exports`). **No summary is needed, and do not trigger any semantic supplement, hybrid retrieval, or whole-project analysis.**
+- **Structural questions** (which files/symbols exist, which methods a class has, who imports or calls whom, a node's 1-hop neighbours, contains/depends relationships): answer straight from the fact nodes and fact edges — grep `id` / `name` / `type` and the fact `edges`: `contains`, `imports`, `exports`, `calls`, `inherits`, `implements`, `overrides`, `mentions`, `references`, `injects` and `routes`. These are the types in `DETERMINISTIC_EDGE_TYPES`; the comment above it in `$PLUGIN_ROOT/skills/excavator/retrieve.mjs` says what each one links. **No summary is needed, and do not trigger any semantic supplement, hybrid retrieval, or whole-project analysis.**
 - **Semantic questions** (what a module/service is responsible for, business meaning, a cross-file business flow, especially when phrased in a business/domain language such as Chinese over English-named code): follow the **hybrid retrieval** recipe below instead of degrading immediately.
-- Fact edges (`calls` / `imports` / `contains` / `exports`) and `gaps` are authoritative: to answer "can we be sure A calls B", go by the fact edge; a call the engine could not resolve is recorded in `gaps`, so say "the engine could not determine that connection" rather than guessing.
+- Fact edges (every type listed above) and `gaps` are authoritative: to answer "can we be sure A calls B", go by the fact edge; a call the engine could not resolve is recorded in `gaps`, so say "the engine could not determine that connection" rather than guessing.
 
 ### Request-local AI routing contract
 
@@ -213,7 +213,7 @@ If `$PLUGIN_ROOT` cannot be resolved, or `$DATA_DIR/source-index.jsonl` does not
    console.log(JSON.stringify(mergeCandidates({ exact, bm25, sourceSearch, semanticCacheText }).slice(0, 20)));
    "
    ```
-6. Pick ONE traversal primitive authorized by the current AI route. Over fact edges, only `contains`/`imports`/`exports`/`calls` are traversable — a semantic/domain edge, if any exist, never supplies a path, only ranking:
+6. Pick ONE traversal primitive authorized by the current AI route. Only fact edges of the types listed above are traversable — a semantic/domain edge, if any exist, never supplies a path, only ranking:
    - `inventory` -> follow the inventory protocol below; do not call a fact-graph traversal primitive
    - `source-first` -> inspect current source; do not call a graph traversal primitive
    - `one-hop` -> `oneHop(edges, seedIds)`
