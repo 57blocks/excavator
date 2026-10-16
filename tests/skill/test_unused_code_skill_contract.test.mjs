@@ -67,6 +67,8 @@ describe('excavator-unused-code skill: each rule in its step', () => {
     expect(s).toContain('A build that publishes every module of an application as an artifact does not make each module an API');
     expect(s).toContain('Do not mark a whole test directory');
     expect(s).toContain('**Test code is a `test-entry`, whatever calls it.**');
+    expect(s).toContain('modules that only tests depend on');
+    expect(s).toContain('**A program\'s launch is an entry.**');
     expect(s).toContain('**A handler the facts did not link is still an entry.**');
   });
 
