@@ -301,6 +301,38 @@ describe('validate-graph — evidence lines', () => {
     expect(expectedTokens({ type: 'injects' }, source, target, { ...evidence, token: undefined })).toEqual([]);
   });
 
+  it('expects the tag a JSX element wrote on a calls edge, and the callee name on a call that has no token (openspec: changes/jsx-element-references)', () => {
+    const source = { name: 'Page' };
+    const target = { name: 'Button' };
+    expect(expectedTokens({ type: 'calls' }, source, target, { file: 'page.tsx', line: 3, source: 'tree-sitter', token: 'Btn' })).toEqual(['Btn']);
+    expect(expectedTokens({ type: 'calls' }, source, target, { file: 'page.tsx', line: 3, source: 'tree-sitter' })).toEqual(['Button']);
+  });
+
+  it('confirms a JSX calls edge whose cited line holds its tag, and contradicts one whose line does not', () => {
+    const root = mkdtempSync(join(tmpdir(), 'excavator-validate-jsx-'));
+    try {
+      writeFileSync(join(root, 'page.tsx'), "import Btn from './button';\nexport function Page() {\n  return <Btn />;\n}\n");
+      writeFileSync(join(root, 'button.tsx'), 'export default function Button() {}\n');
+      const nodes = [
+        { id: 'function:page.tsx:Page()', type: 'function', name: 'Page', filePath: 'page.tsx', lineRange: [2, 4], summary: '', tags: [] },
+        { id: 'function:button.tsx:Button()', type: 'function', name: 'Button', filePath: 'button.tsx', lineRange: [1, 1], summary: '', tags: [] },
+      ];
+      const edge = (line) => ({
+        source: 'function:page.tsx:Page()', target: 'function:button.tsx:Button()', type: 'calls', direction: 'forward', weight: 0.8,
+        provenance: 'extracted', evidence: [{ file: 'page.tsx', line, source: 'tree-sitter', token: 'Btn' }],
+      });
+      const check = (e) => validateAgainstSource({ graph: { nodes, edges: [e] }, reader: createSourceReader(root) }).report.counts;
+      expect(check(edge(3))).toMatchObject({ edgeConfirmed: 1, edgeContradicted: 0 });
+      expect(check(edge(2))).toMatchObject({ edgeConfirmed: 0, edgeContradicted: 1 });
+      // Without its token the line is checked for the callee's name, which the renamed tag is not.
+      const untokened = edge(3);
+      delete untokened.evidence[0].token;
+      expect(check(untokened)).toMatchObject({ edgeConfirmed: 0, edgeContradicted: 1 });
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   it('confirms an injects edge whose cited descriptor line holds the name, and contradicts one whose line does not', () => {
     const root = mkdtempSync(join(tmpdir(), 'excavator-validate-injects-'));
     try {
