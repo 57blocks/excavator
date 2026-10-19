@@ -8,18 +8,18 @@ TS/JS 抽取器 SHALL 在用 tsx 或 javascript 语法解析的文件里，记�
 - 标签的根名字被外层函数的参数、局部变量、局部函数或类、`catch` 参数、`for…in/of` 变量绑定时，抽取器 SHALL 标记该元素为局部绑定。绑定按函数作用域收集，偏向多标（多标只会把元素推进 gap，不会生成错边）。
 
 事实图 SHALL 按以下顺序解析每个非内建元素的根名字：
-1. 局部绑定的元素，落进 `jsx-unbound`；
+1. 局部绑定的元素，以及语法从错误中恢复出的标签（javascript 语法把 `<this.Foo/>` 读成 `<Foo/>`，名字不是源码写的），落进 `jsx-unbound`；
 2. 本文件 import 的绑定（具名、默认、命名空间）：说明符没有解析到仓库文件时，import map 列为外部的落进 `jsx-external`，其余落进 `jsx-target-unresolved`；解析到文件时，在该文件的导出里找导入名；
 3. 本文件顶层声明的函数或类；
 4. 都没有，落进 `jsx-unbound`。
 
-在文件导出里找名字时 SHALL 先跟显式转发（`export { A as B } from`），再找本地导出（`default` 匹配默认导出，其它名字匹配非默认的同名导出，按本地声明名定位节点），最后跟 `export * from`（默认导出不经 `export *` 转发）。转发链按已访问集合截断环路，MUST NOT 设深度上限。`export *` 给出多个不同目标时落进 `jsx-ambiguous`；没有找到且某个 `export *` 指向仓库外时落进 `jsx-external`；其余没有找到的落进 `jsx-target-unresolved`。
+在文件导出里找名字时 SHALL 先跟显式转发（`export { A as B } from`），再找本地导出（`default` 匹配默认导出，其它名字匹配非默认的同名导出；按本地声明名在本文件的作用域里解析：是本文件 import 的绑定时沿该 import 继续，是顶层函数或类时定位该节点），最后跟 `export * from`（默认导出不经 `export *` 转发）。转发链按已访问集合截断环路，MUST NOT 设深度上限。`export *` 给出多个不同目标时落进 `jsx-ambiguous`；没有找到且某个 `export *` 指向仓库外时落进 `jsx-external`；其余没有找到的落进 `jsx-target-unresolved`。
 
 成员表达式标签的后续段 SHALL 只在命名空间（`import * as`、`export * as`）上继续解析；落在函数或类之后还有段（值的属性）、或整个标签只是命名空间时，落进 `jsx-target-unresolved`。解析出多个候选声明时落进 `jsx-ambiguous`。
 
 目标唯一时，调用者 SHALL 是本文件行范围包含该元素的函数节点；恰好一个时生成从调用者指向目标的 `calls` 边，provenance 为 `extracted`，证据带标签名原文 `token`；没有或多于一个时落进 `jsx-caller-unresolved`。一个元素 MUST 恰好落进一处：边或五个 `jsx-*` gap 之一。
 
-`coverage.jsxElements` SHALL 记录文件数、内建元素数、调用点数与各去向计数；import map 没有提供 `resolvedSources` 时记为 `not-run`。同一调用者对同一目标的多个元素合成一条边，计数仍按调用点。构建 SHALL 校验调用点数 = 成边的调用点数 + 各 gap 数，且各 gap 数与 gaps 里同种类的计数一致，不成立时以非零状态退出。
+`coverage.jsxElements` SHALL 记录文件数、内建元素数、调用点数与各去向计数；import map 没有提供 `resolvedSources` 时记为 `not-run`。同一调用者对同一目标的多个元素合成一条边，证据取第一个调用点；该对已有 `calls` 边时沿用已有的边；计数仍按调用点。构建 SHALL 校验调用点数 = 成边的调用点数 + 各 gap 数，且各 gap 数与 gaps 里同种类的计数一致，不成立时以非零状态退出。
 
 #### Scenario: 自闭合元素经具名 import 成边
 - **GIVEN** `page.tsx` 的函数 `Page` 里写着 `<Button />`，文件顶部 `import { Button } from './button'`，`button.tsx` 导出函数 `Button`

@@ -57,6 +57,8 @@
 - 遮蔽多标会把少数本可解析的元素推进 `jsx-unbound`。
 - `forwardRef` / `memo` 包装的组件没有函数节点，指向它们的元素进 `jsx-target-unresolved`。
 - 类组件作目标时边是函数到类，未使用代码不计入引用；traverse 可以走到。
+- 同一调用者对同一目标的多个元素合成一条边，图里只留第一个调用点的证据；该对已有普通调用生成的 `calls` 边时沿用那条边（证据不带 `token`）。各调用点仍计入 `coverage.jsxElements.edge`。这与普通调用按对去重一致。
+- 测试文件里的元素多写在 `it(...)` 回调里，回调没有函数节点，落进 `jsx-caller-unresolved`。测试代码因此不给组件提供引用者；未使用代码本来也要求测试入口另行判定。
 
 ## 验收 oracle
 
@@ -69,3 +71,36 @@
 - **O5 精度。** 独立审计脚本（只读文本，正则解析 import 与导出，自写说明符解析）核对模块里每条带 `token` 的 `calls` 边：证据行含 `<token`；调用者行范围含证据行；目标是沿 import 与转发链得到的声明。先往图里注入一条改了目标的边，确认审计报出它。每种 `jsx-*` gap 抽样读源码核对去向。
 - **O6 召回与守恒。** `coverage.jsxElements` 守恒；模块里非内建调用点数与独立的文本计数（开标签与自闭合标签里大写开头或带点的标签）一致，差异逐个解释。
 - **O7 其它语言不变。** 两端都不在 TS/JS 文件里的节点与边，与基线逐条相同。
+
+## 验收记录
+
+2026-10-19，hadoop `2014707f8c31` 的 scratchpad 克隆，运行的代码与本分支提交 `e4a2dae7` 相同，其后的提交只改测试、夹具与文档。先 rebuild core，基线产物另存后再跑：`lazy-analyze` 239 s，`unused-code candidates` 31 s。产物、审计脚本与中间结果都留在 scratchpad，不提交。
+
+- **O1 达标。** 模块候选 510（TS 504、JS 6），与基线相同；全仓候选 103,703 不变。
+- **O2 达标。** `button.tsx` 的 `Button` 为 `entry: false`，37 个 `calls` 引用者（基线 0）。
+- **O3 达标。** 模块入口 335 → 163（−51.3%）：TS 334 → 162，JS 1 → 1。全仓的 TS 函数节点都在本模块。
+- **O4 未达标（按写定阈值）。** 同一份决定文件（`app/root.tsx` 与 `app/routes/` 下的 12 个顶层函数判为 `entry`）跑 `report`：模块未使用 497 → 257（−48.3%，阈值 50%）；`Button` 不再是未使用。逐个核对剩下的 257：
+  - 48 个在测试文件里：决定文件没有测试入口，测试里的元素又落进 `jsx-caller-unresolved`；
+  - 147 个不是组件（工具函数、store、配置、hook），经普通调用或值引用使用，本变更不改（Non-Goals）；
+  - 50 个组件没有任何 JSX 元素渲染它：48 个在自身文件以外的非测试代码里不出现（如没用到的 `ContextMenu*`、`Sidebar*` 部件），`Toggle` 只出现在英文文案里，`CustomFlowEdge` 作为 React Flow 的 `edgeTypes` 值传入；
+  - 11 个只在 `QueueCardNode` 的子树里被渲染，而 `QueueCardNode` 作为 React Flow 的 `nodeTypes` 值传入（值传递，Non-Goals）；
+  - 1 个只在测试里被渲染。
+
+  剩下的未使用节点没有一个是因为 JSX 元素解析错或落进 gap 而留下的。50% 的阈值是在没拆分基线未使用集构成时写定的，偏高；按写定阈值记为未达标，不改阈值。
+- **O5 达标。** 独立审计脚本（Python，只读文本；正则抽取 import、导出与顶层声明，自写说明符解析，含 tsconfig 的 `~/` 别名；与抽取器、解析器不共用代码）核对模块里全部 539 条带 `token` 的 `calls` 边。三项都核对：证据行含 `<token`；调用者行范围含证据行；目标等于审计沿 import 与转发链得到的声明。结果 0 处不符。
+  - 仪器校验：往内存里的图注入一条改了目标的边、一条错一行的证据，审计报出 2/2。
+  - 首轮审计还报出 1 处，查实是审计自己的正则漏了跨行类型注解的 `const DiffLine: React.FC<{…}> = (…) =>`；修正审计后为 0。
+  - 各 gap 种类抽样读源码，去向都符合原因文本：
+    - `jsx-caller-unresolved` 643：642 个在测试文件的 `it(...)` 回调里，1 个在 `forwardRef` 回调里（`field.tsx` 的 `<Label>`）。
+    - `jsx-target-unresolved` 132：导入解析到 `forwardRef` 值（`Field*`、`Kbd`、`Drawer*`）或别名值（`const Form = FormProvider`）。
+    - `jsx-unbound` 17：局部变量 `Comp`（`asChild ? Slot : 'button'`），同文件顶层的 `forwardRef` 值（`DrawerOverlay`）与 context 值。
+    - `jsx-external` 337：图标库与 Radix 原语等包。
+    - `jsx-ambiguous` 0。
+- **O6 达标。** `coverage.jsxElements` = `{files 145, intrinsic 914, sites 2031, edge 902, external 337, unbound 17, targetUnresolved 132, ambiguous 0, callerUnresolved 643}`，守恒成立。
+  - 独立文本计数：文件 145 = 145，内建 914 = 914，非内建 2033 对 2031。多出的 2 个在错误消息字符串里（`<Field>`、`<FormField>`），不是元素。
+  - 审计对 2031 个调用点逐个独立分类，五个去向的计数与 coverage 逐项相等。
+  - 902 个成边调用点合成 539 个调用者 → 目标对，与图里带 `token` 的 539 条边一一对应。
+- **O7 达标。** 两端都不在 TS/JS 文件里的节点（153,282）、边（778,316），以及非 TS/JS 范围的 gap（196 条），都与基线逐条相同。比较方法是按行内容哈希的多重集；仪器校验时在内存里改一条非 TS/JS 边的权重，比较报出 1/1。全图差异都在 TS/JS：
+  - 边 +600 = 539 条 JSX `calls` + 60 条桶文件 `imports`（D7）+ 1 条 `exports`（D8）；没有删除。
+  - 新增四种 `jsx-*` gap；`exports-unresolved`（javascript）6 → 9，是新记录的 3 个 `export default X;` 指向值而不是函数（如 Ember 应用的 `export default App;`），可见。
+  - `coverage.byLanguage` 只有 typescript、javascript 两行变化：import 条目 TS +64（`export … from` 同时记为 import），export 条目 TS +1、JS +3，12 个只有转发的 TS 桶文件从 zero-symbol 变成 parsed。
