@@ -25,7 +25,7 @@
 
 ## 3. 验收
 
-- [ ] 3.1 O2 全量门：vitest、`check-refs`、`openspec validate --all --strict`。
-- [ ] 3.2 O3 真实语料：sakai 与本仓库的独立比对、分层 `--follow` 核对、耗时与内存；hadoop、`_nongit`、openmrs-workspace 三种情况。
-- [ ] 3.3 O4：dataverse 克隆上的 headless skill 运行与一次 chat 提问。
-- [ ] 3.4 在 design.md 末尾写验收记录，同步主规范，归档本变更。
+- [x] 3.1 O2 全量门：vitest、`check-refs`、`openspec validate --all --strict`。
+- [x] 3.2 O3 真实语料：sakai 与本仓库的独立比对、分层 `--follow` 核对、耗时与内存；hadoop、`_nongit`、openmrs-workspace 三种情况。
+- [x] 3.3 O4：dataverse 克隆上的 headless skill 运行与一次 chat 提问。
+- [x] 3.4 在 design.md 末尾写验收记录，同步主规范，归档本变更。
