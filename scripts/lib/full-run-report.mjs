@@ -10,7 +10,7 @@
  */
 
 import { spawn, spawnSync } from 'node:child_process';
-import { copyFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, openSync, readdirSync, readFileSync, realpathSync, statSync } from 'node:fs';
+import { closeSync, copyFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, openSync, readdirSync, readFileSync, readSync, realpathSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, isAbsolute, join, relative, resolve } from 'node:path';
 
@@ -259,19 +259,43 @@ function readJsonIfPresent(path) {
   }
 }
 
-function graphNodeCount(path) {
-  if (!existsSync(path)) return null;
-  const firstLine = readFileSync(path, 'utf-8').split('\n', 1)[0];
+const HEADER_CHUNK_BYTES = 64 * 1024;
+
+/** The first line of a file, read a chunk at a time: a graph can be larger than one string can hold. */
+function readFirstLine(path, read) {
+  const fd = openSync(path, 'r');
   try {
-    const header = JSON.parse(firstLine);
+    const buffer = Buffer.alloc(HEADER_CHUNK_BYTES);
+    const parts = [];
+    for (let position = 0; ; ) {
+      const bytes = read(fd, buffer, 0, buffer.length, position);
+      if (bytes === 0) break;
+      const newline = buffer.subarray(0, bytes).indexOf(0x0a);
+      parts.push(Buffer.from(buffer.subarray(0, newline === -1 ? bytes : newline)));
+      if (newline !== -1) break;
+      position += bytes;
+    }
+    return Buffer.concat(parts).toString('utf-8');
+  } finally {
+    closeSync(fd);
+  }
+}
+
+function graphNodeCount(path, read) {
+  if (!existsSync(path)) return null;
+  try {
+    const header = JSON.parse(readFirstLine(path, read));
     return typeof header?.counts?.nodes === 'number' ? header.counts.nodes : null;
   } catch {
     return null;
   }
 }
 
-/** Sample size from the run's own products (design D4); an unreadable figure is missing, not zero. */
-export function readSample(projectDir, missing = []) {
+/**
+ * Sample size from the run's own products (design D4); an unreadable figure is missing, not zero.
+ * `read` stands in for `fs.readSync` when the graph header is read.
+ */
+export function readSample(projectDir, missing = [], { read = readSync } = {}) {
   const sample = { files: null, batches: null, nodes: null };
   if (!projectDir) {
     missing.push('sample');
@@ -283,7 +307,7 @@ export function readSample(projectDir, missing = []) {
   const batches = readJsonIfPresent(join(dataDir, 'intermediate', 'batches.json'));
   const batchList = Array.isArray(batches) ? batches : batches?.batches;
   if (Array.isArray(batchList)) sample.batches = batchList.length;
-  sample.nodes = graphNodeCount(join(dataDir, 'knowledge-graph.jsonl'));
+  sample.nodes = graphNodeCount(join(dataDir, 'knowledge-graph.jsonl'), read);
   for (const [key, value] of Object.entries(sample)) if (value === null) missing.push(`sample:${key}`);
   return sample;
 }
