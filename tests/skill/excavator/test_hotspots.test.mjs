@@ -188,6 +188,7 @@ describe('history source and lineage', () => {
     for (const topic of [
       /Merge commits are not counted/, /similarity/, /Copies are not followed/, /single path map.*lineageConflicts/, /mailmap/,
       /blank lines and comments/, /rewritten/, /\.git\/config and \.git\/info\/attributes/,
+      /more than 30 selected files are not counted for pairs/,
     ]) {
       expect(assumptions).toMatch(topic);
     }
@@ -785,6 +786,10 @@ describe('no history is visible, never 0', () => {
     expect(product.repos).toEqual([]);
     expect(product.counts).toEqual({ filesWithHistory: 0, filesWithoutHistory: 4, binaryFiles: 1, filesWithLineageConflicts: 0 });
     expect(product.conservation).toEqual({ changesRead: 0, attributed: 0, outsideSelection: 0 });
+    expect(product.coChange).toEqual({
+      maxFilesPerCommit: 30, minTogether: 3, commitsCounted: null, commitsOverLimit: null, pairsListed: null, pairsBelowMinimum: null,
+    });
+    expect(product.pairs).toEqual([]);
     const none = {
       commits: null, authors: null, added: null, removed: null, lastChanged: null, score: null,
     };
@@ -1009,6 +1014,92 @@ describe('no history is visible, never 0', () => {
     expect(byPath(product.directories).img).toEqual({
       path: 'img', files: 1, lines: null, commits: 3, authors: 1, added: null, removed: null, lastChanged: '2024-01-03T10:00:00+08:00', score: null,
     });
+  });
+});
+
+describe('files changed together', () => {
+  /** Commit each list of files as one commit, a day apart, every file growing by one line. */
+  function commitGroups(dir, groups, firstDay = 1) {
+    const sizes = new Map();
+    groups.forEach((group, i) => {
+      const files = {};
+      for (const path of group) {
+        sizes.set(path, (sizes.get(path) ?? 0) + 1);
+        files[path] = lines(sizes.get(path), path);
+      }
+      commit(dir, { when: new Date(Date.UTC(2024, 1, firstDay + i)).toISOString().slice(0, 10), files });
+    });
+  }
+
+  it('lists pairs changed together at least 3 times with both shares, ordered by count then path', () => {
+    const dir = initRepo('hotspots-pairs-');
+    commitGroups(dir, [
+      ['x', 'y', 'z'], ['x', 'y', 'z'], ['x', 'y'], ['x'], // x 4, y 3, z 2: x-y 3, x-z 2, y-z 2
+      ['p', 'q'], ['p', 'q'], ['p', 'q'], ['p', 'q'], // p-q 4
+      ['r', 's'], ['r', 's'], ['r', 's'], // r-s 3
+    ]);
+
+    const product = readProduct(dir);
+
+    expect(product.pairs).toEqual([
+      { a: 'p', b: 'q', together: 4, shareOfA: 1, shareOfB: 1 },
+      { a: 'r', b: 's', together: 3, shareOfA: 1, shareOfB: 1 },
+      { a: 'x', b: 'y', together: 3, shareOfA: 0.75, shareOfB: 1 },
+    ]);
+    expect(product.coChange).toEqual({
+      maxFilesPerCommit: 30, minTogether: 3, commitsCounted: 10, commitsOverLimit: 0, pairsListed: 3, pairsBelowMinimum: 2,
+    });
+
+    // a window that leaves out the first commit leaves x-y at 2: counted, not listed
+    const later = readProduct(dir, ['--since', '2024-02-02']);
+    expect(later.pairs.map((pair) => `${pair.a}-${pair.b}`)).toEqual(['p-q', 'r-s']);
+    expect(later.coChange).toMatchObject({ commitsCounted: 9, pairsBelowMinimum: 3 });
+  });
+
+  it('rounds a share half up from the exact quotient', () => {
+    const dir = initRepo('hotspots-share-');
+    commitGroups(dir, [...Array(23).fill(['h', 'k']), ...Array(17).fill(['h'])]);
+
+    // 23 of h's 40 commits is 57.5%: 0.58, where 23 / 40 * 100 in floating point rounds to 0.57
+    expect(readProduct(dir).pairs).toEqual([{ a: 'h', b: 'k', together: 23, shareOfA: 0.58, shareOfB: 1 }]);
+  });
+
+  it('pairs the files of a commit with 30 selected files and leaves a commit with 31 out of every pair', () => {
+    const dir = initRepo('hotspots-bulk-');
+    const names = (tag, count) => Array.from({ length: count }, (_, i) => `${tag}${String(i + 1).padStart(2, '0')}`);
+    commitGroups(dir, [names('f', 30), names('g', 31)]);
+
+    const product = readProduct(dir);
+
+    expect(product.coChange).toMatchObject({
+      commitsCounted: 1, commitsOverLimit: 1, pairsListed: 0, pairsBelowMinimum: (30 * 29) / 2,
+    });
+    expect(byPath(product.files).g31.commits).toBe(1);
+  });
+
+  it('pairs a renamed file under its current path', () => {
+    const dir = initRepo('hotspots-pair-rename-');
+    commitGroups(dir, [['old.txt', 'y.txt'], ['old.txt', 'y.txt'], ['old.txt', 'y.txt']]);
+    commit(dir, { when: '2024-03-01', move: [['old.txt', 'new.txt']] });
+
+    expect(readProduct(dir).pairs).toEqual([{ a: 'new.txt', b: 'y.txt', together: 3, shareOfA: 0.75, shareOfB: 1 }]);
+  });
+
+  it('never pairs files of two member repositories, even when they share every commit', () => {
+    const parent = tempDir('hotspots-pair-twins-');
+    const a = join(parent, 'a');
+    mkdirSync(a);
+    git(a, ['init', '-q', '-b', 'main']);
+    commitGroups(a, [['x.txt', 'y.txt'], ['x.txt', 'y.txt'], ['x.txt', 'y.txt']]);
+    execFileSync('git', ['clone', '-q', a, join(parent, 'b')], { env: GIT_ENV });
+
+    const product = readProduct(parent);
+
+    expect(product.pairs).toEqual([
+      { a: 'a/x.txt', b: 'a/y.txt', together: 3, shareOfA: 1, shareOfB: 1 },
+      { a: 'b/x.txt', b: 'b/y.txt', together: 3, shareOfA: 1, shareOfB: 1 },
+    ]);
+    expect(product.coChange).toMatchObject({ commitsCounted: 6, pairsBelowMinimum: 0 });
   });
 });
 

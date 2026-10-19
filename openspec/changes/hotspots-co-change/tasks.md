@@ -1,8 +1,8 @@
 ## 1. 脚本数文件对（commit：`feat(hotspots): count files changed together`）
 
-- [ ] 1.1 新增 `skills/excavator/hotspots/co-change.mjs`：从文件的提交号集合数文件对，产出 `coChange` 与 `pairs`
-- [ ] 1.2 `hotspots.mjs`：接入，头部加 `coChange`，顶层加 `pairs`，残余假设加一条
-- [ ] 1.3 单测：次数与比例、不足 3 次、30 与 31 个文件的边界、改名、多仓同 sha、没有历史、窗口、半位舍入
+- [x] 1.1 新增 `skills/excavator/hotspots/co-change.mjs`：从文件的提交号集合数文件对，产出 `coChange` 与 `pairs`
+- [x] 1.2 `hotspots.mjs`：接入，头部加 `coChange`，顶层加 `pairs`，残余假设加一条
+- [x] 1.3 单测：次数与比例、不足 3 次、30 与 31 个文件的边界、改名、多仓同 sha、没有历史、窗口、半位舍入
 
 ## 2. skill 与 chat 读文件对（commit：`feat(skill): report files changed together`）
 
