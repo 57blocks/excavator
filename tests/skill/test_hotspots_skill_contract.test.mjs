@@ -141,6 +141,9 @@ describe('excavator-hotspots skill: each rule in its step', () => {
     expect(s).toContain(`jq -r '.residualAssumptions[]' "$HS"`);
     expect(s).toContain(`jq -r '.pairs[:20][] | [.together, .shareOfA, .shareOfB, .a, .b] | @tsv' "$HS"`);
     expect(s).toContain('leaving out every pair with a path that looks like a test by its name');
+    expect(s).toContain('`commitsByYear` (directories only)');
+    expect(s).toContain('they add up to `commits`');
+    expect(s).toContain('Files have no yearly counts.');
     expect(s).toContain('select(.a == $p or .b == $p)');
     expect(s).toContain('when that is more than the rows you show, say how many you show out of how many');
   });
@@ -171,11 +174,17 @@ describe('excavator-hotspots skill: each rule in its step', () => {
     expect(s).toContain("**A shallow repo's counts are lower bounds.**");
     expect(s).toContain('**A pair is a count, not a link.**');
     expect(s).toContain('Never say that one file depends on, calls, uses or causes changes in the other');
-    expect(s).toContain('5. Files changed together: the top pairs, then the top pairs where no path looks like a test by its name');
+    expect(s).toContain('7. Files changed together: the top pairs, then the top pairs where no path looks like a test by its name');
+    expect(s).toContain('5. Changes by year: the project\'s commits in each year, saying the last year runs only to its last counted commit and the first is usually partial');
+    expect(s).toContain('6. Least recently changed: how many files had their last change in each year');
+    expect(s).toContain('Within one year the list is ordered by path: never say which of them changed least recently.');
+    expect(s).toContain('**A year is a count, not a story.**');
+    expect(s).toContain('**Not changed is not unused.**');
+    expect(s).toContain('never call it unused, dead, obsolete, abandoned or safe to delete');
     expect(s).toContain('Show the second list whole, every row its query prints, and do not describe how it differs from the first');
     expect(s).toContain('introduced with the words "pairs where neither path looks like a test by its name (a filter on names, not on content)"');
     expect(s).toContain('**Never edit, move or delete project files, and never run a `git` command that changes the repository.**');
-    expect(s).toContain('7. The residual assumptions, every one, as the product states them.');
+    expect(s).toContain('9. The residual assumptions, every one, as the product states them.');
     expect(s).toContain('ending with the line `advice check: 0 lines`');
   });
 
@@ -199,7 +208,7 @@ describe('excavator-hotspots skill: agrees with the script', () => {
     for (const key of ['filesWithHistory', 'filesWithoutHistory', 'binaryFiles', 'filesWithLineageConflicts']) expect(p.counts).toHaveProperty(key);
     const fileFields = ['score', 'commits', 'authors', 'lines', 'added', 'removed', 'lastChanged', 'lineageConflicts', 'path'];
     for (const key of fileFields) expect(p.files[0]).toHaveProperty(key);
-    for (const key of ['score', 'commits', 'authors', 'files', 'lines', 'path']) expect(p.directories[0]).toHaveProperty(key);
+    for (const key of ['score', 'commits', 'authors', 'files', 'lines', 'path', 'commitsByYear']) expect(p.directories[0]).toHaveProperty(key);
     for (const key of ['maxFilesPerCommit', 'minTogether', 'commitsOverLimit', 'pairsBelowMinimum']) expect(p.coChange).toHaveProperty(key);
     expect(p.pairs.length).toBeGreaterThan(0);
     for (const key of ['together', 'shareOfA', 'shareOfB', 'a', 'b']) expect(p.pairs[0]).toHaveProperty(key);
@@ -234,9 +243,31 @@ describe('excavator-hotspots skill: agrees with the script', () => {
     }
   });
 
+  it('the yearly queries print what they rely on first, and the last-change queries group by year', () => {
+    const run = (text, productPath, marker) => {
+      const line = jqLines(bashBlocks(text)).find((recipe) => recipe.includes(marker));
+      const result = spawnSync('sh', ['-c', line.replaceAll(productPath, JSON.stringify(fixture.product))], { encoding: 'utf-8' });
+      expect(result.status, result.stderr).toBe(0);
+      return result.stdout.trim().split('\n');
+    };
+    const p = product();
+    const root = p.directories.find((row) => row.path === '.');
+    const years = Object.keys(root.commitsByYear);
+    expect(years.length).toBeGreaterThan(0);
+    for (const [text, productPath] of [[rawStep(3), '"$HS"'], [section, '.excavator/hotspots.json']]) {
+      expect(run(text, productPath, '"last counted commit:')).toEqual([
+        `last counted commit: ${root.lastChanged}`, ...years.map((year) => `${year}\t${root.commitsByYear[year]}`),
+      ]);
+      expect(run(text, productPath, 'keys[-2:]')[0]).toBe(`years: ${years.slice(-2).join(', ')}`);
+      const byYear = run(text, productPath, 'group_by(.)').map((row) => row.split('\t'));
+      expect(byYear.reduce((sum, [, count]) => sum + Number(count), 0)).toBe(p.files.filter((row) => row.commits !== null).length);
+      expect(run(text, productPath, 'sort_by((.lastChanged // "")[:4], .path)').length).toBeGreaterThan(0);
+    }
+  });
+
   it('runs every jq recipe of steps 2 and 3 on the product', () => {
     const recipes = jqLines([...bashBlocks(rawStep(2)), ...bashBlocks(rawStep(3))]);
-    expect(recipes.length).toBeGreaterThanOrEqual(7);
+    expect(recipes.length).toBeGreaterThanOrEqual(11);
     for (const line of recipes) runRecipe(line, '"$HS"');
   });
 
@@ -254,7 +285,12 @@ describe('excavator-hotspots skill: agrees with the script', () => {
     for (const cause of ['src/b.js depends on docs/readme.md.', 'A change in x causes changes in y.', 'x calls y.', 'b.js 依赖 readme.md。', '改 a 导致要改 b。']) {
       expect(check(`${cause}\n`).stdout, cause).not.toBe('');
     }
-    for (const plain of ['gradle/dependencies.gradle and pom.xml changed together in 5 commits.', 'src/FooCallback.java changed in 4 commits.']) {
+    for (const unused of ['src/old has dead code.', 'These files are unused.', 'The module is no longer used.', 'lib/x.js is obsolete.', 'An abandoned directory.', 'It is safe to delete.', '这个目录已废弃。', '这些是死代码。']) {
+      expect(check(`${unused}\n`).stdout, unused).not.toBe('');
+    }
+    // paths that carry such words in real repositories: legacy and stale are left out of the check for them
+    for (const plain of ['gradle/dependencies.gradle and pom.xml changed together in 5 commits.', 'src/FooCallback.java changed in 4 commits.',
+      'db/migration/V5__legacy-templates.sql last changed in 2021.', '.github/workflows/stale.yml changed in 3 commits.']) {
       expect(check(`${plain}\n`).status, plain).toBe(1);
     }
   });
@@ -265,6 +301,7 @@ describe('excavator-chat: change-history questions', () => {
     const stepOne = flat(chat.split(/^## Instructions$/m)[1].split(/^1\. /m)[1].split(/^2\. /m)[0]);
     expect(stepOne).toContain('**Change-history questions do not need the graph.**');
     expect(stepOne).toContain('or about which files changed in the same commits as a file (what usually changes along with it)');
+    expect(stepOne).toContain('or about how changes spread over the years and which parts have not changed for a long time');
     expect(stepOne.indexOf('Change-history questions')).toBeLessThan(stepOne.indexOf('knowledge-graph.jsonl'));
   });
 
@@ -306,6 +343,10 @@ describe('excavator-chat: change-history questions', () => {
     expect(s).toContain('Its first line is how many listed pairs include the file; when that is more than the rows you show, say how many you show out of how many.');
     expect(s).toContain('never that it does not change with other files');
     expect(s).toContain('A question about what depends on or calls a file is about the code, not its history: answer it from the graph.');
+    expect(s).toContain('For a directory\'s changes over the years, read its row\'s `commitsByYear`');
+    expect(s).toContain('Files have no yearly counts: for a file, give its `commits` and `lastChanged`, say the product counts years only per directory, and never work out a file\'s count for a year.');
+    expect(s).toContain('never say which changed least recently within a year');
+    expect(s).toContain('**Not changed is not unused**: change history does not show whether code is used, so never call a file or directory unused, dead, obsolete, abandoned or safe to delete because it has not changed');
   });
 
   it('the freshness helper and the product agree on the revision of an unchanged project', () => {
@@ -315,7 +356,7 @@ describe('excavator-chat: change-history questions', () => {
 
   it('runs the lookup recipes on the product', () => {
     const recipes = jqLines(bashBlocks(section));
-    expect(recipes.length).toBeGreaterThanOrEqual(5);
+    expect(recipes.length).toBeGreaterThanOrEqual(9);
     for (const line of recipes) runRecipe(line, '.excavator/hotspots.json');
   });
 });
