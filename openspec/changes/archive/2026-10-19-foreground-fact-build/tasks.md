@@ -16,6 +16,6 @@
 
 ## 2. 验收
 
-- [ ] 2.1 O2：在 hadoop 上 headless 跑 `--full --estimate`，按 design.md 的通过条件逐条检查。
-- [ ] 2.2 在 design.md 末尾写验收记录：O1、O2 的结果，以及 hadoop 的预估数字。
-- [ ] 2.3 同步主规范 `full-run-continuation`，归档本变更。
+- [x] 2.1 O2：在 hadoop 上 headless 跑 `--full --estimate`，按 design.md 的通过条件逐条检查。全部通过，见 design.md 验收记录。
+- [x] 2.2 在 design.md 末尾写验收记录：O1、O2 的结果，以及 hadoop 的预估数字。
+- [x] 2.3 同步主规范 `full-run-continuation`，归档本变更。
