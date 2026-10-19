@@ -42,7 +42,7 @@ function runRecipe(line, productPath) {
 }
 const section = chat.split('### Change-history questions')[1].split(/^##+ /m)[0];
 
-/** A small repository with a rename, two authors and two directories, and its product. */
+/** A small repository with a rename, two authors, two directories and a pair changed together, and its product. */
 const fixture = (() => {
   const dir = realpathSync(mkdtempSync(join(tmpdir(), 'hotspots-contract-')));
   const env = { ...process.env, GIT_CONFIG_GLOBAL: '/dev/null', GIT_CONFIG_NOSYSTEM: '1' };
@@ -63,6 +63,9 @@ const fixture = (() => {
   commit({ 'src/a.js': 'a\nb\n' }, 'bob');
   git(['mv', 'src/a.js', 'src/b.js']);
   commit({ 'src/b.js': 'a\nb\nc\n' });
+  // src/b.js and docs/readme.md change together a third time: one listed pair
+  commit({ 'src/b.js': 'a\nb\nc\nd\n', 'docs/readme.md': 'r\ns\n' });
+  commit({ 'src/b.js': 'a\nb\nc\nd\ne\n', 'docs/readme.md': 'r\ns\nt\n' });
   const run = spawnSync('node', [SCRIPT, dir], { encoding: 'utf-8' });
   const product = join(dir, '.excavator/hotspots.json');
   return { dir, run, product };
@@ -119,7 +122,9 @@ describe('excavator-hotspots skill: each rule in its step', () => {
   it('step 2 reads the header with jq and settles what the history can show first', () => {
     const s = step.get(2);
     expect(s).toContain("Never read `$HS` whole");
-    expect(s).toContain(`jq 'del(.files, .directories)' "$HS"`);
+    expect(s).toContain(`jq 'del(.files, .directories, .pairs)' "$HS"`);
+    expect(s).toContain('**`coChange`:**');
+    expect(s).toContain('The two sets do not overlap, so never give one count as a part of the other');
     expect(s).toContain('**`historyAvailable` is false:**');
     expect(s).toContain('there is no ranking to report');
     expect(s).toContain('Say first why, from `noHistory.reason`');
@@ -134,6 +139,25 @@ describe('excavator-hotspots skill: each rule in its step', () => {
     const s = step.get(3);
     expect(s).toContain('select(.lineageConflicts > 0)');
     expect(s).toContain(`jq -r '.residualAssumptions[]' "$HS"`);
+    expect(s).toContain(`jq -r '.pairs[:20][] | [.together, .shareOfA, .shareOfB, .a, .b] | @tsv' "$HS"`);
+    expect(s).toContain('leaving out every pair with a path that looks like a test by its name');
+    expect(s).toContain('select(.a == $p or .b == $p)');
+    expect(s).toContain('when that is more than the rows you show, say how many you show out of how many');
+  });
+
+  it('filters out pairs whose paths look like tests by name, and keeps the others', () => {
+    const line = jqLines(bashBlocks(rawStep(3))).find((recipe) => recipe.includes('all(test('));
+    const pair = (a, b) => ({ a, b, together: 3, shareOfA: 1, shareOfB: 1 });
+    const kept = [pair('src/Engine.java', 'src/Context.java'), pair('web/page.xhtml', 'props/Bundle.properties'), pair('lib/contest.js', 'lib/latest.js')];
+    const tests = [
+      pair('src/main/A.java', 'src/test/java/ATest.java'), pair('a.ts', 'a.test.ts'), pair('b.js', 'b.spec.js'), pair('c.go', 'c_test.go'),
+      pair('d.py', 'test_d.py'), pair('e.js', '__tests__/e.js'), pair('f.rb', 'spec/f_spec.rb'), pair('g.java', 'GTests.java'),
+    ];
+    const product = join(fixture.dir, '.excavator/pairs-filter.json');
+    writeFileSync(product, JSON.stringify({ pairs: [...kept, ...tests] }));
+    const result = spawnSync('sh', ['-c', line.replaceAll('"$HS"', JSON.stringify(product))], { encoding: 'utf-8' });
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout.trim().split('\n').map((row) => row.split('\t').slice(3).join(' '))).toEqual(kept.map((p) => `${p.a} ${p.b}`));
   });
 
   it('step 4 states only product numbers, gives no advice and checks for it', () => {
@@ -145,8 +169,13 @@ describe('excavator-hotspots skill: each rule in its step', () => {
     expect(s).toContain('its counts may miss part of its history or include another history that once had the same path');
     expect(s).toContain('A 0 means no conflict was detected, not that the counts are complete; never call a count reliable or accurate.');
     expect(s).toContain("**A shallow repo's counts are lower bounds.**");
+    expect(s).toContain('**A pair is a count, not a link.**');
+    expect(s).toContain('Never say that one file depends on, calls, uses or causes changes in the other');
+    expect(s).toContain('5. Files changed together: the top pairs, then the top pairs where no path looks like a test by its name');
+    expect(s).toContain('Show the second list whole, every row its query prints, and do not describe how it differs from the first');
+    expect(s).toContain('introduced with the words "pairs where neither path looks like a test by its name (a filter on names, not on content)"');
     expect(s).toContain('**Never edit, move or delete project files, and never run a `git` command that changes the repository.**');
-    expect(s).toContain('6. The residual assumptions, every one, as the product states them.');
+    expect(s).toContain('7. The residual assumptions, every one, as the product states them.');
     expect(s).toContain('ending with the line `advice check: 0 lines`');
   });
 
@@ -162,7 +191,7 @@ describe('excavator-hotspots skill: agrees with the script', () => {
 
   it('names only header, file and directory fields the product has', () => {
     const p = product();
-    const header = /`(sourceRevision|sourceKind|historyAvailable|noHistory|repos|window|counts|conservation|residualAssumptions)`/g;
+    const header = /`(sourceRevision|sourceKind|historyAvailable|noHistory|repos|window|counts|coChange|conservation|residualAssumptions)`/g;
     for (const [, key] of skill.matchAll(header)) expect(p).toHaveProperty(key);
     for (const key of ['path', 'head', 'shallow', 'boundaryCommits', 'earliestVisibleCommit']) expect(p.repos[0]).toHaveProperty(key);
     for (const key of ['changesRead', 'attributed', 'outsideSelection']) expect(p.conservation).toHaveProperty(key);
@@ -171,6 +200,12 @@ describe('excavator-hotspots skill: agrees with the script', () => {
     const fileFields = ['score', 'commits', 'authors', 'lines', 'added', 'removed', 'lastChanged', 'lineageConflicts', 'path'];
     for (const key of fileFields) expect(p.files[0]).toHaveProperty(key);
     for (const key of ['score', 'commits', 'authors', 'files', 'lines', 'path']) expect(p.directories[0]).toHaveProperty(key);
+    for (const key of ['maxFilesPerCommit', 'minTogether', 'commitsOverLimit', 'pairsBelowMinimum']) expect(p.coChange).toHaveProperty(key);
+    expect(p.pairs.length).toBeGreaterThan(0);
+    for (const key of ['together', 'shareOfA', 'shareOfB', 'a', 'b']) expect(p.pairs[0]).toHaveProperty(key);
+    for (const text of [skill, section]) {
+      for (const [, key] of text.matchAll(/`coChange\.(\w+)`/g)) expect(p.coChange).toHaveProperty(key);
+    }
   });
 
   it('names the reasons for no history and their fields as the script writes them', () => {
@@ -182,6 +217,20 @@ describe('excavator-hotspots skill: agrees with the script', () => {
       expect(new Set(keys)).toEqual(new Set(['reason', 'repositoryRoot', 'pathInRepository']));
       for (const key of keys) expect(sub.noHistory).toHaveProperty(key);
       for (const reason of ['not-a-repository', 'inside-repository']) expect(text).toContain(`\`${reason}\``);
+    }
+  });
+
+  it('the one-file pairs query of the skill and of chat prints how many pairs include the file, then the rows', () => {
+    const listed = product().pairs.filter((p) => p.a === 'src/b.js' || p.b === 'src/b.js');
+    expect(listed.length).toBeGreaterThan(0);
+    for (const [text, productPath] of [[rawStep(3), '"$HS"'], [section, '.excavator/hotspots.json']]) {
+      const line = jqLines(bashBlocks(text)).find((recipe) => recipe.includes('select(.a == $p or .b == $p)'));
+      const command = line.replaceAll(productPath, JSON.stringify(fixture.product)).replaceAll('<path>', 'src/b.js');
+      const result = spawnSync('sh', ['-c', command], { encoding: 'utf-8' });
+      expect(result.status, result.stderr).toBe(0);
+      const rows = result.stdout.trim().split('\n');
+      expect(rows[0]).toBe(`listed pairs with this file: ${listed.length}`);
+      expect(rows.length).toBe(1 + Math.min(listed.length, 20));
     }
   });
 
@@ -202,6 +251,12 @@ describe('excavator-hotspots skill: agrees with the script', () => {
     for (const advice of ['You should refactor src/b.js.', 'Consider splitting it.', 'We recommend more tests.', '建议拆分这个文件。', '这个目录应该重构。']) {
       expect(check(`${advice}\n`).stdout, advice).not.toBe('');
     }
+    for (const cause of ['src/b.js depends on docs/readme.md.', 'A change in x causes changes in y.', 'x calls y.', 'b.js 依赖 readme.md。', '改 a 导致要改 b。']) {
+      expect(check(`${cause}\n`).stdout, cause).not.toBe('');
+    }
+    for (const plain of ['gradle/dependencies.gradle and pom.xml changed together in 5 commits.', 'src/FooCallback.java changed in 4 commits.']) {
+      expect(check(`${plain}\n`).status, plain).toBe(1);
+    }
   });
 });
 
@@ -209,6 +264,7 @@ describe('excavator-chat: change-history questions', () => {
   it('routes change-history questions before the graph check', () => {
     const stepOne = flat(chat.split(/^## Instructions$/m)[1].split(/^1\. /m)[1].split(/^2\. /m)[0]);
     expect(stepOne).toContain('**Change-history questions do not need the graph.**');
+    expect(stepOne).toContain('or about which files changed in the same commits as a file (what usually changes along with it)');
     expect(stepOne.indexOf('Change-history questions')).toBeLessThan(stepOne.indexOf('knowledge-graph.jsonl'));
   });
 
@@ -231,7 +287,7 @@ describe('excavator-chat: change-history questions', () => {
     const s = flat(section);
     expect(s).toContain('its counts are lower bounds');
     expect(s).toContain('`historyAvailable` false: every history field is `null`, so do not rank; say why from `noHistory.reason`.');
-    expect(s).toContain('jq \'{sourceKind, historyAvailable, noHistory, repos, window, counts, conservation}\'');
+    expect(s).toContain('jq \'{sourceKind, historyAvailable, noHistory, repos, window, counts, coChange, conservation}\'');
     expect(s).toContain('gives this directory\'s numbers in the directory row `noHistory.pathInRepository`');
     expect(s).toContain('Never say such a project is not a Git repository.');
     expect(s).not.toContain('there is no Git history');
@@ -245,6 +301,11 @@ describe('excavator-chat: change-history questions', () => {
     expect(s).toContain('do not inspect them to judge it');
     expect(s).toContain('call `finalizeVerifiedAnswerLanguage` as that gate says, and write the whole answer, notes included, in the language it returns');
     expect(s).toContain('`lines` is the file\'s line count at HEAD, not lines changed');
+    expect(s).toContain('**A pair is a count, not a link**: never say that one file depends on, calls, uses or causes changes in the other');
+    expect(s).toContain('A file in no listed pair was not changed together with any file at least `coChange.minTogether` times');
+    expect(s).toContain('Its first line is how many listed pairs include the file; when that is more than the rows you show, say how many you show out of how many.');
+    expect(s).toContain('never that it does not change with other files');
+    expect(s).toContain('A question about what depends on or calls a file is about the code, not its history: answer it from the graph.');
   });
 
   it('the freshness helper and the product agree on the revision of an unchanged project', () => {

@@ -29,13 +29,17 @@
  * where the walk detects that it may be wrong (lineage.mjs) the file's
  * `lineageConflicts` counts it and `counts.filesWithLineageConflicts` counts the files.
  *
+ * Files changed together. After the walk, every pair of files changed in the
+ * same commits is counted from the files' commit sets (hotspots/co-change.mjs);
+ * commits that changed more than 30 selected files count for no pair.
+ *
  * Conservation. Every change (commit x path) read is either attributed to a
  * selected file or counted as outside the selection (deleted, ignored or not
  * selected paths). A mismatch is an Error and nothing is written.
  *
  * Product `.excavator/hotspots.json`
  *   { format, sourceRevision, sourceKind, historyAvailable, noHistory, repos, window,
- *     counts, conservation, residualAssumptions, files, directories }
+ *     counts, coChange, conservation, residualAssumptions, files, directories, pairs }
  * `noHistory` is `null` when there is history, else `{ reason, repositoryRoot,
  * pathInRepository }` with `reason` `not-a-repository` or `inside-repository`.
  * `repos` has `{ path, head, shallow, boundaryCommits, earliestVisibleCommit }`
@@ -43,7 +47,9 @@
  * in a multi-repo parent); `window` is `{ since, sinceUtc }`, both `null` without
  * a window. File rows: `{ path, commits, authors, added, removed, lastChanged,
  * lines, score, lineageConflicts }`; directory rows: `{ path, files, lines, commits, authors, added,
- * removed, lastChanged, score }` with `.` the project root.
+ * removed, lastChanged, score }` with `.` the project root. `coChange` is `{ maxFilesPerCommit,
+ * minTogether, commitsCounted, commitsOverLimit, pairsListed, pairsBelowMinimum }`, the
+ * counts `null` without history; pair rows: `{ a, b, together, shareOfA, shareOfB }`.
  *
  * Contract: openspec/changes/change-hotspots/specs/change-hotspots/spec.md
  */
@@ -53,6 +59,7 @@ import { fileURLToPath } from 'node:url';
 
 import { buildRows } from './hotspots/aggregate.mjs';
 import { countBlobLines, countBufferLines } from './hotspots/blob-lines.mjs';
+import { MAX_FILES_PER_COMMIT, coChangeWithoutHistory, countCoChanges } from './hotspots/co-change.mjs';
 import { readRepoHistory } from './hotspots/history.mjs';
 import { explainNoHistory } from './hotspots/no-history.mjs';
 import { assertDataDir, assertDataFile, bindProjectRoot } from './project-paths.mjs';
@@ -75,6 +82,7 @@ const RESIDUAL_ASSUMPTIONS = Object.freeze([
   'Line counts include blank lines and comments.',
   'If history was rewritten (squashed, rebased, imported from another system), changes before the rewrite are not visible.',
   'Repository-local .git/config and .git/info/attributes still affect rename detection and binary detection.',
+  `Commits that changed more than ${MAX_FILES_PER_COMMIT} selected files are not counted for pairs, so files changed together only in such commits are not listed as a pair.`,
 ]);
 
 /** The UTC instant (epoch milliseconds) that opens a `YYYY-MM-DD` window, or an Error for anything else. */
@@ -162,6 +170,7 @@ export async function buildHotspots(root, { since = null, readHistory = readRepo
     return { path, hasHistory: !looseFiles.has(path), lines: binary ? null : lines };
   });
   const { files, directories } = buildRows(entries, histories);
+  const coChange = repos.length > 0 ? countCoChanges(histories) : { header: coChangeWithoutHistory(), pairs: [] };
 
   return {
     format: HOTSPOTS_FORMAT,
@@ -177,10 +186,12 @@ export async function buildHotspots(root, { since = null, readHistory = readRepo
       binaryFiles: entries.filter((entry) => entry.lines === null).length,
       filesWithLineageConflicts: files.filter((row) => row.lineageConflicts > 0).length,
     },
+    coChange: coChange.header,
     conservation,
     residualAssumptions: [...RESIDUAL_ASSUMPTIONS],
     files,
     directories,
+    pairs: coChange.pairs,
   };
 }
 
