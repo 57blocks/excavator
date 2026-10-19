@@ -92,3 +92,33 @@
   - 先验装置：同样的回放在 `origin/main` 的代码上必须以 1 退出并报 `ERR_STRING_TOO_LONG`，否则这个回放证明不了什么。
   - 同一工作目录再跑一次 `report <记录> --project <样本副本>`，节点数相同。
   - 不过就如实记录，不宣称通过。
+
+## 验收记录
+
+### O1 单元测试与变异
+
+- `test_full_run_report.test.mjs` 新增两条测试：
+  - 头记录 89 字节，后跟约 1 MB 内容；注入的读取函数每次最多 64 字节，共读 128 字节，节点数为 7。
+  - 没有结尾换行的头记录照常解析；第一行不是 JSON 时节点数为空、记 `sample:nodes`。
+- 在旧实现上，第一条测试变红：经过注入读取函数的字节数为 0。
+- 三种变异各自变红：
+  - M1 换回 `readFileSync` 整读：第一条测试红；
+  - M2 找到换行后继续读到文件末尾：第一条测试红，节点数仍对，只有字节数断言拦住；
+  - M3 解析失败时返回 0：第二条测试红。
+- 全量门：
+  - vitest 145 个文件，3,877 条通过、4 条跳过。
+  - 第一次跑全部断言通过，但 vitest 报了一个 worker 与主进程之间的 RPC 超时（`Timeout calling "onTaskUpdate"`），以 1 退出。当时机器负载约 20（8 核），Spotlight 正在索引新建的产物。原样重跑，以 0 退出。
+  - `check-refs` 通过；OpenSpec 43 项通过。
+
+### O2 真实产物回放
+
+- 图：一个现成的 hadoop 图，589,532,925 字节，头记录 1,356 字节，`head -1` 读出 `counts.nodes` 为 154,663。工作目录里用符号链接引用，只读；回放前后文件大小与修改时间不变。
+- 记录：失败那次 `--estimate` 运行的原始记录，264,681 字节，由替身 `claude` 原样输出。
+- 先验装置：同样的回放在 `origin/main` 的代码上以 1 退出，`graphNodeCount` 抛出 `ERR_STRING_TOO_LONG`，输出目录里没有 run.report.json。
+- 本分支：
+  - 进程以 0 退出，写出 run.report.json 与 run.report.md；
+  - `sample.nodes` 为 154,663，等于 `head -1` 读出的值；
+  - `missing` 里没有 `sample:nodes`。缺的是 `sample:files`、`sample:batches`、四个产物与 F3–F5：工作目录里只有图，那次运行也停在预估。
+  - 记录自报的花费 $1.1031，与上一个变更 O2 的记录一致。
+- `report <记录> --project <样本副本>` 以 0 退出，节点数同为 154,663。
+- 没有花钱跑真实的 headless 运行：`run` 与 `report` 读样本都走同一个 `readSample`，回放已覆盖运行结束后的全部收尾步骤。
