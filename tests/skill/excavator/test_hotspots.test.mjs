@@ -21,6 +21,7 @@ import {
 } from '../../../skills/excavator/hotspots.mjs';
 import { countBlobLines, countBufferLines } from '../../../skills/excavator/hotspots/blob-lines.mjs';
 import { readRepoHistory } from '../../../skills/excavator/hotspots/history.mjs';
+import { countCoChanges } from '../../../skills/excavator/hotspots/co-change.mjs';
 import { createLineage } from '../../../skills/excavator/hotspots/lineage.mjs';
 import { explainNoHistory } from '../../../skills/excavator/hotspots/no-history.mjs';
 
@@ -1057,11 +1058,12 @@ describe('files changed together', () => {
   });
 
   it('rounds a share half up from the exact quotient', () => {
-    const dir = initRepo('hotspots-share-');
-    commitGroups(dir, [...Array(23).fill(['h', 'k']), ...Array(17).fill(['h'])]);
+    // in memory: 40 scripted commits would hold the test worker for seconds on a loaded machine
+    const ids = (from, to) => new Set(Array.from({ length: to - from }, (_, i) => from + i));
+    const histories = new Map([['h', { commits: ids(0, 40) }], ['k', { commits: ids(0, 23) }]]);
 
     // 23 of h's 40 commits is 57.5%: 0.58, where 23 / 40 * 100 in floating point rounds to 0.57
-    expect(readProduct(dir).pairs).toEqual([{ a: 'h', b: 'k', together: 23, shareOfA: 0.58, shareOfB: 1 }]);
+    expect(countCoChanges(histories).pairs).toEqual([{ a: 'h', b: 'k', together: 23, shareOfA: 0.58, shareOfB: 1 }]);
   });
 
   it('pairs the files of a commit with 30 selected files and leaves a commit with 31 out of every pair', () => {
