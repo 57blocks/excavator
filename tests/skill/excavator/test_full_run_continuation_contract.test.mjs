@@ -139,3 +139,28 @@ describe('full-run-estimate.md', () => {
     expect(cost).toBeCloseTo(30.4, 1);
   });
 });
+
+describe('the skill runs its scripts in the foreground', () => {
+  // A headless Full estimate on a 16k-file repository ended after 2.5 minutes:
+  // the orchestrator started the three-minute Lazy build in the background and
+  // ended its turn, and a headless run exits with the turn.
+  const rule = flat(section('## Running the scripts', '## Phase 0 — Pre-flight'));
+  const lazy = flat(section('**If `$ANALYSIS_MODE` is `lazy`:**', '**If `$ANALYSIS_MODE` is `full`:**'));
+  const f1 = flat(section('### Phase F1 — FACT BUILD', '### Phase F2'));
+
+  it('states the rule and its reason before Phase 0', () => {
+    expect(rule).toContain('Run every script this skill names in the foreground, and wait for it to finish before going on.');
+    expect(rule).toContain('Never start one with `run_in_background`.');
+    expect(rule).toContain('A headless run (`claude -p`, the unattended runner) exits as soon as your turn ends, and a background process dies with it');
+  });
+
+  it('gives lazy-analyze the maximum timeout, since a timed-out command also moves to the background', () => {
+    expect(rule).toContain('moves a foreground command into the background once it passes its timeout');
+    expect(rule).toContain('run `lazy-analyze.mjs`, which takes minutes on a large repository, with the tool\'s maximum timeout: 600000 ms');
+  });
+
+  it.each([['Lazy mode', lazy], ['Phase F1', f1]])('repeats it where %s runs lazy-analyze', (_, text) => {
+    expect(text).toContain('node "<SKILL_DIR>/lazy-analyze.mjs" "$PROJECT_ROOT"');
+    expect(text).toContain('Run it in the foreground with the shell tool\'s maximum timeout (600000 ms), never in the background: see **Running the scripts**.');
+  });
+});
