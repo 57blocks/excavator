@@ -189,7 +189,7 @@ describe('excavator-hotspots skill: each rule in its step', () => {
     expect(s).toContain('introduced with the words "pairs where neither path looks like a test by its name (a filter on names, not on content)"');
     expect(s).toContain('**Never edit, move or delete project files, and never run a `git` command that changes the repository.**');
     expect(s).toContain('9. The residual assumptions, every one, as the product states them.');
-    expect(s).toContain('ending with the line `advice check: 0 lines`');
+    expect(s).toContain('Then reply with the report\'s path and the line `advice check: 0 lines`, and do not summarize the report');
   });
 
   it('keeps the step rules out of the preamble, where they would be skipped', () => {

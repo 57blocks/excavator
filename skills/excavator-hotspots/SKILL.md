@@ -146,4 +146,4 @@ Then check the report for advice, causal wording and words that call code unused
 grep -niE '\b(should|recommend(ed|s)?|consider|refactor(ing)?|split (it|up|into)|break (it )?up|clean ?up|worth|priorit(y|i[sz]e)|depends? on|calls|caus(e|es|ed|ing)|dead|unused|no longer used|obsolete|abandoned|safe to (delete|remove))\b|建议|应该|应当|重构|拆分|值得|优先|依赖|调用|导致|死代码|废弃|无用|不再使用' "$DATA/hotspots-report.md"
 ```
 
-Each line it prints is a sentence to rewrite as a statement of the numbers; run it again until it prints nothing. Then show the report, ending with the line `advice check: 0 lines`. Point the user at `/excavator-chat` for questions about one file or directory; it answers from the same product.
+Each line it prints is a sentence to rewrite as a statement of the numbers; run it again until it prints nothing. Then reply with the report's path and the line `advice check: 0 lines`, and do not summarize the report: it holds the numbers in the words these steps give, and a summary rewords them. Point the user at `/excavator-chat` for questions about one file or directory; it answers from the same product.
