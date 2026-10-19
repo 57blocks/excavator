@@ -11,6 +11,7 @@
 - [x] 2.3 契约测试：夹具有文件对；新查询在产物上跑得出结果；字段名都在产物里；自检能抓因果用词，残余假设能通过
 - [x] 2.4 真实运行暴露的两处措辞（commit：`fix(skill): keep pair counts apart and say how many pairs a file has`）：skill 说明 `commitsCounted` 与 `commitsOverLimit` 互不包含；单文件查询先打印含该文件的文件对总数，没列全时说明列了几对、共几对
 - [x] 2.5 第二次真实运行暴露的问题（commit：`fix(skill): show the second pair list whole`）：汇报完整列出第二份清单，不描述两份清单的差别
+- [x] 2.6 第三次真实运行把过滤说成「两边都像测试才排除」（commit：`fix(skill): introduce the filtered pair list with fixed words`）：第二份清单用固定引导语
 
 ## 3. 验收与归档（commit：`docs(openspec): record hotspots-co-change acceptance and archive`）
 
