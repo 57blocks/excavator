@@ -14,6 +14,7 @@ export default function Home({ Slot }: { Slot: () => unknown }) {
       <Link to="/" />
       <Slot />
       <Fancy />
+      <Button label="Back" />
       <my-widget />
       <section />
     </Card>

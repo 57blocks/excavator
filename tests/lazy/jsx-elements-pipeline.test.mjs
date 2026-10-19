@@ -6,7 +6,8 @@
 // component, a prop that shadows nothing imported, a `forwardRef` value, an
 // element at the top level of the module, a legacy `.jsx` file whose
 // `<this.Slot />` the javascript grammar recovers from an error, and a class
-// component whose `render` method has no function node. It is copied to a temp
+// component whose `render` method has no function node. `Home` renders `Button`
+// twice: one edge for the pair, two edge sites. It is copied to a temp
 // directory because a Lazy run writes `.excavator/` next to the source.
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { cpSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
@@ -84,21 +85,30 @@ describe('JSX elements in the Lazy driver', () => {
 
   it('files every other element in exactly one gap, and counts the intrinsic ones', () => {
     expect(graph.coverage.jsxElements).toEqual({
-      status: 'ran', files: 8, intrinsic: 11, sites: 12,
-      edge: 6, external: 1, unbound: 2, targetUnresolved: 1, ambiguous: 0, callerUnresolved: 2,
+      status: 'ran', files: 8, intrinsic: 11, sites: 13,
+      edge: 7, external: 1, unbound: 2, targetUnresolved: 1, ambiguous: 0, callerUnresolved: 2,
     });
     const jsxGaps = graph.gaps
       .filter((g) => g.kind.startsWith('jsx-'))
       .map((g) => [g.kind, g.scope, g.count, g.samples]);
     expect(jsxGaps).toEqual([
       ['jsx-caller-unresolved', 'javascript', 1, [`${PANEL}:6 -> Pill`]],
-      ['jsx-caller-unresolved', 'typescript', 1, [`${HOME}:23 -> Home`]],
+      ['jsx-caller-unresolved', 'typescript', 1, [`${HOME}:24 -> Home`]],
       ['jsx-external', 'typescript', 1, [`${HOME}:14 -> Link`]],
       ['jsx-target-unresolved', 'typescript', 1, [`${HOME}:16 -> Fancy`]],
       ['jsx-unbound', 'javascript', 1, [`${WIDGET}:7 -> Slot`]],
       ['jsx-unbound', 'typescript', 1, [`${HOME}:15 -> Slot`]],
     ]);
     for (const gap of graph.gaps.filter((g) => g.kind.startsWith('jsx-'))) expect(gap.reason).toMatch(/^JSX element\(s\) /);
+  });
+
+  it('merges the elements of one caller-target pair into one edge that cites the first', () => {
+    const pair = graph.edges.filter((e) => e.type === 'calls'
+      && e.source === nodeId(HOME, 'Home') && e.target === nodeId('src/components/ui/button.tsx', 'Button'));
+    expect(pair).toHaveLength(1);
+    expect(pair[0].evidence).toEqual([{ file: HOME, line: 11, source: 'tree-sitter', token: 'Button' }]);
+    // Both sites count as edge sites: 7 sites over 6 edges.
+    expect(graph.coverage.jsxElements.edge).toBe(jsxCalls().length + 1);
   });
 
   it('gives the barrel imports edges to the modules it forwards, and resolves exports by their local name', () => {
@@ -150,13 +160,13 @@ describe('JSX elements in the Lazy driver', () => {
     };
 
     it('builds when every element is one edge or one recorded gap', () => {
-      expect(build(null).coverage.jsxElements).toMatchObject({ status: 'ran', sites: 12 });
+      expect(build(null).coverage.jsxElements).toMatchObject({ status: 'ran', sites: 13 });
     });
 
     it('refuses a projection that loses a gap, files one twice, or miscounts a site', () => {
       expect(() => build((r) => ({ ...r, gaps: r.gaps.slice(1) }))).toThrow(/JSX element conservation violated/);
       expect(() => build((r) => ({ ...r, gaps: [...r.gaps, r.gaps[0]] }))).toThrow(/JSX element conservation violated/);
-      expect(() => build((r) => ({ ...r, coverage: { ...r.coverage, sites: r.coverage.sites + 1 } }))).toThrow(/sites=13 but edge\+gaps=12/);
+      expect(() => build((r) => ({ ...r, coverage: { ...r.coverage, sites: r.coverage.sites + 1 } }))).toThrow(/sites=14 but edge\+gaps=13/);
     });
 
     it('says the stage did not run for an import map without resolved sources', () => {
