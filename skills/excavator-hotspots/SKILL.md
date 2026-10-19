@@ -80,12 +80,12 @@ jq -r --argjson d 1 '[.directories[] | select(.path != "." and (.path | split("/
 jq -r '.directories[] | select(.path == ".") | "last counted commit: \(.lastChanged)", (.commitsByYear // {} | to_entries[] | [.key, .value] | @tsv)' "$HS"
 # directories at one depth with the most commits in the product's last two years (it prints the years first)
 jq -r --argjson d 1 '(.directories[] | select(.path == ".") | .commitsByYear // {} | keys[-2:]) as $y | "years: \($y | join(", "))", ([.directories[] | select(.path != "." and (.path | split("/") | length) == $d and .commitsByYear != null) | {path, recent: ([.commitsByYear[$y[]]] | add // 0), commits}] | sort_by(-.recent, .path) | .[:15][] | [.recent, .commits, .path] | @tsv)' "$HS"
-# files by the year of their last change; "none": a file with history but no commit in the window
-jq -r '[.files[] | select(.commits != null) | if .lastChanged == null then "none" else .lastChanged[:4] end] | "files by the year of their last change, each file once (none: no commit in the window):", (group_by(.) | .[] | [.[0], length] | @tsv)' "$HS"
+# files by the year of their last change; "none": a file with history but 0 commits counted
+jq -r '[.files[] | select(.commits != null) | if .lastChanged == null then "none" else .lastChanged[:4] end] | "files by the year of their last change, each file once (none: 0 commits counted):", (group_by(.) | .[] | [.[0], length] | @tsv)' "$HS"
 # directories at one depth by their last change, earliest first
 jq -r --argjson d 1 '[.directories[] | select(.path != "." and (.path | split("/") | length) == $d and .commits != null)] | sort_by(.lastChanged // "", .path) | .[:10][] | [(.lastChanged // "none")[:10], .commits, .files, .path] | @tsv' "$HS"
-# files by their last change, earliest first, after how many files had no commit in the window
-jq -r '[.files[] | select(.commits != null)] | "files with history but no commit in the window: \([.[] | select(.lastChanged == null)] | length)", ([.[] | select(.lastChanged != null)] | sort_by(.lastChanged, .path) | .[:10][] | [.lastChanged[:10], .commits, .path] | @tsv)' "$HS"
+# files by their last change, earliest first, after how many files have history but 0 commits counted
+jq -r '[.files[] | select(.commits != null)] | "files with history but 0 commits counted: \([.[] | select(.lastChanged == null)] | length)", ([.[] | select(.lastChanged != null)] | sort_by(.lastChanged, .path) | .[:10][] | [.lastChanged[:10], .commits, .path] | @tsv)' "$HS"
 # files whose counts met a lineage conflict
 jq -r '[.files[] | select(.lineageConflicts > 0)] | sort_by(-.lineageConflicts) | .[:20][] | [.lineageConflicts, .commits, .path] | @tsv' "$HS"
 # pairs of files changed together most often
@@ -124,7 +124,7 @@ Write the report to `$DATA/hotspots-report.md`, in this order:
 3. The top files, each with score, commits, authors, lines and path.
 4. The top directories at depth 1, and at depth 2 when depth 1 has few entries.
 5. Changes by year: the project's commits in each year, saying the last year runs only to its last counted commit and the first is usually partial; then the directories at depth 1 (and depth 2 when depth 1 has few entries) with the most commits in the two years the query names, naming those years.
-6. Least recently changed: how many files had their last change in each year (and how many had none in the window), then the directories at depth 1 (and depth 2 when depth 1 has few entries) whose last change is earliest, each with the date of its last change. Show the rows as the query prints them, from the first, without leaving any out between those you show.
+6. Least recently changed: how many files had their last change in each year, then the number on the first line of the files query in these words: "<N> files have history but 0 commits counted; the product does not say why." Then the directories at depth 1 (and depth 2 when depth 1 has few entries) whose last change is earliest, each with the date of its last change. Show the rows as the query prints them, from the first, without leaving any out between those you show.
 7. Files changed together: the top pairs, then the top pairs where no path looks like a test by its name, introduced with the words "pairs where neither path looks like a test by its name (a filter on names, not on content)", each with `together`, both shares and both paths; and `coChange`'s counts. Show the second list whole, every row its query prints, and do not describe how it differs from the first (which rows it leaves out or adds): a count of those rows would be yours, not the product's.
 8. Files with `lineageConflicts` above 0 among those you listed, and how many files have any (`counts.filesWithLineageConflicts`).
 9. The residual assumptions, every one, as the product states them.
@@ -136,7 +136,7 @@ Rules for this step:
 - **Say what a conflict means.** For a listed file with `lineageConflicts` above 0, say its counts may miss part of its history or include another history that once had the same path. A 0 means no conflict was detected, not that the counts are complete; never call a count reliable or accurate.
 - **A pair is a count, not a link.** Say that two files changed together in N commits and what share of each file's commits that is. Never say that one file depends on, calls, uses or causes changes in the other, and do not explain why they change together.
 - **A year is a count, not a story.** Say how many commits a year had, naming the year. Never compare a partial first or last year with a full one without saying it is partial, never scale a partial year up to a whole one or guess a later count, and do not explain why a count rose or fell (a release, a team change, a rewrite) or call a part active, cooling or quiet.
-- **Not changed is not unused.** For a file or directory with no change for years, say the year of its last change. Change history does not show whether code is used: never call it unused, dead, obsolete, abandoned or safe to delete, and do not say what kind of file it is (early, one-off, legacy). The product does not say why a file with history has no commit in the window: give their number, not a reason.
+- **Not changed is not unused.** For a file or directory with no change for years, say the year of its last change. Change history does not show whether code is used: never call it unused, dead, obsolete, abandoned or safe to delete, and do not say what kind of file it is (early, one-off, legacy). The product does not say why a file with history has 0 commits counted: give their number, not a reason.
 - **A shallow repo's counts are lower bounds.** Say so wherever you give one of its numbers.
 - **Never edit, move or delete project files, and never run a `git` command that changes the repository.**
 

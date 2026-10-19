@@ -180,7 +180,8 @@ describe('excavator-hotspots skill: each rule in its step', () => {
     expect(s).toContain('Show the rows as the query prints them, from the first, without leaving any out between those you show.');
     expect(s).toContain('never scale a partial year up to a whole one or guess a later count');
     expect(s).toContain('do not say what kind of file it is (early, one-off, legacy)');
-    expect(s).toContain('The product does not say why a file with history has no commit in the window: give their number, not a reason.');
+    expect(s).toContain('The product does not say why a file with history has 0 commits counted: give their number, not a reason.');
+    expect(s).toContain('then the number on the first line of the files query in these words: "<N> files have history but 0 commits counted; the product does not say why." Then the directories');
     expect(s).toContain('**A year is a count, not a story.**');
     expect(s).toContain('**Not changed is not unused.**');
     expect(s).toContain('never call it unused, dead, obsolete, abandoned or safe to delete');
@@ -263,13 +264,13 @@ describe('excavator-hotspots skill: agrees with the script', () => {
       ]);
       expect(run(text, productPath, 'keys[-2:]')[0]).toBe(`years: ${years.slice(-2).join(', ')}`);
       const [label, ...yearRows] = run(text, productPath, 'group_by(.)');
-      expect(label).toBe('files by the year of their last change, each file once (none: no commit in the window):');
+      expect(label).toBe('files by the year of their last change, each file once (none: 0 commits counted):');
       const byYear = yearRows.map((row) => row.split('\t'));
       expect(byYear.reduce((sum, [, count]) => sum + Number(count), 0)).toBe(p.files.filter((row) => row.commits !== null).length);
       expect(run(text, productPath, 'sort_by(.lastChanged // "", .path)').length).toBeGreaterThan(0);
-      const files = run(text, productPath, 'files with history but no commit in the window');
+      const files = run(text, productPath, 'files with history but 0 commits counted');
       const dated = p.files.filter((row) => row.lastChanged !== null);
-      expect(files[0]).toBe(`files with history but no commit in the window: ${p.files.filter((row) => row.commits !== null && row.lastChanged === null).length}`);
+      expect(files[0]).toBe(`files with history but 0 commits counted: ${p.files.filter((row) => row.commits !== null && row.lastChanged === null).length}`);
       expect(files.slice(1).map((row) => row.split('\t')[0])).toEqual(dated.map((row) => row.lastChanged.slice(0, 10)).sort().slice(0, 10));
     }
     const dir = p.directories.find((row) => row.path === 'src');
@@ -367,7 +368,7 @@ describe('excavator-chat: change-history questions', () => {
     expect(s).toContain('Show every row a query prints, in its order, one row each; do not merge, group or summarize rows.');
     expect(s).toContain('After the lists, give in these words: "The product records when each file last changed, not whether it is still used or why it has not changed."');
     expect(s).toContain('Describe none of the files or directories: not what they are (early, one-off, legacy, leftover, a script, a test, a document), not why they have not changed, and not how the counts by year move.');
-    expect(s).toContain('The product does not say why a file with history has no commit in the window: give their number, not a reason.');
+    expect(s).toContain('For files with history but 0 commits counted, give the number on the first line of the files query in these words: "<N> files have history but 0 commits counted; the product does not say why."');
     expect(s).toContain('**Not changed is not unused**: change history does not show whether code is used, so never call a file or directory unused, dead, obsolete, abandoned or safe to delete because it has not changed');
   });
 
