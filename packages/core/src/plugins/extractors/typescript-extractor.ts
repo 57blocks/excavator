@@ -1,4 +1,4 @@
-import type { StructuralAnalysis, CallGraphEntry } from "../../types.js";
+import type { StructuralAnalysis, CallGraphEntry, ImportBinding, ReexportBinding } from "../../types.js";
 import type { LanguageExtractor, TreeSitterNode } from "./types.js";
 import { getStringValue } from "./base-extractor.js";
 
@@ -95,6 +95,38 @@ function extractImportSpecifiers(
   }
 
   return specifiers;
+}
+
+/** A module export or import name: an identifier, `default`, or a string
+ *  (`export { x as "a-b" }`). */
+function moduleName(node: TreeSitterNode): string {
+  return node.type === "string" ? getStringValue(node) : node.text;
+}
+
+/**
+ * What each local name of an import_clause imports: an exported name,
+ * `default`, or `*` for a namespace.
+ */
+function extractImportBindings(importClause: TreeSitterNode): ImportBinding[] {
+  const bindings: ImportBinding[] = [];
+  for (const child of importClause.namedChildren) {
+    if (!child) continue;
+    if (child.type === "identifier") {
+      bindings.push({ local: child.text, imported: "default" });
+    } else if (child.type === "namespace_import") {
+      const ident = child.namedChildren.find((c) => c?.type === "identifier");
+      if (ident) bindings.push({ local: ident.text, imported: "*" });
+    } else if (child.type === "named_imports") {
+      for (const spec of child.namedChildren) {
+        if (!spec || spec.type !== "import_specifier") continue;
+        const name = spec.childForFieldName("name");
+        const alias = spec.childForFieldName("alias");
+        if (!name) continue;
+        bindings.push({ local: (alias ?? name).text, imported: moduleName(name) });
+      }
+    }
+  }
+  return bindings;
 }
 
 /**
@@ -371,6 +403,7 @@ export class TypeScriptExtractor implements LanguageExtractor {
     const importClause = node.children.find(
       (c) => c.type === "import_clause",
     );
+    const bindings = importClause ? extractImportBindings(importClause) : [];
     if (importClause) {
       specifiers.push(...extractImportSpecifiers(importClause));
     }
@@ -379,6 +412,41 @@ export class TypeScriptExtractor implements LanguageExtractor {
       source,
       specifiers,
       lineNumber: node.startPosition.row + 1,
+      ...(bindings.length > 0 ? { bindings } : {}),
+    });
+  }
+
+  /**
+   * `export ... from 'S'` is also an import of `S`, so the import map
+   * resolves it; its forwarded names go in `reexports`.
+   */
+  private extractReexport(
+    node: TreeSitterNode,
+    sourceNode: TreeSitterNode,
+    imports: StructuralAnalysis["imports"],
+  ): void {
+    const reexports: ReexportBinding[] = [];
+    const clause = node.namedChildren.find((c) => c?.type === "export_clause");
+    const namespace = node.namedChildren.find((c) => c?.type === "namespace_export");
+    if (clause) {
+      for (const spec of clause.namedChildren) {
+        if (!spec || spec.type !== "export_specifier") continue;
+        const name = spec.childForFieldName("name");
+        const alias = spec.childForFieldName("alias");
+        if (!name) continue;
+        reexports.push({ exported: moduleName(alias ?? name), imported: moduleName(name) });
+      }
+    } else if (namespace) {
+      const ident = namespace.namedChildren.find((c) => c?.type === "identifier" || c?.type === "string");
+      if (ident) reexports.push({ exported: moduleName(ident), imported: "*" });
+    } else if (node.children.some((c) => c?.type === "*")) {
+      reexports.push({ exported: "*", imported: "*" });
+    }
+    imports.push({
+      source: getStringValue(sourceNode),
+      specifiers: [],
+      lineNumber: node.startPosition.row + 1,
+      ...(reexports.length > 0 ? { reexports } : {}),
     });
   }
 
@@ -386,10 +454,25 @@ export class TypeScriptExtractor implements LanguageExtractor {
     node: TreeSitterNode,
     functions: StructuralAnalysis["functions"],
     classes: StructuralAnalysis["classes"],
-    _imports: StructuralAnalysis["imports"],
+    imports: StructuralAnalysis["imports"],
     exports: StructuralAnalysis["exports"],
     exportedNames: Set<string>,
   ): void {
+    const sourceNode = node.childForFieldName("source");
+    if (sourceNode) this.extractReexport(node, sourceNode, imports);
+
+    // `export default Name;` names a declaration made elsewhere in the file.
+    const value = node.childForFieldName("value");
+    if (value && value.type === "identifier" && !exportedNames.has("default")) {
+      exports.push({
+        name: "default",
+        lineNumber: node.startPosition.row + 1,
+        isDefault: true,
+        local: value.text,
+      });
+      exportedNames.add("default");
+    }
+
     for (let j = 0; j < node.childCount; j++) {
       const child = node.child(j);
       if (!child) continue;
@@ -439,6 +522,7 @@ export class TypeScriptExtractor implements LanguageExtractor {
               name: exportName,
               lineNumber: node.startPosition.row + 1,
               isDefault,
+              ...(isDefault ? { local: nameNode.text } : {}),
             });
             exportedNames.add(exportName);
           }
@@ -482,10 +566,14 @@ export class TypeScriptExtractor implements LanguageExtractor {
                 : name
                   ? name.text
                   : spec.text;
+              // A local export clause names this file's declaration; a
+              // re-export's names live in the source module.
+              const local = !sourceNode && alias && name ? name.text : undefined;
               if (!exportedNames.has(exportName)) {
                 exports.push({
                   name: exportName,
                   lineNumber: node.startPosition.row + 1,
+                  ...(local !== undefined && local !== exportName ? { local } : {}),
                 });
                 exportedNames.add(exportName);
               }
