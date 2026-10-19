@@ -1,9 +1,9 @@
 ## 1. 脚本按年计数（commit：`feat(hotspots): count directory commits by year`）
 
-- [ ] 1.1 `history.mjs`：为每个提交号记下提交者日期上的年份
-- [ ] 1.2 `aggregate.mjs`：目录行加 `commitsByYear`，年份范围取整个产物，每年都有一项；没有历史为 `null`
-- [ ] 1.3 `hotspots.mjs`：接入年份，残余假设加一条，更新文件头注释
-- [ ] 1.4 单测：一次提交在目录里只算一次、跨年时区、范围覆盖整个产物、各年之和等于 `commits`、多仓、没有历史、窗口内没有提交
+- [x] 1.1 `history.mjs`：为每个提交号记下提交者日期上的年份
+- [x] 1.2 `aggregate.mjs`：目录行加 `commitsByYear`，年份范围取整个产物，每年都有一项；没有历史为 `null`
+- [x] 1.3 `hotspots.mjs`：接入年份，残余假设加一条，更新文件头注释
+- [x] 1.4 单测：一次提交在目录里只算一次、跨年时区、范围覆盖整个产物、各年之和等于 `commits`、多仓、没有历史、窗口内没有提交
 
 ## 2. skill 与 chat 读按年计数（commit：`feat(skill): report changes by year and least recently changed`）
 
