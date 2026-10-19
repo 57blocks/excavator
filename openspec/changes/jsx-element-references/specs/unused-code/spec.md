@@ -15,7 +15,7 @@
 - 构建时生成而不在仓库里的代码看不见；
 - 仓库外的调用者只能体现在可见性上；
 - 不写出方法名的使用看不见：视图、模板或 JSON 映射以属性名 `foo` 绑定 `getFoo` / `setFoo`，或其它按约定推出的名字；
-- 事实图没能解析的调用与 JSX 元素没有边，事实图的缺口（`calls-unresolved`、`calls-ambiguous`、`calls-caller-unresolved`、`override-uncertain`，以及 `jsx-external`、`jsx-unbound`、`jsx-target-unresolved`、`jsx-ambiguous`、`jsx-caller-unresolved`）记录其数量；原因只陈述事实里有什么，这样被调用或被渲染的函数靠名字普查挡在 `high` 之外。
+- 事实图没能解析的调用与 JSX 元素没有边，事实图的缺口（`calls-unresolved`、`calls-ambiguous`、`calls-caller-unresolved`、`override-uncertain`，以及 `jsx-external`、`jsx-unbound`、`jsx-target-unresolved`、`jsx-ambiguous`、`jsx-caller-unresolved`）记录其数量；TS/JS 里作为值传递的函数（路由表或属性里的组件、回调、`lazy(() => import(...))`）也没有边；原因只陈述事实里有什么，这样以这些方式被使用的函数靠名字普查挡在 `high` 之外。
 
 `report` SHALL 拒绝没有按语言 `calls` 计数的候选集，提示重新运行 `candidates`。`calls` 为 0 的语言，skill 的汇报与 chat 的回答 SHALL 说明事实里没有该语言的调用，它的节点被列为未使用不说明没有调用者。
 
@@ -47,4 +47,4 @@ skill 的汇报 SHALL：
 
 #### Scenario: 残余假设列出 JSX 缺口
 - **WHEN** `report` 写出产物
-- **THEN** 残余假设里关于未解析引用的一条同时列出调用缺口与五个 JSX 缺口种类
+- **THEN** 残余假设里关于未解析引用的一条同时列出调用缺口与五个 JSX 缺口种类，并说明 TS/JS 里作为值传递的函数没有边
