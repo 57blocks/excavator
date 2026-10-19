@@ -12,6 +12,6 @@
 
 ## 3. 验收与归档（commit：`docs(openspec): record hotspots-no-history-reason acceptance and archive`）
 
-- [ ] 3.1 真实语料：子目录、`PATH` 无 git、仓库根回归对比
-- [ ] 3.2 一次真实模型运行：子目录上的汇报
-- [ ] 3.3 验收记录写进 design.md，同步主规格并归档
+- [x] 3.1 真实语料：子目录、`PATH` 无 git、仓库根回归对比
+- [x] 3.2 一次真实模型运行：子目录上的汇报
+- [x] 3.3 验收记录写进 design.md，同步主规格并归档
