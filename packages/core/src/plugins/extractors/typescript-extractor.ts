@@ -1,6 +1,7 @@
 import type { StructuralAnalysis, CallGraphEntry, ImportBinding, ReexportBinding } from "../../types.js";
 import type { LanguageExtractor, TreeSitterNode } from "./types.js";
 import { getStringValue } from "./base-extractor.js";
+import { extractJsxFacts } from "./typescript-jsx.js";
 
 /**
  * Extract parameter names from a formal_parameters node.
@@ -158,7 +159,8 @@ export class TypeScriptExtractor implements LanguageExtractor {
       );
     }
 
-    return { functions, classes, imports, exports };
+    const jsx = extractJsxFacts(rootNode);
+    return { functions, classes, imports, exports, ...(jsx ? { jsx } : {}) };
   }
 
   extractCallGraph(rootNode: TreeSitterNode): CallGraphEntry[] {
