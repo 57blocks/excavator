@@ -9,6 +9,7 @@
 - [x] 2.1 `skills/excavator-hotspots/SKILL.md`：头部查询排除 `pairs`；第 3 步加文件对查询（全部、不像测试的、某个文件的）；第 4 步汇报加文件对，规则加不说因果，自检 grep 加因果用词
 - [x] 2.2 `skills/excavator-chat/SKILL.md`：改动历史一节加「改 X 时还要改什么」的查询与规则
 - [x] 2.3 契约测试：夹具有文件对；新查询在产物上跑得出结果；字段名都在产物里；自检能抓因果用词，残余假设能通过
+- [x] 2.4 真实运行暴露的两处措辞（commit：`fix(skill): keep pair counts apart and say how many pairs a file has`）：skill 说明 `commitsCounted` 与 `commitsOverLimit` 互不包含；单文件查询先打印含该文件的文件对总数，没列全时说明列了几对、共几对
 
 ## 3. 验收与归档（commit：`docs(openspec): record hotspots-co-change acceptance and archive`）
 

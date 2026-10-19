@@ -63,7 +63,7 @@ Settle what the history can show before ranking anything:
 - **A repo with `shallow: true`:** a shallow clone. Its `boundaryCommits` are not counted (git shows each as adding every file it holds), and nothing before `earliestVisibleCommit` is visible. Say first that this repo's counts are lower bounds, with those two values.
 - **`counts.filesWithoutHistory` above 0 in a `multi-repo` project:** those files belong to no member repository and have `null` history fields.
 - **`window.since` set:** every count covers only the window; say so with the window.
-- **`coChange`:** the rule for pairs, `maxFilesPerCommit` and `minTogether`, and its counts. `commitsOverLimit` commits changed more than `maxFilesPerCommit` selected files and count for no pair; `pairsBelowMinimum` pairs changed together fewer than `minTogether` times and are not listed.
+- **`coChange`:** the rule for pairs, `maxFilesPerCommit` and `minTogether`, and its counts. `commitsCounted` commits changed 2 to `maxFilesPerCommit` selected files and are the ones counted for pairs; `commitsOverLimit` commits changed more than `maxFilesPerCommit` selected files and count for no pair. The two sets do not overlap, so never give one count as a part of the other; `pairsBelowMinimum` pairs changed together fewer than `minTogether` times and are not listed.
 
 ## Step 3 — Read the rankings
 
@@ -92,7 +92,7 @@ To look up one file or directory, select it by path:
 jq --arg p "<path>" '.files[] | select(.path == $p)' "$HS"
 jq --arg p "<path>" '.directories[] | select(.path == $p)' "$HS"
 # the files changed together with one file
-jq -r --arg p "<path>" '[.pairs[] | select(.a == $p or .b == $p) | if .a == $p then {with: .b, together, shareOfThis: .shareOfA, shareOfOther: .shareOfB} else {with: .a, together, shareOfThis: .shareOfB, shareOfOther: .shareOfA} end] | .[:20][] | [.together, .shareOfThis, .shareOfOther, .with] | @tsv' "$HS"
+jq -r --arg p "<path>" '[.pairs[] | select(.a == $p or .b == $p) | if .a == $p then {with: .b, together, shareOfThis: .shareOfA, shareOfOther: .shareOfB} else {with: .a, together, shareOfThis: .shareOfB, shareOfOther: .shareOfA} end] | "listed pairs with this file: \(length)", (.[:20][] | [.together, .shareOfThis, .shareOfOther, .with] | @tsv)' "$HS"
 ```
 
 What the fields mean:
@@ -102,6 +102,7 @@ What the fields mean:
 - `lastChanged`: committer time of the latest commit in the window; `null` when none.
 - `together`: commits in the window that changed both files of a pair, counting only commits that changed at most `coChange.maxFilesPerCommit` selected files.
 - `shareOfA`, `shareOfB` (and `shareOfThis`, `shareOfOther` in the one-file query): `together` divided by that file's `commits`, all its commits in the window, larger commits included.
+- The one-file query prints first how many listed pairs include the file; when that is more than the rows you show, say how many you show out of how many.
 - `lineageConflicts`: how many times the walk met a sign that branched history did not fit its single path map: two lineages claiming one path, a rename cutting a lineage, or an older change on a path after its lineage began there.
 
 ## Step 4 — Report to the user

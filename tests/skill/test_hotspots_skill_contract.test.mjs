@@ -124,6 +124,7 @@ describe('excavator-hotspots skill: each rule in its step', () => {
     expect(s).toContain("Never read `$HS` whole");
     expect(s).toContain(`jq 'del(.files, .directories, .pairs)' "$HS"`);
     expect(s).toContain('**`coChange`:**');
+    expect(s).toContain('The two sets do not overlap, so never give one count as a part of the other');
     expect(s).toContain('**`historyAvailable` is false:**');
     expect(s).toContain('there is no ranking to report');
     expect(s).toContain('Say first why, from `noHistory.reason`');
@@ -141,6 +142,7 @@ describe('excavator-hotspots skill: each rule in its step', () => {
     expect(s).toContain(`jq -r '.pairs[:20][] | [.together, .shareOfA, .shareOfB, .a, .b] | @tsv' "$HS"`);
     expect(s).toContain('leaving out every pair with a path that looks like a test by its name');
     expect(s).toContain('select(.a == $p or .b == $p)');
+    expect(s).toContain('when that is more than the rows you show, say how many you show out of how many');
   });
 
   it('filters out pairs whose paths look like tests by name, and keeps the others', () => {
@@ -216,6 +218,20 @@ describe('excavator-hotspots skill: agrees with the script', () => {
     }
   });
 
+  it('the one-file pairs query of the skill and of chat prints how many pairs include the file, then the rows', () => {
+    const listed = product().pairs.filter((p) => p.a === 'src/b.js' || p.b === 'src/b.js');
+    expect(listed.length).toBeGreaterThan(0);
+    for (const [text, productPath] of [[rawStep(3), '"$HS"'], [section, '.excavator/hotspots.json']]) {
+      const line = jqLines(bashBlocks(text)).find((recipe) => recipe.includes('select(.a == $p or .b == $p)'));
+      const command = line.replaceAll(productPath, JSON.stringify(fixture.product)).replaceAll('<path>', 'src/b.js');
+      const result = spawnSync('sh', ['-c', command], { encoding: 'utf-8' });
+      expect(result.status, result.stderr).toBe(0);
+      const rows = result.stdout.trim().split('\n');
+      expect(rows[0]).toBe(`listed pairs with this file: ${listed.length}`);
+      expect(rows.length).toBe(1 + Math.min(listed.length, 20));
+    }
+  });
+
   it('runs every jq recipe of steps 2 and 3 on the product', () => {
     const recipes = jqLines([...bashBlocks(rawStep(2)), ...bashBlocks(rawStep(3))]);
     expect(recipes.length).toBeGreaterThanOrEqual(7);
@@ -285,6 +301,7 @@ describe('excavator-chat: change-history questions', () => {
     expect(s).toContain('`lines` is the file\'s line count at HEAD, not lines changed');
     expect(s).toContain('**A pair is a count, not a link**: never say that one file depends on, calls, uses or causes changes in the other');
     expect(s).toContain('A file in no listed pair was not changed together with any file at least `coChange.minTogether` times');
+    expect(s).toContain('Its first line is how many listed pairs include the file; when that is more than the rows you show, say how many you show out of how many.');
     expect(s).toContain('never that it does not change with other files');
     expect(s).toContain('A question about what depends on or calls a file is about the code, not its history: answer it from the graph.');
   });
