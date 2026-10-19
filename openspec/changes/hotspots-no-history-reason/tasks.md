@@ -6,9 +6,9 @@
 
 ## 2. skill 与 chat 按原因说明（commit：`fix(skill): explain missing history by its reason`）
 
-- [ ] 2.1 `skills/excavator-hotspots/SKILL.md` 第 2 步：按 `noHistory.reason` 分别说明；`inside-repository` 给出仓库根与 `pathInRepository`，以及在仓库根上运行后查哪一行
-- [ ] 2.2 `skills/excavator-chat/SKILL.md` 改动历史一节：同样按原因说明
-- [ ] 2.3 契约测试：钉住两处措辞不再一律说「不是 Git 仓库」，且字段名都在产物里
+- [x] 2.1 `skills/excavator-hotspots/SKILL.md` 第 2 步：按 `noHistory.reason` 分别说明；`inside-repository` 给出仓库根与 `pathInRepository`，以及在仓库根上运行后查哪一行
+- [x] 2.2 `skills/excavator-chat/SKILL.md` 改动历史一节：同样按原因说明
+- [x] 2.3 契约测试：钉住两处措辞不再一律说「不是 Git 仓库」，且字段名都在产物里
 
 ## 3. 验收与归档（commit：`docs(openspec): record hotspots-no-history-reason acceptance and archive`）
 

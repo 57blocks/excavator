@@ -70,6 +70,27 @@ const fixture = (() => {
 afterAll(() => rmSync(fixture.dir, { recursive: true, force: true }));
 const product = () => JSON.parse(readFileSync(fixture.product, 'utf-8'));
 
+/** The products of a plain directory and of a repository's subdirectory: the two reasons for no history. */
+const noHistoryFixtures = (() => {
+  const plain = realpathSync(mkdtempSync(join(tmpdir(), 'hotspots-contract-plain-')));
+  writeFileSync(join(plain, 'a.js'), 'a\n');
+  const repo = realpathSync(mkdtempSync(join(tmpdir(), 'hotspots-contract-sub-')));
+  const env = { ...process.env, GIT_CONFIG_GLOBAL: '/dev/null', GIT_CONFIG_NOSYSTEM: '1' };
+  const git = (args) => execFileSync('git', args, { cwd: repo, env });
+  git(['init', '-q', '-b', 'main']);
+  execFileSync('mkdir', ['-p', join(repo, 'apps/web')]);
+  writeFileSync(join(repo, 'apps/web/a.js'), 'a\n');
+  git(['add', '-A']);
+  git(['-c', 'user.name=alice', '-c', 'user.email=alice@example.test', 'commit', '-q', '-m', 'change']);
+  const read = (root) => {
+    const run = spawnSync('node', [SCRIPT, root], { encoding: 'utf-8' });
+    expect(run.status, run.stderr).toBe(0);
+    return JSON.parse(readFileSync(join(root, '.excavator/hotspots.json'), 'utf-8'));
+  };
+  return { dirs: [plain, repo], read: () => ({ plain: read(plain), sub: read(join(repo, 'apps/web')) }) };
+})();
+afterAll(() => noHistoryFixtures.dirs.forEach((dir) => rmSync(dir, { recursive: true, force: true })));
+
 describe('excavator-hotspots skill: steps', () => {
   it('has the four steps in order', () => {
     const titles = [...skill.matchAll(/^## Step \d+ — (.+)$/gm)].map((m) => m[1]);
@@ -91,6 +112,7 @@ describe('excavator-hotspots skill: each rule in its step', () => {
     const s = step.get(1);
     expect(s).toContain('node "$PLUGIN_ROOT/skills/excavator/hotspots.mjs" "$PROJECT_ROOT"');
     expect(s).toContain('A non-zero exit writes no product.');
+    expect(s).toContain('means a history exists but cannot be read here: never describe that project as having no history');
     expect(s).toContain('do not convert a phrase such as "last year" into a date yourself');
   });
 
@@ -100,6 +122,11 @@ describe('excavator-hotspots skill: each rule in its step', () => {
     expect(s).toContain(`jq 'del(.files, .directories)' "$HS"`);
     expect(s).toContain('**`historyAvailable` is false:**');
     expect(s).toContain('there is no ranking to report');
+    expect(s).toContain('Say first why, from `noHistory.reason`');
+    expect(s).toContain('`not-a-repository`: the project root is not inside a Git work tree, and no child directory is a Git repository with commits.');
+    expect(s).toContain('gives this directory\'s numbers in the directory row `noHistory.pathInRepository`');
+    expect(s).toContain('Never say this project is not a Git repository.');
+    expect(s).not.toContain('the project is not a Git repository and holds no member repositories');
     expect(s).toContain("Say first that this repo's counts are lower bounds");
   });
 
@@ -135,7 +162,7 @@ describe('excavator-hotspots skill: agrees with the script', () => {
 
   it('names only header, file and directory fields the product has', () => {
     const p = product();
-    const header = /`(sourceRevision|sourceKind|historyAvailable|repos|window|counts|conservation|residualAssumptions)`/g;
+    const header = /`(sourceRevision|sourceKind|historyAvailable|noHistory|repos|window|counts|conservation|residualAssumptions)`/g;
     for (const [, key] of skill.matchAll(header)) expect(p).toHaveProperty(key);
     for (const key of ['path', 'head', 'shallow', 'boundaryCommits', 'earliestVisibleCommit']) expect(p.repos[0]).toHaveProperty(key);
     for (const key of ['changesRead', 'attributed', 'outsideSelection']) expect(p.conservation).toHaveProperty(key);
@@ -144,6 +171,18 @@ describe('excavator-hotspots skill: agrees with the script', () => {
     const fileFields = ['score', 'commits', 'authors', 'lines', 'added', 'removed', 'lastChanged', 'lineageConflicts', 'path'];
     for (const key of fileFields) expect(p.files[0]).toHaveProperty(key);
     for (const key of ['score', 'commits', 'authors', 'files', 'lines', 'path']) expect(p.directories[0]).toHaveProperty(key);
+  });
+
+  it('names the reasons for no history and their fields as the script writes them', () => {
+    const { plain, sub } = noHistoryFixtures.read();
+    expect(plain.noHistory).toEqual({ reason: 'not-a-repository', repositoryRoot: null, pathInRepository: null });
+    expect(sub.noHistory).toEqual({ reason: 'inside-repository', repositoryRoot: '../..', pathInRepository: 'apps/web' });
+    for (const text of [skill, flat(section)]) {
+      const keys = [...text.matchAll(/`noHistory\.(\w+)`/g)].map((match) => match[1]);
+      expect(new Set(keys)).toEqual(new Set(['reason', 'repositoryRoot', 'pathInRepository']));
+      for (const key of keys) expect(sub.noHistory).toHaveProperty(key);
+      for (const reason of ['not-a-repository', 'inside-repository']) expect(text).toContain(`\`${reason}\``);
+    }
   });
 
   it('runs every jq recipe of steps 2 and 3 on the product', () => {
@@ -191,7 +230,11 @@ describe('excavator-chat: change-history questions', () => {
   it('says lower bounds, no history and conflicts, and gives no advice', () => {
     const s = flat(section);
     expect(s).toContain('its counts are lower bounds');
-    expect(s).toContain('`historyAvailable` false: there is no Git history');
+    expect(s).toContain('`historyAvailable` false: every history field is `null`, so do not rank; say why from `noHistory.reason`.');
+    expect(s).toContain('jq \'{sourceKind, historyAvailable, noHistory, repos, window, counts, conservation}\'');
+    expect(s).toContain('gives this directory\'s numbers in the directory row `noHistory.pathInRepository`');
+    expect(s).toContain('Never say such a project is not a Git repository.');
+    expect(s).not.toContain('there is no Git history');
     expect(s).toContain('its counts may miss part of its history or include another history that once had the same path');
     expect(s).toContain('Give no advice about what to change');
     expect(s).toContain('**`lineageConflicts` 0 means no conflict was detected, not that the counts are complete**');

@@ -44,7 +44,7 @@ The product does not depend on the knowledge graph: no `/excavator` run is neede
    node "$PLUGIN_ROOT/skills/excavator/hotspots.mjs" "$PROJECT_ROOT"            # whole history
    node "$PLUGIN_ROOT/skills/excavator/hotspots.mjs" "$PROJECT_ROOT" --since 2025-01-01
    ```
-   A non-zero exit writes no product. Report the script's message as it stands. A refused window means the date was not a real `YYYY-MM-DD` day: ask the user for one; do not convert a phrase such as "last year" into a date yourself.
+   A non-zero exit writes no product. Report the script's message as it stands. A message that git could not be started, or does not accept a `.git`, means a history exists but cannot be read here: never describe that project as having no history. A refused window means the date was not a real `YYYY-MM-DD` day: ask the user for one; do not convert a phrase such as "last year" into a date yourself.
 
 ## Step 2 — Read the header
 
@@ -54,10 +54,12 @@ Never read `$HS` whole; it lists every file. Read the header with `jq`:
 jq 'del(.files, .directories)' "$HS"
 ```
 
-It has `sourceRevision`, `sourceKind` (`git`, `multi-repo` or `directory`), `historyAvailable`, `repos` (each with `path`, `head`, `shallow`, `boundaryCommits`, `earliestVisibleCommit`), `window`, `counts`, `conservation` (`changesRead` = `attributed` + `outsideSelection`) and `residualAssumptions`.
+It has `sourceRevision`, `sourceKind` (`git`, `multi-repo` or `directory`), `historyAvailable`, `noHistory`, `repos` (each with `path`, `head`, `shallow`, `boundaryCommits`, `earliestVisibleCommit`), `window`, `counts`, `conservation` (`changesRead` = `attributed` + `outsideSelection`) and `residualAssumptions`.
 
 Settle what the history can show before ranking anything:
-- **`historyAvailable` is false:** the project is not a Git repository and holds no member repositories. Every history field is `null`; only `lines` has values. Say this first, give the file count and the binary count, and stop: there is no ranking to report.
+- **`historyAvailable` is false:** every history field is `null`; only `lines` has values. Say first why, from `noHistory.reason`, give the file count and the binary count, and stop: there is no ranking to report.
+  - `not-a-repository`: the project root is not inside a Git work tree, and no child directory is a Git repository with commits.
+  - `inside-repository`: the project root is the directory `noHistory.pathInRepository` of the Git repository at `noHistory.repositoryRoot` (relative to the project root). History is read only from a repository root: say that running `/excavator-hotspots` on that repository root gives this directory's numbers in the directory row `noHistory.pathInRepository`. Never say this project is not a Git repository.
 - **A repo with `shallow: true`:** a shallow clone. Its `boundaryCommits` are not counted (git shows each as adding every file it holds), and nothing before `earliestVisibleCommit` is visible. Say first that this repo's counts are lower bounds, with those two values.
 - **`counts.filesWithoutHistory` above 0 in a `multi-repo` project:** those files belong to no member repository and have `null` history fields.
 - **`window.since` set:** every count covers only the window; say so with the window.
@@ -96,7 +98,7 @@ What the fields mean:
 ## Step 4 — Report to the user
 
 Write the report to `$DATA/hotspots-report.md`, in this order:
-1. What the history can show (Step 2): no history, shallow repos with their lower-bound note, the window. Lead with it when it applies.
+1. What the history can show (Step 2): no history and its reason, shallow repos with their lower-bound note, the window. Lead with it when it applies.
 2. Counts: files with history, without history, binary; `conservation` (changes read, attributed to selected files, outside the selection).
 3. The top files, each with score, commits, authors, lines and path.
 4. The top directories at depth 1, and at depth 2 when depth 1 has few entries.
