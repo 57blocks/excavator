@@ -18,7 +18,9 @@
  * on that day are in the window; the product records that instant.
  *
  * Nothing that lacks history is reported as 0. A plain directory has no history
- * (all history fields `null`); in a multi-repo parent every member repository
+ * (all history fields `null`) and `noHistory` says why (hotspots/no-history.mjs:
+ * not a repository, or a subdirectory of one); a `.git` that cannot be read is
+ * an Error and nothing is written. In a multi-repo parent every member repository
  * is read on its own and files outside the members have none; a shallow clone
  * skips its boundary commit and says so in its `repos` row; a binary file has
  * no lines and no score.
@@ -32,8 +34,10 @@
  * selected paths). A mismatch is an Error and nothing is written.
  *
  * Product `.excavator/hotspots.json`
- *   { format, sourceRevision, sourceKind, historyAvailable, repos, window, counts,
- *     conservation, residualAssumptions, files, directories }
+ *   { format, sourceRevision, sourceKind, historyAvailable, noHistory, repos, window,
+ *     counts, conservation, residualAssumptions, files, directories }
+ * `noHistory` is `null` when there is history, else `{ reason, repositoryRoot,
+ * pathInRepository }` with `reason` `not-a-repository` or `inside-repository`.
  * `repos` has `{ path, head, shallow, boundaryCommits, earliestVisibleCommit }`
  * per repository (`.` for a repository at the project root, the member directory
  * in a multi-repo parent); `window` is `{ since, sinceUtc }`, both `null` without
@@ -50,6 +54,7 @@ import { fileURLToPath } from 'node:url';
 import { buildRows } from './hotspots/aggregate.mjs';
 import { countBlobLines, countBufferLines } from './hotspots/blob-lines.mjs';
 import { readRepoHistory } from './hotspots/history.mjs';
+import { explainNoHistory } from './hotspots/no-history.mjs';
 import { assertDataDir, assertDataFile, bindProjectRoot } from './project-paths.mjs';
 import { serializeJsonProduct } from './product-serialization.mjs';
 import { resolveSourceSnapshot } from './source-snapshot.mjs';
@@ -111,6 +116,7 @@ export async function buildHotspots(root, { since = null, readHistory = readRepo
   const sinceMs = since === null ? null : sinceToMs(since);
   const snapshot = resolveSourceSnapshot(root);
   const repos = reposOf(snapshot);
+  const noHistory = repos.length > 0 ? null : explainNoHistory(root);
   const selected = snapshot.listFiles();
 
   const repoFiles = repos.map(() => []);
@@ -162,6 +168,7 @@ export async function buildHotspots(root, { since = null, readHistory = readRepo
     sourceRevision: snapshot.revision,
     sourceKind: snapshot.kind,
     historyAvailable: repos.length > 0,
+    noHistory,
     repos: repoRows,
     window: { since, sinceUtc: sinceMs === null ? null : new Date(sinceMs).toISOString().replace('.000Z', 'Z') },
     counts: {

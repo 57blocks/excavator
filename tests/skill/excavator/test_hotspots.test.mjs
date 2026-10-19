@@ -22,6 +22,7 @@ import {
 import { countBlobLines, countBufferLines } from '../../../skills/excavator/hotspots/blob-lines.mjs';
 import { readRepoHistory } from '../../../skills/excavator/hotspots/history.mjs';
 import { createLineage } from '../../../skills/excavator/hotspots/lineage.mjs';
+import { explainNoHistory } from '../../../skills/excavator/hotspots/no-history.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const SCRIPT = resolve(__dirname, '../../../skills/excavator/hotspots.mjs');
@@ -780,6 +781,7 @@ describe('no history is visible, never 0', () => {
     expect(product.sourceKind).toBe('directory');
     expect(product.sourceRevision).toMatch(/^directory:/);
     expect(product.historyAvailable).toBe(false);
+    expect(product.noHistory).toEqual({ reason: 'not-a-repository', repositoryRoot: null, pathInRepository: null });
     expect(product.repos).toEqual([]);
     expect(product.counts).toEqual({ filesWithHistory: 0, filesWithoutHistory: 4, binaryFiles: 1, filesWithLineageConflicts: 0 });
     expect(product.conservation).toEqual({ changesRead: 0, attributed: 0, outsideSelection: 0 });
@@ -796,6 +798,81 @@ describe('no history is visible, never 0', () => {
       { path: '.', files: 4, lines: 5, ...none },
       { path: 'b', files: 1, lines: 2, ...none },
     ]);
+  });
+
+  it('explains a subdirectory of a repository by the repository root and its path in it', () => {
+    const dir = initRepo('hotspots-subdir-');
+    commit(dir, { when: '2024-01-01', files: { 'apps/web/a.txt': lines(3), 'apps/web/b/c.txt': lines(2), 'other.txt': lines(1) } });
+    commit(dir, { when: '2024-01-02', files: { 'apps/web/a.txt': lines(4) } });
+
+    const product = readProduct(join(dir, 'apps', 'web'));
+
+    expect(product.sourceKind).toBe('directory');
+    expect(product.historyAvailable).toBe(false);
+    expect(product.noHistory).toEqual({ reason: 'inside-repository', repositoryRoot: '../..', pathInRepository: 'apps/web' });
+    expect(product.files.map((row) => [row.path, row.commits, row.lines])).toEqual([['a.txt', null, 4], ['b/c.txt', null, 2]]);
+  });
+
+  it('refuses to write a product when git cannot start but a .git exists at, above or below the root', () => {
+    const repo = initRepo('hotspots-nogit-');
+    commit(repo, { when: '2024-01-01', files: { 'src/a.txt': lines(2) } });
+    const parent = tempDir('hotspots-nogit-multi-');
+    const member = join(parent, 'm');
+    mkdirSync(member);
+    git(member, ['init', '-q', '-b', 'main']);
+    commit(member, { when: '2024-01-01', files: { 'x.txt': lines(1) } });
+    const noGit = { PATH: tempDir('hotspots-empty-path-') };
+
+    for (const [root, found] of [[repo, '.git'], [join(repo, 'src'), '../.git'], [parent, 'm/.git']]) {
+      const result = runScript(root, [], noGit);
+      expect(result.status, result.stderr).toBe(1);
+      expect(result.stderr).toContain('git could not be started');
+      expect(result.stderr).toContain(`the history in ${found} cannot be read`);
+      expect(existsSync(productPath(root))).toBe(false);
+    }
+
+    // with no .git anywhere, git not starting changes nothing
+    const plain = tempDir('hotspots-nogit-plain-');
+    writeFile(plain, 'a.txt', lines(2));
+    expect(readProduct(plain, [], noGit).noHistory).toEqual({ reason: 'not-a-repository', repositoryRoot: null, pathInRepository: null });
+  });
+
+  it('refuses to write a product when git does not accept the .git of the root or of a child directory', () => {
+    const dir = tempDir('hotspots-broken-');
+    writeFile(dir, 'a.txt', lines(2));
+    writeFile(dir, '.git', `gitdir: ${join(dir, 'missing')}\n`);
+    const parent = tempDir('hotspots-broken-child-');
+    writeFile(parent, 'm/x.txt', lines(1));
+    writeFile(parent, 'm/.git', `gitdir: ${join(parent, 'missing')}\n`);
+
+    for (const [root, found] of [[dir, '.git in the project root'], [parent, 'm/.git']]) {
+      const result = runScript(root);
+      expect(result.status, result.stderr).toBe(1);
+      expect(result.stderr).toContain(`git does not accept ${found}, so its history cannot be read`);
+      expect(existsSync(productPath(root))).toBe(false);
+    }
+  });
+
+  it('writes the product for a directory whose only child repository has no commit yet', () => {
+    const parent = tempDir('hotspots-unborn-child-');
+    writeFile(parent, 'notes.txt', lines(2));
+    const child = join(parent, 'new');
+    mkdirSync(child);
+    git(child, ['init', '-q', '-b', 'main']);
+    writeFile(child, 'y.txt', lines(3));
+
+    const result = runScript(parent);
+
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stderr).toContain('has no commits (unborn HEAD)');
+    const product = JSON.parse(readFileSync(productPath(parent), 'utf-8'));
+    expect(product.noHistory).toEqual({ reason: 'not-a-repository', repositoryRoot: null, pathInRepository: null });
+  });
+
+  it('refuses to explain a repository root as a directory without history', () => {
+    const dir = initRepo('hotspots-root-');
+    commit(dir, { when: '2024-01-01', files: { 'a.txt': lines(1) } });
+    expect(() => explainNoHistory(dir)).toThrow(/read it as a plain directory/);
   });
 
   it('skips the boundary commit of a shallow clone and says so', () => {

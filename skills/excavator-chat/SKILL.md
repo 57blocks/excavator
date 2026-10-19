@@ -112,9 +112,9 @@ How often a file changed is in the Git history, not in the graph: the graph hold
    Different → say the product is stale (there are commits or source changes since it was counted) and suggest re-running `/excavator-hotspots`. You may still quote it, labelled stale. Do not estimate how much the new commits change the counts or the ranking, and do not inspect them to judge it: the product cannot show that.
 3. **Read what the history can show** before quoting a number:
    ```bash
-   jq '{sourceKind, historyAvailable, repos, window, counts, conservation}' .excavator/hotspots.json
+   jq '{sourceKind, historyAvailable, noHistory, repos, window, counts, conservation}' .excavator/hotspots.json
    ```
-   `historyAvailable` false: there is no Git history, so every history field is `null`; say so and do not rank. A repo with `shallow: true`: its counts are lower bounds; say so with its `earliestVisibleCommit`. `window.since` set: the counts cover only the window.
+   `historyAvailable` false: every history field is `null`, so do not rank; say why from `noHistory.reason`. `not-a-repository`: the project root is not inside a Git work tree, and no child directory is a Git repository with commits. `inside-repository`: the project root is the directory `noHistory.pathInRepository` of the Git repository at `noHistory.repositoryRoot`; history is read only from a repository root, so running `/excavator-hotspots` on that root gives this directory's numbers in the directory row `noHistory.pathInRepository`. Never say such a project is not a Git repository. A repo with `shallow: true`: its counts are lower bounds; say so with its `earliestVisibleCommit`. `window.since` set: the counts cover only the window.
 4. **Find the file or directory** with `jq` (never read the product whole):
    ```bash
    jq --arg p "<path>" '.files[] | select(.path == $p)' .excavator/hotspots.json
