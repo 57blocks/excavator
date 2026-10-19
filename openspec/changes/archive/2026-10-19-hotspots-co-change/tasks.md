@@ -15,7 +15,7 @@
 
 ## 3. 验收与归档（commit：`docs(openspec): record hotspots-co-change acceptance and archive`）
 
-- [ ] 3.1 独立 oracle 比对 dataverse、sakai、openmrs-workspace，先验装置
-- [ ] 3.2 sakai 耗时与产物大小
-- [ ] 3.3 两次真实模型运行
-- [ ] 3.4 验收记录写进 design.md，同步主规格并归档
+- [x] 3.1 独立 oracle 比对 dataverse、sakai、openmrs-workspace，先验装置
+- [x] 3.2 sakai 耗时与产物大小
+- [x] 3.3 真实模型运行（hotspots 4 次、chat 2 次，见验收记录）
+- [x] 3.4 验收记录写进 design.md，同步主规格并归档
