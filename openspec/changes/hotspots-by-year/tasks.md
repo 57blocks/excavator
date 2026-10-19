@@ -11,6 +11,7 @@
 - [x] 2.2 `skills/excavator-chat/SKILL.md`：改动历史一节加查询与规则（目录读 `commitsByYear`，文件没有按年计数，很久没改不说成没在用）
 - [x] 2.3 契约测试：新查询在产物上跑得出结果；字段名都在产物里；自检能抓冷代码用词，残余假设能通过
 - [x] 2.4 第一次真实运行暴露的问题（commit：`fix(skill): order last changes by recorded time and keep years unscaled`）：按记录的时间排序最后改动，加文件级查询和带产物截止日期的目录按年查询；不推算整年、不给没有提交的文件找原因、不说文件是什么样的
+- [x] 2.5 第二次真实运行暴露的问题（commit：`fix(skill): label last-change counts and fix the words after cold lists`）：按最后改动年份的文件数第一行写明口径；冷代码清单缩到 10 行并要求全部展示；chat 在列表后用固定的话收尾，在目录按年和读历史状态处写明不描述走势、不说计数可靠
 
 ## 3. 验收与归档（commit：`docs(openspec): record hotspots-by-year acceptance and archive`）
 

@@ -81,11 +81,11 @@ jq -r '.directories[] | select(.path == ".") | "last counted commit: \(.lastChan
 # directories at one depth with the most commits in the product's last two years (it prints the years first)
 jq -r --argjson d 1 '(.directories[] | select(.path == ".") | .commitsByYear // {} | keys[-2:]) as $y | "years: \($y | join(", "))", ([.directories[] | select(.path != "." and (.path | split("/") | length) == $d and .commitsByYear != null) | {path, recent: ([.commitsByYear[$y[]]] | add // 0), commits}] | sort_by(-.recent, .path) | .[:15][] | [.recent, .commits, .path] | @tsv)' "$HS"
 # files by the year of their last change; "none": a file with history but no commit in the window
-jq -r '[.files[] | select(.commits != null) | if .lastChanged == null then "none" else .lastChanged[:4] end] | group_by(.) | .[] | [.[0], length] | @tsv' "$HS"
+jq -r '[.files[] | select(.commits != null) | if .lastChanged == null then "none" else .lastChanged[:4] end] | "files by the year of their last change, each file once (none: no commit in the window):", (group_by(.) | .[] | [.[0], length] | @tsv)' "$HS"
 # directories at one depth by their last change, earliest first
-jq -r --argjson d 1 '[.directories[] | select(.path != "." and (.path | split("/") | length) == $d and .commits != null)] | sort_by(.lastChanged // "", .path) | .[:15][] | [(.lastChanged // "none")[:10], .commits, .files, .path] | @tsv' "$HS"
+jq -r --argjson d 1 '[.directories[] | select(.path != "." and (.path | split("/") | length) == $d and .commits != null)] | sort_by(.lastChanged // "", .path) | .[:10][] | [(.lastChanged // "none")[:10], .commits, .files, .path] | @tsv' "$HS"
 # files by their last change, earliest first, after how many files had no commit in the window
-jq -r '[.files[] | select(.commits != null)] | "files with history but no commit in the window: \([.[] | select(.lastChanged == null)] | length)", ([.[] | select(.lastChanged != null)] | sort_by(.lastChanged, .path) | .[:20][] | [.lastChanged[:10], .commits, .path] | @tsv)' "$HS"
+jq -r '[.files[] | select(.commits != null)] | "files with history but no commit in the window: \([.[] | select(.lastChanged == null)] | length)", ([.[] | select(.lastChanged != null)] | sort_by(.lastChanged, .path) | .[:10][] | [.lastChanged[:10], .commits, .path] | @tsv)' "$HS"
 # files whose counts met a lineage conflict
 jq -r '[.files[] | select(.lineageConflicts > 0)] | sort_by(-.lineageConflicts) | .[:20][] | [.lineageConflicts, .commits, .path] | @tsv' "$HS"
 # pairs of files changed together most often

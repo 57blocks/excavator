@@ -262,13 +262,15 @@ describe('excavator-hotspots skill: agrees with the script', () => {
         `last counted commit: ${root.lastChanged}`, ...years.map((year) => `${year}\t${root.commitsByYear[year]}`),
       ]);
       expect(run(text, productPath, 'keys[-2:]')[0]).toBe(`years: ${years.slice(-2).join(', ')}`);
-      const byYear = run(text, productPath, 'group_by(.)').map((row) => row.split('\t'));
+      const [label, ...yearRows] = run(text, productPath, 'group_by(.)');
+      expect(label).toBe('files by the year of their last change, each file once (none: no commit in the window):');
+      const byYear = yearRows.map((row) => row.split('\t'));
       expect(byYear.reduce((sum, [, count]) => sum + Number(count), 0)).toBe(p.files.filter((row) => row.commits !== null).length);
       expect(run(text, productPath, 'sort_by(.lastChanged // "", .path)').length).toBeGreaterThan(0);
       const files = run(text, productPath, 'files with history but no commit in the window');
       const dated = p.files.filter((row) => row.lastChanged !== null);
       expect(files[0]).toBe(`files with history but no commit in the window: ${p.files.filter((row) => row.commits !== null && row.lastChanged === null).length}`);
-      expect(files.slice(1).map((row) => row.split('\t')[0])).toEqual(dated.map((row) => row.lastChanged.slice(0, 10)).sort().slice(0, 20));
+      expect(files.slice(1).map((row) => row.split('\t')[0])).toEqual(dated.map((row) => row.lastChanged.slice(0, 10)).sort().slice(0, 10));
     }
     const dir = p.directories.find((row) => row.path === 'src');
     const line = jqLines(bashBlocks(section)).find((recipe) => recipe.includes('last counted commit of the product'));
@@ -359,8 +361,12 @@ describe('excavator-chat: change-history questions', () => {
     expect(s).toContain('A question about what depends on or calls a file is about the code, not its history: answer it from the graph.');
     expect(s).toContain('For a directory\'s changes over the years, use the `<dir>` query with `commitsByYear`');
     expect(s).toContain('Files have no yearly counts: for a file, give its `commits` and `lastChanged`, say the product counts years only per directory, and never work out a file\'s count for a year.');
-    expect(s).toContain('Its first line gives the last counted commit of the product: the last year runs only to that date (not to the directory\'s own last change), so say it is partial and never scale it up to a whole year or guess a later count.');
-    expect(s).toContain('you show their rows from the first, without leaving any out between those you show');
+    expect(s).toContain('Its first line gives the last counted commit of the product: the last year runs only to that date (not to the directory\'s own last change), so after the years give it in these words: "<year> runs only to <date>, the product\'s last counted commit, so its count is partial." Never scale it up to a whole year or guess a later count.');
+    expect(s).toContain('Say nothing else about how the counts move: not that they rise, fall or hold steady, not that the directory is active, cooling or quiet, and not why a year is higher or lower, the partial year included.');
+    expect(s).toContain('A whole history (not shallow, no window) still leaves the residual assumptions: never call the counts complete, reliable or accurate.');
+    expect(s).toContain('Show every row a query prints, in its order, one row each; do not merge, group or summarize rows.');
+    expect(s).toContain('After the lists, give in these words: "The product records when each file last changed, not whether it is still used or why it has not changed."');
+    expect(s).toContain('Describe none of the files or directories: not what they are (early, one-off, legacy, leftover, a script, a test, a document), not why they have not changed, and not how the counts by year move.');
     expect(s).toContain('The product does not say why a file with history has no commit in the window: give their number, not a reason.');
     expect(s).toContain('**Not changed is not unused**: change history does not show whether code is used, so never call a file or directory unused, dead, obsolete, abandoned or safe to delete because it has not changed');
   });
