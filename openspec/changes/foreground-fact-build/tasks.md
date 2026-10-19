@@ -6,11 +6,13 @@
 
 ## 1. 实现
 
-- [ ] 1.1 `skills/excavator/SKILL.md`：
+- [x] 1.1 `skills/excavator/SKILL.md`：
   - 在 Phase 0 之前加「Running the scripts」：前台运行并等它结束，不用 `run_in_background`，`lazy-analyze.mjs` 的超时给 600000 毫秒，并说明 headless 运行在这一轮结束时退出；
   - Phase 0 step 6.5 的 Lazy 与 Phase F1 的 `lazy-analyze.mjs` 命令旁各写一句，指向总规则。
-- [ ] 1.2 `tests/skill/excavator/test_full_run_continuation_contract.test.mjs`：钉住三处，并用注入变异确认能变红。
-- [ ] 1.3 全量门：vitest、`check-refs`、`openspec validate --all --strict`。
+- [x] 1.2 `tests/skill/excavator/test_full_run_continuation_contract.test.mjs`：钉住三处，并用注入变异确认能变红。
+- [x] 1.3 全量门：vitest、`check-refs`、`openspec validate --all --strict`。
+  - vitest 145 个文件，3,875 条通过、4 条跳过；`check-refs` 通过；OpenSpec 43 项通过。
+  - 6 种注入变异全部变红：去掉禁止后台、去掉原因、超时改成 120000、去掉超时也会移到后台的说明、去掉 Lazy 处或 F1 处的提醒。
 
 ## 2. 验收
 

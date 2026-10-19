@@ -43,6 +43,10 @@ Throughout execution, report progress to the user at each phase transition and d
 
 ---
 
+## Running the scripts
+
+Run every script this skill names in the foreground, and wait for it to finish before going on. Never start one with `run_in_background`. A headless run (`claude -p`, the unattended runner) exits as soon as your turn ends, and a background process dies with it: the run then leaves an `.excavator/` with no fact graph. The shell tool also moves a foreground command into the background once it passes its timeout, which is two minutes by default in Claude Code. So run `lazy-analyze.mjs`, which takes minutes on a large repository, with the tool's maximum timeout: 600000 ms for Claude Code's Bash tool.
+
 ## Phase 0 — Pre-flight
 
 Determine whether to run a full analysis or incremental update.
@@ -207,6 +211,7 @@ Determine whether to run a full analysis or incremental update.
    node "<SKILL_DIR>/lazy-analyze.mjs" "$PROJECT_ROOT" [--exclude "$EXCLUDE_PATTERNS"]
    ```
    The bracketed segment is optional argv notation, not literal shell syntax. Only when `$EXCLUDE_PATTERNS` is non-empty, use the host-native invocation mechanism to append `--exclude` and its value as two arguments; neither PowerShell nor POSIX should pass `[` or `]`.
+   Run it in the foreground with the shell tool's maximum timeout (600000 ms), never in the background: see **Running the scripts**.
    This single script performs Phase 1 SCAN via `scan-project.mjs` (the deterministic script — never the `excavator-project-scanner` subagent), Phase 1.2 STRUCTURE-ALL, the deterministic Fact Builder (`build-fact-graph.mjs`), a deterministic validate pass, and Phase 7 SAVE, with zero LLM/subagent calls: no `file-analyzer`, `summary-verifier`, `assemble-reviewer`, `architecture-analyzer`, or `graph-reviewer` dispatch, no LLM batch file, no HTML, no Tour. It never wipes or downgrades an already-existing full graph's `summary`/`tags`/`layers` — a prior Full run's semantics are merged forward, not overwritten. Report its printed summary to the user and **STOP**.
 
    **If `$ANALYSIS_MODE` is `full`:** continue with the existing pipeline unchanged, starting at step 7 below (a mode forced by `--full` behaves exactly like the existing `--full` row in the decision table).
@@ -351,6 +356,8 @@ node "<SKILL_DIR>/lazy-analyze.mjs" "$PROJECT_ROOT" [--exclude "$EXCLUDE_PATTERN
 ```
 
 The bracketed segment is optional argv notation, not literal shell syntax. Only when `$EXCLUDE_PATTERNS` is non-empty, use the host-native invocation mechanism to append `--exclude` and its value as two arguments; neither PowerShell nor POSIX should pass `[` or `]`.
+
+Run it in the foreground with the shell tool's maximum timeout (600000 ms), never in the background: see **Running the scripts**. On a large repository it takes minutes, and a headless run ends with your turn.
 
 This performs SCAN, STRUCTURE-ALL, import-map extraction, name-mention
 extraction from non-code files, name-reference extraction (the names view files
