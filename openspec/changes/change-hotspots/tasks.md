@@ -7,9 +7,9 @@
 
 ## 1. 普查脚本
 
-- [ ] 1.1 `skills/excavator/hotspots.mjs <projectRoot> [--since YYYY-MM-DD]`：按 design D2–D5 读历史、沿谱系归属、统计文件与目录、打分、守恒，写 `.excavator/hotspots.json`。验证：在本仓库上运行，产物写出且守恒成立。
-- [ ] 1.2 单元测试 `tests/skill/excavator/test_hotspots.test.mjs`：脚本化 fixture 仓覆盖规范的每个 Scenario，包括浅克隆、多仓父目录、非 Git 目录与改名上限。验证：测试通过。
-- [ ] 1.3 O1 的 13 种注入变异逐一变红，记下结果。
+- [x] 1.1 `skills/excavator/hotspots.mjs <projectRoot> [--since YYYY-MM-DD]`：按 design D2–D5 读历史、沿谱系归属、统计文件与目录、打分、守恒，写 `.excavator/hotspots.json`。验证：在本仓库上运行，产物写出且守恒成立。
+- [x] 1.2 单元测试 `tests/skill/excavator/test_hotspots.test.mjs`：脚本化 fixture 仓覆盖规范的每个 Scenario，包括浅克隆、多仓父目录、非 Git 目录与改名上限。验证：测试通过。
+- [x] 1.3 O1 的 13 种注入变异逐一变红，记下结果。
 
 ## 2. skill 与 chat
 
