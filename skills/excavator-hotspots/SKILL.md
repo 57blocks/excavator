@@ -69,6 +69,8 @@ The files are already sorted: by `score` descending, then `commits` descending, 
 ```bash
 # top files
 jq -r '.files[:20][] | [.score, .commits, .authors, .lines, .added, .removed, .lastChanged, .lineageConflicts, .path] | @tsv' "$HS"
+# top files by commits (a ranking by any field other than score needs its own query like this one)
+jq -r '[.files[] | select(.commits != null)] | sort_by(-.commits) | .[:20][] | [.commits, .authors, .score, .path] | @tsv' "$HS"
 # top directories at one depth (1 = top level; repeat with 2 for the level below)
 jq -r --argjson d 1 '[.directories[] | select(.path != "." and (.path | split("/") | length) == $d and .score != null)] | sort_by(-.score) | .[:15][] | [.score, .commits, .authors, .files, .lines, .path] | @tsv' "$HS"
 # files whose counts met a lineage conflict
@@ -103,8 +105,9 @@ Write the report to `$DATA/hotspots-report.md`, in this order:
 
 Rules for this step:
 - **State only numbers the product holds.** Every figure and path in the report comes from `$HS`. Do not explain a ranking with a cause you have not counted (team size, a release, code quality).
+- **A ranking by another field comes from its own query over every file.** Which file has the most commits or authors is not in the score ranking; never state it from a list sorted by `score`. `lines` is the line count at HEAD, not lines changed.
 - **Give no advice.** The report says where changes concentrate. It does not say what anyone should do about it: no refactoring, splitting, deleting, testing, reviewing or ownership suggestions, and no judgement that a file is risky or problematic.
-- **Say what a conflict means.** For a listed file with `lineageConflicts` above 0, say its counts may miss part of its history or include another history that once had the same path.
+- **Say what a conflict means.** For a listed file with `lineageConflicts` above 0, say its counts may miss part of its history or include another history that once had the same path. A 0 means no conflict was detected, not that the counts are complete; never call a count reliable or accurate.
 - **A shallow repo's counts are lower bounds.** Say so wherever you give one of its numbers.
 - **Never edit, move or delete project files, and never run a `git` command that changes the repository.**
 

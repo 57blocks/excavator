@@ -3,6 +3,7 @@
 0. `docs(openspec): propose change-hotspots`：本变更的四个文件。
 1. `feat(skill): count change hotspots from git history`：`skills/excavator/hotspots.mjs` 与它的单元测试（1.1–1.3）。
 2. `feat(skill): excavator-hotspots and chat answers`：skill、chat 一节、README、安装测试与契约测试（2.1–2.3）。
+   - 2a. `fix(skill): rank hotspot answers from whole-list queries`：O4 真实运行暴露的问题——从按 score 排序的片段断言提交数第一、把 `lines` 说成改动行数、过期时估计影响、称计数可靠、答案语言漂移；改成查询与规则，契约测试钉住。
 3. `docs(openspec): record change-hotspots acceptance and archive`：验收记录、同步主规范、归档（3.1–3.4）。
 
 ## 1. 普查脚本

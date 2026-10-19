@@ -113,8 +113,10 @@ describe('excavator-hotspots skill: each rule in its step', () => {
     const s = step.get(4);
     expect(s).toContain('**State only numbers the product holds.**');
     expect(s).toContain('**Give no advice.**');
+    expect(s).toContain('**A ranking by another field comes from its own query over every file.**');
     expect(s).toContain('**Say what a conflict means.**');
     expect(s).toContain('its counts may miss part of its history or include another history that once had the same path');
+    expect(s).toContain('A 0 means no conflict was detected, not that the counts are complete; never call a count reliable or accurate.');
     expect(s).toContain("**A shallow repo's counts are lower bounds.**");
     expect(s).toContain('**Never edit, move or delete project files, and never run a `git` command that changes the repository.**');
     expect(s).toContain('6. The residual assumptions, every one, as the product states them.');
@@ -183,6 +185,7 @@ describe('excavator-chat: change-history questions', () => {
     expect(s).toContain('jq -r .sourceRevision .excavator/hotspots.json');
     expect(s).toContain('skills/excavator/consumer-freshness.mjs" "$PROJECT_ROOT" 2>/dev/null | jq -r .currentSourceRevision');
     expect(s).toContain('say the product is stale');
+    expect(s).toContain('Do not estimate how much the new commits change the counts or the ranking');
   });
 
   it('says lower bounds, no history and conflicts, and gives no advice', () => {
@@ -191,6 +194,14 @@ describe('excavator-chat: change-history questions', () => {
     expect(s).toContain('`historyAvailable` false: there is no Git history');
     expect(s).toContain('its counts may miss part of its history or include another history that once had the same path');
     expect(s).toContain('Give no advice about what to change');
+    expect(s).toContain('**`lineageConflicts` 0 means no conflict was detected, not that the counts are complete**');
+    expect(s).toContain('do not explain why a file changes often');
+    expect(s).toContain('**A ranking by any other field comes from its own query over every file**');
+    expect(s).toContain('mostCommits: ([.files[] | select(.commits != null)] | sort_by(-.commits)');
+    expect(s).toContain('it gives the score ranking together with the files that lead on `commits` and on `authors` over the whole list');
+    expect(s).toContain('do not inspect them to judge it');
+    expect(s).toContain('call `finalizeVerifiedAnswerLanguage` as that gate says, and write the whole answer, notes included, in the language it returns');
+    expect(s).toContain('`lines` is the file\'s line count at HEAD, not lines changed');
   });
 
   it('the freshness helper and the product agree on the revision of an unchanged project', () => {
