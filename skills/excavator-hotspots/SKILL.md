@@ -112,7 +112,7 @@ Write the report to `$DATA/hotspots-report.md`, in this order:
 2. Counts: files with history, without history, binary; `conservation` (changes read, attributed to selected files, outside the selection).
 3. The top files, each with score, commits, authors, lines and path.
 4. The top directories at depth 1, and at depth 2 when depth 1 has few entries.
-5. Files changed together: the top pairs, then the top pairs where no path looks like a test by its name (say the filter is by name), each with `together`, both shares and both paths; and `coChange`'s counts.
+5. Files changed together: the top pairs, then the top pairs where no path looks like a test by its name (say the filter is by name), each with `together`, both shares and both paths; and `coChange`'s counts. Show the second list whole, every row its query prints, and do not describe how it differs from the first (which rows it leaves out or adds): a count of those rows would be yours, not the product's.
 6. Files with `lineageConflicts` above 0 among those you listed, and how many files have any (`counts.filesWithLineageConflicts`).
 7. The residual assumptions, every one, as the product states them.
 

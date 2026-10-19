@@ -172,6 +172,7 @@ describe('excavator-hotspots skill: each rule in its step', () => {
     expect(s).toContain('**A pair is a count, not a link.**');
     expect(s).toContain('Never say that one file depends on, calls, uses or causes changes in the other');
     expect(s).toContain('5. Files changed together: the top pairs, then the top pairs where no path looks like a test by its name');
+    expect(s).toContain('Show the second list whole, every row its query prints, and do not describe how it differs from the first');
     expect(s).toContain('**Never edit, move or delete project files, and never run a `git` command that changes the repository.**');
     expect(s).toContain('7. The residual assumptions, every one, as the product states them.');
     expect(s).toContain('ending with the line `advice check: 0 lines`');
