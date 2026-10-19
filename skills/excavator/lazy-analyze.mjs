@@ -256,8 +256,18 @@ export const KNOWLEDGE_GRAPH_VERSION = '1.0.0';
  *  drawn the pair, and the gap kind `business-interface-unresolved`. Structure rows
  *  of Java files gain `modifiers` on their classes, `nestedTypes`, the
  *  `classLiterals` of annotation arguments and the declared `type` of the member of
- *  a member annotation. */
-export const PIPELINE_VERSION = 'lazy-fact-graph/12';
+ *  a member annotation.
+ *  `lazy-fact-graph/13` (openspec: changes/jsx-element-references): a TS/JS JSX
+ *  element `<X>` / `<X.Y>` projects a `calls` edge from the function containing
+ *  it to the function or class its tag resolves to through the file's import
+ *  bindings and the target module's exports, its evidence carrying the tag as a
+ *  `token`; the gap kinds `jsx-external`, `jsx-unbound`, `jsx-target-unresolved`,
+ *  `jsx-ambiguous` and `jsx-caller-unresolved`, and a `coverage.jsxElements`
+ *  section (`not-run` for an import map without `resolvedSources`). Structure
+ *  rows of TS/JS files gain import `bindings`, `reexports` (an `export ... from`
+ *  is also an import, so barrels gain `imports` edges), export `local` names and
+ *  `jsx`; `exports` edges resolve by the local name. */
+export const PIPELINE_VERSION = 'lazy-fact-graph/13';
 
 /**
  * The framework ids the scan detected, for the graph header. A scan result

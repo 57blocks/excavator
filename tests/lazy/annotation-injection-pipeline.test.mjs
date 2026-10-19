@@ -108,8 +108,8 @@ describe('Java annotation injection sites in the real Lazy driver', () => {
   it('stamps the product with the new pipeline version', () => {
     expect(result.saveError).toBeNull();
     // /12: the by-type injection stage (openspec: changes/by-type-injection)
-    expect(PIPELINE_VERSION).toBe('lazy-fact-graph/12');
-    expect(graph.project.pipelineVersion).toBe('lazy-fact-graph/12');
+    expect(PIPELINE_VERSION).toBe('lazy-fact-graph/13');
+    expect(graph.project.pipelineVersion).toBe('lazy-fact-graph/13');
   });
 
   it('records the framework its Seam descriptor declares in the header', () => {
@@ -595,7 +595,7 @@ describe('a product of the previous pipeline version (design D10, task 4.4)', ()
     expect(synced.data.kind).toBe('synced');
     expect(synced.data.factCoverage.annotationInjections).toMatchObject({ status: 'ran', siteCount: 38 });
     const graph = readProduct(root);
-    expect(graph.project.pipelineVersion).toBe('lazy-fact-graph/12');
+    expect(graph.project.pipelineVersion).toBe('lazy-fact-graph/13');
     expect(graph.edges.filter((e) => e.type === 'injects')).toHaveLength(EXPECTED_INJECTS.length);
     expect(service.projectStatus().snapshot.freshness).toBe('fresh');
   });
