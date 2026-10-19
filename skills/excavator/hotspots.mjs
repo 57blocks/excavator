@@ -33,6 +33,10 @@
  * same commits is counted from the files' commit sets (hotspots/co-change.mjs);
  * commits that changed more than 30 selected files count for no pair.
  *
+ * Commits by year. Each directory row counts its commits per year of the
+ * committer date (hotspots/aggregate.mjs), every year from the product's first
+ * counted commit to its last, so the years add up to the row's `commits`.
+ *
  * Conservation. Every change (commit x path) read is either attributed to a
  * selected file or counted as outside the selection (deleted, ignored or not
  * selected paths). A mismatch is an Error and nothing is written.
@@ -47,7 +51,8 @@
  * in a multi-repo parent); `window` is `{ since, sinceUtc }`, both `null` without
  * a window. File rows: `{ path, commits, authors, added, removed, lastChanged,
  * lines, score, lineageConflicts }`; directory rows: `{ path, files, lines, commits, authors, added,
- * removed, lastChanged, score }` with `.` the project root. `coChange` is `{ maxFilesPerCommit,
+ * removed, lastChanged, score, commitsByYear }` with `.` the project root; `commitsByYear` has every
+ * year from the product's first to its last counted commit, by the year of the committer date. `coChange` is `{ maxFilesPerCommit,
  * minTogether, commitsCounted, commitsOverLimit, pairsListed, pairsBelowMinimum }`, the
  * counts `null` without history; pair rows: `{ a, b, together, shareOfA, shareOfB }`.
  *
@@ -83,6 +88,7 @@ const RESIDUAL_ASSUMPTIONS = Object.freeze([
   'If history was rewritten (squashed, rebased, imported from another system), changes before the rewrite are not visible.',
   'Repository-local .git/config and .git/info/attributes still affect rename detection and binary detection.',
   `Commits that changed more than ${MAX_FILES_PER_COMMIT} selected files are not counted for pairs, so files changed together only in such commits are not listed as a pair.`,
+  "A commit counts in the year of its committer date as git records it, in the committer's time zone; a rebased or cherry-picked commit counts in the year it was committed again, not the year it was first written.",
 ]);
 
 /** The UTC instant (epoch milliseconds) that opens a `YYYY-MM-DD` window, or an Error for anything else. */
@@ -136,7 +142,7 @@ export async function buildHotspots(root, { since = null, readHistory = readRepo
   }
 
   const counted = new Map();
-  const ids = { commits: 0, authors: new Map() };
+  const ids = { commits: 0, authors: new Map(), years: [] };
   const histories = new Map();
   const repoRows = [];
   const totals = { changesRead: 0, outsideSelection: 0 };
@@ -169,7 +175,7 @@ export async function buildHotspots(root, { since = null, readHistory = readRepo
     const { lines, binary } = counted.get(path);
     return { path, hasHistory: !looseFiles.has(path), lines: binary ? null : lines };
   });
-  const { files, directories } = buildRows(entries, histories);
+  const { files, directories } = buildRows(entries, histories, ids.years);
   const coChange = repos.length > 0 ? countCoChanges(histories) : { header: coChangeWithoutHistory(), pairs: [] };
 
   return {

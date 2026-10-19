@@ -190,6 +190,7 @@ describe('history source and lineage', () => {
       /Merge commits are not counted/, /similarity/, /Copies are not followed/, /single path map.*lineageConflicts/, /mailmap/,
       /blank lines and comments/, /rewritten/, /\.git\/config and \.git\/info\/attributes/,
       /more than 30 selected files are not counted for pairs/,
+      /year of its committer date as git records it, in the committer's time zone; a rebased or cherry-picked commit counts in the year it was committed again/,
     ]) {
       expect(assumptions).toMatch(topic);
     }
@@ -758,13 +759,13 @@ describe('counting and ranking', () => {
     const last = '2024-01-03T10:00:00+08:00';
     expect(product.directories).toEqual([
       {
-        path: '.', files: 4, lines: 12, commits: 3, authors: 2, added: 13, removed: 1, lastChanged: last, score: 23,
+        path: '.', files: 4, lines: 12, commits: 3, authors: 2, added: 13, removed: 1, lastChanged: last, score: 23, commitsByYear: { 2024: 3 },
       },
       {
-        path: 'd', files: 3, lines: 11, commits: 3, authors: 2, added: 12, removed: 1, lastChanged: last, score: 22,
+        path: 'd', files: 3, lines: 11, commits: 3, authors: 2, added: 12, removed: 1, lastChanged: last, score: 22, commitsByYear: { 2024: 3 },
       },
       {
-        path: 'd/sub', files: 1, lines: 4, commits: 2, authors: 1, added: 5, removed: 1, lastChanged: last, score: 8,
+        path: 'd/sub', files: 1, lines: 4, commits: 2, authors: 1, added: 5, removed: 1, lastChanged: last, score: 8, commitsByYear: { 2024: 2 },
       },
     ]);
   });
@@ -801,8 +802,8 @@ describe('no history is visible, never 0', () => {
       { path: 'empty.txt', ...none, lines: 0, lineageConflicts: 0 },
     ]);
     expect(product.directories).toEqual([
-      { path: '.', files: 4, lines: 5, ...none },
-      { path: 'b', files: 1, lines: 2, ...none },
+      { path: '.', files: 4, lines: 5, ...none, commitsByYear: null },
+      { path: 'b', files: 1, lines: 2, ...none, commitsByYear: null },
     ]);
   });
 
@@ -956,7 +957,7 @@ describe('no history is visible, never 0', () => {
     ]);
     // a directory over both repos: commits are distinct per repo, alice is one author
     expect(byPath(product.directories)['.']).toEqual({
-      path: '.', files: 3, lines: 11, commits: 4, authors: 2, added: 7, removed: 0, lastChanged: '2024-01-04T10:00:00+08:00', score: 14,
+      path: '.', files: 3, lines: 11, commits: 4, authors: 2, added: 7, removed: 0, lastChanged: '2024-01-04T10:00:00+08:00', score: 14, commitsByYear: { 2024: 4 },
     });
     expect(product.conservation).toEqual({ changesRead: 4, attributed: 4, outsideSelection: 0 });
   });
@@ -1009,11 +1010,11 @@ describe('no history is visible, never 0', () => {
     ]);
     expect(product.counts).toEqual({ filesWithHistory: 3, filesWithoutHistory: 0, binaryFiles: 1, filesWithLineageConflicts: 0 });
     expect(byPath(product.directories)['.']).toEqual({
-      path: '.', files: 3, lines: 8, commits: 3, authors: 1, added: 5, removed: 0, lastChanged: '2024-01-03T10:00:00+08:00', score: 14,
+      path: '.', files: 3, lines: 8, commits: 3, authors: 1, added: 5, removed: 0, lastChanged: '2024-01-03T10:00:00+08:00', score: 14, commitsByYear: { 2024: 3 },
     });
     // a directory of nothing but a binary file: its sums have no term, so they are null, not 0
     expect(byPath(product.directories).img).toEqual({
-      path: 'img', files: 1, lines: null, commits: 3, authors: 1, added: null, removed: null, lastChanged: '2024-01-03T10:00:00+08:00', score: null,
+      path: 'img', files: 1, lines: null, commits: 3, authors: 1, added: null, removed: null, lastChanged: '2024-01-03T10:00:00+08:00', score: null, commitsByYear: { 2024: 3 },
     });
   });
 });
@@ -1102,6 +1103,71 @@ describe('files changed together', () => {
       { a: 'b/x.txt', b: 'b/y.txt', together: 3, shareOfA: 1, shareOfB: 1 },
     ]);
     expect(product.coChange).toMatchObject({ commitsCounted: 6, pairsBelowMinimum: 0 });
+  });
+});
+
+describe('commits by year', () => {
+  it('counts a commit once per directory in the year of its committer date, with every year of the product', () => {
+    const dir = initRepo('hotspots-years-');
+    commit(dir, { when: '2020-06-01', files: { 'top.txt': lines(1) } });
+    commit(dir, { when: '2021-06-01', files: { 'd/a.txt': lines(1), 'd/b.txt': lines(1) } });
+    commit(dir, { when: '2023-06-01', files: { 'd/a.txt': lines(2) } });
+
+    const dirs = byPath(readProduct(dir).directories);
+
+    expect(dirs['.'].commitsByYear).toEqual({
+      2020: 1, 2021: 1, 2022: 0, 2023: 1,
+    });
+    // one commit changed both files of d; the years before d's first commit are 0, not left out
+    expect(dirs.d.commitsByYear).toEqual({
+      2020: 0, 2021: 1, 2022: 0, 2023: 1,
+    });
+    expect(Object.keys(dirs.d.commitsByYear)).toEqual(['2020', '2021', '2022', '2023']);
+  });
+
+  it('takes the year as git prints the committer date, not the UTC year', () => {
+    const dir = initRepo('hotspots-new-year-');
+    commit(dir, { when: '2023-06-01', files: { 'a.txt': lines(1) } });
+    // 2024-01-01T04:30Z in UTC: still 2023 where it was committed, as lastChanged shows it
+    commit(dir, { when: '2023-12-31T23:30:00-05:00', files: { 'a.txt': lines(2) } });
+
+    const product = readProduct(dir);
+    const root = byPath(product.directories)['.'];
+
+    expect(root.lastChanged).toBe('2023-12-31T23:30:00-05:00');
+    expect(root.commitsByYear).toEqual({ 2023: 2 });
+  });
+
+  it('adds up to commits in every directory, across renames and two member repositories that share every commit', () => {
+    const parent = tempDir('hotspots-years-twins-');
+    const a = join(parent, 'a');
+    mkdirSync(a);
+    git(a, ['init', '-q', '-b', 'main']);
+    commit(a, { when: '2022-03-01', files: { 'src/old.txt': lines(1), 'src/y.txt': lines(1) } });
+    commit(a, { when: '2023-03-01', move: [['src/old.txt', 'lib/new.txt']] });
+    commit(a, { when: '2024-03-01', files: { 'lib/new.txt': lines(2) } });
+    execFileSync('git', ['clone', '-q', a, join(parent, 'b')], { env: GIT_ENV });
+
+    const product = readProduct(parent);
+    const dirs = byPath(product.directories);
+
+    // the same three commits in each repository count once per repository
+    expect(dirs['.'].commitsByYear).toEqual({ 2022: 2, 2023: 2, 2024: 2 });
+    // the rename carries old.txt's 2022 commit to lib
+    expect(dirs['a/lib'].commitsByYear).toEqual({ 2022: 1, 2023: 1, 2024: 1 });
+    expect(dirs['a/src'].commitsByYear).toEqual({ 2022: 1, 2023: 0, 2024: 0 });
+    for (const row of product.directories) {
+      expect(Object.values(row.commitsByYear).reduce((sum, count) => sum + count, 0), row.path).toBe(row.commits);
+    }
+  });
+
+  it('is an empty object when the window holds no commit', () => {
+    const dir = initRepo('hotspots-years-empty-');
+    commit(dir, { when: '2024-01-01', files: { 'd/a.txt': lines(1) } });
+
+    const product = readProduct(dir, ['--since', '2025-01-01']);
+
+    for (const row of product.directories) expect(row).toMatchObject({ commits: 0, commitsByYear: {} });
   });
 });
 

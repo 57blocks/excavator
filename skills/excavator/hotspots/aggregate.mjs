@@ -8,6 +8,9 @@
  * File score is `commits x lines`; a directory's score is the sum of its files'.
  * A directory's commits and authors are the de-duplicated union over its files:
  * adding the file rows up would count one commit once per file it touched.
+ * A directory's `commitsByYear` splits that union by the year of each commit's
+ * committer date, with a key for every year from the product's first counted
+ * commit to its last (0 for a year without one), so its values add up to `commits`.
  * History fields are `null` when there is no history to count, never 0. A sum
  * (lines, added, removed, score) skips `null` terms and is `null` when every
  * term is.
@@ -88,7 +91,30 @@ function foldIntoDir(dirs, path, row, history) {
   }
 }
 
-function dirRow(dir) {
+/** Every year from the first to the last counted commit of the product, oldest first. */
+function yearRange(root, commitYears) {
+  if (root === undefined || root.commits.size === 0) return [];
+  let first = Infinity;
+  let last = -Infinity;
+  for (const commit of root.commits) {
+    const year = Number(commitYears[commit]);
+    first = Math.min(first, year);
+    last = Math.max(last, year);
+  }
+  return Array.from({ length: last - first + 1 }, (_, i) => String(first + i));
+}
+
+function countByYear(commits, years, commitYears) {
+  const counts = Object.fromEntries(years.map((year) => [year, 0]));
+  for (const commit of commits) {
+    const year = commitYears[commit];
+    if (counts[year] === undefined) throw new Error(`commit ${commit} has no year in the product's range: ${year}`);
+    counts[year] += 1;
+  }
+  return counts;
+}
+
+function dirRow(dir, years, commitYears) {
   const has = dir.hasHistory;
   return {
     path: dir.path,
@@ -100,6 +126,7 @@ function dirRow(dir) {
     removed: dir.removed,
     lastChanged: has ? dir.last : null,
     score: dir.score,
+    commitsByYear: has ? countByYear(dir.commits, years, commitYears) : null,
   };
 }
 
@@ -108,9 +135,10 @@ function dirRow(dir) {
  *   the selected files; `lines` is `null` for a binary file, `hasHistory` is
  *   whether a repository's history covers the file
  * @param {Map<string, object>} histories per-file history from history.mjs, by entry path
+ * @param {string[]} commitYears year of the committer date, by commit id
  * @returns {{ files: object[], directories: object[] }} ranked rows
  */
-export function buildRows(entries, histories) {
+export function buildRows(entries, histories, commitYears) {
   const files = [];
   const dirs = new Map();
   for (const entry of entries) {
@@ -119,9 +147,10 @@ export function buildRows(entries, histories) {
     files.push(row);
     for (const dir of ancestorDirs(entry.path)) foldIntoDir(dirs, dir, row, history);
   }
+  const years = yearRange(dirs.get('.'), commitYears);
   return {
     files: files.sort(compareRows),
-    directories: [...dirs.values()].map(dirRow).sort(compareRows),
+    directories: [...dirs.values()].map((dir) => dirRow(dir, years, commitYears)).sort(compareRows),
   };
 }
 
