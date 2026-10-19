@@ -13,14 +13,14 @@
 
 ## 2. skill 与 chat
 
-- [ ] 2.1 `skills/excavator-hotspots/SKILL.md`：
+- [x] 2.1 `skills/excavator-hotspots/SKILL.md`：
   - 跑脚本，用 `jq` 读头部与排名；
   - 没有历史或浅克隆时在开头说明；
   - 逐条列出残余假设；
   - 收尾自检：汇报里没有建议性措辞。
   验证：契约测试钉住这些规则。
-- [ ] 2.2 `skills/excavator-chat/SKILL.md` 加「改动历史类问题」一节：新鲜度比对、产物缺失、浅克隆说明、不从事实图推断。验证：契约测试钉住。
-- [ ] 2.3 `README.md` 加命令；`tests/install/install.test.mjs` 的 skill 数加一。验证：安装测试与 `check-refs` 通过。
+- [x] 2.2 `skills/excavator-chat/SKILL.md` 加「改动历史类问题」一节：新鲜度比对、产物缺失、浅克隆说明、不从事实图推断。验证：契约测试钉住。
+- [x] 2.3 `README.md` 加命令；`tests/install/install.test.mjs` 的 skill 数加一。验证：安装测试与 `check-refs` 通过。
 
 ## 3. 验收
 

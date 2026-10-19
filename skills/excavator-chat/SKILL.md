@@ -42,7 +42,7 @@ The knowledge graph `knowledge-graph.jsonl` stores one JSON record per line:
 
    After `$PLUGIN_ROOT` is resolved in step 2, pass those values to `createChatRequestState()` from `<PLUGIN_ROOT>/skills/excavator-chat/request-language.mjs`. Keep the returned state in memory. It deliberately has no `answerLanguage` yet. If an English retrieval expression is rejected, regenerate that expression in English while keeping `$ORIGINAL_QUESTION` and `$LITERAL_IDENTIFIERS` unchanged. **Do not persist request or answer language** to config, cache, graph, metadata, or any other `.excavator/` file.
 
-1. **Check that `.excavator/knowledge-graph.jsonl` exists** in the current project root. If not, tell the user to run `/excavator` first.
+1. **Change-history questions do not need the graph.** A question about how often, how recently or by how many authors files or directories changed (which files change most, hotspots, churn, who has changed this directory) is answered as **Change-history questions** below says, whether or not a graph exists; skip steps 2–8 for it. For every other question, **check that `.excavator/knowledge-graph.jsonl` exists** in the current project root. If not, tell the user to run `/excavator` first.
 
 2. **Check graph freshness before using graph-derived context** — use the ONE shared, deterministic freshness helper instead of computing a separate gitCommitHash/git-diff comparison in this skill:
    - Resolve `$PROJECT_ROOT` and `$PLUGIN_ROOT`:
@@ -98,6 +98,33 @@ This gate applies to every route above and below, including direct structural an
 2. Only after that check, call `finalizeVerifiedAnswerLanguage($CHAT_REQUEST_STATE, { evidenceVerified: true })` from `request-language.mjs`. The helper applies this precedence: explicit answer-language request → current question's predominant natural language → recent identifiable conversation language → English. An identifier-only question therefore falls back to recent conversation language, then English.
 3. Write the final answer in the returned `answerLanguage`. Restate the verified conclusions naturally in that language; do not translate a cached English summary and present the translation as evidence.
 4. Do not persist the selected answer language or rewritten answer. Answer-language changes must leave `.excavator/config.json`, `knowledge-graph.jsonl`, and every semantic product unchanged except for independently justified English node-local cache writes from step (c).
+
+### Change-history questions
+
+How often a file changed is in the Git history, not in the graph: the graph holds what the code is, not how it got there. Answer these questions only from `.excavator/hotspots.json`, which `/excavator-hotspots` writes. **Never infer change history from the graph** (its edges, summaries or `analyzedAt`). Resolve `$PROJECT_ROOT` and `$PLUGIN_ROOT` as step 2 does, and create the request state as step 0 says.
+
+1. **Product missing:** say this project has no change-history count yet and suggest running `/excavator-hotspots`. Do not answer from the graph instead.
+2. **Freshness:** compare the product's revision with the current one from the shared helper:
+   ```bash
+   jq -r .sourceRevision .excavator/hotspots.json
+   node "$PLUGIN_ROOT/skills/excavator/consumer-freshness.mjs" "$PROJECT_ROOT" 2>/dev/null | jq -r .currentSourceRevision
+   ```
+   Different → say the product is stale (there are commits or source changes since it was counted) and suggest re-running `/excavator-hotspots`. You may still quote it, labelled stale.
+3. **Read what the history can show** before quoting a number:
+   ```bash
+   jq '{sourceKind, historyAvailable, repos, window, counts, conservation}' .excavator/hotspots.json
+   ```
+   `historyAvailable` false: there is no Git history, so every history field is `null`; say so and do not rank. A repo with `shallow: true`: its counts are lower bounds; say so with its `earliestVisibleCommit`. `window.since` set: the counts cover only the window.
+4. **Find the file or directory** with `jq` (never read the product whole):
+   ```bash
+   jq --arg p "<path>" '.files[] | select(.path == $p)' .excavator/hotspots.json
+   jq --arg p "<path>" '.directories[] | select(.path == $p)' .excavator/hotspots.json
+   jq -r '.files[:20][] | [.score, .commits, .authors, .lines, .path] | @tsv' .excavator/hotspots.json
+   jq -r --arg d "<dir>/" '[.files[] | select(.path | startswith($d))][:20][] | [.score, .commits, .authors, .lines, .path] | @tsv' .excavator/hotspots.json
+   ```
+   A path the product does not list is not a selected file at HEAD: it was deleted, renamed, ignored or never existed. Its earlier history counts toward the file it was renamed to, or lies outside the selection.
+5. **Answer with the product's numbers.** `score` is `commits × lines`; `commits` and `authors` count the window; `added` and `removed` are `null` when git judged a change binary. For a file with `lineageConflicts` above 0, say its counts may miss part of its history or include another history that once had the same path. Give no advice about what to change, and never edit code or run a `git` command that changes the repository.
+6. Cite the product's `residualAssumptions` when the user asks how sure the counts are.
 
 ## Lazy mode: answer structural questions directly, retrieve on-demand for semantic ones
 
