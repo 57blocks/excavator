@@ -177,7 +177,10 @@ describe('excavator-hotspots skill: each rule in its step', () => {
     expect(s).toContain('7. Files changed together: the top pairs, then the top pairs where no path looks like a test by its name');
     expect(s).toContain('5. Changes by year: the project\'s commits in each year, saying the last year runs only to its last counted commit and the first is usually partial');
     expect(s).toContain('6. Least recently changed: how many files had their last change in each year');
-    expect(s).toContain('Within one year the list is ordered by path: never say which of them changed least recently.');
+    expect(s).toContain('Show the rows as the query prints them, from the first, without leaving any out between those you show.');
+    expect(s).toContain('never scale a partial year up to a whole one or guess a later count');
+    expect(s).toContain('do not say what kind of file it is (early, one-off, legacy)');
+    expect(s).toContain('The product does not say why a file with history has no commit in the window: give their number, not a reason.');
     expect(s).toContain('**A year is a count, not a story.**');
     expect(s).toContain('**Not changed is not unused.**');
     expect(s).toContain('never call it unused, dead, obsolete, abandoned or safe to delete');
@@ -261,8 +264,19 @@ describe('excavator-hotspots skill: agrees with the script', () => {
       expect(run(text, productPath, 'keys[-2:]')[0]).toBe(`years: ${years.slice(-2).join(', ')}`);
       const byYear = run(text, productPath, 'group_by(.)').map((row) => row.split('\t'));
       expect(byYear.reduce((sum, [, count]) => sum + Number(count), 0)).toBe(p.files.filter((row) => row.commits !== null).length);
-      expect(run(text, productPath, 'sort_by((.lastChanged // "")[:4], .path)').length).toBeGreaterThan(0);
+      expect(run(text, productPath, 'sort_by(.lastChanged // "", .path)').length).toBeGreaterThan(0);
+      const files = run(text, productPath, 'files with history but no commit in the window');
+      const dated = p.files.filter((row) => row.lastChanged !== null);
+      expect(files[0]).toBe(`files with history but no commit in the window: ${p.files.filter((row) => row.commits !== null && row.lastChanged === null).length}`);
+      expect(files.slice(1).map((row) => row.split('\t')[0])).toEqual(dated.map((row) => row.lastChanged.slice(0, 10)).sort().slice(0, 20));
     }
+    const dir = p.directories.find((row) => row.path === 'src');
+    const line = jqLines(bashBlocks(section)).find((recipe) => recipe.includes('last counted commit of the product'));
+    const result = spawnSync('sh', ['-c', line.replaceAll('.excavator/hotspots.json', JSON.stringify(fixture.product)).replaceAll('<dir>', 'src')], { encoding: 'utf-8' });
+    expect(result.stdout.trim().split('\n')).toEqual([
+      `last counted commit of the product: ${root.lastChanged}; last change of this directory: ${dir.lastChanged}`,
+      ...Object.entries(dir.commitsByYear).map(([year, count]) => `${year}\t${count}`),
+    ]);
   });
 
   it('runs every jq recipe of steps 2 and 3 on the product', () => {
@@ -343,9 +357,11 @@ describe('excavator-chat: change-history questions', () => {
     expect(s).toContain('Its first line is how many listed pairs include the file; when that is more than the rows you show, say how many you show out of how many.');
     expect(s).toContain('never that it does not change with other files');
     expect(s).toContain('A question about what depends on or calls a file is about the code, not its history: answer it from the graph.');
-    expect(s).toContain('For a directory\'s changes over the years, read its row\'s `commitsByYear`');
+    expect(s).toContain('For a directory\'s changes over the years, use the `<dir>` query with `commitsByYear`');
     expect(s).toContain('Files have no yearly counts: for a file, give its `commits` and `lastChanged`, say the product counts years only per directory, and never work out a file\'s count for a year.');
-    expect(s).toContain('never say which changed least recently within a year');
+    expect(s).toContain('Its first line gives the last counted commit of the product: the last year runs only to that date (not to the directory\'s own last change), so say it is partial and never scale it up to a whole year or guess a later count.');
+    expect(s).toContain('you show their rows from the first, without leaving any out between those you show');
+    expect(s).toContain('The product does not say why a file with history has no commit in the window: give their number, not a reason.');
     expect(s).toContain('**Not changed is not unused**: change history does not show whether code is used, so never call a file or directory unused, dead, obsolete, abandoned or safe to delete because it has not changed');
   });
 

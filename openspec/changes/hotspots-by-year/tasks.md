@@ -10,6 +10,7 @@
 - [x] 2.1 `skills/excavator-hotspots/SKILL.md`：第 3 步加查询（全项目每年、某一深度最近两年最多的目录、按最后改动年份的文件数、某一深度最后改动最早的目录）；字段说明加 `commitsByYear`；第 4 步汇报加两项与规则；自检 grep 加冷代码用词
 - [x] 2.2 `skills/excavator-chat/SKILL.md`：改动历史一节加查询与规则（目录读 `commitsByYear`，文件没有按年计数，很久没改不说成没在用）
 - [x] 2.3 契约测试：新查询在产物上跑得出结果；字段名都在产物里；自检能抓冷代码用词，残余假设能通过
+- [x] 2.4 第一次真实运行暴露的问题（commit：`fix(skill): order last changes by recorded time and keep years unscaled`）：按记录的时间排序最后改动，加文件级查询和带产物截止日期的目录按年查询；不推算整年、不给没有提交的文件找原因、不说文件是什么样的
 
 ## 3. 验收与归档（commit：`docs(openspec): record hotspots-by-year acceptance and archive`）
 
