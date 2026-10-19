@@ -103,7 +103,7 @@ describe('structure-all.mjs', () => {
     const app = output.results.find((r) => r.path === 'src/app.ts');
 
     expect(app.imports).toEqual([
-      { source: './helper', specifiers: ['helper'], line: 1 },
+      { source: './helper', specifiers: ['helper'], line: 1, bindings: [{ local: 'helper', imported: 'helper' }] },
     ]);
     expect(app.functions.map((f) => [f.name, f.startLine])).toEqual([['run', 2]]);
     expect(app.exports.map((e) => [e.name, e.line])).toEqual([['run', 2]]);

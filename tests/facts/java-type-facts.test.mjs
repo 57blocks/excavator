@@ -100,7 +100,8 @@ describe('structure row: other languages unchanged', () => {
     const allowed = {
       functions: new Set(['name', 'owner', 'startLine', 'endLine', 'params', 'paramTypes']),
       classes: new Set(['name', 'startLine', 'endLine', 'methods', 'properties']),
-      imports: new Set(['source', 'specifiers', 'line']),
+      // `bindings` and `reexports` are TS/JS module facts (jsx-element-references), not Java ones.
+      imports: new Set(['source', 'specifiers', 'line', 'bindings', 'reexports']),
     };
     for (const [field, keys] of Object.entries(allowed)) {
       for (const entry of result[field] ?? []) {

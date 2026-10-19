@@ -32,11 +32,15 @@
  *     scriptCompleted: true,
  *     stats: { filesScanned, filesWithImports, totalEdges },
  *     importMap: { <path>: [<resolvedPath>, ...], ... },
- *     unresolved: { <path>: [<specifier>, ...], ... }
+ *     unresolved: { <path>: [<specifier>, ...], ... },
+ *     resolvedSources: { <path>: { <specifier>: <resolvedPath>, ... }, ... }
  *   }
  *
  * `unresolved` records every import specifier that named nothing inside the
  * project (external package or broken path) instead of dropping it silently.
+ * `resolvedSources` says which file each resolved TS/JS import or re-export
+ * specifier names, so the fact graph can follow an import binding to its
+ * module without resolving the specifier again.
  *
  * Logging: stderr only (stdout reserved for piped tools).
  * Per-file resilience: failures emit `Warning: extract-import-map: ...` and
@@ -2032,6 +2036,7 @@ async function main() {
   // graph's `imports-unresolved` gap are what tell them apart. Previously an
   // unresolved specifier was simply absent from the output.
   const unresolved = {};
+  const resolvedSources = {};
   let filesWithImports = 0;
   let totalEdges = 0;
   let unresolvedSpecifiers = 0;
@@ -2072,6 +2077,7 @@ async function main() {
     // Analyze + resolve
     let resolved;
     const unresolvedSet = new Set();
+    const sourceTargets = new Map();
     try {
       const resolvedSet = new Set();
 
@@ -2097,6 +2103,8 @@ async function main() {
             if (out && ctx.fileSet.has(out)) {
               resolvedSet.add(out);
               hit = true;
+              // TS/JS resolves a specifier to at most one file.
+              if (TS_JS_LANGS.has(file.language) && imp?.source) sourceTargets.set(imp.source, out);
             }
           }
           if (!hit && imp?.source) unresolvedSet.add(imp.source);
@@ -2131,6 +2139,10 @@ async function main() {
     }
 
     importMap[path] = resolved;
+    if (sourceTargets.size > 0) {
+      resolvedSources[path] = Object.fromEntries(
+        [...sourceTargets].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)));
+    }
     if (unresolvedSet.size > 0) {
       // Locale-independent order (UTF-16 code units) keeps the output byte-stable.
       unresolved[path] = [...unresolvedSet].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
@@ -2154,6 +2166,7 @@ async function main() {
     failures,
     importMap,
     unresolved,
+    resolvedSources,
   };
 
   writeFileSync(outputPath, JSON.stringify(output, null, 2), 'utf-8');

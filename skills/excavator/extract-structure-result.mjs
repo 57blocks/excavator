@@ -189,6 +189,24 @@ function isClassLiteralArray(value) {
     JAVA_CLASS_LITERAL_CONTEXTS.has(item.context));
 }
 
+function isNamePairArray(value, keys) {
+  return Array.isArray(value) && value.every(item =>
+    isPlainObject(item) && keys.every(key => typeof item[key] === 'string'));
+}
+
+// TS/JS JSX elements: the tags that can name code, and a count of the rest.
+function isJsxFacts(value) {
+  return isPlainObject(value) &&
+    isFiniteInteger(value.intrinsic) && value.intrinsic >= 0 &&
+    Array.isArray(value.elements) &&
+    value.elements.every(element =>
+      isPlainObject(element) &&
+      typeof element.name === 'string' &&
+      isFiniteInteger(element.lineNumber) &&
+      hasValidOptionalField(element, 'local', flag => flag === true) &&
+      hasValidOptionalField(element, 'syntaxError', flag => flag === true));
+}
+
 const STRUCTURE_ENTRY_VALIDATORS = {
   functions: entry =>
     typeof entry.name === 'string' &&
@@ -219,11 +237,14 @@ const STRUCTURE_ENTRY_VALIDATORS = {
     typeof entry.source === 'string' &&
     isStringArray(entry.specifiers) &&
     isFiniteInteger(entry.lineNumber) &&
-    hasValidOptionalField(entry, 'isStatic', value => typeof value === 'boolean'),
+    hasValidOptionalField(entry, 'isStatic', value => typeof value === 'boolean') &&
+    hasValidOptionalField(entry, 'bindings', value => isNamePairArray(value, ['local', 'imported'])) &&
+    hasValidOptionalField(entry, 'reexports', value => isNamePairArray(value, ['exported', 'imported'])),
   exports: entry =>
     typeof entry.name === 'string' &&
     isFiniteInteger(entry.lineNumber) &&
-    hasValidOptionalField(entry, 'isDefault', value => typeof value === 'boolean'),
+    hasValidOptionalField(entry, 'isDefault', value => typeof value === 'boolean') &&
+    hasValidOptionalField(entry, 'local', value => typeof value === 'string'),
   sections: entry =>
     typeof entry.name === 'string' &&
     isFiniteInteger(entry.level) &&
@@ -270,7 +291,8 @@ function isValidStructuralAnalysis(analysis) {
     hasValidOptionalField(analysis, 'memberAnnotations', isMemberAnnotationArray) &&
     // Not a symbol array either: nested types are declarations below a class
     // the file already lists.
-    hasValidOptionalField(analysis, 'nestedTypes', isNestedTypeArray);
+    hasValidOptionalField(analysis, 'nestedTypes', isNestedTypeArray) &&
+    hasValidOptionalField(analysis, 'jsx', isJsxFacts);
 }
 
 // What a Java call site is invoked on (java-member-call-resolution, D2). The
@@ -532,6 +554,13 @@ export function buildResult(file, totalLines, nonEmptyLines, analysis, callGraph
       specifiers: imp.specifiers || [],
       line: imp.lineNumber,
       ...(imp.isStatic === true ? { static: true } : {}),
+      // TS/JS: what each local name imports, and what a re-export forwards.
+      ...(Array.isArray(imp.bindings)
+        ? { bindings: imp.bindings.map(binding => ({ local: binding.local, imported: binding.imported })) }
+        : {}),
+      ...(Array.isArray(imp.reexports)
+        ? { reexports: imp.reexports.map(binding => ({ exported: binding.exported, imported: binding.imported })) }
+        : {}),
     }));
   }
 
@@ -540,7 +569,21 @@ export function buildResult(file, totalLines, nonEmptyLines, analysis, callGraph
       name: exp.name,
       line: exp.lineNumber,
       isDefault: exp.isDefault === true,
+      ...(typeof exp.local === 'string' ? { local: exp.local } : {}),
     }));
+  }
+
+  // TS/JS: JSX elements whose tag can name code, and the intrinsic count.
+  if (analysis.jsx !== undefined) {
+    base.jsx = {
+      elements: analysis.jsx.elements.map(element => ({
+        name: element.name,
+        line: element.lineNumber,
+        ...(element.local === true ? { local: true } : {}),
+        ...(element.syntaxError === true ? { syntaxError: true } : {}),
+      })),
+      intrinsic: analysis.jsx.intrinsic,
+    };
   }
 
   if (analysis.sections && analysis.sections.length > 0) {
