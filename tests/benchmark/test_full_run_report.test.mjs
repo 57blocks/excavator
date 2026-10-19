@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process';
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, readSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -263,6 +263,37 @@ describe('readSample', () => {
     const sample = readSample(project({ staleFiles: [] }), missing);
     expect(sample).toEqual({ files: 0, batches: null, nodes: null });
     expect(missing).toEqual(['sample:batches', 'sample:nodes']);
+  });
+
+  it('reads the node count from the graph header without reading the rest of the graph', () => {
+    // A graph past Node's single-string limit cannot be read whole; the injected
+    // reader returns at most 64 bytes a call and counts what was read.
+    const root = project({});
+    const header = JSON.stringify({ record: 'header', fields: { project: { name: 'sample' } }, counts: { nodes: 7, edges: 9 } });
+    writeFileSync(join(root, '.excavator', 'knowledge-graph.jsonl'), `${header}\n${'{"record":"node"}\n'.repeat(60_000)}`);
+    let bytesRead = 0;
+    const read = (fd, buffer, offset, length, position) => {
+      const bytes = readSync(fd, buffer, offset, Math.min(length, 64), position);
+      bytesRead += bytes;
+      return bytes;
+    };
+    const missing = [];
+    expect(readSample(root, missing, { read }).nodes).toBe(7);
+    expect(missing).not.toContain('sample:nodes');
+    expect(bytesRead).toBeGreaterThan(header.length);
+    expect(bytesRead).toBeLessThan(header.length + 1 + 64);
+  });
+
+  it('reads a header with no line after it, and lists a first line that is not a header as missing', () => {
+    const whole = project({});
+    writeFileSync(join(whole, '.excavator', 'knowledge-graph.jsonl'), JSON.stringify({ record: 'header', counts: { nodes: 3 } }));
+    expect(readSample(whole, []).nodes).toBe(3);
+
+    const broken = project({});
+    writeFileSync(join(broken, '.excavator', 'knowledge-graph.jsonl'), `not a header\n${JSON.stringify({ record: 'header', counts: { nodes: 3 } })}\n`);
+    const missing = [];
+    expect(readSample(broken, missing).nodes).toBeNull();
+    expect(missing).toContain('sample:nodes');
   });
 
   it('derives per-file ratios only from figures it has', () => {
