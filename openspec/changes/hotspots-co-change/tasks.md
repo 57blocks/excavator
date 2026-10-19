@@ -6,9 +6,9 @@
 
 ## 2. skill 与 chat 读文件对（commit：`feat(skill): report files changed together`）
 
-- [ ] 2.1 `skills/excavator-hotspots/SKILL.md`：头部查询排除 `pairs`；第 3 步加文件对查询（全部、不像测试的、某个文件的）；第 4 步汇报加文件对，规则加不说因果，自检 grep 加因果用词
-- [ ] 2.2 `skills/excavator-chat/SKILL.md`：改动历史一节加「改 X 时还要改什么」的查询与规则
-- [ ] 2.3 契约测试：夹具有文件对；新查询在产物上跑得出结果；字段名都在产物里；自检能抓因果用词，残余假设能通过
+- [x] 2.1 `skills/excavator-hotspots/SKILL.md`：头部查询排除 `pairs`；第 3 步加文件对查询（全部、不像测试的、某个文件的）；第 4 步汇报加文件对，规则加不说因果，自检 grep 加因果用词
+- [x] 2.2 `skills/excavator-chat/SKILL.md`：改动历史一节加「改 X 时还要改什么」的查询与规则
+- [x] 2.3 契约测试：夹具有文件对；新查询在产物上跑得出结果；字段名都在产物里；自检能抓因果用词，残余假设能通过
 
 ## 3. 验收与归档（commit：`docs(openspec): record hotspots-co-change acceptance and archive`）
 
