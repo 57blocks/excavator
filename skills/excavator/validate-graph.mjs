@@ -216,7 +216,10 @@ export function expectedTokens(edge, source, target, evidenceEntry) {
   }
   switch (edge.type) {
     case 'calls':
-      return [target?.name].filter(Boolean);
+      // The callee's name, unless the entry says what its line writes: a JSX
+      // element cites its tag, which an import may have renamed (`<Btn>` for
+      // `Button`) or qualified (`<UI.Button>`) (openspec: changes/jsx-element-references).
+      return [evidenceEntry?.token ?? target?.name].filter(Boolean);
     case 'exports':
       return [target?.name].filter(Boolean);
     case 'contains':

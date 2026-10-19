@@ -2259,3 +2259,57 @@ describe('extract-import-map.mjs — deterministic stderr ordering across loader
     expect(tsLineIdx).toBeLessThan(composerLineIdx);
   });
 });
+
+// jsx-element-references, task 2.2: the fact graph follows an import binding
+// to the file its specifier names.
+describe('extract-import-map.mjs — resolved TS/JS sources', () => {
+  let projectRoot;
+
+  afterEach(() => {
+    if (projectRoot) {
+      rmSync(projectRoot, { recursive: true, force: true });
+      projectRoot = null;
+    }
+  });
+
+  it('records the file each TS/JS import and re-export specifier names', () => {
+    projectRoot = setupTree({
+      'tsconfig.json': JSON.stringify({ compilerOptions: { baseUrl: '.', paths: { '@/*': ['src/*'] } } }),
+      'src/page.tsx': [
+        "import { Button } from '@/ui/button';",
+        "import Card from './ui';",
+        "import React from 'react';",
+        "import './page.css';",
+        '',
+      ].join('\n'),
+      'src/ui/index.ts': "export { Button } from './button';\nexport * from './card';\nexport * from 'external-kit';\n",
+      'src/ui/button.tsx': 'export function Button() { return null; }\n',
+      'src/ui/card.tsx': 'export default function Card() { return null; }\n',
+      'src/page.css': '.p {}\n',
+      'src/main.py': 'import os\n',
+    });
+
+    const result = runScript(projectRoot, {
+      projectRoot,
+      files: [
+        { path: 'tsconfig.json', language: 'json', fileCategory: 'config' },
+        { path: 'src/page.tsx', language: 'typescript', fileCategory: 'code' },
+        { path: 'src/ui/index.ts', language: 'typescript', fileCategory: 'code' },
+        { path: 'src/ui/button.tsx', language: 'typescript', fileCategory: 'code' },
+        { path: 'src/ui/card.tsx', language: 'typescript', fileCategory: 'code' },
+        { path: 'src/page.css', language: 'css', fileCategory: 'code' },
+        { path: 'src/main.py', language: 'python', fileCategory: 'code' },
+      ],
+    });
+
+    expect(result.status).toBe(0);
+    expect(result.output.resolvedSources).toEqual({
+      'src/page.tsx': { './page.css': 'src/page.css', './ui': 'src/ui/index.ts', '@/ui/button': 'src/ui/button.tsx' },
+      // Re-export sources resolve like imports; the barrel gains imports edges.
+      'src/ui/index.ts': { './button': 'src/ui/button.tsx', './card': 'src/ui/card.tsx' },
+    });
+    expect(result.output.importMap['src/ui/index.ts']).toEqual(['src/ui/button.tsx', 'src/ui/card.tsx']);
+    expect(result.output.unresolved['src/page.tsx']).toEqual(['react']);
+    expect(result.output.unresolved['src/ui/index.ts']).toEqual(['external-kit']);
+  });
+});

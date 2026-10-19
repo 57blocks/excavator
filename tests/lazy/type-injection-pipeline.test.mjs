@@ -146,8 +146,8 @@ describe('the type injection stage in the real Lazy driver (tasks 4.2 to 4.4)', 
 
   it('stamps the product with the new pipeline version', () => {
     expect(result.saveError).toBeNull();
-    expect(PIPELINE_VERSION).toBe('lazy-fact-graph/12');
-    expect(graph.project.pipelineVersion).toBe('lazy-fact-graph/12');
+    expect(PIPELINE_VERSION).toBe('lazy-fact-graph/13');
+    expect(graph.project.pipelineVersion).toBe('lazy-fact-graph/13');
   });
 
   it('draws exactly the injects edges of the list: the consumer, the one candidate, and the cited lines, tokens, roles, families, members, types and names', () => {

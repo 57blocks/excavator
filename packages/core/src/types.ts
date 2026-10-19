@@ -501,9 +501,22 @@ export interface StructuralAnalysis {
     /** Names of the type declarations nested directly in this type's body. */
     memberTypes?: string[];
   }>;
-  /** `isStatic` marks a Java `import static`. */
-  imports: Array<{ source: string; specifiers: string[]; lineNumber: number; isStatic?: boolean }>;
-  exports: Array<{ name: string; lineNumber: number; isDefault?: boolean }>;
+  /** `isStatic` marks a Java `import static`. TS/JS: `bindings` maps each local
+   *  name to what it imports; an `export ... from` statement is also recorded
+   *  here, with no specifiers and its forwarded names in `reexports`. */
+  imports: Array<{
+    source: string;
+    specifiers: string[];
+    lineNumber: number;
+    isStatic?: boolean;
+    bindings?: ImportBinding[];
+    reexports?: ReexportBinding[];
+  }>;
+  /** `local` is the declaration's name in this file when it differs from the
+   *  exported name (`export { X as Y }`, `export default X`). */
+  exports: Array<{ name: string; lineNumber: number; isDefault?: boolean; local?: string }>;
+  /** TS/JS: the JSX elements of the file. */
+  jsx?: JsxFacts;
   /** Java: every class literal in the file, in source order. */
   classLiterals?: JavaClassLiteral[];
   /** Java: every annotation on a field, method, constructor, parameter or
@@ -519,6 +532,30 @@ export interface StructuralAnalysis {
   endpoints?: EndpointInfo[];
   steps?: StepInfo[];
   resources?: ResourceInfo[];
+}
+
+/** TS/JS: `imported` is the exported name, `default`, or `*` for a namespace. */
+export interface ImportBinding {
+  local: string;
+  imported: string;
+}
+
+/** TS/JS: `export { imported as exported } from`; `export *` is `*` -> `*`
+ *  and `export * as NS` is `NS` -> `*`. */
+export interface ReexportBinding {
+  exported: string;
+  imported: string;
+}
+
+/** TS/JS: one opening or self-closing JSX element whose tag can name code:
+ *  `name` is the tag as written (`Button`, `UI.Button`); `local` marks a root
+ *  name bound in an enclosing function, which no import or top-level
+ *  declaration can resolve; `syntaxError` marks a tag the parser recovered
+ *  from an error, whose name may not be what the source says. Intrinsic
+ *  elements (`div`, `my-el`, `svg:rect`) are only counted. */
+export interface JsxFacts {
+  elements: Array<{ name: string; lineNumber: number; local?: true; syntaxError?: true }>;
+  intrinsic: number;
 }
 
 export interface ImportResolution {

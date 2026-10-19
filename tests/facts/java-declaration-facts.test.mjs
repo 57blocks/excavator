@@ -203,7 +203,10 @@ const NON_JAVA_FILES = [
   ]],
 ];
 
-const NON_JAVA_ROWS_SHA256 = 'a905dcdbfd45b16cbba2710817916d09c37138ae725b1b02ae5dd14cd1fa294c';
+// Re-frozen by jsx-element-references: the TS row's import gained its
+// `bindings`; with that field removed the rows hash to the previous value
+// (a905dcdb...).
+const NON_JAVA_ROWS_SHA256 = '0b1066f9f72fed2d7463a471a28c855970112298feda5af24abd1d6ea53a029c';
 
 describe('structure row: other languages byte-identical', () => {
   it('produces exactly the rows frozen before Java declaration facts existed', () => {

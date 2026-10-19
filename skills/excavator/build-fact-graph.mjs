@@ -76,6 +76,7 @@ import {
   ANNOTATION_INJECTION_GAP_KINDS, mergeInjectsEdges, resolveAnnotationInjections,
 } from './annotation-injection-resolution.mjs';
 import { ROUTE_GAP_KINDS, assertRouteConservation, resolveRoutes } from './route-resolution.mjs';
+import { JSX_GAP_KINDS, JSX_GAP_REASONS, assertJsxConservation, resolveJsxElements } from './jsx-element-resolution.mjs';
 import {
   BUSINESS_INTERFACE_GAP_KIND, TYPE_INJECTION_GAP_KINDS, TYPE_INJECTIONS_NOT_RUN, assertTypeInjectionConservation, resolveTypeInjections,
 } from './type-injection-resolution.mjs';
@@ -434,10 +435,12 @@ export function buildFactGraph({ scan, structureAll, importMap, mentionSites, me
   }
 
   // exports: file -> decl, only when the exported name resolves to exactly
-  // one function/class declared in the SAME file.
+  // one function/class declared in the SAME file. `local` is the
+  // declaration's name where it differs from the exported one
+  // (`export { X as Y }`, `export default X`).
   for (const row of fileRows) {
     for (const exp of row.exports ?? []) {
-      const candidates = declByPathName.get(`${row.path}|${exp.name}`) ?? [];
+      const candidates = declByPathName.get(`${row.path}|${exp.local ?? exp.name}`) ?? [];
       const lang = languageOfPath.get(row.path) ?? row.language ?? 'unknown';
       if (candidates.length === 1) {
         addEdge({
@@ -591,6 +594,37 @@ export function buildFactGraph({ scan, structureAll, importMap, mentionSites, me
       });
     }
   }
+
+  // JSX elements (openspec: changes/jsx-element-references): `<X>` renders
+  // the function or class its tag resolves to through the file's import
+  // bindings. Each element is one `calls` edge, whose evidence carries the
+  // tag as written, or one `jsx-*` gap; checked fail-closed below.
+  const functionsByPath = new Map();
+  for (const entry of withOrdinals) {
+    if (entry.type !== 'function') continue;
+    if (!functionsByPath.has(entry.path)) functionsByPath.set(entry.path, []);
+    functionsByPath.get(entry.path).push({ id: idOf.get(entry), lineRange: entry.lineRange });
+  }
+  const jsxResolved = resolveJsxElements({
+    rows: fileRows,
+    importMap: importMapSafe,
+    topLevelDecls: (path, name) => (declByPathName.get(`${path}|${name}`) ?? []).filter((decl) => !decl.owner),
+    functionsOf: (path) => functionsByPath.get(path) ?? [],
+    languageOf: (path) => languageOfPath.get(path) ?? fileRowByPath.get(path)?.language ?? 'unknown',
+  });
+  for (const gap of jsxResolved.gaps) gapCollector.add(gap.kind, gap.scope, gap.sample);
+  for (const edge of jsxResolved.edges) {
+    addEdge({
+      source: edge.source,
+      target: edge.target,
+      type: 'calls',
+      direction: 'forward',
+      weight: 0.8,
+      evidence: [{ file: edge.file, line: edge.line, source: 'tree-sitter', token: edge.token }],
+      provenance: 'extracted',
+    });
+  }
+  const jsxCoverage = jsxResolved.coverage;
 
   // -------------------------------------------------------------------------
   // Name mentions (openspec: changes/name-mention-facts): a non-code file that
@@ -852,7 +886,13 @@ export function buildFactGraph({ scan, structureAll, importMap, mentionSites, me
     annotationInjections: annotationInjectionCoverage,
     routes: routeCoverage,
     typeInjections: typeInjectionCoverage,
+    jsxElements: jsxCoverage,
   };
+  if (jsxCoverage.status === 'ran') {
+    // Read back from what was recorded, as for Java calls.
+    const recorded = (kind) => resolutionGaps.filter((gap) => gap.kind === kind).reduce((sum, gap) => sum + gap.count, 0);
+    assertJsxConservation(jsxCoverage, Object.fromEntries(Object.values(JSX_GAP_KINDS).map((kind) => [kind, recorded(kind)])));
+  }
   if (mentionCoverage.status === 'ran') {
     // The gap counts are read back from what was recorded, as for Java calls.
     const recorded = (kind) => resolutionGaps.filter((gap) => gap.kind === kind).reduce((sum, gap) => sum + gap.count, 0);
@@ -1006,6 +1046,7 @@ export function computeFactsDigest(parts, { limit = DEFAULT_LIMIT_CHARS, recorde
 /** Human-readable reason text per resolution-gap kind (`count` is a separate
  *  Gap field, so these are deliberately count-agnostic). */
 const GAP_REASONS = Object.freeze({
+  ...JSX_GAP_REASONS,
   'calls-unresolved': "call site(s) did not resolve to any declaration in the caller's file or its resolved imports",
   'calls-ambiguous': 'call site(s) resolved to more than one same-named declaration in scope',
   'calls-caller-unresolved': 'call site(s) could not be attributed to a unique calling declaration',
