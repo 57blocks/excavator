@@ -165,11 +165,11 @@ describe('read: text of each format', () => {
   it('reads UTF-8 text as it is, without a BOM, and fails text that is not UTF-8', () => {
     const docs = tempDir('doc-map-docs-');
     const project = tempDir('doc-map-project-');
-    write(docs, 'a.md', Buffer.concat([Buffer.from([0xef, 0xbb, 0xbf]), Buffer.from('# 用例\r\nline two\r\n')]));
+    write(docs, 'a.md', Buffer.concat([Buffer.from([0xef, 0xbb, 0xbf]), Buffer.from('# \u7528\u4f8b\r\nline two\r\n')]));
     write(docs, 'latin.txt', Buffer.from([0x63, 0x61, 0x66, 0xe9]));
     run(['read', docs, project]);
     const product = readProduct(project);
-    expect(textOf(project, 'a.md')).toBe('# 用例\nline two\n');
+    expect(textOf(project, 'a.md')).toBe('# \u7528\u4f8b\nline two\n');
     expect(rowOf(product, 'a.md')).toMatchObject({
       status: 'read', format: 'text', text: 'doc-map/text/a.md.txt', chars: 14, lines: 3, pages: null, units: null,
     });
@@ -356,12 +356,12 @@ describe('units: recorded with their place in the document', () => {
 });
 
 describe('units: the fixed normalization', () => {
-  const text = 'The provider’s “action\nplan” — re­view…  ﬁnal ＡＢＣ café zero​width';
+  const text = 'The provider\u2019s \u201caction\nplan\u201d \u2014 re\u00adview\u2026  \ufb01nal \uff21\uff22\uff23 cafe\u0301 zero\u200bwidth';
 
   it('matches across line breaks, curly quotes, dashes, soft hyphens, ligatures, full-width letters and accents', () => {
     const project = readFolder({ 'a.md': text });
     const result = runUnits(project, { units: [
-      unit('a.md', 'The provider\'s "action plan" - review... final ABC café zerowidth'),
+      unit('a.md', 'The provider\'s "action plan" - review... final ABC caf\u00e9 zerowidth'),
     ] });
     expect(result.status, result.stderr).toBe(0);
     expect(readProduct(project).units[0]).toMatchObject({ line: 1, occurrences: 1 });

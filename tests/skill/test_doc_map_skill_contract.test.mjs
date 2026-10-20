@@ -25,6 +25,11 @@ const rawStep = (n) => skill.split(new RegExp(`^## Step ${n} — `, 'm'))[1].spl
 const step = (n) => flat(rawStep(n));
 const bashBlocks = (text) => [...text.matchAll(/^ *```bash\n([\s\S]*?)^ *```$/gm)].map((m) => m[1]);
 const linesOf = (blocks) => blocks.flatMap((block) => block.split('\n')).map((line) => line.trim()).filter(Boolean);
+const blockWith = (n, start) => {
+  const found = bashBlocks(rawStep(n)).filter((block) => block.trimStart().startsWith(start));
+  expect(found, start).toHaveLength(1);
+  return found[0];
+};
 const lineStarting = (n, start) => {
   const found = linesOf(bashBlocks(rawStep(n))).filter((line) => line.startsWith(start));
   expect(found, start).toHaveLength(1);
@@ -96,6 +101,19 @@ describe('excavator-doc-map skill: steps', () => {
     expect(titles).toEqual(['Read the documents', 'List the units', 'Record the units', 'Report to the user']);
     expect(skill.startsWith('---\nname: excavator-doc-map\n')).toBe(true);
   });
+
+  it('holds no Chinese character, nor does its script: the Chinese advice words are escapes', () => {
+    const cjk = /[\u3000-\u303f\u3400-\u9fff\uf900-\ufaff\uff00-\uffef]/u;
+    expect(skill).not.toMatch(cjk);
+    expect(readFileSync(SCRIPT, 'utf-8')).not.toMatch(cjk);
+  });
+
+  it('writes titles and the report in English unless the request names another language', () => {
+    expect(flat(skill)).toContain('`--language <lang>`: the language of the unit titles and of the report, English unless the request names another. The documents\' own language does not change it.');
+    expect(step(1)).toContain('LANGUAGE="English" # or the --language value');
+    expect(step(2)).toContain('`<language>` is `$LANGUAGE`');
+    expect(step(4)).toContain('Write the report to `$DATA/doc-map-report.md` in `$LANGUAGE`, in this order:');
+  });
 });
 
 describe('excavator-doc-map skill: each rule in its step', () => {
@@ -112,9 +130,10 @@ describe('excavator-doc-map skill: each rule in its step', () => {
     expect(prompt).toContain('Copy it character by character. Do not fix spelling, spacing or case, and do not join text from two places.');
     expect(prompt).toContain('Bold labels, list items, steps and branches inside a section belong to its unit; they are not units of their own.');
     expect(prompt).toContain('Never start it in the text before the unit.');
+    expect(prompt).toContain('- title: a short name of the function in <language>. When the unit\'s heading is in <language>, use the heading\'s own words; otherwise translate it, keeping product, feature and module names as the document writes them;');
     expect(prompt).toContain('when the heading\'s words occur again in the document, carry the quote on from the heading into the unit\'s own first sentence.');
     expect(prompt).toContain('Write {"units": [ ... ]} as JSON to $DATA/doc-map/units-batch-<N>.json');
-    expect(step(2)).toContain('`<N>` is the batch number written with three digits (`001`), so the files sort in batch order.');
+    expect(step(2)).toContain('`<N>` is the batch number written with three digits (`001`), so the files sort in batch order,');
   });
 
   it('step 3 never lets a fix invent text, and keeps the deleted units for the report', () => {
@@ -205,18 +224,19 @@ describe('excavator-doc-map skill: the commands run', () => {
     ]);
   });
 
-  it('the advice check prints a judging sentence and passes table rows and plain statements', () => {
-    const check = linesOf(bashBlocks(rawStep(4))).find((line) => line.startsWith('grep -niE'));
+  it('the advice check prints judging sentences, English or Chinese, and passes table rows and plain statements', () => {
+    const check = blockWith(4, 'python3 - "$DATA/doc-map-report.md"');
     writeFileSync(join(fixture.DATA, 'doc-map-report.md'), [
       '# Documents',
       'files: 4; read: 2',
       '| srs.pdf | UC1 | Complete Assessment | page 2 |',
       '| guide.md | - | Missing items report | line 3 |',
       'The guide is outdated and the team should rewrite it.',
-      '这份文档已经过时。',
+      '\u8fd9\u4efd\u6587\u6863\u5df2\u7ecf\u8fc7\u65f6\u3002',
     ].join('\n'));
     const result = sh(check, fixture.vars);
-    expect(result.stdout).toBe('5:The guide is outdated and the team should rewrite it.\n6:这份文档已经过时。\n');
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout).toBe('5:The guide is outdated and the team should rewrite it.\n6:\u8fd9\u4efd\u6587\u6863\u5df2\u7ecf\u8fc7\u65f6\u3002\n');
   });
 });
 

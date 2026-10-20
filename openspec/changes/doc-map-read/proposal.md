@@ -13,7 +13,7 @@
 
 ## What Changes
 
-- 新增 skill `/excavator-doc-map <文档目录> [项目目录]`，第一步只读文档、列功能，不碰代码。
+- 新增 skill `/excavator-doc-map <文档目录> [项目目录] [--language <lang>]`，第一步只读文档、列功能，不碰代码。功能标题与报告默认英文，用户要求别的语言时才换；代码、skill 与测试里不出现中文字符。
 - 新增脚本 `skills/excavator/doc-map.py`，只用 Python 标准库，两个子命令：
   - `read <文档目录> <项目目录>`：
     - 递归列出文档目录下的每个文件（不进 `.git`，不跟随符号链接），按扩展名转成纯文本；
