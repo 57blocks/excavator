@@ -10,9 +10,18 @@
 - [x] 2.2 `README.md` 里这条命令的说明改为也对到代码。验证：读一遍 diff
 - [x] 2.3 契约测试：分批命令的批次与行范围、合并顺序、报告查询在带对应的夹具产物上的输出、自检报出「implemented」类词、源码零中文字符；关键规则的变异各自变红。验证：`pnpm vitest run tests/skill/test_doc_map_skill_contract.test.mjs` 全绿
 
-## 3. 验收与归档（commit：`docs(openspec): record doc-map-link acceptance and archive`）
+## 3. found 不再写 searched（commit：`fix(skill): let found links leave out searches`）
 
-- [ ] 3.1 先验装置：改坏真实对应清单里的几处证据，`link` 全部报出
-- [ ] 3.2 真实模型运行：maui-app 标定，然后 go-multirepo、sakai、病历系统；陷阱文档必须是 `not-found`；记花费、轮数、时长、三种状态的计数
-- [ ] 3.3 精度抽查（错归属必须为 0）与 `not-found` 重搜（漏判照实记）
-- [ ] 3.4 全量门在分离检出里跑；验收记录写进 design.md，同步主规格并归档
+- [ ] 3.1 第 4 步子代理的 `found` 形状去掉 `searched`，合并命令把缺的 `searched` 补成空数组。验证：契约测试里不带 `searched` 的 `found` 批次合并后 `link` 通过，缺 `searched` 的 `not-found` 仍被报出
+
+## 4. 复核（commit：`feat(skill): check each tie in a clean context`）
+
+- [ ] 4.1 `SKILL.md`：新增第 5 步「复核」（分批命令、复核子代理提示词、合并成 `checks.json`、重写对应清单、再运行 `link`）；第 4 步规则加「文本只是提到、或写明是两回事的代码不算」；报告加复核的计数与没留下的证据；第 4 部分的固定写法提到复核。验证：契约测试
+- [ ] 4.2 契约测试：复核分批命令的批次与证据行、合并时漏判与非法判定记为 `none`、重写对应清单（只留 `does`、全去掉落 `not-checked`、`not-found` 原样）、报告查询、固定写法过自检；关键规则的变异各自变红。验证：`pnpm vitest run tests/skill/test_doc_map_skill_contract.test.mjs` 全绿
+
+## 5. 验收与归档（commit：`docs(openspec): record doc-map-link acceptance and archive`）
+
+- [ ] 5.1 先验装置：改坏真实对应清单里的几处证据，`link` 全部报出
+- [ ] 5.2 真实模型运行：maui-app 标定，然后 go-multirepo、sakai、病历系统；陷阱文档必须是 `not-found`；记花费、轮数、时长、三种状态的计数
+- [ ] 5.3 精度抽查（复核之后，错归属必须为 0）、`not-found` 重搜与复核去掉的证据逐条看（漏判与去错照实记）
+- [ ] 5.4 全量门在分离检出里跑；验收记录写进 design.md，同步主规格并归档
