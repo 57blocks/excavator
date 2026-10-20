@@ -182,7 +182,7 @@ describe('shared deterministic project service', () => {
     expect((await service.semanticCommit({ nodeId: IDS.missing, filePath: 'src/missing.ts',
       fields: { ...fields, semanticSourceHash: 'old' } })).status).toBe('stale-hash');
     expect((await service.semanticCommit({ nodeId: IDS.missing, filePath: 'src/missing.ts',
-      fields: { ...fields, summary: '加载本地值。' } })).status).toBe('noncanonical-language');
+      fields: { ...fields, summary: '\u52a0\u8f7d\u672c\u5730\u503c\u3002' } })).status).toBe('noncanonical-language');
     expect((await service.semanticCommit({ nodeId: IDS.missing, filePath: 'src/missing.ts', fields })).status).toBe('ok');
     expect(sha(readFileSync(join(fixture.root, '.excavator', 'knowledge-graph.jsonl')))).toBe(beforeGraph);
   });

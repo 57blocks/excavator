@@ -9,7 +9,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const fixturesDir = resolve(__dirname, '../fixtures/deploy');
 const loadFixture = (name) => JSON.parse(readFileSync(join(fixturesDir, name), 'utf-8'));
 
-describe('checkRun (task 2.3, design D4 "运行" / O3)', () => {
+describe('checkRun (task 2.3, design D4 "run" / O3)', () => {
   it('passes the positive sample', () => {
     const result = checkRun({ resultEvent: loadFixture('result-good.json'), processExitCode: 0, timedOut: false });
     expect(result.ok).toBe(true);

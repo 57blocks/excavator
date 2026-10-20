@@ -63,9 +63,10 @@ function publishFsThatFailsOn(method, pathArgIndex, filenameSuffix, errorMessage
 }
 
 // ---------------------------------------------------------------------------
-// Fault injection — Requirement "原子保存先于推进 manifest" / "写到一半的保存失败不留
-// 半成品" / "替换阶段失败" (revision-sync spec), design D4's stage/replace/
-// rollback sequence, and product-serialization's O4/O5 acceptance oracles.
+// Fault injection — Requirement "atomic save before advancing the manifest" /
+// "a save that fails halfway leaves no partial product" / "replace stage
+// fails" (revision-sync spec), design D4's stage/replace/rollback sequence,
+// and product-serialization's O4/O5 acceptance oracles.
 // ---------------------------------------------------------------------------
 describe('lazy-analyze publish() — staged publish, fault injection (design D4, O4/O5)', () => {
   let root;
@@ -136,7 +137,7 @@ describe('lazy-analyze publish() — staged publish, fault injection (design D4,
     expect(hashAllFinalProducts(root)).not.toEqual(baselineHashes); // the run really did produce new content
   });
 
-  // openspec: changes/knowledge-graph-line-store, design「验收」4 — the limit
+  // openspec: changes/knowledge-graph-line-store, design "Acceptance" 4 — the limit
   // now applies per record of a line-oriented product, not to the whole graph.
   it('a graph larger than the limit publishes when every record and every whole-document product fits', async () => {
     changeSource(root);

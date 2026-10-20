@@ -49,7 +49,7 @@ function expectValidReport(report) {
 
 function makeSubject() {
   const root = mkdtempSync(join(tmpdir(), 'ua benchmark subject-'));
-  const subject = join(root, '项目 with spaces');
+  const subject = join(root, '\u9879\u76ee with spaces');
   mkdirSync(join(subject, 'src'), { recursive: true });
   writeFileSync(
     join(subject, 'src', 'math.ts'),

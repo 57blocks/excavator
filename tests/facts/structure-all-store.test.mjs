@@ -32,7 +32,7 @@ function output() {
       { path: 'src/a.ts', language: 'typescript', status: 'parsed', functions: [{ name: 'run', startLine: 1, endLine: 3, params: [] }],
         callGraph: [{ caller: 'run', callee: 'helper', lineNumber: 2 }] },
       // CJK plus an astral emoji, so tiny read blocks split a multi-byte sequence.
-      { path: 'src/处理订单😀.ts', language: 'typescript', status: 'parsed', functions: [] },
+      { path: 'src/\u5904\u7406\u8ba2\u5355😀.ts', language: 'typescript', status: 'parsed', functions: [] },
     ],
   };
 }

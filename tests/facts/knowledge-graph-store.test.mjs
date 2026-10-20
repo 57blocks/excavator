@@ -41,7 +41,7 @@ function lazyGraph() {
         id: 'function:src/a.ts:run', type: 'function', name: 'run', filePath: 'src/a.ts', lineRange: [1, 4],
         // CJK plus an astral emoji (a surrogate pair), so a tiny read block
         // splits a multi-byte UTF-8 sequence.
-        summary: '处理订单 😀 — creates an order', tags: [], complexity: 'simple',
+        summary: '\u5904\u7406\u8ba2\u5355 😀 — creates an order', tags: [], complexity: 'simple',
       },
     ],
     edges: [

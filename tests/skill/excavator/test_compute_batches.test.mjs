@@ -219,7 +219,7 @@ describe('compute-batches.mjs - invalid benchmark path options', () => {
     argTemplates,
   ) => {
     testRoot = mkdtempSync(join(tmpdir(), 'excavator-cb-invalid-'));
-    const projectRoot = join(testRoot, 'subject-项目');
+    const projectRoot = join(testRoot, 'subject-\u9879\u76ee');
     const scanPath = join(testRoot, 'input data', 'scan-result.json');
     const outputPath = join(testRoot, 'output data', 'batches.json');
     const secondOutputPath = join(testRoot, 'other output', 'batches.json');

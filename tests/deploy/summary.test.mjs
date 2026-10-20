@@ -52,7 +52,7 @@ describe('aggregateModelUsage', () => {
   });
 });
 
-describe('buildSummary (spec "每次运行恰好落入一个可见结果", task 2.5)', () => {
+describe('buildSummary (spec "every run lands in exactly one visible outcome", task 2.5)', () => {
   const base = {
     imageCommit: 'deadbeef', imageClaudeCodeVersion: '2.1.281', repoHead: 'abc123',
     mode: 'full', model: 'eu.anthropic.claude-sonnet-5',

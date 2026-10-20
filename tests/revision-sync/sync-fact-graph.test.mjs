@@ -151,7 +151,7 @@ describe('syncFactGraph — non-git directory add/modify/delete are correctly cl
 
     // The deleted file's fact node (and any edges touching it) must be gone
     // from the published graph, not merely absent from the `changed` report
-    // — spec: "删除的文件 SHALL 移除其事实节点与边".
+    // — spec: "a deleted file SHALL remove its fact nodes and edges".
     const graph = readGraph(root);
     expect(findNode(graph, 'standalone')).toBeUndefined();
     expect(graph.nodes.some((n) => n.filePath === 'src/c.ts')).toBe(false);
