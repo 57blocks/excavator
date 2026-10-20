@@ -323,9 +323,9 @@ function runUnits(project, listing) {
 const unit = (document, quote, extra = {}) => ({ document, id: null, title: quote, quote, ...extra });
 
 describe('units: recorded with their place in the document', () => {
-  it('gives each unit its line, its page in a PDF and its occurrences, and counts units per document', () => {
+  it('gives each unit its line and its page in a PDF, and counts units per document', () => {
     const project = readFolder({
-      'uc.md': '# Use cases\nUC-01 Export Medications\nThe provider exports.\nUC-02 Generate hash\nExport Medications again\n',
+      'uc.md': '# Use cases\nUC-01 Export Medications\nThe provider exports.\nUC-02 Generate hash\nExport medications again\n',
       'srs.pdf': '%PDF',
       'other.md': 'Background only.',
       'logo.png': 'png',
@@ -340,15 +340,39 @@ describe('units: recorded with their place in the document', () => {
     expect(result.stdout).toBe('doc-map: 4 units from 2 documents; 1 read documents have none\n');
     const product = readProduct(project);
     expect(product.units).toEqual([
-      { document: 'uc.md', id: 'UC-01', title: 'Export medications', quote: 'Export Medications', line: 2, page: null, occurrences: 2, code: null },
-      { document: 'uc.md', id: 'UC-02', title: 'UC-02 Generate hash', quote: 'UC-02 Generate hash', line: 4, page: null, occurrences: 1, code: null },
-      { document: 'srs.pdf', id: 'UC1', title: 'Complete Assessment', quote: 'Complete Assessment', line: 1, page: 2, occurrences: 1, code: null },
-      { document: 'srs.pdf', id: 'UC2', title: 'UC2: Manage', quote: 'UC2: Manage', line: 2, page: 3, occurrences: 1, code: null },
+      { document: 'uc.md', id: 'UC-01', title: 'Export medications', quote: 'Export Medications', line: 2, page: null, code: null },
+      { document: 'uc.md', id: 'UC-02', title: 'UC-02 Generate hash', quote: 'UC-02 Generate hash', line: 4, page: null, code: null },
+      { document: 'srs.pdf', id: 'UC1', title: 'Complete Assessment', quote: 'Complete Assessment', line: 1, page: 2, code: null },
+      { document: 'srs.pdf', id: 'UC2', title: 'UC2: Manage', quote: 'UC2: Manage', line: 2, page: 3, code: null },
     ]);
     expect(product.counts.units).toBe(4);
     expect(product.documents.map((row) => [row.path, row.units])).toEqual([
       ['logo.png', null], ['other.md', 0], ['srs.pdf', 2], ['uc.md', 2],
     ]);
+  });
+
+  it('refuses a quote that occurs more than once, and places it once carried on into the unit\'s own text', () => {
+    const project = readFolder({ 'uc.md': [
+      'Contents', 'UC-01 Export Medications\t2', 'A. Instructor', 'UC-01 Export Medications', 'The provider exports.',
+      'Roster', 'View the roster.', 'Options', 'B. Assistant', 'Roster', 'View the roster.', 'Assign Students', '',
+    ].join('\n') });
+    const before = readFileSync(join(project, '.excavator', 'doc-map.json'), 'utf-8');
+    const repeated = runUnits(project, { units: [
+      unit('uc.md', 'UC-01 Export Medications'), unit('uc.md', 'Roster\nView the roster.'),
+    ] });
+    expect(repeated.status).toBe(1);
+    expect(repeated.stderr.split('\n').slice(1).filter(Boolean)).toEqual([
+      '  units[0]: quote occurs 2 times in "uc.md"; carry it on into the unit\'s own text until it occurs once',
+      '  units[1]: quote occurs 2 times in "uc.md"; carry it on into the unit\'s own text until it occurs once',
+    ]);
+    expect(readFileSync(join(project, '.excavator', 'doc-map.json'), 'utf-8')).toBe(before);
+    const carried = runUnits(project, { units: [
+      unit('uc.md', 'UC-01 Export Medications The provider exports.'),
+      unit('uc.md', 'Roster View the roster. Options'),
+      unit('uc.md', 'Roster View the roster. Assign Students'),
+    ] });
+    expect(carried.status, carried.stderr).toBe(0);
+    expect(readProduct(project).units.map((recorded) => recorded.line)).toEqual([4, 6, 10]);
   });
 
   it('records an empty listing as zero units, and a new read leaves the units unlisted again', () => {
@@ -372,7 +396,7 @@ describe('units: the fixed normalization', () => {
       unit('a.md', 'The provider\'s "action plan" - review... final ABC caf\u00e9 zerowidth'),
     ] });
     expect(result.status, result.stderr).toBe(0);
-    expect(readProduct(project).units[0]).toMatchObject({ line: 1, occurrences: 1 });
+    expect(readProduct(project).units[0]).toMatchObject({ line: 1 });
   });
 
   it('keeps case, and does not match a quote with a word changed', () => {

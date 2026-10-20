@@ -83,7 +83,7 @@ For each unit give:
 - document: the document path exactly as listed above;
 - id: the document's own identifier for the unit, copied exactly (such as "UC-01" or "3.2.1"), or null when it has none. Leave out a separate word before it that only names its kind: from "Flow A" give "A";
 - title: a short name of the function in <language>. When the unit's heading is in <language>, use the heading's own words; otherwise translate it, keeping product, feature and module names as the document writes them. Say nothing the unit's own text does not say;
-- quote: a passage copied exactly from the text file that starts at the unit's heading (or, when it has none, at the first sentence that names the function), at most about 200 characters. Never start it in the text before the unit. No two units of a document may have the same quote: when the heading's words occur again in the document, carry the quote on from the heading into the unit's own first sentence. Copy it character by character. Do not fix spelling, spacing or case, and do not join text from two places.
+- quote: a passage copied exactly from the text file that starts at the unit's heading (or, when it has none, at the first sentence that names the function), at most about 200 characters. Never start it in the text before the unit. A quote must occur only once in its document: when the heading's words occur again in the document (in a table of contents, a reference, or another section with the same heading), carry the quote on from the heading into the unit's own text until it occurs once. Copy it character by character. Do not fix spelling, spacing or case, and do not join text from two places.
 
 Write {"units": [ ... ]} as JSON to $DATA/doc-map/units-batch-<N>.json, the units in the order of the documents above and of their text. Then reply with one line per document, "<document path>: <number of units>", and nothing else.
 ```
@@ -98,7 +98,8 @@ Write {"units": [ ... ]} as JSON to $DATA/doc-map/units-batch-<N>.json, the unit
 2. A non-zero exit records nothing and prints every problem, one line per unit (`units[<i>]: <reason>`). Fix each one in `$DATA/doc-map/units.json`, reading that unit's text file to find the passage:
    - `quote not in`: copy the passage from the text file exactly; when the document has no such passage, delete the unit;
    - `id ... is not in`: write the identifier exactly as the text has it, or `null` when the text has none;
-   - `repeats`: two units name the same id or quote. Keep one when they are the same unit; when they are two units, carry each quote on from its heading into that unit's own first sentence, never back into the text before it;
+   - `quote occurs <n> times`: the quote's words occur elsewhere in the document too, such as in a table of contents or in another section with the same heading. Carry it on from the unit's heading into the unit's own text until it occurs once; when the unit's text is word for word the same as another unit's, carry it on into the line that follows the unit. Never start it earlier;
+   - `repeats`: two units name the same id or quote. Keep one when they are the same unit; when they are two units, carry each quote on from its heading into that unit's own text, never back into the text before it;
    - a document that `is not in the product` or is not `read`: use the document path as the product lists it, or delete the unit.
 
    Never write a quote or an id that is not in the text to make a unit pass. Run `units` again. After three runs that still fail, delete the units that still fail, run it once more, and keep the number you deleted and their reasons for the report.

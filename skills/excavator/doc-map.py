@@ -28,13 +28,14 @@ text directory is replaced on every run. The product is
 `units` reads the units a model listed from those texts,
 `{ "units": [ { "document", "id", "title", "quote" } ] }`, and checks each:
 the document was read, the quote is in its text, the id (when not null) is in
-its text, and no id or quote repeats within a document. Quote and text are
-compared after one fixed normalization (NFKC; soft hyphens and zero-width
-characters dropped; curly quotes, dashes and the ellipsis folded to ASCII;
-every run of white space made one space); case is kept. If any unit fails,
+its text, the quote occurs only once in that text, and no id or quote
+repeats within a document. Quote and text are compared after one fixed
+normalization (NFKC; soft hyphens and zero-width characters dropped; curly
+quotes, dashes and the ellipsis folded to ASCII; every run of white space
+made one space); case is kept. If any unit fails,
 every failure is printed and the product is left as it was; otherwise the
-units go into the product, each with the line (and, in a PDF, the page) of
-its quote's first occurrence and the number of occurrences.
+units go into the product, each with the line (and, in a PDF, the page)
+where its quote is.
 
 `link` reads the code a model tied each unit to,
 `{ "links": [ { "unit", "status", "evidence": [ { "file", "code" } ], "searched" } ] }`,
@@ -598,9 +599,13 @@ def check_units(listing, rows, data_dir):
                 seen[(document, "id", id_key)] = at
         if not quote_key:
             continue
-        found = compared.find(quote_key)
+        found, count = _occurrences(compared, quote_key)
         if found == -1:
             problems.append(f"{where}: quote not in {_short(document)}: {_short(quote)}")
+            continue
+        if count > 1:
+            problems.append(
+                f"{where}: quote occurs {count} times in {_short(document)}; carry it on into the unit's own text until it occurs once")
             continue
         if (document, "quote", quote_key) in seen:
             problems.append(f"{where}: quote repeats units[{seen[(document, 'quote', quote_key)]}]")
@@ -611,7 +616,6 @@ def check_units(listing, rows, data_dir):
             "document": document, "id": unit_id, "title": title, "quote": quote,
             "line": text.count("\n", 0, origin) + 1,
             "page": text.count("\f", 0, origin) + 1 if row["format"] == "pdf" else None,
-            "occurrences": compared.count(quote_key),
             "code": None,
         })
     return units, problems

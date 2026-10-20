@@ -25,7 +25,8 @@
   - `code`（项目根与基线）；
   - `counts.found`、`counts.notFound`、`counts.notChecked`；
   - 每条功能的 `code`（状态、证据、搜过的内容）。
-  - 重新 `read` 或 `units` 会把这些字段清回 `null`。格式名不变，字段只增不减。
+  - 重新 `read` 或 `units` 会把这些字段清回 `null`。格式名不变。
+- `units` 改为拒收在文档里出现不止一次的引文：第一步记下的 `line` 是引文第一次出现的行，引文在目录或逐字相同的小节里先出现时，行范围会落在别处。子代理把引文延续到功能自己的文字，直到只出现一次；功能的 `occurrences` 恒为 1，从产物里去掉。
 - skill `/excavator-doc-map` 在列出功能之后多一步「对到代码」：
   - 按功能分批，每批派一个子代理；
   - 子代理拿到功能的编号、标题和它在文档文本里的行范围，在项目源码里搜索、读代码，写出对应清单；
@@ -49,6 +50,6 @@
 
 ## Impact
 
-- 修改：`skills/excavator/doc-map.py`（新子命令、产物字段）、`skills/excavator-doc-map/SKILL.md`（新步骤与报告）、`README.md`（这条命令的说明）。
+- 修改：`skills/excavator/doc-map.py`（新子命令、产物字段、引文只出现一次）、`skills/excavator-doc-map/SKILL.md`（新步骤与报告）、`README.md`（这条命令的说明）。
 - 测试：`tests/skill/test_doc_map.test.mjs` 增加 `link` 的单测，`tests/skill/test_doc_map_skill_contract.test.mjs` 增加分批与报告查询的契约测试。
 - 不改其它 skill、脚本和产物。

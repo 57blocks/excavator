@@ -19,9 +19,13 @@
 - [x] 4.1 `SKILL.md`：新增第 5 步「复核」（分批命令、复核子代理提示词、合并成 `checks.json`、重写对应清单、再运行 `link`）；第 4 步规则加「文本只是提到、或写明是两回事的代码不算」；报告加复核的计数与没留下的证据；第 4 部分的固定写法提到复核。验证：契约测试
 - [x] 4.2 契约测试：复核分批命令的批次与证据行、合并时漏判与非法判定记为 `none`、重写对应清单（只留 `does`、全去掉落 `not-checked`、`not-found` 原样）、报告查询、固定写法过自检；关键规则的变异各自变红。验证：`pnpm vitest run tests/skill/test_doc_map_skill_contract.test.mjs` 全绿
 
-## 5. 验收与归档（commit：`docs(openspec): record doc-map-link acceptance and archive`）
+## 5. 引文只出现一次（commit：`fix(doc-map): require each quote to occur once`）
 
-- [ ] 5.1 先验装置：改坏真实对应清单里的几处证据，`link` 全部报出
-- [ ] 5.2 真实模型运行：maui-app 标定，然后 go-multirepo、sakai、病历系统；陷阱文档必须是 `not-found`；记花费、轮数、时长、三种状态的计数
-- [ ] 5.3 精度抽查（复核之后，错归属必须为 0）、`not-found` 重搜与复核去掉的证据逐条看（漏判与去错照实记）
-- [ ] 5.4 全量门在分离检出里跑；验收记录写进 design.md，同步主规格并归档
+- [x] 5.1 `doc-map.py units`：引文在文档里出现不止一次时报出次数，不写入；产物去掉 `occurrences`。`SKILL.md` 第 2 步提示词写明引文只出现一次，第 3 步加这条报错的改法（延续到功能自己的文字；逐字相同时延续到这一节之后的一行）。验证：`tests/skill/test_doc_map.test.mjs` 与契约测试全绿，去掉检查的变异变红
+
+## 6. 验收与归档（commit：`docs(openspec): record doc-map-link acceptance and archive`）
+
+- [ ] 6.1 先验装置：改坏真实对应清单里的几处证据，`link` 全部报出
+- [ ] 6.2 真实模型运行：maui-app 标定，然后 go-multirepo、sakai、病历系统；陷阱文档必须是 `not-found`；记花费、轮数、时长、三种状态的计数
+- [ ] 6.3 精度抽查（复核之后，错归属必须为 0）、`not-found` 重搜与复核去掉的证据逐条看（漏判与去错照实记）
+- [ ] 6.4 全量门在分离检出里跑；验收记录写进 design.md，同步主规格并归档

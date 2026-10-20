@@ -166,14 +166,16 @@ describe('excavator-doc-map skill: each rule in its step', () => {
     expect(prompt).toContain('Never start it in the text before the unit.');
     expect(prompt).toContain('- title: a short name of the function in <language>. When the unit\'s heading is in <language>, use the heading\'s own words; otherwise translate it, keeping product, feature and module names as the document writes them. Say nothing the unit\'s own text does not say;');
     expect(prompt).toContain('Leave out a separate word before it that only names its kind: from "Flow A" give "A";');
-    expect(prompt).toContain('when the heading\'s words occur again in the document, carry the quote on from the heading into the unit\'s own first sentence.');
+    expect(prompt).toContain('A quote must occur only once in its document: when the heading\'s words occur again in the document (in a table of contents, a reference, or another section with the same heading), carry the quote on from the heading into the unit\'s own text until it occurs once.');
     expect(prompt).toContain('Write {"units": [ ... ]} as JSON to $DATA/doc-map/units-batch-<N>.json');
     expect(step(2)).toContain('`<N>` is the batch number written with three digits (`001`), so the files sort in batch order,');
   });
 
   it('step 3 never lets a fix invent text, and keeps the deleted units for the report', () => {
     expect(step(3)).toContain('Never write a quote or an id that is not in the text to make a unit pass.');
-    expect(step(3)).toContain('carry each quote on from its heading into that unit\'s own first sentence, never back into the text before it');
+    expect(step(3)).toContain('carry each quote on from its heading into that unit\'s own text, never back into the text before it');
+    expect(step(3)).toContain('- `quote occurs <n> times`: the quote\'s words occur elsewhere in the document too');
+    expect(step(3)).toContain('when the unit\'s text is word for word the same as another unit\'s, carry it on into the line that follows the unit. Never start it earlier;');
     expect(step(3)).toContain('keep the number you deleted and their reasons for the report');
   });
 
