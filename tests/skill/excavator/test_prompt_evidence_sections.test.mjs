@@ -12,6 +12,10 @@
  * necessarily an append. The baseline lives here rather than behind a git
  * ref so the check needs no branch and no network fetch, and it can never
  * silently skip.
+ *
+ * The one change allowed above the appended sections is a listed rewrite:
+ * the check puts each rewrite's original text back before hashing, so the
+ * frozen baseline stays UA's own bytes and any other edit still fails.
  */
 import { describe, expect, it } from 'vitest';
 import { createHash } from 'node:crypto';
@@ -31,6 +35,11 @@ const ADDITIVE_ONLY_BASELINES = [
     path: 'agents/excavator-file-analyzer.md',
     bytes: 34886,
     sha256: '872620f1344acf255469d14c4569ee2900bcf7bcd8385fad37a7612575d00301',
+    // the example Chinese tags, written in English: no Chinese characters in prompt prose
+    rewrites: [{
+      now: '(e.g., Chinese tags for "entry point" or "utility function")',
+      was: '(e.g., Chinese tags like "\u5165\u53e3\u70b9", "\u5de5\u5177\u51fd\u6570")',
+    }],
   },
 ];
 
@@ -45,8 +54,13 @@ const fileAnalyzer = readRepoFile('agents/excavator-file-analyzer.md');
 const domainAnalyzer = readRepoFile('agents/excavator-domain-analyzer.md');
 
 describe('UA prompt files are only ever appended to', () => {
-  it.each(ADDITIVE_ONLY_BASELINES)('$path: the frozen baseline is a byte-exact prefix', ({ path, bytes, sha256 }) => {
-    const current = readFileSync(resolve(repoRoot, path));
+  it.each(ADDITIVE_ONLY_BASELINES)('$path: the frozen baseline is a byte-exact prefix', ({ path, bytes, sha256, rewrites = [] }) => {
+    let text = readFileSync(resolve(repoRoot, path), 'utf-8');
+    for (const { now, was } of rewrites) {
+      expect(text.split(now), `${path} carries the rewrite once: ${now}`).toHaveLength(2);
+      text = text.replace(now, () => was);
+    }
+    const current = Buffer.from(text, 'utf-8');
 
     expect(current.length).toBeGreaterThan(bytes);
     const prefixHash = createHash('sha256').update(current.subarray(0, bytes)).digest('hex');

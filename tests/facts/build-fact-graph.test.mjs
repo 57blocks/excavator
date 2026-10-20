@@ -419,7 +419,7 @@ describe('computeFactsDigest — record-by-record hash, byte-identical to the jo
   const cases = {
     'empty arrays': { nodes: [], edges: [], coverage: {}, gaps: [] },
     'nested unsorted keys and unicode': {
-      nodes: [{ z: 1, id: 'function:src/a.ts:run', summary: '处理订单 😀', lineRange: [1, 2] }, { id: 'file:src/a.ts' }],
+      nodes: [{ z: 1, id: 'function:src/a.ts:run', summary: '\u5904\u7406\u8ba2\u5355 😀', lineRange: [1, 2] }, { id: 'file:src/a.ts' }],
       edges: [{ type: 'calls', source: 'a', target: 'b', evidence: [{ line: 3, file: 'src/a.ts' }] }],
       coverage: { files: 2, byLanguage: { ts: { parsed: 2, files: 2 } } },
       gaps: [{ kind: 'k', count: 1, samples: ['x'] }],

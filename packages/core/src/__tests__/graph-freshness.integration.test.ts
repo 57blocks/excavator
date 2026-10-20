@@ -521,7 +521,7 @@ describe(
   });
 
   it("preserves spaces and non-ASCII characters in changed paths", async () => {
-    const specialPath = "src/space name-文件.ts";
+    const specialPath = "src/space name-\u6587\u4ef6.ts";
     const { repoDir, baseline } = createRepository({
       [specialPath]: "export const value = 1;\n",
     });

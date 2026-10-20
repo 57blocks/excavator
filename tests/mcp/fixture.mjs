@@ -61,7 +61,7 @@ export function makeMcpFixture({ escapedDataDir = false } = {}) {
     { id: IDS.orphan, name: 'orphan', type: 'function', filePath: 'src/orphan.ts', lineRange: [1, 1] },
   ];
   const noncanonical = entry(hashByPath.get('src/noncanonical.ts'));
-  noncanonical.summary = '移除本地条目。';
+  noncanonical.summary = '\u79fb\u9664\u672c\u5730\u6761\u76ee\u3002';
   const cache = {
     version: '2.0.0',
     contentLanguage: 'en',

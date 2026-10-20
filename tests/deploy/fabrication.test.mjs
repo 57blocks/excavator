@@ -23,7 +23,7 @@ function mkTmp(prefix) {
 // Pure checkFabrication: five visible outcomes (task 2.4).
 // ---------------------------------------------------------------------------
 
-describe('checkFabrication (pure, design D4 "独立复核", task 2.4)', () => {
+describe('checkFabrication (pure, design D4 "independent re-check", task 2.4)', () => {
   const cleanGraph = { project: { verification: 'verified' }, nodes: [{ verification: 'verified' }], edges: [] };
   const cleanReport = { issues: [] };
 

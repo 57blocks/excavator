@@ -42,7 +42,7 @@ describe('resolveExpectedAgentIds (task 2.2)', () => {
   });
 });
 
-describe('checkLoad (task 2.2, design D4 "加载" / O3)', () => {
+describe('checkLoad (task 2.2, design D4 "load" / O3)', () => {
   it('passes the positive sample (real neutral-cwd probe shape, sanitized)', () => {
     const result = check('init-good.json');
     expect(result.ok).toBe(true);

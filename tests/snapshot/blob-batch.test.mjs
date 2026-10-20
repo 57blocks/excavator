@@ -45,7 +45,7 @@ beforeEach(() => {
   git(root, ['init', '-q']);
   writeFileSync(join(root, 'empty.txt'), Buffer.alloc(0));
   writeFileSync(join(root, 'binary.bin'), Buffer.from([0, 1, 2, 0, 255, 0, 10, 13, 0]));
-  writeFileSync(join(root, 'unicode.txt'), '中文字符串 emoji 🚀🎉 更多内容\n', 'utf-8');
+  writeFileSync(join(root, 'unicode.txt'), '\u4e2d\u6587\u5b57\u7b26\u4e32 emoji 🚀🎉 \u66f4\u591a\u5185\u5bb9\n', 'utf-8');
   writeFileSync(join(root, 'large.txt'), patternBytes(1_200_000)); // > default pipe read chunk (64KB)
   writeFileSync(join(root, 'dup1.txt'), 'duplicate content\n');
   writeFileSync(join(root, 'dup2.txt'), 'duplicate content\n'); // same oid as dup1.txt
@@ -236,7 +236,7 @@ describe('blob-batch-worker — strict framing (design D1 risk mitigation)', () 
     // A fake `git` on PATH that deliberately desyncs `cat-file --batch`'s
     // framing: a correct `<oid> blob <size>\n` header and exactly `size`
     // bytes of content, but the byte immediately after is 'X' instead of
-    // the '\n' git always appends. This is the exact "帧格式严格" risk
+    // the '\n' git always appends. This is the exact "strict frame format" risk
     // design.md calls out — the worker must fail loudly here rather than
     // silently swallowing the last content byte as if it were framing.
     const fakeGitDir = mkdtempSync(join(tmpdir(), 'excavator-fake-git-'));

@@ -16,8 +16,9 @@ import {
 } from '../../skills/excavator/product-serialization.mjs';
 
 // ---------------------------------------------------------------------------
-// DEFAULT_LIMIT_CHARS — Requirement "整文档产物报告序列化余量": the ceiling SHALL
-// come from the runtime itself, MUST NOT be written as a literal constant.
+// DEFAULT_LIMIT_CHARS — Requirement "serialization headroom for whole-document
+// product reports": the ceiling SHALL come from the runtime itself, MUST NOT be
+// written as a literal constant.
 // ---------------------------------------------------------------------------
 describe('DEFAULT_LIMIT_CHARS', () => {
   it('reads buffer.constants.MAX_STRING_LENGTH, not a hardcoded number', () => {
@@ -52,7 +53,7 @@ describe('computeSerializedLength — matches JSON.stringify(v) and JSON.stringi
     ['valid surrogate pair (emoji)', '😀 emoji'],
     ['lone high surrogate', '\uD800 lone-high'],
     ['lone low surrogate', '\uDC00 lone-low'],
-    ['multi-byte BMP characters', '中文字符串'],
+    ['multi-byte BMP characters', '\u4e2d\u6587\u5b57\u7b26\u4e32'],
     ['empty array', []],
     ['empty object', {}],
     ['flat array', [1, 2, 3]],

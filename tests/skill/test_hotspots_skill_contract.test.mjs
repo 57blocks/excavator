@@ -414,44 +414,47 @@ describe('excavator-hotspots skill: agrees with the script', () => {
   });
 
   it('the advice check catches advice and passes the residual assumptions as they stand', () => {
-    const grep = bashBlocks(rawStep(4)).map((block) => block.trim()).find((block) => block.startsWith('grep '));
+    const command = bashBlocks(rawStep(4)).map((block) => block.trim()).find((block) => block.startsWith('python3 - "$DATA/hotspots-report.md"'));
+    // the lines the check prints; a check that does not run fails here rather than passing the text
     const check = (text) => {
       const report = join(fixture.dir, '.excavator/hotspots-report.md');
       writeFileSync(report, text);
-      return spawnSync('sh', ['-c', grep.replaceAll('"$DATA/hotspots-report.md"', JSON.stringify(report))], { encoding: 'utf-8' });
+      const result = spawnSync('sh', ['-c', command.replaceAll('"$DATA/hotspots-report.md"', JSON.stringify(report))], { encoding: 'utf-8' });
+      expect(result.status, result.stderr).toBe(0);
+      return result.stdout;
     };
-    expect(check(`${product().residualAssumptions.join('\n')}\n`).status).toBe(1);
+    expect(check(`${product().residualAssumptions.join('\n')}\n`)).toBe('');
     // the words step 4 tells the report to give as they stand pass the check
     const fixedWords = [...step.get(4).matchAll(/words:? "([^"]+)"/g)].map((match) => match[1]);
     expect(fixedWords.length).toBeGreaterThanOrEqual(3);
-    expect(check(`${fixedWords.join('\n')}\n`).status, fixedWords.join('\n')).toBe(1);
+    expect(check(`${fixedWords.join('\n')}\n`), fixedWords.join('\n')).toBe('');
     // so do the sentences that say where the groups came from, and chat's words for a group
     const quoted = [...step.get(4).split('5. Changes by feature.')[1].split('6. Changes by year')[0].matchAll(/"([^"]+)"/g)].map((match) => match[1]);
     expect(quoted).toHaveLength(3);
     const chatWords = [...flat(section).matchAll(/"(A group counts only[^"]+)"/g)].map((match) => match[1]);
     expect(chatWords).toHaveLength(1);
-    expect(check(`${[...quoted, ...chatWords].join('\n')}\n`).status).toBe(1);
-    for (const whole of ['These are the whole feature\'s changes.', 'The entire feature changed 40 times.', '这是整个功能的改动。']) {
-      expect(check(`${whole}\n`).stdout, whole).not.toBe('');
+    expect(check(`${[...quoted, ...chatWords].join('\n')}\n`)).toBe('');
+    for (const whole of ['These are the whole feature\'s changes.', 'The entire feature changed 40 times.', '\u8fd9\u662f\u6574\u4e2a\u529f\u80fd\u7684\u6539\u52a8\u3002']) {
+      expect(check(`${whole}\n`), whole).not.toBe('');
     }
-    for (const advice of ['You should refactor src/b.js.', 'Consider splitting it.', 'We recommend more tests.', '建议拆分这个文件。', '这个目录应该重构。']) {
-      expect(check(`${advice}\n`).stdout, advice).not.toBe('');
+    for (const advice of ['You should refactor src/b.js.', 'Consider splitting it.', 'We recommend more tests.', '\u5efa\u8bae\u62c6\u5206\u8fd9\u4e2a\u6587\u4ef6\u3002', '\u8fd9\u4e2a\u76ee\u5f55\u5e94\u8be5\u91cd\u6784\u3002']) {
+      expect(check(`${advice}\n`), advice).not.toBe('');
     }
-    for (const cause of ['src/b.js depends on docs/readme.md.', 'A change in x causes changes in y.', 'x calls y.', 'b.js 依赖 readme.md。', '改 a 导致要改 b。']) {
-      expect(check(`${cause}\n`).stdout, cause).not.toBe('');
+    for (const cause of ['src/b.js depends on docs/readme.md.', 'A change in x causes changes in y.', 'x calls y.', 'b.js \u4f9d\u8d56 readme.md\u3002', '\u6539 a \u5bfc\u81f4\u8981\u6539 b\u3002']) {
+      expect(check(`${cause}\n`), cause).not.toBe('');
     }
-    for (const unused of ['src/old has dead code.', 'These files are unused.', 'The module is no longer used.', 'lib/x.js is obsolete.', 'An abandoned directory.', 'It is safe to delete.', '这个目录已废弃。', '这些是死代码。']) {
-      expect(check(`${unused}\n`).stdout, unused).not.toBe('');
+    for (const unused of ['src/old has dead code.', 'These files are unused.', 'The module is no longer used.', 'lib/x.js is obsolete.', 'An abandoned directory.', 'It is safe to delete.', '\u8fd9\u4e2a\u76ee\u5f55\u5df2\u5e9f\u5f03\u3002', '\u8fd9\u4e9b\u662f\u6b7b\u4ee3\u7801\u3002']) {
+      expect(check(`${unused}\n`), unused).not.toBe('');
     }
     for (const owner of ['src is at risk.', 'A risky directory.', 'The bus factor is 1.', 'A single point of failure.', 'A knowledge silo.', 'One author owns src.', 'src is owned by one author.',
-      'Ownership is narrow.', 'The experts on src.', 'One author is responsible for src.', 'One author knows src.', '这个目录有风险。', '这是单点。', '知识孤岛。', '一个人负责。', '只有专家。', '只有一个人熟悉。', '一个人掌握。']) {
-      expect(check(`${owner}\n`).stdout, owner).not.toBe('');
+      'Ownership is narrow.', 'The experts on src.', 'One author is responsible for src.', 'One author knows src.', '\u8fd9\u4e2a\u76ee\u5f55\u6709\u98ce\u9669\u3002', '\u8fd9\u662f\u5355\u70b9\u3002', '\u77e5\u8bc6\u5b64\u5c9b\u3002', '\u4e00\u4e2a\u4eba\u8d1f\u8d23\u3002', '\u53ea\u6709\u4e13\u5bb6\u3002', '\u53ea\u6709\u4e00\u4e2a\u4eba\u719f\u6089\u3002', '\u4e00\u4e2a\u4eba\u638c\u63e1\u3002']) {
+      expect(check(`${owner}\n`), owner).not.toBe('');
     }
     // paths that carry such words in real repositories: legacy, stale, risk and owner are left out of the check for them
     for (const plain of ['gradle/dependencies.gradle and pom.xml changed together in 5 commits.', 'src/FooCallback.java changed in 4 commits.',
       'db/migration/V5__legacy-templates.sql last changed in 2021.', '.github/workflows/stale.yml changed in 3 commits.',
       'web/flags-risk-count.js changed in 3 commits.', 'api/src/main/java/model/Owner.java changed in 2 commits.', '.github/CODEOWNERS changed in 4 commits.']) {
-      expect(check(`${plain}\n`).status, plain).toBe(1);
+      expect(check(`${plain}\n`), plain).toBe('');
     }
   });
 });
@@ -519,7 +522,7 @@ describe('excavator-chat: change-history questions', () => {
     expect(s.split('5. **Answer with the product\'s numbers.**')[1]).toContain('**A share is a count of commits**: say only that authors made a share of the commits; never say that one person or many own, know, maintain or are responsible for a part, together or alone.');
     expect(s).toContain('for which parts, use the directories query and show every row it prints after its first line');
     expect(s).toContain('Files have no shares: for a file, give its `authors` and `commits`.');
-    expect(s).toContain('Give a directory\'s shares in these words: "The author with the most commits made <topAuthorShare as a percentage> of its <commitsByPeople> commits by people, and <authorsFor80Percent> authors made at least 80% of them." When asked whether one person makes most of the changes, answer from `topAuthorShare` alone: above 0.5 in the words "the author with the most commits made more than half of them", below 0.5 "less than half of them", and 0.5 "about half of them" (the share is rounded). Do not call the shares concentrated, spread, high or low, and do not say whether the other authors are few or many: the numbers are the answer. Say nothing else about the authors: not that one person or a group maintains, owns or knows the part, in any language (维护, 负责, 拥有, 熟悉).');
+    expect(s).toContain('Give a directory\'s shares in these words: "The author with the most commits made <topAuthorShare as a percentage> of its <commitsByPeople> commits by people, and <authorsFor80Percent> authors made at least 80% of them." When asked whether one person makes most of the changes, answer from `topAuthorShare` alone: above 0.5 in the words "the author with the most commits made more than half of them", below 0.5 "less than half of them", and 0.5 "about half of them" (the share is rounded). Do not call the shares concentrated, spread, high or low, and do not say whether the other authors are few or many: the numbers are the answer. Say nothing else about the authors: not that one person or a group maintains, owns or knows the part, in any language (\u7ef4\u62a4, \u8d1f\u8d23, \u62e5\u6709, \u719f\u6089).');
     expect(s).toContain('The product holds no names: when asked who, say it has only shares and counts, and never look a name up with git or in any file.');
     expect(s).toContain('A share is a count of commits: never say that someone owns, knows, maintains or is responsible for a part, or that it is at risk, a silo or dependent on one person.');
     expect(s).toContain('For which features change most, or how much one feature changed, use the groups query, then the `<group>` query with a name from its rows.');

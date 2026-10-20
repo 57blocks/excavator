@@ -53,7 +53,8 @@
  *     knowledge-graph.jsonl, a leftover knowledge-graph.json next to it is
  *     deleted
  *
- * Contract: openspec/specs/fact-graph/spec.md (requirement "图谱持久化不受单字符串上限约束且往返无损")
+ * Contract: openspec/specs/fact-graph/spec.md (requirement "graph persistence
+ * is not bound by the single-string limit and round-trips losslessly")
  */
 
 import { readFileSync, realpathSync, renameSync, rmSync, writeFileSync } from 'node:fs';

@@ -12,7 +12,7 @@
  * Every decision is a pure function of plain data (stream-json events,
  * JSON products, env values) so the checking logic itself can be proven
  * against synthetic samples before it is ever pointed at a real run (design
- * "验收 Oracle" O3). The only impure pieces are: reading env/files, spawning
+ * "acceptance oracle" O3). The only impure pieces are: reading env/files, spawning
  * `git`/`lazy-analyze.mjs`/`validate-graph.mjs`/`claude`, and writing
  * `summary.json`. `main()` is a thin wrapper around those pure functions.
  *
@@ -87,8 +87,8 @@ export const DEFAULTS = Object.freeze({
   maxContradicted: 0,
   timeoutMinutes: 180,
   // Grace period between SIGINT and SIGTERM when the wall-clock timeout
-  // fires (design D4: "先发 SIGINT，宽限后再发 SIGTERM"). Design does not
-  // pin a number; 30s gives an orderly shutdown a real chance while staying
+  // fires (design D4: "send SIGINT first, then SIGTERM after a grace
+  // period"). Design does not pin a number; 30s gives an orderly shutdown a real chance while staying
   // short enough not to matter next to a 180-minute default timeout.
   timeoutGraceSeconds: 30,
 });
@@ -104,7 +104,8 @@ export const EXIT_CODES = Object.freeze({
 // ---------------------------------------------------------------------------
 // Config parsing (task 2.1). Pure: takes an env-like object, returns either
 // `{ ok: true, config }` or `{ ok: false, errors: string[] }`. Every error
-// names the offending parameter, per the "运行参数不全时先失败" requirement.
+// names the offending parameter, per the "fail first when run parameters are
+// incomplete" requirement.
 // ---------------------------------------------------------------------------
 
 function requireNonEmpty(value, name, errors) {
@@ -205,8 +206,8 @@ export function parseConfig(env = {}) {
 
 // ---------------------------------------------------------------------------
 // Expected agent set (task 2.2). The agent list is read from the checkout at
-// runtime, never hardcoded (design D4: "期望集合在运行时从
-// /opt/excavator/agents/*.md 的文件名读出").
+// runtime, never hardcoded (design D4: "the expected set is read at run time
+// from the file names of /opt/excavator/agents/*.md").
 // ---------------------------------------------------------------------------
 
 /** @param {string[]} filenames @returns {string[]} sorted `excavator:<stem>` ids */
@@ -257,7 +258,7 @@ export function parseStreamEvents(rawText) {
 // ---------------------------------------------------------------------------
 // Load check (task 2.2). Reads the `system/init` event and judges whether
 // the Excavator plugin, its MCP server, its full agent roster and the
-// subagent-dispatch tool are all present (design D4 "加载").
+// subagent-dispatch tool are all present (design D4 "load").
 // ---------------------------------------------------------------------------
 
 export function checkLoad({ initEvent, expectedAgentIds, expectedPluginPath }) {
@@ -314,7 +315,7 @@ export function checkLoad({ initEvent, expectedAgentIds, expectedPluginPath }) {
 
 // ---------------------------------------------------------------------------
 // Run check (task 2.3). Reads the terminal `result` event plus the claude
-// process's own exit status (design D4 "运行").
+// process's own exit status (design D4 "run").
 // ---------------------------------------------------------------------------
 
 const API_ERROR_MESSAGE_MAX = 400;
@@ -389,7 +390,7 @@ export function checkRun({ resultEvent, processExitCode, timedOut, spawnError })
 // ---------------------------------------------------------------------------
 // Product check (task 2.3). Compares the produced meta.json/knowledge-graph
 // against the HEAD recorded before the run and the requested model (design
-// D4 "产物").
+// D4 "product").
 // ---------------------------------------------------------------------------
 
 export function checkProduct({ graph, meta, expectedHead, expectedModel }) {
@@ -504,7 +505,7 @@ export function checkFabrication({ validationReport, validatedGraph, maxContradi
   let fabricationOk = false;
   if (graphOk) {
     // A skipped summary-verification pass MUST NOT be counted as zero
-    // fabrication (spec: "核验被跳过" scenario).
+    // fabrication (spec: "verification skipped" scenario).
     fabricationOk = contradictedCount <= maxContradicted && !verificationSkipped;
     if (contradictedCount > maxContradicted) {
       reasons.push(`${contradictedCount} contradicted node/edge(s) exceed the threshold of ${maxContradicted}`);
@@ -553,9 +554,9 @@ function checkSummary(check, okKey, extra = () => ({})) {
 }
 
 /**
- * Assemble `summary.json`'s content. Every field the spec's "每次运行恰好
- * 落入一个可见结果" requirement lists is present for every non-config-error
- * run: image identity, repo HEAD, mode, model, one verdict+reason per check,
+ * Assemble `summary.json`'s content. Every field the spec's "every run lands
+ * in exactly one visible outcome" requirement lists is present for every
+ * non-config-error run: image identity, repo HEAD, mode, model, one verdict+reason per check,
  * the four token kinds, estimated cost, fabrication/unverified counts, and
  * a cache-read warning.
  */

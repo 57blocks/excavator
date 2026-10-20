@@ -42,7 +42,7 @@ describe('merge-subdomain-graphs.py reads and writes the knowledge-graph.jsonl c
     writeKnowledgeGraph(join(dataDir, KNOWLEDGE_GRAPH_FILE), {
       version: '1.0.0',
       project: { name: 'demo', languages: ['ts'], frameworks: [], description: '', analyzedAt: 't', gitCommitHash: '' },
-      nodes: [node('file:a.ts', { summary: '处理订单 😀' })],
+      nodes: [node('file:a.ts', { summary: '\u5904\u7406\u8ba2\u5355 😀' })],
       edges: [],
       layers: [],
       tour: [],
@@ -58,7 +58,7 @@ describe('merge-subdomain-graphs.py reads and writes the knowledge-graph.jsonl c
 
     const merged = readKnowledgeGraph(join(dataDir, KNOWLEDGE_GRAPH_FILE));
     expect(merged.nodes.map((n) => n.id).sort()).toEqual(['file:a.ts', 'file:b.ts']); // legacy file never read
-    expect(merged.nodes.find((n) => n.id === 'file:a.ts').summary).toBe('处理订单 😀');
+    expect(merged.nodes.find((n) => n.id === 'file:a.ts').summary).toBe('\u5904\u7406\u8ba2\u5355 😀');
     expect(merged.edges).toEqual([expect.objectContaining({ source: 'file:a.ts', target: 'file:b.ts', type: 'imports' })]);
     const header = JSON.parse(readFileSync(join(dataDir, KNOWLEDGE_GRAPH_FILE), 'utf-8').split('\n')[0]);
     expect(header).toMatchObject({ record: 'header', format: KNOWLEDGE_GRAPH_FORMAT });

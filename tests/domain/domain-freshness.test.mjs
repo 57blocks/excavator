@@ -88,7 +88,7 @@ describe('annotateDomain stamps domain freshness keys at the top level', () => {
   it('rejects Chinese model prose before producing an annotated domain candidate', () => {
     const candidate = domain([{
       id: 'domain:leave', type: 'domain', name: 'Leave',
-      summary: '处理请假请求。', tags: ['leave'], complexity: 'simple',
+      summary: '\u5904\u7406\u8bf7\u5047\u8bf7\u6c42\u3002', tags: ['leave'], complexity: 'simple',
     }]);
     const { annotated, report } = annotateDomain({
       domainGraph: candidate, knowledgeGraph: knowledge(), sourceRevision: 'directory:test',
@@ -105,11 +105,11 @@ describe('annotateDomain stamps domain freshness keys at the top level', () => {
 
   it('accepts and preserves an exact non-English fact-node span', () => {
     const graph = knowledge();
-    graph.nodes[0].id = 'function:src/a.ts:提交请假';
-    graph.nodes[0].name = '提交请假';
+    graph.nodes[0].id = 'function:src/a.ts:\u63d0\u4ea4\u8bf7\u5047';
+    graph.nodes[0].name = '\u63d0\u4ea4\u8bf7\u5047';
     const candidate = domain([{
-      id: 'step:leave:submit', type: 'step', name: '提交请假',
-      summary: 'Calls 提交请假 after validation.', tags: ['leave'], complexity: 'simple',
+      id: 'step:leave:submit', type: 'step', name: '\u63d0\u4ea4\u8bf7\u5047',
+      summary: 'Calls \u63d0\u4ea4\u8bf7\u5047 after validation.', tags: ['leave'], complexity: 'simple',
       filePath: 'src/a.ts', lineRange: [1, 1],
     }]);
     const { annotated, report } = annotateDomain({
@@ -117,15 +117,15 @@ describe('annotateDomain stamps domain freshness keys at the top level', () => {
     });
 
     expect(report.status).toBe('accepted');
-    expect(annotated.nodes[0].name).toBe('提交请假');
-    expect(annotated.nodes[0].summary).toBe('Calls 提交请假 after validation.');
+    expect(annotated.nodes[0].name).toBe('\u63d0\u4ea4\u8bf7\u5047');
+    expect(annotated.nodes[0].summary).toBe('Calls \u63d0\u4ea4\u8bf7\u5047 after validation.');
     expect(annotated.languageAudit.accepted).toEqual(expect.arrayContaining([
       expect.objectContaining({
-        fieldPath: 'nodes[0].name', maskedSourceSpans: ['提交请假'],
+        fieldPath: 'nodes[0].name', maskedSourceSpans: ['\u63d0\u4ea4\u8bf7\u5047'],
         valueDigest: expect.stringMatching(/^sha256:[a-f0-9]{64}$/),
       }),
       expect.objectContaining({
-        fieldPath: 'nodes[0].summary', maskedSourceSpans: ['提交请假'],
+        fieldPath: 'nodes[0].summary', maskedSourceSpans: ['\u63d0\u4ea4\u8bf7\u5047'],
         valueDigest: expect.stringMatching(/^sha256:[a-f0-9]{64}$/),
       }),
     ]));
@@ -175,7 +175,7 @@ describe('annotateDomain stamps domain freshness keys at the top level', () => {
     writeKnowledgeGraph(join(dataDir, 'knowledge-graph.jsonl'), knowledge());
     writeFileSync(join(intermediate, 'domain-analysis.json'), JSON.stringify(domain([{
       id: 'domain:leave', type: 'domain', name: 'Leave',
-      summary: '处理请假请求。', tags: ['leave'], complexity: 'simple',
+      summary: '\u5904\u7406\u8bf7\u5047\u8bf7\u6c42\u3002', tags: ['leave'], complexity: 'simple',
     }])), 'utf-8');
 
     const result = spawnSync(process.execPath, [ANNOTATE_DOMAIN, root], { encoding: 'utf-8', cwd: repoRoot });
@@ -220,7 +220,7 @@ describe('isDomainGraphUsable — pure gate', () => {
       edges: [],
     });
     graph.languageAudit = auditDomainGraphFields({ domainGraph: graph });
-    graph.project.description = '处理请求。';
+    graph.project.description = '\u5904\u7406\u8bf7\u6c42\u3002';
 
     expect(isDomainGraphUsable({
       domainGraph: graph, currentSourceRevision, currentFactDigest,
