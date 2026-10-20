@@ -74,7 +74,7 @@ List each document's units by the document's own structure:
 - A unit is a use case, a user story, a functional requirement, or a section describing one function of the system: something it does for a user or for another system.
 - When the document numbers its use cases or requirements (such as UC-01, FR-7 or 3.2.1), list one unit per number at the level where the document lists them. Steps, flows, business rules and acceptance criteria inside a use case belong to it; they are not units of their own.
 - When it does not number them, list one unit per section (a part with its own heading) that describes a function. A section that only groups other sections is not a unit itself. Bold labels, list items, steps and branches inside a section belong to its unit; they are not units of their own.
-- Not units: background, purpose, scope, glossary, actors, data definitions, non-functional requirements, installation, configuration, development or coding guides, release notes, test plans, change logs, tables of contents. A document with none of the above units gets none.
+- Not units: background, purpose, scope, glossary, actors, data definitions, non-functional requirements, installation, configuration, build, test and deployment pipelines and their environments, development or coding guides, release notes, test plans, change logs, tables of contents. A document with none of the above units gets none.
 
 For each unit give:
 - document: the document path exactly as listed above;
