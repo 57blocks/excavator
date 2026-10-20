@@ -133,6 +133,8 @@ describe('excavator-hotspots skill: each rule in its step', () => {
     expect(s).toContain('Never say this project is not a Git repository.');
     expect(s).not.toContain('the project is not a Git repository and holds no member repositories');
     expect(s).toContain("Say first that this repo's counts are lower bounds");
+    expect(s).toContain('**`bots`:**');
+    expect(s).toContain('They are left out of every directory\'s `concentration`; commits by other automated accounts count as commits by people.');
   });
 
   it('step 3 reads the rankings, the conflicts and the residual assumptions', () => {
@@ -142,6 +144,8 @@ describe('excavator-hotspots skill: each rule in its step', () => {
     expect(s).toContain(`jq -r '.pairs[:20][] | [.together, .shareOfA, .shareOfB, .a, .b] | @tsv' "$HS"`);
     expect(s).toContain('leaving out every pair with a path that looks like a test by its name');
     expect(s).toContain('`commitsByYear` (directories only)');
+    expect(s).toContain('`concentration` (directories only)');
+    expect(s).toContain('Files have no shares.');
     expect(s).toContain('they add up to `commits`');
     expect(s).toContain('Files have no yearly counts.');
     expect(s).toContain('select(.a == $p or .b == $p)');
@@ -174,7 +178,7 @@ describe('excavator-hotspots skill: each rule in its step', () => {
     expect(s).toContain("**A shallow repo's counts are lower bounds.**");
     expect(s).toContain('**A pair is a count, not a link.**');
     expect(s).toContain('Never say that one file depends on, calls, uses or causes changes in the other');
-    expect(s).toContain('7. Files changed together: the top pairs, then the top pairs where no path looks like a test by its name');
+    expect(s).toContain('8. Files changed together: the top pairs, then the top pairs where no path looks like a test by its name');
     expect(s).toContain('5. Changes by year: the project\'s commits in each year, saying the last year runs only to its last counted commit and the first is usually partial');
     expect(s).toContain('6. Least recently changed: how many files had their last change in each year');
     expect(s).toContain('Show the rows as the query prints them, from the first, without leaving any out between those you show.');
@@ -188,7 +192,12 @@ describe('excavator-hotspots skill: each rule in its step', () => {
     expect(s).toContain('Show the second list whole, every row its query prints, and do not describe how it differs from the first');
     expect(s).toContain('introduced with the words "pairs where neither path looks like a test by its name (a filter on names, not on content)"');
     expect(s).toContain('**Never edit, move or delete project files, and never run a `git` command that changes the repository.**');
-    expect(s).toContain('9. The residual assumptions, every one, as the product states them.');
+    expect(s).toContain('7. Shares by author: introduce it with the words "Shares of the commits by people in the window; the product counts commits, not knowledge of the code, and holds no names." Then the project\'s line from the first shares query, then the directories query: its first line (the rule and how many directories meet it) and every row it prints');
+    expect(s).toContain('**A share is a count of commits, not of knowledge.**');
+    expect(s).toContain('say how many commits by bots were left out');
+    expect(s).toContain('Do not call a share concentrated, spread, high or low, or say whether a part is changed mostly by one person: the numbers are the answer.');
+    expect(s).toContain('Never name an author or look one up (no `git log`, `git shortlog` or `git blame` for names), never say that someone owns, knows, maintains or is responsible for a part, and never call a part at risk, a single point of failure, a silo or dependent on one person.');
+    expect(s).toContain('10. The residual assumptions, every one, as the product states them.');
     expect(s).toContain('Then reply with the report\'s path and the line `advice check: 0 lines`, and do not summarize the report');
   });
 
@@ -204,7 +213,7 @@ describe('excavator-hotspots skill: agrees with the script', () => {
 
   it('names only header, file and directory fields the product has', () => {
     const p = product();
-    const header = /`(sourceRevision|sourceKind|historyAvailable|noHistory|repos|window|counts|coChange|conservation|residualAssumptions)`/g;
+    const header = /`(sourceRevision|sourceKind|historyAvailable|noHistory|repos|window|counts|coChange|bots|conservation|residualAssumptions)`/g;
     for (const [, key] of skill.matchAll(header)) expect(p).toHaveProperty(key);
     for (const key of ['path', 'head', 'shallow', 'boundaryCommits', 'earliestVisibleCommit']) expect(p.repos[0]).toHaveProperty(key);
     for (const key of ['changesRead', 'attributed', 'outsideSelection']) expect(p.conservation).toHaveProperty(key);
@@ -212,7 +221,12 @@ describe('excavator-hotspots skill: agrees with the script', () => {
     for (const key of ['filesWithHistory', 'filesWithoutHistory', 'binaryFiles', 'filesWithLineageConflicts']) expect(p.counts).toHaveProperty(key);
     const fileFields = ['score', 'commits', 'authors', 'lines', 'added', 'removed', 'lastChanged', 'lineageConflicts', 'path'];
     for (const key of fileFields) expect(p.files[0]).toHaveProperty(key);
-    for (const key of ['score', 'commits', 'authors', 'files', 'lines', 'path', 'commitsByYear']) expect(p.directories[0]).toHaveProperty(key);
+    for (const key of ['score', 'commits', 'authors', 'files', 'lines', 'path', 'commitsByYear', 'concentration']) expect(p.directories[0]).toHaveProperty(key);
+    for (const key of ['emailMarker', 'commits']) expect(p.bots).toHaveProperty(key);
+    for (const text of [skill, section]) {
+      for (const [, key] of text.matchAll(/\.concentration\.(\w+)/g)) expect(p.directories[0].concentration).toHaveProperty(key);
+      for (const [, key] of text.matchAll(/\.bots\.(\w+)/g)) expect(p.bots).toHaveProperty(key);
+    }
     for (const key of ['maxFilesPerCommit', 'minTogether', 'commitsOverLimit', 'pairsBelowMinimum']) expect(p.coChange).toHaveProperty(key);
     expect(p.pairs.length).toBeGreaterThan(0);
     for (const key of ['together', 'shareOfA', 'shareOfB', 'a', 'b']) expect(p.pairs[0]).toHaveProperty(key);
@@ -282,9 +296,41 @@ describe('excavator-hotspots skill: agrees with the script', () => {
     ]);
   });
 
+  it('the shares queries print the project line, a directory\'s line, and the directories by share after their rule and count', () => {
+    const run = (text, productPath, marker, path = fixture.product) => {
+      const line = jqLines(bashBlocks(text)).find((recipe) => recipe.includes(marker));
+      const result = spawnSync('sh', ['-c', line.replaceAll(productPath, JSON.stringify(path)).replaceAll('<dir>', 'src')], { encoding: 'utf-8' });
+      expect(result.status, result.stderr).toBe(0);
+      return result.stdout.trim().split('\n');
+    };
+    const p = product();
+    const root = p.directories.find((row) => row.path === '.').concentration;
+    expect(root).toEqual({ commitsByPeople: 5, topAuthorShare: 0.8, authorsFor80Percent: 1 });
+    expect(run(rawStep(3), '"$HS"', '.bots.commits as $b')).toEqual([
+      `commits by people: 5; by bots: ${p.bots.commits}; top author share: 0.8; authors for 80%: 1`,
+    ]);
+    const src = p.directories.find((row) => row.path === 'src');
+    expect(run(section, '.excavator/hotspots.json', 'authors (every distinct email, bots included)')).toEqual([
+      `commits: ${src.commits}; by people: ${src.concentration.commitsByPeople}; by bots: 0; top author share: ${src.concentration.topAuthorShare}; authors for 80%: ${src.concentration.authorsFor80Percent}; authors (every distinct email, bots included): ${src.authors}`,
+    ]);
+    // a directory whose files all sit in one subdirectory (a) is shown as that subdirectory (a/b); below 20 and without history are left out
+    const dir = (path, files, commits, share, k, people = commits) => ({ path, files, commits, concentration: { commitsByPeople: people, topAuthorShare: share, authorsFor80Percent: k } });
+    const shares = join(fixture.dir, '.excavator/shares.json');
+    writeFileSync(shares, JSON.stringify({ directories: [
+      dir('.', 20, 200, 0.3, 4), dir('a', 3, 30, 0.5, 2), dir('a/b', 3, 30, 0.5, 2), dir('c', 2, 19, 1, 1), dir('d', 5, 42, 0.9, 1, 40),
+      dir('e', 4, 25, 0.5, 1), { path: 'f', files: 1, commits: null, concentration: null }, dir('g', 2, 20, 0.5, 2), dir('h', 6, 30, 0.5, 2, 0),
+    ] }));
+    for (const [text, productPath] of [[rawStep(3), '"$HS"'], [section, '.excavator/hotspots.json']]) {
+      expect(run(text, productPath, '--argjson min 20', shares)).toEqual([
+        'directories with at least 20 commits by people (a directory whose files all sit in one subdirectory is shown as that subdirectory): 4',
+        '0.9\t1\t40\t42\td', '0.5\t1\t25\t25\te', '0.5\t2\t30\t30\ta/b', '0.5\t2\t20\t20\tg',
+      ]);
+    }
+  });
+
   it('runs every jq recipe of steps 2 and 3 on the product', () => {
     const recipes = jqLines([...bashBlocks(rawStep(2)), ...bashBlocks(rawStep(3))]);
-    expect(recipes.length).toBeGreaterThanOrEqual(11);
+    expect(recipes.length).toBeGreaterThanOrEqual(13);
     for (const line of recipes) runRecipe(line, '"$HS"');
   });
 
@@ -296,6 +342,10 @@ describe('excavator-hotspots skill: agrees with the script', () => {
       return spawnSync('sh', ['-c', grep.replaceAll('"$DATA/hotspots-report.md"', JSON.stringify(report))], { encoding: 'utf-8' });
     };
     expect(check(`${product().residualAssumptions.join('\n')}\n`).status).toBe(1);
+    // the words step 4 tells the report to give as they stand pass the check
+    const fixedWords = [...step.get(4).matchAll(/words:? "([^"]+)"/g)].map((match) => match[1]);
+    expect(fixedWords.length).toBeGreaterThanOrEqual(3);
+    expect(check(`${fixedWords.join('\n')}\n`).status, fixedWords.join('\n')).toBe(1);
     for (const advice of ['You should refactor src/b.js.', 'Consider splitting it.', 'We recommend more tests.', '建议拆分这个文件。', '这个目录应该重构。']) {
       expect(check(`${advice}\n`).stdout, advice).not.toBe('');
     }
@@ -305,9 +355,14 @@ describe('excavator-hotspots skill: agrees with the script', () => {
     for (const unused of ['src/old has dead code.', 'These files are unused.', 'The module is no longer used.', 'lib/x.js is obsolete.', 'An abandoned directory.', 'It is safe to delete.', '这个目录已废弃。', '这些是死代码。']) {
       expect(check(`${unused}\n`).stdout, unused).not.toBe('');
     }
-    // paths that carry such words in real repositories: legacy and stale are left out of the check for them
+    for (const owner of ['src is at risk.', 'A risky directory.', 'The bus factor is 1.', 'A single point of failure.', 'A knowledge silo.', 'One author owns src.', 'src is owned by one author.',
+      'Ownership is narrow.', 'The experts on src.', 'One author is responsible for src.', 'One author knows src.', '这个目录有风险。', '这是单点。', '知识孤岛。', '一个人负责。', '只有专家。', '只有一个人熟悉。', '一个人掌握。']) {
+      expect(check(`${owner}\n`).stdout, owner).not.toBe('');
+    }
+    // paths that carry such words in real repositories: legacy, stale, risk and owner are left out of the check for them
     for (const plain of ['gradle/dependencies.gradle and pom.xml changed together in 5 commits.', 'src/FooCallback.java changed in 4 commits.',
-      'db/migration/V5__legacy-templates.sql last changed in 2021.', '.github/workflows/stale.yml changed in 3 commits.']) {
+      'db/migration/V5__legacy-templates.sql last changed in 2021.', '.github/workflows/stale.yml changed in 3 commits.',
+      'web/flags-risk-count.js changed in 3 commits.', 'api/src/main/java/model/Owner.java changed in 2 commits.', '.github/CODEOWNERS changed in 4 commits.']) {
       expect(check(`${plain}\n`).status, plain).toBe(1);
     }
   });
@@ -319,6 +374,7 @@ describe('excavator-chat: change-history questions', () => {
     expect(stepOne).toContain('**Change-history questions do not need the graph.**');
     expect(stepOne).toContain('or about which files changed in the same commits as a file (what usually changes along with it)');
     expect(stepOne).toContain('or about how changes spread over the years and which parts have not changed for a long time');
+    expect(stepOne).toContain('or about whether a part is changed mostly by one or a few people, is answered');
     expect(stepOne.indexOf('Change-history questions')).toBeLessThan(stepOne.indexOf('knowledge-graph.jsonl'));
   });
 
@@ -341,7 +397,7 @@ describe('excavator-chat: change-history questions', () => {
     const s = flat(section);
     expect(s).toContain('its counts are lower bounds');
     expect(s).toContain('`historyAvailable` false: every history field is `null`, so do not rank; say why from `noHistory.reason`.');
-    expect(s).toContain('jq \'{sourceKind, historyAvailable, noHistory, repos, window, counts, coChange, conservation}\'');
+    expect(s).toContain('jq \'{sourceKind, historyAvailable, noHistory, repos, window, counts, coChange, bots, conservation}\'');
     expect(s).toContain('gives this directory\'s numbers in the directory row `noHistory.pathInRepository`');
     expect(s).toContain('Never say such a project is not a Git repository.');
     expect(s).not.toContain('there is no Git history');
@@ -370,6 +426,14 @@ describe('excavator-chat: change-history questions', () => {
     expect(s).toContain('Describe none of the files or directories: not what they are (early, one-off, legacy, leftover, a script, a test, a document), not why they have not changed, and not how the counts by year move.');
     expect(s).toContain('For files with history but 0 commits counted, give the number on the first line of the files query in these words: "<N> files have history but 0 commits counted; the product does not say why."');
     expect(s).toContain('**Not changed is not unused**: change history does not show whether code is used, so never call a file or directory unused, dead, obsolete, abandoned or safe to delete because it has not changed');
+    expect(s).toContain('For whether a part is changed mostly by one or a few people, use the `<dir>` shares query');
+    // the answer step repeats the rule, where the answer is written
+    expect(s.split('5. **Answer with the product\'s numbers.**')[1]).toContain('**A share is a count of commits**: say only that authors made a share of the commits; never say that one person or many own, know, maintain or are responsible for a part, together or alone.');
+    expect(s).toContain('for which parts, use the directories query and show every row it prints after its first line');
+    expect(s).toContain('Files have no shares: for a file, give its `authors` and `commits`.');
+    expect(s).toContain('Give a directory\'s shares in these words: "The author with the most commits made <topAuthorShare as a percentage> of its <commitsByPeople> commits by people, and <authorsFor80Percent> authors made at least 80% of them." When asked whether one person makes most of the changes, answer from `topAuthorShare` alone: above 0.5 in the words "the author with the most commits made more than half of them", below 0.5 "less than half of them", and 0.5 "about half of them" (the share is rounded). Do not call the shares concentrated, spread, high or low, and do not say whether the other authors are few or many: the numbers are the answer. Say nothing else about the authors: not that one person or a group maintains, owns or knows the part, in any language (维护, 负责, 拥有, 熟悉).');
+    expect(s).toContain('The product holds no names: when asked who, say it has only shares and counts, and never look a name up with git or in any file.');
+    expect(s).toContain('A share is a count of commits: never say that someone owns, knows, maintains or is responsible for a part, or that it is at risk, a silo or dependent on one person.');
   });
 
   it('the freshness helper and the product agree on the revision of an unchanged project', () => {
@@ -379,7 +443,7 @@ describe('excavator-chat: change-history questions', () => {
 
   it('runs the lookup recipes on the product', () => {
     const recipes = jqLines(bashBlocks(section));
-    expect(recipes.length).toBeGreaterThanOrEqual(9);
+    expect(recipes.length).toBeGreaterThanOrEqual(11);
     for (const line of recipes) runRecipe(line, '.excavator/hotspots.json');
   });
 });

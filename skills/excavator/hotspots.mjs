@@ -37,13 +37,18 @@
  * committer date (hotspots/aggregate.mjs), every year from the product's first
  * counted commit to its last, so the years add up to the row's `commits`.
  *
+ * Shares by author. Each directory row's `concentration` counts its commits by
+ * author, leaving out commits by bots (an author email whose local part ends in
+ * `[bot]`); the header counts those in `bots`, so the root's `commits` is its
+ * `commitsByPeople` plus `bots.commits`. No author name or email is written.
+ *
  * Conservation. Every change (commit x path) read is either attributed to a
  * selected file or counted as outside the selection (deleted, ignored or not
  * selected paths). A mismatch is an Error and nothing is written.
  *
  * Product `.excavator/hotspots.json`
  *   { format, sourceRevision, sourceKind, historyAvailable, noHistory, repos, window,
- *     counts, coChange, conservation, residualAssumptions, files, directories, pairs }
+ *     counts, coChange, bots, conservation, residualAssumptions, files, directories, pairs }
  * `noHistory` is `null` when there is history, else `{ reason, repositoryRoot,
  * pathInRepository }` with `reason` `not-a-repository` or `inside-repository`.
  * `repos` has `{ path, head, shallow, boundaryCommits, earliestVisibleCommit }`
@@ -51,10 +56,13 @@
  * in a multi-repo parent); `window` is `{ since, sinceUtc }`, both `null` without
  * a window. File rows: `{ path, commits, authors, added, removed, lastChanged,
  * lines, score, lineageConflicts }`; directory rows: `{ path, files, lines, commits, authors, added,
- * removed, lastChanged, score, commitsByYear }` with `.` the project root; `commitsByYear` has every
+ * removed, lastChanged, score, commitsByYear, concentration }` with `.` the project root; `commitsByYear` has every
  * year from the product's first to its last counted commit, by the year of the committer date. `coChange` is `{ maxFilesPerCommit,
  * minTogether, commitsCounted, commitsOverLimit, pairsListed, pairsBelowMinimum }`, the
  * counts `null` without history; pair rows: `{ a, b, together, shareOfA, shareOfB }`.
+ * `concentration` is `{ commitsByPeople, topAuthorShare, authorsFor80Percent }`, `null` without
+ * history, the two shares `null` when no commit is by people; `bots` is `{ emailMarker, commits }`,
+ * `commits` `null` without history.
  *
  * Contract: openspec/changes/change-hotspots/specs/change-hotspots/spec.md
  */
@@ -62,7 +70,7 @@
 import { mkdirSync, realpathSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
-import { buildRows } from './hotspots/aggregate.mjs';
+import { BOT_EMAIL_MARKER, buildRows } from './hotspots/aggregate.mjs';
 import { countBlobLines, countBufferLines } from './hotspots/blob-lines.mjs';
 import { MAX_FILES_PER_COMMIT, coChangeWithoutHistory, countCoChanges } from './hotspots/co-change.mjs';
 import { readRepoHistory } from './hotspots/history.mjs';
@@ -89,6 +97,7 @@ const RESIDUAL_ASSUMPTIONS = Object.freeze([
   'Repository-local .git/config and .git/info/attributes still affect rename detection and binary detection.',
   `Commits that changed more than ${MAX_FILES_PER_COMMIT} selected files are not counted for pairs, so files changed together only in such commits are not listed as a pair.`,
   "A commit counts in the year of its committer date as git records it, in the committer's time zone; a rebased or cherry-picked commit counts in the year it was committed again, not the year it was first written.",
+  'Bots are recognized only by an author email whose local part ends in [bot], as GitHub app accounts are; commits by other automated accounts count as commits by people.',
 ]);
 
 /** The UTC instant (epoch milliseconds) that opens a `YYYY-MM-DD` window, or an Error for anything else. */
@@ -142,7 +151,7 @@ export async function buildHotspots(root, { since = null, readHistory = readRepo
   }
 
   const counted = new Map();
-  const ids = { commits: 0, authors: new Map(), years: [] };
+  const ids = { commits: 0, authors: new Map(), years: [], authorOf: [] };
   const histories = new Map();
   const repoRows = [];
   const totals = { changesRead: 0, outsideSelection: 0 };
@@ -175,7 +184,7 @@ export async function buildHotspots(root, { since = null, readHistory = readRepo
     const { lines, binary } = counted.get(path);
     return { path, hasHistory: !looseFiles.has(path), lines: binary ? null : lines };
   });
-  const { files, directories } = buildRows(entries, histories, ids.years);
+  const { files, directories, botCommits } = buildRows(entries, histories, ids);
   const coChange = repos.length > 0 ? countCoChanges(histories) : { header: coChangeWithoutHistory(), pairs: [] };
 
   return {
@@ -193,6 +202,7 @@ export async function buildHotspots(root, { since = null, readHistory = readRepo
       filesWithLineageConflicts: files.filter((row) => row.lineageConflicts > 0).length,
     },
     coChange: coChange.header,
+    bots: { emailMarker: BOT_EMAIL_MARKER, commits: repos.length > 0 ? botCommits : null },
     conservation,
     residualAssumptions: [...RESIDUAL_ASSUMPTIONS],
     files,

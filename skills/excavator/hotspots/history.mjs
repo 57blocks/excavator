@@ -268,11 +268,12 @@ function addChange(files, path, commitId, authorId, commit, record) {
  *   sha: string,                 the commit to read history from (the snapshot's HEAD)
  *   selected: Set<string>,       repo-relative paths of the selected files
  *   sinceMs: number | null,      window start (committer time, epoch milliseconds, inclusive)
- *   ids: { commits: number, authors: Map<string, number>, years: string[] },
+ *   ids: { commits: number, authors: Map<string, number>, years: string[], authorOf: number[] },
  *                                shared across repos so commits and authors are
  *                                distinct per repo yet comparable inside a directory;
  *                                `years[commitId]` is the year of the committer date
- *                                as git prints it, the year `lastChanged` shows
+ *                                as git prints it, the year `lastChanged` shows;
+ *                                `authorOf[commitId]` is the commit's author id
  * }} input
  * @returns {Promise<{
  *   files: Map<string, { commits: Set<number>, authors: Set<number>, changes: number, added: number,
@@ -304,6 +305,7 @@ async function readIsolated({ git, dir, sha, selected, sinceMs, ids }) {
     const email = commit.email.toLowerCase();
     if (!ids.authors.has(email)) ids.authors.set(email, ids.authors.size);
     const authorId = ids.authors.get(email);
+    ids.authorOf[commitId] = authorId;
     const { targets, conflicts } = lineage.step(commit.records);
     commit.records.forEach((record, i) => {
       totals.changesRead += 1;

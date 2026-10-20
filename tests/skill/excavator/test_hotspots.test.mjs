@@ -22,6 +22,7 @@ import {
 import { countBlobLines, countBufferLines } from '../../../skills/excavator/hotspots/blob-lines.mjs';
 import { readRepoHistory } from '../../../skills/excavator/hotspots/history.mjs';
 import { countCoChanges } from '../../../skills/excavator/hotspots/co-change.mjs';
+import { buildRows } from '../../../skills/excavator/hotspots/aggregate.mjs';
 import { createLineage } from '../../../skills/excavator/hotspots/lineage.mjs';
 import { explainNoHistory } from '../../../skills/excavator/hotspots/no-history.mjs';
 
@@ -184,6 +185,7 @@ describe('history source and lineage', () => {
     }]);
     expect(product.window).toEqual({ since: null, sinceUtc: null });
     expect(product.counts).toEqual({ filesWithHistory: 2, filesWithoutHistory: 0, binaryFiles: 0, filesWithLineageConflicts: 0 });
+    expect(product.bots).toEqual({ emailMarker: '[bot]@', commits: 0 });
 
     const assumptions = product.residualAssumptions.join('\n');
     for (const topic of [
@@ -191,6 +193,7 @@ describe('history source and lineage', () => {
       /blank lines and comments/, /rewritten/, /\.git\/config and \.git\/info\/attributes/,
       /more than 30 selected files are not counted for pairs/,
       /year of its committer date as git records it, in the committer's time zone; a rebased or cherry-picked commit counts in the year it was committed again/,
+      /author email whose local part ends in \[bot\].*other automated accounts count as commits by people/,
     ]) {
       expect(assumptions).toMatch(topic);
     }
@@ -759,13 +762,13 @@ describe('counting and ranking', () => {
     const last = '2024-01-03T10:00:00+08:00';
     expect(product.directories).toEqual([
       {
-        path: '.', files: 4, lines: 12, commits: 3, authors: 2, added: 13, removed: 1, lastChanged: last, score: 23, commitsByYear: { 2024: 3 },
+        path: '.', files: 4, lines: 12, commits: 3, authors: 2, added: 13, removed: 1, lastChanged: last, score: 23, commitsByYear: { 2024: 3 }, concentration: { commitsByPeople: 3, topAuthorShare: 0.67, authorsFor80Percent: 2 },
       },
       {
-        path: 'd', files: 3, lines: 11, commits: 3, authors: 2, added: 12, removed: 1, lastChanged: last, score: 22, commitsByYear: { 2024: 3 },
+        path: 'd', files: 3, lines: 11, commits: 3, authors: 2, added: 12, removed: 1, lastChanged: last, score: 22, commitsByYear: { 2024: 3 }, concentration: { commitsByPeople: 3, topAuthorShare: 0.67, authorsFor80Percent: 2 },
       },
       {
-        path: 'd/sub', files: 1, lines: 4, commits: 2, authors: 1, added: 5, removed: 1, lastChanged: last, score: 8, commitsByYear: { 2024: 2 },
+        path: 'd/sub', files: 1, lines: 4, commits: 2, authors: 1, added: 5, removed: 1, lastChanged: last, score: 8, commitsByYear: { 2024: 2 }, concentration: { commitsByPeople: 2, topAuthorShare: 1, authorsFor80Percent: 1 },
       },
     ]);
   });
@@ -792,6 +795,7 @@ describe('no history is visible, never 0', () => {
       maxFilesPerCommit: 30, minTogether: 3, commitsCounted: null, commitsOverLimit: null, pairsListed: null, pairsBelowMinimum: null,
     });
     expect(product.pairs).toEqual([]);
+    expect(product.bots).toEqual({ emailMarker: '[bot]@', commits: null });
     const none = {
       commits: null, authors: null, added: null, removed: null, lastChanged: null, score: null,
     };
@@ -802,8 +806,12 @@ describe('no history is visible, never 0', () => {
       { path: 'empty.txt', ...none, lines: 0, lineageConflicts: 0 },
     ]);
     expect(product.directories).toEqual([
-      { path: '.', files: 4, lines: 5, ...none, commitsByYear: null },
-      { path: 'b', files: 1, lines: 2, ...none, commitsByYear: null },
+      {
+        path: '.', files: 4, lines: 5, ...none, commitsByYear: null, concentration: null,
+      },
+      {
+        path: 'b', files: 1, lines: 2, ...none, commitsByYear: null, concentration: null,
+      },
     ]);
   });
 
@@ -955,9 +963,10 @@ describe('no history is visible, never 0', () => {
         path: 'notes.txt', commits: null, authors: null, added: null, removed: null, lastChanged: null, lines: 4, score: null, lineageConflicts: 0,
       },
     ]);
-    // a directory over both repos: commits are distinct per repo, alice is one author
+    // a directory over both repos: commits are distinct per repo, alice is one author with 3 of the 4
     expect(byPath(product.directories)['.']).toEqual({
       path: '.', files: 3, lines: 11, commits: 4, authors: 2, added: 7, removed: 0, lastChanged: '2024-01-04T10:00:00+08:00', score: 14, commitsByYear: { 2024: 4 },
+      concentration: { commitsByPeople: 4, topAuthorShare: 0.75, authorsFor80Percent: 2 },
     });
     expect(product.conservation).toEqual({ changesRead: 4, attributed: 4, outsideSelection: 0 });
   });
@@ -1011,10 +1020,12 @@ describe('no history is visible, never 0', () => {
     expect(product.counts).toEqual({ filesWithHistory: 3, filesWithoutHistory: 0, binaryFiles: 1, filesWithLineageConflicts: 0 });
     expect(byPath(product.directories)['.']).toEqual({
       path: '.', files: 3, lines: 8, commits: 3, authors: 1, added: 5, removed: 0, lastChanged: '2024-01-03T10:00:00+08:00', score: 14, commitsByYear: { 2024: 3 },
+      concentration: { commitsByPeople: 3, topAuthorShare: 1, authorsFor80Percent: 1 },
     });
     // a directory of nothing but a binary file: its sums have no term, so they are null, not 0
     expect(byPath(product.directories).img).toEqual({
       path: 'img', files: 1, lines: null, commits: 3, authors: 1, added: null, removed: null, lastChanged: '2024-01-03T10:00:00+08:00', score: null, commitsByYear: { 2024: 3 },
+      concentration: { commitsByPeople: 3, topAuthorShare: 1, authorsFor80Percent: 1 },
     });
   });
 });
@@ -1167,7 +1178,85 @@ describe('commits by year', () => {
 
     const product = readProduct(dir, ['--since', '2025-01-01']);
 
-    for (const row of product.directories) expect(row).toMatchObject({ commits: 0, commitsByYear: {} });
+    for (const row of product.directories) {
+      expect(row).toMatchObject({ commits: 0, commitsByYear: {}, concentration: { commitsByPeople: 0, topAuthorShare: null, authorsFor80Percent: null } });
+    }
+    expect(product.bots.commits).toBe(0);
+  });
+});
+
+describe('shares by author', () => {
+  const BOT = '49699333+dependabot[bot]@users.noreply.github.com';
+
+  it('gives the share of the author with the most commits and how few authors make up 80%, counting a commit once per directory', () => {
+    const dir = initRepo('hotspots-shares-');
+    let day = 1;
+    const next = () => `2024-01-${String(day++).padStart(2, '0')}`;
+    // d: alice 6 (each commit changes both files), bob 3, carol 1
+    for (let i = 0; i < 6; i += 1) commit(dir, { when: next(), who: 'alice', files: { 'd/a.txt': lines(i + 1), 'd/b.txt': lines(i + 1) } });
+    for (let i = 0; i < 3; i += 1) commit(dir, { when: next(), who: 'bob', files: { 'd/a.txt': lines(i + 10) } });
+    commit(dir, { when: next(), who: 'carol', files: { 'd/b.txt': lines(20) } });
+    // e: alice 4, bob 4, carol 2, so two authors make exactly 80%
+    for (const [who, times] of [['alice', 4], ['bob', 4], ['carol', 2]]) {
+      for (let i = 0; i < times; i += 1) commit(dir, { when: next(), who, files: { 'e/c.txt': `${who} ${i}\n` } });
+    }
+
+    const product = readProduct(dir);
+    const dirs = byPath(product.directories);
+
+    expect(dirs.d.concentration).toEqual({ commitsByPeople: 10, topAuthorShare: 0.6, authorsFor80Percent: 2 });
+    expect(dirs.e.concentration).toEqual({ commitsByPeople: 10, topAuthorShare: 0.4, authorsFor80Percent: 2 });
+    expect(dirs['.'].concentration).toEqual({ commitsByPeople: 20, topAuthorShare: 0.5, authorsFor80Percent: 2 });
+    for (const row of product.files) expect(row).not.toHaveProperty('concentration');
+  });
+
+  it('leaves commits by bots out of the shares, counts them in the header, and writes no author name or email', () => {
+    const dir = initRepo('hotspots-bots-');
+    for (const day of ['01', '02', '03']) commit(dir, { when: `2024-01-${day}`, who: 'alice', files: { 'd/x.txt': lines(Number(day)) } });
+    // "bot" inside a person's email is not the [bot] marker
+    commit(dir, { when: '2024-01-04', who: 'abbot', email: 'abbot@example.test', files: { 'd/x.txt': lines(9) } });
+    commit(dir, { when: '2024-01-05', who: 'dependabot[bot]', email: BOT, files: { 'deps/pom.xml': lines(1) } });
+    commit(dir, { when: '2024-01-06', who: 'dependabot[bot]', email: BOT, files: { 'deps/pom.xml': lines(2) } });
+
+    const product = readProduct(dir);
+    const dirs = byPath(product.directories);
+
+    expect(product.bots).toEqual({ emailMarker: '[bot]@', commits: 2 });
+    expect(dirs.d).toMatchObject({ commits: 4, concentration: { commitsByPeople: 4, topAuthorShare: 0.75, authorsFor80Percent: 2 } });
+    expect(dirs.deps).toMatchObject({ commits: 2, concentration: { commitsByPeople: 0, topAuthorShare: null, authorsFor80Percent: null } });
+    expect(dirs['.'].commits).toBe(dirs['.'].concentration.commitsByPeople + product.bots.commits);
+    const text = readFileSync(productPath(dir), 'utf-8');
+    for (const identity of ['alice', 'abbot', 'dependabot', 'example.test', 'noreply']) expect(text).not.toContain(identity);
+  });
+
+  /** One directory `d` whose commits are by these emails, one commit each, through the aggregation alone. */
+  function sharesOf(emails) {
+    const ids = { authors: new Map(), years: [], authorOf: [] };
+    emails.forEach((email, commitId) => {
+      if (!ids.authors.has(email)) ids.authors.set(email, ids.authors.size);
+      ids.authorOf[commitId] = ids.authors.get(email);
+      ids.years[commitId] = '2024';
+    });
+    const history = {
+      commits: new Set(emails.keys()), authors: new Set(ids.authorOf), added: 0, removed: 0, binaryChange: false, last: null, lastMs: -Infinity, lineageConflicts: 0,
+    };
+    const { directories, botCommits } = buildRows([{ path: 'd/a.txt', hasHistory: true, lines: 1 }], new Map([['d/a.txt', history]]), ids);
+    return { ...byPath(directories).d.concentration, botCommits };
+  }
+  const repeat = (email, times) => Array(times).fill(email);
+
+  it('rounds the share half up and counts authors until they reach 80% exactly or more', () => {
+    expect(sharesOf(['a@x', 'a@x', 'b@x'])).toEqual({ commitsByPeople: 3, topAuthorShare: 0.67, authorsFor80Percent: 2, botCommits: 0 });
+    // 1/8 = 0.125 rounds up; seven of eight authors make 87.5%, six make 75%
+    expect(sharesOf(['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'].map((name) => `${name}@x`)))
+      .toEqual({ commitsByPeople: 8, topAuthorShare: 0.13, authorsFor80Percent: 7, botCommits: 0 });
+    expect(sharesOf([...repeat('a@x', 8), 'b@x', 'c@x'])).toMatchObject({ topAuthorShare: 0.8, authorsFor80Percent: 1 });
+    expect(sharesOf([...repeat('a@x', 7), 'b@x', 'c@x', 'd@x'])).toMatchObject({ topAuthorShare: 0.7, authorsFor80Percent: 2 });
+  });
+
+  it('gives no share when every commit is by a bot, and counts a marker only at the end of the local part', () => {
+    expect(sharesOf(['ci[bot]@x', 'ci[bot]@x'])).toEqual({ commitsByPeople: 0, topAuthorShare: null, authorsFor80Percent: null, botCommits: 2 });
+    expect(sharesOf(['not[bot]here@x'])).toEqual({ commitsByPeople: 1, topAuthorShare: 1, authorsFor80Percent: 1, botCommits: 0 });
   });
 });
 
