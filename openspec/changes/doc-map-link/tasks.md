@@ -12,7 +12,7 @@
 
 ## 3. found 不再写 searched（commit：`fix(skill): let found links leave out searches`）
 
-- [ ] 3.1 第 4 步子代理的 `found` 形状去掉 `searched`，合并命令把缺的 `searched` 补成空数组。验证：契约测试里不带 `searched` 的 `found` 批次合并后 `link` 通过，缺 `searched` 的 `not-found` 仍被报出
+- [x] 3.1 第 4 步子代理的 `found` 形状去掉 `searched`，合并命令把缺的 `searched` 补成空数组。验证：契约测试里不带 `searched` 的 `found` 批次合并后 `link` 通过，缺 `searched` 的 `not-found` 仍被报出
 
 ## 4. 复核（commit：`feat(skill): check each tie in a clean context`）
 

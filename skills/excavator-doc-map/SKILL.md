@@ -130,14 +130,14 @@ For each unit:
 5. When no place is tied to the unit, its status is "not-found": list in "searched" every search you ran for it (the pattern, and the folders or file types searched), so that a reader can run them again.
 
 Write {"links": [ ... ]} as JSON to $DATA/doc-map/links-batch-<N>.json, one entry per unit in the order above, each in one of these two shapes:
-{"unit": <number>, "status": "found", "evidence": [{"file": "<path>", "code": "<passage>"}], "searched": ["<search>", ...]}
+{"unit": <number>, "status": "found", "evidence": [{"file": "<path>", "code": "<passage>"}]}
 {"unit": <number>, "status": "not-found", "evidence": [], "searched": ["<search>", ...]}
 Then reply with one line per unit, "<number>: <status>", and nothing else.
 ```
 
-3. Merge the batches in order and record them:
+3. Merge the batches in order, giving an entry with no `searched` an empty one, and record them:
    ```bash
-   find "$DATA/doc-map" -maxdepth 1 -name 'links-batch-*.json' | sort | while read -r f; do cat "$f"; done | jq -s '{links: (map(.links) | add // [])}' > "$DATA/doc-map/links.json"
+   find "$DATA/doc-map" -maxdepth 1 -name 'links-batch-*.json' | sort | while read -r f; do cat "$f"; done | jq -s '{links: (map(.links) | add // [] | map(.searched //= []))}' > "$DATA/doc-map/links.json"
    python3 "$DOC_MAP" link "$DATA/doc-map/links.json" "$PROJECT_ROOT"
    ```
 4. A non-zero exit records nothing and prints every problem, one line each (`links[<i>]: <reason>` or `links[<i>].evidence[<j>]: <reason>`). Fix each one in `$DATA/doc-map/links.json`:

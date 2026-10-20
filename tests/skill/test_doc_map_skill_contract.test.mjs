@@ -104,8 +104,8 @@ const fixture = (() => {
     { unit: 3, status: 'not-found', evidence: [], searched: ['grep -ri export src/', 'MedicationExport'] },
   ] }));
   writeFileSync(join(DATA, 'doc-map/links-batch-001.json'), JSON.stringify({ links: [
-    { unit: 1, status: 'found', evidence: [{ file: 'src/orders/PlaceOrder.java', code: 'public void placeOrder(' }], searched: [] },
-    { unit: 2, status: 'found', evidence: [{ file: 'web/assessment.jsp', code: '<form action="complete.do">' }, { file: 'src/Assess.java', code: 'class Assess' }], searched: [] },
+    { unit: 1, status: 'found', evidence: [{ file: 'src/orders/PlaceOrder.java', code: 'public void placeOrder(' }] },
+    { unit: 2, status: 'found', evidence: [{ file: 'web/assessment.jsp', code: '<form action="complete.do">' }, { file: 'src/Assess.java', code: 'class Assess' }] },
   ] }));
   const mergeLinks = sh(lineStarting(4, 'find "$DATA/doc-map" -maxdepth 1 -name \'links-batch-*.json\' |'), vars);
   expect(mergeLinks.status, mergeLinks.stderr).toBe(0);
@@ -176,6 +176,7 @@ describe('excavator-doc-map skill: each rule in its step', () => {
       'Give at most 5 places, the starting point first.',
       'When no place is tied to the unit, its status is "not-found": list in "searched" every search you ran for it (the pattern, and the folders or file types searched), so that a reader can run them again.',
       'Write {"links": [ ... ]} as JSON to $DATA/doc-map/links-batch-<N>.json',
+      '{"unit": <number>, "status": "found", "evidence": [{"file": "<path>", "code": "<passage>"}]} {"unit": <number>, "status": "not-found", "evidence": [], "searched": ["<search>", ...]}',
     ]) expect(prompt).toContain(rule);
     expect(step(4)).toContain('`<N>` is the batch number written with three digits (`001`).');
     expect(step(4)).toContain('When a subagent has returned and its batch file is missing, dispatch that batch once more.');
@@ -220,6 +221,26 @@ describe('excavator-doc-map skill: the commands run', () => {
     expect(sh(lineStarting(4, 'find "$DATA/doc-map" -maxdepth 1 -name \'links-batch-*.json\' |'), { DATA }).status).toBe(0);
     const merged = JSON.parse(readFileSync(join(DATA, 'doc-map/links.json'), 'utf-8'));
     expect(merged.links.map((link) => link.batch)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]);
+  });
+
+  it('gives a merged entry with no searches an empty list, so a found one passes and a not-found one is still printed', () => {
+    const project = tempDir('doc-map-contract-searched-');
+    const DATA = join(project, '.excavator');
+    mkdirSync(join(DATA, 'doc-map'), { recursive: true });
+    writeFileSync(join(DATA, 'doc-map/links-batch-001.json'), JSON.stringify({ links: [
+      { unit: 1, status: 'found', evidence: [{ file: 'src/orders/PlaceOrder.java', code: 'public void placeOrder(' }] },
+      { unit: 3, status: 'not-found', evidence: [] },
+      { unit: 4, status: 'not-found', evidence: [], searched: ['Enroll'] },
+    ] }));
+    expect(sh(lineStarting(4, 'find "$DATA/doc-map" -maxdepth 1 -name \'links-batch-*.json\' |'), { DATA }).status).toBe(0);
+    const merged = JSON.parse(readFileSync(join(DATA, 'doc-map/links.json'), 'utf-8'));
+    expect(merged.links.map((link) => link.searched)).toEqual([[], [], ['Enroll']]);
+    const before = readFileSync(fixture.vars.DM, 'utf-8');
+    const link = sh(`python3 "$DOC_MAP" link "${join(DATA, 'doc-map/links.json')}" "$PROJECT_ROOT"`, fixture.vars);
+    expect(link.status).toBe(1);
+    expect(link.stderr + link.stdout).toContain('links[1]: not-found needs the searches that were run');
+    expect(link.stderr + link.stdout).not.toContain('links[0]');
+    expect(readFileSync(fixture.vars.DM, 'utf-8')).toBe(before);
   });
 
   it('plans link batches of 10 units, each with the lines of its text up to its document\'s next unit', () => {
