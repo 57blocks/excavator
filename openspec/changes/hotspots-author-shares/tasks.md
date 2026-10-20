@@ -7,7 +7,7 @@
 
 ## 2. skill 与 chat 读作者份额（commit：`feat(skill): report the share of commits by author`）
 
-- [x] 2.1 `skills/excavator-hotspots/SKILL.md`：头部查询加 `bots`；第 3 步加查询（全项目份额、某一深度上人的提交不少于 20 次的目录按份额排）；字段说明加 `concentration` 与 `bots`；第 4 步汇报加一项与规则；自检 grep 加用词
+- [x] 2.1 `skills/excavator-hotspots/SKILL.md`：头部查询加 `bots`；第 3 步加查询（全项目份额、人的提交不少于 20 次的目录按份额排，各深度都算，单子目录链只显示最深一层）；字段说明加 `concentration` 与 `bots`；第 4 步汇报加一项与规则；自检 grep 加用词
 - [x] 2.2 `skills/excavator-chat/SKILL.md`：头部查询加 `bots`；改动历史一节加目录份额查询与规则（只算人的提交，文件没有份额，没有名字也不查名字）
 - [x] 2.3 契约测试：新查询在产物上跑得出结果，第一行先打印阈值与目录数；字段名都在产物里；自检能抓新用词，残余假设与语料路径能通过
 
