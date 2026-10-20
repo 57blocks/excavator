@@ -72,7 +72,11 @@ RESIDUAL_ASSUMPTIONS = [
     "Text comes from the file's own text: images, scanned pages and embedded objects are not read, so a "
     "scanned PDF is empty.",
     "A .docx is read from its main body only: headers, footers, footnotes, comments and deleted revisions are left out.",
-    "HTML text leaves out script and style content but keeps text that a style would hide.",
+    "HTML text leaves out script and style content and image alt text, but keeps text that a style would hide.",
+    "Numbers a format generates rather than stores (Word and OpenDocument list and heading numbering, HTML "
+    "ordered-list numbers) are not in the text, so a unit numbered that way has no id.",
+    ".doc text is what textutil or antiword gives; textutil keeps Word field instructions (such as HYPERLINK, "
+    "PAGEREF or a citation manager's records) in the text.",
     "PDF text is in pdftotext's reading order; text set in several columns may interleave.",
     "The format of a file is decided by its extension.",
 ]

@@ -260,6 +260,7 @@ describe('read: product and reruns', () => {
     expect(product.docsRoot).toBe(docs);
     expect(product.units).toBeNull();
     expect(product.residualAssumptions.join(' ')).toContain("Which passages are units is the model's judgement");
+    expect(product.residualAssumptions.join(' ')).toContain('are not in the text, so a unit numbered that way has no id');
     expect(product.documents.map((row) => row.path)).toEqual(['a/z.md', 'b.md']);
     expect(Object.keys(product.documents[0])).toEqual([
       'path', 'format', 'bytes', 'sha256', 'status', 'reason', 'text', 'chars', 'lines', 'pages', 'units',
