@@ -1,9 +1,9 @@
 ## 1. 脚本按分组计数（commit：`feat(hotspots): count changes per feature group`）
 
-- [ ] 1.1 `hotspots/groups.mjs`：读分组文件并校验格式，把每组的路径对到选中文件（文件或末尾带 `/` 的目录），记下没对上的路径
-- [ ] 1.2 `aggregate.mjs`：组行复用目录行的计数，按分组文件的顺序输出；头部四个数
-- [ ] 1.3 `hotspots.mjs`：命令行加 `--groups <file>`，产物加 `featureGroups` 与 `groups`，残余假设加一条，更新文件头注释
-- [ ] 1.4 单测：组内去重、目录路径、不带 `/` 不当目录、重复列出、跨组、没对上、空 `paths`、格式错误不写产物、没有历史、跨仓、没传分组文件
+- [x] 1.1 `hotspots/groups.mjs`：读分组文件并校验格式，把每组的路径对到选中文件（文件或末尾带 `/` 的目录），记下没对上的路径
+- [x] 1.2 `aggregate.mjs`：组行复用目录行的计数，按分组文件的顺序输出；头部四个数
+- [x] 1.3 `hotspots.mjs`：命令行加 `--groups <file>`，产物加 `featureGroups` 与 `groups`，残余假设加一条，更新文件头注释
+- [x] 1.4 单测：组内去重、目录路径、不带 `/` 不当目录、重复列出、跨组、没对上、空 `paths`、格式错误不写产物、没有历史、跨仓、没传分组文件
 
 ## 2. skill 与 chat 读分组（commit：`feat(skill): report changes by feature group`）
 

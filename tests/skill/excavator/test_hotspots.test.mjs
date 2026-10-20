@@ -186,6 +186,8 @@ describe('history source and lineage', () => {
     expect(product.window).toEqual({ since: null, sinceUtc: null });
     expect(product.counts).toEqual({ filesWithHistory: 2, filesWithoutHistory: 0, binaryFiles: 0, filesWithLineageConflicts: 0 });
     expect(product.bots).toEqual({ emailMarker: '[bot]@', commits: 0 });
+    expect(product.featureGroups).toBeNull();
+    expect(product.groups).toEqual([]);
 
     const assumptions = product.residualAssumptions.join('\n');
     for (const topic of [
@@ -194,6 +196,7 @@ describe('history source and lineage', () => {
       /more than 30 selected files are not counted for pairs/,
       /year of its committer date as git records it, in the committer's time zone; a rebased or cherry-picked commit counts in the year it was committed again/,
       /author email whose local part ends in \[bot\].*other automated accounts count as commits by people/,
+      /feature group counts only the files its groups file lists.*nothing checks that those files make up a feature/,
     ]) {
       expect(assumptions).toMatch(topic);
     }
@@ -1257,6 +1260,168 @@ describe('shares by author', () => {
   it('gives no share when every commit is by a bot, and counts a marker only at the end of the local part', () => {
     expect(sharesOf(['ci[bot]@x', 'ci[bot]@x'])).toEqual({ commitsByPeople: 0, topAuthorShare: null, authorsFor80Percent: null, botCommits: 2 });
     expect(sharesOf(['not[bot]here@x'])).toEqual({ commitsByPeople: 1, topAuthorShare: 1, authorsFor80Percent: 1, botCommits: 0 });
+  });
+});
+
+describe('feature groups', () => {
+  /** A groups file outside the project, so it is never one of the selected files. */
+  function groupsFile(value) {
+    const path = join(tempDir('hotspots-groups-file-'), 'groups.json');
+    writeFileSync(path, typeof value === 'string' ? value : JSON.stringify(value));
+    return path;
+  }
+
+  /** a.js and b.js changed together and apart, three files under src/, and old.js deleted (4 commits, 3 authors). */
+  function groupsFixture() {
+    const dir = initRepo('hotspots-groups-');
+    commit(dir, {
+      when: '2023-01-01',
+      who: 'alice',
+      files: {
+        'a.js': lines(2, 'a'), 'b.js': lines(1, 'b'), 'src/x.js': lines(1, 'x'), 'src/y.js': lines(1, 'y'), 'src/z.js': lines(1, 'z'), 'old.js': lines(1, 'o'), 'other.js': lines(1, 't'),
+      },
+    });
+    commit(dir, { when: '2024-01-02', who: 'bob', files: { 'a.js': lines(3, 'a'), 'b.js': lines(2, 'b') } });
+    commit(dir, { when: '2024-01-03', who: 'alice', files: { 'a.js': lines(4, 'a') } });
+    commit(dir, { when: '2024-01-04', who: 'carol', files: { 'src/x.js': lines(2, 'x') }, remove: ['old.js'] });
+    return dir;
+  }
+
+  const noFiles = {
+    files: 0, lines: null, commits: null, authors: null, added: null, removed: null, lastChanged: null, score: null, commitsByYear: null, concentration: null,
+  };
+  const withoutPath = ({ path, ...counts }) => counts;
+
+  it('counts a commit once per group however many of its listed files it touched, in the groups file\'s order', () => {
+    const dir = groupsFixture();
+    const file = groupsFile({
+      groups: [
+        { name: 'g', paths: ['a.js', 'b.js'] },
+        { name: 'dir', paths: ['src/'] },
+        { name: 'dup', paths: ['src/', 'src/x.js'] },
+        { name: 'h', paths: ['a.js', 'old.js', 'nope/'] },
+        { name: 'bare', paths: ['src'] },
+        { name: 'empty', paths: [] },
+      ],
+    });
+
+    const product = readProduct(dir, ['--groups', file]);
+
+    // a.js has 3 commits and b.js 2; 2 of them are the same commits, so g has 3
+    expect(byPath(product.files)['a.js'].commits + byPath(product.files)['b.js'].commits).toBe(5);
+    const src = withoutPath(byPath(product.directories).src);
+    expect(product.groups).toEqual([
+      {
+        name: 'g', paths: ['a.js', 'b.js'], unmatchedPaths: [], files: 2, lines: 6, commits: 3, authors: 2, added: 6, removed: 0, lastChanged: '2024-01-03T10:00:00+08:00', score: 16,
+        commitsByYear: { 2023: 1, 2024: 2 }, concentration: { commitsByPeople: 3, topAuthorShare: 0.67, authorsFor80Percent: 2 },
+      },
+      // a directory path stands for every selected file below it, counted as the directory is
+      { name: 'dir', paths: ['src/'], unmatchedPaths: [], ...src },
+      // src/x.js listed twice is one file, and its commits count once
+      { name: 'dup', paths: ['src/', 'src/x.js'], unmatchedPaths: [], ...src },
+      // a deleted file and a directory with no selected file are kept, not dropped
+      {
+        name: 'h', paths: ['a.js', 'old.js', 'nope/'], unmatchedPaths: ['old.js', 'nope/'], files: 1, lines: 4, commits: 3, authors: 2, added: 4, removed: 0, lastChanged: '2024-01-03T10:00:00+08:00', score: 12,
+        commitsByYear: { 2023: 1, 2024: 2 }, concentration: { commitsByPeople: 3, topAuthorShare: 0.67, authorsFor80Percent: 2 },
+      },
+      // without the slash, src names a file called src, and there is none
+      { name: 'bare', paths: ['src'], unmatchedPaths: ['src'], ...noFiles },
+      { name: 'empty', paths: [], unmatchedPaths: [], ...noFiles },
+    ]);
+    expect(src).toMatchObject({ files: 3, commits: 2 });
+    // a.js is in g and h, the three src files in dir and dup
+    expect(product.featureGroups).toEqual({
+      groupsListed: 6, filesInAGroup: 5, filesInSeveralGroups: 4, pathsUnmatched: 3,
+    });
+    // the product does not say where the groups file was
+    expect(JSON.stringify(product)).not.toContain(dirname(file));
+  });
+
+  it('leaves the rest of the product as it is without groups, and takes the options in either order', () => {
+    const dir = groupsFixture();
+    const file = groupsFile({ groups: [{ name: 'g', paths: ['a.js', 'src/'] }] });
+
+    const plain = readProduct(dir);
+    const grouped = readProduct(dir, ['--groups', file]);
+    const windowed = readProduct(dir, ['--groups', file, '--since', '2024-01-03']);
+    const reordered = readProduct(dir, ['--since', '2024-01-03', '--groups', file]);
+
+    expect(plain.featureGroups).toBeNull();
+    expect(plain.groups).toEqual([]);
+    expect(Object.keys(grouped)).toEqual(Object.keys(plain));
+    const { featureGroups, groups, ...rest } = grouped;
+    const { featureGroups: noGroupCounts, groups: noGroups, ...plainRest } = plain;
+    expect(rest).toEqual(plainRest);
+    expect(featureGroups).toEqual({
+      groupsListed: 1, filesInAGroup: 4, filesInSeveralGroups: 0, pathsUnmatched: 0,
+    });
+    expect(groups[0]).toMatchObject({ files: 4, commits: 4 });
+    expect(windowed.window.since).toBe('2024-01-03');
+    expect(windowed.groups[0]).toMatchObject({ files: 4, commits: 2, commitsByYear: { 2024: 2 } });
+    expect(reordered).toEqual(windowed);
+  });
+
+  it('refuses a malformed groups file and writes nothing', () => {
+    const dir = groupsFixture();
+    for (const [content, message] of [
+      ['{"groups": [', /groups file is not JSON/],
+      ['[]', /object with a "groups" array/],
+      ['{}', /object with a "groups" array/],
+      ['{"groups": {}}', /object with a "groups" array/],
+      ['{"groups": ["a.js"]}', /groups\[0\] must be an object/],
+      ['{"groups": [{"paths": []}]}', /groups\[0\]\.name must be a non-empty string/],
+      ['{"groups": [{"name": "", "paths": []}]}', /groups\[0\]\.name must be a non-empty string/],
+      ['{"groups": [{"name": "g", "paths": []}, {"name": "g", "paths": []}]}', /groups\[1\]\.name "g" is used by another group/],
+      ['{"groups": [{"name": "g"}]}', /groups\[0\]\.paths must be an array of strings/],
+      ['{"groups": [{"name": "g", "paths": "a.js"}]}', /groups\[0\]\.paths must be an array of strings/],
+      ['{"groups": [{"name": "g", "paths": ["a.js", 1]}]}', /groups\[0\]\.paths must be an array of strings/],
+    ]) {
+      const result = runScript(dir, ['--groups', groupsFile(content)]);
+      expect(result.status, content).toBe(1);
+      expect(result.stderr).toMatch(message);
+    }
+    const missing = runScript(dir, ['--groups', join(tempDir('hotspots-groups-none-'), 'none.json')]);
+    expect(missing.status).toBe(1);
+    expect(missing.stderr).toMatch(/groups file cannot be read/);
+    const file = groupsFile({ groups: [] });
+    for (const args of [['--groups'], ['--groups', file, '--groups', file], ['--groups', '--since', '2024-01-01']]) {
+      const result = runScript(dir, args);
+      expect(result.status).toBe(1);
+      expect(result.stderr).toMatch(/Usage/);
+    }
+    expect(existsSync(join(dir, '.excavator'))).toBe(false);
+  });
+
+  it('gives each group its files and lines but no history in a directory without git', () => {
+    const plain = tempDir('hotspots-groups-plain-');
+    writeFile(plain, 'a.js', lines(2));
+    writeFile(plain, 'src/x.js', lines(3));
+
+    const product = readProduct(plain, ['--groups', groupsFile({ groups: [{ name: 'g', paths: ['a.js', 'src/'] }] })]);
+
+    expect(product.groups).toEqual([{
+      name: 'g', paths: ['a.js', 'src/'], unmatchedPaths: [], ...noFiles, files: 2, lines: 5,
+    }]);
+    expect(product.featureGroups).toEqual({
+      groupsListed: 1, filesInAGroup: 2, filesInSeveralGroups: 0, pathsUnmatched: 0,
+    });
+  });
+
+  it('counts a group across member repositories without merging their commits, even when they share every commit', () => {
+    const parent = tempDir('hotspots-groups-twins-');
+    const a = join(parent, 'a');
+    mkdirSync(a);
+    git(a, ['init', '-q', '-b', 'main']);
+    commit(a, { when: '2024-01-01', who: 'alice', files: { 'x.txt': lines(2) } });
+    commit(a, { when: '2024-01-02', who: 'bob', files: { 'x.txt': lines(3) } });
+    execFileSync('git', ['clone', '-q', a, join(parent, 'b')], { env: GIT_ENV });
+
+    const product = readProduct(parent, ['--groups', groupsFile({ groups: [{ name: 'g', paths: ['a/x.txt', 'b/'] }] })]);
+
+    expect(withoutPath(byPath(product.directories)['.'])).toMatchObject({ files: 2, commits: 4, authors: 2 });
+    expect(product.groups).toEqual([{
+      name: 'g', paths: ['a/x.txt', 'b/'], unmatchedPaths: [], ...withoutPath(byPath(product.directories)['.']),
+    }]);
   });
 });
 

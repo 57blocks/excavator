@@ -6,7 +6,7 @@
  * capability `change-hotspots`). No model, no build of the target, only
  * read-only git commands.
  *
- *   node hotspots.mjs <projectRoot> [--since YYYY-MM-DD]
+ *   node hotspots.mjs <projectRoot> [--since YYYY-MM-DD] [--groups <groupsFile>]
  *
  * For every file the source snapshot selects, and every directory above them,
  * the product counts the commits, authors, added and removed lines and the last
@@ -42,13 +42,21 @@
  * `[bot]`); the header counts those in `bots`, so the root's `commits` is its
  * `commitsByPeople` plus `bots.commits`. No author name or email is written.
  *
+ * Feature groups. With `--groups`, a groups file (hotspots/groups.mjs) names
+ * groups of files, and each group gets a row counted like a directory's over
+ * the files it lists, in the groups file's order. Which files make up a feature
+ * is the groups file's claim; a listed path that matches no selected file is
+ * kept in the row's `unmatchedPaths`, and a malformed groups file is an Error
+ * before any work.
+ *
  * Conservation. Every change (commit x path) read is either attributed to a
  * selected file or counted as outside the selection (deleted, ignored or not
  * selected paths). A mismatch is an Error and nothing is written.
  *
  * Product `.excavator/hotspots.json`
  *   { format, sourceRevision, sourceKind, historyAvailable, noHistory, repos, window,
- *     counts, coChange, bots, conservation, residualAssumptions, files, directories, pairs }
+ *     counts, coChange, bots, featureGroups, conservation, residualAssumptions, files, directories,
+ *     pairs, groups }
  * `noHistory` is `null` when there is history, else `{ reason, repositoryRoot,
  * pathInRepository }` with `reason` `not-a-repository` or `inside-repository`.
  * `repos` has `{ path, head, shallow, boundaryCommits, earliestVisibleCommit }`
@@ -63,6 +71,9 @@
  * `concentration` is `{ commitsByPeople, topAuthorShare, authorsFor80Percent }`, `null` without
  * history, the two shares `null` when no commit is by people; `bots` is `{ emailMarker, commits }`,
  * `commits` `null` without history.
+ * `featureGroups` is `{ groupsListed, filesInAGroup, filesInSeveralGroups, pathsUnmatched }`, `null`
+ * without `--groups`; group rows: `{ name, paths, unmatchedPaths, files, lines, commits, authors, added,
+ * removed, lastChanged, score, commitsByYear, concentration }`, `[]` without `--groups`.
  *
  * Contract: openspec/changes/change-hotspots/specs/change-hotspots/spec.md
  */
@@ -73,6 +84,7 @@ import { fileURLToPath } from 'node:url';
 import { BOT_EMAIL_MARKER, buildRows } from './hotspots/aggregate.mjs';
 import { countBlobLines, countBufferLines } from './hotspots/blob-lines.mjs';
 import { MAX_FILES_PER_COMMIT, coChangeWithoutHistory, countCoChanges } from './hotspots/co-change.mjs';
+import { countGroups, matchGroups, readGroupsFile } from './hotspots/groups.mjs';
 import { readRepoHistory } from './hotspots/history.mjs';
 import { explainNoHistory } from './hotspots/no-history.mjs';
 import { assertDataDir, assertDataFile, bindProjectRoot } from './project-paths.mjs';
@@ -98,6 +110,7 @@ const RESIDUAL_ASSUMPTIONS = Object.freeze([
   `Commits that changed more than ${MAX_FILES_PER_COMMIT} selected files are not counted for pairs, so files changed together only in such commits are not listed as a pair.`,
   "A commit counts in the year of its committer date as git records it, in the committer's time zone; a rebased or cherry-picked commit counts in the year it was committed again, not the year it was first written.",
   'Bots are recognized only by an author email whose local part ends in [bot], as GitHub app accounts are; commits by other automated accounts count as commits by people.',
+  'A feature group counts only the files its groups file lists, and a file listed in several groups counts in each; nothing checks that those files make up a feature.',
 ]);
 
 /** The UTC instant (epoch milliseconds) that opens a `YYYY-MM-DD` window, or an Error for anything else. */
@@ -132,10 +145,12 @@ function reposOf(snapshot) {
  * Compute the product for `root` (a canonical project root) without writing it.
  *
  * @param {string} root
- * @param {{ since?: string | null, readHistory?: typeof readRepoHistory }} [options]
+ * @param {{ since?: string | null, groups?: Array<{ name: string, paths: string[] }> | null,
+ *   readHistory?: typeof readRepoHistory }} [options]
+ *   `groups` are a groups file's groups (hotspots/groups.mjs), `null` for none;
  *   `readHistory` is a seam so a test can feed the conservation check a reader that miscounts.
  */
-export async function buildHotspots(root, { since = null, readHistory = readRepoHistory } = {}) {
+export async function buildHotspots(root, { since = null, groups = null, readHistory = readRepoHistory } = {}) {
   const sinceMs = since === null ? null : sinceToMs(since);
   const snapshot = resolveSourceSnapshot(root);
   const repos = reposOf(snapshot);
@@ -184,7 +199,8 @@ export async function buildHotspots(root, { since = null, readHistory = readRepo
     const { lines, binary } = counted.get(path);
     return { path, hasHistory: !looseFiles.has(path), lines: binary ? null : lines };
   });
-  const { files, directories, botCommits } = buildRows(entries, histories, ids);
+  const matched = groups === null ? [] : matchGroups(groups, selected);
+  const { files, directories, groups: groupRows, botCommits } = buildRows(entries, histories, ids, matched);
   const coChange = repos.length > 0 ? countCoChanges(histories) : { header: coChangeWithoutHistory(), pairs: [] };
 
   return {
@@ -203,11 +219,13 @@ export async function buildHotspots(root, { since = null, readHistory = readRepo
     },
     coChange: coChange.header,
     bots: { emailMarker: BOT_EMAIL_MARKER, commits: repos.length > 0 ? botCommits : null },
+    featureGroups: groups === null ? null : countGroups(matched),
     conservation,
     residualAssumptions: [...RESIDUAL_ASSUMPTIONS],
     files,
     directories,
     pairs: coChange.pairs,
+    groups: groupRows,
   };
 }
 
@@ -238,15 +256,20 @@ export async function runHotspots(rootArg, options = {}) {
 // CLI
 // ---------------------------------------------------------------------------
 
-const USAGE = 'Usage: node hotspots.mjs <projectRoot> [--since YYYY-MM-DD]\n';
+const USAGE = 'Usage: node hotspots.mjs <projectRoot> [--since YYYY-MM-DD] [--groups <groupsFile>]\n';
 
-/** `{ root, since }` for a recognised argv shape, null otherwise. */
+/** `{ root, since, groupsFile }` for a recognised argv shape, null otherwise; each option at most once, in any order. */
 function parseArgs(argv) {
   const [root, ...rest] = argv;
-  if (!root || root.startsWith('--')) return null;
-  if (rest.length === 0) return { root, since: null };
-  if (rest.length === 2 && rest[0] === '--since') return { root, since: rest[1] };
-  return null;
+  if (!root || root.startsWith('--') || rest.length % 2 !== 0) return null;
+  const options = { since: null, groupsFile: null };
+  const keys = { '--since': 'since', '--groups': 'groupsFile' };
+  for (let at = 0; at < rest.length; at += 2) {
+    const key = keys[rest[at]];
+    if (key === undefined || options[key] !== null || rest[at + 1].startsWith('--')) return null;
+    options[key] = rest[at + 1];
+  }
+  return { root, ...options };
 }
 
 async function main(argv) {
@@ -256,7 +279,8 @@ async function main(argv) {
     process.exit(1);
   }
   if (parsed.since !== null) sinceToMs(parsed.since); // a malformed window fails before any work
-  const { path, product } = await runHotspots(parsed.root, { since: parsed.since });
+  const groups = parsed.groupsFile === null ? null : readGroupsFile(parsed.groupsFile); // so does a malformed groups file
+  const { path, product } = await runHotspots(parsed.root, { since: parsed.since, groups });
 
   const { counts, conservation } = product;
   process.stdout.write(`${JSON.stringify({ product: path, counts, conservation })}\n`);
