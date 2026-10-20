@@ -1,5 +1,5 @@
 /**
- * doc-map.py (openspec: changes/doc-map-read, capability `doc-map`).
+ * doc-map.py (openspec: specs/doc-map).
  *
  * The script runs under the host's python3 with PATH set to a directory of
  * stand-in tools, so whether pdftotext, textutil or antiword "exist" is up

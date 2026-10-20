@@ -1,6 +1,6 @@
 /**
  * The excavator-doc-map skill is a prompt; its rules only hold if each one sits
- * in the step where the model acts on it (openspec: changes/doc-map-read).
+ * in the step where the model acts on it (openspec: specs/doc-map).
  * These tests pin every rule to its step, run the skill's own batch plan,
  * merge, record command, report queries and advice check against a real
  * product, and check that every product field the prose names is one the

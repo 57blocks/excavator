@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""doc-map.py -- read a folder of functional documents into text (openspec: changes/doc-map-read).
+"""doc-map.py -- read a folder of functional documents into text (openspec: specs/doc-map).
 
 Usage:
   doc-map.py read <docsDir> <projectRoot>
