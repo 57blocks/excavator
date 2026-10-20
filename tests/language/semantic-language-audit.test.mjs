@@ -59,8 +59,8 @@ describe('model-owned semantic language audit', () => {
     const audit = auditSemanticCacheFields({
       fields: {
         contentLanguage: 'en',
-        summary: '在写入文章前验证请求。',
-        tags: ['验证'],
+        summary: '\u5728\u5199\u5165\u6587\u7ae0\u524d\u9a8c\u8bc1\u8bf7\u6c42\u3002',
+        tags: ['\u9a8c\u8bc1'],
       },
     });
 
@@ -74,14 +74,14 @@ describe('model-owned semantic language audit', () => {
   });
 
   it('masks an exact source-owned fact span and preserves the original field value', () => {
-    const fields = { summary: 'Calls 提交请假 after validation.', tags: ['validation'] };
+    const fields = { summary: 'Calls \u63d0\u4ea4\u8bf7\u5047 after validation.', tags: ['validation'] };
     const before = structuredClone(fields);
-    const audit = auditSemanticCacheFields({ fields, factGraph: factGraph('提交请假') });
+    const audit = auditSemanticCacheFields({ fields, factGraph: factGraph('\u63d0\u4ea4\u8bf7\u5047') });
 
     expect(audit.status).toBe('accepted');
     expect(audit.accepted[0]).toMatchObject({
       fieldPath: 'summary',
-      maskedSourceSpans: ['提交请假'],
+      maskedSourceSpans: ['\u63d0\u4ea4\u8bf7\u5047'],
     });
     expect(audit.accepted[0].valueDigest).toMatch(/^sha256:[a-f0-9]{64}$/);
     expect(fields).toEqual(before);
@@ -91,9 +91,9 @@ describe('model-owned semantic language audit', () => {
   it('never accepts a model-declared exemption', () => {
     const audit = auditSemanticCacheFields({
       fields: {
-        summary: 'Calls 提交请假 after validation.',
+        summary: 'Calls \u63d0\u4ea4\u8bf7\u5047 after validation.',
         tags: ['validation'],
-        exemptions: ['提交请假'],
+        exemptions: ['\u63d0\u4ea4\u8bf7\u5047'],
       },
     });
 
@@ -101,7 +101,7 @@ describe('model-owned semantic language audit', () => {
       expect.objectContaining({
         fieldPath: 'summary',
         reason: 'noncanonical-language',
-        unverifiedSpans: ['提交请假'],
+        unverifiedSpans: ['\u63d0\u4ea4\u8bf7\u5047'],
       }),
     ]);
     expectConserved(audit);
@@ -112,7 +112,7 @@ describe('model-owned semantic language audit', () => {
       fields: { summary: 'Validates requests.', tags: ['validation'] },
     });
     const changed = auditSemanticCacheFields({
-      fields: { summary: '验证请求。', tags: ['validation'] },
+      fields: { summary: '\u9a8c\u8bc1\u8bf7\u6c42\u3002', tags: ['validation'] },
     });
 
     expect(isAcceptedLanguageAudit(accepted, changed)).toBe(false);
@@ -131,24 +131,24 @@ describe('model-owned semantic language audit', () => {
     const root = mkdtempSync(join(tmpdir(), 'semantic-language-source-'));
     roots.push(root);
     mkdirSync(join(root, 'src'), { recursive: true });
-    writeFileSync(join(root, 'src', 'leave.ts'), 'export function 提交请假() {}\n', 'utf-8');
-    writeFileSync(join(root, 'src', 'other.ts'), 'export const 仅在其他文件 = true;\n', 'utf-8');
+    writeFileSync(join(root, 'src', 'leave.ts'), 'export function \u63d0\u4ea4\u8bf7\u5047() {}\n', 'utf-8');
+    writeFileSync(join(root, 'src', 'other.ts'), 'export const \u4ec5\u5728\u5176\u4ed6\u6587\u4ef6 = true;\n', 'utf-8');
     const snapshot = resolveSourceSnapshot(root);
 
     const accepted = auditSemanticCacheFields({
-      fields: { summary: 'Calls 提交请假 after validation.' },
+      fields: { summary: 'Calls \u63d0\u4ea4\u8bf7\u5047 after validation.' },
       sourceSnapshot: snapshot,
       sourcePaths: ['src/leave.ts'],
     });
     const rejected = auditSemanticCacheFields({
-      fields: { summary: 'Reads 仅在其他文件 during validation.' },
+      fields: { summary: 'Reads \u4ec5\u5728\u5176\u4ed6\u6587\u4ef6 during validation.' },
       sourceSnapshot: snapshot,
       sourcePaths: ['src/leave.ts'],
     });
 
     expect(accepted.status).toBe('accepted');
     expect(rejected.rejected[0]).toMatchObject({
-      fieldPath: 'summary', reason: 'noncanonical-language', unverifiedSpans: ['仅在其他文件'],
+      fieldPath: 'summary', reason: 'noncanonical-language', unverifiedSpans: ['\u4ec5\u5728\u5176\u4ed6\u6587\u4ef6'],
     });
     expectConserved(accepted);
     expectConserved(rejected);
@@ -158,7 +158,7 @@ describe('model-owned semantic language audit', () => {
     const layers = [{
       id: 'layer:app',
       name: 'Application',
-      description: '处理请假请求。',
+      description: '\u5904\u7406\u8bf7\u5047\u8bf7\u6c42\u3002',
       nodeIds: ['function:src/leave.ts:submitLeave'],
     }];
     const relations = [{
@@ -188,7 +188,7 @@ describe('model-owned semantic language audit', () => {
         name: 'Leave Management', summary: 'Handles leave requests.', tags: ['leave'],
         domainMeta: {
           entities: ['Leave Request'],
-          businessRules: ['需要附件。'],
+          businessRules: ['\u9700\u8981\u9644\u4ef6\u3002'],
           crossDomainInteractions: ['Calls payroll.'],
         },
       }],

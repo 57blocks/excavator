@@ -202,11 +202,12 @@ identifiers, and small source snippets; then refine the English retrieval
 expressions with observed source-owned literals. Do not assume that a business
 word has a matching symbol name. For example:
 
-- “发布文章需要填写和校验哪些字段” is `local-condition` + `source-first`,
-  even if the wording also mentions a publishing flow; it does not run BFS.
-- “文章从编辑器提交到数据库如何流转” is `flow` + `bounded-bfs`; HTTP/API
-  gaps are source-verified boundaries between fact segments, not invented
-  graph edges.
+- “Which fields must be filled in and validated to publish an article?” is
+  `local-condition` + `source-first`, even if the wording also mentions a
+  publishing flow; it does not run BFS.
+- “How does an article flow from the editor to the database?” is `flow` +
+  `bounded-bfs`; HTTP/API gaps are source-verified boundaries between fact
+  segments, not invented graph edges.
 - “How does component A reach component B?” is `explicit-path` +
   `bounded-shortest-path`.
 - “Who calls `createArticle` directly?” is `direct-neighbor` + `one-hop`.

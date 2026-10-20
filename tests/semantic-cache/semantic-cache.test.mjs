@@ -107,8 +107,8 @@ describe('semantic-cache — canonical-language oracle (red before implementatio
       nodeId: NODE_ID,
       filePath: FILE_PATH,
       fields: validFields({
-        summary: '在写入订单前验证请求。',
-        tags: ['order', '验证'],
+        summary: '\u5728\u5199\u5165\u8ba2\u5355\u524d\u9a8c\u8bc1\u8bf7\u6c42\u3002',
+        tags: ['order', '\u9a8c\u8bc1'],
       }),
     });
 
@@ -137,7 +137,7 @@ describe('semantic-cache — canonical-language oracle (red before implementatio
       ...fields,
       languageAudit: auditSemanticCacheFields({ fields }),
     };
-    entry.summary = '在写入订单前验证请求。';
+    entry.summary = '\u5728\u5199\u5165\u8ba2\u5355\u524d\u9a8c\u8bc1\u8bf7\u6c42\u3002';
 
     expect(freshnessOf(entry, HASH_V1, {
       version: SEMANTIC_CACHE_VERSION,
@@ -147,8 +147,8 @@ describe('semantic-cache — canonical-language oracle (red before implementatio
 
   it('rejects a legacy object-shaped entry on read even when its empty audit and cache marker look accepted', () => {
     const entry = {
-      summary: { text: '在写入订单前验证请求。' },
-      tags: [{ text: '验证' }],
+      summary: { text: '\u5728\u5199\u5165\u8ba2\u5355\u524d\u9a8c\u8bc1\u8bf7\u6c42\u3002' },
+      tags: [{ text: '\u9a8c\u8bc1' }],
       semanticSourceHash: HASH_V1,
       languageAudit: { status: 'accepted', inspected: 0, accepted: [], rejected: [] },
     };
@@ -179,8 +179,8 @@ describe('semantic-cache — canonical-language oracle (red before implementatio
         version: '1.0.0',
         entries: {
           [oldNodeId]: {
-            summary: '旧的未审计摘要。',
-            tags: ['旧数据'],
+            summary: '\u65e7\u7684\u672a\u5ba1\u8ba1\u6458\u8981\u3002',
+            tags: ['\u65e7\u6570\u636e'],
             semanticSourceHash: 'sha256:legacy',
           },
         },
@@ -232,7 +232,7 @@ describe('semantic-cache — canonical-language oracle (red before implementatio
   });
 
   it('does not rewrite a source-owned non-English node id', async () => {
-    const sourceOwnedNodeId = 'function:src/orderService.ts:提交订单()';
+    const sourceOwnedNodeId = 'function:src/orderService.ts:\u63d0\u4ea4\u8ba2\u5355()';
     const result = await commitSemanticCacheEntry({
       projectRoot: root,
       nodeId: sourceOwnedNodeId,
@@ -247,7 +247,7 @@ describe('semantic-cache — canonical-language oracle (red before implementatio
   });
 
   it('accepts and preserves an exact non-English span from the current source file', async () => {
-    const source = 'export function 提交请假() {}\n';
+    const source = 'export function \u63d0\u4ea4\u8bf7\u5047() {}\n';
     const hash = sha256(source);
     mkdirSync(join(root, 'src'), { recursive: true });
     writeFileSync(join(root, FILE_PATH), source, 'utf-8');
@@ -255,10 +255,10 @@ describe('semantic-cache — canonical-language oracle (red before implementatio
 
     const result = await commitSemanticCacheEntry({
       projectRoot: root,
-      nodeId: 'function:src/orderService.ts:提交请假()',
+      nodeId: 'function:src/orderService.ts:\u63d0\u4ea4\u8bf7\u5047()',
       filePath: FILE_PATH,
       fields: validFields({
-        summary: 'Calls 提交请假 after validation.',
+        summary: 'Calls \u63d0\u4ea4\u8bf7\u5047 after validation.',
         tags: ['validation'],
         semanticSourceHash: hash,
       }),
@@ -266,11 +266,11 @@ describe('semantic-cache — canonical-language oracle (red before implementatio
 
     expect(result).toMatchObject({ ok: true, status: 'committed' });
     expect(result.languageAudit.accepted[0]).toMatchObject({
-      fieldPath: 'summary', maskedSourceSpans: ['提交请假'],
+      fieldPath: 'summary', maskedSourceSpans: ['\u63d0\u4ea4\u8bf7\u5047'],
     });
     expect(result.languageAudit.accepted[0].valueDigest).toMatch(/^sha256:[a-f0-9]{64}$/);
-    const entry = readCacheFileRaw(root).entries['function:src/orderService.ts:提交请假()'];
-    expect(entry.summary).toBe('Calls 提交请假 after validation.');
+    const entry = readCacheFileRaw(root).entries['function:src/orderService.ts:\u63d0\u4ea4\u8bf7\u5047()'];
+    expect(entry.summary).toBe('Calls \u63d0\u4ea4\u8bf7\u5047 after validation.');
     expect(entry.languageAudit).toEqual(result.languageAudit);
   });
 
@@ -377,8 +377,8 @@ describe('semantic-cache — field whitelist', () => {
 
   it('rejects non-string summaries and tags before language audit or persistence', async () => {
     const fields = validFields({
-      summary: { text: '在写入文章前验证请求。' },
-      tags: [{ text: '验证' }],
+      summary: { text: '\u5728\u5199\u5165\u6587\u7ae0\u524d\u9a8c\u8bc1\u8bf7\u6c42\u3002' },
+      tags: [{ text: '\u9a8c\u8bc1' }],
     });
 
     expect(validateCacheableFields(fields)).toEqual({

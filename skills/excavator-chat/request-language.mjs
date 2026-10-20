@@ -10,18 +10,18 @@
 const LANGUAGE_ALIASES = new Map([
   ['arabic', 'ar'],
   ['chinese', 'zh'],
-  ['中文', 'zh'],
+  ['\u4e2d\u6587', 'zh'], // "Chinese" in Chinese
   ['english', 'en'],
-  ['英文', 'en'],
+  ['\u82f1\u6587', 'en'], // "English" in Chinese
   ['french', 'fr'],
   ['german', 'de'],
   ['japanese', 'ja'],
-  ['日文', 'ja'],
-  ['日语', 'ja'],
-  ['日本語', 'ja'],
+  ['\u65e5\u6587', 'ja'], // "Japanese" in Chinese
+  ['\u65e5\u8bed', 'ja'], // "Japanese language" in Chinese
+  ['\u65e5\u672c\u8a9e', 'ja'], // "Japanese" in Japanese
   ['korean', 'ko'],
-  ['韩文', 'ko'],
-  ['韩语', 'ko'],
+  ['\u97e9\u6587', 'ko'], // "Korean" in Chinese
+  ['\u97e9\u8bed', 'ko'], // "Korean language" in Chinese
   ['portuguese', 'pt'],
   ['russian', 'ru'],
   ['spanish', 'es'],

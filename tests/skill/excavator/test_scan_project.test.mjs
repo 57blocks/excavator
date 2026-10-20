@@ -842,7 +842,7 @@ describe('scan-project.mjs — determinism', () => {
       '_under.ts': 'export const under = true;\n',
       'space dir/å.ts': 'export const nested = true;\n',
       'ä.ts': 'export const umlaut = true;\n',
-      '中.ts': 'export const cjk = true;\n',
+      '\u4e2d.ts': 'export const cjk = true;\n',
     });
 
     const cLocale = runScript(projectRoot, [], { LANG: 'C', LC_ALL: 'C' });
@@ -855,7 +855,7 @@ describe('scan-project.mjs — determinism', () => {
       '_under.ts',
       'space dir/å.ts',
       'ä.ts',
-      '中.ts',
+      '\u4e2d.ts',
     ];
 
     expect(cLocale.status).toBe(0);

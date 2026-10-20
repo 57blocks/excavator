@@ -108,7 +108,7 @@ function canonicalEntry(semanticSourceHash, overrides = {}) {
 
 function makeFixture() {
   const noncanonical = canonicalEntry(H(REMOVE));
-  noncanonical.summary = '移除条目。';
+  noncanonical.summary = '\u79fb\u9664\u6761\u76ee\u3002';
 
   return {
     requestedNodeIds: [ID.S, ID.A, ID.M, ID.A, ID.N, ID.U, ID.O, ID.B, ID.S, ID.B],

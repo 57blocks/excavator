@@ -32,7 +32,7 @@ const FILE_A_PATH = 'src/orderService.ts';
 const FILE_B_PATH = 'src/paymentHandler.ts';
 
 const FILE_A_CONTENT = [
-  '// Creates a new order for the given user — 处理订单 😀',
+  '// Creates a new order for the given user — \u5904\u7406\u8ba2\u5355 😀',
   'function createOrder(userId, items) {',
   '  const note = "order created for user";',
   '  return { userId, items, note };',
@@ -98,7 +98,8 @@ describe('exported constants', () => {
 });
 
 // ---------------------------------------------------------------------------
-// Round trip — Requirement "持久化不受单字符串上限约束且往返无损".
+// Round trip — Requirement "persistence is not bound by the single-string
+// limit and round-trips losslessly".
 // ---------------------------------------------------------------------------
 describe('writeSourceIndex + readSourceIndex — lossless round trip', () => {
   it('the comparator sees a known one-field difference BEFORE we trust it on the real pair', () => {
@@ -138,7 +139,7 @@ describe('writeSourceIndex + readSourceIndex — lossless round trip', () => {
     writeSourceIndex(path, index);
     const back = readSourceIndex(path);
     const fileChunk = back.chunks.find((c) => c.path === FILE_A_PATH && c.symbol === null);
-    expect(fileChunk.comments.join(' ')).toContain('处理订单');
+    expect(fileChunk.comments.join(' ')).toContain('\u5904\u7406\u8ba2\u5355');
     expect(fileChunk.comments.join(' ')).toContain('😀');
   });
 
@@ -174,7 +175,8 @@ describe('writeSourceIndex + readSourceIndex — lossless round trip', () => {
 });
 
 // ---------------------------------------------------------------------------
-// BM25 equivalence — Requirement "持久化不受单字符串上限约束且往返无损": the read-back
+// BM25 equivalence — Requirement "persistence is not bound by the single-string limit and
+// round-trips losslessly": the read-back
 // index must be strictly deep-equal to the built one, so the same query
 // terms' BM25 results are identical either way (task 2.2).
 // ---------------------------------------------------------------------------
@@ -194,7 +196,8 @@ describe('bm25Search — identical results against the built index and the round
 });
 
 // ---------------------------------------------------------------------------
-// Named failures — Requirement "持久化不受单字符串上限约束且往返无损": reading SHALL
+// Named failures — Requirement "persistence is not bound by the single-string limit and
+// round-trips losslessly": reading SHALL
 // validate the header, record counts and ordinal ranges; a validation
 // failure SHALL surface as a visible invalid-product gap (design D2). Each
 // case corrupts one well-formed file and asserts a `SourceIndexFormatError`,

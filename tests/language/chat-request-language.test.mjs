@@ -16,7 +16,7 @@ afterEach(() => {
 
 function request(overrides = {}) {
   return createChatRequestState({
-    originalQuestion: '收藏文章是怎么实现的？',
+    originalQuestion: '\u6536\u85cf\u6587\u7ae0\u662f\u600e\u4e48\u5b9e\u73b0\u7684\uff1f',
     englishRetrievalExpressions: ['favorite article', 'toggleFavorite', 'favorites'],
     literalIdentifiers: ['toggleFavorite'],
     explicitAnswerLanguage: null,
@@ -34,7 +34,7 @@ describe('request-local answer language', () => {
   it('preserves the Chinese question and keeps English retrieval expressions separate', () => {
     const state = request();
 
-    expect(state.originalQuestion).toBe('收藏文章是怎么实现的？');
+    expect(state.originalQuestion).toBe('\u6536\u85cf\u6587\u7ae0\u662f\u600e\u4e48\u5b9e\u73b0\u7684\uff1f');
     expect(state.englishRetrievalExpressions).toEqual([
       'favorite article', 'toggleFavorite', 'favorites',
     ]);
@@ -55,7 +55,7 @@ describe('request-local answer language', () => {
 
   it('gives an explicit Japanese answer request highest priority', () => {
     const state = request({
-      originalQuestion: '收藏文章是怎么实现的？请用日文回答。',
+      originalQuestion: '\u6536\u85cf\u6587\u7ae0\u662f\u600e\u4e48\u5b9e\u73b0\u7684\uff1f\u8bf7\u7528\u65e5\u6587\u56de\u7b54\u3002',
       explicitAnswerLanguage: 'Japanese',
       currentQuestionLanguage: 'zh',
       recentConversationLanguage: 'zh',
@@ -88,7 +88,7 @@ describe('request-local answer language', () => {
   });
 
   it('rejects non-English retrieval prose and never changes project artifacts', () => {
-    expect(() => request({ englishRetrievalExpressions: ['收藏文章'] }))
+    expect(() => request({ englishRetrievalExpressions: ['\u6536\u85cf\u6587\u7ae0'] }))
       .toThrow(/English retrieval expression/i);
 
     const root = mkdtempSync(join(tmpdir(), 'chat-language-artifacts-'));

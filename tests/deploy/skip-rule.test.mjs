@@ -52,7 +52,7 @@ describe('planFullRun (skip rule, design D3/D4, task 2.3/2.5)', () => {
   });
 });
 
-describe('checkProduct (task 2.3, design D4 "产物")', () => {
+describe('checkProduct (task 2.3, design D4 "product")', () => {
   it('passes when commit and model both match', () => {
     const result = checkProduct({
       graph: { project: { model: 'eu.anthropic.claude-sonnet-5' } },

@@ -308,7 +308,7 @@ make_tmp_repo() {
 }
 
 # A decoy repo carrying a marker-writing SessionStart hook, a decoy MCP
-# server, and a same-named decoy "excavator" skill (spec: "诱饵仓库"
+# server, and a same-named decoy "excavator" skill (spec: "decoy repository"
 # scenario). Prints "<repoPath><TAB><markerFilePath>".
 setup_decoy_repo() {
   local repo marker_dir marker_file

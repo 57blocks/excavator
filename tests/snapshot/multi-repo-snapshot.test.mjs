@@ -36,7 +36,7 @@ function makeFixture() {
  * Fix A: revision folds sorted (member relative path + member HEAD) AND the
  * parent (non-member) directory digest into one composite hash, so a
  * parent-only content change also changes `revision` (source-snapshot spec,
- * UPDATED "MultiRepoSnapshot 由成员 HEAD 决定" requirement). Independently
+ * UPDATED "MultiRepoSnapshot is determined by member HEADs" requirement). Independently
  * reimplemented here (not calling into manifest.mjs) so this test would
  * actually catch a bug in that formula, not just echo it.
  *

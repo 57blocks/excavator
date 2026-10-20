@@ -1,7 +1,7 @@
 // Group 6.1 — cross-adapter identity (openspec: changes/source-snapshot,
-// capability `source-snapshot`, §12.4.1: "相同源码内容经 GitCommitSnapshot
-// 与 DirectorySnapshot 分析，SHALL 得到相同的确定性事实投影与相同的
-// `factsDigest`").
+// capability `source-snapshot`, §12.4.1: "the same source content analysed through
+// GitCommitSnapshot and DirectorySnapshot SHALL yield the same deterministic fact
+// projection and the same `factsDigest`").
 //
 // Purpose-built synthetic fixtures only (AGENTS.md: no real-project source).
 import { describe, expect, it, afterEach } from 'vitest';

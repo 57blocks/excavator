@@ -119,7 +119,7 @@ describe('semantic-graph.mjs — buildSemanticGraph', () => {
       relations: [{
         id: 'relation:invalid', type: 'calls',
         source: fileNodeId('src/a.ts'), target: 'file:src/ghost.ts',
-        description: '这段文字不会被保存。',
+        description: '\u8fd9\u6bb5\u6587\u5b57\u4e0d\u4f1a\u88ab\u4fdd\u5b58\u3002',
       }],
     });
 
@@ -156,7 +156,7 @@ describe('semantic-graph.mjs — buildSemanticGraph', () => {
       factDigest: 'd1',
       factNodeIds,
       layers: [{
-        id: 'layer:app', name: 'Application', description: '处理请假请求。',
+        id: 'layer:app', name: 'Application', description: '\u5904\u7406\u8bf7\u5047\u8bf7\u6c42\u3002',
         nodeIds: [fileNodeId('src/a.ts')],
       }],
     });
@@ -172,17 +172,17 @@ describe('semantic-graph.mjs — buildSemanticGraph', () => {
   });
 
   it('accepts and preserves an exact non-English fact-node name quoted in model prose', () => {
-    const nonEnglishId = 'function:src/leave.ts:提交请假';
+    const nonEnglishId = 'function:src/leave.ts:\u63d0\u4ea4\u8bf7\u5047';
     const layer = {
       id: 'layer:leave', name: 'Leave',
-      description: 'Calls 提交请假 after validation.', nodeIds: [nonEnglishId],
+      description: 'Calls \u63d0\u4ea4\u8bf7\u5047 after validation.', nodeIds: [nonEnglishId],
     };
     const { semanticGraph, languageAudit } = buildSemanticGraph({
       factDigest: 'd1',
       factNodeIds: new Set([nonEnglishId]),
       factGraph: {
         project: { name: 'fixture', languages: ['typescript'], frameworks: [] },
-        nodes: [{ id: nonEnglishId, name: '提交请假', filePath: 'src/leave.ts' }],
+        nodes: [{ id: nonEnglishId, name: '\u63d0\u4ea4\u8bf7\u5047', filePath: 'src/leave.ts' }],
       },
       layers: [layer],
     });
@@ -190,7 +190,7 @@ describe('semantic-graph.mjs — buildSemanticGraph', () => {
     expect(semanticGraph.layers[0].description).toBe(layer.description);
     expect(languageAudit.status).toBe('accepted');
     expect(languageAudit.accepted).toContainEqual(expect.objectContaining({
-      fieldPath: 'layers[0].description', maskedSourceSpans: ['提交请假'],
+      fieldPath: 'layers[0].description', maskedSourceSpans: ['\u63d0\u4ea4\u8bf7\u5047'],
       valueDigest: expect.stringMatching(/^sha256:[a-f0-9]{64}$/),
     }));
   });
@@ -201,15 +201,15 @@ describe('semantic-graph.mjs — buildSemanticGraph', () => {
       factNodeIds,
       layers: [{
         id: 'layer:leave', name: 'Leave',
-        description: 'Calls 提交请假 after validation.',
+        description: 'Calls \u63d0\u4ea4\u8bf7\u5047 after validation.',
         nodeIds: [fileNodeId('src/a.ts')],
-        sourceOwnedSpans: ['提交请假'],
+        sourceOwnedSpans: ['\u63d0\u4ea4\u8bf7\u5047'],
       }],
     });
 
     expect(semanticGraph).toBeNull();
     expect(languageAudit.rejected[0]).toMatchObject({
-      fieldPath: 'layers[0].description', unverifiedSpans: ['提交请假'],
+      fieldPath: 'layers[0].description', unverifiedSpans: ['\u63d0\u4ea4\u8bf7\u5047'],
     });
   });
 });
@@ -246,7 +246,7 @@ describe('semantic-graph.mjs — resolveArchitectureAction (factDigest gate)', (
         nodeIds: ['file:a.ts'],
       }],
     });
-    semanticGraph.layers[0].description = '处理请求。';
+    semanticGraph.layers[0].description = '\u5904\u7406\u8bf7\u6c42\u3002';
 
     expect(resolveArchitectureAction({ currentFactDigest: 'abc', existing: semanticGraph }))
       .toMatchObject({ action: 'rebuild', status: 'noncanonical-language' });
