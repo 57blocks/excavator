@@ -27,5 +27,10 @@ export default defineConfig({
     // 5s default and flakes on timeout (not on any assertion). 20s gives these
     // cross-process tests headroom without masking a genuine hang.
     testTimeout: 20000,
+    // Yields to the event loop after every test so a file of synchronous
+    // tests cannot starve its worker's RPC past vitest's 60s timeout; see the
+    // file for the mechanism. testTimeout above is what bounds the remaining
+    // block, so keep it well under 60s.
+    setupFiles: ['tests/setup/yield-between-tests.mjs'],
   },
 });
