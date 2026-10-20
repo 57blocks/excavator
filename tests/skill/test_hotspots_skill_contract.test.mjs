@@ -524,9 +524,9 @@ describe('excavator-chat: change-history questions', () => {
     expect(s).toContain('A share is a count of commits: never say that someone owns, knows, maintains or is responsible for a part, or that it is at risk, a silo or dependent on one person.');
     expect(s).toContain('For which features change most, or how much one feature changed, use the groups query, then the `<group>` query with a name from its rows.');
     expect(s).toContain('`featureGroups` `null` means the product has no counts by feature: say so, say that running `/excavator-domain` (after `/excavator`) and then `/excavator-hotspots` again, or writing `.excavator/feature-groups.json` (groups, each a name and the paths of its files), gives them, and never answer with directories in place of features.');
-    expect(s).toContain('give in these words: "A group counts only the files its groups file lists, and a file in several groups counts in each."');
+    expect(s).toContain('give in these words: "A group counts only the files its groups file lists, and a file in several groups counts in each." Then show the query\'s first line as it stands and every row it prints, in its order, each group under its name exactly as printed: do not shorten, merge or leave out a group (a translation may follow a name in brackets), and when `groupsListed` is more than the rows, say how many you show out of how many.');
     expect(s).toContain('When no group\'s name matches the feature asked about, say so and list the groups; never pick a directory or a group yourself.');
-    expect(s.split('5. **Answer with the product\'s numbers.**')[1]).toContain('**A group is the files it lists**: never call a group\'s numbers the whole feature\'s changes, and do not explain why a feature changes often.');
+    expect(s.split('5. **Answer with the product\'s numbers.**')[1]).toContain('**A group is the files it lists**: show every group the query prints under its full name, never call a group\'s numbers the whole feature\'s changes, and do not explain why a feature changes often.');
   });
 
   it('the groups queries of the skill and of chat print the group counts first, then the groups by commits', () => {
@@ -545,7 +545,7 @@ describe('excavator-chat: change-history questions', () => {
         return result.stdout.trim().split('\n');
       };
       expect(run(fixture.product)).toEqual([
-        'groups: 2; files in a group: 2; files in several groups: 1; listed paths that matched no file: 1',
+        `groups: 2; files in a group: 2 of ${p.files.length}; files in several groups: 1; listed paths that matched no file: 1`,
         ...byCommits.map((g) => [g.commits, g.authors, g.files, g.lines, g.unmatchedPaths.length, g.name].join('\t')),
       ]);
       expect(run(noGroups)).toEqual(['no feature groups']);
