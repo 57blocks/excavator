@@ -130,7 +130,8 @@ describe('excavator-doc-map skill: each rule in its step', () => {
     expect(prompt).toContain('Copy it character by character. Do not fix spelling, spacing or case, and do not join text from two places.');
     expect(prompt).toContain('Bold labels, list items, steps and branches inside a section belong to its unit; they are not units of their own.');
     expect(prompt).toContain('Never start it in the text before the unit.');
-    expect(prompt).toContain('- title: a short name of the function in <language>. When the unit\'s heading is in <language>, use the heading\'s own words; otherwise translate it, keeping product, feature and module names as the document writes them;');
+    expect(prompt).toContain('- title: a short name of the function in <language>. When the unit\'s heading is in <language>, use the heading\'s own words; otherwise translate it, keeping product, feature and module names as the document writes them. Say nothing the unit\'s own text does not say;');
+    expect(prompt).toContain('Leave out a separate word before it that only names its kind: from "Flow A" give "A";');
     expect(prompt).toContain('when the heading\'s words occur again in the document, carry the quote on from the heading into the unit\'s own first sentence.');
     expect(prompt).toContain('Write {"units": [ ... ]} as JSON to $DATA/doc-map/units-batch-<N>.json');
     expect(step(2)).toContain('`<N>` is the batch number written with three digits (`001`), so the files sort in batch order,');

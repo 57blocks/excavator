@@ -78,8 +78,8 @@ List each document's units by the document's own structure:
 
 For each unit give:
 - document: the document path exactly as listed above;
-- id: the document's own identifier for the unit, copied exactly (such as "UC-01"), or null when it has none;
-- title: a short name of the function in <language>. When the unit's heading is in <language>, use the heading's own words; otherwise translate it, keeping product, feature and module names as the document writes them;
+- id: the document's own identifier for the unit, copied exactly (such as "UC-01" or "3.2.1"), or null when it has none. Leave out a separate word before it that only names its kind: from "Flow A" give "A";
+- title: a short name of the function in <language>. When the unit's heading is in <language>, use the heading's own words; otherwise translate it, keeping product, feature and module names as the document writes them. Say nothing the unit's own text does not say;
 - quote: a passage copied exactly from the text file that starts at the unit's heading (or, when it has none, at the first sentence that names the function), at most about 200 characters. Never start it in the text before the unit. No two units of a document may have the same quote: when the heading's words occur again in the document, carry the quote on from the heading into the unit's own first sentence. Copy it character by character. Do not fix spelling, spacing or case, and do not join text from two places.
 
 Write {"units": [ ... ]} as JSON to $DATA/doc-map/units-batch-<N>.json, the units in the order of the documents above and of their text. Then reply with one line per document, "<document path>: <number of units>", and nothing else.
