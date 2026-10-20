@@ -23,7 +23,7 @@ on:
       - 'pnpm-lock.yaml'
 
 # Least privilege at the workflow level; only the push job escalates to
-# request an OIDC token (design D6: "第三方 action 一律按 commit SHA 钉住").
+# request an OIDC token (design D6: "pin every third-party action to a commit SHA").
 permissions:
   contents: read
 

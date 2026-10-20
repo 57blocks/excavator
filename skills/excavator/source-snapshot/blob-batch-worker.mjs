@@ -177,7 +177,7 @@ function runBatch({ cwd, mode, items, prefixBytes, dest, terms }) {
         need -= take;
         // Once `need` reaches 0 the last byte just consumed SHOULD be the
         // trailing framing newline, not object content. Strict framing
-        // (design D1's "帧格式严格" risk mitigation): verify it actually is
+        // (design D1's "strict frame format" risk mitigation): verify it actually is
         // a newline before stripping it — a desynced stream must fail
         // loudly here rather than silently eating a content byte.
         if (need === 0 && part[part.length - 1] !== NEWLINE) {
