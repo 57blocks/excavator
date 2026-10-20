@@ -195,6 +195,7 @@ describe('excavator-hotspots skill: each rule in its step', () => {
     expect(s).toContain('7. Shares by author: introduce it with the words "Shares of the commits by people in the window; the product counts commits, not knowledge of the code, and holds no names." Then the project\'s line from the first shares query, then the directories query: its first line (the rule and how many directories meet it) and every row it prints');
     expect(s).toContain('**A share is a count of commits, not of knowledge.**');
     expect(s).toContain('say how many commits by bots were left out');
+    expect(s).toContain('Do not call a share concentrated, spread, high or low, or say whether a part is changed mostly by one person: the numbers are the answer.');
     expect(s).toContain('Never name an author or look one up (no `git log`, `git shortlog` or `git blame` for names), never say that someone owns, knows, maintains or is responsible for a part, and never call a part at risk, a single point of failure, a silo or dependent on one person.');
     expect(s).toContain('10. The residual assumptions, every one, as the product states them.');
     expect(s).toContain('Then reply with the report\'s path and the line `advice check: 0 lines`, and do not summarize the report');
@@ -428,6 +429,7 @@ describe('excavator-chat: change-history questions', () => {
     expect(s).toContain('For whether a part is changed mostly by one or a few people, use the `<dir>` shares query');
     expect(s).toContain('for which parts, use the directories query and show every row it prints after its first line');
     expect(s).toContain('Files have no shares: for a file, give its `authors` and `commits`.');
+    expect(s).toContain('Give a directory\'s shares in these words: "The author with the most commits made <topAuthorShare as a percentage> of its <commitsByPeople> commits by people, and <authorsFor80Percent> authors made at least 80% of them." Do not add whether that is one person, a few or many, and do not call the shares concentrated, spread, high or low: the two numbers are the answer.');
     expect(s).toContain('The product holds no names: when asked who, say it has only shares and counts, and never look a name up with git or in any file.');
     expect(s).toContain('A share is a count of commits: never say that someone owns, knows, maintains or is responsible for a part, or that it is at risk, a silo or dependent on one person.');
   });
