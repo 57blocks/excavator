@@ -54,7 +54,7 @@ Never read `$HS` whole; it lists every file and every pair. Read the header with
 jq 'del(.files, .directories, .pairs)' "$HS"
 ```
 
-It has `sourceRevision`, `sourceKind` (`git`, `multi-repo` or `directory`), `historyAvailable`, `noHistory`, `repos` (each with `path`, `head`, `shallow`, `boundaryCommits`, `earliestVisibleCommit`), `window`, `counts`, `coChange`, `conservation` (`changesRead` = `attributed` + `outsideSelection`) and `residualAssumptions`.
+It has `sourceRevision`, `sourceKind` (`git`, `multi-repo` or `directory`), `historyAvailable`, `noHistory`, `repos` (each with `path`, `head`, `shallow`, `boundaryCommits`, `earliestVisibleCommit`), `window`, `counts`, `coChange`, `bots` (`emailMarker`, the rule for a bot, and `commits`, the counted commits by bots), `conservation` (`changesRead` = `attributed` + `outsideSelection`) and `residualAssumptions`.
 
 Settle what the history can show before ranking anything:
 - **`historyAvailable` is false:** every history field is `null`; only `lines` has values. Say first why, from `noHistory.reason`, give the file count and the binary count, and stop: there is no ranking to report.
@@ -64,6 +64,7 @@ Settle what the history can show before ranking anything:
 - **`counts.filesWithoutHistory` above 0 in a `multi-repo` project:** those files belong to no member repository and have `null` history fields.
 - **`window.since` set:** every count covers only the window; say so with the window.
 - **`coChange`:** the rule for pairs, `maxFilesPerCommit` and `minTogether`, and its counts. `commitsCounted` commits changed 2 to `maxFilesPerCommit` selected files and are the ones counted for pairs; `commitsOverLimit` commits changed more than `maxFilesPerCommit` selected files and count for no pair. The two sets do not overlap, so never give one count as a part of the other; `pairsBelowMinimum` pairs changed together fewer than `minTogether` times and are not listed.
+- **`bots`:** `commits` counts the commits whose author email's local part ends in `[bot]`, as GitHub app accounts' do. They are left out of every directory's `concentration`; commits by other automated accounts count as commits by people.
 
 ## Step 3 — Read the rankings
 
@@ -86,6 +87,10 @@ jq -r '[.files[] | select(.commits != null) | if .lastChanged == null then "none
 jq -r --argjson d 1 '[.directories[] | select(.path != "." and (.path | split("/") | length) == $d and .commits != null)] | sort_by(.lastChanged // "", .path) | .[:10][] | [(.lastChanged // "none")[:10], .commits, .files, .path] | @tsv' "$HS"
 # files by their last change, earliest first, after how many files have history but 0 commits counted
 jq -r '[.files[] | select(.commits != null)] | "files with history but 0 commits counted: \([.[] | select(.lastChanged == null)] | length)", ([.[] | select(.lastChanged != null)] | sort_by(.lastChanged, .path) | .[:10][] | [.lastChanged[:10], .commits, .path] | @tsv)' "$HS"
+# shares by author over the whole project (the `.` row): commits by people and by bots, the top author's share of the commits by people, and how few authors made 80% of them
+jq -r '.bots.commits as $b | .directories[] | select(.path == ".") | "commits by people: \(.concentration.commitsByPeople); by bots: \($b); top author share: \(.concentration.topAuthorShare); authors for 80%: \(.concentration.authorsFor80Percent)"' "$HS"
+# directories with at least 20 commits by people, by the top author's share, highest first (it prints the rule and how many directories meet it first)
+jq -r --argjson min 20 '(reduce (.directories[] | select(.path != ".")) as $r ({}; .[($r.path | split("/") | .[:-1] | join("/") | if . == "" then "." else . end) + " " + ($r.files | tostring)] = true)) as $chain | [.directories[] | select(.path != "." and (.concentration.commitsByPeople // 0) >= $min and ($chain[.path + " " + (.files | tostring)] | not))] | "directories with at least \($min) commits by people (a directory whose files all sit in one subdirectory is shown as that subdirectory): \(length)", (sort_by(-.concentration.topAuthorShare, .concentration.authorsFor80Percent, -.concentration.commitsByPeople, .path) | .[:15][] | [.concentration.topAuthorShare, .concentration.authorsFor80Percent, .concentration.commitsByPeople, .commits, .path] | @tsv)' "$HS"
 # files whose counts met a lineage conflict
 jq -r '[.files[] | select(.lineageConflicts > 0)] | sort_by(-.lineageConflicts) | .[:20][] | [.lineageConflicts, .commits, .path] | @tsv' "$HS"
 # pairs of files changed together most often
@@ -111,6 +116,7 @@ What the fields mean:
 - `lines`: lines at HEAD, blank lines and comments included; `null` for a binary file.
 - `lastChanged`: committer time of the latest commit in the window, in the committer's own time zone as git records it; `null` when none. The last-change queries order by this recorded time, so two changes less than a day apart in different time zones can be in the other order in absolute time.
 - `commitsByYear` (directories only): the directory's commits in each year of the committer date, the year `lastChanged` shows, with every year from the product's first counted commit to its last (0 for a year with none); they add up to `commits`. The last year runs only to the `.` row's `lastChanged` (the product's last counted commit, not the directory's), and the first starts at the window start or, without a window, no earlier than the earliest visible commit: both are usually partial years. Files have no yearly counts.
+- `concentration` (directories only): `commitsByPeople`, the directory's commits in the window whose author is not a bot; `topAuthorShare`, the share of them made by the author with the most; `authorsFor80Percent`, how few authors made at least 80% of them. Both are `null` when no commit is by people. Authors are told apart by email, as for `authors`, which counts bots too. Files have no shares.
 - `together`: commits in the window that changed both files of a pair, counting only commits that changed at most `coChange.maxFilesPerCommit` selected files.
 - `shareOfA`, `shareOfB` (and `shareOfThis`, `shareOfOther` in the one-file query): `together` divided by that file's `commits`, all its commits in the window, larger commits included.
 - The one-file query prints first how many listed pairs include the file; when that is more than the rows you show, say how many you show out of how many.
@@ -125,9 +131,10 @@ Write the report to `$DATA/hotspots-report.md`, in this order:
 4. The top directories at depth 1, and at depth 2 when depth 1 has few entries.
 5. Changes by year: the project's commits in each year, saying the last year runs only to its last counted commit and the first is usually partial; then the directories at depth 1 (and depth 2 when depth 1 has few entries) with the most commits in the two years the query names, naming those years.
 6. Least recently changed: how many files had their last change in each year, then the number on the first line of the files query in these words: "<N> files have history but 0 commits counted; the product does not say why." Then the directories at depth 1 (and depth 2 when depth 1 has few entries) whose last change is earliest, each with the date of its last change. Show the rows as the query prints them, from the first, without leaving any out between those you show.
-7. Files changed together: the top pairs, then the top pairs where no path looks like a test by its name, introduced with the words "pairs where neither path looks like a test by its name (a filter on names, not on content)", each with `together`, both shares and both paths; and `coChange`'s counts. Show the second list whole, every row its query prints, and do not describe how it differs from the first (which rows it leaves out or adds): a count of those rows would be yours, not the product's.
-8. Files with `lineageConflicts` above 0 among those you listed, and how many files have any (`counts.filesWithLineageConflicts`).
-9. The residual assumptions, every one, as the product states them.
+7. Shares by author: introduce it with the words "Shares of the commits by people in the window; the product counts commits, not who knows the code, and holds no names." Then the project's line from the first shares query, then the directories query: its first line (the rule and how many directories meet it) and every row it prints, each with the top author's share, the authors for 80%, the commits by people and the path.
+8. Files changed together: the top pairs, then the top pairs where no path looks like a test by its name, introduced with the words "pairs where neither path looks like a test by its name (a filter on names, not on content)", each with `together`, both shares and both paths; and `coChange`'s counts. Show the second list whole, every row its query prints, and do not describe how it differs from the first (which rows it leaves out or adds): a count of those rows would be yours, not the product's.
+9. Files with `lineageConflicts` above 0 among those you listed, and how many files have any (`counts.filesWithLineageConflicts`).
+10. The residual assumptions, every one, as the product states them.
 
 Rules for this step:
 - **State only numbers the product holds.** Every figure and path in the report comes from `$HS`. Do not explain a ranking with a cause you have not counted (team size, a release, code quality).
@@ -137,13 +144,14 @@ Rules for this step:
 - **A pair is a count, not a link.** Say that two files changed together in N commits and what share of each file's commits that is. Never say that one file depends on, calls, uses or causes changes in the other, and do not explain why they change together.
 - **A year is a count, not a story.** Say how many commits a year had, naming the year. Never compare a partial first or last year with a full one without saying it is partial, never scale a partial year up to a whole one or guess a later count, and do not explain why a count rose or fell (a release, a team change, a rewrite) or call a part active, cooling or quiet.
 - **Not changed is not unused.** For a file or directory with no change for years, say the year of its last change. Change history does not show whether code is used: never call it unused, dead, obsolete, abandoned or safe to delete, and do not say what kind of file it is (early, one-off, legacy). The product does not say why a file with history has 0 commits counted: give their number, not a reason.
+- **A share is a count of commits, not of knowledge.** Give a part's commits by people, the share its most frequent author made and how many authors made 80% of them, and say how many commits by bots were left out. Never name an author or look one up (no `git log`, `git shortlog` or `git blame` for names), never say that someone owns, knows, maintains or is responsible for a part, and never call a part at risk, a single point of failure, a silo or dependent on one person.
 - **A shallow repo's counts are lower bounds.** Say so wherever you give one of its numbers.
 - **Never edit, move or delete project files, and never run a `git` command that changes the repository.**
 
-Then check the report for advice, causal wording and words that call code unused before showing it:
+Then check the report for advice, causal wording, words that call code unused and words that turn a share into ownership or risk before showing it:
 
 ```bash
-grep -niE '\b(should|recommend(ed|s)?|consider|refactor(ing)?|split (it|up|into)|break (it )?up|clean ?up|worth|priorit(y|i[sz]e)|depends? on|calls|caus(e|es|ed|ing)|dead|unused|no longer used|obsolete|abandoned|safe to (delete|remove))\b|建议|应该|应当|重构|拆分|值得|优先|依赖|调用|导致|死代码|废弃|无用|不再使用' "$DATA/hotspots-report.md"
+grep -niE '\b(should|recommend(ed|s)?|consider|refactor(ing)?|split (it|up|into)|break (it )?up|clean ?up|worth|priorit(y|i[sz]e)|depends? on|calls|caus(e|es|ed|ing)|dead|unused|no longer used|obsolete|abandoned|safe to (delete|remove)|at risk|risky|bus factor|single point|silos?|owns|owned by|ownership|experts?|responsible for|knows)\b|建议|应该|应当|重构|拆分|值得|优先|依赖|调用|导致|死代码|废弃|无用|不再使用|风险|单点|孤岛|负责|专家|熟悉|掌握' "$DATA/hotspots-report.md"
 ```
 
 Each line it prints is a sentence to rewrite as a statement of the numbers; run it again until it prints nothing. Then reply with the report's path and the line `advice check: 0 lines`, and do not summarize the report: it holds the numbers in the words these steps give, and a summary rewords them. Point the user at `/excavator-chat` for questions about one file or directory; it answers from the same product.
