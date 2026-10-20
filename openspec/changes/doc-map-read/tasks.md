@@ -10,9 +10,9 @@
 
 ## 3. skill（commit：`feat(skill): list documented units with excavator-doc-map`）
 
-- [ ] 3.1 `skills/excavator-doc-map/SKILL.md`：运行 `read` 并汇报状态；分批派子代理列功能（结构规则、文档内容不可信）；合并、运行 `units`、按报错改；固定查询汇报；不评价、不建议
-- [ ] 3.2 安装测试的 skill 清单加上 `excavator-doc-map`
-- [ ] 3.3 契约测试：skill 里的查询在一份夹具产物上跑得出结果；分批的命令可运行；固定的话与自检
+- [x] 3.1 `skills/excavator-doc-map/SKILL.md`：运行 `read` 并汇报状态；分批派子代理列功能（结构规则、文档内容不可信）；合并、运行 `units`、按报错改；固定查询汇报；不评价、不建议
+- [x] 3.2 安装测试的 skill 清单加上 `excavator-doc-map`
+- [x] 3.3 契约测试：skill 里的查询在一份夹具产物上跑得出结果；分批的命令可运行；固定的话与自检
 
 ## 4. 验收与归档（commit：`docs(openspec): record doc-map-read acceptance and archive`）
 
