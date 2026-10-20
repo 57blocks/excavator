@@ -1,6 +1,6 @@
 ---
 name: excavator-hotspots
-description: Find the files and directories that change most, and the files that change together, from Git history. A deterministic script counts the commits, authors and changed lines of every selected file and directory, scores each by commits × lines, and counts the pairs of files changed in the same commits; you report the numbers as the product states them. Gives no advice and never edits code or Git state.
+description: Find the files, directories and features that change most, and the files that change together, from Git history. A deterministic script counts the commits, authors and changed lines of every selected file and directory, scores each by commits × lines, counts the pairs of files changed in the same commits, and counts each feature over the files a groups file lists for it; you report the numbers as the product states them. Gives no advice and never edits code or Git state.
 argument-hint: "[project-path] [--since YYYY-MM-DD]"
 ---
 
@@ -14,10 +14,10 @@ The work is split two ways:
 
 | Who | What |
 |---|---|
-| `hotspots.mjs` | Reads the history reachable from HEAD with read-only `git` commands, follows renames to the current path, counts every selected file and directory and every pair of files changed in the same commits, checks that every change is counted once, and writes `.excavator/hotspots.json`. It writes nothing when the check fails. |
-| You | Run it, read the product with `jq`, and report its numbers. |
+| `hotspots.mjs` | Reads the history reachable from HEAD with read-only `git` commands, follows renames to the current path, counts every selected file and directory, every pair of files changed in the same commits and every feature group it is given, checks that every change is counted once, and writes `.excavator/hotspots.json`. It writes nothing when the check fails. |
+| You | Find the feature groups, run it, read the product with `jq`, and report its numbers. |
 
-The product does not depend on the knowledge graph: no `/excavator` run is needed first.
+The product does not depend on the knowledge graph: no `/excavator` run is needed first. Only the counts by feature need groups, from a person or from the business flows of `/excavator-domain` (Step 1).
 
 ## Options
 
@@ -39,22 +39,40 @@ The product does not depend on the knowledge graph: no `/excavator` run is neede
    DATA="$PROJECT_ROOT/.excavator"
    HS="$DATA/hotspots.json"
    ```
-2. Run the script, passing `--since` only when the user gave one:
+2. Find the feature groups. Which files make up a feature is a judgement this skill does not make: take groups only from a groups file a person wrote or from the business flows `/excavator-domain` found, and never write, extend or edit groups yourself.
+   ```bash
+   FEATURE_GROUPS=""
+   if [ -f "$DATA/feature-groups.json" ]; then
+     FEATURE_GROUPS="$DATA/feature-groups.json"
+   elif [ -f "$DATA/domain-graph.json" ]; then
+     DOMAIN_CHECK=$(node "$PLUGIN_ROOT/skills/excavator-domain/domain-freshness.mjs" "$PROJECT_ROOT"); echo "domain graph check: $DOMAIN_CHECK"
+     if [ "$(printf '%s' "$DOMAIN_CHECK" | jq -r .usable)" = true ]; then
+       jq '.edges as $e | (.nodes | map({key: .id, value: .}) | from_entries) as $n | [.nodes[] | select(.type == "flow") | .id as $f | ((.name | select(type == "string" and . != "")) // $f) as $flow | ([$e[] | select(.type == "contains_flow" and .target == $f) | $n[.source].name | select(type == "string" and . != "")] | unique | join(", ")) as $d | {flow: $f, name: (if $d == "" then $flow else "\($d) / \($flow)" end), paths: ([$e[] | select(.type == "flow_step" and .source == $f) | $n[.target].filePath | select(type == "string" and . != "")] | unique)}] | group_by(.name) | {groups: [.[] | if length > 1 then map(.name += " (\(.flow))") else . end | .[] | {name, paths}]}' "$DATA/domain-graph.json" > "$DATA/feature-groups-from-domain.json" && FEATURE_GROUPS="$DATA/feature-groups-from-domain.json"
+     fi
+   fi
+   echo "groups file: ${FEATURE_GROUPS:-none}"
+   ```
+   - `$DATA/feature-groups.json` exists: a person wrote the groups. Use it as it stands.
+   - Otherwise, when `$DATA/domain-graph.json` passes its freshness check (`"usable": true`), the export writes one group per business flow to `$DATA/feature-groups-from-domain.json`, named `<domain> / <flow>`, with the `filePath` of each of the flow's steps as its paths. It runs on every run, so an export from an older domain graph is never used. A person who wants other groups copies it to `feature-groups.json` and edits that.
+   - The check prints `"usable": false`: there are no groups. Keep its `reason` for the report.
+   - Neither file exists: there are no groups.
+3. Run the script, passing `--since` only when the user gave one and `--groups` only when the last step printed a groups file:
    ```bash
    node "$PLUGIN_ROOT/skills/excavator/hotspots.mjs" "$PROJECT_ROOT"            # whole history
    node "$PLUGIN_ROOT/skills/excavator/hotspots.mjs" "$PROJECT_ROOT" --since 2025-01-01
+   node "$PLUGIN_ROOT/skills/excavator/hotspots.mjs" "$PROJECT_ROOT" --groups "$FEATURE_GROUPS"   # add --since as above when given
    ```
-   A non-zero exit writes no product. Report the script's message as it stands. A message that git could not be started, or does not accept a `.git`, means a history exists but cannot be read here: never describe that project as having no history. A refused window means the date was not a real `YYYY-MM-DD` day: ask the user for one; do not convert a phrase such as "last year" into a date yourself.
+   A non-zero exit writes no product. A message that begins `groups file` or names `groups[` means the groups file is malformed: run again without `--groups`, keep the message for the report, and do not change the file. For any other, report the script's message as it stands. A message that git could not be started, or does not accept a `.git`, means a history exists but cannot be read here: never describe that project as having no history. A refused window means the date was not a real `YYYY-MM-DD` day: ask the user for one; do not convert a phrase such as "last year" into a date yourself.
 
 ## Step 2 — Read the header
 
 Never read `$HS` whole; it lists every file and every pair. Read the header with `jq`:
 
 ```bash
-jq 'del(.files, .directories, .pairs)' "$HS"
+jq 'del(.files, .directories, .pairs, .groups)' "$HS"
 ```
 
-It has `sourceRevision`, `sourceKind` (`git`, `multi-repo` or `directory`), `historyAvailable`, `noHistory`, `repos` (each with `path`, `head`, `shallow`, `boundaryCommits`, `earliestVisibleCommit`), `window`, `counts`, `coChange`, `bots` (`emailMarker`, the rule for a bot, and `commits`, the counted commits by bots), `conservation` (`changesRead` = `attributed` + `outsideSelection`) and `residualAssumptions`.
+It has `sourceRevision`, `sourceKind` (`git`, `multi-repo` or `directory`), `historyAvailable`, `noHistory`, `repos` (each with `path`, `head`, `shallow`, `boundaryCommits`, `earliestVisibleCommit`), `window`, `counts`, `coChange`, `bots` (`emailMarker`, the rule for a bot, and `commits`, the counted commits by bots), `featureGroups`, `conservation` (`changesRead` = `attributed` + `outsideSelection`) and `residualAssumptions`.
 
 Settle what the history can show before ranking anything:
 - **`historyAvailable` is false:** every history field is `null`; only `lines` has values. Say first why, from `noHistory.reason`, give the file count and the binary count, and stop: there is no ranking to report.
@@ -65,6 +83,7 @@ Settle what the history can show before ranking anything:
 - **`window.since` set:** every count covers only the window; say so with the window.
 - **`coChange`:** the rule for pairs, `maxFilesPerCommit` and `minTogether`, and its counts. `commitsCounted` commits changed 2 to `maxFilesPerCommit` selected files and are the ones counted for pairs; `commitsOverLimit` commits changed more than `maxFilesPerCommit` selected files and count for no pair. The two sets do not overlap, so never give one count as a part of the other; `pairsBelowMinimum` pairs changed together fewer than `minTogether` times and are not listed.
 - **`bots`:** `commits` counts the commits whose author email's local part ends in `[bot]`, as GitHub app accounts' do. They are left out of every directory's `concentration`; commits by other automated accounts count as commits by people.
+- **`featureGroups`:** `null` when the run had no groups. Otherwise `groupsListed` groups, `filesInAGroup` selected files in at least one of them, `filesInSeveralGroups` of those in more than one, and `pathsUnmatched` listed paths that matched no selected file (deleted, renamed or mistyped; each group keeps its own in `unmatchedPaths`).
 
 ## Step 3 — Read the rankings
 
@@ -91,6 +110,10 @@ jq -r '[.files[] | select(.commits != null)] | "files with history but 0 commits
 jq -r '.bots.commits as $b | .directories[] | select(.path == ".") | "commits by people: \(.concentration.commitsByPeople); by bots: \($b); top author share: \(.concentration.topAuthorShare); authors for 80%: \(.concentration.authorsFor80Percent)"' "$HS"
 # directories with at least 20 commits by people, by the top author's share, highest first (it prints the rule and how many directories meet it first)
 jq -r --argjson min 20 '(reduce (.directories[] | select(.path != ".")) as $r ({}; .[($r.path | split("/") | .[:-1] | join("/") | if . == "" then "." else . end) + " " + ($r.files | tostring)] = true)) as $chain | [.directories[] | select(.path != "." and (.concentration.commitsByPeople // 0) >= $min and ($chain[.path + " " + (.files | tostring)] | not))] | "directories with at least \($min) commits by people (a directory whose files all sit in one subdirectory is shown as that subdirectory): \(length)", (sort_by(-.concentration.topAuthorShare, .concentration.authorsFor80Percent, -.concentration.commitsByPeople, .path) | .[:15][] | [.concentration.topAuthorShare, .concentration.authorsFor80Percent, .concentration.commitsByPeople, .commits, .path] | @tsv)' "$HS"
+# feature groups by commits (it prints the group counts first; a group with no history comes last)
+jq -r 'if .featureGroups == null then "no feature groups" else "groups: \(.featureGroups.groupsListed); files in a group: \(.featureGroups.filesInAGroup); files in several groups: \(.featureGroups.filesInSeveralGroups); listed paths that matched no file: \(.featureGroups.pathsUnmatched)", (.groups | sort_by(-(.commits // -1), .name) | .[:20][] | [.commits, .authors, .files, .lines, (.unmatchedPaths | length), .name] | @tsv) end' "$HS"
+# the listed paths that matched no selected file, with their group
+jq -r '[.groups[] | .name as $g | .unmatchedPaths[] | [$g, .]] | .[:20][] | @tsv' "$HS"
 # files whose counts met a lineage conflict
 jq -r '[.files[] | select(.lineageConflicts > 0)] | sort_by(-.lineageConflicts) | .[:20][] | [.lineageConflicts, .commits, .path] | @tsv' "$HS"
 # pairs of files changed together most often
@@ -106,6 +129,7 @@ To look up one file or directory, select it by path:
 ```bash
 jq --arg p "<path>" '.files[] | select(.path == $p)' "$HS"
 jq --arg p "<path>" '.directories[] | select(.path == $p)' "$HS"
+jq --arg g "<group>" '.groups[] | select(.name == $g)' "$HS"
 # the files changed together with one file
 jq -r --arg p "<path>" '[.pairs[] | select(.a == $p or .b == $p) | if .a == $p then {with: .b, together, shareOfThis: .shareOfA, shareOfOther: .shareOfB} else {with: .a, together, shareOfThis: .shareOfB, shareOfOther: .shareOfA} end] | "listed pairs with this file: \(length)", (.[:20][] | [.together, .shareOfThis, .shareOfOther, .with] | @tsv)' "$HS"
 ```
@@ -117,6 +141,7 @@ What the fields mean:
 - `lastChanged`: committer time of the latest commit in the window, in the committer's own time zone as git records it; `null` when none. The last-change queries order by this recorded time, so two changes less than a day apart in different time zones can be in the other order in absolute time.
 - `commitsByYear` (directories only): the directory's commits in each year of the committer date, the year `lastChanged` shows, with every year from the product's first counted commit to its last (0 for a year with none); they add up to `commits`. The last year runs only to the `.` row's `lastChanged` (the product's last counted commit, not the directory's), and the first starts at the window start or, without a window, no earlier than the earliest visible commit: both are usually partial years. Files have no yearly counts.
 - `concentration` (directories only): `commitsByPeople`, the directory's commits in the window whose author is not a bot; `topAuthorShare`, the share of them made by the author with the most; `authorsFor80Percent`, how few authors made at least 80% of them. Both are `null` when no commit is by people. Authors are told apart by email, as for `authors`, which counts bots too. Files have no shares.
+- Group rows (`groups`, in the groups file's order): `name`; `paths` as the groups file lists them, a path ending in `/` standing for every selected file below it; `unmatchedPaths`, the listed paths that matched no selected file; then `files`, `lines`, `commits`, `authors`, `added`, `removed`, `lastChanged`, `score`, `commitsByYear` and `concentration`, counted as a directory's are over the group's files: a commit counts once per group however many of its files it changed. A file in several groups counts in each, so the groups do not add up to the project. A group with no matched file, or no file with history, has `null` history fields.
 - `together`: commits in the window that changed both files of a pair, counting only commits that changed at most `coChange.maxFilesPerCommit` selected files.
 - `shareOfA`, `shareOfB` (and `shareOfThis`, `shareOfOther` in the one-file query): `together` divided by that file's `commits`, all its commits in the window, larger commits included.
 - The one-file query prints first how many listed pairs include the file; when that is more than the rows you show, say how many you show out of how many.
@@ -129,12 +154,13 @@ Write the report to `$DATA/hotspots-report.md`, in this order:
 2. Counts: files with history, without history, binary; `conservation` (changes read, attributed to selected files, outside the selection).
 3. The top files, each with score, commits, authors, lines and path.
 4. The top directories at depth 1, and at depth 2 when depth 1 has few entries.
-5. Changes by year: the project's commits in each year, saying the last year runs only to its last counted commit and the first is usually partial; then the directories at depth 1 (and depth 2 when depth 1 has few entries) with the most commits in the two years the query names, naming those years.
-6. Least recently changed: how many files had their last change in each year, then the number on the first line of the files query in these words: "<N> files have history but 0 commits counted; the product does not say why." Then the directories at depth 1 (and depth 2 when depth 1 has few entries) whose last change is earliest, each with the date of its last change. Show the rows as the query prints them, from the first, without leaving any out between those you show.
-7. Shares by author: introduce it with the words "Shares of the commits by people in the window; the product counts commits, not knowledge of the code, and holds no names." Then the project's line from the first shares query, then the directories query: its first line (the rule and how many directories meet it) and every row it prints, each with the top author's share, the authors for 80%, the commits by people and the path.
-8. Files changed together: the top pairs, then the top pairs where no path looks like a test by its name, introduced with the words "pairs where neither path looks like a test by its name (a filter on names, not on content)", each with `together`, both shares and both paths; and `coChange`'s counts. Show the second list whole, every row its query prints, and do not describe how it differs from the first (which rows it leaves out or adds): a count of those rows would be yours, not the product's.
-9. Files with `lineageConflicts` above 0 among those you listed, and how many files have any (`counts.filesWithLineageConflicts`).
-10. The residual assumptions, every one, as the product states them.
+5. Changes by feature. With groups, introduce it with the words "Counts by feature group: a group counts only the files its groups file lists, and a file in several groups counts in each." Then say where the groups came from: "The groups were written by a person in .excavator/feature-groups.json." or "The groups are the business flows /excavator-domain found, one group per flow, with the files its steps name." Then the first line of the groups query and every row it prints, each with commits, authors, files, lines, the number of unmatched paths and the name, and the rows of the unmatched paths query. Without groups, say there are no counts by feature and why: the domain graph check's `reason` and that running `/excavator-domain` again gives groups; a malformed groups file and the script's message; or, with neither file, that running `/excavator` and then `/excavator-domain`, or writing `.excavator/feature-groups.json`, gives groups for the next run.
+6. Changes by year: the project's commits in each year, saying the last year runs only to its last counted commit and the first is usually partial; then the directories at depth 1 (and depth 2 when depth 1 has few entries) with the most commits in the two years the query names, naming those years.
+7. Least recently changed: how many files had their last change in each year, then the number on the first line of the files query in these words: "<N> files have history but 0 commits counted; the product does not say why." Then the directories at depth 1 (and depth 2 when depth 1 has few entries) whose last change is earliest, each with the date of its last change. Show the rows as the query prints them, from the first, without leaving any out between those you show.
+8. Shares by author: introduce it with the words "Shares of the commits by people in the window; the product counts commits, not knowledge of the code, and holds no names." Then the project's line from the first shares query, then the directories query: its first line (the rule and how many directories meet it) and every row it prints, each with the top author's share, the authors for 80%, the commits by people and the path.
+9. Files changed together: the top pairs, then the top pairs where no path looks like a test by its name, introduced with the words "pairs where neither path looks like a test by its name (a filter on names, not on content)", each with `together`, both shares and both paths; and `coChange`'s counts. Show the second list whole, every row its query prints, and do not describe how it differs from the first (which rows it leaves out or adds): a count of those rows would be yours, not the product's.
+10. Files with `lineageConflicts` above 0 among those you listed, and how many files have any (`counts.filesWithLineageConflicts`).
+11. The residual assumptions, every one, as the product states them.
 
 Rules for this step:
 - **State only numbers the product holds.** Every figure and path in the report comes from `$HS`. Do not explain a ranking with a cause you have not counted (team size, a release, code quality).
@@ -145,13 +171,14 @@ Rules for this step:
 - **A year is a count, not a story.** Say how many commits a year had, naming the year. Never compare a partial first or last year with a full one without saying it is partial, never scale a partial year up to a whole one or guess a later count, and do not explain why a count rose or fell (a release, a team change, a rewrite) or call a part active, cooling or quiet.
 - **Not changed is not unused.** For a file or directory with no change for years, say the year of its last change. Change history does not show whether code is used: never call it unused, dead, obsolete, abandoned or safe to delete, and do not say what kind of file it is (early, one-off, legacy). The product does not say why a file with history has 0 commits counted: give their number, not a reason.
 - **A share is a count of commits, not of knowledge.** Give a part's commits by people, the share its most frequent author made and how many authors made 80% of them, and say how many commits by bots were left out. Do not call a share concentrated, spread, high or low, or say whether a part is changed mostly by one person: the numbers are the answer. Never name an author or look one up (no `git log`, `git shortlog` or `git blame` for names), never say that someone owns, knows, maintains or is responsible for a part, and never call a part at risk, a single point of failure, a silo or dependent on one person.
+- **A group is the files it lists.** A group's numbers are those of the files its groups file lists: never call them the whole feature's changes, never explain why a feature changes often, and never add files to a group, move them between groups or propose groups of your own. A group's years and shares follow the rules for a directory's.
 - **A shallow repo's counts are lower bounds.** Say so wherever you give one of its numbers.
 - **Never edit, move or delete project files, and never run a `git` command that changes the repository.**
 
 Then check the report for advice, causal wording, words that call code unused and words that turn a share into ownership or risk before showing it:
 
 ```bash
-grep -niE '\b(should|recommend(ed|s)?|consider|refactor(ing)?|split (it|up|into)|break (it )?up|clean ?up|worth|priorit(y|i[sz]e)|depends? on|calls|caus(e|es|ed|ing)|dead|unused|no longer used|obsolete|abandoned|safe to (delete|remove)|at risk|risky|bus factor|single point|silos?|owns|owned by|ownership|experts?|responsible for|knows)\b|建议|应该|应当|重构|拆分|值得|优先|依赖|调用|导致|死代码|废弃|无用|不再使用|风险|单点|孤岛|负责|专家|熟悉|掌握' "$DATA/hotspots-report.md"
+grep -niE '\b(should|recommend(ed|s)?|consider|refactor(ing)?|split (it|up|into)|break (it )?up|clean ?up|worth|priorit(y|i[sz]e)|depends? on|calls|caus(e|es|ed|ing)|dead|unused|no longer used|obsolete|abandoned|safe to (delete|remove)|at risk|risky|bus factor|single point|silos?|owns|owned by|ownership|experts?|responsible for|knows|whole feature|entire feature)\b|建议|应该|应当|重构|拆分|值得|优先|依赖|调用|导致|死代码|废弃|无用|不再使用|风险|单点|孤岛|负责|专家|熟悉|掌握|整个功能' "$DATA/hotspots-report.md"
 ```
 
 Each line it prints is a sentence to rewrite as a statement of the numbers; run it again until it prints nothing. Then reply with the report's path and the line `advice check: 0 lines`, and do not summarize the report: it holds the numbers in the words these steps give, and a summary rewords them. Point the user at `/excavator-chat` for questions about one file or directory; it answers from the same product.

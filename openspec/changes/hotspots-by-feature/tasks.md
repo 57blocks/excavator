@@ -7,9 +7,9 @@
 
 ## 2. skill 与 chat 读分组（commit：`feat(skill): report changes by feature group`）
 
-- [ ] 2.1 `skills/excavator-hotspots/SKILL.md`：第 1 步找分组（人写的、领域图导出、都没有），领域图先过新鲜度检查，用 jq 导出；字段说明；第 3 步加查询；第 4 步汇报加一节与规则
-- [ ] 2.2 `skills/excavator-chat/SKILL.md`：头部查询加 `featureGroups`；改动历史一节加分组的查询与规则；没有分组时怎么答
-- [ ] 2.3 契约测试：导出的 jq 在一份领域图夹具上得到预期的分组；新查询在带分组的产物上跑得出结果，第一行先打印组数与没对上的路径数；字段名都在产物里；固定的话能通过自检
+- [x] 2.1 `skills/excavator-hotspots/SKILL.md`：第 1 步找分组（人写的、领域图导出、都没有），领域图先过新鲜度检查，用 jq 导出；字段说明；第 3 步加查询；第 4 步汇报加一节与规则
+- [x] 2.2 `skills/excavator-chat/SKILL.md`：头部查询加 `featureGroups`；改动历史一节加分组的查询与规则；没有分组时怎么答
+- [x] 2.3 契约测试：导出的 jq 在一份领域图夹具上得到预期的分组；新查询在带分组的产物上跑得出结果，第一行先打印组数与没对上的路径数；字段名都在产物里；固定的话能通过自检
 
 ## 3. 验收与归档（commit：`docs(openspec): record hotspots-by-feature acceptance and archive`）
 
