@@ -110,12 +110,16 @@ describe('excavator-doc-map skill: each rule in its step', () => {
     expect(prompt).toContain('list one unit per number at the level where the document lists them. Steps, flows, business rules and acceptance criteria inside a use case belong to it; they are not units of their own.');
     expect(prompt).toContain('Not units: background, purpose, scope, glossary');
     expect(prompt).toContain('Copy it character by character. Do not fix spelling, spacing or case, and do not join text from two places.');
+    expect(prompt).toContain('Bold labels, list items, steps and branches inside a section belong to its unit; they are not units of their own.');
+    expect(prompt).toContain('Never start it in the text before the unit.');
+    expect(prompt).toContain('when the heading\'s words occur again in the document, carry the quote on from the heading into the unit\'s own first sentence.');
     expect(prompt).toContain('Write {"units": [ ... ]} as JSON to $DATA/doc-map/units-batch-<N>.json');
     expect(step(2)).toContain('`<N>` is the batch number written with three digits (`001`), so the files sort in batch order.');
   });
 
   it('step 3 never lets a fix invent text, and keeps the deleted units for the report', () => {
     expect(step(3)).toContain('Never write a quote or an id that is not in the text to make a unit pass.');
+    expect(step(3)).toContain('carry each quote on from its heading into that unit\'s own first sentence, never back into the text before it');
     expect(step(3)).toContain('keep the number you deleted and their reasons for the report');
   });
 
