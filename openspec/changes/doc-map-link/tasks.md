@@ -6,9 +6,9 @@
 
 ## 2. skill（commit：`feat(skill): tie doc-map units to code`）
 
-- [ ] 2.1 `skills/excavator-doc-map/SKILL.md`：新增「对到代码」一步（分批与行范围、子代理提示词、合并、运行 `link`、按报错改的规则）；报告增加状态计数、每份文档的分状态条数、每条功能的证据位置、`not-found` 搜过的内容；固定写法不说「已实现」「未实现」；描述与参数说明更新。验证：契约测试
-- [ ] 2.2 `README.md` 里这条命令的说明改为也对到代码。验证：读一遍 diff
-- [ ] 2.3 契约测试：分批命令的批次与行范围、合并顺序、报告查询在带对应的夹具产物上的输出、自检报出「implemented」类词、源码零中文字符；关键规则的变异各自变红。验证：`pnpm vitest run tests/skill/test_doc_map_skill_contract.test.mjs` 全绿
+- [x] 2.1 `skills/excavator-doc-map/SKILL.md`：新增「对到代码」一步（分批与行范围、子代理提示词、合并、运行 `link`、按报错改的规则）；报告增加状态计数、每份文档的分状态条数、每条功能的证据位置、`not-found` 搜过的内容；固定写法不说「已实现」「未实现」；描述与参数说明更新。验证：契约测试
+- [x] 2.2 `README.md` 里这条命令的说明改为也对到代码。验证：读一遍 diff
+- [x] 2.3 契约测试：分批命令的批次与行范围、合并顺序、报告查询在带对应的夹具产物上的输出、自检报出「implemented」类词、源码零中文字符；关键规则的变异各自变红。验证：`pnpm vitest run tests/skill/test_doc_map_skill_contract.test.mjs` 全绿
 
 ## 3. 验收与归档（commit：`docs(openspec): record doc-map-link acceptance and archive`）
 
