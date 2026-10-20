@@ -14,7 +14,7 @@
 ## What Changes
 
 - 新增 skill `/excavator-doc-map <文档目录> [项目目录]`，第一步只读文档、列功能，不碰代码。
-- 新增脚本 `skills/excavator-doc-map/doc-map.py`，只用 Python 标准库，两个子命令：
+- 新增脚本 `skills/excavator/doc-map.py`，只用 Python 标准库，两个子命令：
   - `read <文档目录> <项目目录>`：
     - 递归列出文档目录下的每个文件（不进 `.git`，不跟随符号链接），按扩展名转成纯文本；
     - 纯文本类（`.md`、`.markdown`、`.txt`、`.rst`、`.adoc`）原样读；`.html`、`.htm`、`.xhtml` 去标签；`.docx`、`.odt` 从压缩包里的 XML 取段落；`.pdf` 调 `pdftotext`；`.doc` 调 `textutil` 或 `antiword`；
@@ -47,6 +47,6 @@
 
 ## Impact
 
-- 新增：`skills/excavator-doc-map/SKILL.md`、`skills/excavator-doc-map/doc-map.py`。
-- 测试：新增 `tests/skill/test_doc_map.test.mjs`（脚本）、`tests/skill/test_doc_map_skill_contract.test.mjs`（skill 的查询与固定写法）。
+- 新增：`skills/excavator-doc-map/SKILL.md`、`skills/excavator/doc-map.py`。
+- 测试：新增 `tests/skill/test_doc_map.test.mjs`（脚本）、`tests/skill/test_doc_map_skill_contract.test.mjs`（skill 的查询与固定写法）。安装测试里 skill 的数目从 12 变成 13。
 - 不改现有脚本、skill 和产物。
