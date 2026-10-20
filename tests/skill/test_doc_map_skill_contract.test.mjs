@@ -189,7 +189,7 @@ describe('excavator-doc-map skill: each rule in its step', () => {
       'Tests, sample data, generated files and third-party libraries are not places.',
       'a passage copied exactly from that file (one line or a few) that occurs only once in it',
       'Give at most 5 places, the starting point first.',
-      'When no place is tied to the unit, its status is "not-found": list in "searched" every search you ran for it (the pattern, and the folders or file types searched), so that a reader can run them again.',
+      'When no place is tied to the unit, its status is "not-found": list in "searched" every search you ran for it (the pattern, and the folders or file types searched), so that a reader can run them again. Write the searches only, not what you concluded from them.',
       'Write {"links": [ ... ]} as JSON to $DATA/doc-map/links-batch-<N>.json',
       '{"unit": <number>, "status": "found", "evidence": [{"file": "<path>", "code": "<passage>"}]} {"unit": <number>, "status": "not-found", "evidence": [], "searched": ["<search>", ...]}',
     ]) expect(prompt).toContain(rule);
