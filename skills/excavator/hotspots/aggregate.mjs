@@ -11,12 +11,22 @@
  * A directory's `commitsByYear` splits that union by the year of each commit's
  * committer date, with a key for every year from the product's first counted
  * commit to its last (0 for a year without one), so its values add up to `commits`.
+ * Its `concentration` counts the same union by author, leaving out commits by
+ * bots (an author email whose local part ends in `[bot]`): the commits by
+ * people, the share of them by the author with the most, and how few authors
+ * make up at least 80% of them.
  * History fields are `null` when there is no history to count, never 0. A sum
  * (lines, added, removed, score) skips `null` terms and is `null` when every
  * term is.
  */
 
 const compareText = (a, b) => (a < b ? -1 : a > b ? 1 : 0);
+
+/** In an author email (lowercased, after mailmap), the end of a GitHub app account's local part. */
+export const BOT_EMAIL_MARKER = '[bot]@';
+
+/** `count / total`, rounded half up to two decimals from an integer numerator. */
+const share = (count, total) => Math.round((count * 100) / total) / 100;
 
 /** Read-only stand-in for a file of a repository with no commit in the window. */
 const NO_COMMITS = Object.freeze({
@@ -114,7 +124,22 @@ function countByYear(commits, years, commitYears) {
   return counts;
 }
 
-function dirRow(dir, years, commitYears) {
+function concentrationOf(commits, authorOf, bots) {
+  const byAuthor = new Map();
+  for (const commit of commits) {
+    const author = authorOf[commit];
+    if (!bots.has(author)) byAuthor.set(author, (byAuthor.get(author) ?? 0) + 1);
+  }
+  const counts = [...byAuthor.values()].sort((a, b) => b - a);
+  const commitsByPeople = counts.reduce((sum, count) => sum + count, 0);
+  if (commitsByPeople === 0) return { commitsByPeople, topAuthorShare: null, authorsFor80Percent: null };
+  let covered = 0;
+  let authors = 0;
+  while (covered * 5 < commitsByPeople * 4) covered += counts[authors++];
+  return { commitsByPeople, topAuthorShare: share(counts[0], commitsByPeople), authorsFor80Percent: authors };
+}
+
+function dirRow(dir, years, ids, bots) {
   const has = dir.hasHistory;
   return {
     path: dir.path,
@@ -126,7 +151,8 @@ function dirRow(dir, years, commitYears) {
     removed: dir.removed,
     lastChanged: has ? dir.last : null,
     score: dir.score,
-    commitsByYear: has ? countByYear(dir.commits, years, commitYears) : null,
+    commitsByYear: has ? countByYear(dir.commits, years, ids.years) : null,
+    concentration: has ? concentrationOf(dir.commits, ids.authorOf, bots) : null,
   };
 }
 
@@ -135,10 +161,12 @@ function dirRow(dir, years, commitYears) {
  *   the selected files; `lines` is `null` for a binary file, `hasHistory` is
  *   whether a repository's history covers the file
  * @param {Map<string, object>} histories per-file history from history.mjs, by entry path
- * @param {string[]} commitYears year of the committer date, by commit id
- * @returns {{ files: object[], directories: object[] }} ranked rows
+ * @param {{ authors: Map<string, number>, years: string[], authorOf: number[] }} ids
+ *   author ids by lowercased email, and the year and author id of each commit id
+ * @returns {{ files: object[], directories: object[], botCommits: number }} ranked rows, and the
+ *   commits counted for the project root whose author is a bot
  */
-export function buildRows(entries, histories, commitYears) {
+export function buildRows(entries, histories, ids) {
   const files = [];
   const dirs = new Map();
   for (const entry of entries) {
@@ -147,11 +175,16 @@ export function buildRows(entries, histories, commitYears) {
     files.push(row);
     for (const dir of ancestorDirs(entry.path)) foldIntoDir(dirs, dir, row, history);
   }
-  const years = yearRange(dirs.get('.'), commitYears);
+  const root = dirs.get('.');
+  const years = yearRange(root, ids.years);
+  const bots = new Set([...ids.authors].filter(([email]) => email.includes(BOT_EMAIL_MARKER)).map(([, id]) => id));
+  let botCommits = 0;
+  for (const commit of root?.commits ?? []) if (bots.has(ids.authorOf[commit])) botCommits += 1;
   return {
     files: files.sort(compareRows),
-    directories: [...dirs.values()].map((dir) => dirRow(dir, years, commitYears)).sort(compareRows),
+    directories: [...dirs.values()].map((dir) => dirRow(dir, years, ids, bots)).sort(compareRows),
+    botCommits,
   };
 }
 
-export default { compareRows, buildRows };
+export default { BOT_EMAIL_MARKER, compareRows, buildRows };

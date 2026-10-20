@@ -1,9 +1,9 @@
 ## 1. 脚本算作者份额（commit：`feat(hotspots): share of commits by author per directory`）
 
-- [ ] 1.1 `history.mjs`：为每个提交号记下作者编号
-- [ ] 1.2 `aggregate.mjs`：目录行加 `concentration`，只算人的提交；没有历史为 `null`；bot 按邮箱 @ 前的 `[bot]` 认
-- [ ] 1.3 `hotspots.mjs`：头部加 `bots`，残余假设加一条，更新文件头注释
-- [ ] 1.4 单测：份额与八成人数、正好八成、一次提交只算一次、四舍五入、bot 不计入、只有 bot、全项目守恒、没有历史、产物里没有邮箱
+- [x] 1.1 `history.mjs`：为每个提交号记下作者编号
+- [x] 1.2 `aggregate.mjs`：目录行加 `concentration`，只算人的提交；没有历史为 `null`；bot 按邮箱 @ 前的 `[bot]` 认
+- [x] 1.3 `hotspots.mjs`：头部加 `bots`，残余假设加一条，更新文件头注释
+- [x] 1.4 单测：份额与八成人数、正好八成、一次提交只算一次、四舍五入、bot 不计入、只有 bot、全项目守恒、没有历史、产物里没有邮箱
 
 ## 2. skill 与 chat 读作者份额（commit：`feat(skill): report the share of commits by author`）
 
