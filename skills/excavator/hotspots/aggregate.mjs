@@ -15,6 +15,9 @@
  * bots (an author email whose local part ends in `[bot]`): the commits by
  * people, the share of them by the author with the most, and how few authors
  * make up at least 80% of them.
+ * A feature group's row is counted like a directory's, over the files the
+ * groups file lists for it (hotspots/groups.mjs) instead of the files below a
+ * path; a group with no matched file has `files` 0 and no history to count.
  * History fields are `null` when there is no history to count, never 0. A sum
  * (lines, added, removed, score) skips `null` terms and is `null` when every
  * term is.
@@ -77,13 +80,15 @@ function* ancestorDirs(path) {
   for (let slash = path.indexOf('/'); slash !== -1; slash = path.indexOf('/', slash + 1)) yield path.slice(0, slash);
 }
 
+const emptyDir = (path) => ({
+  path, files: 0, lines: null, hasHistory: false, commits: new Set(), authors: new Set(),
+  added: null, removed: null, score: null, last: null, lastMs: -Infinity,
+});
+
 function foldIntoDir(dirs, path, row, history) {
   let dir = dirs.get(path);
   if (dir === undefined) {
-    dir = {
-      path, files: 0, lines: null, hasHistory: false, commits: new Set(), authors: new Set(),
-      added: null, removed: null, score: null, last: null, lastMs: -Infinity,
-    };
+    dir = emptyDir(path);
     dirs.set(path, dir);
   }
   dir.files += 1;
@@ -156,6 +161,13 @@ function dirRow(dir, years, ids, bots) {
   };
 }
 
+/** A group's row: its name, paths and unmatched paths, then a directory row's counts over its files. */
+function groupRow(group, folded, years, ids, bots) {
+  const counts = dirRow(folded.get(group.name) ?? emptyDir(group.name), years, ids, bots);
+  delete counts.path;
+  return { name: group.name, paths: group.paths, unmatchedPaths: group.unmatchedPaths, ...counts };
+}
+
 /**
  * @param {Array<{ path: string, hasHistory: boolean, lines: number | null }>} entries
  *   the selected files; `lines` is `null` for a binary file, `hasHistory` is
@@ -163,17 +175,28 @@ function dirRow(dir, years, ids, bots) {
  * @param {Map<string, object>} histories per-file history from history.mjs, by entry path
  * @param {{ authors: Map<string, number>, years: string[], authorOf: number[] }} ids
  *   author ids by lowercased email, and the year and author id of each commit id
- * @returns {{ files: object[], directories: object[], botCommits: number }} ranked rows, and the
- *   commits counted for the project root whose author is a bot
+ * @param {Array<{ name: string, paths: string[], unmatchedPaths: string[], files: string[] }>} [groups]
+ *   feature groups matched to the selected files (hotspots/groups.mjs)
+ * @returns {{ files: object[], directories: object[], groups: object[], botCommits: number }} ranked
+ *   rows, group rows in the groups' order, and the commits counted for the project root whose author is a bot
  */
-export function buildRows(entries, histories, ids) {
+export function buildRows(entries, histories, ids, groups = []) {
   const files = [];
   const dirs = new Map();
+  const byPath = new Map();
   for (const entry of entries) {
     const history = entry.hasHistory ? histories.get(entry.path) ?? NO_COMMITS : null;
     const row = fileRow(entry, history);
     files.push(row);
+    byPath.set(entry.path, { row, history });
     for (const dir of ancestorDirs(entry.path)) foldIntoDir(dirs, dir, row, history);
+  }
+  const folded = new Map();
+  for (const group of groups) {
+    for (const path of group.files) {
+      const { row, history } = byPath.get(path);
+      foldIntoDir(folded, group.name, row, history);
+    }
   }
   const root = dirs.get('.');
   const years = yearRange(root, ids.years);
@@ -183,6 +206,7 @@ export function buildRows(entries, histories, ids) {
   return {
     files: files.sort(compareRows),
     directories: [...dirs.values()].map((dir) => dirRow(dir, years, ids, bots)).sort(compareRows),
+    groups: groups.map((group) => groupRow(group, folded, years, ids, bots)),
     botCommits,
   };
 }

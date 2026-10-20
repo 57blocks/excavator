@@ -7,10 +7,12 @@
  */
 import { afterAll, describe, expect, it } from 'vitest';
 import { execFileSync, spawnSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+
+import { parseGroups } from '../../skills/excavator/hotspots/groups.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(__dirname, '../..');
@@ -34,7 +36,7 @@ const jqLines = (blocks) => blocks.flatMap((block) => block.split('\n')).map((li
 /** Run one jq recipe on the fixture product; a placeholder path is a file, or a directory for a directory lookup. */
 function runRecipe(line, productPath) {
   const command = line.replaceAll(productPath, JSON.stringify(fixture.product))
-    .replaceAll('<path>', line.includes('.directories[]') ? 'src' : 'src/b.js').replaceAll('<dir>', 'src');
+    .replaceAll('<path>', line.includes('.directories[]') ? 'src' : 'src/b.js').replaceAll('<dir>', 'src').replaceAll('<group>', 'docs');
   const result = spawnSync('sh', ['-c', command], { encoding: 'utf-8' });
   expect(result.status, `${line}\n${result.stderr}`).toBe(0);
   // the fixture has no lineage conflicts, so only that listing may be empty
@@ -42,7 +44,10 @@ function runRecipe(line, productPath) {
 }
 const section = chat.split('### Change-history questions')[1].split(/^##+ /m)[0];
 
-/** A small repository with a rename, two authors, two directories and a pair changed together, and its product. */
+/**
+ * A small repository with a rename, two authors, two directories and a pair changed together, and its product,
+ * counted with two feature groups that share docs/readme.md, one of them listing a path that matches no file.
+ */
 const fixture = (() => {
   const dir = realpathSync(mkdtempSync(join(tmpdir(), 'hotspots-contract-')));
   const env = { ...process.env, GIT_CONFIG_GLOBAL: '/dev/null', GIT_CONFIG_NOSYSTEM: '1' };
@@ -66,7 +71,10 @@ const fixture = (() => {
   // src/b.js and docs/readme.md change together a third time: one listed pair
   commit({ 'src/b.js': 'a\nb\nc\nd\n', 'docs/readme.md': 'r\ns\n' });
   commit({ 'src/b.js': 'a\nb\nc\nd\ne\n', 'docs/readme.md': 'r\ns\nt\n' });
-  const run = spawnSync('node', [SCRIPT, dir], { encoding: 'utf-8' });
+  mkdirSync(join(dir, '.excavator'));
+  const groups = join(dir, '.excavator/feature-groups.json');
+  writeFileSync(groups, JSON.stringify({ groups: [{ name: 'web / sign in', paths: ['src/', 'docs/readme.md'] }, { name: 'docs', paths: ['docs/', 'docs/old.md'] }] }));
+  const run = spawnSync('node', [SCRIPT, dir, '--groups', groups], { encoding: 'utf-8' });
   const product = join(dir, '.excavator/hotspots.json');
   return { dir, run, product };
 })();
@@ -119,10 +127,69 @@ describe('excavator-hotspots skill: each rule in its step', () => {
     expect(s).toContain('do not convert a phrase such as "last year" into a date yourself');
   });
 
+  it('step 1 takes groups from a person first, then from a usable domain graph, and never makes its own', () => {
+    const s = step.get(1);
+    expect(s).toContain('Which files make up a feature is a judgement this skill does not make: take groups only from a groups file a person wrote or from the business flows `/excavator-domain` found, and never write, extend or edit groups yourself.');
+    const order = ['if [ -f "$DATA/feature-groups.json" ]', 'elif [ -f "$DATA/domain-graph.json" ]', 'skills/excavator-domain/domain-freshness.mjs" "$PROJECT_ROOT"', '.usable)" = true ]', '> "$DATA/feature-groups-from-domain.json"'];
+    const at = order.map((text) => s.indexOf(text));
+    expect(at.every((i) => i >= 0), JSON.stringify(at)).toBe(true);
+    expect([...at].sort((a, b) => a - b)).toEqual(at);
+    expect(s).toContain('It runs on every run, so an export from an older domain graph is never used.');
+    expect(s).toContain('The check prints `"usable": false`: there are no groups. Keep its `reason` for the report.');
+    expect(s).toContain('node "$PLUGIN_ROOT/skills/excavator/hotspots.mjs" "$PROJECT_ROOT" --groups "$FEATURE_GROUPS"');
+    expect(s).toContain('means the groups file is malformed: run again without `--groups`, keep the message for the report, and do not change the file.');
+    // bash ignores assignments to GROUPS, its own variable
+    expect(rawStep(1)).not.toMatch(/\bGROUPS=/);
+  });
+
+  it('the export makes one group per business flow from the domain graph, with its steps\' files', () => {
+    const line = rawStep(1).split('\n').map((row) => row.trim()).find((row) => row.startsWith('jq ') && row.includes('domain-graph.json'));
+    const node = (id, type, extra = {}) => ({ id, type, ...extra });
+    const edge = (source, target, type) => ({ source, target, type });
+    const graph = {
+      nodes: [
+        node('domain:articles', 'domain', { name: 'Articles' }), node('domain:users', 'domain', { name: 'Users' }), node('domain:users2', 'domain', { name: 'Users' }),
+        node('flow:publish', 'flow', { name: 'Publish article' }), node('flow:follow', 'flow', { name: 'Follow author' }), node('flow:signin', 'flow', { name: 'Sign in' }),
+        node('flow:sso', 'flow', { name: 'Sign in' }), node('flow:export', 'flow', { name: 'Export data' }), node('flow:unnamed', 'flow'),
+        node('step:p:1', 'step', { filePath: 'api/articles.js' }), node('step:p:2', 'step', { filePath: 'api/models/Article.js' }), node('step:p:3', 'step', { filePath: 'api/articles.js' }),
+        node('step:p:4', 'step', { filePath: 'web/src/Editor.js' }), node('step:f:1', 'step', { filePath: 'api/profiles.js' }), node('step:s:1', 'step', { filePath: 'api/users.js' }),
+        node('step:o:1', 'step', { filePath: 'api/sso.js' }), node('step:e:1', 'step', { filePath: 'scripts/dump.js' }), node('step:u:1', 'step', { provenance: 'inferred' }),
+      ],
+      edges: [
+        edge('domain:articles', 'flow:publish', 'contains_flow'), edge('domain:articles', 'flow:follow', 'contains_flow'), edge('domain:users', 'flow:follow', 'contains_flow'),
+        edge('domain:users', 'flow:signin', 'contains_flow'), edge('domain:users2', 'flow:sso', 'contains_flow'), edge('domain:users', 'flow:unnamed', 'contains_flow'),
+        edge('flow:publish', 'step:p:1', 'flow_step'), edge('flow:publish', 'step:p:2', 'flow_step'), edge('flow:publish', 'step:p:3', 'flow_step'), edge('flow:publish', 'step:p:4', 'flow_step'),
+        edge('flow:follow', 'step:f:1', 'flow_step'), edge('flow:signin', 'step:s:1', 'flow_step'), edge('flow:sso', 'step:o:1', 'flow_step'), edge('flow:export', 'step:e:1', 'flow_step'),
+        edge('flow:unnamed', 'step:u:1', 'flow_step'), edge('domain:articles', 'domain:users', 'cross_domain'),
+      ],
+    };
+    const data = join(fixture.dir, '.excavator/export');
+    mkdirSync(data, { recursive: true });
+    writeFileSync(join(data, 'domain-graph.json'), JSON.stringify(graph));
+    const result = spawnSync('sh', ['-c', line.replaceAll('$DATA', data)], { encoding: 'utf-8' });
+    expect(result.status, result.stderr).toBe(0);
+    expect(JSON.parse(readFileSync(join(data, 'feature-groups-from-domain.json'), 'utf-8'))).toEqual({
+      groups: [
+        { name: 'Articles / Publish article', paths: ['api/articles.js', 'api/models/Article.js', 'web/src/Editor.js'] },
+        // a flow in two domains is one group; a flow in none is named alone
+        { name: 'Articles, Users / Follow author', paths: ['api/profiles.js'] },
+        { name: 'Export data', paths: ['scripts/dump.js'] },
+        // two flows that would share a name keep their ids, so no group name is used twice
+        { name: 'Users / Sign in (flow:signin)', paths: ['api/users.js'] },
+        { name: 'Users / Sign in (flow:sso)', paths: ['api/sso.js'] },
+        // a flow without a name goes by its id; a step without a file adds no path
+        { name: 'Users / flow:unnamed', paths: [] },
+      ],
+    });
+    // what the export writes, the script reads
+    expect(parseGroups(readFileSync(join(data, 'feature-groups-from-domain.json'), 'utf-8'))).toHaveLength(6);
+  });
+
   it('step 2 reads the header with jq and settles what the history can show first', () => {
     const s = step.get(2);
     expect(s).toContain("Never read `$HS` whole");
-    expect(s).toContain(`jq 'del(.files, .directories, .pairs)' "$HS"`);
+    expect(s).toContain(`jq 'del(.files, .directories, .pairs, .groups)' "$HS"`);
+    expect(s).toContain('**`featureGroups`:** `null` when the run had no groups.');
     expect(s).toContain('**`coChange`:**');
     expect(s).toContain('The two sets do not overlap, so never give one count as a part of the other');
     expect(s).toContain('**`historyAvailable` is false:**');
@@ -150,6 +217,7 @@ describe('excavator-hotspots skill: each rule in its step', () => {
     expect(s).toContain('Files have no yearly counts.');
     expect(s).toContain('select(.a == $p or .b == $p)');
     expect(s).toContain('when that is more than the rows you show, say how many you show out of how many');
+    expect(s).toContain('a commit counts once per group however many of its files it changed. A file in several groups counts in each, so the groups do not add up to the project.');
   });
 
   it('filters out pairs whose paths look like tests by name, and keeps the others', () => {
@@ -178,9 +246,13 @@ describe('excavator-hotspots skill: each rule in its step', () => {
     expect(s).toContain("**A shallow repo's counts are lower bounds.**");
     expect(s).toContain('**A pair is a count, not a link.**');
     expect(s).toContain('Never say that one file depends on, calls, uses or causes changes in the other');
-    expect(s).toContain('8. Files changed together: the top pairs, then the top pairs where no path looks like a test by its name');
-    expect(s).toContain('5. Changes by year: the project\'s commits in each year, saying the last year runs only to its last counted commit and the first is usually partial');
-    expect(s).toContain('6. Least recently changed: how many files had their last change in each year');
+    expect(s).toContain('9. Files changed together: the top pairs, then the top pairs where no path looks like a test by its name');
+    expect(s).toContain('5. Changes by feature. With groups, introduce it with the words "Counts by feature group: a group counts only the files its groups file lists, and a file in several groups counts in each."');
+    expect(s).toContain('"The groups were written by a person in .excavator/feature-groups.json." or "The groups are the business flows /excavator-domain found, one group per flow, with the files its steps name."');
+    expect(s).toContain('Without groups, say there are no counts by feature and why');
+    expect(s).toContain('**A group is the files it lists.** A group\'s numbers are those of the files its groups file lists: never call them the whole feature\'s changes, never explain why a feature changes often, and never add files to a group, move them between groups or propose groups of your own.');
+    expect(s).toContain('6. Changes by year: the project\'s commits in each year, saying the last year runs only to its last counted commit and the first is usually partial');
+    expect(s).toContain('7. Least recently changed: how many files had their last change in each year');
     expect(s).toContain('Show the rows as the query prints them, from the first, without leaving any out between those you show.');
     expect(s).toContain('never scale a partial year up to a whole one or guess a later count');
     expect(s).toContain('do not say what kind of file it is (early, one-off, legacy)');
@@ -192,12 +264,12 @@ describe('excavator-hotspots skill: each rule in its step', () => {
     expect(s).toContain('Show the second list whole, every row its query prints, and do not describe how it differs from the first');
     expect(s).toContain('introduced with the words "pairs where neither path looks like a test by its name (a filter on names, not on content)"');
     expect(s).toContain('**Never edit, move or delete project files, and never run a `git` command that changes the repository.**');
-    expect(s).toContain('7. Shares by author: introduce it with the words "Shares of the commits by people in the window; the product counts commits, not knowledge of the code, and holds no names." Then the project\'s line from the first shares query, then the directories query: its first line (the rule and how many directories meet it) and every row it prints');
+    expect(s).toContain('8. Shares by author: introduce it with the words "Shares of the commits by people in the window; the product counts commits, not knowledge of the code, and holds no names." Then the project\'s line from the first shares query, then the directories query: its first line (the rule and how many directories meet it) and every row it prints');
     expect(s).toContain('**A share is a count of commits, not of knowledge.**');
     expect(s).toContain('say how many commits by bots were left out');
     expect(s).toContain('Do not call a share concentrated, spread, high or low, or say whether a part is changed mostly by one person: the numbers are the answer.');
     expect(s).toContain('Never name an author or look one up (no `git log`, `git shortlog` or `git blame` for names), never say that someone owns, knows, maintains or is responsible for a part, and never call a part at risk, a single point of failure, a silo or dependent on one person.');
-    expect(s).toContain('10. The residual assumptions, every one, as the product states them.');
+    expect(s).toContain('11. The residual assumptions, every one, as the product states them.');
     expect(s).toContain('Then reply with the report\'s path and the line `advice check: 0 lines`, and do not summarize the report');
   });
 
@@ -213,7 +285,7 @@ describe('excavator-hotspots skill: agrees with the script', () => {
 
   it('names only header, file and directory fields the product has', () => {
     const p = product();
-    const header = /`(sourceRevision|sourceKind|historyAvailable|noHistory|repos|window|counts|coChange|bots|conservation|residualAssumptions)`/g;
+    const header = /`(sourceRevision|sourceKind|historyAvailable|noHistory|repos|window|counts|coChange|bots|featureGroups|conservation|residualAssumptions)`/g;
     for (const [, key] of skill.matchAll(header)) expect(p).toHaveProperty(key);
     for (const key of ['path', 'head', 'shallow', 'boundaryCommits', 'earliestVisibleCommit']) expect(p.repos[0]).toHaveProperty(key);
     for (const key of ['changesRead', 'attributed', 'outsideSelection']) expect(p.conservation).toHaveProperty(key);
@@ -223,6 +295,13 @@ describe('excavator-hotspots skill: agrees with the script', () => {
     for (const key of fileFields) expect(p.files[0]).toHaveProperty(key);
     for (const key of ['score', 'commits', 'authors', 'files', 'lines', 'path', 'commitsByYear', 'concentration']) expect(p.directories[0]).toHaveProperty(key);
     for (const key of ['emailMarker', 'commits']) expect(p.bots).toHaveProperty(key);
+    for (const text of [skill, section]) {
+      for (const [, key] of text.matchAll(/\.featureGroups\.(\w+)/g)) expect(p.featureGroups).toHaveProperty(key);
+    }
+    for (const key of ['groupsListed', 'filesInAGroup', 'filesInSeveralGroups', 'pathsUnmatched']) expect(skill).toContain(`\`${key}\``);
+    for (const key of ['name', 'paths', 'unmatchedPaths', 'files', 'lines', 'commits', 'authors', 'added', 'removed', 'lastChanged', 'score', 'commitsByYear', 'concentration']) {
+      expect(p.groups[0]).toHaveProperty(key);
+    }
     for (const text of [skill, section]) {
       for (const [, key] of text.matchAll(/\.concentration\.(\w+)/g)) expect(p.directories[0].concentration).toHaveProperty(key);
       for (const [, key] of text.matchAll(/\.bots\.(\w+)/g)) expect(p.bots).toHaveProperty(key);
@@ -346,6 +425,15 @@ describe('excavator-hotspots skill: agrees with the script', () => {
     const fixedWords = [...step.get(4).matchAll(/words:? "([^"]+)"/g)].map((match) => match[1]);
     expect(fixedWords.length).toBeGreaterThanOrEqual(3);
     expect(check(`${fixedWords.join('\n')}\n`).status, fixedWords.join('\n')).toBe(1);
+    // so do the sentences that say where the groups came from, and chat's words for a group
+    const quoted = [...step.get(4).split('5. Changes by feature.')[1].split('6. Changes by year')[0].matchAll(/"([^"]+)"/g)].map((match) => match[1]);
+    expect(quoted).toHaveLength(3);
+    const chatWords = [...flat(section).matchAll(/"(A group counts only[^"]+)"/g)].map((match) => match[1]);
+    expect(chatWords).toHaveLength(1);
+    expect(check(`${[...quoted, ...chatWords].join('\n')}\n`).status).toBe(1);
+    for (const whole of ['These are the whole feature\'s changes.', 'The entire feature changed 40 times.', '这是整个功能的改动。']) {
+      expect(check(`${whole}\n`).stdout, whole).not.toBe('');
+    }
     for (const advice of ['You should refactor src/b.js.', 'Consider splitting it.', 'We recommend more tests.', '建议拆分这个文件。', '这个目录应该重构。']) {
       expect(check(`${advice}\n`).stdout, advice).not.toBe('');
     }
@@ -374,7 +462,7 @@ describe('excavator-chat: change-history questions', () => {
     expect(stepOne).toContain('**Change-history questions do not need the graph.**');
     expect(stepOne).toContain('or about which files changed in the same commits as a file (what usually changes along with it)');
     expect(stepOne).toContain('or about how changes spread over the years and which parts have not changed for a long time');
-    expect(stepOne).toContain('or about whether a part is changed mostly by one or a few people, is answered');
+    expect(stepOne).toContain('or about whether a part is changed mostly by one or a few people, or about which features change most, is answered');
     expect(stepOne.indexOf('Change-history questions')).toBeLessThan(stepOne.indexOf('knowledge-graph.jsonl'));
   });
 
@@ -397,7 +485,7 @@ describe('excavator-chat: change-history questions', () => {
     const s = flat(section);
     expect(s).toContain('its counts are lower bounds');
     expect(s).toContain('`historyAvailable` false: every history field is `null`, so do not rank; say why from `noHistory.reason`.');
-    expect(s).toContain('jq \'{sourceKind, historyAvailable, noHistory, repos, window, counts, coChange, bots, conservation}\'');
+    expect(s).toContain('jq \'{sourceKind, historyAvailable, noHistory, repos, window, counts, coChange, bots, featureGroups, conservation}\'');
     expect(s).toContain('gives this directory\'s numbers in the directory row `noHistory.pathInRepository`');
     expect(s).toContain('Never say such a project is not a Git repository.');
     expect(s).not.toContain('there is no Git history');
@@ -434,6 +522,40 @@ describe('excavator-chat: change-history questions', () => {
     expect(s).toContain('Give a directory\'s shares in these words: "The author with the most commits made <topAuthorShare as a percentage> of its <commitsByPeople> commits by people, and <authorsFor80Percent> authors made at least 80% of them." When asked whether one person makes most of the changes, answer from `topAuthorShare` alone: above 0.5 in the words "the author with the most commits made more than half of them", below 0.5 "less than half of them", and 0.5 "about half of them" (the share is rounded). Do not call the shares concentrated, spread, high or low, and do not say whether the other authors are few or many: the numbers are the answer. Say nothing else about the authors: not that one person or a group maintains, owns or knows the part, in any language (维护, 负责, 拥有, 熟悉).');
     expect(s).toContain('The product holds no names: when asked who, say it has only shares and counts, and never look a name up with git or in any file.');
     expect(s).toContain('A share is a count of commits: never say that someone owns, knows, maintains or is responsible for a part, or that it is at risk, a silo or dependent on one person.');
+    expect(s).toContain('For which features change most, or how much one feature changed, use the groups query, then the `<group>` query with a name from its rows.');
+    expect(s).toContain('`featureGroups` `null` means the product has no counts by feature: say so, say that running `/excavator-domain` (after `/excavator`) and then `/excavator-hotspots` again, or writing `.excavator/feature-groups.json` (groups, each a name and the paths of its files), gives them, and never answer with directories in place of features.');
+    expect(s).toContain('give in these words: "A group counts only the files its groups file lists, and a file in several groups counts in each." Then show the query\'s first line as it stands and every row it prints, in its order, each group under its name exactly as printed: do not shorten, merge or leave out a group (a translation may follow a name in brackets), and when `groupsListed` is more than the rows, say how many you show out of how many.');
+    expect(s).toContain('When no group\'s name matches the feature asked about, say so and list the groups; never pick a directory or a group yourself.');
+    expect(s.split('5. **Answer with the product\'s numbers.**')[1]).toContain('**A group is the files it lists**: show every group the query prints under its full name, never call a group\'s numbers the whole feature\'s changes, and do not explain why a feature changes often.');
+  });
+
+  it('the groups queries of the skill and of chat print the group counts first, then the groups by commits', () => {
+    const p = product();
+    expect(p.featureGroups).toEqual({
+      groupsListed: 2, filesInAGroup: 2, filesInSeveralGroups: 1, pathsUnmatched: 1,
+    });
+    const byCommits = [...p.groups].sort((a, b) => b.commits - a.commits || (a.name < b.name ? -1 : 1));
+    const noGroups = join(fixture.dir, '.excavator/no-groups.json');
+    writeFileSync(noGroups, JSON.stringify({ ...p, featureGroups: null, groups: [] }));
+    for (const [text, productPath] of [[rawStep(3), '"$HS"'], [section, '.excavator/hotspots.json']]) {
+      const line = jqLines(bashBlocks(text)).find((recipe) => recipe.includes('"no feature groups"'));
+      const run = (path) => {
+        const result = spawnSync('sh', ['-c', line.replaceAll(productPath, JSON.stringify(path))], { encoding: 'utf-8' });
+        expect(result.status, result.stderr).toBe(0);
+        return result.stdout.trim().split('\n');
+      };
+      expect(run(fixture.product)).toEqual([
+        `groups: 2; files in a group: 2 of ${p.files.length}; files in several groups: 1; listed paths that matched no file: 1`,
+        ...byCommits.map((g) => [g.commits, g.authors, g.files, g.lines, g.unmatchedPaths.length, g.name].join('\t')),
+      ]);
+      expect(run(noGroups)).toEqual(['no feature groups']);
+    }
+    // a group with no history comes after every group with some
+    const nulls = join(fixture.dir, '.excavator/null-group.json');
+    writeFileSync(nulls, JSON.stringify({ ...p, groups: [{ ...p.groups[0], name: 'a', files: 0, commits: null, authors: null, lines: null, unmatchedPaths: ['x'] }, ...p.groups] }));
+    const line = jqLines(bashBlocks(rawStep(3))).find((recipe) => recipe.includes('"no feature groups"'));
+    const rows = spawnSync('sh', ['-c', line.replaceAll('"$HS"', JSON.stringify(nulls))], { encoding: 'utf-8' }).stdout.trim().split('\n');
+    expect(rows.at(-1)).toBe('\t\t0\t\t1\ta');
   });
 
   it('the freshness helper and the product agree on the revision of an unchanged project', () => {
