@@ -5,8 +5,8 @@
 
 ## 2. 核对功能清单（commit：`feat(doc-map): check and record the listed units`）
 
-- [ ] 2.1 `doc-map.py units`：读清单、逐条核对（文档状态、引文、编号、重复）、统一处理、一次报出全部问题、全部通过才写入；行号、页码、出现次数；每份文档的功能数与总数
-- [ ] 2.2 单测：每种错误、统一处理的每一项、位置与出现次数、失败时产物不变
+- [x] 2.1 `doc-map.py units`：读清单、逐条核对（文档状态、引文、编号、重复）、统一处理、一次报出全部问题、全部通过才写入；行号、页码、出现次数；每份文档的功能数与总数
+- [x] 2.2 单测：每种错误、统一处理的每一项、位置与出现次数、失败时产物不变
 
 ## 3. skill（commit：`feat(skill): list documented units with excavator-doc-map`）
 

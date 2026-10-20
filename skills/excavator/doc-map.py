@@ -3,6 +3,7 @@
 
 Usage:
   doc-map.py read <docsDir> <projectRoot>
+  doc-map.py units <unitsFile> <projectRoot>
 
 `read` walks <docsDir> (never into `.git` or `.excavator`, never through a
 symbolic link) and gives every file one status:
@@ -22,6 +23,17 @@ The statuses add up to the number of files. The format comes from the extension:
 Each text goes to <projectRoot>/.excavator/doc-map/text/<path>.txt; the whole
 text directory is replaced on every run. The product is
 <projectRoot>/.excavator/doc-map.json (`excavator-doc-map/1`).
+
+`units` reads the units a model listed from those texts,
+`{ "units": [ { "document", "id", "title", "quote" } ] }`, and checks each:
+the document was read, the quote is in its text, the id (when not null) is in
+its text, and no id or quote repeats within a document. Quote and text are
+compared after one fixed normalization (NFKC; soft hyphens and zero-width
+characters dropped; curly quotes, dashes and the ellipsis folded to ASCII;
+every run of white space made one space); case is kept. If any unit fails,
+every failure is printed and the product is left as it was; otherwise the
+units go into the product, each with the line (and, in a PDF, the page) of
+its quote's first occurrence and the number of occurrences.
 """
 
 import codecs
@@ -33,6 +45,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import unicodedata
 import zipfile
 from html.parser import HTMLParser
 from xml.etree import ElementTree
@@ -410,12 +423,191 @@ def read_command(docs_dir, project_root):
     )
 
 
-USAGE = "usage: doc-map.py read <docsDir> <projectRoot>"
+UNIT_KEYS = ("document", "id", "title", "quote")
+INVISIBLE = {"\u00ad", "\u200b", "\u200c", "\u200d", "\u2060", "\ufeff"}
+FOLDS = {
+    **dict.fromkeys("\u2018\u2019\u201a\u201b\u2032", "'"),
+    **dict.fromkeys("\u201c\u201d\u201e\u201f\u2033", '"'),
+    **dict.fromkeys("\u2010\u2011\u2012\u2013\u2014\u2015\u2212", "-"),
+    "\u2026": "...",
+}
+
+
+def normalize(text):
+    """The text as compared, and for each of its characters the index in `text` it came from.
+
+    NFKC is applied to each base character together with the combining marks
+    after it, so a decomposed accent compares equal to a precomposed one.
+    """
+    out, starts = [], []
+    blank_at = None
+    i, end = 0, len(text)
+    while i < end:
+        j = i + 1
+        while j < end and unicodedata.combining(text[j]):
+            j += 1
+        for char in unicodedata.normalize("NFKC", text[i:j]):
+            if char in INVISIBLE:
+                continue
+            folded = FOLDS.get(char, char)
+            if folded.isspace():
+                if blank_at is None:
+                    blank_at = i
+                continue
+            if blank_at is not None:
+                if out:
+                    out.append(" ")
+                    starts.append(blank_at)
+                blank_at = None
+            for piece in folded:
+                out.append(piece)
+                starts.append(i)
+        i = j
+    return "".join(out), starts
+
+
+def _has_token(haystack, needle):
+    """Whether `needle` occurs in `haystack` with no letter or digit right before or after it."""
+    at = haystack.find(needle)
+    while at != -1:
+        after = at + len(needle)
+        if (at == 0 or not haystack[at - 1].isalnum()) and (after == len(haystack) or not haystack[after].isalnum()):
+            return True
+        at = haystack.find(needle, at + 1)
+    return False
+
+
+def _short(text, limit=80):
+    return json.dumps(text if len(text) <= limit else text[:limit] + "...", ensure_ascii=False)
+
+
+def _load_text(data_dir, row):
+    text_root = os.path.realpath(os.path.join(data_dir, WORK_DIR, TEXT_DIR))
+    path = os.path.realpath(os.path.join(data_dir, row["text"]))
+    if not path.startswith(text_root + os.sep):
+        raise ValueError(f"its text path {row['text']} is outside {WORK_DIR}/{TEXT_DIR}")
+    try:
+        with open(path, encoding="utf-8", newline="") as handle:
+            text = handle.read()
+    except OSError as error:
+        raise ValueError(f"its text cannot be read ({error.strerror}); run read again") from None
+    if len(text) != row["chars"]:
+        raise ValueError("its text changed after read; run read again")
+    return text, *normalize(text)
+
+
+def check_units(listing, rows, data_dir):
+    """The recorded units, or the list of problems with the listing."""
+    problems, units, texts, seen = [], [], {}, {}
+    for at, unit in enumerate(listing):
+        where = f"units[{at}]"
+        if not isinstance(unit, dict):
+            problems.append(f"{where}: not an object")
+            continue
+        unknown = sorted(set(unit) - set(UNIT_KEYS))
+        missing = [key for key in UNIT_KEYS if key not in unit]
+        if unknown:
+            problems.append(f"{where}: unknown keys {', '.join(unknown)}")
+        if missing:
+            problems.append(f"{where}: missing keys {', '.join(missing)}")
+        document, unit_id, title, quote = (unit.get(key) for key in UNIT_KEYS)
+        if not (isinstance(title, str) and title.strip()):
+            problems.append(f"{where}: title must be a non-empty string")
+        if unit_id is not None and not (isinstance(unit_id, str) and unit_id.strip()):
+            problems.append(f"{where}: id must be a non-empty string or null")
+            unit_id = None
+        quote_key = normalize(quote)[0] if isinstance(quote, str) else ""
+        if not quote_key:
+            problems.append(f"{where}: quote must be a non-empty string")
+        row = rows.get(document) if isinstance(document, str) else None
+        if row is None:
+            problems.append(f"{where}: document {_short(str(document))} is not in the product")
+            continue
+        if row["status"] != "read":
+            problems.append(f"{where}: document {_short(document)} is {row['status']}, not read")
+            continue
+        if document not in texts:
+            try:
+                texts[document] = _load_text(data_dir, row)
+            except ValueError as error:
+                texts[document] = error
+        if isinstance(texts[document], ValueError):
+            problems.append(f"{where}: document {_short(document)}: {texts[document]}")
+            continue
+        text, compared, starts = texts[document]
+        if unit_id is not None:
+            id_key = normalize(unit_id)[0]
+            if not _has_token(compared, id_key):
+                problems.append(f"{where}: id {_short(unit_id)} is not in {_short(document)}")
+            elif (document, "id", id_key) in seen:
+                problems.append(f"{where}: id {_short(unit_id)} repeats units[{seen[(document, 'id', id_key)]}]")
+            else:
+                seen[(document, "id", id_key)] = at
+        if not quote_key:
+            continue
+        found = compared.find(quote_key)
+        if found == -1:
+            problems.append(f"{where}: quote not in {_short(document)}: {_short(quote)}")
+            continue
+        if (document, "quote", quote_key) in seen:
+            problems.append(f"{where}: quote repeats units[{seen[(document, 'quote', quote_key)]}]")
+            continue
+        seen[(document, "quote", quote_key)] = at
+        origin = starts[found]
+        units.append({
+            "document": document, "id": unit_id, "title": title, "quote": quote,
+            "line": text.count("\n", 0, origin) + 1,
+            "page": text.count("\f", 0, origin) + 1 if row["format"] == "pdf" else None,
+            "occurrences": compared.count(quote_key),
+        })
+    return units, problems
+
+
+def units_command(units_file, project_root):
+    data_dir = os.path.join(os.path.abspath(project_root), ".excavator")
+    product_path = os.path.join(data_dir, PRODUCT)
+    try:
+        with open(product_path, encoding="utf-8") as handle:
+            product = json.load(handle)
+    except (OSError, ValueError) as error:
+        raise SystemExit(f"doc-map: no readable product at {product_path} ({error}); run read first") from None
+    if not isinstance(product, dict) or product.get("format") != FORMAT:
+        raise SystemExit(f"doc-map: {product_path} is not an {FORMAT} product; run read again")
+    try:
+        with open(units_file, encoding="utf-8") as handle:
+            listing = json.load(handle)
+    except (OSError, ValueError) as error:
+        raise SystemExit(f"doc-map: the units file is not readable JSON: {error}") from None
+    if not isinstance(listing, dict) or set(listing) != {"units"} or not isinstance(listing["units"], list):
+        raise SystemExit('doc-map: the units file must be an object with one key, "units", holding an array')
+    rows = {row["path"]: row for row in product["documents"]}
+    units, problems = check_units(listing["units"], rows, data_dir)
+    if problems:
+        print(f"doc-map: {len(problems)} problems in {units_file}; nothing was recorded:", file=sys.stderr)
+        for problem in problems:
+            print(f"  {problem}", file=sys.stderr)
+        raise SystemExit(1)
+    per_document = {}
+    for unit in units:
+        per_document[unit["document"]] = per_document.get(unit["document"], 0) + 1
+    for row in product["documents"]:
+        row["units"] = per_document.get(row["path"], 0) if row["status"] == "read" else None
+    product["counts"]["units"] = len(units)
+    product["units"] = units
+    write_json(product_path, product)
+    without = sum(1 for row in product["documents"] if row["units"] == 0)
+    print(f"doc-map: {len(units)} units from {len(per_document)} documents; {without} read documents have none")
+
+
+USAGE = "usage: doc-map.py read <docsDir> <projectRoot> | doc-map.py units <unitsFile> <projectRoot>"
 
 
 def main(argv):
     if len(argv) == 3 and argv[0] == "read":
         read_command(argv[1], argv[2])
+        return 0
+    if len(argv) == 3 and argv[0] == "units":
+        units_command(argv[1], argv[2])
         return 0
     print(USAGE, file=sys.stderr)
     return 2

@@ -293,3 +293,161 @@ describe('read: product and reruns', () => {
     expect(existsSync(join(project, '.excavator'))).toBe(false);
   });
 });
+
+/** Runs `read` on `files` ({ path: content }), with a pdftotext stand-in printing `pdf` for every PDF. */
+function readFolder(files, { pdf = '' } = {}) {
+  const docs = tempDir('doc-map-docs-');
+  const project = tempDir('doc-map-project-');
+  for (const [path, content] of Object.entries(files)) write(docs, path, content);
+  const bin = toolDir({ pdftotext: `printf '%s' '${pdf.replace(/'/g, "'\\''")}'` });
+  const result = run(['read', docs, project], { bin });
+  expect(result.status, result.stderr).toBe(0);
+  return project;
+}
+
+function runUnits(project, listing) {
+  const file = join(tempDir('doc-map-units-'), 'units.json');
+  writeFileSync(file, typeof listing === 'string' ? listing : JSON.stringify(listing));
+  return run(['units', file, project]);
+}
+
+const unit = (document, quote, extra = {}) => ({ document, id: null, title: quote, quote, ...extra });
+
+describe('units: recorded with their place in the document', () => {
+  it('gives each unit its line, its page in a PDF and its occurrences, and counts units per document', () => {
+    const project = readFolder({
+      'uc.md': '# Use cases\nUC-01 Export Medications\nThe provider exports.\nUC-02 Generate hash\nExport Medications again\n',
+      'srs.pdf': '%PDF',
+      'other.md': 'Background only.',
+      'logo.png': 'png',
+    }, { pdf: 'intro\fUC1: Complete Assessment\nsteps\fUC2: Manage' });
+    const result = runUnits(project, { units: [
+      unit('uc.md', 'Export Medications', { id: 'UC-01', title: 'Export medications' }),
+      unit('uc.md', 'UC-02 Generate hash', { id: 'UC-02' }),
+      unit('srs.pdf', 'Complete Assessment', { id: 'UC1' }),
+      unit('srs.pdf', 'UC2: Manage', { id: 'UC2' }),
+    ] });
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout).toBe('doc-map: 4 units from 2 documents; 1 read documents have none\n');
+    const product = readProduct(project);
+    expect(product.units).toEqual([
+      { document: 'uc.md', id: 'UC-01', title: 'Export medications', quote: 'Export Medications', line: 2, page: null, occurrences: 2 },
+      { document: 'uc.md', id: 'UC-02', title: 'UC-02 Generate hash', quote: 'UC-02 Generate hash', line: 4, page: null, occurrences: 1 },
+      { document: 'srs.pdf', id: 'UC1', title: 'Complete Assessment', quote: 'Complete Assessment', line: 1, page: 2, occurrences: 1 },
+      { document: 'srs.pdf', id: 'UC2', title: 'UC2: Manage', quote: 'UC2: Manage', line: 2, page: 3, occurrences: 1 },
+    ]);
+    expect(product.counts.units).toBe(4);
+    expect(product.documents.map((row) => [row.path, row.units])).toEqual([
+      ['logo.png', null], ['other.md', 0], ['srs.pdf', 2], ['uc.md', 2],
+    ]);
+  });
+
+  it('records an empty listing as zero units, and a new read leaves the units unlisted again', () => {
+    const docs = tempDir('doc-map-docs-');
+    const project = tempDir('doc-map-project-');
+    write(docs, 'a.md', 'text');
+    run(['read', docs, project]);
+    expect(runUnits(project, { units: [] }).status).toBe(0);
+    expect(readProduct(project)).toMatchObject({ units: [], counts: { units: 0 }, documents: [{ units: 0 }] });
+    run(['read', docs, project]);
+    expect(readProduct(project)).toMatchObject({ units: null, counts: { units: null }, documents: [{ units: null }] });
+  });
+});
+
+describe('units: the fixed normalization', () => {
+  const text = 'The provider’s “action\nplan” — re­view…  ﬁnal ＡＢＣ café zero​width';
+
+  it('matches across line breaks, curly quotes, dashes, soft hyphens, ligatures, full-width letters and accents', () => {
+    const project = readFolder({ 'a.md': text });
+    const result = runUnits(project, { units: [
+      unit('a.md', 'The provider\'s "action plan" - review... final ABC café zerowidth'),
+    ] });
+    expect(result.status, result.stderr).toBe(0);
+    expect(readProduct(project).units[0]).toMatchObject({ line: 1, occurrences: 1 });
+  });
+
+  it('keeps case, and does not match a quote with a word changed', () => {
+    const project = readFolder({ 'a.md': text });
+    const result = runUnits(project, { units: [unit('a.md', 'the provider'), unit('a.md', 'The provider\'s "action list"')] });
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain('units[0]: quote not in "a.md": "the provider"');
+    expect(result.stderr).toContain('units[1]: quote not in "a.md"');
+  });
+
+  it('places a quote that starts after a line break on the line where it starts', () => {
+    const project = readFolder({ 'a.md': 'one\n\n  two three\nfour' });
+    runUnits(project, { units: [unit('a.md', 'two three four')] });
+    expect(readProduct(project).units[0].line).toBe(3);
+  });
+});
+
+describe('units: every problem at once, and nothing recorded', () => {
+  it('lists each failing unit with its reason and leaves the product as it was', () => {
+    const project = readFolder({ 'uc.md': 'UC-01 Export\nUC10 Other\nUC-03 Hash\n', 'logo.png': 'png' });
+    const before = readFileSync(join(project, '.excavator', 'doc-map.json'), 'utf-8');
+    const result = runUnits(project, { units: [
+      unit('uc.md', 'Import'),
+      unit('uc.md', 'UC10 Other', { id: 'UC1' }),
+      unit('missing.md', 'x'),
+      unit('logo.png', 'x'),
+      unit('uc.md', 'UC-01 Export', { title: ' ' }),
+      unit('uc.md', 'UC-03', { id: '' }),
+      { ...unit('uc.md', 'Hash'), kind: 'use case' },
+      { document: 'uc.md', title: 't', quote: 'Export' },
+      'UC-01',
+      unit('uc.md', 'Export', { id: 'UC-03' }),
+      unit('uc.md', 'UC-03 Hash', { id: 'UC-03' }),
+      unit('uc.md', 'UC-01  Export'),
+      unit('uc.md', ''),
+    ] });
+    expect(result.status).toBe(1);
+    expect(result.stdout).toBe('');
+    expect(result.stderr.split('\n').slice(1).filter(Boolean)).toEqual([
+      '  units[0]: quote not in "uc.md": "Import"',
+      '  units[1]: id "UC1" is not in "uc.md"',
+      '  units[2]: document "missing.md" is not in the product',
+      '  units[3]: document "logo.png" is unsupported, not read',
+      '  units[4]: title must be a non-empty string',
+      '  units[5]: id must be a non-empty string or null',
+      '  units[6]: unknown keys kind',
+      '  units[7]: missing keys id',
+      '  units[8]: not an object',
+      '  units[9]: quote repeats units[7]',
+      '  units[10]: id "UC-03" repeats units[9]',
+      '  units[11]: quote repeats units[4]',
+      '  units[12]: title must be a non-empty string',
+      '  units[12]: quote must be a non-empty string',
+    ]);
+    expect(result.stderr.split('\n')[0]).toMatch(/^doc-map: 14 problems in .*units\.json; nothing was recorded:$/);
+    expect(readFileSync(join(project, '.excavator', 'doc-map.json'), 'utf-8')).toBe(before);
+  });
+
+  it('accepts an id that stands apart from the text around it, such as the end of a longer code', () => {
+    const project = readFolder({ 'uc.md': 'EAAPS-UC-01 Export Medications' });
+    expect(runUnits(project, { units: [unit('uc.md', 'Export Medications', { id: 'UC-01' })] }).status).toBe(0);
+  });
+
+  it('refuses a document whose text changed after read', () => {
+    const project = readFolder({ 'a.md': 'original text' });
+    writeFileSync(join(project, '.excavator/doc-map/text/a.md.txt'), 'edited text, longer');
+    const result = runUnits(project, { units: [unit('a.md', 'original text')] });
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain('units[0]: document "a.md": its text changed after read; run read again');
+  });
+
+  it('refuses a units file that is not JSON or not the expected shape, and a project with no product', () => {
+    const project = readFolder({ 'a.md': 'text' });
+    const before = readFileSync(join(project, '.excavator', 'doc-map.json'), 'utf-8');
+    expect(runUnits(project, '{ units: ').stderr).toContain('doc-map: the units file is not readable JSON');
+    for (const listing of [[], { units: {} }, { units: [], extra: 1 }]) {
+      const result = runUnits(project, listing);
+      expect(result.status).toBe(1);
+      expect(result.stderr).toContain('the units file must be an object with one key, "units", holding an array');
+    }
+    expect(readFileSync(join(project, '.excavator', 'doc-map.json'), 'utf-8')).toBe(before);
+    const empty = tempDir('doc-map-project-');
+    const none = runUnits(empty, { units: [] });
+    expect(none.status).toBe(1);
+    expect(none.stderr).toContain('run read first');
+  });
+});

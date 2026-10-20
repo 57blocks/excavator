@@ -94,7 +94,7 @@
 - `documents`：每个文件一行，按路径排序，有 `path`、`format`、`bytes`、`sha256`、`status`、`reason`、`text`、`chars`、`lines`、`pages`、`units`；
 - `units`：功能清单。
 
-`read` 写出的产物里，`units` 与 `counts.units` 为 `null`（还没列），每行的 `units` 也为 `null`；`units` 写入后，它们分别是功能数组、功能总数、这份文档的功能数（没有功能的 `read` 文档为 0）。
+`read` 写出的产物里，`units` 与 `counts.units` 为 `null`（还没列），每行的 `units` 也为 `null`；`units` 写入后，它们分别是功能数组、功能总数、这份文档的功能数（没有功能的 `read` 文档为 0，不是 `read` 的文档仍为 `null`）。
 
 #### Scenario: 列功能之前
 - **WHEN** 只运行了 `read`
