@@ -175,10 +175,20 @@ Rules for this step:
 - **A shallow repo's counts are lower bounds.** Say so wherever you give one of its numbers.
 - **Never edit, move or delete project files, and never run a `git` command that changes the repository.**
 
-Then check the report for advice, causal wording, words that call code unused and words that turn a share into ownership or risk before showing it:
+Then check the report for advice, causal wording, words that call code unused and words that turn a share into ownership or risk before showing it. The second pattern line holds the same words in Chinese, for a report written in Chinese:
 
 ```bash
-grep -niE '\b(should|recommend(ed|s)?|consider|refactor(ing)?|split (it|up|into)|break (it )?up|clean ?up|worth|priorit(y|i[sz]e)|depends? on|calls|caus(e|es|ed|ing)|dead|unused|no longer used|obsolete|abandoned|safe to (delete|remove)|at risk|risky|bus factor|single point|silos?|owns|owned by|ownership|experts?|responsible for|knows|whole feature|entire feature)\b|建议|应该|应当|重构|拆分|值得|优先|依赖|调用|导致|死代码|废弃|无用|不再使用|风险|单点|孤岛|负责|专家|熟悉|掌握|整个功能' "$DATA/hotspots-report.md"
+python3 - "$DATA/hotspots-report.md" <<'EOF'
+import re, sys
+ADVICE = re.compile(
+    r"\b(should|recommend(ed|s)?|consider|refactor(ing)?|split (it|up|into)|break (it )?up|clean ?up|worth|priorit(y|i[sz]e)|depends? on|calls|caus(e|es|ed|ing)|dead|unused|no longer used|obsolete|abandoned|safe to (delete|remove)|at risk|risky|bus factor|single point|silos?|owns|owned by|ownership|experts?|responsible for|knows|whole feature|entire feature)\b"
+    r"|\u5efa\u8bae|\u5e94\u8be5|\u5e94\u5f53|\u91cd\u6784|\u62c6\u5206|\u503c\u5f97|\u4f18\u5148|\u4f9d\u8d56|\u8c03\u7528|\u5bfc\u81f4|\u6b7b\u4ee3\u7801|\u5e9f\u5f03|\u65e0\u7528|\u4e0d\u518d\u4f7f\u7528|\u98ce\u9669|\u5355\u70b9|\u5b64\u5c9b|\u8d1f\u8d23|\u4e13\u5bb6|\u719f\u6089|\u638c\u63e1|\u6574\u4e2a\u529f\u80fd",
+    re.IGNORECASE)
+for number, line in enumerate(open(sys.argv[1], encoding="utf-8"), 1):
+    line = line.rstrip("\n")
+    if ADVICE.search(line):
+        print(f"{number}:{line}")
+EOF
 ```
 
 Each line it prints is a sentence to rewrite as a statement of the numbers; run it again until it prints nothing. Then reply with the report's path and the line `advice check: 0 lines`, and do not summarize the report: it holds the numbers in the words these steps give, and a summary rewords them. Point the user at `/excavator-chat` for questions about one file or directory; it answers from the same product.
