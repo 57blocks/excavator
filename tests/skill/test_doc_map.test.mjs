@@ -97,7 +97,9 @@ describe('read: every file gets one status', () => {
     const result = run(['read', docs, project], { bin: toolDir({ pdftotext: "printf '  \\n\\f'" }) });
     expect(result.status, result.stderr).toBe(0);
     const product = readProduct(project);
-    expect(product.counts).toEqual({ files: 4, read: 1, empty: 1, noConverter: 0, unsupported: 1, failed: 1, units: null });
+    expect(product.counts).toEqual({
+      files: 4, read: 1, empty: 1, noConverter: 0, unsupported: 1, failed: 1, units: null, found: null, notFound: null, notChecked: null,
+    });
     expect(product.documents.map((row) => [row.path, row.status])).toEqual([
       ['broken.docx', 'failed'], ['guide.md', 'read'], ['img/logo.png', 'unsupported'], ['scan.pdf', 'empty'],
     ]);
@@ -255,12 +257,18 @@ describe('read: product and reruns', () => {
     write(docs, 'a/z.md', 'z');
     run(['read', docs, project]);
     const product = readProduct(project);
-    expect(Object.keys(product)).toEqual(['format', 'docsRoot', 'converters', 'counts', 'residualAssumptions', 'documents', 'units']);
+    expect(Object.keys(product)).toEqual(['format', 'docsRoot', 'converters', 'code', 'counts', 'residualAssumptions', 'documents', 'units']);
     expect(product.format).toBe('excavator-doc-map/1');
     expect(product.docsRoot).toBe(docs);
     expect(product.units).toBeNull();
+    expect(product.code).toBeNull();
+    expect(product.counts).toEqual({
+      files: 2, read: 2, empty: 0, noConverter: 0, unsupported: 0, failed: 0, units: null, found: null, notFound: null, notChecked: null,
+    });
     expect(product.residualAssumptions.join(' ')).toContain("Which passages are units is the model's judgement");
     expect(product.residualAssumptions.join(' ')).toContain('are not in the text, so a unit numbered that way has no id');
+    expect(product.residualAssumptions.join(' ')).toContain("Which code a unit is tied to is the model's judgement");
+    expect(product.residualAssumptions.join(' ')).toContain('A unit with no code found means only that the searches listed with it found none');
     expect(product.documents.map((row) => row.path)).toEqual(['a/z.md', 'b.md']);
     expect(Object.keys(product.documents[0])).toEqual([
       'path', 'format', 'bytes', 'sha256', 'status', 'reason', 'text', 'chars', 'lines', 'pages', 'units',
@@ -332,10 +340,10 @@ describe('units: recorded with their place in the document', () => {
     expect(result.stdout).toBe('doc-map: 4 units from 2 documents; 1 read documents have none\n');
     const product = readProduct(project);
     expect(product.units).toEqual([
-      { document: 'uc.md', id: 'UC-01', title: 'Export medications', quote: 'Export Medications', line: 2, page: null, occurrences: 2 },
-      { document: 'uc.md', id: 'UC-02', title: 'UC-02 Generate hash', quote: 'UC-02 Generate hash', line: 4, page: null, occurrences: 1 },
-      { document: 'srs.pdf', id: 'UC1', title: 'Complete Assessment', quote: 'Complete Assessment', line: 1, page: 2, occurrences: 1 },
-      { document: 'srs.pdf', id: 'UC2', title: 'UC2: Manage', quote: 'UC2: Manage', line: 2, page: 3, occurrences: 1 },
+      { document: 'uc.md', id: 'UC-01', title: 'Export medications', quote: 'Export Medications', line: 2, page: null, occurrences: 2, code: null },
+      { document: 'uc.md', id: 'UC-02', title: 'UC-02 Generate hash', quote: 'UC-02 Generate hash', line: 4, page: null, occurrences: 1, code: null },
+      { document: 'srs.pdf', id: 'UC1', title: 'Complete Assessment', quote: 'Complete Assessment', line: 1, page: 2, occurrences: 1, code: null },
+      { document: 'srs.pdf', id: 'UC2', title: 'UC2: Manage', quote: 'UC2: Manage', line: 2, page: 3, occurrences: 1, code: null },
     ]);
     expect(product.counts.units).toBe(4);
     expect(product.documents.map((row) => [row.path, row.units])).toEqual([
@@ -450,5 +458,245 @@ describe('units: every problem at once, and nothing recorded', () => {
     const none = runUnits(empty, { units: [] });
     expect(none.status).toBe(1);
     expect(none.stderr).toContain('run read first');
+  });
+});
+
+const GIT_BINARY = join(execFileSync('git', ['--exec-path'], { encoding: 'utf-8' }).trim(), 'git');
+
+/**
+ * A project holding `code` ({ path: content }) and, in its docs/ folder, `docs`,
+ * with `units` read and recorded.
+ */
+function linkProject({ docs = {}, code = {}, units = [] } = {}) {
+  const project = tempDir('doc-map-project-');
+  for (const [path, content] of Object.entries(docs)) write(project, `docs/${path}`, content);
+  for (const [path, content] of Object.entries(code)) write(project, path, content);
+  expect(run(['read', join(project, 'docs'), project]).status).toBe(0);
+  const result = runUnits(project, { units });
+  expect(result.status, result.stderr).toBe(0);
+  return project;
+}
+
+function runLink(project, listing, options) {
+  const file = join(tempDir('doc-map-links-'), 'links.json');
+  writeFileSync(file, typeof listing === 'string' ? listing : JSON.stringify(listing));
+  return run(['link', file, project], options);
+}
+
+const found = (number, ...evidence) => ({
+  unit: number, status: 'found', evidence: evidence.map(([file, code]) => ({ file, code })), searched: [],
+});
+const notFound = (number, ...searched) => ({ unit: number, status: 'not-found', evidence: [], searched });
+
+const USE_CASES = 'UC-01 Add prescription\nThe doctor adds one.\nUC-02 Print\nPrints it.\nUC-03 Fax\nFaxes it.\n';
+const THREE_UNITS = [
+  unit('uc.md', 'UC-01 Add prescription', { id: 'UC-01' }),
+  unit('uc.md', 'UC-02 Print', { id: 'UC-02' }),
+  unit('uc.md', 'UC-03 Fax', { id: 'UC-03' }),
+];
+const RX = 'class Rx {\n  @Override public void addPrescription(String drug,\n      int days) {\n    save(drug);\n  }\n}\n';
+
+describe('link: recorded with the line the script finds', () => {
+  it('gives each piece of evidence its line, marks a unit left out not-checked, and counts the statuses', () => {
+    const project = linkProject({
+      docs: { 'uc.md': USE_CASES },
+      code: { 'src/Rx.java': RX },
+      units: THREE_UNITS,
+    });
+    const result = runLink(project, { links: [
+      found(1, ['src/Rx.java', 'public void addPrescription(String drug, int days)'], ['./src/Rx.java', 'save(drug);']),
+      notFound(2, 'grep -ri "print" web/', 'PrintAction'),
+    ] });
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout).toBe('doc-map: 3 units: 1 found, 1 not found, 1 not checked\n');
+    const product = readProduct(project);
+    expect(product.units.map((recorded) => recorded.code)).toEqual([
+      {
+        status: 'found',
+        evidence: [
+          { file: 'src/Rx.java', code: 'public void addPrescription(String drug, int days)', line: 2 },
+          { file: './src/Rx.java', code: 'save(drug);', line: 4 },
+        ],
+        searched: [],
+      },
+      { status: 'not-found', evidence: [], searched: ['grep -ri "print" web/', 'PrintAction'] },
+      { status: 'not-checked', evidence: [], searched: [] },
+    ]);
+    expect(product.counts).toMatchObject({ units: 3, found: 1, notFound: 1, notChecked: 1 });
+    expect(product.code).toEqual({ root: project, revision: null });
+    expect(Object.keys(product)).toEqual(['format', 'docsRoot', 'converters', 'code', 'counts', 'residualAssumptions', 'documents', 'units']);
+  });
+
+  it('reads a file that is not UTF-8 as Latin-1, and matches code across line breaks and spacing', () => {
+    const project = linkProject({
+      docs: { 'uc.md': USE_CASES },
+      code: { 'legacy/Fax.java': Buffer.from('// caf\u00e9 fax\nclass  Fax\n{ }\n', 'latin1') },
+      units: THREE_UNITS,
+    });
+    const result = runLink(project, { links: [found(3, ['legacy/Fax.java', 'caf\u00e9 fax class Fax'])] });
+    expect(result.status, result.stderr).toBe(0);
+    expect(readProduct(project).units[2].code.evidence).toEqual([{ file: 'legacy/Fax.java', code: 'caf\u00e9 fax class Fax', line: 1 }]);
+  });
+
+  it('records the commit at HEAD of a Git project, and null for a folder that is not one', () => {
+    const bin = toolDir();
+    symlinkSync(GIT_BINARY, join(bin, 'git'));
+    const project = linkProject({ docs: { 'uc.md': USE_CASES }, code: { 'src/Rx.java': RX }, units: THREE_UNITS });
+    expect(runLink(project, { links: [] }, { bin }).status).toBe(0);
+    expect(readProduct(project).code.revision).toBeNull();
+    const env = { PATH: bin, GIT_CONFIG_GLOBAL: '/dev/null', GIT_CONFIG_NOSYSTEM: '1' };
+    execFileSync('git', ['init', '-q'], { cwd: project, env });
+    execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@example.com', 'commit', '-q', '--allow-empty', '-m', 'x'], { cwd: project, env });
+    const head = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: project, env, encoding: 'utf-8' }).trim();
+    expect(runLink(project, { links: [] }, { bin }).status).toBe(0);
+    expect(readProduct(project).code.revision).toBe(head);
+    expect(readProduct(project).counts).toMatchObject({ found: 0, notFound: 0, notChecked: 3 });
+  });
+
+  it('clears the code when the units are recorded again or the documents are read again', () => {
+    const project = linkProject({ docs: { 'uc.md': USE_CASES }, code: { 'src/Rx.java': RX }, units: THREE_UNITS });
+    expect(runLink(project, { links: [found(1, ['src/Rx.java', 'class Rx'])] }).status).toBe(0);
+    expect(runUnits(project, { units: THREE_UNITS }).status).toBe(0);
+    let product = readProduct(project);
+    expect(product.code).toBeNull();
+    expect(product.units.map((recorded) => recorded.code)).toEqual([null, null, null]);
+    expect(product.counts).toMatchObject({ units: 3, found: null, notFound: null, notChecked: null });
+    expect(runLink(project, { links: [found(1, ['src/Rx.java', 'class Rx'])] }).status).toBe(0);
+    expect(run(['read', join(project, 'docs'), project]).status).toBe(0);
+    product = readProduct(project);
+    expect(product).toMatchObject({ code: null, units: null, counts: { units: null, found: null, notFound: null, notChecked: null } });
+  });
+});
+
+describe('link: every problem at once, and nothing recorded', () => {
+  it('refuses evidence that is not a code file of the project, and code that is not there exactly once', () => {
+    const outside = tempDir('doc-map-outside-');
+    write(outside, 'app.js', 'function outside() {}\n');
+    const spec = '<html><body><h1>UC-01 Add prescription</h1></body></html>\n';
+    const project = linkProject({
+      docs: { 'uc.md': USE_CASES, 'spec.html': spec },
+      code: {
+        'src/Rx.java': RX,
+        'src/eq.js': 'if (a === b) { go(); }\n',
+        'README.md': 'class Rx\n',
+        'notes.TXT': 'class Rx\n',
+        'site/spec.html': spec,
+        '.git/config': '[core]\n',
+        'sub/.git/HEAD': 'ref\n',
+      },
+      units: [...THREE_UNITS, unit('spec.html', 'UC-01 Add prescription', { id: 'UC-01' })],
+    });
+    symlinkSync(join(outside, 'app.js'), join(project, 'src', 'linked.js'));
+    const before = readFileSync(join(project, '.excavator', 'doc-map.json'), 'utf-8');
+    const evidence = (...pairs) => ({ unit: 1, status: 'found', evidence: pairs.map(([file, code]) => ({ file, code })), searched: [] });
+    const result = runLink(project, { links: [
+      evidence(
+        [join(project, 'src/Rx.java'), 'class Rx'],
+        ['../outside/app.js', 'function outside'],
+        ['src/linked.js', 'function outside'],
+        ['src', 'class Rx'],
+        ['.git/config', '[core]'],
+        ['sub/.git/HEAD', 'ref'],
+        ['.excavator/doc-map/text/uc.md.txt', 'UC-01'],
+        ['docs/spec.html', 'UC-01'],
+        ['README.md', 'class Rx'],
+        ['notes.TXT', 'class Rx'],
+        ['site/spec.html', 'UC-01 Add prescription'],
+        ['src/missing.java', 'class Rx'],
+        ['src/Rx.java', 'class Rx {  void remove'],
+        ['src/Rx.java', 'drug'],
+        ['src/eq.js', '=='],
+      ),
+    ] });
+    expect(result.status).toBe(1);
+    expect(result.stdout).toBe('');
+    expect(result.stderr.split('\n').slice(1).filter(Boolean)).toEqual([
+      `  links[0].evidence[0]: file ${JSON.stringify(join(project, 'src/Rx.java').slice(0, 80) + '...')} is not a path relative to the project`,
+      '  links[0].evidence[1]: file "../outside/app.js" is outside the project',
+      '  links[0].evidence[2]: file "src/linked.js" is outside the project',
+      '  links[0].evidence[3]: file "src" is not a file',
+      '  links[0].evidence[4]: file ".git/config" is in .git',
+      '  links[0].evidence[5]: file "sub/.git/HEAD" is in .git',
+      '  links[0].evidence[6]: file ".excavator/doc-map/text/uc.md.txt" is in .excavator',
+      '  links[0].evidence[7]: file "docs/spec.html" is in the documents folder',
+      '  links[0].evidence[8]: file "README.md" is a document (.md), not code',
+      '  links[0].evidence[9]: file "notes.TXT" is a document (.txt), not code',
+      '  links[0].evidence[10]: file "site/spec.html" has the same content as a document in the documents folder',
+      '  links[0].evidence[11]: file "src/missing.java" is not a file',
+      '  links[0].evidence[12]: code not in "src/Rx.java": "class Rx {  void remove"',
+      '  links[0].evidence[13]: code occurs 2 times in "src/Rx.java"; copy a passage that occurs once',
+      '  links[0].evidence[14]: code occurs 2 times in "src/eq.js"; copy a passage that occurs once',
+    ]);
+    expect(result.stderr.split('\n')[0]).toMatch(/^doc-map: 15 problems in .*links\.json; nothing was recorded:$/);
+    expect(readFileSync(join(project, '.excavator', 'doc-map.json'), 'utf-8')).toBe(before);
+  });
+
+  it('refuses entries whose unit, status, evidence or searches do not fit', () => {
+    const numbers = Array.from({ length: 15 }, (_, at) => `F${String(at + 1).padStart(2, '0')}`);
+    const project = linkProject({
+      docs: { 'f.md': numbers.map((id) => `${id} step\n`).join('') },
+      code: { 'src/Rx.java': RX },
+      units: numbers.map((id) => unit('f.md', `${id} step`, { id })),
+    });
+    const before = readFileSync(join(project, '.excavator', 'doc-map.json'), 'utf-8');
+    const rx = ['src/Rx.java', 'class Rx'];
+    const result = runLink(project, { links: [
+      'UC-01',
+      { unit: 1, status: 'found', evidence: [{ file: 'src/Rx.java', code: 'class Rx' }] },
+      { ...found(2, rx), why: 'name' },
+      found(0, rx),
+      found(16, rx),
+      found('3', rx),
+      found(true, rx),
+      found(4, rx),
+      found(4, rx),
+      { unit: 5, status: 'implemented', evidence: [], searched: [] },
+      { unit: 6, status: 'found', evidence: [], searched: ['x'] },
+      { unit: 7, status: 'not-found', evidence: [{ file: 'src/Rx.java', code: 'class Rx' }], searched: ['x'] },
+      notFound(8, ' '),
+      { unit: 9, status: 'not-found', evidence: {}, searched: 'x' },
+      { unit: 10, status: 'found', evidence: ['src/Rx.java', { file: 'src/Rx.java' }, { file: '', code: 'class Rx', line: 1 }, { file: 'src/Rx.java', code: ' ' }], searched: [] },
+    ] });
+    expect(result.status).toBe(1);
+    expect(result.stderr.split('\n').slice(1).filter(Boolean)).toEqual([
+      '  links[0]: not an object',
+      '  links[1]: missing keys searched',
+      '  links[1]: searched must be an array of strings',
+      '  links[2]: unknown keys why',
+      '  links[3]: unit must be a unit number from 1 to 15',
+      '  links[4]: unit must be a unit number from 1 to 15',
+      '  links[5]: unit must be a unit number from 1 to 15',
+      '  links[6]: unit must be a unit number from 1 to 15',
+      '  links[8]: unit 4 repeats links[7]',
+      '  links[9]: status must be "found" or "not-found"',
+      '  links[10]: found needs at least one piece of evidence',
+      '  links[11]: not-found takes no evidence',
+      '  links[12]: not-found needs the searches that were run',
+      '  links[13]: evidence must be an array',
+      '  links[13]: searched must be an array of strings',
+      '  links[13]: not-found needs the searches that were run',
+      '  links[14].evidence[0]: not an object',
+      '  links[14].evidence[1]: missing keys code',
+      '  links[14].evidence[1]: code must be a non-empty string',
+      '  links[14].evidence[2]: unknown keys line',
+      '  links[14].evidence[2]: file must be a non-empty string',
+      '  links[14].evidence[3]: code must be a non-empty string',
+    ]);
+    expect(readFileSync(join(project, '.excavator', 'doc-map.json'), 'utf-8')).toBe(before);
+  });
+
+  it('refuses a links file of the wrong shape, and a product whose units are not recorded yet', () => {
+    const project = linkProject({ docs: { 'uc.md': USE_CASES }, units: THREE_UNITS });
+    expect(runLink(project, '{ links: ').stderr).toContain('doc-map: the links file is not readable JSON');
+    for (const listing of [[], { links: {} }, { links: [], units: [] }]) {
+      const result = runLink(project, listing);
+      expect(result.status).toBe(1);
+      expect(result.stderr).toContain('the links file must be an object with one key, "links", holding an array');
+    }
+    expect(run(['read', join(project, 'docs'), project]).status).toBe(0);
+    const early = runLink(project, { links: [] });
+    expect(early.status).toBe(1);
+    expect(early.stderr).toContain('no units are recorded yet; run units first');
+    expect(run(['link', project]).status).toBe(2);
   });
 });

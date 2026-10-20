@@ -159,7 +159,9 @@ describe('excavator-doc-map skill: each rule in its step', () => {
 
 describe('excavator-doc-map skill: the commands run', () => {
   it('records the units of both batches in batch order', () => {
-    expect(fixture.product.counts).toEqual({ files: 5, read: 3, empty: 0, noConverter: 1, unsupported: 1, failed: 0, units: 4 });
+    expect(fixture.product.counts).toEqual({
+      files: 5, read: 3, empty: 0, noConverter: 1, unsupported: 1, failed: 0, units: 4, found: null, notFound: null, notChecked: null,
+    });
     expect(fixture.product.units.map((unit) => unit.title)).toEqual(['Placing an order', 'Complete assessment', 'Export medications', 'Enroll in study']);
   });
 

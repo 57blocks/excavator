@@ -1,8 +1,8 @@
 ## 1. 核对并记录对应（commit：`feat(doc-map): check and record the code each unit is tied to`）
 
-- [ ] 1.1 `doc-map.py link`：读对应清单；逐条核对序号、状态与证据、`searched`、路径规则（项目内、普通文件、不在 `.git`/`.excavator`/文档目录、不是文档扩展名、内容不同于已读文档）、代码段恰好出现一次（统一处理，Latin-1 回退）；一次报出全部问题；全部通过才写入；行号、`not-checked`、三种计数、代码基线。验证：`tests/skill/test_doc_map.test.mjs` 里 `link` 的单测全绿
-- [ ] 1.2 产物字段：`code`、`counts.found`/`notFound`/`notChecked`、每条功能的 `code`；`read` 与 `units` 写 `null`；残余假设加两条。验证：单测断言三步之后的字段与清回 `null`
-- [ ] 1.3 单测覆盖 design.md「Oracle · 单测」的每一项；源码零中文字符。验证：`pnpm vitest run tests/skill/test_doc_map.test.mjs` 全绿，变异（去掉唯一性、去掉项目内检查、去掉文档内容比对、去掉 `not-checked`）各自让测试变红
+- [x] 1.1 `doc-map.py link`：读对应清单；逐条核对序号、状态与证据、`searched`、路径规则（项目内、普通文件、不在 `.git`/`.excavator`/文档目录、不是文档扩展名、内容不同于已读文档）、代码段恰好出现一次（统一处理，Latin-1 回退）；一次报出全部问题；全部通过才写入；行号、`not-checked`、三种计数、代码基线。验证：`tests/skill/test_doc_map.test.mjs` 里 `link` 的单测全绿
+- [x] 1.2 产物字段：`code`、`counts.found`/`notFound`/`notChecked`、每条功能的 `code`；`read` 与 `units` 写 `null`；残余假设加两条。验证：单测断言三步之后的字段与清回 `null`
+- [x] 1.3 单测覆盖 design.md「Oracle · 单测」的每一项；源码零中文字符。验证：`pnpm vitest run tests/skill/test_doc_map.test.mjs` 全绿，变异（去掉唯一性、去掉项目内检查、去掉文档内容比对、去掉 `not-checked`）各自让测试变红
 
 ## 2. skill（commit：`feat(skill): tie doc-map units to code`）
 
