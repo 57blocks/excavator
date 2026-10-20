@@ -312,6 +312,57 @@ skill 的汇报与 chat 的回答列到 `lineageConflicts` 大于 0 的文件时
 - **WHEN** 对有历史的项目运行
 - **THEN** 产物里找不到任何作者的名字或邮箱
 
+### Requirement: 按功能分组的改动
+
+传入分组文件时，脚本 SHALL 为每个组算一行，计数方式与目录行相同：组里的文件是分组文件列出的选中文件，提交与作者在组内去重。
+
+分组文件是 `{ "groups": [ { "name": <非空字符串>, "paths": [<字符串>…] } ] }`：
+- 组名 MUST 互不相同；
+- 一个路径是一个选中文件的路径，或以 `/` 结尾的目录，指它下面的全部选中文件；
+- 一个文件在同一个组里被列了多次（如文件本身和它所在的目录），只算一次；
+- 没对上任何选中文件的路径（已删除、改名、写错），MUST 列进这一组的 `unmatchedPaths` 并计入头部，MUST NOT 悄悄丢掉；
+- 文件格式不对时 SHALL 报错，不写产物。
+
+每行有：`name`、`paths`（原样）、`unmatchedPaths`，以及 `files`、`lines`、`commits`、`authors`、`added`、`removed`、`lastChanged`、`score`、`commitsByYear`、`concentration`，含义与目录行相同。行按分组文件里的顺序排列。一个组没有对上任何文件，或它的文件都没有历史时，历史字段为 `null`。
+
+没传分组文件时，头部 `featureGroups` 为 `null`，`groups` 为空数组。
+
+#### Scenario: 组内的提交只算一次
+- **WHEN** 组 `g` 列出 `a.js` 与 `b.js`，一次提交同时改了两个文件，另一次只改了 `a.js`
+- **THEN** `g` 的 `commits` 为 2
+
+#### Scenario: 目录路径
+- **WHEN** 组 `g` 的路径是 `src/`，`src` 下有 3 个选中文件
+- **THEN** `g` 的 `files` 为 3；路径写成不带 `/` 的 `src` 时，它只匹配名为 `src` 的文件
+
+#### Scenario: 同一个文件列了两次
+- **WHEN** 组 `g` 同时列出 `src/` 与 `src/a.js`
+- **THEN** `src/a.js` 在 `g` 里只算一个文件，它的提交也只算一次
+
+#### Scenario: 一个文件属于两个组
+- **WHEN** `a.js` 同时列在组 `g` 与组 `h` 里
+- **THEN** `a.js` 的提交在 `g` 与 `h` 里各算一次，头部属于多个组的文件数为 1
+
+#### Scenario: 没对上的路径
+- **WHEN** 组 `g` 列出一个已经删除的文件 `old.js`
+- **THEN** `old.js` 出现在 `g` 的 `unmatchedPaths` 里，头部没对上的路径数为 1
+
+#### Scenario: 分组文件格式不对
+- **WHEN** 分组文件不是 JSON，或缺 `groups`，或组名为空、重复，或 `paths` 不是字符串数组
+- **THEN** 脚本报错退出，不写产物
+
+#### Scenario: 没有历史
+- **WHEN** 项目不是 Git 仓库，传入了分组文件
+- **THEN** 每组照样给出 `files` 与 `lines`，历史字段为 `null`
+
+#### Scenario: 跨仓的组
+- **WHEN** 多仓的父目录下，组 `g` 的文件分属两个成员仓
+- **THEN** 两个仓的提交都计入 `g`，不同仓的提交不会合并
+
+#### Scenario: 没传分组文件
+- **WHEN** 运行脚本时没有 `--groups`
+- **THEN** 头部 `featureGroups` 为 `null`，`groups` 为空数组
+
 ### Requirement: 产物、新鲜度与查询
 
 脚本 SHALL 写 `.excavator/hotspots.json`。
@@ -324,6 +375,7 @@ skill 的汇报与 chat 的回答列到 `lineageConflicts` 大于 0 的文件时
 - 各分类的计数；
 - 文件对的规则与计数（`coChange`）；
 - 认定 bot 的规则与计入的提交里 bot 的提交数（`bots`）；
+- 分组的计数（`featureGroups`）：组数、属于至少一个组的文件数、属于多个组的文件数、没对上任何选中文件的路径数；没传分组文件时为空；
 - 残余假设：
   - 合并提交不计；
   - 改名靠 git 的相似度判断，改动很大的改名会被当成一次删除加一次新建；
@@ -335,7 +387,8 @@ skill 的汇报与 chat 的回答列到 `lineageConflicts` 大于 0 的文件时
   - 仓库本地的 `.git/config` 与 `.git/info/attributes` 仍会影响改名检测与二进制判定；
   - 改到超过 30 个选中文件的提交不计入文件对，只在这类提交里一起改过的文件不会成对列出；
   - 提交按提交者日期上的年份归年，用的是提交者所在的时区；变基或 cherry-pick 过的提交算在重新提交的那一年，不是最初写成的那一年；
-  - 只有作者邮箱 @ 前以 `[bot]` 结尾的才算 bot（GitHub 应用账号的写法），其它自动化账号按人算。
+  - 只有作者邮箱 @ 前以 `[bot]` 结尾的才算 bot（GitHub 应用账号的写法），其它自动化账号按人算；
+  - 一个组只算分组文件列出的文件，一个文件属于多个组时在每个组里都算；这些文件是不是构成一个功能，脚本不检查。
 
 `/excavator-hotspots` skill 的汇报 SHALL：
 - 列出排名靠前的文件与目录、头部计数，并逐条列出残余假设；
@@ -349,6 +402,8 @@ skill 的汇报与 chat 的回答列到 `lineageConflicts` 大于 0 的文件时
 - 按年的数字只陈述哪一年多少次，MUST NOT 解释增减的原因，MUST NOT 把不完整的年份推算成整年；很久没改只说最后一次改动在哪一年，MUST NOT 说成没在用、可以删除或已废弃；
 - 给出全项目的作者份额，并列出人的提交不少于 20 次的目录（各深度都算，文件全在同一个子目录里的目录按那个子目录显示），按改得最多的作者所占份额从高到低展示查询输出的每一行；说明份额只算人的提交，并给出 bot 的提交数；
 - 份额只陈述提交次数的比例，MUST NOT 说份额高低、集中或分散，MUST NOT 说谁负责、谁懂或谁拥有这块代码，MUST NOT 说有风险、依赖某个人或是单点，MUST NOT 写出或查找作者的名字与邮箱；
+- 运行脚本前找分组：有人写的 `.excavator/feature-groups.json` 就用它；没有时，`.excavator/domain-graph.json` 通过它的新鲜度检查，就从业务流程导出分组，每个流程一组，路径是各步骤的 `filePath`；两样都没有就不分组，并说明怎样得到分组。MUST NOT 自己提出分组；
+- 有分组时，按提交数列出各组，给出没对上的路径数，并用固定的话说明分组的来源、一个组只算列出的文件、一个文件可以在多个组里各算一次；MUST NOT 把一个组的数字说成整个功能的改动，MUST NOT 解释一个功能为什么改得多；
 - 汇报写进报告文件，终端回复只给报告路径与自检结果，MUST NOT 复述报告内容。
 
 `excavator-chat` 回答改动历史类问题时 SHALL 只读这个产物：
@@ -363,6 +418,7 @@ skill 的汇报与 chat 的回答列到 `lineageConflicts` 大于 0 的文件时
 - 历史完整（不是浅克隆、没有窗口）时，残余假设依然成立，MUST NOT 把计数说成完整或可靠；
 - 回答一块代码是不是主要由少数人在改时读目录的 `concentration`，用固定的话给出份额与占到八成的作者数，说明份额只算人的提交。问是不是主要一个人在改时，只按 `topAuthorShare` 回答：大于 0.5 是超过一半，小于 0.5 是不到一半，等于 0.5 是约一半（份额经过四舍五入）。文件没有份额，问到文件时给出它的 `authors` 与 `commits`；
 - 份额 MUST NOT 说成集中或分散，MUST NOT 说成某个人或一群人在负责、维护、懂或拥有这块代码，MUST NOT 说成风险或依赖某个人；问是谁时说明产物里没有名字，MUST NOT 运行 git 命令或读别的文件去查名字；
+- 回答哪些功能改得多、某个功能改了多少时读 `groups`，说明一个组只算分组文件列出的文件，MUST NOT 说成整个功能的改动；组的按年计数与作者份额按目录的规则回答。没有分组时说明怎样得到分组，MUST NOT 把目录当成功能来回答；
 - MUST NOT 从事实图推断改动历史。
 
 本能力只运行只读的 git 命令，MUST NOT 修改项目代码或 Git 状态。
@@ -399,3 +455,15 @@ skill 的汇报与 chat 的回答列到 `lineageConflicts` 大于 0 的文件时
 #### Scenario: 问是谁在改
 - **WHEN** 用户问某个目录主要是谁在改
 - **THEN** chat 说明产物里只有比例和人数、没有名字，不运行 git 命令去查名字
+
+#### Scenario: 问哪些功能改得最多
+- **WHEN** 产物里有分组，用户问哪些功能改得最多
+- **THEN** chat 按提交数列出各组，说明一个组只算分组文件列出的文件、一个文件可以在多个组里各算一次，不说这就是整个功能的改动
+
+#### Scenario: 没有分组时问功能
+- **WHEN** 产物的 `featureGroups` 为空，用户问哪个功能改得最多
+- **THEN** chat 说明没有按功能计数，给出得到分组的办法（运行 `/excavator-domain` 后再运行 `/excavator-hotspots`，或手写 `.excavator/feature-groups.json`），不拿目录代替功能
+
+#### Scenario: 领域图不能用
+- **WHEN** 没有 `.excavator/feature-groups.json`，`.excavator/domain-graph.json` 存在但没通过它的新鲜度检查
+- **THEN** skill 不从它导出分组，汇报里说明原因与重新运行 `/excavator-domain` 的办法，其余各节照常
