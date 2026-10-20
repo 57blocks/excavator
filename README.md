@@ -138,6 +138,9 @@ For host-owned AI exploration through seven bounded local MCP tools, see [MCP se
 # Rank the files and directories that change most, from Git history (no advice, never edits code)
 /excavator-hotspots
 
+# List the functions a folder of documents describes, each tied to a checked quote (reads no code)
+/excavator-doc-map ~/path/to/docs
+
 # Re-run anytime — incremental by default (only re-analyzes changed files)
 /excavator
 
