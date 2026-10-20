@@ -25,7 +25,7 @@ Measured on a large PRD: every cited file and identifier existed, and plain fact
 | **R — Reachability / order** | "rule Y is unreachable", "A is checked before B", "only if Z" | The real order of checks or early exits was not traced |
 | **T — Trigger mechanism** | "recalculated via event E", "done by the nightly job", "called directly from S" | A listener's supported-event list or the actual call site was not checked |
 | **A — Absolute / invariance** | "always", "regardless of the setting", "fixed at 30/365", "every case" | One code path was read; another branch varies the value |
-| **O — Open item** | "to be confirmed", "待确认", "not evident in the code", "unclear" | The question is often settled by code the writer did not reach, or the tentative guess is wrong |
+| **O — Open item** | "to be confirmed" (in any language), "not evident in the code", "unclear" | The question is often settled by code the writer did not reach, or the tentative guess is wrong |
 
 Statements outside these classes are not checked. The report must say so.
 
@@ -116,4 +116,4 @@ Edit `DOC` in place, one entry at a time:
 - **still-open** — leave it, and make sure the open marker says what was searched.
 - Where the flow has an evidence `<details>` block, add the new evidence lines to it.
 
-Do not add flows or sections, do not reorder, do not rewrite verified text, do not add recommendations. Then append a short section at the end of `DOC` (heading in the document's language, e.g. "Verification summary" / "核对摘要") with the date, baseline, scope, and the count table. Report how many entries were applied, and list any correction you could not apply with the reason.
+Do not add flows or sections, do not reorder, do not rewrite verified text, do not add recommendations. Then append a short section at the end of `DOC` (heading in the document's language, e.g. "Verification summary" for a document in English) with the date, baseline, scope, and the count table. Report how many entries were applied, and list any correction you could not apply with the reason.
