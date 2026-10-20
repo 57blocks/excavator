@@ -222,12 +222,8 @@ function symbolFixture(count = 20, extraFiles = {}) {
   return { ...fixture, intermediate, dataDir, source, names, fileNode, classNode, methodNodes, read, write, persisted, persistedGraph };
 }
 
-afterEach(async () => {
+afterEach(() => {
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
-  // These integration tests intentionally use synchronous child processes.
-  // Yield between cases so Vitest workers can service task-update RPC replies,
-  // especially on slower Windows runners where the full file exceeds 60s.
-  await new Promise(resolve => setImmediate(resolve));
 });
 
 describe('incremental symbol publication gate', { timeout: 30_000 }, () => {
