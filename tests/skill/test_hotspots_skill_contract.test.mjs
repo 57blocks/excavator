@@ -192,7 +192,7 @@ describe('excavator-hotspots skill: each rule in its step', () => {
     expect(s).toContain('Show the second list whole, every row its query prints, and do not describe how it differs from the first');
     expect(s).toContain('introduced with the words "pairs where neither path looks like a test by its name (a filter on names, not on content)"');
     expect(s).toContain('**Never edit, move or delete project files, and never run a `git` command that changes the repository.**');
-    expect(s).toContain('7. Shares by author: introduce it with the words "Shares of the commits by people in the window; the product counts commits, not who knows the code, and holds no names." Then the project\'s line from the first shares query, then the directories query: its first line (the rule and how many directories meet it) and every row it prints');
+    expect(s).toContain('7. Shares by author: introduce it with the words "Shares of the commits by people in the window; the product counts commits, not knowledge of the code, and holds no names." Then the project\'s line from the first shares query, then the directories query: its first line (the rule and how many directories meet it) and every row it prints');
     expect(s).toContain('**A share is a count of commits, not of knowledge.**');
     expect(s).toContain('say how many commits by bots were left out');
     expect(s).toContain('Never name an author or look one up (no `git log`, `git shortlog` or `git blame` for names), never say that someone owns, knows, maintains or is responsible for a part, and never call a part at risk, a single point of failure, a silo or dependent on one person.');
@@ -341,6 +341,10 @@ describe('excavator-hotspots skill: agrees with the script', () => {
       return spawnSync('sh', ['-c', grep.replaceAll('"$DATA/hotspots-report.md"', JSON.stringify(report))], { encoding: 'utf-8' });
     };
     expect(check(`${product().residualAssumptions.join('\n')}\n`).status).toBe(1);
+    // the words step 4 tells the report to give as they stand pass the check
+    const fixedWords = [...step.get(4).matchAll(/words:? "([^"]+)"/g)].map((match) => match[1]);
+    expect(fixedWords.length).toBeGreaterThanOrEqual(3);
+    expect(check(`${fixedWords.join('\n')}\n`).status, fixedWords.join('\n')).toBe(1);
     for (const advice of ['You should refactor src/b.js.', 'Consider splitting it.', 'We recommend more tests.', '建议拆分这个文件。', '这个目录应该重构。']) {
       expect(check(`${advice}\n`).stdout, advice).not.toBe('');
     }
