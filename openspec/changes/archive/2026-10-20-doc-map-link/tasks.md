@@ -1,0 +1,31 @@
+## 1. 核对并记录对应（commit：`feat(doc-map): check and record the code each unit is tied to`）
+
+- [x] 1.1 `doc-map.py link`：读对应清单；逐条核对序号、状态与证据、`searched`、路径规则（项目内、普通文件、不在 `.git`/`.excavator`/文档目录、不是文档扩展名、内容不同于已读文档）、代码段恰好出现一次（统一处理，Latin-1 回退）；一次报出全部问题；全部通过才写入；行号、`not-checked`、三种计数、代码基线。验证：`tests/skill/test_doc_map.test.mjs` 里 `link` 的单测全绿
+- [x] 1.2 产物字段：`code`、`counts.found`/`notFound`/`notChecked`、每条功能的 `code`；`read` 与 `units` 写 `null`；残余假设加两条。验证：单测断言三步之后的字段与清回 `null`
+- [x] 1.3 单测覆盖 design.md「Oracle · 单测」的每一项；源码零中文字符。验证：`pnpm vitest run tests/skill/test_doc_map.test.mjs` 全绿，变异（去掉唯一性、去掉项目内检查、去掉文档内容比对、去掉 `not-checked`）各自让测试变红
+
+## 2. skill（commit：`feat(skill): tie doc-map units to code`）
+
+- [x] 2.1 `skills/excavator-doc-map/SKILL.md`：新增「对到代码」一步（分批与行范围、子代理提示词、合并、运行 `link`、按报错改的规则）；报告增加状态计数、每份文档的分状态条数、每条功能的证据位置、`not-found` 搜过的内容；固定写法不说「已实现」「未实现」；描述与参数说明更新。验证：契约测试
+- [x] 2.2 `README.md` 里这条命令的说明改为也对到代码。验证：读一遍 diff
+- [x] 2.3 契约测试：分批命令的批次与行范围、合并顺序、报告查询在带对应的夹具产物上的输出、自检报出「implemented」类词、源码零中文字符；关键规则的变异各自变红。验证：`pnpm vitest run tests/skill/test_doc_map_skill_contract.test.mjs` 全绿
+
+## 3. found 不再写 searched（commit：`fix(skill): let found links leave out searches`）
+
+- [x] 3.1 第 4 步子代理的 `found` 形状去掉 `searched`，合并命令把缺的 `searched` 补成空数组。验证：契约测试里不带 `searched` 的 `found` 批次合并后 `link` 通过，缺 `searched` 的 `not-found` 仍被报出
+
+## 4. 复核（commit：`feat(skill): check each tie in a clean context`）
+
+- [x] 4.1 `SKILL.md`：新增第 5 步「复核」（分批命令、复核子代理提示词、合并成 `checks.json`、重写对应清单、再运行 `link`）；第 4 步规则加「文本只是提到、或写明是两回事的代码不算」；报告加复核的计数与没留下的证据；第 4 部分的固定写法提到复核。验证：契约测试
+- [x] 4.2 契约测试：复核分批命令的批次与证据行、合并时漏判与非法判定记为 `none`、重写对应清单（只留 `does`、全去掉落 `not-checked`、`not-found` 原样）、报告查询、固定写法过自检；关键规则的变异各自变红。验证：`pnpm vitest run tests/skill/test_doc_map_skill_contract.test.mjs` 全绿
+
+## 5. 引文只出现一次（commit：`fix(doc-map): require each quote to occur once`）
+
+- [x] 5.1 `doc-map.py units`：引文在文档里出现不止一次时报出次数，不写入；产物去掉 `occurrences`。`SKILL.md` 第 2 步提示词写明引文只出现一次，第 3 步加这条报错的改法（延续到功能自己的文字；逐字相同时延续到这一节之后的一行）。验证：`tests/skill/test_doc_map.test.mjs` 与契约测试全绿，去掉检查的变异变红
+
+## 6. 验收与归档（commit：`docs(openspec): record doc-map-link acceptance and archive`）
+
+- [x] 6.1 先验装置：改坏真实对应清单里的几处证据，`link` 全部报出
+- [x] 6.2 真实模型运行：maui-app 标定，然后 go-multirepo、sakai、病历系统；陷阱文档必须是 `not-found`；记花费、轮数、时长、三种状态的计数
+- [x] 6.3 精度抽查（复核之后，错归属必须为 0）、`not-found` 重搜与复核去掉的证据逐条看（漏判与去错照实记）
+- [x] 6.4 全量门在分离检出里跑；验收记录写进 design.md，同步主规格并归档

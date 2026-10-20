@@ -4,6 +4,7 @@
 Usage:
   doc-map.py read <docsDir> <projectRoot>
   doc-map.py units <unitsFile> <projectRoot>
+  doc-map.py link <linksFile> <projectRoot>
 
 `read` walks <docsDir> (never into `.git` or `.excavator`, never through a
 symbolic link) and gives every file one status:
@@ -27,13 +28,28 @@ text directory is replaced on every run. The product is
 `units` reads the units a model listed from those texts,
 `{ "units": [ { "document", "id", "title", "quote" } ] }`, and checks each:
 the document was read, the quote is in its text, the id (when not null) is in
-its text, and no id or quote repeats within a document. Quote and text are
-compared after one fixed normalization (NFKC; soft hyphens and zero-width
-characters dropped; curly quotes, dashes and the ellipsis folded to ASCII;
-every run of white space made one space); case is kept. If any unit fails,
+its text, the quote occurs only once in that text, and no id or quote
+repeats within a document. Quote and text are compared after one fixed
+normalization (NFKC; soft hyphens and zero-width characters dropped; curly
+quotes, dashes and the ellipsis folded to ASCII; every run of white space
+made one space); case is kept. If any unit fails,
 every failure is printed and the product is left as it was; otherwise the
-units go into the product, each with the line (and, in a PDF, the page) of
-its quote's first occurrence and the number of occurrences.
+units go into the product, each with the line (and, in a PDF, the page)
+where its quote is.
+
+`link` reads the code a model tied each unit to,
+`{ "links": [ { "unit", "status", "evidence": [ { "file", "code" } ], "searched" } ] }`,
+where `unit` is the unit's number in the product (from 1) and `status` is
+`found` (with evidence) or `not-found` (with no evidence and the searches that
+were run). Each piece of evidence is checked: the file resolves to a regular
+file inside the project, not in `.git`, `.excavator` or the documents folder,
+not of a document format, and not the same content as a document; the code
+occurs exactly once in it under the same normalization (a file that is not
+UTF-8 is read as Latin-1). If any entry fails, every failure is printed and
+the product is left as it was; otherwise each unit gets its `code`: the line
+of each piece of evidence, worked out by the script, and `not-checked` for a
+unit the links leave out. The product also records the project and the commit
+at its HEAD (null when it is not a Git repository).
 """
 
 import codecs
@@ -57,6 +73,9 @@ TEXT_DIR = "text"
 SKIPPED_DIRS = {".git", ".excavator"}
 TOOL_TIMEOUT_SECONDS = 300
 
+PRODUCT_KEYS = ("format", "docsRoot", "converters", "code", "counts", "residualAssumptions", "documents", "units")
+COUNT_ORDER = ("files", "read", "empty", "noConverter", "unsupported", "failed", "units", "found", "notFound", "notChecked")
+
 FORMATS = {
     **dict.fromkeys([".md", ".markdown", ".txt", ".rst", ".adoc"], "text"),
     **dict.fromkeys([".html", ".htm", ".xhtml"], "html"),
@@ -79,6 +98,13 @@ RESIDUAL_ASSUMPTIONS = [
     "PAGEREF or a citation manager's records) in the text.",
     "PDF text is in pdftotext's reading order; text set in several columns may interleave.",
     "The format of a file is decided by its extension.",
+    "Which code a unit is tied to is the model's judgement: the script checks only that each cited file is a "
+    "file of the project other than a document and holds the copied code exactly once. Whether that code does "
+    "the unit's function, and whether it is the project's own code rather than a test, sample, generated file "
+    "or third-party library, is not checked.",
+    "A unit with no code found means only that the searches listed with it found none: the system may still do "
+    "it in code those searches did not reach, or outside this project.",
+    "The code baseline is the commit at the project's HEAD; changes not committed are not recorded.",
 ]
 
 
@@ -378,6 +404,38 @@ def write_json(path, value):
         raise
 
 
+def write_product(path, product):
+    """Write the product with its keys and counts in their fixed order."""
+    ordered = {key: product.get(key) for key in PRODUCT_KEYS}
+    ordered["residualAssumptions"] = RESIDUAL_ASSUMPTIONS
+    ordered["counts"] = {key: product["counts"].get(key) for key in COUNT_ORDER}
+    write_json(path, ordered)
+
+
+def load_product(project_root):
+    data_dir = os.path.join(os.path.abspath(project_root), ".excavator")
+    product_path = os.path.join(data_dir, PRODUCT)
+    try:
+        with open(product_path, encoding="utf-8") as handle:
+            product = json.load(handle)
+    except (OSError, ValueError) as error:
+        raise SystemExit(f"doc-map: no readable product at {product_path} ({error}); run read first") from None
+    if not isinstance(product, dict) or product.get("format") != FORMAT:
+        raise SystemExit(f"doc-map: {product_path} is not an {FORMAT} product; run read again")
+    return data_dir, product_path, product
+
+
+def load_listing(path, key):
+    try:
+        with open(path, encoding="utf-8") as handle:
+            listing = json.load(handle)
+    except (OSError, ValueError) as error:
+        raise SystemExit(f"doc-map: the {key} file is not readable JSON: {error}") from None
+    if not isinstance(listing, dict) or set(listing) != {key} or not isinstance(listing[key], list):
+        raise SystemExit(f'doc-map: the {key} file must be an object with one key, "{key}", holding an array')
+    return listing[key]
+
+
 def replace_dir(new, old):
     """Put directory `new` in place of `old`, then remove what `old` held."""
     retired = None
@@ -402,7 +460,7 @@ def read_command(docs_dir, project_root):
     staging = tempfile.mkdtemp(prefix=".text-", dir=work_dir)
     try:
         rows = [document_row(docs_root, path, converters, staging) for path in list_entries(docs_root)]
-        counts = {"files": len(rows), **{key: 0 for key in COUNT_KEYS.values()}, "units": None}
+        counts = {"files": len(rows), **{key: 0 for key in COUNT_KEYS.values()}}
         for row in rows:
             counts[COUNT_KEYS[row["status"]]] += 1
         if sum(counts[key] for key in COUNT_KEYS.values()) != counts["files"]:
@@ -411,16 +469,8 @@ def read_command(docs_dir, project_root):
     except BaseException:
         shutil.rmtree(staging, ignore_errors=True)
         raise
-    product = {
-        "format": FORMAT,
-        "docsRoot": docs_root,
-        "converters": converters,
-        "counts": counts,
-        "residualAssumptions": RESIDUAL_ASSUMPTIONS,
-        "documents": rows,
-        "units": None,
-    }
-    write_json(os.path.join(data_dir, PRODUCT), product)
+    product = {"format": FORMAT, "docsRoot": docs_root, "converters": converters, "counts": counts, "documents": rows}
+    write_product(os.path.join(data_dir, PRODUCT), product)
     print(
         f"doc-map: {counts['files']} files: {counts['read']} read, {counts['empty']} empty, "
         f"{counts['noConverter']} no-converter, {counts['unsupported']} unsupported, {counts['failed']} failed"
@@ -549,9 +599,13 @@ def check_units(listing, rows, data_dir):
                 seen[(document, "id", id_key)] = at
         if not quote_key:
             continue
-        found = compared.find(quote_key)
+        found, count = _occurrences(compared, quote_key)
         if found == -1:
             problems.append(f"{where}: quote not in {_short(document)}: {_short(quote)}")
+            continue
+        if count > 1:
+            problems.append(
+                f"{where}: quote occurs {count} times in {_short(document)}; carry it on into the unit's own text until it occurs once")
             continue
         if (document, "quote", quote_key) in seen:
             problems.append(f"{where}: quote repeats units[{seen[(document, 'quote', quote_key)]}]")
@@ -562,30 +616,16 @@ def check_units(listing, rows, data_dir):
             "document": document, "id": unit_id, "title": title, "quote": quote,
             "line": text.count("\n", 0, origin) + 1,
             "page": text.count("\f", 0, origin) + 1 if row["format"] == "pdf" else None,
-            "occurrences": compared.count(quote_key),
+            "code": None,
         })
     return units, problems
 
 
 def units_command(units_file, project_root):
-    data_dir = os.path.join(os.path.abspath(project_root), ".excavator")
-    product_path = os.path.join(data_dir, PRODUCT)
-    try:
-        with open(product_path, encoding="utf-8") as handle:
-            product = json.load(handle)
-    except (OSError, ValueError) as error:
-        raise SystemExit(f"doc-map: no readable product at {product_path} ({error}); run read first") from None
-    if not isinstance(product, dict) or product.get("format") != FORMAT:
-        raise SystemExit(f"doc-map: {product_path} is not an {FORMAT} product; run read again")
-    try:
-        with open(units_file, encoding="utf-8") as handle:
-            listing = json.load(handle)
-    except (OSError, ValueError) as error:
-        raise SystemExit(f"doc-map: the units file is not readable JSON: {error}") from None
-    if not isinstance(listing, dict) or set(listing) != {"units"} or not isinstance(listing["units"], list):
-        raise SystemExit('doc-map: the units file must be an object with one key, "units", holding an array')
+    data_dir, product_path, product = load_product(project_root)
+    listing = load_listing(units_file, "units")
     rows = {row["path"]: row for row in product["documents"]}
-    units, problems = check_units(listing["units"], rows, data_dir)
+    units, problems = check_units(listing, rows, data_dir)
     if problems:
         print(f"doc-map: {len(problems)} problems in {units_file}; nothing was recorded:", file=sys.stderr)
         for problem in problems:
@@ -596,14 +636,201 @@ def units_command(units_file, project_root):
         per_document[unit["document"]] = per_document.get(unit["document"], 0) + 1
     for row in product["documents"]:
         row["units"] = per_document.get(row["path"], 0) if row["status"] == "read" else None
-    product["counts"]["units"] = len(units)
+    product["counts"].update(units=len(units), found=None, notFound=None, notChecked=None)
     product["units"] = units
-    write_json(product_path, product)
+    product["code"] = None
+    write_product(product_path, product)
     without = sum(1 for row in product["documents"] if row["units"] == 0)
     print(f"doc-map: {len(units)} units from {len(per_document)} documents; {without} read documents have none")
 
 
-USAGE = "usage: doc-map.py read <docsDir> <projectRoot> | doc-map.py units <unitsFile> <projectRoot>"
+LINK_KEYS = ("unit", "status", "evidence", "searched")
+EVIDENCE_KEYS = ("file", "code")
+LINK_STATUSES = ("found", "not-found")
+DOCUMENT_EXTENSIONS = {extension for extension, kind in FORMATS.items() if kind != "html"}
+GIT_TIMEOUT_SECONDS = 60
+
+
+def _occurrences(haystack, needle):
+    """Where `needle` first occurs in `haystack`, and how many times it occurs, overlaps included."""
+    first = haystack.find(needle)
+    count, at = 0, first
+    while at != -1:
+        count += 1
+        at = haystack.find(needle, at + 1)
+    return first, count
+
+
+class CodeFiles:
+    """Reads the files cited as evidence, refusing any that is not a code file of the project."""
+
+    def __init__(self, project_root, docs_root, document_digests):
+        self.root = os.path.realpath(project_root)
+        self.docs_root = os.path.realpath(docs_root)
+        self.document_digests = document_digests
+        self.cache = {}
+
+    def load(self, file):
+        if file not in self.cache:
+            try:
+                self.cache[file] = self._read(file)
+            except ValueError as error:
+                self.cache[file] = error
+        if isinstance(self.cache[file], ValueError):
+            raise self.cache[file]
+        return self.cache[file]
+
+    def _read(self, file):
+        if os.path.isabs(file):
+            raise ValueError("is not a path relative to the project")
+        real = os.path.realpath(os.path.join(self.root, file))
+        if not real.startswith(self.root + os.sep):
+            raise ValueError("is outside the project")
+        skipped = [part for part in os.path.relpath(real, self.root).split(os.sep) if part in SKIPPED_DIRS]
+        if skipped:
+            raise ValueError(f"is in {skipped[0]}")
+        if real == self.docs_root or real.startswith(self.docs_root + os.sep):
+            raise ValueError("is in the documents folder")
+        extension = os.path.splitext(real)[1].lower()
+        if extension in DOCUMENT_EXTENSIONS:
+            raise ValueError(f"is a document ({extension}), not code")
+        if not os.path.isfile(real):
+            raise ValueError("is not a file")
+        try:
+            with open(real, "rb") as handle:
+                data = handle.read()
+        except OSError as error:
+            raise ValueError(f"cannot be read ({error.strerror})") from None
+        if hashlib.sha256(data).hexdigest() in self.document_digests:
+            raise ValueError("has the same content as a document in the documents folder")
+        try:
+            text = _decode_utf8(data)
+        except ConversionError:
+            text = data.decode("latin-1")
+        return text, *normalize(text)
+
+
+def check_links(listing, units, code_files):
+    """For each linked unit number, its recorded code; or the list of problems with the links."""
+    problems, linked, seen = [], {}, {}
+    for at, link in enumerate(listing):
+        where = f"links[{at}]"
+        if not isinstance(link, dict):
+            problems.append(f"{where}: not an object")
+            continue
+        before = len(problems)
+        unknown = sorted(set(link) - set(LINK_KEYS))
+        missing = [key for key in LINK_KEYS if key not in link]
+        if unknown:
+            problems.append(f"{where}: unknown keys {', '.join(unknown)}")
+        if missing:
+            problems.append(f"{where}: missing keys {', '.join(missing)}")
+        number, status, evidence, searched = (link.get(key) for key in LINK_KEYS)
+        if not (isinstance(number, int) and not isinstance(number, bool) and 1 <= number <= len(units)):
+            problems.append(f"{where}: unit must be a unit number from 1 to {len(units)}")
+        elif number in seen:
+            problems.append(f"{where}: unit {number} repeats links[{seen[number]}]")
+        else:
+            seen[number] = at
+        if status not in LINK_STATUSES:
+            problems.append(f'{where}: status must be "found" or "not-found"')
+        if not isinstance(evidence, list):
+            problems.append(f"{where}: evidence must be an array")
+            evidence = []
+        if not (isinstance(searched, list) and all(isinstance(search, str) for search in searched)):
+            problems.append(f"{where}: searched must be an array of strings")
+            searched = []
+        if status == "found" and not evidence:
+            problems.append(f"{where}: found needs at least one piece of evidence")
+        if status == "not-found":
+            if evidence:
+                problems.append(f"{where}: not-found takes no evidence")
+            if not any(search.strip() for search in searched):
+                problems.append(f"{where}: not-found needs the searches that were run")
+        recorded = []
+        for index, item in enumerate(evidence if status == "found" else []):
+            here = f"{where}.evidence[{index}]"
+            if not isinstance(item, dict):
+                problems.append(f"{here}: not an object")
+                continue
+            unknown = sorted(set(item) - set(EVIDENCE_KEYS))
+            missing = [key for key in EVIDENCE_KEYS if key not in item]
+            if unknown:
+                problems.append(f"{here}: unknown keys {', '.join(unknown)}")
+            if missing:
+                problems.append(f"{here}: missing keys {', '.join(missing)}")
+            file, code = item.get("file"), item.get("code")
+            code_key = normalize(code)[0] if isinstance(code, str) else ""
+            if not code_key:
+                problems.append(f"{here}: code must be a non-empty string")
+            if not (isinstance(file, str) and file.strip()):
+                problems.append(f"{here}: file must be a non-empty string")
+                continue
+            try:
+                text, compared, starts = code_files.load(file)
+            except ValueError as error:
+                problems.append(f"{here}: file {_short(file)} {error}")
+                continue
+            if not code_key:
+                continue
+            first, count = _occurrences(compared, code_key)
+            if count == 0:
+                problems.append(f"{here}: code not in {_short(file)}: {_short(code)}")
+            elif count > 1:
+                problems.append(f"{here}: code occurs {count} times in {_short(file)}; copy a passage that occurs once")
+            else:
+                recorded.append({"file": file, "code": code, "line": text.count("\n", 0, starts[first]) + 1})
+        if len(problems) == before:
+            linked[number] = {"status": status, "evidence": recorded, "searched": searched}
+    return linked, problems
+
+
+def code_revision(project_root):
+    """The commit at the project's HEAD, or None when it is not a Git repository or has no commit."""
+    try:
+        result = subprocess.run(
+            ["git", "-C", project_root, "rev-parse", "--verify", "--quiet", "HEAD"],
+            capture_output=True, text=True, timeout=GIT_TIMEOUT_SECONDS,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    revision = result.stdout.strip()
+    return revision if result.returncode == 0 and re.fullmatch(r"[0-9a-f]{40}|[0-9a-f]{64}", revision) else None
+
+
+def link_command(links_file, project_root):
+    data_dir, product_path, product = load_product(project_root)
+    units = product.get("units")
+    if units is None:
+        raise SystemExit("doc-map: no units are recorded yet; run units first")
+    listing = load_listing(links_file, "links")
+    root = os.path.abspath(project_root)
+    digests = {row["sha256"] for row in product["documents"] if row.get("sha256")}
+    linked, problems = check_links(listing, units, CodeFiles(root, product["docsRoot"], digests))
+    if problems:
+        print(f"doc-map: {len(problems)} problems in {links_file}; nothing was recorded:", file=sys.stderr)
+        for problem in problems:
+            print(f"  {problem}", file=sys.stderr)
+        raise SystemExit(1)
+    counts = {"found": 0, "not-found": 0, "not-checked": 0}
+    for number, unit in enumerate(units, 1):
+        unit["code"] = linked.get(number, {"status": "not-checked", "evidence": [], "searched": []})
+        counts[unit["code"]["status"]] += 1
+    if sum(counts.values()) != len(units):
+        raise AssertionError("statuses do not add up to the units")
+    product["counts"].update(found=counts["found"], notFound=counts["not-found"], notChecked=counts["not-checked"])
+    product["code"] = {"root": root, "revision": code_revision(root)}
+    write_product(product_path, product)
+    print(
+        f"doc-map: {len(units)} units: {counts['found']} found, {counts['not-found']} not found, "
+        f"{counts['not-checked']} not checked"
+    )
+
+
+USAGE = (
+    "usage: doc-map.py read <docsDir> <projectRoot> | doc-map.py units <unitsFile> <projectRoot>"
+    " | doc-map.py link <linksFile> <projectRoot>"
+)
 
 
 def main(argv):
@@ -612,6 +839,9 @@ def main(argv):
         return 0
     if len(argv) == 3 and argv[0] == "units":
         units_command(argv[1], argv[2])
+        return 0
+    if len(argv) == 3 and argv[0] == "link":
+        link_command(argv[1], argv[2])
         return 0
     print(USAGE, file=sys.stderr)
     return 2
