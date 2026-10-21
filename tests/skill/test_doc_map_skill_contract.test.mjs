@@ -227,9 +227,12 @@ describe('excavator-doc-map skill: each rule in its step', () => {
       'Tests, sample data, generated files and third-party libraries are not places.',
       'a passage copied exactly from that file (one line or a few) that occurs only once in it',
       'Give at most 5 places, the starting point first.',
-      'When no place is tied to the unit, its status is "not-found": list in "searched" every search you ran for it (the pattern, and the folders or file types searched), so that a reader can run them again. Write the searches only, not what you concluded from them.',
+      'When no place is tied to the unit, its status is "not-found": list in "searched" every search you ran for it, so that a reader can run them again.',
+      'A search is what you searched for, "pattern" (the words or regular expression), and where, "paths" (the folders, files or globs searched, relative to $PROJECT_ROOT; "." is the whole project), and nothing else.',
+      'Never write what a search found or did not find, why what it found does not match the unit, or what the code base has or lacks: not in "pattern", not in "paths", and not as a search of its own.',
+      'Reading a file is not a search: do not list it.',
       'Write {"links": [ ... ]} as JSON to $DATA/doc-map/links-batch-<N>.json',
-      '{"unit": <number>, "status": "found", "evidence": [{"file": "<path>", "code": "<passage>"}]} {"unit": <number>, "status": "not-found", "evidence": [], "searched": ["<search>", ...]}',
+      '{"unit": <number>, "status": "found", "evidence": [{"file": "<path>", "code": "<passage>"}]} {"unit": <number>, "status": "not-found", "evidence": [], "searched": [{"pattern": "<words or regular expression>", "paths": ["<folder, file or glob>", ...]}, ...]}',
     ]) expect(prompt).toContain(rule);
     expect(step(4)).toContain('`<N>` is the batch number written with three digits (`001`).');
     expect(step(4)).toContain('When a subagent has returned and its batch file is missing, dispatch that batch once more.');
@@ -238,6 +241,9 @@ describe('excavator-doc-map skill: each rule in its step', () => {
   it('step 4 never lets a fix invent code or a search, and leaves an unfixable unit not-checked', () => {
     expect(step(4)).toContain('Never write code that is not in the file, nor make a unit `not-found` without the searches that found nothing, to make an entry pass.');
     expect(step(4)).toContain('delete the entry, so that the unit is recorded as `not-checked`');
+    expect(step(4)).toContain('write the folder, file or glob the search ran over, relative to the project; when it ran over no such place, delete that search;');
+    expect(step(4)).toContain('a search\'s path that `is not in the project`, `is outside the project`, `has a .. segment`, `is not a path relative to the project` or `is not a directory of the project`');
+    expect(step(4)).toContain('write it as `{"pattern", "paths"}`, keeping only what was searched for and where;');
     expect(step(4)).toContain('keep the number you deleted and their reasons for the report');
   });
 
@@ -581,6 +587,7 @@ describe('excavator-doc-map skill: agrees with the script', () => {
     for (const key of ['files', 'read', 'empty', 'noConverter', 'unsupported', 'failed', 'units', 'found', 'notFound', 'notChecked']) expect(product.counts).toHaveProperty(key);
     for (const key of ['root', 'revision']) expect(product.code).toHaveProperty(key);
     for (const key of ['status', 'evidence', 'searched']) expect(product.units[0].code).toHaveProperty(key);
+    expect(Object.keys(product.units[2].code.searched[0])).toEqual(['pattern', 'paths']);
     for (const key of ['file', 'line']) expect(product.units[0].code.evidence[0]).toHaveProperty(key);
     for (const status of ['found', 'not-found', 'not-checked']) expect(skill).toContain(`\`${status}\``);
     for (const key of ['pdf', 'doc']) expect(product.converters).toHaveProperty(key);
@@ -593,6 +600,14 @@ describe('excavator-doc-map skill: agrees with the script', () => {
     for (const key of ['files', 'documents', 'code', 'withEvidence', 'withoutEvidence', 'evidence', 'outside']) expect(product.coverage.counts).toHaveProperty(key);
     for (const key of ['path', 'files', 'withEvidence', 'units']) expect(product.coverage.directories[0]).toHaveProperty(key);
     for (const key of ['unit', 'file', 'line']) expect(product.coverage.outside[0]).toHaveProperty(key);
+  });
+
+  it('names only reasons the script gives for a search', () => {
+    const script = readFileSync(SCRIPT, 'utf-8');
+    for (const reason of ['is not in the project', 'is outside the project', 'has a .. segment', 'is not a path relative to the project', 'is not a directory of the project', 'unknown keys', 'not an object']) {
+      expect(step(4)).toContain(`\`${reason}\``);
+      expect(script).toContain(reason);
+    }
   });
 });
 
