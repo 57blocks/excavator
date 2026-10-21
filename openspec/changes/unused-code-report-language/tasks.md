@@ -8,13 +8,15 @@
 1. `docs(openspec): propose unused-code-report-language`
 2. `fix(skill): write unused-code in English unless --language names another`：任务 1.1、1.2。
 3. `fix(skill): report unused-code in its own order whatever a project file says about replies`：任务 1.3。
-4. `docs(openspec): record unused-code-report-language acceptance and archive`：任务 2.1–2.3。
+4. `fix(skill): open the unused-code report with fixed words`：任务 1.4。
+5. `docs(openspec): record unused-code-report-language acceptance and archive`：任务 2.1–2.3。
 
 ## 1. 实现
 
 - [x] 1.1 `skills/excavator-unused-code/SKILL.md`：选项、变量、两份 Language 段、第 2–6 步的指回行、第 4 步理由用 `$LANGUAGE`（design D1、D2）。
 - [x] 1.2 `tests/skill/test_unused_code_skill_contract.test.mjs`：Language 段的位置与坏副本、选项、理由语言、无汉字（D4）。验证：契约测试。
 - [x] 1.3 第 6 步：D3 的三句、第 8 项、删掉指向 chat 的旧规则；契约测试钉住（D3、D4）。验证：契约测试。
+- [x] 1.4 第一轮验收后加：汇报以固定的词 "Counts:" 开头，不写说明做了什么的话（D5）；契约测试钉住。验证：契约测试。
 
 ## 2. 验收与记录
 

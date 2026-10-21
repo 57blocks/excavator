@@ -57,11 +57,25 @@ Language 段之后、「Report, in this order:」之前：
 
 代价：第 6 步多三句；汇报最后一句是固定的话。
 
+### D5 汇报以固定的词开头（第一轮验收后加）
+
+第一轮缩短运行 3 次里有 2 次开头不是计数：
+- 一次在计数前加了标题「Unused code report」；
+- 一次把一句叙述（"I have everything needed for the report."）并进了回复开头。
+
+两次的第二行都是「Counts:」。同一轮里，结尾那句是固定措辞，5 次运行都一字不差地以它结尾；开头只是描述，4 次英文运行里守住 2 次。
+
+所以开头也给固定的词：
+- D3 的首尾那句改成：it starts with the words "Counts:" and ends with the line on `/excavator-chat`; write nothing before or after them, not even a line on what you ran or found, and no summary or conclusion of your own.
+- 汇报顺序第 1 项改成：Start with the words "Counts:", then the counts: …
+
+别的语言下，这两个词按 D3 译出。代价：汇报第一行以固定的词开头。
+
 ### D4 契约测试
 
 - Language 段两份逐字相同：一份开 Step 1，一份在取各节的 `jq` 块之后、紧挨在汇报说明之前；第 2–6 步开头各一行指回它；选项那句在；
 - 一组已知的坏副本（缺段、改字、挪到取数之前、少一步的指回行、选项改成「按请求」）都被查出；
-- D2 的规则、D3 的三句与第 8 项原文都在，指向 chat 的旧规则已经不在；
+- D2 的规则、D3 的三句（含 D5 的开头）、第 1 项的开头与第 8 项原文都在，指向 chat 的旧规则已经不在；
 - skill 里没有汉字。
 
 ## Risks / Trade-offs
