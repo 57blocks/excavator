@@ -18,8 +18,8 @@
 
 ## 4. 验收与归档（commit：`docs(openspec): record doc-map-coverage acceptance and archive`）
 
-- [ ] 4.1 先验装置（oracle 第 1 条）的结果记入验收记录
-- [ ] 4.2 四个语料的真实产物独立重算（oracle 第 2 条）
-- [ ] 4.3 maui-app 一次完整的真实运行（oracle 第 3 条）
-- [ ] 4.4 chat 的真实问答（oracle 第 4 条）
-- [ ] 4.5 全量门在分离检出里跑；验收记录写进 design.md，同步主规格并归档
+- [x] 4.1 先验装置（oracle 第 1 条）的结果记入验收记录
+- [x] 4.2 四个语料的真实产物独立重算（oracle 第 2 条）
+- [x] 4.3 maui-app 一次完整的真实运行（oracle 第 3 条）
+- [x] 4.4 chat 的真实问答（oracle 第 4 条）
+- [x] 4.5 全量门在分离检出里跑；验收记录写进 design.md，同步主规格并归档
