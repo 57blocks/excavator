@@ -1,6 +1,6 @@
 ---
 name: excavator-doc-map
-description: List the functions a folder of documents describes (use cases, requirement specifications, PRDs, user guides in .md, .html, .docx, .odt, .pdf or .doc), each with a quote checked against the document's text, and tie each to the code of the project that does it. A deterministic script converts every file to text and gives each file a visible status; subagents list the units by each document's own structure, then search the project's code for each one, and a second subagent checks each tie reading only the unit's text and the cited code; the script checks every quote and id, and every cited code file and passage, before it records them. Gives no advice.
+description: List the functions a folder of documents describes (use cases, requirement specifications, PRDs, user guides in .md, .html, .docx, .odt, .pdf or .doc), each with a quote checked against the document's text, and tie each to the code of the project that does it. A deterministic script converts every file to text and gives each file a visible status; subagents list the units by each document's own structure, then search the project's code for each one, and a second subagent checks each tie reading only the unit's text and the cited code; the script checks every quote and id, and every cited code file and passage, before it records them, and counts the files the project's /excavator facts list as documents, code with a unit's evidence and code without, by file and directory. Gives no advice.
 argument-hint: "<docs-folder> [project-path] [--language <lang>]"
 ---
 
@@ -18,6 +18,7 @@ The work is split between a script and subagents, and each part stays with its o
 | Subagents | Search the project's code for each unit and cite the places that do it, each with a passage of code copied from its file. |
 | `doc-map.py link` | Checks that every cited file is a code file of the project holding the copied code exactly once, works out its line, and records each unit as `found`, `not-found` or `not-checked`; or prints every problem and records nothing. |
 | Subagents | Read each found unit's text and the code at each of its places, and nothing else, and judge whether the code does the unit. Only the places judged to do it are kept, and `link` records them again. |
+| `doc-map.py coverage` | Puts every file the project's `/excavator` facts list in one place: a document, a code file some unit's evidence is in, or a code file no unit's evidence is in; counts each directory; lists apart any evidence in no code file. Every count adds up, or nothing is recorded. |
 
 The documents usually live outside the project. The product goes to the project's `.excavator/`, and the units are tied to that project's code. Only the subagents of Steps 4 and 5 read code.
 
@@ -44,12 +45,17 @@ The documents usually live outside the project. The product goes to the project'
    DM="$DATA/doc-map.json"
    LANGUAGE="English"   # or the --language value
    ```
-2. Convert the documents:
+2. Check the facts Step 6 counts the code from. `/excavator` writes them; this skill never does:
+   ```bash
+   node "$PLUGIN_ROOT/skills/excavator/consumer-freshness.mjs" "$PROJECT_ROOT"
+   ```
+   It prints `{ status, currentSourceRevision, manifestSourceRevision, reason }`. `fresh`: go on. `stale` or `missing`: run `/excavator "$PROJECT_ROOT" --mode=lazy` and wait for it to finish (that mode extracts the facts and calls no model; never run `/excavator` in another mode from this skill), then run the check again. When it still does not print `fresh`, keep its `status` and `reason` for the report, go on, and skip Step 6.
+3. Convert the documents:
    ```bash
    python3 "$DOC_MAP" read "$DOCS" "$PROJECT_ROOT"
    ```
    A non-zero exit writes no product: report its message as it stands and stop.
-3. Read the header, never the whole product:
+4. Read the header, never the whole product:
    ```bash
    jq 'del(.documents, .units)' "$DM"
    ```
@@ -191,7 +197,17 @@ Then reply with one line per unit, "<number>: <places judged does> of <places>",
    ```
    A place with no verdict, or with a verdict other than `does` or `not`, is recorded as `none` and not kept. Never change a verdict, nor add a place, after the check. Every place kept passed `link` in Step 4, so this run passes; a non-zero exit means the project's code changed during the run: report its message as it stands and stop.
 
-## Step 6 — Report to the user
+## Step 6 — Count the code
+
+Skip this step when the facts check of Step 1 did not end with `fresh`.
+
+```bash
+python3 "$DOC_MAP" coverage "$PROJECT_ROOT"
+```
+
+It puts every file the facts list in one place: a document (by the rule `link` uses), a code file some unit's evidence is in, or a code file no unit's evidence is in, and counts each directory. A non-zero exit records nothing and prints why: keep the message for the report and go on. Never write or change the counts yourself.
+
+## Step 7 — Report to the user
 
 Read the product with these queries:
 
@@ -212,6 +228,14 @@ jq -r '.units[] | select(.code.status == "not-found") | [.document, (.id // "-")
 jq -r '.checks | "places: \(length); kept: \(map(select(.verdict == "does")) | length); taken out: \(map(select(.verdict == "not")) | length); no verdict: \(map(select(.verdict == "none")) | length)"' "$DATA/doc-map/checks.json"
 # each place the check did not keep, with its unit's title, the verdict and the reason
 jq -r --slurpfile checks "$DATA/doc-map/checks.json" '.units as $units | $checks[0].checks[] | select(.verdict != "does") | [.unit, $units[.unit - 1].title, "\(.file):\(.line)", .verdict, (.reason // "-")] | @tsv' "$DM"
+# the code: the files the facts list, as documents and as code files with and without a unit's evidence
+jq -r 'if .coverage == null then "no coverage" else .coverage | "files analysed: \(.counts.files); documents: \(.counts.documents); code files: \(.counts.code); with evidence: \(.counts.withEvidence); without evidence: \(.counts.withoutEvidence)", "pieces of evidence: \(.counts.evidence); not in a code file: \(.counts.outside)", "facts: \(.sourceRevision)" end' "$DM"
+# the first-level directories: code files, how many have evidence, and how many units' evidence is there
+jq -r '.coverage.directories[]? | select(.path != "." and (.path | contains("/") | not)) | [.files, .withEvidence, (.units | length), .path] | @tsv' "$DM"
+# the directories no unit's evidence is in whose parent has evidence, most code files first
+jq -r '(.coverage.directories // [] | map({key: .path, value: .withEvidence}) | from_entries) as $with | [.coverage.directories[]? | select(.path != "." and .withEvidence == 0 and ($with[.path | split("/") | .[:-1] | join("/") | if . == "" then "." else . end] // 0) > 0)] | "directories with no evidence whose parent has evidence: \(length)", (sort_by(-.files, .path) | .[:20][] | [.files, .path] | @tsv)' "$DM"
+# each piece of evidence in no code file the facts list
+jq -r '.coverage.outside[]? | [.unit, .file, .line] | @tsv' "$DM"
 # the residual assumptions, to list as they stand
 jq -r '.residualAssumptions[]' "$DM"
 ```
@@ -223,14 +247,21 @@ Write the report to `$DATA/doc-map-report.md` in `$LANGUAGE`, in this order:
 4. The units: every row of that query, as a table with the columns document, id, title, place, code and evidence, each title exactly as recorded. Introduce it with the words "Units as the documents list them; each is tied to a passage of its document's text, checked by the script. The evidence is code a subagent tied to the unit and a second subagent, reading only the unit's lines and that code, judged to do it; the script checked that each cited file is a code file of the project holding the copied code at that line." (in another report language, those words translated).
 5. No code found: every row of that query, as a table with the columns document, id, title and searches, introduced with the words "For these units, the searches listed found no code tied to them." When there is no such row, say so in one line.
 6. The check: the line of the check query as it stands, then every row of the query of places not kept, as a table with the columns number, title, place, verdict and reason, introduced with the words "A second subagent read each unit's lines and the code at each of its places, and nothing else; a place it did not judge to do the unit was taken out, and a unit left with no place is not checked." When there is no such row, say so in one line.
-7. When units were deleted in Step 3 or entries in Step 4, how many and their reasons.
-8. The residual assumptions, every one, as the product states them.
+7. The code. When the coverage query prints `no coverage`, say the code was not counted, and give why as a one-row table with the columns status and reason: the `status` and `reason` the facts check of Step 1 kept, or `coverage` and the message Step 6 kept. Otherwise:
+   - the lines of the coverage query as they stand;
+   - the first-level directories: every row of that query, as a table with the columns code files, with evidence, units and directory;
+   - the first line of the directories query as it stands, then its rows as a table with the columns code files and directory;
+   - the evidence in no code file: every row of that query, as a table with the columns unit, file and line, or one line saying there is none;
+   - close it with the words "A file or directory without evidence is one that no unit's evidence is in. Each unit lists at most 5 places and tests are never evidence, so code that a documented function uses can be there too." (in another report language, those words translated).
+8. When units were deleted in Step 3 or entries in Step 4, how many and their reasons.
+9. The residual assumptions, every one, as the product states them.
 
 Rules for this step:
 - **State only what the product holds.** Every count, path, id and title comes from `$DM`, and every verdict and reason from `checks.json`.
 - **A unit is what a document says, and its code is what the product holds.** Never say a unit is implemented, unimplemented, missing, partly done, planned or out of date: say only that code was found for it, that no code was found, or that it was not checked.
 - **No judgement of the documents.** Never call a document complete, incomplete, outdated, clear, unclear, good or poor, and never suggest how to write, split or organize documentation.
 - **Never add a unit the product does not hold**, to fill a document with 0 units or for any other reason.
+- **Code without evidence is only that.** Never say code without evidence is undocumented, not documented, unused, dead, obsolete or safe to delete, and never say what it does.
 - **Never edit, move or delete a file in the documents folder.**
 
 Then check the report's prose (the table rows, which start with `|`, are left out) before showing it. The second pattern line holds the same words in Chinese, for a report written in Chinese:
@@ -239,8 +270,10 @@ Then check the report's prose (the table rows, which start with `|`, are left ou
 python3 - "$DATA/doc-map-report.md" <<'EOF'
 import re, sys
 ADVICE = re.compile(
-    r"\b(should|recommend(ed|s)?|consider|implemented|unimplemented|missing|outdated|out of date|incomplete|unclear|well[- ]written|poorly)\b"
-    r"|\u5efa\u8bae|\u5e94\u8be5|\u5e94\u5f53|\u8fc7\u65f6|\u4e0d\u5b8c\u6574|\u7f3a\u5931|\u5df2\u5b9e\u73b0|\u672a\u5b9e\u73b0|\u6ca1\u6709\u5b9e\u73b0|\u4e0d\u6e05\u695a|\u5199\u5f97",
+    r"\b(should|recommend(ed|s)?|consider|implemented|unimplemented|missing|outdated|out of date|incomplete|unclear|well[- ]written|poorly"
+    r"|undocumented|not documented|unused|dead|obsolete|safe to delete)\b"
+    r"|\u5efa\u8bae|\u5e94\u8be5|\u5e94\u5f53|\u8fc7\u65f6|\u4e0d\u5b8c\u6574|\u7f3a\u5931|\u5df2\u5b9e\u73b0|\u672a\u5b9e\u73b0|\u6ca1\u6709\u5b9e\u73b0|\u4e0d\u6e05\u695a|\u5199\u5f97"
+    r"|\u6ca1\u6709\u6587\u6863|\u672a\u4f7f\u7528|\u65e0\u7528|\u6b7b\u4ee3\u7801|\u53ef\u4ee5\u5220",
     re.IGNORECASE)
 for number, line in enumerate(open(sys.argv[1], encoding="utf-8"), 1):
     if not line.startswith("|") and ADVICE.search(line):
@@ -248,4 +281,4 @@ for number, line in enumerate(open(sys.argv[1], encoding="utf-8"), 1):
 EOF
 ```
 
-Each line it prints is a sentence to rewrite as a statement of what the product holds; run it again until it prints nothing. Then reply with the report's path, the first two lines of the counts query, the line of the check query and the line `advice check: 0 lines`, and do not summarize the report.
+Each line it prints is a sentence to rewrite as a statement of what the product holds; run it again until it prints nothing. Then reply with the report's path, the first two lines of the counts query, the line of the check query, the first line of the coverage query and the line `advice check: 0 lines`, and do not summarize the report.

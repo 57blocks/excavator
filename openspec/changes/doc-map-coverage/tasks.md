@@ -7,9 +7,9 @@
 
 ## 2. skill（commit：`feat(skill): report the code with and without evidence`）
 
-- [ ] 2.1 `skills/excavator-doc-map/SKILL.md`：第 1 步开头检查事实，缺失或过期时运行 `/excavator --mode=lazy`，仍不新鲜时记下原因；复核之后新增一步运行 `coverage`；报告增加计数、第一级目录、没有证据而父目录有证据的目录（带总数）、单列的证据、固定的话、没有计数时的原因；自检加「undocumented」类词；描述更新。验证：契约测试
-- [ ] 2.2 `README.md` 里这条命令的说明加上计数。验证：读一遍 diff
-- [ ] 2.3 契约测试：事实检查在读文档之前且写明 `--mode=lazy`；报告查询在带 `coverage` 的夹具产物上的输出（最上层的没有证据目录、总数）；固定的话过自检；关键规则的变异各自变红。验证：`pnpm vitest run tests/skill/test_doc_map_skill_contract.test.mjs` 全绿
+- [x] 2.1 `skills/excavator-doc-map/SKILL.md`：第 1 步开头检查事实，缺失或过期时运行 `/excavator --mode=lazy`，仍不新鲜时记下原因；复核之后新增一步运行 `coverage`；报告增加计数、第一级目录、没有证据而父目录有证据的目录（带总数）、单列的证据、固定的话、没有计数时的原因；自检加「undocumented」类词；描述更新。验证：契约测试
+- [x] 2.2 `README.md` 里这条命令的说明加上计数。验证：读一遍 diff
+- [x] 2.3 契约测试：事实检查在读文档之前且写明 `--mode=lazy`；报告查询在带 `coverage` 的夹具产物上的输出（最上层的没有证据目录、总数）；固定的话过自检；关键规则的变异各自变红。验证：`pnpm vitest run tests/skill/test_doc_map_skill_contract.test.mjs` 全绿
 
 ## 3. chat（commit：`feat(chat): answer document questions from the doc map`）
 
