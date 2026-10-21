@@ -1,13 +1,18 @@
 import { afterEach, describe, expect, it } from 'vitest';
+import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 import {
   createChatRequestState,
   finalizeVerifiedAnswerLanguage,
 } from '../../skills/excavator-chat/request-language.mjs';
+
+const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
+const CLI = resolve(repoRoot, 'skills/excavator-chat/request-language.mjs');
 
 const roots = [];
 afterEach(() => {
@@ -110,6 +115,46 @@ describe('request-local answer language', () => {
     finalize(request());
 
     expect(digest()).toEqual(before);
+  });
+});
+
+describe('request-language CLI', () => {
+  const run = (...args) => spawnSync('node', [CLI, ...args], { encoding: 'utf-8' });
+  const select = (explicit, question, recent) => run(
+    '--evidence-verified', '--explicit', explicit, '--question', question, '--recent', recent,
+  );
+
+  it('prints the language from the same precedence as the module, with the signals it used', () => {
+    const japanese = select('Japanese', 'zh', 'zh');
+    expect(japanese.status, japanese.stderr).toBe(0);
+    expect(JSON.parse(japanese.stdout)).toEqual({
+      answerLanguage: 'ja',
+      signals: { explicit: 'ja', currentQuestion: 'zh', recentConversation: 'zh' },
+    });
+    expect(JSON.parse(select('none', 'en', 'zh').stdout).answerLanguage).toBe('en');
+    expect(JSON.parse(select('none', 'None', 'zh').stdout).answerLanguage).toBe('zh');
+    expect(JSON.parse(select('none', 'none', 'none').stdout).answerLanguage).toBe('en');
+    expect(JSON.parse(select('none', '\u4e2d\u6587', 'none').stdout).answerLanguage).toBe('zh');
+  });
+
+  it('refuses, printing no language, before evidence verification or without every signal', () => {
+    const refusals = [
+      ['--explicit', 'none', '--question', 'en', '--recent', 'none'],
+      ['--evidence-verified', '--question', 'en', '--recent', 'none'],
+      ['--evidence-verified', '--explicit', 'none', '--question', 'en'],
+      ['--evidence-verified', '--explicit', 'none', '--question', 'en', '--recent'],
+      ['--evidence-verified', '--explicit', '', '--question', 'en', '--recent', 'none'],
+      ['--evidence-verified', '--explicit', 'none', '--question', 'en', '--question', 'zh', '--recent', 'none'],
+      ['--evidence-verified', '--explicit', 'none', '--question', 'Klingonish', '--recent', 'none'],
+      ['--evidence-verified', '--explicit', 'none', '--question', 'en', '--recent', 'none', 'What changed?'],
+    ];
+    for (const args of refusals) {
+      const result = run(...args);
+      expect(result.status, args.join(' ')).not.toBe(0);
+      expect(result.stdout, args.join(' ')).toBe('');
+      expect(result.stderr).toMatch(/request-language\.mjs failed/);
+    }
+    expect(run('--explicit', 'none', '--question', 'en', '--recent', 'none').stderr).toMatch(/evidence verification/i);
   });
 });
 

@@ -3,9 +3,19 @@
  *
  * The original question and retrieval expressions stay separate. Answer
  * language is deliberately absent until the caller confirms that its claims
- * were checked against the current fact graph or source. This module performs
- * no I/O, so request presentation can never become project configuration.
+ * were checked against the current fact graph, source or product. The
+ * functions perform no I/O, and the CLI only prints its selection, so request
+ * presentation can never become project configuration.
+ *
+ * CLI, run by every chat route right before the answer is written:
+ *   node request-language.mjs --evidence-verified \
+ *     --explicit <language|none> --question <language|none> --recent <language|none>
+ * It takes language signals only, never the question text, so nothing the
+ * user wrote passes through a shell.
  */
+
+import { realpathSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 
 const LANGUAGE_ALIASES = new Map([
   ['arabic', 'ar'],
@@ -113,7 +123,61 @@ export function finalizeVerifiedAnswerLanguage(state, { evidenceVerified = false
   return { ...state, answerLanguage };
 }
 
+const CLI_SIGNALS = new Map([
+  ['--explicit', 'explicit'],
+  ['--question', 'currentQuestion'],
+  ['--recent', 'recentConversation'],
+]);
+
+/**
+ * Parse the CLI arguments and select the answer language. All three signals
+ * are required (`none` when absent) so every run records a judgment on each.
+ */
+export function answerLanguageFromArgs(args) {
+  let evidenceVerified = false;
+  const signals = {};
+  for (let i = 0; i < args.length; i += 1) {
+    const arg = args[i];
+    if (arg === '--evidence-verified') {
+      if (evidenceVerified) throw new TypeError('--evidence-verified given twice');
+      evidenceVerified = true;
+      continue;
+    }
+    const key = CLI_SIGNALS.get(arg);
+    if (!key) throw new TypeError(`Unexpected argument: ${arg}`);
+    if (key in signals) throw new TypeError(`${arg} given twice`);
+    if (i + 1 >= args.length) throw new TypeError(`${arg} needs a language, or none`);
+    const value = args[i += 1];
+    if (value.trim() === '') throw new TypeError(`${arg} needs a language, or none`);
+    signals[key] = value.trim().toLowerCase() === 'none' ? null : normalizeLanguageSignal(value, arg);
+  }
+  for (const [flag, key] of CLI_SIGNALS) {
+    if (!(key in signals)) throw new TypeError(`${flag} is required (a language, or none)`);
+  }
+  const { answerLanguage } = finalizeVerifiedAnswerLanguage({ languageSignals: signals }, { evidenceVerified });
+  return { answerLanguage, signals };
+}
+
+function isCliEntry() {
+  if (!process.argv[1]) return false;
+  try {
+    return realpathSync(fileURLToPath(import.meta.url)) === realpathSync(process.argv[1]);
+  } catch {
+    return false;
+  }
+}
+
+if (isCliEntry()) {
+  try {
+    process.stdout.write(`${JSON.stringify(answerLanguageFromArgs(process.argv.slice(2)))}\n`);
+  } catch (err) {
+    process.stderr.write(`request-language.mjs failed: ${err.message}\n`);
+    process.exit(1);
+  }
+}
+
 export default {
   createChatRequestState,
   finalizeVerifiedAnswerLanguage,
+  answerLanguageFromArgs,
 };
