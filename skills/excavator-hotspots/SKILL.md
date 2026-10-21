@@ -33,6 +33,7 @@ The product does not depend on the knowledge graph: no `/excavator` run is neede
    ```bash
    PROJECT_ROOT="$(pwd)"   # or the path argument
    LANGUAGE="English"   # or the --language value
+   echo "write every line to the user in: $LANGUAGE"
    SKILL_REAL=$(realpath ~/.agents/skills/excavator-hotspots 2>/dev/null || readlink -f ~/.agents/skills/excavator-hotspots 2>/dev/null || echo "")
    SELF_RELATIVE=$([ -n "$SKILL_REAL" ] && cd "$SKILL_REAL/../.." 2>/dev/null && pwd || echo "")
    PLUGIN_ROOT=""

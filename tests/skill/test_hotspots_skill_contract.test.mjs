@@ -124,7 +124,7 @@ describe('excavator-hotspots skill: steps', () => {
   it('writes the report and every line to the user in English unless --language names another language', () => {
     expect(before).toContain(OPTION_LANGUAGE);
     expect(skill).toContain('argument-hint: "[project-path] [--since YYYY-MM-DD] [--language <lang>]"');
-    expect(step.get(1)).toContain('LANGUAGE="English" # or the --language value');
+    expect(step.get(1)).toContain('LANGUAGE="English" # or the --language value echo "write every line to the user in: $LANGUAGE"');
     expect(step.get(4)).toContain('Write the report to `$DATA/hotspots-report.md` in `$LANGUAGE`, in this order. The words these steps give in quotes are for an English report; in another language, write them translated.');
   });
 });
