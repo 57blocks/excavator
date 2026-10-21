@@ -1,9 +1,9 @@
 ## 1. 代码一侧的计数（commit：`feat(doc-map): count the code each unit's evidence is in`）
 
-- [ ] 1.1 「是不是文档」的三条规则抽成一个函数，`link` 改用它，行为不变。验证：`tests/skill/test_doc_map.test.mjs` 里已有的 `link` 单测原样全绿
-- [ ] 1.2 `doc-map.py coverage`：读事实图头部与文件节点（格式、节点记录数、重复路径不对就报错）和 `source-manifest.json` 的 `sourceRevision`；每个文件分进 `documents`、有证据、没有证据；证据路径规范化，对不上的单列；每级目录的计数与功能序号；守恒不成立就报错；没有 `link` 或没有事实就报错；产物 `coverage` 写入。验证：单测
-- [ ] 1.3 产物：`read`、`units`、`link` 把 `coverage` 清回 `null`；残余假设加一条。验证：单测断言各步之后的 `coverage`
-- [ ] 1.4 单测覆盖 design.md 验收 oracle 第 1 条的每个桶；源码零中文字符。验证：`pnpm vitest run tests/skill/test_doc_map.test.mjs` 全绿，变异（祖先目录不累加、不规范化路径、不分出文档、不查重复路径）各自让测试变红
+- [x] 1.1 「是不是文档」的三条规则抽成一个函数，`link` 改用它，行为不变。验证：`tests/skill/test_doc_map.test.mjs` 里已有的 `link` 单测原样全绿
+- [x] 1.2 `doc-map.py coverage`：读事实图头部与文件节点（格式、节点记录数、重复路径不对就报错）和 `source-manifest.json` 的 `sourceRevision`；每个文件分进 `documents`、有证据、没有证据；证据路径规范化，对不上的单列；每级目录的计数与功能序号；守恒不成立就报错；没有 `link` 或没有事实就报错；产物 `coverage` 写入。验证：单测
+- [x] 1.3 产物：`read`、`units`、`link` 把 `coverage` 清回 `null`；残余假设加一条。验证：单测断言各步之后的 `coverage`
+- [x] 1.4 单测覆盖 design.md 验收 oracle 第 1 条的每个桶；源码零中文字符。验证：`pnpm vitest run tests/skill/test_doc_map.test.mjs` 全绿，变异（祖先目录不累加、不规范化路径、不分出文档、不查重复路径）各自让测试变红
 
 ## 2. skill（commit：`feat(skill): report the code with and without evidence`）
 

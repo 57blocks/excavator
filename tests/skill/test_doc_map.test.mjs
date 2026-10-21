@@ -257,11 +257,12 @@ describe('read: product and reruns', () => {
     write(docs, 'a/z.md', 'z');
     run(['read', docs, project]);
     const product = readProduct(project);
-    expect(Object.keys(product)).toEqual(['format', 'docsRoot', 'converters', 'code', 'counts', 'residualAssumptions', 'documents', 'units']);
+    expect(Object.keys(product)).toEqual(['format', 'docsRoot', 'converters', 'code', 'counts', 'residualAssumptions', 'documents', 'units', 'coverage']);
     expect(product.format).toBe('excavator-doc-map/1');
     expect(product.docsRoot).toBe(docs);
     expect(product.units).toBeNull();
     expect(product.code).toBeNull();
+    expect(product.coverage).toBeNull();
     expect(product.counts).toEqual({
       files: 2, read: 2, empty: 0, noConverter: 0, unsupported: 0, failed: 0, units: null, found: null, notFound: null, notChecked: null,
     });
@@ -269,6 +270,7 @@ describe('read: product and reruns', () => {
     expect(product.residualAssumptions.join(' ')).toContain('are not in the text, so a unit numbered that way has no id');
     expect(product.residualAssumptions.join(' ')).toContain("Which code a unit is tied to is the model's judgement");
     expect(product.residualAssumptions.join(' ')).toContain('A unit with no code found means only that the searches listed with it found none');
+    expect(product.residualAssumptions.join(' ')).toContain("only that no unit's evidence is in it: each unit lists at most 5 places");
     expect(product.documents.map((row) => row.path)).toEqual(['a/z.md', 'b.md']);
     expect(Object.keys(product.documents[0])).toEqual([
       'path', 'format', 'bytes', 'sha256', 'status', 'reason', 'text', 'chars', 'lines', 'pages', 'units',
@@ -548,7 +550,7 @@ describe('link: recorded with the line the script finds', () => {
     ]);
     expect(product.counts).toMatchObject({ units: 3, found: 1, notFound: 1, notChecked: 1 });
     expect(product.code).toEqual({ root: project, revision: null });
-    expect(Object.keys(product)).toEqual(['format', 'docsRoot', 'converters', 'code', 'counts', 'residualAssumptions', 'documents', 'units']);
+    expect(Object.keys(product)).toEqual(['format', 'docsRoot', 'converters', 'code', 'counts', 'residualAssumptions', 'documents', 'units', 'coverage']);
   });
 
   it('reads a file that is not UTF-8 as Latin-1, and matches code across line breaks and spacing', () => {
@@ -722,5 +724,151 @@ describe('link: every problem at once, and nothing recorded', () => {
     expect(early.status).toBe(1);
     expect(early.stderr).toContain('no units are recorded yet; run units first');
     expect(run(['link', project]).status).toBe(2);
+  });
+});
+
+/**
+ * The facts /excavator writes, as `coverage` reads them: a fact graph whose
+ * first line is the header and whose file nodes are `files`, with a function
+ * node and an edge around them, and a source manifest.
+ */
+function writeFacts(project, files, { format = 'excavator-knowledge-graph-lines/1', nodes, digest = 'digest-1', revision = 'git:abc', manifest = true } = {}) {
+  const records = [
+    ...files.map((filePath) => ({ record: 'node', node: { id: `file:${filePath}`, type: 'file', name: filePath, filePath } })),
+    { record: 'node', node: { id: 'function:Main.java:main', type: 'function', name: 'main', filePath: 'Main.java', lineRange: [1, 2] } },
+    { record: 'edge', edge: { source: 'file:Main.java', target: 'function:Main.java:main', type: 'contains' } },
+  ];
+  const header = {
+    record: 'header', format, keys: ['nodes', 'edges', 'factsDigest'], fields: { factsDigest: digest },
+    counts: { nodes: nodes ?? files.length + 1, edges: 1 },
+  };
+  write(project, '.excavator/intermediate/fact-graph.jsonl', `${[header, ...records].map((record) => JSON.stringify(record)).join('\n')}\n`);
+  if (manifest) write(project, '.excavator/source-manifest.json', JSON.stringify({ sourceRevision: revision, entries: [] }));
+}
+
+const SPEC = '<html><body><h1>Prescriptions</h1></body></html>\n';
+const COVERED = {
+  docs: { 'uc.md': USE_CASES, 'spec.html': SPEC },
+  code: {
+    'README.md': '# Rx\n',
+    'web/spec.html': SPEC,
+    'web/page.html': '<html><body>page</body></html>\n',
+    'src/rx/Rx.java': RX,
+    'src/rx/RxPrint.java': 'class RxPrint {\n  void print() {}\n}\n',
+    'src/billing/Bill.java': 'class Bill {}\n',
+    'src/billing/tax/Tax.java': 'class Tax {}\n',
+    'Main.java': 'class Main {}\n',
+    'gen/Generated.java': 'class Generated { void fax() {} }\n',
+  },
+  units: THREE_UNITS,
+};
+const FACT_FILES = [
+  'docs/uc.md', 'docs/spec.html', 'README.md', 'web/spec.html', 'web/page.html', 'src/rx/Rx.java', 'src/rx/RxPrint.java',
+  'src/billing/Bill.java', 'src/billing/tax/Tax.java', 'Main.java',
+];
+
+/** A project of `COVERED` with three units tied to code: unit 3's only evidence is in a file the facts leave out. */
+function coveredProject() {
+  const project = linkProject(COVERED);
+  const result = runLink(project, { links: [
+    found(1, ['src/rx/Rx.java', 'public void addPrescription(String drug, int days)'], ['./src/rx/Rx.java', 'save(drug);']),
+    found(2, ['src//rx/RxPrint.java', 'void print()']),
+    found(3, ['gen/Generated.java', 'void fax()']),
+  ] });
+  expect(result.status, result.stderr).toBe(0);
+  writeFacts(project, FACT_FILES);
+  return project;
+}
+
+describe('coverage: every file the facts list is in one place', () => {
+  it('splits documents from code files with and without evidence, lists evidence outside them, and counts each directory', () => {
+    const project = coveredProject();
+    const result = run(['coverage', project]);
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout).toBe('doc-map: 10 files analysed: 4 documents, 6 code files, 2 with evidence, 4 without; '
+      + '4 pieces of evidence, 1 not in a code file\n');
+    const product = readProduct(project);
+    expect(Object.keys(product)).toEqual(['format', 'docsRoot', 'converters', 'code', 'counts', 'residualAssumptions', 'documents', 'units', 'coverage']);
+    expect(product.coverage).toEqual({
+      sourceRevision: 'git:abc',
+      factsDigest: 'digest-1',
+      counts: { files: 10, documents: 4, code: 6, withEvidence: 2, withoutEvidence: 4, evidence: 4, outside: 1 },
+      documents: ['README.md', 'docs/spec.html', 'docs/uc.md', 'web/spec.html'],
+      outside: [{ unit: 3, file: 'gen/Generated.java', line: 1 }],
+      directories: [
+        { path: '.', files: 6, withEvidence: 2, units: [1, 2] },
+        { path: 'src', files: 4, withEvidence: 2, units: [1, 2] },
+        { path: 'src/billing', files: 2, withEvidence: 0, units: [] },
+        { path: 'src/billing/tax', files: 1, withEvidence: 0, units: [] },
+        { path: 'src/rx', files: 2, withEvidence: 2, units: [1, 2] },
+        { path: 'web', files: 1, withEvidence: 0, units: [] },
+      ],
+      files: [
+        { path: 'Main.java', units: [] },
+        { path: 'src/billing/Bill.java', units: [] },
+        { path: 'src/billing/tax/Tax.java', units: [] },
+        { path: 'src/rx/Rx.java', units: [1] },
+        { path: 'src/rx/RxPrint.java', units: [2] },
+        { path: 'web/page.html', units: [] },
+      ],
+    });
+  });
+
+  it('counts a file whose size matches a document but whose content differs as code', () => {
+    const project = linkProject({ docs: { 'uc.md': USE_CASES }, code: { 'web/same-size.js': 'x'.repeat(Buffer.byteLength(USE_CASES)) }, units: THREE_UNITS });
+    expect(runLink(project, { links: [] }).status).toBe(0);
+    writeFacts(project, ['web/same-size.js']);
+    expect(run(['coverage', project]).status).toBe(0);
+    expect(readProduct(project).coverage.counts).toMatchObject({ files: 1, documents: 0, code: 1, withoutEvidence: 1 });
+  });
+
+  it('clears the coverage when the code is linked again, the units recorded again or the documents read again', () => {
+    const project = coveredProject();
+    const countThen = (step) => {
+      expect(runLink(project, { links: [] }).status).toBe(0);
+      expect(run(['coverage', project]).status).toBe(0);
+      expect(readProduct(project).coverage).not.toBeNull();
+      expect(step().status).toBe(0);
+      expect(readProduct(project).coverage).toBeNull();
+    };
+    countThen(() => runLink(project, { links: [] }));
+    countThen(() => runUnits(project, { units: THREE_UNITS }));
+    countThen(() => run(['read', join(project, 'docs'), project]));
+  });
+});
+
+describe('coverage: refused with a reason, and nothing written', () => {
+  it('refuses before the code is linked, without facts, and with facts it cannot trust', () => {
+    const project = linkProject(COVERED);
+    const refused = (message) => {
+      const before = readFileSync(join(project, '.excavator', 'doc-map.json'));
+      const result = run(['coverage', project]);
+      expect(result.status).toBe(1);
+      expect(result.stderr).toContain(message);
+      expect(readFileSync(join(project, '.excavator', 'doc-map.json'))).toEqual(before);
+    };
+    writeFacts(project, FACT_FILES);
+    refused('no code is recorded yet; run link first');
+    expect(runLink(project, { links: [] }).status).toBe(0);
+    rmSync(join(project, '.excavator', 'intermediate'), { recursive: true });
+    refused('fact-graph.jsonl is missing; run /excavator --mode=lazy on the project first');
+    writeFacts(project, FACT_FILES, { manifest: false });
+    rmSync(join(project, '.excavator', 'source-manifest.json'));
+    refused('source-manifest.json is missing; run /excavator --mode=lazy on the project first');
+    writeFacts(project, FACT_FILES, { revision: '' });
+    refused('source-manifest.json has no sourceRevision');
+    writeFacts(project, FACT_FILES, { format: 'excavator-knowledge-graph/0' });
+    refused('does not start with a "excavator-knowledge-graph-lines/1" header');
+    writeFacts(project, FACT_FILES, { nodes: 12 });
+    refused('has 11 node records, its header says 12');
+    writeFacts(project, FACT_FILES, { digest: '' });
+    refused('has no factsDigest');
+    writeFacts(project, [...FACT_FILES, './src//rx/Rx.java']);
+    refused('has two file nodes for src/rx/Rx.java');
+    writeFacts(project, [...FACT_FILES, '../outside.java']);
+    refused("has a file node with the path '../outside.java'");
+    write(project, '.excavator/intermediate/fact-graph.jsonl', '');
+    refused('fact-graph.jsonl is empty');
+    expect(run(['coverage', project, 'extra']).status).toBe(2);
   });
 });

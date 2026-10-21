@@ -5,6 +5,7 @@ Usage:
   doc-map.py read <docsDir> <projectRoot>
   doc-map.py units <unitsFile> <projectRoot>
   doc-map.py link <linksFile> <projectRoot>
+  doc-map.py coverage <projectRoot>
 
 `read` walks <docsDir> (never into `.git` or `.excavator`, never through a
 symbolic link) and gives every file one status:
@@ -50,12 +51,23 @@ the product is left as it was; otherwise each unit gets its `code`: the line
 of each piece of evidence, worked out by the script, and `not-checked` for a
 unit the links leave out. The product also records the project and the commit
 at its HEAD (null when it is not a Git repository).
+
+`coverage` reads the files of the fact graph /excavator wrote
+(<projectRoot>/.excavator/intermediate/fact-graph.jsonl, with the source
+revision of source-manifest.json) and puts each in one place: a document (by
+the same rule `link` refuses one as evidence), a code file some unit's evidence
+is in, or a code file no unit's evidence is in. Each piece of evidence is in a
+code file or listed apart; every directory of a code file gets the number of
+code files below it, how many of them have evidence, and the units whose
+evidence is there. Every count must add up, or nothing is written. `read`,
+`units` and `link` set the coverage back to null.
 """
 
 import codecs
 import hashlib
 import json
 import os
+import posixpath
 import re
 import shutil
 import subprocess
@@ -73,7 +85,7 @@ TEXT_DIR = "text"
 SKIPPED_DIRS = {".git", ".excavator"}
 TOOL_TIMEOUT_SECONDS = 300
 
-PRODUCT_KEYS = ("format", "docsRoot", "converters", "code", "counts", "residualAssumptions", "documents", "units")
+PRODUCT_KEYS = ("format", "docsRoot", "converters", "code", "counts", "residualAssumptions", "documents", "units", "coverage")
 COUNT_ORDER = ("files", "read", "empty", "noConverter", "unsupported", "failed", "units", "found", "notFound", "notChecked")
 
 FORMATS = {
@@ -105,6 +117,9 @@ RESIDUAL_ASSUMPTIONS = [
     "A unit with no code found means only that the searches listed with it found none: the system may still do "
     "it in code those searches did not reach, or outside this project.",
     "The code baseline is the commit at the project's HEAD; changes not committed are not recorded.",
+    "A code file or directory without evidence means only that no unit's evidence is in it: each unit lists at "
+    "most 5 places and tests are never evidence, so code that a documented function uses can be there too. "
+    "The files counted are the files /excavator analysed; a file its selection left out is not counted.",
 ]
 
 
@@ -639,6 +654,7 @@ def units_command(units_file, project_root):
     product["counts"].update(units=len(units), found=None, notFound=None, notChecked=None)
     product["units"] = units
     product["code"] = None
+    product["coverage"] = None
     write_product(product_path, product)
     without = sum(1 for row in product["documents"] if row["units"] == 0)
     print(f"doc-map: {len(units)} units from {len(per_document)} documents; {without} read documents have none")
@@ -661,13 +677,38 @@ def _occurrences(haystack, needle):
     return first, count
 
 
+class DocumentRule:
+    """What makes a file of the project a document rather than code. `link` refuses such a file as evidence
+    and `coverage` counts it as a document: both use this one rule."""
+
+    def __init__(self, docs_root, documents):
+        self.docs_root = os.path.realpath(docs_root)
+        read = [row for row in documents if row.get("sha256")]
+        self.digests = {row["sha256"] for row in read}
+        self.sizes = {row["bytes"] for row in read}
+
+    def by_place(self, real):
+        """Why the file at real path `real` is a document from where it is and its extension, or None."""
+        if real == self.docs_root or real.startswith(self.docs_root + os.sep):
+            return "is in the documents folder"
+        extension = os.path.splitext(real)[1].lower()
+        if extension in DOCUMENT_EXTENSIONS:
+            return f"is a document ({extension}), not code"
+        return None
+
+    def by_content(self, data):
+        """Why a file holding `data` is a document, or None."""
+        if hashlib.sha256(data).hexdigest() in self.digests:
+            return "has the same content as a document in the documents folder"
+        return None
+
+
 class CodeFiles:
     """Reads the files cited as evidence, refusing any that is not a code file of the project."""
 
-    def __init__(self, project_root, docs_root, document_digests):
+    def __init__(self, project_root, document_rule):
         self.root = os.path.realpath(project_root)
-        self.docs_root = os.path.realpath(docs_root)
-        self.document_digests = document_digests
+        self.document_rule = document_rule
         self.cache = {}
 
     def load(self, file):
@@ -689,11 +730,9 @@ class CodeFiles:
         skipped = [part for part in os.path.relpath(real, self.root).split(os.sep) if part in SKIPPED_DIRS]
         if skipped:
             raise ValueError(f"is in {skipped[0]}")
-        if real == self.docs_root or real.startswith(self.docs_root + os.sep):
-            raise ValueError("is in the documents folder")
-        extension = os.path.splitext(real)[1].lower()
-        if extension in DOCUMENT_EXTENSIONS:
-            raise ValueError(f"is a document ({extension}), not code")
+        reason = self.document_rule.by_place(real)
+        if reason:
+            raise ValueError(reason)
         if not os.path.isfile(real):
             raise ValueError("is not a file")
         try:
@@ -701,8 +740,9 @@ class CodeFiles:
                 data = handle.read()
         except OSError as error:
             raise ValueError(f"cannot be read ({error.strerror})") from None
-        if hashlib.sha256(data).hexdigest() in self.document_digests:
-            raise ValueError("has the same content as a document in the documents folder")
+        reason = self.document_rule.by_content(data)
+        if reason:
+            raise ValueError(reason)
         try:
             text = _decode_utf8(data)
         except ConversionError:
@@ -805,8 +845,8 @@ def link_command(links_file, project_root):
         raise SystemExit("doc-map: no units are recorded yet; run units first")
     listing = load_listing(links_file, "links")
     root = os.path.abspath(project_root)
-    digests = {row["sha256"] for row in product["documents"] if row.get("sha256")}
-    linked, problems = check_links(listing, units, CodeFiles(root, product["docsRoot"], digests))
+    rule = DocumentRule(product["docsRoot"], product["documents"])
+    linked, problems = check_links(listing, units, CodeFiles(root, rule))
     if problems:
         print(f"doc-map: {len(problems)} problems in {links_file}; nothing was recorded:", file=sys.stderr)
         for problem in problems:
@@ -820,6 +860,7 @@ def link_command(links_file, project_root):
         raise AssertionError("statuses do not add up to the units")
     product["counts"].update(found=counts["found"], notFound=counts["not-found"], notChecked=counts["not-checked"])
     product["code"] = {"root": root, "revision": code_revision(root)}
+    product["coverage"] = None
     write_product(product_path, product)
     print(
         f"doc-map: {len(units)} units: {counts['found']} found, {counts['not-found']} not found, "
@@ -827,9 +868,161 @@ def link_command(links_file, project_root):
     )
 
 
+FACTS_FORMAT = "excavator-knowledge-graph-lines/1"
+FACT_GRAPH = os.path.join("intermediate", "fact-graph.jsonl")
+SOURCE_MANIFEST = "source-manifest.json"
+COVERAGE_COUNT_ORDER = ("files", "documents", "code", "withEvidence", "withoutEvidence", "evidence", "outside")
+
+
+def read_facts(data_dir):
+    """The file paths of the fact graph /excavator wrote, with its digest and source revision."""
+    graph_path = os.path.join(data_dir, FACT_GRAPH)
+    manifest_path = os.path.join(data_dir, SOURCE_MANIFEST)
+    rerun = "; run /excavator --mode=lazy on the project"
+    for path in (graph_path, manifest_path):
+        if not os.path.isfile(path):
+            raise SystemExit(f"doc-map: no facts: {path} is missing{rerun} first")
+    try:
+        with open(manifest_path, encoding="utf-8") as handle:
+            revision = json.load(handle).get("sourceRevision")
+    except (OSError, ValueError, AttributeError) as error:
+        raise SystemExit(f"doc-map: {manifest_path} is not readable ({error}){rerun} again") from None
+    if not (isinstance(revision, str) and revision):
+        raise SystemExit(f"doc-map: {manifest_path} has no sourceRevision{rerun} again")
+    header, nodes, files = None, 0, []
+    with open(graph_path, encoding="utf-8") as handle:
+        for number, line in enumerate(handle, 1):
+            if number > 1 and line.startswith('{"record":"edge"'):
+                continue
+            try:
+                record = json.loads(line)
+            except ValueError:
+                raise SystemExit(f"doc-map: {graph_path} line {number} is not JSON{rerun} again") from None
+            if number == 1:
+                if not (isinstance(record, dict) and record.get("record") == "header" and record.get("format") == FACTS_FORMAT):
+                    raise SystemExit(f'doc-map: {graph_path} does not start with a "{FACTS_FORMAT}" header{rerun} again')
+                header = record
+            elif isinstance(record, dict) and record.get("record") == "node":
+                nodes += 1
+                node = record.get("node")
+                if isinstance(node, dict) and node.get("type") == "file":
+                    files.append(node.get("filePath"))
+    if header is None:
+        raise SystemExit(f"doc-map: {graph_path} is empty{rerun} again")
+    expected = (header.get("counts") or {}).get("nodes")
+    if nodes != expected:
+        raise SystemExit(f"doc-map: {graph_path} has {nodes} node records, its header says {expected}{rerun} again")
+    digest = (header.get("fields") or {}).get("factsDigest")
+    if not (isinstance(digest, str) and digest):
+        raise SystemExit(f"doc-map: {graph_path} has no factsDigest{rerun} again")
+    paths, seen = [], set()
+    for file in files:
+        path = _project_path(file)
+        if path is None:
+            raise SystemExit(f"doc-map: {graph_path} has a file node with the path {file!r}{rerun} again")
+        if path in seen:
+            raise SystemExit(f"doc-map: {graph_path} has two file nodes for {path}{rerun} again")
+        seen.add(path)
+        paths.append(path)
+    return paths, digest, revision
+
+
+def _project_path(file):
+    """`file` as a normalized path relative to the project, with forward slashes; None when it is not one."""
+    if not (isinstance(file, str) and file.strip()):
+        return None
+    path = posixpath.normpath(file.replace("\\", "/"))
+    if path.startswith("/") or path == "." or path == ".." or path.startswith("../"):
+        return None
+    return path
+
+
+def _is_document(root, path, rule):
+    real = os.path.realpath(os.path.join(root, *path.split("/")))
+    if rule.by_place(real):
+        return True
+    if not real.startswith(os.path.realpath(root) + os.sep) or not os.path.isfile(real):
+        return False
+    if os.path.getsize(real) not in rule.sizes:
+        return False
+    with open(real, "rb") as handle:
+        return rule.by_content(handle.read()) is not None
+
+
+def compute_coverage(units, fact_paths, is_document):
+    """Every fact file as a document or a code file with or without evidence, and every directory's counts."""
+    documents, code = [], []
+    for path in sorted(fact_paths):
+        (documents if is_document(path) else code).append(path)
+    held = {path: set() for path in code}
+    evidence, placed, outside = 0, 0, []
+    for number, unit in enumerate(units, 1):
+        for item in (unit.get("code") or {}).get("evidence") or []:
+            evidence += 1
+            path = _project_path(item["file"])
+            if path in held:
+                held[path].add(number)
+                placed += 1
+            else:
+                outside.append({"unit": number, "file": item["file"], "line": item["line"]})
+    directories = {}
+    for path in code:
+        parts = path.split("/")[:-1]
+        for directory in ["."] + ["/".join(parts[:end]) for end in range(1, len(parts) + 1)]:
+            row = directories.setdefault(directory, {"files": 0, "withEvidence": 0, "units": set()})
+            row["files"] += 1
+            if held[path]:
+                row["withEvidence"] += 1
+                row["units"] |= held[path]
+    with_evidence = sum(1 for path in code if held[path])
+    counts = {
+        "files": len(fact_paths), "documents": len(documents), "code": len(code), "withEvidence": with_evidence,
+        "withoutEvidence": len(code) - with_evidence, "evidence": evidence, "outside": len(outside),
+    }
+    root = directories.get(".", {"files": 0, "withEvidence": 0})
+    if (
+        counts["files"] != counts["documents"] + counts["code"]
+        or counts["code"] != counts["withEvidence"] + counts["withoutEvidence"]
+        or counts["evidence"] != placed + counts["outside"]
+        or (root["files"], root["withEvidence"]) != (counts["code"], counts["withEvidence"])
+    ):
+        raise AssertionError(f"coverage does not add up: {counts}")
+    return {
+        "counts": counts,
+        "documents": documents,
+        "outside": outside,
+        "directories": [
+            {"path": path, "files": row["files"], "withEvidence": row["withEvidence"], "units": sorted(row["units"])}
+            for path, row in sorted(directories.items(), key=lambda item: (item[0] != ".", item[0]))
+        ],
+        "files": [{"path": path, "units": sorted(held[path])} for path in code],
+    }
+
+
+def coverage_command(project_root):
+    data_dir, product_path, product = load_product(project_root)
+    if product.get("code") is None or product.get("units") is None:
+        raise SystemExit("doc-map: no code is recorded yet; run link first")
+    paths, digest, revision = read_facts(data_dir)
+    root = os.path.abspath(project_root)
+    rule = DocumentRule(product["docsRoot"], product["documents"])
+    coverage = compute_coverage(product["units"], paths, lambda path: _is_document(root, path, rule))
+    counts = coverage["counts"]
+    product["coverage"] = {
+        "sourceRevision": revision, "factsDigest": digest,
+        "counts": {key: counts[key] for key in COVERAGE_COUNT_ORDER}, **{key: coverage[key] for key in ("documents", "outside", "directories", "files")},
+    }
+    write_product(product_path, product)
+    print(
+        f"doc-map: {counts['files']} files analysed: {counts['documents']} documents, {counts['code']} code files, "
+        f"{counts['withEvidence']} with evidence, {counts['withoutEvidence']} without; "
+        f"{counts['evidence']} pieces of evidence, {counts['outside']} not in a code file"
+    )
+
+
 USAGE = (
     "usage: doc-map.py read <docsDir> <projectRoot> | doc-map.py units <unitsFile> <projectRoot>"
-    " | doc-map.py link <linksFile> <projectRoot>"
+    " | doc-map.py link <linksFile> <projectRoot> | doc-map.py coverage <projectRoot>"
 )
 
 
@@ -842,6 +1035,9 @@ def main(argv):
         return 0
     if len(argv) == 3 and argv[0] == "link":
         link_command(argv[1], argv[2])
+        return 0
+    if len(argv) == 2 and argv[0] == "coverage":
+        coverage_command(argv[1])
         return 0
     print(USAGE, file=sys.stderr)
     return 2
