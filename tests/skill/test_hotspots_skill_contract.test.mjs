@@ -500,7 +500,7 @@ describe('excavator-chat: change-history questions', () => {
     expect(s).toContain('mostCommits: ([.files[] | select(.commits != null)] | sort_by(-.commits)');
     expect(s).toContain('it gives the score ranking together with the files that lead on `commits` and on `authors` over the whole list');
     expect(s).toContain('do not inspect them to judge it');
-    expect(s).toContain('call `finalizeVerifiedAnswerLanguage` as that gate says, and write the whole answer, notes included, in the language it returns');
+    expect(s).toContain('run step 5 first and say it in the language step 5 prints');
     expect(s).toContain('`lines` is the file\'s line count at HEAD, not lines changed');
     expect(s).toContain('**A pair is a count, not a link**: never say that one file depends on, calls, uses or causes changes in the other');
     expect(s).toContain('A file in no listed pair was not changed together with any file at least `coChange.minTogether` times');
@@ -519,7 +519,7 @@ describe('excavator-chat: change-history questions', () => {
     expect(s).toContain('**Not changed is not unused**: change history does not show whether code is used, so never call a file or directory unused, dead, obsolete, abandoned or safe to delete because it has not changed');
     expect(s).toContain('For whether a part is changed mostly by one or a few people, use the `<dir>` shares query');
     // the answer step repeats the rule, where the answer is written
-    expect(s.split('5. **Answer with the product\'s numbers.**')[1]).toContain('**A share is a count of commits**: say only that authors made a share of the commits; never say that one person or many own, know, maintain or are responsible for a part, together or alone.');
+    expect(s.split('6. **Answer with the product\'s numbers.**')[1]).toContain('**A share is a count of commits**: say only that authors made a share of the commits; never say that one person or many own, know, maintain or are responsible for a part, together or alone.');
     expect(s).toContain('for which parts, use the directories query and show every row it prints after its first line');
     expect(s).toContain('Files have no shares: for a file, give its `authors` and `commits`.');
     expect(s).toContain('Give a directory\'s shares in these words: "The author with the most commits made <topAuthorShare as a percentage> of its <commitsByPeople> commits by people, and <authorsFor80Percent> authors made at least 80% of them." When asked whether one person makes most of the changes, answer from `topAuthorShare` alone: above 0.5 in the words "the author with the most commits made more than half of them", below 0.5 "less than half of them", and 0.5 "about half of them" (the share is rounded). Do not call the shares concentrated, spread, high or low, and do not say whether the other authors are few or many: the numbers are the answer. Say nothing else about the authors: not that one person or a group maintains, owns or knows the part, in any language (\u7ef4\u62a4, \u8d1f\u8d23, \u62e5\u6709, \u719f\u6089).');
@@ -529,7 +529,7 @@ describe('excavator-chat: change-history questions', () => {
     expect(s).toContain('`featureGroups` `null` means the product has no counts by feature: say so, say that running `/excavator-domain` (after `/excavator`) and then `/excavator-hotspots` again, or writing `.excavator/feature-groups.json` (groups, each a name and the paths of its files), gives them, and never answer with directories in place of features.');
     expect(s).toContain('give in these words: "A group counts only the files its groups file lists, and a file in several groups counts in each." Then show the query\'s first line as it stands and every row it prints, in its order, each group under its name exactly as printed: do not shorten, merge or leave out a group (a translation may follow a name in brackets), and when `groupsListed` is more than the rows, say how many you show out of how many.');
     expect(s).toContain('When no group\'s name matches the feature asked about, say so and list the groups; never pick a directory or a group yourself.');
-    expect(s.split('5. **Answer with the product\'s numbers.**')[1]).toContain('**A group is the files it lists**: show every group the query prints under its full name, never call a group\'s numbers the whole feature\'s changes, and do not explain why a feature changes often.');
+    expect(s.split('6. **Answer with the product\'s numbers.**')[1]).toContain('**A group is the files it lists**: show every group the query prints under its full name, never call a group\'s numbers the whole feature\'s changes, and do not explain why a feature changes often.');
   });
 
   it('the groups queries of the skill and of chat print the group counts first, then the groups by commits', () => {

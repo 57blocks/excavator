@@ -1364,7 +1364,7 @@ describe('/excavator-chat — reuse-before-generation runtime protocol', () => {
     expect(skill).toContain('Never concatenate ids into a command string, evaluate them as shell/code');
     expect(skill).toContain('write the model-owned `summary` and `tags` in **English**');
     expect(skill).toContain('semantic cache entry, summary, layer description, domain result, or English retrieval expression can select where to inspect, but is not evidence by itself');
-    expect(skill).toContain('finalizeVerifiedAnswerLanguage($CHAT_REQUEST_STATE, { evidenceVerified: true })');
+    expect(skill).toContain('which calls `finalizeVerifiedAnswerLanguage` with `evidenceVerified: true`');
     expect(skill.indexOf('finalizeVerifiedAnswerLanguage')).toBeGreaterThan(
       skill.indexOf('Evidence verification gate'),
     );
