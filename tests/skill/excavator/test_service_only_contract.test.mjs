@@ -63,14 +63,46 @@ describe('service-only distribution contract', () => {
       entry.isDirectory() ? walk(join(dir, entry.name)) : [join(dir, entry.name)]
     ));
 
-    it('has a viewer project with no package.json, no import or require, and no http(s) resource', () => {
-      expect(existsSync(join(repoRoot, 'viewer/package.json'))).toBe(false);
-      for (const path of walk('viewer')) {
-        const text = read(path);
-        expect(text, path).not.toMatch(/^\s*(import|export)\b/m);
-        expect(text, path).not.toMatch(/\b(import\s*\(|require\s*\()/);
-        expect(text, path).not.toMatch(/https?:/i);
+    // The front end is the one package packages/report-view, built into one file and never served (openspec: changes/viewer-app, design D10).
+    const VIEW_PACKAGE = 'packages/report-view';
+
+    it('gives the report-view package no script that starts a server', () => {
+      const scripts = JSON.parse(read(`${VIEW_PACKAGE}/package.json`)).scripts ?? {};
+      for (const name of ['dev', 'preview', 'serve', 'start']) expect(scripts, name).not.toHaveProperty(name);
+      for (const [name, command] of Object.entries(scripts)) {
+        // vite runs only as `vite build`; a bare `vite`, `vite dev`, `vite serve` or `vite preview` starts a server.
+        expect(command, name).not.toMatch(/\bvite\b(?!\s+build\b)/);
       }
+    });
+
+    it('has no server or preview configuration in the report-view vite config', () => {
+      const config = read(`${VIEW_PACKAGE}/vite.config.ts`);
+      expect(config).not.toMatch(/\b(server|preview)\s*:/);
+      expect(config).not.toMatch(/configureServer|configurePreviewServer/);
+    });
+
+    it('has no network or server call in the report-view source', () => {
+      const files = walk(`${VIEW_PACKAGE}/src`);
+      expect(files.length).toBeGreaterThan(0);
+      for (const path of files) {
+        const text = read(path);
+        for (const call of ['createServer', 'listen(', 'fetch(', 'XMLHttpRequest', 'WebSocket', 'EventSource']) {
+          expect(text, `${path}: ${call}`).not.toContain(call);
+        }
+      }
+    });
+
+    it('ships no HTML page from any other package', () => {
+      const others = readdirSync(join(repoRoot, 'packages'), { withFileTypes: true })
+        .filter((entry) => entry.isDirectory() && `packages/${entry.name}` !== VIEW_PACKAGE)
+        .map((entry) => `packages/${entry.name}`);
+      expect(others.length).toBeGreaterThan(0);
+      const skipped = new Set(['node_modules', 'dist']);
+      const pages = (dir) => readdirSync(join(repoRoot, dir), { withFileTypes: true }).flatMap((entry) => {
+        if (entry.isDirectory()) return skipped.has(entry.name) ? [] : pages(join(dir, entry.name));
+        return /\.html?$/i.test(entry.name) ? [join(dir, entry.name)] : [];
+      });
+      expect(others.flatMap(pages)).toEqual([]);
     });
 
     it('starts no server from the packer or the skill', () => {
