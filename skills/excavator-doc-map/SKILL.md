@@ -281,4 +281,4 @@ for number, line in enumerate(open(sys.argv[1], encoding="utf-8"), 1):
 EOF
 ```
 
-Each line it prints is a sentence to rewrite as a statement of what the product holds; run it again until it prints nothing. Then reply with the report's path, the first two lines of the counts query, the line of the check query, the first line of the coverage query and the line `advice check: 0 lines`, and do not summarize the report.
+Each line it prints is a sentence to rewrite as a statement of what the product holds; run it again until it prints nothing. Then reply in `$LANGUAGE` with these lines and nothing else: the report's path, the first two lines of the counts query, the line of the check query, the first line of the coverage query and the line `advice check: 0 lines`. Do not summarize the report or add notes.
