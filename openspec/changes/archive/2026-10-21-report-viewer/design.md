@@ -209,3 +209,101 @@
 - **[多仓路径前缀]** 产物路径与快照路径都应带成员仓前缀。如果有不一致，会表现为大量 not in snapshot。→ O4 要求 fresh 产物下为 0，否则就是缺陷。
 - **[产物格式升级]** 产物 `format` 一升级，查看页就把它判为 unreadable。→ 这是有意为之：宁可看得见「不认识」，也不按旧结构猜。升级产物格式的变更要同时更新白名单。
 - **[`service-only` 的边界松动]** 允许一个 skill 打开浏览器。→ 范围钉死在 D8 的契约测试里：只此一个 skill、不起服务、分析类 skill 不引用它。
+
+## 验收记录
+
+**提交序列：** 按 tasks.md 的 commit 0–6 实现，各自带测试。实现中途的修正：
+- 项目名改取 `basename(root)`：图谱头部记的是快照临时目录名，Overview 把它标成「Name in graph」；
+- unused 明细改成紧凑行，并调整了列序；
+- hotspots 的默认排序改按列名指定，原来按下标会指到别的列；
+- Markdown 行内解析在 `*a *a …` 上是指数级，还会丢硬换行。两处都已修正，并补了测试。
+
+**O1 注入变异：** 每个变异单独做，先变红，还原后变绿。
+
+| commit | 变异 |
+|---|---|
+| 1 | manifest 里 `<` 不转义；不插 CSP；manifest 写入打包时间；非原子写；查看页文件里加 `innerHTML`；`parseRoute` 不去 `#` |
+| 2 | 删掉 `--no-source` 分支；大小上限 `>` 改 `>=`；二进制探测放宽到 16 KiB；改动越界判断 |
+| 3 | 空筛选规则写错；分组筛选；分页边界；null 的排序位置 |
+| 4 | 单元与核验的连接键；未核验规则 |
+| 5 | 去掉条形；去掉默认排序；缺字段显示 0 |
+| 6 | 链接规则（只有 `#/` 链接成 `<a>`）；文本节点改成 HTML |
+
+**O2 全量门：** 在 d7e92a34 的独立 detached checkout 上跑：
+- `pnpm test`：163 个测试文件，4526 过、4 跳过；
+- `check-refs`：OK；
+- typecheck：OK；
+- `openspec validate --all --strict`：45/45。
+
+**O3 冒烟装置：** 三个故意坏的页面（`fetch`、抛错、内联 `onclick`）和一个损坏的载荷都报红；含恶意字符串的夹具包报绿，计数等于期望值。
+
+**O4 go-multirepo：**
+
+产物：
+
+| 产物 | 生成方式 | 结果 |
+|---|---|---|
+| 知识图谱 | Lazy | 10,483 节点、36,478 边、42 个缺口 |
+| hotspots | 确定性 | 2,121 文件、315 目录、5,643 对 |
+| unused-code | 无头 skill | 5,019 个未使用（high 0、medium 109、low 4,910），testOnly 207 |
+| hotspots-report.md | 无头 skill | — |
+| doc-map | 没跑 | 见下方偏离 |
+
+打包：
+- 文件 4,983,681 字节。
+- 单独打包约 22 秒；与全量门并行时 55 秒。主要花在逐个文件 `git show`，共 2,121 次。
+- 每页就绪 1.2–1.5 秒。
+
+总数：每页的 `data-xv-count-*` 与独立的 `jq` / `grep` 计数逐一相等。
+
+| 页 | 页面 | 独立计数 |
+|---|---|---|
+| Overview | 节点 10,483、边 36,478、缺口 42 | node / edge / gap 记录行数相同 |
+| Unused | 5,019 | `unused` 长度 5,019 |
+| Hotspots | 文件 2,121、目录 315、对 5,643 | 数组长度相同 |
+| Code | embedded 2,116 | 打包结果 2,116 |
+
+源码分类：
+- embedded 2,116，binary 4，too large 1；
+- not in snapshot 0，not embedded on request 0。
+
+跳转抽查：18 条全过。每条都核对了三项：Code 页打开的文件（`aria-label`）、高亮范围（`data-xv-highlight`）和高亮行是否在视口内。
+- unused：medium、low 两个置信度 × 两种原因，每层取首、中、尾 3 条，共 12 条。高亮行文本都含有该函数名。
+- hotspots：按分数前 3 个文件，加上按共同提交数前 3 对里另外 3 个文件，共 6 条。
+
+页面上的链接本身也核对了：
+- Unused 页前 5 个代码链接与产物 `unused` 前 5 条的文件、行范围相同；
+- Hotspots 页前 5 个与按分数排序的前 5 个文件相同。
+
+其他检查：
+- 4 个二进制字体文件的分数、行数、增删行在产物里是 null，页面显示「—」，不是 0。
+- 打开不存在的路由 `#/docmap`，页面画出「No such page」卡片，`data-xv-ready=error`，符合设计。
+- 截图：
+  - 1280 宽：Overview、Code（高亮 149–169 行）；
+  - 768 宽：Unused；Hotspots 也在 768 宽下检查过，两页都没有整页横向滚动；
+  - 深色模式模拟下的 Hotspots：背景仍是 rgb(237,237,239)。
+- 每次冒烟都没有控制台错误、CSP 违规、内联处理器，也没有对主文档以外的请求。
+
+**偏离 oracle：**
+- **doc-map 没有真实语料检查。** 语料里唯一的文档目录是未纳入版本控制的、由模型从代码反推的 As-Is 文档。用它核对代码等于自证，用户已否决并删除。所以 doc-map 页只在合成夹具上验证（commit 4 的单测与冒烟），O4 里 doc-map 的 8 条跳转没做。
+- **unused 抽查没有 high 层。** 这个语料 high 为 0，所以只有 2 × 2 层，每层抽 3 条而不是 2 条。
+- **同改对取的不是随机 3 对。** 取的是共同提交数最高的 3 对，其中的文件与前 3 个文件有重叠，只新增 3 个文件。
+
+**O5 skill 真实运行：** `claude -p --model sonnet --plugin-dir <worktree> "/excavator-view"`，在 go-multirepo 根目录运行。
+- 花费 $0.26，4 轮，44 秒。
+- 3 次 Bash：打包、macOS `open`、回复命令。
+- 最后回复四行，与 D7 一致：
+  ```
+  View: <project>/.excavator/view.html
+  Size: 4.8 MB
+  Products: knowledge graph included; unused code included; doc map not run; hotspots included; reports included
+  Source: embedded (2116 files)
+  ```
+- `.excavator/` 前后的 mtime 与大小对比：只多了 `view.html`，其余 22 个文件不变。
+- 写出的文件与早先另一个进程的打包逐字节相同。
+- transcript 里没有起服务，也没有运行分析。
+
+**留到后续：**
+- 打包耗时：可以把逐文件 `git show` 换成批量读取。
+- 知识图谱头部的项目名是快照临时目录名：这是 Lazy 的上游问题。
+- 交互向 Understand Anything 靠拢：结构图画布、节点详情、搜索过滤、聚焦与路径、代码抽屉、快捷键、产物叠加层。放在下一个变更里做。
