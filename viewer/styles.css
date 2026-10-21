@@ -214,6 +214,35 @@ code { background: var(--paper); border-radius: 6px; padding: 1px 6px; }
 .xv-w-md { max-width: 260px; }
 .xv-w-lg { max-width: 380px; }
 .xv-w-xl { max-width: 560px; }
+.xv-badge-verdict-does { background: var(--success); color: #fff; }
+.xv-badge-verdict-not { background: var(--danger); color: #fff; }
+.xv-badge-verdict-none, .xv-badge-verdict-other { background: var(--paper-2); color: var(--muted); }
+.xv-badge-code-found { background: var(--success); color: #fff; }
+.xv-badge-code-not-found { background: var(--warning); color: var(--ink); }
+.xv-badge-code-not-checked { background: var(--paper-2); color: var(--muted); }
+
+.xv-detail:empty { display: none; }
+.xv-detail h2 { margin-bottom: 4px; overflow-wrap: anywhere; }
+.xv-detail h3 { margin: 16px 0 6px; }
+.xv-quote {
+  margin: 0;
+  padding: 10px 14px;
+  background: var(--paper);
+  border-left: 3px solid var(--accent);
+  border-radius: 6px;
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.xv-evidence-list { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 12px; }
+.xv-evidence { padding: 10px 14px; border: 1px solid var(--line-2); border-radius: 8px; min-width: 0; }
+.xv-evidence .xv-quote { margin: 6px 0; }
+.xv-evidence p { margin: 4px 0 0; overflow-wrap: anywhere; }
+
+.xv-clickable { cursor: pointer; }
+.xv-clickable:hover td { background: var(--paper); }
+.xv-row-selected td { background: var(--highlight-row); }
 .xv-dense .xv-badge { padding: 0 10px; line-height: 18px; }
 .xv-details > summary { max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; font-family: var(--font-mono); font-size: 12.5px; color: var(--ink-soft); }
 .xv-details[open] > summary { margin-bottom: 6px; max-width: none; white-space: normal; }

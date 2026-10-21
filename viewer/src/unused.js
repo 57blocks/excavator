@@ -116,20 +116,7 @@
 
   // ---- DOM ----
 
-  function chipGroup(label, values, selected, onToggle) {
-    return h('div', { class: 'xv-filter' },
-      h('span', { class: 'xv-filter-label', text: label }),
-      h('span', { class: 'xv-chips' }, values.map(function (value) {
-        var on = selected.indexOf(value) !== -1;
-        return h('button', {
-          type: 'button',
-          class: on ? 'xv-chip-btn xv-chip-on' : 'xv-chip-btn',
-          'aria-pressed': on ? 'true' : 'false',
-          text: value,
-          on: { click: function () { onToggle(value); } },
-        });
-      })));
-  }
+  var chipGroup = XV.chipGroup;
 
   function confidenceBadge(confidence) {
     return confidence === null ? null : h('span', { class: 'xv-badge xv-badge-conf-' + confidence, text: confidence });

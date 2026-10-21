@@ -90,6 +90,21 @@
         }))));
   }
 
+  function chipGroup(label, values, selected, onToggle) {
+    return h('div', { class: 'xv-filter' },
+      h('span', { class: 'xv-filter-label', text: label }),
+      h('span', { class: 'xv-chips' }, values.map(function (value) {
+        var on = selected.indexOf(value) !== -1;
+        return h('button', {
+          type: 'button',
+          class: on ? 'xv-chip-btn xv-chip-on' : 'xv-chip-btn',
+          'aria-pressed': on ? 'true' : 'false',
+          text: value,
+          on: { click: function () { onToggle(value); } },
+        });
+      })));
+  }
+
   function productOf(manifest, name) {
     for (var i = 0; i < manifest.products.length; i++) if (manifest.products[i].name === name) return manifest.products[i];
     return null;
@@ -125,7 +140,7 @@
 
   /**
    * A table that sorts by any column and pages. columns: [{ label, num, width ('sm', 'md', 'lg' or 'xl': cut with an ellipsis), title(row) -> the whole text, key(row) -> sort key, render(row) -> text or node }].
-   * Returns { el, setRows(rows) }. Sorting and paging act on every row handed in.
+   * Options onRowClick(row) and rowClass(row) make rows clickable and mark one. Returns { el, setRows(rows), refresh() }. Sorting and paging act on every row handed in.
    */
   function dataTable(options) {
     var size = options.pageSize || PAGE_SIZE;
@@ -164,6 +179,18 @@
       return h('td', { class: classes.join(' ') || null, title: typeof full === 'string' && full !== '' ? full : null }, cellContent(column.render(row)));
     }
 
+    // A row can be clicked (or opened with Enter) when the table has an onRowClick; rowClass(row) marks the chosen one.
+    function tableRow(row) {
+      var extra = options.rowClass ? options.rowClass(row) : null;
+      var clickable = typeof options.onRowClick === 'function';
+      var open = function () { options.onRowClick(row); };
+      return h('tr', {
+        class: [clickable ? 'xv-clickable' : '', extra || ''].join(' ').trim() || null,
+        tabindex: clickable ? '0' : null,
+        on: clickable ? { click: open, keydown: function (event) { if (event.key === 'Enter') open(); } } : null,
+      }, options.columns.map(function (c) { return cell(c, row); }));
+    }
+
     function draw() {
       var rows = visibleRows();
       var bounds = pageBounds(rows.length, state.page, size);
@@ -176,9 +203,7 @@
         h('div', { class: 'xv-table-wrap xv-dense' },
           h('table', { class: 'xv-table' },
             h('thead', null, h('tr', null, options.columns.map(header))),
-            h('tbody', null, shown.map(function (row) {
-              return h('tr', null, options.columns.map(function (c) { return cell(c, row); }));
-            })))),
+            h('tbody', null, shown.map(function (row) { return tableRow(row); })))),
         h('div', { class: 'xv-footer' },
           h('span', { class: 'xv-muted', 'data-xv-footer': '', text: footerText(bounds) }),
           h('span', { class: 'xv-pagers' },
@@ -192,10 +217,12 @@
     return {
       el: el,
       setRows: function (rows) { state.rows = rows; state.page = 1; draw(); },
+      refresh: function () { draw(); },
     };
   }
 
   XV.cellContent = cellContent;
+  XV.chipGroup = chipGroup;
   XV.tile = tile;
   XV.simpleTable = simpleTable;
   XV.productOf = productOf;
