@@ -59,7 +59,7 @@ describe('product states', () => {
     }
     expect(productOf(packed, 'hotspots').revision).toBe(project.revision);
     expect(packed.result.snapshotRevision).toBe(project.revision);
-    expect(payloadIds(packed.html)).toEqual(['knowledge-graph', 'unused-code', 'doc-map', 'hotspots', 'report-hotspots', 'report-doc-map']);
+    expect(payloadIds(packed.html)).toEqual(['knowledge-graph', 'unused-code', 'doc-map', 'hotspots', 'report-hotspots', 'report-doc-map', 'sources']);
     expect(payloadText(packed.html, 'unused-code')).toBe(JSON.stringify(unusedProduct(project.revision)));
     expect(payloadText(packed.html, 'report-hotspots')).toBe('# Hotspots\n');
   });
@@ -347,7 +347,7 @@ describe('the page', () => {
     expect(readdirSync(join(project.root, '.excavator')).sort()).toEqual([...before, 'view.html'].sort());
   });
 
-  it('writes to --out and records no embedded source in the manifest', () => {
+  it('writes to --out and records that no source was embedded', () => {
     const dir = mkdtempSync(join(tmpdir(), 'xv-out-'));
     try {
       const out = join(dir, 'nested', 'page.html');
@@ -355,8 +355,9 @@ describe('the page', () => {
       expect(result.out).toBe(out);
       expect(existsSync(out)).toBe(true);
       expect(existsSync(join(project.root, '.excavator', 'view.html'))).toBe(false);
-      expect(result.source).toEqual({ embedded: false, requested: false, files: 0 });
-      expect(manifestOf(readFileSync(out, 'utf-8')).source).toEqual(result.source);
+      const none = { embedded: 0, binary: 0, tooLarge: 0, notInSnapshot: 0, notEmbeddedOnRequest: 0 };
+      expect(result.source).toEqual({ embedded: false, requested: false, limitBytes: 1048576, counts: none });
+      expect(manifestOf(readFileSync(out, 'utf-8')).source).toEqual({ ...result.source, files: {} });
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

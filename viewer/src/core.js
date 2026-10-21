@@ -71,12 +71,17 @@
     return Object.prototype.hasOwnProperty.call(STATUS_LABELS, status) ? STATUS_LABELS[status] : String(status);
   }
 
-  // The pages, in navigation order. A page file registers itself:
-  // { id, label, product (a manifest product name or null), render(ctx) -> Promise }.
+  // The pages, in navigation order (`order`, then registration). A page file registers itself:
+  // { id, label, order, product (a manifest product name or null), status(manifest) (optional), render(ctx) -> Promise }.
   var pageList = [];
   var pages = {
     list: pageList,
-    register: function (page) { pageList.push(page); },
+    register: function (page) {
+      if (typeof page.order !== 'number') page.order = 100;
+      var at = pageList.length;
+      while (at > 0 && pageList[at - 1].order > page.order) at -= 1;
+      pageList.splice(at, 0, page);
+    },
     find: function (id) {
       for (var i = 0; i < pageList.length; i++) if (pageList[i].id === id) return pageList[i];
       return null;

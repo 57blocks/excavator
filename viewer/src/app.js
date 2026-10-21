@@ -25,6 +25,7 @@
   }
 
   function pageStatus(manifest, page) {
+    if (page.status) return page.status(manifest);
     if (page.product === null) return XV.overview.worstStatus(manifest.products);
     var product = manifest.products.filter(function (p) { return p.name === page.product; })[0];
     return product ? product.status : 'not-run';

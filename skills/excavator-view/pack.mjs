@@ -11,13 +11,14 @@
  * file and a rename, so a failure leaves an existing page untouched, and prints
  * one JSON result on stdout:
  *   { out, bytes, snapshotRevision, products: [{ name, status, reason?, revision?, note? }],
- *     source: { embedded, ... } }
+ *     source: { embedded, requested, limitBytes, counts } }
  * with `status` one of included, not-run, unreadable, different-revision.
  *
  * Deterministic and model-free: the same products, the same source revision and
- * the same arguments give the same bytes. It reads products and the source
- * snapshot's revision only; it never builds, runs or edits the project, and
- * writes nothing under `.excavator/` except the page.
+ * the same arguments give the same bytes. It reads the products and, through
+ * the source snapshot (HEAD, never the working tree), the text of the files they
+ * point at; it never builds, runs or edits the project, and writes nothing under
+ * `.excavator/` except the page.
  *
  * Contract: openspec/changes/report-viewer/specs/report-viewer/spec.md
  */
@@ -30,7 +31,7 @@ import { assertDataDir, bindProjectRoot } from '../excavator/project-paths.mjs';
 import { resolveSourceSnapshot } from '../excavator/source-snapshot.mjs';
 import { assemblePage } from './page-assembly.mjs';
 import { collectProducts } from './products.mjs';
-import { collectSources } from './sources.mjs';
+import { collectSources, summarizeSources } from './sources.mjs';
 
 const USAGE = 'Usage: node pack.mjs <projectRoot> [--no-source] [--out <path>]\n';
 const MANIFEST_VERSION = 1;
@@ -90,7 +91,7 @@ export function packProject(rootArg, options = {}) {
 
   const snapshot = resolveSourceSnapshot(root);
   const products = collectProducts(dataDir, snapshot.revision);
-  const sources = collectSources({ noSource });
+  const sources = collectSources({ noSource, snapshot, payloads: products.payloads });
 
   const manifest = {
     viewer: MANIFEST_VERSION,
@@ -111,7 +112,7 @@ export function packProject(rootArg, options = {}) {
     bytes: page.length,
     snapshotRevision: snapshot.revision,
     products: products.entries.map(resultProduct),
-    source: sources.manifest,
+    source: summarizeSources(sources.manifest),
   };
 }
 

@@ -43,7 +43,7 @@ export function readManifest(html) {
 export function replyLines(path, bytes, manifest) {
   const states = new Map(manifest.products.map((p) => [p.name, p.status.replace(/-/g, ' ')]));
   const source = manifest.source && manifest.source.embedded
-    ? `embedded (${manifest.source.files} files)`
+    ? `embedded (${manifest.source.counts.embedded} files)`
     : 'not embedded';
   return [
     `View: ${path}`,

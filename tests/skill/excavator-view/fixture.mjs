@@ -30,6 +30,23 @@ export function makeGitProject(files = { 'src/main.js': 'export function main() 
   return { root, revision: `git:${git(root, 'rev-parse', 'HEAD')}`, cleanup: () => rmSync(root, { recursive: true, force: true }) };
 }
 
+/** A parent directory that is not a repository, holding one committed git repository per member name. */
+export function makeMultiRepoProject(members) {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'xv-multi-')));
+  for (const [name, files] of Object.entries(members)) {
+    const dir = join(root, name);
+    mkdirSync(dir);
+    git(dir, 'init', '-q');
+    for (const [path, text] of Object.entries(files)) {
+      mkdirSync(dirname(join(dir, path)), { recursive: true });
+      writeFileSync(join(dir, path), text);
+    }
+    git(dir, 'add', '-A');
+    git(dir, 'commit', '-q', '-m', 'fixture');
+  }
+  return { root, cleanup: () => rmSync(root, { recursive: true, force: true }) };
+}
+
 /** Write a file under the project's `.excavator/`. */
 export function writeProduct(root, name, content) {
   const path = join(root, '.excavator', name);

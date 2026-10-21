@@ -7,13 +7,15 @@
  * O3). Zero dependencies; not part of `pnpm test` because it needs a Chrome
  * install.
  *
- *   node scripts/view-smoke.mjs <page.html> [--width N] [--height N] [--dark] [--screenshot <png>]
+ *   node scripts/view-smoke.mjs <page.html> [--width N] [--height N] [--dark] [--hash <route>] [--screenshot <png>]
  *
  * It waits (in real time, 30 s at most) for `data-xv-ready` on <html>, then
  * collects every console error, uncaught exception, CSP violation, inline event
  * attribute in the DOM (the policy allows inline script, so only the DOM shows
  * those) and network request other than the main document, plus every
- * `data-xv-count-*` value, and prints one JSON result. The exit status is 1 when any of those errors is
+ * `data-xv-count-*` value, and prints one JSON result. `--hash` opens a route
+ * (for example `/code?path=src%2Fa.js&lines=3-9`); the result then lists the line
+ * numbers the Code page highlighted and any notice it showed. The exit status is 1 when any of those errors is
  * present, when the page reports `data-xv-ready="error"`, or on timeout.
  *
  * Chrome: `$CHROME`, else the macOS app, else google-chrome / chromium on PATH.
@@ -33,10 +35,10 @@ const COMMAND_TIMEOUT_MS = 15000;
 const SETTLE_MS = 300;
 const MAX_SCREENSHOT_HEIGHT = 5000;
 
-const USAGE = 'Usage: node scripts/view-smoke.mjs <page.html> [--width N] [--height N] [--dark] [--screenshot <png>]';
+const USAGE = 'Usage: node scripts/view-smoke.mjs <page.html> [--width N] [--height N] [--dark] [--hash <route>] [--screenshot <png>]';
 
 function parseArgs(argv) {
-  const options = { html: null, width: 1280, height: 900, dark: false, screenshot: null };
+  const options = { html: null, width: 1280, height: 900, dark: false, hash: null, screenshot: null };
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
     if (arg === '--dark') options.dark = true;
@@ -44,6 +46,9 @@ function parseArgs(argv) {
       const value = Number(argv[++i]);
       if (!Number.isInteger(value) || value < 100 || value > 10000) throw new Error(`${arg} needs an integer between 100 and 10000`);
       options[arg.slice(2)] = value;
+    } else if (arg === '--hash') {
+      options.hash = argv[++i];
+      if (!options.hash) throw new Error('--hash needs a route');
     } else if (arg === '--screenshot') {
       options.screenshot = argv[++i];
       if (!options.screenshot) throw new Error('--screenshot needs a path');
@@ -144,7 +149,17 @@ const PAGE_PROBE = `(function () {
     scrollWidth: root.scrollWidth,
     innerWidth: window.innerWidth,
     bodyBackground: getComputedStyle(document.body).backgroundColor,
-    colorScheme: getComputedStyle(root).colorScheme,
+    highlighted: Array.prototype.map.call(document.querySelectorAll('.xv-line-hl'), function (el) { return Number(el.getAttribute('data-n')); }),
+    highlightInView: (function () {
+      var line = document.querySelector('.xv-line-hl');
+      var box = document.querySelector('.xv-code');
+      if (!line || !box) return null;
+      var l = line.getBoundingClientRect();
+      var c = box.getBoundingClientRect();
+      return l.top >= c.top && l.bottom <= c.bottom && l.top >= 0 && l.bottom <= window.innerHeight;
+    })(),
+    notice: (document.querySelector('.xv-notice') || {}).textContent || null,
+    codeLines: document.querySelectorAll('.xv-line').length,
     prefersDark: window.matchMedia('(prefers-color-scheme: dark)').matches,
   });
 })()`;
@@ -157,7 +172,8 @@ function describeException(details) {
 async function run(options) {
   const htmlPath = resolve(options.html);
   if (!existsSync(htmlPath)) throw new Error(`${htmlPath} does not exist`);
-  const pageUrl = pathToFileURL(htmlPath).href;
+  const documentUrl = pathToFileURL(htmlPath).href;
+  const pageUrl = options.hash === null ? documentUrl : `${documentUrl}#${options.hash.replace(/^#/, '')}`;
   const profile = mkdtempSync(join(tmpdir(), 'xv-smoke-'));
   const found = { console: [], exceptions: [], log: [], requests: [], loadFailures: [] };
 
@@ -195,7 +211,7 @@ async function run(options) {
         if (params.entry.level === 'error') found.log.push(`${params.entry.text}${params.entry.url ? ` (${params.entry.url})` : ''}`);
         break;
       case 'Network.requestWillBeSent':
-        if (params.type === 'Document' && params.request.url === pageUrl) documentRequests.add(params.requestId);
+        if (params.type === 'Document' && (params.request.url === pageUrl || params.request.url === documentUrl)) documentRequests.add(params.requestId);
         else if (!/^(data|blob|about):/.test(params.request.url)) found.requests.push(params.request.url);
         break;
       case 'Network.loadingFailed':
@@ -269,6 +285,10 @@ async function run(options) {
     elapsedMs: Date.now() - started,
     title: probe ? probe.title : null,
     counts: probe ? probe.counts : {},
+    highlighted: probe ? probe.highlighted : [],
+    highlightInView: probe ? probe.highlightInView : null,
+    notice: probe ? probe.notice : null,
+    codeLines: probe ? probe.codeLines : 0,
     horizontalOverflow: probe ? probe.scrollWidth > probe.innerWidth : null,
     bodyBackground: probe ? probe.bodyBackground : null,
     prefersDark: probe ? probe.prefersDark : null,

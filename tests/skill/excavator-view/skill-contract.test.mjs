@@ -113,7 +113,7 @@ describe('the reply lines', () => {
       `View: ${result.out}`,
       `Size: ${(result.bytes / 1048576).toFixed(1)} MB`,
       'Products: knowledge graph included; unused code unreadable; doc map not run; hotspots different revision; reports not run',
-      'Source: not embedded',
+      'Source: embedded (1 files)',
     ]);
   });
 
@@ -123,7 +123,7 @@ describe('the reply lines', () => {
   });
 
   it('say how many files are embedded when there are some', () => {
-    const lines = replyLines('/x/view.html', 3 * 1048576 + 1, { products: [], source: { embedded: true, files: 12 } });
+    const lines = replyLines('/x/view.html', 3 * 1048576 + 1, { products: [], source: { embedded: true, counts: { embedded: 12 } } });
     expect(lines).toEqual([
       'View: /x/view.html',
       'Size: 3.0 MB',

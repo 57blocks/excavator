@@ -5,29 +5,11 @@
  * drawing is checked by the browser smoke script, not here.
  */
 
-import { readFileSync } from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
-import vm from 'node:vm';
 import { describe, expect, it } from 'vitest';
 
 import { encodePayload } from '../../../skills/excavator-view/page-assembly.mjs';
 import { graphJsonl } from './fixture.mjs';
-
-const viewerSrc = join(resolve(dirname(fileURLToPath(import.meta.url)), '../../..'), 'viewer', 'src');
-
-/**
- * A context with the viewer's scripts loaded in index.html order. `globals` stand in for browser APIs.
- * app.js boots as soon as it finds #xv-app, so it is left out unless `withApp` is set.
- */
-function load(globals = {}, { withApp = false } = {}) {
-  const context = vm.createContext({ ...globals });
-  context.window = context;
-  const order = readFileSync(join(viewerSrc, '..', 'index.html'), 'utf-8').match(/src\/[a-z]+\.js/g)
-    .filter((file) => withApp || file !== 'src/app.js');
-  for (const file of order) vm.runInContext(readFileSync(join(viewerSrc, '..', file), 'utf-8'), context, { filename: file });
-  return context.XV;
-}
+import { load } from './viewer-load.mjs';
 
 describe('router', () => {
   const { parseRoute, buildHash } = load().router;
@@ -88,6 +70,15 @@ describe('formatNumber and status words', () => {
     expect(XV.formatNumber(NaN)).toBe('n/a');
   });
 
+  it('keeps pages in their declared order whatever order they register in', () => {
+    const fresh = load();
+    fresh.pages.register({ id: 'late', order: 60 });
+    fresh.pages.register({ id: 'early', order: 20 });
+    fresh.pages.register({ id: 'unordered' });
+    fresh.pages.register({ id: 'middle', order: 40 });
+    expect(fresh.pages.list.map((p) => p.id)).toEqual(['overview', 'early', 'middle', 'code', 'late', 'unordered']);
+  });
+
   it('names the four states and passes an unknown one through', () => {
     expect(XV.statusLabel('included')).toBe('Included');
     expect(XV.statusLabel('not-run')).toBe('Not run');
@@ -96,8 +87,8 @@ describe('formatNumber and status words', () => {
     expect(XV.statusLabel('constructor')).toBe('constructor');
   });
 
-  it('registers the Overview as the first page', () => {
-    expect(XV.pages.list.map((p) => p.id)).toEqual(['overview']);
+  it('registers the Overview first and the Code page after it', () => {
+    expect(XV.pages.list.map((p) => p.id)).toEqual(['overview', 'code']);
     expect(XV.pages.find('overview').label).toBe('Overview');
     expect(XV.pages.find('missing')).toBeNull();
   });

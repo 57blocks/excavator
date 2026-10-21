@@ -300,5 +300,5 @@
     render: render,
   };
 
-  XV.pages.register({ id: 'overview', label: 'Overview', product: null, render: render });
+  XV.pages.register({ id: 'overview', label: 'Overview', order: 10, product: null, render: render });
 })();

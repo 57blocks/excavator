@@ -8,6 +8,7 @@
 
   var XV = (window.XV = window.XV || {});
   var cache = {};
+  var jsonCache = {};
 
   /** The manifest: product statuses, snapshot revision, and where each payload is. */
   function readManifest() {
@@ -54,15 +55,18 @@
     return cache[name];
   }
 
-  /** The parsed JSON of payload `name`. */
+  /** The parsed JSON of payload `name`, parsed once. */
   function loadJson(name) {
-    return loadText(name).then(function (text) {
-      try {
-        return JSON.parse(text);
-      } catch (error) {
-        throw new Error('data payload "' + name + '" is not valid JSON: ' + error.message);
-      }
-    });
+    if (!Object.prototype.hasOwnProperty.call(jsonCache, name)) {
+      jsonCache[name] = loadText(name).then(function (text) {
+        try {
+          return JSON.parse(text);
+        } catch (error) {
+          throw new Error('data payload "' + name + '" is not valid JSON: ' + error.message);
+        }
+      });
+    }
+    return jsonCache[name];
   }
 
   /**
