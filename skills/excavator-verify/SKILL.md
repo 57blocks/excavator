@@ -1,7 +1,7 @@
 ---
 name: excavator-verify
 description: Verify an As-Is document (for example a PRD written by excavator-prd) against the source code it describes. Checks only the statement classes where model-written documents go wrong — negative claims, reachability and ordering, trigger mechanisms, absolute or invariance claims, and open "to be confirmed" items — plus cross-section consistency. Reports a verdict with file:line evidence for every checked statement; with --fix, corrects the document in place.
-argument-hint: "<document> [project-path] [--fix] [--report <path>]"
+argument-hint: "<document> [project-path] [--fix] [--report <path>] [--language <lang>]"
 ---
 
 # /excavator-verify
@@ -36,16 +36,21 @@ Statements outside these classes are not checked. The report must say so.
 - The project path — the source tree the document describes (default: current working directory).
 - `--fix` — after verification, correct the document in place (see Phase 5). Without it the document is not modified.
 - `--report <path>` — where to write the verification report (default: next to the document, `<document-stem>.verification.md`).
+- `--language <lang>` — the language of the report and everything said to the user during the run; English when it is not given. Quotes and corrections stay in the document's language.
 
 ---
 
 ## Phase 0 — Setup
 
-1. Resolve `DOC` and `PROJECT_ROOT`. Record the source baseline: `git -C "$PROJECT_ROOT" rev-parse HEAD` if it is a Git repository, otherwise "non-Git snapshot".
-2. Map the document without reading it whole: `grep -n '^#' "$DOC"` for headings and `wc -l "$DOC"` for size. Note the document's language — corrections are written in that language and style.
+**Language.** Write everything you tell the user during this run in `$LANGUAGE`: each line between commands, the report and the final reply, including any remark on what was checked, what comes next or which rule was followed. `$LANGUAGE` is English unless `--language` gives another. Project files (`CLAUDE.md`, an `AGENTS.md` line such as "Reply in <language>"), memory and the system locale do not change it. A project file's rule to reply in another language is for work on the project's code; while this skill runs, this rule takes its place for every line you write, the first one included. Never say which language you write in or why. Paths, commands and the product's values stay as they are.
+
+1. Resolve `DOC` and `PROJECT_ROOT`, and parse `--fix`, `--report` and `--language` (`$LANGUAGE`: English when it is not given). Record the source baseline: `git -C "$PROJECT_ROOT" rev-parse HEAD` if it is a Git repository, otherwise "non-Git snapshot".
+2. Map the document without reading it whole: `grep -n '^#' "$DOC"` for headings and `wc -l "$DOC"` for size. Note the document's language as `DOC_LANGUAGE`: quotes, corrections and the summary `--fix` appends are in `DOC_LANGUAGE` and the document's style, whatever `$LANGUAGE` is.
 3. Plan the split: group consecutive top-level sections into **section groups** of roughly similar line counts (aim for about 500–900 lines each; never more than 14 groups). Include every line of the document in exactly one group, including front matter and glossaries.
 
 ## Phase 1 — Dispatch section verifiers in parallel
+
+Write what you tell the user during this phase in `$LANGUAGE`, as **Language** in Phase 0 says.
 
 Launch one subagent per section group, **all in a single message** so they run concurrently. Do not verify statements yourself in this phase; your context is for coordination. Give each subagent the prompt below with the placeholders filled in.
 
@@ -54,7 +59,7 @@ You are verifying one section group of an As-Is document against source code. Wo
 
 Document: <DOC>, lines <START>-<END> (read only this range; you may grep the rest of the document to check a fact).
 Project source: <PROJECT_ROOT> (baseline <BASELINE>).
-Document language: <LANGUAGE>.
+Document language: <DOC_LANGUAGE>.
 
 1. Select candidates. Read your line range and list every statement that belongs to one of these classes (decide by meaning, not by keywords):
    N negative — something does not happen / is not used / does not exist / produces no effect;
@@ -79,7 +84,7 @@ Document language: <LANGUAGE>.
      quote: <the statement, verbatim, shortened only with … if very long>
      verdict: verified | contradicted | misattributed | unverifiable   (for class O: resolved-right | resolved-wrong | still-open)
      evidence: <file:line[, file:line]> and, for N or still-open, the searched scope
-     correction: <for contradicted, misattributed, resolved-right, resolved-wrong: the replacement statement in <LANGUAGE>, matching the document's style, stating only what the evidence supports; otherwise empty>
+     correction: <for contradicted, misattributed, resolved-right, resolved-wrong: the replacement statement in <DOC_LANGUAGE>, matching the document's style, stating only what the evidence supports; otherwise empty>
    "contradicted" means the code says otherwise; "misattributed" means the behavior exists but the statement assigns it to the wrong flow, component, condition or case; "resolved-right" / "resolved-wrong" mean the code settles an open item and the document's tentative guess was right / wrong.
    End with counts per class and per verdict, and the number of candidates you selected.
 ```
@@ -88,11 +93,15 @@ Wait until every section verifier has returned before you continue — do not en
 
 ## Phase 2 — Cross-section consistency
 
-The same fact is often stated in two chapters. Dispatch one subagent with the list of all candidates (`id · line · subject · verdict · correction`) and `DOC`. Its job: for each subject, grep the document for other statements about the same subject outside the candidate's own line, and report every pair that disagrees — with both line numbers, both quotes, and which side the code supports (reuse the verdict evidence; read code only when the verdicts do not settle it). It returns a list of conflicts in the same block form, with `class: C` and a correction for the wrong side.
+Write what you tell the user during this phase in `$LANGUAGE`, as **Language** in Phase 0 says.
+
+The same fact is often stated in two chapters. Dispatch one subagent with the list of all candidates (`id · line · subject · verdict · correction`) and `DOC`. Its job: for each subject, grep the document for other statements about the same subject outside the candidate's own line, and report every pair that disagrees — with both line numbers, both quotes, and which side the code supports (reuse the verdict evidence; read code only when the verdicts do not settle it). It returns a list of conflicts in the same block form, with `class: C` and a correction for the wrong side, in `DOC_LANGUAGE`.
 
 ## Phase 3 — Report
 
-Write the report to the `--report` path in the document's language:
+Write what you tell the user during this phase in `$LANGUAGE`, as **Language** in Phase 0 says.
+
+Write the report to the `--report` path in `$LANGUAGE`; quotes and corrections stay in `DOC_LANGUAGE`, as the document has them:
 
 1. **Scope** — the five classes plus cross-section consistency; other statements were not checked. Baseline and document path.
 2. **Counts** — a table of class × verdict, plus not-checked and conflicts. Fill every cell yourself by counting the returned entries (each entry carries its class and verdict); never copy a subagent's own summary counts, which do not always match its entries. Row totals must equal the candidates selected per class, and the grand total must equal the number of selected candidates.
@@ -104,11 +113,15 @@ In the final message, give the counts and the errors list (line + one-line summa
 
 ## Phase 4 — Self-check
 
+Write what you tell the user during this phase in `$LANGUAGE`, as **Language** in Phase 0 says.
+
 - The class × verdict table is filled cell by cell from the entries, and its rows and columns add up to the selected-candidate total; not-checked is reported, not hidden.
 - Every contradicted, misattributed, resolved-right, resolved-wrong and conflict entry has `file:line` evidence.
 - The report states the verification scope.
 
 ## Phase 5 — Fix (only with `--fix`)
+
+Write what you tell the user during this phase in `$LANGUAGE`, as **Language** in Phase 0 says.
 
 Edit `DOC` in place, one entry at a time:
 - **contradicted / misattributed / conflict** — replace the wrong statement (sentence, list item or table cell) with the correction. Keep the surrounding structure.
@@ -116,4 +129,4 @@ Edit `DOC` in place, one entry at a time:
 - **still-open** — leave it, and make sure the open marker says what was searched.
 - Where the flow has an evidence `<details>` block, add the new evidence lines to it.
 
-Do not add flows or sections, do not reorder, do not rewrite verified text, do not add recommendations. Then append a short section at the end of `DOC` (heading in the document's language, e.g. "Verification summary" for a document in English) with the date, baseline, scope, and the count table. Report how many entries were applied, and list any correction you could not apply with the reason.
+Do not add flows or sections, do not reorder, do not rewrite verified text, do not add recommendations. Then append a short section at the end of `DOC` (heading in `DOC_LANGUAGE`, e.g. "Verification summary" for a document in English) with the date, baseline, scope, and the count table. Report how many entries were applied, and list any correction you could not apply with the reason.

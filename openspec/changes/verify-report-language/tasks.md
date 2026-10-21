@@ -12,9 +12,9 @@
 
 ## 1. 实现
 
-- [ ] 1.1 `skills/excavator-verify/SKILL.md`：argument-hint、选项、Phase 0 开头的 Language 段、Phase 0 第 1、2 步、Phase 1–5 的指回行、子代理提示的 `<DOC_LANGUAGE>`、Phase 2、3、5 的语言说明（design D1）。
-- [ ] 1.2 `skills/excavator-prd/SKILL.md` 第 5 步把 `$LANGUAGE` 作为 `--language` 传给 verify（D4）。
-- [ ] 1.3 新建 `tests/skill/test_verify_skill_contract.test.mjs`：Phase 顺序、无汉字、选项与 `--language` 出现的位置、`DOC_LANGUAGE` 各处、Language 段与 hotspots 相同、prd 传 `--language`（D5 前几条）。验证：契约测试。
+- [x] 1.1 `skills/excavator-verify/SKILL.md`：argument-hint、选项、Phase 0 开头的 Language 段、Phase 0 第 1、2 步、Phase 1–5 的指回行、子代理提示的 `<DOC_LANGUAGE>`、Phase 2、3、5 的语言说明（design D1）。
+- [x] 1.2 `skills/excavator-prd/SKILL.md` 第 5 步把 `$LANGUAGE` 作为 `--language` 传给 verify（D4）。
+- [x] 1.3 新建 `tests/skill/test_verify_skill_contract.test.mjs`：Phase 顺序、无汉字、选项与 `--language` 出现的位置、`DOC_LANGUAGE` 各处、Language 段与 hotspots 相同、prd 传 `--language`（D5 前几条）。验证：契约测试。
 - [ ] 1.4 删掉 Phase 3 结尾的回复要求；Phase 5 以 Fix 一节的说明结尾（D3）；新增 Phase 6：指回行、跳过说明、第二份 Language 段、回复命令与说明（D2、D4）。
 - [ ] 1.5 契约测试：Language 段的位置与坏副本、Phase 6 的命令与说明原文、旧说法已不在、命令换上样例值后打印 5 行（D5 其余各条）。验证：契约测试。
 
