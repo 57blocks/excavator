@@ -1,0 +1,140 @@
+#!/usr/bin/env node
+/**
+ * pack.mjs
+ *
+ * Packs a project's `.excavator/` products into one self-contained HTML page
+ * (openspec: changes/report-viewer, capability `report-viewer`, design D2-D3).
+ *
+ *   node pack.mjs <projectRoot> [--no-source] [--out <path>]
+ *
+ * Writes `<projectRoot>/.excavator/view.html` (or `--out`) through a temporary
+ * file and a rename, so a failure leaves an existing page untouched, and prints
+ * one JSON result on stdout:
+ *   { out, bytes, snapshotRevision, products: [{ name, status, reason?, revision?, note? }],
+ *     source: { embedded, ... } }
+ * with `status` one of included, not-run, unreadable, different-revision.
+ *
+ * Deterministic and model-free: the same products, the same source revision and
+ * the same arguments give the same bytes. It reads products and the source
+ * snapshot's revision only; it never builds, runs or edits the project, and
+ * writes nothing under `.excavator/` except the page.
+ *
+ * Contract: openspec/changes/report-viewer/specs/report-viewer/spec.md
+ */
+
+import { mkdirSync, realpathSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { dirname, basename, join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+import { assertDataDir, bindProjectRoot } from '../excavator/project-paths.mjs';
+import { resolveSourceSnapshot } from '../excavator/source-snapshot.mjs';
+import { assemblePage } from './page-assembly.mjs';
+import { collectProducts } from './products.mjs';
+import { collectSources } from './sources.mjs';
+
+const USAGE = 'Usage: node pack.mjs <projectRoot> [--no-source] [--out <path>]\n';
+const MANIFEST_VERSION = 1;
+
+/** The viewer project sits at the plugin root, two levels above this script (resolved through links). */
+function viewerDirectory() {
+  return realpathSync(resolve(dirname(fileURLToPath(import.meta.url)), '..', '..', 'viewer'));
+}
+
+function parseArgs(argv) {
+  const options = { root: null, noSource: false, out: null };
+  for (let i = 0; i < argv.length; i++) {
+    const arg = argv[i];
+    if (arg === '--no-source') options.noSource = true;
+    else if (arg === '--out') {
+      options.out = argv[++i];
+      if (!options.out) throw new Error(`--out needs a path\n${USAGE}`);
+    } else if (arg.startsWith('--')) throw new Error(`unknown option ${arg}\n${USAGE}`);
+    else if (options.root === null) options.root = arg;
+    else throw new Error(`unexpected argument ${arg}\n${USAGE}`);
+  }
+  if (options.root === null) throw new Error(USAGE.trimEnd());
+  return options;
+}
+
+/** Write through a sibling temporary file and rename; on any failure the target is untouched and the temporary file is gone. */
+function writeAtomic(path, bytes) {
+  const tmpPath = `${path}.tmp-${process.pid}`;
+  try {
+    mkdirSync(dirname(path), { recursive: true });
+    writeFileSync(tmpPath, bytes);
+    renameSync(tmpPath, path);
+  } catch (error) {
+    rmSync(tmpPath, { force: true });
+    throw error;
+  }
+}
+
+function resultProduct(entry) {
+  const row = { name: entry.name, status: entry.status };
+  if (entry.reason) row.reason = entry.reason;
+  if (entry.revision) row.revision = entry.revision;
+  if (entry.revisionNote) row.note = entry.revisionNote;
+  return row;
+}
+
+/**
+ * Pack the project and write the page.
+ * @param {string} rootArg
+ * @param {{ noSource?: boolean, out?: string|null }} [options]
+ */
+export function packProject(rootArg, options = {}) {
+  const noSource = options.noSource === true;
+  const root = bindProjectRoot(rootArg);
+  const dataDir = assertDataDir(root);
+  const out = options.out ? resolve(options.out) : join(dataDir, 'view.html');
+
+  const snapshot = resolveSourceSnapshot(root);
+  const products = collectProducts(dataDir, snapshot.revision);
+  const sources = collectSources({ noSource });
+
+  const manifest = {
+    viewer: MANIFEST_VERSION,
+    project: { name: basename(root) },
+    snapshot: { revision: snapshot.revision, kind: snapshot.kind },
+    products: products.entries,
+    source: sources.manifest,
+  };
+  const page = assemblePage({
+    viewerDir: viewerDirectory(),
+    manifest,
+    payloads: [...products.payloads, ...sources.payloads],
+  });
+  writeAtomic(out, page);
+
+  return {
+    out,
+    bytes: page.length,
+    snapshotRevision: snapshot.revision,
+    products: products.entries.map(resultProduct),
+    source: sources.manifest,
+  };
+}
+
+function main(argv) {
+  const options = parseArgs(argv);
+  const result = packProject(options.root, { noSource: options.noSource, out: options.out });
+  process.stdout.write(`${JSON.stringify(result)}\n`);
+}
+
+function isCliEntry() {
+  if (!process.argv[1]) return false;
+  try {
+    return realpathSync(fileURLToPath(import.meta.url)) === realpathSync(process.argv[1]);
+  } catch {
+    return false;
+  }
+}
+
+if (isCliEntry()) {
+  try {
+    main(process.argv.slice(2));
+  } catch (error) {
+    process.stderr.write(`excavator-view pack failed: ${error.message}\n`);
+    process.exit(1);
+  }
+}
