@@ -34,6 +34,19 @@
   --color-node-service: #ce4a72;
   --color-node-domain: #bb52a8;
 
+  /*
+   * Overlays. The hotspots fill goes from light to strong over four levels, and the ink on each is at least 4.5:1.
+   * The chips of the unused overlay (by confidence) and of the doc map carry white text, at least 4.5:1 on each.
+   */
+  --color-hot-1: #fdf1d2;
+  --color-hot-2: #fbd9a0;
+  --color-hot-3: #f8b878;
+  --color-hot-4: #f2906c;
+  --color-unused-high: #b42318;
+  --color-unused-medium: #9a5b00;
+  --color-unused-low: #4f5d8a;
+  --color-evidence: #0f766e;
+
   --font-sans: "Geist", system-ui, -apple-system, "Segoe UI", sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, Menlo, Consolas, monospace;
 
@@ -123,6 +136,22 @@
 .xv-node:hover {
   transform: translateY(-1px);
   box-shadow: 0 6px 20px -8px rgb(12 12 18 / 0.28);
+}
+/* The hotspots overlay: the card is filled by its band, and the dimmer text on it is the darker ink. */
+.xv-node[data-xv-hot="1"] {
+  background-color: var(--color-hot-1);
+}
+.xv-node[data-xv-hot="2"] {
+  background-color: var(--color-hot-2);
+}
+.xv-node[data-xv-hot="3"] {
+  background-color: var(--color-hot-3);
+}
+.xv-node[data-xv-hot="4"] {
+  background-color: var(--color-hot-4);
+}
+.xv-node[data-xv-hot] .text-muted {
+  color: var(--color-ink-soft);
 }
 .xv-selected {
   box-shadow: 0 0 0 2px var(--color-accent);

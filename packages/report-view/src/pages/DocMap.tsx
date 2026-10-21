@@ -5,6 +5,7 @@ import { Panel } from '../components/shell/Panel';
 import { Badge, type BadgeTone } from '../components/ui/Badge';
 import { Card } from '../components/ui/Card';
 import { CodeLink } from '../components/ui/CodeLink';
+import { LocateButton } from '../components/ui/LocateButton';
 import { BulletList, ChipGroup, Facts, SearchInput } from '../components/ui/Controls';
 import { type Column, DataTable, SimpleTable } from '../components/ui/DataTable';
 import { Tile, Tiles } from '../components/ui/Tile';
@@ -108,7 +109,10 @@ const DOCUMENT_COLUMNS: Column<DocumentRow>[] = [
 function EvidenceItem({ item }: { item: UnitRow['evidence'][number] }) {
   return (
     <li className="min-w-0 rounded-lg border border-line-2 px-3.5 py-2.5">
-      <div>{item.file === null ? EMPTY : <CodeLink path={item.file} range={item.line === null ? null : [item.line]} />}</div>
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+        {item.file === null ? EMPTY : <CodeLink path={item.file} range={item.line === null ? null : [item.line]} />}
+        {item.file === null ? null : <LocateButton target={{ kind: 'file', path: item.file }} overlay="doc-map" />}
+      </div>
       {item.code === null ? null : <pre className="my-1.5 whitespace-pre-wrap rounded-md border-l-[3px] border-accent bg-paper px-3.5 py-2.5 font-mono text-[12.5px] [overflow-wrap:anywhere]">{item.code}</pre>}
       {item.check === null ? (
         <p className="mt-1 text-muted">Not checked: checks.json has no verdict for this place.</p>
@@ -231,11 +235,13 @@ function Coverage({ coverage }: { coverage: Record<string, any> | null | undefin
     { label: 'Code files', num: true, key: (d) => d.files, render: (d) => formatNumber(d.files) },
     { label: 'With evidence', num: true, key: (d) => d.withEvidence, render: (d) => formatNumber(d.withEvidence) },
     { label: 'Units', width: 'lg', key: (d) => (d.units ? d.units.length : null), title: (d) => unitList(d.units), render: (d) => unitList(d.units) },
+    { label: 'Graph', key: () => null, render: (d) => <LocateButton target={{ kind: 'directory', path: String(d.path) }} overlay="doc-map" /> },
   ], []);
   const fileColumns = useMemo<Column<Record<string, any>>[]>(() => [
     { label: 'File', width: 'xl', key: (f) => f.path, title: (f) => f.path, render: (f) => <CodeLink path={f.path} /> },
     { label: 'Evidence', key: (f) => (withEvidence(f) ? 1 : 0), render: (f) => (withEvidence(f) ? 'with evidence' : 'without evidence') },
     { label: 'Units', width: 'lg', key: (f) => (f.units ? f.units.length : null), title: (f) => unitList(f.units), render: (f) => unitList(f.units) },
+    { label: 'Graph', key: () => null, render: (f) => <LocateButton target={{ kind: 'file', path: String(f.path) }} overlay="doc-map" /> },
   ], []);
 
   if (!coverage || typeof coverage !== 'object') {

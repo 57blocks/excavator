@@ -472,6 +472,18 @@ export function groupKeyOfFile(structure: Structure, fileId: string): string | n
   return groupOfFile(structure, fileId)?.key ?? null;
 }
 
+/** The level `path` or the fold of it that draws the entry `entryId`, as route parameters; null when neither does. */
+function drawnAt(structure: Structure, path: string, entryId: string): { path: string; fold: string | null } | null {
+  const level = buildLevel(structure, { path });
+  if (!level) return null;
+  if (level.entries.some((entry) => entry.id === entryId)) return { path, fold: null };
+  for (const [from, to] of foldRanges(level.total)) {
+    const fold = `${from}-${to}`;
+    if (buildLevel(structure, { path, fold })?.entries.some((entry) => entry.id === entryId)) return { path, fold };
+  }
+  return null;
+}
+
 /**
  * The level that draws file node `fileId`, as route parameters: the level of the
  * file's directory, or the fold of that level that holds it. Null when no level
@@ -481,13 +493,53 @@ export function locateFile(structure: Structure, fileId: string): { path: string
   const group = groupOfFile(structure, fileId);
   const file = group?.files.find((candidate) => candidate.id === fileId);
   if (!group || !file) return null;
-  const path = pathOf(group, dirOf(file.path));
-  const level = buildLevel(structure, { path });
-  if (!level) return null;
-  if (level.entries.some((entry) => entry.id === fileId)) return { path, fold: null };
-  for (const [from, to] of foldRanges(level.total)) {
-    const fold = `${from}-${to}`;
-    if (buildLevel(structure, { path, fold })?.entries.some((entry) => entry.id === fileId)) return { path, fold };
+  return drawnAt(structure, pathOf(group, dirOf(file.path)), fileId);
+}
+
+/** The place of the container that stands for directory `dir` inside `group`: its entry id, and where it is drawn. */
+function containerIn(structure: Structure, group: Group, dir: string): { path: string; fold: string | null; entry: string } | null {
+  const tree = treeOf(structure, group);
+  if (dirAt(tree, dir) === null) return null;
+  const base = group.baseDir;
+  // A group that is one directory is drawn as a container at the top; a group of only the files directly in a directory stands for no whole directory.
+  if (!layerLike(group) && dir === base) {
+    if (group.directOnly) return null;
+    const entry = `group:${group.key}`;
+    const at = drawnAt(structure, '', entry);
+    return at && { ...at, entry };
+  }
+  let at = dirAt(tree, base) as DirNode;
+  while (at.path !== dir) {
+    const next = [...at.children.values()].find((child) => dir === child.path || dir.startsWith(`${child.path}/`));
+    if (!next) return null;
+    const end = compact(next);
+    // The container stands for the whole chain from `next` to `end`: they hold the same files.
+    if (end.path === dir || end.path.startsWith(`${dir}/`)) {
+      const entry = `container:${pathOf(group, end.path)}`;
+      const place = drawnAt(structure, pathOf(group, at.path), entry);
+      return place && { ...place, entry };
+    }
+    at = end;
+  }
+  return null;
+}
+
+/**
+ * The container that stands for directory `dir` (a path as the hotspots and doc-map products write it): the level that
+ * draws it, and the entry to select there. A directory whose files are in several groups (layers) is taken from the
+ * group that holds most of them, the first of those that hold as many. A directory that no container stands for (the
+ * project root, one that holds a whole group and more, one the graph has no file in) gives null.
+ */
+export function locateDirectory(structure: Structure, dir: string): { path: string; fold: string | null; entry: string } | null {
+  const clean = dir.replace(/\/+$/, '');
+  const prefix = `${clean}/`;
+  const holders = structure.groups
+    .map((group, order) => ({ group, order, count: group.files.filter((file) => file.path.startsWith(prefix)).length }))
+    .filter((holder) => holder.count > 0)
+    .sort((a, b) => b.count - a.count || a.order - b.order);
+  for (const { group } of holders) {
+    const place = containerIn(structure, group, clean);
+    if (place) return place;
   }
   return null;
 }

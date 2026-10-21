@@ -4,6 +4,7 @@ import { useCounts } from '../hooks/use-signals';
 import { ProductPage } from '../components/ProductPage';
 import { Card } from '../components/ui/Card';
 import { CodeLink } from '../components/ui/CodeLink';
+import { LocateButton } from '../components/ui/LocateButton';
 import { Badge, type BadgeTone } from '../components/ui/Badge';
 import { ChipGroup, LinkButton, SearchInput, BulletList } from '../components/ui/Controls';
 import { type Column, DataTable, SimpleTable } from '../components/ui/DataTable';
@@ -119,6 +120,7 @@ function UnusedFunctions({ rows }: { rows: UnusedRow[] }) {
     { label: 'Owner', key: KEYS.owner, width: 'md', title: (r) => r.owner, render: (r) => r.owner },
     { label: 'Visibility', key: KEYS.visibility, render: (r) => r.visibility },
     { label: 'Signals', key: KEYS.signals, width: 'md', title: (r) => signalsTitle(r.signals), render: (r) => signalsText(r.signals) },
+    { label: 'Graph', key: () => null, render: (r) => <LocateButton target={{ kind: 'node', nodeId: r.id }} overlay="unused" /> },
   ], []);
 
   return (
@@ -146,6 +148,8 @@ function TestOnly({ rows }: { rows: UnusedRow[] }) {
     { label: 'Name', key: KEYS.name, width: 'md', title: (r) => r.name, render: (r) => r.name },
     { label: 'Language', key: KEYS.language, render: (r) => r.language },
     { label: 'Location', key: KEYS.location, width: 'xl', title: locationTitle, render: location },
+    // These functions are not on the unused overlay's list, so nothing turns on with them.
+    { label: 'Graph', key: () => null, render: (r) => <LocateButton target={{ kind: 'node', nodeId: r.id }} overlay={null} /> },
   ], []);
   return (
     <Card title="Used only by tests">

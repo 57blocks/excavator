@@ -1,7 +1,8 @@
 /**
  * sources.mjs
  *
- * Collects the source files the included products point at and gives each one
+ * Collects the source files the included products point at (the knowledge graph's
+ * file nodes among them, so every graph node can open its code) and gives each one
  * exactly one class (openspec: changes/report-viewer, design D4). Text is read
  * through the source snapshot (HEAD for a git or multi-repo project, never the
  * working tree), so the page shows the revision it names.
@@ -32,12 +33,34 @@ const addPath = (set, value) => {
 };
 
 /**
- * The paths the included products name: unused-code `unused[].file` and `testOnly[].file`; doc-map
+ * The path of every file node of the knowledge graph (`filePath` of a record of type `file`), so a graph node whose
+ * file no other product names can still open its code. A line that is not JSON is skipped: the page reports it.
+ */
+function graphFilePaths(payloads) {
+  const payload = payloads.find((p) => p.id === 'knowledge-graph');
+  if (!payload) return [];
+  const paths = [];
+  for (const line of payload.bytes.toString('utf-8').split('\n')) {
+    if (line === '') continue;
+    let record;
+    try {
+      record = JSON.parse(line);
+    } catch {
+      continue;
+    }
+    if (record?.record === 'node' && record.node?.type === 'file') paths.push(record.node.filePath);
+  }
+  return paths;
+}
+
+/**
+ * The paths the included products name: the graph's file nodes; unused-code `unused[].file` and `testOnly[].file`; doc-map
  * `units[].code.evidence[].file`, `coverage.files[].path` and `coverage.outside[].file`; hotspots `files[].path`
  * and `pairs[].a` / `.b`. Sorted, each once.
  */
 export function referencedPaths(payloads) {
   const paths = new Set();
+  for (const path of graphFilePaths(payloads)) addPath(paths, path);
   const unused = parsePayload(payloads, 'unused-code');
   if (unused) {
     for (const row of [...(unused.unused ?? []), ...(unused.testOnly ?? [])]) addPath(paths, row?.file);

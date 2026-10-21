@@ -4,7 +4,8 @@ import { useReducedMotion } from 'motion/react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { useCounts, useReady, useSignal } from '../../hooks/use-signals';
-import { flowEdges, flowNodes, layoutPlan, pathHighlight, planLevel, type LevelPlan } from '../../lib/graph-flow';
+import { asPixels, CARDS, measureFitPadding } from '../../lib/fit-padding';
+import { flowEdges, flowNodes, layoutPlan, levelMarks, pathHighlight, planLevel, type LevelPlan } from '../../lib/graph-flow';
 import { shownEdgeTypes, type GraphFilters } from '../../lib/graph-filters';
 import type { LevelLayout } from '../../lib/graph-layout';
 import type { GraphState } from '../../lib/graph-state';
@@ -12,9 +13,12 @@ import { levelNotes, type Crumb, type Level, type LevelEntry } from '../../lib/g
 import { visibilityOf, visibleLevel } from '../../lib/graph-visibility';
 import { DURATION } from '../../lib/motion';
 import { nodeColor } from '../../lib/node-colors';
+import { legendBlocks } from '../../lib/overlays';
+import { OVERLAYS } from '../../lib/overlay-names';
 import { shortestPath } from '../../lib/path-finding';
 import { useGraphUi } from '../../state/graph-ui';
 import type { GraphScene } from '../../state/graph-scene';
+import { useOverlayFacts } from '../../state/overlay-facts';
 import { useProduct, useViewer } from '../../state/viewer';
 import { LoadError } from '../ProductPage';
 import { Panel } from '../shell/Panel';
@@ -26,11 +30,6 @@ import { PathCard } from './PathCard';
 import type { GraphModel } from '../../data/model';
 
 const NO_FILES: ReadonlySet<string> = new Set();
-
-/** The room the camera leaves around a level: the breadcrumbs above it and the legend below it sit over the canvas. */
-const FIT_PADDING = { top: '120px', right: '24px', bottom: '84px', left: '24px' } as const;
-/** The top of the part of the canvas that is free of the breadcrumbs. */
-const SAFE_TOP = 110;
 
 export const levelKeyOf = (level: Level) => `${level.path}#${level.fold ?? ''}`;
 
@@ -129,25 +128,57 @@ export function LevelView({ scene, level, state, filters, actions }: { scene: Gr
   const [hovered, setHovered] = useState<string | null>(null);
   const [hoveredEdge, setHoveredEdge] = useState<string | null>(null);
 
+  // The overlays that are on draw marks on the entries; they never move anything, so the layout does not depend on them.
+  const overlayData = useOverlayFacts(model.index, ui.overlays);
+  const overlayView = useMemo(() => (laid ? levelMarks(laid.level, overlayData.facts) : null), [laid, overlayData.facts]);
+  const { manifest } = useViewer();
+  const blocks = useMemo(() => {
+    const products = Object.fromEntries(ui.overlays.map((name) => [name, manifest.products.find((p) => p.name === OVERLAYS[name].product)]));
+    return legendBlocks(ui.overlays, overlayData.facts, products, { pending: overlayData.pending, error: overlayData.error?.message ?? null });
+  }, [ui.overlays, overlayData, manifest]);
+  useSignal('overlays', ui.overlays.length === 0 ? null : ui.overlays.join(','));
+  useSignal('overlays-marked', overlayView ? String(overlayView.entries.size) : null);
+
   const nodes = useMemo(
-    () => (laid ? flowNodes(laid.level, laid.plan, laid.layout, { selected, selectedEntry: state.entry, path: highlight, onOpen: actions.open, onDetails: actions.details, onSelect: actions.select, onToggle: toggle }) : []),
-    [laid, selected, state.entry, highlight, actions, toggle],
+    () => (laid ? flowNodes(laid.level, laid.plan, laid.layout, { selected, selectedEntry: state.entry, path: highlight, onOpen: actions.open, onDetails: actions.details, onSelect: actions.select, onToggle: toggle, overlay: overlayView }) : []),
+    [laid, selected, state.entry, highlight, actions, toggle, overlayView],
   );
   const edges = useMemo(
     () => (laid ? flowEdges(laid.plan, { selected, selectedEntry: state.entry, hovered, hoveredEdge, path: highlight, floating: laid.layout.kind === 'grid' }) : []),
     [laid, selected, state.entry, hovered, hoveredEdge, highlight],
   );
 
-  // The camera moves when the level changes, not when a file opens.
+  // The camera moves when the level changes, not when a file opens. It fits the level into what the cards over the canvas leave free, once the legends are drawn.
   const fitted = useRef<string | null>(null);
+  const settled = !overlayData.pending;
   useEffect(() => {
-    if (!laid || fitted.current === levelKeyOf(laid.level)) return undefined;
+    if (!laid || !settled || fitted.current === levelKeyOf(laid.level) || !pane.current) return undefined;
     const frame = requestAnimationFrame(() => {
+      if (!pane.current) return;
       fitted.current = levelKeyOf(laid.level);
-      fitView({ duration: reduce ? 0 : DURATION.camera * 1000, padding: FIT_PADDING, maxZoom: 1.2 });
+      fitView({ duration: reduce ? 0 : DURATION.camera * 1000, padding: asPixels(measureFitPadding(pane.current)), maxZoom: 1.2 });
     });
     return () => cancelAnimationFrame(frame);
-  }, [laid, reduce, fitView]);
+  }, [laid, settled, reduce, fitView]);
+
+  // A legend that opens or grows (an overlay turned on) can land over nodes the camera had already fitted: then, and only then, the camera fits again.
+  const legendKey = blocks.map((block) => `${block.overlay}:${block.rows.length}:${block.note.length}`).join('|');
+  const clearedFor = useRef<string | null>(null);
+  useEffect(() => {
+    if (!laid || !settled || fitted.current !== levelKeyOf(laid.level) || clearedFor.current === legendKey) return undefined;
+    clearedFor.current = legendKey;
+    const frame = requestAnimationFrame(() => {
+      const element = pane.current;
+      if (!element) return;
+      const cards = [...element.querySelectorAll(CARDS)].map((el) => el.getBoundingClientRect()).filter((box) => box.height > 0);
+      const covered = [...element.querySelectorAll('.react-flow__node')].some((el) => {
+        const box = el.getBoundingClientRect();
+        return cards.some((card) => box.left < card.right && box.right > card.left && box.top < card.bottom && box.bottom > card.top);
+      });
+      if (covered) fitView({ duration: reduce ? 0 : DURATION.camera * 1000, padding: asPixels(measureFitPadding(element)), maxZoom: 1.2 });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [laid, settled, legendKey, reduce, fitView]);
 
   // The selected node stays in view: when a layout or the drawer leaves it outside or under the drawer, the camera moves to it, keeping the zoom unless that is too small to read.
   const drawerOpen = ui.drawer !== 'closed';
@@ -167,7 +198,7 @@ export function LevelView({ scene, level, state, filters, actions }: { scene: Gr
       const height = node.measured.height ?? node.height ?? 0;
       const at = node.internals.positionAbsolute;
       const [left, top] = [at.x * zoom + x, at.y * zoom + y];
-      const safe = { top: SAFE_TOP, bottom: drawerOpen ? box.height * 0.6 - 16 : box.height - 16, left: 16, right: box.width - 16 };
+      const safe = { top: measureFitPadding(element).top, bottom: drawerOpen ? box.height * 0.6 - 16 : box.height - 16, left: 16, right: box.width - 16 };
       if (left >= safe.left && top >= safe.top && left + width * zoom <= safe.right && top + height * zoom <= safe.bottom) return;
       const next = Math.min(Math.max(zoom, 0.8), 1.2);
       setViewport({ x: box.width / 2 - (at.x + width / 2) * next, y: (safe.top + safe.bottom) / 2 - (at.y + height / 2) * next, zoom: next }, { duration: reduce ? 0 : DURATION.camera * 1000 });
@@ -181,7 +212,6 @@ export function LevelView({ scene, level, state, filters, actions }: { scene: Gr
   }, [selected, ui]);
 
   const types = useMemo(() => new Set([...model.index.nodesById.values()].map((node) => node.type)), [model]);
-  const { manifest } = useViewer();
   const product = useProduct('knowledge-graph');
   const notes = useMemo(() => {
     const own = levelNotes(structure, level, model.index.semantics.layerSource);
@@ -193,7 +223,7 @@ export function LevelView({ scene, level, state, filters, actions }: { scene: Gr
 
   if (failure) return <div className="p-6"><LoadError title="The graph could not be laid out" error={failure} /></div>;
   return (
-    <div ref={pane} className="relative size-full" data-xv-graph="" data-xv-view="level">
+    <div ref={pane} className="relative size-full" data-xv-graph="" data-xv-view="level" data-xv-overlays={ui.overlays.length === 0 ? undefined : ui.overlays.join(',')}>
       <ReactFlow
         nodes={nodes}
         edges={edges}
@@ -219,7 +249,7 @@ export function LevelView({ scene, level, state, filters, actions }: { scene: Gr
           <Breadcrumbs crumbs={level.crumbs} notes={notes} onGo={actions.goCrumb} />
           {state.from !== null && state.to !== null ? <PathCard index={model.index} from={state.from} to={state.to} directed={state.directed} path={path} onSelect={actions.select} onClear={actions.clearPath} /> : null}
         </TopLeft>
-        <Legend types={types} />
+        <Legend types={types} overlays={blocks} />
       </ReactFlow>
       <Panel slot="sidebar" open={entry !== null} title={entry?.label ?? ''} onClose={actions.clearSelection} closeOnEscape={false}>
         {entry && laid ? <EntryDetails entry={entry} level={laid.level} plan={laid.plan} onOpen={() => actions.open(entry)} /> : null}

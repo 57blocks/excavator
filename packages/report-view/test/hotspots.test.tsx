@@ -203,7 +203,7 @@ describe('the tables of the page', () => {
   it('puts the columns that are read first before the long ones', () => {
     expect(labels('directories').slice(0, 11)).toEqual(['Directory', 'Score', 'Commits', 'Authors', 'Commits by year', 'Files', 'Lines', 'Added', 'Removed', 'Last changed', 'Commits by people']);
     expect(labels('groups').slice(0, 11)).toEqual(['Group', 'Score', 'Commits', 'Authors', 'Commits by year', 'Files', 'Lines', 'Added', 'Removed', 'Last changed', 'Commits by people']);
-    expect(labels('pairs')).toEqual(['Together', 'Share of A', 'Share of B', 'File A', 'File B']);
+    expect(labels('pairs')).toEqual(['Together', 'Share of A', 'Share of B', 'File A', 'Graph A', 'File B', 'Graph B']);
   });
 
   it('shows not provided for the by-year and share columns of an older product, and empty for a product with no history', () => {

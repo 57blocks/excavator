@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest';
 
 import type { GraphEdge, GraphNode } from '../src/data/graph';
 import { buildIndex } from '../src/data/indexes';
-import { clearPathHash, clearSelectionHash, entryHash, levelHash, parentLevel, selectHash, setFocusHash, setPathHash } from '../src/lib/graph-actions';
+import { clearPathHash, clearSelectionHash, entryHash, filtersHash, levelHash, overlaysHash, parentLevel, selectHash, setFocusHash, setPathHash } from '../src/lib/graph-actions';
+import type { GraphFilters } from '../src/lib/graph-filters';
 import { parseGraphState, TOP_LEVEL, type GraphState } from '../src/lib/graph-state';
 import { buildLevel, buildStructure, LEVEL_LIMIT, locateFile, type Level } from '../src/lib/graph-structure';
 import { parseRoute } from '../src/lib/route';
@@ -86,6 +87,24 @@ describe('the other moves', () => {
   it('sets and clears the path', () => {
     expect(parse(clearPathHash(at))).toMatchObject({ from: null, to: null, directed: false, node: 'n' });
     expect(parse(setPathHash(TOP_LEVEL, 'x', 'y', true))).toMatchObject({ from: 'x', to: 'y', directed: true });
+  });
+
+  it('keeps the overlays and the filters through every move', () => {
+    const filters: GraphFilters = { nodeTypes: new Set(['class']), edgeTypes: new Set(['calls']), layers: new Set() };
+    const view: GraphState = { ...at, overlays: ['hotspots', 'unused'], filters };
+    const kept = (hash: string) => ({ overlays: parse(hash).overlays, filters: parse(hash).filters });
+    const same = { overlays: ['hotspots', 'unused'], filters };
+    for (const hash of [
+      levelHash(view, 'src/core', null), entryHash(view, 'container:src'), selectHash(view, index, structure, 'function:lib/data.py:load'),
+      clearSelectionHash(view), setFocusHash(view, false), clearPathHash(view), setPathHash(view, 'x', 'y', false),
+    ]) expect(kept(hash)).toEqual(same);
+  });
+
+  it('turns overlays on and off, and sets filters, without moving the view', () => {
+    expect(parse(overlaysHash(at, ['unused']))).toEqual({ ...at, overlays: ['unused'] });
+    expect(parse(overlaysHash({ ...at, overlays: ['unused'] }, []))).toEqual(at);
+    const filters: GraphFilters = { nodeTypes: new Set(['class']), edgeTypes: null, layers: new Set() };
+    expect(parse(filtersHash(at, filters))).toEqual({ ...at, filters });
   });
 
   it('selects an entry instead of a node', () => {

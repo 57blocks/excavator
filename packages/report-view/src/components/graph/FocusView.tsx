@@ -4,6 +4,7 @@ import { useReducedMotion } from 'motion/react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 
 import { useCounts, useReady, useSignal } from '../../hooks/use-signals';
+import { asPixels, measureFitPadding } from '../../lib/fit-padding';
 import { startLayoutTask, LayoutCancelled } from '../../lib/force-layout-client';
 import type { ForcePosition } from '../../lib/force-layout';
 import { createForceWorker } from '../../lib/force-worker';
@@ -132,14 +133,18 @@ export function FocusView({ scene, centerId, filters, onSelect, onExit }: {
   }, [laid, set, index, centerId, hovered, onSelect]);
 
   // The camera fits the set, above the drawer when that is open.
+  const pane = useRef<HTMLDivElement | null>(null);
   const fitted = useRef<string | null>(null);
   useEffect(() => {
-    if (!laid) return undefined;
+    if (!laid || !pane.current) return undefined;
     const mark = `${laid.key}|${drawerOpen}`;
     if (fitted.current === mark) return undefined;
     const frame = requestAnimationFrame(() => {
+      if (!pane.current) return;
       fitted.current = mark;
-      fitView({ duration: reduce ? 0 : DURATION.camera * 1000, padding: { top: '130px', right: '24px', bottom: drawerOpen ? '46%' : '24px', left: '24px' }, maxZoom: 1.1 });
+      // The card above the canvas is measured; the drawer, when open, takes the lower part.
+      const padding = { ...asPixels(measureFitPadding(pane.current)), ...(drawerOpen ? { bottom: '46%' as const } : {}) };
+      fitView({ duration: reduce ? 0 : DURATION.camera * 1000, padding, maxZoom: 1.1 });
     });
     return () => cancelAnimationFrame(frame);
   }, [laid, drawerOpen, reduce, fitView]);
@@ -153,7 +158,7 @@ export function FocusView({ scene, centerId, filters, onSelect, onExit }: {
 
   if (failure) return <div className="p-6"><LoadError title="The focus view could not be laid out" error={failure} /></div>;
   return (
-    <div className="relative size-full" data-xv-graph="" data-xv-view="focus">
+    <div ref={pane} className="relative size-full" data-xv-graph="" data-xv-view="focus">
       <ReactFlow
         nodes={flow.nodes}
         edges={flow.edges}
@@ -172,7 +177,7 @@ export function FocusView({ scene, centerId, filters, onSelect, onExit }: {
         <Background variant={BackgroundVariant.Dots} gap={20} size={1} color="var(--color-line-2)" />
         <Controls showInteractive={false} />
         <MiniMap pannable zoomable nodeColor={(node) => nodeColor(String((node.data as { type?: string }).type ?? ''))} className="!rounded-card !border !border-line" />
-        <Panel position="top-left" className={`${GLASS} !m-3 max-w-[min(560px,calc(100%-24px))] px-3 py-2.5`}>
+        <Panel position="top-left" data-xv-chrome="top" className={`${GLASS} !m-3 max-w-[min(560px,calc(100%-24px))] px-3 py-2.5`}>
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
             <span className="text-[15px] font-semibold text-ink">Focus</span>
             <span className="min-w-0 truncate text-[13px] text-ink-soft" title={center?.name}>{center?.name ?? centerId}</span>

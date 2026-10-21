@@ -66,6 +66,43 @@ export function hiddenCount(filters: GraphFilters, choices: FilterChoices, focus
   return nodeTypes + layers + listed.filter((type) => !shown.has(type)).length;
 }
 
+/** A list written as one parameter: each item percent-encoded, joined with commas, sorted so one state has one text. */
+const listText = (items: Iterable<string>): string => [...items].sort().map(encodeURIComponent).join(',');
+
+function listOf(text: string | null | undefined): Set<string> {
+  const items = new Set<string>();
+  for (const item of (text ?? '').split(',')) {
+    if (item === '') continue;
+    try {
+      items.add(decodeURIComponent(item));
+    } catch {
+      items.add(item);
+    }
+  }
+  return items;
+}
+
+/**
+ * The filters as address parameters (design D7): `hideTypes`, `hideLayers` and `edgeTypes`.
+ * No parameter means the default; `edgeTypes` present and empty means no edge type is shown.
+ */
+export function filterParams(filters: GraphFilters): Record<'hideTypes' | 'hideLayers' | 'edgeTypes', string | null> {
+  return {
+    hideTypes: filters.nodeTypes.size === 0 ? null : listText(filters.nodeTypes),
+    hideLayers: filters.layers.size === 0 ? null : listText(filters.layers),
+    edgeTypes: filters.edgeTypes === null ? null : listText(filters.edgeTypes),
+  };
+}
+
+/** The filters that `filterParams` wrote; no parameters are the defaults. */
+export function parseFilters(params: Partial<Record<'hideTypes' | 'hideLayers' | 'edgeTypes', string | null | undefined>>): GraphFilters {
+  return {
+    nodeTypes: listOf(params.hideTypes),
+    layers: listOf(params.hideLayers),
+    edgeTypes: params.edgeTypes === undefined || params.edgeTypes === null ? null : listOf(params.edgeTypes),
+  };
+}
+
 const flip = (set: ReadonlySet<string>, value: string): Set<string> => {
   const next = new Set(set);
   if (!next.delete(value)) next.add(value);

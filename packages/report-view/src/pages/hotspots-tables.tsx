@@ -7,6 +7,7 @@
 import { scoreCell } from '../components/ScoreCell';
 import { sparkline } from '../components/Sparkline';
 import { CodeLink } from '../components/ui/CodeLink';
+import { LocateButton } from '../components/ui/LocateButton';
 import type { Column } from '../components/ui/DataTable';
 import { NOT_PROVIDED, formatNumber } from '../lib/format';
 import { dateText, numberField, plainField, timeKey, yearSeries, yearText } from '../lib/hotspots';
@@ -82,6 +83,7 @@ export const TABLES: Record<'files' | 'directories' | 'pairs' | 'groups', TableD
       numColumn('Lines', 'lines'),
       lastChangedColumn(),
       numColumn('Lineage conflicts', 'lineageConflicts'),
+      { label: 'Graph', key: () => null, render: (r) => <LocateButton target={{ kind: 'file', path: r.path }} overlay="hotspots" /> },
     ],
   },
   directories: {
@@ -89,6 +91,7 @@ export const TABLES: Record<'files' | 'directories' | 'pairs' | 'groups', TableD
     columns: (max) => [
       { label: 'Directory', width: 'xl', key: (r) => r.path, title: (r) => (r.path === '.' ? '. (the project root)' : r.path), render: (r) => r.path },
       ...statColumns(max),
+      { label: 'Graph', key: () => null, render: (r) => <LocateButton target={{ kind: 'directory', path: r.path }} overlay="hotspots" /> },
     ],
   },
   pairs: {
@@ -98,7 +101,9 @@ export const TABLES: Record<'files' | 'directories' | 'pairs' | 'groups', TableD
       { label: 'Share of A', num: true, key: (r) => r.shareOfA, render: (r) => plainField(r.shareOfA) },
       { label: 'Share of B', num: true, key: (r) => r.shareOfB, render: (r) => plainField(r.shareOfB) },
       { label: 'File A', width: 'xl', key: (r) => r.a, title: (r) => r.a, render: (r) => <CodeLink path={r.a} /> },
+      { label: 'Graph A', key: () => null, render: (r) => <LocateButton target={{ kind: 'file', path: r.a }} overlay="hotspots" /> },
       { label: 'File B', width: 'xl', key: (r) => r.b, title: (r) => r.b, render: (r) => <CodeLink path={r.b} /> },
+      { label: 'Graph B', key: () => null, render: (r) => <LocateButton target={{ kind: 'file', path: r.b }} overlay="hotspots" /> },
     ],
   },
   groups: {

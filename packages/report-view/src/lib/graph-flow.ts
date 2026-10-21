@@ -13,6 +13,7 @@ import type { ChildData, FileData, GroupData } from '../components/graph/GraphNo
 import { aggregateEdges, DEFAULT_EDGE_TYPES, edgeLabel, levelEnds, type AggregatedEdge } from './graph-edges';
 import { childBox, entrySize, layoutNodes, prefersGrid, type LevelLayout } from './graph-layout';
 import { fileChildren, type Level, type LevelEntry, type Structure } from './graph-structure';
+import { anyOverlay, entryMarks, nodeMarks, type NodeMarks, type OverlayFacts } from './overlays';
 
 export interface LevelPlan {
   /** For each open file of the level: the nodes it shows and how many more it owns. */
@@ -96,6 +97,23 @@ export function pathHighlight(plan: LevelPlan, nodeIds: readonly string[]): Path
   return { entries, edges };
 }
 
+/** How the overlays that are on draw the entries of a level: each entry's marks, and the facts the rows of open files are read from. */
+export interface OverlayView {
+  entries: ReadonlyMap<string, NodeMarks>;
+  facts: OverlayFacts;
+}
+
+/** The marks of every entry of `level`; a directory, layer or fold takes what its files have. Null when no overlay is on. */
+export function levelMarks(level: Level, facts: OverlayFacts): OverlayView | null {
+  if (!anyOverlay(facts)) return null;
+  const entries = new Map<string, NodeMarks>();
+  for (const entry of level.entries) {
+    const marks = entryMarks(entry.members, facts, entry.kind !== 'file');
+    if (marks) entries.set(entry.id, marks);
+  }
+  return { entries, facts };
+}
+
 export interface FlowView {
   /** The selected node (a file, or a node an open file shows). */
   selected: string | null;
@@ -118,7 +136,7 @@ export function edgeWidth(count: number): number {
 }
 
 /** The React Flow nodes (a file before the nodes it shows, as React Flow needs) of a laid-out level. */
-export function flowNodes(level: Level, plan: LevelPlan, layout: LevelLayout, view: Pick<FlowView, 'selected' | 'selectedEntry' | 'path' | 'onOpen' | 'onDetails' | 'onSelect' | 'onToggle'>): Node[] {
+export function flowNodes(level: Level, plan: LevelPlan, layout: LevelLayout, view: Pick<FlowView, 'selected' | 'selectedEntry' | 'path' | 'onOpen' | 'onDetails' | 'onSelect' | 'onToggle'> & { overlay?: OverlayView | null }): Node[] {
   const nodes: Node[] = [];
   const onPath = (id: string) => view.path?.entries.has(id) ?? false;
   for (const entry of level.entries) {
@@ -126,7 +144,7 @@ export function flowNodes(level: Level, plan: LevelPlan, layout: LevelLayout, vi
     if (!box) continue;
     const place = { position: { x: box.x, y: box.y }, width: box.width, height: box.height, draggable: false };
     if (entry.kind !== 'file') {
-      const data: GroupData = { entry, selected: view.selectedEntry === entry.id, onPath: onPath(entry.id), onOpen: view.onOpen, onDetails: view.onDetails };
+      const data: GroupData = { entry, selected: view.selectedEntry === entry.id, onPath: onPath(entry.id), onOpen: view.onOpen, onDetails: view.onDetails, marks: view.overlay?.entries.get(entry.id) ?? null };
       nodes.push({ id: entry.id, type: 'container', data, ...place });
       continue;
     }
@@ -138,16 +156,19 @@ export function flowNodes(level: Level, plan: LevelPlan, layout: LevelLayout, vi
       expanded: entry.nodes > 1 ? children !== undefined : null,
       onSelect: view.onSelect,
       onToggle: view.onToggle,
+      marks: view.overlay?.entries.get(entry.id) ?? null,
     };
     nodes.push({ id: entry.id, type: 'file', data, ...place });
     children?.shown.forEach((node, i) => {
       const row = childBox(i);
-      const childData: ChildData = { name: node.name, type: node.type, selected: view.selected === node.id, onPath: onPath(node.id), more: null, onSelect: view.onSelect };
+      const mark = view.overlay ? nodeMarks(node.id, view.overlay.facts) : null;
+      const unused = mark !== null && mark.confidence !== null ? { confidence: mark.confidence, title: mark.title } : null;
+      const childData: ChildData = { name: node.name, type: node.type, selected: view.selected === node.id, onPath: onPath(node.id), more: null, unused, onSelect: view.onSelect };
       nodes.push({ id: node.id, type: 'child', parentId: entry.id, extent: 'parent', data: childData, position: { x: row.x, y: row.y }, width: row.width, height: row.height, draggable: false });
     });
     if (children && children.more > 0) {
       const row = childBox(children.shown.length);
-      const moreData: ChildData = { name: '', type: '', selected: false, onPath: false, more: children.more, onSelect: view.onSelect };
+      const moreData: ChildData = { name: '', type: '', selected: false, onPath: false, more: children.more, unused: null, onSelect: view.onSelect };
       nodes.push({ id: `more:${entry.id}`, type: 'child', parentId: entry.id, extent: 'parent', data: moreData, position: { x: row.x, y: row.y }, width: row.width, height: row.height, draggable: false, selectable: false });
     }
   }

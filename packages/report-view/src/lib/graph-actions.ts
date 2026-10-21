@@ -2,17 +2,30 @@
  * The addresses the graph page moves between (openspec: changes/viewer-app,
  * design D7): drilling into a level, selecting a node where it lives, and the
  * steps Esc takes. Every move is the hash of a new state, so the browser's
- * history holds it. A path stays through a drill-down and a selection; a
- * selection, a focus and a selected entry stay with the level they were made at.
+ * history holds it. The overlays and the filters stay through every move; a path
+ * stays through a drill-down and a selection; a selection, a focus and a selected
+ * entry stay with the level they were made at.
  */
 
 import type { GraphIndex } from '../data/indexes';
+import type { GraphFilters } from './graph-filters';
 import { graphHash, type GraphState } from './graph-state';
+import type { OverlayName } from './overlay-names';
 import { locateFile, type Level, type Structure } from './graph-structure';
 
-/** Go to the level `path` (and `fold`), keeping the path that is highlighted. */
+/** Go to the level `path` (and `fold`), keeping the path that is highlighted, the overlays and the filters. */
 export function levelHash(state: GraphState, path: string, fold: string | null): string {
-  return graphHash({ path, fold, from: state.from, to: state.to, directed: state.directed });
+  return graphHash({ path, fold, from: state.from, to: state.to, directed: state.directed, overlays: state.overlays, filters: state.filters });
+}
+
+/** The state with `overlays` on; the rest of the view stays where it is. */
+export function overlaysHash(state: GraphState, overlays: readonly OverlayName[]): string {
+  return graphHash({ ...state, overlays });
+}
+
+/** The state under `filters`; the rest of the view stays where it is. */
+export function filtersHash(state: GraphState, filters: GraphFilters): string {
+  return graphHash({ ...state, filters });
 }
 
 /** Select the cluster, directory or fold `entry` of the level. */

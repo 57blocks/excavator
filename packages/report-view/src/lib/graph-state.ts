@@ -2,10 +2,14 @@
  * What the graph page keeps in the address (openspec: changes/viewer-app, design
  * D7; spec "Shortcuts and history"): the level (`path`, `fold`), the selected
  * node (or the selected cluster, directory or fold of the level), the focus
- * flag, and the two ends of a path with the way it follows edges. History moves between these because each change is a new entry, and a
- * reload reads them back. `escapeStep` says what Esc closes next.
+ * flag, and the two ends of a path with the way it follows edges. History moves
+ * between these because each change is a new entry, and a reload reads them back.
+ * The overlays that are on and the filters are kept there too, so a reload or a
+ * pasted link restores them. `escapeStep` says what Esc closes next.
  */
 
+import { filterParams, NO_FILTERS, parseFilters, type GraphFilters } from './graph-filters';
+import { overlayParam, parseOverlays, type OverlayName } from './overlay-names';
 import { buildHash } from './route';
 
 export interface GraphState {
@@ -22,9 +26,12 @@ export interface GraphState {
   to: string | null;
   /** The path follows edges only from source to target. */
   directed: boolean;
+  /** The product overlays that are on, in the fixed order. */
+  overlays: readonly OverlayName[];
+  filters: GraphFilters;
 }
 
-export const TOP_LEVEL: GraphState = { path: '', fold: null, node: null, entry: null, focus: false, from: null, to: null, directed: false };
+export const TOP_LEVEL: GraphState = { path: '', fold: null, node: null, entry: null, focus: false, from: null, to: null, directed: false, overlays: [], filters: NO_FILTERS };
 
 type Params = Record<string, string | null | undefined>;
 
@@ -43,6 +50,8 @@ export function parseGraphState(params: Params): GraphState {
     from: both ? from : null,
     to: both ? to : null,
     directed: both && params.dir === '1',
+    overlays: parseOverlays(params.overlay),
+    filters: parseFilters(params),
   };
 }
 
@@ -59,6 +68,8 @@ export function graphHash(state: Partial<GraphState> = {}): string {
     from: both ? s.from : null,
     to: both ? s.to : null,
     dir: both && s.directed ? '1' : null,
+    overlay: overlayParam(s.overlays),
+    ...filterParams(s.filters),
   });
 }
 

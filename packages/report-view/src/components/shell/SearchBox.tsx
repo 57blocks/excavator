@@ -29,7 +29,7 @@ export function SearchBox() {
   const choose = (nodeId: string) => {
     if (!ready) return;
     const keep = route.page === 'graph' ? parseGraphState(route.params) : TOP_LEVEL;
-    navigate(selectHash({ ...TOP_LEVEL, from: keep.from, to: keep.to, directed: keep.directed }, ready.model.index, ready.structure, nodeId));
+    navigate(selectHash({ ...TOP_LEVEL, from: keep.from, to: keep.to, directed: keep.directed, overlays: keep.overlays, filters: keep.filters }, ready.model.index, ready.structure, nodeId));
     setQuery('');
     ui.setOverlay(null);
     ui.searchInput.current?.blur();

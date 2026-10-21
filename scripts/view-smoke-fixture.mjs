@@ -34,6 +34,7 @@ const SOURCES = {
   'src/core/engine/run.js': 'import { helper } from "../../util.js";\n\nexport function run() {\n  return helper(2);\n}\n',
   'lib/data.py': 'def load():\n    return []\n\n\ndef unused_loader():\n    return None\n',
   'docs/guide.md': '# Guide\n\nThe main function runs the helper.\n',
+  'scripts/build.sh': '#!/bin/sh\necho build\n',
 };
 
 const git = (cwd, ...args) => execFileSync('git', args, {
@@ -175,10 +176,11 @@ function hotspotsProduct(revision) {
     noHistory: null,
     sourceKind: 'git',
     window: { since: null, sinceUtc: null },
-    counts: { filesWithHistory: 3, filesWithoutHistory: 0, binaryFiles: 0, filesWithLineageConflicts: 0 },
-    conservation: { changesRead: 12, attributed: 9, outsideSelection: 3 },
+    counts: { filesWithHistory: 4, filesWithoutHistory: 0, binaryFiles: 0, filesWithLineageConflicts: 0 },
+    conservation: { changesRead: 12, attributed: 10, outsideSelection: 2 },
     residualAssumptions: ['History is read from HEAD only.'],
-    files: [file('src/main.js', { score: 90, commits: 9 }), file('src/util.js', { score: 40, commits: 4 }), file('lib/data.py', { score: 5, commits: 1, lastChanged: null })],
+    // scripts/build.sh is a file of the repository that the graph has no node for.
+    files: [file('src/main.js', { score: 90, commits: 9 }), file('src/util.js', { score: 40, commits: 4 }), file('lib/data.py', { score: 5, commits: 1, lastChanged: null }), file('scripts/build.sh', { score: 3, commits: 1, lines: 2 })],
     directories: [
       { path: 'src', files: 2, commits: 13, authors: 1, added: 20, removed: 4, lines: 18, score: 130, lastChanged: '2026-01-02T03:04:05+00:00', commitsByYear: { 2025: 6, 2026: 7 }, concentration: { commitsByPeople: 13, topAuthorShare: 1, authorsFor80Percent: 1 } },
       { path: 'lib', files: 1, commits: 1, authors: 1, added: 3, removed: 0, lines: 6, score: 5, lastChanged: null },
@@ -320,8 +322,8 @@ export function makeSmokeProject(dir, { full = false } = {}) {
       },
       unused: { unused: 3, 'unused-shown': 3 },
       'doc-map': { units: 3, 'units-shown': 3, checks: 3 },
-      hotspots: { files: 3, directories: 2, pairs: 1, groups: 0 },
-      code: { sources: 5 },
+      hotspots: { files: 4, directories: 2, pairs: 1, groups: 0 },
+      code: { sources: 6 },
       graph: graphExpected(full),
       reports: { reports: 2 },
     },

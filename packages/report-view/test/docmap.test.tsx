@@ -1,6 +1,9 @@
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 
+import type { Manifest } from '../src/data/manifest';
+import { PayloadReader } from '../src/data/payload';
+import { ViewerProvider } from '../src/state/viewer';
 import { filterUnits, joinChecks, KEYS, unitList, whereText, type DocMapCheck } from '../src/lib/docmap';
 import { sortRows } from '../src/lib/table';
 import { UnitDetail } from '../src/pages/DocMap';
@@ -155,7 +158,12 @@ describe('small formats', () => {
 });
 
 describe('the unit detail', () => {
-  const html = (over: Record<string, unknown>, checks: DocMapCheck[] | null) => renderToStaticMarkup(<UnitDetail row={joinChecks([unit(over)], checks).rows[0]} />);
+  // The locate buttons read the graph's state from the page, so the detail is drawn inside one.
+  const manifest = { products: [{ name: 'knowledge-graph', label: 'Knowledge graph', status: 'included', payloads: ['knowledge-graph'] }] } as unknown as Manifest;
+  const payloads = new PayloadReader({ getElementById: () => null });
+  const html = (over: Record<string, unknown>, checks: DocMapCheck[] | null) => renderToStaticMarkup(
+    <ViewerProvider manifest={manifest} payloads={payloads}><UnitDetail row={joinChecks([unit(over)], checks).rows[0]} /></ViewerProvider>,
+  );
 
   it('shows the quote verbatim as text and each place with its code and verdict', () => {
     const hostile = '</script><img src=x onerror=1>';
@@ -167,6 +175,9 @@ describe('the unit detail', () => {
     expect(out).toContain('href="#/code?path=y.go&amp;lines=7"');
     expect(out).toContain('Not checked: checks.json has no verdict for this place.');
     expect(out).toContain('>does<');
+    // Each place can be shown in the graph, with the doc-map overlay.
+    expect(out).toContain('data-xv-locate="file:x.go"');
+    expect(out).toContain('data-xv-locate="file:y.go"');
   });
 
   it('shows the searches of a unit with no code found, and no code location', () => {

@@ -9,7 +9,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { packProject as packWithTemplate } from '../../../skills/excavator-view/pack.mjs';
 import { referencedPaths } from '../../../skills/excavator-view/sources.mjs';
 import {
-  docMapProduct, hotspotsProduct, makeGitProject, makeMultiRepoProject, unusedProduct, writeProduct,
+  docMapProduct, GRAPH_FORMAT, hotspotsProduct, makeGitProject, makeMultiRepoProject, unusedProduct, writeProduct,
 } from './fixture.mjs';
 import { manifestOf, payloadIds, payloadText } from './page.mjs';
 import { makePluginRoot, writeTemplate } from './plugin-fixture.mjs';
@@ -200,6 +200,56 @@ describe('the paths the products name', () => {
   it('does not take paths from a product that is unreadable', () => {
     writeProduct(project.root, 'unused-code.json', '{ "unused": [');
     expect(packProject(project.root).source.counts.embedded).toBe(0);
+  });
+});
+
+describe('the files of the graph', () => {
+  const fileNode = (path) => ({ record: 'node', node: { id: `file:${path}`, type: 'file', name: path.slice(path.lastIndexOf('/') + 1), filePath: path } });
+  const nodes = [
+    fileNode('src/a.js'),
+    fileNode('bin/blob.dat'),
+    fileNode('gone/deleted.js'),
+    fileNode('src/big.js'),
+    // Not a file node, and a file node without a path: neither names a file.
+    { record: 'node', node: { id: 'function:src/exact.js:f', type: 'function', name: 'f', filePath: 'src/exact.js' } },
+    { record: 'node', node: { id: 'file:no-path', type: 'file', name: 'no-path' } },
+    { record: 'edge', edge: { source: 'file:src/a.js', target: 'file:src/big.js', type: 'imports' } },
+  ];
+  const header = { record: 'header', format: GRAPH_FORMAT, keys: ['project', 'nodes'], fields: { project: { name: 'fixture' }, kind: 'knowledge' }, counts: { nodes: 6 } };
+  // A line that is not JSON is ignored here: the page reports it, the packer only looks for paths.
+  const text = `${[header, ...nodes].map((l) => JSON.stringify(l)).join('\n')}\nnot json at all\n`;
+  const writeGraph = () => writeProduct(project.root, 'knowledge-graph.jsonl', text);
+
+  it('takes the path of every file node, and of no other node', () => {
+    expect(referencedPaths([{ id: 'knowledge-graph', bytes: Buffer.from(text) }])).toEqual(['bin/blob.dat', 'gone/deleted.js', 'src/a.js', 'src/big.js']);
+  });
+
+  it('embeds a file that only the graph names, under the same classes as any other', () => {
+    writeGraph();
+    const html = readFileSync(packProject(project.root).out, 'utf-8');
+    const source = manifestOf(html).source;
+    expect(source.files['src/a.js']).toEqual({ bucket: 'embedded', bytes: Buffer.byteLength(files['src/a.js']) });
+    expect(source.files['bin/blob.dat'].bucket).toBe('binary');
+    expect(source.files['src/big.js'].bucket).toBe('tooLarge');
+    expect(source.files['gone/deleted.js']).toEqual({ bucket: 'notInSnapshot' });
+    expect(Object.keys(source.files)).toEqual(['bin/blob.dat', 'gone/deleted.js', 'src/a.js', 'src/big.js']);
+    expect(Object.keys(JSON.parse(payloadText(html, 'sources')))).toEqual(['src/a.js']);
+  });
+
+  it('counts a file that a product and the graph both name once', () => {
+    writeGraph();
+    writeProduct(project.root, 'unused-code.json', unusedProduct(project.revision, { unused: [row('src/a.js'), row('src/empty.js')] }));
+    const source = manifestOf(readFileSync(packProject(project.root).out, 'utf-8')).source;
+    expect(Object.keys(source.files)).toEqual(['bin/blob.dat', 'gone/deleted.js', 'src/a.js', 'src/big.js', 'src/empty.js']);
+    expect(Object.values(source.counts).reduce((a, b) => a + b, 0)).toBe(5);
+  });
+
+  it('puts every graph file in not embedded on request under --no-source', () => {
+    writeGraph();
+    const html = readFileSync(packProject(project.root, { noSource: true }).out, 'utf-8');
+    expect(manifestOf(html).source.counts).toEqual({ embedded: 0, binary: 0, tooLarge: 0, notInSnapshot: 0, notEmbeddedOnRequest: 4 });
+    expect(payloadIds(html)).toEqual(['knowledge-graph']);
+    expect(html).not.toContain(MARKER);
   });
 });
 

@@ -19,9 +19,14 @@
  *     node's distinct neighbours;
  *   - path: a path is found and highlighted, and one that does not exist says so;
  *   - filters: the number hidden is on the button and the level follows;
- *   - keys: `/`, `?`, and Esc closing one thing at a time from the inside out.
+ *   - keys: `/`, `?`, and Esc closing one thing at a time from the inside out;
+ *   - overlays: each switch on its own at the top level and in a drilled level, the legend, the marks and their
+ *     tooltips, the camera clearing the cards over the canvas, and the switch of a product that was not run;
+ *   - restore: a reload from the address brings back the overlays and the filters;
+ *   - locate: "Locate in graph" from the Unused, Hotspots and Doc map pages selects the record's node and turns on its
+ *     overlay, and says "Not in the graph." for a path the graph has no node for.
  *
- *   node scripts/view-smoke-graph.mjs [levels|history|search|drawer|focus|path|filters|keys|layers|summary ...]
+ *   node scripts/view-smoke-graph.mjs [levels|history|search|drawer|focus|path|filters|keys|layers|summary|overlays|clearance|notrun|restore|locate|locate-tables ...]
  *
  * Needs `pnpm build` (the template) and a local Chrome. Prints one line per
  * check and exits 1 when any fails.
@@ -221,7 +226,7 @@ const SCENARIOS = [
     }),
   ]],
 
-  // helper's file is one that the unused-code and hotspots products point at, so the page embeds its text; run.js is in the graph only.
+  // helper's file is one that the unused-code and hotspots products point at; run.js is named by the graph only, and the page embeds its text all the same; docs/guide.md is named by no product and has no file node.
   ['drawer', 'directories', (graph) => driver(`
     const item = ${JSON.stringify(graph.interaction.search[1])};
     await go('#/graph?path=' + encodeURIComponent(item.level) + '&node=' + encodeURIComponent(item.id));
@@ -244,6 +249,11 @@ const SCENARIOS = [
     out.fileNode = { highlight: q('aside[data-xv-panel="drawer"] .xv-code')?.getAttribute('data-xv-highlight') ?? null };
     await go('#/graph?path=' + encodeURIComponent('src/core/engine') + '&node=' + encodeURIComponent('function:src/core/engine/run.js:run'));
     await until(() => sidebar() === 'function:src/core/engine/run.js:run');
+    const graphOnly = await until(() => q('aside[data-xv-panel="drawer"] .xv-code[aria-label="Source of src/core/engine/run.js"]'));
+    await until(() => graphOnly && graphOnly.getAttribute('data-xv-highlight'));
+    out.graphOnly = { highlight: graphOnly?.getAttribute('data-xv-highlight') ?? null, text: graphOnly?.textContent ?? null };
+    await go('#/graph?node=' + encodeURIComponent('document:docs/guide.md'));
+    await until(() => sidebar() === 'document:docs/guide.md');
     await until(() => q('aside[data-xv-panel="drawer"] .xv-drawer'));
     out.unpointed = { text: q('aside[data-xv-panel="drawer"] .xv-drawer')?.textContent ?? null, code: !!q('aside[data-xv-panel="drawer"] .xv-code') };
   `), (out, graph) => {
@@ -257,7 +267,8 @@ const SCENARIOS = [
       ['drawer: links to the Code page at the same lines', out.open?.link === `#/code?path=${encodeURIComponent(item.file)}&lines=${item.lines}`, out.open?.link],
       ['drawer: expands to the whole main area and shrinks back', out.full?.pressed === 'true' && out.full.height > out.open.viewport * 0.8 && Math.abs(out.shrunk?.height - out.open.height) <= 2, [out.full, out.shrunk]],
       ['drawer: a file node has no line range to mark', out.fileNode?.highlight === null, out.fileNode],
-      ['drawer: a node whose file no product points at says the page holds nothing for it, as the Code page does', /holds nothing for it/.test(out.unpointed?.text ?? '') && out.unpointed.code === false, out.unpointed],
+      ['drawer: a node of a file that only the graph names opens its code, with the line range marked', out.graphOnly?.highlight === '3-5' && /return helper\(2\)/.test(out.graphOnly.text), out.graphOnly],
+      ['drawer: a node whose file the graph has no file node for and no product points at says the page holds nothing for it, as the Code page does', /holds nothing for it/.test(out.unpointed?.text ?? '') && out.unpointed.code === false, out.unpointed],
     ];
   }],
 
@@ -425,6 +436,215 @@ const SCENARIOS = [
     ];
   }],
 
+  ['overlays', 'directories', (graph) => driver(`
+    const names = ['hotspots', 'unused', 'doc-map'];
+    const toggle = (name) => q('[data-xv-overlay="' + name + '"]');
+    const labelOf = (el) => el.closest('[data-xv-label]')?.getAttribute('data-xv-label') ?? el.parentElement?.parentElement?.querySelector('[data-xv-label]')?.getAttribute('data-xv-label');
+    const marks = () => ({
+      hot: all('[data-xv-entry][data-xv-hot]').map((el) => el.getAttribute('data-xv-label') + ':' + el.getAttribute('data-xv-hot')).sort(),
+      chips: all('[data-xv-chip]').map((el) => labelOf(el) + ':' + el.textContent + ':' + el.getAttribute('data-xv-chip')).sort(),
+      legends: all('[data-xv-legend]').map((el) => el.getAttribute('data-xv-legend')),
+    });
+    await go('#/graph');
+    await until(() => attr('data-xv-count-graph-level-nodes') !== null);
+    out.initial = { pressed: names.map((n) => toggle(n).getAttribute('aria-pressed')), disabled: names.map((n) => toggle(n).disabled), marks: marks(), overlayAttr: q('[data-xv-graph]').getAttribute('data-xv-overlays') };
+    // Top level, one overlay at a time.
+    toggle('hotspots').click();
+    await until(() => q('[data-xv-legend="hotspots"]') && all('[data-xv-hot]').length > 0);
+    out.hot = { hash: location.hash, pressed: toggle('hotspots').getAttribute('aria-pressed'), marks: marks(), legend: q('[data-xv-legend="hotspots"]').textContent, rows: all('[data-xv-legend="hotspots"] [data-xv-legend-row]').map((el) => el.textContent), titles: all('[data-xv-entry][data-xv-hot]').map((el) => el.parentElement.getAttribute('title')), history: history.length };
+    toggle('unused').click();
+    await until(() => all('[data-xv-chip]').length > 0);
+    out.unused = { hash: location.hash, marks: marks(), legend: q('[data-xv-legend="unused"]')?.textContent, titles: all('[data-xv-chip]').map((el) => el.closest('[title]')?.getAttribute('title')) };
+    toggle('doc-map').click();
+    await until(() => all('[data-xv-chip="evidence"]').length > 0);
+    out.docMap = { hash: location.hash, marks: marks(), legend: q('[data-xv-legend="doc-map"]')?.textContent };
+    out.sameHistory = history.length === out.hot.history;
+    const core = q('[data-xv-label="src/core"]');
+    out.core = { title: core.parentElement.getAttribute('title'), hot: core.getAttribute('data-xv-hot'), chips: core.parentElement.querySelectorAll('[data-xv-chip]').length };
+    toggle('hotspots').click();
+    await until(() => all('[data-xv-hot]').length === 0);
+    out.hotOff = { hash: location.hash, marks: marks() };
+    toggle('unused').click(); toggle('doc-map').click();
+    await until(() => all('[data-xv-chip]').length === 0);
+    out.allOff = { hash: location.hash, marks: marks() };
+    // A drilled level, with all three on; the cards over the canvas must clear the nodes once the camera has fitted.
+    await go('#/graph?path=src&overlay=hotspots,unused,doc-map');
+    await until(() => level() === 'src#' && all('[data-xv-chip]').length > 0);
+    await sleep(1100);
+    const boxes = (selector) => all(selector).map((el) => el.getBoundingClientRect()).filter((r) => r.height > 0);
+    const cards = [...boxes('[data-xv-chrome="top"]'), ...boxes('[data-xv-chrome="bottom"]'), ...boxes('.react-flow__minimap'), ...boxes('.react-flow__controls')];
+    const hit = (a, b) => a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top;
+    const nodes = boxes('.react-flow__node');
+    out.drilled = {
+      level: level(),
+      files: all('[data-xv-entry="file"]').map((el) => ({ label: el.getAttribute('data-xv-label'), hot: el.getAttribute('data-xv-hot'), chips: [...el.parentElement.querySelectorAll('[data-xv-chip]')].map((c) => c.textContent + ':' + c.getAttribute('data-xv-chip')), title: el.parentElement.getAttribute('title') })),
+      nodes: nodes.length, cards: cards.length, overlapping: nodes.filter((n) => cards.some((c) => hit(n, c))).length,
+      topCard: boxes('[data-xv-chrome="top"]').map((r) => Math.round(r.bottom)), firstNodeTop: Math.round(Math.min(...nodes.map((n) => n.top))),
+      legendHeight: Math.round(boxes('[data-xv-chrome="bottom"]')[0]?.height ?? 0),
+    };
+    // A file opens to its functions: an unused one is marked with its confidence.
+    const main = all('[data-xv-entry="file"]').find((el) => el.getAttribute('data-xv-label') === 'main.js');
+    main.querySelector('button[aria-expanded]').click();
+    await until(() => q('[data-xv-entry="child"][data-xv-unused]'));
+    out.rows = all('[data-xv-entry="child"]').map((el) => ({ node: el.getAttribute('data-xv-node'), unused: el.getAttribute('data-xv-unused'), title: el.getAttribute('title'), text: el.textContent }));
+  `), (out) => {
+    const lib = (o) => o.marks.hot.find((h) => h.startsWith('lib:'));
+    return [
+      ['overlays: all three switches are enabled and off to begin with, and nothing is marked', JSON.stringify(out.initial?.pressed) === '["false","false","false"]' && out.initial.disabled.every((d) => d === false) && out.initial.marks.hot.length === 0 && out.initial.marks.chips.length === 0 && out.initial.marks.legends.length === 0 && out.initial.overlayAttr === null, out.initial],
+      ['overlays: hotspots colours the directories by band; the address holds it; the legend lists the bands and how they were made', out.hot?.hash.includes('overlay=hotspots') && out.hot.pressed === 'true' && JSON.stringify(out.hot.marks.hot) === JSON.stringify(['lib:2', 'src:4']) && out.hot.rows.length === 4 && /quartiles of the 4 file scores/.test(out.hot.legend) && /cut points 5, 40, 90/.test(out.hot.legend), out.hot],
+      ['overlays: a directory says in its tooltip that it takes the highest band among its files', out.hot?.titles.every((t) => /the highest band among its \d+ files?/.test(t ?? '')), out.hot?.titles],
+      ['overlays: unused marks the directories with the number of listed functions, coloured by the highest confidence, on top of the hotspots; its legend lists the confidences', out.unused?.hash.includes('overlay=hotspots%2Cunused') && JSON.stringify(out.unused.marks.chips) === JSON.stringify(['lib:1 unused:low', 'src:2 unused:high']) && JSON.stringify(out.unused.marks.hot) === JSON.stringify(['lib:2', 'src:4']) && /high confidence/.test(out.unused.legend) && /low confidence/.test(out.unused.legend), out.unused],
+      ['overlays: the tooltip of a marked directory says it counts the functions of its files', out.unused?.titles.every((t) => /Unused: \d+ functions? listed as unused in \d+ of its \d+ files?/.test(t ?? '')), out.unused?.titles],
+      ['overlays: doc-map marks the directories with how many of their counted files have evidence', JSON.stringify(out.docMap?.marks.chips.filter((c) => c.endsWith(':evidence'))) === JSON.stringify(['lib:1/1 evidence:evidence', 'src:2/2 evidence:evidence']) && out.docMap.marks.legends.join() === 'hotspots,unused,doc-map' && /with evidence/.test(out.docMap.legend), out.docMap],
+      ['overlays: each overlay is switched on its own: turning hotspots off leaves the other two, and the others off leaves a plain graph', out.hotOff?.marks.hot.length === 0 && out.hotOff.marks.legends.join() === 'unused,doc-map' && out.hotOff.hash.includes('overlay=unused%2Cdoc-map') && out.allOff?.marks.chips.length === 0 && out.allOff.marks.legends.length === 0 && !out.allOff.hash.includes('overlay'), [out.hotOff, out.allOff]],
+      ['overlays: a switch is a setting of the view, not a place in the history', out.sameHistory === true, out.sameHistory],
+      ['overlays: in a drilled level a file is marked by its own score, functions and evidence', out.drilled?.level === 'src#' && JSON.stringify(out.drilled.files.map((f) => [f.label, f.hot, f.chips])) === JSON.stringify([['main.js', '4', ['1 unused:high', 'evidence:evidence']], ['util.js', '3', ['1 unused:medium', 'evidence:evidence']]]) && /Hotspots: score 90, band 4 of 4/.test(out.drilled.files[0].title), out.drilled?.files],
+      ['overlays: a directory none of whose files has a score is not coloured, and its tooltip says so', out.core?.hot === null && out.core.title.includes('Hotspots: none of its 2 files has a score') && out.core.title.includes('Unused: none of the functions of its 2 files is listed as unused') && out.core.chips === 0, out.core],
+      ['overlays: in the drilled level the nodes clear the cards over the canvas', out.drilled?.nodes >= 2 && out.drilled.cards >= 4 && out.drilled.overlapping === 0 && out.drilled.firstNodeTop >= Math.max(...out.drilled.topCard), out.drilled],
+      ['overlays: a function of an open file that the product lists is marked with its confidence', out.rows?.some((r) => r.node === 'function:src/main.js:orphan' && r.unused === 'high' && /unused high/.test(r.text) && /Unused: listed as unused, confidence high/.test(r.title)) && out.rows.some((r) => r.node === 'function:src/main.js:main' && r.unused === null), out.rows],
+    ];
+  }],
+
+  // A short window with every legend open leaves the least room: the first row of nodes must still be clear of the cards after the camera has fitted.
+  ['clearance', 'directories', (graph) => driver(`
+    const boxes = (selector) => all(selector).map((el) => el.getBoundingClientRect()).filter((r) => r.height > 0);
+    const hit = (a, b) => a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top;
+    out.views = [];
+    for (const hash of ['#/graph', '#/graph?overlay=hotspots,unused,doc-map', '#/graph?path=src%2Fcore&overlay=hotspots,unused,doc-map', '#/graph?path=src&overlay=hotspots,unused,doc-map']) {
+      await go(hash);
+      await until(() => attr('data-xv-count-graph-level-nodes') !== null);
+      await sleep(1300);
+      const nodes = boxes('.react-flow__node');
+      const cards = [...boxes('[data-xv-chrome="top"]'), ...boxes('[data-xv-chrome="bottom"]'), ...boxes('.react-flow__minimap'), ...boxes('.react-flow__controls')];
+      out.views.push({ hash, nodes: nodes.length, cards: cards.length, overlapping: nodes.filter((n) => cards.some((c) => hit(n, c))).length, innerHeight, legend: Math.round(boxes('[data-xv-chrome="bottom"]')[0]?.height ?? 0), top: Math.round(Math.max(...boxes('[data-xv-chrome="top"]').map((r) => r.bottom))), firstNode: Math.round(Math.min(...nodes.map((n) => n.top))) });
+    }
+  `), (out) => (out.views ?? []).map((view) => [
+    'clearance: ' + view.hash + ' at ' + view.innerHeight + ' px high: no node is under the breadcrumbs, the legend, the minimap or the controls',
+    view.nodes >= 2 && view.cards >= 3 && view.overlapping === 0 && view.firstNode >= view.top,
+    view,
+  ]), { height: 640 }],
+
+  ['notrun', 'notrun', (graph) => driver(`
+    const toggle = (name) => q('[data-xv-overlay="' + name + '"]');
+    await go('#/graph');
+    await until(() => attr('data-xv-count-graph-level-nodes') !== null);
+    const state = (name) => ({ disabled: toggle(name).disabled, pressed: toggle(name).getAttribute('aria-pressed'), text: toggle(name).textContent, title: toggle(name).getAttribute('title') });
+    out.switches = { hotspots: state('hotspots'), unused: state('unused'), docMap: state('doc-map') };
+    toggle('doc-map').click();
+    await sleep(200);
+    out.afterClick = { hash: location.hash, pressed: toggle('doc-map').getAttribute('aria-pressed') };
+    // An address that asks for it anyway: nothing is marked, and the legend says why.
+    await go('#/graph?overlay=doc-map,unused');
+    await until(() => q('[data-xv-legend="doc-map"]'));
+    await sleep(200);
+    out.asked = { legend: q('[data-xv-legend="doc-map"]').textContent, chips: all('[data-xv-chip]').map((c) => c.getAttribute('data-xv-chip')), pressed: [toggle('doc-map').getAttribute('aria-pressed'), toggle('unused').getAttribute('aria-pressed')] };
+  `), (out) => [
+    ['notrun: the switch of a product that was not run is disabled and says not run; the others are on offer', out.switches?.docMap.disabled === true && /not run/.test(out.switches.docMap.text) && /not run/.test(out.switches.docMap.title) && out.switches.hotspots.disabled === false && out.switches.unused.disabled === false, out.switches],
+    ['notrun: a click on it changes nothing', out.afterClick?.hash === '#/graph' && out.afterClick.pressed === 'false', out.afterClick],
+    ['notrun: an address that turns it on marks nothing and the legend says the product was not run, while the other overlay works', /doc map product is not run: nothing is marked/.test(out.asked?.legend ?? '') && out.asked.chips.every((c) => c !== 'evidence' && c !== 'no-evidence') && out.asked.chips.length >= 1 && out.asked.pressed.join() === 'false,true', out.asked],
+  ]],
+
+  ['restore', 'directories', (graph) => driver(`
+    const toggle = (name) => q('[data-xv-overlay="' + name + '"]');
+    await until(() => level() === '#' && all('[data-xv-chip]').length > 0);
+    await sleep(300);
+    const button = q('[data-xv-filter-hidden]');
+    out.restored = { hash: location.hash, level: level(), pressed: ['hotspots', 'unused', 'doc-map'].map((n) => toggle(n).getAttribute('aria-pressed')), hidden: button.getAttribute('data-xv-filter-hidden'), chips: all('[data-xv-chip]').map((c) => c.getAttribute('data-xv-chip')).sort(), hot: all('[data-xv-hot]').length };
+    button.click();
+    const menu = await until(() => dialog('Filters'));
+    const chip = (name) => [...menu.querySelectorAll('button[aria-pressed]')].find((b) => b.textContent === name);
+    out.menu = { imports: chip('imports').getAttribute('aria-pressed'), calls: chip('calls').getAttribute('aria-pressed'), fn: chip('function').getAttribute('aria-pressed'), file: chip('file').getAttribute('aria-pressed') };
+    // The filters and overlays go with the view through a drill-down and a selection.
+    key('Escape'); await sleep(100);
+    q('[data-xv-label="src/core"]').click();
+    await until(() => level() === 'src/core#');
+    out.drilled = { hash: decodeURIComponent(location.hash) };
+    q('[data-xv-entry="file"]').click();
+    await until(() => route().params.node);
+    out.selected = { hash: decodeURIComponent(location.hash) };
+    // Changing a filter writes it to the address too, and does not add a history entry.
+    const before = history.length;
+    q('[data-xv-filter-hidden]').click();
+    const menu2 = await until(() => dialog('Filters'));
+    [...menu2.querySelectorAll('button[aria-pressed]')].find((b) => b.textContent === 'document').click();
+    await until(() => location.hash.includes('hideTypes'));
+    out.changed = { hash: decodeURIComponent(location.hash), sameHistory: history.length === before };
+    [...menu2.querySelectorAll('button')].find((b) => b.textContent === 'Reset to the defaults').click();
+    await until(() => !location.hash.includes('hideTypes') && !location.hash.includes('edgeTypes'));
+    out.reset = { hash: decodeURIComponent(location.hash) };
+  `), (out) => [
+    ['restore: a load from the address brings back the level, the overlays that were on, and the filters', out.restored?.level === '#' && JSON.stringify(out.restored.pressed) === '["false","true","true"]' && out.restored.hidden === '2' && out.restored.hot === 0 && out.restored.chips.includes('high') && out.restored.chips.includes('evidence'), out.restored],
+    ['restore: the filter menu shows the restored choices', out.menu?.imports === 'false' && out.menu.calls === 'true' && out.menu.fn === 'false' && out.menu.file === 'true', out.menu],
+    ['restore: a drill-down and a selection keep the overlays and the filters in the address', /overlay=unused,doc-map/.test(out.drilled?.hash ?? '') && /edgeTypes=calls/.test(out.drilled.hash) && /hideTypes=function/.test(out.drilled.hash) && /overlay=unused,doc-map/.test(out.selected?.hash ?? '') && /hideTypes=function/.test(out.selected.hash), [out.drilled, out.selected]],
+    ['restore: changing a filter writes it to the address without a new history entry, and reset takes them off', /hideTypes=document,function/.test(out.changed?.hash ?? '') && out.changed.sameHistory === true && !/hideTypes|edgeTypes/.test(out.reset?.hash ?? '') && /overlay=unused,doc-map/.test(out.reset.hash), [out.changed, out.reset]],
+  ], { hash: '/graph?overlay=unused,doc-map&edgeTypes=calls&hideTypes=function' }],
+
+  ['locate', 'directories', (graph) => driver(`
+    const toggle = (name) => q('[data-xv-overlay="' + name + '"]');
+    const arrived = async (test) => { await until(() => route().page === 'graph' && test(route().params)); await until(() => q('[data-xv-overlay="unused"]') && q('[data-xv-graph]')); await until(() => attr('data-xv-ready') === '1'); await sleep(150); };
+    const there = () => ({ hash: decodeURIComponent(location.hash), params: route().params, level: level(), sidebar: sidebar(), selected: all('.xv-selected').length, pressed: ['hotspots', 'unused', 'doc-map'].map((n) => toggle(n).getAttribute('aria-pressed')).join() });
+    // Unused rows: each locates its function, and the unused overlay comes on.
+    out.unused = [];
+    for (const id of ['function:src/main.js:orphan', 'function:src/util.js:leaf', 'function:lib/data.py:unused_loader']) {
+      await go('#/unused');
+      const button = await until(() => q('[data-xv-locate="node:' + id + '"]'));
+      button.click();
+      await arrived((p) => p.node === id);
+      await until(() => sidebar() === id);
+      const row = await until(() => q('[data-xv-entry="child"][data-xv-node="' + id + '"]'));
+      out.unused.push({ id, ...there(), row: row?.getAttribute('data-xv-unused') ?? null });
+    }
+  `), (out) => {
+    const expected = { 'function:src/main.js:orphan': ['src#', 'high'], 'function:src/util.js:leaf': ['src#', 'medium'], 'function:lib/data.py:unused_loader': ['lib#', 'low'] };
+    const unusedOk = (r) => r.params.node === r.id && r.sidebar === r.id && r.params.overlay === 'unused' && r.pressed === 'false,true,false' && r.level === expected[r.id][0] && r.row === expected[r.id][1] && r.selected === 1;
+    return [
+      ['locate: each Unused row selects the function of the record, drilled to its file, with the unused overlay on and the function marked by its confidence', out.unused?.length === 3 && out.unused.every(unusedOk), out.unused],
+    ];
+  }],
+
+  ['locate-tables', 'directories', (graph) => driver(`
+    const toggle = (name) => q('[data-xv-overlay="' + name + '"]');
+    const arrived = async (test) => { await until(() => route().page === 'graph' && test(route().params)); await until(() => q('[data-xv-overlay="unused"]') && q('[data-xv-graph]')); await until(() => attr('data-xv-ready') === '1'); await sleep(150); };
+    const there = () => ({ hash: decodeURIComponent(location.hash), params: route().params, level: level(), sidebar: sidebar(), selected: all('.xv-selected').length, pressed: ['hotspots', 'unused', 'doc-map'].map((n) => toggle(n).getAttribute('aria-pressed')).join() });
+    // Hotspots: a file the graph has, a directory it has a container for, and a file it has no node for.
+    await go('#/hotspots');
+    (await until(() => q('[data-xv-locate="file:src/util.js"]'))).click();
+    await arrived((p) => p.node === 'file:src/util.js');
+    await until(() => sidebar() === 'file:src/util.js');
+    out.file = there();
+    await go('#/hotspots');
+    (await until(() => q('[data-xv-locate="directory:lib"]'))).click();
+    await arrived((p) => p.entry === 'group:lib');
+    await until(() => q('aside[data-xv-panel="sidebar"]'));
+    out.directory = { ...there(), title: q('aside[data-xv-panel="sidebar"]')?.getAttribute('aria-label') };
+    // src is split by the graph into src/core and the files directly in src: no one container stands for it.
+    await go('#/hotspots');
+    (await until(() => q('[data-xv-locate="directory:src"]'))).click();
+    const split = await until(() => q('[data-xv-locate-message]'));
+    await sleep(200);
+    out.split = { text: split.textContent, page: route().page };
+    await go('#/hotspots');
+    const before = location.hash;
+    const history0 = history.length;
+    const missing = await until(() => q('[data-xv-locate="file:scripts/build.sh"]'));
+    missing.click();
+    const message = await until(() => missing.parentElement.querySelector('[data-xv-locate-message]'));
+    await sleep(300);
+    out.missing = { text: message.textContent, hash: location.hash === before, history: history.length === history0, page: route().page, messages: missing.parentElement.querySelectorAll('[data-xv-locate-message]').length };
+    // Doc map: a file of the coverage.
+    await go('#/doc-map');
+    (await until(() => q('[data-xv-locate="file:lib/data.py"]'))).click();
+    await arrived((p) => p.node === 'file:lib/data.py');
+    await until(() => sidebar() === 'file:lib/data.py');
+    out.docMap = there();
+  `), (out) => [
+      ['locate: a Hotspots file row selects the file node, with the hotspots overlay on', out.file?.params.node === 'file:src/util.js' && out.file.sidebar === 'file:src/util.js' && out.file.level === 'src#' && out.file.pressed === 'true,false,false' && out.file.params.overlay === 'hotspots', out.file],
+      ['locate: a Hotspots directory row selects the directory container, with the hotspots overlay on', out.directory?.params.entry === 'group:lib' && !out.directory.params.node && out.directory.title === 'lib' && out.directory.selected === 1 && out.directory.pressed === 'true,false,false', out.directory],
+      ['locate: a directory that the graph splits into several containers says no single node stands for it, and stays on the page', out.split?.text === 'No single node of the graph stands for this directory.' && out.split.page === 'hotspots', out.split],
+      ['locate: a Hotspots path with no node in the graph says so beside the row and does nothing else', out.missing?.text === 'Not in the graph.' && out.missing.hash && out.missing.history && out.missing.page === 'hotspots' && out.missing.messages === 1, out.missing],
+      ['locate: a Doc map file row selects the file node, with the doc-map overlay on', out.docMap?.params.node === 'file:lib/data.py' && out.docMap.sidebar === 'file:lib/data.py' && out.docMap.level === 'lib#' && out.docMap.pressed === 'false,false,true', out.docMap],
+  ]],
+
   ['layers', 'layers', (graph) => driver(`
     await go('#/graph');
     await until(() => attr('data-xv-count-graph-level-nodes') === '3');
@@ -487,13 +707,16 @@ const SCENARIOS = [
 ];
 
 /** Run one scenario on a freshly packed page. */
-function runScenario([name, mode, makeDriver, scenarioCheck]) {
+function runScenario([name, mode, makeDriver, scenarioCheck, extra = {}]) {
   const dir = mkdtempSync(join(tmpdir(), 'xv-graph-smoke-'));
   try {
     const { root, expected } = makeSmokeProject(dir, { full: mode === 'layers' });
+    // `notrun`: the project's doc map was never made.
+    if (mode === 'notrun') for (const file of ['doc-map.json', 'doc-map-report.md', 'doc-map']) rmSync(join(root, '.excavator', file), { recursive: true, force: true });
     const out = join(dir, 'page.html');
     packProject(root, { out });
-    const result = spawnSync('node', [join(here, 'view-smoke.mjs'), out, '--eval', makeDriver(expected.graph)], { encoding: 'utf-8', maxBuffer: 1 << 26 });
+    const args = [join(here, 'view-smoke.mjs'), out, ...(extra.hash ? ['--hash', extra.hash] : []), ...(extra.height ? ['--height', String(extra.height)] : []), '--eval', makeDriver(expected.graph), ...(extra.screenshot ? ['--screenshot', extra.screenshot] : [])];
+    const result = spawnSync('node', args, { encoding: 'utf-8', maxBuffer: 1 << 26 });
     let smoke;
     try {
       smoke = JSON.parse(result.stdout);
@@ -503,7 +726,14 @@ function runScenario([name, mode, makeDriver, scenarioCheck]) {
     const label = `${mode}/${name}`;
     const checks = [[`${label}: no console error, CSP violation or extra request`, smoke.ok, smoke.ok ? '' : JSON.stringify({ ready: smoke.ready, errors: [smoke.consoleErrors, smoke.exceptions, smoke.cspViolations, smoke.extraRequests, smoke.loadFailures] })]];
     if (smoke.evalResult?.error) return [...checks, [`${label}: the driver ran`, false, smoke.evalResult.error]];
-    for (const [checkName, passed, detail] of scenarioCheck(smoke.evalResult ?? {}, expected.graph)) {
+    let results;
+    try {
+      results = scenarioCheck(smoke.evalResult ?? {}, expected.graph);
+    } catch (error) {
+      // A driver that stopped early leaves what its checks read missing: that is a failure, with what it did leave.
+      return [...checks, [`${label}: the checks could read what the driver saw`, false, `${error.message}; saw ${JSON.stringify(smoke.evalResult)}`]];
+    }
+    for (const [checkName, passed, detail] of results) {
       checks.push([`${label}: ${checkName.replace(/^[a-z]+: /, '')}`, Boolean(passed), passed ? '' : JSON.stringify(detail)]);
     }
     return checks;

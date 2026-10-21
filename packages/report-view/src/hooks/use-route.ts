@@ -25,6 +25,13 @@ export function navigate(hash: string) {
   for (const listener of listeners) listener();
 }
 
+/** Go to `hash` in place of the current history entry: a setting of the view (a filter, an overlay), not a place to come back to. */
+export function replaceHash(hash: string) {
+  if (hash === window.location.hash) return;
+  window.history.replaceState(null, '', hash);
+  for (const listener of listeners) listener();
+}
+
 /** The route the address bar holds, and its raw hash (the key a page is remounted by). */
 export function useRoute(): { route: Route; hash: string } {
   const hash = useSyncExternalStore(subscribe, currentHash, serverHash);
