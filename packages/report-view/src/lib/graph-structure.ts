@@ -453,3 +453,41 @@ export function levelNotes(structure: Structure, level: Level, layerSource: keyo
   if (level.folded > 0) notes.push(`${level.folded} entries beyond the ${LEVEL_LIMIT} a level draws are folded into containers that open as levels of their own.`);
   return notes;
 }
+
+const groupsOfFiles = new WeakMap<Structure, Map<string, Group>>();
+
+/** The group that holds each file (a file shows in one group). */
+function groupOfFile(structure: Structure, fileId: string): Group | null {
+  let byFile = groupsOfFiles.get(structure);
+  if (!byFile) {
+    byFile = new Map();
+    for (const group of structure.groups) for (const file of group.files) byFile.set(file.id, group);
+    groupsOfFiles.set(structure, byFile);
+  }
+  return byFile.get(fileId) ?? null;
+}
+
+/** The group (layer or top-level directory) that holds file node `fileId`; null when none does. */
+export function groupKeyOfFile(structure: Structure, fileId: string): string | null {
+  return groupOfFile(structure, fileId)?.key ?? null;
+}
+
+/**
+ * The level that draws file node `fileId`, as route parameters: the level of the
+ * file's directory, or the fold of that level that holds it. Null when no level
+ * of this graph draws the file.
+ */
+export function locateFile(structure: Structure, fileId: string): { path: string; fold: string | null } | null {
+  const group = groupOfFile(structure, fileId);
+  const file = group?.files.find((candidate) => candidate.id === fileId);
+  if (!group || !file) return null;
+  const path = pathOf(group, dirOf(file.path));
+  const level = buildLevel(structure, { path });
+  if (!level) return null;
+  if (level.entries.some((entry) => entry.id === fileId)) return { path, fold: null };
+  for (const [from, to] of foldRanges(level.total)) {
+    const fold = `${from}-${to}`;
+    if (buildLevel(structure, { path, fold })?.entries.some((entry) => entry.id === fileId)) return { path, fold };
+  }
+  return null;
+}

@@ -81,12 +81,13 @@ export function levelEnds(level: Level, owningFile: ReadonlyMap<string, string>,
   };
 }
 
-const typesText = (t: Tally) => {
+/** The count of one direction of an aggregated edge, with its types: "3 calls" or "5: 3 calls, 2 imports". */
+export const tallyText = (t: Tally) => {
   const types = Object.entries(t.byType).sort((x, y) => y[1] - x[1] || (x[0] < y[0] ? -1 : 1));
   return types.length === 1 ? `${t.count} ${types[0][0]}` : `${t.count}: ${types.map(([type, n]) => `${n} ${type}`).join(', ')}`;
 };
 
 /** What an aggregated edge says: the count and types along the arrow, and when edges also run back, those. */
 export function edgeLabel(edge: AggregatedEdge): string {
-  return edge.backward ? `${typesText(edge.forward)} / back ${typesText(edge.backward)}` : typesText(edge.forward);
+  return edge.backward ? `${tallyText(edge.forward)} / back ${tallyText(edge.backward)}` : tallyText(edge.forward);
 }

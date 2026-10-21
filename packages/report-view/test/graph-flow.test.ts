@@ -1,8 +1,9 @@
+import type { Edge } from '@xyflow/react';
 import { describe, expect, it } from 'vitest';
 
 import type { GraphEdge, GraphNode } from '../src/data/graph';
 import { buildIndex } from '../src/data/indexes';
-import { flowOf, layoutPlan, planLevel } from '../src/lib/graph-flow';
+import { edgeWidth, flowOf, layoutPlan, MAX_LABELLED_EDGES, pathHighlight, planLevel, type FlowView } from '../src/lib/graph-flow';
 import { buildLevel, buildStructure, LEVEL_LIMIT, levelNotes, type Level } from '../src/lib/graph-structure';
 
 const file = (path: string): GraphNode => ({ id: `file:${path}`, type: 'file', name: path.slice(path.lastIndexOf('/') + 1), filePath: path });
@@ -18,7 +19,7 @@ const EDGES = [
   edge('function:a/y.js:three', 'function:b/z.js:four', 'calls'),
   edge('file:a/x.js', 'file:a/y.js', 'imports'),
 ];
-const view = { selected: null, onOpen: () => {}, onSelect: () => {}, onToggle: () => {} };
+const view: FlowView = { selected: null, selectedEntry: null, hovered: null, hoveredEdge: null, path: null, onOpen: () => {}, onDetails: () => {}, onSelect: () => {}, onToggle: () => {} };
 
 function setup(nodes = NODES, edges = EDGES) {
   const index = buildIndex({ nodes, edges });
@@ -77,7 +78,8 @@ describe('layoutPlan and flowOf', () => {
     ]);
     expect(nodes.filter((n) => (n.data as { selected: boolean }).selected).map((n) => n.id)).toEqual(['function:a/x.js:two']);
     expect(drawn).toHaveLength(plan.edges.length);
-    expect(drawn.map((e) => e.label).sort()).toEqual(['1 calls', '1 imports']);
+    // Nothing is selected or hovered that touches an edge, so no edge carries a label.
+    expect(drawn.map((e) => e.label)).toEqual([undefined, undefined]);
   });
 
   it('says how many nodes of a file are not drawn when it owns more than a level draws', async () => {
@@ -112,5 +114,120 @@ describe('levelNotes', () => {
     const structure = buildStructure(buildIndex({ nodes: Array.from({ length: 450 }, (_, i) => file(`d/f${String(i).padStart(3, '0')}.js`)), edges: [] }));
     const level = buildLevel(structure, { path: 'd' }) as Level;
     expect(levelNotes(structure, level, 'none').join(' ')).toContain(`${level.folded} entries beyond the ${LEVEL_LIMIT} a level draws are folded`);
+  });
+});
+
+describe('the readability of the edges', () => {
+  const edgeOf = (edges: Edge[], id: string) => {
+    const edge = edges.find((e) => e.id === id);
+    return edge && { label: edge.label, style: (edge.style ?? {}) as { strokeOpacity: number; strokeWidth: number; stroke: string } };
+  };
+
+  async function drawn(selected: string | null, extra: Partial<FlowView> = {}) {
+    const { index, structure, edges, level } = setup();
+    const plan = planLevel(structure, index, edges, level, new Set(['file:a/x.js']));
+    const laid = await layoutPlan(level, plan);
+    return { plan, flow: flowOf(level, plan, laid, { ...view, selected, ...extra }) };
+  }
+  const ids = (plan: { edges: readonly { id: string; source: string; target: string }[] }) => ({
+    calls: plan.edges.find((e) => e.source === 'function:a/x.js:one')?.id as string,
+    imports: plan.edges.find((e) => e.source === 'file:a/x.js')?.id as string,
+  });
+
+  it('puts no label on an edge while nothing touches it, and shows every edge at the same strength', async () => {
+    const { flow } = await drawn(null);
+    expect(flow.edges.every((e) => e.label === undefined)).toBe(true);
+    expect(new Set(flow.edges.map((e) => (e.style as { strokeOpacity: number }).strokeOpacity)).size).toBe(1);
+  });
+
+  it('labels the edges of the selected node, and dims the ones that do not touch it', async () => {
+    const { plan, flow } = await drawn('function:a/x.js:one');
+    const { calls, imports } = ids(plan);
+    expect(edgeOf(flow.edges, calls)?.label).toBe('1 calls');
+    expect(edgeOf(flow.edges, imports)?.label).toBeUndefined();
+    expect((edgeOf(flow.edges, imports)?.style.strokeOpacity ?? 1)).toBeLessThan(edgeOf(flow.edges, calls)?.style.strokeOpacity ?? 0);
+    // Dimmed means fainter than the same edge when nothing is selected, not only fainter than the lit one.
+    const { flow: idle } = await drawn(null);
+    expect((edgeOf(flow.edges, imports)?.style.strokeOpacity ?? 1)).toBeLessThan(edgeOf(idle.edges, imports)?.style.strokeOpacity ?? 0);
+  });
+
+  it('lights the edges of the nodes that an open file shows when the file itself is selected or hovered', async () => {
+    const { flow } = await drawn('file:a/x.js');
+    expect(flow.edges.map((e) => e.label).sort()).toEqual(['1 calls', '1 imports']);
+    const { flow: hovered } = await drawn(null, { hovered: 'file:a/x.js' });
+    expect(hovered.edges.map((e) => e.label).sort()).toEqual(['1 calls', '1 imports']);
+  });
+
+  it('labels an edge that the pointer is over, and still draws the dimmed ones', async () => {
+    const { plan, flow } = await drawn('function:a/x.js:one', {});
+    expect(flow.edges).toHaveLength(plan.edges.length);
+    const { flow: over } = await drawn('function:a/x.js:two', { hoveredEdge: 'edge:0' });
+    expect(over.edges.filter((e) => e.label !== undefined).map((e) => e.id)).toEqual(['edge:0']);
+  });
+
+  it('labels an edge between two nodes of one open file only when the pointer is over it', async () => {
+    const nodes = [file('a/x.js'), fn('a/x.js', 'one', 1), fn('a/x.js', 'two', 5)];
+    const edgesOf = [edge('file:a/x.js', 'function:a/x.js:one', 'contains'), edge('file:a/x.js', 'function:a/x.js:two', 'contains'), edge('function:a/x.js:one', 'function:a/x.js:two', 'calls')];
+    const { index, structure, level } = setup(nodes, edgesOf);
+    const plan = planLevel(structure, index, edgesOf, level, new Set(['file:a/x.js']));
+    const laid = await layoutPlan(level, plan);
+    expect(plan.edges).toHaveLength(1);
+    expect(flowOf(level, plan, laid, { ...view, selected: 'function:a/x.js:one' }).edges[0].label).toBeUndefined();
+    expect(flowOf(level, plan, laid, { ...view, selected: 'function:a/x.js:one', hoveredEdge: plan.edges[0].id }).edges[0].label).toBe('1 calls');
+  });
+
+  it('labels no edge of a node that has more than the labels can hold, only the one under the pointer', async () => {
+    const others = Array.from({ length: MAX_LABELLED_EDGES + 2 }, (_, i) => file(`a/f${i}.js`));
+    const calls = others.map((o) => edge('file:a/x.js', o.id, 'imports'));
+    const many = [file('a/x.js'), ...others];
+    const edgesOf = calls;
+    const { index, structure, level } = setup(many, edgesOf);
+    const plan = planLevel(structure, index, edgesOf, level, new Set());
+    expect(plan.edges.length).toBe(calls.length);
+    const laid = await layoutPlan(level, plan);
+    const crowded = flowOf(level, plan, laid, { ...view, selected: 'file:a/x.js' });
+    expect(crowded.edges.filter((e) => e.label !== undefined)).toEqual([]);
+    const pointed = flowOf(level, plan, laid, { ...view, selected: 'file:a/x.js', hoveredEdge: plan.edges[0].id });
+    expect(pointed.edges.filter((e) => e.label !== undefined).map((e) => e.id)).toEqual([plan.edges[0].id]);
+    // Still lit and the rest dimmed, so the node's edges can be told apart without labels.
+    expect(new Set(crowded.edges.map((e) => (e.style as { stroke: string }).stroke))).toEqual(new Set(['var(--color-accent)']));
+  });
+
+  it('draws the edges of a highlighted path in the accent colour and dims the rest', async () => {
+    const { plan } = await drawn(null);
+    const { calls, imports } = ids(plan);
+    const { flow } = await drawn(null, { path: { entries: new Set(), edges: new Set([calls]) } });
+    expect(edgeOf(flow.edges, calls)?.style.stroke).toBe('var(--color-accent)');
+    expect(edgeOf(flow.edges, imports)?.style.stroke).not.toBe('var(--color-accent)');
+    expect(edgeOf(flow.edges, imports)?.style.strokeOpacity).toBeLessThan(edgeOf(flow.edges, calls)?.style.strokeOpacity ?? 0);
+  });
+});
+
+describe('edgeWidth', () => {
+  it('grows with the logarithm of the count, so ten times the edges is a step wider and not ten times as wide', () => {
+    expect(edgeWidth(1)).toBeLessThan(edgeWidth(10));
+    expect(edgeWidth(10)).toBeLessThan(edgeWidth(100));
+    expect(edgeWidth(300) - edgeWidth(30)).toBeCloseTo(edgeWidth(30) - edgeWidth(3), 0);
+    expect(edgeWidth(10) / edgeWidth(1)).toBeLessThan(3);
+    expect(edgeWidth(1e9)).toBeLessThanOrEqual(7);
+    expect(edgeWidth(0)).toBe(edgeWidth(1));
+  });
+});
+
+describe('pathHighlight', () => {
+  it('names the entries a path passes through and the drawn edges between consecutive ones', () => {
+    const { index, structure, edges, level } = setup();
+    const plan = planLevel(structure, index, edges, level, new Set(['file:a/x.js']));
+    const { entries, edges: onPath } = pathHighlight(plan, ['function:a/x.js:one', 'function:a/y.js:three']);
+    expect([...entries].sort()).toEqual(['file:a/x.js', 'file:a/y.js']);
+    expect([...onPath]).toEqual([plan.edges.find((e) => e.source === 'function:a/x.js:one')?.id]);
+  });
+
+  it('skips a node the level does not draw, and has no edge for two nodes in the same entry', () => {
+    const { index, structure, edges, level } = setup();
+    const plan = planLevel(structure, index, edges, level, new Set());
+    const { entries, edges: onPath } = pathHighlight(plan, ['function:a/x.js:one', 'function:a/x.js:two', 'function:b/z.js:four']);
+    expect([...entries]).toEqual(['file:a/x.js']);
+    expect(onPath.size).toBe(0);
   });
 });

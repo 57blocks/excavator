@@ -4,12 +4,27 @@ import { MotionConfig } from 'motion/react';
 import { AppShell } from './components/shell/AppShell';
 import { ErrorCard } from './components/ErrorCard';
 import { PageBoundary } from './components/PageBoundary';
+import { PathDialog } from './components/shell/PathDialog';
+import { ShortcutsDialog } from './components/shell/ShortcutsDialog';
 import type { Manifest } from './data/manifest';
 import type { PayloadReader } from './data/payload';
+import { useShortcuts } from './hooks/use-shortcuts';
 import { useRoute } from './hooks/use-route';
 import { isBareHash } from './lib/route';
 import { PAGES } from './pages/registry';
+import { GraphUiProvider } from './state/graph-ui';
 import { ViewerProvider } from './state/viewer';
+
+/** The keys and the dialogs that every page has. */
+function Shortcuts() {
+  useShortcuts();
+  return (
+    <>
+      <ShortcutsDialog />
+      <PathDialog />
+    </>
+  );
+}
 
 /** The page the route names inside the shell; a route no page has is an error card. */
 export function App({ manifest, payloads }: { manifest: Manifest; payloads: PayloadReader }) {
@@ -29,11 +44,14 @@ export function App({ manifest, payloads }: { manifest: Manifest; payloads: Payl
   return (
     <MotionConfig reducedMotion="user">
       <ViewerProvider manifest={manifest} payloads={payloads}>
-        <AppShell manifest={manifest} nav={nav} current={page?.id ?? ''} flush={page?.flush}>
-          <PageBoundary key={pageKey}>
-            {page ? <page.Component /> : <ErrorCard title="No such page" error={new Error(`"${pageId}" is not a page of this viewer.`)} />}
-          </PageBoundary>
-        </AppShell>
+        <GraphUiProvider>
+          <Shortcuts />
+          <AppShell manifest={manifest} nav={nav} current={page?.id ?? ''} flush={page?.flush}>
+            <PageBoundary key={pageKey}>
+              {page ? <page.Component /> : <ErrorCard title="No such page" error={new Error(`"${pageId}" is not a page of this viewer.`)} />}
+            </PageBoundary>
+          </AppShell>
+        </GraphUiProvider>
       </ViewerProvider>
     </MotionConfig>
   );

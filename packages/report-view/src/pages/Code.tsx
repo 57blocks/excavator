@@ -8,10 +8,11 @@ import { Page } from '../components/ui/Page';
 import { useRoute } from '../hooks/use-route';
 import { useCounts, useReady } from '../hooks/use-signals';
 import type { SourceBucket } from '../data/manifest';
-import { BUCKETS, bucketLabel, bucketReason, buildTree, codeHash, entriesFromSource, filterEntries, lineStatus, splitLines, type SourceEntry, type TreeNode } from '../lib/code';
+import { BUCKETS, bucketLabel, bucketReason, buildTree, codeHash, entriesFromSource, filterEntries, lineNotice, lineStatus, splitLines, type SourceEntry, type TreeNode } from '../lib/code';
 import { formatNumber } from '../lib/format';
 import { Tile, Tiles } from '../components/ui/Tile';
-import { useLoaded, useViewer } from '../state/viewer';
+import { useEmbeddedText } from '../state/source';
+import { useViewer } from '../state/viewer';
 
 const MAX_TREE_FILES = 3000;
 
@@ -76,20 +77,15 @@ function PanelHead({ entry, extra }: { entry: SourceEntry; extra?: string }) {
 
 /** The source of an embedded file, once the page's source payload is unpacked. */
 function EmbeddedSource({ entry }: { entry: SourceEntry }) {
-  const { payloads } = useViewer();
   const { route } = useRoute();
-  const loaded = useLoaded(entry.path, async () => {
-    const texts = await payloads.parsed<Record<string, string>>('sources');
-    if (!Object.hasOwn(texts, entry.path)) throw new Error(`the page lists ${entry.path} as embedded but holds no text for it`);
-    return texts[entry.path];
-  });
+  const loaded = useEmbeddedText(entry.path);
   const lineCount = loaded.state === 'ready' ? splitLines(loaded.value).length : 0;
   const status = lineStatus(route.params.lines, lineCount);
   useCounts(loaded.state === 'ready' ? { lines: lineCount } : null);
   useReady(loaded.state, route.params.lines ?? '');
   if (loaded.state === 'loading') return <Card><PanelHead entry={entry} /></Card>;
   if (loaded.state === 'error') return <Card title="This file could not be shown" tone="error"><p>{loaded.error.message}</p></Card>;
-  const notice = status.state === 'out-of-range' ? `Line ${status.line} is not in the current version of this file.` : status.state === 'invalid' ? `The line range "${status.text}" is not a range of lines.` : null;
+  const notice = lineNotice(status);
   return (
     <Card flush>
       <PanelHead entry={entry} extra={`${formatNumber(lineCount)} lines, ${formatNumber(entry.bytes)} bytes`} />

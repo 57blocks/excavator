@@ -1,18 +1,21 @@
 import { Panel } from '@xyflow/react';
 
-import type { GraphIndex } from '../../data/indexes';
-import { nodeSummaryView } from '../../lib/node-summary';
+import type { ReactNode } from 'react';
+
 import { legendRows } from '../../lib/node-colors';
 import type { Crumb } from '../../lib/graph-structure';
-import { NodeSummary } from '../NodeSummary';
-import { Badge } from '../ui/Badge';
 
 const GLASS = 'glass rounded-card';
+
+/** The top-left corner of the canvas: the breadcrumbs, and under them the cards that belong to the view (a path, for one). */
+export function TopLeft({ children }: { children: ReactNode }) {
+  return <Panel position="top-left" className="!m-3 flex max-w-[min(560px,calc(100%-24px))] flex-col gap-2">{children}</Panel>;
+}
 
 /** Where the level is: one button per step from the project down, the last one the level itself. */
 export function Breadcrumbs({ crumbs, notes, onGo }: { crumbs: readonly Crumb[]; notes: readonly string[]; onGo: (crumb: Crumb) => void }) {
   return (
-    <Panel position="top-left" className={`${GLASS} !m-3 max-w-[min(560px,calc(100%-24px))] px-3 py-2`}>
+    <div className={`${GLASS} px-3 py-2`}>
       <nav aria-label="Breadcrumb" className="flex flex-wrap items-center gap-1 text-[13px]">
         {crumbs.map((crumb, i) => {
           const last = i === crumbs.length - 1;
@@ -31,7 +34,7 @@ export function Breadcrumbs({ crumbs, notes, onGo }: { crumbs: readonly Crumb[];
         })}
       </nav>
       {notes.map((note) => <p key={note} className="mt-1 text-xs text-muted">{note}</p>)}
-    </Panel>
+    </div>
   );
 }
 
@@ -48,33 +51,6 @@ export function Legend({ types }: { types: Iterable<string> }) {
           </li>
         ))}
       </ul>
-    </Panel>
-  );
-}
-
-/** The node that is selected, in brief; the sidebar replaces this with the full details. */
-export function SelectedCard({ index, nodeId, onClose }: { index: GraphIndex; nodeId: string; onClose: () => void }) {
-  const node = index.nodesById.get(nodeId);
-  const view = node ? nodeSummaryView(index, nodeId) : null;
-  return (
-    <Panel position="top-right" className={`${GLASS} !m-3 w-[300px] max-w-[calc(100%-24px)] p-3`}>
-      <div className="flex items-start justify-between gap-2">
-        <div className="min-w-0">
-          <div className="truncate font-semibold text-ink" title={nodeId}>{node ? node.name : nodeId}</div>
-          {node ? <div className="mt-0.5 flex flex-wrap items-center gap-2"><Badge tone="neutral">{node.type}</Badge></div> : null}
-        </div>
-        <button type="button" aria-label="Clear the selection" onClick={onClose} className="cursor-pointer rounded-control border-0 bg-transparent px-2 py-0.5 text-muted hover:bg-paper hover:text-ink">
-          {String.fromCharCode(0xd7)}
-        </button>
-      </div>
-      {node === undefined ? <p className="mt-2 text-muted">The graph has no node with this id.</p> : null}
-      {node?.filePath ? (
-        <p className="mt-2 break-all font-mono text-xs text-muted">
-          {node.filePath}
-          {Array.isArray(node.lineRange) ? `:${node.lineRange[0]}-${node.lineRange[1]}` : ''}
-        </p>
-      ) : null}
-      {view ? <div className="mt-2 text-[13px]"><NodeSummary view={view} /></div> : null}
     </Panel>
   );
 }

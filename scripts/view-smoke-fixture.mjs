@@ -243,6 +243,17 @@ function fullFiles(revision) {
  * layered one group differently).
  */
 function graphExpected(full) {
+  // What the interaction checks expect: where a search result lives (the level differs with the grouping), what a focus counts, and a path.
+  const interaction = (runLevel, helperLevel) => ({
+    search: [
+      { query: 'run', id: 'function:src/core/engine/run.js:run', level: runLevel, file: 'src/core/engine/run.js', lines: '3-5', name: 'run' },
+      { query: 'helper', id: 'function:src/util.js:helper', level: helperLevel, file: 'src/util.js', lines: '1-3', name: 'helper' },
+    ],
+    // helper: contained by util.js, called by main and by run: three distinct nodes at the other end of its edges.
+    focus: { id: 'function:src/util.js:helper', level: helperLevel, neighbours: 3, edges: 3 },
+    // start calls run, run calls helper.
+    path: { from: 'function:src/core/index.js:start', to: 'function:src/util.js:helper', steps: 2, none: { from: 'function:lib/data.py:load' } },
+  });
   if (full) {
     return {
       mode: 'layers',
@@ -251,6 +262,7 @@ function graphExpected(full) {
         { path: '~unlayered/src/core', nodes: 2, files: 2, labels: ['engine', 'index.js'], open: 'engine' },
         { path: '~unlayered/src/core/engine', nodes: 1, files: 1, labels: ['run.js'] },
       ],
+      interaction: interaction('~unlayered/src/core/engine', 'layer:app/src'),
     };
   }
   return {
@@ -260,6 +272,7 @@ function graphExpected(full) {
       { path: 'src/core', nodes: 2, files: 2, labels: ['engine', 'index.js'], open: 'engine' },
       { path: 'src/core/engine', nodes: 1, files: 1, labels: ['run.js'] },
     ],
+    interaction: interaction('src/core/engine', 'src'),
   };
 }
 

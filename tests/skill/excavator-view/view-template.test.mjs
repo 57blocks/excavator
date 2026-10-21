@@ -12,6 +12,7 @@ import { tmpdir } from 'node:os';
 import { join, relative } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
+import { checkLicenseNotice, NOTICE_HEADING } from '../../../packages/report-view/scripts/licenses.mjs';
 import { checkTemplate } from '../../../packages/report-view/scripts/single-file.mjs';
 import { packProject } from '../../../skills/excavator-view/pack.mjs';
 import { CONTRADICTED_SUMMARY, makeSmokeProject } from '../../../scripts/view-smoke-fixture.mjs';
@@ -45,6 +46,17 @@ describe('the built template', () => {
   it('keeps the template contract: one file, one marker of each kind, nothing linked or loaded', () => {
     expect(readdirSync(join(repoRoot, 'packages/report-view/dist'))).toEqual(['view.html']);
     expect(checkTemplate(['view.html'], html)).toEqual([]);
+  });
+
+  it('starts with the licence notice, which lists the bundled packages with the version and licence of the installed ones', () => {
+    expect(html.startsWith(`<!--\n${NOTICE_HEADING}\n`)).toBe(true);
+    // react: the page; @xyflow/react: the canvas; d3-force: only the focus layout's worker bundles it.
+    expect(checkLicenseNotice(html, ['elkjs', 'react', '@xyflow/react', 'motion', 'd3-force'])).toBeNull();
+    for (const name of ['elkjs', 'd3-force', 'react']) {
+      const installed = JSON.parse(readFileSync(join(repoRoot, 'packages/report-view/node_modules', name, 'package.json'), 'utf-8'));
+      expect(html.slice(0, html.indexOf('-->')), name).toContain(`\n${name} ${installed.version} ${installed.license}\n`);
+    }
+    expect(/^elkjs \S+ .*EPL-2\.0/m.test(html.slice(0, html.indexOf('-->')))).toBe(true);
   });
 
   it('draws no image, frame or media element and loads no stylesheet', () => {

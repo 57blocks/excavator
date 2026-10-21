@@ -78,6 +78,13 @@ export function lineStatus(linesParam: string | null | undefined, lineCount: num
   return { state: 'ok', start: range.start, end: range.end };
 }
 
+/** The sentence for a requested range that is not marked: past the end of the file, or not a range. Null when it can be marked or none was asked. */
+export function lineNotice(status: LineStatus): string | null {
+  if (status.state === 'out-of-range') return `Line ${status.line} is not in the current version of this file.`;
+  if (status.state === 'invalid') return `The line range "${status.text}" is not a range of lines.`;
+  return null;
+}
+
 export function bucketLabel(bucket: string): string {
   return Object.hasOwn(BUCKET_LABELS, bucket) ? BUCKET_LABELS[bucket as SourceBucket] : bucket;
 }

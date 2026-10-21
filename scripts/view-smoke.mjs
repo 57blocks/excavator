@@ -241,6 +241,8 @@ async function run(options) {
     const call = (method, params) => send(method, params, sessionId);
     for (const domain of ['Runtime', 'Log', 'Network', 'Page']) await call(`${domain}.enable`);
     await call('Page.addScriptToEvaluateOnNewDocument', { source: VIOLATION_RECORDER });
+    // A headless page has no focus of its own; with it emulated, focus() and the key shortcuts behave as in a window the user is in.
+    await call('Emulation.setFocusEmulationEnabled', { enabled: true });
     await call('Emulation.setDeviceMetricsOverride', { width: options.width, height: options.height, deviceScaleFactor: 1, mobile: false });
     const features = [];
     if (options.dark) features.push({ name: 'prefers-color-scheme', value: 'dark' });
@@ -272,7 +274,8 @@ async function run(options) {
       const height = Math.min(Math.max(Math.ceil(contentSize.height), options.height), MAX_SCREENSHOT_HEIGHT);
       const shot = await call('Page.captureScreenshot', {
         format: 'png',
-        captureBeyondViewport: true,
+        // A page that fits the window is shot as it is: asking for more than the window re-lays it out and loses the scroll position of an inner panel.
+        captureBeyondViewport: height > options.height,
         clip: { x: 0, y: 0, width: options.width, height, scale: 1 },
       });
       screenshotPath = resolve(options.screenshot);

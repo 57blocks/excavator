@@ -148,10 +148,11 @@ function assetText(asset) {
 /**
  * Inline the bundle into view.html and remove every other output; throws, naming the
  * outputs, when the bundle is not one HTML file, one JavaScript chunk and stylesheets.
- * Mutates `bundle`.
+ * `notice`, a comment, is put at the very start of the file. Mutates `bundle`.
  * @param {OutputBundle} bundle
+ * @param {string} [notice]
  */
-export function collapseBundle(bundle) {
+export function collapseBundle(bundle, notice = '') {
   const names = Object.keys(bundle).sort();
   const htmlNames = names.filter((name) => name.endsWith('.html'));
   if (htmlNames.length !== 1 || htmlNames[0] !== TEMPLATE_FILE) {
@@ -195,20 +196,22 @@ export function collapseBundle(bundle) {
   if (problems.length > 0) throw new Error(problems.join('; '));
 
   for (const name of names) if (name !== TEMPLATE_FILE) delete bundle[name];
-  htmlAsset.source = html;
+  htmlAsset.source = notice + html;
 }
 
 /**
  * The vite plugin: collapse the bundle after vite has written its HTML.
+ * `notice` gives the comment to put at the start of the file, read when the bundle is written.
+ * @param {() => string} [notice]
  * @returns {import('vite').Plugin}
  */
-export function singleFile() {
+export function singleFile(notice = () => '') {
   return {
     name: 'excavator-single-file',
     enforce: 'post',
     generateBundle(_options, bundle) {
       try {
-        collapseBundle(/** @type {OutputBundle} */ (/** @type {unknown} */ (bundle)));
+        collapseBundle(/** @type {OutputBundle} */ (/** @type {unknown} */ (bundle)), notice());
       } catch (error) {
         this.error(/** @type {Error} */ (error).message);
       }

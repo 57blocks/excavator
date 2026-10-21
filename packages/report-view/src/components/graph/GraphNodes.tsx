@@ -7,12 +7,18 @@ import { nodeColor } from '../../lib/node-colors';
 
 export interface GroupData extends Record<string, unknown> {
   entry: LevelEntry;
+  selected: boolean;
+  /** A highlighted path runs through this entry. */
+  onPath: boolean;
   onOpen: (entry: LevelEntry) => void;
+  /** Select the entry, to see its details in the sidebar. */
+  onDetails: (entry: LevelEntry) => void;
 }
 
 export interface FileData extends Record<string, unknown> {
   entry: LevelEntry;
   selected: boolean;
+  onPath: boolean;
   /** Whether the file shows the nodes it owns; null when it owns none. */
   expanded: boolean | null;
   onSelect: (nodeId: string) => void;
@@ -23,6 +29,7 @@ export interface ChildData extends Record<string, unknown> {
   name: string;
   type: string;
   selected: boolean;
+  onPath: boolean;
   /** Set on the last row of a file that has more nodes than it shows: not a node, a count. */
   more: number | null;
   onSelect: (nodeId: string) => void;
@@ -56,11 +63,14 @@ const CARD = 'xv-node relative box-border flex size-full cursor-pointer flex-col
 
 const KIND_TEXT = { cluster: 'Layer', container: 'Directory', fold: 'Folded' } as const;
 
-/** A cluster (a layer), a directory container or a fold: it opens as a level of its own. */
+const marks = (selected: boolean, onPath: boolean) => `${selected ? 'xv-selected' : ''} ${onPath ? 'xv-on-path' : ''}`;
+
+/** A cluster (a layer), a directory container or a fold: it opens as a level of its own; the info button selects it for the sidebar. */
 export const GroupNode = memo(function GroupNode({ data }: NodeProps<GroupFlowNode>) {
   const { entry } = data;
   const open = () => data.onOpen(entry);
   const tone = entry.kind === 'fold' ? 'border-dashed border-line-2' : 'border-line-2';
+  const cluster = entry.kind === 'cluster';
   return (
     <div
       role="button"
@@ -70,16 +80,29 @@ export const GroupNode = memo(function GroupNode({ data }: NodeProps<GroupFlowNo
       data-xv-label={entry.label}
       onClick={open}
       onKeyDown={onActivate(open)}
-      className={`${CARD} ${tone} px-4 py-3 outline-none focus-visible:ring-2 focus-visible:ring-accent`}
+      className={`${CARD} ${tone} ${marks(data.selected, data.onPath)} ${cluster ? 'px-5 py-4' : 'px-4 py-3'} outline-none focus-visible:ring-2 focus-visible:ring-accent`}
     >
-      {entry.kind === 'cluster' ? <span aria-hidden="true" className="absolute inset-y-0 left-0 w-1.5 bg-accent" /> : null}
+      {cluster ? <span aria-hidden="true" className="absolute inset-y-0 left-0 w-1.5 bg-accent" /> : null}
       <Handles />
-      <div className="flex items-baseline justify-between gap-2">
-        <span className="min-w-0 truncate font-semibold text-ink" title={entry.label}>{entry.label}</span>
-        <span className="shrink-0 text-[10px] font-semibold uppercase tracking-wider text-muted">{KIND_TEXT[entry.kind as keyof typeof KIND_TEXT]}</span>
+      <button
+        type="button"
+        aria-label={`Details of ${entry.label}`}
+        aria-pressed={data.selected}
+        title="Details"
+        onClick={(event) => {
+          event.stopPropagation();
+          data.onDetails(entry);
+        }}
+        className="nodrag absolute right-2 top-2 flex size-6 cursor-pointer items-center justify-center rounded-full border border-line-2 bg-surface p-0 text-[13px] font-semibold italic text-muted hover:border-accent hover:text-accent"
+      >
+        i
+      </button>
+      <div className={`flex min-w-0 flex-col pr-7 ${cluster ? 'gap-0.5' : ''}`}>
+        <span className={`min-w-0 truncate font-semibold text-ink ${cluster ? 'text-[18px] leading-6' : ''}`} title={entry.label}>{entry.label}</span>
+        <span className="text-[10px] font-semibold uppercase tracking-wider text-muted">{KIND_TEXT[entry.kind as keyof typeof KIND_TEXT]}</span>
       </div>
-      {entry.note ? <p className={`mt-0.5 text-xs text-muted ${entry.kind === 'cluster' ? 'line-clamp-2' : 'line-clamp-1'}`}>{entry.note}</p> : null}
-      <p className="mt-auto font-mono text-xs text-muted">{counts(entry)}</p>
+      {entry.note ? <p className={`mt-1 text-muted ${cluster ? 'line-clamp-2 text-[13px] leading-[18px]' : 'line-clamp-1 text-xs'}`}>{entry.note}</p> : null}
+      <p className={`mt-auto font-mono text-muted ${cluster ? 'text-[13px]' : 'text-xs'}`}>{counts(entry)}</p>
     </div>
   );
 });
@@ -121,7 +144,7 @@ export const FileNode = memo(function FileNode({ data }: NodeProps<FileFlowNode>
       data-xv-node={entry.id}
       onClick={select}
       onKeyDown={onActivate(select)}
-      className={`${CARD} border-line-2 outline-none focus-visible:ring-2 focus-visible:ring-accent ${data.selected ? 'xv-selected' : ''}`}
+      className={`${CARD} border-line-2 outline-none focus-visible:ring-2 focus-visible:ring-accent ${marks(data.selected, data.onPath)}`}
     >
       <span aria-hidden="true" className="absolute inset-y-0 left-0 w-1 rounded-l-card" style={{ background: nodeColor('file') }} />
       <Handles />
@@ -150,7 +173,7 @@ export const ChildNode = memo(function ChildNode({ id, data }: NodeProps<ChildFl
       title={`${data.type} ${data.name}`}
       onClick={select}
       onKeyDown={onActivate(select)}
-      className={`xv-node flex size-full cursor-pointer items-center gap-2 rounded-control border border-line bg-paper px-2 outline-none focus-visible:ring-2 focus-visible:ring-accent ${data.selected ? 'xv-selected' : ''}`}
+      className={`xv-node flex size-full cursor-pointer items-center gap-2 rounded-control border border-line bg-paper px-2 outline-none focus-visible:ring-2 focus-visible:ring-accent ${marks(data.selected, data.onPath)}`}
     >
       <Handle type="target" position={Position.Left} isConnectable={false} className="!pointer-events-none !opacity-0" />
       <Handle type="source" position={Position.Right} isConnectable={false} className="!pointer-events-none !opacity-0" />
