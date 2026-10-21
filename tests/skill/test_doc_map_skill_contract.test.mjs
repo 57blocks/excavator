@@ -103,7 +103,7 @@ const fixture = (() => {
   code('src/Assess.java', 'class Assess {}\n');
   code('web/assessment.jsp', '<h1>Assessment</h1>\n<form action="complete.do">\n');
   writeFileSync(join(DATA, 'doc-map/links-batch-002.json'), JSON.stringify({ links: [
-    { unit: 3, status: 'not-found', evidence: [], searched: ['grep -ri export src/', 'MedicationExport'] },
+    { unit: 3, status: 'not-found', evidence: [], searched: [{ pattern: 'export', paths: ['src/'] }, { pattern: 'MedicationExport', paths: ['.', 'web/*.jsp'] }] },
   ] }));
   writeFileSync(join(DATA, 'doc-map/links-batch-001.json'), JSON.stringify({ links: [
     { unit: 1, status: 'found', evidence: [{ file: 'src/orders/PlaceOrder.java', code: 'public void placeOrder(' }] },
@@ -318,7 +318,7 @@ describe('excavator-doc-map skill: the commands run', () => {
     expect(sh(lineStarting(3, 'python3 "$DOC_MAP" units'), vars).status).toBe(0);
     writeFileSync(join(DATA, 'doc-map/links.json'), JSON.stringify({ links: [
       ...ids.map((id, at) => ({ unit: at + 1, status: 'found', evidence: [{ file: 'src/Steps.java', code: `void step${id}()` }], searched: [] })),
-      { unit: 12, status: 'not-found', evidence: [], searched: ['grep -r B01 src/'] },
+      { unit: 12, status: 'not-found', evidence: [], searched: [{ pattern: 'B01', paths: ['src/'] }] },
     ] }));
     expect(sh(lineStarting(4, 'python3 "$DOC_MAP" link'), vars).status).toBe(0);
     const plan = sh(lineStarting(5, 'jq -r'), vars);
@@ -345,7 +345,7 @@ describe('excavator-doc-map skill: the commands run', () => {
     expect(product.units.map((unit) => unit.code.status)).toEqual([
       'found', 'not-checked', 'not-checked', 'not-checked', 'found', 'found', 'found', 'found', 'found', 'found', 'found', 'not-found',
     ]);
-    expect(product.units[11].code.searched).toEqual(['grep -r B01 src/']);
+    expect(product.units[11].code.searched).toEqual([{ pattern: 'B01', paths: ['src/'] }]);
     const [counts, notKept] = linesOf(bashBlocks(rawStep(7))).filter((line) => line.startsWith('jq ')).slice(6, 8);
     expect(sh(counts, vars).stdout).toBe('places: 11; kept: 8; taken out: 1; no verdict: 2\n');
     expect(sh(notKept, vars).stdout).toBe(['2\tA02 step\tsrc/Steps.java:2\tnot\tStep 2.', '3\tA03 step\tsrc/Steps.java:3\tnone\tStep 3.', '4\tA04 step\tsrc/Steps.java:4\tnone\t-', ''].join('\n'));
@@ -370,11 +370,11 @@ describe('excavator-doc-map skill: the commands run', () => {
     writeFileSync(join(DATA, 'doc-map/links-batch-001.json'), JSON.stringify({ links: [
       { unit: 1, status: 'found', evidence: [{ file: 'src/orders/PlaceOrder.java', code: 'public void placeOrder(' }] },
       { unit: 3, status: 'not-found', evidence: [] },
-      { unit: 4, status: 'not-found', evidence: [], searched: ['Enroll'] },
+      { unit: 4, status: 'not-found', evidence: [], searched: [{ pattern: 'Enroll', paths: ['.'] }] },
     ] }));
     expect(sh(lineStarting(4, 'find "$DATA/doc-map" -maxdepth 1 -name \'links-batch-*.json\' |'), { DATA }).status).toBe(0);
     const merged = JSON.parse(readFileSync(join(DATA, 'doc-map/links.json'), 'utf-8'));
-    expect(merged.links.map((link) => link.searched)).toEqual([[], [], ['Enroll']]);
+    expect(merged.links.map((link) => link.searched)).toEqual([[], [], [{ pattern: 'Enroll', paths: ['.'] }]]);
     const before = readFileSync(fixture.vars.DM, 'utf-8');
     const link = sh(`python3 "$DOC_MAP" link "${join(DATA, 'doc-map/links.json')}" "$PROJECT_ROOT"`, fixture.vars);
     expect(link.status).toBe(1);
@@ -496,7 +496,7 @@ describe('excavator-doc-map skill: the commands run', () => {
       'use-cases.md\tUC-01\tExport medications\tline 3\tnot-found\t',
       'use-cases.md\tUC-02\tEnroll in study\tline 6\tnot-checked\t', '',
     ].join('\n'));
-    expect(sh(queries[5], fixture.vars).stdout).toBe('use-cases.md\tUC-01\tExport medications\tgrep -ri export src/; MedicationExport\n');
+    expect(sh(queries[5], fixture.vars).stdout).toBe('use-cases.md\tUC-01\tExport medications\texport in src/; MedicationExport in ., web/*.jsp\n');
     expect(sh(queries[6], fixture.vars).stdout).toBe('places: 3; kept: 2; taken out: 1; no verdict: 0\n');
     expect(sh(queries[7], fixture.vars).stdout).toBe('2\tComplete assessment\tsrc/Assess.java:1\tnot\tAn empty class.\n');
     expect(sh(queries[8], fixture.vars).stdout).toBe([
@@ -635,7 +635,7 @@ describe('excavator-chat: document questions', () => {
     expect(run(queries[1], { '<id or word>': 'ORDER' })).toBe('1\tguide/orders.html\t-\tPlacing an order\tline 2\tfound\tsrc/orders/PlaceOrder.java:3\n');
     expect(run(queries[1], { '<id or word>': 'UC1' })).toBe('2\tsrs.pdf\tUC1\tComplete assessment\tpage 2\tfound\tweb/assessment.jsp:2\n');
     expect(run(queries[2], { '<document>': 'use-cases.md' })).toBe('3\tUC-01\tExport medications\tnot-found\n4\tUC-02\tEnroll in study\tnot-checked\n');
-    expect(run(queries[3])).toBe('3\tuse-cases.md\tUC-01\tExport medications\tgrep -ri export src/; MedicationExport\n');
+    expect(run(queries[3])).toBe('3\tuse-cases.md\tUC-01\tExport medications\texport in src/; MedicationExport in ., web/*.jsp\n');
     expect(run(queries[4], { '<file or directory>': 'src' })).toBe('1\tPlacing an order\tsrc/orders/PlaceOrder.java:3\n');
     expect(run(queries[4], { '<file or directory>': 'web/assessment.jsp' })).toBe('2\tComplete assessment\tweb/assessment.jsp:2\n');
     expect(run(queries[4], { '<file or directory>': 'sr' })).toBe('');
@@ -651,10 +651,12 @@ describe('excavator-chat: document questions', () => {
     expect(run(queries[9], { '<directory>': '.' })).toBe('code files: 7; with evidence: 1; units with evidence here: 1\n1\tPlacing an order\n');
   });
 
-  it('counts the code with the queries of the report, and says when the counts are missing or stale', () => {
+  it('counts the code and shows the searches with the queries of the report, and says when the counts are missing or stale', () => {
     const report = linesOf(bashBlocks(rawStep(7))).filter((line) => line.startsWith('jq ')).map((line) => line.replace('"$DM"', '.excavator/doc-map.json'));
     expect(queries[5]).toBe(report[8]);
     expect(queries[8]).toBe(report[10]);
+    const shown = (query) => query.match(/searched \| (map\(.*\) \| join\("; "\))\)/)[1];
+    expect(shown(queries[3])).toBe(shown(report[5]));
     expect(section).toContain('`no coverage`: say the code has not been counted, and that `/excavator-doc-map` counts it when the project\'s `/excavator` facts are fresh, running `/excavator --mode=lazy` first when they are not.');
     expect(section).toContain('Different, or no fact graph: say the counts are stale (the facts changed since they were counted) and suggest running `/excavator-doc-map` again. You may still quote them, labelled stale.');
   });

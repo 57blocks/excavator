@@ -223,7 +223,7 @@ jq -r '.units as $units | .documents[] | select(.status == "read") | .path as $p
 # every unit, in the order recorded, with its code
 jq -r '.units[] | [.document, (.id // "-"), .title, (if .page then "page \(.page)" else "line \(.line)" end), .code.status, ([.code.evidence[] | "\(.file):\(.line)"] | join(", "))] | @tsv' "$DM"
 # each unit with no code found, and the searches listed with it
-jq -r '.units[] | select(.code.status == "not-found") | [.document, (.id // "-"), .title, (.code.searched | join("; "))] | @tsv' "$DM"
+jq -r '.units[] | select(.code.status == "not-found") | [.document, (.id // "-"), .title, (.code.searched | map("\(.pattern) in \(.paths | join(", "))") | join("; "))] | @tsv' "$DM"
 # the check: places, and how many were kept, taken out or have no verdict
 jq -r '.checks | "places: \(length); kept: \(map(select(.verdict == "does")) | length); taken out: \(map(select(.verdict == "not")) | length); no verdict: \(map(select(.verdict == "none")) | length)"' "$DATA/doc-map/checks.json"
 # each place the check did not keep, with its unit's title, the verdict and the reason
