@@ -32,8 +32,8 @@ describe('product states on the Overview', () => {
 
 describe('the pages', () => {
   it('are in navigation order', () => {
-    expect(PAGES.map((p) => p.id)).toEqual(['overview', 'unused', 'doc-map', 'hotspots', 'code', 'reports']);
-    expect(PAGES.map((p) => p.label)).toEqual(['Overview', 'Unused code', 'Doc map', 'Hotspots', 'Code', 'Reports']);
+    expect(PAGES.map((p) => p.id)).toEqual(['graph', 'overview', 'unused', 'doc-map', 'hotspots', 'code', 'reports']);
+    expect(PAGES.map((p) => p.label)).toEqual(['Graph', 'Overview', 'Unused code', 'Doc map', 'Hotspots', 'Code', 'Reports']);
   });
 
   it('show in the navigation the state of the product each one shows', () => {
@@ -46,6 +46,6 @@ describe('the pages', () => {
       source: { embedded: true, requested: true, limitBytes: 1, counts: { embedded: 1, binary: 0, tooLarge: 0, notInSnapshot: 0, notEmbeddedOnRequest: 0 }, files: {} },
     } as unknown as Manifest;
     const status = Object.fromEntries(PAGES.map((p) => [p.id, p.status(manifest)]));
-    expect(status).toEqual({ overview: 'unreadable', unused: 'different-revision', 'doc-map': 'not-run', hotspots: 'unreadable', code: 'included', reports: 'not-run' });
+    expect(status).toEqual({ graph: 'included', overview: 'unreadable', unused: 'different-revision', 'doc-map': 'not-run', hotspots: 'unreadable', code: 'included', reports: 'not-run' });
   });
 });

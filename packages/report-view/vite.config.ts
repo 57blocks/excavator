@@ -14,6 +14,8 @@ export default defineConfig({
   base: './',
   publicDir: false,
   plugins: [react(), tailwindcss(), singleFile()],
+  // The libraries carry non-ASCII characters in their tables (character classes, for one); written as escapes they are the same text, and the template stays ASCII.
+  esbuild: { charset: 'ascii' },
   build: {
     outDir: 'dist',
     emptyOutDir: true,

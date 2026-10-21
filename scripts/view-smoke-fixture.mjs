@@ -30,6 +30,8 @@ const GRAPH_FORMAT = 'excavator-knowledge-graph-lines/1';
 const SOURCES = {
   'src/main.js': 'import { helper } from "./util.js";\n\nexport function main() {\n  return helper(1);\n}\n\nfunction orphan() {\n  return 0;\n}\n',
   'src/util.js': 'export function helper(n) {\n  return n + 1;\n}\n\nexport function leaf() {\n  return orphanless();\n}\n',
+  'src/core/index.js': 'import { run } from "./engine/run.js";\n\nexport function start() {\n  return run();\n}\n',
+  'src/core/engine/run.js': 'import { helper } from "../../util.js";\n\nexport function run() {\n  return helper(2);\n}\n',
   'lib/data.py': 'def load():\n    return []\n\n\ndef unused_loader():\n    return None\n',
   'docs/guide.md': '# Guide\n\nThe main function runs the helper.\n',
 };
@@ -53,6 +55,10 @@ function graphText({ factsDigest } = {}) {
     node('file:src/main.js', 'file', 'main.js', { filePath: 'src/main.js' }),
     node('file:src/util.js', 'file', 'util.js', { filePath: 'src/util.js' }),
     node('file:lib/data.py', 'file', 'data.py', { filePath: 'lib/data.py' }),
+    node('file:src/core/index.js', 'file', 'index.js', { filePath: 'src/core/index.js' }),
+    node('file:src/core/engine/run.js', 'file', 'run.js', { filePath: 'src/core/engine/run.js' }),
+    node('function:src/core/index.js:start', 'function', 'start', { filePath: 'src/core/index.js', lineRange: [3, 5] }),
+    node('function:src/core/engine/run.js:run', 'function', 'run', { filePath: 'src/core/engine/run.js', lineRange: [3, 5] }),
     node('function:src/main.js:main', 'function', 'main', { filePath: 'src/main.js', lineRange: [3, 5] }),
     node('function:src/main.js:orphan', 'function', 'orphan', { filePath: 'src/main.js', lineRange: [7, 9] }),
     node('function:src/util.js:helper', 'function', 'helper', { filePath: 'src/util.js', lineRange: [1, 3] }),
@@ -68,8 +74,15 @@ function graphText({ factsDigest } = {}) {
     edge('file:src/util.js', 'function:src/util.js:leaf', 'contains'),
     edge('file:lib/data.py', 'function:lib/data.py:load', 'contains'),
     edge('file:lib/data.py', 'function:lib/data.py:unused_loader', 'contains'),
+    edge('file:src/core/index.js', 'function:src/core/index.js:start', 'contains'),
+    edge('file:src/core/engine/run.js', 'function:src/core/engine/run.js:run', 'contains'),
     edge('file:src/main.js', 'file:src/util.js', 'imports'),
     edge('function:src/main.js:main', 'function:src/util.js:helper', 'calls'),
+    edge('file:src/main.js', 'file:src/core/index.js', 'imports'),
+    edge('file:src/core/index.js', 'file:src/core/engine/run.js', 'imports'),
+    edge('file:src/core/engine/run.js', 'file:src/util.js', 'imports'),
+    edge('function:src/core/index.js:start', 'function:src/core/engine/run.js:run', 'calls'),
+    edge('function:src/core/engine/run.js:run', 'function:src/util.js:helper', 'calls'),
   ];
   const gaps = [{ record: 'gap', gap: { kind: 'dynamic-call', scope: 'src/util.js', reason: 'call target is computed', count: 2 } }];
   const coverage = {
@@ -223,6 +236,33 @@ function fullFiles(revision) {
   };
 }
 
+/**
+ * What the graph page should show at each level the smoke visits: the route
+ * path, the entries drawn, the files under the level, the labels of the
+ * entries and the one to click to go down (a directory-grouped graph and a
+ * layered one group differently).
+ */
+function graphExpected(full) {
+  if (full) {
+    return {
+      mode: 'layers',
+      levels: [
+        { path: '', nodes: 3, files: 5, labels: ['Application', 'Not in any layer', 'Data'], open: 'Not in any layer' },
+        { path: '~unlayered/src/core', nodes: 2, files: 2, labels: ['engine', 'index.js'], open: 'engine' },
+        { path: '~unlayered/src/core/engine', nodes: 1, files: 1, labels: ['run.js'] },
+      ],
+    };
+  }
+  return {
+    mode: 'directories',
+    levels: [
+      { path: '', nodes: 3, files: 5, labels: ['src/core', 'src', 'lib'], open: 'src/core' },
+      { path: 'src/core', nodes: 2, files: 2, labels: ['engine', 'index.js'], open: 'engine' },
+      { path: 'src/core/engine', nodes: 1, files: 1, labels: ['run.js'] },
+    ],
+  };
+}
+
 const HOSTILE = '</script><img src=x onerror=alert(1)>';
 
 /**
@@ -262,13 +302,14 @@ export function makeSmokeProject(dir, { full = false } = {}) {
     revision,
     expected: {
       overview: {
-        nodes: 10, edges: 8, gaps: 1,
+        nodes: 14, edges: 15, gaps: 1,
         ...(full ? { 'semantic-entries': 7, 'semantic-stale': 1, 'semantic-verified': 3, 'semantic-unverified': 1, 'semantic-contradicted': 1, 'semantic-unchecked': 2, 'semantic-layers': 2, 'summaries-shown': 6 } : {}),
       },
       unused: { unused: 3, 'unused-shown': 3 },
       'doc-map': { units: 3, 'units-shown': 3, checks: 3 },
       hotspots: { files: 3, directories: 2, pairs: 1, groups: 0 },
-      code: { sources: 3 },
+      code: { sources: 5 },
+      graph: graphExpected(full),
       reports: { reports: 2 },
     },
   };

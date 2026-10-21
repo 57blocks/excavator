@@ -52,17 +52,25 @@ describe('the built template', () => {
     expect(markup).not.toMatch(/<(link|img|iframe|object|embed|video|audio|source|script)\b/i);
   });
 
+  const css = (text) => [...text.matchAll(/<style\b[^>]*>([\s\S]*?)<\/style>/gi)].map((m) => m[1]).join('\n');
+
   it('has a stylesheet that names no font and no address of its own', () => {
-    const css = [...html.matchAll(/<style\b[^>]*>([\s\S]*?)<\/style>/gi)].map((m) => m[1]).join('\n');
-    expect(css.length).toBeGreaterThan(1000);
-    expect(css).not.toMatch(/@font-face|@import/i);
-    expect(css).not.toMatch(/url\(\s*['"]?(?!data:)/i);
+    expect(css(html).length).toBeGreaterThan(1000);
+    expect(css(html)).not.toMatch(/@font-face|@import/i);
+    expect(css(html)).not.toMatch(/url\(\s*['"]?(?!data:)/i);
+  });
+
+  it('defines the colour of every node kind, which the code reads through var() and no class names', () => {
+    for (const kind of ['file', 'callable', 'type', 'config', 'docs', 'data', 'service', 'domain']) expect(css(html), kind).toContain(`--color-node-${kind}:`);
   });
 
   it('declares one light colour scheme and has no dark branch', () => {
     expect(html).toContain('<meta name="color-scheme" content="light">');
-    expect(html).not.toMatch(/prefers-color-scheme/);
-    expect(html).not.toMatch(/color-scheme:\s*(dark|light dark)/);
+    // The graph library's script names the media query for its own colour-mode switch, which the page never uses (it passes colorMode="light"):
+    // the gate reads the stylesheet and the page's own sources.
+    expect(css(html)).not.toMatch(/prefers-color-scheme/);
+    for (const path of walk('packages/report-view/src')) expect(read(path), path).not.toMatch(/prefers-color-scheme|colorMode="(system|dark)"/);
+    expect(css(html)).not.toMatch(/color-scheme:\s*(dark|light dark)/);
   });
 
   it('has no Chinese character', () => {

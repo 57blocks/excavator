@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 
-import { clearCount, clearReady, setCount, setReady } from '../ready';
+import { clearCount, clearReady, clearSignal, setCount, setReady, setSignal } from '../ready';
 
 /**
  * Publish a page's totals as `data-xv-count-<name>` on <html>. They are written
@@ -32,4 +32,13 @@ export function useReady(state: 'loading' | 'ready' | 'error', depKey = '') {
       clearReady();
     };
   }, [state, depKey]);
+}
+
+/** Publish a measurement as `data-xv-<name>` while the page shows it; null takes it off. */
+export function useSignal(name: string, value: string | null) {
+  useEffect(() => {
+    if (value === null) return undefined;
+    setSignal(name, value);
+    return () => clearSignal(name);
+  }, [name, value]);
 }

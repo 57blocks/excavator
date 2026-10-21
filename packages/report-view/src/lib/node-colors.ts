@@ -43,3 +43,23 @@ export function nodeColor(type: string): string {
   const kind = nodeKind(type);
   return kind === null ? 'var(--color-muted)' : `var(--color-node-${kind})`;
 }
+
+export interface LegendRow {
+  label: string;
+  /** The node types of the graph that this colour covers. */
+  types: string[];
+  colour: string;
+}
+
+/** One legend row for each kind some node type of the graph belongs to, and one `other` row for a type no kind lists. */
+export function legendRows(types: Iterable<string>): LegendRow[] {
+  const present = new Set(types);
+  const rows: LegendRow[] = [];
+  for (const kind of NODE_KINDS) {
+    const own = NODE_TYPES_BY_KIND[kind].filter((type) => present.has(type));
+    if (own.length > 0) rows.push({ label: KIND_LABELS[kind], types: own, colour: `var(--color-node-${kind})` });
+  }
+  const unknown = [...present].filter((type) => nodeKind(type) === null).sort();
+  if (unknown.length > 0) rows.push({ label: 'Other', types: unknown, colour: 'var(--color-muted)' });
+  return rows;
+}

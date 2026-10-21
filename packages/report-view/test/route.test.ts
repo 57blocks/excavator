@@ -1,14 +1,14 @@
 import { describe, expect, it } from 'vitest';
 
-import { buildHash, DEFAULT_PAGE, parseRoute } from '../src/lib/route';
+import { buildHash, DEFAULT_PAGE, isBareHash, parseRoute } from '../src/lib/route';
 
 const plain = (value: unknown) => JSON.parse(JSON.stringify(value));
 
 describe('parseRoute', () => {
   it.each([
-    ['', 'overview', '', {}],
-    ['#', 'overview', '', {}],
-    ['#/', 'overview', '', {}],
+    ['', 'graph', '', {}],
+    ['#', 'graph', '', {}],
+    ['#/', 'graph', '', {}],
     ['#/overview', 'overview', '', {}],
     ['#/unused', 'unused', '', {}],
     ['#/reports/hotspots', 'reports', 'hotspots', {}],
@@ -22,7 +22,7 @@ describe('parseRoute', () => {
     expect(plain(parseRoute(hash))).toEqual({ page, rest, params });
   });
 
-  it('gives the Overview for something that is not a string', () => {
+  it('gives the default page for something that is not a string', () => {
     expect(parseRoute(undefined).page).toBe(DEFAULT_PAGE);
     expect(parseRoute(null).page).toBe(DEFAULT_PAGE);
   });
@@ -32,6 +32,13 @@ describe('parseRoute', () => {
     expect(Object.keys(route.params)).toEqual(['__proto__', 'constructor']);
     expect(route.params.constructor).toBe('y');
     expect(Object.getPrototypeOf(route.params)).toBeNull();
+  });
+});
+
+describe('isBareHash', () => {
+  it('is true only for a hash that names no page', () => {
+    for (const hash of ['', '#', '#/']) expect(isBareHash(hash), hash).toBe(true);
+    for (const hash of ['#/graph', '#/overview', '#/?x=1', '#x']) expect(isBareHash(hash), hash).toBe(false);
   });
 });
 

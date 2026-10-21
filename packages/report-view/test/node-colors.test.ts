@@ -3,10 +3,10 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
-import { KIND_LABELS, NODE_KINDS, NODE_TYPES_BY_KIND, nodeColor, nodeKind } from '../src/lib/node-colors';
+import { KIND_LABELS, legendRows, NODE_KINDS, NODE_TYPES_BY_KIND, nodeColor, nodeKind } from '../src/lib/node-colors';
 
 const css = readFileSync(join(dirname(fileURLToPath(import.meta.url)), '../src/index.css'), 'utf-8');
-const theme = /@theme\s*\{([\s\S]*?)\n\}/.exec(css)?.[1] ?? '';
+const theme = /@theme\s+static\s*\{([\s\S]*?)\n\}/.exec(css)?.[1] ?? '';
 
 function tokens(prefix: string): Record<string, string> {
   return Object.fromEntries([...theme.matchAll(new RegExp(`--color-${prefix}([a-z0-9-]*):\\s*(#[0-9a-fA-F]{6})\\s*;`, 'g'))].map((m) => [m[1], m[2]]));
@@ -114,5 +114,23 @@ describe('the light theme tokens (design D8)', () => {
 
   it('loads no font and no external image from the stylesheet', () => {
     expect(css).not.toMatch(/@font-face|@import\s+url|url\(\s*['"]?(?!data:)/i);
+  });
+});
+
+describe('legendRows', () => {
+  it('has a row for each kind some type of the graph belongs to, in the order of the kinds, with the types it covers', () => {
+    expect(legendRows(['function', 'file', 'class', 'component'])).toEqual([
+      { label: KIND_LABELS.file, types: ['file'], colour: 'var(--color-node-file)' },
+      { label: KIND_LABELS.callable, types: ['function'], colour: 'var(--color-node-callable)' },
+      { label: KIND_LABELS.type, types: ['class', 'component'], colour: 'var(--color-node-type)' },
+    ]);
+  });
+
+  it('lists a type no kind knows under Other in muted grey, and shows nothing for a graph with no nodes', () => {
+    expect(legendRows(['file', 'invented', 'alien'])).toEqual([
+      { label: KIND_LABELS.file, types: ['file'], colour: 'var(--color-node-file)' },
+      { label: 'Other', types: ['alien', 'invented'], colour: 'var(--color-muted)' },
+    ]);
+    expect(legendRows([])).toEqual([]);
   });
 });

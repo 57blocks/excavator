@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
-import { clearCount, clearReady, setCount, setReady } from '../src/ready';
+import { clearCount, clearReady, clearSignal, setCount, setReady, setSignal } from '../src/ready';
 
 /** A document whose root element records attributes, as far as the signals need. */
 function stubDocument() {
@@ -40,5 +40,12 @@ describe('the ready and count conventions', () => {
     clearCount('nodes');
     expect(attributes.has('data-xv-count-nodes')).toBe(false);
     expect(attributes.get('data-xv-count-groups')).toBe('0');
+  });
+
+  it('writes a measurement that is no total as data-xv-<name> and takes it off again', () => {
+    setSignal('elk-ms', '12.5');
+    expect(attributes.get('data-xv-elk-ms')).toBe('12.5');
+    clearSignal('elk-ms');
+    expect(attributes.has('data-xv-elk-ms')).toBe(false);
   });
 });

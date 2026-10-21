@@ -4,8 +4,10 @@
  * The 57blocks light tokens (openspec: changes/viewer-app, design D8; the
  * colours are the site's, as in report-viewer D6). Light only: there is no dark
  * branch anywhere. No font is loaded: the names fall back to the system fonts.
+ * `static`: the tokens are read through var() from code as well (the node
+ * colours), and Tailwind would leave out a token no utility class uses.
  */
-@theme {
+@theme static {
   --color-paper: #ededef;
   --color-paper-2: #e2e2e6;
   --color-surface: #ffffff;
@@ -102,6 +104,37 @@
   backdrop-filter: blur(14px);
   border: 1px solid var(--color-line);
   box-shadow: var(--shadow-glass);
+}
+
+/* The graph canvas: the site's light background, nodes that lift on hover and a ring that pulses once on the selected one. */
+.react-flow {
+  --xy-background-color: var(--color-paper);
+  --xy-edge-label-color: var(--color-ink-soft);
+  font-family: var(--font-sans);
+}
+.react-flow__controls {
+  overflow: hidden;
+  border-radius: var(--radius-control);
+  box-shadow: var(--shadow-glass);
+}
+.xv-node {
+  transition: transform 0.2s var(--ease-site), box-shadow 0.2s var(--ease-site);
+}
+.xv-node:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 20px -8px rgb(12 12 18 / 0.28);
+}
+.xv-selected {
+  box-shadow: 0 0 0 2px var(--color-accent);
+  animation: xv-pulse 0.9s var(--ease-site) 1;
+}
+@keyframes xv-pulse {
+  from {
+    box-shadow: 0 0 0 2px var(--color-accent), 0 0 0 0 rgb(106 77 255 / 0.45);
+  }
+  to {
+    box-shadow: 0 0 0 2px var(--color-accent), 0 0 0 14px rgb(106 77 255 / 0);
+  }
 }
 
 /* The source panel: the class names and data attributes are what the smoke and acceptance scripts read. */

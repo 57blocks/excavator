@@ -12,7 +12,13 @@ export interface Route {
   params: Record<string, string>;
 }
 
-export const DEFAULT_PAGE = 'overview';
+/** The page an empty hash opens; the viewer falls back to the Overview when it has no knowledge graph to draw. */
+export const DEFAULT_PAGE = 'graph';
+
+/** True for a hash that names no page: the viewer was opened without a route. */
+export function isBareHash(hash: string): boolean {
+  return hash === '' || hash === '#' || hash === '#/';
+}
 
 function decode(text: string): string {
   try {
@@ -25,7 +31,7 @@ function decode(text: string): string {
 /**
  * parseRoute('#/code/x?path=a%2Fb&lines=3-9') gives
  * { page: 'code', rest: 'x', params: { path: 'a/b', lines: '3-9' } }.
- * An empty hash gives the Overview route; the page name is returned as typed otherwise.
+ * An empty hash gives the default page's route; the page name is returned as typed otherwise.
  * The first of a repeated key wins.
  */
 export function parseRoute(hash: unknown): Route {

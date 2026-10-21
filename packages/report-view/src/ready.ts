@@ -22,3 +22,12 @@ export function setCount(name: string, value: number) {
 export function clearCount(name: string) {
   document.documentElement.removeAttribute(`${COUNT_PREFIX}${name}`);
 }
+
+/** Publish a measurement that is not a total (an elapsed time, the place the page is at) as `data-xv-<name>`. */
+export function setSignal(name: string, value: string) {
+  document.documentElement.setAttribute(`data-xv-${name}`, value);
+}
+
+export function clearSignal(name: string) {
+  document.documentElement.removeAttribute(`data-xv-${name}`);
+}

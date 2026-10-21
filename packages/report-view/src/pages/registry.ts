@@ -5,6 +5,7 @@ import { codeStatus } from '../lib/code';
 import { worstStatus } from '../lib/products';
 import { CodePage } from './Code';
 import { DocMapPage } from './DocMap';
+import { GraphPage } from './Graph';
 import { HotspotsPage } from './Hotspots';
 import { OverviewPage } from './Overview';
 import { ReportsPage } from './Reports';
@@ -16,12 +17,15 @@ export interface PageDef {
   /** The state the navigation shows for this page. */
   status: (manifest: Manifest) => string;
   Component: ComponentType;
+  /** The page fills the main area edge to edge and scrolls itself. */
+  flush?: boolean;
 }
 
 const productStatus = (name: string) => (manifest: Manifest) => findProduct(manifest, name)?.status ?? 'not-run';
 
 /** The pages, in navigation order. */
 export const PAGES: readonly PageDef[] = [
+  { id: 'graph', label: 'Graph', status: productStatus('knowledge-graph'), Component: GraphPage, flush: true },
   { id: 'overview', label: 'Overview', status: (m) => worstStatus(m.products), Component: OverviewPage },
   { id: 'unused', label: 'Unused code', status: productStatus('unused-code'), Component: UnusedPage },
   { id: 'doc-map', label: 'Doc map', status: productStatus('doc-map'), Component: DocMapPage },
