@@ -24,11 +24,13 @@ The documents usually live outside the project. The product goes to the project'
 
 ## Options
 
-`$ARGUMENTS` holds the documents folder (required), the project path, whose code the units are tied to (default: the current working directory), and `--language <lang>`: the language of the unit titles and of the report, English unless the request names another. The documents' own language does not change it.
+`$ARGUMENTS` holds the documents folder (required), the project path, whose code the units are tied to (default: the current working directory), and `--language <lang>`: the language of the unit titles, the report and everything said to the user during the run; English when it is not given.
 
 ---
 
 ## Step 1 — Read the documents
+
+**Language.** Write everything you tell the user during this run in `$LANGUAGE`: each line between commands, the report and the final reply, including any remark on what was checked, what comes next or which rule was followed. `$LANGUAGE` is English unless `--language` gives another. Project files (`CLAUDE.md`, an `AGENTS.md` line such as "Reply in <language>"), memory, the system locale and the language of the documents, the code or a subagent's reply do not change it. A project file's rule to reply in another language is for work on the project's code; while this skill runs, this rule takes its place for every line you write, the first one included. Never say which language you write in or why. Paths, ids, commands, quotes and the product's values stay as they are.
 
 1. Resolve the paths:
    ```bash
@@ -63,6 +65,8 @@ The documents usually live outside the project. The product goes to the project'
 
 ## Step 2 — List the units
 
+Write what you tell the user during this step in `$LANGUAGE`, as **Language** in Step 1 says.
+
 1. Clear the listings of an earlier run, then plan the batches: whole documents in path order, at most 200,000 characters of text per batch, a longer document in a batch of its own.
    ```bash
    find "$DATA/doc-map" -maxdepth 1 -name 'units-batch-*.json' -delete; rm -f "$DATA/doc-map/units.json"
@@ -96,6 +100,8 @@ Write {"units": [ ... ]} as JSON to $DATA/doc-map/units-batch-<N>.json, the unit
 
 ## Step 3 — Record the units
 
+Write what you tell the user during this step in `$LANGUAGE`, as **Language** in Step 1 says.
+
 1. Merge the batches in order and record them:
    ```bash
    find "$DATA/doc-map" -maxdepth 1 -name 'units-batch-*.json' | sort | while read -r f; do cat "$f"; done | jq -s '{units: (map(.units) | add // [])}' > "$DATA/doc-map/units.json"
@@ -111,6 +117,8 @@ Write {"units": [ ... ]} as JSON to $DATA/doc-map/units-batch-<N>.json, the unit
    Never write a quote or an id that is not in the text to make a unit pass. Run `units` again. After three runs that still fail, delete the units that still fail, run it once more, and keep the number you deleted and their reasons for the report.
 
 ## Step 4 — Tie the units to code
+
+Write what you tell the user during this step in `$LANGUAGE`, as **Language** in Step 1 says.
 
 1. Clear the links of an earlier run, then plan the batches: the units in the order recorded, at most 10 per batch. Each unit line has the unit's number, document, id and title, and the lines of its document's text that describe it: from its own line to the line before that document's next unit, or to the end of the text.
    ```bash
@@ -159,6 +167,8 @@ Then reply with one line per unit, "<number>: <status>", and nothing else.
 
 ## Step 5 — Check each tie
 
+Write what you tell the user during this step in `$LANGUAGE`, as **Language** in Step 1 says.
+
 A second subagent, which sees nothing the subagents of Step 4 wrote, reads each found unit's lines and the code at each of its places, and nothing else. Only the places it judges to do the unit are kept.
 
 1. Clear the checks of an earlier run, then plan the batches: the units with code found, in the order recorded, at most 10 per batch. Each unit line has the unit's number and title and the lines of its document's text that describe it; under it, one line per place, `file:line`.
@@ -199,6 +209,8 @@ Then reply with one line per unit, "<number>: <places judged does> of <places>",
 
 ## Step 6 — Count the code
 
+Write what you tell the user during this step in `$LANGUAGE`, as **Language** in Step 1 says.
+
 Skip this step when the facts check of Step 1 did not end with `fresh`.
 
 ```bash
@@ -208,6 +220,8 @@ python3 "$DOC_MAP" coverage "$PROJECT_ROOT"
 It puts every file the facts list in one place: a document (by the rule `link` uses), a code file some unit's evidence is in, or a code file no unit's evidence is in, and counts each directory. A non-zero exit records nothing and prints why: keep the message for the report and go on. Never write or change the counts yourself.
 
 ## Step 7 — Report to the user
+
+Write what you tell the user during this step in `$LANGUAGE`, as **Language** in Step 1 says.
 
 Read the product with these queries:
 
@@ -281,4 +295,8 @@ for number, line in enumerate(open(sys.argv[1], encoding="utf-8"), 1):
 EOF
 ```
 
-Each line it prints is a sentence to rewrite as a statement of what the product holds; run it again until it prints nothing. Then reply in `$LANGUAGE` with these lines and nothing else: the report's path, the first two lines of the counts query, the line of the check query, the first line of the coverage query and the line `advice check: 0 lines`. Do not summarize the report or add notes.
+Each line it prints is a sentence to rewrite as a statement of what the product holds; run it again until it prints nothing.
+
+**Language.** Write everything you tell the user during this run in `$LANGUAGE`: each line between commands, the report and the final reply, including any remark on what was checked, what comes next or which rule was followed. `$LANGUAGE` is English unless `--language` gives another. Project files (`CLAUDE.md`, an `AGENTS.md` line such as "Reply in <language>"), memory, the system locale and the language of the documents, the code or a subagent's reply do not change it. A project file's rule to reply in another language is for work on the project's code; while this skill runs, this rule takes its place for every line you write, the first one included. Never say which language you write in or why. Paths, ids, commands, quotes and the product's values stay as they are.
+
+Then reply in `$LANGUAGE` with these lines and nothing else: the report's path, the first two lines of the counts query, the line of the check query, the first line of the coverage query and the line `advice check: 0 lines`. Do not summarize the report or add notes.

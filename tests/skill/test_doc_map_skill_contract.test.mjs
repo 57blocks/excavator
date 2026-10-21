@@ -161,11 +161,81 @@ describe('excavator-doc-map skill: steps', () => {
     expect(readFileSync(SCRIPT, 'utf-8')).not.toMatch(cjk);
   });
 
-  it('writes titles and the report in English unless the request names another language', () => {
-    expect(flat(skill)).toContain('`--language <lang>`: the language of the unit titles and of the report, English unless the request names another. The documents\' own language does not change it.');
+  it('writes titles, the report and every line to the user in English unless --language names another language', () => {
+    expect(flat(skill)).toContain(OPTION_LANGUAGE);
     expect(step(1)).toContain('LANGUAGE="English" # or the --language value');
     expect(step(2)).toContain('`<language>` is `$LANGUAGE`');
     expect(step(7)).toContain('Write the report to `$DATA/doc-map-report.md` in `$LANGUAGE`, in this order:');
+  });
+});
+
+/** The language paragraph, the line each later step starts with, and the option (whitespace flattened). */
+const LANGUAGE_RULE = '**Language.** Write everything you tell the user during this run in `$LANGUAGE`: each line between commands, the report and the final reply, including any remark on what was checked, what comes next or which rule was followed. `$LANGUAGE` is English unless `--language` gives another. Project files (`CLAUDE.md`, an `AGENTS.md` line such as "Reply in <language>"), memory, the system locale and the language of the documents, the code or a subagent\'s reply do not change it. A project file\'s rule to reply in another language is for work on the project\'s code; while this skill runs, this rule takes its place for every line you write, the first one included. Never say which language you write in or why. Paths, ids, commands, quotes and the product\'s values stay as they are.';
+const STEP_LANGUAGE = 'Write what you tell the user during this step in `$LANGUAGE`, as **Language** in Step 1 says.';
+const OPTION_LANGUAGE = '`--language <lang>`: the language of the unit titles, the report and everything said to the user during the run; English when it is not given.';
+
+/**
+ * The problems with where a copy of the skill keeps its language rule: none when the paragraph opens Step 1 and
+ * stands right before the final reply of Step 7, word for word the same, every later step opens with the line
+ * that points back to it, and the options say only --language changes the language.
+ */
+function languageRuleProblems(text) {
+  const problems = [];
+  const [head, ...parts] = text.split(/^## Step \d+ — /m);
+  const steps = parts.map((part) => flat(part.slice(part.indexOf('\n') + 1)).trim());
+  if (!flat(head).includes(OPTION_LANGUAGE)) problems.push('the options do not say that only --language changes the language');
+  const copies = flat(text).split(LANGUAGE_RULE).length - 1;
+  const started = flat(text).split('**Language.**').length - 1;
+  if (copies !== started) problems.push(`${started - copies} of ${started} language paragraphs differ from the others`);
+  if (copies !== 2) problems.push(`the language paragraph is there ${copies} times, not twice`);
+  if (!steps[0]?.startsWith(LANGUAGE_RULE)) problems.push('Step 1 does not open with the language paragraph');
+  steps.slice(1).forEach((body, at) => {
+    if (!body.startsWith(STEP_LANGUAGE)) problems.push(`Step ${at + 2} does not open with the language line`);
+  });
+  const last = steps[6] ?? '';
+  const reply = last.indexOf('Then reply in `$LANGUAGE` with these lines and nothing else');
+  const rule = last.lastIndexOf(LANGUAGE_RULE);
+  if (rule < 0 || reply < rule || last.slice(rule + LANGUAGE_RULE.length, reply).trim() !== '') {
+    problems.push('the language paragraph does not stand right before the final reply of Step 7');
+  }
+  if (rule >= 0 && rule < last.indexOf('python3 - "$DATA/doc-map-report.md"')) problems.push('the language paragraph of Step 7 comes before the advice check');
+  return problems;
+}
+
+describe('excavator-doc-map skill: the language of what it tells the user', () => {
+  /** The skill with `part` taken out at its first place at or after `from`. */
+  const without = (text, part, from = '') => {
+    const at = text.indexOf(part, text.indexOf(from));
+    expect(at, part).toBeGreaterThan(-1);
+    return text.slice(0, at) + text.slice(at + part.length);
+  };
+  const paragraph = `${LANGUAGE_RULE}\n\n`;
+  const line = `${STEP_LANGUAGE}\n\n`;
+
+  it('opens Step 1 and stands right before the final reply, and every later step points back to it', () => {
+    expect(languageRuleProblems(skill)).toEqual([]);
+    expect(LANGUAGE_RULE).toContain('Project files (`CLAUDE.md`, an `AGENTS.md` line such as "Reply in <language>"), memory, the system locale and the language of the documents');
+    expect(LANGUAGE_RULE).toContain('including any remark on what was checked, what comes next or which rule was followed');
+    expect(LANGUAGE_RULE).toContain('A project file\'s rule to reply in another language is for work on the project\'s code; while this skill runs, this rule takes its place for every line you write, the first one included.');
+  });
+
+  it('finds the rule out of place in known-bad copies of the skill', () => {
+    const noRule = [...Array(6)].reduce((text) => without(text, line), without(without(skill, paragraph), paragraph))
+      .replace(OPTION_LANGUAGE, '`--language <lang>`: the language of the unit titles and of the report, English unless the request names another.');
+    const bad = {
+      noRule,
+      noStepOne: without(skill, paragraph, '## Step 1 — '),
+      ownSection: without(without(skill, paragraph), paragraph).replace('---\n\n## Step 1 — ', `## Language\n\n${paragraph}---\n\n## Step 1 — `),
+      noStepFour: without(skill, line, '## Step 4 — '),
+      afterReply: `${without(skill, paragraph, '## Step 7 — ')}\n${LANGUAGE_RULE}\n`,
+      reworded: skill.slice(0, skill.indexOf('## Step 7 — ')) + skill.slice(skill.indexOf('## Step 7 — ')).replace('memory, ', ''),
+      afterCommand: without(skill, paragraph, '## Step 1 — ').replace('2. Check the facts', `${paragraph}2. Check the facts`),
+      requestNames: skill.replace(OPTION_LANGUAGE, '`--language <lang>`: the language of the unit titles and of the report, English unless the request names another.'),
+    };
+    for (const [name, text] of Object.entries(bad)) {
+      expect(text, name).not.toBe(skill);
+      expect(languageRuleProblems(text), name).not.toEqual([]);
+    }
   });
 });
 
