@@ -240,6 +240,14 @@ code { background: var(--paper); border-radius: 6px; padding: 1px 6px; }
 .xv-evidence .xv-quote { margin: 6px 0; }
 .xv-evidence p { margin: 4px 0 0; overflow-wrap: anywhere; }
 
+.xv-scorecell { display: flex; align-items: center; justify-content: flex-end; gap: 8px; height: 20px; }
+.xv-bar { display: inline-block; width: 56px; height: 6px; border-radius: 3px; background: var(--paper-2); overflow: hidden; }
+.xv-bar-fill { display: block; height: 100%; background: var(--accent); }
+.xv-scorenum { min-width: 72px; text-align: right; font-variant-numeric: tabular-nums; }
+.xv-dense .xv-table td:has(> .xv-spark) { padding-top: 4px; padding-bottom: 3px; }
+.xv-spark { display: block; border-bottom: 1px solid var(--line-2); }
+.xv-spark-bar { fill: var(--accent); }
+
 .xv-clickable { cursor: pointer; }
 .xv-clickable:hover td { background: var(--paper); }
 .xv-row-selected td { background: var(--highlight-row); }

@@ -64,8 +64,9 @@
 
   // ---- DOM ----
 
-  /** A cell's content: a missing value (null, '' or the empty-value dash) shows as a muted dash. */
+  /** A cell's content: a missing value (null, '' or the empty-value dash) shows as a muted dash; a field the product lacks says so. */
   function cellContent(value) {
+    if (value === XV.NOT_PROVIDED) return h('span', { class: 'xv-muted', text: XV.NOT_PROVIDED });
     if (value === null || value === undefined || value === '' || value === XV.EMPTY) return h('span', { class: 'xv-muted', text: XV.EMPTY });
     return value;
   }
@@ -140,11 +141,16 @@
 
   /**
    * A table that sorts by any column and pages. columns: [{ label, num, width ('sm', 'md', 'lg' or 'xl': cut with an ellipsis), title(row) -> the whole text, key(row) -> sort key, render(row) -> text or node }].
-   * Options onRowClick(row) and rowClass(row) make rows clickable and mark one. Returns { el, setRows(rows), refresh() }. Sorting and paging act on every row handed in.
+   * Option initialSort { label, dir } sorts from the start by the column of that label (rows without a key come last either way). Options onRowClick(row) and rowClass(row) make rows clickable and mark one. Returns { el, setRows(rows), refresh() }. Sorting and paging act on every row handed in.
    */
   function dataTable(options) {
     var size = options.pageSize || PAGE_SIZE;
     var state = { rows: options.rows, column: -1, dir: 1, page: 1 };
+    if (options.initialSort) {
+      state.column = options.columns.map(function (c) { return c.label; }).indexOf(options.initialSort.label);
+      if (state.column < 0) throw new Error('initialSort names no column: ' + options.initialSort.label);
+      state.dir = options.initialSort.dir;
+    }
     var el = h('div', { class: 'xv-dt' });
 
     function visibleRows() {
@@ -221,6 +227,25 @@
     };
   }
 
+  // The SVG namespace is an identifier the DOM API needs, not an address anything is loaded from.
+  var SVG_NAMESPACE = ['http', '//www.w3.org/2000/svg'].join(':');
+
+  /** An SVG element built with createElementNS; attrs are set as attributes, children are elements or text. */
+  function svgEl(tag, attrs) {
+    var el = document.createElementNS(SVG_NAMESPACE, tag);
+    Object.keys(attrs || {}).forEach(function (name) {
+      if (/^on/i.test(name) || name === 'style' || name === 'href') throw new Error('attribute not allowed: ' + name);
+      el.setAttribute(name, String(attrs[name]));
+    });
+    for (var i = 2; i < arguments.length; i++) {
+      var child = arguments[i];
+      if (child === null || child === undefined || child === false) continue;
+      el.appendChild(typeof child === 'object' ? child : document.createTextNode(String(child)));
+    }
+    return el;
+  }
+
+  XV.svgEl = svgEl;
   XV.cellContent = cellContent;
   XV.chipGroup = chipGroup;
   XV.tile = tile;

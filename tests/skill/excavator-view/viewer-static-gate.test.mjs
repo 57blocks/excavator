@@ -42,6 +42,7 @@ describe('viewer/ is a standalone, dependency-free project', () => {
       'viewer/src/core.js',
       'viewer/src/data.js',
       'viewer/src/docmap.js',
+      'viewer/src/hotspots.js',
       'viewer/src/overview.js',
       'viewer/src/router.js',
       'viewer/src/unused.js',

@@ -93,6 +93,8 @@
 
   XV.h = h;
   XV.EMPTY = EMPTY;
+  // What the page says where a product predates a field (the field is absent, not null).
+  XV.NOT_PROVIDED = 'not provided by the product';
   XV.formatNumber = formatNumber;
   XV.replaceChildren = replaceChildren;
   XV.statusLabel = statusLabel;
