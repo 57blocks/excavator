@@ -115,6 +115,25 @@ describe('the level under a path', () => {
     expect(src.entries.map((e) => [e.kind, e.label, e.files])).toEqual([['container', 'core', 5], ['container', 'web', 3], ['file', 'index.js', 1], ['file', 'types.js', 1]]);
   });
 
+  it('names the directory a container stands for, and none for a file, a fold or a group of the files directly in a directory', () => {
+    const src = buildLevel(structure, { path: 'src' }) as Level;
+    expect(src.entries.map((e) => [e.label, e.dir])).toEqual([['core', 'src/core'], ['web', 'src/web'], ['index.js', null], ['types.js', null]]);
+    // A chain of single-child directories stands for the directory that ends it.
+    expect((buildLevel(structure, { path: 'deep' }) as Level).entries.map((e) => e.dir)).toEqual(['deep/one/two/three']);
+    // A group of the top level that is a directory stands for that directory; the root group stands for none.
+    const top = buildLevel(structure, {}) as Level;
+    expect(top.entries.map((e) => [e.label, e.dir]).sort()).toEqual([['(root)', null], ['api', 'api'], ['deep', 'deep'], ['src', 'src']]);
+  });
+
+  it('gives a layer cluster and a fold no directory', () => {
+    const layered = structureOf(['a/x.js', 'b/y.js'].map(file), [], [{ id: 'layer:one', name: 'One', nodeIds: ['file:a/x.js'] }, { id: 'layer:two', name: 'Two', nodeIds: ['file:b/y.js'] }]);
+    expect((buildLevel(layered, {}) as Level).entries.map((e) => [e.kind, e.dir])).toEqual([['cluster', null], ['cluster', null]]);
+    const wide = structureOf(Array.from({ length: 450 }, (_, i) => file(`g${String(i).padStart(3, '0')}/x.js`)));
+    const folds = (buildLevel(wide, {}) as Level).entries.filter((e) => e.kind === 'fold');
+    expect(folds.length).toBeGreaterThan(0);
+    expect(folds.every((e) => e.dir === null)).toBe(true);
+  });
+
   it('shows a chain of directories with one child and no file as one container', () => {
     const top = buildLevel(structure, { path: 'deep' }) as Level;
     expect(top.entries.map((e) => [e.label, e.files, e.target?.path])).toEqual([['one/two/three', 1, 'deep/one/two/three']]);

@@ -3,20 +3,25 @@
  * D8; spec "Product overlays"). What each overlay marks, read off the product's
  * own records and nothing else:
  *   hotspots  files by the band of their score; the bands are the quartiles of
- *             the scores the product lists, so they follow its own distribution;
+ *             the scores the product lists, so they follow its own distribution.
+ *             A directory the product lists with a score is banded by that
+ *             score among the product's directory scores; a layer cluster, a
+ *             fold, or a directory the product has no score for, by the sum of
+ *             its files' scores among the entries of the level that are banded
+ *             that way (`hotspotsRules`);
  *   unused    the functions the unused-code product lists, and the files that
  *             hold them, by the product's confidence;
  *   doc-map   the files of the doc map's coverage, with and without evidence.
- * A directory, layer or fold has no record of its own here: it takes what its
- * files have (the highest band, the count of listed functions, how many files
- * have evidence), and its tooltip says so.
+ * For unused and doc-map, a directory, layer or fold has no record of its own
+ * here: it takes what its files have (the count of listed functions, how many
+ * files have evidence), and its tooltip says so.
  * Every sentence states a number or a fact; none advises.
  */
 
 import type { GraphIndex } from '../data/indexes';
 import { mapUnused } from '../data/product-mapping';
 import { formatNumber, EN_DASH } from './format';
-import type { FileInfo } from './graph-structure';
+import type { FileInfo, LevelEntry } from './graph-structure';
 import { OVERLAY_NAMES as OVERLAYS_IN_ORDER, OVERLAYS, type OverlayName } from './overlay-names';
 
 type Json = Record<string, any>;
@@ -91,18 +96,87 @@ export interface HotspotsFacts {
   /** Every path the product lists, with or without a score (a binary file has none). */
   listed: ReadonlySet<string>;
   bands: ScoreBands;
+  /** The score of each directory the product lists with one, by path, and the bands of those scores. */
+  directoryScores: ReadonlyMap<string, number>;
+  directoryBands: ScoreBands;
 }
 
-/** The hotspots product's files: each path once (the first row wins), and the bands of the scores. */
+const scoreOf = (row: Json): number | null => (typeof row.score === 'number' && Number.isFinite(row.score) ? row.score : null);
+
+/** The hotspots product's files and directories: each path once (the first row wins), and the bands of each kind of score. */
 export function hotspotsFacts(product: Json): HotspotsFacts {
   const scores = new Map<string, number>();
   const listed = new Set<string>();
   for (const row of listOf(product.files)) {
     if (typeof row.path !== 'string' || listed.has(row.path)) continue;
     listed.add(row.path);
-    if (typeof row.score === 'number' && Number.isFinite(row.score)) scores.set(row.path, row.score);
+    const score = scoreOf(row);
+    if (score !== null) scores.set(row.path, score);
   }
-  return { scores, listed, bands: scoreBands([...scores.values()]) };
+  const directoryScores = new Map<string, number>();
+  const seenDirectories = new Set<string>();
+  for (const row of listOf(product.directories)) {
+    if (typeof row.path !== 'string' || seenDirectories.has(row.path)) continue;
+    seenDirectories.add(row.path);
+    const score = scoreOf(row);
+    if (score !== null) directoryScores.set(row.path, score);
+  }
+  return { scores, listed, bands: scoreBands([...scores.values()]), directoryScores, directoryBands: scoreBands([...directoryScores.values()]) };
+}
+
+/**
+ * How an entry of a level takes its band:
+ *   file       its own score, among the file scores the product lists;
+ *   directory  the product's score for the directory it stands for, among the product's directory scores;
+ *   sum        the sum of the scores of its files that have one, among the entries of the level that are banded that way
+ *              (a layer cluster, a fold, a directory the product has no score for); `sum` is null when none of its files has a score.
+ */
+export type EntryHot =
+  | { rule: 'file' }
+  | { rule: 'directory'; dir: string; score: number }
+  | { rule: 'sum'; sum: number | null; scored: number; siblings: number; bands: ScoreBands };
+
+/** The bands each rule used at a level has; null for a rule no entry of the level takes. */
+export interface HotspotsScales {
+  files: ScoreBands | null;
+  directories: ScoreBands | null;
+  sums: ScoreBands | null;
+}
+
+/** The rule of each entry of a level, and the bands of the rules the level uses. */
+export function hotspotsRules(entries: readonly Pick<LevelEntry, 'id' | 'kind' | 'dir' | 'members'>[], facts: HotspotsFacts): { byEntry: Map<string, EntryHot>; scales: HotspotsScales } {
+  const byEntry = new Map<string, EntryHot>();
+  const sums: { id: string; sum: number | null; scored: number }[] = [];
+  let anyFile = false;
+  let anyDirectory = false;
+  for (const entry of entries) {
+    if (entry.kind === 'file') {
+      anyFile = true;
+      byEntry.set(entry.id, { rule: 'file' });
+      continue;
+    }
+    const score = entry.kind === 'container' && entry.dir !== null ? facts.directoryScores.get(entry.dir) : undefined;
+    if (entry.dir !== null && score !== undefined) {
+      anyDirectory = true;
+      byEntry.set(entry.id, { rule: 'directory', dir: entry.dir, score });
+      continue;
+    }
+    let sum = 0;
+    let scored = 0;
+    for (const file of entry.members) {
+      const fileScore = facts.scores.get(file.path);
+      if (fileScore === undefined) continue;
+      sum += fileScore;
+      scored += 1;
+    }
+    sums.push({ id: entry.id, sum: scored === 0 ? null : sum, scored });
+  }
+  const bands = scoreBands(sums.flatMap((row) => (row.sum === null ? [] : [row.sum])));
+  for (const row of sums) byEntry.set(row.id, { rule: 'sum', sum: row.sum, scored: row.scored, siblings: bands.scored, bands });
+  return {
+    byEntry,
+    scales: { files: anyFile ? facts.bands : null, directories: anyDirectory ? facts.directoryBands : null, sums: sums.length > 0 ? bands : null },
+  };
 }
 
 // ------------------------------------------------------------------ unused
@@ -198,29 +272,29 @@ const bandText = (bands: ScoreBands, index: number) => {
   return `band ${index + 1} of ${bands.bands.length} (${formatNumber(band.min)} to ${formatNumber(band.max)})`;
 };
 
-function hotspotsMark(members: readonly FileInfo[], facts: HotspotsFacts, aggregated: boolean): { hot: number | null; line: string } {
+/** The mark of one entry under the hotspots overlay: its fill level and the sentence that says which rule gave it. */
+function hotspotsMark(members: readonly FileInfo[], facts: HotspotsFacts, hot: EntryHot): { hot: number | null; line: string } {
+  if (hot.rule === 'directory') {
+    const band = bandOf(hot.score, facts.directoryBands);
+    const bands = facts.directoryBands;
+    return { hot: hotLevel(band, bands.bands.length), line: `Hotspots: the product lists this directory with score ${formatNumber(hot.score)}, ${bandText(bands, band)}, among the ${formatNumber(bands.scored)} directory scores it lists.` };
+  }
+  if (hot.rule === 'sum') {
+    if (hot.sum === null) return { hot: null, line: `Hotspots: none of its ${plural(members.length, 'file')} has a score.` };
+    const band = bandOf(hot.sum, hot.bands);
+    return {
+      hot: hotLevel(band, hot.bands.bands.length),
+      line: `Hotspots: the scores of its ${plural(hot.scored, 'scored file')} (of ${formatNumber(members.length)}) add up to ${formatNumber(hot.sum)}; ${bandText(hot.bands, band)} among the ${hot.siblings === 1 ? '1 entry of this level that has' : `${formatNumber(hot.siblings)} entries of this level that have`} no directory score.`,
+    };
+  }
   const { bands } = facts;
-  let top: number | null = null;
-  let topScore = 0;
-  let scored = 0;
-  let listed = 0;
-  for (const file of members) {
-    if (facts.listed.has(file.path)) listed += 1;
-    const score = facts.scores.get(file.path);
-    if (score === undefined) continue;
-    scored += 1;
-    topScore = Math.max(topScore, score);
+  const file = members[0];
+  const score = facts.scores.get(file.path);
+  if (score !== undefined) {
     const band = bandOf(score, bands);
-    if (top === null || band > top) top = band;
+    return { hot: hotLevel(band, bands.bands.length), line: `Hotspots: score ${formatNumber(score)}, ${bandText(bands, band)}.` };
   }
-  const hot = top === null ? null : hotLevel(top, bands.bands.length);
-  if (!aggregated) {
-    const file = members[0];
-    if (top !== null) return { hot, line: `Hotspots: score ${formatNumber(facts.scores.get(file.path))}, ${bandText(bands, top)}.` };
-    return { hot, line: facts.listed.has(file.path) ? 'Hotspots: the product lists this file without a score.' : 'Hotspots: the product lists no history for this file.' };
-  }
-  if (top === null) return { hot, line: `Hotspots: none of its ${plural(members.length, 'file')} has a score (${formatNumber(listed)} listed).` };
-  return { hot, line: `Hotspots: the highest band among its ${plural(members.length, 'file')}: ${bandText(bands, top)}; the highest score is ${formatNumber(topScore)}; ${formatNumber(scored)} of them ${scored === 1 ? 'has' : 'have'} a score.` };
+  return { hot: null, line: facts.listed.has(file.path) ? 'Hotspots: the product lists this file without a score.' : 'Hotspots: the product lists no history for this file.' };
 }
 
 function countsText(counts: ConfidenceCounts): string {
@@ -273,16 +347,18 @@ function docMapMark(members: readonly FileInfo[], facts: DocMapFacts, aggregated
 
 /**
  * How an entry of a level is drawn: `members` are the files it stands for (one for a file node). A directory, a layer
- * or a fold (`aggregated`) takes what its files have, and its title says so. Null when no overlay is on.
+ * or a fold (`aggregated`) takes what its files have for the unused and doc-map overlays; the hotspots overlay bands it
+ * by `hot`, the rule `hotspotsRules` gave it (a file's own score when none is given). The title says which. Null when
+ * no overlay is on.
  */
-export function entryMarks(members: readonly FileInfo[], facts: OverlayFacts, aggregated: boolean): NodeMarks | null {
+export function entryMarks(members: readonly FileInfo[], facts: OverlayFacts, aggregated: boolean, hot: EntryHot = { rule: 'file' }): NodeMarks | null {
   if (!anyOverlay(facts) || members.length === 0) return null;
   const lines: string[] = [];
   const chips: Chip[] = [];
-  let hot: number | null = null;
+  let level: number | null = null;
   if (facts.hotspots) {
-    const mark = hotspotsMark(members, facts.hotspots, aggregated);
-    hot = mark.hot;
+    const mark = hotspotsMark(members, facts.hotspots, hot);
+    level = mark.hot;
     lines.push(mark.line);
   }
   if (facts.unused) {
@@ -295,7 +371,7 @@ export function entryMarks(members: readonly FileInfo[], facts: OverlayFacts, ag
     if (mark.chip) chips.push(mark.chip);
     lines.push(mark.line);
   }
-  return { hot, chips, title: lines.join('\n') };
+  return { hot: level, chips, title: lines.join('\n') };
 }
 
 /** How a function row inside an open file is drawn: marked when the unused-code product lists it. */
@@ -328,22 +404,38 @@ export interface Legend {
 
 const AGGREGATE_NOTE = 'A directory, layer or fold takes what its files have.';
 
-/** The legend of one overlay that is on: the colours and what they stand for, and how the bands or marks were made. */
-export function legendOf(overlay: OverlayName, facts: OverlayFacts): Legend | null {
+const cutsOf = (bands: ScoreBands) => (bands.cuts.length === 0 ? 'no cut point, since every score is the same' : `cut points ${bands.cuts.map((cut) => formatNumber(cut)).join(', ')}`);
+
+/** The legend rows of one scale of the hotspots overlay, and the sentence that says which entries take it. */
+function scaleLegend(prefix: string, bands: ScoreBands, none: string, rule: (scored: string, cuts: string) => string): { rows: LegendRow[]; sentence: string } {
+  if (bands.scored === 0) return { rows: [], sentence: none };
+  const range = (band: Band) => (band.min === band.max ? formatNumber(band.min) : `${formatNumber(band.min)} ${EN_DASH} ${formatNumber(band.max)}`);
+  return {
+    rows: bands.bands.map((band) => ({ label: `${prefix} ${range(band)}`, swatch: { hot: hotLevel(band.index, bands.bands.length) }, count: band.count })),
+    sentence: rule(formatNumber(bands.scored), cutsOf(bands)),
+  };
+}
+
+/**
+ * The legend of one overlay that is on: the colours and what they stand for, and how the bands or marks were made. For hotspots,
+ * `scales` are the rules the level uses (see hotspotsRules); each has its own rows and its own sentence, so the legend says
+ * exactly which entries are banded how. Without a level, the file scale alone.
+ */
+export function legendOf(overlay: OverlayName, facts: OverlayFacts, scales?: HotspotsScales): Legend | null {
   const title = OVERLAYS[overlay].label;
   if (overlay === 'hotspots' && facts.hotspots) {
-    const { bands } = facts.hotspots;
-    if (bands.scored === 0) return { overlay, title, rows: [], note: 'The product lists no file with a score, so there are no bands.' };
-    const cutText = bands.cuts.length === 0 ? 'no cut point, since every score is the same' : `cut points ${bands.cuts.map((cut) => formatNumber(cut)).join(', ')}`;
+    const used = scales ?? { files: facts.hotspots.bands, directories: null, sums: null };
+    const parts = [
+      used.files && scaleLegend('Files', used.files, 'The product lists no file with a score, so there are no bands.', (scored, cuts) => `A file is banded by its own score, among the quartiles of the ${scored} file scores the product lists (${cuts}).`),
+      used.directories && scaleLegend('Directories', used.directories, 'The product lists no directory with a score, so there are no bands.', (scored, cuts) => `A directory the product lists is banded by the product's score for it, among the quartiles of its ${scored} directory scores (${cuts}).`),
+      used.sums && scaleLegend('Sums', used.sums, "None of the files of the layers, folds and unscored directories drawn at this level has a score, so they have no bands.", (scored, cuts) => `A layer, a fold, or a directory the product has no score for is banded by the sum of its files' scores, among the quartiles of the ${scored} such ${scored === '1' ? 'entry drawn at this level that has' : 'entries drawn at this level that have'} a sum (${cuts}).`),
+    ].filter((part): part is { rows: LegendRow[]; sentence: string } => part !== null && part !== undefined);
+    const banded = parts.some((part) => part.rows.length > 0);
     return {
       overlay,
       title,
-      rows: bands.bands.map((band) => ({
-        label: band.min === band.max ? formatNumber(band.min) : `${formatNumber(band.min)} ${EN_DASH} ${formatNumber(band.max)}`,
-        swatch: { hot: hotLevel(band.index, bands.bands.length) },
-        count: band.count,
-      })),
-      note: `Bands are the quartiles of the ${formatNumber(bands.scored)} file scores the product lists (${cutText}). A score on a cut point is in the higher band. A directory, layer or fold takes the highest band among its files.`,
+      rows: parts.flatMap((part) => part.rows),
+      note: parts.length === 0 ? 'No entry of this level is banded.' : [...parts.map((part) => part.sentence), ...(banded ? ['A score on a cut point is in the higher band.'] : [])].join(' '),
     };
   }
   if (overlay === 'unused' && facts.unused) {
@@ -393,10 +485,10 @@ export interface LegendBlock {
 export type OverlayProducts = Partial<Record<OverlayName, { status: string; revision?: string | null } | undefined>>;
 
 /**
- * What the legend says for each overlay that is on, in the fixed order: its colours and how they were made, or, when
- * its product is not in the page, is still being read or could not be read, that.
+ * What the legend says for each overlay that is on, in the fixed order: its colours and how they were made (for hotspots,
+ * the rules of the level shown, `scales`), or, when its product is not in the page, is still being read or could not be read, that.
  */
-export function legendBlocks(on: readonly OverlayName[], facts: OverlayFacts, products: OverlayProducts, state: { pending: boolean; error: string | null }): LegendBlock[] {
+export function legendBlocks(on: readonly OverlayName[], facts: OverlayFacts, products: OverlayProducts, state: { pending: boolean; error: string | null }, scales?: HotspotsScales): LegendBlock[] {
   const blocks: LegendBlock[] = [];
   for (const overlay of OVERLAYS_IN_ORDER) {
     if (!on.includes(overlay)) continue;
@@ -407,7 +499,7 @@ export function legendBlocks(on: readonly OverlayName[], facts: OverlayFacts, pr
       blocks.push({ overlay, title, rows: [], note: `The ${title.toLowerCase()} product is ${availability.text}: nothing is marked.` });
       continue;
     }
-    const legend = legendOf(overlay, facts);
+    const legend = legendOf(overlay, facts, scales);
     const revision = product?.status === 'different-revision' ? ` The product was made at ${product.revision}, not at the source snapshot.` : '';
     if (legend) blocks.push({ overlay, title, rows: legend.rows, note: legend.note + revision });
     else if (state.error !== null) blocks.push({ overlay, title, rows: [], note: `The product could not be read: ${state.error}` });

@@ -154,3 +154,44 @@ export function semanticCache(entries, extra = {}) {
 export function semanticGraph({ factDigest, layers = [], extra = {} }) {
   return { version: '2.0.0', contentLanguage: 'en', factDigest, generatedAt: '2026-01-01T00:00:00.000Z', model: 'fixture', layers, relations: [], gaps: [], ...extra };
 }
+
+/**
+ * A domain graph as the Domain skill saves it: two domains, one cross-domain edge, a flow in each, and steps whose
+ * `flow_step` weights are not in the order they are listed in (the page sorts by weight). `extra` replaces top-level keys.
+ */
+export function domainGraph({ sourceRevision, factDigest, extra = {} } = {}) {
+  const step = (flow, name, extra2 = {}) => ({ id: `step:${flow}:${name}`, type: 'step', name, summary: `Does ${name}.`, filePath: 'src/a.js', nodeIds: ['file:src/a.js'], evidence: [{ file: 'src/a.js', line: 1, source: 'rule' }], ...extra2 });
+  const nodes = [
+    { id: 'domain:billing', type: 'domain', name: 'Billing', summary: 'Charges customers.', tags: [], complexity: 'moderate', domainMeta: { entities: ['Invoice'], businessRules: ['An invoice is issued once'] } },
+    { id: 'domain:shipping', type: 'domain', name: 'Shipping', summary: 'Moves parcels.', tags: [], complexity: 'simple', domainMeta: { entities: ['Parcel'] } },
+    { id: 'flow:charge', type: 'flow', name: 'Charge a customer', summary: 'Takes payment.', tags: [], complexity: 'moderate', domainMeta: { entryPoint: 'POST /charge', entryType: 'http' } },
+    { id: 'flow:dispatch', type: 'flow', name: 'Dispatch a parcel', summary: 'Hands a parcel to a carrier.', tags: [], complexity: 'simple', domainMeta: { entryPoint: 'dispatch', entryType: 'cli' } },
+    step('charge', 'capture', { nodeIds: ['function:src/a.js:run', 'function:src/gone.js:x'], unresolvedNodeIds: ['function:src/gone.js:x'] }),
+    step('charge', 'validate'),
+    step('charge', 'receipt', { filePath: 'src/b.js', nodeIds: ['file:src/b.js'], evidence: [], provenance: 'inferred' }),
+    step('dispatch', 'pick', { filePath: 'src/b.js', nodeIds: ['function:src/b.js:load'] }),
+  ];
+  const edges = [
+    { source: 'domain:billing', target: 'flow:charge', type: 'contains_flow', direction: 'forward', weight: 1 },
+    { source: 'domain:shipping', target: 'flow:dispatch', type: 'contains_flow', direction: 'forward', weight: 1 },
+    { source: 'flow:charge', target: 'step:charge:capture', type: 'flow_step', direction: 'forward', weight: 0.6 },
+    { source: 'flow:charge', target: 'step:charge:validate', type: 'flow_step', direction: 'forward', weight: 0.2 },
+    { source: 'flow:charge', target: 'step:charge:receipt', type: 'flow_step', direction: 'forward', weight: 0.9 },
+    { source: 'flow:dispatch', target: 'step:dispatch:pick', type: 'flow_step', direction: 'forward', weight: 0.2 },
+    { source: 'domain:billing', target: 'domain:shipping', type: 'cross_domain', direction: 'forward', description: 'Billing tells Shipping when an order is paid.', weight: 0.7 },
+  ];
+  return {
+    version: '2.0.0',
+    contentLanguage: 'en',
+    ...(sourceRevision === undefined ? {} : { sourceRevision }),
+    ...(factDigest === undefined ? {} : { factDigest }),
+    project: { name: 'fixture', languages: ['javascript'], frameworks: [], description: '' },
+    nodes,
+    edges,
+    layers: [],
+    tour: [],
+    gaps: [{ kind: 'step-file-anchored', scope: 'domain', reason: '1 step is anchored to a whole file', count: 1, samples: ['step:charge:receipt'] }],
+    languageAudit: { status: 'accepted', fields: 1 },
+    ...extra,
+  };
+}

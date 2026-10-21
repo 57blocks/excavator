@@ -3,8 +3,10 @@ import { describe, expect, it } from 'vitest';
 
 import type { GraphEdge, GraphNode } from '../src/data/graph';
 import { buildIndex } from '../src/data/indexes';
-import { edgeWidth, flowOf, layoutPlan, MAX_LABELLED_EDGES, pathHighlight, planLevel, type FlowView } from '../src/lib/graph-flow';
+import { edgeWidth, flowOf, layoutPlan, levelMarks, MAX_LABELLED_EDGES, nodeRect, pathHighlight, planLevel, type FlowView } from '../src/lib/graph-flow';
+import { childBox } from '../src/lib/graph-layout';
 import { buildLevel, buildStructure, LEVEL_LIMIT, levelNotes, type Level } from '../src/lib/graph-structure';
+import { hotspotsFacts, NO_OVERLAYS } from '../src/lib/overlays';
 
 const file = (path: string): GraphNode => ({ id: `file:${path}`, type: 'file', name: path.slice(path.lastIndexOf('/') + 1), filePath: path });
 const fn = (path: string, name: string, line: number): GraphNode => ({ id: `function:${path}:${name}`, type: 'function', name, filePath: path, lineRange: [line, line + 1] });
@@ -229,5 +231,49 @@ describe('pathHighlight', () => {
     const { entries, edges: onPath } = pathHighlight(plan, ['function:a/x.js:one', 'function:a/x.js:two', 'function:b/z.js:four']);
     expect([...entries]).toEqual(['file:a/x.js']);
     expect(onPath.size).toBe(0);
+  });
+});
+
+describe('levelMarks, with the hotspots overlay', () => {
+  // Eight layers, each holding one file of the top quartile of the scores: the sums differ, so the layers do not all land in the top band.
+  const paths = Array.from({ length: 32 }, (_, i) => `d${i % 8}/f${i}.js`);
+  const score = (path: string) => Number(path.slice(path.lastIndexOf('f') + 1, -3)) + 1;
+  const layers = Array.from({ length: 8 }, (_, k) => ({ id: `layer:${k}`, name: `Layer ${k}`, nodeIds: paths.filter((_p, i) => i % 8 === k).map((p) => `file:${p}`) }));
+  const index = buildIndex({ nodes: paths.map(file), edges: [] }, { entries: [], layers });
+  const structure = buildStructure(index);
+  const facts = { ...NO_OVERLAYS, hotspots: hotspotsFacts({ files: paths.map((path) => ({ path, score: score(path) })), directories: [] }) };
+
+  it('bands the layer clusters by the sum of their files among the clusters, and reports the scale it used', () => {
+    const top = buildLevel(structure, {}) as Level;
+    const view = levelMarks(top, facts);
+    const levels = top.entries.map((entry) => [entry.label, view?.entries.get(entry.id)?.hot] as const).sort((a, b) => (a[0] < b[0] ? -1 : 1)).map(([, hot]) => hot);
+    expect(levels).toEqual([1, 1, 2, 2, 3, 3, 4, 4]);
+    expect(view?.scales?.sums?.scored).toBe(8);
+    expect(view?.scales?.files).toBeNull();
+    expect(view?.scales?.directories).toBeNull();
+  });
+
+  it('has no scales and no marks when no overlay is on', () => {
+    expect(levelMarks(buildLevel(structure, {}) as Level, NO_OVERLAYS)).toBeNull();
+  });
+});
+
+describe('nodeRect', () => {
+  it('is the box of a file the level draws, and of a node an open file shows, inside the file\'s box', async () => {
+    const { index, structure, edges, level } = setup();
+    const plan = planLevel(structure, index, edges, level, new Set(['file:a/x.js']));
+    const layout = await layoutPlan(level, plan);
+    const fileBox = layout.boxes.get('file:a/x.js') as NonNullable<ReturnType<typeof layout.boxes.get>>;
+    expect(nodeRect(plan, layout, 'file:a/x.js')).toEqual(fileBox);
+    const second = childBox(1);
+    expect(nodeRect(plan, layout, 'function:a/x.js:two')).toEqual({ x: fileBox.x + second.x, y: fileBox.y + second.y, width: second.width, height: second.height });
+  });
+
+  it('is nothing for a node the level does not draw: a node of a file that is not open, and one that is not in the graph', async () => {
+    const { index, structure, edges, level } = setup();
+    const plan = planLevel(structure, index, edges, level, new Set());
+    const layout = await layoutPlan(level, plan);
+    expect(nodeRect(plan, layout, 'function:a/x.js:two')).toBeNull();
+    expect(nodeRect(plan, layout, 'function:none:x')).toBeNull();
   });
 });

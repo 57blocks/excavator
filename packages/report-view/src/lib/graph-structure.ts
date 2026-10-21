@@ -257,6 +257,8 @@ export interface LevelEntry {
   nodes: number;
   /** The files the entry stands for, for the edges that run through it. */
   members: readonly FileInfo[];
+  /** The directory (a path as the products write it) a container stands for; null for a file, a layer cluster, a fold and a group of the files directly in a directory. */
+  dir: string | null;
   /** Where a click goes (a file has none: a click selects it). */
   target: { path: string; fold: string | null } | null;
   /** For a fold: how many entries it holds. */
@@ -319,10 +321,10 @@ const byFilesThenLabel = (a: LevelEntry, b: LevelEntry) => b.files - a.files || 
 function containerEntry(group: Group, dir: DirNode, from: string): LevelEntry {
   const end = compact(dir);
   const label = end.path.slice(from === '' ? 0 : from.length + 1);
-  return { id: `container:${pathOf(group, end.path)}`, kind: 'container', label, note: null, files: end.files.length, nodes: end.nodes, members: end.files, target: { path: pathOf(group, end.path), fold: null }, folded: 0 };
+  return { id: `container:${pathOf(group, end.path)}`, kind: 'container', label, note: null, files: end.files.length, nodes: end.nodes, members: end.files, dir: end.path, target: { path: pathOf(group, end.path), fold: null }, folded: 0 };
 }
 
-const fileEntry = (file: FileInfo): LevelEntry => ({ id: file.id, kind: 'file', label: file.name, note: file.path, files: 1, nodes: file.nodes, members: [file], target: null, folded: 0 });
+const fileEntry = (file: FileInfo): LevelEntry => ({ id: file.id, kind: 'file', label: file.name, note: file.path, files: 1, nodes: file.nodes, members: [file], dir: null, target: null, folded: 0 });
 
 /** A group's entry; a click goes to the first directory below the group that has more than one thing in it (the group's own level would show one container). */
 function groupEntry(structure: Structure, group: Group): LevelEntry {
@@ -335,6 +337,7 @@ function groupEntry(structure: Structure, group: Group): LevelEntry {
     files: group.files.length,
     nodes: group.nodes,
     members: group.files,
+    dir: layerLike(group) || group.directOnly ? null : group.baseDir,
     target: { path: pathOf(group, inside.path), fold: null },
     folded: 0,
   };
@@ -373,6 +376,7 @@ function foldEntry(path: string, range: [number, number], held: readonly LevelEn
     files: members.length,
     nodes: sum(held),
     members,
+    dir: null,
     target: { path, fold: `${range[0]}-${range[1]}` },
     folded: held.length,
   };

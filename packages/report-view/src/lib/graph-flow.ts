@@ -11,9 +11,9 @@ import type { GraphEdge, GraphNode } from '../data/graph';
 import type { GraphIndex } from '../data/indexes';
 import type { ChildData, FileData, GroupData } from '../components/graph/GraphNodes';
 import { aggregateEdges, DEFAULT_EDGE_TYPES, edgeLabel, levelEnds, type AggregatedEdge } from './graph-edges';
-import { childBox, entrySize, layoutNodes, prefersGrid, type LevelLayout } from './graph-layout';
+import { childBox, entrySize, layoutNodes, prefersGrid, type Box, type LevelLayout } from './graph-layout';
 import { fileChildren, type Level, type LevelEntry, type Structure } from './graph-structure';
-import { anyOverlay, entryMarks, nodeMarks, type NodeMarks, type OverlayFacts } from './overlays';
+import { anyOverlay, entryMarks, hotspotsRules, nodeMarks, type HotspotsScales, type NodeMarks, type OverlayFacts } from './overlays';
 
 export interface LevelPlan {
   /** For each open file of the level: the nodes it shows and how many more it owns. */
@@ -67,6 +67,18 @@ export function layoutPlan(level: Level, plan: LevelPlan): Promise<LevelLayout> 
   );
 }
 
+/** The box (in the level's coordinates) of node `nodeId` as the level draws it: a file's own box, or the row an open file gives a node it shows; null when the level does not draw it. */
+export function nodeRect(plan: LevelPlan, layout: LevelLayout, nodeId: string): Box | null {
+  const own = layout.boxes.get(nodeId);
+  if (own) return own;
+  const fileId = plan.fileOf.get(nodeId);
+  const fileBox = fileId === undefined ? undefined : layout.boxes.get(fileId);
+  const row = fileId === undefined ? -1 : (plan.open.get(fileId)?.shown.findIndex((node) => node.id === nodeId) ?? -1);
+  if (!fileBox || row === -1) return null;
+  const inside = childBox(row);
+  return { x: fileBox.x + inside.x, y: fileBox.y + inside.y, width: inside.width, height: inside.height };
+}
+
 /** What a path lights up at a level: the drawn things it passes through and the drawn edges between consecutive ones. */
 export interface PathHighlight {
   entries: ReadonlySet<string>;
@@ -101,17 +113,24 @@ export function pathHighlight(plan: LevelPlan, nodeIds: readonly string[]): Path
 export interface OverlayView {
   entries: ReadonlyMap<string, NodeMarks>;
   facts: OverlayFacts;
+  /** The bands the hotspots overlay uses at this level, one scale for each rule an entry takes; null with the overlay off. */
+  scales: HotspotsScales | null;
 }
 
-/** The marks of every entry of `level`; a directory, layer or fold takes what its files have. Null when no overlay is on. */
+/**
+ * The marks of every entry of `level`. Hotspots bands each entry by its own rule (a file by its score, a directory the
+ * product lists by the product's score for it, a layer, fold or other directory by the sum of its files' scores among
+ * its siblings); a directory, layer or fold takes what its files have for the other overlays. Null when no overlay is on.
+ */
 export function levelMarks(level: Level, facts: OverlayFacts): OverlayView | null {
   if (!anyOverlay(facts)) return null;
+  const rules = facts.hotspots ? hotspotsRules(level.entries, facts.hotspots) : null;
   const entries = new Map<string, NodeMarks>();
   for (const entry of level.entries) {
-    const marks = entryMarks(entry.members, facts, entry.kind !== 'file');
+    const marks = entryMarks(entry.members, facts, entry.kind !== 'file', rules?.byEntry.get(entry.id));
     if (marks) entries.set(entry.id, marks);
   }
-  return { entries, facts };
+  return { entries, facts, scales: rules?.scales ?? null };
 }
 
 export interface FlowView {

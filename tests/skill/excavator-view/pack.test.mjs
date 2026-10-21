@@ -57,10 +57,10 @@ describe('product states', () => {
     expect(packed.manifest.products.find((p) => p.name === 'domain-graph').command).toBe('/excavator-domain');
   });
 
-  it('shows the domain graph file as unreadable with a reason while the packer does not read it', () => {
+  it('shows a domain graph file that lacks the identity the Domain skill writes as unreadable with a reason', () => {
     writeProduct(project.root, 'domain-graph.json', '{}');
     const packed = pack();
-    expect(productOf(packed, 'domain-graph')).toMatchObject({ status: 'unreadable', reason: expect.stringMatching(/is present; this version of the packer does not read it yet/) });
+    expect(productOf(packed, 'domain-graph')).toMatchObject({ status: 'unreadable', reason: expect.stringMatching(/domain-graph\.json has version null and contentLanguage null/) });
     expect(payloadIds(packed.html)).toEqual([]);
   });
 

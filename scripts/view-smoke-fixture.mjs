@@ -14,7 +14,8 @@
  * each page should count (the `data-xv-count-*` values the smoke reads back).
  * `--full` writes the Full-mode shape of the graph instead: node summaries and
  * tags empty, the summaries in a semantic cache (one entry stale, one
- * contradicted) and the layers in a semantic graph.
+ * contradicted) and the layers in a semantic graph, and a domain graph made
+ * from that graph's facts (two domains, three flows, five steps).
  */
 
 import { execFileSync } from 'node:child_process';
@@ -239,6 +240,59 @@ function fullFiles(revision) {
 }
 
 /**
+ * The domain graph of the Full fixture: two domains joined by one cross-domain edge, three flows, five steps. The weights
+ * of the first flow's steps are not in the order they are written in; one step names a node the graph lacks and one names none.
+ */
+function domainGraphFile(revision) {
+  const node = (id, type, name, summary, extra = {}) => ({ id, type, name, summary, tags: [], complexity: 'simple', ...extra });
+  const step = (flow, slug, name, summary, extra) => node(`step:${flow}:${slug}`, 'step', name, summary, extra);
+  const edge = (source, target, type, weight, extra = {}) => ({ source, target, type, direction: 'forward', weight, ...extra });
+  return {
+    version: '2.0.0',
+    contentLanguage: 'en',
+    sourceRevision: revision,
+    factDigest: FACTS_DIGEST,
+    nodes: [
+      node('domain:app', 'domain', 'Application', 'Runs the program.', { domainMeta: { entities: ['Session'], businessRules: ['Start-up runs once per process'] } }),
+      node('domain:data', 'domain', 'Data', 'Loads the data the program needs.', { domainMeta: { entities: ['Record'] } }),
+      node('flow:start-up', 'flow', 'Start up', 'Starts the program and reports the result.', { domainMeta: { entryPoint: 'main', entryType: 'cli' } }),
+      node('flow:cleanup', 'flow', 'Clean up', 'Removes what a run leaves behind.', { domainMeta: { entryPoint: 'purge', entryType: 'cli' } }),
+      node('flow:load-data', 'flow', 'Load data', 'Reads the data from disk.', { domainMeta: { entryPoint: 'load', entryType: 'call' } }),
+      step('start-up', 'report', 'Report result', 'Hands the result back to the caller.', { filePath: 'src/main.js', nodeIds: ['function:src/main.js:main'], evidence: [{ file: 'src/main.js', line: 4, source: 'rule' }] }),
+      step('start-up', 'begin', 'Begin', 'Starts the engine from the program entry.', { filePath: 'src/core/index.js', nodeIds: ['function:src/core/index.js:start', 'function:src/gone.js:x'], unresolvedNodeIds: ['function:src/gone.js:x'], evidence: [{ file: 'src/core/index.js', line: 4, source: 'rule' }], provenance: 'inferred' }),
+      step('start-up', 'run', 'Run the engine', 'Runs the engine on its input.', { filePath: 'src/core/engine/run.js', nodeIds: ['function:src/core/engine/run.js:run', 'file:src/core/engine/run.js'], evidence: [] }),
+      step('cleanup', 'purge', 'Purge', 'Deletes the temporary files.', { nodeIds: [], evidence: [] }),
+      step('load-data', 'read', 'Read', 'Reads the records.', { filePath: 'lib/data.py', nodeIds: ['function:lib/data.py:load'], evidence: [{ file: 'lib/data.py', line: 2, source: 'rule' }] }),
+    ],
+    edges: [
+      edge('domain:app', 'flow:start-up', 'contains_flow', 1),
+      edge('domain:app', 'flow:cleanup', 'contains_flow', 1),
+      edge('domain:data', 'flow:load-data', 'contains_flow', 1),
+      edge('flow:start-up', 'step:start-up:report', 'flow_step', 0.9),
+      edge('flow:start-up', 'step:start-up:begin', 'flow_step', 0.2),
+      edge('flow:start-up', 'step:start-up:run', 'flow_step', 0.5),
+      edge('flow:cleanup', 'step:cleanup:purge', 'flow_step', 1),
+      edge('flow:load-data', 'step:load-data:read', 'flow_step', 1),
+      edge('domain:app', 'domain:data', 'cross_domain', 0.7, { description: 'Application asks Data to load what it needs.' }),
+    ],
+    gaps: [],
+  };
+}
+
+/** What the domain view should show, for the smoke's checks. */
+const DOMAIN_EXPECTED = {
+  counts: { domains: 2, flows: 3, steps: 5, links: 1 },
+  cards: ['Application', 'Data'],
+  note: 'The domain graph is derived by a model from the code; it describes the code and is not itself a fact of the code.',
+  link: 'Application asks Data to load what it needs.',
+  domain: { id: 'domain:app', level: 'domain:domain:app', flows: ['flow:start-up', 'flow:cleanup'] },
+  flow: { id: 'flow:start-up', level: 'flow:domain:app:flow:start-up', steps: ['step:start-up:begin', 'step:start-up:run', 'step:start-up:report'], names: ['Begin', 'Run the engine', 'Report result'] },
+  // The first step by weight: its first nodeId is in the graph; the second is not.
+  step: { id: 'step:start-up:begin', anchors: ['function:src/core/index.js:start'], missing: ['function:src/gone.js:x'], evidence: { label: 'src/core/index.js:4', file: 'src/core/index.js', highlight: '4-4', marked: ['4'] } },
+  digests: { domain: FACTS_DIGEST, graph: 'e'.repeat(64) },
+};
+
+/**
  * What the graph page should show at each level the smoke visits: the route
  * path, the entries drawn, the files under the level, the labels of the
  * entries and the one to click to go down (a directory-grouped graph and a
@@ -304,6 +358,7 @@ export function makeSmokeProject(dir, { full = false } = {}) {
   if (semantic) {
     writeJson(root, 'semantic-cache.json', semantic.cache);
     writeJson(root, 'semantic-graph.json', semantic.graph);
+    writeJson(root, 'domain-graph.json', domainGraphFile(revision));
   }
   writeJson(root, 'unused-code.json', unusedProduct(revision));
   writeJson(root, 'doc-map.json', docMapProduct(revision));
@@ -325,6 +380,7 @@ export function makeSmokeProject(dir, { full = false } = {}) {
       hotspots: { files: 4, directories: 2, pairs: 1, groups: 0 },
       code: { sources: 6 },
       graph: graphExpected(full),
+      ...(full ? { domain: DOMAIN_EXPECTED } : {}),
       reports: { reports: 2 },
     },
   };

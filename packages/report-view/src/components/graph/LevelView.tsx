@@ -3,9 +3,11 @@ import '@xyflow/react/dist/style.css';
 import { useReducedMotion } from 'motion/react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
+import { useReveal } from '../../hooks/use-reveal';
 import { useCounts, useReady, useSignal } from '../../hooks/use-signals';
 import { asPixels, CARDS, measureFitPadding } from '../../lib/fit-padding';
-import { flowEdges, flowNodes, layoutPlan, levelMarks, pathHighlight, planLevel, type LevelPlan } from '../../lib/graph-flow';
+import { boundsOf, levelCamera } from '../../lib/camera';
+import { flowEdges, flowNodes, layoutPlan, levelMarks, nodeRect, pathHighlight, planLevel, type LevelPlan } from '../../lib/graph-flow';
 import { shownEdgeTypes, type GraphFilters } from '../../lib/graph-filters';
 import type { LevelLayout } from '../../lib/graph-layout';
 import type { GraphState } from '../../lib/graph-state';
@@ -30,6 +32,9 @@ import { PathCard } from './PathCard';
 import type { GraphModel } from '../../data/model';
 
 const NO_FILES: ReadonlySet<string> = new Set();
+/** How far the canvas zooms out, and how far a fit of the whole level zooms in. */
+const MIN_ZOOM = 0.02;
+const MAX_FIT_ZOOM = 1.2;
 
 export const levelKeyOf = (level: Level) => `${level.path}#${level.fold ?? ''}`;
 
@@ -62,7 +67,7 @@ export function LevelView({ scene, level, state, filters, actions }: { scene: Gr
   const { model, structure, choices } = scene;
   const selected = state.node;
   const reduce = useReducedMotion();
-  const { fitView, getInternalNode, getViewport, setViewport } = useReactFlow();
+  const { fitView, setViewport } = useReactFlow();
   const ui = useGraphUi();
   const pane = useRef<HTMLDivElement | null>(null);
   const key = levelKeyOf(level);
@@ -134,8 +139,8 @@ export function LevelView({ scene, level, state, filters, actions }: { scene: Gr
   const { manifest } = useViewer();
   const blocks = useMemo(() => {
     const products = Object.fromEntries(ui.overlays.map((name) => [name, manifest.products.find((p) => p.name === OVERLAYS[name].product)]));
-    return legendBlocks(ui.overlays, overlayData.facts, products, { pending: overlayData.pending, error: overlayData.error?.message ?? null });
-  }, [ui.overlays, overlayData, manifest]);
+    return legendBlocks(ui.overlays, overlayData.facts, products, { pending: overlayData.pending, error: overlayData.error?.message ?? null }, overlayView?.scales ?? undefined);
+  }, [ui.overlays, overlayData, overlayView, manifest]);
   useSignal('overlays', ui.overlays.length === 0 ? null : ui.overlays.join(','));
   useSignal('overlays-marked', overlayView ? String(overlayView.entries.size) : null);
 
@@ -148,7 +153,18 @@ export function LevelView({ scene, level, state, filters, actions }: { scene: Gr
     [laid, selected, state.entry, hovered, hoveredEdge, highlight],
   );
 
-  // The camera moves when the level changes, not when a file opens. It fits the level into what the cards over the canvas leave free, once the legends are drawn.
+  // The camera moves when the level changes, not when a file opens. It fits the level into what the cards over the canvas leave free, once the legends are drawn;
+  // when the level was opened to a selected node and fitting it all would draw that node too small to read (a function in a long file), it centres on the node instead.
+  const placeCamera = (element: HTMLElement, current: Laid) => {
+    const padding = measureFitPadding(element);
+    const duration = reduce ? 0 : DURATION.camera * 1000;
+    const bounds = boundsOf(current.layout.boxes.values());
+    const box = element.getBoundingClientRect();
+    const target = selected === null ? null : nodeRect(current.plan, current.layout, selected);
+    const move = bounds === null ? { kind: 'fit' as const } : levelCamera({ bounds, target, pane: { width: box.width, height: box.height }, padding, minZoom: MIN_ZOOM, maxZoom: MAX_FIT_ZOOM });
+    if (move.kind === 'centre') setViewport({ x: move.x, y: move.y, zoom: move.zoom }, { duration });
+    else fitView({ duration, padding: asPixels(padding), maxZoom: MAX_FIT_ZOOM });
+  };
   const fitted = useRef<string | null>(null);
   const settled = !overlayData.pending;
   useEffect(() => {
@@ -156,12 +172,13 @@ export function LevelView({ scene, level, state, filters, actions }: { scene: Gr
     const frame = requestAnimationFrame(() => {
       if (!pane.current) return;
       fitted.current = levelKeyOf(laid.level);
-      fitView({ duration: reduce ? 0 : DURATION.camera * 1000, padding: asPixels(measureFitPadding(pane.current)), maxZoom: 1.2 });
+      placeCamera(pane.current, laid);
     });
     return () => cancelAnimationFrame(frame);
-  }, [laid, settled, reduce, fitView]);
+    // The selection decides where the camera goes only as a level opens; a later selection is the reveal's to follow.
+  }, [laid, settled, reduce, fitView, setViewport]);
 
-  // A legend that opens or grows (an overlay turned on) can land over nodes the camera had already fitted: then, and only then, the camera fits again.
+  // A legend that opens or grows (an overlay turned on) can land over nodes the camera had already placed: then, and only then, the camera is placed again.
   const legendKey = blocks.map((block) => `${block.overlay}:${block.rows.length}:${block.note.length}`).join('|');
   const clearedFor = useRef<string | null>(null);
   useEffect(() => {
@@ -175,36 +192,14 @@ export function LevelView({ scene, level, state, filters, actions }: { scene: Gr
         const box = el.getBoundingClientRect();
         return cards.some((card) => box.left < card.right && box.right > card.left && box.top < card.bottom && box.bottom > card.top);
       });
-      if (covered) fitView({ duration: reduce ? 0 : DURATION.camera * 1000, padding: asPixels(measureFitPadding(element)), maxZoom: 1.2 });
+      if (covered) placeCamera(element, laid);
     });
     return () => cancelAnimationFrame(frame);
-  }, [laid, settled, legendKey, reduce, fitView]);
+  }, [laid, settled, legendKey, reduce, fitView, setViewport]);
 
-  // The selected node stays in view: when a layout or the drawer leaves it outside or under the drawer, the camera moves to it, keeping the zoom unless that is too small to read.
+  // The selected node stays in view when a layout or the drawer leaves it outside or under the drawer.
   const drawerOpen = ui.drawer !== 'closed';
-  const revealed = useRef<string | null>(null);
-  useEffect(() => {
-    if (!laid || selected === null) return undefined;
-    const mark = `${laid.key}|${selected}|${drawerOpen}`;
-    if (revealed.current === mark) return undefined;
-    const timer = window.setTimeout(() => {
-      const node = getInternalNode(selected);
-      const element = pane.current;
-      if (!node || !element) return;
-      revealed.current = mark;
-      const { x, y, zoom } = getViewport();
-      const box = element.getBoundingClientRect();
-      const width = node.measured.width ?? node.width ?? 0;
-      const height = node.measured.height ?? node.height ?? 0;
-      const at = node.internals.positionAbsolute;
-      const [left, top] = [at.x * zoom + x, at.y * zoom + y];
-      const safe = { top: measureFitPadding(element).top, bottom: drawerOpen ? box.height * 0.6 - 16 : box.height - 16, left: 16, right: box.width - 16 };
-      if (left >= safe.left && top >= safe.top && left + width * zoom <= safe.right && top + height * zoom <= safe.bottom) return;
-      const next = Math.min(Math.max(zoom, 0.8), 1.2);
-      setViewport({ x: box.width / 2 - (at.x + width / 2) * next, y: (safe.top + safe.bottom) / 2 - (at.y + height / 2) * next, zoom: next }, { duration: reduce ? 0 : DURATION.camera * 1000 });
-    }, reduce ? 0 : DURATION.camera * 1000 + 80);
-    return () => window.clearTimeout(timer);
-  }, [laid, selected, drawerOpen, reduce, getInternalNode, getViewport, setViewport]);
+  useReveal({ pane, layoutKey: laid ? laid.key : null, selected, drawerOpen, reduce });
 
   // The drawer shows the source of the selected node; with none selected it closes.
   useEffect(() => {
@@ -238,7 +233,7 @@ export function LevelView({ scene, level, state, filters, actions }: { scene: Gr
         nodesConnectable={false}
         elementsSelectable={false}
         edgesFocusable={false}
-        minZoom={0.02}
+        minZoom={MIN_ZOOM}
         maxZoom={2}
         colorMode="light"
       >

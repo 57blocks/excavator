@@ -29,6 +29,15 @@ export interface SemanticsCounts {
   layers: number;
 }
 
+/** What the packer counted in the domain graph (only on the `domain-graph` entry, when it is in the page). */
+export interface DomainCounts {
+  domains: number;
+  flows: number;
+  steps: number;
+  /** The `cross_domain` edges. */
+  crossDomain: number;
+}
+
 export interface ManifestProduct {
   name: string;
   label: string;
@@ -42,8 +51,8 @@ export interface ManifestProduct {
   payloads: string[];
   /** Only on the `reports` entry. */
   items?: ReportItem[];
-  /** Only on the `semantics` entry, when it is included. */
-  counts?: SemanticsCounts;
+  /** Only on the `semantics` and `domain-graph` entries, when they are in the page; each has its own fields. */
+  counts?: Partial<SemanticsCounts> & Partial<DomainCounts>;
 }
 
 export type SourceBucket = 'embedded' | 'binary' | 'tooLarge' | 'notInSnapshot' | 'notEmbeddedOnRequest';

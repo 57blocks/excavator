@@ -34,7 +34,14 @@ const capitalize = (text: string) => text.charAt(0).toUpperCase() + text.slice(1
 export function detailText(product: Pick<ManifestProduct, 'status' | 'reason' | 'file' | 'revision' | 'revisionNote'>, snapshotRevision: string): string {
   if (product.status === 'unreadable') return product.reason || 'The file could not be read.';
   if (product.status === 'not-run') return `There is no ${product.file}.`;
-  if (product.status === 'different-revision') return `Made at ${product.revision}; the source snapshot is ${snapshotRevision}.`;
+  if (product.status === 'different-revision') {
+    // A product made at the snapshot's revision from other facts (the domain graph) has only its reason to give.
+    const parts = [
+      ...(product.revision !== snapshotRevision || !product.reason ? [`Made at ${product.revision}; the source snapshot is ${snapshotRevision}.`] : []),
+      ...(product.reason ? [`${product.reason}.`] : []),
+    ];
+    return parts.join(' ');
+  }
   if (product.revisionNote) return `${capitalize(product.revisionNote)}.`;
   return 'Made at the source snapshot revision.';
 }

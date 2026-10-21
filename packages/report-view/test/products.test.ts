@@ -25,6 +25,9 @@ describe('product states on the Overview', () => {
     expect(detailText({ ...base, status: 'unreadable', reason: 'a.json is not valid JSON' }, 'git:1')).toBe('a.json is not valid JSON');
     expect(detailText({ ...base, status: 'not-run' }, 'git:1')).toBe('There is no hotspots.json.');
     expect(detailText({ ...base, status: 'different-revision', revision: 'git:0' }, 'git:1')).toBe('Made at git:0; the source snapshot is git:1.');
+    expect(detailText({ ...base, status: 'different-revision', revision: 'git:0', reason: 'its factDigest is aa and the graph\'s factsDigest is bb' }, 'git:1')).toBe('Made at git:0; the source snapshot is git:1. its factDigest is aa and the graph\'s factsDigest is bb.');
+    // Made at the snapshot's revision but from other facts: only the reason is left to say.
+    expect(detailText({ ...base, status: 'different-revision', revision: 'git:1', reason: 'its factDigest is aa and the graph\'s factsDigest is bb' }, 'git:1')).toBe('its factDigest is aa and the graph\'s factsDigest is bb.');
     expect(detailText({ ...base, status: 'included', revisionNote: 'no revision recorded' }, 'git:1')).toBe('No revision recorded.');
     expect(detailText({ ...base, status: 'included' }, 'git:1')).toBe('Made at the source snapshot revision.');
   });
@@ -32,8 +35,8 @@ describe('product states on the Overview', () => {
 
 describe('the pages', () => {
   it('are in navigation order', () => {
-    expect(PAGES.map((p) => p.id)).toEqual(['graph', 'overview', 'unused', 'doc-map', 'hotspots', 'code', 'reports']);
-    expect(PAGES.map((p) => p.label)).toEqual(['Graph', 'Overview', 'Unused code', 'Doc map', 'Hotspots', 'Code', 'Reports']);
+    expect(PAGES.map((p) => p.id)).toEqual(['graph', 'domain', 'overview', 'unused', 'doc-map', 'hotspots', 'code', 'reports']);
+    expect(PAGES.map((p) => p.label)).toEqual(['Graph', 'Domain', 'Overview', 'Unused code', 'Doc map', 'Hotspots', 'Code', 'Reports']);
   });
 
   it('show in the navigation the state of the product each one shows', () => {
@@ -42,10 +45,10 @@ describe('the pages', () => {
       viewer: 1,
       project: { name: 'p' },
       snapshot: { revision: 'git:1', kind: 'git' },
-      products: [product('knowledge-graph', 'included'), product('unused-code', 'different-revision'), product('hotspots', 'unreadable')],
+      products: [product('knowledge-graph', 'included'), product('domain-graph', 'different-revision'), product('unused-code', 'different-revision'), product('hotspots', 'unreadable')],
       source: { embedded: true, requested: true, limitBytes: 1, counts: { embedded: 1, binary: 0, tooLarge: 0, notInSnapshot: 0, notEmbeddedOnRequest: 0 }, files: {} },
     } as unknown as Manifest;
     const status = Object.fromEntries(PAGES.map((p) => [p.id, p.status(manifest)]));
-    expect(status).toEqual({ graph: 'included', overview: 'unreadable', unused: 'different-revision', 'doc-map': 'not-run', hotspots: 'unreadable', code: 'included', reports: 'not-run' });
+    expect(status).toEqual({ graph: 'included', domain: 'different-revision', overview: 'unreadable', unused: 'different-revision', 'doc-map': 'not-run', hotspots: 'unreadable', code: 'included', reports: 'not-run' });
   });
 });

@@ -40,6 +40,7 @@ export function makePluginRoot(template) {
   const root = mkdtempSync(join(tmpdir(), 'xv-plugin-'));
   cpSync(join(repoRoot, 'skills/excavator-view'), join(root, 'skills/excavator-view'), { recursive: true });
   symlinkSync(join(repoRoot, 'skills/excavator'), join(root, 'skills/excavator'));
+  symlinkSync(join(repoRoot, 'skills/excavator-domain'), join(root, 'skills/excavator-domain'));
   if (template !== null) {
     mkdirSync(join(root, 'packages/report-view/dist'), { recursive: true });
     writeFileSync(join(root, 'packages/report-view/dist/view.html'), template);

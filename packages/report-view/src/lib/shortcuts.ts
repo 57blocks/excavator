@@ -7,7 +7,7 @@ export interface Shortcut {
 export const SHORTCUTS: readonly Shortcut[] = [
   { keys: '/', description: 'Focus the search box' },
   { keys: '?', description: 'Show this list' },
-  { keys: 'Esc', description: 'Close, from the inside out: a dialog or menu, the code drawer, the focus view, the highlighted path, the selection, then one level of the graph' },
+  { keys: 'Esc', description: 'Close, from the inside out: a dialog or menu, the code drawer, the focus view, the highlighted path, the selection, then one level of the graph or the domain view' },
   { keys: 'Enter', description: 'Open the highlighted search result' },
   { keys: 'Up / Down', description: 'Move through the search results' },
 ];

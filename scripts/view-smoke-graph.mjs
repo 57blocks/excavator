@@ -24,16 +24,23 @@
  *     tooltips, the camera clearing the cards over the canvas, and the switch of a product that was not run;
  *   - restore: a reload from the address brings back the overlays and the filters;
  *   - locate: "Locate in graph" from the Unused, Hotspots and Doc map pages selects the record's node and turns on its
- *     overlay, and says "Not in the graph." for a path the graph has no node for.
+ *     overlay, and says "Not in the graph." for a path the graph has no node for;
+ *   - domain (tasks D.1 and D.2): the Domain page's top level (cards, counts, the fixed note), a domain's flows, a flow's steps in
+ *     flow_step weight order with the arrows between them, a step's evidence opening the code drawer, a step's graph node
+ *     opening the structure graph with that node selected, and the nodes the graph lacks listed as "Not in the graph.";
+ *     domain-history, domain-restore and domain-keys (back and forward, a load from the address, Esc from the inside out);
+ *     domain-overview, domain-notrun and domain-digest (the product's state with its counts, not run, and a different revision);
+ *   - longfile, longfile-restore: a function of a file expanded to a hundred and twenty rows is located, and the camera is on it at a readable
+ *     zoom instead of fitting the whole file.
  *
- *   node scripts/view-smoke-graph.mjs [levels|history|search|drawer|focus|path|filters|keys|layers|summary|overlays|clearance|notrun|restore|locate|locate-tables ...]
+ *   node scripts/view-smoke-graph.mjs [levels|history|search|drawer|focus|path|filters|keys|layers|summary|overlays|clearance|notrun|restore|locate|locate-tables|domain|domain-history|domain-restore|domain-keys|domain-overview|domain-notrun|domain-digest|longfile|longfile-restore ...]
  *
  * Needs `pnpm build` (the template) and a local Chrome. Prints one line per
  * check and exits 1 when any fails.
  */
 
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -491,9 +498,9 @@ const SCENARIOS = [
     const lib = (o) => o.marks.hot.find((h) => h.startsWith('lib:'));
     return [
       ['overlays: all three switches are enabled and off to begin with, and nothing is marked', JSON.stringify(out.initial?.pressed) === '["false","false","false"]' && out.initial.disabled.every((d) => d === false) && out.initial.marks.hot.length === 0 && out.initial.marks.chips.length === 0 && out.initial.marks.legends.length === 0 && out.initial.overlayAttr === null, out.initial],
-      ['overlays: hotspots colours the directories by band; the address holds it; the legend lists the bands and how they were made', out.hot?.hash.includes('overlay=hotspots') && out.hot.pressed === 'true' && JSON.stringify(out.hot.marks.hot) === JSON.stringify(['lib:2', 'src:4']) && out.hot.rows.length === 4 && /quartiles of the 4 file scores/.test(out.hot.legend) && /cut points 5, 40, 90/.test(out.hot.legend), out.hot],
-      ['overlays: a directory says in its tooltip that it takes the highest band among its files', out.hot?.titles.every((t) => /the highest band among its \d+ files?/.test(t ?? '')), out.hot?.titles],
-      ['overlays: unused marks the directories with the number of listed functions, coloured by the highest confidence, on top of the hotspots; its legend lists the confidences', out.unused?.hash.includes('overlay=hotspots%2Cunused') && JSON.stringify(out.unused.marks.chips) === JSON.stringify(['lib:1 unused:low', 'src:2 unused:high']) && JSON.stringify(out.unused.marks.hot) === JSON.stringify(['lib:2', 'src:4']) && /high confidence/.test(out.unused.legend) && /low confidence/.test(out.unused.legend), out.unused],
+      ['overlays: hotspots colours the directories by band; the address holds it; the legend lists the bands and how they were made', out.hot?.hash.includes('overlay=hotspots') && out.hot.pressed === 'true' && JSON.stringify(out.hot.marks.hot) === JSON.stringify(['lib:1', 'src:3']) && out.hot.rows.length === 3 && /^Directories/.test(out.hot.rows[0]) && /quartiles of its 2 directory scores \(cut points 130\)/.test(out.hot.legend) && /banded by the sum of its files' scores/.test(out.hot.legend) && !/highest band/.test(out.hot.legend), out.hot],
+      ['overlays: a directory says in its tooltip which rule gave its band: the product\'s score for it, or the sum of its files\' scores', out.hot?.titles.length === 2 && out.hot.titles.some((t) => /the product lists this directory with score 5, band 1 of 2 \(5 to 5\), among the 2 directory scores it lists/.test(t ?? '')) && out.hot.titles.some((t) => /add up to 130; band 1 of 1 \(130 to 130\) among the 1 entry of this level that has no directory score/.test(t ?? '')), out.hot?.titles],
+      ['overlays: unused marks the directories with the number of listed functions, coloured by the highest confidence, on top of the hotspots; its legend lists the confidences', out.unused?.hash.includes('overlay=hotspots%2Cunused') && JSON.stringify(out.unused.marks.chips) === JSON.stringify(['lib:1 unused:low', 'src:2 unused:high']) && JSON.stringify(out.unused.marks.hot) === JSON.stringify(['lib:1', 'src:3']) && /high confidence/.test(out.unused.legend) && /low confidence/.test(out.unused.legend), out.unused],
       ['overlays: the tooltip of a marked directory says it counts the functions of its files', out.unused?.titles.every((t) => /Unused: \d+ functions? listed as unused in \d+ of its \d+ files?/.test(t ?? '')), out.unused?.titles],
       ['overlays: doc-map marks the directories with how many of their counted files have evidence', JSON.stringify(out.docMap?.marks.chips.filter((c) => c.endsWith(':evidence'))) === JSON.stringify(['lib:1/1 evidence:evidence', 'src:2/2 evidence:evidence']) && out.docMap.marks.legends.join() === 'hotspots,unused,doc-map' && /with evidence/.test(out.docMap.legend), out.docMap],
       ['overlays: each overlay is switched on its own: turning hotspots off leaves the other two, and the others off leaves a plain graph', out.hotOff?.marks.hot.length === 0 && out.hotOff.marks.legends.join() === 'unused,doc-map' && out.hotOff.hash.includes('overlay=unused%2Cdoc-map') && out.allOff?.marks.chips.length === 0 && out.allOff.marks.legends.length === 0 && !out.allOff.hash.includes('overlay'), [out.hotOff, out.allOff]],
@@ -689,6 +696,229 @@ const SCENARIOS = [
     ['entry: a click on the card itself still opens the level', out.drilled?.level !== '#' && out.drilled.level.startsWith('layer:app'), out.drilled],
   ]],
 
+  ['domain', 'layers', (graph, expected) => driver(`
+    const d = ${JSON.stringify(expected.domain)};
+    const dlevel = () => attr('data-xv-domain-level');
+    await go('#/domain');
+    await until(() => dlevel() === 'top');
+    await sleep(200);
+    out.top = {
+      nav: all('nav[aria-label="Pages"] a').map((a) => a.textContent), current: q('nav[aria-label="Pages"] [aria-current="page"]')?.getAttribute('data-xv-nav'),
+      note: q('[data-xv-domain-note]')?.textContent, nodes: attr('data-xv-count-domain-level-nodes'), domains: attr('data-xv-count-domain-domains'), flows: attr('data-xv-count-domain-flows'),
+      steps: attr('data-xv-count-domain-steps'), links: attr('data-xv-count-domain-level-links'),
+      cards: all('[data-xv-domain-entry="domain"]').map((el) => el.getAttribute('data-xv-label')), text: q('[data-xv-domain-entry="domain"][data-xv-node="domain:app"]')?.textContent, labelsBefore: all('[data-xv-link-label]').length,
+    };
+    q('[data-xv-domain-entry="domain"][data-xv-node="domain:app"] [data-xv-action="details"]').click();
+    await until(() => sidebar() === 'domain:app');
+    await until(() => q('[data-xv-link-label]'));
+    out.select = { hash: location.hash, label: q('[data-xv-link-label]')?.textContent, side: q('aside[data-xv-panel="sidebar"]').textContent, marked: all('.xv-selected').length };
+    q('[data-xv-domain-entry="domain"][data-xv-node="domain:app"]').click();
+    await until(() => dlevel() === d.domain.level);
+    await sleep(200);
+    out.domain = { hash: location.hash, flows: all('[data-xv-domain-entry="flow"]').map((el) => el.getAttribute('data-xv-node')), crumbs: q('nav[aria-label="Breadcrumb"]')?.textContent, selection: route().params.node ?? null };
+    q('[data-xv-domain-entry="flow"][data-xv-node="' + d.flow.id + '"]').click();
+    await until(() => dlevel() === d.flow.level);
+    await sleep(300);
+    const steps = all('[data-xv-domain-entry="step"]');
+    out.flow = {
+      hash: location.hash, steps: steps.map((el) => [el.getAttribute('data-xv-position'), el.getAttribute('data-xv-node'), el.getAttribute('data-xv-label')]),
+      tops: steps.map((el) => Math.round(el.getBoundingClientRect().top)), lefts: [...new Set(steps.map((el) => Math.round(el.getBoundingClientRect().left)))].length,
+      arrows: all('.react-flow__edge').length, note: q('[data-xv-chrome="top"]')?.textContent,
+    };
+    q('[data-xv-domain-entry="step"][data-xv-node="' + d.step.id + '"]').click();
+    await until(() => sidebar() === d.step.id);
+    const side = q('aside[data-xv-panel="sidebar"]');
+    out.step = {
+      hash: location.hash, marked: all('.xv-selected').length,
+      anchors: all('aside[data-xv-panel="sidebar"] [data-xv-anchor]').map((el) => el.getAttribute('data-xv-anchor')),
+      missing: all('aside[data-xv-panel="sidebar"] [data-xv-anchor-missing]').map((el) => [el.getAttribute('data-xv-anchor-missing'), el.textContent]),
+      evidence: all('aside[data-xv-panel="sidebar"] [data-xv-evidence]').map((el) => el.textContent), text: side.textContent,
+    };
+    q('aside[data-xv-panel="sidebar"] [data-xv-evidence]').click();
+    const code = await until(() => q('aside[data-xv-panel="drawer"] .xv-code[aria-label="Source of ' + d.step.evidence.file + '"]'));
+    await until(() => code && code.getAttribute('data-xv-highlight'));
+    out.evidence = { highlight: code?.getAttribute('data-xv-highlight') ?? null, marked: all('aside[data-xv-panel="drawer"] .xv-line-hl').map((el) => el.getAttribute('data-n')), title: q('aside[data-xv-panel="drawer"]')?.getAttribute('aria-label') ?? null, selection: route().params.node };
+    q('aside[data-xv-panel="sidebar"] [data-xv-anchor]').click();
+    await until(() => route().page === 'graph' && route().params.node);
+    await until(() => sidebar() === d.step.anchors[0]);
+    out.jump = { page: route().page, node: route().params.node, sidebar: sidebar(), marked: all('.xv-selected').length, current: q('nav[aria-label="Pages"] [aria-current="page"]')?.getAttribute('data-xv-nav') };
+  `), (out, graph, expected) => {
+    const d = expected.domain;
+    const sameOrder = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+    return [
+      ['domain: the Domain page is in the navigation after Graph, and is the page shown', sameOrder(out.top?.nav?.slice(0, 2), ['Graph', 'Domain']) && out.top.current === 'domain', [out.top?.nav, out.top?.current]],
+      ['domain: the fixed note is at the top', out.top?.note === d.note, out.top?.note],
+      [`domain: the top level has a card for each of the ${d.counts.domains} domains, and the flows and steps they hold add up to ${d.counts.flows} and ${d.counts.steps}`, out.top?.nodes === String(d.counts.domains) && out.top.domains === String(d.counts.domains) && out.top.flows === String(d.counts.flows) && out.top.steps === String(d.counts.steps) && out.top.links === String(d.counts.links) && sameOrder([...out.top.cards].sort(), [...d.cards].sort()), out.top],
+      ['domain: a card shows the name, the summary, the flow count and the step count', /Application/.test(out.top?.text ?? '') && /Runs the program/.test(out.top.text) && /2 flows/.test(out.top.text) && /4 steps/.test(out.top.text), out.top?.text],
+      ['domain: a cross-domain edge is labelled only while its domain is selected, with its description', out.top?.labelsBefore === 0 && out.select?.label === d.link && out.select.marked === 1 && out.select.hash === '#/domain?node=domain%3Aapp', out.select],
+      ['domain: the sidebar of a domain shows its summary, domainMeta, flows and cross-domain edges', /Runs the program/.test(out.select?.side ?? '') && /Start-up runs once per process/.test(out.select.side) && /Session/.test(out.select.side) && /Start up/.test(out.select.side) && new RegExp(d.link.replace('.', '\\.')).test(out.select.side), out.select?.side],
+      ['domain: a click on a card goes into the domain, which shows its flows, and the address says so', out.domain?.hash === '#/domain?d=domain%3Aapp' && sameOrder([...out.domain.flows].sort(), [...d.domain.flows].sort()) && out.domain.selection === null && /Domains/.test(out.domain.crumbs), out.domain],
+      ['domain: a flow shows its steps as a column in flow_step weight order, numbered by place', sameOrder(out.flow?.steps?.map((s) => s[1]), d.flow.steps) && sameOrder(out.flow.steps.map((s) => s[2]), d.flow.names) && sameOrder(out.flow.steps.map((s) => s[0]), ['1', '2', '3']) && out.flow.lefts === 1 && out.flow.tops.every((t, i) => i === 0 || t > out.flow.tops[i - 1]), out.flow],
+      ['domain: there is an arrow between each step and the next, and the panel says they are the order and not edges', out.flow?.arrows === d.flow.steps.length - 1 && /not edges of the domain graph/.test(out.flow.note), [out.flow?.arrows, out.flow?.note]],
+      ['domain: a click on a step selects it, in the address, and the sidebar shows it with its provenance', out.step?.hash.includes('node=') && out.step.marked === 1 && /inferred/.test(out.step.text), out.step],
+      ['domain: the step lists the graph nodes it names, each to be opened in the structure graph, and the one the graph lacks as "Not in the graph."', sameOrder(out.step?.anchors, d.step.anchors) && sameOrder(out.step.missing.map((m) => m[0]), d.step.missing) && out.step.missing.every((m) => /Not in the graph\./.test(m[1])), out.step],
+      ['domain: the evidence line is on the sidebar, and opens the code drawer with that line marked', sameOrder(out.step?.evidence, [d.step.evidence.label]) && out.evidence?.highlight === d.step.evidence.highlight && sameOrder(out.evidence.marked, d.step.evidence.marked) && out.evidence.title === d.step.evidence.label && out.evidence.selection === d.step.id, [out.step?.evidence, out.evidence]],
+      ['domain: a graph node of the step opens the structure graph with that node selected and shown in its sidebar', out.jump?.page === 'graph' && out.jump.current === 'graph' && out.jump.node === d.step.anchors[0] && out.jump.sidebar === d.step.anchors[0] && out.jump.marked === 1, out.jump],
+    ];
+  }],
+
+  ['domain-history', 'layers', (graph, expected) => driver(`
+    const d = ${JSON.stringify(expected.domain)};
+    const dlevel = () => attr('data-xv-domain-level');
+    await go('#/domain');
+    await until(() => dlevel() === 'top');
+    q('[data-xv-domain-entry="domain"][data-xv-node="domain:app"]').click(); await until(() => dlevel() === d.domain.level);
+    q('[data-xv-domain-entry="flow"][data-xv-node="' + d.flow.id + '"]').click(); await until(() => dlevel() === d.flow.level);
+    await sleep(200);
+    q('[data-xv-domain-entry="step"][data-xv-node="' + d.step.id + '"]').click(); await until(() => route().params.node === d.step.id);
+    await until(() => sidebar() === d.step.id);
+    const snap = () => ({ level: dlevel(), node: route().params.node ?? null, marks: all('.xv-selected').length, sidebar: sidebar() });
+    out.selected = snap();
+    history.back(); await until(() => !location.hash.includes('node='));
+    // The sidebar slides out; it is gone once the animation is over.
+    await until(() => sidebar() === null);
+    out.back1 = snap();
+    history.back(); await until(() => dlevel() === d.domain.level);
+    out.back2 = snap();
+    history.back(); await until(() => dlevel() === 'top');
+    out.back3 = snap();
+    history.forward(); await until(() => dlevel() === d.domain.level);
+    out.fwd1 = snap();
+    history.forward(); await until(() => dlevel() === d.flow.level);
+    out.fwd2 = snap();
+    history.forward(); await until(() => route().params.node === d.step.id);
+    await until(() => sidebar() === d.step.id);
+    out.fwd3 = snap();
+  `), (out, graph, expected) => {
+    const d = expected.domain;
+    return [
+      ['domain-history: the selected step is in the address and the sidebar', out.selected?.level === d.flow.level && out.selected.node === d.step.id && out.selected.sidebar === d.step.id && out.selected.marks === 1, out.selected],
+      ['domain-history: back from the selection cancels it and stays in the flow', out.back1?.level === d.flow.level && out.back1.node === null && out.back1.marks === 0 && out.back1.sidebar === null, out.back1],
+      ['domain-history: back again goes up to the domain, and once more to the top', out.back2?.level === d.domain.level && out.back3?.level === 'top', [out.back2, out.back3]],
+      ['domain-history: forward goes down to the domain, the flow, and selects the step again', out.fwd1?.level === d.domain.level && out.fwd2?.level === d.flow.level && out.fwd3?.node === d.step.id && out.fwd3.sidebar === d.step.id && out.fwd3.marks === 1, [out.fwd1, out.fwd2, out.fwd3]],
+    ];
+  }],
+
+  ['domain-restore', 'layers', (graph, expected) => driver(`
+    const d = ${JSON.stringify(expected.domain)};
+    await until(() => attr('data-xv-domain-level') === d.flow.level);
+    await until(() => sidebar() === d.flow.steps[1]);
+    await sleep(300);
+    out.restored = {
+      hash: location.hash, level: attr('data-xv-domain-level'), steps: all('[data-xv-domain-entry="step"]').map((el) => el.getAttribute('data-xv-node')), marked: all('.xv-selected').length, sidebar: sidebar(),
+      onlyStepVisible: all('[data-xv-domain-entry="step"]').every((el) => { const r = el.getBoundingClientRect(); return r.width > 0 && r.height > 0; }),
+    };
+  `), (out, graph, expected) => {
+    const d = expected.domain;
+    return [
+      ['domain-restore: a load from the address brings back the flow, its steps in order, and the selected step with its sidebar', out.restored?.level === d.flow.level && JSON.stringify(out.restored.steps) === JSON.stringify(d.flow.steps) && out.restored.marked === 1 && out.restored.sidebar === d.flow.steps[1] && out.restored.onlyStepVisible, out.restored],
+    ];
+  }, { hash: '/domain?d=domain%3Aapp&f=flow%3Astart-up&node=step%3Astart-up%3Arun' }],
+
+  ['domain-keys', 'layers', (graph, expected) => driver(`
+    const d = ${JSON.stringify(expected.domain)};
+    const seen = [];
+    const snap = (label) => seen.push({ label, dialog: !!dialog('Keyboard shortcuts'), drawer: !!q('aside[data-xv-panel="drawer"]'), node: route().params.node ?? null, level: attr('data-xv-domain-level'), d: route().params.d ?? null, f: route().params.f ?? null });
+    await until(() => attr('data-xv-domain-level') === d.flow.level);
+    await until(() => sidebar() === d.step.id);
+    q('aside[data-xv-panel="sidebar"] [data-xv-evidence]').click();
+    await until(() => q('aside[data-xv-panel="drawer"] .xv-code'));
+    key('?', document.body);
+    await until(() => dialog('Keyboard shortcuts'));
+    snap('start');
+    for (let i = 0; i < 6; i++) { key('Escape'); await sleep(450); snap('esc' + (i + 1)); }
+    out.seen = seen;
+  `), (out, graph, expected) => {
+    const d = expected.domain;
+    const at = (i) => (out.seen ?? [])[i] ?? {};
+    return [
+      ['domain-keys: Esc closes the dialog first, leaving the drawer, the selection and the flow', at(1).dialog === false && at(1).drawer === true && at(1).node === d.step.id && at(1).level === d.flow.level, at(1)],
+      ['domain-keys: then the code drawer', at(2).drawer === false && at(2).node === d.step.id, at(2)],
+      ['domain-keys: then the selection', at(3).node === null && at(3).level === d.flow.level, at(3)],
+      ['domain-keys: then up from the flow to its domain', at(4).level === d.domain.level && at(4).f === null && at(4).d === d.domain.id, at(4)],
+      ['domain-keys: then up to the top level', at(5).level === 'top' && at(5).d === null, at(5)],
+      ['domain-keys: at the top level Esc changes nothing', at(6).level === 'top' && at(6).label === 'esc6', at(6)],
+    ];
+  }, { hash: '/domain?d=domain%3Aapp&f=flow%3Astart-up&node=step%3Astart-up%3Abegin' }],
+
+  ['domain-overview', 'layers', (graph, expected) => driver(`
+    await go('#/overview');
+    await until(() => attr('data-xv-count-domain-domains') !== null);
+    const row = all('tr').find((tr) => tr.querySelector('td')?.textContent === 'Domain graph');
+    out.overview = { counts: ['domains', 'flows', 'steps', 'cross'].map((n) => attr('data-xv-count-domain-' + n)), row: row?.textContent ?? null, counted: q('[data-xv-domain-counts]')?.textContent ?? null };
+  `), (out, graph, expected) => [
+    ['domain-overview: the Overview lists the domain graph as included with its counts', JSON.stringify(out.overview?.counts) === JSON.stringify(['2', '3', '5', '1']) && /Included/.test(out.overview.row ?? '') && out.overview.counted === '2 domains, 3 flows, 5 steps and 1 cross-domain edge.', out.overview],
+  ]],
+
+  ['domain-notrun', 'domain-notrun', (graph, expected) => driver(`
+    await go('#/domain');
+    out.page = { text: q('main')?.textContent ?? '', canvas: !!q('.react-flow'), note: !!q('[data-xv-domain-note]') };
+    await go('#/overview');
+    const row = all('tr').find((tr) => tr.querySelector('td')?.textContent === 'Domain graph');
+    out.overview = row?.textContent ?? null;
+  `), (out) => [
+    ['domain-notrun: the Domain page says not run and gives the command, and draws no graph', /Domain graph: not run/.test(out.page?.text ?? '') && /\/excavator-domain/.test(out.page.text) && out.page.canvas === false && out.page.note === false, out.page],
+    ['domain-notrun: the Overview lists it as not run with the command', /Not run/.test(out.overview ?? '') && /\/excavator-domain/.test(out.overview), out.overview],
+  ]],
+
+  ['domain-digest', 'domain-digest', (graph, expected) => driver(`
+    const d = ${JSON.stringify(expected.domain)};
+    await go('#/domain');
+    await until(() => attr('data-xv-domain-level') === 'top');
+    out.page = { revision: q('[data-xv-domain-revision]')?.textContent ?? null, cards: all('[data-xv-domain-entry="domain"]').length };
+    await go('#/overview');
+    const row = all('tr').find((tr) => tr.querySelector('td')?.textContent === 'Domain graph');
+    out.overview = row?.textContent ?? null;
+  `), (out, graph, expected) => {
+    const { domain, graph: other } = expected.domain.digests;
+    return [
+      ['domain-digest: a domain graph made from other facts is a different revision: the page writes both digests and still draws the graph', out.page?.revision?.includes(domain) && out.page.revision.includes(other) && out.page.cards === expected.domain.counts.domains, out.page],
+      ['domain-digest: the Overview lists it as a different revision with both digests', /Different revision/.test(out.overview ?? '') && out.overview.includes(domain) && out.overview.includes(other), out.overview],
+    ];
+  }],
+
+  // A file of a hundred and twenty functions, opened on one of them: the camera centres on that row at a readable size rather than fitting the whole file.
+  ['longfile', 'longfile', () => driver(`
+    const id = 'function:src/long.js:fn119';
+    await go('#/graph');
+    await until(() => attr('data-xv-count-graph-level-nodes') !== null);
+    const input = q('[data-xv-search]');
+    input.focus();
+    setValue(input, 'fn119');
+    const hit = await until(() => q('[data-xv-hit="' + id + '"]'));
+    hit.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
+    await until(() => route().params.node === id);
+    await until(() => sidebar() === id && q('[data-xv-node="' + id + '"]'));
+    await sleep(1600);
+    const vp = q('.react-flow__viewport');
+    const pane = q('.react-flow').getBoundingClientRect();
+    const node = q('[data-xv-node="' + id + '"]').getBoundingClientRect();
+    out.camera = {
+      transform: getComputedStyle(vp).transform, zoom: new DOMMatrix(getComputedStyle(vp).transform).a, nodeHeight: Math.round(node.height), rows: all('[data-xv-entry="child"]').length,
+      inside: node.top >= pane.top && node.bottom <= pane.bottom && node.left >= pane.left && node.right <= pane.right,
+      offCentre: [Math.round(Math.abs(node.left + node.width / 2 - pane.left - pane.width / 2)), Math.round(Math.abs(node.top + node.height / 2 - pane.top - pane.height / 2))], pane: [Math.round(pane.width), Math.round(pane.height)],
+    };
+    // A reload from the address lands the same way.
+    out.hash = location.hash;
+  `), (out) => [
+    ['longfile: the file is open to all its functions', out.camera?.rows >= 120, out.camera],
+    ['longfile: the camera shows the located function at a readable zoom, not the whole file', out.camera?.zoom >= 0.8 && out.camera.nodeHeight >= 17, out.camera],
+    ['longfile: the located function is on screen, near the middle of the canvas', out.camera?.inside === true && out.camera.offCentre[0] <= out.camera.pane[0] * 0.2 && out.camera.offCentre[1] <= out.camera.pane[1] * 0.2, out.camera],
+  ]],
+
+  // The same address, loaded fresh: the camera does the same.
+  ['longfile-restore', 'longfile', () => driver(`
+    const id = 'function:src/long.js:fn119';
+    await until(() => q('[data-xv-node="' + id + '"]'));
+    await sleep(1600);
+    const vp = q('.react-flow__viewport');
+    const pane = q('.react-flow').getBoundingClientRect();
+    const node = q('[data-xv-node="' + id + '"]').getBoundingClientRect();
+    out.camera = { zoom: new DOMMatrix(getComputedStyle(vp).transform).a, nodeHeight: Math.round(node.height), inside: node.top >= pane.top && node.bottom <= pane.bottom, sidebar: sidebar() === id };
+  `), (out) => [
+    ['longfile-restore: loaded from the address, the camera is on the function at a readable zoom', out.camera?.zoom >= 0.8 && out.camera.inside === true && out.camera.sidebar === true, out.camera],
+  ], { hash: '/graph?path=src&node=function%3Asrc%2Flong.js%3Afn119' }],
+
   ['summary', 'layers', (graph) => driver(`
     await go('#/graph?path=' + encodeURIComponent('layer:app/src') + '&node=' + encodeURIComponent('function:src/main.js:orphan'));
     await until(() => sidebar() === 'function:src/main.js:orphan');
@@ -706,16 +936,41 @@ const SCENARIOS = [
   ]],
 ];
 
+/** The modes that write the Full-mode files: the layers, the summaries and the domain graph. */
+const FULL_MODES = new Set(['layers', 'domain-notrun', 'domain-digest']);
+
+/** `longfile`: add src/long.js to the graph with `functions` functions, each contained by the file node. */
+function addLongFile(root, functions = 120) {
+  const path = join(root, '.excavator', 'knowledge-graph.jsonl');
+  const lines = readFileSync(path, 'utf-8').split('\n').filter((line) => line !== '').map((line) => JSON.parse(line));
+  const records = [{ record: 'node', node: { id: 'file:src/long.js', type: 'file', name: 'long.js', filePath: 'src/long.js' } }];
+  for (let i = 0; i < functions; i++) {
+    records.push({ record: 'node', node: { id: `function:src/long.js:fn${i}`, type: 'function', name: `fn${i}`, filePath: 'src/long.js', lineRange: [i * 3 + 1, i * 3 + 2] } });
+    records.push({ record: 'edge', edge: { source: 'file:src/long.js', target: `function:src/long.js:fn${i}`, type: 'contains' } });
+  }
+  const [header, ...rest] = lines;
+  header.counts.nodes += functions + 1;
+  header.counts.edges += functions;
+  writeFileSync(path, `${[header, ...rest, ...records].map((record) => JSON.stringify(record)).join('\n')}\n`);
+}
+
 /** Run one scenario on a freshly packed page. */
 function runScenario([name, mode, makeDriver, scenarioCheck, extra = {}]) {
   const dir = mkdtempSync(join(tmpdir(), 'xv-graph-smoke-'));
   try {
-    const { root, expected } = makeSmokeProject(dir, { full: mode === 'layers' });
+    const { root, expected } = makeSmokeProject(dir, { full: FULL_MODES.has(mode) });
     // `notrun`: the project's doc map was never made.
     if (mode === 'notrun') for (const file of ['doc-map.json', 'doc-map-report.md', 'doc-map']) rmSync(join(root, '.excavator', file), { recursive: true, force: true });
+    // `domain-notrun`: the domain graph was never made. `domain-digest`: it was made from other facts than the graph's.
+    if (mode === 'longfile') addLongFile(root);
+    if (mode === 'domain-notrun') rmSync(join(root, '.excavator', 'domain-graph.json'));
+    if (mode === 'domain-digest') {
+      const path = join(root, '.excavator', 'domain-graph.json');
+      writeFileSync(path, JSON.stringify({ ...JSON.parse(readFileSync(path, 'utf-8')), factDigest: expected.domain.digests.graph }));
+    }
     const out = join(dir, 'page.html');
     packProject(root, { out });
-    const args = [join(here, 'view-smoke.mjs'), out, ...(extra.hash ? ['--hash', extra.hash] : []), ...(extra.height ? ['--height', String(extra.height)] : []), '--eval', makeDriver(expected.graph), ...(extra.screenshot ? ['--screenshot', extra.screenshot] : [])];
+    const args = [join(here, 'view-smoke.mjs'), out, ...(extra.hash ? ['--hash', extra.hash] : []), ...(extra.height ? ['--height', String(extra.height)] : []), '--eval', makeDriver(expected.graph, expected), ...(extra.screenshot ? ['--screenshot', extra.screenshot] : [])];
     const result = spawnSync('node', args, { encoding: 'utf-8', maxBuffer: 1 << 26 });
     let smoke;
     try {
@@ -728,7 +983,7 @@ function runScenario([name, mode, makeDriver, scenarioCheck, extra = {}]) {
     if (smoke.evalResult?.error) return [...checks, [`${label}: the driver ran`, false, smoke.evalResult.error]];
     let results;
     try {
-      results = scenarioCheck(smoke.evalResult ?? {}, expected.graph);
+      results = scenarioCheck(smoke.evalResult ?? {}, expected.graph, expected);
     } catch (error) {
       // A driver that stopped early leaves what its checks read missing: that is a failure, with what it did leave.
       return [...checks, [`${label}: the checks could read what the driver saw`, false, `${error.message}; saw ${JSON.stringify(smoke.evalResult)}`]];

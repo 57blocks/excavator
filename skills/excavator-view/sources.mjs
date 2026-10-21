@@ -55,8 +55,8 @@ function graphFilePaths(payloads) {
 
 /**
  * The paths the included products name: the graph's file nodes; unused-code `unused[].file` and `testOnly[].file`; doc-map
- * `units[].code.evidence[].file`, `coverage.files[].path` and `coverage.outside[].file`; hotspots `files[].path`
- * and `pairs[].a` / `.b`. Sorted, each once.
+ * `units[].code.evidence[].file`, `coverage.files[].path` and `coverage.outside[].file`; domain-graph step `filePath`
+ * and `evidence[].file`; hotspots `files[].path` and `pairs[].a` / `.b`. Sorted, each once.
  */
 export function referencedPaths(payloads) {
   const paths = new Set();
@@ -72,6 +72,14 @@ export function referencedPaths(payloads) {
     }
     for (const row of docMap.coverage?.files ?? []) addPath(paths, row?.path);
     for (const row of docMap.coverage?.outside ?? []) addPath(paths, row?.file);
+  }
+  const domain = parsePayload(payloads, 'domain-graph');
+  if (domain) {
+    for (const node of domain.nodes ?? []) {
+      if (node?.type !== 'step') continue;
+      addPath(paths, node.filePath);
+      for (const item of Array.isArray(node.evidence) ? node.evidence : []) addPath(paths, item?.file);
+    }
   }
   const hotspots = parsePayload(payloads, 'hotspots');
   if (hotspots) {

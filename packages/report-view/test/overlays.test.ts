@@ -5,11 +5,11 @@ import { describe, expect, it } from 'vitest';
 
 import type { GraphEdge, GraphNode } from '../src/data/graph';
 import { buildIndex } from '../src/data/indexes';
-import type { FileInfo } from '../src/lib/graph-structure';
+import type { FileInfo, LevelEntry } from '../src/lib/graph-structure';
 import { OVERLAY_NAMES, overlayParam, parseOverlays, toggleOverlay, type OverlayName } from '../src/lib/overlay-names';
 import {
-  anyOverlay, bandOf, docMapFacts, entryMarks, hotLevel, hotspotsFacts, HOT_LEVELS, legendBlocks, legendOf, nodeMarks, NO_OVERLAYS, overlayAvailability, scoreBands, unusedFacts,
-  type OverlayFacts,
+  anyOverlay, bandOf, docMapFacts, entryMarks, hotLevel, hotspotsFacts, hotspotsRules, HOT_LEVELS, legendBlocks, legendOf, nodeMarks, NO_OVERLAYS, overlayAvailability, scoreBands, unusedFacts,
+  type EntryHot, type OverlayFacts,
 } from '../src/lib/overlays';
 
 const ADVICE = /safe to (delete|remove)|can be (deleted|removed)|should be (removed|deleted)|recommend|you should|consider (removing|deleting)/i;
@@ -175,19 +175,11 @@ describe('what a node is drawn with', () => {
     expect(noScore.title).toBe('Hotspots: the product lists this file without a score.');
   });
 
-  it('draws a directory, layer or fold in the highest band among its files, and says it takes it from them', () => {
-    const marks = entryMarks([at('a'), at('c'), at('e'), at('z')], { ...NO_OVERLAYS, hotspots }, true) as NonNullable<ReturnType<typeof entryMarks>>;
-    // c has score 30 (band 2), e has 50 (band 3): the highest is band 3.
-    expect(marks.hot).toBe(hotLevel(bandOf(50, hotspots.bands), hotspots.bands.bands.length));
-    expect(marks.title).toContain('the highest band among its 4 files');
-    expect(marks.title).toContain('the highest score is 50');
-    expect(marks.title).toContain('3 of them have a score');
-  });
-
-  it('is not misled by a file with no score: a group of those has no band', () => {
-    const marks = entryMarks([fileInfo('z.js'), fileInfo('y.js')], { ...NO_OVERLAYS, hotspots }, true) as NonNullable<ReturnType<typeof entryMarks>>;
-    expect(marks.hot).toBeNull();
-    expect(marks.title).toContain('none of its 2 files has a score');
+  it('draws a directory, layer or fold in the band of the rule it is given, and says that rule', () => {
+    const sum: EntryHot = { rule: 'sum', sum: 80, scored: 2, siblings: 4, bands: scoreBands([10, 40, 80, 120]) };
+    const marks = entryMarks([at('a'), at('c'), at('z')], { ...NO_OVERLAYS, hotspots }, true, sum) as NonNullable<ReturnType<typeof entryMarks>>;
+    expect(marks.hot).toBe(hotLevel(bandOf(80, sum.bands), sum.bands.bands.length));
+    expect(marks.title).toContain('add up to 80');
   });
 
   it('marks a file with the number of its functions listed as unused, coloured by the highest confidence', () => {
@@ -247,6 +239,115 @@ describe('what a node is drawn with', () => {
   });
 });
 
+describe('hotspots bands by the rule of each entry', () => {
+  const fileScores = Array.from({ length: 64 }, (_, i) => ({ path: `f${i + 1}.js`, score: i + 1 }));
+  const dirs = Array.from({ length: 8 }, (_, i) => ({ path: `d${i + 1}`, score: (i + 1) * 100 }));
+  const facts = hotspotsFacts({ files: fileScores, directories: dirs });
+  const on: OverlayFacts = { ...NO_OVERLAYS, hotspots: facts };
+  const files = (...ns: number[]) => ns.map((n) => fileInfo(`f${n}.js`));
+  const entry = (id: string, kind: LevelEntry['kind'], members: FileInfo[], dir: string | null = null) => ({ id, kind, dir, members });
+  const marksOf = (rules: ReturnType<typeof hotspotsRules>, e: ReturnType<typeof entry>) => entryMarks(e.members, on, e.kind !== 'file', rules.byEntry.get(e.id)) as NonNullable<ReturnType<typeof entryMarks>>;
+
+  it('reads the directory scores the product lists, with their own quartiles, apart from the file scores', () => {
+    expect(facts.directoryScores.get('d3')).toBe(300);
+    expect([...facts.directoryScores.keys()]).toHaveLength(8);
+    expect(facts.directoryBands.scored).toBe(8);
+    expect(facts.directoryBands.cuts).toEqual([300, 500, 700]);
+    expect(facts.bands.scored).toBe(64);
+    // A row with no score, a repeated path and a row that is not an object take no part.
+    const odd = hotspotsFacts({ files: [], directories: [{ path: 'a', score: 5 }, { path: 'a', score: 9 }, { path: 'b', score: null }, { path: 'c' }, 7] as never });
+    expect([...odd.directoryScores]).toEqual([['a', 5]]);
+    expect(hotspotsFacts({ files: [] }).directoryScores.size).toBe(0);
+  });
+
+  it('gives each entry the rule it has: files their score, a listed directory its own, everything else the sum of its files', () => {
+    const entries = [
+      entry('file', 'file', files(1)), entry('listed', 'container', files(2, 3), 'd3'), entry('unlisted', 'container', files(4), 'elsewhere'),
+      entry('cluster', 'cluster', files(5, 6)), entry('fold', 'fold', files(7)), entry('group', 'container', files(8), null),
+    ];
+    const rules = hotspotsRules(entries, facts);
+    expect([...rules.byEntry].map(([id, hot]) => [id, hot.rule])).toEqual([['file', 'file'], ['listed', 'directory'], ['unlisted', 'sum'], ['cluster', 'sum'], ['fold', 'sum'], ['group', 'sum']]);
+    expect(rules.scales.files?.scored).toBe(64);
+    expect(rules.scales.directories?.scored).toBe(8);
+    expect(rules.scales.sums?.scored).toBe(4);
+  });
+
+  it('bands a directory the product lists by the product\'s own directory score, whatever its files score', () => {
+    const entries = [entry('top', 'container', files(1), 'd8'), entry('bottom', 'container', files(64), 'd1'), entry('mid', 'container', files(1), 'd5')];
+    const rules = hotspotsRules(entries, facts);
+    // d8 has the highest directory score though its only file has the lowest file score; d1 is the reverse.
+    expect(marksOf(rules, entries[0]).hot).toBe(4);
+    expect(marksOf(rules, entries[1]).hot).toBe(1);
+    expect(marksOf(rules, entries[2]).hot).toBe(3);
+    expect(marksOf(rules, entries[0]).title).toBe('Hotspots: the product lists this directory with score 800, band 4 of 4 (700 to 800), among the 8 directory scores it lists.');
+  });
+
+  it('does not put every layer cluster in the top band when each holds one top-band file: the sums of their files are banded among the clusters', () => {
+    // Cluster k holds files k, k+8, ..., k+56: each has a file with a score in the top quartile of the files (49 to 64).
+    const clusters = Array.from({ length: 8 }, (_, k) => entry(`c${k + 1}`, 'cluster', files(...Array.from({ length: 8 }, (_, j) => k + 1 + 8 * j))));
+    for (const cluster of clusters) expect(Math.max(...cluster.members.map((m) => facts.scores.get(m.path) as number))).toBeGreaterThanOrEqual(facts.bands.cuts[2]);
+    const rules = hotspotsRules(clusters, facts);
+    expect(clusters.map((c) => marksOf(rules, c).hot)).toEqual([1, 1, 2, 2, 3, 3, 4, 4]);
+    expect(marksOf(rules, clusters[7]).title).toBe('Hotspots: the scores of its 8 scored files (of 8) add up to 288; band 4 of 4 (280 to 288) among the 8 entries of this level that have no directory score.');
+  });
+
+  it('takes the sum over the files that have a score, bands it among the entries of the level that have one, and draws none for an entry whose files have no score', () => {
+    const entries = [entry('a', 'fold', files(1, 2)), entry('b', 'fold', files(10)), entry('c', 'cluster', [fileInfo('unscored.js')]), entry('d', 'fold', [...files(20), fileInfo('unscored.js')])];
+    const rules = hotspotsRules(entries, facts);
+    expect(rules.byEntry.get('a')).toMatchObject({ rule: 'sum', sum: 3, scored: 2 });
+    expect(rules.byEntry.get('c')).toMatchObject({ rule: 'sum', sum: null, scored: 0 });
+    expect(rules.scales.sums?.scored).toBe(3);
+    expect(marksOf(rules, entries[2]).hot).toBeNull();
+    expect(marksOf(rules, entries[2]).title).toBe('Hotspots: none of its 1 file has a score.');
+    expect(marksOf(rules, entries[3]).title).toContain('add up to 20');
+    expect(marksOf(rules, entries[3]).title).toContain('1 scored file (of 2)');
+    // The lowest sum is in the lowest band and the highest in the highest.
+    expect(marksOf(rules, entries[0]).hot).toBeLessThan(marksOf(rules, entries[3]).hot as number);
+  });
+
+  it('says one entry, not "1 entries", when a level has a single entry banded by its sum', () => {
+    const single = [entry('only', 'cluster', files(1, 2))];
+    const rules = hotspotsRules(single, facts);
+    expect(marksOf(rules, single[0]).title).toBe('Hotspots: the scores of its 2 scored files (of 2) add up to 3; band 1 of 1 (3 to 3) among the 1 entry of this level that has no directory score.');
+    expect((legendOf('hotspots', on, rules.scales) as NonNullable<ReturnType<typeof legendOf>>).note).toContain('among the quartiles of the 1 such entry drawn at this level that has a sum');
+  });
+
+  it('banded the same whatever order the entries are drawn in', () => {
+    const entries = Array.from({ length: 6 }, (_, k) => entry(`e${k}`, 'fold', files(k * 3 + 1, k * 3 + 2)));
+    const one = hotspotsRules(entries, facts);
+    const two = hotspotsRules([...entries].reverse(), facts);
+    for (const e of entries) expect(marksOf(two, e).hot).toBe(marksOf(one, e).hot);
+  });
+
+  it('uses only the scales a level needs: a level of clusters has only the sum scale', () => {
+    const rules = hotspotsRules([entry('c1', 'cluster', files(1)), entry('c2', 'cluster', files(2))], facts);
+    expect(rules.scales.files).toBeNull();
+    expect(rules.scales.directories).toBeNull();
+    expect(rules.scales.sums?.scored).toBe(2);
+    expect(hotspotsRules([], facts).scales).toEqual({ files: null, directories: null, sums: null });
+  });
+
+  it('writes each rule that applies into the legend, with the numbers of its own bands', () => {
+    const rules = hotspotsRules([entry('f', 'file', files(1)), entry('d', 'container', files(2), 'd2'), entry('c', 'cluster', files(3)), entry('c2', 'cluster', files(4))], facts);
+    const legend = legendOf('hotspots', on, rules.scales) as NonNullable<ReturnType<typeof legendOf>>;
+    const prefixes = new Set(legend.rows.map((r) => r.label.split(' ')[0]));
+    expect([...prefixes]).toEqual(['Files', 'Directories', 'Sums']);
+    expect(legend.note).toContain('A file is banded by its own score, among the quartiles of the 64 file scores the product lists');
+    expect(legend.note).toContain("A directory the product lists is banded by the product's score for it, among the quartiles of its 8 directory scores");
+    expect(legend.note).toContain("A layer, a fold, or a directory the product has no score for is banded by the sum of its files' scores, among the quartiles of the 2 such entries drawn at this level that have a sum");
+    expect(legend.rows.filter((r) => r.label.startsWith('Directories')).reduce((n, r) => n + (r.count ?? 0), 0)).toBe(8);
+    expect(legend.note).not.toContain('highest band');
+  });
+
+  it('says only the rules of the level: a level of files has the file rule and nothing about directories or sums', () => {
+    const rules = hotspotsRules([entry('f', 'file', files(1))], facts);
+    const legend = legendOf('hotspots', on, rules.scales) as NonNullable<ReturnType<typeof legendOf>>;
+    expect(legend.note).toContain('A file is banded');
+    expect(legend.note).not.toContain('A directory');
+    expect(legend.note).not.toContain('A layer');
+  });
+});
+
 describe('the legend', () => {
   const hotspots = hotspotsFacts({ files: Array.from({ length: 8 }, (_, i) => ({ path: `f${i}.js`, score: (i + 1) * 100 })) });
   const unused = unusedFacts({
@@ -257,10 +358,10 @@ describe('the legend', () => {
 
   it('lists the score range of each band with its count, and says how the bands were made', () => {
     const legend = legendOf('hotspots', all) as NonNullable<ReturnType<typeof legendOf>>;
-    expect(legend.rows.map((r) => [r.label, r.count])).toEqual([['100 – 200', 2], ['300 – 400', 2], ['500 – 600', 2], ['700 – 800', 2]]);
+    expect(legend.rows.map((r) => [r.label, r.count])).toEqual([['Files 100 – 200', 2], ['Files 300 – 400', 2], ['Files 500 – 600', 2], ['Files 700 – 800', 2]]);
     expect(legend.note).toContain('quartiles of the 8 file scores');
     expect(legend.note).toContain('cut points 300, 500, 700');
-    expect(legend.note).toContain('highest band among its files');
+    expect(legend.note).not.toContain('highest band');
     expect(legend.rows.map((r) => (r.swatch as { hot: number }).hot)).toEqual([1, 2, 3, 4]);
   });
 
@@ -295,7 +396,13 @@ describe('the legend', () => {
       texts.push(legend.title, legend.note, ...legend.rows.map((r) => r.label));
     }
     const members = [fileInfo('f1.js'), fileInfo('a.js'), fileInfo('b.js')];
-    for (const aggregated of [false, true]) texts.push(entryMarks(members, all, aggregated)?.title ?? '');
+    texts.push(entryMarks(members, all, false)?.title ?? '');
+    const withDirs = { ...all, hotspots: hotspotsFacts({ files: [{ path: 'f1.js', score: 100 }, { path: 'a.js', score: 50 }, { path: 'b.js', score: 9 }], directories: [{ path: 'src', score: 300 }, { path: 'lib', score: 40 }] }) };
+    const rules = hotspotsRules([
+      { id: 'c', kind: 'cluster', dir: null, members }, { id: 'd', kind: 'container', dir: 'src', members }, { id: 'x', kind: 'fold', dir: null, members: [members[0]] }, { id: 'y', kind: 'container', dir: 'zzz', members: [members[1]] }, { id: 'n', kind: 'fold', dir: null, members: [fileInfo('none.js')] },
+    ], withDirs.hotspots);
+    for (const [id, hot] of rules.byEntry) texts.push(entryMarks(id === 'n' ? [fileInfo('none.js')] : members, withDirs, true, hot)?.title ?? '');
+    texts.push(legendOf('hotspots', withDirs, rules.scales)?.note ?? '');
     texts.push(nodeMarks('function:x:a', all)?.title ?? '', overlayAvailability(undefined).text ?? '');
     for (const block of legendBlocks(['hotspots', 'unused', 'doc-map'], NO_OVERLAYS, { hotspots: { status: 'not-run' }, unused: { status: 'unreadable' }, 'doc-map': { status: 'included' } }, { pending: true, error: null })) texts.push(block.title, block.note);
     for (const text of texts) {

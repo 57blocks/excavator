@@ -12,6 +12,7 @@ import { NodeSummary } from '../components/NodeSummary';
 import { CodeLink } from '../components/ui/CodeLink';
 import { type Column, DataTable } from '../components/ui/DataTable';
 import { loadGraphModel } from '../data/model';
+import { domainCountsText } from '../lib/domain-details';
 import type { Manifest, ManifestProduct } from '../data/manifest';
 import type { GraphIndex } from '../data/indexes';
 import { useCounts, useReady } from '../hooks/use-signals';
@@ -26,6 +27,8 @@ import { useLoaded, useViewer } from '../state/viewer';
 function productRow(product: ManifestProduct, snapshot: string, semantics: SemanticsStats | null) {
   let detail: React.ReactNode[] = [<div key="d">{detailText(product, snapshot)}</div>];
   if (product.name === 'semantics' && semantics) detail.push(<div key="n">{semanticsDetail(semantics)}</div>);
+  const domainText = product.name === 'domain-graph' && (product.status === 'included' || product.status === 'different-revision') ? domainCountsText(product.counts) : null;
+  if (domainText) detail.push(<div key="dc" data-xv-domain-counts="">{domainText}</div>);
   if (product.items) {
     detail = product.items.map((item) => (
       <div key={item.name}>{`${item.file}: ${statusLabel(item.status).toLowerCase()}${item.status === 'not-run' ? ` (${item.command})` : ''}`}</div>
@@ -163,7 +166,11 @@ export function OverviewPage() {
   const ready = loaded.state === 'ready' ? loaded.value : null;
   const summary = ready?.summary ?? null;
   const semantics = ready?.semantics ?? null;
-  useCounts(summary ? { nodes: summary.totals.nodes, edges: summary.totals.edges, gaps: summary.totals.gaps, ...(semantics ? semanticsCounts(semantics) : {}) } : null);
+  const domain = manifest.products.find((p) => p.name === 'domain-graph');
+  const domainCounts: Record<string, number> = domain && (domain.status === 'included' || domain.status === 'different-revision') && domainCountsText(domain.counts) !== null
+    ? { 'domain-domains': domain.counts?.domains as number, 'domain-flows': domain.counts?.flows as number, 'domain-steps': domain.counts?.steps as number, 'domain-cross': domain.counts?.crossDomain as number }
+    : {};
+  useCounts(summary ? { nodes: summary.totals.nodes, edges: summary.totals.edges, gaps: summary.totals.gaps, ...(semantics ? semanticsCounts(semantics) : {}), ...domainCounts } : null);
   useReady(wantsGraph ? loaded.state : 'ready');
   const rows = useMemo(() => manifest.products.map((p) => productRow(p, snapshot, semantics)), [manifest, snapshot, semantics]);
   return (

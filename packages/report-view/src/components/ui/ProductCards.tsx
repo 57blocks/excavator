@@ -6,9 +6,12 @@ export function RevisionBanner({ manifest, product }: { manifest: Manifest; prod
   if (!product || product.status !== 'different-revision') return null;
   return (
     <Card title={`${product.label}: different revision`} tone="warn">
-      <p>
-        The product was made at <code>{product.revision}</code>; the source snapshot is <code>{manifest.snapshot.revision}</code>. Its content is shown as it was written.
-      </p>
+      {product.revision !== manifest.snapshot.revision ? (
+        <p>
+          The product was made at <code>{product.revision}</code>; the source snapshot is <code>{manifest.snapshot.revision}</code>. Its content is shown as it was written.
+        </p>
+      ) : null}
+      {product.reason ? <p>{`${product.reason}. Its content is shown as it was written.`}</p> : null}
     </Card>
   );
 }

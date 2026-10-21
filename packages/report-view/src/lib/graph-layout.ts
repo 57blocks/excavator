@@ -83,8 +83,14 @@ const GRID_OPTIONS = {
 
 const elk = new ELK();
 
-/** Place `nodes` by `links`, pairs of node ids; a link to a node that is not there is left out. With `grid` the nodes are packed in rows in the order given. */
-export async function layoutNodes(nodes: readonly { id: string; size: Size }[], links: readonly (readonly [string, string])[], { grid = false }: { grid?: boolean } = {}): Promise<LevelLayout> {
+/** The layered options that keep a chain of nodes in one column instead of wrapping it into rows, closer together (the steps of a flow). */
+export const COLUMN_OPTIONS = { 'elk.layered.wrapping.strategy': 'OFF', 'elk.layered.spacing.nodeNodeBetweenLayers': '40' } as const;
+
+/**
+ * Place `nodes` by `links`, pairs of node ids; a link to a node that is not there is left out. With `grid` the nodes are packed
+ * in rows in the order given; `options` replace layered options for this run.
+ */
+export async function layoutNodes(nodes: readonly { id: string; size: Size }[], links: readonly (readonly [string, string])[], { grid = false, options }: { grid?: boolean; options?: Readonly<Record<string, string>> } = {}): Promise<LevelLayout> {
   const ids = new Set(nodes.map((node) => node.id));
   const seen = new Set<string>();
   const edges: { id: string; sources: string[]; targets: string[] }[] = [];
@@ -97,7 +103,7 @@ export async function layoutNodes(nodes: readonly { id: string; size: Size }[], 
   const started = performance.now();
   const laid = await elk.layout({
     id: 'root',
-    layoutOptions: grid ? GRID_OPTIONS : OPTIONS,
+    layoutOptions: grid ? GRID_OPTIONS : { ...OPTIONS, ...options },
     children: nodes.map((node) => ({ id: node.id, ...node.size })),
     edges,
   });

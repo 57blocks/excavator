@@ -8,14 +8,14 @@
  *
  * A manifest entry is { name, label, status, reason, revision, revisionNote,
  * command, file, payloads } with `payloads` the ids of the data payloads the
- * page holds for it; the semantics entry also has `counts`. The bytes of those
+ * page holds for it; the semantics and domain-graph entries also have `counts`. The bytes of those
  * payloads are returned next to the entries, never inside them.
  */
 
-import { lstatSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { KNOWLEDGE_GRAPH_FILE, KNOWLEDGE_GRAPH_FORMAT } from '../excavator/knowledge-graph-store.mjs';
+import { readDomain } from './domain.mjs';
 import { describeFormat, parseJsonObject, readRegularFile } from './product-files.mjs';
 import { readSemantics } from './semantics.mjs';
 
@@ -56,15 +56,12 @@ const JSON_PRODUCTS = [
   },
 ];
 
-/**
- * Products the page lists but does not read yet (the domain graph; a later
- * commit of viewer-app reads it). A missing file is not run; a file that is
- * there is shown as unreadable with that reason, so the page never claims it
- * holds something it does not show.
- */
-const UNREAD_PRODUCTS = [
-  { name: 'domain-graph', label: 'Domain graph', file: 'domain-graph.json', command: '/excavator-domain' },
-];
+const DOMAIN_DEF = {
+  name: 'domain-graph',
+  label: 'Domain graph',
+  file: 'domain-graph.json',
+  command: '/excavator-domain',
+};
 
 const SEMANTICS_DEF = {
   name: 'semantics',
@@ -193,6 +190,7 @@ function readGraphProduct(dataDir, snapshotRevision) {
     entry: withRevision(def, revision, snapshotRevision, [def.name]),
     payloads: [{ id: def.name, bytes: file.bytes }],
     graphBytes: file.bytes,
+    graphIdentity: { factsDigest: typeof checked.header.fields.project?.factsDigest === 'string' ? checked.header.fields.project.factsDigest : null },
   };
 }
 
@@ -212,14 +210,19 @@ function readSemanticsProduct(dataDir, graph) {
   };
 }
 
-function readUnreadProduct(dataDir, def) {
-  try {
-    lstatSync(join(dataDir, def.file));
-  } catch (error) {
-    if (error.code === 'ENOENT' || error.code === 'ENOTDIR') return { entry: notRun(def), payloads: [] };
-    return { entry: unreadable(def, `${def.file} could not be inspected (${error.code ?? error.message})`), payloads: [] };
-  }
-  return { entry: unreadable(def, `${def.file} is present; this version of the packer does not read it yet`), payloads: [] };
+/**
+ * The domain graph is a product of its own, read against the knowledge graph's facts digest and the snapshot's revision.
+ * Its entry carries `counts` (what the page and the packer's result say about it) and, when the facts differ, the reason.
+ */
+function readDomainProduct(dataDir, graph, snapshotRevision) {
+  const def = DOMAIN_DEF;
+  const read = readDomain(dataDir, graph.graphIdentity ?? null, snapshotRevision);
+  if (read.state === 'absent') return { entry: notRun(def), payloads: [] };
+  if (read.state === 'unreadable') return { entry: unreadable(def, read.reason), payloads: [] };
+  return {
+    entry: { ...entry(def, { status: read.differs ? 'different-revision' : 'included', reason: read.reason, revision: read.revision, payloads: [def.name] }), counts: read.counts },
+    payloads: [{ id: def.name, bytes: read.bytes }],
+  };
 }
 
 /** Reports are included or not run; their Markdown is not checked and records no revision. */
@@ -265,8 +268,7 @@ function readReports(dataDir) {
 export function collectProducts(dataDir, snapshotRevision) {
   const graph = readGraphProduct(dataDir, snapshotRevision);
   const [unused, docMap, hotspots] = JSON_PRODUCTS.map((def) => readJsonProduct(dataDir, def, snapshotRevision));
-  const [domain] = UNREAD_PRODUCTS.map((def) => readUnreadProduct(dataDir, def));
-  const results = [graph, readSemanticsProduct(dataDir, graph), domain, unused, docMap, hotspots, readReports(dataDir)];
+  const results = [graph, readSemanticsProduct(dataDir, graph), readDomainProduct(dataDir, graph, snapshotRevision), unused, docMap, hotspots, readReports(dataDir)];
   return {
     entries: results.map((r) => r.entry),
     payloads: results.flatMap((r) => r.payloads),
