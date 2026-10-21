@@ -611,10 +611,17 @@ describe('excavator-chat: document questions', () => {
 
   it('routes document questions before the graph check, and answers them only from the product', () => {
     const stepOne = flat(chat.split(/^## Instructions$/m)[1].split(/^1\. /m)[1].split(/^2\. /m)[0]);
-    const route = stepOne.indexOf('**Document questions do not need the graph either.** A question about where the code of a function a document describes is,');
+    const route = stepOne.indexOf('**Document questions do not need the graph either.** A question about the functions, use cases or requirements documents describe (where the code of one is, whether one is implemented,');
     expect(route).toBeGreaterThan(-1);
     expect(route).toBeLessThan(stepOne.indexOf('knowledge-graph.jsonl'));
-    expect(stepOne).toContain('is answered as **Document questions** below says, whether or not a graph exists; skip steps 2–8 for it.');
+    for (const rule of [
+      'is answered as **Document questions** below says, whether or not a graph exists; skip steps 2–8 for it.',
+      'So is a question whether a function is implemented, or where its code is, when `.excavator/doc-map.json` lists a unit by that name or id (look it up with the first query of step 3 there).',
+      'Answer document questions only from `.excavator/doc-map.json`: when that file is missing, say so and suggest running `/excavator-doc-map`, and never answer them from the graph, the documents or the source instead.',
+    ]) {
+      expect(stepOne).toContain(rule);
+      expect(stepOne.indexOf(rule)).toBeLessThan(stepOne.indexOf('knowledge-graph.jsonl'));
+    }
     expect(section).toContain('Answer these questions only from `.excavator/doc-map.json`. **Never infer from the graph or the source which code does a function a document describes.**');
     expect(section).toContain('**Product missing:** say this project has no map of its documents to its code yet and suggest running `/excavator-doc-map <documents folder>`. Do not answer from the graph or the source instead.');
     expect(section).not.toMatch(/[\u3000-\u303f\u3400-\u9fff\uf900-\ufaff\uff00-\uffef]/u);
@@ -657,6 +664,8 @@ describe('excavator-chat: document questions', () => {
     for (const rule of [
       'Never say the unit is implemented completely or correctly.',
       'the searches listed found no code tied to it; list them. Never say it is unimplemented, missing or not in the system.',
+      'Asked whether it is implemented, answer neither yes nor no: begin the answer with the words "The check judged the code at these places to do it, or a part of it; the product does not say whether it is complete or correct." and then list the places.',
+      'Asked whether it is implemented, answer neither yes nor no: begin the answer with the words "The product does not say whether it is implemented: the searches listed found no code tied to it." and then list the searches. Add no conclusion of your own after them: not what the code base has or lacks, and not whether the document fits the project.',
       `whenever you list or count it, give the words "${fixed}"`,
       'Asked which code has no documentation, answer with the directories query and these words, and say the product shows where no unit\'s evidence is, not which code no document describes.',
       'Never call such code undocumented, not documented, unused, dead, obsolete or safe to delete, and never say what it does.',
