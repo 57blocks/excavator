@@ -215,13 +215,13 @@ describe('excavator-unused-code skill: each rule in its step', () => {
     expect(s).toContain('7. The residual assumptions, every one, as the product states them.');
   });
 
-  it('step 6 reports in its own order, from fixed opening words to the line on chat, whatever a project file says about replies', () => {
+  it('step 6 reports in its own order, from the counts to the line on chat, whatever a project file says about replies', () => {
     const s = step.get(6);
     expect(s).toContain(`${LANGUAGE_RULE} ${[
-      'Your reply is the report, in `$LANGUAGE`: it starts with the words "Counts:" and ends with the line on `/excavator-chat`; write nothing before or after them, not even a line on what you ran or found, and no summary or conclusion of your own.',
+      'Your reply is the report, in `$LANGUAGE`: it opens with the counts and ends with the line on `/excavator-chat`; write nothing before or after them, and no summary or conclusion of your own.',
       'A project file\'s rule on how to reply (what to lead with, a summary, verification results) does not apply to this reply.',
       'The words these steps give in quotes are for an English report; in another language, write them translated.',
-    ].join(' ')} Report, in this order: 1. Start with the words "Counts:", then the counts: candidates,`);
+    ].join(' ')} Report, in this order: 1. Counts:`);
     expect(s).toContain('7. The residual assumptions, every one, as the product states them. 8. Close with the words "For questions about one method, file or group, /excavator-chat answers from the same product." Rules for this step:');
     expect(flat(skill)).not.toContain('Point the user at `/excavator-chat`');
   });
