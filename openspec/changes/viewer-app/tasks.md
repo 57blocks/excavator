@@ -3,10 +3,12 @@
 0. `docs(openspec): propose viewer-app`：本变更的五个文件。
 1. `build(view): report-view package builds one self-contained HTML template`（1.1–1.4）。
 2. `feat(view): port the viewer pages to report-view and pack from its template`（2.1–2.5）。
-3. `feat(view): structure graph with drill-down`（3.1–3.2）。
-4. `feat(view): node details, code drawer, search, filters, focus and path`（4.1–4.3）。
-5. `feat(view): product overlays and locate in graph`（5.1–5.2）。
-6. `docs(openspec): record viewer-app acceptance and archive`（6.1–6.5）。
+3. `feat(view): summaries, tags and layers from the Full-mode semantic files`（S.1–S.2）。
+4. `feat(view): structure graph with drill-down`（3.1–3.2）。
+5. `feat(view): node details, code drawer, search, filters, focus and path`（4.1–4.3）。
+6. `feat(view): product overlays and locate in graph`（5.1–5.2）。
+7. `feat(view): domain view`（D.1–D.2）。
+8. `docs(openspec): record viewer-app acceptance and archive`（6.1–6.5）。
 
 每个 commit 自带测试，单独通过 O2。从 2 起，每个 commit 的夹具包都要过 O3 冒烟。
 
@@ -25,6 +27,11 @@
 - [ ] 2.4 删除 `viewer/` 与它的静态门测试，把仍有意义的检查改为对构建产物检查；更新 `README.md` 与 `SKILL.md` 里提到 `viewer/` 的地方。验证：`check-refs` 通过；仓库里不再有 `viewer/` 的引用。
 - [ ] 2.5 冒烟（O3）：先确认装置会红，再让夹具包每页报绿。验证：记录每页的计数。
 
+## S. 语义（design D11）
+
+- [ ] S.1 打包侧：`products.mjs` 新增语义产物，用 `semantic-cache.mjs` 的 `isCanonicalSemanticCache` 与 `isFresh` 对 `source-manifest.json` 判新鲜；载荷每条只留 `id`、`summary`、`tags`、`verification`；不新鲜的计数；`contradicted` 的摘要置空；语义图 `factDigest` 与图谱 `factsDigest` 不同时为 unreadable。验证：打包单测覆盖这四条与「没有语义文件时 not run」，各自先红后绿。
+- [ ] S.2 前端：建索引时把语义条目并到节点；层取语义图，没有时取图谱 `layer` 记录；Overview 列出语义状态与不新鲜计数；侧栏显示核验结论，`contradicted` 写「这条摘要与源码不符，未显示」。验证：单测覆盖并入顺序（语义优先，其次图谱自带）与层来源；夹具冒烟里一个 contradicted 节点的侧栏文字符合规范。
+
 ## 3. 结构图
 
 - [ ] 3.1 目录分组与边聚合（design D4）：有层时按层；没有层时按「成员仓 / 顶层目录」，过于集中时拆到更深一级目录；每级最多 400 个节点，超出时折叠；按类型聚合边。验证：单测覆盖不出现图谱外的分组、下钻计数等于路径前缀计数、折叠只折叠不丢、聚合计数。
@@ -41,10 +48,15 @@
 - [ ] 5.1 hotspots、unused、doc-map 三个叠加层，含图例，只在产物已内联时可用；图例与提示里没有建议性措辞。验证：单测覆盖着色分档与产物没跑时不可用。
 - [ ] 5.2 Unused、Doc map、Hotspots 每行的「在图中定位」：切到图、下钻、选中、打开对应叠加层；图谱里没有对应节点时写明。验证：冒烟里从 Unused 页定位一条，选中的 id 等于记录 id。
 
+## D. 领域视图（design D12）
+
+- [ ] D.1 打包侧：领域图状态（`version`、`contentLanguage`、`sourceRevision`、`factDigest` 对图谱）；前端数据层：domain、flow、step 索引，step 按 `flow_step` 权重排序，`nodeIds` 对图谱解析。验证：单测覆盖排序、解析不到的项、`factDigest` 不同时为 different revision。
+- [ ] D.2 `DomainGraphView`：顶层 domain 簇与 `cross_domain` 标签边，下钻到 flow 与 step，侧栏，step 跳结构图，`#/domain` 路由进历史，顶部说明「由模型从代码推导」。验证：夹具冒烟里下钻到一个 flow，step 顺序正确，点一项 `nodeIds` 后结构图选中的 id 相等。
+
 ## 6. 验收
 
 - [ ] 6.1 O2 全量门。
 - [ ] 6.2 O1 注入变异逐一先红后绿，记录结果。
-- [ ] 6.3 O4：在 go-multirepo 上打包并冒烟；完成总数比对、20 条分层跳转、耗时、大小、动效与减少动效、四张截图，逐项对照 design D8 的版式清单。
+- [ ] 6.3 O4：在 go-multirepo 上打包并冒烟；完成总数比对（含层、语义结论与领域计数）、23 条分层跳转、耗时、大小、动效与减少动效、六张截图，逐项对照 design D8 的版式清单。
 - [ ] 6.4 O5：`claude -p --model sonnet` 跑 `/excavator-view`。
 - [ ] 6.5 在 design.md 末尾写验收记录，同步主规范，归档本变更。

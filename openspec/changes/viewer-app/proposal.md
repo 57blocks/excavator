@@ -14,6 +14,8 @@ report-viewer 的查看页是纯 JS 手写的表格页：能看数字、能跳�
   - 节点详情侧栏（字段、入边与出边、该节点在各产物里的事实）；
   - 底部代码抽屉，高亮行范围；
   - 搜索、过滤（节点类型、边类型、层）、1 跳聚焦、两点最短路径、返回历史、快捷键。
+- 新增**领域视图**，交互照 Understand Anything：domain → flow → step 逐级下钻，step 跳到结构图里它锚定的节点或代码抽屉。
+- 摘要、标签与层改从 Full 模式的语义文件读：`semantic-cache.json` 里打包时仍新鲜的条目与 `semantic-graph.json` 的层。图谱节点自带的摘要只在没有语义文件时使用（Lazy 模式）。每条摘要标出核验结论，被核验否定的摘要不显示。
 - 新增**产物叠加层**：在图上叠加 hotspots 热度、unused 标记、doc-map 有无证据，可分别开关；表格页的每一行都能「在图中定位」。
 - 样式：版式与组件层次照 Understand Anything，包括顶栏、玻璃质感浮层、侧栏、抽屉与圆角卡片。配色仍是 57blocks 浅色 token（report-viewer 的 D6），只有浅色主题。动效语汇取 57blocks 官网：缓动 `cubic-bezier(.16,1,.3,1)`、0.2–0.45 s、进场上移淡入。系统要求减少动效时，动效全部关闭。
 - 修改 `service-only` 规范：把「查看页前端没有 npm 依赖、没有构建步骤」改为「构建产物是一个可从 `file://` 打开的文件，不由任何进程提供」，并点名 `packages/report-view` 是唯一的前端包。
@@ -27,7 +29,8 @@ report-viewer 的查看页是纯 JS 手写的表格页：能看数字、能跳�
 - `report-viewer`：
   - 「打包成一个自包含的 HTML」改为用构建出的模板，CSP 加 `worker-src blob:`，去掉「无 npm 依赖、无构建步骤」；
   - 「界面与主题」加入版式、动效与减少动效；
-  - 新增「结构图」「节点详情与代码抽屉」「搜索、过滤、聚焦与路径」「产物叠加层」「快捷键与返回」五条要求。
+  - 「每个产物落进看得见的状态」加入语义与领域图；
+  - 新增「结构图」「摘要、标签与层的来源」「节点详情与代码抽屉」「搜索、过滤、聚焦与路径」「产物叠加层」「快捷键与返回」「领域图」七条要求。
 - `service-only`：放宽前端代码的形态限制，范围钉死在一个包、一个文件、不起服务。
 
 ## Impact
@@ -39,7 +42,7 @@ report-viewer 的查看页是纯 JS 手写的表格页：能看数字、能跳�
   - 修改 `skills/excavator-view/page-assembly.mjs`、`pack.mjs`、`SKILL.md`；
   - `scripts/view-smoke.mjs` 保留，就绪与计数约定不变；
   - 修改测试 `tests/skill/excavator-view/*` 与 `tests/skill/excavator/test_service_only_contract.test.mjs`。
-- **查看页大小：** 模板估计 2–3 MB（ELK 约 1.6 MB 未压缩），加在数据之上。
+- **查看页大小：** 模板估计 2–3 MB（ELK 约 1.6 MB 未压缩），加在数据之上。语义缓存在打包时只保留摘要、标签与核验结论，去掉语言审计等字段。
 - **不变：**
   - 产物格式、skill 的参数与最后回复；
   - 不联网、不起服务、只读 `.excavator/`；

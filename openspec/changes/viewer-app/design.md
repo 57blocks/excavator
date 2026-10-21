@@ -15,21 +15,27 @@ report-viewer（已归档，2026-10-21）交付了打包脚本与一个纯 JS �
 2. 构建产物分块；
 3. 读的是旧的单文件 `knowledge-graph.json`。现在的图谱是 `knowledge-graph.jsonl`（`header`、`node`、`edge`、`gap`、`coverage` 记录）。
 
-go-multirepo 上的数据形状：
-- Lazy 图谱有 10,483 个节点、36,478 条边、0 个层，摘要都为空。
+go-multirepo 上的数据形状（2026-10-22 跑完 Full 模式之后）：
+- 图谱有 10,483 个节点、36,478 条边。Full 模式下 `knowledge-graph.jsonl` 不放模型写的内容：节点的 `summary` 都是空串、`tags` 都是空数组，也没有 `layer` 记录。
+- 摘要与标签在 `semantic-cache.json`：`.entries` 以节点 id 为键，10,483 条，每条有 `summary`、`tags`、`semanticSourceHash`、`languageAudit`，大多数有 `verification`。结论分布：verified 6,949、unverified 1,330、contradicted 98，另有 2,106 个文件节点没有结论（没有行范围可核）。文件 12.6 MB，其中大半是 `languageAudit`。
+- 层在 `semantic-graph.json`：9 个层，`nodeIds` 覆盖全部 2,106 个文件节点；带 `factDigest`，与图谱的 `factsDigest` 相同。
+- 领域图 `domain-graph.json`：9 个 domain、36 个 flow、150 个 step；边是 36 条 `contains_flow`、150 条 `flow_step`、14 条 `cross_domain`。150 个 step 都有可解析的 `nodeIds`，`unresolvedNodeIds` 为空。
 - unused 的 5,019 个 `id` 全部是图谱节点 id。
-- hotspots 的 2,121 个路径里，2,106 个对得上 `file:<path>` 节点；另外 15 个不在图谱里，如二进制与跳过的文件。
+- hotspots 的 2,121 个路径里，2,106 个对得上 `file:<path>` 节点；另外 15 个不在图谱里，如二进制与跳过的文件。hotspots 有 36 个功能组，一组对应一个 flow。
+- 没有 doc-map 产物。
 
 ## Goals / Non-Goals
 
 **Goals：**
-- 以旧 dashboard 为起点，做出交互与版式接近 Understand Anything 的查看页：结构图、详情侧栏、代码抽屉、搜索过滤、聚焦与路径、快捷键与返回、叠加层。
+- 以旧 dashboard 为起点，做出交互与版式接近 Understand Anything 的查看页：结构图、领域视图、详情侧栏、代码抽屉、搜索过滤、聚焦与路径、快捷键与返回、叠加层。
+- 摘要、标签与层取自 Full 模式的语义文件，并标出核验结论。
 - 构建成一个 HTML 模板，打包脚本只往里插数据；打开的人只用浏览器。
 - 保留 report-viewer 的全部数据层约定与现有各页的内容要求。
 - 57blocks 浅色配色与官网的动效语汇，尊重「减少动效」。
 
 **Non-Goals：**
-- 领域图视图（domain → flow → step）、知识类图（article/entity）：go-multirepo 没有这些产物，验收不了，留到有产物时再做；
+- 知识类图（article/entity）：go-multirepo 没有这类产物，验收不了，留到有产物时再做；
+- 语义图的 `relations`：go-multirepo 上为空，查看页不画；
 - Tour、Persona、diff 叠加、导出、过期轮询、token 门、首次引导、Figma、移动端布局、多语言界面、主题切换；
 - 打开后拖入 `.excavator` 文件夹；
 - 把模板提交进仓库。
@@ -202,6 +208,36 @@ hash 路由，在 report-viewer 的 `#/<page>?k=v` 上扩展：
   - 包源码里没有 `createServer`、`listen(`、`fetch(`、`XMLHttpRequest`、`WebSocket`、`EventSource`；
   - 其他包没有 `index.html`。
 
+### D11 语义：摘要、标签与层
+
+新鲜度在打包时判，前端不判：
+- `products.mjs` 新增「语义」产物，读 `semantic-cache.json` 与 `semantic-graph.json`。
+- 缓存的身份与新鲜度用 `skills/excavator/semantic-cache.mjs` 的 `isCanonicalSemanticCache` 与 `isFresh`：拿每条条目对比 `source-manifest.json` 里该文件当前的 `contentHash`。打包脚本不另写一套判断。
+- 载荷里每条只留 `id`、`summary`、`tags`、`verification`。`semanticSourceHash` 与 `languageAudit` 不进页面。
+- 不新鲜的条目不进载荷，只计数，写进 manifest 的语义一栏。
+- 结论是 `contradicted` 的条目，`summary` 在打包时就置空并保留结论。这样页面里根本没有这段文字，搜索也搜不到。
+- 语义图的 `factDigest` 与图谱 `factsDigest` 相同时，才内联它的 `layers`；不同时语义状态为 unreadable，原因写两个摘要值。
+
+前端在建索引时把语义条目并到节点上（D3）。结构图的层优先用语义图的层（D4 顶层「有层时」）。
+
+不选的方案：
+- **前端判新鲜度**：要把 `source-manifest.json` 的全部哈希也送进页面，而判断逻辑已经在 core 侧有一份；两份判断迟早不一致。
+- **只读图谱节点的 `summary`**：Full 模式下全是空串，结构图会没有任何摘要。
+
+### D12 领域视图
+
+照旧 dashboard 的 `DomainGraphView`，也就是 Understand Anything 的领域视图：
+- **顶层**：domain 用 `DomainClusterNode`，显示摘要与 flow 数；`cross_domain` 边画成带标签的线，标签是边的 `description`。
+- **下钻**：点进 domain 画它的 flow（`contains_flow`）；点进 flow，按 `flow_step` 边的 `weight` 升序把 step 排成一列，相邻 step 之间画顺序箭头。这些箭头是 `flow_step` 的权重顺序，不是新造的边。
+- **布局**：ELK `layered`，与结构图共用布局函数。
+- **侧栏**：名称、摘要、`domainMeta`、`evidence`（文件与行）、`provenance`。step 的 `nodeIds` 逐项列出，能在知识图谱里找到的可点，点了切到结构图、下钻并选中；找不到的与 `unresolvedNodeIds` 一起列出，写「图谱里没有它」。
+- 路由：`#/domain?d=<domainId>&f=<flowId>&node=<id>`，同样进浏览器历史。
+- 页面顶部固定一行说明：领域图由模型从代码推导。
+
+新鲜度：
+- 打包时检查 `version`、`contentLanguage`、`sourceRevision`；
+- 另外比对 `factDigest` 与图谱的 `factsDigest`，不同时状态为 different revision，两个值都写出。
+
 ## Oracles
 
 验收只用 go-multirepo。
@@ -218,6 +254,8 @@ hash 路由，在 report-viewer 的 `#/<page>?k=v` 上扩展：
   - 节点色板对比度；
   - Markdown 只放行 `#/` 链接；
   - 打包：缺模板时失败、CSP 含 `worker-src blob:`、确定性；
+  - 语义：不新鲜的条目不进载荷且被计数；`contradicted` 的摘要在载荷里是空串；`factDigest` 不同时语义为 unreadable；没有语义文件时摘要取图谱节点自带的；
+  - 领域：step 按 `flow_step` 权重排序；`nodeIds` 里图谱没有的项列为「图谱里没有它」；`factDigest` 不同时为 different revision；
   - 单文件检查（D2）：多一个文件、多一个 `<link>`、少一个占位都会红。
 - **O2 全量门。** `pnpm install --frozen-lockfile && pnpm -r build && pnpm test`、`node scripts/check-refs.mjs`、typecheck、`openspec validate --all --strict`。
 - **O3 冒烟。** 沿用 `scripts/view-smoke.mjs`，先对三个故意坏的页面确认装置会红，再对夹具包报绿。夹具包要过的检查：
@@ -225,17 +263,22 @@ hash 路由，在 report-viewer 的 `#/<page>?k=v` 上扩展：
   - Worker 在 `file://` 下能起来：聚焦视图的力导向布局完成并写出 `data-xv-count-focus-nodes`；
   - 夹具上的下钻、搜索定位、路径与后退各有一条 `--eval` 断言。
 - **O4 go-multirepo。** 打包当前产物（doc-map 仍是 not run），然后检查：
-  - **总数**：各页 `data-xv-count-*` 与独立 jq 计数相等；顶层容器的文件节点数之和等于图谱文件节点数；任选 3 个容器，下钻后的文件节点数等于路径前缀计数。
+  - **总数**：
+    - 各页 `data-xv-count-*` 与独立 jq 计数相等；
+    - 顶层是 9 个层簇，各簇文件数之和等于 2,106；任选 3 个容器，下钻后的文件节点数等于路径前缀计数；
+    - 带摘要的节点数按结论分组，与 jq 按 `isFresh` 口径独立算出的数相等；98 条 contradicted 的摘要文字一条都不出现在页面里（抽 5 条原文全文搜索）；
+    - 领域视图顶层 9 个 domain，flow 合计 36，step 合计 150。
   - **跳转 20 条**，分层抽样：
     - unused 两个置信度 × 两种原因，各 2 条，经「在图中定位」后选中的节点 id 等于记录 id，再从侧栏打开代码抽屉，高亮范围等于 `lineRange`；
     - hotspots 前 3 个文件，经定位后选中 `file:<path>`；
     - 搜索 3 个函数名，选中后侧栏名称一致；
     - 1 条在图谱里没有的 hotspots 路径，页面写「图谱里没有它」；
-    - 2 条 1 跳聚焦，邻居数等于入边与出边的端点去重数。
+    - 2 条 1 跳聚焦，邻居数等于入边与出边的端点去重数；
+    - 3 个 step（分属不同 domain），每个点一项 `nodeIds`，结构图选中的 id 相等；其中 1 个 flow 的 step 顺序等于 `flow_step` 权重顺序。
   - **耗时**：就绪 ≤ 3 s；最大容器下钻 ≤ 2 s；主线程 ELK 单次耗时记录在案（D4）。
   - **大小**：记录模板与成品的大小。
   - **动效**：切换视图后 100 ms 内 `document.getAnimations().length > 0`；在 `prefers-reduced-motion: reduce` 模拟下同样操作为 0。
-  - **截图**：1280 宽的图、侧栏与抽屉；1280 宽的 Unused；768 宽的图；深色模式模拟（必须仍是浅色）。由我人工看布局，逐项对照 D8 的版式清单（顶栏、导航、侧栏、抽屉、浮层、圆角与阴影）。旧 dashboard 要靠 dev server 和旧格式数据才能跑，不拿它做截图对照。
+  - **截图**：1280 宽的图、侧栏与抽屉；1280 宽的领域视图顶层与一个 flow；1280 宽的 Unused；768 宽的图；深色模式模拟（必须仍是浅色）。由我人工看布局，逐项对照 D8 的版式清单（顶栏、导航、侧栏、抽屉、浮层、圆角与阴影）。旧 dashboard 要靠 dev server 和旧格式数据才能跑，不拿它做截图对照。
 - **O5 skill 真实运行。** 同 report-viewer O5：`claude -p --model sonnet` 跑 `/excavator-view`，检查回复四行、只新增或改动 `view.html`、调用了打开命令。
 
 ## Risks / Trade-offs
