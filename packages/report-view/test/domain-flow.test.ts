@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 
 import { buildDomainIndex, type DomainEdge, type DomainNode } from '../src/data/domain';
-import { buildDomainLevel, domainEdges, domainNodes, layoutDomainLevel, type DomainView } from '../src/lib/domain-flow';
+import { buildDomainLevel, domainEdges, domainNodes, layoutDomainLevel, layoutsAsGrid, type DomainView } from '../src/lib/domain-flow';
+import { CLUSTER_SIZE } from '../src/lib/graph-layout';
 import { resolvePlace, type DomainPlace } from '../src/lib/domain-state';
 import { MAX_LABELLED_EDGES } from '../src/lib/graph-flow';
 
@@ -108,6 +109,34 @@ describe('the nodes and edges handed to the canvas', () => {
     expect(nodes.map((n) => n.id)).toEqual(['domain:a', 'domain:b', 'domain:c']);
     expect(nodes.find((n) => n.id === 'domain:b')?.data.selected).toBe(true);
     expect(nodes.find((n) => n.id === 'domain:a')?.data.selected).toBe(false);
+  });
+
+  it('draws a domain or a flow as large as the structure graph draws a cluster, and a step smaller', async () => {
+    const top = await layoutDomainLevel(buildDomainLevel(index, at(null, null)));
+    expect([...top.boxes.values()].every((b) => b.width === CLUSTER_SIZE.width && b.height === CLUSTER_SIZE.height)).toBe(true);
+    const flows = await layoutDomainLevel(buildDomainLevel(index, at('domain:a', null)));
+    expect([...flows.boxes.values()].every((b) => b.width === CLUSTER_SIZE.width && b.height === CLUSTER_SIZE.height)).toBe(true);
+    const steps = await layoutDomainLevel(buildDomainLevel(index, at('domain:a', 'flow:x')));
+    expect([...steps.boxes.values()].every((b) => b.height < CLUSTER_SIZE.height)).toBe(true);
+  });
+
+  it('packs a dense top level as a grid and leaves a sparse one, a domain and a flow layered', async () => {
+    const domains = Array.from({ length: 6 }, (_, i) => node(`domain:g${i}`, 'domain'));
+    const ring = domains.flatMap((d, i) => [1, 2].map((step) => edge(d.id, domains[(i + step) % domains.length].id, 'cross_domain', { description: 'Uses it.' })));
+    const dense = buildDomainIndex({ nodes: domains, edges: ring, gaps: [] });
+    const level = buildDomainLevel(dense, resolvePlace(dense, { domain: null, flow: null, node: null }) as DomainPlace);
+    expect(level.entries.length).toBe(6);
+    expect(layoutsAsGrid(level)).toBe(true);
+    const layout = await layoutDomainLevel(level);
+    expect(layout.kind).toBe('grid');
+    // Rows, not one chain: at least two cards share a row and at least two share a column.
+    const boxes = [...layout.boxes.values()];
+    expect(new Set(boxes.map((b) => b.y)).size).toBeLessThan(boxes.length);
+    expect(new Set(boxes.map((b) => b.x)).size).toBeLessThan(boxes.length);
+
+    expect(layoutsAsGrid(buildDomainLevel(index, at(null, null)))).toBe(false);
+    expect(layoutsAsGrid(buildDomainLevel(index, at('domain:a', null)))).toBe(false);
+    expect(layoutsAsGrid(buildDomainLevel(index, at('domain:a', 'flow:x')))).toBe(false);
   });
 
   it('puts the steps of a flow in one column, in order', async () => {

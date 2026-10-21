@@ -30,10 +30,12 @@
  *     opening the structure graph with that node selected, and the nodes the graph lacks listed as "Not in the graph.";
  *     domain-history, domain-restore and domain-keys (back and forward, a load from the address, Esc from the inside out);
  *     domain-overview, domain-notrun and domain-digest (the product's state with its counts, not run, and a different revision);
+ *     domain-fit (a domain graph as wide as a real one at 1280 by 900: nine domains and a flow of seven steps fit at a zoom of 0.9 or
+ *     more, and no text of a card runs out of its box);
  *   - longfile, longfile-restore: a function of a file expanded to a hundred and twenty rows is located, and the camera is on it at a readable
  *     zoom instead of fitting the whole file.
  *
- *   node scripts/view-smoke-graph.mjs [levels|history|search|drawer|focus|path|filters|keys|layers|summary|overlays|clearance|notrun|restore|locate|locate-tables|domain|domain-history|domain-restore|domain-keys|domain-overview|domain-notrun|domain-digest|longfile|longfile-restore ...]
+ *   node scripts/view-smoke-graph.mjs [levels|history|search|drawer|focus|path|filters|keys|layers|summary|overlays|clearance|notrun|restore|locate|locate-tables|domain|domain-history|domain-restore|domain-keys|domain-overview|domain-notrun|domain-digest|domain-fit|longfile|longfile-restore ...]
  *
  * Needs `pnpm build` (the template) and a local Chrome. Prints one line per
  * check and exits 1 when any fails.
@@ -877,6 +879,53 @@ const SCENARIOS = [
     ];
   }],
 
+  // A domain graph as wide as a real one (nine domains, a flow of seven steps, long names, summaries and paths), at the smoke's 1280 by
+  // 900 window: the cards are read at about full size (the camera fits at a zoom of 0.9 or more) and none of their text runs out of its box.
+  ['domain-fit', 'domain-fit', (graph, expected) => driver(`
+    const zoom = () => new DOMMatrix(getComputedStyle(q('.react-flow__viewport')).transform).a;
+    // A summary is clamped to two lines on purpose; what must not happen is a line cut in half, or a block (the summary, the
+    // path and counts) running past the bottom of its card. A card's own scroll height is not read: its hidden handles stick out.
+    const clipped = () => all('[data-xv-domain-entry]').flatMap((card) => [...card.querySelectorAll('[data-xv-card-text]')].flatMap((block) => {
+      const kind = block.getAttribute('data-xv-card-text');
+      const bad = [];
+      if (block.offsetTop + block.offsetHeight > card.clientHeight) bad.push(card.getAttribute('data-xv-node') + ':' + kind + ' past the bottom');
+      if (kind === 'summary' && block.clientHeight + 0.5 < Math.min(2 * parseFloat(getComputedStyle(block).lineHeight), block.scrollHeight)) bad.push(card.getAttribute('data-xv-node') + ':summary cut mid-line');
+      return bad;
+    }));
+    const apart = () => { const rows = all('[data-xv-domain-entry="step"]').map((card) => ({ summary: card.querySelector('[data-xv-card-text="summary"]')?.getBoundingClientRect(), meta: card.querySelector('[data-xv-card-text="meta"]')?.getBoundingClientRect() })); return rows.length > 0 && rows.every((r) => r.summary && r.meta && r.summary.bottom <= r.meta.top + 0.5); };
+    const pane = () => q('.react-flow').getBoundingClientRect();
+    const seen = (cards) => cards.every((card) => { const r = card.getBoundingClientRect(); const p = pane(); return r.width > 0 && r.left >= p.left - 1 && r.right <= p.right + 1; });
+    const d = ${JSON.stringify(expected.domain)};
+    const dlevel = () => attr('data-xv-domain-level');
+    await go('#/domain');
+    await until(() => dlevel() === 'top');
+    await sleep(1500);
+    out.top = { zoom: zoom(), cards: all('[data-xv-domain-entry="domain"]').length, clipped: clipped(), inside: seen(all('[data-xv-domain-entry="domain"]')), size: (() => { const r = q('[data-xv-domain-entry="domain"]').getBoundingClientRect(); return [Math.round(r.width), Math.round(r.height)]; })() };
+    q('[data-xv-domain-entry="domain"][data-xv-node="domain:app"]').click();
+    await until(() => dlevel() === 'domain:domain:app');
+    await sleep(1500);
+    out.flows = { zoom: zoom(), cards: all('[data-xv-domain-entry="flow"]').length, clipped: clipped(), inside: seen(all('[data-xv-domain-entry="flow"]')) };
+    q('[data-xv-domain-entry="flow"][data-xv-node="' + d.long.flow + '"]').click();
+    await until(() => dlevel() === 'flow:domain:app:' + d.long.flow);
+    await sleep(1500);
+    const steps = all('[data-xv-domain-entry="step"]');
+    out.flow = { zoom: zoom(), steps: steps.length, clipped: clipped(), apart: apart(), firstInside: seen(steps.slice(0, 1)), top: Math.round(steps[0].getBoundingClientRect().top - pane().top) };
+    steps[2].click();
+    await until(() => route().params.node === d.long.steps[2]);
+    await sleep(1500);
+    out.selected = { zoom: zoom(), clipped: clipped(), sidebar: sidebar() === d.long.steps[2] };
+  `), (out, graph, expected) => {
+    const d = expected.domain;
+    return [
+      [`domain-fit: the top level draws ${d.long.domains} cards, each as large as a structure-graph cluster card is drawn, fitted at a zoom of 0.9 or more at 1280 by 900`, out.top?.cards === d.long.domains && out.top.zoom >= 0.9 && out.top.inside === true, out.top],
+      ['domain-fit: no text of a domain card runs out of its box', out.top?.clipped?.length === 0, out.top?.clipped],
+      ['domain-fit: the flows of a domain are fitted at a zoom of 0.9 or more, with no text out of its box', out.flows?.zoom >= 0.9 && out.flows.cards >= 2 && out.flows.inside === true && out.flows.clipped.length === 0, out.flows],
+      [`domain-fit: a flow of ${d.long.steps.length} steps is fitted at a zoom of 0.9 or more, its first step on screen and its steps as one column`, out.flow?.steps === d.long.steps.length && out.flow.zoom >= 0.9 && out.flow.firstInside === true, out.flow],
+      ['domain-fit: in a step card the summary ends above the file path, and no text of a step card runs out of its box', out.flow?.apart === true && out.flow.clipped?.length === 0, [out.flow?.apart, out.flow?.clipped]],
+      ['domain-fit: selecting a step keeps the zoom readable and the text in its boxes', out.selected?.zoom >= 0.9 && out.selected.clipped.length === 0 && out.selected.sidebar === true, out.selected],
+    ];
+  }],
+
   // A file of a hundred and twenty functions, opened on one of them: the camera centres on that row at a readable size rather than fitting the whole file.
   ['longfile', 'longfile', () => driver(`
     const id = 'function:src/long.js:fn119';
@@ -937,7 +986,7 @@ const SCENARIOS = [
 ];
 
 /** The modes that write the Full-mode files: the layers, the summaries and the domain graph. */
-const FULL_MODES = new Set(['layers', 'domain-notrun', 'domain-digest']);
+const FULL_MODES = new Set(['layers', 'domain-notrun', 'domain-digest', 'domain-fit']);
 
 /** `longfile`: add src/long.js to the graph with `functions` functions, each contained by the file node. */
 function addLongFile(root, functions = 120) {
@@ -954,6 +1003,48 @@ function addLongFile(root, functions = 120) {
   writeFileSync(path, `${[header, ...rest, ...records].map((record) => JSON.stringify(record)).join('\n')}\n`);
 }
 
+/**
+ * `domain-fit`: widen the domain graph to the size of a real one. Seven more domains (nine in all, each with a flow of its own and
+ * joined by cross-domain edges, so the top level is dense), and a flow of seven steps in the first domain. Names, summaries and
+ * paths are long on purpose: the cards have to clamp them. Returns what the scenario's checks read.
+ */
+function widenDomainGraph(root) {
+  const path = join(root, '.excavator', 'domain-graph.json');
+  const graph = JSON.parse(readFileSync(path, 'utf-8'));
+  const long = 'Checks the request against the rules of the area, records what was decided and who decided it, and hands the result to the next stage without changing what the caller sent in the first place.';
+  const node = (id, type, name, summary, extra = {}) => ({ id, type, name, summary, tags: [], complexity: 'simple', ...extra });
+  const edge = (source, target, type, weight, extra = {}) => ({ source, target, type, direction: 'forward', weight, ...extra });
+  const nodes = [];
+  const edges = [];
+  const domains = ['domain:app', 'domain:data'];
+  for (let i = 1; i <= 7; i++) {
+    const id = `domain:extra-${i}`;
+    domains.push(id);
+    nodes.push(node(id, 'domain', `Extra area ${i} with a name that runs long for one card`, `${long} Area ${i}.`, { domainMeta: { entities: [`Entity ${i}`] } }));
+    nodes.push(node(`flow:extra-${i}`, 'flow', `Extra flow ${i} that also has a long name`, long, { domainMeta: { entryPoint: `POST /extra/${i}/with/a/long/path`, entryType: 'http' } }));
+    nodes.push(node(`step:extra-${i}:only`, 'step', `Only step ${i}`, long, { filePath: `src/extra/area${i}/handlers/a/long/path/to/handler.js`, nodeIds: [], evidence: [] }));
+    edges.push(edge(id, `flow:extra-${i}`, 'contains_flow', 1), edge(`flow:extra-${i}`, `step:extra-${i}:only`, 'flow_step', 1));
+  }
+  // Each domain is joined to the next two, around a ring: more edges than domains.
+  domains.forEach((id, i) => {
+    for (const step of [1, 2]) {
+      const other = domains[(i + step) % domains.length];
+      if (!(id === 'domain:app' && other === 'domain:data')) edges.push(edge(id, other, 'cross_domain', 0.5, { description: `${id} depends on ${other} for what it needs.` }));
+    }
+  });
+  const steps = [];
+  nodes.push(node('flow:long', 'flow', 'A flow of seven steps with a long name', long, { domainMeta: { entryPoint: 'POST /long', entryType: 'http' } }));
+  edges.push(edge('domain:app', 'flow:long', 'contains_flow', 1));
+  for (let i = 1; i <= 7; i++) {
+    const id = `step:long:${i}`;
+    steps.push(id);
+    nodes.push(node(id, 'step', `Step ${i} with a name long enough to be cut`, long, { filePath: `src/long/flow/handlers/internal/deep/path/step${i}_handler.js`, lineRange: [3, 9], nodeIds: [], evidence: [] }));
+    edges.push(edge('flow:long', id, 'flow_step', i / 10));
+  }
+  writeFileSync(path, JSON.stringify({ ...graph, nodes: [...graph.nodes, ...nodes], edges: [...graph.edges, ...edges] }));
+  return { domains: domains.length, flow: 'flow:long', steps };
+}
+
 /** Run one scenario on a freshly packed page. */
 function runScenario([name, mode, makeDriver, scenarioCheck, extra = {}]) {
   const dir = mkdtempSync(join(tmpdir(), 'xv-graph-smoke-'));
@@ -963,6 +1054,7 @@ function runScenario([name, mode, makeDriver, scenarioCheck, extra = {}]) {
     if (mode === 'notrun') for (const file of ['doc-map.json', 'doc-map-report.md', 'doc-map']) rmSync(join(root, '.excavator', file), { recursive: true, force: true });
     // `domain-notrun`: the domain graph was never made. `domain-digest`: it was made from other facts than the graph's.
     if (mode === 'longfile') addLongFile(root);
+    if (mode === 'domain-fit') expected.domain = { ...expected.domain, long: widenDomainGraph(root) };
     if (mode === 'domain-notrun') rmSync(join(root, '.excavator', 'domain-graph.json'));
     if (mode === 'domain-digest') {
       const path = join(root, '.excavator', 'domain-graph.json');

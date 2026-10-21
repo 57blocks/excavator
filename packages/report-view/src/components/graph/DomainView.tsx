@@ -7,7 +7,9 @@ import { useReveal } from '../../hooks/use-reveal';
 import { useCounts, useReady, useSignal } from '../../hooks/use-signals';
 import { buildDomainLevel, domainEdges, domainNodes, layoutDomainLevel, type DomainEntry, type DomainLevel } from '../../lib/domain-flow';
 import type { DomainPlace } from '../../lib/domain-state';
-import { asPixels, measureFitPadding } from '../../lib/fit-padding';
+import { boundsOf } from '../../lib/camera';
+import { columnCamera } from '../../lib/column-camera';
+import { asPixels, measureCards, measureFitPadding } from '../../lib/fit-padding';
 import type { Crumb } from '../../lib/graph-structure';
 import type { LevelLayout } from '../../lib/graph-layout';
 import { DURATION } from '../../lib/motion';
@@ -19,6 +21,9 @@ import { DOMAIN_EDGE_TYPES, DOMAIN_NODE_TYPES } from './DomainNodes';
 
 const MIN_ZOOM = 0.1;
 const MAX_FIT_ZOOM = 1.1;
+/** The steps of a flow are drawn at about full size: a column that does not fit is scrolled, and is not drawn below this zoom. */
+const COLUMN_MAX_ZOOM = 1;
+const COLUMN_MIN_ZOOM = 0.9;
 
 interface Laid {
   key: string;
@@ -41,7 +46,7 @@ export function DomainView({ scene, place, selected, onOpen, onSelect, onClearSe
   onGo: (hash: string) => void;
 }) {
   const reduce = useReducedMotion();
-  const { fitView } = useReactFlow();
+  const { fitView, setViewport } = useReactFlow();
   const ui = useGraphUi();
   const pane = useRef<HTMLDivElement | null>(null);
   const level = useMemo(() => buildDomainLevel(scene.index, place), [scene, place]);
@@ -75,17 +80,25 @@ export function DomainView({ scene, place, selected, onOpen, onSelect, onClearSe
   const nodes = useMemo(() => (shown ? domainNodes(shown.level, shown.layout, { selected, onOpen, onSelect }) : []), [shown, selected, onOpen, onSelect]);
   const edges = useMemo(() => (shown ? domainEdges(shown.level, { selected, hovered, hoveredEdge }) : []), [shown, selected, hovered, hoveredEdge]);
 
-  // The camera fits a level once, into what the cards over the canvas leave free.
+  // The camera fits a level once, into what the cards over the canvas leave free; the steps of a flow are a column, fitted
+  // only around the cards it is under and kept at a readable zoom.
   const fitted = useRef<string | null>(null);
   useEffect(() => {
     if (!shown || fitted.current === shown.key || !pane.current) return undefined;
     const frame = requestAnimationFrame(() => {
       if (!pane.current) return;
       fitted.current = shown.key;
-      fitView({ duration: reduce ? 0 : DURATION.camera * 1000, padding: asPixels(measureFitPadding(pane.current)), maxZoom: MAX_FIT_ZOOM });
+      const duration = reduce ? 0 : DURATION.camera * 1000;
+      const bounds = shown.level.place.kind === 'flow' ? boundsOf(shown.layout.boxes.values()) : null;
+      if (bounds === null) {
+        fitView({ duration, padding: asPixels(measureFitPadding(pane.current)), maxZoom: MAX_FIT_ZOOM });
+        return;
+      }
+      const box = pane.current.getBoundingClientRect();
+      setViewport(columnCamera({ bounds, pane: { width: box.width, height: box.height }, ...measureCards(pane.current), maxZoom: COLUMN_MAX_ZOOM, floor: COLUMN_MIN_ZOOM }), { duration });
     });
     return () => cancelAnimationFrame(frame);
-  }, [shown, reduce, fitView]);
+  }, [shown, reduce, fitView, setViewport]);
   useReveal({ pane, layoutKey: shown ? shown.key : null, selected, drawerOpen: ui.drawer !== 'closed', reduce });
 
   const crumbs: Crumb[] = level.crumbs.map((crumb) => ({ label: crumb.label, path: crumb.hash ?? '', fold: null }));

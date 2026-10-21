@@ -18,8 +18,8 @@ function borderPoint(from: Rect, to: Rect): { x: number; y: number } {
   return { x: cx + dx * scale, y: cy + dy * scale };
 }
 
-/** A straight edge from the border of one box to the border of the other, so its arrowhead is not under a node. */
-export function FloatingEdge({ id, source, target, markerEnd, markerStart, style, label, labelStyle, labelBgStyle, labelBgPadding, labelBgBorderRadius }: EdgeProps) {
+/** The straight line from the border of the `source` node to the border of the `target` node, with its middle; null while either is not measured. */
+export function useFloatingLine(source: string, target: string): { path: string; labelX: number; labelY: number } | null {
   const from = useInternalNode(source);
   const to = useInternalNode(target);
   if (!from || !to) return null;
@@ -29,16 +29,23 @@ export function FloatingEdge({ id, source, target, markerEnd, markerStart, style
   const start = borderPoint(a, b);
   const end = borderPoint(b, a);
   const [path, labelX, labelY] = getStraightPath({ sourceX: start.x, sourceY: start.y, targetX: end.x, targetY: end.y });
+  return { path, labelX, labelY };
+}
+
+/** A straight edge from the border of one box to the border of the other, so its arrowhead is not under a node. */
+export function FloatingEdge({ id, source, target, markerEnd, markerStart, style, label, labelStyle, labelBgStyle, labelBgPadding, labelBgBorderRadius }: EdgeProps) {
+  const line = useFloatingLine(source, target);
+  if (!line) return null;
   return (
     <BaseEdge
       id={id}
-      path={path}
+      path={line.path}
       markerEnd={markerEnd}
       markerStart={markerStart}
       style={style}
       label={label}
-      labelX={labelX}
-      labelY={labelY}
+      labelX={line.labelX}
+      labelY={line.labelY}
       labelStyle={labelStyle}
       labelBgStyle={labelBgStyle}
       labelBgPadding={labelBgPadding}

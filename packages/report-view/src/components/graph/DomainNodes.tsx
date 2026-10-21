@@ -1,8 +1,9 @@
-import { BaseEdge, EdgeLabelRenderer, getBezierPath, Handle, Position, type EdgeProps, type Node, type NodeProps } from '@xyflow/react';
+import { BaseEdge, EdgeLabelRenderer, Handle, Position, type EdgeProps, type Node, type NodeProps } from '@xyflow/react';
 import { memo, type KeyboardEvent } from 'react';
 
 import { formatNumber } from '../../lib/format';
 import type { DomainEdgeData, DomainEntry } from '../../lib/domain-flow';
+import { useFloatingLine } from './FloatingEdge';
 
 export interface DomainCardData extends Record<string, unknown> {
   entry: DomainEntry;
@@ -54,7 +55,7 @@ export const DomainCard = memo(function DomainCard({ data }: NodeProps<DomainFlo
       data-xv-position={entry.position ?? undefined}
       onClick={activate}
       onKeyDown={onActivate(activate)}
-      className={`xv-node relative box-border flex size-full cursor-pointer flex-col overflow-hidden rounded-card border border-line-2 bg-surface px-4 py-3 shadow-card outline-none focus-visible:ring-2 focus-visible:ring-accent ${data.selected ? 'xv-selected' : ''}`}
+      className={`xv-node relative box-border flex size-full cursor-pointer flex-col overflow-hidden rounded-card border border-line-2 bg-surface shadow-card outline-none focus-visible:ring-2 focus-visible:ring-accent ${step ? 'px-3 py-1.5' : 'px-5 py-4'} ${data.selected ? 'xv-selected' : ''}`}
     >
       <span aria-hidden="true" className="absolute inset-y-0 left-0 w-1.5" style={{ background: 'var(--color-node-domain)', opacity: entry.kind === 'domain' ? 1 : entry.kind === 'flow' ? 0.6 : 0.35 }} />
       <Handle type="target" position={Position.Top} isConnectable={false} className="!pointer-events-none !opacity-0" />
@@ -73,13 +74,15 @@ export const DomainCard = memo(function DomainCard({ data }: NodeProps<DomainFlo
       >
         i
       </button>
-      <div className="flex min-w-0 items-center gap-2 pr-7">
+      <div className={`flex min-w-0 shrink-0 items-center gap-2 pr-7 ${step ? 'leading-5' : ''}`}>
         {step ? <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-paper-2 font-mono text-[11px] font-semibold text-ink-soft">{entry.position}</span> : null}
-        <span className="min-w-0 truncate font-semibold text-ink" title={entry.label}>{entry.label}</span>
+        <span className={`min-w-0 truncate font-semibold text-ink ${step ? 'text-[13px]' : 'text-[18px] leading-6'}`} title={entry.label}>{entry.label}</span>
       </div>
-      {step ? null : <span className="text-[10px] font-semibold uppercase tracking-wider text-muted">{KIND_TEXT[entry.kind]}</span>}
-      {entry.summary ? <p className={`mt-1 text-[13px] leading-[18px] text-muted ${entry.kind === 'domain' ? 'line-clamp-3' : 'line-clamp-2'}`}>{entry.summary}</p> : null}
-      <div className="mt-auto flex min-w-0 items-baseline justify-between gap-2 font-mono text-xs text-muted">
+      {step ? null : <span className="shrink-0 text-[10px] font-semibold uppercase tracking-wider text-muted">{KIND_TEXT[entry.kind]}</span>}
+      {entry.summary ? (
+        <p data-xv-card-text="summary" title={entry.summary} className={`min-h-0 overflow-hidden text-muted line-clamp-2 ${step ? 'mt-0.5 text-xs leading-[15px]' : 'mt-1 text-[13px] leading-[18px]'}`}>{entry.summary}</p>
+      ) : null}
+      <div data-xv-card-text="meta" className={`mt-auto flex min-w-0 shrink-0 items-baseline justify-between gap-2 font-mono text-muted ${step ? 'pt-0.5 text-[11px] leading-[15px]' : 'text-[13px] leading-5'}`}>
         <span className="truncate" title={entry.meta ?? undefined}>{entry.meta ?? ''}</span>
         <span className="shrink-0">{counts(entry)}</span>
       </div>
@@ -90,23 +93,25 @@ export const DomainCard = memo(function DomainCard({ data }: NodeProps<DomainFlo
 export const DOMAIN_NODE_TYPES = { card: DomainCard };
 
 /**
- * A link between two cards: a cross-domain edge (dashed) or the arrow from one step to the next. A cross-domain edge writes
- * the description of each edge of its pair beside it while it is labelled, in a box that wraps.
+ * A link between two cards: a cross-domain edge (dashed) or the arrow from one step to the next, a straight line from the
+ * border of one card to the border of the other. A cross-domain edge writes the description of each edge of its pair beside it
+ * while it is labelled, in a box that wraps.
  */
-export function DomainLinkEdge({ id, sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition, markerEnd, markerStart, style, data }: EdgeProps) {
+export function DomainLinkEdge({ id, source, target, markerEnd, markerStart, style, data }: EdgeProps) {
   const link = (data ?? { kind: 'sequence', lines: [], showLabel: false }) as DomainEdgeData;
-  const [path, labelX, labelY] = getBezierPath({ sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition });
+  const line = useFloatingLine(source, target);
+  if (!line) return null;
   return (
     <>
-      <BaseEdge id={id} path={path} markerEnd={markerEnd} markerStart={markerStart} style={style} interactionWidth={link.kind === 'sequence' ? 0 : 16} />
+      <BaseEdge id={id} path={line.path} markerEnd={markerEnd} markerStart={markerStart} style={style} interactionWidth={link.kind === 'sequence' ? 0 : 16} />
       {link.showLabel ? (
         <EdgeLabelRenderer>
           <div
             data-xv-link-label={id}
             className="nodrag nopan pointer-events-none absolute w-max max-w-[340px] rounded-control border border-line-2 bg-surface px-2.5 py-1.5 text-xs leading-4 text-ink shadow-card"
-            style={{ transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)` }}
+            style={{ transform: `translate(-50%, -50%) translate(${line.labelX}px, ${line.labelY}px)` }}
           >
-            {link.lines.map((line) => <p key={line} className="m-0">{line}</p>)}
+            {link.lines.map((text) => <p key={text} className="m-0">{text}</p>)}
           </div>
         </EdgeLabelRenderer>
       ) : null}

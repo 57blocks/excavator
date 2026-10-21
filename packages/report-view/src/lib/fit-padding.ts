@@ -12,6 +12,14 @@ export interface Edges {
   bottom: number;
 }
 
+/** A card over the canvas, as a box in the pane's own coordinates. */
+export interface Card {
+  left: number;
+  right: number;
+  top: number;
+  bottom: number;
+}
+
 export interface Padding {
   top: number;
   right: number;
@@ -43,6 +51,17 @@ export const CARDS = `${TOP}, ${BOTTOM}`;
 export function measureFitPadding(pane: HTMLElement): Padding {
   const edges = (selector: string) => [...pane.querySelectorAll(selector)].map((el) => el.getBoundingClientRect()).filter((box) => box.height > 0);
   return fitPadding(pane.getBoundingClientRect(), edges(TOP), edges(BOTTOM));
+}
+
+/** The cards over `pane` along its top edge and along its bottom edge, in the pane's own coordinates (a card that is not drawn is skipped). */
+export function measureCards(pane: HTMLElement): { topCards: Card[]; bottomCards: Card[] } {
+  const origin = pane.getBoundingClientRect();
+  const cards = (selector: string): Card[] =>
+    [...pane.querySelectorAll(selector)]
+      .map((el) => el.getBoundingClientRect())
+      .filter((box) => box.height > 0)
+      .map((box) => ({ left: box.left - origin.left, right: box.right - origin.left, top: box.top - origin.top, bottom: box.bottom - origin.top }));
+  return { topCards: cards(TOP), bottomCards: cards(BOTTOM) };
 }
 
 /** The padding as the camera takes it. */

@@ -8,7 +8,8 @@
  *           each step to the next. Those links are that order drawn as arrows: they are not
  *           edges of the domain graph, and the level says so.
  * Everything drawn comes from the payload; nothing is inferred. Layout is the structure
- * graph's own (`layoutNodes`, ELK layered).
+ * graph's own (`layoutNodes`: ELK layered, or its rectpacking grid for a dense top level),
+ * and the links are straight lines between the borders of the cards.
  */
 
 import { MarkerType, type Edge, type Node } from '@xyflow/react';
@@ -18,7 +19,7 @@ import type { DomainCardData } from '../components/graph/DomainNodes';
 import { rangeText } from './code';
 import { domainHash, type DomainPlace } from './domain-state';
 import { MAX_LABELLED_EDGES } from './graph-flow';
-import { COLUMN_OPTIONS, layoutNodes, type LevelLayout, type Size } from './graph-layout';
+import { CLUSTER_SIZE, COLUMN_OPTIONS, layoutNodes, type LevelLayout, type Size } from './graph-layout';
 
 export interface DomainEntry {
   id: string;
@@ -161,17 +162,33 @@ function sum(entries: readonly DomainEntry[], field: 'flows' | 'steps'): number 
 }
 
 const SIZE: Record<DomainEntry['kind'], Size> = {
-  domain: { width: 320, height: 176 },
-  flow: { width: 300, height: 136 },
-  step: { width: 320, height: 92 },
+  domain: CLUSTER_SIZE,
+  flow: CLUSTER_SIZE,
+  step: { width: 320, height: 84 },
 };
+
+/**
+ * A top level whose domains are joined by at least as many links as there are domains is a tangle when layered: it is packed as a
+ * grid of three columns for nine domains (wide rather than tall, as a pane is), with straight links between the cards.
+ */
+const GRID_MIN_ENTRIES = 4;
+const GRID_OPTIONS = { 'elk.aspectRatio': '2', 'elk.spacing.nodeNode': '40' } as const;
+
+/** The steps of a flow are a column, closer together than the cards of the other levels. */
+const STEP_COLUMN_OPTIONS = { ...COLUMN_OPTIONS, 'elk.layered.spacing.nodeNodeBetweenLayers': '20' } as const;
+
+/** Whether `level` is laid out as a grid: a top level of at least GRID_MIN_ENTRIES domains with at least as many links. */
+export function layoutsAsGrid(level: DomainLevel): boolean {
+  return level.place.kind === 'top' && level.entries.length >= GRID_MIN_ENTRIES && level.links.length >= level.entries.length;
+}
 
 /** Place the level's cards by its links, with the structure graph's layout; the steps of a flow stay in one column. */
 export function layoutDomainLevel(level: DomainLevel): Promise<LevelLayout> {
+  const grid = layoutsAsGrid(level);
   return layoutNodes(
     level.entries.map((entry) => ({ id: entry.id, size: SIZE[entry.kind] })),
     level.links.map((link) => [link.source, link.target] as const),
-    { options: level.place.kind === 'flow' ? COLUMN_OPTIONS : undefined },
+    { grid, options: grid ? GRID_OPTIONS : level.place.kind === 'flow' ? STEP_COLUMN_OPTIONS : undefined },
   );
 }
 
@@ -231,7 +248,8 @@ export function domainEdges(level: DomainLevel, view: Pick<DomainView, 'selected
     const lit = !sequence && (touches(link) || hovered);
     const dimmed = !sequence && (active.length > 0 || view.hoveredEdge !== null) && !lit;
     const colour = sequence ? INK : lit ? ACCENT : INK;
-    const marker = { type: MarkerType.ArrowClosed, width: 22, height: 22, color: colour, markerUnits: 'userSpaceOnUse' };
+    const arrow = sequence ? 14 : 22;
+    const marker = { type: MarkerType.ArrowClosed, width: arrow, height: arrow, color: colour, markerUnits: 'userSpaceOnUse' };
     return {
       id: link.id,
       source: link.source,

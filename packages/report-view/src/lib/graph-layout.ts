@@ -24,7 +24,8 @@ export interface Box extends Size {
   y: number;
 }
 
-const CLUSTER_SIZE: Size = { width: 340, height: 144 };
+/** The size of a cluster card, the structure graph's top-level card; the domain view draws its domain and flow cards at the same size. */
+export const CLUSTER_SIZE: Size = { width: 340, height: 144 };
 const CONTAINER_SIZE: Size = { width: 240, height: 96 };
 const FILE_SIZE: Size = { width: 240, height: 56 };
 /** The rows of the nodes a file owns, inside an expanded file's box. */
@@ -88,7 +89,7 @@ export const COLUMN_OPTIONS = { 'elk.layered.wrapping.strategy': 'OFF', 'elk.lay
 
 /**
  * Place `nodes` by `links`, pairs of node ids; a link to a node that is not there is left out. With `grid` the nodes are packed
- * in rows in the order given; `options` replace layered options for this run.
+ * in rows in the order given; `options` replace the options of either layout for this run.
  */
 export async function layoutNodes(nodes: readonly { id: string; size: Size }[], links: readonly (readonly [string, string])[], { grid = false, options }: { grid?: boolean; options?: Readonly<Record<string, string>> } = {}): Promise<LevelLayout> {
   const ids = new Set(nodes.map((node) => node.id));
@@ -103,7 +104,7 @@ export async function layoutNodes(nodes: readonly { id: string; size: Size }[], 
   const started = performance.now();
   const laid = await elk.layout({
     id: 'root',
-    layoutOptions: grid ? GRID_OPTIONS : { ...OPTIONS, ...options },
+    layoutOptions: { ...(grid ? GRID_OPTIONS : OPTIONS), ...options },
     children: nodes.map((node) => ({ id: node.id, ...node.size })),
     edges,
   });
