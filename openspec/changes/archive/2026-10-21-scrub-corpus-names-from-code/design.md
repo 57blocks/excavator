@@ -58,3 +58,7 @@ MAUI、Seam、TomEE、Tomahawk、PrimeFaces 等指的是框架或运行时，对
 - **O1 无残留：** 名单检查对跟踪文件（不含 `openspec/`、`docs/`、根目录 Markdown 与 `pnpm-lock.yaml`）的内容与路径都返回 0。改前同一命令返回 22 行与 1 个路径，说明装置看得见这些名字。
 - **O2 行为不变：** `pnpm -r build`、`pnpm test`、`pnpm --filter @excavator/core test`、`pnpm run typecheck`、`node scripts/check-refs.mjs`、`openspec validate --all --strict` 全部通过，测试数与改前 `origin/main` 相同。
 - **O3 文档、提交与 PR：** 本变更的文档、提交信息与 PR 正文用同一名单搜为 0，三条隐私检查也为 0。
+
+## 验收记录
+
+O1–O3 全部通过，逐条结果见 tasks.md 的 2.1。范围外、留给以后的：形式通用、实际照着某个语料调出来的规则（阈值、提示词里的固定措辞），名单扫描看不到；按 Context 所说，在以后的真实验收里加一个从没参与调试的语料去验。
