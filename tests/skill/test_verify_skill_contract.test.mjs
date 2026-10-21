@@ -5,6 +5,7 @@
  * document's own language for what is quoted from it or written into it.
  */
 import { describe, expect, it } from 'vitest';
+import { spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -30,8 +31,8 @@ const PHASE_LANGUAGE = 'Write what you tell the user during this phase in `$LANG
 const OPTION_LANGUAGE = '`--language <lang>` — the language of the report and everything said to the user during the run; English when it is not given. Quotes and corrections stay in the document\'s language.';
 
 describe('excavator-verify skill: phases', () => {
-  it('has the six phases in order', () => {
-    expect([...phase.keys()]).toEqual([0, 1, 2, 3, 4, 5]);
+  it('has the seven phases in order', () => {
+    expect([...phase.keys()]).toEqual([0, 1, 2, 3, 4, 5, 6]);
     const titles = [...skill.matchAll(/^## Phase \d+ — (.+)$/gm)].map((m) => m[1]);
     expect(titles).toEqual([
       'Setup',
@@ -40,6 +41,7 @@ describe('excavator-verify skill: phases', () => {
       'Report',
       'Self-check',
       'Fix (only with `--fix`)',
+      'Reply',
     ]);
   });
 
@@ -76,13 +78,115 @@ describe('excavator-verify skill: the language of what it writes', () => {
     expect(flat(hotspots)).toContain(LANGUAGE_RULE);
   });
 
-  it('opens Phase 0, and every later phase points back to it', () => {
-    expect(phase.get(0).startsWith(LANGUAGE_RULE)).toBe(true);
-    for (const [n, body] of phase) if (n > 0) expect(body.startsWith(PHASE_LANGUAGE), `Phase ${n}`).toBe(true);
+  it('opens Phase 0 and stands again right before the reply, and every later phase points back to it', () => {
+    expect(languageRuleProblems(skill)).toEqual([]);
+  });
+
+  it('finds the rule out of place in known-bad copies of the skill', () => {
+    /** The skill with `part` taken out at its first place at or after `from`. */
+    const without = (text, part, from = '') => {
+      const at = text.indexOf(part, text.indexOf(from));
+      expect(at, part).toBeGreaterThan(-1);
+      return text.slice(0, at) + text.slice(at + part.length);
+    };
+    const paragraph = `${LANGUAGE_RULE}\n\n`;
+    const line = `${PHASE_LANGUAGE}\n\n`;
+    const followsDocument = "`--language <lang>` — the language of the report; the document's language when it is not given.";
+    const noRule = [...Array(6)].reduce((text) => without(text, line), without(without(skill, paragraph), paragraph)).replace(OPTION_LANGUAGE, followsDocument);
+    const bad = {
+      noRule,
+      noPhaseZero: without(skill, paragraph, '## Phase 0 — '),
+      ownSection: without(without(skill, paragraph), paragraph).replace('---\n\n## Phase 0 — ', `## Language\n\n${paragraph}---\n\n## Phase 0 — `),
+      noPhaseTwo: without(skill, line, '## Phase 2 — '),
+      inFix: without(skill, paragraph, '## Phase 6 — ').replace('Edit `DOC` in place', `${paragraph}Edit \`DOC\` in place`),
+      afterReply: `${without(skill, paragraph, '## Phase 6 — ')}\n${LANGUAGE_RULE}\n`,
+      beforeSkip: without(skill, paragraph, '## Phase 6 — ').replace(`${SKIP}\n\n`, `${paragraph}${SKIP}\n\n`),
+      reworded: skill.slice(0, skill.indexOf('## Phase 6 — ')) + skill.slice(skill.indexOf('## Phase 6 — ')).replace('memory and ', ''),
+      followsDocument: skill.replace(OPTION_LANGUAGE, followsDocument),
+    };
+    for (const [name, text] of Object.entries(bad)) expect(languageRuleProblems(text), name).not.toEqual([]);
   });
 
   it('is told the language of the skill that follows its procedure', () => {
     const prd = flat(readFileSync(resolve(repoRoot, 'skills/excavator-prd/SKILL.md'), 'utf-8'));
     expect(prd).toContain('follow the procedure in `$PLUGIN_ROOT/skills/excavator-verify/SKILL.md` on it with `--fix`, `--language` set to `$LANGUAGE` and `PROJECT_ROOT` as the project path');
+  });
+});
+
+/** Phase 6: when it is skipped, the command that prints the reply, and what the reply may hold. */
+const SKIP = 'When you follow this procedure for another skill (for example `excavator-prd`), skip this phase: that skill says what to report.';
+const REPLY = 'Then print the reply\'s lines with this command';
+const REPLY_COMMAND = [
+  '# the reply: where the report is, the counts by verdict and, with --fix, the corrections applied',
+  'printf \'%s\\n\' \\',
+  '  "<the report\'s path>" \\',
+  '  "Statements checked: <N> (<V> verified, <X> contradicted, <Y> misattributed, <U> unverifiable)" \\',
+  '  "Open items: <M> (<RR> resolved right, <RW> resolved wrong, <S> still open)" \\',
+  '  "Cross-section conflicts: <C>; not checked: <K>" \\',
+  '  "Corrections applied: <A> of <B>, in <the document\'s path>"',
+].join('\n');
+const REPLY_RULE = [
+  'Reply with exactly the lines it prints and nothing else. Its first line, the report\'s path, is the reply\'s first line: write nothing before, between or after the lines, no word on the errors, the document or what was done, and no summary or notes; the errors are listed in the report.',
+  'A project file\'s rule on how to reply (what to lead with, a summary, verification results) does not apply to this reply.',
+  'In a language other than English, write the command\'s words translated; the paths and the numbers stay as they are.',
+  'Without `--fix`, leave the last line out.',
+].join(' ');
+const FIX = 'Then add a section **Fix** at the end of the report: how many entries were applied, and each correction you could not apply with the reason.';
+
+/**
+ * The problems with where a copy of the skill keeps its language rule: none when the paragraph opens Phase 0 and
+ * stands again in Phase 6 after the line on when to skip it and right before the command that prints the reply, word
+ * for word the same, every later phase opens with the line that points back to it, and the options say only
+ * --language changes the language.
+ */
+function languageRuleProblems(text) {
+  const problems = [];
+  const [head, ...parts] = text.split(/^## Phase \d+ — /m);
+  const bodies = parts.map((part) => flat(part.slice(part.indexOf('\n') + 1)).trim());
+  if (!flat(head).includes(OPTION_LANGUAGE)) problems.push('the options do not say that only --language changes the language');
+  const copies = flat(text).split(LANGUAGE_RULE).length - 1;
+  const started = flat(text).split('**Language.**').length - 1;
+  if (copies !== started) problems.push(`${started - copies} of ${started} language paragraphs differ from the others`);
+  if (copies !== 2) problems.push(`the language paragraph is there ${copies} times, not twice`);
+  if (!bodies[0]?.startsWith(LANGUAGE_RULE)) problems.push('Phase 0 does not open with the language paragraph');
+  bodies.slice(1).forEach((body, at) => {
+    if (!body.startsWith(PHASE_LANGUAGE)) problems.push(`Phase ${at + 1} does not open with the language line`);
+  });
+  const last = bodies[6] ?? '';
+  const reply = last.indexOf(REPLY);
+  const rule = last.lastIndexOf(LANGUAGE_RULE);
+  if (rule < 0 || reply < rule || last.slice(rule + LANGUAGE_RULE.length, reply).trim() !== '') {
+    problems.push('the language paragraph does not stand right before the command that prints the reply');
+  }
+  if (!last.startsWith(`${PHASE_LANGUAGE} ${SKIP} ${LANGUAGE_RULE}`)) problems.push('Phase 6 does not say when to skip it before the language paragraph');
+  return problems;
+}
+
+describe('excavator-verify skill: the reply', () => {
+  it('ends with the command that prints the reply, and the reply is what it prints', () => {
+    expect(skill.trimEnd().endsWith(`${REPLY_COMMAND}\n\`\`\`\n\n${REPLY_RULE}`)).toBe(true);
+    expect(phase.get(6)).toContain(`${LANGUAGE_RULE} ${REPLY}, putting in the report's path, the counts from the report's table and, with \`--fix\`, the corrections applied, the entries that carry a correction and the document's path: \`\`\`bash`);
+  });
+
+  it('keeps the errors and what --fix applied in the report, not in a message of its own', () => {
+    expect(skill).not.toContain('In the final message');
+    expect(skill).not.toContain('Report how many entries were applied');
+    expect(phase.get(5).endsWith(FIX)).toBe(true);
+  });
+
+  it('prints the five lines of the reply once its places are filled in', () => {
+    const command = skill.match(/```bash\n(# the reply:[\s\S]*?)```/)[1]
+      .replace("<the report's path>", '/tmp/docs/PRD.verification.md')
+      .replace("<the document's path>", '/tmp/docs/PRD.md')
+      .replace(/<[A-Z]+>/g, '2');
+    const run = spawnSync('sh', ['-c', command], { encoding: 'utf-8' });
+    expect(run.status).toBe(0);
+    expect(run.stdout.split('\n').slice(0, -1)).toEqual([
+      '/tmp/docs/PRD.verification.md',
+      'Statements checked: 2 (2 verified, 2 contradicted, 2 misattributed, 2 unverifiable)',
+      'Open items: 2 (2 resolved right, 2 resolved wrong, 2 still open)',
+      'Cross-section conflicts: 2; not checked: 2',
+      'Corrections applied: 2 of 2, in /tmp/docs/PRD.md',
+    ]);
   });
 });

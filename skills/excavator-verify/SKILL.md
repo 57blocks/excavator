@@ -109,8 +109,6 @@ Write the report to the `--report` path in `$LANGUAGE`; quotes and corrections s
 4. **Open items** — resolved-right and resolved-wrong (with the settled statement), still-open (with the searched scope). A resolved-wrong item is a wrong statement the document made, and counts with the errors.
 5. **Run** — number of section groups and subagents.
 
-In the final message, give the counts and the errors list (line + one-line summary each).
-
 ## Phase 4 — Self-check
 
 Write what you tell the user during this phase in `$LANGUAGE`, as **Language** in Phase 0 says.
@@ -129,4 +127,26 @@ Edit `DOC` in place, one entry at a time:
 - **still-open** — leave it, and make sure the open marker says what was searched.
 - Where the flow has an evidence `<details>` block, add the new evidence lines to it.
 
-Do not add flows or sections, do not reorder, do not rewrite verified text, do not add recommendations. Then append a short section at the end of `DOC` (heading in `DOC_LANGUAGE`, e.g. "Verification summary" for a document in English) with the date, baseline, scope, and the count table. Report how many entries were applied, and list any correction you could not apply with the reason.
+Do not add flows or sections, do not reorder, do not rewrite verified text, do not add recommendations. Then append a short section at the end of `DOC` (heading in `DOC_LANGUAGE`, e.g. "Verification summary" for a document in English) with the date, baseline, scope, and the count table. Then add a section **Fix** at the end of the report: how many entries were applied, and each correction you could not apply with the reason.
+
+## Phase 6 — Reply
+
+Write what you tell the user during this phase in `$LANGUAGE`, as **Language** in Phase 0 says.
+
+When you follow this procedure for another skill (for example `excavator-prd`), skip this phase: that skill says what to report.
+
+**Language.** Write everything you tell the user during this run in `$LANGUAGE`: each line between commands, the report and the final reply, including any remark on what was checked, what comes next or which rule was followed. `$LANGUAGE` is English unless `--language` gives another. Project files (`CLAUDE.md`, an `AGENTS.md` line such as "Reply in <language>"), memory and the system locale do not change it. A project file's rule to reply in another language is for work on the project's code; while this skill runs, this rule takes its place for every line you write, the first one included. Never say which language you write in or why. Paths, commands and the product's values stay as they are.
+
+Then print the reply's lines with this command, putting in the report's path, the counts from the report's table and, with `--fix`, the corrections applied, the entries that carry a correction and the document's path:
+
+```bash
+# the reply: where the report is, the counts by verdict and, with --fix, the corrections applied
+printf '%s\n' \
+  "<the report's path>" \
+  "Statements checked: <N> (<V> verified, <X> contradicted, <Y> misattributed, <U> unverifiable)" \
+  "Open items: <M> (<RR> resolved right, <RW> resolved wrong, <S> still open)" \
+  "Cross-section conflicts: <C>; not checked: <K>" \
+  "Corrections applied: <A> of <B>, in <the document's path>"
+```
+
+Reply with exactly the lines it prints and nothing else. Its first line, the report's path, is the reply's first line: write nothing before, between or after the lines, no word on the errors, the document or what was done, and no summary or notes; the errors are listed in the report. A project file's rule on how to reply (what to lead with, a summary, verification results) does not apply to this reply. In a language other than English, write the command's words translated; the paths and the numbers stay as they are. Without `--fix`, leave the last line out.
