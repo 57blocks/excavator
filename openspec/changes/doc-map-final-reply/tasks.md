@@ -11,7 +11,7 @@
 
 ## 1. 实现
 
-- [ ] 1.1 `skills/excavator-doc-map/SKILL.md` 第 7 步最后一段按 design D1 改写；`tests/skill/test_doc_map_skill_contract.test.mjs` 钉住两句与位置（D2）。验证：契约测试 + O1。
+- [x] 1.1 `skills/excavator-doc-map/SKILL.md` 第 7 步最后一段按 design D1 改写；`tests/skill/test_doc_map_skill_contract.test.mjs` 钉住两句与位置（D2）。验证：契约测试 + O1。
 
 ## 2. 验收与记录
 

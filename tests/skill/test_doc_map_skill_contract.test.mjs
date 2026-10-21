@@ -353,8 +353,16 @@ describe('excavator-doc-map skill: each rule in its step', () => {
       '**Code without evidence is only that.** Never say code without evidence is undocumented, not documented, unused, dead, obsolete or safe to delete, and never say what it does.',
       'close it with the words "A file or directory without evidence is one that no unit\'s evidence is in. Each unit lists at most 5 places and tests are never evidence, so code that a documented function uses can be there too."',
       'When the coverage query prints `no coverage`, say the code was not counted, and give why as a one-row table with the columns status and reason',
-      'Then reply in `$LANGUAGE` with these lines and nothing else: the report\'s path, the first two lines of the counts query, the line of the check query, the first line of the coverage query and the line `advice check: 0 lines`. Do not summarize the report or add notes.',
     ]) expect(step(7)).toContain(rule);
+  });
+
+  it('step 7 ends with the reply: the fixed lines, the report\'s path first, whatever a project file says about replies', () => {
+    const reply = [
+      'Then reply in `$LANGUAGE` with these lines and nothing else: the report\'s path, the first two lines of the counts query, the line of the check query, the first line of the coverage query and the line `advice check: 0 lines`.',
+      'The report\'s path, alone and with no label, is the reply\'s first line and `advice check: 0 lines` its last: write nothing before, between or after them, no word on the advice check, the report or what was done, and no summary or notes.',
+      'A project file\'s rule on how to reply (what to lead with, a summary, verification results) does not apply to this reply.',
+    ].join(' ');
+    expect(step(7).trim().endsWith(`${LANGUAGE_RULE} ${reply}`)).toBe(true);
   });
 });
 
