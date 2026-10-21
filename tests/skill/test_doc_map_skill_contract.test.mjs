@@ -49,7 +49,7 @@ function tempDir(prefix) {
  * two pages, and no .doc converter.
  */
 const bin = tempDir('doc-map-contract-bin-');
-for (const tool of ['python3', 'jq', 'find', 'sort', 'cat', 'rm', 'grep']) {
+for (const tool of ['python3', 'jq', 'find', 'sort', 'cat', 'rm', 'grep', 'head']) {
   const real = tool === 'python3' ? PYTHON : execFileSync('/bin/sh', ['-c', `command -v ${tool}`], { encoding: 'utf-8' }).trim();
   writeFileSync(join(bin, tool), `#!/bin/sh\nexec "${real}" "$@"\n`);
   chmodSync(join(bin, tool), 0o755);
@@ -594,5 +594,74 @@ describe('excavator-doc-map skill: agrees with the script', () => {
     for (const key of ['files', 'documents', 'code', 'withEvidence', 'withoutEvidence', 'evidence', 'outside']) expect(product.coverage.counts).toHaveProperty(key);
     for (const key of ['path', 'files', 'withEvidence', 'units']) expect(product.coverage.directories[0]).toHaveProperty(key);
     for (const key of ['unit', 'file', 'line']) expect(product.coverage.outside[0]).toHaveProperty(key);
+  });
+});
+
+describe('excavator-chat: document questions', () => {
+  const chat = readFileSync(resolve(repoRoot, 'skills/excavator-chat/SKILL.md'), 'utf-8');
+  const rawSection = chat.split('### Document questions')[1].split(/^##+ /m)[0];
+  const section = flat(rawSection);
+  const queries = linesOf(bashBlocks(rawSection)).filter((line) => line.startsWith('jq ') || line.startsWith('head '));
+  /** Run a query in the fixture project, or another project, as chat runs it from the project root. */
+  const run = (query, fill = {}, cwd = fixture.project) => {
+    const command = Object.entries(fill).reduce((text, [holder, value]) => text.replaceAll(holder, value), query);
+    const result = spawnSync('/bin/sh', ['-c', command], { cwd, encoding: 'utf-8', env: { PATH: bin, LANG: 'C.UTF-8' } });
+    expect(result.status, `${command}\n${result.stderr}`).toBe(0);
+    return result.stdout;
+  };
+
+  it('routes document questions before the graph check, and answers them only from the product', () => {
+    const stepOne = flat(chat.split(/^## Instructions$/m)[1].split(/^1\. /m)[1].split(/^2\. /m)[0]);
+    const route = stepOne.indexOf('**Document questions do not need the graph either.** A question about where the code of a function a document describes is,');
+    expect(route).toBeGreaterThan(-1);
+    expect(route).toBeLessThan(stepOne.indexOf('knowledge-graph.jsonl'));
+    expect(stepOne).toContain('is answered as **Document questions** below says, whether or not a graph exists; skip steps 2–8 for it.');
+    expect(section).toContain('Answer these questions only from `.excavator/doc-map.json`. **Never infer from the graph or the source which code does a function a document describes.**');
+    expect(section).toContain('**Product missing:** say this project has no map of its documents to its code yet and suggest running `/excavator-doc-map <documents folder>`. Do not answer from the graph or the source instead.');
+    expect(section).not.toMatch(/[\u3000-\u303f\u3400-\u9fff\uf900-\ufaff\uff00-\uffef]/u);
+  });
+
+  it('runs each query on the product', () => {
+    expect(queries).toHaveLength(10);
+    expect(run(queries[0])).toBe([
+      `documents folder: ${fixture.docs}`, 'units: 4; code found: 2; no code found: 1; not checked: 1', `code: ${fixture.project} at no Git commit`, '',
+    ].join('\n'));
+    expect(run(queries[1], { '<id or word>': 'ORDER' })).toBe('1\tguide/orders.html\t-\tPlacing an order\tline 2\tfound\tsrc/orders/PlaceOrder.java:3\n');
+    expect(run(queries[1], { '<id or word>': 'UC1' })).toBe('2\tsrs.pdf\tUC1\tComplete assessment\tpage 2\tfound\tweb/assessment.jsp:2\n');
+    expect(run(queries[2], { '<document>': 'use-cases.md' })).toBe('3\tUC-01\tExport medications\tnot-found\n4\tUC-02\tEnroll in study\tnot-checked\n');
+    expect(run(queries[3])).toBe('3\tuse-cases.md\tUC-01\tExport medications\tgrep -ri export src/; MedicationExport\n');
+    expect(run(queries[4], { '<file or directory>': 'src' })).toBe('1\tPlacing an order\tsrc/orders/PlaceOrder.java:3\n');
+    expect(run(queries[4], { '<file or directory>': 'web/assessment.jsp' })).toBe('2\tComplete assessment\tweb/assessment.jsp:2\n');
+    expect(run(queries[4], { '<file or directory>': 'sr' })).toBe('');
+    const dotted = tempDir('doc-map-contract-dotted-');
+    mkdirSync(join(dotted, '.excavator'));
+    const product = structuredClone(fixture.product);
+    product.units[0].code.evidence[0].file = './src/orders/PlaceOrder.java';
+    writeFileSync(join(dotted, '.excavator/doc-map.json'), JSON.stringify(product));
+    expect(run(queries[4], { '<file or directory>': 'src' }, dotted)).toBe('1\tPlacing an order\t./src/orders/PlaceOrder.java:3\n');
+    expect(run(queries[6])).toBe('digest-1\n');
+    expect(run(queries[7])).toBe('digest-1\n');
+    expect(run(queries[9], { '<directory>': 'src' })).toBe('code files: 4; with evidence: 1; units with evidence here: 1\n1\tPlacing an order\n');
+    expect(run(queries[9], { '<directory>': '.' })).toBe('code files: 7; with evidence: 1; units with evidence here: 1\n1\tPlacing an order\n');
+  });
+
+  it('counts the code with the queries of the report, and says when the counts are missing or stale', () => {
+    const report = linesOf(bashBlocks(rawStep(7))).filter((line) => line.startsWith('jq ')).map((line) => line.replace('"$DM"', '.excavator/doc-map.json'));
+    expect(queries[5]).toBe(report[8]);
+    expect(queries[8]).toBe(report[10]);
+    expect(section).toContain('`no coverage`: say the code has not been counted, and that `/excavator-doc-map` counts it when the project\'s `/excavator` facts are fresh, running `/excavator --mode=lazy` first when they are not.');
+    expect(section).toContain('Different, or no fact graph: say the counts are stale (the facts changed since they were counted) and suggest running `/excavator-doc-map` again. You may still quote them, labelled stale.');
+  });
+
+  it('says only what the product holds, with the fixed words of the report for code without evidence', () => {
+    const fixed = step(7).match(/close it with the words "([^"]+)"/)[1];
+    for (const rule of [
+      'Never say the unit is implemented completely or correctly.',
+      'the searches listed found no code tied to it; list them. Never say it is unimplemented, missing or not in the system.',
+      `whenever you list or count it, give the words "${fixed}"`,
+      'Asked which code has no documentation, answer with the directories query and these words, and say the product shows where no unit\'s evidence is, not which code no document describes.',
+      'Never call such code undocumented, not documented, unused, dead, obsolete or safe to delete, and never say what it does.',
+      'Judge no document, give no advice, and never edit code or the documents.',
+    ]) expect(section).toContain(rule);
   });
 });

@@ -13,8 +13,8 @@
 
 ## 3. chat（commit：`feat(chat): answer document questions from the doc map`）
 
-- [ ] 3.1 `skills/excavator-chat/SKILL.md`：路由里加一条「文档问题」，新一节写产物缺失、计数为 `null`、过期比对、固定查询与措辞规则。验证：契约测试
-- [ ] 3.2 契约测试（放在 `test_doc_map_skill_contract.test.mjs`）：这一节的查询在夹具产物上的输出、过期比对的两条命令、措辞规则；源码零中文字符。验证：契约测试全绿
+- [x] 3.1 `skills/excavator-chat/SKILL.md`：路由里加一条「文档问题」，新一节写产物缺失、计数为 `null`、过期比对、固定查询与措辞规则。验证：契约测试
+- [x] 3.2 契约测试（放在 `test_doc_map_skill_contract.test.mjs`）：这一节的查询在夹具产物上的输出、过期比对的两条命令、措辞规则；源码零中文字符。验证：契约测试全绿
 
 ## 4. 验收与归档（commit：`docs(openspec): record doc-map-coverage acceptance and archive`）
 
