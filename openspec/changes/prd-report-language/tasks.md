@@ -14,8 +14,8 @@
 
 - [x] 1.1 `skills/excavator-prd/SKILL.md`：选项、Phase 0 第 1 步、Phase 0 开头的 Language 段、Phase 1–4 的指回行、Phase 3 的三处 `$LANGUAGE`（design D1）。
 - [x] 1.2 新建 `tests/skill/test_prd_skill_contract.test.mjs`：Phase 顺序、无汉字、选项与 `--language` 出现的位置、Language 段与 hotspots 相同（D4 的前三条）。验证：契约测试。
-- [ ] 1.3 第 6 步改为保存与回复：第二份 Language 段、回复命令与说明（D2、D3）。
-- [ ] 1.4 契约测试：Language 段的位置与坏副本、回复命令与说明原文、旧说法已不在、命令换上样例值后打印 6 行（D4 其余各条）。验证：契约测试。
+- [x] 1.3 第 6 步改为保存与回复：第二份 Language 段、回复命令与说明（D2、D3）。
+- [x] 1.4 契约测试：Language 段的位置与坏副本、回复命令与说明原文、旧说法已不在、命令换上样例值后打印 6 行（D4 其余各条）。验证：契约测试。
 
 ## 2. 验收与记录
 

@@ -185,4 +185,21 @@ Write what you tell the user during this phase in `$LANGUAGE`, as **Language** i
 3. **Enum check.** Grep your own draft for raw code values left in prose — any `field=value` pattern (numbers, booleans such as `field=true` / `field=false`, and status/type codes) plus other untranslated flags. If any survive outside a field-dictionary table or `<details>` block, translate them to their human meaning before finishing.
 4. **Terminology check.** List the distinct words the document uses to refer to the scoped feature/entity and its key labels. Each MUST be the canonical source term from the Terminology section — if any is a target-language translation or synonym, replace it with the source term everywhere (prose, headings, tables, diagram labels). Enumerating your own usages is the point: it surfaces a translated variant you would otherwise not notice. Report: `N terms; 0 translated-variant leaks`.
 5. **Verification (enforces zero fabrication).** Write the draft to disk (the output path the user gave, or a temporary file), then follow the procedure in `$PLUGIN_ROOT/skills/excavator-verify/SKILL.md` on it with `--fix` and `PROJECT_ROOT` as the project path (resolve `PLUGIN_ROOT` as in Phase 0 if you have not). It checks the five statement classes above plus cross-chapter consistency, and corrects the draft in place. Report its counts: `N checked; contradicted X, misattributed Y; open items resolved R (guess wrong W), still open S`.
-6. **Save.** Offer to write the PRD to the project (default `docs/PRD.md`, or a path the user gives; a scoped PRD may use `docs/PRD-<scope>.md`). Suggest committing it for the team.
+6. **Save and reply.** The PRD stays where step 5 wrote it: write it into the project only when the user says so, to `docs/PRD.md` (a scoped PRD: `docs/PRD-<scope>.md`) or a path the user gives.
+
+**Language.** Write everything you tell the user during this run in `$LANGUAGE`: each line between commands, the report and the final reply, including any remark on what was checked, what comes next or which rule was followed. `$LANGUAGE` is English unless `--language` gives another. Project files (`CLAUDE.md`, an `AGENTS.md` line such as "Reply in <language>"), memory and the system locale do not change it. A project file's rule to reply in another language is for work on the project's code; while this skill runs, this rule takes its place for every line you write, the first one included. Never say which language you write in or why. Paths, commands and the product's values stay as they are.
+
+Then print the reply's lines with this command, putting in the PRD's path, the counts steps 1, 2, 4 and 5 report, and the default path:
+
+```bash
+# the reply: where the PRD is, the counts of the checks and the offer to save it
+printf '%s\n' \
+  "<the PRD's path>" \
+  "<N>/<N> flows covered" \
+  "<N> diagrams" \
+  "<N> terms; 0 translated-variant leaks" \
+  "<N> checked; contradicted <X>, misattributed <Y>; open items resolved <R> (guess wrong <W>), still open <S>" \
+  "To save it in the project, say so: it goes to <default path> unless you give another path. Commit it to share it with the team."
+```
+
+Reply with exactly the lines it prints and nothing else. Its first line, the PRD's path, is the reply's first line and the offer to save its last: write nothing before, between or after them, no word on the checks, the PRD or what was done, and no summary or notes. A project file's rule on how to reply (what to lead with, a summary, verification results) does not apply to this reply. In a language other than English, write the command's words translated; the path and the numbers stay as they are. When the PRD is already at a path the user gave, leave the last line out.
