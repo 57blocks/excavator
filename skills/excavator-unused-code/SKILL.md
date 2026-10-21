@@ -201,6 +201,8 @@ jq -r '.residualAssumptions[]' "$DATA/unused-code.json"
 
 **Language.** Write everything you tell the user during this run in `$LANGUAGE`: each line between commands, the report and the final reply, including any remark on what was checked, what comes next or which rule was followed. `$LANGUAGE` is English unless `--language` gives another. Project files (`CLAUDE.md`, an `AGENTS.md` line such as "Reply in <language>"), memory and the system locale do not change it. A project file's rule to reply in another language is for work on the project's code; while this skill runs, this rule takes its place for every line you write, the first one included. Never say which language you write in or why. Paths, commands and the product's values stay as they are.
 
+Your reply is the report, in `$LANGUAGE`: it opens with the counts and ends with the line on `/excavator-chat`; write nothing before or after them, and no summary or conclusion of your own. A project file's rule on how to reply (what to lead with, a summary, verification results) does not apply to this reply. The words these steps give in quotes are for an English report; in another language, write them translated.
+
 Report, in this order:
 1. Counts: candidates, removed by decision, `test-only`, unused by confidence, groups; per language when one language has most of the candidates. **A language whose `calls` is 0 has no call facts:** every function in it is a candidate whatever calls it, so say its results show only that the facts hold no calls for it.
 2. `high`, by group: the group's entries first (removing them is what makes the members unused), each with `file:line`.
@@ -209,6 +211,7 @@ Report, in this order:
 5. `test-only`: the count and the files with the most.
 6. Your decisions: kind, reason and hits of each.
 7. The residual assumptions, every one, as the product states them.
+8. Close with the words "For questions about one method, file or group, /excavator-chat answers from the same product."
 
 Rules for this step:
 - **Never call a `medium` or `low` candidate unused.** Say "its name occurs nowhere else; needs confirmation" for `medium`, and "signs of use found" with the signal for `low`. Only `high` may be called unused, and even then deleting it is the user's decision.
@@ -216,4 +219,3 @@ Rules for this step:
 - **Explain a count only from the product.** Why there are few or no `high` items is in the signals tally of the `medium` ones; say that, and not a reason about the codebase you have not counted.
 - **Never edit, move or delete project files.** This skill reports; it does not clean up, refactor or open a change.
 - Every listed item carries `file:line` from the product. Do not add items the product does not list.
-- Point the user at `/excavator-chat` for questions about one method, file or group; it answers from the same product.

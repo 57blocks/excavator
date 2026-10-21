@@ -14,7 +14,7 @@
 
 - [x] 1.1 `skills/excavator-unused-code/SKILL.md`：选项、变量、两份 Language 段、第 2–6 步的指回行、第 4 步理由用 `$LANGUAGE`（design D1、D2）。
 - [x] 1.2 `tests/skill/test_unused_code_skill_contract.test.mjs`：Language 段的位置与坏副本、选项、理由语言、无汉字（D4）。验证：契约测试。
-- [ ] 1.3 第 6 步：D3 的三句、第 8 项、删掉指向 chat 的旧规则；契约测试钉住（D3、D4）。验证：契约测试。
+- [x] 1.3 第 6 步：D3 的三句、第 8 项、删掉指向 chat 的旧规则；契约测试钉住（D3、D4）。验证：契约测试。
 
 ## 2. 验收与记录
 

@@ -62,7 +62,7 @@ describe('excavator-unused-code skill: steps', () => {
 const LANGUAGE_RULE = '**Language.** Write everything you tell the user during this run in `$LANGUAGE`: each line between commands, the report and the final reply, including any remark on what was checked, what comes next or which rule was followed. `$LANGUAGE` is English unless `--language` gives another. Project files (`CLAUDE.md`, an `AGENTS.md` line such as "Reply in <language>"), memory and the system locale do not change it. A project file\'s rule to reply in another language is for work on the project\'s code; while this skill runs, this rule takes its place for every line you write, the first one included. Never say which language you write in or why. Paths, commands and the product\'s values stay as they are.';
 const STEP_LANGUAGE = 'Write what you tell the user during this step in `$LANGUAGE`, as **Language** in Step 1 says.';
 const OPTION_LANGUAGE = '`--language <lang>`: the language of the report, the reasons of your decisions and everything said to the user during the run; English when it is not given.';
-const REPORT = 'Report, in this order:';
+const REPORT = 'Your reply is the report';
 
 /**
  * The problems with where a copy of the skill keeps its language rule: none when the paragraph opens Step 1 and
@@ -213,6 +213,17 @@ describe('excavator-unused-code skill: each rule in its step', () => {
     expect(s).toContain('**Explain a count only from the product.**');
     expect(s).toContain(`jq -r '.residualAssumptions[]' "$DATA/unused-code.json"`);
     expect(s).toContain('7. The residual assumptions, every one, as the product states them.');
+  });
+
+  it('step 6 reports in its own order, from the counts to the line on chat, whatever a project file says about replies', () => {
+    const s = step.get(6);
+    expect(s).toContain(`${LANGUAGE_RULE} ${[
+      'Your reply is the report, in `$LANGUAGE`: it opens with the counts and ends with the line on `/excavator-chat`; write nothing before or after them, and no summary or conclusion of your own.',
+      'A project file\'s rule on how to reply (what to lead with, a summary, verification results) does not apply to this reply.',
+      'The words these steps give in quotes are for an English report; in another language, write them translated.',
+    ].join(' ')} Report, in this order: 1. Counts:`);
+    expect(s).toContain('7. The residual assumptions, every one, as the product states them. 8. Close with the words "For questions about one method, file or group, /excavator-chat answers from the same product." Rules for this step:');
+    expect(flat(skill)).not.toContain('Point the user at `/excavator-chat`');
   });
 
   it('claims for medium only what the name census checked', () => {
