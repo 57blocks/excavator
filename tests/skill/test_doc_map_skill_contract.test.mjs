@@ -49,7 +49,7 @@ function tempDir(prefix) {
  * two pages, and no .doc converter.
  */
 const bin = tempDir('doc-map-contract-bin-');
-for (const tool of ['python3', 'jq', 'find', 'sort', 'cat', 'rm', 'grep']) {
+for (const tool of ['python3', 'jq', 'find', 'sort', 'cat', 'rm', 'grep', 'head']) {
   const real = tool === 'python3' ? PYTHON : execFileSync('/bin/sh', ['-c', `command -v ${tool}`], { encoding: 'utf-8' }).trim();
   writeFileSync(join(bin, tool), `#!/bin/sh\nexec "${real}" "$@"\n`);
   chmodSync(join(bin, tool), 0o755);
@@ -64,7 +64,8 @@ const sh = (command, vars) => spawnSync('/bin/sh', ['-c', command], { encoding: 
  * A documents folder with a numbered use-case document, an HTML guide, a two-page PDF, an image and a .doc
  * this PATH has no converter for; read, listed in two batches and recorded by the skill's own commands. The
  * project holds a little code; the links of two batches tie two units to it, give one none and leave one out.
- * The check keeps two of the three places and takes one out.
+ * The check keeps two of the three places and takes one out. The facts list a document and seven code files
+ * in two first-level directories, and not the JSP file one kept place is in; the skill's command counts them.
  */
 const fixture = (() => {
   const docs = tempDir('doc-map-contract-docs-');
@@ -125,13 +126,32 @@ const fixture = (() => {
     const result = sh(lineStarting(5, start), vars);
     expect(result.status, `${start}\n${result.stderr}`).toBe(0);
   }
-  return { docs, project, DATA, vars, checkPlan: checkPlan.stdout, product: JSON.parse(readFileSync(vars.DM, 'utf-8')) };
+  const uncounted = JSON.parse(readFileSync(vars.DM, 'utf-8'));
+  writeFacts(project, [
+    'README.md', 'src/orders/PlaceOrder.java', 'src/Assess.java', 'src/billing/Invoice.java', 'src/billing/tax/Rate.java',
+    'tools/Gen.java', 'tools/Lint.java', 'tools/gen/Make.java',
+  ]);
+  const count = sh(lineStarting(6, 'python3 "$DOC_MAP" coverage'), vars);
+  expect(count.status, count.stderr).toBe(0);
+  return { docs, project, DATA, vars, checkPlan: checkPlan.stdout, uncounted, product: JSON.parse(readFileSync(vars.DM, 'utf-8')) };
 })();
 
+/** The two fact files `coverage` reads: a fact graph with one file node per path, and the source manifest. */
+function writeFacts(project, files) {
+  const header = {
+    record: 'header', format: 'excavator-knowledge-graph-lines/1', keys: ['nodes', 'edges', 'factsDigest'],
+    fields: { factsDigest: 'digest-1' }, counts: { nodes: files.length, edges: 0 },
+  };
+  const nodes = files.map((filePath) => ({ record: 'node', node: { id: `file:${filePath}`, type: 'file', name: filePath, filePath } }));
+  mkdirSync(join(project, '.excavator/intermediate'), { recursive: true });
+  writeFileSync(join(project, '.excavator/intermediate/fact-graph.jsonl'), `${[header, ...nodes].map((record) => JSON.stringify(record)).join('\n')}\n`);
+  writeFileSync(join(project, '.excavator/source-manifest.json'), JSON.stringify({ sourceRevision: 'git:abc', entries: [] }));
+}
+
 describe('excavator-doc-map skill: steps', () => {
-  it('has the six steps in order and its own name', () => {
+  it('has the seven steps in order and its own name', () => {
     const titles = [...skill.matchAll(/^## Step \d+ — (.+)$/gm)].map((m) => m[1]);
-    expect(titles).toEqual(['Read the documents', 'List the units', 'Record the units', 'Tie the units to code', 'Check each tie', 'Report to the user']);
+    expect(titles).toEqual(['Read the documents', 'List the units', 'Record the units', 'Tie the units to code', 'Check each tie', 'Count the code', 'Report to the user']);
     expect(skill.startsWith('---\nname: excavator-doc-map\n')).toBe(true);
   });
 
@@ -145,7 +165,7 @@ describe('excavator-doc-map skill: steps', () => {
     expect(flat(skill)).toContain('`--language <lang>`: the language of the unit titles and of the report, English unless the request names another. The documents\' own language does not change it.');
     expect(step(1)).toContain('LANGUAGE="English" # or the --language value');
     expect(step(2)).toContain('`<language>` is `$LANGUAGE`');
-    expect(step(6)).toContain('Write the report to `$DATA/doc-map-report.md` in `$LANGUAGE`, in this order:');
+    expect(step(7)).toContain('Write the report to `$DATA/doc-map-report.md` in `$LANGUAGE`, in this order:');
   });
 });
 
@@ -153,6 +173,22 @@ describe('excavator-doc-map skill: each rule in its step', () => {
   it('step 1 stops on a failed read and reads only the header', () => {
     expect(step(1)).toContain('A non-zero exit writes no product: report its message as it stands and stop.');
     expect(step(1)).toContain("jq 'del(.documents, .units)' \"$DM\"");
+  });
+
+  it('step 1 checks the facts before it reads, and fills them only with the mode that calls no model', () => {
+    const lines = linesOf(bashBlocks(rawStep(1)));
+    const freshness = lines.indexOf('node "$PLUGIN_ROOT/skills/excavator/consumer-freshness.mjs" "$PROJECT_ROOT"');
+    expect(freshness).toBeGreaterThan(-1);
+    expect(freshness).toBeLessThan(lines.indexOf(lineStarting(1, 'python3 "$DOC_MAP" read')));
+    for (const rule of [
+      '`stale` or `missing`: run `/excavator "$PROJECT_ROOT" --mode=lazy` and wait for it to finish (that mode extracts the facts and calls no model; never run `/excavator` in another mode from this skill), then run the check again.',
+      'When it still does not print `fresh`, keep its `status` and `reason` for the report, go on, and skip Step 6.',
+    ]) expect(step(1)).toContain(rule);
+  });
+
+  it('step 6 counts only on fresh facts and never writes a count itself', () => {
+    expect(step(6)).toContain('Skip this step when the facts check of Step 1 did not end with `fresh`.');
+    expect(step(6)).toContain('A non-zero exit records nothing and prints why: keep the message for the report and go on. Never write or change the counts yourself.');
   });
 
   it('step 2 gives the subagents the documents as data and the structure rules', () => {
@@ -227,7 +263,7 @@ describe('excavator-doc-map skill: each rule in its step', () => {
     ]) expect(step(5)).toContain(rule);
   });
 
-  it('step 6 reports from the product only and gives no judgement of documents or code', () => {
+  it('step 7 reports from the product only and gives no judgement of documents or code', () => {
     for (const rule of [
       '**State only what the product holds.**',
       '**A unit is what a document says, and its code is what the product holds.** Never say a unit is implemented, unimplemented, missing, partly done, planned or out of date: say only that code was found for it, that no code was found, or that it was not checked.',
@@ -238,8 +274,11 @@ describe('excavator-doc-map skill: each rule in its step', () => {
       'introduced with the words "For these units, the searches listed found no code tied to them."',
       'introduced with the words "A second subagent read each unit\'s lines and the code at each of its places, and nothing else; a place it did not judge to do the unit was taken out, and a unit left with no place is not checked."',
       'every verdict and reason from `checks.json`',
-      'do not summarize the report',
-    ]) expect(step(6)).toContain(rule);
+      '**Code without evidence is only that.** Never say code without evidence is undocumented, not documented, unused, dead, obsolete or safe to delete, and never say what it does.',
+      'close it with the words "A file or directory without evidence is one that no unit\'s evidence is in. Each unit lists at most 5 places and tests are never evidence, so code that a documented function uses can be there too."',
+      'When the coverage query prints `no coverage`, say the code was not counted, and give why as a one-row table with the columns status and reason',
+      'Then reply in `$LANGUAGE` with these lines and nothing else: the report\'s path, the first two lines of the counts query, the line of the check query, the first line of the coverage query and the line `advice check: 0 lines`. Do not summarize the report or add notes.',
+    ]) expect(step(7)).toContain(rule);
   });
 });
 
@@ -307,7 +346,7 @@ describe('excavator-doc-map skill: the commands run', () => {
       'found', 'not-checked', 'not-checked', 'not-checked', 'found', 'found', 'found', 'found', 'found', 'found', 'found', 'not-found',
     ]);
     expect(product.units[11].code.searched).toEqual(['grep -r B01 src/']);
-    const [counts, notKept] = linesOf(bashBlocks(rawStep(6))).filter((line) => line.startsWith('jq ')).slice(6, 8);
+    const [counts, notKept] = linesOf(bashBlocks(rawStep(7))).filter((line) => line.startsWith('jq ')).slice(6, 8);
     expect(sh(counts, vars).stdout).toBe('places: 11; kept: 8; taken out: 1; no verdict: 2\n');
     expect(sh(notKept, vars).stdout).toBe(['2\tA02 step\tsrc/Steps.java:2\tnot\tStep 2.', '3\tA03 step\tsrc/Steps.java:3\tnone\tStep 3.', '4\tA04 step\tsrc/Steps.java:4\tnone\t-', ''].join('\n'));
   });
@@ -435,8 +474,8 @@ describe('excavator-doc-map skill: the commands run', () => {
   });
 
   it('runs every report query on the product, each printing something', () => {
-    const queries = linesOf(bashBlocks(rawStep(6))).filter((line) => line.startsWith('jq '));
-    expect(queries).toHaveLength(9);
+    const queries = linesOf(bashBlocks(rawStep(7))).filter((line) => line.startsWith('jq '));
+    expect(queries).toHaveLength(13);
     for (const query of queries) {
       const result = sh(query, fixture.vars);
       expect(result.status, `${query}\n${result.stderr}`).toBe(0);
@@ -460,12 +499,46 @@ describe('excavator-doc-map skill: the commands run', () => {
     expect(sh(queries[5], fixture.vars).stdout).toBe('use-cases.md\tUC-01\tExport medications\tgrep -ri export src/; MedicationExport\n');
     expect(sh(queries[6], fixture.vars).stdout).toBe('places: 3; kept: 2; taken out: 1; no verdict: 0\n');
     expect(sh(queries[7], fixture.vars).stdout).toBe('2\tComplete assessment\tsrc/Assess.java:1\tnot\tAn empty class.\n');
+    expect(sh(queries[8], fixture.vars).stdout).toBe([
+      'files analysed: 8; documents: 1; code files: 7; with evidence: 1; without evidence: 6',
+      'pieces of evidence: 2; not in a code file: 1', 'facts: git:abc', '',
+    ].join('\n'));
+    expect(sh(queries[9], fixture.vars).stdout).toBe(['4\t1\t1\tsrc', '3\t0\t0\ttools', ''].join('\n'));
+    expect(sh(queries[10], fixture.vars).stdout).toBe([
+      'directories with no evidence whose parent has evidence: 2', '3\ttools', '2\tsrc/billing', '',
+    ].join('\n'));
+    expect(sh(queries[11], fixture.vars).stdout).toBe('2\tweb/assessment.jsp\t2\n');
+  });
+
+  it('says there is no coverage when the code was not counted', () => {
+    const DM = join(tempDir('doc-map-contract-uncounted-'), 'doc-map.json');
+    writeFileSync(DM, JSON.stringify(fixture.uncounted));
+    expect(fixture.uncounted.coverage).toBeNull();
+    const queries = linesOf(bashBlocks(rawStep(7))).filter((line) => line.startsWith('jq ')).slice(8, 12);
+    expect(queries.map((query) => sh(query, { DM }).stdout)).toEqual([
+      'no coverage\n', '', 'directories with no evidence whose parent has evidence: 0\n', '',
+    ]);
+  });
+
+  it('lists the directories with no evidence below one with evidence, most code files first, at most 20, and counts them all', () => {
+    const none = (path, files) => ({ path, files, withEvidence: 0, units: [] });
+    const names = Array.from({ length: 21 }, (_, at) => `d${String(at).padStart(2, '0')}`);
+    const directories = [
+      { path: '.', files: 30, withEvidence: 2, units: [1] }, ...names.map((name) => none(name, name === 'd20' ? 5 : 1)),
+      none('d00/inner', 1), { path: 'e', files: 3, withEvidence: 2, units: [1] }, none('e/f', 1),
+    ];
+    const DM = join(tempDir('doc-map-contract-top-'), 'doc-map.json');
+    writeFileSync(DM, JSON.stringify({ coverage: { directories } }));
+    const query = linesOf(bashBlocks(rawStep(7))).filter((line) => line.startsWith('jq '))[10];
+    expect(sh(query, { DM }).stdout.trimEnd().split('\n')).toEqual([
+      'directories with no evidence whose parent has evidence: 22', '5\td20', ...names.slice(0, 19).map((name) => `1\t${name}`),
+    ]);
   });
 
   it('the fixed words of the report pass the advice check', () => {
-    const check = blockWith(6, 'python3 - "$DATA/doc-map-report.md"');
-    const fixed = [...step(6).matchAll(/with the words "([^"]+)"/g)].map((m) => m[1]);
-    expect(fixed).toHaveLength(3);
+    const check = blockWith(7, 'python3 - "$DATA/doc-map-report.md"');
+    const fixed = [...step(7).matchAll(/with the words "([^"]+)"/g)].map((m) => m[1]);
+    expect(fixed).toHaveLength(4);
     writeFileSync(join(fixture.DATA, 'doc-map-report.md'), `${fixed.join('\n')}\n`);
     const result = sh(check, fixture.vars);
     expect(result.status, result.stderr).toBe(0);
@@ -473,7 +546,7 @@ describe('excavator-doc-map skill: the commands run', () => {
   });
 
   it('the advice check prints judging sentences, English or Chinese, and passes table rows and plain statements', () => {
-    const check = blockWith(6, 'python3 - "$DATA/doc-map-report.md"');
+    const check = blockWith(7, 'python3 - "$DATA/doc-map-report.md"');
     writeFileSync(join(fixture.DATA, 'doc-map-report.md'), [
       '# Documents',
       'files: 4; read: 2',
@@ -481,10 +554,24 @@ describe('excavator-doc-map skill: the commands run', () => {
       '| guide.md | - | Missing items report | line 3 |',
       'The guide is outdated and the team should rewrite it.',
       '\u8fd9\u4efd\u6587\u6863\u5df2\u7ecf\u8fc7\u65f6\u3002',
+      'files analysed: 8; documents: 1; code files: 7; with evidence: 1; without evidence: 6',
+      'directories with no evidence whose parent has evidence: 2',
+      '| 3 | tools |',
+      'The code in tools is undocumented.',
+      'Nothing documents src/billing: it is not documented.',
+      'src/billing is unused.',
+      'tools/gen is dead code.',
+      'tools is obsolete.',
+      'src/billing/tax is safe to delete.',
+      '\u8fd9\u4e9b\u4ee3\u7801\u6ca1\u6709\u6587\u6863\u3002',
+      'tools \u672a\u4f7f\u7528\u3002',
+      'tools \u65e0\u7528\u3002',
+      'tools \u662f\u6b7b\u4ee3\u7801\u3002',
+      'tools \u53ef\u4ee5\u5220\u9664\u3002',
     ].join('\n'));
     const result = sh(check, fixture.vars);
     expect(result.status, result.stderr).toBe(0);
-    expect(result.stdout).toBe('5:The guide is outdated and the team should rewrite it.\n6:\u8fd9\u4efd\u6587\u6863\u5df2\u7ecf\u8fc7\u65f6\u3002\n');
+    expect(result.stdout.trimEnd().split('\n').map((line) => Number(line.split(':')[0]))).toEqual([5, 6, ...Array.from({ length: 11 }, (_, at) => at + 10)]);
   });
 });
 
@@ -502,5 +589,87 @@ describe('excavator-doc-map skill: agrees with the script', () => {
     expect(product).toHaveProperty('docsRoot');
     expect(skill).toContain('`docsRoot`');
     for (const status of ['read', 'empty', 'no-converter', 'unsupported', 'failed']) expect(skill).toContain(`\`${status}\``);
+    for (const key of ['sourceRevision', 'counts', 'outside', 'directories']) expect(product.coverage).toHaveProperty(key);
+    for (const key of ['files', 'documents', 'code', 'withEvidence', 'withoutEvidence', 'evidence', 'outside']) expect(product.coverage.counts).toHaveProperty(key);
+    for (const key of ['path', 'files', 'withEvidence', 'units']) expect(product.coverage.directories[0]).toHaveProperty(key);
+    for (const key of ['unit', 'file', 'line']) expect(product.coverage.outside[0]).toHaveProperty(key);
+  });
+});
+
+describe('excavator-chat: document questions', () => {
+  const chat = readFileSync(resolve(repoRoot, 'skills/excavator-chat/SKILL.md'), 'utf-8');
+  const rawSection = chat.split('### Document questions')[1].split(/^##+ /m)[0];
+  const section = flat(rawSection);
+  const queries = linesOf(bashBlocks(rawSection)).filter((line) => line.startsWith('jq ') || line.startsWith('head '));
+  /** Run a query in the fixture project, or another project, as chat runs it from the project root. */
+  const run = (query, fill = {}, cwd = fixture.project) => {
+    const command = Object.entries(fill).reduce((text, [holder, value]) => text.replaceAll(holder, value), query);
+    const result = spawnSync('/bin/sh', ['-c', command], { cwd, encoding: 'utf-8', env: { PATH: bin, LANG: 'C.UTF-8' } });
+    expect(result.status, `${command}\n${result.stderr}`).toBe(0);
+    return result.stdout;
+  };
+
+  it('routes document questions before the graph check, and answers them only from the product', () => {
+    const stepOne = flat(chat.split(/^## Instructions$/m)[1].split(/^1\. /m)[1].split(/^2\. /m)[0]);
+    const route = stepOne.indexOf('**Document questions do not need the graph either.** A question about the functions, use cases or requirements documents describe (where the code of one is, whether one is implemented,');
+    expect(route).toBeGreaterThan(-1);
+    expect(route).toBeLessThan(stepOne.indexOf('knowledge-graph.jsonl'));
+    for (const rule of [
+      'is answered as **Document questions** below says, whether or not a graph exists; skip steps 2–8 for it.',
+      'So is a question whether a function is implemented, or where its code is, when `.excavator/doc-map.json` lists a unit by that name or id (look it up with the first query of step 3 there).',
+      'Answer document questions only from `.excavator/doc-map.json`: when that file is missing, say so and suggest running `/excavator-doc-map`, and never answer them from the graph, the documents or the source instead.',
+    ]) {
+      expect(stepOne).toContain(rule);
+      expect(stepOne.indexOf(rule)).toBeLessThan(stepOne.indexOf('knowledge-graph.jsonl'));
+    }
+    expect(section).toContain('Answer these questions only from `.excavator/doc-map.json`. **Never infer from the graph or the source which code does a function a document describes.**');
+    expect(section).toContain('**Product missing:** say this project has no map of its documents to its code yet and suggest running `/excavator-doc-map <documents folder>`. Do not answer from the graph or the source instead.');
+    expect(section).not.toMatch(/[\u3000-\u303f\u3400-\u9fff\uf900-\ufaff\uff00-\uffef]/u);
+  });
+
+  it('runs each query on the product', () => {
+    expect(queries).toHaveLength(10);
+    expect(run(queries[0])).toBe([
+      `documents folder: ${fixture.docs}`, 'units: 4; code found: 2; no code found: 1; not checked: 1', `code: ${fixture.project} at no Git commit`, '',
+    ].join('\n'));
+    expect(run(queries[1], { '<id or word>': 'ORDER' })).toBe('1\tguide/orders.html\t-\tPlacing an order\tline 2\tfound\tsrc/orders/PlaceOrder.java:3\n');
+    expect(run(queries[1], { '<id or word>': 'UC1' })).toBe('2\tsrs.pdf\tUC1\tComplete assessment\tpage 2\tfound\tweb/assessment.jsp:2\n');
+    expect(run(queries[2], { '<document>': 'use-cases.md' })).toBe('3\tUC-01\tExport medications\tnot-found\n4\tUC-02\tEnroll in study\tnot-checked\n');
+    expect(run(queries[3])).toBe('3\tuse-cases.md\tUC-01\tExport medications\tgrep -ri export src/; MedicationExport\n');
+    expect(run(queries[4], { '<file or directory>': 'src' })).toBe('1\tPlacing an order\tsrc/orders/PlaceOrder.java:3\n');
+    expect(run(queries[4], { '<file or directory>': 'web/assessment.jsp' })).toBe('2\tComplete assessment\tweb/assessment.jsp:2\n');
+    expect(run(queries[4], { '<file or directory>': 'sr' })).toBe('');
+    const dotted = tempDir('doc-map-contract-dotted-');
+    mkdirSync(join(dotted, '.excavator'));
+    const product = structuredClone(fixture.product);
+    product.units[0].code.evidence[0].file = './src/orders/PlaceOrder.java';
+    writeFileSync(join(dotted, '.excavator/doc-map.json'), JSON.stringify(product));
+    expect(run(queries[4], { '<file or directory>': 'src' }, dotted)).toBe('1\tPlacing an order\t./src/orders/PlaceOrder.java:3\n');
+    expect(run(queries[6])).toBe('digest-1\n');
+    expect(run(queries[7])).toBe('digest-1\n');
+    expect(run(queries[9], { '<directory>': 'src' })).toBe('code files: 4; with evidence: 1; units with evidence here: 1\n1\tPlacing an order\n');
+    expect(run(queries[9], { '<directory>': '.' })).toBe('code files: 7; with evidence: 1; units with evidence here: 1\n1\tPlacing an order\n');
+  });
+
+  it('counts the code with the queries of the report, and says when the counts are missing or stale', () => {
+    const report = linesOf(bashBlocks(rawStep(7))).filter((line) => line.startsWith('jq ')).map((line) => line.replace('"$DM"', '.excavator/doc-map.json'));
+    expect(queries[5]).toBe(report[8]);
+    expect(queries[8]).toBe(report[10]);
+    expect(section).toContain('`no coverage`: say the code has not been counted, and that `/excavator-doc-map` counts it when the project\'s `/excavator` facts are fresh, running `/excavator --mode=lazy` first when they are not.');
+    expect(section).toContain('Different, or no fact graph: say the counts are stale (the facts changed since they were counted) and suggest running `/excavator-doc-map` again. You may still quote them, labelled stale.');
+  });
+
+  it('says only what the product holds, with the fixed words of the report for code without evidence', () => {
+    const fixed = step(7).match(/close it with the words "([^"]+)"/)[1];
+    for (const rule of [
+      'Never say the unit is implemented completely or correctly.',
+      'the searches listed found no code tied to it; list them. Never say it is unimplemented, missing or not in the system.',
+      'Asked whether it is implemented, answer neither yes nor no: begin the answer with the words "The check judged the code at these places to do it, or a part of it; the product does not say whether it is complete or correct." and then list the places.',
+      'Asked whether it is implemented, answer neither yes nor no: begin the answer with the words "The product does not say whether it is implemented: the searches listed found no code tied to it." and then list the searches. Add no conclusion of your own after them: not what the code base has or lacks, and not whether the document fits the project.',
+      `whenever you list or count it, give the words "${fixed}"`,
+      'Asked which code has no documentation, answer with the directories query and these words, and say the product shows where no unit\'s evidence is, not which code no document describes.',
+      'Never call such code undocumented, not documented, unused, dead, obsolete or safe to delete, and never say what it does.',
+      'Judge no document, give no advice, and never edit code or the documents.',
+    ]) expect(section).toContain(rule);
   });
 });
