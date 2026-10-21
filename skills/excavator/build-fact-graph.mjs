@@ -977,7 +977,7 @@ export function buildFactGraph({ scan, structureAll, importMap, mentionSites, me
 
   // Hashed record by record (openspec: changes/knowledge-graph-line-store,
   // design D3): the joined digest text was 66% of the runtime single-string
-  // limit on Hadoop's real fact graph. The digest VALUE is unchanged —
+  // limit on a 3M-line Java repository's fact graph. The digest VALUE is unchanged —
   // computeFactsDigest feeds the hash exactly the bytes that
   // `JSON.stringify(canonicalizeForDigest({...}))` would have produced.
   const factsDigest = computeFactsDigest(

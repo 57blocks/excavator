@@ -4,7 +4,7 @@
  * Line-oriented persistence for the source index (openspec: changes/
  * product-serialization-ceiling, capability `source-index`, design D1/D2).
  * Replaces a single whole-document `JSON.stringify`/`JSON.parse` of
- * `source-index.json` — which, on apache/hadoop's real 150k-chunk index,
+ * `source-index.json` — which, on a 3M-line Java repository's 150k-chunk index,
  * produced a 1.36 GB single string (253% of V8's own single-string ceiling,
  * `buffer.constants.MAX_STRING_LENGTH`) — with `source-index.jsonl`: one JSON
  * record per line, so neither writing nor reading ever needs the whole index
@@ -67,7 +67,7 @@
  *     as `buildPostings`'s own null-prototype map — a real source token like
  *     `constructor`/`toString` must not resolve to an inherited
  *     `Object.prototype` member (see build-source-index.mjs's own comment on
- *     this; caught on the go-multirepo TS/Vue corpus).
+ *     this; caught on a real TS/Vue repository).
  *   - `chunks` are the original chunk objects, verbatim, in their original
  *     (sorted-by-id) order.
  * `retrieve.mjs`'s `bm25Search` is therefore usable, unmodified, against a
