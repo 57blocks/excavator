@@ -73,11 +73,11 @@ describe('formatNumber and status words', () => {
 
   it('keeps pages in their declared order whatever order they register in', () => {
     const fresh = load();
-    fresh.pages.register({ id: 'late', order: 60 });
+    fresh.pages.register({ id: 'late', order: 55 });
     fresh.pages.register({ id: 'early', order: 25 });
     fresh.pages.register({ id: 'unordered' });
     fresh.pages.register({ id: 'middle', order: 35 });
-    expect(fresh.pages.list.map((p) => p.id)).toEqual(['overview', 'unused', 'early', 'doc-map', 'middle', 'hotspots', 'code', 'late', 'unordered']);
+    expect(fresh.pages.list.map((p) => p.id)).toEqual(['overview', 'unused', 'early', 'doc-map', 'middle', 'hotspots', 'code', 'late', 'reports', 'unordered']);
   });
 
   it('names the four states and passes an unknown one through', () => {
@@ -89,7 +89,7 @@ describe('formatNumber and status words', () => {
   });
 
   it('registers the pages in navigation order', () => {
-    expect(XV.pages.list.map((p) => p.id)).toEqual(['overview', 'unused', 'doc-map', 'hotspots', 'code']);
+    expect(XV.pages.list.map((p) => p.id)).toEqual(['overview', 'unused', 'doc-map', 'hotspots', 'code', 'reports']);
     expect(XV.pages.find('overview').label).toBe('Overview');
     expect(XV.pages.find('missing')).toBeNull();
   });
