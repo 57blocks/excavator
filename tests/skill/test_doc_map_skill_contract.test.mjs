@@ -193,7 +193,7 @@ function languageRuleProblems(text) {
     if (!body.startsWith(STEP_LANGUAGE)) problems.push(`Step ${at + 2} does not open with the language line`);
   });
   const last = steps[6] ?? '';
-  const reply = last.indexOf('Then reply in `$LANGUAGE` with these lines and nothing else');
+  const reply = last.indexOf('Then print the reply\'s lines with this command:');
   const rule = last.lastIndexOf(LANGUAGE_RULE);
   if (rule < 0 || reply < rule || last.slice(rule + LANGUAGE_RULE.length, reply).trim() !== '') {
     problems.push('the language paragraph does not stand right before the final reply of Step 7');
@@ -356,13 +356,14 @@ describe('excavator-doc-map skill: each rule in its step', () => {
     ]) expect(step(7)).toContain(rule);
   });
 
-  it('step 7 ends with the reply: the fixed lines, the report\'s path first, whatever a project file says about replies', () => {
-    const reply = [
-      'Then reply in `$LANGUAGE` with these lines and nothing else: the report\'s path, the first two lines of the counts query, the line of the check query, the first line of the coverage query and the line `advice check: 0 lines`.',
-      'The report\'s path, alone and with no label, is the reply\'s first line and `advice check: 0 lines` its last: write nothing before, between or after them, no word on the advice check, the report or what was done, and no summary or notes.',
+  it('step 7 ends with the reply: the lines its command prints, the report\'s path first, whatever a project file says about replies', () => {
+    const last = step(7).trim();
+    expect(last).toContain(`${LANGUAGE_RULE} Then print the reply's lines with this command:`);
+    expect(last.endsWith([
+      'Reply with exactly the lines it prints and nothing else.',
+      'Its first line, the report\'s path, is the reply\'s first line and `advice check: 0 lines` its last: write nothing before, between or after them, no word on the advice check, the report or what was done, and no summary or notes.',
       'A project file\'s rule on how to reply (what to lead with, a summary, verification results) does not apply to this reply.',
-    ].join(' ');
-    expect(step(7).trim().endsWith(`${LANGUAGE_RULE} ${reply}`)).toBe(true);
+    ].join(' '))).toBe(true);
   });
 });
 
@@ -592,6 +593,20 @@ describe('excavator-doc-map skill: the commands run', () => {
       'directories with no evidence whose parent has evidence: 2', '3\ttools', '2\tsrc/billing', '',
     ].join('\n'));
     expect(sh(queries[11], fixture.vars).stdout).toBe('2\tweb/assessment.jsp\t2\n');
+  });
+
+  it('prints the reply\'s lines with the report\'s own queries', () => {
+    const queries = linesOf(bashBlocks(rawStep(7))).filter((line) => line.startsWith('jq '));
+    const command = lineStarting(7, 'echo "$DATA/doc-map-report.md";');
+    expect(command).toBe(`echo "$DATA/doc-map-report.md"; ${queries[0]} | head -2; ${queries[6]}; ${queries[8]} | head -1; echo 'advice check: 0 lines'`);
+    expect(sh(command, fixture.vars).stdout).toBe([
+      join(fixture.vars.DATA, 'doc-map-report.md'),
+      'files: 5; read: 3; empty: 0; no converter: 1; unsupported: 1; failed: 0; units: 4',
+      'code found: 2; no code found: 1; not checked: 1',
+      'places: 3; kept: 2; taken out: 1; no verdict: 0',
+      'files analysed: 8; documents: 1; code files: 7; with evidence: 1; without evidence: 6',
+      'advice check: 0 lines', '',
+    ].join('\n'));
   });
 
   it('says there is no coverage when the code was not counted', () => {

@@ -7,11 +7,14 @@
 
 1. `docs(openspec): propose doc-map-final-reply`
 2. `fix(skill): start the final reply with the report's path`：任务 1.1。
-3. `docs(openspec): record doc-map-final-reply acceptance and archive`：任务 2.1–2.4。
+3. `fix(skill): print the final reply's lines with one command`：任务 1.2，第一轮验收后加（design D3）。
+4. `docs(openspec): record doc-map-final-reply acceptance and archive`：任务 2.1–2.4。
 
 ## 1. 实现
 
 - [x] 1.1 `skills/excavator-doc-map/SKILL.md` 第 7 步最后一段按 design D1 改写；`tests/skill/test_doc_map_skill_contract.test.mjs` 钉住两句与位置（D2）。验证：契约测试 + O1。
+
+- [x] 1.2 第 7 步最后回复改为先用一条命令打印回复的几行（design D3）；契约测试比对命令里的查询与报告的查询，并在夹具产物上跑出期望的几行。验证：契约测试 + 第二轮变异。
 
 ## 2. 验收与记录
 
