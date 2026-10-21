@@ -617,13 +617,13 @@ describe('excavator-chat: document questions', () => {
     for (const rule of [
       'is answered as **Document questions** below says, whether or not a graph exists; skip steps 2–8 for it.',
       'So is a question whether a function is implemented, or where its code is, when `.excavator/doc-map.json` lists a unit by that name or id (look it up with the first query of step 3 there).',
-      'Answer document questions only from `.excavator/doc-map.json`: when that file is missing, say so and suggest running `/excavator-doc-map`, and never answer them from the graph, the documents or the source instead.',
+      'Answer document questions only from `.excavator/doc-map.json`: when that file is missing, run step 5 of **Document questions** first, say so in the language it prints and suggest running `/excavator-doc-map`, and never answer them from the graph, the documents or the source instead.',
     ]) {
       expect(stepOne).toContain(rule);
       expect(stepOne.indexOf(rule)).toBeLessThan(stepOne.indexOf('knowledge-graph.jsonl'));
     }
     expect(section).toContain('Answer these questions only from `.excavator/doc-map.json`. **Never infer from the graph or the source which code does a function a document describes.**');
-    expect(section).toContain('**Product missing:** say this project has no map of its documents to its code yet and suggest running `/excavator-doc-map <documents folder>`. Do not answer from the graph or the source instead.');
+    expect(section).toContain('**Product missing:** say this project has no map of its documents to its code yet and suggest running `/excavator-doc-map <documents folder>`; run step 5 first and say it in the language step 5 prints. Do not answer from the graph or the source instead.');
     expect(section).not.toMatch(/[\u3000-\u303f\u3400-\u9fff\uf900-\ufaff\uff00-\uffef]/u);
   });
 
