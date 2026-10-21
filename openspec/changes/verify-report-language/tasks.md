@@ -8,7 +8,8 @@
 1. `docs(openspec): propose verify-report-language`
 2. `fix(skill): write verify's report and every line to the user in English unless --language names another`：任务 1.1–1.3。
 3. `fix(skill): end verify with a reply its last command prints, and keep the errors in the report`：任务 1.4、1.5。
-4. `docs(openspec): record verify-report-language acceptance and archive`：任务 2.1–2.3。
+4. `fix(skill): fill verify's reply with the report's own numbers, none added up`：任务 1.6（第一轮验收后加）。
+5. `docs(openspec): record verify-report-language acceptance and archive`：任务 2.1–2.3。
 
 ## 1. 实现
 
@@ -17,6 +18,7 @@
 - [x] 1.3 新建 `tests/skill/test_verify_skill_contract.test.mjs`：Phase 顺序、无汉字、选项与 `--language` 出现的位置、`DOC_LANGUAGE` 各处、Language 段与 hotspots 相同、prd 传 `--language`（D5 前几条）。验证：契约测试。
 - [x] 1.4 删掉 Phase 3 结尾的回复要求；Phase 5 以 Fix 一节的说明结尾（D3）；新增 Phase 6：指回行、跳过说明、第二份 Language 段、回复命令与说明（D2、D4）。
 - [x] 1.5 契约测试：Language 段的位置与坏副本、Phase 6 的命令与说明原文、旧说法已不在、命令换上样例值后打印 5 行（D5 其余各条）。验证：契约测试。
+- [x] 1.6 第一轮两次完整运行的回复第二行都填了候选总数，与报告的表不符：命令去掉要加总的总数，每个数照报告原样填；Fix 一节写明分母是哪几类条目（design D2 第二轮）。验证：契约测试与重跑的完整运行。
 
 ## 2. 验收与记录
 

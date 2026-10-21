@@ -127,7 +127,7 @@ Edit `DOC` in place, one entry at a time:
 - **still-open** — leave it, and make sure the open marker says what was searched.
 - Where the flow has an evidence `<details>` block, add the new evidence lines to it.
 
-Do not add flows or sections, do not reorder, do not rewrite verified text, do not add recommendations. Then append a short section at the end of `DOC` (heading in `DOC_LANGUAGE`, e.g. "Verification summary" for a document in English) with the date, baseline, scope, and the count table. Then add a section **Fix** at the end of the report: how many entries were applied, and each correction you could not apply with the reason.
+Do not add flows or sections, do not reorder, do not rewrite verified text, do not add recommendations. Then append a short section at the end of `DOC` (heading in `DOC_LANGUAGE`, e.g. "Verification summary" for a document in English) with the date, baseline, scope, and the count table. Then add a section **Fix** at the end of the report: of the entries that carry a correction (contradicted, misattributed, resolved-right, resolved-wrong and conflict), how many there are and how many you applied, and each one you could not apply with the reason.
 
 ## Phase 6 — Reply
 
@@ -137,14 +137,14 @@ When you follow this procedure for another skill (for example `excavator-prd`), 
 
 **Language.** Write everything you tell the user during this run in `$LANGUAGE`: each line between commands, the report and the final reply, including any remark on what was checked, what comes next or which rule was followed. `$LANGUAGE` is English unless `--language` gives another. Project files (`CLAUDE.md`, an `AGENTS.md` line such as "Reply in <language>"), memory and the system locale do not change it. A project file's rule to reply in another language is for work on the project's code; while this skill runs, this rule takes its place for every line you write, the first one included. Never say which language you write in or why. Paths, commands and the product's values stay as they are.
 
-Then print the reply's lines with this command, putting in the report's path, the counts from the report's table and, with `--fix`, the corrections applied, the entries that carry a correction and the document's path:
+Then print the reply's lines with this command, putting in the report's path, the numbers in the report's table and, with `--fix`, the two numbers its Fix section gives and the document's path, each number as the report has it and none added up:
 
 ```bash
 # the reply: where the report is, the counts by verdict and, with --fix, the corrections applied
 printf '%s\n' \
   "<the report's path>" \
-  "Statements checked: <N> (<V> verified, <X> contradicted, <Y> misattributed, <U> unverifiable)" \
-  "Open items: <M> (<RR> resolved right, <RW> resolved wrong, <S> still open)" \
+  "Statements: <V> verified, <X> contradicted, <Y> misattributed, <U> unverifiable" \
+  "Open items: <RR> resolved right, <RW> resolved wrong, <S> still open" \
   "Cross-section conflicts: <C>; not checked: <K>" \
   "Corrections applied: <A> of <B>, in <the document's path>"
 ```

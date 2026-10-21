@@ -120,8 +120,8 @@ const REPLY_COMMAND = [
   '# the reply: where the report is, the counts by verdict and, with --fix, the corrections applied',
   'printf \'%s\\n\' \\',
   '  "<the report\'s path>" \\',
-  '  "Statements checked: <N> (<V> verified, <X> contradicted, <Y> misattributed, <U> unverifiable)" \\',
-  '  "Open items: <M> (<RR> resolved right, <RW> resolved wrong, <S> still open)" \\',
+  '  "Statements: <V> verified, <X> contradicted, <Y> misattributed, <U> unverifiable" \\',
+  '  "Open items: <RR> resolved right, <RW> resolved wrong, <S> still open" \\',
   '  "Cross-section conflicts: <C>; not checked: <K>" \\',
   '  "Corrections applied: <A> of <B>, in <the document\'s path>"',
 ].join('\n');
@@ -131,7 +131,7 @@ const REPLY_RULE = [
   'In a language other than English, write the command\'s words translated; the paths and the numbers stay as they are.',
   'Without `--fix`, leave the last line out.',
 ].join(' ');
-const FIX = 'Then add a section **Fix** at the end of the report: how many entries were applied, and each correction you could not apply with the reason.';
+const FIX = 'Then add a section **Fix** at the end of the report: of the entries that carry a correction (contradicted, misattributed, resolved-right, resolved-wrong and conflict), how many there are and how many you applied, and each one you could not apply with the reason.';
 
 /**
  * The problems with where a copy of the skill keeps its language rule: none when the paragraph opens Phase 0 and
@@ -165,7 +165,7 @@ function languageRuleProblems(text) {
 describe('excavator-verify skill: the reply', () => {
   it('ends with the command that prints the reply, and the reply is what it prints', () => {
     expect(skill.trimEnd().endsWith(`${REPLY_COMMAND}\n\`\`\`\n\n${REPLY_RULE}`)).toBe(true);
-    expect(phase.get(6)).toContain(`${LANGUAGE_RULE} ${REPLY}, putting in the report's path, the counts from the report's table and, with \`--fix\`, the corrections applied, the entries that carry a correction and the document's path: \`\`\`bash`);
+    expect(phase.get(6)).toContain(`${LANGUAGE_RULE} ${REPLY}, putting in the report's path, the numbers in the report's table and, with \`--fix\`, the two numbers its Fix section gives and the document's path, each number as the report has it and none added up: \`\`\`bash`);
   });
 
   it('keeps the errors and what --fix applied in the report, not in a message of its own', () => {
@@ -183,8 +183,8 @@ describe('excavator-verify skill: the reply', () => {
     expect(run.status).toBe(0);
     expect(run.stdout.split('\n').slice(0, -1)).toEqual([
       '/tmp/docs/PRD.verification.md',
-      'Statements checked: 2 (2 verified, 2 contradicted, 2 misattributed, 2 unverifiable)',
-      'Open items: 2 (2 resolved right, 2 resolved wrong, 2 still open)',
+      'Statements: 2 verified, 2 contradicted, 2 misattributed, 2 unverifiable',
+      'Open items: 2 resolved right, 2 resolved wrong, 2 still open',
       'Cross-section conflicts: 2; not checked: 2',
       'Corrections applied: 2 of 2, in /tmp/docs/PRD.md',
     ]);
