@@ -339,7 +339,7 @@ function buildPostings(chunks) {
   // `hasOwnProperty` are real identifiers and would otherwise collide with
   // Object.prototype — `postings["constructor"]` on a plain {} is a function,
   // not our array, so `.push` throws. A null-proto object has no inherited
-  // keys. (Caught on the go-multirepo TS/Vue corpus; Go / synthetic fixtures never hit it.)
+  // keys. (Caught on a real TS/Vue repository; Go / synthetic fixtures never hit it.)
   const postings = Object.create(null);
   const docLengths = Object.create(null);
   let totalLength = 0;

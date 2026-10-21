@@ -135,11 +135,11 @@ describe("source selection policy", () => {
     ".excavator/knowledge-graph.json",
     ".excavator.bak/knowledge-graph.json",
     "nested/.excavator-old/meta.json",
-    "maui-app.zip",
+    "app-bundle.zip",
   ])("does not let project or CLI negation recover hard safety path %s", (path) => {
     const policy = createSourceSelectionPolicy({
       projectPatterns: ["!.excavator/", "!*.zip"],
-      cliPatterns: ["!**/.excavator-*/", "!maui-app.zip"],
+      cliPatterns: ["!**/.excavator-*/", "!app-bundle.zip"],
     });
     expect(policy.decide({ path }).kind).toBe("filtered-by-defaults");
   });

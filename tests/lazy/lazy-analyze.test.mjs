@@ -178,7 +178,7 @@ describe('lazy-analyze driver — first-run pipeline', () => {
     // git target, scan-project consults the working tree and, on the second
     // run, sees the first run's own `.excavator/*.json`. Ignored files are not
     // parsed, but they were still COUNTED in the coverage ledger — so
-    // coverage.files grew (41 -> 51 on go-clean-arch) and factsDigest shifted
+    // coverage.files grew (41 -> 51 on a real Go repository) and factsDigest shifted
     // every re-run, though nodes/edges/gaps were unchanged. The driver now
     // passes --exclude-analysis-data so `.excavator/` is dropped before
     // coverage, keeping re-runs byte-identical (plan §3.3: always excluded).

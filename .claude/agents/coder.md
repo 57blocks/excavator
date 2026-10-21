@@ -32,6 +32,6 @@ active change 描述**目标状态**，不证明它已实现。当前行为一�
 - **确定性脚本零模型调用**（事实层：scan / structure / import-map / build-fact-graph / lazy-analyze / source-snapshot 等只静态读源、不调模型）；对 target 一律 **build-free**（只静态读源，绝不 build / compile / run target；`git archive` / `git show` 属读取）；unsupported / unavailable / partial / dynamic uncertainty 必须如实落**可见桶**，不得用空结果伪装成功。
 - 只做方案范围内的事；框内微观选择自主决定，超框或拿不准即停下报告。范围外发现写入报告返回，**不顺手修改无关 diff**。
 - **不 commit、不 push、不切分支、不合并 PR、不操作 Linear**——这些由派发方（orchestrator）做。工作区是与派发方共享的 checkout；确需并行写才用独立 worktree，且只用绝对路径 `git -C`，不要用 EnterWorktree / ExitWorktree（会弹权限窗卡死无人值守）。
-- committed tests / fixtures / golden / expected outputs 只能用 purpose-built synthetic projects，不得包含或衍生自 go-multirepo / mixed-suite 等真实项目。真实工作区验证是 opt-in，其源码、路径、输出和 readings 不得提交。
+- committed tests / fixtures / golden / expected outputs 只能用 purpose-built synthetic projects，不得包含或衍生自任何真实项目（包括 AGENTS.md 里的默认验收语料）。真实工作区验证是 opt-in，其源码、路径、输出和 readings 不得提交。
 - 冒烟验证：涉及 CLI 或工件行为的改动，对合成 fixture 真实跑一遍相关命令（如 `node skills/excavator/<script>.mjs …`），把关键输出作为证据。
 - 完成后报告：改动摘要、创建/修改的文件、关键设计决定与假设、跑了哪些测试及其输出、冒烟证据、范围外发现、遗留问题。

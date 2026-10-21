@@ -5,8 +5,8 @@
  * knowledge-graph-line-store, capability `fact-graph`, design D1/D2). The
  * graph used to be one whole-document `knowledge-graph.json`, written from one
  * string and read back into one string, which capped the analyzable
- * repository size at V8's single-string limit (apache/hadoop's graph alone was
- * 80% of it). `knowledge-graph.jsonl` stores one JSON record per line, so the
+ * repository size at V8's single-string limit (a 3M-line Java repository's graph
+ * alone was 80% of it). `knowledge-graph.jsonl` stores one JSON record per line, so the
  * longest string ever built is one record.
  *
  * Layout (one record per line, compact JSON):

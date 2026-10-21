@@ -3,8 +3,8 @@
  *
  * Line-oriented persistence for the structure extraction result (openspec:
  * changes/knowledge-graph-line-store, design D4). `structure-all.json` used to
- * be one whole-document JSON — 45% of V8's single-string limit on
- * apache/hadoop — written by the `structure-all.mjs` child script and parsed
+ * be one whole-document JSON — 45% of V8's single-string limit on a
+ * 3M-line Java repository — written by the `structure-all.mjs` child script and parsed
  * whole by every reader. `structure-all.jsonl` stores one record per line.
  *
  * Layout (one record per line, compact JSON):

@@ -998,7 +998,7 @@ export async function runLazyAnalysis({
     try {
       // `entries()` runs HERE, at the point of writing the manifest — not
       // earlier — per design D4; it is the run's single most expensive save
-      // step at scale (design.md's risk log: ~11ms/file on Hadoop), so it
+      // step at scale (design.md's risk log: ~11ms/file on a 3M-line Java repository), so it
       // must never be duplicated or hoisted into `produce()`. `manifestEntries`
       // is a NESTED sub-breakdown of `save` (design D7: the save stage
       // SHALL separately record the manifest's per-file content hashing) —
@@ -1096,7 +1096,7 @@ export async function runLazyAnalysis({
   // Wall-clock total (design D7): the WHOLE runLazyAnalysis call, not a sum
   // of the stage timers above (that sum used to silently miss anything a
   // stage timer does not itself cover, e.g. `@excavator/core` resolution —
-  // on Hadoop-scale runs the snapshot/materialize stages alone were ~87% of
+  // on runs over a 3M-line Java repository the snapshot/materialize stages alone were ~87% of
   // real wall time, which a pure sum of the OTHER stages could never show).
   timings.total = Math.round(performance.now() - runStartedAt);
 

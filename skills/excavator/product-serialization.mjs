@@ -13,8 +13,8 @@
  * (`buffer.constants.MAX_STRING_LENGTH`) is visible before it is hit, and —
  * when it IS hit — the run fails with a named error naming the product, the
  * characters required and the limit, instead of an anonymous
- * `RangeError: Invalid string length` mid-publish (see proposal.md's Hadoop
- * incident: the then whole-document graph and `fingerprints.json` had
+ * `RangeError: Invalid string length` mid-publish (see proposal.md's incident
+ * on a 3M-line Java repository: the then whole-document graph and `fingerprints.json` had
  * already been written to their final location when `source-index.json`
  * blew past the limit and crashed with no product name attached).
  *

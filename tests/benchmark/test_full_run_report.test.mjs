@@ -366,7 +366,7 @@ describe('run', () => {
   });
 
   it('renames a sample whose name suggests a test', () => {
-    expect(isolatedName('/x/cargotracker')).toBe('cargotracker');
+    expect(isolatedName('/x/billing')).toBe('billing');
     expect(isolatedName('/x/orders-fixture')).toBe('app');
     expect(isolatedName('/x/TestApp/')).toBe('app');
   });
