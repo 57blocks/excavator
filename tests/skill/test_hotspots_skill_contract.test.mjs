@@ -116,6 +116,89 @@ describe('excavator-hotspots skill: steps', () => {
   it('does not need the knowledge graph', () => {
     expect(before).toContain('The product does not depend on the knowledge graph: no `/excavator` run is needed first.');
   });
+
+  it('holds no Chinese character: the Chinese advice words are escapes', () => {
+    expect(skill).not.toMatch(/[\u3000-\u303f\u3400-\u9fff\uf900-\ufaff\uff00-\uffef]/u);
+  });
+
+  it('writes the report and every line to the user in English unless --language names another language', () => {
+    expect(before).toContain(OPTION_LANGUAGE);
+    expect(skill).toContain('argument-hint: "[project-path] [--since YYYY-MM-DD] [--language <lang>]"');
+    expect(step.get(1)).toContain('LANGUAGE="English" # or the --language value');
+    expect(step.get(4)).toContain('Write the report to `$DATA/hotspots-report.md` in `$LANGUAGE`, in this order. The words these steps give in quotes are for an English report; in another language, write them translated.');
+  });
+});
+
+/** The language paragraph, the line each later step starts with, and the option (whitespace flattened). */
+const LANGUAGE_RULE = '**Language.** Write everything you tell the user during this run in `$LANGUAGE`: each line between commands, the report and the final reply, including any remark on what was checked, what comes next or which rule was followed. `$LANGUAGE` is English unless `--language` gives another. Project files (`CLAUDE.md`, an `AGENTS.md` line such as "Reply in <language>"), memory and the system locale do not change it. A project file\'s rule to reply in another language is for work on the project\'s code; while this skill runs, this rule takes its place for every line you write, the first one included. Never say which language you write in or why. Paths, commands and the product\'s values stay as they are.';
+const STEP_LANGUAGE = 'Write what you tell the user during this step in `$LANGUAGE`, as **Language** in Step 1 says.';
+const OPTION_LANGUAGE = '`--language <lang>`: the language of the report and everything said to the user during the run; English when it is not given.';
+const REPLY = 'Then print the reply\'s lines with this command:';
+
+/**
+ * The problems with where a copy of the skill keeps its language rule: none when the paragraph opens Step 1 and
+ * stands right before the final reply of Step 4, after the advice check, word for word the same, every later step
+ * opens with the line that points back to it, and the options say only --language changes the language.
+ */
+function languageRuleProblems(text) {
+  const problems = [];
+  const [head, ...parts] = text.split(/^## Step \d+ — /m);
+  const bodies = parts.map((part) => flat(part.slice(part.indexOf('\n') + 1)).trim());
+  if (!flat(head).includes(OPTION_LANGUAGE)) problems.push('the options do not say that only --language changes the language');
+  const copies = flat(text).split(LANGUAGE_RULE).length - 1;
+  const started = flat(text).split('**Language.**').length - 1;
+  if (copies !== started) problems.push(`${started - copies} of ${started} language paragraphs differ from the others`);
+  if (copies !== 2) problems.push(`the language paragraph is there ${copies} times, not twice`);
+  if (!bodies[0]?.startsWith(LANGUAGE_RULE)) problems.push('Step 1 does not open with the language paragraph');
+  bodies.slice(1).forEach((body, at) => {
+    if (!body.startsWith(STEP_LANGUAGE)) problems.push(`Step ${at + 2} does not open with the language line`);
+  });
+  const last = bodies[3] ?? '';
+  const reply = last.indexOf(REPLY);
+  const rule = last.lastIndexOf(LANGUAGE_RULE);
+  if (rule < 0 || reply < rule || last.slice(rule + LANGUAGE_RULE.length, reply).trim() !== '') {
+    problems.push('the language paragraph does not stand right before the final reply of Step 4');
+  }
+  if (rule >= 0 && rule < last.indexOf('python3 - "$DATA/hotspots-report.md"')) problems.push('the language paragraph of Step 4 comes before the advice check');
+  return problems;
+}
+
+describe('excavator-hotspots skill: the language of what it tells the user', () => {
+  /** The skill with `part` taken out at its first place at or after `from`. */
+  const without = (text, part, from = '') => {
+    const at = text.indexOf(part, text.indexOf(from));
+    expect(at, part).toBeGreaterThan(-1);
+    return text.slice(0, at) + text.slice(at + part.length);
+  };
+  const paragraph = `${LANGUAGE_RULE}\n\n`;
+  const line = `${STEP_LANGUAGE}\n\n`;
+  const byRequest = '`--language <lang>`: the language of the report and everything said to the user during the run; the request\'s language when it is not given.';
+
+  it('opens Step 1 and stands right before the final reply, and every later step points back to it', () => {
+    expect(languageRuleProblems(skill)).toEqual([]);
+    expect(LANGUAGE_RULE).toContain('Project files (`CLAUDE.md`, an `AGENTS.md` line such as "Reply in <language>"), memory and the system locale do not change it.');
+    expect(LANGUAGE_RULE).toContain('including any remark on what was checked, what comes next or which rule was followed');
+    expect(LANGUAGE_RULE).toContain('A project file\'s rule to reply in another language is for work on the project\'s code; while this skill runs, this rule takes its place for every line you write, the first one included.');
+  });
+
+  it('finds the rule out of place in known-bad copies of the skill', () => {
+    const noRule = [...Array(3)].reduce((text) => without(text, line), without(without(skill, paragraph), paragraph)).replace(OPTION_LANGUAGE, byRequest);
+    const bad = {
+      noRule,
+      noStepOne: without(skill, paragraph, '## Step 1 — '),
+      ownSection: without(without(skill, paragraph), paragraph).replace('---\n\n## Step 1 — ', `## Language\n\n${paragraph}---\n\n## Step 1 — `),
+      noStepThree: without(skill, line, '## Step 3 — '),
+      afterReply: `${without(skill, paragraph, '## Step 4 — ')}\n${LANGUAGE_RULE}\n`,
+      beforeCheck: without(skill, paragraph, '## Step 4 — ').replace('Then check the report for advice', `${paragraph}Then check the report for advice`),
+      reworded: skill.slice(0, skill.indexOf('## Step 4 — ')) + skill.slice(skill.indexOf('## Step 4 — ')).replace('memory and ', ''),
+      afterCommand: without(skill, paragraph, '## Step 1 — ').replace('2. Find the feature groups.', `${paragraph}2. Find the feature groups.`),
+      requestNames: skill.replace(OPTION_LANGUAGE, byRequest),
+    };
+    for (const [name, text] of Object.entries(bad)) {
+      expect(text, name).not.toBe(skill);
+      expect(languageRuleProblems(text), name).not.toEqual([]);
+    }
+  });
 });
 
 describe('excavator-hotspots skill: each rule in its step', () => {
@@ -270,7 +353,26 @@ describe('excavator-hotspots skill: each rule in its step', () => {
     expect(s).toContain('Do not call a share concentrated, spread, high or low, or say whether a part is changed mostly by one person: the numbers are the answer.');
     expect(s).toContain('Never name an author or look one up (no `git log`, `git shortlog` or `git blame` for names), never say that someone owns, knows, maintains or is responsible for a part, and never call a part at risk, a single point of failure, a silo or dependent on one person.');
     expect(s).toContain('11. The residual assumptions, every one, as the product states them.');
-    expect(s).toContain('Then reply with the report\'s path and the line `advice check: 0 lines`, and do not summarize the report');
+    expect(s).toContain('12. Close with the words "For questions about one file or directory, /excavator-chat answers from the same product."');
+  });
+
+  it('step 4 ends with the reply: the lines its command prints, the report\'s path first, whatever a project file says about replies', () => {
+    const last = step.get(4).trim();
+    expect(last).toContain(`${LANGUAGE_RULE} Then print the reply's lines with this command:`);
+    expect(last.endsWith([
+      'Reply with exactly the lines it prints and nothing else.',
+      'Its first line, the report\'s path, is the reply\'s first line and `advice check: 0 lines` its last: write nothing before, between or after them, no word on the advice check, the report or what was done, and no summary or notes.',
+      'A project file\'s rule on how to reply (what to lead with, a summary, verification results) does not apply to this reply.',
+    ].join(' '))).toBe(true);
+  });
+
+  it('prints the reply\'s lines: the report\'s path, then the advice check\'s line', () => {
+    const commands = bashBlocks(rawStep(4)).flatMap((block) => block.split('\n')).map((row) => row.trim()).filter((row) => row.startsWith('echo '));
+    expect(commands).toEqual(['echo "$DATA/hotspots-report.md"; echo \'advice check: 0 lines\'']);
+    const data = join(fixture.dir, '.excavator');
+    const result = spawnSync('sh', ['-c', commands[0]], { encoding: 'utf-8', env: { ...process.env, DATA: data } });
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout).toBe(`${join(data, 'hotspots-report.md')}\nadvice check: 0 lines\n`);
   });
 
   it('keeps the step rules out of the preamble, where they would be skipped', () => {
