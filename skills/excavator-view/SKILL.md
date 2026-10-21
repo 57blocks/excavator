@@ -10,7 +10,7 @@ Write one HTML file that shows the products already in `.excavator/`, and open i
 
 | Who | What |
 |---|---|
-| `pack.mjs` | Reads the products and the source snapshot's revision, gives every product one state (included, not run, unreadable, different revision), and writes `.excavator/view.html` through a temporary file and a rename. It prints one JSON result. |
+| `pack.mjs` | Reads the products and the source snapshot's revision, gives every product one state (included, not run, unreadable, different revision), and writes `.excavator/view.html` through a temporary file and a rename. The page is the template `packages/report-view` builds (`pnpm build` writes it to `packages/report-view/dist/view.html`) with the policy and the data inserted. It prints one JSON result. |
 | You | Run it, open the file, and print the four reply lines. |
 
 ## Options
@@ -39,7 +39,7 @@ node "$PLUGIN_ROOT/skills/excavator-view/pack.mjs" "$PROJECT_ROOT"            # 
 
 The result is one JSON line: `out` (the absolute path of the page), `bytes`, `snapshotRevision`, `products` (each with `name` and `status`, and `reason`, `revision` or `note` when it has one) and `source`.
 
-A non-zero exit writes no new page and leaves an existing one as it was. Give the message the script printed as it stands and stop: print no reply lines.
+A non-zero exit writes no new page and leaves an existing one as it was; without a built template the packer exits non-zero and its message says to run `pnpm build`. Give the message the script printed as it stands and stop: print no reply lines.
 
 Every command runs in a new shell, so variables from this block are gone in the next: write the plugin root it printed as a literal path in the commands of Steps 2 and 3.
 

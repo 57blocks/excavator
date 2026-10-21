@@ -55,6 +55,17 @@ const JSON_PRODUCTS = [
   },
 ];
 
+/**
+ * Products the page lists but does not read yet (the semantic files and the
+ * domain graph; later changes of viewer-app read them). A missing file is not
+ * run; a file that is there is shown as unreadable with that reason, so the
+ * page never claims it holds something it does not show.
+ */
+const UNREAD_PRODUCTS = [
+  { name: 'semantics', label: 'Semantics', file: 'semantic-cache.json', command: '/excavator --full' },
+  { name: 'domain-graph', label: 'Domain graph', file: 'domain-graph.json', command: '/excavator-domain' },
+];
+
 const REPORTS = [
   { name: 'hotspots-report', label: 'Hotspots report', file: 'hotspots-report.md', payload: 'report-hotspots', command: '/excavator-hotspots' },
   { name: 'doc-map-report', label: 'Doc map report', file: 'doc-map-report.md', payload: 'report-doc-map', command: '/excavator-doc-map' },
@@ -218,6 +229,16 @@ function readGraphProduct(dataDir, snapshotRevision) {
   };
 }
 
+function readUnreadProduct(dataDir, def) {
+  try {
+    lstatSync(join(dataDir, def.file));
+  } catch (error) {
+    if (error.code === 'ENOENT' || error.code === 'ENOTDIR') return { entry: notRun(def), payloads: [] };
+    return { entry: unreadable(def, `${def.file} could not be inspected (${error.code ?? error.message})`), payloads: [] };
+  }
+  return { entry: unreadable(def, `${def.file} is present; this version of the packer does not read it yet`), payloads: [] };
+}
+
 /** Reports are included or not run; their Markdown is not checked and records no revision. */
 function readReports(dataDir) {
   const items = [];
@@ -260,7 +281,8 @@ function readReports(dataDir) {
  */
 export function collectProducts(dataDir, snapshotRevision) {
   const graph = readGraphProduct(dataDir, snapshotRevision);
-  const results = [graph, ...JSON_PRODUCTS.map((def) => readJsonProduct(dataDir, def, snapshotRevision)), readReports(dataDir)];
+  const [unused, docMap, hotspots] = JSON_PRODUCTS.map((def) => readJsonProduct(dataDir, def, snapshotRevision));
+  const results = [graph, ...UNREAD_PRODUCTS.map((def) => readUnreadProduct(dataDir, def)), unused, docMap, hotspots, readReports(dataDir)];
   return {
     entries: results.map((r) => r.entry),
     payloads: results.flatMap((r) => r.payloads),

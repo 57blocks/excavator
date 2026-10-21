@@ -6,7 +6,8 @@
  */
 
 import { spawnSync } from 'node:child_process';
-import { readFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -81,6 +82,12 @@ describe('SKILL.md', () => {
     expect(skill).toMatch(/print no reply lines/);
   });
 
+  it('names the built template and what the packer says when it is missing', () => {
+    expect(skill).toContain('packages/report-view/dist/view.html');
+    expect(skill).toMatch(/without a built template the packer exits non-zero and its message says to run `pnpm build`/);
+    expect(skill).not.toMatch(/\bviewer\//);
+  });
+
   it('says that an empty .excavator is not a failure', () => {
     expect(skill).toMatch(/An empty `\.excavator\/` is not a failure/);
   });
@@ -96,15 +103,23 @@ describe('the scripts of the skill start no server', () => {
 describe('the reply lines', () => {
   let project;
   let result;
+  let templateDir;
   beforeAll(() => {
+    // The reply reads the manifest of a packed page; any template with the two markers will do.
+    templateDir = mkdtempSync(join(tmpdir(), 'xv-reply-template-'));
+    const template = join(templateDir, 'view.html');
+    writeFileSync(template, '<html><head><!-- xv:csp --></head><body><!-- xv:data --></body></html>\n');
     project = makeGitProject();
     writeProduct(project.root, 'knowledge-graph.jsonl', graphJsonl({ nodes: ['file'] }));
     writeProduct(project.root, 'source-manifest.json', sourceManifest(project.revision));
     writeProduct(project.root, 'hotspots.json', hotspotsProduct('git:old'));
     writeProduct(project.root, 'unused-code.json', '{');
-    result = packProject(project.root);
+    result = packProject(project.root, { template });
   });
-  afterAll(() => project.cleanup());
+  afterAll(() => {
+    project.cleanup();
+    rmSync(templateDir, { recursive: true, force: true });
+  });
 
   it('print the path, the size, the five states and the source line', () => {
     const run = spawnSync(process.execPath, [replyScript, result.out], { encoding: 'utf-8' });
@@ -119,7 +134,7 @@ describe('the reply lines', () => {
 
   it('read the states from the page, not from the arguments', () => {
     const manifest = readManifest(readFileSync(result.out, 'utf-8'));
-    expect(manifest.products.map((p) => p.status)).toEqual(['included', 'unreadable', 'not-run', 'different-revision', 'not-run']);
+    expect(manifest.products.map((p) => p.status)).toEqual(['included', 'not-run', 'not-run', 'unreadable', 'not-run', 'different-revision', 'not-run']);
   });
 
   it('say how many files are embedded when there are some', () => {

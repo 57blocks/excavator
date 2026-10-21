@@ -3,19 +3,22 @@
 import { spawnSync } from 'node:child_process';
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { join } from 'node:path';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
-import { packProject } from '../../../skills/excavator-view/pack.mjs';
+import { packProject as packWithTemplate } from '../../../skills/excavator-view/pack.mjs';
 import { referencedPaths } from '../../../skills/excavator-view/sources.mjs';
 import {
   docMapProduct, hotspotsProduct, makeGitProject, makeMultiRepoProject, unusedProduct, writeProduct,
 } from './fixture.mjs';
 import { manifestOf, payloadIds, payloadText } from './page.mjs';
+import { makePluginRoot, writeTemplate } from './plugin-fixture.mjs';
 
-const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../../..');
-const packScript = join(repoRoot, 'skills/excavator-view/pack.mjs');
+// The pack runs on a small template, so these tests need no build of packages/report-view.
+const { dir: templateDir, path: template } = writeTemplate();
+const pluginRoot = makePluginRoot(readFileSync(template, 'utf-8'));
+const packScript = join(pluginRoot, 'skills/excavator-view/pack.mjs');
+const packProject = (root, options) => packWithTemplate(root, { template, ...options });
 
 const MARKER = 'UNIQUE_SOURCE_MARKER_8f3a1c';
 const LIMIT = 1024 * 1024;
@@ -34,7 +37,11 @@ const files = {
 
 let project;
 beforeAll(() => { project = makeGitProject(files); });
-afterAll(() => project.cleanup());
+afterAll(() => {
+  project.cleanup();
+  rmSync(templateDir, { recursive: true, force: true });
+  rmSync(pluginRoot, { recursive: true, force: true });
+});
 beforeEach(() => rmSync(join(project.root, '.excavator'), { recursive: true, force: true }));
 
 const row = (file, over = {}) => ({ id: file, name: file, language: 'javascript', file, lineRange: [1, 1], reason: 'unreferenced', confidence: 'high', ...over });

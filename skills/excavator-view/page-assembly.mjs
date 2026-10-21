@@ -1,21 +1,21 @@
 /**
  * page-assembly.mjs
  *
- * Builds the self-contained page from the `viewer/` template (openspec:
- * changes/report-viewer, design D2): inline the stylesheet and each script in
- * the order index.html lists them, insert the Content-Security-Policy, the
- * manifest and the data payloads. It only replaces and inlines; the code the
- * browser runs is the code in `viewer/`, byte for byte.
+ * Builds the self-contained page from the template `packages/report-view`
+ * builds (openspec: changes/viewer-app, design D9): insert the
+ * Content-Security-Policy where the template has its `<!-- xv:csp -->` marker
+ * and the manifest and data payloads where it has `<!-- xv:data -->`. It only
+ * replaces those two markers; every other byte is the template's. A template
+ * that was not built is an error that says to build it.
  *
  * Deterministic: gzip with a zero mtime and a fixed level, payloads in the
  * order given, manifest keys in the order the caller built them, no pack time.
  */
 
-import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
-import { join } from 'node:path';
+import { readFileSync } from 'node:fs';
 import { gzipSync } from 'node:zlib';
 
-/** No connection of any kind, scripts and styles only inline, images only data: URLs. */
+/** No connection of any kind, scripts and styles only inline, images only data: URLs, workers only blob: URLs (the graph layout's inline worker). */
 export const CONTENT_SECURITY_POLICY = [
   "default-src 'none'",
   "script-src 'unsafe-inline'",
@@ -25,25 +25,15 @@ export const CONTENT_SECURITY_POLICY = [
   "font-src 'none'",
   "base-uri 'none'",
   "form-action 'none'",
+  'worker-src blob:',
 ].join('; ');
 
 const BACKSLASH = String.fromCharCode(92);
 const CSP_MARKER = '<!-- xv:csp -->';
 const DATA_MARKER = '<!-- xv:data -->';
-const STYLE_TAG = '<link rel="stylesheet" href="styles.css">';
-const SCRIPT_TAG = /<script src="src\/([A-Za-z0-9._-]+\.js)"><\/script>/g;
-const NOTE = /<!-- xv:note[\s\S]*?-->\n/;
 
-function read(path) {
-  return readFileSync(path, 'utf-8');
-}
-
-/** A viewer file that could end its own inline element early (or open a comment) would break the page. */
-function assertInlinable(name, text, closer) {
-  if (text.toLowerCase().includes(closer) || text.includes('<!--')) {
-    throw new Error(`viewer/${name} contains ${closer} or a comment opener and cannot be inlined`);
-  }
-}
+/** Where the built template is, relative to the plugin root. */
+export const TEMPLATE_PATH = 'packages/report-view/dist/view.html';
 
 /** JSON for a `<script type="application/json">`: every `<` is written as a unicode escape, so no content can close the element. */
 export function jsonForScript(value) {
@@ -66,37 +56,27 @@ function dataBlocks(manifest, payloads) {
   return blocks.join('\n');
 }
 
+/** The template's text; a template that is not there was never built. */
+function readTemplate(templatePath) {
+  try {
+    return readFileSync(templatePath, 'utf-8');
+  } catch (error) {
+    if (error.code === 'ENOENT') {
+      throw new Error(`the view template ${templatePath} does not exist: run \`pnpm build\` at the plugin root to build it`);
+    }
+    throw error;
+  }
+}
+
 /**
- * @param {{ viewerDir: string, manifest: object, payloads: {id: string, bytes: Buffer}[] }} input
+ * @param {{ templatePath: string, manifest: object, payloads: {id: string, bytes: Buffer}[] }} input
  * @returns {Buffer} the HTML file
  */
-export function assemblePage({ viewerDir, manifest, payloads }) {
-  let html = read(join(viewerDir, 'index.html'));
-  for (const marker of [CSP_MARKER, DATA_MARKER, STYLE_TAG]) {
-    if (html.split(marker).length !== 2) throw new Error(`viewer/index.html must contain ${marker} exactly once`);
+export function assemblePage({ templatePath, manifest, payloads }) {
+  const html = readTemplate(templatePath);
+  for (const marker of [CSP_MARKER, DATA_MARKER]) {
+    if (html.split(marker).length !== 2) throw new Error(`the view template ${templatePath} must contain ${marker} exactly once; run \`pnpm build\` to rebuild it`);
   }
-
-  const css = read(join(viewerDir, 'styles.css'));
-  assertInlinable('styles.css', css, '</style');
-
-  const referenced = [];
-  html = html.replace(SCRIPT_TAG, (_tag, name) => {
-    const path = join(viewerDir, 'src', name);
-    if (!existsSync(path)) throw new Error(`viewer/index.html references src/${name}, which does not exist`);
-    const code = read(path);
-    assertInlinable(`src/${name}`, code, '</script');
-    referenced.push(name);
-    return `<script>\n${code}</script>`;
-  });
-  const onDisk = readdirSync(join(viewerDir, 'src')).filter((name) => statSync(join(viewerDir, 'src', name)).isFile()).sort();
-  const unreferenced = onDisk.filter((name) => !referenced.includes(name));
-  if (unreferenced.length > 0) throw new Error(`viewer/src has file(s) index.html does not load: ${unreferenced.join(', ')}`);
-
   const csp = `<meta http-equiv="Content-Security-Policy" content="${CONTENT_SECURITY_POLICY}">`;
-  html = html
-    .replace(NOTE, () => '')
-    .replace(CSP_MARKER, () => csp)
-    .replace(STYLE_TAG, () => `<style>\n${css}</style>`)
-    .replace(DATA_MARKER, () => dataBlocks(manifest, payloads));
-  return Buffer.from(html, 'utf-8');
+  return Buffer.from(html.replace(CSP_MARKER, () => csp).replace(DATA_MARKER, () => dataBlocks(manifest, payloads)), 'utf-8');
 }

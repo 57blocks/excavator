@@ -1,8 +1,7 @@
 import { spawnSync } from 'node:child_process';
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { join } from 'node:path';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
 import { assemblePage, CONTENT_SECURITY_POLICY, jsonForScript } from '../../../skills/excavator-view/page-assembly.mjs';
@@ -11,21 +10,31 @@ import {
   docMapProduct, graphJsonl, hotspotsProduct, makeGitProject, sourceManifest, unusedProduct, writeProduct,
 } from './fixture.mjs';
 import { manifestOf, payloadGzip, payloadIds, payloadText } from './page.mjs';
+import { FIXTURE_TEMPLATE, makePluginRoot, repoRoot, writeTemplate } from './plugin-fixture.mjs';
 
-const here = dirname(fileURLToPath(import.meta.url));
-const repoRoot = resolve(here, '../../..');
-const packScript = join(repoRoot, 'skills/excavator-view/pack.mjs');
-const viewerDir = join(repoRoot, 'viewer');
 
-const EXACT_CSP = "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; connect-src 'none'; font-src 'none'; base-uri 'none'; form-action 'none'";
+const EXACT_CSP = "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; connect-src 'none'; font-src 'none'; base-uri 'none'; form-action 'none'; worker-src blob:";
 
 let project;
-beforeAll(() => { project = makeGitProject(); });
-afterAll(() => project.cleanup());
+let templateDir;
+let templatePath;
+let pluginRoot;
+let packScript;
+beforeAll(() => {
+  project = makeGitProject();
+  ({ dir: templateDir, path: templatePath } = writeTemplate());
+  pluginRoot = makePluginRoot(FIXTURE_TEMPLATE);
+  packScript = join(pluginRoot, 'skills/excavator-view/pack.mjs');
+});
+afterAll(() => {
+  project.cleanup();
+  rmSync(templateDir, { recursive: true, force: true });
+  rmSync(pluginRoot, { recursive: true, force: true });
+});
 beforeEach(() => rmSync(join(project.root, '.excavator'), { recursive: true, force: true }));
 
 const pack = (options) => {
-  const result = packProject(project.root, options);
+  const result = packProject(project.root, { template: templatePath, ...options });
   const html = readFileSync(result.out, 'utf-8');
   return { result, html, manifest: manifestOf(html) };
 };
@@ -35,7 +44,8 @@ describe('product states', () => {
   it('shows every product as not run when .excavator is empty, and still writes the page', () => {
     const packed = pack();
     expect(packed.result.products.map((p) => [p.name, p.status])).toEqual([
-      ['knowledge-graph', 'not-run'], ['unused-code', 'not-run'], ['doc-map', 'not-run'], ['hotspots', 'not-run'], ['reports', 'not-run'],
+      ['knowledge-graph', 'not-run'], ['semantics', 'not-run'], ['domain-graph', 'not-run'], ['unused-code', 'not-run'],
+      ['doc-map', 'not-run'], ['hotspots', 'not-run'], ['reports', 'not-run'],
     ]);
     expect(packed.result.out).toBe(join(project.root, '.excavator', 'view.html'));
     expect(payloadIds(packed.html)).toEqual([]);
@@ -43,6 +53,18 @@ describe('product states', () => {
     expect(packed.manifest.products.find((p) => p.name === 'knowledge-graph').command).toBe('/excavator');
     expect(packed.manifest.products.find((p) => p.name === 'unused-code').command).toBe('/excavator-unused-code');
     expect(packed.manifest.products.find((p) => p.name === 'doc-map').command).toBe('/excavator-doc-map');
+    expect(packed.manifest.products.find((p) => p.name === 'semantics').command).toBe('/excavator --full');
+    expect(packed.manifest.products.find((p) => p.name === 'domain-graph').command).toBe('/excavator-domain');
+  });
+
+  it('shows the semantic and domain files as unreadable with a reason while the packer does not read them', () => {
+    writeProduct(project.root, 'semantic-cache.json', '{}');
+    writeProduct(project.root, 'domain-graph.json', '{}');
+    const packed = pack();
+    for (const name of ['semantics', 'domain-graph']) {
+      expect(productOf(packed, name)).toMatchObject({ status: 'unreadable', reason: expect.stringMatching(/is present; this version of the packer does not read it yet/) });
+    }
+    expect(payloadIds(packed.html)).toEqual([]);
   });
 
   it('includes every product whose revision matches the snapshot', () => {
@@ -252,9 +274,9 @@ describe('the page', () => {
     const dir = mkdtempSync(join(tmpdir(), 'xv-plain-'));
     try {
       writeFileSync(join(dir, 'a.txt'), 'hello\n');
-      const first = packProject(dir);
+      const first = packProject(dir, { template: templatePath });
       const firstBytes = readFileSync(first.out);
-      const second = packProject(dir);
+      const second = packProject(dir, { template: templatePath });
       expect(second.snapshotRevision).toBe(first.snapshotRevision);
       expect(readFileSync(second.out).equals(firstBytes)).toBe(true);
     } finally {
@@ -283,6 +305,12 @@ describe('the page', () => {
     expect(html).toContain('<meta name="color-scheme" content="light">');
   });
 
+  it('lets a worker run from a blob: URL and nothing else beyond the page itself', () => {
+    expect(CONTENT_SECURITY_POLICY).toContain('worker-src blob:');
+    expect(CONTENT_SECURITY_POLICY).not.toMatch(/unsafe-eval|child-src|frame-src/);
+    expect(CONTENT_SECURITY_POLICY).toContain("connect-src 'none'");
+  });
+
   it('loads nothing: no link, no external script, no marker left behind', () => {
     fullProject();
     const { html } = pack();
@@ -291,20 +319,20 @@ describe('the page', () => {
     expect(html).not.toMatch(/<(img|iframe|object|embed|video|audio|source)\b/i);
     expect(html).not.toContain('xv:csp');
     expect(html).not.toContain('xv:data');
-    expect(html).not.toContain('xv:note');
   });
 
-  it('inlines the stylesheet and each viewer script exactly as the files are', () => {
+  it('changes nothing of the template but its two markers, whatever the template holds', () => {
+    fullProject();
     const { html } = pack();
-    expect(html).toContain(readFileSync(join(viewerDir, 'styles.css'), 'utf-8'));
-    const order = readFileSync(join(viewerDir, 'index.html'), 'utf-8').match(/src\/[a-z]+\.js/g);
-    let from = 0;
-    for (const file of order) {
-      const text = readFileSync(join(viewerDir, file), 'utf-8');
-      const at = html.indexOf(text, from);
-      expect(at, file).toBeGreaterThan(-1);
-      from = at + text.length;
-    }
+    const [head, rest] = FIXTURE_TEMPLATE.split('<!-- xv:csp -->');
+    const [middle, tail] = rest.split('<!-- xv:data -->');
+    const csp = `<meta http-equiv="Content-Security-Policy" content="${EXACT_CSP}">`;
+    expect(html.startsWith(head + csp + middle)).toBe(true);
+    expect(html.endsWith(tail)).toBe(true);
+    // The template's own text keeps its replacement-pattern characters as written.
+    expect(html).toContain('window.__fixture = "$& $1 $`";');
+    expect(html).not.toContain('xv:csp');
+    expect(html).not.toContain('xv:data');
   });
 
   it('cannot be ended early by a product string that holds closing tags', () => {
@@ -322,8 +350,8 @@ describe('the page', () => {
     const opened = html.match(/<script\b/gi).length;
     const closed = html.match(/<\/script>/gi).length;
     const payloadCount = payloadIds(html).length;
-    const viewerScripts = readFileSync(join(viewerDir, 'index.html'), 'utf-8').match(/<script src=/g).length;
-    expect(opened).toBe(viewerScripts + 1 + payloadCount);
+    const templateScripts = FIXTURE_TEMPLATE.match(/<script\b/g).length;
+    expect(opened).toBe(templateScripts + 1 + payloadCount);
     expect(closed).toBe(opened);
     expect(html).not.toContain('<script>alert');
     expect(html).not.toContain('<img');
@@ -351,7 +379,7 @@ describe('the page', () => {
     const dir = mkdtempSync(join(tmpdir(), 'xv-out-'));
     try {
       const out = join(dir, 'nested', 'page.html');
-      const result = packProject(project.root, { out, noSource: true });
+      const result = packProject(project.root, { out, noSource: true, template: templatePath });
       expect(result.out).toBe(out);
       expect(existsSync(out)).toBe(true);
       expect(existsSync(join(project.root, '.excavator', 'view.html'))).toBe(false);
@@ -364,42 +392,74 @@ describe('the page', () => {
   });
 });
 
-describe('assemblePage refuses a template that would break the page', () => {
-  function copyViewer() {
-    const dir = mkdtempSync(join(tmpdir(), 'xv-viewer-'));
-    mkdirSync(join(dir, 'src'));
-    for (const file of ['index.html', 'styles.css']) writeFileSync(join(dir, file), readFileSync(join(viewerDir, file)));
-    for (const file of readdirSync(join(viewerDir, 'src'))) writeFileSync(join(dir, 'src', file), readFileSync(join(viewerDir, 'src', file)));
-    return dir;
-  }
-  const input = (dir) => ({ viewerDir: dir, manifest: { a: 1 }, payloads: [] });
-
-  it('assembles the real viewer', () => {
-    const dir = copyViewer();
+describe('assemblePage and the view template', () => {
+  const input = (path) => ({ templatePath: path, manifest: { a: 1 }, payloads: [] });
+  const withTemplate = (text, run) => {
+    const dir = mkdtempSync(join(tmpdir(), 'xv-tpl-'));
     try {
-      expect(assemblePage(input(dir)).length).toBeGreaterThan(1000);
+      const path = join(dir, 'view.html');
+      writeFileSync(path, text);
+      return run(path);
     } finally { rmSync(dir, { recursive: true, force: true }); }
+  };
+
+  it('fills the two markers of a template that has them once', () => {
+    withTemplate(FIXTURE_TEMPLATE, (path) => {
+      const html = assemblePage(input(path)).toString('utf-8');
+      expect(html).toContain('<meta http-equiv="Content-Security-Policy"');
+      expect(html).toContain('id="xv-manifest">{"a":1}</script>');
+    });
+  });
+
+  it('refuses a template that does not exist and says to run pnpm build', () => {
+    expect(() => assemblePage(input(join(tmpdir(), 'xv-no-such-template', 'view.html')))).toThrow(/does not exist: run `pnpm build`/);
   });
 
   it.each([
-    ['a missing data marker', (dir) => writeFileSync(join(dir, 'index.html'), readFileSync(join(dir, 'index.html'), 'utf-8').replace('<!-- xv:data -->', '')), /xv:data/],
-    ['a missing csp marker', (dir) => writeFileSync(join(dir, 'index.html'), readFileSync(join(dir, 'index.html'), 'utf-8').replace('<!-- xv:csp -->', '')), /xv:csp/],
-    ['a source file index.html does not load', (dir) => writeFileSync(join(dir, 'src', 'extra.js'), '// extra\n'), /extra\.js/],
-    ['a script that closes itself', (dir) => writeFileSync(join(dir, 'src', 'core.js'), '// </script>\n'), /cannot be inlined/],
-    ['a stylesheet that closes itself', (dir) => writeFileSync(join(dir, 'styles.css'), '/* </style> */\n'), /cannot be inlined/],
-    ['a script tag naming a missing file', (dir) => writeFileSync(join(dir, 'index.html'), readFileSync(join(dir, 'index.html'), 'utf-8').replace('src/app.js', 'src/gone.js')), /gone\.js/],
-  ])('rejects %s', (_name, mutate, pattern) => {
-    const dir = copyViewer();
-    try {
-      mutate(dir);
-      expect(() => assemblePage(input(dir))).toThrow(pattern);
-    } finally { rmSync(dir, { recursive: true, force: true }); }
+    ['a missing data marker', FIXTURE_TEMPLATE.replace('<!-- xv:data -->', ''), /xv:data/],
+    ['a missing csp marker', FIXTURE_TEMPLATE.replace('<!-- xv:csp -->', ''), /xv:csp/],
+    ['a second data marker', FIXTURE_TEMPLATE.replace('</body>', '<!-- xv:data --></body>'), /xv:data/],
+    ['a second csp marker', FIXTURE_TEMPLATE.replace('<title>', '<!-- xv:csp --><title>'), /xv:csp/],
+  ])('refuses %s', (_name, text, pattern) => {
+    withTemplate(text, (path) => {
+      expect(() => assemblePage(input(path))).toThrow(pattern);
+      expect(() => assemblePage(input(path))).toThrow(/pnpm build/);
+    });
   });
 
   it('writes every < of the manifest as an escape', () => {
     const text = jsonForScript({ k: '</script><b>' });
     expect(text).not.toContain('<');
     expect(JSON.parse(text)).toEqual({ k: '</script><b>' });
+  });
+
+  it('reports a missing template through the command line, with a non-zero exit, and writes nothing', () => {
+    const unbuilt = makePluginRoot(null);
+    try {
+      const out = join(project.root, '.excavator', 'view.html');
+      const run = spawnSync(process.execPath, [join(unbuilt, 'skills/excavator-view/pack.mjs'), project.root], { encoding: 'utf-8' });
+      expect(run.status).toBe(1);
+      expect(run.stderr).toMatch(/excavator-view pack failed: the view template .* does not exist: run `pnpm build`/);
+      expect(run.stdout).toBe('');
+      expect(existsSync(out)).toBe(false);
+      expect(existsSync(join(project.root, '.excavator'))).toBe(false);
+    } finally { rmSync(unbuilt, { recursive: true, force: true }); }
+  });
+
+  it('leaves an existing page as it was when the template is missing', () => {
+    const unbuilt = makePluginRoot(null);
+    const dir = mkdtempSync(join(tmpdir(), 'xv-keep-'));
+    try {
+      const out = join(dir, 'view.html');
+      writeFileSync(out, '<html>old page</html>');
+      const run = spawnSync(process.execPath, [join(unbuilt, 'skills/excavator-view/pack.mjs'), project.root, '--out', out], { encoding: 'utf-8' });
+      expect(run.status).toBe(1);
+      expect(readFileSync(out, 'utf-8')).toBe('<html>old page</html>');
+      expect(readdirSync(dir)).toEqual(['view.html']);
+    } finally {
+      rmSync(unbuilt, { recursive: true, force: true });
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });
 
@@ -413,7 +473,7 @@ describe('writing the page', () => {
       const out = join(dir, 'view.html');
       writeFileSync(out, OLD);
       chmodSync(dir, 0o555);
-      expect(() => packProject(project.root, { out })).toThrow();
+      expect(() => packProject(project.root, { out, template: templatePath })).toThrow();
       chmodSync(dir, 0o755);
       expect(readFileSync(out, 'utf-8')).toBe(OLD);
       expect(readdirSync(dir)).toEqual(['view.html']);
@@ -428,7 +488,7 @@ describe('writing the page', () => {
     try {
       const out = join(dir, 'view.html');
       mkdirSync(join(out, 'inside'), { recursive: true });
-      expect(() => packProject(project.root, { out })).toThrow();
+      expect(() => packProject(project.root, { out, template: templatePath })).toThrow();
       expect(readdirSync(dir)).toEqual(['view.html']);
     } finally {
       rmSync(dir, { recursive: true, force: true });

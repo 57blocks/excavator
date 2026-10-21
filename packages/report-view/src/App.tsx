@@ -1,44 +1,35 @@
-import { useEffect } from 'react';
+import { useEffect, useMemo } from 'react';
+import { MotionConfig } from 'motion/react';
 
+import { AppShell } from './components/shell/AppShell';
+import { ErrorCard } from './components/ErrorCard';
+import { PageBoundary } from './components/PageBoundary';
 import type { Manifest } from './data/manifest';
-import { setCount, setReady } from './ready';
+import type { PayloadReader } from './data/payload';
+import { useRoute } from './hooks/use-route';
+import { PAGES } from './pages/registry';
+import { ViewerProvider } from './state/viewer';
 
-/** Signal readiness on the frame after the first content is mounted, never waiting for anything else. */
-function useReadyAfterMount(state: '1' | 'error', counts: Record<string, number> = {}) {
+/** The page the route names inside the shell; a route no page has is an error card. */
+export function App({ manifest, payloads }: { manifest: Manifest; payloads: PayloadReader }) {
+  const { route } = useRoute();
+  const page = PAGES.find((p) => p.id === route.page) ?? null;
+  const nav = useMemo(() => PAGES.map((p) => ({ id: p.id, label: p.label, status: p.status(manifest) })), [manifest]);
   useEffect(() => {
-    for (const [name, value] of Object.entries(counts)) setCount(name, value);
-    const frame = requestAnimationFrame(() => setReady(state));
-    return () => cancelAnimationFrame(frame);
-    // Runs once per mount: the counts are fixed for a drawn page.
-  }, []);
-}
+    document.title = `${manifest.project.name} - Excavator view`;
+  }, [manifest]);
 
-/** The shell: the project, its snapshot and the state of each product. The views come in later commits. */
-export function App({ manifest }: { manifest: Manifest }) {
-  useReadyAfterMount('1', { products: manifest.products.length });
+  // A page is drawn afresh when the route moves to another page or report; a change of its own parameters it handles itself.
+  const pageKey = `${route.page}/${route.rest}`;
   return (
-    <main className="mx-auto max-w-3xl p-8">
-      <h1 className="text-2xl font-semibold">{manifest.project.name}</h1>
-      <p className="mt-1 font-mono text-sm text-neutral-500">{manifest.snapshot.revision}</p>
-      <ul className="mt-6 divide-y divide-neutral-200 rounded-xl border border-neutral-200">
-        {manifest.products.map((product) => (
-          <li key={product.name} className="flex justify-between px-4 py-3">
-            <span>{product.label}</span>
-            <span className="font-mono text-sm">{product.status}</span>
-          </li>
-        ))}
-      </ul>
-    </main>
-  );
-}
-
-/** What the page shows when it cannot be drawn. */
-export function ErrorCard({ title, error }: { title: string; error: unknown }) {
-  useReadyAfterMount('error');
-  return (
-    <section className="m-8 rounded-xl border border-red-300 p-6">
-      <h2 className="text-lg font-semibold">{title}</h2>
-      <p className="mt-2">{error instanceof Error ? error.message : String(error)}</p>
-    </section>
+    <MotionConfig reducedMotion="user">
+      <ViewerProvider manifest={manifest} payloads={payloads}>
+        <AppShell manifest={manifest} nav={nav} current={page?.id ?? ''}>
+          <PageBoundary key={pageKey}>
+            {page ? <page.Component /> : <ErrorCard title="No such page" error={new Error(`"${route.page}" is not a page of this viewer.`)} />}
+          </PageBoundary>
+        </AppShell>
+      </ViewerProvider>
+    </MotionConfig>
   );
 }

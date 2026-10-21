@@ -20,7 +20,11 @@
  * point at; it never builds, runs or edits the project, and writes nothing under
  * `.excavator/` except the page.
  *
- * Contract: openspec/changes/report-viewer/specs/report-viewer/spec.md
+ * The page is the template `packages/report-view` builds (`pnpm build`) with the
+ * policy, the manifest and the data inserted; without a built template the command
+ * fails and says so, and writes nothing.
+ *
+ * Contract: openspec/specs/report-viewer/spec.md
  */
 
 import { mkdirSync, realpathSync, renameSync, rmSync, writeFileSync } from 'node:fs';
@@ -29,16 +33,16 @@ import { fileURLToPath } from 'node:url';
 
 import { assertDataDir, bindProjectRoot } from '../excavator/project-paths.mjs';
 import { resolveSourceSnapshot } from '../excavator/source-snapshot.mjs';
-import { assemblePage } from './page-assembly.mjs';
+import { assemblePage, TEMPLATE_PATH } from './page-assembly.mjs';
 import { collectProducts } from './products.mjs';
 import { collectSources, summarizeSources } from './sources.mjs';
 
 const USAGE = 'Usage: node pack.mjs <projectRoot> [--no-source] [--out <path>]\n';
 const MANIFEST_VERSION = 1;
 
-/** The viewer project sits at the plugin root, two levels above this script (resolved through links). */
-function viewerDirectory() {
-  return realpathSync(resolve(dirname(fileURLToPath(import.meta.url)), '..', '..', 'viewer'));
+/** The built view template sits under the plugin root, two levels above this script (resolved through links). It may not exist yet: assemblePage says so. */
+function defaultTemplatePath() {
+  return resolve(realpathSync(dirname(fileURLToPath(import.meta.url))), '..', '..', TEMPLATE_PATH);
 }
 
 function parseArgs(argv) {
@@ -81,7 +85,7 @@ function resultProduct(entry) {
 /**
  * Pack the project and write the page.
  * @param {string} rootArg
- * @param {{ noSource?: boolean, out?: string|null }} [options]
+ * @param {{ noSource?: boolean, out?: string|null, template?: string }} [options] `template` replaces the built view template (the tests use a small one)
  */
 export function packProject(rootArg, options = {}) {
   const noSource = options.noSource === true;
@@ -101,7 +105,7 @@ export function packProject(rootArg, options = {}) {
     source: sources.manifest,
   };
   const page = assemblePage({
-    viewerDir: viewerDirectory(),
+    templatePath: options.template ?? defaultTemplatePath(),
     manifest,
     payloads: [...products.payloads, ...sources.payloads],
   });

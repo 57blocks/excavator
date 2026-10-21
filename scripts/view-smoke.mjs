@@ -7,7 +7,7 @@
  * O3). Zero dependencies; not part of `pnpm test` because it needs a Chrome
  * install.
  *
- *   node scripts/view-smoke.mjs <page.html> [--width N] [--height N] [--dark] [--hash <route>] [--eval <js>] [--screenshot <png>]
+ *   node scripts/view-smoke.mjs <page.html> [--width N] [--height N] [--dark] [--reduced-motion] [--hash <route>] [--eval <js>] [--screenshot <png>]
  *
  * It waits (in real time, 30 s at most) for `data-xv-ready` on <html>, then
  * collects every console error, uncaught exception, CSP violation, inline event
@@ -15,7 +15,8 @@
  * those) and network request other than the main document, plus every
  * `data-xv-count-*` value, and prints one JSON result. `--hash` opens a route
  * (for example `/code?path=src%2Fa.js&lines=3-9`); the result then lists the line
- * numbers the Code page highlighted and any notice it showed. `--eval` runs a
+ * numbers the Code page highlighted and any notice it showed. `--dark` and
+ * `--reduced-motion` emulate those two system settings. `--eval` runs a
  * JavaScript expression in the page once it is ready (to click a filter, say),
  * waits for the page to settle and then collects everything; its value is
  * returned as `evalResult`. The exit status is 1 when any of those errors is
@@ -38,13 +39,14 @@ const COMMAND_TIMEOUT_MS = 15000;
 const SETTLE_MS = 300;
 const MAX_SCREENSHOT_HEIGHT = 5000;
 
-const USAGE = 'Usage: node scripts/view-smoke.mjs <page.html> [--width N] [--height N] [--dark] [--hash <route>] [--eval <js>] [--screenshot <png>]';
+const USAGE = 'Usage: node scripts/view-smoke.mjs <page.html> [--width N] [--height N] [--dark] [--reduced-motion] [--hash <route>] [--eval <js>] [--screenshot <png>]';
 
 function parseArgs(argv) {
-  const options = { html: null, width: 1280, height: 900, dark: false, hash: null, eval: null, screenshot: null };
+  const options = { html: null, width: 1280, height: 900, dark: false, reducedMotion: false, hash: null, eval: null, screenshot: null };
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
     if (arg === '--dark') options.dark = true;
+    else if (arg === '--reduced-motion') options.reducedMotion = true;
     else if (arg === '--width' || arg === '--height') {
       const value = Number(argv[++i]);
       if (!Number.isInteger(value) || value < 100 || value > 10000) throw new Error(`${arg} needs an integer between 100 and 10000`);
@@ -240,9 +242,10 @@ async function run(options) {
     for (const domain of ['Runtime', 'Log', 'Network', 'Page']) await call(`${domain}.enable`);
     await call('Page.addScriptToEvaluateOnNewDocument', { source: VIOLATION_RECORDER });
     await call('Emulation.setDeviceMetricsOverride', { width: options.width, height: options.height, deviceScaleFactor: 1, mobile: false });
-    if (options.dark) {
-      await call('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-color-scheme', value: 'dark' }] });
-    }
+    const features = [];
+    if (options.dark) features.push({ name: 'prefers-color-scheme', value: 'dark' });
+    if (options.reducedMotion) features.push({ name: 'prefers-reduced-motion', value: 'reduce' });
+    if (features.length > 0) await call('Emulation.setEmulatedMedia', { features });
     await call('Page.navigate', { url: pageUrl });
 
     const evaluate = async () => {
@@ -293,6 +296,7 @@ async function run(options) {
     width: options.width,
     height: options.height,
     dark: options.dark,
+    reducedMotion: options.reducedMotion,
     ready: timedOut ? 'timeout' : probe.ready,
     elapsedMs: Date.now() - started,
     title: probe ? probe.title : null,
