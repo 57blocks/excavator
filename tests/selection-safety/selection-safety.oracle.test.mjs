@@ -23,7 +23,7 @@ const FIXTURE_ROOT = resolve(__dirname, '../fixtures/selection-safety');
 const SECRET_PATH = 'config/privatekey3072.txt';
 const EXTENSION_SECRET_PATH = 'config/extension-only.key';
 const CONTROL_PATH = 'config/same-size-control.txt';
-const ARCHIVE_PATH = 'maui-app.zip';
+const ARCHIVE_PATH = 'app-bundle.zip';
 const EXPECTED_SELECTED = [
   'Dockerfile-prod',
   'Dockerfile-qa',
@@ -236,7 +236,7 @@ describe('frozen selection-safety oracle — canonical language matching', () =>
 });
 
 describe('frozen selection-safety oracle — archive invariance', () => {
-  it('produces identical selected paths and factsDigest with maui-app.zip present or absent', async () => {
+  it('produces identical selected paths and factsDigest with app-bundle.zip present or absent', async () => {
     const withArchive = makeDirectoryFixture();
     const withoutArchive = makeDirectoryFixture();
     rmSync(join(withoutArchive, ARCHIVE_PATH));
