@@ -8,18 +8,19 @@
  *
  * A manifest entry is { name, label, status, reason, revision, revisionNote,
  * command, file, payloads } with `payloads` the ids of the data payloads the
- * page holds for it. The bytes of those payloads are returned next to the
- * entries, never inside them.
+ * page holds for it; the semantics entry also has `counts`. The bytes of those
+ * payloads are returned next to the entries, never inside them.
  */
 
-import { lstatSync, readFileSync } from 'node:fs';
+import { lstatSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { KNOWLEDGE_GRAPH_FILE, KNOWLEDGE_GRAPH_FORMAT } from '../excavator/knowledge-graph-store.mjs';
+import { describeFormat, parseJsonObject, readRegularFile } from './product-files.mjs';
+import { readSemantics } from './semantics.mjs';
 
 export const NO_REVISION_NOTE = 'no revision recorded';
 
-const MAX_FORMAT_CHARS = 80;
 const SOURCE_MANIFEST_FILE = 'source-manifest.json';
 const DOC_MAP_CHECKS_FILE = join('doc-map', 'checks.json');
 
@@ -56,61 +57,26 @@ const JSON_PRODUCTS = [
 ];
 
 /**
- * Products the page lists but does not read yet (the semantic files and the
- * domain graph; later changes of viewer-app read them). A missing file is not
- * run; a file that is there is shown as unreadable with that reason, so the
- * page never claims it holds something it does not show.
+ * Products the page lists but does not read yet (the domain graph; a later
+ * commit of viewer-app reads it). A missing file is not run; a file that is
+ * there is shown as unreadable with that reason, so the page never claims it
+ * holds something it does not show.
  */
 const UNREAD_PRODUCTS = [
-  { name: 'semantics', label: 'Semantics', file: 'semantic-cache.json', command: '/excavator --full' },
   { name: 'domain-graph', label: 'Domain graph', file: 'domain-graph.json', command: '/excavator-domain' },
 ];
+
+const SEMANTICS_DEF = {
+  name: 'semantics',
+  label: 'Semantics',
+  file: 'semantic-cache.json',
+  command: '/excavator --full',
+};
 
 const REPORTS = [
   { name: 'hotspots-report', label: 'Hotspots report', file: 'hotspots-report.md', payload: 'report-hotspots', command: '/excavator-hotspots' },
   { name: 'doc-map-report', label: 'Doc map report', file: 'doc-map-report.md', payload: 'report-doc-map', command: '/excavator-doc-map' },
 ];
-
-/** { state: 'absent' } | { state: 'unreadable', reason } | { state: 'ok', bytes }. */
-function readRegularFile(path, file) {
-  let stat;
-  try {
-    stat = lstatSync(path);
-  } catch (error) {
-    if (error.code === 'ENOENT' || error.code === 'ENOTDIR') return { state: 'absent' };
-    return { state: 'unreadable', reason: `${file} could not be inspected (${error.code ?? error.message})` };
-  }
-  if (!stat.isFile()) return { state: 'unreadable', reason: `${file} is not a regular file` };
-  try {
-    return { state: 'ok', bytes: readFileSync(path) };
-  } catch (error) {
-    return { state: 'unreadable', reason: `${file} could not be read (${error.code ?? error.message})` };
-  }
-}
-
-function parseJsonObject(bytes, file) {
-  let text;
-  try {
-    text = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
-  } catch {
-    return { reason: `${file} is not valid UTF-8` };
-  }
-  let value;
-  try {
-    value = JSON.parse(text);
-  } catch (error) {
-    return { reason: `${file} is not valid JSON (${error.message})` };
-  }
-  if (value === null || typeof value !== 'object' || Array.isArray(value)) {
-    return { reason: `${file} is not a JSON object at the top level` };
-  }
-  return { value };
-}
-
-function describeFormat(format) {
-  if (typeof format !== 'string') return 'none';
-  return JSON.stringify(format.length > MAX_FORMAT_CHARS ? `${format.slice(0, MAX_FORMAT_CHARS)}...` : format);
-}
 
 function entry(def, fields) {
   return {
@@ -226,6 +192,23 @@ function readGraphProduct(dataDir, snapshotRevision) {
   return {
     entry: withRevision(def, revision, snapshotRevision, [def.name]),
     payloads: [{ id: def.name, bytes: file.bytes }],
+    graphBytes: file.bytes,
+  };
+}
+
+/**
+ * The semantic files give one product. They record no source revision (their
+ * freshness is the per-entry hash and the graph's facts digest), so an included
+ * entry notes that; `counts` is what the page and the reply say about it.
+ */
+function readSemanticsProduct(dataDir, graph) {
+  const def = SEMANTICS_DEF;
+  const read = readSemantics(dataDir, graph.graphBytes ?? null);
+  if (read.state === 'absent') return { entry: notRun(def), payloads: [] };
+  if (read.state === 'unreadable') return { entry: unreadable(def, read.reason), payloads: [] };
+  return {
+    entry: { ...entry(def, { status: 'included', revisionNote: NO_REVISION_NOTE, payloads: [def.name] }), counts: read.counts },
+    payloads: [{ id: def.name, bytes: read.bytes }],
   };
 }
 
@@ -282,7 +265,8 @@ function readReports(dataDir) {
 export function collectProducts(dataDir, snapshotRevision) {
   const graph = readGraphProduct(dataDir, snapshotRevision);
   const [unused, docMap, hotspots] = JSON_PRODUCTS.map((def) => readJsonProduct(dataDir, def, snapshotRevision));
-  const results = [graph, ...UNREAD_PRODUCTS.map((def) => readUnreadProduct(dataDir, def)), unused, docMap, hotspots, readReports(dataDir)];
+  const [domain] = UNREAD_PRODUCTS.map((def) => readUnreadProduct(dataDir, def));
+  const results = [graph, readSemanticsProduct(dataDir, graph), domain, unused, docMap, hotspots, readReports(dataDir)];
   return {
     entries: results.map((r) => r.entry),
     payloads: results.flatMap((r) => r.payloads),

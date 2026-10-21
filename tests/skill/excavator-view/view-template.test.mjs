@@ -14,8 +14,8 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { checkTemplate } from '../../../packages/report-view/scripts/single-file.mjs';
 import { packProject } from '../../../skills/excavator-view/pack.mjs';
-import { makeSmokeProject } from '../../../scripts/view-smoke-fixture.mjs';
-import { payloadIds } from './page.mjs';
+import { CONTRADICTED_SUMMARY, makeSmokeProject } from '../../../scripts/view-smoke-fixture.mjs';
+import { manifestOf, payloadIds, payloadText } from './page.mjs';
 import { repoRoot } from './plugin-fixture.mjs';
 
 const TEMPLATE = join(repoRoot, 'packages/report-view/dist/view.html');
@@ -111,6 +111,38 @@ describe('the page packed from the real template', () => {
     const page = readFileSync(packProject(smoke.root).out, 'utf-8');
     expect(page).not.toContain('<script>alert');
     expect(page).not.toContain('onerror=alert(1)>');
+  });
+});
+
+describe('the page packed from the Full-mode smoke fixture', () => {
+  let smoke;
+  let html;
+  beforeAll(() => {
+    if (!existsSync(TEMPLATE)) throw new Error('packages/report-view/dist/view.html does not exist: run `pnpm build` first');
+    const dir = mkdtempSync(join(tmpdir(), 'xv-smoke-full-'));
+    smoke = { dir, ...makeSmokeProject(dir, { full: true }) };
+    html = readFileSync(packProject(smoke.root).out, 'utf-8');
+  });
+  afterAll(() => smoke && rmSync(smoke.dir, { recursive: true, force: true }));
+
+  it('holds the semantic payload and counts what the Overview should show', () => {
+    expect(payloadIds(html)).toContain('semantics');
+    const product = manifestOf(html).products.find((p) => p.name === 'semantics');
+    const { overview } = smoke.expected;
+    expect(product.status).toBe('included');
+    expect(product.counts).toEqual({
+      entries: overview['semantic-entries'],
+      stale: overview['semantic-stale'],
+      byVerdict: { verified: overview['semantic-verified'], unverified: overview['semantic-unverified'], contradicted: overview['semantic-contradicted'], unchecked: overview['semantic-unchecked'] },
+      layers: overview['semantic-layers'],
+    });
+  });
+
+  it('has the contradicted summary neither in the page nor in any decoded payload, and no audit or hash', () => {
+    expect(html).not.toContain(CONTRADICTED_SUMMARY);
+    for (const id of payloadIds(html)) expect(payloadText(html, id), id).not.toContain(CONTRADICTED_SUMMARY);
+    expect(payloadText(html, 'semantics')).not.toMatch(/languageAudit|semanticSourceHash/);
+    expect(payloadText(html, 'semantics')).not.toContain('Computed from older source.');
   });
 });
 

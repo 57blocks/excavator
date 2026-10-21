@@ -10,7 +10,7 @@
  * Writes `<projectRoot>/.excavator/view.html` (or `--out`) through a temporary
  * file and a rename, so a failure leaves an existing page untouched, and prints
  * one JSON result on stdout:
- *   { out, bytes, snapshotRevision, products: [{ name, status, reason?, revision?, note? }],
+ *   { out, bytes, snapshotRevision, products: [{ name, status, reason?, revision?, note?, counts? }],
  *     source: { embedded, requested, limitBytes, counts } }
  * with `status` one of included, not-run, unreadable, different-revision.
  *
@@ -79,6 +79,7 @@ function resultProduct(entry) {
   if (entry.reason) row.reason = entry.reason;
   if (entry.revision) row.revision = entry.revision;
   if (entry.revisionNote) row.note = entry.revisionNote;
+  if (entry.counts) row.counts = entry.counts;
   return row;
 }
 

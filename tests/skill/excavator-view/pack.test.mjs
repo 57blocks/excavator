@@ -57,13 +57,10 @@ describe('product states', () => {
     expect(packed.manifest.products.find((p) => p.name === 'domain-graph').command).toBe('/excavator-domain');
   });
 
-  it('shows the semantic and domain files as unreadable with a reason while the packer does not read them', () => {
-    writeProduct(project.root, 'semantic-cache.json', '{}');
+  it('shows the domain graph file as unreadable with a reason while the packer does not read it', () => {
     writeProduct(project.root, 'domain-graph.json', '{}');
     const packed = pack();
-    for (const name of ['semantics', 'domain-graph']) {
-      expect(productOf(packed, name)).toMatchObject({ status: 'unreadable', reason: expect.stringMatching(/is present; this version of the packer does not read it yet/) });
-    }
+    expect(productOf(packed, 'domain-graph')).toMatchObject({ status: 'unreadable', reason: expect.stringMatching(/is present; this version of the packer does not read it yet/) });
     expect(payloadIds(packed.html)).toEqual([]);
   });
 

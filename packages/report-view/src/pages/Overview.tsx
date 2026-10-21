@@ -8,17 +8,24 @@ import { Page } from '../components/ui/Page';
 import { RevisionBanner } from '../components/ui/ProductCards';
 import { StatusBadge } from '../components/ui/Badge';
 import { Tile, Tiles } from '../components/ui/Tile';
-import { parseGraphJsonl } from '../data/graph';
+import { NodeSummary } from '../components/NodeSummary';
+import { CodeLink } from '../components/ui/CodeLink';
+import { type Column, DataTable } from '../components/ui/DataTable';
+import { loadGraphModel } from '../data/model';
 import type { Manifest, ManifestProduct } from '../data/manifest';
+import type { GraphIndex } from '../data/indexes';
 import { useCounts, useReady } from '../hooks/use-signals';
 import { formatNumber } from '../lib/format';
 import { nodeColor } from '../lib/node-colors';
 import { detailText, statusLabel } from '../lib/products';
+import { nodeSummaryView } from '../lib/node-summary';
 import { summarizeGraph, type GraphSummary } from '../lib/overview';
+import { semanticsCounts, semanticsDetail, semanticsStats, type ContradictedNode, type SemanticsStats } from '../lib/semantics-view';
 import { useLoaded, useViewer } from '../state/viewer';
 
-function productRow(product: ManifestProduct, snapshot: string) {
+function productRow(product: ManifestProduct, snapshot: string, semantics: SemanticsStats | null) {
   let detail: React.ReactNode[] = [<div key="d">{detailText(product, snapshot)}</div>];
+  if (product.name === 'semantics' && semantics) detail.push(<div key="n">{semanticsDetail(semantics)}</div>);
   if (product.items) {
     detail = product.items.map((item) => (
       <div key={item.name}>{`${item.file}: ${statusLabel(item.status).toLowerCase()}${item.status === 'not-run' ? ` (${item.command})` : ''}`}</div>
@@ -90,6 +97,50 @@ function GraphCards({ summary }: { summary: GraphSummary }) {
   );
 }
 
+const VERDICT_ROWS: readonly [string, string][] = [
+  ['verified', 'Verified'], ['unverified', 'Unverified'], ['contradicted', 'Contradicted (not shown)'], ['unchecked', 'Unchecked'],
+];
+
+const LAYER_SOURCE_TEXT = { semantic: 'from the semantic graph', graph: 'from the graph\'s layer records', none: 'none in any source' } as const;
+
+function contradictedColumns(index: GraphIndex): Column<ContradictedNode>[] {
+  return [
+    { label: 'Node', key: (r) => r.name, title: (r) => r.id, render: (r) => r.name },
+    { label: 'Type', key: (r) => r.type, render: (r) => r.type },
+    { label: 'File', width: 'lg', key: (r) => r.filePath, title: (r) => r.filePath, render: (r) => (r.filePath === null ? null : <CodeLink path={r.filePath} />) },
+    {
+      label: 'Summary',
+      key: (r) => r.id,
+      render: (r) => {
+        const view = nodeSummaryView(index, r.id);
+        return view ? <NodeSummary view={view} showTags={false} /> : null;
+      },
+    },
+  ];
+}
+
+function SemanticsCards({ stats, index }: { stats: SemanticsStats; index: GraphIndex }) {
+  const tiles: [string, number | null][] = [
+    ['Summaries shown', stats.summariesShown], ['Inlined entries', stats.entries], ['Not fresh, left out', stats.stale],
+    ...VERDICT_ROWS.map(([key, label]): [string, number | null] => [label, stats.byVerdict[key] ?? 0]),
+    ['Layers', stats.layers],
+  ];
+  const columns = contradictedColumns(index);
+  return (
+    <>
+      <Card title="Semantics">
+        <Tiles>{tiles.map(([label, value]) => <Tile key={label} label={label} value={value} />)}</Tiles>
+        <p className="mt-3 text-muted">{`Layers: ${LAYER_SOURCE_TEXT[stats.layerSource]}. A summary whose entry was written for older source is not fresh and is not shown.`}</p>
+      </Card>
+      {stats.contradicted.length > 0 ? (
+        <Card title="Summaries that disagree with the source">
+          <DataTable rows={stats.contradicted} columns={columns} />
+        </Card>
+      ) : null}
+    </>
+  );
+}
+
 function revisionBanners(manifest: Manifest) {
   return manifest.products.map((product) => <RevisionBanner key={product.name} manifest={manifest} product={product} />);
 }
@@ -99,11 +150,22 @@ export function OverviewPage() {
   const snapshot = manifest.snapshot.revision;
   const graph = manifest.products.find((p) => p.name === 'knowledge-graph');
   const wantsGraph = graph !== undefined && (graph.status === 'included' || graph.status === 'different-revision');
-  const loaded = useLoaded(wantsGraph ? 'graph' : '', async () => (wantsGraph ? summarizeGraph(parseGraphJsonl(await payloads.text(graph.payloads[0]))) : null));
-  const summary = loaded.state === 'ready' ? loaded.value : null;
-  useCounts(summary ? { nodes: summary.totals.nodes, edges: summary.totals.edges, gaps: summary.totals.gaps } : null);
+  const loaded = useLoaded(wantsGraph ? 'graph' : '', async () => {
+    const model = wantsGraph ? await loadGraphModel(manifest, payloads) : null;
+    if (!model) return null;
+    const semanticsProduct = manifest.products.find((p) => p.name === 'semantics');
+    return {
+      summary: summarizeGraph(model.graph),
+      index: model.index,
+      semantics: model.semantics ? semanticsStats(model.index, model.semantics, semanticsProduct) : null,
+    };
+  });
+  const ready = loaded.state === 'ready' ? loaded.value : null;
+  const summary = ready?.summary ?? null;
+  const semantics = ready?.semantics ?? null;
+  useCounts(summary ? { nodes: summary.totals.nodes, edges: summary.totals.edges, gaps: summary.totals.gaps, ...(semantics ? semanticsCounts(semantics) : {}) } : null);
   useReady(wantsGraph ? loaded.state : 'ready');
-  const rows = useMemo(() => manifest.products.map((p) => productRow(p, snapshot)), [manifest, snapshot]);
+  const rows = useMemo(() => manifest.products.map((p) => productRow(p, snapshot, semantics)), [manifest, snapshot, semantics]);
   return (
     <Page title="Overview" subtitle={manifest.project.name}>
       {revisionBanners(manifest)}
@@ -114,6 +176,7 @@ export function OverviewPage() {
         <SimpleTable columns={[{ label: 'Product' }, { label: 'Status' }, { label: 'Detail', wrap: true }, { label: 'Revision' }]} rows={rows} />
       </Card>
       {loaded.state === 'error' ? <LoadError title="The knowledge graph could not be read" error={loaded.error} /> : null}
+      {ready && semantics ? <SemanticsCards stats={semantics} index={ready.index} /> : null}
       {summary ? <GraphCards summary={summary} /> : null}
     </Page>
   );

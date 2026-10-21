@@ -8,16 +8,22 @@
  * `view-smoke.mjs` has numbers to check. Nothing here is derived from a real
  * project.
  *
- *   node scripts/view-smoke-fixture.mjs <empty-directory>
+ *   node scripts/view-smoke-fixture.mjs <empty-directory> [--full]
  *
  * prints one JSON line: { root, revision, expected }, where `expected` is what
  * each page should count (the `data-xv-count-*` values the smoke reads back).
+ * `--full` writes the Full-mode shape of the graph instead: node summaries and
+ * tags empty, the summaries in a semantic cache (one entry stale, one
+ * contradicted) and the layers in a semantic graph.
  */
 
 import { execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { mkdirSync, readdirSync, realpathSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+
+import { auditSemanticCacheFields } from '../skills/excavator/semantic-language-audit.mjs';
 
 const GRAPH_FORMAT = 'excavator-knowledge-graph-lines/1';
 
@@ -40,7 +46,7 @@ function writeJson(root, name, value) {
   writeFileSync(path, typeof value === 'string' ? value : JSON.stringify(value));
 }
 
-function graphText() {
+function graphText({ factsDigest } = {}) {
   const node = (id, type, name, extra = {}) => ({ record: 'node', node: { id, type, name, ...extra } });
   const edge = (source, target, type) => ({ record: 'edge', edge: { source, target, type } });
   const nodes = [
@@ -81,7 +87,7 @@ function graphText() {
     record: 'header',
     format: GRAPH_FORMAT,
     keys: ['project', 'nodes', 'edges', 'gaps', 'coverage'],
-    fields: { project: { name: 'smoke-fixture', languages: ['javascript', 'python'], frameworks: [], description: 'a synthetic project' }, kind: 'knowledge' },
+    fields: { project: { name: 'smoke-fixture', languages: ['javascript', 'python'], frameworks: [], description: 'a synthetic project', ...(factsDigest ? { factsDigest } : {}) }, kind: 'knowledge' },
     counts: { nodes: nodes.length, edges: edges.length, gaps: gaps.length },
   };
   return `${[header, ...nodes, ...edges, ...gaps, coverage].map((record) => JSON.stringify(record)).join('\n')}\n`;
@@ -171,14 +177,61 @@ function hotspotsProduct(revision) {
   };
 }
 
+const FACTS_DIGEST = 'f'.repeat(64);
+/** The text a verifier rejected: the Full smoke checks it is in neither the page's text nor its data. */
+export const CONTRADICTED_SUMMARY = 'Spawns a worker pool for every call and never joins it.';
+
+const sha256 = (text) => createHash('sha256').update(text).digest('hex');
+
+/** The Full-mode files: a manifest with each file's content hash, the semantic cache and the semantic graph. */
+function fullFiles(revision) {
+  const hashes = Object.fromEntries(Object.entries(SOURCES).map(([path, text]) => [path, sha256(text)]));
+  const entry = (summary, path, extra = {}, hash = hashes[path]) => {
+    const fields = { summary, tags: extra.tags ?? [], semanticSourceHash: hash, ...(extra.verification ? { verification: extra.verification } : {}) };
+    return { ...fields, languageAudit: auditSemanticCacheFields({ fields }) };
+  };
+  return {
+    manifest: { sourceRevision: revision, entries: Object.entries(hashes).map(([path, contentHash]) => ({ path, contentHash })) },
+    cache: {
+      version: '2.0.0',
+      contentLanguage: 'en',
+      entries: {
+        'file:src/main.js': entry('Entry module that calls the helper.', 'src/main.js', { tags: ['entry'], verification: 'verified' }),
+        'function:src/main.js:main': entry('Runs the helper on one.', 'src/main.js', { verification: 'verified' }),
+        'function:src/main.js:orphan': entry(CONTRADICTED_SUMMARY, 'src/main.js', { tags: ['concurrency'], verification: 'contradicted' }),
+        'file:src/util.js': entry('Small numeric helpers.', 'src/util.js'),
+        'function:src/util.js:helper': entry('Adds one to a number.', 'src/util.js', { verification: 'unverified' }),
+        // Written for source that has since changed: stale, so not shown.
+        'function:src/util.js:leaf': entry('Computed from older source.', 'src/util.js', {}, sha256('older source')),
+        'file:lib/data.py': entry('Loads data from disk.', 'lib/data.py'),
+        'function:lib/data.py:load': entry('Returns an empty list.', 'lib/data.py', { verification: 'verified' }),
+      },
+    },
+    graph: {
+      version: '2.0.0',
+      contentLanguage: 'en',
+      factDigest: FACTS_DIGEST,
+      generatedAt: '2026-01-01T00:00:00.000Z',
+      model: 'fixture',
+      layers: [
+        { id: 'layer:app', name: 'Application', description: 'The code that runs the program.', nodeIds: ['file:src/main.js', 'file:src/util.js'] },
+        { id: 'layer:data', name: 'Data', description: 'Loading data.', nodeIds: ['file:lib/data.py'] },
+      ],
+      relations: [],
+      gaps: [],
+    },
+  };
+}
+
 const HOSTILE = '</script><img src=x onerror=alert(1)>';
 
 /**
  * Create the smoke project in `dir` (an existing, empty directory): the sources,
  * one commit, and every product the viewer reads. Returns where it is, its
- * revision and the counts each page should show.
+ * revision and the counts each page should show. With `full`, the graph is
+ * Full-mode shaped and the semantic files are written (see the top of the file).
  */
-export function makeSmokeProject(dir) {
+export function makeSmokeProject(dir, { full = false } = {}) {
   const root = realpathSync(resolve(dir));
   if (readdirSync(root).length > 0) throw new Error(`${root} is not empty`);
   git(root, 'init', '-q');
@@ -190,8 +243,13 @@ export function makeSmokeProject(dir) {
   git(root, 'commit', '-q', '-m', 'fixture');
   const revision = `git:${git(root, 'rev-parse', 'HEAD')}`;
 
-  writeJson(root, 'knowledge-graph.jsonl', graphText());
-  writeJson(root, 'source-manifest.json', { sourceRevision: revision });
+  const semantic = full ? fullFiles(revision) : null;
+  writeJson(root, 'knowledge-graph.jsonl', graphText({ factsDigest: full ? FACTS_DIGEST : undefined }));
+  writeJson(root, 'source-manifest.json', semantic ? semantic.manifest : { sourceRevision: revision });
+  if (semantic) {
+    writeJson(root, 'semantic-cache.json', semantic.cache);
+    writeJson(root, 'semantic-graph.json', semantic.graph);
+  }
   writeJson(root, 'unused-code.json', unusedProduct(revision));
   writeJson(root, 'doc-map.json', docMapProduct(revision));
   writeJson(root, 'doc-map/checks.json', DOC_MAP_CHECKS);
@@ -203,7 +261,10 @@ export function makeSmokeProject(dir) {
     root,
     revision,
     expected: {
-      overview: { nodes: 10, edges: 8, gaps: 1 },
+      overview: {
+        nodes: 10, edges: 8, gaps: 1,
+        ...(full ? { 'semantic-entries': 7, 'semantic-stale': 1, 'semantic-verified': 3, 'semantic-unverified': 1, 'semantic-contradicted': 1, 'semantic-unchecked': 2, 'semantic-layers': 2, 'summaries-shown': 6 } : {}),
+      },
       unused: { unused: 3, 'unused-shown': 3 },
       'doc-map': { units: 3, 'units-shown': 3, checks: 3 },
       hotspots: { files: 3, directories: 2, pairs: 1, groups: 0 },
@@ -224,9 +285,11 @@ function isCliEntry() {
 
 if (isCliEntry()) {
   try {
-    const [dir] = process.argv.slice(2);
-    if (!dir) throw new Error('Usage: node scripts/view-smoke-fixture.mjs <empty-directory>');
-    process.stdout.write(`${JSON.stringify(makeSmokeProject(dir))}\n`);
+    const args = process.argv.slice(2);
+    const full = args.includes('--full');
+    const [dir] = args.filter((arg) => arg !== '--full');
+    if (!dir) throw new Error('Usage: node scripts/view-smoke-fixture.mjs <empty-directory> [--full]');
+    process.stdout.write(`${JSON.stringify(makeSmokeProject(dir, { full }))}\n`);
   } catch (error) {
     process.stderr.write(`view-smoke-fixture failed: ${error.message}\n`);
     process.exit(1);

@@ -50,6 +50,16 @@ describe('mergeSemantics: summary, tags and verification', () => {
     expect(of('file:d.ts')).toEqual({ summary: '', tags: ['semantic-d'], verification: 'contradicted', source: 'none' });
   });
 
+  it('never keeps a summary whose verdict is contradicted, whichever source it came from', () => {
+    const leaked = mergeSemantics(
+      [{ id: 'file:x.ts', type: 'file', name: 'x.ts', filePath: 'x.ts', summary: 'graph text that a verifier rejected', verification: 'contradicted' }, ...NODES],
+      [],
+      { entries: [{ id: 'file:a.ts', summary: 'text that came with a contradicted verdict', tags: [], verification: 'contradicted' }] },
+    );
+    expect(leaked.byNode.get('file:x.ts')).toMatchObject({ summary: '', verification: 'contradicted', source: 'none' });
+    expect(leaked.byNode.get('file:a.ts')).toMatchObject({ summary: '', verification: 'contradicted', source: 'none' });
+  });
+
   it('has a row for every node and lists the entry whose node the graph lacks', () => {
     expect([...merged.byNode.keys()]).toEqual(NODES.map((n) => n.id));
     expect(merged.orphanEntries.map((e) => e.id)).toEqual(['file:gone.ts']);

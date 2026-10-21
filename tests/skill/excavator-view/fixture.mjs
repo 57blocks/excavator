@@ -9,6 +9,8 @@ import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'nod
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 
+import { auditSemanticCacheFields } from '../../../skills/excavator/semantic-language-audit.mjs';
+
 export const GRAPH_FORMAT = 'excavator-knowledge-graph-lines/1';
 
 const git = (cwd, ...args) => execFileSync('git', args, {
@@ -120,6 +122,35 @@ export function graphJsonl({ name = 'fixture', nodes = [], edges = [], gaps = []
   return `${lines.map((l) => JSON.stringify(l)).join('\n')}\n`;
 }
 
-export function sourceManifest(revision) {
-  return { sourceRevision: revision };
+export function sourceManifest(revision, entries) {
+  return entries === undefined ? { sourceRevision: revision } : { sourceRevision: revision, entries };
+}
+
+/** A knowledge graph that records its facts digest and the file each node belongs to, as the Full-mode graph does. */
+export function factGraphJsonl({ factsDigest, nodes }) {
+  const lines = [{
+    record: 'header',
+    format: GRAPH_FORMAT,
+    keys: ['project', 'nodes'],
+    fields: { project: { name: 'fixture', languages: ['javascript'], frameworks: [], ...(factsDigest === undefined ? {} : { factsDigest }) }, kind: 'knowledge' },
+    counts: { nodes: nodes.length },
+  }];
+  for (const { id, filePath } of nodes) {
+    lines.push({ record: 'node', node: { id, type: id.split(':')[0], name: id, filePath, summary: '', tags: [] } });
+  }
+  return `${lines.map((l) => JSON.stringify(l)).join('\n')}\n`;
+}
+
+/** A semantic-cache entry with the language audit the writer records, so the plugin's own gate accepts it. */
+export function semanticEntry({ summary, tags = [], semanticSourceHash, verification }) {
+  const fields = { summary, tags, semanticSourceHash, ...(verification === undefined ? {} : { verification }) };
+  return { ...fields, languageAudit: auditSemanticCacheFields({ fields }) };
+}
+
+export function semanticCache(entries, extra = {}) {
+  return { version: '2.0.0', contentLanguage: 'en', entries, ...extra };
+}
+
+export function semanticGraph({ factDigest, layers = [], extra = {} }) {
+  return { version: '2.0.0', contentLanguage: 'en', factDigest, generatedAt: '2026-01-01T00:00:00.000Z', model: 'fixture', layers, relations: [], gaps: [], ...extra };
 }

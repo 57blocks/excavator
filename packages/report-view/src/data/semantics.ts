@@ -8,7 +8,9 @@
  *   - the layers come from the semantic graph first, then from the graph's own
  *     `layer` records.
  * A contradicted entry owns its node's text for good: its summary is empty in
- * the payload and the node's own summary never takes its place.
+ * the payload and the node's own summary never takes its place. A summary whose
+ * verdict is contradicted is empty here whichever source it came from, so no
+ * later reader has to remember to hide it.
  */
 
 import type { GraphLayer, GraphNode } from './graph';
@@ -55,6 +57,11 @@ function ownText(node: GraphNode): Pick<NodeSemantics, 'summary' | 'tags'> {
 }
 
 function nodeSemantics(node: GraphNode, entry: SemanticEntry | undefined): NodeSemantics {
+  const merged = pickSources(node, entry);
+  return merged.verification === CONTRADICTED ? { ...merged, summary: '', source: 'none' } : merged;
+}
+
+function pickSources(node: GraphNode, entry: SemanticEntry | undefined): NodeSemantics {
   const own = ownText(node);
   const graphVerification = nonEmpty(node.verification) ? node.verification : null;
   if (!entry) {

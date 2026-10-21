@@ -18,6 +18,17 @@ export interface ReportItem {
   payload: string | null;
 }
 
+/** What the packer counted when it read the semantic files (only on the `semantics` entry). */
+export interface SemanticsCounts {
+  /** Entries inlined, after the packer left out those that are not fresh. */
+  entries: number;
+  /** Entries left out because the source changed since they were written (or no current hash exists for them). */
+  stale: number;
+  /** Inlined entries by the verifier's verdict; `unchecked` is no verdict. */
+  byVerdict: Record<string, number>;
+  layers: number;
+}
+
 export interface ManifestProduct {
   name: string;
   label: string;
@@ -31,6 +42,8 @@ export interface ManifestProduct {
   payloads: string[];
   /** Only on the `reports` entry. */
   items?: ReportItem[];
+  /** Only on the `semantics` entry, when it is included. */
+  counts?: SemanticsCounts;
 }
 
 export type SourceBucket = 'embedded' | 'binary' | 'tooLarge' | 'notInSnapshot' | 'notEmbeddedOnRequest';
