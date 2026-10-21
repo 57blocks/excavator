@@ -7,7 +7,7 @@
  * O3). Zero dependencies; not part of `pnpm test` because it needs a Chrome
  * install.
  *
- *   node scripts/view-smoke.mjs <page.html> [--width N] [--height N] [--dark] [--hash <route>] [--screenshot <png>]
+ *   node scripts/view-smoke.mjs <page.html> [--width N] [--height N] [--dark] [--hash <route>] [--eval <js>] [--screenshot <png>]
  *
  * It waits (in real time, 30 s at most) for `data-xv-ready` on <html>, then
  * collects every console error, uncaught exception, CSP violation, inline event
@@ -15,7 +15,10 @@
  * those) and network request other than the main document, plus every
  * `data-xv-count-*` value, and prints one JSON result. `--hash` opens a route
  * (for example `/code?path=src%2Fa.js&lines=3-9`); the result then lists the line
- * numbers the Code page highlighted and any notice it showed. The exit status is 1 when any of those errors is
+ * numbers the Code page highlighted and any notice it showed. `--eval` runs a
+ * JavaScript expression in the page once it is ready (to click a filter, say),
+ * waits for the page to settle and then collects everything; its value is
+ * returned as `evalResult`. The exit status is 1 when any of those errors is
  * present, when the page reports `data-xv-ready="error"`, or on timeout.
  *
  * Chrome: `$CHROME`, else the macOS app, else google-chrome / chromium on PATH.
@@ -35,10 +38,10 @@ const COMMAND_TIMEOUT_MS = 15000;
 const SETTLE_MS = 300;
 const MAX_SCREENSHOT_HEIGHT = 5000;
 
-const USAGE = 'Usage: node scripts/view-smoke.mjs <page.html> [--width N] [--height N] [--dark] [--hash <route>] [--screenshot <png>]';
+const USAGE = 'Usage: node scripts/view-smoke.mjs <page.html> [--width N] [--height N] [--dark] [--hash <route>] [--eval <js>] [--screenshot <png>]';
 
 function parseArgs(argv) {
-  const options = { html: null, width: 1280, height: 900, dark: false, hash: null, screenshot: null };
+  const options = { html: null, width: 1280, height: 900, dark: false, hash: null, eval: null, screenshot: null };
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
     if (arg === '--dark') options.dark = true;
@@ -49,6 +52,9 @@ function parseArgs(argv) {
     } else if (arg === '--hash') {
       options.hash = argv[++i];
       if (!options.hash) throw new Error('--hash needs a route');
+    } else if (arg === '--eval') {
+      options.eval = argv[++i];
+      if (!options.eval) throw new Error('--eval needs a JavaScript expression');
     } else if (arg === '--screenshot') {
       options.screenshot = argv[++i];
       if (!options.screenshot) throw new Error('--screenshot needs a path');
@@ -226,6 +232,7 @@ async function run(options) {
   let probe = null;
   let timedOut = false;
   let screenshotPath = null;
+  let evalResult = null;
   try {
     const { targetId } = await send('Target.createTarget', { url: 'about:blank' });
     ({ sessionId } = await send('Target.attachToTarget', { targetId, flatten: true }));
@@ -248,6 +255,11 @@ async function run(options) {
       await new Promise((r) => setTimeout(r, 100));
     }
     timedOut = !(probe && probe.ready);
+    if (!timedOut && options.eval) {
+      const { result, exceptionDetails } = await call('Runtime.evaluate', { expression: options.eval, returnByValue: true, awaitPromise: true });
+      evalResult = exceptionDetails ? { error: describeException(exceptionDetails) } : result.value;
+      if (exceptionDetails) found.exceptions.push(describeException(exceptionDetails));
+    }
     if (!timedOut) {
       await new Promise((r) => setTimeout(r, SETTLE_MS));
       probe = (await evaluate()) || probe;
@@ -299,6 +311,7 @@ async function run(options) {
     inlineHandlers,
     extraRequests: found.requests,
     loadFailures: found.loadFailures,
+    evalResult,
     screenshot: screenshotPath,
   };
 }

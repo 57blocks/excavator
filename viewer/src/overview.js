@@ -152,25 +152,8 @@
     return h('span', { class: 'xv-badge xv-badge-' + status, text: XV.statusLabel(status) });
   }
 
-  function tile(label, value) {
-    return h('div', { class: 'xv-tile' },
-      h('div', { class: 'xv-tile-label', text: label }),
-      h('div', { class: 'xv-tile-value', text: value }));
-  }
-
-  function table(columns, rows) {
-    return h('div', { class: 'xv-table-wrap' },
-      h('table', { class: 'xv-table' },
-        h('thead', null, h('tr', null, columns.map(function (c) {
-          return h('th', { class: c.num ? 'xv-num' : null, text: c.label });
-        }))),
-        h('tbody', null, rows.map(function (row) {
-          return h('tr', null, columns.map(function (c, i) {
-            var cell = row[i];
-            return h('td', { class: c.num ? 'xv-num' : (c.wrap ? 'xv-wrap' : null) }, cell);
-          }));
-        }))));
-  }
+  var tile = XV.tile;
+  var table = XV.simpleTable;
 
   function productRow(product, snapshotRevision) {
     var detail = [h('div', { text: detailText(product, snapshotRevision) })];
@@ -191,13 +174,7 @@
   }
 
   function revisionBanners(manifest) {
-    var snapshot = manifest.snapshot.revision;
-    return manifest.products.filter(function (p) { return p.status === 'different-revision'; }).map(function (p) {
-      return h('section', { class: 'xv-card xv-card-warn' },
-        h('h2', { text: p.label + ': different revision' }),
-        h('p', null, 'The product was made at ', h('code', { text: p.revision }), '; the source snapshot is ',
-          h('code', { text: snapshot }), '. Its content is shown as it was written.'));
-    });
+    return manifest.products.map(function (p) { return XV.revisionBanner(manifest, p); }).filter(function (card) { return card !== null; });
   }
 
   function graphSection(summary) {

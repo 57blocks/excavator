@@ -38,10 +38,12 @@ describe('viewer/ is a standalone, dependency-free project', () => {
       'viewer/index.html',
       'viewer/src/app.js',
       'viewer/src/code.js',
+      'viewer/src/components.js',
       'viewer/src/core.js',
       'viewer/src/data.js',
       'viewer/src/overview.js',
       'viewer/src/router.js',
+      'viewer/src/unused.js',
       'viewer/styles.css',
     ]);
   });

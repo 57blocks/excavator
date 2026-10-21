@@ -11,6 +11,9 @@
 
   var XV = (window.XV = window.XV || {});
 
+  // What the page shows where a product holds no value: an em dash (not a number or an empty string).
+  var EMPTY = String.fromCharCode(0x2014);
+
   // Attributes that would make a string executable or load a resource are never set.
   var FORBIDDEN_ATTR = /^on/i;
 
@@ -45,9 +48,9 @@
     else el.appendChild(document.createTextNode(String(child)));
   }
 
-  /** Group digits in threes: 1234567 becomes "1,234,567". Anything that is not a finite number gives "n/a". */
+  /** Group digits in threes: 1234567 becomes "1,234,567". Anything that is not a finite number gives the empty-value dash. */
   function formatNumber(value) {
-    if (typeof value !== 'number' || !isFinite(value)) return 'n/a';
+    if (typeof value !== 'number' || !isFinite(value)) return EMPTY;
     var sign = value < 0 ? '-' : '';
     var digits = String(Math.abs(Math.round(value)));
     return sign + digits.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
@@ -89,6 +92,7 @@
   };
 
   XV.h = h;
+  XV.EMPTY = EMPTY;
   XV.formatNumber = formatNumber;
   XV.replaceChildren = replaceChildren;
   XV.statusLabel = statusLabel;

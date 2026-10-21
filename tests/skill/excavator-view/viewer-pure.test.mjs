@@ -65,18 +65,19 @@ describe('formatNumber and status words', () => {
     expect(XV.formatNumber(1000)).toBe('1,000');
     expect(XV.formatNumber(1234567)).toBe('1,234,567');
     expect(XV.formatNumber(-12345)).toBe('-12,345');
-    expect(XV.formatNumber(null)).toBe('n/a');
-    expect(XV.formatNumber('12')).toBe('n/a');
-    expect(XV.formatNumber(NaN)).toBe('n/a');
+    expect(XV.formatNumber(null)).toBe(XV.EMPTY);
+    expect(XV.formatNumber('12')).toBe(XV.EMPTY);
+    expect(XV.formatNumber(NaN)).toBe(XV.EMPTY);
+    expect(XV.EMPTY).toBe(String.fromCharCode(0x2014));
   });
 
   it('keeps pages in their declared order whatever order they register in', () => {
     const fresh = load();
     fresh.pages.register({ id: 'late', order: 60 });
-    fresh.pages.register({ id: 'early', order: 20 });
+    fresh.pages.register({ id: 'early', order: 25 });
     fresh.pages.register({ id: 'unordered' });
     fresh.pages.register({ id: 'middle', order: 40 });
-    expect(fresh.pages.list.map((p) => p.id)).toEqual(['overview', 'early', 'middle', 'code', 'late', 'unordered']);
+    expect(fresh.pages.list.map((p) => p.id)).toEqual(['overview', 'unused', 'early', 'middle', 'code', 'late', 'unordered']);
   });
 
   it('names the four states and passes an unknown one through', () => {
@@ -87,8 +88,8 @@ describe('formatNumber and status words', () => {
     expect(XV.statusLabel('constructor')).toBe('constructor');
   });
 
-  it('registers the Overview first and the Code page after it', () => {
-    expect(XV.pages.list.map((p) => p.id)).toEqual(['overview', 'code']);
+  it('registers the pages in navigation order', () => {
+    expect(XV.pages.list.map((p) => p.id)).toEqual(['overview', 'unused', 'code']);
     expect(XV.pages.find('overview').label).toBe('Overview');
     expect(XV.pages.find('missing')).toBeNull();
   });
