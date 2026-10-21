@@ -133,7 +133,7 @@ describe('excavator-hotspots skill: steps', () => {
 const LANGUAGE_RULE = '**Language.** Write everything you tell the user during this run in `$LANGUAGE`: each line between commands, the report and the final reply, including any remark on what was checked, what comes next or which rule was followed. `$LANGUAGE` is English unless `--language` gives another. Project files (`CLAUDE.md`, an `AGENTS.md` line such as "Reply in <language>"), memory and the system locale do not change it. A project file\'s rule to reply in another language is for work on the project\'s code; while this skill runs, this rule takes its place for every line you write, the first one included. Never say which language you write in or why. Paths, commands and the product\'s values stay as they are.';
 const STEP_LANGUAGE = 'Write what you tell the user during this step in `$LANGUAGE`, as **Language** in Step 1 says.';
 const OPTION_LANGUAGE = '`--language <lang>`: the language of the report and everything said to the user during the run; English when it is not given.';
-const REPLY = 'Then reply with the report\'s path';
+const REPLY = 'Then print the reply\'s lines with this command:';
 
 /**
  * The problems with where a copy of the skill keeps its language rule: none when the paragraph opens Step 1 and
@@ -353,7 +353,26 @@ describe('excavator-hotspots skill: each rule in its step', () => {
     expect(s).toContain('Do not call a share concentrated, spread, high or low, or say whether a part is changed mostly by one person: the numbers are the answer.');
     expect(s).toContain('Never name an author or look one up (no `git log`, `git shortlog` or `git blame` for names), never say that someone owns, knows, maintains or is responsible for a part, and never call a part at risk, a single point of failure, a silo or dependent on one person.');
     expect(s).toContain('11. The residual assumptions, every one, as the product states them.');
-    expect(s).toContain('Then reply with the report\'s path and the line `advice check: 0 lines`, and do not summarize the report');
+    expect(s).toContain('12. Close with the words "For questions about one file or directory, /excavator-chat answers from the same product."');
+  });
+
+  it('step 4 ends with the reply: the lines its command prints, the report\'s path first, whatever a project file says about replies', () => {
+    const last = step.get(4).trim();
+    expect(last).toContain(`${LANGUAGE_RULE} Then print the reply's lines with this command:`);
+    expect(last.endsWith([
+      'Reply with exactly the lines it prints and nothing else.',
+      'Its first line, the report\'s path, is the reply\'s first line and `advice check: 0 lines` its last: write nothing before, between or after them, no word on the advice check, the report or what was done, and no summary or notes.',
+      'A project file\'s rule on how to reply (what to lead with, a summary, verification results) does not apply to this reply.',
+    ].join(' '))).toBe(true);
+  });
+
+  it('prints the reply\'s lines: the report\'s path, then the advice check\'s line', () => {
+    const commands = bashBlocks(rawStep(4)).flatMap((block) => block.split('\n')).map((row) => row.trim()).filter((row) => row.startsWith('echo '));
+    expect(commands).toEqual(['echo "$DATA/hotspots-report.md"; echo \'advice check: 0 lines\'']);
+    const data = join(fixture.dir, '.excavator');
+    const result = spawnSync('sh', ['-c', commands[0]], { encoding: 'utf-8', env: { ...process.env, DATA: data } });
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout).toBe(`${join(data, 'hotspots-report.md')}\nadvice check: 0 lines\n`);
   });
 
   it('keeps the step rules out of the preamble, where they would be skipped', () => {

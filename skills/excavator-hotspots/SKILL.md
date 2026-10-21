@@ -170,6 +170,7 @@ Write the report to `$DATA/hotspots-report.md` in `$LANGUAGE`, in this order. Th
 9. Files changed together: the top pairs, then the top pairs where no path looks like a test by its name, introduced with the words "pairs where neither path looks like a test by its name (a filter on names, not on content)", each with `together`, both shares and both paths; and `coChange`'s counts. Show the second list whole, every row its query prints, and do not describe how it differs from the first (which rows it leaves out or adds): a count of those rows would be yours, not the product's.
 10. Files with `lineageConflicts` above 0 among those you listed, and how many files have any (`counts.filesWithLineageConflicts`).
 11. The residual assumptions, every one, as the product states them.
+12. Close with the words "For questions about one file or directory, /excavator-chat answers from the same product."
 
 Rules for this step:
 - **State only numbers the product holds.** Every figure and path in the report comes from `$HS`. Do not explain a ranking with a cause you have not counted (team size, a release, code quality).
@@ -204,4 +205,11 @@ Each line it prints is a sentence to rewrite as a statement of the numbers; run 
 
 **Language.** Write everything you tell the user during this run in `$LANGUAGE`: each line between commands, the report and the final reply, including any remark on what was checked, what comes next or which rule was followed. `$LANGUAGE` is English unless `--language` gives another. Project files (`CLAUDE.md`, an `AGENTS.md` line such as "Reply in <language>"), memory and the system locale do not change it. A project file's rule to reply in another language is for work on the project's code; while this skill runs, this rule takes its place for every line you write, the first one included. Never say which language you write in or why. Paths, commands and the product's values stay as they are.
 
-Then reply with the report's path and the line `advice check: 0 lines`, and do not summarize the report: it holds the numbers in the words these steps give, and a summary rewords them. Point the user at `/excavator-chat` for questions about one file or directory; it answers from the same product.
+Then print the reply's lines with this command:
+
+```bash
+# the reply: the report's path and the advice check's line
+echo "$DATA/hotspots-report.md"; echo 'advice check: 0 lines'
+```
+
+Reply with exactly the lines it prints and nothing else. Its first line, the report's path, is the reply's first line and `advice check: 0 lines` its last: write nothing before, between or after them, no word on the advice check, the report or what was done, and no summary or notes. A project file's rule on how to reply (what to lead with, a summary, verification results) does not apply to this reply.
