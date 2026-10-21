@@ -11,14 +11,15 @@
 跳过的原因在 skill 的结构上：
 - 第 0 步把请求状态的创建推到「第 2 步解析出 `$PLUGIN_ROOT` 之后」，而改动历史等按产物回答的路线跳过第 2–8 步；它们开头那句「按第 0 步创建请求状态」指回的正是一个依赖被跳过步骤的步骤。
 - 没有任何一条路线给出可运行的命令。两次调用（`createChatRequestState` → `finalizeVerifiedAnswerLanguage`）要在 `node -e` 里写对象字面量、把问题原文放进 shell、再把状态带到下一次调用。
-- 规则离写答案的地方远：语言门是第 8 步之后的单独一节；改动历史一节的语言步骤是第 7 步，排在第 5 步写答案之后；未用代码一节没有语言步骤；「产物缺失」这类回复在第 1 步就写给用户了。
+- 规则离写答案的地方远：语言门是第 8 步之后的单独一节；改动历史与文档问题两节的语言步骤都是第 7 步，排在第 5 步写答案之后；未用代码一节没有语言步骤；「产物缺失」这类回复在第 1 步就写给用户了。
 
 ## What Changes
 
 - `request-language.mjs` 增加命令行入口：只收三个语言信号（各为语言或 `none`）和 `--evidence-verified`，打印 `answerLanguage` 与三个信号；缺少 `--evidence-verified` 或任一信号时以非零退出、不打印语言。不收问题原文。
-- 每条回答路线在写给用户任何内容之前、核实之后，有一个同一措辞的 **Answer language** 步骤运行这条命令，并要求答案每一句（第一句和注释在内）都用它打印的语言：
+- 每条回答路线在写给用户任何内容之前、核实之后，有一个同一措辞的 **Answer language** 步骤运行这条命令，并要求答案每一句（第一句、注释、关于查了什么或依据哪条规则的说明在内）都用它打印的语言，不说明选了哪种语言及原因：
   - 图谱路线：第 8 步开头；
   - 改动历史：新的第 5 步，紧接在写答案的步骤前（原第 7 步删除）；
+  - 文档问题：同上，新的第 5 步，原第 7 步删除；
   - 未用代码：新的第 4 步，紧接在写答案的步骤前；
   - 以后新增的按产物回答的路线照此办理，契约测试会把缺了这一步的路线报出来；
   - 图谱或产物缺失这类直接回复，也先运行这一步。
@@ -43,7 +44,7 @@
 ## Impact
 
 - 代码：`skills/excavator-chat/request-language.mjs`（命令行入口）。
-- skill：`skills/excavator-chat/SKILL.md`（第 0、1、8 步，语言门一节，改动历史与未用代码两节，按需检索的 (d) 与诚实降级）。
-- 测试：`tests/language/chat-request-language.test.mjs`、`tests/skill/test_hotspots_skill_contract.test.mjs`。
+- skill：`skills/excavator-chat/SKILL.md`（第 0、1、8 步，语言门一节，改动历史、文档问题与未用代码三节，按需检索的 (d) 与诚实降级）。
+- 测试：`tests/language/chat-request-language.test.mjs`；随步骤号与措辞变化更新 `tests/skill/test_hotspots_skill_contract.test.mjs`、`tests/skill/test_doc_map_skill_contract.test.mjs`、`tests/semantic-cache/semantic-cache-reuse.test.mjs` 里的断言。
 - 每次回答多一次工具调用。
-- 尚未合入主线、正在开发的 `### Document questions` 一节合入时需要补上同一步骤；契约测试按「有 **Product missing:** 步骤的 `###` 节」枚举路线，会在合并结果上报出它。
+- `### Document questions` 一节在本变更进行中合入主线；本变更变基到它之上，按改动历史一节的同样方式补上这一步。契约测试按「有 **Product missing:** 步骤的 `###` 节」枚举路线，以后新增的同类路线缺这一步会被报出。
