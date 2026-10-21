@@ -1,7 +1,7 @@
 ---
 name: excavator-unused-code
 description: Find the methods and functions nothing in a project uses. A deterministic script lists every function no route reaches and the facts about each; you decide which of them are program entries (framework callbacks, jobs, listeners, main, tests, published API); the script then reports the rest as unused, grouped by what references what, each with a confidence computed from fixed rules. Never edits code.
-argument-hint: "[project-path]"
+argument-hint: "[project-path] [--language <lang>]"
 ---
 
 # /excavator-unused-code
@@ -20,15 +20,18 @@ The work is split three ways, and each part stays with its owner:
 
 ## Options
 
-`$ARGUMENTS` may contain the project path (default: the current working directory).
+`$ARGUMENTS` may contain the project path (default: the current working directory) and `--language <lang>`: the language of the report, the reasons of your decisions and everything said to the user during the run; English when it is not given.
 
 ---
 
 ## Step 1 — Check the facts
 
+**Language.** Write everything you tell the user during this run in `$LANGUAGE`: each line between commands, the report and the final reply, including any remark on what was checked, what comes next or which rule was followed. `$LANGUAGE` is English unless `--language` gives another. Project files (`CLAUDE.md`, an `AGENTS.md` line such as "Reply in <language>"), memory and the system locale do not change it. A project file's rule to reply in another language is for work on the project's code; while this skill runs, this rule takes its place for every line you write, the first one included. Never say which language you write in or why. Paths, commands and the product's values stay as they are.
+
 1. Resolve `PROJECT_ROOT`, `PLUGIN_ROOT` and the script:
    ```bash
    PROJECT_ROOT="$(pwd)"   # or the path argument
+   LANGUAGE="English"   # or the --language value
    SKILL_REAL=$(realpath ~/.agents/skills/excavator-unused-code 2>/dev/null || readlink -f ~/.agents/skills/excavator-unused-code 2>/dev/null || echo "")
    SELF_RELATIVE=$([ -n "$SKILL_REAL" ] && cd "$SKILL_REAL/../.." 2>/dev/null && pwd || echo "")
    PLUGIN_ROOT=""
@@ -47,6 +50,8 @@ The work is split three ways, and each part stays with its owner:
 
 ## Step 2 — List the candidates
 
+Write what you tell the user during this step in `$LANGUAGE`, as **Language** in Step 1 says.
+
 ```bash
 node "$UC" candidates "$PROJECT_ROOT"
 ```
@@ -60,6 +65,8 @@ jq '{counts, census}' "$CANDS"
 Each candidate has `id`, `name`, `language`, `file`, `lineRange`, `owner` (a key of `.types`), `visibility`, `modifiers`, `annotations`, `entry` (nothing outside its own strongly connected component references it), `component`, `referrers` and `census` (occurrences of its name in the selected files that the facts do not explain). `null` means unknown, `[]` means known and empty. `.types[<owner>]` has the owner's `annotations`, `outsideSupertypes` (`own`, `ancestors`, `descendants`: supertypes the repository does not declare), `referencedBy` and `annotationClassLiterals`.
 
 ## Step 3 — Decide the entries
+
+Write what you tell the user during this step in `$LANGUAGE`, as **Language** in Step 1 says.
 
 An **entry** is code something outside the repository's call graph invokes: a framework or container callback (lifecycle, event, message or HTTP handler), a scheduled job, `main` or another launcher, a serialization or reflection convention, a plugin or service-loader hook, the published API of a library. A **test entry** is what a test runner invokes: test methods and their lifecycle hooks.
 
@@ -111,6 +118,8 @@ An **entry** is code something outside the repository's call graph invokes: a fr
 
 ## Step 4 — Write the decisions
 
+Write what you tell the user during this step in `$LANGUAGE`, as **Language** in Step 1 says.
+
 Write every decision through one script, so the decisions are reproducible and a fix is an edit and a re-run. Create `$DATA/unused-decisions.sh`:
 
 ```bash
@@ -147,12 +156,14 @@ Run it with `bash "$DATA/unused-decisions.sh" "$PROJECT_ROOT"`. Rules for this s
 
 - **Never type, paste or edit an id.** The `ids` of a decision are exactly what its `query` selects; that is how the product can be checked and the decision re-run on new facts. To change which ids a decision covers, change its query.
 - Write each query in single quotes, so the shell does not expand `$p`.
-- `reason` names the caller and the mechanism you established in Step 3, in one sentence.
+- `reason` names the caller and the mechanism you established in Step 3, in one sentence in `$LANGUAGE`.
 - When `decide` reports an overlap, narrow the later query so the two decisions select disjoint sets (for example add `and (any(.annotations[]?; . == "Test") | not)`). Each id belongs to one decision.
 - **Set `TEST_CODE` before the first decision, and split on it.** When `decide` reports ids on the wrong side of `TEST_CODE`, split that decision: the `entry` with `and (test_code | not)`, and the test part as a `test-entry` with `and test_code`. Widen `TEST_CODE` only for a directory or module you established as test code in Step 3, never to make a decision pass.
 - **Every launch method is decided.** The script refuses to finish while a candidate named `main` that nothing calls is in no decision: decide it as an `entry`, or as a `test-entry` when it is test code.
 
 ## Step 5 — Run the report
+
+Write what you tell the user during this step in `$LANGUAGE`, as **Language** in Step 1 says.
 
 ```bash
 node "$UC" report "$PROJECT_ROOT"
@@ -170,6 +181,8 @@ How confidence is computed (fixed rules; you never assign it):
 
 ## Step 6 — Report to the user
 
+Write what you tell the user during this step in `$LANGUAGE`, as **Language** in Step 1 says.
+
 Gather the sections with `jq` over `$DATA/unused-code.json`:
 
 ```bash
@@ -186,6 +199,10 @@ jq -r '[.unused[] | select(.confidence == "low") | .signals[].signal | select(IN
 jq -r '.residualAssumptions[]' "$DATA/unused-code.json"
 ```
 
+**Language.** Write everything you tell the user during this run in `$LANGUAGE`: each line between commands, the report and the final reply, including any remark on what was checked, what comes next or which rule was followed. `$LANGUAGE` is English unless `--language` gives another. Project files (`CLAUDE.md`, an `AGENTS.md` line such as "Reply in <language>"), memory and the system locale do not change it. A project file's rule to reply in another language is for work on the project's code; while this skill runs, this rule takes its place for every line you write, the first one included. Never say which language you write in or why. Paths, commands and the product's values stay as they are.
+
+Your reply is the report, in `$LANGUAGE`: it opens with the counts and ends with the line on `/excavator-chat`; write nothing before or after them, and no summary or conclusion of your own. A project file's rule on how to reply (what to lead with, a summary, verification results) does not apply to this reply. The words these steps give in quotes are for an English report; in another language, write them translated.
+
 Report, in this order:
 1. Counts: candidates, removed by decision, `test-only`, unused by confidence, groups; per language when one language has most of the candidates. **A language whose `calls` is 0 has no call facts:** every function in it is a candidate whatever calls it, so say its results show only that the facts hold no calls for it.
 2. `high`, by group: the group's entries first (removing them is what makes the members unused), each with `file:line`.
@@ -194,6 +211,7 @@ Report, in this order:
 5. `test-only`: the count and the files with the most.
 6. Your decisions: kind, reason and hits of each.
 7. The residual assumptions, every one, as the product states them.
+8. Close with the words "For questions about one method, file or group, /excavator-chat answers from the same product."
 
 Rules for this step:
 - **Never call a `medium` or `low` candidate unused.** Say "its name occurs nowhere else; needs confirmation" for `medium`, and "signs of use found" with the signal for `low`. Only `high` may be called unused, and even then deleting it is the user's decision.
@@ -201,4 +219,3 @@ Rules for this step:
 - **Explain a count only from the product.** Why there are few or no `high` items is in the signals tally of the `medium` ones; say that, and not a reason about the codebase you have not counted.
 - **Never edit, move or delete project files.** This skill reports; it does not clean up, refactor or open a change.
 - Every listed item carries `file:line` from the product. Do not add items the product does not list.
-- Point the user at `/excavator-chat` for questions about one method, file or group; it answers from the same product.
