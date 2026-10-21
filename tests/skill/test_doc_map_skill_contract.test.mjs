@@ -103,7 +103,7 @@ const fixture = (() => {
   code('src/Assess.java', 'class Assess {}\n');
   code('web/assessment.jsp', '<h1>Assessment</h1>\n<form action="complete.do">\n');
   writeFileSync(join(DATA, 'doc-map/links-batch-002.json'), JSON.stringify({ links: [
-    { unit: 3, status: 'not-found', evidence: [], searched: ['grep -ri export src/', 'MedicationExport'] },
+    { unit: 3, status: 'not-found', evidence: [], searched: [{ pattern: 'export', paths: ['src/'] }, { pattern: 'MedicationExport', paths: ['.', 'web/*.jsp'] }] },
   ] }));
   writeFileSync(join(DATA, 'doc-map/links-batch-001.json'), JSON.stringify({ links: [
     { unit: 1, status: 'found', evidence: [{ file: 'src/orders/PlaceOrder.java', code: 'public void placeOrder(' }] },
@@ -227,9 +227,12 @@ describe('excavator-doc-map skill: each rule in its step', () => {
       'Tests, sample data, generated files and third-party libraries are not places.',
       'a passage copied exactly from that file (one line or a few) that occurs only once in it',
       'Give at most 5 places, the starting point first.',
-      'When no place is tied to the unit, its status is "not-found": list in "searched" every search you ran for it (the pattern, and the folders or file types searched), so that a reader can run them again. Write the searches only, not what you concluded from them.',
+      'When no place is tied to the unit, its status is "not-found": list in "searched" every search you ran for it, so that a reader can run them again.',
+      'A search is what you searched for, "pattern" (the words or regular expression), and where, "paths" (the folders, files or globs searched, relative to $PROJECT_ROOT; "." is the whole project), and nothing else.',
+      'Never write what a search found or did not find, why what it found does not match the unit, or what the code base has or lacks: not in "pattern", not in "paths", and not as a search of its own.',
+      'Reading a file is not a search: do not list it.',
       'Write {"links": [ ... ]} as JSON to $DATA/doc-map/links-batch-<N>.json',
-      '{"unit": <number>, "status": "found", "evidence": [{"file": "<path>", "code": "<passage>"}]} {"unit": <number>, "status": "not-found", "evidence": [], "searched": ["<search>", ...]}',
+      '{"unit": <number>, "status": "found", "evidence": [{"file": "<path>", "code": "<passage>"}]} {"unit": <number>, "status": "not-found", "evidence": [], "searched": [{"pattern": "<words or regular expression>", "paths": ["<folder, file or glob>", ...]}, ...]}',
     ]) expect(prompt).toContain(rule);
     expect(step(4)).toContain('`<N>` is the batch number written with three digits (`001`).');
     expect(step(4)).toContain('When a subagent has returned and its batch file is missing, dispatch that batch once more.');
@@ -238,6 +241,9 @@ describe('excavator-doc-map skill: each rule in its step', () => {
   it('step 4 never lets a fix invent code or a search, and leaves an unfixable unit not-checked', () => {
     expect(step(4)).toContain('Never write code that is not in the file, nor make a unit `not-found` without the searches that found nothing, to make an entry pass.');
     expect(step(4)).toContain('delete the entry, so that the unit is recorded as `not-checked`');
+    expect(step(4)).toContain('write the folder, file or glob the search ran over, relative to the project; when it ran over no such place, delete that search;');
+    expect(step(4)).toContain('a search\'s path that `is not in the project`, `is outside the project`, `has a .. segment`, `is not a path relative to the project` or `is not a directory of the project`');
+    expect(step(4)).toContain('write it as `{"pattern", "paths"}`, keeping only what was searched for and where;');
     expect(step(4)).toContain('keep the number you deleted and their reasons for the report');
   });
 
@@ -318,7 +324,7 @@ describe('excavator-doc-map skill: the commands run', () => {
     expect(sh(lineStarting(3, 'python3 "$DOC_MAP" units'), vars).status).toBe(0);
     writeFileSync(join(DATA, 'doc-map/links.json'), JSON.stringify({ links: [
       ...ids.map((id, at) => ({ unit: at + 1, status: 'found', evidence: [{ file: 'src/Steps.java', code: `void step${id}()` }], searched: [] })),
-      { unit: 12, status: 'not-found', evidence: [], searched: ['grep -r B01 src/'] },
+      { unit: 12, status: 'not-found', evidence: [], searched: [{ pattern: 'B01', paths: ['src/'] }] },
     ] }));
     expect(sh(lineStarting(4, 'python3 "$DOC_MAP" link'), vars).status).toBe(0);
     const plan = sh(lineStarting(5, 'jq -r'), vars);
@@ -345,7 +351,7 @@ describe('excavator-doc-map skill: the commands run', () => {
     expect(product.units.map((unit) => unit.code.status)).toEqual([
       'found', 'not-checked', 'not-checked', 'not-checked', 'found', 'found', 'found', 'found', 'found', 'found', 'found', 'not-found',
     ]);
-    expect(product.units[11].code.searched).toEqual(['grep -r B01 src/']);
+    expect(product.units[11].code.searched).toEqual([{ pattern: 'B01', paths: ['src/'] }]);
     const [counts, notKept] = linesOf(bashBlocks(rawStep(7))).filter((line) => line.startsWith('jq ')).slice(6, 8);
     expect(sh(counts, vars).stdout).toBe('places: 11; kept: 8; taken out: 1; no verdict: 2\n');
     expect(sh(notKept, vars).stdout).toBe(['2\tA02 step\tsrc/Steps.java:2\tnot\tStep 2.', '3\tA03 step\tsrc/Steps.java:3\tnone\tStep 3.', '4\tA04 step\tsrc/Steps.java:4\tnone\t-', ''].join('\n'));
@@ -370,11 +376,11 @@ describe('excavator-doc-map skill: the commands run', () => {
     writeFileSync(join(DATA, 'doc-map/links-batch-001.json'), JSON.stringify({ links: [
       { unit: 1, status: 'found', evidence: [{ file: 'src/orders/PlaceOrder.java', code: 'public void placeOrder(' }] },
       { unit: 3, status: 'not-found', evidence: [] },
-      { unit: 4, status: 'not-found', evidence: [], searched: ['Enroll'] },
+      { unit: 4, status: 'not-found', evidence: [], searched: [{ pattern: 'Enroll', paths: ['.'] }] },
     ] }));
     expect(sh(lineStarting(4, 'find "$DATA/doc-map" -maxdepth 1 -name \'links-batch-*.json\' |'), { DATA }).status).toBe(0);
     const merged = JSON.parse(readFileSync(join(DATA, 'doc-map/links.json'), 'utf-8'));
-    expect(merged.links.map((link) => link.searched)).toEqual([[], [], ['Enroll']]);
+    expect(merged.links.map((link) => link.searched)).toEqual([[], [], [{ pattern: 'Enroll', paths: ['.'] }]]);
     const before = readFileSync(fixture.vars.DM, 'utf-8');
     const link = sh(`python3 "$DOC_MAP" link "${join(DATA, 'doc-map/links.json')}" "$PROJECT_ROOT"`, fixture.vars);
     expect(link.status).toBe(1);
@@ -496,7 +502,7 @@ describe('excavator-doc-map skill: the commands run', () => {
       'use-cases.md\tUC-01\tExport medications\tline 3\tnot-found\t',
       'use-cases.md\tUC-02\tEnroll in study\tline 6\tnot-checked\t', '',
     ].join('\n'));
-    expect(sh(queries[5], fixture.vars).stdout).toBe('use-cases.md\tUC-01\tExport medications\tgrep -ri export src/; MedicationExport\n');
+    expect(sh(queries[5], fixture.vars).stdout).toBe('use-cases.md\tUC-01\tExport medications\texport in src/; MedicationExport in ., web/*.jsp\n');
     expect(sh(queries[6], fixture.vars).stdout).toBe('places: 3; kept: 2; taken out: 1; no verdict: 0\n');
     expect(sh(queries[7], fixture.vars).stdout).toBe('2\tComplete assessment\tsrc/Assess.java:1\tnot\tAn empty class.\n');
     expect(sh(queries[8], fixture.vars).stdout).toBe([
@@ -581,6 +587,7 @@ describe('excavator-doc-map skill: agrees with the script', () => {
     for (const key of ['files', 'read', 'empty', 'noConverter', 'unsupported', 'failed', 'units', 'found', 'notFound', 'notChecked']) expect(product.counts).toHaveProperty(key);
     for (const key of ['root', 'revision']) expect(product.code).toHaveProperty(key);
     for (const key of ['status', 'evidence', 'searched']) expect(product.units[0].code).toHaveProperty(key);
+    expect(Object.keys(product.units[2].code.searched[0])).toEqual(['pattern', 'paths']);
     for (const key of ['file', 'line']) expect(product.units[0].code.evidence[0]).toHaveProperty(key);
     for (const status of ['found', 'not-found', 'not-checked']) expect(skill).toContain(`\`${status}\``);
     for (const key of ['pdf', 'doc']) expect(product.converters).toHaveProperty(key);
@@ -593,6 +600,14 @@ describe('excavator-doc-map skill: agrees with the script', () => {
     for (const key of ['files', 'documents', 'code', 'withEvidence', 'withoutEvidence', 'evidence', 'outside']) expect(product.coverage.counts).toHaveProperty(key);
     for (const key of ['path', 'files', 'withEvidence', 'units']) expect(product.coverage.directories[0]).toHaveProperty(key);
     for (const key of ['unit', 'file', 'line']) expect(product.coverage.outside[0]).toHaveProperty(key);
+  });
+
+  it('names only reasons the script gives for a search', () => {
+    const script = readFileSync(SCRIPT, 'utf-8');
+    for (const reason of ['is not in the project', 'is outside the project', 'has a .. segment', 'is not a path relative to the project', 'is not a directory of the project', 'unknown keys', 'not an object']) {
+      expect(step(4)).toContain(`\`${reason}\``);
+      expect(script).toContain(reason);
+    }
   });
 });
 
@@ -635,7 +650,7 @@ describe('excavator-chat: document questions', () => {
     expect(run(queries[1], { '<id or word>': 'ORDER' })).toBe('1\tguide/orders.html\t-\tPlacing an order\tline 2\tfound\tsrc/orders/PlaceOrder.java:3\n');
     expect(run(queries[1], { '<id or word>': 'UC1' })).toBe('2\tsrs.pdf\tUC1\tComplete assessment\tpage 2\tfound\tweb/assessment.jsp:2\n');
     expect(run(queries[2], { '<document>': 'use-cases.md' })).toBe('3\tUC-01\tExport medications\tnot-found\n4\tUC-02\tEnroll in study\tnot-checked\n');
-    expect(run(queries[3])).toBe('3\tuse-cases.md\tUC-01\tExport medications\tgrep -ri export src/; MedicationExport\n');
+    expect(run(queries[3])).toBe('3\tuse-cases.md\tUC-01\tExport medications\texport in src/; MedicationExport in ., web/*.jsp\n');
     expect(run(queries[4], { '<file or directory>': 'src' })).toBe('1\tPlacing an order\tsrc/orders/PlaceOrder.java:3\n');
     expect(run(queries[4], { '<file or directory>': 'web/assessment.jsp' })).toBe('2\tComplete assessment\tweb/assessment.jsp:2\n');
     expect(run(queries[4], { '<file or directory>': 'sr' })).toBe('');
@@ -651,10 +666,12 @@ describe('excavator-chat: document questions', () => {
     expect(run(queries[9], { '<directory>': '.' })).toBe('code files: 7; with evidence: 1; units with evidence here: 1\n1\tPlacing an order\n');
   });
 
-  it('counts the code with the queries of the report, and says when the counts are missing or stale', () => {
+  it('counts the code and shows the searches with the queries of the report, and says when the counts are missing or stale', () => {
     const report = linesOf(bashBlocks(rawStep(7))).filter((line) => line.startsWith('jq ')).map((line) => line.replace('"$DM"', '.excavator/doc-map.json'));
     expect(queries[5]).toBe(report[8]);
     expect(queries[8]).toBe(report[10]);
+    const shown = (query) => query.match(/searched \| (map\(.*\) \| join\("; "\))\)/)[1];
+    expect(shown(queries[3])).toBe(shown(report[5]));
     expect(section).toContain('`no coverage`: say the code has not been counted, and that `/excavator-doc-map` counts it when the project\'s `/excavator` facts are fresh, running `/excavator --mode=lazy` first when they are not.');
     expect(section).toContain('Different, or no fact graph: say the counts are stale (the facts changed since they were counted) and suggest running `/excavator-doc-map` again. You may still quote them, labelled stale.');
   });

@@ -167,7 +167,7 @@ Which code does a function a document describes is what `/excavator-doc-map` rec
    ```bash
    jq -r --arg q "<id or word>" '.units | to_entries[] | select(.value.id == $q or (.value.title | ascii_downcase | contains($q | ascii_downcase))) | [(.key + 1), .value.document, (.value.id // "-"), .value.title, (if .value.page then "page \(.value.page)" else "line \(.value.line)" end), .value.code.status, ([.value.code.evidence[]? | "\(.file):\(.line)"] | join(", "))] | @tsv' .excavator/doc-map.json
    jq -r --arg d "<document>" '.units | to_entries[] | select(.value.document == $d) | [(.key + 1), (.value.id // "-"), .value.title, .value.code.status] | @tsv' .excavator/doc-map.json
-   jq -r '.units | to_entries[] | select(.value.code.status == "not-found") | [(.key + 1), .value.document, (.value.id // "-"), .value.title, (.value.code.searched | join("; "))] | @tsv' .excavator/doc-map.json
+   jq -r '.units | to_entries[] | select(.value.code.status == "not-found") | [(.key + 1), .value.document, (.value.id // "-"), .value.title, (.value.code.searched | map("\(.pattern) in \(.paths | join(", "))") | join("; "))] | @tsv' .excavator/doc-map.json
    jq -r --arg p "<file or directory>" '.units | to_entries[] | [.value.code.evidence[]? | select((.file | ltrimstr("./")) as $f | $f == $p or ($f | startswith($p + "/")))] as $at | select($at | length > 0) | [(.key + 1), .value.title, ($at | map("\(.file):\(.line)") | join(", "))] | @tsv' .excavator/doc-map.json
    ```
    The first finds a unit by its id or a word of its title; the second lists one document's units; the third the units with no code found, each with the searches listed; the fourth the units with evidence in a file or under a directory.

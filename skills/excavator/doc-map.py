@@ -39,10 +39,15 @@ units go into the product, each with the line (and, in a PDF, the page)
 where its quote is.
 
 `link` reads the code a model tied each unit to,
-`{ "links": [ { "unit", "status", "evidence": [ { "file", "code" } ], "searched" } ] }`,
+`{ "links": [ { "unit", "status", "evidence": [ { "file", "code" } ], "searched": [ { "pattern", "paths" } ] } ] }`,
 where `unit` is the unit's number in the product (from 1) and `status` is
 `found` (with evidence) or `not-found` (with no evidence and the searches that
-were run). Each piece of evidence is checked: the file resolves to a regular
+were run). A search is what was searched for and where, and holds nothing
+else: `pattern` is a non-empty string on one line, and `paths` a non-empty
+array of paths relative to the project (`.` is the project itself), each
+inside it; a path with no wildcard (`*`, `?`, `[`) is a file or directory of
+the project, and the directories before a path's first wildcard are a
+directory of the project. Each piece of evidence is checked: the file resolves to a regular
 file inside the project, not in `.git`, `.excavator` or the documents folder,
 not of a document format, and not the same content as a document; the code
 occurs exactly once in it under the same normalization (a file that is not
@@ -662,6 +667,8 @@ def units_command(units_file, project_root):
 
 LINK_KEYS = ("unit", "status", "evidence", "searched")
 EVIDENCE_KEYS = ("file", "code")
+SEARCH_KEYS = ("pattern", "paths")
+WILDCARDS = "*?["
 LINK_STATUSES = ("found", "not-found")
 DOCUMENT_EXTENSIONS = {extension for extension, kind in FORMATS.items() if kind != "html"}
 GIT_TIMEOUT_SECONDS = 60
@@ -750,6 +757,53 @@ class CodeFiles:
         return text, *normalize(text)
 
 
+def _search_path_problem(path, root):
+    """Why `path` is not a place of the project at real path `root` that a search ran over, or None.
+    A path is untrusted: it is judged by its own parts first, and only the part before a wildcard is
+    resolved, so no ".." may climb out after one."""
+    if not (isinstance(path, str) and path.strip()):
+        return "must be a non-empty string"
+    if os.path.isabs(path):
+        return f"{_short(path)} is not a path relative to the project"
+    parts = path.split("/")
+    if ".." in parts:
+        return f"{_short(path)} has a .. segment"
+    wild = next((at for at, part in enumerate(parts) if any(character in part for character in WILDCARDS)), None)
+    literal = [part for part in (parts if wild is None else parts[:wild]) if part]
+    real = os.path.realpath(os.path.join(root, *literal))
+    if real != root and not real.startswith(root + os.sep):
+        return f"{_short(path)} is outside the project"
+    if wild is None and not os.path.exists(real):
+        return f"{_short(path)} is not in the project"
+    if wild is not None and not os.path.isdir(real):
+        return f"{_short(path)}: {'/'.join(literal)} is not a directory of the project"
+    return None
+
+
+def check_search(search, root):
+    """The problems with one search: it holds what was searched for and the places of the project searched, and nothing else."""
+    if not isinstance(search, dict):
+        return ["not an object"]
+    problems = []
+    unknown = sorted(set(search) - set(SEARCH_KEYS))
+    missing = [key for key in SEARCH_KEYS if key not in search]
+    if unknown:
+        problems.append(f"unknown keys {', '.join(unknown)}")
+    if missing:
+        problems.append(f"missing keys {', '.join(missing)}")
+    pattern, paths = search.get("pattern"), search.get("paths")
+    if not (isinstance(pattern, str) and pattern.strip() and "\n" not in pattern and "\r" not in pattern):
+        problems.append("pattern must be a non-empty string on one line")
+    if not (isinstance(paths, list) and paths):
+        problems.append("paths must be a non-empty array")
+        paths = []
+    for index, path in enumerate(paths):
+        reason = _search_path_problem(path, root)
+        if reason:
+            problems.append(f"paths[{index}] {reason}")
+    return problems
+
+
 def check_links(listing, units, code_files):
     """For each linked unit number, its recorded code; or the list of problems with the links."""
     problems, linked, seen = [], {}, {}
@@ -777,15 +831,17 @@ def check_links(listing, units, code_files):
         if not isinstance(evidence, list):
             problems.append(f"{where}: evidence must be an array")
             evidence = []
-        if not (isinstance(searched, list) and all(isinstance(search, str) for search in searched)):
-            problems.append(f"{where}: searched must be an array of strings")
+        if not isinstance(searched, list):
+            problems.append(f"{where}: searched must be an array")
             searched = []
+        for index, search in enumerate(searched):
+            problems.extend(f"{where}.searched[{index}]: {problem}" for problem in check_search(search, code_files.root))
         if status == "found" and not evidence:
             problems.append(f"{where}: found needs at least one piece of evidence")
         if status == "not-found":
             if evidence:
                 problems.append(f"{where}: not-found takes no evidence")
-            if not any(search.strip() for search in searched):
+            if not searched:
                 problems.append(f"{where}: not-found needs the searches that were run")
         recorded = []
         for index, item in enumerate(evidence if status == "found" else []):

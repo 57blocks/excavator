@@ -512,6 +512,7 @@ function runLink(project, listing, options) {
 const found = (number, ...evidence) => ({
   unit: number, status: 'found', evidence: evidence.map(([file, code]) => ({ file, code })), searched: [],
 });
+const search = (pattern, ...paths) => ({ pattern, paths });
 const notFound = (number, ...searched) => ({ unit: number, status: 'not-found', evidence: [], searched });
 
 const USE_CASES = 'UC-01 Add prescription\nThe doctor adds one.\nUC-02 Print\nPrints it.\nUC-03 Fax\nFaxes it.\n';
@@ -531,7 +532,7 @@ describe('link: recorded with the line the script finds', () => {
     });
     const result = runLink(project, { links: [
       found(1, ['src/Rx.java', 'public void addPrescription(String drug, int days)'], ['./src/Rx.java', 'save(drug);']),
-      notFound(2, 'grep -ri "print" web/', 'PrintAction'),
+      notFound(2, search('print', 'src/'), search('PrintAction', '.')),
     ] });
     expect(result.status, result.stderr).toBe(0);
     expect(result.stdout).toBe('doc-map: 3 units: 1 found, 1 not found, 1 not checked\n');
@@ -545,7 +546,7 @@ describe('link: recorded with the line the script finds', () => {
         ],
         searched: [],
       },
-      { status: 'not-found', evidence: [], searched: ['grep -ri "print" web/', 'PrintAction'] },
+      { status: 'not-found', evidence: [], searched: [{ pattern: 'print', paths: ['src/'] }, { pattern: 'PrintAction', paths: ['.'] }] },
       { status: 'not-checked', evidence: [], searched: [] },
     ]);
     expect(product.counts).toMatchObject({ units: 3, found: 1, notFound: 1, notChecked: 1 });
@@ -677,9 +678,9 @@ describe('link: every problem at once, and nothing recorded', () => {
       found(4, rx),
       found(4, rx),
       { unit: 5, status: 'implemented', evidence: [], searched: [] },
-      { unit: 6, status: 'found', evidence: [], searched: ['x'] },
-      { unit: 7, status: 'not-found', evidence: [{ file: 'src/Rx.java', code: 'class Rx' }], searched: ['x'] },
-      notFound(8, ' '),
+      { unit: 6, status: 'found', evidence: [], searched: [search('x', '.')] },
+      { unit: 7, status: 'not-found', evidence: [{ file: 'src/Rx.java', code: 'class Rx' }], searched: [search('x', '.')] },
+      notFound(8),
       { unit: 9, status: 'not-found', evidence: {}, searched: 'x' },
       { unit: 10, status: 'found', evidence: ['src/Rx.java', { file: 'src/Rx.java' }, { file: '', code: 'class Rx', line: 1 }, { file: 'src/Rx.java', code: ' ' }], searched: [] },
     ] });
@@ -687,7 +688,7 @@ describe('link: every problem at once, and nothing recorded', () => {
     expect(result.stderr.split('\n').slice(1).filter(Boolean)).toEqual([
       '  links[0]: not an object',
       '  links[1]: missing keys searched',
-      '  links[1]: searched must be an array of strings',
+      '  links[1]: searched must be an array',
       '  links[2]: unknown keys why',
       '  links[3]: unit must be a unit number from 1 to 15',
       '  links[4]: unit must be a unit number from 1 to 15',
@@ -699,7 +700,7 @@ describe('link: every problem at once, and nothing recorded', () => {
       '  links[11]: not-found takes no evidence',
       '  links[12]: not-found needs the searches that were run',
       '  links[13]: evidence must be an array',
-      '  links[13]: searched must be an array of strings',
+      '  links[13]: searched must be an array',
       '  links[13]: not-found needs the searches that were run',
       '  links[14].evidence[0]: not an object',
       '  links[14].evidence[1]: missing keys code',
@@ -709,6 +710,58 @@ describe('link: every problem at once, and nothing recorded', () => {
       '  links[14].evidence[3]: code must be a non-empty string',
     ]);
     expect(readFileSync(join(project, '.excavator', 'doc-map.json'), 'utf-8')).toBe(before);
+  });
+
+  it('records a search as what was searched for and where, and refuses one that holds anything else', () => {
+    const project = linkProject({
+      docs: { 'uc.md': USE_CASES },
+      code: { 'src/Rx.java': RX, 'web/print.jsp': '<p>print</p>\n' },
+      units: THREE_UNITS,
+    });
+    symlinkSync(tempDir('doc-map-elsewhere-'), join(project, 'elsewhere'));
+    const before = readFileSync(join(project, '.excavator', 'doc-map.json'), 'utf-8');
+    const result = runLink(project, { links: [
+      notFound(1, search('print', 'web/', 'src/Rx.java'), search('Fax|fax', '.', '**/*.jsp', 'src/*.java'), search('PrintAction', 'web/**')),
+      { ...found(2, ['src/Rx.java', 'class Rx']), searched: [search('print', 'web (only unrelated hits)')] },
+      notFound(3,
+        'grep -ri fax src/',
+        { pattern: 'fax', paths: ['.'], result: 'no matches' },
+        { paths: ['src/'] },
+        search(' '),
+        search('fax\nno code sends a fax', '.'),
+        search('fax', '/etc', '../other', 'src/*/../..', 'elsewhere', ''),
+        search('fax', 'src/fax/**/*.java', 'lib/*.jar', 'src (confirmed: nothing)')),
+    ] });
+    expect(result.status).toBe(1);
+    expect(result.stderr.split('\n').slice(1).filter(Boolean)).toEqual([
+      '  links[1].searched[0]: paths[0] "web (only unrelated hits)" is not in the project',
+      '  links[2].searched[0]: not an object',
+      '  links[2].searched[1]: unknown keys result',
+      '  links[2].searched[2]: missing keys pattern',
+      '  links[2].searched[2]: pattern must be a non-empty string on one line',
+      '  links[2].searched[3]: pattern must be a non-empty string on one line',
+      '  links[2].searched[3]: paths must be a non-empty array',
+      '  links[2].searched[4]: pattern must be a non-empty string on one line',
+      '  links[2].searched[5]: paths[0] "/etc" is not a path relative to the project',
+      '  links[2].searched[5]: paths[1] "../other" has a .. segment',
+      '  links[2].searched[5]: paths[2] "src/*/../.." has a .. segment',
+      '  links[2].searched[5]: paths[3] "elsewhere" is outside the project',
+      '  links[2].searched[5]: paths[4] must be a non-empty string',
+      '  links[2].searched[6]: paths[0] "src/fax/**/*.java": src/fax is not a directory of the project',
+      '  links[2].searched[6]: paths[1] "lib/*.jar": lib is not a directory of the project',
+      '  links[2].searched[6]: paths[2] "src (confirmed: nothing)" is not in the project',
+    ]);
+    expect(readFileSync(join(project, '.excavator', 'doc-map.json'), 'utf-8')).toBe(before);
+
+    const passing = runLink(project, { links: [
+      notFound(1, search('print', 'web/', 'src/Rx.java'), search('Fax|fax', '.', '**/*.jsp', 'src/*.java'), search('PrintAction', 'web/**')),
+    ] });
+    expect(passing.status, passing.stderr).toBe(0);
+    expect(readProduct(project).units[0].code.searched).toEqual([
+      { pattern: 'print', paths: ['web/', 'src/Rx.java'] },
+      { pattern: 'Fax|fax', paths: ['.', '**/*.jsp', 'src/*.java'] },
+      { pattern: 'PrintAction', paths: ['web/**'] },
+    ]);
   });
 
   it('refuses a links file of the wrong shape, and a product whose units are not recorded yet', () => {

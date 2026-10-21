@@ -135,11 +135,11 @@ For each unit:
 2. Search the project's code with Grep and Glob for where the system does that function, using its words in the document and the names code would give it; list the matching files first, then Read what you find. Look for where it starts (a route or URL mapping, an action, a screen or menu entry, a message or event handler, a scheduled job, a command) and for the code that does its main work.
 3. Tie a place to the unit only after reading it, when its names, labels, messages or logic match what the unit's lines describe. A name that would fit another function as well is not enough; when unsure, leave the place out. Code the unit's lines only mention, or say is separate from the function, is not one of its places. Tests, sample data, generated files and third-party libraries are not places.
 4. Give each place as "file", its path relative to $PROJECT_ROOT, and "code", a passage copied exactly from that file (one line or a few) that occurs only once in it, such as the declaration of the method, class, route or screen. Give at most 5 places, the starting point first.
-5. When no place is tied to the unit, its status is "not-found": list in "searched" every search you ran for it (the pattern, and the folders or file types searched), so that a reader can run them again. Write the searches only, not what you concluded from them.
+5. When no place is tied to the unit, its status is "not-found": list in "searched" every search you ran for it, so that a reader can run them again. A search is what you searched for, "pattern" (the words or regular expression), and where, "paths" (the folders, files or globs searched, relative to $PROJECT_ROOT; "." is the whole project), and nothing else. Never write what a search found or did not find, why what it found does not match the unit, or what the code base has or lacks: not in "pattern", not in "paths", and not as a search of its own. Reading a file is not a search: do not list it.
 
 Write {"links": [ ... ]} as JSON to $DATA/doc-map/links-batch-<N>.json, one entry per unit in the order above, each in one of these two shapes:
 {"unit": <number>, "status": "found", "evidence": [{"file": "<path>", "code": "<passage>"}]}
-{"unit": <number>, "status": "not-found", "evidence": [], "searched": ["<search>", ...]}
+{"unit": <number>, "status": "not-found", "evidence": [], "searched": [{"pattern": "<words or regular expression>", "paths": ["<folder, file or glob>", ...]}, ...]}
 Then reply with one line per unit, "<number>: <status>", and nothing else.
 ```
 
@@ -153,6 +153,8 @@ Then reply with one line per unit, "<number>: <status>", and nothing else.
    - `code occurs <n> times`: copy a longer passage around it from the file, such as the whole declaration, so that it occurs once;
    - a file that `is outside the project`, `is not a file`, `is in` a folder, `is a document` or `has the same content as a document`: it is not code of the project; delete that piece of evidence;
    - `found needs at least one piece of evidence`, after its evidence was deleted: delete the entry, so that the unit is recorded as `not-checked`;
+   - a search's path that `is not in the project`, `is outside the project`, `has a .. segment`, `is not a path relative to the project` or `is not a directory of the project`: write the folder, file or glob the search ran over, relative to the project; when it ran over no such place, delete that search;
+   - a search with `unknown keys`, or that is `not an object`: write it as `{"pattern", "paths"}`, keeping only what was searched for and where;
    - any other problem: write the entry in the shape the subagent prompt gives.
 
    Never write code that is not in the file, nor make a unit `not-found` without the searches that found nothing, to make an entry pass. Run `link` again. After three runs that still fail, delete the entries that still fail, run it once more, and keep the number you deleted and their reasons for the report.
@@ -223,7 +225,7 @@ jq -r '.units as $units | .documents[] | select(.status == "read") | .path as $p
 # every unit, in the order recorded, with its code
 jq -r '.units[] | [.document, (.id // "-"), .title, (if .page then "page \(.page)" else "line \(.line)" end), .code.status, ([.code.evidence[] | "\(.file):\(.line)"] | join(", "))] | @tsv' "$DM"
 # each unit with no code found, and the searches listed with it
-jq -r '.units[] | select(.code.status == "not-found") | [.document, (.id // "-"), .title, (.code.searched | join("; "))] | @tsv' "$DM"
+jq -r '.units[] | select(.code.status == "not-found") | [.document, (.id // "-"), .title, (.code.searched | map("\(.pattern) in \(.paths | join(", "))") | join("; "))] | @tsv' "$DM"
 # the check: places, and how many were kept, taken out or have no verdict
 jq -r '.checks | "places: \(length); kept: \(map(select(.verdict == "does")) | length); taken out: \(map(select(.verdict == "not")) | length); no verdict: \(map(select(.verdict == "none")) | length)"' "$DATA/doc-map/checks.json"
 # each place the check did not keep, with its unit's title, the verdict and the reason
