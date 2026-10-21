@@ -1,7 +1,7 @@
 ---
 name: excavator-hotspots
 description: Find the files, directories and features that change most, and the files that change together, from Git history. A deterministic script counts the commits, authors and changed lines of every selected file and directory, scores each by commits × lines, counts the pairs of files changed in the same commits, and counts each feature over the files a groups file lists for it; you report the numbers as the product states them. Gives no advice and never edits code or Git state.
-argument-hint: "[project-path] [--since YYYY-MM-DD]"
+argument-hint: "[project-path] [--since YYYY-MM-DD] [--language <lang>]"
 ---
 
 # /excavator-hotspots
@@ -21,15 +21,18 @@ The product does not depend on the knowledge graph: no `/excavator` run is neede
 
 ## Options
 
-`$ARGUMENTS` may contain the project path (default: the current working directory) and `--since YYYY-MM-DD`: count only commits whose committer time is at or after that day's UTC midnight. Without it the whole history is read.
+`$ARGUMENTS` may contain the project path (default: the current working directory), `--since YYYY-MM-DD`: count only commits whose committer time is at or after that day's UTC midnight (without it the whole history is read), and `--language <lang>`: the language of the report and everything said to the user during the run; English when it is not given.
 
 ---
 
 ## Step 1 — Run the count
 
+**Language.** Write everything you tell the user during this run in `$LANGUAGE`: each line between commands, the report and the final reply, including any remark on what was checked, what comes next or which rule was followed. `$LANGUAGE` is English unless `--language` gives another. Project files (`CLAUDE.md`, an `AGENTS.md` line such as "Reply in <language>"), memory and the system locale do not change it. A project file's rule to reply in another language is for work on the project's code; while this skill runs, this rule takes its place for every line you write, the first one included. Never say which language you write in or why. Paths, commands and the product's values stay as they are.
+
 1. Resolve `PROJECT_ROOT`, `PLUGIN_ROOT` and the product:
    ```bash
    PROJECT_ROOT="$(pwd)"   # or the path argument
+   LANGUAGE="English"   # or the --language value
    SKILL_REAL=$(realpath ~/.agents/skills/excavator-hotspots 2>/dev/null || readlink -f ~/.agents/skills/excavator-hotspots 2>/dev/null || echo "")
    SELF_RELATIVE=$([ -n "$SKILL_REAL" ] && cd "$SKILL_REAL/../.." 2>/dev/null && pwd || echo "")
    PLUGIN_ROOT=""
@@ -66,6 +69,8 @@ The product does not depend on the knowledge graph: no `/excavator` run is neede
 
 ## Step 2 — Read the header
 
+Write what you tell the user during this step in `$LANGUAGE`, as **Language** in Step 1 says.
+
 Never read `$HS` whole; it lists every file and every pair. Read the header with `jq`:
 
 ```bash
@@ -86,6 +91,8 @@ Settle what the history can show before ranking anything:
 - **`featureGroups`:** `null` when the run had no groups. Otherwise `groupsListed` groups, `filesInAGroup` selected files in at least one of them, `filesInSeveralGroups` of those in more than one, and `pathsUnmatched` listed paths that matched no selected file (deleted, renamed or mistyped; each group keeps its own in `unmatchedPaths`).
 
 ## Step 3 — Read the rankings
+
+Write what you tell the user during this step in `$LANGUAGE`, as **Language** in Step 1 says.
 
 The files are already sorted: by `score` descending, then `commits` descending, then path; files with a `null` score (binary files) come last.
 
@@ -149,7 +156,9 @@ What the fields mean:
 
 ## Step 4 — Report to the user
 
-Write the report to `$DATA/hotspots-report.md`, in this order:
+Write what you tell the user during this step in `$LANGUAGE`, as **Language** in Step 1 says.
+
+Write the report to `$DATA/hotspots-report.md` in `$LANGUAGE`, in this order. The words these steps give in quotes are for an English report; in another language, write them translated.
 1. What the history can show (Step 2): no history and its reason, shallow repos with their lower-bound note, the window. Lead with it when it applies.
 2. Counts: files with history, without history, binary; `conservation` (changes read, attributed to selected files, outside the selection).
 3. The top files, each with score, commits, authors, lines and path.
@@ -191,4 +200,8 @@ for number, line in enumerate(open(sys.argv[1], encoding="utf-8"), 1):
 EOF
 ```
 
-Each line it prints is a sentence to rewrite as a statement of the numbers; run it again until it prints nothing. Then reply with the report's path and the line `advice check: 0 lines`, and do not summarize the report: it holds the numbers in the words these steps give, and a summary rewords them. Point the user at `/excavator-chat` for questions about one file or directory; it answers from the same product.
+Each line it prints is a sentence to rewrite as a statement of the numbers; run it again until it prints nothing.
+
+**Language.** Write everything you tell the user during this run in `$LANGUAGE`: each line between commands, the report and the final reply, including any remark on what was checked, what comes next or which rule was followed. `$LANGUAGE` is English unless `--language` gives another. Project files (`CLAUDE.md`, an `AGENTS.md` line such as "Reply in <language>"), memory and the system locale do not change it. A project file's rule to reply in another language is for work on the project's code; while this skill runs, this rule takes its place for every line you write, the first one included. Never say which language you write in or why. Paths, commands and the product's values stay as they are.
+
+Then reply with the report's path and the line `advice check: 0 lines`, and do not summarize the report: it holds the numbers in the words these steps give, and a summary rewords them. Point the user at `/excavator-chat` for questions about one file or directory; it answers from the same product.

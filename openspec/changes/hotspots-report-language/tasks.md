@@ -12,8 +12,8 @@
 
 ## 1. 实现
 
-- [ ] 1.1 `skills/excavator-hotspots/SKILL.md`：选项、变量、Language 段、各步的指回行、报告用 `$LANGUAGE` 与译出固定措辞（design D1、D2）。
-- [ ] 1.2 `tests/skill/test_hotspots_skill_contract.test.mjs`：Language 段的位置与坏副本、选项、报告语言、无汉字（D5）。验证：契约测试。
+- [x] 1.1 `skills/excavator-hotspots/SKILL.md`：选项、变量、Language 段、各步的指回行、报告用 `$LANGUAGE` 与译出固定措辞（design D1、D2）。
+- [x] 1.2 `tests/skill/test_hotspots_skill_contract.test.mjs`：Language 段的位置与坏副本、选项、报告语言、无汉字（D5）。验证：契约测试。
 - [ ] 1.3 第 4 步结尾：第 12 条收尾句、Language 段后的回复命令与三句（D3、D4）；契约测试钉住三句并在夹具上运行命令（D5）。验证：契约测试。
 
 ## 2. 验收与记录
