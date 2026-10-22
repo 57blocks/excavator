@@ -6,15 +6,18 @@ import { FocusView } from '../components/graph/FocusView';
 import { LevelView, type LevelActions } from '../components/graph/LevelView';
 import { LoadError } from '../components/ProductPage';
 import { Panel } from '../components/shell/Panel';
+import { IdleSidebar, idleTitle, ModeSwitchNote } from '../components/sidebar/IdleSidebar';
 import { NodeDetails } from '../components/sidebar/NodeDetails';
 import { Card } from '../components/ui/Card';
 import { Page } from '../components/ui/Page';
 import { unavailableCard } from '../components/ui/ProductCards';
-import { navigate, useRoute } from '../hooks/use-route';
+import { navigate, replaceHash, useRoute } from '../hooks/use-route';
 import { useReady } from '../hooks/use-signals';
 import { clearPathHash, clearSelectionHash, entryHash, levelHash, parentLevel, selectHash, setFocusHash } from '../lib/graph-actions';
 import { escapeStep, graphHash, parseGraphState, type GraphState } from '../lib/graph-state';
 import { buildLevel, type Crumb, type LevelEntry } from '../lib/graph-structure';
+import { modeForNode, withMode } from '../lib/view-mode';
+import { rememberPlace } from '../lib/view-switch';
 import { loadGraphScene, type GraphScene } from '../state/graph-scene';
 import { useGraphUi } from '../state/graph-ui';
 import { useLoaded, useProduct, useViewer } from '../state/viewer';
@@ -33,15 +36,29 @@ function NoLevel() {
 
 /** The graph at the place the address names: a level, or the focus on one node, with the sidebar and the code drawer beside it. */
 function GraphWorkspace({ scene }: { scene: GraphScene }) {
-  const { route } = useRoute();
+  const { route, hash } = useRoute();
   const state: GraphState = useMemo(() => parseGraphState(route.params), [route]);
   const ui = useGraphUi();
   const { index } = scene.model;
   const level = useMemo(() => buildLevel(scene.structure, { path: state.path, fold: state.fold }), [scene, state.path, state.fold]);
   const node = state.node !== null ? (index.nodesById.get(state.node) ?? null) : null;
 
-  const select = useCallback((nodeId: string) => navigate(graphHash({ ...state, node: nodeId, entry: null })), [state]);
-  const selectElsewhere = useCallback((nodeId: string) => navigate(selectHash(state, index, scene.structure, nodeId)), [state, index, scene]);
+  // The Domain | Structural switch comes back to this place; a note about a mode switch belongs to the node it was made for.
+  useEffect(() => {
+    ui.places.current = rememberPlace(ui.places.current, hash);
+  }, [hash]);
+  useEffect(() => {
+    if (ui.modeSwitch !== null && ui.modeSwitch.node !== state.node) ui.setModeSwitch(null);
+  }, [state.node]);
+
+  // A node the mode does not draw is selected in Deep dive (design D1), and the sidebar says the mode was switched.
+  const inMode = useCallback((nodeId: string): GraphState => {
+    const { mode, switched } = modeForNode(state.mode, index.nodesById.get(nodeId)?.type);
+    if (switched !== null) ui.setModeSwitch({ node: nodeId, from: switched });
+    return { ...state, mode };
+  }, [state, index, ui]);
+  const select = useCallback((nodeId: string) => navigate(graphHash({ ...inMode(nodeId), node: nodeId, entry: null })), [inMode]);
+  const selectElsewhere = useCallback((nodeId: string) => navigate(selectHash(inMode(nodeId), index, scene.structure, nodeId)), [inMode, index, scene]);
   const clearSelection = useCallback(() => navigate(clearSelectionHash(state)), [state]);
   const actions: LevelActions = useMemo(() => ({
     open: (entry: LevelEntry) => entry.target && navigate(levelHash(state, entry.target.path, entry.target.fold)),
@@ -83,14 +100,31 @@ function GraphWorkspace({ scene }: { scene: GraphScene }) {
   return (
     <>
       {state.focus && node ? (
-        <FocusView scene={scene} centerId={node.id} filters={ui.filters} onSelect={select} onExit={() => navigate(setFocusHash(state, false))} />
+        <FocusView scene={scene} centerId={node.id} filters={ui.filters} mode={state.mode} onSelect={select} onExit={() => navigate(setFocusHash(state, false))} />
       ) : level ? (
         <LevelView scene={scene} level={level} state={state} filters={ui.filters} actions={actions} />
       ) : (
         <NoLevel />
       )}
-      <Panel slot="sidebar" open={state.node !== null} title={node?.name ?? state.node ?? ''} onClose={clearSelection} closeOnEscape={false}>
-        {node ? (
+      <Panel
+        slot="sidebar"
+        open={state.node !== null || (state.entry === null && ui.idleOpen)}
+        title={state.node !== null ? (node?.name ?? state.node) : idleTitle(state.mode)}
+        onClose={state.node !== null ? clearSelection : () => ui.setIdleOpen(false)}
+        closeOnEscape={false}
+        exitAtOnce={state.entry !== null}
+      >
+        {state.node === null ? (
+          <IdleSidebar
+            mode={state.mode}
+            scene={scene}
+            onSelectNode={selectElsewhere}
+            onOpenLayer={(path) => navigate(levelHash(state, path, null))}
+            onStartTour={() => replaceHash(withMode(window.location.hash, 'learn'))}
+          />
+        ) : node ? (
+          <>
+          {ui.modeSwitch !== null && ui.modeSwitch.node === node.id && state.mode === 'deep' ? <ModeSwitchNote from={ui.modeSwitch.from} to={state.mode} type={node.type} /> : null}
           <NodeDetails
             scene={scene}
             node={node}
@@ -100,6 +134,7 @@ function GraphWorkspace({ scene }: { scene: GraphScene }) {
             onFocus={() => navigate(setFocusHash(state, !state.focus))}
             onStartPath={() => ui.setOverlay('path')}
           />
+          </>
         ) : (
           <p className="m-0 text-muted">The graph has no node with this id.</p>
         )}

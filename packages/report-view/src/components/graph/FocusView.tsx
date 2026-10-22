@@ -12,6 +12,7 @@ import { formatNumber } from '../../lib/format';
 import { FOCUS_LIMIT, focusSet, type FocusSet } from '../../lib/graph-focus';
 import { shownEdgeTypes, type GraphFilters } from '../../lib/graph-filters';
 import { visibilityOf } from '../../lib/graph-visibility';
+import { hiddenTypes, OVERVIEW_NOTE, type Mode } from '../../lib/view-mode';
 import { DURATION } from '../../lib/motion';
 import { useGraphUi } from '../../state/graph-ui';
 import { nodeColor } from '../../lib/node-colors';
@@ -59,15 +60,18 @@ function useForceLayout(key: string, set: FocusSet): { laid: Laid | null; failur
 }
 
 /** The node's neighbours and the edges among them, drawn by a force layout run in a worker. */
-export function FocusView({ scene, centerId, filters, onSelect, onExit }: {
+export function FocusView({ scene, centerId, filters: chosen, mode, onSelect, onExit }: {
   scene: GraphScene;
   centerId: string;
   filters: GraphFilters;
+  /** Overview leaves out function and class neighbours, as a hidden node type does (design D1). */
+  mode: Mode;
   onSelect: (nodeId: string) => void;
   onExit: () => void;
 }) {
   const { model, structure, choices } = scene;
   const { index } = model;
+  const filters = useMemo(() => ({ ...chosen, nodeTypes: hiddenTypes(mode, chosen.nodeTypes) }), [chosen, mode]);
   const reduce = useReducedMotion();
   const { fitView } = useReactFlow();
   const ui = useGraphUi();
@@ -78,11 +82,18 @@ export function FocusView({ scene, centerId, filters, onSelect, onExit }: {
   const edgeTypes = useMemo(() => shownEdgeTypes(filters, choices.edgeTypes, true), [filters, choices]);
   const visibility = useMemo(() => visibilityOf(index, structure, filters), [index, structure, filters]);
   const set = useMemo(() => focusSet(index, centerId, { edgeTypes, nodeVisible: visibility?.nodeVisible }), [index, centerId, edgeTypes, visibility]);
+  // The neighbours are counted as in any other mode (the mode changes no count); Overview only leaves its hidden types undrawn.
+  const counted = useMemo(() => {
+    if (mode !== 'overview') return set;
+    const chosenVisibility = visibilityOf(index, structure, chosen);
+    return focusSet(index, centerId, { edgeTypes: shownEdgeTypes(chosen, choices.edgeTypes, true), nodeVisible: chosenVisibility?.nodeVisible });
+  }, [mode, set, index, structure, chosen, choices, centerId]);
+  const undrawn = counted.neighbours.length - set.neighbours.length;
   const key = `${centerId}|${[...edgeTypes].sort().join(',')}|${[...filters.nodeTypes].sort().join(',')}|${[...filters.layers].sort().join(',')}`;
   const { laid, failure } = useForceLayout(key, set);
 
   useReady(failure ? 'error' : laid ? 'ready' : 'loading');
-  useCounts(laid ? { 'focus-nodes': set.neighbours.length, 'focus-drawn': set.drawn.length, 'focus-edges': set.edges.length } : null);
+  useCounts(laid ? { 'focus-nodes': counted.neighbours.length, 'focus-drawn': set.drawn.length, 'focus-edges': set.edges.length } : null);
   useSignal('focus-ms', laid ? laid.ms.toFixed(1) : null);
   useSignal('focus-center', laid ? centerId : null);
 
@@ -190,11 +201,16 @@ export function FocusView({ scene, centerId, filters, onSelect, onExit }: {
             </button>
           </div>
           <p className="mt-1.5 text-xs text-muted">
-            {set.neighbours.length === 0
+            {counted.neighbours.length === 0
               ? 'This node has no neighbours under the current filters.'
-              : `${formatNumber(set.neighbours.length)} neighbour${set.neighbours.length === 1 ? '' : 's'}: the nodes at the other end of its edges`}
+              : `${formatNumber(counted.neighbours.length)} neighbour${counted.neighbours.length === 1 ? '' : 's'}: the nodes at the other end of its edges`}
             {edgeTypeCounts.length > 0 ? `. Edges shown: ${edgeTypeCounts.map(([type, n]) => `${formatNumber(n)} ${type}`).join(', ')}.` : '.'}
           </p>
+          {mode === 'overview' ? (
+            <p data-xv-mode-note="" data-xv-undrawn={undrawn} className="mt-1 text-xs text-muted">
+              {`${OVERVIEW_NOTE} ${formatNumber(undrawn)} of these neighbours ${undrawn === 1 ? 'is a function or class' : 'are functions or classes'}, not drawn here.`}
+            </p>
+          ) : null}
           {set.neighbours.length > FOCUS_LIMIT ? <p className="mt-1 text-xs text-muted">{`The first ${formatNumber(FOCUS_LIMIT)} neighbours by name are drawn; ${formatNumber(set.neighbours.length - FOCUS_LIMIT)} more are not.`}</p> : null}
         </Panel>
       </ReactFlow>

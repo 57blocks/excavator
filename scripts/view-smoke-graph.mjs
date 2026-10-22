@@ -34,8 +34,8 @@
  *     more, and no text of a card runs out of its box);
  *   - edge-labels: on a crowded level (top and drilled) a selected node lights its edges and labels none of them; the edge under the pointer
  *     shows its label alone, on an opaque box above the cards;
- *   - topbar-768, topbar-1024, topbar-1280: the top bar's controls do not overlap, overflow or wrap, the search box is at least 160 px, and
- *     the Hotspots overlay switches on and off (behind the Overlays menu below 1280 px);
+ *   - topbar-768, topbar-1024, topbar-1280: the top bar's controls do not overlap, overflow or wrap, the search box is at least 160 px,
+ *     the Hotspots overlay switches on and off (behind the Overlays menu below 1280 px), and the mode switch sets the mode;
  *   - longfile, longfile-restore: a function of a file expanded to a hundred and twenty rows is located, and the camera is on it at a readable
  *     zoom instead of fitting the whole file;
  *   - products-redirect (openspec: changes/viewer-learn, design D9): a bookmark of the old `#/overview` and a move to it both open the
@@ -50,8 +50,17 @@
  *     row the product lacks is said so with no panel); prefix-filter (`prefix=` keeps the rows an independent count over the product
  *     finds, and the clear button takes it off); detail-numbers (the tiles, bars, years, histogram and product cards against the
  *     product); reduced-motion (no animation runs on the detail pages or in the row panel).
+ *   - the modes and the idle sidebar (changes/viewer-learn, tasks 4.1-4.3): overview-mode (at the top level and two drilled levels Overview
+ *     draws no function or class and no file opens to one, while every card and count equals Deep dive's); mode-search-switch (a class or
+ *     function found in Overview switches to Deep dive, is located and selected, and the sidebar says so; back returns to Overview);
+ *     domain-structural and domain-structural-notrun (the Domain | Structural switch returns each side to its level and selection, and is
+ *     absent without a readable domain graph); project-overview (every number of the overview against a count over the packed files, a
+ *     top node, a layer, Start tour and a hotspot link with its row panel); learn-notrun and learn-digest (the tour's state in Learn);
+ *     reduced-motion-idle; and the top bar scenarios check the mode switch at each width.
+ *   - page-column-1440, page-column-1920, page-column-768: on Products and Unused the page column is centred in the main area (its
+ *     left and right gaps differ by at most 1 px), and at 768 px nothing scrolls sideways.
  *
- *   node scripts/view-smoke-graph.mjs [levels|history|search|drawer|focus|path|filters|keys|layers|summary|overlays|clearance|notrun|restore|locate|locate-tables|domain|domain-history|domain-restore|domain-keys|domain-products|domain-notrun|domain-digest|domain-fit|edge-labels|topbar-768|topbar-1024|topbar-1280|longfile|longfile-restore|products-redirect|fonts|row-panel-unused|row-panel-hotspots|row-link|row-link-reload|prefix-filter|detail-numbers|reduced-motion ...]
+ *   node scripts/view-smoke-graph.mjs [levels|history|search|drawer|focus|path|filters|keys|layers|summary|overlays|clearance|notrun|restore|locate|locate-tables|domain|domain-history|domain-restore|domain-keys|domain-products|domain-notrun|domain-digest|domain-fit|edge-labels|topbar-768|topbar-1024|topbar-1280|longfile|longfile-restore|products-redirect|fonts|row-panel-unused|row-panel-hotspots|row-link|row-link-reload|prefix-filter|detail-numbers|reduced-motion|overview-mode|mode-search-switch|domain-structural|domain-structural-notrun|project-overview|learn-notrun|learn-digest|reduced-motion-idle|page-column-1440|page-column-1920|page-column-768 ...]
  *
  * Needs `pnpm build` (the template) and a local Chrome. Prints one line per
  * check and exits 1 when any fails.
@@ -60,7 +69,7 @@
 import { spawnSync } from 'node:child_process';
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { basename, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { packProject } from '../skills/excavator-view/pack.mjs';
@@ -1393,8 +1402,275 @@ const SCENARIOS = [
   `), (out) => [
     ['reduced-motion: no animation runs on the detail pages, the rows do not stagger, and the row panel opens at once', out.pages && Object.values(out.pages).every((p) => p.running.length === 0 && p.rows === 0) && out.panel?.length === 0, out],
   ], { reducedMotion: true }],
+  // The modes (openspec: changes/viewer-learn, task 4.1). The same places in Deep dive and in Overview: Overview draws no function or
+  // class (every file that can be opened is opened, so a row that leaked would be drawn), and every card and count is Deep dive's.
+  ['overview-mode', 'classes', (graph, expected) => driver(`
+    const [l0, l1, l2] = ${JSON.stringify(graph.levels)};
+    const at = (path) => until(() => level() === path + '#');
+    const cards = () => all('[data-xv-entry]').filter((el) => !['child', 'more'].includes(el.getAttribute('data-xv-entry'))).map((el) => el.getAttribute('aria-label')).sort();
+    const place = async () => {
+      await sleep(150);
+      const toggles = all('[data-xv-entry="file"] button[aria-expanded="false"]');
+      for (const t of toggles) t.click();
+      if (toggles.length > 0) { await until(() => q('[data-xv-entry="child"]'), 80); await sleep(250); }
+      const rows = all('[data-xv-entry="child"]').map((el) => el.getAttribute('data-xv-type'));
+      return {
+        level: level(), mode: route().params.mode ?? null, cards: cards(), toggles: toggles.length, rows,
+        hidden: rows.filter((t) => t === 'function' || t === 'class').length,
+        drawnHidden: all('.react-flow__node [data-xv-type="function"], .react-flow__node [data-xv-type="class"]').length,
+        counts: [attr('data-xv-count-graph-level-nodes'), attr('data-xv-count-graph-level-files'), attr('data-xv-count-graph-folded')],
+        note: q('[data-xv-mode-note]')?.textContent ?? null,
+      };
+    };
+    for (const mode of ['deep', 'overview']) {
+      const seen = [];
+      await go('#/graph?mode=' + mode); await at(l0.path);
+      seen.push(await place());
+      q('[data-xv-label="' + l0.open + '"]').click(); await at(l1.path);
+      seen.push(await place());
+      q('[data-xv-label="' + l1.open + '"]').click(); await at(l2.path);
+      seen.push(await place());
+      await go('#/graph?path=' + encodeURIComponent(${JSON.stringify(graph.interaction.search[1].level)}) + '&mode=' + mode);
+      seen.push(await place());
+      out[mode] = seen;
+      // The focus of a file: the same neighbour count in either mode, and in Overview the functions and classes among them are not drawn.
+      await go('#/graph?path=' + encodeURIComponent(${JSON.stringify(graph.interaction.search[1].level)}) + '&node=' + encodeURIComponent('file:src/main.js') + '&focus=1&mode=' + mode);
+      await until(() => attr('data-xv-count-focus-nodes') !== null); await sleep(150);
+      out[mode + 'Focus'] = { nodes: attr('data-xv-count-focus-nodes'), drawn: all('[data-xv-entry="focus-neighbour"]').map((el) => el.getAttribute('aria-label').split(' ')[0]), undrawn: q('[data-xv-mode-note]')?.getAttribute('data-xv-undrawn') ?? null };
+    }
+  `), (out, graph, expected) => {
+    const places = ['top', 'drilled once', 'drilled twice', expected.classes.level];
+    const deep = out.deep ?? [];
+    const overview = out.overview ?? [];
+    return [
+      ['overview-mode: Deep dive draws functions or classes in the files it opens (the control)', deep.slice(1).every((p) => p.hidden > 0) && deep.every((p) => p.note === null), deep],
+      ...places.map((name, i) => [`overview-mode: at ${name}, Overview draws no function or class and says so on the graph`, overview[i]?.hidden === 0 && overview[i].drawnHidden === 0 && /function and class nodes are hidden/.test(overview[i].note ?? '') && overview[i].mode === 'overview', overview[i]]),
+      ...places.map((name, i) => [`overview-mode: at ${name}, every card and count is Deep dive's`, overview[i] && JSON.stringify(overview[i].cards) === JSON.stringify(deep[i]?.cards) && JSON.stringify(overview[i].counts) === JSON.stringify(deep[i]?.counts) && overview[i].level === deep[i].level, [overview[i], deep[i]]]),
+      ['overview-mode: a file that owns only functions cannot be opened in Overview, and one that also owns a variable opens to the variable only', overview[1]?.toggles === 0 && overview[2]?.toggles === 0 && JSON.stringify(overview[3]?.rows) === JSON.stringify(['variable']) && deep[3]?.rows.length > 1, overview],
+      ['overview-mode: a focus counts the same neighbours in Overview, draws none that is a function or class, and says how many it leaves undrawn', out.overviewFocus?.nodes === out.deepFocus?.nodes && Number(out.deepFocus.nodes) > 0 && out.overviewFocus.drawn.every((t) => t !== 'function' && t !== 'class') && Number(out.overviewFocus.undrawn) === out.deepFocus.drawn.filter((t) => t === 'function' || t === 'class').length && Number(out.overviewFocus.undrawn) > 0, [out.overviewFocus, out.deepFocus]],
+      ['overview-mode: the mode stays in the address through the drill-down', overview.every((p) => p.mode === 'overview') && deep.every((p) => p.mode === 'deep'), [overview.map((p) => p.mode), deep.map((p) => p.mode)]],
+    ];
+  }],
+
+  // A search in Overview that finds a class or a function switches to Deep dive, locates and selects it, and the sidebar says so; a file
+  // found in Overview, and anything found in Deep dive, changes no mode.
+  ['mode-search-switch', 'classes', (graph, expected) => driver(`
+    const c = ${JSON.stringify(expected.classes)};
+    const input = q('[data-xv-search]');
+    const find = async (query, id) => {
+      input.focus(); setValue(input, query);
+      const hit = await until(() => q('[data-xv-hit="' + id + '"]'));
+      hit && hit.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
+      await until(() => route().params.node === id && sidebar() === id);
+      await sleep(250);
+      return {
+        found: !!hit, mode: route().params.mode ?? null, level: level(), marks: all('.xv-selected').length, drawn: !!q('.react-flow__node [data-xv-node="' + id + '"]'),
+        note: q('aside[data-xv-panel="sidebar"] [data-xv-mode-switched]')?.getAttribute('data-xv-mode-switched') ?? null,
+        noteText: q('aside[data-xv-panel="sidebar"] [data-xv-mode-switched]')?.textContent ?? null,
+        pressed: q('[data-xv-modes] [aria-pressed="true"]')?.getAttribute('data-xv-mode') ?? null,
+        graphNote: !!q('[data-xv-mode-note]'),
+      };
+    };
+    await go('#/graph?mode=overview');
+    out.cls = await find(c.className, c.classId);
+    // The sidebar leaves with its exit animation: wait for it to go (the idle sidebar starts closed at 1280 px).
+    history.back(); await until(() => !route().params.node && !q('aside[data-xv-panel="sidebar"]')); await sleep(100);
+    out.back = { mode: route().params.mode ?? null, note: !!q('[data-xv-mode-switched]'), pressed: q('[data-xv-modes] [aria-pressed="true"]')?.getAttribute('data-xv-mode') ?? null };
+    out.fn = await find('helper', 'function:src/util.js:helper');
+    await go('#/graph?mode=overview');
+    out.file = await find('util.js', 'file:src/util.js');
+    await go('#/graph?mode=deep');
+    out.deep = await find('helper', 'function:src/util.js:helper');
+  `), (out, graph, expected) => [
+    ['mode-search-switch: a class found in Overview switches to Deep dive, is drawn, selected and in the sidebar', out.cls?.found && out.cls.mode === 'deep' && out.cls.pressed === 'deep' && out.cls.drawn && out.cls.marks === 1 && out.cls.level === `${expected.classes.level}#` && !out.cls.graphNote, out.cls],
+    ['mode-search-switch: the sidebar says the mode was switched, from which and why', out.cls?.note === 'overview>deep' && /Mode switched from Overview to Deep dive/.test(out.cls.noteText ?? '') && /class/.test(out.cls.noteText), out.cls],
+    ['mode-search-switch: back returns to Overview, with no note', out.back?.mode === 'overview' && out.back.pressed === 'overview' && out.back.note === false, out.back],
+    ['mode-search-switch: a function found in Overview switches too', out.fn?.mode === 'deep' && out.fn.note === 'overview>deep' && out.fn.drawn, out.fn],
+    ['mode-search-switch: a file found in Overview, and a function found in Deep dive, change no mode and carry no note', out.file?.mode === 'overview' && out.file.note === null && out.file.marks === 1 && out.deep?.mode === 'deep' && out.deep.note === null, [out.file, out.deep]],
+  ]],
+
+  // Domain | Structural (task 4.2): each side keeps its level and its selection, and the switch carries the mode.
+  ['domain-structural', 'layers', (graph, expected) => driver(`
+    const [l0, l1] = ${JSON.stringify(graph.levels)};
+    const d = ${JSON.stringify(expected.domain)};
+    const at = (path) => until(() => level() === path + '#');
+    const dlevel = () => attr('data-xv-domain-level');
+    const sw = (view) => q('[data-xv-switch="' + view + '"]');
+    await go('#/graph?mode=deep'); await at(l0.path);
+    q('[data-xv-label="' + l0.open + '"]').click(); await at(l1.path);
+    const file = q('[data-xv-entry="file"]'); const fileId = file.getAttribute('data-xv-node');
+    file.click(); await until(() => sidebar() === fileId);
+    out.graph = { hash: location.hash, pressed: [sw('graph')?.getAttribute('aria-pressed'), sw('domain')?.getAttribute('aria-pressed')], nav: all('nav[aria-label="Pages"] [data-xv-nav]').map((a) => a.getAttribute('data-xv-nav')) };
+    sw('domain').click();
+    await until(() => route().page === 'domain' && dlevel() === 'top'); await sleep(200);
+    out.domainTop = { hash: location.hash, pressed: sw('domain')?.getAttribute('aria-pressed') };
+    q('[data-xv-domain-entry="domain"][data-xv-node="domain:app"]').click();
+    await until(() => dlevel() === d.domain.level); await sleep(200);
+    q('[data-xv-domain-entry="flow"][data-xv-node="' + d.flow.id + '"]').click();
+    await until(() => dlevel() === d.flow.level); await sleep(200);
+    q('[data-xv-domain-entry="step"][data-xv-node="' + d.step.id + '"]').click();
+    await until(() => sidebar() === d.step.id);
+    out.domain = { hash: location.hash, level: dlevel() };
+    // Short waits from here: on a page that loses the place each runs out, and the checks still say which step failed.
+    sw('graph').click();
+    await until(() => route().page === 'graph', 80); await until(() => level() === l1.path + '#', 80); await until(() => sidebar() === fileId, 80);
+    out.back = { hash: location.hash, level: level(), node: route().params.node ?? null, sidebar: sidebar(), marks: all('.xv-selected').length };
+    sw('domain').click();
+    await until(() => route().page === 'domain' && dlevel() === d.flow.level, 80); await until(() => sidebar() === d.step.id, 80);
+    out.again = { hash: location.hash, level: dlevel(), sidebar: sidebar() };
+    history.back(); await until(() => route().page === 'graph', 80); await until(() => level() === l1.path + '#', 80);
+    out.history = { hash: location.hash };
+  `), (out, graph, expected) => {
+    const [, l1] = graph.levels;
+    const d = expected.domain;
+    return [
+      ['domain-structural: the switch is above the graph with Structural pressed, and the navigation keeps Graph and Domain', JSON.stringify(out.graph?.pressed) === '["true","false"]' && out.graph.nav.includes('graph') && out.graph.nav.includes('domain'), out.graph],
+      ['domain-structural: Domain opens the domain graph at its top level the first time, in the same mode', out.domainTop?.pressed === 'true' && /^#\/domain/.test(out.domainTop.hash) && /mode=deep/.test(out.domainTop.hash), out.domainTop],
+      ['domain-structural: Structural returns to the same level with the same selection', out.back?.hash === out.graph?.hash && out.back.level === `${l1.path}#` && out.back.sidebar === out.back.node && out.back.marks === 1, [out.graph, out.back]],
+      ['domain-structural: Domain returns to the same flow with the same step selected', out.again?.hash === out.domain?.hash && out.again.level === d.flow.level && out.again.sidebar === d.step.id, [out.domain, out.again]],
+      ['domain-structural: each switch is a step in the history', out.history?.hash === out.graph?.hash, out.history],
+    ];
+  }],
+  ['domain-structural-notrun', 'domain-notrun', () => driver(`
+    await go('#/graph');
+    await sleep(300);
+    out.switches = all('[data-xv-switch]').length;
+  `), (out) => [
+    ['domain-structural: a page without a readable domain graph shows no Domain | Structural switch', out.switches === 0, out.switches],
+  ]],
+
+  // The project overview (task 4.3): every number equals the fixture's, counted here from the packed files on their own.
+  ['project-overview', 'classes', (graph, expected) => driver(`
+    const side = () => q('aside[data-xv-panel="sidebar"]');
+    // At 1440 px the idle sidebar is open from the start.
+    out.atStart = { idle: side()?.querySelector('[data-xv-idle]')?.getAttribute('data-xv-idle') ?? null, button: !!q('[data-xv-action="show-idle"]') };
+    await go('#/graph?mode=deep');
+    await until(() => side()?.querySelector('[data-xv-project-overview]'));
+    await until(() => q('[data-xv-highlight="unused-total"]') && q('[data-xv-highlight="hot-file"]'));
+    await sleep(150);
+    const section = (name) => q('[data-xv-overview="' + name + '"]');
+    const bars = (name) => Object.fromEntries([...section(name).querySelectorAll('[data-xv-bar-row]')].map((li) => [li.getAttribute('data-xv-bar-row'), Number(li.lastElementChild.lastElementChild.textContent.replace(/,/g, ''))]).sort(([a], [b]) => (a < b ? -1 : 1)));
+    out.view = {
+      idle: side().querySelector('[data-xv-idle]')?.getAttribute('data-xv-idle'), title: side().getAttribute('aria-label'),
+      name: q('[data-xv-overview-name]')?.textContent ?? null, description: q('[data-xv-overview-description]')?.textContent ?? null,
+      nameFont: getComputedStyle(q('[data-xv-overview-name]')).fontFamily,
+      tiles: Object.fromEntries(all('[data-xv-overview="tiles"] [data-xv-stat]').map((el) => [el.getAttribute('data-xv-stat'), Number(el.querySelector('[data-xv-stat-value]').getAttribute('data-xv-stat-value'))])),
+      stack: section('stack').textContent,
+      types: bars('types'), complexity: bars('complexity'), complexityNote: section('complexity').textContent,
+      connected: all('[data-xv-top-node]').map((el) => [el.getAttribute('data-xv-top-node'), Number(el.getAttribute('data-xv-degree'))]),
+      layers: all('[data-xv-layer]').map((el) => [el.textContent.replace(/\\d+ files?$/, '').trim(), Number(el.getAttribute('data-xv-files'))]).sort(),
+      unused: Number(q('[data-xv-highlight="unused-total"]').getAttribute('data-xv-value')), unusedHref: q('[data-xv-highlight="unused-total"]').getAttribute('href'), byConfidence: bars('unused'),
+      hot: all('[data-xv-highlight="hot-file"]').map((a) => [a.getAttribute('data-xv-path'), a.getAttribute('href')]),
+      tour: !!q('[data-xv-action="start-tour"]'),
+    };
+    // A top node selects it; Esc gives the overview back; a layer opens its level.
+    const top = q('[data-xv-top-node]'); const topId = top.getAttribute('data-xv-top-node');
+    top.click(); await until(() => sidebar() === topId);
+    out.selected = { node: route().params.node ?? null, sidebar: sidebar() };
+    history.back(); await until(() => side()?.querySelector('[data-xv-project-overview]'));
+    const layer = q('[data-xv-layer]'); const files = layer.getAttribute('data-xv-files');
+    layer.click(); await until(() => level() !== '#'); await settle();
+    out.layer = { level: level(), files: attr('data-xv-count-graph-level-files'), expected: files };
+    // Start tour switches to Learn: the sidebar lists the tour's steps.
+    await go('#/graph?mode=overview');
+    await until(() => q('[data-xv-action="start-tour"]'));
+    q('[data-xv-action="start-tour"]').click();
+    await until(() => q('[data-xv-tour-state]'));
+    await until(() => q('[data-xv-tour-step]'));
+    out.learn = { mode: route().params.mode ?? null, state: q('[data-xv-tour-state]').getAttribute('data-xv-tour-state'), steps: q('[data-xv-tour-steps]')?.getAttribute('data-xv-tour-steps'), titles: all('[data-xv-tour-step]').map((el) => el.lastElementChild.textContent), pressed: q('[data-xv-modes] [aria-pressed="true"]')?.getAttribute('data-xv-mode') ?? null };
+    // A hotspot opens the Files view with its row's panel.
+    await go('#/graph?mode=deep');
+    const hot = await until(() => q('[data-xv-highlight="hot-file"]'));
+    const path = hot.getAttribute('data-xv-path');
+    hot.click();
+    const panel = await until(() => q('aside[data-xv-panel="sidebar"] [data-xv-row-panel="' + path + '"]'));
+    out.hotLink = { path, hash: location.hash, panel: !!panel, selected: q('tr[data-xv-row-selected]')?.getAttribute('data-xv-row') ?? null };
+  `), (out, graph, expected) => {
+    const e = expected.overview;
+    const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+    const v = out.view ?? {};
+    return [
+      ['project-overview: at 1440 px the idle sidebar is open from the start, in Learn', out.atStart?.idle === 'learn' && out.atStart.button === false, out.atStart],
+      ['project-overview: with nothing selected in Deep dive the sidebar is the project overview, with the name in the heading font and the domain graph\'s description', v.idle === 'deep' && v.name === e.name && v.description === e.description && /^"?DM Serif Display"?,/.test(v.nameFont ?? ''), v],
+      ['project-overview: the tiles are the node and edge records, the layers and the file nodes', same(v.tiles, e.tiles), [v.tiles, e.tiles]],
+      ['project-overview: the languages and frameworks are the graph header\'s', e.languages.every((l) => v.stack?.includes(l)) && /No framework recorded/.test(v.stack ?? ''), v.stack],
+      ['project-overview: the node types and the complexity counts are the fixture\'s, with "not recorded" for nodes without complexity, and say which field', same(v.types, e.types) && same(v.complexity, e.complexity) && /complexity field/.test(v.complexityNote ?? ''), [v.types, e.types, v.complexity, e.complexity]],
+      ['project-overview: the five most connected nodes, by edge records in and out, ties by name then id', same(v.connected, e.connected), [v.connected, e.connected]],
+      ['project-overview: the layers with their file counts', same(v.layers, e.layers), [v.layers, e.layers]],
+      ['project-overview: the unused total and its counts by confidence, linking to the Unused page', v.unused === e.unused.total && same(v.byConfidence, e.unused.byConfidence) && v.unusedHref === '#/unused', [v.unused, v.byConfidence, e.unused]],
+      ['project-overview: the three hottest files, each linking to its row', same(v.hot, e.hot), [v.hot, e.hot]],
+      ['project-overview: a top node selects it, and back gives the overview back', out.selected?.node === e.connected[0][0] && out.selected.sidebar === e.connected[0][0], out.selected],
+      ['project-overview: a layer opens its level, with the file count it showed', out.layer?.files === out.layer?.expected && out.layer.level !== '#', out.layer],
+      ['project-overview: Start tour switches to Learn and the sidebar lists the tour\'s steps', v.tour && out.learn?.mode === null && out.learn.pressed === 'learn' && out.learn.state === 'included' && out.learn.steps === String(e.tour.length) && same(out.learn.titles, e.tour), out.learn],
+      ['project-overview: a hotspot link opens the Files view with that row\'s panel', out.hotLink?.path === e.hot[0][0] && out.hotLink.panel && out.hotLink.selected === out.hotLink.path && out.hotLink.hash === e.hot[0][1], out.hotLink],
+    ];
+  }, { width: 1440 }],
+
+  // Learn with nothing selected: the tour product's state, for a tour never made and one made from other facts.
+  ['learn-notrun', 'directories', () => driver(`
+    await go('#/graph');
+    // At 1280 px the idle sidebar starts closed; the button on the graph opens it.
+    await sleep(200);
+    const show = q('[data-xv-action="show-idle"]');
+    out.atStart = { sidebar: !!q('aside[data-xv-panel="sidebar"]'), button: show?.textContent ?? null };
+    show?.click();
+    const state = await until(() => q('aside[data-xv-panel="sidebar"] [data-xv-tour-state]'));
+    out.learn = { idle: q('[data-xv-idle]')?.getAttribute('data-xv-idle'), state: state?.getAttribute('data-xv-tour-state'), command: q('[data-xv-tour-command]')?.textContent ?? null, text: state?.textContent ?? '' };
+    await go('#/graph?mode=overview');
+    await until(() => q('[data-xv-project-overview]'));
+    out.overview = { tour: !!q('[data-xv-action="start-tour"]'), description: !!q('[data-xv-overview-description]'), highlights: all('[data-xv-highlight-state]').map((el) => el.getAttribute('data-xv-highlight-state')) };
+  `), (out) => [
+    ['learn-notrun: at 1280 px the idle sidebar starts closed, and the graph has a button that opens it', out.atStart?.sidebar === false && out.atStart.button === 'Tour', out.atStart],
+    ['learn-notrun: Learn is the default and its idle sidebar says the tour was not run, with the command', out.learn?.idle === 'learn' && out.learn.state === 'not-run' && out.learn.command === '/excavator-tour' && /Not run/.test(out.learn.text) && !/not built/i.test(out.learn.text), out.learn],
+    ['learn-notrun: the overview has no Start tour button and no description when there is no tour or domain graph', out.overview?.tour === false && out.overview.description === false, out.overview],
+  ]],
+  ['learn-digest', 'tour-digest', (graph, expected) => driver(`
+    await go('#/graph');
+    (await until(() => q('[data-xv-action="show-idle"]')))?.click();
+    const state = await until(() => q('aside[data-xv-panel="sidebar"] [data-xv-tour-state="different-revision"]'));
+    out.learn = { tour: q('[data-xv-tour-digest="tour"]')?.textContent ?? null, graph: q('[data-xv-tour-digest="graph"]')?.textContent ?? null, steps: all('[data-xv-tour-step]').length, found: !!state };
+  `), (out, graph, expected) => [
+    ['learn-digest: a tour made from other facts says so, with both digests and no steps', out.learn?.found && out.learn.tour === expected.tourDigest && out.learn.graph === expected.tour.factDigest && out.learn.steps === 0, out.learn],
+  ]],
+  // Reduced motion on the graph page's idle sidebar: the overview's tiles and bars and the tour's state are drawn at once.
+  ['reduced-motion-idle', 'classes', () => driver(`
+    const running = () => document.getAnimations().filter((a) => a.playState === 'running').map((a) => a.animationName || a.constructor.name);
+    out.views = {};
+    for (const hash of ['#/graph?mode=deep', '#/graph?mode=overview', '#/graph', '#/domain?mode=deep']) {
+      await go(hash);
+      await until(() => q('[data-xv-project-overview] [data-xv-highlight="hot-file"]') || q('[data-xv-tour-step]'));
+      await sleep(80);
+      out.views[hash] = { running: running(), idle: q('[data-xv-idle]')?.getAttribute('data-xv-idle') ?? null };
+    }
+  `), (out) => [
+    ['reduced-motion-idle: no animation runs in the idle sidebar of either graph page, in any mode', out.views && Object.values(out.views).every((v) => v.running.length === 0 && v.idle !== null) && Object.keys(out.views).length === 4, out.views],
+  ], { reducedMotion: true, width: 1440 }],
   ...[768, 1024, 1280].map(topBarScenario),
+  ...[1440, 1920, 768].map(pageColumnScenario),
 ];
+
+/**
+ * The page column at `width`, on Products and Unused: from 1440 px its gaps to the main area's content box, left and right, differ
+ * by at most 1 px (the column is centred); at 768 px nothing scrolls sideways, neither the page nor the main area.
+ */
+function pageColumnScenario(width) {
+  return [`page-column-${width}`, 'layers', () => driver(`
+    out.pages = {};
+    for (const hash of ['#/products', '#/unused']) {
+      await go(hash);
+      const column = await until(() => q('[data-xv-page-column]'));
+      await sleep(150);
+      const main = q('#xv-main');
+      const box = main.getBoundingClientRect();
+      const cs = getComputedStyle(main);
+      const inner = { left: box.left + main.clientLeft + parseFloat(cs.paddingLeft), right: box.left + main.clientLeft + main.clientWidth - parseFloat(cs.paddingRight) };
+      const col = column.getBoundingClientRect();
+      out.pages[hash] = { left: col.left - inner.left, right: inner.right - col.right, width: col.width, pageScroll: document.documentElement.scrollWidth > innerWidth, mainScroll: main.scrollWidth > main.clientWidth };
+    }
+  `), (out) => Object.entries(out.pages ?? { none: null }).map(([hash, p]) => (width >= 1440
+    ? [`${width}: on ${hash} the page column's left and right gaps to the main area differ by at most 1 px`, p && Math.abs(p.left - p.right) <= 1 && p.left >= 0 && p.right >= 0, p]
+    : [`${width}: on ${hash} neither the page nor the main area scrolls sideways`, p && p.pageScroll === false && p.mainScroll === false, p])), { width }];
+}
 
 /**
  * The top bar at `width`: every control keeps its size (nothing overflows its box and no text wraps inside it), no two of them overlap, the
@@ -1435,6 +1711,13 @@ function topBarScenario(width) {
     await until(() => toggle().getAttribute('aria-pressed') === 'false');
     out.off = { pressed: toggle().getAttribute('aria-pressed'), hash: location.hash };
     if (menu) { key('Escape'); await until(() => !q('[data-xv-overlay="hotspots"]')); out.closed = !q('[data-xv-overlay="hotspots"]'); }
+    // The mode switch: three modes, Learn pressed by default; a change is kept in the address and adds no history entry.
+    const modes = all('[data-xv-modes] [data-xv-mode]');
+    out.modes = { names: modes.map((b) => b.getAttribute('aria-label')), pressed: q('[data-xv-modes] [aria-pressed="true"]')?.getAttribute('data-xv-mode') ?? null };
+    const entries = history.length;
+    q('[data-xv-mode="overview"]').click();
+    await until(() => route().params.mode === 'overview' && q('[data-xv-mode-note]'));
+    out.modes.after = { mode: route().params.mode ?? null, pressed: q('[data-xv-modes] [aria-pressed="true"]')?.getAttribute('data-xv-mode') ?? null, added: history.length - entries, note: !!q('[data-xv-mode-note]') };
   `), (out) => [
     [`${width}: no two controls of the top bar overlap`, out.bar?.overlaps.length === 0, out.bar],
     [`${width}: no control overflows its box or wraps its text, and the page does not scroll sideways`, out.bar?.overflowing.length === 0 && out.bar.wrapped.length === 0 && out.bar.pageScroll === false, out.bar],
@@ -1442,6 +1725,7 @@ function topBarScenario(width) {
     [`${width}: the overlays are ${width < 1280 ? 'behind one menu' : 'switches in the bar'}`, out.bar?.compact === (width < 1280) && (width >= 1280 || out.closed === true), [out.bar?.compact, out.closed]],
     [`${width}: the search placeholder fits the box whole, with and without the Overlays badge`, out.fit?.plain === true && out.fit.badged === true, out.fit],
     [`${width}: the Hotspots overlay switches on and off`, out.on?.pressed === 'true' && /overlay=hotspots/.test(out.on.hash) && out.off?.pressed === 'false' && !/overlay=/.test(out.off.hash), [out.on, out.off]],
+    [`${width}: the mode switch has Overview, Learn and Deep dive with Learn pressed, and a click sets the mode in the address without a history entry`, JSON.stringify(out.modes?.names) === '["Overview","Learn","Deep dive"]' && out.modes.pressed === 'learn' && out.modes.after?.mode === 'overview' && out.modes.after.pressed === 'overview' && out.modes.after.added === 0 && out.modes.after.note, out.modes],
   ], { width }];
 }
 
@@ -1499,7 +1783,7 @@ const LABEL_PROBE = `
 `;
 
 /** The modes that write the Full-mode files: the layers, the summaries and the domain graph. */
-const FULL_MODES = new Set(['layers', 'domain-notrun', 'domain-digest', 'domain-fit', 'rows', 'years']);
+const FULL_MODES = new Set(['layers', 'domain-notrun', 'domain-digest', 'domain-fit', 'rows', 'years', 'classes', 'tour-digest']);
 
 /** The number of rows `rows` adds to the unused list and the hotspots files: more than one page of a table (200 rows). */
 const EXTRA_ROWS = 250;
@@ -1620,6 +1904,79 @@ function widenDomainGraph(root) {
   return { domains: domains.length, flow: 'flow:long', steps };
 }
 
+/** The graph's records as packed: [header, nodes, edges]. */
+function graphRecords(root) {
+  const lines = readFileSync(join(root, '.excavator', 'knowledge-graph.jsonl'), 'utf-8').split('\n').filter((line) => line !== '').map((line) => JSON.parse(line));
+  return { header: lines[0], nodes: lines.filter((r) => r.record === 'node').map((r) => r.node), edges: lines.filter((r) => r.record === 'edge').map((r) => r.edge) };
+}
+
+/**
+ * `classes`: two classes and a variable join the graph (src/main.js owns a class and a variable beside its functions, lib/data.py a
+ * class), some nodes record a complexity, and the domain graph has a project description. Returns what the overview should show,
+ * counted here from the files as packed, apart from the page's own code: the tiles, the type and complexity counts, the five nodes
+ * with the most edge records in and out (ties by name, then id), the groups' file counts, and the product highlights.
+ */
+function addClasses(root) {
+  const path = join(root, '.excavator', 'knowledge-graph.jsonl');
+  const lines = readFileSync(path, 'utf-8').split('\n').filter((line) => line !== '').map((line) => JSON.parse(line));
+  const complexity = { 'function:src/main.js:main': 'simple', 'function:src/core/engine/run.js:run': 'complex', 'function:src/util.js:helper': 'moderate' };
+  for (const line of lines) if (line.record === 'node' && complexity[line.node.id]) line.node.complexity = complexity[line.node.id];
+  const added = [
+    { id: 'class:src/main.js:Session', type: 'class', name: 'Session', filePath: 'src/main.js', lineRange: [7, 9], complexity: 'moderate' },
+    { id: 'class:lib/data.py:Store', type: 'class', name: 'Store', filePath: 'lib/data.py', lineRange: [5, 6] },
+    { id: 'variable:src/main.js:VERSION', type: 'variable', name: 'VERSION', filePath: 'src/main.js', lineRange: [1, 1] },
+  ];
+  const records = [
+    ...added.map((node) => ({ record: 'node', node })),
+    ...added.map((node) => ({ record: 'edge', edge: { source: `file:${node.filePath}`, target: node.id, type: 'contains' } })),
+  ];
+  const [header, ...rest] = lines;
+  header.counts.nodes += added.length;
+  header.counts.edges += added.length;
+  writeFileSync(path, `${[header, ...rest, ...records].map((record) => JSON.stringify(record)).join('\n')}\n`);
+  const domain = readProduct(root, 'domain-graph.json');
+  const description = 'A small program that starts an engine and loads its data.';
+  writeProduct(root, 'domain-graph.json', { ...domain, project: { name: 'smoke-fixture', description } });
+
+  const { nodes, edges } = graphRecords(root);
+  const countBy = (rows, key) => rows.reduce((acc, row) => ({ ...acc, [key(row)]: (acc[key(row)] ?? 0) + 1 }), {});
+  const sorted = (object) => Object.fromEntries(Object.entries(object).sort(([a], [b]) => (a < b ? -1 : 1)));
+  const ids = new Set(nodes.map((n) => n.id));
+  const degree = new Map(nodes.map((n) => [n.id, 0]));
+  for (const e of edges) for (const end of [e.source, e.target]) if (ids.has(end)) degree.set(end, degree.get(end) + 1);
+  const byName = new Map(nodes.map((n) => [n.id, n.name]));
+  const connected = [...degree].filter(([, d]) => d > 0).sort(([a, x], [b, y]) => y - x || (byName.get(a) < byName.get(b) ? -1 : byName.get(a) > byName.get(b) ? 1 : a < b ? -1 : 1)).slice(0, 5);
+  const files = nodes.filter((n) => n.type === 'file').map((n) => n.id);
+  const layers = readProduct(root, 'semantic-graph.json').layers;
+  const layered = new Set(layers.flatMap((l) => l.nodeIds));
+  const unused = readProduct(root, 'unused-code.json').unused;
+  const hotspots = readProduct(root, 'hotspots.json').files;
+  const hot = [...hotspots].sort((a, b) => b.score - a.score || (a.path < b.path ? -1 : 1)).slice(0, 3).map((f) => [f.path, `#/hotspots?view=files&row=${encodeURIComponent(f.path)}`]);
+  return {
+    classes: { level: 'layer:app/src', className: 'Session', classId: 'class:src/main.js:Session' },
+    overview: {
+      name: basename(root),
+      description,
+      tiles: { Nodes: nodes.length, Edges: edges.length, Layers: layers.length, Files: files.length },
+      languages: graphRecords(root).header.fields.project.languages,
+      types: sorted(countBy(nodes, (n) => n.type)),
+      complexity: sorted({ simple: 0, moderate: 0, complex: 0, ...countBy(nodes, (n) => n.complexity ?? '~none') }),
+      connected,
+      layers: [...layers.map((l) => [l.name, files.filter((f) => layered.has(f) && l.nodeIds.includes(f)).length]), ['Not in any layer', files.filter((f) => !layered.has(f)).length]].sort(),
+      unused: { total: unused.length, byConfidence: sorted({ high: 0, medium: 0, low: 0, ...countBy(unused, (u) => u.confidence) }) },
+      hot,
+      tour: readProduct(root, 'tour.json').steps.map((s) => s.title),
+    },
+  };
+}
+
+/** `tour-digest`: the tour was made from other facts than the graph's. */
+function tourFromOtherFacts(root) {
+  const digest = 'd'.repeat(64);
+  writeProduct(root, 'tour.json', { ...readProduct(root, 'tour.json'), factDigest: digest });
+  return digest;
+}
+
 /** Run one scenario on a freshly packed page. */
 function runScenario([name, mode, makeDriver, scenarioCheck, extra = {}]) {
   const dir = mkdtempSync(join(tmpdir(), 'xv-graph-smoke-'));
@@ -1632,6 +1989,8 @@ function runScenario([name, mode, makeDriver, scenarioCheck, extra = {}]) {
     if (mode === 'rows') addRows(root);
     if (mode === 'years') addRootYears(root);
     if (mode === 'edge-crowd') addCrowd(root);
+    if (mode === 'classes') Object.assign(expected, addClasses(root));
+    if (mode === 'tour-digest') expected.tourDigest = tourFromOtherFacts(root);
     if (mode === 'domain-fit') expected.domain = { ...expected.domain, long: widenDomainGraph(root) };
     if (mode === 'domain-notrun') rmSync(join(root, '.excavator', 'domain-graph.json'));
     if (mode === 'domain-digest') {

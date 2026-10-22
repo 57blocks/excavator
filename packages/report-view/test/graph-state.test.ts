@@ -15,7 +15,7 @@ describe('the graph address', () => {
   it('round-trips a level, a selected node, the focus and a path, ids with every separator included', () => {
     const state: GraphState = {
       path: 'layer:app/src/core', fold: '400-800', node: 'function:src/a b.js:run(a&b)?', entry: null, focus: true,
-      from: 'file:src/a=b.js', to: 'function:x/y#z', directed: true, overlays: [], filters: NO_FILTERS,
+      from: 'file:src/a=b.js', to: 'function:x/y#z', directed: true, overlays: [], filters: NO_FILTERS, mode: 'deep',
     };
     expect(roundTrip(state)).toEqual(state);
   });

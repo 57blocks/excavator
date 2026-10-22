@@ -7,16 +7,19 @@ import { DomainView } from '../components/graph/DomainView';
 import { LoadError } from '../components/ProductPage';
 import { Panel } from '../components/shell/Panel';
 import { DomainDetails, type DomainDetailActions } from '../components/sidebar/DomainDetails';
+import { IdleSidebar, idleTitle } from '../components/sidebar/IdleSidebar';
 import { Card } from '../components/ui/Card';
 import { Page } from '../components/ui/Page';
 import { unavailableCard } from '../components/ui/ProductCards';
-import { navigate, useRoute } from '../hooks/use-route';
+import { navigate as go, replaceHash, useRoute } from '../hooks/use-route';
 import { useReady } from '../hooks/use-signals';
 import { DOMAIN_NOTE, revisionNote } from '../lib/domain-details';
 import type { DomainEntry } from '../lib/domain-flow';
 import { domainHash, drillDomainHash, drillFlowHash, parentPlaceHash, parseDomainState, resolvePlace, selectInPlaceHash, selectNodeHash } from '../lib/domain-state';
 import { selectHash } from '../lib/graph-actions';
-import { escapeStep, TOP_LEVEL } from '../lib/graph-state';
+import { escapeStep, graphHash, TOP_LEVEL } from '../lib/graph-state';
+import { modeForNode, parseMode, withMode } from '../lib/view-mode';
+import { rememberPlace } from '../lib/view-switch';
 import { loadDomainScene, type DomainScene } from '../state/domain-scene';
 import { useGraphUi } from '../state/graph-ui';
 import { useLoaded, useProduct, useViewer } from '../state/viewer';
@@ -48,13 +51,27 @@ function Notice() {
 
 /** The domain view at the place the address names, with the sidebar and the code drawer beside it. */
 function DomainWorkspace({ scene }: { scene: DomainScene }) {
-  const { route } = useRoute();
+  const { route, hash } = useRoute();
   const state = useMemo(() => parseDomainState(route.params), [route]);
+  // Every move keeps the mode of the address (design D1): the domain addresses are built without it.
+  const mode = parseMode(route.params.mode);
+  const navigate = useCallback((to: string) => go(withMode(to, mode)), [mode]);
   const place = useMemo(() => resolvePlace(scene.index, state), [scene, state]);
   const ui = useGraphUi();
   const node = state.node !== null ? (scene.index.nodesById.get(state.node) ?? null) : null;
   const here = place ?? ({ kind: 'top' } as const);
   const [drawerNode, setDrawerNode] = useState<GraphNode | null>(null);
+
+  // The Domain | Structural switch comes back to this place.
+  useEffect(() => {
+    ui.places.current = rememberPlace(ui.places.current, hash);
+  }, [hash]);
+  // A node of the structure graph opens there in this mode, or in Deep dive when this mode does not draw it.
+  const toGraph = useCallback((nodeId: string) => {
+    const { mode: shown, switched } = modeForNode(mode, scene.graph.model.index.nodesById.get(nodeId)?.type);
+    if (switched !== null) ui.setModeSwitch({ node: nodeId, from: switched });
+    go(selectHash({ ...TOP_LEVEL, mode: shown }, scene.graph.model.index, scene.graph.structure, nodeId));
+  }, [mode, scene, ui]);
 
   // The code drawer belongs to what was selected when it opened: another selection closes it.
   useEffect(() => {
@@ -66,18 +83,18 @@ function DomainWorkspace({ scene }: { scene: DomainScene }) {
   const open = useCallback((entry: DomainEntry) => {
     if (entry.openTo === null) return;
     navigate(entry.openTo.flow === null ? drillDomainHash(entry.openTo.domain) : drillFlowHash(entry.openTo.domain, entry.openTo.flow));
-  }, []);
-  const select = useCallback((id: string) => navigate(selectNodeHash(scene.index, here, id)), [scene, here]);
-  const clearSelection = useCallback(() => state.node !== null && navigate(selectInPlaceHash(here, null)), [state.node, here]);
+  }, [navigate]);
+  const select = useCallback((id: string) => navigate(selectNodeHash(scene.index, here, id)), [scene, here, navigate]);
+  const clearSelection = useCallback(() => state.node !== null && navigate(selectInPlaceHash(here, null)), [state.node, here, navigate]);
   const actions: DomainDetailActions = useMemo(() => ({
     onSelect: select,
     onOpen: (domain, flow) => navigate(flow === null ? drillDomainHash(domain) : drillFlowHash(domain, flow)),
-    onGoToGraph: (nodeId) => navigate(selectHash(TOP_LEVEL, scene.graph.model.index, scene.graph.structure, nodeId)),
+    onGoToGraph: toGraph,
     onOpenCode: (target) => {
       setDrawerNode(target);
       ui.setDrawer('open');
     },
-  }), [scene, select, ui]);
+  }), [select, ui, navigate, toGraph]);
 
   // Esc closes the innermost thing: a dialog or menu, the drawer, the selection, then a place.
   useEffect(() => {
@@ -102,13 +119,27 @@ function DomainWorkspace({ scene }: { scene: DomainScene }) {
       <Notice />
       <div className="relative min-h-0 flex-1">
         {place ? (
-          <DomainView scene={scene} place={place} selected={state.node} onOpen={open} onSelect={select} onClearSelection={clearSelection} onGo={(hash) => navigate(hash)} />
+          <DomainView scene={scene} place={place} selected={state.node} mode={mode} onOpen={open} onSelect={select} onClearSelection={clearSelection} onGo={(to) => navigate(to)} />
         ) : (
           <NoPlace />
         )}
       </div>
-      <Panel slot="sidebar" open={state.node !== null} title={node?.name ?? state.node ?? ''} onClose={clearSelection} closeOnEscape={false}>
-        {node ? <DomainDetails scene={scene} node={node} place={here} actions={actions} /> : <p className="m-0 text-muted">The domain graph has no node with this id.</p>}
+      <Panel
+        slot="sidebar"
+        open={state.node !== null || ui.idleOpen}
+        title={state.node !== null ? (node?.name ?? state.node) : idleTitle(mode)}
+        onClose={state.node !== null ? clearSelection : () => ui.setIdleOpen(false)}
+        closeOnEscape={false}
+      >
+        {state.node === null ? (
+          <IdleSidebar
+            mode={mode}
+            scene={scene.graph}
+            onSelectNode={toGraph}
+            onOpenLayer={(path) => go(graphHash({ path, mode }))}
+            onStartTour={() => replaceHash(withMode(window.location.hash, 'learn'))}
+          />
+        ) : node ? <DomainDetails scene={scene} node={node} place={here} actions={actions} /> : <p className="m-0 text-muted">The domain graph has no node with this id.</p>}
       </Panel>
       <CodeDrawer node={drawerNode} state={ui.drawer} onState={ui.setDrawer} onClose={() => ui.setDrawer('closed')} />
     </div>

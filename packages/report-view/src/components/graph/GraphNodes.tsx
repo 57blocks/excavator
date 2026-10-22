@@ -186,6 +186,7 @@ export const ChildNode = memo(function ChildNode({ id, data }: NodeProps<ChildFl
       aria-pressed={data.selected}
       data-xv-entry="child"
       data-xv-node={id}
+      data-xv-type={data.type}
       data-xv-unused={unused?.confidence}
       title={[`${data.type} ${data.name}`, unused?.title].filter(Boolean).join('\n')}
       style={unused ? { borderLeft: `3px solid ${UNUSED_ROW_COLOUR[unused.confidence]}` } : undefined}

@@ -49,6 +49,8 @@ export interface DomainPayload {
   nodes: DomainNode[];
   edges: DomainEdge[];
   gaps: unknown[];
+  /** The domain graph's `project.description`, when it writes a non-empty one. */
+  projectDescription?: string;
 }
 
 /** One step of a flow: where it stands in the flow's order, and the `flow_step` weight that put it there (null when the edge has none). */

@@ -28,7 +28,7 @@ const FULL_DRAWER = 'h-[calc(100dvh-3.5rem)] w-full border-t';
  * close button. The content is drawn into the shell's own element for the slot,
  * so the page that owns the content can keep its state.
  */
-export function Panel({ slot, open, title, onClose, closeOnEscape = true, expanded = false, actions, flush = false, children }: {
+export function Panel({ slot, open, title, onClose, closeOnEscape = true, expanded = false, actions, flush = false, exitAtOnce = false, children }: {
   slot: PanelSlot;
   open: boolean;
   title: string;
@@ -38,6 +38,8 @@ export function Panel({ slot, open, title, onClose, closeOnEscape = true, expand
   actions?: ReactNode;
   /** The content fills the panel to its edges, with no padding. */
   flush?: boolean;
+  /** Close without the exit animation: another panel takes this one's place in the slot, so the two are never drawn together. */
+  exitAtOnce?: boolean;
   children?: ReactNode;
 }) {
   const host = useContext(PanelHosts)[slot];
@@ -50,7 +52,7 @@ export function Panel({ slot, open, title, onClose, closeOnEscape = true, expand
     return () => window.removeEventListener('keydown', onKey);
   }, [open, closeOnEscape, onClose]);
 
-  if (!host) return null;
+  if (!host || (!open && exitAtOnce)) return null;
   const hidden = { opacity: 0, ...ENTER[slot] };
   const shown = { opacity: 1, x: 0, y: 0 };
   return createPortal(
