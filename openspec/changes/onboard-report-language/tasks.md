@@ -14,10 +14,10 @@
 
 ## 1. 实现
 
-- [ ] 1.1 `skills/excavator-onboard/SKILL.md`：`argument-hint`、`## Options`、`## Instructions` 开头的 Language 段、第 2 步的 `LANGUAGE`（D1）。
-- [ ] 1.2 第 7 步写到 `.excavator/onboarding-guide.md`；第 8 步、第二份 Language 段、回复命令与说明；删掉原第 8–10 步；第 2 步的过期提醒写进指南（D2–D4）。
-- [ ] 1.3 新建 `tests/skill/test_onboard_skill_contract.test.mjs`：D5 里与语言有关的各条。验证：契约测试。
-- [ ] 1.4 契约测试：D5 里与回复、保存与过期提醒有关的各条。验证：契约测试。
+- [x] 1.1 `skills/excavator-onboard/SKILL.md`：`argument-hint`、`## Options`、`## Instructions` 开头的 Language 段、第 2 步的 `LANGUAGE`（D1）。
+- [x] 1.2 第 7 步写到 `.excavator/onboarding-guide.md`；第 8 步、第二份 Language 段、回复命令与说明；删掉原第 8–10 步；第 2 步的过期提醒写进指南（D2–D4）。
+- [x] 1.3 新建 `tests/skill/test_onboard_skill_contract.test.mjs`：D5 里与语言有关的各条。验证：契约测试。
+- [x] 1.4 契约测试：D5 里与回复、保存与过期提醒有关的各条。验证：契约测试。
 
 ## 2. 验收
 
