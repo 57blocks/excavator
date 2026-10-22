@@ -35,7 +35,7 @@
 
 ## 4. 验收
 
-- [ ] 4.1 O2 全量门。
-- [ ] 4.2 O1 注入变异逐一先红后绿，记录结果。
-- [ ] 4.3 O3：go-multirepo 克隆上 `claude -p --model sonnet` 真实运行，独立验收代理核对与分层抽查。
-- [ ] 4.4 O4 `--language zh` 一次；在 design.md 末尾写验收记录，同步主规范，归档本变更。
+- [x] 4.1 O2 全量门。
+- [x] 4.2 O1 注入变异逐一先红后绿，记录结果。
+- [x] 4.3 O3：go-multirepo 克隆上 `claude -p --model sonnet` 真实运行，独立验收代理核对与分层抽查。
+- [x] 4.4 O4 `--language zh` 一次；在 design.md 末尾写验收记录，同步主规范，归档本变更。
