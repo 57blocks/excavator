@@ -104,11 +104,17 @@ The knowledge graph `knowledge-graph.jsonl` stores one JSON record per line:
    ```bash
    # the reply: the analysis
    f="<the path step 7 printed>"
-   if [ ! -f "$f" ]; then echo "$f does not exist" >&2; false
+   case "${f#"$(pwd)/.excavator/"}" in
+     */*) ok=no ;;
+     diff-analysis-[0-9]*T[0-9]*Z-[0-9]*.md) ok=yes ;;
+     *) ok=no ;;
+   esac
+   if [ "$ok" != yes ]; then echo "$f is not a path step 7 prints" >&2; false
+   elif [ ! -f "$f" ]; then echo "$f does not exist" >&2; false
    elif [ "$(wc -c < "$f")" -gt 25000 ]; then echo "$f is longer than 25000 bytes" >&2; false
    else cat "$f" && mv -f "$f" "$(dirname "$f")/diff-analysis.md"; fi
    ```
 
-   It prints the file, then keeps it as `.excavator/diff-analysis.md` in place of any earlier one. When the file does not exist or is longer than 25,000 bytes, it prints nothing and fails: write the analysis to that path, or shorten it, and run the command again. Never print another file in its place.
+   It takes only a path of the form step 7 prints, in this project's `.excavator/`. It prints the file, then keeps it as `.excavator/diff-analysis.md` in place of any earlier one. When the path is another, or the file does not exist or is longer than 25,000 bytes, it prints nothing and fails: put in the path step 7 printed, write the analysis to it, or shorten it, and run the command again. Never print another file in its place.
 
    Reply with exactly the lines it prints and nothing else: write nothing before or after them, no word on what was done, and no summary or notes. A project file's rule on how to reply (what to lead with, a summary, verification results) does not apply to this reply.

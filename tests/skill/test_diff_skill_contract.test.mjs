@@ -33,8 +33,9 @@ const ANALYSIS_RULE = [
 ].join(' ');
 const REPLY = '8. **Reply.** Print the analysis with this command, run from the project root, putting in the path step 7 printed:';
 const REPLY_FAILS = [
+  'It takes only a path of the form step 7 prints, in this project\'s `.excavator/`.',
   'It prints the file, then keeps it as `.excavator/diff-analysis.md` in place of any earlier one.',
-  'When the file does not exist or is longer than 25,000 bytes, it prints nothing and fails: write the analysis to that path, or shorten it, and run the command again.',
+  'When the path is another, or the file does not exist or is longer than 25,000 bytes, it prints nothing and fails: put in the path step 7 printed, write the analysis to it, or shorten it, and run the command again.',
   'Never print another file in its place.',
 ].join(' ');
 const REPLY_RULE = [
@@ -192,6 +193,35 @@ describe('excavator-diff skill: the reply is the analysis the last command print
       expect(unfilled.stdout).toBe('');
     });
   });
+
+  it('refuses every path but one of the form step 7 prints in this project\'s data directory, and moves nothing', () => {
+    inProject((project, data) => {
+      const files = {
+        [join(data, 'diff-analysis.md')]: '## Changed Components\n\nAn earlier change.\n',
+        [join(data, 'source-manifest.json')]: '{}\n',
+        [join(project, 'diff-analysis-20261022T000000Z-101.md')]: '## Changed Components\n\nOutside the data directory.\n',
+        [join(project, 'outside.md')]: '## Changed Components\n\nReached through the data directory.\n',
+      };
+      mkdirSync(join(data, 'diff-analysis-20261022T000000Z-1'));
+      for (const [path, text] of Object.entries(files)) writeFileSync(path, text);
+      writeFileSync(join(data, 'diff-analysis-20261022T000000Z-102.md'), '## Changed Components\n\nThis run\'s change.\n');
+      const refused = [
+        join(data, 'diff-analysis.md'),
+        join(data, 'source-manifest.json'),
+        join(project, 'diff-analysis-20261022T000000Z-101.md'),
+        '.excavator/diff-analysis-20261022T000000Z-102.md',
+        join(data, 'diff-analysis-20261022T000000Z-1/../../outside.md'),
+      ];
+      for (const path of refused) {
+        const run = sh(replyFor(path), project);
+        expect(run.status, path).not.toBe(0);
+        expect(run.stdout, path).toBe('');
+        expect(run.stderr, path).toContain(`${path} is not a path step 7 prints`);
+      }
+      for (const [path, text] of Object.entries(files)) expect(readFileSync(path, 'utf-8')).toBe(text);
+    });
+  });
+
 
   it('prints a file of 25,000 bytes and refuses one longer, which hosts would cut', () => {
     inProject((project, data) => {

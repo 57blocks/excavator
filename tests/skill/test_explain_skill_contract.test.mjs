@@ -34,8 +34,9 @@ const EXPLAIN_RULE = [
 ].join(' ');
 const REPLY = '9. **Reply.** Print the explanation with this command, run from the project root, putting in the path step 8 printed:';
 const REPLY_FAILS = [
+  'It takes only a path of the form step 8 prints, in this project\'s `.excavator/`.',
   'It prints the file, then keeps it as `.excavator/explanation.md` in place of any earlier one.',
-  'When the file does not exist or is longer than 25,000 bytes, it prints nothing and fails: write the explanation to that path, or shorten it, and run the command again.',
+  'When the path is another, or the file does not exist or is longer than 25,000 bytes, it prints nothing and fails: put in the path step 8 printed, write the explanation to it, or shorten it, and run the command again.',
   'Never print another file in its place.',
 ].join(' ');
 const REPLY_RULE = [
@@ -192,6 +193,35 @@ describe('excavator-explain skill: the reply is the explanation the last command
       expect(unfilled.stdout).toBe('');
     });
   });
+
+  it('refuses every path but one of the form step 8 prints in this project\'s data directory, and moves nothing', () => {
+    inProject((project, data) => {
+      const files = {
+        [join(data, 'explanation.md')]: '## Role\n\nAn earlier component.\n',
+        [join(data, 'source-manifest.json')]: '{}\n',
+        [join(project, 'explanation-20261022T000000Z-101.md')]: '## Role\n\nOutside the data directory.\n',
+        [join(project, 'outside.md')]: '## Role\n\nReached through the data directory.\n',
+      };
+      mkdirSync(join(data, 'explanation-20261022T000000Z-1'));
+      for (const [path, text] of Object.entries(files)) writeFileSync(path, text);
+      writeFileSync(join(data, 'explanation-20261022T000000Z-102.md'), '## Role\n\nThis run\'s component.\n');
+      const refused = [
+        join(data, 'explanation.md'),
+        join(data, 'source-manifest.json'),
+        join(project, 'explanation-20261022T000000Z-101.md'),
+        '.excavator/explanation-20261022T000000Z-102.md',
+        join(data, 'explanation-20261022T000000Z-1/../../outside.md'),
+      ];
+      for (const path of refused) {
+        const run = sh(replyFor(path), project);
+        expect(run.status, path).not.toBe(0);
+        expect(run.stdout, path).toBe('');
+        expect(run.stderr, path).toContain(`${path} is not a path step 8 prints`);
+      }
+      for (const [path, text] of Object.entries(files)) expect(readFileSync(path, 'utf-8')).toBe(text);
+    });
+  });
+
 
   it('prints a file of 25,000 bytes and refuses one longer, which hosts would cut', () => {
     inProject((project, data) => {
