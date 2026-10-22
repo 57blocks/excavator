@@ -5,7 +5,7 @@
  */
 
 import { spawnSync } from 'node:child_process';
-import { cpSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { cpSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -63,4 +63,33 @@ export function graphHeaderLine(frameworks) {
 /** Each candidate as `file:line kind framework`, the form the tests compare. */
 export function itemKeys(items) {
   return items.map((item) => `${item.file}:${item.line} ${item.kind} ${item.framework}`);
+}
+
+/**
+ * Copy the lane fixture (a synthetic project and a run's out directory) into
+ * a temp directory and point index.json at the copied project. Returns
+ * { root, project, out, cleanup, readIndex, writeIndex, readJson, writeJson }.
+ */
+export function makeLaneRun() {
+  const { root, cleanup } = makeTempDir('xprd-lane-');
+  const project = join(root, 'project');
+  const out = join(root, 'out');
+  cpSync(join(FIXTURES, 'lanes/project'), project, { recursive: true });
+  cpSync(join(FIXTURES, 'lanes/out'), out, { recursive: true });
+  const indexPath = join(out, 'index.json');
+  writeFileSync(indexPath, readFileSync(indexPath, 'utf-8').replace('__PROJECT_ROOT__', project));
+  const readJson = (rel) => JSON.parse(readFileSync(join(out, rel), 'utf-8'));
+  const writeJson = (rel, value) => writeFileSync(join(out, rel), `${JSON.stringify(value, null, 2)}\n`);
+  return {
+    root,
+    project,
+    out,
+    cleanup,
+    readJson,
+    writeJson,
+    readIndex: () => readJson('index.json'),
+    writeIndex: (value) => writeJson('index.json', value),
+    readText: (rel) => readFileSync(join(out, rel), 'utf-8'),
+    writeText: (rel, text) => writeFileSync(join(out, rel), text),
+  };
 }

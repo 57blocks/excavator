@@ -7,6 +7,12 @@
  * Subcommands:
  *   entrypoints <projectRoot> [--scope <subdir>]
  *       Print the entrypoint candidates as JSON (design D1).
+ *   check-index <out>
+ *       Check <out>/index.json: schema, candidate conservation, inferred
+ *       candidates and seed files (design D2); write the conservation back.
+ *   check-lane <out> <featureId>
+ *       Check a feature lane's chapter and findings (design D3); write each
+ *       evidence passage's line back.
  *
  * Exit codes: 0 ok; 1 a check failed (every reason printed, one per line);
  * 2 usage or IO error.
@@ -14,12 +20,18 @@
 
 import { listEntrypoints } from './lib/entrypoints.mjs';
 import { UsageError } from './lib/errors.mjs';
+import { checkIndex } from './lib/index-check.mjs';
+import { checkLane } from './lib/lane-check.mjs';
 
 const USAGE = `Usage: node prd.mjs <command> [arguments]
 
 Commands:
   entrypoints <projectRoot> [--scope <subdir>]
       List the entrypoint candidates (routes, pages, jobs, mains) as JSON.
+  check-index <out>
+      Check <out>/index.json and write the computed conservation back.
+  check-lane <out> <featureId>
+      Check features/<featureId>.md and findings/<featureId>.json under <out>.
 
 Exit codes: 0 ok; 1 a check failed; 2 usage or IO error.`;
 
@@ -42,6 +54,12 @@ function parseArgs(args, known) {
   return { positionals, options };
 }
 
+/** Print a check's lines to stdout and return its exit status. */
+function report({ status, lines }) {
+  process.stdout.write(lines.map((line) => `${line}\n`).join(''));
+  return status;
+}
+
 const COMMANDS = {
   async entrypoints(args) {
     const { positionals, options } = parseArgs(args, ['scope']);
@@ -49,6 +67,16 @@ const COMMANDS = {
     const result = await listEntrypoints(positionals[0], { scope: options.scope ?? null });
     process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
     return 0;
+  },
+  'check-index'(args) {
+    const { positionals } = parseArgs(args, []);
+    if (positionals.length !== 1) throw new UsageError('check-index takes exactly one <out> directory');
+    return report(checkIndex(positionals[0]));
+  },
+  'check-lane'(args) {
+    const { positionals } = parseArgs(args, []);
+    if (positionals.length !== 2) throw new UsageError('check-lane takes <out> and <featureId>');
+    return report(checkLane(positionals[0], positionals[1]));
   },
 };
 
