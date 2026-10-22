@@ -2322,6 +2322,7 @@ describe('extract-import-map.mjs — resolved TS/JS sources', () => {
         "import { a } from './a';",
         "export { a } from './a';",
         "export * from './b';",
+        "export { c } from './c';",
         "const { c } = require('./c');",
         "export {} from './d';",
         "import './e';",
