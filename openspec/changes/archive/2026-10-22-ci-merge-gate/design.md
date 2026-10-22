@@ -224,3 +224,7 @@ fork 的 PR 拿不到 secret，检查失败，由维护者在本仓库的分支�
   - 禁止强推与删除。
 
   与 D7 一致。`required_conversation_resolution` 未开，由下一步开启。
+- **O5 后半**：在归档记录这个 PR 上验证：
+  - 刚开 PR、两个检查还在跑时，`mergeable_state` 为 `blocked`。这时直接合并被拒，提示是分支策略不允许，管理员身份也一样。
+  - 标题加上私有名单的金丝雀后，`Privacy scan` 重扫变红，`names pull request text` 为 1，`mergeable_state` 仍是 `blocked`。日志里没有金丝雀的字面。
+  - 标题改回后重扫变绿。
