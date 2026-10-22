@@ -764,7 +764,8 @@ export function annotate({
     counts.edgeUnsupported);
   gap('edge-target-mismatch', 'calls',
     `${counts.edgeTargetMismatch} calls edge(s) target a file other than the only one in the ` +
-    "caller's call scope (its file and import targets) that declares the callee",
+    "caller's call scope (its file and import targets, less those only a re-export reaches) " +
+    'that declares the callee',
     counts.edgeTargetMismatch);
   gap('evidence-corrected', 'graph',
     `${counts.evidenceCorrected} edge(s) had the extractor's line appended beside a disagreeing citation`,

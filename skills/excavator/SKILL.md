@@ -946,10 +946,11 @@ What it adds:
 - `verification` on an edge whose cited line disagrees with the extractor
   (`contradicted`) or that claims extraction with no record (`unverified`).
   A `calls` edge whose target is not in the only file of the caller's call
-  scope (its file and import targets) that declares the callee is not
-  matched: it is marked like any edge no record supports, gets no evidence
-  line, and is counted under `edge-target-mismatch`; that call site still
-  counts under `edge-missing` until an edge reaches that file.
+  scope (its file and import targets, less those only a re-export reaches)
+  that declares the callee is not matched: it is marked like any edge no
+  record supports, gets no evidence line, and is counted under
+  `edge-target-mismatch`; that call site still counts under `edge-missing`
+  until an edge reaches that file.
 - `owner` / `owners` / `anchorSource` on nodes; `owners` plus an
   `identity-collision` count when one node stands for several declarations of
   the same name in one file. **Ids are never rewritten.**
