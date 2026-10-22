@@ -56,7 +56,7 @@ A defect is hit when an Important finding on one of its paths has its line insid
 
 The script judges hits by place only. Then check by hand, and report recall twice: by place, and confirmed.
 
-- **Each hit's body.** It describes this defect: its failing input or its mechanism. An Important finding about something else can land within three lines of a defect; count that defect as missed. The body also argues from the code at the head. A body that names the later fix, or a change the head does not hold, is a leak: count the defect as missed and say so.
+- **Each hit's body.** It describes this defect: its failing input or its mechanism. An Important finding about something else can land within three lines of a defect; count that defect as missed. The wrong-severity bucket is judged by place too: read the finding behind it the same way, and count the defect as missed when that finding is about something else. The body also argues from the code at the head. A body that names the later fix, or a change the head does not hold, is a leak: count the defect as missed and say so.
 - **What each reviewer read.** The second line of its reply says whether it read closed history, but check the commands it ran too: apart from the three rules files at `<rules>`, every revision a command names is the head or an ancestor (`git merge-base --is-ancestor <rev> <head>`), and no command names a remote ref, `--all` or the reflog. A case whose reviewer read closed history is not scored; run it again.
 - **Each Important finding on a clean case.** A clean case is one no fix has touched, which is not proof it has no defect. Decide whether the finding is real, and report the real ones apart from the false ones.
 
