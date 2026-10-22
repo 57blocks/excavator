@@ -29,12 +29,13 @@ const HEADINGS = ['Role', 'Internal Structure', 'External Connections', 'Data Fl
 const EXPLAIN_RULE = [
   'Explain clearly, assuming the reader may not know the programming language.',
   'The file starts with the first heading and ends with the last section\'s text.',
+  'It is at most 25,000 bytes: step 9 prints it whole as the reply, and hosts cut longer command output (Claude Code past 30,000 characters by default).',
   'In a language other than English, write the headings translated; code identifiers and paths stay as they are.',
 ].join(' ');
 const REPLY = '9. **Reply.** Print the explanation with this command, run from the project root, putting in the path step 8 printed:';
 const REPLY_FAILS = [
   'It prints the file, then keeps it as `.excavator/explanation.md` in place of any earlier one.',
-  'When the file does not exist, it prints nothing and fails: write the explanation to that path and run the command again.',
+  'When the file does not exist or is longer than 25,000 bytes, it prints nothing and fails: write the explanation to that path, or shorten it, and run the command again.',
   'Never print another file in its place.',
 ].join(' ');
 const REPLY_RULE = [
@@ -189,6 +190,26 @@ describe('excavator-explain skill: the reply is the explanation the last command
       const unfilled = sh(reply, project);
       expect(unfilled.status).not.toBe(0);
       expect(unfilled.stdout).toBe('');
+    });
+  });
+
+  it('prints a file of 25,000 bytes and refuses one longer, which hosts would cut', () => {
+    inProject((project, data) => {
+      const heading = '## Role\n\n';
+      const sized = (bytes) => `${heading}${'x'.repeat(bytes - heading.length - 1)}\n`;
+      const fits = join(data, 'explanation-20261022T000000Z-101.md');
+      writeFileSync(fits, sized(25000));
+      const printed = sh(replyFor(fits), project);
+      expect(printed.status).toBe(0);
+      expect(printed.stdout).toBe(sized(25000));
+      const long = join(data, 'explanation-20261022T000000Z-102.md');
+      writeFileSync(long, sized(25001));
+      const refused = sh(replyFor(long), project);
+      expect(refused.status).not.toBe(0);
+      expect(refused.stdout).toBe('');
+      expect(refused.stderr).toContain(`${long} is longer than 25000 bytes`);
+      expect(readFileSync(long, 'utf-8')).toBe(sized(25001));
+      expect(readFileSync(join(data, 'explanation.md'), 'utf-8')).toBe(sized(25000));
     });
   });
 

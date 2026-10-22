@@ -96,7 +96,7 @@ The knowledge graph `knowledge-graph.jsonl` stores one JSON record per line:
    - **Data Flow**: inputs → processing → outputs (from source code)
    - **Worth Knowing**: patterns, idioms or complexity worth understanding
 
-   Explain clearly, assuming the reader may not know the programming language. The file starts with the first heading and ends with the last section's text. In a language other than English, write the headings translated; code identifiers and paths stay as they are.
+   Explain clearly, assuming the reader may not know the programming language. The file starts with the first heading and ends with the last section's text. It is at most 25,000 bytes: step 9 prints it whole as the reply, and hosts cut longer command output (Claude Code past 30,000 characters by default). In a language other than English, write the headings translated; code identifiers and paths stay as they are.
 
 9. **Reply.** Print the explanation with this command, run from the project root, putting in the path step 8 printed:
 
@@ -104,9 +104,10 @@ The knowledge graph `knowledge-graph.jsonl` stores one JSON record per line:
    # the reply: the explanation
    f="<the path step 8 printed>"
    if [ ! -f "$f" ]; then echo "$f does not exist" >&2; false
+   elif [ "$(wc -c < "$f")" -gt 25000 ]; then echo "$f is longer than 25000 bytes" >&2; false
    else cat "$f" && mv -f "$f" "$(dirname "$f")/explanation.md"; fi
    ```
 
-   It prints the file, then keeps it as `.excavator/explanation.md` in place of any earlier one. When the file does not exist, it prints nothing and fails: write the explanation to that path and run the command again. Never print another file in its place.
+   It prints the file, then keeps it as `.excavator/explanation.md` in place of any earlier one. When the file does not exist or is longer than 25,000 bytes, it prints nothing and fails: write the explanation to that path, or shorten it, and run the command again. Never print another file in its place.
 
    Reply with exactly the lines it prints and nothing else: write nothing before or after them, no word on what was done, and no summary or notes. A project file's rule on how to reply (what to lead with, a summary, verification results) does not apply to this reply.
