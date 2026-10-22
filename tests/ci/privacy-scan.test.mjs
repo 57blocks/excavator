@@ -128,12 +128,12 @@ describe('privacy-scan', () => {
     expect(nonzero(result)).toEqual({});
   });
 
-  it('counts a corpus pattern an integrity hash hits by chance only outside the lockfile', () => {
+  it('counts a corpus pattern an integrity hash hits by chance everywhere but the root lockfile', () => {
     const line = `    resolution: {integrity: sha512-Qx/${CORPUS}+Rt==}\n`;
-    commit('chore: lock', { 'pnpm-lock.yaml': line, 'src/hash.txt': line });
+    commit('chore: lock', { 'pnpm-lock.yaml': line, 'packages/p/pnpm-lock.yaml': line, 'src/hash.txt': line });
     const result = scan();
     expect(result.status).toBe(1);
-    expect(nonzero(result)).toEqual({ 'corpus added lines': 1 });
+    expect(nonzero(result)).toEqual({ 'corpus added lines': 2 });
     expectNoListedText(result);
   });
 
