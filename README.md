@@ -97,7 +97,7 @@ Then ask questions directly:
 /excavator-chat How does the request flow work?
 ```
 
-Excavator is service-only: it generates nodes, edges, architecture layers, and evidence for terminal Q&A. It does not ship or launch an HTML interface.
+Excavator is service-only: it generates nodes, edges, architecture layers, and evidence for terminal Q&A. It does not ship or serve an HTML application; the one exception is `/excavator-view`, which writes one static HTML file of the products already in `.excavator/` and opens it with your default browser.
 
 > **Heads up on token usage:** By default, the initial `/excavator` run only builds a deterministic fact index (files, symbols, imports, calls) — it's fast and makes zero LLM calls. Summaries and other semantic detail are then generated on demand as you ask questions with `/excavator-chat`, and cached for next time. If you'd rather pre-generate everything up front (e.g. before a review), run `/excavator --full`; on large projects this can consume a significant number of tokens, so we recommend a token plan / subscription or a local model (see above) for that path. See [Lazy Mode](docs/lazy-mode.md) for details.
 
@@ -137,6 +137,10 @@ For host-owned AI exploration through seven bounded local MCP tools, see [MCP se
 
 # Rank the files and directories that change most, from Git history (no advice, never edits code)
 /excavator-hotspots
+
+# Pack the products in .excavator/ into one HTML file and open it in the browser: no server, no network, nothing to install to open it
+# (the page is built by `pnpm build` from packages/report-view; --no-source leaves the source text out of the file)
+/excavator-view
 
 # List the functions a folder of documents describes, each tied to a checked quote and to the code that does it,
 # and count the project's files with and without a function's evidence, by directory

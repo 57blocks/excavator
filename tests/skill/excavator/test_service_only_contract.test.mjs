@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -55,5 +55,82 @@ describe('service-only distribution contract', () => {
     const manifest = read('.claude-plugin/plugin.json');
     expect(buildConfig).not.toMatch(/packages\/(dashboard|viewer)/);
     expect(manifest).not.toMatch(/\bdashboard\b/i);
+  });
+
+  // The one exception: /excavator-view writes a static page and opens it (openspec: changes/report-viewer, design D8).
+  describe('the /excavator-view exception stays narrow', () => {
+    const walk = (dir) => readdirSync(join(repoRoot, dir), { withFileTypes: true }).flatMap((entry) => (
+      entry.isDirectory() ? walk(join(dir, entry.name)) : [join(dir, entry.name)]
+    ));
+
+    // The front end is the one package packages/report-view, built into one file and never served (openspec: changes/viewer-app, design D10).
+    const VIEW_PACKAGE = 'packages/report-view';
+
+    it('gives the report-view package no script that starts a server', () => {
+      const scripts = JSON.parse(read(`${VIEW_PACKAGE}/package.json`)).scripts ?? {};
+      for (const name of ['dev', 'preview', 'serve', 'start']) expect(scripts, name).not.toHaveProperty(name);
+      for (const [name, command] of Object.entries(scripts)) {
+        // vite runs only as `vite build`; a bare `vite`, `vite dev`, `vite serve` or `vite preview` starts a server.
+        expect(command, name).not.toMatch(/\bvite\b(?!\s+build\b)/);
+      }
+    });
+
+    it('has no server or preview configuration in the report-view vite config', () => {
+      const config = read(`${VIEW_PACKAGE}/vite.config.ts`);
+      expect(config).not.toMatch(/\b(server|preview)\s*:/);
+      expect(config).not.toMatch(/configureServer|configurePreviewServer/);
+    });
+
+    it('has no network or server call in the report-view source', () => {
+      const files = walk(`${VIEW_PACKAGE}/src`);
+      expect(files.length).toBeGreaterThan(0);
+      for (const path of files) {
+        const text = read(path);
+        for (const call of ['createServer', 'listen(', 'fetch(', 'XMLHttpRequest', 'WebSocket', 'EventSource']) {
+          expect(text, `${path}: ${call}`).not.toContain(call);
+        }
+      }
+    });
+
+    it('ships no HTML page from any other package', () => {
+      const others = readdirSync(join(repoRoot, 'packages'), { withFileTypes: true })
+        .filter((entry) => entry.isDirectory() && `packages/${entry.name}` !== VIEW_PACKAGE)
+        .map((entry) => `packages/${entry.name}`);
+      expect(others.length).toBeGreaterThan(0);
+      const skipped = new Set(['node_modules', 'dist']);
+      const pages = (dir) => readdirSync(join(repoRoot, dir), { withFileTypes: true }).flatMap((entry) => {
+        if (entry.isDirectory()) return skipped.has(entry.name) ? [] : pages(join(dir, entry.name));
+        return /\.html?$/i.test(entry.name) ? [join(dir, entry.name)] : [];
+      });
+      expect(others.flatMap(pages)).toEqual([]);
+    });
+
+    it('starts no server from the packer or the skill', () => {
+      for (const path of ['skills/excavator-view/pack.mjs', 'skills/excavator-view/SKILL.md']) {
+        const text = read(path);
+        expect(text, path).not.toContain('createServer');
+        expect(text, path).not.toContain('.listen(');
+        expect(text, path).not.toContain('listen(');
+      }
+    });
+
+    it('is referenced by no other skill, agent or hook', () => {
+      const others = [
+        ...readdirSync(join(repoRoot, 'skills')).filter((name) => name !== 'excavator-view').map((name) => `skills/${name}/SKILL.md`),
+        ...readdirSync(join(repoRoot, 'agents')).map((name) => `agents/${name}`),
+        ...readdirSync(join(repoRoot, 'hooks')).map((name) => `hooks/${name}`),
+      ].filter((path) => existsSync(join(repoRoot, path)) && /\.(md|json)$/.test(path));
+      expect(others.length).toBeGreaterThan(10);
+      for (const path of others) {
+        expect(read(path), path).not.toMatch(/excavator-view/);
+      }
+    });
+
+    it('is the only skill that mentions a browser opener', () => {
+      for (const name of readdirSync(join(repoRoot, 'skills')).filter((n) => n !== 'excavator-view')) {
+        const text = read(`skills/${name}/SKILL.md`);
+        expect(text, name).not.toMatch(/\bxdg-open\b|cmd\.exe \/c start|\bopen "\$/);
+      }
+    });
   });
 });

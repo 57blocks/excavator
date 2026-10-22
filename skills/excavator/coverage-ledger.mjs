@@ -168,8 +168,10 @@ export function buildCoverageLedger({ scan, structure, importMap, sampleLimit = 
     if (skipSamples[key].length < sampleLimit) skipSamples[key].push(entry.path);
   }
 
-  // 3. Extraction statuses for the emitted files.
+  // 3. Extraction statuses for the emitted files, and the lines their
+  //    readers recognised but could not place.
   const statusSamples = {};
+  const unplacedByLanguage = {};
   const seen = new Set();
   for (const result of structure.results) {
     if (seen.has(result.path)) {
@@ -200,6 +202,14 @@ export function buildCoverageLedger({ scan, structure, importMap, sampleLimit = 
     row.kinds.import += arrayLength(result.imports);
     row.kinds.export += arrayLength(result.exports);
     row.kinds.call += arrayLength(result.callGraph);
+    for (const run of result.unplaced ?? []) {
+      if (!unplacedByLanguage[lang]) unplacedByLanguage[lang] = { count: 0, samples: [] };
+      const unplaced = unplacedByLanguage[lang];
+      unplaced.count += run.endLine - run.startLine + 1;
+      if (unplaced.samples.length < sampleLimit) {
+        unplaced.samples.push(`${result.path}:${run.startLine}-${run.endLine} ${run.reason}`);
+      }
+    }
   }
 
   // 4. Unresolved import specifiers, per language of the importing file.
@@ -273,6 +283,16 @@ export function buildCoverageLedger({ scan, structure, importMap, sampleLimit = 
       kind: 'imports-unresolved',
       scope: language,
       reason: `${row.count} import specifier(s) in ${language} named nothing inside the project (external package or broken path)`,
+      count: row.count,
+      samples: row.samples,
+    });
+  }
+
+  for (const [language, row] of Object.entries(unplacedByLanguage)) {
+    gaps.push({
+      kind: 'unplaced-lines',
+      scope: language,
+      reason: `${row.count} ${language} line(s) were recognised by the reader but could not be placed in their file's structure`,
       count: row.count,
       samples: row.samples,
     });

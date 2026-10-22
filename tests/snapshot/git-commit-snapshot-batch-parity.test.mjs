@@ -298,3 +298,159 @@ describe('GitCommitSnapshot batch parity (design D4/O1/O2/O3)', () => {
     expect(observedPrefixPaths).toContain('src/app.ts');
   });
 });
+
+// --- Tree paths whose bytes are not valid UTF-8. A tree path is raw bytes,
+// but Node's argv is always UTF-8, so these fixtures stage every entry
+// through `update-index -z --index-info` on stdin instead of `--cacheinfo`. ---
+
+const REPLACEMENT_CHAR = String.fromCharCode(0xfffd);
+
+/** Concatenate UTF-8 strings and raw byte arrays into one path. */
+function pathBytes(...parts) {
+  return Buffer.concat(parts.map((part) => (typeof part === 'string' ? Buffer.from(part, 'utf-8') : Buffer.from(part))));
+}
+
+function makeRawPathFixture(files) {
+  const fixture = mkdtempSync(join(tmpdir(), 'excavator-raw-path-fixture-'));
+  git(fixture, ['init', '-q']);
+  const records = files.map(({ path, content }) => {
+    const oid = execFileSync('git', ['hash-object', '-w', '--stdin'], { cwd: fixture, input: content, encoding: 'utf-8' }).trim();
+    return Buffer.concat([Buffer.from(`100644 ${oid}\t`), path, Buffer.from([0])]);
+  });
+  execFileSync('git', ['update-index', '-z', '--index-info'], { cwd: fixture, input: Buffer.concat(records) });
+  git(fixture, ['commit', '-q', '-m', 'raw-path fixture']);
+  return fixture;
+}
+
+/** `listTrackedEntries` as it was before tree paths were read as bytes:
+ *  the whole output decoded as UTF-8, then split on NUL. */
+function oldListTrackedEntries(dir, sha) {
+  const stdout = execFileSync('git', ['ls-tree', '-r', '-z', sha], { cwd: dir, encoding: 'utf-8' });
+  return stdout.split('\0').filter(Boolean).map((record) => {
+    const match = record.match(/^(\d+)\s+(\S+)\s+([0-9a-f]+)\t([\s\S]+)$/);
+    return { mode: match[1], type: match[2], oid: match[3], path: match[4] };
+  });
+}
+
+/** A batch reader that records every path any batch is asked for. */
+function recordingBatchReader(requested) {
+  const record = (items) => requested.push(...items.map((item) => item.path));
+  return {
+    readBlobPrefixes(cwd, items, ...rest) { record(items); return realBatchReader.readBlobPrefixes(cwd, items, ...rest); },
+    hashBlobs(cwd, items, ...rest) { record(items); return realBatchReader.hashBlobs(cwd, items, ...rest); },
+    writeBlobs(cwd, items, ...rest) { record(items); return realBatchReader.writeBlobs(cwd, items, ...rest); },
+    searchBlobs(cwd, items, ...rest) { record(items); return realBatchReader.searchBlobs(cwd, items, ...rest); },
+  };
+}
+
+describe('GitCommitSnapshot — tree paths that are not valid UTF-8', () => {
+  it('records such a path as a visible read-failed skip, never a listed file, as the per-file reference does', () => {
+    const fixture = makeRawPathFixture([
+      { path: pathBytes('src/app.ts'), content: 'export const app = 1;\n' },
+      { path: pathBytes('src/caf', [0xe9], '.ts'), content: 'export const latin1 = 1;\n' }, // Latin-1 e-acute
+      { path: pathBytes('node_modules/caf', [0xe9], '.js'), content: 'module.exports = 1;\n' },
+    ]);
+    try {
+      const sha = headSha(fixture);
+      const requested = [];
+      const fresh = new GitCommitSnapshot(fixture, sha, { batchReader: recordingBatchReader(requested) });
+      const old = oldResolve(fixture, sha);
+
+      expect(fresh.listFiles()).toEqual(['src/app.ts']);
+      expect(fresh.processingSkips).toEqual([{ path: 'src/caf%E9.ts', reason: 'read-failed' }]);
+      for (const path of fresh.listFiles()) expect(() => fresh.readFile(path)).not.toThrow();
+      // The ledger keeps the same path, so the skip names a selected
+      // candidate (mergeSnapshotSelection requires it), and directory rules
+      // still see the encoded path's directories.
+      const kindByPath = new Map(fresh.selection.entries.map((entry) => [entry.path, entry.kind]));
+      expect(kindByPath.get('src/caf%E9.ts')).toBe('selected');
+      expect(kindByPath.get('node_modules/caf%E9.js')).toBe('filtered-by-defaults');
+
+      expect(fresh.selection).toEqual(old.selection);
+      expect(fresh.processingSkips).toEqual(old.processingSkips);
+      expect(fresh.listFiles()).toEqual(old.trackedPaths);
+      expect(fresh.entries()).toEqual(oldEntries(fixture, sha, old.trackedPaths));
+
+      // Its content is never asked for, by path or by oid.
+      fresh.materialize().cleanup();
+      fresh.search(['export']);
+      expect(new Set(requested)).toEqual(new Set(['src/app.ts']));
+    } finally {
+      rmSync(fixture, { recursive: true, force: true });
+    }
+  });
+
+  it('gives every such path its own record, even when their U+FFFD decodings or a literal `%` coincide', () => {
+    const fixture = makeRawPathFixture([
+      { path: pathBytes('src/app.ts'), content: 'export const app = 1;\n' },
+      // Both decode to the same string with U+FFFD.
+      { path: pathBytes('src/caf', [0xe9], '.ts'), content: 'export const acute = 1;\n' },
+      { path: pathBytes('src/caf', [0xff], '.ts'), content: 'export const ff = 1;\n' },
+      // These two become the same string unless `%` itself is encoded.
+      { path: pathBytes('lib/x', [0xe9, 0xff], '.ts'), content: 'export const pair = 1;\n' },
+      { path: pathBytes('lib/x%E9', [0xff], '.ts'), content: 'export const percent = 1;\n' },
+    ]);
+    try {
+      const sha = headSha(fixture);
+      const fresh = new GitCommitSnapshot(fixture, sha);
+      const old = oldResolve(fixture, sha);
+
+      expect(fresh.processingSkips).toEqual([
+        { path: 'lib/x%25E9%FF.ts', reason: 'read-failed' },
+        { path: 'lib/x%E9%FF.ts', reason: 'read-failed' },
+        { path: 'src/caf%E9.ts', reason: 'read-failed' },
+        { path: 'src/caf%FF.ts', reason: 'read-failed' },
+      ]);
+      expect(fresh.listFiles()).toEqual(['src/app.ts']);
+      const selectionPaths = fresh.selection.entries.map((entry) => entry.path);
+      expect(selectionPaths).toHaveLength(5);
+      expect(new Set(selectionPaths).size).toBe(5);
+
+      expect(fresh.selection).toEqual(old.selection);
+      expect(fresh.processingSkips).toEqual(old.processingSkips);
+      expect(fresh.listFiles()).toEqual(old.trackedPaths);
+      expect(fresh.entries()).toEqual(oldEntries(fixture, sha, old.trackedPaths));
+    } finally {
+      rmSync(fixture, { recursive: true, force: true });
+    }
+  });
+
+  it('refuses a tree where such a path shares a name with a valid path', () => {
+    const clashes = [
+      // `git log` and `git diff` read as UTF-8 would credit the 0xe9 file's
+      // history and deletion to this valid file.
+      { valid: `src/caf${REPLACEMENT_CHAR}.ts`, message: /src\/caf%E9\.ts is not valid UTF-8 and decodes with U\+FFFD to the valid path/ },
+      { valid: 'src/caf%E9.ts', message: /src\/caf%E9\.ts is not valid UTF-8 and its percent-encoded name is also a valid path/ },
+    ];
+    for (const { valid, message } of clashes) {
+      const fixture = makeRawPathFixture([
+        { path: pathBytes(valid), content: 'export const valid = 1;\n' },
+        { path: pathBytes('src/caf', [0xe9], '.ts'), content: 'export const latin1 = 1;\n' },
+      ]);
+      try {
+        expect(() => new GitCommitSnapshot(fixture, headSha(fixture))).toThrow(message);
+      } finally {
+        rmSync(fixture, { recursive: true, force: true });
+      }
+    }
+  });
+
+  it('reads valid UTF-8 tree paths exactly as decoding the whole output did', () => {
+    const fixture = makeRawPathFixture([
+      { path: pathBytes('plain.ts'), content: 'a\n' },
+      { path: pathBytes('src/caf', [0xc3, 0xa9], '.ts'), content: 'b\n' }, // e-acute in UTF-8
+      { path: pathBytes([0xef, 0xbb, 0xbf], 'bom.ts'), content: 'c\n' }, // leading byte-order mark
+      { path: pathBytes(`src/caf${REPLACEMENT_CHAR}.ts`), content: 'd\n' },
+      { path: pathBytes('quote"and\\backslash.ts'), content: 'e\n' },
+      { path: pathBytes('tab\tand\nnewline.ts'), content: 'f\n' },
+    ]);
+    try {
+      const sha = headSha(fixture);
+      const entries = listTrackedEntries(fixture, sha);
+      expect(entries).toHaveLength(6);
+      expect(entries).toStrictEqual(oldListTrackedEntries(fixture, sha));
+    } finally {
+      rmSync(fixture, { recursive: true, force: true });
+    }
+  });
+});

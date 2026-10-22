@@ -66,10 +66,13 @@ export class GitCommitSnapshot {
         && entry.type === 'blob'
         && initial.kind !== 'sensitive'
         && !(initial.kind === 'filtered-by-defaults' && ['analysis-data', 'archive'].includes(initial.detail));
-      return { entry, initial, mayNeedHeader };
+      // A path that is not valid UTF-8 keeps the per-file reader's outcome:
+      // its header cannot be read by path, so a selected one is read-failed.
+      const readsHeader = mayNeedHeader && !entry.pathNotUtf8;
+      return { entry, initial, mayNeedHeader, readsHeader };
     });
     const headerWantList = preDecided
-      .filter((item) => item.mayNeedHeader)
+      .filter((item) => item.readsHeader)
       .map((item) => ({ oid: item.entry.oid, path: item.entry.path }));
     const prefixes = this._batchReader.readBlobPrefixes(root, headerWantList, selectionPrefixBytes);
     const prefixByPath = new Map(headerWantList.map((item, i) => [item.path, prefixes[i]]));
@@ -77,7 +80,7 @@ export class GitCommitSnapshot {
     const decisions = [];
     this._trackedPaths = [];
     this.processingSkips = [];
-    for (const { entry, initial, mayNeedHeader } of preDecided) {
+    for (const { entry, initial, mayNeedHeader, readsHeader } of preDecided) {
       const { path } = entry;
       if (entry.mode === '120000') {
         decisions.push(initial);
@@ -89,7 +92,7 @@ export class GitCommitSnapshot {
         if (initial.kind === 'selected') this.processingSkips.push({ path, reason: 'read-failed' });
         continue;
       }
-      const prefix = mayNeedHeader ? prefixByPath.get(path) ?? undefined : undefined;
+      const prefix = readsHeader ? prefixByPath.get(path) ?? undefined : undefined;
       const decision = mayNeedHeader && prefix !== undefined
         ? rules.policy.decide({ path, contentPrefix: prefix })
         : initial;
