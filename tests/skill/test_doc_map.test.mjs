@@ -635,10 +635,14 @@ describe('link: every problem at once, and nothing recorded', () => {
         ['src/eq.js', '=='],
       ),
     ] });
+    // The script cuts a path to 80 characters only when it is longer, and
+    // temporary directories differ in length between platforms.
+    const absolute = join(project, 'src/Rx.java');
+    const shown = absolute.length > 80 ? `${absolute.slice(0, 80)}...` : absolute;
     expect(result.status).toBe(1);
     expect(result.stdout).toBe('');
     expect(result.stderr.split('\n').slice(1).filter(Boolean)).toEqual([
-      `  links[0].evidence[0]: file ${JSON.stringify(join(project, 'src/Rx.java').slice(0, 80) + '...')} is not a path relative to the project`,
+      `  links[0].evidence[0]: file ${JSON.stringify(shown)} is not a path relative to the project`,
       '  links[0].evidence[1]: file "../outside/app.js" is outside the project',
       '  links[0].evidence[2]: file "src/linked.js" is outside the project',
       '  links[0].evidence[3]: file "src" is not a file',
