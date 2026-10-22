@@ -61,6 +61,10 @@ Report at most five Nits per review.
 
 Start the summary with the count by severity, for example "1 Important, 2 Nit, 0 Pre-existing." When nothing needs fixing, say so in that first sentence.
 
+## Who reviews
+
+Medium- and high-tier pull requests are reviewed by the reviewer agent that `.claude/agents/reviewer.md` defines, started with a fresh context. The session that wrote the change does not review it.
+
 ## Answering findings
 
 The author answers every finding, then resolves its thread:
@@ -75,4 +79,5 @@ Answer the findings in a review's summary in one pull request comment. Branch pr
 - **Round 1** reviews the whole change.
 - **Later rounds** review only the pull request's own commits after the last reviewed commit. That leaves out what a merge from `main` brought in: `git log -p --diff-merges=remerge <last>..<head> --not origin/main` shows a merge commit only as what the merge itself wrote. A later round never raises a finding already raised.
 - **When to run another round**: only when the previous round had an Important finding that the author fixed in code, or when the pull request's own new commits touch a medium- or high-tier path.
+- **A round counts once its review is posted.** If the reviewer returns its findings without posting them because the privacy scan has not passed, make the scan pass and run the same round again.
 - **At most three rounds.** If either reason calls for a fourth, stop. Do not merge; tell the user and reconsider the approach.

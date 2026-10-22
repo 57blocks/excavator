@@ -45,6 +45,5 @@ Node ≥ 22，pnpm（版本按 `package.json` 的 `packageManager`），vitest�
 - 本地仍按上表只跑与改动相关的检查。
 
 ## 审查
-- 风险档、审查、回应与收敛的规则写在 `REVIEW.md`。它是高档文件：改它的 PR 由用户合并，agent 不能自己放宽这些规则。开 PR 前按它定档，合并前按它做完。
+- 风险档、由谁审查、回应与收敛的规则写在 `REVIEW.md`。它是高档文件：改它的 PR 由用户合并，agent 不能自己放宽这些规则。开 PR 前按它定档，合并前按它做完。
 - PR 正文按 `.github/pull_request_template.md` 的四节写：Summary、Testing、Risk tier、How to revert。`gh pr create --body-file` 不会套用模板。
-- 审查由 `.claude/agents/reviewer.md` 定义的审查代理做。写这个改动的会话不审自己。
