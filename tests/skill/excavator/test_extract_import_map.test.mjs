@@ -2312,4 +2312,43 @@ describe('extract-import-map.mjs — resolved TS/JS sources', () => {
     expect(result.output.unresolved['src/page.tsx']).toEqual(['react']);
     expect(result.output.unresolved['src/ui/index.ts']).toEqual(['external-kit']);
   });
+
+  it('lists the targets only a re-export reaches, and keeps them in the import map', () => {
+    projectRoot = setupTree({
+      'src/barrel.ts': "export { a } from './a';\nexport * from './b';\nexport {} from './c';\n",
+      // './a' is also imported and './c' also required, so a name is bound
+      // from them; a side-effect import binds none but is not a re-export.
+      'src/mixed.ts': [
+        "import { a } from './a';",
+        "export { a } from './a';",
+        "export * from './b';",
+        "export { c } from './c';",
+        "const { c } = require('./c');",
+        "export {} from './d';",
+        "import './e';",
+        '',
+      ].join('\n'),
+      'src/plain.ts': "import { a } from './a';\n",
+      'src/a.ts': 'export function a() {}\n',
+      'src/b.ts': 'export function b() {}\n',
+      'src/c.ts': 'export function c() {}\n',
+      'src/d.ts': 'export function d() {}\n',
+      'src/e.ts': 'export function e() {}\n',
+    });
+    const paths = ['src/barrel.ts', 'src/mixed.ts', 'src/plain.ts', 'src/a.ts', 'src/b.ts', 'src/c.ts', 'src/d.ts', 'src/e.ts'];
+
+    const result = runScript(projectRoot, {
+      projectRoot,
+      files: paths.map((path) => ({ path, language: 'typescript', fileCategory: 'code' })),
+    });
+
+    expect(result.status).toBe(0);
+    expect(result.output.reexportOnly).toEqual({
+      'src/barrel.ts': ['src/a.ts', 'src/b.ts', 'src/c.ts'],
+      'src/mixed.ts': ['src/b.ts', 'src/d.ts'],
+    });
+    expect(result.output.importMap['src/barrel.ts']).toEqual(['src/a.ts', 'src/b.ts', 'src/c.ts']);
+    expect(result.output.importMap['src/mixed.ts']).toEqual(['src/a.ts', 'src/b.ts', 'src/c.ts', 'src/d.ts', 'src/e.ts']);
+    expect(result.output.importMap['src/plain.ts']).toEqual(['src/a.ts']);
+  });
 });
