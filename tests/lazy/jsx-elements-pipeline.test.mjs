@@ -60,8 +60,8 @@ describe('JSX elements in the Lazy driver', () => {
 
   it('stamps the product with the new pipeline version', () => {
     expect(result.saveError).toBeNull();
-    expect(PIPELINE_VERSION).toBe('lazy-fact-graph/13');
-    expect(graph.project.pipelineVersion).toBe('lazy-fact-graph/13');
+    expect(PIPELINE_VERSION).toBe('lazy-fact-graph/14');
+    expect(graph.project.pipelineVersion).toBe('lazy-fact-graph/14');
   });
 
   it('draws a calls edge for each element that resolves: named, default-renamed, through the barrel and a namespace', () => {
