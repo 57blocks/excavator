@@ -7,7 +7,7 @@
 - 低档：只改文档，即 `openspec/` 与 `docs/` 下的 Markdown、`.openspec.yaml`，以及根目录下 `AGENTS.md`、`CLAUDE.md`、`REVIEW.md` 以外的 Markdown；
 - 中档：其余。
 
-低档在必过检查通过后即可合并；中档还要经过审查；高档在审查之后 SHALL 由用户合并，agent MUST NOT 自行合并。风险档、回应与收敛的规则 SHALL 写在高档路径的文件里，使中档 PR 放宽不了它们。
+低档在必过检查通过后即可合并；中档还要经过审查；高档在审查之后 SHALL 由用户合并，agent MUST NOT 自行合并。风险档、由谁审查、回应与收敛的规则 SHALL 写在高档路径的文件里，使中档 PR 放宽不了它们。
 
 #### Scenario: 改了工作流的 PR
 - **WHEN** 一个 PR 改了 `.github/workflows/ci.yml` 和一份 OpenSpec 文档
@@ -27,7 +27,7 @@
 
 ### Requirement: 中高档 PR 合并前由干净上下文的审查代理审查
 
-中高档 PR 合并前 SHALL 由一个干净上下文的审查代理审查。写这个改动的会话 MUST NOT 审自己。审查代理 SHALL 按 `main` 上的 `REVIEW.md` 与 `AGENTS.md` 审；PR 对这两个文件的改动是被审的内容，不是审查规则。每条发现 SHALL 标明 Important、Nit 或 Pre-existing，写明 file:line 证据与失败的输入和结果；能定位到改动行的发现 SHALL 作为该行的行内评论发到 PR 上。总结的第一句 SHALL 是各档的计数。审查代理 MUST NOT 修改文件、提交、批准、解决讨论或合并。审查评论是公开的，隐私检查不读它们，所以审查代理 SHALL 只在 head 提交的隐私检查通过之后才发评论。
+中高档 PR 合并前 SHALL 由一个干净上下文的审查代理审查。写这个改动的会话 MUST NOT 审自己。审查代理 SHALL 按 `main` 上的 `REVIEW.md` 与 `AGENTS.md` 审；PR 对这两个文件的改动是被审的内容，不是审查规则。每条发现 SHALL 标明 Important、Nit 或 Pre-existing，写明 file:line 证据与失败的输入和结果；能定位到改动行的发现 SHALL 作为该行的行内评论发到 PR 上。总结的第一句 SHALL 是各档的计数。审查代理 MUST NOT 修改文件、提交、批准、解决讨论或合并。审查评论是公开的，隐私检查不读它们，所以审查代理 SHALL 只在它所审的那个提交上最近一次隐私检查通过之后才发评论；没发出去的一轮不算数，隐私检查通过后重跑同一轮。
 
 #### Scenario: 有发现
 - **WHEN** 审查代理审一个中档 PR，发现一处会让检查本该失败却通过的逻辑
@@ -42,8 +42,8 @@
 - **THEN** 审查代理仍按 `main` 上的 `REVIEW.md` 审，并把这处删除当作被审的改动
 
 #### Scenario: 隐私检查还没通过
-- **WHEN** 审查代理审完时，PR head 提交的隐私检查是红的或还没跑完
-- **THEN** 它不在 PR 上发任何评论，把发现交回调用方
+- **WHEN** 审查代理审完时，它所审的提交上的隐私检查是红的，或等了十分钟仍没跑完
+- **THEN** 它不在 PR 上发任何评论，把发现交回调用方；作者让隐私检查通过后重跑这一轮，这一轮不计入轮数上限
 
 #### Scenario: 审一个 git 范围
 - **WHEN** 调用方给审查代理一个 git 范围而不是 PR

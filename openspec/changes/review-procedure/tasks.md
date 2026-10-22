@@ -14,7 +14,12 @@
    - `docs(review): keep the review procedure in REVIEW.md, and count only a pull request's own commits`
    - `chore(agents): have the reviewer read the head and post only after the privacy scan`
    - `docs(openspec): fold round 1 findings into review-procedure`
-   - 之后各轮的修复（如有），每个修复一个提交。
+   第二轮审查的修复：
+   - `docs(review): name the reviewer in REVIEW.md, and count a round only once it is posted`
+   - `chore(agents): check the reviewed commit's privacy scan, and read only a clean tree`
+   - `docs(openspec): fold round 2 findings into review-procedure`
+
+   第三轮是最后一轮：再有 Important 就停下，不合并。
 7. `docs(openspec): record review-procedure acceptance, and archive`：任务 2.5、3.1。
 
 ## 1. 实现
