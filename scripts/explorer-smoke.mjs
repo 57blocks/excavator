@@ -14,6 +14,9 @@
  *   - content: the page title and the onboarding header say Excavator, no visible
  *     text names the upstream product, a layer drills in, and a file's code opens
  *     from the inlined sources.
+ * It then opens the same data with the graph's layers removed and asserts the
+ * structural view still draws, now from the groups the copy derives, which the
+ * legend calls groups (the page with layers must call them layers).
  *
  *   node scripts/explorer-smoke.mjs [--screenshot <png>] [--self-check]
  *
@@ -134,12 +137,17 @@ const PROBE = `(async () => {
   out.onboardingHeader = header ? header.textContent : null;
   // The visible text names no upstream product (a slash command in an empty state is not the product name).
   out.upstreamName = /understand/i.test(document.body.innerText.replace(/[/]understand[-a-z]*/g, ''));
+  // The legend counts what the top level draws: "<n> layers", or "<n> groups" when the graph had no layers.
+  const legend = [...document.querySelectorAll('header span')].map((e) => /^\\d+ (layers|groups)$/.exec(e.textContent.trim())).find(Boolean);
+  out.legend = legend ? legend[1] : null;
   if (out.cards === 0) return out;
   const skip = [...document.querySelectorAll('button')].find((b) => /Don't show again/.test(b.textContent));
   if (skip) skip.click();
   await sleep(300);
-  // A layer card drills into the layer: the level's own cards replace the layers.
-  cards().find((n) => /App/.test(n.textContent)).click();
+  // A layer card drills into the layer: the level's own cards replace the layers. A page without the fixture's layers has no such card.
+  const app = cards().find((n) => /App/.test(n.textContent));
+  if (!app) return out;
+  app.click();
   out.drilled = await until(() => cards().some((n) => /Cluster/.test(n.textContent)));
   // A file's code opens from the file list by double-click and is read from the inlined sources.
   const tab = [...document.querySelectorAll('button')].filter((b) => /^files$/i.test(b.textContent.trim())).pop();
@@ -179,9 +187,26 @@ export function judge(result) {
     { name: 'cards', ok: probe.cards >= 2 && result.ready === '1', detail: `${probe.cards} cards at the top level (the fixture has 2 layers), ready=${result.ready}` },
     {
       name: 'content',
-      ok: probe.title === 'Excavator' && /^EXCAVATOR/.test(probe.onboardingHeader ?? '') && probe.upstreamName === false && probe.drilled === true && probe.codeShown === true,
-      detail: `title=${probe.title} onboarding=${probe.onboardingHeader} upstreamName=${probe.upstreamName} layer drilled=${probe.drilled} code from inlined sources=${probe.codeShown}`,
+      ok: probe.title === 'Excavator' && /^EXCAVATOR/.test(probe.onboardingHeader ?? '') && probe.upstreamName === false && probe.drilled === true && probe.codeShown === true && probe.legend === 'layers',
+      detail: `title=${probe.title} onboarding=${probe.onboardingHeader} upstreamName=${probe.upstreamName} layer drilled=${probe.drilled} code from inlined sources=${probe.codeShown} legend=${probe.legend}`,
     },
+  ];
+}
+
+/** The fixture with no layers in its graph, as an analysis that writes none gives it. */
+export function withoutLayers(data) {
+  return { ...data, 'knowledge-graph.json': { ...data['knowledge-graph.json'], layers: [] } };
+}
+
+/** The assertions for the page whose graph has no layers: it is still clean, draws cards, and calls them groups. */
+export function judgeNoLayers(result) {
+  const probe = result.evalResult && !result.evalResult.error ? result.evalResult : { cards: 0, legend: null };
+  const [network, consoleCheck] = judge(result);
+  return [
+    network,
+    consoleCheck,
+    { name: 'cards', ok: probe.cards >= 1 && result.ready === '1', detail: `${probe.cards} cards at the top level, ready=${result.ready}` },
+    { name: 'groups', ok: probe.legend === 'groups', detail: `legend=${probe.legend}` },
   ];
 }
 
@@ -198,6 +223,7 @@ function main(argv) {
 
   const clean = runChrome(assemble(template, data), { screenshot: shot });
   let ok = report('clean', judge(clean));
+  ok = report('no-layers', judgeNoLayers(runChrome(assemble(template, withoutLayers(data))))) && ok;
   if (argv.includes('--self-check')) {
     // Each planted fault must turn the assertion it targets red, and the clean page's other assertions stay green.
     const planted = [

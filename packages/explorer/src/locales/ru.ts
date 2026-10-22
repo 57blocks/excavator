@@ -28,6 +28,7 @@ export const ru = {
     nodes: "Узлы",
     edges: "Рёбра",
     layers: "Слои",
+    groups: "Группы",
     types: "Типы",
     fileTypes: "Типы файлов",
     code: "Код",
@@ -152,6 +153,7 @@ export const ru = {
   layer: {
     defaultName: "Слой",
     label: "слои",
+    groupsLabel: "группы",
   },
   breadcrumb: {
     projectOverview: "Обзор проекта",

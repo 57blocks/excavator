@@ -28,6 +28,7 @@ export const vi = {
     nodes: "Node",
     edges: "Cạnh",
     layers: "Tầng",
+    groups: "Nhóm",
     types: "Loại",
     fileTypes: "Loại tệp",
     code: "Mã",
@@ -152,6 +153,7 @@ export const vi = {
   layer: {
     defaultName: "Tầng",
     label: "tầng",
+    groupsLabel: "nhóm",
   },
   breadcrumb: {
     projectOverview: "Tổng quan dự án",

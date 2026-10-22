@@ -28,6 +28,7 @@ export const ko = {
     nodes: "노드",
     edges: "엣지",
     layers: "레이어",
+    groups: "그룹",
     types: "타입",
     fileTypes: "파일 타입",
     code: "코드",
@@ -152,6 +153,7 @@ export const ko = {
   layer: {
     defaultName: "레이어",
     label: "레이어",
+    groupsLabel: "그룹",
   },
   breadcrumb: {
     projectOverview: "프로젝트 개요",

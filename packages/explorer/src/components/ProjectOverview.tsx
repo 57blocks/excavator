@@ -3,6 +3,7 @@ import { useI18n } from "../contexts/I18nContext";
 
 export default function ProjectOverview() {
   const graph = useDashboardStore((s) => s.graph);
+  const layerSource = useDashboardStore((s) => s.layerSource);
   const startTour = useDashboardStore((s) => s.startTour);
   const { t } = useI18n();
 
@@ -72,7 +73,7 @@ export default function ProjectOverview() {
         </div>
         <div className="bg-elevated rounded-lg p-3 border border-border-subtle">
           <div className="text-2xl font-mono font-medium text-accent">{layers.length}</div>
-          <div className="text-[11px] text-text-muted uppercase tracking-wider mt-1">{t.projectOverview.layers}</div>
+          <div className="text-[11px] text-text-muted uppercase tracking-wider mt-1">{layerSource === "graph" ? t.projectOverview.layers : t.projectOverview.groups}</div>
         </div>
         <div className="bg-elevated rounded-lg p-3 border border-border-subtle">
           <div className="text-2xl font-mono font-medium text-accent">{Object.keys(typeCounts).length}</div>

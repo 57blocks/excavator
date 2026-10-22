@@ -28,6 +28,7 @@ export const en = {
     nodes: "Nodes",
     edges: "Edges",
     layers: "Layers",
+    groups: "Groups",
     types: "Types",
     fileTypes: "File Types",
     code: "Code",
@@ -152,6 +153,7 @@ export const en = {
   layer: {
     defaultName: "Layer",
     label: "layers",
+    groupsLabel: "groups",
   },
   breadcrumb: {
     projectOverview: "Project Overview",

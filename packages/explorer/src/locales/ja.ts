@@ -28,6 +28,7 @@ export const ja = {
     nodes: "ノード",
     edges: "エッジ",
     layers: "レイヤー",
+    groups: "グループ",
     types: "タイプ",
     fileTypes: "ファイルタイプ",
     code: "コード",
@@ -152,6 +153,7 @@ export const ja = {
   layer: {
     defaultName: "レイヤー",
     label: "レイヤー",
+    groupsLabel: "グループ",
   },
   breadcrumb: {
     projectOverview: "プロジェクト概要",

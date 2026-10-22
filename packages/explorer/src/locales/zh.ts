@@ -28,6 +28,7 @@ export const zh = {
     nodes: "节点",
     edges: "边",
     layers: "层级",
+    groups: "分组",
     types: "类型",
     fileTypes: "文件类型",
     code: "代码",
@@ -152,6 +153,7 @@ export const zh = {
   layer: {
     defaultName: "层级",
     label: "层",
+    groupsLabel: "组",
   },
   breadcrumb: {
     projectOverview: "项目概览",

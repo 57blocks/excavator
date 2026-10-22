@@ -20,6 +20,7 @@ export default function LayerLegend() {
   const graph = useDashboardStore((s) => s.graph);
   const navigationLevel = useDashboardStore((s) => s.navigationLevel);
   const activeLayerId = useDashboardStore((s) => s.activeLayerId);
+  const layerSource = useDashboardStore((s) => s.layerSource);
   const { t } = useI18n();
 
   const layers = graph?.layers ?? [];
@@ -33,7 +34,7 @@ export default function LayerLegend() {
     <div className="flex items-center gap-2">
       <span className="text-[11px] font-medium text-text-secondary whitespace-nowrap">
         {navigationLevel === "overview"
-          ? `${layers.length} ${t.layer.label}`
+          ? `${layers.length} ${layerSource === "graph" ? t.layer.label : t.layer.groupsLabel}`
           : activeLayer?.name ?? t.layer.defaultName}
       </span>
 

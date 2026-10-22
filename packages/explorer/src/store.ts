@@ -8,6 +8,7 @@ import type {
   TourStep,
 } from "@understand-anything/core/types";
 import type { ReactFlowInstance } from "@xyflow/react";
+import { withDerivedGroups, type LayerSource } from "./excavator/groups";
 
 export type Persona = "non-technical" | "junior" | "experienced";
 export type NavigationLevel = "overview" | "layer-detail";
@@ -100,6 +101,8 @@ const MAX_HISTORY = 50;
 
 interface DashboardStore {
   graph: KnowledgeGraph | null;
+  /** Where `graph.layers` came from: the graph, or groups derived because it had none (excavator/groups.ts). */
+  layerSource: LayerSource;
   /** id → node lookup, rebuilt by setGraph. Empty before any graph loads. */
   nodesById: Map<string, GraphNode>;
   /** id → layer id (first-matching-layer wins), rebuilt by setGraph. Empty before any graph loads. */
@@ -289,6 +292,7 @@ function layerResetIfChanged(
 
 export const useDashboardStore = create<DashboardStore>()((set, get) => ({
   graph: null,
+  layerSource: "graph",
   nodesById: new Map<string, GraphNode>(),
   nodeIdToLayerId: new Map<string, string>(),
   nodeIdToLayerIds: new Map<string, Set<string>>(),
@@ -363,7 +367,8 @@ export const useDashboardStore = create<DashboardStore>()((set, get) => ({
       pendingFocusContainer: null,
     })),
 
-  setGraph: (graph) => {
+  setGraph: (loaded) => {
+    const { graph, layerSource } = withDerivedGroups(loaded);
     const searchEngine = new SearchEngine(graph.nodes);
     const query = get().searchQuery;
     const searchResults = query.trim() ? searchEngine.search(query) : [];
@@ -373,6 +378,7 @@ export const useDashboardStore = create<DashboardStore>()((set, get) => ({
     const { nodesById, nodeIdToLayerId, nodeIdToLayerIds } = buildGraphIndexes(graph);
     set({
       graph,
+      layerSource,
       nodesById,
       nodeIdToLayerId,
       nodeIdToLayerIds,

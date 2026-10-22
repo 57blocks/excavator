@@ -28,6 +28,7 @@ export const zhTW = {
     nodes: "節點",
     edges: "邊",
     layers: "層級",
+    groups: "分組",
     types: "類型",
     fileTypes: "檔案類型",
     code: "程式碼",
@@ -152,6 +153,7 @@ export const zhTW = {
   layer: {
     defaultName: "層級",
     label: "層",
+    groupsLabel: "組",
   },
   breadcrumb: {
     projectOverview: "專案概覽",
