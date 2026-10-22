@@ -98,3 +98,39 @@
 - **O4 Linux 差异。** 开 PR 前用短 `TMPDIR` 与 `user.useConfigOnly=true` 各跑一次 `test_hotspots.test.mjs`。以 CI 的 Linux 结果为准。
 
 没有真实模型运行：skill 只改了一句里的一个分句，由契约测试钉住；拒绝时不写产物，模型看到的只是消息。
+
+## 验收记录（2026-10-22）
+
+本机 git 2.55，macOS。
+
+- **O1 变异**：每个变异做完都还原，`test_hotspots.test.mjs` 回到 92 个通过。
+  - M1（检查挪回 `rev-parse` 成功之后）：只有 T1 红。
+  - M2（去掉多仓父目录的检查）：只有 T2 红。
+  - M3（探测只把启动失败算作不能工作）：只有 T3 红。
+  - M4（探测去掉 `--git-dir=/dev/null`）：T4 红；已有的「git 不认根或子目录的 `.git`」测试也红。根里坏的 gitfile 让会发现仓库的探测失败，消息变成 git 不能工作。
+  - M5（没提交的子仓也算不认）：T1、T2 红，都是护栏那一段；已有的「只有没提交的子仓」测试也红。
+  - 提交前在 main 的脚本上跑新测试：
+    - T1、T2 的五个拒绝情形都退出 0 并写出产物；
+    - T3 在第一个修复之后、第二个之前仍红：仓库根与父目录的消息说 git 不认 `.git`，子目录写出 `not-a-repository` 的产物；
+    - T4 与两个护栏在修复前后都绿。
+- **O2 不回归**
+  - `test_hotspots.test.mjs`：92 个通过，其中新增 4 个；已有断言没改。
+  - 真实语料：scratchpad 里的 APFS 克隆，只读 git，用户自己的 git 配置。本分支（`696582f5`）与 main（`7dc1fea8`）的产物、stdout、stderr 逐字节相同：
+    - 多仓父目录 go-multirepo：5 个成员仓，2,121 个文件；
+    - 一个公开 Go 示例仓库的根：38 个文件；
+    - 它的两级子目录：`inside-repository`，6 个文件。
+  - 同样三处加上 `GIT_CONFIG_PARAMETERS="'"`：
+    - main：仓库根的消息说 git 不认 `.git`；子目录写出产物，原因是 `not-a-repository`；多仓父目录的消息说 git 不认第一个成员仓的 `.git`。
+    - 本分支：三处都退出 1，不写产物，消息是 `git does not work here (...)`，列出找到的 `.git`。多仓父目录列出全部 5 个成员仓。
+- **O3 全量门**
+  - `pnpm install --frozen-lockfile && pnpm -r build && pnpm test`：154 个文件，4,140 个测试通过，4 个跳过；
+  - 契约测试 32 个通过；
+  - `node scripts/check-refs.mjs` 通过；
+  - `openspec validate --all --strict` 通过；
+  - 新增行零中文字符，没有语料名。
+- **O4 Linux 差异**
+  - 用 `user.useConfigOnly=true` 跑 `test_hotspots.test.mjs`：92 个通过。
+  - 短 `TMPDIR` 没有单独跑：本次测试不涉及 socket 之类受路径长度限制的东西，以 CI 的 Linux 结果为准。
+- **没覆盖的**
+  - `.git` 是指向不存在之处的符号链接时，`existsSync` 看不到它，成员仓发现也看不到，行为与改动前相同。
+  - 环境变量 `GIT_DIR`、`GIT_WORK_TREE`：见 Non-Goals。
