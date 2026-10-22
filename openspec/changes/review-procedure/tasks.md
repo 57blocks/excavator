@@ -10,21 +10,25 @@
 3. `chore(agents): add a fresh-context reviewer agent`：任务 1.2。
 4. `docs(github): add a pull request template`：任务 1.3。
 5. `docs(agents): add risk tiers and the review procedure`：任务 1.4。
-6. 审查各轮的修复提交（如有），每个修复一个提交。
+6. 第一轮审查的修复：
+   - `docs(review): keep the review procedure in REVIEW.md, and count only a pull request's own commits`
+   - `chore(agents): have the reviewer read the head and post only after the privacy scan`
+   - `docs(openspec): fold round 1 findings into review-procedure`
+   - 之后各轮的修复（如有），每个修复一个提交。
 7. `docs(openspec): record review-procedure acceptance, and archive`：任务 2.5、3.1。
 
 ## 1. 实现
 
-- [ ] 1.1 `REVIEW.md`：按 D2 的各项。
-- [ ] 1.2 `.claude/agents/reviewer.md`：输入、规则来源、读取、只读、发布与范围模式的输出，按 D3。
-- [ ] 1.3 `.github/pull_request_template.md`：四节，按 D7。
-- [ ] 1.4 `AGENTS.md`「审查」一节：风险档表（D4）、回应（D5）、收敛（D6）、PR 正文按模板。
+- [x] 1.1 `REVIEW.md`：按 D2 的各项，以及风险档表（D4）、回应（D5）与收敛（D6）。
+- [x] 1.2 `.claude/agents/reviewer.md`：输入、规则来源、读取、只读、发布与范围模式的输出，按 D3。
+- [x] 1.3 `.github/pull_request_template.md`：四节，按 D7。
+- [x] 1.4 `AGENTS.md`「审查」一节：指向 `REVIEW.md` 的流程、PR 正文按模板、由审查代理审查。
 
 ## 2. 验收
 
-- [ ] 2.1 O1：植入缺陷，范围模式审查，报出 Important 且指向该行；核对没有写 GitHub。
-- [ ] 2.2 O2 本地部分与 O5，推送开 PR（正文按模板）。
-- [ ] 2.3 开 `required_conversation_resolution`，读回（O4 前半）。
+- [x] 2.1 O1：植入缺陷，范围模式审查，报出 Important 且指向该行；核对没有写 GitHub。
+- [x] 2.2 O2 本地部分与 O5，推送开 PR（正文按模板）。
+- [x] 2.3 开 `required_conversation_resolution`，读回（O4 前半）。
 - [ ] 2.4 O3：审查代理审第一轮，回应并解决每条发现，按 D6 决定是否再审；O4 后半。
 - [ ] 2.5 验收记录写进 design.md；两个检查绿后合并（D8）。
 

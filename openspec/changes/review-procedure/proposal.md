@@ -10,16 +10,15 @@
 
 ## What Changes
 
-- 新增根目录 `REVIEW.md`（英文）：这个仓库里什么算 Important、什么是 Pre-existing、证据要求、按类报告、Nit 上限、不报什么、每次都查什么、总结的写法。日后开启托管服务时它也直接适用。
+- 新增根目录 `REVIEW.md`（英文）：
+  - 审查的规则：这个仓库里什么算 Important、什么是 Pre-existing、证据要求、按类报告、Nit 上限、不报什么、每次都查什么、总结的写法。日后开启托管服务时它也直接适用。
+  - 审查的流程：按路径定的三档风险与各档合并前的要求；每条发现都要回应；收敛规则（后续轮只审 PR 自己的新提交，不重复，最多三轮）。流程放在这里而不放在 `AGENTS.md`，因为 `REVIEW.md` 本身是高档文件，中档 PR 放宽不了它。
 - 新增审查代理 `.claude/agents/reviewer.md`（英文）：
   - 干净上下文、模型 opus、只读；
   - 按 `main` 上的 `REVIEW.md` 与 `AGENTS.md` 审一个 PR 或一个 git 范围；
   - PR 的发现作为行内评论发到 PR 上；范围的发现只打印，供下一步的评测使用。
 - 新增 PR 模板 `.github/pull_request_template.md`：Summary、Testing、Risk tier、How to revert。
-- `AGENTS.md` 新增「审查」一节：
-  - 按路径定的三档风险与各档合并前的要求；
-  - 每条发现都要回应；
-  - 收敛规则：后续轮只审新提交，不重复，最多三轮。
+- `AGENTS.md` 新增「审查」一节：指向 `REVIEW.md` 的流程、PR 正文按模板、由审查代理审查。
 - `main` 的分支保护加上「所有讨论已解决才能合并」。
 
 ## Capabilities
@@ -38,3 +37,4 @@
 - 中高档 PR 合并前多一轮或几轮审查，每轮是一次 opus 子代理的花费。
 - 高档 PR（改检查或审查本身）由用户合并，无人值守的连续工作会在这类 PR 处停下。
 - 不加代码：风险档、回应与收敛都是写给 agent 的流程，GitHub 只强制「讨论都已解决」。
+- 低档只含文档：`docs/` 下被测试读取的 JSON schema 这类文件归中档。

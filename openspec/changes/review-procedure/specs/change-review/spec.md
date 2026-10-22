@@ -4,10 +4,10 @@
 
 一个 PR 的风险档 SHALL 由它触及的路径决定，取其中最高的一档，作者 MUST NOT 自选：
 - 高档：定义检查与审查本身的路径，即 `.github/`、`scripts/ci/`、`REVIEW.md` 与 `.claude/agents/reviewer.md`；
-- 低档：只改 `openspec/`、`docs/` 下的文件，或根目录下 `AGENTS.md`、`CLAUDE.md`、`REVIEW.md` 以外的 Markdown；
+- 低档：只改文档，即 `openspec/` 与 `docs/` 下的 Markdown、`.openspec.yaml`，以及根目录下 `AGENTS.md`、`CLAUDE.md`、`REVIEW.md` 以外的 Markdown；
 - 中档：其余。
 
-低档在必过检查通过后即可合并；中档还要经过审查；高档在审查之后 SHALL 由用户合并，agent MUST NOT 自行合并。
+低档在必过检查通过后即可合并；中档还要经过审查；高档在审查之后 SHALL 由用户合并，agent MUST NOT 自行合并。风险档、回应与收敛的规则 SHALL 写在高档路径的文件里，使中档 PR 放宽不了它们。
 
 #### Scenario: 改了工作流的 PR
 - **WHEN** 一个 PR 改了 `.github/workflows/ci.yml` 和一份 OpenSpec 文档
@@ -21,9 +21,13 @@
 - **WHEN** 一个 PR 改了 `skills/` 下某个 skill 的 Markdown
 - **THEN** 它是中档，要经过审查
 
+#### Scenario: 改了 docs 下被测试读取的文件
+- **WHEN** 一个 PR 只改了 `docs/` 下一个被测试读取的 JSON schema
+- **THEN** 它是中档，要经过审查
+
 ### Requirement: 中高档 PR 合并前由干净上下文的审查代理审查
 
-中高档 PR 合并前 SHALL 由一个干净上下文的审查代理审查。写这个改动的会话 MUST NOT 审自己。审查代理 SHALL 按 `main` 上的 `REVIEW.md` 与 `AGENTS.md` 审；PR 对这两个文件的改动是被审的内容，不是审查规则。每条发现 SHALL 标明 Important、Nit 或 Pre-existing，写明 file:line 证据与失败的输入和结果；能定位到改动行的发现 SHALL 作为该行的行内评论发到 PR 上。总结的第一句 SHALL 是各档的计数。审查代理 MUST NOT 修改文件、提交、批准、解决讨论或合并。
+中高档 PR 合并前 SHALL 由一个干净上下文的审查代理审查。写这个改动的会话 MUST NOT 审自己。审查代理 SHALL 按 `main` 上的 `REVIEW.md` 与 `AGENTS.md` 审；PR 对这两个文件的改动是被审的内容，不是审查规则。每条发现 SHALL 标明 Important、Nit 或 Pre-existing，写明 file:line 证据与失败的输入和结果；能定位到改动行的发现 SHALL 作为该行的行内评论发到 PR 上。总结的第一句 SHALL 是各档的计数。审查代理 MUST NOT 修改文件、提交、批准、解决讨论或合并。审查评论是公开的，隐私检查不读它们，所以审查代理 SHALL 只在 head 提交的隐私检查通过之后才发评论。
 
 #### Scenario: 有发现
 - **WHEN** 审查代理审一个中档 PR，发现一处会让检查本该失败却通过的逻辑
@@ -36,6 +40,10 @@
 #### Scenario: PR 改了审查规则
 - **WHEN** 一个 PR 删掉了 `REVIEW.md` 里的一条必查项
 - **THEN** 审查代理仍按 `main` 上的 `REVIEW.md` 审，并把这处删除当作被审的改动
+
+#### Scenario: 隐私检查还没通过
+- **WHEN** 审查代理审完时，PR head 提交的隐私检查是红的或还没跑完
+- **THEN** 它不在 PR 上发任何评论，把发现交回调用方
 
 #### Scenario: 审一个 git 范围
 - **WHEN** 调用方给审查代理一个 git 范围而不是 PR
@@ -55,7 +63,7 @@
 
 ### Requirement: 审查要收敛
 
-第一轮 SHALL 审整个改动。之后的轮次 SHALL 只审上一轮审过的提交之后的新提交，MUST NOT 重复已经提出过的发现。只有上一轮有 Important 并且为此改了代码，或者新提交触及中高档路径时，才 SHALL 再审一轮；新提交只触及低档路径时不再审。一个 PR 最多审三轮；第三轮仍有 Important 时 SHALL 停下，不合并，向用户说明并重新考虑做法。
+第一轮 SHALL 审整个改动。之后的轮次 SHALL 只审 PR 自己在上一轮审过的提交之后的新提交，不含从 `main` 合入的内容，并且 MUST NOT 重复已经提出过的发现。只有上一轮有 Important 并且为此改了代码，或者 PR 自己的新提交触及中高档路径时，才 SHALL 再审一轮；新提交只触及低档路径时不再审。一个 PR 最多审三轮；第三轮之后无论哪种原因还需要再审，都 SHALL 停下，不合并，向用户说明并重新考虑做法。
 
 #### Scenario: 修完 Important 之后
 - **WHEN** 第一轮有一条 Important，作者推了修复的提交
@@ -64,6 +72,14 @@
 #### Scenario: 第三轮仍有 Important
 - **WHEN** 第三轮审查仍报出 Important
 - **THEN** 这个 PR 不合并，agent 停下向用户说明
+
+#### Scenario: 第三轮之后又改了中档路径
+- **WHEN** 第三轮没有 Important，但之后 PR 又推了一个改 `packages/` 的提交
+- **THEN** 这个 PR 不合并，agent 停下向用户说明
+
+#### Scenario: 合入 main 之后
+- **WHEN** 上一轮之后，PR 只合入了最新的 `main`，合并时没有解决冲突
+- **THEN** 不再审一轮：从 `main` 带来的改动不算 PR 自己的新提交
 
 #### Scenario: 之后只改了验收记录
 - **WHEN** 最后一轮之后的新提交只改了 `openspec/` 下的验收记录
