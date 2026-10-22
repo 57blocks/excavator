@@ -10,7 +10,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { execFileSync, spawn, spawnSync } from 'node:child_process';
 import {
-  existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, renameSync, rmSync, symlinkSync, writeFileSync,
+  appendFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, renameSync, rmSync, symlinkSync, writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
@@ -853,6 +853,48 @@ describe('no history is visible, never 0', () => {
     const plain = tempDir('hotspots-nogit-plain-');
     writeFile(plain, 'a.txt', lines(2));
     expect(readProduct(plain, [], noGit).noHistory).toEqual({ reason: 'not-a-repository', repositoryRoot: null, pathInRepository: null });
+  });
+
+  it('refuses to write a product when git starts but does not work, and blames no .git', () => {
+    const repo = initRepo('hotspots-brokengit-');
+    commit(repo, { when: '2024-01-01', files: { 'src/a.txt': lines(2) } });
+    const parent = tempDir('hotspots-brokengit-multi-');
+    const member = join(parent, 'm');
+    mkdirSync(member);
+    git(member, ['init', '-q', '-b', 'main']);
+    commit(member, { when: '2024-01-01', files: { 'x.txt': lines(1) } });
+    const userConfig = tempDir('hotspots-brokengit-config-');
+    writeFile(userConfig, 'gitconfig', '[core\n');
+    const plain = tempDir('hotspots-brokengit-plain-');
+    writeFile(plain, 'a.txt', lines(2));
+
+    // git starts in both, and every command that reads its configuration fails
+    for (const env of [{ GIT_CONFIG_PARAMETERS: "'" }, { GIT_CONFIG_GLOBAL: join(userConfig, 'gitconfig') }]) {
+      for (const [root, found] of [[repo, '.git'], [join(repo, 'src'), '../.git'], [parent, 'm/.git']]) {
+        const result = runScript(root, [], env);
+        expect(result.status, result.stderr).toBe(1);
+        expect(result.stderr).toContain('git does not work here (');
+        expect(result.stderr).toContain(`, so the history in ${found} cannot be read`);
+        expect(result.stderr).not.toContain('does not accept');
+        expect(existsSync(productPath(root))).toBe(false);
+      }
+
+      // with no .git anywhere, git not working changes nothing
+      expect(readProduct(plain, [], env).noHistory).toEqual({ reason: 'not-a-repository', repositoryRoot: null, pathInRepository: null });
+    }
+  });
+
+  it('says git does not accept the .git, not that git does not work, when only the repository config is broken', () => {
+    const repo = initRepo('hotspots-brokenrepoconfig-');
+    commit(repo, { when: '2024-01-01', files: { 'a.txt': lines(2) } });
+    appendFileSync(join(repo, '.git', 'config'), '[core\n');
+
+    const result = runScript(repo);
+
+    expect(result.status, result.stderr).toBe(1);
+    expect(result.stderr).toContain('git does not accept .git in the project root, so its history cannot be read');
+    expect(result.stderr).not.toContain('does not work');
+    expect(existsSync(productPath(repo))).toBe(false);
   });
 
   it('refuses to write a product when git does not accept the .git of the root or of a child directory', () => {

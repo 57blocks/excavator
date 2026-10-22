@@ -3,15 +3,15 @@
  *
  * Why a project that the source snapshot read as a plain directory has no
  * history (openspec: changes/hotspots-no-history-reason, hotspots-unaccepted-git).
- * Decided by structure only: whether git starts, whether `git rev-parse
+ * Decided by structure only: whether git works, whether `git rev-parse
  * --show-toplevel` names the directory itself in the project root and in each
  * direct child that holds a `.git`, and where a `.git` exists. git's messages
  * are localized, so their text is quoted in errors but never matched.
  *
- *   - a `.git` that cannot be read (git does not start, or git does not accept
- *     it) -> an Error: a product saying "no history" would hide history that
- *     exists. This is decided first, so a root inside another work tree does not
- *     hide a `.git` that git skips in the root or in a child
+ *   - a `.git` that cannot be read (git does not start or does not work, or git
+ *     does not accept it) -> an Error: a product saying "no history" would hide
+ *     history that exists. This is decided first, so a root inside another work
+ *     tree does not hide a `.git` that git skips in the root or in a child
  *   - the root is inside a work tree rooted elsewhere -> 'inside-repository'
  *   - otherwise -> 'not-a-repository'
  *
@@ -23,7 +23,11 @@
  * parent. The children of a repository root are not checked: a repository
  * inside it is not in its history.
  *
- * Ancestors are searched for a `.git` only when git does not start. When it
+ * Git works when a configuration read outside any repository succeeds, and
+ * starts when it can be spawned; a git that starts but fails there (a broken
+ * user configuration) is a git that does not work, and no `.git` is to blame.
+ *
+ * Ancestors are searched for a `.git` only when git does not work. When it
  * does, its own discovery decides: a stray `.git` that git rejects above the
  * project must not refuse every project below it. Git runs with the same
  * environment the snapshot's detection uses, so both read the user's git
@@ -39,6 +43,20 @@ const posix = (path) => path.split(sep).join('/');
 const showToplevel = (dir) => spawnSync('git', ['rev-parse', '--show-toplevel'], { cwd: dir, encoding: 'utf-8' });
 
 const firstLine = (text) => (text ?? '').trim().split('\n')[0] || 'no message';
+
+/**
+ * Why git cannot be used here, or null when it can. `--git-dir=/dev/null` reads
+ * the same system, user and environment configuration as every other command but
+ * discovers no repository, so a broken `.git` anywhere cannot make it fail.
+ */
+function whyGitDoesNotWork(here) {
+  const probe = spawnSync('git', ['--git-dir=/dev/null', 'config', '--list'], {
+    cwd: here, encoding: 'utf-8', stdio: ['ignore', 'ignore', 'pipe'], // the configuration itself is never read
+  });
+  if (probe.error) return `git could not be started (${probe.error.code ?? probe.error.message})`;
+  if (probe.status !== 0) return `git does not work here (${firstLine(probe.stderr)})`;
+  return null;
+}
 
 function ancestorsOf(dir) {
   const found = [];
@@ -104,19 +122,19 @@ export function assertGitAccepted(root) {
  */
 export function explainNoHistory(root) {
   const here = realpathSync(root);
-  const probe = showToplevel(here);
+  const unusable = whyGitDoesNotWork(here);
 
-  if (probe.error) {
+  if (unusable !== null) {
     const found = [here, ...ancestorsOf(here), ...childrenWithGit(here)].filter((dir) => existsSync(join(dir, '.git')));
     if (found.length > 0) {
-      throw new Error(`git could not be started (${probe.error.code ?? probe.error.message}), `
-        + `so the history in ${found.map((dir) => gitLabel(here, dir)).join(', ')} cannot be read`);
+      throw new Error(`${unusable}, so the history in ${found.map((dir) => gitLabel(here, dir)).join(', ')} cannot be read`);
     }
     return notARepository();
   }
 
   assertGitAccepted(here);
 
+  const probe = showToplevel(here);
   if (probe.status !== 0) return notARepository();
   const top = realpathSync(probe.stdout.trim());
   if (top === here) throw new Error(`git reads ${here} as a repository root, but the source snapshot read it as a plain directory`);
