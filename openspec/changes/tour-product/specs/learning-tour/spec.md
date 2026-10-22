@@ -34,10 +34,15 @@
 - 5 到 15 步，`order` 从 1 起连续；
 - 每步有 `title`（不超过 60 个字符）、`description`（2 到 5 句）、`nodeIds`（1 到 5 个不重复的 id），可选 `languageLesson`（不超过 3 句）；
 - `nodeIds` 的每一项 SHALL 在候选集里。
+- 标题、讲解与语言要点里 SHALL 没有建议或评价性措辞（如 should、recommend、consider、better to、needs to be improved 及 `--language` 所选语言里的对应说法）；`check` 列出命中的句子。
 
 #### Scenario: 引用候选集外的节点
 - **WHEN** 某一步的 `nodeIds` 含一个图谱里有、但候选集里没有的 id
 - **THEN** `check` 失败并列出这一步与这个 id
+
+#### Scenario: 讲解里有建议
+- **WHEN** 某一步的讲解写着 "You should split this handler."
+- **THEN** `check` 失败并列出这一句
 
 #### Scenario: 序号有缺口
 - **WHEN** 步的 `order` 是 1、2、4
@@ -77,7 +82,7 @@
 
 ### Requirement: 回复与语言
 
-skill 的报告与对用户说的每一行 SHALL 用英文写，除非 `--language` 给了别的语言；项目文件、记忆、源码或子代理回复的语言不改变它。导览的 `title`、`description` 与 `languageLesson` SHALL 用同一语言，`contentLanguage` 记下它。最后回复 SHALL 是最后一条命令打印的几行：产物路径、步数、各结论的句数、删掉的句数与步数，回复里不加别的内容。
+skill 的报告与对用户说的每一行 SHALL 用英文写，除非 `--language` 给了别的语言；项目文件、记忆、源码或子代理回复的语言不改变它。导览的 `title`、`description` 与 `languageLesson` SHALL 用同一语言，`contentLanguage` 记下它。最后回复 SHALL 是最后一条命令打印的几行：产物路径、步数、各结论的句数、删掉的句数与步数，以及建议检查的命中行数，回复里不加别的内容。这几行的标签是产物的字段名，由脚本原样打印，不随 `--language` 翻译。
 
 #### Scenario: 默认英文
 - **WHEN** 没有给 `--language`，项目的 `AGENTS.md` 写着用中文回复

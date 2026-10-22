@@ -52,6 +52,8 @@
 
 `unverified` 的句子保留并标出：源码片段里看不出真假，不等于错；查看页把它显示成「未核验」。
 
+建议与评价的检查放在 `check`：它在核验之前，命中就退回给模型改，不会出现「核验过的句子再被改写」。词表按语言给出（英文与中文；中文词在脚本里以转义写出），`report` 再扫一遍产物并把命中行数写进回复的最后一行，正常为 0。
+
 ### D5 产物与新鲜度
 
 `.excavator/tour.json` 用 `format: "excavator-tour/1"`，带 `sourceRevision` 与 `factDigest`（取图谱 header 的 `factsDigest`）。查看页对比图谱判新鲜，不同时整份导览判为 different revision。写入走临时文件再改名，键按固定顺序输出，同一输入逐字节相同。
@@ -81,7 +83,7 @@
   - 用自己的脚本核对：每个 `nodeIds` 都在图谱与候选集里，每句都有结论，`counts` 与 `steps` 和 `removed` 重算一致，`contradicted` 句子不在 `steps` 里，`factDigest` 等于图谱；
   - 分层抽查：每种结论各抽 3 句（verified、unverified、被删掉的），自己读引用节点的源码判断结论是否成立，写明理由；
   - 最后回复的行与规范一致，语言为英文，`.excavator/` 里只多出 `tour.json` 与 `tour/` 下的中间文件。
-- **O4 语言**：在克隆上带 `--language zh` 再跑一次，导览文字是中文，`contentLanguage` 为 `zh`，回复为中文；不带参数时为英文（O3 已覆盖）。
+- **O4 语言**：在克隆上带 `--language zh` 再跑一次，导览文字是中文，`contentLanguage` 为 `zh`，回复之外说的每一行是中文；最后回复的几行是脚本打印的字段名与数，原样不译（与 doc-map 一致）。不带参数时为英文（O3 已覆盖）。
 
 ## Risks / Trade-offs
 
