@@ -43,7 +43,7 @@ lockfile 里的内容有三类（本仓库的 lockfile 9.0，顶层键为 `lockf
 
 ### D3 测试带正对照
 
-新测试把同一行（一个完整性哈希，中间有一段合成语料名，两侧是 base64 里的 `/` 与 `+`）同时写进 `pnpm-lock.yaml` 与 `src/` 下的一个文件，期望只有 `corpus added lines` 为 1。代码文件那一处证明这一行确实与正则匹配；只在 lockfile 里写时，计数为 0 也可能只是正则没匹配上。
+新测试把同一行（一个完整性哈希，中间有一段合成语料名，两侧是 base64 里的 `/` 与 `+`）同时写进 `pnpm-lock.yaml` 与 `src/` 下的一个文件，期望只有 `corpus added lines` 为 1。代码文件那一处证明这一行确实与正则匹配；只在 lockfile 里写时，计数为 0 也可能只是正则没匹配上。第 1 轮审查后，同一行又写进 `packages/p/pnpm-lock.yaml`，期望改为 2：子目录里的 lockfile 照常扫描（见验收记录的「审查」）。
 
 ## Oracles（动手前写死）
 
