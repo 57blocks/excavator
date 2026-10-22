@@ -170,6 +170,8 @@
   - Nit（D3 的样本格式还写着 `resolves to`）：采纳，改成代码与用例的 `is declared in scope only in`；
   - Nit（缺口说明与 `SKILL.md` 把作用域写成「本文件与 import 目标」，没去掉只经转发到达的目标）：采纳，`60c3568e`。这个提交动了中风险路径，按 REVIEW.md 再跑第三轮。
   - 重跑：本测试文件与 `tests/lazy/reexport-call-scope.test.mjs` 46 个用例全过，`node scripts/check-refs.mjs` 通过。
+- **评审第三轮（reviewer 代理，在 `f49f2399` 上，只看 `f6b3cc79` 之后的提交）：** 没有发现；第二轮两条确认已改。按 REVIEW.md 不再需要下一轮。
+  - O3：在 `f49f2399` 的分离检出上：`pnpm install --frozen-lockfile`、`pnpm -r build`、`openspec validate --all --strict`（47 项）、`node scripts/check-refs.mjs` 都通过；`pnpm test` 206 个文件、5086 个测试里 5081 个通过、4 个跳过、1 个失败：`tests/revision-sync/sync-fact-graph.test.mjs` 的一个用例 20 秒超时（load average 约 200），外加 vitest 的 `onTaskUpdate` RPC 超时。同一检出上单独重跑这个文件，9 个全过；它不读审计的输出。之后的归档提交只动 OpenSpec 文档。
 - **既有问题（不在本变更内，作为后续工作）：**
   - 源端按文件匹配，见 Non-Goals；
   - 证据行核对拿边引的行与该文件里同名调用点的最小行比较。上面的快照上，origin/main 的审计已把事实图里 20%–59% 的正确 `calls` 边判为 `contradicted`（conduit 14/70，go-multirepo 774/3,073，kotlin-portal 936/1,671，maui-app 1,255/2,125），因为它们引的是同名的后一个调用点。

@@ -14,7 +14,9 @@
 7. `fix(skill): treat a calls edge to another declaration as unsupported, not contradicted`：任务 2.4，第一轮评审的 Important 与 Nit（用例）。
 8. `docs(skill): say a calls edge to another declaration is marked as unsupported`：任务 2.4。
 9. `docs(openspec): revise audit-calls-target after review round 1`：任务 2.4，D2、规格增量、oracle 与第一轮记录。
-10. `docs(openspec): record the review of audit-calls-target and archive`：任务 2.4 收尾。
+10. `fix(skill): say the call scope leaves out re-export-only targets`：第二轮评审的 Nit。
+11. `docs(openspec): record review round 2 of audit-calls-target`。
+12. `docs(openspec): record the review of audit-calls-target and archive`：任务 2.4 收尾。
 
 ## 1. 实现
 
@@ -27,4 +29,4 @@
 - [x] 2.1 O4：逐个变异，记录变红的用例，然后还原。
 - [x] 2.2 O3 全部门；O5 在真实语料快照上比较，先做装置先验，再按判据逐条记录。
 - [x] 2.3 变基到 PR 57blocks/excavator#66（`callScopePaths`）之后：补 O1 h 与变异 vii，重跑 O3、O5。
-- [ ] 2.4 评审（中风险档：reviewer 代理）、回复每条意见；验收记录写进 design.md，同步主规格并归档。
+- [x] 2.4 评审（中风险档：reviewer 代理）、回复每条意见；验收记录写进 design.md，同步主规格并归档。
