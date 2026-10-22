@@ -195,3 +195,47 @@ export function domainGraph({ sourceRevision, factDigest, extra = {} } = {}) {
     ...extra,
   };
 }
+
+/**
+ * A tour product as `tour.mjs report` writes it: two steps (one with a language lesson), one sentence of each kept
+ * verdict, one removed step, one gap, and counts recounted from those. `extra` replaces top-level keys.
+ */
+export function tourProduct({ sourceRevision, factDigest, extra = {} } = {}) {
+  const sentence = (id, kind, text, verdict) => ({ id, kind, text, verdict, reason: `The slice ${verdict === 'verified' ? 'shows' : 'does not show'} it.` });
+  const steps = [
+    {
+      order: 1,
+      originalOrder: 1,
+      title: 'Where the program starts',
+      description: 'The entry file calls run. It reads the settings first.',
+      nodeIds: ['file:src/a.js', 'function:src/a.js:run'],
+      sentences: [
+        sentence('s1.d1', 'description', 'The entry file calls run.', 'verified'),
+        sentence('s1.d2', 'description', 'It reads the settings first.', 'unverified'),
+      ],
+    },
+    {
+      order: 2,
+      originalOrder: 3,
+      title: 'Loading data',
+      description: 'The loader opens one file.',
+      nodeIds: ['file:src/a.js'],
+      languageLesson: 'An arrow function keeps the outer this.',
+      sentences: [
+        sentence('s3.d1', 'description', 'The loader opens one file.', 'verified'),
+        sentence('s3.l1', 'languageLesson', 'An arrow function keeps the outer this.', 'unchecked'),
+      ],
+    },
+  ];
+  return {
+    format: 'excavator-tour/1',
+    contentLanguage: 'en',
+    sourceRevision,
+    factDigest,
+    steps,
+    removed: [{ step: 2, id: 's2.d1', kind: 'description', text: 'The cache never expires.', verdict: 'contradicted', reason: 'The slice sets a time to live.', cause: 'contradicted twice' }],
+    gaps: [{ kind: 'few-steps', reason: 'the tour has 2 step(s), fewer than 5', count: 2 }],
+    counts: { steps: 2, sentences: 4, verified: 2, unverified: 1, contradicted: 0, unchecked: 1, removedSentences: 1, adviceLines: 0, removedSteps: 1 },
+    ...extra,
+  };
+}

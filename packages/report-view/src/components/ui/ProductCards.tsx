@@ -1,4 +1,5 @@
 import type { Manifest, ManifestProduct } from '../../data/manifest';
+import { differentRevisionNote } from '../../lib/products';
 import { Card } from './Card';
 
 /** The banner a product page shows at its top when the product was made at another revision; null otherwise. */
@@ -8,10 +9,10 @@ export function RevisionBanner({ manifest, product }: { manifest: Manifest; prod
     <Card title={`${product.label}: different revision`} tone="warn">
       {product.revision !== manifest.snapshot.revision ? (
         <p>
-          The product was made at <code>{product.revision}</code>; the source snapshot is <code>{manifest.snapshot.revision}</code>. Its content is shown as it was written.
+          The product was made at <code>{product.revision}</code>; the source snapshot is <code>{manifest.snapshot.revision}</code>. {differentRevisionNote(product.name)}
         </p>
       ) : null}
-      {product.reason ? <p>{`${product.reason}. Its content is shown as it was written.`}</p> : null}
+      {product.reason ? <p>{`${product.reason}. ${differentRevisionNote(product.name)}`}</p> : null}
     </Card>
   );
 }

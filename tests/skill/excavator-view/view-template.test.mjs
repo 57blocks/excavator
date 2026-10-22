@@ -145,17 +145,25 @@ describe('the page packed from the Full-mode smoke fixture', () => {
   });
   afterAll(() => smoke && rmSync(smoke.dir, { recursive: true, force: true }));
 
-  it('holds the semantic payload and counts what the Overview should show', () => {
+  it('holds the semantic payload and counts what the Products page should show', () => {
     expect(payloadIds(html)).toContain('semantics');
     const product = manifestOf(html).products.find((p) => p.name === 'semantics');
-    const { overview } = smoke.expected;
+    const { products } = smoke.expected;
     expect(product.status).toBe('included');
     expect(product.counts).toEqual({
-      entries: overview['semantic-entries'],
-      stale: overview['semantic-stale'],
-      byVerdict: { verified: overview['semantic-verified'], unverified: overview['semantic-unverified'], contradicted: overview['semantic-contradicted'], unchecked: overview['semantic-unchecked'] },
-      layers: overview['semantic-layers'],
+      entries: products['semantic-entries'],
+      stale: products['semantic-stale'],
+      byVerdict: { verified: products['semantic-verified'], unverified: products['semantic-unverified'], contradicted: products['semantic-contradicted'], unchecked: products['semantic-unchecked'] },
+      layers: products['semantic-layers'],
     });
+  });
+
+  it('holds the tour, included, since it was made from the graph\'s facts', () => {
+    const product = manifestOf(html).products.find((p) => p.name === 'tour');
+    const { tour } = smoke.expected;
+    expect(product).toMatchObject({ status: 'included', payloads: ['tour'], factDigests: { tour: tour.factDigest, graph: tour.factDigest } });
+    expect(product.counts).toMatchObject({ steps: tour.steps, sentences: tour.sentences, removedSentences: tour.removedSentences });
+    expect(payloadIds(html)).toContain('tour');
   });
 
   it('has the contradicted summary neither in the page nor in any decoded payload, and no audit or hash', () => {

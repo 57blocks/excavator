@@ -1,6 +1,6 @@
 ---
 name: excavator-view
-description: Pack the products in a project's .excavator/ folder (knowledge graph, unused-code, doc-map, hotspots and their reports) into one self-contained HTML file and open it with the system's default browser. A deterministic script writes the page and gives each product a visible state; the page needs no network, no server and nothing to install. It runs no analysis, edits no other file and gives no advice.
+description: Pack the products in a project's .excavator/ folder (knowledge graph, unused-code, doc-map, hotspots, the tour and the reports) into one self-contained HTML file and open it with the system's default browser. A deterministic script writes the page and gives each product a visible state; the page needs no network, no server and nothing to install. It runs no analysis, edits no other file and gives no advice.
 argument-hint: "[project-path] [--no-source] [--out <path>]"
 ---
 
@@ -59,7 +59,7 @@ esac
 true
 ```
 
-Do not start an HTTP server, do not run `/excavator`, `/excavator-unused-code`, `/excavator-doc-map` or `/excavator-hotspots` to fill a product that is not run, and do not create, change or delete any other file under `.excavator/`.
+Do not start an HTTP server, do not run `/excavator`, `/excavator-unused-code`, `/excavator-doc-map`, `/excavator-hotspots` or `/excavator-tour` to fill a product that is not run, and do not create, change or delete any other file under `.excavator/`.
 
 ## Step 3 — Reply
 
@@ -76,7 +76,7 @@ It prints, in this order:
 ```
 View: <absolute path>
 Size: <size in MB, one decimal> MB
-Products: knowledge graph <state>; unused code <state>; doc map <state>; hotspots <state>; reports <state>
+Products: knowledge graph <state>; unused code <state>; doc map <state>; hotspots <state>; tour <state>; reports <state>
 Source: <embedded (N files) | not embedded>
 ```
 

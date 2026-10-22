@@ -29,7 +29,7 @@
  *     flow_step weight order with the arrows between them, a step's evidence opening the code drawer, a step's graph node
  *     opening the structure graph with that node selected, and the nodes the graph lacks listed as "Not in the graph.";
  *     domain-history, domain-restore and domain-keys (back and forward, a load from the address, Esc from the inside out);
- *     domain-overview, domain-notrun and domain-digest (the product's state with its counts, not run, and a different revision);
+ *     domain-products, domain-notrun and domain-digest (the product's state with its counts, not run, and a different revision);
  *     domain-fit (a domain graph as wide as a real one at 1280 by 900: nine domains and a flow of seven steps fit at a zoom of 0.9 or
  *     more, and no text of a card runs out of its box);
  *   - edge-labels: on a crowded level (top and drilled) a selected node lights its edges and labels none of them; the edge under the pointer
@@ -37,9 +37,12 @@
  *   - topbar-768, topbar-1024, topbar-1280: the top bar's controls do not overlap, overflow or wrap, the search box is at least 160 px, and
  *     the Hotspots overlay switches on and off (behind the Overlays menu below 1280 px);
  *   - longfile, longfile-restore: a function of a file expanded to a hundred and twenty rows is located, and the camera is on it at a readable
- *     zoom instead of fitting the whole file.
+ *     zoom instead of fitting the whole file;
+ *   - products-redirect (openspec: changes/viewer-learn, design D9): a bookmark of the old `#/overview` and a move to it both open the
+ *     Products page with `#/products` in the address and no `#/overview` entry left in the history, the navigation names Products, and
+ *     the page lists the tour as included with the facts digest it was made from.
  *
- *   node scripts/view-smoke-graph.mjs [levels|history|search|drawer|focus|path|filters|keys|layers|summary|overlays|clearance|notrun|restore|locate|locate-tables|domain|domain-history|domain-restore|domain-keys|domain-overview|domain-notrun|domain-digest|domain-fit|edge-labels|topbar-768|topbar-1024|topbar-1280|longfile|longfile-restore ...]
+ *   node scripts/view-smoke-graph.mjs [levels|history|search|drawer|focus|path|filters|keys|layers|summary|overlays|clearance|notrun|restore|locate|locate-tables|domain|domain-history|domain-restore|domain-keys|domain-products|domain-notrun|domain-digest|domain-fit|edge-labels|topbar-768|topbar-1024|topbar-1280|longfile|longfile-restore|products-redirect ...]
  *
  * Needs `pnpm build` (the template) and a local Chrome. Prints one line per
  * check and exits 1 when any fails.
@@ -932,24 +935,24 @@ const SCENARIOS = [
     ];
   }, { hash: '/domain?d=domain%3Aapp&f=flow%3Astart-up&node=step%3Astart-up%3Abegin' }],
 
-  ['domain-overview', 'layers', (graph, expected) => driver(`
-    await go('#/overview');
+  ['domain-products', 'layers', (graph, expected) => driver(`
+    await go('#/products');
     await until(() => attr('data-xv-count-domain-domains') !== null);
     const row = all('tr').find((tr) => tr.querySelector('td')?.textContent === 'Domain graph');
-    out.overview = { counts: ['domains', 'flows', 'steps', 'cross'].map((n) => attr('data-xv-count-domain-' + n)), row: row?.textContent ?? null, counted: q('[data-xv-domain-counts]')?.textContent ?? null };
+    out.products = { counts: ['domains', 'flows', 'steps', 'cross'].map((n) => attr('data-xv-count-domain-' + n)), row: row?.textContent ?? null, counted: q('[data-xv-domain-counts]')?.textContent ?? null };
   `), (out, graph, expected) => [
-    ['domain-overview: the Overview lists the domain graph as included with its counts', JSON.stringify(out.overview?.counts) === JSON.stringify(['2', '3', '5', '1']) && /Included/.test(out.overview.row ?? '') && out.overview.counted === '2 domains, 3 flows, 5 steps and 1 cross-domain edge.', out.overview],
+    ['domain-products: the Products page lists the domain graph as included with its counts', JSON.stringify(out.products?.counts) === JSON.stringify(['2', '3', '5', '1']) && /Included/.test(out.products.row ?? '') && out.products.counted === '2 domains, 3 flows, 5 steps and 1 cross-domain edge.', out.products],
   ]],
 
   ['domain-notrun', 'domain-notrun', (graph, expected) => driver(`
     await go('#/domain');
     out.page = { text: q('main')?.textContent ?? '', canvas: !!q('.react-flow'), note: !!q('[data-xv-domain-note]') };
-    await go('#/overview');
+    await go('#/products');
     const row = all('tr').find((tr) => tr.querySelector('td')?.textContent === 'Domain graph');
-    out.overview = row?.textContent ?? null;
+    out.products = row?.textContent ?? null;
   `), (out) => [
     ['domain-notrun: the Domain page says not run and gives the command, and draws no graph', /Domain graph: not run/.test(out.page?.text ?? '') && /\/excavator-domain/.test(out.page.text) && out.page.canvas === false && out.page.note === false, out.page],
-    ['domain-notrun: the Overview lists it as not run with the command', /Not run/.test(out.overview ?? '') && /\/excavator-domain/.test(out.overview), out.overview],
+    ['domain-notrun: the Products page lists it as not run with the command', /Not run/.test(out.products ?? '') && /\/excavator-domain/.test(out.products), out.products],
   ]],
 
   ['domain-digest', 'domain-digest', (graph, expected) => driver(`
@@ -957,16 +960,56 @@ const SCENARIOS = [
     await go('#/domain');
     await until(() => attr('data-xv-domain-level') === 'top');
     out.page = { revision: q('[data-xv-domain-revision]')?.textContent ?? null, cards: all('[data-xv-domain-entry="domain"]').length };
-    await go('#/overview');
+    await go('#/products');
     const row = all('tr').find((tr) => tr.querySelector('td')?.textContent === 'Domain graph');
-    out.overview = row?.textContent ?? null;
+    out.products = row?.textContent ?? null;
   `), (out, graph, expected) => {
     const { domain, graph: other } = expected.domain.digests;
     return [
       ['domain-digest: a domain graph made from other facts is a different revision: the page writes both digests and still draws the graph', out.page?.revision?.includes(domain) && out.page.revision.includes(other) && out.page.cards === expected.domain.counts.domains, out.page],
-      ['domain-digest: the Overview lists it as a different revision with both digests', /Different revision/.test(out.overview ?? '') && out.overview.includes(domain) && out.overview.includes(other), out.overview],
+      ['domain-digest: the Products page lists it as a different revision with both digests', /Different revision/.test(out.products ?? '') && out.products.includes(domain) && out.products.includes(other), out.products],
     ];
   }],
+
+  ['products-redirect', 'layers', (graph, expected) => driver(`
+    const navItem = (id) => q('nav[aria-label="Pages"] [data-xv-nav="' + id + '"]');
+    const snap = () => ({ hash: location.hash, nav: q('nav[aria-label="Pages"] [aria-current="page"]')?.getAttribute('data-xv-nav') ?? null, heading: q('main h1')?.textContent ?? null });
+    // Short waits: on a page without the redirect each one runs out (the evaluation has 15 s in all), and the checks still say which step failed.
+    const ready = () => until(() => attr('data-xv-ready') === '1', 40);
+    await until(() => q('main h1')?.textContent === 'Products', 40);
+    await ready();
+    out.bookmark = snap();
+    out.navItem = { href: navItem('products')?.getAttribute('href') ?? null, label: navItem('products')?.textContent ?? null, old: !!navItem('overview') };
+    const row = all('tr').find((tr) => tr.querySelector('td')?.textContent === 'Tour');
+    out.tour = row?.textContent ?? null;
+    await go('#/graph');
+    const before = history.length;
+    location.hash = '#/overview';
+    await until(() => location.hash === '#/products' && q('main h1')?.textContent === 'Products', 40);
+    await ready();
+    out.moved = { ...snap(), added: history.length - before };
+    history.back();
+    await until(() => location.hash === '#/graph', 40);
+    await ready();
+    out.back = snap();
+    history.forward();
+    await until(() => location.hash === '#/products', 40);
+    await ready();
+    out.forward = snap();
+    location.hash = '#/overview?x=1';
+    await until(() => location.hash.startsWith('#/products'), 40);
+    out.params = location.hash;
+  `), (out, graph, expected) => {
+    const products = (s) => s?.hash === '#/products' && s.nav === 'products' && s.heading === 'Products';
+    return [
+      ['products-redirect: a bookmark of #/overview opens the Products page with #/products in the address', products(out.bookmark), out.bookmark],
+      ['products-redirect: the navigation names Products and links to #/products, and has no Overview item', out.navItem?.href === '#/products' && /Products/.test(out.navItem.label ?? '') && out.navItem.old === false, out.navItem],
+      ['products-redirect: a move to #/overview opens the Products page and adds one history entry, not two', products(out.moved) && out.moved.added === 1, out.moved],
+      ['products-redirect: back returns to the graph, not to #/overview, and forward to the Products page', out.back?.hash === '#/graph' && out.back.nav === 'graph' && products(out.forward), [out.back, out.forward]],
+      ['products-redirect: the parameters after the page name are kept', out.params === '#/products?x=1', out.params],
+      ['products-redirect: the Products page lists the tour as included, made from the graph\'s facts', /Included/.test(out.tour ?? '') && out.tour.includes(expected.tour.factDigest), out.tour],
+    ];
+  }, { hash: '/overview' }],
 
   // A domain graph as wide as a real one (nine domains, a flow of seven steps, long names, summaries and paths), at the smoke's 1280 by
   // 900 window: the cards are read at about full size (the camera fits at a zoom of 0.9 or more) and none of their text runs out of its box.

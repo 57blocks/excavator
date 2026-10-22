@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from 'react';
+import { useEffect, useLayoutEffect, useMemo } from 'react';
 import { MotionConfig } from 'motion/react';
 
 import { AppShell } from './components/shell/AppShell';
@@ -9,8 +9,8 @@ import { ShortcutsDialog } from './components/shell/ShortcutsDialog';
 import type { Manifest } from './data/manifest';
 import type { PayloadReader } from './data/payload';
 import { useShortcuts } from './hooks/use-shortcuts';
-import { useRoute } from './hooks/use-route';
-import { isBareHash } from './lib/route';
+import { replaceHash, useRoute } from './hooks/use-route';
+import { isBareHash, parseRoute, redirectHash } from './lib/route';
 import { PAGES } from './pages/registry';
 import { GraphUiProvider } from './state/graph-ui';
 import { ViewerProvider } from './state/viewer';
@@ -28,11 +28,17 @@ function Shortcuts() {
 
 /** The page the route names inside the shell; a route no page has is an error card. */
 export function App({ manifest, payloads }: { manifest: Manifest; payloads: PayloadReader }) {
-  const { route, hash } = useRoute();
-  // Opened without a route, the viewer shows the graph; with no knowledge graph to draw it shows the Overview.
+  const { route: addressRoute, hash } = useRoute();
+  // A moved page's old address is replaced in place (so back does not land on it again); it draws the new page at once.
+  const redirect = redirectHash(hash);
+  const route = useMemo(() => (redirect === null ? addressRoute : parseRoute(redirect)), [redirect, addressRoute]);
+  useLayoutEffect(() => {
+    if (redirect !== null) replaceHash(redirect);
+  }, [redirect]);
+  // Opened without a route, the viewer shows the graph; with no knowledge graph to draw it shows the Products page.
   const graphStatus = manifest.products.find((p) => p.name === 'knowledge-graph')?.status;
   const bareFallsBack = isBareHash(hash) && graphStatus !== 'included' && graphStatus !== 'different-revision';
-  const pageId = bareFallsBack ? 'overview' : route.page;
+  const pageId = bareFallsBack ? 'products' : route.page;
   const page = PAGES.find((p) => p.id === pageId) ?? null;
   const nav = useMemo(() => PAGES.map((p) => ({ id: p.id, label: p.label, status: p.status(manifest) })), [manifest]);
   useEffect(() => {

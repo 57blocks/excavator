@@ -7,7 +7,7 @@
  *
  *   View: <absolute path>
  *   Size: <size in MB, one decimal> MB
- *   Products: knowledge graph <state>; unused code <state>; doc map <state>; hotspots <state>; reports <state>
+ *   Products: knowledge graph <state>; unused code <state>; doc map <state>; hotspots <state>; tour <state>; reports <state>
  *   Source: <embedded (N files) | not embedded>
  *
  *   node reply.mjs <page.html>
@@ -28,6 +28,7 @@ const PRODUCT_WORDS = [
   ['unused-code', 'unused code'],
   ['doc-map', 'doc map'],
   ['hotspots', 'hotspots'],
+  ['tour', 'tour'],
   ['reports', 'reports'],
 ];
 

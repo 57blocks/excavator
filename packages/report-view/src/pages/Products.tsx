@@ -148,7 +148,8 @@ function revisionBanners(manifest: Manifest) {
   return manifest.products.map((product) => <RevisionBanner key={product.name} manifest={manifest} product={product} />);
 }
 
-export function OverviewPage() {
+/** The Products page (formerly the Overview page): every product's state, then the graph's and the semantics' counts. */
+export function ProductsPage() {
   const { manifest, payloads } = useViewer();
   const snapshot = manifest.snapshot.revision;
   const graph = manifest.products.find((p) => p.name === 'knowledge-graph');
@@ -174,7 +175,7 @@ export function OverviewPage() {
   useReady(wantsGraph ? loaded.state : 'ready');
   const rows = useMemo(() => manifest.products.map((p) => productRow(p, snapshot, semantics)), [manifest, snapshot, semantics]);
   return (
-    <Page title="Overview" subtitle={manifest.project.name}>
+    <Page title="Products" subtitle={manifest.project.name}>
       {revisionBanners(manifest)}
       <Card title="Project">
         <Facts items={[['Project', manifest.project.name], ['Source snapshot', <span key="s" className="font-mono text-[12.5px]">{snapshot}</span>]]} />

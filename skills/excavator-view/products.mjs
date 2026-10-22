@@ -18,6 +18,7 @@ import { KNOWLEDGE_GRAPH_FILE, KNOWLEDGE_GRAPH_FORMAT } from '../excavator/knowl
 import { readDomain } from './domain.mjs';
 import { describeFormat, parseJsonObject, readRegularFile } from './product-files.mjs';
 import { readSemantics } from './semantics.mjs';
+import { readTour } from './tour.mjs';
 
 export const NO_REVISION_NOTE = 'no revision recorded';
 
@@ -61,6 +62,13 @@ const DOMAIN_DEF = {
   label: 'Domain graph',
   file: 'domain-graph.json',
   command: '/excavator-domain',
+};
+
+const TOUR_DEF = {
+  name: 'tour',
+  label: 'Tour',
+  file: 'tour.json',
+  command: '/excavator-tour',
 };
 
 const SEMANTICS_DEF = {
@@ -225,6 +233,25 @@ function readDomainProduct(dataDir, graph, snapshotRevision) {
   };
 }
 
+/**
+ * The tour is judged against the knowledge graph's facts digest only: its node ids name that fact graph, so a tour
+ * from other facts is a different revision (the page shows none of its steps), and its source revision is recorded.
+ * Its entry carries `counts` and `factDigests` (the tour's and the graph's), so the page can write both down.
+ */
+function readTourProduct(dataDir, graph) {
+  const def = TOUR_DEF;
+  const read = readTour(dataDir, graph.graphIdentity ?? null);
+  if (read.state === 'absent') return { entry: notRun(def), payloads: [] };
+  if (read.state === 'unreadable') return { entry: unreadable(def, read.reason), payloads: [] };
+  const fields = read.differs
+    ? { status: 'different-revision', reason: read.reason, revision: read.revision, payloads: [def.name] }
+    : { status: 'included', revision: read.revision, revisionNote: `same facts as ${KNOWLEDGE_GRAPH_FILE} (factsDigest ${read.factDigests.graph})`, payloads: [def.name] };
+  return {
+    entry: { ...entry(def, fields), counts: read.counts, factDigests: read.factDigests },
+    payloads: [{ id: def.name, bytes: read.bytes }],
+  };
+}
+
 /** Reports are included or not run; their Markdown is not checked and records no revision. */
 function readReports(dataDir) {
   const items = [];
@@ -268,7 +295,7 @@ function readReports(dataDir) {
 export function collectProducts(dataDir, snapshotRevision) {
   const graph = readGraphProduct(dataDir, snapshotRevision);
   const [unused, docMap, hotspots] = JSON_PRODUCTS.map((def) => readJsonProduct(dataDir, def, snapshotRevision));
-  const results = [graph, readSemanticsProduct(dataDir, graph), readDomainProduct(dataDir, graph, snapshotRevision), unused, docMap, hotspots, readReports(dataDir)];
+  const results = [graph, readSemanticsProduct(dataDir, graph), readDomainProduct(dataDir, graph, snapshotRevision), unused, docMap, hotspots, readTourProduct(dataDir, graph), readReports(dataDir)];
   return {
     entries: results.map((r) => r.entry),
     payloads: results.flatMap((r) => r.payloads),

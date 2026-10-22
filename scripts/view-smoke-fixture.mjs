@@ -15,7 +15,8 @@
  * `--full` writes the Full-mode shape of the graph instead: node summaries and
  * tags empty, the summaries in a semantic cache (one entry stale, one
  * contradicted) and the layers in a semantic graph, and a domain graph made
- * from that graph's facts (two domains, three flows, five steps).
+ * from that graph's facts (two domains, three flows, five steps) and a tour made
+ * from them too (two steps, one removed sentence).
  */
 
 import { execFileSync } from 'node:child_process';
@@ -279,6 +280,35 @@ function domainGraphFile(revision) {
   };
 }
 
+/**
+ * The tour of the Full fixture, as `tour.mjs report` writes it, from the graph's facts: two steps over nodes the graph has,
+ * one sentence of each kept verdict, one removed sentence, and counts recounted from those.
+ */
+function tourFile(revision) {
+  const sentence = (id, kind, text, verdict) => ({ id, kind, text, verdict, reason: verdict === 'verified' ? 'The slice shows it.' : 'The slice does not show it.' });
+  return {
+    format: 'excavator-tour/1',
+    contentLanguage: 'en',
+    sourceRevision: revision,
+    factDigest: FACTS_DIGEST,
+    steps: [
+      {
+        order: 1, originalOrder: 1, title: 'Where the program starts', description: 'The main function starts the engine. It runs once.',
+        nodeIds: ['file:src/main.js', 'function:src/main.js:main'],
+        sentences: [sentence('s1.d1', 'description', 'The main function starts the engine.', 'verified'), sentence('s1.d2', 'description', 'It runs once.', 'unverified')],
+      },
+      {
+        order: 2, originalOrder: 2, title: 'The engine', description: 'The engine runs its input.', nodeIds: ['function:src/core/engine/run.js:run'],
+        languageLesson: 'A function declaration is hoisted.',
+        sentences: [sentence('s2.d1', 'description', 'The engine runs its input.', 'verified'), sentence('s2.l1', 'languageLesson', 'A function declaration is hoisted.', 'unchecked')],
+      },
+    ],
+    removed: [{ step: 2, id: 's2.d2', kind: 'description', text: 'The engine retries forever.', verdict: 'contradicted', reason: 'The slice stops after one try.', cause: 'contradicted twice' }],
+    gaps: [{ kind: 'few-steps', reason: 'the tour has 2 step(s), fewer than 5', count: 2 }],
+    counts: { steps: 2, sentences: 4, verified: 2, unverified: 1, contradicted: 0, unchecked: 1, removedSentences: 1, adviceLines: 0, removedSteps: 0 },
+  };
+}
+
 /** What the domain view should show, for the smoke's checks. */
 const DOMAIN_EXPECTED = {
   counts: { domains: 2, flows: 3, steps: 5, links: 1 },
@@ -359,6 +389,7 @@ export function makeSmokeProject(dir, { full = false } = {}) {
     writeJson(root, 'semantic-cache.json', semantic.cache);
     writeJson(root, 'semantic-graph.json', semantic.graph);
     writeJson(root, 'domain-graph.json', domainGraphFile(revision));
+    writeJson(root, 'tour.json', tourFile(revision));
   }
   writeJson(root, 'unused-code.json', unusedProduct(revision));
   writeJson(root, 'doc-map.json', docMapProduct(revision));
@@ -371,7 +402,7 @@ export function makeSmokeProject(dir, { full = false } = {}) {
     root,
     revision,
     expected: {
-      overview: {
+      products: {
         nodes: 14, edges: 15, gaps: 1,
         ...(full ? { 'semantic-entries': 7, 'semantic-stale': 1, 'semantic-verified': 3, 'semantic-unverified': 1, 'semantic-contradicted': 1, 'semantic-unchecked': 2, 'semantic-layers': 2, 'summaries-shown': 6 } : {}),
       },
@@ -380,7 +411,7 @@ export function makeSmokeProject(dir, { full = false } = {}) {
       hotspots: { files: 4, directories: 2, pairs: 1, groups: 0 },
       code: { sources: 6 },
       graph: graphExpected(full),
-      ...(full ? { domain: DOMAIN_EXPECTED } : {}),
+      ...(full ? { domain: DOMAIN_EXPECTED, tour: { steps: 2, sentences: 4, removedSentences: 1, factDigest: FACTS_DIGEST } } : {}),
       reports: { reports: 2 },
     },
   };

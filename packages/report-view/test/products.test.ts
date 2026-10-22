@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest';
 
 import type { Manifest } from '../src/data/manifest';
-import { detailText, statusLabel, worstStatus } from '../src/lib/products';
+import { detailText, differentRevisionNote, statusLabel, worstStatus } from '../src/lib/products';
 import { PAGES } from '../src/pages/registry';
 
-describe('product states on the Overview', () => {
+describe('product states on the Products page', () => {
   it('names the most serious state', () => {
     expect(worstStatus([])).toBe('included');
     expect(worstStatus([{ status: 'included' }, { status: 'not-run' }])).toBe('not-run');
@@ -31,12 +31,20 @@ describe('product states on the Overview', () => {
     expect(detailText({ ...base, status: 'included', revisionNote: 'no revision recorded' }, 'git:1')).toBe('No revision recorded.');
     expect(detailText({ ...base, status: 'included' }, 'git:1')).toBe('Made at the source snapshot revision.');
   });
+
+  it('says that a tour from other facts shows no steps, and that any other product is shown as written', () => {
+    const tour = { name: 'tour', status: 'different-revision', reason: 'its factDigest is aa and the graph\'s factsDigest is bb', file: 'tour.json', revision: 'git:1', revisionNote: null } as const;
+    expect(detailText(tour, 'git:1')).toBe('its factDigest is aa and the graph\'s factsDigest is bb. Its steps are not shown: their node ids may not match this graph.');
+    expect(differentRevisionNote('tour')).toBe('Its steps are not shown: their node ids may not match this graph.');
+    expect(differentRevisionNote('hotspots')).toBe('Its content is shown as it was written.');
+    expect(detailText({ ...tour, status: 'included', reason: null, revisionNote: 'same facts as knowledge-graph.jsonl (factsDigest aa)' }, 'git:1')).toBe('Same facts as knowledge-graph.jsonl (factsDigest aa).');
+  });
 });
 
 describe('the pages', () => {
   it('are in navigation order', () => {
-    expect(PAGES.map((p) => p.id)).toEqual(['graph', 'domain', 'overview', 'unused', 'doc-map', 'hotspots', 'code', 'reports']);
-    expect(PAGES.map((p) => p.label)).toEqual(['Graph', 'Domain', 'Overview', 'Unused code', 'Doc map', 'Hotspots', 'Code', 'Reports']);
+    expect(PAGES.map((p) => p.id)).toEqual(['graph', 'domain', 'products', 'unused', 'doc-map', 'hotspots', 'code', 'reports']);
+    expect(PAGES.map((p) => p.label)).toEqual(['Graph', 'Domain', 'Products', 'Unused code', 'Doc map', 'Hotspots', 'Code', 'Reports']);
   });
 
   it('show in the navigation the state of the product each one shows', () => {
@@ -49,6 +57,6 @@ describe('the pages', () => {
       source: { embedded: true, requested: true, limitBytes: 1, counts: { embedded: 1, binary: 0, tooLarge: 0, notInSnapshot: 0, notEmbeddedOnRequest: 0 }, files: {} },
     } as unknown as Manifest;
     const status = Object.fromEntries(PAGES.map((p) => [p.id, p.status(manifest)]));
-    expect(status).toEqual({ graph: 'included', domain: 'different-revision', overview: 'unreadable', unused: 'different-revision', 'doc-map': 'not-run', hotspots: 'unreadable', code: 'included', reports: 'not-run' });
+    expect(status).toEqual({ graph: 'included', domain: 'different-revision', products: 'unreadable', unused: 'different-revision', 'doc-map': 'not-run', hotspots: 'unreadable', code: 'included', reports: 'not-run' });
   });
 });

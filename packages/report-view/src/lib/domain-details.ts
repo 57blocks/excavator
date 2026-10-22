@@ -28,7 +28,7 @@ export function revisionNote(product: { status: string; revision: string | null;
 
 const plural = (n: number, one: string, many: string) => `${formatNumber(n)} ${n === 1 ? one : many}`;
 
-/** What the packer counted in the domain graph, as one sentence for the Overview; null when the product has no such counts. */
+/** What the packer counted in the domain graph, as one sentence for the Products page; null when the product has no such counts. */
 export function domainCountsText(counts: Partial<DomainCounts> | undefined): string | null {
   if (!counts || ![counts.domains, counts.flows, counts.steps, counts.crossDomain].every((n) => typeof n === 'number')) return null;
   return `${plural(counts.domains as number, 'domain', 'domains')}, ${plural(counts.flows as number, 'flow', 'flows')}, ${plural(counts.steps as number, 'step', 'steps')} and ${plural(counts.crossDomain as number, 'cross-domain edge', 'cross-domain edges')}.`;

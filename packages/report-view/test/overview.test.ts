@@ -21,7 +21,7 @@ function graphJsonl({ name = 'fixture', nodes = [] as string[], edges = [] as st
 
 const summarize = (text: string) => summarizeGraph(parseGraphJsonl(text));
 
-describe('Overview counts', () => {
+describe('Products page counts', () => {
   it('counts nodes and edges by type from the records', () => {
     const summary = summarize(graphJsonl({
       nodes: ['file', 'function', 'function', 'class', 'file', 'function'],

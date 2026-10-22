@@ -1,6 +1,6 @@
 /**
- * The Overview's counts over a parsed knowledge graph (openspec:
- * changes/viewer-app, design D6; spec "Overview page"). Every number is read
+ * The Products page's counts over a parsed knowledge graph (openspec:
+ * changes/viewer-app, design D6; spec "Products page"). Every number is read
  * from a header field or counted over the graph's records; nothing is
  * estimated. A record the parser could not use is counted in `problems`, and a
  * stream whose record count differs from the header's is named in `notes`.

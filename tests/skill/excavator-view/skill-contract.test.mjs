@@ -14,7 +14,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { packProject } from '../../../skills/excavator-view/pack.mjs';
 import { readManifest, replyLines } from '../../../skills/excavator-view/reply.mjs';
-import { graphJsonl, hotspotsProduct, makeGitProject, sourceManifest, writeProduct } from './fixture.mjs';
+import { graphJsonl, hotspotsProduct, makeGitProject, sourceManifest, tourProduct, writeProduct } from './fixture.mjs';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../../..');
 const skill = readFileSync(join(repoRoot, 'skills/excavator-view/SKILL.md'), 'utf-8');
@@ -55,7 +55,7 @@ describe('SKILL.md', () => {
     for (const line of [
       'View: <absolute path>',
       'Size: <size in MB, one decimal> MB',
-      'Products: knowledge graph <state>; unused code <state>; doc map <state>; hotspots <state>; reports <state>',
+      'Products: knowledge graph <state>; unused code <state>; doc map <state>; hotspots <state>; tour <state>; reports <state>',
       'Source: <embedded (N files) | not embedded>',
     ]) {
       expect(skill).toContain(line);
@@ -73,7 +73,7 @@ describe('SKILL.md', () => {
   it('starts no server, runs no analysis and edits no other product', () => {
     expect(skill).not.toMatch(/createServer|\.listen\(|http\.server|python3? -m http|npx serve/);
     expect(skill).toMatch(/Do not start an HTTP server/);
-    expect(skill).toMatch(/do not run `\/excavator`, `\/excavator-unused-code`, `\/excavator-doc-map` or `\/excavator-hotspots`/);
+    expect(skill).toMatch(/do not run `\/excavator`, `\/excavator-unused-code`, `\/excavator-doc-map`, `\/excavator-hotspots` or `\/excavator-tour`/);
     expect(skill).toMatch(/do not create, change or delete any other file under `\.excavator\/`/);
   });
 
@@ -94,7 +94,7 @@ describe('SKILL.md', () => {
 });
 
 describe('the scripts of the skill start no server', () => {
-  it.each(['pack.mjs', 'reply.mjs', 'products.mjs', 'page-assembly.mjs', 'sources.mjs'])('%s', (file) => {
+  it.each(['pack.mjs', 'reply.mjs', 'products.mjs', 'page-assembly.mjs', 'sources.mjs', 'tour.mjs'])('%s', (file) => {
     const text = readFileSync(join(repoRoot, 'skills/excavator-view', file), 'utf-8');
     expect(text).not.toMatch(/createServer|\.listen\(|node:http|node:net\b|node:child_process/);
   });
@@ -114,6 +114,8 @@ describe('the reply lines', () => {
     writeProduct(project.root, 'source-manifest.json', sourceManifest(project.revision));
     writeProduct(project.root, 'hotspots.json', hotspotsProduct('git:old'));
     writeProduct(project.root, 'unused-code.json', '{');
+    // The graph records no factsDigest, so a tour cannot be taken as current: a different revision.
+    writeProduct(project.root, 'tour.json', tourProduct({ sourceRevision: project.revision, factDigest: 'e'.repeat(64) }));
     result = packProject(project.root, { template });
   });
   afterAll(() => {
@@ -121,20 +123,20 @@ describe('the reply lines', () => {
     rmSync(templateDir, { recursive: true, force: true });
   });
 
-  it('print the path, the size, the five states and the source line', () => {
+  it('print the path, the size, the six states and the source line', () => {
     const run = spawnSync(process.execPath, [replyScript, result.out], { encoding: 'utf-8' });
     expect(run.status, run.stderr).toBe(0);
     expect(run.stdout.trimEnd().split('\n')).toEqual([
       `View: ${result.out}`,
       `Size: ${(result.bytes / 1048576).toFixed(1)} MB`,
-      'Products: knowledge graph included; unused code unreadable; doc map not run; hotspots different revision; reports not run',
+      'Products: knowledge graph included; unused code unreadable; doc map not run; hotspots different revision; tour different revision; reports not run',
       'Source: embedded (1 files)',
     ]);
   });
 
   it('read the states from the page, not from the arguments', () => {
     const manifest = readManifest(readFileSync(result.out, 'utf-8'));
-    expect(manifest.products.map((p) => p.status)).toEqual(['included', 'not-run', 'not-run', 'unreadable', 'not-run', 'different-revision', 'not-run']);
+    expect(manifest.products.map((p) => p.status)).toEqual(['included', 'not-run', 'not-run', 'unreadable', 'not-run', 'different-revision', 'different-revision', 'not-run']);
   });
 
   it('say how many files are embedded when there are some', () => {
@@ -142,7 +144,7 @@ describe('the reply lines', () => {
     expect(lines).toEqual([
       'View: /x/view.html',
       'Size: 3.0 MB',
-      'Products: knowledge graph not run; unused code not run; doc map not run; hotspots not run; reports not run',
+      'Products: knowledge graph not run; unused code not run; doc map not run; hotspots not run; tour not run; reports not run',
       'Source: embedded (12 files)',
     ]);
   });

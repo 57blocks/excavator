@@ -15,9 +15,9 @@
 
 ## 1. 打包与改名
 
-- [ ] 1.1 `skills/excavator-view/products.mjs` 读 `tour.json`（design D8）：四种状态，载荷只留 `steps`、`removed`、`gaps`、`counts`、`contentLanguage`。验证：O1 打包的导览四种状态先红后绿。
-- [ ] 1.2 `reply.mjs` 的 Products 行加上导览；skill 契约测试与 O5 期望同步。验证：单测。
-- [ ] 1.3 Overview 页改名 Products（design D9），`#/overview` 重定向。验证：O1 旧路由重定向先红后绿；冒烟场景 `products-redirect`。
+- [x] 1.1 `skills/excavator-view/products.mjs` 读 `tour.json`（design D8）：四种状态，载荷只留 `steps`、`removed`、`gaps`、`counts`、`contentLanguage`。验证：O1 打包的导览四种状态先红后绿。
+- [x] 1.2 `reply.mjs` 的 Products 行加上导览；skill 契约测试与 O5 期望同步。验证：单测。
+- [x] 1.3 Overview 页改名 Products（design D9），`#/overview` 重定向。验证：O1 旧路由重定向先红后绿；冒烟场景 `products-redirect`。
 
 ## 2. 字体与共用组件
 
