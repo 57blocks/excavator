@@ -65,7 +65,7 @@ The knowledge graph `knowledge-graph.jsonl` stores one JSON record per line:
      node "$PLUGIN_ROOT/skills/excavator/consumer-freshness.mjs" "$PROJECT_ROOT"
      ```
    - It prints `{ status, currentSourceRevision, manifestSourceRevision, reason }` as JSON. `status` is `fresh`, `stale`, or `missing`: it compares the CURRENT `sourceRevision` — resolved via SourceSnapshot, so a git project reads HEAD only (an uncommitted working-tree change never flips this — no working-tree leak) and a plain-directory project is guarded by a content hash over every tracked file (any content drift is caught) — against the `sourceRevision` persisted in `.excavator/source-manifest.json`.
-   - `stale`: the analysis says, as the first line under its first heading, that the graph may omit recent changes, and suggests running `/excavator` to refresh the graph.
+   - `stale`: the analysis says, as the first line under its first heading, that the graph may omit recent changes. Suggest: Run `/excavator` to refresh the graph.
    - `missing` (no `source-manifest.json` yet): the analysis gives a brief best-effort note in the same place; continue instead of blocking.
    - `fresh`: proceed with no warning.
 

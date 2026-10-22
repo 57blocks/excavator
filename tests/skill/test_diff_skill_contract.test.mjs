@@ -131,7 +131,7 @@ describe('excavator-diff skill: the reply is the analysis the last command print
   });
 
   it('puts the stale and missing notes inside the analysis, not before it', () => {
-    expect(flat(skill)).toContain('- `stale`: the analysis says, as the first line under its first heading, that the graph may omit recent changes, and suggests running `/excavator` to refresh the graph.');
+    expect(flat(skill)).toContain('- `stale`: the analysis says, as the first line under its first heading, that the graph may omit recent changes. Suggest: Run `/excavator` to refresh the graph.');
     expect(flat(skill)).toContain('- `missing` (no `source-manifest.json` yet): the analysis gives a brief best-effort note in the same place; continue instead of blocking.');
     expect(skill).not.toContain('warn before impact analysis');
   });
