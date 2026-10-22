@@ -3,9 +3,9 @@
  *
  * Cuts a tour into what the verifier is shown (openspec: changes/tour-product,
  * capability `learning-tour`, requirement "sentence verification", design D3).
- * For each step: the description and the language lesson split into sentences with
- * ids (`<order>.d<n>`, `<order>.l<n>`), and the source text of every node the step
- * cites. The verifier gets only that, in `slices/round-<r>/step-<n>.json`: no
+ * For each step: the title as one sentence (`<order>.t`), the description and the
+ * language lesson split into sentences (`<order>.d<n>`, `<order>.l<n>`), and the source
+ * text of every node the step cites. The title is never split: it is judged whole. The verifier gets only that, in `slices/round-<r>/step-<n>.json`: no
  * candidate set, no summary, no other step, no reason of the author.
  *
  * Source text comes from the source snapshot (HEAD, never the working tree), by the
@@ -45,9 +45,10 @@ export const SNIPPET_LIMITS = Object.freeze({ nodeLines: 120, stepLines: 400 });
 export const SLICE_FORMAT = 'excavator-tour-slice/1';
 export const ROUND_FORMAT = 'excavator-tour-round/1';
 
-/** The sentences of a step: description first, then the language lesson, each with its id. */
+/** The sentences of a step, each with its id: the title, then the description, then the language lesson. */
 export function stepSentences(step) {
-  const sentences = splitSentences(step.description).map((text, i) => ({ id: `${step.order}.d${i + 1}`, kind: 'description', text }));
+  const sentences = [{ id: `${step.order}.t`, kind: 'title', text: step.title }];
+  sentences.push(...splitSentences(step.description).map((text, i) => ({ id: `${step.order}.d${i + 1}`, kind: 'description', text })));
   if (step.languageLesson !== undefined) {
     sentences.push(...splitSentences(step.languageLesson).map((text, i) => ({ id: `${step.order}.l${i + 1}`, kind: 'languageLesson', text })));
   }

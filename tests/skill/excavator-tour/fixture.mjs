@@ -86,18 +86,18 @@ export const manyPaths = (dir, n, prefix = 'f') => Array.from({ length: n }, (_,
 export const sourceLines = (n, prefix = 'line') => `${Array.from({ length: n }, (_, i) => `${prefix} ${i + 1}`).join('\n')}\n`;
 
 /**
- * A tour's candidates.json written by hand for `revision`: `[{ id, filePath, lineRange?, type? }]`, and the knowledge graph
+ * A tour's candidates.json written by hand for `revision`: `[{ id, filePath, lineRange?, type?, name? }]`, and the knowledge graph
  * it was made from (same facts digest): the candidates as nodes, plus `contains` edges for `contains`, a map of
  * file node id to `[{ node }]` where `node` is a full graph node, or null for an edge whose target the graph lacks.
  */
 export function writeCandidatesFile(root, revision, nodes, { contains = {} } = {}) {
   const candidates = nodes.map((node) => ({
-    id: node.id, type: node.type ?? 'file', name: node.id, filePath: node.filePath, lineRange: node.lineRange ?? null, layer: null, reasons: ['fixture'], summary: '', summarySource: 'none', verification: null,
+    id: node.id, type: node.type ?? 'file', name: node.name ?? node.id, filePath: node.filePath, lineRange: node.lineRange ?? null, layer: null, reasons: ['fixture'], summary: '', summarySource: 'none', verification: null,
   }));
   const dir = join(root, '.excavator', 'tour');
   mkdirSync(dir, { recursive: true });
   writeFileSync(join(dir, 'candidates.json'), JSON.stringify({ format: 'excavator-tour-candidates/1', factsDigest: DIGEST, sourceRevision: revision, sources: {}, classes: {}, layers: [], gaps: [], candidates }));
-  const graphNodes = nodes.map((node) => ({ id: node.id, type: node.type ?? 'file', name: node.id.split('/').pop(), filePath: node.filePath, ...(node.lineRange ? { lineRange: node.lineRange } : {}), summary: '', tags: [] }));
+  const graphNodes = nodes.map((node) => ({ id: node.id, type: node.type ?? 'file', name: node.name ?? node.id.split('/').pop(), filePath: node.filePath, ...(node.lineRange ? { lineRange: node.lineRange } : {}), summary: '', tags: [] }));
   const items = Object.entries(contains).flatMap(([file, entries]) => entries.map((entry) => ({ file, entry })));
   writeProduct(root, 'knowledge-graph.jsonl', tourGraphJsonl({
     factsDigest: DIGEST,
@@ -125,6 +125,9 @@ export function writeDraft(root, draft) {
   writeFileSync(path, typeof draft === 'string' ? draft : JSON.stringify(draft, null, 2));
   return locateDraft(path);
 }
+
+/** `rows` for step `order` with the title `verified` in front, unless a row already names the title `<order>.t`. */
+export const titled = (order, rows) => (rows.some(([id]) => id === `${order}.t`) ? rows : [[`${order}.t`, 'verified'], ...rows]);
 
 /** Write the verifier's output for a step: `[[sentenceId, verdict, reason?], ...]`. */
 export function writeVerdicts(tourDir, round, order, rows) {

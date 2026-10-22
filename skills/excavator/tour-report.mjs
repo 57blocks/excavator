@@ -16,6 +16,9 @@
  * holds one is refused. `unverified` and `unchecked` sentences stay, with their verdict.
  * Keys are written in a fixed order, so the same input gives the same bytes.
  *
+ * Every step's title is a sentence too (`<order>.t`, kind `title`), counted with the others;
+ * a title contradicted twice is in `removed` with kind `title`, and when its step is still
+ * there `counts.replacedTitles` counts it: that step's title is the names of its cited nodes.
  * `counts.adviceLines` scans the kept text for advisory wording once more (`tour-advice.mjs`).
  * `reportLines` is the reply the skill prints: the product's path and five of its counts.
  */
@@ -46,6 +49,8 @@ function recount(steps, removed, language) {
     adviceLines: findAdvice(steps, language).length,
     // A step with a removal record and no step left under its original order was removed whole.
     removedSteps: new Set(removed.map((record) => record.step).filter((order) => !steps.some((step) => step.originalOrder === order))).size,
+    // A removed title whose step is still there was replaced by the names of the step's cited nodes.
+    replacedTitles: removed.filter((record) => record.kind === 'title' && steps.some((step) => step.originalOrder === record.step)).length,
   };
 }
 

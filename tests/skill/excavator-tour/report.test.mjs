@@ -6,7 +6,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { buildTour, reportLines } from '../../../skills/excavator/tour-report.mjs';
 import { sliceDraft } from '../../../skills/excavator/tour-slices.mjs';
 import { recordRoundOne, settleTour } from '../../../skills/excavator/tour-verdicts.mjs';
-import { OTHER_DIGEST, clearProducts, draftOf, makeGitProject, sourceLines, writeCandidatesFile, writeDraft, writeGraph, writeVerdicts } from './fixture.mjs';
+import { OTHER_DIGEST, clearProducts, draftOf, makeGitProject, sourceLines, titled, writeCandidatesFile, writeDraft, writeGraph, writeVerdicts } from './fixture.mjs';
 
 const TOUR = join(process.cwd(), 'skills', 'excavator', 'tour.mjs');
 const DIGEST = 'a'.repeat(64);
@@ -36,12 +36,12 @@ const productPath = () => join(project.root, '.excavator', 'tour.json');
 function settle({ draft = draft6(), first = {}, edits = {}, second = {} } = {}) {
   const located = writeDraft(project.root, draft);
   const one = sliceDraft(located, 1);
-  for (const step of one.steps) writeVerdicts(located.tourDir, 1, step.order, first[step.order] ?? step.sentences.map((s) => [s.id, 'verified']));
+  for (const step of one.steps) writeVerdicts(located.tourDir, 1, step.order, first[step.order] ? titled(step.order, first[step.order]) : step.sentences.map((s) => [s.id, 'verified']));
   const rewrite = recordRoundOne(located.tourDir);
   if (rewrite.steps.length > 0) {
     for (const [order, fields] of Object.entries(edits)) Object.assign(draft.steps[order - 1], fields);
     writeDraft(project.root, draft);
-    for (const step of sliceDraft(located, 2).steps) writeVerdicts(located.tourDir, 2, step.order, second[step.order] ?? step.sentences.map((s) => [s.id, 'verified']));
+    for (const step of sliceDraft(located, 2).steps) writeVerdicts(located.tourDir, 2, step.order, second[step.order] ? titled(step.order, second[step.order]) : step.sentences.map((s) => [s.id, 'verified']));
   }
   settleTour(located.tourDir);
   return located;
@@ -60,11 +60,12 @@ describe('buildTour', () => {
     expect(product.steps).toHaveLength(6);
     expect(product.steps[2]).toMatchObject({ order: 3, description: 'Fact two. Fact three.', nodeIds: ['file:a.go'] });
     expect(product.steps[2].sentences).toEqual([
+      { id: '3.t', kind: 'title', text: 'Step 3', verdict: 'verified', reason: 'reason for 3.t' },
       { id: '3.d1', kind: 'description', text: 'Fact two.', verdict: 'verified', reason: 'reason for 3.d2' },
       { id: '3.d2', kind: 'description', text: 'Fact three.', verdict: 'unverified', reason: 'reason for 3.d3' },
     ]);
     expect(product.removed).toEqual([{ step: 3, id: '3.d1', kind: 'description', text: 'Claim again.', verdict: 'contradicted', reason: 'still wrong', cause: 'contradicted' }]);
-    expect(product.counts).toEqual({ steps: 6, sentences: 17, verified: 16, unverified: 1, contradicted: 0, unchecked: 0, removedSentences: 1, adviceLines: 0, removedSteps: 0 });
+    expect(product.counts).toEqual({ steps: 6, sentences: 23, verified: 22, unverified: 1, contradicted: 0, unchecked: 0, removedSentences: 1, adviceLines: 0, removedSteps: 0, replacedTitles: 0 });
     expect(product.gaps).toEqual([]);
   });
 
@@ -77,8 +78,25 @@ describe('buildTour', () => {
     const product = buildTour(located);
     expect(JSON.stringify(product.steps)).not.toContain('"contradicted"');
     expect(product.steps.map((step) => [step.order, step.originalOrder])).toEqual([[1, 1], [2, 2], [3, 3], [4, 4], [5, 6]]);
-    expect(product.counts).toMatchObject({ steps: 5, contradicted: 0, removedSentences: 2, removedSteps: 1 });
+    // Step 5 goes whole: its two contradicted sentences and its title.
+    expect(product.counts).toMatchObject({ steps: 5, contradicted: 0, removedSentences: 3, removedSteps: 1, replacedTitles: 0 });
     expect(product.gaps).toEqual([]);
+  });
+
+  it('carries each title as a sentence with its verdict, and counts a title replaced by node names', () => {
+    const described = (order) => [1, 2, 3].map((n) => [`${order}.d${n}`, 'verified']);
+    writeCandidatesFile(project.root, project.revision, [{ id: 'file:a.go', filePath: 'a.go', name: 'a.go' }]);
+    const located = settle({
+      first: { 2: [['2.t', 'contradicted', 'no cache in the code'], ...described(2)], 4: [['4.t', 'unverified', 'nothing shows it']] },
+      edits: { 2: { title: 'Cache layer' } },
+      second: { 2: [['2.t', 'contradicted', 'still no cache'], ...described(2)] },
+    });
+    const product = buildTour(located);
+    expect(product.steps[1]).toMatchObject({ order: 2, title: 'a.go' });
+    expect(product.steps[1].sentences.map((s) => s.kind)).toEqual(['description', 'description', 'description']);
+    expect(product.steps[3].sentences[0]).toEqual({ id: '4.t', kind: 'title', text: 'Step 4', verdict: 'unverified', reason: 'nothing shows it' });
+    expect(product.removed).toEqual([{ step: 2, id: '2.t', kind: 'title', text: 'Cache layer', verdict: 'contradicted', reason: 'still no cache', cause: 'contradicted' }]);
+    expect(product.counts).toMatchObject({ steps: 6, sentences: 23, unverified: 1, unchecked: 3, removedSentences: 1, removedSteps: 0, replacedTitles: 1 });
   });
 
   it('refuses a resolved tour that keeps a contradicted sentence in its steps', () => {
@@ -87,16 +105,16 @@ describe('buildTour', () => {
     const resolved = readJson(path);
     resolved.steps[0].sentences[0].verdict = 'contradicted';
     writeFileSync(path, JSON.stringify(resolved));
-    expect(() => buildTour(located)).toThrow(/keeps 1 contradicted sentence\(s\) in its steps \(first: 1\.d1\)/);
+    expect(() => buildTour(located)).toThrow(/keeps 1 contradicted sentence\(s\) in its steps \(first: 1\.t\)/);
   });
 
   it('recounts from the steps and does not trust the counts in resolved.json', () => {
     const located = settle();
     const path = join(located.tourDir, 'resolved.json');
     const resolved = readJson(path);
-    resolved.counts = { steps: 99, sentences: 99, verified: 99, unverified: 99, contradicted: 99, unchecked: 99, removedSentences: 99, adviceLines: 99, removedSteps: 99 };
+    resolved.counts = { steps: 99, sentences: 99, verified: 99, unverified: 99, contradicted: 99, unchecked: 99, removedSentences: 99, adviceLines: 99, removedSteps: 99, replacedTitles: 99 };
     writeFileSync(path, JSON.stringify(resolved));
-    expect(buildTour(located).counts).toEqual({ steps: 6, sentences: 18, verified: 18, unverified: 0, contradicted: 0, unchecked: 0, removedSentences: 0, adviceLines: 0, removedSteps: 0 });
+    expect(buildTour(located).counts).toEqual({ steps: 6, sentences: 24, verified: 24, unverified: 0, contradicted: 0, unchecked: 0, removedSentences: 0, adviceLines: 0, removedSteps: 0, replacedTitles: 0 });
   });
 
   it('names fewer than five steps and unchecked sentences as gaps, and still writes the steps it has', () => {
@@ -178,8 +196,8 @@ describe('the report command', () => {
     expect(result.stdout.split('\n')).toEqual([
       productPath(),
       'steps: 5',
-      'sentences: 15; verified: 15; unverified: 0; contradicted: 0; unchecked: 0',
-      'removed: 2 sentences; 1 steps',
+      'sentences: 20; verified: 20; unverified: 0; contradicted: 0; unchecked: 0',
+      'removed: 3 sentences; 1 steps',
       'advice check: 0 lines',
       '',
     ]);

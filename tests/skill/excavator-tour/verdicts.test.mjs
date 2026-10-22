@@ -4,8 +4,9 @@ import { join } from 'node:path';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
 import { sliceDraft } from '../../../skills/excavator/tour-slices.mjs';
+import { titleFromNames } from '../../../skills/excavator/tour-titles.mjs';
 import { recordRoundOne, settleTour } from '../../../skills/excavator/tour-verdicts.mjs';
-import { clearProducts, draftOf, makeGitProject, sourceLines, writeCandidatesFile, writeDraft, writeVerdicts } from './fixture.mjs';
+import { clearProducts, draftOf, makeGitProject, sourceLines, titled, writeCandidatesFile, writeDraft, writeVerdicts } from './fixture.mjs';
 
 const TOUR = join(process.cwd(), 'skills', 'excavator', 'tour.mjs');
 
@@ -33,7 +34,7 @@ function roundOne(draft, rows = {}, all = 'verified') {
   const located = writeDraft(project.root, draft);
   const index = sliceDraft(located, 1);
   for (const step of index.steps) {
-    writeVerdicts(located.tourDir, 1, step.order, rows[step.order] ?? step.sentences.map((s) => [s.id, all]));
+    writeVerdicts(located.tourDir, 1, step.order, rows[step.order] ? titled(step.order, rows[step.order]) : step.sentences.map((s) => [s.id, all]));
   }
   return { located, index };
 }
@@ -50,7 +51,8 @@ describe('verdicts round 1', () => {
       { order: 2, title: 'Step 2', contradicted: [{ id: '2.d1', text: 'D2 one.', reason: 'the code has no retry' }] },
       { order: 5, title: 'Step 5', contradicted: [{ id: '5.d3', text: 'D5 three.', reason: 'wrong direction' }] },
     ]);
-    expect(product.counts).toEqual({ steps: 6, verified: 15, unverified: 1, contradicted: 2, unchecked: 0, sentBack: 2 });
+    // Each step has its title and three description sentences: 24 in all.
+    expect(product.counts).toEqual({ steps: 6, verified: 21, unverified: 1, contradicted: 2, unchecked: 0, sentBack: 2 });
     expect(readJson(join(located.tourDir, 'rewrite.json')).steps).toHaveLength(2);
   });
 
@@ -67,7 +69,8 @@ describe('verdicts round 1', () => {
     rmSync(join(located.tourDir, 'verdicts', 'round-1', 'step-2.json'));
     writeFileSync(join(located.tourDir, 'verdicts', 'round-1', 'step-4.json'), '{ not json');
     const product = recordRoundOne(located.tourDir);
-    expect(product.counts).toMatchObject({ unchecked: 1 + 3 + 3 + 3, contradicted: 0 });
+    // Step 1 lacks 1.d3, step 2 has no file (title and three sentences), step 3 has only its title, step 4 is not JSON.
+    expect(product.counts).toMatchObject({ unchecked: 1 + 4 + 3 + 4, contradicted: 0 });
     expect(product.problems).toEqual([
       'step 1: sentence 1.d3 has no verdict',
       'step 2: no verdict file (verdicts/round-1/step-2.json)',
@@ -89,7 +92,7 @@ describe('verdicts round 1', () => {
       'step 1: sentence 1.d1 has the verdict "partial", which is not one of verified, unverified, contradicted; discarded',
       'step 1: sentence 1.d2 has 2 verdict(s); all discarded'.replace('verdict(s)', 'verdicts'),
     ]);
-    expect(product.counts).toMatchObject({ verified: 15 + 1, unchecked: 2 });
+    expect(product.counts).toMatchObject({ verified: 15 + 1 + 6, unchecked: 2 });
   });
 });
 
@@ -102,7 +105,7 @@ describe('verdicts round 2', () => {
     for (const [order, fields] of Object.entries(edits ?? {})) Object.assign(draft.steps[order - 1], fields);
     writeDraft(project.root, draft);
     const index = sliceDraft(located, 2);
-    for (const step of index.steps) writeVerdicts(located.tourDir, 2, step.order, second[step.order] ?? step.sentences.map((s) => [s.id, 'verified']));
+    for (const step of index.steps) writeVerdicts(located.tourDir, 2, step.order, second[step.order] ? titled(step.order, second[step.order]) : step.sentences.map((s) => [s.id, 'verified']));
     return { located, resolved: settleTour(located.tourDir) };
   }
 
@@ -115,6 +118,7 @@ describe('verdicts round 2', () => {
     expect(resolved.rewritten).toEqual([3]);
     expect(resolved.steps[2]).toMatchObject({ order: 3, originalOrder: 3, description: 'New one. New two.' });
     expect(resolved.steps[2].sentences).toEqual([
+      { id: '3.t', kind: 'title', text: 'Step 3', verdict: 'verified', reason: 'reason for 3.t' },
       { id: '3.d1', kind: 'description', text: 'New one.', verdict: 'verified', reason: 'reason for 3.d1' },
       { id: '3.d2', kind: 'description', text: 'New two.', verdict: 'verified', reason: 'reason for 3.d2' },
     ]);
@@ -129,8 +133,8 @@ describe('verdicts round 2', () => {
     });
     expect(resolved.removed).toEqual([{ step: 3, id: '3.d1', kind: 'description', text: 'Same claim.', verdict: 'contradicted', reason: 'still wrong', cause: 'contradicted' }]);
     expect(resolved.steps[2].description).toBe('Other fact. Third fact.');
-    expect(resolved.steps[2].sentences.map((s) => [s.id, s.verdict])).toEqual([['3.d1', 'verified'], ['3.d2', 'unverified']]);
-    expect(resolved.counts).toMatchObject({ steps: 6, sentences: 17, verified: 16, unverified: 1, removedSentences: 1, removedSteps: 0 });
+    expect(resolved.steps[2].sentences.map((s) => [s.id, s.verdict])).toEqual([['3.t', 'verified'], ['3.d1', 'verified'], ['3.d2', 'unverified']]);
+    expect(resolved.counts).toMatchObject({ steps: 6, sentences: 23, verified: 22, unverified: 1, removedSentences: 1, removedSteps: 0, replacedTitles: 0 });
     expect(JSON.stringify(resolved.steps)).not.toContain('Same claim');
   });
 
@@ -141,14 +145,16 @@ describe('verdicts round 2', () => {
       second: { 5: [['5.d1', 'contradicted', 'a'], ['5.d2', 'contradicted', 'b'], ['5.l1', 'verified', 'fine']] },
     });
     expect(resolved.steps.map((step) => [step.order, step.originalOrder])).toEqual([[1, 1], [2, 2], [3, 3], [4, 4], [5, 6]]);
-    expect(resolved.steps[4].sentences.map((s) => s.id)).toEqual(['5.d1', '5.d2', '5.d3']);
+    expect(resolved.steps[4].sentences.map((s) => s.id)).toEqual(['5.t', '5.d1', '5.d2', '5.d3']);
+    expect(resolved.steps[4].title).toBe('Step 6');
     expect(resolved.steps[4].description).toBe('D6 one. D6 two. D6 three.');
     expect(resolved.removed).toEqual([
+      { step: 5, id: '5.t', kind: 'title', text: 'Step 5', verdict: 'verified', reason: 'reason for 5.t', cause: 'step-removed' },
       { step: 5, id: '5.d1', kind: 'description', text: 'R one.', verdict: 'contradicted', reason: 'a', cause: 'contradicted' },
       { step: 5, id: '5.d2', kind: 'description', text: 'R two.', verdict: 'contradicted', reason: 'b', cause: 'contradicted' },
       { step: 5, id: '5.l1', kind: 'languageLesson', text: 'A lesson about the code.', verdict: 'verified', reason: 'fine', cause: 'step-removed' },
     ]);
-    expect(resolved.counts).toMatchObject({ steps: 5, removedSentences: 3, removedSteps: 1 });
+    expect(resolved.counts).toMatchObject({ steps: 5, removedSentences: 4, removedSteps: 1, replacedTitles: 0 });
   });
 
   it('still resolves to fewer than five steps and leaves the gap to report', () => {
@@ -184,8 +190,8 @@ describe('verdicts round 2', () => {
     const { located } = roundOne(draft6(), { 1: [['1.d1', 'unverified'], ['1.d2', 'verified']] });
     recordRoundOne(located.tourDir);
     const resolved = settleTour(located.tourDir);
-    expect(resolved.steps[0].sentences.map((s) => s.verdict)).toEqual(['unverified', 'verified', 'unchecked']);
-    expect(resolved.steps[0].sentences[2].reason).toBe('no verdict was recorded for this sentence');
+    expect(resolved.steps[0].sentences.map((s) => s.verdict)).toEqual(['verified', 'unverified', 'verified', 'unchecked']);
+    expect(resolved.steps[0].sentences[3].reason).toBe('no verdict was recorded for this sentence');
     expect(resolved.counts).toMatchObject({ unverified: 1, unchecked: 1, removedSentences: 0 });
   });
 
@@ -211,6 +217,94 @@ describe('verdicts round 2', () => {
     const first = readFileSync(join(located.tourDir, 'resolved.json'));
     settleTour(located.tourDir);
     expect(readFileSync(join(located.tourDir, 'resolved.json')).equals(first)).toBe(true);
+  });
+});
+
+describe('the title of a step', () => {
+  const NAMED = [
+    { id: 'file:a.go', filePath: 'a.go', name: 'a.go' },
+    { id: 'function:a.go:Handle', type: 'function', filePath: 'a.go', lineRange: [1, 3], name: 'Handle' },
+  ];
+  /** Round 1 and round 2 where step 4 cites Handle then a.go and its title gets `t1` and then `t2`; its description passes unless `description2` says. */
+  function titleRounds({ t1 = 'contradicted', t2 = 'contradicted', description2 = 'verified' } = {}) {
+    writeCandidatesFile(project.root, project.revision, NAMED);
+    const draft = draft6((d) => { d.steps[3].nodeIds = ['function:a.go:Handle', 'file:a.go']; d.steps[3].title = 'Legacy handler'; });
+    const { located } = roundOne(draft, { 4: [['4.t', t1, 'no legacy marker in the code'], ...ok(4, 3)] });
+    const rewrite = recordRoundOne(located.tourDir);
+    draft.steps[3].title = 'Old handler';
+    writeDraft(project.root, draft);
+    const index = sliceDraft(located, 2);
+    writeVerdicts(located.tourDir, 2, 4, [['4.t', t2, 'nothing marks it old'], ...index.steps[0].sentences.filter((s) => s.kind !== 'title').map((s) => [s.id, description2])]);
+    return { rewrite, resolved: settleTour(located.tourDir) };
+  }
+
+  it('is sent back in rewrite.json when round 1 contradicts it', () => {
+    const { rewrite } = titleRounds();
+    expect(rewrite.steps).toEqual([{ order: 4, title: 'Legacy handler', contradicted: [{ id: '4.t', text: 'Legacy handler', reason: 'no legacy marker in the code' }] }]);
+  });
+
+  it('is replaced by the names of the cited nodes in nodeIds order when round 2 contradicts it again, and the original goes into removed', () => {
+    const { resolved } = titleRounds();
+    const step = resolved.steps[3];
+    expect(step).toMatchObject({ order: 4, originalOrder: 4, title: 'Handle, a.go', description: 'D4 one. D4 two. D4 three.' });
+    expect(step.sentences.map((s) => s.id)).toEqual(['4.d1', '4.d2', '4.d3']);
+    expect(resolved.removed).toEqual([{ step: 4, id: '4.t', kind: 'title', text: 'Old handler', verdict: 'contradicted', reason: 'nothing marks it old', cause: 'contradicted' }]);
+    expect(resolved.counts).toMatchObject({ steps: 6, sentences: 23, removedSentences: 1, removedSteps: 0, replacedTitles: 1 });
+  });
+
+  it('keeps a title the rewrite fixed, with its verdict, as the step\'s first sentence', () => {
+    const { resolved } = titleRounds({ t2: 'unverified' });
+    expect(resolved.steps[3].title).toBe('Old handler');
+    expect(resolved.steps[3].sentences[0]).toEqual({ id: '4.t', kind: 'title', text: 'Old handler', verdict: 'unverified', reason: 'nothing marks it old' });
+    expect(resolved.removed).toEqual([]);
+    expect(resolved.counts.replacedTitles).toBe(0);
+  });
+
+  it('removes the step only when every description sentence goes, whatever happens to the title', () => {
+    const { resolved } = titleRounds({ description2: 'contradicted' });
+    expect(resolved.steps.map((step) => step.originalOrder)).toEqual([1, 2, 3, 5, 6]);
+    expect(resolved.removed.map((r) => [r.id, r.kind, r.cause])).toEqual([['4.t', 'title', 'contradicted'], ['4.d1', 'description', 'contradicted'], ['4.d2', 'description', 'contradicted'], ['4.d3', 'description', 'contradicted']]);
+    expect(resolved.counts).toMatchObject({ steps: 5, removedSteps: 1, replacedTitles: 0 });
+  });
+
+  it('renumbers a kept title with its step', () => {
+    const { resolved } = titleRounds({ description2: 'contradicted' });
+    expect(resolved.steps[3].sentences[0]).toMatchObject({ id: '4.t', kind: 'title', text: 'Step 5' });
+  });
+
+  it('refuses to replace a title when a cited node has no name in the candidates', () => {
+    writeCandidatesFile(project.root, project.revision, [{ id: 'file:a.go', filePath: 'a.go', name: '' }]);
+    const draft = draft6();
+    const { located } = roundOne(draft, { 2: [['2.t', 'contradicted'], ...ok(2, 3)] });
+    recordRoundOne(located.tourDir);
+    const index = sliceDraft(located, 2);
+    writeVerdicts(located.tourDir, 2, 2, index.steps[0].sentences.map((s) => [s.id, s.kind === 'title' ? 'contradicted' : 'verified']));
+    expect(() => settleTour(located.tourDir)).toThrow(/file:a\.go has no name in candidates\.json/);
+  });
+});
+
+describe('titleFromNames', () => {
+  const ELLIPSIS = String.fromCharCode(0x2026);
+  it('joins the names with a comma and a space when they fit in 60 characters', () => {
+    expect(titleFromNames(['Handle', 'a.go'])).toBe('Handle, a.go');
+    const exact = ['x'.repeat(29), 'y'.repeat(29)];
+    expect(titleFromNames(exact)).toBe(`${exact[0]}, ${exact[1]}`);
+    expect([...titleFromNames(exact)]).toHaveLength(60);
+  });
+
+  it('keeps the whole names that fit and ends with a comma and an ellipsis when one is left out', () => {
+    const names = ['a'.repeat(25), 'b'.repeat(25), 'c'.repeat(25)];
+    expect(titleFromNames(names)).toBe(`${names[0]}, ${names[1]}, ${ELLIPSIS}`);
+  });
+
+  it('cuts a first name that alone does not fit to 59 characters and an ellipsis', () => {
+    expect(titleFromNames(['n'.repeat(70), 'short'])).toBe(`${'n'.repeat(59)}${ELLIPSIS}`);
+    expect([...titleFromNames(['n'.repeat(70)])]).toHaveLength(60);
+  });
+
+  it('counts characters, not UTF-16 units', () => {
+    const wide = String.fromCodePoint(0x1f600).repeat(58);
+    expect(titleFromNames([wide])).toBe(wide);
   });
 });
 

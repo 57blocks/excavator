@@ -12,7 +12,7 @@ import { fileURLToPath } from 'node:url';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { reportLines } from '../../../skills/excavator/tour-report.mjs';
-import { imports, makeGitProject, sourceLines, writeGraph, writeVerdicts } from './fixture.mjs';
+import { imports, makeGitProject, sourceLines, titled, writeGraph, writeVerdicts } from './fixture.mjs';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../../..');
 const skill = readFileSync(join(repoRoot, 'skills/excavator-tour/SKILL.md'), 'utf-8');
@@ -65,6 +65,12 @@ describe('SKILL.md', () => {
     const languageLine = lineWith(1, 'echo "Every line to the user from here on: $LANGUAGE"');
     expect(bashBlocks(rawStep(1)).some((block) => block.trim() === languageLine)).toBe(true);
     expect(rawStep(1).indexOf(languageLine)).toBeLessThan(rawStep(1).indexOf('node "$TOUR" candidates'));
+    // Steps 3, 4 and 5 open with the same command, as their own first bash block, and the same instruction for the line after it.
+    for (const n of [3, 4, 5]) {
+      expect(lineWith(n, 'Every line to the user from here on'), `step ${n}`).toBe(languageLine);
+      expect(bashBlocks(rawStep(n))[0].trim(), `step ${n}`).toBe(languageLine);
+      expect(step(n)).toContain('First print the language of every line you write from here on, as its own command, and write the line that follows its output in that language:');
+    }
     const full = flat(skill.split(paragraph)[1].split('\n')[0]);
     expect(full).toContain('`$LANGUAGE` is English unless `--language` gives another');
     expect(full).toMatch(/Project files \(`CLAUDE\.md`, an `AGENTS\.md` line such as "Reply in <language>"\), memory, the system locale and the language of the code or a subagent's reply do not change it/);
@@ -95,10 +101,21 @@ describe('SKILL.md', () => {
       expect(step(n)).toMatch(/up to 10 in a single message so they run concurrently/);
       expect(step(n)).toMatch(/dispatch that step once more/);
     }
-    expect(step(3)).toContain('`excavator-tour-verifier` agent definition (`agents/excavator-tour-verifier.md`)');
-    expect(step(3)).toMatch(/Give it nothing else: not the draft, the candidates, a summary, the title of the step or any reason/);
+    expect(step(3)).toContain('with the `excavator-tour-verifier` agent type');
+    expect(step(3)).toContain('The plugin registers that agent type, so there is no file to look for: name it as the subagent type.');
+    expect(step(3)).toMatch(/Give it nothing else: not the draft, the candidates, a summary or any reason \(the step's title is in the step file already\)/);
     expect(step(3)).toContain('Read the step file and nothing else');
-    expect(step(4)).toMatch(/There is no second rewrite: a sentence still contradicted after this is removed/);
+    expect(step(4)).toMatch(/There is no second rewrite: a sentence still contradicted after this is removed, and a title still contradicted is replaced by the names of the step's cited nodes/);
+  });
+
+  it('dispatches the verifiers in the foreground and waits with no other tool, in both rounds', () => {
+    expect(step(3)).toContain('Dispatch the subagents in the foreground, never as background tasks, so their results come back in this same turn; do not use any other tool to wait for them.');
+    expect(step(4)).toContain('with the same agent type, the same prompt and the same rules: up to 10 in a single message so they run concurrently, in the foreground, never as background tasks, and with no other tool to wait for them');
+  });
+
+  it('rewrites a contradicted title with the rest of its step', () => {
+    expect(step(4)).toContain('write its title, description (and language lesson) so that every sentence states what the cited code shows (an id ending in `.t` is the title)');
+    expect(step(2)).toContain('**The title is checked like a sentence.**');
   });
 
   it('gives the writing rules in the step that writes the draft', () => {
@@ -132,10 +149,11 @@ describe('SKILL.md', () => {
 });
 
 describe('the verifier agent', () => {
-  it('is registered: its name is its file name, the skill names its path, and the references check passes', () => {
+  it('is registered: its name is its file name, the skill names it as an agent type and no file, and the references check passes', () => {
     expect(/^---\nname: excavator-tour-verifier\n/.test(agent)).toBe(true);
     expect(existsSync(join(repoRoot, 'agents/excavator-tour-verifier.md'))).toBe(true);
-    expect(skill).toContain('agents/excavator-tour-verifier.md');
+    expect(skill).toContain('`excavator-tour-verifier` agent type');
+    expect(skill).not.toContain('agents/excavator-tour-verifier.md');
     const manifest = JSON.parse(readFileSync(join(repoRoot, '.claude-plugin/plugin.json'), 'utf-8'));
     if (Object.hasOwn(manifest, 'agents')) expect(manifest.agents).toContain('./agents/excavator-tour-verifier.md');
     const check = spawnSync(process.execPath, [join(repoRoot, 'scripts/check-refs.mjs')], { encoding: 'utf-8', cwd: repoRoot });
@@ -155,15 +173,23 @@ describe('the verifier agent', () => {
     expect(text).toMatch(/there is no fourth/i);
   });
 
-  it('judges a language lesson on whether the cited code uses the construct', () => {
+  it('judges a language lesson on whether the cited code uses the construct, and holds any further claim to the shown code', () => {
     const text = flat(agent);
     expect(text).toMatch(/does the cited code use the construct the lesson names\?/);
     expect(text).toMatch(/Whether the language fact is true in general is not what you judge/);
+    expect(text).toContain('Any claim in a language lesson beyond naming the construct, such as what a library or a called function does, what a value is wrapped in, or why the code is written that way, must be shown by the cited code like a sentence of the description.');
+    expect(text).toContain('When the shown code does not show it, the sentence is `unverified`, even when the code uses the construct the lesson names.');
   });
 
-  it('withholds the candidate set, the summaries, the other steps, the title and the author\'s reasoning', () => {
+  it('knows that the id ending in t is the step\'s title and judges whether the cited code shows what it names', () => {
     const text = flat(agent);
-    expect(text).toMatch(/Deliberately withheld:\*\* the candidate set, every summary of a node, the other steps, the title of the step and the reasoning of whoever wrote the sentences/);
+    expect(text).toContain('The id ending in `t` (such as `3.t`) is the step\'s title');
+    expect(text).toContain('The title (the id ending in `t`) is judged as one sentence: does the cited code show what the title names?');
+  });
+
+  it('withholds the candidate set, the summaries, the other steps and the author\'s reasoning', () => {
+    const text = flat(agent);
+    expect(text).toMatch(/Deliberately withheld:\*\* the candidate set, every summary of a node, the other steps and the reasoning of whoever wrote the sentences\./);
   });
 
   it('asks for one verdict per sentence id with a one-line reason, and nothing else in the reply', () => {
@@ -184,13 +210,13 @@ describe('the verifier agent', () => {
   it('has an output example that the verdicts command accepts', () => {
     const json = /```json\n(\{\n {2}"step": 3,\n {2}"verdicts": \[[\s\S]*?\n\})\n```/.exec(agent.split('## Output')[1])[1];
     const example = JSON.parse(json);
-    expect(example.verdicts.map((v) => v.id)).toEqual(['3.d1', '3.l1']);
+    expect(example.verdicts.map((v) => v.id)).toEqual(['3.t', '3.d1', '3.l1']);
     expect(Object.keys(example.verdicts[0]).sort()).toEqual(['id', 'reason', 'verdict']);
     const { dir } = stepFileOf({ order: 3 });
     writeFileSync(join(dir, 'verdicts/round-1/step-3.json'), JSON.stringify(example));
     const run = spawnSync(process.execPath, [TOUR, 'verdicts', join(dir, 'draft.json'), '--round', '1'], { encoding: 'utf-8' });
     expect(run.status, run.stderr).toBe(0);
-    // Only the description's second sentence has no verdict; the two the example gives are recorded.
+    // Only the description's second sentence has no verdict; the three the example gives are recorded.
     expect(JSON.parse(run.stdout).problems.filter((p) => p.startsWith('step 3'))).toEqual(['step 3: sentence 3.d2 has no verdict']);
   });
 
@@ -230,7 +256,7 @@ const draftFrom = (ids, edit = () => {}) => {
   writeFileSync(vars().DRAFT, JSON.stringify(draft, null, 2));
   return draft;
 };
-const rows = (order, verdicts) => [[`${order}.d1`, verdicts[0]], [`${order}.d2`, verdicts[1]]];
+const rows = (order, verdicts) => titled(order, [[`${order}.d1`, verdicts[0]], [`${order}.d2`, verdicts[1]]]);
 
 /** A prepared project with candidates and a sliced draft; returns where the step files are. */
 function stepFileOf({ order = 1 } = {}) {
@@ -261,7 +287,7 @@ describe('the skill\'s commands', () => {
     const slices = sh(lineWith(3, 'slices "$DRAFT" > "$TOUR_DIR/slices-round-1.out"'));
     expect(slices.status, slices.stderr).toBe(0);
     expect(slices.stdout.split('\n').filter(Boolean)).toHaveLength(5);
-    expect(slices.stdout).toMatch(/^step 1\t2 sentences\t\d+ lines shown, \d+ cut\t.*step-1\.json\t.*step-1\.json$/m);
+    expect(slices.stdout).toMatch(/^step 1\t3 sentences\t\d+ lines shown, \d+ cut\t.*step-1\.json\t.*step-1\.json$/m);
 
     // Every verdict file is missing, then present but for step 5, which has the verdict file missing listed.
     expect(sh(lineWith(3, '[ -f "$TOUR_DIR/$f" ] || echo "missing: $f"')).stdout.trim().split('\n')).toHaveLength(5);
@@ -281,7 +307,7 @@ describe('the skill\'s commands', () => {
     const round2 = sh(lineWith(4, 'slices "$DRAFT" --round 2'));
     expect(round2.status, round2.stderr).toBe(0);
     expect(round2.stdout.split('\n').filter(Boolean)).toHaveLength(1);
-    writeVerdicts(dir, 2, 2, [['2.d1', 'verified'], ['2.d2', 'contradicted']]);
+    writeVerdicts(dir, 2, 2, titled(2, [['2.d1', 'verified'], ['2.d2', 'contradicted']]));
     expect(sh(lineWith(4, '[ -f "$TOUR_DIR/round-2.json" ]')).stdout.trim()).toBe('');
     const settled = sh(lineWith(4, 'verdicts "$DRAFT" --round 2'));
     expect(settled.status, settled.stderr).toBe(0);
@@ -295,7 +321,8 @@ describe('the skill\'s commands', () => {
     expect(report.stdout.split('\n')).toEqual([
       join(project.root, '.excavator', 'tour.json'),
       'steps: 5',
-      'sentences: 9; verified: 6; unverified: 3; contradicted: 0; unchecked: 0',
+      // Five titles and nine description sentences.
+      'sentences: 14; verified: 11; unverified: 3; contradicted: 0; unchecked: 0',
       'removed: 1 sentences; 0 steps',
       'advice check: 0 lines',
       '',

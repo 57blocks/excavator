@@ -47,11 +47,20 @@ const withStep = (n, order, extra) => {
 };
 
 describe('slices: sentences', () => {
-  it('splits the description and the language lesson and numbers them <order>.d<n> and <order>.l<n>', () => {
-    const { read } = slice(withStep(5, 3, { description: 'First. Second! Third?', languageLesson: 'Lesson one. Lesson two.' }));
+  it('gives the title as one sentence <order>.t, then splits the description and the language lesson as <order>.d<n> and <order>.l<n>', () => {
+    const { read, index } = slice(withStep(5, 3, { title: 'Reads it. Then stops', description: 'First. Second! Third?', languageLesson: 'Lesson one. Lesson two.' }));
     expect(read(3).sentences).toEqual([
+      { id: '3.t', text: 'Reads it. Then stops' },
       { id: '3.d1', text: 'First.' }, { id: '3.d2', text: 'Second!' }, { id: '3.d3', text: 'Third?' },
       { id: '3.l1', text: 'Lesson one.' }, { id: '3.l2', text: 'Lesson two.' },
+    ]);
+    expect(index.steps[2].sentences[0]).toEqual({ id: '3.t', kind: 'title', text: 'Reads it. Then stops' });
+  });
+
+  it('keeps an ellipsis inside a language lesson sentence', () => {
+    const { read } = slice(withStep(5, 1, { languageLesson: 'It uses a chain of if x == ... comparisons, each branch returning a handler.' }));
+    expect(read(1).sentences.filter((s) => s.id.includes('.l'))).toEqual([
+      { id: '1.l1', text: 'It uses a chain of if x == ... comparisons, each branch returning a handler.' },
     ]);
   });
 
@@ -66,7 +75,7 @@ describe('slices: sentences', () => {
     const { index, located } = slice(draftOf(5));
     expect(index.steps).toHaveLength(5);
     expect(index.steps[0]).toMatchObject({ order: 1, input: join('slices', 'round-1', 'step-1.json'), output: join('verdicts', 'round-1', 'step-1.json') });
-    expect(index.steps[0].sentences.map((s) => s.id)).toEqual(['1.d1', '1.d2']);
+    expect(index.steps[0].sentences.map((s) => s.id)).toEqual(['1.t', '1.d1', '1.d2']);
     expect(existsSync(join(located.tourDir, 'verdicts', 'round-1'))).toBe(true);
     expect(index.contentLanguage).toBe('en');
   });
@@ -256,7 +265,7 @@ describe('slices: refusals and rounds', () => {
     writeDraft(project.root, draft);
     const round2 = sliceDraft(located, 2);
     expect(round2.steps.map((step) => step.order)).toEqual([2, 4]);
-    expect(round2.steps[0].sentences.map((s) => s.text)).toEqual(['Rewritten.', 'Again rewritten.']);
+    expect(round2.steps[0].sentences.map((s) => s.text)).toEqual(['Step 2', 'Rewritten.', 'Again rewritten.']);
     draft.steps[2].title = 'Sneaked in';
     writeDraft(project.root, draft);
     expect(() => sliceDraft(located, 2)).toThrow(/changed after round 1 in step\(s\) that were not sent back \(3\)/);
@@ -275,7 +284,7 @@ describe('the slices command', () => {
     expect(result.status).toBe(0);
     const printed = JSON.parse(result.stdout);
     expect(printed.round).toBe(1);
-    expect(printed.steps[0]).toMatchObject({ order: 1, sentences: 2, snippetLines: 120, truncatedLines: 71 });
+    expect(printed.steps[0]).toMatchObject({ order: 1, sentences: 3, snippetLines: 120, truncatedLines: 71 });
     expect(printed.steps[0].inputPath).toBe(join(printed.tourDir, 'slices', 'round-1', 'step-1.json'));
   });
 

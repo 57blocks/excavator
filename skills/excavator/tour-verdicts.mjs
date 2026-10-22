@@ -16,12 +16,16 @@
  *            model to rewrite once.
  *   round 2  settles. A step round 1 did not send back keeps its round-1 text and
  *            verdicts; a sent-back step takes its rewritten text and round-2 verdicts,
- *            and a sentence still `contradicted` is removed from it. A step left with
- *            no description sentence is removed whole; the remaining steps are
- *            renumbered 1..m and their sentences re-id'd to the new order. Every
+ *            and a sentence still `contradicted` is removed from it. A title still
+ *            `contradicted` is removed the same way and the step's title becomes the
+ *            names of its cited nodes (`tour-titles.mjs`); the step stays. A step left
+ *            with no description sentence is removed whole, whatever its title; the
+ *            remaining steps are renumbered 1..m and their sentences re-id'd to the
+ *            new order (`<order>.t`, `<order>.d<n>`, `<order>.l<n>`). Every
  *            removal is a record in `removed` with the original step and sentence id,
- *            the text, the verdict and reason, and the cause (`contradicted`, or
- *            `step-removed` for a sentence that went with its step). The result is
+ *            the text, the verdict and reason, the kind (`title`, `description` or
+ *            `languageLesson`) and the cause (`contradicted`, or `step-removed` for a
+ *            sentence that went with its step). The result is
  *            `resolved.json`, the input of `report`. `unverified` and `unchecked`
  *            sentences stay.
  */
@@ -31,8 +35,9 @@ import { join } from 'node:path';
 
 import { writeAtomic } from './tour-candidates.mjs';
 import {
-  REWRITE_FILE, RESOLVED_FILE, TourInputError, readJsonFile, roundFile,
+  REWRITE_FILE, RESOLVED_FILE, TourInputError, readCandidates, readJsonFile, roundFile,
 } from './tour-layout.mjs';
+import { titleFromNodes } from './tour-titles.mjs';
 
 export const RESOLVED_FORMAT = 'excavator-tour-resolved/1';
 export const REWRITE_FORMAT = 'excavator-tour-rewrite/1';
@@ -142,6 +147,11 @@ export function settleTour(tourDir) {
 
   const kept = [];
   const removed = [];
+  let candidates = null;
+  const replacementTitle = (nodeIds) => {
+    candidates ??= readCandidates(tourDir);
+    return titleFromNodes(nodeIds, candidates);
+  };
   for (const step of first.steps) {
     const current = sentBack.has(step.order) ? secondByOrder.get(step.order) : step;
     const drop = (sentence, cause) => removed.push({ step: step.order, id: sentence.id, kind: sentence.kind, text: sentence.text, verdict: sentence.verdict, reason: sentence.reason, cause });
@@ -152,10 +162,11 @@ export function settleTour(tourDir) {
       continue;
     }
     for (const sentence of gone) drop(sentence, 'contradicted');
-    kept.push({ originalOrder: step.order, current, staying });
+    const titleGone = gone.some((sentence) => sentence.kind === 'title');
+    kept.push({ originalOrder: step.order, current, staying, title: titleGone ? replacementTitle(current.nodeIds) : current.title, titleGone });
   }
 
-  const steps = kept.map(({ originalOrder, current, staying }, i) => {
+  const steps = kept.map(({ originalOrder, current, staying, title }, i) => {
     const order = i + 1;
     const ofKind = (kind) => staying.filter((sentence) => sentence.kind === kind);
     const rebuilt = (kind, original) => (ofKind(kind).length === current.sentences.filter((sentence) => sentence.kind === kind).length
@@ -166,11 +177,12 @@ export function settleTour(tourDir) {
     return {
       order,
       originalOrder,
-      title: current.title,
+      title,
       description: rebuilt('description', current.description),
       nodeIds: current.nodeIds,
       ...(lesson === undefined ? {} : { languageLesson: lesson }),
       sentences: staying.map((sentence) => {
+        if (sentence.kind === 'title') return { id: `${order}.t`, kind: sentence.kind, text: sentence.text, verdict: sentence.verdict, reason: sentence.reason };
         const letter = sentence.kind === 'description' ? 'd' : 'l';
         numbered[letter] += 1;
         return { id: `${order}.${letter}${numbered[letter]}`, kind: sentence.kind, text: sentence.text, verdict: sentence.verdict, reason: sentence.reason };
@@ -192,6 +204,7 @@ export function settleTour(tourDir) {
       ...countBy(all),
       removedSentences: removed.length,
       removedSteps: first.steps.length - steps.length,
+      replacedTitles: kept.filter((step) => step.titleGone).length,
     },
   };
   writeAtomic(join(tourDir, RESOLVED_FILE), `${JSON.stringify(product, null, 2)}\n`);

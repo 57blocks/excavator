@@ -6,6 +6,7 @@ import { splitSentences } from '../../../skills/excavator/tour-sentences.mjs';
 const FULL_STOP = String.fromCharCode(0x3002);
 const WIDE_QUESTION = String.fromCharCode(0xff1f);
 const CJK_TEXT = String.fromCharCode(0x542f, 0x52a8);
+const ELLIPSIS = String.fromCharCode(0x2026);
 
 describe('splitSentences', () => {
   it('splits at . ! ? followed by whitespace or the end of the text', () => {
@@ -36,6 +37,23 @@ describe('splitSentences', () => {
 
   it('ends a sentence at a fullwidth mark with no space after it', () => {
     expect(splitSentences(`${CJK_TEXT}${FULL_STOP}${CJK_TEXT}${WIDE_QUESTION}${CJK_TEXT}`)).toEqual([`${CJK_TEXT}${FULL_STOP}`, `${CJK_TEXT}${WIDE_QUESTION}`, CJK_TEXT]);
+  });
+
+  it('does not end a sentence at an ellipsis inside it', () => {
+    expect(splitSentences('It compares in a chain of if x == ... comparisons, each branch returning a handler.')).toEqual([
+      'It compares in a chain of if x == ... comparisons, each branch returning a handler.',
+    ]);
+    expect(splitSentences(`It compares in a chain of if x == ${ELLIPSIS} comparisons. Then it returns.`)).toEqual([
+      `It compares in a chain of if x == ${ELLIPSIS} comparisons.`,
+      'Then it returns.',
+    ]);
+    expect(splitSentences('It reads a, b, c... and d. Then it stops.')).toEqual(['It reads a, b, c... and d.', 'Then it stops.']);
+  });
+
+  it('keeps a sentence that ends with an ellipsis at the end of the text, and a question or exclamation after one', () => {
+    expect(splitSentences('It reads the file. Then it waits...')).toEqual(['It reads the file.', 'Then it waits...']);
+    expect(splitSentences(`It reads the file. Then it waits${ELLIPSIS}`)).toEqual(['It reads the file.', `Then it waits${ELLIPSIS}`]);
+    expect(splitSentences('Does it wait...? It does.')).toEqual(['Does it wait...?', 'It does.']);
   });
 
   it('collapses whitespace and newlines, and returns nothing for empty text', () => {

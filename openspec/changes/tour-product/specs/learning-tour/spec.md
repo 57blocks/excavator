@@ -50,9 +50,9 @@
 
 ### Requirement: 逐句核验
 
-`tour.mjs slices` SHALL 把每步的讲解与语言要点按句切开，给每句一个 id，并为每步截取它引用节点的源码片段（节点的 `lineRange`；文件节点取开头一段，长度有上限，截断时写明）。核验子代理 SHALL 只收到一步的句子与这些片段，不收到候选集、其它步或模型的理由，对每句给出 `verified`、`unverified` 或 `contradicted` 之一与一句理由。
+`tour.mjs slices` SHALL 把每步的标题作为一句，并把讲解与语言要点按句切开（句中的省略号不算句末），给每句一个 id，并为每步截取它引用节点的源码片段（节点的 `lineRange`；文件节点取开头一段，长度有上限，截断时写明）。核验子代理 SHALL 只收到一步的句子与这些片段，不收到候选集、其它步或模型的理由，对每句给出 `verified`、`unverified` 或 `contradicted` 之一与一句理由。
 
-`tour.mjs verdicts` SHALL 检查每句都有结论，缺结论的句子记为 `unchecked`。有 `contradicted` 句子的步 SHALL 退回给模型改写一次，改写后整步重新切句、重新核验。第二次仍为 `contradicted` 的句子 SHALL 从产物里删掉；删到讲解一句不剩的步整步去掉，余下的步重新编号。每一处删除 SHALL 记进产物的 `removed`，写明原步、原句、结论与理由。
+`tour.mjs verdicts` SHALL 检查每句都有结论，缺结论的句子记为 `unchecked`。有 `contradicted` 句子的步 SHALL 退回给模型改写一次，改写后整步重新切句、重新核验。第二次仍为 `contradicted` 的讲解与要点句子 SHALL 从产物里删掉；第二次仍为 `contradicted` 的标题 SHALL 换成这一步引用节点的名称（按 `nodeIds` 顺序以逗号连接，不超过 60 个字符），原标题记进 `removed`；删到讲解一句不剩的步整步去掉，余下的步重新编号。每一处删除 SHALL 记进产物的 `removed`，写明原步、原句、结论与理由。
 
 #### Scenario: 改写后通过
 - **WHEN** 第 3 步有一句第一次被判 `contradicted`，改写后各句都是 `verified`
@@ -61,6 +61,14 @@
 #### Scenario: 两次都被否定
 - **WHEN** 第 3 步的一句两次都被判 `contradicted`，这一步还有别的句子
 - **THEN** 产物里第 3 步没有这句，`removed` 有一条记录写明它
+
+#### Scenario: 标题两次都被否定
+- **WHEN** 第 4 步的标题两次都被判 `contradicted`，讲解各句通过
+- **THEN** 产物里第 4 步的标题是它引用节点的名称，`removed` 有一条写明原标题、结论与理由
+
+#### Scenario: 句中的省略号
+- **WHEN** 一条语言要点写着 "a chain of if x == ... comparisons, each branch returning a handler."
+- **THEN** 它被切成一句
 
 #### Scenario: 整步被删空
 - **WHEN** 第 5 步的讲解每一句两次都被判 `contradicted`
@@ -72,7 +80,7 @@
 - `format`（`excavator-tour/1`）、`contentLanguage`、`sourceRevision`、`factDigest`（等于图谱的 `factsDigest`）；
 - `steps`：每步的 `order`、`title`、`description`、`nodeIds`、可选 `languageLesson`，以及每句的文字、结论与理由；
 - `removed` 与 `gaps`（如步数少于 5、有 `unchecked` 句子）；
-- `counts`：步数、句数、各结论的句数、删掉的句数与步数。
+- `counts`：步数、句数（含标题）、各结论的句数、删掉的句数与步数、换成节点名称的标题数（`replacedTitles`）。
 
 `unverified` 的句子 SHALL 保留在产物里并带着结论；`contradicted` 的句子 MUST NOT 出现在 `steps` 里。
 
