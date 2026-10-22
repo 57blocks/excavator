@@ -157,7 +157,9 @@ describe('privacy-scan', () => {
     base = commit('main moves', { 'src/a.js': 'const a = 2;\n' });
     git('checkout', '-q', 'feature');
     commit('feat: change a', { 'src/a.js': 'const a = 3;\n' });
-    expect(spawnSync('git', ['merge', '-q', 'main'], { cwd: repo, env: ENV }).status).not.toBe(0);
+    const merge = spawnSync('git', ['-c', 'user.email=t@t', '-c', 'user.name=t', 'merge', '-q', 'main'], { cwd: repo, env: ENV });
+    expect(merge.status).not.toBe(0);
+    expect(git('rev-parse', '--verify', 'MERGE_HEAD')).toBe(base);
     write({ 'src/a.js': `const a = '${NAME}';\n` });
     git('add', '-A');
     git('commit', '-q', '--no-edit');
