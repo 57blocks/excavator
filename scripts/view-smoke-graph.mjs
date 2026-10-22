@@ -177,7 +177,8 @@ const SCENARIOS = [
     const file = q('[data-xv-entry="file"]'); const fileId = file.getAttribute('data-xv-node');
     file.click(); await until(() => location.hash.includes('node='));
     out.selected = { node: route().params.node === fileId, sidebar: sidebar() === fileId, level: level() };
-    history.back(); await until(() => !location.hash.includes('node='));
+    // The address drops the node at once, but the sidebar leaves with its exit animation: wait for both.
+    history.back(); await until(() => !location.hash.includes('node=') && sidebar() === null);
     out.back1 = { level: level(), selection: route().params.node ?? null, marks: all('.xv-selected').length, sidebar: sidebar() };
     history.back(); await at(l1.path);
     out.back2 = { level: level() };
