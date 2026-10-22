@@ -58,7 +58,9 @@ TS/JS 抽取器在 `extractCallGraph` 里为每个调用点取被调表达式的
 
 ### D5 审计用同一套解析
 
-`resolveUniqueCallSites` 对 TS/JS 行用同一个工厂与 `resolveBoundCallSite`，顶层声明取自 `expected.declarations` 里没有 `owner` 的函数与类，与审计别的部分用同一份声明。结果是边时，记录的 `targets` 是目标声明所在的文件；歧义与无法解析时为空（`resolveBoundCallSite` 只为边给出声明）。其它语言照旧用 `callScopePaths`，按文件计数。
+`resolveUniqueCallSites` 对 TS/JS 行用同一个工厂与 `resolveBoundCallSite`，顶层声明取自 `expected.declarations` 里没有 `owner` 的函数与类，与审计别的部分用同一份声明。结果是边时，记录的 `targets` 是目标声明所在的文件；歧义与无法解析时为空（`resolveBoundCallSite` 只为边给出声明）。
+
+唯一记录另带它到达的声明（文件与名字）。原因是被调者原文不一定是声明的名字：改名导入（`write` 对 `log`）、默认导入、命名空间成员（`util.helper` 对 `helper`）、改名导出都不同。所以 `edge-missing` 对 TS/JS 记录不按原文找，而是看模型有没有从调用方文件指向这个声明（文件与名字）的 `calls` 边。改动前唯一记录总是按原文同名找到的，两者相同；其它语言照旧按原文。审计 `calls-unresolved` 的原因文本同时写出 TS/JS 与其它语言的去向。（评审第 1 轮的两条意见。）其它语言照旧用 `callScopePaths`，按文件计数。
 
 ### D6 其它语言、`callScopePaths` 与 `reexportOnly`
 
@@ -66,7 +68,7 @@ TS/JS 抽取器在 `extractCallGraph` 里为每个调用点取被调表达式的
 
 ### D7 TS/JS 的缺口原因
 
-`calls-unresolved` 与 `calls-ambiguous` 的原因文本按缺口的范围（语言）选择，Java 已经这样做。TS/JS 的原因列出 D1 与 D4 的各种去向，读者能从缺口看出哪些调用没有读。
+`calls-unresolved` 与 `calls-ambiguous` 的原因文本按缺口的范围（语言）选择，Java 已经这样做。TS/JS 的原因列出 D1 与 D4 的各种去向，读者能从缺口看出哪些调用没有读。外层函数的作用域按整个函数收集名字，原因文本写明：在任一块里声明的名字对整个函数都算。
 
 ### D8 Pipeline 版本
 
@@ -97,7 +99,7 @@ TS/JS 的 `calls` 边与 `calls-*` 缺口会变，TS/JS 结构行的调用点会
   - i. 从写着 `export * from './a'` 与 `export * from './b'` 的文件导入 `log`：`log()` 落进 `calls-ambiguous`；
   - j. `.js` 文件写着 `const { log } = require('./logger')`：`log()` 落进 `calls-unresolved`；
   - k. 调用本文件的顶层函数：成边（改前改后都成立）；
-  - l. 审计：a–j 的每个调用点与事实图同组（唯一 / 歧义 / 无法解析），唯一记录的目标文件与边的目标一致；
+  - l. 审计：a–j 的每个调用点与事实图同组（唯一 / 歧义 / 无法解析），唯一记录的目标文件与边的目标一致；用 `annotate()` 审计夹具自己的事实图时没有 `calls` 的 `edge-missing`，去掉改名导入那条边后恰好报出它一条（评审第 1 轮后补）；
   - m. `shadow.ts` 的结构行里，`wrap` 的调用点带 `local: true`，`direct` 的没有；
   - n. `PIPELINE_VERSION` 与图头都是 `lazy-fact-graph/15`。
 

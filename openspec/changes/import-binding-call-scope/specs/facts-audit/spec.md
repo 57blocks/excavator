@@ -19,3 +19,7 @@
 #### Scenario: 经绑定的唯一记录
 - **WHEN** 文件经改名导入、默认导入、命名空间成员或桶文件转发调用另一个文件的函数
 - **THEN** 每个调用点都是唯一解析的期望记录，目标是声明该函数的文件
+
+#### Scenario: 被调者原文不是声明的名字时按声明找模型的边
+- **WHEN** 文件写着 `import { log as write } from './logger'` 并调用 `write()`，模型图里有从调用方指向 `logger.ts` 的 `log` 的 `calls` 边
+- **THEN** 该唯一记录算作模型已画出，不计入 `edge-missing`；模型图里没有这条边时计入 `edge-missing`，样本写被调者原文 `write`
