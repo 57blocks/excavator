@@ -13,8 +13,9 @@
 
 - `listTrackedEntries` 按字节读 ls-tree 的输出。合法 UTF-8 的路径照旧解码，条目与之前逐字节相同。
 - 不是合法 UTF-8 的路径按字节做百分号编码：`%` 与 0x80 及以上的字节写成 `%` 加两位大写十六进制，其余照写，例如 `src/caf%E9.ts`。条目带 `pathNotUtf8: true`。
-- GitCommitSnapshot 不读这类条目的内容（不按路径，也不按 oid），选择规则照常按路径判定。被选中时记为 `read-failed` 处理跳过，不进 `listFiles()`，也不进 oid 映射。结果与逐文件读取一致。
-- parity 测试加三个用例：Latin-1 路径；有损解码相同的路径与字面的 `%`；合法 UTF-8 路径不变。
+- GitCommitSnapshot 不读这类条目的内容（不按路径，也不按 oid），选择规则照常按路径判定。被选中时记为 `read-failed` 处理跳过，不进 `listFiles()`。结果与逐文件读取一致。
+- 评审第一轮后加：这类路径与某个合法路径同名时，`listTrackedEntries` 抛出指名两者的错误。同名有两种：百分号编码后的名字，或 `git log`、`git diff` 输出按 UTF-8 读时它带 U+FFFD 的名字。
+- parity 测试加四个用例：Latin-1 路径；彼此有损解码相同的路径与字面的 `%`；与合法路径同名时拒绝；合法 UTF-8 路径不变。
 
 ## Capabilities
 
@@ -29,7 +30,8 @@
 ## Impact
 
 - 改动：`skills/excavator/source-snapshot/git-utils.mjs`、`skills/excavator/source-snapshot/git-commit-snapshot.mjs`、`tests/snapshot/git-commit-snapshot-batch-parity.test.mjs`、`openspec/specs/source-snapshot/spec.md`。
-- 合法 UTF-8 路径的结果不变。`hotspots.mjs` 也用 `listTrackedEntries`，只按选中路径查 oid，不受影响。
+- 合法 UTF-8 路径的结果不变。
+- `hotspots.mjs` 也用 `listTrackedEntries`，只按选中路径查 oid。它与 `sync-fact-graph.mjs` 读 `git log`、`git diff` 时仍按 UTF-8 有损解码路径。当前树里有同名的一对时，快照先抛错，它们不会运行；残余情况见 design.md 的 Non-Goals。
 - 不改跳过原因的枚举，不改 DirectorySnapshot，不改批量读取模块。
 
 执行约束：
@@ -42,3 +44,5 @@
 1. `docs(openspec): propose snapshot-undecodable-path`
 2. `fix(snapshot): keep tree paths that are not valid UTF-8 a visible read-failed skip`：任务 1.1–1.3。
 3. `docs(openspec): record snapshot-undecodable-path acceptance and archive`：任务 2.1–2.3。
+4. `fix(snapshot): refuse a tree where a path that is not valid UTF-8 shares a valid path's name`：任务 1.4（评审第一轮后加）。
+5. `docs(openspec): record snapshot-undecodable-path review round 1`：任务 2.4。
