@@ -1,9 +1,10 @@
 # Checks the text each pull request brings into the repository (added
-# lines, commit messages, paths, title and body) against two name lists that
-# live only in this repository's secrets (openspec change ci-merge-gate,
-# design D2-D6). It fails when a list is unavailable, so a pull request from
-# a fork, which gets no secrets, fails here and is reopened from a branch of
-# this repository. Editing the title or body scans again.
+# lines, commit messages, authors, paths, title, branch name and body)
+# against two name lists that live only in this repository's secrets
+# (openspec change ci-merge-gate, design D2-D6). It fails when a list is
+# unavailable, so a pull request from a fork, which gets no secrets, fails
+# here and is reopened from a branch of this repository. Editing the title or
+# body scans again.
 name: Privacy
 
 on:
@@ -13,6 +14,7 @@ on:
 
 permissions:
   contents: read
+  pull-requests: read
 
 concurrency:
   group: privacy-${{ github.ref }}
@@ -24,8 +26,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      # The whole history, so the base and head of the pull request and
-      # origin/main are all present.
+      # The whole history, so the head and the base branch are both present.
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -37,27 +38,31 @@ jobs:
         with:
           node-version: 22
 
-      # The lists, title and body come in through the environment and are
-      # written to files, never spliced into the script, so their text
-      # cannot run as shell. A manual run has no pull request: it scans the
-      # commits since the branch left main.
+      # The lists come in through the environment and are written to files,
+      # never spliced into the script. The title, branch name and body are
+      # read when the job runs, not taken from the event, so a re-run or a
+      # later edit scans the current text and none of it is printed in the
+      # log. A manual run scans its branch's open pull request, if any.
       - name: Scan
         env:
           PRIVACY_NAMES: ${{ secrets.PRIVACY_NAMES }}
           PRIVACY_CORPUS: ${{ secrets.PRIVACY_CORPUS }}
-          PR_TITLE: ${{ github.event.pull_request.title }}
-          PR_BODY: ${{ github.event.pull_request.body }}
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          BASE_REF: ${{ github.base_ref || 'main' }}
         run: |
           dir="$RUNNER_TEMP/privacy"
           mkdir -p "$dir"
           printf '%s\n' "$PRIVACY_NAMES" > "$dir/names"
           printf '%s\n' "$PRIVACY_CORPUS" > "$dir/corpus"
-          printf '%s\n' "$PR_TITLE" > "$dir/title"
-          printf '%s\n' "$PR_BODY" > "$dir/body"
-          if [ -z "$BASE_SHA" ]; then
-            HEAD_SHA=$(git rev-parse HEAD)
-            BASE_SHA=$(git merge-base origin/main "$HEAD_SHA")
+          if [ -z "$PR_NUMBER" ]; then
+            PR_NUMBER=$(gh pr list --repo "$GITHUB_REPOSITORY" --head "$GITHUB_REF_NAME" --state open --json number --jq '.[0].number // empty')
           fi
-          node scripts/ci/privacy-scan.mjs "$BASE_SHA" "$HEAD_SHA" "$dir/names" "$dir/corpus" "$dir/title" "$dir/body"
+          if [ -n "$PR_NUMBER" ]; then
+            gh pr view "$PR_NUMBER" --repo "$GITHUB_REPOSITORY" --json title,headRefName,body --jq '.title, .headRefName, .body' > "$dir/pull-request"
+          else
+            printf '%s\n' "$GITHUB_REF_NAME" > "$dir/pull-request"
+          fi
+          base=$(git merge-base "origin/$BASE_REF" "$HEAD_SHA")
+          node scripts/ci/privacy-scan.mjs "$base" "$HEAD_SHA" "$dir/names" "$dir/corpus" "$dir/pull-request"
