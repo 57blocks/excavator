@@ -13,6 +13,12 @@
  *   check-lane <out> <featureId>
  *       Check a feature lane's chapter and findings (design D3); write each
  *       evidence passage's line back.
+ *   aggregate <out>
+ *       Recompute every feature's status, write findings.json and tables/,
+ *       and print the reply's counts as JSON (design D5, D7, D9).
+ *   assemble <out>
+ *       Concatenate the overview, the tables and the written chapters into
+ *       <out>/PRD.md, byte for byte the same from the same input (design D7).
  *
  * Exit codes: 0 ok; 1 a check failed (every reason printed, one per line);
  * 2 usage or IO error.
@@ -22,6 +28,8 @@ import { listEntrypoints } from './lib/entrypoints.mjs';
 import { UsageError } from './lib/errors.mjs';
 import { checkIndex } from './lib/index-check.mjs';
 import { checkLane } from './lib/lane-check.mjs';
+import { aggregate } from './lib/aggregate.mjs';
+import { assemble } from './lib/assemble.mjs';
 
 const USAGE = `Usage: node prd.mjs <command> [arguments]
 
@@ -31,7 +39,18 @@ Commands:
   check-index <out>
       Check <out>/index.json and write the computed conservation back.
   check-lane <out> <featureId>
-      Check features/<featureId>.md and findings/<featureId>.json under <out>.
+      Check features/<featureId>.md and findings/<featureId>.json under <out>
+      and write each evidence passage's line back.
+  aggregate <out>
+      Recompute every feature's status from the files under <out>, write
+      findings.json and tables/*.md, and print the reply's counts as JSON.
+  assemble <out>
+      Write <out>/PRD.md from overview.md, the tables and the written chapters;
+      failed features go to the appendix. Prints the path.
+
+<out> is the run's output directory (index.json, features/, findings/,
+verification/). Every command reads the target project statically; none
+calls a model or builds or runs the project.
 
 Exit codes: 0 ok; 1 a check failed; 2 usage or IO error.`;
 
@@ -78,13 +97,32 @@ const COMMANDS = {
     if (positionals.length !== 2) throw new UsageError('check-lane takes <out> and <featureId>');
     return report(checkLane(positionals[0], positionals[1]));
   },
+  aggregate(args) {
+    const { positionals } = parseArgs(args, []);
+    if (positionals.length !== 1) throw new UsageError('aggregate takes exactly one <out> directory');
+    const outcome = aggregate(positionals[0]);
+    if (outcome.status !== 0) return report(outcome);
+    process.stdout.write(`${JSON.stringify(outcome.result, null, 2)}\n`);
+    return 0;
+  },
+  assemble(args) {
+    const { positionals } = parseArgs(args, []);
+    if (positionals.length !== 1) throw new UsageError('assemble takes exactly one <out> directory');
+    return report(assemble(positionals[0]));
+  },
 };
+
+const HELP = new Set(['--help', '-h', 'help']);
 
 async function main(argv) {
   const [command, ...rest] = argv;
-  if (command === undefined || command === '--help' || command === '-h' || command === 'help') {
-    (command === undefined ? process.stderr : process.stdout).write(`${USAGE}\n`);
-    return command === undefined ? 2 : 0;
+  if (command === undefined) {
+    process.stderr.write(`${USAGE}\n`);
+    return 2;
+  }
+  if (HELP.has(command) || rest.some((arg) => arg === '--help' || arg === '-h')) {
+    process.stdout.write(`${USAGE}\n`);
+    return 0;
   }
   const run = COMMANDS[command];
   if (!run) {

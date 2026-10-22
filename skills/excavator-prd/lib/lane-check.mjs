@@ -61,6 +61,7 @@ function chapterProblems(text, feature, files) {
   const add = (problem) => problems.push(`${feature.id}: ${problem}`);
   const front = parseFrontMatter(text);
   let body = text;
+  let roles = [];
   if (!front.ok) {
     add(`${chapterPath(feature.id)} ${front.reason}`);
   } else {
@@ -71,6 +72,7 @@ function chapterProblems(text, feature, files) {
     if (data.kind !== feature.kind) add(`front-matter kind is ${JSON.stringify(data.kind ?? null)}, not the index's ${feature.kind}`);
     if (data.chapter !== feature.chapter) add(`front-matter chapter is ${JSON.stringify(data.chapter ?? null)}, not the index's ${feature.chapter}`);
     for (const key of ['roles', 'triggers']) if (!isStringArray(data[key])) add(`front-matter ${key} is not a list`);
+    if (isStringArray(data.roles)) roles = data.roles;
   }
   const diagrams = (body.match(MERMAID) ?? []).length;
   if (diagrams === 0) add('no mermaid block');
@@ -94,7 +96,7 @@ function chapterProblems(text, feature, files) {
     }
   }
   if (blocks.length > 0 && evidence === 0) add('no `path:line` anchor in the <details> evidence blocks');
-  return { problems, diagrams, evidence };
+  return { problems, diagrams, evidence, roles };
 }
 
 /** Problems of the findings file; `resolved` carries each passage's line when there are none. */
@@ -157,12 +159,14 @@ function findingsProblems(value, feature, featureIds, files) {
 
 /**
  * The problems of one lane (pure apart from reading the project), its counts,
- * and the findings value with lines filled in when it passed.
+ * the chapter's front-matter roles, and the findings value with lines filled
+ * in when every finding passed.
  */
 export function laneResult(outDir, index, feature) {
   const files = projectFiles(index.projectRoot);
   const problems = [];
   const counts = { diagrams: 0, evidence: 0, findings: { product: 0, technical: 0 } };
+  let roles = [];
   const chapterFile = join(outDir, chapterPath(feature.id));
   const findingsFile = join(outDir, findingsPath(feature.id));
   for (const rel of [chapterPath(feature.id), findingsPath(feature.id)]) {
@@ -175,6 +179,7 @@ export function laneResult(outDir, index, feature) {
       problems.push(...chapter.problems);
       counts.diagrams = chapter.diagrams;
       counts.evidence = chapter.evidence;
+      roles = chapter.roles;
     } else {
       problems.push(`${feature.id}: ${chapterPath(feature.id)} ${read.reason}`);
     }
@@ -192,7 +197,7 @@ export function laneResult(outDir, index, feature) {
       if (checked.problems.length === 0) findings = read.value;
     }
   }
-  return { problems, counts, findings };
+  return { problems, counts, findings, roles };
 }
 
 function readText(path) {
