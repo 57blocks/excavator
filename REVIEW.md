@@ -1,6 +1,16 @@
 # Review instructions
 
-This repository builds Excavator: deterministic scripts and model-driven skills that read a codebase and report facts about it. The rules every change follows are in `AGENTS.md`. This file says what a review of a pull request reports, at which severity, and what it leaves out.
+This repository builds Excavator: deterministic scripts and model-driven skills that read a codebase and report facts about it. The rules every change follows are in `AGENTS.md`. This file says what a review of a pull request reports, at which severity, and what it leaves out. It also holds the review procedure: risk tiers, answering findings and rounds. This file is in the high tier, so a pull request cannot loosen these rules without the user merging it.
+
+## Risk tiers
+
+A pull request's tier is the highest tier that any of its changed paths gives, as listed by `git diff --name-only origin/main...HEAD`. The author does not choose it.
+
+| Tier | Paths | Before merging |
+|---|---|---|
+| High | `.github/`, `scripts/ci/`, `REVIEW.md`, `.claude/agents/reviewer.md` | Reviewed; every thread resolved; merged by the user |
+| Medium | Every path in neither the high nor the low tier | Reviewed; every thread resolved; the agent may merge |
+| Low | Markdown files under `openspec/` or `docs/`, `.openspec.yaml` files, and root Markdown files other than `AGENTS.md`, `CLAUDE.md` and `REVIEW.md` | The two required checks pass |
 
 ## What Important means here
 
@@ -45,8 +55,24 @@ Report at most five Nits per review.
 - A script that reads a path from an artifact or a model's output keeps that path inside the project root.
 - Code, comments, tests and skill prose contain no CJK characters, except as `\u` escapes in code. Code, comments and tests name no corpus.
 - Nothing installs a language runtime, compiles the analysed project or fetches its dependencies. Excavator is build-free.
-- The pull request's Risk tier matches the tier its paths give under the table in `AGENTS.md`. A declared tier lower than the paths give is Important, because an agent may merge a medium-tier pull request on its own.
+- The pull request's Risk tier matches the tier its paths give under Risk tiers above. A declared tier lower than the paths give is Important, because an agent may merge a medium-tier pull request on its own.
 
 ## Summary
 
 Start the summary with the count by severity, for example "1 Important, 2 Nit, 0 Pre-existing." When nothing needs fixing, say so in that first sentence.
+
+## Answering findings
+
+The author answers every finding, then resolves its thread:
+
+- **Fixed**: reply with the commit that fixes it.
+- **Not fixed**: reply with the reason, which is one of wrong, intentional or doesn't matter, and say why.
+
+Answer the findings in a review's summary in one pull request comment. Branch protection blocks the merge while any thread is unresolved.
+
+## Rounds
+
+- **Round 1** reviews the whole change.
+- **Later rounds** review only the pull request's own commits after the last reviewed commit. That leaves out what a merge from `main` brought in: `git log -p --diff-merges=remerge <last>..<head> --not origin/main` shows a merge commit only as what the merge itself wrote. A later round never raises a finding already raised.
+- **When to run another round**: only when the previous round had an Important finding that the author fixed in code, or when the pull request's own new commits touch a medium- or high-tier path.
+- **At most three rounds.** If either reason calls for a fourth, stop. Do not merge; tell the user and reconsider the approach.

@@ -9,7 +9,7 @@
 
 ## Risk tier
 
-<!-- low, medium or high, from the path table in AGENTS.md: the highest tier any changed path gives.
+<!-- low, medium or high, from Risk tiers in REVIEW.md: the highest tier any changed path gives.
      List the high-tier paths this touches. -->
 
 ## How to revert
