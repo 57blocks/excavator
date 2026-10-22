@@ -77,4 +77,4 @@ When the first set was mined, most rejected fixes failed rule 4. Those larger in
 
 ## Cost
 
-The baseline run, with the rules at 1ceb17a7 and the eight cases run one at a time on Opus, took 1.26M tokens and 59 minutes: 130k to 187k tokens, 16 to 49 tool calls and 4 to 9 minutes per case. Scoring both revisions for a rules change costs twice that.
+The baseline run, with the rules at 1ceb17a7 and the eight cases run one at a time on Opus, took 59 minutes: 4 to 9 minutes and 16 to 49 tool calls per case. Each run's context ended at 130k to 187k tokens, and across their turns the eight runs wrote 1.0M tokens to the prompt cache and read 23.5M from it: the cost grows with turns times context, not with the size of the change. Scoring both revisions for a rules change costs twice that.
