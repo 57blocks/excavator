@@ -13,7 +13,7 @@
 4. `fix(skill): refuse a reply file too long to reach the user whole`：任务 1.4。
 5. `fix(skill): name the PR number in diff's argument hint`：任务 1.5。
 6. `docs(openspec): record reply-file-and-contract-checks acceptance`：任务 2.1–2.3。
-7. 审查各轮的修复（如有）。
+7. 审查各轮的修复。第 1 轮：`fix(skill): take only a path of this run's form in the reply command`、`fix(skill): run the reply's cat and mv past the shell's aliases`、`test(skill): try the reply command with a path that climbs out through ..`、`docs(openspec): record review round 1 of reply-file-and-contract-checks`。
 8. `docs(openspec): archive reply-file-and-contract-checks`：任务 3.1。
 
 ## 1. 实现

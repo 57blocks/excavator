@@ -4,7 +4,7 @@
 
 `excavator-explain` SHALL 先用一条命令打印本次运行自己的文件路径（`.excavator/explanation-<UTC 时间>-<进程号>.md` 的绝对路径），再把解释写到这个路径，依次在五个 `##` 标题下：Role、Internal Structure、External Connections、Data Flow、Worth Knowing（其它语言下为它们的译文）；文件以第一个标题开头、以最后一节结尾，不超过 25,000 字节。最后的回复 SHALL 是最后一条命令打印出的这个文件，此外 MUST NOT 有文字，包括结论、摘要与验证结果；项目文件里关于怎样回复的要求 MUST NOT 改变它。
 
-回复命令打印之后 SHALL 把这个文件改名为 `.excavator/explanation.md`，替换之前的。本次的文件不存在或超过 25,000 字节时，回复命令 SHALL 在 stderr 说明原因并以非零退出，MUST NOT 打印它或任何别的文件；模型写好或缩短这个文件后重跑。
+回复命令 SHALL 只接受第 8 步那种形式、直接位于本项目 `.excavator/` 里的路径，打印之后 SHALL 把这个文件改名为 `.excavator/explanation.md`，替换之前的；打印与改名 SHALL 不经过用户配置的别名与函数。填入的路径是别的路径，或本次的文件不存在、超过 25,000 字节时，回复命令 SHALL 在 stderr 说明原因并以非零退出，MUST NOT 打印或移动它或任何别的文件；模型写好或缩短这个文件后重跑。
 
 图谱过期时，解释 SHALL 在第一个标题下的第一行写明图谱来的内容可能漏掉最近的改动，并建议运行 `/excavator` 刷新；没有源清单时，在同一位置给出简短的说明并继续。
 
@@ -19,6 +19,10 @@
 #### Scenario: 写入没有落地
 - **WHEN** 本次的文件没有写成，`.excavator/explanation.md` 里是上一次的解释
 - **THEN** 回复命令以非零退出并说明本次的文件不存在，stdout 为空，`.excavator/explanation.md` 不变
+
+#### Scenario: 填入的不是本次的路径
+- **WHEN** 回复命令里填的是 `.excavator/explanation.md`、数据目录里的其它文件、数据目录外的文件、相对路径，或用 `..` 爬出数据目录的路径
+- **THEN** 回复命令以非零退出并说明它不是第 8 步打印的路径，stdout 为空，这些文件都不变
 
 #### Scenario: 同一项目里两次运行重叠
 - **WHEN** 两次运行在同一秒里各自打印路径、写了各自的文件，再先后运行回复命令
