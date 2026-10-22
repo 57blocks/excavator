@@ -56,7 +56,7 @@
 
 ### D3 计数：新缺口叠加在既有计数上
 
-- 新缺口 `edge-target-mismatch`，scope `calls`，计数为目标不符的边数。样本格式：`<source> -> <target>: <调用方文件>:<行> <callee> resolves to <文件>`，行取该键下最小的调用行，和记录的 `line` 相同；
+- 新缺口 `edge-target-mismatch`，scope `calls`，计数为目标不符的边数。样本格式：`<source> -> <target>: <调用方文件>:<行> <callee> is declared in scope only in <文件>`（第一轮评审前写的是 `resolves to`），行取该键下最小的调用行，和记录的 `line` 相同；
 - 这条边照旧走「没有记录」的计数：模型写了 `extracted` 的计入 `edge-unsupported`；`provenance` 由审计补成 `inferred` 的计入 `edge-auto-inferred|calls`；模型自己写了 `inferred` 的不计这两项；
 - 不计入 `edge-contradicted`：那一项说的是「引的行与记录不符」，这里没有可比的行。
 
@@ -166,6 +166,10 @@
   - Pre-existing（事实图用同一个作用域画边，O5 在事实图上的比较看不见这类错误）：不在本变更内。残余假设里已写明事实图与审计同源；修作用域的变更（TS/JS 的 import-binding-call-scope 在进行中，Go 同包与 Kotlin 成员调用还没有）会同时消除两处。
   - 重跑：本测试文件 37 个用例全过。变异：iv′ 标回 `contradicted` → O1 a、d 红；viii → O1 i 红；i 只按名字 → 8 个红；vii → O1 h 红。O5 的原样比较五份全部通过，零目标不符的边；植入比较四份通过，计数增量与上面相同（被改的边现在是 `unverified`，不再是 `contradicted`）。上面 O1、O4 里关于 `contradicted` 的记录是第一轮评审之前的结果。
   - O3：在 `839eb44e` 的分离检出上：`pnpm install --frozen-lockfile`、`pnpm -r build`、`openspec validate --all --strict`（47 项）、`node scripts/check-refs.mjs` 都通过；`pnpm test` 206 个文件、5086 个测试里 5076 个通过、4 个跳过、6 个失败，全在 `tests/benchmark/test_large_repo_benchmark.test.mjs`。这些用例比较整台机器临时目录里 `excavator-large-bench-*` 的前后清单，失败的差异是别人的目录出现又消失；当时另一个会话正在跑同一个测试文件（进程列表里看得到）。它在跑时单独重跑这个文件仍有 5 个失败，它结束后在同一检出上重跑 73 个通过、3 个跳过；中间 origin/main 上同一文件也通过。这个文件不读审计的输出。
+- **评审第二轮（reviewer 代理，在 `f6b3cc79` 上）：** 0 个 Important、2 个 Nit；第一轮三条确认已改。
+  - Nit（D3 的样本格式还写着 `resolves to`）：采纳，改成代码与用例的 `is declared in scope only in`；
+  - Nit（缺口说明与 `SKILL.md` 把作用域写成「本文件与 import 目标」，没去掉只经转发到达的目标）：采纳，`60c3568e`。这个提交动了中风险路径，按 REVIEW.md 再跑第三轮。
+  - 重跑：本测试文件与 `tests/lazy/reexport-call-scope.test.mjs` 46 个用例全过，`node scripts/check-refs.mjs` 通过。
 - **既有问题（不在本变更内，作为后续工作）：**
   - 源端按文件匹配，见 Non-Goals；
   - 证据行核对拿边引的行与该文件里同名调用点的最小行比较。上面的快照上，origin/main 的审计已把事实图里 20%–59% 的正确 `calls` 边判为 `contradicted`（conduit 14/70，go-multirepo 774/3,073，kotlin-portal 936/1,671，maui-app 1,255/2,125），因为它们引的是同名的后一个调用点。
