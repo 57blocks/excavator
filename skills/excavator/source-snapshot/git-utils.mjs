@@ -78,14 +78,30 @@ export function listTrackedFiles(dir, sha) {
 /** A path whose bytes are not valid UTF-8, with `%` and every byte from 0x80
  *  up written as `%XX`. Directory and extension rules still see its shape;
  *  git's own `\351` quoting would not survive, because the selection policy
- *  rewrites `\` to `/`. Since `%` itself is encoded, two different byte
- *  sequences never become the same string. */
+ *  rewrites `\` to `/`. Since `%` itself is encoded, two such paths never
+ *  become the same string; a clash with a valid path is refused below. */
 function percentEncodePathBytes(bytes) {
   let out = '';
   for (const byte of bytes) {
     out += byte >= 0x80 || byte === 0x25 ? `%${byte.toString(16).toUpperCase()}` : String.fromCharCode(byte);
   }
   return out;
+}
+
+/** Throw when a path that is not valid UTF-8 shares a name with a valid path:
+ *  under its percent-encoded form, or under the U+FFFD form that `git log`
+ *  and `git diff` output read as UTF-8 give it, where its history and
+ *  deletions would be credited to the valid file. */
+function refuseNameClashes(entries, lossyPaths, sha, dir) {
+  const validPaths = new Set(entries.filter((entry) => !entry.pathNotUtf8).map((entry) => entry.path));
+  for (const [path, lossyPath] of lossyPaths) {
+    if (validPaths.has(lossyPath)) {
+      throw new Error(`git ls-tree for ${sha} in ${dir}: ${path} is not valid UTF-8 and decodes with U+FFFD to the valid path ${lossyPath}, so git output read as UTF-8 cannot tell the two apart`);
+    }
+    if (validPaths.has(path)) {
+      throw new Error(`git ls-tree for ${sha} in ${dir}: ${path} is not valid UTF-8 and its percent-encoded name is also a valid path`);
+    }
+  }
 }
 
 /** Fixed-tree entries with Git mode preserved so symlinks never become
@@ -100,6 +116,7 @@ export function listTrackedEntries(dir, sha) {
   }
   const stdout = result.stdout;
   const entries = [];
+  const lossyPaths = new Map(); // percent-encoded path -> its U+FFFD decoding
   for (let start = 0; start < stdout.length;) {
     const nul = stdout.indexOf(0, start);
     const end = nul === -1 ? stdout.length : nul;
@@ -111,9 +128,15 @@ export function listTrackedEntries(dir, sha) {
     const pathBytes = record.subarray(tab + 1);
     if (!match || pathBytes.length === 0) throw new Error(`git ls-tree returned an invalid entry for ${sha} in ${dir}`);
     const [, mode, type, oid] = match;
-    if (isUtf8(pathBytes)) entries.push({ mode, type, oid, path: pathBytes.toString('utf-8') });
-    else entries.push({ mode, type, oid, path: percentEncodePathBytes(pathBytes), pathNotUtf8: true });
+    if (isUtf8(pathBytes)) {
+      entries.push({ mode, type, oid, path: pathBytes.toString('utf-8') });
+    } else {
+      const path = percentEncodePathBytes(pathBytes);
+      entries.push({ mode, type, oid, path, pathNotUtf8: true });
+      lossyPaths.set(path, pathBytes.toString('utf-8'));
+    }
   }
+  refuseNameClashes(entries, lossyPaths, sha, dir);
   return entries;
 }
 

@@ -380,14 +380,11 @@ describe('GitCommitSnapshot — tree paths that are not valid UTF-8', () => {
     }
   });
 
-  it('gives every such path its own record, and a valid path that decodes alike keeps its own blob', () => {
-    const validPath = `src/caf${REPLACEMENT_CHAR}.ts`;
-    const validContent = 'export const replacement = 1;\n';
+  it('gives every such path its own record, even when their U+FFFD decodings or a literal `%` coincide', () => {
     const fixture = makeRawPathFixture([
+      { path: pathBytes('src/app.ts'), content: 'export const app = 1;\n' },
+      // Both decode to the same string with U+FFFD.
       { path: pathBytes('src/caf', [0xe9], '.ts'), content: 'export const acute = 1;\n' },
-      { path: pathBytes(validPath), content: validContent },
-      // 0xff sorts after the valid path's bytes (ef bf bd), so a map keyed by
-      // the lossy decode of these three paths would end on this blob.
       { path: pathBytes('src/caf', [0xff], '.ts'), content: 'export const ff = 1;\n' },
       // These two become the same string unless `%` itself is encoded.
       { path: pathBytes('lib/x', [0xe9, 0xff], '.ts'), content: 'export const pair = 1;\n' },
@@ -404,19 +401,10 @@ describe('GitCommitSnapshot — tree paths that are not valid UTF-8', () => {
         { path: 'src/caf%E9.ts', reason: 'read-failed' },
         { path: 'src/caf%FF.ts', reason: 'read-failed' },
       ]);
-      expect(fresh.listFiles()).toEqual([validPath]);
+      expect(fresh.listFiles()).toEqual(['src/app.ts']);
       const selectionPaths = fresh.selection.entries.map((entry) => entry.path);
       expect(selectionPaths).toHaveLength(5);
       expect(new Set(selectionPaths).size).toBe(5);
-
-      expect(fresh.readFile(validPath).toString('utf-8')).toBe(validContent);
-      const materialized = fresh.materialize();
-      try {
-        expect(walkFiles(materialized.dir)).toEqual([validPath]);
-        expect(readFileSync(join(materialized.dir, validPath), 'utf-8')).toBe(validContent);
-      } finally {
-        materialized.cleanup();
-      }
 
       expect(fresh.selection).toEqual(old.selection);
       expect(fresh.processingSkips).toEqual(old.processingSkips);
@@ -424,6 +412,26 @@ describe('GitCommitSnapshot — tree paths that are not valid UTF-8', () => {
       expect(fresh.entries()).toEqual(oldEntries(fixture, sha, old.trackedPaths));
     } finally {
       rmSync(fixture, { recursive: true, force: true });
+    }
+  });
+
+  it('refuses a tree where such a path shares a name with a valid path', () => {
+    const clashes = [
+      // `git log` and `git diff` read as UTF-8 would credit the 0xe9 file's
+      // history and deletion to this valid file.
+      { valid: `src/caf${REPLACEMENT_CHAR}.ts`, message: /src\/caf%E9\.ts is not valid UTF-8 and decodes with U\+FFFD to the valid path/ },
+      { valid: 'src/caf%E9.ts', message: /src\/caf%E9\.ts is not valid UTF-8 and its percent-encoded name is also a valid path/ },
+    ];
+    for (const { valid, message } of clashes) {
+      const fixture = makeRawPathFixture([
+        { path: pathBytes(valid), content: 'export const valid = 1;\n' },
+        { path: pathBytes('src/caf', [0xe9], '.ts'), content: 'export const latin1 = 1;\n' },
+      ]);
+      try {
+        expect(() => new GitCommitSnapshot(fixture, headSha(fixture))).toThrow(message);
+      } finally {
+        rmSync(fixture, { recursive: true, force: true });
+      }
     }
   });
 
