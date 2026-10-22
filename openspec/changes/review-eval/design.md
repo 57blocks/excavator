@@ -98,7 +98,7 @@ doc-map 这一处是规则 1 的例外：缺陷在测试里，修复只改了测
 
 `REVIEW.md` 的流程加一条：改 `REVIEW.md` 或 `.claude/agents/reviewer.md` 的 PR，在 Testing 里给出 `main` 上的版本与 PR head 上的版本在评测集上的分数。
 - 这类 PR 本来就是高档，由用户合并，分数是用户合并前看的证据。
-- 两版各跑一次是 16 次 opus 审查。`main` 上的版本若已有分数，且之后 `main` 上的 `REVIEW.md`、审查代理定义、`AGENTS.md` 与 `scripts/review-eval/` 都没变，PR 可以引用那次分数（给出它所在的 PR），只跑改动后的版本。用例、打分脚本与跑法对分数的影响不比规则小，所以都算在内。（第一轮审查后改：原来只列了前两者与 `cases.json`。）
+- 两版都用 PR 里的评测跑和打分：用例、打分脚本与跑法对分数的影响不比规则小，两版的分数只有用同一个评测才可比。两版各跑一次是 16 次 opus 审查。`main` 上的版本若已有分数，且之后 `main` 上的 `REVIEW.md`、审查代理定义与 `AGENTS.md` 都没变、PR 里的 `scripts/review-eval/` 与那次分数用的相同，PR 可以引用那次分数（给出它所在的 PR），只跑改动后的版本。（第一轮审查后改：原来只列了前两者与 `cases.json`；第二轮审查后改：原来只看 `main` 上的评测变没变，PR 自己改评测时会拿旧评测的分数与新评测的分数比。）
 - PR 自己的版本取它第一次送审时的版本。之后为答复本 PR 的审查而改的，不再重跑：Testing 在分数下面列出这些改动，由合并的用户决定要不要重跑。一次完整评测约一小时，答复每条审查意见都重跑，代价不成比例。
 - 「Always check」加一条：这类 PR 缺分数是 Important。只写在流程里，审查代理不会去查。
 - `scripts/review-eval/` 不升高档：和规则一起改它的 PR 已因 `REVIEW.md` 是高档；单独削弱打分或用例的 PR，按「What Important means here」里削弱审查流程一条是 Important。那一条点名了评测（第一轮审查后加）。

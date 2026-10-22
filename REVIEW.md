@@ -87,7 +87,7 @@ Answer the findings in a review's summary in one pull request comment. Branch pr
 
 A pull request that changes this file or `.claude/agents/reviewer.md` runs the reviewer eval in `scripts/review-eval/` at two revisions: the version on `main` and the pull request's own version. Its Testing section gives both scores: recall, and the Important findings on clean cases.
 
-- The score of the version on `main` can be cited from an earlier pull request instead of run again, when `REVIEW.md`, `.claude/agents/reviewer.md`, `AGENTS.md` and `scripts/review-eval/` on `main` have not changed since. The cases, the scorer and the way a case runs move the score as much as the rules do.
+- Both versions are run and scored with the eval as the pull request has it: its cases, scorer and run prompt, which move the score as much as the rules do. The score of the version on `main` can be cited from an earlier pull request instead of run again only when `REVIEW.md`, `.claude/agents/reviewer.md` and `AGENTS.md` on `main` have not changed since, and the pull request's `scripts/review-eval/` is the same as the one that score used.
 - The pull request's own version is the one it first sends to review. Changes it makes later in answer to its own review need no new run: the Testing section lists them under the scores, and the user, who merges, decides whether to ask for one.
 - Each case runs once, so a difference of one defect between two versions is within the noise.
 - A defect that got past review and was fixed later goes into the eval, as `scripts/review-eval/README.md` describes.
