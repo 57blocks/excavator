@@ -35,3 +35,11 @@ Node ≥ 22，pnpm（版本按 `package.json` 的 `packageManager`），vitest�
 - 提交生成了没测过的内容：拆分 commit 时重建的中间版本，要逐个在临时检出里跑对应检查。原样提交已测过的工作区则不重跑。
 - 合并前 `main` 已前进：合并结果是新内容，先合入最新 `main` 再跑。`main` 没动就直接合并。
 - 有未跟踪的新文件：`tests/refs/legacy-literals` 等门禁按 `git ls-files` 取文件，未跟踪文件会被跳过、造成假绿。先 `git add -N <文件>` 再跑门（跑完 `git reset -- <文件>` 还原），或提交后再跑。
+
+## 合并
+- 每个改动走 PR 进 `main`。`main` 受保护：不能直接推送或强推，管理员也一样。
+- 两个检查必过：
+  - `CI gate`（`.github/workflows/ci.yml`）：在 Linux 上跑上表全部检查的并集；
+  - `Privacy scan`（`.github/workflows/privacy.yml`）：用仓库 secret 里的名单扫 PR 带来的文字（新增行、提交信息、路径、标题与正文），只报计数。
+- PR 分支要与 `main` 同步才能合并：`main` 前进后先合入最新 `main`，等两个检查重新变绿。
+- 本地仍按上表只跑与改动相关的检查。
