@@ -14,9 +14,9 @@
 
 ## 1. 实现
 
-- [ ] 1.1 `skills/excavator-explain/SKILL.md`：`argument-hint`、`## Options`、`## Instructions` 开头的 Language 段、第 2 步的 `LANGUAGE`、第 3 步去掉 `--language`（D1）。
-- [ ] 1.2 第二份 Language 段与第 8 步；第 2 步的提醒写在第一个标题下（D2、D3）。
-- [ ] 1.3 新建 `tests/skill/test_explain_skill_contract.test.mjs`：D4 各条。验证：契约测试。
+- [x] 1.1 `skills/excavator-explain/SKILL.md`：`argument-hint`、`## Options`、`## Instructions` 开头的 Language 段、第 2 步的 `LANGUAGE`、第 3 步去掉 `--language`（D1）。
+- [x] 1.2 第二份 Language 段与第 8 步；第 2 步的提醒写在第一个标题下（D2、D3）。
+- [x] 1.3 新建 `tests/skill/test_explain_skill_contract.test.mjs`：D4 各条。验证：契约测试。
 
 ## 2. 验收
 
