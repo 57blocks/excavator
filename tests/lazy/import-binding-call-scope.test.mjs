@@ -23,7 +23,7 @@ import { dirname, join } from 'node:path';
 import { PIPELINE_VERSION, runLazyAnalysis } from '../../skills/excavator/lazy-analyze.mjs';
 import { KNOWLEDGE_GRAPH_FILE, readKnowledgeGraph } from '../../skills/excavator/knowledge-graph-store.mjs';
 import { readStructureAll } from '../../skills/excavator/structure-all-store.mjs';
-import { buildExpectedRecords, resolveUniqueCallSites } from '../../skills/excavator/annotate-graph.mjs';
+import { annotate, buildExpectedRecords, resolveUniqueCallSites } from '../../skills/excavator/annotate-graph.mjs';
 
 const LOGGER = 'src/logger.ts';
 const A = 'src/a.ts';
@@ -180,5 +180,27 @@ describe('TS/JS calls resolve through the file\'s own bindings', () => {
       [STAR, 4, 'log', 'unresolved', []],
       [STAR, 5, 'helper', 'unique', [B]],
     ]);
+  });
+
+  // The callee text of a renamed, default or namespace call is not the name
+  // of the declaration it reaches, which is what a model's edge points at.
+  it('finds the fact graph\'s own edge for every call the audit resolves, whatever the callee text', () => {
+    const scan = JSON.parse(readFileSync(join(root, '.excavator', 'intermediate', 'scan-result.json'), 'utf-8'));
+    const { annotated, audit } = annotate({ graph, structure, scan, importMap, supplement: false });
+    expect(audit.counts.edgeMissing.calls).toBeUndefined();
+    const auditGap = (kind) => annotated.gaps.find((g) => g.kind === kind && g.scope === 'graph');
+    expect(auditGap('calls-unresolved').samples).toContain(`${CJS_USER}:3 -> log`);
+    expect(auditGap('calls-unresolved').reason).toMatch(/require\(\)/);
+  });
+
+  it('reports a resolved call as missing when the model drew no edge to its declaration', () => {
+    const scan = JSON.parse(readFileSync(join(root, '.excavator', 'intermediate', 'scan-result.json'), 'utf-8'));
+    const saveToLog = (e) => e.type === 'calls' && e.source === nodeId(ALIAS, 'save') && e.target === nodeId(LOGGER, 'log');
+    expect(graph.edges.filter(saveToLog)).toHaveLength(1);
+    const { annotated, audit } = annotate({
+      graph: { ...graph, edges: graph.edges.filter((e) => !saveToLog(e)) }, structure, scan, importMap, supplement: false,
+    });
+    expect(audit.counts.edgeMissing.calls).toBe(1);
+    expect(annotated.gaps.find((g) => g.kind === 'edge-missing' && g.scope === 'calls').samples).toEqual([`${ALIAS}:3 -> write`]);
   });
 });
