@@ -87,17 +87,18 @@ describe('excavator-explain skill: the language of what it writes', () => {
     };
     const paragraph = `${LANGUAGE_RULE}\n\n`;
     const byProject = '`$ARGUMENTS` holds the component to explain and may hold `--language <lang>`: the language of the explanation; the project\'s own language when it is not given.';
+    /** Each known-bad copy, and the problem that the check it was made for reports. */
     const bad = {
-      noRule: without(without(skill, paragraph), paragraph).replace(OPTION_LANGUAGE, byProject),
-      notFirst: without(skill, paragraph, '## Instructions'),
-      ownSection: without(without(skill, paragraph), paragraph).replace('## Instructions', `## Language\n\n${paragraph}## Instructions`),
-      notBeforeStep8: without(skill, paragraph, '7. **Read the actual source file**'),
-      beforeStep7: without(skill, paragraph, '7. **Read the actual source file**').replace('7. **Read the actual source file**', `${paragraph}7. **Read the actual source file**`),
-      afterStep8: `${without(skill, paragraph, '7. **Read the actual source file**')}\n${LANGUAGE_RULE}\n`,
-      reworded: skill.slice(0, skill.indexOf('7. **Read the actual source file**')) + skill.slice(skill.indexOf('7. **Read the actual source file**')).replace('memory and ', ''),
-      byProject: skill.replace(OPTION_LANGUAGE, byProject),
+      noRule: [without(without(skill, paragraph), paragraph).replace(OPTION_LANGUAGE, byProject), 'the language paragraph is there 0 times, not twice'],
+      notFirst: [without(skill, paragraph, '## Instructions'), 'the instructions do not open with the language paragraph'],
+      ownSection: [without(without(skill, paragraph), paragraph).replace('## Instructions', `## Language\n\n${paragraph}## Instructions`), 'the instructions do not open with the language paragraph'],
+      notBeforeStep8: [without(skill, paragraph, '7. **Read the actual source file**'), 'the language paragraph does not stand right before step 8'],
+      beforeStep7: [without(skill, paragraph, '7. **Read the actual source file**').replace('7. **Read the actual source file**', `${paragraph}7. **Read the actual source file**`), 'the second language paragraph comes before step 7'],
+      afterStep8: [`${without(skill, paragraph, '7. **Read the actual source file**')}\n${LANGUAGE_RULE}\n`, 'the language paragraph does not stand right before step 8'],
+      reworded: [skill.slice(0, skill.indexOf('7. **Read the actual source file**')) + skill.slice(skill.indexOf('7. **Read the actual source file**')).replace('memory and ', ''), '1 of 2 language paragraphs differ from the others'],
+      byProject: [skill.replace(OPTION_LANGUAGE, byProject), 'the options do not say that only --language changes the language'],
     };
-    for (const [name, text] of Object.entries(bad)) expect(languageRuleProblems(text), name).not.toEqual([]);
+    for (const [name, [text, problem]] of Object.entries(bad)) expect(languageRuleProblems(text), name).toContain(problem);
   });
 });
 

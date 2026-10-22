@@ -86,17 +86,18 @@ describe('excavator-diff skill: the language of what it writes', () => {
     };
     const paragraph = `${LANGUAGE_RULE}\n\n`;
     const byProject = '`--language <lang>` — the language of the analysis; the project\'s own language when it is not given.';
+    /** Each known-bad copy, and the problem that the check it was made for reports. */
     const bad = {
-      noRule: without(without(skill, paragraph), paragraph).replace(OPTION_LANGUAGE, byProject),
-      notFirst: without(skill, paragraph, '## Instructions'),
-      ownSection: without(without(skill, paragraph), paragraph).replace('## Instructions', `## Language\n\n${paragraph}## Instructions`),
-      notBeforeStep7: without(skill, paragraph, STEP6),
-      beforeStep6: without(skill, paragraph, STEP6).replace(STEP6, `${paragraph}${STEP6}`),
-      afterStep7: `${without(skill, paragraph, STEP6)}\n${LANGUAGE_RULE}\n`,
-      reworded: skill.slice(0, skill.indexOf(STEP6)) + skill.slice(skill.indexOf(STEP6)).replace('memory and ', ''),
-      byProject: skill.replace(OPTION_LANGUAGE, byProject),
+      noRule: [without(without(skill, paragraph), paragraph).replace(OPTION_LANGUAGE, byProject), 'the language paragraph is there 0 times, not twice'],
+      notFirst: [without(skill, paragraph, '## Instructions'), 'the instructions do not open with the language paragraph'],
+      ownSection: [without(without(skill, paragraph), paragraph).replace('## Instructions', `## Language\n\n${paragraph}## Instructions`), 'the instructions do not open with the language paragraph'],
+      notBeforeStep7: [without(skill, paragraph, STEP6), 'the language paragraph does not stand right before step 7'],
+      beforeStep6: [without(skill, paragraph, STEP6).replace(STEP6, `${paragraph}${STEP6}`), 'the second language paragraph comes before step 6'],
+      afterStep7: [`${without(skill, paragraph, STEP6)}\n${LANGUAGE_RULE}\n`, 'the language paragraph does not stand right before step 7'],
+      reworded: [skill.slice(0, skill.indexOf(STEP6)) + skill.slice(skill.indexOf(STEP6)).replace('memory and ', ''), '1 of 2 language paragraphs differ from the others'],
+      byProject: [skill.replace(OPTION_LANGUAGE, byProject), 'the options do not say that only --language changes the language'],
     };
-    for (const [name, text] of Object.entries(bad)) expect(languageRuleProblems(text), name).not.toEqual([]);
+    for (const [name, [text, problem]] of Object.entries(bad)) expect(languageRuleProblems(text), name).toContain(problem);
   });
 });
 
