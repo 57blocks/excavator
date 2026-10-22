@@ -111,7 +111,7 @@ The knowledge graph `knowledge-graph.jsonl` stores one JSON record per line:
    if [ "$ok" != yes ]; then echo "$f is not a path step 8 prints" >&2; false
    elif [ ! -f "$f" ]; then echo "$f does not exist" >&2; false
    elif [ "$(wc -c < "$f")" -gt 25000 ]; then echo "$f is longer than 25000 bytes" >&2; false
-   else cat "$f" && mv -f "$f" "$(dirname "$f")/explanation.md"; fi
+   else command cat "$f" && command mv -f "$f" "$(dirname "$f")/explanation.md"; fi
    ```
 
    It takes only a path of the form step 8 prints, in this project's `.excavator/`. It prints the file, then keeps it as `.excavator/explanation.md` in place of any earlier one. When the path is another, or the file does not exist or is longer than 25,000 bytes, it prints nothing and fails: put in the path step 8 printed, write the explanation to it, or shorten it, and run the command again. Never print another file in its place.

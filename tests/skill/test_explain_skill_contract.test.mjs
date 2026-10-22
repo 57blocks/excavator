@@ -222,6 +222,18 @@ describe('excavator-explain skill: the reply is the explanation the last command
     });
   });
 
+  it('prints the file as it is when the shell redefines cat and mv', () => {
+    inProject((project, data) => {
+      const text = '## Role\n\nA facade.\n';
+      const path = join(data, 'explanation-20261022T000000Z-101.md');
+      writeFileSync(path, text);
+      const redefined = 'cat() { echo "decorated"; command cat "$@"; }; mv() { echo "renamed"; command mv "$@"; }\n';
+      const run = sh(redefined + replyFor(path), project);
+      expect(run.status).toBe(0);
+      expect(run.stdout).toBe(text);
+      expect(readFileSync(join(data, 'explanation.md'), 'utf-8')).toBe(text);
+    });
+  });
 
   it('prints a file of 25,000 bytes and refuses one longer, which hosts would cut', () => {
     inProject((project, data) => {
