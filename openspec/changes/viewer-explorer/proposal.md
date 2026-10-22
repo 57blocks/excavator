@@ -22,6 +22,12 @@ UA 是 MIT 许可。它的仪表盘是 Vite + React 单页应用，图、布局�
   - `meta.json` 原样；
   - 源码按现有规则内联（`--no-source` 照旧）。
   回复多一行写出这个文件的路径与状态。
+- **显示我们图里已有、副本不显示或显示错的数据**（用户 2026-10-23：「需要完善下，让 html 能反应我们的数据。如果数据不全，就 run 一下补全」）：
+  - 节点摘要的核验结论（verified、unverified、contradicted），被判矛盾而置空的摘要显示为空并写明原因，不再被副本改成节点名；
+  - `mentions` 边（文件里写到另一个文件的路径）不再被副本丢掉；
+  - 每条边的证据（文件与行号）；
+  - 知识图的覆盖记录（各语言文件数、解析数、跳过原因）与缺口记录。
+  产物缺的（go-multirepo 没有导览）用对应的 skill 补跑，跑在语料的副本里，语料本身只读。
 - 现有的查看器（`packages/report-view`、`.excavator/view.html`）**这次不动、不删**。Excavator 自己的页面（Products、Unused、Hotspots、Doc map、Code、Reports）与图上的叠加层，之后作为对副本的修改逐项加进来；全部加完后再退役旧包。
 - viewer-learn 已完成的第 1–4 片保留；它余下的第 5–8 片暂停，之后改写成对副本的修改。
 

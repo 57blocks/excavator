@@ -5,7 +5,9 @@
 2. `feat(explorer): read inlined data and run from one offline HTML`（1.2–1.3）。
 3. `feat(view): pack the explorer copy with the project's products`（2.1–2.3）。
 4. `feat(explorer): group the top level by folder when the graph has no layers`（2.4）。
-5. `docs(openspec): record viewer-explorer acceptance and archive`（3.1–3.3）。
+5. `feat(view): carry each node's verdict into the explorer data`（2.5）。
+6. `feat(explorer): show verdicts, mentions edges, edge evidence, coverage and gaps`（2.6）。
+7. `docs(openspec): record viewer-explorer acceptance and archive`（3.1–3.3）。
 
 每个 commit 单独通过 O2。
 
@@ -22,6 +24,9 @@
 - [x] 2.2 回复多一行 `Explorer:`，skill 契约测试同步。验证：单测。
 - [x] 2.3 语义产物并进图、`null` 提交号写成空字符串（design D4）。验证：O1 层替换与保留、摘要与标签的来源顺序、矛盾摘要为空、提交号两张图各一条，各先红后绿。
 - [x] 2.4 没有层时按目录分组（design D4a）。验证：O1 分组覆盖每个顶层节点恰一次、目录与聚类两种、有层时不动，先红后绿；O3 冒烟加一个无层夹具，结构图有卡片。
+- [ ] 2.5 打包时节点带上语义条目的核验结论（design D4b）。验证：O1 有结论的带、没有的不写，先红后绿。
+- [ ] 2.6 副本显示核验结论、`mentions` 边、边的证据、覆盖与缺口（design D4b）。验证：O1 校验不改空摘要、认 `mentions`、留证据与覆盖缺口，面板与概览的显示，各先红后绿；O3 冒烟夹具带这几样，页面上看得到。
+- [ ] 2.7 在语料副本里补跑 `/excavator-tour`（design D4c）。验证：副本的 `tour.json` 被打包判为与图同一修订，Learn 面板有步骤。
 
 ## 3. 验收
 

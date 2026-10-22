@@ -35,9 +35,9 @@ go-multirepo 的产物与 UA 的格式几乎一致：
 - 副本相对来源的每一处改动都能在 git diff 里逐行看到。
 
 **Non-Goals:**
-- 不在这次加 Excavator 自己的页面、叠加层或 57blocks 配色，那些是之后对副本的修改；
+- 不在这次加 Excavator 自己的页面（Products、Unused、Hotspots、Doc map、Reports）、叠加层或 57blocks 配色，那些是之后对副本的修改；但我们知识图与语义产物里已有、副本不显示或显示错的字段这次就显示（D4b，用户 2026-10-23 的要求）；
 - 不改动或删除现有的 `report-view` 包与 `view.html`；
-- 不改 UA 的布局、聚合、文案等任何行为，哪怕我们觉得可以更好。
+- 除 D4a、D4b 外，不改 UA 的布局、聚合、文案等任何行为，哪怕我们觉得可以更好。
 
 ## Decisions
 
@@ -118,6 +118,26 @@ UA 的结构图顶层只画层（`GraphView` 在 `layers` 为空时什么都不�
 - 为什么不在打包时写进数据：层是模型的判断，打包只改形状；把目录写成层会让页面数据声称有层。分组只在页面里派生，页面数据里的 `layers` 仍为空。
 - 为什么不再跑一次架构分析：完整分析已经把层写进了语义产物，D4 把它并进来；剩下没有层的情况本来就是没做完整分析，不该为看页面去补一次模型运行。
 
+### D4b 副本显示我们图里的数据
+
+go-multirepo 打开后，副本把我们图里的四样东西丢掉或显示错了：
+- 98 个被核验判为矛盾、因而置空的摘要，被副本的 `validateGraph` 当成缺摘要改成节点名，并计为 98 条自动修正；
+- 24 条 `mentions` 边不在副本的边类型表里，被丢掉并计为 24 条问题；
+- 核验结论（verified 6,949、unverified 1,330、contradicted 98）、每条边的 `evidence`（文件、行号、来源）、头记录外的 `coverage` 与 42 条 `gaps`，副本都不显示；后两样连同边的证据还在 `validateGraph` 里被剥掉。
+
+改法（都是对副本的改动，逐行可见）：
+- 打包：节点带上语义条目的 `verification`（条目没有结论时不写；go-multirepo 的 2,106 个文件节点没有，核验只查有锚点的符号）。
+- 校验：摘要是字符串就算有，空串不再改成名字；边类型表加 `mentions`，归入 dependencies 一类；边保留 `evidence` 与 `provenance`；图保留 `coverage` 与 `gaps`，原样带出。
+- 节点信息面板：摘要下显示核验结论；摘要为空且结论为 contradicted 时写「The summary was removed: the source contradicts it.」；连接列表每条边后显示第一条证据的 `文件:行`。
+- 项目概览：加 Coverage 段（按语言：文件数、解析数、零符号数、各跳过原因的个数）与 Gaps 段（种类、范围、条数、原因、样例）。
+- 文案只加英文与各 locale 的键；其余语言照副本已有语言补齐。
+
+为什么不把 Hotspots、Unused 等也搬进来：它们是独立的产物与页面，`view.html` 已经显示；搬进副本是 Non-Goals 里的「之后对副本的修改」，与「副本丢了图里的字段」不是一类问题。代价：这期间用户要看热点与未用代码仍得开 `view.html`。
+
+### D4c 缺的产物在语料副本里补跑
+
+go-multirepo 的产物里没有导览（tour not-run），副本的 Learn 面板显示「No tour available」；doc-map 也没有跑。语料的 `.excavator` 只读，所以把语料（去掉回收目录）复制到 scratchpad，在副本里跑 `/excavator-tour`（Sonnet，限额 15 美元），再从副本打包验收。doc-map 需要用户指定一个文档目录，go-multirepo 没有这样的需求文档目录，不跑，回复照旧写 not run。2,106 个文件节点的「unchecked」不是缺数据：核验本来只查有锚点的符号。
+
 ### D5 验收在真实浏览器里从磁盘打开
 
 用 headless Chrome 打开 `file://…/explorer.html`，在 go-multirepo 上逐项操作：
@@ -133,7 +153,7 @@ UA 的结构图顶层只画层（`GraphView` 在 `layers` 为空时什么都不�
 
 ## Risks / Trade-offs
 
-- **UA 的校验不认我们的数据** → 打包时用同一个 `validateGraph` 先数出问题，写进回复；验收时核对副本显示的问题与打包时数出的一致。不改数据去迎合它。
+- **UA 的校验不认我们的数据** → 打包时用同一个 `validateGraph` 先数出问题，写进回复；验收时核对副本显示的问题与打包时数出的一致。不改数据去迎合它；我们合法的数据被它误判时（D4b）改副本的校验。
 - **模板体积** → UA 带 react-markdown、dagre、d3-force 等，模板会比 `report-view` 大。验收记录体积；超过 16 MB 才算问题。
 - **两份查看器并存** → 用户可能分不清该看哪个。回复里两行各写清楚，旧的写 `Viewer:`、新的写 `Explorer:`。并存只到 Excavator 的页面搬进副本为止。
 - **上游更新** → 原样复制、单独 commit、`UPSTREAM.md` 记提交号，以后同步上游可以对比两个提交号之间的 diff 再重放我们的改动。
@@ -142,7 +162,8 @@ UA 的结构图顶层只画层（`GraphView` 在 `layers` 为空时什么都不�
 
 - O1 单测：
   - D4 的形状转换（条数与内容不变、导览覆盖规则、缺产物时缺键）；
-  - D2 的读数据函数（键缺失走失败分支）。
+  - D2 的读数据函数（键缺失走失败分支）；
+  - D4b 的核验结论随节点带出、空摘要不被改名、`mentions` 边与证据保留、覆盖与缺口带出，以及面板与概览的显示。
   各项先红后绿。
 - O2 全量门：`pnpm install --frozen-lockfile && pnpm -r build && pnpm test && pnpm typecheck && node scripts/check-refs.mjs && openspec validate --all --strict`、`claude plugin validate .`、`node scripts/view-smoke-graph.mjs`，加上副本自带的测试。
 - O3 离线冒烟：headless Chrome 以 `file://` 打开夹具包的 `explorer.html`，网络请求为 0、无控制台错误、结构图有卡片。
