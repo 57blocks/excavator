@@ -102,9 +102,10 @@
 - **O4 装置看得见**：逐个做变异，确认对应用例变红，然后还原。
   - i. `findRecord` 不看解析结果，回到只按名字 → O1 a–e、g 红；
   - ii. 目标不符时仍把键放进 `matchedRecordKeys` → O1 c 红；
-  - iii. 有歧义的调用点也按「目标不在候选里就不符」处理（用全部候选文件建映射）→ O2 a 红；
+  - iii. 有歧义的调用点也放进映射，取第一个候选 → O2 a 红；
   - iv. 不写 `contradicted` → O1 a、d、g 红；
-  - v. 不生成缺口 → O1 b 红；stderr 不报该计数 → O1 f 红。
+  - v. 不生成缺口 → O1 b 红；stderr 不报该计数 → O1 f 红；
+  - vi. 键不在映射里（调用点有歧义或无法解析）也按目标不符处理 → O2 a、b 红。
 - **O5 真实语料（确定性，零模型）**：用 origin/main 与本分支的 `annotate()` 跑同一批输入，比较 `audit.json` 与标注后的图。输入是已有产物的快照：
   - go-multirepo 与 mixed-suite 两个成员（kotlin-portal、maui-app）的 Lazy 事实图，连同同一次运行的 `structure-all`、import map、扫描结果；
   - Lazy 强化用的公开语料 conduit 的事实图；
@@ -116,3 +117,35 @@
   - 装置先验：在一份真实事实图的副本里，把 N 条唯一解析的 `calls` 边改指向另一文件里的同名声明。比较脚本必须报出：`edgeTargetMismatch` 恰为 N，样本里的边都是改过的；`provenance`、`verification`、`evidence` 有变化的边恰是这 N 条；`edgeUnsupported` 增加 N（事实图的边写着 `extracted`）；`evidenceVerified` 减少这 N 条边上原本核对通过的条目数；`edge-missing|calls` 增加的数等于「只被改过的边覆盖的键」下的唯一调用点数；其它计数与缺口不变。
 
   记录只写计数与摘要，不写路径。
+
+## 验收记录
+
+- **O1 复现：** 把本分支的测试文件放进 origin/main（`50c7dae2`）的分离检出，对改动前的代码跑：35 个用例里 9 个失败。之后 main 前进到 `8644761c`，本分支随之变基；两者之间 `skills/excavator/`、这个测试文件与 `facts-audit` 规格都没有变化，所以这次运行与下面 O5 用的 main 代码仍是现在的 main。
+  - O1 a–e、g 六个用例全部失败：错边被标 `extracted` 并拿到证据行，没有 `contradicted`，没有 `edgeTargetMismatch` 计数与缺口，调用点被错边顶替、`edge-missing|calls` 不计；
+  - O1 f 失败：stderr 没有 `edge-target-mismatch=`；
+  - O2 a、b 两个用例失败，只因为 `edgeTargetMismatch` 这个键在 main 上不存在；它们关于标记的断言（不标 `contradicted`）在 main 上通过。
+
+  本分支上 35 个全过。
+- **O2：** 有歧义与无法解析的调用点照旧按名字匹配，不标记、不计数；既有用例全部通过。
+- **O4：** 每个变异都让对应用例变红，还原后全绿。
+  - i 只按名字 → O1 a–e、g 六个用例红；
+  - ii 错边仍覆盖调用点 → O1 c 红；
+  - iii 有歧义的调用点取第一个候选 → O2 a 红；
+  - iv 不写 `contradicted` → O1 a、d、g 红，另有 e 红（它也断言错边的标记），共 4 个；
+  - v 不生成缺口 → O1 b 红；stderr 不报 → O1 f 红；
+  - vi 不在映射里的键也按不符处理 → O2 a、b 红。
+- **O3：** 在变基后的 `6387db65` 的分离检出上跑：`pnpm install --frozen-lockfile`、`pnpm -r build`、`openspec validate --all --strict`（47 项）、`node scripts/check-refs.mjs` 都通过。
+  - `pnpm test`：205 个文件、5074 个测试里 5017 个通过、50 个跳过、7 个失败（9 个文件）。机器同时跑着其它会话，load average 在 134 到 250 之间；失败的都是超时（钩子 10 秒、测试 15 或 20 秒），外加部署端到端用例在墙钟超时升级里多数了一次信号，以及 vitest 的 `onTaskUpdate` RPC 超时；
+  - 这 9 个文件（Lazy 驱动、Phase F 命令行、语义写入隔离、修订同步、`structure-all`、部署端到端）都不读审计的输出：部署用例只引入未改动的 `PIPELINE_VERSION`，仓库里没有别处解析审计的 stderr 汇总行；
+  - 同一检出上把这 9 个文件串行单独重跑，默认超时，96 个测试全部通过。
+- **O5：** 五份输入全部满足判据。
+  - 规模：三套私有语料快照的事实图共 6,869 条 `calls` 边（go-multirepo 3,073，kotlin-portal 1,671，maui-app 2,125），conduit 70 条，公开 Go 仓库的模型图 48 条；
+  - 独立脚本数出的目标不符的边：五份都是 0。五份的标注后的图逐字节相同，`audit.json` 只多 `edgeTargetMismatch: 0`；
+  - 装置先验：conduit 改 5 条、三套私有语料各改 20 条。每一份里，计数的变化都与只用被改的边算出的预测相同，`provenance`、`verification`、`evidence` 有变化的边恰是被改的边。两边都用 origin/main 的代码时，同一比较失败（5 项判据不符）；
+  - 判据漏写了一项，比较脚本按规则补进了预测：被改的边在 main 上若因引的行不是该名字的第一个调用行而被判 `edge-contradicted`（同时 `evidence-corrected`），在本分支上它是目标不符的边，不再核对行号，这两项相应减少。三套私有语料的被改边里分别有 11、3、17 条属于这种情况；
+  - `edge-missing|calls` 的增量：go-multirepo 与 kotlin-portal 各 21（有一个键下有两个唯一调用点），maui-app 20，conduit 5，都与预测相同。
+
+  这些输入里没有这个缺陷的实例，规则的效果只在夹具与人为植入的边上看得到。比较脚本与快照留在会话的临时目录，不进仓库。
+- **既有问题（不在本变更内，作为后续工作）：**
+  - 源端按文件匹配，见 Non-Goals；
+  - 证据行核对拿边引的行与该文件里同名调用点的最小行比较。上面的快照上，origin/main 的审计已把事实图里 20%–59% 的正确 `calls` 边判为 `contradicted`（conduit 14/70，go-multirepo 774/3,073，kotlin-portal 936/1,671，maui-app 1,255/2,125），因为它们引的是同名的后一个调用点。
