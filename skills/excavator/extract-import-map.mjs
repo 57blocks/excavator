@@ -33,7 +33,8 @@
  *     stats: { filesScanned, filesWithImports, totalEdges },
  *     importMap: { <path>: [<resolvedPath>, ...], ... },
  *     unresolved: { <path>: [<specifier>, ...], ... },
- *     resolvedSources: { <path>: { <specifier>: <resolvedPath>, ... }, ... }
+ *     resolvedSources: { <path>: { <specifier>: <resolvedPath>, ... }, ... },
+ *     reexportOnly: { <path>: [<resolvedPath>, ...], ... }
  *   }
  *
  * `unresolved` records every import specifier that named nothing inside the
@@ -41,6 +42,11 @@
  * `resolvedSources` says which file each resolved TS/JS import or re-export
  * specifier names, so the fact graph can follow an import binding to its
  * module without resolving the specifier again.
+ * `reexportOnly` lists the `importMap` targets that only `export ... from`
+ * statements reach: no import statement, require() or other extracted source
+ * of the file reaches them. A re-export binds no name in the file, so callers
+ * resolving calls by name leave these targets out of the file's scope; the
+ * file still depends on them, so `importMap` keeps them.
  *
  * Logging: stderr only (stdout reserved for piped tools).
  * Per-file resilience: failures emit `Warning: extract-import-map: ...` and
@@ -2037,6 +2043,7 @@ async function main() {
   // unresolved specifier was simply absent from the output.
   const unresolved = {};
   const resolvedSources = {};
+  const reexportOnly = {};
   let filesWithImports = 0;
   let totalEdges = 0;
   let unresolvedSpecifiers = 0;
@@ -2078,6 +2085,10 @@ async function main() {
     let resolved;
     const unresolvedSet = new Set();
     const sourceTargets = new Map();
+    // Targets an `export ... from` entry reaches, and targets anything else
+    // reaches; the difference is the file's `reexportOnly`.
+    const reexportTargets = new Set();
+    const boundTargets = new Set();
     try {
       const resolvedSet = new Set();
 
@@ -2105,6 +2116,7 @@ async function main() {
               hit = true;
               // TS/JS resolves a specifier to at most one file.
               if (TS_JS_LANGS.has(file.language) && imp?.source) sourceTargets.set(imp.source, out);
+              (Array.isArray(imp?.reexports) ? reexportTargets : boundTargets).add(out);
             }
           }
           if (!hit && imp?.source) unresolvedSet.add(imp.source);
@@ -2117,6 +2129,7 @@ async function main() {
           for (const out of outs) {
             if (out && ctx.fileSet.has(out)) {
               resolvedSet.add(out);
+              boundTargets.add(out);
               hit = true;
             }
           }
@@ -2143,6 +2156,8 @@ async function main() {
       resolvedSources[path] = Object.fromEntries(
         [...sourceTargets].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)));
     }
+    const onlyReexported = resolved.filter((target) => reexportTargets.has(target) && !boundTargets.has(target));
+    if (onlyReexported.length > 0) reexportOnly[path] = onlyReexported;
     if (unresolvedSet.size > 0) {
       // Locale-independent order (UTF-16 code units) keeps the output byte-stable.
       unresolved[path] = [...unresolvedSet].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
@@ -2167,6 +2182,7 @@ async function main() {
     importMap,
     unresolved,
     resolvedSources,
+    reexportOnly,
   };
 
   writeFileSync(outputPath, JSON.stringify(output, null, 2), 'utf-8');

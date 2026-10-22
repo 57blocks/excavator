@@ -266,8 +266,15 @@ export const KNOWLEDGE_GRAPH_VERSION = '1.0.0';
  *  section (`not-run` for an import map without `resolvedSources`). Structure
  *  rows of TS/JS files gain import `bindings`, `reexports` (an `export ... from`
  *  is also an import, so barrels gain `imports` edges), export `local` names and
- *  `jsx`; `exports` edges resolve by the local name. */
-export const PIPELINE_VERSION = 'lazy-fact-graph/13';
+ *  `jsx`; `exports` edges resolve by the local name.
+ *  `lazy-fact-graph/14` (openspec: changes/reexport-call-scope): a non-Java
+ *  call no longer looks its callee up in a file that only `export ... from`
+ *  reaches (the import map's `reexportOnly`). On an unchanged source tree a
+ *  call that found candidates in such a file moves: an edge to one becomes
+ *  `calls-unresolved`, and a `calls-ambiguous` site can become an edge or
+ *  `calls-unresolved`. An `export {} from` import entry now carries
+ *  `reexports: []`. */
+export const PIPELINE_VERSION = 'lazy-fact-graph/14';
 
 /**
  * The framework ids the scan detected, for the graph header. A scan result

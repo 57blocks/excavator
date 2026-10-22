@@ -503,7 +503,8 @@ export interface StructuralAnalysis {
   }>;
   /** `isStatic` marks a Java `import static`. TS/JS: `bindings` maps each local
    *  name to what it imports; an `export ... from` statement is also recorded
-   *  here, with no specifiers and its forwarded names in `reexports`. */
+   *  here, with no specifiers and its forwarded names in `reexports`, which
+   *  such an entry always has (empty for `export {} from`). */
   imports: Array<{
     source: string;
     specifiers: string[];
