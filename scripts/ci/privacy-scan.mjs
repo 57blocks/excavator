@@ -8,11 +8,20 @@
  *   node scripts/ci/privacy-scan.mjs <base> <head> <names-file> <corpus-file> [text-file...]
  *
  *   names-file   one name per line, matched as a fixed string ignoring case;
- *                forbidden everywhere except pnpm-lock.yaml
+ *                forbidden everywhere except the root pnpm-lock.yaml
  *   corpus-file  one regular expression per line, ignoring case; forbidden
- *                outside openspec/, docs/ and the Markdown files at the root
+ *                outside openspec/, docs/, the Markdown files at the root and
+ *                the root pnpm-lock.yaml
  *   text-file    more text to check against both lists (the pull request's
  *                title, branch name and body)
+ *
+ * Neither list reads the root pnpm-lock.yaml (openspec change
+ * privacy-scan-lockfile-scope, design D1). Its integrity hashes are random
+ * text that a short name or a loose pattern matches by chance, and a match
+ * there can be neither located nor fixed: the scan prints no text, and nobody
+ * writes the hashes. What an author does choose in it, the dependency
+ * specifiers and workspace directories, also stands in package.json,
+ * pnpm-workspace.yaml and the workspace's own paths, which both lists read.
  *
  * What it reads, for every commit in base..head (history is public even when
  * a later commit undoes a change):
@@ -38,6 +47,8 @@
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 
+// The corpus list reads what the names list reads, less the places where an
+// acceptance record may name a corpus; so both skip the lockfile.
 const NAMES_PATHS = ['.', ':(exclude)pnpm-lock.yaml'];
 const CORPUS_PATHS = [...NAMES_PATHS, ':(exclude)openspec', ':(exclude)docs', ':(exclude,glob)*.md'];
 const LOG = [
