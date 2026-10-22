@@ -1,10 +1,10 @@
 ## Commit 序列
 
-0. `docs(openspec): propose viewer-dashboard`：本变更的文件，以及 viewer-learn 的暂停说明。
-1. `feat(dashboard): copy the Understand Anything dashboard unchanged`（1.1）。
-2. `feat(dashboard): read inlined data and run from one offline HTML`（1.2–1.3）。
+0. `docs(openspec): propose viewer-explorer`：本变更的文件，以及 viewer-learn 的暂停说明。
+1. `feat(explorer): copy the Understand Anything dashboard unchanged`（1.1）。
+2. `feat(explorer): read inlined data and run from one offline HTML`（1.2–1.3）。
 3. `feat(view): pack the dashboard copy with the project's products`（2.1–2.2）。
-4. `docs(openspec): record viewer-dashboard acceptance and archive`（3.1–3.3）。
+4. `docs(openspec): record viewer-explorer acceptance and archive`（3.1–3.3）。
 
 每个 commit 单独通过 O2。
 
@@ -17,8 +17,8 @@
 
 ## 2. 打包
 
-- [ ] 2.1 `dashboard-data.mjs` 形状转换与 `dashboard.html` 写出（design D4），`validateGraph` 问题数。验证：O1 条数与内容不变、导览覆盖、缺产物缺键，各先红后绿；`view.html` 字节不变的测试。
-- [ ] 2.2 回复多一行 `Dashboard:`，skill 契约测试同步。验证：单测。
+- [ ] 2.1 `explorer-data.mjs` 形状转换与 `explorer.html` 写出（design D4），`validateGraph` 问题数。验证：O1 条数与内容不变、导览覆盖、缺产物缺键，各先红后绿；`view.html` 字节不变的测试。
+- [ ] 2.2 回复多一行 `Explorer:`，skill 契约测试同步。验证：单测。
 
 ## 3. 验收
 

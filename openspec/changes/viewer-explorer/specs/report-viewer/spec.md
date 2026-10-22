@@ -2,10 +2,10 @@
 
 ### Requirement: 离线仪表盘
 
-`/excavator-view` SHALL 在 `.excavator/view.html` 之外再写出 `.excavator/dashboard.html`：Understand Anything 仪表盘的副本，用本项目的产物填数据。
+`/excavator-view` SHALL 在 `.excavator/view.html` 之外再写出 `.excavator/explorer.html`：Understand Anything 仪表盘的副本，用本项目的产物填数据。
 
 副本的来源与改动：
-- 源码取自 Understand Anything 的 `packages/dashboard` 与它引用的 `packages/core` 模块，保留 MIT 许可声明与来源提交号；
+- 源码取自 Understand Anything 的 `packages/explorer` 与它引用的 `packages/core` 模块，保留 MIT 许可声明与来源提交号；
 - 只为离线与产品名改动以下几处，此外的界面、交互、主题与文案 MUST NOT 改：
   - 数据文件改为读页面内联的数据；
   - 源码改为读内联的源码；
@@ -25,7 +25,7 @@
 - 副本的校验报告的问题（例如它不认识的边类型）SHALL 照副本自己的方式显示，打包回复写出问题条数。
 
 #### Scenario: 不起服务就能看
-- **WHEN** 打包一个有知识图谱、领域图与导览的项目，然后在浏览器里直接打开 `dashboard.html`
+- **WHEN** 打包一个有知识图谱、领域图与导览的项目，然后在浏览器里直接打开 `explorer.html`
 - **THEN** 结构图、层内视图、聚焦、领域图、代码查看器与 Learn 面板都能用，且页面没有发出网络请求
 
 #### Scenario: 数据只改形状
