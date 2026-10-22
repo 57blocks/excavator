@@ -871,6 +871,85 @@ describe('no history is visible, never 0', () => {
     }
   });
 
+  it('refuses when git does not accept a .git of the root or of a child directory, also inside another repository', () => {
+    const repo = initRepo('hotspots-outer-');
+    commit(repo, {
+      when: '2024-01-01',
+      files: {
+        'p/a.txt': lines(2), 'q/m/b.txt': lines(2), 'q2/m/c.txt': lines(2), 's/d.txt': lines(2),
+      },
+    });
+    // p holds a repository of its own whose HEAD is gone: git skips that .git and reads the work tree of `repo`
+    const own = join(repo, 'p');
+    git(own, ['init', '-q', '-b', 'main']);
+    commit(own, { when: '2024-01-01' });
+    rmSync(join(own, '.git', 'HEAD'));
+    // q has a child whose .git points nowhere
+    writeFile(repo, 'q/m/.git', `gitdir: ${join(repo, 'q', 'missing')}\n`);
+    // q2 has a child holding a repository without HEAD
+    const child = join(repo, 'q2', 'm');
+    git(child, ['init', '-q', '-b', 'main']);
+    commit(child, { when: '2024-01-01' });
+    rmSync(join(child, '.git', 'HEAD'));
+    // s has a child repository with no commit yet: git accepts it, so it is no reason to refuse
+    const fresh = join(repo, 's', 'new');
+    mkdirSync(fresh);
+    git(fresh, ['init', '-q', '-b', 'main']);
+    writeFile(fresh, 'y.txt', lines(1));
+
+    const skipped = 'git skips it and reads the work tree at ..';
+    for (const [root, message] of [
+      [join(repo, 'p'), `git does not accept .git in the project root, so its history cannot be read: ${skipped}`],
+      [join(repo, 'q'), 'git does not accept m/.git, so its history cannot be read'],
+      [join(repo, 'q2'), `git does not accept m/.git, so its history cannot be read: ${skipped}`],
+    ]) {
+      const result = runScript(root);
+      expect(result.status, result.stderr).toBe(1);
+      expect(result.stderr).toContain(message);
+      expect(existsSync(productPath(root))).toBe(false);
+    }
+
+    expect(readProduct(join(repo, 's')).noHistory).toEqual({ reason: 'inside-repository', repositoryRoot: '..', pathInRepository: 's' });
+  });
+
+  it('refuses in a multi-repo parent when git does not accept a .git of the root or of another child directory', () => {
+    const withMember = (parent) => {
+      const member = join(parent, 'a');
+      mkdirSync(member);
+      git(member, ['init', '-q', '-b', 'main']);
+      commit(member, { when: '2024-01-01', files: { 'x.txt': lines(2) } });
+    };
+    // a member, and another child whose .git points nowhere
+    const pointing = tempDir('hotspots-multi-missing-');
+    withMember(pointing);
+    writeFile(pointing, 'm/x.txt', lines(1));
+    writeFile(pointing, 'm/.git', `gitdir: ${join(pointing, 'missing')}\n`);
+    // a member, and a parent whose own .git is a repository without HEAD
+    const headless = tempDir('hotspots-multi-headless-');
+    git(headless, ['init', '-q', '-b', 'main']);
+    rmSync(join(headless, '.git', 'HEAD'));
+    withMember(headless);
+    // a member, and a child repository with no commit yet: git accepts it, so the product is written
+    const unborn = tempDir('hotspots-multi-unborn-');
+    withMember(unborn);
+    const fresh = join(unborn, 'new');
+    mkdirSync(fresh);
+    git(fresh, ['init', '-q', '-b', 'main']);
+    writeFile(fresh, 'y.txt', lines(1));
+
+    for (const [root, message] of [
+      [pointing, 'git does not accept m/.git, so its history cannot be read'],
+      [headless, 'git does not accept .git in the project root, so its history cannot be read'],
+    ]) {
+      const result = runScript(root);
+      expect(result.status, result.stderr).toBe(1);
+      expect(result.stderr).toContain(message);
+      expect(existsSync(productPath(root))).toBe(false);
+    }
+
+    expect(readProduct(unborn).sourceKind).toBe('multi-repo');
+  });
+
   it('writes the product for a directory whose only child repository has no commit yet', () => {
     const parent = tempDir('hotspots-unborn-child-');
     writeFile(parent, 'notes.txt', lines(2));
