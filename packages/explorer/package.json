@@ -4,7 +4,7 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "build": "vite build && node scripts/check-template.mjs dist",
+    "build": "vite build && node scripts/check-template.mjs dist && vite build -c validator.config.ts",
     "test": "vitest run",
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },

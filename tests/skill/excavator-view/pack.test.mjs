@@ -366,11 +366,11 @@ describe('the page', () => {
     expect(payloadText(pack().html, 'report-hotspots')).toBe(`# ${text}\n`);
   });
 
-  it('writes nothing under .excavator except the page', () => {
+  it('writes nothing under .excavator except the two pages', () => {
     fullProject();
     const before = readdirSync(join(project.root, '.excavator')).sort();
     pack();
-    expect(readdirSync(join(project.root, '.excavator')).sort()).toEqual([...before, 'view.html'].sort());
+    expect(readdirSync(join(project.root, '.excavator')).sort()).toEqual([...before, 'explorer.html', 'view.html'].sort());
   });
 
   it('writes to --out and records that no source was embedded', () => {
@@ -521,7 +521,7 @@ describe('the command line', () => {
     const lines = run.stdout.trimEnd().split('\n');
     expect(lines).toHaveLength(1);
     const result = JSON.parse(lines[0]);
-    expect(Object.keys(result)).toEqual(['out', 'bytes', 'snapshotRevision', 'products', 'source']);
+    expect(Object.keys(result)).toEqual(['out', 'bytes', 'snapshotRevision', 'products', 'source', 'explorer']);
     expect(result.bytes).toBe(readFileSync(result.out).length);
     expect(result.products.find((p) => p.name === 'hotspots')).toEqual({ name: 'hotspots', status: 'included', revision: project.revision });
     expect(result.products.find((p) => p.name === 'unused-code')).toEqual({ name: 'unused-code', status: 'not-run' });

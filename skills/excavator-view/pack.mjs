@@ -2,17 +2,22 @@
 /**
  * pack.mjs
  *
- * Packs a project's `.excavator/` products into one self-contained HTML page
- * (openspec: changes/report-viewer, capability `report-viewer`, design D2-D3).
+ * Packs a project's `.excavator/` products into self-contained HTML pages
+ * (openspec: changes/report-viewer, capability `report-viewer`, design D2-D3;
+ * changes/viewer-explorer, design D4).
  *
  *   node pack.mjs <projectRoot> [--no-source] [--out <path>]
  *
- * Writes `<projectRoot>/.excavator/view.html` (or `--out`) through a temporary
- * file and a rename, so a failure leaves an existing page untouched, and prints
- * one JSON result on stdout:
+ * Writes `<projectRoot>/.excavator/view.html` (or `--out`) and, beside it,
+ * `explorer.html`, each through a temporary file and a rename, so a failure
+ * leaves an existing page untouched, and prints one JSON result on stdout:
  *   { out, bytes, snapshotRevision, products: [{ name, status, reason?, revision?, note?, counts? }],
- *     source: { embedded, requested, limitBytes, counts } }
+ *     source: { embedded, requested, limitBytes, counts },
+ *     explorer: { out, bytes, issues: { total, byKind, fatal } | null, keys: { <key>: <bytes> }, rows: [{ key, status, reason? }] } }
  * with `status` one of included, not-run, unreadable, different-revision.
+ * `explorer.html` is the explorer copy's template with the same products in the
+ * copy's own data shape (explorer-data.mjs); `issues` is what the copy's own
+ * validator reports for the graph it will show, null when there is no graph.
  *
  * Deterministic and model-free: the same products, the same source revision and
  * the same arguments give the same bytes. It reads the products and, through
@@ -20,9 +25,10 @@
  * point at; it never builds, runs or edits the project, and writes nothing under
  * `.excavator/` except the page.
  *
- * The page is the template `packages/report-view` builds (`pnpm build`) with the
- * policy, the manifest and the data inserted; without a built template the command
- * fails and says so, and writes nothing.
+ * The view page is the template `packages/report-view` builds (`pnpm build`) with the
+ * policy, the manifest and the data inserted; the explorer page is the template
+ * `packages/explorer` builds, with the policy and the data inserted. Without a built
+ * template or validator the command fails and says so, and writes nothing.
  *
  * Contract: openspec/specs/report-viewer/spec.md
  */
@@ -33,16 +39,20 @@ import { fileURLToPath } from 'node:url';
 
 import { assertDataDir, bindProjectRoot } from '../excavator/project-paths.mjs';
 import { resolveSourceSnapshot } from '../excavator/source-snapshot.mjs';
-import { assemblePage, TEMPLATE_PATH } from './page-assembly.mjs';
+import { buildExplorerData, GRAPH_KEY } from './explorer-data.mjs';
+import { countIssues, loadValidateGraph, VALIDATOR_PATH } from './explorer-validate.mjs';
+import { assembleExplorerPage, assemblePage, EXPLORER_TEMPLATE_PATH, TEMPLATE_PATH } from './page-assembly.mjs';
 import { collectProducts } from './products.mjs';
 import { collectSources, summarizeSources } from './sources.mjs';
 
 const USAGE = 'Usage: node pack.mjs <projectRoot> [--no-source] [--out <path>]\n';
 const MANIFEST_VERSION = 1;
+const EXPLORER_MANIFEST_VERSION = 1;
+export const EXPLORER_FILE = 'explorer.html';
 
-/** The built view template sits under the plugin root, two levels above this script (resolved through links). It may not exist yet: assemblePage says so. */
-function defaultTemplatePath() {
-  return resolve(realpathSync(dirname(fileURLToPath(import.meta.url))), '..', '..', TEMPLATE_PATH);
+/** A built file sits under the plugin root, two levels above this script (resolved through links). It may not exist yet: the code that reads it says so. */
+function pluginPath(relative) {
+  return resolve(realpathSync(dirname(fileURLToPath(import.meta.url))), '..', '..', relative);
 }
 
 function parseArgs(argv) {
@@ -83,10 +93,21 @@ function resultProduct(entry) {
   return row;
 }
 
+/** The explorer page's data and its manifest (what the copy is given, and what the reply says about it). */
+function packExplorer({ dataDir, products, sources, templatePath, validatorPath }) {
+  const validateGraph = loadValidateGraph(validatorPath);
+  const { data, rows } = buildExplorerData({ dataDir, products, sources });
+  const issues = data[GRAPH_KEY] ? countIssues(validateGraph, data[GRAPH_KEY]) : null;
+  const keys = Object.fromEntries(Object.entries(data).map(([key, value]) => [key, Buffer.byteLength(JSON.stringify(value))]));
+  const manifest = { explorer: EXPLORER_MANIFEST_VERSION, issues, keys, rows };
+  return { page: assembleExplorerPage({ templatePath, data, manifest }), issues, keys, rows };
+}
+
 /**
- * Pack the project and write the page.
+ * Pack the project and write the pages.
  * @param {string} rootArg
- * @param {{ noSource?: boolean, out?: string|null, template?: string }} [options] `template` replaces the built view template (the tests use a small one)
+ * @param {{ noSource?: boolean, out?: string|null, template?: string, explorerTemplate?: string, explorerValidator?: string }} [options]
+ *   `template` and `explorerTemplate` replace the built templates, `explorerValidator` the built validator (the tests use small ones)
  */
 export function packProject(rootArg, options = {}) {
   const noSource = options.noSource === true;
@@ -106,11 +127,21 @@ export function packProject(rootArg, options = {}) {
     source: sources.manifest,
   };
   const page = assemblePage({
-    templatePath: options.template ?? defaultTemplatePath(),
+    templatePath: options.template ?? pluginPath(TEMPLATE_PATH),
     manifest,
     payloads: [...products.payloads, ...sources.payloads],
   });
+  // Both pages are assembled before either is written, so a missing template or validator writes nothing.
+  const explorer = packExplorer({
+    dataDir,
+    products,
+    sources,
+    templatePath: options.explorerTemplate ?? pluginPath(EXPLORER_TEMPLATE_PATH),
+    validatorPath: options.explorerValidator ?? pluginPath(VALIDATOR_PATH),
+  });
+  const explorerOut = join(dirname(out), EXPLORER_FILE);
   writeAtomic(out, page);
+  writeAtomic(explorerOut, explorer.page);
 
   return {
     out,
@@ -118,6 +149,7 @@ export function packProject(rootArg, options = {}) {
     snapshotRevision: snapshot.revision,
     products: products.entries.map(resultProduct),
     source: summarizeSources(sources.manifest),
+    explorer: { out: explorerOut, bytes: explorer.page.length, issues: explorer.issues, keys: explorer.keys, rows: explorer.rows },
   };
 }
 

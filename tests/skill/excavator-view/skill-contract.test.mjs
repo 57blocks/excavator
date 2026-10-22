@@ -1,7 +1,7 @@
 /**
  * Contract of the /excavator-view skill (openspec: changes/report-viewer,
  * spec "/excavator-view skill", design D7): it packs, opens with the system
- * opener, and answers with four fixed lines printed by one command. It starts
+ * opener, and answers with five fixed lines printed by one command. It starts
  * no server and runs no analysis.
  */
 
@@ -13,7 +13,7 @@ import { fileURLToPath } from 'node:url';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { packProject } from '../../../skills/excavator-view/pack.mjs';
-import { readManifest, replyLines } from '../../../skills/excavator-view/reply.mjs';
+import { explorerLine, readManifest, replyLines } from '../../../skills/excavator-view/reply.mjs';
 import { graphJsonl, hotspotsProduct, makeGitProject, sourceManifest, tourProduct, writeProduct } from './fixture.mjs';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../../..');
@@ -49,12 +49,13 @@ describe('SKILL.md', () => {
     expect(skill).toMatch(/A missing opener is not a failure/);
   });
 
-  it('prints the four fixed lines with one command and replies with nothing else', () => {
+  it('prints the five fixed lines with one command and replies with nothing else', () => {
     expect(skill.match(/node "[^"\n]*reply\.mjs"/g)).toHaveLength(1);
-    expect(skill).toMatch(/Print the reply's four lines with one command/);
+    expect(skill).toMatch(/Print the reply's five lines with one command/);
     for (const line of [
       'View: <absolute path>',
       'Size: <size in MB, one decimal> MB',
+      'Explorer: <absolute path>; <N issues | knowledge graph <state>>',
       'Products: knowledge graph <state>; unused code <state>; doc map <state>; hotspots <state>; tour <state>; reports <state>',
       'Source: <embedded (N files) | not embedded>',
     ]) {
@@ -116,19 +117,20 @@ describe('the reply lines', () => {
     writeProduct(project.root, 'unused-code.json', '{');
     // The graph records no factsDigest, so a tour cannot be taken as current: a different revision.
     writeProduct(project.root, 'tour.json', tourProduct({ sourceRevision: project.revision, factDigest: 'e'.repeat(64) }));
-    result = packProject(project.root, { template });
+    result = packProject(project.root, { template, explorerTemplate: template });
   });
   afterAll(() => {
     project.cleanup();
     rmSync(templateDir, { recursive: true, force: true });
   });
 
-  it('print the path, the size, the six states and the source line', () => {
+  it('print the path, the size, the explorer line, the six states and the source line', () => {
     const run = spawnSync(process.execPath, [replyScript, result.out], { encoding: 'utf-8' });
     expect(run.status, run.stderr).toBe(0);
     expect(run.stdout.trimEnd().split('\n')).toEqual([
       `View: ${result.out}`,
       `Size: ${(result.bytes / 1048576).toFixed(1)} MB`,
+      `Explorer: ${result.explorer.out}; ${result.explorer.issues.total} issues`,
       'Products: knowledge graph included; unused code unreadable; doc map not run; hotspots different revision; tour different revision; reports not run',
       'Source: embedded (1 files)',
     ]);
@@ -140,13 +142,20 @@ describe('the reply lines', () => {
   });
 
   it('say how many files are embedded when there are some', () => {
-    const lines = replyLines('/x/view.html', 3 * 1048576 + 1, { products: [], source: { embedded: true, counts: { embedded: 12 } } });
+    const explorer = { path: '/x/explorer.html', manifest: { issues: { total: 4 }, rows: [] } };
+    const lines = replyLines('/x/view.html', 3 * 1048576 + 1, { products: [], source: { embedded: true, counts: { embedded: 12 } } }, explorer);
     expect(lines).toEqual([
       'View: /x/view.html',
       'Size: 3.0 MB',
+      'Explorer: /x/explorer.html; 4 issues',
       'Products: knowledge graph not run; unused code not run; doc map not run; hotspots not run; tour not run; reports not run',
       'Source: embedded (12 files)',
     ]);
+  });
+
+  it('give the graph\'s state instead of a count when the explorer page has no graph', () => {
+    const manifest = { issues: null, rows: [{ key: 'knowledge-graph.json', status: 'not-run' }] };
+    expect(explorerLine('/x/explorer.html', manifest)).toBe('Explorer: /x/explorer.html; knowledge graph not run');
   });
 
   it('fail with a message when the file is not a packed page', () => {

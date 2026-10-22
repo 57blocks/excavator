@@ -111,7 +111,7 @@ export function graphJsonl({ name = 'fixture', nodes = [], edges = [], gaps = []
   const lines = [{
     record: 'header',
     format: GRAPH_FORMAT,
-    keys: ['project', 'nodes', 'edges', 'gaps', ...(coverage ? ['coverage'] : [])],
+    keys: ['project', 'kind', 'nodes', 'edges', 'gaps', ...(coverage ? ['coverage'] : []), ...Object.keys(header).filter((key) => key !== 'kind')],
     fields: { project: { name, languages: ['javascript'], frameworks: ['express'], description: 'a fixture' }, kind: 'knowledge', ...header },
     counts: { nodes: nodes.length, edges: edges.length, gaps: gaps.length },
   }];
@@ -131,7 +131,7 @@ export function factGraphJsonl({ factsDigest, nodes }) {
   const lines = [{
     record: 'header',
     format: GRAPH_FORMAT,
-    keys: ['project', 'nodes'],
+    keys: ['project', 'kind', 'nodes'],
     fields: { project: { name: 'fixture', languages: ['javascript'], frameworks: [], ...(factsDigest === undefined ? {} : { factsDigest }) }, kind: 'knowledge' },
     counts: { nodes: nodes.length },
   }];
