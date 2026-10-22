@@ -15,7 +15,8 @@
  *   text-file    more text to check against both lists (the pull request's
  *                title, branch name and body)
  *
- * Neither list reads the root pnpm-lock.yaml. Its integrity hashes are random
+ * Neither list reads the root pnpm-lock.yaml (openspec change
+ * privacy-scan-lockfile-scope, design D1). Its integrity hashes are random
  * text that a short name or a loose pattern matches by chance, and a match
  * there can be neither located nor fixed: the scan prints no text, and nobody
  * writes the hashes. What an author does choose in it, the dependency

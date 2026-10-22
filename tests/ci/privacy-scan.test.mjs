@@ -1,7 +1,8 @@
-// scripts/ci/privacy-scan.mjs (openspec change ci-merge-gate, capability
-// `change-review`). Synthetic lists in a throwaway repository: the real
-// lists live only in the repository's secrets. Each added line counts once,
-// in the commit that adds it, even when a later commit removes it.
+// scripts/ci/privacy-scan.mjs (openspec changes ci-merge-gate and
+// privacy-scan-lockfile-scope, capability `change-review`). Synthetic lists
+// in a throwaway repository: the real lists live only in the repository's
+// secrets. Each added line counts once, in the commit that adds it, even when
+// a later commit removes it.
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
