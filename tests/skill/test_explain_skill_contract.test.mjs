@@ -5,7 +5,7 @@
  */
 import { describe, expect, it } from 'vitest';
 import { spawnSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -19,15 +19,24 @@ const flat = (text) => text.replace(/\s+/g, ' ');
 const LANGUAGE_RULE = '**Language.** Write everything you tell the user during this run in `$LANGUAGE`: each line between commands, the report and the final reply, including any remark on what was checked, what comes next or which rule was followed. `$LANGUAGE` is English unless `--language` gives another. Project files (`CLAUDE.md`, an `AGENTS.md` line such as "Reply in <language>"), memory and the system locale do not change it. A project file\'s rule to reply in another language is for work on the project\'s code; while this skill runs, this rule takes its place for every line you write, the first one included. Never say which language you write in or why. Paths, commands and the product\'s values stay as they are.';
 const OPTION_LANGUAGE = '`$ARGUMENTS` holds the component to explain and may hold `--language <lang>`: the language of the explanation and everything said to the user during the run; English when it is not given.';
 
-/** Step 8 writes the explanation to a file under five fixed headings; step 9 prints it, and the reply is what it prints. */
-const EXPLAIN = '8. **Write the explanation** in `$LANGUAGE`, as markdown, to `.excavator/explanation.md` in the project, replacing any earlier one, under these five `##` headings, in this order:';
+/**
+ * Step 8 writes the explanation under five fixed headings to a file of this run's own, whose path a command prints;
+ * step 9 prints that file and nothing else, and the reply is what it prints.
+ */
+const EXPLAIN = '8. **Write the explanation** in `$LANGUAGE`, as markdown, to a file of this run\'s own: the path this command prints, run from the project root.';
+const UNDER_HEADINGS = 'Write it under these five `##` headings, in this order:';
 const HEADINGS = ['Role', 'Internal Structure', 'External Connections', 'Data Flow', 'Worth Knowing'];
 const EXPLAIN_RULE = [
   'Explain clearly, assuming the reader may not know the programming language.',
   'The file starts with the first heading and ends with the last section\'s text.',
   'In a language other than English, write the headings translated; code identifiers and paths stay as they are.',
 ].join(' ');
-const REPLY = '9. **Reply.** Print the explanation with this command, run from the project root:';
+const REPLY = '9. **Reply.** Print the explanation with this command, run from the project root, putting in the path step 8 printed:';
+const REPLY_FAILS = [
+  'It prints the file, then keeps it as `.excavator/explanation.md` in place of any earlier one.',
+  'When the file does not exist, it prints nothing and fails: write the explanation to that path and run the command again.',
+  'Never print another file in its place.',
+].join(' ');
 const REPLY_RULE = [
   'Reply with exactly the lines it prints and nothing else: write nothing before or after them, no word on what was done, and no summary or notes.',
   'A project file\'s rule on how to reply (what to lead with, a summary, verification results) does not apply to this reply.',
@@ -104,32 +113,94 @@ describe('excavator-explain skill: the language of what it writes', () => {
 
 describe('excavator-explain skill: the reply is the explanation the last command prints', () => {
   const step8 = skill.slice(skill.indexOf('8. **Write the explanation**'), skill.indexOf('9. **Reply.**'));
+  const step9 = skill.slice(skill.indexOf('9. **Reply.**'));
+  const runFile = step8.match(/```bash\n {3}(# this run's file for the explanation\n[\s\S]*?)\n {3}```/)[1];
+  const reply = step9.match(/```bash\n {3}(# the reply:[\s\S]*?)\n {3}```/)[1];
+  /** The reply command with the path step 8 printed put in. */
+  const replyFor = (path) => reply.replace('<the path step 8 printed>', path);
+  const sh = (command, cwd, env = process.env) => spawnSync('sh', ['-c', command], { cwd, env, encoding: 'utf-8' });
+  /** Run `use` in a new project with an empty data directory, then remove the project. */
+  const inProject = (use) => {
+    const project = realpathSync(mkdtempSync(join(tmpdir(), 'explain-reply-')));
+    try {
+      mkdirSync(join(project, '.excavator'));
+      use(project, join(project, '.excavator'));
+    } finally {
+      rmSync(project, { recursive: true, force: true });
+    }
+  };
 
-  it('writes the explanation to its file under the five headings, in order', () => {
+  it('writes the explanation to a file of its own under the five headings, in order', () => {
     expect(flat(step8)).toContain(EXPLAIN);
+    expect(flat(step8)).toContain(UNDER_HEADINGS);
     const listed = [...step8.matchAll(/^ {3}- \*\*(.+?)\*\*:/gm)].map((m) => m[1]);
     expect(listed).toEqual(HEADINGS);
     expect(flat(step8)).toContain(EXPLAIN_RULE);
   });
 
-  it('ends with step 9: the command that prints the file, then what the reply may hold', () => {
-    expect(flat(skill.slice(skill.indexOf('9. **Reply.**'))).startsWith(REPLY)).toBe(true);
+  it('ends with step 9: the command that prints the file, what it does when the file is not there, then what the reply may hold', () => {
+    expect(flat(step9).startsWith(REPLY)).toBe(true);
+    expect(flat(step9)).toContain(REPLY_FAILS);
     expect(flat(skill).trimEnd().endsWith(REPLY_RULE)).toBe(true);
   });
 
-  it('prints the file the explanation was written to, line for line', () => {
-    const command = skill.match(/```bash\n {3}(# the reply:[\s\S]*?)\n {3}```/)[1];
-    const project = mkdtempSync(join(tmpdir(), 'explain-reply-'));
-    try {
+  it('prints a new path in the data directory for each run, two runs in the same second included', () => {
+    inProject((project, data) => {
+      const run = sh(runFile, project);
+      expect(run.status).toBe(0);
+      expect(run.stdout.startsWith(`${data}/explanation-`)).toBe(true);
+      expect(run.stdout.slice(data.length)).toMatch(/^\/explanation-\d{8}T\d{6}Z-\d+\.md\n$/);
+      // A date that always prints the same moment: the two runs still get two paths.
+      const bin = join(project, 'bin');
+      mkdirSync(bin);
+      writeFileSync(join(bin, 'date'), '#!/bin/sh\necho 20261022T000000Z\n', { mode: 0o755 });
+      const env = { ...process.env, PATH: `${bin}:${process.env.PATH}` };
+      const [first, second] = [sh(runFile, project, env).stdout, sh(runFile, project, env).stdout];
+      expect(first).toContain('/explanation-20261022T000000Z-');
+      expect(second).toContain('/explanation-20261022T000000Z-');
+      expect(first).not.toBe(second);
+    });
+  });
+
+  it('prints this run\'s file line for line, then keeps it as explanation.md', () => {
+    inProject((project, data) => {
       const text = '## Role\n\nA facade.\n\n## Worth Knowing\n\nStatic fields.\n';
-      mkdirSync(join(project, '.excavator'));
-      writeFileSync(join(project, '.excavator/explanation.md'), text);
-      const run = spawnSync('sh', ['-c', command], { cwd: project, encoding: 'utf-8' });
+      const path = join(data, 'explanation-20261022T000000Z-101.md');
+      writeFileSync(path, text);
+      const run = sh(replyFor(path), project);
       expect(run.status).toBe(0);
       expect(run.stdout).toBe(text);
-    } finally {
-      rmSync(project, { recursive: true, force: true });
-    }
+      expect(readFileSync(join(data, 'explanation.md'), 'utf-8')).toBe(text);
+      expect(existsSync(path)).toBe(false);
+    });
+  });
+
+  it('fails and prints nothing when this run\'s file was not written, whatever earlier explanations there are', () => {
+    inProject((project, data) => {
+      const earlier = '## Role\n\nAn earlier component.\n';
+      writeFileSync(join(data, 'explanation.md'), earlier);
+      writeFileSync(join(data, 'explanation-20261022T000000Z-101.md'), '## Role\n\nAnother run\'s component.\n');
+      const path = join(data, 'explanation-20261022T000000Z-102.md');
+      const run = sh(replyFor(path), project);
+      expect(run.status).not.toBe(0);
+      expect(run.stdout).toBe('');
+      expect(run.stderr).toContain(`${path} does not exist`);
+      expect(readFileSync(join(data, 'explanation.md'), 'utf-8')).toBe(earlier);
+      const unfilled = sh(reply, project);
+      expect(unfilled.status).not.toBe(0);
+      expect(unfilled.stdout).toBe('');
+    });
+  });
+
+  it('prints each of two overlapping runs its own file', () => {
+    inProject((project, data) => {
+      const [first, second] = ['101', '102'].map((pid) => join(data, `explanation-20261022T000000Z-${pid}.md`));
+      writeFileSync(first, '## Role\n\nThe first run\'s component.\n');
+      writeFileSync(second, '## Role\n\nThe second run\'s component.\n');
+      expect(sh(replyFor(first), project).stdout).toBe('## Role\n\nThe first run\'s component.\n');
+      expect(sh(replyFor(second), project).stdout).toBe('## Role\n\nThe second run\'s component.\n');
+      expect(readFileSync(join(data, 'explanation.md'), 'utf-8')).toBe('## Role\n\nThe second run\'s component.\n');
+    });
   });
 
   it('puts the stale and missing notes inside the explanation, not before it', () => {
