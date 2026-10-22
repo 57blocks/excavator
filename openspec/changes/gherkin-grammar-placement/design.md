@@ -153,6 +153,32 @@ section 名沿用现状：冒号后的标题原文，空标题就是空串。`Ba
   新文件先 `git add -N` 再跑门。
 - **O4 真实产物。** 用公开语料 fineract（181 个 `.feature`）只读运行新旧解析器，按文件比对 section、step 与 `unplaced`。对每个有差异的文件，逐条确认差异来自 D1 的哪一行规则。新解析器的每一段 `unplaced` 都要人工读过，确认原文确实不合参考语法。验收记录只写计数与规则归属，不写文件内容。
 
+## 验收记录
+
+- **O1。** 新解析器 17 条测试全过。把 origin/main 的 `feature-parser.ts` 临时放回后，13 条失败：
+  - 新增的 11 条全部失败。O1 的十项写成了 11 条测试：第 3 项分成「步骤关键字」与「`"""`」两条；
+  - 改过期望的 2 条也失败，原因是 Background 成了 section；
+  - 其余 4 条通过。
+
+  恢复后逐字节比对，与提交版本一致。O1 第 5 项，`*` 步骤的测试里也有 `But` 步骤。main 上 `But` 本来就能识别，所以这条测试在 main 上失败靠的是 `*`。
+- **O2。** 新增 6 条测试：结构结果行 5 条（带出且不计符号 1 条，4 种坏形状），账本端到端 1 条。用 origin/main 的三个源文件（解析器、`extract-structure-result.mjs`、`coverage-ledger.mjs`）重建 core 再跑，6 条全部失败；恢复后重建，81 条全过。
+- **O3。**
+  - `pnpm install --frozen-lockfile && pnpm -r build && pnpm test`：4,111 条通过，34 条跳过，2 个文件失败，都是超时：
+    - hotspots 的「reads a log that spans many pipe chunks」超过 20 秒；
+    - name-references-pipeline 的 hook 超过 10 秒；
+    - 另有一次 worker RPC `onTaskUpdate` 超时。
+
+    那时机器上同时在跑别的任务。把这两个文件单独重跑，120 条全过。它们不读 `.feature`，也不经过本变更改的三个文件。
+  - `pnpm --filter @excavator/core test`：1,448 条全过。
+  - `pnpm run typecheck`：通过。
+  - `openspec validate --all --strict`：通过。
+  - PR 上 Linux 的 CI 结果以 required check 为准。
+- **O4。**
+  - 公开语料 fineract 与 tomee 共 184 个 `.feature`：新旧解析器的步骤逐行相同，都是 73,533 条；`unplaced` 为 0 段。
+  - 另用一个私有语料（24 个 `.feature`，只读，名字不进仓库）比对：步骤相同，都是 2,234 条；`unplaced` 为 0 段。
+  - 唯一的差异是新增的 section：公开语料 8 个，私有语料 13 个。逐个读过原行，都是 `Background:`，即 D1 中「Background 在 container 里落 section」这一条。
+  - 两份语料里都没有描述被误记成步骤的情形，也没有放不下的行。这两类行为只由 O1 的夹具覆盖。
+
 ## Risks / Trade-offs
 
 - **会少掉步骤。** Feature 描述里的「步骤」从此不记。原来它们是编造出来的，少掉是本意。
