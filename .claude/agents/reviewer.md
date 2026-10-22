@@ -39,7 +39,7 @@ When the change edits either file, review that edit as part of the change; it do
   gh pr view <n> --comments
   ```
 
-- **The surrounding code**: read the code around every changed hunk, and whatever it calls or is called by, before you decide. A diff alone is not enough to judge a change. Read it at the head commit you review: use the working tree only when `git rev-parse HEAD` equals that commit, and `git show <head>:<path>` otherwise.
+- **The surrounding code**: read the code around every changed hunk, and whatever it calls or is called by, before you decide. A diff alone is not enough to judge a change. Read it at the head commit you review: use the working tree only when `git rev-parse HEAD` equals that commit and `git status --porcelain` prints nothing, and `git show <head>:<path>` otherwise.
 
 ## Constraints
 
@@ -60,15 +60,17 @@ Each finding has:
 
 ## Report: pull request
 
-Your comments are public, and the privacy scan does not read them. Post only after the `Privacy scan` check has passed on the head commit you reviewed:
+Your comments are public, and the privacy scan does not read them. Post only after the latest `Privacy scan` run on the head commit you reviewed has passed:
 
 ```bash
-gh pr checks <n> --json name,state --jq '.[] | select(.name == "Privacy scan") | .state'
+gh api repos/57blocks/excavator/commits/<head>/check-runs --jq '[.check_runs[] | select(.name == "Privacy scan")] | sort_by(.started_at) | last | "\(.status) \(.conclusion)"'
 ```
 
-If that does not print `SUCCESS`, post nothing. Tell the caller the scan's state, then give the findings in your reply as you would for a range.
+- **`completed success`**: post the review.
+- **Not completed yet**: run the command again every 30 seconds, for up to 10 minutes.
+- **Anything else, or still not completed after 10 minutes**: post nothing. Tell the caller the scan's state, then give the findings in your reply as you would for a range. Under Rounds in `REVIEW.md`, this round does not count until it is posted.
 
-Otherwise, post exactly one review with the event `COMMENT`:
+To post, send exactly one review with the event `COMMENT`:
 
 - **Inline**: each finding on a line inside a hunk of `gh pr diff`, on the new side, becomes an inline comment. Its body starts with the severity in bold, for example `**Important**: `.
 - **Summary**: the review body starts with the count line from `REVIEW.md` (for example "1 Important, 2 Nit, 0 Pre-existing."), then the round and the commit reviewed, then every finding that cannot sit on a changed line.
