@@ -84,7 +84,7 @@ The knowledge graph `knowledge-graph.jsonl` stores one JSON record per line:
    - What calls or imports it (upstream)
    - The bounded subgraph authorized by the selected primitive
 
-7. **Read layer context when useful** — Grep for `"layers"` only when architectural context helps answer the chosen scope.
+7. **Read layer context when useful** — Grep for `"record":"layer"` lines only when architectural context helps answer the chosen scope; for a node's layer, keep the lines that contain its ID in quotes. Layers list file-level node IDs only, so for a function or class use the ID of the file-level node with the same `filePath`. If no layer line matches, the graph gives that node no layer.
 
 8. **Answer the query** using only the verified evidence within the chosen scope.
 

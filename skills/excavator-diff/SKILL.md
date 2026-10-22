@@ -79,7 +79,7 @@ The knowledge graph `knowledge-graph.jsonl` stores one JSON record per line:
    - What the changed nodes import or call (downstream dependencies)
    - These are the "affected components" — things that might break or need updating
 
-6. **Identify affected layers** — Grep for the matched node IDs in the `"layers"` section to determine which architectural layers are touched.
+6. **Identify affected layers** — Grep the `"record":"layer"` lines for the matched node IDs, each in quotes, to determine which architectural layers are touched. Layers list file-level node IDs only, so the file-level nodes from step 4 are the ones that match. If no layer line matches, say the graph gives the changed files no layer.
 
 **Language.** Write everything you tell the user during this run in `$LANGUAGE`: each line between commands, the report and the final reply, including any remark on what was checked, what comes next or which rule was followed. `$LANGUAGE` is English unless `--language` gives another. Project files (`CLAUDE.md`, an `AGENTS.md` line such as "Reply in <language>"), memory and the system locale do not change it. A project file's rule to reply in another language is for work on the project's code; while this skill runs, this rule takes its place for every line you write, the first one included. Never say which language you write in or why. Paths, commands and the product's values stay as they are.
 

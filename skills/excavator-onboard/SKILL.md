@@ -66,7 +66,7 @@ The knowledge graph `knowledge-graph.jsonl` stores one JSON record per line:
 
 3. **Read project metadata** — use Grep or Read with a line limit to extract the `"project"` section (name, description, languages, frameworks).
 
-4. **Read layers** — Grep for `"layers"` to get the full layers array. These define the architecture and will structure the guide.
+4. **Read layers** — Grep for `"record":"layer"` to get every layer line, one per layer: {id, name, description, nodeIds[]}. These define the architecture and will structure the guide. If no line matches, the graph has no layers.
 
 5. **Read file-level structural nodes only** — use Grep to find nodes with file-level types (`file`, `config`, `document`, `service`, `pipeline`, `table`, `schema`, `resource`, `endpoint`) in the knowledge graph. Skip function-level and class-level nodes to keep the guide high-level. Extract each node's `name`, `filePath`, `summary`, and `complexity`.
 
@@ -74,7 +74,7 @@ The knowledge graph `knowledge-graph.jsonl` stores one JSON record per line:
 
 7. **Write the onboarding guide** in `$LANGUAGE`, as clean markdown, to `.excavator/onboarding-guide.md` in the project, with these sections:
    - **Project Overview**: name, languages, frameworks, description (from project metadata)
-   - **Architecture Layers**: each layer's name, description, and key files (from layers + file nodes)
+   - **Architecture Layers**: each layer's name, description, and key files (from the layer lines + file nodes); when the graph has no layers, say so here instead of grouping the files yourself
    - **Key Concepts**: important patterns and design decisions (from node summaries and tags)
    - **File Map**: what each key file does (from file-level nodes, organized by layer)
    - **Complexity Hotspots**: areas to approach carefully (from complexity values)

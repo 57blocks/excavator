@@ -76,7 +76,7 @@ The knowledge graph `knowledge-graph.jsonl` stores one JSON record per line:
 
 5. **Read connected nodes** — for each connected node ID from step 4, Grep for those IDs in the nodes section to get their `name`, `summary`, and `type`. This builds the component's neighborhood.
 
-6. **Identify the layer** — Grep for the target node's ID in the `"layers"` section to find which architectural layer it belongs to and that layer's description.
+6. **Identify the layer** — Grep the `"record":"layer"` lines for the target node's ID in quotes to find which architectural layer it belongs to and that layer's description. Layers list file-level node IDs only, so for a function or class use the ID of the file-level node with the same `filePath`. If no layer line matches, say the graph gives it no layer.
 
 7. **Read the actual source file** — Read the source file at the node's `filePath` for the deep-dive analysis.
 
