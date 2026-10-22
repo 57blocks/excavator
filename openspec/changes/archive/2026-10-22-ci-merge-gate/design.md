@@ -206,3 +206,21 @@ fork 的 PR 拿不到 secret，检查失败，由维护者在本仓库的分支�
   - 名字残留检查只输出表头；
   - `skills`、`tests`、`scripts`、`.github` 新增行里的汉字数为 0；
   - 在本地按本 PR 的工作流模拟扫描步骤，PR、手动触发、没有 PR 三种方式都是 0。
+
+## 验收记录（合并后）
+
+- **O4 探针**：合并后在 `probe/` 下的临时分支上手动触发，结果都符合预期：
+  - (a) 加一个故意失败的测试：`CI gate` 红，失败的步骤是 Tests，失败的正是这个探针测试。
+  - (b) 私有名单的金丝雀写进 `docs/`：`Privacy scan` 红，`names added lines` 为 1。
+  - (c) 语料金丝雀写进 `docs/`：绿。
+  - (d) 语料金丝雀写进代码文件：红，`corpus added lines` 为 1。
+  - (e) 私有名单的金丝雀只在提交信息里：红，`names commit messages` 为 1。
+
+  各次运行的日志里都没有金丝雀的字面。五个探针分支都已删除，远端不再有 `probe/` 分支。
+- **O5 前半**：按 D7 开了分支保护，读回如下：
+  - 必过检查是 `CI gate` 与 `Privacy scan`，都限定来自 GitHub Actions（app 15368）；
+  - `strict` 为真，`enforce_admins` 为真；
+  - 批准数为 0；
+  - 禁止强推与删除。
+
+  与 D7 一致。`required_conversation_resolution` 未开，由下一步开启。
