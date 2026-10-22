@@ -4,9 +4,10 @@
  * products. Nothing here is derived from a real project.
  */
 
-import { rmSync } from 'node:fs';
+import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
+import { locateDraft } from '../../../skills/excavator/tour-layout.mjs';
 import { makeGitProject, makeMultiRepoProject, semanticCache, semanticEntry, semanticGraph, sourceManifest, writeProduct } from '../excavator-view/fixture.mjs';
 
 export { makeGitProject, makeMultiRepoProject, semanticCache, semanticEntry, semanticGraph, sourceManifest, writeProduct };
@@ -76,3 +77,58 @@ export const clearProducts = (root) => rmSync(join(root, '.excavator'), { recurs
 
 /** `n` zero-padded file paths under `dir`: dir/f00.go, dir/f01.go, ... */
 export const manyPaths = (dir, n, prefix = 'f') => Array.from({ length: n }, (_, i) => `${dir}/${prefix}${String(i).padStart(2, '0')}.go`);
+
+// ---------------------------------------------------------------------------
+// Tour-draft fixtures (check, slices, verdicts)
+// ---------------------------------------------------------------------------
+
+/** `n` numbered lines `line <k>` of a source file. */
+export const sourceLines = (n, prefix = 'line') => `${Array.from({ length: n }, (_, i) => `${prefix} ${i + 1}`).join('\n')}\n`;
+
+/**
+ * A tour's candidates.json written by hand for `revision`: `[{ id, filePath, lineRange?, type? }]`, and the knowledge graph
+ * it was made from (same facts digest): the candidates as nodes, plus `contains` edges for `contains`, a map of
+ * file node id to `[{ node }]` where `node` is a full graph node, or null for an edge whose target the graph lacks.
+ */
+export function writeCandidatesFile(root, revision, nodes, { contains = {} } = {}) {
+  const candidates = nodes.map((node) => ({
+    id: node.id, type: node.type ?? 'file', name: node.id, filePath: node.filePath, lineRange: node.lineRange ?? null, layer: null, reasons: ['fixture'], summary: '', summarySource: 'none', verification: null,
+  }));
+  const dir = join(root, '.excavator', 'tour');
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(join(dir, 'candidates.json'), JSON.stringify({ format: 'excavator-tour-candidates/1', factsDigest: DIGEST, sourceRevision: revision, sources: {}, classes: {}, layers: [], gaps: [], candidates }));
+  const graphNodes = nodes.map((node) => ({ id: node.id, type: node.type ?? 'file', name: node.id.split('/').pop(), filePath: node.filePath, ...(node.lineRange ? { lineRange: node.lineRange } : {}), summary: '', tags: [] }));
+  const items = Object.entries(contains).flatMap(([file, entries]) => entries.map((entry) => ({ file, entry })));
+  writeProduct(root, 'knowledge-graph.jsonl', tourGraphJsonl({
+    factsDigest: DIGEST,
+    nodes: [...graphNodes, ...items.filter(({ entry }) => entry.node).map(({ entry }) => entry.node)],
+    edges: items.map(({ file, entry }) => ({ source: file, target: entry.node ? entry.node.id : entry.id, type: 'contains' })),
+  }));
+  return dir;
+}
+
+/** A draft step with two description sentences citing `nodeIds`; `extra` replaces fields. */
+export const draftStep = (order, nodeIds = ['file:a.go'], extra = {}) => ({
+  order,
+  title: `Step ${order}`,
+  description: `Step ${order} reads the first thing. It then reads the second thing.`,
+  nodeIds,
+  ...extra,
+});
+
+/** A draft of `n` steps (default 5), each citing `file:a.go`. */
+export const draftOf = (n = 5, extra = {}) => ({ contentLanguage: 'en', steps: Array.from({ length: n }, (_, i) => draftStep(i + 1)), ...extra });
+
+export function writeDraft(root, draft) {
+  const path = join(root, '.excavator', 'tour', 'draft.json');
+  mkdirSync(join(root, '.excavator', 'tour'), { recursive: true });
+  writeFileSync(path, typeof draft === 'string' ? draft : JSON.stringify(draft, null, 2));
+  return locateDraft(path);
+}
+
+/** Write the verifier's output for a step: `[[sentenceId, verdict, reason?], ...]`. */
+export function writeVerdicts(tourDir, round, order, rows) {
+  const dir = join(tourDir, 'verdicts', `round-${round}`);
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(join(dir, `step-${order}.json`), JSON.stringify({ step: order, verdicts: rows.map(([id, verdict, reason = `reason for ${id}`]) => ({ id, verdict, reason })) }));
+}
