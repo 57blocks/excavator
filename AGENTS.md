@@ -43,3 +43,24 @@ Node ≥ 22，pnpm（版本按 `package.json` 的 `packageManager`），vitest�
   - `Privacy scan`（`.github/workflows/privacy.yml`）：用仓库 secret 里的名单扫 PR 带来的文字（新增行、提交信息、路径、标题与正文），只报计数。
 - PR 分支要与 `main` 同步才能合并：`main` 前进后先合入最新 `main`，等两个检查重新变绿。
 - 本地仍按上表只跑与改动相关的检查。
+
+## 审查
+- 风险档由 PR 触及的路径决定，取最高的一档，作者不能自选：
+
+  | 档 | 路径 | 合并前 |
+  |---|---|---|
+  | 高 | `.github/`、`scripts/ci/`、`REVIEW.md`、`.claude/agents/reviewer.md` | 审查，讨论都已解决，由用户合并 |
+  | 中 | 不属于高档与低档的其余路径 | 审查，讨论都已解决，agent 可以合并 |
+  | 低 | 只有 `openspec/`、`docs/` 下的文件，或根目录除 `AGENTS.md`、`CLAUDE.md`、`REVIEW.md` 外的 Markdown | 两个必过检查通过 |
+
+  按 `git diff --name-only origin/main...HEAD` 对照上表判定。
+- PR 正文按 `.github/pull_request_template.md` 的四节写：Summary、Testing、Risk tier、How to revert。`gh pr create --body-file` 不会套用模板。
+- 审查由 `.claude/agents/reviewer.md` 定义的审查代理做：
+  - 干净上下文；写这个改动的会话不审自己；
+  - 规则是 `main` 上的 `REVIEW.md` 与本文件；
+  - 发现作为行内评论发到 PR 上，每条标明 Important、Nit 或 Pre-existing。
+- 每条发现都要回应。修掉的，回复修复所在的提交；不修的，回复理由：错的、有意的或无关紧要，再写为什么。回复后解决讨论。放在审查总结里的发现，用一条 PR 评论逐条回应。分支保护要求讨论都已解决才能合并。
+- 收敛：
+  - 第一轮审整个改动；之后只审上一轮审到的提交之后的新提交，不重复已提出的发现；
+  - 上一轮有 Important 并因此改了代码，或新提交触及中高档路径，才再审一轮；
+  - 最多三轮。第三轮仍有 Important 时停下，不合并，向用户说明并重新考虑做法。
