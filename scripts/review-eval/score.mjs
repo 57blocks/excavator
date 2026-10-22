@@ -17,8 +17,9 @@
  *
  * A defect is hit when an Important finding on one of its paths has its line
  * inside a span, or at most MARGIN lines outside it. A finding counts for one
- * defect at most: findings and defects are paired nearest first, ties going
- * to the earlier finding, then the earlier defect. A defect that is not hit
+ * defect at most, and the pairing hits as many defects as it can (see
+ * scoreCase); a lone finding in range of two defects goes to the nearer one,
+ * the earlier defect on a tie. A defect that is not hit
  * is seen at the wrong severity when a Nit or Pre-existing finding falls in
  * the same lines, and missed otherwise.
  *
