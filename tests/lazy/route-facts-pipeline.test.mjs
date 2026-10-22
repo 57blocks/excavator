@@ -155,8 +155,8 @@ describe('the route stage in the real Lazy driver (tasks 3.1 and 3.3)', () => {
 
   it('stamps the product with the new pipeline version, and keeps the detected frameworks', () => {
     expect(result.saveError).toBeNull();
-    expect(PIPELINE_VERSION).toBe('lazy-fact-graph/14');
-    expect(graph.project.pipelineVersion).toBe('lazy-fact-graph/14');
+    expect(PIPELINE_VERSION).toBe('lazy-fact-graph/15');
+    expect(graph.project.pipelineVersion).toBe('lazy-fact-graph/15');
     expect(graph.project.frameworks).toEqual(['javaee', 'jsf']);
   });
 
@@ -569,7 +569,7 @@ describe('the route catalog of a run, and a product of the previous pipeline ver
       expect(synced.data.kind).toBe('synced');
       expect(synced.data.factCoverage.routes.families.jaxrs).toMatchObject({ sites: 21, endpoints: 12, edges: 13 });
       const graph = readProduct(root);
-      expect(graph.project.pipelineVersion).toBe('lazy-fact-graph/14');
+      expect(graph.project.pipelineVersion).toBe('lazy-fact-graph/15');
       expect(graph.nodes.filter((n) => n.type === 'endpoint')).toHaveLength(12);
       expect(graph.edges.filter((e) => e.type === 'routes')).toHaveLength(13);
       expect(service.projectStatus().snapshot.freshness).toBe('fresh');

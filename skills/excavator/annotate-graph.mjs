@@ -68,7 +68,8 @@ import {
 } from './coverage-ledger.mjs';
 import { mergeVerification } from './verification-state.mjs';
 import { STRUCTURE_ALL_FILE, readStructureAllPath } from './structure-all-store.mjs';
-import { callScopePaths } from './fact-graph-resolve.mjs';
+import { BOUND_CALL_LANGUAGES, callScopePaths, resolveBoundCallSite } from './fact-graph-resolve.mjs';
+import { createModuleBindingResolver } from './module-binding-resolution.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const pluginRoot = resolve(__dirname, '../..');
@@ -300,20 +301,34 @@ export function buildExpectedRecords({ structure, importMap }) {
 }
 
 /**
- * Call sites that resolve to exactly one declaration among the caller's file
- * and the files it imports, by the fact graph's own scope (`callScopePaths`:
- * a file only a re-export reaches is not in it). Only these are eligible for
- * `edge-missing`: an ambiguous or unresolvable callee is a gap in the readers,
- * not a hole in the model's graph.
+ * Call sites that resolve to exactly one declaration by the fact graph's own
+ * rules: a TS/JS callee only through the file's own bindings
+ * (`resolveBoundCallSite`), any other callee among the caller's file and the
+ * files it imports (`callScopePaths`: a file only a re-export reaches is not
+ * in it). Only these are eligible for `edge-missing`: an ambiguous or
+ * unresolvable callee is a gap in the readers, not a hole in the model's graph.
  */
 export function resolveUniqueCallSites({ structure, importMap, expected }) {
   const declarationsByName = new Map();
+  // TS/JS: the same declarations, as top-level ones the bindings can name.
+  const topLevelByName = new Map();
+  const pathOfDeclaration = new Map();
   for (const [path, decls] of expected.declarations) {
-    for (const decl of decls) {
+    decls.forEach((decl, index) => {
       const key = `${path}|${decl.name}`;
       declarationsByName.set(key, decl);
-    }
+      if (decl.owner) return;
+      const id = `${path}#${index}`;
+      pathOfDeclaration.set(id, path);
+      if (!topLevelByName.has(key)) topLevelByName.set(key, []);
+      topLevelByName.get(key).push({ id });
+    });
   }
+  const bindingResolver = createModuleBindingResolver({
+    rows: [...expected.byPath.values()],
+    importMap,
+    topLevelDecls: (path, name) => topLevelByName.get(`${path}|${name}`) ?? [],
+  });
 
   const unique = [];
   const ambiguous = [];
@@ -321,6 +336,16 @@ export function resolveUniqueCallSites({ structure, importMap, expected }) {
   for (const [path, decls] of expected.declarations) {
     void decls;
     const row = expected.byPath.get(path);
+    if (BOUND_CALL_LANGUAGES.has(row?.language)) {
+      for (const site of row.callGraph ?? []) {
+        const resolved = resolveBoundCallSite(bindingResolver, path, site);
+        const record = { file: path, callee: site.callee, line: site.lineNumber, targets: resolved.ids.map((id) => pathOfDeclaration.get(id)) };
+        if (resolved.outcome === 'edge') unique.push(record);
+        else if (resolved.outcome === 'calls-ambiguous') ambiguous.push(record);
+        else unresolved.push(record);
+      }
+      continue;
+    }
     const scope = callScopePaths(importMap, path);
     for (const site of row?.callGraph ?? []) {
       const hits = scope.filter((candidate) => declarationsByName.has(`${candidate}|${site.callee}`));
