@@ -57,13 +57,17 @@ Feature: Participant management
 `;
 
 describe("FeatureParser", () => {
-  it("captures Feature and Scenario(-Outline) as anchored sections", () => {
+  it("captures Feature, Background and Scenario(-Outline) as anchored sections", () => {
     const s = parser.analyzeFile("Participants.feature", SAMPLE).sections ?? [];
     expect(s.map((x) => x.name)).toEqual([
       "Participant management",
+      "",
       "Pair the app",
       "End a participant",
     ]);
+    const background = s[1];
+    expect(background.level).toBe(2);
+    expect(background.lineRange).toEqual([5, 5]);
     const feat = s.find((x) => x.name === "Participant management")!;
     expect(feat.level).toBe(1);
     expect(feat.lineRange).toEqual([2, 2]);
@@ -88,13 +92,15 @@ describe("FeatureParser", () => {
     const a = parser.analyzeFile("x.feature", SAMPLE);
     const steps = a.steps ?? [];
     expect(steps.some((x) => x.name.includes("inside a docstring"))).toBe(false);
-    expect((a.sections ?? []).length).toBe(3);
+    expect((a.sections ?? []).length).toBe(4);
+    expect(a.unplaced).toBeUndefined();
   });
 
   it("returns empty for empty content", () => {
     const a = parser.analyzeFile("empty.feature", "");
     expect(a.sections ?? []).toHaveLength(0);
     expect(a.steps ?? []).toHaveLength(0);
+    expect(a.unplaced).toBeUndefined();
   });
 
   it("is deterministic across runs", () => {
@@ -108,5 +114,199 @@ describe("FeatureParser", () => {
     registerAllParsers(registry);
     expect(registry.getLanguageForFile("Participants.feature")).toBe("feature");
     expect(registry.getPluginForFile("Participants.feature")?.name).toBe("feature-parser");
+  });
+});
+
+// One line per argument, numbered from 1 in the order given.
+function gherkin(...lines: string[]): string {
+  return `${lines.join("\n")}\n`;
+}
+
+function analyze(content: string) {
+  const a = parser.analyzeFile("x.feature", content);
+  return {
+    sections: (a.sections ?? []).map((s) => [s.name, s.level, s.lineRange[0]]),
+    steps: (a.steps ?? []).map((s) => s.name),
+    unplaced: a.unplaced ?? [],
+  };
+}
+
+describe("FeatureParser places lines by the Gherkin reference grammar", () => {
+  it("skips a backtick doc string", () => {
+    const a = analyze(gherkin(
+      "Feature: Documents",
+      "  Scenario: Upload",
+      "    Given a request body",
+      "      ```json",
+      "      Scenario: not a scenario",
+      "      Given not a step",
+      "      ```",
+      "    Then the body is stored",
+    ));
+    expect(a.sections).toEqual([["Documents", 1, 1], ["Upload", 2, 2]]);
+    expect(a.steps).toEqual(["Given a request body", "Then the body is stored"]);
+    expect(a.unplaced).toEqual([]);
+  });
+
+  it("does not take three single quotes as a doc string separator", () => {
+    const a = analyze(gherkin(
+      "Feature: Notes",
+      "  Scenario: Save",
+      "    Given a note",
+      "    '''",
+      "    Then the note is saved",
+    ));
+    expect(a.steps).toEqual(["Given a note", "Then the note is saved"]);
+    expect(a.unplaced).toEqual([{ reason: "out-of-place", lineRange: [4, 4] }]);
+  });
+
+  it("reads a step keyword in a Feature description as description text", () => {
+    const a = analyze(gherkin(
+      "Feature: Accounts",
+      "  Given a manager signs in, the account list loads",
+      "  Scenario: Sign in",
+      "    Given a manager",
+      "    When the manager signs in",
+    ));
+    expect(a.sections).toEqual([["Accounts", 1, 1], ["Sign in", 2, 3]]);
+    expect(a.steps).toEqual(["Given a manager", "When the manager signs in"]);
+    expect(a.unplaced).toEqual([]);
+  });
+
+  it("does not open a doc string from a description", () => {
+    const a = analyze(gherkin(
+      "Feature: Accounts",
+      '  """ quoted in the description',
+      "  Scenario: Sign in",
+      "    Given a manager",
+    ));
+    expect(a.sections).toEqual([["Accounts", 1, 1], ["Sign in", 2, 3]]);
+    expect(a.steps).toEqual(["Given a manager"]);
+    expect(a.unplaced).toEqual([]);
+  });
+
+  it("records Rule, Background, Example and Scenario Template as sections", () => {
+    const a = analyze(gherkin(
+      "Feature: Orders",
+      "  Background:",
+      "    Given a signed-in user",
+      "  Rule: Orders need stock",
+      "    Background:",
+      "      Given a stocked item",
+      "    Example: Order an item",
+      "      When the user orders it",
+      "      Then the order is placed",
+      "    Scenario Template: Order <count> items",
+      "      When the user orders <count>",
+      "      Then the order is <state>",
+      "      Scenarios:",
+      "        | count | state  |",
+      "        | 1     | placed |",
+    ));
+    expect(a.sections).toEqual([
+      ["Orders", 1, 1],
+      ["", 2, 2],
+      ["Orders need stock", 2, 4],
+      ["", 3, 5],
+      ["Order an item", 3, 7],
+      ["Order <count> items", 3, 10],
+    ]);
+    expect(a.steps).toEqual([
+      "Given a signed-in user",
+      "Given a stocked item",
+      "When the user orders it",
+      "Then the order is placed",
+      "When the user orders <count>",
+      "Then the order is <state>",
+    ]);
+    expect(a.unplaced).toEqual([]);
+  });
+
+  it("records * and But steps", () => {
+    const a = analyze(gherkin(
+      "Feature: Dialogs",
+      "  Scenario: Close",
+      "    * the app is open",
+      "    When the user closes the dialog",
+      "    But no other dialog is shown",
+    ));
+    expect(a.steps).toEqual([
+      "* the app is open",
+      "When the user closes the dialog",
+      "But no other dialog is shown",
+    ]);
+  });
+
+  it("records a non-empty file with no Gherkin structure as unplaced", () => {
+    const a = analyze(gherkin(
+      "These are release notes,",
+      "not a feature file.",
+      "Given this line, nothing here is a step.",
+    ));
+    expect(a.sections).toEqual([]);
+    expect(a.steps).toEqual([]);
+    expect(a.unplaced).toEqual([{ reason: "out-of-place", lineRange: [1, 3] }]);
+  });
+
+  it("records free text after a step as unplaced and keeps the steps around it", () => {
+    const a = analyze(gherkin(
+      "Feature: Search",
+      "  Scenario: Find",
+      "    Given an index",
+      "    the index is warm",
+      "    When the user searches",
+    ));
+    expect(a.steps).toEqual(["Given an index", "When the user searches"]);
+    expect(a.unplaced).toEqual([{ reason: "out-of-place", lineRange: [4, 4] }]);
+  });
+
+  it("records an unclosed doc string to the last non-empty line", () => {
+    const a = analyze(gherkin(
+      "Feature: Import",
+      "  Scenario: Upload",
+      "    Given a file",
+      '      """',
+      "      Scenario: inside the doc string",
+      "  Scenario: Later",
+      "    Then nothing is read",
+      "",
+    ));
+    expect(a.sections).toEqual([["Import", 1, 1], ["Upload", 2, 2]]);
+    expect(a.steps).toEqual(["Given a file"]);
+    expect(a.unplaced).toEqual([{ reason: "unclosed-doc-string", lineRange: [4, 7] }]);
+  });
+
+  it("records a file in another language as unplaced and reads none of it", () => {
+    // Dutch keywords; "Scenario" is one of them, so an English reading
+    // would take line 3 for a scenario.
+    const a = analyze(gherkin(
+      "# language: nl",
+      "Functionaliteit: Zoeken",
+      "  Scenario: Vinden",
+      "    Gegeven een index",
+    ));
+    expect(a.sections).toEqual([]);
+    expect(a.steps).toEqual([]);
+    expect(a.unplaced).toEqual([{ reason: "unsupported-language", lineRange: [1, 4] }]);
+  });
+
+  it("records Examples after Background steps and a step after Examples rows as unplaced", () => {
+    const a = analyze(gherkin(
+      "Feature: Tables",
+      "  Background:",
+      "    Given a table",
+      "  Examples:",
+      "  Scenario Outline: Use <n> rows",
+      "    Given <n> rows",
+      "    Examples:",
+      "      | n |",
+      "      | 1 |",
+      "    Then a step after the rows",
+    ));
+    expect(a.steps).toEqual(["Given a table", "Given <n> rows"]);
+    expect(a.unplaced).toEqual([
+      { reason: "out-of-place", lineRange: [4, 4] },
+      { reason: "out-of-place", lineRange: [10, 10] },
+    ]);
   });
 });
