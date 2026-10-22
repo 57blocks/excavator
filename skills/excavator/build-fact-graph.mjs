@@ -58,6 +58,7 @@ import {
   lookupCandidates,
   callScopePaths,
   BOUND_CALL_LANGUAGES,
+  BOUND_CALL_UNRESOLVED_FORMS,
   resolveBoundCallSite,
   canonicalizeForDigest,
   createGapCollector,
@@ -1124,7 +1125,7 @@ const JAVA_CALL_GAP_REASONS = Object.freeze({
 /** Reasons for the TS/JS call-site buckets (scopes `typescript` and
  *  `javascript`), which resolve only through the file's own bindings. */
 const BOUND_CALL_GAP_REASONS = Object.freeze({
-  'calls-unresolved': 'TS/JS call site(s) whose callee the file does not bind to a repository function or class: the root name is a parameter or local of an enclosing function (a name declared in any of its blocks counts for the whole function), a global, a top-level value that is not a function or class, or a name require() binds (CommonJS bindings and exports are not read); or its import names a package or a path that did not resolve, or a module that does not export the name as a function or class; or the callee is a namespace itself, a member of a value rather than of a namespace import (`this.f()`, `obj.f()`), or no dotted name at all: no calls edge is drawn, and a same-named declaration of an imported module is not guessed',
+  'calls-unresolved': `TS/JS call site(s) whose callee the file does not bind to a repository function or class: ${BOUND_CALL_UNRESOLVED_FORMS}: no calls edge is drawn, and a same-named declaration of an imported module is not guessed`,
   'calls-ambiguous': 'TS/JS call site(s) whose callee resolves to more than one declaration (two `export *` provide the name, or the file declares it twice): no calls edge is drawn',
 });
 

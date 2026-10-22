@@ -68,7 +68,7 @@ import {
 } from './coverage-ledger.mjs';
 import { mergeVerification } from './verification-state.mjs';
 import { STRUCTURE_ALL_FILE, readStructureAllPath } from './structure-all-store.mjs';
-import { BOUND_CALL_LANGUAGES, callScopePaths, resolveBoundCallSite } from './fact-graph-resolve.mjs';
+import { BOUND_CALL_LANGUAGES, BOUND_CALL_UNRESOLVED_FORMS, callScopePaths, resolveBoundCallSite } from './fact-graph-resolve.mjs';
 import { createModuleBindingResolver } from './module-binding-resolution.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -813,10 +813,8 @@ export function annotate({
     `${uniqueCalls.ambiguous.length} call site(s) resolve to more than one declaration`,
     uniqueCalls.ambiguous.length);
   gap('calls-unresolved', 'graph',
-    `${uniqueCalls.unresolved.length} call site(s) resolve to no single declaration. A TS/JS callee reaches no function or class `
-      + 'through what the caller\'s file binds: its root is a parameter or local of an enclosing function (a name declared in any '
-      + 'of its blocks counts for the whole function), a global, a name require() binds, a member of a value, a package, or a name '
-      + 'its module does not export as a function or class. Any other callee has no declaration in the caller\'s file or its imports',
+    `${uniqueCalls.unresolved.length} call site(s) resolve to no single declaration. A TS/JS callee the caller's file does not bind `
+      + `to a repository function or class: ${BOUND_CALL_UNRESOLVED_FORMS}. Any other callee: no declaration in the caller's file or its imports`,
     uniqueCalls.unresolved.length);
   for (const site of uniqueCalls.ambiguous) samples.add('calls-ambiguous', `${site.file}:${site.line} -> ${site.callee}`);
   for (const site of uniqueCalls.unresolved) samples.add('calls-unresolved', `${site.file}:${site.line} -> ${site.callee}`);

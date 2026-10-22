@@ -199,6 +199,13 @@ export function resolveBoundCallSite(resolver, path, site) {
   return { outcome: result.kind === 'ambiguous' ? 'calls-ambiguous' : 'calls-unresolved', ids: [] };
 }
 
+/**
+ * The forms a TS/JS callee takes when `resolveBoundCallSite` finds nothing it
+ * binds; the fact graph's and the audit's calls-unresolved reasons both list
+ * them, so the two cannot drift apart.
+ */
+export const BOUND_CALL_UNRESOLVED_FORMS = 'the root name is a parameter or local of an enclosing function (a name declared in any of its blocks counts for the whole function), a global, a top-level value that is not a function or class, or a name require() binds (CommonJS bindings and exports are not read); or its import names a package or a path that did not resolve, or a module that does not export the name as a function or class; or the callee is a namespace itself, a member of a value rather than of a namespace import (`this.f()`, `obj.f()`), or no dotted name at all';
+
 // ---------------------------------------------------------------------------
 // Digest — canonical (key-sorted) JSON, sha256. Mirrors annotate-graph.mjs's
 // canonicalize/sha256 (same reasoning as matchImportLine above: a deliberate,

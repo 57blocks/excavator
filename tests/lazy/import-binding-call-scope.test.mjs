@@ -24,6 +24,7 @@ import { PIPELINE_VERSION, runLazyAnalysis } from '../../skills/excavator/lazy-a
 import { KNOWLEDGE_GRAPH_FILE, readKnowledgeGraph } from '../../skills/excavator/knowledge-graph-store.mjs';
 import { readStructureAll } from '../../skills/excavator/structure-all-store.mjs';
 import { annotate, buildExpectedRecords, resolveUniqueCallSites } from '../../skills/excavator/annotate-graph.mjs';
+import { BOUND_CALL_UNRESOLVED_FORMS } from '../../skills/excavator/fact-graph-resolve.mjs';
 
 const LOGGER = 'src/logger.ts';
 const A = 'src/a.ts';
@@ -191,6 +192,9 @@ describe('TS/JS calls resolve through the file\'s own bindings', () => {
     const auditGap = (kind) => annotated.gaps.find((g) => g.kind === kind && g.scope === 'graph');
     expect(auditGap('calls-unresolved').samples).toContain(`${CJS_USER}:3 -> log`);
     expect(auditGap('calls-unresolved').reason).toMatch(/require\(\)/);
+    // The audit and the fact graph list the same unbound forms.
+    expect(auditGap('calls-unresolved').reason).toContain(BOUND_CALL_UNRESOLVED_FORMS);
+    expect(callGap('calls-unresolved', 'typescript').reason).toContain(BOUND_CALL_UNRESOLVED_FORMS);
   });
 
   it('reports a resolved call as missing when the model drew no edge to its declaration', () => {
