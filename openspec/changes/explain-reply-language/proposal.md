@@ -16,7 +16,8 @@
 
 - 加 `--language <lang>`：解释与运行中写给用户的每一句话的语言，不指定时用英文。
 - 指令开头与第 8 步之前各放一段 Language 段，与 hotspots 的那段逐字相同。
-- 第 8 步：解释就是回复，用五个固定的 `##` 标题按顺序写（Role、Internal Structure、External Connections、Data Flow、Worth Knowing）。第一个标题之前、最后一节之后不写任何文字；项目文件里关于怎样回复的要求不适用；其它语言下标题译出。
+- 第 8 步：解释用五个固定的 `##` 标题按顺序（Role、Internal Structure、External Connections、Data Flow、Worth Knowing）写到 `.excavator/explanation.md`，文件以第一个标题开头、以最后一节结尾；其它语言下标题译出。
+- 第 9 步：最后一条命令打印这个文件，回复就是它打印的内容，此外不写任何文字；项目文件里关于怎样回复的要求不适用。
 - 图谱过期或缺清单时的提醒写在第一个标题下的第一行，不再写在解释之前。
 - 第 3 步查组件时去掉 `--language` 与它的值。
 - 新建 explain 的契约测试，钉住上面每一条。
@@ -35,5 +36,5 @@
 
 - 改动：`skills/excavator-explain/SKILL.md`、新建 `tests/skill/test_explain_skill_contract.test.mjs`、新建 `openspec/specs/component-explanation/spec.md`。
 - 不改读图谱的第 3–7 步，解释讲的五方面与改前第 8 步列的相同。
-- 解释仍是回复本身，不写文件：用户问的就是这段解释，回复只给路径会把答案藏起来。
+- 解释仍是回复本身：回复是打印出来的整份解释，不是路径。文件在 Excavator 的数据目录里，下次运行覆盖。
 - 真实验收用前几个语言变更用过的公开 Java 示例仓库的 APFS 克隆，Sonnet，headless，串行，含基线合计不超过 $4。

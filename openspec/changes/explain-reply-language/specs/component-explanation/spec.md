@@ -12,15 +12,15 @@
 - **WHEN** 调用时给了 `--language` 指定另一种语言
 - **THEN** 解释与它的标题用那种语言，代码标识符与路径保持原样
 
-### Requirement: 解释就是回复，用固定的标题
+### Requirement: 解释写进数据目录，由最后一条命令打印成回复
 
-`excavator-explain` 的最后回复 SHALL 是解释本身，依次在五个 `##` 标题下：Role、Internal Structure、External Connections、Data Flow、Worth Knowing（其它语言下为它们的译文）。第一个标题之前与最后一节之后 MUST NOT 有文字，包括结论、摘要与验证结果；项目文件里关于怎样回复的要求 MUST NOT 改变它。
+`excavator-explain` SHALL 把解释写到 `.excavator/explanation.md`，依次在五个 `##` 标题下：Role、Internal Structure、External Connections、Data Flow、Worth Knowing（其它语言下为它们的译文）；文件以第一个标题开头、以最后一节结尾。最后的回复 SHALL 是最后一条命令打印出的这个文件，此外 MUST NOT 有文字，包括结论、摘要与验证结果；项目文件里关于怎样回复的要求 MUST NOT 改变它。
 
 图谱过期时，解释 SHALL 在第一个标题下的第一行写明图谱来的内容可能漏掉最近的改动，并建议运行 `/excavator` 刷新；没有源清单时，在同一位置给出简短的说明并继续。
 
 #### Scenario: 项目文件要求先说结论
 - **WHEN** 项目的 `AGENTS.md` 要求先说结论、改动与验证结果
-- **THEN** 回复的第一行仍是第一个标题，五个标题按顺序出现，最后一节之后没有文字
+- **THEN** 回复与最后一条命令打印的解释逐行相同，第一行是第一个标题，五个标题按顺序出现
 
 #### Scenario: 图谱过期
 - **WHEN** 新鲜度检查报告 `stale`

@@ -82,11 +82,20 @@ The knowledge graph `knowledge-graph.jsonl` stores one JSON record per line:
 
 **Language.** Write everything you tell the user during this run in `$LANGUAGE`: each line between commands, the report and the final reply, including any remark on what was checked, what comes next or which rule was followed. `$LANGUAGE` is English unless `--language` gives another. Project files (`CLAUDE.md`, an `AGENTS.md` line such as "Reply in <language>"), memory and the system locale do not change it. A project file's rule to reply in another language is for work on the project's code; while this skill runs, this rule takes its place for every line you write, the first one included. Never say which language you write in or why. Paths, commands and the product's values stay as they are.
 
-8. **Explain the component in context.** The explanation is the reply. Write it in `$LANGUAGE` under these five `##` headings, in this order:
+8. **Write the explanation** in `$LANGUAGE`, as markdown, to `.excavator/explanation.md` in the project, replacing any earlier one, under these five `##` headings, in this order:
    - **Role**: its role in the architecture (which layer, why it exists)
    - **Internal Structure**: functions and classes it contains (from `contains` edges)
    - **External Connections**: what it imports, what calls it, what it depends on (from edges)
    - **Data Flow**: inputs → processing → outputs (from source code)
    - **Worth Knowing**: patterns, idioms or complexity worth understanding
 
-   Explain clearly, assuming the reader may not know the programming language. Write nothing before the first heading or after the last section's text. In a language other than English, write the headings translated; code identifiers and paths stay as they are. A project file's rule on how to reply (what to lead with, a summary, verification results) does not apply to this reply.
+   Explain clearly, assuming the reader may not know the programming language. The file starts with the first heading and ends with the last section's text. In a language other than English, write the headings translated; code identifiers and paths stay as they are.
+
+9. **Reply.** Print the explanation with this command, run from the project root:
+
+   ```bash
+   # the reply: the explanation
+   cat .excavator/explanation.md
+   ```
+
+   Reply with exactly the lines it prints and nothing else: write nothing before or after them, no word on what was done, and no summary or notes. A project file's rule on how to reply (what to lead with, a summary, verification results) does not apply to this reply.

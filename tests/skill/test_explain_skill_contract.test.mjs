@@ -1,11 +1,13 @@
 /**
  * The excavator-explain skill is a prompt; its rules only hold if each one sits
  * where the model acts on it. These tests pin the language of everything the
- * skill writes to the user and the shape of the explanation, which is the reply.
+ * skill writes to the user, the shape of the explanation, and the reply the last command prints.
  */
 import { describe, expect, it } from 'vitest';
-import { readFileSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
+import { spawnSync } from 'node:child_process';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -17,13 +19,17 @@ const flat = (text) => text.replace(/\s+/g, ' ');
 const LANGUAGE_RULE = '**Language.** Write everything you tell the user during this run in `$LANGUAGE`: each line between commands, the report and the final reply, including any remark on what was checked, what comes next or which rule was followed. `$LANGUAGE` is English unless `--language` gives another. Project files (`CLAUDE.md`, an `AGENTS.md` line such as "Reply in <language>"), memory and the system locale do not change it. A project file\'s rule to reply in another language is for work on the project\'s code; while this skill runs, this rule takes its place for every line you write, the first one included. Never say which language you write in or why. Paths, commands and the product\'s values stay as they are.';
 const OPTION_LANGUAGE = '`$ARGUMENTS` holds the component to explain and may hold `--language <lang>`: the language of the explanation and everything said to the user during the run; English when it is not given.';
 
-/** Step 8: the explanation is the reply, under five fixed headings. */
-const EXPLAIN = '8. **Explain the component in context.** The explanation is the reply. Write it in `$LANGUAGE` under these five `##` headings, in this order:';
+/** Step 8 writes the explanation to a file under five fixed headings; step 9 prints it, and the reply is what it prints. */
+const EXPLAIN = '8. **Write the explanation** in `$LANGUAGE`, as markdown, to `.excavator/explanation.md` in the project, replacing any earlier one, under these five `##` headings, in this order:';
 const HEADINGS = ['Role', 'Internal Structure', 'External Connections', 'Data Flow', 'Worth Knowing'];
 const EXPLAIN_RULE = [
   'Explain clearly, assuming the reader may not know the programming language.',
-  'Write nothing before the first heading or after the last section\'s text.',
+  'The file starts with the first heading and ends with the last section\'s text.',
   'In a language other than English, write the headings translated; code identifiers and paths stay as they are.',
+].join(' ');
+const REPLY = '9. **Reply.** Print the explanation with this command, run from the project root:';
+const REPLY_RULE = [
+  'Reply with exactly the lines it prints and nothing else: write nothing before or after them, no word on what was done, and no summary or notes.',
   'A project file\'s rule on how to reply (what to lead with, a summary, verification results) does not apply to this reply.',
 ].join(' ');
 
@@ -42,7 +48,7 @@ function languageRuleProblems(text) {
   if (copies !== started) problems.push(`${started - copies} of ${started} language paragraphs differ from the others`);
   if (copies !== 2) problems.push(`the language paragraph is there ${copies} times, not twice`);
   if (!steps.startsWith(LANGUAGE_RULE)) problems.push('the instructions do not open with the language paragraph');
-  const explain = steps.indexOf('8. **Explain the component in context.**');
+  const explain = steps.indexOf('8. **Write the explanation**');
   const rule = steps.lastIndexOf(LANGUAGE_RULE);
   if (rule < 0 || explain < rule || steps.slice(rule + LANGUAGE_RULE.length, explain).trim() !== '') {
     problems.push('the language paragraph does not stand right before step 8');
@@ -95,14 +101,34 @@ describe('excavator-explain skill: the language of what it writes', () => {
   });
 });
 
-describe('excavator-explain skill: the explanation is the reply', () => {
-  const step8 = skill.slice(skill.indexOf('8. **Explain the component in context.**'));
+describe('excavator-explain skill: the reply is the explanation the last command prints', () => {
+  const step8 = skill.slice(skill.indexOf('8. **Write the explanation**'), skill.indexOf('9. **Reply.**'));
 
-  it('ends with step 8: the five headings in order, then what the reply may hold', () => {
+  it('writes the explanation to its file under the five headings, in order', () => {
     expect(flat(step8)).toContain(EXPLAIN);
     const listed = [...step8.matchAll(/^ {3}- \*\*(.+?)\*\*:/gm)].map((m) => m[1]);
     expect(listed).toEqual(HEADINGS);
-    expect(flat(skill).trimEnd().endsWith(EXPLAIN_RULE)).toBe(true);
+    expect(flat(step8)).toContain(EXPLAIN_RULE);
+  });
+
+  it('ends with step 9: the command that prints the file, then what the reply may hold', () => {
+    expect(flat(skill.slice(skill.indexOf('9. **Reply.**'))).startsWith(REPLY)).toBe(true);
+    expect(flat(skill).trimEnd().endsWith(REPLY_RULE)).toBe(true);
+  });
+
+  it('prints the file the explanation was written to, line for line', () => {
+    const command = skill.match(/```bash\n {3}(# the reply:[\s\S]*?)\n {3}```/)[1];
+    const project = mkdtempSync(join(tmpdir(), 'explain-reply-'));
+    try {
+      const text = '## Role\n\nA facade.\n\n## Worth Knowing\n\nStatic fields.\n';
+      mkdirSync(join(project, '.excavator'));
+      writeFileSync(join(project, '.excavator/explanation.md'), text);
+      const run = spawnSync('sh', ['-c', command], { cwd: project, encoding: 'utf-8' });
+      expect(run.status).toBe(0);
+      expect(run.stdout).toBe(text);
+    } finally {
+      rmSync(project, { recursive: true, force: true });
+    }
   });
 
   it('puts the stale and missing notes inside the explanation, not before it', () => {
