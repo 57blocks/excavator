@@ -1,7 +1,7 @@
 ---
 name: excavator-diff
 description: Use when you need to analyze git diffs or pull requests to understand what changed, affected components, and risks
-argument-hint: "[--language <lang>]"
+argument-hint: "[pr-number] [--language <lang>]"
 ---
 
 # /excavator-diff

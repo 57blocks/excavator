@@ -68,9 +68,10 @@ function languageRuleProblems(text) {
 }
 
 describe('excavator-diff skill: the language of what it writes', () => {
-  it('names itself after its directory, takes --language and holds no Chinese character', () => {
+  it('names itself after its directory, takes the PR number step 2 accepts and --language, and holds no Chinese character', () => {
     expect(skill.startsWith('---\nname: excavator-diff\n')).toBe(true);
-    expect(skill).toContain('argument-hint: "[--language <lang>]"');
+    expect(skill).toContain('argument-hint: "[pr-number] [--language <lang>]"');
+    expect(skill).toContain('- If the user specifies a PR number: get the diff from that PR');
     expect(skill).not.toMatch(/[\u3000-\u303f\u3400-\u9fff\uf900-\ufaff\uff00-\uffef]/u);
   });
 
