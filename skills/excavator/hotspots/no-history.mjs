@@ -48,10 +48,12 @@ const firstLine = (text) => (text ?? '').trim().split('\n')[0] || 'no message';
  * Why git cannot be used here, or null when it can. `--git-dir=/dev/null` reads
  * the same system, user and environment configuration as every other command but
  * discovers no repository, so a broken `.git` anywhere cannot make it fail.
+ * `GIT_CONFIG` is dropped: only `git config` reads it, so it must not decide.
  */
 function whyGitDoesNotWork(here) {
+  const { GIT_CONFIG, ...env } = process.env;
   const probe = spawnSync('git', ['--git-dir=/dev/null', 'config', '--list'], {
-    cwd: here, encoding: 'utf-8', stdio: ['ignore', 'ignore', 'pipe'], // the configuration itself is never read
+    cwd: here, env, encoding: 'utf-8', stdio: ['ignore', 'ignore', 'pipe'], // the configuration itself is never read
   });
   if (probe.error) return `git could not be started (${probe.error.code ?? probe.error.message})`;
   if (probe.status !== 0) return `git does not work here (${firstLine(probe.stderr)})`;

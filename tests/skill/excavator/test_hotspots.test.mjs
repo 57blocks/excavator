@@ -897,6 +897,18 @@ describe('no history is visible, never 0', () => {
     expect(existsSync(productPath(repo))).toBe(false);
   });
 
+  it('does not let GIT_CONFIG, which only git config reads, say that git does not work', () => {
+    const repo = initRepo('hotspots-gitconfig-env-');
+    commit(repo, { when: '2024-01-01', files: { 'src/a.txt': lines(2) } });
+    const configs = tempDir('hotspots-gitconfig-env-files-');
+    writeFile(configs, 'broken', '[core\n');
+
+    for (const file of [join(configs, 'missing'), join(configs, 'broken')]) {
+      expect(readProduct(join(repo, 'src'), [], { GIT_CONFIG: file }).noHistory)
+        .toEqual({ reason: 'inside-repository', repositoryRoot: '..', pathInRepository: 'src' });
+    }
+  });
+
   it('refuses to write a product when git does not accept the .git of the root or of a child directory', () => {
     const dir = tempDir('hotspots-broken-');
     writeFile(dir, 'a.txt', lines(2));
