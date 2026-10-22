@@ -9,7 +9,7 @@
 `skills/excavator/tour.mjs candidates <projectRoot>` SHALL 不调用模型，从 `.excavator/` 下的图谱、语义缓存、语义图与领域图算出候选集，写到 `.excavator/tour/candidates.json`。候选 SHALL 包括：
 - 入口候选：文件名是常见入口（如 `main.go`、`index.ts`、`app.js`、`server.js`、`main.py`），或位于成员仓根下一两级且扇出排在前 10%、扇入排在后 25% 的文件；
 - 文件级扇入与扇出各前 20 名，按 `imports` 与 `calls` 边、聚到文件计数；
-- 阅读顺序：每个成员仓（单仓即项目本身）各一条，从该成员仓里最像程序入口的代码文件出发，沿 `imports` 与 `calls` 正向广度优先，记深度。起点按文件名排序：`main.*` 先于 `server.*`，再 `app.*`，再 `index.*`，最后是其它入口候选；同一档里扇出高的在前；
+- 阅读顺序：每个成员仓（单仓即项目本身）各一条，从该成员仓里最像程序入口的代码文件出发，沿 `imports` 与 `calls` 正向广度优先，记深度。起点只从扇出至少为 1 的入口候选里取，按文件名分档：`main.*` 先于 `server.*`，再 `app.*`，再 `index.*`，最后是其它入口候选；同一档里目录层级浅的在前，再按扇出从高到低；
 - 每层扇入最高的 5 个文件，层取语义图，没有语义图时取图谱的层记录；
 - 领域图每个 flow 的 step 锚定节点（`nodeIds` 里图谱有的项），领域图的 `factDigest` 与图谱不同时不取；
 - 非代码节点：`config`、`pipeline`、`service`、`document` 类型，按文件聚合。
