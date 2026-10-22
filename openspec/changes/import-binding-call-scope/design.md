@@ -58,7 +58,7 @@ TS/JS 抽取器在 `extractCallGraph` 里为每个调用点取被调表达式的
 
 ### D5 审计用同一套解析
 
-`resolveUniqueCallSites` 对 TS/JS 行用同一个工厂与 `resolveBoundCallSite`，顶层声明取自 `expected.declarations` 里没有 `owner` 的函数与类，与审计别的部分用同一份声明。结果是边时，记录的 `targets` 是目标声明所在的文件；歧义且候选是声明时为候选所在的文件；其余为空。其它语言照旧用 `callScopePaths`，按文件计数。
+`resolveUniqueCallSites` 对 TS/JS 行用同一个工厂与 `resolveBoundCallSite`，顶层声明取自 `expected.declarations` 里没有 `owner` 的函数与类，与审计别的部分用同一份声明。结果是边时，记录的 `targets` 是目标声明所在的文件；歧义与无法解析时为空（`resolveBoundCallSite` 只为边给出声明）。其它语言照旧用 `callScopePaths`，按文件计数。
 
 ### D6 其它语言、`callScopePaths` 与 `reexportOnly`
 
@@ -83,7 +83,7 @@ TS/JS 的 `calls` 边与 `calls-*` 缺口会变，TS/JS 结构行的调用点会
 
 ## 验收 oracle（动手前写死）
 
-基线是 reexport-call-scope 的分支头 `2b1b329c`（本分支从它开出；它合入 `main` 之后即 `origin/main`）。
+基线是 reexport-call-scope 合入后的 `origin/main`（`95986ed4`）。本分支从 reexport-call-scope 的分支头 `2b1b329c` 开出，它合入 `main` 后本分支与 `main` 同步过一次。
 
 - **O1 复现（在基线上失败）**：新测试 `tests/lazy/import-binding-call-scope.test.mjs` 用真实 Lazy 驱动跑一个小夹具，再用同一份结构结果与 import map 调用审计的 `resolveUniqueCallSites`。夹具与断言：
   - a. `import { createLogger } from './logger'`，`run(log)` 调用 `log()` 与 `createLogger()`：`log()` 落进 `calls-unresolved`，`run` 只有指向 `createLogger` 的边；
@@ -124,4 +124,41 @@ TS/JS 的 `calls` 边与 `calls-*` 缺口会变，TS/JS 结构行的调用点会
 
 ## 验收记录
 
-（实现后填写。）
+基线 `origin/main` `95986ed4`；本分支代码头 `e47f3a08`（其后只有文档提交）。
+
+- **O1**：新 Lazy 测试 8 条在基线上全部失败，核心抽取器用例 2 条在基线上全部失败；本分支全部通过。
+- **O2**：JSX 元素的全部测试（`jsx-element-resolution`、`jsx-elements-pipeline`、核心 `typescript-jsx`）照旧通过；`reexport-call-scope` 只改了 `require()` 用例的期望与版本号。全量门另外找出两个单元测试：它们的合成 TS 行调用导入的名字，却没有 import 的 `bindings` 与 import map 的 `resolvedSources`，而真实的抽取器与 `extract-import-map` 都会写这两项。`e47f3a08` 按真实形状补上。
+- **O3**：六个变异各自让对应测试变红，还原后全绿：
+  - i：O1 中 a–j 的断言所在的 5 条，以及 `reexport-call-scope` 的 `require()` 用例变红；
+  - ii：O1 与 `reexport-call-scope` 的审计用例变红；
+  - iii：O1 的遮蔽、缺口与审计 3 条变红；
+  - iv：核心用例 2 条变红；重建 dist 后，O1 的遮蔽、缺口、结构行与审计 4 条，以及结构行测试的 `local` 用例变红；
+  - v：同 iv 的 5 条变红；另外去掉 `isValidCallGraph` 对 `local` 的校验时，结构结果测试的 `local` 用例变红；
+  - vi：O1 的 3 条、JSX 解析测试 3 条与 JSX Lazy 测试 4 条变红。
+- **O4**：在只跑门的分离检出里（`e47f3a08`），三件套、`pnpm --filter @excavator/core test`、`pnpm run typecheck`、`openspec validate --all --strict` 全部通过。全量是 207 个测试文件，5082 条通过、4 条跳过；核心是 1452 条通过。
+- **O5 比较脚本先验装置**：
+  - 在 O1 夹具上报出 5 条失去与 4 条新增的边，分类与夹具一致；
+  - 输入对调时，模型核对、分类与边的解释三类判据都失败；
+  - 给本分支一侧多加一个文件时，节点、import map、结构行等判据失败；
+  - 多加一个解析不到的 import 时，`calls-*` 以外的缺口判据失败。
+- **O5 三个语料成员上不变的部分**：
+  - 节点、`calls` 以外的边、TS/JS 以外语言的 `calls` 边、TS/JS `calls-*` 以外的缺口都不变；
+  - import map（含 `resolvedSources` 与 `reexportOnly`）、coverage（含 `jsxElements`）、去掉 `local` 后的结构行都不变；
+  - TS/JS 以外的调用点去向不变；
+  - TS/JS 的 `calls-unresolved` 与 `calls-ambiguous` 计数与审计一致；
+  - 基线与本分支各自的每个 TS/JS 调用点去向，都与脚本的独立模型一致。
+
+  去向变了的调用点：
+
+  | 成员 | TS/JS 调用点 | 带 `local` | 变化 | 失去 | 新增 | 边 −/+ |
+  |---|---|---|---|---|---|---|
+  | go-multirepo 前端 | 24275 | 9212 | 55 | R4 1 | A1 1、A3 44、A4 1、A5 8 | −1 / +44 |
+  | go-multirepo Node 服务 | 2688 | 1000 | 47 | R1（`require()`）47 | — | −26 / +0 |
+  | mixed-suite kotlin-portal | 3531 | 552 | 2 | — | A3 2 | 0 / +2 |
+
+  R2、R3、其它去向变化与「其它」类都为零。边的增减少于调用点的增减，原因有二：同一调用方到同一目标只有一条边；新增的调用点里有 5 个调用方无法解析（`calls-caller-unresolved` 85 → 90）。
+
+  抽查与说明：
+  - 前端唯一失去的边是编造：组件里的局部函数被连到被导入的服务模块里的同名函数。
+  - 新增的边按绑定可达，改名、转发与原歧义各抽一条，都正确。
+  - Node 服务成员失去的 47 个调用点都在 CommonJS 文件里，被调者是用 `require()` 解构出的名字。其中 45 个能按相同的相对路径对上解构语句，另外 2 个的 `require()` 用了另一种路径写法，指向同一模块。这些原来的边是对的，是 D4 的代价；读 CommonJS 另立变更。
