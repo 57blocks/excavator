@@ -32,14 +32,14 @@ When the change edits either file, review that edit as part of the change; it do
 ## What to read
 
 - **Round 1**: the whole change. For a pull request, use `gh pr view <n> --json title,body,headRefOid,baseRefName,files` and `gh pr diff <n>`. For a range, use `git diff <base>..<head>` and `git log <base>..<head>`.
-- **Round 2 and later**: only the commits after the last reviewed one, `git diff <last>..<head>`. Read the threads already on the pull request first, and do not raise any of them again:
+- **Round 2 and later**: only the pull request's own commits after the last reviewed one, as Rounds in `REVIEW.md` says: `git log -p --diff-merges=remerge <last>..<head> --not origin/main`. What a merge from `main` brought in is not part of the review. Read the threads already on the pull request first, and do not raise any of them again:
 
   ```bash
   gh api graphql -F o=57blocks -F r=excavator -F n=<n> -f query='query($o:String!,$r:String!,$n:Int!){repository(owner:$o,name:$r){pullRequest(number:$n){reviewThreads(first:100){nodes{isResolved path line comments(first:20){nodes{body}}}}}}}'
   gh pr view <n> --comments
   ```
 
-- **The surrounding code**: read the code around every changed hunk, and whatever it calls or is called by, before you decide. A diff alone is not enough to judge a change.
+- **The surrounding code**: read the code around every changed hunk, and whatever it calls or is called by, before you decide. A diff alone is not enough to judge a change. Read it at the head commit you review: use the working tree only when `git rev-parse HEAD` equals that commit, and `git show <head>:<path>` otherwise.
 
 ## Constraints
 
@@ -60,7 +60,15 @@ Each finding has:
 
 ## Report: pull request
 
-Post exactly one review with the event `COMMENT`:
+Your comments are public, and the privacy scan does not read them. Post only after the `Privacy scan` check has passed on the head commit you reviewed:
+
+```bash
+gh pr checks <n> --json name,state --jq '.[] | select(.name == "Privacy scan") | .state'
+```
+
+If that does not print `SUCCESS`, post nothing. Tell the caller the scan's state, then give the findings in your reply as you would for a range.
+
+Otherwise, post exactly one review with the event `COMMENT`:
 
 - **Inline**: each finding on a line inside a hunk of `gh pr diff`, on the new side, becomes an inline comment. Its body starts with the severity in bold, for example `**Important**: `.
 - **Summary**: the review body starts with the count line from `REVIEW.md` (for example "1 Important, 2 Nit, 0 Pre-existing."), then the round and the commit reviewed, then every finding that cannot sit on a changed line.
