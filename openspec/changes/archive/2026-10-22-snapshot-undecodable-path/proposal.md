@@ -46,3 +46,4 @@
 3. `docs(openspec): record snapshot-undecodable-path acceptance and archive`：任务 2.1–2.3。
 4. `fix(snapshot): refuse a tree where a path that is not valid UTF-8 shares a valid path's name`：任务 1.4（评审第一轮后加）。
 5. `docs(openspec): record snapshot-undecodable-path review round 1`：任务 2.4。
+6. `docs(openspec): narrow the snapshot-undecodable-path requirement to the current tree`：任务 2.5（评审第二轮）。
