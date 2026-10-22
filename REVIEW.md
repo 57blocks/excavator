@@ -19,7 +19,7 @@ Reserve Important for a change that would do one of these:
 - **Make a report say something the source does not support**: a route, caller, field, quote, count or verdict that the code or document does not back. The same goes for an input that silently disappears instead of landing in a visible bucket such as unknown, unresolved or skipped.
 - **Make a check pass when it should fail**: a gate, validator, audit or test that is fail-open, compares counts instead of content, no longer runs, or can no longer see the defect it exists for.
 - **Put private material where it becomes public**: private names, corpus names, credentials, account identifiers or real-project output in a file, commit message, pull request text or public CI log.
-- **Break a rule in `AGENTS.md`**, or weaken the merge and review procedure: the required checks, the risk tiers, answering findings, or this file.
+- **Break a rule in `AGENTS.md`**, or weaken the merge and review procedure: the required checks, the risk tiers, answering findings, the reviewer eval in `scripts/review-eval/`, or this file.
 - **Break behavior**: wrong logic, a crash, lost data, or a changed command, skill or MCP contract that its callers still rely on.
 
 Everything else is Nit at most: naming, structure, wording, refactoring ideas, missing comments.
@@ -85,8 +85,9 @@ Answer the findings in a review's summary in one pull request comment. Branch pr
 
 ## Changing the review rules
 
-A pull request that changes this file or `.claude/agents/reviewer.md` runs the reviewer eval in `scripts/review-eval/` at two revisions: the version on `main` and the pull request's head. Its Testing section gives both scores: recall, and the Important findings on clean cases.
+A pull request that changes this file or `.claude/agents/reviewer.md` runs the reviewer eval in `scripts/review-eval/` at two revisions: the version on `main` and the pull request's own version. Its Testing section gives both scores: recall, and the Important findings on clean cases.
 
-- The score of the version on `main` can be cited from an earlier pull request instead of run again, when `REVIEW.md`, `.claude/agents/reviewer.md` and `scripts/review-eval/cases.json` on `main` have not changed since.
+- The score of the version on `main` can be cited from an earlier pull request instead of run again, when `REVIEW.md`, `.claude/agents/reviewer.md`, `AGENTS.md` and `scripts/review-eval/` on `main` have not changed since. The cases, the scorer and the way a case runs move the score as much as the rules do.
+- The pull request's own version is the one it first sends to review. Changes it makes later in answer to its own review need no new run: the Testing section lists them under the scores, and the user, who merges, decides whether to ask for one.
 - Each case runs once, so a difference of one defect between two versions is within the noise.
 - A defect that got past review and was fixed later goes into the eval, as `scripts/review-eval/README.md` describes.
