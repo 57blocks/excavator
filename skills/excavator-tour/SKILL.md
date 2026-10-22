@@ -46,12 +46,16 @@ The work is split between a script and subagents, and each part stays with its o
    LANGUAGE="English"   # or the --language value
    LANGUAGE_CODE="en"   # the two-letter lower-case code of that language
    ```
-2. Compute the candidates. `/excavator` writes the knowledge graph; this skill never does:
+2. Print the language of every line you write from here on, as its own command, and write the line that follows its output in that language:
+   ```bash
+   echo "Every line to the user from here on: $LANGUAGE"
+   ```
+3. Compute the candidates. `/excavator` writes the knowledge graph; this skill never does:
    ```bash
    node "$TOUR" candidates "$PROJECT_ROOT"
    ```
    A non-zero exit writes nothing: report its message as it stands (when there is no knowledge graph it says to run `/excavator` first) and stop.
-3. Read the candidates, never the whole file:
+4. Read the candidates, never the whole file:
    ```bash
    # the counts per class, how many each quota cut, and where each reading order starts
    jq -r '.classes | to_entries[] | "\(.key): \(.value.total) (\(.value.truncated) cut)"' "$TOUR_DIR/candidates.json"
@@ -66,7 +70,7 @@ The work is split between a script and subagents, and each part stays with its o
 
 ## Step 2 — Write the draft
 
-Write what you tell the user during this step in `$LANGUAGE`, as **Language** in Step 1 says.
+Write what you tell the user during this step in `$LANGUAGE`, as **Language** in Step 1 says. That includes the short line before each command and the one after it returns.
 
 Write `$DRAFT` as JSON:
 
@@ -104,7 +108,7 @@ A non-zero exit prints every problem, one line each, and writes nothing. Wording
 
 ## Step 3 — Check every sentence
 
-Write what you tell the user during this step in `$LANGUAGE`, as **Language** in Step 1 says.
+Write what you tell the user during this step in `$LANGUAGE`, as **Language** in Step 1 says. That includes the short line before each command and the one after it returns.
 
 A subagent per step, which sees nothing of the candidates, the other steps or your reasons, reads one step file and judges each of its sentences against the code in it.
 
@@ -133,7 +137,7 @@ Read the step file and nothing else, and write one verdict per sentence id as yo
 
 ## Step 4 — Rewrite once, then settle
 
-Write what you tell the user during this step in `$LANGUAGE`, as **Language** in Step 1 says.
+Write what you tell the user during this step in `$LANGUAGE`, as **Language** in Step 1 says. That includes the short line before each command and the one after it returns.
 
 Round 1 wrote `rewrite.json`: the steps with a sentence the code contradicts, with each sentence and the reason.
 
@@ -157,7 +161,7 @@ Round 1 wrote `rewrite.json`: the steps with a sentence the code contradicts, wi
 
 ## Step 5 — Write the tour and reply
 
-Write what you tell the user during this step in `$LANGUAGE`, as **Language** in Step 1 says.
+Write what you tell the user during this step in `$LANGUAGE`, as **Language** in Step 1 says. That includes the short line before each command and the one after it returns.
 
 Rules for this step:
 - **State only what the product holds.** Every number and path in what you say comes from the command's output.

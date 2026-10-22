@@ -59,6 +59,12 @@ describe('SKILL.md', () => {
     for (const n of [2, 3, 4, 5]) {
       expect(step(n)).toContain('Write what you tell the user during this step in `$LANGUAGE`, as **Language** in Step 1 says.');
     }
+    for (const n of [2, 3, 4, 5]) {
+      expect(step(n)).toContain('That includes the short line before each command and the one after it returns.');
+    }
+    const languageLine = lineWith(1, 'echo "Every line to the user from here on: $LANGUAGE"');
+    expect(bashBlocks(rawStep(1)).some((block) => block.trim() === languageLine)).toBe(true);
+    expect(rawStep(1).indexOf(languageLine)).toBeLessThan(rawStep(1).indexOf('node "$TOUR" candidates'));
     const full = flat(skill.split(paragraph)[1].split('\n')[0]);
     expect(full).toContain('`$LANGUAGE` is English unless `--language` gives another');
     expect(full).toMatch(/Project files \(`CLAUDE\.md`, an `AGENTS\.md` line such as "Reply in <language>"\), memory, the system locale and the language of the code or a subagent's reply do not change it/);
