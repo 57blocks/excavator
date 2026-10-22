@@ -23,7 +23,7 @@ The knowledge graph `knowledge-graph.jsonl` stores one JSON record per line:
   - IDs use the node type as prefix, e.g. `file:path`, `function:path:name`, `config:path`, `article:path`
 - `{"record":"edge","edge":{…}}` — one line per edge: {source, target, type, direction, weight}
   - Key types: imports, contains, calls, depends_on, configures, documents, deploys, triggers, contains_flow, flow_step, related, cites
-- `{"record":"layer","layer":{…}}` — one line per layer: {id, name, description, nodeIds[]}
+- `{"record":"layer","layer":{…}}` — one line per layer: {id, name, description, nodeIds[]}; an incremental update writes these, and a Full run writes its layers to `semantic-graph.json` instead (see **Reading Layers**)
 - `{"record":"tour","step":{…}}` — compatibility records; new service graphs have none
 - `{"record":"coverage",…}` and `{"record":"gap",…}` — the coverage ledger and the named gaps
 
@@ -33,6 +33,33 @@ The knowledge graph `knowledge-graph.jsonl` stores one JSON record per line:
 2. Only read the lines you need — never read the whole file into context; it can be hundreds of megabytes
 3. Node names and summaries are the most useful fields for understanding
 4. Edges tell you how components connect — follow imports and calls for dependency chains
+
+## Reading Layers
+
+The architecture layers, each {id, name, description, nodeIds[]}, can be in two places:
+- `.excavator/semantic-graph.json` — a Full run writes its layers here, under `layers`, with the `factDigest` of the facts they were made from;
+- the knowledge graph's `{"record":"layer",…}` lines — an incremental update writes its layers there.
+
+A layer's `nodeIds` lists file-level node IDs only, so for a function or class use the ID of the file-level node with the same `filePath`. Run these from the project root, putting in the node ID where a command looks one up:
+
+```bash
+# the semantic graph's factDigest, then the knowledge graph's factsDigest
+jq -r '.factDigest' .excavator/semantic-graph.json
+head -n 1 .excavator/knowledge-graph.jsonl | jq -r '.fields.project.factsDigest'
+# the semantic graph's layers: every one, then those that list the node
+jq -c '.layers[]' .excavator/semantic-graph.json
+jq -c --arg id '<node id>' '.layers[] | select(.nodeIds | index($id))' .excavator/semantic-graph.json
+# the knowledge graph's layer lines: every one, then those that list the node
+grep '"record":"layer"' .excavator/knowledge-graph.jsonl
+grep '"record":"layer"' .excavator/knowledge-graph.jsonl | grep -F '"<node id>"'
+```
+
+Use the first that applies:
+1. `semantic-graph.json` exists and its `factDigest` equals the `factsDigest`: use its layers.
+2. The knowledge graph has layer lines: use them.
+3. Otherwise there are no layers to use: say so, and never group files into layers yourself.
+
+When `semantic-graph.json` exists with another `factDigest`, its layers were made from other facts: do not use them, say so, and suggest running `/excavator --mode=full`.
 
 ## Instructions
 
@@ -76,7 +103,7 @@ The knowledge graph `knowledge-graph.jsonl` stores one JSON record per line:
 
 5. **Read connected nodes** — for each connected node ID from step 4, Grep for those IDs in the nodes section to get their `name`, `summary`, and `type`. This builds the component's neighborhood.
 
-6. **Identify the layer** — Grep the `"record":"layer"` lines for the target node's ID in quotes to find which architectural layer it belongs to and that layer's description. Layers list file-level node IDs only, so for a function or class use the ID of the file-level node with the same `filePath`. If no layer line matches, say the graph gives it no layer.
+6. **Identify the layer** — look up the layer that lists the target node, as **Reading Layers** above says, to find which architectural layer it belongs to and that layer's description.
 
 7. **Read the actual source file** — Read the source file at the node's `filePath` for the deep-dive analysis.
 
