@@ -77,7 +77,7 @@ parser SHALL 把放不下的行记入 `unplaced`，每段带 `reason` 与 `lineR
   - Background 或 Scenario 的步骤（含其参数）之后的以下行：既不是步骤、表格行、doc string，也不是 tag、注释或空行，也不是 Scenario 或 Rule 标题，在 Scenario 中也不是 Examples 标题；
   - Examples 表格行之后的以下行：既不是表格行、tag、注释或空行，也不是 Examples、Scenario 或 Rule 标题。
 
-  相邻的这类行合并为一段。只决定文件是否合法的规则不检查：tag 之后跟什么、一个步骤带几个参数。违反它们的行按所在位置的角色处理，不记入 `unplaced`。
+  相邻的这类行合并为一段。只决定文件是否合法的规则不检查：tag 之后跟什么、一个步骤带几个参数。违反它们的行按所在位置的角色处理：不会只因违反这些规则记入 `unplaced`，所在位置放不下时照常记入。
 - 未闭合的 doc string，原因为 `unclosed-doc-string`：从开分隔符到文件最后一个非空行记一段，段内的行不产记录。
 - Feature 之前不是 `en` 的 `# language:` 头，原因为 `unsupported-language`：从该行到文件最后一个非空行记一段，整个文件不产记录。
 
