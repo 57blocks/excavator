@@ -109,30 +109,39 @@ function distance(finding, defect) {
   return nearest;
 }
 
+// Pairs Important findings with defects in range, each finding with one
+// defect at most, so that as many defects as possible are hit: a maximum
+// matching by augmenting paths. Findings take their turn in result order and
+// try the defects in range nearest first, the earlier defect on a tie, so a
+// lone finding in an overlap goes to the nearer defect.
 function scoreCase(defects, findings) {
-  const pairs = [];
-  findings.forEach((finding, f) => {
-    if (finding.severity !== 'Important') return;
-    defects.forEach((defect, d) => {
-      const gap = distance(finding, defect);
-      if (gap <= MARGIN) pairs.push({ gap, f, d });
-    });
+  const near = findings.map((finding) => {
+    if (finding.severity !== 'Important') return [];
+    return defects
+      .map((defect, d) => ({ d, gap: distance(finding, defect) }))
+      .filter(({ gap }) => gap <= MARGIN)
+      .sort((a, b) => a.gap - b.gap || a.d - b.d)
+      .map(({ d }) => d);
   });
-  pairs.sort((a, b) => a.gap - b.gap || a.f - b.f || a.d - b.d);
-  const paired = new Set();
-  const hit = new Set();
-  for (const { f, d } of pairs) {
-    if (paired.has(f) || hit.has(d)) continue;
-    paired.add(f);
-    hit.add(d);
-  }
+  const owner = defects.map(() => -1);
+  const place = (f, tried) => near[f].some((d) => {
+    if (tried.has(d)) return false;
+    tried.add(d);
+    if (owner[d] !== -1 && !place(owner[d], tried)) return false;
+    owner[d] = f;
+    return true;
+  });
+  let paired = 0;
+  findings.forEach((_, f) => {
+    if (place(f, new Set())) paired += 1;
+  });
   const buckets = defects.map((defect, d) => {
-    if (hit.has(d)) return 'hit';
+    if (owner[d] !== -1) return 'hit';
     const seen = findings.some((finding) => finding.severity !== 'Important' && distance(finding, defect) <= MARGIN);
     return seen ? 'wrong severity' : 'missed';
   });
   const important = findings.filter((finding) => finding.severity === 'Important').length;
-  return { buckets, unpaired: important - paired.size };
+  return { buckets, unpaired: important - paired };
 }
 
 const [casesFile, resultsDir, ...rest] = process.argv.slice(2);

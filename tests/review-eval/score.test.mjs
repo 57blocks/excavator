@@ -128,6 +128,18 @@ describe('each finding counts for one defect at most', () => {
     expect(buckets(score(cases, { c1: [finding('Important', 'src/a.mjs', 13)] }))).toEqual({ d1: 'hit', d2: 'missed' });
   });
 
+  it('hits both defects when the nearer pairing would leave one out', () => {
+    const cases = [{
+      id: 'c1',
+      range: 'a^..a',
+      defects: [defect('d1', span('src/a.mjs', 10)), defect('d2', span('src/a.mjs', 14))],
+    }];
+    // The finding on line 11 is nearest d1 and the only one in range of d2.
+    const result = score(cases, { c1: [finding('Important', 'src/a.mjs', 11), finding('Important', 'src/a.mjs', 8)] });
+    expect(buckets(result)).toEqual({ d1: 'hit', d2: 'hit' });
+    expect(total(result, 'defect cases')).toBe('defect cases: Important on no known defect 0');
+  });
+
   it('hits both defects with two findings in the overlap', () => {
     const result = score(TWO, { c1: [finding('Important', 'src/a.mjs', 14), finding('Important', 'src/a.mjs', 13)] });
     expect(buckets(result)).toEqual({ d1: 'hit', d2: 'hit' });
