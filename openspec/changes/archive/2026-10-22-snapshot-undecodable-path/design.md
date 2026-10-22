@@ -74,3 +74,17 @@ GitCommitSnapshot 不把这类条目交给 `readBlobPrefixes`，文件头视为�
   - M5 不编码 `%` 本身 → 用例 2（两个路径撞名，台账抛错）；
   - M6 编码改回 git 的 `\351` 形式 → 用例 1（台账路径被规范化，跳过记录对不上选中的台账路径）。
 - **O4 门：** `pnpm install --frozen-lockfile && pnpm -r build && pnpm test`、`pnpm run typecheck`、`openspec validate --all --strict` 全过；新文件先 `git add -N`。
+
+## 验收记录
+
+- **O1 复现：** 在未修复的代码（`git-utils.mjs` 与 `git-commit-snapshot.mjs` 取 main 的版本）上跑 parity 文件：9 个用例 2 个失败。用例 1：`listFiles()` 多出 `src/caf` + U+FFFD + `.ts`；用例 2：`buildSourceSelectionLedger: duplicate candidate path`；用例 3 通过。达标。
+- **O2 修复：** 修复后 `tests/snapshot/` 5 个文件 55 个用例全过；parity 文件原有 6 个用例与其夹具未改一行。达标。
+- **O3 变异：** 逐个应用、跑 parity 文件、`git checkout` 还原，每个都按预期变红：
+  - M1 → 用例 1（`listFiles()` 多出 U+FFFD 路径）、用例 2（台账重复路径）；
+  - M2 → 用例 1（`listFiles()` 多出 `src/caf%E9.ts`）、用例 2（跳过记录为空）；
+  - M3 → 只有用例 1（批次收到了 `src/caf%E9.ts` 与 `node_modules/caf%E9.js`）；
+  - M4 → 只有用例 3（`toStrictEqual` 不等，开头的 BOM 被去掉）；
+  - M5 → 只有用例 2（`duplicate candidate path lib/x%E9%FF.ts`）；
+  - M6（同时把用例 1 的期望路径改成 `\351` 形式，只留台账一致性可失败）→ 用例 1 `expected undefined to be 'selected'`：台账路径被规范化成 `src/caf/351.ts`；用例 2 因期望路径未改也变红。
+- **O4 门：** 在提交 `acac9469` 上 `pnpm install --frozen-lockfile && pnpm -r build && pnpm test`：154 个文件，4139 通过、4 跳过；`pnpm run typecheck` 通过；`openspec validate --all --strict` 46 项全过。达标。
+- **另记：** 探针确认含 `\` 的合法树路径（如 `src/a\b.ts`）在 main 上同样让 `mergeSnapshotSelection` 抛出 `not snapshot-selected`，见 Non-Goals，另起。
