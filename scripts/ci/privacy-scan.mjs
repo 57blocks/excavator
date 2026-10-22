@@ -12,20 +12,27 @@
  *   corpus-file  one regular expression per line, ignoring case; forbidden
  *                outside openspec/, docs/ and the Markdown files at the root
  *   text-file    more text to check against both lists (the pull request's
- *                title and body)
+ *                title, branch name and body)
  *
- * What it reads, for the commits in base..head:
- *   added lines      of every non-merge commit (history is public even when a
- *                    later commit removes the line), and of the whole range
- *                    from the merge base (what a merge commit adds when it
- *                    resolves a conflict)
- *   commit messages  of every commit, merges included
- *   paths            every commit changes
+ * What it reads, for every commit in base..head (history is public even when
+ * a later commit undoes a change):
+ *   added lines      each non-merge commit's patch, and each merge commit's
+ *                    remerge diff, which holds exactly the lines the merge
+ *                    itself wrote (a conflict resolution or any other edit)
+ *   commit messages  of every commit
+ *   authors          author and committer, name and email
+ *   paths            every commit adds or changes
+ * History is read in full (a path filter would otherwise drop the commits of
+ * a merged side branch), and every file as text, whatever git or a `-diff`
+ * attribute would call binary, with NUL bytes removed so UTF-16 text
+ * matches. A merge with more than two parents has no remerge diff; it fails
+ * the scan.
  *
  * Blank lines in a list are dropped: a blank pattern matches every line.
  * Prints how many lines match per list and source, never the text.
  * Exit code: 0 if nothing matches; 1 if something does; 2 if a list is
- * missing, empty or invalid, or git fails.
+ * missing, empty or invalid, the range holds a merge it cannot read, or git
+ * fails.
  */
 
 import { execFileSync } from 'node:child_process';
@@ -33,7 +40,10 @@ import { readFileSync } from 'node:fs';
 
 const NAMES_PATHS = ['.', ':(exclude)pnpm-lock.yaml'];
 const CORPUS_PATHS = [...NAMES_PATHS, ':(exclude)openspec', ':(exclude)docs', ':(exclude,glob)*.md'];
-const DIFF_FLAGS = ['--no-color', '--no-ext-diff', '--no-textconv'];
+const LOG = [
+  '-c', 'core.quotePath=false', 'log', '--full-history', '--diff-merges=remerge',
+  '--text', '--no-color', '--no-ext-diff', '--no-textconv', '--format=',
+];
 
 function fail(message) {
   process.stderr.write(`privacy-scan: ${message}\n`);
@@ -60,7 +70,7 @@ function git(args) {
   try {
     return execFileSync('git', args, { encoding: 'utf-8', maxBuffer: 1 << 30, stdio: ['ignore', 'pipe', 'pipe'] });
   } catch (error) {
-    fail(`git ${args[0]} failed: ${String(error.stderr ?? error.message).trim()}`);
+    fail(`git failed: ${String(error.stderr ?? error.message).trim()}`);
   }
 }
 
@@ -72,21 +82,9 @@ function added(patch) {
   for (const line of patch.split('\n')) {
     if (line.startsWith('diff --git ')) inHeader = true;
     else if (line.startsWith('@@')) inHeader = false;
-    else if (!inHeader && line.startsWith('+')) lines.push(line.slice(1));
+    else if (!inHeader && line.startsWith('+')) lines.push(line.slice(1).replaceAll('\0', ''));
   }
   return lines;
-}
-
-function addedLines(base, head, paths) {
-  const perCommit = git(['log', '-p', '--no-merges', '--format=', ...DIFF_FLAGS, `${base}..${head}`, '--', ...paths]);
-  const whole = git(['diff', ...DIFF_FLAGS, `${base}...${head}`, '--', ...paths]);
-  return [...added(perCommit), ...added(whole)];
-}
-
-function changedPaths(base, head, paths) {
-  const perCommit = git(['-c', 'core.quotePath=false', 'log', '--no-merges', '--name-only', '--format=', `${base}..${head}`, '--', ...paths]);
-  const whole = git(['-c', 'core.quotePath=false', 'diff', '--name-only', `${base}...${head}`, '--', ...paths]);
-  return `${perCommit}\n${whole}`.split('\n').filter((line) => line !== '');
 }
 
 const [base, head, namesFile, corpusFile, ...textFiles] = process.argv.slice(2);
@@ -110,15 +108,23 @@ const lists = {
   corpus: (line) => patterns.some((pattern) => pattern.test(line)),
 };
 
+const range = `${base}..${head}`;
 for (const ref of [base, head]) git(['rev-parse', '--verify', `${ref}^{commit}`]);
-const commits = git(['rev-list', '--count', `${base}..${head}`]).trim();
-const messages = git(['log', '--format=%B', `${base}..${head}`]).split('\n');
+const octopus = git(['rev-list', '--count', '--min-parents=3', range]).trim();
+if (octopus !== '0') fail(`${octopus} merges in ${range} have more than two parents and cannot be read; merge one branch at a time`);
+const commits = git(['rev-list', '--count', range]).trim();
+
+const addedLines = (paths) => added(git([...LOG, '-p', range, '--', ...paths]));
+const changedPaths = (paths) => git([...LOG, '--name-only', range, '--', ...paths]).split('\n').filter((line) => line !== '');
+const messages = git(['log', '--format=%B', range]).split('\n');
+const authors = git(['log', '--format=%an <%ae>%n%cn <%ce>', range]).split('\n');
 const texts = textFiles.flatMap((file) => readLines(file, `text file ${file}`));
 
 const sources = [
-  ['added lines', { names: addedLines(base, head, NAMES_PATHS), corpus: addedLines(base, head, CORPUS_PATHS) }],
+  ['added lines', { names: addedLines(NAMES_PATHS), corpus: addedLines(CORPUS_PATHS) }],
   ['commit messages', { names: messages, corpus: messages }],
-  ['paths', { names: changedPaths(base, head, NAMES_PATHS), corpus: changedPaths(base, head, CORPUS_PATHS) }],
+  ['authors', { names: authors, corpus: authors }],
+  ['paths', { names: changedPaths(NAMES_PATHS), corpus: changedPaths(CORPUS_PATHS) }],
   ['pull request text', { names: texts, corpus: texts }],
 ];
 
