@@ -68,6 +68,7 @@ import {
 } from './coverage-ledger.mjs';
 import { mergeVerification } from './verification-state.mjs';
 import { STRUCTURE_ALL_FILE, readStructureAllPath } from './structure-all-store.mjs';
+import { callScopePaths } from './fact-graph-resolve.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const pluginRoot = resolve(__dirname, '../..');
@@ -300,9 +301,10 @@ export function buildExpectedRecords({ structure, importMap }) {
 
 /**
  * Call sites that resolve to exactly one declaration among the caller's file
- * and the files it imports. Only these are eligible for `edge-missing`: an
- * ambiguous or unresolvable callee is a gap in the readers, not a hole in the
- * model's graph.
+ * and the files it imports, by the fact graph's own scope (`callScopePaths`:
+ * a file only a re-export reaches is not in it). Only these are eligible for
+ * `edge-missing`: an ambiguous or unresolvable callee is a gap in the readers,
+ * not a hole in the model's graph.
  */
 export function resolveUniqueCallSites({ structure, importMap, expected }) {
   const declarationsByName = new Map();
@@ -319,7 +321,7 @@ export function resolveUniqueCallSites({ structure, importMap, expected }) {
   for (const [path, decls] of expected.declarations) {
     void decls;
     const row = expected.byPath.get(path);
-    const scope = [path, ...((importMap?.importMap ?? {})[path] ?? [])];
+    const scope = callScopePaths(importMap, path);
     for (const site of row?.callGraph ?? []) {
       const hits = scope.filter((candidate) => declarationsByName.has(`${candidate}|${site.callee}`));
       const record = { file: path, callee: site.callee, line: site.lineNumber, targets: hits };
