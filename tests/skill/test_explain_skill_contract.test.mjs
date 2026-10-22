@@ -132,7 +132,7 @@ describe('excavator-explain skill: the reply is the explanation the last command
   });
 
   it('puts the stale and missing notes inside the explanation, not before it', () => {
-    expect(flat(skill)).toContain('- `stale`: the explanation says, as the first line under its first heading, that graph-derived context may omit recent changes, and suggests running `/excavator` to refresh the graph.');
+    expect(flat(skill)).toContain('- `stale`: the explanation says, as the first line under its first heading, that graph-derived context may omit recent changes. Suggest: Run `/excavator` to refresh the graph.');
     expect(flat(skill)).toContain('- `missing` (no `source-manifest.json` yet): the explanation gives a brief best-effort note in the same place; continue instead of blocking.');
     expect(skill).not.toContain('warn before explaining');
   });

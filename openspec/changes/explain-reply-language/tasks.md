@@ -9,9 +9,10 @@
 1. `docs(openspec): propose explain-reply-language`
 2. `fix(skill): write explain's explanation and every line to the user in English unless --language names another, under five fixed headings`：任务 1.1–1.3。第二份 Language 段紧挨第 8 步，语言与回复形式拆成两个提交时中间那个版本没有意义，所以合成一个。
 3. `fix(skill): print explain's explanation with the last command, so a progress line cannot open the reply`：任务 1.4–1.5，proposal、spec 与 design 同步改。第一版 O3 一次失败后加的（design D2）。
-4. `docs(openspec): record explain-reply-language acceptance`：任务 2.1–2.3，含第一版的运行。
-5. 审查各轮的修复（如有）。
-6. `docs(openspec): archive explain-reply-language`：任务 3.1。
+4. `fix(skill): keep the shared Run /excavator phrase in explain's stale note`：任务 1.6。全量门里共用的新鲜度测试查出来的。
+5. `docs(openspec): record explain-reply-language acceptance`：任务 2.1–2.3，含第一版的运行。
+6. 审查各轮的修复（如有）。
+7. `docs(openspec): archive explain-reply-language`：任务 3.1。
 
 ## 1. 实现
 
@@ -21,6 +22,7 @@
 
 - [x] 1.4 第 8 步把解释写进 `.excavator/explanation.md`，第 9 步由最后一条命令打印，回复就是它打印的内容（D2 第二版）。
 - [x] 1.5 契约测试跟着改：第 9 步的命令与说明，并在临时项目里实际运行命令核对输出。验证：契约测试。
+- [x] 1.6 移到第一个标题下的过期提醒保留各图谱 skill 共用的「Suggest: Run `/excavator` to refresh the graph.」（`tests/skill/excavator/test_skill_graph_freshness.test.mjs` 要求它）。验证：契约测试与这个新鲜度测试。
 
 ## 2. 验收
 
