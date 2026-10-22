@@ -19,7 +19,9 @@
    - `chore(agents): check the reviewed commit's privacy scan, and read only a clean tree`
    - `docs(openspec): fold round 2 findings into review-procedure`
 
-   第三轮是最后一轮：再有 Important 就停下，不合并。
+   第三轮是最后一轮：第三轮之后无论哪种原因还需要再审（有 Important，或 PR 自己的新提交触及中高档路径），都停下，不合并，交给用户。
+   第三轮审查的修复：
+   - `docs(openspec): stop review-procedure after round 3 for any reason, as the spec says`
 7. `docs(openspec): record review-procedure acceptance, and archive`：任务 2.5、3.1。
 
 ## 1. 实现
