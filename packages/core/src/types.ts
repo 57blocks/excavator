@@ -532,6 +532,16 @@ export interface StructuralAnalysis {
   endpoints?: EndpointInfo[];
   steps?: StepInfo[];
   resources?: ResourceInfo[];
+  /** Lines the reader recognised but could not place in the file's
+   *  structure; they produce no other record and are counted as a gap. */
+  unplaced?: UnplacedLines[];
+}
+
+/** A run of adjacent lines a reader could not place, and why. Gherkin
+ *  reasons: `out-of-place`, `unclosed-doc-string`, `unsupported-language`. */
+export interface UnplacedLines {
+  reason: string;
+  lineRange: [number, number];
 }
 
 /** TS/JS: `imported` is the exported name, `default`, or `*` for a namespace. */
