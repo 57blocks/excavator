@@ -25,7 +25,8 @@
  * graph's facts) is merged into the graph by the view page's own rule
  * (`packages/report-view/src/data/semantics.ts`): a node's summary is its entry's when
  * that is not empty, empty when the entry was contradicted, else the node's own; its
- * tags are the entry's when there are any, else the node's own; the semantic layers
+ * tags are the entry's when there are any, else the node's own; its `verification` is the
+ * entry's verdict when it has one (the copy shows it beside the summary); the semantic layers
  * replace the graph's when there is at least one. Entries for ids the graph lacks are
  * counted, not placed.
  *
@@ -133,15 +134,16 @@ const CONTRADICTED = 'contradicted';
 const nonEmpty = (value) => typeof value === 'string' && value !== '';
 const tagList = (value) => (Array.isArray(value) ? value.filter((tag) => typeof tag === 'string') : []);
 
-/** One node's summary and tags after its semantic entry, by the view page's order of sources. */
+/** One node's summary, tags and verdict after its semantic entry, by the view page's order of sources; no verdict when neither has one. */
 function mergedText(node, entry) {
   const ownSummary = nonEmpty(node.summary) ? node.summary : '';
   const ownTags = tagList(node.tags);
   const entryTags = tagList(entry.tags);
   const tags = entryTags.length > 0 ? entryTags : ownTags;
   const verification = nonEmpty(entry.verification) ? entry.verification : nonEmpty(node.verification) ? node.verification : null;
-  if (verification === CONTRADICTED) return { summary: '', tags };
-  return { summary: nonEmpty(entry.summary) ? entry.summary : ownSummary, tags };
+  const verdict = verification === null ? {} : { verification };
+  if (verification === CONTRADICTED) return { summary: '', tags, ...verdict };
+  return { summary: nonEmpty(entry.summary) ? entry.summary : ownSummary, tags, ...verdict };
 }
 
 /** Merges the semantic product into the graph in place; the row says what it gave. */

@@ -194,6 +194,22 @@ describe('the semantic product of a full analysis', () => {
     expect(manifest.rows.find((row) => row.key === 'semantics')).toEqual({ key: 'semantics', status: 'merged', reason: "3 nodes; 0 entries for ids the graph lacks; 1 layers replace the graph's" });
   });
 
+  it('carries each entry\'s verdict onto its node, and writes none for an entry without one', () => {
+    writeFull({
+      entries: {
+        'file:src/a.js': { summary: 'Runs the job.', tags: [], semanticSourceHash: HASH_A, verification: 'verified' },
+        'function:src/a.js:run': { summary: 'Opens a socket.', tags: [], semanticSourceHash: HASH_A, verification: 'contradicted' },
+        'file:src/b.js': { summary: 'Loads.', tags: [], semanticSourceHash: HASH_B },
+      },
+      layers: [ALL_LAYER],
+    });
+    const { data } = pack();
+    expect(nodeOf(data, 'file:src/a.js').verification).toBe('verified');
+    expect(nodeOf(data, 'function:src/a.js:run').verification).toBe('contradicted');
+    expect(nodeOf(data, 'file:src/b.js')).not.toHaveProperty('verification');
+    expect(nodeOf(data, 'function:src/b.js:load')).not.toHaveProperty('verification');
+  });
+
   it('replaces the graph\'s layers with the semantic graph\'s, and keeps them when it has none or was made from other facts', () => {
     writeFull({ entries: {}, layers: [ALL_LAYER] });
     expect(pack().data['knowledge-graph.json'].layers).toEqual([ALL_LAYER]);
