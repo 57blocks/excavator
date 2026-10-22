@@ -515,6 +515,19 @@ describe('annotate-graph — a calls edge must reach the declaration its site re
     expect(report.counts.edgeTargetMismatch).toBe(0);
     expect(report.counts.callSites.unresolved).toBe(1);
   });
+
+  it('resolves the site by the fact graph call scope, so a re-export-only target does not make it ambiguous', () => {
+    // app.ts imports ./helper and only re-exports ./other (`export ... from`),
+    // so other.ts declares nothing app.ts can call by a bare name.
+    const inputs = wrongTarget();
+    inputs.importMap.importMap['src/app.ts'] = ['src/helper.ts', 'src/other.ts'];
+    inputs.importMap.reexportOnly = { 'src/app.ts': ['src/other.ts'] };
+    const { annotated, audit: report } = audit(inputs);
+
+    expect(edgeOf(annotated, 'calls', 'function:src/app.ts:run', WRONG).verification).toBe('contradicted');
+    expect(report.counts.edgeTargetMismatch).toBe(1);
+    expect(report.counts.callSites.ambiguous).toBe(0);
+  });
 });
 
 describe('annotate-graph — node fields, ledger, digests', () => {
