@@ -10,6 +10,7 @@
  * through these functions.
  */
 
+import { isUtf8 } from 'node:buffer';
 import { spawnSync } from 'node:child_process';
 import { realpathSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -74,18 +75,46 @@ export function listTrackedFiles(dir, sha) {
   return listTrackedEntries(dir, sha).map((entry) => entry.path);
 }
 
-/** Fixed-tree entries with Git mode preserved so symlinks never become
- * regular files when a snapshot is materialized path-by-path. */
-export function listTrackedEntries(dir, sha) {
-  const result = run(['ls-tree', '-r', '-z', sha], dir, { encoding: 'utf-8' });
-  if (result.status !== 0) {
-    throw new Error(`git ls-tree failed for ${sha} in ${dir}: ${result.stderr || result.status}`);
+/** A path whose bytes are not valid UTF-8, with `%` and every byte from 0x80
+ *  up written as `%XX`. Directory and extension rules still see its shape;
+ *  git's own `\351` quoting would not survive, because the selection policy
+ *  rewrites `\` to `/`. Since `%` itself is encoded, two different byte
+ *  sequences never become the same string. */
+function percentEncodePathBytes(bytes) {
+  let out = '';
+  for (const byte of bytes) {
+    out += byte >= 0x80 || byte === 0x25 ? `%${byte.toString(16).toUpperCase()}` : String.fromCharCode(byte);
   }
-  return result.stdout.split('\0').filter(Boolean).map((record) => {
-    const match = record.match(/^(\d+)\s+(\S+)\s+([0-9a-f]+)\t([\s\S]+)$/);
-    if (!match) throw new Error(`git ls-tree returned an invalid entry for ${sha} in ${dir}`);
-    return { mode: match[1], type: match[2], oid: match[3], path: match[4] };
-  });
+  return out;
+}
+
+/** Fixed-tree entries with Git mode preserved so symlinks never become
+ * regular files when a snapshot is materialized path-by-path. The output is
+ * read as bytes: a path that is valid UTF-8 decodes exactly as decoding the
+ * whole output did, and one that is not gets its percent-encoded form plus
+ * `pathNotUtf8: true`, since no string names it to `git show <sha>:<path>`. */
+export function listTrackedEntries(dir, sha) {
+  const result = run(['ls-tree', '-r', '-z', sha], dir);
+  if (result.status !== 0) {
+    throw new Error(`git ls-tree failed for ${sha} in ${dir}: ${result.stderr?.toString('utf-8') || result.status}`);
+  }
+  const stdout = result.stdout;
+  const entries = [];
+  for (let start = 0; start < stdout.length;) {
+    const nul = stdout.indexOf(0, start);
+    const end = nul === -1 ? stdout.length : nul;
+    const record = stdout.subarray(start, end);
+    start = end + 1;
+    if (record.length === 0) continue;
+    const tab = record.indexOf(0x09);
+    const match = tab === -1 ? null : record.subarray(0, tab).toString('utf-8').match(/^(\d+)\s+(\S+)\s+([0-9a-f]+)$/);
+    const pathBytes = record.subarray(tab + 1);
+    if (!match || pathBytes.length === 0) throw new Error(`git ls-tree returned an invalid entry for ${sha} in ${dir}`);
+    const [, mode, type, oid] = match;
+    if (isUtf8(pathBytes)) entries.push({ mode, type, oid, path: pathBytes.toString('utf-8') });
+    else entries.push({ mode, type, oid, path: percentEncodePathBytes(pathBytes), pathNotUtf8: true });
+  }
+  return entries;
 }
 
 /**
