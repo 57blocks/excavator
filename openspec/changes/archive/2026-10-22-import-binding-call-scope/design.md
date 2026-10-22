@@ -164,3 +164,13 @@ TS/JS 的 `calls` 边与 `calls-*` 缺口会变，TS/JS 结构行的调用点会
   - 前端唯一失去的边是编造：组件里的局部函数被连到被导入的服务模块里的同名函数。
   - 新增的边按绑定可达，改名、转发与原歧义各抽一条，都正确。
   - Node 服务成员失去的 47 个调用点都在 CommonJS 文件里，被调者是用 `require()` 解构出的名字。其中 45 个能按相同的相对路径对上解构语句，另外 2 个的 `require()` 用了另一种路径写法，指向同一模块。这些原来的边是对的，是 D4 的代价；读 CommonJS 另立变更。
+- **评审（中风险档，reviewer 代理；PR 上逐条答复，会话全部解决）：**
+  - 第 1 轮（`bdd82ee6`）：2 Important、0 Nit、1 Pre-existing。
+    - Important：审计的 `edge-missing` 按被调者原文找模型的边，改名导入、默认导入与命名空间成员的调用因此把正确的边报成缺失。`1b10ed08` 修复：唯一记录带上调用点到达的声明（文件与名字），按声明找模型的边（D5）。
+    - Important：审计的 `calls-unresolved` 原因仍说「调用方文件及其导入里没有声明」，对本变更移进来的 `require()` 调用与被多标 `local` 的调用不成立。`1b10ed08` 改写原因，并写明任一块里声明的名字算作整个函数的绑定（D7）。
+    - Pre-existing：`buildExpectedRecords` 按被调者原文建 `calls` 记录，带 `local` 的调用点也算在内，编造的边可能被判为 `verified`。基线结果相同，答复为不改，另立后续。
+  - 第 2 轮（`a72db32c`）：1 Important、1 Nit、0 Pre-existing。
+    - Important：经绑定解析的正确边在判词上仍走 `findRecord`，按目标名找记录，可能判为 `unverified` 或 `contradicted`。本变更没改判词路径，审计也只跑模型拼出的图、不跑 Lazy 事实图；同一份模型图在基线与本分支的审计代码下判词完全相同。答复为 Pre-existing、不改，与上一轮那条合并为同一后续。
+    - Nit：审计的新原因漏列三种形态（直接调用命名空间、不是点号名字的被调者、没解析到的导入路径）。`85502bec` 修复：两份原因共用 `BOUND_CALL_UNRESOLVED_FORMS`，事实图的原因文本逐字节不变（D7）。
+  - 第 3 轮（`f081291a`）：0 Important、0 Nit、0 Pre-existing。
+  - `f081291a` 上 CI（CI gate 与 Privacy scan）通过。
