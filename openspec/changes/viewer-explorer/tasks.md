@@ -3,8 +3,9 @@
 0. `docs(openspec): propose viewer-explorer`：本变更的文件，以及 viewer-learn 的暂停说明。
 1. `feat(explorer): copy the Understand Anything dashboard unchanged`（1.1）。
 2. `feat(explorer): read inlined data and run from one offline HTML`（1.2–1.3）。
-3. `feat(view): pack the dashboard copy with the project's products`（2.1–2.2）。
-4. `docs(openspec): record viewer-explorer acceptance and archive`（3.1–3.3）。
+3. `feat(view): pack the explorer copy with the project's products`（2.1–2.3）。
+4. `feat(explorer): group the top level by folder when the graph has no layers`（2.4）。
+5. `docs(openspec): record viewer-explorer acceptance and archive`（3.1–3.3）。
 
 每个 commit 单独通过 O2。
 
@@ -19,6 +20,8 @@
 
 - [ ] 2.1 `explorer-data.mjs` 形状转换与 `explorer.html` 写出（design D4），`validateGraph` 问题数。验证：O1 条数与内容不变、导览覆盖、缺产物缺键，各先红后绿；`view.html` 字节不变的测试。
 - [ ] 2.2 回复多一行 `Explorer:`，skill 契约测试同步。验证：单测。
+- [ ] 2.3 语义产物并进图、`null` 提交号写成空字符串（design D4）。验证：O1 层替换与保留、摘要与标签的来源顺序、矛盾摘要为空、提交号两张图各一条，各先红后绿。
+- [ ] 2.4 没有层时按目录分组（design D4a）。验证：O1 分组覆盖每个顶层节点恰一次、目录与聚类两种、有层时不动，先红后绿；O3 冒烟加一个无层夹具，结构图有卡片。
 
 ## 3. 验收
 

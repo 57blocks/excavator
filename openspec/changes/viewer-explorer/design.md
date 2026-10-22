@@ -97,10 +97,26 @@ UA 的 Tailwind 4 与主题 CSS 原样带上；它若引用外部字体，换成
 - `knowledge-graph.json`：头记录的 `fields` 加上全部 node 与 edge 记录拼回一个对象，`coverage` 与 `gaps` 一并保留（UA 不读，但不丢）；
 - `domain-graph.json`：原样；
 - `meta.json`：原样，另加 UA 读的字段时只从已有字段换名，不造值；
+- 语义产物：`/excavator-view` 已有的 `semantics` 产物（`semantics.mjs`：只留新鲜条目、矛盾摘要置空、语义图与知识图同一 facts digest 才带层）按 `view.html` 的合并规则（`report-view/src/data/semantics.ts`）并进图：
+  - 节点摘要先取条目的非空摘要；条目判为矛盾时为空，不回退到节点自己的；否则用节点自己的；
+  - 标签先取条目的非空标签，否则用节点自己的；
+  - 语义产物带至少一个层时，用它的层替换图里的 `layers`，否则保留图里的；
+  - 图里没有的条目不进页面，个数写进打包结果的这一行。
+  go-multirepo 的知识图本身 0 层、节点摘要为空，层（9 个，覆盖全部 2,106 个文件、每个文件只在一层）与摘要都在语义产物里；不并进来副本的结构图就是空的。
+- 提交号：不在 git 里的项目两张图的 `project.gitCommitHash` 都是 `null`，副本的 `validateGraph` 要求字符串，否则整张图判为致命（领域图会被静默丢掉）。副本自己用空字符串表示没有提交号，所以 `null` 写成 `""`，别的字段不动。
 - 导览：`tour.json` 与图同一修订时，其 `steps` 按 UA 的 `TourStep` 取 `order, title, description, nodeIds` 放进图的 `tour`，覆盖图里原有的；不同修订或没有导览时用图里原有的 `tour`；
 - 源码：按 `sources.mjs` 现有规则内联。
 
 同一份页面组装（`page-assembly.mjs`）把占位换成数据，写到 `.excavator/explorer.html`。回复多一行：`Explorer: <路径>; <N> issues`，N 是用副本同一个 `validateGraph` 在打包时数出的问题条数（例如 `mentions` 边）。
+
+### D4a 没有层时按目录分组
+
+UA 的结构图顶层只画层（`GraphView` 在 `layers` 为空时什么都不画），而 UA 自己的分析总会产出层，所以副本没有退路。我们的零模型分析不产出层，语义产物不新鲜时也不带层，这两种都是正常路径，页面不能因此空白。
+
+改法在副本载入图的地方（`store.ts` 的 `setGraph`）：图的 `layers` 为空且有节点时，取顶层节点（不是任何 `contains` 边的目标的节点），用副本已有的 `deriveContainers`（按公共前缀之后的第一段目录分组；分组少于 2 个或某组超过七成时改用 Louvain 连接聚类）分组，每组变成一个层交给后面的导航、导览、筛选与图例；被它拆出的单节点组与根目录下的节点并进根分组 `~`，保证每个顶层节点恰在一组。另记 `layerSource`（`graph`、`folder`、`community`），项目概览的计数与图例在不是 `graph` 时称「分组」（各语言的 locale 加两个键）。
+
+- 为什么不在打包时写进数据：层是模型的判断，打包只改形状；把目录写成层会让页面数据声称有层。分组只在页面里派生，页面数据里的 `layers` 仍为空。
+- 为什么不再跑一次架构分析：完整分析已经把层写进了语义产物，D4 把它并进来；剩下没有层的情况本来就是没做完整分析，不该为看页面去补一次模型运行。
 
 ### D5 验收在真实浏览器里从磁盘打开
 
