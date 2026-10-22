@@ -31,7 +31,7 @@ go-multirepo 的产物与 UA 的格式几乎一致：
 ## Goals / Non-Goals
 
 **Goals:**
-- 用户能双击 `ua-view.html` 看到与 UA 仪表盘一样的界面，数据是本项目的；
+- 用户能双击 `dashboard.html` 看到与 UA 仪表盘一样的界面，数据是本项目的；
 - 副本相对来源的每一处改动都能在 git diff 里逐行看到。
 
 **Non-Goals:**
@@ -43,7 +43,7 @@ go-multirepo 的产物与 UA 的格式几乎一致：
 
 ### D1 原样复制、单独一个 commit
 
-`packages/dashboard/src`（含 `__tests__`）、`index.html` 与它引用的 `packages/core/src` 模块（`types`、`schema`、`search`，以及它们再引用的模块）原样复制进 `packages/ua-view`。core 的模块放在 `packages/ua-view/src/core/`，导入路径 `@understand-anything/core/*` 用 Vite 与 TypeScript 的别名指过去，不改源文件里的 import。复制进来的文件开头不加东西，仓库根的 `LICENSE` 原样放进包内（`packages/ua-view/LICENSE.understand-anything`），另附一个 `UPSTREAM.md` 写来源仓库、提交号与复制了哪些路径。
+`packages/dashboard/src`（含 `__tests__`）、`index.html` 与它引用的 `packages/core/src` 模块（`types`、`schema`、`search`，以及它们再引用的模块）原样复制进 `packages/dashboard`。core 的模块放在 `packages/dashboard/src/core/`，导入路径 `@understand-anything/core/*` 用 Vite 与 TypeScript 的别名指过去，不改源文件里的 import。复制进来的文件开头不加东西，仓库根的 `LICENSE` 原样放进包内（`packages/dashboard/LICENSE.upstream`），另附一个 `UPSTREAM.md` 写来源仓库、提交号与复制了哪些路径。
 
 第一个 commit 只有复制与让它能构建的包配置（`package.json`、`tsconfig`、`vite.config.ts`），这个 commit 里不改任何复制来的文件；构建能过、测试能跑，只是数据仍去 `fetch`。之后的离线改动是第二个 commit，`git diff` 就是我们对 UA 的全部改动。
 
@@ -54,20 +54,34 @@ go-multirepo 的产物与 UA 的格式几乎一致：
 
 | 位置 | 改法 |
 |---|---|
-| `App.tsx` 的 `dataUrl` 与各 `fetch` | 改为从 `window.__EXCAVATOR_UA_DATA__`（打包时写入的对象，键是原来的文件名）取；某个键不存在时按原来请求失败的分支走，使副本落进它自己的空状态 |
+| `App.tsx` 的 `dataUrl` 与各 `fetch` | 改为从 `window.__EXCAVATOR_DASHBOARD_DATA__`（打包时写入的对象，键是原来的文件名）取；某个键不存在时按原来请求失败的分支走，使副本落进它自己的空状态 |
 | `TokenGate` | 不再渲染，令牌视为已通过 |
 | `CodeViewer` 的源码 `fetch` | 从内联的源码表取；没有内联源码（`--no-source`）时走原来的失败分支 |
 | `KnowledgeGraphView` 的 Worker | 构建成内联的 blob Worker，做法同 `report-view` |
 | 陈旧度 | 打包时按 `meta.json` 与项目当前 git 状态算出 `staleness.json` 的内容写入；算不出时不写，副本照原样不显示陈旧提示 |
 | `localStorage` | 读写包一层 try/catch，失败时当作没有存储 |
+| 界面上的产品名 | 页面标题、`appName`（没有项目名时的回退）、引导层的标题与正文、`WarningBanner` 的报问题链接，改为 Excavator 与本仓库的 issues 地址；各语言的 locale 文件同改这几个键 |
 
 `import.meta.env.DEV` 的分支在生产构建里本来就是 false，不改。`VITE_DEMO_MODE` 不设。
 
 数据对象只在打包时写入一次，所以改动集中在读的地方，组件的状态流不变。
 
+### D2a 我们的命名不带 UA
+
+用户：「我们的名称可以不出现 ua 吗」。凡是我们起的名字都不带 UA：
+- 包是 `packages/dashboard`（`@excavator/dashboard`），产出 `.excavator/dashboard.html`；
+- 回复行 `Dashboard:`，内联数据 `window.__EXCAVATOR_DASHBOARD_DATA__`，打包模块 `dashboard-data.mjs`；
+- 上游许可文件放成 `LICENSE.upstream`；本变更名 `viewer-dashboard`。
+
+保留上游名字的只有两处：
+- MIT 要求保留的版权与许可声明，以及写明来源的 `UPSTREAM.md`；
+- 复制来的代码里上游自己的内部标识（例如导入路径 `@understand-anything/core/*`、它的数据目录名），用户看不到。
+
+旧名检查（`tests/refs/legacy-literals.test.mjs`）对这两处按「与上游逐行相同」放行：放行表是 `packages/dashboard/upstream-lines.json`，每项是 `<相对路径>\n<整行>` 的 sha256。复制来的行与我们必须写的几行（`tsconfig.json` 的别名、`vite.config.ts` 的别名、`UPSTREAM.md` 的来源行）逐条入表；表外任何一行带旧名都失败，所以我们以后改动复制文件时写进去的旧名仍会被拦下。用户同意了这样放行（「可以，按你推荐的进行」）。
+
 ### D3 构建成一个 HTML
 
-`packages/ua-view/vite.config.ts` 照 `report-view` 的配置：
+`packages/dashboard/vite.config.ts` 照 `report-view` 的配置：
 - 单文件插件、内联全部资源、`inlineDynamicImports`；
 - 只构建、不送服务；
 - 模板开头列出打包的第三方包与许可（复用 `report-view/scripts/licenses.mjs`），UA 本身的 MIT 声明写在最前；
@@ -77,18 +91,18 @@ UA 的 Tailwind 4 与主题 CSS 原样带上；它若引用外部字体，换成
 
 ### D4 打包只改形状
 
-`skills/excavator-view/` 新增 `ua-data.mjs`，产出 `window.__EXCAVATOR_UA_DATA__`：
+`skills/excavator-view/` 新增 `dashboard-data.mjs`，产出 `window.__EXCAVATOR_DASHBOARD_DATA__`：
 - `knowledge-graph.json`：头记录的 `fields` 加上全部 node 与 edge 记录拼回一个对象，`coverage` 与 `gaps` 一并保留（UA 不读，但不丢）；
 - `domain-graph.json`：原样；
 - `meta.json`：原样，另加 UA 读的字段时只从已有字段换名，不造值；
 - 导览：`tour.json` 与图同一修订时，其 `steps` 按 UA 的 `TourStep` 取 `order, title, description, nodeIds` 放进图的 `tour`，覆盖图里原有的；不同修订或没有导览时用图里原有的 `tour`；
 - 源码：按 `sources.mjs` 现有规则内联。
 
-同一份页面组装（`page-assembly.mjs`）把占位换成数据，写到 `.excavator/ua-view.html`。回复多一行：`UA view: <路径>; <N> issues`，N 是用副本同一个 `validateGraph` 在打包时数出的问题条数（例如 `mentions` 边）。
+同一份页面组装（`page-assembly.mjs`）把占位换成数据，写到 `.excavator/dashboard.html`。回复多一行：`Dashboard: <路径>; <N> issues`，N 是用副本同一个 `validateGraph` 在打包时数出的问题条数（例如 `mentions` 边）。
 
 ### D5 验收在真实浏览器里从磁盘打开
 
-用 headless Chrome 打开 `file://…/ua-view.html`，在 go-multirepo 上逐项操作：
+用 headless Chrome 打开 `file://…/dashboard.html`，在 go-multirepo 上逐项操作：
 - 结构图顶层 → 进一层 → 聚焦一个文件；
 - 领域图 → 打开一个 flow；
 - 代码查看器；
@@ -103,7 +117,7 @@ UA 的 Tailwind 4 与主题 CSS 原样带上；它若引用外部字体，换成
 
 - **UA 的校验不认我们的数据** → 打包时用同一个 `validateGraph` 先数出问题，写进回复；验收时核对副本显示的问题与打包时数出的一致。不改数据去迎合它。
 - **模板体积** → UA 带 react-markdown、dagre、d3-force 等，模板会比 `report-view` 大。验收记录体积；超过 16 MB 才算问题。
-- **两份查看器并存** → 用户可能分不清该看哪个。回复里两行各写清楚，旧的写 `Viewer:`、新的写 `UA view:`。并存只到 Excavator 的页面搬进副本为止。
+- **两份查看器并存** → 用户可能分不清该看哪个。回复里两行各写清楚，旧的写 `Viewer:`、新的写 `Dashboard:`。并存只到 Excavator 的页面搬进副本为止。
 - **上游更新** → 原样复制、单独 commit、`UPSTREAM.md` 记提交号，以后同步上游可以对比两个提交号之间的 diff 再重放我们的改动。
 
 ## Oracles
@@ -113,6 +127,6 @@ UA 的 Tailwind 4 与主题 CSS 原样带上；它若引用外部字体，换成
   - D2 的读数据函数（键缺失走失败分支）。
   各项先红后绿。
 - O2 全量门：`pnpm install --frozen-lockfile && pnpm -r build && pnpm test && pnpm typecheck && node scripts/check-refs.mjs && openspec validate --all --strict`、`claude plugin validate .`、`node scripts/view-smoke-graph.mjs`，加上副本自带的测试。
-- O3 离线冒烟：headless Chrome 以 `file://` 打开夹具包的 `ua-view.html`，网络请求为 0、无控制台错误、结构图有卡片。
+- O3 离线冒烟：headless Chrome 以 `file://` 打开夹具包的 `dashboard.html`，网络请求为 0、无控制台错误、结构图有卡片。
 - O4 go-multirepo 上按 D5 逐项截图、与 UA 开发服务器对照。
 - O5 `/excavator-view` 真实运行一次，回复两行都在，两个文件都能打开。

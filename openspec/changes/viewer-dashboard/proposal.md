@@ -6,7 +6,7 @@ UA 是 MIT 许可。它的仪表盘是 Vite + React 单页应用，图、布局�
 
 ## What Changes
 
-- **整份复制 UA 仪表盘**：`understand-anything-plugin/packages/dashboard` 的源码（含测试）与它用到的 `packages/core` 中的类型、校验与搜索模块，原样放进新包 `packages/ua-view`，保留 MIT 许可与来源提交号。第一个 commit 只有原样复制，之后的每处改动都能在 diff 里看到。
+- **整份复制 UA 仪表盘**：`understand-anything-plugin/packages/dashboard` 的源码（含测试）与它用到的 `packages/core` 中的类型、校验与搜索模块，原样放进新包 `packages/dashboard`，保留 MIT 许可与来源提交号。第一个 commit 只有原样复制，之后的每处改动都能在 diff 里看到。
 - **只为离线做最少的改动**：
   - 六处 `fetch` 数据文件改为读页面里内联的数据；
   - 代码查看器的源码改为读内联的源码；
@@ -15,7 +15,7 @@ UA 是 MIT 许可。它的仪表盘是 Vite + React 单页应用，图、布局�
   - 陈旧度在打包时算好写进页面；
   - 整个应用构建成一个自包含的 HTML 模板，不发任何网络请求。
   除此以外的界面、交互、主题与文案都不改。
-- **打包**：`/excavator-view` 额外写出 `.excavator/ua-view.html`，数据取自现有产物，只改形状不改内容：
+- **打包**：`/excavator-view` 额外写出 `.excavator/dashboard.html`，数据取自现有产物，只改形状不改内容：
   - `knowledge-graph.jsonl` 拼回一个 JSON；
   - `domain-graph.json` 原样；
   - `tour.json` 的步骤放进图的 `tour`；
@@ -33,10 +33,10 @@ UA 是 MIT 许可。它的仪表盘是 Vite + React 单页应用，图、布局�
 
 ### Modified Capabilities
 
-- `report-viewer`：新增「UA 仪表盘副本」一条要求。
+- `report-viewer`：新增「离线仪表盘」一条要求。
 
 ## Impact
 
-- 新包 `packages/ua-view`（MIT 来源文件，`@xyflow/react`、`elkjs`、`graphology`、`graphology-communities-louvain`、`zustand`、`@dagrejs/dagre`、`d3-force`、`react-markdown`、`remark-gfm`、`prism-react-renderer` 等依赖）。
+- 新包 `packages/dashboard`（MIT 来源文件，`@xyflow/react`、`elkjs`、`graphology`、`graphology-communities-louvain`、`zustand`、`@dagrejs/dagre`、`d3-force`、`react-markdown`、`remark-gfm`、`prism-react-renderer` 等依赖）。
 - `skills/excavator-view/`：打包脚本多写一个文件，回复多一行。
 - 测试：UA 自带的测试随复制进来，在我们的 `pnpm test` 里跑；新增打包与离线的测试。
