@@ -210,7 +210,8 @@ describe('excavator-diff skill: the reply is the analysis the last command print
         join(data, 'source-manifest.json'),
         join(project, 'diff-analysis-20261022T000000Z-101.md'),
         '.excavator/diff-analysis-20261022T000000Z-102.md',
-        join(data, 'diff-analysis-20261022T000000Z-1/../../outside.md'),
+        // Not join: it would resolve the two .. and leave a path outside the data directory in plain sight.
+        `${data}/diff-analysis-20261022T000000Z-1/../../outside.md`,
       ];
       for (const path of refused) {
         const run = sh(replyFor(path), project);
