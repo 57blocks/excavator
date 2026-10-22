@@ -2,7 +2,7 @@
 
 `/excavator-diff` 有七步指令，没有选项。第 7 步列了分析要讲的四方面（改了什么、影响什么、涉及哪些层、风险），外加一句「建议要仔细审什么」，没有说回复的形式。基线见 proposal：分析是中文，以项目文件要的「## 结论」开头。
 
-onboard 与 prd 的回复只有几行，由最后一条命令打印。diff 的回复就是分析本身，几十行；回复只给路径会把答案藏起来。这里先把分析写进数据目录里的文件，再由最后一条命令打印整份文件：回复的结构由固定标题定，回复与分析的一致由命令定。第一版没有这一步，见 D2。explain 的同一做法在另一个变更里（explain-reply-language）。
+prd 的回复只有几行，由最后一条命令打印；onboard 在 onboard-report-language 里改成同样的做法，那个变更先于本变更合入。diff 的回复就是分析本身，几十行；回复只给路径会把答案藏起来。这里先把分析写进数据目录里的文件，再由最后一条命令打印整份文件：回复的结构由固定标题定，回复与分析的一致由命令定。第一版没有这一步，见 D2。explain 的同一做法在另一个变更里（explain-reply-language）。
 
 ## Goals / Non-Goals
 
@@ -48,13 +48,13 @@ frontmatter 加 `argument-hint: "[--language <lang>]"`。第 3 步解析 `PROJEC
 >    cat .excavator/diff-analysis.md
 >    ```
 >
->    A project file's rule on how to reply (what to lead with, a summary, verification results) does not apply to this reply.
+>    Reply with exactly the lines it prints and nothing else: write nothing before or after them, no word on what was done, and no summary or notes. A project file's rule on how to reply (what to lead with, a summary, verification results) does not apply to this reply.
 
 前四个标题就是改前第 7 步的四方面；改前那句「建议要仔细审什么」原来没有标题，成为第五节。
 
 **为什么固定标题：** 项目文件的「先说结论」能插进来，是因为回复没有形式。固定的标题加上「文件以第一个标题开头」与「回复只能是命令打印的内容」，开头只能是第一个标题，也能逐次核对。
 
-**为什么由命令打印：** 第一版第 7 步让模型直接把分析写成回复，并要求第一个标题之前不写任何文字。O3 三次里有一次，回复第一行是一句进度说明（「I have enough context from the knowledge graph. Let me write up the analysis.」），接着才是第一个标题：模型把对上一步的播报与回复写在了同一条消息里。onboard 与 prd 的回复由最后一条命令打印，播报落在命令之前，不会并进回复；这里照搬，分析先写进文件，最后一条命令 `cat` 它。第一版的运行见验收记录。
+**为什么由命令打印：** 第一版第 7 步让模型直接把分析写成回复，并要求第一个标题之前不写任何文字。O3 三次里有一次，回复第一行是一句进度说明（「I have enough context from the knowledge graph. Let me write up the analysis.」），接着才是第一个标题：模型把对上一步的播报与回复写在了同一条消息里。prd 与 onboard-report-language 之后的 onboard，回复由最后一条命令打印，播报落在命令之前，不会并进回复；这里照搬，分析先写进文件，最后一条命令 `cat` 它。第一版的运行见验收记录。
 
 **备选：** 把分析写进 `.excavator/` 再回复路径。否决：diff 是看完改动立刻要读的，回复只给路径要用户多打开一个文件。
 
