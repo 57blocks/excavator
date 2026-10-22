@@ -127,6 +127,15 @@ describe('privacy-scan', () => {
     expect(nonzero(result)).toEqual({});
   });
 
+  it('counts a corpus pattern an integrity hash hits by chance only outside the lockfile', () => {
+    const line = `    resolution: {integrity: sha512-Qx/${CORPUS}+Rt==}\n`;
+    commit('chore: lock', { 'pnpm-lock.yaml': line, 'src/hash.txt': line });
+    const result = scan();
+    expect(result.status).toBe(1);
+    expect(nonzero(result)).toEqual({ 'corpus added lines': 1 });
+    expectNoListedText(result);
+  });
+
   it('does not count a corpus name in openspec/, docs/ or root Markdown', () => {
     commit('docs: record', {
       'openspec/a.md': `verified on ${CORPUS}\n`,
