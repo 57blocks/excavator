@@ -23,8 +23,8 @@
 
 - [x] 2.1 O1：逐个做变异并记录哪个测试变红，做完还原。
 - [x] 2.2 O3 三次、O4 一次完整运行，按判据逐条记录。
-- [ ] 2.3 O5、O6，验收记录写进 design.md；开 PR；按 `REVIEW.md` 跑 reviewer agent 并处理各轮。
+- [x] 2.3 O5、O6，验收记录写进 design.md；开 PR；按 `REVIEW.md` 跑 reviewer agent 并处理各轮。
 
 ## 3. 归档
 
-- [ ] 3.1 同步主规格并归档；CI 通过后用 `gh pr merge --merge` 合入。
+- [x] 3.1 同步主规格并归档；CI 通过后用 `gh pr merge --merge` 合入。
