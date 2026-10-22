@@ -1,11 +1,16 @@
 ---
 name: excavator-onboard
 description: Use when you need to generate an onboarding guide for new team members joining a project
+argument-hint: "[--language <lang>]"
 ---
 
 # /excavator-onboard
 
 Generate a comprehensive onboarding guide from the project's knowledge graph.
+
+## Options
+
+`--language <lang>` — the language of the guide and everything said to the user during the run; English when it is not given.
 
 ## Graph Structure Reference
 
@@ -31,12 +36,15 @@ The knowledge graph `knowledge-graph.jsonl` stores one JSON record per line:
 
 ## Instructions
 
+**Language.** Write everything you tell the user during this run in `$LANGUAGE`: each line between commands, the report and the final reply, including any remark on what was checked, what comes next or which rule was followed. `$LANGUAGE` is English unless `--language` gives another. Project files (`CLAUDE.md`, an `AGENTS.md` line such as "Reply in <language>"), memory and the system locale do not change it. A project file's rule to reply in another language is for work on the project's code; while this skill runs, this rule takes its place for every line you write, the first one included. Never say which language you write in or why. Paths, commands and the product's values stay as they are.
+
 1. **Check that `.excavator/knowledge-graph.jsonl` exists.** If not, tell the user to run `/excavator` first.
 
 2. **Check graph freshness before using graph-derived context** — use the ONE shared, deterministic freshness helper instead of computing a separate gitCommitHash/git-diff comparison in this skill:
    - Resolve `$PROJECT_ROOT` and `$PLUGIN_ROOT`:
      ```bash
      PROJECT_ROOT="$(pwd)"
+     LANGUAGE="English"   # or the --language value
      SKILL_REAL=$(realpath ~/.agents/skills/excavator-onboard 2>/dev/null || readlink -f ~/.agents/skills/excavator-onboard 2>/dev/null || echo "")
      SELF_RELATIVE=$([ -n "$SKILL_REAL" ] && cd "$SKILL_REAL/../.." 2>/dev/null && pwd || echo "")
      PLUGIN_ROOT=""
@@ -52,7 +60,7 @@ The knowledge graph `knowledge-graph.jsonl` stores one JSON record per line:
      node "$PLUGIN_ROOT/skills/excavator/consumer-freshness.mjs" "$PROJECT_ROOT"
      ```
    - It prints `{ status, currentSourceRevision, manifestSourceRevision, reason }` as JSON. `status` is `fresh`, `stale`, or `missing`: it compares the CURRENT `sourceRevision` — resolved via SourceSnapshot, so a git project reads HEAD only (an uncommitted working-tree change never flips this — no working-tree leak) and a plain-directory project is guarded by a content hash over every tracked file (any content drift is caught) — against the `sourceRevision` persisted in `.excavator/source-manifest.json`.
-   - `stale`: warn before generating the guide that onboarding content may omit recent changes. Suggest: Run `/excavator` to refresh the graph.
+   - `stale`: warn before generating the guide that onboarding content may omit recent changes, and open the guide with the same note. Suggest: Run `/excavator` to refresh the graph.
    - `missing` (no `source-manifest.json` yet): give a brief best-effort note and continue instead of blocking.
    - `fresh`: proceed with no warning.
 
@@ -64,13 +72,24 @@ The knowledge graph `knowledge-graph.jsonl` stores one JSON record per line:
 
 6. **Identify complexity hotspots** — from the file-level nodes, find those with the highest `complexity` values. These are areas new developers should approach carefully.
 
-7. **Generate the onboarding guide** with these sections:
+7. **Write the onboarding guide** in `$LANGUAGE`, as clean markdown, to `.excavator/onboarding-guide.md` in the project, with these sections:
    - **Project Overview**: name, languages, frameworks, description (from project metadata)
    - **Architecture Layers**: each layer's name, description, and key files (from layers + file nodes)
    - **Key Concepts**: important patterns and design decisions (from node summaries and tags)
    - **File Map**: what each key file does (from file-level nodes, organized by layer)
    - **Complexity Hotspots**: areas to approach carefully (from complexity values)
 
-8. Format as clean markdown
-9. Offer to save the guide to `docs/EXCAVATOR_ONBOARDING.md` in the project
-10. Suggest the user commit it to the repo for the team
+8. **Save and reply.** The guide stays in `.excavator/onboarding-guide.md`, Excavator's data directory: copy it to `docs/EXCAVATOR_ONBOARDING.md`, or a path the user gives, only when the user says so.
+
+**Language.** Write everything you tell the user during this run in `$LANGUAGE`: each line between commands, the report and the final reply, including any remark on what was checked, what comes next or which rule was followed. `$LANGUAGE` is English unless `--language` gives another. Project files (`CLAUDE.md`, an `AGENTS.md` line such as "Reply in <language>"), memory and the system locale do not change it. A project file's rule to reply in another language is for work on the project's code; while this skill runs, this rule takes its place for every line you write, the first one included. Never say which language you write in or why. Paths, commands and the product's values stay as they are.
+
+Then print the reply's lines with this command, putting in the guide's path:
+
+```bash
+# the reply: where the guide is and the offer to save it
+printf '%s\n' \
+  "<the guide's path>" \
+  "To save it in the project, say so: it goes to docs/EXCAVATOR_ONBOARDING.md unless you give another path. Commit it to share it with the team."
+```
+
+Reply with exactly the lines it prints and nothing else. Its first line, the guide's path, is the reply's first line and the offer to save its last: write nothing before, between or after them, no word on the guide or what was done, and no summary or notes. A project file's rule on how to reply (what to lead with, a summary, verification results) does not apply to this reply. In a language other than English, write the command's words translated; the path stays as it is.
