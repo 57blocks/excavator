@@ -1,3 +1,5 @@
+> **暂停（2026-10-22）**：第 1–4 片已完成并提交。用户决定先整份复制 Understand Anything 的仪表盘、之后再改（「先复制，我们之后再做修改」），见变更 viewer-ua-dashboard。第 5–8 片不再在旧查看器上做，之后改写成对副本的修改；本变更暂不归档。
+
 ## Commit 序列
 
 0. `docs(openspec): propose viewer-learn`：本变更的文件。
