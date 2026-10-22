@@ -4,6 +4,7 @@ import { defineConfig } from 'vitest/config';
 //   - tests/**                                          — relocated skill tests (out-of-plugin so they
 //                                                         do not ship via the marketplace bundle)
 //   - src/**                 — skill TS source tests
+//   - packages/report-view/test/** — the view template's build check and data layer
 //
 // The `@excavator/core` package owns its own vitest.config.ts and is
 // invoked separately via `pnpm --filter @excavator/core test`; its
@@ -13,6 +14,7 @@ export default defineConfig({
     include: [
       'tests/**/*.test.{js,mjs,ts}',
       'src/**/*.test.{js,mjs,ts}',
+      'packages/report-view/test/**/*.test.{ts,tsx,mjs}',
     ],
     exclude: [
       '**/node_modules/**',
