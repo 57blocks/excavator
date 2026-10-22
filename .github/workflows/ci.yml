@@ -1,0 +1,72 @@
+# The full gate every pull request must pass before it merges into main
+# (openspec change ci-merge-gate, design D1). It runs every check the
+# verification table in AGENTS.md lists, whatever the change touches: a
+# required check that a path filter skips counts as passed, so filtering
+# would let a change merge unchecked.
+name: CI
+
+on:
+  pull_request: {}
+  push:
+    branches:
+      - main
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+# A new push to a pull request supersedes its running gate; runs on main
+# are never cancelled.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  gate:
+    name: CI gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # Reads the pnpm version from package.json's "packageManager" field.
+      - name: Set up pnpm
+        uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+
+      # Must run after pnpm/action-setup: the pnpm cache needs pnpm on PATH.
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          cache: pnpm
+
+      # Tree-sitter grammars may fall back to a node-gyp build, which runs
+      # `python`; the tests also run the skills' Python scripts.
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.x'
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Build
+        run: pnpm -r build
+
+      - name: Typecheck
+        run: pnpm run typecheck
+
+      - name: Check references
+        run: node scripts/check-refs.mjs
+
+      # The OpenSpec CLI is not a repository dependency; pin the version the
+      # changes are validated with locally.
+      - name: Validate OpenSpec
+        run: npx --yes @fission-ai/openspec@1.10.0 validate --all --strict
+
+      - name: Core tests
+        run: pnpm --filter @excavator/core test
+
+      - name: Tests
+        run: pnpm test

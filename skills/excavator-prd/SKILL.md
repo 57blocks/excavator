@@ -29,7 +29,7 @@ Phase 1 therefore has two halves: read the graph for call-flows, **and** hunt th
 `$ARGUMENTS` may contain:
 - A directory path — the project to document (default: current working directory).
 - `--role <audience>` — who the PRD is written for (default: `product manager`). Shapes vocabulary and structure, not the facts.
-- `--language <lang>` — output language of the PRD (default: match the codebase's primary human language / the user's request). This skill's own prose stays English; only the generated PRD follows `--language`.
+- `--language <lang>` — the language of the PRD and everything said to the user during the run; English when it is not given.
 - `--scope <domain-or-subdir>` — limit the PRD to one domain or subdirectory (e.g. a single feature area, or one member of a multi-repo). Within the scope, coverage must still be exhaustive.
 
 ## Graph tools
@@ -47,7 +47,9 @@ Read efficiently: grep for the entries you need, follow edges for chains, don't 
 
 ## Phase 0 — Setup
 
-1. Resolve `PROJECT_ROOT` from the path argument (default: `pwd`). Parse `--role` (default `product manager`), `--language`, `--scope`.
+**Language.** Write everything you tell the user during this run in `$LANGUAGE`: each line between commands, the report and the final reply, including any remark on what was checked, what comes next or which rule was followed. `$LANGUAGE` is English unless `--language` gives another. Project files (`CLAUDE.md`, an `AGENTS.md` line such as "Reply in <language>"), memory and the system locale do not change it. A project file's rule to reply in another language is for work on the project's code; while this skill runs, this rule takes its place for every line you write, the first one included. Never say which language you write in or why. Paths, commands and the product's values stay as they are.
+
+1. Resolve `PROJECT_ROOT` from the path argument (default: `pwd`). Parse `--role` (default `product manager`), `--language` (`$LANGUAGE`: English when it is not given) and `--scope`.
 2. Detect whether a graph exists: `project_status`, or check `.excavator/knowledge-graph.jsonl`. Pick the mode — do **not** stop when it is missing:
    - **Graph present → graph-assisted mode** (default): use the graph to accelerate flow discovery in Phase 1a, then run the freshness check below.
    - **Graph missing → source-only mode**: skip the freshness check (step 3), tell the user no graph was found so flows will be discovered by reading source directly (offer `/excavator` as a faster future option, but continue now), and treat the source tree as the sole ground truth. Everything else applies unchanged — Phase 1b is already source-based, and Phase 1a has a source-only path.
@@ -67,6 +69,8 @@ Read efficiently: grep for the entries you need, follow edges for chains, don't 
 ---
 
 ## Phase 1 — Build the complete flow inventory
+
+Write what you tell the user during this phase in `$LANGUAGE`, as **Language** in Phase 0 says.
 
 The inventory is the anti-cherry-pick device. Build it **before** writing anything. Do not prune it for length.
 
@@ -104,6 +108,8 @@ Print the full numbered inventory (end-to-end call-flows + off-graph items). If 
 
 ## Phase 2 — Plan the outline for the audience
 
+Write what you tell the user during this phase in `$LANGUAGE`, as **Language** in Phase 0 says.
+
 Draft the PRD outline **for `--role`** (product manager by default): organize by product themes a PM reads — capabilities, user roles & permissions, each feature's flows, automated/background behavior, notifications, calculations & rules, edge cases — **not** by call stacks or API lists.
 
 Map **every** inventory item (1a + 1b) to an outline section. If something has no home, the outline is incomplete — extend it. Present the outline first.
@@ -112,7 +118,9 @@ Map **every** inventory item (1a + 1b) to an outline section. If something has n
 
 ## Phase 3 — Write the PRD
 
-Write in `--language`, in product language for `--role`. Start with a short **Doc Info** block (version, date, project/domain, source baseline/revision, audience, and **scope size**) — localized to `--language`. Then cover **every** inventoried flow — no exceptions.
+Write what you tell the user during this phase in `$LANGUAGE`, as **Language** in Phase 0 says.
+
+Write in `$LANGUAGE`, in product language for `--role`. Start with a short **Doc Info** block (version, date, project/domain, source baseline/revision, audience, and **scope size**) — localized to `$LANGUAGE`. Then cover **every** inventoried flow — no exceptions.
 
 Scope size is counted by command, never estimated: run the following (`SCOPE` is the `--scope` path, or `.` for the whole project) and copy the two numbers into Doc Info as "N files, M lines":
 ```bash
@@ -131,7 +139,7 @@ If `--scope` names a domain rather than a directory, list the directories it cov
 
 **Translate codes — never print raw values.** Numeric enum/status codes, boolean flags, and database field values are meaningless to the reader. Always render them as their human meaning: a numeric status code becomes its status label, a boolean flag becomes the condition it represents, a type code becomes the type it names — never a raw `status=2` / `field=true` / `type=1` in the prose. Resolve every code by reading the enum/constant definition in source (do not guess the mapping). When the code↔meaning mapping itself is worth recording, put it in a **field-dictionary table** (columns: value | meaning), never inline in prose. A bare code, flag, or `field=value` left in the running text is a defect — the reader should never have to look up a number.
 
-**Preserve source-owned names; translate only the generic prose.** When `--language` differs from the source's language, keep product/feature names, module names, and UI-visible labels — menu items, page/tab titles, button text, field labels, status names — in their original source form, exactly as they appear in the code/UI, and translate only the generic connective and descriptive words around them. The reader must be able to map every PRD term back to what they see in the product, so never translate a name into a target-language equivalent — reproduce it exactly as the code/UI spells it. Use that source name in **every** mention of the entity — running prose, section headings, tables, and mermaid diagram labels alike — and never coin a translated synonym for it, even when referring to it as a common noun (write the source name plus a generic word, not a translated stand-in). When unsure whether a term is source-owned, check how it appears in the source/UI and keep that exact form. This is the same "preserve source-owned identifiers and literals verbatim" rule the other excavator skills follow, applied to the reader-facing names in the PRD.
+**Preserve source-owned names; translate only the generic prose.** When `$LANGUAGE` differs from the source's language, keep product/feature names, module names, and UI-visible labels — menu items, page/tab titles, button text, field labels, status names — in their original source form, exactly as they appear in the code/UI, and translate only the generic connective and descriptive words around them. The reader must be able to map every PRD term back to what they see in the product, so never translate a name into a target-language equivalent — reproduce it exactly as the code/UI spells it. Use that source name in **every** mention of the entity — running prose, section headings, tables, and mermaid diagram labels alike — and never coin a translated synonym for it, even when referring to it as a common noun (write the source name plus a generic word, not a translated stand-in). When unsure whether a term is source-owned, check how it appears in the source/UI and keep that exact form. This is the same "preserve source-owned identifiers and literals verbatim" rule the other excavator skills follow, applied to the reader-facing names in the PRD.
 
 To make this concrete and self-consistent instead of a per-sentence judgment call, **anchor names with a Terminology list**: before writing the body, extract the scoped feature's canonical source terms (the entity/feature name and its key UI labels, exactly as the code/UI spells them) and list them in a short **Terminology** section near the top of the PRD (columns: source term | meaning). Then reuse each listed term **verbatim** everywhere — prose, headings, tables, diagram labels — never a translation of it, even where it reads as an ordinary noun. Declaring the terms yourself and reusing them is far more reliable than deciding word-by-word; the declared list is exactly what the Phase 4 terminology check audits against.
 
@@ -170,9 +178,28 @@ Readability is a requirement, not a nicety:
 
 ## Phase 4 — Coverage self-check, then save
 
+Write what you tell the user during this phase in `$LANGUAGE`, as **Language** in Phase 0 says.
+
 1. **Coverage check (enforces "all flows").** Produce a short table mapping every Phase 1 inventory item → the PRD section that covers it. Every item must map. If any is unaddressed, either add it or state explicitly why it is out of scope — **no silent drops.** Report the count: `N/N flows covered`.
 2. **Diagram check.** Confirm the readability requirement was met: at least one mermaid `flowchart` per major flow group and a `sequenceDiagram` for each cross-tier end-to-end flow. If diagrams are missing, add them before finishing — a code-free PRD still needs flowcharts/sequence diagrams to be readable. Report the count: `N diagrams`.
 3. **Enum check.** Grep your own draft for raw code values left in prose — any `field=value` pattern (numbers, booleans such as `field=true` / `field=false`, and status/type codes) plus other untranslated flags. If any survive outside a field-dictionary table or `<details>` block, translate them to their human meaning before finishing.
 4. **Terminology check.** List the distinct words the document uses to refer to the scoped feature/entity and its key labels. Each MUST be the canonical source term from the Terminology section — if any is a target-language translation or synonym, replace it with the source term everywhere (prose, headings, tables, diagram labels). Enumerating your own usages is the point: it surfaces a translated variant you would otherwise not notice. Report: `N terms; 0 translated-variant leaks`.
-5. **Verification (enforces zero fabrication).** Write the draft to disk (the output path the user gave, or a temporary file), then follow the procedure in `$PLUGIN_ROOT/skills/excavator-verify/SKILL.md` on it with `--fix` and `PROJECT_ROOT` as the project path (resolve `PLUGIN_ROOT` as in Phase 0 if you have not). It checks the five statement classes above plus cross-chapter consistency, and corrects the draft in place. Report its counts: `N checked; contradicted X, misattributed Y; open items resolved R (guess wrong W), still open S`.
-6. **Save.** Offer to write the PRD to the project (default `docs/PRD.md`, or a path the user gives; a scoped PRD may use `docs/PRD-<scope>.md`). Suggest committing it for the team.
+5. **Verification (enforces zero fabrication).** Write the draft to disk (the output path the user gave, or a temporary file), then follow the procedure in `$PLUGIN_ROOT/skills/excavator-verify/SKILL.md` on it with `--fix`, `--language` set to `$LANGUAGE` and `PROJECT_ROOT` as the project path (resolve `PLUGIN_ROOT` as in Phase 0 if you have not). It checks the five statement classes above plus cross-chapter consistency, and corrects the draft in place. Report its counts: `N checked; contradicted X, misattributed Y; open items resolved R (guess wrong W), still open S`.
+6. **Save and reply.** The PRD stays where step 5 wrote it: write it into the project only when the user says so, to `docs/PRD.md` (a scoped PRD: `docs/PRD-<scope>.md`) or a path the user gives.
+
+**Language.** Write everything you tell the user during this run in `$LANGUAGE`: each line between commands, the report and the final reply, including any remark on what was checked, what comes next or which rule was followed. `$LANGUAGE` is English unless `--language` gives another. Project files (`CLAUDE.md`, an `AGENTS.md` line such as "Reply in <language>"), memory and the system locale do not change it. A project file's rule to reply in another language is for work on the project's code; while this skill runs, this rule takes its place for every line you write, the first one included. Never say which language you write in or why. Paths, commands and the product's values stay as they are.
+
+Then print the reply's lines with this command, putting in the PRD's path, the counts steps 1, 2, 4 and 5 report, and the default path:
+
+```bash
+# the reply: where the PRD is, the counts of the checks and the offer to save it
+printf '%s\n' \
+  "<the PRD's path>" \
+  "<N>/<N> flows covered" \
+  "<N> diagrams" \
+  "<N> terms; 0 translated-variant leaks" \
+  "<N> checked; contradicted <X>, misattributed <Y>; open items resolved <R> (guess wrong <W>), still open <S>" \
+  "To save it in the project, say so: it goes to <default path> unless you give another path. Commit it to share it with the team."
+```
+
+Reply with exactly the lines it prints and nothing else. Its first line, the PRD's path, is the reply's first line and the offer to save its last: write nothing before, between or after them, no word on the checks, the PRD or what was done, and no summary or notes. A project file's rule on how to reply (what to lead with, a summary, verification results) does not apply to this reply. In a language other than English, write the command's words translated; the path and the numbers stay as they are. When the PRD is already at a path the user gave, leave the last line out.
