@@ -1,8 +1,16 @@
-import { useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type MouseEvent, type ReactNode } from 'react';
 
+import { pageOfRow } from '../../lib/detail-rows';
 import { formatNumber } from '../../lib/format';
+import { staggerDelay } from '../../lib/motion';
 import { footerText, initialSortState, nextSort, PAGE_SIZE, tableView, type SortKey, type SortState } from '../../lib/table';
 import { cellContent } from './Cell';
+
+/** How long a row that a link led to stays highlighted. */
+export const FLASH_MS = 1600;
+
+/** A click on a control inside a row (a link, a button) is that control's, not the row's. */
+const fromControl = (event: MouseEvent) => event.target instanceof Element && event.target.closest('a, button, input, select, textarea, summary, label') !== null;
 
 const WIDTHS = {
   sm: 'max-w-[160px]',
@@ -30,13 +38,20 @@ interface Props<T> {
   /** A row can be clicked (or opened with Enter) when this is given. */
   onRowClick?: (row: T) => void;
   isSelected?: (row: T) => boolean;
+  /** The key that names a row in a link (`row=`); each row carries it as `data-xv-row`. */
+  rowKey?: (row: T) => string;
+  /**
+   * The key of a row to bring into view: the table turns to the page that holds it under the current sort,
+   * scrolls to it and highlights it briefly. The caller passes it only when the row is among `rows`.
+   */
+  focusKey?: string | null;
 }
 
 const ARROW_UP = String.fromCharCode(0x25b2);
 const ARROW_DOWN = String.fromCharCode(0x25bc);
 
 /** A table that sorts by any column and pages 200 rows at a time. Sorting and paging act on every row handed in. */
-export function DataTable<T>({ rows, columns, initialSort = null, pageSize = PAGE_SIZE, onRowClick, isSelected }: Props<T>) {
+export function DataTable<T>({ rows, columns, initialSort = null, pageSize = PAGE_SIZE, onRowClick, isSelected, rowKey, focusKey = null }: Props<T>) {
   const [sort, setSort] = useState<SortState>(() => initialSortState(columns.map((c) => c.label), initialSort));
   // The page belongs to the rows it was chosen for: other rows (a new filter) start on the first page.
   const [paging, setPaging] = useState<{ rows: readonly T[]; page: number }>({ rows, page: 1 });
@@ -45,8 +60,44 @@ export function DataTable<T>({ rows, columns, initialSort = null, pageSize = PAG
   const { shown, bounds } = tableView(rows, keyOf, sort, requested, pageSize);
   const goto = (page: number) => setPaging({ rows, page });
 
+  // The rows enter one after another on the table's first paint only, the first twelve 30 ms apart and the rest with
+  // the twelfth (lib/motion's stagger); the CSS skips it with reduced motion.
+  const firstPaint = useRef(true);
+  useEffect(() => {
+    firstPaint.current = false;
+  }, []);
+  const stagger = firstPaint.current;
+
+  const box = useRef<HTMLDivElement | null>(null);
+  const [flash, setFlash] = useState<string | null>(null);
+  // The row the reader clicked is already in view: opening it does not scroll or flash the table.
+  const clicked = useRef<string | null>(null);
+  const choose = (row: T) => {
+    clicked.current = rowKey ? rowKey(row) : null;
+    onRowClick?.(row);
+  };
+  useEffect(() => {
+    if (focusKey === null || !rowKey) return undefined;
+    if (clicked.current === focusKey) {
+      clicked.current = null;
+      return undefined;
+    }
+    const found = pageOfRow(rows, keyOf, sort, (row) => rowKey(row) === focusKey, pageSize);
+    if (found === null) return undefined;
+    setPaging({ rows, page: found.page });
+    setFlash(focusKey);
+    const timer = setTimeout(() => setFlash(null), FLASH_MS);
+    return () => clearTimeout(timer);
+    // Only a new key moves the table: sorting or paging afterwards is the reader's.
+  }, [focusKey]);
+  useEffect(() => {
+    if (flash === null) return;
+    const target = [...(box.current?.querySelectorAll('[data-xv-row]') ?? [])].find((el) => el.getAttribute('data-xv-row') === flash);
+    target?.scrollIntoView({ block: 'center' });
+  }, [flash, bounds.page]);
+
   return (
-    <div className="min-w-0">
+    <div className="min-w-0" ref={box}>
       <div className="max-h-[70vh] max-w-full overflow-auto rounded-lg border border-line">
         <table className="w-full border-collapse text-[13px]">
           <thead>
@@ -77,13 +128,20 @@ export function DataTable<T>({ rows, columns, initialSort = null, pageSize = PAG
           <tbody>
             {shown.map((row, rowIndex) => {
               const clickable = typeof onRowClick === 'function';
+              const key = rowKey ? rowKey(row) : undefined;
+              const selected = isSelected?.(row) ?? false;
               return (
                 <tr
                   key={rowIndex}
+                  data-xv-row={key}
+                  data-xv-row-selected={selected ? '' : undefined}
+                  data-xv-row-flash={key !== undefined && key === flash ? '' : undefined}
+                  aria-selected={isSelected ? selected : undefined}
                   tabIndex={clickable ? 0 : undefined}
-                  onClick={clickable ? () => onRowClick(row) : undefined}
-                  onKeyDown={clickable ? (event) => event.key === 'Enter' && onRowClick(row) : undefined}
-                  className={`${clickable ? 'cursor-pointer hover:[&>td]:bg-paper' : ''} ${isSelected?.(row) ? '[&>td]:bg-highlight' : ''}`}
+                  onClick={clickable ? (event) => !fromControl(event) && choose(row) : undefined}
+                  onKeyDown={clickable ? (event) => event.key === 'Enter' && event.target === event.currentTarget && choose(row) : undefined}
+                  style={stagger ? { animationDelay: `${staggerDelay(rowIndex)}s` } : undefined}
+                  className={`${stagger ? 'xv-row-in' : ''} ${clickable ? 'xv-row-click cursor-pointer hover:[&>td]:bg-paper' : ''} ${selected ? '[&>td]:bg-highlight' : ''} ${key !== undefined && key === flash ? 'xv-row-flash' : ''}`}
                 >
                   {columns.map((column) => {
                     const full = column.title ? column.title(row) : null;

@@ -26,9 +26,9 @@
 
 ## 3. 详情页
 
-- [ ] 3.1 Unused、Hotspots、Doc map 页换成页头、统计格与分布图（spec「详情页的行面板与跳转」）。验证：冒烟核对图中各数与产物计数相等。
-- [ ] 3.2 行面板：字段、源码预览、在图中定位、打开代码；Unused 加组成员与引用者，Hotspots 文件行加逐年提交与同改文件。验证：冒烟 `row-panel-unused`、`row-panel-hotspots`。
-- [ ] 3.3 hash 参数 `row` 与 `prefix`：分页、滚动、高亮、找不到时写明；Code、Reports 与 Products 页的版式（design D6）。验证：O1 `row=` 与 `prefix=` 的 hash 往返先红后绿；冒烟 `row-link`、`prefix-filter`。
+- [x] 3.1 Unused、Hotspots、Doc map 页换成页头、统计格与分布图（spec「详情页的行面板与跳转」）。验证：冒烟核对图中各数与产物计数相等。
+- [x] 3.2 行面板：字段、源码预览、在图中定位、打开代码；Unused 加组成员与引用者，Hotspots 文件行加逐年提交与同改文件。验证：冒烟 `row-panel-unused`、`row-panel-hotspots`。
+- [x] 3.3 hash 参数 `row` 与 `prefix`：分页、滚动、高亮、找不到时写明；Code、Reports 与 Products 页的版式（design D6）。验证：O1 `row=` 与 `prefix=` 的 hash 往返先红后绿；冒烟 `row-link`、`prefix-filter`。
 
 ## 4. 模式、切换与总览
 

@@ -123,11 +123,15 @@ function unusedProduct(revision) {
     residualAssumptions: ['The fixture lists only what it was written to list.'],
     decisions: [{ kind: 'framework-entry', reason: 'a callback the framework invokes', query: '.name | test("^on")', hits: 2 }],
     unused: [
-      row('function:src/main.js:orphan', 'orphan', 'src/main.js', [7, 9], 'unreferenced', 'high', 0),
-      row('function:src/util.js:leaf', 'leaf', 'src/util.js', [5, 7], 'only-reachable-from-unused', 'medium', 0),
+      // orphan records no referrer, leaf records orphan, and unused_loader has no referrers field (not provided).
+      { ...row('function:src/main.js:orphan', 'orphan', 'src/main.js', [7, 9], 'unreferenced', 'high', 0), referrers: [] },
+      { ...row('function:src/util.js:leaf', 'leaf', 'src/util.js', [5, 7], 'only-reachable-from-unused', 'medium', 0), referrers: [{ id: 'function:src/main.js:orphan', edge: 'calls', reverse: false }] },
       row('function:lib/data.py:unused_loader', 'unused_loader', 'lib/data.py', [5, 6], 'unreferenced', 'low', 1, 'python'),
     ],
-    groups: [],
+    groups: [
+      { group: 0, entries: ['function:src/main.js:orphan'], members: ['function:src/main.js:orphan', 'function:src/util.js:leaf'] },
+      { group: 1, entries: ['function:lib/data.py:unused_loader'], members: ['function:lib/data.py:unused_loader'] },
+    ],
     testOnly: [row('function:src/util.js:helper', 'helper', 'src/util.js', [1, 3], 'unreferenced', 'low', 1)],
   };
 }
@@ -182,13 +186,19 @@ function hotspotsProduct(revision) {
     conservation: { changesRead: 12, attributed: 10, outsideSelection: 2 },
     residualAssumptions: ['History is read from HEAD only.'],
     // scripts/build.sh is a file of the repository that the graph has no node for.
-    files: [file('src/main.js', { score: 90, commits: 9 }), file('src/util.js', { score: 40, commits: 4 }), file('lib/data.py', { score: 5, commits: 1, lastChanged: null }), file('scripts/build.sh', { score: 3, commits: 1, lines: 2 })],
+    // src/main.js has its commits by year; the other files do not (not provided).
+    files: [file('src/main.js', { score: 90, commits: 9, commitsByYear: { 2025: 4, 2026: 5 } }), file('src/util.js', { score: 40, commits: 4 }), file('lib/data.py', { score: 5, commits: 1, lastChanged: null }), file('scripts/build.sh', { score: 3, commits: 1, lines: 2 })],
     directories: [
       { path: 'src', files: 2, commits: 13, authors: 1, added: 20, removed: 4, lines: 18, score: 130, lastChanged: '2026-01-02T03:04:05+00:00', commitsByYear: { 2025: 6, 2026: 7 }, concentration: { commitsByPeople: 13, topAuthorShare: 1, authorsFor80Percent: 1 } },
       { path: 'lib', files: 1, commits: 1, authors: 1, added: 3, removed: 0, lines: 6, score: 5, lastChanged: null },
     ],
-    pairs: [{ a: 'src/main.js', b: 'src/util.js', together: 4, shareOfA: 0.44, shareOfB: 1 }],
-    coChange: { maxFilesPerCommit: 30, minTogether: 3, commitsCounted: 4, commitsOverLimit: 0, pairsListed: 1, pairsBelowMinimum: 0 },
+    // src/main.js changed with three files: util.js most, then data.py and build.sh as often (ties go by path).
+    pairs: [
+      { a: 'scripts/build.sh', b: 'src/main.js', together: 3, shareOfA: 1, shareOfB: 0.33 },
+      { a: 'src/main.js', b: 'src/util.js', together: 4, shareOfA: 0.44, shareOfB: 1 },
+      { a: 'lib/data.py', b: 'src/main.js', together: 3, shareOfA: 1, shareOfB: 0.33 },
+    ],
+    coChange: { maxFilesPerCommit: 30, minTogether: 3, commitsCounted: 4, commitsOverLimit: 0, pairsListed: 3, pairsBelowMinimum: 0 },
     groups: [],
     featureGroups: null,
   };
@@ -408,7 +418,7 @@ export function makeSmokeProject(dir, { full = false } = {}) {
       },
       unused: { unused: 3, 'unused-shown': 3 },
       'doc-map': { units: 3, 'units-shown': 3, checks: 3 },
-      hotspots: { files: 4, directories: 2, pairs: 1, groups: 0 },
+      hotspots: { files: 4, directories: 2, pairs: 3, groups: 0 },
       code: { sources: 6 },
       graph: graphExpected(full),
       ...(full ? { domain: DOMAIN_EXPECTED, tour: { steps: 2, sentences: 4, removedSentences: 1, factDigest: FACTS_DIGEST } } : {}),

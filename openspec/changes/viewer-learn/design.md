@@ -80,7 +80,7 @@
   - 产物没跑写 not run，跑了但这个节点不在其中写「不在列表里」。
 - 容器与层卡片：叠加层打开时，卡片上显示该范围的汇总（如「未使用 37」「最热文件 12 个」），侧栏显示同样的数，按钮跳到按路径前缀过滤的详情页。
 
-详情页路由新增 `row=<key>` 与 `prefix=<path>`：`#/unused?row=<nodeId>`、`#/hotspots?view=files&row=<path>`、`#/docmap?row=<unitId>`。进入时表格跳到这一行所在的页、滚动到它、短暂高亮，并打开行详情面板；找不到这一行时写明。
+详情页路由新增 `row=<key>` 与 `prefix=<path>`：`#/unused?row=<nodeId>`、`#/hotspots?view=files&row=<path>`、`#/docmap?row=<单元序号>`（单元 id 可以为空或重复，序号与 checks、coverage 用的一致）。进入时表格跳到这一行所在的页、滚动到它、短暂高亮，并打开行详情面板；找不到这一行时写明。
 
 ### D6 详情页
 
