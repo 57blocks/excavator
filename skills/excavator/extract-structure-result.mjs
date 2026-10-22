@@ -194,6 +194,13 @@ function isNamePairArray(value, keys) {
     isPlainObject(item) && keys.every(key => typeof item[key] === 'string'));
 }
 
+function isUnplacedArray(value) {
+  return Array.isArray(value) && value.every(item =>
+    isPlainObject(item) &&
+    typeof item.reason === 'string' &&
+    isLineRange(item.lineRange));
+}
+
 // TS/JS JSX elements: the tags that can name code, and a count of the rest.
 function isJsxFacts(value) {
   return isPlainObject(value) &&
@@ -292,7 +299,9 @@ function isValidStructuralAnalysis(analysis) {
     // Not a symbol array either: nested types are declarations below a class
     // the file already lists.
     hasValidOptionalField(analysis, 'nestedTypes', isNestedTypeArray) &&
-    hasValidOptionalField(analysis, 'jsx', isJsxFacts);
+    hasValidOptionalField(analysis, 'jsx', isJsxFacts) &&
+    // Not a symbol array: lines a reader could not place declare nothing.
+    hasValidOptionalField(analysis, 'unplaced', isUnplacedArray);
 }
 
 // What a Java call site is invoked on (java-member-call-resolution, D2). The
@@ -640,6 +649,14 @@ export function buildResult(file, totalLines, nonEmptyLines, analysis, callGraph
       kind: r.kind,
       startLine: r.lineRange[0],
       endLine: r.lineRange[1],
+    }));
+  }
+
+  if (analysis.unplaced && analysis.unplaced.length > 0) {
+    base.unplaced = analysis.unplaced.map(u => ({
+      reason: u.reason,
+      startLine: u.lineRange[0],
+      endLine: u.lineRange[1],
     }));
   }
 
