@@ -1,0 +1,87 @@
+## Context
+
+- Understand Anything 的导览来自 tour-builder 代理：它先写脚本算扇入、扇出、入口候选、从入口出发的 BFS、紧耦合簇与非代码文件，再按这些信号写 5–15 步 `{order, title, description, nodeIds, languageLesson?}`。它要求 `nodeIds` 必须是图里真有的 id，讲解「以节点摘要为据」，但没有任何核验。
+- Excavator 已有的数据（go-multirepo 实测）：
+  - 图谱 `knowledge-graph.jsonl`：10,483 个节点（function 6,527、file 2,106、class 1,766、config 76、pipeline 7、service 1），边 imports 18,329、contains 10,068、exports 4,984、calls 3,073；节点自带的 `summary` 全是空串（Full 模式）。
+  - 语义缓存 `semantic-cache.json`：每条 `{summary, tags, semanticSourceHash, languageAudit, verification}`；按 `isFresh` 判新鲜，结论 verified 6,949、unverified 1,330、contradicted 98、未核验 2,106。
+  - 语义图 `semantic-graph.json`：9 个层，`factDigest` 对图谱。
+  - 领域图 `domain-graph.json`：9 个 domain、36 个 flow、150 个 step，step 带 `nodeIds` 与 `evidence`。
+  - 图谱里没有 `document` 节点，README 不是节点，所以入口候选只有代码文件与非代码配置。
+- 已有的同类机制：`excavator-summary-verifier` 代理只看一条摘要与它的源码片段，给三档结论；doc-map 的第二个子代理只看单元文字与被引代码。导览的核验沿用这一做法。
+
+## Goals / Non-Goals
+
+**Goals**
+- 有一份可由查看页读取的导览产物，步骤与讲解由模型写，节点范围与结构由脚本限定。
+- 讲解里与源码不符的句子不进产物，删掉什么看得见。
+
+**Non-Goals**
+- 不给每个节点生成「语言要点」（Understand Anything 的 `languageNotes`）：1 万个节点逐个生成代价大，Learn 模式只需要每步一条。
+- 不改 `/excavator`，图谱的 `tour` 仍为空；不做多语言并存的导览。
+- 查看页如何显示导览放在 viewer-learn 变更。
+
+## Decisions
+
+### D1 脚本算候选集，模型只在候选集里选
+
+候选集是全图的结构事实（扇入扇出、BFS、每层代表文件），按「Core 边界」属于脚本：模型逐个转写会漏、会错。模型拿到的是几百个带摘要的候选，而不是 1 万个节点，上下文可控。
+
+`check` 要求 `nodeIds` 在候选集里，而不只是在图谱里。理由：候选都带摘要与核验结论，模型写讲解时有据可依；图谱里任挑一个节点，模型手里没有它的任何文字，只能凭名字猜。
+
+名额（扇入扇出各 20、每层 5、BFS 深度 3 且最多 60 个）只限定模型看到的范围，不影响任何计数；候选集写明每类截掉了多少，看得见。
+
+### D2 摘要的取法与查看页一致
+
+候选的摘要按 `skills/excavator/semantic-cache.mjs` 的 `isCanonicalSemanticCache` 与 `isFresh` 对 `source-manifest.json` 判新鲜，`contradicted` 的摘要置空，与 `skills/excavator-view/semantics.mjs` 用同一套规则（直接调用它，不另写一份）。没有语义缓存时取图谱节点自带的摘要（Lazy 模式），全为空时候选集写明「没有摘要」。
+
+### D3 逐句核验，句子由脚本切
+
+句子由 `slices` 按句末标点切分并编号（`<order>.d<n>` 讲解、`<order>.l<n>` 语言要点），核验结论按 id 回填。由脚本切而不是让子代理自己切，是为了让「每句都有结论」可以确定性地检查：缺一个 id 就是 `unchecked`。
+
+核验子代理 `excavator-tour-verifier` 的输入只有一步的句子与源码片段。它不看候选集里的摘要：摘要本身也是模型写的，拿它当证据就是以模型证模型。片段上限每个节点 120 行、每步 400 行，截断时片段末尾写明截掉的行数，子代理据此可以判 `unverified` 而不是猜。
+
+语言要点（如「Go 的 interface 是隐式实现的」）也逐句核验：判的是引用的代码里是否真有这种写法，而不是语言知识本身对不对。
+
+### D4 改写一次，然后删
+
+有 `contradicted` 句子的步退回给主模型改写一次，并附上被否定的句子与理由；改写后整步重新切句、重新核验，因为改写可能动到别的句子。第二次仍被否定的句子删除，不再改写：再改下去是让模型去迎合核验者，而不是对齐源码。
+
+`unverified` 的句子保留并标出：源码片段里看不出真假，不等于错；查看页把它显示成「未核验」。
+
+### D5 产物与新鲜度
+
+`.excavator/tour.json` 用 `format: "excavator-tour/1"`，带 `sourceRevision` 与 `factDigest`（取图谱 header 的 `factsDigest`）。查看页对比图谱判新鲜，不同时整份导览判为 different revision。写入走临时文件再改名，键按固定顺序输出，同一输入逐字节相同。
+
+### D6 skill 流程与回复
+
+1. 定位插件根与项目根，跑 `candidates`；
+2. 主模型读候选集，写 `tour/draft.json`；跑 `check`，失败就按列出的问题改，最多 3 次，仍失败则停下并报告原因；
+3. 跑 `slices`，每步派一个核验子代理，最多 10 个并行；跑 `verdicts`；
+4. 有 `contradicted` 的步改写一次，只对这些步重跑 `slices` 与核验，再跑 `verdicts`；
+5. 跑 `report` 写产物，最后一条命令打印回复的几行。
+
+回复语言、固定格式的最后回复都按 doc-map 已验证的写法：语言段落放在每条路线写答案之前；最后回复由最后一条命令打印，只放产物里写出的数。
+
+## Oracles
+
+验收只用 go-multirepo。
+
+- **O1 单测**（`tests/skill/excavator-tour/`），以下每条先用注入变异证明会红：
+  - 候选集：入口文件名规则、扇入扇出聚到文件、BFS 正向与深度、每层前 5、领域图 different revision 时无 flow 候选、`contradicted` 摘要为空串、截掉的数目；
+  - `check`：步数上下限、序号缺口、候选集外的 id、句数上下限、重复 id；
+  - `slices`：切句与编号、片段上限与截断说明；
+  - `verdicts`：缺结论记 `unchecked`、两次否定后删句、删空的步整步去掉并重新编号、`removed` 记录；
+  - `report`：确定性（同一输入两次逐字节相同）、`contradicted` 句子不在 `steps` 里、`factDigest` 等于图谱。
+- **O2 全量门**：`pnpm install --frozen-lockfile && pnpm -r build && pnpm test`、`pnpm typecheck`、`node scripts/check-refs.mjs`、`openspec validate --all --strict`、`claude plugin validate`。
+- **O3 真实运行**：在 go-multirepo 的 APFS 克隆上用 `claude -p --model sonnet` 跑 `/excavator-tour`（语料本身只读），记录花费、轮数、耗时。然后由独立的验收代理：
+  - 用自己的脚本核对：每个 `nodeIds` 都在图谱与候选集里，每句都有结论，`counts` 与 `steps` 和 `removed` 重算一致，`contradicted` 句子不在 `steps` 里，`factDigest` 等于图谱；
+  - 分层抽查：每种结论各抽 3 句（verified、unverified、被删掉的），自己读引用节点的源码判断结论是否成立，写明理由；
+  - 最后回复的行与规范一致，语言为英文，`.excavator/` 里只多出 `tour.json` 与 `tour/` 下的中间文件。
+- **O4 语言**：在克隆上带 `--language zh` 再跑一次，导览文字是中文，`contentLanguage` 为 `zh`，回复为中文；不带参数时为英文（O3 已覆盖）。
+
+## Risks / Trade-offs
+
+- **[核验者也是模型]** 核验子代理可能把对的判成错（删掉真话）或把错的判成对。→ 只看源码、看不到摘要与理由，降低以模型证模型；O3 分层抽查给出实测误判。删真话的代价是导览变短，删除记录看得见，可以接受。
+- **[讲解变得干瘪]** 只写能被源码片段证实的话，讲「为什么这样设计」会被判 `unverified`。→ 保留 `unverified` 并标出，不删。
+- **[候选集偏向大文件]** 扇入扇出排名偏向工具与类型文件。→ 每层前 5 与领域 flow 锚点补上业务代码；模型按教学顺序挑选。
+- **[没有 README 节点]** 第一步只能从代码入口开始。→ 这是图谱现状，不为导览单独读 README。
