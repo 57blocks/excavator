@@ -1,0 +1,63 @@
+# Checks the text each pull request brings into the repository (added
+# lines, commit messages, paths, title and body) against two name lists that
+# live only in this repository's secrets (openspec change ci-merge-gate,
+# design D2-D6). It fails when a list is unavailable, so a pull request from
+# a fork, which gets no secrets, fails here and is reopened from a branch of
+# this repository. Editing the title or body scans again.
+name: Privacy
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, edited]
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: privacy-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  scan:
+    name: Privacy scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      # The whole history, so the base and head of the pull request and
+      # origin/main are all present.
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+
+      # The lists, title and body come in through the environment and are
+      # written to files, never spliced into the script, so their text
+      # cannot run as shell. A manual run has no pull request: it scans the
+      # commits since the branch left main.
+      - name: Scan
+        env:
+          PRIVACY_NAMES: ${{ secrets.PRIVACY_NAMES }}
+          PRIVACY_CORPUS: ${{ secrets.PRIVACY_CORPUS }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          dir="$RUNNER_TEMP/privacy"
+          mkdir -p "$dir"
+          printf '%s\n' "$PRIVACY_NAMES" > "$dir/names"
+          printf '%s\n' "$PRIVACY_CORPUS" > "$dir/corpus"
+          printf '%s\n' "$PR_TITLE" > "$dir/title"
+          printf '%s\n' "$PR_BODY" > "$dir/body"
+          if [ -z "$BASE_SHA" ]; then
+            HEAD_SHA=$(git rev-parse HEAD)
+            BASE_SHA=$(git merge-base origin/main "$HEAD_SHA")
+          fi
+          node scripts/ci/privacy-scan.mjs "$BASE_SHA" "$HEAD_SHA" "$dir/names" "$dir/corpus" "$dir/title" "$dir/body"
