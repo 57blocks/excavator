@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState, type KeyboardEvent } from 'react';
 
+import { useCompact } from '../../hooks/use-compact';
 import { navigate, useRoute } from '../../hooks/use-route';
 import { selectHash } from '../../lib/graph-actions';
 import { parseGraphState, TOP_LEVEL } from '../../lib/graph-state';
@@ -16,6 +17,7 @@ import { useGraphUi } from '../../state/graph-ui';
  */
 export function SearchBox() {
   const ui = useGraphUi();
+  const compact = useCompact();
   const { route } = useRoute();
   const [query, setQuery] = useState('');
   const [wanted, setWanted] = useState(false);
@@ -54,7 +56,7 @@ export function SearchBox() {
         aria-expanded={open}
         aria-controls="xv-search-results"
         aria-label="Search nodes and files"
-        placeholder="Search nodes and files  ( / )"
+        placeholder={compact ? 'Search  ( / )' : 'Search nodes and files  ( / )'}
         value={query}
         data-xv-search=""
         onFocus={() => {

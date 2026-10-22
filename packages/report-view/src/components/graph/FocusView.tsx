@@ -21,7 +21,6 @@ import { FLOATING_EDGE_TYPES } from './FloatingEdge';
 import { FOCUS_CENTER_SIZE, FOCUS_NODE_SIZE, FOCUS_NODE_TYPES, type FocusData } from './FocusNodes';
 
 const GLASS = 'glass rounded-card';
-const LABELS_UP_TO = 12;
 const INK = 'var(--color-ink-soft)';
 const ACCENT = 'var(--color-accent)';
 
@@ -74,6 +73,7 @@ export function FocusView({ scene, centerId, filters, onSelect, onExit }: {
   const ui = useGraphUi();
   const drawerOpen = ui.drawer !== 'closed';
   const [hovered, setHovered] = useState<string | null>(null);
+  const [hoveredEdge, setHoveredEdge] = useState<string | null>(null);
 
   const edgeTypes = useMemo(() => shownEdgeTypes(filters, choices.edgeTypes, true), [filters, choices]);
   const visibility = useMemo(() => visibilityOf(index, structure, filters), [index, structure, filters]);
@@ -104,33 +104,35 @@ export function FocusView({ scene, centerId, filters, onSelect, onExit }: {
       if (entry) entry.types.push(edge.type);
       else byPair.set(pair, { source: edge.source, target: edge.target, types: [edge.type] });
     }
-    const labelAll = set.drawn.length <= LABELS_UP_TO;
     const edges: Edge[] = [...byPair.values()].map((pair, i) => {
       const touchesCenter = pair.source === centerId || pair.target === centerId;
       const touchesHover = hovered !== null && (pair.source === hovered || pair.target === hovered);
-      const lit = touchesHover || (hovered === null && touchesCenter);
+      const id = `focus-edge:${i}`;
+      const underPointer = hoveredEdge === id;
+      const lit = touchesHover || underPointer || (hovered === null && touchesCenter);
       const dimmed = hovered !== null && !touchesHover;
       const colour = lit ? ACCENT : INK;
       const marker = { type: MarkerType.ArrowClosed, width: 26, height: 26, color: colour, markerUnits: 'userSpaceOnUse' };
       return {
-        id: `focus-edge:${i}`,
+        id,
         source: pair.source,
         target: pair.target,
         type: 'floating',
-        ...(touchesHover || (hovered === null && labelAll && touchesCenter) ? { label: pair.types.join(', ') } : {}),
+        // Only the edge under the pointer is labelled: the labels of a node's edges drawn together sit on each other and on the cards.
+        ...(underPointer ? { label: pair.types.join(', ') } : {}),
         focusable: false,
         selectable: false,
-        zIndex: lit ? 10 : 0,
+        zIndex: underPointer ? 20 : lit ? 10 : 0,
         markerEnd: marker,
         style: { stroke: colour, strokeOpacity: dimmed ? 0.07 : lit ? 0.9 : 0.38, strokeWidth: lit ? 2 : 1.2 },
         labelStyle: { fontSize: 12, fontFamily: 'var(--font-mono)', fill: 'var(--color-ink)', fontWeight: 600 },
-        labelBgStyle: { fill: 'var(--color-surface)', fillOpacity: 0.95 },
+        labelBgStyle: { fill: 'var(--color-surface)', fillOpacity: 1 },
         labelBgPadding: [6, 3] as [number, number],
         labelBgBorderRadius: 6,
       };
     });
     return { nodes, edges };
-  }, [laid, set, index, centerId, hovered, onSelect]);
+  }, [laid, set, index, centerId, hovered, hoveredEdge, onSelect]);
 
   // The camera fits the set, above the drawer when that is open.
   const pane = useRef<HTMLDivElement | null>(null);
@@ -166,6 +168,8 @@ export function FocusView({ scene, centerId, filters, onSelect, onExit }: {
         edgeTypes={FLOATING_EDGE_TYPES}
         onNodeMouseEnter={(_event, node) => setHovered(node.id)}
         onNodeMouseLeave={() => setHovered(null)}
+        onEdgeMouseEnter={(_event, edge) => setHoveredEdge(edge.id)}
+        onEdgeMouseLeave={() => setHoveredEdge(null)}
         nodesDraggable={false}
         nodesConnectable={false}
         elementsSelectable={false}

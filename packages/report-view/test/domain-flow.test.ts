@@ -4,7 +4,6 @@ import { buildDomainIndex, type DomainEdge, type DomainNode } from '../src/data/
 import { buildDomainLevel, domainEdges, domainNodes, layoutDomainLevel, layoutsAsGrid, type DomainView } from '../src/lib/domain-flow';
 import { CLUSTER_SIZE } from '../src/lib/graph-layout';
 import { resolvePlace, type DomainPlace } from '../src/lib/domain-state';
-import { MAX_LABELLED_EDGES } from '../src/lib/graph-flow';
 
 const node = (id: string, type: string, extra: Partial<DomainNode> = {}): DomainNode => ({ id, type, name: `Name of ${id}`, summary: `About ${id}.`, ...extra });
 const edge = (source: string, target: string, type: string, extra: Partial<DomainEdge> = {}): DomainEdge => ({ source, target, type, ...extra });
@@ -162,25 +161,19 @@ describe('the nodes and edges handed to the canvas', () => {
     expect(boxes.every((b, i) => i === 0 || b.y > boxes[i - 1].y)).toBe(true);
   });
 
-  it('labels a cross-domain edge only while it touches the node under the pointer or the selected node, or is under the pointer itself', () => {
+  it('describes a cross-domain edge only while the pointer is over it, and lights the edges of a selected or hovered node without describing them', () => {
     const level = buildDomainLevel(index, at(null, null));
     const shown = (v: DomainView) => domainEdges(level, v).map((e) => (e.data as { showLabel: boolean }).showLabel);
     expect(shown(view())).toEqual([false, false]);
-    // domain:a touches the first link only.
-    expect(shown(view({ selected: 'domain:a' }))).toEqual([true, false]);
-    expect(shown(view({ hovered: 'domain:c' }))).toEqual([false, true]);
+    // domain:a touches the first link only: it is lit, not described.
+    expect(shown(view({ selected: 'domain:a' }))).toEqual([false, false]);
+    expect(shown(view({ hovered: 'domain:c' }))).toEqual([false, false]);
+    expect(domainEdges(level, view({ selected: 'domain:a' })).map((e) => (e.style as { stroke: string }).stroke)).toEqual(['var(--color-accent)', 'var(--color-ink-soft)']);
     expect(shown(view({ hoveredEdge: level.links[1].id }))).toEqual([false, true]);
+    // The edge under the pointer is raised above the rest.
+    expect(domainEdges(level, view({ selected: 'domain:a', hoveredEdge: level.links[1].id })).map((e) => e.zIndex)).toEqual([10, 20]);
     // Nothing is left out: the dimmed edge is still there.
     expect(domainEdges(level, view({ selected: 'domain:a' }))).toHaveLength(2);
-  });
-
-  it('labels none when a node has more edges than fit at once, apart from the one under the pointer', () => {
-    const many = Array.from({ length: MAX_LABELLED_EDGES + 2 }, (_, i) => node(`domain:m${i}`, 'domain'));
-    const hub = buildDomainIndex({ nodes: [node('domain:hub', 'domain'), ...many], edges: many.map((m) => edge('domain:hub', m.id, 'cross_domain', { description: 'd' })), gaps: [] });
-    const level = buildDomainLevel(hub, resolvePlace(hub, { domain: null, flow: null, node: null }) as DomainPlace);
-    const edges = (v: DomainView) => domainEdges(level, v).map((e) => (e.data as { showLabel: boolean }).showLabel);
-    expect(edges(view({ selected: 'domain:hub' })).some(Boolean)).toBe(false);
-    expect(edges(view({ selected: 'domain:hub', hoveredEdge: level.links[0].id }))[0]).toBe(true);
   });
 
   it('never labels the arrows of a flow: they are an order, not edges with a meaning of their own', () => {

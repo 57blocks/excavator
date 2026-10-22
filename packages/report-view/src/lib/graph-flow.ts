@@ -194,9 +194,6 @@ export function flowNodes(level: Level, plan: LevelPlan, layout: LevelLayout, vi
   return nodes;
 }
 
-/** A domain view's selected or hovered node whose edges are more than this has none of them labelled at once: the labels would sit on each other. */
-export const MAX_LABELLED_EDGES = 8;
-
 const INK = 'var(--color-ink-soft)';
 const ACCENT = 'var(--color-accent)';
 const BASE_OPACITY = 0.32;

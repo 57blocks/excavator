@@ -213,40 +213,89 @@ const SCENARIOS = [
     ];
   }],
 
-  // A node selected on a crowded level lights its edges, but labels none of them: only the edge under the pointer says its counts.
-  ['edge-labels', 'edge-crowd', () => driver(`
-    const labels = () => all('.react-flow__edge-textwrapper');
-    const apart = (rects) => rects.every((a, i) => rects.every((b, j) => j <= i || a.right <= b.left || b.right <= a.left || a.bottom <= b.top || b.bottom <= a.top));
-    const zOf = (el) => Number.parseInt(getComputedStyle(el).zIndex, 10) || 0;
-    const hover = async (edge, over) => {
-      const target = edge.querySelector('.react-flow__edge-interaction');
-      target.dispatchEvent(new MouseEvent(over ? 'mouseover' : 'mouseout', { bubbles: true, relatedTarget: document.body }));
-      await sleep(250);
-    };
-    const visit = async (hash, id) => {
+  // Edge labels, with the real pointer (CDP mouse events, so only what a pointer can reach is hovered). A selection lights edges and
+  // labels none; the edge under the pointer shows its label alone, on an opaque box above the cards, and it goes with the pointer.
+  ['edge-labels', 'edge-crowd', () => driver(`${LABEL_PROBE}
+    const SEL = '.react-flow__edge-textwrapper';
+    const visit = async (hash, ready) => {
       await go(hash);
-      await until(() => sidebar() === id);
-      await sleep(400);
-      const lit = all('.react-flow__edge').filter((edge) => Number(edge.querySelector('.react-flow__edge-path').style.strokeOpacity) > 0.5);
-      const rest = { level: level(), lit: lit.length, labelsAtRest: labels().length, restApart: apart(labels().map((el) => el.getBoundingClientRect())) };
-      await hover(lit[0], true);
-      const shown = labels();
-      const box = shown[0]?.getBoundingClientRect();
-      const nodeZ = Math.max(...all('.react-flow__node').map(zOf));
-      const hovered = { labels: shown.length, text: shown[0]?.textContent ?? null, opaque: shown[0] ? getComputedStyle(shown[0].querySelector('rect')).fillOpacity === '1' : false, above: shown[0] ? zOf(shown[0].closest('svg')) > nodeZ : false, inside: !!box && box.left >= 0 && box.right <= innerWidth };
-      await hover(lit[0], false);
-      return { ...rest, hovered, labelsAfter: labels().length };
+      await until(ready);
+      await sleep(900);
+      await away();
+      const rest = report(SEL);
+      const edge = all('.react-flow__edge').find((e) => edgePoint(e));
+      const at = edge ? edgePoint(edge) : null;
+      if (!at) return { rest, error: 'no edge could be reached by the pointer', edges: all('.react-flow__edge').length };
+      await __xvPointer(at.x, at.y);
+      await sleep(300);
+      const hovered = report(SEL);
+      await away();
+      await sleep(300);
+      return { rest, hovered, left: report(SEL), edges: all('.react-flow__edge').length };
     };
-    out.top = await visit('#/graph?node=' + encodeURIComponent('file:c0/a.js'), 'file:c0/a.js');
-    out.drilled = await visit('#/graph?path=n&node=' + encodeURIComponent('file:n/d0/a.js'), 'file:n/d0/a.js');
+    out.top = await visit('#/graph?node=' + encodeURIComponent('file:c0/a.js'), () => sidebar() === 'file:c0/a.js');
+    out.drilled = await visit('#/graph?path=n&node=' + encodeURIComponent('file:n/d0/a.js'), () => sidebar() === 'file:n/d0/a.js');
+    const focus = 'file:c0/a.js';
+    const inFocus = () => attr('data-xv-focus-center') === focus && all('.react-flow__edge').length > 0;
+    out.focus = await visit('#/graph?node=' + encodeURIComponent(focus) + '&focus=1', inFocus);
+    const centre = q('[data-xv-entry="focus-center"]').getBoundingClientRect();
+    await __xvPointer(centre.left + centre.width / 2, centre.top + centre.height / 2);
+    await sleep(400);
+    out.focus.centre = report(SEL);
+    await away();
   `), (out) => {
-    const one = (name, v) => [
-      [`at ${name} with a node selected its five edges are lit and none carries a label`, v?.lit >= 5 && v.labelsAtRest === 0, v],
-      [`at ${name} the visible labels do not overlap`, v?.restApart === true, v],
-      [`at ${name} the edge under the pointer shows its label, alone, on an opaque box above the cards, and it goes with the pointer`, v?.hovered?.labels === 1 && /imports/.test(v.hovered.text) && v.hovered.opaque && v.hovered.above && v.hovered.inside && v.labelsAfter === 0, v],
+    const labelled = (name, v) => [
+      [`${name}: a selected node lights its edges and none of them carries a label, and the labels visible do not overlap or sit under a card`, v?.rest?.n === 0 && v.rest.apart && v.rest.above && v.edges >= 5, v],
+      [`${name}: a real pointer on an edge shows exactly one label, opaque and above the cards, and it goes when the pointer leaves`, v?.hovered?.n === 1 && v.hovered.opaque && v.hovered.above && v.hovered.inside && /imports|calls/.test(v.hovered.texts[0]) && v.left?.n === 0, v],
     ];
-    return [...one('the top level', out.top), ...one('a drilled level', out.drilled)];
+    return [
+      ...labelled('the top level', out.top),
+      ...labelled('a drilled level', out.drilled),
+      ...labelled('the focus view', out.focus),
+      ['the focus view: with the centre node hovered no label overlaps another or sits under a card', out.focus?.centre?.n === 0 && out.focus.centre.apart && out.focus.centre.above, out.focus?.centre],
+    ];
   }],
+
+  // The domain view's top level, with a domain selected: its cross-domain edges are lit with no description box, and the sidebar lists them.
+  ['domain-edge-labels', 'domain-fit', () => driver(`${LABEL_PROBE}
+    const SEL = '[data-xv-link-label]';
+    const id = 'domain:app';
+    await go('#/domain?node=' + encodeURIComponent(id));
+    await until(() => sidebar() === id && attr('data-xv-domain-level') === 'top');
+    await sleep(1500);
+    await away();
+    out.rest = report(SEL);
+    out.edges = all('.react-flow__edge').length;
+    out.sidebarRows = all('aside[data-xv-panel="sidebar"] [data-xv-cross]').map((el) => el.textContent.replace(/\\s+/g, ' ').trim());
+    const edge = all('.react-flow__edge').find((e) => edgePoint(e));
+    const at = edge ? edgePoint(edge) : null;
+    if (!at) { out.unreachable = 'no edge could be reached by the pointer'; return out; }
+    await __xvPointer(at.x, at.y);
+    await sleep(300);
+    out.hovered = report(SEL);
+    await away();
+    await sleep(300);
+    out.left = report(SEL);
+  `), (out) => [
+    ['domain top: a selected domain lights its cross-domain edges and none carries a description box, and the labels visible do not overlap or sit under a card', out.rest?.n === 0 && out.rest.apart && out.rest.above && out.edges >= 9, out],
+    ['domain top: the sidebar lists the selected domain\'s cross-domain edges with their descriptions', out.sidebarRows?.length >= 2 && out.sidebarRows.every((row) => row.length > 12), out.sidebarRows],
+    ['domain top: a real pointer on a cross-domain edge shows exactly one description box, opaque and above the cards, and it goes when the pointer leaves', out.hovered?.n === 1 && out.hovered.opaque && out.hovered.above && out.hovered.inside && out.left?.n === 0, out],
+  ], { height: 900 }],
+
+  // A flow's steps must not sit under the minimap, with a step selected (the sidebar narrows the canvas).
+  ['domain-flow-minimap', 'domain-fit', (graph, expected) => driver(`
+    const flow = ${JSON.stringify(expected.domain.long.flow)};
+    const step = ${JSON.stringify(expected.domain.long.steps[0])};
+    await go('#/domain?d=' + encodeURIComponent('domain:app') + '&f=' + encodeURIComponent(flow) + '&node=' + encodeURIComponent(step));
+    await until(() => attr('data-xv-domain-level') === 'flow:domain:app:' + flow && sidebar() === step);
+    await sleep(1500);
+    const mini = q('.react-flow__minimap')?.getBoundingClientRect() ?? null;
+    const steps = all('[data-xv-domain-entry="step"]').map((el) => el.getBoundingClientRect());
+    const hits = (r) => mini !== null && r.left < mini.right && mini.left < r.right && r.top < mini.bottom && mini.top < r.bottom;
+    out.flow = { steps: steps.length, minimap: mini !== null, under: steps.filter(hits).length };
+  `), (out) => [
+    ['domain flow: no step card is under the minimap', out.flow?.steps >= 7 && out.flow.under === 0, out.flow],
+  ], { height: 900 }],
 
   ['search', 'directories', (graph) => driver(`
     out.hits = [];
@@ -752,8 +801,8 @@ const SCENARIOS = [
     };
     q('[data-xv-domain-entry="domain"][data-xv-node="domain:app"] [data-xv-action="details"]').click();
     await until(() => sidebar() === 'domain:app');
-    await until(() => q('[data-xv-link-label]'));
-    out.select = { hash: location.hash, label: q('[data-xv-link-label]')?.textContent, side: q('aside[data-xv-panel="sidebar"]').textContent, marked: all('.xv-selected').length };
+    await sleep(500);
+    out.select = { hash: location.hash, labels: all('[data-xv-link-label]').length, side: q('aside[data-xv-panel="sidebar"]').textContent, marked: all('.xv-selected').length };
     q('[data-xv-domain-entry="domain"][data-xv-node="domain:app"]').click();
     await until(() => dlevel() === d.domain.level);
     await sleep(200);
@@ -792,7 +841,7 @@ const SCENARIOS = [
       ['domain: the fixed note is at the top', out.top?.note === d.note, out.top?.note],
       [`domain: the top level has a card for each of the ${d.counts.domains} domains, and the flows and steps they hold add up to ${d.counts.flows} and ${d.counts.steps}`, out.top?.nodes === String(d.counts.domains) && out.top.domains === String(d.counts.domains) && out.top.flows === String(d.counts.flows) && out.top.steps === String(d.counts.steps) && out.top.links === String(d.counts.links) && sameOrder([...out.top.cards].sort(), [...d.cards].sort()), out.top],
       ['domain: a card shows the name, the summary, the flow count and the step count', /Application/.test(out.top?.text ?? '') && /Runs the program/.test(out.top.text) && /2 flows/.test(out.top.text) && /4 steps/.test(out.top.text), out.top?.text],
-      ['domain: a cross-domain edge is labelled only while its domain is selected, with its description', out.top?.labelsBefore === 0 && out.select?.label === d.link && out.select.marked === 1 && out.select.hash === '#/domain?node=domain%3Aapp', out.select],
+      ['domain: selecting a domain draws no description box on the canvas and the sidebar lists its cross-domain edge with the description', out.top?.labelsBefore === 0 && out.select?.labels === 0 && out.select.side.includes(d.link) && out.select.marked === 1 && out.select.hash === '#/domain?node=domain%3Aapp', out.select],
       ['domain: the sidebar of a domain shows its summary, domainMeta, flows and cross-domain edges', /Runs the program/.test(out.select?.side ?? '') && /Start-up runs once per process/.test(out.select.side) && /Session/.test(out.select.side) && /Start up/.test(out.select.side) && new RegExp(d.link.replace('.', '\\.')).test(out.select.side), out.select?.side],
       ['domain: a click on a card goes into the domain, which shows its flows, and the address says so', out.domain?.hash === '#/domain?d=domain%3Aapp' && sameOrder([...out.domain.flows].sort(), [...d.domain.flows].sort()) && out.domain.selection === null && /Domains/.test(out.domain.crumbs), out.domain],
       ['domain: a flow shows its steps as a column in flow_step weight order, numbered by place', sameOrder(out.flow?.steps?.map((s) => s[1]), d.flow.steps) && sameOrder(out.flow.steps.map((s) => s[2]), d.flow.names) && sameOrder(out.flow.steps.map((s) => s[0]), ['1', '2', '3']) && out.flow.lefts === 1 && out.flow.tops.every((t, i) => i === 0 || t > out.flow.tops[i - 1]), out.flow],
@@ -1051,11 +1100,15 @@ function topBarScenario(width) {
       compact: !!q('[data-xv-overlay-menu]'),
       names: boxes.map((b) => b.what),
     };
+    // The placeholder must fit the box whole (an input does not report a clipped placeholder in scrollWidth), with and without the Overlays badge.
+    const fits = () => { const input = q('[data-xv-search]'); const cs = getComputedStyle(input); const ctx = document.createElement('canvas').getContext('2d'); ctx.font = cs.fontStyle + ' ' + cs.fontWeight + ' ' + cs.fontSize + ' ' + cs.fontFamily; return Math.ceil(ctx.measureText(input.placeholder).width) <= input.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight); };
+    out.fit = { plain: fits(), placeholder: q('[data-xv-search]').placeholder };
     const menu = q('[data-xv-overlay-menu]');
     if (menu) { menu.click(); await until(() => q('[data-xv-overlay="hotspots"]')); }
     const toggle = () => q('[data-xv-overlay="hotspots"]');
     toggle().click();
     await until(() => toggle().getAttribute('aria-pressed') === 'true');
+    out.fit.badged = fits();
     out.on = { pressed: toggle().getAttribute('aria-pressed'), marks: attr('data-xv-overlays') ?? q('[data-xv-graph]')?.getAttribute('data-xv-overlays'), hash: location.hash };
     toggle().click();
     await until(() => toggle().getAttribute('aria-pressed') === 'false');
@@ -1066,9 +1119,63 @@ function topBarScenario(width) {
     [`${width}: no control overflows its box or wraps its text, and the page does not scroll sideways`, out.bar?.overflowing.length === 0 && out.bar.wrapped.length === 0 && out.bar.pageScroll === false, out.bar],
     [`${width}: the search box is at least 160 px wide`, out.bar?.search >= 160, out.bar],
     [`${width}: the overlays are ${width < 1280 ? 'behind one menu' : 'switches in the bar'}`, out.bar?.compact === (width < 1280) && (width >= 1280 || out.closed === true), [out.bar?.compact, out.closed]],
+    [`${width}: the search placeholder fits the box whole, with and without the Overlays badge`, out.fit?.plain === true && out.fit.badged === true, out.fit],
     [`${width}: the Hotspots overlay switches on and off`, out.on?.pressed === 'true' && /overlay=hotspots/.test(out.on.hash) && out.off?.pressed === 'false' && !/overlay=/.test(out.off.hash), [out.on, out.off]],
   ], { width }];
 }
+
+/** Page-side helpers of the edge-label scenarios: the real pointer's whereabouts and a report of the labels visible. `SEL` names the labels. */
+const LABEL_PROBE = `
+  const vis = (r) => r.width > 0 && r.height > 0 && r.right > 0 && r.bottom > 0 && r.left < innerWidth && r.top < innerHeight;
+  const apart = (a, b) => a.right <= b.left + 0.5 || b.right <= a.left + 0.5 || a.bottom <= b.top + 0.5 || b.bottom <= a.top + 0.5;
+  const away = async () => { await __xvPointer(innerWidth / 2, 20); await sleep(150); };
+  // A point on an edge's line that the pointer reaches: the topmost element there is that edge.
+  const edgePoint = (edge) => {
+    const path = edge.querySelector('.react-flow__edge-path');
+    if (!path) return null;
+    const length = path.getTotalLength();
+    const m = path.getScreenCTM();
+    for (const t of [0.5, 0.4, 0.6, 0.3, 0.7, 0.2, 0.8]) {
+      const p = path.getPointAtLength(length * t);
+      const x = m.a * p.x + m.c * p.y + m.e;
+      const y = m.b * p.x + m.d * p.y + m.f;
+      if (x < 5 || y < 70 || x > innerWidth - 5 || y > innerHeight - 5) continue;
+      const hit = document.elementFromPoint(x, y);
+      if (hit && hit.closest('.react-flow__edge') === edge) return { x, y };
+    }
+    return null;
+  };
+  // Is the label clear of the cards: at its middle and near its four corners no card is the topmost element? (A label that lets the pointer through
+  // is probed with it on; the sidebar or the legend over a label is a different matter, not a card on it.)
+  const onTop = (el) => {
+    const r = el.getBoundingClientRect();
+    const through = getComputedStyle(el).pointerEvents === 'none';
+    if (through) el.style.pointerEvents = 'auto';
+    const points = [[0.5, 0.5], [0.1, 0.25], [0.9, 0.25], [0.1, 0.75], [0.9, 0.75]].map(([fx, fy]) => [r.left + r.width * fx, r.top + r.height * fy]).filter(([x, y]) => x >= 0 && y >= 0 && x < innerWidth && y < innerHeight);
+    const ok = points.length > 0 && points.every(([x, y]) => { const hit = document.elementFromPoint(x, y); return !!hit && (hit === el || el.contains(hit) || !hit.closest('.react-flow__node')); });
+    if (through) el.style.pointerEvents = '';
+    return ok;
+  };
+  const opaque = (el) => {
+    const rect = el.querySelector('rect');
+    if (rect) { const cs = getComputedStyle(rect); return cs.fill !== 'none' && Number(cs.fillOpacity) === 1; }
+    const colour = getComputedStyle(el).backgroundColor;
+    const alpha = /^rgba\\(.*,\\s*([0-9.]+)\\)$/.exec(colour);
+    return colour !== 'transparent' && (alpha === null || Number(alpha[1]) === 1);
+  };
+  const report = (selector) => {
+    const labels = all(selector).filter((el) => vis(el.getBoundingClientRect()));
+    const rects = labels.map((el) => el.getBoundingClientRect());
+    return {
+      n: labels.length,
+      texts: labels.map((el) => el.textContent.replace(/\\s+/g, ' ').trim().slice(0, 60)),
+      apart: rects.every((a, i) => rects.every((b, j) => j <= i || apart(a, b))),
+      above: labels.every(onTop),
+      opaque: labels.every(opaque),
+      inside: rects.every((r) => r.left >= 0 && r.right <= innerWidth),
+    };
+  };
+`;
 
 /** The modes that write the Full-mode files: the layers, the summaries and the domain graph. */
 const FULL_MODES = new Set(['layers', 'domain-notrun', 'domain-digest', 'domain-fit']);
