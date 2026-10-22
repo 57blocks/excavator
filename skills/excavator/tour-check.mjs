@@ -9,10 +9,14 @@
  *   5 to 15 steps, `order` running 1..n without gap or repeat, listed in order;
  *   per step: `title` (at most 60 characters), `description` (2 to 5 sentences),
  *   `nodeIds` (1 to 5 distinct ids, each in the candidate set), and an optional
- *   `languageLesson` (at most 3 sentences).
+ *   `languageLesson` (at most 3 sentences);
+ *   no advisory wording in a title, a description or a language lesson (`tour-advice.mjs`):
+ *   every hit is listed with its sentence id, so the model rewrites it as a statement of
+ *   what the code does before anything is verified.
  * Sentences are counted with the splitter `slices` uses.
  */
 
+import { findAdvice } from './tour-advice.mjs';
 import { splitSentences } from './tour-sentences.mjs';
 
 export const LIMITS = Object.freeze({
@@ -103,5 +107,9 @@ export function checkDraft(draft, candidateIds) {
   }
   checkOrders(steps, issues);
   steps.forEach((step, i) => checkStep(step, Number.isInteger(step.order) ? `step ${step.order}` : `step at position ${i + 1}`, candidateIds, issues));
+  for (const hit of findAdvice(steps.filter((step) => Number.isInteger(step.order)), draft.contentLanguage)) {
+    const where = hit.id === 'title' ? `step ${hit.step}: the title` : `step ${hit.step}: sentence ${hit.id}`;
+    issues.push(`${where} uses advisory wording (${hit.terms.map((term) => JSON.stringify(term)).join(', ')}); say what the code does instead`);
+  }
   return issues;
 }

@@ -84,6 +84,48 @@ describe('checkDraft', () => {
   });
 });
 
+describe('checkDraft: advisory wording', () => {
+  const zh = (...codePoints) => String.fromCharCode(...codePoints);
+  const ADVICE_ZH = zh(0x5e94, 0x8be5);
+
+  it('lists the sentence of a description that advises, with its id and the term', () => {
+    expect(issuesOf(withStep(5, 3, { description: 'The handler parses the input. You should split this handler.' }))).toEqual([
+      'step 3: sentence 3.d2 uses advisory wording ("should"); say what the code does instead',
+    ]);
+  });
+
+  it('lists a title and a language lesson that advise', () => {
+    const draft = withStep(5, 2, { title: 'Consider the router', languageLesson: 'Go returns errors. It is a best practice.' });
+    expect(issuesOf(draft)).toEqual([
+      'step 2: the title uses advisory wording ("consider"); say what the code does instead',
+      'step 2: sentence 2.l2 uses advisory wording ("best practice"); say what the code does instead',
+    ]);
+  });
+
+  it('lists every hit, not the first', () => {
+    const draft = withStep(5, 1, { description: 'You should stop. It ought to retry. It is fine.' });
+    expect(issuesOf(draft)).toHaveLength(2);
+  });
+
+  it('does not take "shoulder" or a code name for advice', () => {
+    expect(issuesOf(withStep(5, 1, { description: 'The shoulder panel loads. It calls `shouldRetry` once.' }))).toEqual([]);
+  });
+
+  it('applies the Chinese list to a zh draft only', () => {
+    const description = `The handler parses the input. abc${ADVICE_ZH}def.`;
+    const zhDraft = withStep(5, 4, { description });
+    zhDraft.contentLanguage = 'zh';
+    expect(issuesOf(zhDraft)).toEqual([`step 4: sentence 4.d2 uses advisory wording (${JSON.stringify(ADVICE_ZH)}); say what the code does instead`]);
+    expect(issuesOf(withStep(5, 4, { description }))).toEqual([]);
+  });
+
+  it('also applies the English list to a zh draft', () => {
+    const draft = withStep(5, 4, { description: 'The handler parses the input. It should stop.' });
+    draft.contentLanguage = 'zh';
+    expect(issuesOf(draft)).toHaveLength(1);
+  });
+});
+
 describe('the check command', () => {
   let project;
   beforeAll(() => {

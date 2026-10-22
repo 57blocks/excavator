@@ -11,6 +11,7 @@
  *   node tour.mjs check <draft>
  *   node tour.mjs slices <draft> [--round 1|2]
  *   node tour.mjs verdicts <draft> --round 1|2
+ *   node tour.mjs report <draft>
  *
  * `candidates` reads the knowledge graph, the semantic files and the domain graph
  * and writes `.excavator/tour/candidates.json`: the nodes a tour may cite, each with
@@ -21,7 +22,8 @@
  * structure rules and the candidate set, printing every problem; exit 1 when there is one.
  * `slices` cuts the draft into the verifier's inputs (round 1: every step; round 2: the steps
  * round 1 sent back). `verdicts` reads the verifier's outputs: round 1 writes `rewrite.json`,
- * round 2 settles the tour into `resolved.json` (`tour-verdicts.mjs`).
+ * round 2 settles the tour into `resolved.json` (`tour-verdicts.mjs`). `report` stamps the revision
+ * identity, writes `.excavator/tour.json` and prints the reply's five lines, and nothing else, on stdout.
  */
 
 import { realpathSync } from 'node:fs';
@@ -31,13 +33,15 @@ import { fileURLToPath } from 'node:url';
 import { writeCandidates } from './tour-candidates.mjs';
 import { checkDraft } from './tour-check.mjs';
 import { locateDraft, readCandidates, readDraft } from './tour-layout.mjs';
+import { reportLines, writeTour } from './tour-report.mjs';
 import { sliceDraft } from './tour-slices.mjs';
 import { recordRoundOne, settleTour } from './tour-verdicts.mjs';
 
 const USAGE = 'Usage: node tour.mjs candidates <projectRoot>\n'
   + '       node tour.mjs check <draft>\n'
   + '       node tour.mjs slices <draft> [--round 1|2]\n'
-  + '       node tour.mjs verdicts <draft> --round 1|2\n';
+  + '       node tour.mjs verdicts <draft> --round 1|2\n'
+  + '       node tour.mjs report <draft>\n';
 
 function candidatesCommand(root) {
   const { out, product } = writeCandidates(root);
@@ -97,10 +101,16 @@ function verdictsCommand(draftArg, round) {
   process.stderr.write(`tour verdicts: round 2, ${c.steps} steps, ${c.verified} verified, ${c.unverified} unverified, ${c.unchecked} unchecked; removed ${c.removedSentences} sentence(s) and ${c.removedSteps} step(s)\n`);
 }
 
+function reportCommand(draftArg) {
+  const { out, product } = writeTour(locateDraft(draftArg));
+  process.stdout.write(`${reportLines(out, product).join('\n')}\n`);
+}
+
 function main(argv) {
   const [command, target, ...rest] = argv;
   if (command === 'candidates' && target && rest.length === 0) return candidatesCommand(target);
   if (command === 'check' && target && rest.length === 0) return checkCommand(target);
+  if (command === 'report' && target && rest.length === 0) return reportCommand(target);
   if (command === 'slices' && target) {
     const round = parseRound(rest, 1);
     if (round !== null) return slicesCommand(target, round);
