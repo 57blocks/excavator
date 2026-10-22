@@ -20,9 +20,9 @@
  * Nothing that lacks history is reported as 0. A plain directory has no history
  * (all history fields `null`) and `noHistory` says why (hotspots/no-history.mjs:
  * not a repository, or a subdirectory of one); a `.git` that cannot be read (git
- * does not start, or does not accept the `.git` of the project root or of a direct
- * child, also inside another repository and in a multi-repo parent) is an Error
- * and nothing is written. In a multi-repo parent every member repository
+ * does not start or does not work, or does not accept the `.git` of the project
+ * root or of a direct child, also inside another repository and in a multi-repo
+ * parent) is an Error and nothing is written. In a multi-repo parent every member repository
  * is read on its own and files outside the members have none; a shallow clone
  * skips its boundary commit and says so in its `repos` row; a binary file has
  * no lines and no score.
