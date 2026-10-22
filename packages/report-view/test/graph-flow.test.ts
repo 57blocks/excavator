@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 
 import type { GraphEdge, GraphNode } from '../src/data/graph';
 import { buildIndex } from '../src/data/indexes';
-import { edgeWidth, flowOf, layoutPlan, levelMarks, MAX_LABELLED_EDGES, nodeRect, pathHighlight, planLevel, type FlowView } from '../src/lib/graph-flow';
+import { edgeWidth, flowOf, layoutPlan, levelMarks, nodeRect, pathHighlight, planLevel, type FlowView } from '../src/lib/graph-flow';
 import { childBox } from '../src/lib/graph-layout';
 import { buildLevel, buildStructure, LEVEL_LIMIT, levelNotes, type Level } from '../src/lib/graph-structure';
 import { hotspotsFacts, NO_OVERLAYS } from '../src/lib/overlays';
@@ -142,11 +142,11 @@ describe('the readability of the edges', () => {
     expect(new Set(flow.edges.map((e) => (e.style as { strokeOpacity: number }).strokeOpacity)).size).toBe(1);
   });
 
-  it('labels the edges of the selected node, and dims the ones that do not touch it', async () => {
+  it('lights the edges of the selected node without labelling them, and dims the ones that do not touch it', async () => {
     const { plan, flow } = await drawn('function:a/x.js:one');
     const { calls, imports } = ids(plan);
-    expect(edgeOf(flow.edges, calls)?.label).toBe('1 calls');
-    expect(edgeOf(flow.edges, imports)?.label).toBeUndefined();
+    expect(flow.edges.every((e) => e.label === undefined)).toBe(true);
+    expect(edgeOf(flow.edges, calls)?.style.stroke).toBe('var(--color-accent)');
     expect((edgeOf(flow.edges, imports)?.style.strokeOpacity ?? 1)).toBeLessThan(edgeOf(flow.edges, calls)?.style.strokeOpacity ?? 0);
     // Dimmed means fainter than the same edge when nothing is selected, not only fainter than the lit one.
     const { flow: idle } = await drawn(null);
@@ -155,16 +155,21 @@ describe('the readability of the edges', () => {
 
   it('lights the edges of the nodes that an open file shows when the file itself is selected or hovered', async () => {
     const { flow } = await drawn('file:a/x.js');
-    expect(flow.edges.map((e) => e.label).sort()).toEqual(['1 calls', '1 imports']);
+    expect(flow.edges.map((e) => (e.style as { stroke: string }).stroke)).toEqual(['var(--color-accent)', 'var(--color-accent)']);
     const { flow: hovered } = await drawn(null, { hovered: 'file:a/x.js' });
-    expect(hovered.edges.map((e) => e.label).sort()).toEqual(['1 calls', '1 imports']);
+    expect(hovered.edges.map((e) => (e.style as { stroke: string }).stroke)).toEqual(['var(--color-accent)', 'var(--color-accent)']);
+    expect(flow.edges.concat(hovered.edges).every((e) => e.label === undefined)).toBe(true);
   });
 
-  it('labels an edge that the pointer is over, and still draws the dimmed ones', async () => {
+  it('labels an edge that the pointer is over, raises it, gives the label an opaque box, and still draws the dimmed ones', async () => {
     const { plan, flow } = await drawn('function:a/x.js:one', {});
     expect(flow.edges).toHaveLength(plan.edges.length);
     const { flow: over } = await drawn('function:a/x.js:two', { hoveredEdge: 'edge:0' });
     expect(over.edges.filter((e) => e.label !== undefined).map((e) => e.id)).toEqual(['edge:0']);
+    const labelled = over.edges.find((e) => e.id === 'edge:0');
+    expect(labelled?.labelBgStyle?.fillOpacity).toBe(1);
+    expect(labelled?.zIndex).toBe(20);
+    expect(Math.max(...over.edges.filter((e) => e.id !== 'edge:0').map((e) => e.zIndex ?? 0))).toBeLessThan(20);
   });
 
   it('labels an edge between two nodes of one open file only when the pointer is over it', async () => {
@@ -178,8 +183,8 @@ describe('the readability of the edges', () => {
     expect(flowOf(level, plan, laid, { ...view, selected: 'function:a/x.js:one', hoveredEdge: plan.edges[0].id }).edges[0].label).toBe('1 calls');
   });
 
-  it('labels no edge of a node that has more than the labels can hold, only the one under the pointer', async () => {
-    const others = Array.from({ length: MAX_LABELLED_EDGES + 2 }, (_, i) => file(`a/f${i}.js`));
+  it('labels no edge of a node with many edges, only the one under the pointer', async () => {
+    const others = Array.from({ length: 10 }, (_, i) => file(`a/f${i}.js`));
     const calls = others.map((o) => edge('file:a/x.js', o.id, 'imports'));
     const many = [file('a/x.js'), ...others];
     const edgesOf = calls;

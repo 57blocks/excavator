@@ -8,7 +8,7 @@ import { parseRoute } from '../lib/route';
 import type { OverlayName } from '../lib/overlay-names';
 
 /** The one dialog, menu or result list that is open; Esc closes it before anything else. */
-export type Overlay = 'search' | 'filters' | 'path' | 'shortcuts' | null;
+export type Overlay = 'search' | 'filters' | 'overlays' | 'path' | 'shortcuts' | null;
 
 export type DrawerState = 'closed' | 'open' | 'full';
 

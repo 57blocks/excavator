@@ -46,7 +46,7 @@ export function SearchBox() {
   };
 
   return (
-    <div className="relative min-w-0 flex-1 max-sm:hidden" style={{ maxWidth: 480 }}>
+    <div className="relative min-w-[160px] flex-1 max-sm:hidden" style={{ maxWidth: 480 }}>
       <input
         ref={ui.searchInput}
         type="search"

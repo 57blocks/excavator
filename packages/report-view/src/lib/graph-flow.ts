@@ -194,7 +194,7 @@ export function flowNodes(level: Level, plan: LevelPlan, layout: LevelLayout, vi
   return nodes;
 }
 
-/** A selected or hovered node whose edges are more than this has none of them labelled at once: the labels would sit on each other. An edge under the pointer is always labelled. */
+/** A domain view's selected or hovered node whose edges are more than this has none of them labelled at once: the labels would sit on each other. */
 export const MAX_LABELLED_EDGES = 8;
 
 const INK = 'var(--color-ink-soft)';
@@ -203,14 +203,14 @@ const BASE_OPACITY = 0.32;
 const DIM_OPACITY = 0.07;
 
 /**
- * The React Flow edges of a plan. An edge shows its count label only while it
- * touches the node under the pointer or the selected node or cluster (when it
- * has no more than MAX_LABELLED_EDGES edges), or is itself under the pointer;
- * an edge between two nodes inside one open file runs down the same narrow
- * column as its neighbours, so it is labelled only when the pointer is over it.
- * While one of those is active the edges that do not touch it are dimmed. Edges on a highlighted path are drawn in the accent
- * colour. Nothing is left out: a dimmed edge is still there, and still has its
- * label on hover.
+ * The React Flow edges of a plan. Only the edge under the pointer carries its
+ * count label: the edges of a selected or hovered node are lit but not labelled,
+ * because the labels of one node's edges, drawn together, sit on each other and
+ * on the cards (the sidebar lists the same edges with their counts). The label is
+ * drawn above the cards on an opaque box. While a node or cluster is active the
+ * edges that do not touch it are dimmed. Edges on a highlighted path are drawn in
+ * the accent colour. Nothing is left out: a dimmed edge is still there, and still
+ * has its label on hover.
  */
 export function flowEdges(plan: LevelPlan, view: Pick<FlowView, 'selected' | 'selectedEntry' | 'hovered' | 'hoveredEdge' | 'path'> & { floating?: boolean }): Edge[] {
   const active = new Set<string>();
@@ -220,8 +220,6 @@ export function flowEdges(plan: LevelPlan, view: Pick<FlowView, 'selected' | 'se
   // A file that is active also lights the edges of the nodes it shows.
   const outer = (id: string) => plan.fileOf.get(id) ?? id;
   const isActive = (end: string) => active.has(end) || active.has(outer(end));
-  const insideOneFile = (edge: { source: string; target: string }) => plan.fileOf.has(edge.source) && plan.fileOf.get(edge.source) === plan.fileOf.get(edge.target);
-  const touching = plan.edges.filter((edge) => !insideOneFile(edge) && (isActive(edge.source) || isActive(edge.target))).length;
   return plan.edges.map((edge) => {
     const touches = isActive(edge.source) || isActive(edge.target);
     const onPath = view.path?.edges.has(edge.id) ?? false;
@@ -237,15 +235,15 @@ export function flowEdges(plan: LevelPlan, view: Pick<FlowView, 'selected' | 'se
       source: edge.source,
       target: edge.target,
       ...(view.floating ? { type: 'floating' } : {}),
-      ...(hovered || onPath || (touches && !insideOneFile(edge) && touching <= MAX_LABELLED_EDGES) ? { label: edgeLabel(edge) } : {}),
+      ...(hovered ? { label: edgeLabel(edge) } : {}),
       focusable: false,
       selectable: false,
-      zIndex: lit ? 10 : 0,
+      zIndex: hovered ? 20 : lit ? 10 : 0,
       markerEnd: marker,
       ...(edge.backward ? { markerStart: marker } : {}),
       style: { stroke: colour, strokeOpacity: dimmed ? DIM_OPACITY : lit ? 0.95 : BASE_OPACITY, strokeWidth: width },
       labelStyle: { fontSize: 12, fontFamily: 'var(--font-mono)', fill: 'var(--color-ink)', fontWeight: 600 },
-      labelBgStyle: { fill: 'var(--color-surface)', fillOpacity: 0.95 },
+      labelBgStyle: { fill: 'var(--color-surface)', fillOpacity: 1 },
       labelBgPadding: [6, 3] as [number, number],
       labelBgBorderRadius: 6,
     };

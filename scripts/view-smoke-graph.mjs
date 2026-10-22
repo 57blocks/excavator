@@ -32,10 +32,14 @@
  *     domain-overview, domain-notrun and domain-digest (the product's state with its counts, not run, and a different revision);
  *     domain-fit (a domain graph as wide as a real one at 1280 by 900: nine domains and a flow of seven steps fit at a zoom of 0.9 or
  *     more, and no text of a card runs out of its box);
+ *   - edge-labels: on a crowded level (top and drilled) a selected node lights its edges and labels none of them; the edge under the pointer
+ *     shows its label alone, on an opaque box above the cards;
+ *   - topbar-768, topbar-1024, topbar-1280: the top bar's controls do not overlap, overflow or wrap, the search box is at least 160 px, and
+ *     the Hotspots overlay switches on and off (behind the Overlays menu below 1280 px);
  *   - longfile, longfile-restore: a function of a file expanded to a hundred and twenty rows is located, and the camera is on it at a readable
  *     zoom instead of fitting the whole file.
  *
- *   node scripts/view-smoke-graph.mjs [levels|history|search|drawer|focus|path|filters|keys|layers|summary|overlays|clearance|notrun|restore|locate|locate-tables|domain|domain-history|domain-restore|domain-keys|domain-overview|domain-notrun|domain-digest|domain-fit|longfile|longfile-restore ...]
+ *   node scripts/view-smoke-graph.mjs [levels|history|search|drawer|focus|path|filters|keys|layers|summary|overlays|clearance|notrun|restore|locate|locate-tables|domain|domain-history|domain-restore|domain-keys|domain-overview|domain-notrun|domain-digest|domain-fit|edge-labels|topbar-768|topbar-1024|topbar-1280|longfile|longfile-restore ...]
  *
  * Needs `pnpm build` (the template) and a local Chrome. Prints one line per
  * check and exits 1 when any fails.
@@ -207,6 +211,41 @@ const SCENARIOS = [
       ['history: back once more cancels it', out.drillBack2?.level === `${l1.path}#` && out.drillBack2.node === null, out.drillBack2],
       ['history: forward selects it again', out.forward?.node && out.forward.sidebar, out.forward],
     ];
+  }],
+
+  // A node selected on a crowded level lights its edges, but labels none of them: only the edge under the pointer says its counts.
+  ['edge-labels', 'edge-crowd', () => driver(`
+    const labels = () => all('.react-flow__edge-textwrapper');
+    const apart = (rects) => rects.every((a, i) => rects.every((b, j) => j <= i || a.right <= b.left || b.right <= a.left || a.bottom <= b.top || b.bottom <= a.top));
+    const zOf = (el) => Number.parseInt(getComputedStyle(el).zIndex, 10) || 0;
+    const hover = async (edge, over) => {
+      const target = edge.querySelector('.react-flow__edge-interaction');
+      target.dispatchEvent(new MouseEvent(over ? 'mouseover' : 'mouseout', { bubbles: true, relatedTarget: document.body }));
+      await sleep(250);
+    };
+    const visit = async (hash, id) => {
+      await go(hash);
+      await until(() => sidebar() === id);
+      await sleep(400);
+      const lit = all('.react-flow__edge').filter((edge) => Number(edge.querySelector('.react-flow__edge-path').style.strokeOpacity) > 0.5);
+      const rest = { level: level(), lit: lit.length, labelsAtRest: labels().length, restApart: apart(labels().map((el) => el.getBoundingClientRect())) };
+      await hover(lit[0], true);
+      const shown = labels();
+      const box = shown[0]?.getBoundingClientRect();
+      const nodeZ = Math.max(...all('.react-flow__node').map(zOf));
+      const hovered = { labels: shown.length, text: shown[0]?.textContent ?? null, opaque: shown[0] ? getComputedStyle(shown[0].querySelector('rect')).fillOpacity === '1' : false, above: shown[0] ? zOf(shown[0].closest('svg')) > nodeZ : false, inside: !!box && box.left >= 0 && box.right <= innerWidth };
+      await hover(lit[0], false);
+      return { ...rest, hovered, labelsAfter: labels().length };
+    };
+    out.top = await visit('#/graph?node=' + encodeURIComponent('file:c0/a.js'), 'file:c0/a.js');
+    out.drilled = await visit('#/graph?path=n&node=' + encodeURIComponent('file:n/d0/a.js'), 'file:n/d0/a.js');
+  `), (out) => {
+    const one = (name, v) => [
+      [`at ${name} with a node selected its five edges are lit and none carries a label`, v?.lit >= 5 && v.labelsAtRest === 0, v],
+      [`at ${name} the visible labels do not overlap`, v?.restApart === true, v],
+      [`at ${name} the edge under the pointer shows its label, alone, on an opaque box above the cards, and it goes with the pointer`, v?.hovered?.labels === 1 && /imports/.test(v.hovered.text) && v.hovered.opaque && v.hovered.above && v.hovered.inside && v.labelsAfter === 0, v],
+    ];
+    return [...one('the top level', out.top), ...one('a drilled level', out.drilled)];
   }],
 
   ['search', 'directories', (graph) => driver(`
@@ -682,7 +721,7 @@ const SCENARIOS = [
     await until(() => sidebar() !== null);
     const side = q('aside[data-xv-panel="sidebar"]');
     out.entry = { hash: decodeURIComponent(location.hash), level: level(), id: sidebar(), title: side.getAttribute('aria-label'), rows: all('[data-xv-entry-edge]').map((el) => el.getAttribute('data-xv-entry-edge') + ' ' + el.textContent.replace(/\\s+/g, ' ').trim()), marks: all('.xv-selected').length, text: side.textContent.replace(/\\s+/g, ' ') };
-    // The edge counts show on the canvas for the selected cluster, and only for it.
+    // The selected cluster's edges are lit, not labelled: stacked labels sit on each other (the sidebar has the counts).
     out.labelled = all('.react-flow__edge-textwrapper, .react-flow__edge-text').length;
     key('Escape');
     await until(() => sidebar() === null);
@@ -694,7 +733,7 @@ const SCENARIOS = [
   `), (out) => [
     ['entry: the info button selects a cluster, the address holds it and the sidebar shows it', out.entry?.hash.includes('entry=') && out.entry.marks === 1 && out.entry.title === 'Application' && out.entry.text.includes('Layer') && out.entry.text.includes('Files2'), out.entry],
     ['entry: the sidebar sums the edges between this cluster and each other one, by type, in each direction', out.entry?.rows.length >= 2 && out.entry.rows.some((r) => r.startsWith('to ') && /imports/.test(r)) && out.entry.rows.some((r) => r.startsWith('from ') && /imports/.test(r)), out.entry?.rows],
-    ['entry: the edges of the selected cluster carry their counts on the canvas', out.labelled >= 1, out.labelled],
+    ['entry: the edges of the selected cluster put no count labels on the canvas', out.labelled === 0, out.labelled],
     ['entry: Esc clears it', out.cleared?.sidebar === null && out.cleared.marks === 0 && !out.cleared.hash.includes('entry='), out.cleared],
     ['entry: a click on the card itself still opens the level', out.drilled?.level !== '#' && out.drilled.level.startsWith('layer:app'), out.drilled],
   ]],
@@ -984,7 +1023,52 @@ const SCENARIOS = [
     ['details: a function shows its unused state, reason and confidence from the product', out.facts?.some((f) => f.startsWith('unused-code:facts:') && f.includes('Listed as unused') && f.includes('unreferenced') && f.includes('high')), out.facts],
     ['details: a file shows its hotspots counts and score and its doc-map evidence', out.file?.some((f) => f.startsWith('hotspots:') && f.includes('Commits9') && f.includes('Score90')) && out.file.some((f) => f.startsWith('doc-map:') && f.includes('passage')), out.file],
   ]],
+  ...[768, 1024, 1280].map(topBarScenario),
 ];
+
+/**
+ * The top bar at `width`: every control keeps its size (nothing overflows its box and no text wraps inside it), no two of them overlap, the
+ * search box is at least 160 px wide, and the overlay switches still work (behind the "Overlays" menu below 1280 px).
+ */
+function topBarScenario(width) {
+  return [`topbar-${width}`, 'directories', () => driver(`
+    await go('#/graph');
+    await until(() => q('header [data-xv-search]') && q('header [data-xv-filter-hidden]'));
+    await sleep(200);
+    const header = q('header');
+    const boxes = [...header.children].map((el) => ({ what: (el.getAttribute('data-xv-search') !== null || el.querySelector('[data-xv-search]')) ? 'search' : el.textContent.trim().slice(0, 24) || el.getAttribute('aria-label'), rect: el.getBoundingClientRect() })).filter((b) => b.rect.width > 0);
+    const apart = (a, b) => a.right <= b.left + 0.5 || b.right <= a.left + 0.5 || a.bottom <= b.top + 0.5 || b.bottom <= a.top + 0.5;
+    const overlaps = [];
+    boxes.forEach((a, i) => boxes.forEach((b, j) => { if (j > i && !apart(a.rect, b.rect)) overlaps.push([a.what, b.what]); }));
+    // The project name is text that ends in an ellipsis when it is long, with the whole name in its title: it is boxed, not measured for overflow.
+    const controls = [...header.querySelectorAll('button, input, [data-xv-revision], header > span:not([data-xv-project])')].filter((el) => el.getBoundingClientRect().width > 0);
+    const oneLine = (el) => { const range = document.createRange(); range.selectNodeContents(el); const rects = [...range.getClientRects()].filter((r) => r.width > 0); if (rects.length === 0) return true; const tops = rects.map((r) => r.top); return Math.max(...tops) - Math.min(...tops) < Math.min(...rects.map((r) => r.height)) * 0.7; };
+    out.bar = {
+      width: innerWidth, overlaps, search: Math.round(q('[data-xv-search]').getBoundingClientRect().width),
+      overflowing: controls.filter((el) => el.scrollWidth > el.clientWidth).map((el) => el.textContent.trim().slice(0, 24) || el.tagName),
+      wrapped: controls.filter((el) => !oneLine(el)).map((el) => el.textContent.trim().slice(0, 24) || el.tagName),
+      pageScroll: document.documentElement.scrollWidth > innerWidth,
+      compact: !!q('[data-xv-overlay-menu]'),
+      names: boxes.map((b) => b.what),
+    };
+    const menu = q('[data-xv-overlay-menu]');
+    if (menu) { menu.click(); await until(() => q('[data-xv-overlay="hotspots"]')); }
+    const toggle = () => q('[data-xv-overlay="hotspots"]');
+    toggle().click();
+    await until(() => toggle().getAttribute('aria-pressed') === 'true');
+    out.on = { pressed: toggle().getAttribute('aria-pressed'), marks: attr('data-xv-overlays') ?? q('[data-xv-graph]')?.getAttribute('data-xv-overlays'), hash: location.hash };
+    toggle().click();
+    await until(() => toggle().getAttribute('aria-pressed') === 'false');
+    out.off = { pressed: toggle().getAttribute('aria-pressed'), hash: location.hash };
+    if (menu) { key('Escape'); await until(() => !q('[data-xv-overlay="hotspots"]')); out.closed = !q('[data-xv-overlay="hotspots"]'); }
+  `), (out) => [
+    [`${width}: no two controls of the top bar overlap`, out.bar?.overlaps.length === 0, out.bar],
+    [`${width}: no control overflows its box or wraps its text, and the page does not scroll sideways`, out.bar?.overflowing.length === 0 && out.bar.wrapped.length === 0 && out.bar.pageScroll === false, out.bar],
+    [`${width}: the search box is at least 160 px wide`, out.bar?.search >= 160, out.bar],
+    [`${width}: the overlays are ${width < 1280 ? 'behind one menu' : 'switches in the bar'}`, out.bar?.compact === (width < 1280) && (width >= 1280 || out.closed === true), [out.bar?.compact, out.closed]],
+    [`${width}: the Hotspots overlay switches on and off`, out.on?.pressed === 'true' && /overlay=hotspots/.test(out.on.hash) && out.off?.pressed === 'false' && !/overlay=/.test(out.off.hash), [out.on, out.off]],
+  ], { width }];
+}
 
 /** The modes that write the Full-mode files: the layers, the summaries and the domain graph. */
 const FULL_MODES = new Set(['layers', 'domain-notrun', 'domain-digest', 'domain-fit']);
@@ -1001,6 +1085,37 @@ function addLongFile(root, functions = 120) {
   const [header, ...rest] = lines;
   header.counts.nodes += functions + 1;
   header.counts.edges += functions;
+  writeFileSync(path, `${[header, ...rest, ...records].map((record) => JSON.stringify(record)).join('\n')}\n`);
+}
+
+/**
+ * `edge-crowd`: six top-level directories (c0..c5) and six under one (n/d0..n/d5), each with one file, every file importing the files
+ * of the later ones, and a file importing one before it so that some edges run both ways: a node on either level has five aggregated
+ * edges, as many as would have stacked their labels.
+ */
+function addCrowd(root, count = 6) {
+  const path = join(root, '.excavator', 'knowledge-graph.jsonl');
+  const lines = readFileSync(path, 'utf-8').split('\n').filter((line) => line !== '').map((line) => JSON.parse(line));
+  const records = [];
+  let nodes = 0;
+  let edges = 0;
+  for (const prefix of ['c', 'n/d']) {
+    for (let i = 0; i < count; i++) {
+      records.push({ record: 'node', node: { id: `file:${prefix}${i}/a.js`, type: 'file', name: 'a.js', filePath: `${prefix}${i}/a.js` } });
+      nodes += 1;
+    }
+    for (let i = 0; i < count; i++) {
+      for (let j = i + 1; j < count; j++) {
+        records.push({ record: 'edge', edge: { source: `file:${prefix}${i}/a.js`, target: `file:${prefix}${j}/a.js`, type: 'imports' } });
+        edges += 1;
+      }
+    }
+    records.push({ record: 'edge', edge: { source: `file:${prefix}${count - 1}/a.js`, target: `file:${prefix}0/a.js`, type: 'calls' } });
+    edges += 1;
+  }
+  const [header, ...rest] = lines;
+  header.counts.nodes += nodes;
+  header.counts.edges += edges;
   writeFileSync(path, `${[header, ...rest, ...records].map((record) => JSON.stringify(record)).join('\n')}\n`);
 }
 
@@ -1055,6 +1170,7 @@ function runScenario([name, mode, makeDriver, scenarioCheck, extra = {}]) {
     if (mode === 'notrun') for (const file of ['doc-map.json', 'doc-map-report.md', 'doc-map']) rmSync(join(root, '.excavator', file), { recursive: true, force: true });
     // `domain-notrun`: the domain graph was never made. `domain-digest`: it was made from other facts than the graph's.
     if (mode === 'longfile') addLongFile(root);
+    if (mode === 'edge-crowd') addCrowd(root);
     if (mode === 'domain-fit') expected.domain = { ...expected.domain, long: widenDomainGraph(root) };
     if (mode === 'domain-notrun') rmSync(join(root, '.excavator', 'domain-graph.json'));
     if (mode === 'domain-digest') {
@@ -1063,7 +1179,7 @@ function runScenario([name, mode, makeDriver, scenarioCheck, extra = {}]) {
     }
     const out = join(dir, 'page.html');
     packProject(root, { out });
-    const args = [join(here, 'view-smoke.mjs'), out, ...(extra.hash ? ['--hash', extra.hash] : []), ...(extra.height ? ['--height', String(extra.height)] : []), '--eval', makeDriver(expected.graph, expected), ...(extra.screenshot ? ['--screenshot', extra.screenshot] : [])];
+    const args = [join(here, 'view-smoke.mjs'), out, ...(extra.hash ? ['--hash', extra.hash] : []), ...(extra.height ? ['--height', String(extra.height)] : []), ...(extra.width ? ['--width', String(extra.width)] : []), '--eval', makeDriver(expected.graph, expected), ...(extra.screenshot ? ['--screenshot', extra.screenshot] : [])];
     const result = spawnSync('node', args, { encoding: 'utf-8', maxBuffer: 1 << 26 });
     let smoke;
     try {

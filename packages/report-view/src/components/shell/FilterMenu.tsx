@@ -42,17 +42,17 @@ export function FilterMenu() {
   const shownEdges = shownEdgeTypes(filters, choices.edgeTypes, focus);
   const open = ui.overlay === 'filters';
   return (
-    <div className="relative">
+    <div className="relative shrink-0">
       <button
         type="button"
         aria-expanded={open}
         aria-haspopup="true"
         data-xv-filter-hidden={hidden}
         onClick={() => ui.setOverlay(open ? null : 'filters')}
-        className="flex h-9 cursor-pointer items-center gap-2 rounded-control border border-line-2 bg-surface px-3 text-ink hover:border-accent hover:text-accent"
+        className="flex h-9 cursor-pointer items-center gap-2 whitespace-nowrap rounded-control border border-line-2 bg-surface px-3 text-ink hover:border-accent hover:text-accent"
       >
         Filters
-        {hidden > 0 ? <span className="rounded-full bg-accent px-2 text-xs font-semibold text-white">{`${hidden} hidden`}</span> : null}
+        {hidden > 0 ? <span className="whitespace-nowrap rounded-full bg-accent px-2 text-xs font-semibold text-white">{`${hidden} hidden`}</span> : null}
       </button>
       {open ? (
         <div role="dialog" aria-label="Filters" className="glass absolute right-0 top-[calc(100%+6px)] z-50 flex max-h-[70vh] w-[min(420px,92vw)] flex-col gap-4 overflow-auto rounded-card bg-surface p-4">
