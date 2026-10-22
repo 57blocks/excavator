@@ -68,7 +68,7 @@ TS/JS 抽取器在 `extractCallGraph` 里为每个调用点取被调表达式的
 
 ### D7 TS/JS 的缺口原因
 
-`calls-unresolved` 与 `calls-ambiguous` 的原因文本按缺口的范围（语言）选择，Java 已经这样做。TS/JS 的原因列出 D1 与 D4 的各种去向，读者能从缺口看出哪些调用没有读。外层函数的作用域按整个函数收集名字，原因文本写明：在任一块里声明的名字对整个函数都算。
+`calls-unresolved` 与 `calls-ambiguous` 的原因文本按缺口的范围（语言）选择，Java 已经这样做。TS/JS 的原因列出 D1 与 D4 的各种去向，读者能从缺口看出哪些调用没有读。外层函数的作用域按整个函数收集名字，原因文本写明：在任一块里声明的名字对整个函数都算。事实图与审计的 TS/JS `calls-unresolved` 原因共用 `fact-graph-resolve.mjs` 的 `BOUND_CALL_UNRESOLVED_FORMS`，两处不会各写一份而走样（评审第 2 轮）。
 
 ### D8 Pipeline 版本
 
