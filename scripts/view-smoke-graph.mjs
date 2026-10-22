@@ -40,9 +40,11 @@
  *     zoom instead of fitting the whole file;
  *   - products-redirect (openspec: changes/viewer-learn, design D9): a bookmark of the old `#/overview` and a move to it both open the
  *     Products page with `#/products` in the address and no `#/overview` entry left in the history, the navigation names Products, and
- *     the page lists the tour as included with the facts digest it was made from.
+ *     the page lists the tour as included with the facts digest it was made from;
+ *   - fonts (changes/viewer-learn, design D7): the page title's computed font is DM Serif Display, the text's Inter and code's JetBrains
+ *     Mono, document.fonts reports them loaded from the page itself (no request, no CSP violation), and the body carries the grain.
  *
- *   node scripts/view-smoke-graph.mjs [levels|history|search|drawer|focus|path|filters|keys|layers|summary|overlays|clearance|notrun|restore|locate|locate-tables|domain|domain-history|domain-restore|domain-keys|domain-products|domain-notrun|domain-digest|domain-fit|edge-labels|topbar-768|topbar-1024|topbar-1280|longfile|longfile-restore|products-redirect ...]
+ *   node scripts/view-smoke-graph.mjs [levels|history|search|drawer|focus|path|filters|keys|layers|summary|overlays|clearance|notrun|restore|locate|locate-tables|domain|domain-history|domain-restore|domain-keys|domain-products|domain-notrun|domain-digest|domain-fit|edge-labels|topbar-768|topbar-1024|topbar-1280|longfile|longfile-restore|products-redirect|fonts ...]
  *
  * Needs `pnpm build` (the template) and a local Chrome. Prints one line per
  * check and exits 1 when any fails.
@@ -1010,6 +1012,32 @@ const SCENARIOS = [
       ['products-redirect: the Products page lists the tour as included, made from the graph\'s facts', /Included/.test(out.tour ?? '') && out.tour.includes(expected.tour.factDigest), out.tour],
     ];
   }, { hash: '/overview' }],
+
+  // The inlined fonts (openspec: changes/viewer-learn, design D7): the page title is set in DM Serif Display, the text in Inter and code in
+  // JetBrains Mono, each face loaded from the page itself; the run's own checks fail on any request, CSP violation or console error, so a
+  // font fetched from anywhere or blocked by the policy fails this scenario too. The body carries the grain as a data URL.
+  ['fonts', 'layers', () => driver(`
+    await until(() => q('main h1')?.textContent === 'Products', 80);
+    await document.fonts.ready;
+    const family = (el) => (el ? getComputedStyle(el).fontFamily : null);
+    // The Products page may show no code: a probe element reads what the stylesheet gives code.
+    const code = document.body.appendChild(document.createElement('code'));
+    const faces = [...document.fonts].map((f) => f.family.replace(/"/g, '') + ' ' + f.weight + ' ' + f.status);
+    out.fonts = {
+      title: family(q('main h1')),
+      text: family(document.body),
+      code: family(code),
+      faces,
+      checked: ['26px "DM Serif Display"', '14px "Inter"', '12px "JetBrains Mono"'].map((font) => document.fonts.check(font)),
+      grain: getComputedStyle(document.body).backgroundImage.slice(0, 40),
+    };
+    code.remove();
+  `), (out) => [
+    ['fonts: the page title\'s computed font starts with DM Serif Display, the text\'s with Inter and code\'s with JetBrains Mono', /^"?DM Serif Display"?,/.test(out.fonts?.title ?? '') && /^"?Inter"?,/.test(out.fonts.text ?? '') && /^"?JetBrains Mono"?,/.test(out.fonts.code ?? ''), out.fonts],
+    ['fonts: document.fonts reports DM Serif Display, Inter 400 and JetBrains Mono 400 loaded, and every face is available', ['DM Serif Display 400 loaded', 'Inter 400 loaded', 'JetBrains Mono 400 loaded'].every((f) => out.fonts?.faces.includes(f)) && out.fonts.checked.every(Boolean), out.fonts],
+    ['fonts: the page holds the six faces it uses and no other', out.fonts?.faces.length === 6, out.fonts?.faces],
+    ['fonts: the body draws its grain from a data URL', /^url\("data:image\/svg\+xml;base64,/.test(out.fonts?.grain ?? ''), out.fonts?.grain],
+  ], { hash: '/products' }],
 
   // A domain graph as wide as a real one (nine domains, a flow of seven steps, long names, summaries and paths), at the smoke's 1280 by
   // 900 window: the cards are read at about full size (the camera fits at a zoom of 0.9 or more) and none of their text runs out of its box.

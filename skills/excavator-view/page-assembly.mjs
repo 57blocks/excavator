@@ -15,14 +15,14 @@
 import { readFileSync } from 'node:fs';
 import { gzipSync } from 'node:zlib';
 
-/** No connection of any kind, scripts and styles only inline, images only data: URLs, workers only blob: URLs (the graph layout's inline worker). */
+/** No connection of any kind, scripts and styles only inline, images and fonts only data: URLs (the inlined fonts), workers only blob: URLs (the graph layout's inline worker). */
 export const CONTENT_SECURITY_POLICY = [
   "default-src 'none'",
   "script-src 'unsafe-inline'",
   "style-src 'unsafe-inline'",
   'img-src data:',
   "connect-src 'none'",
-  "font-src 'none'",
+  'font-src data:',
   "base-uri 'none'",
   "form-action 'none'",
   'worker-src blob:',

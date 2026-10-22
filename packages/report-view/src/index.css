@@ -3,7 +3,9 @@
 /*
  * The 57blocks light tokens (openspec: changes/viewer-app, design D8; the
  * colours are the site's, as in report-viewer D6). Light only: there is no dark
- * branch anywhere. No font is loaded: the names fall back to the system fonts.
+ * branch anywhere. The fonts are inlined by the build (scripts/fonts.mjs,
+ * changes/viewer-learn design D7): headings in DM Serif Display, text in Inter,
+ * code in JetBrains Mono.
  * `static`: the tokens are read through var() from code as well (the node
  * colours), and Tailwind would leave out a token no utility class uses.
  */
@@ -47,8 +49,9 @@
   --color-unused-low: #4f5d8a;
   --color-evidence: #0f766e;
 
-  --font-sans: "Geist", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-sans: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, Menlo, Consolas, monospace;
+  --font-heading: "DM Serif Display", Georgia, "Times New Roman", serif;
 
   --radius-card: 14px;
   --radius-control: 10px;
@@ -59,13 +62,20 @@
   --ease-site: cubic-bezier(0.16, 1, 0.3, 1);
 }
 
+/* The grain: fractal noise at 3% opacity, as a base64 data URL (the page loads nothing). */
+:root {
+  --xv-noise: url(data:image/svg+xml;base64,PHN2ZyB4bWxucz0naHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmcnIHdpZHRoPScyMDAnIGhlaWdodD0nMjAwJz48ZmlsdGVyIGlkPSduJz48ZmVUdXJidWxlbmNlIHR5cGU9J2ZyYWN0YWxOb2lzZScgYmFzZUZyZXF1ZW5jeT0nMC44JyBudW1PY3RhdmVzPSczJyBzdGl0Y2hUaWxlcz0nc3RpdGNoJy8+PC9maWx0ZXI+PHJlY3Qgd2lkdGg9JzEwMCUnIGhlaWdodD0nMTAwJScgZmlsdGVyPSd1cmwoI24pJyBvcGFjaXR5PScwLjAzJy8+PC9zdmc+);
+}
+
 @layer base {
   html {
     color-scheme: light;
   }
   body {
     margin: 0;
-    background: var(--color-paper);
+    /* A 3% grain over the paper colour, drawn by an inline SVG. */
+    background-color: var(--color-paper);
+    background-image: var(--xv-noise);
     color: var(--color-ink-soft);
     font-family: var(--font-sans);
     font-size: 14px;
@@ -79,11 +89,20 @@
     font-weight: 600;
     letter-spacing: -0.01em;
   }
+  /* Page, card and panel titles are serif; DM Serif Display has one weight, so they are not made bold. */
+  h1,
+  h2 {
+    font-family: var(--font-heading);
+    font-weight: 400;
+    letter-spacing: 0;
+  }
   h1 {
-    font-size: 22px;
+    font-size: 26px;
+    line-height: 1.2;
   }
   h2 {
-    font-size: 16px;
+    font-size: 18px;
+    line-height: 1.3;
   }
   h3 {
     font-size: 14px;

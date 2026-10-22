@@ -103,6 +103,15 @@ export function collectBundledPackages() {
   };
 }
 
+/**
+ * Record a package whose files the build inlines without a module of it
+ * passing through `transform` (the fonts, which a plugin reads itself).
+ * @param {string} root the directory that holds its package.json
+ */
+export function notePackage(root) {
+  seen.add(root);
+}
+
 /** The notice for every package seen so far. */
 export function bundledPackagesNotice() {
   return licenseNotice([...seen].map(readBundledPackage));

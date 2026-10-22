@@ -21,8 +21,8 @@
 
 ## 2. 字体与共用组件
 
-- [ ] 2.1 `@fontsource` 拉丁子集内联（design D7），`--font-heading` token，模板开头的许可声明，3% 噪点。验证：O1 字体与噪点在模板里、无外部请求；模板大小增量记入验收。
-- [ ] 2.2 `PageHeader`、`StatTile`、`BarList`、`AreaSpark`、`Histogram`、`RowPanel`（design D6），SVG 手写，入场动效与减少动效的终态。验证：组件单测（数值与条长成比例、减少动效下无动画）。
+- [x] 2.1 `@fontsource` 拉丁子集内联（design D7），`--font-heading` token，模板开头的许可声明，3% 噪点。验证：O1 字体与噪点在模板里、无外部请求；模板大小增量记入验收。
+- [x] 2.2 `PageHeader`、`StatTile`、`BarList`、`AreaSpark`、`Histogram`、`RowPanel`（design D6），SVG 手写，入场动效与减少动效的终态。验证：组件单测（数值与条长成比例、减少动效下无动画）。
 
 ## 3. 详情页
 

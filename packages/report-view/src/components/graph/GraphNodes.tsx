@@ -107,7 +107,7 @@ export const GroupNode = memo(function GroupNode({ data }: NodeProps<GroupFlowNo
           i
         </button>
         <div className={`flex min-w-0 flex-col pr-7 ${cluster ? 'gap-0.5' : ''}`}>
-          <span className={`min-w-0 truncate font-semibold text-ink ${cluster ? 'text-[18px] leading-6' : ''}`} title={entry.label}>{entry.label}</span>
+          <span className={`min-w-0 truncate font-heading text-ink ${cluster ? 'text-[18px] leading-6' : ''}`} title={entry.label}>{entry.label}</span>
           <span className="text-[10px] font-semibold uppercase tracking-wider text-muted">{KIND_TEXT[entry.kind as keyof typeof KIND_TEXT]}</span>
         </div>
         {entry.note ? <p className={`mt-1 text-muted ${cluster ? 'line-clamp-2 text-[13px] leading-[18px]' : 'line-clamp-1 text-xs'}`}>{entry.note}</p> : null}
@@ -162,7 +162,7 @@ export const FileNode = memo(function FileNode({ data }: NodeProps<FileFlowNode>
         <span aria-hidden="true" className="absolute inset-y-0 left-0 w-1 rounded-l-card" style={{ background: nodeColor('file') }} />
         <Handles />
         <div className="py-2 pl-4 pr-10">
-          <div className="truncate font-semibold text-ink" title={entry.note ?? entry.label}>{entry.label}</div>
+          <div className="truncate font-heading text-ink" title={entry.note ?? entry.label}>{entry.label}</div>
           <div className="font-mono text-xs text-muted">{plural(entry.nodes, 'node')}</div>
         </div>
         {open}

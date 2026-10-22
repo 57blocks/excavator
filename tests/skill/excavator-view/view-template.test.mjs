@@ -12,6 +12,7 @@ import { tmpdir } from 'node:os';
 import { join, relative } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
+import { FONT_FACES, FONT_PACKAGES, packageRoot } from '../../../packages/report-view/scripts/fonts.mjs';
 import { checkLicenseNotice, NOTICE_HEADING } from '../../../packages/report-view/scripts/licenses.mjs';
 import { checkTemplate } from '../../../packages/report-view/scripts/single-file.mjs';
 import { packProject } from '../../../skills/excavator-view/pack.mjs';
@@ -66,10 +67,53 @@ describe('the built template', () => {
 
   const css = (text) => [...text.matchAll(/<style\b[^>]*>([\s\S]*?)<\/style>/gi)].map((m) => m[1]).join('\n');
 
-  it('has a stylesheet that names no font and no address of its own', () => {
+  it('has a stylesheet that imports nothing and names no address of its own', () => {
     expect(css(html).length).toBeGreaterThan(1000);
-    expect(css(html)).not.toMatch(/@font-face|@import/i);
+    expect(css(html)).not.toMatch(/@import/i);
     expect(css(html)).not.toMatch(/url\(\s*['"]?(?!data:)/i);
+    expect(html).not.toMatch(/url\(\s*['"]?https?:/i);
+    // No font file is referred to by name: every face is inline.
+    expect(html).not.toMatch(/\.(woff2?|ttf|otf|eot)\b/i);
+  });
+
+  it('inlines exactly the Latin faces the page uses, byte for byte, as data:font/woff2 with font-display: block (design D7)', () => {
+    const faces = [...css(html).matchAll(/@font-face\s*\{([^}]*)\}/g)].map((m) => m[1]);
+    const seen = faces.map((body) => {
+      const family = /font-family:\s*"?([^";]+?)"?\s*;/.exec(body)?.[1];
+      const weight = Number(/font-weight:\s*(\d+)/.exec(body)?.[1]);
+      const src = /src:\s*url\(\s*['"]?data:font\/woff2;base64,([A-Za-z0-9+/=]+)['"]?\s*\)/.exec(body)?.[1] ?? null;
+      expect(body, `${family} ${weight}`).toMatch(/font-display:\s*block/);
+      return { family, weight, src };
+    });
+    expect(seen.map(({ family, weight }) => `${family} ${weight}`).sort()).toEqual(FONT_FACES.map((f) => `${f.family} ${f.weight}`).sort());
+    for (const face of FONT_FACES) {
+      const bytes = readFileSync(join(packageRoot(face.pkg), 'files', face.file));
+      const inlined = seen.find((s) => s.family === face.family && s.weight === face.weight);
+      expect(inlined?.src, face.file).not.toBeNull();
+      expect(Buffer.from(inlined.src, 'base64').equals(bytes), face.file).toBe(true);
+    }
+    expect(css(html)).toMatch(/--font-heading:\s*"DM Serif Display"/);
+    expect(css(html)).toMatch(/--font-sans:\s*"?Inter"?/);
+    expect(css(html)).toMatch(/--font-mono:\s*"JetBrains Mono"/);
+  });
+
+  it('draws a 3% grain from an inline SVG data URL', () => {
+    const noise = /--xv-noise:\s*url\(\s*['"]?data:image\/svg\+xml;base64,([A-Za-z0-9+/=]+)/.exec(css(html))?.[1] ?? null;
+    expect(noise).not.toBeNull();
+    const svg = Buffer.from(noise, 'base64').toString('utf-8');
+    expect(svg).toContain('feTurbulence');
+    expect(svg).toMatch(/opacity='0\.03'/);
+    expect(css(html)).toMatch(/background-image:\s*var\(--xv-noise\)/);
+  });
+
+  it('names the three inlined fonts in the licence notice, under the SIL Open Font License 1.1', () => {
+    const notice = html.slice(0, html.indexOf('-->'));
+    for (const pkg of FONT_PACKAGES) {
+      const installed = JSON.parse(readFileSync(join(packageRoot(pkg), 'package.json'), 'utf-8'));
+      expect(installed.license, pkg).toBe('OFL-1.1');
+      expect(notice, pkg).toContain(`\n${pkg} ${installed.version} OFL-1.1\n`);
+    }
+    expect(FONT_PACKAGES).toEqual(['@fontsource/dm-serif-display', '@fontsource/inter', '@fontsource/jetbrains-mono']);
   });
 
   it('defines the colour of every node kind, which the code reads through var() and no class names', () => {

@@ -104,6 +104,41 @@ Unused、Hotspots 与 Doc map 页 SHALL：
 
 ## MODIFIED Requirements
 
+### Requirement: 打包成一个自包含的 HTML
+
+打包 SHALL 读取项目 `.excavator/` 下的产物与源码快照里的源码，写出一个 HTML 文件，默认路径 `<project>/.excavator/view.html`，可以用参数改写到别的路径。
+
+页面的前端 SHALL 来自 `packages/report-view` 构建出的单个 HTML 模板：
+- 构建把全部 JS、CSS 与 Worker 内联进这一个文件，没有分块，也没有外部文件；
+- 打包只往模板里插入内容安全策略与数据，不改动模板的其余字节；
+- 模板不存在时，打包 MUST 以非零状态退出并写明要先运行 `pnpm build`。
+
+写出的文件 SHALL 自包含：
+- 页面的全部样式、脚本与数据都内联在这一个文件里；
+- 打开时 MUST NOT 请求任何网络或本地文件资源（包括字体、图标、脚本、样式与数据）；
+- 打开的人除浏览器外 MUST NOT 需要任何东西：不需要 Node、不需要联网、不需要起服务；
+- 文件 SHALL 带内容安全策略：禁止一切连接；脚本与样式只允许内联；图片与字体只允许 `data:`；Worker 只允许 `blob:`。
+
+打包 SHALL 是确定的：同一个模板、同一组产物、同一个源码版本、同一组参数，写出的文件逐字节相同。文件里 MUST NOT 写入打包时间。
+
+打包 SHALL 先写临时文件再改名；失败时 MUST NOT 留下半个文件，也 MUST NOT 改动已有的同名文件。
+
+#### Scenario: 断网打开
+- **WHEN** 在没有网络、没有装 Node 的机器上用 Chrome 以 `file://` 打开写出的文件
+- **THEN** 页面完整显示，图能布局；没有网络请求、没有控制台错误，也没有内容安全策略违规
+
+#### Scenario: 重复打包
+- **WHEN** 模板、产物、源码与参数都没变，连续打包两次
+- **THEN** 两次写出的文件逐字节相同
+
+#### Scenario: 打包失败
+- **WHEN** 打包中途出错，而目标路径上已有一个旧的查看页
+- **THEN** 命令以非零状态退出并说明原因，旧文件原样保留
+
+#### Scenario: 没有构建模板
+- **WHEN** `packages/report-view` 还没有构建
+- **THEN** 打包以非零状态退出，说明要先运行 `pnpm build`，不写出任何文件
+
 ### Requirement: 每个产物落进看得见的状态
 
 打包 SHALL 对下列每个产物给出且只给出一种状态，查看页的 Products 页 SHALL 逐一列出：
