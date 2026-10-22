@@ -19,7 +19,8 @@
  * `--reduced-motion` emulate those two system settings. `--eval` runs a
  * JavaScript expression in the page once it is ready (to click a filter, say),
  * waits for the page to settle and then collects everything; its value is
- * returned as `evalResult`. The exit status is 1 when any of those errors is
+ * returned as `evalResult`. The eval can move the browser's real pointer with `await __xvPointer(x, y)` (a CDP
+ * `Input.dispatchMouseEvent`, so only what the pointer can reach receives the hover), where x and y are page coordinates. The exit status is 1 when any of those errors is
  * present, when the page reports `data-xv-ready="error"`, or on timeout.
  *
  * Chrome: `$CHROME`, else the macOS app, else google-chrome / chromium on PATH.
@@ -123,6 +124,16 @@ function connect(child, onEvent) {
 }
 
 // Recorded on every new document before the page's own scripts run.
+/** The page side of the real pointer: `__xvPointer(x, y)` asks the driver to move it and resolves once it has. */
+const POINTER_BRIDGE = `(function () {
+  var acks = {};
+  var next = 0;
+  window.__xvPointer = function (x, y) {
+    return new Promise(function (resolve) { next += 1; acks[next] = resolve; window.xvSmokePointer(JSON.stringify({ id: next, x: x, y: y })); });
+  };
+  window.__xvPointerAck = function (id) { if (acks[id]) { acks[id](); delete acks[id]; } };
+})();`;
+
 const VIOLATION_RECORDER = `
   window.__xvViolations = [];
   document.addEventListener('securitypolicyviolation', function (event) {
@@ -202,6 +213,7 @@ async function run(options) {
   child.on('error', () => { exited = true; });
 
   let sessionId;
+  let onPointer = null;
   const documentRequests = new Set();
   const onEvent = (message) => {
     if (message.sessionId !== sessionId) return;
@@ -225,6 +237,9 @@ async function run(options) {
       case 'Network.loadingFailed':
         if (!documentRequests.has(params.requestId)) found.loadFailures.push(`${params.errorText}${params.blockedReason ? ` (${params.blockedReason})` : ''}`);
         break;
+      case 'Runtime.bindingCalled':
+        if (params.name === 'xvSmokePointer' && onPointer) onPointer(params.payload);
+        break;
       default:
     }
   };
@@ -241,6 +256,14 @@ async function run(options) {
     const call = (method, params) => send(method, params, sessionId);
     for (const domain of ['Runtime', 'Log', 'Network', 'Page']) await call(`${domain}.enable`);
     await call('Page.addScriptToEvaluateOnNewDocument', { source: VIOLATION_RECORDER });
+    await call('Runtime.addBinding', { name: 'xvSmokePointer' });
+    await call('Page.addScriptToEvaluateOnNewDocument', { source: POINTER_BRIDGE });
+    onPointer = (payload) => {
+      const { id, x, y } = JSON.parse(payload);
+      call('Input.dispatchMouseEvent', { type: 'mouseMoved', x, y, button: 'none' })
+        .then(() => call('Runtime.evaluate', { expression: `window.__xvPointerAck(${id})` }))
+        .catch(() => {});
+    };
     // A headless page has no focus of its own; with it emulated, focus() and the key shortcuts behave as in a window the user is in.
     await call('Emulation.setFocusEmulationEnabled', { enabled: true });
     await call('Emulation.setDeviceMetricsOverride', { width: options.width, height: options.height, deviceScaleFactor: 1, mobile: false });

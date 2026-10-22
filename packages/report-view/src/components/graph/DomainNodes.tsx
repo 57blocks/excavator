@@ -95,7 +95,7 @@ export const DOMAIN_NODE_TYPES = { card: DomainCard };
 /**
  * A link between two cards: a cross-domain edge (dashed) or the arrow from one step to the next, a straight line from the
  * border of one card to the border of the other. A cross-domain edge writes the description of each edge of its pair beside it
- * while it is labelled, in a box that wraps.
+ * while the pointer is over it, in an opaque box above the cards that wraps.
  */
 export function DomainLinkEdge({ id, source, target, markerEnd, markerStart, style, data }: EdgeProps) {
   const link = (data ?? { kind: 'sequence', lines: [], showLabel: false }) as DomainEdgeData;
@@ -109,7 +109,8 @@ export function DomainLinkEdge({ id, source, target, markerEnd, markerStart, sty
           <div
             data-xv-link-label={id}
             className="nodrag nopan pointer-events-none absolute w-max max-w-[340px] rounded-control border border-line-2 bg-surface px-2.5 py-1.5 text-xs leading-4 text-ink shadow-card"
-            style={{ transform: `translate(-50%, -50%) translate(${line.labelX}px, ${line.labelY}px)` }}
+            // Above the cards (the label layer is drawn under the node layer unless it is raised); it lets the pointer through, so it cannot unhover its edge.
+            style={{ transform: `translate(-50%, -50%) translate(${line.labelX}px, ${line.labelY}px)`, zIndex: 1000 }}
           >
             {link.lines.map((text) => <p key={text} className="m-0">{text}</p>)}
           </div>

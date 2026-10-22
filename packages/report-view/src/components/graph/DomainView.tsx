@@ -125,7 +125,8 @@ export function DomainView({ scene, place, selected, onOpen, onSelect, onClearSe
       >
         <Background variant={BackgroundVariant.Dots} gap={20} size={1} color="var(--color-line-2)" />
         <Controls showInteractive={false} />
-        <MiniMap pannable zoomable nodeColor="var(--color-node-domain)" className="!rounded-card !border !border-line" />
+        {/* The steps of a flow are one column that fits the canvas: a minimap there only covers their right edge. */}
+        {level.place.kind === 'flow' ? null : <MiniMap pannable zoomable nodeColor="var(--color-node-domain)" className="!rounded-card !border !border-line" />}
         <TopLeft>
           <Breadcrumbs crumbs={crumbs} notes={level.notes} onGo={(crumb) => crumb.path !== '' && onGo(crumb.path)} />
         </TopLeft>

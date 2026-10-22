@@ -18,7 +18,6 @@ import { domainCounts, type DomainIndex, type DomainNode } from '../data/domain'
 import type { DomainCardData } from '../components/graph/DomainNodes';
 import { rangeText } from './code';
 import { domainHash, type DomainPlace } from './domain-state';
-import { MAX_LABELLED_EDGES } from './graph-flow';
 import { CLUSTER_SIZE, COLUMN_OPTIONS, layoutNodes, type LevelLayout, type Size } from './graph-layout';
 
 export interface DomainEntry {
@@ -232,16 +231,15 @@ const INK = 'var(--color-ink-soft)';
 const ACCENT = 'var(--color-accent)';
 
 /**
- * The React Flow edges of a level. A cross-domain edge shows its description only while it touches the
- * node under the pointer or the selected node (when that node has no more than MAX_LABELLED_EDGES), or is
- * itself under the pointer; while one is active the edges that do not touch it are dimmed, not left out.
+ * The React Flow edges of a level. A cross-domain edge shows its description only while it is under the pointer:
+ * the edges of a selected or hovered domain are lit but not described, because their boxes drawn together sit on each
+ * other and on the cards (the sidebar lists the same edges with their descriptions). While one is active the edges that
+ * do not touch it are dimmed, not left out.
  * The arrows of a flow are an order, not edges with a meaning of their own, and carry no label.
  */
 export function domainEdges(level: DomainLevel, view: Pick<DomainView, 'selected' | 'hovered' | 'hoveredEdge'>): Edge<DomainEdgeData>[] {
   const active = [view.hovered, view.selected].filter((id): id is string => id !== null);
   const touches = (link: DomainLink) => active.includes(link.source) || active.includes(link.target);
-  const cross = level.links.filter((link) => link.kind === 'cross-domain');
-  const touching = cross.filter(touches).length;
   return level.links.map((link) => {
     const sequence = link.kind === 'sequence';
     const hovered = view.hoveredEdge === link.id;
@@ -257,10 +255,10 @@ export function domainEdges(level: DomainLevel, view: Pick<DomainView, 'selected
       type: 'link',
       focusable: false,
       selectable: false,
-      zIndex: lit ? 10 : 0,
+      zIndex: hovered ? 20 : lit ? 10 : 0,
       markerEnd: marker,
       ...(link.backward ? { markerStart: marker } : {}),
-      data: { kind: link.kind, lines: link.lines, showLabel: !sequence && link.lines.length > 0 && (hovered || (touches(link) && touching <= MAX_LABELLED_EDGES)) },
+      data: { kind: link.kind, lines: link.lines, showLabel: !sequence && link.lines.length > 0 && hovered },
       style: sequence
         ? { stroke: INK, strokeOpacity: 0.55, strokeWidth: 2 }
         : { stroke: colour, strokeOpacity: dimmed ? 0.12 : lit ? 0.95 : 0.55, strokeWidth: 2, strokeDasharray: '6 4' },

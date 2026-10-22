@@ -125,6 +125,10 @@
   --xy-edge-label-color: var(--color-ink-soft);
   font-family: var(--font-sans);
 }
+.react-flow .react-flow__edge.inactive {
+  /* The edges are not selectable, but the pointer must reach them: the edge under it is the one that is labelled. */
+  pointer-events: visibleStroke;
+}
 .react-flow__controls {
   overflow: hidden;
   border-radius: var(--radius-control);
