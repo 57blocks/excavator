@@ -9,7 +9,9 @@
 2. `fix(skill): report a calls edge whose target is not the declaration its site resolves to`：任务 1.1–1.2，用例与修复同一个 commit，每个 commit 上测试都是绿的。
 3. `docs(skill): say how the audit marks a calls edge to the wrong declaration`：任务 1.3。
 4. `docs(openspec): record audit-calls-target acceptance`：任务 2.1–2.2，评审前提交，评审能看到验收记录。
-5. `docs(openspec): record the review of audit-calls-target and archive`：任务 2.3。
+5. `test(skill): resolve a calls edge target through the call scope that skips re-exports`：任务 2.3 的用例。
+6. `docs(openspec): record the rebase of audit-calls-target onto reexport-call-scope`：任务 2.3 的记录。
+7. `docs(openspec): record the review of audit-calls-target and archive`：任务 2.4。
 
 ## 1. 实现
 
@@ -21,4 +23,5 @@
 
 - [x] 2.1 O4：逐个变异，记录变红的用例，然后还原。
 - [x] 2.2 O3 全部门；O5 在真实语料快照上比较，先做装置先验，再按判据逐条记录。
-- [ ] 2.3 评审（中风险档：reviewer 代理）、回复每条意见；验收记录写进 design.md，同步主规格并归档。
+- [x] 2.3 变基到 PR 57blocks/excavator#66（`callScopePaths`）之后：补 O1 h 与变异 vii，重跑 O3、O5。
+- [ ] 2.4 评审（中风险档：reviewer 代理）、回复每条意见；验收记录写进 design.md，同步主规格并归档。

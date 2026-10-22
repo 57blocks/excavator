@@ -2,7 +2,7 @@
 
 ### Requirement: 调用边的目标要是调用点唯一解析到的声明
 
-调用方文件里某个名字的调用点唯一解析到一个声明时，审计 SHALL 只把指向该声明所在文件的模型 `calls` 边算作有抽取记录支撑。指向别处同名声明的边 MUST NOT 得到证据行或被算作匹配；它 SHALL 被标 `verification: "contradicted"`，计入缺口 `edge-target-mismatch`（scope `calls`），样本写出该边、调用点的行与解析到的文件；它同时照旧按没有记录的边计数：模型写了 `extracted` 的计入 `edge-unsupported`，由审计补成 `inferred` 的计入 `edge-auto-inferred`。这样的边 MUST NOT 让被它指错的调用点免于计入 `edge-missing`。有歧义或无法解析的调用点 SHALL 照旧只按调用方文件与名字匹配。模型写的节点、边与字段一律不删不改。
+调用方文件里某个名字的调用点唯一解析到一个声明时（按「审计的期望调用记录用事实图的调用作用域」那条要求的作用域），审计 SHALL 只把指向该声明所在文件的模型 `calls` 边算作有抽取记录支撑。指向别处同名声明的边 MUST NOT 得到证据行或被算作匹配；它 SHALL 被标 `verification: "contradicted"`，计入缺口 `edge-target-mismatch`（scope `calls`），样本写出该边、调用点的行与解析到的文件；它同时照旧按没有记录的边计数：模型写了 `extracted` 的计入 `edge-unsupported`，由审计补成 `inferred` 的计入 `edge-auto-inferred`。这样的边 MUST NOT 让被它指错的调用点免于计入 `edge-missing`。有歧义或无法解析的调用点 SHALL 照旧只按调用方文件与名字匹配。模型写的节点、边与字段一律不删不改。
 
 #### Scenario: 指向别处同名声明的边被报出
 - **WHEN** `app.ts` 导入 `./helper` 并调用 `helper()`，`other.ts` 也声明了 `helper` 但 `app.ts` 没有导入它，模型画了 `run → other.ts#helper`

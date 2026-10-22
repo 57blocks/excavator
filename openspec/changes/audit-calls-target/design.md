@@ -91,7 +91,8 @@
   - d. 模型写了 `extracted` 并引了调用行：`provenance` 仍是 `extracted`，`verification` 是 `contradicted`，`evidence` 与模型写的完全相同，`edge-unsupported` 为 1，`evidenceVerified` 为 0；
   - e. 模型同时画了 `run → helper.ts#helper` 与 `run → other.ts#helper`：前者照旧 `extracted` 并带证据行 4，后者目标不符；`edge-missing|calls` 不计这个调用点；
   - f. stderr 汇总行有 `edge-target-mismatch=`，等于图里该缺口的计数（既有端到端用例的图里没有目标不符的边，两者都是 0；非 0 时的计数由 b 管）；
-  - g. 模型自己写了 `inferred`：`provenance` 仍是 `inferred`，`verification` 是 `contradicted`，`edgeTargetMismatch` 为 1，`edge-auto-inferred|calls` 不计。
+  - g. 模型自己写了 `inferred`：`provenance` 仍是 `inferred`，`verification` 是 `contradicted`，`edgeTargetMismatch` 为 1，`edge-auto-inferred|calls` 不计；
+  - h.（变基到 PR 57blocks/excavator#66 之后补，不在动手前写死的 oracle 里）`app.ts` 导入 `./helper`，只经 `export … from` 转发 `./other`（`reexportOnly`）：调用点按 `callScopePaths` 唯一解析到 `src/helper.ts`，边 `run → other.ts#helper` 标 `contradicted`，`edgeTargetMismatch` 为 1，`callSites.ambiguous` 为 0。
 
   在改动前的代码上跑一次，记录失败的断言。
 - **O2 不误报（改前改后都成立）**：
@@ -105,7 +106,8 @@
   - iii. 有歧义的调用点也放进映射，取第一个候选 → O2 a 红；
   - iv. 不写 `contradicted` → O1 a、d、g 红；
   - v. 不生成缺口 → O1 b 红；stderr 不报该计数 → O1 f 红；
-  - vi. 键不在映射里（调用点有歧义或无法解析）也按目标不符处理 → O2 a、b 红。
+  - vi. 键不在映射里（调用点有歧义或无法解析）也按目标不符处理 → O2 a、b 红；
+  - vii.（随 O1 h 补）审计回到 #66 之前的作用域（本文件加 import map 的全部目标）→ O1 h 红。
 - **O5 真实语料（确定性，零模型）**：用 origin/main 与本分支的 `annotate()` 跑同一批输入，比较 `audit.json` 与标注后的图。输入是已有产物的快照：
   - go-multirepo 与 mixed-suite 两个成员（kotlin-portal、maui-app）的 Lazy 事实图，连同同一次运行的 `structure-all`、import map、扫描结果；
   - Lazy 强化用的公开语料 conduit 的事实图；
@@ -146,6 +148,10 @@
   - `edge-missing|calls` 的增量：go-multirepo 与 kotlin-portal 各 21（有一个键下有两个唯一调用点），maui-app 20，conduit 5，都与预测相同。
 
   这些输入里没有这个缺陷的实例，规则的效果只在夹具与人为植入的边上看得到。比较脚本与快照留在会话的临时目录，不进仓库。
+- **变基到 PR 57blocks/excavator#66（`95986ed4`）之后：** #66 把 `resolveUniqueCallSites` 的作用域换成 `callScopePaths`，去掉只经 `export … from` 到达的目标。本规则只读这个函数的结果，变基只在它的文档注释上冲突，合并后的注释两件事都写。
+  - O1 h：新用例在本分支通过，这个测试文件 36 个用例全过；变异 vii（审计回到 #66 之前的作用域）只让 O1 h 变红，其余 35 个照旧通过；
+  - O5：比较的 main 一侧换成 `95986ed4`，五份输入的原样比较与植入比较重跑，结果与上面逐项相同：原样全部通过、零目标不符的边；植入后的计数增量与预测相同；两边都用 main 的代码时同一比较照旧失败。快照的 import map 是 #66 之前抽的，没有 `reexportOnly`，在它们上面 `callScopePaths` 与旧作用域相同；三套私有语料是 Go、Kotlin、C#，没有 `export … from`。转发的情形只由 O1 h 的夹具覆盖；
+  - O3：在变基后的 `26edd86b` 的分离检出上重跑：`pnpm install --frozen-lockfile`、`pnpm -r build`、`openspec validate --all --strict`（47 项）、`node scripts/check-refs.mjs` 都通过；`pnpm test` 206 个文件、5084 个测试里 5080 个通过、4 个跳过、0 个失败，退出码是 1，唯一的错误是 vitest 的 `onTaskUpdate` RPC 超时（load average 69 到 107），与变基前那次相同。O1 h 只多一个用例，在本分支 `db10b263` 上单独跑这个测试文件全过。
 - **既有问题（不在本变更内，作为后续工作）：**
   - 源端按文件匹配，见 Non-Goals；
   - 证据行核对拿边引的行与该文件里同名调用点的最小行比较。上面的快照上，origin/main 的审计已把事实图里 20%–59% 的正确 `calls` 边判为 `contradicted`（conduit 14/70，go-multirepo 774/3,073，kotlin-portal 936/1,671，maui-app 1,255/2,125），因为它们引的是同名的后一个调用点。
