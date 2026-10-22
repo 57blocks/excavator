@@ -734,3 +734,32 @@ describe('extract-structure analysis outcomes', () => {
     });
   });
 });
+
+describe('unplaced lines a reader reports', () => {
+  const file = { path: 'docs/notes.feature', language: 'feature', fileCategory: 'docs' };
+  const extract = (unplaced) => {
+    const parser = { analyzeFile: () => ({ ...validAnalysis(), unplaced }) };
+    const registry = { getPluginForFile: () => parser, analyzeFile: parser.analyzeFile };
+    return extractStructure.analyzeFileWithOutcomes(registry, file, 'notes\n');
+  };
+
+  it('carries them into the row without counting them as symbols', () => {
+    const extracted = extract([{ reason: 'out-of-place', lineRange: [1, 3] }]);
+    expect(extracted.structureOutcome).toBe('succeeded');
+    const row = extractStructure.buildResult(file, 3, 3, extracted.analysis, null, null, extracted.structureOutcome);
+    expect(row.status).toBe('zero-symbol');
+    expect(row.unplaced).toEqual([{ reason: 'out-of-place', startLine: 1, endLine: 3 }]);
+  });
+
+  it.each([
+    ['not an array', { reason: 'out-of-place', lineRange: [1, 1] }],
+    ['a run without a reason', [{ lineRange: [1, 1] }]],
+    ['a run without a line range', [{ reason: 'out-of-place' }]],
+    ['a run with a one-element line range', [{ reason: 'out-of-place', lineRange: [1] }]],
+  ])('fails the file on %s', (_, unplaced) => {
+    const extracted = extract(unplaced);
+    expect(extracted.structureOutcome).toBe('failed');
+    const row = extractStructure.buildResult(file, 1, 1, extracted.analysis, null, null, extracted.structureOutcome);
+    expect(row).toMatchObject({ status: 'parse-failed', statusReason: 'extractor-error-or-invalid-output' });
+  });
+});

@@ -19,8 +19,8 @@
 - [x] 1.1 `packages/core/src/types.ts`：新增 `StructuralAnalysis.unplaced`（D2）。验证：`pnpm run typecheck` 通过。
 - [x] 1.2 `feature-parser.ts`：按 D1 的分类与接受表、D3、D5 重写 `extract`。验证：1.3 的测试全绿。
 - [x] 1.3 `feature-parser.test.ts`：写 O1 的十项；按 design 重算现有测试的期望；把 main 的解析器临时放回，逐条确认新测试失败。
-- [ ] 1.4 `extract-structure-result.mjs`：校验 `unplaced` 并带进结果行，不计入符号数。`coverage-ledger.mjs`：汇总成缺口 `unplaced-lines`（D2）。验证：1.5 的测试全绿。
-- [ ] 1.5 `test_coverage_ledger.test.mjs`：加 O2 的端到端用例。另加 `unplaced` 形状校验的单元用例。两者都确认在 main 上失败。
+- [x] 1.4 `extract-structure-result.mjs`：校验 `unplaced` 并带进结果行，不计入符号数。`coverage-ledger.mjs`：汇总成缺口 `unplaced-lines`（D2）。验证：1.5 的测试全绿。
+- [x] 1.5 `test_coverage_ledger.test.mjs`：加 O2 的端到端用例。另加 `unplaced` 形状校验的单元用例。两者都确认在 main 上失败。
 
 ## 2. 验收
 
