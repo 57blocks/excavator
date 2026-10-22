@@ -10,11 +10,15 @@
 3. `ci: run the full gate on every pull request`：任务 1.2、1.3。
 4. `ci: scan each pull request's own text against name lists kept in secrets`：任务 1.4–1.6。
 5. `docs(agents): name the checks a pull request must pass`：任务 1.7。
-6. `docs(openspec): record ci-merge-gate acceptance before merge`：任务 2.1–2.4。
+6. `test(ci): merge with an identity in the privacy-scan test, and check it stopped on the conflict`：任务 2.2 中 Linux 上暴露的问题。
+7. `docs(openspec): fold the review's findings into ci-merge-gate`：任务 2.5。
+8. `fix(ci): read every commit, merge and file the privacy scan used to miss`：任务 2.6。
+9. `fix(ci): read the pull request's text when the privacy scan runs`：任务 2.7。
+10. `docs(openspec): record ci-merge-gate acceptance before merge`：任务 2.1、2.4、2.8。
 
 合并后另开一个 PR：
 
-7. `docs(openspec): record ci-merge-gate probes and protection, and archive`：任务 3.1–3.4。
+11. `docs(openspec): record ci-merge-gate probes and protection, and archive`：任务 3.1–3.4。
 
 ## 1. 实现
 
@@ -32,10 +36,14 @@
 - [ ] 2.2 推送开 PR，O3 前半：`Privacy scan` 红且写明名单不可用；`CI gate` 绿。
 - [ ] 2.3 生成两个金丝雀（只存本地），`gh secret set` 设置 `PRIVACY_NAMES` 与 `PRIVACY_CORPUS`，重跑 `Privacy scan` 变绿（O3 后半）。
 - [ ] 2.4 验收记录写进 design.md，提交后两个检查仍绿，合并。
+- [ ] 2.5 干净上下文的审查子代理只读审本 PR，逐条核实它的发现，结论写进 design（D2、D5、D6、O1、O5、Risks）与 spec。
+- [ ] 2.6 脚本：完整遍历历史、合并提交读 remerge diff、去掉整体差异、按文本读并去掉 NUL、作者、三个以上父提交的合并退出 2；测试补上审查发现的各种情形，重做变异。
+- [ ] 2.7 工作流：标题、分支名与正文运行时经 API 读取，手动触发读分支的 PR，base 运行时取合并基点。
+- [ ] 2.8 重跑本地全量门与 O6，推送后两个检查在 PR 上绿。
 
 ## 3. 合并后
 
 - [ ] 3.1 O4 五个探针，事后删除探针分支。
 - [ ] 3.2 按 D7 开分支保护，读回核对（O5 前半）。
-- [ ] 3.3 归档记录 PR：检查跑完前 `mergeable_state` 为 `blocked`，变绿后合并（O5 后半）。
+- [ ] 3.3 归档记录 PR：检查跑完前 `mergeable_state` 为 `blocked`；标题改成含金丝雀时重扫变红、改回变绿；变绿后合并（O5 后半）。
 - [ ] 3.4 同步主规格并归档。
