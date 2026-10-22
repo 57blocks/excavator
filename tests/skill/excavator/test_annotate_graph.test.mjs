@@ -420,23 +420,24 @@ describe('annotate-graph — a calls edge must reach the declaration its site re
 
   const audit = (inputs) => annotate({ ...inputs, supplement: false });
 
-  it('marks an edge to a same-named declaration elsewhere contradicted, with no evidence', () => {
+  it('does not match an edge to a same-named declaration elsewhere, so it gets no evidence', () => {
     const { annotated } = audit(wrongTarget());
     const edge = edgeOf(annotated, 'calls', 'function:src/app.ts:run', WRONG);
 
     expect(edge.provenance).toBe('inferred');
-    expect(edge.verification).toBe('contradicted');
     expect(edge.evidence).toBeUndefined();
+    // the call scope is a name lookup, so a mismatch is not a contradiction
+    expect(edge.verification).toBeUndefined();
   });
 
-  it('reports it under its own gap kind, naming the declaration the site resolves to', () => {
+  it('reports it under its own gap kind, naming the one file in scope that declares the callee', () => {
     const { annotated, audit: report } = audit(wrongTarget());
 
     expect(report.counts.edgeTargetMismatch).toBe(1);
     const gap = gapOf(annotated, 'edge-target-mismatch', 'calls');
     expect(gap.count).toBe(1);
     expect(gap.samples).toEqual([
-      `function:src/app.ts:run -> ${WRONG}: src/app.ts:4 helper resolves to src/helper.ts`,
+      `function:src/app.ts:run -> ${WRONG}: src/app.ts:4 helper is declared in scope only in src/helper.ts`,
     ]);
     // No record supports the edge, so it is also counted where every such
     // edge is: annotate assigned its provenance.
@@ -450,7 +451,7 @@ describe('annotate-graph — a calls edge must reach the declaration its site re
     expect(gapOf(annotated, 'edge-missing', 'calls').samples).toEqual(['src/app.ts:4 -> helper']);
   });
 
-  it('keeps a model-claimed extracted provenance and the model citation, and marks the mismatch', () => {
+  it('marks a model-claimed extracted edge unverified, as no record supports it, and keeps the citation', () => {
     const inputs = wrongTarget();
     const citation = { file: 'src/app.ts', line: 4, source: 'model' };
     Object.assign(edgeOf(inputs.graph, 'calls', 'function:src/app.ts:run', WRONG), {
@@ -460,7 +461,7 @@ describe('annotate-graph — a calls edge must reach the declaration its site re
     const edge = edgeOf(annotated, 'calls', 'function:src/app.ts:run', WRONG);
 
     expect(edge.provenance).toBe('extracted');
-    expect(edge.verification).toBe('contradicted');
+    expect(edge.verification).toBe('unverified');
     expect(edge.evidence).toEqual([citation]);
     expect(report.counts.edgeUnsupported).toBe(1);
     expect(report.counts.evidenceVerified).toBe(0);
@@ -474,7 +475,7 @@ describe('annotate-graph — a calls edge must reach the declaration its site re
     const edge = edgeOf(annotated, 'calls', 'function:src/app.ts:run', WRONG);
 
     expect(edge.provenance).toBe('inferred');
-    expect(edge.verification).toBe('contradicted');
+    expect(edge.evidence).toBeUndefined();
     expect(report.counts.edgeTargetMismatch).toBe(1);
     // annotate did not assign this provenance, so it is not auto-inferred
     expect(report.counts.edgeAutoInferred.calls).toBeUndefined();
@@ -491,7 +492,8 @@ describe('annotate-graph — a calls edge must reach the declaration its site re
       provenance: 'extracted',
       evidence: [{ file: 'src/app.ts', line: 4, source: 'tree-sitter' }],
     });
-    expect(edgeOf(annotated, 'calls', 'function:src/app.ts:run', WRONG).verification).toBe('contradicted');
+    expect(edgeOf(annotated, 'calls', 'function:src/app.ts:run', WRONG)).toMatchObject({ provenance: 'inferred' });
+    expect(edgeOf(annotated, 'calls', 'function:src/app.ts:run', WRONG).evidence).toBeUndefined();
     expect(report.counts.edgeTargetMismatch).toBe(1);
     expect(report.counts.edgeMissing.calls).toBeUndefined();
   });
@@ -501,7 +503,9 @@ describe('annotate-graph — a calls edge must reach the declaration its site re
     inputs.importMap.importMap['src/app.ts'] = ['src/helper.ts', 'src/other.ts'];
     const { annotated, audit: report } = audit(inputs);
 
-    expect(edgeOf(annotated, 'calls', 'function:src/app.ts:run', WRONG).verification).toBeUndefined();
+    expect(edgeOf(annotated, 'calls', 'function:src/app.ts:run', WRONG)).toMatchObject({
+      provenance: 'extracted', evidence: [{ file: 'src/app.ts', line: 4, source: 'tree-sitter' }],
+    });
     expect(report.counts.edgeTargetMismatch).toBe(0);
     expect(report.counts.callSites.ambiguous).toBe(1);
   });
@@ -511,7 +515,9 @@ describe('annotate-graph — a calls edge must reach the declaration its site re
     inputs.importMap.importMap['src/app.ts'] = [];
     const { annotated, audit: report } = audit(inputs);
 
-    expect(edgeOf(annotated, 'calls', 'function:src/app.ts:run', WRONG).verification).toBeUndefined();
+    expect(edgeOf(annotated, 'calls', 'function:src/app.ts:run', WRONG)).toMatchObject({
+      provenance: 'extracted', evidence: [{ file: 'src/app.ts', line: 4, source: 'tree-sitter' }],
+    });
     expect(report.counts.edgeTargetMismatch).toBe(0);
     expect(report.counts.callSites.unresolved).toBe(1);
   });
@@ -524,9 +530,22 @@ describe('annotate-graph — a calls edge must reach the declaration its site re
     inputs.importMap.reexportOnly = { 'src/app.ts': ['src/other.ts'] };
     const { annotated, audit: report } = audit(inputs);
 
-    expect(edgeOf(annotated, 'calls', 'function:src/app.ts:run', WRONG).verification).toBe('contradicted');
+    expect(edgeOf(annotated, 'calls', 'function:src/app.ts:run', WRONG)).toMatchObject({ provenance: 'inferred' });
     expect(report.counts.edgeTargetMismatch).toBe(1);
     expect(report.counts.callSites.ambiguous).toBe(0);
+  });
+
+  it('treats a target node with no file as a mismatch at a uniquely resolved site', () => {
+    const inputs = fixture();
+    const LOOSE = 'function:helper';
+    inputs.graph.nodes.push({ id: LOOSE, type: 'function', name: 'helper', summary: 'Helps', tags: [], complexity: 'simple' });
+    edgeOf(inputs.graph, 'calls', 'function:src/app.ts:run', RIGHT).target = LOOSE;
+    const { annotated, audit: report } = audit(inputs);
+
+    expect(edgeOf(annotated, 'calls', 'function:src/app.ts:run', LOOSE)).toMatchObject({ provenance: 'inferred' });
+    expect(edgeOf(annotated, 'calls', 'function:src/app.ts:run', LOOSE).evidence).toBeUndefined();
+    expect(report.counts.edgeTargetMismatch).toBe(1);
+    expect(report.counts.edgeMissing.calls).toBe(1);
   });
 });
 
