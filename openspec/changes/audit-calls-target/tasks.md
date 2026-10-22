@@ -11,7 +11,10 @@
 4. `docs(openspec): record audit-calls-target acceptance`：任务 2.1–2.2，评审前提交，评审能看到验收记录。
 5. `test(skill): resolve a calls edge target through the call scope that skips re-exports`：任务 2.3 的用例。
 6. `docs(openspec): record the rebase of audit-calls-target onto reexport-call-scope`：任务 2.3 的记录。
-7. `docs(openspec): record the review of audit-calls-target and archive`：任务 2.4。
+7. `fix(skill): treat a calls edge to another declaration as unsupported, not contradicted`：任务 2.4，第一轮评审的 Important 与 Nit（用例）。
+8. `docs(skill): say a calls edge to another declaration is marked as unsupported`：任务 2.4。
+9. `docs(openspec): revise audit-calls-target after review round 1`：任务 2.4，D2、规格增量、oracle 与第一轮记录。
+10. `docs(openspec): record the review of audit-calls-target and archive`：任务 2.4 收尾。
 
 ## 1. 实现
 

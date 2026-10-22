@@ -13,14 +13,13 @@
 ## What Changes
 
 - 调用点唯一解析时，抽取记录只支撑指向那个声明的边：目标节点的文件不是解析出的文件，就不算匹配。
-- 这样的边不删、不改模型写的字段，加标记并计数：
-  - `verification: "contradicted"`；
-  - 不附证据行；模型写了 `extracted` 就保留，否则记 `inferred`；
-  - 新缺口 `edge-target-mismatch`（scope `calls`），带样本，样本写出边、调用点的行，以及调用点解析到的文件。
+- 这样的边不删、不改模型写的字段，按没有记录支撑的边标记并计数（第一轮评审后从 `contradicted` 改来，见 design.md D2）：
+  - 不附证据行；模型写了 `extracted` 就保留并标 `verification: "unverified"`，否则记 `inferred`；
+  - 新缺口 `edge-target-mismatch`（scope `calls`），带样本，样本写出边、调用点的行，以及作用域里唯一声明这个名字的文件。
 - 被指错的调用点不算有边：没有别的边指向解析出的声明时，它照旧计入 `edge-missing|calls`。
 - 有歧义或无法解析的调用点照旧只按名字匹配。
 - stderr 汇总行加 `edge-target-mismatch=` 一项，与图里的缺口计数相同。
-- `SKILL.md` 第 2.3 阶段补一句：这类边标 `contradicted`。
+- `SKILL.md` 第 2.3 阶段补一句：这类边按没有记录的边标记，计入 `edge-target-mismatch`。
 
 ## Capabilities
 
@@ -30,7 +29,7 @@
 
 ### Modified Capabilities
 
-- `facts-audit`：新增「调用边的目标要是调用点唯一解析到的声明」。
+- `facts-audit`：修改「审计模型图对抽取事实」，写进调用边的目标规则。
 
 ## Impact
 
