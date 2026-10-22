@@ -306,3 +306,25 @@ describe('import map — unresolved specifiers are recorded', () => {
     );
   });
 });
+
+describe('reader lines that could not be placed are a gap', () => {
+  it('counts the lines of a .feature file with no Gherkin structure', () => {
+    const root = setupTree({
+      'features/search.feature': 'Feature: Search\n  Scenario: Find\n    Given an index\n',
+      'features/notes.feature': 'These are release notes,\nnot a feature file.\nNothing here is Gherkin.\n',
+    });
+    const scan = runScan(root);
+    const structure = runStructure(root, scan);
+    const status = Object.fromEntries(structure.results.map((r) => [r.path, r.status]));
+    expect(status).toEqual({ 'features/search.feature': 'parsed', 'features/notes.feature': 'zero-symbol' });
+
+    const { coverage, gaps } = buildCoverageLedger({ scan, structure });
+    expect(gaps.filter((gap) => gap.kind === 'unplaced-lines')).toEqual([
+      expect.objectContaining({
+        kind: 'unplaced-lines', scope: 'feature', count: 3,
+        samples: ['features/notes.feature:1-3 out-of-place'],
+      }),
+    ]);
+    expect(conservationViolations(coverage)).toEqual([]);
+  });
+});

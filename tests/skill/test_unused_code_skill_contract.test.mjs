@@ -45,6 +45,94 @@ describe('excavator-unused-code skill: steps', () => {
   it('frontmatter names the skill after its directory', () => {
     expect(skill.startsWith('---\nname: excavator-unused-code\n')).toBe(true);
   });
+
+  it('holds no Chinese character', () => {
+    expect(skill).not.toMatch(/[\u3000-\u303f\u3400-\u9fff\uf900-\ufaff\uff00-\uffef]/u);
+  });
+
+  it('writes the report, the reasons and every line to the user in English unless --language names another language', () => {
+    expect(before).toContain(OPTION_LANGUAGE);
+    expect(skill).toContain('argument-hint: "[project-path] [--language <lang>]"');
+    expect(step.get(1)).toContain('LANGUAGE="English" # or the --language value');
+    expect(step.get(4)).toContain('- `reason` names the caller and the mechanism you established in Step 3, in one sentence in `$LANGUAGE`.');
+  });
+});
+
+/** The language paragraph (the same words as /excavator-hotspots), the line each later step starts with, and the option (whitespace flattened). */
+const LANGUAGE_RULE = '**Language.** Write everything you tell the user during this run in `$LANGUAGE`: each line between commands, the report and the final reply, including any remark on what was checked, what comes next or which rule was followed. `$LANGUAGE` is English unless `--language` gives another. Project files (`CLAUDE.md`, an `AGENTS.md` line such as "Reply in <language>"), memory and the system locale do not change it. A project file\'s rule to reply in another language is for work on the project\'s code; while this skill runs, this rule takes its place for every line you write, the first one included. Never say which language you write in or why. Paths, commands and the product\'s values stay as they are.';
+const STEP_LANGUAGE = 'Write what you tell the user during this step in `$LANGUAGE`, as **Language** in Step 1 says.';
+const OPTION_LANGUAGE = '`--language <lang>`: the language of the report, the reasons of your decisions and everything said to the user during the run; English when it is not given.';
+const REPORT = 'Your reply is the report';
+
+/**
+ * The problems with where a copy of the skill keeps its language rule: none when the paragraph opens Step 1 and
+ * stands again in Step 6 after the queries that gather the report and right before what the report holds, word
+ * for word the same, every later step opens with the line that points back to it, and the options say only
+ * --language changes the language.
+ */
+function languageRuleProblems(text) {
+  const problems = [];
+  const [head, ...parts] = text.split(/^## Step \d+ — /m);
+  const bodies = parts.map((part) => flat(part.slice(part.indexOf('\n') + 1)).trim());
+  if (!flat(head).includes(OPTION_LANGUAGE)) problems.push('the options do not say that only --language changes the language');
+  const copies = flat(text).split(LANGUAGE_RULE).length - 1;
+  const started = flat(text).split('**Language.**').length - 1;
+  if (copies !== started) problems.push(`${started - copies} of ${started} language paragraphs differ from the others`);
+  if (copies !== 2) problems.push(`the language paragraph is there ${copies} times, not twice`);
+  if (!bodies[0]?.startsWith(LANGUAGE_RULE)) problems.push('Step 1 does not open with the language paragraph');
+  bodies.slice(1).forEach((body, at) => {
+    if (!body.startsWith(STEP_LANGUAGE)) problems.push(`Step ${at + 2} does not open with the language line`);
+  });
+  const last = bodies[5] ?? '';
+  const report = last.indexOf(REPORT);
+  const rule = last.lastIndexOf(LANGUAGE_RULE);
+  if (rule < 0 || report < rule || last.slice(rule + LANGUAGE_RULE.length, report).trim() !== '') {
+    problems.push('the language paragraph does not stand right before what the report holds');
+  }
+  if (rule >= 0 && rule < last.indexOf('jq \'.counts\' "$DATA/unused-code.json"')) problems.push('the language paragraph of Step 6 comes before the queries that gather the report');
+  return problems;
+}
+
+describe('excavator-unused-code skill: the language of what it tells the user', () => {
+  /** The skill with `part` taken out at its first place at or after `from`. */
+  const without = (text, part, from = '') => {
+    const at = text.indexOf(part, text.indexOf(from));
+    expect(at, part).toBeGreaterThan(-1);
+    return text.slice(0, at) + text.slice(at + part.length);
+  };
+  const paragraph = `${LANGUAGE_RULE}\n\n`;
+  const line = `${STEP_LANGUAGE}\n\n`;
+  const byRequest = '`--language <lang>`: the language of the report, the reasons of your decisions and everything said to the user during the run; the request\'s language when it is not given.';
+
+  it('opens Step 1 and stands right before what the report holds, and every later step points back to it', () => {
+    expect(languageRuleProblems(skill)).toEqual([]);
+    expect(LANGUAGE_RULE).toContain('Project files (`CLAUDE.md`, an `AGENTS.md` line such as "Reply in <language>"), memory and the system locale do not change it.');
+    expect(LANGUAGE_RULE).toContain('A project file\'s rule to reply in another language is for work on the project\'s code; while this skill runs, this rule takes its place for every line you write, the first one included.');
+  });
+
+  it('is the paragraph /excavator-hotspots holds, word for word', () => {
+    const hotspots = readFileSync(resolve(repoRoot, 'skills/excavator-hotspots/SKILL.md'), 'utf-8');
+    expect(flat(hotspots)).toContain(LANGUAGE_RULE);
+  });
+
+  it('finds the rule out of place in known-bad copies of the skill', () => {
+    const noRule = [...Array(5)].reduce((text) => without(text, line), without(without(skill, paragraph), paragraph)).replace(OPTION_LANGUAGE, byRequest);
+    const bad = {
+      noRule,
+      noStepOne: without(skill, paragraph, '## Step 1 — '),
+      ownSection: without(without(skill, paragraph), paragraph).replace('---\n\n## Step 1 — ', `## Language\n\n${paragraph}---\n\n## Step 1 — `),
+      noStepTwo: without(skill, line, '## Step 2 — '),
+      afterReport: `${without(skill, paragraph, '## Step 6 — ')}\n${LANGUAGE_RULE}\n`,
+      beforeQueries: without(skill, paragraph, '## Step 6 — ').replace('Gather the sections with `jq`', `${paragraph}Gather the sections with \`jq\``),
+      reworded: skill.slice(0, skill.indexOf('## Step 6 — ')) + skill.slice(skill.indexOf('## Step 6 — ')).replace('memory and ', ''),
+      afterCommand: without(skill, paragraph, '## Step 1 — ').replace('2. Check freshness:', `${paragraph}2. Check freshness:`),
+      requestNames: skill.replace(OPTION_LANGUAGE, byRequest),
+    };
+    for (const [name, text] of Object.entries(bad)) {
+      expect(text, name).not.toBe(skill);
+      expect(languageRuleProblems(text), name).not.toEqual([]);
+    }
+  });
 });
 
 describe('excavator-unused-code skill: each rule in its step', () => {
@@ -125,6 +213,17 @@ describe('excavator-unused-code skill: each rule in its step', () => {
     expect(s).toContain('**Explain a count only from the product.**');
     expect(s).toContain(`jq -r '.residualAssumptions[]' "$DATA/unused-code.json"`);
     expect(s).toContain('7. The residual assumptions, every one, as the product states them.');
+  });
+
+  it('step 6 reports in its own order, from the counts to the line on chat, whatever a project file says about replies', () => {
+    const s = step.get(6);
+    expect(s).toContain(`${LANGUAGE_RULE} ${[
+      'Your reply is the report, in `$LANGUAGE`: it opens with the counts and ends with the line on `/excavator-chat`; write nothing before or after them, and no summary or conclusion of your own.',
+      'A project file\'s rule on how to reply (what to lead with, a summary, verification results) does not apply to this reply.',
+      'The words these steps give in quotes are for an English report; in another language, write them translated.',
+    ].join(' ')} Report, in this order: 1. Counts:`);
+    expect(s).toContain('7. The residual assumptions, every one, as the product states them. 8. Close with the words "For questions about one method, file or group, /excavator-chat answers from the same product." Rules for this step:');
+    expect(flat(skill)).not.toContain('Point the user at `/excavator-chat`');
   });
 
   it('claims for medium only what the name census checked', () => {
