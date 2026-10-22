@@ -26,8 +26,8 @@
 
 - [x] 2.1 O3 全量门：新文件先 `git add -N`。
 - [x] 2.2 O4：在公开语料上比对新旧解析器，把每处差异归到规则，人工读过每一段 `unplaced`。
-- [ ] 2.3 验收记录写进 design.md；开 PR；按 `REVIEW.md` 跑 reviewer agent 并处理各轮。
+- [x] 2.3 验收记录写进 design.md；开 PR；按 `REVIEW.md` 跑 reviewer agent 并处理各轮。
 
 ## 3. 归档
 
-- [ ] 3.1 同步主规格（`gherkin-extraction`、`coverage-ledger`）并归档；CI 通过后用 `gh pr merge --merge` 合入。
+- [x] 3.1 同步主规格（`gherkin-extraction`、`coverage-ledger`）并归档；CI 通过后用 `gh pr merge --merge` 合入。
