@@ -945,6 +945,10 @@ What it adds:
   under `edge-auto-inferred`).
 - `verification` on an edge whose cited line disagrees with the extractor
   (`contradicted`) or that claims extraction with no record (`unverified`).
+  A `calls` edge to a declaration other than the only one its call site
+  resolves to is `contradicted` too, gets no evidence line, and is counted
+  under `edge-target-mismatch`; that call site still counts under
+  `edge-missing` until an edge reaches the declaration it resolves to.
 - `owner` / `owners` / `anchorSource` on nodes; `owners` plus an
   `identity-collision` count when one node stands for several declarations of
   the same name in one file. **Ids are never rewritten.**
