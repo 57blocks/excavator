@@ -201,13 +201,14 @@ docker run -d --name prd-<name> \
   -e ANTHROPIC_DEFAULT_SONNET_MODEL=<PROFILE> \
   -e ANTHROPIC_DEFAULT_HAIKU_MODEL=<PROFILE> \
   --entrypoint claude excavator-runner:<TAG> \
-  -p "/excavator:excavator-prd /work/repo --scope <subdir> --language <lang>
-Write the PRD to /work/out/PRD.md without asking for confirmation." \
+  -p "/excavator:excavator-prd /work/repo --scope <subdir> --language <lang> --out /work/out/prd --concurrency 3" \
   --plugin-dir /opt/excavator --setting-sources user --settings '{"disableAllHooks": true}' \
   --model <PROFILE> --permission-mode bypassPermissions --permission-prompts none \
   --max-budget-usd <USD> --no-session-persistence --output-format stream-json --verbose
 docker logs -f prd-<name> > /srv/excavator/out/<name>/run.jsonl    # or: docker wait prd-<name>
 ```
+
+`/excavator-prd` writes only to `--out` (default `<repo>/.excavator/prd/`): `index.json` (the entrypoints and the features they are grouped into), one chapter and one findings file per feature, the verification reports, and the assembled `PRD.md`. It never runs `/excavator` or rebuilds the facts in `.excavator/`. Each feature is written by its own subagent, at most `--concurrency` (default 3) at a time. Running the same command again resumes: verified features are kept and the rest are finished; `--fresh` starts over.
 
 Run long jobs detached (`docker run -d`) so they do not depend on an interactive Session Manager session.
 
@@ -269,7 +270,7 @@ Measured on an 8 vCPU / 32 GB x86_64 host with the image above:
 | Lazy, ~3M-line Java repository (16.5k files) | about 2–2.5 min | peak about 2.7 GB; products about 1.2 GB | none |
 | Lazy, Java repository with 8.1k files (about 0.57M lines of main Java) | about 1 min | products about 0.6 GB | none |
 | MCP read tool call on the ~3M-line repository | 6–10 s per call | — | none |
-| `/excavator-prd` with verification, 81-file scope (~15k lines), Opus 5.5 on Bedrock | about 45 min | — | about 25 USD |
+| `/excavator-prd` with verification, 81-file scope (~15k lines), Opus 5.5 on Bedrock, single-context version before feature lanes | about 45 min | — | about 25 USD |
 
 - For `full` runs on large repositories, raise `EXCAVATOR_TIMEOUT_MINUTES` above 180.
 - Set `EXCAVATOR_MAX_BUDGET_USD` per run.

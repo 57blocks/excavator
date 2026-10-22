@@ -1,0 +1,70 @@
+{
+  "express": {
+    "extensions": [".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs"],
+    "entries": [
+      { "kind": "route", "pattern": "\\b(?:app|api|\\w*[Rr]outer|\\w*[Rr]outes)\\.(?:get|post|put|patch|delete|all|options|head)\\s*\\(\\s*(['\"`])[^'\"`]*\\1\\s*,", "flags": "" },
+      { "kind": "route", "pattern": "\\b(?:app|api|\\w*[Rr]outer|\\w*[Rr]outes)\\.route\\s*\\(\\s*['\"`]", "flags": "" }
+    ]
+  },
+  "gin": {
+    "extensions": [".go"],
+    "entries": [
+      { "kind": "route", "pattern": "\\.(?:GET|POST|PUT|PATCH|DELETE|OPTIONS|HEAD|Any)\\(", "flags": "" },
+      { "kind": "route", "pattern": "\\.Handle\\(\\s*\"[A-Z]+\"\\s*,", "flags": "" }
+    ]
+  },
+  "react-router": {
+    "detect": [
+      { "manifest": "package.json", "dependency": "react-router" },
+      { "manifest": "package.json", "dependency": "react-router-dom" }
+    ],
+    "extensions": [".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs"],
+    "entries": [
+      { "kind": "page", "pattern": "<Route\\b", "flags": "" },
+      { "kind": "page", "pattern": "\\bpath\\s*:\\s*['\"`]", "flags": "", "pathHint": "router" }
+    ]
+  },
+  "react": {
+    "extensions": [".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs"],
+    "entries": [
+      { "kind": "page", "pattern": "<Route\\b", "flags": "", "pathHint": "router" },
+      { "kind": "page", "pattern": "\\bpath\\s*:\\s*['\"`]", "flags": "", "pathHint": "router" }
+    ]
+  },
+  "go-cron": {
+    "detect": [
+      { "manifest": "go.mod", "require": "github.com/robfig/cron" }
+    ],
+    "extensions": [".go"],
+    "entries": [
+      { "kind": "job", "pattern": "\\.(?:AddFunc|AddJob)\\(", "flags": "" }
+    ]
+  },
+  "node-schedule": {
+    "detect": [
+      { "manifest": "package.json", "dependency": "node-schedule" }
+    ],
+    "extensions": [".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs"],
+    "entries": [
+      { "kind": "job", "pattern": "\\bscheduleJob\\(", "flags": "" }
+    ]
+  },
+  "go-main": {
+    "detect": [
+      { "manifest": "go.mod" }
+    ],
+    "extensions": [".go"],
+    "entries": [
+      { "kind": "main", "pattern": "^func main\\(\\)", "flags": "" }
+    ]
+  },
+  "node-main": {
+    "detect": [
+      { "manifest": "package.json", "field": "bin" }
+    ],
+    "extensions": ["", ".js", ".mjs", ".cjs"],
+    "entries": [
+      { "kind": "main", "pattern": "^#!.*\\bnode\\b", "flags": "" }
+    ]
+  }
+}
