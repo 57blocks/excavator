@@ -1,11 +1,13 @@
 /**
  * The excavator-diff skill is a prompt; its rules only hold if each one sits
  * where the model acts on it. These tests pin the language of everything the
- * skill writes to the user and the shape of the analysis, which is the reply.
+ * skill writes to the user, the shape of the analysis, and the reply the last command prints.
  */
 import { describe, expect, it } from 'vitest';
-import { readFileSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
+import { spawnSync } from 'node:child_process';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -17,12 +19,16 @@ const flat = (text) => text.replace(/\s+/g, ' ');
 const LANGUAGE_RULE = '**Language.** Write everything you tell the user during this run in `$LANGUAGE`: each line between commands, the report and the final reply, including any remark on what was checked, what comes next or which rule was followed. `$LANGUAGE` is English unless `--language` gives another. Project files (`CLAUDE.md`, an `AGENTS.md` line such as "Reply in <language>"), memory and the system locale do not change it. A project file\'s rule to reply in another language is for work on the project\'s code; while this skill runs, this rule takes its place for every line you write, the first one included. Never say which language you write in or why. Paths, commands and the product\'s values stay as they are.';
 const OPTION_LANGUAGE = '`--language <lang>` — the language of the analysis and everything said to the user during the run; English when it is not given.';
 
-/** Step 7: the analysis is the reply, under five fixed headings. */
-const ANALYSIS = '7. **Write the analysis.** The analysis is the reply. Write it in `$LANGUAGE` under these five `##` headings, in this order:';
+/** Step 7 writes the analysis to a file under five fixed headings; step 8 prints it, and the reply is what it prints. */
+const ANALYSIS = '7. **Write the analysis** in `$LANGUAGE`, as markdown, to `.excavator/diff-analysis.md` in the project, replacing any earlier one, under these five `##` headings, in this order:';
 const HEADINGS = ['Changed Components', 'Affected Components', 'Affected Layers', 'Risk Assessment', 'Review Focus'];
 const ANALYSIS_RULE = [
-  'Write nothing before the first heading or after the last section\'s text.',
+  'The file starts with the first heading and ends with the last section\'s text.',
   'In a language other than English, write the headings translated; code identifiers and paths stay as they are.',
+].join(' ');
+const REPLY = '8. **Reply.** Print the analysis with this command, run from the project root:';
+const REPLY_RULE = [
+  'Reply with exactly the lines it prints and nothing else: write nothing before or after them, no word on what was done, and no summary or notes.',
   'A project file\'s rule on how to reply (what to lead with, a summary, verification results) does not apply to this reply.',
 ].join(' ');
 const STEP6 = '6. **Identify affected layers**';
@@ -42,7 +48,7 @@ function languageRuleProblems(text) {
   if (copies !== started) problems.push(`${started - copies} of ${started} language paragraphs differ from the others`);
   if (copies !== 2) problems.push(`the language paragraph is there ${copies} times, not twice`);
   if (!steps.startsWith(LANGUAGE_RULE)) problems.push('the instructions do not open with the language paragraph');
-  const analysis = steps.indexOf('7. **Write the analysis.**');
+  const analysis = steps.indexOf('7. **Write the analysis**');
   const rule = steps.lastIndexOf(LANGUAGE_RULE);
   if (rule < 0 || analysis < rule || steps.slice(rule + LANGUAGE_RULE.length, analysis).trim() !== '') {
     problems.push('the language paragraph does not stand right before step 7');
@@ -94,14 +100,34 @@ describe('excavator-diff skill: the language of what it writes', () => {
   });
 });
 
-describe('excavator-diff skill: the analysis is the reply', () => {
-  const step7 = skill.slice(skill.indexOf('7. **Write the analysis.**'));
+describe('excavator-diff skill: the reply is the analysis the last command prints', () => {
+  const step7 = skill.slice(skill.indexOf('7. **Write the analysis**'), skill.indexOf('8. **Reply.**'));
 
-  it('ends with step 7: the five headings in order, then what the reply may hold', () => {
+  it('writes the analysis to its file under the five headings, in order', () => {
     expect(flat(step7)).toContain(ANALYSIS);
     const listed = [...step7.matchAll(/^ {3}- \*\*(.+?)\*\*:/gm)].map((m) => m[1]);
     expect(listed).toEqual(HEADINGS);
-    expect(flat(skill).trimEnd().endsWith(ANALYSIS_RULE)).toBe(true);
+    expect(flat(step7)).toContain(ANALYSIS_RULE);
+  });
+
+  it('ends with step 8: the command that prints the file, then what the reply may hold', () => {
+    expect(flat(skill.slice(skill.indexOf('8. **Reply.**'))).startsWith(REPLY)).toBe(true);
+    expect(flat(skill).trimEnd().endsWith(REPLY_RULE)).toBe(true);
+  });
+
+  it('prints the file the analysis was written to, line for line', () => {
+    const command = skill.match(/```bash\n {3}(# the reply:[\s\S]*?)\n {3}```/)[1];
+    const project = mkdtempSync(join(tmpdir(), 'diff-reply-'));
+    try {
+      const text = '## Changed Components\n\nOne constant.\n\n## Review Focus\n\nIts callers.\n';
+      mkdirSync(join(project, '.excavator'));
+      writeFileSync(join(project, '.excavator/diff-analysis.md'), text);
+      const run = spawnSync('sh', ['-c', command], { cwd: project, encoding: 'utf-8' });
+      expect(run.status).toBe(0);
+      expect(run.stdout).toBe(text);
+    } finally {
+      rmSync(project, { recursive: true, force: true });
+    }
   });
 
   it('puts the stale and missing notes inside the analysis, not before it', () => {

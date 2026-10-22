@@ -16,7 +16,8 @@
 
 - 加 `--language <lang>`：分析与运行中写给用户的每一句话的语言，不指定时用英文。
 - 指令开头与第 7 步之前各放一段 Language 段，与 hotspots 的那段逐字相同。
-- 第 7 步：分析就是回复，用五个固定的 `##` 标题按顺序写（Changed Components、Affected Components、Affected Layers、Risk Assessment、Review Focus）。第一个标题之前、最后一节之后不写任何文字；项目文件里关于怎样回复的要求不适用；其它语言下标题译出。
+- 第 7 步：分析用五个固定的 `##` 标题按顺序（Changed Components、Affected Components、Affected Layers、Risk Assessment、Review Focus）写到 `.excavator/diff-analysis.md`，文件以第一个标题开头、以最后一节结尾；其它语言下标题译出。
+- 第 8 步：最后一条命令打印这个文件，回复就是它打印的内容，此外不写任何文字；项目文件里关于怎样回复的要求不适用。
 - 图谱过期或缺清单时的提醒写在第一个标题下的第一行，不再写在分析之前。
 - 新建 diff 的契约测试，钉住上面每一条。
 
@@ -34,5 +35,5 @@
 
 - 改动：`skills/excavator-diff/SKILL.md`、新建 `tests/skill/test_diff_skill_contract.test.mjs`、新建 `openspec/specs/diff-analysis/spec.md`。
 - 不改取改动文件与读图谱的第 2–6 步；五个标题就是改前第 7 步的四方面加「要仔细审的地方」。
-- 分析仍是回复本身，不写文件。
+- 分析仍是回复本身：回复是打印出来的整份分析，不是路径。文件在 Excavator 的数据目录里，下次运行覆盖。
 - 真实验收用前几个语言变更用过的公开 Java 示例仓库的 APFS 克隆，Sonnet，headless，串行，含基线合计不超过 $4。

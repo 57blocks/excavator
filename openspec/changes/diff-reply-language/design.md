@@ -2,7 +2,7 @@
 
 `/excavator-diff` 有七步指令，没有选项。第 7 步列了分析要讲的四方面（改了什么、影响什么、涉及哪些层、风险），外加一句「建议要仔细审什么」，没有说回复的形式。基线见 proposal：分析是中文，以项目文件要的「## 结论」开头。
 
-与 explain 相同：用户要的就是分析本身，几十行内容没法由一条命令打印，写成文件再给路径又把答案藏了起来。所以这里固定的是回复的结构，而不是它的文字。explain 的同一做法在另一个变更里（explain-reply-language）。
+onboard 与 prd 的回复只有几行，由最后一条命令打印。diff 的回复就是分析本身，几十行；回复只给路径会把答案藏起来。这里先把分析写进数据目录里的文件，再由最后一条命令打印整份文件：回复的结构由固定标题定，回复与分析的一致由命令定。第一版没有这一步，见 D2。explain 的同一做法在另一个变更里（explain-reply-language）。
 
 ## Goals / Non-Goals
 
@@ -28,28 +28,39 @@
 
 frontmatter 加 `argument-hint: "[--language <lang>]"`。第 3 步解析 `PROJECT_ROOT` 的命令块里加 `LANGUAGE="English"   # or the --language value`，与 hotspots 相同。
 
-### D2 分析就是回复，用五个固定标题
+### D2 分析写进文件、由最后一条命令打印，用五个固定标题
 
-第 7 步改为：
+第 7 步与新加的第 8 步：
 
-> 7. **Write the analysis.** The analysis is the reply. Write it in `$LANGUAGE` under these five `##` headings, in this order:
+> 7. **Write the analysis** in `$LANGUAGE`, as markdown, to `.excavator/diff-analysis.md` in the project, replacing any earlier one, under these five `##` headings, in this order:
 >    - **Changed Components**: what was directly modified (with summaries from matched nodes)
 >    - **Affected Components**: what might be impacted (from 1-hop edges)
 >    - **Affected Layers**: which architectural layers are touched and cross-layer concerns
 >    - **Risk Assessment**: based on node `complexity` values, number of cross-layer edges, and blast radius (number of affected components)
 >    - **Review Focus**: what to review carefully and any potential issues
 >
->    Write nothing before the first heading or after the last section's text. In a language other than English, write the headings translated; code identifiers and paths stay as they are. A project file's rule on how to reply (what to lead with, a summary, verification results) does not apply to this reply.
+>    The file starts with the first heading and ends with the last section's text. In a language other than English, write the headings translated; code identifiers and paths stay as they are.
+>
+> 8. **Reply.** Print the analysis with this command, run from the project root:
+>
+>    ```bash
+>    # the reply: the analysis
+>    cat .excavator/diff-analysis.md
+>    ```
+>
+>    A project file's rule on how to reply (what to lead with, a summary, verification results) does not apply to this reply.
 
 前四个标题就是改前第 7 步的四方面；改前那句「建议要仔细审什么」原来没有标题，成为第五节。
 
-**为什么固定标题：** 项目文件的「先说结论」能插进来，是因为回复没有形式。固定的标题加上「第一个标题之前不写」，开头只能是第一个标题，也能逐次核对。
+**为什么固定标题：** 项目文件的「先说结论」能插进来，是因为回复没有形式。固定的标题加上「文件以第一个标题开头」与「回复只能是命令打印的内容」，开头只能是第一个标题，也能逐次核对。
+
+**为什么由命令打印：** 第一版第 7 步让模型直接把分析写成回复，并要求第一个标题之前不写任何文字。O3 三次里有一次，回复第一行是一句进度说明（「I have enough context from the knowledge graph. Let me write up the analysis.」），接着才是第一个标题：模型把对上一步的播报与回复写在了同一条消息里。onboard 与 prd 的回复由最后一条命令打印，播报落在命令之前，不会并进回复；这里照搬，分析先写进文件，最后一条命令 `cat` 它。第一版的运行见验收记录。
 
 **备选：** 把分析写进 `.excavator/` 再回复路径。否决：diff 是看完改动立刻要读的，回复只给路径要用户多打开一个文件。
 
 ### D3 提醒写在第一个标题下
 
-第 3 步的 `stale` 与 `missing` 两条改为写在分析第一个标题下的第一行。「第一个标题之前不写」之后，原来的「分析之前提醒」与它冲突。
+第 3 步的 `stale` 与 `missing` 两条改为写在分析第一个标题下的第一行。分析写进文件、文件以第一个标题开头之后，原来的「分析之前提醒」与它冲突。
 
 ### D4 契约测试（新建）
 
@@ -57,12 +68,14 @@ frontmatter 加 `argument-hint: "[--language <lang>]"`。第 3 步解析 `PROJEC
 - Language 段与 hotspots 的逐字相同，出现两次：一份开 `## Instructions`，一份紧挨第 7 步之前、在第 6 步之后；
 - 选项那句在；第 3 步的命令块设 `LANGUAGE`；
 - 一组已知的坏副本都被查出：缺段、不在开头、自成一节、不在第 7 步之前、挪到第 6 步之前、挪到最后、改字、选项改成跟随项目；
-- 第 7 步的开头句在，列出的标题依次是那五个，skill 以第 7 步的说明结尾；
+- 第 7 步的开头句在，列出的标题依次是那五个，文件以第一个标题开头那句在；
+- 第 8 步的命令与说明在，skill 以它们结尾；在临时项目里写一份分析再实际运行这条命令，输出与文件逐字相同；
 - D3 两句在，改前的「warn before impact analysis」已不在。
 
 ## Risks / Trade-offs
 
-- 只改提示词，没有确定性的核对；代价由 O3、O4 量出。回复的形式靠模型遵守。
+- 只改提示词，没有确定性的核对；代价由 O3、O4 量出。回复与文件是否相同靠模型照抄，由 O3 核对。
+- `.excavator/diff-analysis.md` 每次覆盖，只留最后一次的分析。
 - 改动很小时也要写满五节；某节没有内容时模型会写一句说明。
 
 ## 验收 oracle（动手前写死）
@@ -74,6 +87,7 @@ frontmatter 加 `argument-hint: "[--language <lang>]"`。第 3 步解析 `PROJEC
 - 都是 Sonnet，headless，`--plugin-dir` 指向被测的 skill，只读项目设置、不加载 MCP，每次一份新克隆。
 
 **回复的判据：**
+- 回复与最后一条 Bash 命令的输出逐行相同（去掉行尾空白与首尾空行）；
 - 回复的第一个非空行是第一个标题；
 - 回复里的 `##` 标题恰好五个，按顺序；
 - 项目目录里（`.excavator` 之外）除了夹具的那处改动，没有别的改动与新文件。
@@ -85,12 +99,17 @@ frontmatter 加 `argument-hint: "[--language <lang>]"`。第 3 步解析 `PROJEC
   - 把第 7 步之前那份挪到第 6 步之前；
   - 选项改成「不指定时跟随项目」；
   - 删掉第 3 步的 `LANGUAGE=` 一行；
-  - 删掉「第一个标题之前不写」那句；
+  - 删掉「文件以第一个标题开头、以最后一节结尾」那句；
   - 删掉「项目文件的回复要求不适用」那句；
   - 删掉译出那句；
   - 删掉一个标题，或调换两个标题的顺序；
   - 恢复「warn before impact analysis」；
-  - skill 里加一个汉字。
+  - skill 里加一个汉字；
+  - 命令改成打印别的文件；
+  - 删掉「回复只能是它打印的内容」那句；
+  - 删掉第 8 步。
+
+  后三个是第二版（D2）加的。
 - **O2 基线：** 已在提案前跑过，见 proposal。
 - **O3 完整运行，不指定语言：** 3 次，每次上限 $1。每次：
   - 回复满足判据，五个标题依次是 Changed Components、Affected Components、Affected Layers、Risk Assessment、Review Focus；

@@ -83,11 +83,20 @@ The knowledge graph `knowledge-graph.jsonl` stores one JSON record per line:
 
 **Language.** Write everything you tell the user during this run in `$LANGUAGE`: each line between commands, the report and the final reply, including any remark on what was checked, what comes next or which rule was followed. `$LANGUAGE` is English unless `--language` gives another. Project files (`CLAUDE.md`, an `AGENTS.md` line such as "Reply in <language>"), memory and the system locale do not change it. A project file's rule to reply in another language is for work on the project's code; while this skill runs, this rule takes its place for every line you write, the first one included. Never say which language you write in or why. Paths, commands and the product's values stay as they are.
 
-7. **Write the analysis.** The analysis is the reply. Write it in `$LANGUAGE` under these five `##` headings, in this order:
+7. **Write the analysis** in `$LANGUAGE`, as markdown, to `.excavator/diff-analysis.md` in the project, replacing any earlier one, under these five `##` headings, in this order:
    - **Changed Components**: what was directly modified (with summaries from matched nodes)
    - **Affected Components**: what might be impacted (from 1-hop edges)
    - **Affected Layers**: which architectural layers are touched and cross-layer concerns
    - **Risk Assessment**: based on node `complexity` values, number of cross-layer edges, and blast radius (number of affected components)
    - **Review Focus**: what to review carefully and any potential issues
 
-   Write nothing before the first heading or after the last section's text. In a language other than English, write the headings translated; code identifiers and paths stay as they are. A project file's rule on how to reply (what to lead with, a summary, verification results) does not apply to this reply.
+   The file starts with the first heading and ends with the last section's text. In a language other than English, write the headings translated; code identifiers and paths stay as they are.
+
+8. **Reply.** Print the analysis with this command, run from the project root:
+
+   ```bash
+   # the reply: the analysis
+   cat .excavator/diff-analysis.md
+   ```
+
+   Reply with exactly the lines it prints and nothing else: write nothing before or after them, no word on what was done, and no summary or notes. A project file's rule on how to reply (what to lead with, a summary, verification results) does not apply to this reply.
