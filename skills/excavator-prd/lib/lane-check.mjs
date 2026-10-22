@@ -17,6 +17,7 @@ import { INDEX_FILE, loadIndex } from './index-check.mjs';
 import { isObject, isString, isStringArray, readJson, writeJson } from './json-file.mjs';
 import { findOnce, normalize } from './normalize.mjs';
 import { projectFiles } from './project-files.mjs';
+import { projectRootProblem } from './project-root.mjs';
 
 const cjk = (...points) => String.fromCodePoint(...points);
 
@@ -24,12 +25,13 @@ const cjk = (...points) => String.fromCodePoint(...points);
  * Words that make a finding's statement advice rather than a statement of the
  * defect. English words match as whole words, any case (the three marked
  * stems also with an ending: recommended, suggests, refactoring); the
- * Chinese ones (built from their code points) match anywhere.
+ * Chinese ones (built from their code points) match anywhere. Words that
+ * also state a fact (must, consider, improve, needs to be: "the user must be
+ * an admin") are not in the list.
  */
 export const ADVICE_WORDS = Object.freeze([
-  'should', 'must', 'recommend', 'consider', 'refactor', 'improve', 'suggest', 'ought to', 'needs to be', 'better to',
-  cjk(0x5efa, 0x8bae), cjk(0x5e94, 0x8be5), cjk(0x5e94, 0x5f53), cjk(0x9700, 0x8981, 0x6539),
-  cjk(0x53ef, 0x4ee5, 0x6539), cjk(0x63a8, 0x8350), cjk(0x91cd, 0x6784), cjk(0x4f18, 0x5316),
+  'should', 'recommend', 'suggest', 'refactor', 'ought to', 'better to', 'it would be better',
+  cjk(0x5efa, 0x8bae), cjk(0x5e94, 0x8be5), cjk(0x5e94, 0x5f53), cjk(0x63a8, 0x8350), cjk(0x91cd, 0x6784), cjk(0x4f18, 0x5316),
 ]);
 const STEMS = new Set(['recommend', 'suggest', 'refactor']);
 const ADVICE_MATCHERS = ADVICE_WORDS.map((word) => {
@@ -162,8 +164,8 @@ function findingsProblems(value, feature, featureIds, files) {
  * the chapter's front-matter roles, and the findings value with lines filled
  * in when every finding passed.
  */
-export function laneResult(outDir, index, feature) {
-  const files = projectFiles(index.projectRoot);
+export function laneResult(outDir, index, feature, root) {
+  const files = projectFiles(root);
   const problems = [];
   const counts = { diagrams: 0, evidence: 0, findings: { product: 0, technical: 0 } };
   let roles = [];
@@ -209,16 +211,18 @@ function readText(path) {
 }
 
 /** Run check-lane for feature `id` of `<out>`. Returns { status, lines }. */
-export function checkLane(outDir, id) {
+export function checkLane(outDir, id, root) {
   const read = loadIndex(outDir);
   if (!read.ok) throw new UsageError(`${INDEX_FILE} ${read.reason}; run check-index first`);
   const index = read.value;
   if (!isObject(index) || !Array.isArray(index.features) || !isString(index.projectRoot)) {
     throw new UsageError(`${INDEX_FILE} has no features or projectRoot; run check-index first`);
   }
+  const rootProblem = projectRootProblem(index, root);
+  if (rootProblem !== null) return { status: 1, lines: [rootProblem] };
   const feature = index.features.find((f) => isObject(f) && f.id === id);
   if (!feature) throw new UsageError(`feature ${id} is not in ${INDEX_FILE}`);
-  const result = laneResult(outDir, index, feature);
+  const result = laneResult(outDir, index, feature, root);
   if (result.findings !== null) writeJson(join(outDir, findingsPath(id)), result.findings);
   if (result.problems.length > 0) return { status: 1, lines: result.problems };
   return { status: 0, lines: [`${id}: ok`] };

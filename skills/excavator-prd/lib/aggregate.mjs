@@ -5,8 +5,10 @@
  *                                      last attempt or a recorded lane failure
  *   the lane's checks refuse it      -> failed (check-lane), with the reasons
  *   the lane passes, no reply yet    -> checked
- *   verification/<id>.txt parses     -> verified, with its counts
- *   verification/<id>.txt unparsed   -> failed (verify)
+ *   verification/<id>.txt parses and
+ *   verification/<id>.md exists      -> verified, with its counts
+ *   verification/<id>.txt without
+ *   verification/<id>.md, or unparsed -> failed (verify)
  * then records the statuses in index.json, checks that the candidates and the
  * status buckets are conserved, writes findings.json and the tables, and
  * prints the counts the skill's reply is filled from. A failed feature is a
@@ -23,6 +25,7 @@ import {
 import { writeJson } from './json-file.mjs';
 import { chapterPath, findingsPath, laneResult } from './lane-check.mjs';
 import { coverageTable, rolesTable, verificationTable } from './tables.mjs';
+import { projectRootProblem } from './project-root.mjs';
 import { parseVerificationReply } from './verification.mjs';
 
 export const FINDINGS_FORMAT = 'excavator-prd-findings/1';
@@ -30,10 +33,11 @@ export const FINDINGS_FILE = 'findings.json';
 export const PRD_FILE = 'PRD.md';
 export const TABLE_FILES = Object.freeze(['tables/roles-by-feature.md', 'tables/coverage.md', 'tables/verification.md']);
 export const verificationPath = (id) => `verification/${id}.txt`;
+export const reportPath = (id) => `verification/${id}.md`;
 export const WRITTEN_STATUSES = Object.freeze(['checked', 'verified']);
 
 /** One feature's recomputed state: { feature, roles, findings }. */
-function recompute(outDir, index, feature) {
+function recompute(outDir, index, feature, root) {
   const attempts = feature.attempts ?? 0;
   const hasChapter = existsSync(join(outDir, chapterPath(feature.id)));
   const hasFindings = existsSync(join(outDir, findingsPath(feature.id)));
@@ -49,7 +53,7 @@ function recompute(outDir, index, feature) {
     return { feature: { ...base, status: 'planned', failure: null }, roles: [], findings: null };
   }
 
-  const lane = laneResult(outDir, index, feature);
+  const lane = laneResult(outDir, index, feature, root);
   const counts = { ...lane.counts, verification: null };
   if (lane.findings !== null) writeJson(join(outDir, findingsPath(feature.id)), lane.findings);
   if (lane.problems.length > 0) {
@@ -58,6 +62,10 @@ function recompute(outDir, index, feature) {
   const replyPath = join(outDir, verificationPath(feature.id));
   if (!existsSync(replyPath)) {
     return { feature: { ...base, counts, status: 'checked', failure: null }, roles: lane.roles, findings: lane.findings };
+  }
+  if (!existsSync(join(outDir, reportPath(feature.id)))) {
+    const reasons = [`verification-report-missing: ${reportPath(feature.id)} is missing`];
+    return { feature: { ...base, counts, status: 'failed', failure: { step: 'verify', reasons } }, roles: [], findings: null };
   }
   const reply = parseVerificationReply(readFileSync(replyPath, 'utf-8'));
   if (!reply.ok) {
@@ -74,15 +82,17 @@ function recompute(outDir, index, feature) {
 const sum = (items, pick) => items.reduce((total, item) => total + pick(item), 0);
 
 /** Run aggregate on `<out>`. Returns { status, lines } on failure, { status: 0, result } on success. */
-export function aggregate(outDirArg) {
+export function aggregate(outDirArg, root) {
   const outDir = resolve(outDirArg);
   const read = loadIndex(outDir);
   if (!read.ok) return { status: 1, lines: [`index: ${INDEX_FILE} ${read.reason}`] };
   const schema = schemaProblems(read.value);
   if (schema.length > 0) return { status: 1, lines: schema };
   const index = read.value;
+  const rootProblem = projectRootProblem(index, root);
+  if (rootProblem !== null) return { status: 1, lines: [rootProblem] };
 
-  const states = index.features.map((feature) => recompute(outDir, index, feature));
+  const states = index.features.map((feature) => recompute(outDir, index, feature, root));
   const features = states.map((state) => state.feature);
   const candidateCheck = conservation({ ...index, features });
   const updated = { ...index, features, conservation: candidateCheck.summary };

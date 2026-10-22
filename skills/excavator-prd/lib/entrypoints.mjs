@@ -37,9 +37,10 @@ const HEADER_CAP_BYTES = 16 * 1024 * 1024;
 const RESIDUAL = Object.freeze({
   skips: `Directories named ${SKIPPED_DIRECTORIES.join(', ')} and files whose name ends in _test.go or contains .test. or .spec. are not scanned; an entrypoint in them is not listed.`,
   size: `Files over ${MAX_FILE_BYTES} bytes and files with a NUL byte are not scanned; they are counted under files.skipped.`,
-  oneLine: 'A pattern matches one line: a registration whose path argument starts on a later line than the call is not listed.',
+  oneLine: 'A pattern matches one line, or the line and the next one for the entries the catalog marks "lines": 2 (express routes); a registration spread over more lines is not listed.',
   oneCandidate: 'One candidate per line: a line that patterns of two frameworks match is credited to the framework listed first in the catalog.',
-  react: 'react is listed by the router patterns, only in files whose path contains "router"; a React app routed another way has no candidates under react.',
+  react: 'Under react and react-router, route objects (path:) are listed only in files whose path contains "router", and under react <Route> elements too; a route declared in another file is not listed.',
+  gin: 'The gin route pattern (.GET(, .POST( and the other verbs) also matches outbound HTTP-client calls of the same shape; such lines are expected to be left unassigned.',
   noGraph: 'No knowledge graph: frameworks were detected from the build files, by the detector /excavator uses and the catalog\'s own rules.',
 });
 
@@ -69,7 +70,8 @@ export function loadCatalog(path = CATALOG_FILE) {
       } catch (error) {
         throw new UsageError(`${where} entries[${index}] pattern does not compile: ${error.message}`);
       }
-      return { kind: entry.kind, regex, pathHint: typeof entry.pathHint === 'string' ? entry.pathHint.toLowerCase() : null };
+      if (entry.lines !== undefined && entry.lines !== 1 && entry.lines !== 2) throw new UsageError(`${where} entries[${index}] has lines ${JSON.stringify(entry.lines)}, not 1 or 2`);
+      return { kind: entry.kind, regex, lines: entry.lines ?? 1, pathHint: typeof entry.pathHint === 'string' ? entry.pathHint.toLowerCase() : null };
     });
     groups.push({ name, extensions: new Set(group.extensions), entries, detect: Array.isArray(group.detect) ? group.detect : null });
   }
@@ -309,13 +311,17 @@ export async function listEntrypoints(projectRootArg, { scope = null, catalogPat
     }
     stats.scanned += 1;
     const hintPath = `/${file.rel}`.toLowerCase();
-    const lines = bytes.toString('utf-8').split('\n');
-    lines.forEach((raw, index) => {
-      const line = raw.endsWith('\r') ? raw.slice(0, -1) : raw;
+    const lines = bytes.toString('utf-8').split('\n').map((raw) => (raw.endsWith('\r') ? raw.slice(0, -1) : raw));
+    lines.forEach((line, index) => {
       for (const group of groupsForFile) {
-        const entry = group.entries.find((e) => (e.pathHint === null || hintPath.includes(e.pathHint)) && e.regex.test(line));
-        if (entry) {
-          found.push({ kind: entry.kind, file: file.rel, line: index + 1, text: Array.from(line.trim()).slice(0, TEXT_CAP).join(''), framework: group.name });
+        for (const entry of group.entries) {
+          if (entry.pathHint !== null && !hintPath.includes(entry.pathHint)) continue;
+          // A two-line entry is tested against this line joined with the next; the match must start on this line.
+          const next = entry.lines === 2 && index + 1 < lines.length ? lines[index + 1] : null;
+          const match = entry.regex.exec(next === null ? line : `${line}\n${next}`);
+          if (match === null || match.index >= line.length) continue;
+          const text = match.index + match[0].length > line.length ? `${line.trim()} ${next.trim()}` : line.trim();
+          found.push({ kind: entry.kind, file: file.rel, line: index + 1, text: Array.from(text).slice(0, TEXT_CAP).join(''), framework: group.name });
           return;
         }
       }
@@ -326,7 +332,8 @@ export async function listEntrypoints(projectRootArg, { scope = null, catalogPat
   const byFramework = Object.fromEntries(covered.map((name) => [name, items.filter((item) => item.framework === name).length]));
 
   const residualAssumptions = [RESIDUAL.skips, RESIDUAL.size, RESIDUAL.oneLine, RESIDUAL.oneCandidate];
-  if (covered.includes('react')) residualAssumptions.push(RESIDUAL.react);
+  if (covered.includes('react') || covered.includes('react-router')) residualAssumptions.push(RESIDUAL.react);
+  if (covered.includes('gin')) residualAssumptions.push(RESIDUAL.gin);
   if (graph.state === 'absent') residualAssumptions.push(RESIDUAL.noGraph);
   if (graph.state === 'unreadable') {
     residualAssumptions.push(`The knowledge graph header could not be read (${graph.reason}); frameworks were detected from the build files instead.`);

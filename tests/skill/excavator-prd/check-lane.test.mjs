@@ -24,7 +24,7 @@ const failedReasons = (out) => reasons(out).filter((line) => !line.endsWith(': o
 describe('prd.mjs check-lane: the valid lanes', () => {
   it('passes F1 and writes each passage\'s line back into its evidence', () => {
     const run = laneRun();
-    const out = runPrd(['check-lane', run.out, 'F1']);
+    const out = runPrd(['check-lane', run.out, '--project', run.project, 'F1']);
     expect(out.status, out.stdout + out.stderr).toBe(0);
     const evidence = run.readJson('findings/F1.json').findings[0].evidence;
     expect(evidence.map((e) => e.line)).toEqual([2, 5]);
@@ -33,17 +33,17 @@ describe('prd.mjs check-lane: the valid lanes', () => {
 
   it('passes F2, whose passage is at line 11, and is stable on a second run', () => {
     const run = laneRun();
-    expect(runPrd(['check-lane', run.out, 'F2']).status).toBe(0);
+    expect(runPrd(['check-lane', run.out, '--project', run.project, 'F2']).status).toBe(0);
     expect(run.readJson('findings/F2.json').findings[0].evidence[0].line).toBe(11);
     const first = run.readText('findings/F2.json');
-    expect(runPrd(['check-lane', run.out, 'F2']).status).toBe(0);
+    expect(runPrd(['check-lane', run.out, '--project', run.project, 'F2']).status).toBe(0);
     expect(run.readText('findings/F2.json')).toBe(first);
   });
 
   it('passes a lane with no findings', () => {
     const run = laneRun();
     run.writeJson('findings/F2.json', { findings: [] });
-    const out = runPrd(['check-lane', run.out, 'F2']);
+    const out = runPrd(['check-lane', run.out, '--project', run.project, 'F2']);
     expect(out.status, out.stdout).toBe(0);
   });
 
@@ -57,7 +57,7 @@ describe('prd.mjs check-lane: the valid lanes', () => {
       { file: 'src/orders/service.js', passage: `${fullWidth}\n  return   order;\n}\n\nfunction reopenOrder` },
     ];
     run.writeJson('findings/F2.json', findings);
-    const out = runPrd(['check-lane', run.out, 'F2']);
+    const out = runPrd(['check-lane', run.out, '--project', run.project, 'F2']);
     expect(out.status, out.stdout).toBe(0);
     expect(run.readJson('findings/F2.json').findings[0].evidence.map((e) => e.line)).toEqual([11, 11]);
   });
@@ -67,7 +67,7 @@ describe('prd.mjs check-lane: the five broken lanes of design O1', () => {
   it('fails an anchor that leaves the project with ..', () => {
     const run = laneRun();
     run.writeText('features/F1.md', run.readText('features/F1.md').replace('`src/orders/routes.js:5`', '`../outside.js:1`'));
-    const out = runPrd(['check-lane', run.out, 'F1']);
+    const out = runPrd(['check-lane', run.out, '--project', run.project, 'F1']);
     expect(out.status).toBe(1);
     expect(failedReasons(out)).toEqual(['F1: anchor ../outside.js:1: the path leaves the project']);
   });
@@ -75,7 +75,7 @@ describe('prd.mjs check-lane: the five broken lanes of design O1', () => {
   it('fails an anchor whose line is past the end of the file', () => {
     const run = laneRun();
     run.writeText('features/F1.md', run.readText('features/F1.md').replace('`src/orders/routes.js:5`', '`src/orders/routes.js:5-99`'));
-    const out = runPrd(['check-lane', run.out, 'F1']);
+    const out = runPrd(['check-lane', run.out, '--project', run.project, 'F1']);
     expect(out.status).toBe(1);
     expect(failedReasons(out)).toEqual(['F1: anchor src/orders/routes.js:5-99: line 99 is past the end of the file (8 lines)']);
   });
@@ -85,7 +85,7 @@ describe('prd.mjs check-lane: the five broken lanes of design O1', () => {
     const findings = run.readJson('findings/F2.json');
     findings.findings[0].evidence[0].passage = 'return order;';
     run.writeJson('findings/F2.json', findings);
-    const out = runPrd(['check-lane', run.out, 'F2']);
+    const out = runPrd(['check-lane', run.out, '--project', run.project, 'F2']);
     expect(out.status).toBe(1);
     expect(failedReasons(out)).toEqual(['F2-1: the passage occurs 2 times in src/orders/service.js; quote more of it until it occurs once']);
     // Nothing is written back while the lane fails.
@@ -97,7 +97,7 @@ describe('prd.mjs check-lane: the five broken lanes of design O1', () => {
     const findings = run.readJson('findings/F2.json');
     findings.findings[0].evidence[0].passage = 'deleteOrder(order.id);';
     run.writeJson('findings/F2.json', findings);
-    const out = runPrd(['check-lane', run.out, 'F2']);
+    const out = runPrd(['check-lane', run.out, '--project', run.project, 'F2']);
     expect(out.status).toBe(1);
     expect(failedReasons(out)).toEqual(['F2-1: the passage is not in src/orders/service.js']);
   });
@@ -107,7 +107,7 @@ describe('prd.mjs check-lane: the five broken lanes of design O1', () => {
     const findings = run.readJson('findings/F2.json');
     findings.findings[0].statement = 'cancelOrder should refuse an order that is already cancelled.';
     run.writeJson('findings/F2.json', findings);
-    const out = runPrd(['check-lane', run.out, 'F2']);
+    const out = runPrd(['check-lane', run.out, '--project', run.project, 'F2']);
     expect(out.status).toBe(1);
     expect(failedReasons(out)).toEqual(['F2-1: the statement gives advice ("should"); state the defect as it is']);
   });
@@ -122,9 +122,32 @@ describe('prd.mjs check-lane: the advice words', () => {
       const findings = run.readJson('findings/F2.json');
       findings.findings[0].statement = `The status ${word} change for a cancelled order.`;
       run.writeJson('findings/F2.json', findings);
-      const out = runPrd(['check-lane', run.out, 'F2']);
+      const out = runPrd(['check-lane', run.out, '--project', run.project, 'F2']);
       expect(out.status, word).toBe(1);
       run.cleanup();
+    }
+  });
+
+  it('refuses exactly these words: the English ones and six Chinese ones', () => {
+    const cjk = (...points) => String.fromCodePoint(...points);
+    expect(ADVICE_WORDS).toEqual([
+      'should', 'recommend', 'suggest', 'refactor', 'ought to', 'better to', 'it would be better',
+      cjk(0x5efa, 0x8bae), cjk(0x5e94, 0x8be5), cjk(0x5e94, 0x5f53), cjk(0x63a8, 0x8350), cjk(0x91cd, 0x6784), cjk(0x4f18, 0x5316),
+    ]);
+  });
+
+  it('passes As-Is statements that use must, improve, consider or needs to be, and the two dropped Chinese words', () => {
+    const cjk = (...points) => String.fromCodePoint(...points);
+    const run = laneRun();
+    const findings = run.readJson('findings/F2.json');
+    findings.findings[0].statement = 'Only a user who must be an admin can cancel; the form does not consider the quantity, the total needs to be positive and retries do not improve the result.';
+    run.writeJson('findings/F2.json', findings);
+    const out = runPrd(['check-lane', run.out, '--project', run.project, 'F2']);
+    expect(out.status, out.stdout).toBe(0);
+    for (const word of [cjk(0x9700, 0x8981, 0x6539), cjk(0x53ef, 0x4ee5, 0x6539)]) {
+      findings.findings[0].statement = `The status ${word} cancelled.`;
+      run.writeJson('findings/F2.json', findings);
+      expect(runPrd(['check-lane', run.out, '--project', run.project, 'F2']).status).toBe(0);
     }
   });
 
@@ -133,7 +156,7 @@ describe('prd.mjs check-lane: the advice words', () => {
     const findings = run.readJson('findings/F2.json');
     findings.findings[0].statement = 'The shoulder field is considered optional and is mustered from the request.';
     run.writeJson('findings/F2.json', findings);
-    expect(runPrd(['check-lane', run.out, 'F2']).status).toBe(0);
+    expect(runPrd(['check-lane', run.out, '--project', run.project, 'F2']).status).toBe(0);
   });
 });
 
@@ -141,7 +164,7 @@ describe('prd.mjs check-lane: the chapter file and the findings schema', () => {
   it('fails missing files as lane-wrote-nothing', () => {
     const run = laneRun();
     rmSync(join(run.out, 'findings/F1.json'));
-    const out = runPrd(['check-lane', run.out, 'F1']);
+    const out = runPrd(['check-lane', run.out, '--project', run.project, 'F1']);
     expect(out.status).toBe(1);
     expect(failedReasons(out)).toEqual(['F1: lane-wrote-nothing: findings/F1.json is missing']);
   });
@@ -153,7 +176,7 @@ describe('prd.mjs check-lane: the chapter file and the findings schema', () => {
       .replace('```mermaid', '```text')
       .replace(/<details>[\s\S]*<\/details>\n/, '');
     run.writeText('features/F1.md', text);
-    const out = runPrd(['check-lane', run.out, 'F1']);
+    const out = runPrd(['check-lane', run.out, '--project', run.project, 'F1']);
     expect(out.status).toBe(1);
     const lines = failedReasons(out).join('\n');
     expect(lines).toMatch(/F1: front-matter id is "F3"/);
@@ -164,7 +187,7 @@ describe('prd.mjs check-lane: the chapter file and the findings schema', () => {
   it('fails a chapter file with no front-matter', () => {
     const run = laneRun();
     run.writeText('features/F1.md', run.readText('features/F1.md').replace(/^---\n[\s\S]*?\n---\n/, ''));
-    const out = runPrd(['check-lane', run.out, 'F1']);
+    const out = runPrd(['check-lane', run.out, '--project', run.project, 'F1']);
     expect(out.status).toBe(1);
     expect(out.stdout).toMatch(/F1: features\/F1\.md has no front-matter/);
   });
@@ -176,7 +199,7 @@ describe('prd.mjs check-lane: the chapter file and the findings schema', () => {
         { id: 'F2-1', class: 'ux', statement: 'x', flows: ['F1'], evidence: [], severity: 'high' },
       ],
     });
-    const out = runPrd(['check-lane', run.out, 'F1']);
+    const out = runPrd(['check-lane', run.out, '--project', run.project, 'F1']);
     expect(out.status).toBe(1);
     const lines = out.stdout;
     expect(lines).toMatch(/id "F2-1" is not F1-<n>/);
@@ -187,7 +210,7 @@ describe('prd.mjs check-lane: the chapter file and the findings schema', () => {
 
   it('exits 2 for a feature id the index does not have', () => {
     const run = laneRun();
-    const out = runPrd(['check-lane', run.out, 'F9']);
+    const out = runPrd(['check-lane', run.out, '--project', run.project, 'F9']);
     expect(out.status).toBe(2);
     expect(out.stderr).toMatch(/F9/);
   });

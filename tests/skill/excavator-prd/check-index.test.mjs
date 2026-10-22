@@ -21,7 +21,7 @@ const reasons = (out) => out.stdout.split('\n').filter(Boolean);
 describe('prd.mjs check-index', () => {
   it('passes the valid index and writes the computed conservation and the defaults back', () => {
     const run = laneRun();
-    const out = runPrd(['check-index', run.out]);
+    const out = runPrd(['check-index', run.out, '--project', run.project]);
     expect(out.status, out.stdout + out.stderr).toBe(0);
     const index = run.readIndex();
     expect(index.conservation).toEqual({ candidates: 3, assigned: 3, unassigned: 0, holds: true });
@@ -29,7 +29,7 @@ describe('prd.mjs check-index', () => {
     expect(index.features[0].counts).toEqual({ diagrams: 0, evidence: 0, findings: { product: 0, technical: 0 }, verification: null });
     // A second run on the written index is stable.
     const before = run.readText('index.json');
-    expect(runPrd(['check-index', run.out]).status).toBe(0);
+    expect(runPrd(['check-index', run.out, '--project', run.project]).status).toBe(0);
     expect(run.readText('index.json')).toBe(before);
   });
 
@@ -38,7 +38,7 @@ describe('prd.mjs check-index', () => {
     const index = run.readIndex();
     index.features[1].entrypoints = [];
     run.writeIndex(index);
-    const out = runPrd(['check-index', run.out]);
+    const out = runPrd(['check-index', run.out, '--project', run.project]);
     expect(out.status).toBe(1);
     expect(reasons(out)).toContain('c2: in no feature and not in unassigned');
     expect(run.readIndex().conservation).toEqual({ candidates: 3, assigned: 2, unassigned: 0, holds: false });
@@ -50,7 +50,7 @@ describe('prd.mjs check-index', () => {
     index.features[1].entrypoints = [];
     index.unassigned = ['c2'];
     run.writeIndex(index);
-    const out = runPrd(['check-index', run.out]);
+    const out = runPrd(['check-index', run.out, '--project', run.project]);
     expect(out.status, out.stdout).toBe(0);
     expect(run.readIndex().conservation).toEqual({ candidates: 3, assigned: 2, unassigned: 1, holds: true });
   });
@@ -61,7 +61,7 @@ describe('prd.mjs check-index', () => {
     index.features[1].entrypoints = ['c2', 'c1'];
     index.unassigned = ['c2'];
     run.writeIndex(index);
-    const out = runPrd(['check-index', run.out]);
+    const out = runPrd(['check-index', run.out, '--project', run.project]);
     expect(out.status).toBe(1);
     expect(reasons(out)).toContain('c1: in more than one feature: F1, F2');
     expect(reasons(out)).toContain('c2: in feature F2 and in unassigned');
@@ -73,7 +73,7 @@ describe('prd.mjs check-index', () => {
     index.features[0].entrypoints.push('c99');
     index.unassigned = ['c98'];
     run.writeIndex(index);
-    const out = runPrd(['check-index', run.out]);
+    const out = runPrd(['check-index', run.out, '--project', run.project]);
     expect(out.status).toBe(1);
     expect(reasons(out)).toContain('F1: entrypoint c99 is not a candidate');
     expect(reasons(out)).toContain('unassigned: c98 is not a candidate');
@@ -86,7 +86,7 @@ describe('prd.mjs check-index', () => {
     index.candidates.items.push({ id: 'i2', kind: 'job', file: 'src/jobs/nightly.js', line: 1, text: 'x', framework: 'custom', provenance: 'inferred' });
     index.unassigned = ['i2'];
     run.writeIndex(index);
-    const out = runPrd(['check-index', run.out]);
+    const out = runPrd(['check-index', run.out, '--project', run.project]);
     expect(out.status).toBe(1);
     expect(reasons(out)).toContain('i1: line 7 is past the end of web/src/OrderForm.tsx (6 lines)');
     expect(reasons(out)).toContain('i2: src/jobs/nightly.js is not a file in the project');
@@ -102,12 +102,25 @@ describe('prd.mjs check-index', () => {
     const index = run.readIndex();
     index.features[1].seedFiles = ['../outside.js', join(run.project, 'src/orders/service.js'), 'links/secret.js', 'src/missing.js'];
     run.writeIndex(index);
-    const out = runPrd(['check-index', run.out]);
+    const out = runPrd(['check-index', run.out, '--project', run.project]);
     expect(out.status).toBe(1);
     const lines = reasons(out).filter((line) => line.startsWith('F2: seed file'));
     expect(lines).toHaveLength(4);
     expect(lines.join('\n')).toMatch(/\.\.\/outside\.js/);
     expect(lines.join('\n')).toMatch(/links\/secret\.js resolves outside the project/);
+  });
+
+  it('fails a candidate from the script whose file or line does not exist, as it fails an inferred one', () => {
+    const run = laneRun();
+    const index = run.readIndex();
+    index.candidates.items.push({ id: 'c9', kind: 'route', file: 'server/ghost.js', line: 4242, text: 'router.get(...)', framework: 'express' });
+    index.candidates.items[0].line = 4242;
+    index.features[0].entrypoints.push('c9');
+    run.writeIndex(index);
+    const out = runPrd(['check-index', run.out, '--project', run.project]);
+    expect(out.status).toBe(1);
+    expect(reasons(out)).toContain('c9: server/ghost.js is not a file in the project');
+    expect(reasons(out)).toContain('c1: line 4242 is past the end of src/orders/routes.js (8 lines)');
   });
 
   it('fails a malformed schema with one line per problem', () => {
@@ -120,7 +133,7 @@ describe('prd.mjs check-index', () => {
     index.candidates.items[0].kind = 'endpoint';
     delete index.glossary;
     run.writeIndex(index);
-    const out = runPrd(['check-index', run.out]);
+    const out = runPrd(['check-index', run.out, '--project', run.project]);
     expect(out.status).toBe(1);
     const text = out.stdout;
     for (const pattern of [/format/, /F1: kind/, /X2/, /tiers/, /c1: kind/, /glossary/]) expect(text).toMatch(pattern);
@@ -132,7 +145,7 @@ describe('prd.mjs check-index', () => {
     index.features[1].id = 'F1';
     index.candidates.items[1].id = 'c1';
     run.writeIndex(index);
-    const out = runPrd(['check-index', run.out]);
+    const out = runPrd(['check-index', run.out, '--project', run.project]);
     expect(out.status).toBe(1);
     expect(reasons(out)).toContain('F1: the feature id repeats');
     expect(reasons(out)).toContain('c1: the candidate id repeats');
@@ -143,7 +156,7 @@ describe('prd.mjs check-index', () => {
     expect(runPrd(['check-index', join(run.root, 'nowhere')]).status).toBe(2);
     expect(runPrd(['check-index']).status).toBe(2);
     run.writeText('index.json', '{ not json');
-    const broken = runPrd(['check-index', run.out]);
+    const broken = runPrd(['check-index', run.out, '--project', run.project]);
     expect(broken.status).toBe(1);
     expect(broken.stdout).toMatch(/^index: /);
   });

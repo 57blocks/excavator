@@ -2,8 +2,8 @@
   "express": {
     "extensions": [".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs"],
     "entries": [
-      { "kind": "route", "pattern": "\\b(?:app|api|\\w*[Rr]outer|\\w*[Rr]outes)\\.(?:get|post|put|patch|delete|all|options|head)\\s*\\(\\s*(['\"`])[^'\"`]*\\1\\s*,", "flags": "" },
-      { "kind": "route", "pattern": "\\b(?:app|api|\\w*[Rr]outer|\\w*[Rr]outes)\\.route\\s*\\(\\s*['\"`]", "flags": "" }
+      { "kind": "route", "pattern": "\\b(?:app|api|\\w*[Rr]outer|\\w*[Rr]outes)\\.(?:get|post|put|patch|delete|all|options|head)\\s*\\(\\s*(['\"`])[^'\"`]*\\1\\s*,", "flags": "", "lines": 2 },
+      { "kind": "route", "pattern": "\\b(?:app|api|\\w*[Rr]outer|\\w*[Rr]outes)\\.route\\s*\\(\\s*['\"`]", "flags": "", "lines": 2 }
     ]
   },
   "gin": {

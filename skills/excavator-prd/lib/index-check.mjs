@@ -1,7 +1,7 @@
 /**
  * index.json of a PRD run (openspec change prd-feature-pipeline, design D2):
- * the schema, the candidate conservation, inferred candidates and seed files
- * inside the project. `check-index` prints one reason per line, prefixed by
+ * the schema, the candidate conservation, every candidate's file and line and
+ * the seed files inside the project given with --project. `check-index` prints one reason per line, prefixed by
  * its subject (a candidate id, a feature id, `unassigned` or `index`), and
  * writes the conservation it computed, and the per-feature defaults, back.
  */
@@ -13,6 +13,7 @@ import { KINDS } from './entrypoints.mjs';
 import { UsageError } from './errors.mjs';
 import { isCount, isObject, isString, isStringArray, readJson, writeJson } from './json-file.mjs';
 import { projectFiles } from './project-files.mjs';
+import { projectRootProblem } from './project-root.mjs';
 
 export const INDEX_FILE = 'index.json';
 export const INDEX_FORMAT = 'excavator-prd/1';
@@ -173,12 +174,15 @@ export function conservation(index) {
   return { problems, summary };
 }
 
-/** Inferred candidates name a file and line that exist; seed files stay inside the project. */
-export function fileProblems(index) {
+/**
+ * Every candidate, listed by the script or inferred, names a file and line
+ * that exist (the model copies the candidates into index.json); seed files
+ * stay inside the project. `root` is the --project root.
+ */
+export function fileProblems(index, root) {
   const problems = [];
-  const files = projectFiles(index.projectRoot);
+  const files = projectFiles(root);
   for (const item of index.candidates.items) {
-    if (item.provenance !== 'inferred') continue;
     const file = files.resolve(item.file);
     if (!file.ok) problems.push(`${item.id}: ${item.file} ${file.reason}`);
     else if (item.line > file.lines) problems.push(`${item.id}: line ${item.line} is past the end of ${item.file} (${file.lines} lines)`);
@@ -207,7 +211,7 @@ function withDefaults(feature) {
  * Run check-index on `<out>`. Returns { status, lines }; writes the computed
  * conservation and the defaults back when the schema holds.
  */
-export function checkIndex(outDir) {
+export function checkIndex(outDir, root) {
   const read = loadIndex(outDir);
   if (!read.ok) return { status: 1, lines: [`index: ${INDEX_FILE} ${read.reason}`] };
   const index = read.value;
@@ -215,8 +219,10 @@ export function checkIndex(outDir) {
   if (schema.length > 0) {
     return { status: 1, lines: [...schema, ...(isObject(index) ? conservation(index).problems : [])] };
   }
+  const rootProblem = projectRootProblem(index, root);
+  if (rootProblem !== null) return { status: 1, lines: [rootProblem] };
   const { problems, summary } = conservation(index);
-  const files = fileProblems(index);
+  const files = fileProblems(index, root);
   writeJson(join(outDir, INDEX_FILE), { ...index, features: index.features.map(withDefaults), conservation: summary });
   const all = [...problems, ...files];
   if (all.length > 0) return { status: 1, lines: all };

@@ -70,15 +70,49 @@ describe('prd.mjs entrypoints', () => {
       'src/routes/orders.js:6 route express',
       'src/routes/orders.js:7 route express',
       'src/routes/orders.js:8 route express',
+      'src/routes/payments.js:5 route express',
+      'src/routes/payments.js:9 route express',
     ]);
-    expect(out.json.items.map((item) => item.id)).toEqual(['c1', 'c2', 'c3', 'c4', 'c5', 'c6', 'c7']);
+    expect(out.json.items.map((item) => item.id)).toEqual(['c1', 'c2', 'c3', 'c4', 'c5', 'c6', 'c7', 'c8', 'c9']);
     expect(out.json.items[1].text).toBe("app.get('/health', (req, res) => res.json({ ok: true }));");
-    expect(out.json.byFramework).toEqual({ express: 5, 'node-main': 1, 'node-schedule': 1 });
+    expect(out.json.byFramework).toEqual({ express: 7, 'node-main': 1, 'node-schedule': 1 });
     expect(out.json.files.skipped['test-file']).toBe(1);
     // Every walked file lands in exactly one bucket.
     const { seen, scanned, otherExtension, skipped } = out.json.files;
     expect(scanned + otherExtension + Object.values(skipped).reduce((a, b) => a + b, 0)).toBe(seen);
-    expect(seen).toBe(6);
+    expect(seen).toBe(7);
+  });
+
+  it('lists an express route whose path is on the next line, at the line of the call, and not the line before a route', () => {
+    const out = runPrd(['entrypoints', join(FIXTURES, 'express-app')]);
+    const payments = out.json.items.filter((item) => item.file === 'src/routes/payments.js');
+    expect(payments.map((item) => item.line)).toEqual([5, 9]);
+    expect(payments[0].text).toBe("router.post( '/payments',");
+    expect(payments[1].text).toBe("router.get('/payments/:id', (req, res) => res.json({}));");
+    expect(out.json.residualAssumptions).toContain(
+      'A pattern matches one line, or the line and the next one for the entries the catalog marks "lines": 2 (express routes); a registration spread over more lines is not listed.',
+    );
+  });
+
+  it('marks the express route entries as two-line entries in the catalog, and no other', () => {
+    const catalog = JSON.parse(readFileSync(CATALOG_PATH, 'utf-8'));
+    for (const [name, group] of Object.entries(catalog)) {
+      for (const entry of group.entries) expect(entry.lines ?? 1, `${name} ${entry.pattern}`).toBe(name === 'express' ? 2 : 1);
+    }
+  });
+
+  it('notes the router-directory restriction when only react-router is covered, and the gin client-call caveat for gin', () => {
+    const root = temp();
+    writeFiles(root, {
+      '.excavator/knowledge-graph.jsonl': `${graphHeaderLine(['react-router'])}\n`,
+      'src/router/index.tsx': "export const routes = [{ path: '/orders' }];\n",
+    });
+    const router = runPrd(['entrypoints', root]);
+    expect(router.json.covered).toEqual(['react-router']);
+    expect(router.json.residualAssumptions.join('\n')).toMatch(/only in files whose path contains "router"/);
+    const gin = runPrd(['entrypoints', join(FIXTURES, 'gin-service')]);
+    expect(gin.json.residualAssumptions.join('\n')).toMatch(/outbound HTTP-client calls/);
+    expect(runPrd(['entrypoints', join(FIXTURES, 'express-app')]).json.residualAssumptions.join('\n')).not.toMatch(/outbound HTTP-client calls|contains "router"/);
   });
 
   it('lists the gin fixture: routes, a cron job and both mains, not the _test.go file', () => {
@@ -134,7 +168,7 @@ describe('prd.mjs entrypoints', () => {
     // The graph names express and spring; the catalog's own build-file rules add the libraries the graph never records.
     expect(out.json.frameworks).toEqual(['express', 'node-main', 'node-schedule', 'spring']);
     expect(out.json.uncovered).toEqual(['spring']);
-    expect(out.json.items).toHaveLength(7);
+    expect(out.json.items).toHaveLength(9);
   });
 
   it('skips dependency, build and data directories', () => {
@@ -150,7 +184,7 @@ describe('prd.mjs entrypoints', () => {
     });
     const out = runPrd(['entrypoints', root]);
     expect(out.status, out.stderr).toBe(0);
-    expect(out.json.items).toHaveLength(7);
+    expect(out.json.items).toHaveLength(9);
     expect(out.json.items.some((item) => item.text.includes('/hidden'))).toBe(false);
     expect(out.json.files.skipped['test-file']).toBe(2);
     expect(out.json.residualAssumptions.join('\n')).toMatch(/node_modules/);
@@ -166,7 +200,7 @@ describe('prd.mjs entrypoints', () => {
     expect(all.json.frameworks).toEqual([
       'express', 'gin', 'go-cron', 'go-main', 'node-main', 'node-schedule', 'react', 'react-router',
     ]);
-    expect(all.json.items).toHaveLength(17);
+    expect(all.json.items).toHaveLength(19);
     expect(all.json.items[0].file).toBe('api/bin/admin.js');
 
     const scoped = runPrd(['entrypoints', root, '--scope', 'svc']);

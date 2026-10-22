@@ -15,8 +15,8 @@ function aggregated(mutate = () => {}) {
   const run = makeLaneRun();
   cleanups.push(run.cleanup);
   mutate(run);
-  expect(runPrd(['check-index', run.out]).status).toBe(0);
-  expect(runPrd(['aggregate', run.out]).status).toBe(0);
+  expect(runPrd(['check-index', run.out, '--project', run.project]).status).toBe(0);
+  expect(runPrd(['aggregate', run.out, '--project', run.project]).status).toBe(0);
   return run;
 }
 const prd = (run) => readFileSync(join(run.out, 'PRD.md'), 'utf-8');
@@ -24,7 +24,7 @@ const prd = (run) => readFileSync(join(run.out, 'PRD.md'), 'utf-8');
 describe('prd.mjs assemble', () => {
   it('writes PRD.md: overview, the roles table, the chapters without front-matter, then the appendix', () => {
     const run = aggregated();
-    const out = runPrd(['assemble', run.out]);
+    const out = runPrd(['assemble', run.out, '--project', run.project]);
     expect(out.status, out.stdout + out.stderr).toBe(0);
     expect(out.stdout.trim()).toBe(join(run.out, 'PRD.md'));
     const text = prd(run);
@@ -44,9 +44,9 @@ describe('prd.mjs assemble', () => {
 
   it('gives the same bytes on a second run', () => {
     const run = aggregated();
-    expect(runPrd(['assemble', run.out]).status).toBe(0);
+    expect(runPrd(['assemble', run.out, '--project', run.project]).status).toBe(0);
     const first = prd(run);
-    expect(runPrd(['assemble', run.out]).status).toBe(0);
+    expect(runPrd(['assemble', run.out, '--project', run.project]).status).toBe(0);
     expect(prd(run)).toBe(first);
   });
 
@@ -59,7 +59,7 @@ describe('prd.mjs assemble', () => {
       r.writeText('features/F1.md', r.readText('features/F1.md').replace('chapter: 1', 'chapter: 2'));
       r.writeText('features/F2.md', r.readText('features/F2.md').replace('chapter: 2', 'chapter: 1'));
     });
-    expect(runPrd(['assemble', run.out]).status).toBe(0);
+    expect(runPrd(['assemble', run.out, '--project', run.project]).status).toBe(0);
     const text = prd(run);
     expect(text.indexOf('## Order cancellation')).toBeLessThan(text.indexOf('## Order placement'));
   });
@@ -70,7 +70,7 @@ describe('prd.mjs assemble', () => {
       findings.findings[0].evidence[0].passage = 'return order;';
       r.writeJson('findings/F2.json', findings);
     });
-    expect(runPrd(['assemble', run.out]).status).toBe(0);
+    expect(runPrd(['assemble', run.out, '--project', run.project]).status).toBe(0);
     const text = prd(run);
     expect(text).not.toContain('## Order cancellation');
     expect(text).not.toContain('A support agent cancels an order');
@@ -85,7 +85,7 @@ describe('prd.mjs assemble', () => {
       rmSync(join(r.out, 'findings/F2.json'));
       rmSync(join(r.out, 'verification/F2.txt'));
     });
-    expect(runPrd(['assemble', run.out]).status).toBe(0);
+    expect(runPrd(['assemble', run.out, '--project', run.project]).status).toBe(0);
     const appendix = prd(run).slice(prd(run).indexOf('## Appendix'));
     expect(appendix).toContain('### Features not written');
     expect(appendix).toContain('| F2 | Order cancellation | planned |');
@@ -93,19 +93,19 @@ describe('prd.mjs assemble', () => {
 
   it('strips front-matter from the overview too', () => {
     const run = aggregated((r) => r.writeText('overview.md', `---\ntitle: Orders\n---\n${r.readText('overview.md')}`));
-    expect(runPrd(['assemble', run.out]).status).toBe(0);
+    expect(runPrd(['assemble', run.out, '--project', run.project]).status).toBe(0);
     expect(prd(run).startsWith('# Orders\n')).toBe(true);
   });
 
   it('refuses to assemble before overview.md or the tables exist', () => {
     const run = aggregated();
     rmSync(join(run.out, 'overview.md'));
-    const noOverview = runPrd(['assemble', run.out]);
+    const noOverview = runPrd(['assemble', run.out, '--project', run.project]);
     expect(noOverview.status).toBe(1);
     expect(noOverview.stdout).toMatch(/overview\.md/);
     const fresh = makeLaneRun();
     cleanups.push(fresh.cleanup);
-    const noTables = runPrd(['assemble', fresh.out]);
+    const noTables = runPrd(['assemble', fresh.out, '--project', fresh.project]);
     expect(noTables.status).toBe(1);
     expect(noTables.stdout).toMatch(/aggregate/);
   });

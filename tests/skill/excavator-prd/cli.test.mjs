@@ -4,7 +4,7 @@ import { join } from 'node:path';
 
 import { FIXTURES, runPrd } from './helpers.mjs';
 
-const COMMANDS = ['entrypoints', 'check-index', 'check-lane', 'aggregate', 'assemble'];
+const COMMANDS = ['entrypoints', 'check-index', 'check-lane', 'aggregate', 'assemble', 'mark'];
 const MISSING = join(FIXTURES, 'no-such-out');
 
 describe('prd.mjs command line', () => {
@@ -27,7 +27,7 @@ describe('prd.mjs command line', () => {
   });
 
   it('exits 2 and names the directory when <out> does not exist, for every command that reads one', () => {
-    for (const args of [['check-index', MISSING], ['check-lane', MISSING, 'F1'], ['aggregate', MISSING], ['assemble', MISSING]]) {
+    for (const args of [['check-index', MISSING], ['check-lane', MISSING, 'F1'], ['aggregate', MISSING], ['assemble', MISSING], ['mark', MISSING, 'F1', 'dispatched']].map((a) => [...a, '--project', FIXTURES])) {
       const out = runPrd(args);
       expect(out.status, args[0]).toBe(2);
       expect(out.stderr, args[0]).toContain(MISSING);

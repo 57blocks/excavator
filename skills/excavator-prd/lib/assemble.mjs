@@ -14,6 +14,7 @@ import { join, resolve } from 'node:path';
 import { PRD_FILE, TABLE_FILES, WRITTEN_STATUSES } from './aggregate.mjs';
 import { INDEX_FILE, loadIndex, schemaProblems } from './index-check.mjs';
 import { chapterPath } from './lane-check.mjs';
+import { projectRootProblem } from './project-root.mjs';
 
 const OVERVIEW_FILE = 'overview.md';
 
@@ -28,13 +29,15 @@ const cell = (value) => String(value).replace(/\|/g, '\\|').replace(/\s*\n\s*/g,
 const featureNumber = (id) => Number(id.slice(1));
 
 /** Run assemble on `<out>`. Returns { status, lines }. */
-export function assemble(outDirArg) {
+export function assemble(outDirArg, root) {
   const outDir = resolve(outDirArg);
   const read = loadIndex(outDir);
   if (!read.ok) return { status: 1, lines: [`index: ${INDEX_FILE} ${read.reason}`] };
   const schema = schemaProblems(read.value);
   if (schema.length > 0) return { status: 1, lines: schema };
   const index = read.value;
+  const rootProblem = projectRootProblem(index, root);
+  if (rootProblem !== null) return { status: 1, lines: [rootProblem] };
 
   const missing = [];
   if (!existsSync(join(outDir, OVERVIEW_FILE))) missing.push(`index: ${OVERVIEW_FILE} is missing; write the overview before assemble`);
