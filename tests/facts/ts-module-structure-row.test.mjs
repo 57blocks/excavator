@@ -53,6 +53,25 @@ describe('structure row: TS/JS module bindings and JSX', () => {
     expect(result.jsx.elements).toEqual([expect.objectContaining({ syntaxError: true })]);
   });
 
+  it('passes the local mark of a call site through', () => {
+    const file = { path: 'src/run.ts', language: 'typescript', fileCategory: 'code' };
+    const extracted = analyzeFileWithOutcomes(registry, file, [
+      "import { log } from './logger';",
+      'export function run(log) {',
+      '  log();',
+      '}',
+      'export function direct() {',
+      '  log();',
+      '}',
+      '',
+    ].join('\n'));
+    expect(extracted.callGraphOutcome).toBe('succeeded');
+    expect(extracted.callGraph).toEqual([
+      { caller: 'run', callee: 'log', lineNumber: 3, local: true },
+      { caller: 'direct', callee: 'log', lineNumber: 6 },
+    ]);
+  });
+
   it('writes no jsx field for a file without JSX', () => {
     const file = { path: 'src/util.ts', language: 'typescript', fileCategory: 'code' };
     expect(row(file, 'export function f() { return 1; }\n')).not.toHaveProperty('jsx');

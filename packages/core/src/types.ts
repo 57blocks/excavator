@@ -598,6 +598,10 @@ export interface CallGraphEntry {
   caller: string;
   callee: string;
   lineNumber: number;
+  /** TS/JS: the callee's root identifier is bound by an enclosing function (a
+   *  parameter or a local), so no import or top-level declaration of the file
+   *  is what it calls. Collected per function scope, erring toward `true`. */
+  local?: true;
   /** Java only, from here down. */
   receiver?: CallReceiver;
   /** Number of arguments at the call site; `null` for a method reference

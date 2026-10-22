@@ -324,6 +324,7 @@ function isValidCallGraph(callGraph) {
     typeof entry.caller === 'string' &&
     typeof entry.callee === 'string' &&
     isFiniteInteger(entry.lineNumber) &&
+    hasValidOptionalField(entry, 'local', value => value === true) &&
     hasValidOptionalField(entry, 'receiver', isValidReceiver) &&
     // null: a method reference, which does not write its arguments
     // (dead-code-detection, D8).
@@ -337,6 +338,9 @@ function mapCallGraph(callGraph) {
         caller: entry.caller,
         callee: entry.callee,
         lineNumber: entry.lineNumber,
+        // TS/JS only: the callee's root is a parameter or local of an
+        // enclosing function, which the fact graph must not resolve by name.
+        ...(entry.local === undefined ? {} : { local: entry.local }),
         // Java only: the receiver, argument count and enclosing type the fact
         // graph resolves member calls with.
         ...(entry.receiver === undefined ? {} : { receiver: entry.receiver }),
