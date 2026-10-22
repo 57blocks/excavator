@@ -34,10 +34,13 @@ type Context = "start" | "container" | "background" | "scenario" | "examples";
  * 2 for Rule, and 2 or 3 for the rest depending on whether they sit under a
  * Rule). A step line under a Background or Scenario becomes a step whose
  * name is the original step text. Description text, tags, comments, data
- * tables, Examples, and doc strings produce no record. A line the grammar
- * rejects where it stands, an unclosed doc string, and a file in a language
- * other than English are recorded as unplaced lines instead of being dropped.
- * Line-based and deterministic.
+ * tables, Examples, and doc strings produce no record. A header, step, table
+ * row, doc string or text that has no place where it stands, an unclosed doc
+ * string, and a file in a language other than English are recorded as
+ * unplaced lines instead of being dropped. Rules that only decide whether a
+ * file is valid are not checked: what may follow a tag, and how many
+ * arguments a step takes. A line that breaks one keeps the role its place
+ * gives it. Line-based and deterministic.
  */
 export class FeatureParser implements AnalyzerPlugin {
   name = "feature-parser";

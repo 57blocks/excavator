@@ -222,6 +222,19 @@ describe("FeatureParser places lines by the Gherkin reference grammar", () => {
     expect(a.unplaced).toEqual([]);
   });
 
+  it("reads Business Need and Ability as Feature headers", () => {
+    for (const keyword of ["Business Need", "Ability"]) {
+      const a = analyze(gherkin(
+        `${keyword}: Checkout`,
+        "  Scenario: Pay",
+        "    Given a full cart",
+      ));
+      expect(a.sections, keyword).toEqual([["Checkout", 1, 1], ["Pay", 2, 2]]);
+      expect(a.steps, keyword).toEqual(["Given a full cart"]);
+      expect(a.unplaced, keyword).toEqual([]);
+    }
+  });
+
   it("records * and But steps", () => {
     const a = analyze(gherkin(
       "Feature: Dialogs",
