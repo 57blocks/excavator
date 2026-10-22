@@ -12,8 +12,8 @@
 
 - [x] 1.1 原样复制 dashboard 源码与测试、`index.html` 与所引用的 core 模块，加 `LICENSE.upstream`、`UPSTREAM.md`、包配置与别名（design D1）；复制来的文件一字不改。验证：O2；`diff -r` 对上游目录只多出包配置三件。
 - [x] 1.1a 旧名检查按 `upstream-lines.json` 逐行放行（design D2a），并加红检查：表外一行带旧名、表内一行改动后都失败。
-- [ ] 1.2 离线改动（design D2）：数据与源码读内联对象、去掉令牌门、Worker 内联、`localStorage` 容错、界面产品名改为 Excavator（design D2a）。验证：O1 读数据函数的键缺失分支先红后绿；副本自带测试全绿。
-- [ ] 1.3 构建成一个 HTML 模板（design D3），模板开头的许可清单。验证：O3 离线冒烟（网络请求 0、控制台无错、有卡片）；模板体积记入验收。
+- [x] 1.2 离线改动（design D2）：数据与源码读内联对象、去掉令牌门、Worker 内联、`localStorage` 容错、界面产品名改为 Excavator（design D2a）。验证：O1 读数据函数的键缺失分支先红后绿；副本自带测试全绿。
+- [x] 1.3 构建成一个 HTML 模板（design D3），模板开头的许可清单。验证：O3 离线冒烟（网络请求 0、控制台无错、有卡片）；模板体积记入验收。
 
 ## 2. 打包
 

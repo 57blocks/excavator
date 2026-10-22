@@ -16,7 +16,6 @@ import ProjectOverview from "./components/ProjectOverview";
 import FileExplorer from "./components/FileExplorer";
 import WarningBanner from "./components/WarningBanner";
 import StalenessBanner from "./components/StalenessBanner";
-import TokenGate from "./components/TokenGate";
 import MobileLayout from "./components/MobileLayout";
 import { useIsMobile } from "./hooks/useIsMobile";
 import { useKeyboardShortcuts } from "./hooks/useKeyboardShortcuts";
@@ -25,6 +24,13 @@ import { ThemeProvider } from "./themes/index.ts";
 import { ThemePicker } from "./components/ThemePicker.tsx";
 import type { ThemeConfig } from "./themes/index.ts";
 import { I18nProvider, useI18n } from "./contexts/I18nContext.tsx";
+import {
+  hasInlineFile,
+  inlineFetch,
+  INLINE_ACCESS_TOKEN,
+  readInlineFile,
+} from "./offline/inlineData";
+import { readStored, writeStored } from "./offline/safeStorage";
 import {
   requestFreshnessReport,
   shouldRequestFreshness,
@@ -42,7 +48,6 @@ const KeyboardShortcutsHelp = lazy(
 const OnboardingOverlay = lazy(() => import("./components/OnboardingOverlay"));
 
 const DEMO_MODE = import.meta.env.VITE_DEMO_MODE === "true";
-const SESSION_TOKEN_KEY = "understand-anything-token";
 const ONBOARDING_DISMISSED_KEY = "ua-onboarding-dismissed-v1";
 type SidebarTab = "info" | "files";
 
@@ -50,69 +55,12 @@ function shouldShowOnboarding(): boolean {
   if (typeof window === "undefined") return false;
   const params = new URLSearchParams(window.location.search);
   if (params.get("onboard") === "force") return true;
-  return window.localStorage.getItem(ONBOARDING_DISMISSED_KEY) !== "1";
-}
-
-/** Resolve data file URL — in demo mode, use env var URLs; otherwise use local paths with token. */
-function dataUrl(fileName: string, token: string | null): string {
-  if (DEMO_MODE) {
-    const envMap: Record<string, string | undefined> = {
-      "knowledge-graph.json": import.meta.env.VITE_GRAPH_URL,
-      "domain-graph.json": import.meta.env.VITE_DOMAIN_GRAPH_URL,
-      "meta.json": import.meta.env.VITE_META_URL,
-      "diff-overlay.json": import.meta.env.VITE_DIFF_OVERLAY_URL,
-      "config.json": import.meta.env.VITE_CONFIG_URL,
-      "staleness.json": import.meta.env.VITE_STALENESS_URL,
-    };
-    const url = envMap[fileName];
-    if (url) return url;
-    const base = import.meta.env.BASE_URL || "/";
-    return `${base.endsWith("/") ? base : `${base}/`}${fileName}`;
-  }
-  const path = `/${fileName}`;
-  return token ? `${path}?token=${encodeURIComponent(token)}` : path;
-}
-
-/**
- * Resolve the access token from the URL query string or sessionStorage.
- * If found in the URL, persist to sessionStorage and strip the param from the address bar.
- */
-function resolveInitialToken(): string | null {
-  if (DEMO_MODE) return "__demo__";
-  const params = new URLSearchParams(window.location.search);
-  const urlToken = params.get("token");
-  if (urlToken) {
-    sessionStorage.setItem(SESSION_TOKEN_KEY, urlToken);
-    // Clean the URL
-    params.delete("token");
-    const cleanSearch = params.toString();
-    const newUrl =
-      window.location.pathname + (cleanSearch ? `?${cleanSearch}` : "") + window.location.hash;
-    window.history.replaceState(null, "", newUrl);
-    return urlToken;
-  }
-  return sessionStorage.getItem(SESSION_TOKEN_KEY);
+  return readStored(ONBOARDING_DISMISSED_KEY) !== "1";
 }
 
 function App() {
-  const [accessToken, setAccessToken] = useState<string | null>(resolveInitialToken);
-
-  const handleTokenValid = useCallback((token: string) => {
-    sessionStorage.setItem(SESSION_TOKEN_KEY, token);
-    setAccessToken(token);
-  }, []);
-
-  // In demo mode, skip token gate entirely
-  if (DEMO_MODE) {
-    return <Dashboard accessToken="__demo__" />;
-  }
-
-  // Show the token gate when no token is available
-  if (accessToken === null) {
-    return <TokenGate onTokenValid={handleTokenValid} />;
-  }
-
-  return <Dashboard accessToken={accessToken} />;
+  // The offline page has no token gate: the token is always accepted.
+  return <Dashboard accessToken={INLINE_ACCESS_TOKEN} />;
 }
 
 function Dashboard({ accessToken }: { accessToken: string }) {
@@ -127,13 +75,13 @@ function Dashboard({ accessToken }: { accessToken: string }) {
   const [outputLanguage, setOutputLanguage] = useState<string | undefined>();
 
   useEffect(() => {
-    fetch(dataUrl("meta.json", accessToken))
+    readInlineFile("meta.json")
       .then((r) => (r.ok ? r.json() : null))
       .then((meta) => {
         if (meta?.theme) setMetaTheme(meta.theme);
       })
       .catch(() => {});
-    fetch(dataUrl("config.json", accessToken))
+    readInlineFile("config.json")
       .then((r) => (r.ok ? r.json() : null))
       .then((config) => {
         if (config?.outputLanguage) setOutputLanguage(config.outputLanguage);
@@ -142,7 +90,7 @@ function Dashboard({ accessToken }: { accessToken: string }) {
   }, []);
 
   useEffect(() => {
-    fetch(dataUrl("knowledge-graph.json", accessToken))
+    readInlineFile("knowledge-graph.json")
       .then(async (res) => {
         // Guard res.ok before parsing (matching the meta.json/config.json/
         // diff-overlay.json/domain-graph.json fetches in this file). Without
@@ -195,6 +143,7 @@ function Dashboard({ accessToken }: { accessToken: string }) {
 
   useEffect(() => {
     if (
+      !hasInlineFile("staleness.json") ||
       !shouldRequestFreshness(
         DEMO_MODE,
         import.meta.env.VITE_STALENESS_URL,
@@ -207,16 +156,13 @@ function Dashboard({ accessToken }: { accessToken: string }) {
     return startFreshnessRefresh({
       target: window,
       load: (signal) =>
-        requestFreshnessReport(
-          dataUrl("staleness.json", accessToken),
-          signal,
-        ),
+        requestFreshnessReport("staleness.json", signal, inlineFetch),
       onResult: setGraphFreshness,
     });
   }, [accessToken]);
 
   useEffect(() => {
-    fetch(dataUrl("diff-overlay.json", accessToken))
+    readInlineFile("diff-overlay.json")
       .then((res) => {
         if (!res.ok) return null;
         return res.json();
@@ -240,7 +186,7 @@ function Dashboard({ accessToken }: { accessToken: string }) {
   }, [setDiffOverlay]);
 
   useEffect(() => {
-    fetch(dataUrl("domain-graph.json", accessToken))
+    readInlineFile("domain-graph.json")
       .then((res) => {
         if (!res.ok) return null;
         return res.json();
@@ -303,7 +249,7 @@ function DashboardContent({
   const [showOnboarding, setShowOnboarding] = useState(shouldShowOnboarding);
   const dismissOnboarding = useCallback((remember: boolean) => {
     if (remember && typeof window !== "undefined") {
-      window.localStorage.setItem(ONBOARDING_DISMISSED_KEY, "1");
+      writeStored(ONBOARDING_DISMISSED_KEY, "1");
     }
     setShowOnboarding(false);
   }, []);

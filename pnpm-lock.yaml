@@ -125,6 +125,100 @@ importers:
         specifier: ^3.1.0
         version: 3.2.4(@types/debug@4.1.13)(@types/node@25.5.0)(jiti@2.7.0)(lightningcss@1.32.0)(yaml@2.8.3)
 
+  packages/explorer:
+    dependencies:
+      '@dagrejs/dagre':
+        specifier: 2.0.4
+        version: 2.0.4
+      '@xyflow/react':
+        specifier: 12.12.0
+        version: 12.12.0(@types/react-dom@19.2.7(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
+      d3-force:
+        specifier: 3.0.0
+        version: 3.0.0
+      devlop:
+        specifier: 1.1.0
+        version: 1.1.0
+      elkjs:
+        specifier: 0.9.3
+        version: 0.9.3
+      fuse.js:
+        specifier: 7.1.0
+        version: 7.1.0
+      graphology:
+        specifier: 0.25.4
+        version: 0.25.4(graphology-types@0.24.8)
+      graphology-communities-louvain:
+        specifier: 2.0.2
+        version: 2.0.2(graphology-types@0.24.8)
+      graphology-types:
+        specifier: 0.24.8
+        version: 0.24.8
+      hast-util-to-jsx-runtime:
+        specifier: 2.3.6
+        version: 2.3.6
+      prism-react-renderer:
+        specifier: 2.4.1
+        version: 2.4.1(react@19.2.8)
+      react:
+        specifier: 19.2.8
+        version: 19.2.8
+      react-dom:
+        specifier: 19.2.8
+        version: 19.2.8(react@19.2.8)
+      react-markdown:
+        specifier: 10.1.0
+        version: 10.1.0(@types/react@19.2.18)(react@19.2.8)
+      remark-gfm:
+        specifier: 4.0.1
+        version: 4.0.1
+      zod:
+        specifier: 4.6.5
+        version: 4.6.5
+      zustand:
+        specifier: 5.0.11
+        version: 5.0.11(@types/react@19.2.18)(react@19.2.8)(use-sync-external-store@1.7.0(react@19.2.8))
+    devDependencies:
+      '@fontsource/dm-serif-display':
+        specifier: 5.3.0
+        version: 5.3.0
+      '@fontsource/inter':
+        specifier: 5.3.0
+        version: 5.3.0
+      '@fontsource/jetbrains-mono':
+        specifier: 5.3.0
+        version: 5.3.0
+      '@tailwindcss/vite':
+        specifier: 4.3.3
+        version: 4.3.3(vite@6.4.3(@types/node@22.19.15)(jiti@2.7.0)(lightningcss@1.32.0)(yaml@2.8.3))
+      '@types/d3-force':
+        specifier: 3.0.10
+        version: 3.0.10
+      '@types/node':
+        specifier: 22.19.15
+        version: 22.19.15
+      '@types/react':
+        specifier: 19.2.18
+        version: 19.2.18
+      '@types/react-dom':
+        specifier: 19.2.7
+        version: 19.2.7(@types/react@19.2.18)
+      '@vitejs/plugin-react':
+        specifier: 4.7.0
+        version: 4.7.0(vite@6.4.3(@types/node@22.19.15)(jiti@2.7.0)(lightningcss@1.32.0)(yaml@2.8.3))
+      tailwindcss:
+        specifier: 4.3.3
+        version: 4.3.3
+      typescript:
+        specifier: 5.9.3
+        version: 5.9.3
+      vite:
+        specifier: 6.4.3
+        version: 6.4.3(@types/node@22.19.15)(jiti@2.7.0)(lightningcss@1.32.0)(yaml@2.8.3)
+      vitest:
+        specifier: 3.2.4
+        version: 3.2.4(@types/debug@4.1.13)(@types/node@22.19.15)(jiti@2.7.0)(lightningcss@1.32.0)(yaml@2.8.3)
+
   packages/report-view:
     dependencies:
       '@xyflow/react':
@@ -198,91 +292,6 @@ importers:
   packages/tree-sitter-dart-wasm: {}
 
   packages/tree-sitter-swift-wasm: {}
-
-  packages/explorer:
-    dependencies:
-      '@dagrejs/dagre':
-        specifier: 2.0.4
-        version: 2.0.4
-      '@xyflow/react':
-        specifier: 12.12.0
-        version: 12.12.0(@types/react-dom@19.2.7(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
-      d3-force:
-        specifier: 3.0.0
-        version: 3.0.0
-      devlop:
-        specifier: 1.1.0
-        version: 1.1.0
-      elkjs:
-        specifier: 0.9.3
-        version: 0.9.3
-      fuse.js:
-        specifier: 7.1.0
-        version: 7.1.0
-      graphology:
-        specifier: 0.25.4
-        version: 0.25.4(graphology-types@0.24.8)
-      graphology-communities-louvain:
-        specifier: 2.0.2
-        version: 2.0.2(graphology-types@0.24.8)
-      graphology-types:
-        specifier: 0.24.8
-        version: 0.24.8
-      hast-util-to-jsx-runtime:
-        specifier: 2.3.6
-        version: 2.3.6
-      prism-react-renderer:
-        specifier: 2.4.1
-        version: 2.4.1(react@19.2.8)
-      react:
-        specifier: 19.2.8
-        version: 19.2.8
-      react-dom:
-        specifier: 19.2.8
-        version: 19.2.8(react@19.2.8)
-      react-markdown:
-        specifier: 10.1.0
-        version: 10.1.0(@types/react@19.2.18)(react@19.2.8)
-      remark-gfm:
-        specifier: 4.0.1
-        version: 4.0.1
-      zod:
-        specifier: 4.6.5
-        version: 4.6.5
-      zustand:
-        specifier: 5.0.11
-        version: 5.0.11(@types/react@19.2.18)(react@19.2.8)(use-sync-external-store@1.7.0(react@19.2.8))
-    devDependencies:
-      '@tailwindcss/vite':
-        specifier: 4.3.3
-        version: 4.3.3(vite@6.4.3(@types/node@22.19.15)(jiti@2.7.0)(lightningcss@1.32.0)(yaml@2.8.3))
-      '@types/d3-force':
-        specifier: 3.0.10
-        version: 3.0.10
-      '@types/node':
-        specifier: 22.19.15
-        version: 22.19.15
-      '@types/react':
-        specifier: 19.2.18
-        version: 19.2.18
-      '@types/react-dom':
-        specifier: 19.2.7
-        version: 19.2.7(@types/react@19.2.18)
-      '@vitejs/plugin-react':
-        specifier: 4.7.0
-        version: 4.7.0(vite@6.4.3(@types/node@22.19.15)(jiti@2.7.0)(lightningcss@1.32.0)(yaml@2.8.3))
-      tailwindcss:
-        specifier: 4.3.3
-        version: 4.3.3
-      typescript:
-        specifier: 5.9.3
-        version: 5.9.3
-      vite:
-        specifier: 6.4.3
-        version: 6.4.3(@types/node@22.19.15)(jiti@2.7.0)(lightningcss@1.32.0)(yaml@2.8.3)
-      vitest:
-        specifier: 3.2.4
-        version: 3.2.4(@types/debug@4.1.13)(@types/node@22.19.15)(jiti@2.7.0)(lightningcss@1.32.0)(yaml@2.8.3)
 
 packages:
 

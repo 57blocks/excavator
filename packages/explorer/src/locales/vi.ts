@@ -19,7 +19,7 @@ export const vi = {
     truncated: "(đã rút gọn)",
     preview: "Xem trước",
     doubleClickToOpen: "nhấp đúp để mở",
-    appName: "Understand Anything",
+    appName: "Excavator",
     pressKeyboard: "Nhấn ? để xem phím tắt",
     path: "Đường dẫn",
     theme: "Giao diện",
@@ -272,7 +272,7 @@ export const vi = {
     title: "Tìm đường dẫn giữa các node (P)",
   },
   onboarding: {
-    header: "UNDERSTAND-ANYTHING · BẮT ĐẦU",
+    header: "EXCAVATOR · BẮT ĐẦU",
     skipForever: "Không hiển thị lại",
     prev: "Trước",
     next: "Tiếp",
@@ -280,7 +280,7 @@ export const vi = {
     steps: [
       {
         title: "Chào mừng đến với đồ thị tri thức",
-        body: "Những điểm và đường bạn thấy là các thực thể và quan hệ mà Understand-Anything trích xuất từ dự án này. Một node có thể là tệp, lớp hoặc hàm trong mã nguồn — hoặc một khái niệm, thực thể hay luận điểm từ wiki tri thức.",
+        body: "Những điểm và đường bạn thấy là các thực thể và quan hệ mà Excavator trích xuất từ dự án này. Một node có thể là tệp, lớp hoặc hàm trong mã nguồn — hoặc một khái niệm, thực thể hay luận điểm từ wiki tri thức.",
         hint: "Năm bước để nắm các thao tác cốt lõi",
       },
       {

@@ -24,6 +24,7 @@ import type {
   ForceLayoutNode,
   ForceLayoutPosition,
 } from "../utils/force-layout";
+import ForceLayoutWorker from "../utils/force-layout.worker?worker&inline";
 import { useI18n } from "../contexts/I18nContext";
 import type { KnowledgeGraph } from "@understand-anything/core/types";
 
@@ -110,10 +111,7 @@ function prepareLayout(graph: KnowledgeGraph): PreparedLayout {
 }
 
 function createForceLayoutWorker(): Worker {
-  return new Worker(
-    new URL("../utils/force-layout.worker.ts", import.meta.url),
-    { type: "module" },
-  );
+  return new ForceLayoutWorker();
 }
 
 function KnowledgeGraphViewInner() {
@@ -346,7 +344,7 @@ function KnowledgeGraphViewInner() {
   if (!graph) {
     return (
       <div className="h-full flex items-center justify-center text-text-muted text-sm">
-        No knowledge graph available. Run /understand-knowledge to generate one.
+        No knowledge graph available. Run /excavator-knowledge to generate one.
       </div>
     );
   }

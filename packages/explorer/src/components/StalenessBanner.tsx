@@ -90,10 +90,10 @@ function refreshAction(entries: GraphEntry[]): string {
   const hasKnowledge = entries.some((entry) => entry.name === "knowledge");
   const hasDomain = entries.some((entry) => entry.name === "domain");
   const commands = hasKnowledge && hasDomain
-    ? "/understand and /understand-domain"
+    ? "/excavator and /excavator-domain"
     : hasDomain
-      ? "/understand-domain"
-      : "/understand";
+      ? "/excavator-domain"
+      : "/excavator";
   return `Run ${commands} to refresh ${entries.length === 1 ? "it" : "them"} before relying on impact or onboarding answers.`;
 }
 

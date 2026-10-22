@@ -4,6 +4,7 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { useDashboardStore } from "../store";
 import { useI18n } from "../contexts/I18nContext";
+import { readInlineSource } from "../offline/inlineData";
 
 interface CodeViewerProps {
   accessToken: string;
@@ -24,11 +25,6 @@ type SourceState =
   | { status: "idle" | "loading"; source: null; error: null }
   | { status: "loaded"; source: SourceFile; error: null }
   | { status: "error"; source: null; error: string };
-
-function fileContentUrl(filePath: string, token: string): string {
-  const params = new URLSearchParams({ token, path: filePath });
-  return `/file-content.json?${params.toString()}`;
-}
 
 function fallbackLanguage(filePath: string | undefined): string {
   const ext = filePath?.split(".").pop()?.toLowerCase();
@@ -164,7 +160,7 @@ export default function CodeViewer({
     const controller = new AbortController();
     setState({ status: "loading", source: null, error: null });
 
-    fetch(fileContentUrl(node.filePath, accessToken), { signal: controller.signal })
+    readInlineSource(node.filePath)
       .then(async (res) => {
         const data = (await res.json()) as SourceFile | { error?: string };
         if (!res.ok) {

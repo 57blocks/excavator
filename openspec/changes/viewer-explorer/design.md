@@ -60,7 +60,7 @@ go-multirepo 的产物与 UA 的格式几乎一致：
 | `KnowledgeGraphView` 的 Worker | 构建成内联的 blob Worker，做法同 `report-view` |
 | 陈旧度 | 打包时按 `meta.json` 与项目当前 git 状态算出 `staleness.json` 的内容写入；算不出时不写，副本照原样不显示陈旧提示 |
 | `localStorage` | 读写包一层 try/catch，失败时当作没有存储 |
-| 界面上的产品名 | 页面标题、`appName`（没有项目名时的回退）、引导层的标题与正文、`WarningBanner` 的报问题链接，改为 Excavator 与本仓库的 issues 地址；各语言的 locale 文件同改这几个键 |
+| 界面上的产品名 | 页面标题、`appName`（没有项目名时的回退）、引导层的标题与正文、`WarningBanner` 的报问题链接，改为 Excavator 与本仓库的 issues 地址；各语言的 locale 文件同改这几个键；界面提示用户运行的上游命令（陈旧提示、没有知识图或领域图时的空状态）改为对应的 `/excavator`、`/excavator-domain`、`/excavator-knowledge` |
 
 `import.meta.env.DEV` 的分支在生产构建里本来就是 false，不改。`VITE_DEMO_MODE` 不设。
 
