@@ -22,24 +22,24 @@
 
 ## 1. 实现
 
-- [ ] 1.1 `tests/skill/test_doc_map.test.mjs`：证据路径的期望按脚本规则，超过 80 个字符才截断加「...」（design D8）。验证：该测试文件。
-- [ ] 1.2 `.github/workflows/ci.yml`：job `CI gate`，触发、并发、权限、超时与七个步骤按 D1。
-- [ ] 1.3 `.github/workflows/runner-image.yml` 开头注释不再说它是唯一的工作流（D8）。
-- [ ] 1.4 `scripts/ci/privacy-scan.mjs`：来源（D2）、两种范围（D3）、失败要关与只打计数（D4）、参数（D5）。
-- [ ] 1.5 `tests/ci/privacy-scan.test.mjs`：O1 的各条。验证：该测试文件，再按 O1 做变异。
-- [ ] 1.6 `.github/workflows/privacy.yml`：job `Privacy scan`，触发按 D6，secret 写文件、标题与正文走环境变量、手动触发时的 base（D5）。
-- [ ] 1.7 `AGENTS.md`：验证表后写明 PR 合并前必过的两个检查、CI 跑的是表的并集、`main` 受保护。验证：旧名字门禁测试。
+- [x] 1.1 `tests/skill/test_doc_map.test.mjs`：证据路径的期望按脚本规则，超过 80 个字符才截断加「...」（design D8）。验证：该测试文件。
+- [x] 1.2 `.github/workflows/ci.yml`：job `CI gate`，触发、并发、权限、超时与七个步骤按 D1。
+- [x] 1.3 `.github/workflows/runner-image.yml` 开头注释不再说它是唯一的工作流（D8）。
+- [x] 1.4 `scripts/ci/privacy-scan.mjs`：来源（D2）、两种范围（D3）、失败要关与只打计数（D4）、参数（D5）。
+- [x] 1.5 `tests/ci/privacy-scan.test.mjs`：O1 的各条。验证：该测试文件，再按 O1 做变异。
+- [x] 1.6 `.github/workflows/privacy.yml`：job `Privacy scan`，触发按 D6，secret 写文件、PR 文字的读取与 base（D5）。
+- [x] 1.7 `AGENTS.md`：验证表后写明 PR 合并前必过的两个检查、CI 跑的是表的并集、`main` 受保护。验证：旧名字门禁测试。
 
 ## 2. 合并前的验收
 
-- [ ] 2.1 O1 变异，O2 本地全量门，O6 隐私检查。
-- [ ] 2.2 推送开 PR，O3 前半：`Privacy scan` 红且写明名单不可用；`CI gate` 绿。
-- [ ] 2.3 生成两个金丝雀（只存本地），`gh secret set` 设置 `PRIVACY_NAMES` 与 `PRIVACY_CORPUS`，重跑 `Privacy scan` 变绿（O3 后半）。
+- [x] 2.1 O1 变异，O2 本地全量门，O6 隐私检查。
+- [x] 2.2 推送开 PR，O3 前半：`Privacy scan` 红且写明名单不可用；`CI gate` 绿。
+- [x] 2.3 生成两个金丝雀（只存本地），`gh secret set` 设置 `PRIVACY_NAMES` 与 `PRIVACY_CORPUS`，重跑 `Privacy scan` 变绿（O3 后半）。
 - [ ] 2.4 验收记录写进 design.md，提交后两个检查仍绿，合并。
-- [ ] 2.5 干净上下文的审查子代理只读审本 PR，逐条核实它的发现，结论写进 design（D2、D5、D6、O1、O5、Risks）与 spec。
-- [ ] 2.6 脚本：完整遍历历史、合并提交读 remerge diff、去掉整体差异、按文本读并去掉 NUL、作者、三个以上父提交的合并退出 2；测试补上审查发现的各种情形，重做变异。
-- [ ] 2.7 工作流：标题、分支名与正文运行时经 API 读取，手动触发读分支的 PR，base 运行时取合并基点。
-- [ ] 2.8 重跑本地全量门与 O6，推送后两个检查在 PR 上绿。
+- [x] 2.5 干净上下文的审查子代理只读审本 PR，逐条核实它的发现，结论写进 design（D2、D5、D6、O1、O5、Risks）与 spec。
+- [x] 2.6 脚本：完整遍历历史、合并提交读 remerge diff、去掉整体差异、按文本读并去掉 NUL、作者、三个以上父提交的合并退出 2；测试补上审查发现的各种情形，重做变异。
+- [x] 2.7 工作流：标题、分支名与正文运行时经 API 读取，手动触发读分支的 PR，base 运行时取合并基点。
+- [x] 2.8 重跑本地全量门与 O6，推送后两个检查在 PR 上绿。
 
 ## 3. 合并后
 
