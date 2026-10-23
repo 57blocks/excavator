@@ -557,7 +557,7 @@ export default function NodeInfo() {
               return (
                 <div
                   key={i}
-                  className="text-xs bg-elevated rounded-lg px-3 py-2 border border-border-subtle flex items-center gap-2 cursor-pointer hover:border-gold/40 hover:bg-gold/5 transition-colors"
+                  className="text-xs bg-elevated rounded-lg px-3 py-2 border border-border-subtle flex flex-wrap items-center gap-x-2 gap-y-0.5 cursor-pointer hover:border-gold/40 hover:bg-gold/5 transition-colors"
                   onClick={() => {
                     navigateToNode(otherId);
                   }}
@@ -568,7 +568,7 @@ export default function NodeInfo() {
                     {otherNode?.name ?? otherId}
                   </span>
                   {evidenceLabel(edge) && (
-                    <span className="ml-auto shrink-0 max-w-[45%] truncate font-mono text-[10px] text-text-muted" title={evidenceLabel(edge)!}>
+                    <span className="basis-full pl-5 truncate font-mono text-[10px] text-text-muted" title={evidenceLabel(edge)!}>
                       {evidenceLabel(edge)}
                     </span>
                   )}

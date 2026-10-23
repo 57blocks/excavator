@@ -216,12 +216,10 @@ export default function ProjectOverview() {
           <div className="space-y-1.5">
             {coverage.map((row) => (
               <div key={row.language} className="text-xs bg-elevated rounded-lg px-3 py-2 border border-border-subtle">
-                <div className="flex items-center justify-between">
-                  <span className="text-text-primary">{row.language}</span>
-                  <span className="text-text-muted font-mono">
-                    {row.files} {t.projectOverview.coverageFiles} · {row.parsed} {t.projectOverview.parsed}
-                    {row.zeroSymbol > 0 && <> · {row.zeroSymbol} {t.projectOverview.zeroSymbol}</>}
-                  </span>
+                <div className="text-text-primary">{row.language}</div>
+                <div className="text-[11px] text-text-muted font-mono mt-0.5">
+                  {row.files} {t.projectOverview.coverageFiles} · {row.parsed} {t.projectOverview.parsed}
+                  {row.zeroSymbol > 0 && <> · {row.zeroSymbol} {t.projectOverview.zeroSymbol}</>}
                 </div>
                 {row.skipped.length > 0 && (
                   <div className="text-[10px] text-text-muted mt-0.5">
