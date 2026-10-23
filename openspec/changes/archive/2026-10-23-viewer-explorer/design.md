@@ -184,3 +184,39 @@ go-multirepo 的产物里没有导览与 doc-map。用户 2026-10-23 先要求�
 - O3 离线冒烟：headless Chrome 以 `file://` 打开夹具包的 `explorer.html`，网络请求为 0、无控制台错误、结构图有卡片。
 - O4 go-multirepo 上按 D5 逐项截图、与 UA 开发服务器对照。
 - O5 `/excavator-view` 真实运行一次，回复两行都在，两个文件都能打开。
+
+## 验收记录（2026-10-23）
+
+验收对象：`feat/viewer-learn` 的 `780517a6`。语料：go-multirepo（图谱 10,483 节点、36,478 边、9 层、42 条缺口；领域图 9 个领域；导览 15 步，见 D4c）。打包与 O5 都在语料的镜像上做，镜像目录名与原项目目录名相同（D4d 的名字要从它来）；语料本身只读。
+
+**O1 单测。** 各项先红后绿：
+- D4 形状转换、导览覆盖规则、缺产物缺键：`explorer-pack.test.mjs`；
+- D4b：`ourData.test.ts` 8 个测试对 4 个变异各自红；冒烟的「our data」检查对改坏的 NodeInfo 红；
+- D4d：分析在快照里跑也记下根目录名、旧图的快照名不沿用、`package.json` 的名字优先，打包换名与不换名，改代码前三个测试红。
+
+**O2 全量门**（在分离检出里跑）：构建通过；`pnpm test` 245 个文件、5,577 通过、4 跳过（含副本自带的测试）；typecheck 通过；`check-refs` 通过；`openspec validate --all --strict` 49 项通过；`pnpm -r build` 通过；`claude plugin validate .` 通过；`view-smoke-graph.mjs` 337/337。
+
+**O3 离线冒烟。** `explorer-smoke.mjs --self-check` 通过：装置先对植入的坏页面（无图、无卡片等）确认会红，再对夹具包确认网络请求 0、无控制台错误、有卡片，以及 D4b 的核验结论、证据、覆盖与缺口看得见。
+
+**O4 go-multirepo 与 UA 开发服务器对照。** 对照组是上游提交 `b8c807c6` 的仪表盘原样跑 Vite 开发服务器（依赖借用本仓库已装的同版本包，三个 core 模块用 esbuild 原样转译），读打包写出的同一份 `knowledge-graph.json`、`domain-graph.json`、`meta.json`。两边在真实 Chrome 里逐项操作，读 DOM 得数：
+
+| 视图 | 我们的离线页 | UA 开发服务器 |
+|---|---|---|
+| 顶栏项目名 | 原项目目录名 | 同 |
+| 结构图顶层 | 9 个层卡片、26 条边，图例「9 layers」 | 同 |
+| 进第一层 | 10 张卡片（4 个成员仓库容器，4/72/11/17 项；6 个通往其它层的入口） | 同 |
+| 入口的连接数 | 976 / 753 / 404 / 323 / 104 / 596 | 同 |
+| 领域图顶层 | 9 张卡片、14 条边 | 同 |
+| 打开一个领域的 flow | 23 张卡片（4 个 flow 与其 step）、19 条边，id 相同 | 同 |
+| 搜索一个函数名 | 50 results (fuzzy)，第一条命中该函数 | 同 |
+| 路径查找（两个文件） | 4 个节点，经过的文件相同 | 同 |
+
+只有 UA 一边多一行提示：「98 auto-corrections and 24 dropped items」。逐条核对：98 条正是核验为 contradicted、摘要被清空的节点（上游校验把空摘要改成节点名），24 条正是 `mentions` 边（上游的边类型里没有它）。两者都是 D4b 对副本的改动，我们这边按设计显示 0 个问题，并显示摘要被删的原因与 `mentions` 边。
+
+只在离线页上做的项：聚焦一个文件（侧栏列出 5 个定义、5 条连接，连接下一行是证据 `file:line`）；从侧栏打开代码，显示该文件源码；Learn 开始导览、下一步两次，读到 1/15、2/15、3/15；主题切到 Light Minimal，背景从 `rgb(10,10,10)` 变为 `rgb(245,243,240)`。每项都截了图。全程网络请求只有页面文件本身与内联的 `data:` 资源；控制台一条错误来自探针自己在 `document` 上合成的 keydown（上游快捷键处理读 `event.target.tagName`，`document` 没有），用真实按键（Escape、`?`）重做不再出现，不是页面缺陷。
+
+体积：explorer 模板 3,360,745 字节；成品 34,791,272 字节（33.2 MiB），主要是数据（上述节点与边，加嵌入的 2,116 个源文件）。Risks 里 16 MB 的界限针对模板，模板远低于它；成品的体积随项目规模走，`--no-source` 可去掉源码部分。
+
+**O5 skill 真实运行**（`780517a6`，`claude -p --model sonnet --plugin-dir <检出>`，`--out` 到 scratchpad）：花费 $0.16，4 轮；回复的五行都在（`View:`、`Size: 8.0 MB`、`Explorer: …; 0 issues`、产物行、`Source: embedded (2116 files)`）；写出的 `explorer.html` 与另一次打包 sha256 相同；两个文件在 Chrome 里从磁盘打开都正常显示，控制台无错误。
+
+**结论：** 通过。
