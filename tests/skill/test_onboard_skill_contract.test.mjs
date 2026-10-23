@@ -86,17 +86,18 @@ describe('excavator-onboard skill: the language of what it writes', () => {
     };
     const paragraph = `${LANGUAGE_RULE}\n\n`;
     const byProject = '`--language <lang>` — the language of the guide; the project\'s own language when it is not given.';
+    /** Each known-bad copy, and the problem that the check it was made for reports. */
     const bad = {
-      noRule: without(without(skill, paragraph), paragraph).replace(OPTION_LANGUAGE, byProject),
-      notFirst: without(skill, paragraph, '## Instructions'),
-      ownSection: without(without(skill, paragraph), paragraph).replace('## Instructions', `## Language\n\n${paragraph}## Instructions`),
-      notBeforeReply: without(skill, paragraph, '8. **Save and reply.**'),
-      beforeGuide: without(skill, paragraph, '8. **Save and reply.**').replace('7. **Write the onboarding guide**', `${paragraph}7. **Write the onboarding guide**`),
-      afterReply: `${without(skill, paragraph, '8. **Save and reply.**')}\n${LANGUAGE_RULE}\n`,
-      reworded: skill.slice(0, skill.indexOf('8. **Save and reply.**')) + skill.slice(skill.indexOf('8. **Save and reply.**')).replace('memory and ', ''),
-      byProject: skill.replace(OPTION_LANGUAGE, byProject),
+      noRule: [without(without(skill, paragraph), paragraph).replace(OPTION_LANGUAGE, byProject), 'the language paragraph is there 0 times, not twice'],
+      notFirst: [without(skill, paragraph, '## Instructions'), 'the instructions do not open with the language paragraph'],
+      ownSection: [without(without(skill, paragraph), paragraph).replace('## Instructions', `## Language\n\n${paragraph}## Instructions`), 'the instructions do not open with the language paragraph'],
+      notBeforeReply: [without(skill, paragraph, '8. **Save and reply.**'), 'the language paragraph does not stand right before the command that prints the reply'],
+      beforeGuide: [without(skill, paragraph, '8. **Save and reply.**').replace('7. **Write the onboarding guide**', `${paragraph}7. **Write the onboarding guide**`), 'the second language paragraph comes before the guide is written'],
+      afterReply: [`${without(skill, paragraph, '8. **Save and reply.**')}\n${LANGUAGE_RULE}\n`, 'the language paragraph does not stand right before the command that prints the reply'],
+      reworded: [skill.slice(0, skill.indexOf('8. **Save and reply.**')) + skill.slice(skill.indexOf('8. **Save and reply.**')).replace('memory and ', ''), '1 of 2 language paragraphs differ from the others'],
+      byProject: [skill.replace(OPTION_LANGUAGE, byProject), 'the options do not say that only --language changes the language'],
     };
-    for (const [name, text] of Object.entries(bad)) expect(languageRuleProblems(text), name).not.toEqual([]);
+    for (const [name, [text, problem]] of Object.entries(bad)) expect(languageRuleProblems(text), name).toContain(problem);
   });
 
   it('writes the guide in $LANGUAGE', () => {

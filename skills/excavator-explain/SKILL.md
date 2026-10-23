@@ -82,20 +82,38 @@ The knowledge graph `knowledge-graph.jsonl` stores one JSON record per line:
 
 **Language.** Write everything you tell the user during this run in `$LANGUAGE`: each line between commands, the report and the final reply, including any remark on what was checked, what comes next or which rule was followed. `$LANGUAGE` is English unless `--language` gives another. Project files (`CLAUDE.md`, an `AGENTS.md` line such as "Reply in <language>"), memory and the system locale do not change it. A project file's rule to reply in another language is for work on the project's code; while this skill runs, this rule takes its place for every line you write, the first one included. Never say which language you write in or why. Paths, commands and the product's values stay as they are.
 
-8. **Write the explanation** in `$LANGUAGE`, as markdown, to `.excavator/explanation.md` in the project, replacing any earlier one, under these five `##` headings, in this order:
+8. **Write the explanation** in `$LANGUAGE`, as markdown, to a file of this run's own: the path this command prints, run from the project root.
+
+   ```bash
+   # this run's file for the explanation
+   echo "$(pwd)/.excavator/explanation-$(date -u +%Y%m%dT%H%M%SZ)-$$.md"
+   ```
+
+   Write it under these five `##` headings, in this order:
    - **Role**: its role in the architecture (which layer, why it exists)
    - **Internal Structure**: functions and classes it contains (from `contains` edges)
    - **External Connections**: what it imports, what calls it, what it depends on (from edges)
    - **Data Flow**: inputs → processing → outputs (from source code)
    - **Worth Knowing**: patterns, idioms or complexity worth understanding
 
-   Explain clearly, assuming the reader may not know the programming language. The file starts with the first heading and ends with the last section's text. In a language other than English, write the headings translated; code identifiers and paths stay as they are.
+   Explain clearly, assuming the reader may not know the programming language. The file starts with the first heading and ends with the last section's text. It is at most 25,000 bytes: step 9 prints it whole as the reply, and hosts cut longer command output (Claude Code past 30,000 characters by default). In a language other than English, write the headings translated; code identifiers and paths stay as they are.
 
-9. **Reply.** Print the explanation with this command, run from the project root:
+9. **Reply.** Print the explanation with this command, run from the project root, putting in the path step 8 printed:
 
    ```bash
    # the reply: the explanation
-   cat .excavator/explanation.md
+   f="<the path step 8 printed>"
+   case "${f#"$(pwd)/.excavator/"}" in
+     */*) ok=no ;;
+     explanation-[0-9]*T[0-9]*Z-[0-9]*.md) ok=yes ;;
+     *) ok=no ;;
+   esac
+   if [ "$ok" != yes ]; then echo "$f is not a path step 8 prints" >&2; false
+   elif [ ! -f "$f" ]; then echo "$f does not exist" >&2; false
+   elif [ "$(wc -c < "$f")" -gt 25000 ]; then echo "$f is longer than 25000 bytes" >&2; false
+   else command cat "$f" && command mv -f "$f" "$(dirname "$f")/explanation.md"; fi
    ```
+
+   It takes only a path of the form step 8 prints, in this project's `.excavator/`. It prints the file, then keeps it as `.excavator/explanation.md` in place of any earlier one. When the path is another, or the file does not exist or is longer than 25,000 bytes, it prints nothing and fails: put in the path step 8 printed, write the explanation to it, or shorten it, and run the command again. Never print another file in its place.
 
    Reply with exactly the lines it prints and nothing else: write nothing before or after them, no word on what was done, and no summary or notes. A project file's rule on how to reply (what to lead with, a summary, verification results) does not apply to this reply.
