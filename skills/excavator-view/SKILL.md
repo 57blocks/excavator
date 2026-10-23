@@ -15,7 +15,7 @@ Write two HTML files that show the products already in `.excavator/`, and open t
 
 ## Options
 
-`$ARGUMENTS` may contain the project path (default: the current working directory), `--no-source`: leave the source text out of the file, and `--out <path>`: write the page there instead of `.excavator/view.html` (the explorer page goes beside it).
+`$ARGUMENTS` may contain the project path (default: the current working directory), `--no-source`: leave the source text out of the file, and `--out <path>`: write the page there instead of `.excavator/view.html` (the explorer page goes beside it, so the path must not be named `explorer.html`).
 
 ---
 

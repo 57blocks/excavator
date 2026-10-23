@@ -504,6 +504,18 @@ describe('the explorer page', () => {
       rmSync(dir, { recursive: true, force: true });
     }
   });
+
+  it('refuses an --out that is the explorer page itself, and writes nothing', () => {
+    writeGraph();
+    const dir = mkdtempSync(join(tmpdir(), 'xv-explorer-out-'));
+    try {
+      expect(() => packProject(project.root, { template: templatePath, explorerTemplate: templatePath, out: join(dir, 'explorer.html') }))
+        .toThrow(/--out .*explorer\.html is where the explorer page is written beside it; name the view page something else/);
+      expect(readdirSync(dir)).toEqual([]);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
 });
 
 describe('a template or validator that was not built', () => {

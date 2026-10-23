@@ -8,8 +8,8 @@
  *
  *   node pack.mjs <projectRoot> [--no-source] [--out <path>]
  *
- * Writes `<projectRoot>/.excavator/view.html` (or `--out`) and, beside it,
- * `explorer.html`, each through a temporary file and a rename, so a failure
+ * Writes `<projectRoot>/.excavator/view.html` (or `--out`, which must not itself be
+ * named `explorer.html`) and, beside it, `explorer.html`, each through a temporary file and a rename, so a failure
  * leaves an existing page untouched, and prints one JSON result on stdout:
  *   { out, bytes, snapshotRevision, products: [{ name, status, reason?, revision?, note?, counts? }],
  *     source: { embedded, requested, limitBytes, counts },
@@ -114,6 +114,10 @@ export function packProject(rootArg, options = {}) {
   const root = bindProjectRoot(rootArg);
   const dataDir = assertDataDir(root);
   const out = options.out ? resolve(options.out) : join(dataDir, 'view.html');
+  const explorerOut = join(dirname(out), EXPLORER_FILE);
+  if (out === explorerOut) {
+    throw new Error(`--out ${out} is where the explorer page is written beside it; name the view page something else`);
+  }
 
   const snapshot = resolveSourceSnapshot(root);
   const products = collectProducts(dataDir, snapshot.revision);
@@ -141,7 +145,6 @@ export function packProject(rootArg, options = {}) {
     templatePath: options.explorerTemplate ?? pluginPath(EXPLORER_TEMPLATE_PATH),
     validatorPath: options.explorerValidator ?? pluginPath(VALIDATOR_PATH),
   });
-  const explorerOut = join(dirname(out), EXPLORER_FILE);
   writeAtomic(out, page);
   writeAtomic(explorerOut, explorer.page);
 
