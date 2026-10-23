@@ -26,6 +26,10 @@ Not copied: the dashboard's `public/` directory, `scripts/`, `vite.config.ts`, `
 
 `package.json`, `tsconfig.json`, `vite.config.ts` and `UPSTREAM.md` are not upstream files. Every later commit in this package carries our own edits to the copied files, so `git log -p` on a copied path shows exactly what differs from the upstream commit above.
 
+## Kept as upstream wrote it
+
+The translations in `src/locales/` (`zh.ts`, `zh-TW.ts`, `ja.ts`, `ko.ts`) keep their CJK text as literal characters, not the `\u` escapes REVIEW.md asks of code. They are upstream's UI text, not code or prose of ours; escaping about a thousand lines would make `git log -p` on them a rewrite that hides the few keys we did change, and the built page is ASCII either way (`charset: 'ascii'` in `vite.config.ts`).
+
 ## Full list of copied paths
 
 All paths below are relative to this package directory.
