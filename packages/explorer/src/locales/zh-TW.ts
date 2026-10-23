@@ -47,6 +47,12 @@ export const zhTW = {
     complex: "複雜",
     mostConnectedNodes: "連結最多的節點",
     avgConnectionsPerNode: "節點平均連結數",
+    coverage: "覆蓋",
+    coverageFiles: "檔案",
+    parsed: "已解析",
+    zeroSymbol: "無符號",
+    skipped: "略過",
+    gaps: "缺口",
   },
   nodeInfo: {
     definedInThisFile: "在此檔案中定義",
@@ -61,6 +67,11 @@ export const zhTW = {
     entryPoint: "入口點",
     steps: "步驟",
     implementation: "實作",
+    verified: "已核實",
+    unverified: "未證實",
+    contradicted: "矛盾",
+    verdictTitle: "摘要已對照原始碼核驗",
+    summaryRemoved: "摘要已移除：原始碼與它矛盾。",
   },
   fileExplorer: {
     analyzedFiles: "已分析檔案",
@@ -269,6 +280,7 @@ export const zhTW = {
     exemplifies: { forward: "例證", backward: "被例證" },
     categorized_under: { forward: "归类於", backward: "归类" },
     authored_by: { forward: "作者", backward: "著作" },
+    mentions: { forward: "提到", backward: "被提到" },
   },
   pathFinder: {
     title: "尋找節點間路徑 (P)",

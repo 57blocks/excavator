@@ -47,6 +47,12 @@ export const vi = {
     complex: "Phức tạp",
     mostConnectedNodes: "Node có nhiều kết nối nhất",
     avgConnectionsPerNode: "Số kết nối trung bình mỗi node",
+    coverage: "Độ bao phủ",
+    coverageFiles: "tệp",
+    parsed: "đã phân tích",
+    zeroSymbol: "không có ký hiệu",
+    skipped: "bỏ qua",
+    gaps: "Khoảng trống",
   },
   nodeInfo: {
     definedInThisFile: "Được định nghĩa trong tệp này",
@@ -61,6 +67,11 @@ export const vi = {
     entryPoint: "Điểm vào",
     steps: "Bước",
     implementation: "Triển khai",
+    verified: "Đã xác minh",
+    unverified: "Chưa xác nhận",
+    contradicted: "Mâu thuẫn",
+    verdictTitle: "Tóm tắt đã được đối chiếu với mã nguồn",
+    summaryRemoved: "Tóm tắt đã bị xóa: mã nguồn mâu thuẫn với nó.",
   },
   fileExplorer: {
     analyzedFiles: "Tệp đã phân tích",
@@ -269,6 +280,7 @@ export const vi = {
     exemplifies: { forward: "minh họa cho", backward: "được minh họa bởi" },
     categorized_under: { forward: "được phân loại dưới", backward: "phân loại" },
     authored_by: { forward: "được tạo bởi", backward: "tạo ra" },
+    mentions: { forward: "đề cập", backward: "được đề cập bởi" },
   },
   pathFinder: {
     title: "Tìm đường dẫn giữa các node (P)",

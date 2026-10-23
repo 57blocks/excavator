@@ -18,7 +18,8 @@ export type EdgeType =
   | "migrates" | "documents" | "routes" | "defines_schema"          // Schema/Data
   | "contains_flow" | "flow_step" | "cross_domain"                  // Domain
   | "cites" | "contradicts" | "builds_on" | "exemplifies" | "categorized_under" | "authored_by" // Knowledge
-  | "instance_of" | "variant_of" | "uses_token"; // Design
+  | "instance_of" | "variant_of" | "uses_token" // Design
+  | "mentions"; // Excavator: a file's text names another file's path
 
 // Optional knowledge metadata for article/entity/topic/claim/source nodes
 export interface KnowledgeMeta {
@@ -64,6 +65,38 @@ export interface GraphNode {
   domainMeta?: DomainMeta;
   knowledgeMeta?: KnowledgeMeta;
   figmaMeta?: FigmaMeta;
+  /** Excavator: the verifier's verdict on the summary (Full analysis); absent when it was not checked. */
+  verification?: string;
+}
+
+/** Excavator: where in the source an edge was found. */
+export interface EdgeEvidence {
+  file: string;
+  line?: number;
+  endLine?: number;
+  source?: string;
+}
+
+/** Excavator: what the fact extraction read, per language. */
+export interface LanguageCoverage {
+  files: number;
+  parsed: number;
+  zeroSymbol: number;
+  skipped: Record<string, number>;
+}
+
+export interface GraphCoverage {
+  files: number;
+  byLanguage: Record<string, LanguageCoverage>;
+}
+
+/** Excavator: a kind of fact the extraction could not settle, with how many and samples. */
+export interface GraphGap {
+  kind: string;
+  scope?: string;
+  reason?: string;
+  count?: number;
+  samples?: string[];
 }
 
 // GraphEdge with rich relationship modeling
@@ -74,6 +107,9 @@ export interface GraphEdge {
   direction: "forward" | "backward" | "bidirectional";
   description?: string;
   weight: number; // 0-1
+  /** Excavator: the source lines the edge was read from, and how it was obtained. */
+  evidence?: EdgeEvidence[];
+  provenance?: string;
 }
 
 // Layer (logical grouping)
@@ -112,6 +148,9 @@ export interface KnowledgeGraph {
   edges: GraphEdge[];
   layers: Layer[];
   tour: TourStep[];
+  /** Excavator: the extraction's coverage record and gap records, passed through as written. */
+  coverage?: GraphCoverage;
+  gaps?: GraphGap[];
 }
 
 // Theme configuration (for dashboard customization)

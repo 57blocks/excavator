@@ -35,7 +35,7 @@ const FILES = {
 const node = (id, type, name, extra = {}) => ({ id, type, name, summary: `${name} summary`, tags: ['t'], complexity: 'simple', ...extra });
 const edge = (source, target, type) => ({ source, target, type, direction: 'forward', weight: 0.5 });
 
-/** A graph in the shape the explorer reads: layers, a tour of its own, coverage, gaps and one edge type the copy does not know. */
+/** A graph in the shape the explorer reads: layers, a tour of its own, coverage, gaps, mentions edges and one edge type the copy does not know. */
 function graph(extra = {}) {
   return {
     version: '1.0.0',
@@ -52,13 +52,14 @@ function graph(extra = {}) {
       edge('function:src/a.js:run', 'function:src/b.js:load', 'calls'),
       edge('file:src/a.js', 'file:src/b.js', 'mentions'),
       edge('file:src/b.js', 'file:src/a.js', 'mentions'),
+      edge('file:src/a.js', 'file:src/b.js', 'reexports'),
     ],
     layers: [
       { id: 'layer:app', name: 'App', description: 'Entry.', nodeIds: ['file:src/a.js', 'function:src/a.js:run'] },
       { id: 'layer:lib', name: 'Lib', description: 'Helpers.', nodeIds: ['file:src/b.js', 'function:src/b.js:load'] },
     ],
     tour: [{ order: 1, title: 'Graph own step', description: 'From the graph.', nodeIds: ['file:src/a.js'] }],
-    coverage: { files: 3, covered: 2 },
+    coverage: { files: 3, byLanguage: { javascript: { files: 2, parsed: 2, zeroSymbol: 0, skipped: {} }, css: { files: 1, parsed: 0, zeroSymbol: 0, skipped: { 'no-extractor': 1 } } } },
     gaps: [{ kind: 'g', reason: 'a gap', count: 1 }],
     ...extra,
   };
@@ -104,7 +105,7 @@ describe('the data keeps the content of the products', () => {
     const original = graph();
     const joined = data['knowledge-graph.json'];
     expect(joined.nodes).toHaveLength(4);
-    expect(joined.edges).toHaveLength(5);
+    expect(joined.edges).toHaveLength(6);
     expect(joined.layers).toHaveLength(2);
     expect(joined.tour).toHaveLength(1);
     expect(joined.gaps).toHaveLength(1);
@@ -355,14 +356,14 @@ describe('the issue count is the copy\'s own', () => {
     writeGraph();
     const { result, manifest } = pack();
     expect(result.explorer.issues.total).toBeGreaterThan(0);
-    // The two `mentions` edges are an edge type the copy does not know.
-    expect(result.explorer.issues.byKind['dropped:invalid-edge']).toBe(2);
+    // The `reexports` edge is an edge type the copy does not know; the `mentions` edges it knows (design D4b).
+    expect(result.explorer.issues.byKind).toEqual({ 'dropped:invalid-edge': 1 });
     expect(Object.values(result.explorer.issues.byKind).reduce((sum, n) => sum + n, 0)).toBe(result.explorer.issues.total);
     expect(manifest.issues).toEqual(result.explorer.issues);
   });
 
   it('is zero for a graph the copy accepts as it is', () => {
-    writeGraph(graph({ edges: graph().edges.slice(0, 3) }));
+    writeGraph(graph({ edges: graph().edges.filter((e) => e.type !== 'reexports') }));
     expect(pack().result.explorer.issues).toEqual({ total: 0, byKind: {}, fatal: null });
   });
 

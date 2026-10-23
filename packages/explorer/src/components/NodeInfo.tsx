@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useDashboardStore } from "../store";
 import { useI18n } from "../contexts/I18nContext";
 import type { NodeType, EdgeType, KnowledgeGraph, GraphNode } from "@understand-anything/core/types";
+import { evidenceLabel, summaryRemoved, verdictOf, type Verdict } from "../excavator/ourData";
 
 // Badge color classes keyed by NodeType — must be kept in sync with core NodeType union.
 const typeBadgeColors: Record<NodeType, string> = {
@@ -38,6 +39,13 @@ const complexityBadgeColors: Record<string, string> = {
   simple: "text-node-function border border-node-function/30 bg-node-function/10",
   moderate: "text-accent-dim border border-accent-dim/30 bg-accent-dim/10",
   complex: "text-[#c97070] border border-[#c97070]/30 bg-[#c97070]/10",
+};
+
+// Excavator: the verifier's verdict on the summary, in the complexity badges' colors.
+const verdictBadgeColors: Record<Verdict, string> = {
+  verified: complexityBadgeColors.simple,
+  unverified: complexityBadgeColors.moderate,
+  contradicted: complexityBadgeColors.complex,
 };
 
 function getDirectionalLabel(edgeType: string, isSource: boolean, t: ReturnType<typeof useI18n>["t"]): string {
@@ -330,6 +338,7 @@ export default function NodeInfo() {
   const typeBadge = typeBadgeColors[knownType] ?? typeBadgeColors.file;
   const complexityBadge =
     complexityBadgeColors[node.complexity] ?? complexityBadgeColors.simple;
+  const verdict = verdictOf(node);
 
   if (import.meta.env.DEV && !(knownType in typeBadgeColors)) {
     console.warn(`[NodeInfo] Unknown node type "${node.type}" — using "file" badge colors`);
@@ -402,8 +411,17 @@ export default function NodeInfo() {
       <FigmaThumbnail node={node} />
 
       <p className="text-sm text-text-secondary mb-4 leading-relaxed">
-        {node.summary}
+        {summaryRemoved(node) ? <span className="italic text-text-muted">{t.nodeInfo.summaryRemoved}</span> : node.summary}
       </p>
+
+      {verdict && (
+        <div className="flex items-center gap-2 mb-4 -mt-2">
+          <span className={`text-[10px] font-semibold px-2 py-0.5 rounded ${verdictBadgeColors[verdict]}`}>
+            {t.nodeInfo[verdict]}
+          </span>
+          <span className="text-[10px] text-text-muted">{t.nodeInfo.verdictTitle}</span>
+        </div>
+      )}
 
       {node.filePath && (
         <div className="text-xs text-text-secondary mb-4 rounded-lg border border-border-subtle bg-elevated/60 p-3">
@@ -549,6 +567,11 @@ export default function NodeInfo() {
                   <span className="text-text-primary truncate">
                     {otherNode?.name ?? otherId}
                   </span>
+                  {evidenceLabel(edge) && (
+                    <span className="ml-auto shrink-0 max-w-[45%] truncate font-mono text-[10px] text-text-muted" title={evidenceLabel(edge)!}>
+                      {evidenceLabel(edge)}
+                    </span>
+                  )}
                 </div>
               );
             })}

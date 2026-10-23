@@ -12,6 +12,7 @@ export const EdgeTypeSchema = z.enum([
   "contains_flow", "flow_step", "cross_domain",                // Domain
   "cites", "contradicts", "builds_on", "exemplifies", "categorized_under", "authored_by", // Knowledge
   "instance_of", "variant_of", "uses_token", // Design
+  "mentions", // Excavator: a file's text names another file's path
 ]);
 
 // Aliases that LLMs commonly generate instead of canonical node types
@@ -288,8 +289,8 @@ export function autoFixGraph(data: Record<string, unknown>): {
         });
       }
 
-      // Missing summary
-      if (!n.summary || typeof n.summary !== "string") {
+      // Missing summary (Excavator: an empty summary is one the verifier removed, not a missing one)
+      if (typeof n.summary !== "string") {
         n.summary = (n.name as string) || "No summary";
         issues.push({
           level: "auto-corrected",
@@ -446,6 +447,14 @@ export const GraphEdgeSchema = z.object({
   direction: z.enum(["forward", "backward", "bidirectional"]),
   description: z.string().optional(),
   weight: z.number().min(0).max(1),
+  // Excavator: kept so the panel can show where an edge was read from.
+  evidence: z.array(z.object({
+    file: z.string(),
+    line: z.number().optional(),
+    endLine: z.number().optional(),
+    source: z.string().optional(),
+  }).passthrough()).optional(),
+  provenance: z.string().optional(),
 });
 
 export const LayerSchema = z.object({
@@ -472,6 +481,25 @@ export const ProjectMetaSchema = z.object({
   gitCommitHash: z.string(),
 });
 
+// Excavator: the extraction's coverage record and gap records (see core/types.ts).
+export const GraphCoverageSchema = z.object({
+  files: z.number(),
+  byLanguage: z.record(z.string(), z.object({
+    files: z.number(),
+    parsed: z.number(),
+    zeroSymbol: z.number(),
+    skipped: z.record(z.string(), z.number()),
+  }).passthrough()),
+}).passthrough();
+
+export const GraphGapSchema = z.object({
+  kind: z.string(),
+  scope: z.string().optional(),
+  reason: z.string().optional(),
+  count: z.number().optional(),
+  samples: z.array(z.string()).optional(),
+}).passthrough();
+
 export const KnowledgeGraphSchema = z.object({
   version: z.string(),
   kind: z.enum(["codebase", "knowledge", "design"]).optional(),
@@ -480,6 +508,8 @@ export const KnowledgeGraphSchema = z.object({
   edges: z.array(GraphEdgeSchema),
   layers: z.array(LayerSchema),
   tour: z.array(TourStepSchema),
+  coverage: GraphCoverageSchema.optional(),
+  gaps: z.array(GraphGapSchema).optional(),
 });
 
 export interface GraphIssue {
@@ -558,6 +588,28 @@ export function normalizeGraph(data: unknown): unknown {
   }
 
   return result;
+}
+
+/**
+ * Excavator: the coverage record and the gap records, as written. A record that does not
+ * have their shape is dropped with an issue, like any other invalid item.
+ */
+function passedThrough(fixed: Record<string, unknown>, issues: GraphIssue[]) {
+  const out: { coverage?: z.infer<typeof GraphCoverageSchema>; gaps?: z.infer<typeof GraphGapSchema>[] } = {};
+  if (fixed.coverage !== undefined) {
+    const result = GraphCoverageSchema.safeParse(fixed.coverage);
+    if (result.success) out.coverage = result.data;
+    else issues.push({ level: "dropped", category: "invalid-coverage", message: `coverage: ${result.error.issues[0]?.message ?? "validation failed"} — removed`, path: "coverage" });
+  }
+  if (Array.isArray(fixed.gaps)) {
+    out.gaps = [];
+    fixed.gaps.forEach((gap, i) => {
+      const result = GraphGapSchema.safeParse(gap);
+      if (result.success) out.gaps!.push(result.data);
+      else issues.push({ level: "dropped", category: "invalid-gap", message: `gaps[${i}]: ${result.error.issues[0]?.message ?? "validation failed"} — removed`, path: `gaps[${i}]` });
+    });
+  }
+  return out;
 }
 
 export function validateGraph(data: unknown): ValidationResult {
@@ -721,6 +773,7 @@ export function validateGraph(data: unknown): ValidationResult {
     edges: validEdges,
     layers: validLayers,
     tour: validTour,
+    ...passedThrough(fixed, issues),
   };
 
   return { success: true, data: graph, issues, errors: buildErrors(issues) };

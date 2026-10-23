@@ -23,8 +23,8 @@ const EXPECTED_EDGE_TYPES = {
   calls: true, subscribes: true, publishes: true, middleware: true,
   // data-flow (4)
   reads_from: true, writes_to: true, transforms: true, validates: true,
-  // dependencies (3)
-  depends_on: true, tested_by: true, configures: true,
+  // dependencies (4; mentions is Excavator's)
+  depends_on: true, tested_by: true, configures: true, mentions: true,
   // semantic (2)
   related: true, similar_to: true,
   // infrastructure (8)

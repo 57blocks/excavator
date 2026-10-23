@@ -47,6 +47,12 @@ export const ru = {
     complex: "Сложный",
     mostConnectedNodes: "Самые связанные узлы",
     avgConnectionsPerNode: "Среднее число связей на узел",
+    coverage: "Покрытие",
+    coverageFiles: "файлов",
+    parsed: "разобрано",
+    zeroSymbol: "без символов",
+    skipped: "пропущено",
+    gaps: "Пробелы",
   },
   nodeInfo: {
     definedInThisFile: "Определено в этом файле",
@@ -61,6 +67,11 @@ export const ru = {
     entryPoint: "Точка входа",
     steps: "Шаги",
     implementation: "Реализация",
+    verified: "Проверено",
+    unverified: "Не подтверждено",
+    contradicted: "Противоречит",
+    verdictTitle: "Описание сверено с исходным кодом",
+    summaryRemoved: "Описание удалено: исходный код ему противоречит.",
   },
   fileExplorer: {
     analyzedFiles: "Проанализированные файлы",
@@ -269,6 +280,7 @@ export const ru = {
     exemplifies: { forward: "иллюстрирует", backward: "иллюстрируется" },
     categorized_under: { forward: "относится к", backward: "категоризирует" },
     authored_by: { forward: "автор", backward: "автор" },
+    mentions: { forward: "упоминает", backward: "упомянут в" },
   },
   pathFinder: {
     title: "Найти путь между узлами (P)",

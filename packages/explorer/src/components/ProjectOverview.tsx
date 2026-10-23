@@ -1,5 +1,6 @@
 import { useDashboardStore } from "../store";
 import { useI18n } from "../contexts/I18nContext";
+import { coverageRows } from "../excavator/ourData";
 
 export default function ProjectOverview() {
   const graph = useDashboardStore((s) => s.graph);
@@ -17,6 +18,8 @@ export default function ProjectOverview() {
 
   const { project, nodes, edges, layers } = graph;
   const hasTour = graph.tour.length > 0;
+  const coverage = coverageRows(graph.coverage);
+  const gaps = graph.gaps ?? [];
 
   const typeCounts: Record<string, number> = {};
   for (const node of nodes) {
@@ -203,6 +206,58 @@ export default function ProjectOverview() {
           <span className="text-lg font-mono font-medium text-accent">{avgConnections}</span>
         </div>
       </div>
+
+      {/* Excavator: what the extraction read, per language */}
+      {coverage.length > 0 && (
+        <div className="mb-5" data-excavator="coverage">
+          <h3 className="text-[11px] font-semibold text-accent uppercase tracking-wider mb-3">
+            {t.projectOverview.coverage} ({graph.coverage?.files} {t.projectOverview.coverageFiles})
+          </h3>
+          <div className="space-y-1.5">
+            {coverage.map((row) => (
+              <div key={row.language} className="text-xs bg-elevated rounded-lg px-3 py-2 border border-border-subtle">
+                <div className="flex items-center justify-between">
+                  <span className="text-text-primary">{row.language}</span>
+                  <span className="text-text-muted font-mono">
+                    {row.files} {t.projectOverview.coverageFiles} · {row.parsed} {t.projectOverview.parsed}
+                    {row.zeroSymbol > 0 && <> · {row.zeroSymbol} {t.projectOverview.zeroSymbol}</>}
+                  </span>
+                </div>
+                {row.skipped.length > 0 && (
+                  <div className="text-[10px] text-text-muted mt-0.5">
+                    {t.projectOverview.skipped}: {row.skipped.map(([reason, count]) => `${reason} ${count}`).join(", ")}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Excavator: the facts the extraction could not settle */}
+      {gaps.length > 0 && (
+        <div className="mb-5" data-excavator="gaps">
+          <h3 className="text-[11px] font-semibold text-accent uppercase tracking-wider mb-3">
+            {t.projectOverview.gaps} ({gaps.length})
+          </h3>
+          <div className="space-y-1.5">
+            {gaps.map((gap, i) => (
+              <div key={i} className="text-xs bg-elevated rounded-lg px-3 py-2 border border-border-subtle">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-text-primary font-mono truncate">{gap.kind}{gap.scope ? ` · ${gap.scope}` : ""}</span>
+                  {gap.count !== undefined && <span className="text-text-muted font-mono shrink-0">{gap.count}</span>}
+                </div>
+                {gap.reason && <div className="text-[11px] text-text-secondary mt-0.5">{gap.reason}</div>}
+                {gap.samples && gap.samples.length > 0 && (
+                  <ul className="text-[10px] text-text-muted font-mono mt-1 space-y-0.5">
+                    {gap.samples.map((sample) => <li key={sample} className="truncate" title={sample}>{sample}</li>)}
+                  </ul>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Analyzed at */}
       <div className="text-[11px] text-text-muted mb-6">

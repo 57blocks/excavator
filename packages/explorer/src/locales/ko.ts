@@ -47,6 +47,12 @@ export const ko = {
     complex: "복잡",
     mostConnectedNodes: "가장 많이 연결된 노드",
     avgConnectionsPerNode: "노드 평균 연결 수",
+    coverage: "커버리지",
+    coverageFiles: "파일",
+    parsed: "파싱됨",
+    zeroSymbol: "심볼 없음",
+    skipped: "건너뜀",
+    gaps: "공백",
   },
   nodeInfo: {
     definedInThisFile: "이 파일에 정義",
@@ -61,6 +67,11 @@ export const ko = {
     entryPoint: "진입점",
     steps: "단계",
     implementation: "구현",
+    verified: "검증됨",
+    unverified: "미확인",
+    contradicted: "모순",
+    verdictTitle: "요약을 소스와 대조함",
+    summaryRemoved: "요약이 제거되었습니다: 소스와 모순됩니다.",
   },
   fileExplorer: {
     analyzedFiles: "분석된 파일",
@@ -269,6 +280,7 @@ edgeLabels: {
     exemplifies: { forward: "예시", backward: "예시됨" },
     categorized_under: { forward: "카테고리화", backward: "카테고리화함" },
     authored_by: { forward: "작성자", backward: "작성" },
+    mentions: { forward: "언급", backward: "언급됨" },
   },
   pathFinder: {
     title: "노드 간 경로 찾기 (P)",

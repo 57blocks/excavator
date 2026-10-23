@@ -11,6 +11,9 @@
  *   - network: no request, no failed load and no policy violation;
  *   - console: no console error, exception or log error;
  *   - cards: the graph's cards render (one per layer at the top level);
+ *   - our data: the overview lists the coverage record and the gaps, a node shows its
+ *     verdict, a summary the verifier blanked says so, and the connections show their
+ *     evidence and the mentions edge (design D4b);
  *   - content: the page title and the onboarding header say Excavator, no visible
  *     text names the upstream product, a layer drills in, and a file's code opens
  *     from the inlined sources.
@@ -53,22 +56,27 @@ function sourceFile(path) {
   return { path, language: 'javascript', content, sizeBytes: Buffer.byteLength(content), lineCount: content.split('\n').length - 1 };
 }
 
-/** A small graph in the dashboard's format: two layers, two files, four functions. */
+/**
+ * A small graph in the dashboard's format: two layers, two files, three functions, and the
+ * fields of ours the copy shows (design D4b): a verified summary, a contradicted one that was
+ * blanked, edge evidence, a mentions edge, a coverage record and a gap.
+ */
 export function fixtureData() {
   const node = (id, type, name, extra = {}) => ({ id, type, name, summary: `${name} summary`, tags: ['fixture'], complexity: 'simple', ...extra });
-  const edge = (source, target, type) => ({ source, target, type, direction: 'forward', weight: 0.5 });
+  const edge = (source, target, type, evidence) => ({ source, target, type, direction: 'forward', weight: 0.5, ...(evidence ? { evidence: [evidence], provenance: 'extracted' } : {}) });
   const nodes = [
     node('file:src/main.js', 'file', 'main.js', { filePath: 'src/main.js' }),
     node('file:src/util.js', 'file', 'util.js', { filePath: 'src/util.js' }),
     node('function:src/main.js:main', 'function', 'main', { filePath: 'src/main.js', lineRange: [3, 5] }),
-    node('function:src/util.js:helper', 'function', 'helper', { filePath: 'src/util.js', lineRange: [1, 3] }),
-    node('function:src/util.js:leaf', 'function', 'leaf', { filePath: 'src/util.js', lineRange: [1, 3] }),
+    node('function:src/util.js:helper', 'function', 'helper', { filePath: 'src/util.js', lineRange: [1, 3], verification: 'verified' }),
+    node('function:src/util.js:leaf', 'function', 'leaf', { filePath: 'src/util.js', lineRange: [1, 3], summary: '', verification: 'contradicted' }),
   ];
   const edges = [
     edge('file:src/main.js', 'function:src/main.js:main', 'contains'),
     edge('file:src/util.js', 'function:src/util.js:helper', 'contains'),
     edge('file:src/util.js', 'function:src/util.js:leaf', 'contains'),
-    edge('file:src/main.js', 'file:src/util.js', 'imports'),
+    edge('file:src/main.js', 'file:src/util.js', 'imports', { file: 'src/main.js', line: 1, source: 'import-map' }),
+    edge('file:src/util.js', 'file:src/main.js', 'mentions', { file: 'src/util.js', line: 2, source: 'lexical' }),
     edge('function:src/main.js:main', 'function:src/util.js:helper', 'calls'),
   ];
   const graph = {
@@ -81,6 +89,8 @@ export function fixtureData() {
       { id: 'layer:lib', name: 'Library', description: 'Helpers.', nodeIds: ['file:src/util.js', 'function:src/util.js:helper', 'function:src/util.js:leaf'] },
     ],
     tour: [{ order: 1, title: 'Start at main', description: 'main calls the helper.', nodeIds: ['file:src/main.js', 'function:src/util.js:helper'] }],
+    coverage: { files: 3, byLanguage: { javascript: { files: 2, parsed: 2, zeroSymbol: 0, skipped: {} }, css: { files: 1, parsed: 0, zeroSymbol: 0, skipped: { 'no-extractor': 1 } } } },
+    gaps: [{ kind: 'calls-unresolved', scope: 'javascript', reason: 'callee not declared in the project', count: 1, samples: ['src/main.js:4 -> external'] }],
   };
   const domain = {
     version: '1.0.0',
@@ -144,6 +154,32 @@ const PROBE = `(async () => {
   const skip = [...document.querySelectorAll('button')].find((b) => /Don't show again/.test(b.textContent));
   if (skip) skip.click();
   await sleep(300);
+  const button = (text) => [...document.querySelectorAll('button')].find((b) => b.textContent.trim() === text);
+  const card = (id) => document.querySelector('.react-flow__node[data-id="' + id + '"]');
+  const press = (el) => el && el.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+  // Our data (design D4b): the overview of Deep Dive shows coverage and gaps; a node shows its verdict, a blanked summary says why, a connection shows its evidence.
+  if (card('layer:lib')) {
+    button('Deep Dive').click();
+    await sleep(300);
+    out.coverage = document.querySelector('[data-excavator=coverage]')?.innerText ?? null;
+    out.gaps = document.querySelector('[data-excavator=gaps]')?.innerText ?? null;
+    card('layer:lib').click();
+    await until(() => document.querySelector('[aria-label^="Cluster"][aria-expanded="false"]'));
+    press(document.querySelector('[aria-label^="Cluster"][aria-expanded="false"]'));
+    await until(() => card('function:src/util.js:leaf'));
+    const panel = async (id) => { press(card(id)?.firstElementChild); await sleep(300); return document.body.innerText; };
+    const leafText = await panel('function:src/util.js:leaf');
+    out.leafRemoved = leafText.includes('The summary was removed: the source contradicts it.') && /Contradicted/.test(leafText);
+    out.helperVerified = /Verified/.test(await panel('function:src/util.js:helper'));
+    const utilText = await panel('file:src/util.js');
+    out.evidence = (utilText.match(/src[/](main|util)[.]js:[0-9]+/g) || []).sort();
+    // util.js is the source of the mentions edge: its label is the locale's forward one.
+    out.mentions = /(^|[\\n])mentions([\\n]|$)/.test(utilText);
+    button('Project').click();
+    await until(() => card('layer:app'));
+    button('Learn').click();
+    await sleep(300);
+  }
   // A layer card drills into the layer: the level's own cards replace the layers. A page without the fixture's layers has no such card.
   const app = cards().find((n) => /App/.test(n.textContent));
   if (!app) return out;
@@ -185,6 +221,12 @@ export function judge(result) {
     { name: 'network', ok: network.length === 0, detail: network.length === 0 ? 'no request, no failed load, no policy violation' : network.join('; ') },
     { name: 'console', ok: consoleProblems.length === 0, detail: consoleProblems.length === 0 ? 'no console error or exception' : consoleProblems.join('; ').slice(0, 300) },
     { name: 'cards', ok: probe.cards >= 2 && result.ready === '1', detail: `${probe.cards} cards at the top level (the fixture has 2 layers), ready=${result.ready}` },
+    {
+      name: 'our data',
+      ok: /COVERAGE [(]3 FILES[)]/i.test(probe.coverage ?? '') && /no-extractor 1/.test(probe.coverage ?? '') && /calls-unresolved/.test(probe.gaps ?? '') && /src[/]main[.]js:4 -> external/.test(probe.gaps ?? '')
+        && probe.leafRemoved === true && probe.helperVerified === true && JSON.stringify(probe.evidence) === JSON.stringify(['src/main.js:1', 'src/util.js:2']) && probe.mentions === true,
+      detail: `coverage=${probe.coverage ? 'shown' : 'missing'} gaps=${probe.gaps ? 'shown' : 'missing'} blanked summary explained=${probe.leafRemoved} verdict=${probe.helperVerified} evidence=${(probe.evidence ?? []).join(',')} mentions=${probe.mentions}`,
+    },
     {
       name: 'content',
       ok: probe.title === 'Excavator' && /^EXCAVATOR/.test(probe.onboardingHeader ?? '') && probe.upstreamName === false && probe.drilled === true && probe.codeShown === true && probe.legend === 'layers',

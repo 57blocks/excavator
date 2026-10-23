@@ -47,6 +47,12 @@ export const ja = {
     complex: "複雑",
     mostConnectedNodes: "最も接続されているノード",
     avgConnectionsPerNode: "ノード平均接続数",
+    coverage: "カバレッジ",
+    coverageFiles: "ファイル",
+    parsed: "解析済み",
+    zeroSymbol: "シンボルなし",
+    skipped: "スキップ",
+    gaps: "ギャップ",
   },
   nodeInfo: {
     definedInThisFile: "このファイルで定義",
@@ -61,6 +67,11 @@ export const ja = {
     entryPoint: "エントリポイント",
     steps: "ステップ",
     implementation: "実装",
+    verified: "検証済み",
+    unverified: "未確認",
+    contradicted: "矛盾",
+    verdictTitle: "要約をソースと照合済み",
+    summaryRemoved: "要約は削除されました：ソースと矛盾しています。",
   },
   fileExplorer: {
     analyzedFiles: "分析済みファイル",
@@ -269,6 +280,7 @@ export const ja = {
     exemplifies: { forward: "例示", backward: "例示される" },
     categorized_under: { forward: "カテゴリ化", backward: "カテゴリ化する" },
     authored_by: { forward: "作成者", backward: "作成" },
+    mentions: { forward: "言及", backward: "言及される" },
   },
   pathFinder: {
     title: "ノード間のパスを検索 (P)",

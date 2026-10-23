@@ -47,6 +47,12 @@ export const en = {
     complex: "Complex",
     mostConnectedNodes: "Most Connected Nodes",
     avgConnectionsPerNode: "Avg Connections per Node",
+    coverage: "Coverage",
+    coverageFiles: "files",
+    parsed: "parsed",
+    zeroSymbol: "no symbols",
+    skipped: "skipped",
+    gaps: "Gaps",
   },
   nodeInfo: {
     definedInThisFile: "Defined in this file",
@@ -61,6 +67,11 @@ export const en = {
     entryPoint: "Entry Point",
     steps: "Steps",
     implementation: "Implementation",
+    verified: "Verified",
+    unverified: "Unverified",
+    contradicted: "Contradicted",
+    verdictTitle: "Summary checked against the source",
+    summaryRemoved: "The summary was removed: the source contradicts it.",
   },
   fileExplorer: {
     analyzedFiles: "Analyzed Files",
@@ -269,6 +280,7 @@ export const en = {
     exemplifies: { forward: "exemplifies", backward: "exemplified by" },
     categorized_under: { forward: "categorized under", backward: "categorizes" },
     authored_by: { forward: "authored by", backward: "authored" },
+    mentions: { forward: "mentions", backward: "mentioned by" },
   },
   pathFinder: {
     title: "Find path between nodes (P)",

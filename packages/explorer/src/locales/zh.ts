@@ -47,6 +47,12 @@ export const zh = {
     complex: "复杂",
     mostConnectedNodes: "连接最多的节点",
     avgConnectionsPerNode: "节点平均连接数",
+    coverage: "覆盖",
+    coverageFiles: "文件",
+    parsed: "已解析",
+    zeroSymbol: "无符号",
+    skipped: "跳过",
+    gaps: "缺口",
   },
   nodeInfo: {
     definedInThisFile: "在此文件中定义",
@@ -61,6 +67,11 @@ export const zh = {
     entryPoint: "入口点",
     steps: "步骤",
     implementation: "实现",
+    verified: "已核实",
+    unverified: "未证实",
+    contradicted: "矛盾",
+    verdictTitle: "摘要已对照源码核验",
+    summaryRemoved: "摘要已去掉：源码与它矛盾。",
   },
   fileExplorer: {
     analyzedFiles: "已分析文件",
@@ -269,6 +280,7 @@ export const zh = {
     exemplifies: { forward: "例证", backward: "被例证" },
     categorized_under: { forward: "归类于", backward: "归类" },
     authored_by: { forward: "作者", backward: "著作" },
+    mentions: { forward: "提到", backward: "被提到" },
   },
   pathFinder: {
     title: "查找节点间路径 (P)",
