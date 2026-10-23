@@ -24,6 +24,8 @@ import { ThemeProvider } from "./themes/index.ts";
 import { ThemePicker } from "./components/ThemePicker.tsx";
 import ProductSwitch from "./excavator/ProductSwitch";
 import ProductViewOverlay from "./excavator/ProductViewOverlay";
+import ProductRowSidebar from "./excavator/views/ProductRowSidebar";
+import { escapeProductView } from "./excavator/escape";
 import type { ThemeConfig } from "./themes/index.ts";
 import { I18nProvider, useI18n } from "./contexts/I18nContext.tsx";
 import {
@@ -224,6 +226,7 @@ function DashboardContent({
   const selectedNodeId = useDashboardStore((s) => s.selectedNodeId);
   const tourActive = useDashboardStore((s) => s.tourActive);
   const persona = useDashboardStore((s) => s.persona);
+  const productRowOpen = useDashboardStore((s) => s.productView !== null && s.productRow !== null);
   const codeViewerOpen = useDashboardStore((s) => s.codeViewerOpen);
   const codeViewerExpanded = useDashboardStore((s) => s.codeViewerExpanded);
   const expandCodeViewer = useDashboardStore((s) => s.expandCodeViewer);
@@ -250,6 +253,11 @@ function DashboardContent({
   useEffect(() => {
     if (selectedNodeId) setSidebarTab("info");
   }, [selectedNodeId]);
+
+  // Excavator: a chosen product row shows its details on the Info tab.
+  useEffect(() => {
+    if (productRowOpen) setSidebarTab("info");
+  }, [productRowOpen]);
 
   // Define keyboard shortcuts
   const shortcuts = useMemo<KeyboardShortcut[]>(
@@ -279,6 +287,8 @@ function DashboardContent({
             state.collapseCodeViewer();
           } else if (state.codeViewerOpen) {
             state.closeCodeViewer();
+          } else if (escapeProductView(state)) {
+            // Excavator: the product view's chosen row is cleared first, then the view closes.
           } else if (state.selectedNodeId) {
             state.selectNode(null);
           } else if (state.navigationLevel === "layer-detail") {
@@ -373,7 +383,10 @@ function DashboardContent({
   // NodeInfo always takes priority when a node is selected.
   // Learn mode adds LearnPanel below it; otherwise ProjectOverview shows when idle.
   const isLearnMode = tourActive || persona === "junior";
-  const infoSidebarContent = (
+  const infoSidebarContent = productRowOpen ? (
+    // Excavator: while a product view has a row chosen, the sidebar shows the row's details.
+    <ProductRowSidebar />
+  ) : (
     <>
       {selectedNodeId && <NodeInfo />}
       {isLearnMode && (
@@ -426,7 +439,8 @@ function DashboardContent({
   return (
     <div className="h-screen w-screen flex flex-col bg-root text-text-primary noise-overlay">
       {/* Header */}
-      <header className="flex items-center px-3 sm:px-5 py-3 bg-surface border-b border-border-subtle shrink-0 gap-2 sm:gap-4">
+      {/* Excavator: below lg the header wraps (the middle cluster, with the product buttons, takes its own row) so it never scrolls the page sideways. */}
+      <header className="flex flex-wrap lg:flex-nowrap items-center px-3 sm:px-5 py-3 bg-surface border-b border-border-subtle shrink-0 gap-x-2 gap-y-2 sm:gap-x-4">
         {/* Left — fixed */}
         <div className="flex items-center gap-3 sm:gap-5 shrink-0 min-w-0">
           <h1 className="font-heading text-base sm:text-lg text-text-primary tracking-wide truncate max-w-[160px] sm:max-w-[220px] lg:max-w-none">
@@ -468,7 +482,7 @@ function DashboardContent({
         </div>
 
         {/* Middle — scrollable legends */}
-        <div className="flex-1 min-w-0 overflow-x-auto scrollbar-hide">
+        <div className="order-last w-full min-w-0 overflow-x-auto scrollbar-hide lg:order-none lg:w-auto lg:flex-1">
           <div className="flex items-center gap-4 w-max">
             <DiffToggle />
             {/* Excavator: the three product views, where the Files | Classes switch and the type chips were. */}

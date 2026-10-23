@@ -10,6 +10,7 @@ import type {
 import type { ReactFlowInstance } from "@xyflow/react";
 import { withDerivedGroups, type LayerSource } from "./excavator/groups";
 import type { ProductView } from "./excavator/productViews";
+import { sourceNodeId, type SourceTarget } from "./excavator/views/sourceNode";
 
 export type Persona = "non-technical" | "junior" | "experienced";
 export type NavigationLevel = "overview" | "layer-detail";
@@ -123,6 +124,8 @@ interface DashboardStore {
 
   codeViewerOpen: boolean;
   codeViewerNodeId: string | null;
+  /** Excavator: the file the viewer shows when it was opened by path (codeViewerNodeId is then its source node id). */
+  codeViewerSource: SourceTarget | null;
   codeViewerExpanded: boolean;
 
   tourActive: boolean;
@@ -171,6 +174,8 @@ interface DashboardStore {
   setSearchQuery: (query: string) => void;
   setPersona: (persona: Persona) => void;
   openCodeViewer: (nodeId: string) => void;
+  /** Excavator: opens the code viewer on a file by path, for a product row whose file has no graph node. */
+  openCodeViewerAt: (path: string, range: [number, number] | null) => void;
   closeCodeViewer: () => void;
   expandCodeViewer: () => void;
   collapseCodeViewer: () => void;
@@ -318,6 +323,7 @@ export const useDashboardStore = create<DashboardStore>()((set, get) => ({
   activeLayerId: null,
   codeViewerOpen: false,
   codeViewerNodeId: null,
+  codeViewerSource: null,
   codeViewerExpanded: false,
 
   tourActive: false,
@@ -444,6 +450,9 @@ export const useDashboardStore = create<DashboardStore>()((set, get) => ({
       };
       set({
         ...layerNav,
+        // Excavator: a node chosen from outside a product view (search, the file list, Show in graph) shows the graph.
+        productView: null,
+        productRow: null,
         selectedNodeId: nodeId,
         focusNodeId: null,
         codeViewerOpen: false,
@@ -454,6 +463,8 @@ export const useDashboardStore = create<DashboardStore>()((set, get) => ({
       });
     } else {
       set({
+        productView: null,
+        productRow: null,
         selectedNodeId: nodeId,
         nodeHistory: newHistory,
       });
@@ -574,8 +585,15 @@ export const useDashboardStore = create<DashboardStore>()((set, get) => ({
 
   openCodeViewer: (nodeId) =>
     set({ codeViewerOpen: true, codeViewerNodeId: nodeId, codeViewerExpanded: false }),
+  openCodeViewerAt: (path, range) =>
+    set({
+      codeViewerOpen: true,
+      codeViewerNodeId: sourceNodeId(path),
+      codeViewerSource: { path, range },
+      codeViewerExpanded: false,
+    }),
   closeCodeViewer: () =>
-    set({ codeViewerOpen: false, codeViewerNodeId: null, codeViewerExpanded: false }),
+    set({ codeViewerOpen: false, codeViewerNodeId: null, codeViewerSource: null, codeViewerExpanded: false }),
   expandCodeViewer: () => set({ codeViewerExpanded: true }),
   collapseCodeViewer: () => set({ codeViewerExpanded: false }),
 

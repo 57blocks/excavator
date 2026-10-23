@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { describeProductState, readProductStates, snapshotRevisionOf } from "../productStates";
+import { describeProductState, readProductStates, revisionNotice, snapshotRevisionOf } from "../productStates";
 
 const entry = (name: string, over: Record<string, unknown> = {}) => ({
   name,
@@ -79,5 +79,19 @@ describe("describing a product's state", () => {
     expect(describeProductState(states.unused, null)).toEqual(["Status: included", "Revision: git:aaa"]);
     const none = readProductStates({ products: [entry("unused-code", { revision: null, revisionNote: "no revision recorded" })] });
     expect(describeProductState(none.unused, null)).toEqual(["Status: included", "Revision: no revision recorded"]);
+  });
+});
+
+describe("the notice for a product made from another revision", () => {
+  it("names both revisions", () => {
+    const text = revisionNotice({ status: "different-revision", reason: null, revision: "git:bbb", revisionNote: null, command: null }, "git:aaa");
+    expect(text).toContain("git:bbb");
+    expect(text).toContain("git:aaa");
+  });
+
+  it("says when a revision is not recorded and has no notice for other states", () => {
+    const text = revisionNotice({ status: "different-revision", reason: null, revision: null, revisionNote: null, command: null }, null);
+    expect(text).toContain("not recorded");
+    expect(revisionNotice({ status: "included", reason: null, revision: "git:aaa", revisionNote: null, command: null }, "git:aaa")).toBeNull();
   });
 });

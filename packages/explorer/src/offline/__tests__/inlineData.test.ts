@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   DATA_GLOBAL,
   hasInlineFile,
+  hasInlineSource,
   inlineFetch,
   readInlineFile,
   readInlineSource,
@@ -129,5 +130,19 @@ describe("inlineFetch", () => {
     } finally {
       delete (globalThis as Record<string, unknown>).window;
     }
+  });
+});
+
+describe("hasInlineSource", () => {
+  it("is true only for a path the sources table holds", () => {
+    const data = { sources: { "src/a.ts": SOURCE } };
+    expect(hasInlineSource("src/a.ts", data)).toBe(true);
+    expect(hasInlineSource("src/b.ts", data)).toBe(false);
+    expect(hasInlineSource("toString", data)).toBe(false);
+  });
+
+  it("is false when the page has no sources key (packed without source)", () => {
+    expect(hasInlineSource("src/a.ts", {})).toBe(false);
+    expect(hasInlineSource("src/a.ts", undefined)).toBe(false);
   });
 });

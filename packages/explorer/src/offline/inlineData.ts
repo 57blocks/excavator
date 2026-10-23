@@ -92,6 +92,11 @@ export function readInlineSource(filePath: string, data: unknown = pageData()): 
   return value === undefined ? notFound("Source is not included in this page") : found(value);
 }
 
+/** True when the page holds the source of this path (it was packed with source, and the file is in it). */
+export function hasInlineSource(filePath: string, data: unknown = pageData()): boolean {
+  return own(own(data, "sources"), filePath) !== undefined;
+}
+
 /** `fetch` for the data files, for the freshness request that takes a fetcher. */
 export const inlineFetch: typeof fetch = (input) =>
   readInlineFile(String(input) as InlineDataFile) as Promise<Response>;

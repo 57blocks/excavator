@@ -87,6 +87,17 @@ export function describeProductState(state: ProductState, snapshotRevision: stri
   }
 }
 
+/**
+ * The notice at the top of a view whose product was made from another revision than the source packed
+ * into the page: both revisions, and that the content is shown as it is. Null for any other state.
+ */
+export function revisionNotice(state: ProductState, snapshotRevision: string | null): string | null {
+  if (state.status !== "different-revision") return null;
+  const made = state.revision ?? "not recorded";
+  const packed = snapshotRevision ?? "not recorded in this page";
+  return `This product was made from revision ${made}. The source packed into this page is at revision ${packed}. The content below is shown as the product holds it.`;
+}
+
 export interface LoadedProductStates {
   states: ProductStates;
   snapshotRevision: string | null;
