@@ -344,7 +344,7 @@ skill MUST NOT 启动 HTTP 服务，MUST NOT 运行任何分析，MUST NOT 改�
 
 ### Requirement: 离线仪表盘
 
-`/excavator-view` SHALL 在 `.excavator/view.html` 之外再写出 `.excavator/explorer.html`：Understand Anything 仪表盘的副本，用本项目的产物填数据。给了 `--out` 时，`explorer.html` 写在它旁边；`--out` 本身就是那个 `explorer.html` 时，打包 SHALL 报错且不写任何文件。
+`/excavator-view` SHALL 在 `.excavator/view.html` 之外再写出 `.excavator/explorer.html`：Understand Anything 仪表盘的副本，用本项目的产物填数据。给了 `--out` 时，`explorer.html` 写在它旁边；`--out` 本身就是那个 `explorer.html`（不分大小写）时，打包 SHALL 报错且不写任何文件。
 
 副本的来源与改动：
 - 源码取自 Understand Anything 的 `packages/explorer` 与它引用的 `packages/core` 模块，保留 MIT 许可声明与来源提交号；
