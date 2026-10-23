@@ -18,8 +18,8 @@
  *   doc-map.json
  *   doc-map-checks.json   the doc map's `doc-map/checks.json`, only when the doc map is there and has one
  *   products.json         { snapshotRevision, products: [{ name, status, reason, revision, revisionNote, command }] } for
- *                         unused-code, hotspots and doc-map, from the entries `products.mjs` judged (the
- *                         view page's own states), so the page states each product the way the view page does
+ *                         unused-code, hotspots and doc-map, from the entries `products.mjs` judged, so each
+ *                         product view states its product the way the pack's reply does
  *   sources               { <filePath>: { path, content, sizeBytes, lineCount } } for the files the
  *                         pack embeds (`sources.mjs` rules); no table under `--no-source`
  *
@@ -34,8 +34,8 @@
  *
  * The Full-mode semantic product (`semantics.mjs`: fresh entries only, a contradicted
  * summary already blanked, layers only when the semantic graph was made from the
- * graph's facts) is merged into the graph by the view page's own rule
- * (`packages/report-view/src/data/semantics.ts`): a node's summary is its entry's when
+ * graph's facts) is merged into the graph by one rule
+ * (openspec: changes/retire-view-html, spec report-viewer): a node's summary is its entry's when
  * that is not empty, empty when the entry was contradicted, else the node's own; its
  * tags are the entry's when there are any, else the node's own; its `verification` is the
  * entry's verdict when it has one (the copy shows it beside the summary); the semantic layers
@@ -170,7 +170,7 @@ const CONTRADICTED = 'contradicted';
 const nonEmpty = (value) => typeof value === 'string' && value !== '';
 const tagList = (value) => (Array.isArray(value) ? value.filter((tag) => typeof tag === 'string') : []);
 
-/** One node's summary, tags and verdict after its semantic entry, by the view page's order of sources; no verdict when neither has one. */
+/** One node's summary, tags and verdict after its semantic entry, entry first, then the node's own; no verdict when neither has one. */
 function mergedText(node, entry) {
   const ownSummary = nonEmpty(node.summary) ? node.summary : '';
   const ownTags = tagList(node.tags);

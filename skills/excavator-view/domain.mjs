@@ -1,8 +1,9 @@
 /**
  * domain.mjs
  *
- * Reads `domain-graph.json` into the payload the domain view draws from
- * (openspec: changes/viewer-app, design D12). Identity and freshness are judged
+ * Reads `domain-graph.json` and judges it (openspec: changes/viewer-app,
+ * design D12): the pack's state for it, and the payload `sources.mjs` takes the
+ * steps' files from. Identity and freshness are judged
  * here and never on the page:
  *   - `version` and `contentLanguage` must be the ones the Domain skill writes
  *     (`domain-contract.mjs`), and `nodes`, `edges`, `sourceRevision` and
@@ -14,7 +15,7 @@
  *     are written down.
  * The payload keeps `nodes`, `edges` and `gaps` as written, and the project
  * block's `description` as `projectDescription` when it is a non-empty string
- * (the project overview shows it, changes/viewer-learn design D3); it leaves out
+ * (changes/viewer-learn design D3); it leaves out
  * what the page does not read (the language audit, the rest of the project
  * block, layers, tour).
  *

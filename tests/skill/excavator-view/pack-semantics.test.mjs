@@ -3,8 +3,9 @@ import { join } from 'node:path';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
 import { packProject } from '../../../skills/excavator-view/pack.mjs';
+import { collectProducts } from '../../../skills/excavator-view/products.mjs';
 import { factGraphJsonl, makeGitProject, semanticCache, semanticEntry, semanticGraph, sourceManifest, writeProduct } from './fixture.mjs';
-import { manifestOf, payloadIds, payloadText } from './page.mjs';
+import { explorerPage } from './page.mjs';
 import { writeTemplate } from './plugin-fixture.mjs';
 
 const DIGEST = 'a'.repeat(64);
@@ -45,12 +46,16 @@ function writeFull({ entries, cache = {}, layers, graphDigest = DIGEST, layerDig
   if (graph) writeProduct(project.root, 'semantic-graph.json', semanticGraph({ factDigest: layerDigest, layers: layers ?? [] }));
 }
 
+// The entry and the bytes the packer read for the semantic files (the page's node summaries are made from them), and the packed page.
 const pack = () => {
-  const result = packProject(project.root, { template: templatePath });
+  const result = packProject(project.root, { explorerTemplate: templatePath });
   const html = readFileSync(result.out, 'utf-8');
-  return { result, html, manifest: manifestOf(html), product: manifestOf(html).products.find((p) => p.name === 'semantics') };
+  const products = collectProducts(join(project.root, '.excavator'), project.revision);
+  return { result, html, ...explorerPage(html), product: products.entries.find((p) => p.name === 'semantics'), payloads: products.payloads };
 };
-const payloadOf = (packed) => JSON.parse(payloadText(packed.html, 'semantics'));
+const payloadIds = (packed) => packed.payloads.map((p) => p.id);
+const payloadText = (packed, id) => packed.payloads.find((p) => p.id === id)?.bytes.toString('utf-8') ?? null;
+const payloadOf = (packed) => JSON.parse(payloadText(packed, 'semantics'));
 
 describe('semantics product', () => {
   it('is not run, with the full-mode command, when there is no semantic-cache.json, and the graph is still included', () => {
@@ -58,7 +63,7 @@ describe('semantics product', () => {
     const packed = pack();
     expect(packed.product).toMatchObject({ status: 'not-run', command: '/excavator --full', payloads: [] });
     expect(packed.manifest.products.find((p) => p.name === 'knowledge-graph').status).toBe('included');
-    expect(payloadIds(packed.html)).toEqual(['knowledge-graph']);
+    expect(payloadIds(packed)).toEqual(['knowledge-graph']);
   });
 
   it('inlines fresh entries with only id, summary, tags and verification, and notes that it records no revision', () => {
@@ -71,7 +76,7 @@ describe('semantics product', () => {
     });
     const packed = pack();
     expect(packed.product).toMatchObject({ status: 'included', revisionNote: 'no revision recorded', payloads: ['semantics'] });
-    expect(payloadIds(packed.html)).toEqual(['knowledge-graph', 'semantics']);
+    expect(payloadIds(packed)).toEqual(['knowledge-graph', 'semantics']);
     expect(payloadOf(packed)).toEqual({
       entries: [
         { id: 'file:src/a.js', summary: 'Entry point of the app.', tags: ['entry'], verification: 'verified' },
@@ -79,10 +84,14 @@ describe('semantics product', () => {
       ],
       layers: [{ id: 'layer:core', name: 'Core', description: 'The core.', nodeIds: ['file:src/a.js', 'file:src/b.js'] }],
     });
-    const text = payloadText(packed.html, 'semantics');
+    const text = payloadText(packed, 'semantics');
     expect(text).not.toMatch(/semanticSourceHash|languageAudit/);
     expect(text).not.toContain(HASH_A);
     expect(packed.result.products.find((p) => p.name === 'semantics').status).toBe('included');
+    expect(packed.manifest.products.find((p) => p.name === 'semantics')).toEqual({ name: 'semantics', status: 'included' });
+    // The page holds neither the hashes nor the audit, and the node of an entry carries the entry's summary.
+    expect(packed.html).not.toMatch(/semanticSourceHash|languageAudit/);
+    expect(packed.data['knowledge-graph.json'].nodes.find((n) => n.id === 'file:src/a.js').summary).toBe('Entry point of the app.');
   });
 
   it('leaves out an entry that is not fresh and counts it: another hash, a node the graph lacks, a file the manifest lacks', () => {
@@ -97,7 +106,8 @@ describe('semantics product', () => {
     const packed = pack();
     expect(payloadOf(packed).entries.map((e) => e.id)).toEqual(['file:src/a.js', 'file:src/b.js']);
     expect(packed.product.counts).toMatchObject({ entries: 2, stale: 2 });
-    expect(payloadText(packed.html, 'semantics')).not.toContain('Written for older source.');
+    expect(payloadText(packed, 'semantics')).not.toContain('Written for older source.');
+    expect(packed.html).not.toContain('Written for older source.');
   });
 
   it('keeps a contradicted entry\'s verdict and blanks its summary, so the text is nowhere in the page', () => {
@@ -110,7 +120,7 @@ describe('semantics product', () => {
     const packed = pack();
     expect(payloadOf(packed).entries.find((e) => e.id === 'function:src/a.js:run')).toEqual({ id: 'function:src/a.js:run', summary: '', tags: ['network'], verification: 'contradicted' });
     expect(packed.html).not.toContain(CONTRADICTED_TEXT);
-    expect(payloadText(packed.html, 'semantics')).not.toContain(CONTRADICTED_TEXT);
+    expect(payloadText(packed, 'semantics')).not.toContain(CONTRADICTED_TEXT);
   });
 
   it('counts the inlined entries by verdict, with no verdict as unchecked, and the layers', () => {
@@ -136,7 +146,7 @@ describe('semantics product', () => {
     expect(packed.product.status).toBe('unreadable');
     expect(packed.product.reason).toContain(DIGEST);
     expect(packed.product.reason).toContain(OTHER_DIGEST);
-    expect(payloadIds(packed.html)).not.toContain('semantics');
+    expect(payloadIds(packed)).not.toContain('semantics');
   });
 
   it('is unreadable when the knowledge graph records no factsDigest but the semantic graph has one', () => {
@@ -158,7 +168,7 @@ describe('semantics product', () => {
     writeFull({ entries: { 'file:src/a.js': { summary: 'x.', semanticSourceHash: HASH_A } }, cache: { contentLanguage: 'fr' } });
     const packed = pack();
     expect(packed.product).toMatchObject({ status: 'unreadable', reason: expect.stringContaining('"fr"') });
-    expect(payloadIds(packed.html)).not.toContain('semantics');
+    expect(payloadIds(packed)).not.toContain('semantics');
   });
 
   it('is unreadable when the cache has another schema version or is not JSON', () => {

@@ -3,8 +3,9 @@ import { join } from 'node:path';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
 import { packProject } from '../../../skills/excavator-view/pack.mjs';
+import { collectProducts } from '../../../skills/excavator-view/products.mjs';
 import { domainGraph, factGraphJsonl, makeGitProject, writeProduct } from './fixture.mjs';
-import { manifestOf, payloadIds, payloadText } from './page.mjs';
+import { explorerPage } from './page.mjs';
 import { writeTemplate } from './plugin-fixture.mjs';
 
 const DIGEST = 'a'.repeat(64);
@@ -30,18 +31,23 @@ beforeEach(() => rmSync(join(project.root, '.excavator'), { recursive: true, for
 const writeGraph = (factsDigest = DIGEST) => writeProduct(project.root, 'knowledge-graph.jsonl', factGraphJsonl({ factsDigest, nodes: NODES }));
 const writeDomain = (fields) => writeProduct(project.root, 'domain-graph.json', domainGraph({ sourceRevision: project.revision, factDigest: DIGEST, ...fields }));
 
+// The entry and the bytes the packer read for the domain graph (the explorer page is made from them), and the packed page.
 const pack = () => {
-  const result = packProject(project.root, { template: templatePath });
+  const result = packProject(project.root, { explorerTemplate: templatePath });
   const html = readFileSync(result.out, 'utf-8');
-  return { result, html, product: manifestOf(html).products.find((p) => p.name === 'domain-graph') };
+  const products = collectProducts(join(project.root, '.excavator'), project.revision);
+  return { result, html, ...explorerPage(html), product: products.entries.find((p) => p.name === 'domain-graph'), payloads: products.payloads };
 };
+const payloadIds = (packed) => packed.payloads.map((p) => p.id);
+const payloadText = (packed, id) => packed.payloads.find((p) => p.id === id)?.bytes.toString('utf-8') ?? null;
 
 describe('domain graph product', () => {
   it('is not run, with the domain command, when there is no domain-graph.json', () => {
     writeGraph();
     const packed = pack();
     expect(packed.product).toMatchObject({ status: 'not-run', command: '/excavator-domain', file: 'domain-graph.json', payloads: [] });
-    expect(payloadIds(packed.html)).toEqual(['knowledge-graph']);
+    expect(payloadIds(packed)).toEqual(['knowledge-graph']);
+    expect(packed.data).not.toHaveProperty('domain-graph.json');
   });
 
   it('includes a graph made at this revision from these facts, as its own payload of nodes, edges and gaps', () => {
@@ -50,30 +56,31 @@ describe('domain graph product', () => {
     const packed = pack();
     expect(packed.product).toMatchObject({ status: 'included', revision: project.revision, reason: null, payloads: ['domain-graph'] });
     expect(packed.product.counts).toEqual({ domains: 2, flows: 2, steps: 4, crossDomain: 1 });
-    expect(payloadIds(packed.html)).toEqual(['knowledge-graph', 'domain-graph']);
-    const payload = JSON.parse(payloadText(packed.html, 'domain-graph'));
+    expect(payloadIds(packed)).toEqual(['knowledge-graph', 'domain-graph']);
+    const payload = JSON.parse(payloadText(packed, 'domain-graph'));
     expect(Object.keys(payload)).toEqual(['nodes', 'edges', 'gaps']);
     expect(payload.nodes).toHaveLength(8);
     expect(payload.edges).toHaveLength(7);
     expect(payload.gaps).toHaveLength(1);
     // The language audit, the project block and the empty layer and tour lists are not the page's to show.
-    expect(payloadText(packed.html, 'domain-graph')).not.toMatch(/languageAudit|"project"|"tour"/);
+    expect(payloadText(packed, 'domain-graph')).not.toMatch(/languageAudit|"project"|"tour"/);
     expect(packed.result.products.find((p) => p.name === 'domain-graph')).toMatchObject({ status: 'included', counts: { domains: 2, flows: 2, steps: 4, crossDomain: 1 } });
   });
 
   it('keeps the project block\'s description, and only that, as projectDescription when it is written', () => {
     writeGraph();
     writeDomain({ extra: { project: { name: 'fixture', languages: ['javascript'], frameworks: [], description: 'Bills customers and ships parcels.', analyzedAt: 'x' } } });
-    const payload = JSON.parse(payloadText(pack().html, 'domain-graph'));
+    const packed = pack();
+    const payload = JSON.parse(payloadText(packed, 'domain-graph'));
     expect(Object.keys(payload)).toEqual(['nodes', 'edges', 'gaps', 'projectDescription']);
     expect(payload.projectDescription).toBe('Bills customers and ships parcels.');
-    expect(payloadText(pack().html, 'domain-graph')).not.toMatch(/"project"|analyzedAt/);
+    expect(payloadText(packed, 'domain-graph')).not.toMatch(/"project"|analyzedAt/);
   });
 
   it('keeps every field of a step, so the page can list its nodeIds, unresolved ids, evidence and provenance', () => {
     writeGraph();
     writeDomain();
-    const { nodes } = JSON.parse(payloadText(pack().html, 'domain-graph'));
+    const { nodes } = JSON.parse(payloadText(pack(), 'domain-graph'));
     expect(nodes.find((n) => n.id === 'step:charge:capture')).toMatchObject({ nodeIds: ['function:src/a.js:run', 'function:src/gone.js:x'], unresolvedNodeIds: ['function:src/gone.js:x'], evidence: [{ file: 'src/a.js', line: 1, source: 'rule' }] });
     expect(nodes.find((n) => n.id === 'step:charge:receipt').provenance).toBe('inferred');
     expect(nodes.find((n) => n.id === 'domain:billing').domainMeta.entities).toEqual(['Invoice']);
@@ -82,18 +89,19 @@ describe('domain graph product', () => {
   it('writes the same bytes twice', () => {
     writeGraph();
     writeDomain();
-    expect(payloadText(pack().html, 'domain-graph')).toBe(payloadText(pack().html, 'domain-graph'));
+    expect(payloadText(pack(), 'domain-graph')).toBe(payloadText(pack(), 'domain-graph'));
     expect(pack().html).toBe(pack().html);
   });
 
   it('is unreadable when the version is not 2.0.0, and says which version it found', () => {
     writeGraph();
     writeDomain({ extra: { version: '1.0.0' } });
-    const { product, html } = pack();
-    expect(product.status).toBe('unreadable');
-    expect(product.reason).toContain('version "1.0.0"');
-    expect(product.reason).toContain('version 2.0.0');
-    expect(payloadIds(html)).toEqual(['knowledge-graph']);
+    const packed = pack();
+    expect(packed.product.status).toBe('unreadable');
+    expect(packed.product.reason).toContain('version "1.0.0"');
+    expect(packed.product.reason).toContain('version 2.0.0');
+    expect(payloadIds(packed)).toEqual(['knowledge-graph']);
+    expect(packed.data).not.toHaveProperty('domain-graph.json');
   });
 
   it('is unreadable when the content language is not en, and names the language', () => {
@@ -128,18 +136,19 @@ describe('domain graph product', () => {
 
   it('is unreadable, and says why, when the knowledge graph cannot be read to compare the facts digest with', () => {
     writeDomain();
-    const { product, html } = pack();
-    expect(product.status).toBe('unreadable');
-    expect(product.reason).toMatch(/knowledge-graph\.jsonl is not readable.*cannot be compared/);
-    expect(payloadIds(html)).toEqual([]);
+    const packed = pack();
+    expect(packed.product.status).toBe('unreadable');
+    expect(packed.product.reason).toMatch(/knowledge-graph\.jsonl is not readable.*cannot be compared/);
+    expect(payloadIds(packed)).toEqual([]);
   });
 
   it('is a different revision when its sourceRevision is not the snapshot\'s, and keeps the graph', () => {
     writeGraph();
     writeDomain({ sourceRevision: 'git:0123456789abcdef' });
-    const { product, html } = pack();
-    expect(product).toMatchObject({ status: 'different-revision', revision: 'git:0123456789abcdef', payloads: ['domain-graph'] });
-    expect(payloadIds(html)).toEqual(['knowledge-graph', 'domain-graph']);
+    const packed = pack();
+    expect(packed.product).toMatchObject({ status: 'different-revision', revision: 'git:0123456789abcdef', payloads: ['domain-graph'] });
+    expect(payloadIds(packed)).toEqual(['knowledge-graph', 'domain-graph']);
+    expect(packed.data['domain-graph.json']).toBeDefined();
   });
 
   it('is a different revision when its factDigest is not the graph\'s factsDigest, and writes both values', () => {
@@ -178,9 +187,11 @@ describe('domain graph product', () => {
     const graph = domainGraph({ sourceRevision: project.revision, factDigest: DIGEST });
     graph.nodes.push({ id: 'step:charge:log', type: 'step', name: 'log', filePath: 'src/main.js', nodeIds: [], evidence: [{ file: 'src/other.js', line: 3, source: 'rule' }] });
     writeProduct(project.root, 'domain-graph.json', graph);
-    const manifest = manifestOf(pack().html);
-    expect(manifest.source.files['src/main.js']).toMatchObject({ bucket: 'embedded' });
-    // A cited file the snapshot does not have is listed, and says so.
-    expect(manifest.source.files['src/other.js']).toMatchObject({ bucket: 'notInSnapshot' });
+    const { data, manifest, result } = pack();
+    expect(data.sources['src/main.js']).toMatchObject({ path: 'src/main.js', content: 'export function main() {}\n' });
+    // The files the fixture steps cite but the snapshot does not have (src/a.js, src/b.js and the evidence file src/other.js) are counted as such and not embedded.
+    expect(data.sources).not.toHaveProperty('src/other.js');
+    expect(manifest.source.counts).toEqual({ embedded: 1, binary: 0, tooLarge: 0, notInSnapshot: 3, notEmbeddedOnRequest: 0 });
+    expect(result.source.counts).toEqual(manifest.source.counts);
   });
 });

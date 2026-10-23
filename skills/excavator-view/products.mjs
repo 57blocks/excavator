@@ -6,10 +6,12 @@
  * or different-revision. Nothing here calls a model or touches the project's
  * source; the only inputs are the product files and the snapshot revision.
  *
- * A manifest entry is { name, label, status, reason, revision, revisionNote,
- * command, file, payloads } with `payloads` the ids of the data payloads the
- * page holds for it; the semantics and domain-graph entries also have `counts`. The bytes of those
- * payloads are returned next to the entries, never inside them.
+ * An entry is { name, label, status, reason, revision, revisionNote, command,
+ * file, payloads } with `payloads` the ids of the bytes read for it; the
+ * semantics and domain-graph entries also have `counts`. The bytes are returned
+ * next to the entries, never inside them: `explorer-data.mjs` builds the page
+ * data from them and `sources.mjs` the list of files to embed. The two report
+ * Markdown files are not read (changes/retire-view-html).
  */
 
 import { join } from 'node:path';
@@ -77,11 +79,6 @@ const SEMANTICS_DEF = {
   file: 'semantic-cache.json',
   command: '/excavator --full',
 };
-
-const REPORTS = [
-  { name: 'hotspots-report', label: 'Hotspots report', file: 'hotspots-report.md', payload: 'report-hotspots', command: '/excavator-hotspots' },
-  { name: 'doc-map-report', label: 'Doc map report', file: 'doc-map-report.md', payload: 'report-doc-map', command: '/excavator-doc-map' },
-];
 
 function entry(def, fields) {
   return {
@@ -252,50 +249,14 @@ function readTourProduct(dataDir, graph) {
   };
 }
 
-/** Reports are included or not run; their Markdown is not checked and records no revision. */
-function readReports(dataDir) {
-  const items = [];
-  const payloads = [];
-  for (const report of REPORTS) {
-    const file = readRegularFile(join(dataDir, report.file), report.file);
-    if (file.state === 'unreadable') throw new Error(file.reason);
-    const included = file.state === 'ok';
-    if (included) payloads.push({ id: report.payload, bytes: file.bytes });
-    items.push({
-      name: report.name,
-      label: report.label,
-      file: report.file,
-      status: included ? 'included' : 'not-run',
-      command: report.command,
-      payload: included ? report.payload : null,
-    });
-  }
-  const included = items.filter((item) => item.status === 'included');
-  return {
-    entry: {
-      name: 'reports',
-      label: 'Reports',
-      status: included.length > 0 ? 'included' : 'not-run',
-      reason: items.map((item) => `${item.file} ${item.status === 'included' ? 'included' : 'not run'}`).join('; '),
-      revision: null,
-      revisionNote: included.length > 0 ? NO_REVISION_NOTE : null,
-      command: REPORTS.map((r) => r.command).join(', '),
-      file: REPORTS.map((r) => r.file).join(', '),
-      payloads: included.map((item) => item.payload),
-      items,
-    },
-    payloads,
-  };
-}
-
 /**
- * Every product's state, in the page's order, with the payload bytes to inline.
+ * Every product's state, in the reply's order, with the bytes the page data and the source table are made from.
  * @returns {{ entries: object[], payloads: {id: string, bytes: Buffer}[] }}
  */
 export function collectProducts(dataDir, snapshotRevision) {
   const graph = readGraphProduct(dataDir, snapshotRevision);
   const [unused, docMap, hotspots] = JSON_PRODUCTS.map((def) => readJsonProduct(dataDir, def, snapshotRevision));
-  const results = [graph, readSemanticsProduct(dataDir, graph), readDomainProduct(dataDir, graph, snapshotRevision), unused, docMap, hotspots, readTourProduct(dataDir, graph), readReports(dataDir)];
+  const results = [graph, readSemanticsProduct(dataDir, graph), readDomainProduct(dataDir, graph, snapshotRevision), unused, docMap, hotspots, readTourProduct(dataDir, graph)];
   return {
     entries: results.map((r) => r.entry),
     payloads: results.flatMap((r) => r.payloads),
