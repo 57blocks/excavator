@@ -3,8 +3,9 @@
  *
  * Reads the products under `.excavator/` and gives each one exactly one state
  * (openspec: changes/report-viewer, design D3): included, not-run, unreadable,
- * or different-revision; semantics and the tour are not-shown when they are usable
- * but there is no readable knowledge graph to hold them. Nothing here calls a model or touches the project's
+ * or different-revision; semantics and the tour are not-shown when they pass their
+ * own checks but there is no readable knowledge graph to hold them. The knowledge
+ * graph is readable only when the store reads its whole body. Nothing here calls a model or touches the project's
  * source; the only inputs are the product files and the snapshot revision.
  *
  * An entry is { name, label, status, reason, revision, revisionNote, command,
@@ -17,7 +18,7 @@
 
 import { join } from 'node:path';
 
-import { KNOWLEDGE_GRAPH_FILE, KNOWLEDGE_GRAPH_FORMAT } from '../excavator/knowledge-graph-store.mjs';
+import { KNOWLEDGE_GRAPH_FILE, KNOWLEDGE_GRAPH_FORMAT, readKnowledgeGraph } from '../excavator/knowledge-graph-store.mjs';
 import { readDomain } from './domain.mjs';
 import { describeFormat, parseJsonObject, readRegularFile } from './product-files.mjs';
 import { readSemantics } from './semantics.mjs';
@@ -186,6 +187,14 @@ function readGraphProduct(dataDir, snapshotRevision) {
   if (file.state === 'unreadable') return { entry: unreadable(def, file.reason), payloads: [] };
   const checked = checkGraphHeader(file.bytes);
   if (!checked.header) return { entry: unreadable(def, checked.reason), payloads: [] };
+  // The whole body is read here, by the reader the page's data comes from, so a graph is one state everywhere:
+  // a body the store refuses makes the graph unreadable, and nothing is judged against it.
+  let graph;
+  try {
+    graph = readKnowledgeGraph(join(dataDir, def.file));
+  } catch (error) {
+    return { entry: unreadable(def, error.message), payloads: [] };
+  }
 
   const manifestFile = readRegularFile(join(dataDir, SOURCE_MANIFEST_FILE), SOURCE_MANIFEST_FILE);
   let revision;
@@ -198,6 +207,7 @@ function readGraphProduct(dataDir, snapshotRevision) {
   return {
     entry: withRevision(def, revision, snapshotRevision, [def.name]),
     payloads: [{ id: def.name, bytes: file.bytes }],
+    graph,
     graphBytes: file.bytes,
     graphIdentity: { factsDigest: typeof checked.header.fields.project?.factsDigest === 'string' ? checked.header.fields.project.factsDigest : null },
   };
@@ -256,8 +266,9 @@ function readTourProduct(dataDir, graph) {
 }
 
 /**
- * Every product's state, in the reply's order, with the bytes the page data and the source table are made from.
- * @returns {{ entries: object[], payloads: {id: string, bytes: Buffer}[] }}
+ * Every product's state, in the reply's order, with the bytes the page data and the source table are made from,
+ * and the knowledge graph as the store read it (null unless that product is readable).
+ * @returns {{ entries: object[], payloads: {id: string, bytes: Buffer}[], graph: object|null }}
  */
 export function collectProducts(dataDir, snapshotRevision) {
   const graph = readGraphProduct(dataDir, snapshotRevision);
@@ -266,5 +277,6 @@ export function collectProducts(dataDir, snapshotRevision) {
   return {
     entries: results.map((r) => r.entry),
     payloads: results.flatMap((r) => r.payloads),
+    graph: graph.graph ?? null,
   };
 }

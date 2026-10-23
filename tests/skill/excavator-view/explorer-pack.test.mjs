@@ -16,6 +16,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from
 import { writeKnowledgeGraphAtomic } from '../../../skills/excavator/knowledge-graph-store.mjs';
 import { CONTENT_SECURITY_POLICY } from '../../../skills/excavator-view/page-assembly.mjs';
 import { packProject } from '../../../skills/excavator-view/pack.mjs';
+import { collectProducts } from '../../../skills/excavator-view/products.mjs';
 import { docMapProduct, domainGraph, hotspotsProduct, makeGitProject, semanticCache, semanticEntry, semanticGraph, sourceManifest, tourProduct, unusedProduct, writeProduct } from './fixture.mjs';
 import { FIXTURE_TEMPLATE, writeTemplate } from './plugin-fixture.mjs';
 
@@ -364,6 +365,41 @@ describe('a product that is missing is a missing key', () => {
     });
     writeProduct(project.root, 'tour.json', '{');
     expect(states(pack().result).tour).toMatchObject({ status: 'unreadable', reason: expect.stringMatching(/tour\.json is not valid JSON/) });
+  });
+
+  it('judges a graph whose body the store refuses as unreadable where every product is judged, so the domain graph is not compared with it', () => {
+    writeGraph();
+    const path = join(project.root, '.excavator', 'knowledge-graph.jsonl');
+    writeProduct(project.root, 'knowledge-graph.jsonl', `${readFileSync(path, 'utf-8')}{"record":"mystery"}\n`);
+    writeProduct(project.root, 'domain-graph.json', domainGraph({ sourceRevision: project.revision, factDigest: DIGEST }));
+    const { entries } = collectProducts(join(project.root, '.excavator'), project.revision);
+    const byName = Object.fromEntries(entries.map((entry) => [entry.name, entry]));
+    expect(byName['knowledge-graph']).toMatchObject({ status: 'unreadable', reason: expect.stringMatching(/unknown record type/) });
+    expect(byName['domain-graph'].status).toBe('unreadable');
+  });
+
+  it('reports a semantic graph that fails its own checks as unreadable with its own reason, whatever happened to the knowledge graph', () => {
+    const graphs = {
+      'no graph': () => rmSync(join(project.root, '.excavator', 'knowledge-graph.jsonl'), { force: true }),
+      'a refused header': () => writeProduct(project.root, 'knowledge-graph.jsonl', 'not a header\n'),
+      'a refused body': () => {
+        writeGraph();
+        const path = join(project.root, '.excavator', 'knowledge-graph.jsonl');
+        writeProduct(project.root, 'knowledge-graph.jsonl', `${readFileSync(path, 'utf-8')}{"record":"mystery"}\n`);
+      },
+      'a readable graph': () => writeGraph(),
+    };
+    writeProduct(project.root, 'source-manifest.json', sourceManifest(project.revision, []));
+    writeProduct(project.root, 'semantic-cache.json', semanticCache({}));
+    writeProduct(project.root, 'semantic-graph.json', JSON.stringify({ ...semanticGraph({ factDigest: DIGEST }), layers: undefined }));
+    const seen = Object.fromEntries(Object.entries(graphs).map(([name, write]) => {
+      write();
+      const semantics = pack().result.products.find((p) => p.name === 'semantics');
+      return [name, { status: semantics.status, reason: semantics.reason }];
+    }));
+    for (const name of Object.keys(graphs)) {
+      expect(seen[name], name).toEqual({ status: 'unreadable', reason: 'semantic-graph.json is missing the top-level key(s): layers' });
+    }
   });
 
   it('names the two keys no product produces', () => {

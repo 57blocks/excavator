@@ -68,7 +68,6 @@
 
 import { basename, join } from 'node:path';
 
-import { KNOWLEDGE_GRAPH_FILE, readKnowledgeGraph } from '../excavator/knowledge-graph-store.mjs';
 import { isSnapshotDirName } from '../excavator/source-snapshot/snapshot-dir.mjs';
 import { parseJsonObject, readRegularFile } from './product-files.mjs';
 
@@ -116,16 +115,11 @@ function withProjectName(graph, root) {
   return graph;
 }
 
-/** The knowledge graph joined back into one object; a body the store refuses is a visible reason, not a thrown error. */
-function readGraph(root, dataDir, products) {
+/** The knowledge graph the products read, as one object; a body the store refused is already the product's unreadable state. */
+function readGraph(root, products) {
   const entry = entryOf(products, 'knowledge-graph');
   if (!READABLE.has(entry.status)) return { row: absentRow(GRAPH_KEY, entry) };
-  try {
-    const graph = withProjectName(withHashString(readKnowledgeGraph(join(dataDir, KNOWLEDGE_GRAPH_FILE))), root);
-    return { graph, row: { key: GRAPH_KEY, status: 'included' } };
-  } catch (error) {
-    return { row: { key: GRAPH_KEY, status: 'unreadable', reason: error.message } };
-  }
+  return { graph: withProjectName(withHashString(products.graph), root), row: { key: GRAPH_KEY, status: 'included' } };
 }
 
 /** A JSON object product that sits as one file, passed on as written. */
@@ -294,7 +288,7 @@ export function buildExplorerData({ root, dataDir, snapshotRevision, products, s
   const data = {};
   const rows = [];
 
-  const graph = readGraph(root, dataDir, products);
+  const graph = readGraph(root, products);
   rows.push(graph.row);
   const tour = readTourSteps(products);
   if (graph.graph) {

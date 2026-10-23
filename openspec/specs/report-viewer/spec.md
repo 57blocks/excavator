@@ -66,9 +66,10 @@
 
 产物没有记录源码版本时，SHALL 为 included 并注明「没有记录版本」，MUST NOT 当作版本相同。
 
-状态 SHALL 是页面实际放进去的情况：
-- 知识图谱的文件头通过、但打包读全文时拒绝了正文（例如有不认识的记录类型），页面不放图，知识图谱 SHALL 为 unreadable 并写出原因；
-- 页面没有知识图谱时，语义与导览没有地方放。它们本身读得到时 SHALL 写为 **not shown**，原因是没有知识图谱可放；本身 not run 或 unreadable 时照原状态写。
+每个产物的状态 SHALL 只判定一次，回复、打包结果与页面用的是同一个判定，所以状态就是页面实际放进去的情况：
+- 知识图谱 SHALL 在判定时读全文。正文被拒（例如有不认识的记录类型）时它为 unreadable 并写出原因，与文件头被拒一样：页面不放图，其他产物也不拿它比较（领域图因此为 unreadable，原因是没有可读的知识图谱来比较 `factDigest`）；
+- 语义与导览先做完它们自己文件的检查（语义含 `semantic-cache.json` 与 `semantic-graph.json` 的版本、语言与必需字段）。自己的检查不通过时 SHALL 为 unreadable 并写出它自己的原因；
+- 自己的检查都通过、但没有可读的知识图谱（不存在、文件头或正文被拒）时，它们没有地方放，SHALL 写为 **not shown**，原因是没有知识图谱可放。
 
 `/excavator-view` 的回复 SHALL 写出每个产物的状态（见「/excavator-view skill」）。页面里，unused-code、hotspots、doc-map 的状态由它们各自的视图写出（见「离线仪表盘的产物视图」）；知识图谱与领域图的版本由页面顶部的版本提示写出（见「离线仪表盘」）；其余产物不在或读不了时，页面照副本自己的空状态显示。
 
@@ -80,7 +81,7 @@
 
 #### Scenario: 没有知识图谱时的语义与导览
 - **WHEN** `.excavator/` 里有格式正确的 `semantic-cache.json` 与 `tour.json`，但没有 `knowledge-graph.jsonl`，或它的文件头、正文被拒
-- **THEN** 回复把语义与导览写为 not shown，原因是没有知识图谱可放；其中本身格式不对的那个仍写为 unreadable 并给出它自己的原因
+- **THEN** 回复把语义与导览写为 not shown，原因是没有知识图谱可放；其中自己的检查不通过的那个（例如 `semantic-graph.json` 缺 `layers`）仍写为 unreadable 并给出它自己的原因，有没有知识图谱都一样
 
 #### Scenario: 产物损坏
 - **WHEN** `unused-code.json` 不是合法 JSON

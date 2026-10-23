@@ -238,10 +238,11 @@ describe('the files of the graph', () => {
     { record: 'node', node: { id: 'file:no-path', type: 'file', name: 'no-path' } },
     { record: 'edge', edge: { source: 'file:src/a.js', target: 'file:src/big.js', type: 'imports' } },
   ];
-  const header = { record: 'header', format: GRAPH_FORMAT, keys: ['project', 'nodes'], fields: { project: { name: 'fixture' }, kind: 'knowledge' }, counts: { nodes: 6 } };
-  // A line that is not JSON is ignored here: the page reports it, the packer only looks for paths.
+  const header = { record: 'header', format: GRAPH_FORMAT, keys: ['project', 'kind', 'nodes', 'edges'], fields: { project: { name: 'fixture' }, kind: 'knowledge' }, counts: { nodes: 6, edges: 1 } };
+  // A line that is not JSON is skipped when paths are taken from the bytes; a graph with one is unreadable, so the packed graph has none.
   const text = `${[header, ...nodes].map((l) => JSON.stringify(l)).join('\n')}\nnot json at all\n`;
-  const writeGraph = () => writeProduct(project.root, 'knowledge-graph.jsonl', text);
+  const readable = `${[header, ...nodes].map((l) => JSON.stringify(l)).join('\n')}\n`;
+  const writeGraph = () => writeProduct(project.root, 'knowledge-graph.jsonl', readable);
 
   it('takes the path of every file node, and of no other node', () => {
     expect(referencedPaths([{ id: 'knowledge-graph', bytes: Buffer.from(text) }])).toEqual(['bin/blob.dat', 'gone/deleted.js', 'src/a.js', 'src/big.js']);

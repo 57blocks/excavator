@@ -48,7 +48,12 @@ Source: <embedded (N files) | not embedded>
 
 `issues`、`keys`、`rows` 不变。回复只读这一个 manifest。
 
-`products` 的状态是页面实际放进去的情况（评审第 1 轮补）：`collectProducts` 只看知识图谱的文件头，打包读全文时拒绝了正文，页面就没有图，知识图谱写为 `unreadable`；没有图时，读得到的语义与导览写为 `not-shown`（评审第 2 轮补：图根本不在或文件头被拒时也一样，`semantics.mjs`、`tour.mjs` 对此返回 `no-graph`，不再判为 unreadable）。打包结果的 `products` 用同样的状态。
+`products` 的状态是页面实际放进去的情况。评审连续三轮都落在这里：前两轮在打包里另加一层，按页面读图的结果改写状态，每加一次就漏一种情况，于是改为只判定一次：
+- `collectProducts` 判知识图谱时用页面数据的同一个读取器读全文，正文被拒就是 `unreadable`，读到的图随结果交给 `explorer-data.mjs`，不再读第二遍；
+- `semantics.mjs`、`tour.mjs` 先做完自己文件的检查（语义含 `semantic-graph.json`），都通过而没有可读的图时返回 `no-graph`，`products.mjs` 写为 `not-shown`；
+- 打包结果与 manifest 都直接用 `collectProducts` 的条目。
+
+**代价：** 正文被拒的图谱现在和不存在的图谱一样，领域图因此判为 `unreadable`（从前它会对照文件头里的 `factsDigest` 判为 included，独自显示）。
 
 ### D4 打包代码删什么
 
