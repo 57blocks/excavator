@@ -45,6 +45,14 @@ export type GraphFreshnessResult =
       graphCommitHash?: string;
       headCommitHash?: string;
       lastAnalyzedAt?: string;
+    }
+  | {
+      // Excavator: the graph was made from another source revision than the one packed beside it,
+      // or records none (openspec: changes/viewer-explorer, design D2).
+      status: "revision";
+      graphRevision: string | null;
+      currentRevision: string;
+      lastAnalyzedAt?: string;
     };
 
 export interface DashboardFreshnessReport {
@@ -97,6 +105,14 @@ export function isGraphFreshnessResult(
 ): value is GraphFreshnessResult {
   if (!isRecord(value) || typeof value.status !== "string") return false;
   if (!isOptionalString(value, "lastAnalyzedAt")) return false;
+
+  if (value.status === "revision") {
+    return (
+      (value.graphRevision === null || isNonEmptyString(value.graphRevision)) &&
+      isNonEmptyString(value.currentRevision) &&
+      value.graphRevision !== value.currentRevision
+    );
+  }
 
   if (value.status === "unknown") {
     return (

@@ -94,9 +94,9 @@ function resultProduct(entry) {
 }
 
 /** The explorer page's data and its manifest (what the copy is given, and what the reply says about it). */
-function packExplorer({ root, dataDir, products, sources, templatePath, validatorPath }) {
+function packExplorer({ root, dataDir, snapshotRevision, products, sources, templatePath, validatorPath }) {
   const validateGraph = loadValidateGraph(validatorPath);
-  const { data, rows } = buildExplorerData({ root, dataDir, products, sources });
+  const { data, rows } = buildExplorerData({ root, dataDir, snapshotRevision, products, sources });
   const issues = data[GRAPH_KEY] ? countIssues(validateGraph, data[GRAPH_KEY]) : null;
   const keys = Object.fromEntries(Object.entries(data).map(([key, value]) => [key, Buffer.byteLength(JSON.stringify(value))]));
   const manifest = { explorer: EXPLORER_MANIFEST_VERSION, issues, keys, rows };
@@ -135,6 +135,7 @@ export function packProject(rootArg, options = {}) {
   const explorer = packExplorer({
     root,
     dataDir,
+    snapshotRevision: snapshot.revision,
     products,
     sources,
     templatePath: options.explorerTemplate ?? pluginPath(EXPLORER_TEMPLATE_PATH),

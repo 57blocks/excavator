@@ -161,7 +161,7 @@ describe('the data keeps the content of the products', () => {
     writeGraph();
     writeProduct(project.root, 'domain-graph.json', domainGraph({ sourceRevision: project.revision, factDigest: DIGEST }));
     writeProduct(project.root, 'meta.json', '{}');
-    expect(Object.keys(pack().data)).toEqual(['knowledge-graph.json', 'domain-graph.json', 'meta.json', 'sources']);
+    expect(Object.keys(pack().data)).toEqual(['knowledge-graph.json', 'domain-graph.json', 'meta.json', 'staleness.json', 'sources']);
   });
 
   it('packs the same bytes twice', () => {
@@ -312,13 +312,13 @@ describe('a product that is missing is a missing key', () => {
     expect(data).toEqual({});
     expect(result.explorer.issues).toBeNull();
     expect(manifest.rows.filter((row) => row.status === 'not-run').map((row) => row.key)).toEqual(['knowledge-graph.json', 'domain-graph.json', 'meta.json']);
-    expect(manifest.rows.map((row) => row.key)).toEqual(['knowledge-graph.json', 'semantics', 'tour', 'domain-graph.json', 'meta.json', 'sources', 'diff-overlay.json', 'config.json', 'staleness.json']);
+    expect(manifest.rows.map((row) => row.key)).toEqual(['knowledge-graph.json', 'semantics', 'tour', 'domain-graph.json', 'meta.json', 'staleness.json', 'sources', 'diff-overlay.json', 'config.json']);
   });
 
   it('gives no domain-graph.json key when there is no domain graph, and no meta.json key without meta.json', () => {
     writeGraph();
     const { data } = pack();
-    expect(Object.keys(data)).toEqual(['knowledge-graph.json', 'sources']);
+    expect(Object.keys(data)).toEqual(['knowledge-graph.json', 'staleness.json', 'sources']);
   });
 
   it('gives no key for a domain graph or a meta.json that cannot be read, and says why', () => {
@@ -326,7 +326,7 @@ describe('a product that is missing is a missing key', () => {
     writeProduct(project.root, 'domain-graph.json', '{}');
     writeProduct(project.root, 'meta.json', '[1]');
     const { data, manifest } = pack();
-    expect(Object.keys(data)).toEqual(['knowledge-graph.json', 'sources']);
+    expect(Object.keys(data)).toEqual(['knowledge-graph.json', 'staleness.json', 'sources']);
     expect(manifest.rows.find((row) => row.key === 'domain-graph.json')).toMatchObject({ status: 'unreadable', reason: expect.stringMatching(/domain-graph\.json has version null/) });
     expect(manifest.rows.find((row) => row.key === 'meta.json')).toMatchObject({ status: 'unreadable', reason: expect.stringMatching(/not a JSON object/) });
   });
@@ -342,10 +342,47 @@ describe('a product that is missing is a missing key', () => {
     expect(manifest.rows.find((row) => row.key === 'tour').status).toBe('unused');
   });
 
-  it('names the three keys no product produces', () => {
+  it('names the two keys no product produces', () => {
     writeGraph();
     const rows = pack().manifest.rows.filter((row) => row.status === 'not-produced');
-    expect(rows.map((row) => row.key)).toEqual(['diff-overlay.json', 'config.json', 'staleness.json']);
+    expect(rows.map((row) => row.key)).toEqual(['diff-overlay.json', 'config.json']);
+  });
+});
+
+describe('the freshness report', () => {
+  const OTHER_REVISION = `git:${'f'.repeat(40)}`;
+  const writeManifestAt = (revision) => writeProduct(project.root, 'source-manifest.json', sourceManifest(revision, [{ path: 'src/a.js', contentHash: '1'.repeat(64) }]));
+  const fresh = () => ({ status: 'fresh', graphCommitHash: project.revision, headCommitHash: project.revision, changedFileCount: 0, changedFiles: [], commitsBehind: 0, commitsAhead: 0 });
+
+  it('says a graph made from the packed revision is fresh, for the knowledge and the domain graph', () => {
+    writeGraph();
+    writeManifestAt(project.revision);
+    writeProduct(project.root, 'domain-graph.json', domainGraph({ sourceRevision: project.revision, factDigest: DIGEST }));
+    const { data, manifest } = pack();
+    expect(data['staleness.json']).toEqual({ graphs: { knowledge: fresh(), domain: fresh() } });
+    expect(manifest.rows.find((row) => row.key === 'staleness.json')).toEqual({ key: 'staleness.json', status: 'included', reason: 'knowledge graph: same revision; domain graph: same revision' });
+  });
+
+  it('names the revision a graph was made from when it is not the packed one, and says when a graph records none', () => {
+    writeGraph();
+    writeManifestAt(OTHER_REVISION);
+    writeProduct(project.root, 'domain-graph.json', domainGraph({ sourceRevision: project.revision, factDigest: DIGEST }));
+    expect(pack().data['staleness.json']).toEqual({ graphs: {
+      knowledge: { status: 'revision', graphRevision: OTHER_REVISION, currentRevision: project.revision },
+      domain: fresh(),
+    } });
+
+    rmSync(join(project.root, '.excavator', 'source-manifest.json'));
+    rmSync(join(project.root, '.excavator', 'domain-graph.json'));
+    const { data, manifest } = pack();
+    expect(data['staleness.json']).toEqual({ graphs: { knowledge: { status: 'revision', graphRevision: null, currentRevision: project.revision } } });
+    expect(manifest.rows.find((row) => row.key === 'staleness.json').reason).toBe('knowledge graph: no revision recorded');
+  });
+
+  it('writes no report without a knowledge graph', () => {
+    const { data, manifest } = pack();
+    expect(data['staleness.json']).toBeUndefined();
+    expect(manifest.rows.find((row) => row.key === 'staleness.json')).toEqual({ key: 'staleness.json', status: 'unused', reason: 'there is no knowledge graph to compare' });
   });
 });
 

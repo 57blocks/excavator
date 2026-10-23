@@ -13,7 +13,8 @@
  *   - cards: the graph's cards render (one per layer at the top level);
  *   - our data: the overview lists the coverage record and the gaps, a node shows its
  *     verdict, a summary the verifier blanked says so, and the connections show their
- *     evidence and the mentions edge (design D4b);
+ *     evidence and the mentions edge (design D4b); the freshness report says the graph
+ *     was made from another revision, and the banner names both (design D2);
  *   - content: the page title and the onboarding header say Excavator, no visible
  *     text names the upstream product, a layer drills in, and a file's code opens
  *     from the inlined sources.
@@ -59,7 +60,8 @@ function sourceFile(path) {
 /**
  * A small graph in the dashboard's format: two layers, two files, three functions, and the
  * fields of ours the copy shows (design D4b): a verified summary, a contradicted one that was
- * blanked, edge evidence, a mentions edge, a coverage record and a gap.
+ * blanked, edge evidence, a mentions edge, a coverage record and a gap; and the pack's freshness
+ * report for a graph made from another revision than the packed one (design D2).
  */
 export function fixtureData() {
   const node = (id, type, name, extra = {}) => ({ id, type, name, summary: `${name} summary`, tags: ['fixture'], complexity: 'simple', ...extra });
@@ -108,6 +110,7 @@ export function fixtureData() {
     'knowledge-graph.json': graph,
     'domain-graph.json': domain,
     'meta.json': { lastAnalyzedAt: '2026-01-01T00:00:00.000Z', gitCommitHash: 'abc123', version: '1.0.0', analyzedFiles: 2 },
+    'staleness.json': { graphs: { knowledge: { status: 'revision', graphRevision: `git:${'b'.repeat(40)}`, currentRevision: `git:${'a'.repeat(40)}` } } },
     sources: Object.fromEntries(Object.keys(SOURCES).map((path) => [path, sourceFile(path)])),
   };
 }
@@ -150,6 +153,9 @@ const PROBE = `(async () => {
   // The legend counts what the top level draws: "<n> layers", or "<n> groups" when the graph had no layers.
   const legend = [...document.querySelectorAll('header span')].map((e) => /^\\d+ (layers|groups)$/.exec(e.textContent.trim())).find(Boolean);
   out.legend = legend ? legend[1] : null;
+  // The pack's freshness report reaches the banner (it loads after the graph draws).
+  const bannerText = /Knowledge graph may not match the current source[\\s\\S]*was made from git:bbbbbbbb; this page was packed at git:aaaaaaaa[.]/;
+  out.revisionBanner = await until(() => bannerText.test(document.body.innerText));
   if (out.cards === 0) return out;
   const skip = [...document.querySelectorAll('button')].find((b) => /Don't show again/.test(b.textContent));
   if (skip) skip.click();
@@ -224,8 +230,9 @@ export function judge(result) {
     {
       name: 'our data',
       ok: /COVERAGE [(]3 FILES[)]/i.test(probe.coverage ?? '') && /no-extractor 1/.test(probe.coverage ?? '') && /calls-unresolved/.test(probe.gaps ?? '') && /src[/]main[.]js:4 -> external/.test(probe.gaps ?? '')
-        && probe.leafRemoved === true && probe.helperVerified === true && JSON.stringify(probe.evidence) === JSON.stringify(['src/main.js:1', 'src/util.js:2']) && probe.mentions === true,
-      detail: `coverage=${probe.coverage ? 'shown' : 'missing'} gaps=${probe.gaps ? 'shown' : 'missing'} blanked summary explained=${probe.leafRemoved} verdict=${probe.helperVerified} evidence=${(probe.evidence ?? []).join(',')} mentions=${probe.mentions}`,
+        && probe.leafRemoved === true && probe.helperVerified === true && JSON.stringify(probe.evidence) === JSON.stringify(['src/main.js:1', 'src/util.js:2']) && probe.mentions === true
+        && probe.revisionBanner === true,
+      detail: `coverage=${probe.coverage ? 'shown' : 'missing'} gaps=${probe.gaps ? 'shown' : 'missing'} blanked summary explained=${probe.leafRemoved} verdict=${probe.helperVerified} evidence=${(probe.evidence ?? []).join(',')} mentions=${probe.mentions} revision banner=${probe.revisionBanner}`,
     },
     {
       name: 'content',

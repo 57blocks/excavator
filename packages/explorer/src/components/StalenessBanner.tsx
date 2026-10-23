@@ -28,6 +28,7 @@ const RISK_RANK: Record<GraphFreshnessResult["status"], number> = {
   unknown: 1,
   dirty: 2,
   stale: 3,
+  revision: 4,
 };
 
 const unknownSummary: Record<GraphFreshnessUnknownReason, string> = {
@@ -78,6 +79,21 @@ function dirtySummary(entry: GraphEntry): string {
   )}'s commit metadata.`;
 }
 
+/** `kind:` and the first 8 characters of a revision's digest, as the view page writes it. */
+function shortRevision(revision: string): string {
+  const colon = revision.indexOf(":");
+  return colon < 0 ? revision.slice(0, 12) : revision.slice(0, colon + 9);
+}
+
+function revisionSummary(entry: GraphEntry): string {
+  if (entry.result.status !== "revision") return "";
+  const subject = `The ${graphLabel(entry.name)}`;
+  const now = `this page was packed at ${shortRevision(entry.result.currentRevision)}`;
+  return entry.result.graphRevision === null
+    ? `${subject} records no source revision; ${now}.`
+    : `${subject} was made from ${shortRevision(entry.result.graphRevision)}; ${now}.`;
+}
+
 function unknownEntrySummary(entry: GraphEntry): string {
   if (entry.result.status !== "unknown") return "";
   if (entry.result.reason === "freshness-request-failed") {
@@ -124,6 +140,15 @@ export function buildFreshnessBanner(
       ),
     ),
   ].sort();
+
+  if (status === "revision") {
+    return {
+      title: `${titleSubject(affected)} may not match the current source`,
+      summary: `${affected.map(revisionSummary).join(" ")} Code shown here is the source packed with this page, so its lines may not match the graph.`,
+      action: refreshAction(affected),
+      changedFiles: [],
+    };
+  }
 
   if (status === "stale") {
     return {

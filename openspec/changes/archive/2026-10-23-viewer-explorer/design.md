@@ -58,7 +58,7 @@ go-multirepo 的产物与 UA 的格式几乎一致：
 | `TokenGate` | 不再渲染，令牌视为已通过 |
 | `CodeViewer` 的源码 `fetch` | 从内联的源码表取；没有内联源码（`--no-source`）时走原来的失败分支 |
 | `KnowledgeGraphView` 的 Worker | 构建成内联的 blob Worker，做法同 `report-view` |
-| 陈旧度 | 打包时按 `meta.json` 与项目当前 git 状态算出 `staleness.json` 的内容写入；算不出时不写，副本照原样不显示陈旧提示 |
+| 陈旧度 | 打包时比较每张图记录的源码版本与打包时源码快照的版本，写入 `staleness.json`；副本的结果类型多一种「版本不同」（我们的版本不一定是 git 提交，副本原有按提交数与改动文件算的形状说不实），横幅写出两个版本。没有知识图时不写（PR 评审第 1 轮后改定，原先的写法是按 `meta.json` 与当前 git 状态算） |
 | `localStorage` | 读写包一层 try/catch，失败时当作没有存储 |
 | 界面上的产品名 | 页面标题、`appName`（没有项目名时的回退）、引导层的标题与正文、`WarningBanner` 的报问题链接，改为 Excavator 与本仓库的 issues 地址；各语言的 locale 文件同改这几个键；界面提示用户运行的上游命令（陈旧提示、没有知识图或领域图时的空状态）改为对应的 `/excavator`、`/excavator-domain`、`/excavator-knowledge` |
 

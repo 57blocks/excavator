@@ -12,6 +12,7 @@
  *                         the coverage record of `knowledge-graph.jsonl`, joined back into one graph
  *   domain-graph.json     the file as written, but for the commit hash below
  *   meta.json             the file as written
+ *   staleness.json        each graph's recorded source revision against the snapshot's (below)
  *   sources               { <filePath>: { path, content, sizeBytes, lineCount } } for the files the
  *                         pack embeds (`sources.mjs` rules); no table under `--no-source`
  *
@@ -39,11 +40,16 @@
  * `description`, `nodeIds`) only when `tour.mjs` judged that tour to be made from the
  * same facts as the graph; otherwise the graph keeps its own `tour`.
  *
+ * `staleness.json` compares the source revision each packed graph records with the revision of
+ * the snapshot the pack read (the one the embedded source comes from): `fresh` when they are the
+ * same, and the copy's `revision` result (design D2) when they differ or the graph records none,
+ * so the page says the graph and the code shown beside it may not match. It is written only with
+ * a knowledge graph; the domain graph is in it only when it is packed. It says nothing about the
+ * working tree after the pack.
+ *
  * A product that is not there, cannot be read or was not packed gives no key, and the
- * copy shows its own empty state for it; `rows` says why, key by key. `diff-overlay.json`,
- * `config.json` and `staleness.json` have no product to read: the first two are not
- * produced here, and a pack-time staleness report would be a frozen claim about a
- * working tree the page cannot see (the copy refreshes it on focus), so it is left out.
+ * copy shows its own empty state for it; `rows` says why, key by key. `diff-overlay.json`
+ * and `config.json` have no product to read: they are not produced here.
  *
  * No `language` is written for a source: the copy's code viewer then derives it from the
  * file name, as it does for a source the server gave none for.
@@ -62,12 +68,12 @@ export const GRAPH_KEY = 'knowledge-graph.json';
 export const DOMAIN_KEY = 'domain-graph.json';
 export const META_KEY = 'meta.json';
 export const SOURCES_KEY = 'sources';
+export const STALENESS_KEY = 'staleness.json';
 
 /** Keys the offline page may carry that nothing in the products produces. */
 const NOT_PRODUCED = [
   ['diff-overlay.json', 'no product holds a diff overlay'],
   ['config.json', 'no product holds an explorer config'],
-  ['staleness.json', 'a pack-time report would be a frozen claim about the working tree; left out'],
 ];
 
 const READABLE = new Set(['included', 'different-revision']);
@@ -188,6 +194,26 @@ function mergeSemantics(graph, products) {
   return { key: 'semantics', status: 'merged', reason: `${merged} nodes; ${byId.size} entries for ids the graph lacks; ${layerText}` };
 }
 
+/** A graph's freshness in the copy's shape: its recorded revision against the snapshot's. */
+function freshnessOf(entry, current) {
+  const revision = typeof entry.revision === 'string' && entry.revision !== '' ? entry.revision : null;
+  if (revision === current) {
+    return { status: 'fresh', graphCommitHash: current, headCommitHash: current, changedFileCount: 0, changedFiles: [], commitsBehind: 0, commitsAhead: 0 };
+  }
+  return { status: 'revision', graphRevision: revision, currentRevision: current };
+}
+
+const freshnessWords = (result) => (result.status === 'fresh' ? 'same revision' : result.graphRevision === null ? 'no revision recorded' : `made from ${result.graphRevision}`);
+
+/** The freshness report for the graphs the page holds, with its row; no report without a knowledge graph. */
+function staleness(data, products, snapshotRevision) {
+  if (!data[GRAPH_KEY]) return { row: { key: STALENESS_KEY, status: 'unused', reason: 'there is no knowledge graph to compare' } };
+  const graphs = { knowledge: freshnessOf(entryOf(products, 'knowledge-graph'), snapshotRevision) };
+  if (data[DOMAIN_KEY]) graphs.domain = freshnessOf(entryOf(products, 'domain-graph'), snapshotRevision);
+  const words = Object.entries(graphs).map(([name, result]) => `${name} graph: ${freshnessWords(result)}`);
+  return { value: { graphs }, row: { key: STALENESS_KEY, status: 'included', reason: words.join('; ') } };
+}
+
 /** Number of lines as an editor counts them: a final newline ends the last line, it does not start another. */
 function lineCountOf(text) {
   if (text === '') return 0;
@@ -216,12 +242,12 @@ function sourcesRow(sources) {
 }
 
 /**
- * @param {{ root: string, dataDir: string, products: { entries: object[], payloads: {id: string, bytes: Buffer}[] }, sources: { manifest: object, payloads: {id: string, bytes: Buffer}[] } }} input
- *   `root` is the project root the pack was given; `products` and `sources` are what `collectProducts` and
+ * @param {{ root: string, dataDir: string, snapshotRevision: string, products: { entries: object[], payloads: {id: string, bytes: Buffer}[] }, sources: { manifest: object, payloads: {id: string, bytes: Buffer}[] } }} input
+ *   `root` is the project root the pack was given, `snapshotRevision` the revision of the snapshot it read; `products` and `sources` are what `collectProducts` and
  *   `collectSources` returned for the same pack
  * @returns {{ data: Record<string, unknown>, rows: { key: string, status: string, reason?: string }[] }}
  */
-export function buildExplorerData({ root, dataDir, products, sources }) {
+export function buildExplorerData({ root, dataDir, snapshotRevision, products, sources }) {
   const data = {};
   const rows = [];
 
@@ -245,6 +271,10 @@ export function buildExplorerData({ root, dataDir, products, sources }) {
   const meta = readObjectFile(dataDir, 'meta.json', META_KEY);
   rows.push(meta.row);
   if (meta.value) data[META_KEY] = meta.value;
+
+  const fresh = staleness(data, products, snapshotRevision);
+  rows.push(fresh.row);
+  if (fresh.value) data[STALENESS_KEY] = fresh.value;
 
   const table = sources.manifest.requested ? sourceTable(sources) : null;
   rows.push(sourcesRow(sources));
