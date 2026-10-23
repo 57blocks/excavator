@@ -1,10 +1,11 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Highlight, themes } from "prism-react-renderer";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { useDashboardStore } from "../store";
 import { useI18n } from "../contexts/I18nContext";
 import { readInlineSource } from "../offline/inlineData";
+import { sourceNode, sourceNodeId } from "../excavator/views/sourceNode";
 
 interface CodeViewerProps {
   accessToken: string;
@@ -125,13 +126,16 @@ export default function CodeViewer({
   const viewMode = useDashboardStore((s) => s.viewMode);
   const codeViewerNodeId = useDashboardStore((s) => s.codeViewerNodeId);
   const closeCodeViewer = useDashboardStore((s) => s.closeCodeViewer);
+  // Excavator: a file opened by path (a product row whose file has no graph node) is shown through a node made for it.
+  const codeViewerSource = useDashboardStore((s) => s.codeViewerSource);
+  const sourceOnly = useMemo(() => (codeViewerSource ? sourceNode(codeViewerSource) : null), [codeViewerSource]);
   const activeGraph = viewMode === "domain" && domainGraph ? domainGraph : graph;
   // Files tab always builds its tree from the structural graph, so a node ID opened from
   // there may not exist in the active (domain) graph — fall back to the structural graph.
   const node =
     activeGraph?.nodes.find((n) => n.id === codeViewerNodeId) ??
     graph?.nodes.find((n) => n.id === codeViewerNodeId) ??
-    null;
+    (codeViewerSource && codeViewerNodeId === sourceNodeId(codeViewerSource.path) ? sourceOnly : null);
   const [state, setState] = useState<SourceState>({
     status: "idle",
     source: null,
@@ -184,6 +188,14 @@ export default function CodeViewer({
     if (!node?.lineRange) return null;
     return { start: node.lineRange[0], end: node.lineRange[1] };
   }, [node?.lineRange]);
+
+  // Excavator: bring the first marked line into view once the source is drawn, so a row's line is found.
+  const firstMarkedLine = useRef<HTMLDivElement | null>(null);
+  const loadedPath = state.source?.path;
+  const markedStart = highlightedRange?.start;
+  useEffect(() => {
+    if (loadedPath !== undefined && markedStart !== undefined) firstMarkedLine.current?.scrollIntoView({ block: "center" });
+  }, [loadedPath, markedStart]);
 
   if (!node) {
     return (
@@ -318,6 +330,8 @@ export default function CodeViewer({
                     return (
                       <div
                         key={lineNumber}
+                        ref={isHighlighted && lineNumber === highlightedRange.start ? firstMarkedLine : undefined}
+                        data-excavator-line-marked={isHighlighted ? "" : undefined}
                         {...lineProps}
                         className={`${lineProps.className} flex ${
                           isHighlighted ? "bg-accent/15" : "hover:bg-elevated/40"

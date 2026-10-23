@@ -7,6 +7,7 @@ import LayerLegend from "./LayerLegend";
 import FilterPanel from "./FilterPanel";
 import ExportMenu from "./ExportMenu";
 import { ThemePicker } from "./ThemePicker";
+import ProductSwitch from "../excavator/ProductSwitch";
 
 interface Props {
   open: boolean;
@@ -14,14 +15,6 @@ interface Props {
   onTogglePathFinder: () => void;
   onShowKeyboardHelp: () => void;
 }
-
-interface NodeTypeFilterDef {
-  key: "code" | "config" | "docs" | "infra" | "data" | "domain" | "knowledge";
-  label: string;
-  color: string;
-}
-
-
 
 function SectionLabel({ children }: { children: React.ReactNode }) {
   return (
@@ -42,23 +35,7 @@ export default function MobileDrawer({
   const domainGraph = useDashboardStore((s) => s.domainGraph);
   const viewMode = useDashboardStore((s) => s.viewMode);
   const setViewMode = useDashboardStore((s) => s.setViewMode);
-  const nodeTypeFilters = useDashboardStore((s) => s.nodeTypeFilters);
-  const toggleNodeTypeFilter = useDashboardStore((s) => s.toggleNodeTypeFilter);
   const { t } = useI18n();
-
-  const structuralFilters: NodeTypeFilterDef[] = [
-    { key: "code", label: t.nodeTypeLabels.code, color: "var(--color-node-file)" },
-    { key: "config", label: t.nodeTypeLabels.config, color: "var(--color-node-config)" },
-    { key: "docs", label: t.nodeTypeLabels.docs, color: "var(--color-node-document)" },
-    { key: "infra", label: t.nodeTypeLabels.infra, color: "var(--color-node-service)" },
-    { key: "data", label: t.nodeTypeLabels.data, color: "var(--color-node-table)" },
-    { key: "domain", label: t.nodeTypeLabels.domain, color: "var(--color-node-concept)" },
-    { key: "knowledge", label: t.nodeTypeLabels.knowledge, color: "var(--color-node-article)" },
-  ];
-
-  const knowledgeFilters: NodeTypeFilterDef[] = [
-    { key: "knowledge", label: t.nodeTypeLabels.all, color: "var(--color-node-article)" },
-  ];
 
   useEffect(() => {
     if (!open) return;
@@ -79,7 +56,6 @@ export default function MobileDrawer({
     };
   }, [open]);
 
-  const filterDefs = isKnowledgeGraph ? knowledgeFilters : structuralFilters;
   const showViewToggle = Boolean(graph && !isKnowledgeGraph && domainGraph);
 
   return (
@@ -175,35 +151,13 @@ export default function MobileDrawer({
             <DiffToggle />
           </section>
 
-          <section>
-            <SectionLabel>{t.drawer.nodeTypes}</SectionLabel>
-            <div className="flex flex-wrap gap-1.5">
-              {filterDefs.map((cat) => {
-                const active = nodeTypeFilters[cat.key] !== false;
-                return (
-                  <button
-                    key={cat.key}
-                    type="button"
-                    onClick={() => toggleNodeTypeFilter(cat.key)}
-                    className={`text-[10px] font-semibold uppercase tracking-wider px-2 py-1 rounded border transition-colors flex items-center gap-1.5 whitespace-nowrap ${
-                      active
-                        ? "border-border-medium bg-elevated text-text-secondary"
-                        : "border-transparent bg-transparent text-text-muted/40 line-through"
-                    }`}
-                  >
-                    <span
-                      className="w-2 h-2 rounded-full shrink-0"
-                      style={{
-                        backgroundColor: cat.color,
-                        opacity: active ? 1 : 0.3,
-                      }}
-                    />
-                    {cat.label}
-                  </button>
-                );
-              })}
-            </div>
-          </section>
+          {/* Excavator: the product views, where the node-type filters were (openspec: changes/explorer-products, design D2). */}
+          {graph && (
+            <section>
+              <SectionLabel>Products</SectionLabel>
+              <ProductSwitch onPick={onClose} />
+            </section>
+          )}
 
           {graph && (graph.layers?.length ?? 0) > 0 && (
             <section>

@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo, useCallback, lazy, Suspense } from "react";
+import { useEffect, useState, useMemo, lazy, Suspense } from "react";
 import { validateGraph } from "@understand-anything/core/schema";
 import type { GraphIssue } from "@understand-anything/core/schema";
 import { useDashboardStore } from "./store";
@@ -22,6 +22,10 @@ import { useKeyboardShortcuts } from "./hooks/useKeyboardShortcuts";
 import type { KeyboardShortcut } from "./hooks/useKeyboardShortcuts";
 import { ThemeProvider } from "./themes/index.ts";
 import { ThemePicker } from "./components/ThemePicker.tsx";
+import ProductSwitch from "./excavator/ProductSwitch";
+import ProductViewOverlay from "./excavator/ProductViewOverlay";
+import ProductRowSidebar from "./excavator/views/ProductRowSidebar";
+import { escapeProductView } from "./excavator/escape";
 import type { ThemeConfig } from "./themes/index.ts";
 import { I18nProvider, useI18n } from "./contexts/I18nContext.tsx";
 import {
@@ -30,7 +34,6 @@ import {
   INLINE_ACCESS_TOKEN,
   readInlineFile,
 } from "./offline/inlineData";
-import { readStored, writeStored } from "./offline/safeStorage";
 import {
   requestFreshnessReport,
   shouldRequestFreshness,
@@ -45,18 +48,9 @@ const PathFinderModal = lazy(() => import("./components/PathFinderModal"));
 const KeyboardShortcutsHelp = lazy(
   () => import("./components/KeyboardShortcutsHelp"),
 );
-const OnboardingOverlay = lazy(() => import("./components/OnboardingOverlay"));
 
 const DEMO_MODE = import.meta.env.VITE_DEMO_MODE === "true";
-const ONBOARDING_DISMISSED_KEY = "ua-onboarding-dismissed-v1";
 type SidebarTab = "info" | "files";
-
-function shouldShowOnboarding(): boolean {
-  if (typeof window === "undefined") return false;
-  const params = new URLSearchParams(window.location.search);
-  if (params.get("onboard") === "force") return true;
-  return readStored(ONBOARDING_DISMISSED_KEY) !== "1";
-}
 
 function App() {
   // The offline page has no token gate: the token is always accepted.
@@ -232,27 +226,18 @@ function DashboardContent({
   const selectedNodeId = useDashboardStore((s) => s.selectedNodeId);
   const tourActive = useDashboardStore((s) => s.tourActive);
   const persona = useDashboardStore((s) => s.persona);
+  const productRowOpen = useDashboardStore((s) => s.productView !== null && s.productRow !== null);
   const codeViewerOpen = useDashboardStore((s) => s.codeViewerOpen);
   const codeViewerExpanded = useDashboardStore((s) => s.codeViewerExpanded);
   const expandCodeViewer = useDashboardStore((s) => s.expandCodeViewer);
   const collapseCodeViewer = useDashboardStore((s) => s.collapseCodeViewer);
   const pathFinderOpen = useDashboardStore((s) => s.pathFinderOpen);
   const togglePathFinder = useDashboardStore((s) => s.togglePathFinder);
-  const nodeTypeFilters = useDashboardStore((s) => s.nodeTypeFilters);
-  const toggleNodeTypeFilter = useDashboardStore((s) => s.toggleNodeTypeFilter);
-  const detailLevel = useDashboardStore((s) => s.detailLevel);
-  const setDetailLevel = useDashboardStore((s) => s.setDetailLevel);
-  const showFunctionsInClassView = useDashboardStore((s) => s.showFunctionsInClassView);
-  const toggleShowFunctionsInClassView = useDashboardStore((s) => s.toggleShowFunctionsInClassView);
+  // Excavator: no Files | Classes switch and no node-type chips (openspec: changes/explorer-products,
+  // design D2): detailLevel stays "file" and every type filter stays on; the store keeps the state.
   const [showKeyboardHelp, setShowKeyboardHelp] = useState(false);
   const [sidebarTab, setSidebarTab] = useState<SidebarTab>("info");
-  const [showOnboarding, setShowOnboarding] = useState(shouldShowOnboarding);
-  const dismissOnboarding = useCallback((remember: boolean) => {
-    if (remember && typeof window !== "undefined") {
-      writeStored(ONBOARDING_DISMISSED_KEY, "1");
-    }
-    setShowOnboarding(false);
-  }, []);
+  // Excavator: no first-visit onboarding overlay (openspec: changes/explorer-products, design D5).
   const viewMode = useDashboardStore((s) => s.viewMode);
   const setViewMode = useDashboardStore((s) => s.setViewMode);
   const isKnowledgeGraph = useDashboardStore((s) => s.isKnowledgeGraph);
@@ -268,6 +253,11 @@ function DashboardContent({
   useEffect(() => {
     if (selectedNodeId) setSidebarTab("info");
   }, [selectedNodeId]);
+
+  // Excavator: a chosen product row shows its details on the Info tab.
+  useEffect(() => {
+    if (productRowOpen) setSidebarTab("info");
+  }, [productRowOpen]);
 
   // Define keyboard shortcuts
   const shortcuts = useMemo<KeyboardShortcut[]>(
@@ -297,6 +287,8 @@ function DashboardContent({
             state.collapseCodeViewer();
           } else if (state.codeViewerOpen) {
             state.closeCodeViewer();
+          } else if (escapeProductView(state)) {
+            // Excavator: the product view's chosen row is cleared first, then the view closes.
           } else if (state.selectedNodeId) {
             state.selectNode(null);
           } else if (state.navigationLevel === "layer-detail") {
@@ -391,7 +383,10 @@ function DashboardContent({
   // NodeInfo always takes priority when a node is selected.
   // Learn mode adds LearnPanel below it; otherwise ProjectOverview shows when idle.
   const isLearnMode = tourActive || persona === "junior";
-  const infoSidebarContent = (
+  const infoSidebarContent = productRowOpen ? (
+    // Excavator: while a product view has a row chosen, the sidebar shows the row's details.
+    <ProductRowSidebar />
+  ) : (
     <>
       {selectedNodeId && <NodeInfo />}
       {isLearnMode && (
@@ -444,7 +439,8 @@ function DashboardContent({
   return (
     <div className="h-screen w-screen flex flex-col bg-root text-text-primary noise-overlay">
       {/* Header */}
-      <header className="flex items-center px-3 sm:px-5 py-3 bg-surface border-b border-border-subtle shrink-0 gap-2 sm:gap-4">
+      {/* Excavator: below lg the header wraps (the middle cluster, with the product buttons, takes its own row) so it never scrolls the page sideways. */}
+      <header className="flex flex-wrap lg:flex-nowrap items-center px-3 sm:px-5 py-3 bg-surface border-b border-border-subtle shrink-0 gap-x-2 gap-y-2 sm:gap-x-4">
         {/* Left — fixed */}
         <div className="flex items-center gap-3 sm:gap-5 shrink-0 min-w-0">
           <h1 className="font-heading text-base sm:text-lg text-text-primary tracking-wide truncate max-w-[160px] sm:max-w-[220px] lg:max-w-none">
@@ -486,88 +482,16 @@ function DashboardContent({
         </div>
 
         {/* Middle — scrollable legends */}
-        <div className="flex-1 min-w-0 overflow-x-auto scrollbar-hide">
+        <div className="order-last w-full min-w-0 overflow-x-auto scrollbar-hide lg:order-none lg:w-auto lg:flex-1">
           <div className="flex items-center gap-4 w-max">
             <DiffToggle />
-            {/* Detail level: file view (architecture) / class view (code structure) */}
-            {!isKnowledgeGraph && viewMode !== "domain" && (
+            {/* Excavator: the three product views, where the Files | Classes switch and the type chips were. */}
+            {graph && (
               <>
                 <div className="w-px h-5 bg-border-subtle" />
-                <div className="flex items-center bg-elevated rounded-lg p-0.5">
-                  <button
-                    type="button"
-                    onClick={() => setDetailLevel("file")}
-                    title={t.detailLevel.filesTitle}
-                    className={`px-3 py-1 text-xs font-medium rounded-md transition-colors ${
-                      detailLevel === "file"
-                        ? "bg-accent/20 text-accent"
-                        : "text-text-muted hover:text-text-secondary"
-                    }`}
-                  >
-                    {t.detailLevel.files}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setDetailLevel("class")}
-                    title={t.detailLevel.classesTitle}
-                    className={`px-3 py-1 text-xs font-medium rounded-md transition-colors ${
-                      detailLevel === "class"
-                        ? "bg-accent/20 text-accent"
-                        : "text-text-muted hover:text-text-secondary"
-                    }`}
-                  >
-                    {t.detailLevel.classes}
-                  </button>
-                </div>
-                {detailLevel === "class" && (
-                  <button
-                    type="button"
-                    onClick={toggleShowFunctionsInClassView}
-                    title={t.detailLevel.fnTitle}
-                    className={`text-[10px] font-semibold uppercase tracking-wider px-2 py-1 rounded border transition-colors ${
-                      showFunctionsInClassView
-                        ? "border-amber-500/50 bg-amber-500/10 text-amber-400"
-                        : "border-border-medium bg-elevated text-text-muted hover:text-text-secondary"
-                    }`}
-                  >
-                    {t.detailLevel.fn}
-                  </button>
-                )}
+                <ProductSwitch />
               </>
             )}
-            <div className="flex items-center gap-1">
-              {(isKnowledgeGraph ? [
-                { key: "knowledge" as const, label: t.nodeTypeLabels.all, color: "var(--color-node-article)" },
-              ] : [
-                { key: "code" as const, label: t.nodeTypeLabels.code, color: "var(--color-node-file)" },
-                { key: "config" as const, label: t.nodeTypeLabels.config, color: "var(--color-node-config)" },
-                { key: "docs" as const, label: t.nodeTypeLabels.docs, color: "var(--color-node-document)" },
-                { key: "infra" as const, label: t.nodeTypeLabels.infra, color: "var(--color-node-service)" },
-                { key: "data" as const, label: t.nodeTypeLabels.data, color: "var(--color-node-table)" },
-                { key: "domain" as const, label: t.nodeTypeLabels.domain, color: "var(--color-node-concept)" },
-                { key: "knowledge" as const, label: t.nodeTypeLabels.knowledge, color: "var(--color-node-article)" },
-              ]).map((cat) => (
-                <button
-                  key={cat.key}
-                  onClick={() => toggleNodeTypeFilter(cat.key)}
-                  className={`text-[10px] font-semibold uppercase tracking-wider px-2 py-1 rounded border transition-colors flex items-center gap-1.5 whitespace-nowrap ${
-                    nodeTypeFilters[cat.key] !== false
-                      ? "border-border-medium bg-elevated text-text-secondary hover:text-text-primary"
-                      : "border-transparent bg-transparent text-text-muted/40 line-through hover:text-text-muted"
-                  }`}
-                  title={`${nodeTypeFilters[cat.key] !== false ? "Hide" : "Show"} ${cat.label} nodes`}
-                >
-                  <span
-                    className="w-2 h-2 rounded-full shrink-0"
-                    style={{
-                      backgroundColor: cat.color,
-                      opacity: nodeTypeFilters[cat.key] !== false ? 1 : 0.3,
-                    }}
-                  />
-                  {cat.label}
-                </button>
-              ))}
-            </div>
             <LayerLegend />
           </div>
         </div>
@@ -651,6 +575,8 @@ function DashboardContent({
           <div className="absolute top-3 right-3 text-sm text-text-muted/60 pointer-events-none select-none">
             {t.common.pressKeyboard}
           </div>
+          {/* Excavator: the product view covers the graph area only; the graph above stays mounted. */}
+          <ProductViewOverlay />
         </div>
 
         {/* Right sidebar — telescopes at narrower widths */}
@@ -703,13 +629,6 @@ function DashboardContent({
       {pathFinderOpen && (
         <Suspense fallback={null}>
           <PathFinderModal isOpen={pathFinderOpen} onClose={togglePathFinder} />
-        </Suspense>
-      )}
-
-      {/* First-visit onboarding overlay — only mounted when needed so its chunk is lazy-loaded on demand. */}
-      {showOnboarding && (
-        <Suspense fallback={null}>
-          <OnboardingOverlay onDismiss={dismissOnboarding} />
         </Suspense>
       )}
     </div>

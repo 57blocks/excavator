@@ -9,6 +9,8 @@ import type {
 } from "@understand-anything/core/types";
 import type { ReactFlowInstance } from "@xyflow/react";
 import { withDerivedGroups, type LayerSource } from "./excavator/groups";
+import type { ProductView } from "./excavator/productViews";
+import { sourceNodeId, type SourceTarget } from "./excavator/views/sourceNode";
 
 export type Persona = "non-technical" | "junior" | "experienced";
 export type NavigationLevel = "overview" | "layer-detail";
@@ -122,6 +124,8 @@ interface DashboardStore {
 
   codeViewerOpen: boolean;
   codeViewerNodeId: string | null;
+  /** Excavator: the file the viewer shows when it was opened by path (codeViewerNodeId is then its source node id). */
+  codeViewerSource: SourceTarget | null;
   codeViewerExpanded: boolean;
 
   tourActive: boolean;
@@ -170,6 +174,8 @@ interface DashboardStore {
   setSearchQuery: (query: string) => void;
   setPersona: (persona: Persona) => void;
   openCodeViewer: (nodeId: string) => void;
+  /** Excavator: opens the code viewer on a file by path, for a product row whose file has no graph node. */
+  openCodeViewerAt: (path: string, range: [number, number] | null) => void;
   closeCodeViewer: () => void;
   expandCodeViewer: () => void;
   collapseCodeViewer: () => void;
@@ -203,6 +209,20 @@ interface DashboardStore {
   setIsKnowledgeGraph: (value: boolean) => void;
   navigateToDomain: (domainId: string) => void;
   clearActiveDomain: () => void;
+
+  // Excavator (openspec: changes/explorer-products, design D2): the product view laid over the
+  // graph area, and the row of its table whose details the sidebar shows. The graph stays
+  // mounted and its selection untouched while a view is open.
+  productView: ProductView | null;
+  productRow: unknown | null;
+  /** Excavator: a node chosen from outside the graph that the structural view is to open its container for and fit. */
+  revealNodeId: string | null;
+  clearRevealNode: () => void;
+  openProductView: (view: ProductView) => void;
+  /** Opens the view, or closes it when it is the open one. */
+  toggleProductView: (view: ProductView) => void;
+  closeProductView: () => void;
+  setProductRow: (row: unknown | null) => void;
 
   // Container expand/collapse + lazy layout caches
   expandedContainers: Set<string>;
@@ -306,6 +326,7 @@ export const useDashboardStore = create<DashboardStore>()((set, get) => ({
   activeLayerId: null,
   codeViewerOpen: false,
   codeViewerNodeId: null,
+  codeViewerSource: null,
   codeViewerExpanded: false,
 
   tourActive: false,
@@ -407,9 +428,11 @@ export const useDashboardStore = create<DashboardStore>()((set, get) => ({
       set({
         selectedNodeId: nodeId,
         nodeHistory: [...nodeHistory, selectedNodeId].slice(-MAX_HISTORY),
+        // Excavator: a node chosen in the graph ends the reveal of one chosen from outside it.
+        revealNodeId: null,
       });
     } else {
-      set({ selectedNodeId: nodeId });
+      set({ selectedNodeId: nodeId, revealNodeId: null });
     }
   },
 
@@ -432,6 +455,10 @@ export const useDashboardStore = create<DashboardStore>()((set, get) => ({
       };
       set({
         ...layerNav,
+        // Excavator: a node chosen from outside a product view (search, the file list, Show in graph) shows the graph.
+        productView: null,
+        productRow: null,
+        revealNodeId: nodeId,
         selectedNodeId: nodeId,
         focusNodeId: null,
         codeViewerOpen: false,
@@ -442,6 +469,8 @@ export const useDashboardStore = create<DashboardStore>()((set, get) => ({
       });
     } else {
       set({
+        productView: null,
+        productRow: null,
         selectedNodeId: nodeId,
         nodeHistory: newHistory,
       });
@@ -558,12 +587,21 @@ export const useDashboardStore = create<DashboardStore>()((set, get) => ({
       containerSizeMemory: new Map(),
       expandedContainers: new Set(),
       pendingFocusContainer: null,
+      // Excavator: a node revealed under the old persona is not moved to under the new one.
+      revealNodeId: null,
     }),
 
   openCodeViewer: (nodeId) =>
     set({ codeViewerOpen: true, codeViewerNodeId: nodeId, codeViewerExpanded: false }),
+  openCodeViewerAt: (path, range) =>
+    set({
+      codeViewerOpen: true,
+      codeViewerNodeId: sourceNodeId(path),
+      codeViewerSource: { path, range },
+      codeViewerExpanded: false,
+    }),
   closeCodeViewer: () =>
-    set({ codeViewerOpen: false, codeViewerNodeId: null, codeViewerExpanded: false }),
+    set({ codeViewerOpen: false, codeViewerNodeId: null, codeViewerSource: null, codeViewerExpanded: false }),
   expandCodeViewer: () => set({ codeViewerExpanded: true }),
   collapseCodeViewer: () => set({ codeViewerExpanded: false }),
 
@@ -701,8 +739,26 @@ export const useDashboardStore = create<DashboardStore>()((set, get) => ({
     set({ isKnowledgeGraph: value });
   },
 
+  productView: null,
+  productRow: null,
+  revealNodeId: null,
+  clearRevealNode: () => set({ revealNodeId: null }),
+  openProductView: (view) => set({ productView: view, productRow: null }),
+  toggleProductView: (view) =>
+    set((state) => ({ productView: state.productView === view ? null : view, productRow: null })),
+  closeProductView: () => set({ productView: null, productRow: null }),
+  setProductRow: (row) => set({ productRow: row }),
+
   setViewMode: (mode) => {
+    // Excavator: the mode already shown under a product view only closes the view, keeping the graph's selection.
+    if (get().productView !== null && get().viewMode === mode) {
+      set({ productView: null, productRow: null });
+      return;
+    }
     set({
+      // Excavator: the Domain / Structural switch always returns to the graph.
+      productView: null,
+      productRow: null,
       viewMode: mode,
       selectedNodeId: null,
       focusNodeId: null,
