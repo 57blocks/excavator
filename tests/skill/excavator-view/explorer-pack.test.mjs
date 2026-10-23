@@ -1,14 +1,13 @@
 /**
- * The explorer page the packer writes beside the view page (openspec:
- * changes/viewer-explorer, spec "offline explorer", design D4, oracle O1): the
- * data object keeps the products' content and changes only the shape, the tour
+ * The explorer page the packer writes (openspec: changes/viewer-explorer, spec
+ * "offline explorer", design D4, oracle O1; changes/retire-view-html, design D1-D3):
+ * the data object keeps the products' content and changes only the shape, the tour
  * replaces the graph's own tour only for the same facts, a missing product is a
  * missing key, `--no-source` leaves the source table out, the issue count is the
- * copy's own validator's, and the view page stays byte for byte what it was.
+ * copy's own validator's, and the manifest names every product's state.
  */
 
-import { createHash } from 'node:crypto';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, dirname, join } from 'node:path';
 import vm from 'node:vm';
@@ -17,14 +16,12 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from
 import { writeKnowledgeGraphAtomic } from '../../../skills/excavator/knowledge-graph-store.mjs';
 import { CONTENT_SECURITY_POLICY } from '../../../skills/excavator-view/page-assembly.mjs';
 import { packProject } from '../../../skills/excavator-view/pack.mjs';
+import { collectProducts } from '../../../skills/excavator-view/products.mjs';
 import { docMapProduct, domainGraph, hotspotsProduct, makeGitProject, semanticCache, semanticEntry, semanticGraph, sourceManifest, tourProduct, unusedProduct, writeProduct } from './fixture.mjs';
-import { GOLDEN_FACTS_DIGEST, makeGoldenProject } from './golden-project.mjs';
 import { FIXTURE_TEMPLATE, writeTemplate } from './plugin-fixture.mjs';
 
 const DIGEST = 'e'.repeat(64);
 const OTHER_DIGEST = '9'.repeat(64);
-/** The sha256 of the view page the golden project packs with FIXTURE_TEMPLATE, frozen from the packer before the explorer page existed. */
-const GOLDEN_VIEW_SHA256 = 'df4916217221c2fc5aab7319e283835e6728517a6b7721c3e9643017f57f8ced';
 
 const FILES = {
   'src/a.js': 'export function run() {\n  return load();\n}\n',
@@ -88,8 +85,8 @@ const BLOCK = (id) => new RegExp(`<script type="application/json" id="${id}">([\
 
 /** Pack and read the explorer page back the way the browser would: the data block, the manifest block, the script that exposes the data. */
 function pack(options) {
-  const result = packProject(project.root, { template: templatePath, explorerTemplate: templatePath, ...options });
-  const html = readFileSync(result.explorer.out, 'utf-8');
+  const result = packProject(project.root, { explorerTemplate: templatePath, ...options });
+  const html = readFileSync(result.out, 'utf-8');
   return {
     result,
     html,
@@ -310,7 +307,7 @@ describe('a product that is missing is a missing key', () => {
   it('gives no key but the product states for an empty .excavator, and still writes the page', () => {
     const { data, manifest, result } = pack();
     expect(Object.keys(data)).toEqual(['products.json']);
-    expect(result.explorer.issues).toBeNull();
+    expect(result.issues).toBeNull();
     expect(manifest.rows.filter((row) => row.status === 'not-run').map((row) => row.key)).toEqual(['knowledge-graph.json', 'domain-graph.json', 'meta.json', 'unused-code.json', 'hotspots.json', 'doc-map.json']);
     expect(manifest.rows.map((row) => row.key)).toEqual(['knowledge-graph.json', 'semantics', 'tour', 'domain-graph.json', 'meta.json', 'staleness.json', 'unused-code.json', 'hotspots.json', 'doc-map.json', 'doc-map-checks.json', 'products.json', 'sources', 'diff-overlay.json', 'config.json']);
   });
@@ -337,9 +334,72 @@ describe('a product that is missing is a missing key', () => {
     writeProduct(project.root, 'knowledge-graph.jsonl', `${readFileSync(path, 'utf-8')}{"record":"mystery"}\n`);
     const { data, manifest, result } = pack();
     expect(data['knowledge-graph.json']).toBeUndefined();
-    expect(result.explorer.issues).toBeNull();
+    expect(result.issues).toBeNull();
     expect(manifest.rows.find((row) => row.key === 'knowledge-graph.json')).toMatchObject({ status: 'unreadable', reason: expect.stringMatching(/unknown record type/) });
     expect(manifest.rows.find((row) => row.key === 'tour').status).toBe('unused');
+  });
+
+  it('reports a refused graph as unreadable, and the semantics and tour it would hold as not shown', () => {
+    writeGraph();
+    const path = join(project.root, '.excavator', 'knowledge-graph.jsonl');
+    writeProduct(project.root, 'knowledge-graph.jsonl', `${readFileSync(path, 'utf-8')}{"record":"mystery"}\n`);
+    writeProduct(project.root, 'source-manifest.json', sourceManifest(project.revision, []));
+    writeProduct(project.root, 'semantic-cache.json', semanticCache({}));
+    writeProduct(project.root, 'semantic-graph.json', semanticGraph({ factDigest: DIGEST }));
+    writeProduct(project.root, 'tour.json', tourProduct({ sourceRevision: project.revision, factDigest: DIGEST }));
+    const { manifest, result } = pack();
+    const states = Object.fromEntries(manifest.products.map(({ name, status }) => [name, status]));
+    expect(states).toMatchObject({ 'knowledge-graph': 'unreadable', semantics: 'not-shown', tour: 'not-shown' });
+    expect(result.products.find((p) => p.name === 'knowledge-graph')).toMatchObject({ status: 'unreadable', reason: expect.stringMatching(/unknown record type/) });
+    expect(result.products.find((p) => p.name === 'tour')).toMatchObject({ status: 'not-shown', reason: 'there is no knowledge graph to hold it' });
+  });
+
+  it('reports readable semantics and a readable tour as not shown when there is no graph at all, and a bad one as unreadable', () => {
+    writeProduct(project.root, 'semantic-cache.json', semanticCache({}));
+    writeProduct(project.root, 'tour.json', tourProduct({ sourceRevision: project.revision, factDigest: DIGEST }));
+    const states = (result) => Object.fromEntries(result.products.map(({ name, status, reason }) => [name, { status, reason }]));
+    expect(states(pack().result)).toMatchObject({
+      'knowledge-graph': { status: 'not-run' },
+      semantics: { status: 'not-shown', reason: 'there is no knowledge graph to hold it' },
+      tour: { status: 'not-shown', reason: 'there is no knowledge graph to hold it' },
+    });
+    writeProduct(project.root, 'tour.json', '{');
+    expect(states(pack().result).tour).toMatchObject({ status: 'unreadable', reason: expect.stringMatching(/tour\.json is not valid JSON/) });
+  });
+
+  it('judges a graph whose body the store refuses as unreadable where every product is judged, so the domain graph is not compared with it', () => {
+    writeGraph();
+    const path = join(project.root, '.excavator', 'knowledge-graph.jsonl');
+    writeProduct(project.root, 'knowledge-graph.jsonl', `${readFileSync(path, 'utf-8')}{"record":"mystery"}\n`);
+    writeProduct(project.root, 'domain-graph.json', domainGraph({ sourceRevision: project.revision, factDigest: DIGEST }));
+    const { entries } = collectProducts(join(project.root, '.excavator'), project.revision);
+    const byName = Object.fromEntries(entries.map((entry) => [entry.name, entry]));
+    expect(byName['knowledge-graph']).toMatchObject({ status: 'unreadable', reason: expect.stringMatching(/unknown record type/) });
+    expect(byName['domain-graph'].status).toBe('unreadable');
+  });
+
+  it('reports a semantic graph that fails its own checks as unreadable with its own reason, whatever happened to the knowledge graph', () => {
+    const graphs = {
+      'no graph': () => rmSync(join(project.root, '.excavator', 'knowledge-graph.jsonl'), { force: true }),
+      'a refused header': () => writeProduct(project.root, 'knowledge-graph.jsonl', 'not a header\n'),
+      'a refused body': () => {
+        writeGraph();
+        const path = join(project.root, '.excavator', 'knowledge-graph.jsonl');
+        writeProduct(project.root, 'knowledge-graph.jsonl', `${readFileSync(path, 'utf-8')}{"record":"mystery"}\n`);
+      },
+      'a readable graph': () => writeGraph(),
+    };
+    writeProduct(project.root, 'source-manifest.json', sourceManifest(project.revision, []));
+    writeProduct(project.root, 'semantic-cache.json', semanticCache({}));
+    writeProduct(project.root, 'semantic-graph.json', JSON.stringify({ ...semanticGraph({ factDigest: DIGEST }), layers: undefined }));
+    const seen = Object.fromEntries(Object.entries(graphs).map(([name, write]) => {
+      write();
+      const semantics = pack().result.products.find((p) => p.name === 'semantics');
+      return [name, { status: semantics.status, reason: semantics.reason }];
+    }));
+    for (const name of Object.keys(graphs)) {
+      expect(seen[name], name).toEqual({ status: 'unreadable', reason: 'semantic-graph.json is missing the top-level key(s): layers' });
+    }
   });
 
   it('names the two keys no product produces', () => {
@@ -438,8 +498,8 @@ describe('the unused-code, hotspots and doc-map products', () => {
     writeGraph();
     writeProduct(project.root, 'unused-code.json', unusedProduct(project.revision));
     const first = pack();
-    expect(first.result.explorer.keys['unused-code.json']).toBe(Buffer.byteLength(JSON.stringify(first.data['unused-code.json'])));
-    expect(first.result.explorer.keys['products.json']).toBe(Buffer.byteLength(JSON.stringify(first.data['products.json'])));
+    expect(first.result.keys['unused-code.json']).toBe(Buffer.byteLength(JSON.stringify(first.data['unused-code.json'])));
+    expect(first.result.keys['products.json']).toBe(Buffer.byteLength(JSON.stringify(first.data['products.json'])));
     expect(pack().html).toBe(first.html);
   });
 });
@@ -518,21 +578,21 @@ describe('the issue count is the copy\'s own', () => {
   it('counts what the copy\'s validateGraph reports, grouped by level and category', () => {
     writeGraph();
     const { result, manifest } = pack();
-    expect(result.explorer.issues.total).toBeGreaterThan(0);
+    expect(result.issues.total).toBeGreaterThan(0);
     // The `reexports` edge is an edge type the copy does not know; the `mentions` edges it knows (design D4b).
-    expect(result.explorer.issues.byKind).toEqual({ 'dropped:invalid-edge': 1 });
-    expect(Object.values(result.explorer.issues.byKind).reduce((sum, n) => sum + n, 0)).toBe(result.explorer.issues.total);
-    expect(manifest.issues).toEqual(result.explorer.issues);
+    expect(result.issues.byKind).toEqual({ 'dropped:invalid-edge': 1 });
+    expect(Object.values(result.issues.byKind).reduce((sum, n) => sum + n, 0)).toBe(result.issues.total);
+    expect(manifest.issues).toEqual(result.issues);
   });
 
   it('is zero for a graph the copy accepts as it is', () => {
     writeGraph(graph({ edges: graph().edges.filter((e) => e.type !== 'reexports') }));
-    expect(pack().result.explorer.issues).toEqual({ total: 0, byKind: {}, fatal: null });
+    expect(pack().result.issues).toEqual({ total: 0, byKind: {}, fatal: null });
   });
 
   it('counts a refusal as an issue, so it never reads as zero', () => {
     writeGraph(graph({ project: { name: 'no languages' } }));
-    const { issues } = pack().result.explorer;
+    const { issues } = pack().result;
     expect(issues.total).toBe(1);
     expect(issues.fatal).toBe('Missing or invalid project metadata');
     expect(issues.byKind).toEqual({ fatal: 1 });
@@ -542,12 +602,12 @@ describe('the issue count is the copy\'s own', () => {
     writeGraph();
     const { data, result } = pack();
     expect(data['knowledge-graph.json']).toEqual(graph());
-    expect(result.explorer.keys['knowledge-graph.json']).toBe(Buffer.byteLength(JSON.stringify(graph())));
+    expect(result.keys['knowledge-graph.json']).toBe(Buffer.byteLength(JSON.stringify(graph())));
   });
 });
 
 describe('the explorer page', () => {
-  it('has the same policy as the view page and the template\'s other bytes unchanged', () => {
+  it('has the policy and the template\'s other bytes unchanged', () => {
     writeGraph();
     const { html } = pack();
     expect(html).toContain(`<meta http-equiv="Content-Security-Policy" content="${CONTENT_SECURITY_POLICY}">`);
@@ -567,8 +627,8 @@ describe('the explorer page', () => {
     try {
       const { path } = writeTemplate();
       writeGraphTo(odd.root, graph({ nodes: [node('file:__proto__', 'file', '__proto__', { filePath: '__proto__' })], edges: [], layers: [], tour: [] }));
-      const result = packProject(odd.root, { template: path, explorerTemplate: path });
-      const html = readFileSync(result.explorer.out, 'utf-8');
+      const result = packProject(odd.root, { explorerTemplate: path });
+      const html = readFileSync(result.out, 'utf-8');
       const script = /<script>(window\.__EXCAVATOR_EXPLORER_DATA__=[^<]*)<\/script>/.exec(html)[1];
       const dataText = BLOCK('xv-explorer-data').exec(html)[1];
       const window = {};
@@ -582,36 +642,9 @@ describe('the explorer page', () => {
   it('reports each key\'s size in bytes in the result', () => {
     writeGraph();
     const { result, data } = pack();
-    expect(Object.keys(result.explorer.keys)).toEqual(Object.keys(data));
-    expect(result.explorer.keys.sources).toBe(Buffer.byteLength(JSON.stringify(data.sources)));
-    expect(result.explorer.bytes).toBe(readFileSync(result.explorer.out).length);
-  });
-
-  it('is written beside --out', () => {
-    writeGraph();
-    const dir = mkdtempSync(join(tmpdir(), 'xv-explorer-out-'));
-    try {
-      const result = packProject(project.root, { template: templatePath, explorerTemplate: templatePath, out: join(dir, 'nested', 'page.html') });
-      expect(result.explorer.out).toBe(join(dir, 'nested', 'explorer.html'));
-      expect(readdirSync(join(dir, 'nested')).sort()).toEqual(['explorer.html', 'page.html']);
-      expect(existsSync(join(project.root, '.excavator', 'explorer.html'))).toBe(false);
-    } finally {
-      rmSync(dir, { recursive: true, force: true });
-    }
-  });
-
-  it('refuses an --out that is the explorer page itself, in any case, and writes nothing', () => {
-    writeGraph();
-    const dir = mkdtempSync(join(tmpdir(), 'xv-explorer-out-'));
-    try {
-      for (const name of ['explorer.html', 'Explorer.HTML']) {
-        expect(() => packProject(project.root, { template: templatePath, explorerTemplate: templatePath, out: join(dir, name) }))
-          .toThrow(/--out .* is where the explorer page is written beside it; name the view page something else/);
-      }
-      expect(readdirSync(dir)).toEqual([]);
-    } finally {
-      rmSync(dir, { recursive: true, force: true });
-    }
+    expect(Object.keys(result.keys)).toEqual(Object.keys(data));
+    expect(result.keys.sources).toBe(Buffer.byteLength(JSON.stringify(data.sources)));
+    expect(result.bytes).toBe(readFileSync(result.out).length);
   });
 });
 
@@ -620,34 +653,15 @@ describe('a template or validator that was not built', () => {
   beforeEach(() => { scratch = mkdtempSync(join(tmpdir(), 'xv-explorer-unbuilt-')); });
   afterEach(() => rmSync(scratch, { recursive: true, force: true }));
 
-  it('writes neither page when the explorer template is missing, and says to build', () => {
+  it('writes no page when the explorer template is missing, and says to build', () => {
     writeGraph();
-    expect(() => packProject(project.root, { template: templatePath, explorerTemplate: join(scratch, 'explorer.html') })).toThrow(/the explorer template .* does not exist: run `pnpm build`/);
-    expect(existsSync(join(project.root, '.excavator', 'view.html'))).toBe(false);
+    expect(() => packProject(project.root, { explorerTemplate: join(scratch, 'explorer.html') })).toThrow(/the explorer template .* does not exist: run `pnpm build`/);
     expect(existsSync(join(project.root, '.excavator', 'explorer.html'))).toBe(false);
   });
 
-  it('writes neither page when the validator is missing, and says to build', () => {
+  it('writes no page when the validator is missing, and says to build', () => {
     writeGraph();
-    expect(() => packProject(project.root, { template: templatePath, explorerTemplate: templatePath, explorerValidator: join(scratch, 'schema.cjs') })).toThrow(/the explorer validator .* does not exist: run `pnpm build`/);
-    expect(existsSync(join(project.root, '.excavator', 'view.html'))).toBe(false);
-  });
-});
-
-describe('the view page stays what it was', () => {
-  it('is byte for byte the page the packer wrote before the explorer page existed', () => {
-    const golden = makeGoldenProject();
-    try {
-      const { path } = writeTemplate();
-      const result = packProject(golden.root, { template: path, explorerTemplate: path });
-      expect(createHash('sha256').update(readFileSync(result.out)).digest('hex')).toBe(GOLDEN_VIEW_SHA256);
-      // The same project and the same template give the explorer page the same facts to show: the tour of the golden project was made from the graph's facts.
-      const data = JSON.parse(BLOCK('xv-explorer-data').exec(readFileSync(result.explorer.out, 'utf-8'))[1]);
-      expect(data['knowledge-graph.json'].project.factsDigest).toBe(GOLDEN_FACTS_DIGEST);
-      expect(data['knowledge-graph.json'].tour).toHaveLength(2);
-      expect(data['domain-graph.json'].nodes).toHaveLength(8);
-    } finally {
-      golden.cleanup();
-    }
+    expect(() => packProject(project.root, { explorerTemplate: templatePath, explorerValidator: join(scratch, 'schema.cjs') })).toThrow(/the explorer validator .* does not exist: run `pnpm build`/);
+    expect(existsSync(join(project.root, '.excavator', 'explorer.html'))).toBe(false);
   });
 });

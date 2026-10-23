@@ -18,7 +18,8 @@
  * `contentLanguage`, `gaps` and `counts`: its steps and removed sentences name node ids
  * that may not match this graph, so the page is never given them to show.
  *
- * Returns { state: 'absent' }, { state: 'unreadable', reason } or
+ * Returns { state: 'absent' }, { state: 'unreadable', reason }, { state: 'no-graph' }
+ * (a usable tour with no readable knowledge graph to compare it with) or
  * { state: 'ok', bytes, counts, revision, differs, reason, factDigests }; it never
  * throws for a bad file. No model call.
  */
@@ -117,7 +118,7 @@ export function readTour(dataDir, graph) {
   // Every kept sentence counts under one verdict the page knows; any other verdict would be a fourth, invisible state.
   const unknown = sentences.find((sentence) => !KEPT_VERDICTS.includes(sentence.verdict));
   if (unknown) return unreadable(`${TOUR_FILE} sentence ${unknown.id} has verdict ${JSON.stringify(unknown.verdict)}; the viewer reads ${KEPT_VERDICTS.join(', ')}`);
-  if (graph === null) return unreadable(`${KNOWLEDGE_GRAPH_FILE} is not readable, so the tour's factDigest cannot be compared with the graph's factsDigest`);
+  if (graph === null) return { state: 'no-graph' };
 
   const factDigests = { tour: tour.factDigest, graph: graph.factsDigest };
   const mismatch = digestMismatch(factDigests.tour, factDigests.graph);

@@ -18,8 +18,8 @@
  *   doc-map.json
  *   doc-map-checks.json   the doc map's `doc-map/checks.json`, only when the doc map is there and has one
  *   products.json         { snapshotRevision, products: [{ name, status, reason, revision, revisionNote, command }] } for
- *                         unused-code, hotspots and doc-map, from the entries `products.mjs` judged (the
- *                         view page's own states), so the page states each product the way the view page does
+ *                         unused-code, hotspots and doc-map, from the entries `products.mjs` judged, so each
+ *                         product view states its product the way the pack's reply does
  *   sources               { <filePath>: { path, content, sizeBytes, lineCount } } for the files the
  *                         pack embeds (`sources.mjs` rules); no table under `--no-source`
  *
@@ -34,8 +34,8 @@
  *
  * The Full-mode semantic product (`semantics.mjs`: fresh entries only, a contradicted
  * summary already blanked, layers only when the semantic graph was made from the
- * graph's facts) is merged into the graph by the view page's own rule
- * (`packages/report-view/src/data/semantics.ts`): a node's summary is its entry's when
+ * graph's facts) is merged into the graph by one rule
+ * (openspec: changes/retire-view-html, spec report-viewer): a node's summary is its entry's when
  * that is not empty, empty when the entry was contradicted, else the node's own; its
  * tags are the entry's when there are any, else the node's own; its `verification` is the
  * entry's verdict when it has one (the copy shows it beside the summary); the semantic layers
@@ -62,13 +62,13 @@
  * No `language` is written for a source: the copy's code viewer then derives it from the
  * file name, as it does for a source the server gave none for.
  *
- * Deterministic and model-free. It reads `meta.json`, `domain-graph.json` and
- * `knowledge-graph.jsonl` under `.excavator/`, nothing else, and writes nothing.
+ * Deterministic and model-free. It reads `meta.json` and `domain-graph.json` under
+ * `.excavator/`, nothing else, and writes nothing; the knowledge graph is the one
+ * `collectProducts` already read whole (`products.graph`).
  */
 
 import { basename, join } from 'node:path';
 
-import { KNOWLEDGE_GRAPH_FILE, readKnowledgeGraph } from '../excavator/knowledge-graph-store.mjs';
 import { isSnapshotDirName } from '../excavator/source-snapshot/snapshot-dir.mjs';
 import { parseJsonObject, readRegularFile } from './product-files.mjs';
 
@@ -116,16 +116,11 @@ function withProjectName(graph, root) {
   return graph;
 }
 
-/** The knowledge graph joined back into one object; a body the store refuses is a visible reason, not a thrown error. */
-function readGraph(root, dataDir, products) {
+/** The knowledge graph the products read, as one object; a body the store refused is already the product's unreadable state. */
+function readGraph(root, products) {
   const entry = entryOf(products, 'knowledge-graph');
   if (!READABLE.has(entry.status)) return { row: absentRow(GRAPH_KEY, entry) };
-  try {
-    const graph = withProjectName(withHashString(readKnowledgeGraph(join(dataDir, KNOWLEDGE_GRAPH_FILE))), root);
-    return { graph, row: { key: GRAPH_KEY, status: 'included' } };
-  } catch (error) {
-    return { row: { key: GRAPH_KEY, status: 'unreadable', reason: error.message } };
-  }
+  return { graph: withProjectName(withHashString(products.graph), root), row: { key: GRAPH_KEY, status: 'included' } };
 }
 
 /** A JSON object product that sits as one file, passed on as written. */
@@ -170,7 +165,7 @@ const CONTRADICTED = 'contradicted';
 const nonEmpty = (value) => typeof value === 'string' && value !== '';
 const tagList = (value) => (Array.isArray(value) ? value.filter((tag) => typeof tag === 'string') : []);
 
-/** One node's summary, tags and verdict after its semantic entry, by the view page's order of sources; no verdict when neither has one. */
+/** One node's summary, tags and verdict after its semantic entry, entry first, then the node's own; no verdict when neither has one. */
 function mergedText(node, entry) {
   const ownSummary = nonEmpty(node.summary) ? node.summary : '';
   const ownTags = tagList(node.tags);
@@ -285,7 +280,7 @@ function productStates(products, snapshotRevision) {
 }
 
 /**
- * @param {{ root: string, dataDir: string, snapshotRevision: string, products: { entries: object[], payloads: {id: string, bytes: Buffer}[] }, sources: { manifest: object, payloads: {id: string, bytes: Buffer}[] } }} input
+ * @param {{ root: string, dataDir: string, snapshotRevision: string, products: { entries: object[], payloads: {id: string, bytes: Buffer}[], graph: object|null }, sources: { manifest: object, payloads: {id: string, bytes: Buffer}[] } }} input
  *   `root` is the project root the pack was given, `snapshotRevision` the revision of the snapshot it read; `products` and `sources` are what `collectProducts` and
  *   `collectSources` returned for the same pack
  * @returns {{ data: Record<string, unknown>, rows: { key: string, status: string, reason?: string }[] }}
@@ -294,7 +289,7 @@ export function buildExplorerData({ root, dataDir, snapshotRevision, products, s
   const data = {};
   const rows = [];
 
-  const graph = readGraph(root, dataDir, products);
+  const graph = readGraph(root, products);
   rows.push(graph.row);
   const tour = readTourSteps(products);
   if (graph.graph) {

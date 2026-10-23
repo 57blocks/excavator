@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { FONT_REQUESTS, fontsStylesheet, inlineFaces } from "../../../scripts/fonts.mjs";
 import { EXPLORER_TEMPLATE, checkExplorerTemplate, checkNotices, upstreamNotice } from "../../../scripts/template.mjs";
-import { NOTICE_HEADING } from "../../../../report-view/scripts/licenses.mjs";
+import { NOTICE_HEADING } from "../../../scripts/licenses.mjs";
 
 const LICENSE = readFileSync(new URL("../../../LICENSE.upstream", import.meta.url), "utf-8");
 const THIRD_PARTY = `<!--\n${NOTICE_HEADING}\n${["react", "react-dom", "@xyflow/react", "elkjs", "d3-force", "@dagrejs/dagre", "zustand", "graphology", "react-markdown", "prism-react-renderer", "@fontsource/dm-serif-display", "@fontsource/inter", "@fontsource/jetbrains-mono"].map((n) => `${n} 1.0.0 MIT`).join("\n")}\n-->\n`;

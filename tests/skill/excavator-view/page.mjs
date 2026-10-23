@@ -1,26 +1,17 @@
-/** Helpers that read a packed page back: the manifest and the decoded data payloads. */
+/** Helpers that read a packed explorer page back the way the browser would: the data block and the manifest block. */
 
-import { gunzipSync } from 'node:zlib';
+const BLOCK = (id) => new RegExp(`<script type="application/json" id="${id}">([\\s\\S]*?)</script>`);
 
-const MANIFEST = /<script type="application\/json" id="xv-manifest">([\s\S]*?)<\/script>/;
-
-export function manifestOf(html) {
-  const match = MANIFEST.exec(html);
-  if (!match) throw new Error('no manifest in the page');
-  return JSON.parse(match[1]);
+/** The data object and the pack's manifest of an explorer page. */
+export function explorerPage(html) {
+  const data = BLOCK('xv-explorer-data').exec(html);
+  const manifest = BLOCK('xv-explorer-manifest').exec(html);
+  if (!data || !manifest) throw new Error('no data or manifest block in the page');
+  return { data: JSON.parse(data[1]), manifest: JSON.parse(manifest[1]) };
 }
 
-export function payloadIds(html) {
-  return [...html.matchAll(/<script type="application\/octet-stream" id="xv-([^"]+)">/g)].map((m) => m[1]);
-}
-
-/** The raw gzip bytes of a payload, or null when the page has none by that id. */
-export function payloadGzip(html, id) {
-  const match = new RegExp(`<script type="application/octet-stream" id="xv-${id}">([A-Za-z0-9+/=]*)</script>`).exec(html);
-  return match ? Buffer.from(match[1], 'base64') : null;
-}
-
-export function payloadText(html, id) {
-  const zipped = payloadGzip(html, id);
-  return zipped === null ? null : gunzipSync(zipped).toString('utf-8');
+/** The raw text of one JSON block, as the page holds it (before parsing). */
+export function blockText(html, id) {
+  const match = BLOCK(id).exec(html);
+  return match ? match[1] : null;
 }
