@@ -230,6 +230,14 @@ describe('prd.mjs check-lane: the chapter file and the findings schema', () => {
     expect(lines).toMatch(/F1: no <details> evidence block/);
   });
 
+  it('says how to write an anchor when the evidence blocks hold none in backticks', () => {
+    const run = laneRun();
+    run.writeText('features/F2.md', run.readText('features/F2.md').replace(/`(src\/orders\/[^`]+)`/g, '$1'));
+    const out = runPrd(['check-lane', run.out, '--project', run.project, 'F2']);
+    expect(out.status).toBe(1);
+    expect(failedReasons(out)).toContain('F2: no anchor in the <details> evidence blocks: write each anchor in backticks, as `path:line` or `path:line-line`, with the path from the project root');
+  });
+
   it('fails a chapter file with no front-matter', () => {
     const run = laneRun();
     run.writeText('features/F1.md', run.readText('features/F1.md').replace(/^---\n[\s\S]*?\n---\n/, ''));

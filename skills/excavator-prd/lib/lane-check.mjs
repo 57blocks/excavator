@@ -100,7 +100,7 @@ function chapterProblems(text, feature, files) {
       else if (end > file.lines) add(`anchor ${anchor}: line ${end} is past the end of the file (${file.lines} lines)`);
     }
   }
-  if (blocks.length > 0 && evidence === 0) add('no `path:line` anchor in the <details> evidence blocks');
+  if (blocks.length > 0 && evidence === 0) add('no anchor in the <details> evidence blocks: write each anchor in backticks, as `path:line` or `path:line-line`, with the path from the project root');
   return { problems, diagrams, evidence, roles };
 }
 

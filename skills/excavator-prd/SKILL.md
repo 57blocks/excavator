@@ -196,7 +196,7 @@ Write what you tell the user during this phase in `$LANGUAGE`, as **Language** i
      ```bash
      node "$PLUGIN_ROOT/skills/excavator-prd/prd.mjs" mark "$OUT" <id> failed lane lane-wrote-nothing --project "$PROJECT_ROOT"
      ```
-   - Exit 1 with any other line: the lane failed its checks. When the lane's `attempts` is 1, delete its files (as in step 1), mark the dispatch (as in step 2) and re-dispatch it once with its prompt followed by this line and then each line `check-lane` printed: `Your previous attempt failed these checks; fix them and write both files again:`. Check it again when it returns. A second `check-lane` failure leaves the feature `failed` at `check-lane`, as `check-lane` recorded it, with its files kept for the user to see. On a resume, the lines are the reasons `index.json` holds: `jq -r '.features[] | select(.id == "<id>") | .failure.reasons[]' "$OUT/index.json"`.
+   - Exit 1 with any other line: the lane failed its checks. When the lane's `attempts` is 1, delete its files (as in step 1), mark the dispatch (as in step 2) and re-dispatch it once with its prompt followed by this line and then each line `check-lane` printed: `Your previous attempt failed these checks; fix them and write both files again:`. Pass every line `check-lane` printed, including the findings lines. Check it again when it returns. A second `check-lane` failure leaves the feature `failed` at `check-lane`, as `check-lane` recorded it, with its files kept for the user to see. On a resume, the lines are the reasons `index.json` holds: `jq -r '.features[] | select(.id == "<id>") | .failure.reasons[]' "$OUT/index.json"`.
    - Exit 2: the command could not run. Show its message and stop.
 
    Never edit `features/<id>.md` or `findings/<id>.json` yourself. A lane that fails its checks is fixed only by its own second attempt, never by you widening an anchor or rewording a finding to pass the check.
@@ -253,6 +253,8 @@ Readability is a requirement, not a nicety: **tables** for fields, rules, permis
 
 </details>
 ```
+
+Write each anchor in backticks, as `path:line` or `path:line-line`, with the path from the project root.
 
 Before you finish, check the last line of every anchor against the number of lines of its file (`awk 'END { print NR }' <file>`): an anchor that ends past the last line fails the check.
 

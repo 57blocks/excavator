@@ -46,6 +46,8 @@ const PRD = '"$PLUGIN_ROOT/skills/excavator-prd/prd.mjs"';
 const NEVER_EDIT = 'Never edit `features/<id>.md` or `findings/<id>.json` yourself.';
 /** The heading a re-dispatched lane's prompt gets, above the reasons check-lane printed. */
 const RETRY_HEADING = 'Your previous attempt failed these checks; fix them and write both files again:';
+/** The sentence the lane prompt's evidence example and check-lane's message share. */
+const ANCHOR_RULE = 'Write each anchor in backticks, as `path:line` or `path:line-line`, with the path from the project root.';
 const VERIFY = 'follow the procedure in `$PLUGIN_ROOT/skills/excavator-verify/SKILL.md` on it with `--fix`, `--language` set to `$LANGUAGE` and `PROJECT_ROOT` as the project path';
 
 describe('excavator-prd skill: phases', () => {
@@ -229,6 +231,15 @@ describe('excavator-prd skill: index and lanes', () => {
     expect(prompt).toMatch(/`product`/);
     expect(prompt).toMatch(/`technical`/);
     expect(phase.get(2)).not.toContain('`--language`');
+  });
+
+  it('tells the lane how to write an anchor, right after the evidence example', () => {
+    const prompt = flat(lanePrompt);
+    expect(prompt).toContain(`</details> \`\`\` ${ANCHOR_RULE}`);
+  });
+
+  it('passes every line check-lane printed to the retried lane, the findings lines included', () => {
+    expect(phase.get(2)).toContain('Pass every line `check-lane` printed, including the findings lines.');
   });
 
   it('has the lane check each anchor\'s last line against its file\'s length before it finishes', () => {
