@@ -18,7 +18,7 @@
 - **断点续跑**：重跑只补没写完、没核对或失败的功能；`--fresh` 才清空。
 - **不碰目标项目的既有产物**：skill 只读 `.excavator/` 的事实，只写 `--out`（默认 `.excavator/prd/`），不触发 `/excavator`、不重建事实。
 - `excavator-verify` 不改。
-- **不做（后续变更）**：把 PRD 与 findings 打成独立的 `report.html`；mermaid 渲染；`excavator-verify` 输出逐条 JSON 以给每个功能挂核验徽章；跨功能的 findings（术语冲突、共享规则在两个功能里描述不一致）；Spring 等框架的入口事实进事实图。
+- **不做（后续变更）**：把 PRD 与 findings 打成独立的 `report.html`；mermaid 渲染；`excavator-verify` 输出逐条 JSON 以给每个功能挂核验徽章；跨功能的 findings（术语冲突、共享规则在两个功能里描述不一致）与跨章节的待确认项复核；Spring 等框架的入口事实进事实图。
 - **不做**：对 findings 的模型核对（本变更只做锚点与引文的脚本检查，findings 的 `verdict` 固定为 `anchor-checked`）；给 findings 打严重度或置信度；给出修法。
 
 ## Capabilities

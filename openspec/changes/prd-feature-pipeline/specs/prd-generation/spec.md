@@ -2,7 +2,7 @@
 
 ### Requirement: 完整流程清单覆盖全流程
 
-`excavator-prd` SHALL 在写作前把 scope 内的入口候选与功能清单写进 `<out>/index.json`，MUST NOT 为篇幅精选或静默丢弃任何候选。入口候选 SHALL 由确定性脚本按框架模式目录从源码列出；模式目录没有覆盖的框架 SHALL 记入 `candidates.uncovered`，模型为其补的入口 SHALL 标 `inferred` 并带 `file:line`。模型 SHALL 把候选分组成功能，每个功能带范围声明（入口、种子文件、涉及的层）；每个候选 SHALL 落且只落一个功能或 `unassigned`，脚本 SHALL 检查这一守恒，不成立则运行失败并打印差集。每个用户流程 SHALL 缝合为跨层的端到端功能；定时与后台行为 SHALL 作为 `automated` 功能进入同一清单。
+`excavator-prd` SHALL 在写作前把 scope 内的入口候选与功能清单写进 `<out>/index.json`，MUST NOT 为篇幅精选或静默丢弃任何候选。入口候选 SHALL 由确定性脚本按框架模式目录从源码列出；模式目录没有覆盖的框架 SHALL 记入 `candidates.uncovered`，模型为其补的入口 SHALL 标 `inferred` 并带 `file:line`。模型 SHALL 把候选分组成功能，每个功能带范围声明（入口、种子文件、涉及的层）；每个候选 SHALL 落且只落一个功能或 `unassigned`，脚本 SHALL 检查这一守恒与每个候选的文件存在、行号在界内，不成立则运行失败并打印差集；读产物目录的每个子命令 SHALL 由调用方给出项目根，并拒绝 `projectRoot` 与之不一致的索引。每个用户流程 SHALL 缝合为跨层的端到端功能；定时与后台行为 SHALL 作为 `automated` 功能进入同一清单。
 
 #### Scenario: 覆盖自检
 - **WHEN** 汇总完成
@@ -106,7 +106,7 @@
 
 ### Requirement: 产物目录与单文件拼装
 
-`excavator-prd` 的产物 SHALL 是一个目录：`index.json`、`overview.md`、`features/`、`findings/`、`verification/`、`tables/`、`findings.json` 与拼装出的 `PRD.md`。`PRD.md` SHALL 由脚本按 `chapter` 顺序拼装总览、脚本生成的表、各功能章节与附录（覆盖表、核对表、失败的功能及原因），同一输入 SHALL 得到字节相同的输出；表格 MUST NOT 由模型转写。
+`excavator-prd` 的产物 SHALL 是一个目录：`index.json`、`overview.md`、`features/`、`findings/`、`verification/`、`tables/`、`findings.json` 与拼装出的 `PRD.md`。`PRD.md` SHALL 由脚本按 `chapter` 顺序拼装总览、脚本生成的表、各功能章节与附录（覆盖表、核对表、失败的功能及原因），同一输入 SHALL 得到字节相同的输出；表格 MUST NOT 由模型转写。脚本生成的表、附录标题与其中的固定词 SHALL 为英文，与 `--language` 无关；模型写的总览、章节与 findings 陈述跟随 `--language`。
 
 #### Scenario: 重复拼装
 - **WHEN** 对同一产物目录执行两次 `assemble`
