@@ -2,7 +2,7 @@
 // inferred candidates and seed files inside the project (openspec change
 // prd-feature-pipeline, design D2; scenario "candidate assignment lost").
 import { afterEach, describe, expect, it } from 'vitest';
-import { mkdirSync, symlinkSync, writeFileSync } from 'node:fs';
+import { mkdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { makeLaneRun, makeTempDir, runPrd } from './helpers.mjs';
@@ -123,30 +123,44 @@ describe('prd.mjs check-index', () => {
     expect(reasons(out)).toContain('c1: line 4242 is past the end of src/orders/routes.js (8 lines)');
   });
 
-  it('fails a pattern candidate whose text is not on its line, and lets an inferred one through', () => {
+  it('fails a pattern candidate that differs from the entrypoints.json item of its id, field by field, and lets an inferred one through', () => {
     const run = laneRun();
     const index = run.readIndex();
-    index.candidates.items[0].text = "router.post('/payments', pay);";
+    index.candidates.items[0].text = "router.post('/orders',   (req, res) =>";
+    index.candidates.items[1].line = 5;
+    index.candidates.items[1].framework = 'koa';
     index.candidates.items[1].provenance = 'pattern';
-    index.candidates.items[1].text = '   ';
     index.candidates.items[2].text = 'a summary the model wrote';
+    index.candidates.items.push({ ...index.candidates.items[0], id: 'c3', text: "router.post('/orders', (req, res) => res.status(201).json(createOrder(req.body)));" });
+    index.features[0].entrypoints.push('c3');
     run.writeIndex(index);
     const out = runPrd(['check-index', run.out, '--project', run.project]);
     expect(out.status).toBe(1);
     expect(reasons(out)).toEqual([
-      'c1: text is not on line 5 of src/orders/routes.js',
-      'c2: text is not on line 6 of src/orders/routes.js',
+      'c1: differs from entrypoints.json in text; copy a listed candidate unchanged',
+      'c2: differs from entrypoints.json in line, framework; copy a listed candidate unchanged',
+      'c3: is not in entrypoints.json; a candidate the script did not list has provenance "inferred"',
     ]);
   });
 
-  it('accepts a pattern candidate whose text differs from its line only in whitespace, or runs into the next line', () => {
+  it('fails pattern candidates without entrypoints.json, and passes without it when every candidate is inferred', () => {
     const run = laneRun();
-    const index = run.readIndex();
-    index.candidates.items[0].text = "res.status(201).json(createOrder(req.body)));\n  router.post('/orders/:id/cancel',";
-    index.candidates.items[1].text = "router.post('/orders/:id/cancel',   (req, res)  =>";
-    run.writeIndex(index);
+    rmSync(join(run.out, 'entrypoints.json'));
     const out = runPrd(['check-index', run.out, '--project', run.project]);
-    expect(out.status, out.stdout).toBe(0);
+    expect(out.status).toBe(1);
+    expect(reasons(out)).toEqual(['index: entrypoints.json is missing; write it with prd.mjs entrypoints (Phase 1): every candidate without provenance "inferred" must be one of its items']);
+    const index = run.readIndex();
+    for (const item of index.candidates.items) item.provenance = 'inferred';
+    run.writeIndex(index);
+    expect(runPrd(['check-index', run.out, '--project', run.project]).status).toBe(0);
+  });
+
+  it('fails when entrypoints.json is not JSON or has no items', () => {
+    const run = laneRun();
+    writeFileSync(join(run.out, 'entrypoints.json'), '{');
+    expect(reasons(runPrd(['check-index', run.out, '--project', run.project]))[0]).toMatch(/^index: entrypoints\.json is not valid JSON/);
+    writeFileSync(join(run.out, 'entrypoints.json'), '{"items": 3}');
+    expect(reasons(runPrd(['check-index', run.out, '--project', run.project]))).toEqual(['index: entrypoints.json has no items list']);
   });
 
   it('fails a malformed schema with one line per problem', () => {

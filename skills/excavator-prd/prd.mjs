@@ -22,6 +22,12 @@
  *   mark <out> <featureId> dispatched | failed lane <reason>... --project <root>
  *       Record a lane dispatch (attempts + 1) or a lane that wrote nothing
  *       in index.json (design D4, D6).
+ *   reply <out> --project <root>
+ *       Print the skill's reply lines from the summary aggregate recorded
+ *       (design D9); writes nothing.
+ *
+ * check-index, check-lane, mark and aggregate hold <out>/index.json.lock
+ * while they run, so concurrent commands on one run never lose a write.
  *
  * Exit codes: 0 ok; 1 a check failed (every reason printed, one per line);
  * 2 usage or IO error.
@@ -33,7 +39,9 @@ import { checkIndex } from './lib/index-check.mjs';
 import { checkLane } from './lib/lane-check.mjs';
 import { aggregate } from './lib/aggregate.mjs';
 import { assemble } from './lib/assemble.mjs';
+import { withIndexLock } from './lib/index-lock.mjs';
 import { mark } from './lib/mark.mjs';
+import { reply } from './lib/reply.mjs';
 import { projectRootOption } from './lib/project-root.mjs';
 
 const USAGE = `Usage: node prd.mjs <command> [arguments]
@@ -58,6 +66,14 @@ Commands:
   mark <out> <featureId> failed lane <reason>... --project <root>
       Record the feature's lane as failed without writing its files, each
       further argument one reason. lane is the only step mark records.
+  reply <out> --project <root>
+      Print the reply's lines in English: the PRD path, the counts the last
+      aggregate recorded, the frameworks without patterns when there are
+      some, and the offer to save the PRD when <out> is the default
+      <root>/.excavator/prd. Reads only; writes nothing.
+
+check-index, check-lane, mark and aggregate hold <out>/index.json.lock while
+they run and wait up to 10 s for another command's lock (exit 2 after that).
 
 <out> is the run's output directory (index.json, features/, findings/,
 verification/). --project <root> is required by every command that reads
@@ -103,17 +119,20 @@ const COMMANDS = {
   'check-index'(args) {
     const { positionals, options } = parseArgs(args, ['project']);
     if (positionals.length !== 1) throw new UsageError('check-index takes exactly one <out> directory');
-    return report(checkIndex(positionals[0], projectRootOption(options.project)));
+    const root = projectRootOption(options.project);
+    return withIndexLock(positionals[0], () => report(checkIndex(positionals[0], root)));
   },
   'check-lane'(args) {
     const { positionals, options } = parseArgs(args, ['project']);
     if (positionals.length !== 2) throw new UsageError('check-lane takes <out> and <featureId>');
-    return report(checkLane(positionals[0], positionals[1], projectRootOption(options.project)));
+    const root = projectRootOption(options.project);
+    return withIndexLock(positionals[0], () => report(checkLane(positionals[0], positionals[1], root)));
   },
   aggregate(args) {
     const { positionals, options } = parseArgs(args, ['project']);
     if (positionals.length !== 1) throw new UsageError('aggregate takes exactly one <out> directory');
-    const outcome = aggregate(positionals[0], projectRootOption(options.project));
+    const root = projectRootOption(options.project);
+    const outcome = withIndexLock(positionals[0], () => aggregate(positionals[0], root));
     if (outcome.status !== 0) return report(outcome);
     process.stdout.write(`${JSON.stringify(outcome.result, null, 2)}\n`);
     return 0;
@@ -127,7 +146,13 @@ const COMMANDS = {
     const { positionals, options } = parseArgs(args, ['project']);
     if (positionals.length < 3) throw new UsageError('mark takes <out>, <featureId> and dispatched, or failed lane <reason>...');
     const [out, id, event, ...rest] = positionals;
-    return report(mark(out, id, event, rest, projectRootOption(options.project)));
+    const root = projectRootOption(options.project);
+    return withIndexLock(out, () => report(mark(out, id, event, rest, root)));
+  },
+  reply(args) {
+    const { positionals, options } = parseArgs(args, ['project']);
+    if (positionals.length !== 1) throw new UsageError('reply takes exactly one <out> directory');
+    return report(reply(positionals[0], projectRootOption(options.project)));
   },
 };
 

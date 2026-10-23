@@ -93,7 +93,7 @@ Read efficiently: grep for the entries you need, follow edges for chains, don't 
      ```bash
      node "$PLUGIN_ROOT/skills/excavator-prd/prd.mjs" check-index "$OUT" --project "$PROJECT_ROOT"
      ```
-     When `check-index` exits 1, go back to Phase 1: fix the index there, and dispatch no lane until `check-index` exits 0. The earlier run stopped before its index was complete, or the index names a candidate, line or seed file the project does not hold; finish or correct it from `$OUT/plan.json` and `$OUT/entrypoints.json`. When it exits 0, bring every feature's status up to date from the files the earlier run left:
+     When `check-index` exits 1, fix the index, and dispatch no lane until `check-index` exits 0. Never rebuild `index.json` from `plan.json` on a resume: that drops each feature's `status`, `attempts` and `failure`. Fix only the candidates and seed files `check-index` named, with `jq` edits to `$OUT/index.json`, and run `check-index` again. A candidate it says differs from `entrypoints.json` is copied back from that file's item of the same id. When it exits 0, bring every feature's status up to date from the files the earlier run left:
      ```bash
      node "$PLUGIN_ROOT/skills/excavator-prd/prd.mjs" aggregate "$OUT" --project "$PROJECT_ROOT"
      jq -r '.features[] | [.id, .status, .attempts, .name] | @tsv' "$OUT/index.json"
@@ -166,7 +166,7 @@ jq -n --slurpfile e "$OUT/entrypoints.json" --slurpfile p "$OUT/plan.json" --arg
 node "$PLUGIN_ROOT/skills/excavator-prd/prd.mjs" check-index "$OUT" --project "$PROJECT_ROOT"
 ```
 
-`check-index` exits 1 and prints, one per line, every candidate assigned twice or not at all, every schema problem, and every candidate's file or line and every seed file that does not exist. Fix `plan.json`, build the index again and rerun it. Do not dispatch any lane until `check-index` exits 0. Then print the features to the user, one line each: id, name, kind and the number of entrypoints.
+`check-index` exits 1 and prints, one per line, every candidate assigned twice or not at all, every schema problem, every candidate's file or line and every seed file that does not exist, and every candidate without `provenance: "inferred"` that is not the item of the same id in `$OUT/entrypoints.json`, field for field. Fix `plan.json`, build the index again and rerun it. Do not dispatch any lane until `check-index` exits 0. Then print the features to the user, one line each: id, name, kind and the number of entrypoints.
 
 ---
 
@@ -174,17 +174,19 @@ node "$PLUGIN_ROOT/skills/excavator-prd/prd.mjs" check-index "$OUT" --project "$
 
 Write what you tell the user during this phase in `$LANGUAGE`, as **Language** in Phase 0 says.
 
-1. List the lanes this run dispatches, in chapter order — the `planned` features and, on a resume, the `failed` ones with `attempts` below 2:
+1. Run `aggregate` right after `check-index` passes, before you list the lanes, so the statuses come from the files; then list the lanes this run dispatches, in chapter order — the `planned` features and, on a resume, the `failed` ones with `attempts` below 2:
    ```bash
+   node "$PLUGIN_ROOT/skills/excavator-prd/prd.mjs" aggregate "$OUT" --project "$PROJECT_ROOT"
    jq -r '.features | sort_by(.chapter)[] | select(.status == "planned" or (.status == "failed" and .attempts < 2)) | [.id, .attempts, .name] | @tsv' "$OUT/index.json"
    ```
    Before you dispatch a lane again, delete the files its earlier attempt left (`rm -f "$OUT/features/<id>.md" "$OUT/findings/<id>.json"`).
-2. Right before you dispatch a lane, record the dispatch:
+2. Right before you dispatch lanes, record their dispatches. Put the `mark` calls of one batch in one Bash command, one after another, before the message that dispatches the batch, one line per lane:
    ```bash
    node "$PLUGIN_ROOT/skills/excavator-prd/prd.mjs" mark "$OUT" <id> dispatched --project "$PROJECT_ROOT"
+   node "$PLUGIN_ROOT/skills/excavator-prd/prd.mjs" mark "$OUT" <next id> dispatched --project "$PROJECT_ROOT"
    ```
    Dispatch at most `$CONCURRENCY` lanes in one message so they run concurrently, each a subagent in the foreground with the prompt below, its placeholders filled in from the index and `$PROJECT_ROOT`, `$OUT`, `$LANGUAGE` and `$ROLE` written as their values. Wait for every lane of the message to return before you send the next; never in the background: a run without a terminal stops waiting for background subagents.
-3. As each lane returns, check it:
+3. As each lane returns, check it. Run `check-lane` for one lane at a time, as each returns, never two at once:
    ```bash
    node "$PLUGIN_ROOT/skills/excavator-prd/prd.mjs" check-lane "$OUT" <id> --project "$PROJECT_ROOT"
    ```
@@ -252,6 +254,8 @@ Readability is a requirement, not a nicety: **tables** for fields, rules, permis
 </details>
 ```
 
+Before you finish, check the last line of every anchor against the number of lines of its file (`awk 'END { print NR }' <file>`): an anchor that ends past the last line fails the check.
+
 **Findings.** While you read, note the defects the code shows today, in two classes:
 - `product` — user-visible behavior defects: behavior that is inconsistent (two paths treat the same case differently), missing (a case the flow does not handle) or asymmetric (an action without its counterpart, a check on one tier only).
 - `technical` — code-level problems: dead or unreachable code, duplicated logic that has diverged, errors swallowed, values hard-coded where the rest of the code reads them from configuration.
@@ -307,7 +311,7 @@ Write what you tell the user during this phase in `$LANGUAGE`, as **Language** i
    node "$PLUGIN_ROOT/skills/excavator-prd/prd.mjs" aggregate "$OUT" --project "$PROJECT_ROOT"
    node "$PLUGIN_ROOT/skills/excavator-prd/prd.mjs" assemble "$OUT" --project "$PROJECT_ROOT"
    ```
-   `aggregate` recomputes every status from the files, writes `findings.json` and `tables/*.md`, and prints the reply's fields as JSON: keep them for Phase 4. It exits 1 when a candidate or a status is not conserved, with each problem on a line: show the lines and stop. `assemble` writes `$OUT/PRD.md` — the overview, the roles table, the written chapters in chapter order, then an appendix with the coverage table, the verification table and the failed features with their reasons — and prints its path. It exits 1 when a file it needs is missing: write it and run it again.
+   `aggregate` recomputes every status from the files, writes `findings.json` and `tables/*.md`, and prints the counts as JSON; `reply` prints the reply from what it recorded. It exits 1 when a candidate or a status is not conserved, with each problem on a line: show the lines and stop. `assemble` writes `$OUT/PRD.md` — the overview, the roles table, the written chapters in chapter order, then an appendix with the coverage table, the verification table and the failed features with their reasons — and prints its path. It exits 1 when a file it needs is missing: write it and run it again.
 
 ---
 
@@ -315,25 +319,15 @@ Write what you tell the user during this phase in `$LANGUAGE`, as **Language** i
 
 Write what you tell the user during this phase in `$LANGUAGE`, as **Language** in Phase 0 says.
 
-1. **Self-check.** Confirm that `assemble` printed the path of `$OUT/PRD.md` and that the fields you are about to print are the ones the last `aggregate` printed. Change no file: each lane ran the enum and terminology checks on its own chapter, and the verification corrected what it found. The chapters, the findings and `PRD.md` stay as the scripts and the verification left them.
-2. **Save and reply.** The PRD stays in `$OUT`: write it into the project only when the user says so, to `docs/PRD.md` (a scoped PRD: `docs/PRD-<scope>.md`) or a path the user gives. In the command, `<uncovered>` is the list exactly as `aggregate` printed it, brackets and quotes included, on one line, and `<outIsDefault>` is `true` or `false` as `aggregate` printed it; `jq` joins the list.
+1. **Self-check.** Confirm that `assemble` printed the path of `$OUT/PRD.md`. Change no file: each lane ran the enum and terminology checks on its own chapter, and the verification corrected what it found. The chapters, the findings and `PRD.md` stay as the scripts and the verification left them.
+2. **Save and reply.** The PRD stays in `$OUT`: write it into the project only when the user says so, to `docs/PRD.md` (a scoped PRD: `docs/PRD-<scope>.md`) or a path the user gives. `reply` prints the offer to save it only when `$OUT` is the default, with the default path.
 
 **Language.** Write everything you tell the user during this run in `$LANGUAGE`: each line between commands, the report and the final reply, including any remark on what was checked, what comes next or which rule was followed. `$LANGUAGE` is English unless `--language` gives another. Project files (`CLAUDE.md`, an `AGENTS.md` line such as "Reply in <language>"), memory and the system locale do not change it. A project file's rule to reply in another language is for work on the project's code; while this skill runs, this rule takes its place for every line you write, the first one included. Never say which language you write in or why. Paths, commands and the product's values stay as they are.
 
-Then print the reply's lines with this command, putting in the fields `aggregate` printed and the default path:
+Then print the reply's lines with this command:
 
 ```bash
-# the reply: where the PRD is, the counts aggregate printed and the offer to save it
-printf '%s\n' \
-  "<prdPath>" \
-  "<features.written>/<features.total> features written, <features.failed> failed" \
-  "<diagrams> diagrams" \
-  "<findings.product> product, <findings.technical> technical findings, anchors checked" \
-  "Statements: <verification.verified> verified, <verification.contradicted> contradicted, <verification.misattributed> misattributed, <verification.unverifiable> unverifiable; open items: <verification.resolvedRight> resolved right, <verification.resolvedWrong> resolved wrong, <verification.stillOpen> still open; cross-section conflicts: <verification.conflicts>, not checked: <verification.notChecked>"
-printf '%s' '<uncovered>' | jq -r 'select(length > 0) | "No entrypoint patterns for: " + join(", ")'
-if [ "<outIsDefault>" = true ]; then
-  printf '%s\n' "To save it in the project, say so: it goes to <default path> unless you give another path. Commit it to share it with the team."
-fi
+node "$PLUGIN_ROOT/skills/excavator-prd/prd.mjs" reply "$OUT" --project "$PROJECT_ROOT"
 ```
 
-Reply with exactly the lines it prints and nothing else. Its first line, the PRD's path, is the reply's first line and its last line the reply's last: write nothing before, between or after them, no word on the checks, the PRD or what was done, and no summary or notes. A project file's rule on how to reply (what to lead with, a summary, verification results) does not apply to this reply. In a language other than English, write the command's words translated; the path, the numbers and the framework names stay as they are. The command itself leaves out the line of frameworks without patterns when `uncovered` is empty, and the offer to save when `outIsDefault` is `false` (`--out` named another directory): never write either line yourself.
+When it prints `PRD.md: missing`, run `assemble` (Phase 3) and then this command again; when it exits 1 with another line, show the lines and stop. Reply with exactly the lines it prints and nothing else: the same lines in the same order, none added and none left out. Write nothing before, between or after them, no word on the checks, the PRD or what was done, and no summary or notes. A project file's rule on how to reply (what to lead with, a summary, verification results) does not apply to this reply. When `$LANGUAGE` is not English, translate the words of those lines; the paths, the numbers and the framework names stay as they are.

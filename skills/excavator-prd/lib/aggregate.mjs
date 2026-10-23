@@ -87,6 +87,29 @@ function recompute(outDir, index, feature, root) {
 
 const sum = (items, pick) => items.reduce((total, item) => total + pick(item), 0);
 
+/**
+ * The reply's fields from an index whose statuses and counts are up to date:
+ * what aggregate prints and what `reply` prints from. It reads no lane file.
+ */
+export function summarize(outDirArg, index, root) {
+  const outDir = resolve(outDirArg);
+  const features = index.features;
+  const written = features.filter((f) => WRITTEN_STATUSES.includes(f.status));
+  const verified = features.filter((f) => f.status === 'verified' && f.counts?.verification);
+  return {
+    prdPath: join(outDir, PRD_FILE),
+    features: { total: features.length, written: written.length, failed: features.filter((f) => f.status === 'failed').length },
+    diagrams: sum(written, (f) => f.counts.diagrams),
+    findings: {
+      product: sum(written, (f) => f.counts.findings.product),
+      technical: sum(written, (f) => f.counts.findings.technical),
+    },
+    verification: Object.fromEntries(VERIFICATION_KEYS.map((key) => [key, sum(verified, (f) => f.counts.verification[key])])),
+    uncovered: index.candidates.uncovered,
+    outIsDefault: realpathSync(outDir) === join(realpathSync(root), DEFAULT_OUT),
+  };
+}
+
 /** Run aggregate on `<out>`. Returns { status, lines } on failure, { status: 0, result } on success. */
 export function aggregate(outDirArg, root) {
   const outDir = resolve(outDirArg);
@@ -110,9 +133,8 @@ export function aggregate(outDirArg, root) {
   if (inBuckets !== features.length) problems.push(`index: the status buckets hold ${inBuckets} features, not ${features.length}`);
   if (problems.length > 0) return { status: 1, lines: problems };
 
-  const written = features.filter((f) => WRITTEN_STATUSES.includes(f.status));
-  const verified = features.filter((f) => f.status === 'verified');
-  const totals = Object.fromEntries(VERIFICATION_KEYS.map((key) => [key, sum(verified, (f) => f.counts.verification[key])]));
+  const result = summarize(outDir, updated, root);
+  const totals = result.verification;
 
   const findings = states.flatMap((state) => (state.findings === null ? [] : state.findings.findings.map((finding) => ({
     ...finding, feature: state.feature.id, verdict: 'anchor-checked',
@@ -125,19 +147,5 @@ export function aggregate(outDirArg, root) {
   writeFileSync(join(outDir, TABLE_FILES[1]), coverageTable(updated));
   writeFileSync(join(outDir, TABLE_FILES[2]), verificationTable(features, totals));
 
-  return {
-    status: 0,
-    result: {
-      prdPath: join(outDir, PRD_FILE),
-      features: { total: features.length, written: written.length, failed: buckets.failed },
-      diagrams: sum(written, (f) => f.counts.diagrams),
-      findings: {
-        product: sum(written, (f) => f.counts.findings.product),
-        technical: sum(written, (f) => f.counts.findings.technical),
-      },
-      verification: totals,
-      uncovered: index.candidates.uncovered,
-      outIsDefault: realpathSync(outDir) === join(realpathSync(root), DEFAULT_OUT),
-    },
-  };
+  return { status: 0, result };
 }

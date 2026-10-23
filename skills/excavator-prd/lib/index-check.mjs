@@ -12,7 +12,6 @@ import { isAbsolute, join } from 'node:path';
 import { KINDS } from './entrypoints.mjs';
 import { UsageError } from './errors.mjs';
 import { isCount, isObject, isString, isStringArray, readJson, writeJson } from './json-file.mjs';
-import { normalize } from './normalize.mjs';
 import { projectFiles } from './project-files.mjs';
 import { projectRootProblem } from './project-root.mjs';
 
@@ -175,28 +174,10 @@ export function conservation(index) {
   return { problems, summary };
 }
 
-/** Whitespace-normalized, trimmed text as candidate texts are compared. */
-const flat = (text) => normalize(text).text.trim();
-
-/**
- * Whether a listed candidate's `text` is on its line: a non-empty substring
- * of the line, or of the line joined with the next one (the two-line catalog
- * entries), after whitespace normalization.
- */
-function textOnLine(item, fileText) {
-  const want = typeof item.text === 'string' ? flat(item.text) : '';
-  if (want === '') return false;
-  const lines = fileText.split('\n');
-  const window = `${lines[item.line - 1] ?? ''}\n${lines[item.line] ?? ''}`;
-  return flat(window).includes(want);
-}
-
 /**
  * Every candidate, listed by the script or inferred, names a file and line
- * that exist (the model copies the candidates into index.json); a candidate
- * the script listed (provenance `pattern`, or none) also keeps the text of
- * that line, while an inferred one may describe it. Seed files stay inside
- * the project. `root` is the --project root.
+ * that exist (the model copies the candidates into index.json); seed files
+ * stay inside the project. `root` is the --project root.
  */
 export function fileProblems(index, root) {
   const problems = [];
@@ -205,13 +186,45 @@ export function fileProblems(index, root) {
     const file = files.resolve(item.file);
     if (!file.ok) problems.push(`${item.id}: ${item.file} ${file.reason}`);
     else if (item.line > file.lines) problems.push(`${item.id}: line ${item.line} is past the end of ${item.file} (${file.lines} lines)`);
-    else if (item.provenance !== 'inferred' && !textOnLine(item, file.text)) problems.push(`${item.id}: text is not on line ${item.line} of ${item.file}`);
   }
   for (const feature of index.features) {
     for (const path of feature.seedFiles) {
       const file = files.resolve(path);
       if (!file.ok) problems.push(`${feature.id}: seed file ${path} ${file.reason}`);
     }
+  }
+  return problems;
+}
+
+export const ENTRYPOINTS_FILE = 'entrypoints.json';
+/** The fields a candidate the script listed keeps exactly as `prd.mjs entrypoints` wrote them. */
+const SCRIPT_FIELDS = Object.freeze(['kind', 'file', 'line', 'text', 'framework']);
+
+/**
+ * A candidate without provenance `inferred` claims the script listed it: it
+ * must be the item of the same id in `<out>/entrypoints.json`, which Phase 1
+ * writes with `prd.mjs entrypoints`, in every field. An inferred candidate
+ * is the model's and only needs its file and line (fileProblems).
+ */
+export function scriptProblems(index, outDir) {
+  const listed = index.candidates.items.filter((item) => item.provenance !== 'inferred');
+  if (listed.length === 0) return [];
+  const read = readJson(join(outDir, ENTRYPOINTS_FILE));
+  if (read.missing) {
+    return [`index: ${ENTRYPOINTS_FILE} is missing; write it with prd.mjs entrypoints (Phase 1): every candidate without provenance "inferred" must be one of its items`];
+  }
+  if (!read.ok) return [`index: ${ENTRYPOINTS_FILE} ${read.reason}`];
+  if (!isObject(read.value) || !Array.isArray(read.value.items)) return [`index: ${ENTRYPOINTS_FILE} has no items list`];
+  const byId = new Map(read.value.items.filter(isObject).map((item) => [item.id, item]));
+  const problems = [];
+  for (const item of listed) {
+    const script = byId.get(item.id);
+    if (!script) {
+      problems.push(`${item.id}: is not in ${ENTRYPOINTS_FILE}; a candidate the script did not list has provenance "inferred"`);
+      continue;
+    }
+    const differs = SCRIPT_FIELDS.filter((field) => item[field] !== script[field]);
+    if (differs.length > 0) problems.push(`${item.id}: differs from ${ENTRYPOINTS_FILE} in ${differs.join(', ')}; copy a listed candidate unchanged`);
   }
   return problems;
 }
@@ -243,8 +256,9 @@ export function checkIndex(outDir, root) {
   if (rootProblem !== null) return { status: 1, lines: [rootProblem] };
   const { problems, summary } = conservation(index);
   const files = fileProblems(index, root);
+  const script = scriptProblems(index, outDir);
   writeJson(join(outDir, INDEX_FILE), { ...index, features: index.features.map(withDefaults), conservation: summary });
-  const all = [...problems, ...files];
+  const all = [...problems, ...files, ...script];
   if (all.length > 0) return { status: 1, lines: all };
   return {
     status: 0,

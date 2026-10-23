@@ -109,13 +109,16 @@ describe('excavator-prd skill: setup, defaults and resume', () => {
     expect(phase.get(1)).toContain('`sourceRevision`: the `currentSourceRevision` Phase 0 printed');
   });
 
-  it('checks the index before it resumes, and goes back to Phase 1 without dispatching when check-index fails', () => {
+  it('checks the index before it resumes, and fixes it in place without dispatching when check-index fails', () => {
     const setup = phase.get(0);
     const check = setup.indexOf(`node ${PRD} check-index "$OUT" --project "$PROJECT_ROOT"`);
     expect(check).toBeGreaterThan(setup.indexOf('If its `sourceRevision` differs from the current one'));
     expect(check).toBeLessThan(setup.indexOf(`node ${PRD} aggregate "$OUT"`));
     expect(check).toBeLessThan(setup.indexOf('go back to Phase 2'));
-    expect(setup).toContain('When `check-index` exits 1, go back to Phase 1: fix the index there, and dispatch no lane until `check-index` exits 0.');
+    expect(setup).toContain('When `check-index` exits 1, fix the index, and dispatch no lane until `check-index` exits 0.');
+    expect(setup).toContain('Never rebuild `index.json` from `plan.json` on a resume: that drops each feature\'s `status`, `attempts` and `failure`.');
+    expect(setup).toContain('Fix only the candidates and seed files `check-index` named, with `jq` edits to `$OUT/index.json`, and run `check-index` again.');
+    expect(setup).not.toContain('go back to Phase 1');
     const raw = rawPhase(0);
     expect(raw.indexOf('check-index "$OUT"')).toBeGreaterThan(raw.indexOf('When `$OUT/index.json` exists and `--fresh` is not given, resume'));
     expect(raw.indexOf('check-index "$OUT"')).toBeLessThan(raw.indexOf('Phase 2'));
@@ -164,6 +167,22 @@ describe('excavator-prd skill: index and lanes', () => {
     expect(lanes).toContain('never edit `index.json` yourself');
   });
 
+  it('brings the statuses up to date from the files before it lists the lanes', () => {
+    const lanes = phase.get(2);
+    const refresh = lanes.indexOf(`node ${PRD} aggregate "$OUT" --project "$PROJECT_ROOT"`);
+    expect(refresh).toBeGreaterThan(-1);
+    expect(refresh).toBeLessThan(lanes.indexOf('jq -r \'.features | sort_by(.chapter)[]'));
+    expect(lanes).toContain('Run `aggregate` right after `check-index` passes, before you list the lanes');
+  });
+
+  it('records the dispatches of a batch in one Bash command and checks the lanes one at a time', () => {
+    const lanes = phase.get(2);
+    const batch = 'Put the `mark` calls of one batch in one Bash command, one after another, before the message that dispatches the batch';
+    expect(lanes).toContain(batch);
+    expect(lanes.indexOf(batch)).toBeLessThan(lanes.indexOf('Dispatch at most `$CONCURRENCY` lanes in one message'));
+    expect(lanes).toContain('Run `check-lane` for one lane at a time, as each returns');
+  });
+
   it('never edits a lane\'s files: re-dispatches a lane that failed check-lane once, with the reasons under a fixed heading', () => {
     const lanes = phase.get(2);
     expect(lanes).toContain(NEVER_EDIT);
@@ -208,6 +227,10 @@ describe('excavator-prd skill: index and lanes', () => {
     expect(phase.get(2)).not.toContain('`--language`');
   });
 
+  it('has the lane check each anchor\'s last line against its file\'s length before it finishes', () => {
+    expect(flat(lanePrompt)).toContain('Before you finish, check the last line of every anchor against the number of lines of its file (`awk \'END { print NR }\' <file>`): an anchor that ends past the last line fails the check.');
+  });
+
   it('names in the lane prompt every English word the advice gate refuses', () => {
     const prompt = lanePrompt.toLowerCase();
     for (const word of ADVICE_WORDS.filter((w) => /^[\x00-\x7f]+$/.test(w))) expect(prompt, word).toContain(word);
@@ -226,7 +249,7 @@ describe('excavator-prd skill: --project', () => {
   it('passes --project "$PROJECT_ROOT" to every prd.mjs command that reads $OUT', () => {
     const commands = skill.split('\n').map((line) => line.trim()).filter((line) => line.startsWith(`node ${PRD} `));
     const reading = commands.filter((line) => !line.startsWith(`node ${PRD} entrypoints `));
-    expect(new Set(reading.map((line) => line.split(' ')[2]))).toEqual(new Set(['check-index', 'check-lane', 'mark', 'aggregate', 'assemble']));
+    expect(new Set(reading.map((line) => line.split(' ')[2]))).toEqual(new Set(['check-index', 'check-lane', 'mark', 'aggregate', 'assemble', 'reply']));
     for (const line of reading) expect(line, line).toMatch(/ --project "\$PROJECT_ROOT"$/);
   });
 });
@@ -300,6 +323,23 @@ describe('excavator-prd skill: its recipes run', () => {
     }
   });
 
+  it('lists the lanes from the statuses aggregate recomputes, not from what index.json said', () => {
+    const { out, check } = buildIndex(PLAN);
+    try {
+      expect(check.status, check.stdout).toBe(0);
+      const index = JSON.parse(readFileSync(join(out, 'index.json'), 'utf-8'));
+      Object.assign(index.features[0], { status: 'checked', attempts: 1 });
+      writeFileSync(join(out, 'index.json'), JSON.stringify(index));
+      const [refresh] = recipes(2, `node ${PRD} aggregate `, out, project);
+      expect(refresh).toBeDefined();
+      expect(sh(refresh).status).toBe(0);
+      const [list] = recipes(2, 'jq -r ', out, project);
+      expect(sh(list).stdout).toBe('F1\t1\tOrders\nF2\t0\tReminders\n');
+    } finally {
+      rmSync(out, { recursive: true, force: true });
+    }
+  });
+
   it('lets check-index refuse a plan that leaves a candidate out', () => {
     const { out, check } = buildIndex({ ...PLAN, unassigned: [] });
     try {
@@ -308,12 +348,6 @@ describe('excavator-prd skill: its recipes run', () => {
     } finally {
       rmSync(out, { recursive: true, force: true });
     }
-  });
-
-  it('joins the uncovered frameworks with a comma, and prints no line for an empty list', () => {
-    const line = REPLY_COMMAND.split('\n').find((row) => row.includes('<uncovered>'));
-    expect(sh(line.replace('<uncovered>', '["gin","spring"]')).stdout).toBe('No entrypoint patterns for: gin, spring\n');
-    expect(sh(line.replace('<uncovered>', '[]')).stdout).toBe('');
   });
 });
 
@@ -388,37 +422,14 @@ describe('excavator-prd skill: the language of what it writes', () => {
 /** Step 2 of Phase 4: where the PRD stays, the command that prints the reply, and what the reply may hold. */
 const SAVE = 'The PRD stays in `$OUT`: write it into the project only when the user says so, to `docs/PRD.md` (a scoped PRD: `docs/PRD-<scope>.md`) or a path the user gives.';
 const REPLY = 'Then print the reply\'s lines with this command';
-const REPLY_COMMAND = [
-  '# the reply: where the PRD is, the counts aggregate printed and the offer to save it',
-  'printf \'%s\\n\' \\',
-  '  "<prdPath>" \\',
-  '  "<features.written>/<features.total> features written, <features.failed> failed" \\',
-  '  "<diagrams> diagrams" \\',
-  '  "<findings.product> product, <findings.technical> technical findings, anchors checked" \\',
-  '  "Statements: <verification.verified> verified, <verification.contradicted> contradicted, <verification.misattributed> misattributed, <verification.unverifiable> unverifiable; open items: <verification.resolvedRight> resolved right, <verification.resolvedWrong> resolved wrong, <verification.stillOpen> still open; cross-section conflicts: <verification.conflicts>, not checked: <verification.notChecked>"',
-  'printf \'%s\' \'<uncovered>\' | jq -r \'select(length > 0) | "No entrypoint patterns for: " + join(", ")\'',
-  'if [ "<outIsDefault>" = true ]; then',
-  '  printf \'%s\\n\' "To save it in the project, say so: it goes to <default path> unless you give another path. Commit it to share it with the team."',
-  'fi',
-].join('\n');
+const REPLY_COMMAND = 'node "$PLUGIN_ROOT/skills/excavator-prd/prd.mjs" reply "$OUT" --project "$PROJECT_ROOT"';
 const REPLY_RULE = [
-  'Reply with exactly the lines it prints and nothing else. Its first line, the PRD\'s path, is the reply\'s first line and its last line the reply\'s last: write nothing before, between or after them, no word on the checks, the PRD or what was done, and no summary or notes.',
+  'When it prints `PRD.md: missing`, run `assemble` (Phase 3) and then this command again; when it exits 1 with another line, show the lines and stop.',
+  'Reply with exactly the lines it prints and nothing else: the same lines in the same order, none added and none left out.',
+  'Write nothing before, between or after them, no word on the checks, the PRD or what was done, and no summary or notes.',
   'A project file\'s rule on how to reply (what to lead with, a summary, verification results) does not apply to this reply.',
-  'In a language other than English, write the command\'s words translated; the path, the numbers and the framework names stay as they are.',
-  'The command itself leaves out the line of frameworks without patterns when `uncovered` is empty, and the offer to save when `outIsDefault` is `false` (`--out` named another directory): never write either line yourself.',
+  'When `$LANGUAGE` is not English, translate the words of those lines; the paths, the numbers and the framework names stay as they are.',
 ].join(' ');
-/** The fields `prd.mjs aggregate` prints (design D9), as the reply's placeholders name them. */
-const AGGREGATE_FIELDS = [
-  'prdPath',
-  'features.total', 'features.written', 'features.failed',
-  'diagrams',
-  'findings.product', 'findings.technical',
-  'verification.verified', 'verification.contradicted', 'verification.misattributed', 'verification.unverifiable',
-  'verification.resolvedRight', 'verification.resolvedWrong', 'verification.stillOpen',
-  'verification.conflicts', 'verification.notChecked',
-  'uncovered',
-  'outIsDefault',
-];
 
 /**
  * The problems with where a copy of the skill keeps its language rule: none when the paragraph opens Phase 0 and
@@ -457,61 +468,15 @@ describe('excavator-prd skill: the reply', () => {
     expect(skill).not.toContain('Offer to write the PRD to the project');
   });
 
-  it('ends with the command that prints the reply, and the reply is what it prints', () => {
+  it('ends with the reply command, and the reply is exactly the lines it prints', () => {
     expect(skill.trimEnd().endsWith(`${REPLY_COMMAND}\n\`\`\`\n\n${REPLY_RULE}`)).toBe(true);
-    expect(flat(save)).toContain(`${LANGUAGE_RULE} ${REPLY}, putting in the fields \`aggregate\` printed and the default path: \`\`\`bash`);
+    expect(flat(save)).toContain(`${LANGUAGE_RULE} ${REPLY}: \`\`\`bash ${REPLY_COMMAND} \`\`\``);
   });
 
-  it('fills every place of the command from a field aggregate prints, and every field has its place', () => {
-    const places = [...REPLY_COMMAND.matchAll(/<([^<>]+)>/g)].map((m) => m[1]).filter((place) => place !== 'default path');
-    expect([...new Set(places)].sort()).toEqual([...AGGREGATE_FIELDS].sort());
-    expect(places).toHaveLength(AGGREGATE_FIELDS.length);
-  });
-
-  it('says to copy uncovered as the list aggregate printed, which jq joins', () => {
-    expect(flat(save)).toContain('In the command, `<uncovered>` is the list exactly as `aggregate` printed it, brackets and quotes included, on one line, and `<outIsDefault>` is `true` or `false` as `aggregate` printed it; `jq` joins the list.');
-  });
-
-  const replyLines = (values) => {
-    const command = skill.match(/```bash\n(# the reply:[\s\S]*?)```/)[1].replace(/<([^<>]+)>/g, (_, place) => values[place]);
-    const run = spawnSync('sh', ['-c', command], { encoding: 'utf-8' });
-    expect(run.status, run.stderr).toBe(0);
-    return run.stdout.split('\n').slice(0, -1);
-  };
-
-  it('prints the seven lines of the reply once its places are filled in', () => {
-    const values = {
-      prdPath: '/tmp/out/PRD.md',
-      'features.total': '5', 'features.written': '4', 'features.failed': '1',
-      diagrams: '9',
-      'findings.product': '3', 'findings.technical': '2',
-      'verification.verified': '40', 'verification.contradicted': '2', 'verification.misattributed': '1', 'verification.unverifiable': '0',
-      'verification.resolvedRight': '3', 'verification.resolvedWrong': '1', 'verification.stillOpen': '2',
-      'verification.conflicts': '0', 'verification.notChecked': '0',
-      uncovered: '["spring","laravel"]',
-      outIsDefault: 'true',
-      'default path': 'docs/PRD.md',
-    };
-    expect(replyLines(values)).toEqual([
-      '/tmp/out/PRD.md',
-      '4/5 features written, 1 failed',
-      '9 diagrams',
-      '3 product, 2 technical findings, anchors checked',
-      'Statements: 40 verified, 2 contradicted, 1 misattributed, 0 unverifiable; open items: 3 resolved right, 1 resolved wrong, 2 still open; cross-section conflicts: 0, not checked: 0',
-      'No entrypoint patterns for: spring, laravel',
-      'To save it in the project, say so: it goes to docs/PRD.md unless you give another path. Commit it to share it with the team.',
-    ]);
-  });
-
-  it('prints five lines, without the uncovered line or the offer, when the list is empty and --out was given', () => {
-    const values = Object.fromEntries([...AGGREGATE_FIELDS, 'default path'].map((field) => [field, '7']));
-    values.prdPath = '/elsewhere/PRD.md';
-    values.uncovered = '[]';
-    values.outIsDefault = 'false';
-    const lines = replyLines(values);
-    expect(lines).toHaveLength(5);
-    expect(lines[0]).toBe('/elsewhere/PRD.md');
-    expect(lines.join('\n')).not.toContain('To save it');
-    expect(lines.join('\n')).not.toContain('No entrypoint patterns');
+  it('holds no printf of the reply lines and no field for the model to fill in', () => {
+    expect(phase.get(4)).not.toContain('printf');
+    for (const words of ['features written', 'technical findings, anchors checked', 'No entrypoint patterns for', 'To save it in the project', '<prdPath>', '<uncovered>', '<outIsDefault>']) {
+      expect(skill, words).not.toContain(words);
+    }
   });
 });

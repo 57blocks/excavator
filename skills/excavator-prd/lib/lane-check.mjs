@@ -23,8 +23,11 @@ const cjk = (...points) => String.fromCodePoint(...points);
 
 /**
  * Words that make a finding's statement advice rather than a statement of the
- * defect. English words match as whole words, any case (the three marked
- * stems also with an ending: recommended, suggests, refactoring); the
+ * defect. Code spans (`...`) are removed first: a statement may name a key or
+ * a flag. English words match only in lower case and only as a word of their
+ * own, with no letter, digit, underscore or hyphen on either side (the three
+ * marked stems also with an ending: recommended, suggests, refactoring), so
+ * names such as Leave-Recommend, RecommendMail or should-not pass; the
  * Chinese ones (built from their code points) match anywhere. Words that
  * also state a fact (must, consider, improve, needs to be: "the user must be
  * an admin") are not in the list.
@@ -37,13 +40,13 @@ const STEMS = new Set(['recommend', 'suggest', 'refactor']);
 const ADVICE_MATCHERS = ADVICE_WORDS.map((word) => {
   if (/[^\x00-\x7f]/.test(word)) return { word, test: (text) => text.includes(word) };
   const body = word.split(' ').join('\\s+');
-  const regex = new RegExp(`\\b${body}${STEMS.has(word) ? '\\w*' : ''}\\b`, 'i');
+  const regex = new RegExp(`(?<![\\w-])${body}${STEMS.has(word) ? '\\w*' : ''}(?![\\w-])`);
   return { word, test: (text) => regex.test(text) };
 });
 
 /** The first advice word in `statement`, or null. */
 export function adviceWord(statement) {
-  const text = normalize(statement).text;
+  const text = normalize(statement.replace(/`[^`]*`/g, ' ')).text;
   return ADVICE_MATCHERS.find((matcher) => matcher.test(text))?.word ?? null;
 }
 

@@ -151,6 +151,29 @@ describe('prd.mjs check-lane: the advice words', () => {
     }
   });
 
+  it('passes advice words inside code spans, in names (capitalized, hyphenated or joined to a word) and other cases', () => {
+    const run = laneRun();
+    const findings = run.readJson('findings/F2.json');
+    for (const statement of [
+      'The Leave-Recommend page sends the mail twice.',
+      'The RecommendMail job runs before the order is saved.',
+      'The `refactor.mode` key and the `should` flag are read twice.',
+      'The should-not marker is ignored; the -Recommend suffix is dropped.',
+      'The leave-recommend route and the auto-suggest box return the list twice.',
+      'Recommend appears as a button label on two pages.',
+    ]) {
+      findings.findings[0].statement = statement;
+      run.writeJson('findings/F2.json', findings);
+      const out = runPrd(['check-lane', run.out, '--project', run.project, 'F2']);
+      expect(out.status, `${statement}\n${out.stdout}`).toBe(0);
+    }
+    for (const statement of ['The status should change.', 'The form (should) be checked.', 'It is recommended to retry.', 'The page suggests, then refactors.']) {
+      findings.findings[0].statement = statement;
+      run.writeJson('findings/F2.json', findings);
+      expect(runPrd(['check-lane', run.out, '--project', run.project, 'F2']).status, statement).toBe(1);
+    }
+  });
+
   it('refuses exactly these words: the English ones and six Chinese ones', () => {
     const cjk = (...points) => String.fromCodePoint(...points);
     expect(ADVICE_WORDS).toEqual([
