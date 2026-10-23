@@ -28,11 +28,23 @@ export const NOT_DRAWN = "In the graph, but no layer draws it or a node that con
 
 export const fileNodeId = (path: string): string => `file:${path}`;
 
+const SUB_FILE_TYPES = new Set(["function", "class"]);
+
+/**
+ * Whether the layer view draws a node of this type that its layer lists: one of
+ * `visibleTypes`, and no function or class for the non-technical persona
+ * (Overview). GraphView filters a layer's nodes by this rule, so a row's node is
+ * judged drawn exactly when the graph draws it.
+ */
+export function drawnInLayer(type: string, persona: string, visibleTypes: ReadonlySet<string>): boolean {
+  return visibleTypes.has(type) && !(persona === "non-technical" && SUB_FILE_TYPES.has(type));
+}
+
 /** The nodes of the graph as the structural view draws them. */
 export type GraphIndex = {
   /** Every node id of the knowledge graph. */
   nodeIds: ReadonlySet<string>;
-  /** The node ids some layer lists: the ones the structural view draws. */
+  /** The node ids the structural view draws: listed by a layer and passing `drawnInLayer`. */
   drawn: ReadonlySet<string>;
   /** A node's container: the source of a `contains` edge that points at it. */
   parentOf: ReadonlyMap<string, string>;

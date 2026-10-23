@@ -428,9 +428,11 @@ export const useDashboardStore = create<DashboardStore>()((set, get) => ({
       set({
         selectedNodeId: nodeId,
         nodeHistory: [...nodeHistory, selectedNodeId].slice(-MAX_HISTORY),
+        // Excavator: a node chosen in the graph ends the reveal of one chosen from outside it.
+        revealNodeId: null,
       });
     } else {
-      set({ selectedNodeId: nodeId });
+      set({ selectedNodeId: nodeId, revealNodeId: null });
     }
   },
 
@@ -585,6 +587,8 @@ export const useDashboardStore = create<DashboardStore>()((set, get) => ({
       containerSizeMemory: new Map(),
       expandedContainers: new Set(),
       pendingFocusContainer: null,
+      // Excavator: a node revealed under the old persona is not moved to under the new one.
+      revealNodeId: null,
     }),
 
   openCodeViewer: (nodeId) =>

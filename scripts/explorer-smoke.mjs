@@ -450,6 +450,19 @@ const PROBE = `(async () => {
   press(pv.action('show-in-graph'));
   await sleep(500);
   unused.show = { closed: pv.overlay() === null, rowGone: pv.detail() === null, side: pv.side(), drawn: Boolean(card(LEAF)) };
+  // In Overview the layer view draws no function, so the row is shown through its file.
+  button('Overview').click();
+  await sleep(300);
+  await pv.open('unused');
+  await pv.pick('unused', LEAF);
+  unused.overview = { note: pv.note('container'), show: Boolean(pv.action('show-in-graph')) };
+  press(pv.action('show-in-graph'));
+  await until(() => card('file:src/util.js'));
+  await sleep(300);
+  unused.overview.drawn = Boolean(card('file:src/util.js'));
+  unused.overview.side = pv.side();
+  button('Learn').click();
+  await sleep(300);
   out.unusedViewRows = unused;
 
   // Hotspots (made from another revision): the notice, counts, a file row, a directory row, Show in graph.
@@ -656,6 +669,7 @@ function judgeViews(probe) {
       ['Escape clears the row first, then closes the view', u.escapeRow === true && u.escapeView === true],
       ['Open code shows the inlined source with its line marked', u.openCode === true && u.markedLines >= 1],
       ['Escape closes the code viewer before the row', u.escapeCodeFirst === true],
+      ['in Overview, which draws no function, Show in graph names and selects the file that holds it, drawn', u.overview?.show === true && has(u.overview?.note, 'file:src/util.js') && u.overview?.drawn === true && has(u.overview?.side, 'util.js') && !/summary was removed/i.test(u.overview?.side ?? '')],
       ['Show in graph closes the view, draws the node and the sidebar shows the node info', u.show?.closed === true && u.show?.drawn === true && u.show?.rowGone === true && has(u.show?.side, 'leaf') && /summary was removed/i.test(u.show?.side ?? '')],
       ['no advisory wording', u.advice === false],
     ]),

@@ -2,7 +2,8 @@ import { useMemo } from "react";
 import { hasInlineSource } from "../../../offline/inlineData";
 import { useDashboardStore } from "../../../store";
 import { codeAction } from "../codeAction";
-import { containersOf, locate, type GraphTarget } from "../graphTarget";
+import { STRUCTURAL_VISIBLE_TYPES } from "../../../components/GraphView";
+import { containersOf, drawnInLayer, locate, type GraphTarget } from "../graphTarget";
 
 /**
  * The two moves of a row's details: "Show in graph" and "Open code" (openspec:
@@ -16,10 +17,12 @@ export function RowActions({ target, path, range }: { target: GraphTarget | null
   const navigateToNodeInLayer = useDashboardStore((s) => s.navigateToNodeInLayer);
   const openCodeViewerAt = useDashboardStore((s) => s.openCodeViewerAt);
   const nodeIdToLayerId = useDashboardStore((s) => s.nodeIdToLayerId);
-  const index = useMemo(
-    () => ({ nodeIds: new Set((graph?.nodes ?? []).map((n) => n.id)), drawn: new Set(nodeIdToLayerId.keys()), parentOf: containersOf(graph?.edges ?? []) }),
-    [graph, nodeIdToLayerId],
-  );
+  const persona = useDashboardStore((s) => s.persona);
+  const index = useMemo(() => {
+    const nodes = graph?.nodes ?? [];
+    const drawn = new Set(nodes.filter((n) => nodeIdToLayerId.has(n.id) && drawnInLayer(n.type, persona, STRUCTURAL_VISIBLE_TYPES)).map((n) => n.id));
+    return { nodeIds: new Set(nodes.map((n) => n.id)), drawn, parentOf: containersOf(graph?.edges ?? []) };
+  }, [graph, nodeIdToLayerId, persona]);
   const located = target === null ? null : locate(target, index);
   const code = codeAction(path, range, (p) => hasInlineSource(p));
 

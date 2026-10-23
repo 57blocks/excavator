@@ -41,9 +41,20 @@ describe("a node chosen from outside the view closes the view", () => {
     expect(useDashboardStore.getState().revealNodeId).toBeNull();
   });
 
-  it("asks for no reveal when a node is selected in the graph itself", () => {
+  it("asks for no reveal when a node is selected in the graph itself, and a selection in the graph ends one", () => {
     useDashboardStore.getState().setGraph(graph());
     useDashboardStore.getState().selectNode("b1");
+    expect(useDashboardStore.getState().revealNodeId).toBeNull();
+    useDashboardStore.getState().navigateToNodeInLayer("a1");
+    expect(useDashboardStore.getState().revealNodeId).toBe("a1");
+    useDashboardStore.getState().selectNode("b1");
+    expect(useDashboardStore.getState().revealNodeId).toBeNull();
+  });
+
+  it("ends a reveal when the persona changes", () => {
+    useDashboardStore.getState().setGraph(graph());
+    useDashboardStore.getState().navigateToNodeInLayer("a1");
+    useDashboardStore.getState().setPersona("non-technical");
     expect(useDashboardStore.getState().revealNodeId).toBeNull();
   });
 

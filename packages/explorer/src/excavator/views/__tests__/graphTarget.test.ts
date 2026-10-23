@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { containersOf, fileNodeId, locate, NO_SINGLE_NODE, NOT_DRAWN, NOT_IN_GRAPH, type GraphIndex } from "../graphTarget";
+import { containersOf, drawnInLayer, fileNodeId, locate, NO_SINGLE_NODE, NOT_DRAWN, NOT_IN_GRAPH, type GraphIndex } from "../graphTarget";
 
 const nodeIds = new Set(["file:src/a.js", "function:src/a.js:run", "file:src/dir/b.js"]);
 // Every node drawn: the case of a layer that lists functions too.
@@ -62,5 +62,24 @@ describe("locate: a node the structural view does not draw", () => {
 
   it("still selects a drawn node itself", () => {
     expect(locate({ kind: "file", path: "src/a.js" }, files)).toEqual({ kind: "node", nodeId: "file:src/a.js" });
+  });
+});
+
+describe("drawnInLayer: the rule the layer view draws a listed node by", () => {
+  const visible = new Set(["file", "function", "class", "config"]);
+
+  it("draws functions and classes for the technical personas", () => {
+    expect(drawnInLayer("function", "junior", visible)).toBe(true);
+    expect(drawnInLayer("class", "experienced", visible)).toBe(true);
+  });
+
+  it("draws no function or class in Overview, but still files", () => {
+    expect(drawnInLayer("function", "non-technical", visible)).toBe(false);
+    expect(drawnInLayer("class", "non-technical", visible)).toBe(false);
+    expect(drawnInLayer("file", "non-technical", visible)).toBe(true);
+  });
+
+  it("draws no type outside the visible ones", () => {
+    expect(drawnInLayer("table", "junior", visible)).toBe(false);
   });
 });

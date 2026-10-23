@@ -24,6 +24,7 @@ import ContainerNode from "./ContainerNode";
 import type { ContainerFlowNode, ContainerNodeData } from "./ContainerNode";
 import Breadcrumb from "./Breadcrumb";
 import { useDashboardStore } from "../store";
+import { drawnInLayer } from "../excavator/views/graphTarget";
 import type {
   GraphEdge,
   GraphNode,
@@ -452,14 +453,12 @@ function useLayerDetailTopology(): LayerDetailTopology & {
       }
     }
 
-    const subFileTypes = new Set(["function", "class"]);
     const allVisibleTypes = STRUCTURAL_VISIBLE_TYPES;
 
     let filteredGraphNodes = graph.nodes.filter((n) => {
       if (!expandedLayerNodeIds.has(n.id)) return false;
-      if (!allVisibleTypes.has(n.type)) return false;
-      if (persona === "non-technical" && subFileTypes.has(n.type)) return false;
-      return true;
+      // Excavator: the rule is shared with the product rows' Show in graph (excavator/views/graphTarget.ts).
+      return drawnInLayer(n.type, persona, allVisibleTypes);
     });
 
     filteredGraphNodes = filteredGraphNodes.filter((n) => {
