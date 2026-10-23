@@ -142,6 +142,17 @@ go-multirepo 的产物里没有导览与 doc-map。用户 2026-10-23 先要求�
 
 2,106 个文件节点的「unchecked」也不是缺数据：核验本来只查有锚点的符号。
 
+### D4d 项目名取项目自己的
+
+用户 2026-10-23：「项目名称……需要获取真实的项目名称，最好能加到代码逻辑中，这样其他项目也能正确展示」。go-multirepo 的页面标题是 `excavator-snapshot-multi-xxxxxx`：分析从临时快照目录读源码，`lazy-analyze.mjs` 的确定性命名（根目录 `package.json` 的 `name`，否则目录名）拿的是快照目录，而不是用户的项目根；之后的增量运行沿用旧图的名字，错名一直留着。git 项目（`excavator-snapshot-git-`）与目录项目（`excavator-snapshot-dir-`）同样受影响，只要根目录没有带 `name` 的 `package.json`。
+
+改两处，用同一条规则：
+- 快照目录前缀集中到一处（`source-snapshot/snapshot-dir.mjs`），三种快照都用它建目录，并给出「这个名字是不是快照目录名」的判断；
+- 分析：`package.json` 仍从快照读（内容相同），没有时用项目根目录的名字；旧图的名字是快照目录名时不沿用；
+- 打包：图里的名字是快照目录名时换成项目根目录的名字（与修好的分析给出的一致，因为那时根目录没有带 `name` 的 `package.json`），别的名字原样。已经产出的图不用重跑分析也显示对的名字。
+
+不用领域图里的名字（例如模型写的全称）：那是模型写的叙述，不是确定的事实。`view.html` 这次不改（「旧查看器不变」），重新分析后它也显示对的名字。
+
 ### D5 验收在真实浏览器里从磁盘打开
 
 用 headless Chrome 打开 `file://…/explorer.html`，在 go-multirepo 上逐项操作：
