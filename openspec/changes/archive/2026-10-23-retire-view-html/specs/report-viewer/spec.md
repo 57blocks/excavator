@@ -50,7 +50,7 @@
 - hotspots（`hotspots.json`）
 - 导览（`tour.json`）
 
-状态只有四种：
+产物文件的状态只有四种：
 - **included**：读到并放进页面；
 - **not run**：文件不存在。给出生成它的命令；
 - **unreadable**：文件存在但读不了或格式不对（不是 JSON、`format` 或版本不是打包认识的版本、缺必需字段）。写出原因，页面 MUST NOT 部分显示它。以下也属于这一类：
@@ -60,6 +60,10 @@
 - **different revision**：读到并放进页面，但产物记录的源码版本与打包时源码快照的版本不同。内容照常显示，并写出两个版本。导览例外：它的 `factDigest` 与知识图谱的 `factsDigest` 不同时为 different revision，图里不放它的步骤（步骤里的节点 id 可能已对不上）。
 
 产物没有记录源码版本时，SHALL 为 included 并注明「没有记录版本」，MUST NOT 当作版本相同。
+
+状态 SHALL 是页面实际放进去的情况：
+- 知识图谱的文件头通过、但打包读全文时拒绝了正文（例如有不认识的记录类型），页面不放图，知识图谱 SHALL 为 unreadable 并写出原因；
+- 页面没有知识图谱时，语义与导览没有地方放。它们本身读得到时 SHALL 写为 **not shown**，原因是没有知识图谱可放；本身 not run 或 unreadable 时照原状态写。
 
 `/excavator-view` 的回复 SHALL 写出每个产物的状态（见「/excavator-view skill」）。页面里，unused-code、hotspots、doc-map 的状态由它们各自的视图写出（见「离线仪表盘的产物视图」）；知识图谱与领域图的版本由页面顶部的版本提示写出（见「离线仪表盘」）；其余产物不在或读不了时，页面照副本自己的空状态显示。
 
@@ -130,7 +134,7 @@
    - `Products: knowledge graph <状态>; semantics <状态>; domain graph <状态>; unused code <状态>; doc map <状态>; hotspots <状态>; tour <状态>`
    - `Source: embedded (<N> files)` 或 `Source: not embedded`
 
-五行的内容 SHALL 全部取自页面里打包写下的 manifest，所以回复说的就是页面里有的东西。
+`Explorer:` 是写出的路径，`Size:` 是写出文件的大小；`Issues:`、`Products:`、`Source:` 三行 SHALL 取自页面里打包写下的 manifest，所以回复说的就是页面里有的东西。
 
 skill MUST NOT 启动 HTTP 服务，MUST NOT 运行任何分析，MUST NOT 改动 `.excavator/` 下除写出的页面以外的任何文件。没有任何产物时，它仍写出页面，并在回复里写明全部产物都是 not run。
 

@@ -14,7 +14,9 @@
  *   { out, bytes, snapshotRevision, products: [{ name, status, reason?, revision?, note?, counts? }],
  *     source: { embedded, requested, limitBytes, counts },
  *     issues: { total, byKind, fatal } | null, keys: { <key>: <bytes> }, rows: [{ key, status, reason? }] }
- * with `status` one of included, not-run, unreadable, different-revision.
+ * with `status` one of included, not-run, unreadable, different-revision, or not-shown for semantics
+ * or a tour the page has no knowledge graph to hold. Each status is what the page holds: a graph
+ * whose body the page refuses is unreadable even when its header passed.
  * The page is the explorer copy's template with the products in the copy's own data
  * shape (explorer-data.mjs); `issues` is what the copy's own validator reports for the
  * graph it will show, null when there is no graph. Any other page beside it, such as
@@ -83,6 +85,27 @@ function writeAtomic(path, bytes) {
   }
 }
 
+const READABLE = new Set(['included', 'different-revision']);
+/** The products the page holds only inside the knowledge graph. */
+const HELD_IN_GRAPH = new Set(['semantics', 'tour']);
+const NO_GRAPH_REASON = 'there is no knowledge graph to hold it';
+
+/**
+ * Each product's entry as the page holds it. The entries judge the graph by its header; the page reads the whole
+ * body, so a body it refuses makes the graph unreadable, and readable semantics or a readable tour then have no
+ * graph to go into and are not shown.
+ */
+function heldEntries(entries, rows) {
+  const graphRow = rows.find((row) => row.key === GRAPH_KEY);
+  const graphHeld = graphRow.status === 'included';
+  return entries.map((entry) => {
+    const { name, file } = entry;
+    if (name === 'knowledge-graph' && graphRow.status === 'unreadable' && entry.status !== 'unreadable') return { name, file, status: 'unreadable', reason: graphRow.reason };
+    if (!graphHeld && HELD_IN_GRAPH.has(name) && READABLE.has(entry.status)) return { name, file, status: 'not-shown', reason: NO_GRAPH_REASON };
+    return entry;
+  });
+}
+
 function resultProduct(entry) {
   const row = { name: entry.name, status: entry.status };
   if (entry.reason) row.reason = entry.reason;
@@ -101,15 +124,16 @@ function packExplorer({ root, dataDir, snapshotRevision, products, sources, temp
   const { data, rows } = buildExplorerData({ root, dataDir, snapshotRevision, products, sources });
   const issues = data[GRAPH_KEY] ? countIssues(validateGraph, data[GRAPH_KEY]) : null;
   const keys = Object.fromEntries(Object.entries(data).map(([key, value]) => [key, Buffer.byteLength(JSON.stringify(value))]));
+  const held = heldEntries(products.entries, rows);
   const manifest = {
     explorer: EXPLORER_MANIFEST_VERSION,
-    products: products.entries.map(({ name, status }) => ({ name, status })),
+    products: held.map(({ name, status }) => ({ name, status })),
     source: { embedded: sources.manifest.embedded, counts: sources.manifest.counts },
     issues,
     keys,
     rows,
   };
-  return { page: assembleExplorerPage({ templatePath, data, manifest }), issues, keys, rows };
+  return { page: assembleExplorerPage({ templatePath, data, manifest }), held, issues, keys, rows };
 }
 
 /**
@@ -144,7 +168,7 @@ export function packProject(rootArg, options = {}) {
     out,
     bytes: explorer.page.length,
     snapshotRevision: snapshot.revision,
-    products: products.entries.map(resultProduct),
+    products: explorer.held.map(resultProduct),
     source: summarizeSources(sources.manifest),
     issues: explorer.issues,
     keys: explorer.keys,

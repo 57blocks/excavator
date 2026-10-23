@@ -338,6 +338,21 @@ describe('a product that is missing is a missing key', () => {
     expect(manifest.rows.find((row) => row.key === 'tour').status).toBe('unused');
   });
 
+  it('reports a refused graph as unreadable, and the semantics and tour it would hold as not shown', () => {
+    writeGraph();
+    const path = join(project.root, '.excavator', 'knowledge-graph.jsonl');
+    writeProduct(project.root, 'knowledge-graph.jsonl', `${readFileSync(path, 'utf-8')}{"record":"mystery"}\n`);
+    writeProduct(project.root, 'source-manifest.json', sourceManifest(project.revision, []));
+    writeProduct(project.root, 'semantic-cache.json', semanticCache({}));
+    writeProduct(project.root, 'semantic-graph.json', semanticGraph({ factDigest: DIGEST }));
+    writeProduct(project.root, 'tour.json', tourProduct({ sourceRevision: project.revision, factDigest: DIGEST }));
+    const { manifest, result } = pack();
+    const states = Object.fromEntries(manifest.products.map(({ name, status }) => [name, status]));
+    expect(states).toMatchObject({ 'knowledge-graph': 'unreadable', semantics: 'not-shown', tour: 'not-shown' });
+    expect(result.products.find((p) => p.name === 'knowledge-graph')).toMatchObject({ status: 'unreadable', reason: expect.stringMatching(/unknown record type/) });
+    expect(result.products.find((p) => p.name === 'tour')).toMatchObject({ status: 'not-shown', reason: 'there is no knowledge graph to hold it' });
+  });
+
   it('names the two keys no product produces', () => {
     writeGraph();
     const rows = pack().manifest.rows.filter((row) => row.status === 'not-produced');

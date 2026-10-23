@@ -48,6 +48,8 @@ Source: <embedded (N files) | not embedded>
 
 `issues`、`keys`、`rows` 不变。回复只读这一个 manifest。
 
+`products` 的状态是页面实际放进去的情况（评审第 1 轮补）：`collectProducts` 只看知识图谱的文件头，打包读全文时拒绝了正文，页面就没有图，知识图谱写为 `unreadable`；没有图时，读得到的语义与导览写为 `not-shown`。打包结果的 `products` 用同样的状态。
+
 ### D4 打包代码删什么
 
 - `page-assembly.mjs`：删去 `assemblePage`、`dataBlocks`、`encodePayload` 与 `TEMPLATE_PATH`。explorer 页的组装与内容安全策略不变。
