@@ -43,3 +43,7 @@ Node ≥ 22，pnpm（版本按 `package.json` 的 `packageManager`），vitest�
   - `Privacy scan`（`.github/workflows/privacy.yml`）：用仓库 secret 里的名单扫 PR 带来的文字（新增行、提交信息、路径、标题与正文），只报计数。
 - PR 分支要与 `main` 同步才能合并：`main` 前进后先合入最新 `main`，等两个检查重新变绿。
 - 本地仍按上表只跑与改动相关的检查。
+
+## 审查
+- 风险档、由谁审查、回应与收敛的规则写在 `REVIEW.md`。它是高档文件：改它的 PR 由用户合并，agent 不能自己放宽这些规则。开 PR 前按它定档，合并前按它做完。
+- PR 正文按 `.github/pull_request_template.md` 的四节写：Summary、Testing、Risk tier、How to revert。`gh pr create --body-file` 不会套用模板。

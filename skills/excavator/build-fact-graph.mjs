@@ -56,6 +56,7 @@ import {
   mapDeclarationKind,
   assignOrdinals,
   lookupCandidates,
+  callScopePaths,
   canonicalizeForDigest,
   createGapCollector,
 } from './fact-graph-resolve.mjs';
@@ -463,7 +464,8 @@ export function buildFactGraph({ scan, structureAll, importMap, mentionSites, me
   // calls: source (caller) and target (callee) must EACH resolve to exactly
   // one declaration, or the call site is a gap — never a guessed edge (D3).
   // Scope for the callee is the caller's own file plus its import-map-
-  // resolved internal targets; scope for the caller is its own file only
+  // resolved internal targets, less those only a re-export reaches
+  // (`callScopePaths`); scope for the caller is its own file only
   // (a call graph entry's `caller` is always a function declared in that
   // file). `callee`/`caller` text is matched verbatim (no receiver/dot
   // splitting) — the same conservative rule already used by
@@ -554,7 +556,7 @@ export function buildFactGraph({ scan, structureAll, importMap, mentionSites, me
 
   for (const row of fileRows) {
     if (isJava(row)) continue;
-    const scope = [row.path, ...(importMapSafe.importMap?.[row.path] ?? [])];
+    const scope = callScopePaths(importMapSafe, row.path);
     const lang = languageOfPath.get(row.path) ?? row.language ?? 'unknown';
     for (const site of row.callGraph ?? []) {
       const targets = lookupCandidates(declByPathName, scope, site.callee);
