@@ -740,6 +740,11 @@ export const useDashboardStore = create<DashboardStore>()((set, get) => ({
   setProductRow: (row) => set({ productRow: row }),
 
   setViewMode: (mode) => {
+    // Excavator: the mode already shown under a product view only closes the view, keeping the graph's selection.
+    if (get().productView !== null && get().viewMode === mode) {
+      set({ productView: null, productRow: null });
+      return;
+    }
     set({
       // Excavator: the Domain / Structural switch always returns to the graph.
       productView: null,

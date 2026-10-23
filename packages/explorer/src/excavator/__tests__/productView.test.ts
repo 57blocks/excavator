@@ -59,6 +59,24 @@ describe("the product views in the store", () => {
     expect(useDashboardStore.getState().viewMode).toBe("structural");
   });
 
+  it("keeps the selected node when the mode already shown closes the view", () => {
+    useDashboardStore.getState().selectNode("file:src/a.js");
+    useDashboardStore.getState().openProductView("unused");
+    useDashboardStore.getState().setProductRow({ id: "u1" });
+    useDashboardStore.getState().setViewMode(useDashboardStore.getState().viewMode);
+    expect(useDashboardStore.getState().productView).toBeNull();
+    expect(useDashboardStore.getState().productRow).toBeNull();
+    expect(useDashboardStore.getState().selectedNodeId).toBe("file:src/a.js");
+  });
+
+  it("clears the selection when the switch changes the mode, as without a view", () => {
+    useDashboardStore.getState().selectNode("file:src/a.js");
+    useDashboardStore.getState().openProductView("unused");
+    useDashboardStore.getState().setViewMode("domain");
+    expect(useDashboardStore.getState().viewMode).toBe("domain");
+    expect(useDashboardStore.getState().selectedNodeId).toBeNull();
+  });
+
   it("leaves the view mode alone when a view opens", () => {
     useDashboardStore.getState().setViewMode("domain");
     useDashboardStore.getState().openProductView("unused");

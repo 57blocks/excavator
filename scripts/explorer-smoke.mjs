@@ -375,6 +375,12 @@ const PROBE = `(async () => {
     await sleep(200);
     out.viewClosed = pv.overlay() === null;
     out.selectionKept = selectedBefore.includes('util.js') && pv.side() === selectedBefore;
+    // Structural, the mode already shown, closes a view the same way.
+    press(pv.button('unused'));
+    await until(() => pv.overlay());
+    press(document.querySelector('header button[title="Structural"]'));
+    await sleep(200);
+    out.structuralKept = pv.overlay() === null && pv.side() === selectedBefore;
     button('Project').click();
     await until(() => card('layer:app'));
     button('Learn').click();
@@ -600,8 +606,8 @@ export function judge(result) {
       ok: probe.onboardingShown === false && probe.headerFilesClasses === false && probe.headerTypeChips === false
         && JSON.stringify(probe.productButtons) === JSON.stringify(['Unused', 'Hotspots', 'Doc map'])
         && probe.unusedView === true && probe.unusedStatus === true && probe.graphMounted === true && probe.overlayArea === true && probe.columnCentred === true
-        && probe.unusedPressed === true && probe.viewClosed === true && probe.selectionKept === true,
-      detail: `onboarding=${probe.onboardingShown} Files/Classes=${probe.headerFilesClasses} type chips=${probe.headerTypeChips} buttons=${(probe.productButtons ?? []).join('|')} unused view=${probe.unusedView} state and revision=${probe.unusedStatus} graph mounted=${probe.graphMounted} covers graph area only=${probe.overlayArea} centred column<=1100=${probe.columnCentred} pressed=${probe.unusedPressed} closed by a second click=${probe.viewClosed} selection kept=${probe.selectionKept}`,
+        && probe.unusedPressed === true && probe.viewClosed === true && probe.selectionKept === true && probe.structuralKept === true,
+      detail: `onboarding=${probe.onboardingShown} Files/Classes=${probe.headerFilesClasses} type chips=${probe.headerTypeChips} buttons=${(probe.productButtons ?? []).join('|')} unused view=${probe.unusedView} state and revision=${probe.unusedStatus} graph mounted=${probe.graphMounted} covers graph area only=${probe.overlayArea} centred column<=1100=${probe.columnCentred} pressed=${probe.unusedPressed} closed by a second click=${probe.viewClosed} selection kept=${probe.selectionKept} kept after Structural=${probe.structuralKept}`,
     },
     ...judgeViews(probe),
     // view-smoke gives the page's script 15 s; a probe near that limit would fail by timing, not by a defect.
