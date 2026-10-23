@@ -382,6 +382,22 @@ describe('summaries and verdicts', () => {
     expect(product.gaps).toContain('There is no semantic cache; summaries are the graph nodes\' own summaries.');
   });
 
+  it('without a semantic cache, blanks a graph summary the verifier contradicted and keeps each node\'s own verdict', () => {
+    writeGraph(project.root, {
+      paths: ['s.go'],
+      nodes: [
+        fileNode('a.go', { summary: 'Graph summary of a.go.', verification: 'verified' }),
+        fileNode('b.go', { summary: 'Opens a socket and retries forever.', verification: 'contradicted' }),
+      ],
+      edges: ['a.go', 'b.go'].map((to) => imports('s.go', to)),
+    });
+    const product = candidates();
+    expect(product.sources.summaries).toBe('graph');
+    expect(byId(product, 'file:a.go')).toMatchObject({ summary: 'Graph summary of a.go.', summarySource: 'graph', verification: 'verified' });
+    expect(byId(product, 'file:b.go')).toMatchObject({ summary: '', summarySource: 'none', verification: 'contradicted' });
+    expect(JSON.stringify(product)).not.toContain('retries forever');
+  });
+
   it('says no candidate has a summary when every summary is empty', () => {
     writeGraph(project.root, { paths: ['s.go', ...targets], edges: targets.map((to) => imports('s.go', to)) });
     const product = candidates();

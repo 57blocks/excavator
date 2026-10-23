@@ -207,6 +207,25 @@ describe('the semantic product of a full analysis', () => {
     expect(manifest.rows.find((row) => row.key === 'semantics')).toEqual({ key: 'semantics', status: 'merged', reason: "3 nodes; 0 entries for ids the graph lacks; 1 layers replace the graph's" });
   });
 
+  it('blanks a summary the graph itself marks contradicted, with or without a semantic cache, and keeps the verdict', () => {
+    const contradictedGraph = () => {
+      const value = graph();
+      Object.assign(value.nodes.find((n) => n.id === 'function:src/b.js:load'), { summary: 'Opens a socket and retries forever.', verification: 'contradicted' });
+      return value;
+    };
+    writeGraph(contradictedGraph());
+    let packed = pack();
+    expect(nodeOf(packed.data, 'function:src/b.js:load')).toMatchObject({ summary: '', verification: 'contradicted' });
+    expect(packed.html).not.toContain('retries forever');
+
+    writeFull({ entries: { 'file:src/a.js': { summary: 'Runs the job.', tags: [], semanticSourceHash: HASH_A } }, layers: [] });
+    writeGraph(contradictedGraph());
+    packed = pack();
+    expect(nodeOf(packed.data, 'function:src/b.js:load')).toMatchObject({ summary: '', verification: 'contradicted' });
+    expect(nodeOf(packed.data, 'file:src/a.js')).toMatchObject({ summary: 'Runs the job.' });
+    expect(packed.html).not.toContain('retries forever');
+  });
+
   it('carries each entry\'s verdict onto its node, and writes none for an entry without one', () => {
     writeFull({
       entries: {

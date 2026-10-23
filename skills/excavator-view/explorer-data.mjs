@@ -32,7 +32,8 @@
  * tags are the entry's when there are any, else the node's own; its `verification` is the
  * entry's verdict when it has one (the copy shows it beside the summary); the semantic layers
  * replace the graph's when there is at least one. Entries for ids the graph lacks are
- * counted, not placed.
+ * counted, not placed. A summary whose verdict is contradicted is empty whichever source the
+ * verdict came from: a graph verified without a semantic cache keeps the verdict on its nodes.
  *
  * The graph's `tour` is replaced by the steps of `tour.json` (`order`, `title`,
  * `description`, `nodeIds`) only when `tour.mjs` judged that tour to be made from the
@@ -158,6 +159,11 @@ function mergedText(node, entry) {
   return { summary: nonEmpty(entry.summary) ? entry.summary : ownSummary, tags, ...verdict };
 }
 
+/** Blanks, in place, the summary of every node whose verdict is contradicted, whichever source the verdict came from. */
+function blankContradicted(graph) {
+  for (const node of graph.nodes) if (node.verification === CONTRADICTED) node.summary = '';
+}
+
 /** Merges the semantic product into the graph in place; the row says what it gave. */
 function mergeSemantics(graph, products) {
   const entry = entryOf(products, 'semantics');
@@ -224,6 +230,7 @@ export function buildExplorerData({ root, dataDir, products, sources }) {
   const tour = readTourSteps(products);
   if (graph.graph) {
     rows.push(mergeSemantics(graph.graph, products));
+    blankContradicted(graph.graph);
     if (tour.steps !== null) graph.graph.tour = tour.steps;
     data[GRAPH_KEY] = graph.graph;
   } else {

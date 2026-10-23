@@ -36,7 +36,8 @@
  * Summaries follow the viewer (`excavator-view/semantics.mjs`, called directly):
  * a fresh semantic-cache entry's summary, blank when a verifier contradicted it,
  * with the verdict beside it. Only when there is no readable semantic cache is the
- * graph node's own summary used; a node with neither has an empty summary.
+ * graph node's own summary used, with the node's own verdict, and blank when that verdict is
+ * contradicted; a node with neither has an empty summary.
  *
  * Product `.excavator/tour/candidates.json`, written through a temporary file and
  * a rename; the same inputs give the same bytes.
@@ -369,11 +370,15 @@ export function computeCandidates(rootArg) {
   };
 }
 
-/** `summary` and its provenance for a node: a fresh cache entry (blank when contradicted) or, without a readable cache, the graph's own summary. */
+/**
+ * `summary` and its provenance for a node: a fresh cache entry (blank when contradicted) or, without a readable cache,
+ * the graph's own summary and verdict (blank when the verifier contradicted it).
+ */
 function summaryFields(node, summaries) {
   if (summaries === null) {
-    const own = typeof node.summary === 'string' ? node.summary : '';
-    return { summary: own, summarySource: own === '' ? 'none' : 'graph', verification: null };
+    const verification = typeof node.verification === 'string' && node.verification !== '' ? node.verification : null;
+    const own = typeof node.summary === 'string' && verification !== 'contradicted' ? node.summary : '';
+    return { summary: own, summarySource: own === '' ? 'none' : 'graph', verification };
   }
   const row = summaries.get(node.id);
   if (!row) return { summary: '', summarySource: 'none', verification: null };
