@@ -60,6 +60,7 @@ describe('prd.mjs index.json lock', () => {
       expect(out.status, command).toBe(2);
       expect(out.stderr, command).toContain(lockOf(run.out));
       expect(out.stderr, command).toContain('pid 4242');
+      expect(out.stderr, command).toContain('when no other prd.mjs command of this run is still running, delete it and run the command again; never delete it while a command runs');
     }
     expect(run.readText('index.json')).toBe(before);
     expect(existsSync(lockOf(run.out))).toBe(true);

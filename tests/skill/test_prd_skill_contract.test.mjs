@@ -109,6 +109,10 @@ describe('excavator-prd skill: setup, defaults and resume', () => {
     expect(phase.get(1)).toContain('`sourceRevision`: the `currentSourceRevision` Phase 0 printed');
   });
 
+  it('says to delete a stale index lock only when no other prd.mjs command of the run is running', () => {
+    expect(phase.get(0)).toContain('When a `prd.mjs` command exits 2 naming `$OUT/index.json.lock` and no other `prd.mjs` command of this run is still running (this skill runs them one at a time), delete that lock file and run the command again; never delete it while a command runs.');
+  });
+
   it('checks the index before it resumes, and fixes it in place without dispatching when check-index fails', () => {
     const setup = phase.get(0);
     const check = setup.indexOf(`node ${PRD} check-index "$OUT" --project "$PROJECT_ROOT"`);
@@ -372,6 +376,10 @@ describe('excavator-prd skill: verify and aggregate', () => {
 
   it('runs aggregate, then assemble', () => {
     const verify = phase.get(3);
+    const conserved = verify.indexOf('`aggregate` exits 1 when a candidate or a status is not conserved');
+    expect(conserved).toBeGreaterThan(-1);
+    expect(conserved).toBeLessThan(verify.indexOf('`reply` (Phase 4) prints the reply from what `aggregate` recorded.'));
+    expect(verify).not.toContain('It exits 1 when a candidate or a status is not conserved');
     const aggregate = verify.indexOf(`node ${PRD} aggregate "$OUT"`);
     const assemble = verify.indexOf(`node ${PRD} assemble "$OUT"`);
     expect(aggregate).toBeGreaterThan(-1);

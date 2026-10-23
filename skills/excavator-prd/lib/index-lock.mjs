@@ -51,7 +51,7 @@ function acquire(path) {
       if (error.code !== 'EEXIST') throw error;
     }
     if (Date.now() >= deadline) {
-      throw new UsageError(`${path} is held by ${holder(path)} after waiting ${wait / 1000} s; when no other prd.mjs command runs on this directory, delete the file and run the command again`);
+      throw new UsageError(`${path} is held by ${holder(path)} after waiting ${wait / 1000} s; when no other prd.mjs command of this run is still running, delete it and run the command again; never delete it while a command runs`);
     }
     sleep(RETRY_MS);
   }
