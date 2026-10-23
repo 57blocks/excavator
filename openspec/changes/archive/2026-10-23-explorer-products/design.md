@@ -59,3 +59,23 @@
 - 三个产物原文让 `explorer.html` 变大（与 `view.html` 内嵌的同量）→ 打包回复里已有每个键的字节数，验收记下增量。
 - 复制的取数模块与 `report-view` 并存到退役为止，期间改一处要记得另一处 → 退役变更删旧目录；本变更不改这些模块的行为。
 - 去掉类视图后，想看类与函数只能在层内下钻或聚焦里看 → 用户的明确要求。
+
+## 验收记录（2026-10-23）
+
+**O1 单测**：打包 `explorer-pack.test.mjs` 47 条，含五个新键、四种状态与 `products.json.snapshotRevision`；先红后绿（`snapshotRevision` 最初取自 `staleness.json`，改为取打包的源码快照版本）。复制来的取数模块单测 103 条原样通过；`productView.test.ts`、`productStates.test.ts`、`productRows.test.ts` 覆盖切换保留选中、状态读取与行字段。
+
+**O2 全量门**（分离检出，最终 HEAD 见 PR）：install、build、typecheck、check-refs、`openspec validate --all --strict`（52 项）、`claude plugin validate`、`pnpm test`（267 个文件，5,802 条通过，4 条跳过）全绿。
+- `explorer-smoke --self-check`：第一次门在 planted `no-products` 页超时（页面脚本 15 秒内没有结果）：没有产物数据时每个视图、行与代码面板的等待各等满 3 秒。修为第一次视图、行或状态没出现后，其后的等待只试一次（单独一个 commit）；之后 exit 0，`no-products` 红在 products，正常页探针 7.9 秒。
+- `view-smoke-graph`：`layers/domain` 一条（领域页的节点跳到结构图并选中）在本分支与 main（b0f0de5a）上都偶发失败，同一检出连跑有过有不过；本分支没有改 `view.html` 与 `report-view`。CI 不跑这个冒烟。记为既有的偶发失败，不在本变更里修。
+
+**O3 冒烟**：顶栏（无 Files、Classes、类型过滤、引导弹窗，三个按钮）、三个视图的统计与产物计数相等、high 筛选、行详情、在图中显示、打开代码定位到行、Escape 顺序（代码 → 行 → 视图）、not run 写出命令、768 与 375 宽无横向溢出、网络 0 请求、控制台无错。植入故障 `legacy-chrome`、`no-products`、`wrong-counts`、`node-missing`、`no-sources` 各自在对应检查上红。
+
+**O4 真实语料**（go-multirepo，只读语料的镜像打包，`--out` 在语料外）：
+- Unused：5,019 / 3,314 / 1,705 / 207，按置信度 high 0、medium 109、low 4,910，与 `unused-code.json` 的计数相同。
+- Hotspots：2,121 / 0 / 4 / 67，与 `hotspots.json` 相同。
+- Doc map：语料没有 doc-map，视图写 not run 与 `/excavator-doc-map`。
+- 在图中显示选中节点并在侧栏显示其 AI 摘要；控制台无错；网络只有页面文件与 `data:` URI；明暗主题都跟随 token。
+- 体积：`explorer.html` 41,587,814 字节，比此前约 34.8 MB 多约 6.8 MB（`unused-code.json` 5,278,634、`hotspots.json` 1,442,910、`products.json` 626）。
+- 一次观察到 Unused 视图打开后自行关闭，重新加载后未复现（保持打开 15 秒），冒烟也未出现；记录在此，不作结论。
+
+**与计划的出入**：tasks.md 的 commit 4–6（三个视图各一个）合为一个 commit `feat(explorer): Unused, Hotspots and Doc map views`：三者共用视图外框、行详情与跳转，分开提交会让前两个 commit 带着只为后面准备的共用件。另加一个冒烟修复 commit。
