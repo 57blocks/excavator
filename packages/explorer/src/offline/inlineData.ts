@@ -10,6 +10,9 @@
 //     "diff-overlay.json":    <the diff overlay>,
 //     "config.json":          <the config>,
 //     "staleness.json":       <the freshness report>,
+//     "unused-code.json", "hotspots.json", "doc-map.json", "doc-map-checks.json":
+//                             <the product files, when their products were packed>,
+//     "products.json":        <{ products: [{ name, status, reason, revision, revisionNote, command }] }>,
 //     "sources": { "<node.filePath>": { path, language, content, sizeBytes, lineCount } },
 //   }
 //
@@ -31,7 +34,13 @@ export type InlineDataFile =
   | "meta.json"
   | "diff-overlay.json"
   | "config.json"
-  | "staleness.json";
+  // Excavator: the product files the explorer-products views read.
+  | "staleness.json"
+  | "unused-code.json"
+  | "hotspots.json"
+  | "doc-map.json"
+  | "doc-map-checks.json"
+  | "products.json";
 
 export interface InlineSource {
   path: string;

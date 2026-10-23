@@ -9,6 +9,7 @@ import type {
 } from "@understand-anything/core/types";
 import type { ReactFlowInstance } from "@xyflow/react";
 import { withDerivedGroups, type LayerSource } from "./excavator/groups";
+import type { ProductView } from "./excavator/productViews";
 
 export type Persona = "non-technical" | "junior" | "experienced";
 export type NavigationLevel = "overview" | "layer-detail";
@@ -203,6 +204,17 @@ interface DashboardStore {
   setIsKnowledgeGraph: (value: boolean) => void;
   navigateToDomain: (domainId: string) => void;
   clearActiveDomain: () => void;
+
+  // Excavator (openspec: changes/explorer-products, design D2): the product view laid over the
+  // graph area, and the row of its table whose details the sidebar shows. The graph stays
+  // mounted and its selection untouched while a view is open.
+  productView: ProductView | null;
+  productRow: unknown | null;
+  openProductView: (view: ProductView) => void;
+  /** Opens the view, or closes it when it is the open one. */
+  toggleProductView: (view: ProductView) => void;
+  closeProductView: () => void;
+  setProductRow: (row: unknown | null) => void;
 
   // Container expand/collapse + lazy layout caches
   expandedContainers: Set<string>;
@@ -701,8 +713,19 @@ export const useDashboardStore = create<DashboardStore>()((set, get) => ({
     set({ isKnowledgeGraph: value });
   },
 
+  productView: null,
+  productRow: null,
+  openProductView: (view) => set({ productView: view, productRow: null }),
+  toggleProductView: (view) =>
+    set((state) => ({ productView: state.productView === view ? null : view, productRow: null })),
+  closeProductView: () => set({ productView: null, productRow: null }),
+  setProductRow: (row) => set({ productRow: row }),
+
   setViewMode: (mode) => {
     set({
+      // Excavator: the Domain / Structural switch always returns to the graph.
+      productView: null,
+      productRow: null,
       viewMode: mode,
       selectedNodeId: null,
       focusNodeId: null,

@@ -15,6 +15,7 @@ import type { DashboardFreshnessReport } from "../freshness";
 import MobileBottomNav from "./MobileBottomNav";
 import type { MobileTab } from "./MobileBottomNav";
 import MobileDrawer from "./MobileDrawer";
+import ProductViewOverlay from "../excavator/ProductViewOverlay";
 
 const CodeViewer = lazy(() => import("./CodeViewer"));
 const LearnPanel = lazy(() => import("./LearnPanel"));
@@ -46,6 +47,7 @@ export default function MobileLayout({
   const persona = useDashboardStore((s) => s.persona);
   const viewMode = useDashboardStore((s) => s.viewMode);
   const domainGraph = useDashboardStore((s) => s.domainGraph);
+  const productView = useDashboardStore((s) => s.productView);
   const codeViewerOpen = useDashboardStore((s) => s.codeViewerOpen);
   const closeCodeViewer = useDashboardStore((s) => s.closeCodeViewer);
   const pathFinderOpen = useDashboardStore((s) => s.pathFinderOpen);
@@ -61,6 +63,11 @@ export default function MobileLayout({
   useEffect(() => {
     if (selectedNodeId) setActiveTab("info");
   }, [selectedNodeId]);
+
+  // Excavator: a product view lives on the graph tab, so opening one shows that tab.
+  useEffect(() => {
+    if (productView) setActiveTab("graph");
+  }, [productView]);
 
   // When a code viewer opens (e.g. from the Files tab) keep focus there
   useEffect(() => {
@@ -166,6 +173,7 @@ export default function MobileLayout({
           ) : (
             <GraphView />
           )}
+          <ProductViewOverlay />
         </div>
 
         <div

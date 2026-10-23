@@ -15,18 +15,23 @@
  *     verdict, a summary the verifier blanked says so, and the connections show their
  *     evidence and the mentions edge (design D4b); the freshness report says the graph
  *     was made from another revision, and the banner names both (design D2);
- *   - content: the page title and the onboarding header say Excavator, no visible
- *     text names the upstream product, a layer drills in, and a file's code opens
- *     from the inlined sources.
+ *   - content: the page title says Excavator, no visible text names the upstream
+ *     product, a layer drills in, and a file's code opens from the inlined sources;
+ *   - products (openspec: changes/explorer-products): the header has no Files / Classes
+ *     buttons and no type chips, three product buttons stand there, no onboarding overlay
+ *     appears, Unused covers the graph area only (the graph stays mounted) and says its
+ *     state, Hotspots says it was not run and gives the command, and a second click
+ *     closes the view with the selected node still selected.
  * It then opens the same data with the graph's layers removed and asserts the
  * structural view still draws, now from the groups the copy derives, which the
  * legend calls groups (the page with layers must call them layers).
  *
  *   node scripts/explorer-smoke.mjs [--screenshot <png>] [--self-check]
  *
- * `--self-check` is the instrument check: it also runs three pages with a
+ * `--self-check` is the instrument check: it also runs five pages with a
  * planted fault (an external stylesheet, a thrown error, a graph the page cannot
- * read) and requires that each assertion it was written to catch goes red.
+ * read, the removed header buttons and onboarding put back, the product files
+ * left out) and requires that each assertion it was written to catch goes red.
  *
  * Needs `pnpm -r build` (the template) and a local Chrome. Prints one line per
  * check and exits 1 when any fails.
@@ -94,6 +99,20 @@ export function fixtureData() {
     coverage: { files: 3, byLanguage: { javascript: { files: 2, parsed: 2, zeroSymbol: 0, skipped: {} }, css: { files: 1, parsed: 0, zeroSymbol: 0, skipped: { 'no-extractor': 1 } } } },
     gaps: [{ kind: 'calls-unresolved', scope: 'javascript', reason: 'callee not declared in the project', count: 1, samples: ['src/main.js:4 -> external'] }],
   };
+  // The product files the explorer-products views read: a minimal unused-code product and the packer's states
+  // (unused-code included at the packed revision, the other two not run).
+  const unused = {
+    format: 'excavator-unused-code/1',
+    sourceRevision: `git:${'a'.repeat(40)}`,
+    counts: { candidates: 1, removedByDecision: 0, testOnly: 0, unused: 1, byConfidence: { high: 1, medium: 0, low: 0 } },
+    conservation: { candidates: 1, removedByDecision: 0, testOnly: 0, unused: 1, holds: true },
+    residualAssumptions: [],
+    decisions: [],
+    unused: [{ id: 'function:src/util.js:leaf', name: 'leaf', language: 'javascript', file: 'src/util.js', lineRange: [1, 3], reason: 'unreferenced', confidence: 'high' }],
+    groups: [],
+    testOnly: [],
+  };
+  const productState = (name, status, extra = {}) => ({ name, status, reason: null, revision: null, revisionNote: null, command: `/excavator-${name}`, ...extra });
   const domain = {
     version: '1.0.0',
     project: graph.project,
@@ -111,12 +130,24 @@ export function fixtureData() {
     'domain-graph.json': domain,
     'meta.json': { lastAnalyzedAt: '2026-01-01T00:00:00.000Z', gitCommitHash: 'abc123', version: '1.0.0', analyzedFiles: 2 },
     'staleness.json': { graphs: { knowledge: { status: 'revision', graphRevision: `git:${'b'.repeat(40)}`, currentRevision: `git:${'a'.repeat(40)}` } } },
+    'unused-code.json': unused,
+    'products.json': {
+      snapshotRevision: unused.sourceRevision,
+      products: [
+        productState('unused-code', 'included', { revision: unused.sourceRevision }),
+        productState('hotspots', 'not-run'),
+        productState('doc-map', 'not-run'),
+      ],
+    },
     sources: Object.fromEntries(Object.keys(SOURCES).map((path) => [path, sourceFile(path)])),
   };
 }
 
 /** The wait signal view-smoke.mjs needs: the dashboard has no ready attribute of its own, so the page's own markup says when it has drawn. */
 const READY_SCRIPT = `(function(){var r=document.documentElement;var t=setInterval(function(){if(document.querySelector('.react-flow__node')||/Failed to load|Invalid knowledge graph/.test(document.body.innerText)){clearInterval(t);r.setAttribute('data-xv-ready','1');}},50);})();`;
+
+/** The fault 'legacy-chrome': puts back a Files button, a type chip and the onboarding text once the page has drawn. */
+const LEGACY_CHROME_SCRIPT = `<script>setTimeout(function(){var h=document.querySelector('header');var f=document.createElement('button');f.textContent='Files';h.appendChild(f);var c=document.createElement('button');c.innerHTML='<span class="rounded-full"></span>Code';h.appendChild(c);var o=document.createElement('div');o.textContent='EXCAVATOR GET STARTED Welcome to the knowledge graph';document.body.appendChild(o);},100);</script>`;
 
 const BACKSLASH = String.fromCharCode(92);
 const jsonForScript = (value) => JSON.stringify(value).replace(/</g, `${BACKSLASH}u003c`);
@@ -135,6 +166,8 @@ export function assemble(template, data, fault = null) {
   if (fault === 'external-url') extraHead = '<link rel="stylesheet" href="https://example.invalid/planted.css">';
   else if (fault === 'thrown-error') extraBody = '<script>setTimeout(function(){throw new Error("planted fault");},200);</script>';
   else if (fault === 'no-graph') payload = { ...data, 'knowledge-graph.json': undefined };
+  else if (fault === 'no-products') payload = { ...data, 'unused-code.json': undefined, 'products.json': undefined };
+  else if (fault === 'legacy-chrome') extraBody = LEGACY_CHROME_SCRIPT;
   const csp = `<meta http-equiv="Content-Security-Policy" content="${CONTENT_SECURITY_POLICY}">${extraHead}`;
   const dataScript = `<script>window.${DATA_GLOBAL}=${jsonForScript(payload)};${READY_SCRIPT}</script>${extraBody}`;
   return template.replace(CSP_MARKER, () => csp).replace(DATA_MARKER, () => dataScript);
@@ -146,8 +179,13 @@ const PROBE = `(async () => {
   const until = async (test) => { for (let i = 0; i < 60; i++) { if (test()) return true; await sleep(50); } return false; };
   const cards = () => [...document.body.querySelectorAll('.react-flow__node')];
   const out = { title: document.title, cards: cards().length, drilled: false, codeShown: false };
-  const header = [...document.body.querySelectorAll('div,span,p,h1,h2,h3')].find((e) => e.children.length === 0 && /GET STARTED/.test(e.textContent));
-  out.onboardingHeader = header ? header.textContent : null;
+  await sleep(400);
+  // No onboarding overlay and no Files / Classes or type-chip buttons in the header; the three product buttons stand there.
+  out.onboardingShown = /GET STARTED|Welcome to the knowledge graph/.test(document.body.innerText);
+  const headerButtons = [...document.querySelectorAll('header button')];
+  out.headerFilesClasses = headerButtons.some((b) => /^(files|classes)$/i.test(b.textContent.trim()));
+  out.headerTypeChips = headerButtons.some((b) => b.querySelector('span.rounded-full'));
+  out.productButtons = [...document.querySelectorAll('header [data-excavator-product-button]')].map((b) => b.textContent.trim());
   // The visible text names no upstream product (a slash command in an empty state is not the product name).
   out.upstreamName = /understand/i.test(document.body.innerText.replace(/[/]understand[-a-z]*/g, ''));
   // The legend counts what the top level draws: "<n> layers", or "<n> groups" when the graph had no layers.
@@ -157,8 +195,6 @@ const PROBE = `(async () => {
   const bannerText = /Knowledge graph may not match the current source[\\s\\S]*was made from git:bbbbbbbb; this page was packed at git:aaaaaaaa[.]/;
   out.revisionBanner = await until(() => bannerText.test(document.body.innerText));
   if (out.cards === 0) return out;
-  const skip = [...document.querySelectorAll('button')].find((b) => /Don't show again/.test(b.textContent));
-  if (skip) skip.click();
   await sleep(300);
   const button = (text) => [...document.querySelectorAll('button')].find((b) => b.textContent.trim() === text);
   const card = (id) => document.querySelector('.react-flow__node[data-id="' + id + '"]');
@@ -181,6 +217,31 @@ const PROBE = `(async () => {
     out.evidence = (utilText.match(/src[/](main|util)[.]js:[0-9]+/g) || []).sort();
     // util.js is the source of the mentions edge: its label is the locale's forward one.
     out.mentions = /(^|[\\n])mentions([\\n]|$)/.test(utilText);
+    // Product views (explorer-products): with util.js selected, Unused covers the graph area and leaves the graph mounted.
+    const side = () => document.querySelector('aside')?.innerText ?? '';
+    const productButton = (name) => document.querySelector('header [data-excavator-product-button="' + name + '"]');
+    const overlay = () => document.querySelector('[data-excavator-product-view]');
+    const selectedBefore = side();
+    const cardsBefore = cards().length;
+    press(productButton('unused'));
+    await until(() => overlay());
+    const shown = overlay();
+    const box = shown ? shown.getBoundingClientRect() : null;
+    const headerBox = document.querySelector('header').getBoundingClientRect();
+    const sideBox = document.querySelector('aside').getBoundingClientRect();
+    const unusedText = shown ? shown.innerText : '';
+    out.unusedView = Boolean(shown) && shown.getAttribute('data-excavator-product-view') === 'unused' && /Unused code/.test(unusedText);
+    out.unusedStatus = await until(() => /Status: included/.test(overlay()?.innerText ?? ''));
+    out.graphMounted = cards().length === cardsBefore && cardsBefore > 0;
+    out.overlayArea = Boolean(box) && box.top >= headerBox.bottom - 1 && box.right <= sideBox.left + 1 && getComputedStyle(shown).position === 'absolute' && getComputedStyle(shown).backgroundColor !== 'rgba(0, 0, 0, 0)';
+    out.unusedPressed = productButton('unused').getAttribute('aria-pressed') === 'true';
+    press(productButton('hotspots'));
+    await until(() => overlay()?.getAttribute('data-excavator-product-view') === 'hotspots');
+    out.hotspotsNotRun = await until(() => /Status: not run/.test(overlay()?.innerText ?? '') && /Command: [/]excavator-hotspots/.test(overlay()?.innerText ?? ''));
+    press(productButton('hotspots'));
+    await sleep(200);
+    out.viewClosed = overlay() === null;
+    out.selectionKept = selectedBefore.includes('util.js') && side() === selectedBefore;
     button('Project').click();
     await until(() => card('layer:app'));
     button('Learn').click();
@@ -236,8 +297,16 @@ export function judge(result) {
     },
     {
       name: 'content',
-      ok: probe.title === 'Excavator' && /^EXCAVATOR/.test(probe.onboardingHeader ?? '') && probe.upstreamName === false && probe.drilled === true && probe.codeShown === true && probe.legend === 'layers',
-      detail: `title=${probe.title} onboarding=${probe.onboardingHeader} upstreamName=${probe.upstreamName} layer drilled=${probe.drilled} code from inlined sources=${probe.codeShown} legend=${probe.legend}`,
+      ok: probe.title === 'Excavator' && probe.upstreamName === false && probe.drilled === true && probe.codeShown === true && probe.legend === 'layers',
+      detail: `title=${probe.title} upstreamName=${probe.upstreamName} layer drilled=${probe.drilled} code from inlined sources=${probe.codeShown} legend=${probe.legend}`,
+    },
+    {
+      name: 'products',
+      ok: probe.onboardingShown === false && probe.headerFilesClasses === false && probe.headerTypeChips === false
+        && JSON.stringify(probe.productButtons) === JSON.stringify(['Unused', 'Hotspots', 'Doc map'])
+        && probe.unusedView === true && probe.unusedStatus === true && probe.graphMounted === true && probe.overlayArea === true && probe.unusedPressed === true
+        && probe.hotspotsNotRun === true && probe.viewClosed === true && probe.selectionKept === true,
+      detail: `onboarding=${probe.onboardingShown} Files/Classes=${probe.headerFilesClasses} type chips=${probe.headerTypeChips} buttons=${(probe.productButtons ?? []).join('|')} unused view=${probe.unusedView} state=${probe.unusedStatus} graph mounted=${probe.graphMounted} covers graph area only=${probe.overlayArea} pressed=${probe.unusedPressed} hotspots not run=${probe.hotspotsNotRun} closed by a second click=${probe.viewClosed} selection kept=${probe.selectionKept}`,
     },
   ];
 }
@@ -279,6 +348,8 @@ function main(argv) {
       { fault: 'external-url', red: 'network' },
       { fault: 'thrown-error', red: 'console' },
       { fault: 'no-graph', red: 'cards' },
+      { fault: 'legacy-chrome', red: 'products' },
+      { fault: 'no-products', red: 'products' },
     ];
     for (const { fault, red } of planted) {
       const checks = judge(runChrome(assemble(template, data, fault)));
