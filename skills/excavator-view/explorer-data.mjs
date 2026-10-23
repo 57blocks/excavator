@@ -62,8 +62,9 @@
  * No `language` is written for a source: the copy's code viewer then derives it from the
  * file name, as it does for a source the server gave none for.
  *
- * Deterministic and model-free. It reads `meta.json`, `domain-graph.json` and
- * `knowledge-graph.jsonl` under `.excavator/`, nothing else, and writes nothing.
+ * Deterministic and model-free. It reads `meta.json` and `domain-graph.json` under
+ * `.excavator/`, nothing else, and writes nothing; the knowledge graph is the one
+ * `collectProducts` already read whole (`products.graph`).
  */
 
 import { basename, join } from 'node:path';
@@ -279,7 +280,7 @@ function productStates(products, snapshotRevision) {
 }
 
 /**
- * @param {{ root: string, dataDir: string, snapshotRevision: string, products: { entries: object[], payloads: {id: string, bytes: Buffer}[] }, sources: { manifest: object, payloads: {id: string, bytes: Buffer}[] } }} input
+ * @param {{ root: string, dataDir: string, snapshotRevision: string, products: { entries: object[], payloads: {id: string, bytes: Buffer}[], graph: object|null }, sources: { manifest: object, payloads: {id: string, bytes: Buffer}[] } }} input
  *   `root` is the project root the pack was given, `snapshotRevision` the revision of the snapshot it read; `products` and `sources` are what `collectProducts` and
  *   `collectSources` returned for the same pack
  * @returns {{ data: Record<string, unknown>, rows: { key: string, status: string, reason?: string }[] }}
