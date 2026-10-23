@@ -164,9 +164,8 @@ function UnusedFunctions({ rows, detail }: { rows: UnusedRow[]; detail: ReactNod
   );
 }
 
+/** Functions used only by tests are not unused, so their rows open no unused-function details. */
 function TestOnly({ rows }: { rows: UnusedRow[] }) {
-  const productRow = useDashboardStore((s) => s.productRow) as UnusedRow | null;
-  const setProductRow = useDashboardStore((s) => s.setProductRow);
   const columns = useMemo<Column<UnusedRow>[]>(() => [
     { label: "Name", key: KEYS.name, width: "md", title: (r) => r.name, render: (r) => r.name },
     { label: "Language", key: KEYS.language, render: (r) => r.language },
@@ -177,7 +176,7 @@ function TestOnly({ rows }: { rows: UnusedRow[] }) {
       {rows.length === 0 ? (
         <Note>The product lists no function used only by tests.</Note>
       ) : (
-        <DataTable name="test-only" rows={rows} columns={columns} onRowClick={(r) => setProductRow(r)} isSelected={(r) => productRow !== null && productRow.id === r.id} rowKey={(r) => r.id} />
+        <DataTable name="test-only" rows={rows} columns={columns} rowKey={(r) => r.id} />
       )}
     </Section>
   );
