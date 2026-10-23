@@ -53,3 +53,15 @@
   ```
 - 在 Chrome 里打开：Unused 视图 5019 / 3314 / 1705 / 207，Hotspots 视图 2121 / 0 / 4 / 67，Doc map 视图写明 `Status: not run` 与 `/excavator-doc-map`，与 explorer-products 验收时相同；
 - 网络请求只有页面文件本身与 `data:`；控制台没有错误或警告。
+
+## 产物状态重做后的验收（2026-10-23）
+
+评审连续三轮落在产物状态上，按 design D3 改为只判定一次（2909a861）。
+
+**全量门**（分离检出，2909a861）：安装、构建、类型检查、引用检查、插件校验通过；`openspec validate --all --strict` 50 项通过；explorer 冒烟退出码 0，33 项通过；`pnpm test` 214 个测试文件通过，4972 个测试通过，4 个跳过。
+
+**新测试**在 8dfc7efe 上是红的：`collectProducts` 把正文被拒的图谱判为 included；`semantic-graph.json` 缺 `layers` 而没有可读图谱时，语义写为 not shown。
+
+**镜像真实运行**：2909a861 与 8dfc7efe 写出的页面逐字节相同，也与上面在 Chrome 里验收过的页面逐字节相同；回复五行不变；镜像的 `.excavator` 未变。耗时 28.6 秒与 29.0 秒，旧代码 27.5 秒。
+
+**未查明**：8dfc7efe 上的一次全量门里 explorer 冒烟退出码为 1，那次的输出没有保存。同一 commit 上重跑 3 次、2909a861 上 1 次都是 33 项全过。
