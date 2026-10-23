@@ -1381,6 +1381,38 @@ function GraphViewInner() {
     return () => cancelAnimationFrame(raf);
   }, [nodes, fitView]);
 
+  // Excavator: a node chosen from outside the graph (Show in graph, search,
+  // the file list) is revealed: the container holding it opens, and the view
+  // fits the node once the layout has placed it and for a short while after,
+  // as later layout passes still move it. The layer-entry fit above would
+  // otherwise leave a node of a large layer off screen.
+  const revealNodeId = useDashboardStore((s) => s.revealNodeId);
+  const clearRevealNode = useDashboardStore((s) => s.clearRevealNode);
+  const revealTimerRef = useRef<number | null>(null);
+  useEffect(() => {
+    if (!revealNodeId || !nodeToContainer) return;
+    const cid = nodeToContainer.get(revealNodeId);
+    if (cid && cid !== revealNodeId) expandContainer(cid);
+  }, [revealNodeId, nodeToContainer, expandContainer]);
+  useEffect(() => {
+    if (!revealNodeId || !nodes.some((n) => n.id === revealNodeId)) return;
+    if (revealTimerRef.current === null) {
+      revealTimerRef.current = window.setTimeout(() => {
+        revealTimerRef.current = null;
+        clearRevealNode();
+      }, 1200);
+    }
+    const raf = requestAnimationFrame(() => {
+      fitView({ nodes: [{ id: revealNodeId }], duration: 0, padding: 0.3, maxZoom: 1.2, minZoom: 0.01 });
+    });
+    return () => cancelAnimationFrame(raf);
+  }, [revealNodeId, nodes, fitView, clearRevealNode]);
+  useEffect(() => () => {
+    // A new node to reveal, or none, ends the previous one's window.
+    if (revealTimerRef.current !== null) window.clearTimeout(revealTimerRef.current);
+    revealTimerRef.current = null;
+  }, [revealNodeId]);
+
   // Lock viewport onto a container the user just manually expanded so it
   // appears to expand in place rather than getting yanked off-screen by
   // the surrounding ELK reflow. Re-runs as nodes update (Stage 2 may

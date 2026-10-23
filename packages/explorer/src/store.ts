@@ -215,6 +215,9 @@ interface DashboardStore {
   // mounted and its selection untouched while a view is open.
   productView: ProductView | null;
   productRow: unknown | null;
+  /** Excavator: a node chosen from outside the graph that the structural view is to open its container for and fit. */
+  revealNodeId: string | null;
+  clearRevealNode: () => void;
   openProductView: (view: ProductView) => void;
   /** Opens the view, or closes it when it is the open one. */
   toggleProductView: (view: ProductView) => void;
@@ -453,6 +456,7 @@ export const useDashboardStore = create<DashboardStore>()((set, get) => ({
         // Excavator: a node chosen from outside a product view (search, the file list, Show in graph) shows the graph.
         productView: null,
         productRow: null,
+        revealNodeId: nodeId,
         selectedNodeId: nodeId,
         focusNodeId: null,
         codeViewerOpen: false,
@@ -733,6 +737,8 @@ export const useDashboardStore = create<DashboardStore>()((set, get) => ({
 
   productView: null,
   productRow: null,
+  revealNodeId: null,
+  clearRevealNode: () => set({ revealNodeId: null }),
   openProductView: (view) => set({ productView: view, productRow: null }),
   toggleProductView: (view) =>
     set((state) => ({ productView: state.productView === view ? null : view, productRow: null })),

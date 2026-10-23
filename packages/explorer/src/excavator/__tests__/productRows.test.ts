@@ -35,6 +35,16 @@ describe("a node chosen from outside the view closes the view", () => {
     expect(s.productRow).toBeNull();
     expect(s.selectedNodeId).toBe("b1");
     expect(s.activeLayerId).toBe("layer:b");
+    // The structural view opens the node's container and fits it.
+    expect(s.revealNodeId).toBe("b1");
+    s.clearRevealNode();
+    expect(useDashboardStore.getState().revealNodeId).toBeNull();
+  });
+
+  it("asks for no reveal when a node is selected in the graph itself", () => {
+    useDashboardStore.getState().setGraph(graph());
+    useDashboardStore.getState().selectNode("b1");
+    expect(useDashboardStore.getState().revealNodeId).toBeNull();
   });
 
   it("closes it also for a node that no layer holds", () => {

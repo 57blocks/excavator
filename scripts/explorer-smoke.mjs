@@ -449,7 +449,7 @@ const PROBE = `(async () => {
   await pv.pick('unused', LEAF);
   press(pv.action('show-in-graph'));
   await sleep(500);
-  unused.show = { closed: pv.overlay() === null, rowGone: pv.detail() === null, side: pv.side() };
+  unused.show = { closed: pv.overlay() === null, rowGone: pv.detail() === null, side: pv.side(), drawn: Boolean(card(LEAF)) };
   out.unusedViewRows = unused;
 
   // Hotspots (made from another revision): the notice, counts, a file row, a directory row, Show in graph.
@@ -479,7 +479,7 @@ const PROBE = `(async () => {
   await pv.pick('files', 'src/main.js');
   press(pv.action('show-in-graph'));
   await sleep(500);
-  hotspots.show = { closed: pv.overlay() === null, side: pv.side() };
+  hotspots.show = { closed: pv.overlay() === null, side: pv.side(), drawn: Boolean(card('file:src/main.js')) };
   out.hotspotsViewRows = hotspots;
 
   // Doc map: counts, the not-found unit (quote and searched record, no code location), an unchecked place, a checked one, text shown as text.
@@ -656,7 +656,7 @@ function judgeViews(probe) {
       ['Escape clears the row first, then closes the view', u.escapeRow === true && u.escapeView === true],
       ['Open code shows the inlined source with its line marked', u.openCode === true && u.markedLines >= 1],
       ['Escape closes the code viewer before the row', u.escapeCodeFirst === true],
-      ['Show in graph closes the view and the sidebar shows the node info', u.show?.closed === true && u.show?.rowGone === true && has(u.show?.side, 'leaf') && /summary was removed/i.test(u.show?.side ?? '')],
+      ['Show in graph closes the view, draws the node and the sidebar shows the node info', u.show?.closed === true && u.show?.drawn === true && u.show?.rowGone === true && has(u.show?.side, 'leaf') && /summary was removed/i.test(u.show?.side ?? '')],
       ['no advisory wording', u.advice === false],
     ]),
     verdict('hotspots view', [
@@ -671,7 +671,7 @@ function judgeViews(probe) {
       ['a file row offers Show in graph and Open code', h.file?.show === true && h.file?.code === true],
       ['changing the table clears the row', h.tabClearedRow === true],
       ['a directory row shows its fields, has no Show in graph and says why', has(h.dir?.text, 'src') && h.dir?.show === false && h.dir?.code === false && h.dir?.note === 'No single node of the graph stands for this directory.'],
-      ['Show in graph closes the view and the sidebar shows the node info', h.show?.closed === true && has(h.show?.side, 'main.js')],
+      ['Show in graph closes the view, draws the node and the sidebar shows the node info', h.show?.closed === true && h.show?.drawn === true && has(h.show?.side, 'main.js')],
       ['no advisory wording', h.advice === false],
     ]),
     verdict('doc map view', [
