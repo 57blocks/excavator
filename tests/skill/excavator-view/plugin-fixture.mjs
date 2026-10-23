@@ -35,7 +35,10 @@ export function writeTemplate(text = FIXTURE_TEMPLATE) {
   return { dir, path };
 }
 
-/** A plugin root with the packer scripts and, when `template` is a string, a built view template under it; null leaves it unbuilt. */
+/**
+ * A plugin root with the packer scripts and, when `template` is a string, a built view template under it and
+ * an explorer template (the same text, which has the same two markers) next to the real built explorer validator; null leaves it unbuilt.
+ */
 export function makePluginRoot(template) {
   const root = mkdtempSync(join(tmpdir(), 'xv-plugin-'));
   cpSync(join(repoRoot, 'skills/excavator-view'), join(root, 'skills/excavator-view'), { recursive: true });
@@ -44,6 +47,9 @@ export function makePluginRoot(template) {
   if (template !== null) {
     mkdirSync(join(root, 'packages/report-view/dist'), { recursive: true });
     writeFileSync(join(root, 'packages/report-view/dist/view.html'), template);
+    mkdirSync(join(root, 'packages/explorer/dist'), { recursive: true });
+    writeFileSync(join(root, 'packages/explorer/dist/explorer.html'), template);
+    symlinkSync(join(repoRoot, 'packages/explorer/dist-node'), join(root, 'packages/explorer/dist-node'));
   }
   return root;
 }

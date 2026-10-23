@@ -13,7 +13,7 @@ import { manifestOf, payloadGzip, payloadIds, payloadText } from './page.mjs';
 import { FIXTURE_TEMPLATE, makePluginRoot, repoRoot, writeTemplate } from './plugin-fixture.mjs';
 
 
-const EXACT_CSP = "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; connect-src 'none'; font-src 'none'; base-uri 'none'; form-action 'none'; worker-src blob:";
+const EXACT_CSP = "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; connect-src 'none'; font-src data:; base-uri 'none'; form-action 'none'; worker-src blob:";
 
 let project;
 let templateDir;
@@ -45,7 +45,7 @@ describe('product states', () => {
     const packed = pack();
     expect(packed.result.products.map((p) => [p.name, p.status])).toEqual([
       ['knowledge-graph', 'not-run'], ['semantics', 'not-run'], ['domain-graph', 'not-run'], ['unused-code', 'not-run'],
-      ['doc-map', 'not-run'], ['hotspots', 'not-run'], ['reports', 'not-run'],
+      ['doc-map', 'not-run'], ['hotspots', 'not-run'], ['tour', 'not-run'], ['reports', 'not-run'],
     ]);
     expect(packed.result.out).toBe(join(project.root, '.excavator', 'view.html'));
     expect(payloadIds(packed.html)).toEqual([]);
@@ -55,6 +55,7 @@ describe('product states', () => {
     expect(packed.manifest.products.find((p) => p.name === 'doc-map').command).toBe('/excavator-doc-map');
     expect(packed.manifest.products.find((p) => p.name === 'semantics').command).toBe('/excavator --full');
     expect(packed.manifest.products.find((p) => p.name === 'domain-graph').command).toBe('/excavator-domain');
+    expect(packed.manifest.products.find((p) => p.name === 'tour').command).toBe('/excavator-tour');
   });
 
   it('shows a domain graph file that lacks the identity the Domain skill writes as unreadable with a reason', () => {
@@ -365,11 +366,11 @@ describe('the page', () => {
     expect(payloadText(pack().html, 'report-hotspots')).toBe(`# ${text}\n`);
   });
 
-  it('writes nothing under .excavator except the page', () => {
+  it('writes nothing under .excavator except the two pages', () => {
     fullProject();
     const before = readdirSync(join(project.root, '.excavator')).sort();
     pack();
-    expect(readdirSync(join(project.root, '.excavator')).sort()).toEqual([...before, 'view.html'].sort());
+    expect(readdirSync(join(project.root, '.excavator')).sort()).toEqual([...before, 'explorer.html', 'view.html'].sort());
   });
 
   it('writes to --out and records that no source was embedded', () => {
@@ -520,7 +521,7 @@ describe('the command line', () => {
     const lines = run.stdout.trimEnd().split('\n');
     expect(lines).toHaveLength(1);
     const result = JSON.parse(lines[0]);
-    expect(Object.keys(result)).toEqual(['out', 'bytes', 'snapshotRevision', 'products', 'source']);
+    expect(Object.keys(result)).toEqual(['out', 'bytes', 'snapshotRevision', 'products', 'source', 'explorer']);
     expect(result.bytes).toBe(readFileSync(result.out).length);
     expect(result.products.find((p) => p.name === 'hotspots')).toEqual({ name: 'hotspots', status: 'included', revision: project.revision });
     expect(result.products.find((p) => p.name === 'unused-code')).toEqual({ name: 'unused-code', status: 'not-run' });

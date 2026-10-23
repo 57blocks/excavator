@@ -18,6 +18,8 @@ import { anyOverlay, entryMarks, hotspotsRules, nodeMarks, type HotspotsScales, 
 export interface LevelPlan {
   /** For each open file of the level: the nodes it shows and how many more it owns. */
   open: ReadonlyMap<string, { shown: readonly GraphNode[]; more: number }>;
+  /** The files of the level that have a node to show when opened (a file whose nodes the mode all hides has none). */
+  openable: ReadonlySet<string>;
   /** The file that owns each shown node. */
   fileOf: ReadonlyMap<string, string>;
   edges: readonly AggregatedEdge[];
@@ -30,16 +32,26 @@ export interface PlanOptions {
   edgeTypes?: ReadonlySet<string>;
   /** A node that is not visible takes no part in an edge. */
   nodeVisible?: (nodeId: string) => boolean;
+  /**
+   * The nodes an open file may draw as its own rows (the mode's choice, design D1). A node it may not draw still takes
+   * part in edges, as its file: the counts and the edges of the level are the same either way.
+   */
+  childDrawn?: (node: GraphNode) => boolean;
 }
 
 /** Which nodes the open files show and the edges between everything the level draws. */
 export function planLevel(structure: Structure, index: GraphIndex, graphEdges: readonly GraphEdge[], level: Level, expanded: ReadonlySet<string>, options: PlanOptions = {}): LevelPlan {
   const open = new Map<string, { shown: readonly GraphNode[]; more: number }>();
+  const openable = new Set<string>();
   const fileOf = new Map<string, string>();
   const shown = new Map<string, ReadonlySet<string>>();
+  const { childDrawn } = options;
   for (const entry of level.entries) {
-    if (entry.kind !== 'file' || !expanded.has(entry.id)) continue;
-    const children = fileChildren(structure, entry.id);
+    if (entry.kind !== 'file') continue;
+    const owned = structure.owned.get(entry.id) ?? [];
+    if (childDrawn ? owned.some(childDrawn) : owned.length > 0) openable.add(entry.id);
+    if (!expanded.has(entry.id)) continue;
+    const children = fileChildren(structure, entry.id, undefined, childDrawn);
     if (children.shown.length === 0) continue;
     open.set(entry.id, children);
     shown.set(entry.id, new Set(children.shown.map((node) => node.id)));
@@ -48,7 +60,7 @@ export function planLevel(structure: Structure, index: GraphIndex, graphEdges: r
   const ends = levelEnds(level, index.owningFile, shown);
   const { nodeVisible, edgeTypes = DEFAULT_EDGE_TYPES } = options;
   const endOf = nodeVisible ? (nodeId: string) => (nodeVisible(nodeId) ? ends(nodeId) : null) : ends;
-  return { open, fileOf, edges: aggregateEdges(graphEdges, endOf, edgeTypes), endOf };
+  return { open, openable, fileOf, edges: aggregateEdges(graphEdges, endOf, edgeTypes), endOf };
 }
 
 /** The rows an open file adds to its box: its shown nodes, and one for the note that there are more. */
@@ -172,7 +184,7 @@ export function flowNodes(level: Level, plan: LevelPlan, layout: LevelLayout, vi
       entry,
       selected: view.selected === entry.id,
       onPath: onPath(entry.id),
-      expanded: entry.nodes > 1 ? children !== undefined : null,
+      expanded: plan.openable.has(entry.id) ? children !== undefined : null,
       onSelect: view.onSelect,
       onToggle: view.onToggle,
       marks: view.overlay?.entries.get(entry.id) ?? null,

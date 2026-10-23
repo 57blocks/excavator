@@ -3,7 +3,9 @@
 /*
  * The 57blocks light tokens (openspec: changes/viewer-app, design D8; the
  * colours are the site's, as in report-viewer D6). Light only: there is no dark
- * branch anywhere. No font is loaded: the names fall back to the system fonts.
+ * branch anywhere. The fonts are inlined by the build (scripts/fonts.mjs,
+ * changes/viewer-learn design D7): headings in DM Serif Display, text in Inter,
+ * code in JetBrains Mono.
  * `static`: the tokens are read through var() from code as well (the node
  * colours), and Tailwind would leave out a token no utility class uses.
  */
@@ -47,8 +49,9 @@
   --color-unused-low: #4f5d8a;
   --color-evidence: #0f766e;
 
-  --font-sans: "Geist", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-sans: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, Menlo, Consolas, monospace;
+  --font-heading: "DM Serif Display", Georgia, "Times New Roman", serif;
 
   --radius-card: 14px;
   --radius-control: 10px;
@@ -59,13 +62,20 @@
   --ease-site: cubic-bezier(0.16, 1, 0.3, 1);
 }
 
+/* The grain: fractal noise at 3% opacity, as a base64 data URL (the page loads nothing). */
+:root {
+  --xv-noise: url(data:image/svg+xml;base64,PHN2ZyB4bWxucz0naHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmcnIHdpZHRoPScyMDAnIGhlaWdodD0nMjAwJz48ZmlsdGVyIGlkPSduJz48ZmVUdXJidWxlbmNlIHR5cGU9J2ZyYWN0YWxOb2lzZScgYmFzZUZyZXF1ZW5jeT0nMC44JyBudW1PY3RhdmVzPSczJyBzdGl0Y2hUaWxlcz0nc3RpdGNoJy8+PC9maWx0ZXI+PHJlY3Qgd2lkdGg9JzEwMCUnIGhlaWdodD0nMTAwJScgZmlsdGVyPSd1cmwoI24pJyBvcGFjaXR5PScwLjAzJy8+PC9zdmc+);
+}
+
 @layer base {
   html {
     color-scheme: light;
   }
   body {
     margin: 0;
-    background: var(--color-paper);
+    /* A 3% grain over the paper colour, drawn by an inline SVG. */
+    background-color: var(--color-paper);
+    background-image: var(--xv-noise);
     color: var(--color-ink-soft);
     font-family: var(--font-sans);
     font-size: 14px;
@@ -79,11 +89,20 @@
     font-weight: 600;
     letter-spacing: -0.01em;
   }
+  /* Page, card and panel titles are serif; DM Serif Display has one weight, so they are not made bold. */
+  h1,
+  h2 {
+    font-family: var(--font-heading);
+    font-weight: 400;
+    letter-spacing: 0;
+  }
   h1 {
-    font-size: 22px;
+    font-size: 26px;
+    line-height: 1.2;
   }
   h2 {
-    font-size: 16px;
+    font-size: 18px;
+    line-height: 1.3;
   }
   h3 {
     font-size: 14px;
@@ -224,10 +243,30 @@
 .xv-md h6 {
   margin: 20px 0 8px;
 }
+/* Report heading levels are serif and step down in size; DM Serif Display has one weight. */
+.xv-md h1,
+.xv-md h2,
+.xv-md h3 {
+  font-family: var(--font-heading);
+  font-weight: 400;
+  letter-spacing: 0;
+}
+.xv-md h1 {
+  font-size: 28px;
+  line-height: 1.2;
+}
 .xv-md h2 {
-  font-size: 18px;
+  font-size: 21px;
+  line-height: 1.3;
   padding-bottom: 4px;
   border-bottom: 1px solid var(--color-line-2);
+}
+.xv-md h3 {
+  font-size: 17px;
+  line-height: 1.35;
+}
+.xv-md h4 {
+  font-size: 14px;
 }
 .xv-md > :first-child {
   margin-top: 0;
@@ -304,4 +343,39 @@
     transition: none !important;
     scroll-behavior: auto !important;
   }
+}
+
+/*
+ * Table rows (openspec: changes/viewer-learn, design D6): on a table's first paint each row rises 4 px and fades in
+ * after its delay (set inline: 30 ms apart, at most twelve steps); a clickable row lifts 1 px under the pointer; a row
+ * that a link led to flashes once. `backwards` fill: once a row has entered, the animation leaves its transform alone.
+ */
+.xv-row-in {
+  animation: xv-row-in 0.3s var(--ease-site) backwards;
+}
+@keyframes xv-row-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+}
+.xv-row-click {
+  transition: transform 0.2s var(--ease-site), box-shadow 0.2s var(--ease-site);
+}
+.xv-row-click:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 16px -10px rgb(12 12 18 / 0.3);
+}
+.xv-row-flash > td {
+  animation: xv-row-flash 1.6s var(--ease-site) 1;
+}
+@keyframes xv-row-flash {
+  from {
+    background-color: rgb(106 77 255 / 0.32);
+  }
+}
+
+/* The source in a row panel: a short window onto the file, scrolled to the marked lines. */
+.xv-preview .xv-code {
+  max-height: 320px;
 }

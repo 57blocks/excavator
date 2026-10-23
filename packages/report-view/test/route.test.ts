@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { buildHash, DEFAULT_PAGE, isBareHash, parseRoute } from '../src/lib/route';
+import { buildHash, DEFAULT_PAGE, isBareHash, parseRoute, redirectHash } from '../src/lib/route';
 
 const plain = (value: unknown) => JSON.parse(JSON.stringify(value));
 
@@ -9,7 +9,7 @@ describe('parseRoute', () => {
     ['', 'graph', '', {}],
     ['#', 'graph', '', {}],
     ['#/', 'graph', '', {}],
-    ['#/overview', 'overview', '', {}],
+    ['#/products', 'products', '', {}],
     ['#/unused', 'unused', '', {}],
     ['#/reports/hotspots', 'reports', 'hotspots', {}],
     ['#/code?path=src%2Fa%20b.js&lines=3-9', 'code', '', { path: 'src/a b.js', lines: '3-9' }],
@@ -38,7 +38,7 @@ describe('parseRoute', () => {
 describe('isBareHash', () => {
   it('is true only for a hash that names no page', () => {
     for (const hash of ['', '#', '#/']) expect(isBareHash(hash), hash).toBe(true);
-    for (const hash of ['#/graph', '#/overview', '#/?x=1', '#x']) expect(isBareHash(hash), hash).toBe(false);
+    for (const hash of ['#/graph', '#/products', '#/?x=1', '#x']) expect(isBareHash(hash), hash).toBe(false);
   });
 });
 
@@ -47,7 +47,7 @@ describe('buildHash', () => {
     const hash = buildHash('code', { path: 'src/a b&c.js', lines: '3-9', skipped: null, alsoSkipped: undefined });
     expect(hash).toBe('#/code?path=src%2Fa%20b%26c.js&lines=3-9');
     expect(buildHash('reports', {}, 'doc map')).toBe('#/reports/doc%20map');
-    expect(buildHash('overview')).toBe('#/overview');
+    expect(buildHash('products')).toBe('#/products');
   });
 
   it('round trips: parse(build(route)) is the route, for awkward values too', () => {
@@ -74,6 +74,21 @@ describe('buildHash', () => {
       for (let i = 0; i < Math.floor(next() * 4); i++) params[`k${i}${text()}`] = text();
       const route = { page: `p${text()}`.replace(/\//g, ''), rest: '', params };
       expect(plain(parseRoute(buildHash(route.page, params)))).toEqual(route);
+    }
+  });
+});
+
+describe('redirectHash', () => {
+  it('sends the old Overview page to the Products page, keeping what follows the page name', () => {
+    expect(redirectHash('#/overview')).toBe('#/products');
+    expect(redirectHash('#overview')).toBe('#/products');
+    expect(redirectHash('#/overview?x=1&y=a%20b')).toBe('#/products?x=1&y=a%20b');
+    expect(redirectHash('#/overview/')).toBe('#/products');
+  });
+
+  it('leaves every other hash alone', () => {
+    for (const hash of ['', '#', '#/', '#/products', '#/graph', '#/graph?path=overview', '#/reports/overview', '#/overviews', '#/code?path=overview']) {
+      expect(redirectHash(hash), hash).toBeNull();
     }
   });
 });

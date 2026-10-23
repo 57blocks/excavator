@@ -76,7 +76,7 @@ export const DomainCard = memo(function DomainCard({ data }: NodeProps<DomainFlo
       </button>
       <div className={`flex min-w-0 shrink-0 items-center gap-2 pr-7 ${step ? 'leading-5' : ''}`}>
         {step ? <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-paper-2 font-mono text-[11px] font-semibold text-ink-soft">{entry.position}</span> : null}
-        <span className={`min-w-0 truncate font-semibold text-ink ${step ? 'text-[13px]' : 'text-[18px] leading-6'}`} title={entry.label}>{entry.label}</span>
+        <span className={`min-w-0 truncate font-heading text-ink ${step ? 'text-[13px]' : 'text-[18px] leading-6'}`} title={entry.label}>{entry.label}</span>
       </div>
       {step ? null : <span className="shrink-0 text-[10px] font-semibold uppercase tracking-wider text-muted">{KIND_TEXT[entry.kind]}</span>}
       {entry.summary ? (

@@ -35,7 +35,7 @@ export function ProductPage<T>({ product: name, title, subtitle, load, children 
   const loaded = useLoaded(unavailable ? '' : name, () => (unavailable ? Promise.resolve(null as T) : load(payloads, product)));
   useReady(unavailable ? 'ready' : loaded.state);
   return (
-    <Page title={title} subtitle={subtitle}>
+    <Page title={title} subtitle={subtitle} status={product.status} revision={manifest.snapshot.revision}>
       {unavailable}
       {unavailable ? null : <RevisionBanner manifest={manifest} product={product} />}
       {!unavailable && loaded.state === 'error' ? <LoadError title={`${product.label} could not be read`} error={loaded.error} /> : null}

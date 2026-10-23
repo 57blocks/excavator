@@ -22,6 +22,7 @@
     "excavator:excavator-knowledge-graph-guide",
     "excavator:excavator-project-scanner",
     "excavator:excavator-summary-verifier",
+    "excavator:excavator-tour-verifier",
     "claude",
     "Explore",
     "general-purpose",

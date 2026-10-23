@@ -1,6 +1,8 @@
 import { useMemo, useState } from 'react';
 
 import { CodeView } from '../components/CodeView';
+import { FileInGraph } from '../components/FileInGraph';
+import { BarList } from '../components/ui/BarList';
 import { Badge, type BadgeTone } from '../components/ui/Badge';
 import { Card } from '../components/ui/Card';
 import { SearchInput } from '../components/ui/Controls';
@@ -10,7 +12,6 @@ import { useCounts, useReady } from '../hooks/use-signals';
 import type { SourceBucket } from '../data/manifest';
 import { BUCKETS, bucketLabel, bucketReason, buildTree, codeHash, entriesFromSource, filterEntries, lineNotice, lineStatus, splitLines, type SourceEntry, type TreeNode } from '../lib/code';
 import { formatNumber } from '../lib/format';
-import { Tile, Tiles } from '../components/ui/Tile';
 import { useEmbeddedText } from '../state/source';
 import { useViewer } from '../state/viewer';
 
@@ -18,6 +19,7 @@ const MAX_TREE_FILES = 3000;
 
 const BUCKET_TONE: Partial<Record<SourceBucket, BadgeTone>> = { embedded: 'success', tooLarge: 'warning', notInSnapshot: 'danger' };
 const BUCKET_DOT: Record<string, string> = { embedded: 'bg-success', tooLarge: 'bg-warning', notInSnapshot: 'bg-danger' };
+const BUCKET_COLOUR: Record<string, string> = { embedded: 'var(--color-success)', tooLarge: 'var(--color-warning)', notInSnapshot: 'var(--color-danger)' };
 
 function BucketDot({ bucket }: { bucket: string }) {
   return <span title={bucketLabel(bucket)} aria-label={bucketLabel(bucket)} className={`mr-1.5 inline-block size-2 shrink-0 rounded-full ${BUCKET_DOT[bucket] ?? 'bg-muted'}`} />;
@@ -49,13 +51,25 @@ function Tree({ node, active, open }: { node: TreeNode; active: string | null; o
   );
 }
 
-function FileTree({ entries, active }: { entries: SourceEntry[]; active: string | null }) {
+/** The referenced files by class, as the source manifest counts them. */
+function ClassCounts({ entries, counts }: { entries: SourceEntry[]; counts: Record<string, number> }) {
+  const rows = BUCKETS.filter((bucket) => typeof counts[bucket] === 'number').map((bucket) => ({ key: bucket, label: bucketLabel(bucket), value: counts[bucket], colour: BUCKET_COLOUR[bucket] }));
+  return (
+    <div className="mb-3 border-b border-line pb-3" data-xv-class-counts={entries.length}>
+      <p className="m-0 mb-2 text-muted">{`${formatNumber(entries.length)} referenced files`}</p>
+      <BarList rows={rows} label="Referenced files by class" />
+    </div>
+  );
+}
+
+function FileTree({ entries, active, counts }: { entries: SourceEntry[]; active: string | null; counts: Record<string, number> }) {
   const [filter, setFilter] = useState('');
   const matching = useMemo(() => filterEntries(entries, filter), [entries, filter]);
   const shown = matching.slice(0, MAX_TREE_FILES);
   const tree = useMemo(() => buildTree(shown), [shown]);
   return (
     <Card title="Files" className="max-h-[78vh] overflow-auto">
+      <ClassCounts entries={entries} counts={counts} />
       <SearchInput value={filter} onChange={setFilter} placeholder="Filter paths" />
       <p className="text-muted">{`${formatNumber(matching.length)} of ${formatNumber(entries.length)} paths`}</p>
       <Tree node={tree} active={active} open={filter.trim() !== ''} />
@@ -138,15 +152,10 @@ export function CodePage() {
   useCounts({ sources: source.counts.embedded });
   return (
     <Page title="Code" subtitle={`The files the included products point at, as they are in the source snapshot ${manifest.snapshot.revision}.`}>
-      <Card title="Files by class">
-        <Tiles>
-          <Tile label="Referenced files" value={entries.length} />
-          {BUCKETS.map((bucket) => <Tile key={bucket} label={<span className="inline-flex items-center"><BucketDot bucket={bucket} />{bucketLabel(bucket)}</span>} value={source.counts[bucket]} />)}
-        </Tiles>
-      </Card>
       <div className="grid grid-cols-[minmax(240px,340px)_minmax(0,1fr)] items-start gap-5 max-[900px]:grid-cols-1">
-        <FileTree entries={entries} active={active} />
-        <div className="min-w-0">
+        <FileTree entries={entries} active={active} counts={source.counts as Record<string, number>} />
+        <div className="flex min-w-0 flex-col gap-5">
+          {active === null ? null : <FileInGraph path={active} />}
           <SourcePanel entries={entries} active={active} />
         </div>
       </div>

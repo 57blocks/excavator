@@ -5,12 +5,13 @@
  * flag, and the two ends of a path with the way it follows edges. History moves
  * between these because each change is a new entry, and a reload reads them back.
  * The overlays that are on and the filters are kept there too, so a reload or a
- * pasted link restores them. `escapeStep` says what Esc closes next.
+ * pasted link restores them, and so is the mode. `escapeStep` says what Esc closes next.
  */
 
 import { filterParams, NO_FILTERS, parseFilters, type GraphFilters } from './graph-filters';
 import { overlayParam, parseOverlays, type OverlayName } from './overlay-names';
 import { buildHash } from './route';
+import { DEFAULT_MODE, modeParam, parseMode, type Mode } from './view-mode';
 
 export interface GraphState {
   /** The level: '' is the top. */
@@ -29,9 +30,11 @@ export interface GraphState {
   /** The product overlays that are on, in the fixed order. */
   overlays: readonly OverlayName[];
   filters: GraphFilters;
+  /** The mode of the graph pages (design D1): what the graph draws and what the idle sidebar shows. */
+  mode: Mode;
 }
 
-export const TOP_LEVEL: GraphState = { path: '', fold: null, node: null, entry: null, focus: false, from: null, to: null, directed: false, overlays: [], filters: NO_FILTERS };
+export const TOP_LEVEL: GraphState = { path: '', fold: null, node: null, entry: null, focus: false, from: null, to: null, directed: false, overlays: [], filters: NO_FILTERS, mode: DEFAULT_MODE };
 
 type Params = Record<string, string | null | undefined>;
 
@@ -52,6 +55,7 @@ export function parseGraphState(params: Params): GraphState {
     directed: both && params.dir === '1',
     overlays: parseOverlays(params.overlay),
     filters: parseFilters(params),
+    mode: parseMode(params.mode),
   };
 }
 
@@ -70,6 +74,7 @@ export function graphHash(state: Partial<GraphState> = {}): string {
     dir: both && s.directed ? '1' : null,
     overlay: overlayParam(s.overlays),
     ...filterParams(s.filters),
+    mode: modeParam(s.mode),
   });
 }
 

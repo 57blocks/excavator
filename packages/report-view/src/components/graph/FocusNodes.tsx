@@ -44,7 +44,7 @@ export const FocusNode = memo(function FocusNode({ id, data }: NodeProps<FocusFl
       <Handle type="source" position={Position.Bottom} isConnectable={false} className="!pointer-events-none !opacity-0" />
       <span aria-hidden="true" className="size-2.5 shrink-0 rounded-full" style={{ background: nodeColor(data.type) }} />
       <span className="flex min-w-0 flex-1 flex-col">
-        <span className={`truncate text-ink ${data.center ? 'text-[15px] font-semibold' : 'text-[13.5px] font-medium'}`}>{data.name}</span>
+        <span className={`truncate font-heading text-ink ${data.center ? 'text-[15px]' : 'text-[13.5px]'}`}>{data.name}</span>
         <span className="truncate text-[11px] text-muted">{data.type}</span>
       </span>
     </div>

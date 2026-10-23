@@ -12,7 +12,7 @@ export interface Route {
   params: Record<string, string>;
 }
 
-/** The page an empty hash opens; the viewer falls back to the Overview when it has no knowledge graph to draw. */
+/** The page an empty hash opens; the viewer falls back to the Products page when it has no knowledge graph to draw. */
 export const DEFAULT_PAGE = 'graph';
 
 /** True for a hash that names no page: the viewer was opened without a route. */
@@ -63,4 +63,20 @@ export function buildHash(page: string, params: Record<string, string | null | u
   const keys = Object.keys(params).filter((key) => params[key] !== null && params[key] !== undefined);
   if (keys.length > 0) hash += `?${keys.map((key) => `${encodeURIComponent(key)}=${encodeURIComponent(params[key] as string)}`).join('&')}`;
   return hash;
+}
+
+/** Pages that moved to a new name: an old bookmark still opens the page (openspec: changes/viewer-learn, design D9). */
+const MOVED_PAGES: Readonly<Record<string, string>> = { overview: 'products' };
+
+/**
+ * The hash a moved page's hash is replaced with, or null when the page has not moved:
+ * redirectHash('#/overview?x=1') is '#/products?x=1'. What follows the page name is kept as written.
+ */
+export function redirectHash(hash: string): string | null {
+  const route = parseRoute(hash);
+  if (!Object.hasOwn(MOVED_PAGES, route.page)) return null;
+  const queryAt = hash.indexOf('?');
+  const query = queryAt === -1 ? '' : hash.slice(queryAt);
+  const rest = route.rest ? `/${route.rest.split('/').map(encodeURIComponent).join('/')}` : '';
+  return `#/${MOVED_PAGES[route.page]}${rest}${query}`;
 }

@@ -1,5 +1,5 @@
 /**
- * The words the page uses for a product's state, and the state the Overview
+ * The words the page uses for a product's state, and the state the Products page
  * shows for a product (report-viewer: included, not run, unreadable, different
  * revision). The states themselves are the packer's; nothing here decides one.
  */
@@ -30,8 +30,18 @@ export function worstStatus(products: readonly { status: string }[]): ProductSta
 
 const capitalize = (text: string) => text.charAt(0).toUpperCase() + text.slice(1);
 
-/** What the Overview says in a product's detail cell. */
-export function detailText(product: Pick<ManifestProduct, 'status' | 'reason' | 'file' | 'revision' | 'revisionNote'>, snapshotRevision: string): string {
+/** Products whose content the page withholds when it is a different revision: a tour's node ids name one exact fact graph. */
+const WITHHELD_WHEN_DIFFERENT: Readonly<Record<string, string>> = {
+  tour: 'Its steps are not shown: their node ids may not match this graph.',
+};
+
+/** What the page says about the content of product `name` when it is a different revision. */
+export function differentRevisionNote(name: string): string {
+  return Object.hasOwn(WITHHELD_WHEN_DIFFERENT, name) ? WITHHELD_WHEN_DIFFERENT[name] : 'Its content is shown as it was written.';
+}
+
+/** What the Products page says in a product's detail cell. */
+export function detailText(product: Pick<ManifestProduct, 'status' | 'reason' | 'file' | 'revision' | 'revisionNote'> & { name?: string }, snapshotRevision: string): string {
   if (product.status === 'unreadable') return product.reason || 'The file could not be read.';
   if (product.status === 'not-run') return `There is no ${product.file}.`;
   if (product.status === 'different-revision') {
@@ -39,6 +49,7 @@ export function detailText(product: Pick<ManifestProduct, 'status' | 'reason' | 
     const parts = [
       ...(product.revision !== snapshotRevision || !product.reason ? [`Made at ${product.revision}; the source snapshot is ${snapshotRevision}.`] : []),
       ...(product.reason ? [`${product.reason}.`] : []),
+      ...(product.name !== undefined && Object.hasOwn(WITHHELD_WHEN_DIFFERENT, product.name) ? [WITHHELD_WHEN_DIFFERENT[product.name]] : []),
     ];
     return parts.join(' ');
   }

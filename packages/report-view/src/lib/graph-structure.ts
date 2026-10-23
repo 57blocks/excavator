@@ -241,9 +241,13 @@ function treeOf(structure: Structure, group: Group): DirNode {
   return tree;
 }
 
-/** The nodes a file owns, up to `limit`, and how many are left out of that. */
-export function fileChildren(structure: Structure, fileId: string, limit = LEVEL_LIMIT): { shown: readonly GraphNode[]; more: number } {
-  const all = structure.owned.get(fileId) ?? [];
+/**
+ * The nodes a file owns that `drawn` lets the view draw (all of them by default), up to `limit`, and how many of those
+ * are left out of that. What `drawn` leaves out is not counted here; the file's own count still holds it.
+ */
+export function fileChildren(structure: Structure, fileId: string, limit = LEVEL_LIMIT, drawn?: (node: GraphNode) => boolean): { shown: readonly GraphNode[]; more: number } {
+  const owned = structure.owned.get(fileId) ?? [];
+  const all = drawn ? owned.filter(drawn) : owned;
   return { shown: all.slice(0, limit), more: Math.max(0, all.length - limit) };
 }
 

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { existsSync, readFileSync, readdirSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -92,17 +93,62 @@ describe('service-only distribution contract', () => {
       }
     });
 
-    it('ships no HTML page from any other package', () => {
-      const others = readdirSync(join(repoRoot, 'packages'), { withFileTypes: true })
-        .filter((entry) => entry.isDirectory() && `packages/${entry.name}` !== VIEW_PACKAGE)
-        .map((entry) => `packages/${entry.name}`);
-      expect(others.length).toBeGreaterThan(0);
+    // The Understand Anything dashboard copy is the second package that ships an HTML page, also built into one file and never served (openspec: changes/viewer-explorer, design D1 and D3).
+    const EXPLORER_PACKAGE = 'packages/explorer';
+    const HTML_PACKAGES = [VIEW_PACKAGE, EXPLORER_PACKAGE];
+
+    it('gives the explorer package no script that starts a server', () => {
+      const scripts = JSON.parse(read(`${EXPLORER_PACKAGE}/package.json`)).scripts ?? {};
+      for (const name of ['dev', 'preview', 'serve', 'start']) expect(scripts, name).not.toHaveProperty(name);
+      for (const [name, command] of Object.entries(scripts)) {
+        expect(command, name).not.toMatch(/\bvite\b(?!\s+build\b)/);
+      }
+    });
+
+    it('has no server or preview configuration in the explorer vite config', () => {
+      const config = read(`${EXPLORER_PACKAGE}/vite.config.ts`);
+      expect(config).not.toMatch(/\b(server|preview)\s*:/);
+      expect(config).not.toMatch(/configureServer|configurePreviewServer/);
+    });
+
+    // Pure matcher: the HTML pages under every package directory of baseDir that is not in the allowed list.
+    const htmlPagesOutside = (baseDir, allowed) => {
       const skipped = new Set(['node_modules', 'dist']);
-      const pages = (dir) => readdirSync(join(repoRoot, dir), { withFileTypes: true }).flatMap((entry) => {
+      const pages = (dir) => readdirSync(join(baseDir, dir), { withFileTypes: true }).flatMap((entry) => {
         if (entry.isDirectory()) return skipped.has(entry.name) ? [] : pages(join(dir, entry.name));
         return /\.html?$/i.test(entry.name) ? [join(dir, entry.name)] : [];
       });
-      expect(others.flatMap(pages)).toEqual([]);
+      const others = readdirSync(join(baseDir, 'packages'), { withFileTypes: true })
+        .filter((entry) => entry.isDirectory() && !allowed.includes(`packages/${entry.name}`))
+        .map((entry) => `packages/${entry.name}`);
+      return { others, pages: others.flatMap(pages) };
+    };
+
+    it('ships no HTML page from any other package', () => {
+      const { others, pages } = htmlPagesOutside(repoRoot, HTML_PACKAGES);
+      expect(others.length).toBeGreaterThan(0);
+      expect(pages).toEqual([]);
+    });
+
+    it('instrument: the matcher sees an HTML page in a third package and lets the two allowed packages through', () => {
+      const tmp = mkdtempSync(join(tmpdir(), 'html-pages-instrument-'));
+      try {
+        for (const [dir, file] of [
+          ['packages/report-view', 'view.html'],
+          ['packages/explorer', 'index.html'],
+          ['packages/third/src', 'page.html'],
+          ['packages/third/node_modules/x', 'skipped.html'],
+          ['packages/third/dist', 'skipped.html'],
+        ]) {
+          mkdirSync(join(tmp, dir), { recursive: true });
+          writeFileSync(join(tmp, dir, file), '<html></html>\n');
+        }
+        expect(htmlPagesOutside(tmp, HTML_PACKAGES).pages).toEqual([join('packages/third/src', 'page.html')]);
+        // With the second package left off the allowed list its page is found too, so the allowance is what lets it through.
+        expect(htmlPagesOutside(tmp, [VIEW_PACKAGE]).pages).toContain(join('packages/explorer', 'index.html'));
+      } finally {
+        rmSync(tmp, { recursive: true, force: true });
+      }
     });
 
     it('starts no server from the packer or the skill', () => {

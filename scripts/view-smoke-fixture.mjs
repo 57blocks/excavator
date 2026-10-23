@@ -15,7 +15,8 @@
  * `--full` writes the Full-mode shape of the graph instead: node summaries and
  * tags empty, the summaries in a semantic cache (one entry stale, one
  * contradicted) and the layers in a semantic graph, and a domain graph made
- * from that graph's facts (two domains, three flows, five steps).
+ * from that graph's facts (two domains, three flows, five steps) and a tour made
+ * from them too (two steps, one removed sentence).
  */
 
 import { execFileSync } from 'node:child_process';
@@ -122,11 +123,15 @@ function unusedProduct(revision) {
     residualAssumptions: ['The fixture lists only what it was written to list.'],
     decisions: [{ kind: 'framework-entry', reason: 'a callback the framework invokes', query: '.name | test("^on")', hits: 2 }],
     unused: [
-      row('function:src/main.js:orphan', 'orphan', 'src/main.js', [7, 9], 'unreferenced', 'high', 0),
-      row('function:src/util.js:leaf', 'leaf', 'src/util.js', [5, 7], 'only-reachable-from-unused', 'medium', 0),
+      // orphan records no referrer, leaf records orphan, and unused_loader has no referrers field (not provided).
+      { ...row('function:src/main.js:orphan', 'orphan', 'src/main.js', [7, 9], 'unreferenced', 'high', 0), referrers: [] },
+      { ...row('function:src/util.js:leaf', 'leaf', 'src/util.js', [5, 7], 'only-reachable-from-unused', 'medium', 0), referrers: [{ id: 'function:src/main.js:orphan', edge: 'calls', reverse: false }] },
       row('function:lib/data.py:unused_loader', 'unused_loader', 'lib/data.py', [5, 6], 'unreferenced', 'low', 1, 'python'),
     ],
-    groups: [],
+    groups: [
+      { group: 0, entries: ['function:src/main.js:orphan'], members: ['function:src/main.js:orphan', 'function:src/util.js:leaf'] },
+      { group: 1, entries: ['function:lib/data.py:unused_loader'], members: ['function:lib/data.py:unused_loader'] },
+    ],
     testOnly: [row('function:src/util.js:helper', 'helper', 'src/util.js', [1, 3], 'unreferenced', 'low', 1)],
   };
 }
@@ -181,13 +186,19 @@ function hotspotsProduct(revision) {
     conservation: { changesRead: 12, attributed: 10, outsideSelection: 2 },
     residualAssumptions: ['History is read from HEAD only.'],
     // scripts/build.sh is a file of the repository that the graph has no node for.
-    files: [file('src/main.js', { score: 90, commits: 9 }), file('src/util.js', { score: 40, commits: 4 }), file('lib/data.py', { score: 5, commits: 1, lastChanged: null }), file('scripts/build.sh', { score: 3, commits: 1, lines: 2 })],
+    // src/main.js has its commits by year; the other files do not (not provided).
+    files: [file('src/main.js', { score: 90, commits: 9, commitsByYear: { 2025: 4, 2026: 5 } }), file('src/util.js', { score: 40, commits: 4 }), file('lib/data.py', { score: 5, commits: 1, lastChanged: null }), file('scripts/build.sh', { score: 3, commits: 1, lines: 2 })],
     directories: [
       { path: 'src', files: 2, commits: 13, authors: 1, added: 20, removed: 4, lines: 18, score: 130, lastChanged: '2026-01-02T03:04:05+00:00', commitsByYear: { 2025: 6, 2026: 7 }, concentration: { commitsByPeople: 13, topAuthorShare: 1, authorsFor80Percent: 1 } },
       { path: 'lib', files: 1, commits: 1, authors: 1, added: 3, removed: 0, lines: 6, score: 5, lastChanged: null },
     ],
-    pairs: [{ a: 'src/main.js', b: 'src/util.js', together: 4, shareOfA: 0.44, shareOfB: 1 }],
-    coChange: { maxFilesPerCommit: 30, minTogether: 3, commitsCounted: 4, commitsOverLimit: 0, pairsListed: 1, pairsBelowMinimum: 0 },
+    // src/main.js changed with three files: util.js most, then data.py and build.sh as often (ties go by path).
+    pairs: [
+      { a: 'scripts/build.sh', b: 'src/main.js', together: 3, shareOfA: 1, shareOfB: 0.33 },
+      { a: 'src/main.js', b: 'src/util.js', together: 4, shareOfA: 0.44, shareOfB: 1 },
+      { a: 'lib/data.py', b: 'src/main.js', together: 3, shareOfA: 1, shareOfB: 0.33 },
+    ],
+    coChange: { maxFilesPerCommit: 30, minTogether: 3, commitsCounted: 4, commitsOverLimit: 0, pairsListed: 3, pairsBelowMinimum: 0 },
     groups: [],
     featureGroups: null,
   };
@@ -279,6 +290,35 @@ function domainGraphFile(revision) {
   };
 }
 
+/**
+ * The tour of the Full fixture, as `tour.mjs report` writes it, from the graph's facts: two steps over nodes the graph has,
+ * one sentence of each kept verdict, one removed sentence, and counts recounted from those.
+ */
+function tourFile(revision) {
+  const sentence = (id, kind, text, verdict) => ({ id, kind, text, verdict, reason: verdict === 'verified' ? 'The slice shows it.' : 'The slice does not show it.' });
+  return {
+    format: 'excavator-tour/1',
+    contentLanguage: 'en',
+    sourceRevision: revision,
+    factDigest: FACTS_DIGEST,
+    steps: [
+      {
+        order: 1, originalOrder: 1, title: 'Where the program starts', description: 'The main function starts the engine. It runs once.',
+        nodeIds: ['file:src/main.js', 'function:src/main.js:main'],
+        sentences: [sentence('s1.d1', 'description', 'The main function starts the engine.', 'verified'), sentence('s1.d2', 'description', 'It runs once.', 'unverified')],
+      },
+      {
+        order: 2, originalOrder: 2, title: 'The engine', description: 'The engine runs its input.', nodeIds: ['function:src/core/engine/run.js:run'],
+        languageLesson: 'A function declaration is hoisted.',
+        sentences: [sentence('s2.d1', 'description', 'The engine runs its input.', 'verified'), sentence('s2.l1', 'languageLesson', 'A function declaration is hoisted.', 'unchecked')],
+      },
+    ],
+    removed: [{ step: 2, id: 's2.d2', kind: 'description', text: 'The engine retries forever.', verdict: 'contradicted', reason: 'The slice stops after one try.', cause: 'contradicted twice' }],
+    gaps: [{ kind: 'few-steps', reason: 'the tour has 2 step(s), fewer than 5', count: 2 }],
+    counts: { steps: 2, sentences: 4, verified: 2, unverified: 1, contradicted: 0, unchecked: 1, removedSentences: 1, adviceLines: 0, removedSteps: 0 },
+  };
+}
+
 /** What the domain view should show, for the smoke's checks. */
 const DOMAIN_EXPECTED = {
   counts: { domains: 2, flows: 3, steps: 5, links: 1 },
@@ -359,6 +399,7 @@ export function makeSmokeProject(dir, { full = false } = {}) {
     writeJson(root, 'semantic-cache.json', semantic.cache);
     writeJson(root, 'semantic-graph.json', semantic.graph);
     writeJson(root, 'domain-graph.json', domainGraphFile(revision));
+    writeJson(root, 'tour.json', tourFile(revision));
   }
   writeJson(root, 'unused-code.json', unusedProduct(revision));
   writeJson(root, 'doc-map.json', docMapProduct(revision));
@@ -371,16 +412,16 @@ export function makeSmokeProject(dir, { full = false } = {}) {
     root,
     revision,
     expected: {
-      overview: {
+      products: {
         nodes: 14, edges: 15, gaps: 1,
         ...(full ? { 'semantic-entries': 7, 'semantic-stale': 1, 'semantic-verified': 3, 'semantic-unverified': 1, 'semantic-contradicted': 1, 'semantic-unchecked': 2, 'semantic-layers': 2, 'summaries-shown': 6 } : {}),
       },
       unused: { unused: 3, 'unused-shown': 3 },
       'doc-map': { units: 3, 'units-shown': 3, checks: 3 },
-      hotspots: { files: 4, directories: 2, pairs: 1, groups: 0 },
+      hotspots: { files: 4, directories: 2, pairs: 3, groups: 0 },
       code: { sources: 6 },
       graph: graphExpected(full),
-      ...(full ? { domain: DOMAIN_EXPECTED } : {}),
+      ...(full ? { domain: DOMAIN_EXPECTED, tour: { steps: 2, sentences: 4, removedSentences: 1, factDigest: FACTS_DIGEST } } : {}),
       reports: { reports: 2 },
     },
   };

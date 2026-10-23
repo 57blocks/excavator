@@ -146,6 +146,10 @@ For host-owned AI exploration through seven bounded local MCP tools, see [MCP se
 # and count the project's files with and without a function's evidence, by directory
 /excavator-doc-map ~/path/to/docs
 
+# Write a 5-15 step learning tour of the project to .excavator/tour.json for the viewer: steps chosen from computed candidates,
+# every sentence checked by a subagent against the code it cites, contradicted sentences removed and recorded (no advice)
+/excavator-tour
+
 # Re-run anytime — incremental by default (only re-analyzes changed files)
 /excavator
 

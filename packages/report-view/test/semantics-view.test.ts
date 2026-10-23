@@ -52,7 +52,7 @@ describe('semanticsStats', () => {
   });
 });
 
-describe('what the Overview publishes and says', () => {
+describe('what the Products page publishes and says', () => {
   const stats = semanticsStats(index, payload, product);
 
   it('publishes one count per figure, and only for verdicts it names', () => {

@@ -10,7 +10,7 @@
 import { describe, expect, it, beforeEach, afterEach } from 'vitest';
 import { mkdtempSync, rmSync, mkdirSync, writeFileSync, readFileSync, existsSync, readdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { basename, join } from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 
@@ -150,6 +150,34 @@ describe('lazy-analyze driver — first-run pipeline', () => {
     expect(afterTarget.summary).toBe('Runs the fixture entry point.');
     expect(afterTarget.tags).toEqual(['entrypoint']);
     expect(after.layers).toEqual(graph.layers);
+  });
+
+  // openspec: changes/viewer-explorer, design D4d — the name is the project's, not the snapshot's.
+  it('names the project after package.json, else after its root folder, never after the snapshot directory', async () => {
+    await runLazyAnalysis({ projectRoot: root, now: FIXED_NOW });
+    const graphPath = join(root, '.excavator', KNOWLEDGE_GRAPH_FILE);
+    expect(readKnowledgeGraph(graphPath).project.name).toBe('lazy-fixture');
+
+    rmSync(join(root, 'package.json'));
+    rmSync(join(root, '.excavator'), { recursive: true, force: true });
+    await runLazyAnalysis({ projectRoot: root, now: FIXED_NOW });
+    expect(readKnowledgeGraph(graphPath).project.name).toBe(basename(root));
+  });
+
+  it('replaces a snapshot directory name an earlier run left in the graph, and keeps any other name', async () => {
+    await runLazyAnalysis({ projectRoot: root, now: FIXED_NOW });
+    const graphPath = join(root, '.excavator', KNOWLEDGE_GRAPH_FILE);
+    const graph = readKnowledgeGraph(graphPath);
+
+    graph.project.name = 'excavator-snapshot-dir-Ab12Cd';
+    writeKnowledgeGraph(graphPath, graph);
+    await runLazyAnalysis({ projectRoot: root, now: FIXED_NOW });
+    expect(readKnowledgeGraph(graphPath).project.name).toBe('lazy-fixture');
+
+    graph.project.name = 'a name someone gave';
+    writeKnowledgeGraph(graphPath, graph);
+    await runLazyAnalysis({ projectRoot: root, now: FIXED_NOW });
+    expect(readKnowledgeGraph(graphPath).project.name).toBe('a name someone gave');
   });
 
   // openspec: changes/knowledge-graph-line-store, design D5 — zero compat.

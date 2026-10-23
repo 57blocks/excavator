@@ -1,21 +1,21 @@
 ---
 name: excavator-view
-description: Pack the products in a project's .excavator/ folder (knowledge graph, unused-code, doc-map, hotspots and their reports) into one self-contained HTML file and open it with the system's default browser. A deterministic script writes the page and gives each product a visible state; the page needs no network, no server and nothing to install. It runs no analysis, edits no other file and gives no advice.
+description: Pack the products in a project's .excavator/ folder (knowledge graph, unused-code, doc-map, hotspots, the tour and the reports) into one self-contained HTML file and open it with the system's default browser. A deterministic script writes the page and gives each product a visible state; the page needs no network, no server and nothing to install. It runs no analysis, edits no other file and gives no advice.
 argument-hint: "[project-path] [--no-source] [--out <path>]"
 ---
 
 # /excavator-view
 
-Write one HTML file that shows the products already in `.excavator/`, and open it in the browser. Nothing is analysed here: a product that was never produced shows as **not run**, with the command that produces it.
+Write two HTML files that show the products already in `.excavator/`, and open the first in the browser. Nothing is analysed here: a product that was never produced shows as **not run**, with the command that produces it.
 
 | Who | What |
 |---|---|
-| `pack.mjs` | Reads the products and the source snapshot's revision, gives every product one state (included, not run, unreadable, different revision), and writes `.excavator/view.html` through a temporary file and a rename. The page is the template `packages/report-view` builds (`pnpm build` writes it to `packages/report-view/dist/view.html`) with the policy and the data inserted. It prints one JSON result. |
-| You | Run it, open the file, and print the four reply lines. |
+| `pack.mjs` | Reads the products and the source snapshot's revision, gives every product one state (included, not run, unreadable, different revision), and writes `.excavator/view.html` and, beside it, `explorer.html`, each through a temporary file and a rename. The first page is the template `packages/report-view` builds (`pnpm build` writes it to `packages/report-view/dist/view.html`) with the policy and the data inserted; the second is the explorer template `packages/explorer` builds, with the same products in its own data shape. It prints one JSON result. |
+| You | Run it, open the file, and print the five reply lines. |
 
 ## Options
 
-`$ARGUMENTS` may contain the project path (default: the current working directory), `--no-source`: leave the source text out of the file, and `--out <path>`: write the page there instead of `.excavator/view.html`.
+`$ARGUMENTS` may contain the project path (default: the current working directory), `--no-source`: leave the source text out of the file, and `--out <path>`: write the page there instead of `.excavator/view.html` (the explorer page goes beside it, so the path must not be named `explorer.html`).
 
 ---
 
@@ -59,13 +59,13 @@ esac
 true
 ```
 
-Do not start an HTTP server, do not run `/excavator`, `/excavator-unused-code`, `/excavator-doc-map` or `/excavator-hotspots` to fill a product that is not run, and do not create, change or delete any other file under `.excavator/`.
+Do not start an HTTP server, do not run `/excavator`, `/excavator-unused-code`, `/excavator-doc-map`, `/excavator-hotspots` or `/excavator-tour` to fill a product that is not run, and do not create, change or delete any other file under `.excavator/` than the two pages.
 
 ## Step 3 — Reply
 
 Write what you tell the user during this step in English, as **Language** in Step 1 says.
 
-Print the reply's four lines with one command. It reads the manifest inside the page, so the states are the page's own:
+Print the reply's five lines with one command. It reads the manifests inside the two pages, so the states are the pages' own:
 
 ```bash
 node "<the plugin root printed in Step 1>/skills/excavator-view/reply.mjs" "<the out path from the result>"
@@ -76,7 +76,8 @@ It prints, in this order:
 ```
 View: <absolute path>
 Size: <size in MB, one decimal> MB
-Products: knowledge graph <state>; unused code <state>; doc map <state>; hotspots <state>; reports <state>
+Explorer: <absolute path>; <N issues | knowledge graph <state>>
+Products: knowledge graph <state>; unused code <state>; doc map <state>; hotspots <state>; tour <state>; reports <state>
 Source: <embedded (N files) | not embedded>
 ```
 

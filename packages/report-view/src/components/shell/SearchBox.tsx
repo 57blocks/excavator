@@ -6,13 +6,16 @@ import { selectHash } from '../../lib/graph-actions';
 import { parseGraphState, TOP_LEVEL } from '../../lib/graph-state';
 import { nodeColor } from '../../lib/node-colors';
 import { searchNodes } from '../../lib/search';
+import { modeForNode, parseMode } from '../../lib/view-mode';
 import { useGraphScene } from '../../state/graph-scene';
 import { useGraphUi } from '../../state/graph-ui';
 
 /**
  * The search box of the top bar (spec "Search, filters, focus and paths"): fuzzy
  * matches on name and path, each with its type and path. Choosing one goes to the
- * graph, drills to where the node lives and selects it. `/` focuses the box.
+ * graph, drills to where the node lives and selects it; a function or class
+ * chosen in Overview switches to Deep dive first (changes/viewer-learn, design
+ * D1). `/` focuses the box.
  * The graph is read on the first focus, not at load.
  */
 export function SearchBox() {
@@ -31,7 +34,11 @@ export function SearchBox() {
   const choose = (nodeId: string) => {
     if (!ready) return;
     const keep = route.page === 'graph' ? parseGraphState(route.params) : TOP_LEVEL;
-    navigate(selectHash({ ...TOP_LEVEL, from: keep.from, to: keep.to, directed: keep.directed, overlays: keep.overlays, filters: keep.filters }, ready.model.index, ready.structure, nodeId));
+    // The mode of either graph page stays; a node the mode does not draw is shown in Deep dive, and the sidebar says so.
+    const now = route.page === 'graph' || route.page === 'domain' ? parseMode(route.params.mode) : keep.mode;
+    const { mode, switched } = modeForNode(now, ready.model.index.nodesById.get(nodeId)?.type);
+    ui.setModeSwitch(switched === null ? null : { node: nodeId, from: switched });
+    navigate(selectHash({ ...TOP_LEVEL, from: keep.from, to: keep.to, directed: keep.directed, overlays: keep.overlays, filters: keep.filters, mode }, ready.model.index, ready.structure, nodeId));
     setQuery('');
     ui.setOverlay(null);
     ui.searchInput.current?.blur();

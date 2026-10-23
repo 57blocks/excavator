@@ -29,26 +29,47 @@
  *     flow_step weight order with the arrows between them, a step's evidence opening the code drawer, a step's graph node
  *     opening the structure graph with that node selected, and the nodes the graph lacks listed as "Not in the graph.";
  *     domain-history, domain-restore and domain-keys (back and forward, a load from the address, Esc from the inside out);
- *     domain-overview, domain-notrun and domain-digest (the product's state with its counts, not run, and a different revision);
+ *     domain-products, domain-notrun and domain-digest (the product's state with its counts, not run, and a different revision);
  *     domain-fit (a domain graph as wide as a real one at 1280 by 900: nine domains and a flow of seven steps fit at a zoom of 0.9 or
  *     more, and no text of a card runs out of its box);
  *   - edge-labels: on a crowded level (top and drilled) a selected node lights its edges and labels none of them; the edge under the pointer
  *     shows its label alone, on an opaque box above the cards;
- *   - topbar-768, topbar-1024, topbar-1280: the top bar's controls do not overlap, overflow or wrap, the search box is at least 160 px, and
- *     the Hotspots overlay switches on and off (behind the Overlays menu below 1280 px);
+ *   - topbar-768, topbar-1024, topbar-1280: the top bar's controls do not overlap, overflow or wrap, the search box is at least 160 px,
+ *     the Hotspots overlay switches on and off (behind the Overlays menu below 1280 px), and the mode switch sets the mode;
  *   - longfile, longfile-restore: a function of a file expanded to a hundred and twenty rows is located, and the camera is on it at a readable
- *     zoom instead of fitting the whole file.
+ *     zoom instead of fitting the whole file;
+ *   - products-redirect (openspec: changes/viewer-learn, design D9): a bookmark of the old `#/overview` and a move to it both open the
+ *     Products page with `#/products` in the address and no `#/overview` entry left in the history, the navigation names Products, and
+ *     the page lists the tour as included with the facts digest it was made from;
+ *   - fonts (changes/viewer-learn, design D7): the page title's computed font is DM Serif Display, the text's Inter and code's JetBrains
+ *     Mono, document.fonts reports them loaded from the page itself (no request, no CSP violation), and the body carries the grain.
+ *   - the detail pages (changes/viewer-learn, tasks 3.1-3.3): row-panel-unused and row-panel-hotspots (a real pointer lifts a row, a click
+ *     opens its panel with the fields, the source with the line range marked, Locate in graph and Open code, the group members and
+ *     referrers, or the commits per year and the files changed together, each related row opening its own; back and Esc close it);
+ *     row-link and row-link-reload (`row=` opens the page and sort that hold the row, scrolls to it, flashes it and opens its panel, and a
+ *     row the product lacks is said so with no panel); prefix-filter (`prefix=` keeps the rows an independent count over the product
+ *     finds, and the clear button takes it off); detail-numbers (the tiles, bars, years, histogram and product cards against the
+ *     product); reduced-motion (no animation runs on the detail pages or in the row panel).
+ *   - the modes and the idle sidebar (changes/viewer-learn, tasks 4.1-4.3): overview-mode (at the top level and two drilled levels Overview
+ *     draws no function or class and no file opens to one, while every card and count equals Deep dive's); mode-search-switch (a class or
+ *     function found in Overview switches to Deep dive, is located and selected, and the sidebar says so; back returns to Overview);
+ *     domain-structural and domain-structural-notrun (the Domain | Structural switch returns each side to its level and selection, and is
+ *     absent without a readable domain graph); project-overview (every number of the overview against a count over the packed files, a
+ *     top node, a layer, Start tour and a hotspot link with its row panel); learn-notrun and learn-digest (the tour's state in Learn);
+ *     reduced-motion-idle; and the top bar scenarios check the mode switch at each width.
+ *   - page-column-1440, page-column-1920, page-column-768: on Products and Unused the page column is centred in the main area (its
+ *     left and right gaps differ by at most 1 px), and at 768 px nothing scrolls sideways.
  *
- *   node scripts/view-smoke-graph.mjs [levels|history|search|drawer|focus|path|filters|keys|layers|summary|overlays|clearance|notrun|restore|locate|locate-tables|domain|domain-history|domain-restore|domain-keys|domain-overview|domain-notrun|domain-digest|domain-fit|edge-labels|topbar-768|topbar-1024|topbar-1280|longfile|longfile-restore ...]
+ *   node scripts/view-smoke-graph.mjs [levels|history|search|drawer|focus|path|filters|keys|layers|summary|overlays|clearance|notrun|restore|locate|locate-tables|domain|domain-history|domain-restore|domain-keys|domain-products|domain-notrun|domain-digest|domain-fit|edge-labels|topbar-768|topbar-1024|topbar-1280|longfile|longfile-restore|products-redirect|fonts|row-panel-unused|row-panel-hotspots|row-link|row-link-reload|prefix-filter|detail-numbers|reduced-motion|overview-mode|mode-search-switch|domain-structural|domain-structural-notrun|project-overview|learn-notrun|learn-digest|reduced-motion-idle|page-column-1440|page-column-1920|page-column-768 ...]
  *
  * Needs `pnpm build` (the template) and a local Chrome. Prints one line per
  * check and exits 1 when any fails.
  */
 
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { basename, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { packProject } from '../skills/excavator-view/pack.mjs';
@@ -168,6 +189,24 @@ const PRELUDE = `
 `;
 
 const driver = (body) => `(async () => { ${PRELUDE} const out = {}; ${body}; return out; })()`;
+
+/** Helpers of the detail-page scenarios: the open row panel, and what it shows. */
+const ROW_HELPERS = `
+  const rowPanel = (key) => q('aside[data-xv-panel="sidebar"] [data-xv-row-panel="' + key + '"]');
+  const openPanel = () => q('aside[data-xv-panel="sidebar"] [data-xv-row-panel]')?.getAttribute('data-xv-row-panel') || null;
+  const ids = (panel, selector) => [...panel.querySelectorAll(selector)].map((el) => el.getAttribute('data-xv-related'));
+  const panelState = (panel) => (!panel ? { key: null, text: '' } : {
+    key: panel.getAttribute('data-xv-row-panel'),
+    text: panel.textContent.replace(/\\s+/g, ' '),
+    locate: panel.querySelector('[data-xv-locate]')?.getAttribute('data-xv-locate') ?? null,
+    openCode: panel.querySelector('[data-xv-open-code]')?.getAttribute('href') ?? null,
+    preview: panel.querySelector('[data-xv-preview]')?.getAttribute('data-xv-preview') ?? null,
+    highlight: panel.querySelector('[data-xv-preview] [data-xv-highlight]')?.getAttribute('data-xv-highlight') ?? null,
+    marked: panel.querySelectorAll('[data-xv-preview] .xv-line-hl').length,
+    others: ids(panel, '[data-xv-group] [data-xv-related]'),
+    referrers: ids(panel, '[data-xv-referrers] [data-xv-related]'),
+  });
+`;
 
 /** Scenarios: [name, mode, driver, check(out, expected) => [name, passed, detail][]]. */
 const SCENARIOS = [
@@ -710,13 +749,13 @@ const SCENARIOS = [
     await arrived((p) => p.node === 'file:src/util.js');
     await until(() => sidebar() === 'file:src/util.js');
     out.file = there();
-    await go('#/hotspots');
+    await go('#/hotspots?view=directories');
     (await until(() => q('[data-xv-locate="directory:lib"]'))).click();
     await arrived((p) => p.entry === 'group:lib');
     await until(() => q('aside[data-xv-panel="sidebar"]'));
     out.directory = { ...there(), title: q('aside[data-xv-panel="sidebar"]')?.getAttribute('aria-label') };
     // src is split by the graph into src/core and the files directly in src: no one container stands for it.
-    await go('#/hotspots');
+    await go('#/hotspots?view=directories');
     (await until(() => q('[data-xv-locate="directory:src"]'))).click();
     const split = await until(() => q('[data-xv-locate-message]'));
     await sleep(200);
@@ -932,24 +971,24 @@ const SCENARIOS = [
     ];
   }, { hash: '/domain?d=domain%3Aapp&f=flow%3Astart-up&node=step%3Astart-up%3Abegin' }],
 
-  ['domain-overview', 'layers', (graph, expected) => driver(`
-    await go('#/overview');
+  ['domain-products', 'layers', (graph, expected) => driver(`
+    await go('#/products');
     await until(() => attr('data-xv-count-domain-domains') !== null);
-    const row = all('tr').find((tr) => tr.querySelector('td')?.textContent === 'Domain graph');
-    out.overview = { counts: ['domains', 'flows', 'steps', 'cross'].map((n) => attr('data-xv-count-domain-' + n)), row: row?.textContent ?? null, counted: q('[data-xv-domain-counts]')?.textContent ?? null };
+    const row = await until(() => q('[data-xv-product-card="domain-graph"]'));
+    out.products = { counts: ['domains', 'flows', 'steps', 'cross'].map((n) => attr('data-xv-count-domain-' + n)), row: row?.textContent ?? null, counted: q('[data-xv-domain-counts]')?.textContent ?? null };
   `), (out, graph, expected) => [
-    ['domain-overview: the Overview lists the domain graph as included with its counts', JSON.stringify(out.overview?.counts) === JSON.stringify(['2', '3', '5', '1']) && /Included/.test(out.overview.row ?? '') && out.overview.counted === '2 domains, 3 flows, 5 steps and 1 cross-domain edge.', out.overview],
+    ['domain-products: the Products page lists the domain graph as included with its counts', JSON.stringify(out.products?.counts) === JSON.stringify(['2', '3', '5', '1']) && /Included/.test(out.products.row ?? '') && out.products.counted === '2 domains, 3 flows, 5 steps and 1 cross-domain edge.', out.products],
   ]],
 
   ['domain-notrun', 'domain-notrun', (graph, expected) => driver(`
     await go('#/domain');
     out.page = { text: q('main')?.textContent ?? '', canvas: !!q('.react-flow'), note: !!q('[data-xv-domain-note]') };
-    await go('#/overview');
-    const row = all('tr').find((tr) => tr.querySelector('td')?.textContent === 'Domain graph');
-    out.overview = row?.textContent ?? null;
+    await go('#/products');
+    const row = await until(() => q('[data-xv-product-card="domain-graph"]'));
+    out.products = row?.textContent ?? null;
   `), (out) => [
     ['domain-notrun: the Domain page says not run and gives the command, and draws no graph', /Domain graph: not run/.test(out.page?.text ?? '') && /\/excavator-domain/.test(out.page.text) && out.page.canvas === false && out.page.note === false, out.page],
-    ['domain-notrun: the Overview lists it as not run with the command', /Not run/.test(out.overview ?? '') && /\/excavator-domain/.test(out.overview), out.overview],
+    ['domain-notrun: the Products page lists it as not run with the command', /Not run/.test(out.products ?? '') && /\/excavator-domain/.test(out.products), out.products],
   ]],
 
   ['domain-digest', 'domain-digest', (graph, expected) => driver(`
@@ -957,16 +996,82 @@ const SCENARIOS = [
     await go('#/domain');
     await until(() => attr('data-xv-domain-level') === 'top');
     out.page = { revision: q('[data-xv-domain-revision]')?.textContent ?? null, cards: all('[data-xv-domain-entry="domain"]').length };
-    await go('#/overview');
-    const row = all('tr').find((tr) => tr.querySelector('td')?.textContent === 'Domain graph');
-    out.overview = row?.textContent ?? null;
+    await go('#/products');
+    const row = await until(() => q('[data-xv-product-card="domain-graph"]'));
+    out.products = row?.textContent ?? null;
   `), (out, graph, expected) => {
     const { domain, graph: other } = expected.domain.digests;
     return [
       ['domain-digest: a domain graph made from other facts is a different revision: the page writes both digests and still draws the graph', out.page?.revision?.includes(domain) && out.page.revision.includes(other) && out.page.cards === expected.domain.counts.domains, out.page],
-      ['domain-digest: the Overview lists it as a different revision with both digests', /Different revision/.test(out.overview ?? '') && out.overview.includes(domain) && out.overview.includes(other), out.overview],
+      ['domain-digest: the Products page lists it as a different revision with both digests', /Different revision/.test(out.products ?? '') && out.products.includes(domain) && out.products.includes(other), out.products],
     ];
   }],
+
+  ['products-redirect', 'layers', (graph, expected) => driver(`
+    const navItem = (id) => q('nav[aria-label="Pages"] [data-xv-nav="' + id + '"]');
+    const snap = () => ({ hash: location.hash, nav: q('nav[aria-label="Pages"] [aria-current="page"]')?.getAttribute('data-xv-nav') ?? null, heading: q('main h1')?.textContent ?? null });
+    // Short waits: on a page without the redirect each one runs out (the evaluation has 15 s in all), and the checks still say which step failed.
+    const ready = () => until(() => attr('data-xv-ready') === '1', 40);
+    await until(() => q('main h1')?.textContent === 'Products', 40);
+    await ready();
+    out.bookmark = snap();
+    out.navItem = { href: navItem('products')?.getAttribute('href') ?? null, label: navItem('products')?.textContent ?? null, old: !!navItem('overview') };
+    const row = await until(() => q('[data-xv-product-card="tour"]'));
+    out.tour = row?.textContent ?? null;
+    await go('#/graph');
+    const before = history.length;
+    location.hash = '#/overview';
+    await until(() => location.hash === '#/products' && q('main h1')?.textContent === 'Products', 40);
+    await ready();
+    out.moved = { ...snap(), added: history.length - before };
+    history.back();
+    await until(() => location.hash === '#/graph', 40);
+    await ready();
+    out.back = snap();
+    history.forward();
+    await until(() => location.hash === '#/products', 40);
+    await ready();
+    out.forward = snap();
+    location.hash = '#/overview?x=1';
+    await until(() => location.hash.startsWith('#/products'), 40);
+    out.params = location.hash;
+  `), (out, graph, expected) => {
+    const products = (s) => s?.hash === '#/products' && s.nav === 'products' && s.heading === 'Products';
+    return [
+      ['products-redirect: a bookmark of #/overview opens the Products page with #/products in the address', products(out.bookmark), out.bookmark],
+      ['products-redirect: the navigation names Products and links to #/products, and has no Overview item', out.navItem?.href === '#/products' && /Products/.test(out.navItem.label ?? '') && out.navItem.old === false, out.navItem],
+      ['products-redirect: a move to #/overview opens the Products page and adds one history entry, not two', products(out.moved) && out.moved.added === 1, out.moved],
+      ['products-redirect: back returns to the graph, not to #/overview, and forward to the Products page', out.back?.hash === '#/graph' && out.back.nav === 'graph' && products(out.forward), [out.back, out.forward]],
+      ['products-redirect: the parameters after the page name are kept', out.params === '#/products?x=1', out.params],
+      ['products-redirect: the Products page lists the tour as included, made from the graph\'s facts', /Included/.test(out.tour ?? '') && out.tour.includes(expected.tour.factDigest), out.tour],
+    ];
+  }, { hash: '/overview' }],
+
+  // The inlined fonts (openspec: changes/viewer-learn, design D7): the page title is set in DM Serif Display, the text in Inter and code in
+  // JetBrains Mono, each face loaded from the page itself; the run's own checks fail on any request, CSP violation or console error, so a
+  // font fetched from anywhere or blocked by the policy fails this scenario too. The body carries the grain as a data URL.
+  ['fonts', 'layers', () => driver(`
+    await until(() => q('main h1')?.textContent === 'Products', 80);
+    await document.fonts.ready;
+    const family = (el) => (el ? getComputedStyle(el).fontFamily : null);
+    // The Products page may show no code: a probe element reads what the stylesheet gives code.
+    const code = document.body.appendChild(document.createElement('code'));
+    const faces = [...document.fonts].map((f) => f.family.replace(/"/g, '') + ' ' + f.weight + ' ' + f.status);
+    out.fonts = {
+      title: family(q('main h1')),
+      text: family(document.body),
+      code: family(code),
+      faces,
+      checked: ['26px "DM Serif Display"', '14px "Inter"', '12px "JetBrains Mono"'].map((font) => document.fonts.check(font)),
+      grain: getComputedStyle(document.body).backgroundImage.slice(0, 40),
+    };
+    code.remove();
+  `), (out) => [
+    ['fonts: the page title\'s computed font starts with DM Serif Display, the text\'s with Inter and code\'s with JetBrains Mono', /^"?DM Serif Display"?,/.test(out.fonts?.title ?? '') && /^"?Inter"?,/.test(out.fonts.text ?? '') && /^"?JetBrains Mono"?,/.test(out.fonts.code ?? ''), out.fonts],
+    ['fonts: document.fonts reports DM Serif Display, Inter 400 and JetBrains Mono 400 loaded, and every face is available', ['DM Serif Display 400 loaded', 'Inter 400 loaded', 'JetBrains Mono 400 loaded'].every((f) => out.fonts?.faces.includes(f)) && out.fonts.checked.every(Boolean), out.fonts],
+    ['fonts: the page holds the six faces it uses and no other', out.fonts?.faces.length === 6, out.fonts?.faces],
+    ['fonts: the body draws its grain from a data URL', /^url\("data:image\/svg\+xml;base64,/.test(out.fonts?.grain ?? ''), out.fonts?.grain],
+  ], { hash: '/products' }],
 
   // A domain graph as wide as a real one (nine domains, a flow of seven steps, long names, summaries and paths), at the smoke's 1280 by
   // 900 window: the cards are read at about full size (the camera fits at a zoom of 0.9 or more) and none of their text runs out of its box.
@@ -1072,8 +1177,500 @@ const SCENARIOS = [
     ['details: a function shows its unused state, reason and confidence from the product', out.facts?.some((f) => f.startsWith('unused-code:facts:') && f.includes('Listed as unused') && f.includes('unreferenced') && f.includes('high')), out.facts],
     ['details: a file shows its hotspots counts and score and its doc-map evidence', out.file?.some((f) => f.startsWith('hotspots:') && f.includes('Commits9') && f.includes('Score90')) && out.file.some((f) => f.startsWith('doc-map:') && f.includes('passage')), out.file],
   ]],
+
+  // The detail pages (openspec: changes/viewer-learn, tasks 3.1-3.3): the row panels, links to a row, the path filter, and the numbers
+  // of the tiles and charts against the product.
+  ['row-panel-unused', 'layers', () => driver(`${ROW_HELPERS}
+    await go('#/unused');
+    const leaf = 'function:src/util.js:leaf';
+    const tr = await until(() => q('tr[data-xv-row="' + leaf + '"]'));
+    await sleep(500);
+    tr.scrollIntoView({ block: 'center' });
+    await sleep(100);
+    const box = tr.getBoundingClientRect();
+    const restTransform = getComputedStyle(tr).transform;
+    await __xvPointer(box.left + 12, box.top + box.height / 2);
+    await sleep(350);
+    out.hover = { rest: restTransform, hovered: getComputedStyle(tr).transform };
+    await __xvPointer(2, 2);
+    const before = history.length;
+    tr.click();
+    const panel = await until(() => rowPanel(leaf));
+    await until(() => panel.querySelector('[data-xv-highlight]'));
+    out.open = { ...panelState(panel), row: route().params.row ?? null, added: history.length - before, selected: q('tr[data-xv-row-selected]')?.getAttribute('data-xv-row') ?? null, flash: q('tr[data-xv-row-flash]')?.getAttribute('data-xv-row') ?? null };
+    // A referrer that is on the list opens its own row; back returns to the first, and back again closes the panel.
+    panel.querySelector('[data-xv-referrers] [data-xv-related="function:src/main.js:orphan"]')?.click();
+    const orphan = await until(() => rowPanel('function:src/main.js:orphan'));
+    out.related = { row: route().params.row ?? null, text: orphan ? orphan.textContent.replace(/\\s+/g, ' ') : null };
+    history.back();
+    out.back1 = { panel: !!(await until(() => rowPanel(leaf))), row: route().params.row ?? null };
+    history.back();
+    await until(() => !route().params.row && !rowPanel(leaf));
+    await sleep(400);
+    out.back2 = { row: route().params.row ?? null, panel: openPanel(), selected: all('tr[data-xv-row-selected]').length };
+    // A function whose record has no referrers field: the panel says the product does not provide them.
+    await go('#/unused?row=' + encodeURIComponent('function:lib/data.py:unused_loader'));
+    const loader = await until(() => rowPanel('function:lib/data.py:unused_loader'));
+    out.loader = { text: loader ? loader.querySelector('section[aria-label="Referrers"]')?.textContent ?? null : null, group: loader ? loader.querySelector('[data-xv-group]')?.getAttribute('data-xv-group-others') ?? null : null };
+    // Esc closes the panel and takes the row off the address.
+    key('Escape', document.body);
+    await until(() => !route().params.row);
+    await sleep(400);
+    out.esc = { row: route().params.row ?? null, panel: openPanel() };
+  `), (out, graph, expected) => {
+    const leaf = expected.data.unused.unused.find((r) => r.id === 'function:src/util.js:leaf');
+    const group = expected.data.unused.groups.find((g) => g.group === leaf.group);
+    const others = group.members.filter((id) => id !== leaf.id);
+    return [
+      ['row-panel-unused: a real pointer over a row lifts it', out.hover?.rest === 'none' && /matrix\(1, 0, 0, 1, 0, -1\)/.test(out.hover.hovered ?? ''), out.hover],
+      ['row-panel-unused: a click opens the panel of that row, puts it in the address as one history entry, and marks the row without flashing it', out.open?.key === leaf.id && out.open.row === leaf.id && out.open.added === 1 && out.open.selected === leaf.id && out.open.flash === null, out.open],
+      ['row-panel-unused: the panel has the row fields, Locate in graph and Open code', (out.open?.text ?? '').includes(leaf.name) && out.open.text.includes(leaf.reason) && out.open.text.includes(leaf.confidence) && out.open.locate === 'node:' + leaf.id && decodeURIComponent(out.open.openCode ?? '') === '#/code?path=' + leaf.file + '&lines=' + leaf.lineRange.join('-'), out.open],
+      ['row-panel-unused: the source preview marks the line range of the row', out.open?.preview === leaf.file && out.open.highlight === leaf.lineRange.join('-') && out.open.marked === leaf.lineRange[1] - leaf.lineRange[0] + 1, out.open],
+      ['row-panel-unused: the panel lists the other members of the group and the referrers, as the product records them', JSON.stringify(out.open?.others) === JSON.stringify(others) && JSON.stringify(out.open.referrers) === JSON.stringify(leaf.referrers.map((r) => r.id)), out.open],
+      ['row-panel-unused: a referrer opens its own row, which records no referrer', out.related?.row === 'function:src/main.js:orphan' && (out.related.text ?? '').includes('The product records no referrer.'), out.related],
+      ['row-panel-unused: back returns to the first row, and back again closes the panel', out.back1?.panel && out.back1.row === leaf.id && out.back2?.row === null && out.back2.panel === null && out.back2.selected === 0, [out.back1, out.back2]],
+      ['row-panel-unused: a record without referrers says they are not provided, never an empty list', /not provided by the product/.test(out.loader?.text ?? '') && out.loader.group === '0', out.loader],
+      ['row-panel-unused: Esc closes the panel and takes the row off the address', out.esc?.row === null && out.esc.panel === null, out.esc],
+    ];
+  }],
+
+  ['row-panel-hotspots', 'layers', () => driver(`${ROW_HELPERS}
+    await go('#/hotspots');
+    out.years = q('[data-xv-years-state]')?.getAttribute('data-xv-years-state') ?? null;
+    out.yearsText = q('[data-xv-years-state]')?.textContent ?? null;
+    out.yearsChart = all('[data-xv-years] [data-xv-area]').length;
+    const tr = await until(() => q('tr[data-xv-row="src/main.js"]'));
+    await sleep(500);
+    tr.click();
+    const panel = await until(() => rowPanel('src/main.js'));
+    await until(() => panel.querySelector('[data-xv-preview] .xv-code, [data-xv-preview] p'));
+    out.main = { ...panelState(panel), params: route().params, years: panel.querySelector('[data-xv-file-years]')?.getAttribute('data-xv-file-years') ?? null, coChange: panel.querySelector('[data-xv-co-change]')?.getAttribute('data-xv-co-change') ?? null, partners: [...panel.querySelectorAll('[data-xv-co-change] li')].map((li) => li.textContent.replace(/\\s+/g, ' ').trim()) };
+    panel.querySelector('[data-xv-co-change] [data-xv-related="src/util.js"]')?.click();
+    const util = await until(() => rowPanel('src/util.js'));
+    out.util = util ? { params: route().params, years: util.querySelector('[data-xv-file-years]')?.getAttribute('data-xv-file-years') ?? null, yearsText: util.querySelector('[data-xv-file-years]')?.textContent ?? null, coChange: util.querySelector('[data-xv-co-change]')?.getAttribute('data-xv-co-change') ?? null } : null;
+    history.back();
+    await until(() => rowPanel('src/main.js'));
+    history.back();
+    await until(() => !route().params.row);
+    await sleep(400);
+    out.back = { row: route().params.row ?? null, panel: openPanel() };
+  `), (out, graph, expected) => {
+    const product = expected.data.hotspots;
+    const main = product.files.find((f) => f.path === 'src/main.js');
+    // The partners of src/main.js, recounted from the pairs: most together first, ties by path.
+    const partners = product.pairs.filter((p) => p.a === main.path || p.b === main.path).map((p) => ({ path: p.a === main.path ? p.b : p.a, together: p.together }))
+      .sort((x, y) => y.together - x.together || (x.path < y.path ? -1 : 1)).map((p) => p.path + ':' + p.together).join(',');
+    const years = Object.keys(main.commitsByYear).sort().map((y) => y + ':' + main.commitsByYear[y]).join(',');
+    return [
+      ['row-panel-hotspots: with no project-root row the commits per year are said to be not provided, and no chart is drawn', out.years === 'not-provided' && /not provided by the product/.test(out.yearsText ?? '') && out.yearsChart === 0, [out.years, out.yearsText]],
+      ['row-panel-hotspots: a file row opens its panel, with view=files and the path in the address', out.main?.key === 'src/main.js' && out.main.params.view === 'files' && out.main.params.row === 'src/main.js', out.main],
+      ['row-panel-hotspots: the panel has the numbers, Locate in graph, Open code and the source', out.main?.text.includes('Score' + main.score) && out.main.text.includes('Commits' + main.commits) && out.main.locate === 'file:src/main.js' && decodeURIComponent(out.main.openCode ?? '') === '#/code?path=src/main.js' && out.main.preview === 'src/main.js', out.main],
+      ['row-panel-hotspots: the commits per year of the file are its own', out.main?.years === years, [out.main?.years, years]],
+      ['row-panel-hotspots: the files changed together with it are the pairs, most together first and ties by path', out.main?.coChange === partners && out.main.partners.length === 3, [out.main?.coChange, partners]],
+      ['row-panel-hotspots: a partner opens its own row; a file without commitsByYear says not provided, never 0', out.util?.params.row === 'src/util.js' && out.util.years === 'not-provided' && /not provided by the product/.test(out.util.yearsText ?? '') && out.util.coChange === 'src/main.js:4', out.util],
+      ['row-panel-hotspots: back twice closes the panel', out.back?.row === null && out.back.panel === null, out.back],
+    ];
+  }],
+
+  ['row-link', 'rows', () => driver(`${ROW_HELPERS}
+    const last = 'function:gen/u${EXTRA_ROWS - 1}.js:fn';
+    const visit = async (hash, key) => {
+      await go(hash);
+      const panel = await until(() => rowPanel(key));
+      const flash = q('tr[data-xv-row-flash]');
+      const rect = flash?.getBoundingClientRect();
+      return { panel: !!panel, flash: flash?.getAttribute('data-xv-row') ?? null, selected: q('tr[data-xv-row-selected]')?.getAttribute('data-xv-row') ?? null, page: [...document.querySelectorAll('main span')].map((s) => s.textContent).find((t) => /^Page \\d+ of \\d+$/.test(t)) ?? null, inView: !!rect && rect.top >= 0 && rect.bottom <= innerHeight, missing: q('[data-xv-row-missing]')?.textContent ?? null };
+    };
+    out.unused = await visit('#/unused?row=' + encodeURIComponent(last), last);
+    out.hotspots = await visit('#/hotspots?view=files&row=' + encodeURIComponent('lib/data.py'), 'lib/data.py');
+    out.docMap = await visit('#/doc-map?row=2', '2');
+    const missing = async (hash) => { await go(hash); const note = await until(() => q('[data-xv-row-missing]')); await sleep(300); return { text: note?.textContent ?? null, panel: openPanel() }; };
+    out.missingUnused = await missing('#/unused?row=' + encodeURIComponent('function:nowhere.js:none'));
+    out.missingHotspots = await missing('#/hotspots?view=files&row=' + encodeURIComponent('nowhere.js'));
+    out.missingDocMap = await missing('#/doc-map?row=99');
+  `), (out) => {
+    const at = (v, key, page) => v?.panel && v.flash === key && v.selected === key && v.page === page && v.inView && v.missing === null;
+    return [
+      ['row-link: #/unused?row= opens the second page, scrolls to the row, flashes it and opens its panel', at(out.unused, `function:gen/u${EXTRA_ROWS - 1}.js:fn`, 'Page 2 of 2'), out.unused],
+      ['row-link: #/hotspots?view=files&row= finds the row on the page it has under the score sort and opens its panel', at(out.hotspots, 'lib/data.py', 'Page 2 of 2'), out.hotspots],
+      ['row-link: #/doc-map?row= opens the unit of that number', at(out.docMap, '2', 'Page 1 of 1'), out.docMap],
+      ['row-link: a row the page does not have is said so and opens no panel', /has the id "function:nowhere.js:none"/.test(out.missingUnused?.text ?? '') && out.missingUnused.panel === null && /has the path "nowhere.js"/.test(out.missingHotspots?.text ?? '') && out.missingHotspots.panel === null && /number "99"/.test(out.missingDocMap?.text ?? '') && out.missingDocMap.panel === null, [out.missingUnused, out.missingHotspots, out.missingDocMap]],
+    ];
+  }],
+
+  // The same page loaded from an address that names a row: the panel opens on load.
+  ['row-link-reload', 'layers', () => driver(`${ROW_HELPERS}
+    const panel = await until(() => rowPanel('src/util.js'));
+    out.loaded = { panel: !!panel, view: q('[data-xv-view][aria-pressed="true"]')?.getAttribute('data-xv-view') ?? null, selected: q('tr[data-xv-row-selected]')?.getAttribute('data-xv-row') ?? null };
+  `), (out) => [
+    ['row-link: a page loaded from #/hotspots?view=files&row= opens on that row with its panel', out.loaded?.panel && out.loaded.view === 'files' && out.loaded.selected === 'src/util.js', out.loaded],
+  ], { hash: '/hotspots?view=files&row=src%2Futil.js' }],
+
+  ['prefix-filter', 'rows', () => driver(`${ROW_HELPERS}
+    const state = () => ({ prefix: q('[data-xv-prefix]')?.getAttribute('data-xv-prefix') ?? null, count: q('[data-xv-prefix-count]')?.getAttribute('data-xv-prefix-count') ?? null, text: q('[data-xv-prefix]')?.textContent ?? null });
+    await go('#/unused?prefix=src');
+    await until(() => q('[data-xv-prefix]'));
+    out.unused = { ...state(), rows: all('tr[data-xv-row]').map((tr) => tr.getAttribute('data-xv-row')), counted: attr('data-xv-count-unused-prefixed') };
+    await go('#/hotspots?view=files&prefix=gen');
+    await until(() => q('[data-xv-prefix]'));
+    out.hotspots = { ...state(), counted: attr('data-xv-count-files-prefixed') };
+    await go('#/hotspots?view=pairs&prefix=lib');
+    await until(() => q('[data-xv-prefix]'));
+    out.pairs = { ...state(), counted: attr('data-xv-count-pairs-prefixed') };
+    await go('#/doc-map?prefix=src');
+    await until(() => q('[data-xv-prefix]'));
+    out.docMap = { ...state(), counted: attr('data-xv-count-units-prefixed') };
+    // The clear button takes the filter off: every row is back.
+    await go('#/unused?prefix=src');
+    (await until(() => q('[data-xv-prefix-clear]'))).click();
+    await until(() => !route().params.prefix);
+    await sleep(200);
+    out.cleared = { prefix: route().params.prefix ?? null, bar: !!q('[data-xv-prefix]'), counted: attr('data-xv-count-unused-prefixed') };
+  `), (out, graph, expected) => {
+    const under = (path, dir) => typeof path === 'string' && (path === dir || path.startsWith(dir + '/'));
+    const { unused, hotspots, docMap } = expected.data;
+    const unusedSrc = unused.unused.filter((r) => under(r.file, 'src'));
+    const filesGen = hotspots.files.filter((f) => under(f.path, 'gen')).length;
+    const pairsLib = hotspots.pairs.filter((p) => under(p.a, 'lib') || under(p.b, 'lib')).length;
+    const unitsSrc = docMap.units.filter((u) => (u.code?.evidence ?? []).some((e) => under(e.file, 'src'))).length;
+    return [
+      ['prefix-filter: #/unused?prefix=src keeps the rows under src, as an independent count over the product finds them', out.unused?.prefix === 'src' && out.unused.count === String(unusedSrc.length) && out.unused.counted === String(unusedSrc.length) && JSON.stringify([...out.unused.rows].sort()) === JSON.stringify(unusedSrc.map((r) => r.id).sort()) && out.unused.text.includes(`${unusedSrc.length} of ${unused.unused.length}`), [out.unused, unusedSrc.length]],
+      ['prefix-filter: the hotspots files under gen', out.hotspots?.count === String(filesGen) && out.hotspots.counted === String(filesGen), [out.hotspots, filesGen]],
+      ['prefix-filter: the hotspots pairs with a file under lib', out.pairs?.count === String(pairsLib) && out.pairs.counted === String(pairsLib), [out.pairs, pairsLib]],
+      ['prefix-filter: the doc-map units with evidence under src', out.docMap?.count === String(unitsSrc) && out.docMap.counted === String(unitsSrc), [out.docMap, unitsSrc]],
+      ['prefix-filter: clear filter takes the prefix off the address and shows every row', out.cleared?.prefix === null && out.cleared.bar === false && out.cleared.counted === String(unused.unused.length), out.cleared],
+    ];
+  }],
+
+  ['detail-numbers', 'years', () => driver(`${ROW_HELPERS}
+    const tiles = () => Object.fromEntries(all('[data-xv-stat]').map((el) => [el.getAttribute('data-xv-stat'), el.querySelector('[data-xv-stat-value]')?.getAttribute('data-xv-stat-value') ?? null]));
+    const bars = (label) => { const list = q('ul[aria-label="' + label + '"]'); return list ? [...list.querySelectorAll('[data-xv-bar-row]')].map((li) => li.getAttribute('data-xv-bar-row') + ':' + li.querySelector('.font-mono').textContent) : null; };
+    await go('#/unused');
+    await until(() => q('[data-xv-stat]'));
+    out.unused = { tiles: tiles(), confidence: bars('Unused functions by confidence'), language: bars('Unused functions by language') };
+    await go('#/hotspots');
+    await until(() => q('[data-xv-years]'));
+    out.hotspots = { tiles: tiles(), years: q('[data-xv-years]').getAttribute('data-xv-years'), area: q('[data-xv-years] [data-xv-area]')?.getAttribute('data-xv-area') ?? null, bins: all('[data-xv-bin]').map((el) => el.getAttribute('data-xv-bin-count')), top: bars('Files with the highest scores') };
+    await go('#/doc-map');
+    await until(() => q('[data-xv-stat]'));
+    out.docMap = { tiles: tiles(), lookup: bars('Units by lookup status'), verdict: bars('Pieces of evidence by the verdict of their check') };
+    await go('#/products');
+    await until(() => q('[data-xv-product-card="hotspots"] [data-xv-product-number]'));
+    out.products = Object.fromEntries(all('[data-xv-product-card]').map((card) => [card.getAttribute('data-xv-product-card'), [...card.querySelectorAll('[data-xv-product-number]')].map((n) => n.getAttribute('data-xv-product-number') + ':' + n.getAttribute('data-xv-product-value'))]));
+  `), (out, graph, expected) => {
+    const { unused, hotspots, docMap, checks } = expected.data;
+    const c = unused.counts;
+    const root = hotspots.directories.find((d) => d.path === '.');
+    const years = Object.keys(root.commitsByYear).sort().map((y) => y + ':' + root.commitsByYear[y]).join(',');
+    // Ten even bins from 0 to the highest score, recounted here; the last bin holds the highest.
+    const scores = hotspots.files.map((f) => f.score).filter((v) => typeof v === 'number');
+    const max = Math.max(...scores);
+    const bins = Array.from({ length: 10 }, () => 0);
+    for (const v of scores) bins[Math.min(9, Math.floor((v / max) * 10))] += 1;
+    const top = [...hotspots.files].sort((a, b) => b.score - a.score || (a.path < b.path ? -1 : 1)).slice(0, 10).map((f) => f.path + ':' + f.score);
+    const verdicts = { does: 0, not: 0, none: 0 };
+    for (const check of checks.checks) verdicts[check.verdict] += 1;
+    const evidence = docMap.units.reduce((n, u) => n + (u.code?.evidence?.length ?? 0), 0);
+    const d = docMap.counts;
+    const h = hotspots.counts;
+    return [
+      ['detail-numbers: the Unused tiles are the product counts', out.unused?.tiles.Unused === String(c.unused) && out.unused.tiles.Unreferenced === String(c.unreferenced) && out.unused.tiles['Only reachable from unused'] === String(c.onlyReachableFromUnused) && out.unused.tiles['Test only'] === String(c.testOnly), out.unused?.tiles],
+      ['detail-numbers: the Unused bars are counts.byConfidence and counts.byLanguage', JSON.stringify(out.unused?.confidence) === JSON.stringify(['high', 'medium', 'low'].map((k) => k + ':' + c.byConfidence[k])) && JSON.stringify(out.unused.language) === JSON.stringify(Object.keys(c.byLanguage).sort().map((k) => k + ':' + c.byLanguage[k].unused)), out.unused],
+      ['detail-numbers: the Hotspots tiles are the product counts', out.hotspots?.tiles['Files with history'] === String(h.filesWithHistory) && out.hotspots.tiles['Files without history'] === String(h.filesWithoutHistory) && out.hotspots.tiles['Binary files'] === String(h.binaryFiles) && out.hotspots.tiles['Lineage conflicts'] === String(h.filesWithLineageConflicts), out.hotspots?.tiles],
+      ["detail-numbers: the commits per year are the project-root row's", out.hotspots?.years === years && out.hotspots.area === String(Object.keys(root.commitsByYear).length), [out.hotspots?.years, years]],
+      ['detail-numbers: the score histogram is the files binned by score', JSON.stringify(out.hotspots?.bins) === JSON.stringify(bins.map(String)), [out.hotspots?.bins, bins]],
+      ['detail-numbers: the top 10 bars are the ten highest scores', JSON.stringify(out.hotspots?.top) === JSON.stringify(top), [out.hotspots?.top, top]],
+      ['detail-numbers: the Doc map tiles are the product counts', out.docMap?.tiles.Documents === String(d.files) && out.docMap.tiles.Units === String(d.units) && out.docMap.tiles['Code found'] === String(d.found) && out.docMap.tiles['No code found'] === String(d.notFound), out.docMap?.tiles],
+      ['detail-numbers: the lookup bars are counts.found, notFound and notChecked; the verdict bars count the checks', JSON.stringify(out.docMap?.lookup) === JSON.stringify([`found:${d.found}`, `not-found:${d.notFound}`, `not-checked:${d.notChecked}`]) && JSON.stringify(out.docMap.verdict) === JSON.stringify([`does:${verdicts.does}`, `not:${verdicts.not}`, `none:${verdicts.none}`, `not checked:${evidence - checks.checks.length}`]), out.docMap],
+      ['detail-numbers: the product cards show the product numbers', JSON.stringify(out.products?.['unused-code']) === JSON.stringify([`Unused:${c.unused}`, `Test only:${c.testOnly}`]) && JSON.stringify(out.products['doc-map']) === JSON.stringify([`Units:${d.units}`, `Code found:${d.found}`]) && JSON.stringify(out.products.hotspots) === JSON.stringify([`Files:${hotspots.files.length}`, `Pairs:${hotspots.pairs.length}`]), out.products],
+    ];
+  }],
+
+  ['reduced-motion', 'layers', () => driver(`${ROW_HELPERS}
+    const running = () => document.getAnimations().filter((a) => a.playState === 'running').map((a) => a.animationName || a.constructor.name);
+    out.pages = {};
+    for (const hash of ['#/unused', '#/hotspots', '#/doc-map', '#/products', '#/reports']) {
+      await go(hash);
+      await sleep(80);
+      out.pages[hash] = { running: running(), rows: all('tr[data-xv-row]').filter((tr) => getComputedStyle(tr).animationName !== 'none').length };
+    }
+    await go('#/unused');
+    q('tr[data-xv-row="function:src/main.js:orphan"]').click();
+    await until(() => rowPanel('function:src/main.js:orphan'));
+    await sleep(40);
+    out.panel = running();
+  `), (out) => [
+    ['reduced-motion: no animation runs on the detail pages, the rows do not stagger, and the row panel opens at once', out.pages && Object.values(out.pages).every((p) => p.running.length === 0 && p.rows === 0) && out.panel?.length === 0, out],
+  ], { reducedMotion: true }],
+  // The modes (openspec: changes/viewer-learn, task 4.1). The same places in Deep dive and in Overview: Overview draws no function or
+  // class (every file that can be opened is opened, so a row that leaked would be drawn), and every card and count is Deep dive's.
+  ['overview-mode', 'classes', (graph, expected) => driver(`
+    const [l0, l1, l2] = ${JSON.stringify(graph.levels)};
+    const at = (path) => until(() => level() === path + '#');
+    const cards = () => all('[data-xv-entry]').filter((el) => !['child', 'more'].includes(el.getAttribute('data-xv-entry'))).map((el) => el.getAttribute('aria-label')).sort();
+    const place = async () => {
+      await sleep(150);
+      const toggles = all('[data-xv-entry="file"] button[aria-expanded="false"]');
+      for (const t of toggles) t.click();
+      if (toggles.length > 0) { await until(() => q('[data-xv-entry="child"]'), 80); await sleep(250); }
+      const rows = all('[data-xv-entry="child"]').map((el) => el.getAttribute('data-xv-type'));
+      return {
+        level: level(), mode: route().params.mode ?? null, cards: cards(), toggles: toggles.length, rows,
+        hidden: rows.filter((t) => t === 'function' || t === 'class').length,
+        drawnHidden: all('.react-flow__node [data-xv-type="function"], .react-flow__node [data-xv-type="class"]').length,
+        counts: [attr('data-xv-count-graph-level-nodes'), attr('data-xv-count-graph-level-files'), attr('data-xv-count-graph-folded')],
+        note: q('[data-xv-mode-note]')?.textContent ?? null,
+      };
+    };
+    for (const mode of ['deep', 'overview']) {
+      const seen = [];
+      await go('#/graph?mode=' + mode); await at(l0.path);
+      seen.push(await place());
+      q('[data-xv-label="' + l0.open + '"]').click(); await at(l1.path);
+      seen.push(await place());
+      q('[data-xv-label="' + l1.open + '"]').click(); await at(l2.path);
+      seen.push(await place());
+      await go('#/graph?path=' + encodeURIComponent(${JSON.stringify(graph.interaction.search[1].level)}) + '&mode=' + mode);
+      seen.push(await place());
+      out[mode] = seen;
+      // The focus of a file: the same neighbour count in either mode, and in Overview the functions and classes among them are not drawn.
+      await go('#/graph?path=' + encodeURIComponent(${JSON.stringify(graph.interaction.search[1].level)}) + '&node=' + encodeURIComponent('file:src/main.js') + '&focus=1&mode=' + mode);
+      await until(() => attr('data-xv-count-focus-nodes') !== null); await sleep(150);
+      out[mode + 'Focus'] = { nodes: attr('data-xv-count-focus-nodes'), drawn: all('[data-xv-entry="focus-neighbour"]').map((el) => el.getAttribute('aria-label').split(' ')[0]), undrawn: q('[data-xv-mode-note]')?.getAttribute('data-xv-undrawn') ?? null };
+    }
+  `), (out, graph, expected) => {
+    const places = ['top', 'drilled once', 'drilled twice', expected.classes.level];
+    const deep = out.deep ?? [];
+    const overview = out.overview ?? [];
+    return [
+      ['overview-mode: Deep dive draws functions or classes in the files it opens (the control)', deep.slice(1).every((p) => p.hidden > 0) && deep.every((p) => p.note === null), deep],
+      ...places.map((name, i) => [`overview-mode: at ${name}, Overview draws no function or class and says so on the graph`, overview[i]?.hidden === 0 && overview[i].drawnHidden === 0 && /function and class nodes are hidden/.test(overview[i].note ?? '') && overview[i].mode === 'overview', overview[i]]),
+      ...places.map((name, i) => [`overview-mode: at ${name}, every card and count is Deep dive's`, overview[i] && JSON.stringify(overview[i].cards) === JSON.stringify(deep[i]?.cards) && JSON.stringify(overview[i].counts) === JSON.stringify(deep[i]?.counts) && overview[i].level === deep[i].level, [overview[i], deep[i]]]),
+      ['overview-mode: a file that owns only functions cannot be opened in Overview, and one that also owns a variable opens to the variable only', overview[1]?.toggles === 0 && overview[2]?.toggles === 0 && JSON.stringify(overview[3]?.rows) === JSON.stringify(['variable']) && deep[3]?.rows.length > 1, overview],
+      ['overview-mode: a focus counts the same neighbours in Overview, draws none that is a function or class, and says how many it leaves undrawn', out.overviewFocus?.nodes === out.deepFocus?.nodes && Number(out.deepFocus.nodes) > 0 && out.overviewFocus.drawn.every((t) => t !== 'function' && t !== 'class') && Number(out.overviewFocus.undrawn) === out.deepFocus.drawn.filter((t) => t === 'function' || t === 'class').length && Number(out.overviewFocus.undrawn) > 0, [out.overviewFocus, out.deepFocus]],
+      ['overview-mode: the mode stays in the address through the drill-down', overview.every((p) => p.mode === 'overview') && deep.every((p) => p.mode === 'deep'), [overview.map((p) => p.mode), deep.map((p) => p.mode)]],
+    ];
+  }],
+
+  // A search in Overview that finds a class or a function switches to Deep dive, locates and selects it, and the sidebar says so; a file
+  // found in Overview, and anything found in Deep dive, changes no mode.
+  ['mode-search-switch', 'classes', (graph, expected) => driver(`
+    const c = ${JSON.stringify(expected.classes)};
+    const input = q('[data-xv-search]');
+    const find = async (query, id) => {
+      input.focus(); setValue(input, query);
+      const hit = await until(() => q('[data-xv-hit="' + id + '"]'));
+      hit && hit.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
+      await until(() => route().params.node === id && sidebar() === id);
+      await sleep(250);
+      return {
+        found: !!hit, mode: route().params.mode ?? null, level: level(), marks: all('.xv-selected').length, drawn: !!q('.react-flow__node [data-xv-node="' + id + '"]'),
+        note: q('aside[data-xv-panel="sidebar"] [data-xv-mode-switched]')?.getAttribute('data-xv-mode-switched') ?? null,
+        noteText: q('aside[data-xv-panel="sidebar"] [data-xv-mode-switched]')?.textContent ?? null,
+        pressed: q('[data-xv-modes] [aria-pressed="true"]')?.getAttribute('data-xv-mode') ?? null,
+        graphNote: !!q('[data-xv-mode-note]'),
+      };
+    };
+    await go('#/graph?mode=overview');
+    out.cls = await find(c.className, c.classId);
+    // The sidebar leaves with its exit animation: wait for it to go (the idle sidebar starts closed at 1280 px).
+    history.back(); await until(() => !route().params.node && !q('aside[data-xv-panel="sidebar"]')); await sleep(100);
+    out.back = { mode: route().params.mode ?? null, note: !!q('[data-xv-mode-switched]'), pressed: q('[data-xv-modes] [aria-pressed="true"]')?.getAttribute('data-xv-mode') ?? null };
+    out.fn = await find('helper', 'function:src/util.js:helper');
+    await go('#/graph?mode=overview');
+    out.file = await find('util.js', 'file:src/util.js');
+    await go('#/graph?mode=deep');
+    out.deep = await find('helper', 'function:src/util.js:helper');
+  `), (out, graph, expected) => [
+    ['mode-search-switch: a class found in Overview switches to Deep dive, is drawn, selected and in the sidebar', out.cls?.found && out.cls.mode === 'deep' && out.cls.pressed === 'deep' && out.cls.drawn && out.cls.marks === 1 && out.cls.level === `${expected.classes.level}#` && !out.cls.graphNote, out.cls],
+    ['mode-search-switch: the sidebar says the mode was switched, from which and why', out.cls?.note === 'overview>deep' && /Mode switched from Overview to Deep dive/.test(out.cls.noteText ?? '') && /class/.test(out.cls.noteText), out.cls],
+    ['mode-search-switch: back returns to Overview, with no note', out.back?.mode === 'overview' && out.back.pressed === 'overview' && out.back.note === false, out.back],
+    ['mode-search-switch: a function found in Overview switches too', out.fn?.mode === 'deep' && out.fn.note === 'overview>deep' && out.fn.drawn, out.fn],
+    ['mode-search-switch: a file found in Overview, and a function found in Deep dive, change no mode and carry no note', out.file?.mode === 'overview' && out.file.note === null && out.file.marks === 1 && out.deep?.mode === 'deep' && out.deep.note === null, [out.file, out.deep]],
+  ]],
+
+  // Domain | Structural (task 4.2): each side keeps its level and its selection, and the switch carries the mode.
+  ['domain-structural', 'layers', (graph, expected) => driver(`
+    const [l0, l1] = ${JSON.stringify(graph.levels)};
+    const d = ${JSON.stringify(expected.domain)};
+    const at = (path) => until(() => level() === path + '#');
+    const dlevel = () => attr('data-xv-domain-level');
+    const sw = (view) => q('[data-xv-switch="' + view + '"]');
+    await go('#/graph?mode=deep'); await at(l0.path);
+    q('[data-xv-label="' + l0.open + '"]').click(); await at(l1.path);
+    const file = q('[data-xv-entry="file"]'); const fileId = file.getAttribute('data-xv-node');
+    file.click(); await until(() => sidebar() === fileId);
+    out.graph = { hash: location.hash, pressed: [sw('graph')?.getAttribute('aria-pressed'), sw('domain')?.getAttribute('aria-pressed')], nav: all('nav[aria-label="Pages"] [data-xv-nav]').map((a) => a.getAttribute('data-xv-nav')) };
+    sw('domain').click();
+    await until(() => route().page === 'domain' && dlevel() === 'top'); await sleep(200);
+    out.domainTop = { hash: location.hash, pressed: sw('domain')?.getAttribute('aria-pressed') };
+    q('[data-xv-domain-entry="domain"][data-xv-node="domain:app"]').click();
+    await until(() => dlevel() === d.domain.level); await sleep(200);
+    q('[data-xv-domain-entry="flow"][data-xv-node="' + d.flow.id + '"]').click();
+    await until(() => dlevel() === d.flow.level); await sleep(200);
+    q('[data-xv-domain-entry="step"][data-xv-node="' + d.step.id + '"]').click();
+    await until(() => sidebar() === d.step.id);
+    out.domain = { hash: location.hash, level: dlevel() };
+    // Short waits from here: on a page that loses the place each runs out, and the checks still say which step failed.
+    sw('graph').click();
+    await until(() => route().page === 'graph', 80); await until(() => level() === l1.path + '#', 80); await until(() => sidebar() === fileId, 80);
+    out.back = { hash: location.hash, level: level(), node: route().params.node ?? null, sidebar: sidebar(), marks: all('.xv-selected').length };
+    sw('domain').click();
+    await until(() => route().page === 'domain' && dlevel() === d.flow.level, 80); await until(() => sidebar() === d.step.id, 80);
+    out.again = { hash: location.hash, level: dlevel(), sidebar: sidebar() };
+    history.back(); await until(() => route().page === 'graph', 80); await until(() => level() === l1.path + '#', 80);
+    out.history = { hash: location.hash };
+  `), (out, graph, expected) => {
+    const [, l1] = graph.levels;
+    const d = expected.domain;
+    return [
+      ['domain-structural: the switch is above the graph with Structural pressed, and the navigation keeps Graph and Domain', JSON.stringify(out.graph?.pressed) === '["true","false"]' && out.graph.nav.includes('graph') && out.graph.nav.includes('domain'), out.graph],
+      ['domain-structural: Domain opens the domain graph at its top level the first time, in the same mode', out.domainTop?.pressed === 'true' && /^#\/domain/.test(out.domainTop.hash) && /mode=deep/.test(out.domainTop.hash), out.domainTop],
+      ['domain-structural: Structural returns to the same level with the same selection', out.back?.hash === out.graph?.hash && out.back.level === `${l1.path}#` && out.back.sidebar === out.back.node && out.back.marks === 1, [out.graph, out.back]],
+      ['domain-structural: Domain returns to the same flow with the same step selected', out.again?.hash === out.domain?.hash && out.again.level === d.flow.level && out.again.sidebar === d.step.id, [out.domain, out.again]],
+      ['domain-structural: each switch is a step in the history', out.history?.hash === out.graph?.hash, out.history],
+    ];
+  }],
+  ['domain-structural-notrun', 'domain-notrun', () => driver(`
+    await go('#/graph');
+    await sleep(300);
+    out.switches = all('[data-xv-switch]').length;
+  `), (out) => [
+    ['domain-structural: a page without a readable domain graph shows no Domain | Structural switch', out.switches === 0, out.switches],
+  ]],
+
+  // The project overview (task 4.3): every number equals the fixture's, counted here from the packed files on their own.
+  ['project-overview', 'classes', (graph, expected) => driver(`
+    const side = () => q('aside[data-xv-panel="sidebar"]');
+    // At 1440 px the idle sidebar is open from the start.
+    out.atStart = { idle: side()?.querySelector('[data-xv-idle]')?.getAttribute('data-xv-idle') ?? null, button: !!q('[data-xv-action="show-idle"]') };
+    await go('#/graph?mode=deep');
+    await until(() => side()?.querySelector('[data-xv-project-overview]'));
+    await until(() => q('[data-xv-highlight="unused-total"]') && q('[data-xv-highlight="hot-file"]'));
+    await sleep(150);
+    const section = (name) => q('[data-xv-overview="' + name + '"]');
+    const bars = (name) => Object.fromEntries([...section(name).querySelectorAll('[data-xv-bar-row]')].map((li) => [li.getAttribute('data-xv-bar-row'), Number(li.lastElementChild.lastElementChild.textContent.replace(/,/g, ''))]).sort(([a], [b]) => (a < b ? -1 : 1)));
+    out.view = {
+      idle: side().querySelector('[data-xv-idle]')?.getAttribute('data-xv-idle'), title: side().getAttribute('aria-label'),
+      name: q('[data-xv-overview-name]')?.textContent ?? null, description: q('[data-xv-overview-description]')?.textContent ?? null,
+      nameFont: getComputedStyle(q('[data-xv-overview-name]')).fontFamily,
+      tiles: Object.fromEntries(all('[data-xv-overview="tiles"] [data-xv-stat]').map((el) => [el.getAttribute('data-xv-stat'), Number(el.querySelector('[data-xv-stat-value]').getAttribute('data-xv-stat-value'))])),
+      stack: section('stack').textContent,
+      types: bars('types'), complexity: bars('complexity'), complexityNote: section('complexity').textContent,
+      connected: all('[data-xv-top-node]').map((el) => [el.getAttribute('data-xv-top-node'), Number(el.getAttribute('data-xv-degree'))]),
+      layers: all('[data-xv-layer]').map((el) => [el.textContent.replace(/\\d+ files?$/, '').trim(), Number(el.getAttribute('data-xv-files'))]).sort(),
+      unused: Number(q('[data-xv-highlight="unused-total"]').getAttribute('data-xv-value')), unusedHref: q('[data-xv-highlight="unused-total"]').getAttribute('href'), byConfidence: bars('unused'),
+      hot: all('[data-xv-highlight="hot-file"]').map((a) => [a.getAttribute('data-xv-path'), a.getAttribute('href')]),
+      tour: !!q('[data-xv-action="start-tour"]'),
+    };
+    // A top node selects it; Esc gives the overview back; a layer opens its level.
+    const top = q('[data-xv-top-node]'); const topId = top.getAttribute('data-xv-top-node');
+    top.click(); await until(() => sidebar() === topId);
+    out.selected = { node: route().params.node ?? null, sidebar: sidebar() };
+    history.back(); await until(() => side()?.querySelector('[data-xv-project-overview]'));
+    const layer = q('[data-xv-layer]'); const files = layer.getAttribute('data-xv-files');
+    layer.click(); await until(() => level() !== '#'); await settle();
+    out.layer = { level: level(), files: attr('data-xv-count-graph-level-files'), expected: files };
+    // Start tour switches to Learn: the sidebar lists the tour's steps.
+    await go('#/graph?mode=overview');
+    await until(() => q('[data-xv-action="start-tour"]'));
+    q('[data-xv-action="start-tour"]').click();
+    await until(() => q('[data-xv-tour-state]'));
+    await until(() => q('[data-xv-tour-step]'));
+    out.learn = { mode: route().params.mode ?? null, state: q('[data-xv-tour-state]').getAttribute('data-xv-tour-state'), steps: q('[data-xv-tour-steps]')?.getAttribute('data-xv-tour-steps'), titles: all('[data-xv-tour-step]').map((el) => el.lastElementChild.textContent), pressed: q('[data-xv-modes] [aria-pressed="true"]')?.getAttribute('data-xv-mode') ?? null };
+    // A hotspot opens the Files view with its row's panel.
+    await go('#/graph?mode=deep');
+    const hot = await until(() => q('[data-xv-highlight="hot-file"]'));
+    const path = hot.getAttribute('data-xv-path');
+    hot.click();
+    const panel = await until(() => q('aside[data-xv-panel="sidebar"] [data-xv-row-panel="' + path + '"]'));
+    out.hotLink = { path, hash: location.hash, panel: !!panel, selected: q('tr[data-xv-row-selected]')?.getAttribute('data-xv-row') ?? null };
+  `), (out, graph, expected) => {
+    const e = expected.overview;
+    const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+    const v = out.view ?? {};
+    return [
+      ['project-overview: at 1440 px the idle sidebar is open from the start, in Learn', out.atStart?.idle === 'learn' && out.atStart.button === false, out.atStart],
+      ['project-overview: with nothing selected in Deep dive the sidebar is the project overview, with the name in the heading font and the domain graph\'s description', v.idle === 'deep' && v.name === e.name && v.description === e.description && /^"?DM Serif Display"?,/.test(v.nameFont ?? ''), v],
+      ['project-overview: the tiles are the node and edge records, the layers and the file nodes', same(v.tiles, e.tiles), [v.tiles, e.tiles]],
+      ['project-overview: the languages and frameworks are the graph header\'s', e.languages.every((l) => v.stack?.includes(l)) && /No framework recorded/.test(v.stack ?? ''), v.stack],
+      ['project-overview: the node types and the complexity counts are the fixture\'s, with "not recorded" for nodes without complexity, and say which field', same(v.types, e.types) && same(v.complexity, e.complexity) && /complexity field/.test(v.complexityNote ?? ''), [v.types, e.types, v.complexity, e.complexity]],
+      ['project-overview: the five most connected nodes, by edge records in and out, ties by name then id', same(v.connected, e.connected), [v.connected, e.connected]],
+      ['project-overview: the layers with their file counts', same(v.layers, e.layers), [v.layers, e.layers]],
+      ['project-overview: the unused total and its counts by confidence, linking to the Unused page', v.unused === e.unused.total && same(v.byConfidence, e.unused.byConfidence) && v.unusedHref === '#/unused', [v.unused, v.byConfidence, e.unused]],
+      ['project-overview: the three hottest files, each linking to its row', same(v.hot, e.hot), [v.hot, e.hot]],
+      ['project-overview: a top node selects it, and back gives the overview back', out.selected?.node === e.connected[0][0] && out.selected.sidebar === e.connected[0][0], out.selected],
+      ['project-overview: a layer opens its level, with the file count it showed', out.layer?.files === out.layer?.expected && out.layer.level !== '#', out.layer],
+      ['project-overview: Start tour switches to Learn and the sidebar lists the tour\'s steps', v.tour && out.learn?.mode === null && out.learn.pressed === 'learn' && out.learn.state === 'included' && out.learn.steps === String(e.tour.length) && same(out.learn.titles, e.tour), out.learn],
+      ['project-overview: a hotspot link opens the Files view with that row\'s panel', out.hotLink?.path === e.hot[0][0] && out.hotLink.panel && out.hotLink.selected === out.hotLink.path && out.hotLink.hash === e.hot[0][1], out.hotLink],
+    ];
+  }, { width: 1440 }],
+
+  // Learn with nothing selected: the tour product's state, for a tour never made and one made from other facts.
+  ['learn-notrun', 'directories', () => driver(`
+    await go('#/graph');
+    // At 1280 px the idle sidebar starts closed; the button on the graph opens it.
+    await sleep(200);
+    const show = q('[data-xv-action="show-idle"]');
+    out.atStart = { sidebar: !!q('aside[data-xv-panel="sidebar"]'), button: show?.textContent ?? null };
+    show?.click();
+    const state = await until(() => q('aside[data-xv-panel="sidebar"] [data-xv-tour-state]'));
+    out.learn = { idle: q('[data-xv-idle]')?.getAttribute('data-xv-idle'), state: state?.getAttribute('data-xv-tour-state'), command: q('[data-xv-tour-command]')?.textContent ?? null, text: state?.textContent ?? '' };
+    await go('#/graph?mode=overview');
+    await until(() => q('[data-xv-project-overview]'));
+    out.overview = { tour: !!q('[data-xv-action="start-tour"]'), description: !!q('[data-xv-overview-description]'), highlights: all('[data-xv-highlight-state]').map((el) => el.getAttribute('data-xv-highlight-state')) };
+  `), (out) => [
+    ['learn-notrun: at 1280 px the idle sidebar starts closed, and the graph has a button that opens it', out.atStart?.sidebar === false && out.atStart.button === 'Tour', out.atStart],
+    ['learn-notrun: Learn is the default and its idle sidebar says the tour was not run, with the command', out.learn?.idle === 'learn' && out.learn.state === 'not-run' && out.learn.command === '/excavator-tour' && /Not run/.test(out.learn.text) && !/not built/i.test(out.learn.text), out.learn],
+    ['learn-notrun: the overview has no Start tour button and no description when there is no tour or domain graph', out.overview?.tour === false && out.overview.description === false, out.overview],
+  ]],
+  ['learn-digest', 'tour-digest', (graph, expected) => driver(`
+    await go('#/graph');
+    (await until(() => q('[data-xv-action="show-idle"]')))?.click();
+    const state = await until(() => q('aside[data-xv-panel="sidebar"] [data-xv-tour-state="different-revision"]'));
+    out.learn = { tour: q('[data-xv-tour-digest="tour"]')?.textContent ?? null, graph: q('[data-xv-tour-digest="graph"]')?.textContent ?? null, steps: all('[data-xv-tour-step]').length, found: !!state };
+  `), (out, graph, expected) => [
+    ['learn-digest: a tour made from other facts says so, with both digests and no steps', out.learn?.found && out.learn.tour === expected.tourDigest && out.learn.graph === expected.tour.factDigest && out.learn.steps === 0, out.learn],
+  ]],
+  // Reduced motion on the graph page's idle sidebar: the overview's tiles and bars and the tour's state are drawn at once.
+  ['reduced-motion-idle', 'classes', () => driver(`
+    const running = () => document.getAnimations().filter((a) => a.playState === 'running').map((a) => a.animationName || a.constructor.name);
+    out.views = {};
+    for (const hash of ['#/graph?mode=deep', '#/graph?mode=overview', '#/graph', '#/domain?mode=deep']) {
+      await go(hash);
+      await until(() => q('[data-xv-project-overview] [data-xv-highlight="hot-file"]') || q('[data-xv-tour-step]'));
+      await sleep(80);
+      out.views[hash] = { running: running(), idle: q('[data-xv-idle]')?.getAttribute('data-xv-idle') ?? null };
+    }
+  `), (out) => [
+    ['reduced-motion-idle: no animation runs in the idle sidebar of either graph page, in any mode', out.views && Object.values(out.views).every((v) => v.running.length === 0 && v.idle !== null) && Object.keys(out.views).length === 4, out.views],
+  ], { reducedMotion: true, width: 1440 }],
   ...[768, 1024, 1280].map(topBarScenario),
+  ...[1440, 1920, 768].map(pageColumnScenario),
 ];
+
+/**
+ * The page column at `width`, on Products and Unused: from 1440 px its gaps to the main area's content box, left and right, differ
+ * by at most 1 px (the column is centred); at 768 px nothing scrolls sideways, neither the page nor the main area.
+ */
+function pageColumnScenario(width) {
+  return [`page-column-${width}`, 'layers', () => driver(`
+    out.pages = {};
+    for (const hash of ['#/products', '#/unused']) {
+      await go(hash);
+      const column = await until(() => q('[data-xv-page-column]'));
+      await sleep(150);
+      const main = q('#xv-main');
+      const box = main.getBoundingClientRect();
+      const cs = getComputedStyle(main);
+      const inner = { left: box.left + main.clientLeft + parseFloat(cs.paddingLeft), right: box.left + main.clientLeft + main.clientWidth - parseFloat(cs.paddingRight) };
+      const col = column.getBoundingClientRect();
+      out.pages[hash] = { left: col.left - inner.left, right: inner.right - col.right, width: col.width, pageScroll: document.documentElement.scrollWidth > innerWidth, mainScroll: main.scrollWidth > main.clientWidth };
+    }
+  `), (out) => Object.entries(out.pages ?? { none: null }).map(([hash, p]) => (width >= 1440
+    ? [`${width}: on ${hash} the page column's left and right gaps to the main area differ by at most 1 px`, p && Math.abs(p.left - p.right) <= 1 && p.left >= 0 && p.right >= 0, p]
+    : [`${width}: on ${hash} neither the page nor the main area scrolls sideways`, p && p.pageScroll === false && p.mainScroll === false, p])), { width }];
+}
 
 /**
  * The top bar at `width`: every control keeps its size (nothing overflows its box and no text wraps inside it), no two of them overlap, the
@@ -1114,6 +1711,13 @@ function topBarScenario(width) {
     await until(() => toggle().getAttribute('aria-pressed') === 'false');
     out.off = { pressed: toggle().getAttribute('aria-pressed'), hash: location.hash };
     if (menu) { key('Escape'); await until(() => !q('[data-xv-overlay="hotspots"]')); out.closed = !q('[data-xv-overlay="hotspots"]'); }
+    // The mode switch: three modes, Learn pressed by default; a change is kept in the address and adds no history entry.
+    const modes = all('[data-xv-modes] [data-xv-mode]');
+    out.modes = { names: modes.map((b) => b.getAttribute('aria-label')), pressed: q('[data-xv-modes] [aria-pressed="true"]')?.getAttribute('data-xv-mode') ?? null };
+    const entries = history.length;
+    q('[data-xv-mode="overview"]').click();
+    await until(() => route().params.mode === 'overview' && q('[data-xv-mode-note]'));
+    out.modes.after = { mode: route().params.mode ?? null, pressed: q('[data-xv-modes] [aria-pressed="true"]')?.getAttribute('data-xv-mode') ?? null, added: history.length - entries, note: !!q('[data-xv-mode-note]') };
   `), (out) => [
     [`${width}: no two controls of the top bar overlap`, out.bar?.overlaps.length === 0, out.bar],
     [`${width}: no control overflows its box or wraps its text, and the page does not scroll sideways`, out.bar?.overflowing.length === 0 && out.bar.wrapped.length === 0 && out.bar.pageScroll === false, out.bar],
@@ -1121,6 +1725,7 @@ function topBarScenario(width) {
     [`${width}: the overlays are ${width < 1280 ? 'behind one menu' : 'switches in the bar'}`, out.bar?.compact === (width < 1280) && (width >= 1280 || out.closed === true), [out.bar?.compact, out.closed]],
     [`${width}: the search placeholder fits the box whole, with and without the Overlays badge`, out.fit?.plain === true && out.fit.badged === true, out.fit],
     [`${width}: the Hotspots overlay switches on and off`, out.on?.pressed === 'true' && /overlay=hotspots/.test(out.on.hash) && out.off?.pressed === 'false' && !/overlay=/.test(out.off.hash), [out.on, out.off]],
+    [`${width}: the mode switch has Overview, Learn and Deep dive with Learn pressed, and a click sets the mode in the address without a history entry`, JSON.stringify(out.modes?.names) === '["Overview","Learn","Deep dive"]' && out.modes.pressed === 'learn' && out.modes.after?.mode === 'overview' && out.modes.after.pressed === 'overview' && out.modes.after.added === 0 && out.modes.after.note, out.modes],
   ], { width }];
 }
 
@@ -1178,7 +1783,38 @@ const LABEL_PROBE = `
 `;
 
 /** The modes that write the Full-mode files: the layers, the summaries and the domain graph. */
-const FULL_MODES = new Set(['layers', 'domain-notrun', 'domain-digest', 'domain-fit']);
+const FULL_MODES = new Set(['layers', 'domain-notrun', 'domain-digest', 'domain-fit', 'rows', 'years', 'classes', 'tour-digest']);
+
+/** The number of rows `rows` adds to the unused list and the hotspots files: more than one page of a table (200 rows). */
+const EXTRA_ROWS = 250;
+
+const readProduct = (root, name) => JSON.parse(readFileSync(join(root, '.excavator', name), 'utf-8'));
+const writeProduct = (root, name, data) => writeFileSync(join(root, '.excavator', name), JSON.stringify(data));
+
+/**
+ * `rows`: EXTRA_ROWS more unused functions after the fixture's (so the last one is on the second page in the product's order), and
+ * EXTRA_ROWS more hotspots files under gen/ that all score above the fixture's (so lib/data.py is on the second page by score, the
+ * files table's first sort, while it is on the first in the product's order).
+ */
+function addRows(root) {
+  const unused = readProduct(root, 'unused-code.json');
+  for (let i = 0; i < EXTRA_ROWS; i++) {
+    unused.unused.push({ id: `function:gen/u${i}.js:fn`, name: `fn${i}`, language: 'javascript', file: `gen/u${i}.js`, lineRange: [1, 2], owner: null, visibility: 'private', reason: 'unreferenced', confidence: 'low', group: null, signals: [] });
+  }
+  writeProduct(root, 'unused-code.json', unused);
+  const hotspots = readProduct(root, 'hotspots.json');
+  for (let i = 0; i < EXTRA_ROWS; i++) {
+    hotspots.files.push({ path: `gen/h${i}.js`, commits: 1, authors: 1, added: 1, removed: 0, lastChanged: null, lines: 1, score: 100 + i, lineageConflicts: 0 });
+  }
+  writeProduct(root, 'hotspots.json', hotspots);
+}
+
+/** `years`: the hotspots directories gain the project-root row, with its commits by year. */
+function addRootYears(root) {
+  const hotspots = readProduct(root, 'hotspots.json');
+  hotspots.directories.push({ path: '.', files: 4, commits: 15, authors: 1, added: 23, removed: 4, lines: 26, score: 150, lastChanged: '2026-01-02T03:04:05+00:00', commitsByYear: { 2024: 2, 2025: 6, 2026: 7 } });
+  writeProduct(root, 'hotspots.json', hotspots);
+}
 
 /** `longfile`: add src/long.js to the graph with `functions` functions, each contained by the file node. */
 function addLongFile(root, functions = 120) {
@@ -1268,6 +1904,79 @@ function widenDomainGraph(root) {
   return { domains: domains.length, flow: 'flow:long', steps };
 }
 
+/** The graph's records as packed: [header, nodes, edges]. */
+function graphRecords(root) {
+  const lines = readFileSync(join(root, '.excavator', 'knowledge-graph.jsonl'), 'utf-8').split('\n').filter((line) => line !== '').map((line) => JSON.parse(line));
+  return { header: lines[0], nodes: lines.filter((r) => r.record === 'node').map((r) => r.node), edges: lines.filter((r) => r.record === 'edge').map((r) => r.edge) };
+}
+
+/**
+ * `classes`: two classes and a variable join the graph (src/main.js owns a class and a variable beside its functions, lib/data.py a
+ * class), some nodes record a complexity, and the domain graph has a project description. Returns what the overview should show,
+ * counted here from the files as packed, apart from the page's own code: the tiles, the type and complexity counts, the five nodes
+ * with the most edge records in and out (ties by name, then id), the groups' file counts, and the product highlights.
+ */
+function addClasses(root) {
+  const path = join(root, '.excavator', 'knowledge-graph.jsonl');
+  const lines = readFileSync(path, 'utf-8').split('\n').filter((line) => line !== '').map((line) => JSON.parse(line));
+  const complexity = { 'function:src/main.js:main': 'simple', 'function:src/core/engine/run.js:run': 'complex', 'function:src/util.js:helper': 'moderate' };
+  for (const line of lines) if (line.record === 'node' && complexity[line.node.id]) line.node.complexity = complexity[line.node.id];
+  const added = [
+    { id: 'class:src/main.js:Session', type: 'class', name: 'Session', filePath: 'src/main.js', lineRange: [7, 9], complexity: 'moderate' },
+    { id: 'class:lib/data.py:Store', type: 'class', name: 'Store', filePath: 'lib/data.py', lineRange: [5, 6] },
+    { id: 'variable:src/main.js:VERSION', type: 'variable', name: 'VERSION', filePath: 'src/main.js', lineRange: [1, 1] },
+  ];
+  const records = [
+    ...added.map((node) => ({ record: 'node', node })),
+    ...added.map((node) => ({ record: 'edge', edge: { source: `file:${node.filePath}`, target: node.id, type: 'contains' } })),
+  ];
+  const [header, ...rest] = lines;
+  header.counts.nodes += added.length;
+  header.counts.edges += added.length;
+  writeFileSync(path, `${[header, ...rest, ...records].map((record) => JSON.stringify(record)).join('\n')}\n`);
+  const domain = readProduct(root, 'domain-graph.json');
+  const description = 'A small program that starts an engine and loads its data.';
+  writeProduct(root, 'domain-graph.json', { ...domain, project: { name: 'smoke-fixture', description } });
+
+  const { nodes, edges } = graphRecords(root);
+  const countBy = (rows, key) => rows.reduce((acc, row) => ({ ...acc, [key(row)]: (acc[key(row)] ?? 0) + 1 }), {});
+  const sorted = (object) => Object.fromEntries(Object.entries(object).sort(([a], [b]) => (a < b ? -1 : 1)));
+  const ids = new Set(nodes.map((n) => n.id));
+  const degree = new Map(nodes.map((n) => [n.id, 0]));
+  for (const e of edges) for (const end of [e.source, e.target]) if (ids.has(end)) degree.set(end, degree.get(end) + 1);
+  const byName = new Map(nodes.map((n) => [n.id, n.name]));
+  const connected = [...degree].filter(([, d]) => d > 0).sort(([a, x], [b, y]) => y - x || (byName.get(a) < byName.get(b) ? -1 : byName.get(a) > byName.get(b) ? 1 : a < b ? -1 : 1)).slice(0, 5);
+  const files = nodes.filter((n) => n.type === 'file').map((n) => n.id);
+  const layers = readProduct(root, 'semantic-graph.json').layers;
+  const layered = new Set(layers.flatMap((l) => l.nodeIds));
+  const unused = readProduct(root, 'unused-code.json').unused;
+  const hotspots = readProduct(root, 'hotspots.json').files;
+  const hot = [...hotspots].sort((a, b) => b.score - a.score || (a.path < b.path ? -1 : 1)).slice(0, 3).map((f) => [f.path, `#/hotspots?view=files&row=${encodeURIComponent(f.path)}`]);
+  return {
+    classes: { level: 'layer:app/src', className: 'Session', classId: 'class:src/main.js:Session' },
+    overview: {
+      name: basename(root),
+      description,
+      tiles: { Nodes: nodes.length, Edges: edges.length, Layers: layers.length, Files: files.length },
+      languages: graphRecords(root).header.fields.project.languages,
+      types: sorted(countBy(nodes, (n) => n.type)),
+      complexity: sorted({ simple: 0, moderate: 0, complex: 0, ...countBy(nodes, (n) => n.complexity ?? '~none') }),
+      connected,
+      layers: [...layers.map((l) => [l.name, files.filter((f) => layered.has(f) && l.nodeIds.includes(f)).length]), ['Not in any layer', files.filter((f) => !layered.has(f)).length]].sort(),
+      unused: { total: unused.length, byConfidence: sorted({ high: 0, medium: 0, low: 0, ...countBy(unused, (u) => u.confidence) }) },
+      hot,
+      tour: readProduct(root, 'tour.json').steps.map((s) => s.title),
+    },
+  };
+}
+
+/** `tour-digest`: the tour was made from other facts than the graph's. */
+function tourFromOtherFacts(root) {
+  const digest = 'd'.repeat(64);
+  writeProduct(root, 'tour.json', { ...readProduct(root, 'tour.json'), factDigest: digest });
+  return digest;
+}
+
 /** Run one scenario on a freshly packed page. */
 function runScenario([name, mode, makeDriver, scenarioCheck, extra = {}]) {
   const dir = mkdtempSync(join(tmpdir(), 'xv-graph-smoke-'));
@@ -1277,16 +1986,24 @@ function runScenario([name, mode, makeDriver, scenarioCheck, extra = {}]) {
     if (mode === 'notrun') for (const file of ['doc-map.json', 'doc-map-report.md', 'doc-map']) rmSync(join(root, '.excavator', file), { recursive: true, force: true });
     // `domain-notrun`: the domain graph was never made. `domain-digest`: it was made from other facts than the graph's.
     if (mode === 'longfile') addLongFile(root);
+    if (mode === 'rows') addRows(root);
+    if (mode === 'years') addRootYears(root);
     if (mode === 'edge-crowd') addCrowd(root);
+    if (mode === 'classes') Object.assign(expected, addClasses(root));
+    if (mode === 'tour-digest') expected.tourDigest = tourFromOtherFacts(root);
     if (mode === 'domain-fit') expected.domain = { ...expected.domain, long: widenDomainGraph(root) };
     if (mode === 'domain-notrun') rmSync(join(root, '.excavator', 'domain-graph.json'));
     if (mode === 'domain-digest') {
       const path = join(root, '.excavator', 'domain-graph.json');
       writeFileSync(path, JSON.stringify({ ...JSON.parse(readFileSync(path, 'utf-8')), factDigest: expected.domain.digests.graph }));
     }
+    // The products as packed, for the checks that recount what a page shows.
+    // (A product a mode removed is null.)
+    const packed = (name) => (existsSync(join(root, '.excavator', name)) ? readProduct(root, name) : null);
+    expected.data = { unused: packed('unused-code.json'), hotspots: packed('hotspots.json'), docMap: packed('doc-map.json'), checks: packed('doc-map/checks.json') };
     const out = join(dir, 'page.html');
     packProject(root, { out });
-    const args = [join(here, 'view-smoke.mjs'), out, ...(extra.hash ? ['--hash', extra.hash] : []), ...(extra.height ? ['--height', String(extra.height)] : []), ...(extra.width ? ['--width', String(extra.width)] : []), '--eval', makeDriver(expected.graph, expected), ...(extra.screenshot ? ['--screenshot', extra.screenshot] : [])];
+    const args = [join(here, 'view-smoke.mjs'), out, ...(extra.reducedMotion ? ['--reduced-motion'] : []), ...(extra.hash ? ['--hash', extra.hash] : []), ...(extra.height ? ['--height', String(extra.height)] : []), ...(extra.width ? ['--width', String(extra.width)] : []), '--eval', makeDriver(expected.graph, expected), ...(extra.screenshot ? ['--screenshot', extra.screenshot] : [])];
     const result = spawnSync('node', args, { encoding: 'utf-8', maxBuffer: 1 << 26 });
     let smoke;
     try {

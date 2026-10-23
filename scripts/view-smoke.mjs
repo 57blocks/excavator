@@ -346,11 +346,12 @@ async function run(options) {
   };
 }
 
+// Exit only once the text is written: on a pipe, process.exit right after a large write cuts the output at the pipe's buffer.
+const finish = (stream, text, code) => stream.write(text, () => process.exit(code));
+
 try {
   const result = await run(parseArgs(process.argv.slice(2)));
-  process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
-  process.exit(result.ok ? 0 : 1);
+  finish(process.stdout, `${JSON.stringify(result, null, 2)}\n`, result.ok ? 0 : 1);
 } catch (error) {
-  process.stderr.write(`view-smoke failed: ${error.message}\n`);
-  process.exit(1);
+  finish(process.stderr, `view-smoke failed: ${error.message}\n`, 1);
 }

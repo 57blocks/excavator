@@ -38,6 +38,17 @@ export interface DomainCounts {
   crossDomain: number;
 }
 
+/** What the packer counted in the tour (only on the `tour` entry, when it is in the page). */
+export interface TourCounts {
+  steps: number;
+  /** The sentences kept in the steps. */
+  sentences: number;
+  /** Kept sentences by verdict: verified, unverified and unchecked (a contradicted one is never kept). */
+  byVerdict: Record<string, number>;
+  /** The records of `removed`. */
+  removedSentences: number;
+}
+
 export interface ManifestProduct {
   name: string;
   label: string;
@@ -51,8 +62,10 @@ export interface ManifestProduct {
   payloads: string[];
   /** Only on the `reports` entry. */
   items?: ReportItem[];
-  /** Only on the `semantics` and `domain-graph` entries, when they are in the page; each has its own fields. */
-  counts?: Partial<SemanticsCounts> & Partial<DomainCounts>;
+  /** Only on the `semantics`, `domain-graph` and `tour` entries, when they are in the page; each has its own fields. */
+  counts?: Partial<SemanticsCounts> & Partial<DomainCounts> & Partial<TourCounts>;
+  /** Only on the `tour` entry, when it is in the page: the tour's factDigest and the knowledge graph's factsDigest (either may be unrecorded). */
+  factDigests?: { tour: string | null; graph: string | null };
 }
 
 export type SourceBucket = 'embedded' | 'binary' | 'tooLarge' | 'notInSnapshot' | 'notEmbeddedOnRequest';

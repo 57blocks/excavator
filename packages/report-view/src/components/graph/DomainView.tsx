@@ -17,6 +17,9 @@ import type { DomainScene } from '../../state/domain-scene';
 import { useGraphUi } from '../../state/graph-ui';
 import { LoadError } from '../ProductPage';
 import { Breadcrumbs, TopLeft } from './GraphChrome';
+import { ViewSwitch } from './ViewSwitch';
+import { idleTitle } from '../sidebar/IdleSidebar';
+import type { Mode } from '../../lib/view-mode';
 import { DOMAIN_EDGE_TYPES, DOMAIN_NODE_TYPES } from './DomainNodes';
 
 const MIN_ZOOM = 0.1;
@@ -35,11 +38,12 @@ interface Laid {
  * One level of the domain graph: the domains, the flows of a domain, or the steps of a flow, laid out with the structure
  * graph's layout. A click goes into a domain or flow or selects a step; the camera fits each level once.
  */
-export function DomainView({ scene, place, selected, onOpen, onSelect, onClearSelection, onGo }: {
+export function DomainView({ scene, place, selected, mode, onOpen, onSelect, onClearSelection, onGo }: {
   scene: DomainScene;
   place: DomainPlace;
   /** The domain, flow or step shown in the sidebar. */
   selected: string | null;
+  mode: Mode;
   onOpen: (entry: DomainEntry) => void;
   onSelect: (id: string) => void;
   onClearSelection: () => void;
@@ -128,6 +132,7 @@ export function DomainView({ scene, place, selected, onOpen, onSelect, onClearSe
         {/* The steps of a flow are one column that fits the canvas: a minimap there only covers their right edge. */}
         {level.place.kind === 'flow' ? null : <MiniMap pannable zoomable nodeColor="var(--color-node-domain)" className="!rounded-card !border !border-line" />}
         <TopLeft>
+          <ViewSwitch current="domain" mode={mode} idleClosed={!ui.idleOpen && selected === null} idleLabel={idleTitle(mode)} />
           <Breadcrumbs crumbs={crumbs} notes={level.notes} onGo={(crumb) => crumb.path !== '' && onGo(crumb.path)} />
         </TopLeft>
       </ReactFlow>

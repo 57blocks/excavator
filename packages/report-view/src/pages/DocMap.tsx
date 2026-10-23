@@ -1,19 +1,26 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 
 import { ProductPage } from '../components/ProductPage';
-import { Panel } from '../components/shell/Panel';
+import { RowActions } from '../components/RowExtras';
+import { SourcePreview } from '../components/SourcePreview';
 import { Badge, type BadgeTone } from '../components/ui/Badge';
+import { BarList, type BarRow } from '../components/ui/BarList';
 import { Card } from '../components/ui/Card';
-import { CodeLink } from '../components/ui/CodeLink';
 import { LocateButton } from '../components/ui/LocateButton';
+import { CodeLink } from '../components/ui/CodeLink';
+import { Collapsible } from '../components/ui/Collapsible';
 import { BulletList, ChipGroup, Facts, SearchInput } from '../components/ui/Controls';
 import { type Column, DataTable, SimpleTable } from '../components/ui/DataTable';
+import { PrefixBar, RowMissing } from '../components/ui/RowLinkNotes';
+import { RowPanel } from '../components/ui/RowPanel';
+import { StatTile, StatTiles } from '../components/ui/StatTile';
 import { Tile, Tiles } from '../components/ui/Tile';
-import { navigate, useRoute } from '../hooks/use-route';
+import { useRowLink } from '../hooks/use-row-link';
 import { useCounts } from '../hooks/use-signals';
+import { normalizePrefix, underPrefix } from '../lib/detail-rows';
 import { CODE_STATUSES, filterUnits, joinChecks, KEYS, unitList, VERDICTS, whereText, type DocMapCheck, type UnitRow } from '../lib/docmap';
-import { EMPTY, formatNumber } from '../lib/format';
-import { buildHash } from '../lib/route';
+import { lookupBars, unitFiles, verdictBars } from '../lib/docmap-charts';
+import { EMPTY, formatNumber, NOT_PROVIDED } from '../lib/format';
 
 interface DocMapProduct {
   docsRoot?: unknown;
@@ -81,6 +88,34 @@ function Sources({ data }: { data: DocMapProduct }) {
   );
 }
 
+const VERDICT_COLOUR: Record<string, string> = { does: 'var(--color-success)', not: 'var(--color-danger)' };
+const LOOKUP_COLOUR: Record<string, string> = { found: 'var(--color-success)', 'not-found': 'var(--color-warning)' };
+
+/** The statistics and the two distribution charts above the tables: the product's counts, and the evidence counted by verdict. */
+function Overview({ counts, units }: { counts: Record<string, number>; units: UnitRow[] }) {
+  const lookup = lookupBars(counts);
+  const verdicts: BarRow[] = verdictBars(units).map((bar) => ({ ...bar, colour: VERDICT_COLOUR[bar.key] ?? 'var(--color-muted)' }));
+  return (
+    <>
+      <StatTiles>
+        <StatTile label="Documents" value={counts.files} note="files in the documents folder" />
+        <StatTile label="Units" value={counts.units} note="functions the documents describe" />
+        <StatTile label="Code found" value={counts.found} note="units with evidence in code" />
+        <StatTile label="No code found" value={counts.notFound} note="units whose searches found none" />
+      </StatTiles>
+      <div className="grid grid-cols-[repeat(auto-fit,minmax(280px,1fr))] items-start gap-5">
+        <Card title="Units by lookup status">
+          <BarList rows={lookup.rows.map((bar) => ({ ...bar, colour: LOOKUP_COLOUR[bar.key] ?? 'var(--color-muted)' }))} label="Units by lookup status" />
+          {lookup.missing.length > 0 ? <p className="mt-2 text-xs text-muted">{`${NOT_PROVIDED}: ${lookup.missing.join(', ')}`}</p> : null}
+        </Card>
+        <Card title="Evidence by verdict">
+          <BarList rows={verdicts} label="Pieces of evidence by the verdict of their check" />
+        </Card>
+      </div>
+    </>
+  );
+}
+
 function CountsCard({ counts }: { counts: Record<string, number> }) {
   const tiles: [string, number][] = [
     ['Documents', counts.files], ['Read', counts.read], ['Empty', counts.empty], ['No converter', counts.noConverter],
@@ -88,9 +123,9 @@ function CountsCard({ counts }: { counts: Record<string, number> }) {
     ['Code found', counts.found], ['No code found', counts.notFound], ['Not checked', counts.notChecked],
   ];
   return (
-    <Card title="Counts">
+    <Collapsible title="All counts">
       <Tiles>{tiles.map(([label, value]) => <Tile key={label} label={label} value={value} />)}</Tiles>
-    </Card>
+    </Collapsible>
   );
 }
 
@@ -106,12 +141,27 @@ const DOCUMENT_COLUMNS: Column<DocumentRow>[] = [
   numberColumn('Chars', 'chars'), numberColumn('Lines', 'lines'), numberColumn('Pages', 'pages'), numberColumn('Units', 'units'),
 ];
 
-function EvidenceItem({ item }: { item: UnitRow['evidence'][number] }) {
+/** The source of one place of evidence, read only when the reader unfolds it. */
+function EvidenceSource({ path, line, open }: { path: string; line: number | null; open: boolean }) {
+  const [shown, setShown] = useState(open);
+  return (
+    <details open={open} onToggle={(event) => setShown((event.currentTarget as HTMLDetailsElement).open)} className="mt-1.5">
+      <summary className="cursor-pointer text-xs text-muted">Source</summary>
+      {shown ? (
+        <div data-xv-preview={path} className="xv-preview mt-1.5 overflow-hidden rounded-control border border-line">
+          <SourcePreview path={path} lines={line === null ? null : String(line)} />
+        </div>
+      ) : null}
+    </details>
+  );
+}
+
+function EvidenceItem({ item, first }: { item: UnitRow['evidence'][number]; first: boolean }) {
   return (
     <li className="min-w-0 rounded-lg border border-line-2 px-3.5 py-2.5">
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
         {item.file === null ? EMPTY : <CodeLink path={item.file} range={item.line === null ? null : [item.line]} />}
-        {item.file === null ? null : <LocateButton target={{ kind: 'file', path: item.file }} overlay="doc-map" />}
+        {item.file === null ? null : <RowActions target={{ kind: 'file', path: item.file }} overlay="doc-map" path={item.file} range={item.line === null ? null : [item.line]} />}
       </div>
       {item.code === null ? null : <pre className="my-1.5 whitespace-pre-wrap rounded-md border-l-[3px] border-accent bg-paper px-3.5 py-2.5 font-mono text-[12.5px] [overflow-wrap:anywhere]">{item.code}</pre>}
       {item.check === null ? (
@@ -121,6 +171,7 @@ function EvidenceItem({ item }: { item: UnitRow['evidence'][number] }) {
           <VerdictBadge verdict={item.check.verdict} /> {item.check.reason === null ? <span className="text-muted">No reason recorded.</span> : item.check.reason}
         </p>
       )}
+      {item.file === null ? null : <EvidenceSource path={item.file} line={item.line} open={first} />}
     </li>
   );
 }
@@ -143,7 +194,7 @@ export function UnitDetail({ row }: { row: UnitRow }) {
           Code <CodeBadge status={row.codeStatus} />
         </h3>
         {row.codeStatus === 'found' ? (
-          <ul className="m-0 flex list-none flex-col gap-3 p-0">{row.evidence.map((item, i) => <EvidenceItem key={i} item={item} />)}</ul>
+          <ul className="m-0 flex list-none flex-col gap-3 p-0">{row.evidence.map((item, i) => <EvidenceItem key={i} item={item} first={i === 0} />)}</ul>
         ) : row.codeStatus === 'not-found' ? (
           <>
             <p>No code was found. The searches that found none:</p>
@@ -173,16 +224,22 @@ export function UnitDetail({ row }: { row: UnitRow }) {
 function Units({ data, checks }: { data: DocMapProduct; checks: DocMapCheck[] | null }) {
   const joined = useMemo(() => joinChecks(data.units ?? [], checks), [data, checks]);
   const [filters, setFilters] = useState<{ codeStatus: string[]; verdict: string[]; text: string }>({ codeStatus: [], verdict: [], text: '' });
-  const matching = useMemo(() => filterUnits(joined.rows, filters), [joined, filters]);
-  const { route } = useRoute();
-  const selected = useMemo(() => {
-    const wanted = parseInt(route.params.unit ?? '', 10);
-    return joined.rows.find((r) => r.number === wanted) ?? null;
-  }, [joined, route.params.unit]);
-  useCounts({ units: joined.rows.length, 'units-shown': matching.length, checks: joined.hasChecks ? (checks as DocMapCheck[]).length : 0 });
+  const { row: linked, prefix, open, close, clearPrefix } = useRowLink();
+  // A unit is under the path when any file of its evidence is.
+  const prefixed = useMemo(() => {
+    const wanted = normalizePrefix(prefix);
+    return wanted === null ? joined.rows : joined.rows.filter((row) => unitFiles(row).some((file) => underPrefix(file, wanted)));
+  }, [joined, prefix]);
+  const matching = useMemo(() => filterUnits(prefixed, filters), [prefixed, filters]);
+  const target = linked === null ? null : joined.rows.find((r) => String(r.number) === linked) ?? null;
+  const inPrefix = target !== null && prefixed.includes(target);
+  useEffect(() => {
+    if (target !== null && inPrefix && !matching.includes(target)) setFilters({ codeStatus: [], verdict: [], text: '' });
+  }, [linked]);
+  const shown = target !== null && matching.includes(target) ? target : null;
+  const missing = linked === null ? null : target === null ? `No unit of the doc map has the number "${linked}".` : !inPrefix ? `Unit ${linked} has no evidence under the path ${normalizePrefix(prefix)}.` : null;
+  useCounts({ units: joined.rows.length, 'units-shown': matching.length, 'units-prefixed': prefixed.length, checks: joined.hasChecks ? (checks as DocMapCheck[]).length : 0 });
 
-  const select = useCallback((row: UnitRow) => navigate(buildHash('doc-map', { unit: String(row.number) })), []);
-  const close = useCallback(() => navigate(buildHash('doc-map')), []);
   const toggle = (field: 'codeStatus' | 'verdict') => (value: string) =>
     setFilters((f) => ({ ...f, [field]: f[field].includes(value) ? f[field].filter((v) => v !== value) : [...f[field], value] }));
 
@@ -204,18 +261,20 @@ function Units({ data, checks }: { data: DocMapProduct; checks: DocMapCheck[] | 
 
   return (
     <Card title="Units">
+      <PrefixBar prefix={prefix} shown={prefixed.length} total={joined.rows.length} noun="units with evidence there" onClear={clearPrefix} />
+      <RowMissing text={missing} />
       <SearchInput value={filters.text} onChange={(text) => setFilters((f) => ({ ...f, text }))} placeholder="Search document, id, title or quote" />
       <div className="mb-2 flex flex-col gap-2">
         <ChipGroup label="Code" values={CODE_STATUSES} selected={filters.codeStatus} onToggle={toggle('codeStatus')} />
         <ChipGroup label="Verdict" values={VERDICTS} selected={filters.verdict} onToggle={toggle('verdict')} />
       </div>
-      <p className="text-muted">{`Showing ${formatNumber(matching.length)} of ${formatNumber(joined.rows.length)} units`}</p>
+      <p className="text-muted">{`Showing ${formatNumber(matching.length)} of ${formatNumber(prefixed.length)} units`}</p>
       {notes.map((note) => <p key={note} className="text-muted">{note}</p>)}
-      <DataTable rows={matching} columns={columns} onRowClick={select} isSelected={(r) => selected === r} />
+      <DataTable rows={matching} columns={columns} onRowClick={(r) => open(String(r.number))} isSelected={(r) => r === shown} rowKey={(r) => String(r.number)} focusKey={shown === null ? null : String(shown.number)} />
       <p className="mt-2 text-muted">Click a unit to see its quote, its code and the verdict on each place.</p>
-      <Panel slot="sidebar" open={selected !== null} title={selected ? `Unit ${selected.number}` : 'Unit'} onClose={close}>
-        {selected ? <UnitDetail row={selected} /> : null}
-      </Panel>
+      <RowPanel open={shown !== null} rowKey={shown === null ? null : String(shown.number)} title={shown ? `Unit ${shown.number}` : 'Unit'} onClose={close}>
+        {shown ? <UnitDetail row={shown} /> : null}
+      </RowPanel>
     </Card>
   );
 }
@@ -312,9 +371,11 @@ function UnreadDocuments({ documents }: { documents: DocumentRow[] }) {
 
 function DocMapBody({ data, checks }: { data: DocMapProduct; checks: DocMapCheck[] | null }) {
   const documents = useMemo(() => (data.documents ?? []).map(toDocument), [data]);
+  const joined = useMemo(() => joinChecks(data.units ?? [], checks).rows, [data, checks]);
+  const assumptions = (data.residualAssumptions ?? []).map(String);
   return (
     <>
-      <CountsCard counts={data.counts ?? {}} />
+      <Overview counts={data.counts ?? {}} units={joined} />
       <Sources data={data} />
       <Card title="Documents">
         <DataTable rows={documents} columns={DOCUMENT_COLUMNS} />
@@ -322,9 +383,10 @@ function DocMapBody({ data, checks }: { data: DocMapProduct; checks: DocMapCheck
       <Units data={data} checks={checks} />
       <Coverage coverage={data.coverage} />
       <UnreadDocuments documents={documents} />
-      <Card title="Residual assumptions">
-        <BulletList items={(data.residualAssumptions ?? []).map(String)} />
-      </Card>
+      <Collapsible title="Residual assumptions" count={formatNumber(assumptions.length)}>
+        <BulletList items={assumptions} />
+      </Collapsible>
+      <CountsCard counts={data.counts ?? {}} />
     </>
   );
 }

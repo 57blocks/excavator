@@ -5,7 +5,7 @@ import { DURATION, EASE } from '../../lib/motion';
 import { formatNumber } from '../../lib/format';
 
 /** A number that rolls from 0 to its value; the value is the text from the first frame when reduced motion is requested. */
-function RollingNumber({ value }: { value: number }) {
+export function RollingNumber({ value }: { value: number }) {
   const reduce = useReducedMotion();
   const shown = useMotionValue(reduce ? value : 0);
   const text = useTransform(shown, (v) => formatNumber(v));

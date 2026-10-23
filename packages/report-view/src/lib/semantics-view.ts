@@ -1,5 +1,5 @@
 /**
- * The Overview's numbers about the semantic payload (openspec: changes/
+ * The Products page's numbers about the semantic payload (openspec: changes/
  * viewer-app, design D11; spec "Each product has a visible state"). Verdicts
  * are counted over the entries the page holds, the stale count is the
  * packer's (the page cannot judge freshness), and the layers and summaries are
@@ -70,7 +70,7 @@ export function semanticsDetail(stats: SemanticsStats): string {
   return `${formatNumber(stats.entries)} summaries inlined${stale}; ${formatNumber(stats.layers)} layers.`;
 }
 
-/** The counts the Overview publishes as `data-xv-count-semantic-*`. */
+/** The counts the Products page publishes as `data-xv-count-semantic-*`. */
 export function semanticsCounts(stats: SemanticsStats): Record<string, number> {
   const counts: Record<string, number> = {
     'semantic-entries': stats.entries,

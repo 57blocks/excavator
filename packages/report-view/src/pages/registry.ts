@@ -8,7 +8,7 @@ import { DocMapPage } from './DocMap';
 import { DomainPage } from './Domain';
 import { GraphPage } from './Graph';
 import { HotspotsPage } from './Hotspots';
-import { OverviewPage } from './Overview';
+import { ProductsPage } from './Products';
 import { ReportsPage } from './Reports';
 import { UnusedPage } from './Unused';
 
@@ -28,7 +28,7 @@ const productStatus = (name: string) => (manifest: Manifest) => findProduct(mani
 export const PAGES: readonly PageDef[] = [
   { id: 'graph', label: 'Graph', status: productStatus('knowledge-graph'), Component: GraphPage, flush: true },
   { id: 'domain', label: 'Domain', status: productStatus('domain-graph'), Component: DomainPage, flush: true },
-  { id: 'overview', label: 'Overview', status: (m) => worstStatus(m.products), Component: OverviewPage },
+  { id: 'products', label: 'Products', status: (m) => worstStatus(m.products), Component: ProductsPage },
   { id: 'unused', label: 'Unused code', status: productStatus('unused-code'), Component: UnusedPage },
   { id: 'doc-map', label: 'Doc map', status: productStatus('doc-map'), Component: DocMapPage },
   { id: 'hotspots', label: 'Hotspots', status: productStatus('hotspots'), Component: HotspotsPage },

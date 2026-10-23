@@ -13,9 +13,9 @@ import { graphHash, type GraphState } from './graph-state';
 import type { OverlayName } from './overlay-names';
 import { locateFile, type Level, type Structure } from './graph-structure';
 
-/** Go to the level `path` (and `fold`), keeping the path that is highlighted, the overlays and the filters. */
+/** Go to the level `path` (and `fold`), keeping the path that is highlighted, the overlays, the filters and the mode. */
 export function levelHash(state: GraphState, path: string, fold: string | null): string {
-  return graphHash({ path, fold, from: state.from, to: state.to, directed: state.directed, overlays: state.overlays, filters: state.filters });
+  return graphHash({ path, fold, from: state.from, to: state.to, directed: state.directed, overlays: state.overlays, filters: state.filters, mode: state.mode });
 }
 
 /** The state with `overlays` on; the rest of the view stays where it is. */

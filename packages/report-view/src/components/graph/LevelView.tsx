@@ -18,6 +18,7 @@ import { nodeColor } from '../../lib/node-colors';
 import { legendBlocks } from '../../lib/overlays';
 import { OVERLAYS } from '../../lib/overlay-names';
 import { shortestPath } from '../../lib/path-finding';
+import { hiddenByMode, OVERVIEW_NOTE } from '../../lib/view-mode';
 import { useGraphUi } from '../../state/graph-ui';
 import type { GraphScene } from '../../state/graph-scene';
 import { useOverlayFacts } from '../../state/overlay-facts';
@@ -29,6 +30,8 @@ import { Breadcrumbs, Legend, TopLeft } from './GraphChrome';
 import { FLOATING_EDGE_TYPES } from './FloatingEdge';
 import { NODE_TYPES } from './GraphNodes';
 import { PathCard } from './PathCard';
+import { ViewSwitch } from './ViewSwitch';
+import { idleTitle } from '../sidebar/IdleSidebar';
 import type { GraphModel } from '../../data/model';
 
 const NO_FILES: ReadonlySet<string> = new Set();
@@ -92,7 +95,10 @@ export function LevelView({ scene, level, state, filters, actions }: { scene: Gr
 
   const edgeTypes = useMemo(() => shownEdgeTypes(filters, choices.edgeTypes, false), [filters, choices]);
   const visibility = useMemo(() => visibilityOf(model.index, structure, filters), [model, structure, filters]);
-  const filterKey = `${[...edgeTypes].sort().join(',')}|${[...filters.nodeTypes].sort().join(',')}|${[...filters.layers].sort().join(',')}`;
+  // The mode decides only which nodes an open file draws as rows (design D1); the level, its counts and its edges stay.
+  const mode = state.mode;
+  const childDrawn = useMemo(() => (mode === 'overview' ? (node: { type: string }) => !hiddenByMode(mode, node.type) : undefined), [mode]);
+  const filterKey = `${[...edgeTypes].sort().join(',')}|${[...filters.nodeTypes].sort().join(',')}|${[...filters.layers].sort().join(',')}|${mode === 'overview' ? 'overview' : 'all'}`;
 
   const [laid, setLaid] = useState<Laid | null>(null);
   const [failure, setFailure] = useState<Error | null>(null);
@@ -100,7 +106,7 @@ export function LevelView({ scene, level, state, filters, actions }: { scene: Gr
   useEffect(() => {
     let current = true;
     const drawn = visibleLevel(level, visibility);
-    const plan = planLevel(structure, model.index, model.graph.edges, drawn, open, { edgeTypes, nodeVisible: visibility?.nodeVisible });
+    const plan = planLevel(structure, model.index, model.graph.edges, drawn, open, { edgeTypes, nodeVisible: visibility?.nodeVisible, childDrawn });
     layoutPlan(drawn, plan).then(
       (layout) => current && setLaid({ key: `${key}|${openKey}|${filterKey}`, level: drawn, plan, layout }),
       (error: unknown) => current && setFailure(error instanceof Error ? error : new Error(String(error))),
@@ -241,12 +247,14 @@ export function LevelView({ scene, level, state, filters, actions }: { scene: Gr
         <Controls showInteractive={false} />
         <MiniMap pannable zoomable nodeColor={(node) => (node.type === 'container' ? 'var(--color-line-2)' : nodeColor(node.type === 'file' ? 'file' : String((node.data as { type?: string }).type ?? '')))} className="!rounded-card !border !border-line" />
         <TopLeft>
+          <ViewSwitch current="graph" mode={mode} idleClosed={!ui.idleOpen && selected === null && state.entry === null} idleLabel={idleTitle(mode)} />
           <Breadcrumbs crumbs={level.crumbs} notes={notes} onGo={actions.goCrumb} />
+          {mode === 'overview' ? <p data-xv-mode-note="" className="glass m-0 rounded-card px-3 py-1.5 text-xs text-ink-soft">{OVERVIEW_NOTE}</p> : null}
           {state.from !== null && state.to !== null ? <PathCard index={model.index} from={state.from} to={state.to} directed={state.directed} path={path} onSelect={actions.select} onClear={actions.clearPath} /> : null}
         </TopLeft>
         <Legend types={types} overlays={blocks} />
       </ReactFlow>
-      <Panel slot="sidebar" open={entry !== null} title={entry?.label ?? ''} onClose={actions.clearSelection} closeOnEscape={false}>
+      <Panel slot="sidebar" open={entry !== null} title={entry?.label ?? ''} onClose={actions.clearSelection} closeOnEscape={false} exitAtOnce={selected !== null || ui.idleOpen}>
         {entry && laid ? <EntryDetails entry={entry} level={laid.level} plan={laid.plan} onOpen={() => actions.open(entry)} /> : null}
       </Panel>
     </div>

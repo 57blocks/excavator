@@ -61,6 +61,15 @@ describe('domain graph product', () => {
     expect(packed.result.products.find((p) => p.name === 'domain-graph')).toMatchObject({ status: 'included', counts: { domains: 2, flows: 2, steps: 4, crossDomain: 1 } });
   });
 
+  it('keeps the project block\'s description, and only that, as projectDescription when it is written', () => {
+    writeGraph();
+    writeDomain({ extra: { project: { name: 'fixture', languages: ['javascript'], frameworks: [], description: 'Bills customers and ships parcels.', analyzedAt: 'x' } } });
+    const payload = JSON.parse(payloadText(pack().html, 'domain-graph'));
+    expect(Object.keys(payload)).toEqual(['nodes', 'edges', 'gaps', 'projectDescription']);
+    expect(payload.projectDescription).toBe('Bills customers and ships parcels.');
+    expect(payloadText(pack().html, 'domain-graph')).not.toMatch(/"project"|analyzedAt/);
+  });
+
   it('keeps every field of a step, so the page can list its nodeIds, unresolved ids, evidence and provenance', () => {
     writeGraph();
     writeDomain();
