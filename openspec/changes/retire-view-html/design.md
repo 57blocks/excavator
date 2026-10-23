@@ -85,7 +85,10 @@ Source: <embedded (N files) | not embedded>
 ## Oracle
 
 1. `packages/report-view`、`scripts/view-smoke-graph.mjs`、`scripts/view-smoke-fixture.mjs` 不在树里。
-2. 在 `openspec/changes/` 以外，`git grep -n -e report-view -e 'view\.html'` 零命中。`README.md` 等文档里指向本变更的说明除外，逐条列出。
+2. 在 `openspec/` 以外，`git grep -nP "report-view(?!er)|view\.html|view-smoke-(graph|fixture)"` 只命中两处有意的例外：
+   - `pack.test.mjs` 里「旧 `view.html` 原样保留」的测试；
+   - `skill-contract.test.mjs` 里断言 SKILL.md 不提 `view.html` 的反向检查。
+   `openspec/specs/` 在归档时随 delta 更新。
 3. 全量门绿：
    - `pnpm install --frozen-lockfile`、`pnpm -r build`、`pnpm typecheck`、`node scripts/check-refs.mjs`；
    - `openspec validate --all --strict`、`claude plugin validate .`；

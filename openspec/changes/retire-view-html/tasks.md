@@ -19,11 +19,11 @@
 
 ## 4. 删除 view.html 的一切（D6、D7 的仓库部分）
 
-- [ ] 4.1 删除 `packages/report-view`（连同第 2 步留下的两个脚本旧副本）、`scripts/view-smoke-graph.mjs`、`scripts/view-smoke-fixture.mjs`
-- [ ] 4.2 根 `package.json` 的 `typecheck`、`vitest.config.ts`、`pnpm-lock.yaml`（`pnpm install`）去掉 report-view
-- [ ] 4.3 `test_service_only_contract.test.mjs` 改为只允许 `packages/explorer`
-- [ ] 4.4 `scripts/view-smoke.mjs`、`scripts/explorer-smoke.mjs` 的说明，`README.md` 的 `/excavator-view` 一段
-- [ ] 4.5 Oracle 2 的 grep 零命中。commit `chore(view): delete view.html and packages/report-view`
+- [x] 4.1 删除 `packages/report-view`（连同第 2 步留下的两个脚本旧副本）、`scripts/view-smoke-graph.mjs`、`scripts/view-smoke-fixture.mjs`
+- [x] 4.2 根 `package.json` 的 `typecheck`、`vitest.config.ts`、`pnpm-lock.yaml`（`pnpm install`）去掉 report-view
+- [x] 4.3 `test_service_only_contract.test.mjs` 改为只允许 `packages/explorer`
+- [x] 4.4 `scripts/view-smoke.mjs`、`scripts/explorer-smoke.mjs` 的说明，`README.md` 的 `/excavator-view` 一段
+- [x] 4.5 Oracle 2 的 grep 零命中。commit `chore(view): delete view.html and packages/report-view`
 
 ## 5. 验收与归档
 

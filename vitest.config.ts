@@ -6,7 +6,6 @@ import { defineConfig } from 'vitest/config';
 //   - tests/**                                          — relocated skill tests (out-of-plugin so they
 //                                                         do not ship via the marketplace bundle)
 //   - src/**                 — skill TS source tests
-//   - packages/report-view/test/** — the view template's build check and data layer
 //   - packages/explorer/src/**/__tests__/** — the copied dashboard's own tests
 //   - packages/explorer/test/**  — the template build scripts
 //
@@ -31,7 +30,6 @@ export default defineConfig({
     include: [
       'tests/**/*.test.{js,mjs,ts}',
       'src/**/*.test.{js,mjs,ts}',
-      'packages/report-view/test/**/*.test.{ts,tsx,mjs}',
       'packages/explorer/test/**/*.test.mjs',
       'packages/explorer/src/**/__tests__/**/*.test.ts',
     ],
