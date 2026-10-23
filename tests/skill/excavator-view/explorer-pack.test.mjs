@@ -17,7 +17,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from
 import { writeKnowledgeGraphAtomic } from '../../../skills/excavator/knowledge-graph-store.mjs';
 import { CONTENT_SECURITY_POLICY } from '../../../skills/excavator-view/page-assembly.mjs';
 import { packProject } from '../../../skills/excavator-view/pack.mjs';
-import { domainGraph, makeGitProject, semanticCache, semanticEntry, semanticGraph, sourceManifest, tourProduct, writeProduct } from './fixture.mjs';
+import { docMapProduct, domainGraph, hotspotsProduct, makeGitProject, semanticCache, semanticEntry, semanticGraph, sourceManifest, tourProduct, unusedProduct, writeProduct } from './fixture.mjs';
 import { GOLDEN_FACTS_DIGEST, makeGoldenProject } from './golden-project.mjs';
 import { FIXTURE_TEMPLATE, writeTemplate } from './plugin-fixture.mjs';
 
@@ -161,7 +161,7 @@ describe('the data keeps the content of the products', () => {
     writeGraph();
     writeProduct(project.root, 'domain-graph.json', domainGraph({ sourceRevision: project.revision, factDigest: DIGEST }));
     writeProduct(project.root, 'meta.json', '{}');
-    expect(Object.keys(pack().data)).toEqual(['knowledge-graph.json', 'domain-graph.json', 'meta.json', 'staleness.json', 'sources']);
+    expect(Object.keys(pack().data)).toEqual(['knowledge-graph.json', 'domain-graph.json', 'meta.json', 'staleness.json', 'products.json', 'sources']);
   });
 
   it('packs the same bytes twice', () => {
@@ -307,18 +307,18 @@ describe('the tour', () => {
 });
 
 describe('a product that is missing is a missing key', () => {
-  it('gives no key at all for an empty .excavator, and still writes the page', () => {
+  it('gives no key but the product states for an empty .excavator, and still writes the page', () => {
     const { data, manifest, result } = pack();
-    expect(data).toEqual({});
+    expect(Object.keys(data)).toEqual(['products.json']);
     expect(result.explorer.issues).toBeNull();
-    expect(manifest.rows.filter((row) => row.status === 'not-run').map((row) => row.key)).toEqual(['knowledge-graph.json', 'domain-graph.json', 'meta.json']);
-    expect(manifest.rows.map((row) => row.key)).toEqual(['knowledge-graph.json', 'semantics', 'tour', 'domain-graph.json', 'meta.json', 'staleness.json', 'sources', 'diff-overlay.json', 'config.json']);
+    expect(manifest.rows.filter((row) => row.status === 'not-run').map((row) => row.key)).toEqual(['knowledge-graph.json', 'domain-graph.json', 'meta.json', 'unused-code.json', 'hotspots.json', 'doc-map.json']);
+    expect(manifest.rows.map((row) => row.key)).toEqual(['knowledge-graph.json', 'semantics', 'tour', 'domain-graph.json', 'meta.json', 'staleness.json', 'unused-code.json', 'hotspots.json', 'doc-map.json', 'doc-map-checks.json', 'products.json', 'sources', 'diff-overlay.json', 'config.json']);
   });
 
   it('gives no domain-graph.json key when there is no domain graph, and no meta.json key without meta.json', () => {
     writeGraph();
     const { data } = pack();
-    expect(Object.keys(data)).toEqual(['knowledge-graph.json', 'staleness.json', 'sources']);
+    expect(Object.keys(data)).toEqual(['knowledge-graph.json', 'staleness.json', 'products.json', 'sources']);
   });
 
   it('gives no key for a domain graph or a meta.json that cannot be read, and says why', () => {
@@ -326,7 +326,7 @@ describe('a product that is missing is a missing key', () => {
     writeProduct(project.root, 'domain-graph.json', '{}');
     writeProduct(project.root, 'meta.json', '[1]');
     const { data, manifest } = pack();
-    expect(Object.keys(data)).toEqual(['knowledge-graph.json', 'staleness.json', 'sources']);
+    expect(Object.keys(data)).toEqual(['knowledge-graph.json', 'staleness.json', 'products.json', 'sources']);
     expect(manifest.rows.find((row) => row.key === 'domain-graph.json')).toMatchObject({ status: 'unreadable', reason: expect.stringMatching(/domain-graph\.json has version null/) });
     expect(manifest.rows.find((row) => row.key === 'meta.json')).toMatchObject({ status: 'unreadable', reason: expect.stringMatching(/not a JSON object/) });
   });
@@ -346,6 +346,101 @@ describe('a product that is missing is a missing key', () => {
     writeGraph();
     const rows = pack().manifest.rows.filter((row) => row.status === 'not-produced');
     expect(rows.map((row) => row.key)).toEqual(['diff-overlay.json', 'config.json']);
+  });
+});
+
+describe('the unused-code, hotspots and doc-map products', () => {
+  const OTHER_REVISION = `git:${'1'.repeat(40)}`;
+  const CHECKS = { checks: [{ document: 'a.md', unit: 'a-1', verdict: 'confirmed' }] };
+  const stateOf = (data, name) => data['products.json'].products.find((item) => item.name === name);
+
+  it('passes each product through as written when it is included, with its state', () => {
+    writeGraph();
+    const unused = unusedProduct(project.revision);
+    const hotspots = hotspotsProduct(project.revision);
+    const docMap = docMapProduct(project.revision);
+    writeProduct(project.root, 'unused-code.json', unused);
+    writeProduct(project.root, 'hotspots.json', hotspots);
+    writeProduct(project.root, 'doc-map.json', docMap);
+    writeProduct(project.root, 'doc-map/checks.json', CHECKS);
+    const { data, manifest } = pack();
+    expect(Object.keys(data)).toEqual(['knowledge-graph.json', 'staleness.json', 'unused-code.json', 'hotspots.json', 'doc-map.json', 'doc-map-checks.json', 'products.json', 'sources']);
+    expect(data['unused-code.json']).toEqual(unused);
+    expect(data['hotspots.json']).toEqual(hotspots);
+    expect(data['doc-map.json']).toEqual(docMap);
+    expect(data['doc-map-checks.json']).toEqual(CHECKS);
+    expect(data['products.json'].snapshotRevision).toBe(project.revision);
+    expect(data['products.json'].products.map((item) => item.name)).toEqual(['unused-code', 'hotspots', 'doc-map']);
+    for (const item of data['products.json'].products) {
+      expect(Object.keys(item)).toEqual(['name', 'status', 'reason', 'revision', 'revisionNote', 'command']);
+      expect(item).toMatchObject({ status: 'included', reason: null, revision: project.revision });
+    }
+    expect(stateOf(data, 'unused-code').command).toBe('/excavator-unused-code');
+    expect(stateOf(data, 'hotspots').command).toBe('/excavator-hotspots');
+    expect(stateOf(data, 'doc-map').command).toBe('/excavator-doc-map');
+    for (const key of ['unused-code.json', 'hotspots.json', 'doc-map.json', 'doc-map-checks.json', 'products.json']) {
+      expect(manifest.rows.find((row) => row.key === key)).toMatchObject({ status: 'included' });
+    }
+  });
+
+  it('gives no content key and a not-run state for a product that was not produced, and no checks without a doc map', () => {
+    writeGraph();
+    const { data, manifest } = pack();
+    expect(Object.keys(data)).toEqual(['knowledge-graph.json', 'staleness.json', 'products.json', 'sources']);
+    for (const name of ['unused-code', 'hotspots', 'doc-map']) {
+      expect(stateOf(data, name)).toMatchObject({ status: 'not-run', reason: null, revision: null, command: `/excavator-${name}` });
+      expect(manifest.rows.find((row) => row.key === `${name}.json`)).toEqual({ key: `${name}.json`, status: 'not-run', reason: `${name}.json was not produced` });
+    }
+    expect(manifest.rows.find((row) => row.key === 'doc-map-checks.json').status).toBe('unused');
+  });
+
+  it('gives no content key and the reason for a product that cannot be read', () => {
+    writeGraph();
+    writeProduct(project.root, 'unused-code.json', '{"format":"excavator-unused-code/1"}');
+    writeProduct(project.root, 'hotspots.json', 'not json');
+    writeProduct(project.root, 'doc-map.json', docMapProduct(project.revision));
+    writeProduct(project.root, 'doc-map/checks.json', '{}');
+    const { data, manifest } = pack();
+    expect(Object.keys(data)).toEqual(['knowledge-graph.json', 'staleness.json', 'products.json', 'sources']);
+    expect(stateOf(data, 'unused-code')).toMatchObject({ status: 'unreadable', reason: expect.stringMatching(/missing the top-level key/) });
+    expect(stateOf(data, 'hotspots')).toMatchObject({ status: 'unreadable', reason: expect.stringMatching(/hotspots\.json is not valid JSON/) });
+    expect(stateOf(data, 'doc-map')).toMatchObject({ status: 'unreadable', reason: expect.stringMatching(/doc-map\/checks\.json is missing/) });
+    expect(manifest.rows.find((row) => row.key === 'unused-code.json')).toMatchObject({ status: 'unreadable', reason: expect.stringMatching(/missing the top-level key/) });
+    expect(manifest.rows.find((row) => row.key === 'doc-map-checks.json').status).toBe('unused');
+  });
+
+  it('keeps the content of a product made from another revision and records both revisions', () => {
+    writeGraph();
+    const unused = unusedProduct(OTHER_REVISION);
+    writeProduct(project.root, 'unused-code.json', unused);
+    writeProduct(project.root, 'hotspots.json', hotspotsProduct(OTHER_REVISION));
+    writeProduct(project.root, 'doc-map.json', docMapProduct(OTHER_REVISION));
+    writeProduct(project.root, 'doc-map/checks.json', CHECKS);
+    const { data, manifest } = pack();
+    expect(data['unused-code.json']).toEqual(unused);
+    expect(data['hotspots.json']).toBeDefined();
+    expect(data['doc-map.json']).toBeDefined();
+    expect(data['doc-map-checks.json']).toEqual(CHECKS);
+    expect(stateOf(data, 'unused-code')).toMatchObject({ status: 'different-revision', revision: OTHER_REVISION });
+    expect(manifest.rows.find((row) => row.key === 'unused-code.json')).toMatchObject({ status: 'different-revision' });
+  });
+
+  it('gives a doc map without checks.json no checks key, and says so', () => {
+    writeGraph();
+    writeProduct(project.root, 'doc-map.json', docMapProduct(project.revision));
+    const { data, manifest } = pack();
+    expect(data['doc-map.json']).toBeDefined();
+    expect(data['doc-map-checks.json']).toBeUndefined();
+    expect(manifest.rows.find((row) => row.key === 'doc-map-checks.json')).toEqual({ key: 'doc-map-checks.json', status: 'not-run', reason: 'doc-map/checks.json was not produced' });
+  });
+
+  it('reports the size of each new key and packs the same bytes twice', () => {
+    writeGraph();
+    writeProduct(project.root, 'unused-code.json', unusedProduct(project.revision));
+    const first = pack();
+    expect(first.result.explorer.keys['unused-code.json']).toBe(Buffer.byteLength(JSON.stringify(first.data['unused-code.json'])));
+    expect(first.result.explorer.keys['products.json']).toBe(Buffer.byteLength(JSON.stringify(first.data['products.json'])));
+    expect(pack().html).toBe(first.html);
   });
 });
 

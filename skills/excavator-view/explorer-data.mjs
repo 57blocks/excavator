@@ -13,6 +13,13 @@
  *   domain-graph.json     the file as written, but for the commit hash below
  *   meta.json             the file as written
  *   staleness.json        each graph's recorded source revision against the snapshot's (below)
+ *   unused-code.json      the product files as written (parsed), each only when its entry is included or
+ *   hotspots.json         made from a different revision; absent otherwise
+ *   doc-map.json
+ *   doc-map-checks.json   the doc map's `doc-map/checks.json`, only when the doc map is there and has one
+ *   products.json         { snapshotRevision, products: [{ name, status, reason, revision, revisionNote, command }] } for
+ *                         unused-code, hotspots and doc-map, from the entries `products.mjs` judged (the
+ *                         view page's own states), so the page states each product the way the view page does
  *   sources               { <filePath>: { path, content, sizeBytes, lineCount } } for the files the
  *                         pack embeds (`sources.mjs` rules); no table under `--no-source`
  *
@@ -47,7 +54,8 @@
  * a knowledge graph; the domain graph is in it only when it is packed. It says nothing about the
  * working tree after the pack.
  *
- * A product that is not there, cannot be read or was not packed gives no key, and the
+ * A product that is not there, cannot be read or was not packed gives no key (`products.json` always
+ * exists and says which of the three it is), and the
  * copy shows its own empty state for it; `rows` says why, key by key. `diff-overlay.json`
  * and `config.json` have no product to read: they are not produced here.
  *
@@ -69,6 +77,15 @@ export const DOMAIN_KEY = 'domain-graph.json';
 export const META_KEY = 'meta.json';
 export const SOURCES_KEY = 'sources';
 export const STALENESS_KEY = 'staleness.json';
+export const PRODUCTS_KEY = 'products.json';
+export const DOC_MAP_CHECKS_KEY = 'doc-map-checks.json';
+
+/** The product files the page shows: the entry name, the data key and the payload id `products.mjs` holds its bytes under. */
+const PRODUCT_FILES = [
+  { name: 'unused-code', key: 'unused-code.json' },
+  { name: 'hotspots', key: 'hotspots.json' },
+  { name: 'doc-map', key: 'doc-map.json' },
+];
 
 /** Keys the offline page may carry that nothing in the products produces. */
 const NOT_PRODUCED = [
@@ -241,6 +258,32 @@ function sourcesRow(sources) {
   return { key: SOURCES_KEY, status: 'included', reason: `${counts.embedded} files` };
 }
 
+/** The product's file as written, parsed, with the row that says whether the page holds it. */
+function readProductFile(products, { name, key }) {
+  const entry = entryOf(products, name);
+  const payload = payloadOf(products, name);
+  if (!READABLE.has(entry.status) || !payload) return { row: absentRow(key, entry) };
+  return { value: JSON.parse(payload.bytes.toString('utf-8')), row: { key, status: entry.status, ...(entry.reason ? { reason: entry.reason } : {}) } };
+}
+
+/** The doc map's checks file; it belongs to the doc map, so without the doc map there is nothing to hold it. */
+function readDocMapChecks(products, docMapHeld) {
+  if (!docMapHeld) return { row: { key: DOC_MAP_CHECKS_KEY, status: 'unused', reason: 'there is no doc map to hold it' } };
+  const payload = payloadOf(products, 'doc-map-checks');
+  if (!payload) return { row: { key: DOC_MAP_CHECKS_KEY, status: 'not-run', reason: 'doc-map/checks.json was not produced' } };
+  return { value: JSON.parse(payload.bytes.toString('utf-8')), row: { key: DOC_MAP_CHECKS_KEY, status: 'included' } };
+}
+
+/** Each product's state in the shape the page reads, taken from the entries as judged. */
+function productStates(products, snapshotRevision) {
+  const states = PRODUCT_FILES.map(({ name }) => {
+    const { status, reason, revision, revisionNote, command } = entryOf(products, name);
+    return { name, status, reason, revision, revisionNote, command };
+  });
+  const words = states.map((state) => `${state.name} ${state.status}`);
+  return { value: { snapshotRevision, products: states }, row: { key: PRODUCTS_KEY, status: 'included', reason: words.join('; ') } };
+}
+
 /**
  * @param {{ root: string, dataDir: string, snapshotRevision: string, products: { entries: object[], payloads: {id: string, bytes: Buffer}[] }, sources: { manifest: object, payloads: {id: string, bytes: Buffer}[] } }} input
  *   `root` is the project root the pack was given, `snapshotRevision` the revision of the snapshot it read; `products` and `sources` are what `collectProducts` and
@@ -275,6 +318,20 @@ export function buildExplorerData({ root, dataDir, snapshotRevision, products, s
   const fresh = staleness(data, products, snapshotRevision);
   rows.push(fresh.row);
   if (fresh.value) data[STALENESS_KEY] = fresh.value;
+
+  const heldProducts = PRODUCT_FILES.map((file) => ({ file, read: readProductFile(products, file) }));
+  for (const { file, read } of heldProducts) {
+    rows.push(read.row);
+    if (read.value) data[file.key] = read.value;
+    if (file.name === 'doc-map') {
+      const checks = readDocMapChecks(products, Boolean(read.value));
+      rows.push(checks.row);
+      if (checks.value) data[DOC_MAP_CHECKS_KEY] = checks.value;
+    }
+  }
+  const states = productStates(products, snapshotRevision);
+  rows.push(states.row);
+  data[PRODUCTS_KEY] = states.value;
 
   const table = sources.manifest.requested ? sourceTable(sources) : null;
   rows.push(sourcesRow(sources));
