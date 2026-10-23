@@ -22,7 +22,7 @@ import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { dirname, join } from 'node:path';
 
-import { notePackage } from '../../report-view/scripts/licenses.mjs';
+import { notePackage } from './licenses.mjs';
 
 const LATIN = ['latin', 'latin-ext'];
 const ALL = ['cyrillic-ext', 'cyrillic', 'latin-ext', 'latin', 'vietnamese'];

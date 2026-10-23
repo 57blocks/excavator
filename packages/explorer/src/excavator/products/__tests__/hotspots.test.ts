@@ -5,7 +5,7 @@ import {
   coChangeText, conservationText, dateText, filterRows, maxScore, notices, numberField, plainField, scoreShare, sparkBars, timeKey, windowText, yearSeries, yearText,
 } from '../hotspots';
 
-// The pure parts of the report view's hotspots test; the parts that render report-view components are not copied.
+// The pure parts of the report view's hotspots test; the parts that render the retired view page's components are not copied.
 const file = (path: string, over: Record<string, unknown> = {}) => ({ path, commits: 3, authors: 1, added: 10, removed: 2, lastChanged: '2026-01-02T03:04:05+00:00', lines: 100, score: 300, lineageConflicts: 0, ...over });
 
 describe('windowText', () => {

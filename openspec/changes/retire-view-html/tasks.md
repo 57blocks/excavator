@@ -1,11 +1,11 @@
 ## 1. 提案
 
-- [ ] 1.1 写 proposal、两份 spec delta、design、tasks；`openspec validate retire-view-html --strict` 通过。commit `docs(openspec): propose retire-view-html`
+- [x] 1.1 写 proposal、两份 spec delta、design、tasks；`openspec validate retire-view-html --strict` 通过。commit `docs(openspec): propose retire-view-html`
 
 ## 2. 构建脚本搬进 explorer（D5）
 
-- [ ] 2.1 `licenses.mjs`、`single-file.mjs` 搬到 `packages/explorer/scripts/`，测试搬到 `packages/explorer/test/`；改 `fonts.mjs`、`template.mjs`、`vite.config.ts`、`src/offline/__tests__/template.test.ts` 的 import；`vitest.config.ts` 加 `packages/explorer/test/**/*.test.mjs`
-- [ ] 2.2 `pnpm --filter @excavator/explorer build` 与搬过去的测试绿；explorer 里不再有任何对 `report-view` 的 import。commit `build(explorer): own the licence and single-file scripts`
+- [x] 2.1 `licenses.mjs`、`single-file.mjs` 复制到 `packages/explorer/scripts/`（模板名改为 `explorer.html`），测试复制到 `packages/explorer/test/`；改 `fonts.mjs`、`template.mjs`、`vite.config.ts`、`src/offline/__tests__/template.test.ts` 的 import；`vitest.config.ts` 加 `packages/explorer/test/**/*.test.mjs`
+- [x] 2.2 `pnpm --filter @excavator/explorer build` 与搬过去的测试绿；explorer 里不再有任何对 `report-view` 的 import。commit `build(explorer): own the licence and single-file scripts`
 
 ## 3. 只写 explorer.html（D1–D4、D6 的打包测试）
 

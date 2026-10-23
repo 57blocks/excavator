@@ -4,15 +4,15 @@ import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
 import { defineConfig } from 'vitest/config';
 
-import { collectBundledPackages } from '../report-view/scripts/licenses.mjs';
+import { collectBundledPackages } from './scripts/licenses.mjs';
 import { explorerTemplate } from './scripts/template.mjs';
 
 // Build of the copied dashboard (openspec: changes/viewer-explorer, design D1
 // and D3). The copied sources import the upstream core by its package name; the
 // alias points those imports at the copy under src/core so no copied file needs
 // an edit. The build writes one self-contained HTML template, explorer.html:
-// one chunk, every asset inline, the single-file approach of packages/report-view
-// (the plugins live in scripts/template.mjs). Build only: the page is opened
+// one chunk, every asset inline (the plugins live in scripts/template.mjs and
+// scripts/single-file.mjs). Build only: the page is opened
 // from file://, never served.
 const coreDir = fileURLToPath(new URL('./src/core/', import.meta.url));
 

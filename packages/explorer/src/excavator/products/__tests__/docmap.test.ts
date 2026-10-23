@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { filterUnits, joinChecks, KEYS, unitList, whereText, type DocMapCheck } from '../docmap';
 import { sortRows } from '../table';
 
-// The pure parts of the report view's doc map test; the unit detail test renders a report-view page and is not copied.
+// The pure parts of the report view's doc map test; the unit detail test renders the retired view page and is not copied.
 const evidence = (file: string, line: number, code = 'code') => ({ file, line, code });
 const unit = (over: Record<string, unknown> = {}) => ({
   document: 'a.md', id: 'A', title: 'Submit', quote: 'the quote', line: 10, page: null,

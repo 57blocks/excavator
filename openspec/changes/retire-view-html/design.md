@@ -57,7 +57,10 @@ Source: <embedded (N files) | not embedded>
 
 ### D5 构建脚本搬家
 
-- `packages/report-view/scripts/licenses.mjs`、`single-file.mjs` 原样搬到 `packages/explorer/scripts/`，测试搬到 `packages/explorer/test/`。改的只有相对 import 和注释里的路径。
+- `packages/report-view/scripts/licenses.mjs`、`single-file.mjs` 搬到 `packages/explorer/scripts/`，测试搬到 `packages/explorer/test/`：
+  - 改相对 import 与注释里的路径；
+  - `single-file.mjs` 的模板名从 `view.html` 改为 `explorer.html`，于是 `template.mjs` 只需把 vite 的 `index.html` 改名一次，不再先改成 `view.html`、再改回 `explorer.html`；
+  - 搬家分两步：第 2 步先复制，让 report-view 在它被删之前照常构建；第 4 步随包删去旧的那份。
 - `vitest.config.ts` 的 include 把 `packages/report-view/test/**` 换成 `packages/explorer/test/**/*.test.mjs`。
 - report-view 自己的 `fonts.mjs`、`check-template.mjs` 随包删除：explorer 有自己的。
 
