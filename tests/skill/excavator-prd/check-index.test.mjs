@@ -123,6 +123,32 @@ describe('prd.mjs check-index', () => {
     expect(reasons(out)).toContain('c1: line 4242 is past the end of src/orders/routes.js (8 lines)');
   });
 
+  it('fails a pattern candidate whose text is not on its line, and lets an inferred one through', () => {
+    const run = laneRun();
+    const index = run.readIndex();
+    index.candidates.items[0].text = "router.post('/payments', pay);";
+    index.candidates.items[1].provenance = 'pattern';
+    index.candidates.items[1].text = '   ';
+    index.candidates.items[2].text = 'a summary the model wrote';
+    run.writeIndex(index);
+    const out = runPrd(['check-index', run.out, '--project', run.project]);
+    expect(out.status).toBe(1);
+    expect(reasons(out)).toEqual([
+      'c1: text is not on line 5 of src/orders/routes.js',
+      'c2: text is not on line 6 of src/orders/routes.js',
+    ]);
+  });
+
+  it('accepts a pattern candidate whose text differs from its line only in whitespace, or runs into the next line', () => {
+    const run = laneRun();
+    const index = run.readIndex();
+    index.candidates.items[0].text = "res.status(201).json(createOrder(req.body)));\n  router.post('/orders/:id/cancel',";
+    index.candidates.items[1].text = "router.post('/orders/:id/cancel',   (req, res)  =>";
+    run.writeIndex(index);
+    const out = runPrd(['check-index', run.out, '--project', run.project]);
+    expect(out.status, out.stdout).toBe(0);
+  });
+
   it('fails a malformed schema with one line per problem', () => {
     const run = laneRun();
     const index = run.readIndex();

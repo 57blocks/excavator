@@ -12,16 +12,16 @@
  *       candidates and seed files (design D2); write the conservation back.
  *   check-lane <out> <featureId> --project <root>
  *       Check a feature lane's chapter and findings (design D3); write each
- *       evidence passage's line back.
+ *       evidence passage's line back and record the result in index.json.
  *   aggregate <out> --project <root>
  *       Recompute every feature's status, write findings.json and tables/,
  *       and print the reply's counts as JSON (design D5, D7, D9).
  *   assemble <out> --project <root>
  *       Concatenate the overview, the tables and the written chapters into
  *       <out>/PRD.md, byte for byte the same from the same input (design D7).
- *   mark <out> <featureId> dispatched | failed <step> <reason>... --project <root>
- *       Record a lane dispatch (attempts + 1) or a failure in index.json
- *       (design D4, D6).
+ *   mark <out> <featureId> dispatched | failed lane <reason>... --project <root>
+ *       Record a lane dispatch (attempts + 1) or a lane that wrote nothing
+ *       in index.json (design D4, D6).
  *
  * Exit codes: 0 ok; 1 a check failed (every reason printed, one per line);
  * 2 usage or IO error.
@@ -44,8 +44,9 @@ Commands:
   check-index <out> --project <root>
       Check <out>/index.json and write the computed conservation back.
   check-lane <out> <featureId> --project <root>
-      Check features/<featureId>.md and findings/<featureId>.json under <out>
-      and write each evidence passage's line back.
+      Check features/<featureId>.md and findings/<featureId>.json under <out>,
+      write each evidence passage's line back, and record the result under
+      the feature in index.json (a failure with its reasons, or none).
   aggregate <out> --project <root>
       Recompute every feature's status from the files under <out>, write
       findings.json and tables/*.md, and print the reply's counts as JSON.
@@ -54,9 +55,9 @@ Commands:
       failed features go to the appendix. Prints the path.
   mark <out> <featureId> dispatched --project <root>
       Count one more dispatch of the feature's lane in <out>/index.json.
-  mark <out> <featureId> failed <step> <reason>... --project <root>
-      Record the feature as failed at <step> (lane, check-lane or verify),
-      each further argument one reason.
+  mark <out> <featureId> failed lane <reason>... --project <root>
+      Record the feature's lane as failed without writing its files, each
+      further argument one reason. lane is the only step mark records.
 
 <out> is the run's output directory (index.json, features/, findings/,
 verification/). --project <root> is required by every command that reads
@@ -124,7 +125,7 @@ const COMMANDS = {
   },
   mark(args) {
     const { positionals, options } = parseArgs(args, ['project']);
-    if (positionals.length < 3) throw new UsageError('mark takes <out>, <featureId> and dispatched, or failed <step> <reason>...');
+    if (positionals.length < 3) throw new UsageError('mark takes <out>, <featureId> and dispatched, or failed lane <reason>...');
     const [out, id, event, ...rest] = positionals;
     return report(mark(out, id, event, rest, projectRootOption(options.project)));
   },

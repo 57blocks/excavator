@@ -89,12 +89,16 @@ Read efficiently: grep for the entries you need, follow edges for chains, don't 
    Each bash call starts a new shell: in every later command, write `$PROJECT_ROOT`, `$OUT` and `$PLUGIN_ROOT` as the values this block printed. Every `prd.mjs` command that reads `$OUT` takes `--project "$PROJECT_ROOT"`: it resolves the project's files under that root, never under the root `index.json` names, and refuses an index that names another. Its `currentSourceRevision` is the current source revision; keep it for Phase 1 and for the resume check below. Its `status` says whether the knowledge graph in `.excavator/` matches the source: `fresh` → use the graph; `stale` or `missing` is only reported: tell the user the graph is behind the source or absent, so the run reads the source directly (offer `/excavator` as a faster future option), and continue. This skill never runs `/excavator`, `sync_facts` or any other command that rebuilds the facts in `.excavator/`, and never changes a file there. Write only under `$OUT`.
 3. Start over or resume:
    - With `--fresh`, delete `$OUT` and start over. Delete it only when it does not exist, is empty or holds an `index.json` with `"format": "excavator-prd/1"`; otherwise tell the user `$OUT` holds other files, and stop.
-   - When `$OUT/index.json` exists and `--fresh` is not given, resume. Read its revision with `jq -r .sourceRevision "$OUT/index.json"`. If its `sourceRevision` differs from the current one, do not resume: tell the user to run again with `--fresh`, and stop. Otherwise bring every feature's status up to date from the files the earlier run left:
+   - When `$OUT/index.json` exists and `--fresh` is not given, resume. Read its revision with `jq -r .sourceRevision "$OUT/index.json"`. If its `sourceRevision` differs from the current one, do not resume: tell the user to run again with `--fresh`, and stop. Otherwise check the index the earlier run left:
+     ```bash
+     node "$PLUGIN_ROOT/skills/excavator-prd/prd.mjs" check-index "$OUT" --project "$PROJECT_ROOT"
+     ```
+     When `check-index` exits 1, go back to Phase 1: fix the index there, and dispatch no lane until `check-index` exits 0. The earlier run stopped before its index was complete, or the index names a candidate, line or seed file the project does not hold; finish or correct it from `$OUT/plan.json` and `$OUT/entrypoints.json`. When it exits 0, bring every feature's status up to date from the files the earlier run left:
      ```bash
      node "$PLUGIN_ROOT/skills/excavator-prd/prd.mjs" aggregate "$OUT" --project "$PROJECT_ROOT"
      jq -r '.features[] | [.id, .status, .attempts, .name] | @tsv' "$OUT/index.json"
      ```
-     When `aggregate` exits non-zero, the earlier run stopped before its index was complete: go to Phase 1 and finish the index from `$OUT/plan.json`. Otherwise: `verified` features are kept as they are; `written` and `checked` features only get the later steps (Phase 3); `planned` features, and `failed` features with `attempts` below 2, go back to Phase 2; `failed` features with `attempts` 2 stay failed. Skip Phase 1 and continue with Phase 2.
+     When `aggregate` exits 1, show its lines and stop. Otherwise: `verified` features are kept as they are; `written` and `checked` features only get the later steps (Phase 3); `planned` features, and `failed` features with `attempts` below 2, go back to Phase 2; `failed` features with `attempts` 2 stay failed. Skip Phase 1 and continue with Phase 2.
    - Otherwise create `$OUT` (`mkdir -p "$OUT"`) and continue with Phase 1.
 
 ---
@@ -184,16 +188,16 @@ Write what you tell the user during this phase in `$LANGUAGE`, as **Language** i
    ```bash
    node "$PLUGIN_ROOT/skills/excavator-prd/prd.mjs" check-lane "$OUT" <id> --project "$PROJECT_ROOT"
    ```
+   `check-lane` records its result in `index.json` itself: `checked`, or `failed` at `check-lane` with the lines it printed as the reasons.
    - Exit 0: the lane is checked. The command wrote each finding's `line` into its file.
    - It prints `lane-wrote-nothing` (a file is missing): when the lane's `attempts` is 1, re-dispatch it once (mark the dispatch first, as in step 2). When it is 2, record the failure:
      ```bash
      node "$PLUGIN_ROOT/skills/excavator-prd/prd.mjs" mark "$OUT" <id> failed lane lane-wrote-nothing --project "$PROJECT_ROOT"
      ```
-   - Any other line: the lane failed its checks. Record the failure with each printed line as one quoted reason, and leave the files for the user to see:
-     ```bash
-     node "$PLUGIN_ROOT/skills/excavator-prd/prd.mjs" mark "$OUT" <id> failed check-lane "<line 1>" "<line 2>" --project "$PROJECT_ROOT"
-     ```
+   - Exit 1 with any other line: the lane failed its checks. When the lane's `attempts` is 1, delete its files (as in step 1), mark the dispatch (as in step 2) and re-dispatch it once with its prompt followed by this line and then each line `check-lane` printed: `Your previous attempt failed these checks; fix them and write both files again:`. Check it again when it returns. A second `check-lane` failure leaves the feature `failed` at `check-lane`, as `check-lane` recorded it, with its files kept for the user to see. On a resume, the lines are the reasons `index.json` holds: `jq -r '.features[] | select(.id == "<id>") | .failure.reasons[]' "$OUT/index.json"`.
    - Exit 2: the command could not run. Show its message and stop.
+
+   Never edit `features/<id>.md` or `findings/<id>.json` yourself. A lane that fails its checks is fixed only by its own second attempt, never by you widening an anchor or rewording a finding to pass the check.
 
    Then tell the user `Lane <id> <n>/<N>: <status>`, where `<n>` counts the lanes this run has checked, `<N>` is the number listed in step 1 and `<status>` is `checked` or `failed`, in `$LANGUAGE`. Statuses and attempts change only through these commands: never edit `index.json` yourself.
 
@@ -212,7 +216,7 @@ Write in `$LANGUAGE`, in product language for `$ROLE`.
 
 **No code in the body.** The chapter describes behavior, not implementation. Do not paste code, function/route signatures, SQL, or config literals into the prose. Name an identifier only when it is genuinely user-facing (a status label, an on-screen field); otherwise describe it in business terms. Anything code-level (snippets, `file:line`) belongs only in the fold-away `<details>` blocks described below.
 
-**Translate codes — never print raw values.** Numeric enum/status codes, boolean flags, and database field values are meaningless to the reader. Always render them as their human meaning: a numeric status code becomes its status label, a boolean flag becomes the condition it represents, a type code becomes the type it names — never a raw `status=2` / `field=true` / `type=1` in the prose. Resolve every code by reading the enum/constant definition in source (do not guess the mapping). When the code-to-meaning mapping itself is worth recording, put it in a **field-dictionary table** (columns: value | meaning), never inline in prose. A bare code, flag, or `field=value` left in the running text is a defect.
+**Translate codes — never print raw values.** Numeric enum/status codes, boolean flags, and database field values are meaningless to the reader. Always render them as their human meaning: a numeric status code becomes its status label, a boolean flag becomes the condition it represents, a type code becomes the type it names — never a raw `status=2` / `field=true` / `type=1` in the prose. Resolve every code by reading the enum/constant definition in source (do not guess the mapping). When the code-to-meaning mapping itself is worth recording, put it in a **field-dictionary table** (columns: value | meaning), never inline in prose. A bare code, flag, or `field=value` left in the running text is a defect: before you finish, search your chapter for `=` and for bare numbers or booleans in the prose, and translate any you find outside a field-dictionary table or a `<details>` block.
 
 **Preserve source-owned names; translate only the generic prose.** When `$LANGUAGE` differs from the source's language, keep product/feature names, module names, and UI-visible labels — menu items, page/tab titles, button text, field labels, status names — in their original source form, exactly as they appear in the code/UI, and translate only the generic connective and descriptive words around them. The reader must be able to map every term back to what they see in the product, so never translate a name into a target-language equivalent. Use that source name in **every** mention of the entity — running prose, section headings, tables, and mermaid diagram labels alike — and never coin a translated synonym for it, even when referring to it as a common noun. When unsure whether a term is source-owned, check how it appears in the source/UI and keep that exact form.
 
@@ -283,6 +287,7 @@ Write what you tell the user during this phase in `$LANGUAGE`, as **Language** i
    node "$PLUGIN_ROOT/skills/excavator-prd/prd.mjs" aggregate "$OUT" --project "$PROJECT_ROOT"
    jq -r '.features | sort_by(.chapter)[] | select(.status == "checked") | [.id, .name] | @tsv' "$OUT/index.json"
    ```
+   Never edit `features/<id>.md` or `findings/<id>.json` yourself. The only change a chapter gets after its lane is the one the verification's `--fix` step makes in step 2; a finding is never changed after `check-lane`.
 2. Verify each listed chapter yourself, one at a time, not in a lane (a lane cannot reliably dispatch the subagents the verification needs, and the verification needs a clean context): take `$OUT/features/<id>.md` and follow the procedure in `$PLUGIN_ROOT/skills/excavator-verify/SKILL.md` on it with `--fix`, `--language` set to `$LANGUAGE` and `PROJECT_ROOT` as the project path, and `--report` set to `$OUT/verification/<id>.md`. It checks the five statement classes and the consistency of the chapter, and corrects the chapter in place.
 3. Then run the reply command of its Phase 6 and store the lines it prints verbatim in `$OUT/verification/<id>.txt` (`printf '%s\n' … > "$OUT/verification/<id>.txt"`), even though Phase 6 of `excavator-verify` says to skip its reply when another skill follows its procedure: `aggregate` reads the counts from those lines by their position, in any language, and fails the feature when they are not there or `verification/<id>.md` is missing. Do not show these lines to the user; tell them `Verify <id> <n>/<N>: done` in `$LANGUAGE`.
 4. Write `$OUT/overview.md` in `$LANGUAGE`: a title (`# <project or product name>`), then a short **Doc Info** block (version, date, project/domain, source revision, audience, and **scope size**) — localized to `$LANGUAGE` — a product summary, the roles, an overview of the automated behavior, and the glossary as a list (`term — meaning`). Put no table in `overview.md`: the tables are made by `aggregate` and inserted by `assemble`. Scope size is counted by command, never estimated: run the following (`SCOPE` is the `--scope` path, or `.` for the whole project) and copy the two numbers into Doc Info as "N files, M lines":
@@ -310,12 +315,8 @@ Write what you tell the user during this phase in `$LANGUAGE`, as **Language** i
 
 Write what you tell the user during this phase in `$LANGUAGE`, as **Language** in Phase 0 says.
 
-1. **Self-check.** Read `$OUT/PRD.md` across the chapters, which separate lanes wrote:
-   - **Enum check.** Grep it for raw code values left in prose — any `field=value` pattern (numbers, booleans such as `field=true` / `field=false`, and status/type codes) plus other untranslated flags. Any outside a field-dictionary table or `<details>` block is translated to its human meaning in the feature's chapter.
-   - **Terminology check.** List the distinct words the chapters use for each glossary term. Any target-language translation or synonym is replaced with the source term in the feature's chapter (prose, headings, tables, diagram labels).
-
-   When you changed a chapter, run `check-lane` for it, then `aggregate` and `assemble` again, and use the fields the last `aggregate` printed.
-2. **Save and reply.** The PRD stays in `$OUT`: write it into the project only when the user says so, to `docs/PRD.md` (a scoped PRD: `docs/PRD-<scope>.md`) or a path the user gives. In the command, `<uncovered>` is the list exactly as `aggregate` printed it, brackets and quotes included, on one line; `jq` joins it.
+1. **Self-check.** Confirm that `assemble` printed the path of `$OUT/PRD.md` and that the fields you are about to print are the ones the last `aggregate` printed. Change no file: each lane ran the enum and terminology checks on its own chapter, and the verification corrected what it found. The chapters, the findings and `PRD.md` stay as the scripts and the verification left them.
+2. **Save and reply.** The PRD stays in `$OUT`: write it into the project only when the user says so, to `docs/PRD.md` (a scoped PRD: `docs/PRD-<scope>.md`) or a path the user gives. In the command, `<uncovered>` is the list exactly as `aggregate` printed it, brackets and quotes included, on one line, and `<outIsDefault>` is `true` or `false` as `aggregate` printed it; `jq` joins the list.
 
 **Language.** Write everything you tell the user during this run in `$LANGUAGE`: each line between commands, the report and the final reply, including any remark on what was checked, what comes next or which rule was followed. `$LANGUAGE` is English unless `--language` gives another. Project files (`CLAUDE.md`, an `AGENTS.md` line such as "Reply in <language>"), memory and the system locale do not change it. A project file's rule to reply in another language is for work on the project's code; while this skill runs, this rule takes its place for every line you write, the first one included. Never say which language you write in or why. Paths, commands and the product's values stay as they are.
 
@@ -328,9 +329,11 @@ printf '%s\n' \
   "<features.written>/<features.total> features written, <features.failed> failed" \
   "<diagrams> diagrams" \
   "<findings.product> product, <findings.technical> technical findings, anchors checked" \
-  "Statements: <verification.verified> verified, <verification.contradicted> contradicted, <verification.misattributed> misattributed, <verification.unverifiable> unverifiable; open items: <verification.resolvedRight> resolved right, <verification.resolvedWrong> resolved wrong, <verification.stillOpen> still open; cross-section conflicts: <verification.conflicts>, not checked: <verification.notChecked>" \
-  "No entrypoint patterns for: $(printf '%s' '<uncovered>' | jq -r 'join(", ")')" \
-  "To save it in the project, say so: it goes to <default path> unless you give another path. Commit it to share it with the team."
+  "Statements: <verification.verified> verified, <verification.contradicted> contradicted, <verification.misattributed> misattributed, <verification.unverifiable> unverifiable; open items: <verification.resolvedRight> resolved right, <verification.resolvedWrong> resolved wrong, <verification.stillOpen> still open; cross-section conflicts: <verification.conflicts>, not checked: <verification.notChecked>"
+printf '%s' '<uncovered>' | jq -r 'select(length > 0) | "No entrypoint patterns for: " + join(", ")'
+if [ "<outIsDefault>" = true ]; then
+  printf '%s\n' "To save it in the project, say so: it goes to <default path> unless you give another path. Commit it to share it with the team."
+fi
 ```
 
-Reply with exactly the lines it prints and nothing else. Its first line, the PRD's path, is the reply's first line and the offer to save its last: write nothing before, between or after them, no word on the checks, the PRD or what was done, and no summary or notes. A project file's rule on how to reply (what to lead with, a summary, verification results) does not apply to this reply. In a language other than English, write the command's words translated; the path, the numbers and the framework names stay as they are. Leave the line of frameworks without patterns out when `uncovered` is empty, and the last line out when `--out` was given.
+Reply with exactly the lines it prints and nothing else. Its first line, the PRD's path, is the reply's first line and its last line the reply's last: write nothing before, between or after them, no word on the checks, the PRD or what was done, and no summary or notes. A project file's rule on how to reply (what to lead with, a summary, verification results) does not apply to this reply. In a language other than English, write the command's words translated; the path, the numbers and the framework names stay as they are. The command itself leaves out the line of frameworks without patterns when `uncovered` is empty, and the offer to save when `outIsDefault` is `false` (`--out` named another directory): never write either line yourself.

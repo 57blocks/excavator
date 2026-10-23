@@ -60,9 +60,9 @@ describe('prd.mjs mark', () => {
 
   it('keeps each further argument as one reason', () => {
     run = makeLaneRun();
-    const out = runPrd(['mark', run.out, '--project', run.project, 'F1', 'failed', 'check-lane', 'first reason', 'second reason']);
+    const out = runPrd(['mark', run.out, '--project', run.project, 'F1', 'failed', 'lane', 'first reason', 'second reason']);
     expect(out.status, out.stderr).toBe(0);
-    expect(feature(run.readIndex(), 'F1').failure).toEqual({ step: 'check-lane', reasons: ['first reason', 'second reason'] });
+    expect(feature(run.readIndex(), 'F1').failure).toEqual({ step: 'lane', reasons: ['first reason', 'second reason'] });
   });
 
   it('writes stable 2-space JSON: the same mark twice gives the same bytes', () => {
@@ -84,6 +84,8 @@ describe('prd.mjs mark', () => {
       ['F9', 'dispatched'],
       ['F1', 'started'],
       ['F1', 'failed', 'publish', 'why'],
+      ['F1', 'failed', 'check-lane', 'why'],
+      ['F1', 'failed', 'verify', 'why'],
       ['F1', 'failed', 'lane'],
       ['F1', 'failed', 'lane', '  '],
       ['F1', 'dispatched', 'extra'],

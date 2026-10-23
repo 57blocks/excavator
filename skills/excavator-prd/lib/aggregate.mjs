@@ -3,7 +3,9 @@
  * D7, D9). Recomputes every feature's status from the files that exist:
  *   no chapter and no findings      -> planned, or failed (lane) after the
  *                                      last attempt or a recorded lane failure
- *   the lane's checks refuse it      -> failed (check-lane), with the reasons
+ *   the lane's checks refuse it, or
+ *   check-lane recorded a failure    -> failed (check-lane), with the reasons
+ *                                      (only check-lane clears its record)
  *   the lane passes, no reply yet    -> checked
  *   verification/<id>.txt parses and
  *   verification/<id>.md exists      -> verified, with its counts
@@ -15,7 +17,7 @@
  * result, not an error: only a broken index or a broken conservation exits 1.
  */
 
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 
 import {
@@ -31,6 +33,8 @@ import { parseVerificationReply } from './verification.mjs';
 export const FINDINGS_FORMAT = 'excavator-prd-findings/1';
 export const FINDINGS_FILE = 'findings.json';
 export const PRD_FILE = 'PRD.md';
+/** The output directory the skill uses when --out is not given, under the project. */
+export const DEFAULT_OUT = join('.excavator', 'prd');
 export const TABLE_FILES = Object.freeze(['tables/roles-by-feature.md', 'tables/coverage.md', 'tables/verification.md']);
 export const verificationPath = (id) => `verification/${id}.txt`;
 export const reportPath = (id) => `verification/${id}.md`;
@@ -56,8 +60,10 @@ function recompute(outDir, index, feature, root) {
   const lane = laneResult(outDir, index, feature, root);
   const counts = { ...lane.counts, verification: null };
   if (lane.findings !== null) writeJson(join(outDir, findingsPath(feature.id)), lane.findings);
-  if (lane.problems.length > 0) {
-    return { feature: { ...base, counts, status: 'failed', failure: { step: 'check-lane', reasons: lane.problems } }, roles: [], findings: null };
+  const recorded = feature.failure?.step === 'check-lane' ? feature.failure.reasons : [];
+  const laneReasons = lane.problems.length > 0 ? lane.problems : recorded;
+  if (laneReasons.length > 0) {
+    return { feature: { ...base, counts, status: 'failed', failure: { step: 'check-lane', reasons: laneReasons } }, roles: [], findings: null };
   }
   const replyPath = join(outDir, verificationPath(feature.id));
   if (!existsSync(replyPath)) {
@@ -131,6 +137,7 @@ export function aggregate(outDirArg, root) {
       },
       verification: totals,
       uncovered: index.candidates.uncovered,
+      outIsDefault: realpathSync(outDir) === join(realpathSync(root), DEFAULT_OUT),
     },
   };
 }

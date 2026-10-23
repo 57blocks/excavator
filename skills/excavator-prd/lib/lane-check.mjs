@@ -224,6 +224,14 @@ export function checkLane(outDir, id, root) {
   if (!feature) throw new UsageError(`feature ${id} is not in ${INDEX_FILE}`);
   const result = laneResult(outDir, index, feature, root);
   if (result.findings !== null) writeJson(join(outDir, findingsPath(id)), result.findings);
-  if (result.problems.length > 0) return { status: 1, lines: result.problems };
+  const failed = result.problems.length > 0;
+  // The result is recorded under the feature; aggregate keeps a recorded
+  // check-lane failure until check-lane passes again.
+  const recorded = failed
+    ? { ...feature, status: 'failed', failure: { step: 'check-lane', reasons: result.problems } }
+    : { ...feature, status: feature.status === 'verified' ? 'verified' : 'checked', failure: null };
+  const features = index.features.map((f) => (f === feature ? recorded : f));
+  writeJson(join(outDir, INDEX_FILE), { ...index, features });
+  if (failed) return { status: 1, lines: result.problems };
   return { status: 0, lines: [`${id}: ok`] };
 }

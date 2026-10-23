@@ -42,6 +42,10 @@ const LANGUAGE_RULE = '**Language.** Write everything you tell the user during t
 const PHASE_LANGUAGE = 'Write what you tell the user during this phase in `$LANGUAGE`, as **Language** in Phase 0 says.';
 const OPTION_LANGUAGE = '`--language <lang>` — the language of the PRD and everything said to the user during the run; English when it is not given.';
 const PRD = '"$PLUGIN_ROOT/skills/excavator-prd/prd.mjs"';
+/** The rule Phases 2 and 3 hold: the orchestrator changes no file a lane wrote. */
+const NEVER_EDIT = 'Never edit `features/<id>.md` or `findings/<id>.json` yourself.';
+/** The heading a re-dispatched lane's prompt gets, above the reasons check-lane printed. */
+const RETRY_HEADING = 'Your previous attempt failed these checks; fix them and write both files again:';
 const VERIFY = 'follow the procedure in `$PLUGIN_ROOT/skills/excavator-verify/SKILL.md` on it with `--fix`, `--language` set to `$LANGUAGE` and `PROJECT_ROOT` as the project path';
 
 describe('excavator-prd skill: phases', () => {
@@ -104,6 +108,18 @@ describe('excavator-prd skill: setup, defaults and resume', () => {
     expect(refresh).toBeLessThan(setup.indexOf('`verified` features are kept as they are'));
     expect(phase.get(1)).toContain('`sourceRevision`: the `currentSourceRevision` Phase 0 printed');
   });
+
+  it('checks the index before it resumes, and goes back to Phase 1 without dispatching when check-index fails', () => {
+    const setup = phase.get(0);
+    const check = setup.indexOf(`node ${PRD} check-index "$OUT" --project "$PROJECT_ROOT"`);
+    expect(check).toBeGreaterThan(setup.indexOf('If its `sourceRevision` differs from the current one'));
+    expect(check).toBeLessThan(setup.indexOf(`node ${PRD} aggregate "$OUT"`));
+    expect(check).toBeLessThan(setup.indexOf('go back to Phase 2'));
+    expect(setup).toContain('When `check-index` exits 1, go back to Phase 1: fix the index there, and dispatch no lane until `check-index` exits 0.');
+    const raw = rawPhase(0);
+    expect(raw.indexOf('check-index "$OUT"')).toBeGreaterThan(raw.indexOf('When `$OUT/index.json` exists and `--fresh` is not given, resume'));
+    expect(raw.indexOf('check-index "$OUT"')).toBeLessThan(raw.indexOf('Phase 2'));
+  });
 });
 
 describe('excavator-prd skill: index and lanes', () => {
@@ -143,9 +159,22 @@ describe('excavator-prd skill: index and lanes', () => {
     expect(dispatched).toBeGreaterThan(-1);
     expect(dispatched).toBeLessThan(lanes.indexOf('Dispatch at most `$CONCURRENCY` lanes in one message'));
     expect(lanes).toContain(`node ${PRD} mark "$OUT" <id> failed lane lane-wrote-nothing`);
-    expect(lanes).toContain(`node ${PRD} mark "$OUT" <id> failed check-lane`);
+    expect(skill).not.toMatch(/mark "\$OUT" <id> failed (check-lane|verify)/);
     expect(lanes).toContain('`Lane <id> <n>/<N>: <status>`');
     expect(lanes).toContain('never edit `index.json` yourself');
+  });
+
+  it('never edits a lane\'s files: re-dispatches a lane that failed check-lane once, with the reasons under a fixed heading', () => {
+    const lanes = phase.get(2);
+    expect(lanes).toContain(NEVER_EDIT);
+    expect(phase.get(3)).toContain(NEVER_EDIT);
+    expect(lanes).toContain(`its prompt followed by this line and then each line \`check-lane\` printed: \`${RETRY_HEADING}\``);
+    expect(lanes).toContain('A second `check-lane` failure leaves the feature `failed` at `check-lane`');
+    expect(lanes).toContain('`check-lane` records its result in `index.json` itself');
+    const retry = lanes.indexOf(RETRY_HEADING);
+    expect(retry).toBeGreaterThan(lanes.indexOf(`node ${PRD} check-lane "$OUT" <id>`));
+    expect(phase.get(4)).not.toContain('in the feature\'s chapter');
+    expect(phase.get(4)).not.toContain('When you changed a chapter');
   });
 
   it('gives each lane the writing rules, the findings definition and the two files it may write', () => {
@@ -281,10 +310,10 @@ describe('excavator-prd skill: its recipes run', () => {
     }
   });
 
-  it('joins the uncovered frameworks with a comma, and prints nothing after the colon for an empty list', () => {
-    const line = REPLY_COMMAND.split('\n').find((row) => row.includes('<uncovered>')).trim().replace(/ \\$/, '');
-    expect(sh(`printf '%s\\n' ${line.replace('<uncovered>', '["gin","spring"]')}`).stdout).toBe('No entrypoint patterns for: gin, spring\n');
-    expect(sh(`printf '%s\\n' ${line.replace('<uncovered>', '[]')}`).stdout).toBe('No entrypoint patterns for: \n');
+  it('joins the uncovered frameworks with a comma, and prints no line for an empty list', () => {
+    const line = REPLY_COMMAND.split('\n').find((row) => row.includes('<uncovered>'));
+    expect(sh(line.replace('<uncovered>', '["gin","spring"]')).stdout).toBe('No entrypoint patterns for: gin, spring\n');
+    expect(sh(line.replace('<uncovered>', '[]')).stdout).toBe('');
   });
 });
 
@@ -366,15 +395,17 @@ const REPLY_COMMAND = [
   '  "<features.written>/<features.total> features written, <features.failed> failed" \\',
   '  "<diagrams> diagrams" \\',
   '  "<findings.product> product, <findings.technical> technical findings, anchors checked" \\',
-  '  "Statements: <verification.verified> verified, <verification.contradicted> contradicted, <verification.misattributed> misattributed, <verification.unverifiable> unverifiable; open items: <verification.resolvedRight> resolved right, <verification.resolvedWrong> resolved wrong, <verification.stillOpen> still open; cross-section conflicts: <verification.conflicts>, not checked: <verification.notChecked>" \\',
-  '  "No entrypoint patterns for: $(printf \'%s\' \'<uncovered>\' | jq -r \'join(", ")\')" \\',
-  '  "To save it in the project, say so: it goes to <default path> unless you give another path. Commit it to share it with the team."',
+  '  "Statements: <verification.verified> verified, <verification.contradicted> contradicted, <verification.misattributed> misattributed, <verification.unverifiable> unverifiable; open items: <verification.resolvedRight> resolved right, <verification.resolvedWrong> resolved wrong, <verification.stillOpen> still open; cross-section conflicts: <verification.conflicts>, not checked: <verification.notChecked>"',
+  'printf \'%s\' \'<uncovered>\' | jq -r \'select(length > 0) | "No entrypoint patterns for: " + join(", ")\'',
+  'if [ "<outIsDefault>" = true ]; then',
+  '  printf \'%s\\n\' "To save it in the project, say so: it goes to <default path> unless you give another path. Commit it to share it with the team."',
+  'fi',
 ].join('\n');
 const REPLY_RULE = [
-  'Reply with exactly the lines it prints and nothing else. Its first line, the PRD\'s path, is the reply\'s first line and the offer to save its last: write nothing before, between or after them, no word on the checks, the PRD or what was done, and no summary or notes.',
+  'Reply with exactly the lines it prints and nothing else. Its first line, the PRD\'s path, is the reply\'s first line and its last line the reply\'s last: write nothing before, between or after them, no word on the checks, the PRD or what was done, and no summary or notes.',
   'A project file\'s rule on how to reply (what to lead with, a summary, verification results) does not apply to this reply.',
   'In a language other than English, write the command\'s words translated; the path, the numbers and the framework names stay as they are.',
-  'Leave the line of frameworks without patterns out when `uncovered` is empty, and the last line out when `--out` was given.',
+  'The command itself leaves out the line of frameworks without patterns when `uncovered` is empty, and the offer to save when `outIsDefault` is `false` (`--out` named another directory): never write either line yourself.',
 ].join(' ');
 /** The fields `prd.mjs aggregate` prints (design D9), as the reply's placeholders name them. */
 const AGGREGATE_FIELDS = [
@@ -386,6 +417,7 @@ const AGGREGATE_FIELDS = [
   'verification.resolvedRight', 'verification.resolvedWrong', 'verification.stillOpen',
   'verification.conflicts', 'verification.notChecked',
   'uncovered',
+  'outIsDefault',
 ];
 
 /**
@@ -437,8 +469,15 @@ describe('excavator-prd skill: the reply', () => {
   });
 
   it('says to copy uncovered as the list aggregate printed, which jq joins', () => {
-    expect(flat(save)).toContain('In the command, `<uncovered>` is the list exactly as `aggregate` printed it, brackets and quotes included, on one line; `jq` joins it.');
+    expect(flat(save)).toContain('In the command, `<uncovered>` is the list exactly as `aggregate` printed it, brackets and quotes included, on one line, and `<outIsDefault>` is `true` or `false` as `aggregate` printed it; `jq` joins the list.');
   });
+
+  const replyLines = (values) => {
+    const command = skill.match(/```bash\n(# the reply:[\s\S]*?)```/)[1].replace(/<([^<>]+)>/g, (_, place) => values[place]);
+    const run = spawnSync('sh', ['-c', command], { encoding: 'utf-8' });
+    expect(run.status, run.stderr).toBe(0);
+    return run.stdout.split('\n').slice(0, -1);
+  };
 
   it('prints the seven lines of the reply once its places are filled in', () => {
     const values = {
@@ -450,12 +489,10 @@ describe('excavator-prd skill: the reply', () => {
       'verification.resolvedRight': '3', 'verification.resolvedWrong': '1', 'verification.stillOpen': '2',
       'verification.conflicts': '0', 'verification.notChecked': '0',
       uncovered: '["spring","laravel"]',
+      outIsDefault: 'true',
       'default path': 'docs/PRD.md',
     };
-    const command = skill.match(/```bash\n(# the reply:[\s\S]*?)```/)[1].replace(/<([^<>]+)>/g, (_, place) => values[place]);
-    const run = spawnSync('sh', ['-c', command], { encoding: 'utf-8' });
-    expect(run.status).toBe(0);
-    expect(run.stdout.split('\n').slice(0, -1)).toEqual([
+    expect(replyLines(values)).toEqual([
       '/tmp/out/PRD.md',
       '4/5 features written, 1 failed',
       '9 diagrams',
@@ -464,5 +501,17 @@ describe('excavator-prd skill: the reply', () => {
       'No entrypoint patterns for: spring, laravel',
       'To save it in the project, say so: it goes to docs/PRD.md unless you give another path. Commit it to share it with the team.',
     ]);
+  });
+
+  it('prints five lines, without the uncovered line or the offer, when the list is empty and --out was given', () => {
+    const values = Object.fromEntries([...AGGREGATE_FIELDS, 'default path'].map((field) => [field, '7']));
+    values.prdPath = '/elsewhere/PRD.md';
+    values.uncovered = '[]';
+    values.outIsDefault = 'false';
+    const lines = replyLines(values);
+    expect(lines).toHaveLength(5);
+    expect(lines[0]).toBe('/elsewhere/PRD.md');
+    expect(lines.join('\n')).not.toContain('To save it');
+    expect(lines.join('\n')).not.toContain('No entrypoint patterns');
   });
 });

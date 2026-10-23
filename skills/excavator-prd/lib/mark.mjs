@@ -1,20 +1,26 @@
 /**
- * `prd.mjs mark <out> <id> dispatched | failed <step> <reason>...` (openspec
+ * `prd.mjs mark <out> <id> dispatched | failed lane <reason>...` (openspec
  * change prd-feature-pipeline, design D4, D6): the orchestrator records each
- * lane dispatch (`attempts` + 1, status unchanged) and a lane's failure
- * (status `failed` with its step and reasons) through this command, so the
- * model never edits index.json by hand. `aggregate` honours both. A third
- * dispatch is refused: a lane gets at most two.
+ * lane dispatch (`attempts` + 1, status unchanged) and a lane that failed
+ * without writing its files (status `failed`, step `lane`, with the reasons)
+ * through this command, so the model never edits index.json by hand. Only the
+ * `lane` step is recorded here: check-lane records its own result, and a
+ * verification failure is computed from the files by `aggregate`. While the
+ * lane's files are missing, `aggregate` keeps the recorded lane failure; once
+ * they exist, it recomputes the status from them. A third dispatch is
+ * refused: a lane gets at most two.
  */
 
 import { join, resolve } from 'node:path';
 
 import { UsageError } from './errors.mjs';
-import { FAILURE_STEPS, INDEX_FILE, MAX_ATTEMPTS, loadIndex, schemaProblems } from './index-check.mjs';
+import { INDEX_FILE, MAX_ATTEMPTS, loadIndex, schemaProblems } from './index-check.mjs';
 import { writeJson } from './json-file.mjs';
 import { projectRootProblem } from './project-root.mjs';
 
 const EVENTS = ['dispatched', 'failed'];
+/** The one step `mark ... failed` records. */
+const MARKED_STEP = 'lane';
 
 /** Run mark on `<out>`. Returns { status, lines }; a wrong id, event, step or reason throws UsageError. */
 export function mark(outDirArg, id, event, rest, root) {
@@ -22,8 +28,10 @@ export function mark(outDirArg, id, event, rest, root) {
   if (event === 'dispatched' && rest.length > 0) throw new UsageError('mark <out> <id> dispatched takes no further argument');
   const [step, ...reasons] = event === 'failed' ? rest : [];
   if (event === 'failed') {
-    if (!FAILURE_STEPS.includes(step)) throw new UsageError(`unknown step ${step ?? '(none)'}; use ${FAILURE_STEPS.join(', ')}`);
-    if (reasons.length === 0 || reasons.some((reason) => reason.trim() === '')) throw new UsageError('mark ... failed <step> needs one or more non-empty reasons');
+    if (step !== MARKED_STEP) {
+      throw new UsageError(`mark records only the ${MARKED_STEP} step, not ${step ?? '(none)'}; check-lane records its own result and aggregate computes the verify step`);
+    }
+    if (reasons.length === 0 || reasons.some((reason) => reason.trim() === '')) throw new UsageError('mark ... failed lane needs one or more non-empty reasons');
   }
 
   const outDir = resolve(outDirArg);

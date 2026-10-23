@@ -21,6 +21,29 @@ function laneRun() {
 const reasons = (out) => out.stdout.split('\n').filter(Boolean);
 const failedReasons = (out) => reasons(out).filter((line) => !line.endsWith(': ok'));
 
+describe('prd.mjs check-lane: its result in index.json', () => {
+  it('records a failure under the feature, and clears it when the lane passes', () => {
+    const run = laneRun();
+    expect(runPrd(['check-index', run.out, '--project', run.project]).status).toBe(0);
+    const findings = run.readJson('findings/F2.json');
+    const good = JSON.stringify(findings);
+    findings.findings[0].statement = 'The status should change.';
+    run.writeJson('findings/F2.json', findings);
+    const failed = runPrd(['check-lane', run.out, '--project', run.project, 'F2']);
+    expect(failed.status).toBe(1);
+    const recorded = run.readIndex().features.find((f) => f.id === 'F2');
+    expect(recorded.status).toBe('failed');
+    expect(recorded.failure).toEqual({ step: 'check-lane', reasons: ['F2-1: the statement gives advice ("should"); state the defect as it is'] });
+    expect(run.readText('index.json')).toBe(`${JSON.stringify(run.readIndex(), null, 2)}\n`);
+    run.writeJson('findings/F2.json', JSON.parse(good));
+    expect(runPrd(['check-lane', run.out, '--project', run.project, 'F2']).status).toBe(0);
+    const cleared = run.readIndex().features.find((f) => f.id === 'F2');
+    expect(cleared.status).toBe('checked');
+    expect(cleared.failure).toBe(null);
+    expect(run.readIndex().features.find((f) => f.id === 'F1').status).toBe('planned');
+  });
+});
+
 describe('prd.mjs check-lane: the valid lanes', () => {
   it('passes F1 and writes each passage\'s line back into its evidence', () => {
     const run = laneRun();

@@ -12,6 +12,7 @@ import { isAbsolute, join } from 'node:path';
 import { KINDS } from './entrypoints.mjs';
 import { UsageError } from './errors.mjs';
 import { isCount, isObject, isString, isStringArray, readJson, writeJson } from './json-file.mjs';
+import { normalize } from './normalize.mjs';
 import { projectFiles } from './project-files.mjs';
 import { projectRootProblem } from './project-root.mjs';
 
@@ -174,10 +175,28 @@ export function conservation(index) {
   return { problems, summary };
 }
 
+/** Whitespace-normalized, trimmed text as candidate texts are compared. */
+const flat = (text) => normalize(text).text.trim();
+
+/**
+ * Whether a listed candidate's `text` is on its line: a non-empty substring
+ * of the line, or of the line joined with the next one (the two-line catalog
+ * entries), after whitespace normalization.
+ */
+function textOnLine(item, fileText) {
+  const want = typeof item.text === 'string' ? flat(item.text) : '';
+  if (want === '') return false;
+  const lines = fileText.split('\n');
+  const window = `${lines[item.line - 1] ?? ''}\n${lines[item.line] ?? ''}`;
+  return flat(window).includes(want);
+}
+
 /**
  * Every candidate, listed by the script or inferred, names a file and line
- * that exist (the model copies the candidates into index.json); seed files
- * stay inside the project. `root` is the --project root.
+ * that exist (the model copies the candidates into index.json); a candidate
+ * the script listed (provenance `pattern`, or none) also keeps the text of
+ * that line, while an inferred one may describe it. Seed files stay inside
+ * the project. `root` is the --project root.
  */
 export function fileProblems(index, root) {
   const problems = [];
@@ -186,6 +205,7 @@ export function fileProblems(index, root) {
     const file = files.resolve(item.file);
     if (!file.ok) problems.push(`${item.id}: ${item.file} ${file.reason}`);
     else if (item.line > file.lines) problems.push(`${item.id}: line ${item.line} is past the end of ${item.file} (${file.lines} lines)`);
+    else if (item.provenance !== 'inferred' && !textOnLine(item, file.text)) problems.push(`${item.id}: text is not on line ${item.line} of ${item.file}`);
   }
   for (const feature of index.features) {
     for (const path of feature.seedFiles) {

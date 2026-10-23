@@ -3,7 +3,7 @@
 // buckets conserved, and the reply's counts printed (openspec change
 // prd-feature-pipeline, design D5, D7, D9).
 import { afterEach, describe, expect, it } from 'vitest';
-import { existsSync, rmSync } from 'node:fs';
+import { cpSync, existsSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { makeLaneRun, runPrd } from './helpers.mjs';
@@ -18,7 +18,7 @@ function laneRun() {
   return run;
 }
 
-/** The reply's 17 placeholders (the contract test of SKILL.md pins the same list). */
+/** The reply's 18 placeholders (the contract test of SKILL.md pins the same list). */
 const FIELD_PATHS = [
   'prdPath',
   'features.total', 'features.written', 'features.failed',
@@ -28,6 +28,7 @@ const FIELD_PATHS = [
   'verification.resolvedRight', 'verification.resolvedWrong', 'verification.stillOpen',
   'verification.conflicts', 'verification.notChecked',
   'uncovered',
+  'outIsDefault',
 ];
 /** Every leaf path of a JSON value; an array is a leaf. */
 function leafPaths(value, prefix = '') {
@@ -63,6 +64,7 @@ describe('prd.mjs aggregate', () => {
         resolvedRight: 2, resolvedWrong: 1, stillOpen: 4, conflicts: 1, notChecked: 5,
       },
       uncovered: [],
+      outIsDefault: false,
     });
   });
 
@@ -92,6 +94,36 @@ describe('prd.mjs aggregate', () => {
     expect(f1.status).toBe('failed');
     expect(f1.failure.step).toBe('verify');
     expect(f1.failure.reasons).toEqual(['verification-reply-unparsed: verification/F1.txt: 3 lines hold counts, not 4']);
+  });
+
+  it('keeps a check-lane failure check-lane recorded, even when the files pass now', () => {
+    const run = runWithPlannedFeature();
+    const findings = run.readJson('findings/F1.json');
+    const good = JSON.stringify(findings);
+    findings.findings[0].statement = 'The route should check the quantity.';
+    run.writeJson('findings/F1.json', findings);
+    expect(runPrd(['check-lane', run.out, '--project', run.project, 'F1']).status).toBe(1);
+    run.writeJson('findings/F1.json', JSON.parse(good));
+    const out = runPrd(['aggregate', run.out, '--project', run.project]);
+    expect(out.status, out.stdout).toBe(0);
+    const f1 = run.readIndex().features[0];
+    expect(f1.status).toBe('failed');
+    expect(f1.failure).toEqual({ step: 'check-lane', reasons: ['F1-1: the statement gives advice ("should"); state the defect as it is'] });
+    expect(out.json.features).toEqual({ total: 3, written: 1, failed: 1 });
+    expect(runPrd(['check-lane', run.out, '--project', run.project, 'F1']).status).toBe(0);
+    expect(runPrd(['aggregate', run.out, '--project', run.project]).json.features).toEqual({ total: 3, written: 2, failed: 0 });
+    expect(run.readIndex().features[0].status).toBe('verified');
+  });
+
+  it('prints outIsDefault true only when <out> is the project\'s .excavator/prd', () => {
+    const run = runWithPlannedFeature();
+    expect(runPrd(['aggregate', run.out, '--project', run.project]).json.outIsDefault).toBe(false);
+    const inside = join(run.project, '.excavator', 'prd');
+    cpSync(run.out, inside, { recursive: true });
+    const out = runPrd(['aggregate', inside, '--project', run.project]);
+    expect(out.status, out.stdout + out.stderr).toBe(0);
+    expect(out.json.outIsDefault).toBe(true);
+    expect(out.json.prdPath).toBe(join(inside, 'PRD.md'));
   });
 
   it('fails as verification-report-missing a feature with the reply lines but no report', () => {
