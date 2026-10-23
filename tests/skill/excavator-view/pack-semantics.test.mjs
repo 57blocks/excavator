@@ -186,13 +186,13 @@ describe('semantics product', () => {
     expect(pack().product.reason).toMatch(/missing the top-level key\(s\): layers/);
   });
 
-  it('says why when freshness cannot be judged: no readable graph or no source manifest', () => {
+  it('says why when freshness cannot be judged without a source manifest, and is not shown without a readable graph', () => {
     writeFull({ entries: {} });
     rmSync(join(project.root, '.excavator', 'source-manifest.json'));
     expect(pack().product.reason).toMatch(/source-manifest\.json is missing/);
     writeFull({ entries: {} });
     writeProduct(project.root, 'knowledge-graph.jsonl', 'not a header\n');
-    expect(pack().product.reason).toMatch(/knowledge-graph\.jsonl is not readable/);
+    expect(pack().product).toMatchObject({ status: 'not-shown', reason: 'there is no knowledge graph to hold it' });
   });
 
   it('packs the same bytes twice', () => {

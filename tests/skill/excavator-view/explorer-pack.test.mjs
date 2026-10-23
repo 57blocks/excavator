@@ -353,6 +353,19 @@ describe('a product that is missing is a missing key', () => {
     expect(result.products.find((p) => p.name === 'tour')).toMatchObject({ status: 'not-shown', reason: 'there is no knowledge graph to hold it' });
   });
 
+  it('reports readable semantics and a readable tour as not shown when there is no graph at all, and a bad one as unreadable', () => {
+    writeProduct(project.root, 'semantic-cache.json', semanticCache({}));
+    writeProduct(project.root, 'tour.json', tourProduct({ sourceRevision: project.revision, factDigest: DIGEST }));
+    const states = (result) => Object.fromEntries(result.products.map(({ name, status, reason }) => [name, { status, reason }]));
+    expect(states(pack().result)).toMatchObject({
+      'knowledge-graph': { status: 'not-run' },
+      semantics: { status: 'not-shown', reason: 'there is no knowledge graph to hold it' },
+      tour: { status: 'not-shown', reason: 'there is no knowledge graph to hold it' },
+    });
+    writeProduct(project.root, 'tour.json', '{');
+    expect(states(pack().result).tour).toMatchObject({ status: 'unreadable', reason: expect.stringMatching(/tour\.json is not valid JSON/) });
+  });
+
   it('names the two keys no product produces', () => {
     writeGraph();
     const rows = pack().manifest.rows.filter((row) => row.status === 'not-produced');

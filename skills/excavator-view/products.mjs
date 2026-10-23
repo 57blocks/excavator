@@ -3,7 +3,8 @@
  *
  * Reads the products under `.excavator/` and gives each one exactly one state
  * (openspec: changes/report-viewer, design D3): included, not-run, unreadable,
- * or different-revision. Nothing here calls a model or touches the project's
+ * or different-revision; semantics and the tour are not-shown when they are usable
+ * but there is no readable knowledge graph to hold them. Nothing here calls a model or touches the project's
  * source; the only inputs are the product files and the snapshot revision.
  *
  * An entry is { name, label, status, reason, revision, revisionNote, command,
@@ -96,6 +97,9 @@ function entry(def, fields) {
 
 const notRun = (def) => entry(def, { status: 'not-run' });
 const unreadable = (def, reason) => entry(def, { status: 'unreadable', reason });
+/** A usable file the page has no knowledge graph to hold: semantics and the tour live inside the graph. */
+export const NO_GRAPH_REASON = 'there is no knowledge graph to hold it';
+const notShown = (def) => entry(def, { status: 'not-shown', reason: NO_GRAPH_REASON });
 
 /** Compare a product's recorded revision with the snapshot's; a product without one is noted, never assumed equal. */
 function withRevision(def, revision, snapshotRevision, payloads) {
@@ -209,6 +213,7 @@ function readSemanticsProduct(dataDir, graph) {
   const read = readSemantics(dataDir, graph.graphBytes ?? null);
   if (read.state === 'absent') return { entry: notRun(def), payloads: [] };
   if (read.state === 'unreadable') return { entry: unreadable(def, read.reason), payloads: [] };
+  if (read.state === 'no-graph') return { entry: notShown(def), payloads: [] };
   return {
     entry: { ...entry(def, { status: 'included', revisionNote: NO_REVISION_NOTE, payloads: [def.name] }), counts: read.counts },
     payloads: [{ id: def.name, bytes: read.bytes }],
@@ -240,6 +245,7 @@ function readTourProduct(dataDir, graph) {
   const read = readTour(dataDir, graph.graphIdentity ?? null);
   if (read.state === 'absent') return { entry: notRun(def), payloads: [] };
   if (read.state === 'unreadable') return { entry: unreadable(def, read.reason), payloads: [] };
+  if (read.state === 'no-graph') return { entry: notShown(def), payloads: [] };
   const fields = read.differs
     ? { status: 'different-revision', reason: read.reason, revision: read.revision, payloads: [def.name] }
     : { status: 'included', revision: read.revision, revisionNote: `same facts as ${KNOWLEDGE_GRAPH_FILE} (factsDigest ${read.factDigests.graph})`, payloads: [def.name] };

@@ -73,6 +73,10 @@
 - **WHEN** `.excavator/` 里没有 `hotspots.json`
 - **THEN** 回复把 hotspots 写为 not run；Hotspots 视图写明 not run 并给出 `/excavator-hotspots`，不显示空表
 
+#### Scenario: 没有知识图谱时的语义与导览
+- **WHEN** `.excavator/` 里有格式正确的 `semantic-cache.json` 与 `tour.json`，但没有 `knowledge-graph.jsonl`，或它的文件头、正文被拒
+- **THEN** 回复把语义与导览写为 not shown，原因是没有知识图谱可放；其中本身格式不对的那个仍写为 unreadable 并给出它自己的原因
+
 #### Scenario: 产物损坏
 - **WHEN** `unused-code.json` 不是合法 JSON
 - **THEN** unused-code 的状态是 unreadable 并带原因，页面不显示它的任何条目

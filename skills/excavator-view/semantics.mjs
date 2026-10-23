@@ -14,7 +14,8 @@
  * The layers are inlined only when the semantic graph was made from the same
  * facts as the knowledge graph (`factDigest` equals the graph's `factsDigest`).
  *
- * Returns { state: 'absent' }, { state: 'unreadable', reason } or
+ * Returns { state: 'absent' }, { state: 'unreadable', reason }, { state: 'no-graph' }
+ * (a usable cache with no readable knowledge graph to match it to) or
  * { state: 'ok', bytes, counts }; it never throws for a bad file. No model call.
  */
 
@@ -141,7 +142,7 @@ export function readSemantics(dataDir, graphBytes) {
     return unreadable(`${SEMANTIC_CACHE_FILE} has version ${JSON.stringify(cache.version ?? null)} and contentLanguage ${JSON.stringify(cache.contentLanguage ?? null)}; the viewer reads the current version and contentLanguage "en"`);
   }
   if (!isObject(cache.entries)) return unreadable(`${SEMANTIC_CACHE_FILE} is missing the top-level key(s): entries`);
-  if (graphBytes === null) return unreadable('knowledge-graph.jsonl is not readable, so the summaries cannot be matched to the files they describe');
+  if (graphBytes === null) return { state: 'no-graph' };
 
   const facts = readGraphFacts(graphBytes);
   const layers = readLayers(dataDir, facts.digest);

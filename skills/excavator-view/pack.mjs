@@ -44,7 +44,7 @@ import { resolveSourceSnapshot } from '../excavator/source-snapshot.mjs';
 import { buildExplorerData, GRAPH_KEY } from './explorer-data.mjs';
 import { countIssues, loadValidateGraph, VALIDATOR_PATH } from './explorer-validate.mjs';
 import { assembleExplorerPage, EXPLORER_TEMPLATE_PATH } from './page-assembly.mjs';
-import { collectProducts } from './products.mjs';
+import { collectProducts, NO_GRAPH_REASON } from './products.mjs';
 import { collectSources, summarizeSources } from './sources.mjs';
 
 const USAGE = 'Usage: node pack.mjs <projectRoot> [--no-source] [--out <path>]\n';
@@ -88,12 +88,11 @@ function writeAtomic(path, bytes) {
 const READABLE = new Set(['included', 'different-revision']);
 /** The products the page holds only inside the knowledge graph. */
 const HELD_IN_GRAPH = new Set(['semantics', 'tour']);
-const NO_GRAPH_REASON = 'there is no knowledge graph to hold it';
 
 /**
- * Each product's entry as the page holds it. The entries judge the graph by its header; the page reads the whole
- * body, so a body it refuses makes the graph unreadable, and readable semantics or a readable tour then have no
- * graph to go into and are not shown.
+ * Each product's entry as the page holds it. The entries judge the graph by its header (semantics and a tour with
+ * no graph that passes it are already not shown); the page reads the whole body, so a body it refuses makes the
+ * graph unreadable, and readable semantics or a readable tour then have no graph to go into either.
  */
 function heldEntries(entries, rows) {
   const graphRow = rows.find((row) => row.key === GRAPH_KEY);

@@ -190,11 +190,10 @@ describe('tour product', () => {
     expect(payloadIds(packed)).toEqual(['knowledge-graph']);
   });
 
-  it('is unreadable, and says why, when the knowledge graph cannot be read to compare the digest with', () => {
+  it('is not shown, and says why, when there is no knowledge graph to hold it', () => {
     writeTour();
     const packed = pack();
-    expect(packed.product.status).toBe('unreadable');
-    expect(packed.product.reason).toMatch(/knowledge-graph\.jsonl is not readable.*cannot be compared/);
+    expect(packed.product).toMatchObject({ status: 'not-shown', reason: 'there is no knowledge graph to hold it' });
     expect(payloadIds(packed)).toEqual([]);
   });
 });

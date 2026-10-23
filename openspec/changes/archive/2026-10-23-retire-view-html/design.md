@@ -48,7 +48,7 @@ Source: <embedded (N files) | not embedded>
 
 `issues`、`keys`、`rows` 不变。回复只读这一个 manifest。
 
-`products` 的状态是页面实际放进去的情况（评审第 1 轮补）：`collectProducts` 只看知识图谱的文件头，打包读全文时拒绝了正文，页面就没有图，知识图谱写为 `unreadable`；没有图时，读得到的语义与导览写为 `not-shown`。打包结果的 `products` 用同样的状态。
+`products` 的状态是页面实际放进去的情况（评审第 1 轮补）：`collectProducts` 只看知识图谱的文件头，打包读全文时拒绝了正文，页面就没有图，知识图谱写为 `unreadable`；没有图时，读得到的语义与导览写为 `not-shown`（评审第 2 轮补：图根本不在或文件头被拒时也一样，`semantics.mjs`、`tour.mjs` 对此返回 `no-graph`，不再判为 unreadable）。打包结果的 `products` 用同样的状态。
 
 ### D4 打包代码删什么
 
