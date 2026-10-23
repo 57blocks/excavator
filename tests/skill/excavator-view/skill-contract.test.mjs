@@ -169,6 +169,11 @@ describe('the reply lines', () => {
     expect(issuesLine({ issues: null, products: [] })).toBe('Issues: not counted; knowledge graph not run');
   });
 
+  it('say not shown for semantics and a tour the page has no graph to hold', () => {
+    const manifest = { issues: null, products: [{ name: 'knowledge-graph', status: 'unreadable' }, { name: 'semantics', status: 'not-shown' }, { name: 'tour', status: 'not-shown' }] };
+    expect(replyLines('/x/p.html', 1, manifest)[3]).toBe('Products: knowledge graph unreadable; semantics not shown; domain graph not run; unused code not run; doc map not run; hotspots not run; tour not shown');
+  });
+
   it('say not embedded under --no-source', () => {
     expect(replyLines('/x/p.html', 1, { issues: null, products: [], source: { embedded: false, counts: { embedded: 0 } } })[4]).toBe('Source: not embedded');
   });
@@ -202,6 +207,8 @@ describe('the files of this skill are English only and give no advice', () => {
   const files = [
     ...walk('skills/excavator-view'),
     ...walk('tests/skill/excavator-view'),
+    ...walk('packages/explorer/scripts'),
+    ...walk('packages/explorer/test'),
     'scripts/view-smoke.mjs',
     'scripts/explorer-smoke.mjs',
   ];
@@ -212,6 +219,8 @@ describe('the files of this skill are English only and give no advice', () => {
     expect(files).toContain('tests/skill/excavator-view/skill-contract.test.mjs');
     expect(files).toContain('scripts/view-smoke.mjs');
     expect(files).toContain('scripts/explorer-smoke.mjs');
+    expect(files).toContain('packages/explorer/scripts/licenses.mjs');
+    expect(files).toContain('packages/explorer/test/single-file.test.mjs');
     expect(adviceFree).toContain('packages/explorer/src/excavator/views/registry.ts');
   });
 
