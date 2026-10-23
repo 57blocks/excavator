@@ -293,7 +293,9 @@ export function assemble(template, data, fault = null) {
 /** Runs in the page once it has drawn: what the checks read. */
 const PROBE = `(async () => {
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-  const until = async (test, tries = 60) => { for (let i = 0; i < tries; i++) { if (test()) return true; await sleep(50); } return false; };
+  // Once a product view has failed to show, later waits are not waited out: a broken page must finish well inside the script's time.
+  let broken = false;
+  const until = async (test, tries = 60) => { for (let i = 0; i < (broken ? 1 : tries); i++) { if (test()) return true; await sleep(50); } return false; };
   const cards = () => [...document.body.querySelectorAll('.react-flow__node')];
   const started = Date.now();
   const out = { title: document.title, cards: cards().length, drilled: false, codeShown: false };
@@ -331,10 +333,8 @@ const PROBE = `(async () => {
     chip: (name) => document.querySelector('[data-excavator-product-view] [data-excavator-chip="' + name + '"]'),
     tab: (name) => document.querySelector('[data-excavator-product-view] [data-excavator-tab="' + name + '"]'),
     esc: () => document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })),
-    open: async (name) => { press(pv.button(name)); await until(() => pv.overlay()?.getAttribute('data-excavator-product-view') === name, 20); await sleep(150); },
-    // After one row has failed to open its details, later ones are not waited for: a broken page must finish well inside the script's time.
-    failed: false,
-    pick: async (table, key) => { press(pv.row(table, key)); await until(() => pv.detail(), pv.failed ? 1 : 20); if (!pv.detail()) pv.failed = true; await sleep(80); },
+    open: async (name) => { press(pv.button(name)); if (!(await until(() => pv.overlay()?.getAttribute('data-excavator-product-view') === name, 20))) broken = true; await sleep(150); },
+    pick: async (table, key) => { press(pv.row(table, key)); if (!(await until(() => pv.detail(), 20))) broken = true; await sleep(80); },
   };
   // Our data (design D4b): the overview of Deep Dive shows coverage and gaps; a node shows its verdict, a blanked summary says why, a connection shows its evidence.
   if (card('layer:lib')) {
@@ -366,6 +366,7 @@ const PROBE = `(async () => {
     const sideBox = document.querySelector('aside').getBoundingClientRect();
     out.unusedView = Boolean(shown) && shown.getAttribute('data-excavator-product-view') === 'unused' && /Unused code/i.test(shown.innerText);
     out.unusedStatus = await until(() => { const h = pv.overlay()?.querySelector('[data-excavator-view-header]')?.innerText ?? ''; return /included/i.test(h) && /Revision git:aaaaaaaa/.test(h); });
+    if (!out.unusedStatus) broken = true;
     out.graphMounted = cards().length === cardsBefore && cardsBefore > 0;
     out.overlayArea = Boolean(box) && box.top >= headerBox.bottom - 1 && box.right <= sideBox.left + 1 && getComputedStyle(shown).position === 'absolute' && getComputedStyle(shown).backgroundColor !== 'rgba(0, 0, 0, 0)';
     out.columnCentred = Boolean(column) && column.width <= 1100.5 && Math.abs((column.left - box.left) - (box.right - column.right)) < 24;
