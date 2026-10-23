@@ -27,6 +27,29 @@
 
 ## 5. 验收与归档
 
-- [ ] 5.1 在分离检出上跑全量门（Oracle 3）
-- [ ] 5.2 镜像真实运行（Oracle 5），记录在本文件末尾
-- [ ] 5.3 归档：spec 并入主规范。commit `docs(openspec): archive retire-view-html`
+- [x] 5.1 在分离检出上跑全量门（Oracle 3）
+- [x] 5.2 镜像真实运行（Oracle 5），记录在本文件末尾
+- [x] 5.3 归档：spec 并入主规范。commit `docs(openspec): archive retire-view-html`
+
+## 验收记录（2026-10-23）
+
+**全量门**（分离检出，e2391413）：
+- `pnpm install --frozen-lockfile`、`pnpm -r build`、`pnpm typecheck`、`node scripts/check-refs.mjs` 全部通过；
+- `openspec validate --all --strict`：51 项通过，0 项失败；`claude plugin validate .` 通过；
+- `node scripts/explorer-smoke.mjs --self-check`：退出码 0，33 项通过，0 项失败；
+- `pnpm test`：214 个测试文件全部通过，4960 个测试通过，4 个跳过。
+
+**Oracle 4**：新的 `reply.mjs` 测试在旧代码上 5 个失败（旧代码打印 `View:`），在新代码上全绿。
+
+**真实运行**（镜像，`--out` 指到语料外的 `page.html`）：
+- 退出码 0；镜像的 `.excavator` 未变，输出目录里只有 `page.html`（39.7 MB）；
+- 回复五行：
+  ```
+  Explorer: <scratchpad>/retire-run/page.html
+  Size: 39.7 MB
+  Issues: 0
+  Products: knowledge graph included; semantics included; domain graph included; unused code included; doc map not run; hotspots included; tour included
+  Source: embedded (2116 files)
+  ```
+- 在 Chrome 里打开：Unused 视图 5019 / 3314 / 1705 / 207，Hotspots 视图 2121 / 0 / 4 / 67，Doc map 视图写明 `Status: not run` 与 `/excavator-doc-map`，与 explorer-products 验收时相同；
+- 网络请求只有页面文件本身与 `data:`；控制台没有错误或警告。
