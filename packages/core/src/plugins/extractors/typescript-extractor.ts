@@ -1,7 +1,7 @@
 import type { StructuralAnalysis, CallGraphEntry, ImportBinding, ReexportBinding } from "../../types.js";
 import type { LanguageExtractor, TreeSitterNode } from "./types.js";
 import { getStringValue } from "./base-extractor.js";
-import { extractJsxFacts } from "./typescript-jsx.js";
+import { FUNCTION_SCOPE_SET, boundNames, extractJsxFacts } from "./typescript-jsx.js";
 
 /**
  * Extract parameter names from a formal_parameters node.
@@ -98,6 +98,15 @@ function extractImportSpecifiers(
   return specifiers;
 }
 
+/** The identifier a callee starts from: the callee itself, or the leftmost
+ *  object of a member chain. `undefined` when it starts from anything else
+ *  (`this`, a call, a parenthesized expression). */
+function calleeRoot(node: TreeSitterNode): string | undefined {
+  let current: TreeSitterNode | null = node;
+  while (current && current.type === "member_expression") current = current.childForFieldName("object");
+  return current?.type === "identifier" ? current.text : undefined;
+}
+
 /** A module export or import name: an identifier, `default`, or a string
  *  (`export { x as "a-b" }`). */
 function moduleName(node: TreeSitterNode): string {
@@ -166,8 +175,15 @@ export class TypeScriptExtractor implements LanguageExtractor {
   extractCallGraph(rootNode: TreeSitterNode): CallGraphEntry[] {
     const entries: CallGraphEntry[] = [];
     const functionStack: string[] = [];
+    // The function scopes around the current node; each one's bound names
+    // are collected the first time a call inside it asks.
+    const scopes: Array<{ node: TreeSitterNode; names?: Set<string> }> = [];
+    const boundByEnclosing = (name: string) =>
+      scopes.some((scope) => (scope.names ??= boundNames(scope.node)).has(name));
 
     const walkForCalls = (node: TreeSitterNode) => {
+      const opensScope = FUNCTION_SCOPE_SET.has(node.type);
+      if (opensScope) scopes.push({ node });
       const isFunctionLike =
         node.type === "function_declaration" ||
         node.type === "method_definition" ||
@@ -204,10 +220,12 @@ export class TypeScriptExtractor implements LanguageExtractor {
       if (node.type === "call_expression") {
         const callee = node.childForFieldName("function");
         if (callee && functionStack.length > 0) {
+          const root = calleeRoot(callee);
           entries.push({
             caller: functionStack[functionStack.length - 1],
             callee: callee.text,
             lineNumber: node.startPosition.row + 1,
+            ...(root !== undefined && boundByEnclosing(root) ? { local: true as const } : {}),
           });
         }
       }
@@ -220,6 +238,7 @@ export class TypeScriptExtractor implements LanguageExtractor {
       if (pushedName) {
         functionStack.pop();
       }
+      if (opensScope) scopes.pop();
     };
 
     walkForCalls(rootNode);

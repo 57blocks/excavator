@@ -48,7 +48,7 @@ function facts() {
         status: 'parsed',
         functions: [{ name: 'run', startLine: 3, endLine: 5 }],
         classes: [],
-        imports: [{ source: './helper', specifiers: ['helper'], line: 1 }],
+        imports: [{ source: './helper', specifiers: ['helper'], line: 1, bindings: [{ local: 'helper', imported: 'helper' }] }],
         exports: [{ name: 'run', line: 3 }],
         callGraph: [{ caller: 'run', callee: 'helper', lineNumber: 4 }],
       },
@@ -88,6 +88,7 @@ function importMapResult() {
   return {
     importMap: { 'src/app.ts': ['src/helper.ts'], 'src/helper.ts': [] },
     unresolved: {},
+    resolvedSources: { 'src/app.ts': { './helper': 'src/helper.ts' } },
   };
 }
 
