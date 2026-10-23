@@ -12,9 +12,7 @@
  * in-flight analysis run within one process invocation.
  */
 
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { rmSync } from 'node:fs';
 
 import * as realBatchReader from './blob-batch.mjs';
 import { diffEntries } from './manifest.mjs';
@@ -24,6 +22,7 @@ import {
   selectionPrefixBytes,
 } from './ignore-rules.mjs';
 import { listTrackedEntries, showFileAt } from './git-utils.mjs';
+import { makeSnapshotDir } from './snapshot-dir.mjs';
 
 const EXCAVATORIGNORE_PATH = '.excavatorignore';
 
@@ -158,7 +157,7 @@ export class GitCommitSnapshot {
    * @returns {{ dir: string, cleanup: () => void }}
    */
   materialize() {
-    const dest = mkdtempSync(join(tmpdir(), 'excavator-snapshot-git-'));
+    const dest = makeSnapshotDir('git');
     this._batchReader.writeBlobs(this.root, this._batchItems(this._trackedPaths), dest);
     return { dir: dest, cleanup: () => rmSync(dest, { recursive: true, force: true }) };
   }

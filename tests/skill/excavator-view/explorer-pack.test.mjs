@@ -10,7 +10,7 @@
 import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { basename, dirname, join } from 'node:path';
 import vm from 'node:vm';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
@@ -120,6 +120,18 @@ describe('the data keeps the content of the products', () => {
     const joined = pack().data['knowledge-graph.json'];
     expect(joined.project).toEqual({ ...original.project, gitCommitHash: '' });
     expect({ ...joined, project: null }).toEqual({ ...original, project: null });
+  });
+
+  it('names a graph that carries a snapshot directory name after the project root folder, and keeps any other name', () => {
+    const original = graph();
+    original.project.name = 'excavator-snapshot-multi-Ab12Cd';
+    writeGraph(original);
+    const joined = pack().data['knowledge-graph.json'];
+    expect(joined.project).toEqual({ ...original.project, name: basename(project.root) });
+    expect({ ...joined, project: null }).toEqual({ ...original, project: null });
+
+    writeGraph(graph());
+    expect(pack().data['knowledge-graph.json'].project.name).toBe('fixture');
   });
 
   it('writes the domain graph of a project outside git with an empty commit hash too', () => {

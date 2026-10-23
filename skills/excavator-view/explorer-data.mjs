@@ -20,6 +20,10 @@
  * then disappears without a word); the copy writes "no hash" as an empty string, so null
  * becomes "" there and nowhere else.
  *
+ * A graph an earlier analysis named after its temporary snapshot directory
+ * (`excavator-snapshot-<kind>-<6>`) is named after the project root folder, the name
+ * the analysis now gives such a project (design D4d); any other name is kept.
+ *
  * The Full-mode semantic product (`semantics.mjs`: fresh entries only, a contradicted
  * summary already blanked, layers only when the semantic graph was made from the
  * graph's facts) is merged into the graph by the view page's own rule
@@ -47,9 +51,10 @@
  * `knowledge-graph.jsonl` under `.excavator/`, nothing else, and writes nothing.
  */
 
-import { join } from 'node:path';
+import { basename, join } from 'node:path';
 
 import { KNOWLEDGE_GRAPH_FILE, readKnowledgeGraph } from '../excavator/knowledge-graph-store.mjs';
+import { isSnapshotDirName } from '../excavator/source-snapshot/snapshot-dir.mjs';
 import { parseJsonObject, readRegularFile } from './product-files.mjs';
 
 export const GRAPH_KEY = 'knowledge-graph.json';
@@ -81,12 +86,19 @@ function withHashString(graph) {
   return graph;
 }
 
+/** The graph named after the project root folder when it carries a snapshot directory's name. */
+function withProjectName(graph, root) {
+  if (graph.project && isSnapshotDirName(graph.project.name)) graph.project.name = basename(root);
+  return graph;
+}
+
 /** The knowledge graph joined back into one object; a body the store refuses is a visible reason, not a thrown error. */
-function readGraph(dataDir, products) {
+function readGraph(root, dataDir, products) {
   const entry = entryOf(products, 'knowledge-graph');
   if (!READABLE.has(entry.status)) return { row: absentRow(GRAPH_KEY, entry) };
   try {
-    return { graph: withHashString(readKnowledgeGraph(join(dataDir, KNOWLEDGE_GRAPH_FILE))), row: { key: GRAPH_KEY, status: 'included' } };
+    const graph = withProjectName(withHashString(readKnowledgeGraph(join(dataDir, KNOWLEDGE_GRAPH_FILE))), root);
+    return { graph, row: { key: GRAPH_KEY, status: 'included' } };
   } catch (error) {
     return { row: { key: GRAPH_KEY, status: 'unreadable', reason: error.message } };
   }
@@ -198,15 +210,16 @@ function sourcesRow(sources) {
 }
 
 /**
- * @param {{ dataDir: string, products: { entries: object[], payloads: {id: string, bytes: Buffer}[] }, sources: { manifest: object, payloads: {id: string, bytes: Buffer}[] } }} input
- *   `products` and `sources` are what `collectProducts` and `collectSources` returned for the same pack
+ * @param {{ root: string, dataDir: string, products: { entries: object[], payloads: {id: string, bytes: Buffer}[] }, sources: { manifest: object, payloads: {id: string, bytes: Buffer}[] } }} input
+ *   `root` is the project root the pack was given; `products` and `sources` are what `collectProducts` and
+ *   `collectSources` returned for the same pack
  * @returns {{ data: Record<string, unknown>, rows: { key: string, status: string, reason?: string }[] }}
  */
-export function buildExplorerData({ dataDir, products, sources }) {
+export function buildExplorerData({ root, dataDir, products, sources }) {
   const data = {};
   const rows = [];
 
-  const graph = readGraph(dataDir, products);
+  const graph = readGraph(root, dataDir, products);
   rows.push(graph.row);
   const tour = readTourSteps(products);
   if (graph.graph) {

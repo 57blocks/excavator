@@ -7,7 +7,8 @@
 4. `feat(explorer): group the top level by folder when the graph has no layers`（2.4）。
 5. `feat(view): carry each node's verdict into the explorer data`（2.5）。
 6. `feat(explorer): show verdicts, mentions edges, edge evidence, coverage and gaps`（2.6）。
-7. `docs(openspec): record viewer-explorer acceptance and archive`（3.1–3.3）。
+7. `fix(excavator): name the project after its root, not the analysis snapshot`（2.8）。
+8. `docs(openspec): record viewer-explorer acceptance and archive`（3.1–3.3）。
 
 每个 commit 单独通过 O2。
 
@@ -27,6 +28,7 @@
 - [x] 2.5 打包时节点带上语义条目的核验结论（design D4b）。验证：O1 有结论的带、没有的不写，先红后绿。
 - [x] 2.6 副本显示核验结论、`mentions` 边、边的证据、覆盖与缺口（design D4b）。验证：O1 校验不改空摘要、认 `mentions`、留证据与覆盖缺口，面板与概览的显示，各先红后绿；O3 冒烟夹具带这几样，页面上看得到。
 - [x] 2.7 go-multirepo 的导览（已在语料副本里跑完，design D4c）随验收打包。验证：打包判为与图同一 facts，Learn 面板有 15 步。
+- [x] 2.8 项目名取项目自己的（design D4d）：快照目录前缀集中、分析不再记快照目录名、打包把快照目录名换成根目录名。验证：O1 分析在快照里跑也记下根目录名、旧图的快照名不沿用、`package.json` 的名字优先，打包换名与不换名，各先红后绿。
 
 ## 3. 验收
 
