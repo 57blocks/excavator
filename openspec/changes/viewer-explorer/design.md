@@ -134,9 +134,13 @@ go-multirepo 打开后，副本把我们图里的四样东西丢掉或显示错�
 
 为什么不把 Hotspots、Unused 等也搬进来：它们是独立的产物与页面，`view.html` 已经显示；搬进副本是 Non-Goals 里的「之后对副本的修改」，与「副本丢了图里的字段」不是一类问题。代价：这期间用户要看热点与未用代码仍得开 `view.html`。
 
-### D4c 缺的产物在语料副本里补跑
+### D4c 缺的产物不为页面补跑
 
-go-multirepo 的产物里没有导览（tour not-run），副本的 Learn 面板显示「No tour available」；doc-map 也没有跑。语料的 `.excavator` 只读，所以把语料（去掉回收目录）复制到 scratchpad，在副本里跑 `/excavator-tour`（Sonnet，限额 15 美元），再从副本打包验收。doc-map 需要用户指定一个文档目录，go-multirepo 没有这样的需求文档目录，不跑，回复照旧写 not run。2,106 个文件节点的「unchecked」不是缺数据：核验本来只查有锚点的符号。
+go-multirepo 的产物里没有导览与 doc-map。用户 2026-10-23 先要求「如果数据不全，就 run 一下补全」，随后改为「Tour 和 doc-map 不需要」。所以页面不要求补跑：没有导览时 Learn 面板照副本自己的空状态显示（No tour available），doc-map 照旧写 not run。
+
+例外只有这一次：改口之前，导览已在语料副本里跑完（语料去掉回收目录后复制到 scratchpad；`/excavator-tour`，Sonnet，4.45 美元；15 步、72 句：verified 63、unverified 9、contradicted 0）。用户说「已经完成了就算了」，验收从这个副本打包，导览被打包判为与图同一 facts。语料本身没有被写。
+
+2,106 个文件节点的「unchecked」也不是缺数据：核验本来只查有锚点的符号。
 
 ### D5 验收在真实浏览器里从磁盘打开
 

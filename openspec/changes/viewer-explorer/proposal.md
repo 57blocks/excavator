@@ -27,7 +27,7 @@ UA 是 MIT 许可。它的仪表盘是 Vite + React 单页应用，图、布局�
   - `mentions` 边（文件里写到另一个文件的路径）不再被副本丢掉；
   - 每条边的证据（文件与行号）；
   - 知识图的覆盖记录（各语言文件数、解析数、跳过原因）与缺口记录。
-  产物缺的（go-multirepo 没有导览）用对应的 skill 补跑，跑在语料的副本里，语料本身只读。
+  缺的产物照副本自己的空状态显示，不为页面补跑（用户 2026-10-23：「Tour 和 doc-map 不需要」）；go-multirepo 的导览在这句之前已在语料副本里跑完，用户说「已经完成了就算了」，验收用它。
 - 现有的查看器（`packages/report-view`、`.excavator/view.html`）**这次不动、不删**。Excavator 自己的页面（Products、Unused、Hotspots、Doc map、Code、Reports）与图上的叠加层，之后作为对副本的修改逐项加进来；全部加完后再退役旧包。
 - viewer-learn 已完成的第 1–4 片保留；它余下的第 5–8 片暂停，之后改写成对副本的修改。
 
