@@ -491,7 +491,7 @@ describe('prd.mjs check-lane: anchors and passages in directories that hold depe
       edit(run, 'F1', (text) => text.replace('`src/orders/routes.js:5`', `\`${path}:1\``));
       const out = check(run, 'F1');
       expect(out.status, path).toBe(1);
-      expect(failedReasons(out), path).toEqual([`F1: anchor ${path}:1: the path is under ${dir}, which holds dependencies or build output, not the project's code`]);
+      expect(failedReasons(out), path).toEqual([`F1: anchor ${path}:1: the path is under ${dir}, a directory name the entrypoint scan skips as dependencies or build output`]);
       edit(run, 'F1', (text) => text.replace(`\`${path}:1\``, '`src/orders/routes.js:5`'));
     }
     expect(check(run, 'F1').status).toBe(0);
@@ -505,7 +505,7 @@ describe('prd.mjs check-lane: anchors and passages in directories that hold depe
     run.writeJson('findings/F2.json', findings);
     const out = check(run, 'F2');
     expect(out.status).toBe(1);
-    expect(failedReasons(out)).toEqual(['F2-1: evidence[0] file "node_modules/pkg/index.js" is under node_modules, which holds dependencies or build output, not the project\'s code']);
+    expect(failedReasons(out)).toEqual(['F2-1: evidence[0] file "node_modules/pkg/index.js" is under node_modules, a directory name the entrypoint scan skips as dependencies or build output']);
   });
 });
 

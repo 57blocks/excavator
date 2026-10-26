@@ -324,8 +324,8 @@ describe('prd.mjs check-index: reference features, chapter order, seed files and
     const out = runPrd(['check-index', run.out, '--project', run.project]);
     expect(out.status).toBe(1);
     expect(reasons(out)).toEqual([
-      "F1: seed file node_modules/pkg/index.js is under node_modules, which holds dependencies or build output, not the project's code",
-      "F2: seed file dist/app.js is under dist, which holds dependencies or build output, not the project's code",
+      "F1: seed file node_modules/pkg/index.js is under node_modules, a directory name the entrypoint scan skips as dependencies or build output",
+      "F2: seed file dist/app.js is under dist, a directory name the entrypoint scan skips as dependencies or build output",
     ]);
   });
 

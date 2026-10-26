@@ -749,7 +749,7 @@ describe('excavator-prd-report skill: the structure a chapter declares (D3, D8)'
     editChapter(run, 'F1', (text) => text.replace('- Order route —', '- Dependency — `node_modules/pkg/index.js:1`\n- Order route —'));
     const out = checkLane(run, 'F1');
     expect(out.status).toBe(1);
-    expect(lines(out).some((line) => line.startsWith('F1: anchor node_modules/pkg/index.js:1: the path is under node_modules, which holds dependencies'))).toBe(true);
+    expect(lines(out).some((line) => line.startsWith('F1: anchor node_modules/pkg/index.js:1: the path is under node_modules, a directory name the entrypoint scan skips as dependencies'))).toBe(true);
   });
 });
 
