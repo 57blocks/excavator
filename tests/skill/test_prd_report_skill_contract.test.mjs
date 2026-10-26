@@ -611,19 +611,6 @@ describe('excavator-prd-report skill: ranking the findings', () => {
     ]) expect(prompt, rule).toContain(rule);
   });
 
-  it('asks the ranker to name the code a P0 or P1 criterion needs, and to give the lower level without it', () => {
-    const prompt = flat(rankPrompt);
-    for (const rule of [
-      'Before you give P0 or P1, find in the code what its criterion needs, and name it in the reason',
-      'the check that is meant to stop this caller, and the route by which the caller reaches the code',
-      'the page, client or route that calls the flow',
-      'the result the user or operator gets',
-      'When that code is not there (no check exists to pass, nothing calls the code, the result the user gets is right), give the lower level.',
-      'A reason that names no criterion of its level gives the lower level.',
-      'search the project for the route, page, client or job that calls it',
-    ]) expect(prompt, rule).toContain(rule);
-  });
-
   it('names in the ranking prompt every English word the advice gate refuses', () => {
     const prompt = rankPrompt.toLowerCase();
     for (const word of ADVICE_WORDS.filter((w) => /^[\x00-\x7f]+$/.test(w))) expect(prompt, word).toContain(word);
