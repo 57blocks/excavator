@@ -12,8 +12,8 @@
  * wide table, a second `<details>` block, hostile raw HTML, a mermaid block
  * that does not parse, a failed and a planned feature, an unassigned entrypoint
  * and a framework without patterns; `--plain` keeps the fixture as it is.
- * `prd.mjs page` will do the injection for the real command; this script is its
- * stand-in until then and writes nothing under the repository.
+ * The injection is `fillPageTemplate`, the function `prd.mjs page` uses, so this
+ * page is the command's page; the script writes nothing under the repository.
  */
 
 import { spawnSync } from 'node:child_process';
@@ -23,22 +23,12 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { collectPageData } from '../../../skills/excavator-prd-report/lib/page-data.mjs';
+import { fillPageTemplate } from '../../../skills/excavator-prd-report/lib/page.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const repo = resolve(here, '../../..');
 const prd = join(repo, 'skills/excavator-prd-report/prd.mjs');
 const fixtures = join(repo, 'tests/fixtures/prd-report-pipeline/lanes');
-
-export const CSP = "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; font-src data:; connect-src 'none'; base-uri 'none'; form-action 'none'";
-const BACKSLASH = String.fromCharCode(92);
-
-/** JSON that can sit in a script element: `<` and the two line separators are written as escapes. */
-export function jsonForScript(value) {
-  return JSON.stringify(value)
-    .replaceAll('<', `${BACKSLASH}u003c`)
-    .replaceAll(String.fromCharCode(0x2028), `${BACKSLASH}u2028`)
-    .replaceAll(String.fromCharCode(0x2029), `${BACKSLASH}u2029`);
-}
 
 function run(args) {
   const result = spawnSync(process.execPath, [prd, ...args], { encoding: 'utf-8' });
@@ -80,7 +70,7 @@ const RICH_CHAPTER = [
 ].join('\n');
 
 /** Build the run in a fresh temp directory and return { project, out, cleanup }. */
-function buildRun(plain) {
+export function buildRun(plain) {
   const root = realpathSync(mkdtempSync(join(tmpdir(), 'xprd-page-dev-')));
   const project = join(root, 'project');
   const out = join(root, 'out');
@@ -132,9 +122,7 @@ function main(argv) {
   const run = buildRun(options.plain);
   try {
     const data = collectPageData(run.out, run.project);
-    const csp = `<meta http-equiv="Content-Security-Policy" content="${CSP}">`;
-    const element = `<script type="application/json" id="xv-prd-report-data">${jsonForScript(data)}</script>`;
-    const page = template.replace('<!-- xv:csp -->', () => csp).replace('<!-- xv:data -->', () => element);
+    const page = fillPageTemplate(template, data);
     mkdirSync(dirname(resolve(options.out)), { recursive: true });
     writeFileSync(options.out, page);
     process.stdout.write(`${resolve(options.out)} ${Buffer.byteLength(page)} bytes, ${data.features.length} features, ${data.findings.length} findings\n`);
