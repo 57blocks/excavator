@@ -160,6 +160,23 @@ describe('aggregate: the coverage line about seed files outside the scope (D7)',
     expect(coverageOf(run).match(LINE)[0]).toBe('Seed files read outside the scope: none.');
   });
 
+  it('reads ./svc and ./svc/ as svc, and still has no such line for . or ./', () => {
+    const lineFor = (scope) => {
+      const run = track(makeLaneRun());
+      const index = run.readIndex();
+      index.scope = scope;
+      index.features[0].seedFiles = ['src/orders/routes.js', 'web/src/OrderForm.tsx'];
+      index.features[1].seedFiles = ['src/orders/service.js'];
+      run.writeIndex(index);
+      aggregateOk(run);
+      return coverageOf(run).match(LINE)?.[0] ?? null;
+    };
+    const plain = lineFor('src');
+    expect(plain).toBe('Seed files read outside the scope: web 1.');
+    for (const scope of ['./src', './src/', '././src', 'src/']) expect(lineFor(scope), scope).toBe(plain);
+    for (const scope of ['.', './', '././']) expect(lineFor(scope), scope).toBeNull();
+  });
+
   it('has no such line when the scope is null, a file, missing, or leaves the project', () => {
     for (const scope of [null, 'src/orders/service.js', 'nowhere', '../outside', '/etc', 'src/../src']) {
       const run = track(makeLaneRun());

@@ -10,7 +10,8 @@ import { isAbsolute, join, relative, sep } from 'node:path';
 /** The scope as a project-relative POSIX path when it is a directory inside the project, else null. */
 function scopeDirectory(root, scope) {
   if (typeof scope !== 'string') return null;
-  const path = scope.replace(/\/+$/, '');
+  // `./svc` and `./svc/` are `svc`; `.` and `./` stay the whole project (design D7).
+  const path = scope.replace(/^(?:\.\/+)+/, '').replace(/\/+$/, '');
   if (path === '' || path.includes('\\') || isAbsolute(path) || path.split('/').some((segment) => segment === '' || segment === '.' || segment === '..')) return null;
   try {
     const real = realpathSync(join(root, path));
