@@ -2,6 +2,7 @@ import { statusCounts } from '../lib/counts';
 import { featureHash, findingsHash } from '../lib/route';
 import { VERIFICATION_KEYS } from '../lib/types';
 import type { Feature, Finding, PageData } from '../lib/types';
+import { FlowIndex } from './FlowIndex';
 import { Markdown } from './Markdown';
 import { StatusBadge } from './StatusBadge';
 
@@ -109,6 +110,18 @@ export function Overview({ data, byFeature }: { data: PageData; byFeature: Map<s
       </div>
 
       <div style={{ marginTop: 40 }}><Markdown source={data.overview} idPrefix="overview" /></div>
+
+      <h2 className="section" data-section="terminology">Terminology</h2>
+      <Markdown source={data.tables.terminology} idPrefix="terminology" />
+
+      <h2 className="section" data-section="flow-index">Flow index</h2>
+      <FlowIndex features={data.features} />
+
+      <h2 className="section" data-section="roles">Roles</h2>
+      <Markdown source={data.tables.roles} idPrefix="roles" />
+
+      <h2 className="section" data-section="open-items">Open items</h2>
+      <Markdown source={data.tables.openItems} idPrefix="open-items" />
 
       <h2 className="section">Features</h2>
       <FeatureTable features={data.features} byFeature={byFeature} />

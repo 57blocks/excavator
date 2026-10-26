@@ -16,6 +16,12 @@ function noChapterText(feature: Feature): string {
   }
 }
 
+/** A feature's actors or permission roles as chips; an empty list reads None, so a missing answer is visible. */
+function NameChips({ names }: { names: string[] }) {
+  if (names.length === 0) return <>None</>;
+  return <div className="chips">{names.map((name) => <span className="chip" key={name}>{name}</span>)}</div>;
+}
+
 /** `#/feature/<id>`: the chapter, the findings of this feature and its verification report. */
 export function FeaturePage({ feature, findings }: { feature: Feature; findings: Finding[] }) {
   return (
@@ -35,10 +41,14 @@ export function FeaturePage({ feature, findings }: { feature: Feature; findings:
       )}
 
       <dl className="kv">
-        {feature.actors.length > 0 && (
+        <dt>Actors</dt>
+        <dd><NameChips names={feature.actors} /></dd>
+        <dt>Permission roles</dt>
+        <dd><NameChips names={feature.permissionRoles} /></dd>
+        {feature.flows.length > 0 && (
           <>
-            <dt>Actors</dt>
-            <dd><div className="chips">{feature.actors.map((actor) => <span className="chip" key={actor}>{actor}</span>)}</div></dd>
+            <dt>Flows</dt>
+            <dd><ul className="loc-list" style={{ listStyle: 'disc', paddingLeft: 18 }}>{feature.flows.map((flow, at) => <li key={at}>{flow}</li>)}</ul></dd>
           </>
         )}
         {feature.triggers.length > 0 && (

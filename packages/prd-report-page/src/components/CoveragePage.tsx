@@ -3,7 +3,7 @@ import { featureHash } from '../lib/route';
 import type { PageData } from '../lib/types';
 import { Markdown } from './Markdown';
 
-/** `#/coverage`: the three tables the script wrote, the unassigned entrypoints, the frameworks without patterns and the failed features. */
+/** `#/coverage`: the two tables the script wrote, the unassigned entrypoints, the frameworks without patterns and the failed features. */
 export function CoveragePage({ data }: { data: PageData }) {
   const failed = data.features.filter((feature) => feature.status === 'failed');
   return (
@@ -12,7 +12,6 @@ export function CoveragePage({ data }: { data: PageData }) {
       <p className="lede">What the run covered, from the tables the script wrote.</p>
 
       <Markdown source={data.tables.coverage} idPrefix="coverage" />
-      <Markdown source={data.tables.roles} idPrefix="roles" />
       <Markdown source={data.tables.verification} idPrefix="verification-table" />
 
       <h2 className="section">Entrypoints not assigned to a feature ({data.unassigned.length})</h2>
