@@ -65,18 +65,21 @@ describe('service-only distribution contract', () => {
     // keep the upstream token gate, which nothing imports, with its fetch: the page's policy (connect-src 'none') and
     // scripts/explorer-smoke.mjs, which sees zero requests, hold the no-network rule instead of a source scan.
     const EXPLORER_PACKAGE = 'packages/explorer';
-    const HTML_PACKAGES = [EXPLORER_PACKAGE];
+    // The second HTML package is the report page of /excavator-prd-report (openspec: changes/prd-report-page, design D2):
+    // its own template, built into one file the same way and never served.
+    const REPORT_PAGE_PACKAGE = 'packages/prd-report-page';
+    const HTML_PACKAGES = [EXPLORER_PACKAGE, REPORT_PAGE_PACKAGE];
 
-    it('gives the explorer package no script that starts a server', () => {
-      const scripts = JSON.parse(read(`${EXPLORER_PACKAGE}/package.json`)).scripts ?? {};
+    it.each(HTML_PACKAGES)('gives %s no script that starts a server', (pkg) => {
+      const scripts = JSON.parse(read(`${pkg}/package.json`)).scripts ?? {};
       for (const name of ['dev', 'preview', 'serve', 'start']) expect(scripts, name).not.toHaveProperty(name);
       for (const [name, command] of Object.entries(scripts)) {
         expect(command, name).not.toMatch(/\bvite\b(?!\s+build\b)/);
       }
     });
 
-    it('has no server or preview configuration in the explorer vite config', () => {
-      const config = read(`${EXPLORER_PACKAGE}/vite.config.ts`);
+    it.each(HTML_PACKAGES)('has no server or preview configuration in the vite config of %s', (pkg) => {
+      const config = read(`${pkg}/vite.config.ts`);
       expect(config).not.toMatch(/\b(server|preview)\s*:/);
       expect(config).not.toMatch(/configureServer|configurePreviewServer/);
     });

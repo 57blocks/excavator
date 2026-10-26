@@ -88,20 +88,21 @@ function splitRawText(html) {
 /**
  * Every way the build output breaks the template contract; an empty list means it holds.
  * @param {string[]} fileNames every entry of the output directory, relative to it
- * @param {string | null} html the text of explorer.html, or null when it is missing
+ * @param {string | null} html the text of the template, or null when it is missing
+ * @param {string} [templateFile] the template's name; another package's page names its own
  * @returns {string[]}
  */
-export function checkTemplate(fileNames, html) {
+export function checkTemplate(fileNames, html, templateFile = TEMPLATE_FILE) {
   const problems = [];
-  const others = fileNames.filter((name) => name !== TEMPLATE_FILE).sort();
-  if (others.length > 0) problems.push(`the output holds more than ${TEMPLATE_FILE}: ${others.join(', ')}`);
+  const others = fileNames.filter((name) => name !== templateFile).sort();
+  if (others.length > 0) problems.push(`the output holds more than ${templateFile}: ${others.join(', ')}`);
   if (html === null) {
-    problems.push(`the output has no ${TEMPLATE_FILE}`);
+    problems.push(`the output has no ${templateFile}`);
     return problems;
   }
   for (const marker of [CSP_MARKER, DATA_MARKER]) {
     const count = countOf(html, marker);
-    if (count !== 1) problems.push(`${TEMPLATE_FILE} has ${count} ${marker}; it needs exactly one`);
+    if (count !== 1) problems.push(`${templateFile} has ${count} ${marker}; it needs exactly one`);
   }
 
   const { markup, bodies } = splitRawText(html);
@@ -110,16 +111,16 @@ export function checkTemplate(fileNames, html) {
   if (cspAt !== -1 && firstRawText !== -1 && cspAt > firstRawText) {
     problems.push(`${CSP_MARKER} comes after the first script or style, so the policy would not cover it`);
   }
-  if (/<link\b/i.test(markup)) problems.push(`${TEMPLATE_FILE} has a <link> tag`);
-  if (/<\/script/i.test(markup)) problems.push(`${TEMPLATE_FILE} has a </script that closes no script: an inline script ends its element early`);
-  if (/<\/style/i.test(markup)) problems.push(`${TEMPLATE_FILE} has a </style that closes no style: an inline style ends its element early`);
+  if (/<link\b/i.test(markup)) problems.push(`${templateFile} has a <link> tag`);
+  if (/<\/script/i.test(markup)) problems.push(`${templateFile} has a </script that closes no script: an inline script ends its element early`);
+  if (/<\/style/i.test(markup)) problems.push(`${templateFile} has a </style that closes no style: an inline style ends its element early`);
   for (const { tag, open, body, closed } of bodies) {
-    if (!closed) problems.push(`${TEMPLATE_FILE} has a <${tag}> that is never closed`);
-    if (tag === 'script' && /\bsrc\s*=/i.test(open)) problems.push(`${TEMPLATE_FILE} has a <script> with src=`);
-    if (tag === 'script' && body.includes('<!--')) problems.push(`${TEMPLATE_FILE} has an inline script that contains <!--`);
+    if (!closed) problems.push(`${templateFile} has a <${tag}> that is never closed`);
+    if (tag === 'script' && /\bsrc\s*=/i.test(open)) problems.push(`${templateFile} has a <script> with src=`);
+    if (tag === 'script' && body.includes('<!--')) problems.push(`${templateFile} has an inline script that contains <!--`);
   }
-  if (html.includes('//fonts.')) problems.push(`${TEMPLATE_FILE} refers to //fonts.`);
-  if (/@import\s+url\(/i.test(html)) problems.push(`${TEMPLATE_FILE} has @import url(`);
+  if (html.includes('//fonts.')) problems.push(`${templateFile} refers to //fonts.`);
+  if (/@import\s+url\(/i.test(html)) problems.push(`${templateFile} has @import url(`);
   return problems;
 }
 
@@ -146,24 +147,25 @@ function assetText(asset) {
 }
 
 /**
- * Inline the bundle into explorer.html and remove every other output; throws, naming the
+ * Inline the bundle into the template and remove every other output; throws, naming the
  * outputs, when the bundle is not one HTML file, one JavaScript chunk and stylesheets.
  * `notice`, a comment, is put at the very start of the file. Mutates `bundle`.
  * @param {OutputBundle} bundle
  * @param {string} [notice]
+ * @param {string} [templateFile] the template's name
  */
-export function collapseBundle(bundle, notice = '') {
+export function collapseBundle(bundle, notice = '', templateFile = TEMPLATE_FILE) {
   const names = Object.keys(bundle).sort();
   const htmlNames = names.filter((name) => name.endsWith('.html'));
-  if (htmlNames.length !== 1 || htmlNames[0] !== TEMPLATE_FILE) {
-    throw new Error(`the build must produce exactly one HTML file, ${TEMPLATE_FILE}; it produced ${htmlNames.join(', ') || 'none'}`);
+  if (htmlNames.length !== 1 || htmlNames[0] !== templateFile) {
+    throw new Error(`the build must produce exactly one HTML file, ${templateFile}; it produced ${htmlNames.join(', ') || 'none'}`);
   }
   const chunks = names.filter((name) => bundle[name].type === 'chunk');
   if (chunks.length !== 1) {
     throw new Error(`the build must produce exactly one JavaScript chunk; it produced ${chunks.length} (${chunks.join(', ')})`);
   }
-  const htmlAsset = /** @type {AssetOutput} */ (bundle[TEMPLATE_FILE]);
-  const inlined = new Set([TEMPLATE_FILE]);
+  const htmlAsset = /** @type {AssetOutput} */ (bundle[templateFile]);
+  const inlined = new Set([templateFile]);
 
   let html = assetText(htmlAsset).replace(SCRIPT_WITH_SRC, (tag, _before, src) => {
     const output = bundle[bundleName(src)];
@@ -192,10 +194,10 @@ export function collapseBundle(bundle, notice = '') {
   if (leftover.length > 0) {
     throw new Error(`the build produced output(s) the template does not inline: ${leftover.join(', ')}`);
   }
-  const problems = checkTemplate([TEMPLATE_FILE], html);
+  const problems = checkTemplate([templateFile], html, templateFile);
   if (problems.length > 0) throw new Error(problems.join('; '));
 
-  for (const name of names) if (name !== TEMPLATE_FILE) delete bundle[name];
+  for (const name of names) if (name !== templateFile) delete bundle[name];
   htmlAsset.source = notice + html;
 }
 
@@ -203,15 +205,16 @@ export function collapseBundle(bundle, notice = '') {
  * The vite plugin: collapse the bundle after vite has written its HTML.
  * `notice` gives the comment to put at the start of the file, read when the bundle is written.
  * @param {() => string} [notice]
+ * @param {string} [templateFile] the template's name
  * @returns {import('vite').Plugin}
  */
-export function singleFile(notice = () => '') {
+export function singleFile(notice = () => '', templateFile = TEMPLATE_FILE) {
   return {
     name: 'excavator-single-file',
     enforce: 'post',
     generateBundle(_options, bundle) {
       try {
-        collapseBundle(/** @type {OutputBundle} */ (/** @type {unknown} */ (bundle)), notice());
+        collapseBundle(/** @type {OutputBundle} */ (/** @type {unknown} */ (bundle)), notice(), templateFile);
       } catch (error) {
         this.error(/** @type {Error} */ (error).message);
       }

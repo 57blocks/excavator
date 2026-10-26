@@ -1,0 +1,89 @@
+/**
+ * The page's routes live in the URL fragment (design D5): `#/`,
+ * `#/feature/<id>`, `#/findings?class=<c>&feature=<id>&q=<text>` and
+ * `#/coverage`. Parsing never throws: a fragment that names no route is
+ * `not-found`, and a filter value that is not one of the known ones is
+ * dropped, so a shared link with a typo still opens the page.
+ */
+
+export type ClassFilter = 'all' | 'product' | 'technical';
+
+export interface FindingsFilters {
+  class: ClassFilter;
+  /** A feature id, or '' for every feature. */
+  feature: string;
+  q: string;
+}
+
+export type Route =
+  | { name: 'overview' }
+  | { name: 'feature'; id: string }
+  | { name: 'findings'; filters: FindingsFilters }
+  | { name: 'coverage' }
+  | { name: 'not-found'; hash: string };
+
+export const NO_FILTERS: FindingsFilters = Object.freeze({ class: 'all', feature: '', q: '' });
+
+const CLASSES: readonly ClassFilter[] = ['all', 'product', 'technical'];
+
+function decode(part: string): string | null {
+  try {
+    return decodeURIComponent(part);
+  } catch {
+    return null;
+  }
+}
+
+/** The route of `location.hash` (with or without the leading `#`). */
+export function parseHash(hash: string): Route {
+  const text = hash.startsWith('#') ? hash.slice(1) : hash;
+  const [rawPath, ...queryParts] = text.split('?');
+  const query = queryParts.join('?');
+  const path = rawPath === '' ? '/' : rawPath;
+  const parts = path.split('/').filter((part, at) => !(part === '' && at > 0));
+  if (parts[0] !== '') return { name: 'not-found', hash };
+  const rest = parts.slice(1);
+  if (rest.length === 0) return { name: 'overview' };
+  if (rest.length === 1 && rest[0] === 'coverage') return { name: 'coverage' };
+  if (rest.length === 1 && rest[0] === 'findings') return { name: 'findings', filters: parseFilters(query) };
+  if (rest.length === 2 && rest[0] === 'feature') {
+    const id = decode(rest[1]);
+    if (id !== null && id !== '') return { name: 'feature', id };
+  }
+  return { name: 'not-found', hash };
+}
+
+function parseFilters(query: string): FindingsFilters {
+  const params = new URLSearchParams(query);
+  const wanted = params.get('class') ?? 'all';
+  return {
+    class: (CLASSES as readonly string[]).includes(wanted) ? (wanted as ClassFilter) : 'all',
+    feature: params.get('feature') ?? '',
+    q: params.get('q') ?? '',
+  };
+}
+
+/** The fragment of a route; `parseHash(serializeRoute(route))` gives the route back (a not-found keeps its own text). */
+export function serializeRoute(route: Route): string {
+  switch (route.name) {
+    case 'overview':
+      return '#/';
+    case 'coverage':
+      return '#/coverage';
+    case 'feature':
+      return `#/feature/${encodeURIComponent(route.id)}`;
+    case 'findings': {
+      const params = new URLSearchParams();
+      if (route.filters.class !== 'all') params.set('class', route.filters.class);
+      if (route.filters.feature !== '') params.set('feature', route.filters.feature);
+      if (route.filters.q !== '') params.set('q', route.filters.q);
+      const query = params.toString();
+      return query === '' ? '#/findings' : `#/findings?${query}`;
+    }
+    case 'not-found':
+      return route.hash;
+  }
+}
+
+export const featureHash = (id: string): string => serializeRoute({ name: 'feature', id });
+export const findingsHash = (filters: Partial<FindingsFilters> = {}): string => serializeRoute({ name: 'findings', filters: { ...NO_FILTERS, ...filters } });
