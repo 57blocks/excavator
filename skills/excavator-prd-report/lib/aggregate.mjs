@@ -40,8 +40,15 @@ export const verificationPath = (id) => `verification/${id}.txt`;
 export const reportPath = (id) => `verification/${id}.md`;
 export const WRITTEN_STATUSES = Object.freeze(['checked', 'verified']);
 
-/** One feature's recomputed state: { feature, roles, findings }. */
-function recompute(outDir, index, feature, root) {
+/**
+ * One feature's recomputed state: { feature, roles, findings, laneFindings }.
+ * Pure apart from reading the lane files and the project: `laneFindings` is
+ * the lane's findings with each passage's line filled in (null when the lane
+ * did not pass), for `aggregate` to write back; `findings` is the part that
+ * counts (null unless the feature is written). `page` recomputes the same
+ * state to check that index.json is current.
+ */
+export function recomputeFeature(outDir, index, feature, root) {
   const attempts = feature.attempts ?? 0;
   const hasChapter = existsSync(join(outDir, chapterPath(feature.id)));
   const hasFindings = existsSync(join(outDir, findingsPath(feature.id)));
@@ -52,37 +59,45 @@ function recompute(outDir, index, feature, root) {
       const reasons = recorded?.reasons?.length
         ? recorded.reasons
         : [`lane-wrote-nothing: ${chapterPath(feature.id)} and ${findingsPath(feature.id)} are missing after ${attempts} attempts`];
-      return { feature: { ...base, status: 'failed', failure: { step: 'lane', reasons } }, roles: [], findings: null };
+      return { feature: { ...base, status: 'failed', failure: { step: 'lane', reasons } }, roles: [], findings: null, laneFindings: null };
     }
-    return { feature: { ...base, status: 'planned', failure: null }, roles: [], findings: null };
+    return { feature: { ...base, status: 'planned', failure: null }, roles: [], findings: null, laneFindings: null };
   }
 
   const lane = laneResult(outDir, index, feature, root);
   const counts = { ...lane.counts, verification: null };
-  if (lane.findings !== null) writeJson(join(outDir, findingsPath(feature.id)), lane.findings);
+  const laneFindings = lane.findings;
   const recorded = feature.failure?.step === 'check-lane' ? feature.failure.reasons : [];
   const laneReasons = lane.problems.length > 0 ? lane.problems : recorded;
   if (laneReasons.length > 0) {
-    return { feature: { ...base, counts, status: 'failed', failure: { step: 'check-lane', reasons: laneReasons } }, roles: [], findings: null };
+    return { feature: { ...base, counts, status: 'failed', failure: { step: 'check-lane', reasons: laneReasons } }, roles: [], findings: null, laneFindings };
   }
   const replyPath = join(outDir, verificationPath(feature.id));
   if (!existsSync(replyPath)) {
-    return { feature: { ...base, counts, status: 'checked', failure: null }, roles: lane.roles, findings: lane.findings };
+    return { feature: { ...base, counts, status: 'checked', failure: null }, roles: lane.roles, findings: lane.findings, laneFindings };
   }
   if (!existsSync(join(outDir, reportPath(feature.id)))) {
     const reasons = [`verification-report-missing: ${reportPath(feature.id)} is missing`];
-    return { feature: { ...base, counts, status: 'failed', failure: { step: 'verify', reasons } }, roles: [], findings: null };
+    return { feature: { ...base, counts, status: 'failed', failure: { step: 'verify', reasons } }, roles: [], findings: null, laneFindings };
   }
   const reply = parseVerificationReply(readFileSync(replyPath, 'utf-8'));
   if (!reply.ok) {
     const reasons = reply.reasons.map((reason) => `verification-reply-unparsed: ${verificationPath(feature.id)}: ${reason}`);
-    return { feature: { ...base, counts, status: 'failed', failure: { step: 'verify', reasons } }, roles: [], findings: null };
+    return { feature: { ...base, counts, status: 'failed', failure: { step: 'verify', reasons } }, roles: [], findings: null, laneFindings };
   }
   return {
     feature: { ...base, counts: { ...counts, verification: reply.counts }, status: 'verified', failure: null },
     roles: lane.roles,
     findings: lane.findings,
+    laneFindings,
   };
+}
+
+/** The entries of findings.json for recomputed `states`: each passing lane's findings, in feature order, tagged with their feature and verdict. */
+export function findingsOf(states) {
+  return states.flatMap((state) => (state.findings === null ? [] : state.findings.findings.map((finding) => ({
+    ...finding, feature: state.feature.id, verdict: 'anchor-checked',
+  }))));
 }
 
 const sum = (items, pick) => items.reduce((total, item) => total + pick(item), 0);
@@ -121,7 +136,11 @@ export function aggregate(outDirArg, root) {
   const rootProblem = projectRootProblem(index, root);
   if (rootProblem !== null) return { status: 1, lines: [rootProblem] };
 
-  const states = index.features.map((feature) => recompute(outDir, index, feature, root));
+  const states = index.features.map((feature) => {
+    const state = recomputeFeature(outDir, index, feature, root);
+    if (state.laneFindings !== null) writeJson(join(outDir, findingsPath(feature.id)), state.laneFindings);
+    return state;
+  });
   const features = states.map((state) => state.feature);
   const candidateCheck = conservation({ ...index, features });
   const updated = { ...index, features, conservation: candidateCheck.summary };
@@ -136,10 +155,7 @@ export function aggregate(outDirArg, root) {
   const result = summarize(outDir, updated, root);
   const totals = result.verification;
 
-  const findings = states.flatMap((state) => (state.findings === null ? [] : state.findings.findings.map((finding) => ({
-    ...finding, feature: state.feature.id, verdict: 'anchor-checked',
-  }))));
-  writeJson(join(outDir, FINDINGS_FILE), { format: FINDINGS_FORMAT, sourceRevision: index.sourceRevision, findings });
+  writeJson(join(outDir, FINDINGS_FILE), { format: FINDINGS_FORMAT, sourceRevision: index.sourceRevision, findings: findingsOf(states) });
 
   const rolesById = new Map(states.map((state) => [state.feature.id, state.roles]));
   mkdirSync(join(outDir, 'tables'), { recursive: true });

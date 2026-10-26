@@ -19,7 +19,7 @@ import { projectRootProblem } from './project-root.mjs';
 const OVERVIEW_FILE = 'overview.md';
 
 /** The text without a leading `---` front-matter block, line endings made LF, outer blank lines trimmed. */
-function body(text) {
+export function body(text) {
   const lf = text.replace(/\r\n/g, '\n');
   const stripped = lf.startsWith('---\n') && lf.indexOf('\n---\n', 3) !== -1 ? lf.slice(lf.indexOf('\n---\n', 3) + 5) : lf;
   return stripped.replace(/^\s*\n/, '').replace(/\s+$/, '');
