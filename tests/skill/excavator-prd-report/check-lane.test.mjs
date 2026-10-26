@@ -7,7 +7,7 @@ import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { ADVICE_WORDS } from '../../../skills/excavator-prd-report/lib/lane-check.mjs';
-import { makeLaneRun, runPrd } from './helpers.mjs';
+import { makeLaneRun, makeSkeletonRun, runPrd } from './helpers.mjs';
 
 const cleanups = [];
 afterEach(() => {
@@ -374,6 +374,52 @@ describe('prd.mjs check-lane: the declared structure of a chapter (D3)', () => {
     const run = laneRun();
     edit(run, 'F1', (text) => text.replace('- "Flow 1: Place an order"', '- "Flow 1: Place an order"\n  - "Flow 3: In a fence"').replace('sequenceDiagram', '### Flow 3: In a fence\n  sequenceDiagram'));
     expect(failedReasons(check(run, 'F1'))).toEqual(['F1: flow "Flow 3: In a fence" is not a ### heading of the chapter']);
+  });
+
+  describe('flows that assemble can index (change prd-report-prd-shape, design D4)', () => {
+    it('refuses a flow that is the open items heading', () => {
+      const run = laneRun();
+      edit(run, 'F1', (text) => text
+        .replace('chapter: 1', 'openItems: Open items\nchapter: 1')
+        .replace('- "Flow 1: Place an order"', '- "Flow 1: Place an order"\n  - "Open items"')
+        .concat('\n### Open items\n\nNothing searched yet.\n'));
+      const out = check(run, 'F1');
+      expect(out.status).toBe(1);
+      expect(failedReasons(out)).toEqual(['F1: flow "Open items" is the open items heading; list only the flows']);
+    });
+
+    it('refuses a title listed more times than the chapter has ### headings with that text', () => {
+      const run = laneRun();
+      edit(run, 'F1', (text) => text.replace('- "Flow 1: Place an order"', '- "Flow 1: Place an order"\n  - "Flow 1: Place an order"'));
+      const out = check(run, 'F1');
+      expect(out.status).toBe(1);
+      expect(failedReasons(out)).toEqual(['F1: flow "Flow 1: Place an order" is listed 2 times; the chapter has 1 ### headings with that text']);
+    });
+
+    it('says only "is not a ### heading" for a title the chapter does not have at all', () => {
+      const run = laneRun();
+      edit(run, 'F1', (text) => text.replace('- "Flow 1: Place an order"', '- "Flow 1: Place an order"\n  - "Flow 9: Not written"\n  - "Flow 9: Not written"'));
+      expect(failedReasons(check(run, 'F1')).filter((line) => line.includes('Flow 9'))).toEqual([
+        'F1: flow "Flow 9: Not written" is not a ### heading of the chapter',
+        'F1: flow "Flow 9: Not written" is not a ### heading of the chapter',
+      ]);
+    });
+
+    it('passes a title listed twice when the chapter has two ### headings with that text', () => {
+      const run = makeSkeletonRun();
+      cleanups.push(run.cleanup);
+      expect(run.readText('features/F2.md')).toContain('flows: [Cancel an order, Cancel an order]');
+      const out = check(run, 'F2');
+      expect(out.status, out.stdout).toBe(0);
+    });
+
+    it('refuses a chapter that ends inside an open code fence', () => {
+      const run = laneRun();
+      edit(run, 'F1', (text) => `${text}\n\n\`\`\`text\nnever closed\n`);
+      const out = check(run, 'F1');
+      expect(out.status).toBe(1);
+      expect(failedReasons(out)).toEqual(['F1: the chapter ends inside an open code fence; close it']);
+    });
   });
 
   it('refuses a flow or automated feature that lists no flow', () => {

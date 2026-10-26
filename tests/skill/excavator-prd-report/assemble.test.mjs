@@ -140,6 +140,10 @@ describe('prd.mjs assemble: the overview check (D4)', () => {
     refused('# Orders\n\nAn overview with no capability map.\n', /has no mermaid block/);
   });
 
+  it('refuses an overview that ends inside an open code fence', () => {
+    refused('# Orders\n\n```mermaid\nflowchart LR\n  A --> B\n```\n\n```text\nnever closed\n', /^index: overview\.md ends inside an open code fence; close it$/m);
+  });
+
   it('says both problems when both hold, and accepts an overview with front-matter before the heading', () => {
     refused('No title and no map.\n', /must start with one # heading[\s\S]*has no mermaid block/);
     const run = aggregated((r) => r.writeText('overview.md', `---\ntitle: x\n---\n${r.readText('overview.md')}`));

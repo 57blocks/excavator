@@ -17,6 +17,7 @@ import { join, resolve } from 'node:path';
 import { PRD_FILE, TABLE_FILES, WRITTEN_STATUSES } from './aggregate.mjs';
 import { anchoredHeadings } from './anchors.mjs';
 import { body, byChapter, splitChapter } from './chapter.mjs';
+import { endsInsideFence } from './headings.mjs';
 import { loadIndex, schemaProblems } from './index-check.mjs';
 import { MERMAID, chapterPath } from './lane-check.mjs';
 import { projectRootProblem } from './project-root.mjs';
@@ -37,6 +38,8 @@ function overviewProblems(overview) {
   const problems = [];
   if (!/^# \S/.test(overview)) problems.push(`index: ${OVERVIEW_FILE} must start with one # heading, the document title, on its first line`);
   if ((overview.match(MERMAID) ?? []).length === 0) problems.push(`index: ${OVERVIEW_FILE} has no mermaid block; write the capability map with one`);
+  // An open fence would swallow every heading after the overview, so the flow index could not find them.
+  if (endsInsideFence(overview)) problems.push(`index: ${OVERVIEW_FILE} ends inside an open code fence; close it`);
   return problems;
 }
 

@@ -872,7 +872,7 @@ describe('excavator-prd-report skill: verification, overview and reply (D4, D5, 
     expect(overview).not.toContain('Put no table');
   });
 
-  it('quotes the two lines assemble prints for an overview without a # heading or a mermaid block', () => {
+  it('quotes the lines assemble prints for an overview without a # heading, without a mermaid block or ending in an open fence', () => {
     const refused = (overview) => {
       const run = laneRun();
       expect(runPrd(['check-index', run.out, '--project', run.project]).status).toBe(0);
@@ -884,9 +884,11 @@ describe('excavator-prd-report skill: verification, overview and reply (D4, D5, 
     };
     const [heading] = refused('No title.\n\n```mermaid\nflowchart LR\n  A --> B\n```\n');
     const [diagram] = refused('# Orders\n\nNo map.\n');
+    const [fence] = refused('# Orders\n\n```mermaid\nflowchart LR\n  A --> B\n```\n\n```text\nnever closed\n');
     expect(phase.get(3)).toContain(`\`${heading}\``);
     expect(phase.get(3)).toContain(`\`${diagram}\``);
-    expect(phase.get(3)).toContain('`assemble` exits 1 and prints one of these lines when the overview does not start with a `#` heading or has no mermaid block');
+    expect(phase.get(3)).toContain(`\`${fence}\``);
+    expect(phase.get(3)).toContain('`assemble` exits 1 and prints one of these lines when the overview does not start with a `#` heading, has no mermaid block or ends inside an open code fence');
   });
 
   it('names the sections of PRD.md in the order assemble writes them, and the tables aggregate writes', () => {

@@ -18,7 +18,7 @@ import { join } from 'node:path';
 import { UsageError } from './errors.mjs';
 import { splitChapter } from './chapter.mjs';
 import { parseFrontMatter } from './front-matter.mjs';
-import { headingsOf } from './headings.mjs';
+import { endsInsideFence, headingsOf } from './headings.mjs';
 import { INDEX_FILE, MAX_ATTEMPTS, loadIndex } from './index-check.mjs';
 import { isObject, isString, isStringArray, readJson, writeJson } from './json-file.mjs';
 import { findOnce, normalize } from './normalize.mjs';
@@ -84,7 +84,20 @@ function structureProblems(data, body, feature, actorNames) {
     for (const name of lists.actors) if (!actorNames.includes(name)) problems.push(`actor "${name}" is not one of the index's actors`);
   }
   if (lists.flows) {
-    for (const title of lists.flows) if (!sub.includes(title)) problems.push(`flow "${title}" is not a ### heading of the chapter`);
+    // assemble takes the nth ### heading with a flow's text for its nth listing, and the open items section is cut off the body (design D4).
+    const openItems = Object.hasOwn(data, 'openItems') ? data.openItems : null;
+    const listed = new Map();
+    for (const title of lists.flows) listed.set(title, (listed.get(title) ?? 0) + 1);
+    for (const [title, times] of listed) {
+      const have = sub.filter((text) => text === title).length;
+      if (have === 0) {
+        for (let k = 0; k < times; k += 1) problems.push(`flow "${title}" is not a ### heading of the chapter`);
+      } else if (title === openItems) {
+        problems.push(`flow "${title}" is the open items heading; list only the flows`);
+      } else if (times > have) {
+        problems.push(`flow "${title}" is listed ${times} times; the chapter has ${have} ### headings with that text`);
+      }
+    }
     if (feature.kind === 'reference') {
       if (lists.flows.length > 0) problems.push('a reference feature lists flows');
     } else if (lists.flows.length === 0) {
@@ -96,6 +109,7 @@ function structureProblems(data, body, feature, actorNames) {
     if (typeof title !== 'string' || !sub.includes(title)) problems.push(`open items heading "${title}" is not a ### heading of the chapter`);
     else if (sub.at(-1) !== title) problems.push(`open items heading "${title}" is not the last ### heading`);
   }
+  if (endsInsideFence(body)) problems.push('the chapter ends inside an open code fence; close it');
   const chapters = headings.filter((heading) => heading.level === 2).length;
   if (chapters !== 1 || headings[0]?.level !== 2) {
     problems.push(`the chapter has ${chapters} ## headings; it has one, ## ${feature.name}, as its first heading`);
