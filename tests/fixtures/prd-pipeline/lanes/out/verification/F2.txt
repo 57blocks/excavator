@@ -1,5 +1,0 @@
-verification/F2.md
-Statements: 0 verified, 0 contradicted, 0 misattributed, 0 unverifiable
-Open items: 0 resolved right, 0 resolved wrong, 0 still open
-Cross-section conflicts: 0; not checked: 0
-Corrections applied: 0 of 0, in features/F2.md
