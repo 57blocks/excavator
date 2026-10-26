@@ -19,6 +19,10 @@
  *   assemble <out> --project <root>
  *       Concatenate the overview, the tables and the written chapters into
  *       <out>/PRD.md, byte for byte the same from the same input (design D7).
+ *   page <out> --project <root>
+ *       Write <out>/report.html, the report page: the run's overview, features,
+ *       findings and coverage in one file that opens from disk (change
+ *       prd-report-page, design D7). Refuses a run whose files disagree.
  *   mark <out> <featureId> dispatched | failed lane <reason>... --project <root>
  *       Record a lane dispatch (attempts + 1) or a lane that wrote nothing
  *       in index.json (design D4, D6).
@@ -39,6 +43,7 @@ import { checkIndex } from './lib/index-check.mjs';
 import { checkLane } from './lib/lane-check.mjs';
 import { aggregate } from './lib/aggregate.mjs';
 import { assemble } from './lib/assemble.mjs';
+import { writePage } from './lib/page.mjs';
 import { withIndexLock } from './lib/index-lock.mjs';
 import { mark } from './lib/mark.mjs';
 import { reply } from './lib/reply.mjs';
@@ -61,6 +66,11 @@ Commands:
   assemble <out> --project <root>
       Write <out>/PRD.md from overview.md, the tables and the written chapters;
       failed features go to the appendix. Prints the path.
+  page <out> --project <root>
+      Write <out>/report.html from the run's files: one page, no network, the
+      same bytes from the same run. Needs the template that pnpm -r build writes.
+      Refuses a run whose index.json, findings.json and feature files disagree
+      (run aggregate first) and then writes nothing. Prints the path.
   mark <out> <featureId> dispatched --project <root>
       Count one more dispatch of the feature's lane in <out>/index.json.
   mark <out> <featureId> failed lane <reason>... --project <root>
@@ -141,6 +151,11 @@ const COMMANDS = {
     const { positionals, options } = parseArgs(args, ['project']);
     if (positionals.length !== 1) throw new UsageError('assemble takes exactly one <out> directory');
     return report(assemble(positionals[0], projectRootOption(options.project)));
+  },
+  page(args) {
+    const { positionals, options } = parseArgs(args, ['project']);
+    if (positionals.length !== 1) throw new UsageError('page takes exactly one <out> directory');
+    return report(writePage(positionals[0], projectRootOption(options.project)));
   },
   mark(args) {
     const { positionals, options } = parseArgs(args, ['project']);

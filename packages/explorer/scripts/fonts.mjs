@@ -99,12 +99,13 @@ function subsetOf(faceName) {
  * no face for a (weight, subset) it asked for is an error, not a gap.
  * @param {(root: string, file: string) => Uint8Array} [readFile]
  * @param {(pkg: string) => string} [rootOf]
+ * @param {readonly { pkg: string, weights: readonly number[], subsets: readonly string[] }[]} [requests] another page asks for fewer faces
  * @returns {string}
  */
-export function fontsStylesheet(readFile = (root, file) => readFileSync(join(root, file)), rootOf = packageRoot) {
+export function fontsStylesheet(readFile = (root, file) => readFileSync(join(root, file)), rootOf = packageRoot, requests = FONT_REQUESTS) {
   /** @type {string[]} */
   const rules = [];
-  for (const { pkg, weights, subsets } of FONT_REQUESTS) {
+  for (const { pkg, weights, subsets } of requests) {
     const root = rootOf(pkg);
     for (const weight of weights) {
       const css = Buffer.from(readFile(root, `${weight}.css`)).toString('utf-8');
@@ -117,14 +118,15 @@ export function fontsStylesheet(readFile = (root, file) => readFileSync(join(roo
 }
 
 /**
+ * @param {readonly { pkg: string, weights: readonly number[], subsets: readonly string[] }[]} [requests] the faces to inline; the explorer's by default
  * @returns {import('vite').Plugin}
  */
-export function inlineFonts() {
+export function inlineFonts(requests = FONT_REQUESTS) {
   return {
     name: 'excavator-explorer-fonts',
     transformIndexHtml() {
-      for (const pkg of FONT_PACKAGES) notePackage(packageRoot(pkg));
-      return [{ tag: 'style', children: fontsStylesheet(), injectTo: 'head' }];
+      for (const { pkg } of requests) notePackage(packageRoot(pkg));
+      return [{ tag: 'style', children: fontsStylesheet(undefined, undefined, requests), injectTo: 'head' }];
     },
   };
 }

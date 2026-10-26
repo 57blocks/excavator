@@ -8,6 +8,7 @@ import { defineConfig } from 'vitest/config';
 //   - src/**                 — skill TS source tests
 //   - packages/explorer/src/**/__tests__/** — the copied dashboard's own tests
 //   - packages/explorer/test/**  — the template build scripts
+//   - packages/prd-report-page/test/**  — the report page's route, filter and sanitize logic
 //
 // The `@excavator/core` package owns its own vitest.config.ts and is
 // invoked separately via `pnpm --filter @excavator/core test`; its
@@ -32,6 +33,7 @@ export default defineConfig({
       'src/**/*.test.{js,mjs,ts}',
       'packages/explorer/test/**/*.test.mjs',
       'packages/explorer/src/**/__tests__/**/*.test.ts',
+      'packages/prd-report-page/test/**/*.test.{ts,mjs}',
     ],
     exclude: [
       '**/node_modules/**',

@@ -121,13 +121,14 @@ export function bundledPackagesNotice() {
  * Why `html` does not carry a notice that names `required` packages, or null.
  * @param {string} html
  * @param {readonly string[]} [required]
+ * @param {string} [fileName] the template's name, for the messages
  * @returns {string | null}
  */
-export function checkLicenseNotice(html, required = []) {
+export function checkLicenseNotice(html, required = [], fileName = 'explorer.html') {
   const match = /^<!--\n([\s\S]*?)\n-->\n/.exec(html);
-  if (!match) return 'explorer.html does not start with the licence notice comment';
+  if (!match) return `${fileName} does not start with the licence notice comment`;
   const lines = match[1].split('\n');
-  if (lines[0] !== NOTICE_HEADING) return 'the first comment of explorer.html is not the licence notice';
+  if (lines[0] !== NOTICE_HEADING) return `the first comment of ${fileName} is not the licence notice`;
   const entries = lines.slice(1);
   if (entries.length === 0) return 'the licence notice lists no package';
   for (const name of required) {

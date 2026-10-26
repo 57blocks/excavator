@@ -188,6 +188,52 @@ describe('collapseBundle: the single-file plugin', () => {
   });
 });
 
+describe('a template of another name (the report page shares these plugins)', () => {
+  const page = 'page.html';
+  const markup = [`<!doctype html><html><head>${CSP_MARKER}`, '<script type="module" src="./a.js"></script>', `</head><body>${DATA_MARKER}</body></html>`].join('\n');
+  const bundle = () => ({
+    [page]: { type: 'asset', fileName: page, source: markup },
+    'a.js': { type: 'chunk', fileName: 'a.js', code: 'go();' },
+  });
+
+  it('collapses into the named file and names it in its messages', () => {
+    const b = bundle();
+    collapseBundle(b, '<!-- n -->\n', page);
+    expect(Object.keys(b)).toEqual([page]);
+    expect(b[page].source.startsWith('<!-- n -->\n')).toBe(true);
+    expect(checkTemplate([page], b[page].source, page)).toEqual([]);
+    expect(checkTemplate([page, 'x.js'], b[page].source, page)).toEqual(['the output holds more than page.html: x.js']);
+    expect(checkTemplate([], null, page)).toEqual(['the output has no page.html']);
+  });
+
+  const withCharset = () => ({
+    [page]: { type: 'asset', fileName: page, source: `<!doctype html><html><head><meta charset="UTF-8" />\n${CSP_MARKER}</head><body>${DATA_MARKER}<script type="module" src="./a.js"></script></body></html>` },
+    'a.js': { type: 'chunk', fileName: 'a.js', code: 'go();' },
+  });
+
+  it('puts the notice at the very start by default, as the explorer\'s template has it', () => {
+    const b = withCharset();
+    collapseBundle(b, '<!-- n -->\n', page);
+    expect(b[page].source.startsWith('<!-- n -->\n<!doctype html>')).toBe(true);
+  });
+
+  it('puts the notice right after the charset meta when asked, and fails when there is no such meta', () => {
+    const b = withCharset();
+    collapseBundle(b, '<!-- n -->\n', page, 'after-charset');
+    expect(b[page].source).toMatch(/^<!doctype html><html><head><meta charset="UTF-8" \/><!-- n -->\n\n?<!-- xv:csp -->/);
+    expect(b[page].source.indexOf('<!-- n -->')).toBeGreaterThan(b[page].source.indexOf('<meta charset'));
+    const bare = bundle();
+    expect(() => collapseBundle(bare, '<!-- n -->\n', page, 'after-charset')).toThrow(/no <meta charset>/);
+  });
+
+  it('refuses the explorer\'s name when asked for another', () => {
+    const b = bundle();
+    b['explorer.html'] = b[page];
+    delete b[page];
+    expect(() => collapseBundle(b, '', page)).toThrow(/exactly one HTML file, page.html; it produced explorer.html/);
+  });
+});
+
 describe('the built template', () => {
   // `pnpm -r build` runs before `pnpm test` in the gate; a missing build is a failure, not a skip.
   it('is one explorer.html that keeps the contract', () => {

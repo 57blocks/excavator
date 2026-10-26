@@ -32,6 +32,7 @@ All files of a run live in `$OUT`:
 | `verification/<id>.md`, `verification/<id>.txt` | you, following the `excavator-verify` procedure |
 | `findings.json`, `tables/*.md` | `prd.mjs aggregate` |
 | `PRD.md` | `prd.mjs assemble` |
+| `report.html` | `prd.mjs page` |
 
 ## Why the patterns are not enough
 
@@ -51,7 +52,7 @@ Phase 1 therefore has two halves: group the candidates the script lists, **and**
 - `--role <audience>` — who the PRD is written for (default: `product manager`). Shapes vocabulary and structure, not the facts.
 - `--language <lang>` — the language of the PRD and everything said to the user during the run; English when it is not given.
 - `--scope <domain-or-subdir>` — limit the PRD to one domain or subdirectory (e.g. a single feature area, or one member of a multi-repo). Within the scope, coverage must still be exhaustive.
-- `--out <dir>` — where the run's files and the PRD go (default: `<project>/.excavator/prd-report`).
+- `--out <dir>` — where the run's files, the PRD and the report page go (default: `<project>/.excavator/prd-report`).
 - `--concurrency <n>` — how many lanes run at once (default: 3).
 - `--fresh` — start over instead of resuming an earlier run in the same `--out`.
 
@@ -308,12 +309,15 @@ Write what you tell the user during this phase in `$LANGUAGE`, as **Language** i
    fi
    ```
    If `--scope` names a domain rather than a directory, list the directories it covers and count each. A project root that holds several Git repositories is not itself a work tree: count each member repository with the Git branch inside it, and add the numbers up.
-5. Aggregate the lanes and assemble the PRD:
+5. Aggregate the lanes, assemble the PRD and write the report page:
    ```bash
    node "$PLUGIN_ROOT/skills/excavator-prd-report/prd.mjs" aggregate "$OUT" --project "$PROJECT_ROOT"
    node "$PLUGIN_ROOT/skills/excavator-prd-report/prd.mjs" assemble "$OUT" --project "$PROJECT_ROOT"
+   node "$PLUGIN_ROOT/skills/excavator-prd-report/prd.mjs" page "$OUT" --project "$PROJECT_ROOT"
    ```
    `aggregate` recomputes every status from the files, writes `findings.json` and `tables/*.md`, and prints the counts as JSON. `aggregate` exits 1 when a candidate or a status is not conserved, with each problem on a line: show the lines and stop. `reply` (Phase 4) prints the reply from what `aggregate` recorded. `assemble` writes `$OUT/PRD.md` — the overview, the roles table, the written chapters in chapter order, then an appendix with the coverage table, the verification table and the failed features with their reasons — and prints its path. It exits 1 when a file it needs is missing: write it and run it again.
+
+   `page` writes `$OUT/report.html`, one page that opens from disk with a double click and holds the overview, every feature with its findings, all findings and the coverage; it reads the files `aggregate` and `assemble` left, changes none of them, and prints the page's path; a failed `page` removes the page an earlier run left. Then tell the user `Page: <status>`, where `<status>` is `written` or `failed`, in `$LANGUAGE`. When `page` exits non-zero, tell the user the lines it printed as they are, do not build or edit any page or product file yourself, and go on to Phase 4: `reply` prints `Report page: not written`.
 
 ---
 
@@ -322,7 +326,7 @@ Write what you tell the user during this phase in `$LANGUAGE`, as **Language** i
 Write what you tell the user during this phase in `$LANGUAGE`, as **Language** in Phase 0 says.
 
 1. **Self-check.** Confirm that `assemble` printed the path of `$OUT/PRD.md`. Change no file: each lane ran the enum and terminology checks on its own chapter, and the verification corrected what it found. The chapters, the findings and `PRD.md` stay as the scripts and the verification left them.
-2. **Save and reply.** The PRD stays in `$OUT`: write it into the project only when the user says so, to `docs/PRD.md` (a scoped PRD: `docs/PRD-<scope>.md`) or a path the user gives. `reply` prints the offer to save it only when `$OUT` is the default, with the default path.
+2. **Save and reply.** The PRD stays in `$OUT`: write it into the project only when the user says so, to `docs/PRD.md` (a scoped PRD: `docs/PRD-<scope>.md`) or a path the user gives. `reply` prints, in this order: the path of `PRD.md`; the report page line, `Report page: <path>` or `Report page: not written`; the counts; the frameworks without patterns, when there are some; and the offer to save the PRD, when `$OUT` is the default. The offer names the default path.
 
 **Language.** Write everything you tell the user during this run in `$LANGUAGE`: each line between commands, the report and the final reply, including any remark on what was checked, what comes next or which rule was followed. `$LANGUAGE` is English unless `--language` gives another. Project files (`CLAUDE.md`, an `AGENTS.md` line such as "Reply in <language>"), memory and the system locale do not change it. A project file's rule to reply in another language is for work on the project's code; while this skill runs, this rule takes its place for every line you write, the first one included. Never say which language you write in or why. Paths, commands and the product's values stay as they are.
 
