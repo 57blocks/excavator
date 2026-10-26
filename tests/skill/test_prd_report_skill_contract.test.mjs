@@ -616,9 +616,11 @@ describe('excavator-prd-report skill: ranking the findings', () => {
     for (const rule of [
       'Before you give P0 or P1, find in the code what its criterion needs, and name it in the reason',
       'the check that is meant to stop this caller, and the route by which the caller reaches the code',
-      'the page, client or route that calls the flow',
+      'the route, page, client or job by which users reach the flow',
       'the result the user or operator gets',
-      'When that code is not there (no check exists to pass, nothing calls the code, the result the user gets is right), give the lower level.',
+      'so a route with no caller in the project is still reached.',
+      'A failure that a recovery handler or error middleware turns into an error response still fails for the user.',
+      'When that code is not there (no check exists to pass, no registered route or other entry reaches the code, the result the user gets is right), give the lower level.',
       'A reason that names no criterion of its level gives the lower level.',
       'search the project for the route, page, client or job that calls it',
     ]) expect(prompt, rule).toContain(rule);
