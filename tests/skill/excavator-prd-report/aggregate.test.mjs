@@ -118,7 +118,10 @@ describe('prd.mjs aggregate', () => {
   it('prints outIsDefault true only when <out> is the project\'s .excavator/prd-report', () => {
     const run = runWithPlannedFeature();
     expect(runPrd(['aggregate', run.out, '--project', run.project]).json.outIsDefault).toBe(false);
-    const inside = join(run.project, '.excavator', 'prd');
+    const legacy = join(run.project, '.excavator', 'prd');
+    cpSync(run.out, legacy, { recursive: true });
+    expect(runPrd(['aggregate', legacy, '--project', run.project]).json.outIsDefault).toBe(false);
+    const inside = join(run.project, '.excavator', 'prd-report');
     cpSync(run.out, inside, { recursive: true });
     const out = runPrd(['aggregate', inside, '--project', run.project]);
     expect(out.status, out.stdout + out.stderr).toBe(0);

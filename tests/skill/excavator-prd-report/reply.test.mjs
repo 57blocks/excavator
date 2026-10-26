@@ -52,7 +52,7 @@ describe('prd.mjs reply', () => {
 
   it('offers to save the PRD only when <out> is the default, at docs/PRD.md or docs/PRD-<scope>.md', () => {
     const { run } = assembled();
-    const inside = join(run.project, '.excavator', 'prd');
+    const inside = join(run.project, '.excavator', 'prd-report');
     cpSync(run.out, inside, { recursive: true });
     expect(runPrd(['assemble', inside, '--project', run.project]).status).toBe(0);
     const whole = lines(runPrd(['reply', inside, '--project', run.project]));
