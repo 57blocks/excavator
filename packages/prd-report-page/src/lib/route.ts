@@ -1,6 +1,6 @@
 /**
  * The page's routes live in the URL fragment (design D5): `#/`,
- * `#/feature/<id>`, `#/findings?class=<c>&feature=<id>&q=<text>` and
+ * `#/feature/<id>`, `#/findings?class=<c>&priority=<p>&feature=<id>&q=<text>` and
  * `#/coverage`. Parsing never throws: a fragment that names no route is
  * `not-found`, and a filter value that is not one of the known ones is
  * dropped, so a shared link with a typo still opens the page.
@@ -8,8 +8,12 @@
 
 export type ClassFilter = 'all' | 'product' | 'technical';
 
+/** A level the page filters on; `unranked` is a finding whose priority is null. */
+export type PriorityFilter = 'all' | 'P0' | 'P1' | 'P2' | 'unranked';
+
 export interface FindingsFilters {
   class: ClassFilter;
+  priority: PriorityFilter;
   /** A feature id, or '' for every feature. */
   feature: string;
   q: string;
@@ -22,9 +26,10 @@ export type Route =
   | { name: 'coverage' }
   | { name: 'not-found'; hash: string };
 
-export const NO_FILTERS: FindingsFilters = Object.freeze({ class: 'all', feature: '', q: '' });
+export const NO_FILTERS: FindingsFilters = Object.freeze({ class: 'all', priority: 'all', feature: '', q: '' });
 
 const CLASSES: readonly ClassFilter[] = ['all', 'product', 'technical'];
+const PRIORITIES: readonly PriorityFilter[] = ['all', 'P0', 'P1', 'P2', 'unranked'];
 
 function decode(part: string): string | null {
   try {
@@ -56,8 +61,10 @@ export function parseHash(hash: string): Route {
 function parseFilters(query: string): FindingsFilters {
   const params = new URLSearchParams(query);
   const wanted = params.get('class') ?? 'all';
+  const level = params.get('priority') ?? 'all';
   return {
     class: (CLASSES as readonly string[]).includes(wanted) ? (wanted as ClassFilter) : 'all',
+    priority: (PRIORITIES as readonly string[]).includes(level) ? (level as PriorityFilter) : 'all',
     feature: params.get('feature') ?? '',
     q: params.get('q') ?? '',
   };
@@ -75,6 +82,7 @@ export function serializeRoute(route: Route): string {
     case 'findings': {
       const params = new URLSearchParams();
       if (route.filters.class !== 'all') params.set('class', route.filters.class);
+      if (route.filters.priority !== 'all') params.set('priority', route.filters.priority);
       if (route.filters.feature !== '') params.set('feature', route.filters.feature);
       if (route.filters.q !== '') params.set('q', route.filters.q);
       const query = params.toString();

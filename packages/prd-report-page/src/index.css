@@ -35,6 +35,12 @@
   --c-product-bg: rgba(176, 122, 60, 0.14);
   --c-technical: #1d5ca3;
   --c-technical-bg: rgba(29, 92, 163, 0.11);
+  --p-p0: #b3261e;
+  --p-p0-bg: rgba(179, 38, 30, 0.12);
+  --p-p1: #8a5a00;
+  --p-p1-bg: rgba(214, 150, 20, 0.2);
+  --p-p2: #5c544b;
+  --p-p2-bg: rgba(107, 100, 91, 0.14);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -64,6 +70,12 @@
     --c-product-bg: rgba(212, 165, 116, 0.16);
     --c-technical: #85b8f0;
     --c-technical-bg: rgba(133, 184, 240, 0.13);
+    --p-p0: #f59a92;
+    --p-p0-bg: rgba(245, 154, 146, 0.15);
+    --p-p1: #f0c35c;
+    --p-p1-bg: rgba(240, 195, 92, 0.15);
+    --p-p2: #b8ad9f;
+    --p-p2-bg: rgba(163, 154, 143, 0.16);
   }
 }
 
@@ -124,6 +136,7 @@ code, pre, kbd, .loc { font-family: var(--font-mono); font-variant-ligatures: no
 
 /* Cards and badges */
 .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px; margin: 22px 0 0; }
+.cards + .cards { margin-top: 12px; }
 .card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px; }
 .card .num { font-size: 26px; font-weight: 600; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; line-height: 1.15; }
 .card .lbl { font-size: 13px; color: var(--text-2); margin-top: 2px; }
@@ -141,6 +154,10 @@ code, pre, kbd, .loc { font-family: var(--font-mono); font-variant-ligatures: no
 .badge-failed { color: var(--s-failed); background: var(--s-failed-bg); border-color: var(--s-failed); }
 .badge-product { color: var(--c-product); background: var(--c-product-bg); }
 .badge-technical { color: var(--c-technical); background: var(--c-technical-bg); }
+.badge-priority-P0 { color: var(--p-p0); background: var(--p-p0-bg); border-color: var(--p-p0); font-weight: 600; }
+.badge-priority-P1 { color: var(--p-p1); background: var(--p-p1-bg); }
+.badge-priority-P2 { color: var(--p-p2); background: var(--p-p2-bg); }
+.badge-priority-unranked { color: var(--text-2); background: transparent; border-color: var(--border-strong); }
 .badge-neutral { color: var(--text-2); background: var(--surface-2); border-color: var(--border); }
 .chips { display: flex; flex-wrap: wrap; gap: 6px; }
 .chip { padding: 2px 10px; border-radius: 6px; background: var(--surface-2); border: 1px solid var(--border-strong); font-size: 13px; color: var(--text); }
@@ -165,6 +182,8 @@ code, pre, kbd, .loc { font-family: var(--font-mono); font-variant-ligatures: no
 .finding-id { font-family: var(--font-mono); font-size: 12.5px; color: var(--text-3); }
 .finding-feature { margin-left: auto; font-size: 13px; }
 .finding-statement { margin: 0 0 12px; font-size: 15px; }
+.finding-reason { margin: -4px 0 12px; font-size: 13.5px; color: var(--text-2); }
+.finding-reason b { font-weight: 600; color: var(--text-3); }
 .evidence { border-top: 1px solid var(--border); padding-top: 10px; margin-top: 4px; }
 .evidence + .evidence { margin-top: 10px; }
 .evidence .loc { color: var(--text-2); }

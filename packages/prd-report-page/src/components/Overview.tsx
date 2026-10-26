@@ -16,6 +16,12 @@ const VERIFICATION_LABELS: Record<(typeof VERIFICATION_KEYS)[number], string> = 
   conflicts: 'Conflicts',
   notChecked: 'Not checked',
 };
+const LEVELS: { key: keyof PageData['counts']['findings']['priority']; label: string }[] = [
+  { key: 'P0', label: 'P0' },
+  { key: 'P1', label: 'P1' },
+  { key: 'P2', label: 'P2' },
+  { key: 'unranked', label: 'Unranked' },
+];
 const STATEMENT_KEYS = VERIFICATION_KEYS.slice(0, 4);
 const OPEN_ITEM_KEYS = VERIFICATION_KEYS.slice(4);
 
@@ -88,6 +94,11 @@ export function Overview({ data, byFeature }: { data: PageData; byFeature: Map<s
         <Card value={data.findings.length} label="Findings" />
         <a className="card-link" href={findingsHash({ class: 'product' })}><Card value={data.counts.findings.product} label="Product" /></a>
         <a className="card-link" href={findingsHash({ class: 'technical' })}><Card value={data.counts.findings.technical} label="Technical" /></a>
+      </div>
+      <div className="cards" data-cards="findings-by-level">
+        {LEVELS.map(({ key, label }) => (
+          <a className="card-link" key={key} href={findingsHash({ priority: key })} data-level-card={key}><Card value={data.counts.findings.priority[key]} label={label} /></a>
+        ))}
       </div>
 
       <div className="card-group-title">Verification, all verified features</div>

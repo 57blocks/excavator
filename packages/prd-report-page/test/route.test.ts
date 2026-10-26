@@ -10,20 +10,39 @@ describe('parseHash', () => {
     expect(parseHash('#/')).toEqual({ name: 'overview' });
     expect(parseHash('#/coverage')).toEqual({ name: 'coverage' });
     expect(parseHash('#/feature/F12')).toEqual({ name: 'feature', id: 'F12' });
-    expect(parseHash('#/findings')).toEqual({ name: 'findings', filters: { class: 'all', feature: '', q: '' } });
+    expect(parseHash('#/findings')).toEqual({ name: 'findings', filters: { class: 'all', priority: 'all', feature: '', q: '' } });
   });
 
   it('reads the findings filters from the query', () => {
     expect(parseHash('#/findings?class=product&feature=F2&q=cancel%20order')).toEqual({
-      name: 'findings', filters: { class: 'product', feature: 'F2', q: 'cancel order' },
+      name: 'findings', filters: { class: 'product', priority: 'all', feature: 'F2', q: 'cancel order' },
     });
     expect(parseHash('#/findings?q=a?b&class=technical')).toEqual({
-      name: 'findings', filters: { class: 'technical', feature: '', q: 'a?b' },
+      name: 'findings', filters: { class: 'technical', priority: 'all', feature: '', q: 'a?b' },
     });
   });
 
+  it('reads the priority filter: P0, P1, P2 and unranked, alone and with the other filters', () => {
+    for (const priority of ['P0', 'P1', 'P2', 'unranked']) {
+      expect(parseHash(`#/findings?priority=${priority}`), priority).toEqual({
+        name: 'findings', filters: { class: 'all', priority, feature: '', q: '' },
+      });
+    }
+    expect(parseHash('#/findings?class=technical&priority=P1&feature=F2&q=cancel')).toEqual({
+      name: 'findings', filters: { class: 'technical', priority: 'P1', feature: 'F2', q: 'cancel' },
+    });
+  });
+
+  it('drops a priority that is not one of the known values instead of failing', () => {
+    for (const bad of ['P3', 'p0', 'Unranked', 'urgent', '', 'all']) {
+      expect(parseHash(`#/findings?priority=${bad}&class=product`), bad).toEqual({
+        name: 'findings', filters: { class: 'product', priority: 'all', feature: '', q: '' },
+      });
+    }
+  });
+
   it('drops a class that is not product, technical or all instead of failing', () => {
-    expect(parseHash('#/findings?class=urgent')).toEqual({ name: 'findings', filters: { class: 'all', feature: '', q: '' } });
+    expect(parseHash('#/findings?class=urgent')).toEqual({ name: 'findings', filters: { class: 'all', priority: 'all', feature: '', q: '' } });
   });
 
   it('tolerates a trailing slash', () => {
@@ -51,14 +70,23 @@ describe('serializeRoute', () => {
     expect(findingsHash({ q: 'a b', feature: 'F1', class: 'product' })).toBe('#/findings?class=product&feature=F1&q=a+b');
   });
 
+  it('writes the priority filter after the class and before the feature', () => {
+    expect(findingsHash({ priority: 'P0' })).toBe('#/findings?priority=P0');
+    expect(findingsHash({ priority: 'unranked' })).toBe('#/findings?priority=unranked');
+    expect(findingsHash({ priority: 'all' })).toBe('#/findings');
+    expect(findingsHash({ q: 'x', feature: 'F1', priority: 'P2', class: 'product' })).toBe('#/findings?class=product&priority=P2&feature=F1&q=x');
+  });
+
   it('round-trips every route, including ids and text that need escaping', () => {
     const routes: Route[] = [
       { name: 'overview' },
       { name: 'coverage' },
       { name: 'feature', id: 'F1' },
       { name: 'feature', id: 'F 1/2?' },
-      { name: 'findings', filters: { class: 'all', feature: '', q: '' } },
-      { name: 'findings', filters: { class: 'product', feature: 'F2', q: `x & y=z #1 100% ${String.fromCharCode(0xe9)}` } },
+      { name: 'findings', filters: { class: 'all', priority: 'all', feature: '', q: '' } },
+      { name: 'findings', filters: { class: 'product', priority: 'all', feature: 'F2', q: `x & y=z #1 100% ${String.fromCharCode(0xe9)}` } },
+      { name: 'findings', filters: { class: 'technical', priority: 'unranked', feature: 'F2', q: 'a' } },
+      { name: 'findings', filters: { class: 'all', priority: 'P0', feature: '', q: '' } },
     ];
     for (const route of routes) expect(parseHash(serializeRoute(route)), serializeRoute(route)).toEqual(route);
   });
