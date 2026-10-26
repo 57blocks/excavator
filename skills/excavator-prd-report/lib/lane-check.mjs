@@ -3,7 +3,8 @@
  * design D3): `features/<id>.md` and `findings/<id>.json`. The chapter needs
  * front-matter that matches the index, with the actors, permission roles,
  * flows and open items it declares matching its `###` headings and one `##`
- * heading (change prd-report-prd-shape, design D3), a mermaid block, a
+ * heading (change prd-report-prd-shape, design D3), each actor one of the
+ * index's actors (D12), a mermaid block, a
  * `<details>` evidence block and `path:line[-line]` anchors that resolve
  * inside the project, outside the directories that hold dependencies or
  * build output (D8); each finding needs a known class, no advice in its statement and
@@ -66,7 +67,7 @@ export const chapterPath = (id) => `features/${id}.md`;
 export const findingsPath = (id) => `findings/${id}.json`;
 
 /** Problems of the declared structure: the lists of the front-matter against the body's headings (design D3). */
-function structureProblems(data, body, feature) {
+function structureProblems(data, body, feature, actorNames) {
   const problems = [];
   const headings = headingsOf(body);
   const sub = headings.filter((heading) => heading.level === 3).map((heading) => heading.text);
@@ -78,6 +79,9 @@ function structureProblems(data, body, feature) {
   }
   if (lists.actors && lists.permissionRoles) {
     for (const name of lists.actors) if (lists.permissionRoles.includes(name)) problems.push(`${name} is both an actor and a permission role`);
+  }
+  if (lists.actors) {
+    for (const name of lists.actors) if (!actorNames.includes(name)) problems.push(`actor "${name}" is not one of the index's actors`);
   }
   if (lists.flows) {
     for (const title of lists.flows) if (!sub.includes(title)) problems.push(`flow "${title}" is not a ### heading of the chapter`);
@@ -100,7 +104,7 @@ function structureProblems(data, body, feature) {
 }
 
 /** Problems of the chapter file, and its counts. */
-function chapterProblems(text, feature, files) {
+function chapterProblems(text, index, feature, files) {
   const problems = [];
   const add = (problem) => problems.push(`${feature.id}: ${problem}`);
   const front = parseFrontMatter(text);
@@ -115,7 +119,7 @@ function chapterProblems(text, feature, files) {
     if (data.kind !== feature.kind) add(`front-matter kind is ${JSON.stringify(data.kind ?? null)}, not the index's ${feature.kind}`);
     if (data.chapter !== feature.chapter) add(`front-matter chapter is ${JSON.stringify(data.chapter ?? null)}, not the index's ${feature.chapter}`);
     if (!isStringArray(data.triggers)) add('front-matter triggers is not a list');
-    for (const problem of structureProblems(data, body, feature)) add(problem);
+    for (const problem of structureProblems(data, body, feature, isStringArray(index.actors) ? index.actors : [])) add(problem);
   }
   const diagrams = (body.match(MERMAID) ?? []).length;
   if (diagrams === 0) add('no mermaid block');
@@ -226,7 +230,7 @@ export function laneResult(outDir, index, feature, root) {
   if (existsSync(chapterFile)) {
     const read = readText(chapterFile);
     if (read.ok) {
-      const checked = chapterProblems(read.text, feature, files);
+      const checked = chapterProblems(read.text, index, feature, files);
       problems.push(...checked.problems);
       counts.diagrams = checked.diagrams;
       counts.evidence = checked.evidence;

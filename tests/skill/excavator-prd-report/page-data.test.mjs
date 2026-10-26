@@ -285,6 +285,9 @@ describe('collectPageData', () => {
 
     it('refuses a chapter whose actors changed: the roles table is stale', () => {
       const { run } = aggregatedRun();
+      const index = run.readIndex();
+      index.actors.push('auditor');
+      run.writeIndex(index);
       run.writeText('features/F1.md', run.readText('features/F1.md').replace('actors: [customer]', 'actors: [customer, auditor]'));
       expect(attempt(run)).toThrow(/tables\/roles\.md differs from what aggregate writes now.*prd\.mjs aggregate/);
       aggregateOk(run);

@@ -147,6 +147,7 @@ Each inferred candidate is `{"id": "i<n>", "kind": "route" | "page" | "job" | "m
 - **Shared models.** When the scope has a permission model (roles, policies, guards), make a feature with `kind: "reference"` named `Roles and permissions`, translated into `$LANGUAGE`. Its `seedFiles` are the files that define the roles, statuses, policies and guards; its `entrypoints` may be empty, and `seedFiles` is required. Treat any other model that several flows share (a token or session model, a shared status dictionary) the same way. Reference features take the lowest chapter numbers: `check-index` refuses a `reference` chapter that comes after a `flow` or `automated` chapter.
 - **Callers outside the scope.** When `--scope` names a subdirectory, search outside the scope for the callers of every entrypoint in scope: the pages and clients that send the request, and the other services that call it. Add the files that hold them to that feature's `seedFiles`; only those files, not what they import. Their own flows stay out of scope: they get no feature and no candidate.
 - Every candidate belongs to exactly one feature or is listed in `unassigned` (test code, dead registrations, out of scope); `check-index` counts both. The flow names of `.excavator/domain-graph.json`, when it exists, may help name the features; they are not candidates.
+- **Name the actors of the project: each real actor once**, the user categories, the external systems, the other services and the operators, named as the product names them, with no name twice (a member of staff is one actor, not one per feature that mentions them). Write them as `actors` in `plan.json`; every chapter takes its actors from this list. `check-index` exits 1 and prints `index: actors must list each actor of the project once` when `actors` is missing, empty, holds an empty name or names an actor twice.
 - Draft the glossary: the canonical source terms of the scope (entity and feature names and key UI labels, exactly as the code/UI spells them) with their meaning. Every lane writes these terms verbatim.
 
 ### 1d. Write and check the index
@@ -161,6 +162,7 @@ Write `$OUT/plan.json`:
   "inferred": [{"id": "i1", "kind": "job", "file": "...", "line": 1, "text": "...", "framework": "...", "provenance": "inferred"}],
   "features": [{"id": "F1", "name": "...", "kind": "flow", "chapter": 1, "entrypoints": ["c1", "i1"], "seedFiles": ["..."], "tiers": ["frontend", "backend"]}],
   "unassigned": ["c7"],
+  "actors": ["..."],
   "glossary": [{"term": "...", "meaning": "..."}],
   "residualAssumptions": ["..."]
 }
@@ -169,7 +171,7 @@ Write `$OUT/plan.json`:
 (`scope` is the `--scope` value as a string, or `null`.) Then build the index from it and the script's candidates — `sourceRevision`: the `currentSourceRevision` Phase 0 printed, passed as `rev` — and check it:
 
 ```bash
-jq -n --slurpfile e "$OUT/entrypoints.json" --slurpfile p "$OUT/plan.json" --arg rev "<currentSourceRevision>" '$e[0] as $e | $p[0] as $p | {format: "excavator-prd-report/2", projectRoot: $e.projectRoot, sourceRevision: $rev, factsDigest: null, language: $p.language, role: $p.role, scope: $p.scope, frameworks: $e.frameworks, candidates: {byFramework: $e.byFramework, uncovered: $e.uncovered, items: ($e.items + $p.inferred)}, features: $p.features, unassigned: $p.unassigned, glossary: $p.glossary, residualAssumptions: ($e.residualAssumptions + $p.residualAssumptions)}' > "$OUT/index.json"
+jq -n --slurpfile e "$OUT/entrypoints.json" --slurpfile p "$OUT/plan.json" --arg rev "<currentSourceRevision>" '$e[0] as $e | $p[0] as $p | {format: "excavator-prd-report/2", projectRoot: $e.projectRoot, sourceRevision: $rev, factsDigest: null, language: $p.language, role: $p.role, scope: $p.scope, frameworks: $e.frameworks, candidates: {byFramework: $e.byFramework, uncovered: $e.uncovered, items: ($e.items + $p.inferred)}, features: $p.features, unassigned: $p.unassigned, actors: $p.actors, glossary: $p.glossary, residualAssumptions: ($e.residualAssumptions + $p.residualAssumptions)}' > "$OUT/index.json"
 node "$PLUGIN_ROOT/skills/excavator-prd-report/prd.mjs" check-index "$OUT" --project "$PROJECT_ROOT"
 ```
 
@@ -218,6 +220,8 @@ The lane prompt:
 You write one chapter of an As-Is PRD (product requirements document) for the project at $PROJECT_ROOT, and the findings of that chapter. Your feature: <id> "<name>" (<kind>), chapter <chapter>.
 
 Your scope. Read only these files: <seedFiles, one per line>. The one exception is the whole-project search that **Prove the statements that tend to be wrong** asks for. Its entrypoints: <entrypoints, one per line: id, kind, file:line, text>. The other features of this PRD, which other lanes write: <id, name and kind of every other feature, one per line>. Describe the hand-over to another feature in one sentence, not its flow. Read code only; never run, build or change anything in the project.
+
+The actors of this PRD: <index actors, one per line>.
 
 Write in `$LANGUAGE`, in product language for `$ROLE`.
 
@@ -275,7 +279,7 @@ Before you finish, check the last line of every anchor against the number of lin
 - `product` — user-visible behavior defects: behavior that is inconsistent (two paths treat the same case differently), missing (a case the flow does not handle) or asymmetric (an action without its counterpart, a check on one tier only).
 - `technical` — code-level problems: dead or unreachable code, duplicated logic that has diverged, errors swallowed, values hard-coded where the rest of the code reads them from configuration.
 
-State each defect as it is. Do not write how to fix it: a statement with "should", "recommend", "suggest", "refactor", "ought to", "better to", "it would be better", or the same words in `$LANGUAGE`, is refused. Give no severity and no confidence. Each finding has this shape: `{"findings": [{"id": "<id>-1", "class": "product", "statement": "<the defect as it is>", "flows": ["<id>"], "evidence": [{"file": "<path from the project root>", "passage": "<text copied from the file>"}]}]}`. Number the ids `<id>-1`, `<id>-2`, …; `flows` holds `<id>` and any other feature id the defect involves. Copy each passage verbatim from the file — part of a line or whole lines — long enough that it occurs exactly once in that file; a script checks this and refuses a passage it cannot find once. With no finding, write `{"findings": []}`.
+State each defect as it is. Do not write how to fix it: a statement with "should", "recommend", "suggest", "refactor", "ought to", "better to", "it would be better", or the same words in `$LANGUAGE`, is refused. Give no severity and no confidence. Each finding has this shape: `{"findings": [{"id": "<id>-1", "class": "product", "statement": "<the defect as it is>", "flows": ["<id>"], "evidence": [{"file": "<path from the project root>", "passage": "<text copied from the file>"}]}]}`. Number the ids `<id>-1`, `<id>-2`, …; `flows` holds `<id>` and any other feature id the defect involves. Copy each passage verbatim from the file — part of a line or whole lines — long enough that it occurs exactly once in that file; a script checks this and refuses a passage it cannot find once. With no finding, write `{"findings": []}`. The findings go only in the findings file: the chapter has no findings section and does not mention the findings file.
 
 Write only these two files, and nothing else anywhere:
 1. `$OUT/features/<id>.md` — this front-matter, then the chapter, starting with `## <name>` and using `###` and deeper inside it:
@@ -284,7 +288,7 @@ Write only these two files, and nothing else anywhere:
    id: <id>
    name: <name>
    kind: <kind>
-   actors: [<each user category or external system that starts or takes part in a flow>]
+   actors: [<each actor of that list that starts or takes part in a flow>]
    permissionRoles: [<each named role of the permission model, spelled as in the code>]
    triggers:
      - <each trigger, one per line>
@@ -294,7 +298,7 @@ Write only these two files, and nothing else anywhere:
    chapter: <chapter>
    ---
    ```
-   `actors` and `permissionRoles` are two lists with no name in common; either may be `[]`. `flows` holds the exact text of the `###` heading of each flow: at least one flow for a `flow` or `automated` feature, none (`flows: []`) for a `reference` feature. `openItems` is the text of the last `###` heading of the chapter, which holds its open items as a table or a list; leave the key out when the chapter has none.
+   `actors` takes only names from the list of the actors of this PRD, spelled exactly as listed; a name outside the list fails the check. `actors` and `permissionRoles` are two lists with no name in common; either may be `[]`. `flows` holds the exact text of the `###` heading of each flow: at least one flow for a `flow` or `automated` feature, none (`flows: []`) for a `reference` feature. `flows` lists only flows, each a path from one trigger to one outcome; an overview, a configuration, a permissions or a findings section is not a flow. `openItems` is the text of the last `###` heading of the chapter, which holds its open items as a table or a list; leave the key out when the chapter has none.
 2. `$OUT/findings/<id>.json` — the findings, in the shape above.
 
 Reply with one line: `<id>: <D> diagrams, <F> findings`, and nothing else.

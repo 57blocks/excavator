@@ -243,7 +243,7 @@ export function computeAggregate(outDirArg, index, root) {
     findingsFile: { format: FINDINGS_FORMAT, sourceRevision: index.sourceRevision, findings: entries },
     tables: {
       [TABLE_FILES[0]]: terminologyTable(index.glossary),
-      [TABLE_FILES[1]]: rolesTable(written, chapters),
+      [TABLE_FILES[1]]: rolesTable(written, chapters, index.actors),
       [TABLE_FILES[2]]: openItemsTable(written, chapters),
       [TABLE_FILES[3]]: coverageTable(updated, outsideScopeLine(index, root)),
       [TABLE_FILES[4]]: verificationTable(features, result.verification),

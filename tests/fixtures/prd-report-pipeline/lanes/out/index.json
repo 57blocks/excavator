@@ -37,6 +37,7 @@
     }
   ],
   "unassigned": [],
+  "actors": ["customer", "support agent"],
   "glossary": [
     { "term": "Order", "meaning": "A customer's request for goods, with a status of open or cancelled." }
   ],

@@ -26,13 +26,16 @@ const firstSeen = (items) => [...new Set(items)];
  * The actors and permission roles the written chapters declare, in document
  * order (`written` is in chapter order; `chaptersById` holds each one's
  * split). Actors by feature has a row for every written feature and a column
- * for every actor, in order of first appearance; Permission roles has a row
- * for every role with the features that name it.
+ * for every actor of the index (`indexActors`, in its order) that at least
+ * one written feature uses (change prd-report-prd-shape, design D12);
+ * Permission roles has a row for every role, in order of first appearance,
+ * with the features that name it.
  */
-export function rolesTable(written, chaptersById) {
+export function rolesTable(written, chaptersById, indexActors) {
   const of = (feature, key) => chaptersById.get(feature.id)?.[key] ?? [];
   const lines = ['### Actors by feature', ''];
-  const actors = firstSeen(written.flatMap((feature) => of(feature, 'actors')));
+  const used = new Set(written.flatMap((feature) => of(feature, 'actors')));
+  const actors = indexActors.filter((actor) => used.has(actor));
   if (actors.length === 0) {
     lines.push('No written feature lists an actor.');
   } else {

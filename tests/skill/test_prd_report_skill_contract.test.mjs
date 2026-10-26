@@ -51,6 +51,8 @@ const NEVER_EDIT = 'Never edit `features/<id>.md` or `findings/<id>.json` yourse
 const RETRY_HEADING = 'Your previous attempt failed these checks; fix them and write both files again:';
 /** The sentence the lane prompt's evidence example and check-lane's message share. */
 const ANCHOR_RULE = 'Write each anchor in backticks, as `path:line` or `path:line-line`, with the path from the project root.';
+/** The line check-index prints for an index without a proper list of actors (design D12). */
+const ACTORS_LINE = 'index: actors must list each actor of the project once';
 const VERIFY = 'follow the procedure in `$PLUGIN_ROOT/skills/excavator-verify/SKILL.md` on it with `--fix --no-summary`, `--language` set to `$LANGUAGE` and `PROJECT_ROOT` as the project path';
 
 describe('excavator-prd-report skill: phases', () => {
@@ -282,6 +284,7 @@ describe('excavator-prd-report skill: its recipes run', () => {
       { id: 'F2', name: 'Reminders', kind: 'automated', chapter: 2, entrypoints: ['c3', 'i1'], seedFiles: ['src/jobs/reminders.js'], tiers: ['backend'] },
     ],
     unassigned: ['c1'],
+    actors: ['customer', 'Payment service'],
     glossary: [{ term: 'Order', meaning: 'A request for goods.' }],
     residualAssumptions: ['planned by hand for the test'],
   };
@@ -310,6 +313,7 @@ describe('excavator-prd-report skill: its recipes run', () => {
       expect(index.projectRoot).toBe(project);
       expect(index.candidates.items.map((item) => item.id)).toEqual(['c1', 'c2', 'c3', 'c4', 'c5', 'c6', 'c7', 'c8', 'c9', 'i1']);
       expect(index.residualAssumptions.at(-1)).toBe('planned by hand for the test');
+      expect(index.actors).toEqual(['customer', 'Payment service']);
       const [list] = recipes(2, 'jq -r ', out, project);
       expect(sh(list).stdout).toBe('F1\t0\tOrders\nF2\t0\tReminders\n');
     } finally {
@@ -355,6 +359,20 @@ describe('excavator-prd-report skill: its recipes run', () => {
       expect(sh(list).stdout).toBe('F1\t1\tOrders\nF2\t0\tReminders\n');
     } finally {
       rmSync(out, { recursive: true, force: true });
+    }
+  });
+
+  it('lets check-index refuse a plan that lists no actors, with the line the skill quotes', () => {
+    const { actors, ...withoutActors } = PLAN;
+    expect(actors).toHaveLength(2);
+    for (const plan of [withoutActors, { ...PLAN, actors: [] }, { ...PLAN, actors: ['customer', 'customer'] }]) {
+      const { out, check } = buildIndex(plan);
+      try {
+        expect(check.status).toBe(1);
+        expect(check.stdout.split('\n').filter(Boolean)).toEqual([ACTORS_LINE]);
+      } finally {
+        rmSync(out, { recursive: true, force: true });
+      }
     }
   });
 
@@ -926,5 +944,66 @@ describe('excavator-prd-report skill: an index of the earlier format (D9)', () =
 
   it('lets --fresh delete an output directory of either format', () => {
     expect(phase.get(0)).toContain(`holds an \`index.json\` with \`"format": "${PREVIOUS_INDEX_FORMAT}"\` or \`"format": "${INDEX_FORMAT}"\``);
+  });
+});
+
+// Change prd-report-prd-shape, design D12: the actors of the PRD are named once, in the index.
+describe('excavator-prd-report skill: the actors of the PRD (D12)', () => {
+  it('has the orchestrator write each real actor once in Phase 1c, into the actors of plan.json', () => {
+    const index = phase.get(1);
+    for (const rule of [
+      'Name the actors of the project: each real actor once',
+      'the user categories, the external systems, the other services and the operators',
+      'named as the product names them, with no name twice',
+      'Write them as `actors` in `plan.json`',
+      'every chapter takes its actors from this list',
+    ]) expect(index, rule).toContain(rule);
+    expect(index.indexOf('### 1d.')).toBeGreaterThan(index.indexOf('Name the actors of the project'));
+  });
+
+  it('shows actors in the plan.json example, and the jq that builds the index carries them over', () => {
+    const plan = rawPhase(1).match(/Write `\$OUT\/plan\.json`:\n\n```json\n([\s\S]*?)```/)?.[1] ?? '';
+    expect(plan).toContain('"actors": ["..."]');
+    const [build] = recipes(1, 'jq -n ', '/out', '/project');
+    expect(build).toContain('actors: $p.actors');
+  });
+
+  it('says check-index refuses a missing, empty or repeating list, with the line the script prints', () => {
+    const run = laneRun();
+    const index = asIndex(run);
+    delete index.actors;
+    run.writeIndex(index);
+    const out = runPrd(['check-index', run.out, '--project', run.project]);
+    expect(out.status).toBe(1);
+    expect(lines(out)).toEqual([ACTORS_LINE]);
+    expect(phase.get(1)).toContain(`\`check-index\` exits 1 and prints \`${ACTORS_LINE}\` when \`actors\` is missing, empty, holds an empty name or names an actor twice`);
+  });
+
+  it('gives each lane the list, and lets the front-matter actors take only names from it, spelled exactly', () => {
+    const prompt = flat(lanePrompt);
+    for (const rule of [
+      'The actors of this PRD: <index actors, one per line>.',
+      'actors: [<each actor of that list that starts or takes part in a flow>]',
+      '`actors` takes only names from the list of the actors of this PRD, spelled exactly as listed',
+    ]) expect(prompt, rule).toContain(rule);
+    expect(prompt.indexOf('The actors of this PRD:')).toBeLessThan(prompt.indexOf('**As-Is only.**'));
+  });
+
+  it('agrees with check-lane: a name outside the list fails, one from it passes', () => {
+    const run = laneRun();
+    editChapter(run, 'F1', (text) => text.replace('actors: [customer]', 'actors: [customer, Auditor]'));
+    const refused = checkLane(run, 'F1');
+    expect(refused.status).toBe(1);
+    expect(lines(refused)).toContain('F1: actor "Auditor" is not one of the index\'s actors');
+    editChapter(run, 'F1', (text) => text.replace('actors: [customer, Auditor]', 'actors: [customer, support agent]'));
+    expect(lines(checkLane(run, 'F1'))).toEqual(['F1: ok']);
+  });
+
+  it('lists in flows only flows, and keeps findings out of the chapter', () => {
+    const prompt = flat(lanePrompt);
+    for (const rule of [
+      '`flows` lists only flows, each a path from one trigger to one outcome; an overview, a configuration, a permissions or a findings section is not a flow.',
+      'The findings go only in the findings file: the chapter has no findings section and does not mention the findings file.',
+    ]) expect(prompt, rule).toContain(rule);
   });
 });

@@ -36,7 +36,7 @@ describe('aggregate: terminology, roles and open items (D4)', () => {
     expect(run.readText('tables/terminology.md')).toBe('None.\n');
   });
 
-  it('writes the actors of the written features, columns and roles in order of first appearance, features in chapter order', () => {
+  it('writes the actors of the written features, columns in the order of the index actors, roles in order of first appearance, features in chapter order', () => {
     const run = track(makeSkeletonRun());
     aggregateOk(run);
     expect(run.readText('tables/roles.md')).toBe([
@@ -56,6 +56,42 @@ describe('aggregate: terminology, roles and open items (D4)', () => {
       '| normal | F3 Roles and permissions |',
       '',
     ].join('\n'));
+  });
+
+  // Change prd-report-prd-shape, design D12: the columns are the index's names, in its order.
+  it('orders the actor columns as the index lists the actors, and leaves out the names no written feature uses', () => {
+    const run = track(makeSkeletonRun());
+    const index = run.readIndex();
+    index.actors = ['Payment service', 'support agent', 'Night operator', 'customer'];
+    run.writeIndex(index);
+    aggregateOk(run);
+    expect(run.readText('tables/roles.md').split('\n').slice(0, 8)).toEqual([
+      '### Actors by feature',
+      '',
+      '| Feature | support agent | customer |',
+      '|---|---|---|',
+      '| F3 Roles and permissions |  |  |',
+      '| F1 Order placement |  | x |',
+      '| F2 Order cancellation | x |  |',
+      '',
+    ]);
+  });
+
+  it('leaves out an actor only a failed feature uses', () => {
+    const run = track(makeSkeletonRun());
+    run.writeText('features/F1.md', run.readText('features/F1.md').replace('```mermaid', '```text'));
+    aggregateOk(run);
+    expect(run.readText('tables/roles.md')).toContain('| Feature | support agent |\n');
+  });
+
+  it('fails a feature whose chapter names an actor outside the index, so its name is in no column', () => {
+    const run = track(makeSkeletonRun());
+    run.writeText('features/F1.md', run.readText('features/F1.md').replace('actors: [customer]', 'actors: [customer, Auditor]'));
+    aggregateOk(run);
+    const f1 = run.readIndex().features.find((f) => f.id === 'F1');
+    expect(f1.status).toBe('failed');
+    expect(f1.failure.reasons).toContain('F1: actor "Auditor" is not one of the index\'s actors');
+    expect(run.readText('tables/roles.md')).not.toContain('Auditor');
   });
 
   it('says so when no written feature lists an actor or a permission role', () => {

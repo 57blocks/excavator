@@ -284,6 +284,9 @@ const setKind = (run, id, kind) => {
 describe('prd.mjs check-lane: the declared structure of a chapter (D3)', () => {
   it('passes a fully valid chapter with actors, permission roles, flows and the open items heading last', () => {
     const run = laneRun();
+    const index = run.readIndex();
+    index.actors.push('Payment service');
+    run.writeIndex(index);
     edit(run, 'F1', (text) => text
       .replace('actors: [customer]\npermissionRoles: []', 'actors: [customer, "Payment service"]\npermissionRoles: [normal, admin]')
       .replace('chapter: 1', 'openItems: Open items\nchapter: 1')
@@ -321,6 +324,31 @@ describe('prd.mjs check-lane: the declared structure of a chapter (D3)', () => {
     const run = laneRun();
     edit(run, 'F1', (text) => text.replace('permissionRoles: []\n', ''));
     expect(failedReasons(check(run, 'F1'))).toEqual(['F1: front-matter permissionRoles is not a list']);
+  });
+
+  // Change prd-report-prd-shape, design D12: a chapter names only the actors of the index.
+  it('refuses an actor that is not one of the index\'s actors, one line per name, and matches the spelling exactly', () => {
+    const run = laneRun();
+    edit(run, 'F1', (text) => text.replace('actors: [customer]', 'actors: [customer, Auditor, "support  agent", "Payment service"]'));
+    const out = check(run, 'F1');
+    expect(out.status).toBe(1);
+    expect(failedReasons(out)).toEqual([
+      'F1: actor "Auditor" is not one of the index\'s actors',
+      'F1: actor "support  agent" is not one of the index\'s actors',
+      'F1: actor "Payment service" is not one of the index\'s actors',
+    ]);
+    const lower = laneRun();
+    edit(lower, 'F2', (text) => text.replace('actors: [support agent]', 'actors: [Support agent]'));
+    expect(failedReasons(check(lower, 'F2'))).toEqual(['F2: actor "Support agent" is not one of the index\'s actors']);
+  });
+
+  it('keeps the actor and permission role overlap check next to the index check', () => {
+    const run = laneRun();
+    edit(run, 'F2', (text) => text.replace('permissionRoles: [admin]', 'permissionRoles: [admin, support agent]').replace('actors: [support agent]', 'actors: [support agent, Auditor]'));
+    expect(failedReasons(check(run, 'F2'))).toEqual([
+      'F2: support agent is both an actor and a permission role',
+      'F2: actor "Auditor" is not one of the index\'s actors',
+    ]);
   });
 
   it('refuses a name that is both an actor and a permission role', () => {

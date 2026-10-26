@@ -112,6 +112,9 @@ export function schemaProblems(index) {
   if (index.scope !== null && !isString(index.scope)) add('index', 'scope is not a string or null');
   if (!isStringArray(index.frameworks)) add('index', 'frameworks is not a list of names');
   if (!isStringArray(index.unassigned)) add('index', 'unassigned is not a list of candidate ids');
+  if (!isStringArray(index.actors) || index.actors.length === 0 || !index.actors.every(isString) || new Set(index.actors).size !== index.actors.length) {
+    add('index', 'actors must list each actor of the project once');
+  }
   if (!Array.isArray(index.glossary) || !index.glossary.every((entry) => isObject(entry) && isString(entry.term) && isString(entry.meaning))) {
     add('index', 'glossary is not a list of { term, meaning }');
   }

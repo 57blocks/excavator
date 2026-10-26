@@ -203,6 +203,40 @@ describe('prd.mjs check-index', () => {
     for (const pattern of [/format/, /F1: kind/, /X2/, /tiers/, /c1: kind/, /glossary/]) expect(text).toMatch(pattern);
   });
 
+  // Change prd-report-prd-shape, design D12: the actors of the PRD are listed once in the index.
+  it('fails an index whose actors are missing, empty, not a list, hold a non-string or an empty name, or repeat a name', () => {
+    const LINE = 'index: actors must list each actor of the project once';
+    const cases = {
+      missing: undefined,
+      empty: [],
+      'not a list': 'customer',
+      'a number': ['customer', 3],
+      'an empty name': ['customer', ''],
+      'a blank name': ['customer', '  '],
+      'a repeated name': ['customer', 'support agent', 'customer'],
+    };
+    for (const [label, actors] of Object.entries(cases)) {
+      const run = laneRun();
+      const index = run.readIndex();
+      if (actors === undefined) delete index.actors;
+      else index.actors = actors;
+      run.writeIndex(index);
+      const out = runPrd(['check-index', run.out, '--project', run.project]);
+      expect(out.status, label).toBe(1);
+      expect(reasons(out), label).toEqual([LINE]);
+    }
+  });
+
+  it('passes an index whose actors are distinct non-empty names, and keeps them in the file', () => {
+    const run = laneRun();
+    const index = run.readIndex();
+    index.actors = ['Payment service', 'customer', 'support agent'];
+    run.writeIndex(index);
+    const out = runPrd(['check-index', run.out, '--project', run.project]);
+    expect(out.status, out.stdout).toBe(0);
+    expect(run.readIndex().actors).toEqual(['Payment service', 'customer', 'support agent']);
+  });
+
   it('fails a feature id that repeats, and a candidate id that repeats', () => {
     const run = laneRun();
     const index = run.readIndex();
