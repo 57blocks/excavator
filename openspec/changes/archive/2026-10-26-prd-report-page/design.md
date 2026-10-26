@@ -204,4 +204,20 @@
 
 - 第一轮：用 skill 的方式（`skills/excavator/consumer-freshness.mjs <语料根>`）算出的当前 `sourceRevision` 与真实副本 A 的相同，满足运行条件；以 `claude -p "/excavator:excavator-prd-report <语料根> --scope <A 的 scope> --out <A 的新副本，已删 report.html>"`、`--model claude-sonnet-5`、`CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS=0`、`--max-budget-usd 5` 运行，会话一开始就返回 `Failed to authenticate: OAuth session expired and could not be refreshed`（花费 $0，墙钟 3 秒）；语料 `.excavator/` 前后不变。
 - 第二轮：运行前单独查一次 `claude auth status`：`loggedIn: false`、`authMethod: none`。没有尝试登录。
-- **未跑**：无头 CLI 未登录。用户重新登录后，用同一参数重跑即可补上 O8。
+- 第三轮（用户登录后）运行前核对：`claude auth status` 为 `loggedIn: true`（claude.ai）；用 skill 的方式（9094fbe9 克隆里的 `skills/excavator/consumer-freshness.mjs <语料根>`）算出的当前 `sourceRevision` 为 `fresh`，与真实副本 A 的 `sourceRevision` 相同，满足运行条件。没有其他 `claude -p` 并行。
+- 运行：在真实副本 A 的新副本上（删掉 `report.html`，其余字节与第二轮验收用的 A 相同），`claude -p "/excavator:excavator-prd-report <语料根> --scope <A 的 scope> --out <该副本>"`，`--model claude-sonnet-5`、`CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS=0`、`--max-budget-usd 5`、`--plugin-dir` 为 9094fbe9 的已构建克隆、`dontAsk` + 沙箱 Bash（只许写输出目录）+ 只放行 MCP 读工具。
+- 结果：退出 0，`subtype: success`、`is_error: false`，stderr 为空。9 轮，工具调用只有 8 次 Bash，**泳道派发（Agent）0 次**，MCP 调用 0 次。模型按 skill 依次跑了 `check-index`（18 个候选全部分配，5 个功能）、`aggregate`、`assemble`、`page`、`reply`。
+- 最后回复（路径以占位写出）：
+  ```
+  <out>/PRD.md
+  Report page: <out>/report.html
+  5/5 features written, 0 failed
+  10 diagrams
+  16 product, 36 technical findings, anchors checked
+  Statements: 126 verified, 4 contradicted, 1 misattributed, 0 unverifiable; open items: 5 resolved right, 2 resolved wrong, 2 still open; cross-section conflicts: 0, not checked: 0
+  ```
+  第二行是报告页路径。
+- `report.html` 写出，6,376,949 字节，与第二轮 O2 里对同一份 A 直接运行 `page` 得到的页面字节相同；输出目录其余文件与运行前相同（`aggregate`、`assemble` 没有改动任何文件）。
+- 语料 `.excavator/`：运行前后文件清单（1,114 项）、修改时间与内容都相同，0 个文件新于开始标记。
+- 花费 $0.47（`total_cost_usd` 0.4695，只用了 `claude-sonnet-5`），墙钟 67 秒（`duration_ms` 62,966）。
+- **满足。**（前两轮因无头 CLI 未登录未跑，第三轮补上。）
