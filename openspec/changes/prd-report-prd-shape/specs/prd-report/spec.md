@@ -2,7 +2,7 @@
 
 ### Requirement: 章节的结构声明
 
-每个泳道 SHALL 在章节 front-matter 里声明：`actors`（发起或参与流程的用户类别与外部系统）、`permissionRoles`（权限模型里的具名角色，原样拼写）、`flows`（本章每个流程的 `###` 标题，与正文逐字相同）与可选的 `openItems`（集中列出待确认项的 `###` 标题，必须是本章最后一个 `###`）。`actors` 与 `permissionRoles` MUST NOT 相交；`flow` 与 `automated` 功能 SHALL 至少声明一个流程，`reference` 功能 MUST NOT 声明流程；正文 SHALL 恰好有一个 `##` 标题且它是第一个标题。脚本 SHALL 检查这些声明与正文一致，不一致时该泳道不过检查；`aggregate` 对已核对的章节 SHALL 重做同样的检查，核对改坏结构时该功能为 `failed` 并记原因。
+编排者 SHALL 在索引的 `actors` 里把项目的每个参与者（用户类别、外部系统、其他服务、运维）列一次。每个泳道 SHALL 在章节 front-matter 里声明：`actors`（发起或参与流程的参与者，只取索引 `actors` 里的名字，逐字相同）、`permissionRoles`（权限模型里的具名角色，原样拼写）、`flows`（本章每个流程的 `###` 标题，与正文逐字相同）与可选的 `openItems`（集中列出待确认项的 `###` 标题，必须是本章最后一个 `###`）。`actors` 与 `permissionRoles` MUST NOT 相交；`flow` 与 `automated` 功能 SHALL 至少声明一个流程，`reference` 功能 MUST NOT 声明流程；正文 SHALL 恰好有一个 `##` 标题且它是第一个标题。脚本 SHALL 检查这些声明与正文一致，不一致时该泳道不过检查；`aggregate` 对已核对的章节 SHALL 重做同样的检查，核对改坏结构时该功能为 `failed` 并记原因。
 
 #### Scenario: 流程标题对不上
 - **WHEN** 某章 `flows` 里的一项与正文的任何 `###` 标题都不逐字相同
@@ -11,6 +11,10 @@
 #### Scenario: 参与者与权限角色混写
 - **WHEN** 同一个名字既在 `actors` 又在 `permissionRoles`
 - **THEN** `check-lane` 退出非零并打印这个名字
+
+#### Scenario: 参与者不在名单里
+- **WHEN** 某章 `actors` 里有一个索引 `actors` 没有的名字
+- **THEN** `check-lane` 退出非零并打印这个名字；`Actors by feature` 的列只取索引名单里的名字
 
 #### Scenario: 核对在章节里加了标题
 - **WHEN** 一章核对之后正文出现第二个 `##` 标题

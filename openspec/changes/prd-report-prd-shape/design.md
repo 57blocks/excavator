@@ -113,6 +113,16 @@ chapter: 2
 - 总览在 `overview.md` 之后依次显示 Terminology、Flow index（由数据生成，链接到功能页 `#/feature/<id>`，不用 PRD 里的标题锚点，以免和片段路由冲突）、Roles、Open items。
 - 功能页显示 actors 与 permission roles 两行。
 
+### D12 参与者用索引里的规范名（O5、O6 之后补）
+
+- O5 的真实运行里各泳道各自给参与者起名，`Actors by feature` 有 23 列，O6 审读者归并后只有 12 个真实参与者（同一个员工写成 4–5 种名字）。参与者名单是全表事实，所以由编排者在索引里定一次，泳道只能从中选。
+- `index.json` 新增 `actors`：字符串列表，每个真实参与者（用户类别、外部系统、其他服务、运维）一项、产品里的叫法、不重复。Phase 1c 与功能分组一起写出，经 `plan.json` 进索引。`check-index`：缺失、不是非空字符串列表或有重复时打印 `index: actors must list each actor of the project once`。
+- 泳道提示词给出这份名单；章节 front-matter 的 `actors` 只能取名单里的名字，逐字相同。`check-lane` 对名单外的名字打印 `actor "<name>" is not one of the index's actors`。
+- `Actors by feature` 的列按索引 `actors` 的顺序，只列至少一个写成的功能用到的名字。
+- 索引格式不变（`/2` 尚未发布）。
+- 同时收紧泳道提示词两处（O6 的发现，提示词层面，不加脚本检查）：`flows` 只列流程（从一个触发到一个结果的路径），不列概览、配置、权限或发现小节；章节里不写发现小节、不提 findings 文件，发现只写进 findings 文件。
+- O6 的其余发现（参考章节的字典在流程章节里重复、错误响应没有汇总表、待确认项小节里留着已定论的项、流程索引没有入口列、跨章节的一处矛盾）照记在验收记录里，本变更不处理：前两项是并行泳道互不可见的结果，后三项需要新的结构字段或跨章节核对。
+
 ### D11 提交顺序
 
 1. `docs(openspec): propose prd-report-prd-shape`
@@ -121,6 +131,8 @@ chapter: 2
 4. `feat(excavator-verify): leave the summary out with --no-summary`
 5. `feat(prd-report-page): show the document skeleton`
 6. `feat(prd-report): write the document skeleton` — `SKILL.md`、契约测试、`README.md`。
+6a. `docs(openspec): add canonical actors to prd-report-prd-shape` — D12 与相应的规格、任务。
+6b. `feat(prd-report): pick actors from the index's list` — `index-check`、`lane-check`、`roles.md` 的列、泳道提示词、契约测试。
 7. `docs(openspec): record prd-report-prd-shape acceptance`
 8. `docs(openspec): archive prd-report-prd-shape`
 
@@ -141,5 +153,5 @@ chapter: 2
 - **O2 检查**：D2、D3、D8、D9 列出的每种问题行各一个测试，先红后绿；`Next:` 两种行各一个测试；一个全部合格的正例。
 - **O3 拼装**：夹具含一个 `reference` 功能、两个流程功能（其中一个有待确认项小节，另一个有两个同名流程标题以产生重复锚点）、一个失败功能：小节顺序与 D4 完全相同；流程索引行数等于 `reference` 功能数加全部 `flows` 数；每个链接的锚点等于另一份独立实现（`github-slugger`，在测试里用；不可用时用手写的含重复与非 ASCII 标题的固定样例）对 `PRD.md` 标题算出的锚点；待确认项小节不在章节里、在 `## Open items` 下原文出现；两次 `assemble` 字节相同。
 - **O4 页面（无头 Chrome，`file://`）**：夹具与一份真实产物副本：总览的术语行数等于词表条数，流程索引行数等于数据里的流程数，每个链接打开对应功能页；控制台错误与 CSP 违例为 0。**装置先验**：从页面数据删掉一个流程，探针必须报出。
-- **O5 真实冒烟**：对上述 51 文件的成员，以 `claude -p` 跑 `/excavator-prd-report --scope <成员> --fresh`，`--out` 在 scratchpad，钉 `--model` 为 Sonnet、`CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS=0`。脚本核对：每个功能 `verified`，或 `failed` 且 `attempts` 为 2（没有停在 1 的）；每章正文恰好一个 `##`；有一个 `reference` 功能写权限模型；范围外种子文件数大于 0，且至少一章的证据锚点在范围外；`Actors by feature` 的列与 `Permission roles` 的行不相交；语料 `.excavator/` 运行前后文件清单与修改时间相同。记录花费与耗时。
+- **O5 真实冒烟**：对上述 51 文件的成员，以 `claude -p` 跑 `/excavator-prd-report --scope <成员> --fresh`，`--out` 在 scratchpad，钉 `--model` 为 Sonnet、`CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS=0`。脚本核对：每个功能 `verified`，或 `failed` 且 `attempts` 为 2（没有停在 1 的）；每章正文恰好一个 `##`；有一个 `reference` 功能写权限模型；范围外种子文件数大于 0，且至少一章的证据锚点在范围外；`Actors by feature` 的列与 `Permission roles` 的行不相交；`Actors by feature` 的每一列都在索引 `actors` 里（D12）；没有标题含 Findings 的 `###` 小节、正文不提 findings 文件（D12 的提示词收紧，只照记）；语料 `.excavator/` 运行前后文件清单与修改时间相同。记录花费与耗时。
 - **O6 与单篇对照（独立审读）**：一个只拿到两份 PRD 与源码的 Opus 审读者，对单篇流程索引的每一行判断拼装版的流程索引是否有覆盖它的行，并逐项判断骨架清单（术语表、能力地图、流程索引、全局角色与权限、集中的待确认项、核对只在附录）是否具备。**硬性不通过**：单篇的某个流程在拼装版没有对应行，且不是某个 `failed` 功能（`attempts` 为 2）的范围。
