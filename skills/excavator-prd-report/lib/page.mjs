@@ -5,8 +5,9 @@
  * builds. Only the template's two markers are replaced, `<!-- xv:csp -->` by
  * the Content-Security-Policy and `<!-- xv:data -->` by the data as one JSON
  * block; every other byte is the template's. No time, no machine path: the same
- * run gives the same bytes. Nothing is written unless all of that succeeded,
- * and an existing report.html is replaced through a temp file and a rename.
+ * run gives the same bytes. The page `page` owns is removed first, so a failed
+ * run never leaves the page of an earlier run for `reply` to name; nothing else
+ * is touched, and the new page is written through a temp file and a rename.
  */
 
 import { existsSync, readFileSync, realpathSync, renameSync, rmSync, writeFileSync } from 'node:fs';
@@ -74,18 +75,20 @@ export function fillPageTemplate(template, data) {
 /**
  * Run page on `<out>`. Returns { status: 0, lines: [path] }; throws UsageError
  * (exit 2) for a run that is not up to date or a template that is missing or
- * wrong, and writes nothing then.
+ * wrong, and leaves no report.html then.
  * @param {string} outDirArg
  * @param {string} root the real path of --project
  * @param {{ templatePath?: string }} [options]
  */
 export function writePage(outDirArg, root, options = {}) {
   const outDir = resolve(outDirArg);
+  const target = join(outDir, PAGE_FILE);
+  // Before any check that can fail: a failed run leaves no report.html, whatever an earlier run wrote.
+  rmSync(target, { force: true });
   const data = collectPageData(outDir, root);
   const templatePath = options.templatePath ?? process.env[TEMPLATE_VARIABLE] ?? defaultTemplatePath();
   const html = fillPageTemplate(readTemplate(templatePath), data);
 
-  const target = join(outDir, PAGE_FILE);
   const temp = `${target}.tmp-${process.pid}`;
   try {
     writeFileSync(temp, html);

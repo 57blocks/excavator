@@ -208,7 +208,7 @@ docker run -d --name prd-<name> \
 docker logs -f prd-<name> > /srv/excavator/out/<name>/run.jsonl    # or: docker wait prd-<name>
 ```
 
-`/excavator-prd-report` writes only to `--out` (default `<repo>/.excavator/prd-report/`): `index.json` (the entrypoints and the features they are grouped into), one chapter and one findings file per feature, the verification reports, and the assembled `PRD.md`. It never runs `/excavator` or rebuilds the facts in `.excavator/`. Each feature is written by its own subagent, at most `--concurrency` (default 3) at a time. Running the same command again resumes: verified features are kept and the rest are finished; `--fresh` starts over.
+`/excavator-prd-report` writes only to `--out` (default `<repo>/.excavator/prd-report/`): `index.json` (the entrypoints and the features they are grouped into), one chapter and one findings file per feature, the verification reports, the assembled `PRD.md` and `report.html` (the report page: one self-contained file built from a template that `pnpm -r build` writes to `packages/prd-report-page/dist/`, which the image's build stage already runs). It never runs `/excavator` or rebuilds the facts in `.excavator/`. Each feature is written by its own subagent, at most `--concurrency` (default 3) at a time. Running the same command again resumes: verified features are kept and the rest are finished; `--fresh` starts over.
 
 Run long jobs detached (`docker run -d`) so they do not depend on an interactive Session Manager session.
 

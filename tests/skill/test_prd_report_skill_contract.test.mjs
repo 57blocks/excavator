@@ -264,7 +264,7 @@ describe('excavator-prd-report skill: --project', () => {
   it('passes --project "$PROJECT_ROOT" to every prd.mjs command that reads $OUT', () => {
     const commands = skill.split('\n').map((line) => line.trim()).filter((line) => line.startsWith(`node ${PRD} `));
     const reading = commands.filter((line) => !line.startsWith(`node ${PRD} entrypoints `));
-    expect(new Set(reading.map((line) => line.split(' ')[2]))).toEqual(new Set(['check-index', 'check-lane', 'mark', 'aggregate', 'assemble', 'reply']));
+    expect(new Set(reading.map((line) => line.split(' ')[2]))).toEqual(new Set(['check-index', 'check-lane', 'mark', 'aggregate', 'assemble', 'page', 'reply']));
     for (const line of reading) expect(line, line).toMatch(/ --project "\$PROJECT_ROOT"$/);
   });
 });
@@ -395,6 +395,42 @@ describe('excavator-prd-report skill: verify and aggregate', () => {
     const assemble = verify.indexOf(`node ${PRD} assemble "$OUT"`);
     expect(aggregate).toBeGreaterThan(-1);
     expect(assemble).toBeGreaterThan(aggregate);
+  });
+});
+
+/** The report page step (openspec change prd-report-page, design D8): after assemble, before reply, a failure never stops the reply. */
+const PAGE_COMMAND = `node ${PRD} page "$OUT" --project "$PROJECT_ROOT"`;
+const PAGE_PROGRESS = 'Then tell the user `Page: <status>`, where `<status>` is `written` or `failed`, in `$LANGUAGE`.';
+const PAGE_FAILURE = 'When `page` exits non-zero, tell the user the lines it printed as they are, do not build or edit any page or product file yourself, and go on to Phase 4: `reply` prints `Report page: not written`.';
+const REPLY_ORDER = '`reply` prints, in this order: the path of `PRD.md`; the report page line, `Report page: <path>` or `Report page: not written`; the counts; the frameworks without patterns, when there are some; and the offer to save the PRD, when `$OUT` is the default.';
+
+describe('excavator-prd-report skill: the report page', () => {
+  it('writes report.html after assemble, in Phase 3, and before the reply of Phase 4', () => {
+    const verify = phase.get(3);
+    const assemble = verify.indexOf(`node ${PRD} assemble "$OUT"`);
+    const page = verify.indexOf(PAGE_COMMAND);
+    expect(assemble).toBeGreaterThan(-1);
+    expect(page).toBeGreaterThan(assemble);
+    expect(flat(skill).split(PAGE_COMMAND)).toHaveLength(2);
+    expect(phase.get(4)).not.toContain(PAGE_COMMAND);
+    expect(skill.indexOf(PAGE_COMMAND)).toBeLessThan(skill.indexOf(REPLY_COMMAND));
+  });
+
+  it('says what a failed page step means: tell the reason, make no page by hand, still reply', () => {
+    const verify = phase.get(3);
+    expect(verify).toContain(PAGE_FAILURE);
+    expect(verify).toContain(PAGE_PROGRESS);
+    expect(verify).toContain('a failed `page` removes the page an earlier run left.');
+    expect(verify.indexOf(PAGE_FAILURE)).toBeGreaterThan(verify.indexOf(PAGE_COMMAND));
+  });
+
+  it('lists report.html in the product directory and the --out option', () => {
+    expect(flat(before)).toContain('| `report.html` | `prd.mjs page` |');
+    expect(before).toContain('`--out <dir>` — where the run\'s files, the PRD and the report page go');
+  });
+
+  it('lists the reply lines in order, the report page line second', () => {
+    expect(flat(skill.slice(skill.indexOf('2. **Save and reply.**')))).toContain(REPLY_ORDER);
   });
 });
 

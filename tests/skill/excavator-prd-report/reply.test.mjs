@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { cpSync, existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
+import { TEMPLATE_VARIABLE } from '../../../skills/excavator-prd-report/lib/page.mjs';
 import { makeLaneRun, runPrd } from './helpers.mjs';
 
 const cleanups = [];
@@ -22,23 +23,58 @@ function assembled(mutate = () => {}) {
   expect(runPrd(['assemble', run.out, '--project', run.project]).status).toBe(0);
   return { run, fields: fields.json };
 }
+/** Write report.html the way the skill's page step does, from a synthetic template. */
+function writePage(run) {
+  const template = join(run.root, 'template.html');
+  writeFileSync(template, '<!doctype html><html><head><!-- xv:csp --></head><body><!-- xv:data --></body></html>\n');
+  const out = runPrd(['page', run.out, '--project', run.project], { env: { ...process.env, [TEMPLATE_VARIABLE]: template } });
+  expect(out.status, out.stderr).toBe(0);
+}
 const lines = (out) => out.stdout.split('\n').slice(0, -1);
 const OFFER = (path) => `To save it in the project, say so: it goes to ${path} unless you give another path. Commit it to share it with the team.`;
 
 describe('prd.mjs reply', () => {
-  it('prints the five fixed lines from the fields aggregate printed, and nothing else when --out was given', () => {
+  it('prints the six fixed lines from the fields aggregate printed, and nothing else when --out was given', () => {
     const { run, fields } = assembled();
     const out = runPrd(['reply', run.out, '--project', run.project]);
     expect(out.status, out.stderr).toBe(0);
     const v = fields.verification;
     expect(lines(out)).toEqual([
       join(run.out, 'PRD.md'),
+      'Report page: not written',
       `${fields.features.written}/${fields.features.total} features written, ${fields.features.failed} failed`,
       `${fields.diagrams} diagrams`,
       `${fields.findings.product} product, ${fields.findings.technical} technical findings, anchors checked`,
       `Statements: ${v.verified} verified, ${v.contradicted} contradicted, ${v.misattributed} misattributed, ${v.unverifiable} unverifiable; open items: ${v.resolvedRight} resolved right, ${v.resolvedWrong} resolved wrong, ${v.stillOpen} still open; cross-section conflicts: ${v.conflicts}, not checked: ${v.notChecked}`,
     ]);
-    expect(lines(out)[1]).toBe('2/2 features written, 0 failed');
+    expect(lines(out)[2]).toBe('2/2 features written, 0 failed');
+  });
+
+  it('prints the report page line second, with the path of report.html once page wrote it', () => {
+    const { run } = assembled();
+    const before = lines(runPrd(['reply', run.out, '--project', run.project]));
+    expect(before[1]).toBe('Report page: not written');
+    writePage(run);
+    const after = lines(runPrd(['reply', run.out, '--project', run.project]));
+    expect(after[0]).toBe(join(run.out, 'PRD.md'));
+    expect(after[1]).toBe(`Report page: ${join(run.out, 'report.html')}`);
+    // Only that line differs, and it is never left out.
+    expect(after.filter((line, at) => line !== before[at])).toEqual([after[1]]);
+    expect(after).toHaveLength(before.length);
+    rmSync(join(run.out, 'report.html'));
+    expect(lines(runPrd(['reply', run.out, '--project', run.project]))[1]).toBe('Report page: not written');
+  });
+
+  it('says not written after a page step that failed, even though an earlier run wrote report.html', () => {
+    const { run } = assembled();
+    writePage(run);
+    expect(lines(runPrd(['reply', run.out, '--project', run.project]))[1]).toBe(`Report page: ${join(run.out, 'report.html')}`);
+    // The resumed run's page step fails (the template is gone): it removes the old page, so reply cannot name it.
+    const failed = runPrd(['page', run.out, '--project', run.project], { env: { ...process.env, [TEMPLATE_VARIABLE]: join(run.root, 'nowhere.html') } });
+    expect(failed.status).toBe(2);
+    const reply = runPrd(['reply', run.out, '--project', run.project]);
+    expect(reply.status, reply.stderr).toBe(0);
+    expect(lines(reply)[1]).toBe('Report page: not written');
   });
 
   it('adds the frameworks without patterns, joined with a comma, only when there are some', () => {
@@ -47,7 +83,7 @@ describe('prd.mjs reply', () => {
       index.candidates.uncovered = ['gin', 'spring'];
       r.writeIndex(index);
     });
-    expect(lines(runPrd(['reply', run.out, '--project', run.project]))[5]).toBe('No entrypoint patterns for: gin, spring');
+    expect(lines(runPrd(['reply', run.out, '--project', run.project]))[6]).toBe('No entrypoint patterns for: gin, spring');
   });
 
   it('offers to save the PRD only when <out> is the default, at docs/PRD.md or docs/PRD-<scope>.md', () => {
@@ -56,9 +92,10 @@ describe('prd.mjs reply', () => {
     cpSync(run.out, inside, { recursive: true });
     expect(runPrd(['assemble', inside, '--project', run.project]).status).toBe(0);
     const whole = lines(runPrd(['reply', inside, '--project', run.project]));
-    expect(whole).toHaveLength(6);
+    expect(whole).toHaveLength(7);
     expect(whole[0]).toBe(join(inside, 'PRD.md'));
-    expect(whole[5]).toBe(OFFER('docs/PRD.md'));
+    expect(whole[1]).toBe('Report page: not written');
+    expect(whole[6]).toBe(OFFER('docs/PRD.md'));
     for (const [scope, path] of [['billing', 'docs/PRD-billing.md'], ['services/billing/', 'docs/PRD-services-billing.md']]) {
       const indexPath = join(inside, 'index.json');
       const index = JSON.parse(readFileSync(indexPath, 'utf-8'));
@@ -73,7 +110,7 @@ describe('prd.mjs reply', () => {
     rmSync(join(run.out, 'features', 'F1.md'));
     const out = runPrd(['reply', run.out, '--project', run.project]);
     expect(out.status, out.stderr).toBe(0);
-    expect(lines(out)[1]).toBe('2/2 features written, 0 failed');
+    expect(lines(out)[2]).toBe('2/2 features written, 0 failed');
     expect(run.readText('index.json')).toBe(before);
     expect(existsSync(join(run.out, 'index.json.lock'))).toBe(false);
   });

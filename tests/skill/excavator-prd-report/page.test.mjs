@@ -75,19 +75,38 @@ describe('prd.mjs page', () => {
     expect(readFileSync(report).equals(first)).toBe(true);
   });
 
-  it('refuses a run that is not up to date: exit 2, names aggregate, writes nothing and leaves an older page alone', () => {
+  it('refuses a run that is not up to date: exit 2, names aggregate, writes nothing', () => {
     const { run, page, report } = pageRun();
     run.writeText('features/F1.md', run.readText('features/F1.md').replace(/```mermaid[\s\S]*?```\n/, ''));
-    let out = page();
+    const out = page();
     expect(out.status).toBe(2);
     expect(out.stderr).toMatch(/prd\.mjs aggregate/);
     expect(existsSync(report)).toBe(false);
     expect(readdirSync(run.out).filter((name) => name.includes('.tmp-'))).toEqual([]);
+  });
 
-    writeFileSync(report, 'an older page');
-    out = page();
+  it('removes the page an earlier run left when it fails, so no stale report.html survives', () => {
+    const { run, page, report } = pageRun();
+    expect(page().status).toBe(0);
+    expect(existsSync(report)).toBe(true);
+    const index = run.readText('index.json');
+    run.writeText('features/F1.md', run.readText('features/F1.md').replace(/```mermaid[\s\S]*?```\n/, ''));
+    const stale = page();
+    expect(stale.status).toBe(2);
+    expect(stale.stderr).toMatch(/prd\.mjs aggregate/);
+    expect(existsSync(report)).toBe(false);
+    // The page is the only file page owns: everything else is as it was.
+    expect(run.readText('index.json')).toBe(index);
+  });
+
+  it('removes the page an earlier run left when the template is missing', () => {
+    const { run, page, report } = pageRun();
+    expect(page().status).toBe(0);
+    expect(existsSync(report)).toBe(true);
+    const out = page(join(run.root, 'nowhere', 'prd-report-page.html'));
     expect(out.status).toBe(2);
-    expect(readFileSync(report, 'utf-8')).toBe('an older page');
+    expect(out.stderr).toMatch(/does not exist: run `pnpm -r build`/);
+    expect(existsSync(report)).toBe(false);
   });
 
   it('refuses a run whose findings.json is missing', () => {
