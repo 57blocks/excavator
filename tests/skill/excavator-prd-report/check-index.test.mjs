@@ -33,6 +33,30 @@ describe('prd.mjs check-index', () => {
     expect(run.readText('index.json')).toBe(before);
   });
 
+  it('accepts an index without priority counts and one with them, and keeps what is recorded', () => {
+    const run = laneRun();
+    expect(runPrd(['check-index', run.out, '--project', run.project]).status).toBe(0);
+    const index = run.readIndex();
+    expect(index.features[0].counts.findings).toEqual({ product: 0, technical: 0 });
+    index.features[0].counts.findings.priority = { P0: 0, P1: 0, P2: 0, unranked: 0 };
+    run.writeIndex(index);
+    const out = runPrd(['check-index', run.out, '--project', run.project]);
+    expect(out.status, out.stdout).toBe(0);
+    expect(run.readIndex().features[0].counts.findings.priority).toEqual({ P0: 0, P1: 0, P2: 0, unranked: 0 });
+  });
+
+  it('fails priority counts that are not { P0, P1, P2, unranked } of counts', () => {
+    for (const priority of [{ P0: 0, P1: 0, P2: 0 }, { P0: 0, P1: 0, P2: 0, unranked: -1 }, { P0: 0, P1: 0, P2: 0, unranked: '0' }, 'none', null, []]) {
+      const run = laneRun();
+      const index = run.readIndex();
+      index.features[0].counts = { diagrams: 0, evidence: 0, findings: { product: 0, technical: 0, priority }, verification: null };
+      run.writeIndex(index);
+      const out = runPrd(['check-index', run.out, '--project', run.project]);
+      expect(out.status, JSON.stringify(priority)).toBe(1);
+      expect(reasons(out), JSON.stringify(priority)).toContain('F1: counts.findings.priority is not { P0, P1, P2, unranked }');
+    }
+  });
+
   it('fails and names the candidate that is in no feature and not unassigned', () => {
     const run = laneRun();
     const index = run.readIndex();

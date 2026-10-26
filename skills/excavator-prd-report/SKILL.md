@@ -17,9 +17,10 @@ Two rules govern everything below:
 
 | Who | Does |
 |---|---|
-| `prd.mjs` (a script, no model) | Lists the entrypoint candidates, checks the index and each lane, records each dispatch and failure, counts, builds every table and assembles `PRD.md`. |
-| You (the orchestrator) | Group the candidates into features, hunt the behavior the patterns cannot see, dispatch the lanes, verify each chapter, write the overview, and reply. |
+| `prd.mjs` (a script, no model) | Lists the entrypoint candidates, checks the index, each lane and each priority file, records each dispatch and failure, merges the levels into the findings, counts, builds every table and assembles `PRD.md`. |
+| You (the orchestrator) | Group the candidates into features, hunt the behavior the patterns cannot see, dispatch the lanes, verify each chapter, dispatch the ranking subagents, write the overview, and reply. |
 | One subagent lane per feature | Reads that feature's code and writes its chapter and its findings — two files, nothing else. |
+| One ranking subagent per batch of features | Reads those features' findings and the source their evidence names and writes one priority file per feature, nothing else. |
 
 All files of a run live in `$OUT`:
 
@@ -30,6 +31,7 @@ All files of a run live in `$OUT`:
 | `index.json` | the jq command of Phase 1; then only `prd.mjs` changes it |
 | `features/<id>.md`, `findings/<id>.json` | the lane of feature `<id>` |
 | `verification/<id>.md`, `verification/<id>.txt` | you, following the `excavator-verify` procedure |
+| `priorities/<id>.json` | the ranking subagent of the batch that holds feature `<id>` |
 | `findings.json`, `tables/*.md` | `prd.mjs aggregate` |
 | `PRD.md` | `prd.mjs assemble` |
 | `report.html` | `prd.mjs page` |
@@ -99,7 +101,7 @@ Read efficiently: grep for the entries you need, follow edges for chains, don't 
      node "$PLUGIN_ROOT/skills/excavator-prd-report/prd.mjs" aggregate "$OUT" --project "$PROJECT_ROOT"
      jq -r '.features[] | [.id, .status, .attempts, .name] | @tsv' "$OUT/index.json"
      ```
-     When `aggregate` exits 1, show its lines and stop. Otherwise: `verified` features are kept as they are; `written` and `checked` features only get the later steps (Phase 3); `planned` features, and `failed` features with `attempts` below 2, go back to Phase 2; `failed` features with `attempts` 2 stay failed. Skip Phase 1 and continue with Phase 2.
+     When `aggregate` exits 1, show its lines and stop. Otherwise: `verified` features are kept as they are; `written` and `checked` features only get the later steps (Phase 3); `planned` features, and `failed` features with `attempts` below 2, go back to Phase 2; `failed` features with `attempts` 2 stay failed. Features whose `priorities/<id>.json` passes `check-priorities` are not ranked again (Phase 3), and an output directory with verified chapters and no `priorities/` only gets the ranking step and the steps after it. Skip Phase 1 and continue with Phase 2.
    - Otherwise create `$OUT` (`mkdir -p "$OUT"`) and continue with Phase 1.
 
 ---
@@ -297,7 +299,37 @@ Write what you tell the user during this phase in `$LANGUAGE`, as **Language** i
    Never edit `features/<id>.md` or `findings/<id>.json` yourself. The only change a chapter gets after its lane is the one the verification's `--fix` step makes in step 2; a finding is never changed after `check-lane`.
 2. Verify each listed chapter yourself, one at a time, not in a lane (a lane cannot reliably dispatch the subagents the verification needs, and the verification needs a clean context): take `$OUT/features/<id>.md` and follow the procedure in `$PLUGIN_ROOT/skills/excavator-verify/SKILL.md` on it with `--fix`, `--language` set to `$LANGUAGE` and `PROJECT_ROOT` as the project path, and `--report` set to `$OUT/verification/<id>.md`. It checks the five statement classes and the consistency of the chapter, and corrects the chapter in place.
 3. Then run the reply command of its Phase 6 and store the lines it prints verbatim in `$OUT/verification/<id>.txt` (`printf '%s\n' … > "$OUT/verification/<id>.txt"`), even though Phase 6 of `excavator-verify` says to skip its reply when another skill follows its procedure: `aggregate` reads the counts from those lines by their position, in any language, and fails the feature when they are not there or `verification/<id>.md` is missing. Do not show these lines to the user; tell them `Verify <id> <n>/<N>: done` in `$LANGUAGE`.
-4. Write `$OUT/overview.md` in `$LANGUAGE`: a title (`# <project or product name>`), then a short **Doc Info** block (version, date, project/domain, source revision, audience, and **scope size**) — localized to `$LANGUAGE` — a product summary, the roles, an overview of the automated behavior, and the glossary as a list (`term — meaning`). Put no table in `overview.md`: the tables are made by `aggregate` and inserted by `assemble`. Scope size is counted by command, never estimated: run the following (`SCOPE` is the `--scope` path, or `.` for the whole project) and copy the two numbers into Doc Info as "N files, M lines":
+4. Rank the findings. Each finding gets the level P0, P1 or P2 from a ranking subagent that reads only the findings and the source their evidence names, so one rubric sets the scale for every feature; a lane never ranks its own findings. The scripts check the files, merge the levels into `findings.json`, sort and count them: you never rank, sort or add up a level. Never write or edit `priorities/<id>.json` yourself. Only the ranking subagent writes it, the same rule as the lane files.
+   1. Run `aggregate`, then `check-priorities`:
+      ```bash
+      node "$PLUGIN_ROOT/skills/excavator-prd-report/prd.mjs" aggregate "$OUT" --project "$PROJECT_ROOT"
+      node "$PLUGIN_ROOT/skills/excavator-prd-report/prd.mjs" check-priorities "$OUT" --project "$PROJECT_ROOT"
+      ```
+      It prints one line for each written feature, `<id>: ranked` or its problems, then one line `batch N: <ids>` for each batch of the features still to rank (at most 120 findings to a batch, in chapter order), then `Rank: <n> features ranked, <m> unranked`. A feature whose file passes is not ranked again, so a resumed run ranks only the rest. It exits 0 when every feature is ranked: go on to the next step.
+   2. When it exits 1, for each `batch N:` line it printed, dispatch one ranking subagent with the prompt below, in the foreground, at most `$CONCURRENCY` in one message, never in the background: a run without a terminal stops waiting for background subagents. Fill in the placeholders from the line (the ids) and the index (`jq -r '.features[] | [.id, .name] | @tsv' "$OUT/index.json"`), with `$PROJECT_ROOT`, `$OUT` and `$LANGUAGE` written as their values. Wait for every subagent of the message to return before you send the next.
+   3. Run `check-priorities` again. For each feature it still reports problems for: delete its file (`rm -f "$OUT/priorities/<id>.json"`), dispatch one ranking subagent for it alone, in the foreground, with the prompt followed by this line and then each problem line printed for it: `Your previous attempt failed these checks; fix them and write the file again:`. Run `check-priorities` again. When the feature still has problems, delete its file: its findings are unranked. Tell the user `Rank <id>: unranked` in `$LANGUAGE`.
+   4. Run `check-priorities` a last time and tell the user its last line, `Rank: <n> features ranked, <m> unranked`, as printed, translated into `$LANGUAGE` with the numbers unchanged. A feature that stays unranked is not a failure of the run: its status does not change and `PRD.md` is assembled as before.
+
+The ranking prompt:
+
+````text
+You rank the findings of the features listed below, for the As-Is PRD of the project at $PROJECT_ROOT. Your features: <id and name of each feature of the batch, one per line>.
+
+Your scope. Read only these files: <$OUT/findings/<id>.json of each feature of the batch, one per line>, and the source files their evidence names, a few dozen lines around each passage. Read code only; never run, build or change anything in the project.
+
+Give every finding of your features a level by this rubric:
+
+- P0 — the defect lets someone do what they are not allowed to (pass an authentication or permission check meant to stop them, read or change another user's data, see a secret), loses or corrupts stored data, produces a wrong amount of money, or makes a main flow of the feature fail for every user.
+- P1 — the defect gives users a wrong, inconsistent or missing result in a flow they use, hides a failure from users or operators (an error swallowed, success reported after a failure), or fails on ordinary input.
+- P2 — any other defect: a value fixed in code, dead or duplicated code, inconsistent naming, gaps in logging or documentation.
+Give the highest level whose condition the evidence shows. When the evidence does not show it (for example, it is not evident that an outsider can reach the endpoint), give the lower level and say in the reason what is not evident.
+
+Write only `$OUT/priorities/<id>.json` for each feature of your batch, and nothing else anywhere, each in this shape: `{"priorities": [{"id": "<finding id>", "priority": "P0", "reason": "<one sentence>"}]}`. It holds one entry for each finding of the feature, each id exactly as the findings file spells it and listed once, `priority` one of `P0`, `P1` or `P2`, and no other key. The reason is one sentence in `$LANGUAGE`, at most 300 characters, that says which criterion the evidence meets and who is affected. Describe the defect's effect as it is: a reason with "should", "recommend", "suggest", "refactor", "ought to", "better to", "it would be better", or the same words in `$LANGUAGE`, is refused.
+
+Reply with one line: `<ids of your features>: ranked`, and nothing else.
+````
+
+5. Write `$OUT/overview.md` in `$LANGUAGE`: a title (`# <project or product name>`), then a short **Doc Info** block (version, date, project/domain, source revision, audience, and **scope size**) — localized to `$LANGUAGE` — a product summary, the roles, an overview of the automated behavior, and the glossary as a list (`term — meaning`). Put no table in `overview.md`: the tables are made by `aggregate` and inserted by `assemble`. Scope size is counted by command, never estimated: run the following (`SCOPE` is the `--scope` path, or `.` for the whole project) and copy the two numbers into Doc Info as "N files, M lines":
    ```bash
    cd "$PROJECT_ROOT"
    if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
@@ -309,13 +341,13 @@ Write what you tell the user during this phase in `$LANGUAGE`, as **Language** i
    fi
    ```
    If `--scope` names a domain rather than a directory, list the directories it covers and count each. A project root that holds several Git repositories is not itself a work tree: count each member repository with the Git branch inside it, and add the numbers up.
-5. Aggregate the lanes, assemble the PRD and write the report page:
+6. Aggregate the lanes, assemble the PRD and write the report page:
    ```bash
    node "$PLUGIN_ROOT/skills/excavator-prd-report/prd.mjs" aggregate "$OUT" --project "$PROJECT_ROOT"
    node "$PLUGIN_ROOT/skills/excavator-prd-report/prd.mjs" assemble "$OUT" --project "$PROJECT_ROOT"
    node "$PLUGIN_ROOT/skills/excavator-prd-report/prd.mjs" page "$OUT" --project "$PROJECT_ROOT"
    ```
-   `aggregate` recomputes every status from the files, writes `findings.json` and `tables/*.md`, and prints the counts as JSON. `aggregate` exits 1 when a candidate or a status is not conserved, with each problem on a line: show the lines and stop. `reply` (Phase 4) prints the reply from what `aggregate` recorded. `assemble` writes `$OUT/PRD.md` — the overview, the roles table, the written chapters in chapter order, then an appendix with the coverage table, the verification table and the failed features with their reasons — and prints its path. It exits 1 when a file it needs is missing: write it and run it again.
+   `aggregate` recomputes every status from the files, writes `findings.json` (each finding with its level and reason, ordered by level) and `tables/*.md`, and prints the counts as JSON. `aggregate` exits 1 when a candidate or a status is not conserved, with each problem on a line: show the lines and stop. `reply` (Phase 4) prints the reply from what `aggregate` recorded. `assemble` writes `$OUT/PRD.md` — the overview, the roles table, the written chapters in chapter order, then an appendix with the coverage table, the verification table and the failed features with their reasons — and prints its path. It exits 1 when a file it needs is missing: write it and run it again.
 
    `page` writes `$OUT/report.html`, one page that opens from disk with a double click and holds the overview, every feature with its findings, all findings and the coverage; it reads the files `aggregate` and `assemble` left, changes none of them, and prints the page's path; a failed `page` removes the page an earlier run left. Then tell the user `Page: <status>`, where `<status>` is `written` or `failed`, in `$LANGUAGE`. When `page` exits non-zero, tell the user the lines it printed as they are, do not build or edit any page or product file yourself, and go on to Phase 4: `reply` prints `Report page: not written`.
 

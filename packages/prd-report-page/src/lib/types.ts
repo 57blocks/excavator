@@ -14,6 +14,11 @@ export type VerificationCounts = Record<VerificationKey, number>;
 
 export type FindingClass = 'product' | 'technical';
 
+export const PRIORITIES = ['P0', 'P1', 'P2'] as const;
+/** A finding's level as aggregate writes it; null is a finding no ranking subagent has given a level. */
+export type Priority = (typeof PRIORITIES)[number];
+export interface PriorityCounts { P0: number; P1: number; P2: number; unranked: number }
+
 export interface Evidence {
   file: string;
   passage: string;
@@ -28,6 +33,8 @@ export interface Finding {
   evidence: Evidence[];
   feature: string;
   verdict: string;
+  priority: Priority | null;
+  priorityReason: string | null;
 }
 
 export interface Candidate {
@@ -55,7 +62,7 @@ export interface Feature {
   counts: {
     diagrams: number;
     evidence: number;
-    findings: { product: number; technical: number };
+    findings: { product: number; technical: number; priority: PriorityCounts };
     verification: VerificationCounts | null;
   };
   entrypoints: Candidate[];
@@ -75,7 +82,7 @@ export interface PageData {
   counts: {
     features: { total: number; written: number; failed: number };
     diagrams: number;
-    findings: { product: number; technical: number };
+    findings: { product: number; technical: number; priority: PriorityCounts };
     verification: VerificationCounts;
   };
   overview: string;

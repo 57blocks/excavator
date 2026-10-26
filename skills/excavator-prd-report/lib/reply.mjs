@@ -5,8 +5,11 @@
  * `aggregate` recorded in index.json, through the same summary aggregate
  * prints, and writes nothing. The second line is the report page: its path
  * when `<out>/report.html` exists, else `Report page: not written`, never
- * left out (change prd-report-page, design D8). The frameworks without patterns are a line only
- * when there are some; the offer to save the PRD is a line only when <out> is
+ * left out (change prd-report-page, design D8). The findings line ends with
+ * the findings counted by level, `<n> P0, <n> P1, <n> P2, <n> unranked`, from
+ * the totals aggregate recorded (change prd-report-finding-priority, design
+ * D7); an index.json from before priorities counts them all as unranked.
+ * The frameworks without patterns are a line only when there are some; the offer to save the PRD is a line only when <out> is
  * the default `<root>/.excavator/prd-report`, naming `docs/PRD.md`, or
  * `docs/PRD-<scope>.md` for a scoped run.
  */
@@ -39,13 +42,15 @@ export function reply(outDirArg, root) {
 
   const s = summarize(outDir, index, root);
   const v = s.verification;
+  const p = s.findings.priority;
   const lines = [
     s.prdPath,
     // Never left out: the path when `page` wrote report.html, else the words that say it did not.
     existsSync(join(outDir, PAGE_FILE)) ? `Report page: ${join(outDir, PAGE_FILE)}` : 'Report page: not written',
     `${s.features.written}/${s.features.total} features written, ${s.features.failed} failed`,
     `${s.diagrams} diagrams`,
-    `${s.findings.product} product, ${s.findings.technical} technical findings, anchors checked`,
+    // The levels are the totals aggregate recorded (change prd-report-finding-priority, design D7), never added up by the model.
+    `${s.findings.product} product, ${s.findings.technical} technical findings, anchors checked: ${p.P0} P0, ${p.P1} P1, ${p.P2} P2, ${p.unranked} unranked`,
     `Statements: ${v.verified} verified, ${v.contradicted} contradicted, ${v.misattributed} misattributed, ${v.unverifiable} unverifiable; `
       + `open items: ${v.resolvedRight} resolved right, ${v.resolvedWrong} resolved wrong, ${v.stillOpen} still open; `
       + `cross-section conflicts: ${v.conflicts}, not checked: ${v.notChecked}`,

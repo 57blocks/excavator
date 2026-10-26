@@ -4,7 +4,7 @@ import { join } from 'node:path';
 
 import { FIXTURES, runPrd } from './helpers.mjs';
 
-const COMMANDS = ['entrypoints', 'check-index', 'check-lane', 'aggregate', 'assemble', 'page', 'mark', 'reply'];
+const COMMANDS = ['entrypoints', 'check-index', 'check-lane', 'check-priorities', 'aggregate', 'assemble', 'page', 'mark', 'reply'];
 const MISSING = join(FIXTURES, 'no-such-out');
 
 describe('prd.mjs command line', () => {
@@ -27,7 +27,7 @@ describe('prd.mjs command line', () => {
   });
 
   it('exits 2 and names the directory when <out> does not exist, for every command that reads one', () => {
-    for (const args of [['check-index', MISSING], ['check-lane', MISSING, 'F1'], ['aggregate', MISSING], ['assemble', MISSING], ['page', MISSING], ['mark', MISSING, 'F1', 'dispatched'], ['reply', MISSING]].map((a) => [...a, '--project', FIXTURES])) {
+    for (const args of [['check-index', MISSING], ['check-lane', MISSING, 'F1'], ['check-priorities', MISSING], ['aggregate', MISSING], ['assemble', MISSING], ['page', MISSING], ['mark', MISSING, 'F1', 'dispatched'], ['reply', MISSING]].map((a) => [...a, '--project', FIXTURES])) {
       const out = runPrd(args);
       expect(out.status, args[0]).toBe(2);
       expect(out.stderr, args[0]).toContain(MISSING);
@@ -36,7 +36,7 @@ describe('prd.mjs command line', () => {
   });
 
   it('exits 2 for a missing or extra argument and for an unknown option', () => {
-    for (const args of [['check-index'], ['check-lane', MISSING], ['aggregate'], ['assemble', 'a', 'b'], ['aggregate', MISSING, '--fast', 'x'], ['entrypoints', '.', '--scope']]) {
+    for (const args of [['check-index'], ['check-lane', MISSING], ['check-priorities'], ['check-priorities', 'a', 'b'], ['aggregate'], ['assemble', 'a', 'b'], ['aggregate', MISSING, '--fast', 'x'], ['entrypoints', '.', '--scope']]) {
       const out = runPrd(args);
       expect(out.status, args.join(' ')).toBe(2);
       expect(out.stderr, args.join(' ')).not.toBe('');

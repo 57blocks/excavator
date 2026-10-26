@@ -2,7 +2,7 @@ import type { FindingsFilters } from './route';
 import type { Finding } from './types';
 
 /**
- * The findings that pass `filters`: the class, the owning feature, and a
+ * The findings that pass `filters`: the class, the level (`unranked` is a null priority), the owning feature, and a
  * case-insensitive text search over the statement and every evidence passage.
  * The order of `findings` is kept.
  */
@@ -10,6 +10,7 @@ export function filterFindings(findings: readonly Finding[], filters: FindingsFi
   const needle = filters.q.trim().toLowerCase();
   return findings.filter((finding) => {
     if (filters.class !== 'all' && finding.class !== filters.class) return false;
+    if (filters.priority !== 'all' && (finding.priority ?? 'unranked') !== filters.priority) return false;
     if (filters.feature !== '' && finding.feature !== filters.feature) return false;
     if (needle === '') return true;
     if (finding.statement.toLowerCase().includes(needle)) return true;

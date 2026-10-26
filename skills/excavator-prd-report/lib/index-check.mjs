@@ -26,6 +26,9 @@ export const VERIFICATION_KEYS = Object.freeze([
   'verified', 'contradicted', 'misattributed', 'unverifiable',
   'resolvedRight', 'resolvedWrong', 'stillOpen', 'conflicts', 'notChecked',
 ]);
+/** The levels of a finding's priority, and the bucket of the findings with none (see priorities.mjs). */
+export const PRIORITY_LEVELS = Object.freeze(['P0', 'P1', 'P2']);
+export const UNRANKED = 'unranked';
 export const PROVENANCES = Object.freeze(['pattern', 'inferred']);
 export const MAX_ATTEMPTS = 2;
 
@@ -46,6 +49,12 @@ function countsProblems(counts) {
   if (!isCount(counts.evidence)) problems.push('counts.evidence is not a count');
   if (!isObject(counts.findings) || !isCount(counts.findings.product) || !isCount(counts.findings.technical)) {
     problems.push('counts.findings is not { product, technical }');
+  } else if (counts.findings.priority !== undefined) {
+    // Optional: an index.json from before priorities has none, and aggregate always writes it.
+    const levels = [...PRIORITY_LEVELS, UNRANKED];
+    if (!isObject(counts.findings.priority) || !levels.every((level) => isCount(counts.findings.priority[level]))) {
+      problems.push(`counts.findings.priority is not { ${levels.join(', ')} }`);
+    }
   }
   if (counts.verification !== null && counts.verification !== undefined) {
     if (!isObject(counts.verification) || !VERIFICATION_KEYS.every((key) => isCount(counts.verification[key]))) {
