@@ -66,3 +66,45 @@
 - **O4 无残留**：`skills/excavator-prd-report/` 与 `tests/skill/excavator-prd-report/` 里 `skills/excavator-prd/`、`.excavator/prd"`、`excavator-prd/1` 的出现次数为 0。
 - **O5 插件**：`claude plugin validate .` 通过，安装测试同时列出 `excavator-prd` 与 `excavator-prd-report`。
 - 不跑真实语料：O1 证明单篇版与已验收版本相同，O2 证明流水线只差名字，真实运行不提供新信息（按「验收按风险分级」）。
+
+## 验收记录（2026-10-26）
+
+验收者只检查、不改代码；每个代码提交在 `git clone --no-hardlinks` 的分离检出里单独跑，跑完即删。
+
+### O3 门（逐提交）
+
+| 提交 | install | build | `pnpm test` | check-refs | typecheck | `openspec validate --all --strict` | legacy-literals | CI 模拟重跑（短 TMPDIR + `user.useConfigOnly=true`） |
+|---|---|---|---|---|---|---|---|---|
+| `dc37a07b` | 过 | 过 | 239 文件；5235 过、4 跳过（共 5239） | 过 | 过 | 51/51 | 6/6 | 239 文件；5235 过、4 跳过 |
+| `dbfb27bf` | 过 | 过 | 227 文件；5110 过、4 跳过（共 5114） | 过 | 过 | 51/51 | 6/6 | 227 文件；5110 过、4 跳过 |
+| `cc38acad` | 过 | 过 | 227 文件；5110 过、4 跳过（共 5114） | 过 | 过 | 51/51 | 6/6 | 227 文件；5110 过、4 跳过 |
+
+- `dc37a07b` → `dbfb27bf` 少 12 个测试文件，等于 `dc37a07b` 上 `tests/skill/excavator-prd/` 的 12 个 `*.test.mjs`。
+- 未在本地跑：`pnpm --filter @excavator/core test`（三个提交都没动 `packages/core/`，CI 会跑）；隐私扫描（`scripts/ci/privacy-scan.mjs` 必须有名单文件，没有名单时退出 2，由 CI 用仓库 secret 跑）。
+
+### O1（skill 与测试部分）
+
+`git diff 33c1566d^1 cc38acad -- skills/excavator-prd tests/skill/test_prd_skill_contract.test.mjs`：0 字节。`skills/excavator-prd/` 在两端都只有 `SKILL.md` 1 个文件。spec 部分留到归档（4.2）。
+
+### O2 只改名
+
+导出 `33c1566d` 上的 4 处路径（68 个文件），按 D3 顺序替换，再在 `tests/skill/test_prd_skill_contract.test.mjs` 与 `tests/skill/excavator-prd/helpers.mjs` 两处把 `fixtures/prd-pipeline` 换成 `fixtures/prd-report-pipeline`，与 `cc38acad` 上的新路径（68 个文件）`diff -r`：
+
+- 装置先验（漏掉第二条 `.excavator/prd` → `.excavator/prd-report`）：42 行输出，6 个文件有差异：`skills/excavator-prd-report/` 的 `SKILL.md`、`lib/reply.mjs`、`prd.mjs`，`tests/skill/excavator-prd-report/` 的 `aggregate.test.mjs`、`entrypoints.test.mjs`，与 `tests/skill/test_prd_report_skill_contract.test.mjs`。
+- 完整替换：5 行输出，1 个文件有差异，只有 `skills/excavator-prd-report/SKILL.md` 第 3 行 `description`；无 `Only in`。
+
+### O4 无残留
+
+`cc38acad` 上 `skills/excavator-prd-report/`、`tests/skill/excavator-prd-report/`、`tests/skill/test_prd_report_skill_contract.test.mjs` 内：`skills/excavator-prd/` 0、`.excavator/prd"` 0、`excavator-prd/1` 0。对照（`33c1566d` 的旧路径，同一命令）：22、1、3。
+
+### O5 插件
+
+`claude plugin validate .`：通过（marketplace 清单）；`claude plugin validate .claude-plugin/plugin.json`：通过，1 条警告（根目录 `CLAUDE.md` 不作为插件上下文加载，与本变更无关）。`tests/install/install.test.mjs` 期待 16 个 skill，含 `excavator-prd`（第 59 行）与 `excavator-prd-report`（第 60 行）。
+
+### 文档审读
+
+- 新 `description` 以「每个功能的 PRD 章节与 findings 写进输出目录、拼装一份 `PRD.md`」开头，与单篇版「从知识图谱生成一篇 PRD」可区分。
+- `docs/deploy.md`：示例命令的 `--scope`、`--language`、`--out`、`--concurrency` 都是新 skill 的选项；产物说明（`index.json`、每功能一章一份 findings、验证报告、`PRD.md`、只写 `--out`、不跑 `/excavator`、`--fresh`）与新 `SKILL.md` 一致；耗时表 `/excavator-prd` 一行与 `33c1566d^1` 相同，描述的是单篇版。
+- 发现 F1（轻微，不挡合并）：`README.md:129` 「Generate an As-Is PRD for a feature」是 `33c1566d^1` 原文，但紧挨 `README.md:132` 「… for every feature」后，读起来像单篇版只能写一个功能；单篇版不给 `--scope` 时写整个项目（`skills/excavator-prd/SKILL.md:125` 「`.` for the whole project」）。
+
+F1 已修：`README.md` 单篇版的说明改为「为整个项目或用 `--scope` 限定的一块写一篇 As-Is PRD」，与 `SKILL.md` 的 `--scope` 说明一致。根目录 Markdown 按 AGENTS.md 只跑 `tests/refs/legacy-literals.test.mjs`：6/6 过。
