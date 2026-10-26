@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * prd.mjs — the deterministic half of /excavator-prd (openspec change
+ * prd.mjs — the deterministic half of /excavator-prd-report (openspec change
  * prd-feature-pipeline). Zero model calls; reads the target project's source
  * statically and never builds or runs it.
  *
@@ -70,7 +70,7 @@ Commands:
       Print the reply's lines in English: the PRD path, the counts the last
       aggregate recorded, the frameworks without patterns when there are
       some, and the offer to save the PRD when <out> is the default
-      <root>/.excavator/prd. Reads only; writes nothing.
+      <root>/.excavator/prd-report. Reads only; writes nothing.
 
 check-index, check-lane, mark and aggregate hold <out>/index.json.lock while
 they run and wait up to 10 s for another command's lock (exit 2 after that).

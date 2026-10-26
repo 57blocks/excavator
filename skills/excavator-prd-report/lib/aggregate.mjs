@@ -30,11 +30,11 @@ import { coverageTable, rolesTable, verificationTable } from './tables.mjs';
 import { projectRootProblem } from './project-root.mjs';
 import { parseVerificationReply } from './verification.mjs';
 
-export const FINDINGS_FORMAT = 'excavator-prd-findings/1';
+export const FINDINGS_FORMAT = 'excavator-prd-report-findings/1';
 export const FINDINGS_FILE = 'findings.json';
 export const PRD_FILE = 'PRD.md';
 /** The output directory the skill uses when --out is not given, under the project. */
-export const DEFAULT_OUT = join('.excavator', 'prd');
+export const DEFAULT_OUT = join('.excavator', 'prd-report');
 export const TABLE_FILES = Object.freeze(['tables/roles-by-feature.md', 'tables/coverage.md', 'tables/verification.md']);
 export const verificationPath = (id) => `verification/${id}.txt`;
 export const reportPath = (id) => `verification/${id}.md`;

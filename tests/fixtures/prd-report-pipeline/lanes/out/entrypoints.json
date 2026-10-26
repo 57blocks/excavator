@@ -1,5 +1,5 @@
 {
-  "format": "excavator-prd-entrypoints/1",
+  "format": "excavator-prd-report-entrypoints/1",
   "projectRoot": "__PROJECT_ROOT__",
   "scope": null,
   "detection": {

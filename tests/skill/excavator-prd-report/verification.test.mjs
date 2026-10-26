@@ -3,7 +3,7 @@
 // of integers on each line, so a reply translated under --language parses too.
 import { describe, expect, it } from 'vitest';
 
-import { parseVerificationReply } from '../../../skills/excavator-prd/lib/verification.mjs';
+import { parseVerificationReply } from '../../../skills/excavator-prd-report/lib/verification.mjs';
 
 const COUNTS = {
   verified: 7, contradicted: 2, misattributed: 1, unverifiable: 3,

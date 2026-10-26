@@ -6,7 +6,7 @@ import { describe, expect, it } from 'vitest';
 import { execFileSync } from 'node:child_process';
 import { join } from 'node:path';
 
-import { findOnce, normalize } from '../../../skills/excavator-prd/lib/normalize.mjs';
+import { findOnce, normalize } from '../../../skills/excavator-prd-report/lib/normalize.mjs';
 import { repoRoot } from './helpers.mjs';
 
 const cp = (...points) => String.fromCodePoint(...points);

@@ -179,7 +179,7 @@ describe('prd.mjs entrypoints', () => {
       'dist/app.js': route,
       'build/app.js': route,
       'vendor/x.js': route,
-      '.excavator/prd/x.js': route,
+      '.excavator/prd-report/x.js': route,
       'src/extra.test.js': route,
     });
     const out = runPrd(['entrypoints', root]);

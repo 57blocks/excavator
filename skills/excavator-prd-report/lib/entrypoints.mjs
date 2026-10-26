@@ -1,5 +1,5 @@
 /**
- * Entrypoint candidates for /excavator-prd (openspec change
+ * Entrypoint candidates for /excavator-prd-report (openspec change
  * prd-feature-pipeline, design D1).
  *
  * Reads the project's source statically and lists every line a pattern of
@@ -25,7 +25,7 @@ const here = dirname(fileURLToPath(import.meta.url));
 const PLUGIN_ROOT = resolve(here, '../../..');
 export const CATALOG_FILE = resolve(here, '../entrypoint-catalog.json');
 
-export const ENTRYPOINTS_FORMAT = 'excavator-prd-entrypoints/1';
+export const ENTRYPOINTS_FORMAT = 'excavator-prd-report-entrypoints/1';
 export const KINDS = Object.freeze(['route', 'page', 'job', 'main']);
 export const SKIPPED_DIRECTORIES = Object.freeze(['.git', '.excavator', 'node_modules', 'vendor', 'dist', 'build']);
 const TEST_FILE = /_test\.go$|\.test\.|\.spec\./;

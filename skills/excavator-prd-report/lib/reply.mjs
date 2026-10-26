@@ -5,7 +5,7 @@
  * `aggregate` recorded in index.json, through the same summary aggregate
  * prints, and writes nothing. The frameworks without patterns are a line only
  * when there are some; the offer to save the PRD is a line only when <out> is
- * the default `<root>/.excavator/prd`, naming `docs/PRD.md`, or
+ * the default `<root>/.excavator/prd-report`, naming `docs/PRD.md`, or
  * `docs/PRD-<scope>.md` for a scoped run.
  */
 

@@ -16,7 +16,7 @@ import { projectFiles } from './project-files.mjs';
 import { projectRootProblem } from './project-root.mjs';
 
 export const INDEX_FILE = 'index.json';
-export const INDEX_FORMAT = 'excavator-prd/1';
+export const INDEX_FORMAT = 'excavator-prd-report/1';
 export const FEATURE_ID = /^F[1-9]\d*$/;
 export const FEATURE_KINDS = Object.freeze(['flow', 'automated']);
 export const TIERS = Object.freeze(['frontend', 'backend']);

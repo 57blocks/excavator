@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { rmSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { ADVICE_WORDS } from '../../../skills/excavator-prd/lib/lane-check.mjs';
+import { ADVICE_WORDS } from '../../../skills/excavator-prd-report/lib/lane-check.mjs';
 import { makeLaneRun, runPrd } from './helpers.mjs';
 
 const cleanups = [];

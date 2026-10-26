@@ -115,10 +115,13 @@ describe('prd.mjs aggregate', () => {
     expect(run.readIndex().features[0].status).toBe('verified');
   });
 
-  it('prints outIsDefault true only when <out> is the project\'s .excavator/prd', () => {
+  it('prints outIsDefault true only when <out> is the project\'s .excavator/prd-report', () => {
     const run = runWithPlannedFeature();
     expect(runPrd(['aggregate', run.out, '--project', run.project]).json.outIsDefault).toBe(false);
-    const inside = join(run.project, '.excavator', 'prd');
+    const legacy = join(run.project, '.excavator', 'prd');
+    cpSync(run.out, legacy, { recursive: true });
+    expect(runPrd(['aggregate', legacy, '--project', run.project]).json.outIsDefault).toBe(false);
+    const inside = join(run.project, '.excavator', 'prd-report');
     cpSync(run.out, inside, { recursive: true });
     const out = runPrd(['aggregate', inside, '--project', run.project]);
     expect(out.status, out.stdout + out.stderr).toBe(0);
@@ -168,7 +171,7 @@ describe('prd.mjs aggregate', () => {
     const run = runWithPlannedFeature();
     expect(runPrd(['aggregate', run.out, '--project', run.project]).status).toBe(0);
     const product = run.readJson('findings.json');
-    expect(product.format).toBe('excavator-prd-findings/1');
+    expect(product.format).toBe('excavator-prd-report-findings/1');
     expect(product.sourceRevision).toBe('directory:synthetic');
     expect(product.findings.map((f) => [f.id, f.feature, f.verdict])).toEqual([
       ['F1-1', 'F1', 'anchor-checked'],

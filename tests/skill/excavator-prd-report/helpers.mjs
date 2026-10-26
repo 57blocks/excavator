@@ -1,5 +1,5 @@
 /**
- * Shared helpers for the excavator-prd script tests: run `prd.mjs` as a CLI
+ * Shared helpers for the excavator-prd-report script tests: run `prd.mjs` as a CLI
  * and copy the committed synthetic fixtures into temporary directories. Every
  * project here is purpose-built; nothing is derived from a real project.
  */
@@ -12,9 +12,9 @@ import { fileURLToPath } from 'node:url';
 
 const here = dirname(fileURLToPath(import.meta.url));
 export const repoRoot = resolve(here, '../../..');
-export const PRD_SCRIPT = join(repoRoot, 'skills/excavator-prd/prd.mjs');
-export const CATALOG_PATH = join(repoRoot, 'skills/excavator-prd/entrypoint-catalog.json');
-export const FIXTURES = join(repoRoot, 'tests/fixtures/prd-pipeline');
+export const PRD_SCRIPT = join(repoRoot, 'skills/excavator-prd-report/prd.mjs');
+export const CATALOG_PATH = join(repoRoot, 'skills/excavator-prd-report/entrypoint-catalog.json');
+export const FIXTURES = join(repoRoot, 'tests/fixtures/prd-report-pipeline');
 
 /** Run `node prd.mjs <args>`; returns { status, stdout, stderr, json } (json is null when stdout is not JSON). */
 export function runPrd(args, options = {}) {
