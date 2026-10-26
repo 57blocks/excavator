@@ -108,3 +108,9 @@
 - 发现 F1（轻微，不挡合并）：`README.md:129` 「Generate an As-Is PRD for a feature」是 `33c1566d^1` 原文，但紧挨 `README.md:132` 「… for every feature」后，读起来像单篇版只能写一个功能；单篇版不给 `--scope` 时写整个项目（`skills/excavator-prd/SKILL.md:125` 「`.` for the whole project」）。
 
 F1 已修：`README.md` 单篇版的说明改为「为整个项目或用 `--scope` 限定的一块写一篇 As-Is PRD」，与 `SKILL.md` 的 `--scope` 说明一致。根目录 Markdown 按 AGENTS.md 只跑 `tests/refs/legacy-literals.test.mjs`：6/6 过。
+
+### 评审后补记（PR #82）
+
+- 评审发现 `skills/excavator-prd-report/lib/aggregate.mjs` 的 `DEFAULT_OUT` 由 `join('.excavator', 'prd')` 拼成，D3 的全文替换看不见它，默认位置运行时最后回复缺保存提议；两个测试钉着旧路径所以没红。O2 的盲区：它只比对字面文本，拼接出的路径与名字不在其视野内。
+- 修复：`DEFAULT_OUT` 改为 `.excavator/prd-report`；新增护栏测试，从 `SKILL.md` 的 `OUT=` 行取默认值与 `DEFAULT_OUT` 比对（修复前红：`expected '.excavator/prd' to be '.excavator/prd-report'`）；`aggregate` 测试断言旧路径 `.excavator/prd` 不再算默认位置。对新 skill 与其测试里所有拼接的路径与名字逐个排查，无其他遗漏。
+- `tests/skill/excavator-prd-report`：13 文件、102 测试全过；全量门由 CI 在 Linux 上跑（本机负载 25–30，`tests/refs/check-refs.test.mjs` 的 20 s 超时单独跑 3/3 过）。
