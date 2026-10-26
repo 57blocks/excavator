@@ -59,7 +59,7 @@ export function reply(outDirArg, root) {
       + `cross-section conflicts: ${v.conflicts}, not checked: ${v.notChecked}`,
   ];
   // The failed features a second run still repairs (change prd-report-prd-shape, design D6): right after the counts.
-  if (s.retryable.length > 0) lines.push(`Retry: ${s.retryable.join(' ')} failed after one attempt; running the same command again retries them`);
+  if (s.retryable.length > 0) lines.push(`Retry: ${s.retryable.join(' ')} failed after one attempt; running the command again without --fresh retries them`);
   if (s.uncovered.length > 0) lines.push(`No entrypoint patterns for: ${s.uncovered.join(', ')}`);
   if (s.outIsDefault) {
     lines.push(`To save it in the project, say so: it goes to ${defaultSavePath(index.scope)} unless you give another path. Commit it to share it with the team.`);

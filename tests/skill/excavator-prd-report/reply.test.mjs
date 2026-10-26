@@ -115,7 +115,7 @@ describe('prd.mjs reply', () => {
   });
 
   describe('the retry line (change prd-report-prd-shape, design D6)', () => {
-    const RETRY = (ids) => `Retry: ${ids} failed after one attempt; running the same command again retries them`;
+    const RETRY = (ids) => `Retry: ${ids} failed after one attempt; running the command again without --fresh retries them`;
     /** Fail the lane of `id` with an advice word and record `attempts` dispatches. */
     const failLane = (r, id, attempts) => {
       const findings = r.readJson(`findings/${id}.json`);

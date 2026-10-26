@@ -422,7 +422,7 @@ describe('excavator-prd-report skill: verify and aggregate', () => {
 const PAGE_COMMAND = `node ${PRD} page "$OUT" --project "$PROJECT_ROOT"`;
 const PAGE_PROGRESS = 'Then tell the user `Page: <status>`, where `<status>` is `written` or `failed`, in `$LANGUAGE`.';
 const PAGE_FAILURE = 'When `page` exits non-zero, tell the user the lines it printed as they are, do not build or edit any page or product file yourself, and go on to Phase 4: `reply` prints `Report page: not written`.';
-const REPLY_ORDER = '`reply` prints, in this order: the path of `PRD.md`; the report page line, `Report page: <path>` or `Report page: not written`; the counts; the `Retry:` line, when a feature failed after one attempt, `Retry: <ids> failed after one attempt; running the same command again retries them`; the frameworks without patterns, when there are some; and the offer to save the PRD, when `$OUT` is the default.';
+const REPLY_ORDER = '`reply` prints, in this order: the path of `PRD.md`; the report page line, `Report page: <path>` or `Report page: not written`; the counts; the `Retry:` line, when a feature failed after one attempt, `Retry: <ids> failed after one attempt; running the command again without --fresh retries them`; the frameworks without patterns, when there are some; and the offer to save the PRD, when `$OUT` is the default.';
 
 describe('excavator-prd-report skill: the report page', () => {
   it('writes report.html after assemble, in Phase 3, and before the reply of Phase 4', () => {
@@ -919,7 +919,7 @@ describe('excavator-prd-report skill: verification, overview and reply (D4, D5, 
     expect(runPrd(['assemble', run.out, '--project', run.project]).status).toBe(0);
     const reply = lines(runPrd(['reply', run.out, '--project', run.project]));
     const retry = reply.find((line) => line.startsWith('Retry:'));
-    expect(retry).toBe('Retry: F2 failed after one attempt; running the same command again retries them');
+    expect(retry).toBe('Retry: F2 failed after one attempt; running the command again without --fresh retries them');
     const quoted = retry.replace('F2', '<ids>');
     const save = flat(skill.slice(skill.indexOf('2. **Save and reply.**')));
     expect(save).toContain(`\`${quoted}\``);
