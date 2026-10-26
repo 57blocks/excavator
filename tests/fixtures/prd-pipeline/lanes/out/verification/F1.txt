@@ -1,0 +1,5 @@
+verification/F1.md
+Statements: 7 verified, 2 contradicted, 1 misattributed, 3 unverifiable
+Open items: 2 resolved right, 1 resolved wrong, 4 still open
+Cross-section conflicts: 1; not checked: 5
+Corrections applied: 4 of 4, in features/F1.md
