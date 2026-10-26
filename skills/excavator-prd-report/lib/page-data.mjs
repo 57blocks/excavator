@@ -149,7 +149,7 @@ export function collectPageData(outDirArg, root) {
   const stored = readFindings(outDir);
   // What aggregate would write now, from the files as they are: the page compares every stored output with it.
   const computed = computeAggregate(outDir, index, root);
-  if (computed.problems.length > 0) throw new UsageError(`${INDEX_FILE} does not conserve its candidates: ${computed.problems.join('; ')}; ${RUN_AGGREGATE}`);
+  if (computed.problems.length > 0) throw new UsageError(`${INDEX_FILE} does not conserve its candidates, statuses and priority counts: ${computed.problems.join('; ')}; ${RUN_AGGREGATE}`);
   const states = computed.states.map((state) => state.feature);
   const stale = staleOutputs(outDir, index, stored, computed);
   if (stale.length > 0) throw new UsageError(`the run is not up to date with its files: ${stale.join('; ')}; ${RUN_AGGREGATE}`);

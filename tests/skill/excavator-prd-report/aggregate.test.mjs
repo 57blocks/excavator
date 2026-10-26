@@ -19,12 +19,13 @@ function laneRun() {
   return run;
 }
 
-/** The reply's 18 placeholders (the contract test of SKILL.md pins the same list). */
+/** The reply's 18 placeholders (the contract test of SKILL.md pins the same list), then the four priority totals aggregate also prints. */
 const FIELD_PATHS = [
   'prdPath',
   'features.total', 'features.written', 'features.failed',
   'diagrams',
   'findings.product', 'findings.technical',
+  'findings.priority.P0', 'findings.priority.P1', 'findings.priority.P2', 'findings.priority.unranked',
   'verification.verified', 'verification.contradicted', 'verification.misattributed', 'verification.unverifiable',
   'verification.resolvedRight', 'verification.resolvedWrong', 'verification.stillOpen',
   'verification.conflicts', 'verification.notChecked',
@@ -59,7 +60,7 @@ describe('prd.mjs aggregate', () => {
       prdPath: join(run.out, 'PRD.md'),
       features: { total: 3, written: 2, failed: 0 },
       diagrams: 2,
-      findings: { product: 1, technical: 1 },
+      findings: { product: 1, technical: 1, priority: { P0: 0, P1: 0, P2: 0, unranked: 2 } },
       verification: {
         verified: 7, contradicted: 2, misattributed: 1, unverifiable: 3,
         resolvedRight: 2, resolvedWrong: 1, stillOpen: 4, conflicts: 1, notChecked: 5,
@@ -75,7 +76,7 @@ describe('prd.mjs aggregate', () => {
     const features = run.readIndex().features;
     expect(features.map((f) => f.status)).toEqual(['verified', 'verified', 'planned']);
     expect(features[1].counts).toEqual({
-      diagrams: 1, evidence: 2, findings: { product: 0, technical: 1 },
+      diagrams: 1, evidence: 2, findings: { product: 0, technical: 1, priority: { P0: 0, P1: 0, P2: 0, unranked: 1 } },
       verification: { verified: 0, contradicted: 0, misattributed: 0, unverifiable: 0, resolvedRight: 0, resolvedWrong: 0, stillOpen: 0, conflicts: 0, notChecked: 0 },
     });
     expect(features[2].counts.verification).toBeNull();
@@ -153,7 +154,7 @@ describe('prd.mjs aggregate', () => {
     expect(features.map((f) => f.status)).toEqual(['failed', 'checked', 'planned']);
     expect(features[0].failure).toEqual({ step: 'check-lane', reasons: ['F1-1: the statement gives advice ("should"); state the defect as it is'] });
     expect(out.json.features).toEqual({ total: 3, written: 1, failed: 1 });
-    expect(out.json.findings).toEqual({ product: 0, technical: 1 });
+    expect(out.json.findings).toEqual({ product: 0, technical: 1, priority: { P0: 0, P1: 0, P2: 0, unranked: 1 } });
   });
 
   it('fails as lane-wrote-nothing a feature with no files after two attempts', () => {

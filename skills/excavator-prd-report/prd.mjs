@@ -13,6 +13,10 @@
  *   check-lane <out> <featureId> --project <root>
  *       Check a feature lane's chapter and findings (design D3); write each
  *       evidence passage's line back and record the result in index.json.
+ *   check-priorities <out> --project <root>
+ *       Check every written feature's priorities/<id>.json against its
+ *       findings and print the features still to rank in batches (change
+ *       prd-report-finding-priority, design D4); writes nothing.
  *   aggregate <out> --project <root>
  *       Recompute every feature's status, write findings.json and tables/,
  *       and print the reply's counts as JSON (design D5, D7, D9).
@@ -41,6 +45,7 @@ import { listEntrypoints } from './lib/entrypoints.mjs';
 import { UsageError } from './lib/errors.mjs';
 import { checkIndex } from './lib/index-check.mjs';
 import { checkLane } from './lib/lane-check.mjs';
+import { checkPriorities } from './lib/check-priorities.mjs';
 import { aggregate } from './lib/aggregate.mjs';
 import { assemble } from './lib/assemble.mjs';
 import { writePage } from './lib/page.mjs';
@@ -60,6 +65,12 @@ Commands:
       Check features/<featureId>.md and findings/<featureId>.json under <out>,
       write each evidence passage's line back, and record the result under
       the feature in index.json (a failure with its reasons, or none).
+  check-priorities <out> --project <root>
+      Check priorities/<id>.json of every written feature against its findings
+      (each finding ranked once, P0, P1 or P2, a reason of at most 300
+      characters with no advice). Prints one line per feature, the batches of
+      the features to rank (at most 120 findings each), and the totals; exit 1
+      while a feature is unranked. Writes nothing.
   aggregate <out> --project <root>
       Recompute every feature's status from the files under <out>, write
       findings.json and tables/*.md, and print the reply's counts as JSON.
@@ -137,6 +148,11 @@ const COMMANDS = {
     if (positionals.length !== 2) throw new UsageError('check-lane takes <out> and <featureId>');
     const root = projectRootOption(options.project);
     return withIndexLock(positionals[0], () => report(checkLane(positionals[0], positionals[1], root)));
+  },
+  'check-priorities'(args) {
+    const { positionals, options } = parseArgs(args, ['project']);
+    if (positionals.length !== 1) throw new UsageError('check-priorities takes exactly one <out> directory');
+    return report(checkPriorities(positionals[0], projectRootOption(options.project)));
   },
   aggregate(args) {
     const { positionals, options } = parseArgs(args, ['project']);

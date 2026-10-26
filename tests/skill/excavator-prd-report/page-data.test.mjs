@@ -9,7 +9,7 @@ import { join } from 'node:path';
 import { FINDINGS_FORMAT } from '../../../skills/excavator-prd-report/lib/aggregate.mjs';
 import { UsageError } from '../../../skills/excavator-prd-report/lib/errors.mjs';
 import { PAGE_FORMAT, collectPageData, withoutRootPaths } from '../../../skills/excavator-prd-report/lib/page-data.mjs';
-import { makeLaneRun, runPrd } from './helpers.mjs';
+import { makeLaneRun, rankEntry, runPrd, writeRanks } from './helpers.mjs';
 
 const cleanups = [];
 afterEach(() => {
@@ -375,5 +375,84 @@ describe('collectPageData', () => {
     expect(text).not.toContain(run.out);
     expect(text).not.toContain(run.root);
     expect(text).toContain('"project":"project"');
+  });
+});
+
+describe('collectPageData with priorities (openspec change prd-report-finding-priority, design D5)', () => {
+  const attempt = (run) => () => collectPageData(run.out, run.project);
+
+  /** The lane fixture with both features ranked, then aggregated. */
+  function rankedRun() {
+    const { run } = aggregatedRun();
+    writeRanks(run, 'F1', [rankEntry('F1-1', 'P1', 'Wrong result in a used flow.')]);
+    writeRanks(run, 'F2', [rankEntry('F2-1', 'P0', 'Corrupts stored data.')]);
+    aggregateOk(run);
+    return run;
+  }
+
+  it('carries each finding\'s priority and reason, in aggregate\'s order, and the level counts', () => {
+    const run = rankedRun();
+    const data = collectPageData(run.out, run.project);
+    expect(data.findings.map((finding) => [finding.id, finding.priority, finding.priorityReason])).toEqual([
+      ['F2-1', 'P0', 'Corrupts stored data.'],
+      ['F1-1', 'P1', 'Wrong result in a used flow.'],
+    ]);
+    expect(data.findings).toEqual(run.readJson('findings.json').findings);
+    expect(data.counts.findings).toEqual({ product: 1, technical: 1, priority: { P0: 1, P1: 1, P2: 0, unranked: 0 } });
+    expect(data.features.map((feature) => feature.counts.findings.priority)).toEqual([
+      { P0: 0, P1: 1, P2: 0, unranked: 0 },
+      { P0: 1, P1: 0, P2: 0, unranked: 0 },
+    ]);
+  });
+
+  it('carries null for the findings of a feature whose file is missing', () => {
+    const { run } = aggregatedRun();
+    const data = collectPageData(run.out, run.project);
+    expect(data.findings.map((finding) => [finding.priority, finding.priorityReason])).toEqual([[null, null], [null, null]]);
+    expect(data.counts.findings.priority).toEqual({ P0: 0, P1: 0, P2: 0, unranked: 2 });
+  });
+
+  it('refuses a priorities file added after aggregate, and passes again after aggregate', () => {
+    const { run } = aggregatedRun();
+    expect(attempt(run)).not.toThrow();
+    writeRanks(run, 'F1', [rankEntry('F1-1', 'P2')]);
+    expect(attempt(run)).toThrow(UsageError);
+    expect(attempt(run)).toThrow(/findings\.json does not hold the current findings of F1.*prd\.mjs aggregate/);
+    expect(attempt(run)).toThrow(/F1's recorded fields in index\.json differ from what its files give/);
+    aggregateOk(run);
+    expect(attempt(run)).not.toThrow();
+  });
+
+  it('refuses a priorities file changed after aggregate: another level or another reason', () => {
+    const run = rankedRun();
+    expect(attempt(run)).not.toThrow();
+    writeRanks(run, 'F1', [rankEntry('F1-1', 'P0', 'Wrong result in a used flow.')]);
+    expect(attempt(run)).toThrow(/findings\.json does not hold the current findings of F1.*prd\.mjs aggregate/);
+    aggregateOk(run);
+    expect(attempt(run)).not.toThrow();
+    writeRanks(run, 'F1', [rankEntry('F1-1', 'P0', 'Another reason.')]);
+    expect(attempt(run)).toThrow(/findings\.json does not hold the current findings of F1.*prd\.mjs aggregate/);
+  });
+
+  it('refuses a priorities file that stopped passing, and one removed', () => {
+    const run = rankedRun();
+    writeRanks(run, 'F2', [rankEntry('F2-1', 'P5')]);
+    expect(attempt(run)).toThrow(/findings\.json does not hold the current findings of F2.*prd\.mjs aggregate/);
+    writeRanks(run, 'F2', [rankEntry('F2-1', 'P0', 'Corrupts stored data.')]);
+    expect(attempt(run)).not.toThrow();
+    rmSync(join(run.out, 'priorities/F2.json'));
+    expect(attempt(run)).toThrow(/F2.*prd\.mjs aggregate/);
+  });
+
+  it('refuses a run whose index.json and findings.json are from before priorities', () => {
+    const run = rankedRun();
+    const stored = run.readJson('findings.json');
+    run.writeJson('findings.json', { ...stored, findings: stored.findings.map(({ priority, priorityReason, ...rest }) => rest) });
+    expect(attempt(run)).toThrow(/findings\.json does not hold the current findings.*prd\.mjs aggregate/);
+    aggregateOk(run);
+    const index = run.readIndex();
+    for (const feature of index.features) delete feature.counts.findings.priority;
+    run.writeIndex(index);
+    expect(attempt(run)).toThrow(/recorded fields in index\.json differ.*prd\.mjs aggregate/);
   });
 });

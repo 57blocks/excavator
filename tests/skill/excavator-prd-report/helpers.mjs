@@ -5,7 +5,7 @@
  */
 
 import { spawnSync } from 'node:child_process';
-import { cpSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { appendFileSync, cpSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -92,4 +92,48 @@ export function makeLaneRun() {
     readText: (rel) => readFileSync(join(out, rel), 'utf-8'),
     writeText: (rel, text) => writeFileSync(join(out, rel), text),
   };
+}
+
+/**
+ * Replace feature `id`'s findings file with `count` findings, ids `<id>-1` to
+ * `<id>-<count>`, each quoting its own marker line, which this appends to the
+ * run's src/orders/service.js (so every passage occurs exactly once). Call it
+ * once per feature. `descending` writes the file in the reverse order.
+ */
+export function writeLaneFindings(run, id, count, { descending = false } = {}) {
+  const service = join(run.project, 'src/orders/service.js');
+  const findings = [];
+  for (let k = 1; k <= count; k += 1) {
+    const passage = `// marker ${id}-${k} end`;
+    appendFileSync(service, `${passage}\n`);
+    findings.push({
+      id: `${id}-${k}`, class: k % 2 === 0 ? 'product' : 'technical', statement: `Defect ${k} of ${id}.`, flows: [id],
+      evidence: [{ file: 'src/orders/service.js', passage }],
+    });
+  }
+  run.writeJson(`findings/${id}.json`, { findings: descending ? findings.reverse() : findings });
+}
+
+/** Write `priorities/<id>.json` from `entries` ({ id, priority, reason }). */
+export function writeRanks(run, id, entries) {
+  mkdirSync(join(run.out, 'priorities'), { recursive: true });
+  run.writeJson(`priorities/${id}.json`, { priorities: entries });
+}
+
+/** One entry of a priorities file; the reason is a plain sentence with no advice word. */
+export const rankEntry = (id, priority, reason = 'Meets the criterion; every user of the flow is affected.') => ({ id, priority, reason });
+
+/**
+ * Add feature `id` (F3, F4, ...) to the run as a written lane: a chapter
+ * copied from F2's with its own id, `count` findings, and no verification
+ * reply, so its status is `checked`. Writes index.json and the lane files.
+ */
+export function addWrittenFeature(run, id, count) {
+  const index = run.readIndex();
+  const n = Number(id.slice(1));
+  index.candidates.items.push({ id: `c${n}`, kind: 'job', file: 'src/orders/service.js', line: 15, text: 'function reopenOrder(order) {', framework: 'custom', provenance: 'inferred' });
+  index.features.push({ id, name: `Feature ${id}`, kind: 'flow', chapter: n, entrypoints: [`c${n}`], seedFiles: ['src/orders/service.js'], tiers: ['backend'] });
+  run.writeIndex(index);
+  run.writeText(`features/${id}.md`, run.readText('features/F2.md').replace('id: F2', `id: ${id}`).replace('chapter: 2', `chapter: ${n}`).replace('name: Order cancellation', `name: Feature ${id}`));
+  writeLaneFindings(run, id, count);
 }
