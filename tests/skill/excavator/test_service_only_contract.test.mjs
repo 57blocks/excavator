@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { existsSync, readFileSync, readdirSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -59,50 +60,64 @@ describe('service-only distribution contract', () => {
 
   // The one exception: /excavator-view writes a static page and opens it (openspec: changes/report-viewer, design D8).
   describe('the /excavator-view exception stays narrow', () => {
-    const walk = (dir) => readdirSync(join(repoRoot, dir), { withFileTypes: true }).flatMap((entry) => (
-      entry.isDirectory() ? walk(join(dir, entry.name)) : [join(dir, entry.name)]
-    ));
+    // The front end is the one package packages/explorer, a copy of the Understand Anything dashboard built into one file
+    // and never served (openspec: changes/viewer-explorer, design D1 and D3; changes/retire-view-html). Its copied sources
+    // keep the upstream token gate, which nothing imports, with its fetch: the page's policy (connect-src 'none') and
+    // scripts/explorer-smoke.mjs, which sees zero requests, hold the no-network rule instead of a source scan.
+    const EXPLORER_PACKAGE = 'packages/explorer';
+    const HTML_PACKAGES = [EXPLORER_PACKAGE];
 
-    // The front end is the one package packages/report-view, built into one file and never served (openspec: changes/viewer-app, design D10).
-    const VIEW_PACKAGE = 'packages/report-view';
-
-    it('gives the report-view package no script that starts a server', () => {
-      const scripts = JSON.parse(read(`${VIEW_PACKAGE}/package.json`)).scripts ?? {};
+    it('gives the explorer package no script that starts a server', () => {
+      const scripts = JSON.parse(read(`${EXPLORER_PACKAGE}/package.json`)).scripts ?? {};
       for (const name of ['dev', 'preview', 'serve', 'start']) expect(scripts, name).not.toHaveProperty(name);
       for (const [name, command] of Object.entries(scripts)) {
-        // vite runs only as `vite build`; a bare `vite`, `vite dev`, `vite serve` or `vite preview` starts a server.
         expect(command, name).not.toMatch(/\bvite\b(?!\s+build\b)/);
       }
     });
 
-    it('has no server or preview configuration in the report-view vite config', () => {
-      const config = read(`${VIEW_PACKAGE}/vite.config.ts`);
+    it('has no server or preview configuration in the explorer vite config', () => {
+      const config = read(`${EXPLORER_PACKAGE}/vite.config.ts`);
       expect(config).not.toMatch(/\b(server|preview)\s*:/);
       expect(config).not.toMatch(/configureServer|configurePreviewServer/);
     });
 
-    it('has no network or server call in the report-view source', () => {
-      const files = walk(`${VIEW_PACKAGE}/src`);
-      expect(files.length).toBeGreaterThan(0);
-      for (const path of files) {
-        const text = read(path);
-        for (const call of ['createServer', 'listen(', 'fetch(', 'XMLHttpRequest', 'WebSocket', 'EventSource']) {
-          expect(text, `${path}: ${call}`).not.toContain(call);
-        }
-      }
-    });
-
-    it('ships no HTML page from any other package', () => {
-      const others = readdirSync(join(repoRoot, 'packages'), { withFileTypes: true })
-        .filter((entry) => entry.isDirectory() && `packages/${entry.name}` !== VIEW_PACKAGE)
-        .map((entry) => `packages/${entry.name}`);
-      expect(others.length).toBeGreaterThan(0);
+    // Pure matcher: the HTML pages under every package directory of baseDir that is not in the allowed list.
+    const htmlPagesOutside = (baseDir, allowed) => {
       const skipped = new Set(['node_modules', 'dist']);
-      const pages = (dir) => readdirSync(join(repoRoot, dir), { withFileTypes: true }).flatMap((entry) => {
+      const pages = (dir) => readdirSync(join(baseDir, dir), { withFileTypes: true }).flatMap((entry) => {
         if (entry.isDirectory()) return skipped.has(entry.name) ? [] : pages(join(dir, entry.name));
         return /\.html?$/i.test(entry.name) ? [join(dir, entry.name)] : [];
       });
-      expect(others.flatMap(pages)).toEqual([]);
+      const others = readdirSync(join(baseDir, 'packages'), { withFileTypes: true })
+        .filter((entry) => entry.isDirectory() && !allowed.includes(`packages/${entry.name}`))
+        .map((entry) => `packages/${entry.name}`);
+      return { others, pages: others.flatMap(pages) };
+    };
+
+    it('ships no HTML page from any other package', () => {
+      const { others, pages } = htmlPagesOutside(repoRoot, HTML_PACKAGES);
+      expect(others.length).toBeGreaterThan(0);
+      expect(pages).toEqual([]);
+    });
+
+    it('instrument: the matcher sees an HTML page in another package and lets the allowed package through', () => {
+      const tmp = mkdtempSync(join(tmpdir(), 'html-pages-instrument-'));
+      try {
+        for (const [dir, file] of [
+          ['packages/explorer', 'index.html'],
+          ['packages/third/src', 'page.html'],
+          ['packages/third/node_modules/x', 'skipped.html'],
+          ['packages/third/dist', 'skipped.html'],
+        ]) {
+          mkdirSync(join(tmp, dir), { recursive: true });
+          writeFileSync(join(tmp, dir, file), '<html></html>\n');
+        }
+        expect(htmlPagesOutside(tmp, HTML_PACKAGES).pages).toEqual([join('packages/third/src', 'page.html')]);
+        // With the package left off the allowed list its page is found too, so the allowance is what lets it through.
+        expect(htmlPagesOutside(tmp, []).pages).toContain(join('packages/explorer', 'index.html'));
+      } finally {
+        rmSync(tmp, { recursive: true, force: true });
+      }
     });
 
     it('starts no server from the packer or the skill', () => {

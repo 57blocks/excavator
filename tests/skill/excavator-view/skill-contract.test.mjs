@@ -1,20 +1,20 @@
 /**
  * Contract of the /excavator-view skill (openspec: changes/report-viewer,
- * spec "/excavator-view skill", design D7): it packs, opens with the system
- * opener, and answers with four fixed lines printed by one command. It starts
+ * spec "/excavator-view skill", design D7; changes/retire-view-html, design D2): it packs, opens with the system
+ * opener, and answers with five fixed lines printed by one command. It starts
  * no server and runs no analysis.
  */
 
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { packProject } from '../../../skills/excavator-view/pack.mjs';
-import { readManifest, replyLines } from '../../../skills/excavator-view/reply.mjs';
-import { graphJsonl, hotspotsProduct, makeGitProject, sourceManifest, writeProduct } from './fixture.mjs';
+import { issuesLine, readExplorerManifest, replyLines } from '../../../skills/excavator-view/reply.mjs';
+import { graphJsonl, hotspotsProduct, makeGitProject, sourceManifest, tourProduct, writeProduct } from './fixture.mjs';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../../..');
 const skill = readFileSync(join(repoRoot, 'skills/excavator-view/SKILL.md'), 'utf-8');
@@ -49,13 +49,14 @@ describe('SKILL.md', () => {
     expect(skill).toMatch(/A missing opener is not a failure/);
   });
 
-  it('prints the four fixed lines with one command and replies with nothing else', () => {
+  it('prints the five fixed lines with one command and replies with nothing else', () => {
     expect(skill.match(/node "[^"\n]*reply\.mjs"/g)).toHaveLength(1);
-    expect(skill).toMatch(/Print the reply's four lines with one command/);
+    expect(skill).toMatch(/Print the reply's five lines with one command/);
     for (const line of [
-      'View: <absolute path>',
+      'Explorer: <absolute path>',
       'Size: <size in MB, one decimal> MB',
-      'Products: knowledge graph <state>; unused code <state>; doc map <state>; hotspots <state>; reports <state>',
+      'Issues: <N | not counted; knowledge graph <state>>',
+      'Products: knowledge graph <state>; semantics <state>; domain graph <state>; unused code <state>; doc map <state>; hotspots <state>; tour <state>',
       'Source: <embedded (N files) | not embedded>',
     ]) {
       expect(skill).toContain(line);
@@ -73,7 +74,7 @@ describe('SKILL.md', () => {
   it('starts no server, runs no analysis and edits no other product', () => {
     expect(skill).not.toMatch(/createServer|\.listen\(|http\.server|python3? -m http|npx serve/);
     expect(skill).toMatch(/Do not start an HTTP server/);
-    expect(skill).toMatch(/do not run `\/excavator`, `\/excavator-unused-code`, `\/excavator-doc-map` or `\/excavator-hotspots`/);
+    expect(skill).toMatch(/do not run `\/excavator`, `\/excavator-unused-code`, `\/excavator-doc-map`, `\/excavator-hotspots` or `\/excavator-tour`/);
     expect(skill).toMatch(/do not create, change or delete any other file under `\.excavator\/`/);
   });
 
@@ -83,7 +84,8 @@ describe('SKILL.md', () => {
   });
 
   it('names the built template and what the packer says when it is missing', () => {
-    expect(skill).toContain('packages/report-view/dist/view.html');
+    expect(skill).toContain('packages/explorer/dist/explorer.html');
+    expect(skill).not.toMatch(/view\.html|report-view/);
     expect(skill).toMatch(/without a built template the packer exits non-zero and its message says to run `pnpm build`/);
     expect(skill).not.toMatch(/\bviewer\//);
   });
@@ -94,7 +96,7 @@ describe('SKILL.md', () => {
 });
 
 describe('the scripts of the skill start no server', () => {
-  it.each(['pack.mjs', 'reply.mjs', 'products.mjs', 'page-assembly.mjs', 'sources.mjs'])('%s', (file) => {
+  it.each(['pack.mjs', 'reply.mjs', 'products.mjs', 'page-assembly.mjs', 'sources.mjs', 'tour.mjs'])('%s', (file) => {
     const text = readFileSync(join(repoRoot, 'skills/excavator-view', file), 'utf-8');
     expect(text).not.toMatch(/createServer|\.listen\(|node:http|node:net\b|node:child_process/);
   });
@@ -107,44 +109,73 @@ describe('the reply lines', () => {
   beforeAll(() => {
     // The reply reads the manifest of a packed page; any template with the two markers will do.
     templateDir = mkdtempSync(join(tmpdir(), 'xv-reply-template-'));
-    const template = join(templateDir, 'view.html');
+    const template = join(templateDir, 'explorer.html');
     writeFileSync(template, '<html><head><!-- xv:csp --></head><body><!-- xv:data --></body></html>\n');
     project = makeGitProject();
     writeProduct(project.root, 'knowledge-graph.jsonl', graphJsonl({ nodes: ['file'] }));
     writeProduct(project.root, 'source-manifest.json', sourceManifest(project.revision));
     writeProduct(project.root, 'hotspots.json', hotspotsProduct('git:old'));
     writeProduct(project.root, 'unused-code.json', '{');
-    result = packProject(project.root, { template });
+    // The graph records no factsDigest, so a tour cannot be taken as current: a different revision.
+    writeProduct(project.root, 'tour.json', tourProduct({ sourceRevision: project.revision, factDigest: 'e'.repeat(64) }));
+    result = packProject(project.root, { explorerTemplate: template });
   });
   afterAll(() => {
     project.cleanup();
     rmSync(templateDir, { recursive: true, force: true });
   });
 
-  it('print the path, the size, the five states and the source line', () => {
+  it('print the path, the size, the issue count, the seven states and the source line', () => {
     const run = spawnSync(process.execPath, [replyScript, result.out], { encoding: 'utf-8' });
     expect(run.status, run.stderr).toBe(0);
     expect(run.stdout.trimEnd().split('\n')).toEqual([
-      `View: ${result.out}`,
+      `Explorer: ${result.out}`,
       `Size: ${(result.bytes / 1048576).toFixed(1)} MB`,
-      'Products: knowledge graph included; unused code unreadable; doc map not run; hotspots different revision; reports not run',
+      `Issues: ${result.issues.total}`,
+      'Products: knowledge graph included; semantics not run; domain graph not run; unused code unreadable; doc map not run; hotspots different revision; tour different revision',
       'Source: embedded (1 files)',
     ]);
   });
 
   it('read the states from the page, not from the arguments', () => {
-    const manifest = readManifest(readFileSync(result.out, 'utf-8'));
-    expect(manifest.products.map((p) => p.status)).toEqual(['included', 'not-run', 'not-run', 'unreadable', 'not-run', 'different-revision', 'not-run']);
+    const manifest = readExplorerManifest(readFileSync(result.out, 'utf-8'));
+    expect(manifest.explorer).toBe(2);
+    expect(manifest.products).toEqual([
+      { name: 'knowledge-graph', status: 'included' },
+      { name: 'semantics', status: 'not-run' },
+      { name: 'domain-graph', status: 'not-run' },
+      { name: 'unused-code', status: 'unreadable' },
+      { name: 'doc-map', status: 'not-run' },
+      { name: 'hotspots', status: 'different-revision' },
+      { name: 'tour', status: 'different-revision' },
+    ]);
+    expect(manifest.source).toEqual({ embedded: true, counts: result.source.counts });
   });
 
   it('say how many files are embedded when there are some', () => {
-    const lines = replyLines('/x/view.html', 3 * 1048576 + 1, { products: [], source: { embedded: true, counts: { embedded: 12 } } });
-    expect(lines).toEqual([
-      'View: /x/view.html',
+    const manifest = { issues: { total: 4 }, products: [], source: { embedded: true, counts: { embedded: 12 } } };
+    expect(replyLines('/x/explorer.html', 3 * 1048576 + 1, manifest)).toEqual([
+      'Explorer: /x/explorer.html',
       'Size: 3.0 MB',
-      'Products: knowledge graph not run; unused code not run; doc map not run; hotspots not run; reports not run',
+      'Issues: 4',
+      'Products: knowledge graph not run; semantics not run; domain graph not run; unused code not run; doc map not run; hotspots not run; tour not run',
       'Source: embedded (12 files)',
     ]);
+  });
+
+  it('give the graph\'s state instead of a count when the page has no graph', () => {
+    const manifest = { issues: null, products: [{ name: 'knowledge-graph', status: 'unreadable' }] };
+    expect(issuesLine(manifest)).toBe('Issues: not counted; knowledge graph unreadable');
+    expect(issuesLine({ issues: null, products: [] })).toBe('Issues: not counted; knowledge graph not run');
+  });
+
+  it('say not shown for semantics and a tour the page has no graph to hold', () => {
+    const manifest = { issues: null, products: [{ name: 'knowledge-graph', status: 'unreadable' }, { name: 'semantics', status: 'not-shown' }, { name: 'tour', status: 'not-shown' }] };
+    expect(replyLines('/x/p.html', 1, manifest)[3]).toBe('Products: knowledge graph unreadable; semantics not shown; domain graph not run; unused code not run; doc map not run; hotspots not run; tour not shown');
+  });
+
+  it('say not embedded under --no-source', () => {
+    expect(replyLines('/x/p.html', 1, { issues: null, products: [], source: { embedded: false, counts: { embedded: 0 } } })[4]).toBe('Source: not embedded');
   });
 
   it('fail with a message when the file is not a packed page', () => {
@@ -154,5 +185,64 @@ describe('the reply lines', () => {
     expect(run.status).toBe(1);
     expect(run.stderr).toMatch(/has no manifest/);
     rmSync(join(dir, '.excavator', 'plain.html'));
+  });
+});
+
+describe('the files of this skill are English only and give no advice', () => {
+  const code = (...points) => String.fromCharCode(...points);
+  // CJK ideographs and extensions, kana, Hangul, CJK punctuation and full-width forms.
+  const CJK = new RegExp(`[${code(0x2e80)}-${code(0x2fdf)}${code(0x3000)}-${code(0x30ff)}${code(0x3400)}-${code(0x4dbf)}${code(0x4e00)}-${code(0x9fff)}${code(0xac00)}-${code(0xd7af)}${code(0xf900)}-${code(0xfaff)}${code(0xff00)}-${code(0xffef)}]`);
+  const ADVICE = /safe to (delete|remove)|can be (deleted|removed)|should be (removed|deleted)|recommend|you should|consider (removing|deleting)/i;
+
+  /** Every file under `dir` (skipping what a build or an install leaves), as repo-relative paths. */
+  function walk(dir) {
+    return readdirSync(join(repoRoot, dir)).flatMap((name) => {
+      if (name === 'node_modules' || name === 'dist') return [];
+      const path = join(dir, name);
+      return statSync(join(repoRoot, path)).isDirectory() ? walk(path) : [path];
+    });
+  }
+  const read = (path) => readFileSync(join(repoRoot, path), 'utf-8');
+
+  const files = [
+    ...walk('skills/excavator-view'),
+    ...walk('tests/skill/excavator-view'),
+    ...walk('packages/explorer/scripts'),
+    ...walk('packages/explorer/test'),
+    'scripts/view-smoke.mjs',
+    'scripts/explorer-smoke.mjs',
+  ];
+  const adviceFree = ['skills/excavator-view/SKILL.md', ...walk('packages/explorer/src/excavator/views')];
+
+  it('lists the files it checks', () => {
+    expect(files).toContain('skills/excavator-view/pack.mjs');
+    expect(files).toContain('tests/skill/excavator-view/skill-contract.test.mjs');
+    expect(files).toContain('scripts/view-smoke.mjs');
+    expect(files).toContain('scripts/explorer-smoke.mjs');
+    expect(files).toContain('packages/explorer/scripts/licenses.mjs');
+    expect(files).toContain('packages/explorer/test/single-file.test.mjs');
+    expect(adviceFree).toContain('packages/explorer/src/excavator/views/registry.ts');
+  });
+
+  it.each(files.map((path) => [path]))('%s has no CJK character', (path) => {
+    expect(CJK.test(read(path))).toBe(false);
+  });
+
+  it('sees a CJK character when there is one', () => {
+    expect(CJK.test(`a${code(0x4e2d)}b`)).toBe(true);
+    expect(CJK.test(`a${code(0x3042)}b`)).toBe(true);
+    expect(CJK.test(`a${code(0xff0c)}b`)).toBe(true);
+    expect(CJK.test('plain text, with punctuation: (ok)')).toBe(false);
+  });
+
+  it('sees advice when there is some', () => {
+    for (const text of ['it is safe to delete this', 'this can be removed', 'we recommend a fix', 'you should look', 'consider removing it']) {
+      expect(ADVICE.test(text), text).toBe(true);
+    }
+    expect(ADVICE.test('Functions no route reaches, as the product lists them.')).toBe(false);
+  });
+
+  it('keeps the skill and the product views free of advice wording', () => {
+    for (const path of adviceFree) expect(ADVICE.test(read(path)), path).toBe(false);
   });
 });

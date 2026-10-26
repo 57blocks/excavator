@@ -1,8 +1,9 @@
 /**
  * domain.mjs
  *
- * Reads `domain-graph.json` into the payload the domain view draws from
- * (openspec: changes/viewer-app, design D12). Identity and freshness are judged
+ * Reads `domain-graph.json` and judges it (openspec: changes/viewer-app,
+ * design D12): the pack's state for it, and the payload `sources.mjs` takes the
+ * steps' files from. Identity and freshness are judged
  * here and never on the page:
  *   - `version` and `contentLanguage` must be the ones the Domain skill writes
  *     (`domain-contract.mjs`), and `nodes`, `edges`, `sourceRevision` and
@@ -12,8 +13,11 @@
  *     snapshot's, or its `factDigest` is not the knowledge graph's `factsDigest`
  *     (a step's `nodeIds` are ids into that exact fact graph), and both values
  *     are written down.
- * The payload keeps `nodes`, `edges` and `gaps` as written, and leaves out what
- * the page does not read (the language audit, the project block, layers, tour).
+ * The payload keeps `nodes`, `edges` and `gaps` as written, and the project
+ * block's `description` as `projectDescription` when it is a non-empty string
+ * (changes/viewer-learn design D3); it leaves out
+ * what the page does not read (the language audit, the rest of the project
+ * block, layers, tour).
  *
  * Returns { state: 'absent' }, { state: 'unreadable', reason } or
  * { state: 'ok', bytes, counts, revision, reason }; it never throws for a bad
@@ -75,9 +79,11 @@ export function readDomain(dataDir, graph, snapshotRevision) {
   if (domain.factDigest !== graph.factsDigest) {
     notes.push(`${DOMAIN_GRAPH_FILE} was made from other facts than knowledge-graph.jsonl: its factDigest is ${domain.factDigest} and the graph's factsDigest is ${graph.factsDigest ?? 'not recorded'}`);
   }
+  const description = isObject(domain.project) && typeof domain.project.description === 'string' && domain.project.description !== '' ? domain.project.description : null;
+  const payload = { nodes: domain.nodes, edges: domain.edges, gaps: Array.isArray(domain.gaps) ? domain.gaps : [], ...(description === null ? {} : { projectDescription: description }) };
   return {
     state: 'ok',
-    bytes: Buffer.from(JSON.stringify({ nodes: domain.nodes, edges: domain.edges, gaps: Array.isArray(domain.gaps) ? domain.gaps : [] }), 'utf-8'),
+    bytes: Buffer.from(JSON.stringify(payload), 'utf-8'),
     counts: {
       domains: countOf(domain.nodes, 'domain'),
       flows: countOf(domain.nodes, 'flow'),

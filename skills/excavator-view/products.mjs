@@ -3,21 +3,26 @@
  *
  * Reads the products under `.excavator/` and gives each one exactly one state
  * (openspec: changes/report-viewer, design D3): included, not-run, unreadable,
- * or different-revision. Nothing here calls a model or touches the project's
+ * or different-revision; semantics and the tour are not-shown when they pass their
+ * own checks but there is no readable knowledge graph to hold them. The knowledge
+ * graph is readable only when the store reads its whole body. Nothing here calls a model or touches the project's
  * source; the only inputs are the product files and the snapshot revision.
  *
- * A manifest entry is { name, label, status, reason, revision, revisionNote,
- * command, file, payloads } with `payloads` the ids of the data payloads the
- * page holds for it; the semantics and domain-graph entries also have `counts`. The bytes of those
- * payloads are returned next to the entries, never inside them.
+ * An entry is { name, label, status, reason, revision, revisionNote, command,
+ * file, payloads } with `payloads` the ids of the bytes read for it; the
+ * semantics and domain-graph entries also have `counts`. The bytes are returned
+ * next to the entries, never inside them: `explorer-data.mjs` builds the page
+ * data from them and `sources.mjs` the list of files to embed. The two report
+ * Markdown files are not read (changes/retire-view-html).
  */
 
 import { join } from 'node:path';
 
-import { KNOWLEDGE_GRAPH_FILE, KNOWLEDGE_GRAPH_FORMAT } from '../excavator/knowledge-graph-store.mjs';
+import { KNOWLEDGE_GRAPH_FILE, KNOWLEDGE_GRAPH_FORMAT, readKnowledgeGraph } from '../excavator/knowledge-graph-store.mjs';
 import { readDomain } from './domain.mjs';
 import { describeFormat, parseJsonObject, readRegularFile } from './product-files.mjs';
 import { readSemantics } from './semantics.mjs';
+import { readTour } from './tour.mjs';
 
 export const NO_REVISION_NOTE = 'no revision recorded';
 
@@ -63,17 +68,19 @@ const DOMAIN_DEF = {
   command: '/excavator-domain',
 };
 
+const TOUR_DEF = {
+  name: 'tour',
+  label: 'Tour',
+  file: 'tour.json',
+  command: '/excavator-tour',
+};
+
 const SEMANTICS_DEF = {
   name: 'semantics',
   label: 'Semantics',
   file: 'semantic-cache.json',
   command: '/excavator --full',
 };
-
-const REPORTS = [
-  { name: 'hotspots-report', label: 'Hotspots report', file: 'hotspots-report.md', payload: 'report-hotspots', command: '/excavator-hotspots' },
-  { name: 'doc-map-report', label: 'Doc map report', file: 'doc-map-report.md', payload: 'report-doc-map', command: '/excavator-doc-map' },
-];
 
 function entry(def, fields) {
   return {
@@ -91,6 +98,9 @@ function entry(def, fields) {
 
 const notRun = (def) => entry(def, { status: 'not-run' });
 const unreadable = (def, reason) => entry(def, { status: 'unreadable', reason });
+/** A usable file the page has no knowledge graph to hold: semantics and the tour live inside the graph. */
+export const NO_GRAPH_REASON = 'there is no knowledge graph to hold it';
+const notShown = (def) => entry(def, { status: 'not-shown', reason: NO_GRAPH_REASON });
 
 /** Compare a product's recorded revision with the snapshot's; a product without one is noted, never assumed equal. */
 function withRevision(def, revision, snapshotRevision, payloads) {
@@ -177,6 +187,14 @@ function readGraphProduct(dataDir, snapshotRevision) {
   if (file.state === 'unreadable') return { entry: unreadable(def, file.reason), payloads: [] };
   const checked = checkGraphHeader(file.bytes);
   if (!checked.header) return { entry: unreadable(def, checked.reason), payloads: [] };
+  // The whole body is read here, by the reader the page's data comes from, so a graph is one state everywhere:
+  // a body the store refuses makes the graph unreadable, and nothing is judged against it.
+  let graph;
+  try {
+    graph = readKnowledgeGraph(join(dataDir, def.file));
+  } catch (error) {
+    return { entry: unreadable(def, error.message), payloads: [] };
+  }
 
   const manifestFile = readRegularFile(join(dataDir, SOURCE_MANIFEST_FILE), SOURCE_MANIFEST_FILE);
   let revision;
@@ -189,6 +207,7 @@ function readGraphProduct(dataDir, snapshotRevision) {
   return {
     entry: withRevision(def, revision, snapshotRevision, [def.name]),
     payloads: [{ id: def.name, bytes: file.bytes }],
+    graph,
     graphBytes: file.bytes,
     graphIdentity: { factsDigest: typeof checked.header.fields.project?.factsDigest === 'string' ? checked.header.fields.project.factsDigest : null },
   };
@@ -204,6 +223,7 @@ function readSemanticsProduct(dataDir, graph) {
   const read = readSemantics(dataDir, graph.graphBytes ?? null);
   if (read.state === 'absent') return { entry: notRun(def), payloads: [] };
   if (read.state === 'unreadable') return { entry: unreadable(def, read.reason), payloads: [] };
+  if (read.state === 'no-graph') return { entry: notShown(def), payloads: [] };
   return {
     entry: { ...entry(def, { status: 'included', revisionNote: NO_REVISION_NOTE, payloads: [def.name] }), counts: read.counts },
     payloads: [{ id: def.name, bytes: read.bytes }],
@@ -225,52 +245,38 @@ function readDomainProduct(dataDir, graph, snapshotRevision) {
   };
 }
 
-/** Reports are included or not run; their Markdown is not checked and records no revision. */
-function readReports(dataDir) {
-  const items = [];
-  const payloads = [];
-  for (const report of REPORTS) {
-    const file = readRegularFile(join(dataDir, report.file), report.file);
-    if (file.state === 'unreadable') throw new Error(file.reason);
-    const included = file.state === 'ok';
-    if (included) payloads.push({ id: report.payload, bytes: file.bytes });
-    items.push({
-      name: report.name,
-      label: report.label,
-      file: report.file,
-      status: included ? 'included' : 'not-run',
-      command: report.command,
-      payload: included ? report.payload : null,
-    });
-  }
-  const included = items.filter((item) => item.status === 'included');
+/**
+ * The tour is judged against the knowledge graph's facts digest only: its node ids name that fact graph, so a tour
+ * from other facts is a different revision (the page shows none of its steps), and its source revision is recorded.
+ * Its entry carries `counts` and `factDigests` (the tour's and the graph's), so the page can write both down.
+ */
+function readTourProduct(dataDir, graph) {
+  const def = TOUR_DEF;
+  const read = readTour(dataDir, graph.graphIdentity ?? null);
+  if (read.state === 'absent') return { entry: notRun(def), payloads: [] };
+  if (read.state === 'unreadable') return { entry: unreadable(def, read.reason), payloads: [] };
+  if (read.state === 'no-graph') return { entry: notShown(def), payloads: [] };
+  const fields = read.differs
+    ? { status: 'different-revision', reason: read.reason, revision: read.revision, payloads: [def.name] }
+    : { status: 'included', revision: read.revision, revisionNote: `same facts as ${KNOWLEDGE_GRAPH_FILE} (factsDigest ${read.factDigests.graph})`, payloads: [def.name] };
   return {
-    entry: {
-      name: 'reports',
-      label: 'Reports',
-      status: included.length > 0 ? 'included' : 'not-run',
-      reason: items.map((item) => `${item.file} ${item.status === 'included' ? 'included' : 'not run'}`).join('; '),
-      revision: null,
-      revisionNote: included.length > 0 ? NO_REVISION_NOTE : null,
-      command: REPORTS.map((r) => r.command).join(', '),
-      file: REPORTS.map((r) => r.file).join(', '),
-      payloads: included.map((item) => item.payload),
-      items,
-    },
-    payloads,
+    entry: { ...entry(def, fields), counts: read.counts, factDigests: read.factDigests },
+    payloads: [{ id: def.name, bytes: read.bytes }],
   };
 }
 
 /**
- * Every product's state, in the page's order, with the payload bytes to inline.
- * @returns {{ entries: object[], payloads: {id: string, bytes: Buffer}[] }}
+ * Every product's state, in the reply's order, with the bytes the page data and the source table are made from,
+ * and the knowledge graph as the store read it (null unless that product is readable).
+ * @returns {{ entries: object[], payloads: {id: string, bytes: Buffer}[], graph: object|null }}
  */
 export function collectProducts(dataDir, snapshotRevision) {
   const graph = readGraphProduct(dataDir, snapshotRevision);
   const [unused, docMap, hotspots] = JSON_PRODUCTS.map((def) => readJsonProduct(dataDir, def, snapshotRevision));
-  const results = [graph, readSemanticsProduct(dataDir, graph), readDomainProduct(dataDir, graph, snapshotRevision), unused, docMap, hotspots, readReports(dataDir)];
+  const results = [graph, readSemanticsProduct(dataDir, graph), readDomainProduct(dataDir, graph, snapshotRevision), unused, docMap, hotspots, readTourProduct(dataDir, graph)];
   return {
     entries: results.map((r) => r.entry),
     payloads: results.flatMap((r) => r.payloads),
+    graph: graph.graph ?? null,
   };
 }

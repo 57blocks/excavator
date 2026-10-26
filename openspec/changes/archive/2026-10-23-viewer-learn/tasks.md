@@ -1,0 +1,63 @@
+> **归档（2026-10-23）**：只交付第 1–4 片（commit 1–4，随 PR 77 合入 main）。第 5–8 片不在旧查看器上做：用户决定整份复制 Understand Anything 的仪表盘（变更 viewer-explorer），图的视觉（第 7 片）与导览走步（第 6 片）由 `explorer.html` 的副本提供；节点详情里的产物事实（第 5 片）没有做，explorer-products 的 Non-Goals 已写明留给以后对副本的变更。delta 规范已删去第 5–8 片的要求，见 design.md 末尾的归档记录。
+
+## Commit 序列
+
+0. `docs(openspec): propose viewer-learn`：本变更的文件。
+1. `feat(view): pack the tour product and rename Overview to Products`（1.1–1.3）。
+2. `feat(view): inline fonts and shared page components`（2.1–2.2）。
+3. `feat(view): detail pages with stats, charts, row panels and row links`（3.1–3.3）。
+4. `feat(view): modes, the Domain and Structural switch, and the project overview`（4.1–4.3）。
+5–8. 未做（见开头的归档说明）。
+9. `docs(openspec): archive viewer-learn with slices 1-4 only`（8.4）。
+
+每个 commit 自带测试与冒烟场景，单独通过 O2。冒烟里的悬停一律用真实指针事件。
+
+## 1. 打包与改名
+
+- [x] 1.1 `skills/excavator-view/products.mjs` 读 `tour.json`（design D8）：四种状态，载荷只留 `steps`、`removed`、`gaps`、`counts`、`contentLanguage`。验证：O1 打包的导览四种状态先红后绿。
+- [x] 1.2 `reply.mjs` 的 Products 行加上导览；skill 契约测试与 O5 期望同步。验证：单测。
+- [x] 1.3 Overview 页改名 Products（design D9），`#/overview` 重定向。验证：O1 旧路由重定向先红后绿；冒烟场景 `products-redirect`。
+
+## 2. 字体与共用组件
+
+- [x] 2.1 `@fontsource` 拉丁子集内联（design D7），`--font-heading` token，模板开头的许可声明，3% 噪点。验证：O1 字体与噪点在模板里、无外部请求；模板大小增量记入验收。
+- [x] 2.2 `PageHeader`、`StatTile`、`BarList`、`AreaSpark`、`Histogram`、`RowPanel`（design D6），SVG 手写，入场动效与减少动效的终态。验证：组件单测（数值与条长成比例、减少动效下无动画）。
+
+## 3. 详情页
+
+- [x] 3.1 Unused、Hotspots、Doc map 页换成页头、统计格与分布图（spec「详情页的行面板与跳转」）。验证：冒烟核对图中各数与产物计数相等。
+- [x] 3.2 行面板：字段、源码预览、在图中定位、打开代码；Unused 加组成员与引用者，Hotspots 文件行加逐年提交与同改文件。验证：冒烟 `row-panel-unused`、`row-panel-hotspots`。
+- [x] 3.3 hash 参数 `row` 与 `prefix`：分页、滚动、高亮、找不到时写明；Code、Reports 与 Products 页的版式（design D6）。验证：O1 `row=` 与 `prefix=` 的 hash 往返先红后绿；冒烟 `row-link`、`prefix-filter`。
+
+## 4. 模式、切换与总览
+
+- [x] 4.1 `mode` 参数与顶栏分段按钮（design D1）：Overview 隐去函数与类、计数不变；搜索命中隐去节点时切到 Deep dive 并写明。验证：O1 模式对节点的过滤与计数不变、搜索切模式，各先红后绿。
+- [x] 4.2 Domain | Structural 分段按钮（design D2），两边保留各自位置。验证：冒烟 `domain-structural`。
+- [x] 4.3 `ProjectOverview`（design D3）。验证：单测核对各计数取自产物；冒烟 `overview-mode`。
+- [x] 4.4 表格页内容列居中（用户：「页面需要居中，现在都是居左的」）。验证：冒烟在 1440 与 1920 宽下左右留白相差不超过 1 px，768 宽无横向溢出；去掉居中先红。
+
+## 5. 节点详情（未做：留给以后对副本的变更）
+
+- （未做）5.1 产物事实取数（design D5）：hotspots 排名与同改前 3、unused 组与入口与引用者、doc-map 单元；「不在列表里」与 not run 分开。验证：O1 产物事实取数先红后绿。
+- （未做）5.2 跳转按钮、容器与层的范围汇总、复杂度徽章、「本文件定义的」、侧栏前进后退。验证：冒烟 `node-facts-jump`（点按钮后详情页选中的行等于该记录、面板打开）。
+
+## 6. 导览面板（未做：由 `explorer.html` 的副本取代）
+
+- （未做）6.1 `LearnPanel` 三种状态与 different revision（design D4）；`unverified` 与 `unchecked` 标记、`removed` 计数与展开。验证：单测。
+- （未做）6.2 进入一步时切层、展开到最深公共容器、fitView、脉动；`tour` 参数、`←`/`→`/`Esc`。验证：O1 导览步骤到最深公共容器、`tour=` 往返先红后绿；冒烟 `tour-walk`（夹具包带一份导览）。
+
+## 7. 图的视觉（未做：由 `explorer.html` 的副本取代）
+
+- （未做）7.1 ELK `layered`（结构图 DOWN、领域图 RIGHT，间距按 design D10），去掉网格退路；边用 ELK 的走线画成曲线，连接点在卡片上下边；聚焦视图改为分层（调用者在上、被调用者在下）。验证：冒烟核对卡片两两不相交、顶层不是网格、边不穿过两端以外的卡片（计数为 0）、聚焦的上下关系；go-multirepo 上改前改后的穿卡计数记入验收。
+- （未做）7.2 移植 UA 的层卡片与文件、函数、类卡片（保留 MIT 声明），层色 7 色循环、类型标签、复杂度、两行摘要。验证：冒烟用计算样式核对色条宽与层色、卡片宽与圆角。
+- （未做）7.3 层内文件夹原地展开、400 上限与折叠计数；其它层的传送卡。验证：O1 下钻计数（落在展开的框上）先红后绿；冒烟 `folder-expand`、`portal-card`。
+- （未做）7.4 边：强调色、宽度上限 5、聚合边无箭头；标签常显、按长度放置、相交不画、悬停总能看到。验证：冒烟核对可见标签两两不相交且不压卡片、悬停的边标签可见。
+- （未做）7.5 选中淡化到 .2、相连边加粗流动；搜索描边与命中数；点阵、MiniMap 与面包屑样式。验证：冒烟 `select-dim`、`search-rings`。
+- （未做）7.6 领域卡片的实体药丸与「+N」、flow 与 step 卡片、跨领域流动虚线边；减少动效下流动、脉动与淡化过渡都关闭。验证：冒烟 `domain-cards`、`reduced-motion-graph`。
+
+## 8. 验收
+
+- [x] 8.1 O2 全量门：第 1–4 片随 PR 77 的门通过（`view-smoke-graph` 337/337，`pnpm test` 全绿）。
+- [x] 8.2 O1：第 1–4 片各任务的先红后绿在各自任务里做过；没有另做一遍汇总的变异轮。
+- [x] 8.3 O4 与 O5 只在 viewer-explorer 的验收里对 `explorer.html` 做过；`view.html` 的三种模式没有单独做 go-multirepo 截图验收（`view.html` 之后退役）。
+- [x] 8.4 在 design.md 末尾写归档记录，同步主规范，归档本变更。

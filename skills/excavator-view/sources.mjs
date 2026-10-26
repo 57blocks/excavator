@@ -34,7 +34,7 @@ const addPath = (set, value) => {
 
 /**
  * The path of every file node of the knowledge graph (`filePath` of a record of type `file`), so a graph node whose
- * file no other product names can still open its code. A line that is not JSON is skipped: the page reports it.
+ * file no other product names can still open its code. A line that is not JSON is skipped: reading the graph for the page reports it.
  */
 function graphFilePaths(payloads) {
   const payload = payloads.find((p) => p.id === 'knowledge-graph');

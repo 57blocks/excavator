@@ -140,13 +140,17 @@ For host-owned AI exploration through seven bounded local MCP tools, see [MCP se
 # Rank the files and directories that change most, from Git history (no advice, never edits code)
 /excavator-hotspots
 
-# Pack the products in .excavator/ into one HTML file and open it in the browser: no server, no network, nothing to install to open it
-# (the page is built by `pnpm build` from packages/report-view; --no-source leaves the source text out of the file)
+# Pack the products in .excavator/ into one HTML file, .excavator/explorer.html, and open it in the browser: no server, no network, nothing to install to open it
+# (the page is built by `pnpm build` from packages/explorer; --no-source leaves the source text out of the file, --out <path> writes it elsewhere)
 /excavator-view
 
 # List the functions a folder of documents describes, each tied to a checked quote and to the code that does it,
 # and count the project's files with and without a function's evidence, by directory
 /excavator-doc-map ~/path/to/docs
+
+# Write a 5-15 step learning tour of the project to .excavator/tour.json for the viewer: steps chosen from computed candidates,
+# every sentence checked by a subagent against the code it cites, contradicted sentences removed and recorded (no advice)
+/excavator-tour
 
 # Re-run anytime — incremental by default (only re-analyzes changed files)
 /excavator

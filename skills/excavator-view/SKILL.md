@@ -1,6 +1,6 @@
 ---
 name: excavator-view
-description: Pack the products in a project's .excavator/ folder (knowledge graph, unused-code, doc-map, hotspots and their reports) into one self-contained HTML file and open it with the system's default browser. A deterministic script writes the page and gives each product a visible state; the page needs no network, no server and nothing to install. It runs no analysis, edits no other file and gives no advice.
+description: Pack the products in a project's .excavator/ folder (knowledge graph, domain graph, unused-code, doc-map, hotspots and the tour) into one self-contained HTML file and open it with the system's default browser. A deterministic script writes the page and gives each product a visible state; the page needs no network, no server and nothing to install. It runs no analysis, edits no other file and gives no advice.
 argument-hint: "[project-path] [--no-source] [--out <path>]"
 ---
 
@@ -10,12 +10,12 @@ Write one HTML file that shows the products already in `.excavator/`, and open i
 
 | Who | What |
 |---|---|
-| `pack.mjs` | Reads the products and the source snapshot's revision, gives every product one state (included, not run, unreadable, different revision), and writes `.excavator/view.html` through a temporary file and a rename. The page is the template `packages/report-view` builds (`pnpm build` writes it to `packages/report-view/dist/view.html`) with the policy and the data inserted. It prints one JSON result. |
-| You | Run it, open the file, and print the four reply lines. |
+| `pack.mjs` | Reads the products and the source snapshot's revision, gives every product one state (included, not run, unreadable, different revision; semantics and the tour are not shown when they pass their own checks but no knowledge graph can be read whole), and writes `.excavator/explorer.html` through a temporary file and a rename. The page is the template `packages/explorer` builds (`pnpm build` writes it to `packages/explorer/dist/explorer.html`) with the policy and the products inserted. It prints one JSON result. |
+| You | Run it, open the file, and print the five reply lines. |
 
 ## Options
 
-`$ARGUMENTS` may contain the project path (default: the current working directory), `--no-source`: leave the source text out of the file, and `--out <path>`: write the page there instead of `.excavator/view.html`.
+`$ARGUMENTS` may contain the project path (default: the current working directory), `--no-source`: leave the source text out of the file, and `--out <path>`: write the page there instead of `.excavator/explorer.html`.
 
 ---
 
@@ -37,7 +37,7 @@ echo "plugin root: $PLUGIN_ROOT"
 node "$PLUGIN_ROOT/skills/excavator-view/pack.mjs" "$PROJECT_ROOT"            # add --no-source and --out <path> only when the user gave them
 ```
 
-The result is one JSON line: `out` (the absolute path of the page), `bytes`, `snapshotRevision`, `products` (each with `name` and `status`, and `reason`, `revision` or `note` when it has one) and `source`.
+The result is one JSON line: `out` (the absolute path of the page), `bytes`, `snapshotRevision`, `products` (each with `name` and `status`, and `reason`, `revision` or `note` when it has one), `source` and `issues`.
 
 A non-zero exit writes no new page and leaves an existing one as it was; without a built template the packer exits non-zero and its message says to run `pnpm build`. Give the message the script printed as it stands and stop: print no reply lines.
 
@@ -59,13 +59,13 @@ esac
 true
 ```
 
-Do not start an HTTP server, do not run `/excavator`, `/excavator-unused-code`, `/excavator-doc-map` or `/excavator-hotspots` to fill a product that is not run, and do not create, change or delete any other file under `.excavator/`.
+Do not start an HTTP server, do not run `/excavator`, `/excavator-unused-code`, `/excavator-doc-map`, `/excavator-hotspots` or `/excavator-tour` to fill a product that is not run, and do not create, change or delete any other file under `.excavator/` than the page.
 
 ## Step 3 — Reply
 
 Write what you tell the user during this step in English, as **Language** in Step 1 says.
 
-Print the reply's four lines with one command. It reads the manifest inside the page, so the states are the page's own:
+Print the reply's five lines with one command. It reads the manifest inside the page, so the states are the page's own:
 
 ```bash
 node "<the plugin root printed in Step 1>/skills/excavator-view/reply.mjs" "<the out path from the result>"
@@ -74,9 +74,10 @@ node "<the plugin root printed in Step 1>/skills/excavator-view/reply.mjs" "<the
 It prints, in this order:
 
 ```
-View: <absolute path>
+Explorer: <absolute path>
 Size: <size in MB, one decimal> MB
-Products: knowledge graph <state>; unused code <state>; doc map <state>; hotspots <state>; reports <state>
+Issues: <N | not counted; knowledge graph <state>>
+Products: knowledge graph <state>; semantics <state>; domain graph <state>; unused code <state>; doc map <state>; hotspots <state>; tour <state>
 Source: <embedded (N files) | not embedded>
 ```
 
