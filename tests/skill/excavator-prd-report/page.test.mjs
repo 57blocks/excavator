@@ -199,14 +199,16 @@ describe('fillPageTemplate', () => {
 
 describe('the built template', () => {
   // `pnpm -r build` runs before `pnpm test` in the gate; a missing build is a failure, not a skip.
-  it('gives a page with the real template: its notice first, the policy and the data in', () => {
+  it('gives a page with the real template: the charset up front, the notice, the policy and the data in', () => {
     const real = join(repoRoot, PAGE_TEMPLATE_PATH);
     expect(existsSync(real), `${real} is missing: run pnpm -r build`).toBe(true);
     const { run, page, report } = pageRun();
     const out = page(real);
     expect(out.status, out.stderr).toBe(0);
     const html = readFileSync(report, 'utf-8');
-    expect(html.startsWith('<!--\nThird-party software bundled in this file')).toBe(true);
+    expect(html).toContain('<!--\nThird-party software bundled in this file');
+    // The charset is declared where a browser reading the file from disk looks for it.
+    expect(html.slice(0, 1024)).toMatch(/<meta charset="utf-8"/i);
     expect(html).toContain("connect-src 'none'");
     expect(JSON.parse(dataBlock.exec(html)[1])).toEqual(collectPageData(run.out, run.project));
   });

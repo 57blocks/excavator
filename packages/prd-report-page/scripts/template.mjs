@@ -6,8 +6,9 @@
  * design D2). The generic plugins (single-file inlining, the licence list, the
  * font inlining) are the explorer's; this file only names this page's template,
  * its fonts and the packages its notice must list. The template starts with one
- * comment, the bundled third-party packages and their licences: the page's own
- * code carries no upstream notice. Its two markers, `<!-- xv:csp -->` and
+ * comment, the bundled third-party packages and their licences, placed right
+ * after the charset meta so the charset stays within the first 1024 bytes: the
+ * page's own code carries no upstream notice. Its two markers, `<!-- xv:csp -->` and
  * `<!-- xv:data -->`, are replaced by `prd.mjs page`.
  */
 
@@ -16,6 +17,9 @@ import { bundledPackagesNotice, checkLicenseNotice } from '../../explorer/script
 import { checkTemplate, singleFile } from '../../explorer/scripts/single-file.mjs';
 
 export const PAGE_TEMPLATE = 'prd-report-page.html';
+/** A browser reads a file from disk with no header: it finds the charset only in the first 1024 bytes. */
+const CHARSET_WINDOW = 1024;
+const CHARSET_META = /<meta\s+charset=(?:"[^"]*"|'[^']*'|[^\s>]+)\s*\/?>/i;
 const ENTRY_NAME = 'index.html';
 
 /** The faces the page uses: Inter and JetBrains Mono, as in the explorer, in the Latin subsets and the weights the page sets. */
@@ -39,8 +43,14 @@ const REQUIRED_PACKAGES = ['react', 'react-dom', 'react-markdown', 'remark-gfm',
 export function checkPageTemplate(fileNames, html) {
   const problems = checkTemplate(fileNames, html, PAGE_TEMPLATE);
   if (html !== null) {
-    const notice = checkLicenseNotice(html, REQUIRED_PACKAGES, PAGE_TEMPLATE);
-    if (notice) problems.push(notice);
+    // The notice follows the charset meta: the notice is long, and a browser reading a file from disk looks for the charset in the first 1024 bytes only.
+    const meta = CHARSET_META.exec(html);
+    const noticeFrom = meta ? meta.index + meta[0].length : 0;
+    const notice = meta ? checkLicenseNotice(html.slice(noticeFrom), REQUIRED_PACKAGES, PAGE_TEMPLATE) : null;
+    if (notice) problems.push(notice.replace(/does not start with the licence notice comment$/, 'does not carry the licence notice comment right after its charset meta'));
+    const offset = meta ? Buffer.byteLength(html.slice(0, meta.index)) : -1;
+    if (!meta || !/charset=["']?utf-8/i.test(meta[0])) problems.push(`${PAGE_TEMPLATE} has no <meta charset="utf-8"> within its first ${CHARSET_WINDOW} bytes`);
+    else if (offset + Buffer.byteLength(meta[0]) > CHARSET_WINDOW) problems.push(`${PAGE_TEMPLATE} has its <meta charset> at byte ${offset}, past the first ${CHARSET_WINDOW} bytes`);
     // The template is ASCII: the libraries' non-ASCII text is written as escapes (esbuild charset), the fonts are base64.
     const at = html.search(/[^\x00-\x7f]/);
     if (at !== -1) problems.push(`${PAGE_TEMPLATE} holds a non-ASCII character at offset ${at}`);
@@ -106,5 +116,5 @@ function asciiOnly() {
  * @returns {import('vite').Plugin[]}
  */
 export function pageTemplate() {
-  return [asciiOnly(), inlineFonts(PAGE_FONTS), renameOutput(ENTRY_NAME, PAGE_TEMPLATE), afterVite(singleFile(bundledPackagesNotice, PAGE_TEMPLATE))];
+  return [asciiOnly(), inlineFonts(PAGE_FONTS), renameOutput(ENTRY_NAME, PAGE_TEMPLATE), afterVite(singleFile(bundledPackagesNotice, PAGE_TEMPLATE, 'after-charset'))];
 }

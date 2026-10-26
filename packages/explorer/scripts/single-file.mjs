@@ -146,15 +146,35 @@ function assetText(asset) {
   return typeof asset.source === 'string' ? asset.source : new TextDecoder().decode(asset.source);
 }
 
+const CHARSET_META = /<meta\s+charset=(?:"[^"]*"|'[^']*'|[^\s>]+)\s*\/?>/i;
+
+/**
+ * Put `notice` in `html`: at the very start (`'start'`, the explorer's layout),
+ * or right after the first `<meta charset>` (`'after-charset'`), so that a long
+ * notice cannot push the charset past the first 1024 bytes a browser scans for it.
+ * @param {string} html
+ * @param {string} notice
+ * @param {'start' | 'after-charset'} placement
+ */
+function placeNotice(html, notice, placement) {
+  if (placement === 'start') return notice + html;
+  const meta = CHARSET_META.exec(html);
+  if (!meta) throw new Error('the template has no <meta charset> to put the notice after');
+  const end = meta.index + meta[0].length;
+  return html.slice(0, end) + notice + html.slice(end);
+}
+
 /**
  * Inline the bundle into the template and remove every other output; throws, naming the
  * outputs, when the bundle is not one HTML file, one JavaScript chunk and stylesheets.
- * `notice`, a comment, is put at the very start of the file. Mutates `bundle`.
+ * `notice`, a comment, is put at the very start of the file, or after the charset meta
+ * when `noticePlacement` is `'after-charset'`. Mutates `bundle`.
  * @param {OutputBundle} bundle
  * @param {string} [notice]
  * @param {string} [templateFile] the template's name
+ * @param {'start' | 'after-charset'} [noticePlacement]
  */
-export function collapseBundle(bundle, notice = '', templateFile = TEMPLATE_FILE) {
+export function collapseBundle(bundle, notice = '', templateFile = TEMPLATE_FILE, noticePlacement = 'start') {
   const names = Object.keys(bundle).sort();
   const htmlNames = names.filter((name) => name.endsWith('.html'));
   if (htmlNames.length !== 1 || htmlNames[0] !== templateFile) {
@@ -198,7 +218,7 @@ export function collapseBundle(bundle, notice = '', templateFile = TEMPLATE_FILE
   if (problems.length > 0) throw new Error(problems.join('; '));
 
   for (const name of names) if (name !== templateFile) delete bundle[name];
-  htmlAsset.source = notice + html;
+  htmlAsset.source = placeNotice(html, notice, noticePlacement);
 }
 
 /**
@@ -206,15 +226,16 @@ export function collapseBundle(bundle, notice = '', templateFile = TEMPLATE_FILE
  * `notice` gives the comment to put at the start of the file, read when the bundle is written.
  * @param {() => string} [notice]
  * @param {string} [templateFile] the template's name
+ * @param {'start' | 'after-charset'} [noticePlacement]
  * @returns {import('vite').Plugin}
  */
-export function singleFile(notice = () => '', templateFile = TEMPLATE_FILE) {
+export function singleFile(notice = () => '', templateFile = TEMPLATE_FILE, noticePlacement = 'start') {
   return {
     name: 'excavator-single-file',
     enforce: 'post',
     generateBundle(_options, bundle) {
       try {
-        collapseBundle(/** @type {OutputBundle} */ (/** @type {unknown} */ (bundle)), notice(), templateFile);
+        collapseBundle(/** @type {OutputBundle} */ (/** @type {unknown} */ (bundle)), notice(), templateFile, noticePlacement);
       } catch (error) {
         this.error(/** @type {Error} */ (error).message);
       }

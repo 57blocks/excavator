@@ -6,11 +6,11 @@ import { PAGE_FONTS, PAGE_TEMPLATE, checkPageTemplate } from '../scripts/templat
 
 const PACKAGES = ['react', 'react-dom', 'react-markdown', 'remark-gfm', 'rehype-raw', 'rehype-sanitize', 'mermaid', ...PAGE_FONTS.map((font) => font.pkg)];
 
-/** A template that keeps the contract; each test breaks one thing in it. */
-function goodTemplate({ packages = PACKAGES, js = 'console.log(1);' } = {}) {
+/** A template that keeps the contract; each test breaks one thing in it. The charset meta comes first, the notice right after it. */
+function goodTemplate({ packages = PACKAGES, js = 'console.log(1);', charset = '<meta charset="UTF-8" />' } = {}) {
   return [
-    `<!--\n${NOTICE_HEADING}\n${packages.map((name) => `${name} 1.0.0 MIT`).join('\n')}\n-->\n`,
-    '<!doctype html><html><head>',
+    '<!doctype html><html lang="en"><head>',
+    `${charset}<!--\n${NOTICE_HEADING}\n${packages.map((name) => `${name} 1.0.0 MIT`).join('\n')}\n-->\n`,
     CSP_MARKER,
     '<title>t</title>',
     `<script type="module">${js}</script>`,
@@ -40,8 +40,8 @@ describe('checkPageTemplate: the build output contract (design D2)', () => {
   });
 
   it('fails a template without the licence notice, or one that does not list a package it bundles', () => {
-    expect(checkPageTemplate([PAGE_TEMPLATE], goodTemplate().replace(/^<!--[\s\S]*?-->\n/, ''))).toEqual([
-      'prd-report-page.html does not start with the licence notice comment',
+    expect(checkPageTemplate([PAGE_TEMPLATE], goodTemplate().replace(/<!--\n[\s\S]*?-->\n/, ''))).toEqual([
+      'prd-report-page.html does not carry the licence notice comment right after its charset meta',
     ]);
     expect(checkPageTemplate([PAGE_TEMPLATE], goodTemplate({ packages: PACKAGES.filter((name) => name !== 'mermaid') }))).toEqual([
       'the licence notice does not list mermaid',
@@ -61,5 +61,23 @@ describe('checkPageTemplate: the build output contract (design D2)', () => {
     expect(checkPageTemplate([PAGE_TEMPLATE], goodTemplate().replace('<title>', '<link rel="stylesheet" href="a.css"><title>'))).toEqual([
       'prd-report-page.html has a <link> tag',
     ]);
+  });
+
+  it('needs the charset meta within the first 1024 bytes, the offset the check reports', () => {
+    expect(goodTemplate().indexOf('<meta charset')).toBeLessThan(1024);
+    expect(checkPageTemplate([PAGE_TEMPLATE], goodTemplate({ charset: '<meta charset=utf-8>' }))).toEqual([]);
+    expect(checkPageTemplate([PAGE_TEMPLATE], goodTemplate({ charset: '' }))[0]).toBe('prd-report-page.html has no <meta charset="utf-8"> within its first 1024 bytes');
+    // The old layout: the notice first, so the meta sits far past the prescan.
+    const long = goodTemplate({ packages: Array.from({ length: 200 }, (_, at) => `pkg-${at}`).concat(PACKAGES) });
+    const notice = /<!--\n[\s\S]*?-->\n/.exec(long)[0];
+    const late = notice + long.replace(notice, '');
+    const problems = checkPageTemplate([PAGE_TEMPLATE], late);
+    const offset = Buffer.byteLength(late.slice(0, late.indexOf('<meta charset')));
+    expect(offset).toBeGreaterThan(1024);
+    expect(problems).toContain(`prd-report-page.html has its <meta charset> at byte ${offset}, past the first 1024 bytes`);
+  });
+
+  it('fails a charset other than utf-8', () => {
+    expect(checkPageTemplate([PAGE_TEMPLATE], goodTemplate({ charset: '<meta charset="latin1" />' }))[0]).toMatch(/no <meta charset="utf-8"> within its first 1024 bytes/);
   });
 });
