@@ -1,7 +1,9 @@
 /**
  * The Markdown tables of a PRD run, written by `aggregate` and inserted by
- * `assemble` (openspec change prd-feature-pipeline, design D7): the model
- * never transcribes them. Deterministic: rows follow the index order.
+ * `assemble` (openspec changes prd-feature-pipeline, design D7, and
+ * prd-report-prd-shape, design D4): the model never transcribes them.
+ * Deterministic: rows follow the index order, or chapter order where they
+ * are listed for the written features.
  */
 
 import { VERIFICATION_KEYS } from './index-check.mjs';
@@ -10,27 +12,65 @@ const cell = (value) => String(value).replace(/\|/g, '\\|').replace(/\s*\n\s*/g,
 const row = (cells) => `| ${cells.map(cell).join(' | ')} |`;
 const header = (cells) => [row(cells), `|${cells.map(() => '---').join('|')}|`];
 const label = (feature) => `${feature.id} ${feature.name}`;
-const WRITTEN = new Set(['checked', 'verified']);
 
-/** Roles by feature, from the front-matter `roles` of each written chapter. */
-export function rolesTable(features, rolesById) {
-  const written = features.filter((feature) => WRITTEN.has(feature.status));
-  const roles = [...new Set(written.flatMap((feature) => rolesById.get(feature.id) ?? []))].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
-  const lines = ['## Roles by feature', ''];
-  if (written.length === 0 || roles.length === 0) {
-    lines.push('No written feature lists a role.');
+/** The glossary, in the order of index.json: `| Term | Meaning |`, or `None.`. */
+export function terminologyTable(glossary) {
+  if (glossary.length === 0) return 'None.\n';
+  return `${[...header(['Term', 'Meaning']), ...glossary.map((entry) => row([entry.term, entry.meaning]))].join('\n')}\n`;
+}
+
+/** The distinct `items` in the order they first appear. */
+const firstSeen = (items) => [...new Set(items)];
+
+/**
+ * The actors and permission roles the written chapters declare, in document
+ * order (`written` is in chapter order; `chaptersById` holds each one's
+ * split). Actors by feature has a row for every written feature and a column
+ * for every actor of the index (`indexActors`, in its order) that at least
+ * one written feature uses (change prd-report-prd-shape, design D12);
+ * Permission roles has a row for every role, in order of first appearance,
+ * with the features that name it.
+ */
+export function rolesTable(written, chaptersById, indexActors) {
+  const of = (feature, key) => chaptersById.get(feature.id)?.[key] ?? [];
+  const lines = ['### Actors by feature', ''];
+  const used = new Set(written.flatMap((feature) => of(feature, 'actors')));
+  const actors = indexActors.filter((actor) => used.has(actor));
+  if (actors.length === 0) {
+    lines.push('No written feature lists an actor.');
   } else {
-    lines.push(...header(['Feature', ...roles]));
+    lines.push(...header(['Feature', ...actors]));
     for (const feature of written) {
-      const own = new Set(rolesById.get(feature.id) ?? []);
-      lines.push(row([label(feature), ...roles.map((role) => (own.has(role) ? 'x' : ''))]));
+      const own = new Set(of(feature, 'actors'));
+      lines.push(row([label(feature), ...actors.map((actor) => (own.has(actor) ? 'x' : ''))]));
+    }
+  }
+  lines.push('', '### Permission roles', '');
+  const roles = firstSeen(written.flatMap((feature) => of(feature, 'permissionRoles')));
+  if (roles.length === 0) {
+    lines.push('No written feature lists a permission role.');
+  } else {
+    lines.push(...header(['Role', 'Features']));
+    for (const role of roles) {
+      lines.push(row([role, written.filter((feature) => of(feature, 'permissionRoles').includes(role)).map(label).join(', ')]));
     }
   }
   return `${lines.join('\n')}\n`;
 }
 
-/** Every candidate, the feature it belongs to and that feature's status. */
-export function coverageTable(index) {
+/** The open items section of each written chapter that has one, under `### <id> <name>`, as written; `None.` when no chapter has one. */
+export function openItemsTable(written, chaptersById) {
+  const blocks = written
+    .filter((feature) => chaptersById.get(feature.id)?.openItems != null)
+    .map((feature) => [`### ${label(feature)}`, '', chaptersById.get(feature.id).openItems].join('\n').trimEnd());
+  return blocks.length === 0 ? 'None.\n' : `${blocks.join('\n\n')}\n`;
+}
+
+/**
+ * Every candidate, the feature it belongs to and that feature's status;
+ * `outsideLine` is the line about seed files outside the scope, or null.
+ */
+export function coverageTable(index, outsideLine) {
   const owner = new Map();
   for (const feature of index.features) for (const id of feature.entrypoints) owner.set(id, feature);
   const { candidates, assigned, unassigned } = index.conservation;
@@ -38,6 +78,7 @@ export function coverageTable(index) {
   if (index.candidates.uncovered.length > 0) {
     lines.push(`Frameworks with no entrypoint patterns: ${index.candidates.uncovered.join(', ')}.`);
   }
+  if (outsideLine !== null) lines.push(outsideLine);
   lines.push('', ...header(['Candidate', 'Kind', 'Location', 'Framework', 'Feature', 'Status']));
   for (const item of index.candidates.items) {
     const feature = owner.get(item.id);

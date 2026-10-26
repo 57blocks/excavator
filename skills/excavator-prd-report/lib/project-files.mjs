@@ -8,6 +8,20 @@
 import { readFileSync, realpathSync, statSync } from 'node:fs';
 import { isAbsolute, join, relative, sep } from 'node:path';
 
+import { SKIPPED_DIRECTORIES } from './entrypoints.mjs';
+
+/**
+ * The reason a model-written path is refused: one of its directories is a
+ * name the entrypoint scan skips (dependencies, build output), or null. Only
+ * directories count, not the file name. The reason names the rule, not what
+ * the file is: a directory with that name can hold project code.
+ */
+export function skippedDirectoryReason(path) {
+  if (typeof path !== 'string') return null;
+  const dir = path.split('/').slice(0, -1).find((segment) => SKIPPED_DIRECTORIES.includes(segment));
+  return dir === undefined ? null : `is under ${dir}, a directory name the entrypoint scan skips as dependencies or build output`;
+}
+
 /**
  * A reader of the project's files under `projectRoot`.
  * `resolve(path)` returns `{ ok: true, path, text, lines }` or `{ ok: false, reason }`.

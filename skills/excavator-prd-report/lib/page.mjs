@@ -16,6 +16,7 @@ import { fileURLToPath } from 'node:url';
 
 import { jsonForScript } from '../../excavator-view/page-assembly.mjs';
 import { UsageError } from './errors.mjs';
+import { loadIndex } from './index-check.mjs';
 import { collectPageData } from './page-data.mjs';
 
 export const PAGE_FILE = 'report.html';
@@ -73,9 +74,10 @@ export function fillPageTemplate(template, data) {
 }
 
 /**
- * Run page on `<out>`. Returns { status: 0, lines: [path] }; throws UsageError
- * (exit 2) for a run that is not up to date or a template that is missing or
- * wrong, and leaves no report.html then.
+ * Run page on `<out>`. Returns { status: 0, lines: [path] }, or { status: 1,
+ * lines } for an index of the previous format; throws UsageError (exit 2) for
+ * a run that is not up to date or a template that is missing or wrong. Either
+ * way no report.html is left.
  * @param {string} outDirArg
  * @param {string} root the real path of --project
  * @param {{ templatePath?: string }} [options]
@@ -85,6 +87,9 @@ export function writePage(outDirArg, root, options = {}) {
   const target = join(outDir, PAGE_FILE);
   // Before any check that can fail: a failed run leaves no report.html, whatever an earlier run wrote.
   rmSync(target, { force: true });
+  // An index of the previous format is a failed check (exit 1) like in every other command; any other trouble with it is collectPageData's.
+  const early = loadIndex(outDir);
+  if (early.stale) return { status: 1, lines: [early.line] };
   const data = collectPageData(outDir, root);
   const templatePath = options.templatePath ?? process.env[TEMPLATE_VARIABLE] ?? defaultTemplatePath();
   const html = fillPageTemplate(readTemplate(templatePath), data);

@@ -28,9 +28,11 @@ import {
 } from './index-check.mjs';
 import { writeJson } from './json-file.mjs';
 import { chapterPath, findingsPath, laneResult } from './lane-check.mjs';
-import { coverageTable, rolesTable, verificationTable } from './tables.mjs';
+import { byChapter } from './chapter.mjs';
+import { coverageTable, openItemsTable, rolesTable, terminologyTable, verificationTable } from './tables.mjs';
 import { emptyPriorityCounts, priorityCounts, readFeatureRanks } from './priorities.mjs';
 import { projectRootProblem } from './project-root.mjs';
+import { outsideScopeLine } from './scope-reads.mjs';
 import { parseVerificationReply } from './verification.mjs';
 
 export const FINDINGS_FORMAT = 'excavator-prd-report-findings/1';
@@ -38,7 +40,9 @@ export const FINDINGS_FILE = 'findings.json';
 export const PRD_FILE = 'PRD.md';
 /** The output directory the skill uses when --out is not given, under the project. */
 export const DEFAULT_OUT = join('.excavator', 'prd-report');
-export const TABLE_FILES = Object.freeze(['tables/roles-by-feature.md', 'tables/coverage.md', 'tables/verification.md']);
+/** The tables aggregate writes, in the order `assemble` places them (change prd-report-prd-shape, design D4); `TABLE_KEYS` names each one in the page data. */
+export const TABLE_FILES = Object.freeze(['tables/terminology.md', 'tables/roles.md', 'tables/open-items.md', 'tables/coverage.md', 'tables/verification.md']);
+export const TABLE_KEYS = Object.freeze(['terminology', 'roles', 'openItems', 'coverage', 'verification']);
 export const verificationPath = (id) => `verification/${id}.txt`;
 export const reportPath = (id) => `verification/${id}.md`;
 export const WRITTEN_STATUSES = Object.freeze(['checked', 'verified']);
@@ -55,8 +59,9 @@ function unrankedCounts(counts) {
 }
 
 /**
- * One feature's recomputed state: { feature, roles, findings, ranks, laneFindings }.
- * Pure apart from reading the lane files, the priorities file and the project:
+ * One feature's recomputed state: { feature, chapter, findings, ranks, laneFindings }.
+ * `chapter` is the split of the chapter file (see `splitChapter`) when the
+ * feature is written, else null. Pure apart from reading the lane files, the priorities file and the project:
  * `laneFindings` is the lane's findings with each passage's line filled in
  * (null when the lane did not pass), for `aggregate` to write back; `findings`
  * is the part that counts (null unless the feature is written); `ranks` is
@@ -76,9 +81,9 @@ export function recomputeFeature(outDir, index, feature, root) {
       const reasons = recorded?.reasons?.length
         ? recorded.reasons
         : [`lane-wrote-nothing: ${chapterPath(feature.id)} and ${findingsPath(feature.id)} are missing after ${attempts} attempts`];
-      return { feature: { ...base, status: 'failed', failure: { step: 'lane', reasons } }, roles: [], findings: null, ranks: null, laneFindings: null };
+      return { feature: { ...base, status: 'failed', failure: { step: 'lane', reasons } }, chapter: null, findings: null, ranks: null, laneFindings: null };
     }
-    return { feature: { ...base, status: 'planned', failure: null }, roles: [], findings: null, ranks: null, laneFindings: null };
+    return { feature: { ...base, status: 'planned', failure: null }, chapter: null, findings: null, ranks: null, laneFindings: null };
   }
 
   const lane = laneResult(outDir, index, feature, root);
@@ -87,31 +92,37 @@ export function recomputeFeature(outDir, index, feature, root) {
   const recorded = feature.failure?.step === 'check-lane' ? feature.failure.reasons : [];
   const laneReasons = lane.problems.length > 0 ? lane.problems : recorded;
   if (laneReasons.length > 0) {
-    return { feature: { ...base, counts, status: 'failed', failure: { step: 'check-lane', reasons: laneReasons } }, roles: [], findings: null, ranks: null, laneFindings };
+    return { feature: { ...base, counts, status: 'failed', failure: { step: 'check-lane', reasons: laneReasons } }, chapter: null, findings: null, ranks: null, laneFindings };
   }
   // The lane passed: its findings count, ranked by the feature's priorities file when that passes, else unranked.
   const { ranks } = readFeatureRanks(outDir, feature.id, lane.findings.findings);
   const ranked = { ...counts, findings: { ...counts.findings, priority: priorityCounts(lane.findings.findings, ranks) } };
   const replyPath = join(outDir, verificationPath(feature.id));
   if (!existsSync(replyPath)) {
-    return { feature: { ...base, counts: ranked, status: 'checked', failure: null }, roles: lane.roles, findings: lane.findings, ranks, laneFindings };
+    return { feature: { ...base, counts: ranked, status: 'checked', failure: null }, chapter: writtenChapter(feature, lane), findings: lane.findings, ranks, laneFindings };
   }
   if (!existsSync(join(outDir, reportPath(feature.id)))) {
     const reasons = [`verification-report-missing: ${reportPath(feature.id)} is missing`];
-    return { feature: { ...base, counts, status: 'failed', failure: { step: 'verify', reasons } }, roles: [], findings: null, ranks: null, laneFindings };
+    return { feature: { ...base, counts, status: 'failed', failure: { step: 'verify', reasons } }, chapter: null, findings: null, ranks: null, laneFindings };
   }
   const reply = parseVerificationReply(readFileSync(replyPath, 'utf-8'));
   if (!reply.ok) {
     const reasons = reply.reasons.map((reason) => `verification-reply-unparsed: ${verificationPath(feature.id)}: ${reason}`);
-    return { feature: { ...base, counts, status: 'failed', failure: { step: 'verify', reasons } }, roles: [], findings: null, ranks: null, laneFindings };
+    return { feature: { ...base, counts, status: 'failed', failure: { step: 'verify', reasons } }, chapter: null, findings: null, ranks: null, laneFindings };
   }
   return {
     feature: { ...base, counts: { ...ranked, verification: reply.counts }, status: 'verified', failure: null },
-    roles: lane.roles,
+    chapter: writtenChapter(feature, lane),
     findings: lane.findings,
     ranks,
     laneFindings,
   };
+}
+
+/** The split of a passed lane's chapter; a lane that passed always has one, so a missing split is a bug, not a state. */
+function writtenChapter(feature, lane) {
+  if (lane.chapter === null) throw new Error(`${feature.id}: the lane passed but its chapter does not split`);
+  return lane.chapter;
 }
 
 const LEVEL_ORDER = Object.freeze({ P0: 0, P1: 1, P2: 2 });
@@ -167,6 +178,8 @@ export function summarize(outDirArg, index, root) {
     },
     verification: Object.fromEntries(VERIFICATION_KEYS.map((key) => [key, sum(verified, (f) => f.counts.verification[key])])),
     uncovered: index.candidates.uncovered,
+    // The failed features a second run of the lane can still repair, in chapter order (change prd-report-prd-shape, design D6).
+    retryable: features.filter((f) => f.status === 'failed' && (f.attempts ?? 0) < MAX_ATTEMPTS).sort(byChapter).map((f) => f.id),
     outIsDefault: realpathSync(outDir) === join(realpathSync(root), DEFAULT_OUT),
   };
 }
@@ -220,7 +233,8 @@ export function computeAggregate(outDirArg, index, root) {
   const entries = findingsOf(states);
   const unconserved = priorityConservation(states, entries, result.findings.priority);
   if (unconserved.length > 0) return { states, updated, problems: unconserved, result: null, findingsFile: null, tables: null };
-  const rolesById = new Map(states.map((state) => [state.feature.id, state.roles]));
+  const chapters = new Map(states.map((state) => [state.feature.id, state.chapter]));
+  const written = features.filter((feature) => WRITTEN_STATUSES.includes(feature.status)).sort(byChapter);
   return {
     states,
     updated,
@@ -228,9 +242,11 @@ export function computeAggregate(outDirArg, index, root) {
     result,
     findingsFile: { format: FINDINGS_FORMAT, sourceRevision: index.sourceRevision, findings: entries },
     tables: {
-      [TABLE_FILES[0]]: rolesTable(features, rolesById),
-      [TABLE_FILES[1]]: coverageTable(updated),
-      [TABLE_FILES[2]]: verificationTable(features, result.verification),
+      [TABLE_FILES[0]]: terminologyTable(index.glossary),
+      [TABLE_FILES[1]]: rolesTable(written, chapters, index.actors),
+      [TABLE_FILES[2]]: openItemsTable(written, chapters),
+      [TABLE_FILES[3]]: coverageTable(updated, outsideScopeLine(index, root)),
+      [TABLE_FILES[4]]: verificationTable(features, result.verification),
     },
   };
 }
@@ -239,7 +255,7 @@ export function computeAggregate(outDirArg, index, root) {
 export function aggregate(outDirArg, root) {
   const outDir = resolve(outDirArg);
   const read = loadIndex(outDir);
-  if (!read.ok) return { status: 1, lines: [`index: ${INDEX_FILE} ${read.reason}`] };
+  if (!read.ok) return { status: 1, lines: [read.line] };
   const schema = schemaProblems(read.value);
   if (schema.length > 0) return { status: 1, lines: schema };
   const index = read.value;

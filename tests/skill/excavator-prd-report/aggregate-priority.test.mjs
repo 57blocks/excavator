@@ -27,13 +27,15 @@ const sha = (text) => createHash('sha256').update(text).digest('hex');
 const stringify = (value) => `${JSON.stringify(value, null, 2)}\n`;
 const ids = (run) => run.readJson('findings.json').findings.map((finding) => finding.id);
 
-/** The `aggregate` of commit 5a63f6bc (before priorities) on the lane fixture, as digests: the findings, tables and index it wrote. */
+/**
+ * The `aggregate` of commit 5a63f6bc (before priorities) on the lane fixture, as digests: the findings, tables and index it wrote.
+ * The roles table is not here: change prd-report-prd-shape replaced it with tables/roles.md, which has no "before".
+ */
 const BEFORE = {
   findings: '27cfbc230d97faca509fb5e9c718a790e6d15669a16866f883cc8500f33a7c7e',
   index: '62109e3c2305dbd76ce8e4d21d5d7b80868284577ad51d063bfdad6c89dfce91',
   tables: {
     'tables/coverage.md': 'c4e6573262f40f95939399c3c423aabe469ece1ab07af9c4b80bf5ddb5d0892f',
-    'tables/roles-by-feature.md': 'b698bcbc0e2da8dc62a1e0de37e7c86c7e97ecc5069f76a4e35d9e6fd75239ed',
     'tables/verification.md': '4cd3c3215415cdd9795900aa29a9a578e57b5af12d8c696f35891ad20531441d',
   },
   lanes: {
@@ -53,7 +55,7 @@ describe('aggregate with no priorities file (O2: nothing else changes)', () => {
     for (const finding of stored.findings) expect(Object.keys(finding).slice(-4)).toEqual(['feature', 'verdict', 'priority', 'priorityReason']);
   });
 
-  it('writes the three tables byte for byte as before', () => {
+  it('writes the coverage and verification tables byte for byte as before', () => {
     const run = laneRun();
     aggregateOk(run);
     for (const [rel, digest] of Object.entries(BEFORE.tables)) expect(sha(run.readText(rel)), rel).toBe(digest);
@@ -74,7 +76,12 @@ describe('aggregate with no priorities file (O2: nothing else changes)', () => {
       { P0: 0, P1: 0, P2: 0, unranked: 1 },
     ]);
     for (const feature of index.features) delete feature.counts.findings.priority;
-    expect(sha(stringify({ ...index, projectRoot: '__ROOT__' }))).toBe(BEFORE.index);
+    // The format moved to /2 on purpose (change prd-report-prd-shape, design D9) and the index gained its actors (D12);
+    // the digest is of the index with the format it had and without them.
+    expect(index.format).toBe('excavator-prd-report/2');
+    const { actors, ...before } = index;
+    expect(actors).toEqual(['customer', 'support agent']);
+    expect(sha(stringify({ ...before, format: 'excavator-prd-report/1', projectRoot: '__ROOT__' }))).toBe(BEFORE.index);
   });
 
   it('keeps the printed fields of before and adds the four totals under findings', () => {

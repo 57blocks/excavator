@@ -134,7 +134,9 @@ For host-owned AI exploration through seven bounded local MCP tools, see [MCP se
 # verifies each chapter and assembles one PRD.md and one report.html (a self-contained page with the overview, each feature with its
 # findings, all findings and the coverage; it opens with a double click, no server or network); each finding carries a
 # P0/P1/P2 level with a one-sentence reason from a separate ranking subagent, and the page filters by level; everything goes to --out
-# (default .excavator/prd-report/), and a rerun resumes the unfinished features
+# (default .excavator/prd-report/), and a rerun resumes the unfinished features; PRD.md also has Terminology, Flow
+# index, Roles and Open items sections that the scripts generate from the chapters' declarations, and a shared-model chapter (e.g. roles and
+# permissions) before the flow chapters
 /excavator-prd-report
 
 # Verify an As-Is document (e.g. a PRD) against the code; --fix corrects it in place

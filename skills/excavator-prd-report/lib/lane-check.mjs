@@ -1,9 +1,13 @@
 /**
  * The two files a feature lane writes (openspec change prd-feature-pipeline,
  * design D3): `features/<id>.md` and `findings/<id>.json`. The chapter needs
- * front-matter that matches the index, a mermaid block, a `<details>`
- * evidence block and `path:line[-line]` anchors that resolve inside the
- * project; each finding needs a known class, no advice in its statement and
+ * front-matter that matches the index, with the actors, permission roles,
+ * flows and open items it declares matching its `###` headings and one `##`
+ * heading (change prd-report-prd-shape, design D3), each actor one of the
+ * index's actors (D12), a mermaid block, a
+ * `<details>` evidence block and `path:line[-line]` anchors that resolve
+ * inside the project, outside the directories that hold dependencies or
+ * build output (D8); each finding needs a known class, no advice in its statement and
  * evidence passages that occur exactly once in their files. When every
  * finding passes, the line each passage starts on is written back.
  */
@@ -12,11 +16,13 @@ import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { UsageError } from './errors.mjs';
+import { splitChapter } from './chapter.mjs';
 import { parseFrontMatter } from './front-matter.mjs';
-import { INDEX_FILE, loadIndex } from './index-check.mjs';
+import { endsInsideFence, headingsOf } from './headings.mjs';
+import { INDEX_FILE, MAX_ATTEMPTS, loadIndex } from './index-check.mjs';
 import { isObject, isString, isStringArray, readJson, writeJson } from './json-file.mjs';
 import { findOnce, normalize } from './normalize.mjs';
-import { projectFiles } from './project-files.mjs';
+import { projectFiles, skippedDirectoryReason } from './project-files.mjs';
 import { projectRootProblem } from './project-root.mjs';
 
 const cjk = (...points) => String.fromCodePoint(...points);
@@ -54,19 +60,69 @@ export const FINDING_CLASSES = Object.freeze(['product', 'technical']);
 const FINDING_KEYS = Object.freeze(['id', 'class', 'statement', 'flows', 'evidence']);
 const EVIDENCE_KEYS = Object.freeze(['file', 'passage', 'line']);
 const ANCHOR = /`([^`\s]+):(\d+)(?:-(\d+))?`/g;
-const MERMAID = /^```mermaid[ \t]*$/gm;
+export const MERMAID = /^```mermaid[ \t]*$/gm;
 const DETAILS = /<details>[\s\S]*?<\/details>/g;
 
 export const chapterPath = (id) => `features/${id}.md`;
 export const findingsPath = (id) => `findings/${id}.json`;
 
+/** Problems of the declared structure: the lists of the front-matter against the body's headings (design D3). */
+function structureProblems(data, body, feature, actorNames) {
+  const problems = [];
+  const headings = headingsOf(body);
+  const sub = headings.filter((heading) => heading.level === 3).map((heading) => heading.text);
+  if (Object.hasOwn(data, 'roles')) problems.push('front-matter roles is no longer read; write actors and permissionRoles');
+  const lists = {};
+  for (const key of ['actors', 'permissionRoles', 'flows']) {
+    if (isStringArray(data[key])) lists[key] = data[key];
+    else problems.push(`front-matter ${key} is not a list`);
+  }
+  if (lists.actors && lists.permissionRoles) {
+    for (const name of lists.actors) if (lists.permissionRoles.includes(name)) problems.push(`${name} is both an actor and a permission role`);
+  }
+  if (lists.actors) {
+    for (const name of lists.actors) if (!actorNames.includes(name)) problems.push(`actor "${name}" is not one of the index's actors`);
+  }
+  if (lists.flows) {
+    // assemble takes the nth ### heading with a flow's text for its nth listing, and the open items section is cut off the body (design D4).
+    const openItems = Object.hasOwn(data, 'openItems') ? data.openItems : null;
+    const listed = new Map();
+    for (const title of lists.flows) listed.set(title, (listed.get(title) ?? 0) + 1);
+    for (const [title, times] of listed) {
+      const have = sub.filter((text) => text === title).length;
+      if (have === 0) {
+        for (let k = 0; k < times; k += 1) problems.push(`flow "${title}" is not a ### heading of the chapter`);
+      } else if (title === openItems) {
+        problems.push(`flow "${title}" is the open items heading; list only the flows`);
+      } else if (times > have) {
+        problems.push(`flow "${title}" is listed ${times} times; the chapter has ${have} ### headings with that text`);
+      }
+    }
+    if (feature.kind === 'reference') {
+      if (lists.flows.length > 0) problems.push('a reference feature lists flows');
+    } else if (lists.flows.length === 0) {
+      problems.push(`${feature.kind === 'automated' ? 'an' : 'a'} ${feature.kind} feature lists no flow`);
+    }
+  }
+  if (Object.hasOwn(data, 'openItems')) {
+    const title = data.openItems;
+    if (typeof title !== 'string' || !sub.includes(title)) problems.push(`open items heading "${title}" is not a ### heading of the chapter`);
+    else if (sub.at(-1) !== title) problems.push(`open items heading "${title}" is not the last ### heading`);
+  }
+  if (endsInsideFence(body)) problems.push('the chapter ends inside an open code fence; close it');
+  const chapters = headings.filter((heading) => heading.level === 2).length;
+  if (chapters !== 1 || headings[0]?.level !== 2) {
+    problems.push(`the chapter has ${chapters} ## headings; it has one, ## ${feature.name}, as its first heading`);
+  }
+  return problems;
+}
+
 /** Problems of the chapter file, and its counts. */
-function chapterProblems(text, feature, files) {
+function chapterProblems(text, index, feature, files) {
   const problems = [];
   const add = (problem) => problems.push(`${feature.id}: ${problem}`);
   const front = parseFrontMatter(text);
   let body = text;
-  let roles = [];
   if (!front.ok) {
     add(`${chapterPath(feature.id)} ${front.reason}`);
   } else {
@@ -76,8 +132,8 @@ function chapterProblems(text, feature, files) {
     if (!isString(data.name)) add('front-matter name is missing');
     if (data.kind !== feature.kind) add(`front-matter kind is ${JSON.stringify(data.kind ?? null)}, not the index's ${feature.kind}`);
     if (data.chapter !== feature.chapter) add(`front-matter chapter is ${JSON.stringify(data.chapter ?? null)}, not the index's ${feature.chapter}`);
-    for (const key of ['roles', 'triggers']) if (!isStringArray(data[key])) add(`front-matter ${key} is not a list`);
-    if (isStringArray(data.roles)) roles = data.roles;
+    if (!isStringArray(data.triggers)) add('front-matter triggers is not a list');
+    for (const problem of structureProblems(data, body, feature, isStringArray(index.actors) ? index.actors : [])) add(problem);
   }
   const diagrams = (body.match(MERMAID) ?? []).length;
   if (diagrams === 0) add('no mermaid block');
@@ -89,6 +145,11 @@ function chapterProblems(text, feature, files) {
       evidence += 1;
       const [raw, path, startText, endText] = match;
       const anchor = raw.slice(1, -1);
+      const skipped = skippedDirectoryReason(path);
+      if (skipped !== null) {
+        add(`anchor ${anchor}: the path ${skipped}`);
+        continue;
+      }
       const file = files.resolve(path);
       if (!file.ok) {
         add(`anchor ${anchor}: the path ${file.reason}`);
@@ -101,7 +162,7 @@ function chapterProblems(text, feature, files) {
     }
   }
   if (blocks.length > 0 && evidence === 0) add('no anchor in the <details> evidence blocks: write each anchor in backticks, as `path:line` or `path:line-line`, with the path from the project root');
-  return { problems, diagrams, evidence, roles };
+  return { problems, diagrams, evidence };
 }
 
 /** Problems of the findings file; `resolved` carries each passage's line when there are none. */
@@ -148,6 +209,8 @@ function findingsProblems(value, feature, featureIds, files) {
         if (!EVIDENCE_KEYS.includes(key)) add(`evidence[${k}] key "${key}" is not allowed; evidence holds file and passage`);
       }
       if (!isString(item.passage)) return add(`evidence[${k}] has no passage`);
+      const skipped = skippedDirectoryReason(item.file);
+      if (skipped !== null) return add(`evidence[${k}] file ${JSON.stringify(item.file)} ${skipped}`);
       const file = files.resolve(item.file);
       if (!file.ok) return add(`evidence[${k}] file ${JSON.stringify(item.file ?? null)} ${file.reason}`);
       const found = findOnce(file.text, item.passage);
@@ -164,14 +227,15 @@ function findingsProblems(value, feature, featureIds, files) {
 
 /**
  * The problems of one lane (pure apart from reading the project), its counts,
- * the chapter's front-matter roles, and the findings value with lines filled
- * in when every finding passed.
+ * the chapter's split (null when it cannot be read or split; see
+ * `splitChapter`), and the findings value with lines filled in when every
+ * finding passed.
  */
 export function laneResult(outDir, index, feature, root) {
   const files = projectFiles(root);
   const problems = [];
   const counts = { diagrams: 0, evidence: 0, findings: { product: 0, technical: 0 } };
-  let roles = [];
+  let chapter = null;
   const chapterFile = join(outDir, chapterPath(feature.id));
   const findingsFile = join(outDir, findingsPath(feature.id));
   for (const rel of [chapterPath(feature.id), findingsPath(feature.id)]) {
@@ -180,11 +244,12 @@ export function laneResult(outDir, index, feature, root) {
   if (existsSync(chapterFile)) {
     const read = readText(chapterFile);
     if (read.ok) {
-      const chapter = chapterProblems(read.text, feature, files);
-      problems.push(...chapter.problems);
-      counts.diagrams = chapter.diagrams;
-      counts.evidence = chapter.evidence;
-      roles = chapter.roles;
+      const checked = chapterProblems(read.text, index, feature, files);
+      problems.push(...checked.problems);
+      counts.diagrams = checked.diagrams;
+      counts.evidence = checked.evidence;
+      const split = splitChapter(read.text);
+      chapter = split.ok ? split : null;
     } else {
       problems.push(`${feature.id}: ${chapterPath(feature.id)} ${read.reason}`);
     }
@@ -202,7 +267,7 @@ export function laneResult(outDir, index, feature, root) {
       if (checked.problems.length === 0) findings = read.value;
     }
   }
-  return { problems, counts, findings, roles };
+  return { problems, counts, findings, chapter };
 }
 
 function readText(path) {
@@ -213,9 +278,17 @@ function readText(path) {
   }
 }
 
+/** The last line of a failed check-lane: the next step for the orchestrator (design D6). */
+function nextLine(id, attempts) {
+  return attempts < MAX_ATTEMPTS
+    ? `Next: delete ${id}'s files, mark it dispatched and re-dispatch it once with the lines above (attempt 2 of 2)`
+    : `Next: ${id} stays failed (2 of 2 attempts)`;
+}
+
 /** Run check-lane for feature `id` of `<out>`. Returns { status, lines }. */
 export function checkLane(outDir, id, root) {
   const read = loadIndex(outDir);
+  if (read.stale) return { status: 1, lines: [read.line] };
   if (!read.ok) throw new UsageError(`${INDEX_FILE} ${read.reason}; run check-index first`);
   const index = read.value;
   if (!isObject(index) || !Array.isArray(index.features) || !isString(index.projectRoot)) {
@@ -235,6 +308,6 @@ export function checkLane(outDir, id, root) {
     : { ...feature, status: feature.status === 'verified' ? 'verified' : 'checked', failure: null };
   const features = index.features.map((f) => (f === feature ? recorded : f));
   writeJson(join(outDir, INDEX_FILE), { ...index, features });
-  if (failed) return { status: 1, lines: result.problems };
+  if (failed) return { status: 1, lines: [...result.problems, nextLine(id, feature.attempts ?? 0)] };
   return { status: 0, lines: [`${id}: ok`] };
 }

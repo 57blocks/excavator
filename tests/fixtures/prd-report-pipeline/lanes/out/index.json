@@ -1,5 +1,5 @@
 {
-  "format": "excavator-prd-report/1",
+  "format": "excavator-prd-report/2",
   "projectRoot": "__PROJECT_ROOT__",
   "sourceRevision": "directory:synthetic",
   "factsDigest": null,
@@ -37,6 +37,7 @@
     }
   ],
   "unassigned": [],
+  "actors": ["customer", "support agent"],
   "glossary": [
     { "term": "Order", "meaning": "A customer's request for goods, with a status of open or cancelled." }
   ],

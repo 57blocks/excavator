@@ -137,3 +137,76 @@ export function addWrittenFeature(run, id, count) {
   run.writeText(`features/${id}.md`, run.readText('features/F2.md').replace('id: F2', `id: ${id}`).replace('chapter: 2', `chapter: ${n}`).replace('name: Order cancellation', `name: Feature ${id}`));
   writeLaneFindings(run, id, count);
 }
+
+/**
+ * The run of oracle O3 (change prd-report-prd-shape): the lane fixture with its
+ * two flow chapters moved to chapters 2 and 3, a `reference` feature F3 at
+ * chapter 1, and a failed feature F4 at chapter 4.
+ *   F3 reference   chapter 1; a `### Order placement` heading that repeats F1's `##` one
+ *   F1 flow        chapter 2; an open items section, `### Open items`, last
+ *   F2 flow        chapter 3; two flows with the same heading, `### Cancel an order`
+ *   F4 flow        failed, no files, two attempts
+ * Writes the index and the lane files; the index is not checked or aggregated.
+ */
+export function makeSkeletonRun() {
+  const run = makeLaneRun();
+  const index = run.readIndex();
+  index.candidates.items.push({ id: 'c3', kind: 'job', file: 'src/orders/service.js', line: 15, text: 'function reopenOrder(order) {', framework: 'custom', provenance: 'inferred' });
+  index.features[0].chapter = 2;
+  index.features[1].chapter = 3;
+  index.features.push(
+    { id: 'F3', name: 'Roles and permissions', kind: 'reference', chapter: 1, entrypoints: [], seedFiles: ['src/orders/service.js'], tiers: ['backend'] },
+    {
+      id: 'F4', name: 'Order reopening', kind: 'automated', chapter: 4, entrypoints: ['c3'], seedFiles: ['src/orders/service.js'], tiers: ['backend'],
+      attempts: 2, failure: { step: 'lane', reasons: ['the lane wrote nothing'] },
+    },
+  );
+  index.glossary = [
+    { term: 'Order', meaning: 'A customer\'s request for goods, with a status of open or cancelled.' },
+    { term: 'Cancelled | void', meaning: 'An order a support agent ended.' },
+  ];
+  run.writeIndex(index);
+
+  run.writeText('features/F1.md', run.readText('features/F1.md')
+    .replace('chapter: 1', 'openItems: Open items\nchapter: 2')
+    .concat('\n### Open items\n\n| Item | Searched |\n|---|---|\n| Whether open orders expire | `src/orders/service.js`, the whole project |\n'));
+  run.writeText('features/F2.md', run.readText('features/F2.md')
+    .replace('chapter: 2', 'chapter: 3')
+    .replace('flows: [Flow 1: Cancel an order]', 'flows: [Cancel an order, Cancel an order]')
+    .replace('### Flow 1: Cancel an order', '### Cancel an order\n\nA support agent cancels an open order.\n\n### Cancel an order\n\nA customer asks support to cancel; the agent cancels it the same way.'));
+  run.writeText('features/F3.md', `---
+id: F3
+name: Roles and permissions
+kind: reference
+actors: []
+permissionRoles: [admin, normal]
+triggers: []
+flows: []
+chapter: 1
+---
+## Roles and permissions
+
+Who may do what to an order.
+
+### Order placement
+
+| Role | Place | Cancel |
+|---|---|---|
+| normal | yes | no |
+| admin | yes | yes |
+
+\`\`\`mermaid
+flowchart LR
+  normal --> place
+  admin --> cancel
+\`\`\`
+
+<details><summary>Evidence</summary>
+
+- Status change — \`src/orders/service.js:10-13\`
+
+</details>
+`);
+  run.writeJson('findings/F3.json', { findings: [] });
+  return run;
+}

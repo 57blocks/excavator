@@ -66,7 +66,9 @@ export interface Feature {
     verification: VerificationCounts | null;
   };
   entrypoints: Candidate[];
-  roles: string[];
+  actors: string[];
+  permissionRoles: string[];
+  flows: string[];
   triggers: string[];
   body: string | null;
   verificationReport: string | null;
@@ -88,7 +90,7 @@ export interface PageData {
   overview: string;
   features: Feature[];
   findings: Finding[];
-  tables: { rolesByFeature: string; coverage: string; verification: string };
+  tables: { terminology: string; roles: string; openItems: string; coverage: string; verification: string };
   unassigned: Candidate[];
   uncovered: string[];
 }

@@ -6,14 +6,17 @@
  * resume rule, the scripts that check the index before any lane and each lane
  * after it returns, and a reply printed from the fields `aggregate` prints.
  */
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 import { spawnSync } from 'node:child_process';
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { ADVICE_WORDS } from '../../skills/excavator-prd-report/lib/lane-check.mjs';
+import { TABLE_FILES, reportPath, verificationPath } from '../../skills/excavator-prd-report/lib/aggregate.mjs';
+import { INDEX_FORMAT, PREVIOUS_INDEX_FORMAT } from '../../skills/excavator-prd-report/lib/index-check.mjs';
+import { ADVICE_WORDS, chapterPath, findingsPath } from '../../skills/excavator-prd-report/lib/lane-check.mjs';
+import { makeLaneRun, makeSkeletonRun, runPrd } from './excavator-prd-report/helpers.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(__dirname, '../..');
@@ -48,7 +51,9 @@ const NEVER_EDIT = 'Never edit `features/<id>.md` or `findings/<id>.json` yourse
 const RETRY_HEADING = 'Your previous attempt failed these checks; fix them and write both files again:';
 /** The sentence the lane prompt's evidence example and check-lane's message share. */
 const ANCHOR_RULE = 'Write each anchor in backticks, as `path:line` or `path:line-line`, with the path from the project root.';
-const VERIFY = 'follow the procedure in `$PLUGIN_ROOT/skills/excavator-verify/SKILL.md` on it with `--fix`, `--language` set to `$LANGUAGE` and `PROJECT_ROOT` as the project path';
+/** The line check-index prints for an index without a proper list of actors (design D12). */
+const ACTORS_LINE = 'index: actors must list each actor of the project once';
+const VERIFY = 'follow the procedure in `$PLUGIN_ROOT/skills/excavator-verify/SKILL.md` on it with `--fix --no-summary`, `--language` set to `$LANGUAGE` and `PROJECT_ROOT` as the project path';
 
 describe('excavator-prd-report skill: phases', () => {
   it('has the five phases in order', () => {
@@ -194,7 +199,7 @@ describe('excavator-prd-report skill: index and lanes', () => {
     expect(lanes).toContain(NEVER_EDIT);
     expect(phase.get(3)).toContain(NEVER_EDIT);
     expect(lanes).toContain(`its prompt followed by this line and then each line \`check-lane\` printed: \`${RETRY_HEADING}\``);
-    expect(lanes).toContain('A second `check-lane` failure leaves the feature `failed` at `check-lane`');
+    expect(lanes).toContain('leave the feature `failed` at `check-lane`');
     expect(lanes).toContain('`check-lane` records its result in `index.json` itself');
     const retry = lanes.indexOf(RETRY_HEADING);
     expect(retry).toBeGreaterThan(lanes.indexOf(`node ${PRD} check-lane "$OUT" <id>`));
@@ -239,7 +244,7 @@ describe('excavator-prd-report skill: index and lanes', () => {
   });
 
   it('passes every line check-lane printed to the retried lane, the findings lines included', () => {
-    expect(phase.get(2)).toContain('Pass every line `check-lane` printed, including the findings lines.');
+    expect(phase.get(2)).toContain('Pass every line `check-lane` printed, including the findings lines, except the `Next:` line.');
   });
 
   it('has the lane check each anchor\'s last line against its file\'s length before it finishes', () => {
@@ -279,6 +284,7 @@ describe('excavator-prd-report skill: its recipes run', () => {
       { id: 'F2', name: 'Reminders', kind: 'automated', chapter: 2, entrypoints: ['c3', 'i1'], seedFiles: ['src/jobs/reminders.js'], tiers: ['backend'] },
     ],
     unassigned: ['c1'],
+    actors: ['customer', 'Payment service'],
     glossary: [{ term: 'Order', meaning: 'A request for goods.' }],
     residualAssumptions: ['planned by hand for the test'],
   };
@@ -307,6 +313,7 @@ describe('excavator-prd-report skill: its recipes run', () => {
       expect(index.projectRoot).toBe(project);
       expect(index.candidates.items.map((item) => item.id)).toEqual(['c1', 'c2', 'c3', 'c4', 'c5', 'c6', 'c7', 'c8', 'c9', 'i1']);
       expect(index.residualAssumptions.at(-1)).toBe('planned by hand for the test');
+      expect(index.actors).toEqual(['customer', 'Payment service']);
       const [list] = recipes(2, 'jq -r ', out, project);
       expect(sh(list).stdout).toBe('F1\t0\tOrders\nF2\t0\tReminders\n');
     } finally {
@@ -355,6 +362,20 @@ describe('excavator-prd-report skill: its recipes run', () => {
     }
   });
 
+  it('lets check-index refuse a plan that lists no actors, with the line the skill quotes', () => {
+    const { actors, ...withoutActors } = PLAN;
+    expect(actors).toHaveLength(2);
+    for (const plan of [withoutActors, { ...PLAN, actors: [] }, { ...PLAN, actors: ['customer', 'customer'] }]) {
+      const { out, check } = buildIndex(plan);
+      try {
+        expect(check.status).toBe(1);
+        expect(check.stdout.split('\n').filter(Boolean)).toEqual([ACTORS_LINE]);
+      } finally {
+        rmSync(out, { recursive: true, force: true });
+      }
+    }
+  });
+
   it('lets check-index refuse a plan that leaves a candidate out', () => {
     const { out, check } = buildIndex({ ...PLAN, unassigned: [] });
     try {
@@ -377,10 +398,9 @@ describe('excavator-prd-report skill: verify and aggregate', () => {
     expect(verify).toContain('even though Phase 6 of `excavator-verify` says to skip its reply when another skill follows its procedure');
   });
 
-  it('writes the overview without tables and counts the scope by command', () => {
+  it('writes the overview and counts the scope by command', () => {
     const verify = phase.get(3);
     expect(verify).toContain('`$OUT/overview.md`');
-    expect(verify).toContain('Put no table in `overview.md`');
     expect(verify).toContain('localized to `$LANGUAGE`');
     expect(verify).toContain('git ls-files -- "$SCOPE" | wc -l');
   });
@@ -402,7 +422,7 @@ describe('excavator-prd-report skill: verify and aggregate', () => {
 const PAGE_COMMAND = `node ${PRD} page "$OUT" --project "$PROJECT_ROOT"`;
 const PAGE_PROGRESS = 'Then tell the user `Page: <status>`, where `<status>` is `written` or `failed`, in `$LANGUAGE`.';
 const PAGE_FAILURE = 'When `page` exits non-zero, tell the user the lines it printed as they are, do not build or edit any page or product file yourself, and go on to Phase 4: `reply` prints `Report page: not written`.';
-const REPLY_ORDER = '`reply` prints, in this order: the path of `PRD.md`; the report page line, `Report page: <path>` or `Report page: not written`; the counts; the frameworks without patterns, when there are some; and the offer to save the PRD, when `$OUT` is the default.';
+const REPLY_ORDER = '`reply` prints, in this order: the path of `PRD.md`; the report page line, `Report page: <path>` or `Report page: not written`; the counts; the `Retry:` line, when a feature failed after one attempt, `Retry: <ids> failed after one attempt; running the command again without --fresh retries them`; the frameworks without patterns, when there are some; and the offer to save the PRD, when `$OUT` is the default.';
 
 describe('excavator-prd-report skill: the report page', () => {
   it('writes report.html after assemble, in Phase 3, and before the reply of Phase 4', () => {
@@ -640,5 +660,352 @@ describe('excavator-prd-report skill: ranking the findings', () => {
     expect(setup).toContain('Features whose `priorities/<id>.json` passes `check-priorities` are not ranked again');
     expect(setup).toContain('an output directory with verified chapters and no `priorities/` only gets the ranking step and the steps after it');
     expect(rankStep()).toContain('not ranked again');
+  });
+});
+
+// The wiring of openspec change prd-report-prd-shape (design D2 to D9): the skill asks the model for what the scripts now
+// require. Where a pin quotes a string a script prints, the test gets the string by running the script on a synthetic run
+// (or from the module that holds it), so the skill and the script cannot drift apart.
+const cleanups = [];
+afterEach(() => {
+  while (cleanups.length > 0) cleanups.pop()();
+});
+const track = (run) => {
+  cleanups.push(run.cleanup);
+  return run;
+};
+const laneRun = () => track(makeLaneRun());
+const checkLane = (run, id) => runPrd(['check-lane', run.out, '--project', run.project, id]);
+const lines = (out) => out.stdout.split('\n').filter(Boolean);
+const editChapter = (run, id, change) => run.writeText(`features/${id}.md`, change(run.readText(`features/${id}.md`)));
+const asIndex = (run) => run.readIndex();
+
+describe('excavator-prd-report skill: the structure a chapter declares (D3, D8)', () => {
+  /** The front-matter the lane prompt asks for. */
+  const template = (lanePrompt.match(/^ *```markdown\n([\s\S]*?\n *---)\n *```/m) ?? [])[1]?.replace(/^ +/gm, '') ?? '';
+  const KEYS = ['id', 'name', 'kind', 'actors', 'permissionRoles', 'triggers', 'flows', 'openItems', 'chapter'];
+
+  it('asks for actors, permissionRoles, flows and openItems, and no longer for roles', () => {
+    expect(template).not.toBe('');
+    expect([...template.matchAll(/^([A-Za-z]+):/gm)].map((m) => m[1])).toEqual(KEYS);
+    expect(lanePrompt).not.toMatch(/(^|[^A-Za-z])roles:/);
+    const prompt = flat(lanePrompt);
+    for (const rule of [
+      '`actors` and `permissionRoles` are two lists with no name in common',
+      '`flows` holds the exact text of the `###` heading of each flow',
+      'at least one flow for a `flow` or `automated` feature, none (`flows: []`) for a `reference` feature',
+      '`openItems` is the text of the last `###` heading of the chapter, which holds its open items as a table or a list; leave the key out when the chapter has none',
+    ]) expect(prompt, rule).toContain(rule);
+  });
+
+  it('is a front-matter check-lane accepts, and the script refuses the old roles key', () => {
+    const run = laneRun();
+    const value = {
+      id: 'F1', name: 'Order placement', kind: 'flow', actors: '[customer]', permissionRoles: '[]',
+      triggers: '\n  - A customer submits the order form', flows: '\n  - "Flow 1: Place an order"', openItems: 'Open items', chapter: '1',
+    };
+    expect(Object.keys(value)).toEqual(KEYS);
+    const front = KEYS.map((key) => `${key}:${value[key].startsWith('\n') ? '' : ' '}${value[key]}`).join('\n');
+    const body = run.readText('features/F1.md').split('\n---\n')[1];
+    run.writeText('features/F1.md', `---\n${front}\n---\n${body}\n### Open items\n\n| Item | Searched |\n|---|---|\n| x | the whole project |\n`);
+    expect(lines(checkLane(run, 'F1'))).toEqual(['F1: ok']);
+    editChapter(run, 'F1', (text) => text.replace('chapter: 1', 'roles: [customer]\nchapter: 1'));
+    const refused = checkLane(run, 'F1');
+    expect(refused.status).toBe(1);
+    expect(lines(refused)).toContain('F1: front-matter roles is no longer read; write actors and permissionRoles');
+  });
+
+  it('says the chapter has one ## heading, the first one, which the script enforces', () => {
+    expect(flat(lanePrompt)).toContain('The chapter has exactly one `##` heading, the first one: `## <name>`');
+    const run = laneRun();
+    editChapter(run, 'F1', (text) => `${text}\n## A second chapter\n`);
+    const out = checkLane(run, 'F1');
+    expect(out.status).toBe(1);
+    expect(lines(out)).toContain('F1: the chapter has 2 ## headings; it has one, ## Order placement, as its first heading');
+  });
+
+  it('says what a reference chapter holds and that flow chapters refer to it', () => {
+    const prompt = flat(lanePrompt);
+    for (const rule of [
+      'A `reference` chapter holds the dictionary tables (value | meaning), a role × capability matrix, the decision procedure and one diagram',
+      'A flow chapter refers to a `reference` chapter by name instead of repeating it',
+      'The other features of this PRD, which other lanes write: <id, name and kind of every other feature, one per line>',
+    ]) expect(prompt, rule).toContain(rule);
+  });
+
+  it('writes the Frontend and hand-over parts from the callers outside the scope that the seed files hold', () => {
+    expect(flat(lanePrompt)).toContain('When your seed files hold callers outside the scope (pages and clients that send the request, other services that call it), write the Frontend and hand-over parts from them');
+  });
+
+  it('cites only files inside the project root, and the script refuses a dependency directory', () => {
+    const prompt = flat(lanePrompt);
+    for (const rule of [
+      'Cite only files inside the project root.',
+      'Code outside the project (dependency caches, the standard library, installed packages) is never evidence',
+      'describe a dependency\'s behaviour from the project\'s own code and config, or write it as an open item',
+      'A path under `node_modules`, `vendor` or another dependency or build directory fails the check.',
+    ]) expect(prompt, rule).toContain(rule);
+    const run = laneRun();
+    editChapter(run, 'F1', (text) => text.replace('- Order route —', '- Dependency — `node_modules/pkg/index.js:1`\n- Order route —'));
+    const out = checkLane(run, 'F1');
+    expect(out.status).toBe(1);
+    expect(lines(out).some((line) => line.startsWith('F1: anchor node_modules/pkg/index.js:1: the path is under node_modules, a directory name the entrypoint scan skips as dependencies'))).toBe(true);
+  });
+});
+
+describe('excavator-prd-report skill: the shared models and the callers outside the scope (D2, D7)', () => {
+  it('has a reference feature for the permission model, named Roles and permissions, with the lowest chapter numbers', () => {
+    const index = phase.get(1);
+    for (const rule of [
+      'When the scope has a permission model (roles, policies, guards), make a feature with `kind: "reference"` named `Roles and permissions`, translated into `$LANGUAGE`.',
+      'Its `seedFiles` are the files that define the roles, statuses, policies and guards; its `entrypoints` may be empty, and `seedFiles` is required.',
+      'Treat any other model that several flows share (a token or session model, a shared status dictionary) the same way.',
+      'Reference features take the lowest chapter numbers',
+    ]) expect(index, rule).toContain(rule);
+  });
+
+  it('agrees with check-index: a reference feature has no entrypoints, and comes before every flow chapter', () => {
+    const run = track(makeSkeletonRun());
+    const ok = runPrd(['check-index', run.out, '--project', run.project]);
+    expect(ok.status, ok.stdout).toBe(0);
+    const index = asIndex(run);
+    index.features.find((f) => f.id === 'F3').chapter = 5;
+    run.writeIndex(index);
+    const late = runPrd(['check-index', run.out, '--project', run.project]);
+    expect(late.status).toBe(1);
+    expect(lines(late).some((line) => /^F3: reference chapter 5 comes after flow chapter \d$/.test(line))).toBe(true);
+    expect(phase.get(1)).toContain('`check-index` refuses a `reference` chapter that comes after a `flow` or `automated` chapter');
+  });
+
+  it('searches outside a subdirectory scope for the callers of every entrypoint and adds their files to the seed files', () => {
+    const index = phase.get(1);
+    for (const rule of [
+      'When `--scope` names a subdirectory, search outside the scope for the callers of every entrypoint in scope: the pages and clients that send the request, and the other services that call it.',
+      'Add the files that hold them to that feature\'s `seedFiles`; only those files, not what they import.',
+      'Their own flows stay out of scope: they get no feature and no candidate.',
+    ]) expect(index, rule).toContain(rule);
+  });
+
+  it('agrees with the scripts: such a seed file passes check-index and shows in the coverage count', () => {
+    const run = laneRun();
+    const index = asIndex(run);
+    index.scope = 'src/orders';
+    index.features[0].seedFiles = ['src/orders/routes.js', 'web/src/OrderForm.tsx'];
+    run.writeIndex(index);
+    expect(runPrd(['check-index', run.out, '--project', run.project]).status).toBe(0);
+    expect(runPrd(['aggregate', run.out, '--project', run.project]).status).toBe(0);
+    expect(run.readText('tables/coverage.md')).toContain('Seed files read outside the scope: web 1.');
+  });
+});
+
+describe('excavator-prd-report skill: a lane that is dispatched again, and the Next line (D6)', () => {
+  it('deletes all four files of the earlier attempt before it dispatches a lane again', () => {
+    const paths = [chapterPath('<id>'), findingsPath('<id>'), verificationPath('<id>'), reportPath('<id>')];
+    expect(paths).toEqual(['features/<id>.md', 'findings/<id>.json', 'verification/<id>.txt', 'verification/<id>.md']);
+    const command = `rm -f ${paths.map((path) => `"$OUT/${path}"`).join(' ')}`;
+    expect(phase.get(2)).toContain(`Before you dispatch a lane again, delete the files its earlier attempt left (\`${command}\`).`);
+    expect(phase.get(2)).not.toContain('"$OUT/findings/<id>.json"`)');
+  });
+
+  /** The two Next lines as check-lane prints them, with the feature id written as <id>. */
+  function nextLines() {
+    const lineAt = (attempts) => {
+      const run = laneRun();
+      const index = asIndex(run);
+      index.features[0].attempts = attempts;
+      run.writeIndex(index);
+      editChapter(run, 'F1', (text) => text.replace('```mermaid', '```text'));
+      const out = checkLane(run, 'F1');
+      expect(out.status).toBe(1);
+      return lines(out).at(-1).replaceAll('F1', '<id>');
+    };
+    return { again: lineAt(1), stays: lineAt(2) };
+  }
+
+  it('quotes both Next lines as check-lane prints them, and has the orchestrator follow them', () => {
+    const { again, stays } = nextLines();
+    expect(again).toMatch(/^Next: delete <id>'s files, mark it dispatched and re-dispatch it once/);
+    expect(stays).toMatch(/^Next: <id> stays failed/);
+    const lanes = phase.get(2);
+    const checked = lanes.indexOf(`node ${PRD} check-lane "$OUT" <id>`);
+    expect(checked).toBeGreaterThan(-1);
+    for (const line of [again, stays]) {
+      expect(lanes, line).toContain(`\`${line}\``);
+      expect(lanes.indexOf(`\`${line}\``)).toBeGreaterThan(checked);
+    }
+    expect(lanes).toContain('The last line it prints is a `Next:` line. Follow it:');
+    expect(lanes).toContain(`\`${again}\`: delete the lane's files (as in step 1), mark the dispatch (as in step 2) and re-dispatch the lane once`);
+    expect(lanes).toContain(`\`${stays}\`: leave the feature \`failed\``);
+  });
+
+  it('prints the Next line for a lane that wrote nothing as well, and the skill still records that failure with mark', () => {
+    const run = laneRun();
+    rmSync(join(run.out, 'findings/F1.json'));
+    const out = checkLane(run, 'F1');
+    expect(out.status).toBe(1);
+    expect(lines(out)[0]).toMatch(/^F1: lane-wrote-nothing: /);
+    expect(lines(out).at(-1)).toMatch(/^Next: /);
+    const lanes = phase.get(2);
+    expect(lanes).toContain('`lane-wrote-nothing`');
+    expect(lanes).toContain(`node ${PRD} mark "$OUT" <id> failed lane lane-wrote-nothing`);
+  });
+});
+
+describe('excavator-prd-report skill: verification, overview and reply (D4, D5, D6)', () => {
+  it('verifies each chapter with --fix --no-summary, a flag excavator-verify documents', () => {
+    expect(phase.get(3)).toContain(VERIFY);
+    expect(phase.get(3)).toContain('The chapter keeps its one `##` heading and gets no verification summary; `aggregate` fails a feature whose verified chapter has another `##` heading.');
+    const verifySkill = readFileSync(resolve(repoRoot, 'skills/excavator-verify/SKILL.md'), 'utf-8');
+    expect(verifySkill).toContain('`--no-summary` — with `--fix`, do not append the verification summary to the document');
+  });
+
+  it('leaves the glossary, roles, flow list and open items out of the overview, because the scripts generate them', () => {
+    const step = rawPhase(3).slice(rawPhase(3).indexOf('Write `$OUT/overview.md`'));
+    const overview = flat(step.slice(0, step.indexOf('Scope size is counted by command')));
+    for (const rule of [
+      'a title (`# <project or product name>`) on its first line',
+      'the purpose and the capability map: a short product summary, one table of the consumers of the product, and one mermaid capability diagram',
+      'and an overview of the automated behavior',
+      'It MUST NOT hold the glossary, the roles, a list of the flows or the open items: `aggregate` and `assemble` generate the Terminology, Flow index, Roles and Open items sections.',
+    ]) expect(overview, rule).toContain(rule);
+    expect(overview).not.toContain('and the glossary as a list');
+    expect(overview).not.toContain('Put no table');
+  });
+
+  it('quotes the lines assemble prints for an overview without a # heading, without a mermaid block or ending in an open fence', () => {
+    const refused = (overview) => {
+      const run = laneRun();
+      expect(runPrd(['check-index', run.out, '--project', run.project]).status).toBe(0);
+      expect(runPrd(['aggregate', run.out, '--project', run.project]).status).toBe(0);
+      run.writeText('overview.md', overview);
+      const out = runPrd(['assemble', run.out, '--project', run.project]);
+      expect(out.status).toBe(1);
+      return lines(out);
+    };
+    const [heading] = refused('No title.\n\n```mermaid\nflowchart LR\n  A --> B\n```\n');
+    const [diagram] = refused('# Orders\n\nNo map.\n');
+    const [fence] = refused('# Orders\n\n```mermaid\nflowchart LR\n  A --> B\n```\n\n```text\nnever closed\n');
+    expect(phase.get(3)).toContain(`\`${heading}\``);
+    expect(phase.get(3)).toContain(`\`${diagram}\``);
+    expect(phase.get(3)).toContain(`\`${fence}\``);
+    expect(phase.get(3)).toContain('`assemble` exits 1 and prints one of these lines when the overview does not start with a `#` heading, has no mermaid block or ends inside an open code fence');
+  });
+
+  it('names the sections of PRD.md in the order assemble writes them, and the tables aggregate writes', () => {
+    const run = track(makeSkeletonRun());
+    expect(runPrd(['check-index', run.out, '--project', run.project]).status).toBe(0);
+    expect(runPrd(['aggregate', run.out, '--project', run.project]).status).toBe(0);
+    const made = runPrd(['assemble', run.out, '--project', run.project]);
+    expect(made.status, made.stdout).toBe(0);
+    const generated = ['Terminology', 'Flow index', 'Roles', 'Open items', 'Appendix'];
+    const headings = [...readFileSync(join(run.out, 'PRD.md'), 'utf-8').matchAll(/^## (.*)$/gm)].map((m) => m[1]);
+    expect(headings.filter((h) => generated.includes(h))).toEqual(['Terminology', 'Flow index', 'Roles', 'Open items', 'Appendix']);
+    const sections = flat(before.slice(before.indexOf('`PRD.md` holds')));
+    expect(sections).toContain('`PRD.md` holds, in this order: the overview, `## Terminology`, `## Flow index`, `## Roles`, the `reference` chapters, the other chapters in chapter order, `## Open items` and `## Appendix`.');
+    expect(TABLE_FILES).toEqual(['tables/terminology.md', 'tables/roles.md', 'tables/open-items.md', 'tables/coverage.md', 'tables/verification.md']);
+    expect(before).toContain(`| \`findings.json\`, ${TABLE_FILES.map((table) => `\`${table}\``).join(', ')} | \`prd.mjs aggregate\` |`);
+    expect(before).not.toContain('roles-by-feature');
+    expect(before).not.toContain('`tables/*.md`');
+  });
+
+  it('prints the Retry line in the reply and describes it as the script prints it', () => {
+    const run = laneRun();
+    const findings = run.readJson('findings/F2.json');
+    findings.findings[0].statement = 'The route should check the quantity.';
+    run.writeJson('findings/F2.json', findings);
+    expect(runPrd(['mark', run.out, 'F2', 'dispatched', '--project', run.project]).status).toBe(0);
+    expect(runPrd(['check-index', run.out, '--project', run.project]).status).toBe(0);
+    expect(runPrd(['aggregate', run.out, '--project', run.project]).status).toBe(0);
+    expect(runPrd(['assemble', run.out, '--project', run.project]).status).toBe(0);
+    const reply = lines(runPrd(['reply', run.out, '--project', run.project]));
+    const retry = reply.find((line) => line.startsWith('Retry:'));
+    expect(retry).toBe('Retry: F2 failed after one attempt; running the command again without --fresh retries them');
+    const quoted = retry.replace('F2', '<ids>');
+    const save = flat(skill.slice(skill.indexOf('2. **Save and reply.**')));
+    expect(save).toContain(`\`${quoted}\``);
+    expect(save).toContain('`Retry:` line, when a feature failed after one attempt');
+    expect(reply.indexOf(retry)).toBe(6);
+  });
+});
+
+describe('excavator-prd-report skill: an index of the earlier format (D9)', () => {
+  it('stops and tells the user to run again with --fresh when a command prints the earlier-format line', () => {
+    const run = laneRun();
+    const index = asIndex(run);
+    index.format = PREVIOUS_INDEX_FORMAT;
+    run.writeIndex(index);
+    const out = runPrd(['check-index', run.out, '--project', run.project]);
+    expect(out.status).toBe(1);
+    const line = lines(out)[0];
+    expect(line).toBe(`index: ${run.out} was written by an earlier version (${PREVIOUS_INDEX_FORMAT}); run again with --fresh`);
+    const quoted = line.replace(run.out, '<out>');
+    const setup = phase.get(0);
+    expect(setup).toContain(`When a \`prd.mjs\` command prints \`${quoted}\`, tell the user to run again with \`--fresh\`, and stop; never repair that index; the next sentence is for every other failure.`);
+    expect(setup.indexOf(quoted)).toBeLessThan(setup.indexOf('When `check-index` exits 1, fix the index'));
+  });
+
+  it('lets --fresh delete an output directory of either format', () => {
+    expect(phase.get(0)).toContain(`holds an \`index.json\` with \`"format": "${PREVIOUS_INDEX_FORMAT}"\` or \`"format": "${INDEX_FORMAT}"\``);
+  });
+});
+
+// Change prd-report-prd-shape, design D12: the actors of the PRD are named once, in the index.
+describe('excavator-prd-report skill: the actors of the PRD (D12)', () => {
+  it('has the orchestrator write each real actor once in Phase 1c, into the actors of plan.json', () => {
+    const index = phase.get(1);
+    for (const rule of [
+      'Name the actors of the project: each real actor once',
+      'the user categories, the external systems, the other services and the operators',
+      'named as the product names them, with no name twice',
+      'Write them as `actors` in `plan.json`',
+      'every chapter takes its actors from this list',
+    ]) expect(index, rule).toContain(rule);
+    expect(index.indexOf('### 1d.')).toBeGreaterThan(index.indexOf('Name the actors of the project'));
+  });
+
+  it('shows actors in the plan.json example, and the jq that builds the index carries them over', () => {
+    const plan = rawPhase(1).match(/Write `\$OUT\/plan\.json`:\n\n```json\n([\s\S]*?)```/)?.[1] ?? '';
+    expect(plan).toContain('"actors": ["..."]');
+    const [build] = recipes(1, 'jq -n ', '/out', '/project');
+    expect(build).toContain('actors: $p.actors');
+  });
+
+  it('says check-index refuses a missing, empty or repeating list, with the line the script prints', () => {
+    const run = laneRun();
+    const index = asIndex(run);
+    delete index.actors;
+    run.writeIndex(index);
+    const out = runPrd(['check-index', run.out, '--project', run.project]);
+    expect(out.status).toBe(1);
+    expect(lines(out)).toEqual([ACTORS_LINE]);
+    expect(phase.get(1)).toContain(`\`check-index\` exits 1 and prints \`${ACTORS_LINE}\` when \`actors\` is missing, empty, holds an empty name or names an actor twice`);
+  });
+
+  it('gives each lane the list, and lets the front-matter actors take only names from it, spelled exactly', () => {
+    const prompt = flat(lanePrompt);
+    for (const rule of [
+      'The actors of this PRD: <index actors, one per line>.',
+      'actors: [<each actor of that list that starts or takes part in a flow>]',
+      '`actors` takes only names from the list of the actors of this PRD, spelled exactly as listed',
+    ]) expect(prompt, rule).toContain(rule);
+    expect(prompt.indexOf('The actors of this PRD:')).toBeLessThan(prompt.indexOf('**As-Is only.**'));
+  });
+
+  it('agrees with check-lane: a name outside the list fails, one from it passes', () => {
+    const run = laneRun();
+    editChapter(run, 'F1', (text) => text.replace('actors: [customer]', 'actors: [customer, Auditor]'));
+    const refused = checkLane(run, 'F1');
+    expect(refused.status).toBe(1);
+    expect(lines(refused)).toContain('F1: actor "Auditor" is not one of the index\'s actors');
+    editChapter(run, 'F1', (text) => text.replace('actors: [customer, Auditor]', 'actors: [customer, support agent]'));
+    expect(lines(checkLane(run, 'F1'))).toEqual(['F1: ok']);
+  });
+
+  it('lists in flows only flows, and keeps findings out of the chapter', () => {
+    const prompt = flat(lanePrompt);
+    for (const rule of [
+      '`flows` lists only flows, each a path from one trigger to one outcome; an overview, a configuration, a permissions or a findings section is not a flow.',
+      'The findings go only in the findings file: the chapter has no findings section and does not mention the findings file.',
+    ]) expect(prompt, rule).toContain(rule);
   });
 });

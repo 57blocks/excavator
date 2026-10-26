@@ -89,8 +89,8 @@ Commands:
       further argument one reason. lane is the only step mark records.
   reply <out> --project <root>
       Print the reply's lines in English: the PRD path, the counts the last
-      aggregate recorded, the frameworks without patterns when there are
-      some, and the offer to save the PRD when <out> is the default
+      aggregate recorded, the features to retry when some failed after one
+      attempt, the frameworks without patterns when there are some, and the offer to save the PRD when <out> is the default
       <root>/.excavator/prd-report. Reads only; writes nothing.
 
 check-index, check-lane, mark and aggregate hold <out>/index.json.lock while
