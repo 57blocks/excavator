@@ -132,7 +132,8 @@ For host-owned AI exploration through seven bounded local MCP tools, see [MCP se
 # Generate an As-Is PRD chapter and findings for every feature (default audience: product manager): lists the entrypoints by script,
 # groups them into features, writes each feature's chapter and findings in its own subagent (--concurrency, default 3),
 # verifies each chapter and assembles one PRD.md and one report.html (a self-contained page with the overview, each feature with its
-# findings, all findings and the coverage; it opens with a double click, no server or network); everything goes to --out
+# findings, all findings and the coverage; it opens with a double click, no server or network); each finding carries a
+# P0/P1/P2 level with a one-sentence reason from a separate ranking subagent, and the page filters by level; everything goes to --out
 # (default .excavator/prd-report/), and a rerun resumes the unfinished features
 /excavator-prd-report
 

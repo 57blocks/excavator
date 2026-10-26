@@ -6,7 +6,7 @@ import { cpSync, existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs
 import { join } from 'node:path';
 
 import { TEMPLATE_VARIABLE } from '../../../skills/excavator-prd-report/lib/page.mjs';
-import { makeLaneRun, runPrd } from './helpers.mjs';
+import { makeLaneRun, rankEntry, runPrd, writeRanks } from './helpers.mjs';
 
 const cleanups = [];
 afterEach(() => {
@@ -44,10 +44,38 @@ describe('prd.mjs reply', () => {
       'Report page: not written',
       `${fields.features.written}/${fields.features.total} features written, ${fields.features.failed} failed`,
       `${fields.diagrams} diagrams`,
-      `${fields.findings.product} product, ${fields.findings.technical} technical findings, anchors checked`,
+      `${fields.findings.product} product, ${fields.findings.technical} technical findings, anchors checked: ${fields.findings.priority.P0} P0, ${fields.findings.priority.P1} P1, ${fields.findings.priority.P2} P2, ${fields.findings.priority.unranked} unranked`,
       `Statements: ${v.verified} verified, ${v.contradicted} contradicted, ${v.misattributed} misattributed, ${v.unverifiable} unverifiable; open items: ${v.resolvedRight} resolved right, ${v.resolvedWrong} resolved wrong, ${v.stillOpen} still open; cross-section conflicts: ${v.conflicts}, not checked: ${v.notChecked}`,
     ]);
     expect(lines(out)[2]).toBe('2/2 features written, 0 failed');
+  });
+
+  it('prints the findings line with the levels the script counted: all unranked when no priorities file exists', () => {
+    const { run } = assembled();
+    expect(lines(runPrd(['reply', run.out, '--project', run.project]))[4]).toBe('1 product, 1 technical findings, anchors checked: 0 P0, 0 P1, 0 P2, 2 unranked');
+  });
+
+  it('counts the levels of the ranked features and the unranked rest', () => {
+    const { run } = assembled((r) => {
+      writeRanks(r, 'F1', [rankEntry('F1-1', 'P0')]);
+    });
+    const out = runPrd(['reply', run.out, '--project', run.project]);
+    expect(lines(out)[4]).toBe('1 product, 1 technical findings, anchors checked: 1 P0, 0 P1, 0 P2, 1 unranked');
+    const both = assembled((r) => {
+      writeRanks(r, 'F1', [rankEntry('F1-1', 'P1')]);
+      writeRanks(r, 'F2', [rankEntry('F2-1', 'P2')]);
+    });
+    expect(lines(runPrd(['reply', both.run.out, '--project', both.run.project]))[4]).toBe('1 product, 1 technical findings, anchors checked: 0 P0, 1 P1, 1 P2, 0 unranked');
+  });
+
+  it('reads the numbers aggregate recorded: an index.json from before priorities has none, so every finding is unranked', () => {
+    const { run } = assembled((r) => writeRanks(r, 'F1', [rankEntry('F1-1', 'P0')]));
+    const index = run.readIndex();
+    for (const feature of index.features) delete feature.counts.findings.priority;
+    run.writeIndex(index);
+    const out = runPrd(['reply', run.out, '--project', run.project]);
+    expect(out.status, out.stdout + out.stderr).toBe(0);
+    expect(lines(out)[4]).toBe('1 product, 1 technical findings, anchors checked: 0 P0, 0 P1, 0 P2, 2 unranked');
   });
 
   it('prints the report page line second, with the path of report.html once page wrote it', () => {

@@ -264,7 +264,7 @@ describe('excavator-prd-report skill: --project', () => {
   it('passes --project "$PROJECT_ROOT" to every prd.mjs command that reads $OUT', () => {
     const commands = skill.split('\n').map((line) => line.trim()).filter((line) => line.startsWith(`node ${PRD} `));
     const reading = commands.filter((line) => !line.startsWith(`node ${PRD} entrypoints `));
-    expect(new Set(reading.map((line) => line.split(' ')[2]))).toEqual(new Set(['check-index', 'check-lane', 'mark', 'aggregate', 'assemble', 'page', 'reply']));
+    expect(new Set(reading.map((line) => line.split(' ')[2]))).toEqual(new Set(['check-index', 'check-lane', 'check-priorities', 'mark', 'aggregate', 'assemble', 'page', 'reply']));
     for (const line of reading) expect(line, line).toMatch(/ --project "\$PROJECT_ROOT"$/);
   });
 });
@@ -533,5 +533,112 @@ describe('excavator-prd-report skill: the reply', () => {
     for (const words of ['features written', 'technical findings, anchors checked', 'No entrypoint patterns for', 'To save it in the project', '<prdPath>', '<uncovered>', '<outIsDefault>']) {
       expect(skill, words).not.toContain(words);
     }
+  });
+});
+
+/** The ranking rubric of openspec change prd-report-finding-priority (design D3), as the skill hands it to every ranking subagent. */
+const RUBRIC = [
+  '- P0 — the defect lets someone do what they are not allowed to (pass an authentication or permission check meant to stop them, read or change another user\'s data, see a secret), loses or corrupts stored data, produces a wrong amount of money, or makes a main flow of the feature fail for every user.',
+  '- P1 — the defect gives users a wrong, inconsistent or missing result in a flow they use, hides a failure from users or operators (an error swallowed, success reported after a failure), or fails on ordinary input.',
+  '- P2 — any other defect: a value fixed in code, dead or duplicated code, inconsistent naming, gaps in logging or documentation.',
+  'Give the highest level whose condition the evidence shows. When the evidence does not show it (for example, it is not evident that an outsider can reach the endpoint), give the lower level and say in the reason what is not evident.',
+];
+const NEVER_RANK = 'Never write or edit `priorities/<id>.json` yourself.';
+/** The ranking subagent's prompt: the four-backtick text block of Phase 3. */
+const rankPrompt = (rawPhase(3).match(/^````text\n([\s\S]*?)\n````$/m) ?? [])[1] ?? '';
+/** Phase 3 from its "Rank the findings" step to the next numbered step. */
+const rankStep = () => {
+  const text = rawPhase(3);
+  const start = text.indexOf('Rank the findings');
+  const end = text.indexOf('Write `$OUT/overview.md`', start);
+  return start < 0 ? '' : flat(text.slice(start, end < 0 ? undefined : end));
+};
+
+describe('excavator-prd-report skill: ranking the findings', () => {
+  it('has the rank step after the verification of the chapters and before the overview', () => {
+    const verify = phase.get(3);
+    const verified = verify.indexOf('Verify each listed chapter yourself');
+    const ranked = verify.indexOf('Rank the findings');
+    const overview = verify.indexOf('Write `$OUT/overview.md`');
+    expect(verified).toBeGreaterThan(-1);
+    expect(ranked).toBeGreaterThan(verified);
+    expect(ranked).toBeGreaterThan(verify.indexOf('`$OUT/verification/<id>.txt`'));
+    expect(overview).toBeGreaterThan(ranked);
+    expect(verify.indexOf(`node ${PRD} assemble "$OUT"`)).toBeGreaterThan(ranked);
+  });
+
+  it('runs aggregate and then check-priorities with --project, before any ranking subagent', () => {
+    const step = rankStep();
+    expect(step).not.toBe('');
+    const aggregate = step.indexOf(`node ${PRD} aggregate "$OUT" --project "$PROJECT_ROOT"`);
+    const check = step.indexOf(`node ${PRD} check-priorities "$OUT" --project "$PROJECT_ROOT"`);
+    expect(aggregate).toBeGreaterThan(-1);
+    expect(check).toBeGreaterThan(aggregate);
+    expect(check).toBeLessThan(step.indexOf('batch N:'));
+    expect(step).toContain('for each `batch N:` line it printed, dispatch one ranking subagent');
+  });
+
+  it('dispatches the ranking subagents in the foreground, at most $CONCURRENCY in one message, never in the background', () => {
+    const step = rankStep();
+    expect(step).toContain('at most `$CONCURRENCY` in one message');
+    expect(step).toContain('in the foreground');
+    expect(step).toContain('never in the background');
+  });
+
+  it('hands every ranking subagent the rubric verbatim', () => {
+    expect(rankPrompt).not.toBe('');
+    for (const line of RUBRIC) {
+      expect(skill, line).toContain(line);
+      expect(rankPrompt, line).toContain(line);
+    }
+  });
+
+  it('confines the ranking subagent to the findings files and their evidence, and one output per feature in the D4 shape', () => {
+    const prompt = flat(rankPrompt);
+    for (const rule of [
+      '$OUT/findings/<id>.json',
+      'Read only these files',
+      'a few dozen lines around',
+      'Read code only; never run, build or change anything in the project.',
+      '$OUT/priorities/<id>.json',
+      '`{"priorities": [{"id": "<finding id>", "priority": "P0", "reason": "<one sentence>"}]}`',
+      'one entry for each finding',
+      'Write only',
+      'one sentence in `$LANGUAGE`',
+      'at most 300 characters',
+      'which criterion the evidence meets and who is affected',
+      'Reply with one line',
+    ]) expect(prompt, rule).toContain(rule);
+  });
+
+  it('names in the ranking prompt every English word the advice gate refuses', () => {
+    const prompt = rankPrompt.toLowerCase();
+    for (const word of ADVICE_WORDS.filter((w) => /^[\x00-\x7f]+$/.test(w))) expect(prompt, word).toContain(word);
+  });
+
+  it('keeps the lane prompt free of severity', () => {
+    expect(flat(lanePrompt)).toContain('Give no severity and no confidence.');
+  });
+
+  it('never writes or edits a priorities file itself, and says so where the files are listed', () => {
+    expect(rankStep()).toContain(NEVER_RANK);
+    expect(flat(skill)).toContain('| `priorities/<id>.json` | the ranking subagent');
+  });
+
+  it('retries a feature that still fails once alone with its problem lines, then leaves it unranked and says so', () => {
+    const step = rankStep();
+    expect(step).toContain('rm -f "$OUT/priorities/<id>.json"');
+    expect(step).toContain('alone');
+    expect(step).toContain('Your previous attempt failed these checks; fix them and write the file again:');
+    expect(step).toContain('`Rank <id>: unranked`');
+    expect(step).toContain('`Rank: <n> features ranked, <m> unranked`');
+    expect(step.indexOf('Run `check-priorities` a last time')).toBeGreaterThan(step.indexOf('`Rank <id>: unranked`'));
+  });
+
+  it('does not rank a feature again that already has a passing file, and gives an older output directory only the later steps', () => {
+    const setup = phase.get(0);
+    expect(setup).toContain('Features whose `priorities/<id>.json` passes `check-priorities` are not ranked again');
+    expect(setup).toContain('an output directory with verified chapters and no `priorities/` only gets the ranking step and the steps after it');
+    expect(rankStep()).toContain('not ranked again');
   });
 });
