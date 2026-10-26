@@ -11,7 +11,7 @@
  * directory name.
  */
 
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, realpathSync } from 'node:fs';
 import { basename, join, resolve } from 'node:path';
 
 import { FINDINGS_FILE, FINDINGS_FORMAT, TABLE_FILES, WRITTEN_STATUSES, findingsOf, recomputeFeature, reportPath, summarize } from './aggregate.mjs';
@@ -28,6 +28,33 @@ const OVERVIEW_FILE = 'overview.md';
 const RUN_AGGREGATE = 'run `prd.mjs aggregate <out> --project <root>` first';
 /** The page's name for each of the three tables aggregate writes, in TABLE_FILES order. */
 const TABLE_KEYS = Object.freeze(['rolesByFeature', 'coverage', 'verification']);
+
+const escapeRegExp = (text) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+/**
+ * `value` with every string (keys stay as they are) having each of `roots`
+ * replaced by `name`. A root is replaced only where it is a whole path: not as
+ * the end of a longer path, nor as the start of a longer name (`/work/shop-two`,
+ * `/work/shop.bak`). The longest root goes first, duplicates and trailing
+ * slashes do not matter, and `/` or an empty root is not a root. Order and
+ * everything that is not a string are kept.
+ * @param {unknown} value
+ * @param {readonly string[]} roots
+ * @param {string} name
+ * @returns {unknown}
+ */
+export function withoutRootPaths(value, roots, name) {
+  const wanted = [...new Set(roots.map((root) => root.replace(/\/+$/, '')).filter((root) => root !== ''))].sort((a, b) => b.length - a.length);
+  if (wanted.length === 0) return value;
+  const pattern = new RegExp(`(?<![\\w.-])(?:${wanted.map(escapeRegExp).join('|')})(?![\\w-]|\\.\\w)`, 'g');
+  const walk = (item) => {
+    if (typeof item === 'string') return item.replace(pattern, () => name);
+    if (Array.isArray(item)) return item.map(walk);
+    if (item !== null && typeof item === 'object') return Object.fromEntries(Object.entries(item).map(([key, child]) => [key, walk(child)]));
+    return item;
+  };
+  return walk(value);
+}
 
 const featureNumber = (id) => Number(id.slice(1));
 
@@ -124,7 +151,7 @@ export function collectPageData(outDirArg, root) {
 
   // aggregate's printed fields, from the recomputed states; the machine's paths and the framework list (a key of its own) stay out.
   const { prdPath, outIsDefault, uncovered, ...counts } = summarize(outDir, { ...index, features: states }, root);
-  return {
+  const object = {
     format: PAGE_FORMAT,
     project: basename(root),
     sourceRevision: index.sourceRevision,
@@ -139,4 +166,12 @@ export function collectPageData(outDirArg, root) {
     unassigned: index.unassigned.map((id) => candidates.get(id)),
     uncovered: [...uncovered],
   };
+  const realOf = (path) => {
+    try {
+      return realpathSync(path);
+    } catch {
+      return path;
+    }
+  };
+  return withoutRootPaths(object, [index.projectRoot, root, realOf(index.projectRoot), realOf(root)], basename(root));
 }

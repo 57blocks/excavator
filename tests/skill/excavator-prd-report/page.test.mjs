@@ -67,6 +67,16 @@ describe('prd.mjs page', () => {
     expect(JSON.parse(block).features[0].body).toContain('<details>');
   });
 
+  it('holds no path of the project root in report.html, even when a verification report quotes it', () => {
+    const { run, page, report } = pageRun();
+    run.writeText('verification/F1.md', `# Verification of features/F1.md\n\nProject source: \`${run.project}\`\n`);
+    expect(page().status).toBe(0);
+    const html = readFileSync(report, 'utf-8');
+    expect(html).not.toContain(run.project);
+    expect(html).not.toContain(run.root);
+    expect(html).toContain('Project source: `project`');
+  });
+
   it('gives the same bytes on two runs', () => {
     const { page, report } = pageRun();
     expect(page().status).toBe(0);

@@ -3,12 +3,12 @@
 // whose index.json, findings.json and feature files disagree.
 import { afterEach, describe, expect, it } from 'vitest';
 import { createHash } from 'node:crypto';
-import { readFileSync, readdirSync, rmSync, statSync } from 'node:fs';
+import { appendFileSync, readFileSync, readdirSync, rmSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { FINDINGS_FORMAT } from '../../../skills/excavator-prd-report/lib/aggregate.mjs';
 import { UsageError } from '../../../skills/excavator-prd-report/lib/errors.mjs';
-import { PAGE_FORMAT, collectPageData } from '../../../skills/excavator-prd-report/lib/page-data.mjs';
+import { PAGE_FORMAT, collectPageData, withoutRootPaths } from '../../../skills/excavator-prd-report/lib/page-data.mjs';
 import { makeLaneRun, runPrd } from './helpers.mjs';
 
 const cleanups = [];
@@ -55,6 +55,25 @@ function snapshot(dir) {
   walk(dir);
   return entries;
 }
+
+describe('withoutRootPaths', () => {
+  const ROOT = '/work/shop';
+
+  it('replaces the root where it is a whole path, in strings at any depth, keeping keys and order', () => {
+    const value = { a: `at ${ROOT}`, list: [`${ROOT}/src/a.js:3`, { k: `\`${ROOT}\`` }], n: 3, nothing: null, [ROOT]: 'key stays' };
+    expect(withoutRootPaths(value, [ROOT], 'shop')).toEqual({ a: 'at shop', list: ['shop/src/a.js:3', { k: '`shop`' }], n: 3, nothing: null, [ROOT]: 'key stays' });
+    expect(Object.keys(withoutRootPaths(value, [ROOT], 'shop'))).toEqual(Object.keys(value));
+  });
+
+  it('leaves a longer path or name that only starts with the root', () => {
+    expect(withoutRootPaths(`${ROOT}-two/x ${ROOT}.bak ${ROOT}2`, [ROOT], 'shop')).toBe(`${ROOT}-two/x ${ROOT}.bak ${ROOT}2`);
+  });
+
+  it('tries the longest root first, ignores duplicates and a trailing slash', () => {
+    expect(withoutRootPaths('/private/work/shop/a and /work/shop/b', ['/work/shop', '/private/work/shop/', '/work/shop'], 'shop')).toBe('shop/a and shop/b');
+    expect(withoutRootPaths('/ and /x', ['/', ''], 'shop')).toBe('/ and /x');
+  });
+});
 
 describe('collectPageData', () => {
   it('returns the page object of the fixture with its keys in a fixed order', () => {
@@ -262,6 +281,37 @@ describe('collectPageData', () => {
     const second = JSON.stringify(collectPageData(run.out, run.project));
     expect(second).toBe(first);
     expect(snapshot(run.root)).toEqual(before);
+  });
+
+  it('replaces the project root with its directory name in every string, wherever the files quote it', () => {
+    const { run } = aggregatedRun();
+    // A verification report, a chapter paragraph and a finding's quoted passage that name the root, as model-written files do.
+    run.writeText('verification/F1.md', `# Verification of features/F1.md\n\nProject source: \`${run.project}\`\n\nSee ${run.project}/src/orders/service.js.\n`);
+    run.writeText('features/F1.md', run.readText('features/F1.md').replace('## Order placement\n', `## Order placement\n\nWritten from ${run.project}/web/src.\n`));
+    appendFileSync(join(run.project, 'src/orders/service.js'), `// built under ${run.project}\n`);
+    const lane = run.readJson('findings/F1.json');
+    lane.findings.push({
+      id: 'F1-9', class: 'technical', statement: `The file ${run.project}/src/orders/service.js ends with a note.`, flows: ['F1'],
+      evidence: [{ file: 'src/orders/service.js', passage: `// built under ${run.project}` }],
+    });
+    run.writeJson('findings/F1.json', lane);
+    aggregateOk(run);
+
+    const data = collectPageData(run.out, run.project);
+    const text = JSON.stringify(data);
+    expect(text).not.toContain(run.project);
+    expect(text).not.toContain(run.root);
+    const [f1] = data.features;
+    expect(f1.verificationReport).toContain('Project source: `project`');
+    expect(f1.verificationReport).toContain('See project/src/orders/service.js.');
+    expect(f1.body).toContain('Written from project/web/src.');
+    const finding = data.findings.find((item) => item.id === 'F1-9');
+    expect(finding.statement).toBe('The file project/src/orders/service.js ends with a note.');
+    expect(finding.evidence[0].passage).toBe('// built under project');
+    expect(Object.keys(data)).toEqual([
+      'format', 'project', 'sourceRevision', 'language', 'role', 'scope',
+      'counts', 'overview', 'features', 'findings', 'tables', 'unassigned', 'uncovered',
+    ]);
   });
 
   it('holds no absolute path: the project is its directory name only', () => {
