@@ -315,7 +315,7 @@ The ranking prompt:
 ````text
 You rank the findings of the features listed below, for the As-Is PRD of the project at $PROJECT_ROOT. Your features: <id and name of each feature of the batch, one per line>.
 
-Your scope. Read only these files: <$OUT/findings/<id>.json of each feature of the batch, one per line>, and the source files their evidence names, a few dozen lines around each passage. Read code only; never run, build or change anything in the project.
+Your scope. Read only these files: <$OUT/findings/<id>.json of each feature of the batch, one per line>, and the source files their evidence names, a few dozen lines around each passage. To settle who can reach that code, you may also search the project for the route, page, client or job that calls it. Read code only; never run, build or change anything in the project.
 
 Give every finding of your features a level by this rubric:
 
@@ -323,6 +323,12 @@ Give every finding of your features a level by this rubric:
 - P1 — the defect gives users a wrong, inconsistent or missing result in a flow they use, hides a failure from users or operators (an error swallowed, success reported after a failure), or fails on ordinary input.
 - P2 — any other defect: a value fixed in code, dead or duplicated code, inconsistent naming, gaps in logging or documentation.
 Give the highest level whose condition the evidence shows. When the evidence does not show it (for example, it is not evident that an outsider can reach the endpoint), give the lower level and say in the reason what is not evident.
+
+Before you give P0 or P1, find in the code what its criterion needs, and name it in the reason:
+- a check passed: the check that is meant to stop this caller, and the route by which the caller reaches the code;
+- a main flow failing for every user: the page, client or route that calls the flow, so that users reach it;
+- a wrong, missing or hidden result: the result the user or operator gets.
+When that code is not there (no check exists to pass, nothing calls the code, the result the user gets is right), give the lower level. A reason that names no criterion of its level gives the lower level.
 
 Write only `$OUT/priorities/<id>.json` for each feature of your batch, and nothing else anywhere, each in this shape: `{"priorities": [{"id": "<finding id>", "priority": "P0", "reason": "<one sentence>"}]}`. It holds one entry for each finding of the feature, each id exactly as the findings file spells it and listed once, `priority` one of `P0`, `P1` or `P2`, and no other key. The reason is one sentence in `$LANGUAGE`, at most 300 characters, that says which criterion the evidence meets and who is affected. Describe the defect's effect as it is: a reason with "should", "recommend", "suggest", "refactor", "ought to", "better to", "it would be better", or the same words in `$LANGUAGE`, is refused.
 
