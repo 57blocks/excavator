@@ -4,7 +4,11 @@
  * order, holding no absolute path. Reads only. It recomputes every feature's
  * state with aggregate's own rules and refuses a run whose index.json, findings.json or feature
  * files disagree (a UsageError telling the user to run `prd.mjs aggregate`),
- * so the page never shows a mix of two moments of the run.
+ * so the page never shows a mix of two moments of the run. The model writes
+ * the verification reports and chapters, and they sometimes quote the
+ * project's absolute path ("Project source: ..."); the page may hold no local
+ * path, so every string of the object has the root replaced by the project's
+ * directory name.
  */
 
 import { existsSync, readFileSync } from 'node:fs';
@@ -72,9 +76,12 @@ export function collectPageData(outDirArg, root) {
   const findings = readFindings(outDir);
   const recomputed = index.features.map((feature) => recomputeFeature(outDir, index, feature, root));
   const states = recomputed.map((state) => state.feature);
-  const stale = index.features.flatMap((feature, at) => (
-    feature.status === states[at].status ? [] : [`${feature.id} is ${feature.status ?? 'unrecorded'} in ${INDEX_FILE} but its files give ${states[at].status}`]
-  ));
+  // A feature is stale when its status differs, or when its failure reasons do (the same list in the same order, as PRD.md's appendix shows them).
+  const stale = index.features.flatMap((feature, at) => {
+    if (feature.status !== states[at].status) return [`${feature.id} is ${feature.status ?? 'unrecorded'} in ${INDEX_FILE} but its files give ${states[at].status}`];
+    if (JSON.stringify(feature.failure ?? null) !== JSON.stringify(states[at].failure ?? null)) return [`${feature.id}'s failure reasons in ${INDEX_FILE} differ from what its files give`];
+    return [];
+  });
   // findings.json must hold what aggregate would write now, feature by feature: same findings, same order.
   const expected = findingsOf(recomputed);
   for (const { id } of index.features) {

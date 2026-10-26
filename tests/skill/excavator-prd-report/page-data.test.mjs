@@ -201,6 +201,23 @@ describe('collectPageData', () => {
     expect(() => collectPageData(run.out, run.project)).toThrow(/prd\.mjs aggregate/);
   });
 
+  it('throws, naming aggregate, when a failed feature\'s files give other reasons but the same failed status', () => {
+    const { run } = aggregatedRun();
+    // F2 fails on one reason (no mermaid block) and aggregate records it ...
+    run.writeText('features/F2.md', run.readText('features/F2.md').replace(/```mermaid[\s\S]*?```\n/, ''));
+    aggregateOk(run);
+    expect(run.readIndex().features[1].failure.reasons).toEqual(['F2: no mermaid block']);
+    expect(() => collectPageData(run.out, run.project)).not.toThrow();
+    // ... then its chapter loses its evidence block too: still failed, now with two reasons.
+    run.writeText('features/F2.md', run.readText('features/F2.md').replace(/<details>[\s\S]*?<\/details>\n?/, ''));
+    const attempt = () => collectPageData(run.out, run.project);
+    expect(attempt).toThrow(UsageError);
+    expect(attempt).toThrow(/F2's failure reasons in index\.json differ from what its files give/);
+    expect(attempt).toThrow(/prd\.mjs aggregate/);
+    aggregateOk(run);
+    expect(collectPageData(run.out, run.project).features[1].failure.reasons).toHaveLength(2);
+  });
+
   it('throws, naming aggregate, when findings.json is missing', () => {
     const { run } = aggregatedRun();
     rmSync(join(run.out, 'findings.json'));

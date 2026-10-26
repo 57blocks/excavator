@@ -99,6 +99,18 @@ describe('prd.mjs page', () => {
     expect(run.readText('index.json')).toBe(index);
   });
 
+  it('refuses a run whose failed feature now gives other reasons under the same status, and writes nothing', () => {
+    const { run, page, report } = pageRun();
+    run.writeText('features/F2.md', run.readText('features/F2.md').replace(/```mermaid[\s\S]*?```\n/, ''));
+    expect(runPrd(['aggregate', run.out, '--project', run.project]).status).toBe(0);
+    expect(page().status).toBe(0);
+    run.writeText('features/F2.md', run.readText('features/F2.md').replace(/<details>[\s\S]*?<\/details>\n?/, ''));
+    const out = page();
+    expect(out.status).toBe(2);
+    expect(out.stderr).toMatch(/F2's failure reasons in index\.json differ.*prd\.mjs aggregate/);
+    expect(existsSync(report)).toBe(false);
+  });
+
   it('removes the page an earlier run left when the template is missing', () => {
     const { run, page, report } = pageRun();
     expect(page().status).toBe(0);
