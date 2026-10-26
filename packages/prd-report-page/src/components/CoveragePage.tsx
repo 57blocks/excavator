@@ -12,7 +12,7 @@ export function CoveragePage({ data }: { data: PageData }) {
       <p className="lede">What the run covered, from the tables the script wrote.</p>
 
       <Markdown source={data.tables.coverage} idPrefix="coverage" />
-      <Markdown source={data.tables.rolesByFeature} idPrefix="roles" />
+      <Markdown source={data.tables.roles} idPrefix="roles" />
       <Markdown source={data.tables.verification} idPrefix="verification-table" />
 
       <h2 className="section">Entrypoints not assigned to a feature ({data.unassigned.length})</h2>

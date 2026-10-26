@@ -15,10 +15,9 @@
 import { existsSync, readFileSync, realpathSync } from 'node:fs';
 import { basename, join, resolve } from 'node:path';
 
-import { FINDINGS_FILE, FINDINGS_FORMAT, TABLE_FILES, WRITTEN_STATUSES, computeAggregate, reportPath } from './aggregate.mjs';
-import { body as markdownBody } from './assemble.mjs';
+import { FINDINGS_FILE, FINDINGS_FORMAT, TABLE_FILES, TABLE_KEYS, WRITTEN_STATUSES, computeAggregate, reportPath } from './aggregate.mjs';
+import { body as markdownBody, byChapter, splitChapter } from './chapter.mjs';
 import { UsageError } from './errors.mjs';
-import { parseFrontMatter } from './front-matter.mjs';
 import { INDEX_FILE, loadIndex, schemaProblems } from './index-check.mjs';
 import { chapterPath } from './lane-check.mjs';
 import { isObject, readJson } from './json-file.mjs';
@@ -27,8 +26,6 @@ import { projectRootProblem } from './project-root.mjs';
 export const PAGE_FORMAT = 'excavator-prd-report-page/1';
 const OVERVIEW_FILE = 'overview.md';
 const RUN_AGGREGATE = 'run `prd.mjs aggregate <out> --project <root>` first';
-/** The page's name for each of the three tables aggregate writes, in TABLE_FILES order. */
-const TABLE_KEYS = Object.freeze(['rolesByFeature', 'coverage', 'verification']);
 
 const escapeRegExp = (text) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
@@ -56,8 +53,6 @@ export function withoutRootPaths(value, roots, name) {
   };
   return walk(value);
 }
-
-const featureNumber = (id) => Number(id.slice(1));
 
 function readMarkdown(outDir, rel, hint) {
   const path = join(outDir, rel);
@@ -123,15 +118,16 @@ function staleOutputs(outDir, index, stored, computed) {
 }
 
 /**
- * A written chapter: its body without front-matter, and the front-matter's
- * actors (the page's `roles` field until the page shows actors and permission
- * roles, change prd-report-prd-shape, design D10) and triggers.
+ * A written chapter, through the split `assemble` uses: its body without
+ * front-matter and without its open items section, the actors, permission
+ * roles and flows it declares, and its triggers (change prd-report-prd-shape,
+ * design D10).
  */
 function readChapter(outDir, id) {
-  const text = readFileSync(join(outDir, chapterPath(id)), 'utf-8');
-  const front = parseFrontMatter(text);
-  if (!front.ok) throw new UsageError(`${chapterPath(id)} ${front.reason}; ${RUN_AGGREGATE}`);
-  return { body: markdownBody(text), roles: front.data.actors ?? [], triggers: front.data.triggers ?? [] };
+  const split = splitChapter(readFileSync(join(outDir, chapterPath(id)), 'utf-8'));
+  if (!split.ok) throw new UsageError(`${chapterPath(id)} ${split.reason}; ${RUN_AGGREGATE}`);
+  const { actors, permissionRoles, flows, body, data } = split;
+  return { body, actors, permissionRoles, flows, triggers: data.triggers ?? [] };
 }
 
 /**
@@ -178,16 +174,18 @@ export function collectPageData(outDirArg, root) {
         attempts: feature.attempts,
         counts: feature.counts,
         entrypoints: feature.entrypoints.map((id) => candidates.get(id)),
-        roles: chapter?.roles ?? [],
+        actors: chapter?.actors ?? [],
+        permissionRoles: chapter?.permissionRoles ?? [],
+        flows: chapter?.flows ?? [],
         triggers: chapter?.triggers ?? [],
         body: chapter?.body ?? null,
         verificationReport: verified ? readMarkdown(outDir, reportPath(feature.id), RUN_AGGREGATE) : null,
       };
     })
-    .sort((a, b) => a.chapter - b.chapter || featureNumber(a.id) - featureNumber(b.id));
+    .sort(byChapter);
 
-  // aggregate's printed fields, from the recomputed states; the machine's paths and the framework list (a key of its own) stay out.
-  const { prdPath, outIsDefault, uncovered, ...counts } = computed.result;
+  // aggregate's printed fields, from the recomputed states; the machine's paths, the framework list (a key of its own) and the features to retry stay out.
+  const { prdPath, outIsDefault, uncovered, retryable, ...counts } = computed.result;
   const object = {
     format: PAGE_FORMAT,
     project: basename(root),

@@ -9,8 +9,11 @@
  * the findings counted by level, `<n> P0, <n> P1, <n> P2, <n> unranked`, from
  * the totals aggregate recorded (change prd-report-finding-priority, design
  * D7); an index.json from before priorities counts them all as unranked.
- * The frameworks without patterns are a line only when there are some; the offer to save the PRD is a line only when <out> is
- * the default `<root>/.excavator/prd-report`, naming `docs/PRD.md`, or
+ * The retry line, `Retry: <ids> failed after one attempt; ...`, comes right
+ * after the counts and only when `retryable` is not empty (change
+ * prd-report-prd-shape, design D6). The frameworks without patterns are a
+ * line only when there are some; the offer to save the PRD is a line only
+ * when <out> is the default `<root>/.excavator/prd-report`, naming `docs/PRD.md`, or
  * `docs/PRD-<scope>.md` for a scoped run.
  */
 
@@ -55,6 +58,8 @@ export function reply(outDirArg, root) {
       + `open items: ${v.resolvedRight} resolved right, ${v.resolvedWrong} resolved wrong, ${v.stillOpen} still open; `
       + `cross-section conflicts: ${v.conflicts}, not checked: ${v.notChecked}`,
   ];
+  // The failed features a second run still repairs (change prd-report-prd-shape, design D6): right after the counts.
+  if (s.retryable.length > 0) lines.push(`Retry: ${s.retryable.join(' ')} failed after one attempt; running the same command again retries them`);
   if (s.uncovered.length > 0) lines.push(`No entrypoint patterns for: ${s.uncovered.join(', ')}`);
   if (s.outIsDefault) {
     lines.push(`To save it in the project, say so: it goes to ${defaultSavePath(index.scope)} unless you give another path. Commit it to share it with the team.`);

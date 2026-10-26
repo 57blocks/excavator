@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { cpSync, existsSync, readFileSync, readdirSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { computeAggregate } from '../../../skills/excavator-prd-report/lib/aggregate.mjs';
+import { TABLE_FILES, computeAggregate } from '../../../skills/excavator-prd-report/lib/aggregate.mjs';
 import { makeLaneRun, runPrd } from './helpers.mjs';
 
 const cleanups = [];
@@ -19,7 +19,7 @@ function laneRun() {
   return run;
 }
 
-/** The reply's 18 placeholders (the contract test of SKILL.md pins the same list), then the four priority totals aggregate also prints. */
+/** The reply's 18 placeholders (the contract test of SKILL.md pins the same list), then the four priority totals and the features to retry that aggregate also prints. */
 const FIELD_PATHS = [
   'prdPath',
   'features.total', 'features.written', 'features.failed',
@@ -31,6 +31,7 @@ const FIELD_PATHS = [
   'verification.conflicts', 'verification.notChecked',
   'uncovered',
   'outIsDefault',
+  'retryable',
 ];
 /** Every leaf path of a JSON value; an array is a leaf. */
 function leafPaths(value, prefix = '') {
@@ -67,6 +68,7 @@ describe('prd.mjs aggregate', () => {
       },
       uncovered: [],
       outIsDefault: false,
+      retryable: [],
     });
   });
 
@@ -182,7 +184,7 @@ describe('prd.mjs aggregate', () => {
     expect(product.findings[1].evidence[0].line).toBe(11);
   });
 
-  it('writes the three tables', () => {
+  it('writes the five tables: terminology, roles, open items, coverage and verification', () => {
     const run = runWithPlannedFeature();
     const index = run.readIndex();
     index.candidates.items.push({ id: 'c9', kind: 'route', file: 'src/orders/routes.js', line: 8, text: 'module.exports = router;', framework: 'express' });
@@ -190,10 +192,16 @@ describe('prd.mjs aggregate', () => {
     index.candidates.uncovered = ['spring'];
     run.writeIndex(index);
     expect(runPrd(['aggregate', run.out, '--project', run.project]).status).toBe(0);
-    const roles = run.readText('tables/roles-by-feature.md');
+    expect(TABLE_FILES).toEqual(['tables/terminology.md', 'tables/roles.md', 'tables/open-items.md', 'tables/coverage.md', 'tables/verification.md']);
+    for (const rel of TABLE_FILES) expect(existsSync(join(run.out, rel)), rel).toBe(true);
+    expect(existsSync(join(run.out, 'tables/roles-by-feature.md'))).toBe(false);
+    expect(run.readText('tables/terminology.md')).toBe('| Term | Meaning |\n|---|---|\n| Order | A customer\'s request for goods, with a status of open or cancelled. |\n');
+    const roles = run.readText('tables/roles.md');
     expect(roles).toContain('| Feature | customer | support agent |');
     expect(roles).toContain('| F1 Order placement | x |  |');
     expect(roles).toContain('| F2 Order cancellation |  | x |');
+    expect(roles).not.toContain('F3 Order reopening');
+    expect(run.readText('tables/open-items.md')).toBe('None.\n');
     const coverage = run.readText('tables/coverage.md');
     expect(coverage).toContain('| c1 | route | `src/orders/routes.js:5` | express | F1 Order placement | verified |');
     expect(coverage).toContain('| c3 | job | `src/orders/service.js:15` | custom (inferred) | F3 Order reopening | planned |');

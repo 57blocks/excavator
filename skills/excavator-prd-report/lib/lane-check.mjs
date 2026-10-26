@@ -15,7 +15,9 @@ import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { UsageError } from './errors.mjs';
+import { splitChapter } from './chapter.mjs';
 import { parseFrontMatter } from './front-matter.mjs';
+import { headingsOf } from './headings.mjs';
 import { INDEX_FILE, MAX_ATTEMPTS, loadIndex } from './index-check.mjs';
 import { isObject, isString, isStringArray, readJson, writeJson } from './json-file.mjs';
 import { findOnce, normalize } from './normalize.mjs';
@@ -57,31 +59,11 @@ export const FINDING_CLASSES = Object.freeze(['product', 'technical']);
 const FINDING_KEYS = Object.freeze(['id', 'class', 'statement', 'flows', 'evidence']);
 const EVIDENCE_KEYS = Object.freeze(['file', 'passage', 'line']);
 const ANCHOR = /`([^`\s]+):(\d+)(?:-(\d+))?`/g;
-const MERMAID = /^```mermaid[ \t]*$/gm;
+export const MERMAID = /^```mermaid[ \t]*$/gm;
 const DETAILS = /<details>[\s\S]*?<\/details>/g;
 
 export const chapterPath = (id) => `features/${id}.md`;
 export const findingsPath = (id) => `findings/${id}.json`;
-
-/** The headings of a Markdown body, outside code fences: { level, text } in order. */
-function headingsOf(body) {
-  const headings = [];
-  let fence = null;
-  for (const line of body.split('\n')) {
-    const marker = /^ {0,3}(`{3,}|~{3,})/.exec(line)?.[1];
-    if (fence !== null) {
-      if (marker !== undefined && marker[0] === fence.char && marker.length >= fence.length && line.trim() === marker) fence = null;
-      continue;
-    }
-    if (marker !== undefined) {
-      fence = { char: marker[0], length: marker.length };
-      continue;
-    }
-    const match = /^ {0,3}(#{1,6})[ \t]+(.*?)(?:[ \t]+#+)?[ \t]*$/.exec(line);
-    if (match) headings.push({ level: match[1].length, text: match[2] });
-  }
-  return headings;
-}
 
 /** Problems of the declared structure: the lists of the front-matter against the body's headings (design D3). */
 function structureProblems(data, body, feature) {
@@ -123,7 +105,6 @@ function chapterProblems(text, feature, files) {
   const add = (problem) => problems.push(`${feature.id}: ${problem}`);
   const front = parseFrontMatter(text);
   let body = text;
-  let actors = [];
   if (!front.ok) {
     add(`${chapterPath(feature.id)} ${front.reason}`);
   } else {
@@ -135,7 +116,6 @@ function chapterProblems(text, feature, files) {
     if (data.chapter !== feature.chapter) add(`front-matter chapter is ${JSON.stringify(data.chapter ?? null)}, not the index's ${feature.chapter}`);
     if (!isStringArray(data.triggers)) add('front-matter triggers is not a list');
     for (const problem of structureProblems(data, body, feature)) add(problem);
-    if (isStringArray(data.actors)) actors = data.actors;
   }
   const diagrams = (body.match(MERMAID) ?? []).length;
   if (diagrams === 0) add('no mermaid block');
@@ -164,7 +144,7 @@ function chapterProblems(text, feature, files) {
     }
   }
   if (blocks.length > 0 && evidence === 0) add('no anchor in the <details> evidence blocks: write each anchor in backticks, as `path:line` or `path:line-line`, with the path from the project root');
-  return { problems, diagrams, evidence, actors };
+  return { problems, diagrams, evidence };
 }
 
 /** Problems of the findings file; `resolved` carries each passage's line when there are none. */
@@ -229,14 +209,15 @@ function findingsProblems(value, feature, featureIds, files) {
 
 /**
  * The problems of one lane (pure apart from reading the project), its counts,
- * the chapter's front-matter actors, and the findings value with lines filled
- * in when every finding passed.
+ * the chapter's split (null when it cannot be read or split; see
+ * `splitChapter`), and the findings value with lines filled in when every
+ * finding passed.
  */
 export function laneResult(outDir, index, feature, root) {
   const files = projectFiles(root);
   const problems = [];
   const counts = { diagrams: 0, evidence: 0, findings: { product: 0, technical: 0 } };
-  let actors = [];
+  let chapter = null;
   const chapterFile = join(outDir, chapterPath(feature.id));
   const findingsFile = join(outDir, findingsPath(feature.id));
   for (const rel of [chapterPath(feature.id), findingsPath(feature.id)]) {
@@ -245,11 +226,12 @@ export function laneResult(outDir, index, feature, root) {
   if (existsSync(chapterFile)) {
     const read = readText(chapterFile);
     if (read.ok) {
-      const chapter = chapterProblems(read.text, feature, files);
-      problems.push(...chapter.problems);
-      counts.diagrams = chapter.diagrams;
-      counts.evidence = chapter.evidence;
-      actors = chapter.actors;
+      const checked = chapterProblems(read.text, feature, files);
+      problems.push(...checked.problems);
+      counts.diagrams = checked.diagrams;
+      counts.evidence = checked.evidence;
+      const split = splitChapter(read.text);
+      chapter = split.ok ? split : null;
     } else {
       problems.push(`${feature.id}: ${chapterPath(feature.id)} ${read.reason}`);
     }
@@ -267,7 +249,7 @@ export function laneResult(outDir, index, feature, root) {
       if (checked.problems.length === 0) findings = read.value;
     }
   }
-  return { problems, counts, findings, actors };
+  return { problems, counts, findings, chapter };
 }
 
 function readText(path) {

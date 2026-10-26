@@ -9,7 +9,7 @@ import { join } from 'node:path';
 import { FINDINGS_FORMAT } from '../../../skills/excavator-prd-report/lib/aggregate.mjs';
 import { UsageError } from '../../../skills/excavator-prd-report/lib/errors.mjs';
 import { PAGE_FORMAT, collectPageData, withoutRootPaths } from '../../../skills/excavator-prd-report/lib/page-data.mjs';
-import { makeLaneRun, rankEntry, runPrd, writeRanks } from './helpers.mjs';
+import { makeLaneRun, makeSkeletonRun, rankEntry, runPrd, writeRanks } from './helpers.mjs';
 
 const cleanups = [];
 afterEach(() => {
@@ -41,6 +41,9 @@ const aggregateOk = (run) => {
   expect(out.status, out.stdout + out.stderr).toBe(0);
   return out.json;
 };
+
+/** A chapter's text without its front-matter (a chapter with no open items section is its body as it is). */
+const markdownBodyOf = (run, id) => run.readText(`features/${id}.md`).replace(/^---\n[\s\S]*?\n---\n/, '').trim();
 
 /** Every file under `dir` with its bytes' digest and mtime: what "reads only" must leave unchanged. */
 function snapshot(dir) {
@@ -89,14 +92,19 @@ describe('collectPageData', () => {
     expect(data.project).toBe('project');
     expect([data.sourceRevision, data.language, data.role, data.scope]).toEqual(['directory:synthetic', 'English', 'product manager', null]);
     // counts are the fields aggregate printed; prdPath and outIsDefault are about the machine, uncovered has its own key.
-    const { prdPath, outIsDefault, uncovered, ...fields } = printed;
+    // retryable is about the next command, not the run's counts: the page holds none of it.
+    const { prdPath, outIsDefault, uncovered, retryable, ...fields } = printed;
+    expect(retryable).toEqual([]);
     expect(data.counts).toEqual(fields);
     expect(Object.keys(data.counts)).toEqual(['features', 'diagrams', 'findings', 'verification']);
     expect(data.overview).toBe(readFileSync(join(run.out, 'overview.md'), 'utf-8').trim());
     expect(data.unassigned).toEqual([]);
     expect(data.uncovered).toEqual([]);
-    expect(Object.keys(data.tables)).toEqual(['rolesByFeature', 'coverage', 'verification']);
-    expect(data.tables.rolesByFeature).toContain('| F1 Order placement | x |  |');
+    expect(Object.keys(data.tables)).toEqual(['terminology', 'roles', 'openItems', 'coverage', 'verification']);
+    expect(data.tables.terminology).toContain('| Order | A customer\'s request for goods, with a status of open or cancelled. |');
+    expect(data.tables.roles).toContain('| F1 Order placement | x |  |');
+    expect(data.tables.roles).toContain('### Permission roles');
+    expect(data.tables.openItems).toBe('None.');
     expect(data.tables.coverage).toContain('| c1 | route |');
     expect(data.tables.verification).toContain('verified');
 
@@ -108,7 +116,7 @@ describe('collectPageData', () => {
     const [f1] = data.features;
     expect(Object.keys(f1)).toEqual([
       'id', 'name', 'kind', 'chapter', 'status', 'failure', 'attempts', 'counts',
-      'entrypoints', 'roles', 'triggers', 'body', 'verificationReport',
+      'entrypoints', 'actors', 'permissionRoles', 'flows', 'triggers', 'body', 'verificationReport',
     ]);
     expect([f1.name, f1.kind, f1.chapter, f1.status, f1.failure, f1.attempts]).toEqual(['Order placement', 'flow', 1, 'verified', null, 0]);
     expect(f1.counts).toEqual(run.readIndex().features[0].counts);
@@ -116,7 +124,8 @@ describe('collectPageData', () => {
       ['c1', 'src/orders/routes.js', 5], ['i1', 'web/src/OrderForm.tsx', 1],
     ]);
     expect(Object.keys(f1.entrypoints[0])).toEqual(['id', 'kind', 'file', 'line', 'text', 'framework']);
-    expect(f1.roles).toEqual(['customer']);
+    expect(f1.roles).toBeUndefined();
+    expect([f1.actors, f1.permissionRoles, f1.flows]).toEqual([['customer'], [], ['Flow 1: Place an order']]);
     expect(f1.triggers).toEqual(['A customer submits the order form']);
     expect(f1.body.startsWith('## Order placement\n')).toBe(true);
     expect(f1.body).toContain('```mermaid');
@@ -124,6 +133,28 @@ describe('collectPageData', () => {
     expect(f1.body.startsWith('---')).toBe(false);
     expect(f1.verificationReport).toContain('A synthetic verification report.');
     expect(data.features[1].triggers).toEqual(['A support agent cancels an order']);
+  });
+
+  it('gives each feature its declared actors, permission roles and flows, its body without the open items section, and the three skeleton tables (D10)', () => {
+    const run = makeSkeletonRun();
+    cleanups.push(run.cleanup);
+    expect(runPrd(['check-index', run.out, '--project', run.project]).status).toBe(0);
+    aggregateOk(run);
+    const data = collectPageData(run.out, run.project);
+    expect(data.features.map((feature) => feature.id)).toEqual(['F3', 'F1', 'F2', 'F4']);
+    const [reference, placement, cancellation, failed] = data.features;
+    expect([reference.actors, reference.permissionRoles, reference.flows]).toEqual([[], ['admin', 'normal'], []]);
+    expect([placement.actors, placement.permissionRoles, placement.flows]).toEqual([['customer'], [], ['Flow 1: Place an order']]);
+    expect(cancellation.flows).toEqual(['Cancel an order', 'Cancel an order']);
+    expect([failed.actors, failed.permissionRoles, failed.flows, failed.body]).toEqual([[], [], [], null]);
+    expect(placement.body).not.toContain('### Open items');
+    expect(placement.body).not.toContain('Whether open orders expire');
+    expect(placement.body.endsWith('</details>')).toBe(true);
+    expect(cancellation.body).toBe(markdownBodyOf(run, 'F2'));
+    expect(data.tables.terminology).toBe(run.readText('tables/terminology.md').trim());
+    expect(data.tables.roles).toBe(run.readText('tables/roles.md').trim());
+    expect(data.tables.openItems).toBe(run.readText('tables/open-items.md').trim());
+    expect(data.tables.openItems).toContain('Whether open orders expire');
   });
 
   it('sorts the features by chapter', () => {
@@ -149,7 +180,7 @@ describe('collectPageData', () => {
     expect(f2.failure).toEqual({ step: 'check-lane', reasons: ['F2: no mermaid block'] });
     expect(f2.body).toBeNull();
     expect(f2.verificationReport).toBeNull();
-    expect(f2.roles).toEqual([]);
+    expect([f2.actors, f2.permissionRoles, f2.flows]).toEqual([[], [], []]);
     expect(f2.triggers).toEqual([]);
     expect(data.counts.features).toEqual({ total: 2, written: 1, failed: 1 });
     expect(data.findings.map((finding) => finding.feature)).toEqual(['F1']);
@@ -252,12 +283,12 @@ describe('collectPageData', () => {
       expect(collectPageData(run.out, run.project).counts.verification.verified).toBe(9);
     });
 
-    it('refuses a chapter whose roles changed: the roles table is stale', () => {
+    it('refuses a chapter whose actors changed: the roles table is stale', () => {
       const { run } = aggregatedRun();
       run.writeText('features/F1.md', run.readText('features/F1.md').replace('actors: [customer]', 'actors: [customer, auditor]'));
-      expect(attempt(run)).toThrow(/tables\/roles-by-feature\.md differs from what aggregate writes now.*prd\.mjs aggregate/);
+      expect(attempt(run)).toThrow(/tables\/roles\.md differs from what aggregate writes now.*prd\.mjs aggregate/);
       aggregateOk(run);
-      expect(collectPageData(run.out, run.project).tables.rolesByFeature).toContain('auditor');
+      expect(collectPageData(run.out, run.project).tables.roles).toContain('auditor');
     });
 
     it('refuses a chapter that gained a mermaid block: the diagram count is recorded in index.json', () => {

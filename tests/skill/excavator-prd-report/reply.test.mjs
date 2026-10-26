@@ -114,6 +114,61 @@ describe('prd.mjs reply', () => {
     expect(lines(runPrd(['reply', run.out, '--project', run.project]))[6]).toBe('No entrypoint patterns for: gin, spring');
   });
 
+  describe('the retry line (change prd-report-prd-shape, design D6)', () => {
+    const RETRY = (ids) => `Retry: ${ids} failed after one attempt; running the same command again retries them`;
+    /** Fail the lane of `id` with an advice word and record `attempts` dispatches. */
+    const failLane = (r, id, attempts) => {
+      const findings = r.readJson(`findings/${id}.json`);
+      findings.findings[0].statement = 'The route should check the quantity.';
+      r.writeJson(`findings/${id}.json`, findings);
+      for (let k = 0; k < attempts; k += 1) expect(runPrd(['mark', r.out, id, 'dispatched', '--project', r.project]).status).toBe(0);
+    };
+
+    it('is absent when no feature failed, and when the failed one has had its second attempt', () => {
+      const none = assembled();
+      expect(lines(runPrd(['reply', none.run.out, '--project', none.run.project])).some((line) => line.startsWith('Retry:'))).toBe(false);
+      const spent = assembled((r) => failLane(r, 'F2', 2));
+      const out = lines(runPrd(['reply', spent.run.out, '--project', spent.run.project]));
+      expect(out[2]).toBe('1/2 features written, 1 failed');
+      expect(out.some((line) => line.startsWith('Retry:'))).toBe(false);
+      expect(spent.fields.retryable).toEqual([]);
+    });
+
+    it('follows the counts and comes before the frameworks without patterns, naming the ids in chapter order', () => {
+      const { run, fields } = assembled((r) => {
+        const index = r.readIndex();
+        index.features[0].chapter = 2;
+        index.features[1].chapter = 1;
+        index.candidates.uncovered = ['gin'];
+        r.writeIndex(index);
+        r.writeText('features/F1.md', r.readText('features/F1.md').replace('chapter: 1', 'chapter: 2'));
+        r.writeText('features/F2.md', r.readText('features/F2.md').replace('chapter: 2', 'chapter: 1'));
+        failLane(r, 'F1', 1);
+        failLane(r, 'F2', 1);
+      });
+      expect(fields.retryable).toEqual(['F2', 'F1']);
+      const out = lines(runPrd(['reply', run.out, '--project', run.project]));
+      expect(out.slice(2)).toEqual([
+        '0/2 features written, 2 failed',
+        '0 diagrams',
+        '0 product, 0 technical findings, anchors checked: 0 P0, 0 P1, 0 P2, 0 unranked',
+        expect.stringMatching(/^Statements: 0 verified/),
+        RETRY('F2 F1'),
+        'No entrypoint patterns for: gin',
+      ]);
+    });
+
+    it('names only the features with one attempt when another has had two', () => {
+      const { run } = assembled((r) => {
+        failLane(r, 'F1', 2);
+        failLane(r, 'F2', 1);
+      });
+      const out = lines(runPrd(['reply', run.out, '--project', run.project]));
+      expect(out[6]).toBe(RETRY('F2'));
+      expect(out).toHaveLength(7);
+    });
+  });
+
   it('offers to save the PRD only when <out> is the default, at docs/PRD.md or docs/PRD-<scope>.md', () => {
     const { run } = assembled();
     const inside = join(run.project, '.excavator', 'prd-report');

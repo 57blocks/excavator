@@ -35,10 +35,10 @@ export function FeaturePage({ feature, findings }: { feature: Feature; findings:
       )}
 
       <dl className="kv">
-        {feature.roles.length > 0 && (
+        {feature.actors.length > 0 && (
           <>
-            <dt>Roles</dt>
-            <dd><div className="chips">{feature.roles.map((role) => <span className="chip" key={role}>{role}</span>)}</div></dd>
+            <dt>Actors</dt>
+            <dd><div className="chips">{feature.actors.map((actor) => <span className="chip" key={actor}>{actor}</span>)}</div></dd>
           </>
         )}
         {feature.triggers.length > 0 && (
