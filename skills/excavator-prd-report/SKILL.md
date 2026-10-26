@@ -326,10 +326,9 @@ Give the highest level whose condition the evidence shows. When the evidence doe
 
 Before you give P0 or P1, find in the code what its criterion needs, and name it in the reason:
 - a check passed: the check that is meant to stop this caller, and the route by which the caller reaches the code;
-- a main flow failing for every user: the route, page, client or job by which users reach the flow;
+- a main flow failing for every user: the page, client or route that calls the flow, so that users reach it;
 - a wrong, missing or hidden result: the result the user or operator gets.
-A route the server registers is itself such an entry: any client can send it the request, a client outside this project too, so a route with no caller in the project is still reached. A failure that a recovery handler or error middleware turns into an error response still fails for the user.
-When that code is not there (no check exists to pass, no registered route or other entry reaches the code, the result the user gets is right), give the lower level. A reason that names no criterion of its level gives the lower level.
+When that code is not there (no check exists to pass, nothing calls the code, the result the user gets is right), give the lower level. A reason that names no criterion of its level gives the lower level.
 
 Write only `$OUT/priorities/<id>.json` for each feature of your batch, and nothing else anywhere, each in this shape: `{"priorities": [{"id": "<finding id>", "priority": "P0", "reason": "<one sentence>"}]}`. It holds one entry for each finding of the feature, each id exactly as the findings file spells it and listed once, `priority` one of `P0`, `P1` or `P2`, and no other key. The reason is one sentence in `$LANGUAGE`, at most 300 characters, that says which criterion the evidence meets and who is affected. Describe the defect's effect as it is: a reason with "should", "recommend", "suggest", "refactor", "ought to", "better to", "it would be better", or the same words in `$LANGUAGE`, is refused.
 
