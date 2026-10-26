@@ -121,6 +121,17 @@ describe('prd.mjs page', () => {
     expect(existsSync(report)).toBe(false);
   });
 
+  it('refuses a run whose verification counts changed under the same verified status, and writes nothing', () => {
+    const { run, page, report } = pageRun();
+    expect(page().status).toBe(0);
+    run.writeText('verification/F1.txt', run.readText('verification/F1.txt').replace('Statements: 7 verified', 'Statements: 8 verified'));
+    const out = page();
+    expect(out.status).toBe(2);
+    expect(out.stderr).toMatch(/index\.json|tables\/verification\.md/);
+    expect(out.stderr).toMatch(/prd\.mjs aggregate/);
+    expect(existsSync(report)).toBe(false);
+  });
+
   it('removes the page an earlier run left when the template is missing', () => {
     const { run, page, report } = pageRun();
     expect(page().status).toBe(0);

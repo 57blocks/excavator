@@ -3,9 +3,10 @@
 // buckets conserved, and the reply's counts printed (openspec change
 // prd-feature-pipeline, design D5, D7, D9).
 import { afterEach, describe, expect, it } from 'vitest';
-import { cpSync, existsSync, rmSync } from 'node:fs';
+import { cpSync, existsSync, readFileSync, readdirSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 
+import { computeAggregate } from '../../../skills/excavator-prd-report/lib/aggregate.mjs';
 import { makeLaneRun, runPrd } from './helpers.mjs';
 
 const cleanups = [];
@@ -230,5 +231,18 @@ describe('prd.mjs aggregate', () => {
     const out = runPrd(['aggregate', run.out, '--project', run.project]);
     expect(out.status).toBe(1);
     expect(out.stdout).toMatch(/F3: status "half-done"/);
+  });
+
+  it('computes what it writes without writing: computeAggregate gives the contents aggregate then writes', () => {
+    const run = runWithPlannedFeature();
+    const before = { index: run.readText('index.json'), listing: readdirSync(run.out).sort() };
+    const computed = computeAggregate(run.out, run.readIndex(), run.project);
+    expect(run.readText('index.json')).toBe(before.index);
+    expect(readdirSync(run.out).sort()).toEqual(before.listing);
+    expect(computed.problems).toEqual([]);
+    expect(runPrd(['aggregate', run.out, '--project', run.project]).status).toBe(0);
+    expect(run.readJson('index.json')).toEqual(computed.updated);
+    expect(run.readJson('findings.json')).toEqual(computed.findingsFile);
+    for (const [rel, text] of Object.entries(computed.tables)) expect(readFileSync(join(run.out, rel), 'utf-8')).toBe(text);
   });
 });

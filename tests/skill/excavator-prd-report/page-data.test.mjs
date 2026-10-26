@@ -237,6 +237,60 @@ describe('collectPageData', () => {
     expect(collectPageData(run.out, run.project).features[1].failure.reasons).toHaveLength(2);
   });
 
+  describe('anything aggregate wrote that its files no longer give (the whole outputs are compared, not chosen fields)', () => {
+    const attempt = (run) => () => collectPageData(run.out, run.project);
+
+    it('refuses new statement counts in a verification reply while the feature stays verified', () => {
+      const { run } = aggregatedRun();
+      expect(run.readIndex().features[0].status).toBe('verified');
+      run.writeText('verification/F1.txt', run.readText('verification/F1.txt').replace('Statements: 7 verified, 2 contradicted', 'Statements: 9 verified, 0 contradicted'));
+      expect(attempt(run)).toThrow(UsageError);
+      expect(attempt(run)).toThrow(/F1's recorded fields in index\.json differ from what its files give/);
+      expect(attempt(run)).toThrow(/tables\/verification\.md differs from what aggregate writes now/);
+      expect(attempt(run)).toThrow(/prd\.mjs aggregate/);
+      aggregateOk(run);
+      expect(collectPageData(run.out, run.project).counts.verification.verified).toBe(9);
+    });
+
+    it('refuses a chapter whose roles changed: the roles table is stale', () => {
+      const { run } = aggregatedRun();
+      run.writeText('features/F1.md', run.readText('features/F1.md').replace('roles: [customer]', 'roles: [customer, auditor]'));
+      expect(attempt(run)).toThrow(/tables\/roles-by-feature\.md differs from what aggregate writes now.*prd\.mjs aggregate/);
+      aggregateOk(run);
+      expect(collectPageData(run.out, run.project).tables.rolesByFeature).toContain('auditor');
+    });
+
+    it('refuses a chapter that gained a mermaid block: the diagram count is recorded in index.json', () => {
+      const { run } = aggregatedRun();
+      run.writeText('features/F1.md', `${run.readText('features/F1.md').trimEnd()}\n\n\`\`\`mermaid\nflowchart LR\n  A --> B\n\`\`\`\n`);
+      expect(attempt(run)).toThrow(/F1's recorded fields in index\.json differ from what its files give.*prd\.mjs aggregate/);
+      aggregateOk(run);
+      expect(collectPageData(run.out, run.project).counts.diagrams).toBe(3);
+    });
+
+    it('refuses an index.json whose conservation summary was changed', () => {
+      const { run } = aggregatedRun();
+      const index = run.readIndex();
+      index.conservation = { ...index.conservation, assigned: 99 };
+      run.writeIndex(index);
+      expect(attempt(run)).toThrow(/conservation in index\.json differs.*prd\.mjs aggregate/);
+    });
+
+    it('refuses a table edited by hand', () => {
+      const { run } = aggregatedRun();
+      run.writeText('tables/coverage.md', `${run.readText('tables/coverage.md')}\nextra\n`);
+      expect(attempt(run)).toThrow(/tables\/coverage\.md differs from what aggregate writes now.*prd\.mjs aggregate/);
+    });
+
+    it('accepts a run aggregate just wrote, and is not stopped by key order alone', () => {
+      const { run } = aggregatedRun();
+      expect(attempt(run)).not.toThrow();
+      const index = run.readIndex();
+      run.writeIndex({ ...index, features: index.features.map((feature) => Object.fromEntries(Object.entries(feature).reverse())) });
+      expect(attempt(run)).not.toThrow();
+    });
+  });
+
   it('throws, naming aggregate, when findings.json is missing', () => {
     const { run } = aggregatedRun();
     rmSync(join(run.out, 'findings.json'));

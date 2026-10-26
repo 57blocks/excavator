@@ -1,10 +1,11 @@
 /**
  * The data of the report page (openspec change prd-report-page, design D3):
  * one object built from a run's out directory, with its keys in a fixed
- * order, holding no absolute path. Reads only. It recomputes every feature's
- * state with aggregate's own rules and refuses a run whose index.json, findings.json or feature
- * files disagree (a UsageError telling the user to run `prd.mjs aggregate`),
- * so the page never shows a mix of two moments of the run. The model writes
+ * order, holding no absolute path. Reads only. It computes what `aggregate`
+ * would write now (the same function aggregate writes from) and refuses a run
+ * whose stored index.json, findings.json or tables differ from it in any
+ * way (a UsageError telling the user to run `prd.mjs aggregate`), so the page
+ * never shows a mix of two moments of the run. The model writes
  * the verification reports and chapters, and they sometimes quote the
  * project's absolute path ("Project source: ..."); the page may hold no local
  * path, so every string of the object has the root replaced by the project's
@@ -14,11 +15,11 @@
 import { existsSync, readFileSync, realpathSync } from 'node:fs';
 import { basename, join, resolve } from 'node:path';
 
-import { FINDINGS_FILE, FINDINGS_FORMAT, TABLE_FILES, WRITTEN_STATUSES, findingsOf, recomputeFeature, reportPath, summarize } from './aggregate.mjs';
+import { FINDINGS_FILE, FINDINGS_FORMAT, TABLE_FILES, WRITTEN_STATUSES, computeAggregate, reportPath } from './aggregate.mjs';
 import { body as markdownBody } from './assemble.mjs';
 import { UsageError } from './errors.mjs';
 import { parseFrontMatter } from './front-matter.mjs';
-import { INDEX_FILE, conservation, loadIndex, schemaProblems } from './index-check.mjs';
+import { INDEX_FILE, loadIndex, schemaProblems } from './index-check.mjs';
 import { chapterPath } from './lane-check.mjs';
 import { isObject, readJson } from './json-file.mjs';
 import { projectRootProblem } from './project-root.mjs';
@@ -64,7 +65,7 @@ function readMarkdown(outDir, rel, hint) {
   return markdownBody(readFileSync(path, 'utf-8'));
 }
 
-/** `findings.json` read as aggregate wrote it: a missing file or another format is a stale run. */
+/** `findings.json` as a whole, read as aggregate wrote it: a missing file or another format is a stale run. */
 function readFindings(outDir) {
   const read = readJson(join(outDir, FINDINGS_FILE));
   if (read.missing) throw new UsageError(`${FINDINGS_FILE} is missing; ${RUN_AGGREGATE}`);
@@ -73,7 +74,52 @@ function readFindings(outDir) {
     const found = isObject(read.value) ? JSON.stringify(read.value.format ?? null) : 'no object';
     throw new UsageError(`${FINDINGS_FILE} has format ${found}, not ${FINDINGS_FORMAT}; ${RUN_AGGREGATE}`);
   }
-  return read.value.findings;
+  return read.value;
+}
+
+/** JSON with the keys of every object sorted: two values are the same when their canonical texts are, whatever the key order. */
+const canonical = (value) => JSON.stringify(value, (_key, item) => (
+  item !== null && typeof item === 'object' && !Array.isArray(item)
+    ? Object.fromEntries(Object.entries(item).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)))
+    : item
+));
+
+/**
+ * What differs between the outputs aggregate left in `outDir` and what it
+ * would write now, as one line each. The whole outputs are compared, never
+ * chosen fields: the index.json features with every recorded field, its
+ * conservation summary, findings.json and each table's bytes. A line names
+ * the file and, for the index, the feature; the more specific reasons
+ * (another status, other failure reasons, other findings) come first.
+ */
+function staleOutputs(outDir, index, stored, computed) {
+  const stale = [];
+  index.features.forEach((feature, at) => {
+    const now = computed.updated.features[at];
+    if (canonical(feature) === canonical(now)) return;
+    if (feature.status !== now.status) stale.push(`${feature.id} is ${feature.status ?? 'unrecorded'} in ${INDEX_FILE} but its files give ${now.status}`);
+    else if (canonical(feature.failure ?? null) !== canonical(now.failure ?? null)) stale.push(`${feature.id}'s failure reasons in ${INDEX_FILE} differ from what its files give`);
+    else stale.push(`${feature.id}'s recorded fields in ${INDEX_FILE} differ from what its files give`);
+  });
+  if (canonical(index.conservation ?? null) !== canonical(computed.updated.conservation)) stale.push(`the conservation in ${INDEX_FILE} differs from what its files give`);
+
+  const expected = computed.findingsFile;
+  const flagged = [];
+  for (const { id } of index.features) {
+    const own = (list) => canonical(list.filter((finding) => finding.feature === id));
+    if (own(stored.findings) !== own(expected.findings)) flagged.push(`${FINDINGS_FILE} does not hold the current findings of ${id}`);
+  }
+  stale.push(...flagged);
+  if (flagged.length === 0 && canonical(stored) !== canonical(expected)) {
+    stale.push(`${FINDINGS_FILE} differs from what aggregate writes now (a finding of no feature, another order, or another revision)`);
+  }
+
+  for (const rel of TABLE_FILES) {
+    const path = join(outDir, rel);
+    if (!existsSync(path)) throw new UsageError(`${rel} is missing; ${RUN_AGGREGATE}`);
+    if (readFileSync(path, 'utf-8') !== computed.tables[rel]) stale.push(`${rel} differs from what aggregate writes now`);
+  }
+  return stale;
 }
 
 /** A written chapter: its body without front-matter, and the front-matter's roles and triggers. */
@@ -100,28 +146,15 @@ export function collectPageData(outDirArg, root) {
   const rootProblem = projectRootProblem(index, root);
   if (rootProblem !== null) throw new UsageError(rootProblem);
 
-  const findings = readFindings(outDir);
-  const recomputed = index.features.map((feature) => recomputeFeature(outDir, index, feature, root));
-  const states = recomputed.map((state) => state.feature);
-  // A feature is stale when its status differs, or when its failure reasons do (the same list in the same order, as PRD.md's appendix shows them).
-  const stale = index.features.flatMap((feature, at) => {
-    if (feature.status !== states[at].status) return [`${feature.id} is ${feature.status ?? 'unrecorded'} in ${INDEX_FILE} but its files give ${states[at].status}`];
-    if (JSON.stringify(feature.failure ?? null) !== JSON.stringify(states[at].failure ?? null)) return [`${feature.id}'s failure reasons in ${INDEX_FILE} differ from what its files give`];
-    return [];
-  });
-  // findings.json must hold what aggregate would write now, feature by feature: same findings, same order.
-  const expected = findingsOf(recomputed);
-  for (const { id } of index.features) {
-    const own = (list) => JSON.stringify(list.filter((finding) => finding.feature === id));
-    if (own(findings) !== own(expected)) stale.push(`${FINDINGS_FILE} does not hold the current findings of ${id}`);
-  }
-  if (stale.length === 0 && JSON.stringify(findings) !== JSON.stringify(expected)) {
-    stale.push(`${FINDINGS_FILE} holds findings of no feature of ${INDEX_FILE}, or in another order than aggregate writes them`);
-  }
+  const stored = readFindings(outDir);
+  // What aggregate would write now, from the files as they are: the page compares every stored output with it.
+  const computed = computeAggregate(outDir, index, root);
+  if (computed.problems.length > 0) throw new UsageError(`${INDEX_FILE} does not conserve its candidates: ${computed.problems.join('; ')}; ${RUN_AGGREGATE}`);
+  const states = computed.states.map((state) => state.feature);
+  const stale = staleOutputs(outDir, index, stored, computed);
   if (stale.length > 0) throw new UsageError(`the run is not up to date with its files: ${stale.join('; ')}; ${RUN_AGGREGATE}`);
-
-  const held = conservation({ ...index, features: states });
-  if (held.problems.length > 0) throw new UsageError(`${INDEX_FILE} does not conserve its candidates: ${held.problems.join('; ')}; ${RUN_AGGREGATE}`);
+  // From here every value is on disk or equal to what aggregate computes from the files: no two sources can disagree.
+  const findings = stored.findings;
 
   const candidates = new Map(index.candidates.items.map((item) => [item.id, {
     id: item.id, kind: item.kind, file: item.file, line: item.line, text: item.text, framework: item.framework,
@@ -150,7 +183,7 @@ export function collectPageData(outDirArg, root) {
     .sort((a, b) => a.chapter - b.chapter || featureNumber(a.id) - featureNumber(b.id));
 
   // aggregate's printed fields, from the recomputed states; the machine's paths and the framework list (a key of its own) stay out.
-  const { prdPath, outIsDefault, uncovered, ...counts } = summarize(outDir, { ...index, features: states }, root);
+  const { prdPath, outIsDefault, uncovered, ...counts } = computed.result;
   const object = {
     format: PAGE_FORMAT,
     project: basename(root),

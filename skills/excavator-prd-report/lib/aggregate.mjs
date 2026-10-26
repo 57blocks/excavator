@@ -125,6 +125,46 @@ export function summarize(outDirArg, index, root) {
   };
 }
 
+/**
+ * What aggregate writes, computed without writing anything (pure apart from
+ * reading the lane files and the project): every feature's recomputed state,
+ * the index.json it would record (the features with every recorded field, and
+ * the conservation summary), the problems that stop it (candidates or status
+ * buckets not conserved), and, when there are none, the reply's summary,
+ * the findings.json value and the text of each table by path. `aggregate`
+ * writes this, and `page` compares the files on disk with it, so what is
+ * written and what is checked cannot differ.
+ * @returns {{ states: object[], updated: object, problems: string[], result: object | null, findingsFile: object | null, tables: Record<string, string> | null }}
+ */
+export function computeAggregate(outDirArg, index, root) {
+  const outDir = resolve(outDirArg);
+  const states = index.features.map((feature) => recomputeFeature(outDir, index, feature, root));
+  const features = states.map((state) => state.feature);
+  const candidateCheck = conservation({ ...index, features });
+  const updated = { ...index, features, conservation: candidateCheck.summary };
+
+  const problems = [...candidateCheck.problems];
+  const buckets = Object.fromEntries(STATUSES.map((status) => [status, features.filter((f) => f.status === status).length]));
+  const inBuckets = Object.values(buckets).reduce((a, b) => a + b, 0);
+  if (inBuckets !== features.length) problems.push(`index: the status buckets hold ${inBuckets} features, not ${features.length}`);
+  if (problems.length > 0) return { states, updated, problems, result: null, findingsFile: null, tables: null };
+
+  const result = summarize(outDir, updated, root);
+  const rolesById = new Map(states.map((state) => [state.feature.id, state.roles]));
+  return {
+    states,
+    updated,
+    problems,
+    result,
+    findingsFile: { format: FINDINGS_FORMAT, sourceRevision: index.sourceRevision, findings: findingsOf(states) },
+    tables: {
+      [TABLE_FILES[0]]: rolesTable(features, rolesById),
+      [TABLE_FILES[1]]: coverageTable(updated),
+      [TABLE_FILES[2]]: verificationTable(features, result.verification),
+    },
+  };
+}
+
 /** Run aggregate on `<out>`. Returns { status, lines } on failure, { status: 0, result } on success. */
 export function aggregate(outDirArg, root) {
   const outDir = resolve(outDirArg);
@@ -136,32 +176,15 @@ export function aggregate(outDirArg, root) {
   const rootProblem = projectRootProblem(index, root);
   if (rootProblem !== null) return { status: 1, lines: [rootProblem] };
 
-  const states = index.features.map((feature) => {
-    const state = recomputeFeature(outDir, index, feature, root);
-    if (state.laneFindings !== null) writeJson(join(outDir, findingsPath(feature.id)), state.laneFindings);
-    return state;
-  });
-  const features = states.map((state) => state.feature);
-  const candidateCheck = conservation({ ...index, features });
-  const updated = { ...index, features, conservation: candidateCheck.summary };
-  writeJson(join(outDir, INDEX_FILE), updated);
+  const computed = computeAggregate(outDir, index, root);
+  for (const state of computed.states) {
+    if (state.laneFindings !== null) writeJson(join(outDir, findingsPath(state.feature.id)), state.laneFindings);
+  }
+  writeJson(join(outDir, INDEX_FILE), computed.updated);
+  if (computed.problems.length > 0) return { status: 1, lines: computed.problems };
 
-  const problems = [...candidateCheck.problems];
-  const buckets = Object.fromEntries(STATUSES.map((status) => [status, features.filter((f) => f.status === status).length]));
-  const inBuckets = Object.values(buckets).reduce((a, b) => a + b, 0);
-  if (inBuckets !== features.length) problems.push(`index: the status buckets hold ${inBuckets} features, not ${features.length}`);
-  if (problems.length > 0) return { status: 1, lines: problems };
-
-  const result = summarize(outDir, updated, root);
-  const totals = result.verification;
-
-  writeJson(join(outDir, FINDINGS_FILE), { format: FINDINGS_FORMAT, sourceRevision: index.sourceRevision, findings: findingsOf(states) });
-
-  const rolesById = new Map(states.map((state) => [state.feature.id, state.roles]));
+  writeJson(join(outDir, FINDINGS_FILE), computed.findingsFile);
   mkdirSync(join(outDir, 'tables'), { recursive: true });
-  writeFileSync(join(outDir, TABLE_FILES[0]), rolesTable(features, rolesById));
-  writeFileSync(join(outDir, TABLE_FILES[1]), coverageTable(updated));
-  writeFileSync(join(outDir, TABLE_FILES[2]), verificationTable(features, totals));
-
-  return { status: 0, result };
+  for (const rel of TABLE_FILES) writeFileSync(join(outDir, rel), computed.tables[rel]);
+  return { status: 0, result: computed.result };
 }
