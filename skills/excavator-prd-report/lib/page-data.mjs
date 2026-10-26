@@ -122,12 +122,16 @@ function staleOutputs(outDir, index, stored, computed) {
   return stale;
 }
 
-/** A written chapter: its body without front-matter, and the front-matter's roles and triggers. */
+/**
+ * A written chapter: its body without front-matter, and the front-matter's
+ * actors (the page's `roles` field until the page shows actors and permission
+ * roles, change prd-report-prd-shape, design D10) and triggers.
+ */
 function readChapter(outDir, id) {
   const text = readFileSync(join(outDir, chapterPath(id)), 'utf-8');
   const front = parseFrontMatter(text);
   if (!front.ok) throw new UsageError(`${chapterPath(id)} ${front.reason}; ${RUN_AGGREGATE}`);
-  return { body: markdownBody(text), roles: front.data.roles ?? [], triggers: front.data.triggers ?? [] };
+  return { body: markdownBody(text), roles: front.data.actors ?? [], triggers: front.data.triggers ?? [] };
 }
 
 /**
@@ -139,7 +143,7 @@ function readChapter(outDir, id) {
 export function collectPageData(outDirArg, root) {
   const outDir = resolve(outDirArg);
   const read = loadIndex(outDir);
-  if (!read.ok) throw new UsageError(`${INDEX_FILE} ${read.reason}`);
+  if (!read.ok) throw new UsageError(read.stale ? read.line : `${INDEX_FILE} ${read.reason}`);
   const problems = schemaProblems(read.value);
   if (problems.length > 0) throw new UsageError(problems.join('\n'));
   const index = read.value;

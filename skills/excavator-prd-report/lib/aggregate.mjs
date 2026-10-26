@@ -94,7 +94,7 @@ export function recomputeFeature(outDir, index, feature, root) {
   const ranked = { ...counts, findings: { ...counts.findings, priority: priorityCounts(lane.findings.findings, ranks) } };
   const replyPath = join(outDir, verificationPath(feature.id));
   if (!existsSync(replyPath)) {
-    return { feature: { ...base, counts: ranked, status: 'checked', failure: null }, roles: lane.roles, findings: lane.findings, ranks, laneFindings };
+    return { feature: { ...base, counts: ranked, status: 'checked', failure: null }, roles: lane.actors, findings: lane.findings, ranks, laneFindings };
   }
   if (!existsSync(join(outDir, reportPath(feature.id)))) {
     const reasons = [`verification-report-missing: ${reportPath(feature.id)} is missing`];
@@ -107,7 +107,7 @@ export function recomputeFeature(outDir, index, feature, root) {
   }
   return {
     feature: { ...base, counts: { ...ranked, verification: reply.counts }, status: 'verified', failure: null },
-    roles: lane.roles,
+    roles: lane.actors,
     findings: lane.findings,
     ranks,
     laneFindings,
@@ -239,7 +239,7 @@ export function computeAggregate(outDirArg, index, root) {
 export function aggregate(outDirArg, root) {
   const outDir = resolve(outDirArg);
   const read = loadIndex(outDir);
-  if (!read.ok) return { status: 1, lines: [`index: ${INDEX_FILE} ${read.reason}`] };
+  if (!read.ok) return { status: 1, lines: [read.line] };
   const schema = schemaProblems(read.value);
   if (schema.length > 0) return { status: 1, lines: schema };
   const index = read.value;

@@ -225,3 +225,97 @@ describe('prd.mjs check-index', () => {
     expect(broken.stdout).toMatch(/^index: /);
   });
 });
+
+// Change prd-report-prd-shape, design D2, D8 and D9; oracle O2.
+describe('prd.mjs check-index: reference features, chapter order, seed files and format', () => {
+  /** Add a reference feature F3 with no entrypoints at `chapter`. */
+  const withReference = (run, chapter) => {
+    const index = run.readIndex();
+    index.features.push({ id: 'F3', name: 'Roles and permissions', kind: 'reference', chapter, entrypoints: [], seedFiles: ['src/orders/service.js'], tiers: ['backend'] });
+    run.writeIndex(index);
+    return index;
+  };
+
+  it('accepts a reference feature with no entrypoints and a seed file, ahead of the flow chapters', () => {
+    const run = laneRun();
+    const index = run.readIndex();
+    index.features[0].chapter = 2;
+    index.features[1].chapter = 3;
+    run.writeIndex(index);
+    withReference(run, 1);
+    const out = runPrd(['check-index', run.out, '--project', run.project]);
+    expect(out.status, out.stdout).toBe(0);
+    expect(run.readIndex().conservation).toEqual({ candidates: 3, assigned: 3, unassigned: 0, holds: true });
+  });
+
+  it('refuses a reference feature with no seed file', () => {
+    const run = laneRun();
+    const index = withReference(run, 3);
+    index.features[2].seedFiles = [];
+    run.writeIndex(index);
+    const out = runPrd(['check-index', run.out, '--project', run.project]);
+    expect(out.status).toBe(1);
+    expect(reasons(out)).toContain('F3: seedFiles is not a non-empty list of paths');
+  });
+
+  it('prints the reference chapter that comes after a flow chapter, naming the first flow chapter', () => {
+    const run = laneRun();
+    withReference(run, 3);
+    const out = runPrd(['check-index', run.out, '--project', run.project]);
+    expect(out.status).toBe(1);
+    expect(reasons(out)).toEqual(['F3: reference chapter 3 comes after flow chapter 1']);
+  });
+
+  it('prints the same line for an automated feature ahead of a reference one, one line per reference feature', () => {
+    const run = laneRun();
+    const index = withReference(run, 2);
+    index.features.push({ id: 'F4', name: 'Token model', kind: 'reference', chapter: 4, entrypoints: [], seedFiles: ['src/orders/routes.js'], tiers: ['backend'] });
+    index.features[1].kind = 'automated';
+    run.writeIndex(index);
+    const out = runPrd(['check-index', run.out, '--project', run.project]);
+    expect(out.status).toBe(1);
+    expect(reasons(out)).toEqual(['F3: reference chapter 2 comes after flow chapter 1', 'F4: reference chapter 4 comes after flow chapter 1']);
+  });
+
+  it('refuses a seed file under a directory that holds dependencies or build output', () => {
+    const run = laneRun();
+    mkdirSync(join(run.project, 'node_modules/pkg'), { recursive: true });
+    writeFileSync(join(run.project, 'node_modules/pkg/index.js'), 'module.exports = 1;\n');
+    mkdirSync(join(run.project, 'dist'), { recursive: true });
+    writeFileSync(join(run.project, 'dist/app.js'), 'x\n');
+    const index = run.readIndex();
+    index.features[0].seedFiles.push('node_modules/pkg/index.js');
+    index.features[1].seedFiles.push('dist/app.js');
+    run.writeIndex(index);
+    const out = runPrd(['check-index', run.out, '--project', run.project]);
+    expect(out.status).toBe(1);
+    expect(reasons(out)).toEqual([
+      "F1: seed file node_modules/pkg/index.js is under node_modules, which holds dependencies or build output, not the project's code",
+      "F2: seed file dist/app.js is under dist, which holds dependencies or build output, not the project's code",
+    ]);
+  });
+
+  it('says every command that reads the index refuses an index of the earlier format, with exit 1', () => {
+    const run = laneRun();
+    const index = run.readIndex();
+    index.format = 'excavator-prd-report/1';
+    run.writeIndex(index);
+    const line = `index: ${run.out} was written by an earlier version (excavator-prd-report/1); run again with --fresh`;
+    const project = ['--project', run.project];
+    for (const args of [
+      ['check-index', run.out, ...project],
+      ['check-lane', run.out, 'F1', ...project],
+      ['check-priorities', run.out, ...project],
+      ['aggregate', run.out, ...project],
+      ['assemble', run.out, ...project],
+      ['page', run.out, ...project],
+      ['mark', run.out, 'F1', 'dispatched', ...project],
+      ['reply', run.out, ...project],
+    ]) {
+      const out = runPrd(args);
+      expect(out.status, args[0]).toBe(1);
+      expect(reasons(out), args[0]).toEqual([line]);
+    }
+    expect(run.readIndex().format).toBe('excavator-prd-report/1');
+  });
+});

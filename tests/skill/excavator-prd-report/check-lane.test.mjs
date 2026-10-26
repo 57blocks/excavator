@@ -3,7 +3,7 @@
 // findings"). The five broken lanes of design O1 are the valid fixture with
 // one planted defect each.
 import { afterEach, describe, expect, it } from 'vitest';
-import { rmSync } from 'node:fs';
+import { mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { ADVICE_WORDS } from '../../../skills/excavator-prd-report/lib/lane-check.mjs';
@@ -19,7 +19,7 @@ function laneRun() {
   return run;
 }
 const reasons = (out) => out.stdout.split('\n').filter(Boolean);
-const failedReasons = (out) => reasons(out).filter((line) => !line.endsWith(': ok'));
+const failedReasons = (out) => reasons(out).filter((line) => !line.endsWith(': ok') && !line.startsWith('Next: '));
 
 describe('prd.mjs check-lane: its result in index.json', () => {
   it('records a failure under the feature, and clears it when the lane passes', () => {
@@ -267,5 +267,219 @@ describe('prd.mjs check-lane: the chapter file and the findings schema', () => {
     const out = runPrd(['check-lane', run.out, '--project', run.project, 'F9']);
     expect(out.status).toBe(2);
     expect(out.stderr).toMatch(/F9/);
+  });
+});
+
+// Change prd-report-prd-shape, design D3, D6 and D8; oracle O2: each problem
+// line has a test of its own, and one fully valid chapter passes.
+const check = (run, id) => runPrd(['check-lane', run.out, '--project', run.project, id]);
+const edit = (run, id, change) => run.writeText(`features/${id}.md`, change(run.readText(`features/${id}.md`)));
+const setKind = (run, id, kind) => {
+  const index = run.readIndex();
+  index.features.find((f) => f.id === id).kind = kind;
+  run.writeIndex(index);
+  edit(run, id, (text) => text.replace('kind: flow', `kind: ${kind}`));
+};
+
+describe('prd.mjs check-lane: the declared structure of a chapter (D3)', () => {
+  it('passes a fully valid chapter with actors, permission roles, flows and the open items heading last', () => {
+    const run = laneRun();
+    edit(run, 'F1', (text) => text
+      .replace('actors: [customer]\npermissionRoles: []', 'actors: [customer, "Payment service"]\npermissionRoles: [normal, admin]')
+      .replace('chapter: 1', 'openItems: Open items\nchapter: 1')
+      .replace('- "Flow 1: Place an order"', '- "Flow 1: Place an order"\n  - "Flow 2: Place a repeat order"')
+      .replace('<details>', '### Flow 2: Place a repeat order\n\nA repeat order copies the last one.\n\n<details>')
+      .concat('\n### Open items\n\n| Item | Searched |\n|---|---|\n| Refund rule | the whole project |\n'));
+    const out = check(run, 'F1');
+    expect(out.status, out.stdout).toBe(0);
+    expect(reasons(out)).toEqual(['F1: ok']);
+  });
+
+  it('refuses the roles key, which is no longer read', () => {
+    const run = laneRun();
+    edit(run, 'F1', (text) => text.replace('actors: [customer]', 'actors: [customer]\nroles: [customer]'));
+    const out = check(run, 'F1');
+    expect(out.status).toBe(1);
+    expect(failedReasons(out)).toEqual(['F1: front-matter roles is no longer read; write actors and permissionRoles']);
+  });
+
+  it('refuses actors, permissionRoles and flows that are not lists, one line each', () => {
+    for (const [key, replacement] of [
+      ['actors', 'actors: customer'],
+      ['permissionRoles', 'permissionRoles: admin'],
+      ['flows', 'flows: Flow 1: Place an order'],
+    ]) {
+      const run = laneRun();
+      edit(run, 'F1', (text) => text.replace(new RegExp(`^${key}:.*(\\n  - .*)*`, 'm'), replacement));
+      const out = check(run, 'F1');
+      expect(out.status, key).toBe(1);
+      expect(failedReasons(out), key).toContain(`F1: front-matter ${key} is not a list`);
+    }
+  });
+
+  it('refuses a front-matter without permissionRoles as not a list', () => {
+    const run = laneRun();
+    edit(run, 'F1', (text) => text.replace('permissionRoles: []\n', ''));
+    expect(failedReasons(check(run, 'F1'))).toEqual(['F1: front-matter permissionRoles is not a list']);
+  });
+
+  it('refuses a name that is both an actor and a permission role', () => {
+    const run = laneRun();
+    edit(run, 'F2', (text) => text.replace('permissionRoles: [admin]', 'permissionRoles: [admin, support agent]'));
+    const out = check(run, 'F2');
+    expect(out.status).toBe(1);
+    expect(failedReasons(out)).toEqual(['F2: support agent is both an actor and a permission role']);
+  });
+
+  it('refuses a flow that is not a ### heading of the chapter, even when it is another heading level', () => {
+    const run = laneRun();
+    edit(run, 'F1', (text) => text.replace('- "Flow 1: Place an order"', '- "Flow 1: Place an order"\n  - "Flow 9: Not written"\n  - "Order placement"'));
+    const out = check(run, 'F1');
+    expect(out.status).toBe(1);
+    expect(failedReasons(out)).toEqual([
+      'F1: flow "Flow 9: Not written" is not a ### heading of the chapter',
+      'F1: flow "Order placement" is not a ### heading of the chapter',
+    ]);
+  });
+
+  it('does not take a heading inside a code fence for a heading of the chapter', () => {
+    const run = laneRun();
+    edit(run, 'F1', (text) => text.replace('- "Flow 1: Place an order"', '- "Flow 1: Place an order"\n  - "Flow 3: In a fence"').replace('sequenceDiagram', '### Flow 3: In a fence\n  sequenceDiagram'));
+    expect(failedReasons(check(run, 'F1'))).toEqual(['F1: flow "Flow 3: In a fence" is not a ### heading of the chapter']);
+  });
+
+  it('refuses a flow or automated feature that lists no flow', () => {
+    const run = laneRun();
+    edit(run, 'F1', (text) => text.replace(/flows:\n  - .*\n/, 'flows: []\n'));
+    expect(failedReasons(check(run, 'F1'))).toEqual(['F1: a flow feature lists no flow']);
+    setKind(run, 'F1', 'automated');
+    expect(failedReasons(check(run, 'F1'))).toEqual(['F1: an automated feature lists no flow']);
+  });
+
+  it('refuses a reference feature that lists flows, and passes one that lists none', () => {
+    const run = laneRun();
+    setKind(run, 'F1', 'reference');
+    const out = check(run, 'F1');
+    expect(out.status).toBe(1);
+    expect(failedReasons(out)).toEqual(['F1: a reference feature lists flows']);
+    edit(run, 'F1', (text) => text.replace(/flows:\n  - .*\n/, 'flows: []\n').replace('### Flow 1: Place an order\n\n', ''));
+    expect(check(run, 'F1').status).toBe(0);
+  });
+
+  it('refuses an open items heading that is not a ### heading of the chapter', () => {
+    const run = laneRun();
+    edit(run, 'F1', (text) => text.replace('chapter: 1', 'openItems: Open items\nchapter: 1'));
+    const out = check(run, 'F1');
+    expect(out.status).toBe(1);
+    expect(failedReasons(out)).toEqual(['F1: open items heading "Open items" is not a ### heading of the chapter']);
+  });
+
+  it('refuses an open items heading that is not the last ### heading', () => {
+    const run = laneRun();
+    edit(run, 'F1', (text) => text
+      .replace('chapter: 1', 'openItems: Open items\nchapter: 1')
+      .replace('<details>', '### Open items\n\nNothing searched yet.\n\n<details>'));
+    const out = check(run, 'F1');
+    expect(out.status).toBe(0);
+    edit(run, 'F1', (text) => text.concat('\n### Later\n\nAfter the open items.\n'));
+    const second = check(run, 'F1');
+    expect(second.status).toBe(1);
+    expect(failedReasons(second)).toEqual(['F1: open items heading "Open items" is not the last ### heading']);
+  });
+
+  it('refuses a chapter with two ## headings, and one with none', () => {
+    const run = laneRun();
+    edit(run, 'F1', (text) => text.concat('\n## Verification summary\n\nAppended by a check.\n'));
+    expect(failedReasons(check(run, 'F1'))).toEqual(['F1: the chapter has 2 ## headings; it has one, ## Order placement, as its first heading']);
+    edit(run, 'F1', (text) => text.replace('## Order placement\n', '').replace('## Verification summary\n', ''));
+    expect(failedReasons(check(run, 'F1'))).toEqual(['F1: the chapter has 0 ## headings; it has one, ## Order placement, as its first heading']);
+  });
+
+  it('refuses a chapter whose first heading is not its ## heading', () => {
+    const run = laneRun();
+    edit(run, 'F1', (text) => text.replace('## Order placement\n', '### Flow 0: Early\n\n## Order placement\n'));
+    expect(failedReasons(check(run, 'F1'))).toEqual(['F1: the chapter has 1 ## headings; it has one, ## Order placement, as its first heading']);
+  });
+});
+
+describe('prd.mjs check-lane: anchors and passages in directories that hold dependencies (D8)', () => {
+  const plant = (run) => {
+    for (const dir of ['node_modules/pkg', 'vendor/lib', 'src/build']) {
+      mkdirSync(join(run.project, dir), { recursive: true });
+      writeFileSync(join(run.project, dir, 'index.js'), 'module.exports = 1;\n');
+    }
+  };
+
+  it('refuses an anchor under each skipped directory name', () => {
+    const run = laneRun();
+    plant(run);
+    for (const [path, dir] of [['node_modules/pkg/index.js', 'node_modules'], ['vendor/lib/index.js', 'vendor'], ['src/build/index.js', 'build']]) {
+      edit(run, 'F1', (text) => text.replace('`src/orders/routes.js:5`', `\`${path}:1\``));
+      const out = check(run, 'F1');
+      expect(out.status, path).toBe(1);
+      expect(failedReasons(out), path).toEqual([`F1: anchor ${path}:1: the path is under ${dir}, which holds dependencies or build output, not the project's code`]);
+      edit(run, 'F1', (text) => text.replace(`\`${path}:1\``, '`src/orders/routes.js:5`'));
+    }
+    expect(check(run, 'F1').status).toBe(0);
+  });
+
+  it('refuses a finding whose evidence file is under a skipped directory', () => {
+    const run = laneRun();
+    plant(run);
+    const findings = run.readJson('findings/F2.json');
+    findings.findings[0].evidence = [{ file: 'node_modules/pkg/index.js', passage: 'module.exports = 1;' }];
+    run.writeJson('findings/F2.json', findings);
+    const out = check(run, 'F2');
+    expect(out.status).toBe(1);
+    expect(failedReasons(out)).toEqual(['F2-1: evidence[0] file "node_modules/pkg/index.js" is under node_modules, which holds dependencies or build output, not the project\'s code']);
+  });
+});
+
+describe('prd.mjs check-lane: the Next line of a failed lane (D6)', () => {
+  const broken = (run) => edit(run, 'F1', (text) => text.replace('```mermaid', '```text'));
+  const last = (out) => reasons(out).at(-1);
+
+  it('ends with the re-dispatch line while the lane has had fewer than two attempts', () => {
+    for (const attempts of [undefined, 0, 1]) {
+      const run = laneRun();
+      const index = run.readIndex();
+      if (attempts !== undefined) index.features[0].attempts = attempts;
+      run.writeIndex(index);
+      broken(run);
+      const out = check(run, 'F1');
+      expect(out.status).toBe(1);
+      expect(last(out), String(attempts)).toBe("Next: delete F1's files, mark it dispatched and re-dispatch it once with the lines above (attempt 2 of 2)");
+      expect(reasons(out)[0]).toBe('F1: no mermaid block');
+    }
+  });
+
+  it('ends with the stays-failed line after two attempts', () => {
+    const run = laneRun();
+    const index = run.readIndex();
+    index.features[0].attempts = 2;
+    run.writeIndex(index);
+    broken(run);
+    const out = check(run, 'F1');
+    expect(out.status).toBe(1);
+    expect(last(out)).toBe('Next: F1 stays failed (2 of 2 attempts)');
+  });
+
+  it('prints it for lane-wrote-nothing too, and not for a lane that passes', () => {
+    const run = laneRun();
+    rmSync(join(run.out, 'findings/F1.json'));
+    const out = check(run, 'F1');
+    expect(reasons(out)).toEqual([
+      'F1: lane-wrote-nothing: findings/F1.json is missing',
+      "Next: delete F1's files, mark it dispatched and re-dispatch it once with the lines above (attempt 2 of 2)",
+    ]);
+    const fine = laneRun();
+    expect(reasons(check(fine, 'F2'))).toEqual(['F2: ok']);
+  });
+
+  it('keeps the Next line out of the failure recorded in index.json', () => {
+    const run = laneRun();
+    broken(run);
+    check(run, 'F1');
+    expect(run.readIndex().features[0].failure).toEqual({ step: 'check-lane', reasons: ['F1: no mermaid block'] });
   });
 });

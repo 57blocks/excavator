@@ -12,7 +12,7 @@ const header = (cells) => [row(cells), `|${cells.map(() => '---').join('|')}|`];
 const label = (feature) => `${feature.id} ${feature.name}`;
 const WRITTEN = new Set(['checked', 'verified']);
 
-/** Roles by feature, from the front-matter `roles` of each written chapter. */
+/** Roles by feature, from the front-matter `actors` of each written chapter. */
 export function rolesTable(features, rolesById) {
   const written = features.filter((feature) => WRITTEN.has(feature.status));
   const roles = [...new Set(written.flatMap((feature) => rolesById.get(feature.id) ?? []))].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));

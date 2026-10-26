@@ -14,7 +14,7 @@
 import { resolve } from 'node:path';
 
 import { WRITTEN_STATUSES, recomputeFeature } from './aggregate.mjs';
-import { INDEX_FILE, loadIndex, schemaProblems } from './index-check.mjs';
+import { loadIndex, schemaProblems } from './index-check.mjs';
 import { projectRootProblem } from './project-root.mjs';
 import { rankBatches, readFeatureRanks } from './priorities.mjs';
 
@@ -24,7 +24,7 @@ const featureNumber = (id) => Number(id.slice(1));
 export function checkPriorities(outDirArg, root) {
   const outDir = resolve(outDirArg);
   const read = loadIndex(outDir);
-  if (!read.ok) return { status: 1, lines: [`index: ${INDEX_FILE} ${read.reason}`] };
+  if (!read.ok) return { status: 1, lines: [read.line] };
   const schema = schemaProblems(read.value);
   if (schema.length > 0) return { status: 1, lines: schema };
   const index = read.value;

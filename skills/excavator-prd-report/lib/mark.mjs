@@ -36,7 +36,7 @@ export function mark(outDirArg, id, event, rest, root) {
 
   const outDir = resolve(outDirArg);
   const read = loadIndex(outDir);
-  if (!read.ok) return { status: 1, lines: [`index: ${INDEX_FILE} ${read.reason}`] };
+  if (!read.ok) return { status: 1, lines: [read.line] };
   const schema = schemaProblems(read.value);
   if (schema.length > 0) return { status: 1, lines: schema };
   const index = read.value;

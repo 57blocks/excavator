@@ -74,7 +74,9 @@ describe('aggregate with no priorities file (O2: nothing else changes)', () => {
       { P0: 0, P1: 0, P2: 0, unranked: 1 },
     ]);
     for (const feature of index.features) delete feature.counts.findings.priority;
-    expect(sha(stringify({ ...index, projectRoot: '__ROOT__' }))).toBe(BEFORE.index);
+    // The format moved to /2 on purpose (change prd-report-prd-shape, design D9); the digest is of the index with the format it had.
+    expect(index.format).toBe('excavator-prd-report/2');
+    expect(sha(stringify({ ...index, format: 'excavator-prd-report/1', projectRoot: '__ROOT__' }))).toBe(BEFORE.index);
   });
 
   it('keeps the printed fields of before and adds the four totals under findings', () => {

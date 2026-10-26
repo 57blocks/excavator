@@ -59,7 +59,7 @@ chapter: 2
   - `front-matter actors is not a list` / `permissionRoles is not a list` / `flows is not a list`；
   - `<name> is both an actor and a permission role`；
   - `flow "<title>" is not a ### heading of the chapter`；
-  - `a <kind> feature lists no flow` / `a reference feature lists flows`；
+  - `a flow feature lists no flow` / `an automated feature lists no flow` / `a reference feature lists flows`；
   - `open items heading "<h>" is not a ### heading of the chapter` / `open items heading "<h>" is not the last ### heading`；
   - `the chapter has <n> ## headings; it has one, ## <name>, as its first heading`（正文的 `##` 标题恰好一个且是第一个标题）。
 - `aggregate` 对已核对的章节也重算这些检查（它本来就对每个写成的功能重跑 `laneResult`），所以核对改坏了结构时功能变为 `failed`，原因可见。

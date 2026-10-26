@@ -12,13 +12,15 @@ import { isAbsolute, join } from 'node:path';
 import { KINDS } from './entrypoints.mjs';
 import { UsageError } from './errors.mjs';
 import { isCount, isObject, isString, isStringArray, readJson, writeJson } from './json-file.mjs';
-import { projectFiles } from './project-files.mjs';
+import { projectFiles, skippedDirectoryReason } from './project-files.mjs';
 import { projectRootProblem } from './project-root.mjs';
 
 export const INDEX_FILE = 'index.json';
-export const INDEX_FORMAT = 'excavator-prd-report/1';
+export const INDEX_FORMAT = 'excavator-prd-report/2';
+/** The format before chapters declared flows and actors; an out directory of it is not resumed. */
+export const PREVIOUS_INDEX_FORMAT = 'excavator-prd-report/1';
 export const FEATURE_ID = /^F[1-9]\d*$/;
-export const FEATURE_KINDS = Object.freeze(['flow', 'automated']);
+export const FEATURE_KINDS = Object.freeze(['flow', 'automated', 'reference']);
 export const TIERS = Object.freeze(['frontend', 'backend']);
 export const STATUSES = Object.freeze(['planned', 'written', 'checked', 'verified', 'failed']);
 export const FAILURE_STEPS = Object.freeze(['lane', 'check-lane', 'verify']);
@@ -34,11 +36,25 @@ export const MAX_ATTEMPTS = 2;
 
 export const emptyCounts = () => ({ diagrams: 0, evidence: 0, findings: { product: 0, technical: 0 }, verification: null });
 
-/** Read `<out>/index.json`: a missing directory or file is a usage error; a file that is not JSON is a check failure. */
+/**
+ * Read `<out>/index.json`: a missing directory or file is a usage error; a
+ * file that is not JSON, or one of the previous format, is a check failure.
+ * Every failure carries `line`, the problem line a command prints; `stale`
+ * marks the previous format.
+ */
 export function loadIndex(outDir) {
   if (!existsSync(outDir) || !statSync(outDir).isDirectory()) throw new UsageError(`out directory ${outDir} does not exist`);
   const read = readJson(join(outDir, INDEX_FILE));
   if (read.missing) throw new UsageError(`${join(outDir, INDEX_FILE)} does not exist`);
+  if (!read.ok) return { ...read, line: `index: ${INDEX_FILE} ${read.reason}` };
+  if (isObject(read.value) && read.value.format === PREVIOUS_INDEX_FORMAT) {
+    return {
+      ok: false,
+      stale: true,
+      reason: `was written by an earlier version (${PREVIOUS_INDEX_FORMAT})`,
+      line: `index: ${outDir} was written by an earlier version (${PREVIOUS_INDEX_FORMAT}); run again with --fresh`,
+    };
+  }
   return read;
 }
 
@@ -62,6 +78,23 @@ function countsProblems(counts) {
     }
   }
   return problems;
+}
+
+/**
+ * Every `reference` chapter comes before every flow or automated chapter: a
+ * reference feature that does not is named with the first flow chapter.
+ */
+function referenceOrderProblems(features) {
+  const chapterOf = (feature) => (isObject(feature) && Number.isInteger(feature.chapter) ? feature.chapter : null);
+  const flowChapters = features
+    .filter((feature) => isObject(feature) && (feature.kind === 'flow' || feature.kind === 'automated'))
+    .map(chapterOf)
+    .filter((chapter) => chapter !== null);
+  if (flowChapters.length === 0) return [];
+  const first = Math.min(...flowChapters);
+  return features
+    .filter((feature) => isObject(feature) && feature.kind === 'reference' && isString(feature.id) && chapterOf(feature) !== null && chapterOf(feature) >= first)
+    .map((feature) => `${feature.id}: reference chapter ${feature.chapter} comes after flow chapter ${first}`);
 }
 
 /** Schema problems of the index, each `<subject>: <problem>`. Pure. */
@@ -122,7 +155,7 @@ export function schemaProblems(index) {
       else if (seen.has(feature.id)) add(subject, 'the feature id repeats');
       seen.add(feature.id);
       if (!isString(feature.name)) add(subject, 'name is not a string');
-      if (!FEATURE_KINDS.includes(feature.kind)) add(subject, `kind ${JSON.stringify(feature.kind)} is not flow or automated`);
+      if (!FEATURE_KINDS.includes(feature.kind)) add(subject, `kind ${JSON.stringify(feature.kind)} is not flow, automated or reference`);
       if (!Number.isInteger(feature.chapter) || feature.chapter < 1) add(subject, 'chapter is not a positive whole number');
       if (!isStringArray(feature.entrypoints)) add(subject, 'entrypoints is not a list of candidate ids');
       if (!isStringArray(feature.seedFiles) || feature.seedFiles.length === 0) add(subject, 'seedFiles is not a non-empty list of paths');
@@ -140,6 +173,7 @@ export function schemaProblems(index) {
       }
       if (feature.counts !== undefined) for (const problem of countsProblems(feature.counts)) add(subject, problem);
     });
+    problems.push(...referenceOrderProblems(index.features));
   }
   return problems;
 }
@@ -198,6 +232,11 @@ export function fileProblems(index, root) {
   }
   for (const feature of index.features) {
     for (const path of feature.seedFiles) {
+      const skipped = skippedDirectoryReason(path);
+      if (skipped !== null) {
+        problems.push(`${feature.id}: seed file ${path} ${skipped}`);
+        continue;
+      }
       const file = files.resolve(path);
       if (!file.ok) problems.push(`${feature.id}: seed file ${path} ${file.reason}`);
     }
@@ -255,7 +294,7 @@ function withDefaults(feature) {
  */
 export function checkIndex(outDir, root) {
   const read = loadIndex(outDir);
-  if (!read.ok) return { status: 1, lines: [`index: ${INDEX_FILE} ${read.reason}`] };
+  if (!read.ok) return { status: 1, lines: [read.line] };
   const index = read.value;
   const schema = schemaProblems(index);
   if (schema.length > 0) {

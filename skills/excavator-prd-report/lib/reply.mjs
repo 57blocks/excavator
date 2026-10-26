@@ -18,7 +18,7 @@ import { existsSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 
 import { PRD_FILE, summarize } from './aggregate.mjs';
-import { INDEX_FILE, loadIndex, schemaProblems } from './index-check.mjs';
+import { loadIndex, schemaProblems } from './index-check.mjs';
 import { PAGE_FILE } from './page.mjs';
 import { projectRootProblem } from './project-root.mjs';
 
@@ -32,7 +32,7 @@ export function defaultSavePath(scope) {
 export function reply(outDirArg, root) {
   const outDir = resolve(outDirArg);
   const read = loadIndex(outDir);
-  if (!read.ok) return { status: 1, lines: [`index: ${INDEX_FILE} ${read.reason}`] };
+  if (!read.ok) return { status: 1, lines: [read.line] };
   const schema = schemaProblems(read.value);
   if (schema.length > 0) return { status: 1, lines: schema };
   const index = read.value;
