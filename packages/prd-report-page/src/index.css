@@ -15,7 +15,7 @@
   --surface-2: #f1eee9;
   --text: #1d1a17;
   --text-2: #5c544b;
-  --text-3: #7d7368;
+  --text-3: #6f655a;
   --border: #e3ddd4;
   --border-strong: #cfc6b9;
   --accent: #8f5e24;
@@ -44,7 +44,7 @@
     --surface-2: #1e1c19;
     --text: #f2ede7;
     --text-2: #b8ad9f;
-    --text-3: #8b8073;
+    --text-3: #968b7e;
     --border: #2d2926;
     --border-strong: #433d37;
     --accent: #d4a574;
@@ -81,6 +81,11 @@ body {
 a { color: var(--accent); text-underline-offset: 2px; }
 a:hover { text-decoration-thickness: 2px; }
 :focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; border-radius: 4px; }
+/* A long identifier never widens the page: text wraps anywhere it has to. Tables and code blocks scroll inside their own box. */
+.finding-statement, .finding-id, .evidence .loc, .loc, .lede, .notice, .kv dd, .chip, .sidebar-project, .sidebar-sub,
+.prose p, .prose li, .prose blockquote, .prose h1, .prose h2, .prose h3, .prose h4, .prose summary, .prose code,
+.table-scroll td, .diagram-failed .reason { overflow-wrap: anywhere; }
+.prose pre code { overflow-wrap: normal; }
 /* Quoted passages are shown exactly as written: no programming ligatures. */
 code, pre, kbd, .loc { font-family: var(--font-mono); font-variant-ligatures: none; font-feature-settings: "calt" 0, "liga" 0; }
 
@@ -109,7 +114,8 @@ code, pre, kbd, .loc { font-family: var(--font-mono); font-variant-ligatures: no
 .topbar { display: none; }
 .main { flex: 1; min-width: 0; }
 .page { max-width: 1080px; margin: 0 auto; padding: 40px 40px 80px; }
-.page.narrow { max-width: 920px; }
+.page.narrow { max-width: 800px; }
+.page.narrow .prose { max-width: none; }
 .page h1 { font-size: 28px; line-height: 1.2; letter-spacing: -0.02em; margin: 0 0 6px; font-weight: 600; }
 .page h2.section { font-size: 18px; margin: 40px 0 14px; font-weight: 600; letter-spacing: -0.01em; }
 .lede { color: var(--text-2); margin: 0 0 24px; }
@@ -137,7 +143,7 @@ code, pre, kbd, .loc { font-family: var(--font-mono); font-variant-ligatures: no
 .badge-technical { color: var(--c-technical); background: var(--c-technical-bg); }
 .badge-neutral { color: var(--text-2); background: var(--surface-2); border-color: var(--border); }
 .chips { display: flex; flex-wrap: wrap; gap: 6px; }
-.chip { padding: 2px 10px; border-radius: 6px; background: var(--surface-2); border: 1px solid var(--border); font-size: 13px; color: var(--text-2); }
+.chip { padding: 2px 10px; border-radius: 6px; background: var(--surface-2); border: 1px solid var(--border-strong); font-size: 13px; color: var(--text); }
 .kv { display: grid; grid-template-columns: 110px 1fr; gap: 10px 16px; margin: 18px 0 0; font-size: 14px; }
 .kv dt { color: var(--text-3); font-weight: 500; }
 .kv dd { margin: 0; min-width: 0; }
@@ -164,13 +170,15 @@ code, pre, kbd, .loc { font-family: var(--font-mono); font-variant-ligatures: no
 .evidence .loc { color: var(--text-2); }
 .evidence pre { margin: 6px 0 0; padding: 10px 12px; background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px; overflow-x: auto; font-size: 12.5px; line-height: 1.55; white-space: pre-wrap; word-break: break-word; }
 .filters { display: flex; flex-wrap: wrap; gap: 12px 18px; align-items: end; margin: 20px 0 8px; padding: 14px 16px; background: var(--surface); border: 1px solid var(--border); border-radius: 12px; }
-.filters label, .filters .group-label { display: block; font-size: 12px; font-weight: 600; color: var(--text-3); letter-spacing: 0.04em; text-transform: uppercase; margin-bottom: 4px; }
-.seg { display: inline-flex; border: 1px solid var(--border-strong); border-radius: 8px; overflow: hidden; }
-.seg button { font: inherit; font-size: 14px; padding: 6px 14px; background: var(--surface); color: var(--text-2); border: 0; border-right: 1px solid var(--border-strong); cursor: pointer; }
+.filters label, .filters .group-label { display: block; font-size: 12px; line-height: 16px; font-weight: 600; color: var(--text-3); letter-spacing: 0.04em; text-transform: uppercase; margin-bottom: 4px; }
+.filters { --control-height: 36px; }
+.seg { display: inline-flex; box-sizing: border-box; height: var(--control-height); border: 1px solid var(--border-strong); border-radius: 8px; overflow: hidden; }
+.seg button { font: inherit; font-size: 14px; line-height: 1; padding: 0 14px; background: var(--surface); color: var(--text-2); border: 0; border-right: 1px solid var(--border-strong); cursor: pointer; }
 .seg button:last-child { border-right: 0; }
 .seg button[aria-pressed="true"] { background: var(--accent-bg); color: var(--text); font-weight: 600; }
 .filters select, .filters input[type="search"] {
-  font: inherit; font-size: 14px; padding: 6px 10px; border-radius: 8px; border: 1px solid var(--border-strong);
+  box-sizing: border-box; height: var(--control-height); display: block;
+  font: inherit; font-size: 14px; line-height: 1.2; padding: 0 10px; border-radius: 8px; border: 1px solid var(--border-strong);
   background: var(--surface); color: var(--text); min-width: 180px;
 }
 .filters input[type="search"] { min-width: 240px; }
