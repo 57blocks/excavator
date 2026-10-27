@@ -338,7 +338,10 @@ function scanDepth(text, depth, blockEnds = false) {
 function opensAnnotation(trimmed) {
   if (trimmed.startsWith('@')) return !/^@interface\b/.test(trimmed);
   if (trimmed.startsWith('#[') || trimmed.startsWith('#![')) return true;
-  return /^\[\s*[A-Za-z_][\w.]*\s*(?:\(|\]|,)/.test(trimmed);
+  // A C# attribute: `[Name(`, or a list that closes on its own line. A row of
+  // an array literal (`[alpha, 1],`) or a destructuring (`[a, b] = f()`) does not.
+  if (/^\[\s*[A-Za-z_][\w.]*\s*\(/.test(trimmed)) return true;
+  return /^\[\s*[A-Za-z_][\w.]*\s*(?:\]|,)/.test(trimmed) && trimmed.endsWith(']');
 }
 
 /**
@@ -378,18 +381,31 @@ export function skipLeadingLines(reader, filePath, startLine) {
 }
 
 /**
- * Does this line leave a declaration unfinished? A line of modifiers and types
- * with no parenthesis, brace, semicolon or `=` (`public void`, `public static`)
- * is a wrapped declaration head: the name is on a later line. A line that has
- * any of those is complete, so nothing after it belongs to the head.
+ * The words a declaration may start with before its type and name. A wrapped
+ * declaration head begins with one of these (`public void` on one line, the
+ * name on the next); a statement does not (`import os`, `return x`, `pass`), so
+ * it is never read as the start of a head.
  */
-function headContinues(text) {
+const DECLARATION_MODIFIERS = Object.freeze(new Set([
+  'public', 'private', 'protected', 'internal', 'static', 'final', 'abstract', 'sealed', 'open',
+  'override', 'virtual', 'async', 'export', 'default', 'synchronized', 'native', 'readonly', 'const',
+  'extern', 'unsafe', 'partial', 'inline', 'pub',
+]));
+
+/** A line of words, types and generics only: no parenthesis, brace, semicolon or `=`. */
+function onlyWords(text) {
   return /^[\w\s<>,.?[\]@]+$/.test(text) && text.trim() !== '';
+}
+
+/** Does this line start a declaration head that has not finished yet? */
+function startsUnfinishedHead(text) {
+  return onlyWords(text) && DECLARATION_MODIFIERS.has(text.trim().split(/\s+/)[0]);
 }
 
 /**
  * Look for `tokens` on the declaration head that starts at `line`: that line
- * and, while each one leaves the declaration unfinished, the lines after it.
+ * and, when it starts a head that has not finished, the lines after it while
+ * each holds only words, types and generics.
  */
 function findTokenInDeclarationHead(reader, filePath, line, tokens) {
   const limit = line + CONSTRUCT_SCAN_LINES;
@@ -397,15 +413,19 @@ function findTokenInDeclarationHead(reader, filePath, line, tokens) {
     const text = reader.line(filePath, n);
     if (text === null) return null;
     if (tokens.some((token) => token && text.includes(token))) return n;
-    if (!headContinues(text)) return null;
+    if (n === line ? !startsUnfinishedHead(text) : !onlyWords(text)) return null;
   }
   return null;
 }
 
 /** Does this line end in something that makes the expression go on? */
 function endsWithContinuation(text) {
-  const code = text.replace(/\/\/.*$/, '').trimEnd();
-  return /(?:[.,\\+\-*/%&|^=<>?]|->|=>)$/.test(code);
+  // Only what cannot end a statement of its own. `x++` and `x--` end one, a
+  // trailing `?` is a nullable type as often as a ternary, and `*/` closes a
+  // comment, so none of those continues anything. When in doubt this says no:
+  // a missed continuation only reports a contradiction, a false one confirms.
+  const code = text.replace(/\/\/.*$/, '').replace(/\/\*.*\*\/\s*$/, '').trimEnd();
+  return /(?:[.,\\*%&|=]|(?<![+])\+|(?<![-])-|->|=>)$/.test(code) && !/(?:\+\+|--)$/.test(code);
 }
 
 /** Does the next non-blank line after `line` carry on the expression? */
@@ -612,7 +632,9 @@ export function validateAgainstSource({ graph, reader, sampleLimit = 5 }) {
         // An extractor cites where the construct starts, which is its first
         // annotation; the token is on the first line after the annotations
         // (or, for a wrapped declaration, a later line of its head).
-        const lead = skipLeadingLines(reader, entry.file, entry.line);
+        // A call's evidence is the start of the expression, never an annotation
+        // or a comment, so only the other types are read past leading lines.
+        const lead = edge.type === 'calls' ? { status: 'none' } : skipLeadingLines(reader, entry.file, entry.line);
         if (lead.status === 'ok') {
           // The declaration may itself wrap: `public void` on one line, the
           // name on the next.

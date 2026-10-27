@@ -231,6 +231,69 @@ describe('validate-graph — a declaration preceded by annotations, decorators o
   });
 });
 
+describe('validate-graph — leniency does not reach statements, lines of other shapes or other languages', () => {
+  it('does not treat a statement line as a wrapped declaration head', () => {
+    const lines = ['import os', 'import sys', 'from util import helper', '', 'def run():', '    pass'];
+    const root = project({ 'src/p.py': lines });
+    const file = fileNode('src/p.py');
+    const run1 = declNode('function', 'src/p.py', 'run', [5, 6]);
+    const helper = declNode('function', 'src/u.py', 'helper', [1, 1]);
+    const { report } = run(root, [file, run1, helper], [
+      edge('contains', file, helper, 'src/p.py', 1),
+      edge('calls', run1, helper, 'src/p.py', 1),
+    ]);
+    expect(report.counts.edgeContradicted).toBe(2);
+    const anchored = run(root, [declNode('function', 'src/p.py', 'helper', [1, 1])]).report;
+    expect(anchored.counts.anchorMismatch).toBe(1);
+  });
+
+  it('follows a head that wraps over several lines when it starts with a modifier', () => {
+    const lines = ['class K {', '  public static final', '  int', '  LIMIT = 4;', '}'];
+    const root = project({ 'src/K.java': lines });
+    const file = fileNode('src/K.java');
+    const limit = declNode('function', 'src/K.java', 'LIMIT', [2, 4]);
+    const { report } = run(root, [file, limit], [edge('contains', file, limit, 'src/K.java', 2)]);
+    expect(report.counts.edgeContradicted).toBe(0);
+    expect(report.counts.anchorMismatch).toBe(0);
+  });
+
+  it('does not read a trailing ++ or -- as an operator that continues the expression', () => {
+    const lines = ['func a() {', '\tcount--', '\thelper()', '}'];
+    const root = project({ 'src/a.go': lines });
+    const a = declNode('function', 'src/a.go', 'a', [1, 4]);
+    const helper = declNode('function', 'src/h.go', 'helper', [1, 1]);
+    const { report } = run(root, [a, helper], [edge('calls', a, helper, 'src/a.go', 2)]);
+    expect(report.counts.edgeContradicted).toBe(1);
+  });
+
+  it('does not read a trailing nullable type or a closing comment as a continuation', () => {
+    const lines = ['class N {', '  fun m() {', '    val x: String?', '    helper()', '    /* done */', '    other()', '  }', '}'];
+    const root = project({ 'src/N.kt': lines });
+    const m = declNode('function', 'src/N.kt', 'm', [2, 7]);
+    const helper = declNode('function', 'src/h.kt', 'helper', [1, 1]);
+    const other = declNode('function', 'src/o.kt', 'other', [1, 1]);
+    const { report } = run(root, [m, helper, other], [
+      edge('calls', m, helper, 'src/N.kt', 3),
+      edge('calls', m, other, 'src/N.kt', 5),
+    ]);
+    expect(report.counts.edgeContradicted).toBe(2);
+  });
+
+  it('does not take rows of an array literal for attributes', () => {
+    const lines = ['[alpha, 1],', '[beta, 2],', '[gamma, 3],', 'function target() {}'];
+    const root = project({ 'src/rows.js': lines });
+    const { report } = run(root, [declNode('function', 'src/rows.js', 'target', [1, 4])]);
+    expect(report.counts.anchorMismatch).toBe(1);
+  });
+
+  it('still takes a C# attribute list as an attribute', () => {
+    const lines = ['[Serializable, Obsolete]', '[Other]', '// comment', 'public class Multi {}'];
+    const root = project({ 'src/Multi.cs': lines });
+    const { report } = run(root, [declNode('class', 'src/Multi.cs', 'Multi', [1, 4])]);
+    expect(report.counts.anchorMismatch).toBe(0);
+  });
+});
+
 describe('validate-graph — a call expression written over several lines', () => {
   const caller = (path) => declNode('function', path, 'm', [1, 1]);
 
