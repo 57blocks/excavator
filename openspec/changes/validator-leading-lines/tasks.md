@@ -1,0 +1,31 @@
+## 1. 先验装置（先红）
+
+- [ ] 1.1 新建 `tests/skill/excavator/test_validate_graph_leading_lines.test.mjs`，写夹具与用例：被 `@Override` 注解的方法、三行注解且参数多行并夹一行注释的类、一个 20 行以上的注解块（嵌套注解、字符串字面量里含 `@`、`(`、`\n`，自行构造，不照搬真实源码）、TS / Python 装饰器、C# 属性（含 `[Serializable, Obsolete]` 列表）、Rust 属性。先在未改代码上跑，确认这些误报用例红、护栏用例绿，证明装置看得见（记录失败输出）。红只在本地确认，不单独提交
+- [ ] 1.2 写护栏：锚点错位五行进方法体、注解后跟另一个名字的声明、一行语句夹在锚点与声明之间、模型引用的证据、证据行指向无关行、证据行指向别的成员的注解。它们在新旧代码上都必须报出
+- [ ] 1.3 写语句形状表：`import os`、`export default router`、`from util import *`、`package main`、`return x`、`pass`、`count--`、`val x: String?`、`@count = 0`、`@@total += 1`、`*p = 1;`、数组行 `[make(1), 2],`（含跨两行的）等，分别作为锚点起点（语句写两遍再接声明）与 `contains` / `exports` 的证据行（语句后接声明），期望全部被报出
+- [ ] 1.4 写 ±1 的用例：节点范围比声明早一行、晚一行开始，`contains` 与 `exports` 引用该首行，期望边矛盾、锚点仍确认；范围正好对齐时两者都确认
+
+## 2. 锚点
+
+- [ ] 2.1 在 `validate-graph.mjs` 加 `CONSTRUCT_SCAN_LINES`、`scanDepth`（括号配平，字符串内不计）、`opensAnnotation`、`skipLeadingLines`；锚点检查改为「起点 ±1，或跳过前导行之后的那一行」，过长标 `unverified` 并计 `constructTooLong`；报告输出 `counts.constructTooLong`、缺口 `construct-too-long`（0 时不出）、CLI 汇总字段。验证 1.1 的锚点用例与 1.3 的锚点列转绿、1.2 的锚点护栏仍绿、既有 `test_validate_graph.test.mjs` 全绿
+
+## 3. 边
+
+- [ ] 3.1 锚点检查维护「精确确认」集合（名字就在 `lineRange[0]`，或在跳过前导行之后的那一行；只靠 ±1 通过的不进）；边检查对非模型引用、不带自己 `token`、非 `calls` 的证据，当被引用的行恰是某个端点的 `lineRange[0]`、名字是期望 token、端点在可信集合里时确认。验证 1.1 的边用例、1.3 的边列、1.4 转绿，既有 `injects` / `references` / `routes` / JSX 用例不变
+- [ ] 3.2 `tests/lazy/name-references-pipeline.test.mjs` 里原先期望 `contains` 与 `exports` 被判矛盾的断言，改为期望没有矛盾，并改写其注释；验证该文件通过
+
+## 4. 文档
+
+- [ ] 4.1 `skills/excavator/SKILL.md` Phase 6b 的检查说明改为与规格一致；验证 `node scripts/check-refs.mjs` 通过
+
+## 5. 真实图验收（oracle 已写死，动手前不改）
+
+- [ ] 5.1 用保存下来的那次冒烟的图与源码（74 文件 Java 子项目，在部署主机的运行输出与仓库目录里，通过 SSM 只读取回，在副本里验证；源码与图都不进仓库）重新验证，新旧验证器各跑一次。判据：锚点 47 个、`contains` 530、`exports` 242、`implements` 40、`overrides` 10 这五类各自归零，唯一例外是折行声明头的 4 个方法的锚点与它们的 16 条边（归 `validator-multiline-calls`，逐个列出）；`calls` 的 50 条原样保留，说明 `calls` 没被动；任何别的残余逐条给出源码证据证明不是机制漏判，且不超过 5 条。`constructTooLong` 的计数写进验收记录
+- [ ] 5.2 召回：在同一副本里按固定种子植入 ≥ 200 个假样本（锚点错位 3–30 行、`calls` 证据行改指无关行、`contains` / `exports` / `implements` / `overrides` 证据行指向别的成员的注解），另加 ≥ 40 个「节点范围与边的证据行同时偏一行」。每个植入先用与验证器规则无关的纯文本判断确认确是坏的，重放决定，要求全部仍被报出，植入数 = 报出数；植入后多出的矛盾必须全部触及被植入错位的节点。同一批假样本先在旧验证器上跑，确认旧验证器也全部报出（装置对照）
+- [ ] 5.3 变异：把每条新规则改坏（前导行把代码行也跳过、`@x = 1` 与 `@@x = 1` 当注解、`*p = 1` 当注释、括号属性不必以 `]` 结束、边按整个范围确认、边不要求锚点成立、边把 ±1 通过的锚点也算可信、模型引用的证据也享受宽容、扫描上限失效），逐个确认至少一个用例变红；存活的变异说明测试没有约束力，必须补测试后重跑。所有变异在已提交的版本上做，随后从提交还原
+- [ ] 5.4 记录验收结果与残余到 `acceptance.md`（只写机制与规模，不写语料名）
+
+## 6. 门与合并
+
+- [ ] 6.1 `pnpm install --frozen-lockfile && pnpm -r build && pnpm test`，并 `node scripts/check-refs.mjs`、`openspec validate --all --strict`；新文件先 `git add -N` 再跑门。本机 `skills/.DS_Store` 会让 `test_service_only_contract` 失败，与改动无关，PR 正文里如实写明
+- [ ] 6.2 分阶段 commit：每个 commit 带自己的测试与实现且单独为绿；每个 commit 前逐个核对 `--stat` 文件数；PR 用 `--merge`；评审按 REVIEW.md 做，最多三轮；归档前做 spec 同步
