@@ -28,7 +28,7 @@
 ## 6. 门与合并
 
 - [x] 6.1 `pnpm install --frozen-lockfile && pnpm -r build && pnpm test`，并 `node scripts/check-refs.mjs`、`openspec validate --all --strict`；新文件先 `git add -N` 再跑门。本机 `skills/.DS_Store` 会让 `test_service_only_contract` 失败，与改动无关，PR 正文里如实写明
-- [ ] 6.2 分阶段 commit：每个 commit 带自己的测试与实现且单独为绿；每个 commit 前逐个核对 `--stat` 文件数；PR 用 `--merge`；评审按 REVIEW.md 做，最多三轮；归档前做 spec 同步
+- [x] 6.2 分阶段 commit：每个 commit 带自己的测试与实现且单独为绿；每个 commit 前逐个核对 `--stat` 文件数；PR 用 `--merge`；评审按 REVIEW.md 做，最多三轮；归档前做 spec 同步
 
 ## 7. 评审第 1 轮（PR 评审后追加）
 
