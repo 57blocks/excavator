@@ -665,6 +665,8 @@ describe('excavator-prd-report skill: ranking the findings', () => {
 
 /** The merge subagent's prompt: the second four-backtick text block of Phase 3 (the first is the ranking prompt). */
 const mergePrompt = () => [...rawPhase(3).matchAll(/^````text\n([\s\S]*?)\n````$/gm)].map((m) => m[1])[1] ?? '';
+/** The check subagent's prompt: the third four-backtick text block of Phase 3, after the ranking and merge prompts. */
+const checkPrompt = () => [...rawPhase(3).matchAll(/^````text\n([\s\S]*?)\n````$/gm)].map((m) => m[1])[2] ?? '';
 /** Phase 3 from its "Merge the open items" step to the overview step. */
 const mergeStep = () => {
   const text = rawPhase(3);
@@ -672,7 +674,7 @@ const mergeStep = () => {
   const end = text.indexOf('Write `$OUT/overview.md`', start);
   return start < 0 ? '' : flat(text.slice(start, end < 0 ? undefined : end));
 };
-const NEVER_MERGE = 'In this step you never group, merge or write an item, and never write or edit `open-items/merged.json`';
+const NEVER_MERGE = 'In this step you never group, merge, check or write an item, and never write or edit `open-items/merged.json` or `open-items/checked.json`';
 const withOpenItemsSection = (text, rows) => text.replace(/^chapter: (\d+)$/m, 'openItems: Open items\nchapter: $1')
   .concat(`\n### Open items\n\n| Item | What is known | What was searched |\n|---|---|---|\n${rows.join('\n')}\n`);
 
@@ -714,9 +716,9 @@ describe('excavator-prd-report skill: merging the open items (prd-report-dedupe,
     expect(step).not.toBe('');
     for (const rule of [
       'The same open question is often asked in several chapters',
-      'one merge subagent groups the items that ask the same question, and the scripts check the groups and write one row per group in the Open items section',
+      'one merge subagent groups the items that ask the same question, a check subagent then decides for each merged item whether answering the kept item also answers it, and the scripts check both files and write one row per group in the Open items section; an item the check rejects goes back to its own row',
       NEVER_MERGE,
-      'Only the merge subagent writes it, the same rule as the lane files.',
+      'Only the merge subagent writes the first and only the check subagent writes the second, the same rule as the lane files.',
     ]) expect(step, rule).toContain(rule);
   });
 
@@ -737,10 +739,19 @@ describe('excavator-prd-report skill: merging the open items (prd-report-dedupe,
     expect(problem).toBe('open-items/merged.json is missing');
     expect(notMerged).toBe('Open items: 3 written in the chapters, not merged');
     run.writeJson('open-items/merged.json', { digest: run.readJson('open-items/sources.json').digest, groups: [{ keep: 'F1.1', also: ['F2.1'] }] });
+    const unchecked = checkOpenItems(run);
+    expect(unchecked.status).toBe(1);
+    const [checkProblem, notChecked] = lines(unchecked);
+    expect(checkProblem).toBe('open-items/checked.json is missing');
+    expect(notChecked).toBe(notMerged);
     run.writeJson('open-items/checked.json', { digest: run.readJson('open-items/sources.json').digest, members: [{ keep: 'F1.1', id: 'F2.1', same: true }] });
     const merged = checkOpenItems(run);
     expect(merged.status).toBe(0);
     expect(lines(merged)).toEqual(['Open items: 3 written in the chapters, 2 after merging']);
+    run.writeJson('open-items/checked.json', { digest: run.readJson('open-items/sources.json').digest, members: [{ keep: 'F1.1', id: 'F2.1', same: false }] });
+    const putBack = checkOpenItems(run);
+    expect(putBack.status).toBe(0);
+    expect(lines(putBack)).toEqual(['Open items: 3 written in the chapters, 3 after merging; the check put back 1 of 1 merged items']);
     const bare = laneRun();
     const none = checkOpenItems(bare);
     expect(none.status).toBe(0);
@@ -749,38 +760,60 @@ describe('excavator-prd-report skill: merging the open items (prd-report-dedupe,
     for (const line of [asQuoted(merged.stdout.trim()), asQuoted(notMerged), none.stdout.trim()]) expect(step, line).toContain(`\`${line}\``);
     expect(step).toContain(`\`${problem}\``);
     expect(step).toContain('`Open items: <n> written in the chapters, <m> after merging`');
-    expect(step).toContain('It exits 0 when the merge passes or there are fewer than two items');
+    expect(step).toContain(`\`${asQuoted(putBack.stdout.trim().replace(', 3 after merging;', ', <m> after merging;')).replace(/ \d+ of \d+ merged/, ' <k> of <j> merged')}\``);
+    expect(step).toContain('It exits 0 when the merge passes and the check passes or is not needed, or there are fewer than two items');
     expect(step).toContain('then skip to telling the user the line');
   });
 
   it('dispatches one merge subagent when it exits 1, in the foreground, never in the background', () => {
     const step = mergeStep();
-    expect(step).toContain('When it exits 1, dispatch one merge subagent with the prompt below');
-    expect(step).toContain('in the foreground');
-    expect(step).toContain('never in the background');
+    expect(step).toContain('dispatch one merge subagent with the merge prompt below');
+    expect(step).toContain('dispatch one check subagent with the check prompt below');
+    expect(step).toContain('Dispatch in the foreground, never in the background');
     expect(step).toContain('Write `$OUT` and `$LANGUAGE` in the prompt as their values.');
+  });
+
+  it('chooses the subagent by the problem lines: a line naming merged.json deletes both files and dispatches the merge, only checked.json lines delete it and dispatch the check', () => {
+    const step = mergeStep();
+    const choose = flat(step.slice(step.indexOf('2. When it exits 1'), step.indexOf('3. Run `check-open-items` again')));
+    expect(choose).toContain('choose the subagent by the problem lines (not the status line)');
+    expect(choose).toContain('When a line names `open-items/merged.json`, delete both files (`rm -f "$OUT/open-items/merged.json" "$OUT/open-items/checked.json"`) and dispatch one merge subagent');
+    expect(choose).toContain('When the lines name only `open-items/checked.json`, delete it (`rm -f "$OUT/open-items/checked.json"`) and dispatch one check subagent');
+    expect(step).toContain('after the merge passed, the check is the next dispatch');
+    expect(step).toContain('Each of the two subagents gets one retry');
+  });
+
+  it('names in the dispatch rule the files the scripts name in their problem lines', () => {
+    const run = openItemsRun();
+    expect(lines(checkOpenItems(run))[0]).toMatch(/^open-items\/merged\.json /);
+    run.writeJson('open-items/merged.json', { digest: run.readJson('open-items/sources.json').digest, groups: [{ keep: 'F1.1', also: ['F2.1'] }] });
+    expect(lines(checkOpenItems(run))[0]).toMatch(/^open-items\/checked\.json /);
+    run.writeJson('open-items/checked.json', { digest: 'stale', members: [] });
+    expect(lines(checkOpenItems(run))[0]).toMatch(/^open-items\/checked\.json /);
   });
 
   it('retries once with the problem lines under a fixed heading, deletes the file, and leaves the items unmerged without failing the run', () => {
     const step = mergeStep();
-    expect(step).toContain('rm -f "$OUT/open-items/merged.json"');
+    expect(step).toContain('rm -f "$OUT/open-items/merged.json" "$OUT/open-items/checked.json"');
     expect(step).toContain('Your previous attempt failed these checks; fix them and write the file again:');
-    expect(step).toContain('each problem line it printed (not the status line)');
+    expect(step).toContain('then each problem line that named its file');
     expect(step.indexOf('Run `check-open-items` again')).toBeGreaterThan(step.indexOf('dispatch one merge subagent'));
-    expect(step).toContain('each on its own row, and the coverage section says so');
+    expect(step).toContain('When `check-open-items` still exits 1 after the retry of the subagent it calls for, delete both files');
+    expect(step).toContain('the open items stay unmerged, each on its own row, and the coverage section says so');
     expect(step).toContain('This is not a failure of the run.');
-    expect(step.indexOf('rm -f "$OUT/open-items/merged.json"')).toBeLessThan(step.indexOf('Your previous attempt failed these checks'));
+    expect(step.indexOf('rm -f "$OUT/open-items/merged.json" "$OUT/open-items/checked.json"')).toBeLessThan(step.indexOf('Your previous attempt failed these checks'));
   });
 
   it('tells the user the last line as printed, translated with the numbers unchanged', () => {
     const step = mergeStep();
     expect(step).toContain('Tell the user its last line as printed, translated into `$LANGUAGE` with the numbers unchanged.');
+    expect(step).toContain('then skip to telling the user the line (sub-step 5)');
     expect(step.indexOf('Tell the user its last line')).toBeGreaterThan(step.indexOf('Your previous attempt failed these checks'));
   });
 
   it('keeps a passing merge on a resumed run and merges again only after a chapter changed', () => {
-    expect(mergeStep()).toContain('`check-open-items` checks the digest, so after a chapter changed the merge is done again; a passing file is kept.');
-    expect(phase.get(0)).toContain('A passing `open-items/merged.json` is kept; the merge is done again only when the open items changed.');
+    expect(mergeStep()).toContain('`check-open-items` checks the digest, so after a chapter changed the merge and the check are done again; passing files are kept.');
+    expect(phase.get(0)).toContain('Passing `open-items/merged.json` and `open-items/checked.json` are kept; the merge and the check are done again only when the open items changed.');
   });
 
   it('gives the merge subagent only sources.json to read, and the merged.json shape and rules', () => {
@@ -824,6 +857,41 @@ describe('excavator-prd-report skill: merging the open items (prd-report-dedupe,
     const table = flat(before.slice(before.indexOf('| File | Written by |')));
     expect(table).toContain('| `open-items/sources.json` | `prd.mjs check-open-items` |');
     expect(table).toContain('| `open-items/merged.json` | the merge subagent |');
+    expect(table).toContain('| `open-items/checked.json` | the check subagent |');
+  });
+
+  it('gives the check subagent only sources.json and merged.json to read, and the checked.json shape and rules', () => {
+    const prompt = flat(checkPrompt());
+    expect(prompt).not.toBe('');
+    for (const rule of [
+      'You check the merged open items of an As-Is PRD.',
+      'Read only `$OUT/open-items/sources.json` and `$OUT/open-items/merged.json`; read no other file and no code.',
+      'an `id`, the `feature` that asked it, and `item`, `known`, `searched`',
+      'merged.json holds groups, each with a `keep` id and an `also` list of ids.',
+      "For every id in each group's `also`, decide whether answering the question of that group's `keep` item also answers this item's question. `same` is true only then.",
+      'Items about the same subject that ask different things are not the same.',
+      'Items that share only a missing piece of evidence, such as nothing found in the code or a gateway or deployment that is not visible, are not the same.',
+      'When in doubt, `same` is false.',
+      'Write only `$OUT/open-items/checked.json`, and nothing else anywhere',
+      '`{"digest": "<the digest of sources.json, copied>", "members": [{"keep": "<id>", "id": "<id>", "same": true}]}`',
+      'Write one entry for every pair of a group\'s `keep` and one id of its `also`, none missing and none twice.',
+      'Write every id exactly as sources.json spells it, `same` as true or false, no other key.',
+      'Write no text of your own: no item, summary or reason.',
+      'Reply with one line: `Open items: checked`, and nothing else.',
+    ]) expect(prompt, rule).toContain(rule);
+    expect(prompt.match(/\$OUT\/[\w./<>-]+/g)).toEqual(['$OUT/open-items/sources.json', '$OUT/open-items/merged.json', '$OUT/open-items/checked.json']);
+  });
+
+  it('keeps the shape the check prompt names the one check-open-items accepts', () => {
+    const run = openItemsRun();
+    expect(checkOpenItems(run).status).toBe(1);
+    const { digest } = run.readJson('open-items/sources.json');
+    run.writeJson('open-items/merged.json', { digest, groups: [{ keep: 'F1.1', also: ['F2.1'] }] });
+    const shape = JSON.parse(checkPrompt().match(/`(\{"digest": [^`]*\})`/)[1].replace('"<the digest of sources.json, copied>"', JSON.stringify(digest)).replace('"<id>"', '"F1.1"').replace('"<id>"', '"F2.1"'));
+    run.writeJson('open-items/checked.json', shape);
+    const out = checkOpenItems(run);
+    expect(out.status, out.stdout).toBe(0);
+    expect(lines(out)).toEqual(['Open items: 3 written in the chapters, 2 after merging']);
   });
 });
 

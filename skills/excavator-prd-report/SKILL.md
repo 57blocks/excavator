@@ -34,6 +34,7 @@ All files of a run live in `$OUT`:
 | `priorities/<id>.json` | the ranking subagent of the batch that holds feature `<id>` |
 | `open-items/sources.json` | `prd.mjs check-open-items` |
 | `open-items/merged.json` | the merge subagent |
+| `open-items/checked.json` | the check subagent |
 | `findings.json`, `tables/terminology.md`, `tables/roles.md`, `tables/open-items.md`, `tables/coverage.md`, `tables/verification.md` | `prd.mjs aggregate` |
 | `PRD.md` | `prd.mjs assemble` |
 | `report.html` | `prd.mjs page` |
@@ -105,7 +106,7 @@ Read efficiently: grep for the entries you need, follow edges for chains, don't 
      node "$PLUGIN_ROOT/skills/excavator-prd-report/prd.mjs" aggregate "$OUT" --project "$PROJECT_ROOT"
      jq -r '.features[] | [.id, .status, .attempts, .name] | @tsv' "$OUT/index.json"
      ```
-     When `aggregate` exits 1, show its lines and stop. Otherwise: `verified` features are kept as they are; `written` and `checked` features only get the later steps (Phase 3); `planned` features, and `failed` features with `attempts` below 2, go back to Phase 2; `failed` features with `attempts` 2 stay failed. Features whose `priorities/<id>.json` passes `check-priorities` are not ranked again (Phase 3), and an output directory with verified chapters and no `priorities/` only gets the ranking step and the steps after it. A passing `open-items/merged.json` is kept; the merge is done again only when the open items changed. Skip Phase 1 and continue with Phase 2.
+     When `aggregate` exits 1, show its lines and stop. Otherwise: `verified` features are kept as they are; `written` and `checked` features only get the later steps (Phase 3); `planned` features, and `failed` features with `attempts` below 2, go back to Phase 2; `failed` features with `attempts` 2 stay failed. Features whose `priorities/<id>.json` passes `check-priorities` are not ranked again (Phase 3), and an output directory with verified chapters and no `priorities/` only gets the ranking step and the steps after it. Passing `open-items/merged.json` and `open-items/checked.json` are kept; the merge and the check are done again only when the open items changed. Skip Phase 1 and continue with Phase 2.
    - Otherwise create `$OUT` (`mkdir -p "$OUT"`) and continue with Phase 1.
 
 ---
@@ -350,18 +351,19 @@ Write only `$OUT/priorities/<id>.json` for each feature of your batch, and nothi
 Reply with one line: `<ids of your features>: ranked`, and nothing else.
 ````
 
-5. Merge the open items. The same open question is often asked in several chapters: one merge subagent groups the items that ask the same question, and the scripts check the groups and write one row per group in the Open items section. In this step you never group, merge or write an item, and never write or edit `open-items/merged.json`. Only the merge subagent writes it, the same rule as the lane files.
+5. Merge the open items. The same open question is often asked in several chapters: one merge subagent groups the items that ask the same question, a check subagent then decides for each merged item whether answering the kept item also answers it, and the scripts check both files and write one row per group in the Open items section; an item the check rejects goes back to its own row. In this step you never group, merge, check or write an item, and never write or edit `open-items/merged.json` or `open-items/checked.json`. Only the merge subagent writes the first and only the check subagent writes the second, the same rule as the lane files.
    1. Run `aggregate`, then `check-open-items`:
       ```bash
       node "$PLUGIN_ROOT/skills/excavator-prd-report/prd.mjs" aggregate "$OUT" --project "$PROJECT_ROOT"
       node "$PLUGIN_ROOT/skills/excavator-prd-report/prd.mjs" check-open-items "$OUT" --project "$PROJECT_ROOT"
       ```
-      It prints one line for each problem of the merge (for example `open-items/merged.json is missing`), then one status line: `Open items: <n> written in the chapters, <m> after merging`, `Open items: <n> written in the chapters, not merged` or `Open items: none written in the chapters`. It exits 0 when the merge passes or there are fewer than two items: then skip to telling the user the line (sub-step 4).
-   2. When it exits 1, dispatch one merge subagent with the prompt below, in the foreground, never in the background: a run without a terminal stops waiting for background subagents. Write `$OUT` and `$LANGUAGE` in the prompt as their values.
-   3. Run `check-open-items` again. When it exits 1: delete the file (`rm -f "$OUT/open-items/merged.json"`), dispatch the merge subagent once more with the prompt followed by this line and then each problem line it printed (not the status line): `Your previous attempt failed these checks; fix them and write the file again:`. Run `check-open-items` again. When it still exits 1, delete the file: the open items stay unmerged, each on its own row, and the coverage section says so. This is not a failure of the run.
-   4. Tell the user its last line as printed, translated into `$LANGUAGE` with the numbers unchanged.
+      It prints one line for each problem of the two files (for example `open-items/merged.json is missing`), then one status line: `Open items: <n> written in the chapters, <m> after merging`, `Open items: <n> written in the chapters, <m> after merging; the check put back <k> of <j> merged items`, `Open items: <n> written in the chapters, not merged` or `Open items: none written in the chapters`. It exits 0 when the merge passes and the check passes or is not needed, or there are fewer than two items: then skip to telling the user the line (sub-step 5).
+   2. When it exits 1, choose the subagent by the problem lines (not the status line). When a line names `open-items/merged.json`, delete both files (`rm -f "$OUT/open-items/merged.json" "$OUT/open-items/checked.json"`) and dispatch one merge subagent with the merge prompt below. When the lines name only `open-items/checked.json`, delete it (`rm -f "$OUT/open-items/checked.json"`) and dispatch one check subagent with the check prompt below. Dispatch in the foreground, never in the background: a run without a terminal stops waiting for background subagents. Write `$OUT` and `$LANGUAGE` in the prompt as their values.
+   3. Run `check-open-items` again and choose again in the same way: after the merge passed, the check is the next dispatch. Each of the two subagents gets one retry: dispatch it again the same way, with its prompt followed by this line and then each problem line that named its file: `Your previous attempt failed these checks; fix them and write the file again:`.
+   4. When `check-open-items` still exits 1 after the retry of the subagent it calls for, delete both files (`rm -f "$OUT/open-items/merged.json" "$OUT/open-items/checked.json"`): the open items stay unmerged, each on its own row, and the coverage section says so. This is not a failure of the run.
+   5. Tell the user its last line as printed, translated into `$LANGUAGE` with the numbers unchanged.
 
-   A resumed run needs nothing more: `check-open-items` checks the digest, so after a chapter changed the merge is done again; a passing file is kept.
+   A resumed run needs nothing more: `check-open-items` checks the digest, so after a chapter changed the merge and the check are done again; passing files are kept.
 
 The merge prompt:
 
@@ -377,6 +379,20 @@ For each group choose `keep`: the item whose text says the most (what is known a
 Write only `$OUT/open-items/merged.json`, and nothing else anywhere, in this shape: `{"digest": "<the digest of sources.json, copied>", "groups": [{"keep": "<id>", "also": ["<id>", ...]}]}`. Write every id exactly as sources.json spells it, each id in at most one group, `also` non-empty, `keep` not in `also`, no other key. Write no text of your own: no item, summary or reason. With no group, write `"groups": []`.
 
 Reply with one line: `Open items: merged`, and nothing else.
+````
+
+The check prompt:
+
+````text
+You check the merged open items of an As-Is PRD.
+
+Your scope. Read only `$OUT/open-items/sources.json` and `$OUT/open-items/merged.json`; read no other file and no code. sources.json holds a `digest` and a list of items. Each item has an `id`, the `feature` that asked it, and `item`, `known`, `searched`: the question, what is known and where it was searched. merged.json holds groups, each with a `keep` id and an `also` list of ids.
+
+For every id in each group's `also`, decide whether answering the question of that group's `keep` item also answers this item's question. `same` is true only then. Items about the same subject that ask different things are not the same. Items that share only a missing piece of evidence, such as nothing found in the code or a gateway or deployment that is not visible, are not the same. When in doubt, `same` is false.
+
+Write only `$OUT/open-items/checked.json`, and nothing else anywhere, in this shape: `{"digest": "<the digest of sources.json, copied>", "members": [{"keep": "<id>", "id": "<id>", "same": true}]}`. Write one entry for every pair of a group's `keep` and one id of its `also`, none missing and none twice. Write every id exactly as sources.json spells it, `same` as true or false, no other key. Write no text of your own: no item, summary or reason.
+
+Reply with one line: `Open items: checked`, and nothing else.
 ````
 
 6. Write `$OUT/overview.md` in `$LANGUAGE`, with these parts in this order: a title (`# <project or product name>`) on its first line; a short **Doc Info** block (version, date, project/domain, source revision, audience, and **scope size**) — localized to `$LANGUAGE`; the purpose and the capability map: a short product summary, one table of the consumers of the product, and one mermaid capability diagram; and an overview of the automated behavior. It MUST NOT hold the glossary, the roles, a list of the flows or the open items: `aggregate` and `assemble` generate the Terminology, Flow index, Roles and Open items sections. `assemble` exits 1 and prints one of these lines when the overview does not start with a `#` heading, has no mermaid block or ends inside an open code fence: `index: overview.md must start with one # heading, the document title, on its first line`, `index: overview.md has no mermaid block; write the capability map with one` or `index: overview.md ends inside an open code fence; close it`. Scope size is counted by command, never estimated: run the following (`SCOPE` is the `--scope` path, or `.` for the whole project) and copy the two numbers into Doc Info as "N files, M lines":
