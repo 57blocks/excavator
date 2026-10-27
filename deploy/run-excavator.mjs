@@ -173,6 +173,9 @@ export function parseConfig(env = {}) {
   const scope = parseScope(env.EXCAVATOR_SCOPE, mode, errors);
 
   const force = parseBooleanFlag(env.EXCAVATOR_FORCE, false, 'EXCAVATOR_FORCE', errors);
+  if (force && mode === 'skopo-report') {
+    errors.push('EXCAVATOR_FORCE does not apply to skopo-report: it reports the run skopo-create left; force skopo-create instead');
+  }
   const maxContradicted = parseNonNegativeInteger(
     env.EXCAVATOR_MAX_CONTRADICTED, DEFAULTS.maxContradicted, 'EXCAVATOR_MAX_CONTRADICTED', errors,
   );
@@ -933,7 +936,7 @@ async function runSkopo(config, env) {
     }
   }
 
-  const prompt = buildSkopoPrompt({ mode: config.mode, repoPath: config.repoRoot, outDir: config.outDir, scope: config.scope });
+  const prompt = buildSkopoPrompt({ mode: config.mode, repoPath: config.repoRoot, outDir: config.outDir, scope: config.scope, fresh: config.force });
   const args = buildPromptArgs({ prompt, pluginDir: config.pluginDir, model: config.model, maxBudgetUsd: config.maxBudgetUsd });
   const cwd = mkdtempSync(join(tmpdir(), 'excavator-run-'));
   const runResult = await spawnClaude({

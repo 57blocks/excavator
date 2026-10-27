@@ -51,7 +51,7 @@ Write what you tell the user during this phase in `$LANGUAGE`, as **Language** a
    ```
    - `none` or `started`: plan first. Read `$PLUGIN_ROOT/skills/skopo-plan/SKILL.md` and carry out its Phase 0 step 3 and its Phases 1 to 3 with these same values, then come back here. Its blocking problems end this run too.
    - `planned`: go on.
-   - `created`: the skopository is written. Tell the user where it is, that `/skopo-report` writes the report and that `--fresh` writes it again, and stop.
+   - `created`: the run finished. Check it with `node "$PLUGIN_ROOT/skills/skopo-create/skopo.mjs" verdict "$OUT" --stage create --project "$PROJECT_ROOT"`. When it exits 0, tell the user where the skopository is, that `/skopo-report` writes the report and that `--fresh` writes it again, and stop. When it exits 1, the finished run did not pass: tell the user the lines it printed and that `--fresh` (in the runner, `EXCAVATOR_FORCE=true`) starts over, and stop.
    - `foreign`, `stale`, `other-scope`: tell the user its `reason`, that `--fresh` starts over (`foreign`: choose another `--out`), and stop.
 3. Read `$RUN/plan.md`. When `jq -r .decisions.plan "$RUN/run.json"` prints `split`, the system is too large for one recovery: record `node "$PLUGIN_ROOT/skills/skopo-create/checker/run.mjs" set "$RUN" stopped=needs-scope`, tell the user the parts and the first scope the plan names and the command for it (`/skopo-create --scope <part> --out <project>/.excavator/skopo-<part name>`), and stop.
 4. A skopository half written by an earlier run cannot be continued reliably: `rm -rf "$SKOPO"`. Read `$PLUGIN_ROOT/skills/skopo-create/checker/guide.md` and `$PLUGIN_ROOT/skills/skopo-create/checker/examples.md` in full, then every report in `$RUN/research/`.

@@ -54,10 +54,18 @@ describe('skopo mode parameters', () => {
     ['skopo-report', 'app', /EXCAVATOR_SCOPE applies only to skopo-plan and skopo-create, not to "skopo-report"/],
     ['full', 'app', /EXCAVATOR_SCOPE applies only to/],
     ['lazy', 'app', /EXCAVATOR_SCOPE applies only to/],
+    ['skopo-plan', 'web app', /EXCAVATOR_SCOPE must not contain whitespace/],
   ])('refuses EXCAVATOR_SCOPE=%s in %s', (mode, scope, expected) => {
     const parsed = parseConfig({ EXCAVATOR_MODE: mode, EXCAVATOR_SCOPE: scope, ...BEDROCK });
     expect(parsed.ok).toBe(false);
     expect(parsed.errors.join('\n')).toMatch(expected);
+  });
+
+  it('refuses EXCAVATOR_FORCE for skopo-report, which has nothing to start over', () => {
+    expect(parseConfig({ EXCAVATOR_MODE: 'skopo-report', EXCAVATOR_FORCE: 'true', ...BEDROCK }).errors).toEqual([
+      'EXCAVATOR_FORCE does not apply to skopo-report: it reports the run skopo-create left; force skopo-create instead',
+    ]);
+    expect(parseConfig({ EXCAVATOR_MODE: 'skopo-create', EXCAVATOR_FORCE: 'true', ...BEDROCK }).config.force).toBe(true);
   });
 
   it('names every mode when the mode is wrong', () => {
@@ -71,6 +79,12 @@ describe('skopo mode prompt', () => {
       .toBe('/excavator:skopo-create /work/repo --out /work/out/skopo --scope app');
     expect(buildSkopoPrompt({ mode: 'skopo-report', repoPath: '/work/repo', outDir: '/work/out', scope: 'app' }))
       .toBe('/excavator:skopo-report /work/repo --out /work/out/skopo');
+  });
+
+  it('asks the skill to start over when forced, and refuses whitespace it would split', () => {
+    expect(buildSkopoPrompt({ mode: 'skopo-create', repoPath: '/r', outDir: '/o', scope: null, fresh: true })).toBe('/excavator:skopo-create /r --out /o/skopo --fresh');
+    expect(buildSkopoPrompt({ mode: 'skopo-report', repoPath: '/r', outDir: '/o', scope: null, fresh: true })).toBe('/excavator:skopo-report /r --out /o/skopo');
+    expect(() => buildSkopoPrompt({ mode: 'skopo-plan', repoPath: '/My Projects/r', outDir: '/o', scope: null })).toThrow(/whitespace: "\/My Projects\/r"/);
   });
 
   it('starts Claude Code with exactly the isolation flags of full', () => {
@@ -93,10 +107,13 @@ describe('reading a verdict', () => {
     expect(readVerdictResult({ status: 1, stdout: 'lint: error L1 x\nverdict create: 1 problems\n' })).toEqual({ ok: false, reasons: ['lint: error L1 x'] });
     expect(readVerdictResult({ status: 2, stderr: 'skopo: --project <root> is required\n' }).reasons[0]).toMatch(/could not run \(exit 2\): skopo: --project/);
     expect(readVerdictResult({ status: null, stdout: '' }).ok).toBe(false);
+    expect(readVerdictResult({ status: 1, stdout: 'verdict create: 0 problems\n', stderr: 'boom\n' })).toEqual({
+      ok: false, reasons: ['skopo.mjs verdict failed without naming a problem: boom'],
+    });
   });
 });
 
-describe('a skopo-create run end to end', () => {
+describe('skopo runs end to end', () => {
   function makeRepo() {
     const dir = tmp('skopo-runner-repo-');
     writeFileSync(join(dir, 'index.js'), 'module.exports = 1;\n');
@@ -106,13 +123,16 @@ describe('a skopo-create run end to end', () => {
     return dir;
   }
 
-  function runRunner(scenario) {
+  function runRunner(scenario, { mode = 'skopo-create', extraEnv = {} } = {}) {
     const repo = makeRepo();
     const out = tmp('skopo-runner-out-');
+    const promptFile = join(out, 'prompt.txt');
     const result = spawnSync(process.execPath, [runnerPath], {
       env: {
         PATH: process.env.PATH ?? '', HOME: process.env.HOME ?? '', ...BEDROCK,
-        EXCAVATOR_MODE: 'skopo-create',
+        EXCAVATOR_MODE: mode,
+        FAKE_SKOPO_PROMPT_FILE: promptFile,
+        ...extraEnv,
         EXCAVATOR_REPO_ROOT_OVERRIDE: repo,
         EXCAVATOR_OUT_DIR_OVERRIDE: out,
         EXCAVATOR_PLUGIN_DIR_OVERRIDE: repoRoot,
@@ -122,7 +142,11 @@ describe('a skopo-create run end to end', () => {
       encoding: 'utf-8',
       timeout: 120_000,
     });
-    return { result, repo, out, summary: JSON.parse(readFileSync(join(out, 'summary.json'), 'utf-8')) };
+    return {
+      result, repo, out,
+      prompt: existsSync(promptFile) ? readFileSync(promptFile, 'utf-8') : null,
+      summary: JSON.parse(readFileSync(join(out, 'summary.json'), 'utf-8')),
+    };
   }
 
   it('builds the facts first, then exits 0 when the verdict passes', () => {
@@ -140,5 +164,25 @@ describe('a skopo-create run end to end', () => {
     expect(summary.checks.product.status).toBe('failed');
     expect(summary.checks.product.reasons.some((r) => r.startsWith('lint: error '))).toBe(true);
     expect(existsSync(join(out, 'skopo', 'skopo', 'skopo.json'))).toBe(true);
+  }, 120_000);
+
+  it('runs skopo-plan with its scope and judges the plan', () => {
+    const { result, prompt, summary } = runRunner('valid', { mode: 'skopo-plan', extraEnv: { EXCAVATOR_SCOPE: 'src' } });
+    expect(result.status, result.stderr).toBe(0);
+    expect(prompt).toMatch(/^\/excavator:skopo-plan \S+ --out \S+\/skopo --scope src$/);
+    expect(summary).toMatchObject({ mode: 'skopo-plan', exitCode: 0 });
+  }, 120_000);
+
+  it('runs skopo-report without a scope and judges the rebuilt report', () => {
+    const { result, prompt, summary } = runRunner('valid', { mode: 'skopo-report' });
+    expect(result.status, result.stderr).toBe(0);
+    expect(prompt).toMatch(/^\/excavator:skopo-report \S+ --out \S+\/skopo$/);
+    expect(summary.checks.product).toMatchObject({ status: 'passed' });
+  }, 120_000);
+
+  it('passes --fresh to skopo-create when forced', () => {
+    const { result, prompt } = runRunner('valid', { extraEnv: { EXCAVATOR_FORCE: 'true' } });
+    expect(result.status, result.stderr).toBe(0);
+    expect(prompt).toMatch(/ --fresh$/);
   }, 120_000);
 });

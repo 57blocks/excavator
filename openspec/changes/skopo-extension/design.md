@@ -87,7 +87,7 @@ $OUT/report/report.md    report.html   脚本写
 
 - **不问用户。** 计划之后不停，等于 `--auto`。阻断问题记下 `stopped=<原因>`，告诉用户并结束：`foreign`、`stale`、`other-scope`、仓库处在一个不是默认分支的具名分支上。分离 HEAD 或看不出默认分支时不阻断：写进 notes 与 README 的「What is not here」，继续。runner 在 checkout 一个 commit 时就是分离 HEAD。
 - **范围。** `--scope <dir>` 是项目内的相对路径：普查与研究只覆盖它，研究代理可以追到范围外的调用方与被调用方，但不为范围外写 statement。没有 `--scope`、而普查超过约 30 万行代码或 150 万字文档时，`skopo-plan` 只派 `world` 与 `design` 两个模块级的研究，计划写出按域或按模块的切分、每块的行数与建议的第一块范围；`skopo-create` 遇到这样的计划时停下，提示带 `--scope` 重跑。
-- **事实层。** 事实层新鲜时，派发里给 `GRAPH=available`：研究代理先用 MCP（连接时）或在 `.excavator/knowledge-graph.jsonl` 里 `Grep` 找路，再读源码。过期或缺失时只报告，不重建（与 `excavator-prd-report` 一样不跑 `/excavator`）。`--no-graph` 关掉它，用于对照。
+- **事实层。** 事实层新鲜时，派发里给 `GRAPH=available`：研究代理先用 MCP 或在 `.excavator/knowledge-graph.jsonl` 里 `Grep` 找路，再读源码。MCP 的项目根是 Claude Code 打开的目录，runner 从空目录启动，那里的 MCP 服务的是空目录；所以编排者先调一次 `project_status`，它的 `data.projectRoot` 与 `realpath "$PROJECT_ROOT"` 相同时派发 `MCP=bound`，否则 `MCP=unbound`，研究代理只 `Grep` 图谱文件。过期或缺失时只报告，不重建（与 `excavator-prd-report` 一样不跑 `/excavator`）。`--no-graph` 关掉它，用于对照。
 - **运行数据位置。** 运行目录是 `$OUT/run`，skopository 是 `$OUT/skopo`。
 - **语言。** 对用户说的话用 `--language`（与其他 skill 同一段规则）；skopository 本身的语言由计划决定，默认英文，与 Skopo 的规则一致。
 - 其余（研究镜头与拆分、计划的内容、写作顺序、逐域分配 ID 与 lint、问题的格式与分类、lint 五轮上限、notes 的格式、不写 lock）按 `/skopo:init` 原样，写作规则读 vendored 的 `guide.md` 与 `examples.md`。
@@ -121,6 +121,8 @@ $OUT/report/report.md    report.html   脚本写
   - `create`：以上，加上 `skopo/skopo.json` 存在、对 `skopo/` 重跑 vendored lint 为 0 错误、运行数据里的 ID 引用都在 skopository 里、`endedAt` 已写、`questions.md` 存在；
   - `report`：`report.md` 与 `report.html` 存在且 `report-check` 通过。
 - 三个阶段是三次容器运行，共用同一个 `/work/out`：`skopo-create` 在 `skopo-plan` 的产物上续跑。
+- `EXCAVATOR_FORCE=true` 在 `skopo-plan` 与 `skopo-create` 里让 skill 带 `--fresh` 从头来：一次已收尾、但没过 `verdict` 的 `skopo-create`（状态是 `created`）再跑也不会变，只有从头来。给 `skopo-report` 是配置错误。skill 的参数按空白切分，所以含空白的路径或范围被拒绝，不拆成两个参数传下去。
+- 状态是 `created` 时，`skopo-create` 与 `skopo-report` 都先跑 `verdict --stage create`：没过就停下，告诉用户 `--fresh`，不在不合格的 skopository 上写报告。
 - 退出码不变：产物不合格是 4；skopo 模式没有编造阶段。摘要沿用 `full` 的格式，`mode` 是 skopo 模式名，编造检查为空。
 - 代码放在新文件 `deploy/skopo-mode.mjs`；`run-excavator.mjs` 只加分派与参数。
 
@@ -128,7 +130,7 @@ $OUT/report/report.md    report.html   脚本写
 
 - **副本漂移**：Skopo 仓库改了检查器，Excavator 不会自动跟上。`SOURCE.json` 让副本的版本可见、本地改动不可能；跟上要一次更新提交。
 - **大 PR**：四个能力与 runner 一起审。按 commit 分步，见 tasks。
-- **MCP 在 runner 里绑定的是临时 cwd**：MCP 的项目根是 Claude Code 打开的目录。runner 从空目录启动，研究代理在 runner 里会退到 `Grep` 图谱文件。这与 `excavator-prd-report` 的退路相同，不另做处理。
+- **MCP 在 runner 里绑定的是临时 cwd**：MCP 的项目根是 Claude Code 打开的目录。runner 从空目录启动，所以研究代理在 runner 里由 `MCP=unbound` 退到 `Grep` 图谱文件（D6）。
 - **规范性陈述与「零编造」**：spec 写的是「必须」，不是代码现状。skopository 是提案，每条陈述在研究报告里有源码证据，分歧进问题清单；报告的「Status」一节写明未经人确认。
 
 ## Acceptance oracles

@@ -38,8 +38,12 @@
 
 ### Requirement: 研究先用事实层找路，只引用源码
 
-事实层对当前源码新鲜时，研究代理 SHALL 先用 MCP（连接时）或图谱文件定位，再读源码；`--no-graph` 时 MUST NOT 使用事实层。研究报告里的证据 SHALL 只指项目里的源文件；图谱与技术栈指引 MUST NOT 作为证据。事实层过期或缺失时 skill SHALL 告诉用户，MUST NOT 重建事实层。
+事实层对当前源码新鲜时，研究代理 SHALL 先用 MCP 或图谱文件定位，再读源码；编排者 SHALL 先确认 MCP 服务的项目根就是本项目，不是时研究代理 MUST NOT 调用 MCP，只用图谱文件；`--no-graph` 时 MUST NOT 使用事实层。研究报告里的证据 SHALL 只指项目里的源文件；图谱与技术栈指引 MUST NOT 作为证据。事实层过期或缺失时 skill SHALL 告诉用户，MUST NOT 重建事实层。
 
 #### Scenario: Java EE 项目
 - **WHEN** 项目有 `faces-config.xml` 与 `ejb-jar.xml`
 - **THEN** 每个研究派发都带上 Java EE 的意图来源指引
+
+#### Scenario: MCP 服务的是另一个目录
+- **WHEN** Claude Code 从空目录启动（如 runner），`project_status` 报告的项目根不是本项目
+- **THEN** 派发写 `MCP=unbound`，研究代理不调用 MCP，只在图谱文件里查找

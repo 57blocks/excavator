@@ -20,11 +20,13 @@ It names:
 - `FOCUS`: optional paths inside the roots to concentrate on. Read outside them only to follow a
   thread.
 - `INVENTORY`: the survey of the roots (sizes, languages, documents, notable files). Start there.
+- `MCP`: `bound` or `unbound`, given with `GRAPH=available`.
 - `GRAPH`: `available` or `none`. `available` means the Excavator facts in
-  `<project>/.excavator/` are fresh for the current source. Use them to find your way: the MCP
-  tools `recall` (nodes by term, id or path), `traverse` (follow fact edges from seed ids) and
-  `read_evidence` (a bounded range of current source) when they are connected, otherwise `Grep`
-  over `<project>/.excavator/knowledge-graph.jsonl`, one node or edge per line; never read it whole.
+  `<project>/.excavator/` are fresh for the current source. Use them to find your way: with
+  `MCP=bound`, the MCP tools `recall` (nodes by term, id or path), `traverse` (follow fact edges
+  from seed ids) and `read_evidence` (a bounded range of current source); with `MCP=unbound`, the
+  MCP server answers for another directory, so never call it: `Grep` over
+  `<project>/.excavator/knowledge-graph.jsonl` instead, one node or edge per line; never read it whole.
   The facts include injections, routes, page-to-bean references and descriptor mentions: follow
   them to the code, then read the code. A fact is never evidence. A range `read_evidence` returns
   is current source: cite it as `<repo>:<path>` with its symbol or heading, as you would any file

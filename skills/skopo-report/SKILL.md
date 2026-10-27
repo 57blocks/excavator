@@ -32,7 +32,7 @@ Write what you tell the user during this phase in `$LANGUAGE`, as **Language** a
    ```bash
    node "$PLUGIN_ROOT/skills/skopo-create/skopo.mjs" status "$OUT" --project "$PROJECT_ROOT" --scope "<the run's scope>"
    ```
-   Go on only when the state is `created`. Otherwise tell the user: `none`, `started` or `planned` — run `/skopo-create` first; `stale` — the source changed since the skopository was written, run `/skopo-create --fresh`; `foreign` — `$OUT` is not a skopo output directory. Then stop.
+   Go on only when the state is `created` and `node "$PLUGIN_ROOT/skills/skopo-create/skopo.mjs" verdict "$OUT" --stage create --project "$PROJECT_ROOT"` exits 0; when it exits 1, tell the user the lines it printed and that the skopository must pass before it is reported (`/skopo-create --fresh`), and stop. Otherwise tell the user: `none`, `started` or `planned` — run `/skopo-create` first; `stale` — the source changed since the skopository was written, run `/skopo-create --fresh`; `foreign` — `$OUT` is not a skopo output directory. Then stop.
 3. `mkdir -p "$REPORT"`. Read `$SKOPO/README.md`, every file under `$SKOPO/spec` and `$SKOPO/bindings`, `$RUN/plan.md` and `$RUN/questions.md`.
 
 ---

@@ -38,6 +38,10 @@ export function parseScope(value, mode, errors) {
     errors.push(`EXCAVATOR_SCOPE applies only to ${SCOPED_MODES.join(' and ')}, not to ${JSON.stringify(mode ?? null)}`);
     return null;
   }
+  if (/\s/.test(value)) {
+    errors.push('EXCAVATOR_SCOPE must not contain whitespace');
+    return null;
+  }
   try {
     return normalizeScope(value);
   } catch (err) {
@@ -46,10 +50,16 @@ export function parseScope(value, mode, errors) {
   }
 }
 
-/** The `-p` prompt of a skopo mode. */
-export function buildSkopoPrompt({ mode, repoPath, outDir, scope }) {
+/**
+ * The `-p` prompt of a skopo mode. The skill reads its arguments split on whitespace, so a path
+ * or scope that holds whitespace is refused rather than passed on split in two.
+ */
+export function buildSkopoPrompt({ mode, repoPath, outDir, scope, fresh = false }) {
   const parts = [`/excavator:${mode}`, repoPath, '--out', join(outDir, SKOPO_OUT_SUBDIR)];
   if (scope && SCOPED_MODES.includes(mode)) parts.push('--scope', scope);
+  if (fresh && SCOPED_MODES.includes(mode)) parts.push('--fresh');
+  const spaced = parts.find((part) => /\s/.test(part));
+  if (spaced) throw new Error(`a skopo mode cannot pass a path or scope with whitespace: ${JSON.stringify(spaced)}`);
   return parts.join(' ');
 }
 
@@ -65,7 +75,12 @@ export function needsFacts(freshness) {
 export function readVerdictResult({ status, stdout = '', stderr = '' }) {
   const lines = stdout.split('\n').filter((line) => line.trim() !== '');
   if (status === 0) return { ok: true, reasons: [] };
-  if (status === 1) return { ok: false, reasons: lines.filter((line) => !/^verdict \w+: /.test(line)) };
+  if (status === 1) {
+    const reasons = lines.filter((line) => !/^verdict \w+: /.test(line));
+    if (reasons.length > 0) return { ok: false, reasons };
+    const detail = stderr.trim().split('\n').slice(-3).join(' / ');
+    return { ok: false, reasons: [`skopo.mjs verdict failed without naming a problem${detail ? `: ${detail}` : ''}`] };
+  }
   const detail = `${stderr}${stdout}`.trim().split('\n').slice(-3).join(' / ');
   return { ok: false, reasons: [`skopo.mjs verdict could not run (exit ${status}): ${detail || 'no output'}`] };
 }

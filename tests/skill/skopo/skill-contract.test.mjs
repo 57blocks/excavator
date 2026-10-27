@@ -66,6 +66,18 @@ describe('skopo skills', () => {
     expect(text).toMatch(/rm -rf "\$SKOPO"/);
   });
 
+  it('plan checks that the MCP server serves this project before passes may use it', () => {
+    const text = flat(skill['skopo-plan']);
+    expect(text).toMatch(/call the Excavator MCP tool `project_status` once.*`data\.projectRoot`.*realpath "\$PROJECT_ROOT"/);
+    expect(text).toContain('`MCP` when `GRAPH` is `available`');
+    expect(flat(researcher)).toMatch(/with `MCP=unbound`, the MCP server answers for another directory, so never call it/);
+  });
+
+  it('create and report re-judge a finished run before trusting it', () => {
+    expect(flat(skill['skopo-create'])).toMatch(/`created`: the run finished\. Check it with .*verdict "\$OUT" --stage create/);
+    expect(flat(skill['skopo-report'])).toMatch(/Go on only when the state is `created` and .*verdict "\$OUT" --stage create/);
+  });
+
   it('report leaves the script-owned sections and files to the script', () => {
     const text = flat(skill['skopo-report']);
     for (const heading of ['`Status`', '`Questions`', '`Decisions without a recorded reason`', '`Scope and coverage`']) expect(text).toContain(heading);

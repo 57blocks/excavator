@@ -59,7 +59,14 @@ describe('questions', () => {
   it('refuses a category outside the six', () => {
     const { rows, problems } = readQuestions(QUESTIONS.replace('| money |', '| finance |'));
     expect(problems).toEqual([expect.stringMatching(/^questions\.md:7 {2}question 3 has category "finance"/)]);
-    expect(() => orderQuestions(rows)).toThrow(/question 3 has category "finance"/);
+    expect(rows).toHaveLength(3);
+  });
+
+  it('names a question row after the decisions heading instead of folding it into the decisions', () => {
+    const text = `${QUESTIONS}| 4 | money | Are refunds partial? | code · terms | R-5tps87 |\n`;
+    const { rows, problems } = readQuestions(text);
+    expect(rows).toHaveLength(3);
+    expect(problems).toEqual([expect.stringMatching(/^questions\.md:12 {2}a table row after "## Decisions without a recorded reason"/)]);
   });
 
   it('names every table row that is not a question instead of dropping it', () => {

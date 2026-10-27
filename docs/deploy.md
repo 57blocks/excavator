@@ -211,6 +211,7 @@ done
 ```
 
 - Leave out `EXCAVATOR_SCOPE` (and give it to `skopo-plan` and `skopo-create` only) to recover the whole repository. Above about 300,000 lines of code, `skopo-plan` without a scope writes a split of the system and names a first scope instead of a plan; `skopo-create` then stops and the run exits `4`: run the three modes again with that scope and another `/work/out`.
+- A finished `skopo-create` whose products fail the verdict stays failed when run again: run it with `EXCAVATOR_FORCE=true` to start over (plan included).
 - A skopo mode first builds the facts (`lazy`, no model call) when `.excavator/` is missing or stale, so `/work/repo` must be writable as for `full`.
 - The skills write only to `/work/out/skopo`: `run/` (the plan, the research reports, the questions, the notes, the lint passes and `metrics.json`), `skopo/` (the skopository; never locked by a run) and `report/` (`report.md` and `report.html`, a page that opens from disk).
 
@@ -256,7 +257,7 @@ This is the exact set exported by `deploy/run-excavator.mjs`'s `RUNTIME_PARAMS` 
 |---|---|---|---|
 | `EXCAVATOR_MODE` | Yes | — | `lazy`, `full`, `skopo-plan`, `skopo-create` or `skopo-report`. Any other value is a configuration error. The skopo modes need the same parameters as `full`. |
 | `EXCAVATOR_MAX_BUDGET_USD` | In `full` and the skopo modes | — | Positive number (USD). Passed to Claude Code as `--max-budget-usd`; the run stops and is judged a run failure if it is exceeded. Not read in `lazy` mode. |
-| `EXCAVATOR_FORCE` | No | `false` | Boolean-like (`1`/`0`/`true`/`false`/`yes`/`no`). When true, forces a full rebuild (`--full`) in `full` mode even if existing full-mode products already match HEAD. |
+| `EXCAVATOR_FORCE` | No | `false` | Boolean-like (`1`/`0`/`true`/`false`/`yes`/`no`). When true, forces a full rebuild (`--full`) in `full` mode even if existing full-mode products already match HEAD. In `skopo-plan` and `skopo-create`, starts the skill over (`--fresh`): it deletes `/work/out/skopo` first. Set with `skopo-report`, it is a configuration error. |
 | `EXCAVATOR_MAX_CONTRADICTED` | No | `0` | Non-negative integer. Maximum number of `contradicted` nodes+edges (combined) the post-run independent re-validation may find before the run is judged fabrication. `full` mode only. |
 | `EXCAVATOR_TIMEOUT_MINUTES` | No | `180` | Positive number. Wall-clock timeout for the `full` Claude Code run; on expiry the process is sent `SIGINT`, then `SIGTERM` after a grace period, and the run is judged a run failure. Not used by `lazy`. |
 | `AWS_REGION` | In `full` and the skopo modes | — | Claude Code's own variable; the Bedrock region, e.g. `eu-central-1`. |

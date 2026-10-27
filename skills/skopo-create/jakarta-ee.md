@@ -10,7 +10,8 @@ With `GRAPH=available`, start from the facts: they hold the wiring a search cann
 because the container joins the pieces by type, by an EL name or by a class written in a
 descriptor. Follow a page to the beans its EL names (`references`), a bean to what it injects
 (`injects`), a descriptor to the classes it lists (`mentions`) and a route to its handler
-(`routes`) with `traverse`, then read each end. The tables below are where intent sits that the
+(`routes`) with `traverse` (with `MCP=unbound`, `Grep` the graph file for the edge type and a
+name), then read each end. The tables below are where intent sits that the
 facts do not turn into edges; search for those with `recall` or `Grep`.
 
 ## world

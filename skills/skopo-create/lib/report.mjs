@@ -102,9 +102,9 @@ const QUESTION_COLUMNS = 5;
 
 /**
  * The run's questions.md: every row of its questions table, the problems with rows that are not
- * questions or whose category is not one of the six, and its section of decisions without a
- * recorded reason. Rows are split on unescaped pipes only, and each cell is kept as written, so a
- * row comes out of the report with the same text it went in with.
+ * questions, whose category is not one of the six, or that sit after the decisions heading, and its
+ * section of decisions without a recorded reason. Rows are split on unescaped pipes only, and each
+ * cell is kept as written, so a row comes out of the report with the same text it went in with.
  */
 export function readQuestions(text) {
   const lines = text.split('\n');
@@ -112,6 +112,11 @@ export function readQuestions(text) {
   const tableLines = start < 0 ? lines : lines.slice(0, start);
   const rows = [];
   const problems = [];
+  if (start >= 0) {
+    lines.slice(start + 1).forEach((line, i) => {
+      if (/^\s*\|/.test(line)) problems.push(`questions.md:${start + i + 2}  a table row after "## Decisions without a recorded reason"; the questions table comes before it`);
+    });
+  }
   tableLines.forEach((line, i) => {
     if (!/^\s*\|/.test(line) || isSeparatorRow(line)) return;
     if (isSeparatorRow(tableLines[i + 1] ?? '')) return; // a header row
@@ -136,12 +141,8 @@ export function readQuestions(text) {
   return { rows, decisions, problems };
 }
 
-/** The questions ordered by consequence, each category keeping its own numbering order. Throws on an unknown category. */
+/** The questions ordered by consequence, each category keeping its own numbering order; readQuestions has refused any other category. */
 export function orderQuestions(rows) {
-  const unknown = rows.filter((row) => !CATEGORIES.includes(row.category));
-  if (unknown.length > 0) {
-    throw new Error(unknown.map((row) => `questions.md: question ${row.number} has category "${row.category}", not one of ${CATEGORIES.join(', ')}`).join('\n'));
-  }
   return [...rows].sort((a, b) => CATEGORIES.indexOf(a.category) - CATEGORIES.indexOf(b.category) || a.number - b.number);
 }
 
