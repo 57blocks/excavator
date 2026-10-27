@@ -267,7 +267,7 @@ describe('validate-graph — the class: a statement-shaped line is never read as
 
   // The same text in a language that has no such syntax is not a leading line, and nor is anything in a
   // language this validator does not know.
-  it.each([['rb', '@Override'], ['js', '[Serializable]'], ['txt', '@Override'], ['php', '@Override'], ['java', '[Serializable]'], ['cs', '@Override'], ['txt', '[Serializable]']])(
+  it.each([['rb', '@Override'], ['js', '[Serializable]'], ['txt', '@Override'], ['php', '@Override'], ['java', '[Serializable]'], ['cs', '@Override'], ['txt', '[Serializable]'], ['java', '#[derive(Debug)]'], ['txt', '#[derive(Debug)]'], ['cs', '#[derive(Debug)]']])(
     '%s: does not read %j as a leading line', (ext, line) => {
       const path = `src/s.${ext}`;
       const root = project({ [path]: [line, line, 'function helper() {}', ''] });

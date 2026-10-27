@@ -423,9 +423,10 @@ export function skipLeadingLines(reader, filePath, startLine) {
         continue;
       }
       let brackets = null;
-      if (syntax.at && rest.startsWith('@') && !/^@interface\b/.test(rest)
-        && !/^@@?[\w.]+\s*(?:=|\+=|-=|\|\|=|&&=)/.test(rest)) {
-        // `@interface` declares a type, and `@name = value` assigns a variable
+      if (syntax.at && rest.startsWith('@')) {
+        // What follows the name has to be leading syntax too: `@interface Foo {}`
+        // declares a type and `@name = value` assigns a variable, and both leave
+        // something behind on the line.
         const name = /^@+[\w.:]+/.exec(rest);
         if (name === null) return false;
         rest = rest.slice(name[0].length).trimStart();
