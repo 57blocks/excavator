@@ -343,12 +343,50 @@ describe('aggregate: tables/open-items.md', () => {
     aggregateOk(run);
     const rows = tableRows(run.readText('tables/open-items.md'));
     expect(rows).toEqual([
-      '| 1 | Refund payment rule | A comment mentions refunds | `src/orders/service.js` | F1, F2, F3 |',
-      '| 2 | How does a customer obtain a token | Seen in the route only | `src/orders/service.js` | F1 |',
+      '| 1 | Refund payment rule<br>Also asked in F1: Whether refunds are paid<br>Also asked in F3: Which roles may reopen an order | A comment mentions refunds | `src/orders/service.js` | F1, F2, F3 |',
+      '| 2 | How does a customer obtain a token<br>Also asked in F1: How a customer gets a token | Seen in the route only | `src/orders/service.js` | F1 |',
       '| 3 | Retention — 90 days — unknown — `src/orders/service.js` |  |  | F2 |',
       '| 4 | Is the refund rule configurable? Nothing in the code reads a setting. |  |  | F3 |',
     ]);
-    expect(run.readText('tables/open-items.md')).not.toContain('Whether refunds are paid');
+  });
+
+  it('lists the other members of a group of three in the Item cell, in source order, whether keep is the earliest, a middle or the last member', () => {
+    const run = makeRun();
+    check(run);
+    const rowOf = (group) => {
+      writeMerged(run, { digest: sourcesOf(run).digest, groups: [group] });
+      aggregateOk(run);
+      return tableRows(run.readText('tables/open-items.md'))[0];
+    };
+    // F1.1, F2.1 and F3.2 in source order; the order in merged.json and the choice of keep do not move them
+    expect(rowOf({ keep: 'F1.1', also: ['F3.2', 'F2.1'] })).toBe(
+      '| 1 | Whether refunds are paid<br>Also asked in F2: Refund payment rule<br>Also asked in F3: Which roles may reopen an order | Not in the order code | the whole project | F1, F2, F3 |',
+    );
+    expect(rowOf({ keep: 'F2.1', also: ['F3.2', 'F1.1'] })).toBe(
+      '| 1 | Refund payment rule<br>Also asked in F1: Whether refunds are paid<br>Also asked in F3: Which roles may reopen an order | A comment mentions refunds | `src/orders/service.js` | F1, F2, F3 |',
+    );
+    expect(rowOf({ keep: 'F3.2', also: ['F2.1', 'F1.1'] })).toBe(
+      '| 1 | Which roles may reopen an order<br>Also asked in F1: Whether refunds are paid<br>Also asked in F2: Refund payment rule |  |  | F1, F2, F3 |',
+    );
+  });
+
+  it('names the feature of each other member, also for members of the same feature as keep', () => {
+    const run = makeRun();
+    check(run);
+    writeMerged(run, { digest: sourcesOf(run).digest, groups: [{ keep: 'F1.3', also: ['F1.2', 'F1.1'] }] });
+    aggregateOk(run);
+    expect(tableRows(run.readText('tables/open-items.md'))[0]).toBe(
+      '| 1 | How does a customer obtain a token<br>Also asked in F1: Whether refunds are paid<br>Also asked in F1: How a customer gets a token | Seen in the route only | `src/orders/service.js` | F1 |',
+    );
+  });
+
+  it('writes a bare pipe in the text of another member as an escaped one', () => {
+    const run = makeRun();
+    setOpenItems(run, 'F3', '- Is a | b allowed\n- Is a \\| c allowed\n');
+    check(run);
+    writeMerged(run, { digest: sourcesOf(run).digest, groups: [{ keep: 'F1.1', also: ['F3.1', 'F3.2'] }] });
+    aggregateOk(run);
+    expect(tableRows(run.readText('tables/open-items.md'))[0]).toContain('<br>Also asked in F3: Is a \\| b allowed<br>Also asked in F3: Is a \\| c allowed |');
   });
 
   it('has the rows of the items less the also ids, for any passing merge', () => {
@@ -474,9 +512,22 @@ describe('mergeProblems and mergedRows, called directly', () => {
     const merged = { digest: 'd', groups: [{ keep: 'd', also: ['b'] }] };
     expect(mergeProblems(merged, sources)).toEqual([]);
     expect(mergedRows(sources, merged)).toEqual([
-      { item: 'item a', known: '', searched: '', features: ['F1'] },
-      { item: 'item d', known: '', searched: '', features: ['F1', 'F2'] },
-      { item: 'item c', known: '', searched: '', features: ['F2'] },
+      { item: 'item a', known: '', searched: '', features: ['F1'], also: [] },
+      { item: 'item d', known: '', searched: '', features: ['F1', 'F2'], also: [{ feature: 'F1', item: 'item b' }] },
+      { item: 'item c', known: '', searched: '', features: ['F2'], also: [] },
+    ]);
+  });
+
+  it('carries every member but keep in a merged row, in source order, whatever the order in the file', () => {
+    const merged = { digest: 'd', groups: [{ keep: 'b', also: ['d', 'a', 'c'] }] };
+    expect(mergedRows(sources, merged)).toEqual([
+      {
+        item: 'item b',
+        known: '',
+        searched: '',
+        features: ['F1', 'F2'],
+        also: [{ feature: 'F1', item: 'item a' }, { feature: 'F2', item: 'item c' }, { feature: 'F2', item: 'item d' }],
+      },
     ]);
   });
 

@@ -162,15 +162,17 @@ export function mergeProblems(merged, sources) {
   return problems;
 }
 
-const unmergedRow = (item) => ({ item: item.item, known: item.known, searched: item.searched, features: [item.feature] });
+const unmergedRow = (item) => ({ item: item.item, known: item.known, searched: item.searched, features: [item.feature], also: [] });
 
 /**
  * The rows of the open items table: one for each item when `merged` is null or
  * has problems; else one for each group, with the text of its keep item, at the
  * place of the group's earliest member in the sources, and one for each item
  * in no group. `features` are the distinct features of a row's items, in
- * source order.
- * @returns {{ item: string, known: string, searched: string, features: string[] }[]}
+ * source order. `also` lists the other members of a merged row (every member
+ * but keep, in source order) as `{ feature, item }`, so a wrongly merged item
+ * stays visible (design D8); it is empty for a row of one item.
+ * @returns {{ item: string, known: string, searched: string, features: string[], also: { feature: string, item: string }[] }[]}
  */
 export function mergedRows(sources, merged) {
   if (merged === null || mergeProblems(merged, sources).length > 0) return sources.items.map(unmergedRow);
@@ -188,7 +190,9 @@ export function mergedRows(sources, merged) {
       rows.push(unmergedRow(item));
     } else if (group.first === position) {
       const { keep } = group;
-      rows.push({ item: keep.item, known: keep.known, searched: keep.searched, features: [...new Set(group.members.map((member) => sources.items[member].feature))] });
+      const features = [...new Set(group.members.map((member) => sources.items[member].feature))];
+      const also = group.members.filter((member) => sources.items[member] !== keep).map((member) => ({ feature: sources.items[member].feature, item: sources.items[member].item }));
+      rows.push({ item: keep.item, known: keep.known, searched: keep.searched, features, also });
     }
   });
   return rows;

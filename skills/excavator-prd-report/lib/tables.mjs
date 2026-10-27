@@ -74,15 +74,18 @@ function escapeBarePipes(text) {
 
 /**
  * The open items table (change prd-report-dedupe, design D5): one row for each
- * of `rows` (`{ item, known, searched, features }`, see `mergedRows`), numbered
- * from 1, the features as ids; `None.` when there are none. The cells are the
- * text of the chapters as extracted, not escaped again.
+ * of `rows` (`{ item, known, searched, features, also }`, see `mergedRows`),
+ * numbered from 1, the features as ids; `None.` when there are none. The Item
+ * cell of a merged row is the keep item followed, for each other member, by
+ * `<br>Also asked in <feature id>: <item>` (design D5, D8). The cells are the
+ * text of the chapters as extracted, not escaped again beyond bare pipes.
  */
 export function openItemsTable(rows) {
   if (rows.length === 0) return 'None.\n';
   const lines = [...header(['#', 'Item', 'What is known', 'What was searched', 'Features'])];
   rows.forEach((entry, at) => {
-    const cells = [at + 1, entry.item, entry.known, entry.searched, entry.features.join(', ')];
+    const item = [entry.item, ...entry.also.map((other) => `Also asked in ${other.feature}: ${other.item}`)].join('<br>');
+    const cells = [at + 1, item, entry.known, entry.searched, entry.features.join(', ')];
     lines.push(`| ${cells.map((value) => escapeBarePipes(String(value))).join(' | ')} |`);
   });
   return `${lines.join('\n')}\n`;
