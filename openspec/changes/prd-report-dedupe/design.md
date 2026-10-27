@@ -112,6 +112,9 @@
 4a. `docs(openspec): keep merged open items visible in prd-report-dedupe`：D8 与相应的规格、任务。
 4b. `feat(prd-report): list the merged items in their row`：`mergedRows` 与 `openItemsTable`、单测。
 4c. `feat(prd-report): merge only items one answer settles`：合并提示词、契约测试。
+4d. `docs(openspec): check each merged open item in prd-report-dedupe`：D9 与相应的规格、任务。
+4e. `feat(prd-report): put back merged items the check rejects`：`checked.json` 的校验、`mergedRows`、覆盖行、`check-open-items`、单测。
+4f. `feat(prd-report): dispatch the merge check`：Phase 3 第 5 步的核对子代理与提示词、文件表、契约测试。
 5. `docs(openspec): record prd-report-dedupe acceptance`
 6. `docs(openspec): archive prd-report-dedupe`
 
@@ -127,6 +130,20 @@
 - 合并提示词加一条：只共享一份缺失证据的事项不是同一个问题；拿不准就不分组（D6）。漏合只多一行，误合会把一个问题放到另一个问题的答案下面。
 
 代价：合并行变长，每条被合并的事项多一行事项文字；已知与搜过这两列，也就是最长的部分，仍只写一次。
+
+### D9 合并之后逐条核对
+
+D8 之后重做演练（同 90 条事项）：11 组，独立审读判 1 组误合（「登录失败是否限流」与「换取令牌失败是否限流」），还有 4 条部分相同。提示词再收紧也只是在边界上摇摆。合并行把保留那条的已知与搜过放在另一个问题旁边，读者会以为它回答了这两个问题，等于把文字安到了错的主体上。按本仓库别处的做法（doc-map、tour 的第二个子代理），加一道干净上下文的核对：
+
+- 合并通过后，派一个核对子代理。它只读 `sources.json` 与 `merged.json`，对每组 `also` 里的每一条判断：回答了 `keep` 那条的问题，是否也就回答了这一条。拿不准判否。
+- 它只写 `open-items/checked.json`：`{"digest": "<清单的 digest>", "members": [{"keep": "<id>", "id": "<id>", "same": true|false}]}`。`merged.json` 里每个 (`keep`, `also` 成员) 恰好一条，不多不少。
+- 脚本校验：文件缺失或不可解析、形状不对、多余的键、`digest` 不同、少了或多了一对、一对出现两次、`same` 不是布尔值，各有一种问题行，都写出文件名 `open-items/checked.json`。
+- `mergedRows`：合并与核对都通过时，`same` 为 false 的成员各自回到自己的一行（在清单里的原位置）；一组的成员全被退回时这一组不再存在。合并通过而核对不通过时，按没有合并处理。
+- 覆盖行：通过时为 `Open items: <n> written in the chapters, <m> after merging`；核对退回了成员时后接 `; the check put back <k> of <j> merged items`。不通过时仍为 `..., not merged`。
+- `check-open-items` 退出 0：事项少于 2 条；或合并通过、且没有 `also` 成员或核对通过。
+- Phase 3 第 5 步：问题行写的是 `merged.json` 时派合并子代理（先删两个文件），只写 `checked.json` 时派核对子代理（先删它）；各重试一次。仍不过就删掉两个文件，待确认项不合并，不算运行失败。编排者 MUST NOT 写或改这两个文件。
+
+代价：多一个只读清单的子代理，事项有重复时才派。核对子代理同样会出错，但它的错只会让事项少合并，不会多合。
 
 ## Risks / Trade-offs
 
@@ -171,6 +188,6 @@
     - 单篇流程索引的某一行在拼装版没有覆盖它的流程行（`failed` 且 `attempts` 为 2 的功能范围除外）；
     - 某一组里有一条与 `keep` 问的不是同一个问题。
   - **照记**：合并后的表里仍成对重复的事项数；流程章节里是否仍重复 `reference` 章节的矩阵或字典。
-- **O7 合并演练**（D8 之后加）：O5 的事项里没有重复时合并步骤没有被真正用到，所以在上一次运行的事项（含已知的跨章重复）上，用 `SKILL.md` 里一字不差的合并提示词派 Sonnet 子代理合并，`check-open-items` 退出 0。独立审读（Sonnet）逐组判断：
-  - **硬性不通过**：任一组里有一条与 `keep` 问的不是同一个问题。
+- **O7 合并演练**（D8 之后加，D9 之后改为在核对之后判）：O5 的事项里没有重复时合并步骤没有被真正用到，所以在上一次运行的事项（含已知的跨章重复）上，用 `SKILL.md` 里一字不差的合并与核对提示词各派 Sonnet 子代理，`check-open-items` 退出 0。独立审读（Sonnet）对 `PRD.md` 里每个合并行逐条判断：
+  - **硬性不通过**：任一合并行里有一条与保留那条问的不是同一个问题。
   - **照记**：部分相同的成员数；没分组的同问题对数；`PRD.md` 的合并行列出了组内每条事项。
