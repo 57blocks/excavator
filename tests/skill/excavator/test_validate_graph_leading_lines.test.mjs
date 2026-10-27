@@ -320,6 +320,41 @@ describe('validate-graph — the class: a statement-shaped line is never read as
   });
 });
 
+describe('validate-graph — what the graph reading is not applied to', () => {
+  const lines = ['class C {', '  @Override', '  public void run() {}', '}'];
+  const setup = () => {
+    const root = project({ 'src/C.java': lines });
+    const file = fileNode('src/C.java');
+    const runNode = declNode('function', 'src/C.java', 'run', [2, 3]);
+    return { root, file, runNode };
+  };
+
+  it('does not confirm a calls edge at the first line of the callee range, which is its annotation', () => {
+    const { root, file, runNode } = setup();
+    const caller = declNode('function', 'src/C.java', 'm', [1, 4]);
+    const { report } = run(root, [file, caller, runNode], [edge('calls', caller, runNode, 'src/C.java', 2)]);
+    expect(report.counts.edgeContradicted).toBe(1);
+  });
+
+  it('does not confirm an edge whose evidence entry names a token of its own that is not on its line', () => {
+    const { root, file, runNode } = setup();
+    const e = edge('implements', runNode, runNode, 'src/C.java', 2);
+    e.evidence[0].token = 'Zzz';
+    const { report } = run(root, [file, runNode], [e]);
+    expect(report.counts.edgeContradicted).toBe(1);
+  });
+});
+
+describe('validate-graph — a range that starts in the middle of a block comment', () => {
+  it('reads the star-prefixed comment lines as leading lines', () => {
+    const lines = ['/**', ' * Describes the thing.', ' */', 'public class Gadget {}', ''];
+    const root = project({ 'src/Gadget.java': lines });
+    const { report } = run(root, [declNode('class', 'src/Gadget.java', 'Gadget', [2, 4])]);
+    expect(report.counts.anchorMismatch).toBe(0);
+    expect(report.counts.anchorConfirmed).toBe(1);
+  });
+});
+
 describe('validate-graph — an anchor that passes only within one line does not vouch for an edge', () => {
   const twoEdges = (file, helper, path, line) => [edge('contains', file, helper, path, line), edge('exports', file, helper, path, line)];
 
