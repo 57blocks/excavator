@@ -58,19 +58,43 @@ export function rolesTable(written, chaptersById, indexActors) {
   return `${lines.join('\n')}\n`;
 }
 
-/** The open items section of each written chapter that has one, under `### <id> <name>`, as written; `None.` when no chapter has one. */
-export function openItemsTable(written, chaptersById) {
-  const blocks = written
-    .filter((feature) => chaptersById.get(feature.id)?.openItems != null)
-    .map((feature) => [`### ${label(feature)}`, '', chaptersById.get(feature.id).openItems].join('\n').trimEnd());
-  return blocks.length === 0 ? 'None.\n' : `${blocks.join('\n\n')}\n`;
+/** `text` with each `|` that a backslash does not escape escaped; an item written as a list can hold one. */
+function escapeBarePipes(text) {
+  let out = '';
+  for (let k = 0; k < text.length; k += 1) {
+    if (text[k] === '\\' && k + 1 < text.length) {
+      out += text[k] + text[k + 1];
+      k += 1;
+    } else {
+      out += text[k] === '|' ? '\\|' : text[k];
+    }
+  }
+  return out;
+}
+
+/**
+ * The open items table (change prd-report-dedupe, design D5): one row for each
+ * of `rows` (`{ item, known, searched, features }`, see `mergedRows`), numbered
+ * from 1, the features as ids; `None.` when there are none. The cells are the
+ * text of the chapters as extracted, not escaped again.
+ */
+export function openItemsTable(rows) {
+  if (rows.length === 0) return 'None.\n';
+  const lines = [...header(['#', 'Item', 'What is known', 'What was searched', 'Features'])];
+  rows.forEach((entry, at) => {
+    const cells = [at + 1, entry.item, entry.known, entry.searched, entry.features.join(', ')];
+    lines.push(`| ${cells.map((value) => escapeBarePipes(String(value))).join(' | ')} |`);
+  });
+  return `${lines.join('\n')}\n`;
 }
 
 /**
  * Every candidate, the feature it belongs to and that feature's status;
- * `outsideLine` is the line about seed files outside the scope, or null.
+ * `outsideLine` is the line about seed files outside the scope, or null;
+ * `openItemsLine` is the line about the open items and their merge (change
+ * prd-report-dedupe, design D5), placed after it.
  */
-export function coverageTable(index, outsideLine) {
+export function coverageTable(index, outsideLine, openItemsLine) {
   const owner = new Map();
   for (const feature of index.features) for (const id of feature.entrypoints) owner.set(id, feature);
   const { candidates, assigned, unassigned } = index.conservation;
@@ -79,6 +103,7 @@ export function coverageTable(index, outsideLine) {
     lines.push(`Frameworks with no entrypoint patterns: ${index.candidates.uncovered.join(', ')}.`);
   }
   if (outsideLine !== null) lines.push(outsideLine);
+  lines.push(openItemsLine);
   lines.push('', ...header(['Candidate', 'Kind', 'Location', 'Framework', 'Feature', 'Status']));
   for (const item of index.candidates.items) {
     const feature = owner.get(item.id);

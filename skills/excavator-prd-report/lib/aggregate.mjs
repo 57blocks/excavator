@@ -23,7 +23,7 @@ import { existsSync, mkdirSync, readFileSync, realpathSync, writeFileSync } from
 import { join, resolve } from 'node:path';
 
 import {
-  INDEX_FILE, MAX_ATTEMPTS, STATUSES, UNRANKED, VERIFICATION_KEYS,
+  INDEX_FILE, MAX_ATTEMPTS, STATUSES, UNRANKED, VERIFICATION_KEYS, WRITTEN_STATUSES,
   conservation, emptyCounts, loadIndex, schemaProblems,
 } from './index-check.mjs';
 import { writeJson } from './json-file.mjs';
@@ -32,6 +32,7 @@ import { byChapter } from './chapter.mjs';
 import { coverageTable, openItemsTable, rolesTable, terminologyTable, verificationTable } from './tables.mjs';
 import { emptyPriorityCounts, priorityCounts, readFeatureRanks } from './priorities.mjs';
 import { projectRootProblem } from './project-root.mjs';
+import { openItemsOutcome } from './open-items.mjs';
 import { outsideScopeLine } from './scope-reads.mjs';
 import { parseVerificationReply } from './verification.mjs';
 
@@ -45,7 +46,7 @@ export const TABLE_FILES = Object.freeze(['tables/terminology.md', 'tables/roles
 export const TABLE_KEYS = Object.freeze(['terminology', 'roles', 'openItems', 'coverage', 'verification']);
 export const verificationPath = (id) => `verification/${id}.txt`;
 export const reportPath = (id) => `verification/${id}.md`;
-export const WRITTEN_STATUSES = Object.freeze(['checked', 'verified']);
+export { WRITTEN_STATUSES };
 
 /**
  * `counts` with the priority counts of its findings all unranked. Used where
@@ -235,6 +236,8 @@ export function computeAggregate(outDirArg, index, root) {
   if (unconserved.length > 0) return { states, updated, problems: unconserved, result: null, findingsFile: null, tables: null };
   const chapters = new Map(states.map((state) => [state.feature.id, state.chapter]));
   const written = features.filter((feature) => WRITTEN_STATUSES.includes(feature.status)).sort(byChapter);
+  // Read from the chapter files and merged.json, as check-open-items does; aggregate writes nothing under open-items/.
+  const openItems = openItemsOutcome(outDir, updated);
   return {
     states,
     updated,
@@ -244,8 +247,8 @@ export function computeAggregate(outDirArg, index, root) {
     tables: {
       [TABLE_FILES[0]]: terminologyTable(index.glossary),
       [TABLE_FILES[1]]: rolesTable(written, chapters, index.actors),
-      [TABLE_FILES[2]]: openItemsTable(written, chapters),
-      [TABLE_FILES[3]]: coverageTable(updated, outsideScopeLine(index, root)),
+      [TABLE_FILES[2]]: openItemsTable(openItems.rows),
+      [TABLE_FILES[3]]: coverageTable(updated, outsideScopeLine(index, root), openItems.line),
       [TABLE_FILES[4]]: verificationTable(features, result.verification),
     },
   };

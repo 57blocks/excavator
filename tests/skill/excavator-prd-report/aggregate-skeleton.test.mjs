@@ -112,15 +112,13 @@ describe('aggregate: terminology, roles and open items (D4)', () => {
     expect(run.readText('tables/open-items.md')).toBe('None.\n');
   });
 
-  it('collects the open items section of each chapter under its feature, as the chapter wrote it', () => {
+  it('collects the open items of the chapters into one table, with the features that wrote them', () => {
     const run = track(makeSkeletonRun());
     aggregateOk(run);
     expect(run.readText('tables/open-items.md')).toBe([
-      '### F1 Order placement',
-      '',
-      '| Item | What is known | What was searched |',
-      '|---|---|---|',
-      '| Whether open orders expire | The status never changes on its own | `src/orders/service.js`, the whole project |',
+      '| # | Item | What is known | What was searched | Features |',
+      '|---|---|---|---|---|',
+      '| 1 | Whether open orders expire | The status never changes on its own | `src/orders/service.js`, the whole project | F1 |',
       '',
     ].join('\n'));
   });
@@ -200,8 +198,9 @@ describe('aggregate: the coverage line about seed files outside the scope (D7)',
     expect(lines[0]).toBe('### Coverage');
     expect(lines[3]).toBe('Frameworks with no entrypoint patterns: spring.');
     expect(lines[4]).toBe('Seed files read outside the scope: web 1.');
-    expect(lines[5]).toBe('');
-    expect(lines[6]).toMatch(/^\| Candidate /);
+    expect(lines[5]).toBe('Open items: none written in the chapters');
+    expect(lines[6]).toBe('');
+    expect(lines[7]).toMatch(/^\| Candidate /);
   });
 });
 

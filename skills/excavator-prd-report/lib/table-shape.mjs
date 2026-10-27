@@ -26,7 +26,8 @@ export function tableCells(line) {
   return cells;
 }
 
-const DELIMITER_CELL = /^:?-+:?$/;
+/** A cell of a table's delimiter row: dashes with an optional colon at either end. */
+export const DELIMITER_CELL = /^:?-+:?$/;
 
 /**
  * Whether `section` is a header row, a delimiter row and at least one data row,

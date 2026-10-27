@@ -3,13 +3,13 @@
 - [x] 1.1 `lane-check`：流程与自动类章节的 `###` 只能是流程或待确认项标题（design D2）；待确认项小节是一张三列表（D3）；两条只在 `check-lane` 时检查（D4）
 - [x] 1.2 泳道提示词：权限深度要求、章节结构与引言、待确认项三列表（D2、D3）
 - [x] 1.3 夹具改为合格的形状；单测与契约测试：O2
-- [ ] 1.4 跑 O1
+- [x] 1.4 跑 O1
 
 ## 2. 合并待确认项（提交 3）
 
-- [ ] 2.1 `lib/open-items.mjs`：事项抽取、清单与 `digest`、`merged.json` 校验（D5）
-- [ ] 2.2 `prd.mjs check-open-items`
-- [ ] 2.3 `aggregate`：`tables/open-items.md` 与覆盖行（D5）
+- [x] 2.1 `lib/open-items.mjs`：事项抽取、清单与 `digest`、`merged.json` 校验（D5）
+- [x] 2.2 `prd.mjs check-open-items`
+- [x] 2.3 `aggregate`：`tables/open-items.md` 与覆盖行（D5）
 - [ ] 2.4 单测：O3；跑 O1
 
 ## 3. skill 接线（提交 4）
