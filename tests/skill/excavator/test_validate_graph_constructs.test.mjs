@@ -179,12 +179,122 @@ describe('validate-graph — a declaration preceded by annotations, decorators o
   });
 
   it('marks an annotation that never closes as unverified, not as contradicted', () => {
-    const lines = ['@Unclosed(',...Array.from({ length: CONSTRUCT_SCAN_LINES + 20 }, (_, i) => `    part${i},`)];
+    const lines = ['@Unclosed(', ...Array.from({ length: CONSTRUCT_SCAN_LINES + 20 }, (_, i) => `    part${i},`)];
     const root = project({ 'src/Broken.java': lines });
     const { validated, report } = run(root, [declNode('class', 'src/Broken.java', 'Broken', [1, lines.length])]);
     expect(report.counts.anchorMismatch).toBe(0);
     expect(report.counts.constructTooLong).toBe(1);
     expect(validated.nodes[0].verification).toBe('unverified');
+    expect(validated.gaps.find((g) => g.kind === 'construct-too-long').count).toBe(1);
+  });
+});
+
+describe('validate-graph — a call expression written over several lines', () => {
+  const caller = (path) => declNode('function', path, 'm', [1, 1]);
+
+  it('confirms a callee on a later line of a chain written with leading dots', () => {
+    const lines = [
+      'class C {', '  void m() {', '    String s = builder', '        .alpha()', '        .beta(1,', '            2)',
+      '        .gamma();', '    other();', '  }', '}',
+    ];
+    const root = project({ 'src/C.java': lines });
+    const m = caller('src/C.java');
+    const gamma = declNode('function', 'src/G.java', 'gamma', [1, 1]);
+    const { report } = run(root, [m, gamma], [edge('calls', m, gamma, 'src/C.java', 3)]);
+    expect(report.counts.edgeContradicted).toBe(0);
+    expect(report.counts.edgeConfirmed).toBe(1);
+  });
+
+  it('confirms a callee on a later line of a chain written with trailing dots', () => {
+    const lines = ['func m() {', '\tclient.', '\t\tPost(url).', '\t\tSend()', '\tnext()', '}'];
+    const root = project({ 'src/m.go': lines });
+    const m = caller('src/m.go');
+    const send = declNode('function', 'src/s.go', 'Send', [1, 1]);
+    const { report } = run(root, [m, send], [edge('calls', m, send, 'src/m.go', 2)]);
+    expect(report.counts.edgeContradicted).toBe(0);
+  });
+
+  it('confirms the callee at the end of a ten-line builder chain', () => {
+    const lines = ['class Z {', '  void m() {', '    Client.configure()'];
+    for (let i = 0; i < 10; i++) lines.push(`        .with${i}(v${i})`);
+    lines.push('        .create();', '  }', '}');
+    const root = project({ 'src/Z.java': lines });
+    const m = caller('src/Z.java');
+    const create = declNode('function', 'src/Q.java', 'create', [1, 1]);
+    const { report } = run(root, [m, create], [edge('calls', m, create, 'src/Z.java', 3)]);
+    expect(report.counts.edgeContradicted).toBe(0);
+  });
+
+  it('confirms a callee that follows a lambda block in the middle of the chain', () => {
+    const lines = [
+      'class L {', '  void m() {', '    items.stream()', '        .map(x -> {', '          return x + 1;', '        })',
+      '        .collect(toList());', '  }', '}',
+    ];
+    const root = project({ 'src/L.java': lines });
+    const m = caller('src/L.java');
+    const collect = declNode('function', 'src/K.java', 'collect', [1, 1]);
+    const { report } = run(root, [m, collect], [edge('calls', m, collect, 'src/L.java', 3)]);
+    expect(report.counts.edgeContradicted).toBe(0);
+  });
+
+  it('still reports a callee that appears only in the next statement', () => {
+    const lines = ['class N {', '  void m() {', '    first();', '    target();', '  }', '}'];
+    const root = project({ 'src/N.java': lines });
+    const m = caller('src/N.java');
+    const target = declNode('function', 'src/T.java', 'target', [1, 1]);
+    const { report } = run(root, [m, target], [edge('calls', m, target, 'src/N.java', 3)]);
+    expect(report.counts.edgeContradicted).toBe(1);
+  });
+
+  it('still reports a callee that is not in the expression at all', () => {
+    const lines = ['class N {', '  void m() {', '    builder', '        .alpha()', '        .beta();', '  }', '}'];
+    const root = project({ 'src/N.java': lines });
+    const m = caller('src/N.java');
+    const gone = declNode('function', 'src/T.java', 'gone', [1, 1]);
+    const { report } = run(root, [m, gone], [edge('calls', m, gone, 'src/N.java', 3)]);
+    expect(report.counts.edgeContradicted).toBe(1);
+  });
+
+  it('does not read into the body of a declaration or a branch the cited line opens', () => {
+    const lines = ['class N {', '  void m() {', '    if (ready) {', '      target();', '    }', '  }', '}'];
+    const root = project({ 'src/N.java': lines });
+    const m = caller('src/N.java');
+    const target = declNode('function', 'src/T.java', 'target', [1, 1]);
+    // line 2 opens the body of `m`, line 3 opens a branch: neither names `target`
+    const { report } = run(root, [m, target], [
+      edge('calls', m, target, 'src/N.java', 2),
+      edge('calls', m, target, 'src/N.java', 3),
+    ]);
+    expect(report.counts.edgeContradicted).toBe(2);
+  });
+
+  it('confirms a callee on the line that opens a block, the same line as the brace', () => {
+    const lines = ['class N {', '  void m() {', '    if (check(target())) {', '    }', '  }', '}'];
+    const root = project({ 'src/N.java': lines });
+    const m = caller('src/N.java');
+    const target = declNode('function', 'src/T.java', 'target', [1, 1]);
+    const { report } = run(root, [m, target], [edge('calls', m, target, 'src/N.java', 3)]);
+    expect(report.counts.edgeContradicted).toBe(0);
+  });
+
+  it('gives a model-cited line no benefit of the following lines', () => {
+    const lines = ['class N {', '  void m() {', '    builder', '        .target();', '  }', '}'];
+    const root = project({ 'src/N.java': lines });
+    const m = caller('src/N.java');
+    const target = declNode('function', 'src/T.java', 'target', [1, 1]);
+    const { report } = run(root, [m, target], [edge('calls', m, target, 'src/N.java', 3, 'model')]);
+    expect(report.counts.edgeContradicted).toBe(1);
+  });
+
+  it('marks an expression that runs past the scan bound as unverified, not as contradicted', () => {
+    const lines = ['class Q {', '  void m() {', '    call(', ...Array.from({ length: CONSTRUCT_SCAN_LINES + 20 }, (_, i) => `        arg${i},`)];
+    const root = project({ 'src/Q.java': lines });
+    const m = caller('src/Q.java');
+    const target = declNode('function', 'src/T.java', 'elsewhere', [1, 1]);
+    const { validated, report } = run(root, [m, target], [edge('calls', m, target, 'src/Q.java', 3)]);
+    expect(report.counts.edgeContradicted).toBe(0);
+    expect(report.counts.constructTooLong).toBe(1);
+    expect(validated.edges[0].verification).toBe('unverified');
     expect(validated.gaps.find((g) => g.kind === 'construct-too-long').count).toBe(1);
   });
 });

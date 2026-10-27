@@ -311,9 +311,11 @@ export function findTokenInImportStatement(reader, filePath, lineNumber, tokens,
 /**
  * Advance `depth` over one line of an annotation or an expression: `(`, `[`
  * and `{` open, their closers close, string literals and a trailing `//`
- * comment are not read. `terminated` is true when a `;` came at depth 0.
+ * comment are not read. `terminated` is true when a `;` came at depth 0, or,
+ * with `blockEnds`, when a `{` opened at depth 0: that brace is a block body
+ * (a function, a branch), which is not part of the expression.
  */
-function scanDepth(text, depth) {
+function scanDepth(text, depth, blockEnds = false) {
   let quote = null;
   for (let i = 0; i < text.length; i++) {
     const ch = text[i];
@@ -324,6 +326,7 @@ function scanDepth(text, depth) {
     }
     if (ch === '"' || ch === "'" || ch === '`') quote = ch;
     else if (ch === '/' && text[i + 1] === '/') break;
+    else if (ch === '{' && blockEnds && depth === 0) return { depth, terminated: true };
     else if (ch === '(' || ch === '[' || ch === '{') depth += 1;
     else if (ch === ')' || ch === ']' || ch === '}') depth = Math.max(0, depth - 1);
     else if (ch === ';' && depth === 0) return { depth, terminated: true };
@@ -372,6 +375,53 @@ export function skipLeadingLines(reader, filePath, startLine) {
     }
     line += 1;
   }
+}
+
+/** Does this line end in something that makes the expression go on? */
+function endsWithContinuation(text) {
+  const code = text.replace(/\/\/.*$/, '').trimEnd();
+  return /(?:[.,\\+\-*/%&|^=<>?]|->|=>)$/.test(code);
+}
+
+/** Does the next non-blank line after `line` carry on the expression? */
+function nextLineContinues(reader, filePath, line, limit) {
+  for (let next = line + 1; next < limit; next++) {
+    const text = reader.line(filePath, next);
+    if (text === null) return false;
+    const trimmed = text.trim();
+    if (trimmed === '') continue;
+    return /^(?:\?\.|\.(?!\.)|&&|\|\||\+|\?|->|=>|\|)/.test(trimmed);
+  }
+  return false;
+}
+
+/**
+ * Scan the call expression that starts at `startLine` for one of `tokens`.
+ *
+ * A chain, a builder or a long argument list puts the callee's name several
+ * lines below the line an extractor cites. The expression is read until it
+ * ends: a `;` at depth 0, a block body opening at depth 0, or a line that
+ * leaves every bracket closed and neither ends in a continuation (`.`, `,`, an
+ * operator, `->`) nor is followed by one (`.foo()`, `&&`). Each line is checked
+ * for the token before its end is judged, so the line that ends the expression
+ * counts. Returns `{ status: 'found', line }`, `{ status: 'none' }` or
+ * `{ status: 'too-long' }` past `CONSTRUCT_SCAN_LINES`.
+ */
+export function findTokenInExpression(reader, filePath, startLine, tokens) {
+  let depth = 0;
+  const limit = startLine + CONSTRUCT_SCAN_LINES;
+  for (let line = startLine; line < limit; line++) {
+    const text = reader.line(filePath, line);
+    if (text === null) return { status: 'none' };
+    if (tokens.some((token) => token && text.includes(token))) return { status: 'found', line };
+    const scanned = scanDepth(text, depth, true);
+    depth = scanned.depth;
+    if (scanned.terminated) return { status: 'none' };
+    if (depth === 0 && !endsWithContinuation(text) && !nextLineContinues(reader, filePath, line, limit)) {
+      return { status: 'none' };
+    }
+  }
+  return { status: 'too-long' };
 }
 
 function sampler(limit) {
@@ -537,6 +587,11 @@ export function validateAgainstSource({ graph, reader, sampleLimit = 5 }) {
           found = findToken(reader, entry.file, lead.line, tokens, 0);
         } else if (lead.status === 'too-long') {
           tooLong = true;
+        }
+        if (found === null && edge.type === 'calls') {
+          const expression = findTokenInExpression(reader, entry.file, entry.line, tokens);
+          if (expression.status === 'found') found = expression.line;
+          else if (expression.status === 'too-long') tooLong = true;
         }
       }
       if (found !== null) {
