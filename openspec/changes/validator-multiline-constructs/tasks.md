@@ -6,8 +6,8 @@
 
 ## 2. 锚点与成员边
 
-- [ ] 2.1 在 `validate-graph.mjs` 加 `skipLeadingLines`（空行、注释、`@` / `#[` / C# 属性、括号配平、字符串内括号不计、`CONSTRUCT_SCAN_LINES`），锚点检查改为「起点 ±1 或前导行之后那一行」，过长标 `unverified` 并计 `constructTooLong`；验证 1.1 的锚点用例转绿、1.2 的锚点护栏仍绿
-- [ ] 2.2 证据检查对抽取器写的证据（`source !== 'model'`）先试原行再试前导行之后那一行，类型无关；验证 `contains` / `exports` / `implements` / `overrides` 的 1.1 用例转绿、`routes` 与带 `token` 的 `contains` 原用例不变
+- [x] 2.1 在 `validate-graph.mjs` 加 `skipLeadingLines`（空行、注释、`@` / `#[` / C# 属性、括号配平、字符串内括号不计、`CONSTRUCT_SCAN_LINES`），锚点检查改为「起点 ±1 或前导行之后那一行」，过长标 `unverified` 并计 `constructTooLong`；验证 1.1 的锚点用例转绿、1.2 的锚点护栏仍绿
+- [x] 2.2 证据检查对抽取器写的证据（`source !== 'model'`）先试原行再试前导行之后那一行，类型无关；验证 `contains` / `exports` / `implements` / `overrides` 的 1.1 用例转绿、`routes` 与带 `token` 的 `contains` 原用例不变
 
 ## 3. `calls` 的整条表达式
 
