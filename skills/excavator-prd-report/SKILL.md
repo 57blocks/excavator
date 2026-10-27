@@ -370,9 +370,9 @@ You merge the open items of an As-Is PRD.
 
 Your scope. Read only `$OUT/open-items/sources.json`; read no other file and no code. It holds a `digest` and a list of items. Each item has an `id`, the `feature` that asked it, and `item`, `known`, `searched`: the question, what is known and where it was searched.
 
-Group the items that ask the same question: answering one answers the others. Items about the same subject that ask different things are not grouped. Items in the same chapter can be grouped too. An item that matches no other is in no group.
+Group the items that ask the same question: answering one answers the others. Items about the same subject that ask different things are not grouped. Items that share only a missing piece of evidence, such as nothing found in the code or a gateway or deployment that is not visible, ask different questions. When in doubt, leave the items apart: a missed merge costs one row, a wrong merge puts a question under another question's answer. Items in the same chapter can be grouped too. An item that matches no other is in no group.
 
-For each group choose `keep`: the item whose text says the most (what is known and what was searched). Its text is shown for the whole group; the others are listed by feature only.
+For each group choose `keep`: the item whose text says the most (what is known and what was searched). Its text is shown for the whole group, and the items of the others are listed under it.
 
 Write only `$OUT/open-items/merged.json`, and nothing else anywhere, in this shape: `{"digest": "<the digest of sources.json, copied>", "groups": [{"keep": "<id>", "also": ["<id>", ...]}]}`. Write every id exactly as sources.json spells it, each id in at most one group, `also` non-empty, `keep` not in `also`, no other key. Write no text of your own: no item, summary or reason. With no group, write `"groups": []`.
 
