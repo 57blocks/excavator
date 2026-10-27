@@ -4,7 +4,9 @@
  * front-matter that matches the index, with the actors, permission roles,
  * flows and open items it declares matching its `###` headings and one `##`
  * heading (change prd-report-prd-shape, design D3), each actor one of the
- * index's actors (D12), a mermaid block, a
+ * index's actors (D12), in a flow or automated chapter only flows and the
+ * open items section as `###` headings, and that section one table of three
+ * columns (change prd-report-dedupe, design D2, D3; check-lane only, D4), a mermaid block, a
  * `<details>` evidence block and `path:line[-line]` anchors that resolve
  * inside the project, outside the directories that hold dependencies or
  * build output (D8); each finding needs a known class, no advice in its statement and
@@ -24,6 +26,7 @@ import { isObject, isString, isStringArray, readJson, writeJson } from './json-f
 import { findOnce, normalize } from './normalize.mjs';
 import { projectFiles, skippedDirectoryReason } from './project-files.mjs';
 import { projectRootProblem } from './project-root.mjs';
+import { isTableOf } from './table-shape.mjs';
 
 const cjk = (...points) => String.fromCodePoint(...points);
 
@@ -66,8 +69,13 @@ const DETAILS = /<details>[\s\S]*?<\/details>/g;
 export const chapterPath = (id) => `features/${id}.md`;
 export const findingsPath = (id) => `findings/${id}.json`;
 
-/** Problems of the declared structure: the lists of the front-matter against the body's headings (design D3). */
-function structureProblems(data, body, feature, actorNames) {
+/**
+ * Problems of the declared structure: the lists of the front-matter against the body's headings (design D3).
+ * With `laneChecks`, the two rules of change prd-report-dedupe (design D2, D3) run too: a flow or
+ * automated chapter holds only its flows and its open items section, and that section is one
+ * table of three columns. `openItemsText` is the section's text (see `splitChapter`).
+ */
+function structureProblems(data, body, feature, actorNames, { laneChecks, openItemsText }) {
   const problems = [];
   const headings = headingsOf(body);
   const sub = headings.filter((heading) => heading.level === 3).map((heading) => heading.text);
@@ -109,6 +117,19 @@ function structureProblems(data, body, feature, actorNames) {
     if (typeof title !== 'string' || !sub.includes(title)) problems.push(`open items heading "${title}" is not a ### heading of the chapter`);
     else if (sub.at(-1) !== title) problems.push(`open items heading "${title}" is not the last ### heading`);
   }
+  if (laneChecks) {
+    if (lists.flows && feature.kind !== 'reference') {
+      const openItems = Object.hasOwn(data, 'openItems') ? data.openItems : null;
+      for (const title of sub) {
+        if (!lists.flows.includes(title) && title !== openItems) {
+          problems.push(`### "${title}" is neither a listed flow nor the open items heading; a flow chapter holds only its flows and its open items`);
+        }
+      }
+    }
+    if (Object.hasOwn(data, 'openItems') && typeof data.openItems === 'string' && sub.at(-1) === data.openItems && !isTableOf(openItemsText, 3)) {
+      problems.push('the open items section is not one table of three columns (item, what is known, what was searched)');
+    }
+  }
   if (endsInsideFence(body)) problems.push('the chapter ends inside an open code fence; close it');
   const chapters = headings.filter((heading) => heading.level === 2).length;
   if (chapters !== 1 || headings[0]?.level !== 2) {
@@ -118,7 +139,7 @@ function structureProblems(data, body, feature, actorNames) {
 }
 
 /** Problems of the chapter file, and its counts. */
-function chapterProblems(text, index, feature, files) {
+function chapterProblems(text, index, feature, files, laneChecks) {
   const problems = [];
   const add = (problem) => problems.push(`${feature.id}: ${problem}`);
   const front = parseFrontMatter(text);
@@ -133,7 +154,9 @@ function chapterProblems(text, index, feature, files) {
     if (data.kind !== feature.kind) add(`front-matter kind is ${JSON.stringify(data.kind ?? null)}, not the index's ${feature.kind}`);
     if (data.chapter !== feature.chapter) add(`front-matter chapter is ${JSON.stringify(data.chapter ?? null)}, not the index's ${feature.chapter}`);
     if (!isStringArray(data.triggers)) add('front-matter triggers is not a list');
-    for (const problem of structureProblems(data, body, feature, isStringArray(index.actors) ? index.actors : [])) add(problem);
+    const split = splitChapter(text);
+    const openItemsText = split.ok ? split.openItems : null;
+    for (const problem of structureProblems(data, body, feature, isStringArray(index.actors) ? index.actors : [], { laneChecks, openItemsText })) add(problem);
   }
   const diagrams = (body.match(MERMAID) ?? []).length;
   if (diagrams === 0) add('no mermaid block');
@@ -229,9 +252,13 @@ function findingsProblems(value, feature, featureIds, files) {
  * The problems of one lane (pure apart from reading the project), its counts,
  * the chapter's split (null when it cannot be read or split; see
  * `splitChapter`), and the findings value with lines filled in when every
- * finding passed.
+ * finding passed. `laneChecks` is required: `check-lane` passes true to add the
+ * two chapter rules of change prd-report-dedupe (design D2, D3); `aggregate`'s
+ * re-check passes false, so a chapter verified under the older shape stays
+ * verified (design D4).
  */
-export function laneResult(outDir, index, feature, root) {
+export function laneResult(outDir, index, feature, root, { laneChecks }) {
+  if (typeof laneChecks !== 'boolean') throw new TypeError('laneResult needs { laneChecks: boolean }');
   const files = projectFiles(root);
   const problems = [];
   const counts = { diagrams: 0, evidence: 0, findings: { product: 0, technical: 0 } };
@@ -244,7 +271,7 @@ export function laneResult(outDir, index, feature, root) {
   if (existsSync(chapterFile)) {
     const read = readText(chapterFile);
     if (read.ok) {
-      const checked = chapterProblems(read.text, index, feature, files);
+      const checked = chapterProblems(read.text, index, feature, files, laneChecks);
       problems.push(...checked.problems);
       counts.diagrams = checked.diagrams;
       counts.evidence = checked.evidence;
@@ -298,7 +325,7 @@ export function checkLane(outDir, id, root) {
   if (rootProblem !== null) return { status: 1, lines: [rootProblem] };
   const feature = index.features.find((f) => isObject(f) && f.id === id);
   if (!feature) throw new UsageError(`feature ${id} is not in ${INDEX_FILE}`);
-  const result = laneResult(outDir, index, feature, root);
+  const result = laneResult(outDir, index, feature, root, { laneChecks: true });
   if (result.findings !== null) writeJson(join(outDir, findingsPath(id)), result.findings);
   const failed = result.problems.length > 0;
   // The result is recorded under the feature; aggregate keeps a recorded

@@ -169,7 +169,7 @@ export function makeSkeletonRun() {
 
   run.writeText('features/F1.md', run.readText('features/F1.md')
     .replace('chapter: 1', 'openItems: Open items\nchapter: 2')
-    .concat('\n### Open items\n\n| Item | Searched |\n|---|---|\n| Whether open orders expire | `src/orders/service.js`, the whole project |\n'));
+    .concat('\n### Open items\n\n| Item | What is known | What was searched |\n|---|---|---|\n| Whether open orders expire | The status never changes on its own | `src/orders/service.js`, the whole project |\n'));
   run.writeText('features/F2.md', run.readText('features/F2.md')
     .replace('chapter: 2', 'chapter: 3')
     .replace('flows: [Flow 1: Cancel an order]', 'flows: [Cancel an order, Cancel an order]')

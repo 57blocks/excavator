@@ -86,7 +86,7 @@ export function recomputeFeature(outDir, index, feature, root) {
     return { feature: { ...base, status: 'planned', failure: null }, chapter: null, findings: null, ranks: null, laneFindings: null };
   }
 
-  const lane = laneResult(outDir, index, feature, root);
+  const lane = laneResult(outDir, index, feature, root, { laneChecks: false });
   const counts = unrankedCounts({ ...lane.counts, verification: null });
   const laneFindings = lane.findings;
   const recorded = feature.failure?.step === 'check-lane' ? feature.failure.reasons : [];

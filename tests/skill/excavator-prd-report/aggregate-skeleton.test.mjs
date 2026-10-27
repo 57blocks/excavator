@@ -118,9 +118,9 @@ describe('aggregate: terminology, roles and open items (D4)', () => {
     expect(run.readText('tables/open-items.md')).toBe([
       '### F1 Order placement',
       '',
-      '| Item | Searched |',
-      '|---|---|',
-      '| Whether open orders expire | `src/orders/service.js`, the whole project |',
+      '| Item | What is known | What was searched |',
+      '|---|---|---|',
+      '| Whether open orders expire | The status never changes on its own | `src/orders/service.js`, the whole project |',
       '',
     ].join('\n'));
   });

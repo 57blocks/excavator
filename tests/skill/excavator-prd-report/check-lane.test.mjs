@@ -18,6 +18,8 @@ function laneRun() {
   cleanups.push(run.cleanup);
   return run;
 }
+// The open items section of change prd-report-dedupe, design D3: one table of three columns.
+const OPEN_ITEMS_TABLE = '| Item | What is known | What was searched |\n|---|---|---|\n| Refund rule | Not in the order code | the whole project |\n';
 const reasons = (out) => out.stdout.split('\n').filter(Boolean);
 const failedReasons = (out) => reasons(out).filter((line) => !line.endsWith(': ok') && !line.startsWith('Next: '));
 
@@ -292,7 +294,7 @@ describe('prd.mjs check-lane: the declared structure of a chapter (D3)', () => {
       .replace('chapter: 1', 'openItems: Open items\nchapter: 1')
       .replace('- "Flow 1: Place an order"', '- "Flow 1: Place an order"\n  - "Flow 2: Place a repeat order"')
       .replace('<details>', '### Flow 2: Place a repeat order\n\nA repeat order copies the last one.\n\n<details>')
-      .concat('\n### Open items\n\n| Item | Searched |\n|---|---|\n| Refund rule | the whole project |\n'));
+      .concat(`\n### Open items\n\n${OPEN_ITEMS_TABLE}`));
     const out = check(run, 'F1');
     expect(out.status, out.stdout).toBe(0);
     expect(reasons(out)).toEqual(['F1: ok']);
@@ -382,7 +384,7 @@ describe('prd.mjs check-lane: the declared structure of a chapter (D3)', () => {
       edit(run, 'F1', (text) => text
         .replace('chapter: 1', 'openItems: Open items\nchapter: 1')
         .replace('- "Flow 1: Place an order"', '- "Flow 1: Place an order"\n  - "Open items"')
-        .concat('\n### Open items\n\nNothing searched yet.\n'));
+        .concat(`\n### Open items\n\n${OPEN_ITEMS_TABLE}`));
       const out = check(run, 'F1');
       expect(out.status).toBe(1);
       expect(failedReasons(out)).toEqual(['F1: flow "Open items" is the open items heading; list only the flows']);
@@ -424,7 +426,7 @@ describe('prd.mjs check-lane: the declared structure of a chapter (D3)', () => {
 
   it('refuses a flow or automated feature that lists no flow', () => {
     const run = laneRun();
-    edit(run, 'F1', (text) => text.replace(/flows:\n  - .*\n/, 'flows: []\n'));
+    edit(run, 'F1', (text) => text.replace(/flows:\n  - .*\n/, 'flows: []\n').replace('### Flow 1: Place an order\n\n', ''));
     expect(failedReasons(check(run, 'F1'))).toEqual(['F1: a flow feature lists no flow']);
     setKind(run, 'F1', 'automated');
     expect(failedReasons(check(run, 'F1'))).toEqual(['F1: an automated feature lists no flow']);
@@ -452,13 +454,16 @@ describe('prd.mjs check-lane: the declared structure of a chapter (D3)', () => {
     const run = laneRun();
     edit(run, 'F1', (text) => text
       .replace('chapter: 1', 'openItems: Open items\nchapter: 1')
-      .replace('<details>', '### Open items\n\nNothing searched yet.\n\n<details>'));
+      .concat(`\n### Open items\n\n${OPEN_ITEMS_TABLE}`));
     const out = check(run, 'F1');
     expect(out.status).toBe(0);
     edit(run, 'F1', (text) => text.concat('\n### Later\n\nAfter the open items.\n'));
     const second = check(run, 'F1');
     expect(second.status).toBe(1);
-    expect(failedReasons(second)).toEqual(['F1: open items heading "Open items" is not the last ### heading']);
+    expect(failedReasons(second)).toEqual([
+      'F1: open items heading "Open items" is not the last ### heading',
+      'F1: ### "Later" is neither a listed flow nor the open items heading; a flow chapter holds only its flows and its open items',
+    ]);
   });
 
   it('refuses a chapter with two ## headings, and one with none', () => {
@@ -471,8 +476,118 @@ describe('prd.mjs check-lane: the declared structure of a chapter (D3)', () => {
 
   it('refuses a chapter whose first heading is not its ## heading', () => {
     const run = laneRun();
-    edit(run, 'F1', (text) => text.replace('## Order placement\n', '### Flow 0: Early\n\n## Order placement\n'));
+    edit(run, 'F1', (text) => text.replace('## Order placement\n', '### Flow 0: Early\n\n## Order placement\n').replace(/flows:\n  - "Flow 1: Place an order"\n/, 'flows:\n  - "Flow 1: Place an order"\n  - "Flow 0: Early"\n'));
     expect(failedReasons(check(run, 'F1'))).toEqual(['F1: the chapter has 1 ## headings; it has one, ## Order placement, as its first heading']);
+  });
+});
+
+// Change prd-report-dedupe, design D2, D3 and D4; oracle O2: each new problem
+// line has a test of its own, and a fully valid chapter passes.
+const NOT_A_FLOW = (id, title) => `${id}: ### "${title}" is neither a listed flow nor the open items heading; a flow chapter holds only its flows and its open items`;
+const NOT_A_TABLE = (id) => `${id}: the open items section is not one table of three columns (item, what is known, what was searched)`;
+const withOpenItems = (section) => (text) => text.replace('chapter: 1', 'openItems: Open items\nchapter: 1').concat(`\n### Open items\n\n${section}`);
+
+describe('prd.mjs check-lane: a flow chapter holds only its flows (D2)', () => {
+  it('refuses a ### Permissions section of a flow chapter, naming the heading', () => {
+    const run = laneRun();
+    edit(run, 'F1', (text) => text.replace('<details>', '### Permissions\n\n| Role | Place |\n|---|---|\n| admin | yes |\n\n<details>'));
+    const out = check(run, 'F1');
+    expect(out.status).toBe(1);
+    expect(failedReasons(out)).toEqual([NOT_A_FLOW('F1', 'Permissions')]);
+  });
+
+  it('refuses a ### Overview section of an automated chapter, one line per offending heading', () => {
+    const run = laneRun();
+    setKind(run, 'F2', 'automated');
+    edit(run, 'F2', (text) => text.replace('### Flow 1: Cancel an order', '### Overview\n\nWhat the feature does.\n\n### Flow 1: Cancel an order\n\n### Configuration\n\nA setting.'));
+    const out = check(run, 'F2');
+    expect(out.status).toBe(1);
+    expect(failedReasons(out)).toEqual([NOT_A_FLOW('F2', 'Overview'), NOT_A_FLOW('F2', 'Configuration')]);
+  });
+
+  it('does not take a heading inside a code fence for a section', () => {
+    const run = laneRun();
+    edit(run, 'F1', (text) => text.replace('sequenceDiagram', '### Overview\n  sequenceDiagram'));
+    expect(check(run, 'F1').status).toBe(0);
+  });
+
+  it('passes a chapter with an introduction, its flows and a three column open items table', () => {
+    const run = laneRun();
+    edit(run, 'F1', (text) => withOpenItems(OPEN_ITEMS_TABLE)(text
+      .replace('A customer fills in', 'The flowchart of the feature is below.\n\n```mermaid\nflowchart LR\n  A --> B\n```\n\nA customer fills in')
+      .replace('- "Flow 1: Place an order"', '- "Flow 1: Place an order"\n  - "Flow 2: Place a repeat order"')
+      .replace('<details>', '### Flow 2: Place a repeat order\n\nA repeat order copies the last one.\n\n<details>')));
+    const out = check(run, 'F1');
+    expect(out.status, out.stdout).toBe(0);
+  });
+
+  it('does not check a reference chapter, which holds the matrix and the dictionary', () => {
+    const run = makeSkeletonRun();
+    cleanups.push(run.cleanup);
+    edit(run, 'F3', (text) => text.concat('\n### Permissions\n\nWho may do what.\n\n### Field dictionary\n\nThe fields.\n'));
+    const out = check(run, 'F3');
+    expect(out.status, out.stdout).toBe(0);
+  });
+});
+
+describe('prd.mjs check-lane: the open items section is one table of three columns (D3)', () => {
+  it('refuses open items written as a list', () => {
+    const run = laneRun();
+    edit(run, 'F1', withOpenItems('- Refund rule: not in the order code.\n- Expiry: unknown.\n'));
+    const out = check(run, 'F1');
+    expect(out.status).toBe(1);
+    expect(failedReasons(out)).toEqual([NOT_A_TABLE('F1')]);
+  });
+
+  it('refuses a table of four columns, and one of two', () => {
+    const run = laneRun();
+    edit(run, 'F1', withOpenItems('| Item | What is known | What was searched | Owner |\n|---|---|---|---|\n| Refund rule | x | y | z |\n'));
+    expect(failedReasons(check(run, 'F1'))).toEqual([NOT_A_TABLE('F1')]);
+    const two = laneRun();
+    edit(two, 'F1', withOpenItems('| Item | Searched |\n|---|---|\n| Refund rule | the whole project |\n'));
+    expect(failedReasons(check(two, 'F1'))).toEqual([NOT_A_TABLE('F1')]);
+  });
+
+  it('refuses a table followed by a paragraph, with or without a blank line between', () => {
+    for (const gap of ['\n', '']) {
+      const run = laneRun();
+      edit(run, 'F1', withOpenItems(`${OPEN_ITEMS_TABLE}${gap}All other items are settled.\n`));
+      expect(failedReasons(check(run, 'F1')), JSON.stringify(gap)).toEqual([NOT_A_TABLE('F1')]);
+    }
+  });
+
+  it('refuses an empty section, a table without a data row, and one without a delimiter row', () => {
+    for (const section of ['', '| Item | What is known | What was searched |\n|---|---|---|\n', '| Item | What is known | What was searched |\n| Refund rule | x | y |\n']) {
+      const run = laneRun();
+      edit(run, 'F1', withOpenItems(section));
+      expect(failedReasons(check(run, 'F1')), JSON.stringify(section)).toEqual([NOT_A_TABLE('F1')]);
+    }
+  });
+
+  it('counts columns by unescaped pipes: an escaped pipe in a cell stays in its cell, and the outer pipes are optional', () => {
+    const run = laneRun();
+    edit(run, 'F1', withOpenItems('| Item | What is known | What was searched |\n|:---|---|---:|\n| Is a \\| b a rule | x | `y` |\n'));
+    expect(check(run, 'F1').status).toBe(0);
+    const bare = laneRun();
+    edit(bare, 'F1', withOpenItems('Item | What is known | What was searched\n---|---|---\nRefund rule | x | y\n'));
+    expect(check(bare, 'F1').status).toBe(0);
+    const split = laneRun();
+    edit(split, 'F1', withOpenItems('| Item | What is known | What was searched |\n|---|---|---|\n| Is a | b a rule | x | y |\n'));
+    expect(failedReasons(check(split, 'F1'))).toEqual([NOT_A_TABLE('F1')]);
+  });
+
+  it('passes the chapter of the skeleton run, whose open items are a table of three columns', () => {
+    const run = makeSkeletonRun();
+    cleanups.push(run.cleanup);
+    const out = check(run, 'F1');
+    expect(out.status, out.stdout).toBe(0);
+  });
+
+  it('checks a reference chapter\'s open items table too', () => {
+    const run = makeSkeletonRun();
+    cleanups.push(run.cleanup);
+    edit(run, 'F3', (text) => text.replace('chapter: 1', 'openItems: Open items\nchapter: 1').concat('\n### Open items\n\n- Unknown roles.\n'));
+    expect(failedReasons(check(run, 'F3'))).toEqual([NOT_A_TABLE('F3')]);
   });
 });
 

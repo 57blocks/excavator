@@ -694,7 +694,7 @@ describe('excavator-prd-report skill: the structure a chapter declares (D3, D8)'
       '`actors` and `permissionRoles` are two lists with no name in common',
       '`flows` holds the exact text of the `###` heading of each flow',
       'at least one flow for a `flow` or `automated` feature, none (`flows: []`) for a `reference` feature',
-      '`openItems` is the text of the last `###` heading of the chapter, which holds its open items as a table or a list; leave the key out when the chapter has none',
+      '`openItems` is the text of the last `###` heading of the chapter, which holds its open items; leave the key out when the chapter has none',
     ]) expect(prompt, rule).toContain(rule);
   });
 
@@ -707,7 +707,7 @@ describe('excavator-prd-report skill: the structure a chapter declares (D3, D8)'
     expect(Object.keys(value)).toEqual(KEYS);
     const front = KEYS.map((key) => `${key}:${value[key].startsWith('\n') ? '' : ' '}${value[key]}`).join('\n');
     const body = run.readText('features/F1.md').split('\n---\n')[1];
-    run.writeText('features/F1.md', `---\n${front}\n---\n${body}\n### Open items\n\n| Item | Searched |\n|---|---|\n| x | the whole project |\n`);
+    run.writeText('features/F1.md', `---\n${front}\n---\n${body}\n### Open items\n\n| Item | What is known | What was searched |\n|---|---|---|\n| x | y | the whole project |\n`);
     expect(lines(checkLane(run, 'F1'))).toEqual(['F1: ok']);
     editChapter(run, 'F1', (text) => text.replace('chapter: 1', 'roles: [customer]\nchapter: 1'));
     const refused = checkLane(run, 'F1');
@@ -722,6 +722,37 @@ describe('excavator-prd-report skill: the structure a chapter declares (D3, D8)'
     const out = checkLane(run, 'F1');
     expect(out.status).toBe(1);
     expect(lines(out)).toContain('F1: the chapter has 2 ## headings; it has one, ## Order placement, as its first heading');
+  });
+
+  // Change prd-report-dedupe, design D2, D3: the prompt quotes the two lines check-lane prints, and no longer asks for a permissions table per feature.
+  it('quotes the two check lines of the new chapter shape exactly as check-lane prints them', () => {
+    const run = laneRun();
+    editChapter(run, 'F1', (text) => text
+      .replace('chapter: 1', 'openItems: Open items\nchapter: 1')
+      .replace('<details>', '### Permissions\n\nWho may place an order.\n\n<details>')
+      .concat('\n### Open items\n\n- Refund rule: unknown.\n'));
+    const out = checkLane(run, 'F1');
+    expect(out.status).toBe(1);
+    const printed = lines(out).filter((line) => line.startsWith('F1: ')).map((line) => line.slice('F1: '.length));
+    expect(printed).toHaveLength(2);
+    const prompt = flat(lanePrompt);
+    for (const line of printed) expect(prompt, line).toContain(line);
+    expect(printed[0]).toBe('### "Permissions" is neither a listed flow nor the open items heading; a flow chapter holds only its flows and its open items');
+    expect(printed[1]).toBe('the open items section is not one table of three columns (item, what is known, what was searched)');
+  });
+
+  it('puts the role matrix, the dictionaries and shared settings in the reference chapter, and asks each flow only for who starts it and what each role sees', () => {
+    const prompt = flat(lanePrompt);
+    expect(prompt).not.toContain('a role-by-capability table for the feature');
+    for (const rule of [
+      'in each flow, which roles may start it and what each sees',
+      'the role × capability matrix, the dictionary tables and the settings several flows share belong to the `reference` chapter of this PRD (a feature of kind `reference` in the list of other features); a flow chapter names that chapter instead of repeating them',
+      'In a `flow` or `automated` chapter every `###` section is one flow listed in `flows`, except the last one, the open items section',
+      'The text under `## <name>` before the first `###` is the chapter\'s introduction: the feature\'s flowchart, a short overview and the hand-overs to other features',
+      'A section that is not a flow (overview, permissions, dictionary, configuration) fails the check',
+      'an overview, a configuration, a permissions or a findings section is not a flow',
+      'The open items section holds one table of three columns — the item, what is known, what was searched — with its header in `$LANGUAGE` and nothing else',
+    ]) expect(prompt, rule).toContain(rule);
   });
 
   it('says what a reference chapter holds and that flow chapters refer to it', () => {
