@@ -14,7 +14,8 @@
  *      class/struct/def keyword). Otherwise: gap `anchor-mismatch`, node
  *      `verification: "contradicted"`. Leading lines longer than the scan bound
  *      leave the node `unverified` under `construct-too-long`, never confirmed and
- *      never contradicted. An anchor is exact when the name is on `lineRange[0]`
+ *      never contradicted, and so does a declaration head that passes it. A
+ *      declaration whose modifiers wrap onto a line of their own is read to its name. An anchor is exact when the name is on `lineRange[0]`
  *      itself or on the first line after the leading lines; one that only passes
  *      within one line is still an anchor but is not exact.
  *   2. evidence — for every `extracted` edge, the cited line must contain the
@@ -332,6 +333,8 @@ const LEADING_SYNTAX = Object.freeze({
     '.java', '.kt', '.kts', '.scala', '.groovy', '.swift', '.dart', '.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs',
     '.cs', '.rs', '.php', '.go', '.c', '.h', '.cc', '.cpp', '.cxx', '.hpp', '.hh', '.m', '.mm',
   ]),
+  // Declaration heads that wrap their modifiers onto a line before the name: the languages that have these modifiers
+  wrappedHead: new Set(['.java', '.cs', '.kt', '.kts', '.scala', '.groovy', '.swift', '.dart', '.ts', '.tsx', '.php']),
 });
 
 function leadingSyntax(filePath) {
@@ -342,6 +345,9 @@ function leadingSyntax(filePath) {
     hashAttribute: LEADING_SYNTAX.hashAttribute.has(ext),
     hashComment: LEADING_SYNTAX.hashComment.has(ext),
     slashComment: LEADING_SYNTAX.slashComment.has(ext),
+    wrappedHead: LEADING_SYNTAX.wrappedHead.has(ext),
+    // `'a` is a lifetime in Rust, not the start of a string
+    apostropheQuote: ext !== '.rs',
   };
 }
 
@@ -360,7 +366,7 @@ function readBrackets(text, depth, syntax) {
       else if (ch === quote) quote = null;
       continue;
     }
-    if (ch === '"' || ch === "'" || ch === '`') quote = ch;
+    if (ch === '"' || (ch === "'" && syntax.apostropheQuote) || ch === '`') quote = ch;
     else if (syntax.slashComment && ch === '/' && text[i + 1] === '/') break;
     else if (syntax.hashComment && ch === '#') break;
     else if (ch === '(' || ch === '[' || ch === '{') depth += 1;
@@ -451,6 +457,46 @@ export function skipLeadingLines(reader, filePath, startLine) {
     if (text === null) return { status: 'none' };
     if (!onlyLeading(text)) return { status: 'ok', line };
   }
+}
+
+/**
+ * The words a declaration may start with before its type and name, and that
+ * no statement starts with. A wrapped declaration head begins with one of these
+ * (`public void` on one line, the name on the next). Words that also begin
+ * statements are left out on purpose (`export default router`, `const x`,
+ * `static x`, `async`): reading one of those as a head would confirm a wrong
+ * line, while leaving a rare wrapped head out only reports a contradiction.
+ */
+const DECLARATION_MODIFIERS = Object.freeze(new Set([
+  'public', 'private', 'protected', 'internal', 'final', 'abstract', 'sealed', 'open',
+  'override', 'virtual', 'synchronized', 'native', 'readonly', 'partial',
+]));
+
+/** A line of words, types and generics only: no parenthesis, brace, semicolon or `=`. */
+function onlyWords(text) {
+  return /^[\w\s<>,.?[\]@]+$/.test(text) && text.trim() !== '';
+}
+
+/** Does this line start a declaration head that has not finished yet? */
+function startsUnfinishedHead(text) {
+  return onlyWords(text) && DECLARATION_MODIFIERS.has(text.trim().split(/\s+/)[0]);
+}
+
+/**
+ * Look for `tokens` on the declaration head that starts at `line`: that line
+ * and, when it starts a head that has not finished, the lines after it while
+ * each holds only words, types and generics. Returns `{ status: 'found', line }`,
+ * `{ status: 'none' }` or `{ status: 'too-long' }` past `CONSTRUCT_SCAN_LINES`.
+ */
+function findTokenInDeclarationHead(reader, filePath, line, tokens) {
+  const limit = line + CONSTRUCT_SCAN_LINES;
+  for (let n = line; n < limit; n++) {
+    const text = reader.line(filePath, n);
+    if (text === null) return { status: 'none' };
+    if (tokens.some((token) => token && text.includes(token))) return { status: 'found', line: n };
+    if (n === line ? !startsUnfinishedHead(text) : !onlyWords(text)) return { status: 'none' };
+  }
+  return { status: 'too-long' };
 }
 
 function sampler(limit) {
@@ -551,13 +597,21 @@ export function validateAgainstSource({ graph, reader, sampleLimit = 5 }) {
     let exact = findToken(reader, node.filePath, startLine, tokens, 0) !== null;
     if (!exact) {
       const lead = skipLeadingLines(reader, node.filePath, startLine);
+      let headTooLong = false;
       if (lead.status === 'ok') {
-        const leadHit = findToken(reader, node.filePath, lead.line, tokens, 0);
+        let leadHit = findToken(reader, node.filePath, lead.line, tokens, 0);
+        if (leadHit === null && leadingSyntax(node.filePath).wrappedHead) {
+          // The declaration may itself wrap: `public void` on one line, the name on the next.
+          const head = findTokenInDeclarationHead(reader, node.filePath, lead.line, tokens);
+          if (head.status === 'found') leadHit = head.line;
+          else if (head.status === 'too-long') headTooLong = true;
+        }
         if (leadHit !== null) {
           exact = true;
           hit = hit ?? leadHit;
         }
-      } else if (lead.status === 'too-long' && hit === null) {
+      }
+      if ((lead.status === 'too-long' || headTooLong) && hit === null) {
         counts.constructTooLong += 1;
         node.verification = 'unverified';
         samples.add('construct-too-long', `${node.filePath}:${startLine} ${node.id}`);
@@ -733,7 +787,7 @@ export function validateAgainstSource({ graph, reader, sampleLimit = 5 }) {
   addGap('source-missing', counts.sourceMissing,
     `${counts.sourceMissing} check(s) skipped because the source file could not be read`);
   addGap('construct-too-long', counts.constructTooLong,
-    `${counts.constructTooLong} check(s) left unverified because the leading lines passed ${CONSTRUCT_SCAN_LINES} lines`);
+    `${counts.constructTooLong} check(s) left unverified because the leading lines or a declaration head passed ${CONSTRUCT_SCAN_LINES} lines`);
   addGap('path-out-of-scope', counts.pathOutOfScope,
     `${counts.pathOutOfScope} path(s) named outside the project root were refused, not read`);
   gaps.sort(compareGaps);

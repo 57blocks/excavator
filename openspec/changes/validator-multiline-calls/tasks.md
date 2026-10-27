@@ -1,15 +1,15 @@
 ## 1. 先验装置（先红）
 
-- [ ] 1.1 新建 `tests/skill/excavator/test_validate_graph_multiline_calls.test.mjs`，写夹具与用例：Java 行首点的链式调用、Go 行尾点的链式调用、10 行 builder 链、链中间夹 lambda 块后被调用者在块之后（`.map(x -> {…}).collect(…)`）、被调用者在顶层 `{` 同一行、带注解和不带注解的折行声明头（`public void` / `private void` 一行，名字下一行）、多行修饰符的头（`public static final` / `int` / `LIMIT = 4;`）。先在未改代码上跑，确认这些误报用例红、护栏用例绿，证明装置看得见（记录失败输出）。红只在本地确认，不单独提交
-- [ ] 1.2 写护栏：被调用者只在下一条语句里、被调用者根本不在表达式里、证据行指向函数体或分支的 `{` 而被调用者只在体内、模型引用的证据、带自己 `token` 的证据、过长表达式与过长声明头。它们在新旧代码上都必须按期望报出
-- [ ] 1.3 写按语言的表：
+- [x] 1.1 新建 `tests/skill/excavator/test_validate_graph_multiline_calls.test.mjs`，写夹具与用例：Java 行首点的链式调用、Go 行尾点的链式调用、10 行 builder 链、链中间夹 lambda 块后被调用者在块之后（`.map(x -> {…}).collect(…)`）、被调用者在顶层 `{` 同一行、带注解和不带注解的折行声明头（`public void` / `private void` 一行，名字下一行）、多行修饰符的头（`public static final` / `int` / `LIMIT = 4;`）。先在未改代码上跑，确认这些误报用例红、护栏用例绿，证明装置看得见（记录失败输出）。红只在本地确认，不单独提交
+- [x] 1.2 写护栏：被调用者只在下一条语句里、被调用者根本不在表达式里、证据行指向函数体或分支的 `{` 而被调用者只在体内、模型引用的证据、带自己 `token` 的证据、过长表达式与过长声明头。它们在新旧代码上都必须按期望报出
+- [x] 1.3 写按语言的表：
   - **不是声明头**：各语言的语句形状（`import os`、`return x`、`pass`、`export default router`、`export const router`、`const router`、`static x`、`async`、`count--`、`val x: String?`、`break;`、`else`），每行写两遍再接目标声明，期望全部不被当作声明头；
   - **不是续行**：行尾 `,`、`++`、`--`、`*`、可空类型 `?`、块注释结尾，下一行含被调用者，期望全部被报出（一行一个用例）；
   - **没有这种语法的语言**：Python、Ruby、Go 与未识别的文件里，`public` 加下一行的名字不是声明头；Python、Ruby 文件里，被调用者在下一行的 `calls` 边被报出
 
 ## 2. 折行声明头
 
-- [ ] 2.1 在 `validate-graph.mjs` 加 `DECLARATION_MODIFIERS`、声明头的语言表、`findTokenInDeclarationHead`，锚点检查在跳过前导行之后调用，命中即精确，进 `exactAnchors`；过长标 `unverified`。验证 1.1 的声明头用例、1.3 的「不是声明头」与「没有这种语法的语言」转绿，既有 `test_validate_graph_leading_lines.test.mjs` 与 `test_validate_graph.test.mjs` 全绿
+- [x] 2.1 在 `validate-graph.mjs` 加 `DECLARATION_MODIFIERS`、声明头的语言表、`findTokenInDeclarationHead`，锚点检查在跳过前导行之后调用，命中即精确，进 `exactAnchors`；过长标 `unverified`。验证 1.1 的声明头用例、1.3 的「不是声明头」与「没有这种语法的语言」转绿，既有 `test_validate_graph_leading_lines.test.mjs` 与 `test_validate_graph.test.mjs` 全绿
 
 ## 3. `calls` 的整条表达式
 
