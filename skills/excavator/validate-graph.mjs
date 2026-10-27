@@ -310,10 +310,40 @@ export function findTokenInImportStatement(reader, filePath, lineNumber, tokens,
 }
 
 /**
- * Advance `depth` over one line of an annotation: `(`, `[` and `{` open, their
- * closers close, string literals and a trailing `//` comment are not read.
+ * Which leading-line syntaxes a language has, by the extension of its files.
+ * An annotation, an attribute and a comment each exist in some languages only,
+ * and the same text is a statement in others: `@log.info(item)` is an instance
+ * variable in Ruby, `[a, b] = [b, a]` a swap in JavaScript and Python, `@name`
+ * an error-suppressing call in PHP. A file whose language is not listed has no
+ * annotation or attribute syntax here, which only reports a contradiction
+ * where an annotation is skipped in other languages; the universal comment
+ * forms (line comments, block comments, a star-prefixed line) and blank lines
+ * are always read.
  */
-function scanDepth(text, depth) {
+const LEADING_SYNTAX = Object.freeze({
+  at: new Set(['.java', '.kt', '.kts', '.scala', '.groovy', '.swift', '.dart', '.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs', '.py', '.pyi']),
+  bracketAttribute: new Set(['.cs']),
+  hashAttribute: new Set(['.rs', '.php']),
+  hashComment: new Set(['.py', '.pyi', '.rb', '.sh', '.bash', '.pl', '.pm', '.r', '.ex', '.exs']),
+});
+
+function leadingSyntax(filePath) {
+  const ext = extname(filePath).toLowerCase();
+  return {
+    at: LEADING_SYNTAX.at.has(ext),
+    bracketAttribute: LEADING_SYNTAX.bracketAttribute.has(ext),
+    hashAttribute: LEADING_SYNTAX.hashAttribute.has(ext),
+    hashComment: LEADING_SYNTAX.hashComment.has(ext),
+  };
+}
+
+/**
+ * Read `text` from an opening bracket at `depth` until the brackets close:
+ * `(`, `[` and `{` open, their closers close, string literals and a `//`
+ * comment are not read. Returns the depth at the end of the text and the index
+ * just after the closing character, or -1 while they are still open.
+ */
+function readBrackets(text, depth) {
   let quote = null;
   for (let i = 0; i < text.length; i++) {
     const ch = text[i];
@@ -325,64 +355,104 @@ function scanDepth(text, depth) {
     if (ch === '"' || ch === "'" || ch === '`') quote = ch;
     else if (ch === '/' && text[i + 1] === '/') break;
     else if (ch === '(' || ch === '[' || ch === '{') depth += 1;
-    else if (ch === ')' || ch === ']' || ch === '}') depth = Math.max(0, depth - 1);
+    else if ((ch === ')' || ch === ']' || ch === '}') && depth > 0) {
+      depth -= 1;
+      if (depth === 0) return { depth, index: i + 1 };
+    }
   }
-  return depth;
-}
-
-/** Does this trimmed line open an annotation, decorator or attribute? */
-function opensAnnotation(trimmed) {
-  // `@interface` declares a type, and `@name = value` or `@@name = value` assigns an instance or class variable.
-  if (trimmed.startsWith('@')) return !/^@interface\b/.test(trimmed) && !/^@@?[\w.]+\s*(?:=|\+=|-=|\|\|=|&&=)/.test(trimmed);
-  if (trimmed.startsWith('#[') || trimmed.startsWith('#![')) return true;
-  // A C# attribute opens with `[Name(`, `[Name]` or `[Name,`; the caller checks
-  // that it closes with `]`, which a row of an array literal never does.
-  return /^\[\s*[A-Za-z_][\w.]*\s*(?:\(|\]|,)/.test(trimmed);
+  return { depth, index: -1 };
 }
 
 /**
  * The first line of the construct that starts at `startLine`, past its
- * leading lines: blank lines, comments, and annotations, decorators or
- * attributes (an argument block may span many lines). It only moves forward
- * and stops at the first line that is none of those, so a line of code, or a
- * declaration of another name, is never skipped. Returns
- * `{ status: 'ok', line }`, `{ status: 'too-long' }` when the leading lines
- * pass `CONSTRUCT_SCAN_LINES`, or `{ status: 'none' }` at the end of the file.
+ * leading lines. A leading line holds nothing but blank space, comments, and
+ * annotations, decorators or attributes (whose arguments may span many lines).
+ * A line that holds anything else once those are read off its start is the
+ * start of the construct: a statement of the language, an annotation followed
+ * by a declaration on the same line, a comment followed by code, an array row
+ * after a bracket. It only moves forward, so a line of code is never skipped.
+ * Returns `{ status: 'ok', line }`, `{ status: 'too-long' }` when the leading
+ * lines pass `CONSTRUCT_SCAN_LINES`, or `{ status: 'none' }` at the end of the
+ * file.
  */
 export function skipLeadingLines(reader, filePath, startLine) {
-  let line = startLine;
-  let depth = 0;
+  const syntax = leadingSyntax(filePath);
+  let depth = 0; // brackets of an annotation that is still open from an earlier line
   let inBlockComment = false;
-  let bracketOpenedAt = null; // the line a `[...]` or `#[...]` attribute opened on, while it is open
+
+  // Reads leading constructs off the start of `text`; true when nothing else is on the line.
+  const onlyLeading = (text) => {
+    let rest = text;
+    let atStart = true;
+    for (;;) {
+      if (inBlockComment) {
+        const end = rest.indexOf('*/');
+        if (end < 0) return true;
+        inBlockComment = false;
+        rest = rest.slice(end + 2);
+        atStart = false;
+        continue;
+      }
+      if (depth > 0) {
+        const read = readBrackets(rest, depth);
+        depth = read.depth;
+        if (read.index < 0) return true;
+        rest = rest.slice(read.index);
+        atStart = false;
+        continue;
+      }
+      rest = rest.trimStart();
+      if (rest === '' || rest.startsWith('//')) return true;
+      if (syntax.hashComment && /^#(?:\s|$|!|#)/.test(rest)) return true;
+      // the end of a block comment may be followed by code on the same line
+      if (atStart && rest.startsWith('*/')) {
+        rest = rest.slice(2);
+        atStart = false;
+        continue;
+      }
+      // a star-prefixed line continues a block comment (`*p = 1;` is a statement)
+      if (atStart && /^\*(?:\s|$)/.test(rest)) return true;
+      if (rest.startsWith('/*')) {
+        const end = rest.indexOf('*/', 2);
+        if (end < 0) {
+          inBlockComment = true;
+          return true;
+        }
+        rest = rest.slice(end + 2);
+        atStart = false;
+        continue;
+      }
+      let brackets = null;
+      if (syntax.at && rest.startsWith('@') && !/^@interface\b/.test(rest)
+        && !/^@@?[\w.]+\s*(?:=|\+=|-=|\|\|=|&&=)/.test(rest)) {
+        // `@interface` declares a type, and `@name = value` assigns a variable
+        const name = /^@+[\w.:]+/.exec(rest);
+        if (name === null) return false;
+        rest = rest.slice(name[0].length).trimStart();
+        atStart = false;
+        if (!rest.startsWith('(')) continue;
+        brackets = rest;
+      } else if (syntax.hashAttribute && (rest.startsWith('#[') || rest.startsWith('#!['))) {
+        brackets = rest.slice(rest.indexOf('['));
+      } else if (syntax.bracketAttribute && /^\[\s*[A-Za-z_]/.test(rest)) {
+        brackets = rest;
+      } else {
+        return false;
+      }
+      const read = readBrackets(brackets, 0);
+      depth = read.depth;
+      if (read.index < 0) return true;
+      rest = brackets.slice(read.index);
+      atStart = false;
+    }
+  };
+
   const limit = startLine + CONSTRUCT_SCAN_LINES;
-  for (;;) {
+  for (let line = startLine; ; line++) {
     if (line >= limit) return { status: 'too-long' };
     const text = reader.line(filePath, line);
     if (text === null) return { status: 'none' };
-    const trimmed = text.trim();
-    if (depth > 0) {
-      depth = scanDepth(text, depth);
-      // A bracket attribute ends with `]`. One that does not (`[make(1), 2],`)
-      // was a row of an array literal, so the construct starts where it opened.
-      if (depth === 0 && bracketOpenedAt !== null) {
-        if (!trimmed.endsWith(']')) return { status: 'ok', line: bracketOpenedAt };
-        bracketOpenedAt = null;
-      }
-    } else if (inBlockComment) {
-      if (trimmed.includes('*/')) inBlockComment = false;
-    } else if (trimmed === '' || trimmed.startsWith('//') || /^\*(?:\s|\/|$)/.test(trimmed) || /^#(?:\s|$|!|#)/.test(trimmed)) {
-      // a comment or blank line (`*p = 1;` is a statement, not a comment's continuation)
-    } else if (trimmed.startsWith('/*')) {
-      if (!trimmed.includes('*/', 2)) inBlockComment = true;
-    } else if (opensAnnotation(trimmed)) {
-      const opensBracket = trimmed.startsWith('[') || trimmed.startsWith('#[') || trimmed.startsWith('#![');
-      depth = scanDepth(text, 0);
-      if (opensBracket && depth === 0 && !trimmed.endsWith(']')) return { status: 'ok', line };
-      if (opensBracket && depth > 0) bracketOpenedAt = line;
-    } else {
-      return { status: 'ok', line };
-    }
-    line += 1;
+    if (!onlyLeading(text)) return { status: 'ok', line };
   }
 }
 

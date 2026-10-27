@@ -226,26 +226,55 @@ describe('validate-graph — a bracket on a leading line is an attribute only wh
 });
 
 describe('validate-graph — the class: a statement-shaped line is never read as the start of a construct', () => {
-  // Lines of other languages that are statements, not declarations. None may be
-  // taken for a leading line, so none may let an anchor or an edge reach the
-  // declaration written below it.
-  const STATEMENT_LINES = [
-    'import os', 'from util import *', 'package main', 'use std::io;', 'require "json"', 'local x',
-    'export default router', 'export const router', 'const router', 'static x', 'async',
-    'return x', 'pass', 'break', 'continue', 'else', 'end', 'try:', 'finally:', '} else {',
-    ' *', '* ', 'count--', 'i++', 'val x: String?', 'let y: Int?', '@count = 0', '@@total += 1', '*p = 1;',
-    '[make(1), 2],', '[alpha, 1],', 'x = a &', 'y = b |', 'ref: &', 'a <', 'b >', 'q /',
+  // [extension, a line that is a statement of that language, or that carries a declaration beside an
+  // annotation or a comment]. None may be taken for a leading line, so none may let an anchor or an
+  // edge reach the declaration written below it.
+  const STATEMENTS = [
+    ['py', 'import os'], ['py', 'from util import *'], ['py', 'count -= 1'], ['py', '[a, b] = [b, a]'], ['py', 'try:'], ['py', 'finally:'], ['py', 'pass'],
+    ['go', 'package main'], ['go', 'count--'], ['rs', 'use std::io;'], ['rs', 'let y: Int?'], ['lua', 'local x'],
+    ['rb', 'require "json"'], ['rb', '@count = 0'], ['rb', '@@total += 1'], ['rb', '@log.info(item)'], ['rb', '@items.each do |item|'], ['rb', 'end'],
+    ['js', 'export default router'], ['js', 'export const router'], ['js', 'const router'], ['js', 'static x'], ['js', 'return x'], ['js', 'i++'],
+    ['js', '[a, b] = [b, a]'], ['js', '[make(1), 2],'], ['js', '[alpha, 1],'], ['ts', 'async'],
+    ['kt', 'val x: String?'], ['c', '*p = 1;'], ['c', '# define X 1'], ['php', '@unlink($f);'], ['java', '@interface Other {}'],
+    ['java', 'else'], ['java', '} else {'], ['java', 'break;'], ['java', 'continue;'], ['java', 'try {'],
+    // an annotation, an attribute or a comment with something else on the same line
+    ['java', '@Override public void other() {}'], ['kt', '@Suppress("x") val a = 1'], ['cs', '[Obsolete] public void other() {}'],
+    ['rs', '#[derive(Debug)] struct S;'], ['c', '/* note */ int x = 1;'], ['java', '*/ int x = 1;'], ['java', '@A @B int x = 1;'],
   ];
 
-  // A comment line IS a leading line, so the two comment-shaped rows are left out here. The statement
-  // is written twice: a rule that wrongly takes it for a leading line then skips both and reaches the
-  // declaration, and confirms an anchor that starts two lines above it.
-  const NOT_COMMENTS = STATEMENT_LINES.filter((line) => line.trim() !== '*');
-  it.each(NOT_COMMENTS)('does not confirm an anchor that starts at %j with the declaration two lines below', (statement) => {
-    const root = project({ 'src/s.txt': [statement, statement, 'function helper() {}', ''] });
-    const { report } = run(root, [declNode('function', 'src/s.txt', 'helper', [1, 3])]);
+  // The statement is written twice: a rule that wrongly takes it for a leading line then skips both and
+  // reaches the declaration, and confirms an anchor that starts two lines above it.
+  it.each(STATEMENTS)('%s: does not confirm an anchor that starts at %j with the declaration two lines below', (ext, statement) => {
+    const path = `src/s.${ext}`;
+    const root = project({ [path]: [statement, statement, 'function helper() {}', ''] });
+    const { report } = run(root, [declNode('function', path, 'helper', [1, 3])]);
     expect(report.counts.anchorMismatch).toBe(1);
   });
+
+  // What IS a leading line, in the language that has it: read off the start of a line, with nothing left over.
+  const LEADING = [
+    ['java', '@Override'], ['java', '@Foo(a = 1, b = {2})'], ['java', '@A @B'], ['java', '@A(x) // note'], ['java', ' * javadoc line'], ['java', ' */'],
+    ['kt', '@file:JvmName("X")'], ['py', '@app.route("/x")'], ['ts', '@Component({ a: 1 })'], ['py', '# comment'], ['rb', '# comment'],
+    ['cs', '[Serializable, Obsolete]'], ['cs', '[Route("x")] // note'], ['rs', '#[derive(Debug)]'], ['rs', '#![allow(dead_code)]'], ['php', '#[Attr]'],
+    ['c', '// comment'], ['c', '/* comment */'], ['c', '/* a */ /* b */'], ['txt', '// comment'],
+  ];
+  it.each(LEADING)('%s: reads %j as a leading line', (ext, leading) => {
+    const path = `src/s.${ext}`;
+    const root = project({ [path]: [leading, leading, 'function helper() {}', ''] });
+    const { report } = run(root, [declNode('function', path, 'helper', [1, 3])]);
+    expect(report.counts.anchorMismatch).toBe(0);
+  });
+
+  // The same text in a language that has no such syntax is not a leading line, and nor is anything in a
+  // language this validator does not know.
+  it.each([['rb', '@Override'], ['js', '[Serializable]'], ['txt', '@Override'], ['php', '@Override'], ['java', '[Serializable]'], ['cs', '@Override'], ['txt', '[Serializable]']])(
+    '%s: does not read %j as a leading line', (ext, line) => {
+      const path = `src/s.${ext}`;
+      const root = project({ [path]: [line, line, 'function helper() {}', ''] });
+      const { report } = run(root, [declNode('function', path, 'helper', [1, 3])]);
+      expect(report.counts.anchorMismatch).toBe(1);
+    },
+  );
 
   it('does not take rows of an array literal that span several lines for attributes', () => {
     const lines = ['[make(', '  1), 2],', '[make(', '  1), 2],', 'function helper() {}', ''];
@@ -254,13 +283,14 @@ describe('validate-graph — the class: a statement-shaped line is never read as
     expect(report.counts.anchorMismatch).toBe(1);
   });
 
-  it.each(STATEMENT_LINES)('does not confirm contains and exports edges cited at %j when the member starts on the next line', (statement) => {
-    const root = project({ 'src/s.txt': [statement, 'function helper() {}', ''] });
-    const file = fileNode('src/s.txt');
-    const helper = declNode('function', 'src/s.txt', 'helper', [2, 2]);
+  it.each(STATEMENTS)('%s: does not confirm contains and exports edges cited at %j when the member starts on the next line', (ext, statement) => {
+    const path = `src/s.${ext}`;
+    const root = project({ [path]: [statement, 'function helper() {}', ''] });
+    const file = fileNode(path);
+    const helper = declNode('function', path, 'helper', [2, 2]);
     const { report } = run(root, [file, helper], [
-      edge('contains', file, helper, 'src/s.txt', 1),
-      edge('exports', file, helper, 'src/s.txt', 1),
+      edge('contains', file, helper, path, 1),
+      edge('exports', file, helper, path, 1),
     ]);
     expect(report.counts.edgeContradicted).toBe(2);
   });
