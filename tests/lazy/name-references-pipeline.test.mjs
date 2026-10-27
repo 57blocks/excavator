@@ -430,8 +430,9 @@ describe('the name-reference stage in the real Lazy driver', () => {
     const { report } = validateAgainstSource({ graph, reader: createSourceReader(root) });
     expect(report.findings.edgeContradicted.filter((f) => f.type === 'references')).toEqual([]);
     // the graph without the references edges reads the same, apart from how many edges were checked and confirmed.
-    // (Its `contains` and `exports` edges of annotated classes are contradicted either way: a class's line range
-    // starts at its first annotation, a line that does not hold the class's name. That is not this change's.)
+    // (Its `contains` and `exports` edges of annotated classes used to be contradicted either way, because a class's
+    // line range starts at its first annotation, a line that does not hold the class's name. The validator now reads
+    // past the annotations, so neither graph has a contradicted edge.)
     const plain = { ...graph, edges: graph.edges.filter((e) => e.type !== 'references') };
     const { report: baseline } = validateAgainstSource({ graph: plain, reader: createSourceReader(root) });
     expect(report.issues).toEqual(baseline.issues);
@@ -447,7 +448,8 @@ describe('the name-reference stage in the real Lazy driver', () => {
       edgesChecked: baseline.counts.edgesChecked + linksOf(graph).length,
       edgeConfirmed: baseline.counts.edgeConfirmed + linksOf(graph).length,
     });
-    expect(new Set(report.findings.edgeContradicted.map((f) => f.type))).toEqual(new Set(['contains', 'exports']));
+    expect(report.findings.edgeContradicted).toEqual([]);
+    expect(baseline.findings.edgeContradicted).toEqual([]);
   });
 
   it('cites lines a reader can check: the page line holds the root, the binding line the name or its annotation (spec: checkable evidence)', () => {

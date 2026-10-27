@@ -9,9 +9,14 @@
  *
  * Checks
  *   1. anchors — for every function/class node, the line at `lineRange[0]`
- *      (±1) must contain the node's `name` (an anonymous declaration: a
+ *      (±1), or the first line after its leading annotations and comments,
+ *      must contain the node's `name` (an anonymous declaration: a
  *      class/struct/def keyword). Otherwise: gap `anchor-mismatch`, node
- *      `verification: "contradicted"`.
+ *      `verification: "contradicted"`. Leading lines longer than the scan bound
+ *      leave the node `unverified` under `construct-too-long`, never confirmed and
+ *      never contradicted. An anchor is exact when the name is on `lineRange[0]`
+ *      itself or on the first line after the leading lines; one that only passes
+ *      within one line is still an anchor but is not exact.
  *   2. evidence — for every `extracted` edge, the cited line must contain the
  *      expected token: the callee name (`calls`), the target module segment
  *      (`imports`), the symbol name (`exports`), the declared name
@@ -20,7 +25,11 @@
  *      model-cited entry, either endpoint's name or file name. `imports` is
  *      checked across the whole statement (a multi-line ES import names its
  *      specifier several lines below its start); every other type is checked
- *      on the cited line alone. Otherwise: gap
+ *      on the cited line alone. One more way is read from the graph, not from
+ *      the text: an edge an extractor wrote that cites a declaration (not a
+ *      `calls` edge, and not an entry that names its own token) is confirmed
+ *      when the cited line is the first line of the range of an endpoint whose
+ *      name is the expected token and whose own anchor is exact. Otherwise: gap
  *      `edge-contradicted`, edge `verification: "contradicted"`.
  *   3. `inferred` edges pass — being marked as judgement IS the honest state.
  *   4. referential integrity — the same checks UA's inline validator makes
@@ -70,6 +79,13 @@ export const ANCHOR_TOLERANCE = 1;
 
 /** How far an `imports` evidence check may scan for the statement's end. */
 export const IMPORT_WINDOW_LINES = 12;
+
+/**
+ * How far the leading-line skip may read before it gives up. The longest legitimate construct measured on a real project
+ * was 22 lines; this leaves an order of magnitude and keeps the worst case of
+ * one anchor or edge constant. Passing it yields `unverified`, never a verdict.
+ */
+export const CONSTRUCT_SCAN_LINES = 400;
 
 const CODE_NODE_TYPES = Object.freeze(new Set(['function', 'class']));
 const FILE_LEVEL_TYPES = Object.freeze(new Set([
@@ -293,6 +309,150 @@ export function findTokenInImportStatement(reader, filePath, lineNumber, tokens,
   return null;
 }
 
+/**
+ * Which leading-line syntaxes a language has, by the extension of its files.
+ * An annotation, an attribute and a comment each exist in some languages only,
+ * and the same text is a statement in others: `@log.info(item)` is an instance
+ * variable in Ruby, `[a, b] = [b, a]` a swap in JavaScript and Python, `@name`
+ * an error-suppressing call in PHP. A file whose language is not listed has no
+ * annotation or attribute syntax here, which only reports a contradiction
+ * where an annotation is skipped in other languages. Comments are the same:
+ * `//` and block comments exist in the C family, `#` comments in the
+ * scripting languages, and a continuation line that starts with `*` or `//`
+ * is a splat or a floor division in Python and Ruby. Blank lines are the only
+ * leading line every language has.
+ */
+const LEADING_SYNTAX = Object.freeze({
+  at: new Set(['.java', '.kt', '.kts', '.scala', '.groovy', '.swift', '.dart', '.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs', '.py', '.pyi']),
+  bracketAttribute: new Set(['.cs']),
+  hashAttribute: new Set(['.rs', '.php']),
+  hashComment: new Set(['.py', '.pyi', '.rb', '.sh', '.bash', '.pl', '.pm', '.r', '.ex', '.exs', '.php']),
+  // `//` line comments and block comments: a `//` is a floor division in Python and a regular expression in Ruby
+  slashComment: new Set([
+    '.java', '.kt', '.kts', '.scala', '.groovy', '.swift', '.dart', '.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs',
+    '.cs', '.rs', '.php', '.go', '.c', '.h', '.cc', '.cpp', '.cxx', '.hpp', '.hh', '.m', '.mm',
+  ]),
+});
+
+function leadingSyntax(filePath) {
+  const ext = extname(filePath).toLowerCase();
+  return {
+    at: LEADING_SYNTAX.at.has(ext),
+    bracketAttribute: LEADING_SYNTAX.bracketAttribute.has(ext),
+    hashAttribute: LEADING_SYNTAX.hashAttribute.has(ext),
+    hashComment: LEADING_SYNTAX.hashComment.has(ext),
+    slashComment: LEADING_SYNTAX.slashComment.has(ext),
+  };
+}
+
+/**
+ * Read `text` from an opening bracket at `depth` until the brackets close:
+ * `(`, `[` and `{` open, their closers close, string literals and a line comment
+ * of the file's language are not read. Returns the depth at the end of the text and the index
+ * just after the closing character, or -1 while they are still open.
+ */
+function readBrackets(text, depth, syntax) {
+  let quote = null;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (quote !== null) {
+      if (ch === '\\') i += 1;
+      else if (ch === quote) quote = null;
+      continue;
+    }
+    if (ch === '"' || ch === "'" || ch === '`') quote = ch;
+    else if (syntax.slashComment && ch === '/' && text[i + 1] === '/') break;
+    else if (syntax.hashComment && ch === '#') break;
+    else if (ch === '(' || ch === '[' || ch === '{') depth += 1;
+    else if ((ch === ')' || ch === ']' || ch === '}') && depth > 0) {
+      depth -= 1;
+      if (depth === 0) return { depth, index: i + 1 };
+    }
+  }
+  return { depth, index: -1 };
+}
+
+/**
+ * The first line of the construct that starts at `startLine`, past its
+ * leading lines. A leading line holds nothing but blank space, comments, and
+ * annotations, decorators or attributes (whose arguments may span many lines).
+ * A line that holds anything else once those are read off its start is the
+ * start of the construct: a statement of the language, an annotation followed
+ * by a declaration on the same line, a comment followed by code, an array row
+ * after a bracket. It only moves forward, so a line of code is never skipped.
+ * Returns `{ status: 'ok', line }`, `{ status: 'too-long' }` when the leading
+ * lines pass `CONSTRUCT_SCAN_LINES`, or `{ status: 'none' }` at the end of the
+ * file.
+ */
+export function skipLeadingLines(reader, filePath, startLine) {
+  const syntax = leadingSyntax(filePath);
+  let depth = 0; // brackets of an annotation that is still open from an earlier line
+  let inBlockComment = false;
+
+  // Reads leading constructs off the start of `text`; true when nothing else is on the line.
+  const onlyLeading = (text) => {
+    let rest = text;
+    for (;;) {
+      if (inBlockComment) {
+        const end = rest.indexOf('*/');
+        if (end < 0) return true;
+        inBlockComment = false;
+        rest = rest.slice(end + 2);
+        continue;
+      }
+      if (depth > 0) {
+        const read = readBrackets(rest, depth, syntax);
+        depth = read.depth;
+        if (read.index < 0) return true;
+        rest = rest.slice(read.index);
+        continue;
+      }
+      rest = rest.trimStart();
+      if (rest === '') return true;
+      if (syntax.slashComment && rest.startsWith('//')) return true;
+      if (syntax.hashComment && /^#(?:\s|$|!|#)/.test(rest)) return true;
+      if (syntax.slashComment && rest.startsWith('/*')) {
+        const end = rest.indexOf('*/', 2);
+        if (end < 0) {
+          inBlockComment = true;
+          return true;
+        }
+        rest = rest.slice(end + 2);
+        continue;
+      }
+      let brackets = null;
+      if (syntax.at && rest.startsWith('@')) {
+        // What follows the name has to be leading syntax too: `@interface Foo {}`
+        // declares a type and `@name = value` assigns a variable, and both leave
+        // something behind on the line.
+        const name = /^@+[\w.:]+/.exec(rest);
+        if (name === null) return false;
+        rest = rest.slice(name[0].length).trimStart();
+        if (!rest.startsWith('(')) continue;
+        brackets = rest;
+      } else if (syntax.hashAttribute && (rest.startsWith('#[') || rest.startsWith('#!['))) {
+        brackets = rest.slice(rest.indexOf('['));
+      } else if (syntax.bracketAttribute && /^\[\s*[A-Za-z_]/.test(rest)) {
+        brackets = rest;
+      } else {
+        return false;
+      }
+      const read = readBrackets(brackets, 0, syntax);
+      depth = read.depth;
+      if (read.index < 0) return true;
+      rest = brackets.slice(read.index);
+    }
+  };
+
+  const limit = startLine + CONSTRUCT_SCAN_LINES;
+  for (let line = startLine; ; line++) {
+    if (line >= limit) return { status: 'too-long' };
+    const text = reader.line(filePath, line);
+    if (text === null) return { status: 'none' };
+    if (!onlyLeading(text)) return { status: 'ok', line };
+  }
+}
+
 function sampler(limit) {
   const map = new Map();
   return {
@@ -331,6 +491,7 @@ export function validateAgainstSource({ graph, reader, sampleLimit = 5 }) {
     edgesWithoutEvidence: 0,
     sourceMissing: 0,
     pathOutOfScope: 0,
+    constructTooLong: 0,
     stepUnanchored: 0,
   };
 
@@ -359,6 +520,7 @@ export function validateAgainstSource({ graph, reader, sampleLimit = 5 }) {
   }
 
   // ── 1. anchors ──────────────────────────────────────────────────────────
+  const exactAnchors = new Set();
   for (const node of validated.nodes) {
     if (!node || typeof node !== 'object') continue;
     if (!CODE_NODE_TYPES.has(node.type)) continue;
@@ -380,7 +542,28 @@ export function validateAgainstSource({ graph, reader, sampleLimit = 5 }) {
       continue;
     }
     const tokens = isAnonymousName(node.name) ? ANONYMOUS_KEYWORDS : [node.name];
-    const hit = findToken(reader, node.filePath, startLine, tokens, ANCHOR_TOLERANCE);
+    // A declaration's range starts at its first annotation, so its name is on
+    // the first line after the annotations and comments. The name on
+    // `lineRange[0]` itself or on that line makes the anchor exact; a name that
+    // is only within one line of the start still confirms the anchor, but an
+    // edge is not vouched for by it.
+    let hit = findToken(reader, node.filePath, startLine, tokens, ANCHOR_TOLERANCE);
+    let exact = findToken(reader, node.filePath, startLine, tokens, 0) !== null;
+    if (!exact) {
+      const lead = skipLeadingLines(reader, node.filePath, startLine);
+      if (lead.status === 'ok') {
+        const leadHit = findToken(reader, node.filePath, lead.line, tokens, 0);
+        if (leadHit !== null) {
+          exact = true;
+          hit = hit ?? leadHit;
+        }
+      } else if (lead.status === 'too-long' && hit === null) {
+        counts.constructTooLong += 1;
+        node.verification = 'unverified';
+        samples.add('construct-too-long', `${node.filePath}:${startLine} ${node.id}`);
+        continue;
+      }
+    }
     if (hit === null) {
       counts.anchorMismatch += 1;
       node.verification = 'contradicted';
@@ -395,6 +578,7 @@ export function validateAgainstSource({ graph, reader, sampleLimit = 5 }) {
       samples.add('anchor-mismatch', `${node.filePath}:${startLine} ${node.id}`);
     } else {
       counts.anchorConfirmed += 1;
+      if (exact) exactAnchors.add(node.id);
     }
   }
 
@@ -430,9 +614,20 @@ export function validateAgainstSource({ graph, reader, sampleLimit = 5 }) {
       // `imports` is the one type whose evidence line is the START of a
       // statement that may span several lines; every other type cites the
       // exact line the token is on.
-      const found = edge.type === 'imports' && entry.source !== 'model'
+      let found = edge.type === 'imports' && entry.source !== 'model'
         ? findTokenInImportStatement(reader, entry.file, entry.line, tokens)
         : findToken(reader, entry.file, entry.line, tokens, 0);
+      // An entry that names the token its line holds (a mention, an injection,
+      // a JSX tag) says exactly where that is, and a model's citation is
+      // untrusted input. Any other edge that cites a declaration cites where
+      // its range starts, which is its first annotation: a fact about the
+      // graph, not about how the line reads. The cited line is the first line
+      // of an endpoint's own range, and that endpoint's anchor is exact.
+      if (found === null && entry.source !== 'model' && entry.token === undefined && edge.type !== 'calls'
+        && [target, source].some((n) => n && n.filePath === entry.file && Array.isArray(n.lineRange)
+          && n.lineRange[0] === entry.line && tokens.includes(n.name) && exactAnchors.has(n.id))) {
+        found = entry.line;
+      }
       if (found !== null) {
         confirmed = true;
         break;
@@ -537,6 +732,8 @@ export function validateAgainstSource({ graph, reader, sampleLimit = 5 }) {
     `${counts.stepUnanchored} step node(s) with no resolvable nodeIds and no inferred marking`);
   addGap('source-missing', counts.sourceMissing,
     `${counts.sourceMissing} check(s) skipped because the source file could not be read`);
+  addGap('construct-too-long', counts.constructTooLong,
+    `${counts.constructTooLong} check(s) left unverified because the leading lines passed ${CONSTRUCT_SCAN_LINES} lines`);
   addGap('path-out-of-scope', counts.pathOutOfScope,
     `${counts.pathOutOfScope} path(s) named outside the project root were refused, not read`);
   gaps.sort(compareGaps);
@@ -629,7 +826,7 @@ async function main() {
     `edges-checked=${c.edgesChecked} edge-contradicted=${c.edgeContradicted} ` +
     `edges-inferred=${c.edgesInferred} step-unanchored=${c.stepUnanchored} ` +
     `source-missing=${c.sourceMissing} path-out-of-scope=${c.pathOutOfScope} ` +
-    `issues=${report.issues.length}\n`,
+    `construct-too-long=${c.constructTooLong} issues=${report.issues.length}\n`,
   );
 }
 
