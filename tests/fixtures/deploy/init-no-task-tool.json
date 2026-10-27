@@ -35,7 +35,8 @@
     "claude",
     "Explore",
     "general-purpose",
-    "Plan"
+    "Plan",
+    "excavator:skopo-researcher"
   ],
   "plugins": [
     {

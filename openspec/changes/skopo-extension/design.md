@@ -37,13 +37,12 @@ skills/skopo-create/SKILL.md
 skills/skopo-create/skopo.mjs            确定性 CLI（D5）
 skills/skopo-create/lib/*.mjs
 skills/skopo-create/jakarta-ee.md        Java EE 的意图来源（D8）
-skills/skopo-create/researcher-dispatch.md  派发研究代理的规则，plan 与 create 共用
 skills/skopo-create/checker/             vendored（D3）
 skills/skopo-report/SKILL.md
 agents/skopo-researcher.md
 ```
 
-`skopo.mjs` 与共用文件放在 `skopo-create` 下：它是三者里唯一必需的一个，另外两个按 `$PLUGIN_ROOT/skills/skopo-create/...` 引用。名字沿用 Skopo 的术语（skopository、spec、binding），命令名是 `skopo-plan`、`skopo-create`、`skopo-report`，在 Claude Code 里是 `/excavator:skopo-plan` 等。
+`skopo.mjs` 与共用文件放在 `skopo-create` 下：它是三者里唯一必需的一个，另外两个按 `$PLUGIN_ROOT/skills/skopo-create/...` 引用。研究的派发规则只写在 `skopo-plan` 里；`skopo-create` 在没有计划时照 `skopo-plan` 的 Phase 0 到 3 先做计划，不另写一份。名字沿用 Skopo 的术语（skopository、spec、binding），命令名是 `skopo-plan`、`skopo-create`、`skopo-report`，在 Claude Code 里是 `/excavator:skopo-plan` 等。
 
 ### D3 vendored 检查器
 

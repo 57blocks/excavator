@@ -44,8 +44,8 @@ describe('install.sh (Codex)', () => {
     rmSync(tempHome, { recursive: true, force: true });
   });
 
-  it('discovers exactly the 16 shipped service skills', () => {
-    expect(skillNames.length).toBe(16);
+  it('discovers exactly the 19 shipped service skills', () => {
+    expect(skillNames.length).toBe(19);
     expect(skillNames).toContain('excavator');
     expect(skillNames).toContain('excavator-chat');
     expect(skillNames).toContain('excavator-diff');
@@ -62,6 +62,9 @@ describe('install.sh (Codex)', () => {
     expect(skillNames).toContain('excavator-unused-code');
     expect(skillNames).toContain('excavator-verify');
     expect(skillNames).toContain('excavator-view');
+    expect(skillNames).toContain('skopo-plan');
+    expect(skillNames).toContain('skopo-create');
+    expect(skillNames).toContain('skopo-report');
   });
 
   it('symlinks the plugin root to ~/.excavator-plugin, pointing at this checkout', () => {
