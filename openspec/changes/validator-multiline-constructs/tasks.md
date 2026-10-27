@@ -13,7 +13,7 @@
 
 - [x] 3.1 加 `findTokenInExpression`（括号配平、行尾 / 行首续行、顶层 `;`、逐行先查 token、超限返回过长），`calls` 且非模型引用时使用；验证 1.1 的链式用例与 10 行 builder 链转绿、callee 在下一条语句里的反例仍为 contradicted、JSX `token` 用例不变
 - [x] 3.2 过长结构的用例：400 行以上没有终止符的表达式 → `unverified`、缺口 `construct-too-long` 有计数与样例、`edge-contradicted` 为 0；同一路径上节点同理。验证用例通过
-- [ ] 3.3 `skills/excavator/SKILL.md` Phase 6b 的检查说明改为与规格一致；验证 `node scripts/check-refs.mjs` 通过
+- [x] 3.3 `skills/excavator/SKILL.md` Phase 6b 的检查说明改为与规格一致；验证 `node scripts/check-refs.mjs` 通过
 
 ## 4. 报告与确定性
 
@@ -21,9 +21,9 @@
 
 ## 5. 真实图验收（oracle 已写死，动手前不改）
 
-- [ ] 5.1 用保存下来的那次冒烟的图与源码（74 文件 Java 子项目，在部署主机的运行输出与仓库目录里，通过 SSM 只读取回到 scratchpad；源码与图都不进仓库）重新验证。判据：按机制分组的六类（`contains` 530、`exports` 242、`implements` 40、`overrides` 10、锚点 47、`calls` 50）各自归零；任何残余逐条给出源码证据，证明不是机制漏判，且残余不超过 5 条。`constructTooLong` 的计数写进验收记录
-- [ ] 5.2 召回：在同一克隆里按种子植入 ≥ 200 个假样本（锚点错位 3–30 行、证据行改指相邻语句、证据行改指一个含 lambda 块的语句而 callee 是块内另一次调用、被调用者名改错、`contains` 证据行指向别的成员的注解），重放决定，要求全部仍为 contradicted，且「植入数 = 报出数」守恒；离开此守恒必须写明原因。同一植入脚本先在旧验证器上跑，确认旧验证器也全部报出（装置对照）
-- [ ] 5.3 记录验收结果与残余到 `acceptance.md`（只写机制与规模，不写语料名）
+- [x] 5.1 用保存下来的那次冒烟的图与源码（74 文件 Java 子项目，在部署主机的运行输出与仓库目录里，通过 SSM 只读取回到 scratchpad；源码与图都不进仓库）重新验证。判据：按机制分组的六类（`contains` 530、`exports` 242、`implements` 40、`overrides` 10、锚点 47、`calls` 50）各自归零；任何残余逐条给出源码证据，证明不是机制漏判，且残余不超过 5 条。`constructTooLong` 的计数写进验收记录
+- [x] 5.2 召回：在同一克隆里按种子植入 ≥ 200 个假样本（锚点错位 3–30 行、证据行改指相邻语句、证据行改指一个含 lambda 块的语句而 callee 是块内另一次调用、被调用者名改错、`contains` 证据行指向别的成员的注解），重放决定，要求全部仍为 contradicted，且「植入数 = 报出数」守恒；离开此守恒必须写明原因。同一植入脚本先在旧验证器上跑，确认旧验证器也全部报出（装置对照）
+- [x] 5.3 记录验收结果与残余到 `acceptance.md`（只写机制与规模，不写语料名）
 
 ## 6. 门与合并
 
