@@ -14,8 +14,8 @@
 
 ## 3. skill 接线（提交 4）
 
-- [ ] 3.1 `SKILL.md`：Phase 3 的合并步骤与合并提示词（D6）；文件表加 `open-items/`
-- [ ] 3.2 契约测试；`README.md`
+- [x] 3.1 `SKILL.md`：Phase 3 的合并步骤与合并提示词（D6）；文件表加 `open-items/`
+- [x] 3.2 契约测试；根目录 `README.md`
 - [ ] 3.3 跑 O1
 
 ## 4. 验收

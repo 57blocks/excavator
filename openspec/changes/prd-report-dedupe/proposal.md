@@ -25,5 +25,5 @@
 
 ## Impact
 
-- `skills/excavator-prd-report/`：`SKILL.md`（泳道提示词的深度要求、章节结构与待确认项格式；Phase 3 的合并步骤与合并提示词）、`lib/lane-check.mjs`、新增 `lib/open-items.mjs`、`prd.mjs`（`check-open-items`）、`lib/aggregate.mjs`、`lib/tables.mjs`、`README.md`。
+- `skills/excavator-prd-report/`：`SKILL.md`（泳道提示词的深度要求、章节结构与待确认项格式；Phase 3 的合并步骤与合并提示词）、`lib/lane-check.mjs`、新增 `lib/open-items.mjs`、`prd.mjs`（`check-open-items`）、`lib/aggregate.mjs`、`lib/tables.mjs`；仓库根目录 `README.md` 里 `/excavator-prd-report` 的说明。
 - 测试：`tests/skill/excavator-prd-report/`、`tests/skill/test_prd_report_skill_contract.test.mjs`。

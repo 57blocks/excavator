@@ -269,7 +269,7 @@ describe('excavator-prd-report skill: --project', () => {
   it('passes --project "$PROJECT_ROOT" to every prd.mjs command that reads $OUT', () => {
     const commands = skill.split('\n').map((line) => line.trim()).filter((line) => line.startsWith(`node ${PRD} `));
     const reading = commands.filter((line) => !line.startsWith(`node ${PRD} entrypoints `));
-    expect(new Set(reading.map((line) => line.split(' ')[2]))).toEqual(new Set(['check-index', 'check-lane', 'check-priorities', 'mark', 'aggregate', 'assemble', 'page', 'reply']));
+    expect(new Set(reading.map((line) => line.split(' ')[2]))).toEqual(new Set(['check-index', 'check-lane', 'check-priorities', 'check-open-items', 'mark', 'aggregate', 'assemble', 'page', 'reply']));
     for (const line of reading) expect(line, line).toMatch(/ --project "\$PROJECT_ROOT"$/);
   });
 });
@@ -570,7 +570,7 @@ const rankPrompt = (rawPhase(3).match(/^````text\n([\s\S]*?)\n````$/m) ?? [])[1]
 const rankStep = () => {
   const text = rawPhase(3);
   const start = text.indexOf('Rank the findings');
-  const end = text.indexOf('Write `$OUT/overview.md`', start);
+  const end = text.indexOf('Merge the open items', start);
   return start < 0 ? '' : flat(text.slice(start, end < 0 ? undefined : end));
 };
 
@@ -660,6 +660,166 @@ describe('excavator-prd-report skill: ranking the findings', () => {
     expect(setup).toContain('Features whose `priorities/<id>.json` passes `check-priorities` are not ranked again');
     expect(setup).toContain('an output directory with verified chapters and no `priorities/` only gets the ranking step and the steps after it');
     expect(rankStep()).toContain('not ranked again');
+  });
+});
+
+/** The merge subagent's prompt: the second four-backtick text block of Phase 3 (the first is the ranking prompt). */
+const mergePrompt = () => [...rawPhase(3).matchAll(/^````text\n([\s\S]*?)\n````$/gm)].map((m) => m[1])[1] ?? '';
+/** Phase 3 from its "Merge the open items" step to the overview step. */
+const mergeStep = () => {
+  const text = rawPhase(3);
+  const start = text.indexOf('Merge the open items');
+  const end = text.indexOf('Write `$OUT/overview.md`', start);
+  return start < 0 ? '' : flat(text.slice(start, end < 0 ? undefined : end));
+};
+const NEVER_MERGE = 'In this step you never group, merge or write an item, and never write or edit `open-items/merged.json`';
+const withOpenItemsSection = (text, rows) => text.replace(/^chapter: (\d+)$/m, 'openItems: Open items\nchapter: $1')
+  .concat(`\n### Open items\n\n| Item | What is known | What was searched |\n|---|---|---|\n${rows.join('\n')}\n`);
+
+/** A lane run whose two chapters each have an open items table; F1.1 and F2.1 ask the same question. */
+function openItemsRun() {
+  const run = laneRun();
+  run.writeText('features/F1.md', withOpenItemsSection(run.readText('features/F1.md'), [
+    '| Whether refunds are paid | Not in the order code | the whole project |',
+    '| Retention period | Not evident | `src/orders/service.js` |',
+  ]));
+  run.writeText('features/F2.md', withOpenItemsSection(run.readText('features/F2.md'), [
+    '| Are refunds paid | A comment mentions them | `src/orders/service.js` |',
+  ]));
+  expect(runPrd(['aggregate', run.out, '--project', run.project]).status).toBe(0);
+  return run;
+}
+const checkOpenItems = (run) => runPrd(['check-open-items', run.out, '--project', run.project]);
+/** A line the script printed, as the skill writes it: the counts of the status lines are `<n>` and `<m>`. */
+const asQuoted = (line) => line.replace(/^(Open items: )\d+( written in the chapters)/, '$1<n>$2').replace(/, \d+ after merging$/, ', <m> after merging');
+
+describe('excavator-prd-report skill: merging the open items (prd-report-dedupe, D6)', () => {
+  it('numbers the steps of Phase 3 from 1 to 7, with the merge step after the ranking step and before the overview', () => {
+    const numbers = [...rawPhase(3).matchAll(/^(\d+)\. /gm)].map((m) => Number(m[1]));
+    expect(numbers).toEqual([1, 2, 3, 4, 5, 6, 7]);
+    const text = rawPhase(3);
+    const rank = text.indexOf('4. Rank the findings.');
+    const merge = text.indexOf('5. Merge the open items.');
+    const overview = text.indexOf('6. Write `$OUT/overview.md`');
+    const assemble = text.indexOf('7. Aggregate the lanes, assemble the PRD and write the report page');
+    expect(rank).toBeGreaterThan(-1);
+    expect(merge).toBeGreaterThan(text.indexOf('Reply with one line: `<ids of your features>: ranked`'));
+    expect(overview).toBeGreaterThan(merge);
+    expect(assemble).toBeGreaterThan(overview);
+    expect(text.indexOf(`node ${PRD} assemble "$OUT"`)).toBeGreaterThan(merge);
+  });
+
+  it('explains the merge in a few sentences and says the orchestrator never groups, merges or writes anything', () => {
+    const step = mergeStep();
+    expect(step).not.toBe('');
+    for (const rule of [
+      'The same open question is often asked in several chapters',
+      'one merge subagent groups the items that ask the same question, and the scripts check the groups and write one row per group in the Open items section',
+      NEVER_MERGE,
+      'Only the merge subagent writes it, the same rule as the lane files.',
+    ]) expect(step, rule).toContain(rule);
+  });
+
+  it('runs aggregate and then check-open-items with --project, before any merge subagent', () => {
+    const step = mergeStep();
+    const aggregate = step.indexOf(`node ${PRD} aggregate "$OUT" --project "$PROJECT_ROOT"`);
+    const check = step.indexOf(`node ${PRD} check-open-items "$OUT" --project "$PROJECT_ROOT"`);
+    expect(aggregate).toBeGreaterThan(-1);
+    expect(check).toBeGreaterThan(aggregate);
+    expect(check).toBeLessThan(step.indexOf('dispatch one merge subagent'));
+  });
+
+  it('quotes the status lines and a problem line exactly as check-open-items prints them', () => {
+    const run = openItemsRun();
+    const unmerged = checkOpenItems(run);
+    expect(unmerged.status).toBe(1);
+    const [problem, notMerged] = lines(unmerged);
+    expect(problem).toBe('open-items/merged.json is missing');
+    expect(notMerged).toBe('Open items: 3 written in the chapters, not merged');
+    run.writeJson('open-items/merged.json', { digest: run.readJson('open-items/sources.json').digest, groups: [{ keep: 'F1.1', also: ['F2.1'] }] });
+    const merged = checkOpenItems(run);
+    expect(merged.status).toBe(0);
+    expect(lines(merged)).toEqual(['Open items: 3 written in the chapters, 2 after merging']);
+    const bare = laneRun();
+    const none = checkOpenItems(bare);
+    expect(none.status).toBe(0);
+    expect(lines(none)).toEqual(['Open items: none written in the chapters']);
+    const step = mergeStep();
+    for (const line of [asQuoted(merged.stdout.trim()), asQuoted(notMerged), none.stdout.trim()]) expect(step, line).toContain(`\`${line}\``);
+    expect(step).toContain(`\`${problem}\``);
+    expect(step).toContain('`Open items: <n> written in the chapters, <m> after merging`');
+    expect(step).toContain('It exits 0 when the merge passes or there are fewer than two items');
+    expect(step).toContain('then skip to telling the user the line');
+  });
+
+  it('dispatches one merge subagent when it exits 1, in the foreground, never in the background', () => {
+    const step = mergeStep();
+    expect(step).toContain('When it exits 1, dispatch one merge subagent with the prompt below');
+    expect(step).toContain('in the foreground');
+    expect(step).toContain('never in the background');
+    expect(step).toContain('Write `$OUT` and `$LANGUAGE` in the prompt as their values.');
+  });
+
+  it('retries once with the problem lines under a fixed heading, deletes the file, and leaves the items unmerged without failing the run', () => {
+    const step = mergeStep();
+    expect(step).toContain('rm -f "$OUT/open-items/merged.json"');
+    expect(step).toContain('Your previous attempt failed these checks; fix them and write the file again:');
+    expect(step).toContain('each problem line it printed (not the status line)');
+    expect(step.indexOf('Run `check-open-items` again')).toBeGreaterThan(step.indexOf('dispatch one merge subagent'));
+    expect(step).toContain('each on its own row, and the coverage section says so');
+    expect(step).toContain('This is not a failure of the run.');
+    expect(step.indexOf('rm -f "$OUT/open-items/merged.json"')).toBeLessThan(step.indexOf('Your previous attempt failed these checks'));
+  });
+
+  it('tells the user the last line as printed, translated with the numbers unchanged', () => {
+    const step = mergeStep();
+    expect(step).toContain('Tell the user its last line as printed, translated into `$LANGUAGE` with the numbers unchanged.');
+    expect(step.indexOf('Tell the user its last line')).toBeGreaterThan(step.indexOf('Your previous attempt failed these checks'));
+  });
+
+  it('keeps a passing merge on a resumed run and merges again only after a chapter changed', () => {
+    expect(mergeStep()).toContain('`check-open-items` checks the digest, so after a chapter changed the merge is done again; a passing file is kept.');
+    expect(phase.get(0)).toContain('A passing `open-items/merged.json` is kept; the merge is done again only when the open items changed.');
+  });
+
+  it('gives the merge subagent only sources.json to read, and the merged.json shape and rules', () => {
+    const prompt = flat(mergePrompt());
+    expect(prompt).not.toBe('');
+    for (const rule of [
+      'You merge the open items of an As-Is PRD.',
+      'Read only `$OUT/open-items/sources.json`; read no other file and no code.',
+      'an `id`, the `feature` that asked it, and `item`, `known`, `searched`',
+      'Group the items that ask the same question: answering one answers the others.',
+      'Items about the same subject that ask different things are not grouped.',
+      'Items in the same chapter can be grouped too.',
+      'An item that matches no other is in no group.',
+      'the item whose text says the most',
+      'the others are listed by feature only',
+      'Write only `$OUT/open-items/merged.json`',
+      '`{"digest": "<the digest of sources.json, copied>", "groups": [{"keep": "<id>", "also": ["<id>", ...]}]}`',
+      'each id in at most one group, `also` non-empty, `keep` not in `also`, no other key',
+      'Write no text of your own: no item, summary or reason.',
+      '`"groups": []`',
+      'Reply with one line: `Open items: merged`, and nothing else.',
+    ]) expect(prompt, rule).toContain(rule);
+    expect(prompt.match(/\$OUT\/[\w./<>-]+/g)).toEqual(['$OUT/open-items/sources.json', '$OUT/open-items/merged.json']);
+  });
+
+  it('keeps the shape the prompt names the one check-open-items accepts', () => {
+    const run = openItemsRun();
+    expect(checkOpenItems(run).status).toBe(1);
+    const { digest } = run.readJson('open-items/sources.json');
+    const prompt = mergePrompt();
+    const shape = JSON.parse(prompt.match(/`(\{"digest": [^`]*\})`/)[1].replace('"<the digest of sources.json, copied>"', JSON.stringify(digest)).replace('"<id>", ...', '"F2.1"').replace(/"<id>"/, '"F1.1"'));
+    run.writeJson('open-items/merged.json', shape);
+    const out = checkOpenItems(run);
+    expect(out.status, out.stdout).toBe(0);
+  });
+
+  it('lists open-items/ with its two files and who writes each', () => {
+    const table = flat(before.slice(before.indexOf('| File | Written by |')));
+    expect(table).toContain('| `open-items/sources.json` | `prd.mjs check-open-items` |');
+    expect(table).toContain('| `open-items/merged.json` | the merge subagent |');
   });
 });
 

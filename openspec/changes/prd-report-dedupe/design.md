@@ -106,7 +106,7 @@
 4. `feat(prd-report): dispatch the open items merge`：
    - `SKILL.md` 的 Phase 3 步骤与合并提示词；
    - 契约测试；
-   - `README.md`。
+   - 根目录 `README.md`。
 5. `docs(openspec): record prd-report-dedupe acceptance`
 6. `docs(openspec): archive prd-report-dedupe`
 
