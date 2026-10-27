@@ -75,6 +75,16 @@ describe('verdict create', () => {
     expect(verdict(out, { stage: 'create', revision: REVISION }).problems.join('\n')).toMatch(/questions\.md:1 {2}R-zzzzzz is cited but not defined/);
   });
 
+  it.each([
+    ['a question row it cannot read', (t) => t.replace('| 3 | money |', '| Q3 | money |'), /questions\.md:7 {2}not a question row/],
+    ['a category outside the six', (t) => t.replace('| money |', '| finance |'), /question 3 has category "finance"/],
+  ])('fails %s', (_name, change, expected) => {
+    const out = fixture('created');
+    const path = join(out, 'run', 'questions.md');
+    writeFileSync(path, change(readFileSync(path, 'utf8')));
+    expect(verdict(out, { stage: 'create', revision: REVISION }).problems.join('\n')).toMatch(expected);
+  });
+
   it('fails a run with no skopository', () => {
     expect(verdict(fixture('planned'), { stage: 'create', revision: REVISION }).problems).toContain('skopo/skopo.json is missing');
   });
@@ -87,6 +97,27 @@ describe('verdict report', () => {
     assembleReport(out);
     writeReportPage(out);
     expect(verdict(out, { stage: 'report', revision: REVISION })).toEqual({ ok: true, problems: [] });
+  });
+
+  it('fails a report the script did not build', () => {
+    const out = fixture('reported');
+    assembleReport(out);
+    writeReportPage(out);
+    writeFileSync(join(out, 'report', 'report.md'), '# Permits\n');
+    writeFileSync(join(out, 'report', 'report.html'), '<p>x</p>');
+    expect(verdict(out, { stage: 'report', revision: REVISION }).problems).toEqual([
+      'report/report.md differs from what report-assemble builds from the current files; run report-assemble again',
+      'report/report.html differs from what report-page builds from report.md; run report-assemble and report-page again',
+    ]);
+  });
+
+  it('fails a report left from older questions', () => {
+    const out = fixture('reported');
+    assembleReport(out);
+    writeReportPage(out);
+    const path = join(out, 'run', 'questions.md');
+    writeFileSync(path, readFileSync(path, 'utf8').replace('Who may revoke a permit?', 'Who may suspend a permit?'));
+    expect(verdict(out, { stage: 'report', revision: REVISION }).problems).toContain('report/report.md differs from what report-assemble builds from the current files; run report-assemble again');
   });
 });
 

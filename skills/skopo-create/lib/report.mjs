@@ -6,10 +6,10 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { cells, refsIn } from '../checker/spec.mjs';
+import { refsIn } from '../checker/spec.mjs';
 import { citationProblems, statementKinds } from './citations.mjs';
 import { outPaths, readRun } from './run-state.mjs';
-import { renderPage } from './page.mjs';
+import { isSeparatorRow, renderPage, splitRow } from './page.mjs';
 
 /** Question categories in order of consequence: what could hurt someone or lose money first. */
 export const CATEGORIES = Object.freeze(['security', 'money', 'regulation', 'promise', 'behaviour', 'documentation']);
@@ -98,21 +98,42 @@ export function checkSummary(out) {
   return problems;
 }
 
-/** The question rows of the run's questions.md and its section of decisions without a recorded reason. */
+const QUESTION_COLUMNS = 5;
+
+/**
+ * The run's questions.md: every row of its questions table, the problems with rows that are not
+ * questions or whose category is not one of the six, and its section of decisions without a
+ * recorded reason. Rows are split on unescaped pipes only, and each cell is kept as written, so a
+ * row comes out of the report with the same text it went in with.
+ */
 export function readQuestions(text) {
   const lines = text.split('\n');
-  const rows = lines.filter((line) => /^\|\s*\d+\s*\|/.test(line)).map((line) => {
-    const [number, category, question, sources, statements] = cells(line);
-    return { number: Number(number), category: (category ?? '').toLowerCase(), question, sources, statements, line };
-  });
   const start = lines.findIndex((line) => DECISIONS_HEADING.test(line));
+  const tableLines = start < 0 ? lines : lines.slice(0, start);
+  const rows = [];
+  const problems = [];
+  tableLines.forEach((line, i) => {
+    if (!/^\s*\|/.test(line) || isSeparatorRow(line)) return;
+    if (isSeparatorRow(tableLines[i + 1] ?? '')) return; // a header row
+    const cells = splitRow(line);
+    if (cells.length !== QUESTION_COLUMNS || !/^\d+$/.test(cells[0])) {
+      problems.push(`questions.md:${i + 1}  not a question row of ${QUESTION_COLUMNS} cells starting with its number: ${line.trim().slice(0, 80)}`);
+      return;
+    }
+    const [number, category, question, sources, statements] = cells;
+    const row = { number: Number(number), category: category.toLowerCase(), question, sources, statements };
+    if (!CATEGORIES.includes(row.category)) {
+      problems.push(`questions.md:${i + 1}  question ${row.number} has category "${category}", not one of ${CATEGORIES.join(', ')}`);
+    }
+    rows.push(row);
+  });
   let decisions = '';
   if (start >= 0) {
     const rest = lines.slice(start + 1);
     const end = rest.findIndex((line) => /^#{1,2}\s/.test(line));
     decisions = (end < 0 ? rest : rest.slice(0, end)).join('\n').trim();
   }
-  return { rows, decisions };
+  return { rows, decisions, problems };
 }
 
 /** The questions ordered by consequence, each category keeping its own numbering order. Throws on an unknown category. */
@@ -122,6 +143,13 @@ export function orderQuestions(rows) {
     throw new Error(unknown.map((row) => `questions.md: question ${row.number} has category "${row.category}", not one of ${CATEGORIES.join(', ')}`).join('\n'));
   }
   return [...rows].sort((a, b) => CATEGORIES.indexOf(a.category) - CATEGORIES.indexOf(b.category) || a.number - b.number);
+}
+
+/** Every problem with the run's questions.md, one line each; empty when the report can carry every question. */
+export function questionProblems(out) {
+  const { questions } = outPaths(out);
+  if (!existsSync(questions)) return ['run/questions.md is missing'];
+  return readQuestions(readFileSync(questions, 'utf8')).problems;
 }
 
 /** The body of the README's "What is not here" section, or null. */
@@ -164,7 +192,7 @@ function questionsSection(rows) {
   return ['## Questions', '', tally, ...table].join('\n');
 }
 
-function coverageSection(out) {
+function coverageSection(out, run) {
   const { metrics, skopo } = outPaths(out);
   const m = readJson(metrics);
   const readmePath = join(skopo, 'README.md');
@@ -174,32 +202,42 @@ function coverageSection(out) {
     const k = m.statements.byKind ?? {};
     lines.push(`- Statements: ${m.statements.total} (${['T', 'A', 'R', 'W', 'E', 'F', 'D'].map((x) => `${k[x] ?? 0} ${x}`).join(' · ')})`);
   }
-  if (m?.source) lines.push(`- Sources read: ${m.source.codeLines} code lines and ${m.source.docWords} document words in ${m.source.repos} repositories`);
+  if (m?.source) lines.push(`- Sources surveyed${run.scope ? ` in the scope` : ''}: ${m.source.codeLines} code lines and ${m.source.docWords} document words in ${m.source.repos} repositories`);
   if (m?.lint?.last) lines.push(`- Last lint pass: ${m.lint.last.errors} errors, ${m.lint.last.warnings} warnings, after ${m.lint.passes} passes`);
   if (!m) lines.push('- No metrics were recorded for this run.');
   lines.push('', '### What is not here', '', notHere ?? 'The skopository does not say.');
   return lines.join('\n');
 }
 
-/** Writes report/report.md from the summary and the run's files and returns its path. Throws when a file it needs is missing or wrong. */
-export function assembleReport(out) {
+/** The text of report/report.md, built from the summary and the run's files. Throws when a file it needs is missing or wrong. */
+export function buildReport(out) {
   const run = readRun(out);
   if (!run) throw new Error(`${out} holds no skopo run`);
-  const problems = checkSummary(out);
+  const problems = [...checkSummary(out), ...questionProblems(out)];
   if (problems.length > 0) throw new Error(problems.join('\n'));
-  const { questions } = outPaths(out);
-  if (!existsSync(questions)) throw new Error(`${questions} is missing`);
-  const { rows, decisions } = readQuestions(readFileSync(questions, 'utf8'));
-  const ordered = orderQuestions(rows);
-  const paths = reportPaths(out);
+  const { rows, decisions } = readQuestions(readFileSync(outPaths(out).questions, 'utf8'));
   const text = [
-    readFileSync(paths.summary, 'utf8').trim(),
+    readFileSync(reportPaths(out).summary, 'utf8').trim(),
     statusSection(out, run),
-    questionsSection(ordered),
+    questionsSection(orderQuestions(rows)),
     ['## Decisions without a recorded reason', '', decisions || 'None recorded.'].join('\n'),
-    coverageSection(out),
+    coverageSection(out, run),
   ].join('\n\n');
-  writeFileSync(paths.markdown, `${text}\n`);
+  return `${text}\n`;
+}
+
+/** The report page for the text of report.md. */
+export function buildReportPage(markdown) {
+  const title = (markdown.match(/^# (.+)$/m) ?? [])[1] ?? 'Skopo report';
+  return renderPage(markdown, title);
+}
+
+/** Writes report/report.md and returns its path. */
+export function assembleReport(out) {
+  const text = buildReport(out);
+  const paths = reportPaths(out);
+  mkdirSync(paths.dir, { recursive: true });
+  writeFileSync(paths.markdown, text);
   return paths.markdown;
 }
 
@@ -207,9 +245,7 @@ export function assembleReport(out) {
 export function writeReportPage(out) {
   const paths = reportPaths(out);
   if (!existsSync(paths.markdown)) throw new Error(`${paths.markdown} is missing; run report-assemble first`);
-  const markdown = readFileSync(paths.markdown, 'utf8');
-  const title = (markdown.match(/^# (.+)$/m) ?? [])[1] ?? 'Skopo report';
   mkdirSync(paths.dir, { recursive: true });
-  writeFileSync(paths.page, renderPage(markdown, title));
+  writeFileSync(paths.page, buildReportPage(readFileSync(paths.markdown, 'utf8')));
   return paths.page;
 }

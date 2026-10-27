@@ -75,17 +75,17 @@ Write what you tell the user during this phase in `$LANGUAGE`, as **Language** a
 Write what you tell the user during this phase in `$LANGUAGE`, as **Language** above says.
 
 1. `node "$PLUGIN_ROOT/skills/skopo-create/checker/run.mjs" phase "$RUN" survey`.
-2. Survey the project, and the scope on its own when there is one:
+2. Survey what the run recovers into `$RUN/inventory.json`: the scope when there is one, otherwise the project. With a scope, survey the whole project too, into `$RUN/inventory-project.json`, for its branches and its size around the scope:
    ```bash
-   node "$PLUGIN_ROOT/skills/skopo-create/checker/inventory.mjs" --out "$RUN/inventory.json" "$PROJECT_ROOT"
-   node "$PLUGIN_ROOT/skills/skopo-create/checker/inventory.mjs" --out "$RUN/inventory-scope.json" "$PROJECT_ROOT/$SCOPE"
+   node "$PLUGIN_ROOT/skills/skopo-create/checker/inventory.mjs" --out "$RUN/inventory.json" "$PROJECT_ROOT/$SCOPE"
+   node "$PLUGIN_ROOT/skills/skopo-create/checker/inventory.mjs" --out "$RUN/inventory-project.json" "$PROJECT_ROOT"
    ```
-   Run the second line only with a scope. Read the summaries they print; open the JSON for detail.
-3. **Branches.** For each repository the inventory reports its branch and its default branch.
+   Without a scope, run only the first line, on `"$PROJECT_ROOT"`. Read the summaries they print; open the JSON for detail. The run's metrics take their source size from `inventory.json`.
+3. **Branches.** For each repository the project's survey (`inventory-project.json` with a scope, otherwise `inventory.json`) reports its branch and its default branch.
    - On a named branch that is not the default branch: a blocking problem. Record `node "$PLUGIN_ROOT/skills/skopo-create/checker/run.mjs" set "$RUN" stopped=<repository on branch, not default>`, tell the user to check out the default branch and run again, and stop.
    - On a detached HEAD (`HEAD`), or with no default branch known: not blocking. Note it in `notes.md`; the plan's **Left out** says the run read a commit, not a branch it could confirm.
    - Behind its remote default branch (as of the last fetch): say so in the plan and in the reply.
-4. **Size.** The scope's size is the scope inventory's; without a scope, the project's. Above about 300,000 lines of code or 1.5 million words of documents, the recovery is **too large for one run**: Phase 2 sends only the two module-level passes and Phase 3 writes a split.
+4. **Size.** The size is `inventory.json`'s. Above about 300,000 lines of code or 1.5 million words of documents, the recovery is **too large for one run**: Phase 2 sends only the two module-level passes and Phase 3 writes a split.
 5. **Stack.** When the project uses Java EE or Jakarta EE (a `faces-config.xml`, `ejb-jar.xml`, `persistence.xml` or `beans.xml`, or `javax.` or `jakarta.` imports of `ejb`, `faces`, `persistence` or `enterprise`), `STACK` is `$PLUGIN_ROOT/skills/skopo-create/jakarta-ee.md`; otherwise there is none.
 6. Record: `node "$PLUGIN_ROOT/skills/skopo-create/checker/run.mjs" set "$RUN" topology=<single-repository|multi-repository> repos=<names, comma separated> branches=<repo@branch, comma separated> graph=<available|none> stack=<jakarta-ee|none> size=<code lines of the scope or project> subagentModel=<model or inherit>`.
 

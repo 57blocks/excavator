@@ -16,13 +16,19 @@ function inline(text) {
     .join('');
 }
 
-const cellsOf = (line) => line.trim().replace(/^\||\|$/g, '').split('|').map((c) => c.trim());
-const isSeparatorRow = (line) => /^\s*\|[\s:|-]+\|\s*$/.test(line);
+/** The cells of a table row, split on unescaped pipes only; a cell keeps its `\|` escapes as written. */
+export function splitRow(line) {
+  return line.trim().replace(/^\|/, '').replace(/(?<!\\)\|$/, '').split(/(?<!\\)\|/).map((c) => c.trim());
+}
+export const isSeparatorRow = (line) => /^\s*\|[\s:|-]+\|\s*$/.test(line);
+/** A cell as the reader sees it: an escaped pipe is a pipe. */
+const cellText = (cell) => inline(cell.replace(/\\\|/g, '|'));
 const LIST_ITEM = /^\s*(?:([-*+])|(\d+)[.)])\s+(.*)$/;
 
 /** The body HTML for `markdown`. */
 export function renderMarkdown(markdown) {
-  const lines = markdown.replace(/\r\n/g, '\n').split('\n');
+  // Every line terminator becomes \n first, so no line can hold one that the patterns below stop at.
+  const lines = markdown.replace(/\r\n?|[\u2028\u2029]/g, '\n').split('\n');
   const html = [];
   let i = 0;
   while (i < lines.length) {
@@ -46,9 +52,9 @@ export function renderMarkdown(markdown) {
       const rows = [];
       while (i < lines.length && /^\s*\|/.test(lines[i])) rows.push(lines[i++]);
       const hasHeader = rows.length > 1 && isSeparatorRow(rows[1]);
-      const head = hasHeader ? `<thead><tr>${cellsOf(rows[0]).map((c) => `<th>${inline(c)}</th>`).join('')}</tr></thead>` : '';
+      const head = hasHeader ? `<thead><tr>${splitRow(rows[0]).map((c) => `<th>${cellText(c)}</th>`).join('')}</tr></thead>` : '';
       const bodyRows = (hasHeader ? rows.slice(2) : rows).filter((r) => !isSeparatorRow(r));
-      html.push(`<table>${head}<tbody>${bodyRows.map((r) => `<tr>${cellsOf(r).map((c) => `<td>${inline(c)}</td>`).join('')}</tr>`).join('')}</tbody></table>`);
+      html.push(`<table>${head}<tbody>${bodyRows.map((r) => `<tr>${splitRow(r).map((c) => `<td>${cellText(c)}</td>`).join('')}</tr>`).join('')}</tbody></table>`);
       continue;
     }
     const item = line.match(LIST_ITEM);

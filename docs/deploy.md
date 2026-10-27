@@ -193,11 +193,13 @@ Skopo modes (a skopository: intent documentation recovered from the code, see `/
 
 ```sh
 for mode in skopo-plan skopo-create skopo-report; do
+  scope=(-e EXCAVATOR_SCOPE=<subdir>)      # leave out for the whole repository
+  [ "$mode" = skopo-report ] && scope=()   # skopo-report reads the scope its run recorded
   docker run --rm \
     -v /srv/excavator/<name>:/work/repo \
     -v /srv/excavator/out/<name>:/work/out \
     -e EXCAVATOR_MODE=$mode \
-    -e EXCAVATOR_SCOPE=<subdir> \
+    "${scope[@]}" \
     -e EXCAVATOR_MAX_BUDGET_USD=<USD> \
     -e AWS_REGION=eu-central-1 \
     -e ANTHROPIC_MODEL=<PROFILE> \

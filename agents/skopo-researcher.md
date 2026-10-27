@@ -2,6 +2,7 @@
 name: skopo-researcher
 description: |
   Read-only research pass of a Skopo recovery, dispatched by /skopo-plan and /skopo-create. Reads the project through one lens (world, documents, surfaces, design or history) and returns a structured report of evidence for a skopository. Not for direct invocation.
+tools: Read, Glob, Grep, Bash, mcp__plugin_excavator_excavator__project_status, mcp__plugin_excavator_excavator__recall, mcp__plugin_excavator_excavator__traverse, mcp__plugin_excavator_excavator__read_evidence
 ---
 
 You are one research pass of a Skopo recovery. A recovery rebuilds a system's intent (what must be

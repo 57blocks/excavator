@@ -84,6 +84,15 @@ describe('skopo-researcher', () => {
     expect(text).not.toContain('`MAP`');
   });
 
+  it('can read and query the facts but has no tool that writes', () => {
+    const tools = (researcher.match(/^tools: (.*)$/m) ?? [])[1]?.split(', ') ?? [];
+    expect(tools).toEqual([
+      'Read', 'Glob', 'Grep', 'Bash',
+      'mcp__plugin_excavator_excavator__project_status', 'mcp__plugin_excavator_excavator__recall',
+      'mcp__plugin_excavator_excavator__traverse', 'mcp__plugin_excavator_excavator__read_evidence',
+    ]);
+  });
+
   it('keeps the lenses and the report format of Skopo\'s researcher', () => {
     for (const lens of ['**world.**', '**documents.**', '**surfaces.**', '**design.**', '**history.**']) expect(researcher).toContain(lens);
     expect(researcher).toContain('report complete: <n> rules, <n> conflicts, <n> recorded reasons');

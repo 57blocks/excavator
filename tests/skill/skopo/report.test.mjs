@@ -57,8 +57,25 @@ describe('questions', () => {
   });
 
   it('refuses a category outside the six', () => {
-    const { rows } = readQuestions(QUESTIONS.replace('| money |', '| finance |'));
+    const { rows, problems } = readQuestions(QUESTIONS.replace('| money |', '| finance |'));
+    expect(problems).toEqual([expect.stringMatching(/^questions\.md:7 {2}question 3 has category "finance"/)]);
     expect(() => orderQuestions(rows)).toThrow(/question 3 has category "finance"/);
+  });
+
+  it('names every table row that is not a question instead of dropping it', () => {
+    const text = QUESTIONS.replace('| 2 | security |', '| 2. | security |').replace('| 3 | money |', '| Q3 | money |');
+    const { rows, problems } = readQuestions(text);
+    expect(rows.map((r) => r.number)).toEqual([1]);
+    expect(problems).toEqual([
+      expect.stringMatching(/^questions\.md:6 {2}not a question row/),
+      expect.stringMatching(/^questions\.md:7 {2}not a question row/),
+    ]);
+  });
+
+  it('splits a row on unescaped pipes only and keeps every cell as written', () => {
+    const { rows, problems } = readQuestions(QUESTIONS.replace('Who may revoke a permit?', 'Is `a \\| b` revoked?'));
+    expect(problems).toEqual([]);
+    expect(rows.find((r) => r.number === 2)).toMatchObject({ question: 'Is `a \\| b` revoked?', sources: 'code · runbook', statements: 'R-5tps87' });
   });
 });
 
@@ -74,6 +91,29 @@ describe('assembleReport', () => {
     expect(text.indexOf('## Status')).toBeLessThan(text.indexOf('## Questions'));
   });
 
+  it('carries a question with an escaped pipe over with its sources and statements', () => {
+    const out = reported();
+    const path = join(out, 'run', 'questions.md');
+    writeFileSync(path, readFileSync(path, 'utf8').replace('Who may revoke a permit?', 'Is `a \\| b` revoked?'));
+    expect(readFileSync(assembleReport(out), 'utf8')).toContain('| 2 | security | Is `a \\| b` revoked? | code · runbook | R-5tps87 |');
+  });
+
+  it('refuses to assemble when a question row cannot be read', () => {
+    const out = reported();
+    const path = join(out, 'run', 'questions.md');
+    writeFileSync(path, readFileSync(path, 'utf8').replace('| 3 | money |', '| Q3 | money |'));
+    expect(() => assembleReport(out)).toThrow(/not a question row/);
+  });
+
+  it('says the source size is the scope\'s in a scoped run', () => {
+    const out = reported();
+    const path = join(out, 'run', 'run.json');
+    writeFileSync(path, JSON.stringify({ ...JSON.parse(readFileSync(path, 'utf8')), scope: 'services/billing' }));
+    const text = readFileSync(assembleReport(out), 'utf8');
+    expect(text).toContain('- Scope: `services/billing`');
+    expect(text).toContain('- Sources surveyed in the scope: 1200 code lines');
+  });
+
   it('refuses to assemble from a summary that fails its check', () => {
     expect(() => assembleReport(reported(`${SUMMARY}\nUncited claim.\n`))).toThrow(/cites no statement/);
   });
@@ -85,6 +125,11 @@ describe('report page', () => {
     expect(html).not.toMatch(/<script|<img|<a\b|<b>|<i>/);
     expect(html).toContain('&lt;script&gt;alert(1)&lt;/script&gt;');
     expect(html).toContain('[x](javascript:alert(1))');
+  });
+
+  it('ends on every line terminator, a lone carriage return and a line separator included', () => {
+    const html = renderMarkdown('## Domain\r notes\n\nx\u2028## y\u2029z');
+    expect(html).toBe('<h2>Domain</h2>\n<p>notes</p>\n<p>x</p>\n<h2>y</h2>\n<p>z</p>');
   });
 
   it('writes one page with no external resource and no script', () => {

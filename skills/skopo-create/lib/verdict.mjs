@@ -9,7 +9,7 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { citationProblems, statementKinds } from './citations.mjs';
-import { checkSummary, reportPaths } from './report.mjs';
+import { buildReport, buildReportPage, questionProblems, reportPaths } from './report.mjs';
 import { outPaths, readRun } from './run-state.mjs';
 
 export const STAGES = Object.freeze(['plan', 'create', 'report']);
@@ -42,7 +42,7 @@ function createProblems(out, run) {
   const paths = outPaths(out);
   if (!existsSync(join(paths.skopo, 'skopo.json'))) return ['skopo/skopo.json is missing'];
   const problems = [...lintErrors(paths.skopo)];
-  if (!existsSync(paths.questions)) problems.push('run/questions.md is missing');
+  problems.push(...questionProblems(out));
   let kinds = null;
   try {
     kinds = statementKinds(paths.skopo);
@@ -58,13 +58,25 @@ function createProblems(out, run) {
   return problems;
 }
 
+/**
+ * The report must be exactly what the scripts build from the current files: rebuilt here and
+ * compared byte for byte, so a report written by hand, or left from older questions or an older
+ * summary, does not pass.
+ */
 function reportProblems(out) {
   const paths = reportPaths(out);
-  return [
-    ...checkSummary(out),
-    ...(existsSync(paths.markdown) ? [] : ['report/report.md is missing']),
-    ...(existsSync(paths.page) ? [] : ['report/report.html is missing']),
-  ];
+  let expected;
+  try {
+    expected = buildReport(out);
+  } catch (error) {
+    return error.message.split('\n');
+  }
+  const problems = [];
+  if (!existsSync(paths.markdown)) problems.push('report/report.md is missing');
+  else if (readFileSync(paths.markdown, 'utf8') !== expected) problems.push('report/report.md differs from what report-assemble builds from the current files; run report-assemble again');
+  if (!existsSync(paths.page)) problems.push('report/report.html is missing');
+  else if (readFileSync(paths.page, 'utf8') !== buildReportPage(expected)) problems.push('report/report.html differs from what report-page builds from report.md; run report-assemble and report-page again');
+  return problems;
 }
 
 /** `{ ok, problems }` for `stage` of the run in `out`, against the current source `revision`. */
@@ -75,5 +87,6 @@ export function verdict(out, { stage, revision }) {
   const problems = planProblems(out, run, revision);
   if (stage !== 'plan') problems.push(...createProblems(out, run));
   if (stage === 'report') problems.push(...reportProblems(out));
-  return { ok: problems.length === 0, problems };
+  const unique = [...new Set(problems)];
+  return { ok: unique.length === 0, problems: unique };
 }
