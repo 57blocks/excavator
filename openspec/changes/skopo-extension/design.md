@@ -145,4 +145,56 @@ $OUT/report/report.md    report.html   脚本写
 
 ## 验收记录
 
-（实现后填写。）
+2026-10-27。实现与门由我完成；评审由独立的 reviewer 代理（新上下文）对整个提交范围做了一轮，结论 5 Important、2 Nit，全部在 `fe3e09e` 修复。克隆、产物与运行输出都在会话 scratchpad，不进仓库。冒烟样本是一个小的开源 Java EE 应用（JSF、EJB、JPA，5.8k 行 Java、30 个 Facelets 页面、3 个提交），下称**样本**。
+
+### O1 门
+
+| 版本 | 检查 | 结果 |
+|---|---|---|
+| `2f52c65`（单独，runner 改动暂存在外） | check-refs；`tests/skill/skopo`、`tests/deploy`、`tests/install`、`tests/refs` | 全部通过（23 个文件、232 条） |
+| `991caac` | `pnpm run typecheck`、`pnpm --filter @excavator/core test`（1450 条）、`openspec validate --all --strict`（52 项） | 全部通过 |
+| `fe3e09e` | check-refs、`pnpm test`、`openspec validate --all --strict` | `pnpm test` 5601 通过、4 跳过；其余通过 |
+
+- 随新 agent 与新 skill 改了既有测试里写死的计数：加载夹具与 `load-check` 的 agent 数 11 → 12，安装测试的 skill 数 16 → 19，`config.test` 的参数集合加 `EXCAVATOR_SCOPE`。
+- **满足。**
+
+### O2 副本
+
+- 改一个字节、删一个文件、多一个文件、改 `keywords.json` 的含义，测试各自失败并指名文件；只重排 `keywords.json` 的格式不失败。`SOURCE.json` 的 9 个哈希由 reviewer 在 Skopo 的来源 commit 上独立重算，一致。
+- **满足。**
+
+### O3 状态与续跑
+
+- 7 种状态各一个夹具；`start` 在非 `none` 时拒绝；`fresh` 在 `foreign` 时拒绝且文件不动。
+- **满足。**
+
+### O4 报告
+
+- `report-check` 的 6 种问题各有失败用例；问题行数守恒并按类别排序，未知类别失败；页面对 `<script>`、`<img onerror>`、`javascript:` 链接输出转义文本，页面里没有 `<a`、`<script`、`src=`、`href=`。
+- 评审后补的用例（无法解析的问题行、转义的竖线、范围内的规模、手写或过期的报告、单独的回车）在修复前的实现上 11 条全部失败，修复后全部通过；回车用例在旧实现上会卡死，由 reviewer 实测。
+- **满足。**
+
+### O5 判定
+
+- `verdict create` 在合规夹具上通过；锚点改坏后失败并打印 lint 错误；去掉结束时间、问题引用不存在的 ID、问题行无法解析、类别越界各自失败。
+- **满足。**
+
+### O6 runner
+
+- 配置测试覆盖三个新模式与 `EXCAVATOR_SCOPE` 的 5 种非法取值；假的 `claude` 跑 `skopo-create`：产物合规时先建事实层再退出 0，lint 错误时退出 4 且产物保留；文档的参数表与 `RUNTIME_PARAMS` 一致（`docs-contract`）。
+- **满足。**
+
+### O7 真实冒烟
+
+本地 Claude Code 2.1.307，`--plugin-dir` 指向本检出，主会话 Sonnet，研究代理 Haiku（`--subagent-model haiku`），`bypassPermissions`，关闭 hooks。先 `lazy-analyze`（零模型，716 节点、2247 边；EL `references` 50、`injects` 38、`mentions` 32）。
+
+| 阶段 | 结果 | 花费（估算） | 墙钟 | 轮次 | 权限拒绝 |
+|---|---|---|---|---|---|
+| `skopo-plan` | `verdict plan: ok`；3 个研究代理全部完成 | $1.03 | 6.1 分钟 | 19 | 0 |
+| `skopo-create` | `verdict create: ok`；lint 7 轮后 0 错误 0 警告 | $0.76 | 3.1 分钟 | 21 | 0 |
+| `skopo-report` | `summary: ok` 一次通过；`verdict report: ok` | $0.26 | 0.6 分钟 | 8 | 0 |
+
+- skopository：4 个域、109 条陈述（19 T、10 A、33 R、3 W、5 E、24 F、15 D），约 2,700 词；问题 22 个（security 5、behaviour 11、promise 1、documentation 5）。报告页从磁盘打开正常。
+- **事实层没有被用上**：计划阶段研究代理调用 Bash 56 次、Read 7 次，MCP 0 次；两份报告的 Scope 写着事实「没有改变任何结论」。一个原因在 `jakarta-ee.md` 的开头写了「事实已经包含接线，下面主要是事实没有变成边的地方」，研究代理把它读成可以跳过事实；已改为先用 `traverse` 沿 EL、注入、提及与路由追到两端再读。样本只有 5.8k 行，按名字搜索就够；事实层是否帮得上，要在大仓库上看。
+- `skopo-report` 的最后回复用了中文：本地的用户级 `CLAUDE.md` 要求中文，压过了 skill 的语言规则（`--setting-sources user` 会读它）。runner 镜像没有用户级 `CLAUDE.md`，不受影响；summary 本身是英文。
+- **满足**（事实层的帮助不在本 oracle 的判定之内，记为后续观察）。
