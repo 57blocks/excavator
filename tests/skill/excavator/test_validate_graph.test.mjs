@@ -593,10 +593,11 @@ describe('validate-graph — imports evidence spans the whole statement', () => 
   });
 
 
-  it('keeps the single-line rule for every other edge type', () => {
+  it('does not read into the body of the declaration a calls edge cites', () => {
     const root = fixtureProject();
     const graph = cleanGraph();
-    // the callee is named on line 4; citing line 3 must still contradict
+    // line 3 opens the body of `run`; the callee is named on line 4, inside it,
+    // so citing line 3 must still contradict
     graph.edges.find((e) => e.type === 'calls').evidence = [
       { file: 'src/app.ts', line: 3, source: 'tree-sitter' },
     ];

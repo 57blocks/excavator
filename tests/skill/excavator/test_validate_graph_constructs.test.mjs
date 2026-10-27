@@ -8,12 +8,16 @@
  * anchor or an unrelated line, so a zero on the shapes means something.
  */
 import { describe, it, expect, afterEach } from 'vitest';
-import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join, dirname } from 'node:path';
+import { join, dirname, resolve } from 'node:path';
+import { spawnSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 import {
   validateAgainstSource, createSourceReader, CONSTRUCT_SCAN_LINES,
 } from '../../../skills/excavator/validate-graph.mjs';
+
+const VALIDATE = resolve(dirname(fileURLToPath(import.meta.url)), '../../../skills/excavator/validate-graph.mjs');
 
 const tempDirs = [];
 afterEach(() => {
@@ -296,5 +300,31 @@ describe('validate-graph — a call expression written over several lines', () =
     expect(report.counts.constructTooLong).toBe(1);
     expect(validated.edges[0].verification).toBe('unverified');
     expect(validated.gaps.find((g) => g.kind === 'construct-too-long').count).toBe(1);
+  });
+});
+
+describe('validate-graph — the report names what it could not decide', () => {
+  it('prints and writes the construct-too-long count and leaves the verdict counts alone', () => {
+    const lines = ['@Unclosed(', ...Array.from({ length: CONSTRUCT_SCAN_LINES + 20 }, (_, i) => `    part${i},`)];
+    const root = project({ 'src/Broken.java': lines });
+    const inter = join(root, '.excavator', 'intermediate');
+    mkdirSync(inter, { recursive: true });
+    const graph = {
+      version: '1.0.0',
+      project: { name: 'fixture', languages: [], frameworks: [], description: '', analyzedAt: '2026-10-27T00:00:00.000Z', gitCommitHash: null },
+      nodes: [declNode('class', 'src/Broken.java', 'Broken', [1, lines.length])], edges: [], layers: [], tour: [],
+    };
+    writeFileSync(join(inter, 'annotated-graph.json'), JSON.stringify(graph));
+
+    const run1 = spawnSync('node', [VALIDATE, root], { encoding: 'utf-8' });
+    expect(run1.status, run1.stderr).toBe(0);
+    expect(run1.stderr).toMatch(/construct-too-long=1/);
+    expect(run1.stderr).toMatch(/anchor-mismatch=0/);
+
+    const report = JSON.parse(readFileSync(join(inter, 'validation.json'), 'utf-8'));
+    expect(report.counts.constructTooLong).toBe(1);
+    const validated = JSON.parse(readFileSync(join(inter, 'validated-graph.json'), 'utf-8'));
+    expect(validated.gaps.find((g) => g.kind === 'construct-too-long').count).toBe(1);
+    expect(validated.nodes[0].verification).toBe('unverified');
   });
 });

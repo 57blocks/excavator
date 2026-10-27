@@ -2,7 +2,7 @@
 
 - [x] 1.1 在 `tests/skill/excavator/test_validate_graph.test.mjs` 加夹具与用例：被 `@Override` 注解的方法、三行注解且参数多行并夹一行注释的类、一个 20 行以上的注解块（嵌套注解、字符串字面量里含 `@`、`(`、`\n`，自行构造，不照搬真实源码）、TS/Python 装饰器、C# 属性、Rust 属性；链式调用（行尾 `.` 与行首 `.` 两种）、10 行 builder 链、链中间夹 lambda 块后 callee 在块之后（`.map(x -> {…}).collect(…)`）、callee 只在下一条语句里的反例。先在未改代码上跑，确认这些误报用例红、假样本用例绿，证明装置看得见（记录失败输出）。红只在本地确认，不单独提交
 - [x] 1.2 加「宽容不外溢」的反例用例：锚点错位五行进方法体、注解后跟另一个名字的声明、证据行指向无关语句、模型引用（`source: "model"`）的 callee 在下一行、改错被调用者名。它们在新旧代码上都必须报出（现在即绿，作为护栏）
-- [ ] 1.3 改写原先「其余类型只看证据行」的 `keeps the single-line rule for every other edge type` 用例，使其只约束仍应保持单行的情形（模型引用的证据、`mentions` 等带 `token` 的类型）
+- [x] 1.3 改写原先「其余类型只看证据行」的 `keeps the single-line rule for every other edge type` 用例，使其只约束仍应保持单行的情形（模型引用的证据、`mentions` 等带 `token` 的类型）
 
 ## 2. 锚点与成员边
 
@@ -17,7 +17,7 @@
 
 ## 4. 报告与确定性
 
-- [ ] 4.1 报告输出 `counts.constructTooLong` 与缺口 `construct-too-long`（0 时不出），保持排序与确定性；验证既有 CLI 用例（确定性报告、退出码）仍通过，并新增一条含过长结构的 CLI 用例
+- [x] 4.1 报告输出 `counts.constructTooLong` 与缺口 `construct-too-long`（0 时不出），保持排序与确定性；验证既有 CLI 用例（确定性报告、退出码）仍通过，并新增一条含过长结构的 CLI 用例
 
 ## 5. 真实图验收（oracle 已写死，动手前不改）
 

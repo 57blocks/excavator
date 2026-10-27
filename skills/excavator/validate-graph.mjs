@@ -798,7 +798,7 @@ async function main() {
     `edges-checked=${c.edgesChecked} edge-contradicted=${c.edgeContradicted} ` +
     `edges-inferred=${c.edgesInferred} step-unanchored=${c.stepUnanchored} ` +
     `source-missing=${c.sourceMissing} path-out-of-scope=${c.pathOutOfScope} ` +
-    `issues=${report.issues.length}\n`,
+    `construct-too-long=${c.constructTooLong} issues=${report.issues.length}\n`,
   );
 }
 

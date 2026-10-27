@@ -1359,11 +1359,17 @@ Skip this phase if `$DATA_DIR/intermediate/annotated-graph.json` does not exist
 node "<SKILL_DIR>/validate-graph.mjs" "$PROJECT_ROOT"
 ```
 
-Checks: every `function`/`class` node's `lineRange[0]` (±1 line) must contain
-the node's `name`; every `extracted` edge's cited line must contain the
-expected token (callee for `calls`, target module segment for `imports`,
-symbol for `exports`, declaration for `contains`, either endpoint's name or
-file for a model-cited line); `inferred` edges pass; the referential-integrity
+Checks: every `function`/`class` node's `lineRange[0]` (±1 line, or the first
+line after its leading annotations and comments) must contain the node's
+`name`; every `extracted` edge's cited line must contain the expected token
+(callee for `calls`, target module segment for `imports`, symbol for
+`exports`, declaration for `contains`, either endpoint's name or file for a
+model-cited line). Evidence an extractor wrote may also hold its token on the
+first line after the cited line's leading annotations and comments, and a
+`calls` token may sit anywhere in the call expression that starts on the cited
+line; a model-cited line is checked alone. A leading block or expression longer
+than 400 lines is `unverified` under `construct-too-long`, not contradicted.
+`inferred` edges pass; the referential-integrity
 checks of Phase 6 are repeated; and every `step` node must carry `nodeIds`
 that exist, or be marked `provenance: "inferred"`.
 
