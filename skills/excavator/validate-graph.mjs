@@ -377,6 +377,31 @@ export function skipLeadingLines(reader, filePath, startLine) {
   }
 }
 
+/**
+ * Does this line leave a declaration unfinished? A line of modifiers and types
+ * with no parenthesis, brace, semicolon or `=` (`public void`, `public static`)
+ * is a wrapped declaration head: the name is on a later line. A line that has
+ * any of those is complete, so nothing after it belongs to the head.
+ */
+function headContinues(text) {
+  return /^[\w\s<>,.?[\]@]+$/.test(text) && text.trim() !== '';
+}
+
+/**
+ * Look for `tokens` on the declaration head that starts at `line`: that line
+ * and, while each one leaves the declaration unfinished, the lines after it.
+ */
+function findTokenInDeclarationHead(reader, filePath, line, tokens) {
+  const limit = line + CONSTRUCT_SCAN_LINES;
+  for (let n = line; n < limit; n++) {
+    const text = reader.line(filePath, n);
+    if (text === null) return null;
+    if (tokens.some((token) => token && text.includes(token))) return n;
+    if (!headContinues(text)) return null;
+  }
+  return null;
+}
+
 /** Does this line end in something that makes the expression go on? */
 function endsWithContinuation(text) {
   const code = text.replace(/\/\/.*$/, '').trimEnd();
@@ -515,10 +540,11 @@ export function validateAgainstSource({ graph, reader, sampleLimit = 5 }) {
     let hit = findToken(reader, node.filePath, startLine, tokens, ANCHOR_TOLERANCE);
     if (hit === null) {
       // A declaration's range starts at its first annotation; its name is on
-      // the first line after the annotations and comments.
+      // the first line after the annotations and comments (or, for a wrapped
+      // declaration, a later line of its head).
       const lead = skipLeadingLines(reader, node.filePath, startLine);
       if (lead.status === 'ok') {
-        hit = findToken(reader, node.filePath, lead.line, tokens, 0);
+        hit = findTokenInDeclarationHead(reader, node.filePath, lead.line, tokens);
       } else if (lead.status === 'too-long') {
         counts.constructTooLong += 1;
         node.verification = 'unverified';
@@ -579,12 +605,18 @@ export function validateAgainstSource({ graph, reader, sampleLimit = 5 }) {
       let found = edge.type === 'imports' && entry.source !== 'model'
         ? findTokenInImportStatement(reader, entry.file, entry.line, tokens)
         : findToken(reader, entry.file, entry.line, tokens, 0);
-      if (found === null && entry.source !== 'model') {
+      // An entry that names the token its line holds (a mention, an injection,
+      // a JSX tag) says exactly where that is; only one that cites where a
+      // construct starts is read past its leading lines and across its lines.
+      if (found === null && entry.source !== 'model' && entry.token === undefined) {
         // An extractor cites where the construct starts, which is its first
-        // annotation; the token is on the first line after the annotations.
+        // annotation; the token is on the first line after the annotations
+        // (or, for a wrapped declaration, a later line of its head).
         const lead = skipLeadingLines(reader, entry.file, entry.line);
-        if (lead.status === 'ok' && lead.line !== entry.line) {
-          found = findToken(reader, entry.file, lead.line, tokens, 0);
+        if (lead.status === 'ok') {
+          // The declaration may itself wrap: `public void` on one line, the
+          // name on the next.
+          found = findTokenInDeclarationHead(reader, entry.file, lead.line, tokens);
         } else if (lead.status === 'too-long') {
           tooLong = true;
         }

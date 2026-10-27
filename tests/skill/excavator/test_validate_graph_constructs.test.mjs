@@ -145,6 +145,44 @@ describe('validate-graph — a declaration preceded by annotations, decorators o
     expect(report.counts.edgeConfirmed).toBe(4);
   });
 
+  it('confirms a declaration whose modifiers and return type wrap onto a line before the name', () => {
+    const lines = [
+      'public class W {', //                                  1
+      '  @Test', //                                            2
+      '  public void', //                                     3
+      '  testWrapped() throws Exception {}', //                4
+      '', //                                                   5
+      '  public static', //                                   6
+      '  void bare() {}', //                                  7
+      '}', //                                                  8
+    ];
+    const root = project({ 'src/W.java': lines });
+    const file = fileNode('src/W.java');
+    const wrapped = declNode('function', 'src/W.java', 'testWrapped', [2, 4]);
+    const bare = declNode('function', 'src/W.java', 'bare', [6, 7]);
+    const { report } = run(root, [file, wrapped, bare], [
+      edge('contains', file, wrapped, 'src/W.java', 2),
+      edge('exports', file, wrapped, 'src/W.java', 2),
+      edge('contains', file, bare, 'src/W.java', 6),
+    ]);
+    expect(report.counts.anchorMismatch).toBe(0);
+    expect(report.counts.edgeContradicted).toBe(0);
+    expect(report.counts.edgeConfirmed).toBe(3);
+  });
+
+  it('does not look past a declaration line that is already complete', () => {
+    const lines = ['class D {', '  void first() {}', '  void second() {}', '}'];
+    const root = project({ 'src/D.java': lines });
+    const file = fileNode('src/D.java');
+    const second = declNode('function', 'src/D.java', 'second', [3, 3]);
+    // line 2 is a finished declaration (`first`); `second` is on the line after it
+    const { report } = run(root, [file, second], [
+      edge('contains', file, second, 'src/D.java', 2),
+      edge('exports', file, second, 'src/D.java', 2),
+    ]);
+    expect(report.counts.edgeContradicted).toBe(2);
+  });
+
   it('still reports a name that belongs to a different declaration', () => {
     const root = project({ [JAVA]: javaLines });
     const file = fileNode(JAVA);
