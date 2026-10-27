@@ -1,0 +1,30 @@
+## 1. 先验装置（先红）
+
+- [ ] 1.1 新建 `tests/skill/excavator/test_validate_graph_multiline_calls.test.mjs`，写夹具与用例：Java 行首点的链式调用、Go 行尾点的链式调用、10 行 builder 链、链中间夹 lambda 块后被调用者在块之后（`.map(x -> {…}).collect(…)`）、被调用者在顶层 `{` 同一行、带注解和不带注解的折行声明头（`public void` / `private void` 一行，名字下一行）、多行修饰符的头（`public static final` / `int` / `LIMIT = 4;`）。先在未改代码上跑，确认这些误报用例红、护栏用例绿，证明装置看得见（记录失败输出）。红只在本地确认，不单独提交
+- [ ] 1.2 写护栏：被调用者只在下一条语句里、被调用者根本不在表达式里、证据行指向函数体或分支的 `{` 而被调用者只在体内、模型引用的证据、带自己 `token` 的证据、过长表达式与过长声明头。它们在新旧代码上都必须按期望报出
+- [ ] 1.3 写按语言的表：
+  - **不是声明头**：各语言的语句形状（`import os`、`return x`、`pass`、`export default router`、`export const router`、`const router`、`static x`、`async`、`count--`、`val x: String?`、`break;`、`else`），每行写两遍再接目标声明，期望全部不被当作声明头；
+  - **不是续行**：行尾 `,`、`++`、`--`、`*`、可空类型 `?`、块注释结尾，下一行含被调用者，期望全部被报出（一行一个用例）；
+  - **没有这种语法的语言**：Python、Ruby、Go 与未识别的文件里，`public` 加下一行的名字不是声明头；Python、Ruby 文件里，被调用者在下一行的 `calls` 边被报出
+
+## 2. 折行声明头
+
+- [ ] 2.1 在 `validate-graph.mjs` 加 `DECLARATION_MODIFIERS`、声明头的语言表、`findTokenInDeclarationHead`，锚点检查在跳过前导行之后调用，命中即精确，进 `exactAnchors`；过长标 `unverified`。验证 1.1 的声明头用例、1.3 的「不是声明头」与「没有这种语法的语言」转绿，既有 `test_validate_graph_leading_lines.test.mjs` 与 `test_validate_graph.test.mjs` 全绿
+
+## 3. `calls` 的整条表达式
+
+- [ ] 3.1 加表达式的语言表、`endsWithContinuation`、`nextLineContinues`、`findTokenInExpression`，边检查对抽取器写的、不带自己 `token` 的 `calls` 证据调用；过长标 `unverified` 并计 `construct-too-long`。验证 1.1 的链式用例、lambda 用例与 1.2 的护栏转绿、1.3 的「不是续行」全部报出
+- [ ] 3.2 `skills/excavator/SKILL.md` Phase 6b 的检查说明改为与规格一致；验证 `node scripts/check-refs.mjs` 通过
+
+## 4. 真实图验收（oracle 已写死，动手前不改）
+
+- [ ] 4.1 用保存下来的那次冒烟的图与源码（74 文件 Java 子项目，在部署主机的运行输出与仓库目录里，通过 SSM 只读取回，在副本里验证；源码与图都不进仓库）重新验证，新旧验证器各跑一次。判据：#89 之后剩下的 70 条（`calls` 50、折行声明头的 4 个锚点与 16 条边）全部归零；任何残余逐条给出源码证据证明不是机制漏判，且不超过 5 条。`construct-too-long` 的计数写进验收记录
+- [ ] 4.2 召回：沿用 #89 的 415 个植入（锚点错位、`calls` 证据行改指无关行、成员边指向别的成员的注解、范围与证据同时偏一行），要求非 lambda 的 367 个仍全部被报出，植入数 = 报出数；`calls-moved` 的 60 个是本变更最直接的护栏。另加 ≥ 40 个新植入：被调用者改成该表达式里不存在的名字、证据行改指相邻语句、证据行改指一个函数体的开头。每个植入先用与验证器规则无关的纯文本判断确认确是坏的
+- [ ] 4.3 lambda 风险：沿用「证据行指向含 lambda 块的语句、被调用者是块内另一次调用」的植入，记录被确认的比例并写入验收记录；这是设计里写明并接受的精度代价，不事后挪规则
+- [ ] 4.4 变异：把每条新规则改坏（声明头的语言开关打开、`export` 或 `static` 进修饰符、整行只有单词就算头、行尾 `*`、`,`、`++` 当续行、顶层 `{` 并入表达式、模型引用也享受表达式扫描、带 `token` 的证据也享受、表达式语言开关打开、扫描上限失效、声明头命中不进精确集合），逐个确认至少一个用例变红；存活的变异说明测试没有约束力，必须补测试后重跑。所有变异在已提交的版本上做，随后从提交还原
+- [ ] 4.5 记录验收结果与残余到 `acceptance.md`（只写机制与规模，不写语料名）
+
+## 5. 门与合并
+
+- [ ] 5.1 本地只跑受影响的范围：`git grep -l "validate-graph\|validateAgainstSource" -- tests` 得到的测试，加上读 `skills/excavator/SKILL.md` 的合约测试，一条 vitest 命令；再跑 `node scripts/check-refs.mjs`、`openspec validate --all --strict`。全量交给 CI gate。新文件先 `git add -N` 再跑
+- [ ] 5.2 分阶段 commit：每个 commit 带自己的测试与实现且单独为绿；每个 commit 前逐个核对 `--stat` 文件数；PR 用 `--merge`，基线指向 `main`，在 #89 合并之后开；评审按 REVIEW.md 做，最多三轮；归档前做 spec 同步
