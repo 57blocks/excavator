@@ -14,7 +14,9 @@
  *      class/struct/def keyword). Otherwise: gap `anchor-mismatch`, node
  *      `verification: "contradicted"`. Leading lines longer than the scan bound
  *      leave the node `unverified` under `construct-too-long`, never confirmed and
- *      never contradicted.
+ *      never contradicted. An anchor is exact when the name is on `lineRange[0]`
+ *      itself or on the first line after the leading lines; one that only passes
+ *      within one line is still an anchor but is not exact.
  *   2. evidence — for every `extracted` edge, the cited line must contain the
  *      expected token: the callee name (`calls`), the target module segment
  *      (`imports`), the symbol name (`exports`), the declared name
@@ -23,7 +25,11 @@
  *      model-cited entry, either endpoint's name or file name. `imports` is
  *      checked across the whole statement (a multi-line ES import names its
  *      specifier several lines below its start); every other type is checked
- *      on the cited line alone. Otherwise: gap
+ *      on the cited line alone. One more way is read from the graph, not from
+ *      the text: an edge an extractor wrote that cites a declaration (not a
+ *      `calls` edge, and not an entry that names its own token) is confirmed
+ *      when the cited line is the first line of the range of an endpoint whose
+ *      name is the expected token and whose own anchor is exact. Otherwise: gap
  *      `edge-contradicted`, edge `verification: "contradicted"`.
  *   3. `inferred` edges pass — being marked as judgement IS the honest state.
  *   4. referential integrity — the same checks UA's inline validator makes
@@ -447,6 +453,7 @@ export function validateAgainstSource({ graph, reader, sampleLimit = 5 }) {
   }
 
   // ── 1. anchors ──────────────────────────────────────────────────────────
+  const exactAnchors = new Set();
   for (const node of validated.nodes) {
     if (!node || typeof node !== 'object') continue;
     if (!CODE_NODE_TYPES.has(node.type)) continue;
@@ -469,13 +476,21 @@ export function validateAgainstSource({ graph, reader, sampleLimit = 5 }) {
     }
     const tokens = isAnonymousName(node.name) ? ANONYMOUS_KEYWORDS : [node.name];
     // A declaration's range starts at its first annotation, so its name is on
-    // the first line after the annotations and comments.
+    // the first line after the annotations and comments. The name on
+    // `lineRange[0]` itself or on that line makes the anchor exact; a name that
+    // is only within one line of the start still confirms the anchor, but an
+    // edge is not vouched for by it.
     let hit = findToken(reader, node.filePath, startLine, tokens, ANCHOR_TOLERANCE);
-    if (hit === null) {
+    let exact = findToken(reader, node.filePath, startLine, tokens, 0) !== null;
+    if (!exact) {
       const lead = skipLeadingLines(reader, node.filePath, startLine);
       if (lead.status === 'ok') {
-        hit = findToken(reader, node.filePath, lead.line, tokens, 0);
-      } else if (lead.status === 'too-long') {
+        const leadHit = findToken(reader, node.filePath, lead.line, tokens, 0);
+        if (leadHit !== null) {
+          exact = true;
+          hit = hit ?? leadHit;
+        }
+      } else if (lead.status === 'too-long' && hit === null) {
         counts.constructTooLong += 1;
         node.verification = 'unverified';
         samples.add('construct-too-long', `${node.filePath}:${startLine} ${node.id}`);
@@ -496,6 +511,7 @@ export function validateAgainstSource({ graph, reader, sampleLimit = 5 }) {
       samples.add('anchor-mismatch', `${node.filePath}:${startLine} ${node.id}`);
     } else {
       counts.anchorConfirmed += 1;
+      if (exact) exactAnchors.add(node.id);
     }
   }
 
@@ -534,6 +550,17 @@ export function validateAgainstSource({ graph, reader, sampleLimit = 5 }) {
       let found = edge.type === 'imports' && entry.source !== 'model'
         ? findTokenInImportStatement(reader, entry.file, entry.line, tokens)
         : findToken(reader, entry.file, entry.line, tokens, 0);
+      // An entry that names the token its line holds (a mention, an injection,
+      // a JSX tag) says exactly where that is, and a model's citation is
+      // untrusted input. Any other edge that cites a declaration cites where
+      // its range starts, which is its first annotation: a fact about the
+      // graph, not about how the line reads. The cited line is the first line
+      // of an endpoint's own range, and that endpoint's anchor is exact.
+      if (found === null && entry.source !== 'model' && entry.token === undefined && edge.type !== 'calls'
+        && [target, source].some((n) => n && n.filePath === entry.file && Array.isArray(n.lineRange)
+          && n.lineRange[0] === entry.line && tokens.includes(n.name) && exactAnchors.has(n.id))) {
+        found = entry.line;
+      }
       if (found !== null) {
         confirmed = true;
         break;

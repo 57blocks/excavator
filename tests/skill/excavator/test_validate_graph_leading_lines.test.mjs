@@ -132,6 +132,21 @@ describe('validate-graph — a declaration preceded by annotations, decorators o
     expect(report.counts.anchorConfirmed).toBe(5);
   });
 
+  it('confirms contains, exports, implements and overrides edges whose evidence line is the annotation', () => {
+    const root = project({ [JAVA]: javaLines });
+    const file = fileNode(JAVA);
+    const one = declNode('function', JAVA, 'one', [4, 5]);
+    const two = declNode('function', JAVA, 'two', [7, 9]);
+    const three = declNode('function', JAVA, 'three', [11, 15]);
+    const { report } = run(root, [file, one, two, three], [
+      edge('contains', file, one, JAVA, 4),
+      edge('exports', file, two, JAVA, 7),
+      edge('implements', three, three, JAVA, 11),
+      edge('overrides', two, two, JAVA, 7),
+    ]);
+    expect(report.counts.edgeContradicted).toBe(0);
+    expect(report.counts.edgeConfirmed).toBe(4);
+  });
 
   it('does not look past a declaration line that is already complete', () => {
     const lines = ['class D {', '  void first() {}', '  void second() {}', '}'];
@@ -250,6 +265,28 @@ describe('validate-graph — the class: a statement-shaped line is never read as
     expect(report.counts.edgeContradicted).toBe(2);
   });
 
+  it('confirms an edge only when it cites the first line of the range of an endpoint whose anchor holds', () => {
+    const lines = [
+      'class C {', //                  1
+      '  @Override', //                2
+      '  public void run() {', //      3
+      '    int x = 1;', //             4
+      '  }', //                        5
+      '  public void other() {}', //  6
+      '}', //                          7
+    ];
+    const root = project({ 'src/C.java': lines });
+    const file = fileNode('src/C.java');
+    const runNode = declNode('function', 'src/C.java', 'run', [2, 5]);
+    const other = declNode('function', 'src/C.java', 'other', [6, 6]);
+    const { report } = run(root, [file, runNode, other], [
+      edge('contains', file, runNode, 'src/C.java', 2), //   its own start: confirmed
+      edge('contains', file, runNode, 'src/C.java', 4), //   inside its range, not its start, no name: contradicted
+      edge('contains', file, other, 'src/C.java', 2), //     another member's start: contradicted
+    ]);
+    expect(report.counts.edgeConfirmed).toBe(1);
+    expect(report.counts.edgeContradicted).toBe(2);
+  });
 
   it('does not confirm an edge to a member whose own anchor does not hold, even at its first line', () => {
     const lines = ['class C {', '  @Override', '  public void run() {}', '}'];
@@ -300,7 +337,25 @@ describe('validate-graph — an anchor that passes only within one line does not
     expect(report.counts.edgeConfirmed).toBe(0);
   });
 
+  it('a range that starts exactly on the declaration confirms the same edges', () => {
+    const lines = ['x = compute()', 'def helper():', '    return 1'];
+    const root = project({ 'src/p.py': lines });
+    const file = fileNode('src/p.py');
+    const helper = declNode('function', 'src/p.py', 'helper', [2, 3]);
+    const { report } = run(root, [file, helper], twoEdges(file, helper, 'src/p.py', 2));
+    expect(report.counts.edgeContradicted).toBe(0);
+    expect(report.counts.edgeConfirmed).toBe(2);
+  });
 
+  it('a range that starts at the annotation vouches for its edges although the name is also within one line', () => {
+    const lines = ['class C {', '  @Override', '  public void run() {}', '}'];
+    const root = project({ 'src/C.java': lines });
+    const file = fileNode('src/C.java');
+    const runNode = declNode('function', 'src/C.java', 'run', [2, 3]);
+    const { report } = run(root, [file, runNode], twoEdges(file, runNode, 'src/C.java', 2));
+    expect(report.counts.edgeContradicted).toBe(0);
+    expect(report.counts.edgeConfirmed).toBe(2);
+  });
 });
 
 describe('validate-graph — the report names what it could not decide', () => {

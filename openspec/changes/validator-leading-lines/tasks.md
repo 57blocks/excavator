@@ -11,8 +11,8 @@
 
 ## 3. 边
 
-- [ ] 3.1 锚点检查维护「精确确认」集合（名字就在 `lineRange[0]`，或在跳过前导行之后的那一行；只靠 ±1 通过的不进）；边检查对非模型引用、不带自己 `token`、非 `calls` 的证据，当被引用的行恰是某个端点的 `lineRange[0]`、名字是期望 token、端点在可信集合里时确认。验证 1.1 的边用例、1.3 的边列、1.4 转绿，既有 `injects` / `references` / `routes` / JSX 用例不变
-- [ ] 3.2 `tests/lazy/name-references-pipeline.test.mjs` 里原先期望 `contains` 与 `exports` 被判矛盾的断言，改为期望没有矛盾，并改写其注释；验证该文件通过
+- [x] 3.1 锚点检查维护「精确确认」集合（名字就在 `lineRange[0]`，或在跳过前导行之后的那一行；只靠 ±1 通过的不进）；边检查对非模型引用、不带自己 `token`、非 `calls` 的证据，当被引用的行恰是某个端点的 `lineRange[0]`、名字是期望 token、端点在可信集合里时确认。验证 1.1 的边用例、1.3 的边列、1.4 转绿，既有 `injects` / `references` / `routes` / JSX 用例不变
+- [x] 3.2 `tests/lazy/name-references-pipeline.test.mjs` 里原先期望 `contains` 与 `exports` 被判矛盾的断言，改为期望没有矛盾，并改写其注释；验证该文件通过
 
 ## 4. 文档
 
