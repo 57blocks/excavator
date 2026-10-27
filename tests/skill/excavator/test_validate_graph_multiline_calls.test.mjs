@@ -606,6 +606,62 @@ describe('validate-graph — the look-ahead of an expression reads the code of t
   });
 });
 
+describe('validate-graph — a string that holds code is not read', () => {
+  // An interpolation holds code inside a string, and that code may hold strings of its own: the quotes then pair
+  // up wrongly, so a bracket in the string is counted as code and a word in it is taken for a name. The scan stops
+  // at such a line, and a name on it is not found. The same text in a language without interpolation is read.
+  const callAcross = (ext, lines) => {
+    const path = `src/s.${ext}`;
+    const root = project({ [path]: [...lines, ''] });
+    const m = declNode('function', path, 'm', [1, lines.length]);
+    const helper = declNode('function', 'src/T.x', 'helper', [1, 1]);
+    return run(root, [m, helper], [edge('calls', m, helper, path, 1)]).report;
+  };
+
+  it.each([
+    ['ts', ['  call(`x ${y}`,', '    helper());']],
+    ['js', ['  call(`x ${f(`n`)}`,', '    helper());']],
+    ['kt', ['  call("x ${y}",', '    helper())']],
+    ['scala', ['  call(s"x ${y}",', '    helper())']],
+    ['groovy', ['  call("x ${y}",', '    helper())']],
+    ['dart', ['  call("x ${y}",', '    helper());']],
+    ['php', ['  call("x {$y}",', '    helper());']],
+    ['php', ['  call("x ${y}",', '    helper());']],
+    ['swift', ['  call("x \\(y)",', '    helper())']],
+    ['cs', ['  Call($"x {y}",', '    helper());']],
+    ['cs', ['  Call(@$"x {y}",', '    helper());']],
+  ])('%s: stops at a line that holds an interpolation (%j)', (ext, lines) => {
+    expect(callAcross(ext, lines).counts.edgeContradicted).toBe(1);
+  });
+
+  it.each([
+    ['java', ['  call("x ${y}",', '    helper());']],
+    ['go', ['  call("x ${y}",', '    helper())']],
+    ['c', ['  call("x ${y}",', '    helper());']],
+    ['ts', ['  call("x",', '    helper());']],
+    ['kt', ['  call("x",', '    helper())']],
+    ['swift', ['  call("x",', '    helper())']],
+    ['cs', ['  Call("x {y}",', '    helper());']],
+  ])('%s: reads the same call where the string holds no interpolation (%j)', (ext, lines) => {
+    expect(callAcross(ext, lines).counts.edgeContradicted).toBe(0);
+  });
+
+  // A name inside the string of an interpolation is not code, whatever the quotes inside it do.
+  it.each([
+    ['kt', ['@Test', '// note', 'val x = "${f("helper")}"']],
+    ['ts', ['@Dec()', '// note', 'const x = `${f(`helper`)}`;']],
+    ['scala', ['@Test', '// note', 'val x = s"${f("helper")}"']],
+    ['swift', ['@Test', '// note', 'let x = "\\(f("helper"))"']],
+  ])('%s: does not take the name inside an interpolation for the declaration (%j)', (ext, lines) => {
+    const path = `src/s.${ext}`;
+    const root = project({ [path]: [...lines, ''] });
+    const file = fileNode(path);
+    const helper = declNode('function', path, 'helper', [1, 3]);
+    const { report } = run(root, [file, helper], [edge('contains', file, helper, path, 1)]);
+    expect(report.counts.edgeConfirmed).toBe(0);
+  });
+});
+
 describe('validate-graph — the report names the expressions it could not decide', () => {
   it('prints and writes the construct-too-long count for a call expression', () => {
     const lines = ['class Q {', '  void m() {', '    call(', ...Array.from({ length: CONSTRUCT_SCAN_LINES + 20 }, (_, i) => `        arg${i},`)];

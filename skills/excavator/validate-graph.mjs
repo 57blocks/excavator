@@ -349,6 +349,18 @@ const LEADING_SYNTAX = Object.freeze({
   ]),
 });
 
+/**
+ * What starts code inside a string, by language: `${` in JavaScript, TypeScript,
+ * Kotlin, Scala, Groovy, Dart and PHP, `{$` in PHP, `\(` in Swift, `$"` in C#.
+ * The code in an interpolation may hold strings of its own, so the quotes of a
+ * line that holds one pair up wrongly and the line cannot be read.
+ */
+const INTERPOLATION = Object.freeze({
+  '.js': /\$\{/, '.jsx': /\$\{/, '.mjs': /\$\{/, '.cjs': /\$\{/, '.ts': /\$\{/, '.tsx': /\$\{/,
+  '.kt': /\$\{/, '.kts': /\$\{/, '.scala': /\$\{/, '.groovy': /\$\{/, '.dart': /\$\{/,
+  '.php': /\$\{|\{\$/, '.swift': /\\\(/, '.cs': /\$@?"|@\$"/,
+});
+
 function leadingSyntax(filePath) {
   const ext = extname(filePath).toLowerCase();
   return {
@@ -363,6 +375,8 @@ function leadingSyntax(filePath) {
     rustApostrophe: ext === '.rs',
     // a heredoc is a string that starts without a quote
     heredoc: ext === '.php',
+    // a string that holds code, so a line with one cannot be read
+    interpolation: INTERPOLATION[ext] ?? null,
   };
 }
 
@@ -647,7 +661,7 @@ function mentionsName(code, name) {
  */
 function namedInCode(reader, filePath, line, tokens, syntax) {
   const text = reader.line(filePath, line);
-  if (text === null) return false;
+  if (text === null || (syntax.interpolation && syntax.interpolation.test(text))) return false;
   const code = codeOf(text, syntax);
   return tokens.some((token) => token && mentionsName(code, token));
 }
@@ -698,6 +712,8 @@ export function findTokenInExpression(reader, filePath, startLine, tokens, synta
   for (let line = startLine; line < limit; line++) {
     const text = reader.line(filePath, line);
     if (text === null) return { status: 'none' };
+    // A line with an interpolation cannot be read: what it holds in code and in strings is not told apart.
+    if (syntax.interpolation && syntax.interpolation.test(text)) return { status: 'none' };
     // The cited line was read as everywhere else before the scan began. A line counts for the code it
     // holds: a name in a comment or a string, or inside a longer name, is not the callee.
     if (namedInCode(reader, filePath, line, tokens, syntax)) return { status: 'found', line };
