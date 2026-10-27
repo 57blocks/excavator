@@ -792,11 +792,34 @@ describe('excavator-prd-report skill: merging the open items (prd-report-dedupe,
     expect(lines(checkOpenItems(run))[0]).toMatch(/^open-items\/checked\.json /);
   });
 
+  it('says every problem line starts with its file, and stops when no line names a file', () => {
+    const step = mergeStep();
+    const choose = flat(step.slice(step.indexOf('2. When it exits 1'), step.indexOf('3. Run `check-open-items` again')));
+    expect(choose).toContain('every problem line of the merge or the check starts with the name of its file');
+    expect(choose).toContain('When no line names `open-items/merged.json` or `open-items/checked.json`, stop this step, keep both files and tell the user the lines as printed: that is a problem with the run (the index or the project root), not with the merge.');
+    expect(choose.indexOf('When the lines name only `open-items/checked.json`')).toBeLessThan(choose.indexOf('stop this step'));
+    expect(choose.indexOf('stop this step')).toBeLessThan(choose.indexOf('Dispatch in the foreground'));
+    expect(flat(step)).toContain('each starting with the name of its file (for example `open-items/merged.json is missing` or `open-items/checked.json: member 2: same must be true or false`)');
+  });
+
+  it('prints lines that name neither file when the index or the project root is wrong, and a line naming its file for every problem of the merge and the check', () => {
+    const run = openItemsRun();
+    checkOpenItems(run);
+    const wrongRoot = lines(runPrd(['check-open-items', run.out, '--project', join(run.project, 'src')]));
+    expect(wrongRoot.length).toBeGreaterThan(0);
+    for (const line of wrongRoot) expect(line).not.toMatch(/open-items\/(merged|checked)\.json/);
+    run.writeJson('open-items/merged.json', { digest: run.readJson('open-items/sources.json').digest, groups: [{ keep: 'F1.1', also: ['F9.9'] }] });
+    expect(lines(checkOpenItems(run))[0]).toBe('open-items/merged.json: group 1: F9.9 is not an open item');
+    run.writeJson('open-items/merged.json', { digest: run.readJson('open-items/sources.json').digest, groups: [{ keep: 'F1.1', also: ['F2.1'] }] });
+    run.writeJson('open-items/checked.json', { digest: run.readJson('open-items/sources.json').digest, members: [{ keep: 'F1.1', id: 'F2.1', same: 'yes' }] });
+    expect(lines(checkOpenItems(run))[0]).toBe('open-items/checked.json: member 1: same must be true or false');
+  });
+
   it('retries once with the problem lines under a fixed heading, deletes the file, and leaves the items unmerged without failing the run', () => {
     const step = mergeStep();
     expect(step).toContain('rm -f "$OUT/open-items/merged.json" "$OUT/open-items/checked.json"');
     expect(step).toContain('Your previous attempt failed these checks; fix them and write the file again:');
-    expect(step).toContain('then each problem line that named its file');
+    expect(step).toContain('then every problem line of its file');
     expect(step.indexOf('Run `check-open-items` again')).toBeGreaterThan(step.indexOf('dispatch one merge subagent'));
     expect(step).toContain('When `check-open-items` still exits 1 after the retry of the subagent it calls for, delete both files');
     expect(step).toContain('the open items stay unmerged, each on its own row, and the coverage section says so');

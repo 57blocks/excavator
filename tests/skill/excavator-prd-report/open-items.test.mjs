@@ -273,7 +273,7 @@ describe('prd.mjs check-open-items: the problems of merged.json', () => {
     ];
     for (const group of bad) {
       writeMerged(run, { digest, groups: [{ keep: 'F1.2', also: ['F1.3'] }, group] });
-      expectOnly(run, 'group 2: keep and also must be an id and a non-empty list of ids');
+      expectOnly(run, 'open-items/merged.json: group 2: keep and also must be an id and a non-empty list of ids');
     }
   });
 
@@ -288,9 +288,9 @@ describe('prd.mjs check-open-items: the problems of merged.json', () => {
     const run = makeRun();
     check(run);
     writeMerged(run, { digest: sourcesOf(run).digest, groups: [{ keep: 'F1.2', also: ['F1.3'] }, { keep: 'F2.1', also: ['F9.9'] }] });
-    expectOnly(run, 'group 2: F9.9 is not an open item');
+    expectOnly(run, 'open-items/merged.json: group 2: F9.9 is not an open item');
     writeMerged(run, { digest: sourcesOf(run).digest, groups: [{ keep: 'F8.1', also: ['F1.1'] }] });
-    expectOnly(run, 'group 1: F8.1 is not an open item');
+    expectOnly(run, 'open-items/merged.json: group 1: F8.1 is not an open item');
   });
 
   it('says an id that is in more than one group, across groups and within one', () => {
@@ -298,18 +298,18 @@ describe('prd.mjs check-open-items: the problems of merged.json', () => {
     check(run);
     const digest = sourcesOf(run).digest;
     writeMerged(run, { digest, groups: [{ keep: 'F1.2', also: ['F1.3'] }, { keep: 'F2.1', also: ['F1.3'] }] });
-    expectOnly(run, 'F1.3 is in more than one group');
+    expectOnly(run, 'open-items/merged.json: F1.3 is in more than one group');
     writeMerged(run, { digest, groups: [{ keep: 'F1.2', also: ['F1.3'] }, { keep: 'F1.3', also: ['F2.1'] }] });
-    expectOnly(run, 'F1.3 is in more than one group');
+    expectOnly(run, 'open-items/merged.json: F1.3 is in more than one group');
     writeMerged(run, { digest, groups: [{ keep: 'F1.2', also: ['F1.3', 'F1.3'] }] });
-    expectOnly(run, 'F1.3 is in more than one group');
+    expectOnly(run, 'open-items/merged.json: F1.3 is in more than one group');
   });
 
   it('says an id that is both keep and also in a group', () => {
     const run = makeRun();
     check(run);
     writeMerged(run, { digest: sourcesOf(run).digest, groups: [{ keep: 'F1.2', also: ['F1.3'] }, { keep: 'F2.1', also: ['F2.1', 'F2.2'] }] });
-    expectOnly(run, 'group 2: F2.1 is both keep and also');
+    expectOnly(run, 'open-items/merged.json: group 2: F2.1 is both keep and also');
   });
 });
 
@@ -391,7 +391,7 @@ describe('prd.mjs check-open-items: the problems of checked.json', () => {
       const value = goodCheck(run);
       value.members.push(member);
       writeChecked(run, value);
-      expectOnly(run, 'member 4: keep and id must be ids');
+      expectOnly(run, 'open-items/checked.json: member 4: keep and id must be ids');
     }
   });
 
@@ -401,7 +401,7 @@ describe('prd.mjs check-open-items: the problems of checked.json', () => {
       const value = goodCheck(run);
       value.members[1] = { ...value.members[1], same };
       writeChecked(run, value);
-      expectOnly(run, 'member 2: same must be true or false');
+      expectOnly(run, 'open-items/checked.json: member 2: same must be true or false');
     }
   });
 
@@ -464,6 +464,69 @@ describe('prd.mjs check-open-items: the problems of checked.json', () => {
     const out = check(run);
     expect(out.status).toBe(1);
     expect(lines(out)).toEqual(['open-items/checked.json was written for other open items; check them again', status]);
+  });
+});
+
+describe('prd.mjs check-open-items: every problem line names its file', () => {
+  const merged = (run, value) => {
+    check(run);
+    writeMerged(run, typeof value === 'function' ? value(sourcesOf(run).digest) : value);
+    return check(run);
+  };
+  const withMerge = (run, mutate) => {
+    check(run);
+    writeMerged(run, goodMerge(run));
+    writeChecked(run, mutate(checkedOf(goodMerge(run))));
+    return check(run);
+  };
+  /** The problem lines of an output: every line but the status line. */
+  const problemLines = (out) => lines(out).slice(0, -1);
+  const expectFile = (out, file) => {
+    expect(out.status).toBe(1);
+    expect(problemLines(out).length).toBeGreaterThan(0);
+    for (const line of problemLines(out)) expect(line.startsWith(file), line).toBe(true);
+  };
+
+  it('starts each line about merged.json with open-items/merged.json, for every kind of problem', () => {
+    const file = 'open-items/merged.json';
+    expectFile(check(makeRun()), file);
+    const run = makeRun();
+    mkdirSync(join(run.out, 'open-items'));
+    writeFileSync(join(run.out, file), '{ "digest": ');
+    expectFile(check(run), file);
+    const kinds = [
+      [],
+      { groups: [] },
+      (digest) => ({ digest, groups: [], note: 'x' }),
+      (digest) => ({ digest, groups: [{ keep: 'F2.1', also: [] }] }),
+      { digest: 'stale', groups: [] },
+      (digest) => ({ digest, groups: [{ keep: 'F2.1', also: ['F9.9'] }] }),
+      (digest) => ({ digest, groups: [{ keep: 'F1.2', also: ['F1.3'] }, { keep: 'F2.1', also: ['F1.3'] }] }),
+      (digest) => ({ digest, groups: [{ keep: 'F2.1', also: ['F2.1'] }] }),
+    ];
+    for (const kind of kinds) expectFile(merged(makeRun(), kind), file);
+  });
+
+  it('starts each line about checked.json with open-items/checked.json, for every kind of problem', () => {
+    const file = 'open-items/checked.json';
+    const run = makeRun();
+    check(run);
+    writeMerged(run, goodMerge(run));
+    expectFile(check(run), file);
+    writeFileSync(join(run.out, file), '{ "digest": ');
+    expectFile(check(run), file);
+    const kinds = [
+      () => [],
+      () => ({ members: [] }),
+      (value) => ({ ...value, note: 'x' }),
+      (value) => ({ ...value, members: [...value.members, 'F2.1'] }),
+      (value) => ({ ...value, members: value.members.map((member) => ({ ...member, same: 'yes' })) }),
+      (value) => ({ ...value, digest: 'stale' }),
+      (value) => ({ ...value, members: value.members.slice(1) }),
+      (value) => ({ ...value, members: [...value.members, { keep: 'F1.3', id: 'F1.1', same: true }] }),
+      (value) => ({ ...value, members: [...value.members, value.members[0]] }),
+    ];
+    for (const kind of kinds) expectFile(withMerge(makeRun(), kind), file);
   });
 });
 

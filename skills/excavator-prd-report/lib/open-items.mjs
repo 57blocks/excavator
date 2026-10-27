@@ -128,6 +128,8 @@ const GROUP_SHAPE = 'keep and also must be an id and a non-empty list of ids';
 /**
  * The problems of the parsed `merged.json` `merged` against `sources` (the
  * result of `openItemSources`), one line each, none when the merge passes.
+ * Every line starts with the name of the file, so SKILL.md can pick the
+ * subagent by it.
  * The shape is `{ digest, groups: [ { keep, also: [ ... ] } ] }` and nothing
  * else; the digest is the sources' digest; every id is an open item and is in
  * one group once, as keep or in also.
@@ -148,7 +150,7 @@ export function mergeProblems(merged, sources) {
   const shaped = merged.groups.map((group, at) => {
     if (isObject(group)) noteKeys(group, ['keep', 'also']);
     const ok = isObject(group) && isString(group.keep) && Array.isArray(group.also) && group.also.length > 0 && group.also.every(isString);
-    if (!ok) shapeProblems.push(`group ${at + 1}: ${GROUP_SHAPE}`);
+    if (!ok) shapeProblems.push(`${MERGED_FILE}: group ${at + 1}: ${GROUP_SHAPE}`);
     return ok ? group : null;
   });
   const problems = [...[...unread].map((key) => `${MERGED_FILE} has the key ${key}, which is not read`), ...shapeProblems];
@@ -165,12 +167,12 @@ export function mergeProblems(merged, sources) {
     const n = at + 1;
     for (const [role, id] of [['keep', group.keep], ...group.also.map((also) => ['also', also])]) {
       if (!known.has(id)) {
-        problems.push(`group ${n}: ${id} is not an open item`);
+        problems.push(`${MERGED_FILE}: group ${n}: ${id} is not an open item`);
       } else if (role === 'also' && id === group.keep) {
-        if (!repeated.has(`${n} ${id}`)) problems.push(`group ${n}: ${id} is both keep and also`);
+        if (!repeated.has(`${n} ${id}`)) problems.push(`${MERGED_FILE}: group ${n}: ${id} is both keep and also`);
         repeated.add(`${n} ${id}`);
       } else if (seen.has(id)) {
-        if (!repeated.has(id)) problems.push(`${id} is in more than one group`);
+        if (!repeated.has(id)) problems.push(`${MERGED_FILE}: ${id} is in more than one group`);
         repeated.add(id);
       } else {
         seen.add(id);
@@ -189,7 +191,7 @@ const pairKey = (keep, id) => JSON.stringify([keep, id]);
 /**
  * The problems of the parsed `checked.json` `checked` against `merged` (a
  * merge that passes `mergeProblems`), one line each, none when the check
- * passes. The shape is `{ digest, members: [ { keep, id, same } ] }` and
+ * passes. Every line starts with the name of the file. The shape is `{ digest, members: [ { keep, id, same } ] }` and
  * nothing else; the digest is the merge's; there is exactly one member for
  * each (keep, also id) pair of the merge, and `same` is true or false.
  * @returns {string[]}
@@ -209,10 +211,10 @@ export function checkedProblems(checked, merged) {
   const shaped = checked.members.map((member, at) => {
     if (isObject(member)) noteKeys(member, ['keep', 'id', 'same']);
     if (!isObject(member) || !isString(member.keep) || !isString(member.id)) {
-      problems.push(`member ${at + 1}: keep and id must be ids`);
+      problems.push(`${CHECKED_FILE}: member ${at + 1}: keep and id must be ids`);
       return null;
     }
-    if (typeof member.same !== 'boolean') problems.push(`member ${at + 1}: same must be true or false`);
+    if (typeof member.same !== 'boolean') problems.push(`${CHECKED_FILE}: member ${at + 1}: same must be true or false`);
     return member;
   });
   problems.unshift(...[...unread].map((key) => `${CHECKED_FILE} has the key ${key}, which is not read`));
