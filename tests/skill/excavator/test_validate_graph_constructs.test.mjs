@@ -294,6 +294,89 @@ describe('validate-graph — leniency does not reach statements, lines of other 
   });
 });
 
+describe('validate-graph — the class: a statement-shaped line is never read as the start of a construct', () => {
+  // Lines of other languages that are statements, not declarations. None may be
+  // taken for leading lines, for a wrapped declaration head, or for a
+  // continuation of the expression the next line starts.
+  const STATEMENT_LINES = [
+    'import os', 'from util import *', 'package main', 'use std::io;', 'require "json"', 'local x',
+    'export default router', 'export const router', 'const router', 'static x', 'async',
+    'return x', 'pass', 'break', 'continue', 'else', 'end', 'try:', 'finally:', '} else {',
+    ' *', '* ', 'count--', 'i++', 'val x: String?', 'let y: Int?', '@count = 0', '@@total += 1', '*p = 1;',
+    '[make(1), 2],', '[alpha, 1],', 'x = a &', 'y = b |', 'ref: &', 'a <', 'b >', 'q /',
+  ];
+
+  it.each(STATEMENT_LINES)('does not confirm a calls edge cited at %j from the line after it', (statement) => {
+    const root = project({ 'src/s.txt': [statement, 'helper()', ''] });
+    const m = declNode('function', 'src/s.txt', 'm', [1, 2]);
+    const helper = declNode('function', 'src/h.txt', 'helper', [1, 1]);
+    const { report } = run(root, [m, helper], [edge('calls', m, helper, 'src/s.txt', 1)]);
+    expect(report.counts.edgeContradicted).toBe(1);
+  });
+
+  it.each(STATEMENT_LINES)('does not confirm an anchor that starts at %j with the declaration two lines below', (statement) => {
+    const root = project({ 'src/s.txt': [statement, 'x', 'function helper() {}', ''] });
+    const { report } = run(root, [declNode('function', 'src/s.txt', 'helper', [1, 3])]);
+    expect(report.counts.anchorMismatch).toBe(1);
+  });
+
+  it.each(STATEMENT_LINES)('does not confirm contains and exports edges cited at %j when the member starts on the next line', (statement) => {
+    const root = project({ 'src/s.txt': [statement, 'function helper() {}', ''] });
+    const file = fileNode('src/s.txt');
+    const helper = declNode('function', 'src/s.txt', 'helper', [2, 2]);
+    const { report } = run(root, [file, helper], [
+      edge('contains', file, helper, 'src/s.txt', 1),
+      edge('exports', file, helper, 'src/s.txt', 1),
+    ]);
+    expect(report.counts.edgeContradicted).toBe(2);
+  });
+
+  it('confirms an edge only when it cites the first line of the range of an endpoint whose anchor holds', () => {
+    const lines = [
+      'class C {', //                  1
+      '  @Override', //                2
+      '  public void run() {', //      3
+      '    int x = 1;', //             4
+      '  }', //                        5
+      '  public void other() {}', //  6
+      '}', //                          7
+    ];
+    const root = project({ 'src/C.java': lines });
+    const file = fileNode('src/C.java');
+    const runNode = declNode('function', 'src/C.java', 'run', [2, 5]);
+    const other = declNode('function', 'src/C.java', 'other', [6, 6]);
+    const { report } = run(root, [file, runNode, other], [
+      edge('contains', file, runNode, 'src/C.java', 2), //   its own start: confirmed
+      edge('contains', file, runNode, 'src/C.java', 4), //   inside its range, not its start, no name: contradicted
+      edge('contains', file, other, 'src/C.java', 2), //     another member's start: contradicted
+    ]);
+    expect(report.counts.edgeConfirmed).toBe(1);
+    expect(report.counts.edgeContradicted).toBe(2);
+  });
+
+  it('does not confirm an edge to a member whose own anchor does not hold, even at its first line', () => {
+    const lines = ['class C {', '  @Override', '  public void run() {}', '}'];
+    const root = project({ 'src/C.java': lines });
+    const file = fileNode('src/C.java');
+    const wrong = declNode('function', 'src/C.java', 'gone', [2, 3]);
+    const { report } = run(root, [file, wrong], [edge('contains', file, wrong, 'src/C.java', 2)]);
+    expect(report.counts.anchorMismatch).toBe(1);
+    expect(report.counts.edgeContradicted).toBe(1);
+  });
+
+  it('does not take the statement before a declaration for its start (the export default case from review round 2)', () => {
+    const lines = ['export default router', 'export function helper() {}', ''];
+    const root = project({ 'src/r.js': lines });
+    const file = fileNode('src/r.js');
+    const helper = declNode('function', 'src/r.js', 'helper', [2, 2]);
+    const { report } = run(root, [file, helper], [
+      edge('contains', file, helper, 'src/r.js', 1),
+      edge('exports', file, helper, 'src/r.js', 1),
+    ]);
+    expect(report.counts.edgeContradicted).toBe(2);
+  });
+});
+
 describe('validate-graph — a call expression written over several lines', () => {
   const caller = (path) => declNode('function', path, 'm', [1, 1]);
 

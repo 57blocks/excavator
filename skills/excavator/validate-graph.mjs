@@ -336,12 +336,12 @@ function scanDepth(text, depth, blockEnds = false) {
 
 /** Does this trimmed line open an annotation, decorator or attribute? */
 function opensAnnotation(trimmed) {
-  if (trimmed.startsWith('@')) return !/^@interface\b/.test(trimmed);
+  // `@interface` declares a type, and `@name = value` assigns an instance variable.
+  if (trimmed.startsWith('@')) return !/^@interface\b/.test(trimmed) && !/^@[\w.]+\s*(?:=|\+=|-=|\|\|=|&&=)/.test(trimmed);
   if (trimmed.startsWith('#[') || trimmed.startsWith('#![')) return true;
-  // A C# attribute: `[Name(`, or a list that closes on its own line. A row of
-  // an array literal (`[alpha, 1],`) or a destructuring (`[a, b] = f()`) does not.
-  if (/^\[\s*[A-Za-z_][\w.]*\s*\(/.test(trimmed)) return true;
-  return /^\[\s*[A-Za-z_][\w.]*\s*(?:\]|,)/.test(trimmed) && trimmed.endsWith(']');
+  // A C# attribute opens with `[Name(`, `[Name]` or `[Name,`; the caller checks
+  // that it closes with `]`, which a row of an array literal never does.
+  return /^\[\s*[A-Za-z_][\w.]*\s*(?:\(|\]|,)/.test(trimmed);
 }
 
 /**
@@ -357,6 +357,7 @@ export function skipLeadingLines(reader, filePath, startLine) {
   let line = startLine;
   let depth = 0;
   let inBlockComment = false;
+  let bracketOpenedAt = null; // the line a `[...]` or `#[...]` attribute opened on, while it is open
   const limit = startLine + CONSTRUCT_SCAN_LINES;
   for (;;) {
     if (line >= limit) return { status: 'too-long' };
@@ -365,14 +366,23 @@ export function skipLeadingLines(reader, filePath, startLine) {
     const trimmed = text.trim();
     if (depth > 0) {
       depth = scanDepth(text, depth).depth;
+      // A bracket attribute ends with `]`. One that does not (`[make(1), 2],`)
+      // was a row of an array literal, so the construct starts where it opened.
+      if (depth === 0 && bracketOpenedAt !== null) {
+        if (!trimmed.endsWith(']')) return { status: 'ok', line: bracketOpenedAt };
+        bracketOpenedAt = null;
+      }
     } else if (inBlockComment) {
       if (trimmed.includes('*/')) inBlockComment = false;
-    } else if (trimmed === '' || trimmed.startsWith('//') || trimmed.startsWith('*') || /^#(?:\s|$|!|#)/.test(trimmed)) {
-      // a comment or blank line
+    } else if (trimmed === '' || trimmed.startsWith('//') || /^\*(?:\s|\/|$)/.test(trimmed) || /^#(?:\s|$|!|#)/.test(trimmed)) {
+      // a comment or blank line (`*p = 1;` is a statement, not a comment's continuation)
     } else if (trimmed.startsWith('/*')) {
       if (!trimmed.includes('*/', 2)) inBlockComment = true;
     } else if (opensAnnotation(trimmed)) {
+      const opensBracket = trimmed.startsWith('[') || trimmed.startsWith('#[') || trimmed.startsWith('#![');
       depth = scanDepth(text, 0).depth;
+      if (opensBracket && depth === 0 && !trimmed.endsWith(']')) return { status: 'ok', line };
+      if (opensBracket && depth > 0) bracketOpenedAt = line;
     } else {
       return { status: 'ok', line };
     }
@@ -381,15 +391,16 @@ export function skipLeadingLines(reader, filePath, startLine) {
 }
 
 /**
- * The words a declaration may start with before its type and name. A wrapped
- * declaration head begins with one of these (`public void` on one line, the
- * name on the next); a statement does not (`import os`, `return x`, `pass`), so
- * it is never read as the start of a head.
+ * The words a declaration may start with before its type and name, and that
+ * no statement starts with. A wrapped declaration head begins with one of these
+ * (`public void` on one line, the name on the next). Words that also begin
+ * statements are left out on purpose (`export default router`, `const x`,
+ * `static x`, `async`): reading one of those as a head would confirm a wrong
+ * line, while leaving a rare wrapped head out only reports a contradiction.
  */
 const DECLARATION_MODIFIERS = Object.freeze(new Set([
-  'public', 'private', 'protected', 'internal', 'static', 'final', 'abstract', 'sealed', 'open',
-  'override', 'virtual', 'async', 'export', 'default', 'synchronized', 'native', 'readonly', 'const',
-  'extern', 'unsafe', 'partial', 'inline', 'pub',
+  'public', 'private', 'protected', 'internal', 'final', 'abstract', 'sealed', 'open',
+  'override', 'virtual', 'synchronized', 'native', 'readonly', 'partial',
 ]));
 
 /** A line of words, types and generics only: no parenthesis, brace, semicolon or `=`. */
@@ -420,12 +431,15 @@ function findTokenInDeclarationHead(reader, filePath, line, tokens) {
 
 /** Does this line end in something that makes the expression go on? */
 function endsWithContinuation(text) {
-  // Only what cannot end a statement of its own. `x++` and `x--` end one, a
-  // trailing `?` is a nullable type as often as a ternary, and `*/` closes a
-  // comment, so none of those continues anything. When in doubt this says no:
-  // a missed continuation only reports a contradiction, a false one confirms.
+  // Only what cannot end a statement of its own: a trailing `.` (not `..`),
+  // `\\`, `=`, `&&`, `||`, `->`, `=>`, and a single `+`. Left out on purpose:
+  // `,` (at depth 0 it means an outer list, and the next line is another
+  // element), `++`, `--`, `-`, `*` (a Python `import *`, a JSDoc ` *` line),
+  // `%`, `&` and `|` (a reference type), `<`, `>`, `/`, and a nullable `?`. When
+  // in doubt this says no: a missed continuation reports a contradiction, a
+  // false one confirms a wrong line.
   const code = text.replace(/\/\/.*$/, '').replace(/\/\*.*\*\/\s*$/, '').trimEnd();
-  return /(?:[.,\\*%&|=]|(?<![+])\+|(?<![-])-|->|=>)$/.test(code) && !/(?:\+\+|--)$/.test(code);
+  return /(?:(?<!\.)\.|[\\=]|&&|\|\||(?<!\+)\+|->|=>)$/.test(code);
 }
 
 /** Does the next non-blank line after `line` carry on the expression? */
@@ -536,6 +550,7 @@ export function validateAgainstSource({ graph, reader, sampleLimit = 5 }) {
   }
 
   // ── 1. anchors ──────────────────────────────────────────────────────────
+  const anchorConfirmed = new Set();
   for (const node of validated.nodes) {
     if (!node || typeof node !== 'object') continue;
     if (!CODE_NODE_TYPES.has(node.type)) continue;
@@ -586,6 +601,7 @@ export function validateAgainstSource({ graph, reader, sampleLimit = 5 }) {
       samples.add('anchor-mismatch', `${node.filePath}:${startLine} ${node.id}`);
     } else {
       counts.anchorConfirmed += 1;
+      anchorConfirmed.add(node.id);
     }
   }
 
@@ -627,25 +643,20 @@ export function validateAgainstSource({ graph, reader, sampleLimit = 5 }) {
         : findToken(reader, entry.file, entry.line, tokens, 0);
       // An entry that names the token its line holds (a mention, an injection,
       // a JSX tag) says exactly where that is; only one that cites where a
-      // construct starts is read past its leading lines and across its lines.
+      // construct starts is read further, and never one the model wrote.
       if (found === null && entry.source !== 'model' && entry.token === undefined) {
-        // An extractor cites where the construct starts, which is its first
-        // annotation; the token is on the first line after the annotations
-        // (or, for a wrapped declaration, a later line of its head).
-        // A call's evidence is the start of the expression, never an annotation
-        // or a comment, so only the other types are read past leading lines.
-        const lead = edge.type === 'calls' ? { status: 'none' } : skipLeadingLines(reader, entry.file, entry.line);
-        if (lead.status === 'ok') {
-          // The declaration may itself wrap: `public void` on one line, the
-          // name on the next.
-          found = findTokenInDeclarationHead(reader, entry.file, lead.line, tokens);
-        } else if (lead.status === 'too-long') {
-          tooLong = true;
-        }
-        if (found === null && edge.type === 'calls') {
+        if (edge.type === 'calls') {
+          // A call's evidence is the start of the expression, which runs on.
           const expression = findTokenInExpression(reader, entry.file, entry.line, tokens);
           if (expression.status === 'found') found = expression.line;
           else if (expression.status === 'too-long') tooLong = true;
+        } else if ([target, source].some((n) => n && n.filePath === entry.file && Array.isArray(n.lineRange)
+          && n.lineRange[0] === entry.line && tokens.includes(n.name) && anchorConfirmed.has(n.id))) {
+          // Any other edge that cites a declaration cites where its range
+          // starts, which is its first annotation. That is a fact about the
+          // graph, not about how the line reads: the cited line is the first
+          // line of an endpoint's own range and that endpoint's anchor holds.
+          found = entry.line;
         }
       }
       if (found !== null) {
