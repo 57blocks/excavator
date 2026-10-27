@@ -682,12 +682,10 @@ export function findTokenInExpression(reader, filePath, startLine, tokens, synta
   for (let line = startLine; line < limit; line++) {
     const text = reader.line(filePath, line);
     if (text === null) return { status: 'none' };
-    // The first line is the one the extractor cited, read as everywhere else. A later line counts for
-    // the code it holds: a name in a comment or a string, or inside a longer name, is not the callee.
-    const named = line === startLine
-      ? tokens.some((token) => token && text.includes(token))
-      : tokens.some((token) => token && mentionsName(codeOf(text, syntax), token));
-    if (named) return { status: 'found', line };
+    // The cited line was read as everywhere else before the scan began. A line counts for the code it
+    // holds: a name in a comment or a string, or inside a longer name, is not the callee.
+    const code = codeOf(text, syntax);
+    if (tokens.some((token) => token && mentionsName(code, token))) return { status: 'found', line };
     const scanned = scanExpressionLine(text, depth, syntax);
     depth = scanned.depth;
     // What the next lines hold is not code the scan can read, so the expression is not read on.
