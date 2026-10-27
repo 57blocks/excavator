@@ -29,3 +29,10 @@
 
 - [x] 6.1 `pnpm install --frozen-lockfile && pnpm -r build && pnpm test`，并 `node scripts/check-refs.mjs`、`openspec validate --all --strict`；新文件先 `git add -N` 再跑门。本机 `skills/.DS_Store` 会让 `test_service_only_contract` 失败，与改动无关，PR 正文里如实写明
 - [ ] 6.2 分阶段 commit：每个 commit 带自己的测试与实现且单独为绿；每个 commit 前逐个核对 `--stat` 文件数；PR 用 `--merge`；评审按 REVIEW.md 做，最多三轮；归档前做 spec 同步
+
+## 7. 评审第 1 轮（PR 评审后追加）
+
+- [x] 7.1 评审的重要问题（Ruby 的 `@log.info(item)`、JavaScript 的 `[a, b] = [b, a]` 被当成前导行）先复现，再顺着「前导行带着别的东西」往外查，找到同类（注解后跟另一个声明、块注释后跟代码、` */` 后跟代码）；新表在评审时的代码上 18 个红
+- [x] 7.2 改判据为「读掉前导语法之后不剩别的东西」，注解与属性的语法由扩展名决定；三张按语言写的表（语句、真前导行、没有该语法的语言）通过；变异检查全部被拦住，两个冗余的专门排除随之删除
+- [x] 7.3 真实图验收重跑：结果与第一次完全一致（919→70，非 lambda 植入 367/367，同时偏一行 107/107）
+
