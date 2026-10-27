@@ -1,13 +1,13 @@
 ## 1. 先验装置（先红）
 
-- [ ] 1.1 新建 `tests/skill/excavator/test_validate_graph_leading_lines.test.mjs`，写夹具与用例：被 `@Override` 注解的方法、三行注解且参数多行并夹一行注释的类、一个 20 行以上的注解块（嵌套注解、字符串字面量里含 `@`、`(`、`\n`，自行构造，不照搬真实源码）、TS / Python 装饰器、C# 属性（含 `[Serializable, Obsolete]` 列表）、Rust 属性。先在未改代码上跑，确认这些误报用例红、护栏用例绿，证明装置看得见（记录失败输出）。红只在本地确认，不单独提交
-- [ ] 1.2 写护栏：锚点错位五行进方法体、注解后跟另一个名字的声明、一行语句夹在锚点与声明之间、模型引用的证据、证据行指向无关行、证据行指向别的成员的注解。它们在新旧代码上都必须报出
-- [ ] 1.3 写语句形状表：`import os`、`export default router`、`from util import *`、`package main`、`return x`、`pass`、`count--`、`val x: String?`、`@count = 0`、`@@total += 1`、`*p = 1;`、数组行 `[make(1), 2],`（含跨两行的）等，分别作为锚点起点（语句写两遍再接声明）与 `contains` / `exports` 的证据行（语句后接声明），期望全部被报出
-- [ ] 1.4 写 ±1 的用例：节点范围比声明早一行、晚一行开始，`contains` 与 `exports` 引用该首行，期望边矛盾、锚点仍确认；范围正好对齐时两者都确认
+- [x] 1.1 新建 `tests/skill/excavator/test_validate_graph_leading_lines.test.mjs`，写夹具与用例：被 `@Override` 注解的方法、三行注解且参数多行并夹一行注释的类、一个 20 行以上的注解块（嵌套注解、字符串字面量里含 `@`、`(`、`\n`，自行构造，不照搬真实源码）、TS / Python 装饰器、C# 属性（含 `[Serializable, Obsolete]` 列表）、Rust 属性。先在未改代码上跑，确认这些误报用例红、护栏用例绿，证明装置看得见（记录失败输出）。红只在本地确认，不单独提交
+- [x] 1.2 写护栏：锚点错位五行进方法体、注解后跟另一个名字的声明、一行语句夹在锚点与声明之间、模型引用的证据、证据行指向无关行、证据行指向别的成员的注解。它们在新旧代码上都必须报出
+- [x] 1.3 写语句形状表：`import os`、`export default router`、`from util import *`、`package main`、`return x`、`pass`、`count--`、`val x: String?`、`@count = 0`、`@@total += 1`、`*p = 1;`、数组行 `[make(1), 2],`（含跨两行的）等，分别作为锚点起点（语句写两遍再接声明）与 `contains` / `exports` 的证据行（语句后接声明），期望全部被报出
+- [x] 1.4 写 ±1 的用例：节点范围比声明早一行、晚一行开始，`contains` 与 `exports` 引用该首行，期望边矛盾、锚点仍确认；范围正好对齐时两者都确认
 
 ## 2. 锚点
 
-- [ ] 2.1 在 `validate-graph.mjs` 加 `CONSTRUCT_SCAN_LINES`、`scanDepth`（括号配平，字符串内不计）、`opensAnnotation`、`skipLeadingLines`；锚点检查改为「起点 ±1，或跳过前导行之后的那一行」，过长标 `unverified` 并计 `constructTooLong`；报告输出 `counts.constructTooLong`、缺口 `construct-too-long`（0 时不出）、CLI 汇总字段。验证 1.1 的锚点用例与 1.3 的锚点列转绿、1.2 的锚点护栏仍绿、既有 `test_validate_graph.test.mjs` 全绿
+- [x] 2.1 在 `validate-graph.mjs` 加 `CONSTRUCT_SCAN_LINES`、`scanDepth`（括号配平，字符串内不计）、`opensAnnotation`、`skipLeadingLines`；锚点检查改为「起点 ±1，或跳过前导行之后的那一行」，过长标 `unverified` 并计 `constructTooLong`；报告输出 `counts.constructTooLong`、缺口 `construct-too-long`（0 时不出）、CLI 汇总字段。验证 1.1 的锚点用例与 1.3 的锚点列转绿、1.2 的锚点护栏仍绿、既有 `test_validate_graph.test.mjs` 全绿
 
 ## 3. 边
 

@@ -9,9 +9,12 @@
  *
  * Checks
  *   1. anchors — for every function/class node, the line at `lineRange[0]`
- *      (±1) must contain the node's `name` (an anonymous declaration: a
+ *      (±1), or the first line after its leading annotations and comments,
+ *      must contain the node's `name` (an anonymous declaration: a
  *      class/struct/def keyword). Otherwise: gap `anchor-mismatch`, node
- *      `verification: "contradicted"`.
+ *      `verification: "contradicted"`. Leading lines longer than the scan bound
+ *      leave the node `unverified` under `construct-too-long`, never confirmed and
+ *      never contradicted.
  *   2. evidence — for every `extracted` edge, the cited line must contain the
  *      expected token: the callee name (`calls`), the target module segment
  *      (`imports`), the symbol name (`exports`), the declared name
@@ -70,6 +73,13 @@ export const ANCHOR_TOLERANCE = 1;
 
 /** How far an `imports` evidence check may scan for the statement's end. */
 export const IMPORT_WINDOW_LINES = 12;
+
+/**
+ * How far the leading-line skip may read before it gives up. The longest legitimate construct measured on a real project
+ * was 22 lines; this leaves an order of magnitude and keeps the worst case of
+ * one anchor or edge constant. Passing it yields `unverified`, never a verdict.
+ */
+export const CONSTRUCT_SCAN_LINES = 400;
 
 const CODE_NODE_TYPES = Object.freeze(new Set(['function', 'class']));
 const FILE_LEVEL_TYPES = Object.freeze(new Set([
@@ -293,6 +303,83 @@ export function findTokenInImportStatement(reader, filePath, lineNumber, tokens,
   return null;
 }
 
+/**
+ * Advance `depth` over one line of an annotation: `(`, `[` and `{` open, their
+ * closers close, string literals and a trailing `//` comment are not read.
+ */
+function scanDepth(text, depth) {
+  let quote = null;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (quote !== null) {
+      if (ch === '\\') i += 1;
+      else if (ch === quote) quote = null;
+      continue;
+    }
+    if (ch === '"' || ch === "'" || ch === '`') quote = ch;
+    else if (ch === '/' && text[i + 1] === '/') break;
+    else if (ch === '(' || ch === '[' || ch === '{') depth += 1;
+    else if (ch === ')' || ch === ']' || ch === '}') depth = Math.max(0, depth - 1);
+  }
+  return depth;
+}
+
+/** Does this trimmed line open an annotation, decorator or attribute? */
+function opensAnnotation(trimmed) {
+  // `@interface` declares a type, and `@name = value` or `@@name = value` assigns an instance or class variable.
+  if (trimmed.startsWith('@')) return !/^@interface\b/.test(trimmed) && !/^@@?[\w.]+\s*(?:=|\+=|-=|\|\|=|&&=)/.test(trimmed);
+  if (trimmed.startsWith('#[') || trimmed.startsWith('#![')) return true;
+  // A C# attribute opens with `[Name(`, `[Name]` or `[Name,`; the caller checks
+  // that it closes with `]`, which a row of an array literal never does.
+  return /^\[\s*[A-Za-z_][\w.]*\s*(?:\(|\]|,)/.test(trimmed);
+}
+
+/**
+ * The first line of the construct that starts at `startLine`, past its
+ * leading lines: blank lines, comments, and annotations, decorators or
+ * attributes (an argument block may span many lines). It only moves forward
+ * and stops at the first line that is none of those, so a line of code, or a
+ * declaration of another name, is never skipped. Returns
+ * `{ status: 'ok', line }`, `{ status: 'too-long' }` when the leading lines
+ * pass `CONSTRUCT_SCAN_LINES`, or `{ status: 'none' }` at the end of the file.
+ */
+export function skipLeadingLines(reader, filePath, startLine) {
+  let line = startLine;
+  let depth = 0;
+  let inBlockComment = false;
+  let bracketOpenedAt = null; // the line a `[...]` or `#[...]` attribute opened on, while it is open
+  const limit = startLine + CONSTRUCT_SCAN_LINES;
+  for (;;) {
+    if (line >= limit) return { status: 'too-long' };
+    const text = reader.line(filePath, line);
+    if (text === null) return { status: 'none' };
+    const trimmed = text.trim();
+    if (depth > 0) {
+      depth = scanDepth(text, depth);
+      // A bracket attribute ends with `]`. One that does not (`[make(1), 2],`)
+      // was a row of an array literal, so the construct starts where it opened.
+      if (depth === 0 && bracketOpenedAt !== null) {
+        if (!trimmed.endsWith(']')) return { status: 'ok', line: bracketOpenedAt };
+        bracketOpenedAt = null;
+      }
+    } else if (inBlockComment) {
+      if (trimmed.includes('*/')) inBlockComment = false;
+    } else if (trimmed === '' || trimmed.startsWith('//') || /^\*(?:\s|\/|$)/.test(trimmed) || /^#(?:\s|$|!|#)/.test(trimmed)) {
+      // a comment or blank line (`*p = 1;` is a statement, not a comment's continuation)
+    } else if (trimmed.startsWith('/*')) {
+      if (!trimmed.includes('*/', 2)) inBlockComment = true;
+    } else if (opensAnnotation(trimmed)) {
+      const opensBracket = trimmed.startsWith('[') || trimmed.startsWith('#[') || trimmed.startsWith('#![');
+      depth = scanDepth(text, 0);
+      if (opensBracket && depth === 0 && !trimmed.endsWith(']')) return { status: 'ok', line };
+      if (opensBracket && depth > 0) bracketOpenedAt = line;
+    } else {
+      return { status: 'ok', line };
+    }
+    line += 1;
+  }
+}
+
 function sampler(limit) {
   const map = new Map();
   return {
@@ -331,6 +418,7 @@ export function validateAgainstSource({ graph, reader, sampleLimit = 5 }) {
     edgesWithoutEvidence: 0,
     sourceMissing: 0,
     pathOutOfScope: 0,
+    constructTooLong: 0,
     stepUnanchored: 0,
   };
 
@@ -380,7 +468,20 @@ export function validateAgainstSource({ graph, reader, sampleLimit = 5 }) {
       continue;
     }
     const tokens = isAnonymousName(node.name) ? ANONYMOUS_KEYWORDS : [node.name];
-    const hit = findToken(reader, node.filePath, startLine, tokens, ANCHOR_TOLERANCE);
+    // A declaration's range starts at its first annotation, so its name is on
+    // the first line after the annotations and comments.
+    let hit = findToken(reader, node.filePath, startLine, tokens, ANCHOR_TOLERANCE);
+    if (hit === null) {
+      const lead = skipLeadingLines(reader, node.filePath, startLine);
+      if (lead.status === 'ok') {
+        hit = findToken(reader, node.filePath, lead.line, tokens, 0);
+      } else if (lead.status === 'too-long') {
+        counts.constructTooLong += 1;
+        node.verification = 'unverified';
+        samples.add('construct-too-long', `${node.filePath}:${startLine} ${node.id}`);
+        continue;
+      }
+    }
     if (hit === null) {
       counts.anchorMismatch += 1;
       node.verification = 'contradicted';
@@ -430,7 +531,7 @@ export function validateAgainstSource({ graph, reader, sampleLimit = 5 }) {
       // `imports` is the one type whose evidence line is the START of a
       // statement that may span several lines; every other type cites the
       // exact line the token is on.
-      const found = edge.type === 'imports' && entry.source !== 'model'
+      let found = edge.type === 'imports' && entry.source !== 'model'
         ? findTokenInImportStatement(reader, entry.file, entry.line, tokens)
         : findToken(reader, entry.file, entry.line, tokens, 0);
       if (found !== null) {
@@ -537,6 +638,8 @@ export function validateAgainstSource({ graph, reader, sampleLimit = 5 }) {
     `${counts.stepUnanchored} step node(s) with no resolvable nodeIds and no inferred marking`);
   addGap('source-missing', counts.sourceMissing,
     `${counts.sourceMissing} check(s) skipped because the source file could not be read`);
+  addGap('construct-too-long', counts.constructTooLong,
+    `${counts.constructTooLong} check(s) left unverified because the leading lines passed ${CONSTRUCT_SCAN_LINES} lines`);
   addGap('path-out-of-scope', counts.pathOutOfScope,
     `${counts.pathOutOfScope} path(s) named outside the project root were refused, not read`);
   gaps.sort(compareGaps);
@@ -629,7 +732,7 @@ async function main() {
     `edges-checked=${c.edgesChecked} edge-contradicted=${c.edgeContradicted} ` +
     `edges-inferred=${c.edgesInferred} step-unanchored=${c.stepUnanchored} ` +
     `source-missing=${c.sourceMissing} path-out-of-scope=${c.pathOutOfScope} ` +
-    `issues=${report.issues.length}\n`,
+    `construct-too-long=${c.constructTooLong} issues=${report.issues.length}\n`,
   );
 }
 
