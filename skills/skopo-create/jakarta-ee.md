@@ -4,9 +4,14 @@ A guide for the research passes of a Skopo recovery on a Java EE or Jakarta EE s
 CDI, JPA, JAX-RS, JMS). It says where rules, promises and decisions tend to live in such a system,
 and how to find them. It is a hint, never evidence: cite the source you read.
 
-`javax.*` and `jakarta.*` are the same APIs under two names; search for both. The Excavator facts
-already hold the wiring (injections, routes, page-to-bean references, descriptor mentions,
-navigation view ids). What follows is mostly what the facts do not turn into edges.
+`javax.*` and `jakarta.*` are the same APIs under two names; search for both.
+
+With `GRAPH=available`, start from the facts: they hold the wiring a search cannot follow by name,
+because the container joins the pieces by type, by an EL name or by a class written in a
+descriptor. Follow a page to the beans its EL names (`references`), a bean to what it injects
+(`injects`), a descriptor to the classes it lists (`mentions`) and a route to its handler
+(`routes`) with `traverse`, then read each end. The tables below are where intent sits that the
+facts do not turn into edges; search for those with `recall` or `Grep`.
 
 ## world
 
