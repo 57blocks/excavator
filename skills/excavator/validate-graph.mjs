@@ -336,8 +336,8 @@ function scanDepth(text, depth, blockEnds = false) {
 
 /** Does this trimmed line open an annotation, decorator or attribute? */
 function opensAnnotation(trimmed) {
-  // `@interface` declares a type, and `@name = value` assigns an instance variable.
-  if (trimmed.startsWith('@')) return !/^@interface\b/.test(trimmed) && !/^@[\w.]+\s*(?:=|\+=|-=|\|\|=|&&=)/.test(trimmed);
+  // `@interface` declares a type, and `@name = value` or `@@name = value` assigns an instance or class variable.
+  if (trimmed.startsWith('@')) return !/^@interface\b/.test(trimmed) && !/^@@?[\w.]+\s*(?:=|\+=|-=|\|\|=|&&=)/.test(trimmed);
   if (trimmed.startsWith('#[') || trimmed.startsWith('#![')) return true;
   // A C# attribute opens with `[Name(`, `[Name]` or `[Name,`; the caller checks
   // that it closes with `]`, which a row of an array literal never does.

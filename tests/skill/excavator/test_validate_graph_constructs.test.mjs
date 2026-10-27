@@ -314,9 +314,20 @@ describe('validate-graph — the class: a statement-shaped line is never read as
     expect(report.counts.edgeContradicted).toBe(1);
   });
 
-  it.each(STATEMENT_LINES)('does not confirm an anchor that starts at %j with the declaration two lines below', (statement) => {
-    const root = project({ 'src/s.txt': [statement, 'x', 'function helper() {}', ''] });
+  // A comment line IS a leading line, so the two comment-shaped rows are left out here. The statement
+  // is written twice: a rule that wrongly takes it for a leading line then skips both and reaches the
+  // declaration, and confirms an anchor that starts two lines above it.
+  const NOT_COMMENTS = STATEMENT_LINES.filter((line) => line.trim() !== '*');
+  it.each(NOT_COMMENTS)('does not confirm an anchor that starts at %j with the declaration two lines below', (statement) => {
+    const root = project({ 'src/s.txt': [statement, statement, 'function helper() {}', ''] });
     const { report } = run(root, [declNode('function', 'src/s.txt', 'helper', [1, 3])]);
+    expect(report.counts.anchorMismatch).toBe(1);
+  });
+
+  it('does not take rows of an array literal that span several lines for attributes', () => {
+    const lines = ['[make(', '  1), 2],', '[make(', '  1), 2],', 'function helper() {}', ''];
+    const root = project({ 'src/rows.js': lines });
+    const { report } = run(root, [declNode('function', 'src/rows.js', 'helper', [1, 5])]);
     expect(report.counts.anchorMismatch).toBe(1);
   });
 
