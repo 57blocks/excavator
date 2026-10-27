@@ -298,6 +298,26 @@ describe('validate-graph — what a call expression does not continue on', () =>
   );
 });
 
+describe('validate-graph — reading an expression in the language it is written in', () => {
+  it('does not take a Rust lifetime for the start of a string, which would hide the brace that opens the body', () => {
+    const lines = ["fn m<'a>(x: &'a str) -> &'a str {", '    .helper()', '}', ''];
+    const root = project({ 'src/m.rs': lines });
+    const m = declNode('function', 'src/m.rs', 'm', [1, 3]);
+    const helper = declNode('function', 'src/h.rs', 'helper', [1, 1]);
+    const { report } = run(root, [m, helper], [edge('calls', m, helper, 'src/m.rs', 1)]);
+    expect(report.counts.edgeContradicted).toBe(1);
+  });
+
+  it('reads an apostrophe as a quote in a language that has character literals', () => {
+    const lines = ["val c = '{'", '    .helper()', ''];
+    const root = project({ 'src/c.kt': lines });
+    const m = declNode('function', 'src/c.kt', 'm', [1, 2]);
+    const helper = declNode('function', 'src/h.kt', 'helper', [1, 1]);
+    const { report } = run(root, [m, helper], [edge('calls', m, helper, 'src/c.kt', 1)]);
+    expect(report.counts.edgeContradicted).toBe(0);
+  });
+});
+
 describe('validate-graph — the report names the expressions it could not decide', () => {
   it('prints and writes the construct-too-long count for a call expression', () => {
     const lines = ['class Q {', '  void m() {', '    call(', ...Array.from({ length: CONSTRUCT_SCAN_LINES + 20 }, (_, i) => `        arg${i},`)];
