@@ -2,9 +2,9 @@
 
 ### Requirement: 锚点与证据触源码核对
 
-The validator SHALL read source files. For every `function`/`class` node it SHALL confirm that the node's `name` (anonymous classes: the class keyword) appears either within one line of `lineRange[0]` or on the first line that follows the node's leading lines or, when that line holds only modifiers and types (no parenthesis, brace, semicolon or `=`), on a later line of the same declaration head, else record gap `anchor-mismatch` and set the node's `verification` to `contradicted`. Leading lines are blank lines, comment lines, and annotations, decorators or attributes (including those whose arguments span several lines); skipping them SHALL only move forward from `lineRange[0]` and SHALL stop at the first line that is none of those.
+The validator SHALL read source files. For every `function`/`class` node it SHALL confirm that the node's `name` (anonymous classes: the class keyword) appears either within one line of `lineRange[0]` or on the first line that follows the node's leading lines or, when that line starts with a declaration modifier (`public`, `static`, `final` and the like) and holds only words and types (no parenthesis, brace, semicolon or `=`), on a later line of the same declaration head, else record gap `anchor-mismatch` and set the node's `verification` to `contradicted`. Leading lines are blank lines, comment lines, and annotations, decorators or attributes (including those whose arguments span several lines); skipping them SHALL only move forward from `lineRange[0]` and SHALL stop at the first line that is none of those.
 
-For every `extracted` edge it SHALL confirm the evidence line contains the expected token (for `calls`, the `token` the evidence entry carries when it has one — a JSX element writes the tag name, which an import may have renamed — else the callee name; target module or specifier for `imports`, symbol name for `exports`, the declaration for `contains`; for model-cited evidence, the name or file of either endpoint), else set the edge's `verification` to `contradicted` and record gap `edge-contradicted`. For evidence written by an extractor (not model-cited) that does not name the token its line holds, the token MAY also be found: on the first line that follows the cited line's leading lines (or a later line of a wrapped declaration head, as for anchors), for every edge type; and, for `calls`, anywhere in the call expression that starts on the cited line, where the expression ends at the first top-level `;`, at a block body that opens at the top level (a function or a branch is not part of the expression), or at the first line that neither ends in a continuation nor is followed by one. Evidence cited by the model SHALL still be checked against the cited line alone.
+For every `extracted` edge it SHALL confirm the evidence line contains the expected token (for `calls`, the `token` the evidence entry carries when it has one — a JSX element writes the tag name, which an import may have renamed — else the callee name; target module or specifier for `imports`, symbol name for `exports`, the declaration for `contains`; for model-cited evidence, the name or file of either endpoint), else set the edge's `verification` to `contradicted` and record gap `edge-contradicted`. For evidence written by an extractor (not model-cited) that does not name the token its line holds, the token MAY also be found: on the first line that follows the cited line's leading lines (or a later line of a wrapped declaration head, as for anchors), for every edge type except `calls`, whose evidence is the start of an expression and is never an annotation or a comment; and, for `calls`, anywhere in the call expression that starts on the cited line, where the expression ends at the first top-level `;`, at a block body that opens at the top level (a function or a branch is not part of the expression), or at the first line that neither ends in a continuation nor is followed by one. A line ending in `++`, `--`, a nullable type's `?` or a closing comment is not a continuation. Evidence cited by the model SHALL still be checked against the cited line alone.
 
 When the leading lines of an anchor or the expression of a `calls` edge is longer than the validator's scan bound, the node or edge SHALL be set to `verification: "unverified"` and counted under gap `construct-too-long`; it SHALL be neither confirmed nor contradicted.
 
@@ -36,6 +36,16 @@ When the leading lines of an anchor or the expression of a `calls` edge is longe
 - **GIVEN** an extractor-written edge whose evidence line is a complete declaration line (it holds a parenthesis or a brace) and whose token appears only on the next line
 - **WHEN** the validator runs
 - **THEN** the edge is `edge-contradicted`
+
+#### Scenario: 语句行不被当作折行的声明头
+- **GIVEN** a Python file whose first line is `import os` and whose third line is `from util import helper`, and a `contains` edge, a `calls` edge and an anchor for `helper` that cite the first line
+- **WHEN** the validator runs
+- **THEN** all three are contradicted, because a line that does not start with a declaration modifier is not the start of a wrapped head
+
+#### Scenario: 数组字面量的行不被当作属性
+- **GIVEN** a node whose range starts at a row of an array literal (`[alpha, 1],`) that is followed by other rows and then a declaration of the node's name more than one line below
+- **WHEN** the validator runs
+- **THEN** the anchor is reported as `anchor-mismatch`; a C# attribute list (`[Serializable, Obsolete]`) is still read as an attribute
 
 #### Scenario: 注解后跟另一个声明时锚点仍被报出
 - **GIVEN** a node named `alpha` whose `lineRange` starts at an annotation that precedes a declaration named `beta`

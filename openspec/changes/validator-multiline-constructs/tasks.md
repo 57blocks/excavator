@@ -29,3 +29,8 @@
 
 - [ ] 6.1 `pnpm install --frozen-lockfile && pnpm -r build && pnpm test`，并 `node scripts/check-refs.mjs`，`openspec validate --all --strict`；新文件先 `git add -N` 再跑门
 - [ ] 6.2 分阶段 commit：每个 commit 带自己的测试与实现且单独为绿（1.2 的护栏用例与 1.3 的改写随第一个实现 commit，1.1 的各夹具随其对应的 2.x / 3.x / 4.x commit）；每个 commit 前逐个核对 `--stat` 文件数；PR 用 `--merge`；归档前做 spec 同步
+
+## 7. 评审第 1 轮（PR 评审后追加）
+
+- [x] 7.1 评审的两条 Important 与一条 Nit 先写成用例复现（Python `import` 行被当声明头、Go `count--` 被当续行、数组行被当 C# 属性），在原代码上红；同类的可空类型 `?`、块注释结尾也一并复现。修复后用例转绿，且 `calls` 不再做跳前导行
+- [x] 7.2 真实图验收重跑：基线仍为 0，非 lambda 植入 260/260，新版无多报
