@@ -472,6 +472,57 @@ describe('validate-graph — a line that is already a complete declaration does 
   });
 });
 
+describe('validate-graph — a later line of an expression counts only for the code it holds', () => {
+  const chain = (ext, lines, callee = 'helper') => {
+    const path = `src/s.${ext}`;
+    const root = project({ [path]: [...lines, ''] });
+    const m = declNode('function', path, 'm', [1, lines.length]);
+    const target = declNode('function', 'src/T.x', callee, [1, 1]);
+    return run(root, [m, target], [edge('calls', m, target, path, 1)]).report;
+  };
+
+  // The callee is named on a later line of the expression, but not as code.
+  it.each([
+    ['java', ['    foo()', '        .bar(); // helper']],
+    ['java', ['    foo()', '        .bar(/* helper */);']],
+    ['java', ['    foo()', '        .log("helper failed");']],
+    ['go', ['\tfoo().', '\t\tLog("helper")']],
+    ['kt', ['  foo()', '    .log("helper")']],
+    ['php', ['  foo()', "    ->log('helper');"]],
+    ['rs', ['  foo()', '    .log("helper");']],
+  ])('%s: does not count a callee named in a comment or a string (%j)', (ext, lines) => {
+    expect(chain(ext, lines).counts.edgeContradicted).toBe(1);
+  });
+
+  it.each([
+    ['java', ['    foo()', '        .helperFactory();']],
+    ['java', ['    foo()', '        .myhelper();']],
+    ['kt', ['  foo()', '    .helper2()']],
+    ['go', ['\tfoo().', '\t\tHelperX()'], 'Helper'],
+  ])('%s: does not count a callee that is part of a longer name (%j)', (ext, lines, callee) => {
+    expect(chain(ext, lines, callee ?? 'helper').counts.edgeContradicted).toBe(1);
+  });
+
+  it('counts a callee that is a whole name, however it is followed', () => {
+    expect(chain('java', ['    foo()', '        .helper();']).counts.edgeContradicted).toBe(0);
+    expect(chain('kt', ['  foo()', '    .helper { it }']).counts.edgeContradicted).toBe(0);
+  });
+
+  it('does not take an increment at the start of the next line for a continuation', () => {
+    expect(chain('kt', ['val x = foo()', '++helper()']).counts.edgeContradicted).toBe(1);
+    expect(chain('kt', ['val x = foo()', '+ helper()']).counts.edgeContradicted).toBe(0);
+  });
+
+  it('does not take a slash pair inside a string for a comment that hides a trailing dot', () => {
+    expect(chain('java', ['    String s = "a.//b"', '    helper();']).counts.edgeContradicted).toBe(1);
+    expect(chain('go', ['\ts := "a.//b"', '\thelper()']).counts.edgeContradicted).toBe(1);
+  });
+
+  it('still reads a trailing dot that is followed by a comment', () => {
+    expect(chain('go', ['\tclient. // note', '\thelper()']).counts.edgeContradicted).toBe(0);
+  });
+});
+
 describe('validate-graph — the report names the expressions it could not decide', () => {
   it('prints and writes the construct-too-long count for a call expression', () => {
     const lines = ['class Q {', '  void m() {', '    call(', ...Array.from({ length: CONSTRUCT_SCAN_LINES + 20 }, (_, i) => `        arg${i},`)];

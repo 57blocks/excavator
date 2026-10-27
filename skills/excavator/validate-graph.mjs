@@ -586,6 +586,59 @@ function scanExpressionLine(text, depth, syntax) {
   return { depth, terminated: false, unsure: quote !== null };
 }
 
+/**
+ * The code a line holds: the comments dropped and the contents of the strings
+ * and characters blanked, so that a word in a comment or a string, or a `//`
+ * inside a string, is not taken for code.
+ */
+function codeOf(text, syntax) {
+  let code = '';
+  let quote = null;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (quote !== null) {
+      if (ch === '\\') {
+        code += '  ';
+        i += 1;
+      } else if (ch === quote) {
+        quote = null;
+        code += ch;
+      } else {
+        code += ' ';
+      }
+      continue;
+    }
+    if (ch === "'" && syntax.rustApostrophe) {
+      const end = rustApostropheEnd(text, i);
+      code += ' '.repeat(end - i + 1);
+      i = end;
+    } else if (ch === '"' || ch === "'" || ch === '`') {
+      quote = ch;
+      code += ch;
+    } else if (syntax.slashComment && ch === '/' && text[i + 1] === '/') {
+      break;
+    } else if (syntax.hashComment && ch === '#') {
+      break;
+    } else if (syntax.slashComment && ch === '/' && text[i + 1] === '*') {
+      const end = text.indexOf('*/', i + 2);
+      if (end < 0) break;
+      code += ' ';
+      i = end + 1;
+    } else {
+      code += ch;
+    }
+  }
+  return code;
+}
+
+/** Does `code` hold `name` as a whole name, not as a part of a longer one? */
+function mentionsName(code, name) {
+  for (let at = code.indexOf(name); at >= 0; at = code.indexOf(name, at + 1)) {
+    if (!/[\w$]/.test(code[at - 1] ?? ' ') && !/[\w$]/.test(code[at + name.length] ?? ' ')) return true;
+  }
+  return false;
+}
+
 /** Does this line end in something that makes the expression go on? */
 function endsWithContinuation(text, syntax) {
   // Only what cannot end a statement of its own: a trailing `.` (not `..`), `\`,
@@ -595,10 +648,8 @@ function endsWithContinuation(text, syntax) {
   // reference type), `<`, `>`, `/`, a nullable `?` and the end of a block
   // comment. When in doubt this says no: a missed continuation reports a
   // contradiction, a false one confirms a wrong line.
-  let code = text;
-  if (syntax.slashComment) code = code.replace(/\/\/.*$/, '').replace(/\/\*.*\*\/\s*$/, '');
-  if (syntax.hashComment) code = code.replace(/#.*$/, '');
-  return /(?:(?<!\.)\.|[\\=]|&&|\|\||(?<!\+)\+|->|=>)$/.test(code.trimEnd());
+  const code = codeOf(text, syntax).trimEnd();
+  return /(?:(?<!\.)\.|[\\=]|&&|\|\||(?<!\+)\+|->|=>)$/.test(code);
 }
 
 /** Does the next non-blank line after `line` carry on the expression? */
@@ -608,7 +659,7 @@ function nextLineContinues(reader, filePath, line, limit) {
     if (text === null) return false;
     const trimmed = text.trim();
     if (trimmed === '') continue;
-    return /^(?:\?\.|\.(?!\.)|&&|\|\||\+|\?|->|=>|\|)/.test(trimmed);
+    return /^(?:\?\.|\.(?!\.)|&&|\|\||\+(?!\+)|\?|->|=>|\|)/.test(trimmed);
   }
   return false;
 }
@@ -631,7 +682,12 @@ export function findTokenInExpression(reader, filePath, startLine, tokens, synta
   for (let line = startLine; line < limit; line++) {
     const text = reader.line(filePath, line);
     if (text === null) return { status: 'none' };
-    if (tokens.some((token) => token && text.includes(token))) return { status: 'found', line };
+    // The first line is the one the extractor cited, read as everywhere else. A later line counts for
+    // the code it holds: a name in a comment or a string, or inside a longer name, is not the callee.
+    const named = line === startLine
+      ? tokens.some((token) => token && text.includes(token))
+      : tokens.some((token) => token && mentionsName(codeOf(text, syntax), token));
+    if (named) return { status: 'found', line };
     const scanned = scanExpressionLine(text, depth, syntax);
     depth = scanned.depth;
     // What the next lines hold is not code the scan can read, so the expression is not read on.
