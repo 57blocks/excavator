@@ -671,12 +671,10 @@ function nextLineContinues(reader, filePath, line, limit, syntax) {
     const text = reader.line(filePath, next);
     if (text === null) return false;
     const code = codeOf(text, syntax).trim();
-    if (code === '') {
-      // A line that holds only a comment is passed over. One that opens a block comment it does not close
-      // hides the lines after it, which are not code.
-      if (syntax.slashComment && text.includes('/*') && !text.slice(text.indexOf('/*') + 2).includes('*/')) return false;
-      continue;
-    }
+    // A line that holds only a comment is passed over. If it opens a block comment it does not close,
+    // the scan stops on it (a string or comment left open is not read on), so the lines it hides are
+    // never taken for code.
+    if (code === '') continue;
     return /^(?:\?\.|\.(?!\.)|&&|\|\||\+(?!\+)|\?|->|=>|\|)/.test(code);
   }
   return false;
