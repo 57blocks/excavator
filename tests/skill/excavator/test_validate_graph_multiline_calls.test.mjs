@@ -131,6 +131,7 @@ describe('validate-graph — a declaration head that wraps its modifiers onto a 
     ['java', 'return x'], ['java', 'break'], ['java', 'else'], ['java', 'import foo.Bar'], ['java', 'package app'],
     ['ts', 'export default router'], ['ts', 'export const router'], ['ts', 'const router'], ['ts', 'static x'], ['ts', 'async'],
     ['kt', 'val x'], ['kt', 'object Registry'], ['cs', 'using System'], ['cs', 'return value'], ['php', 'namespace App'], ['php', 'return $x'],
+    ['java', 'export default router'], ['java', 'const router'], ['java', 'static x'], ['cs', 'async'], ['cs', 'static x'], ['cs', 'export x'],
   ];
   it.each(NOT_A_HEAD)('%s: does not read %j as the start of a wrapped head', (ext, statement) => {
     const path = `src/s.${ext}`;
@@ -351,9 +352,9 @@ describe('validate-graph — a string or a comment the scan cannot read to its e
     ['cs', ['  Call(@"select', 'from t", a);', '  helper();']],
     ['kt', ['  call("""select', '  from t""", a)', '  helper()']],
     ['rs', ['  call(r#"select', '  from t"#, a);', '  helper();']],
-    ['php', ['  call(<<<EOT', '  select', 'EOT, a);', '  helper();']],
-    ['java', ['    call(a /* start', '       from t */', '    );', '    helper();']],
-    ['c', ['  call(a, /* start', '       from t */ b);', '  helper();']],
+    ['php', ['  call(<<<EOT', '  helper() text', 'EOT, a);']],
+    ['java', ['    call(a /* start', '       helper() */', '    );']],
+    ['c', ['  call(a, /* start', '       helper() */ b);']],
   ];
   it.each(OPEN_AT_END_OF_LINE)('%s: stops at a string or a comment left open (%j)', (ext, body) => {
     const path = `src/s.${ext}`;
@@ -404,6 +405,24 @@ describe('validate-graph — a string or a comment the scan cannot read to its e
     const helper = declNode('function', 'src/h.rs', 'helper', [1, 1]);
     const { report } = run(root, [m, helper], [edge('calls', m, helper, 'src/c.rs', 1)]);
     expect(report.counts.edgeContradicted).toBe(0);
+  });
+
+  it('does not read an annotation whose argument opens a text block on a later line as leading syntax', () => {
+    const lines = ['@Query(', '  """', '  select 1)', 'void helper() {}', ''];
+    const root = project({ 'src/Q.java': lines });
+    const file = fileNode('src/Q.java');
+    const helper = declNode('function', 'src/Q.java', 'helper', [1, 4]);
+    const { report } = run(root, [file, helper], [edge('contains', file, helper, 'src/Q.java', 1)]);
+    expect(report.counts.edgeContradicted).toBe(1);
+  });
+
+  it('does not read an annotation argument that opens a block comment it does not close as leading syntax', () => {
+    const lines = ['@A(a /* note', 'void helper() {} ) */', ''];
+    const root = project({ 'src/C.java': lines });
+    const file = fileNode('src/C.java');
+    const helper = declNode('function', 'src/C.java', 'helper', [1, 2]);
+    const { report } = run(root, [file, helper], [edge('contains', file, helper, 'src/C.java', 1)]);
+    expect(report.counts.edgeContradicted).toBe(1);
   });
 
   it('does not read an annotation whose argument opens a text block as leading syntax', () => {
