@@ -538,14 +538,12 @@ function continuesHead(text) {
  * each holds only words, types and generics. Returns `{ status: 'found', line }`,
  * `{ status: 'none' }` or `{ status: 'too-long' }` past `CONSTRUCT_SCAN_LINES`.
  */
-function findTokenInDeclarationHead(reader, filePath, line, tokens) {
+function findTokenInDeclarationHead(reader, filePath, line, tokens, syntax) {
   const limit = line + CONSTRUCT_SCAN_LINES;
   for (let n = line; n < limit; n++) {
     const text = reader.line(filePath, n);
     if (text === null) return { status: 'none' };
-    const named = n === line
-      ? tokens.some((token) => token && text.includes(token))
-      : continuesHead(text) && tokens.some((token) => token && text.includes(token));
+    const named = (n === line || continuesHead(text)) && namedInCode(reader, filePath, n, tokens, syntax);
     if (named) return { status: 'found', line: n };
     if (n === line ? !startsUnfinishedHead(text) : !onlyWords(text)) return { status: 'none' };
   }
@@ -639,6 +637,21 @@ function mentionsName(code, name) {
   return false;
 }
 
+/**
+ * Does one of `tokens` stand in the code of this line as a whole name? This is
+ * how a name is looked for on any line but the cited one (the line after the
+ * leading lines, a line of a declaration head, a line of an expression): the
+ * cited line itself, and the lines within one line of a range's start, are read
+ * as they always were. A name in a comment, in a string, or inside a longer name
+ * is not the one the edge or the anchor is about.
+ */
+function namedInCode(reader, filePath, line, tokens, syntax) {
+  const text = reader.line(filePath, line);
+  if (text === null) return false;
+  const code = codeOf(text, syntax);
+  return tokens.some((token) => token && mentionsName(code, token));
+}
+
 /** Does this line end in something that makes the expression go on? */
 function endsWithContinuation(text, syntax) {
   // Only what cannot end a statement of its own: a trailing `.` (not `..`), `\`,
@@ -653,13 +666,18 @@ function endsWithContinuation(text, syntax) {
 }
 
 /** Does the next non-blank line after `line` carry on the expression? */
-function nextLineContinues(reader, filePath, line, limit) {
+function nextLineContinues(reader, filePath, line, limit, syntax) {
   for (let next = line + 1; next < limit; next++) {
     const text = reader.line(filePath, next);
     if (text === null) return false;
-    const trimmed = text.trim();
-    if (trimmed === '') continue;
-    return /^(?:\?\.|\.(?!\.)|&&|\|\||\+(?!\+)|\?|->|=>|\|)/.test(trimmed);
+    const code = codeOf(text, syntax).trim();
+    if (code === '') {
+      // A line that holds only a comment is passed over. One that opens a block comment it does not close
+      // hides the lines after it, which are not code.
+      if (syntax.slashComment && text.includes('/*') && !text.slice(text.indexOf('/*') + 2).includes('*/')) return false;
+      continue;
+    }
+    return /^(?:\?\.|\.(?!\.)|&&|\|\||\+(?!\+)|\?|->|=>|\|)/.test(code);
   }
   return false;
 }
@@ -684,13 +702,12 @@ export function findTokenInExpression(reader, filePath, startLine, tokens, synta
     if (text === null) return { status: 'none' };
     // The cited line was read as everywhere else before the scan began. A line counts for the code it
     // holds: a name in a comment or a string, or inside a longer name, is not the callee.
-    const code = codeOf(text, syntax);
-    if (tokens.some((token) => token && mentionsName(code, token))) return { status: 'found', line };
+    if (namedInCode(reader, filePath, line, tokens, syntax)) return { status: 'found', line };
     const scanned = scanExpressionLine(text, depth, syntax);
     depth = scanned.depth;
     // What the next lines hold is not code the scan can read, so the expression is not read on.
     if (scanned.unsure || scanned.terminated) return { status: 'none' };
-    if (depth === 0 && !endsWithContinuation(text, syntax) && !nextLineContinues(reader, filePath, line, limit)) {
+    if (depth === 0 && !endsWithContinuation(text, syntax) && !nextLineContinues(reader, filePath, line, limit, syntax)) {
       return { status: 'none' };
     }
   }
@@ -797,10 +814,11 @@ export function validateAgainstSource({ graph, reader, sampleLimit = 5 }) {
       const lead = skipLeadingLines(reader, node.filePath, startLine);
       let headTooLong = false;
       if (lead.status === 'ok') {
-        let leadHit = findToken(reader, node.filePath, lead.line, tokens, 0);
-        if (leadHit === null && leadingSyntax(node.filePath).wrappedHead) {
+        const nodeSyntax = leadingSyntax(node.filePath);
+        let leadHit = namedInCode(reader, node.filePath, lead.line, tokens, nodeSyntax) ? lead.line : null;
+        if (leadHit === null && nodeSyntax.wrappedHead) {
           // The declaration may itself wrap: `public void` on one line, the name on the next.
-          const head = findTokenInDeclarationHead(reader, node.filePath, lead.line, tokens);
+          const head = findTokenInDeclarationHead(reader, node.filePath, lead.line, tokens, nodeSyntax);
           if (head.status === 'found') leadHit = head.line;
           else if (head.status === 'too-long') headTooLong = true;
         }

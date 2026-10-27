@@ -523,6 +523,89 @@ describe('validate-graph — a later line of an expression counts only for the c
   });
 });
 
+describe('validate-graph — a name found on a line other than the cited one counts for the code it holds', () => {
+  const member = (ext, lines, range) => {
+    const path = `src/s.${ext}`;
+    const root = project({ [path]: [...lines, ''] });
+    const file = fileNode(path);
+    const helper = declNode('function', path, 'helper', range);
+    return run(root, [file, helper], [edge('contains', file, helper, path, range[0])]).report;
+  };
+
+  // The name is on the declaration line, or on a line of the head, but not as the name of the declaration:
+  // inside a longer name, in a comment, in a string. The anchor stays within one line, as on `main`, but it is
+  // not exact, so the edge that cites the start of the range is contradicted.
+  it.each([
+    ['java', ['public void', 'helperFactory() {'], [1, 2]],
+    ['java', ['public void', '// helper', 'run() {'], [1, 3]],
+    ['java', ['public void', '/* helper */ run() {'], [1, 2]],
+    ['java', ['public void', 'run() { /* helper */ }'], [1, 2]],
+    ['java', ['public void', 'run("helper") {'], [1, 2]],
+    ['cs', ['public int', 'helperFactory;'], [1, 2]],
+    ['cs', ['private int', '// helper', 'count;'], [1, 3]],
+    ['java', ['@Test', '// note', 'public void helperFactory() {}'], [1, 3]],
+    ['java', ['@Test', '// note', 'String x = "helper";'], [1, 3]],
+    ['java', ['@Test', '// note', 'void run() { /* helper */ }'], [1, 3]],
+    ['kt', ['@Test', '// note', 'fun helperFactory() {}'], [1, 3]],
+    ['ts', ['@Component({})', '// note', 'class helperBox {}'], [1, 3]],
+    ['py', ['@dec', '# note', 'def helper_two(): pass'], [1, 3]],
+    ['py', ['@dec', '# note', 'def run(): "helper"'], [1, 3]],
+    ['rs', ['#[test]', '// note', 'fn helper_two() {}'], [1, 3]],
+    ['cs', ['[Test]', '// note', 'public void helperFactory() {}'], [1, 3]],
+  ])('%s: does not read the name of another declaration, a comment or a string as the name (%j)', (ext, lines, range) => {
+    const report = member(ext, lines, range);
+    expect(report.counts.edgeConfirmed).toBe(0);
+  });
+
+  // The same shapes with the whole name in code are still read.
+  it.each([
+    ['java', ['public void', 'helper() throws E {}'], [1, 2]],
+    ['java', ['public void', 'helper() { /* note */ }'], [1, 2]],
+    ['cs', ['public int', 'helper;'], [1, 2]],
+    ['java', ['@Test', '// note', 'public void helper() {}'], [1, 3]],
+    ['kt', ['@Test', '// note', 'fun helper() {}'], [1, 3]],
+    ['py', ['@dec', '# note', 'def helper(): pass'], [1, 3]],
+    ['rs', ['#[test]', '// note', 'fn helper() {}'], [1, 3]],
+    ['cs', ['[Test]', '// note', 'public void helper() {}'], [1, 3]],
+  ])('%s: reads the whole name in the code of the line (%j)', (ext, lines, range) => {
+    expect(member(ext, lines, range).counts.edgeConfirmed).toBe(1);
+  });
+});
+
+describe('validate-graph — the look-ahead of an expression reads the code of the next line', () => {
+  const chain = (ext, lines) => {
+    const path = `src/s.${ext}`;
+    const root = project({ [path]: [...lines, ''] });
+    const m = declNode('function', path, 'm', [1, lines.length]);
+    const helper = declNode('function', 'src/T.x', 'helper', [1, 1]);
+    return run(root, [m, helper], [edge('calls', m, helper, path, 1)]).report;
+  };
+
+  it.each([
+    ['java', ['    foo()', '        /* note */ .helper();']],
+    ['java', ['    foo()', '        // note', '        .helper();']],
+    ['java', ['    foo()', '        /* note */', '        .helper();']],
+    ['kt', ['  foo()', '    // note', '    .helper()']],
+    ['js', ['  foo()', '    // note', '    // more', '    .helper()']],
+    ['php', ['  foo()', '  # note', '    ->helper();']],
+  ])('%s: passes over a comment and reads the continuation after it (%j)', (ext, lines) => {
+    expect(chain(ext, lines).counts.edgeContradicted).toBe(0);
+  });
+
+  // A block comment that is opened and not closed on a line hides the lines after it, which are not code.
+  it.each([
+    ['java', ['    foo()', '    /* start', '    .helper()', '    */']],
+    ['kt', ['  foo()', '  /* start', '    .helper()', '  */']],
+    ['js', ['  foo()', '  /* start', '    .helper()', '  */']],
+  ])('%s: does not read a continuation inside a block comment (%j)', (ext, lines) => {
+    expect(chain(ext, lines).counts.edgeContradicted).toBe(1);
+  });
+
+  it('does not read a comment line as the end of the expression, and does not read a statement after it as a continuation', () => {
+    expect(chain('java', ['    foo()', '        // note', '    helper();']).counts.edgeContradicted).toBe(1);
+  });
+});
+
 describe('validate-graph — the report names the expressions it could not decide', () => {
   it('prints and writes the construct-too-long count for a call expression', () => {
     const lines = ['class Q {', '  void m() {', '    call(', ...Array.from({ length: CONSTRUCT_SCAN_LINES + 20 }, (_, i) => `        arg${i},`)];
