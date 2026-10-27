@@ -14,7 +14,7 @@
  *      class/struct/def keyword). Otherwise: gap `anchor-mismatch`, node
  *      `verification: "contradicted"`. Leading lines longer than the scan bound
  *      leave the node `unverified` under `construct-too-long`, never confirmed and
- *      never contradicted, and so does a declaration head that passes it. A
+ *      never contradicted, and so does a declaration head or an expression that passes it. A
  *      declaration whose modifiers wrap onto a line of their own is read to its name. An anchor is exact when the name is on `lineRange[0]`
  *      itself or on the first line after the leading lines; one that only passes
  *      within one line is still an anchor but is not exact.
@@ -30,7 +30,10 @@
  *      the text: an edge an extractor wrote that cites a declaration (not a
  *      `calls` edge, and not an entry that names its own token) is confirmed
  *      when the cited line is the first line of the range of an endpoint whose
- *      name is the expected token and whose own anchor is exact. Otherwise: gap
+ *      name is the expected token and whose own anchor is exact. A `calls` edge an
+ *      extractor wrote is also confirmed when the callee name is anywhere in the
+ *      call expression that starts on the cited line, in the languages that write
+ *      expressions that way. Otherwise: gap
  *      `edge-contradicted`, edge `verification: "contradicted"`.
  *   3. `inferred` edges pass — being marked as judgement IS the honest state.
  *   4. referential integrity — the same checks UA's inline validator makes
@@ -335,6 +338,12 @@ const LEADING_SYNTAX = Object.freeze({
   ]),
   // Declaration heads that wrap their modifiers onto a line before the name: the languages that have these modifiers
   wrappedHead: new Set(['.java', '.cs', '.kt', '.kts', '.scala', '.groovy', '.swift', '.dart', '.ts', '.tsx', '.php']),
+  // Call expressions written over several lines, ended by `;`, by a block body or by a line that is not continued:
+  // the languages with a brace-and-statement grammar. Python and Ruby end a statement by its indentation or `end`.
+  expressionScan: new Set([
+    '.java', '.kt', '.kts', '.scala', '.groovy', '.swift', '.dart', '.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs',
+    '.cs', '.rs', '.php', '.go', '.c', '.h', '.cc', '.cpp', '.cxx', '.hpp', '.hh',
+  ]),
 });
 
 function leadingSyntax(filePath) {
@@ -346,6 +355,7 @@ function leadingSyntax(filePath) {
     hashComment: LEADING_SYNTAX.hashComment.has(ext),
     slashComment: LEADING_SYNTAX.slashComment.has(ext),
     wrappedHead: LEADING_SYNTAX.wrappedHead.has(ext),
+    expressionScan: LEADING_SYNTAX.expressionScan.has(ext),
     // `'a` is a lifetime in Rust, not the start of a string
     apostropheQuote: ext !== '.rs',
   };
@@ -495,6 +505,93 @@ function findTokenInDeclarationHead(reader, filePath, line, tokens) {
     if (text === null) return { status: 'none' };
     if (tokens.some((token) => token && text.includes(token))) return { status: 'found', line: n };
     if (n === line ? !startsUnfinishedHead(text) : !onlyWords(text)) return { status: 'none' };
+  }
+  return { status: 'too-long' };
+}
+
+/**
+ * Advance `depth` over one line of an expression: `(`, `[` and `{` open, their
+ * closers close, string literals and the comments of the language are not read.
+ * `terminated` is true when a `;` came at depth 0, or when a `{` opened at
+ * depth 0: that brace is a block body (a function, a branch), which is not part
+ * of the expression.
+ */
+function scanExpressionLine(text, depth, syntax) {
+  let quote = null;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (quote !== null) {
+      if (ch === '\\') i += 1;
+      else if (ch === quote) quote = null;
+      continue;
+    }
+    if (ch === '"' || (ch === "'" && syntax.apostropheQuote) || ch === '`') quote = ch;
+    else if (syntax.slashComment && ch === '/' && text[i + 1] === '/') break;
+    else if (syntax.hashComment && ch === '#') break;
+    else if (syntax.slashComment && ch === '/' && text[i + 1] === '*') {
+      const end = text.indexOf('*/', i + 2);
+      if (end < 0) break;
+      i = end + 1;
+    } else if (ch === '{' && depth === 0) return { depth, terminated: true };
+    else if (ch === '(' || ch === '[' || ch === '{') depth += 1;
+    else if (ch === ')' || ch === ']' || ch === '}') depth = Math.max(0, depth - 1);
+    else if (ch === ';' && depth === 0) return { depth, terminated: true };
+  }
+  return { depth, terminated: false };
+}
+
+/** Does this line end in something that makes the expression go on? */
+function endsWithContinuation(text, syntax) {
+  // Only what cannot end a statement of its own: a trailing `.` (not `..`), `\`,
+  // `=`, `&&`, `||`, `->`, `=>`, and a single `+`. Left out on purpose: `,` (at
+  // depth 0 it means an outer list, and the next line is another element), `++`,
+  // `--`, `-`, `*` (a Python `import *`, a pointer type), `%`, `&` and `|` (a
+  // reference type), `<`, `>`, `/`, a nullable `?` and the end of a block
+  // comment. When in doubt this says no: a missed continuation reports a
+  // contradiction, a false one confirms a wrong line.
+  let code = text;
+  if (syntax.slashComment) code = code.replace(/\/\/.*$/, '').replace(/\/\*.*\*\/\s*$/, '');
+  if (syntax.hashComment) code = code.replace(/#.*$/, '');
+  return /(?:(?<!\.)\.|[\\=]|&&|\|\||(?<!\+)\+|->|=>)$/.test(code.trimEnd());
+}
+
+/** Does the next non-blank line after `line` carry on the expression? */
+function nextLineContinues(reader, filePath, line, limit) {
+  for (let next = line + 1; next < limit; next++) {
+    const text = reader.line(filePath, next);
+    if (text === null) return false;
+    const trimmed = text.trim();
+    if (trimmed === '') continue;
+    return /^(?:\?\.|\.(?!\.)|&&|\|\||\+|\?|->|=>|\|)/.test(trimmed);
+  }
+  return false;
+}
+
+/**
+ * Scan the call expression that starts at `startLine` for one of `tokens`.
+ *
+ * A chain, a builder or a long argument list puts the callee's name several
+ * lines below the line an extractor cites. The expression is read until it
+ * ends: a `;` at depth 0, a block body opening at depth 0, or a line that
+ * leaves every bracket closed and neither ends in a continuation nor is
+ * followed by one (`.foo()`, `&&`). Each line is checked for the token before
+ * its end is judged, so the line that ends the expression counts. Returns
+ * `{ status: 'found', line }`, `{ status: 'none' }` or `{ status: 'too-long' }`
+ * past `CONSTRUCT_SCAN_LINES`.
+ */
+export function findTokenInExpression(reader, filePath, startLine, tokens, syntax) {
+  let depth = 0;
+  const limit = startLine + CONSTRUCT_SCAN_LINES;
+  for (let line = startLine; line < limit; line++) {
+    const text = reader.line(filePath, line);
+    if (text === null) return { status: 'none' };
+    if (tokens.some((token) => token && text.includes(token))) return { status: 'found', line };
+    const scanned = scanExpressionLine(text, depth, syntax);
+    depth = scanned.depth;
+    if (scanned.terminated) return { status: 'none' };
+    if (depth === 0 && !endsWithContinuation(text, syntax) && !nextLineContinues(reader, filePath, line, limit)) {
+      return { status: 'none' };
+    }
   }
   return { status: 'too-long' };
 }
@@ -655,6 +752,7 @@ export function validateAgainstSource({ graph, reader, sampleLimit = 5 }) {
     let confirmed = false;
     let sawSource = false;
     let refused = false;
+    let tooLong = false;
     for (const entry of evidence) {
       if (!entry || typeof entry !== 'object' || typeof entry.file !== 'string') continue;
       if (reader.isOutOfScope(entry.file)) {
@@ -671,6 +769,17 @@ export function validateAgainstSource({ graph, reader, sampleLimit = 5 }) {
       let found = edge.type === 'imports' && entry.source !== 'model'
         ? findTokenInImportStatement(reader, entry.file, entry.line, tokens)
         : findToken(reader, entry.file, entry.line, tokens, 0);
+      // A call's evidence is the start of its expression, which may run over
+      // several lines, in the languages that write expressions that way. An
+      // entry that names its own token, and a model's citation, are not read on.
+      if (found === null && edge.type === 'calls' && entry.source !== 'model' && entry.token === undefined) {
+        const syntax = leadingSyntax(entry.file);
+        if (syntax.expressionScan) {
+          const expression = findTokenInExpression(reader, entry.file, entry.line, tokens, syntax);
+          if (expression.status === 'found') found = expression.line;
+          else if (expression.status === 'too-long') tooLong = true;
+        }
+      }
       // An entry that names the token its line holds (a mention, an injection,
       // a JSX tag) says exactly where that is, and a model's citation is
       // untrusted input. Any other edge that cites a declaration cites where
@@ -701,6 +810,12 @@ export function validateAgainstSource({ graph, reader, sampleLimit = 5 }) {
     }
     if (confirmed) {
       counts.edgeConfirmed += 1;
+      continue;
+    }
+    if (tooLong) {
+      counts.constructTooLong += 1;
+      edge.verification = 'unverified';
+      samples.add('construct-too-long', `${edge.type}|${edge.source}|${edge.target}`);
       continue;
     }
     counts.edgeContradicted += 1;
@@ -787,7 +902,7 @@ export function validateAgainstSource({ graph, reader, sampleLimit = 5 }) {
   addGap('source-missing', counts.sourceMissing,
     `${counts.sourceMissing} check(s) skipped because the source file could not be read`);
   addGap('construct-too-long', counts.constructTooLong,
-    `${counts.constructTooLong} check(s) left unverified because the leading lines or a declaration head passed ${CONSTRUCT_SCAN_LINES} lines`);
+    `${counts.constructTooLong} check(s) left unverified because the leading lines, a declaration head or an expression passed ${CONSTRUCT_SCAN_LINES} lines`);
   addGap('path-out-of-scope', counts.pathOutOfScope,
     `${counts.pathOutOfScope} path(s) named outside the project root were refused, not read`);
   gaps.sort(compareGaps);

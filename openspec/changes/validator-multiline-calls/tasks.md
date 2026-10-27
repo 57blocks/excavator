@@ -13,8 +13,8 @@
 
 ## 3. `calls` 的整条表达式
 
-- [ ] 3.1 加表达式的语言表、`endsWithContinuation`、`nextLineContinues`、`findTokenInExpression`，边检查对抽取器写的、不带自己 `token` 的 `calls` 证据调用；过长标 `unverified` 并计 `construct-too-long`。验证 1.1 的链式用例、lambda 用例与 1.2 的护栏转绿、1.3 的「不是续行」全部报出
-- [ ] 3.2 `skills/excavator/SKILL.md` Phase 6b 的检查说明改为与规格一致；验证 `node scripts/check-refs.mjs` 通过
+- [x] 3.1 加表达式的语言表、`endsWithContinuation`、`nextLineContinues`、`findTokenInExpression`，边检查对抽取器写的、不带自己 `token` 的 `calls` 证据调用；过长标 `unverified` 并计 `construct-too-long`。验证 1.1 的链式用例、lambda 用例与 1.2 的护栏转绿、1.3 的「不是续行」全部报出
+- [x] 3.2 `skills/excavator/SKILL.md` Phase 6b 的检查说明改为与规格一致；验证 `node scripts/check-refs.mjs` 通过
 
 ## 4. 真实图验收（oracle 已写死，动手前不改）
 

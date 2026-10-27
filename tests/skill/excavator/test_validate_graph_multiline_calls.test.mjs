@@ -163,3 +163,158 @@ describe('validate-graph — a declaration head that wraps its modifiers onto a 
     expect(validated.nodes[0].verification).toBe('unverified');
   });
 });
+
+describe('validate-graph — a call expression written over several lines', () => {
+  const caller = (path) => declNode('function', path, 'm', [1, 1]);
+  const calls = (path, lines, calleeName, line, from = 'tree-sitter') => {
+    const root = project({ [path]: lines });
+    const m = caller(path);
+    const target = declNode('function', 'src/T.x', calleeName, [1, 1]);
+    return run(root, [m, target], [edge('calls', m, target, path, line, from)]).report;
+  };
+
+  it('confirms a callee on a later line of a chain written with leading dots', () => {
+    const lines = ['class C {', '  void m() {', '    String s = builder', '        .alpha()', '        .beta(1,', '            2)', '        .gamma();', '    other();', '  }', '}'];
+    expect(calls('src/C.java', lines, 'gamma', 3).counts.edgeContradicted).toBe(0);
+  });
+
+  it('confirms a callee on a later line of a chain written with trailing dots', () => {
+    const lines = ['func m() {', '\tclient.', '\t\tPost(url).', '\t\tSend()', '\tnext()', '}'];
+    expect(calls('src/m.go', lines, 'Send', 2).counts.edgeContradicted).toBe(0);
+  });
+
+  it.each([['kt', 'val s = builder'], ['cs', 'var s = builder'], ['rs', 'let s = builder'], ['js', 'const s = builder'], ['scala', 'val s = builder']])(
+    '%s: confirms a callee on a later line of a chain written with leading dots', (ext, head) => {
+      const lines = [head, '    .alpha()', '    .gamma()', 'other()', ''];
+      expect(calls(`src/c.${ext}`, lines, 'gamma', 1).counts.edgeContradicted).toBe(0);
+    },
+  );
+
+  it('confirms the callee at the end of a ten-line builder chain', () => {
+    const lines = ['class Z {', '  void m() {', '    Client.configure()'];
+    for (let i = 0; i < 10; i++) lines.push(`        .with${i}(v${i})`);
+    lines.push('        .create();', '  }', '}');
+    expect(calls('src/Z.java', lines, 'create', 3).counts.edgeContradicted).toBe(0);
+  });
+
+  it('confirms a callee that follows a lambda block in the middle of the chain', () => {
+    const lines = ['class L {', '  void m() {', '    items.stream()', '        .map(x -> {', '          return x + 1;', '        })', '        .collect(toList());', '  }', '}'];
+    expect(calls('src/L.java', lines, 'collect', 3).counts.edgeContradicted).toBe(0);
+  });
+
+  it('confirms a callee on the line that opens a block, the same line as the brace', () => {
+    const lines = ['class N {', '  void m() {', '    if (check(target())) {', '    }', '  }', '}'];
+    expect(calls('src/N.java', lines, 'target', 3).counts.edgeContradicted).toBe(0);
+  });
+
+  it('still reports a callee that appears only in the next statement', () => {
+    const lines = ['class N {', '  void m() {', '    first();', '    target();', '  }', '}'];
+    expect(calls('src/N.java', lines, 'target', 3).counts.edgeContradicted).toBe(1);
+  });
+
+  it('still reports a callee that is not in the expression at all', () => {
+    const lines = ['class N {', '  void m() {', '    builder', '        .alpha()', '        .beta();', '  }', '}'];
+    expect(calls('src/N.java', lines, 'gone', 3).counts.edgeContradicted).toBe(1);
+  });
+
+  it('does not read into the body of a declaration or a branch the cited line opens', () => {
+    const lines = ['class N {', '  void m() {', '    if (ready) {', '      target();', '    }', '  }', '}'];
+    const root = project({ 'src/N.java': lines });
+    const m = caller('src/N.java');
+    const target = declNode('function', 'src/T.java', 'target', [1, 1]);
+    const { report } = run(root, [m, target], [
+      edge('calls', m, target, 'src/N.java', 2),
+      edge('calls', m, target, 'src/N.java', 3),
+    ]);
+    expect(report.counts.edgeContradicted).toBe(2);
+  });
+
+  it('gives a model-cited line no benefit of the following lines', () => {
+    const lines = ['class N {', '  void m() {', '    builder', '        .target();', '  }', '}'];
+    expect(calls('src/N.java', lines, 'target', 3, 'model').counts.edgeContradicted).toBe(1);
+  });
+
+  it('gives an evidence entry that names its own token no benefit of the following lines', () => {
+    const root = project({ 'src/N.java': ['class N {', '  void m() {', '    builder', '        .target();', '  }', '}'] });
+    const m = caller('src/N.java');
+    const target = declNode('function', 'src/T.java', 'target', [1, 1]);
+    const e = edge('calls', m, target, 'src/N.java', 3);
+    e.evidence[0].token = 'target';
+    expect(run(root, [m, target], [e]).report.counts.edgeContradicted).toBe(1);
+  });
+
+  it('marks an expression that runs past the scan bound as unverified, not as contradicted', () => {
+    const lines = ['class Q {', '  void m() {', '    call(', ...Array.from({ length: CONSTRUCT_SCAN_LINES + 20 }, (_, i) => `        arg${i},`)];
+    const root = project({ 'src/Q.java': lines });
+    const m = caller('src/Q.java');
+    const target = declNode('function', 'src/T.java', 'elsewhere', [1, 1]);
+    const { validated, report } = run(root, [m, target], [edge('calls', m, target, 'src/Q.java', 3)]);
+    expect(report.counts.edgeContradicted).toBe(0);
+    expect(report.counts.constructTooLong).toBe(1);
+    expect(validated.edges[0].verification).toBe('unverified');
+    expect(validated.gaps.find((g) => g.kind === 'construct-too-long').count).toBe(1);
+  });
+});
+
+describe('validate-graph — what a call expression does not continue on', () => {
+  // The cited line ends in something that ends a statement in a language without semicolons, or that is not a
+  // continuation at all, and the next line names the callee. The expression is over, so the edge is contradicted.
+  const NOT_A_CONTINUATION = [
+    ['go', 'count++'], ['go', 'count--'], ['go', 'x := a *'], ['go', 'var p *string'], ['go', 'a, b := 1,'], ['go', 'total := x -'],
+    ['go', 'v := a &'], ['go', 'v := a |'], ['go', 'ok := a <'], ['go', '/* done */'],
+    ['kt', 'val x: String?'], ['kt', 'count++'], ['kt', 'x = a %'], ['js', 'i++'], ['js', 'const a = 1,'], ['js', 'x = a /'], ['js', 'y = z >'],
+    ['scala', 'val n = 1,'], ['swift', 'var v: Int?'], ['dart', 'var v = a ?'], ['ts', 'let v: string | undefined'],
+  ];
+  it.each(NOT_A_CONTINUATION)('%s: does not continue the expression after %j', (ext, line) => {
+    const path = `src/s.${ext}`;
+    const root = project({ [path]: [line, 'helper()', ''] });
+    const m = declNode('function', path, 'm', [1, 2]);
+    const helper = declNode('function', 'src/T.x', 'helper', [1, 1]);
+    const { report } = run(root, [m, helper], [edge('calls', m, helper, path, 1)]);
+    expect(report.counts.edgeContradicted).toBe(1);
+  });
+
+  // Whatever the cited line holds, a callee on the line after it is not in the expression when nothing carries
+  // the expression on.
+  it.each([['go', 'Send()'], ['kt', 'send()'], ['js', 'send()'], ['java', 'send();']])('%s: ends the expression at a line that carries nothing on (%j)', (ext, line) => {
+    const path = `src/s.${ext}`;
+    const root = project({ [path]: [line, 'helper()', ''] });
+    const m = declNode('function', path, 'm', [1, 2]);
+    const helper = declNode('function', 'src/T.x', 'helper', [1, 1]);
+    const { report } = run(root, [m, helper], [edge('calls', m, helper, path, 1)]);
+    expect(report.counts.edgeContradicted).toBe(1);
+  });
+
+  // The expression scan exists only in the languages that have the syntax.
+  it.each([['py', ['x = (a,', '    helper())']], ['rb', ['foo.', '  helper']], ['txt', ['foo.', 'helper']], ['sh', ['foo \\', '  helper']], ['lua', ['foo.', 'helper()']]])(
+    '%s: reads a call on the cited line alone', (ext, lines) => {
+      const path = `src/s.${ext}`;
+      const root = project({ [path]: [...lines, ''] });
+      const m = declNode('function', path, 'm', [1, 2]);
+      const helper = declNode('function', 'src/T.x', 'helper', [1, 1]);
+      const { report } = run(root, [m, helper], [edge('calls', m, helper, path, 1)]);
+      expect(report.counts.edgeContradicted).toBe(1);
+    },
+  );
+});
+
+describe('validate-graph — the report names the expressions it could not decide', () => {
+  it('prints and writes the construct-too-long count for a call expression', () => {
+    const lines = ['class Q {', '  void m() {', '    call(', ...Array.from({ length: CONSTRUCT_SCAN_LINES + 20 }, (_, i) => `        arg${i},`)];
+    const root = project({ 'src/Q.java': lines });
+    const inter = join(root, '.excavator', 'intermediate');
+    mkdirSync(inter, { recursive: true });
+    const m = declNode('function', 'src/Q.java', 'm', [1, 1]);
+    const target = declNode('function', 'src/T.java', 'elsewhere', [1, 1]);
+    const graph = {
+      version: '1.0.0',
+      project: { name: 'fixture', languages: [], frameworks: [], description: '', analyzedAt: '2026-10-27T00:00:00.000Z', gitCommitHash: null },
+      nodes: [m, target], edges: [edge('calls', m, target, 'src/Q.java', 3)], layers: [], tour: [],
+    };
+    writeFileSync(join(inter, 'annotated-graph.json'), JSON.stringify(graph));
+    const out = spawnSync('node', [VALIDATE, root], { encoding: 'utf-8' });
+    expect(out.status, out.stderr).toBe(0);
+    expect(out.stderr).toMatch(/construct-too-long=1/);
+    expect(out.stderr).toMatch(/edge-contradicted=0/);
+  });
+});
