@@ -737,6 +737,7 @@ describe('excavator-prd-report skill: merging the open items (prd-report-dedupe,
     expect(problem).toBe('open-items/merged.json is missing');
     expect(notMerged).toBe('Open items: 3 written in the chapters, not merged');
     run.writeJson('open-items/merged.json', { digest: run.readJson('open-items/sources.json').digest, groups: [{ keep: 'F1.1', also: ['F2.1'] }] });
+    run.writeJson('open-items/checked.json', { digest: run.readJson('open-items/sources.json').digest, members: [{ keep: 'F1.1', id: 'F2.1', same: true }] });
     const merged = checkOpenItems(run);
     expect(merged.status).toBe(0);
     expect(lines(merged)).toEqual(['Open items: 3 written in the chapters, 2 after merging']);
@@ -814,6 +815,7 @@ describe('excavator-prd-report skill: merging the open items (prd-report-dedupe,
     const prompt = mergePrompt();
     const shape = JSON.parse(prompt.match(/`(\{"digest": [^`]*\})`/)[1].replace('"<the digest of sources.json, copied>"', JSON.stringify(digest)).replace('"<id>", ...', '"F2.1"').replace(/"<id>"/, '"F1.1"'));
     run.writeJson('open-items/merged.json', shape);
+    run.writeJson('open-items/checked.json', { digest, members: [{ keep: 'F1.1', id: 'F2.1', same: true }] });
     const out = checkOpenItems(run);
     expect(out.status, out.stdout).toBe(0);
   });

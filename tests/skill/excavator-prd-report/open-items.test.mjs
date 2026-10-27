@@ -1,10 +1,10 @@
 // `lib/open-items.mjs`, `prd.mjs check-open-items` and the open items table of
-// `aggregate` (openspec change prd-report-dedupe, design D5; oracle O3).
+// `aggregate` (openspec change prd-report-dedupe, design D5, D9; oracle O3).
 import { afterEach, describe, expect, it } from 'vitest';
-import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { mergeProblems, mergedRows, openItemSources } from '../../../skills/excavator-prd-report/lib/open-items.mjs';
+import { checkedProblems, mergeProblems, mergedRows, openItemSources } from '../../../skills/excavator-prd-report/lib/open-items.mjs';
 import { collectPageData } from '../../../skills/excavator-prd-report/lib/page-data.mjs';
 import { addWrittenFeature, makeLaneRun, runPrd } from './helpers.mjs';
 
@@ -66,6 +66,19 @@ const sourcesOf = (run) => run.readJson('open-items/sources.json');
 const writeMerged = (run, value) => {
   mkdirSync(join(run.out, 'open-items'), { recursive: true });
   run.writeJson('open-items/merged.json', value);
+};
+const writeChecked = (run, value) => {
+  mkdirSync(join(run.out, 'open-items'), { recursive: true });
+  run.writeJson('open-items/checked.json', value);
+};
+/** The check of `merged` in which every pair is the same question except the also ids in `rejected`. */
+const checkedOf = (merged, rejected = []) => ({
+  digest: merged.digest,
+  members: merged.groups.flatMap((group) => group.also.map((id) => ({ keep: group.keep, id, same: !rejected.includes(id) }))),
+});
+const writeMergedChecked = (run, merged, rejected = []) => {
+  writeMerged(run, merged);
+  writeChecked(run, checkedOf(merged, rejected));
 };
 /** A merge that passes: F1.1 with F2.1 and F3.2 (kept F2.1), and F1.2 with F1.3 (kept F1.3). */
 const GROUPS = [{ keep: 'F2.1', also: ['F1.1', 'F3.2'] }, { keep: 'F1.3', also: ['F1.2'] }];
@@ -262,7 +275,7 @@ describe('prd.mjs check-open-items: a passing merge', () => {
   it('exits 0 and prints the counts, M being N minus every id in an also list', () => {
     const run = makeRun();
     check(run);
-    writeMerged(run, goodMerge(run));
+    writeMergedChecked(run, goodMerge(run));
     const out = check(run);
     expect(out.status, out.stdout).toBe(0);
     expect(lines(out)).toEqual(['Open items: 7 written in the chapters, 4 after merging']);
@@ -271,7 +284,7 @@ describe('prd.mjs check-open-items: a passing merge', () => {
   it('turns to the other open items when a chapter changes after the merge', () => {
     const run = makeRun();
     check(run);
-    writeMerged(run, goodMerge(run));
+    writeMergedChecked(run, goodMerge(run));
     expect(check(run).status).toBe(0);
     run.writeText('features/F1.md', run.readText('features/F1.md').replace('Not in the order code', 'Not in the order code or the tests'));
     const out = check(run);
@@ -280,6 +293,242 @@ describe('prd.mjs check-open-items: a passing merge', () => {
       'open-items/merged.json was written for other open items; merge them again',
       'Open items: 7 written in the chapters, not merged',
     ]);
+  });
+});
+
+describe('prd.mjs check-open-items: the problems of checked.json', () => {
+  const status = 'Open items: 7 written in the chapters, not merged';
+  /** A run whose merge passes, so that checked.json is the only file in question. */
+  const mergedRun = () => {
+    const run = makeRun();
+    check(run);
+    writeMerged(run, goodMerge(run));
+    return run;
+  };
+  const goodCheck = (run) => checkedOf(goodMerge(run));
+  const expectOnly = (run, problem) => {
+    const out = check(run);
+    expect(lines(out)).toEqual([problem, status]);
+    expect(out.status).toBe(1);
+  };
+
+  it('says the file is missing, and that nothing is merged, although the merge passes', () => {
+    expectOnly(mergedRun(), 'open-items/checked.json is missing');
+  });
+
+  it('says the file is not valid JSON, with the parser message', () => {
+    const run = mergedRun();
+    writeFileSync(join(run.out, 'open-items/checked.json'), '{ "digest": ');
+    const out = check(run);
+    expect(out.status).toBe(1);
+    expect(lines(out)[0]).toMatch(/^open-items\/checked\.json is not valid JSON: .+/);
+    expect(lines(out).at(-1)).toBe(status);
+  });
+
+  it('says the file is not an object with digest and members', () => {
+    for (const value of [[], 'x', null, { members: [] }, { digest: 'x' }, { digest: 7, members: [] }, { digest: 'x', members: {} }]) {
+      const run = mergedRun();
+      writeChecked(run, value);
+      expectOnly(run, 'open-items/checked.json is not an object with digest and members');
+    }
+  });
+
+  it('says a key it does not read is not read, at the top and in a member', () => {
+    const run = mergedRun();
+    writeChecked(run, { ...goodCheck(run), note: 'x' });
+    expectOnly(run, 'open-items/checked.json has the key note, which is not read');
+    const value = goodCheck(run);
+    value.members[1] = { ...value.members[1], reason: 'same question' };
+    writeChecked(run, value);
+    expectOnly(run, 'open-items/checked.json has the key reason, which is not read');
+  });
+
+  it('says a member whose keep and id are not ids', () => {
+    const run = mergedRun();
+    for (const member of [{ keep: 'F2.1', same: true }, { id: 'F1.1', same: true }, { keep: '', id: 'F1.1', same: true }, { keep: 'F2.1', id: 3, same: true }, 'F2.1']) {
+      const value = goodCheck(run);
+      value.members.push(member);
+      writeChecked(run, value);
+      expectOnly(run, 'member 4: keep and id must be ids');
+    }
+  });
+
+  it('says a member whose same is not true or false', () => {
+    const run = mergedRun();
+    for (const same of ['true', 'yes', 1, null, undefined]) {
+      const value = goodCheck(run);
+      value.members[1] = { ...value.members[1], same };
+      writeChecked(run, value);
+      expectOnly(run, 'member 2: same must be true or false');
+    }
+  });
+
+  it('says the file was written for other open items when the digest differs', () => {
+    const run = mergedRun();
+    writeChecked(run, { ...goodCheck(run), digest: 'stale' });
+    expectOnly(run, 'open-items/checked.json was written for other open items; check them again');
+  });
+
+  it('says a pair of the merge that has no member', () => {
+    const run = mergedRun();
+    const value = goodCheck(run);
+    value.members = value.members.filter((member) => member.id !== 'F1.2');
+    writeChecked(run, value);
+    expectOnly(run, 'open-items/checked.json has no member for F1.2 under F1.3');
+    writeChecked(run, { digest: value.digest, members: [] });
+    const out = check(run);
+    expect(lines(out)).toEqual([
+      'open-items/checked.json has no member for F1.1 under F2.1',
+      'open-items/checked.json has no member for F3.2 under F2.1',
+      'open-items/checked.json has no member for F1.2 under F1.3',
+      status,
+    ]);
+  });
+
+  it('says a member that is not a pair of the merge: another keep, keep as id, or an id that is in no group', () => {
+    const run = mergedRun();
+    for (const [keep, id] of [['F1.3', 'F1.1'], ['F2.1', 'F2.1'], ['F1.2', 'F1.3'], ['F2.1', 'F2.2'], ['F9.9', 'F1.1']]) {
+      const value = goodCheck(run);
+      value.members.push({ keep, id, same: true });
+      writeChecked(run, value);
+      expectOnly(run, `open-items/checked.json has a member for ${id} under ${keep}, which is not a pair of the merge`);
+    }
+  });
+
+  it('says a pair that has more than one member, once however many there are', () => {
+    const run = mergedRun();
+    const value = goodCheck(run);
+    value.members.push({ keep: 'F2.1', id: 'F1.1', same: false }, { keep: 'F2.1', id: 'F1.1', same: true });
+    writeChecked(run, value);
+    expectOnly(run, 'open-items/checked.json has more than one member for F1.1 under F2.1');
+  });
+
+  it('does not read checked.json while the merge has a problem, and does not need it when the merge has no also member', () => {
+    const run = mergedRun();
+    writeChecked(run, 'not a check');
+    writeMerged(run, { ...goodMerge(run), digest: 'stale' });
+    const stale = check(run);
+    expect(lines(stale)).toEqual(['open-items/merged.json was written for other open items; merge them again', status]);
+    writeMerged(run, { digest: sourcesOf(run).digest, groups: [] });
+    rmSync(join(run.out, 'open-items/checked.json'));
+    const none = check(run);
+    expect(none.status, none.stdout).toBe(0);
+    expect(lines(none)).toEqual(['Open items: 7 written in the chapters, 7 after merging']);
+  });
+
+  it('prints the problem lines of the merge, then those of the check, then the status line, and exits 1 for a check that fails', () => {
+    const run = mergedRun();
+    writeChecked(run, { ...goodCheck(run), digest: 'stale' });
+    const out = check(run);
+    expect(out.status).toBe(1);
+    expect(lines(out)).toEqual(['open-items/checked.json was written for other open items; check them again', status]);
+  });
+});
+
+describe('prd.mjs check-open-items and aggregate: what the check puts back', () => {
+  const setup = () => {
+    const run = makeRun();
+    check(run);
+    return run;
+  };
+  /** Source order F1.1 F1.2 F1.3 F2.1 F2.2 F3.1 F3.2; the pairs are (F2.1, F1.1), (F2.1, F3.2) and (F1.3, F1.2). */
+  const rowsAfter = (run, rejected) => {
+    writeMergedChecked(run, goodMerge(run), rejected);
+    aggregateOk(run);
+    return tableRows(run.readText('tables/open-items.md'));
+  };
+
+  it('puts a rejected member on its own row at its own place, with its own known and searched, and keeps the rest of its group', () => {
+    const run = setup();
+    writeMergedChecked(run, goodMerge(run), ['F1.1']);
+    const out = check(run);
+    expect(out.status, out.stdout).toBe(0);
+    expect(lines(out)).toEqual(['Open items: 7 written in the chapters, 5 after merging; the check put back 1 of 3 merged items']);
+    aggregateOk(run);
+    expect(tableRows(run.readText('tables/open-items.md'))).toEqual([
+      '| 1 | Whether refunds are paid | Not in the order code | the whole project | F1 |',
+      '| 2 | How does a customer obtain a token<br>Also asked in F1: How a customer gets a token | Seen in the route only | `src/orders/service.js` | F1 |',
+      '| 3 | Refund payment rule<br>Also asked in F3: Which roles may reopen an order | A comment mentions refunds | `src/orders/service.js` | F2, F3 |',
+      '| 4 | Retention — 90 days — unknown — `src/orders/service.js` |  |  | F2 |',
+      '| 5 | Is the refund rule configurable? Nothing in the code reads a setting. |  |  | F3 |',
+    ]);
+    expect(run.readText('tables/coverage.md')).toContain('Open items: 7 written in the chapters, 5 after merging; the check put back 1 of 3 merged items\n');
+  });
+
+  it('puts a rejected member after the group row when its own place is later than the row, and lists only the accepted members under keep', () => {
+    const run = setup();
+    expect(rowsAfter(run, ['F3.2'])).toEqual([
+      '| 1 | Refund payment rule<br>Also asked in F1: Whether refunds are paid | A comment mentions refunds | `src/orders/service.js` | F1, F2 |',
+      '| 2 | How does a customer obtain a token<br>Also asked in F1: How a customer gets a token | Seen in the route only | `src/orders/service.js` | F1 |',
+      '| 3 | Retention — 90 days — unknown — `src/orders/service.js` |  |  | F2 |',
+      '| 4 | Is the refund rule configurable? Nothing in the code reads a setting. |  |  | F3 |',
+      '| 5 | Which roles may reopen an order |  |  | F3 |',
+    ]);
+  });
+
+  it('removes a group whose also members are all rejected: keep and each member have their own rows', () => {
+    const run = setup();
+    const rows = rowsAfter(run, ['F1.2']);
+    expect(rows).toHaveLength(5);
+    expect(rows[1]).toBe('| 2 | How a customer gets a token | The login route issues it | `src/orders/routes.js` | F1 |');
+    expect(rows[2]).toBe('| 3 | How does a customer obtain a token | Seen in the route only | `src/orders/service.js` | F1 |');
+    writeMergedChecked(run, goodMerge(run), ['F1.2']);
+    expect(lines(check(run))).toEqual(['Open items: 7 written in the chapters, 5 after merging; the check put back 1 of 3 merged items']);
+  });
+
+  it('gives a row for each item when every member is rejected, and still exits 0', () => {
+    const run = setup();
+    const rows = rowsAfter(run, ['F1.1', 'F3.2', 'F1.2']);
+    expect(rows).toHaveLength(7);
+    writeMergedChecked(run, goodMerge(run), ['F1.1', 'F3.2', 'F1.2']);
+    const out = check(run);
+    expect(out.status, out.stdout).toBe(0);
+    expect(lines(out)).toEqual(['Open items: 7 written in the chapters, 7 after merging; the check put back 3 of 3 merged items']);
+  });
+
+  it('says nothing about putting back when every member is accepted', () => {
+    const run = setup();
+    writeMergedChecked(run, goodMerge(run));
+    expect(lines(check(run))).toEqual(['Open items: 7 written in the chapters, 4 after merging']);
+    aggregateOk(run);
+    expect(run.readText('tables/coverage.md')).not.toContain('put back');
+  });
+
+  it('gives every item its own row and says not merged when the merge passes and checked.json is missing or fails', () => {
+    const run = setup();
+    writeMerged(run, goodMerge(run));
+    const missing = check(run);
+    expect(missing.status).toBe(1);
+    expect(lines(missing)).toEqual(['open-items/checked.json is missing', 'Open items: 7 written in the chapters, not merged']);
+    aggregateOk(run);
+    expect(tableRows(run.readText('tables/open-items.md'))).toHaveLength(7);
+    expect(run.readText('tables/open-items.md')).not.toContain('Also asked in');
+    expect(run.readText('tables/coverage.md')).toContain('Open items: 7 written in the chapters, not merged\n');
+    writeChecked(run, { ...checkedOf(goodMerge(run)), digest: 'stale' });
+    expect(check(run).status).toBe(1);
+    aggregateOk(run);
+    expect(tableRows(run.readText('tables/open-items.md'))).toHaveLength(7);
+    expect(run.readText('tables/coverage.md')).toContain('Open items: 7 written in the chapters, not merged\n');
+  });
+
+  it('needs no checked.json when the merge has no also member', () => {
+    const run = setup();
+    writeMerged(run, { digest: sourcesOf(run).digest, groups: [] });
+    expect(check(run).status).toBe(0);
+    aggregateOk(run);
+    expect(tableRows(run.readText('tables/open-items.md'))).toHaveLength(7);
+    expect(run.readText('tables/coverage.md')).toContain('Open items: 7 written in the chapters, 7 after merging\n');
+  });
+
+  it('writes the same bytes on a second aggregate, with a rejected member', () => {
+    const run = setup();
+    writeMergedChecked(run, goodMerge(run), ['F3.2']);
+    aggregateOk(run);
+    const files = ['tables/open-items.md', 'tables/coverage.md'];
+    const before = files.map((name) => run.readText(name));
+    aggregateOk(run);
+    expect(files.map((name) => run.readText(name))).toEqual(before);
+    expect(run.readText('tables/coverage.md')).toContain('the check put back 1 of 3 merged items');
   });
 });
 
@@ -339,7 +588,7 @@ describe('aggregate: tables/open-items.md', () => {
   it('writes a row for each group with the text of keep, at the place of its earliest member, and the features of the group', () => {
     const run = makeRun();
     check(run);
-    writeMerged(run, goodMerge(run));
+    writeMergedChecked(run, goodMerge(run));
     aggregateOk(run);
     const rows = tableRows(run.readText('tables/open-items.md'));
     expect(rows).toEqual([
@@ -354,7 +603,7 @@ describe('aggregate: tables/open-items.md', () => {
     const run = makeRun();
     check(run);
     const rowOf = (group) => {
-      writeMerged(run, { digest: sourcesOf(run).digest, groups: [group] });
+      writeMergedChecked(run, { digest: sourcesOf(run).digest, groups: [group] });
       aggregateOk(run);
       return tableRows(run.readText('tables/open-items.md'))[0];
     };
@@ -373,7 +622,7 @@ describe('aggregate: tables/open-items.md', () => {
   it('names the feature of each other member, also for members of the same feature as keep', () => {
     const run = makeRun();
     check(run);
-    writeMerged(run, { digest: sourcesOf(run).digest, groups: [{ keep: 'F1.3', also: ['F1.2', 'F1.1'] }] });
+    writeMergedChecked(run, { digest: sourcesOf(run).digest, groups: [{ keep: 'F1.3', also: ['F1.2', 'F1.1'] }] });
     aggregateOk(run);
     expect(tableRows(run.readText('tables/open-items.md'))[0]).toBe(
       '| 1 | How does a customer obtain a token<br>Also asked in F1: Whether refunds are paid<br>Also asked in F1: How a customer gets a token | Seen in the route only | `src/orders/service.js` | F1 |',
@@ -384,7 +633,7 @@ describe('aggregate: tables/open-items.md', () => {
     const run = makeRun();
     setOpenItems(run, 'F3', '- Is a | b allowed\n- Is a \\| c allowed\n');
     check(run);
-    writeMerged(run, { digest: sourcesOf(run).digest, groups: [{ keep: 'F1.1', also: ['F3.1', 'F3.2'] }] });
+    writeMergedChecked(run, { digest: sourcesOf(run).digest, groups: [{ keep: 'F1.1', also: ['F3.1', 'F3.2'] }] });
     aggregateOk(run);
     expect(tableRows(run.readText('tables/open-items.md'))[0]).toContain('<br>Also asked in F3: Is a \\| b allowed<br>Also asked in F3: Is a \\| c allowed |');
   });
@@ -394,7 +643,7 @@ describe('aggregate: tables/open-items.md', () => {
     check(run);
     const total = sourcesOf(run).items.length;
     for (const groups of [GROUPS, [GROUPS[0]], [{ keep: 'F3.2', also: ['F1.1', 'F2.1', 'F3.1'] }]]) {
-      writeMerged(run, { digest: sourcesOf(run).digest, groups });
+      writeMergedChecked(run, { digest: sourcesOf(run).digest, groups });
       aggregateOk(run);
       expect(tableRows(run.readText('tables/open-items.md'))).toHaveLength(total - groups.reduce((sum, group) => sum + group.also.length, 0));
     }
@@ -421,7 +670,7 @@ describe('aggregate: tables/open-items.md', () => {
     aggregateOk(run);
     expect(run.readText('tables/open-items.md')).toBe(unmerged);
     check(run);
-    writeMerged(run, goodMerge(run));
+    writeMergedChecked(run, goodMerge(run));
     aggregateOk(run);
     const merged = run.readText('tables/open-items.md');
     aggregateOk(run);
@@ -432,7 +681,7 @@ describe('aggregate: tables/open-items.md', () => {
   it('renders every item on its own row when the merge is stale, and says so in the coverage section', () => {
     const run = makeRun();
     check(run);
-    writeMerged(run, goodMerge(run));
+    writeMergedChecked(run, goodMerge(run));
     run.writeText('features/F1.md', run.readText('features/F1.md').replace('Not in the order code', 'Not in the order code or the tests'));
     aggregateOk(run);
     expect(tableRows(run.readText('tables/open-items.md'))).toHaveLength(7);
@@ -480,7 +729,7 @@ describe('aggregate: tables/open-items.md', () => {
   it('leaves the files of a merge it does not use alone: aggregate never writes under open-items', () => {
     const run = makeRun();
     check(run);
-    writeMerged(run, goodMerge(run));
+    writeMergedChecked(run, goodMerge(run));
     const before = ['sources.json', 'merged.json'].map((name) => readFileSync(join(run.out, 'open-items', name), 'utf-8'));
     aggregateOk(run);
     expect(['sources.json', 'merged.json'].map((name) => readFileSync(join(run.out, 'open-items', name), 'utf-8'))).toEqual(before);
@@ -492,7 +741,7 @@ describe('page data: the open items table stays current with merged.json', () =>
     const run = makeRun();
     expect(runPrd(['check-index', run.out, '--project', run.project]).status).toBe(0);
     check(run);
-    writeMerged(run, goodMerge(run));
+    writeMergedChecked(run, goodMerge(run));
     aggregateOk(run);
     const data = collectPageData(run.out, run.project);
     expect(data.tables.openItems).toBe(run.readText('tables/open-items.md').trim());
@@ -511,7 +760,7 @@ describe('mergeProblems and mergedRows, called directly', () => {
   it('finds no problem in a merge that conserves the items, and orders the rows by the earliest member', () => {
     const merged = { digest: 'd', groups: [{ keep: 'd', also: ['b'] }] };
     expect(mergeProblems(merged, sources)).toEqual([]);
-    expect(mergedRows(sources, merged)).toEqual([
+    expect(mergedRows(sources, merged, checkedOf(merged))).toEqual([
       { item: 'item a', known: '', searched: '', features: ['F1'], also: [] },
       { item: 'item d', known: '', searched: '', features: ['F1', 'F2'], also: [{ feature: 'F1', item: 'item b' }] },
       { item: 'item c', known: '', searched: '', features: ['F2'], also: [] },
@@ -520,7 +769,7 @@ describe('mergeProblems and mergedRows, called directly', () => {
 
   it('carries every member but keep in a merged row, in source order, whatever the order in the file', () => {
     const merged = { digest: 'd', groups: [{ keep: 'b', also: ['d', 'a', 'c'] }] };
-    expect(mergedRows(sources, merged)).toEqual([
+    expect(mergedRows(sources, merged, checkedOf(merged))).toEqual([
       {
         item: 'item b',
         known: '',
@@ -531,9 +780,29 @@ describe('mergeProblems and mergedRows, called directly', () => {
     ]);
   });
 
+  it('puts back a rejected member at its own place, and drops a group whose members are all rejected', () => {
+    const two = { digest: 'd', groups: [{ keep: 'd', also: ['b', 'a'] }] };
+    expect(mergedRows(sources, two, checkedOf(two, ['a'])).map((row) => [row.item, row.features, row.also.map((other) => other.item)])).toEqual([
+      ['item a', ['F1'], []],
+      ['item d', ['F1', 'F2'], ['item b']],
+      ['item c', ['F2'], []],
+    ]);
+    expect(mergedRows(sources, two, checkedOf(two, ['a', 'b'])).map((row) => row.item)).toEqual(['item a', 'item b', 'item c', 'item d']);
+  });
+
+  it('gives a row for each item when the merge has an also member and the check is null or has a problem', () => {
+    const merged = { digest: 'd', groups: [{ keep: 'd', also: ['b'] }] };
+    const rows = mergedRows(sources, null, null);
+    expect(mergedRows(sources, merged, null)).toEqual(rows);
+    expect(checkedProblems({ ...checkedOf(merged), digest: 'x' }, merged)).toHaveLength(1);
+    expect(mergedRows(sources, merged, { ...checkedOf(merged), digest: 'x' })).toEqual(rows);
+    expect(mergedRows(sources, { digest: 'd', groups: [] }, null)).toEqual(rows);
+  });
+
   it('gives a row for each item when the merge is null or has a problem', () => {
-    const rows = mergedRows(sources, null);
+    const rows = mergedRows(sources, null, null);
     expect(rows.map((row) => row.item)).toEqual(['item a', 'item b', 'item c', 'item d']);
-    expect(mergedRows(sources, { digest: 'x', groups: [{ keep: 'd', also: ['b'] }] })).toEqual(rows);
+    const stale = { digest: 'x', groups: [{ keep: 'd', also: ['b'] }] };
+    expect(mergedRows(sources, stale, checkedOf(stale))).toEqual(rows);
   });
 });

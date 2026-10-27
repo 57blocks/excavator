@@ -3,8 +3,11 @@
  * `openItemSources` lists the items of every written chapter's open items
  * section, numbered, with a digest of the list; a merge subagent writes
  * `open-items/merged.json` (groups of items that ask the same question, with
- * the one to keep), `mergeProblems` checks it against the list, and
- * `mergedRows` gives the rows of the open items table. All of it is
+ * the one to keep), `mergeProblems` checks it against the list, a check
+ * subagent writes `open-items/checked.json` (for each merged item, whether
+ * answering the kept item answers it too; design D9), `checkedProblems`
+ * checks that against the merge, and `mergedRows` gives the rows of the open
+ * items table. All of it is
  * deterministic and reads only the run's files: the model never transcribes
  * an item, and the text of a row is always the text of a chapter.
  */
@@ -22,6 +25,7 @@ import { DELIMITER_CELL, tableCells } from './table-shape.mjs';
 export const OPEN_ITEMS_DIR = 'open-items';
 export const SOURCES_FILE = `${OPEN_ITEMS_DIR}/sources.json`;
 export const MERGED_FILE = `${OPEN_ITEMS_DIR}/merged.json`;
+export const CHECKED_FILE = `${OPEN_ITEMS_DIR}/checked.json`;
 /** Joins the cells of a row that is not three cells wide into one item. */
 const CELL_JOINER = ' — ';
 const LIST_ITEM = /^(?:[-*]|\d+\.)[ \t]+(.*)$/;
@@ -164,21 +168,91 @@ export function mergeProblems(merged, sources) {
 
 const unmergedRow = (item) => ({ item: item.item, known: item.known, searched: item.searched, features: [item.feature], also: [] });
 
+/** The `{ keep, id }` pairs of the merge, one for each member of an also list, in file order. */
+const mergedPairs = (merged) => merged.groups.flatMap((group) => group.also.map((id) => ({ keep: group.keep, id })));
+const pairKey = (keep, id) => JSON.stringify([keep, id]);
+
+/**
+ * The problems of the parsed `checked.json` `checked` against `merged` (a
+ * merge that passes `mergeProblems`), one line each, none when the check
+ * passes. The shape is `{ digest, members: [ { keep, id, same } ] }` and
+ * nothing else; the digest is the merge's; there is exactly one member for
+ * each (keep, also id) pair of the merge, and `same` is true or false.
+ * @returns {string[]}
+ */
+export function checkedProblems(checked, merged) {
+  if (!isObject(checked) || typeof checked.digest !== 'string' || !Array.isArray(checked.members)) {
+    return [`${CHECKED_FILE} is not an object with digest and members`];
+  }
+  const unread = new Set();
+  const noteKeys = (value, allowed) => {
+    for (const key of Object.keys(value)) {
+      if (!allowed.includes(key)) unread.add(key);
+    }
+  };
+  noteKeys(checked, ['digest', 'members']);
+  const problems = [];
+  const shaped = checked.members.map((member, at) => {
+    if (isObject(member)) noteKeys(member, ['keep', 'id', 'same']);
+    if (!isObject(member) || !isString(member.keep) || !isString(member.id)) {
+      problems.push(`member ${at + 1}: keep and id must be ids`);
+      return null;
+    }
+    if (typeof member.same !== 'boolean') problems.push(`member ${at + 1}: same must be true or false`);
+    return member;
+  });
+  problems.unshift(...[...unread].map((key) => `${CHECKED_FILE} has the key ${key}, which is not read`));
+  if (checked.digest !== merged.digest) {
+    problems.push(`${CHECKED_FILE} was written for other open items; check them again`);
+    return problems;
+  }
+
+  const wanted = new Set(mergedPairs(merged).map(({ keep, id }) => pairKey(keep, id)));
+  const seen = new Set();
+  const repeated = new Set();
+  for (const member of shaped) {
+    if (member === null) continue;
+    const key = pairKey(member.keep, member.id);
+    if (!wanted.has(key)) {
+      if (!repeated.has(key)) problems.push(`${CHECKED_FILE} has a member for ${member.id} under ${member.keep}, which is not a pair of the merge`);
+      repeated.add(key);
+    } else if (seen.has(key)) {
+      if (!repeated.has(key)) problems.push(`${CHECKED_FILE} has more than one member for ${member.id} under ${member.keep}`);
+      repeated.add(key);
+    } else {
+      seen.add(key);
+    }
+  }
+  for (const { keep, id } of mergedPairs(merged)) {
+    if (!seen.has(pairKey(keep, id))) problems.push(`${CHECKED_FILE} has no member for ${id} under ${keep}`);
+  }
+  return problems;
+}
+
 /**
  * The rows of the open items table: one for each item when `merged` is null or
- * has problems; else one for each group, with the text of its keep item, at the
- * place of the group's earliest member in the sources, and one for each item
- * in no group. `features` are the distinct features of a row's items, in
- * source order. `also` lists the other members of a merged row (every member
- * but keep, in source order) as `{ feature, item }`, so a wrongly merged item
- * stays visible (design D8); it is empty for a row of one item.
+ * has problems, or when the merge has an also member and `checked` is null or
+ * has problems; else one for each group, with the text of its keep item, at
+ * the place of the group's earliest member in the sources, and one for each
+ * item in no group. A member the check judged `same: false` is in no group
+ * (it has its own row at its own place); a group whose also members are all
+ * rejected is no group. `features` are the distinct features of a row's items,
+ * in source order. `also` lists the other members of a merged row (every
+ * member but keep, in source order) as `{ feature, item }`, so a wrongly
+ * merged item stays visible (design D8); it is empty for a row of one item.
  * @returns {{ item: string, known: string, searched: string, features: string[], also: { feature: string, item: string }[] }[]}
  */
-export function mergedRows(sources, merged) {
+export function mergedRows(sources, merged, checked) {
   if (merged === null || mergeProblems(merged, sources).length > 0) return sources.items.map(unmergedRow);
+  const pairs = mergedPairs(merged);
+  if (pairs.length > 0 && (checked === null || checkedProblems(checked, merged).length > 0)) return sources.items.map(unmergedRow);
+  const same = new Set(pairs.length === 0 ? [] : checked.members.filter((member) => member.same).map((member) => pairKey(member.keep, member.id)));
+  const groups = merged.groups
+    .map((group) => ({ keep: group.keep, also: group.also.filter((id) => same.has(pairKey(group.keep, id))) }))
+    .filter((group) => group.also.length > 0);
   const at = new Map(sources.items.map((item, position) => [item.id, position]));
   const groupOf = new Map();
-  for (const group of merged.groups) {
+  for (const group of groups) {
     const members = [group.keep, ...group.also].map((id) => at.get(id)).sort((a, b) => a - b);
     const entry = { first: members[0], keep: sources.items[at.get(group.keep)], members };
     for (const member of members) groupOf.set(member, entry);
@@ -198,6 +272,22 @@ export function mergedRows(sources, merged) {
   return rows;
 }
 
+/** `{ value }` for the parsed JSON file `file` of `outDir`, or `{ problems }` with the line for a missing or unparseable file. */
+function readJsonFile(outDir, file) {
+  let text;
+  try {
+    text = readFileSync(join(outDir, file), 'utf-8');
+  } catch (error) {
+    if (error.code === 'ENOENT') return { problems: [`${file} is missing`] };
+    throw error;
+  }
+  try {
+    return { value: JSON.parse(text) };
+  } catch (error) {
+    return { problems: [`${file} is not valid JSON: ${error.message}`] };
+  }
+}
+
 /**
  * The state of `open-items/merged.json` for `sources`: `{ merged, problems,
  * passing }`. Fewer than two items need no merge, so the file is not read and
@@ -207,35 +297,50 @@ export function mergedRows(sources, merged) {
  */
 export function readMerge(outDir, sources) {
   if (sources.items.length < 2) return { merged: null, problems: [], passing: true };
-  let text;
-  try {
-    text = readFileSync(join(outDir, MERGED_FILE), 'utf-8');
-  } catch (error) {
-    if (error.code === 'ENOENT') return { merged: null, problems: [`${MERGED_FILE} is missing`], passing: false };
-    throw error;
-  }
-  let value;
-  try {
-    value = JSON.parse(text);
-  } catch (error) {
-    return { merged: null, problems: [`${MERGED_FILE} is not valid JSON: ${error.message}`], passing: false };
-  }
-  const problems = mergeProblems(value, sources);
-  return { merged: problems.length === 0 ? value : null, problems, passing: problems.length === 0 };
+  const read = readJsonFile(outDir, MERGED_FILE);
+  if (read.problems) return { merged: null, problems: read.problems, passing: false };
+  const problems = mergeProblems(read.value, sources);
+  return { merged: problems.length === 0 ? read.value : null, problems, passing: problems.length === 0 };
+}
+
+/**
+ * The state of `open-items/checked.json` for `merge` (a `readMerge` result):
+ * `{ checked, problems, passing }`. It is read only when the merge passes and
+ * has an also member; otherwise nothing needs checking, the file is not read,
+ * and the state passes when the merge does. A missing or unparseable file and
+ * every `checkedProblems` line are problems; `checked` is the parsed file only
+ * when it passes.
+ */
+export function readCheck(outDir, merge) {
+  if (!merge.passing || merge.merged === null || mergedPairs(merge.merged).length === 0) return { checked: null, problems: [], passing: merge.passing };
+  const read = readJsonFile(outDir, CHECKED_FILE);
+  if (read.problems) return { checked: null, problems: read.problems, passing: false };
+  const problems = checkedProblems(read.value, merge.merged);
+  return { checked: problems.length === 0 ? read.value : null, problems, passing: problems.length === 0 };
 }
 
 /**
  * Everything `aggregate` and `check-open-items` say about the open items of
- * the run, from one computation: the sources, the merge state, the table rows
- * and the status line for the coverage section.
+ * the run, from one computation: the sources, the merge and check states, the
+ * table rows, whether the merge and the check both pass, and the status line
+ * for the coverage section. The line says how many merged items the check put
+ * back when it put back any (design D9).
  */
 export function openItemsOutcome(outDir, index) {
   const sources = openItemSources(outDir, index);
   const merge = readMerge(outDir, sources);
-  const rows = mergedRows(sources, merge.merged);
+  const check = readCheck(outDir, merge);
+  const rows = mergedRows(sources, merge.merged, check.checked);
+  const passing = merge.passing && check.passing;
   const written = sources.items.length;
   let line = `Open items: ${written} written in the chapters, not merged`;
-  if (written === 0) line = 'Open items: none written in the chapters';
-  else if (merge.passing) line = `Open items: ${written} written in the chapters, ${rows.length} after merging`;
-  return { sources, merge, rows, line };
+  if (written === 0) {
+    line = 'Open items: none written in the chapters';
+  } else if (passing) {
+    line = `Open items: ${written} written in the chapters, ${rows.length} after merging`;
+    const total = merge.merged === null ? 0 : mergedPairs(merge.merged).length;
+    const putBack = check.checked === null ? 0 : check.checked.members.filter((member) => !member.same).length;
+    if (putBack > 0) line += `; the check put back ${putBack} of ${total} merged items`;
+  }
+  return { sources, merge, check, passing, rows, line };
 }
