@@ -28,3 +28,10 @@
 
 - [x] 5.1 本地只跑受影响的范围：`git grep -l "validate-graph\|validateAgainstSource" -- tests` 得到的测试，加上读 `skills/excavator/SKILL.md` 的合约测试，一条 vitest 命令；再跑 `node scripts/check-refs.mjs`、`openspec validate --all --strict`。全量交给 CI gate。新文件先 `git add -N` 再跑
 - [ ] 5.2 分阶段 commit：每个 commit 带自己的测试与实现且单独为绿；每个 commit 前逐个核对 `--stat` 文件数；PR 用 `--merge`，基线指向 `main`，在 #89 合并之后开；评审按 REVIEW.md 做，最多三轮；归档前做 spec 同步
+
+## 6. 评审第 1 轮（PR 评审后追加）
+
+- [x] 6.1 评审的 3 个重要问题（Rust 字符字面量里的括号、跨行字符串遮住闭合的括号、已写完的无体声明被当成没写完的头）先复现；顺着类又找到 Java 块注释、C# 属性、`public Foo` 紧跟另一个成员。11 个复现用例中 7 个被错误确认
+- [x] 6.2 改类不补个例：词法读不到头就停（未闭合的字符串或块注释、PHP heredoc，Rust 的 `'` 区分字符与生命周期，注解参数同理）；折行声明头收窄到 Java 与 C#，一行带声明关键字、续行以修饰符或 `@` 开头都不算头。新增按语言写的表；变异检查全部被拦住（有 5 个第一次存活，补测试后全部被拦）
+- [x] 6.3 真实图验收重跑：结果与第一次完全一致（70→0，非 lambda 植入 457/457）
+

@@ -13,7 +13,8 @@
 
 - **`calls` 的表达式核对**：抽取器写的、不带自己 `token` 的 `calls` 证据，被调用者的名字可以出现在**从被引用行起的整条表达式**里。表达式按括号配平与续行界定，到顶层 `;` 结束，顶层 `{`（函数体、分支）不并入表达式。只对有大括号加语句语法的语言生效（Java、Kotlin、Scala、Groovy、Swift、Dart、TypeScript、JavaScript、C#、Rust、PHP、Go、C、C++，按扩展名）；Python 与 Ruby 的 `calls` 仍只看被引用的那一行。
 - **续行的判据**：行尾的 `.`、`\`、`=`、`&&`、`||`、`->`、`=>`、单个 `+`，或下一行以 `.`、`?.`、`&&`、`||`、`+`、`?`、`->`、`=>`、`|` 开头，才算续行。行尾的 `,`、`++`、`--`、`*`、可空类型的 `?`、块注释的结尾都不算。
-- **折行的声明头**：跳过前导行之后的第一行若以声明修饰符开头（`public`、`private`、`protected`、`internal`、`final`、`abstract`、`sealed`、`open`、`override`、`virtual`、`synchronized`、`native`、`readonly`、`partial`）且只含单词与类型（没有括号、花括号、分号、`=`），名字可以在其后只含单词的行里，直到出现第一行带这些符号的行。`export`、`const`、`static`、`async` 也会开始语句，不收。只对有这些修饰符的语言生效（Java、C#、Kotlin、Scala、Groovy、Swift、Dart、TypeScript、PHP）。靠这条找到的名字是精确的，所以能替引用它范围起点的边担保。
+- **折行的声明头**：跳过前导行之后的第一行若以声明修饰符开头（`public`、`private`、`protected`、`internal`、`final`、`abstract`、`sealed`、`open`、`override`、`virtual`、`synchronized`、`native`、`readonly`、`partial`）且只含单词与类型（没有括号、花括号、分号、`=`），名字可以在其后只含单词的行里，直到出现第一行带这些符号的行。`export`、`const`、`static`、`async` 也会开始语句，不收。只对声明总是以 `;` 或体结束的语言生效（Java、C#）：在别的语言里，一行只有修饰符和单词本身就可能是完整声明。一行带声明关键字（`class`、`interface`、`enum` 等），或续行以修饰符、`@` 开头，都不是头。靠这条找到的名字是精确的，所以能替引用它范围起点的边担保。
+- **读不到头就停**：表达式扫描在一行末尾仍处在字符串或块注释之中、或遇到 PHP 的 heredoc 时停止，只看被引用的那一行；Rust 的 `'` 区分字符字面量与生命周期。跳前导行时注解的参数同理。
 - **模型引用的证据不变**，仍只核对被引用的那一行。
 - **可见的第三种结果**：声明头或表达式超过扫描上限（`CONSTRUCT_SCAN_LINES`，已由 #89 引入）时，节点或边标 `unverified` 并计入缺口 `construct-too-long`，既不算确认也不算矛盾。
 
