@@ -16,7 +16,7 @@
 
 ## 4. 文档
 
-- [ ] 4.1 `skills/excavator/SKILL.md` Phase 6b 的检查说明改为与规格一致；验证 `node scripts/check-refs.mjs` 通过
+- [x] 4.1 `skills/excavator/SKILL.md` Phase 6b 的检查说明改为与规格一致；验证 `node scripts/check-refs.mjs` 通过
 
 ## 5. 真实图验收（oracle 已写死，动手前不改）
 
