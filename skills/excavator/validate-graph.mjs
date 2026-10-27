@@ -316,15 +316,22 @@ export function findTokenInImportStatement(reader, filePath, lineNumber, tokens,
  * variable in Ruby, `[a, b] = [b, a]` a swap in JavaScript and Python, `@name`
  * an error-suppressing call in PHP. A file whose language is not listed has no
  * annotation or attribute syntax here, which only reports a contradiction
- * where an annotation is skipped in other languages; the universal comment
- * forms (line comments, block comments, a star-prefixed line) and blank lines
- * are always read.
+ * where an annotation is skipped in other languages. Comments are the same:
+ * `//` and block comments exist in the C family, `#` comments in the
+ * scripting languages, and a continuation line that starts with `*` or `//`
+ * is a splat or a floor division in Python and Ruby. Blank lines are the only
+ * leading line every language has.
  */
 const LEADING_SYNTAX = Object.freeze({
   at: new Set(['.java', '.kt', '.kts', '.scala', '.groovy', '.swift', '.dart', '.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs', '.py', '.pyi']),
   bracketAttribute: new Set(['.cs']),
   hashAttribute: new Set(['.rs', '.php']),
-  hashComment: new Set(['.py', '.pyi', '.rb', '.sh', '.bash', '.pl', '.pm', '.r', '.ex', '.exs']),
+  hashComment: new Set(['.py', '.pyi', '.rb', '.sh', '.bash', '.pl', '.pm', '.r', '.ex', '.exs', '.php']),
+  // `//` line comments and block comments: a `//` is a floor division in Python and a regular expression in Ruby
+  slashComment: new Set([
+    '.java', '.kt', '.kts', '.scala', '.groovy', '.swift', '.dart', '.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs',
+    '.cs', '.rs', '.php', '.go', '.c', '.h', '.cc', '.cpp', '.cxx', '.hpp', '.hh', '.m', '.mm',
+  ]),
 });
 
 function leadingSyntax(filePath) {
@@ -334,16 +341,17 @@ function leadingSyntax(filePath) {
     bracketAttribute: LEADING_SYNTAX.bracketAttribute.has(ext),
     hashAttribute: LEADING_SYNTAX.hashAttribute.has(ext),
     hashComment: LEADING_SYNTAX.hashComment.has(ext),
+    slashComment: LEADING_SYNTAX.slashComment.has(ext),
   };
 }
 
 /**
  * Read `text` from an opening bracket at `depth` until the brackets close:
- * `(`, `[` and `{` open, their closers close, string literals and a `//`
- * comment are not read. Returns the depth at the end of the text and the index
+ * `(`, `[` and `{` open, their closers close, string literals and a line comment
+ * of the file's language are not read. Returns the depth at the end of the text and the index
  * just after the closing character, or -1 while they are still open.
  */
-function readBrackets(text, depth) {
+function readBrackets(text, depth, syntax) {
   let quote = null;
   for (let i = 0; i < text.length; i++) {
     const ch = text[i];
@@ -353,7 +361,8 @@ function readBrackets(text, depth) {
       continue;
     }
     if (ch === '"' || ch === "'" || ch === '`') quote = ch;
-    else if (ch === '/' && text[i + 1] === '/') break;
+    else if (syntax.slashComment && ch === '/' && text[i + 1] === '/') break;
+    else if (syntax.hashComment && ch === '#') break;
     else if (ch === '(' || ch === '[' || ch === '{') depth += 1;
     else if ((ch === ')' || ch === ']' || ch === '}') && depth > 0) {
       depth -= 1;
@@ -383,43 +392,32 @@ export function skipLeadingLines(reader, filePath, startLine) {
   // Reads leading constructs off the start of `text`; true when nothing else is on the line.
   const onlyLeading = (text) => {
     let rest = text;
-    let atStart = true;
     for (;;) {
       if (inBlockComment) {
         const end = rest.indexOf('*/');
         if (end < 0) return true;
         inBlockComment = false;
         rest = rest.slice(end + 2);
-        atStart = false;
         continue;
       }
       if (depth > 0) {
-        const read = readBrackets(rest, depth);
+        const read = readBrackets(rest, depth, syntax);
         depth = read.depth;
         if (read.index < 0) return true;
         rest = rest.slice(read.index);
-        atStart = false;
         continue;
       }
       rest = rest.trimStart();
-      if (rest === '' || rest.startsWith('//')) return true;
+      if (rest === '') return true;
+      if (syntax.slashComment && rest.startsWith('//')) return true;
       if (syntax.hashComment && /^#(?:\s|$|!|#)/.test(rest)) return true;
-      // the end of a block comment may be followed by code on the same line
-      if (atStart && rest.startsWith('*/')) {
-        rest = rest.slice(2);
-        atStart = false;
-        continue;
-      }
-      // a star-prefixed line continues a block comment (`*p = 1;` is a statement)
-      if (atStart && /^\*(?:\s|$)/.test(rest)) return true;
-      if (rest.startsWith('/*')) {
+      if (syntax.slashComment && rest.startsWith('/*')) {
         const end = rest.indexOf('*/', 2);
         if (end < 0) {
           inBlockComment = true;
           return true;
         }
         rest = rest.slice(end + 2);
-        atStart = false;
         continue;
       }
       let brackets = null;
@@ -430,7 +428,6 @@ export function skipLeadingLines(reader, filePath, startLine) {
         const name = /^@+[\w.:]+/.exec(rest);
         if (name === null) return false;
         rest = rest.slice(name[0].length).trimStart();
-        atStart = false;
         if (!rest.startsWith('(')) continue;
         brackets = rest;
       } else if (syntax.hashAttribute && (rest.startsWith('#[') || rest.startsWith('#!['))) {
@@ -440,11 +437,10 @@ export function skipLeadingLines(reader, filePath, startLine) {
       } else {
         return false;
       }
-      const read = readBrackets(brackets, 0);
+      const read = readBrackets(brackets, 0, syntax);
       depth = read.depth;
       if (read.index < 0) return true;
       rest = brackets.slice(read.index);
-      atStart = false;
     }
   };
 

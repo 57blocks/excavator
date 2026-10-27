@@ -235,7 +235,9 @@ describe('validate-graph — the class: a statement-shaped line is never read as
     ['rb', 'require "json"'], ['rb', '@count = 0'], ['rb', '@@total += 1'], ['rb', '@log.info(item)'], ['rb', '@items.each do |item|'], ['rb', 'end'],
     ['js', 'export default router'], ['js', 'export const router'], ['js', 'const router'], ['js', 'static x'], ['js', 'return x'], ['js', 'i++'],
     ['js', '[a, b] = [b, a]'], ['js', '[make(1), 2],'], ['js', '[alpha, 1],'], ['ts', 'async'],
-    ['kt', 'val x: String?'], ['c', '*p = 1;'], ['c', '# define X 1'], ['php', '@unlink($f);'], ['java', '@interface Other {}'],
+    ['kt', 'val x: String?'], ['c', '*p = 1;'], ['c', '* p = 1;'], ['c', '# define X 1'], ['php', '@unlink($f);'], ['java', '@interface Other {}'],
+    // a continuation line of an expression that starts like a comment in another language
+    ['py', '* b'], ['py', '// b'], ['rb', '* b'], ['c', '*/ int x = 1;'],
     ['java', 'else'], ['java', '} else {'], ['java', 'break;'], ['java', 'continue;'], ['java', 'try {'],
     // an annotation, an attribute or a comment with something else on the same line
     ['java', '@Override public void other() {}'], ['kt', '@Suppress("x") val a = 1'], ['cs', '[Obsolete] public void other() {}'],
@@ -253,10 +255,10 @@ describe('validate-graph — the class: a statement-shaped line is never read as
 
   // What IS a leading line, in the language that has it: read off the start of a line, with nothing left over.
   const LEADING = [
-    ['java', '@Override'], ['java', '@Foo(a = 1, b = {2})'], ['java', '@A @B'], ['java', '@A(x) // note'], ['java', ' * javadoc line'], ['java', ' */'],
+    ['java', '@Override'], ['java', '@Foo(a = 1, b = {2})'], ['java', '@A @B'], ['java', '@A(x) // note'],
     ['kt', '@file:JvmName("X")'], ['py', '@app.route("/x")'], ['ts', '@Component({ a: 1 })'], ['py', '# comment'], ['rb', '# comment'],
     ['cs', '[Serializable, Obsolete]'], ['cs', '[Route("x")] // note'], ['rs', '#[derive(Debug)]'], ['rs', '#![allow(dead_code)]'], ['php', '#[Attr]'],
-    ['c', '// comment'], ['c', '/* comment */'], ['c', '/* a */ /* b */'], ['txt', '// comment'],
+    ['c', '// comment'], ['c', '/* comment */'], ['c', '/* a */ /* b */'], ['php', '# note'], ['php', '// note'], ['go', '// note'],
   ];
   it.each(LEADING)('%s: reads %j as a leading line', (ext, leading) => {
     const path = `src/s.${ext}`;
@@ -267,7 +269,8 @@ describe('validate-graph — the class: a statement-shaped line is never read as
 
   // The same text in a language that has no such syntax is not a leading line, and nor is anything in a
   // language this validator does not know.
-  it.each([['rb', '@Override'], ['js', '[Serializable]'], ['txt', '@Override'], ['php', '@Override'], ['java', '[Serializable]'], ['cs', '@Override'], ['txt', '[Serializable]'], ['java', '#[derive(Debug)]'], ['txt', '#[derive(Debug)]'], ['cs', '#[derive(Debug)]']])(
+  it.each([['rb', '@Override'], ['js', '[Serializable]'], ['txt', '@Override'], ['php', '@Override'], ['java', '[Serializable]'], ['cs', '@Override'], ['txt', '[Serializable]'], ['java', '#[derive(Debug)]'], ['txt', '#[derive(Debug)]'], ['cs', '#[derive(Debug)]'],
+   ['py', '// note'], ['rb', '// note'], ['txt', '// note'], ['sh', '// note'], ['py', '/* note */'], ['txt', '/* note */'], ['java', '# note'], ['c', '# note'], ['rs', '# note']])(
     '%s: does not read %j as a leading line', (ext, line) => {
       const path = `src/s.${ext}`;
       const root = project({ [path]: [line, line, 'function helper() {}', ''] });
@@ -375,13 +378,53 @@ describe('validate-graph — what the graph reading is not applied to', () => {
   });
 });
 
-describe('validate-graph — a range that starts in the middle of a block comment', () => {
-  it('reads the star-prefixed comment lines as leading lines', () => {
+describe('validate-graph — comments between the annotations and the declaration', () => {
+  it('reads a block comment that opens and closes among the leading lines', () => {
+    const lines = ['@Test', '/**', ' * Describes the thing.', ' */', 'public void gadget() {}', ''];
+    const root = project({ 'src/A.java': lines });
+    const { report } = run(root, [declNode('function', 'src/A.java', 'gadget', [1, 5])]);
+    expect(report.counts.anchorMismatch).toBe(0);
+    expect(report.counts.anchorConfirmed).toBe(1);
+  });
+
+  it('does not read past a block comment that ends with code on its last line', () => {
+    const lines = ['@Test', '/* note', ' end */ int x = 1;', 'void gadget() {}', ''];
+    const root = project({ 'src/A.java': lines });
+    const { report } = run(root, [declNode('function', 'src/A.java', 'gadget', [1, 4])]);
+    expect(report.counts.anchorMismatch).toBe(1);
+  });
+
+  it('does not read a range that starts inside a comment as the start of a declaration', () => {
     const lines = ['/**', ' * Describes the thing.', ' */', 'public class Gadget {}', ''];
     const root = project({ 'src/Gadget.java': lines });
     const { report } = run(root, [declNode('class', 'src/Gadget.java', 'Gadget', [2, 4])]);
+    expect(report.counts.anchorMismatch).toBe(1);
+  });
+
+  it('does not take the continuation of an expression for a comment (a splat, a floor division)', () => {
+    const root = project({ 'src/a.py': ['x = (a', '* b', '* c)', 'def helper():', ''] });
+    const file = fileNode('src/a.py');
+    const helper = declNode('function', 'src/a.py', 'helper', [2, 4]);
+    const { report } = run(root, [file, helper], [edge('contains', file, helper, 'src/a.py', 2)]);
+    expect(report.counts.anchorMismatch).toBe(1);
+    expect(report.counts.edgeContradicted).toBe(1);
+  });
+
+  it('reads a floor division inside a Python decorator as arithmetic, so the decorator closes where it says', () => {
+    const root = project({ 'src/d.py': ['@dec(a // b)', 'def helper():', ''] });
+    const file = fileNode('src/d.py');
+    const helper = declNode('function', 'src/d.py', 'helper', [1, 2]);
+    const { report } = run(root, [file, helper], [edge('contains', file, helper, 'src/d.py', 1)]);
+    expect(report.counts.edgeConfirmed).toBe(1);
+  });
+
+  it('does not count a bracket inside the # comment of a decorator argument', () => {
+    const root = project({ 'src/c.py': ['@dec(a,  # note )', '    b)', 'def helper():', ''] });
+    const file = fileNode('src/c.py');
+    const helper = declNode('function', 'src/c.py', 'helper', [1, 3]);
+    const { report } = run(root, [file, helper], [edge('contains', file, helper, 'src/c.py', 1)]);
     expect(report.counts.anchorMismatch).toBe(0);
-    expect(report.counts.anchorConfirmed).toBe(1);
+    expect(report.counts.edgeConfirmed).toBe(1);
   });
 });
 
