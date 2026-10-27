@@ -117,6 +117,48 @@ describe('openItemSources: the items of the written chapters', () => {
     ]);
   });
 
+  describe('a section that mixes a table, a list and text', () => {
+    const itemsOf = (section) => {
+      const run = makeRun();
+      const index = aggregatedIndex(run);
+      setOpenItems(run, 'F3', section);
+      return openItemSources(run.out, index).items.filter((item) => item.feature === 'F3');
+    };
+    const texts = (section) => itemsOf(section).map((item) => item.item);
+    const ROW = '| q1 | k | s |\n';
+
+    it('keeps a paragraph after a table as one more item', () => {
+      const found = itemsOf(`${HEAD}${ROW}\nAlso: who owns the gateway? Not found.\n`);
+      expect(found.map((item) => item.item)).toEqual(['q1', 'Also: who owns the gateway? Not found.']);
+      expect(found[0]).toMatchObject({ known: 'k', searched: 's' });
+      expect(found[1]).toMatchObject({ known: '', searched: '' });
+    });
+
+    it('keeps the list items after a table, and a note before it', () => {
+      expect(texts(`${HEAD}${ROW}\n- q2 unanswered\n- q3 unanswered\n`)).toEqual(['q1', 'q2 unanswered', 'q3 unanswered']);
+      expect(texts(`Note first.\n\n${HEAD}${ROW}`)).toEqual(['Note first.', 'q1']);
+    });
+
+    it('keeps the lines of a table with no delimiter row, as one item with the other text around it', () => {
+      expect(texts(`${HEAD}${ROW}\n| Item | Known |\n| q2 | k2 |\n`)).toEqual(['q1', '| Item | Known | | q2 | k2 |']);
+    });
+
+    it('keeps the text between two tables, and the rows of both', () => {
+      expect(texts(`${HEAD}${ROW}\nBetween the tables.\nStill between.\n\n${HEAD}| q4 | k | s |\n`)).toEqual(['q1', 'Between the tables. Still between.', 'q4']);
+    });
+
+    it('keeps the document order of tables, lists and text, and a list item with its continuation', () => {
+      expect(texts([
+        'Intro line.', '', '- first listed', '  continued here', '', HEAD.trim(), '| q1 | k | s |', '', 'Middle text.', '- second listed', '', '| lone | row |', 'End text.', '',
+      ].join('\n'))).toEqual(['Intro line.', 'first listed continued here', 'q1', 'Middle text.', 'second listed', '| lone | row | End text.']);
+      expect(itemsOf(`- a\n- b\n${HEAD}${ROW}`).map((item) => item.id)).toEqual(['F3.1', 'F3.2', 'F3.3']);
+    });
+
+    it('keeps the text after a list that a blank line ends', () => {
+      expect(texts('- listed\n\nA closing remark.\n')).toEqual(['listed', 'A closing remark.']);
+    });
+  });
+
   it('takes no item from a feature that is not written or has no open items section, and none from an empty section', () => {
     const run = makeRun();
     const index = aggregatedIndex(run);

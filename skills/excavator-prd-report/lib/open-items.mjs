@@ -30,61 +30,75 @@ export const CHECKED_FILE = `${OPEN_ITEMS_DIR}/checked.json`;
 const CELL_JOINER = ' — ';
 const LIST_ITEM = /^(?:[-*]|\d+\.)[ \t]+(.*)$/;
 
-/** Item texts of the table rows in `lines` (header and delimiter rows left out); empty when no table has a delimiter row. */
-function tableItems(lines) {
-  const items = [];
-  let run = [];
-  const flush = () => {
-    if (run.length >= 2 && tableCells(run[1]).every((cell) => DELIMITER_CELL.test(cell))) {
-      for (const line of run.slice(2)) {
-        const cells = tableCells(line);
-        items.push(cells.length === 3
-          ? { item: cells[0], known: cells[1], searched: cells[2] }
-          : { item: cells.join(CELL_JOINER), known: '', searched: '' });
-      }
-    }
-    run = [];
-  };
-  for (const line of lines) {
-    if (line.trim().startsWith('|')) run.push(line);
-    else flush();
-  }
-  flush();
-  return items;
+const isTableLine = (line) => line.trim().startsWith('|');
+const textItem = (item) => ({ item, known: '', searched: '' });
+
+/** The items of the data rows of the `|` lines `run`: none unless its second line is a delimiter row (the header and delimiter rows are no items). */
+function tableRowItems(run) {
+  if (run.length < 2 || !tableCells(run[1]).every((cell) => DELIMITER_CELL.test(cell))) return null;
+  return run.slice(2).map((line) => {
+    const cells = tableCells(line);
+    return cells.length === 3
+      ? { item: cells[0], known: cells[1], searched: cells[2] }
+      : textItem(cells.join(CELL_JOINER));
+  });
 }
 
-/** The top-level list items of `lines`; a line indented under an item, or following it without a blank line, continues it. */
-function listItems(lines) {
+/**
+ * The items of one open items section, in document order and with no text
+ * left out: each data row of a delimited table; each top-level list item (a
+ * line indented under it, or following it without a blank line, continues
+ * it); and any other text, each run of it between those, joined into one item.
+ */
+function sectionItems(section) {
+  const lines = section.replace(/\r\n/g, '\n').split('\n');
   const items = [];
-  let current = null;
+  let list = null;
   let blank = false;
-  for (const line of lines) {
+  let prose = [];
+  const flushProse = () => {
+    if (prose.length > 0) items.push(textItem(prose.join(' ')));
+    prose = [];
+  };
+  const takeLine = (line) => {
     const start = LIST_ITEM.exec(line);
     if (start) {
-      current = { item: start[1].trim(), known: '', searched: '' };
-      items.push(current);
+      flushProse();
+      list = textItem(start[1].trim());
+      items.push(list);
       blank = false;
     } else if (line.trim() === '') {
       blank = true;
-    } else if (current !== null && (/^\s/.test(line) || !blank)) {
-      current.item = `${current.item} ${line.trim()}`.trim();
+    } else if (list !== null && (/^\s/.test(line) || !blank)) {
+      list.item = `${list.item} ${line.trim()}`.trim();
       blank = false;
     } else {
-      current = null;
+      list = null;
+      prose.push(line.trim());
     }
+  };
+  for (let at = 0; at < lines.length;) {
+    if (!isTableLine(lines[at])) {
+      takeLine(lines[at]);
+      at += 1;
+      continue;
+    }
+    let end = at;
+    while (end < lines.length && isTableLine(lines[end])) end += 1;
+    const run = lines.slice(at, end);
+    const rows = tableRowItems(run);
+    if (rows === null) {
+      run.forEach(takeLine);
+    } else {
+      flushProse();
+      list = null;
+      blank = false;
+      items.push(...rows);
+    }
+    at = end;
   }
+  flushProse();
   return items;
-}
-
-/** The items of one open items section: table rows, else list items, else the whole section as one. */
-function sectionItems(section) {
-  const lines = section.replace(/\r\n/g, '\n').split('\n');
-  const rows = tableItems(lines);
-  if (rows.length > 0) return rows;
-  const listed = listItems(lines);
-  if (listed.length > 0) return listed;
-  const text = lines.map((line) => line.trim()).filter((line) => line !== '').join(' ');
-  return text === '' ? [] : [{ item: text, known: '', searched: '' }];
 }
 
 /**
