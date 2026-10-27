@@ -115,6 +115,16 @@ describe('validate-graph — a declaration head that wraps its modifiers onto a 
     expect(report.counts.edgeContradicted).toBe(2);
   });
 
+  it('does not read a head past a line that starts with a modifier but is already complete', () => {
+    const lines = ['class D {', '  public void first() {}', '  void second() {}', '}'];
+    const root = project({ 'src/D.java': lines });
+    const file = fileNode('src/D.java');
+    const second = declNode('function', 'src/D.java', 'second', [2, 3]);
+    const { report } = run(root, [file, second], [edge('contains', file, second, 'src/D.java', 2)]);
+    expect(report.counts.anchorMismatch).toBe(0);
+    expect(report.counts.edgeContradicted).toBe(1);
+  });
+
   // A line that is a statement, or that starts with a word that also starts a statement. None may be taken
   // for the start of a wrapped head, so none may let an edge that cites it reach the name on the next line.
   const NOT_A_HEAD = [
@@ -227,6 +237,16 @@ describe('validate-graph — a call expression written over several lines', () =
       edge('calls', m, target, 'src/N.java', 3),
     ]);
     expect(report.counts.edgeContradicted).toBe(2);
+  });
+
+  it('ends the expression at a semicolon even when the next line starts like a continuation', () => {
+    const lines = ['class N {', '  void m() {', '    first();', '        .target();', '  }', '}'];
+    expect(calls('src/N.java', lines, 'target', 3).counts.edgeContradicted).toBe(1);
+  });
+
+  it('reads a trailing dot that is followed by a comment as a continuation', () => {
+    const lines = ['func m() {', '\tclient. // note', '\tSend()', '}'];
+    expect(calls('src/m.go', lines, 'Send', 2).counts.edgeContradicted).toBe(0);
   });
 
   it('gives a model-cited line no benefit of the following lines', () => {
