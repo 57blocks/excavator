@@ -17,6 +17,11 @@
  *       Check every written feature's priorities/<id>.json against its
  *       findings and print the features still to rank in batches (change
  *       prd-report-finding-priority, design D4); writes nothing.
+ *   check-open-items <out> --project <root>
+ *       List the open items of the written chapters in open-items/sources.json
+ *       and check open-items/merged.json, the merge of the items that ask the
+ *       same question, and open-items/checked.json, the check of each merged
+ *       item (change prd-report-dedupe, design D5, D9).
  *   aggregate <out> --project <root>
  *       Recompute every feature's status, write findings.json and tables/,
  *       and print the reply's counts as JSON (design D5, D7, D9).
@@ -46,6 +51,7 @@ import { UsageError } from './lib/errors.mjs';
 import { checkIndex } from './lib/index-check.mjs';
 import { checkLane } from './lib/lane-check.mjs';
 import { checkPriorities } from './lib/check-priorities.mjs';
+import { checkOpenItems } from './lib/check-open-items.mjs';
 import { aggregate } from './lib/aggregate.mjs';
 import { assemble } from './lib/assemble.mjs';
 import { writePage } from './lib/page.mjs';
@@ -71,6 +77,17 @@ Commands:
       characters with no advice). Prints one line per feature, the batches of
       the features to rank (at most 120 findings each), and the totals; exit 1
       while a feature is unranked. Writes nothing.
+  check-open-items <out> --project <root>
+      List the open items of the written chapters, numbered, in
+      <out>/open-items/sources.json (the only file it writes), and check
+      <out>/open-items/merged.json against them: its digest, every id an open
+      item, no id in two groups, no group without an also; when the merge has
+      an also member, <out>/open-items/checked.json too: its digest, one entry
+      for each (keep, also id) pair, each \`same\` true or false. Prints one
+      line for each problem, then \`Open items: <n> written in the chapters, <m>
+      after merging\` (with \`; the check put back <k> of <j> merged items\` when
+      the check did) or \`..., not merged\`; exit 1 unless the merge and the
+      check pass or there are fewer than two items.
   aggregate <out> --project <root>
       Recompute every feature's status from the files under <out>, write
       findings.json and tables/*.md, and print the reply's counts as JSON.
@@ -153,6 +170,11 @@ const COMMANDS = {
     const { positionals, options } = parseArgs(args, ['project']);
     if (positionals.length !== 1) throw new UsageError('check-priorities takes exactly one <out> directory');
     return report(checkPriorities(positionals[0], projectRootOption(options.project)));
+  },
+  'check-open-items'(args) {
+    const { positionals, options } = parseArgs(args, ['project']);
+    if (positionals.length !== 1) throw new UsageError('check-open-items takes exactly one <out> directory');
+    return report(checkOpenItems(positionals[0], projectRootOption(options.project)));
   },
   aggregate(args) {
     const { positionals, options } = parseArgs(args, ['project']);

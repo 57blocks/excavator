@@ -119,6 +119,26 @@ describe('prd.mjs aggregate', () => {
     expect(run.readIndex().features[0].status).toBe('verified');
   });
 
+  // Change prd-report-dedupe, design D4: the two chapter rules of the new shape are check-lane's alone.
+  it('does not fail a verified chapter for a section that is not a flow or for a two column open items table', () => {
+    const run = runWithPlannedFeature();
+    run.writeText('features/F1.md', run.readText('features/F1.md')
+      .replace('chapter: 1', 'openItems: Open items\nchapter: 1')
+      .replace('<details>', '### Permissions\n\nWho may place an order.\n\n<details>')
+      .concat('\n### Open items\n\n| Item | Searched |\n|---|---|\n| Refund rule | the whole project |\n'));
+    const lane = runPrd(['check-lane', run.out, '--project', run.project, 'F1']);
+    expect(lane.status).toBe(1);
+    expect(lane.stdout).toContain('F1: ### "Permissions" is neither a listed flow');
+    expect(lane.stdout).toContain('F1: the open items section is not one table of three columns');
+    run.writeIndex({ ...run.readIndex(), features: run.readIndex().features.map((f) => (f.id === 'F1' ? { ...f, status: 'checked', failure: null } : f)) });
+    const out = runPrd(['aggregate', run.out, '--project', run.project]);
+    expect(out.status, out.stdout + out.stderr).toBe(0);
+    const f1 = run.readIndex().features.find((f) => f.id === 'F1');
+    expect(f1.status).toBe('verified');
+    expect(f1.failure).toBe(null);
+    expect(out.json.features).toEqual({ total: 3, written: 2, failed: 0 });
+  });
+
   it('prints outIsDefault true only when <out> is the project\'s .excavator/prd-report', () => {
     const run = runWithPlannedFeature();
     expect(runPrd(['aggregate', run.out, '--project', run.project]).json.outIsDefault).toBe(false);

@@ -168,7 +168,6 @@ describe('prd.mjs assemble: the skeleton of the O3 run (reference, flows, open i
     ['### Cancel an order', 'cancel-an-order'],
     ['### Cancel an order', 'cancel-an-order-1'],
     ['## Open items', 'open-items'],
-    ['### F1 Order placement', 'f1-order-placement'],
     ['## Appendix', 'appendix'],
     ['### Coverage', 'coverage'],
     ['### Verification', 'verification'],
@@ -226,15 +225,22 @@ describe('prd.mjs assemble: the skeleton of the O3 run (reference, flows, open i
     ]);
   });
 
-  it('keeps each open items section out of its chapter and gives it verbatim under Open items', () => {
-    const { run, text } = skeleton();
+  // Change prd-report-dedupe, design D5: one table for the whole document, not a section for each chapter.
+  it('keeps each open items section out of its chapter and gives the items as one table under Open items', () => {
+    const { text } = skeleton();
     const chapter = text.slice(text.indexOf('## Order placement'), text.indexOf('## Order cancellation'));
     expect(chapter).not.toContain('### Open items');
     expect(chapter).not.toContain('Whether open orders expire');
-    const written = run.readText('features/F1.md');
-    const section = written.slice(written.indexOf('### Open items\n') + '### Open items\n'.length).trim();
     const open = text.slice(text.indexOf('## Open items'), text.indexOf('## Appendix'));
-    expect(open).toBe(`## Open items\n\n### F1 Order placement\n\n${section}\n\n`);
+    expect(open).toBe([
+      '## Open items',
+      '',
+      '| # | Item | What is known | What was searched | Features |',
+      '|---|---|---|---|---|',
+      '| 1 | Whether open orders expire | The status never changes on its own | `src/orders/service.js`, the whole project | F1 |',
+      '',
+      '',
+    ].join('\n'));
     expect(text.split('Whether open orders expire')).toHaveLength(2);
   });
 

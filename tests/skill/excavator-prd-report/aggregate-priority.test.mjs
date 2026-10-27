@@ -58,7 +58,9 @@ describe('aggregate with no priorities file (O2: nothing else changes)', () => {
   it('writes the coverage and verification tables byte for byte as before', () => {
     const run = laneRun();
     aggregateOk(run);
-    for (const [rel, digest] of Object.entries(BEFORE.tables)) expect(sha(run.readText(rel)), rel).toBe(digest);
+    // Change prd-report-dedupe added one line to the coverage section; the rest is what it was.
+    const asBefore = (rel) => run.readText(rel).replace(/^Open items: .*\n/m, '');
+    for (const [rel, digest] of Object.entries(BEFORE.tables)) expect(sha(asBefore(rel)), rel).toBe(digest);
   });
 
   it('writes the lane findings files back as before', () => {

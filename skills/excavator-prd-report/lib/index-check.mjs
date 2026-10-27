@@ -23,6 +23,8 @@ export const FEATURE_ID = /^F[1-9]\d*$/;
 export const FEATURE_KINDS = Object.freeze(['flow', 'automated', 'reference']);
 export const TIERS = Object.freeze(['frontend', 'backend']);
 export const STATUSES = Object.freeze(['planned', 'written', 'checked', 'verified', 'failed']);
+/** The statuses of a feature whose chapter and findings are in the document. */
+export const WRITTEN_STATUSES = Object.freeze(['checked', 'verified']);
 export const FAILURE_STEPS = Object.freeze(['lane', 'check-lane', 'verify']);
 export const VERIFICATION_KEYS = Object.freeze([
   'verified', 'contradicted', 'misattributed', 'unverifiable',
