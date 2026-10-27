@@ -142,7 +142,8 @@ describe('validate-graph — a declaration head that wraps its modifiers onto a 
   });
 
   // Declaration heads wrap only in the languages that have these modifiers.
-  it.each([['py', 'public'], ['rb', 'public'], ['go', 'public'], ['txt', 'public'], ['js', 'public'], ['rs', 'public']])(
+  it.each([['py', 'public'], ['rb', 'public'], ['go', 'public'], ['txt', 'public'], ['js', 'public'], ['rs', 'public'],
+    ['kt', 'override'], ['scala', 'final'], ['ts', 'public'], ['php', 'public'], ['swift', 'public'], ['dart', 'final'], ['groovy', 'public']])(
     '%s: does not read %j as the start of a wrapped head', (ext, line) => {
       const path = `src/s.${ext}`;
       const root = project({ [path]: [line, 'helper() {}', ''] });
@@ -153,7 +154,7 @@ describe('validate-graph — a declaration head that wraps its modifiers onto a 
     },
   );
 
-  it.each([['java', 'public'], ['cs', 'private'], ['kt', 'override'], ['scala', 'final'], ['ts', 'public'], ['php', 'public']])(
+  it.each([['java', 'public'], ['java', 'protected'], ['java', 'final'], ['cs', 'private'], ['cs', 'internal'], ['cs', 'override']])(
     '%s: reads %j as the start of a wrapped head', (ext, modifier) => {
       const path = `src/s.${ext}`;
       const root = project({ [path]: [modifier, 'helper() {}', ''] });
@@ -335,6 +336,120 @@ describe('validate-graph — reading an expression in the language it is written
     const helper = declNode('function', 'src/h.kt', 'helper', [1, 1]);
     const { report } = run(root, [m, helper], [edge('calls', m, helper, 'src/c.kt', 1)]);
     expect(report.counts.edgeContradicted).toBe(0);
+  });
+});
+
+describe('validate-graph — a string or a comment the scan cannot read to its end', () => {
+  // The cited line opens a call, and a string or a comment that is still open at its end hides the rest: the
+  // brackets after it cannot be told from the ones inside it. The scan stops there, so the callee named in a
+  // later statement is not in the expression and the edge is contradicted.
+  const OPEN_AT_END_OF_LINE = [
+    ['java', ['    run("""', '      select 1', '      """);', '    helper();']],
+    ['ts', ['  call(`select', '    from t`, a);', '  helper();']],
+    ['go', ['\tcall(`select', 'from t`, a)', '\thelper()']],
+    ['cpp', ['  call(R"(select', ')", a);', '  helper();']],
+    ['cs', ['  Call(@"select', 'from t", a);', '  helper();']],
+    ['kt', ['  call("""select', '  from t""", a)', '  helper()']],
+    ['rs', ['  call(r#"select', '  from t"#, a);', '  helper();']],
+    ['php', ['  call(<<<EOT', '  select', 'EOT, a);', '  helper();']],
+    ['java', ['    call(a /* start', '       from t */', '    );', '    helper();']],
+    ['c', ['  call(a, /* start', '       from t */ b);', '  helper();']],
+  ];
+  it.each(OPEN_AT_END_OF_LINE)('%s: stops at a string or a comment left open (%j)', (ext, body) => {
+    const path = `src/s.${ext}`;
+    const root = project({ [path]: [...body, ''] });
+    const m = declNode('function', path, 'm', [1, body.length]);
+    const helper = declNode('function', 'src/T.x', 'helper', [1, 1]);
+    const { report } = run(root, [m, helper], [edge('calls', m, helper, path, 1)]);
+    expect(report.counts.edgeContradicted).toBe(1);
+  });
+
+  // The same text with the string closed on its own line is read as code, so a callee after it is found.
+  it.each([
+    ['java', ['    run("a(b")', '        .helper();']],
+    ['ts', ['  call(`a(b`)', '    .helper()']],
+    ['go', ['\tcall(`a(b`)', '\t\t.helper()']],
+    ['c', ['  call(a /* ( */)', '    .helper()']],
+  ])('%s: reads a string or a comment that closes on its line (%j)', (ext, body) => {
+    const path = `src/s.${ext}`;
+    const root = project({ [path]: [...body, ''] });
+    const m = declNode('function', path, 'm', [1, body.length]);
+    const helper = declNode('function', 'src/T.x', 'helper', [1, 1]);
+    const { report } = run(root, [m, helper], [edge('calls', m, helper, path, 1)]);
+    expect(report.counts.edgeContradicted).toBe(0);
+  });
+
+  it('reads a Rust character literal that holds a bracket, so the semicolon after it ends the expression', () => {
+    const lines = ['fn m() {', "    let i = s.find('(');", '    helper();', '}'];
+    const root = project({ 'src/m.rs': lines });
+    const m = declNode('function', 'src/m.rs', 'm', [1, 4]);
+    const helper = declNode('function', 'src/h.rs', 'helper', [1, 1]);
+    const { report } = run(root, [m, helper], [edge('calls', m, helper, 'src/m.rs', 2)]);
+    expect(report.counts.edgeContradicted).toBe(1);
+  });
+
+  it('reads a Rust lifetime as a lifetime, not as the start of a string, so the expression goes on', () => {
+    const lines = ["let r: &'a str = foo(x)", '    .helper()', ''];
+    const root = project({ 'src/r.rs': lines });
+    const m = declNode('function', 'src/r.rs', 'm', [1, 2]);
+    const helper = declNode('function', 'src/h.rs', 'helper', [1, 1]);
+    const { report } = run(root, [m, helper], [edge('calls', m, helper, 'src/r.rs', 1)]);
+    expect(report.counts.edgeContradicted).toBe(0);
+  });
+
+  it('reads a Rust character literal that holds a quote or an escape', () => {
+    const lines = ["let c = f('\"', '\\n', '\\u{41}')", '    .helper()', ''];
+    const root = project({ 'src/c.rs': lines });
+    const m = declNode('function', 'src/c.rs', 'm', [1, 2]);
+    const helper = declNode('function', 'src/h.rs', 'helper', [1, 1]);
+    const { report } = run(root, [m, helper], [edge('calls', m, helper, 'src/c.rs', 1)]);
+    expect(report.counts.edgeContradicted).toBe(0);
+  });
+
+  it('does not read an annotation whose argument opens a text block as leading syntax', () => {
+    const lines = ['@Query("""', '  select 1)', 'void helper() {}', ''];
+    const root = project({ 'src/Q.java': lines });
+    const file = fileNode('src/Q.java');
+    const helper = declNode('function', 'src/Q.java', 'helper', [1, 3]);
+    const { report } = run(root, [file, helper], [edge('contains', file, helper, 'src/Q.java', 1)]);
+    expect(report.counts.edgeContradicted).toBe(1);
+  });
+});
+
+describe('validate-graph — a line that is already a complete declaration does not start a head', () => {
+  // A line with a declaration keyword already has its name, and the next line is another member.
+  it.each([
+    ['java', 'private class Marker'], ['java', 'public interface Shape'], ['java', 'public enum Color'],
+    ['java', 'public abstract class Base'], ['java', 'protected record Point'], ['java', 'public static final class Holder'],
+    ['cs', 'public sealed class Shape'], ['cs', 'internal struct Pair'], ['cs', 'public delegate'], ['cs', 'public event'], ['cs', 'public interface IShape'],
+  ])('%s: does not read %j as the start of a head', (ext, line) => {
+    const path = `src/s.${ext}`;
+    const root = project({ [path]: [line, 'void helper() {}', ''] });
+    const file = fileNode(path);
+    const helper = declNode('function', path, 'helper', [1, 2]);
+    const { report } = run(root, [file, helper], [edge('contains', file, helper, path, 1)]);
+    expect(report.counts.edgeContradicted).toBe(1);
+  });
+
+  // A line that starts with a modifier or an annotation is a declaration of its own, not the rest of a head.
+  it.each([
+    ['java', 'public Foo', 'public void helper() {}'], ['java', 'public Foo', '@Override void helper() {}'],
+    ['cs', 'public int Count', 'public void helper() {}'], ['cs', 'private Foo', 'internal void helper() {}'],
+  ])('%s: does not read %j and then %j as one head', (ext, first, second) => {
+    const path = `src/s.${ext}`;
+    const root = project({ [path]: [first, second, ''] });
+    const file = fileNode(path);
+    const helper = declNode('function', path, 'helper', [1, 2]);
+    const { report } = run(root, [file, helper], [edge('contains', file, helper, path, 1)]);
+    expect(report.counts.edgeContradicted).toBe(1);
+  });
+
+  it('still reads a head whose second line starts with the return type', () => {
+    const root = project({ 'src/B.java': ['class B {', '  public static', '  void bare() {}', '}', ''] });
+    const file = fileNode('src/B.java');
+    const bare = declNode('function', 'src/B.java', 'bare', [2, 3]);
+    const { report } = run(root, [file, bare], [edge('contains', file, bare, 'src/B.java', 2)]);
+    expect(report.counts.edgeConfirmed).toBe(1);
   });
 });
 

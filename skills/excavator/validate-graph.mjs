@@ -336,8 +336,11 @@ const LEADING_SYNTAX = Object.freeze({
     '.java', '.kt', '.kts', '.scala', '.groovy', '.swift', '.dart', '.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs',
     '.cs', '.rs', '.php', '.go', '.c', '.h', '.cc', '.cpp', '.cxx', '.hpp', '.hh', '.m', '.mm',
   ]),
-  // Declaration heads that wrap their modifiers onto a line before the name: the languages that have these modifiers
-  wrappedHead: new Set(['.java', '.cs', '.kt', '.kts', '.scala', '.groovy', '.swift', '.dart', '.ts', '.tsx', '.php']),
+  // Declaration heads that wrap their modifiers onto a line before the name. Only the languages whose declarations
+  // always end in `;` or a body: there a line of modifiers and words is never a complete declaration. Where a line may
+  // end a declaration (Kotlin, Scala, Swift, Dart, TypeScript, Groovy), `private x` already is one, and the next line
+  // is another member.
+  wrappedHead: new Set(['.java', '.cs']),
   // Call expressions written over several lines, ended by `;`, by a block body or by a line that is not continued:
   // the languages with a brace-and-statement grammar. Python and Ruby end a statement by its indentation or `end`.
   expressionScan: new Set([
@@ -356,9 +359,17 @@ function leadingSyntax(filePath) {
     slashComment: LEADING_SYNTAX.slashComment.has(ext),
     wrappedHead: LEADING_SYNTAX.wrappedHead.has(ext),
     expressionScan: LEADING_SYNTAX.expressionScan.has(ext),
-    // `'a` is a lifetime in Rust, not the start of a string
-    apostropheQuote: ext !== '.rs',
+    // `'a` is a lifetime in Rust, and `'('` a character: neither is the start of a string
+    rustApostrophe: ext === '.rs',
+    // a heredoc is a string that starts without a quote
+    heredoc: ext === '.php',
   };
+}
+
+/** At a `'` in Rust: the index of the end of a character literal (`'('`, `'\n'`), or `i` for a lifetime (`'a`). */
+function rustApostropheEnd(text, i) {
+  const literal = /^'(?:\\(?:u\{[0-9a-fA-F_]+\}|x[0-9a-fA-F]{2}|.)|[^'\\])'/.exec(text.slice(i));
+  return literal === null ? i : i + literal[0].length - 1;
 }
 
 /**
@@ -376,16 +387,24 @@ function readBrackets(text, depth, syntax) {
       else if (ch === quote) quote = null;
       continue;
     }
-    if (ch === '"' || (ch === "'" && syntax.apostropheQuote) || ch === '`') quote = ch;
+    if (ch === "'" && syntax.rustApostrophe) i = rustApostropheEnd(text, i);
+    else if (ch === '"' || ch === "'" || ch === '`') quote = ch;
     else if (syntax.slashComment && ch === '/' && text[i + 1] === '/') break;
     else if (syntax.hashComment && ch === '#') break;
-    else if (ch === '(' || ch === '[' || ch === '{') depth += 1;
+    else if (syntax.slashComment && ch === '/' && text[i + 1] === '*') {
+      const end = text.indexOf('*/', i + 2);
+      if (end < 0) return { depth, index: -1, unsure: true };
+      i = end + 1;
+    } else if (ch === '(' || ch === '[' || ch === '{') depth += 1;
     else if ((ch === ')' || ch === ']' || ch === '}') && depth > 0) {
       depth -= 1;
       if (depth === 0) return { depth, index: i + 1 };
     }
   }
-  return { depth, index: -1 };
+  // A string or a comment that is still open at the end of the line (a text
+  // block, a template literal, a raw string) hides what comes next: the brackets
+  // after it cannot be told from the ones inside it.
+  return { depth, index: -1, unsure: quote !== null };
 }
 
 /**
@@ -419,6 +438,7 @@ export function skipLeadingLines(reader, filePath, startLine) {
       if (depth > 0) {
         const read = readBrackets(rest, depth, syntax);
         depth = read.depth;
+        if (read.unsure) return false;
         if (read.index < 0) return true;
         rest = rest.slice(read.index);
         continue;
@@ -455,6 +475,7 @@ export function skipLeadingLines(reader, filePath, startLine) {
       }
       const read = readBrackets(brackets, 0, syntax);
       depth = read.depth;
+      if (read.unsure) return false;
       if (read.index < 0) return true;
       rest = brackets.slice(read.index);
     }
@@ -487,9 +508,28 @@ function onlyWords(text) {
   return /^[\w\s<>,.?[\]@]+$/.test(text) && text.trim() !== '';
 }
 
+/**
+ * Keywords after which the name follows on the same line: a line that holds one
+ * (`private class Marker`) already has its name, so it is a complete declaration
+ * and not the start of a head.
+ */
+const DECLARATION_KEYWORDS = Object.freeze(new Set(['class', 'interface', 'enum', 'record', 'struct', 'delegate', 'event', 'namespace', 'operator']));
+
 /** Does this line start a declaration head that has not finished yet? */
 function startsUnfinishedHead(text) {
-  return onlyWords(text) && DECLARATION_MODIFIERS.has(text.trim().split(/\s+/)[0]);
+  if (!onlyWords(text)) return false;
+  const words = text.trim().split(/\s+/);
+  return DECLARATION_MODIFIERS.has(words[0]) && !words.some((word) => DECLARATION_KEYWORDS.has(word));
+}
+
+/**
+ * May this line be the rest of a head? A line that starts with a modifier or an
+ * annotation is a declaration of its own (`public void helper() {}`), not what
+ * the line above was waiting for.
+ */
+function continuesHead(text) {
+  const trimmed = text.trimStart();
+  return !trimmed.startsWith('@') && !DECLARATION_MODIFIERS.has(trimmed.split(/\s+/)[0]);
 }
 
 /**
@@ -503,7 +543,10 @@ function findTokenInDeclarationHead(reader, filePath, line, tokens) {
   for (let n = line; n < limit; n++) {
     const text = reader.line(filePath, n);
     if (text === null) return { status: 'none' };
-    if (tokens.some((token) => token && text.includes(token))) return { status: 'found', line: n };
+    const named = n === line
+      ? tokens.some((token) => token && text.includes(token))
+      : continuesHead(text) && tokens.some((token) => token && text.includes(token));
+    if (named) return { status: 'found', line: n };
     if (n === line ? !startsUnfinishedHead(text) : !onlyWords(text)) return { status: 'none' };
   }
   return { status: 'too-long' };
@@ -525,19 +568,22 @@ function scanExpressionLine(text, depth, syntax) {
       else if (ch === quote) quote = null;
       continue;
     }
-    if (ch === '"' || (ch === "'" && syntax.apostropheQuote) || ch === '`') quote = ch;
+    if (ch === "'" && syntax.rustApostrophe) i = rustApostropheEnd(text, i);
+    else if (ch === '"' || ch === "'" || ch === '`') quote = ch;
     else if (syntax.slashComment && ch === '/' && text[i + 1] === '/') break;
     else if (syntax.hashComment && ch === '#') break;
     else if (syntax.slashComment && ch === '/' && text[i + 1] === '*') {
       const end = text.indexOf('*/', i + 2);
-      if (end < 0) break;
+      if (end < 0) return { depth, terminated: false, unsure: true };
       i = end + 1;
-    } else if (ch === '{' && depth === 0) return { depth, terminated: true };
+    } else if (syntax.heredoc && ch === '<' && text.startsWith('<<<', i)) return { depth, terminated: false, unsure: true };
+    else if (ch === '{' && depth === 0) return { depth, terminated: true };
     else if (ch === '(' || ch === '[' || ch === '{') depth += 1;
     else if (ch === ')' || ch === ']' || ch === '}') depth = Math.max(0, depth - 1);
     else if (ch === ';' && depth === 0) return { depth, terminated: true };
   }
-  return { depth, terminated: false };
+  // Still inside a string at the end of the line: the next lines are part of it.
+  return { depth, terminated: false, unsure: quote !== null };
 }
 
 /** Does this line end in something that makes the expression go on? */
@@ -588,7 +634,8 @@ export function findTokenInExpression(reader, filePath, startLine, tokens, synta
     if (tokens.some((token) => token && text.includes(token))) return { status: 'found', line };
     const scanned = scanExpressionLine(text, depth, syntax);
     depth = scanned.depth;
-    if (scanned.terminated) return { status: 'none' };
+    // What the next lines hold is not code the scan can read, so the expression is not read on.
+    if (scanned.unsure || scanned.terminated) return { status: 'none' };
     if (depth === 0 && !endsWithContinuation(text, syntax) && !nextLineContinues(reader, filePath, line, limit)) {
       return { status: 'none' };
     }
