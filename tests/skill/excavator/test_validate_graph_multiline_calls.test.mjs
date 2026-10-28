@@ -725,8 +725,28 @@ describe('validate-graph — a string the reader cannot pair is read up to where
     ['kt', ['@Test', '// note', 'val x = "${f("helper")}"'], 'helper'],
     ['kt', ['@Test', 'val x = """a "helper" b"""'], 'helper'],
     ['rs', ['#[test]', 'let x = r#"a "helper" b"#;'], 'helper'],
+    // each of these, read by pairing quotes, would leave `helper` outside a string
+    ['groovy', ['@Test', "def x = '''a'helper'b'''"], 'helper'],
+    ['swift', ['@objc', 'let x = #"a"helper"b"#'], 'helper'],
+    ['cs', ['[Test]', 'string s = @"a\\"; void f() { g("helper"); }'], 'helper'],
+    ['rs', ['#[test]', 'let s = r"a\\"; g("helper");'], 'helper'],
+    ['cpp', ['// c', 'auto s = R"(a"b)"; g("helper");'], 'helper'],
+    ['go', ['// c', 's := `a\\`; g(`helper`)'], 'helper'],
+    ['py', ['@dec', 'x = r"a\\"; g("helper")'], 'helper'],
+    ['rb', ['# c', 'x = "a#{f("helper")}"'], 'helper'],
+    ['rb', ['# c', 'run(<<~EOS, helper)'], 'helper'],
+    // the first mark counts, not the last
+    ['kt', ['@Test', 'val a = """x"helper"y"""; val z = "${q}"'], 'helper'],
   ])('%s: does not take a name after the mark for the declaration (%j)', (ext, lines, name) => {
     expect(contains(ext, lines, name).edgeConfirmed).toBe(0);
+  });
+
+  // `r"` at the end of a word closes a string; it does not open a raw one
+  it.each([
+    ['rs', ['#[test]', 'let u = "user"; fn helper() {}'], 'helper'],
+    ['py', ['@dec', 'x = "user"; def helper(): pass'], 'helper'],
+  ])('%s: a raw-string prefix is not one at the end of a word (%j)', (ext, lines, name) => {
+    expect(contains(ext, lines, name).edgeConfirmed).toBe(1);
   });
 
   // A backtick quotes a name in Kotlin, Scala and Swift; it opens a string in the languages that have none such.

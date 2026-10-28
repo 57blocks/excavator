@@ -353,8 +353,8 @@ const LEADING_SYNTAX = Object.freeze({
  * Where a line stops being readable, by language: a string whose end the reader cannot tell. The reader
  * pairs `"`, `'` and a backtick and honours a backslash, which is all that most strings need. These do not
  * fit it. An interpolation holds code that may hold strings of its own (`${` in JavaScript, TypeScript,
- * Kotlin, Scala, Groovy, Dart and PHP, `{$` in PHP, `#{` in Ruby, `\(` and `\#(` in Swift, `$"` in C#). A
- * raw string ends at a delimiter of its own and takes a backslash literally (Swift `#"`, Rust `r#"`, C++
+ * Kotlin, Scala, Groovy, Dart and PHP, `{$` in PHP, `#{` in Ruby, `\(` in Swift, `$"` in C#). A
+ * raw string ends at a delimiter of its own and takes a backslash literally (Swift `#"`, which also has its own `\#(`, Rust `r#"`, C++
  * `R"`, C# `@"`, Python `r"`, a Go backtick string that ends in a backslash), and so does a triple-quoted one. A Ruby heredoc starts
  * without a quote. From the first such mark on, a line is not read: the part before it still is, and a
  * name after it is not found.
@@ -362,7 +362,7 @@ const LEADING_SYNTAX = Object.freeze({
 const UNREADABLE = Object.freeze({
   '.js': /\$\{/, '.jsx': /\$\{/, '.mjs': /\$\{/, '.cjs': /\$\{/, '.ts': /\$\{/, '.tsx': /\$\{/,
   '.kt': /\$\{/, '.kts': /\$\{/, '.scala': /\$\{/, '.groovy': /\$\{/, '.dart': /\$\{/,
-  '.php': /\$\{|\{\$/, '.swift': /\\#*\(|#+"/, '.cs': /\$@?"|@\$"|@"/,
+  '.php': /\$\{|\{\$/, '.swift': /\\\(|#+"/, '.cs': /\$@?"|@\$"|@"/,
   '.rs': /(?<![\w])b?r#*"/, '.c': /R"/, '.h': /R"/, '.cc': /R"/, '.cpp': /R"/, '.cxx': /R"/, '.hpp': /R"/, '.hh': /R"/,
   '.go': /`[^`]*\\`/, '.py': /(?<![\w])(?:[rR][bBfF]?|[bBfF][rR]?|[uU])["']/, '.rb': /#\{|<<[~-]?["']?\w/,
 });
