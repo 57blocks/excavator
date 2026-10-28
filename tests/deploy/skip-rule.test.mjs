@@ -19,7 +19,7 @@ function meta(commit) {
 }
 function plan(overrides) {
   return planFullRun({
-    graph: factGraph(), semanticGraph: semanticGraph(), meta: meta(HEAD), headSha: HEAD, force: false, ...overrides,
+    graph: factGraph(), semanticGraph: semanticGraph(), meta: meta(HEAD), headSha: HEAD, model: MODEL, force: false, ...overrides,
   });
 }
 
@@ -83,9 +83,48 @@ describe('planFullRun (skip rule, design D5)', () => {
   });
 });
 
+describe('planFullRun and the recorded model (design D5)', () => {
+  it.each([
+    ['unknown', 'unknown'],
+    ['another model', 'eu.anthropic.claude-opus-4'],
+    ['a missing model', undefined],
+    ['a non-string model', 7],
+  ])('does not skip a fresh product that records %s: --full, reason names both models', (_n, recorded) => {
+    const result = plan({ semanticGraph: semanticGraph({ model: recorded }) });
+    expect(result.action).toBe('run');
+    expect(result.flag).toBe('--full');
+    expect(result.reason).toContain(MODEL);
+    expect(result.reason).toContain(String(recorded));
+  });
+
+  it('a model mismatch wins over a changed digest or HEAD: still --full', () => {
+    const result = plan({ semanticGraph: semanticGraph({ model: 'unknown', factDigest: 'digest-old' }), meta: meta(OTHER) });
+    expect(result.flag).toBe('--full');
+  });
+
+  it('matching model with a changed digest keeps --mode=full', () => {
+    const result = plan({ semanticGraph: semanticGraph({ factDigest: 'digest-old' }) });
+    expect(result.flag).toBe('--mode=full');
+  });
+
+  it('matching model and changed HEAD keeps --mode=full', () => {
+    expect(plan({ meta: meta(OTHER) }).flag).toBe('--mode=full');
+  });
+
+  it('skips when digest, model and HEAD all match', () => {
+    expect(plan({}).action).toBe('skip');
+  });
+
+  it('a fact graph without a factsDigest never skips (matching undefined is not a match)', () => {
+    const result = plan({ graph: { project: {} }, semanticGraph: semanticGraph({ factDigest: 'x' }) });
+    expect(result.action).toBe('run');
+    expect(result.flag).toBe('--mode=full');
+  });
+});
+
 describe('checkProduct (design D1, model from semantic-graph.json)', () => {
   const check = (overrides) => checkProduct({
-    semanticGraph: semanticGraph(), meta: meta(HEAD), expectedHead: HEAD, expectedModel: MODEL, ...overrides,
+    semanticGraph: semanticGraph(), meta: meta(HEAD), expectedHead: HEAD, expectedModel: MODEL, factsDigest: DIGEST, ...overrides,
   });
 
   it('passes when commit and the semantic graph model both match', () => {
@@ -125,5 +164,33 @@ describe('checkProduct (design D1, model from semantic-graph.json)', () => {
   it('ignores project.model of the fact graph', () => {
     const result = check({ graph: { project: { model: MODEL } }, semanticGraph: null });
     expect(result.ok).toBe(false);
+  });
+
+  it('fails when the semantic graph factDigest differs from the fact graph factsDigest, naming both files and values', () => {
+    const result = check({ semanticGraph: semanticGraph({ factDigest: 'digest-old' }) });
+    expect(result.ok).toBe(false);
+    const reason = result.reasons.find((r) => r.includes('factDigest'));
+    expect(reason).toBeTruthy();
+    expect(reason).toContain('semantic-graph.json');
+    expect(reason).toContain('knowledge-graph.jsonl');
+    expect(reason).toContain('digest-old');
+    expect(reason).toContain(DIGEST);
+  });
+
+  it('fails when the semantic graph is a stale one from the same model after the facts moved', () => {
+    const result = check({ factsDigest: 'digest-new' });
+    expect(result.ok).toBe(false);
+  });
+
+  it.each([
+    ['semantic graph without factDigest', { semanticGraph: semanticGraph({ factDigest: undefined }) }],
+    ['semantic graph with non-string factDigest', { semanticGraph: semanticGraph({ factDigest: 7 }) }],
+    ['fact graph without factsDigest', { factsDigest: undefined }],
+    ['fact graph with non-string factsDigest', { factsDigest: 7 }],
+    ['fact graph with null factsDigest', { factsDigest: null }],
+  ])('fails on a missing or non-string digest: %s', (_n, overrides) => {
+    const result = check(overrides);
+    expect(result.ok).toBe(false);
+    expect(result.reasons.some((r) => r.includes('factDigest'))).toBe(true);
   });
 });

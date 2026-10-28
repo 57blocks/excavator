@@ -404,7 +404,11 @@ export function checkRun({ resultEvent, processExitCode, timedOut, spawnError })
 // recorded in semantic-graph.json; null means it is missing or unreadable.
 // ---------------------------------------------------------------------------
 
-export function checkProduct({ semanticGraph, meta, expectedHead, expectedModel }) {
+function isNonEmptyString(value) {
+  return typeof value === 'string' && value !== '';
+}
+
+export function checkProduct({ semanticGraph, meta, expectedHead, expectedModel, factsDigest }) {
   const reasons = [];
 
   const actualHead = meta?.gitCommitHash ?? null;
@@ -420,6 +424,16 @@ export function checkProduct({ semanticGraph, meta, expectedHead, expectedModel 
     reasons.push(`${source} ${JSON.stringify(actualModel)}, expected ${JSON.stringify(expectedModel)}`);
   }
 
+  // The semantic graph must be built from the facts this run just wrote: a
+  // stale one from an earlier run (same model) must not pass as this run's product.
+  const semanticDigest = semanticGraph?.factDigest;
+  if (!isNonEmptyString(semanticDigest) || !isNonEmptyString(factsDigest) || semanticDigest !== factsDigest) {
+    reasons.push(
+      `semantic-graph.json factDigest is ${JSON.stringify(semanticDigest ?? null)}, `
+      + `but knowledge-graph.jsonl project.factsDigest is ${JSON.stringify(factsDigest ?? null)}; they must be equal strings`,
+    );
+  }
+
   return { ok: reasons.length === 0, reasons };
 }
 
@@ -431,18 +445,28 @@ export function checkProduct({ semanticGraph, meta, expectedHead, expectedModel 
 // digest equals the fact graph's factsDigest and the commit is HEAD.
 // ---------------------------------------------------------------------------
 
-export function planFullRun({ graph, semanticGraph, meta, headSha, force }) {
+export function planFullRun({ graph, semanticGraph, meta, headSha, model, force }) {
   const factDigest = semanticGraph?.factDigest;
-  const hasFullProduct = typeof factDigest === 'string' && factDigest !== '';
+  const hasFullProduct = isNonEmptyString(factDigest);
+  const recordedModel = semanticGraph?.model;
+  const modelMatches = recordedModel === model;
   const fresh = hasFullProduct
     && factDigest === graph?.project?.factsDigest
+    && modelMatches
     && meta?.gitCommitHash === headSha;
 
   if (fresh && !force) {
-    return { action: 'skip', reason: 'existing full product already matches HEAD' };
+    return { action: 'skip', reason: 'existing full product already matches HEAD, the facts and the requested model' };
   }
   if (force) {
     return { action: 'run', flag: '--full', reason: 'EXCAVATOR_FORCE is set' };
+  }
+  if (hasFullProduct && !modelMatches) {
+    // --full rebuilds Phase F3 unconditionally; --mode=full would reuse the architecture of the other model.
+    return {
+      action: 'run', flag: '--full',
+      reason: `existing full product records model ${JSON.stringify(recordedModel) ?? 'undefined'}, requested ${JSON.stringify(model)}`,
+    };
   }
   if (hasFullProduct) {
     return { action: 'run', flag: '--mode=full', reason: 'existing full product but the facts or HEAD changed' };
@@ -841,7 +865,7 @@ async function runFull(config, env) {
   const existingSemanticGraph = readJsonIfExists(semanticGraphPath);
   const existingMeta = readJsonIfExists(metaPath);
   const plan = planFullRun({
-    graph: existingGraph, semanticGraph: existingSemanticGraph, meta: existingMeta, headSha: repoHead, force: config.force,
+    graph: existingGraph, semanticGraph: existingSemanticGraph, meta: existingMeta, headSha: repoHead, model: config.model, force: config.force,
   });
 
   const baseSummaryFields = {
@@ -887,7 +911,9 @@ async function runFull(config, env) {
   let productCheck = null;
   let fabricationCheck = null;
   if (postGraph !== null) {
-    productCheck = checkProduct({ semanticGraph: readJsonIfExists(semanticGraphPath), meta: postMeta, expectedHead: repoHead, expectedModel: config.model });
+    productCheck = checkProduct({ semanticGraph: readJsonIfExists(semanticGraphPath), meta: postMeta, expectedHead: repoHead, expectedModel: config.model,
+      factsDigest: postGraph?.project?.factsDigest,
+    });
     const { scriptFailure, validationReport, validatedGraph } = runIndependentValidation({
       pluginDir: config.pluginDir, repoRoot: config.repoRoot, graphPath, outDir: config.outDir,
     });
