@@ -1,6 +1,6 @@
 {
   "name": "excavator",
-  "description": "Excavator: AI-first defensible code investigation — compile a workspace into a sealed knowledge epoch and serve it to an agent",
+  "description": "Excavator: evidence-backed code investigation with deterministic facts and AI-guided explanations",
   "owner": {
     "name": "57blocks"
   },
@@ -8,7 +8,7 @@
     {
       "name": "excavator",
       "source": "./",
-      "description": "AI-first defensible code investigation service — analyze and answer questions about any project"
+      "description": "Evidence-backed code investigation — deterministic facts and AI-guided explanations"
     }
   ]
 }
