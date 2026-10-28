@@ -770,7 +770,7 @@ function sampler(limit) {
  * The whole validation. Pure except for the source reader it is handed, so it
  * is testable against a fixture project without a subprocess.
  */
-export function validateAgainstSource({ graph, reader, sampleLimit = 5 }) {
+export function validateAgainstSource({ graph, reader, sampleLimit = 5, layers: layersInput }) {
   const validated = JSON.parse(JSON.stringify(graph));
   validated.nodes = Array.isArray(validated.nodes) ? validated.nodes : [];
   validated.edges = Array.isArray(validated.edges) ? validated.edges : [];
@@ -994,7 +994,9 @@ export function validateAgainstSource({ graph, reader, sampleLimit = 5 }) {
     if (!nodeById.has(edge.target)) issues.push(`Edge[${i}] target '${edge.target}' not found`);
   });
 
-  const layers = Array.isArray(validated.layers) ? validated.layers : [];
+  // A graph's own layers win; Full keeps them in semantic-graph.json, which the caller hands in.
+  const ownLayers = Array.isArray(validated.layers) ? validated.layers : [];
+  const layers = ownLayers.length === 0 && Array.isArray(layersInput) ? layersInput : ownLayers;
   if (validated.layers && !Array.isArray(validated.layers)) warnings.push('graph.layers is not an array');
   validated.tour = [];
 
@@ -1116,6 +1118,16 @@ function parseArgs(argv) {
   return args;
 }
 
+/** The layers of `semantic-graph.json` in `dir`; unreadable, not JSON or without layers is no layers. */
+function readSemanticLayers(dir) {
+  try {
+    const layers = JSON.parse(readFileSync(join(dir, 'semantic-graph.json'), 'utf-8'))?.layers;
+    return Array.isArray(layers) ? layers : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 async function main() {
   const args = parseArgs(process.argv.slice(2));
   const projectRoot = resolve(args.projectRoot);
@@ -1133,6 +1145,7 @@ async function main() {
 
   const { validated, report } = validateAgainstSource({
     graph,
+    layers: Array.isArray(graph.layers) && graph.layers.length > 0 ? undefined : readSemanticLayers(dirname(graphPath)),
     reader: createSourceReader(projectRoot),
     sampleLimit: args.sampleLimit,
   });

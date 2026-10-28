@@ -22,6 +22,8 @@ import { join } from 'node:path';
 import { PIPELINE_VERSION } from '../../../skills/excavator/annotate-graph.mjs';
 import { writeKnowledgeGraph } from '../../../skills/excavator/knowledge-graph-store.mjs';
 
+const FACTS_DIGEST = 'fake-facts-digest';
+
 function parseArgs(argv) {
   const get = (flag) => {
     const i = argv.indexOf(flag);
@@ -53,10 +55,12 @@ function writeProducts(repoPath, { gitCommitHash, model, verification = 'verifie
   const dataDir = join(repoPath, '.excavator');
   mkdirSync(dataDir, { recursive: true });
   const graph = {
-    project: { pipelineVersion: PIPELINE_VERSION, gitCommitHash, model, verification },
+    project: { pipelineVersion: PIPELINE_VERSION, gitCommitHash, factsDigest: FACTS_DIGEST, verification },
     nodes: [], edges: [], layers: [], coverage: {}, gaps: [],
   };
   writeKnowledgeGraph(join(dataDir, 'knowledge-graph.jsonl'), graph);
+  // Full records the model and the fact digest it ran on in semantic-graph.json, not in the fact graph.
+  writeFileSync(join(dataDir, 'semantic-graph.json'), JSON.stringify({ model, factDigest: FACTS_DIGEST, layers: [] }, null, 2));
   writeFileSync(join(dataDir, 'meta.json'), JSON.stringify({
     lastAnalyzedAt: '2026-09-24T00:00:00.000Z', gitCommitHash, version: '1', analyzedFiles: 0,
   }, null, 2));

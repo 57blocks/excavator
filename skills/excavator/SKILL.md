@@ -630,7 +630,7 @@ node "<SKILL_DIR>/semantic-graph.mjs" "$PROJECT_ROOT" write \
   --layers "$DATA_DIR/intermediate/semantic-layers.json" \
   --relations "$DATA_DIR/intermediate/semantic-layers.json" \
   --extra-gaps "$DATA_DIR/intermediate/semantic-gaps.json" \
-  --model "${EXCAVATOR_MODEL:-unknown}"
+  --model "${EXCAVATOR_MODEL:-${ANTHROPIC_MODEL:-unknown}}"
 ```
 
 This drops any `nodeIds`/relation-endpoint that is not a real fact node id,
