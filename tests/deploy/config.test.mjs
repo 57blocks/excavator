@@ -111,7 +111,7 @@ describe('parseConfig (design D4, task 2.1)', () => {
   it('exposes the exact operator-facing runtime parameter set used by docs/deploy.md', () => {
     expect([...RUNTIME_PARAMS].sort()).toEqual([
       'ANTHROPIC_MODEL', 'AWS_REGION', 'EXCAVATOR_FORCE', 'EXCAVATOR_MAX_BUDGET_USD',
-      'EXCAVATOR_MAX_CONTRADICTED', 'EXCAVATOR_MODE', 'EXCAVATOR_TIMEOUT_MINUTES',
+      'EXCAVATOR_MAX_CONTRADICTED', 'EXCAVATOR_MODE', 'EXCAVATOR_SCOPE', 'EXCAVATOR_TIMEOUT_MINUTES',
     ]);
   });
 
