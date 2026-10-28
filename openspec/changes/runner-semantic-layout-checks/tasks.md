@@ -15,5 +15,6 @@
 
 - [x] 3.1 变异检查：`checkProduct`、`planFullRun` 与层读取各去掉一条规则（`unknown` 判断、文件名原因、图自带层时的优先、读不到时的空层、`ANTHROPIC_MODEL` 回退），测试要变红
 - [x] 3.2 只跑受影响范围：`tests/deploy`、校验器的三个测试文件、SKILL.md 契约测试，以及 `check-refs`、`openspec validate --all --strict`
-- [ ] 3.3 构建镜像，在 EC2 上对同一个 74 文件切片重跑 `full` 冒烟（Sonnet 5.5，预算 $20，30 分钟，看门狗）：`product` 与 `integrity` 通过；再在 HEAD 不变时跑一次 `full`，要求跳过且没有模型调用；记录编造闸仍数 0 这一点
+- [x] 3.3 本地验收（真实 full 产物，74 文件切片，Sonnet 5.5）：产物与跳过、完整性、F3 重写各验一遍，结果见 `acceptance.md`
+- [ ] 3.5 构建镜像，在 EC2 上对同一切片重跑 `full` 冒烟（Sonnet 5.5，预算 $20，30 分钟，看门狗），确认 Bedrock 路径上同样通过；合并之后做，不阻塞合并
 - [x] 3.4 `docs/deploy.md` 里若写了产物检查读事实图的模型名或层，改成新位置（先 grep，没有则不改）
