@@ -1,12 +1,12 @@
 {
   "name": "excavator",
-  "description": "AI-first defensible code investigation service — analyze and answer questions about any project",
+  "description": "Evidence-backed code investigation — deterministic facts and AI-guided explanations",
   "version": "2.9.6",
   "author": {
     "name": "57blocks"
   },
-  "homepage": "https://github.com/Jingqi-57blocks/excavator",
-  "repository": "https://github.com/Jingqi-57blocks/excavator",
+  "homepage": "https://github.com/57blocks/excavator",
+  "repository": "https://github.com/57blocks/excavator",
   "license": "MIT",
   "keywords": [
     "codebase-analysis",

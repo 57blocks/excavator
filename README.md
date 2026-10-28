@@ -1,14 +1,14 @@
 <h1 align="center">Excavator</h1>
 
 <p align="center">
-  <strong>Turn any codebase, knowledge base, or docs into a verified knowledge graph you can ask questions about.</strong>
+  <strong>Investigate codebases with deterministic facts, source evidence, and AI-guided explanations.</strong>
   <br />
   <em>Works with Claude Code and Codex.</em>
 </p>
 
 <p align="center">
   <a href="#-quick-start"><img src="https://img.shields.io/badge/Quick_Start-blue" alt="Quick Start" /></a>
-  <a href="https://github.com/Jingqi-57blocks/excavator/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-MIT-yellow" alt="License: MIT" /></a>
+  <a href="https://github.com/57blocks/excavator/blob/main/LICENSE"><img src="https://img.shields.io/badge/License-MIT-yellow" alt="License: MIT" /></a>
   <a href="https://docs.anthropic.com/en/docs/claude-code"><img src="https://img.shields.io/badge/Claude_Code-8A2BE2" alt="Claude Code" /></a>
   <a href="#codex"><img src="https://img.shields.io/badge/Codex-000000" alt="Codex" /></a>
 </p>
@@ -17,7 +17,7 @@
 
 **You just joined a new team. The codebase is 200,000 lines of code. Where do you even start?**
 
-Excavator is a [Claude Code Plugin](https://code.claude.com/docs/en/plugins-reference#plugins-reference) that analyzes your project with a multi-agent pipeline, builds a knowledge graph of every file, function, class, and dependency, then answers questions against that graph in the terminal.
+Excavator is a code investigation plugin for [Claude Code](https://code.claude.com/docs/en/plugins) and a set of Skills for Codex. It extracts structural facts from supported source files, records coverage and gaps, and helps the host AI answer questions with source evidence. Separate skills analyze Karpathy-pattern wikis, map documents to code, and recover product documentation.
 
 > **The goal isn't a graph that wows you with how complex your codebase is — it's a graph that quietly teaches you how every piece fits together.**
 
@@ -27,7 +27,7 @@ Excavator is a [Claude Code Plugin](https://code.claude.com/docs/en/plugins-refe
 
 ### Query the structural graph
 
-Ask about files, functions, classes, dependencies, and request flows. Answers use plain-English summaries, architecture layers, relationships, and source evidence from the generated graph.
+Ask about files, functions, classes, dependencies, and request flows. The host AI combines graph facts with source evidence; node summaries are generated and cached when needed. Missing or unresolved evidence remains visible as gaps.
 
 ### Understand business logic
 
@@ -35,7 +35,7 @@ Extract how code maps to real business processes — domains, flows, and steps �
 
 ### Analyze knowledge bases
 
-Point `/excavator-knowledge` at a [Karpathy-pattern LLM wiki](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f). The deterministic parser extracts wikilinks and categories from `index.md`, then LLM agents discover implicit relationships, extract entities, and surface claims.
+Point `/excavator:excavator-knowledge` at a [Karpathy-pattern LLM wiki](https://gist.github.com/karpathy/442a6bf555914893e9891c11519de94f). The deterministic parser extracts wikilinks and categories from `index.md`, then LLM agents discover implicit relationships, extract entities, and surface claims.
 
 <table>
   <tr>
@@ -44,8 +44,8 @@ Point `/excavator-knowledge` at a [Karpathy-pattern LLM wiki](https://gist.githu
       <p>Ask architecture and business-flow questions without starting a browser or local web server.</p>
     </td>
     <td width="50%" valign="top">
-      <h3>🔍 Fuzzy & Semantic Search</h3>
-      <p>Find anything by name or by meaning. Search "which parts handle auth?" and get relevant results across the graph.</p>
+      <h3>🔍 Hybrid Retrieval</h3>
+      <p>Combine exact identifier matches, BM25, source search, and fresh cached summaries. The host AI chooses search terms and checks the evidence behind its answer.</p>
     </td>
   </tr>
   <tr>
@@ -61,11 +61,11 @@ Point `/excavator-knowledge` at a [Karpathy-pattern LLM wiki](https://gist.githu
   <tr>
     <td width="50%" valign="top">
       <h3>🏗️ Architecture Layers</h3>
-      <p>Automatic grouping by architectural layer — API, Service, Data, UI, and Utility.</p>
+      <p>Full mode can generate architectural layers and cross-node relationships on top of the fact graph. Scoped Full runs skip the whole-project architecture pass.</p>
     </td>
     <td width="50%" valign="top">
-      <h3>📚 Language Concepts</h3>
-      <p>12 programming patterns (generics, closures, decorators, etc.) explained in context wherever they appear.</p>
+      <h3>📚 Coverage &amp; Gaps</h3>
+      <p>Inspect selected, skipped, unsupported, and unresolved inputs alongside the facts, rather than assuming complete analysis.</p>
     </td>
   </tr>
 </table>
@@ -74,190 +74,216 @@ Point `/excavator-knowledge` at a [Karpathy-pattern LLM wiki](https://gist.githu
 
 ## 🚀 Quick Start
 
-### 1. Install the plugin
+### 1. Prepare and load the plugin
 
-```bash
-/plugin marketplace add Jingqi-57blocks/excavator
-/plugin install excavator@excavator
-```
+Follow [Installation](#-installation) to download the public repository, install dependencies, build the plugin, and load it in Claude Code or Codex. The current `install.sh` only links a local copy into Codex; it is not a download-and-install bootstrap script.
 
-> **Using a local model?** For privacy or enterprise setups, point your platform at a local model provider such as [Ollama](https://docs.ollama.com/integrations) — follow their integration guide to change the model provider.
+The command examples below use Claude Code's plugin namespace. In Codex, use the skill's name with `$` instead: `/excavator:excavator-chat` becomes `$excavator-chat`.
 
 ### 2. Analyze your codebase
 
-```bash
-/excavator
+In a session opened at your target project, run:
+
+```text
+/excavator:excavator
 ```
 
-A multi-agent pipeline scans your project, extracts every file, function, class, and dependency, then builds a knowledge graph saved to `.excavator/knowledge-graph.jsonl` (one JSON record per line).
+The default mode is **Lazy** unless `.excavator/config.json` stores another `analysisMode`. A deterministic driver scans the selected snapshot, extracts supported structural facts, validates them, and saves `.excavator/knowledge-graph.jsonl` (one JSON record per line), a source manifest, and a retrieval index. Coverage and gaps describe what was included, skipped, or unresolved; the graph is not a guarantee that every symbol or dependency was resolved.
 
-Then ask questions directly:
+Then ask questions:
 
-```bash
-/excavator-chat How does the request flow work?
+```text
+/excavator:excavator-chat How does the request flow work?
 ```
 
-Excavator is service-only: it generates nodes, edges, architecture layers, and evidence for terminal Q&A. It does not ship or serve an HTML application; the one exception is `/excavator-view`, which writes one static HTML file of the products already in `.excavator/` and opens it with your default browser.
+**Source baseline:** for Git projects, facts describe committed `HEAD`, not staged, unstaged, or untracked changes. Plain directories use content-based revisions. Each Git worktree keeps its own `.excavator/` cache; removing the worktree removes that cache.
 
-> **Heads up on token usage:** By default, the initial `/excavator` run only builds a deterministic fact index (files, symbols, imports, calls) — it's fast and makes zero LLM calls. Summaries and other semantic detail are then generated on demand as you ask questions with `/excavator-chat`, and cached for next time. If you'd rather pre-generate everything up front (e.g. before a review), run `/excavator --full`; on large projects this can consume a significant number of tokens, so we recommend a token plan / subscription or a local model (see above) for that path. See [Lazy Mode](docs/lazy-mode.md) for details.
+**Model usage:** the Lazy fact-building driver makes no model or subagent calls. The host AI still interprets the skill and your questions, and may review ignore rules before the driver runs, so this is not a promise of zero tokens for the whole interaction. Questions that need semantics can generate and cache node-local English summaries. `/excavator:excavator --mode=full` pre-generates missing or stale summaries and architecture; `--full` also forces the rebuild path. See [Lazy Mode](docs/lazy-mode.md).
 
-For host-owned AI exploration through seven bounded local MCP tools, see [MCP setup](docs/mcp.md). Installing the Skill alone does not register MCP in Codex; the MCP server also needs the checkout's Node dependencies and core build.
+Excavator runs through the host and local scripts, without a persistent web application server. `/excavator:excavator-view`, `/excavator:excavator-prd-report`, and `/excavator:skopo-report` can write standalone HTML pages.
 
-**Language behavior:** Persisted model-generated semantics use English so incremental analysis and shared caches stay consistent. Source-owned identifiers, paths, and literal excerpts remain unchanged. `/excavator-chat` answers follow the language of each question, so you can ask in Chinese without mixing storage languages.
+For seven bounded local MCP tools, see [MCP setup](docs/mcp.md). Installing Skills alone does not register MCP in Codex; the server also needs dependencies and the core build in its own plugin directory.
+
+**Language behavior (code analysis):** Persisted model-generated semantics use English. Source-owned identifiers, paths, and literal excerpts remain unchanged. Chat answers follow the language of each question unless you request another answer language. Report and Figma skills have their own language options.
 
 ### 3. Ask and analyze
 
 ```bash
 # Ask anything about the codebase
-/excavator-chat How does the payment flow work?
+/excavator:excavator-chat How does the payment flow work?
 
 # Analyze impact of your current changes
-/excavator-diff
+/excavator:excavator-diff
 
 # Deep-dive into a specific file or function
-/excavator-explain src/auth/login.ts
+/excavator:excavator-explain src/auth/login.ts
 
 # Generate an onboarding guide for new team members
-/excavator-onboard
+/excavator:excavator-onboard
 
 # Extract business domain knowledge (domains, flows, steps)
-/excavator-domain
+/excavator:excavator-domain
 
 # Analyze a Karpathy-pattern LLM wiki knowledge base
-/excavator-knowledge ~/path/to/wiki
+/excavator:excavator-knowledge ~/path/to/wiki
 
 # Generate one As-Is PRD document for the project, or for one area with --scope (default audience: product manager)
-/excavator-prd
+/excavator:excavator-prd
 
-# Generate an As-Is PRD chapter and findings for every feature (default audience: product manager): lists the entrypoints by script,
-# groups them into features, writes each feature's chapter and findings in its own subagent (--concurrency, default 3),
-# verifies each chapter and assembles one PRD.md and one report.html (a self-contained page with the overview, each feature with its
-# findings, all findings and the coverage; it opens with a double click, no server or network); each finding carries a
-# P0/P1/P2 level with a one-sentence reason from a separate ranking subagent, and the page filters by level; everything goes to --out
-# (default .excavator/prd-report/), and a rerun resumes the unfinished features; PRD.md also has Terminology, Flow
-# index, Roles and Open items sections that the scripts generate from the chapters' declarations, and a shared-model chapter (e.g. roles and
-# permissions) before the flow chapters; one merge subagent groups the open items that ask the same question (open-items/), a check subagent puts back
-# any merged item that asks something else, and the Open items section has one row per group
-/excavator-prd-report
+# Generate PRD chapters, checked findings with P0/P1/P2 priorities, and a standalone HTML report
+# Default: .excavator/prd-report/; --out changes it; --concurrency defaults to 3
+# Reruns resume unfinished features at the same source revision
+/excavator:excavator-prd-report
 
 # Verify an As-Is document (e.g. a PRD) against the code; --fix corrects it in place
-/excavator-verify docs/PRD.md
+/excavator:excavator-verify docs/PRD.md
 
 # Find the methods and functions nothing uses, each with a confidence (never edits code)
-/excavator-unused-code
+/excavator:excavator-unused-code
 
 # Rank the files and directories that change most, from Git history (no advice, never edits code)
-/excavator-hotspots
+/excavator:excavator-hotspots
 
 # Pack the products in .excavator/ into one HTML file, .excavator/explorer.html, and open it in the browser: no server, no network, nothing to install to open it
 # (the page is built by `pnpm build` from packages/explorer; --no-source leaves the source text out of the file, --out <path> writes it elsewhere)
-/excavator-view
+/excavator:excavator-view
 
 # List the functions a folder of documents describes, each tied to a checked quote and to the code that does it,
 # and count the project's files with and without a function's evidence, by directory
-/excavator-doc-map ~/path/to/docs
+/excavator:excavator-doc-map ~/path/to/docs
 
 # Write a 5-15 step learning tour of the project to .excavator/tour.json for the viewer: steps chosen from computed candidates,
 # every sentence checked by a subagent against the code it cites, contradicted sentences removed and recorded (no advice)
-/excavator-tour
+/excavator:excavator-tour
 
-# Re-run anytime — incremental by default (only re-analyzes changed files)
-/excavator
+# Analyze a Figma file (requires FIGMA_TOKEN; calls the Figma REST API)
+/excavator:excavator-figma <figma-file-url-or-key>
 
-# Auto-update on every commit via a post-commit hook
-/excavator --auto-update
+# Plan, write, and report a Skopo intent-documentation recovery
+/excavator:skopo-plan
+/excavator:skopo-create
+/excavator:skopo-report
 
-# Scope to a subdirectory (for huge monorepos)
-/excavator src/frontend
+# Refresh the selected snapshot; fresh node semantics can be reused
+/excavator:excavator
+
+# Enable Claude Code hook prompts that propose updates after commits (requires consent)
+/excavator:excavator --auto-update
+
+# Analyze a subdirectory as the target
+/excavator:excavator src/frontend
+
+# Generate semantics for one area of the whole-project fact graph
+/excavator:excavator --full --scope src/frontend
 ```
 
 ---
 
 ## 🌐 Installation
 
-Excavator supports two hosts: Claude Code (native plugin) and Codex.
+Excavator supports Claude Code (native plugin) and Codex (Skills). The shell examples assume Bash or a compatible shell.
+
+### Prepare a local copy
+
+Requirements: Git, Node.js **22+**, and **pnpm 10.6.2** (the version pinned in `package.json`). Python 3 is also needed by Python-backed skills such as wiki analysis and document mapping. Some skill commands use `python`; ensure it resolves to Python 3 when running those commands.
+
+Obtain the complete project, then install and build the plugin itself:
+
+```bash
+git clone https://github.com/57blocks/excavator.git ~/.excavator-plugin
+cd ~/.excavator-plugin
+pnpm install --frozen-lockfile
+pnpm -r build
+```
+
+A complete source ZIP downloaded from the public repository and unpacked into the same location also works; keep that directory for future runs. These commands prepare Excavator, not the project you want to analyze.
 
 ### Claude Code (Native)
 
+Load the prepared local plugin from the **target project** directory:
+
 ```bash
-/plugin marketplace add Jingqi-57blocks/excavator
+cd /path/to/target-project
+claude --plugin-dir "$HOME/.excavator-plugin"
+```
+
+In that session, invoke `/excavator:excavator` and `/excavator:excavator-chat`. The flag loads the plugin for that session; repeat it when starting another session.
+
+Alternatively, install through the marketplace:
+
+```text
+/plugin marketplace add 57blocks/excavator
 /plugin install excavator@excavator
 ```
 
-Claude Code invokes every skill with the plugin-name prefix, e.g. `/excavator:excavator` and `/excavator:excavator-chat`.
+A marketplace install has its own plugin copy. Its Node dependencies and builds must be prepared in that installed directory before its MCP server can start; building a separate local checkout does not prepare the marketplace copy. The current marketplace metadata does not bootstrap those dependencies. See [MCP setup](docs/mcp.md).
 
 ### Codex
 
+After preparing the local copy, run:
+
 ```bash
-git clone https://github.com/Jingqi-57blocks/excavator.git ~/.excavator-plugin
 ~/.excavator-plugin/install.sh
 ```
 
-This symlinks each skill into `~/.agents/skills/` and links `~/.excavator-plugin` to the repository (if you cloned elsewhere, run `install.sh` from that clone instead — it links wherever it's run from). Restart Codex afterwards.
+This symlinks each skill into `~/.agents/skills/` and makes the local plugin available at `~/.excavator-plugin`. If you unpacked or cloned elsewhere, run that copy's `install.sh`; it links back to that directory. Keep the directory in place and restart Codex.
 
-> **Note on invoking skills:** Codex uses `$` instead of `/` — type `$excavator`, not `/excavator`. If neither prefix is recognized, just ask in plain language: *"Use the excavator skill to analyze this project."*
+Invoke `$excavator` or `$excavator-chat`. If the prefix is not recognized, ask in plain language: *"Use the excavator skill to analyze this project."*
 
-Uninstall: `~/.excavator-plugin/install.sh --uninstall` (or run `install.sh --uninstall` from wherever you cloned the repo). Update: `git -C ~/.excavator-plugin pull` (the symlinks follow the checkout, no re-run needed).
+The installer does not download the repository, install dependencies, build packages, register MCP, or install Claude Code hooks into Codex. Configure optional MCP separately using [MCP setup](docs/mcp.md). Running the script alone through `curl | bash` is not supported.
+
+Uninstall: `~/.excavator-plugin/install.sh --uninstall` removes the skill and plugin-root symlinks. For a Git checkout, update and rebuild with:
+
+```bash
+git -C ~/.excavator-plugin pull
+cd ~/.excavator-plugin
+pnpm install --frozen-lockfile
+pnpm -r build
+```
 
 ---
 
 ## 📦 Share the Graph with Your Team
 
-The graph is just JSON — **commit it once, and teammates skip the pipeline**. Good for onboarding, PR reviews, and docs-as-code.
+Share an explicit set of products for a known source revision. A teammate can use matching facts without repeating the initial analysis; after the source or selection rules change, refresh the products.
 
-**What to commit:** everything in `.excavator/` except `intermediate/` (local scratch).
+Start with `knowledge-graph.jsonl` and `source-manifest.json`. Add `semantic-cache.json`, `semantic-graph.json`, or `source-index.jsonl` only when needed and after reviewing their contents. Products include source paths and excerpts; report pages and the viewer may embed source text. Do not commit the entire `.excavator/` directory or its scratch, temporary, or trash directories by default. This repository ignores `.excavator/`; if your target project does too, deliberately allow or force-add only the reviewed files.
 
-```gitignore
-.excavator/intermediate/
-```
+**Keep it fresh:** rerun `/excavator:excavator` after source changes. With `--auto-update` enabled, Claude Code's plugin hooks can propose an update after Git commands run through its Bash tool, or when a session starts with stale data. They wait for your decision before analysis; they are not a Git `post-commit` hook and do not guarantee a refreshed graph in every commit. The Codex installer does not register these hooks.
 
-**Keep it fresh:** enable `/excavator --auto-update` — a post-commit hook incrementally patches the graph so each commit lands with a matching graph. Or re-run `/excavator` manually before releases.
-
-**Large graphs (10 MB+):** track with **git-lfs**.
+**Large graphs:** if your team uses Git LFS, include the graph's actual `.jsonl` extension:
 
 ```bash
 git lfs install
-git lfs track ".excavator/*.json"
-git add .gitattributes .excavator/
+git lfs track ".excavator/*.jsonl"
+git add .gitattributes
 ```
+
+Then add only the reviewed artifacts under your project's ignore policy.
 
 ## 🔧 Under the Hood
 
-### Tree-sitter + LLM hybrid
+### Deterministic facts + host-owned semantics
 
-Static analysis and LLMs do what each does best:
+- **Facts:** scripts scan the selected source snapshot, use Tree-sitter and deterministic extractors to build file/symbol nodes and supported relationships, and record coverage and gaps. Analysis does not build the target project or install its dependencies.
+- **Semantics:** the host AI reads facts and source to generate node-local summaries/tags in `semantic-cache.json`. Full mode can also generate layers and cross-node relations in `semantic-graph.json`. These semantic products do not replace the structural fact graph.
+- **Retrieval:** the host supplies explicit terms and chooses bounded graph traversal, combines identifier/BM25/source/cache candidates, and checks source evidence before answering. Unresolved relationships remain gaps rather than invented edges.
 
-- **Tree-sitter (deterministic)** — parses source into a concrete syntax tree and extracts structural facts: imports, exports, function/class definitions, call sites, inheritance. Pre-resolved into an `importMap` during the scan phase and passed to file-analyzers so they don't re-derive imports from source. Same input → same output, every run. Also powers fingerprint-based change detection for incremental updates.
-- **LLM (semantic)** — reads the parsed structure alongside the original source to produce what parsers can't: plain-English summaries, tags, architectural layer assignments, business-domain mapping, and language concept callouts.
+### When agents run
 
-This split is why the graph is reproducible on the structural side (the same code always yields the same edges) while still capturing intent on the semantic side (what a file is *for*, not just what it imports).
+Lazy fact building uses deterministic scripts without analyzer subagents. Full semantic generation dispatches file-analyzer and summary-verifier agents for missing or stale node semantics, and an architecture-analyzer for whole-project layers. Other skills dispatch agents for their own tasks, such as domain analysis, wiki enrichment, PRD chapters, and verification. `--review` requests the LLM graph reviewer on the applicable Full review path.
 
-### Multi-Agent Pipeline
+### Refresh and reuse
 
-The `/excavator` command orchestrates specialized analysis and verification agents:
-
-| Agent                   | Role                                                                                                               | Used By                 |
-| ----------------------- | ------------------------------------------------------------------------------------------------------------------ | ----------------------- |
-| `project-scanner`       | Discovers files, detects languages and frameworks                                                                  | `/excavator`           |
-| `file-analyzer`         | Extracts functions, classes, imports; produces graph nodes and edges                                               | `/excavator`           |
-| `architecture-analyzer` | Identifies architectural layers                                                                                    | `/excavator`           |
-| `graph-reviewer`        | Validates graph completeness and referential integrity. Runs inline by default; use `--review` for full LLM review | `/excavator`           |
-| `domain-analyzer`       | Extracts business domains, flows, and process steps                                                                | `/excavator-domain`    |
-| `article-analyzer`      | Extracts entities, claims, and implicit relationships from wiki articles                                           | `/excavator-knowledge` |
-
-File analyzers run in parallel, up to 5 concurrent workers and 20–30 files per batch.
-
-The pipeline also supports incremental updates: only files changed since the last run are re-analyzed.
+A Lazy run, and a freshness sync that needs rebuilding, recomputes the deterministic fact projection. Freshness sync can update only changed source-index chunks, and semantic generation reuses fresh node-local cache entries. Full mode also has targeted incremental routes. These mechanisms do not mean every `/excavator:excavator` invocation analyzes only changed files.
 
 ---
 
 ## 🤝 Contributing
 
-Contributions are welcome! Here's how to get started:
+Read [AGENTS.md](AGENTS.md) and [REVIEW.md](REVIEW.md) before making a change. They define the OpenSpec workflow, checks by changed content, risk tiers, and review/merge requirements.
 
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/my-feature`)
-3. Run the tests (`pnpm --filter @excavator/core test`)
-4. Commit your changes and open a pull request
-
-Please open an issue first for major changes so we can discuss the approach.
+1. Create a `codex/` feature branch in a checkout you can access.
+2. Record the change under `openspec/changes/` and implement it in logical commits.
+3. Run the checks required by `AGENTS.md`. The core test command alone does not run the root suite; core changes additionally require core tests and typechecking.
+4. Open a PR using the repository template. Changes enter protected `main` through PRs, with `CI gate`, `Privacy scan`, and the applicable review requirements satisfied.

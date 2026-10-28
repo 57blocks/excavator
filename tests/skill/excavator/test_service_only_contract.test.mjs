@@ -7,6 +7,14 @@ import { fileURLToPath } from 'node:url';
 const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(here, '../../..');
 const read = (path) => readFileSync(join(repoRoot, path), 'utf-8');
+const skillNames = (baseDir) => readdirSync(join(baseDir, 'skills'), { withFileTypes: true })
+  .filter((entry) => entry.isDirectory())
+  .map((entry) => entry.name);
+const browserOpenerSkills = (baseDir, allowed = ['excavator-view']) => skillNames(baseDir)
+  .filter((name) => !allowed.includes(name))
+  .filter((name) => /\bxdg-open\b|cmd\.exe \/c start|\bopen "\$/.test(
+    readFileSync(join(baseDir, 'skills', name, 'SKILL.md'), 'utf-8'),
+  ));
 
 describe('service-only distribution contract', () => {
   it('ships no HTML dashboard, viewer, dashboard skill, tour builder, or thumbnail helper', () => {
@@ -134,10 +142,12 @@ describe('service-only distribution contract', () => {
 
     it('is referenced by no other skill, agent or hook', () => {
       const others = [
-        ...readdirSync(join(repoRoot, 'skills')).filter((name) => name !== 'excavator-view').map((name) => `skills/${name}/SKILL.md`),
-        ...readdirSync(join(repoRoot, 'agents')).map((name) => `agents/${name}`),
-        ...readdirSync(join(repoRoot, 'hooks')).map((name) => `hooks/${name}`),
-      ].filter((path) => existsSync(join(repoRoot, path)) && /\.(md|json)$/.test(path));
+        ...skillNames(repoRoot).filter((name) => name !== 'excavator-view').map((name) => `skills/${name}/SKILL.md`),
+        ...[
+          ...readdirSync(join(repoRoot, 'agents')).map((name) => `agents/${name}`),
+          ...readdirSync(join(repoRoot, 'hooks')).map((name) => `hooks/${name}`),
+        ].filter((path) => existsSync(join(repoRoot, path)) && /\.(md|json)$/.test(path)),
+      ];
       expect(others.length).toBeGreaterThan(10);
       for (const path of others) {
         expect(read(path), path).not.toMatch(/excavator-view/);
@@ -145,9 +155,38 @@ describe('service-only distribution contract', () => {
     });
 
     it('is the only skill that mentions a browser opener', () => {
-      for (const name of readdirSync(join(repoRoot, 'skills')).filter((n) => n !== 'excavator-view')) {
-        const text = read(`skills/${name}/SKILL.md`);
-        expect(text, name).not.toMatch(/\bxdg-open\b|cmd\.exe \/c start|\bopen "\$/);
+      expect(browserOpenerSkills(repoRoot)).toEqual([]);
+    });
+
+    it('instrument: skips regular files while detecting a browser opener in a non-view skill', () => {
+      const tmp = mkdtempSync(join(tmpdir(), 'skill-browser-opener-instrument-'));
+      try {
+        for (const [name, text] of [
+          ['excavator-view', 'xdg-open "$OUT"'],
+          ['unexpected', 'cmd.exe /c start "" "$OUT"'],
+          ['ordinary', 'Write a JSON product.'],
+        ]) {
+          mkdirSync(join(tmp, 'skills', name), { recursive: true });
+          writeFileSync(join(tmp, 'skills', name, 'SKILL.md'), text);
+        }
+        for (const name of ['.DS_Store', 'README.md']) {
+          writeFileSync(join(tmp, 'skills', name), 'xdg-open "$OUT"');
+        }
+        expect(skillNames(tmp).sort()).toEqual(['excavator-view', 'ordinary', 'unexpected']);
+        expect(browserOpenerSkills(tmp)).toEqual(['unexpected']);
+        expect(browserOpenerSkills(tmp, [])).toEqual(['excavator-view', 'unexpected']);
+      } finally {
+        rmSync(tmp, { recursive: true, force: true });
+      }
+    });
+
+    it('does not hide a missing SKILL.md in a genuine skill directory', () => {
+      const tmp = mkdtempSync(join(tmpdir(), 'skill-document-instrument-'));
+      try {
+        mkdirSync(join(tmp, 'skills', 'missing'), { recursive: true });
+        expect(() => browserOpenerSkills(tmp)).toThrow(/ENOENT/);
+      } finally {
+        rmSync(tmp, { recursive: true, force: true });
       }
     });
   });
