@@ -398,12 +398,13 @@ export function checkRun({ resultEvent, processExitCode, timedOut, spawnError })
 }
 
 // ---------------------------------------------------------------------------
-// Product check (task 2.3). Compares the produced meta.json/knowledge-graph
-// against the HEAD recorded before the run and the requested model (design
-// D4 "product").
+// Product check (task 2.3). Compares the produced meta.json and the semantic
+// graph against the HEAD recorded before the run and the requested model
+// (design D4 "product"). Full does not write the fact graph, so the model is
+// recorded in semantic-graph.json; null means it is missing or unreadable.
 // ---------------------------------------------------------------------------
 
-export function checkProduct({ graph, meta, expectedHead, expectedModel }) {
+export function checkProduct({ semanticGraph, meta, expectedHead, expectedModel }) {
   const reasons = [];
 
   const actualHead = meta?.gitCommitHash ?? null;
@@ -411,11 +412,12 @@ export function checkProduct({ graph, meta, expectedHead, expectedModel }) {
     reasons.push(`meta.json gitCommitHash is ${JSON.stringify(actualHead)}, expected HEAD ${JSON.stringify(expectedHead)}`);
   }
 
-  const actualModel = graph?.project?.model ?? null;
-  if (actualModel === 'unknown' || actualModel === null || actualModel === undefined) {
-    reasons.push(`graph project.model is ${JSON.stringify(actualModel)}, expected ${JSON.stringify(expectedModel)}`);
-  } else if (actualModel !== expectedModel) {
-    reasons.push(`graph project.model is ${JSON.stringify(actualModel)}, expected ${JSON.stringify(expectedModel)}`);
+  const actualModel = semanticGraph?.model ?? null;
+  if (actualModel === 'unknown' || actualModel === null || actualModel === undefined || actualModel !== expectedModel) {
+    const source = semanticGraph === null || semanticGraph === undefined
+      ? 'semantic-graph.json is missing or unreadable, so model is'
+      : 'semantic-graph.json model is';
+    reasons.push(`${source} ${JSON.stringify(actualModel)}, expected ${JSON.stringify(expectedModel)}`);
   }
 
   return { ok: reasons.length === 0, reasons };
@@ -424,21 +426,26 @@ export function checkProduct({ graph, meta, expectedHead, expectedModel }) {
 // ---------------------------------------------------------------------------
 // Skip rule (task 2.3/2.5). Decides whether a full run is skipped, and when
 // not, whether to force a full rebuild (`--full`) or an incremental one
-// (`--mode=full`) — design D3's three-case table.
+// (`--mode=full`) — design D3's three-case table. A full product is a
+// semantic-graph.json with a factDigest (design D5); it is fresh when that
+// digest equals the fact graph's factsDigest and the commit is HEAD.
 // ---------------------------------------------------------------------------
 
-export function planFullRun({ graph, meta, headSha, force, pipelineVersion }) {
-  const hasFullProduct = graph?.project?.pipelineVersion === pipelineVersion;
-  const commitMatches = hasFullProduct && meta?.gitCommitHash === headSha;
+export function planFullRun({ graph, semanticGraph, meta, headSha, force }) {
+  const factDigest = semanticGraph?.factDigest;
+  const hasFullProduct = typeof factDigest === 'string' && factDigest !== '';
+  const fresh = hasFullProduct
+    && factDigest === graph?.project?.factsDigest
+    && meta?.gitCommitHash === headSha;
 
-  if (hasFullProduct && commitMatches && !force) {
+  if (fresh && !force) {
     return { action: 'skip', reason: 'existing full product already matches HEAD' };
   }
   if (force) {
     return { action: 'run', flag: '--full', reason: 'EXCAVATOR_FORCE is set' };
   }
   if (hasFullProduct) {
-    return { action: 'run', flag: '--mode=full', reason: 'existing full product but HEAD changed' };
+    return { action: 'run', flag: '--mode=full', reason: 'existing full product but the facts or HEAD changed' };
   }
   return { action: 'run', flag: '--full', reason: 'no existing full product (none, or Lazy-only)' };
 }
@@ -819,9 +826,10 @@ async function runFull(config, env) {
   const dataDir = join(config.repoRoot, '.excavator');
   const graphPath = join(dataDir, KNOWLEDGE_GRAPH_FILE);
   const metaPath = join(dataDir, 'meta.json');
+  const semanticGraphPath = join(dataDir, 'semantic-graph.json');
 
-  // planFullRun only looks at project.pipelineVersion: read the header line,
-  // never the whole graph. An unreadable graph counts as absent.
+  // planFullRun only looks at project.factsDigest: read the header line,
+  // never the whole graph. An unreadable graph or semantic graph counts as absent.
   let existingGraph = null;
   if (existsSync(graphPath)) {
     try {
@@ -830,8 +838,11 @@ async function runFull(config, env) {
       existingGraph = null;
     }
   }
+  const existingSemanticGraph = readJsonIfExists(semanticGraphPath);
   const existingMeta = readJsonIfExists(metaPath);
-  const plan = planFullRun({ graph: existingGraph, meta: existingMeta, headSha: repoHead, force: config.force, pipelineVersion: PIPELINE_VERSION });
+  const plan = planFullRun({
+    graph: existingGraph, semanticGraph: existingSemanticGraph, meta: existingMeta, headSha: repoHead, force: config.force,
+  });
 
   const baseSummaryFields = {
     imageCommit: env.EXCAVATOR_IMAGE_COMMIT,
@@ -876,7 +887,7 @@ async function runFull(config, env) {
   let productCheck = null;
   let fabricationCheck = null;
   if (postGraph !== null) {
-    productCheck = checkProduct({ graph: postGraph, meta: postMeta, expectedHead: repoHead, expectedModel: config.model });
+    productCheck = checkProduct({ semanticGraph: readJsonIfExists(semanticGraphPath), meta: postMeta, expectedHead: repoHead, expectedModel: config.model });
     const { scriptFailure, validationReport, validatedGraph } = runIndependentValidation({
       pluginDir: config.pluginDir, repoRoot: config.repoRoot, graphPath, outDir: config.outDir,
     });
