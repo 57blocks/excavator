@@ -1368,9 +1368,15 @@ model-cited line). An edge an extractor wrote that cites a declaration, other
 than a `calls` edge or an entry that names its own token, is also confirmed
 when the cited line is the first line of the range of an endpoint of that
 name whose own anchor is exact (the name is on `lineRange[0]` itself or on the
-first line after its leading lines, not only within one line of it). Leading
-lines longer than 400 lines leave the node `unverified` under
-`construct-too-long`, not contradicted. `inferred` edges pass; the referential-integrity
+first line after its leading lines, or, for a declaration whose modifiers
+wrap onto a line of their own, a later line of its head, not only within one
+line of it). A `calls` edge an extractor wrote, other than an entry that names
+its own token, is also confirmed when the callee is anywhere in the call
+expression that starts on the cited line (a chain, a builder, a long argument
+list), in the languages that write expressions that way. Leading lines, a
+declaration head or an expression longer than 400 lines leave the node or
+edge `unverified` under `construct-too-long`, not contradicted. `inferred`
+edges pass; the referential-integrity
 checks of Phase 6 are repeated; and every `step` node must carry `nodeIds`
 that exist, or be marked `provenance: "inferred"`.
 
