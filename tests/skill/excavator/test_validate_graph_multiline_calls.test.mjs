@@ -662,6 +662,91 @@ describe('validate-graph — a string that holds code is not read', () => {
   });
 });
 
+describe('validate-graph — a string the reader cannot pair is read up to where it starts', () => {
+  // The reader pairs ", ' and a backtick with a backslash escape. A raw string, a triple-quoted string and an
+  // interpolation do not fit that, so a line stops being read at the first mark of one: what stands before it is
+  // still code, what stands after it is not found, and a call expression is not read on past it.
+  const callAcross = (ext, lines) => {
+    const path = `src/s.${ext}`;
+    const root = project({ [path]: [...lines, ''] });
+    const m = declNode('function', path, 'm', [1, lines.length]);
+    const helper = declNode('function', 'src/T.x', 'helper', [1, 1]);
+    return run(root, [m, helper], [edge('calls', m, helper, path, 1)]).report;
+  };
+
+  it.each([
+    ['swift', ['  log(#"x \\#(f("("))"#,', '    helper())']],
+    ['swift', ['  log(#"a"b"#,', '    helper())']],
+    ['kt', ['  log("""a"b""",', '    helper())']],
+    ['scala', ['  log("""a"b""",', '    helper())']],
+    ['groovy', ["  log('''a'b''',", '    helper())']],
+    ['rs', ['  log(r#"a"("#,', '    helper());']],
+    ['rs', ['  log(r"a\\", f("("),', '    helper());']],
+    ['cpp', ['  log(R"(a"()", f("("),', '    helper());']],
+    ['cs', ['  Log(@"a\\", f("("),', '    helper());']],
+    ['go', ['  log(`a\\`, f("("),', '    helper())']],
+  ])('%s: does not read a call on past a string it cannot pair (%j)', (ext, lines) => {
+    expect(callAcross(ext, lines).counts.edgeContradicted).toBe(1);
+  });
+
+  it.each([
+    ['java', ['  log("a",', '    helper());']],
+    ['rs', ['  log(b"a", f(r), "(",', '    helper());']],
+    ['cpp', ['  log("a", FR("("),', '    helper());']],
+    ['swift', ['  log("a", f("("),', '    helper())']],
+  ])('%s: reads the same call where no such string stands (%j)', (ext, lines) => {
+    expect(callAcross(ext, lines).counts.edgeContradicted).toBe(0);
+  });
+
+  // The anchor of a node: the part of the line before the mark still counts for the code it holds, and a name in
+  // what comes after it does not.
+  const contains = (ext, lines, name) => {
+    const path = `src/s.${ext}`;
+    const root = project({ [path]: [...lines, ''] });
+    const file = fileNode(path);
+    const node = declNode('function', path, name, [1, lines.length]);
+    return run(root, [file, node], [edge('contains', file, node, path, 1)]).report.counts;
+  };
+
+  it.each([
+    ['kt', ['@JvmStatic', 'override fun toString() = "P(${x})"'], 'toString'],
+    ['kt', ['@JvmStatic', '@Other', 'override fun toString() = "P(${x})"'], 'toString'],
+    ['ts', ['@Dec()', 'render(`a ${b}`) {'], 'render'],
+    ['swift', ['@objc', 'func show() { print("\\(x)") }'], 'show'],
+    ['kt', ['@Test', 'fun a() = """x"y"""'], 'a'],
+    ['rs', ['#[test]', 'fn go() { let s = r#"a"b"#; }'], 'go'],
+  ])('%s: confirms a name that stands before the mark (%j)', (ext, lines, name) => {
+    const counts = contains(ext, lines, name);
+    expect(counts.edgeConfirmed).toBe(1);
+    expect(counts.anchorMismatch).toBe(0);
+  });
+
+  it.each([
+    ['kt', ['@Test', '// note', 'val x = "${f("helper")}"'], 'helper'],
+    ['kt', ['@Test', 'val x = """a "helper" b"""'], 'helper'],
+    ['rs', ['#[test]', 'let x = r#"a "helper" b"#;'], 'helper'],
+  ])('%s: does not take a name after the mark for the declaration (%j)', (ext, lines, name) => {
+    expect(contains(ext, lines, name).edgeConfirmed).toBe(0);
+  });
+
+  // A backtick quotes a name in Kotlin, Scala and Swift; it opens a string in the languages that have none such.
+  it.each([
+    ['kt', ['@Test', 'fun `adds two numbers`() {'], 'adds two numbers'],
+    ['scala', ['@Test', 'def `adds two numbers`() = 1'], 'adds two numbers'],
+    ['swift', ['@objc', 'func `class`() {'], 'class'],
+    ['kt', ['@Test', 'fun `a b`() {'], 'b'],
+  ])('%s: reads a name in backticks (%j)', (ext, lines, name) => {
+    expect(contains(ext, lines, name).edgeConfirmed).toBe(1);
+  });
+
+  it.each([
+    ['ts', ['@Dec()', 'const a = `helper`;'], 'helper'],
+    ['go', ['// c', 'x := `helper`'], 'helper'],
+  ])('%s: still takes a backtick for a string (%j)', (ext, lines, name) => {
+    expect(contains(ext, lines, name).edgeConfirmed).toBe(0);
+  });
+});
+
 describe('validate-graph — the report names the expressions it could not decide', () => {
   it('prints and writes the construct-too-long count for a call expression', () => {
     const lines = ['class Q {', '  void m() {', '    call(', ...Array.from({ length: CONSTRUCT_SCAN_LINES + 20 }, (_, i) => `        arg${i},`)];

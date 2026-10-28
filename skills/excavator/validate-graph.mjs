@@ -350,16 +350,25 @@ const LEADING_SYNTAX = Object.freeze({
 });
 
 /**
- * What starts code inside a string, by language: `${` in JavaScript, TypeScript,
- * Kotlin, Scala, Groovy, Dart and PHP, `{$` in PHP, `\(` in Swift, `$"` in C#.
- * The code in an interpolation may hold strings of its own, so the quotes of a
- * line that holds one pair up wrongly and the line cannot be read.
+ * Where a line stops being readable, by language: a string whose end the reader cannot tell. The reader
+ * pairs `"`, `'` and a backtick and honours a backslash, which is all that most strings need. These do not
+ * fit it. An interpolation holds code that may hold strings of its own (`${` in JavaScript, TypeScript,
+ * Kotlin, Scala, Groovy, Dart and PHP, `{$` in PHP, `#{` in Ruby, `\(` and `\#(` in Swift, `$"` in C#). A
+ * raw string ends at a delimiter of its own and takes a backslash literally (Swift `#"`, Rust `r#"`, C++
+ * `R"`, C# `@"`, Python `r"`, a Go backtick string that ends in a backslash), and so does a triple-quoted one. A Ruby heredoc starts
+ * without a quote. From the first such mark on, a line is not read: the part before it still is, and a
+ * name after it is not found.
  */
-const INTERPOLATION = Object.freeze({
+const UNREADABLE = Object.freeze({
   '.js': /\$\{/, '.jsx': /\$\{/, '.mjs': /\$\{/, '.cjs': /\$\{/, '.ts': /\$\{/, '.tsx': /\$\{/,
   '.kt': /\$\{/, '.kts': /\$\{/, '.scala': /\$\{/, '.groovy': /\$\{/, '.dart': /\$\{/,
-  '.php': /\$\{|\{\$/, '.swift': /\\\(/, '.cs': /\$@?"|@\$"/,
+  '.php': /\$\{|\{\$/, '.swift': /\\#*\(|#+"/, '.cs': /\$@?"|@\$"|@"/,
+  '.rs': /(?<![\w])b?r#*"/, '.c': /R"/, '.h': /R"/, '.cc': /R"/, '.cpp': /R"/, '.cxx': /R"/, '.hpp': /R"/, '.hh': /R"/,
+  '.go': /`[^`]*\\`/, '.py': /(?<![\w])(?:[rR][bBfF]?|[bBfF][rR]?|[uU])["']/, '.rb': /#\{|<<[~-]?["']?\w/,
 });
+const TRIPLE_QUOTES = /"""|'{3}/;
+/** Languages whose backtick quotes a name, not a string. */
+const BACKTICK_NAMES = Object.freeze(new Set(['.kt', '.kts', '.scala', '.swift']));
 
 function leadingSyntax(filePath) {
   const ext = extname(filePath).toLowerCase();
@@ -375,9 +384,24 @@ function leadingSyntax(filePath) {
     rustApostrophe: ext === '.rs',
     // a heredoc is a string that starts without a quote
     heredoc: ext === '.php',
-    // a string that holds code, so a line with one cannot be read
-    interpolation: INTERPOLATION[ext] ?? null,
+    // where a line stops being readable: a string the reader cannot pair
+    unreadable: UNREADABLE[ext] ?? null,
+    // a backtick opens a string, except where it quotes a name
+    backtick: !BACKTICK_NAMES.has(ext),
   };
+}
+
+/** The index where `text` stops being readable, or -1 when all of it is. */
+function unreadableFrom(text, syntax) {
+  const marks = [TRIPLE_QUOTES.exec(text), syntax.unreadable && syntax.unreadable.exec(text)];
+  const found = marks.filter((mark) => mark).map((mark) => mark.index);
+  return found.length === 0 ? -1 : Math.min(...found);
+}
+
+/** The part of `text` that is read: all of it, or what stands before the first mark that cannot be read. */
+function readablePart(text, syntax) {
+  const at = unreadableFrom(text, syntax);
+  return at < 0 ? text : text.slice(0, at);
 }
 
 /** At a `'` in Rust: the index of the end of a character literal (`'('`, `'\n'`), or `i` for a lifetime (`'a`). */
@@ -402,7 +426,7 @@ function readBrackets(text, depth, syntax) {
       continue;
     }
     if (ch === "'" && syntax.rustApostrophe) i = rustApostropheEnd(text, i);
-    else if (ch === '"' || ch === "'" || ch === '`') quote = ch;
+    else if (ch === '"' || ch === "'" || (ch === '`' && syntax.backtick)) quote = ch;
     else if (syntax.slashComment && ch === '/' && text[i + 1] === '/') break;
     else if (syntax.hashComment && ch === '#') break;
     else if (syntax.slashComment && ch === '/' && text[i + 1] === '*') {
@@ -581,7 +605,7 @@ function scanExpressionLine(text, depth, syntax) {
       continue;
     }
     if (ch === "'" && syntax.rustApostrophe) i = rustApostropheEnd(text, i);
-    else if (ch === '"' || ch === "'" || ch === '`') quote = ch;
+    else if (ch === '"' || ch === "'" || (ch === '`' && syntax.backtick)) quote = ch;
     else if (syntax.slashComment && ch === '/' && text[i + 1] === '/') break;
     else if (syntax.hashComment && ch === '#') break;
     else if (syntax.slashComment && ch === '/' && text[i + 1] === '*') {
@@ -624,7 +648,7 @@ function codeOf(text, syntax) {
       const end = rustApostropheEnd(text, i);
       code += ' '.repeat(end - i + 1);
       i = end;
-    } else if (ch === '"' || ch === "'" || ch === '`') {
+    } else if (ch === '"' || ch === "'" || (ch === '`' && syntax.backtick)) {
       quote = ch;
       code += ch;
     } else if (syntax.slashComment && ch === '/' && text[i + 1] === '/') {
@@ -661,8 +685,8 @@ function mentionsName(code, name) {
  */
 function namedInCode(reader, filePath, line, tokens, syntax) {
   const text = reader.line(filePath, line);
-  if (text === null || (syntax.interpolation && syntax.interpolation.test(text))) return false;
-  const code = codeOf(text, syntax);
+  if (text === null) return false;
+  const code = codeOf(readablePart(text, syntax), syntax);
   return tokens.some((token) => token && mentionsName(code, token));
 }
 
@@ -712,11 +736,11 @@ export function findTokenInExpression(reader, filePath, startLine, tokens, synta
   for (let line = startLine; line < limit; line++) {
     const text = reader.line(filePath, line);
     if (text === null) return { status: 'none' };
-    // A line with an interpolation cannot be read: what it holds in code and in strings is not told apart.
-    if (syntax.interpolation && syntax.interpolation.test(text)) return { status: 'none' };
-    // The cited line was read as everywhere else before the scan began. A line counts for the code it
-    // holds: a name in a comment or a string, or inside a longer name, is not the callee.
+    // A line counts for the code it holds: a name in a comment or a string, or inside a longer name, is not
+    // the callee. The part of a line that cannot be read does not count.
     if (namedInCode(reader, filePath, line, tokens, syntax)) return { status: 'found', line };
+    // What a string the reader cannot pair holds, and what comes after it, is not told apart: the scan stops.
+    if (unreadableFrom(text, syntax) >= 0) return { status: 'none' };
     const scanned = scanExpressionLine(text, depth, syntax);
     depth = scanned.depth;
     // What the next lines hold is not code the scan can read, so the expression is not read on.
