@@ -4,7 +4,7 @@
 
 ## Decisions
 
-**D1：产物检查读 `semantic-graph.json` 的 `model`。** `checkProduct` 的入参从 `graph` 改成语义图（读不到传 `null`）。判据不变：等于本次请求的模型 ID，不是 `unknown`。读不到文件、不是合法 JSON、没有 `model` 都是失败，原因里写文件名。代价：旧布局的产物（模型写在事实图 `project.model`）不再通过。这是有意的：旧布局已被 `full-semantic-isolation` 取代，运行器在跑的是新布局；若保留回退到 `project.model`，一个读不到语义图的新布局产物会靠旧字段通过，正是不让它悄悄过的情况。
+**D1：产物检查读 `semantic-graph.json` 的 `model`。** `checkProduct` 的入参从 `graph` 改成语义图（读不到传 `null`）。判据不变：等于本次请求的模型 ID，不是 `unknown`。读不到文件、不是合法 JSON、没有 `model` 都是失败，原因里写文件名。另外，`checkProduct` 比较语义图的 `factDigest` 与本次运行后事实图的 `project.factsDigest`（`runFull` 传入 `postGraph.project.factsDigest`），任一边缺失或不是非空字符串都失败，原因写明两个文件与两个值：否则 F1 把 `meta.json` 推到 HEAD 而 F3 没跑时，上一次同模型的语义图会被当作本次产物。代价：旧布局的产物（模型写在事实图 `project.model`）不再通过。这是有意的：旧布局已被 `full-semantic-isolation` 取代，运行器在跑的是新布局；若保留回退到 `project.model`，一个读不到语义图的新布局产物会靠旧字段通过，正是不让它悄悄过的情况。
 
 **D2：模型名在源头写对。** F3 的 `semantic-graph.mjs write` 现在用 `--model "${EXCAVATOR_MODEL:-unknown}"`，runner 只设 `ANTHROPIC_MODEL`。改成 `${EXCAVATOR_MODEL:-${ANTHROPIC_MODEL:-unknown}}`。不让 runner 再设一个 `EXCAVATOR_MODEL`：运行器已经把请求的模型放进 `ANTHROPIC_MODEL`，技能在没有运行器时（本地交互）也会有 `ANTHROPIC_MODEL` 或没有，两种情况回退链都成立；多一个同义的环境变量要在两处保持一致。`annotate-graph.mjs` 已经有同样的候选名列表（`EXCAVATOR_MODEL`、`CLAUDE_MODEL`、`ANTHROPIC_MODEL`、`CLAUDE_CODE_MODEL`），F3 这一行只取前后两个，是对运行器实际设置的值的最小改动。
 
@@ -12,7 +12,7 @@
 
 **D4：读不到就是没有层，不是通过。** 语义图缺失、不是 JSON、没有 `layers`，层保持空，每个文件节点照旧被报「不在任何层」。这是既有的可见失败，不新增状态。
 
-**D5：full 产物按语义图判断。** `planFullRun` 的入参加上语义图（读不到传 `null`）：`hasFullProduct` 是语义图存在且 `factDigest` 为非空字符串；跳过要求 `factDigest === project.factsDigest` 且 commit 等于 HEAD；有 full 产物但不新鲜走 `--mode=full`；没有才是 `--full`；`--force` 仍然是 `--full`。不再看 `project.pipelineVersion`：它只在旧的 annotate 流程里被改写。`PIPELINE_VERSION` 导出保留，别处仍在用。代价：旧布局产物（只有事实图里的 `excavator-annotate/1`）不再被认作 full 产物，重跑会走 `--full`；这与 D1 同理，是有意的。
+**D5：full 产物按语义图判断。** `planFullRun` 的入参加上语义图（读不到传 `null`）：`hasFullProduct` 是语义图存在且 `factDigest` 为非空字符串；入参还有请求的 `model`；跳过要求 `factDigest === project.factsDigest`、语义图记录的 `model` 等于请求的模型、且 commit 等于 HEAD（与 D1 的产物检查用同一组判据，否则产物检查失败退出 4 的产物，下一次无变化的运行会以退出码 0 跳过）；有 full 产物但记录的模型不同走 `--full`（技能在 `--full` 下无条件重建 F3，`--mode=full` 会沿用另一个模型建的架构）；模型相同但事实或 HEAD 变了走 `--mode=full`；没有才是 `--full`；`--force` 仍然是 `--full`。不再看 `project.pipelineVersion`：它只在旧的 annotate 流程里被改写。`PIPELINE_VERSION` 导出保留，别处仍在用。代价：旧布局产物（只有事实图里的 `excavator-annotate/1`）不再被认作 full 产物，重跑会走 `--full`；这与 D1 同理，是有意的。
 
 **D6：只改布局，不动编造闸。** 现有规格（`runner-image`「独立复核编造与结构完整性」）已经要求摘要被判 `contradicted` 计入编造阈值，运行器尚未做到：`validated-graph.jsonl` 里只有事实图的节点与边，摘要的判定在 `semantic-cache.json`。这是另一个问题，不是读错位置，要决定「计哪些判定」，不放进这个变更。验收记录里写明：编造闸这次仍然数 0。
 
