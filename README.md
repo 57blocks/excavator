@@ -96,7 +96,7 @@ Then ask questions:
 /excavator:excavator-chat How does the request flow work?
 ```
 
-**Source baseline:** for Git projects, facts describe committed `HEAD`, not staged, unstaged, or untracked changes. Plain directories use content-based revisions. Each Git worktree keeps its own `.excavator/` cache; removing the worktree removes that cache.
+**Source baseline:** when the analysis target is a Git repository root, facts describe committed `HEAD`, not staged, unstaged, or untracked changes. A plain directory target, including a non-root subdirectory inside a repository, uses current directory contents and content-based revisions; a parent containing member repositories uses a multi-repo snapshot. Each Git worktree keeps its own `.excavator/` cache; removing the worktree removes that cache.
 
 **Model usage:** the Lazy fact-building driver makes no model or subagent calls. The host AI still interprets the skill and your questions, and may review ignore rules before the driver runs, so this is not a promise of zero tokens for the whole interaction. Questions that need semantics can generate and cache node-local English summaries. `/excavator:excavator --mode=full` pre-generates missing or stale summaries and architecture; `--full` also forces the rebuild path. See [Lazy Mode](docs/lazy-mode.md).
 
@@ -170,10 +170,10 @@ For seven bounded local MCP tools, see [MCP setup](docs/mcp.md). Installing Skil
 # Enable Claude Code hook prompts that propose updates after commits (requires consent)
 /excavator:excavator --auto-update
 
-# Analyze a subdirectory as the target
+# Analyze a non-root subdirectory's current directory contents
 /excavator:excavator src/frontend
 
-# Generate semantics for one area of the whole-project fact graph
+# From the repository root: whole-project HEAD facts, semantics scoped to one area
 /excavator:excavator --full --scope src/frontend
 ```
 
