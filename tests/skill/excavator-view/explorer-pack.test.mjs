@@ -616,7 +616,9 @@ describe('the explorer page', () => {
       const result = packProject(odd.root, { explorerTemplate: path });
       const html = readFileSync(result.out, 'utf-8');
       expect(blockText(html, 'xv-explorer-index')).not.toContain('<');
-      expect(html).not.toContain('</script><b>');
+      // The path reaches the index block, which writes its < as an escape; the node's name is in a part, as base64.
+      expect(html).not.toContain('a<b>');
+      expect(blockText(html, 'xv-explorer-index')).toContain('a\\u003cb>');
       const { data } = explorerPage(html);
       expect(data['knowledge-graph.json'].nodes[0].name).toBe('</script><b>');
       expect(data.sources['src/a<b>.js'].content).toBe('x = 1;\n');

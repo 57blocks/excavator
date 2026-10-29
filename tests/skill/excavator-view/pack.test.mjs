@@ -10,7 +10,7 @@ import { collectProducts } from '../../../skills/excavator-view/products.mjs';
 import {
   docMapProduct, graphJsonl, hotspotsProduct, makeGitProject, sourceManifest, unusedProduct, writeProduct,
 } from './fixture.mjs';
-import { explorerIndex, explorerPage, partTexts } from './page.mjs';
+import { blockText, explorerIndex, explorerPage, pageContent, partTexts } from './page.mjs';
 import { FIXTURE_TEMPLATE, makePluginRoot, repoRoot, writeTemplate } from './plugin-fixture.mjs';
 
 
@@ -274,7 +274,8 @@ describe('the page', () => {
   it('carries no pack time anywhere', () => {
     fullProject();
     const { html } = pack();
-    expect(html).not.toMatch(/generatedAt|packedAt|"timestamp"/);
+    // The data is compressed in the parts, so the check reads the decoded parts as well as the markup.
+    expect(pageContent(html)).not.toMatch(/generatedAt|packedAt|"timestamp"/);
   });
 
   it('carries the Content-Security-Policy exactly, before any script or style', () => {
@@ -320,29 +321,38 @@ describe('the page', () => {
 
   it('cannot be ended early by a product string that holds closing tags', () => {
     const hostile = ['</script><script>alert(1)</script>', '<img src=x onerror=x>', '</SCRIPT >', '<!-- <script>'];
-    writeProduct(project.root, 'knowledge-graph.jsonl', graphJsonl({ name: hostile[0], nodes: [hostile[1]], edges: [hostile[2]], gaps: [{ kind: hostile[3], scope: hostile[0], reason: hostile[1], count: 1 }] }));
-    writeProduct(project.root, 'source-manifest.json', sourceManifest(project.revision));
-    writeProduct(project.root, 'unused-code.json', unusedProduct(project.revision, {
-      unused: [{ id: 'u', name: hostile[0], language: hostile[1], file: hostile[2], lineRange: [1, 1], reason: hostile[3], confidence: 'high' }],
-    }));
-    writeProduct(project.root, 'hotspots.json', hotspotsProduct(`git:${hostile[0]}`));
-    writeProduct(project.root, 'doc-map.json', { ...docMapProduct(hostile[0]), units: [{ document: hostile[1], id: 'x', title: hostile[0], quote: hostile[3], line: 1, page: null, code: null }] });
-    const { html, data } = pack();
+    // A source file named after markup: its path is written in the index block, one of the two blocks the page writes in the clear.
+    const odd = makeGitProject({ [`a${hostile[1]}.js`]: 'x = 1;\n' });
+    try {
+      const unusedRow = (file) => ({ id: 'u', name: hostile[0], language: hostile[1], file, lineRange: [1, 1], reason: hostile[3], confidence: 'high' });
+      writeProduct(odd.root, 'knowledge-graph.jsonl', graphJsonl({ name: hostile[0], nodes: [hostile[1]], edges: [hostile[2]], gaps: [{ kind: hostile[3], scope: hostile[0], reason: hostile[1], count: 1 }] }));
+      writeProduct(odd.root, 'source-manifest.json', sourceManifest(odd.revision));
+      writeProduct(odd.root, 'unused-code.json', unusedProduct(odd.revision, { unused: [unusedRow(hostile[2]), unusedRow(`a${hostile[1]}.js`)] }));
+      writeProduct(odd.root, 'hotspots.json', hotspotsProduct(`git:${hostile[0]}`));
+      writeProduct(odd.root, 'doc-map.json', { ...docMapProduct(hostile[0]), units: [{ document: hostile[1], id: 'x', title: hostile[0], quote: hostile[3], line: 1, page: null, code: null }] });
+      const out = packProject(odd.root, { explorerTemplate: templatePath }).out;
+      const html = readFileSync(out, 'utf-8');
+      const { data } = explorerPage(html);
 
-    // The template's scripts, the index block, one block per part and the manifest block: nothing of the content opened or closed one.
-    const opened = html.match(/<script\b/gi).length;
-    const closed = html.match(/<\/script>/gi).length;
-    const templateScripts = FIXTURE_TEMPLATE.match(/<script\b/g).length;
-    const parts = html.match(/id="xv-part-\d+"/g).length;
-    expect(parts).toBeGreaterThan(0);
-    expect(opened).toBe(templateScripts + 2 + parts);
-    expect(closed).toBe(opened);
-    expect(html).not.toContain('<script>alert');
-    expect(html).not.toContain('<img');
-    expect(html).not.toContain('</SCRIPT');
-    expect(data['knowledge-graph.json'].project.name).toBe(hostile[0]);
-    expect(data['products.json'].products.find((p) => p.name === 'hotspots').revision).toBe(`git:${hostile[0]}`);
-    expect(data['unused-code.json'].unused[0].name).toBe(hostile[0]);
+      // The template's scripts, the index block, one block per part and the manifest block: nothing of the content opened or closed one.
+      const opened = html.match(/<script\b/gi).length;
+      const closed = html.match(/<\/script>/gi).length;
+      const templateScripts = FIXTURE_TEMPLATE.match(/<script\b/g).length;
+      const parts = html.match(/id="xv-part-\d+"/g).length;
+      expect(parts).toBeGreaterThan(0);
+      expect(opened).toBe(templateScripts + 2 + parts);
+      expect(closed).toBe(opened);
+      // The markup holds none of the hostile text raw: the parts are base64, and the index writes the path's < as an escape.
+      expect(Object.keys(explorerIndex(html).files.sources.paths)).toEqual([`a${hostile[1]}.js`]);
+      for (const id of ['xv-explorer-index', 'xv-explorer-manifest']) expect(blockText(html, id)).not.toContain('<');
+      for (const text of ['<script>alert', '<img', '</SCRIPT']) expect(html).not.toContain(text);
+      expect(data['knowledge-graph.json'].project.name).toBe(hostile[0]);
+      expect(data['products.json'].products.find((p) => p.name === 'hotspots').revision).toBe(`git:${hostile[0]}`);
+      expect(data['unused-code.json'].unused[0].name).toBe(hostile[0]);
+      expect(data.sources[`a${hostile[1]}.js`].content).toBe('x = 1;\n');
+    } finally {
+      odd.cleanup();
+    }
   });
 
   it('keeps non-ASCII text intact', () => {
@@ -412,7 +422,7 @@ describe('the report files', () => {
     expect(productOf(packed, 'hotspots').status).toBe('included');
     expect(packed.result.products.map((p) => p.name)).not.toContain('reports');
     expect(JSON.stringify(packed.result)).not.toMatch(/report/i);
-    expect(packed.html).not.toContain('REPORT_TEXT_MARKER');
+    expect(pageContent(packed.html)).not.toContain('REPORT_TEXT_MARKER');
   });
 });
 
