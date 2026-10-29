@@ -278,7 +278,7 @@ Set in `deploy/Dockerfile`; not operator-configurable.
 | Variable | Baked value | Meaning |
 |---|---|---|
 | `EXCAVATOR_IMAGE_COMMIT` | the `EXCAVATOR_COMMIT` build arg (required) | the Excavator commit; also the label `org.opencontainers.image.revision` |
-| `EXCAVATOR_IMAGE_CLAUDE_CODE_VERSION` | the `CLAUDE_CODE_VERSION` build arg (default `2.1.281`) | the pinned Claude Code version; also the label `com.excavator.claude-code-version` |
+| `EXCAVATOR_IMAGE_CLAUDE_CODE_VERSION` | the `CLAUDE_CODE_VERSION` build arg (default `2.1.312`) | the pinned Claude Code version; also the label `com.excavator.claude-code-version` |
 | `CLAUDE_CODE_USE_BEDROCK` | `1` | Claude Code uses Bedrock |
 | `DISABLE_UPDATES` | `1` | Claude Code never self-updates |
 | `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC` | `1` | |
