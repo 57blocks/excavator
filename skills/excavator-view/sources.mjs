@@ -17,6 +17,8 @@
  * listed and counted.
  */
 
+import { bufferLines } from '../excavator/jsonl-lines.mjs';
+
 export const SOURCE_LIMIT_BYTES = 1024 * 1024;
 export const BINARY_PROBE_BYTES = 8 * 1024;
 export const SOURCE_PAYLOAD_ID = 'sources';
@@ -40,7 +42,7 @@ function graphFilePaths(payloads) {
   const payload = payloads.find((p) => p.id === 'knowledge-graph');
   if (!payload) return [];
   const paths = [];
-  for (const line of payload.bytes.toString('utf-8').split('\n')) {
+  for (const line of bufferLines(payload.bytes)) {
     if (line === '') continue;
     let record;
     try {

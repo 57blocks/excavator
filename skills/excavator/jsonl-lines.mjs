@@ -20,6 +20,11 @@
  * '\n'. A non-empty final segment without a trailing '\n' is still a line;
  * the empty segment after a well-formed file's last '\n' is not.
  *
+ * Buffer reader (`bufferLines`): the same lines for a product that is already
+ * in memory as a Buffer. It finds each '\n' byte and decodes only that line's
+ * bytes, so no string of the whole product is made (a product can hold more
+ * characters than one string can).
+ *
  * This module only moves lines. Parsing, record validation and the product's
  * own format live in each product's store module.
  */
@@ -116,4 +121,24 @@ export function readLineFile(path, onLine, { blockSize = DEFAULT_READ_BLOCK_SIZE
   }
 }
 
-export default { DEFAULT_READ_BLOCK_SIZE, writeLineFile, readLineFile };
+/**
+ * The lines of a Buffer holding UTF-8 text, in order: exactly the segments
+ * `bytes.toString('utf-8').split('\n')` gives (so a final line without a
+ * newline is a line, a final '\n' is followed by one empty line, an empty
+ * buffer gives one empty line, and a '\r' stays on its line), without ever
+ * decoding more than one line. A '\n' byte never occurs inside a multi-byte
+ * UTF-8 character, so cutting at it is safe.
+ *
+ * @param {Buffer} bytes
+ * @returns {Generator<string>}
+ */
+export function* bufferLines(bytes) {
+  let start = 0;
+  for (let end = bytes.indexOf(0x0a, start); end !== -1; end = bytes.indexOf(0x0a, start)) {
+    yield bytes.toString('utf-8', start, end);
+    start = end + 1;
+  }
+  yield bytes.toString('utf-8', start, bytes.length);
+}
+
+export default { DEFAULT_READ_BLOCK_SIZE, writeLineFile, readLineFile, bufferLines };
