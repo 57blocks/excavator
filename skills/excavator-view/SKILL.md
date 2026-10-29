@@ -10,7 +10,7 @@ Write one HTML file that shows the products already in `.excavator/`, and open i
 
 | Who | What |
 |---|---|
-| `pack.mjs` | Reads the products and the source snapshot's revision, gives every product one state (included, not run, unreadable, different revision; semantics and the tour are not shown when they pass their own checks but no knowledge graph can be read whole), and writes `.excavator/explorer.html` through a temporary file and a rename. The page is the template `packages/explorer` builds (`pnpm build` writes it to `packages/explorer/dist/explorer.html`) with the policy and the products inserted. It prints one JSON result. |
+| `pack.mjs` | Reads the products and the source snapshot's revision, gives every product one state (included, not run, unreadable, different revision; semantics and the tour are not shown when they pass their own checks but no knowledge graph can be read whole), and writes `.excavator/explorer.html` through a temporary file and a rename. The page is the template `packages/explorer` builds (`pnpm build` writes it to `packages/explorer/dist/explorer.html`) with the policy and the products inserted: an index block and the data as gzip-compressed parts (`data-chunks.mjs`), each part small enough to be one string, so a very large project still opens; the page decodes a product the first time its view is opened. It prints one JSON result. |
 | You | Run it, open the file, and print the five reply lines. |
 
 ## Options

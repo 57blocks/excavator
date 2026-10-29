@@ -1,5 +1,6 @@
-import { describe, expect, it } from "vitest";
-import { describeProductState, readProductStates, revisionNotice, snapshotRevisionOf } from "../productStates";
+import { gzipSync } from "node:zlib";
+import { afterEach, describe, expect, it } from "vitest";
+import { describeProductState, loadProductStates, readProductStates, revisionNotice, snapshotRevisionOf } from "../productStates";
 
 const entry = (name: string, over: Record<string, unknown> = {}) => ({
   name,
@@ -93,5 +94,45 @@ describe("the notice for a product made from another revision", () => {
     const text = revisionNotice({ status: "different-revision", reason: null, revision: null, revisionNote: null, command: null }, null);
     expect(text).toContain("not recorded");
     expect(revisionNotice({ status: "included", reason: null, revision: "git:aaa", revisionNote: null, command: null }, "git:aaa")).toBeNull();
+  });
+});
+
+describe("loading products.json from the page", () => {
+  const scope = globalThis as Record<string, unknown>;
+  afterEach(() => {
+    delete scope.document;
+  });
+
+  /** A document with a products.json part: the bytes are the part's base64 text. */
+  const pageWith = (base64: string) => {
+    const elements: Record<string, { textContent: string }> = {
+      "xv-explorer-index": { textContent: JSON.stringify({ version: 1, files: { "products.json": { value: 0 } } }) },
+      "xv-part-0": { textContent: base64 },
+    };
+    scope.document = { getElementById: (id: string) => elements[id] ?? null };
+  };
+
+  it("reads the states from a part that decodes", async () => {
+    pageWith(gzipSync(Buffer.from(JSON.stringify({ snapshotRevision: "git:aaa", products: [entry("unused-code")] }), "utf-8")).toString("base64"));
+    const loaded = await loadProductStates();
+    expect(loaded.snapshotRevision).toBe("git:aaa");
+    expect(loaded.states.unused).toMatchObject({ status: "included" });
+  });
+
+  it("carries the reader's own error into each product's reason when the part cannot be decoded", async () => {
+    pageWith(Buffer.from("not gzip", "utf-8").toString("base64"));
+    const { states, snapshotRevision } = await loadProductStates();
+    expect(snapshotRevision).toBeNull();
+    for (const view of ["unused", "hotspots", "doc-map"] as const) {
+      expect(states[view].status).toBe("unreadable");
+      expect(states[view].reason).toMatch(/^products\.json could not be read: /);
+      expect(states[view].reason).not.toMatch(/not in the expected shape/);
+    }
+  });
+
+  it("says the file is not in the page when the index does not list it", async () => {
+    scope.document = { getElementById: (id: string) => (id === "xv-explorer-index" ? { textContent: JSON.stringify({ version: 1, files: {} }) } : null) };
+    const { states } = await loadProductStates();
+    expect(states.unused).toMatchObject({ status: "unreadable", reason: "products.json is not included in this page" });
   });
 });

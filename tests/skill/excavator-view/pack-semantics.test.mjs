@@ -5,7 +5,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { packProject } from '../../../skills/excavator-view/pack.mjs';
 import { collectProducts } from '../../../skills/excavator-view/products.mjs';
 import { factGraphJsonl, makeGitProject, semanticCache, semanticEntry, semanticGraph, sourceManifest, writeProduct } from './fixture.mjs';
-import { explorerPage } from './page.mjs';
+import { explorerPage, pageContent } from './page.mjs';
 import { writeTemplate } from './plugin-fixture.mjs';
 
 const DIGEST = 'a'.repeat(64);
@@ -90,7 +90,7 @@ describe('semantics product', () => {
     expect(packed.result.products.find((p) => p.name === 'semantics').status).toBe('included');
     expect(packed.manifest.products.find((p) => p.name === 'semantics')).toEqual({ name: 'semantics', status: 'included' });
     // The page holds neither the hashes nor the audit, and the node of an entry carries the entry's summary.
-    expect(packed.html).not.toMatch(/semanticSourceHash|languageAudit/);
+    expect(pageContent(packed.html)).not.toMatch(/semanticSourceHash|languageAudit/);
     expect(packed.data['knowledge-graph.json'].nodes.find((n) => n.id === 'file:src/a.js').summary).toBe('Entry point of the app.');
   });
 
@@ -107,7 +107,7 @@ describe('semantics product', () => {
     expect(payloadOf(packed).entries.map((e) => e.id)).toEqual(['file:src/a.js', 'file:src/b.js']);
     expect(packed.product.counts).toMatchObject({ entries: 2, stale: 2 });
     expect(payloadText(packed, 'semantics')).not.toContain('Written for older source.');
-    expect(packed.html).not.toContain('Written for older source.');
+    expect(pageContent(packed.html)).not.toContain('Written for older source.');
   });
 
   it('keeps a contradicted entry\'s verdict and blanks its summary, so the text is nowhere in the page', () => {
@@ -119,7 +119,7 @@ describe('semantics product', () => {
     });
     const packed = pack();
     expect(payloadOf(packed).entries.find((e) => e.id === 'function:src/a.js:run')).toEqual({ id: 'function:src/a.js:run', summary: '', tags: ['network'], verification: 'contradicted' });
-    expect(packed.html).not.toContain(CONTRADICTED_TEXT);
+    expect(pageContent(packed.html)).not.toContain(CONTRADICTED_TEXT);
     expect(payloadText(packed, 'semantics')).not.toContain(CONTRADICTED_TEXT);
   });
 

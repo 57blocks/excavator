@@ -3,13 +3,18 @@
  * explorer-smoke.mjs
  *
  * The offline smoke of the dashboard copy (openspec: changes/viewer-explorer,
- * design O3): builds a small synthetic data object (a hand-written knowledge
- * graph in the dashboard's format, a domain graph, a tour and two sources),
- * puts it and the content security policy into the built template
- * `packages/explorer/dist/explorer.html` the way the packing step will, opens
- * the result from file:// in headless Chrome with view-smoke.mjs and asserts:
+ * design O3; changes/explorer-chunked-data): builds a small synthetic data object (a
+ * hand-written knowledge graph in the dashboard's format, a domain graph, a tour and
+ * two sources), puts it and the content security policy into the built template
+ * `packages/explorer/dist/explorer.html` with the packer's own `assembleExplorerPage`
+ * (the data as an index block and gzip parts, cut at a tiny part limit so the graph, a
+ * product and the sources each span several parts), opens the result from file:// in
+ * headless Chrome with view-smoke.mjs and asserts:
  *   - network: no request, no failed load and no policy violation;
  *   - console: no console error, exception or log error;
+ *   - defaults (openspec: changes/explorer-view-defaults): the page opens on Overview and, with a
+ *     domain graph, on Domain with the domain graph drawn; only those two are highlighted, no product
+ *     view is open and Diff is off. The checks after it switch to Structural first;
  *   - cards: the graph's cards render (one per layer at the top level);
  *   - our data: the overview lists the coverage record and the gaps, a node shows its
  *     verdict, a summary the verifier blanked says so, and the connections show their
@@ -20,7 +25,9 @@
  *   - products (openspec: changes/explorer-products): the header has no Files / Classes
  *     buttons and no type chips, three product buttons stand there, no onboarding overlay
  *     appears, Unused covers the graph area only (the graph stays mounted) and says its
- *     state, and a second click closes the view with the selected node still selected;
+ *     state, a second click on the open product's button keeps the view open, only the open
+ *     view's button is highlighted, and the Structural button then closes it with the selected
+ *     node still selected;
  *   - unused view, hotspots view, doc map view: each view's stat numbers equal its product's
  *     counts, Unused with only "high" lists counts.byConfidence.high rows, a clicked row shows
  *     its details in the sidebar, Show in graph closes the view and selects the node (the
@@ -41,7 +48,7 @@
  * `--self-check` is the instrument check: it also runs pages with a planted fault
  * (an external stylesheet, a thrown error, a graph the page cannot read, the removed header
  * buttons and onboarding put back, the product files left out, product counts that no longer
- * match, a graph without the unused node, a page packed without source) and requires that each
+ * match, a graph without the unused node, a page packed without source, a page without a domain graph, a product view that closes on a second click) and requires that each
  * assertion it was written to catch goes red.
  *
  * Needs `pnpm -r build` (the template) and a local Chrome. Prints one line per
@@ -54,13 +61,15 @@ import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { CONTENT_SECURITY_POLICY } from '../skills/excavator-view/page-assembly.mjs';
+import { chunkExplorerData } from '../skills/excavator-view/data-chunks.mjs';
+import { assembleExplorerPage } from '../skills/excavator-view/page-assembly.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const TEMPLATE = join(here, '..', 'packages', 'explorer', 'dist', 'explorer.html');
 const CSP_MARKER = '<!-- xv:csp -->';
 const DATA_MARKER = '<!-- xv:data -->';
-const DATA_GLOBAL = '__EXCAVATOR_EXPLORER_DATA__';
+/** The part limit of the smoke's pages: tiny, so each data file and the sources are cut into several parts (the packer's default is 16 Mi characters). */
+const SMOKE_PART_CHARS = 256;
 
 /** The sources the code viewer shows, by the file path of a node. */
 const SOURCES = {
@@ -260,20 +269,27 @@ export function withUnavailableProducts(data) {
 /** The wait signal view-smoke.mjs needs: the dashboard has no ready attribute of its own, so the page's own markup says when it has drawn. */
 const READY_SCRIPT = `(function(){var r=document.documentElement;var t=setInterval(function(){if(document.querySelector('.react-flow__node')||/Failed to load|Invalid knowledge graph/.test(document.body.innerText)){clearInterval(t);r.setAttribute('data-xv-ready','1');}},50);})();`;
 
+/** The fault 'second-click-closes': a click on a product button while a product view is open closes the view again (the old behaviour). */
+const SECOND_CLICK_CLOSES_SCRIPT = `<script>document.addEventListener('click',function(e){var b=e.target.closest&&e.target.closest('[data-excavator-product-button]');if(b&&document.querySelector('[data-excavator-product-view]')){setTimeout(function(){document.body.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}));},50);}},true);</script>`;
+
 /** The fault 'legacy-chrome': puts back a Files button, a type chip and the onboarding text once the page has drawn. */
 const LEGACY_CHROME_SCRIPT = `<script>setTimeout(function(){var h=document.querySelector('header');var f=document.createElement('button');f.textContent='Files';h.appendChild(f);var c=document.createElement('button');c.innerHTML='<span class="rounded-full"></span>Code';h.appendChild(c);var o=document.createElement('div');o.textContent='EXCAVATOR GET STARTED Welcome to the knowledge graph';document.body.appendChild(o);},100);</script>`;
 
-const BACKSLASH = String.fromCharCode(92);
-const jsonForScript = (value) => JSON.stringify(value).replace(/</g, `${BACKSLASH}u003c`);
+/** The number of distinct parts the index gives a data file (its fields' parts) or the sources table (its paths' parts). */
+function partsOf(index, name) {
+  const entry = index.files[name];
+  if (!entry) return 0;
+  if ('value' in entry) return 1;
+  if ('paths' in entry) return new Set(Object.values(entry.paths)).size;
+  return new Set(entry.fields.flatMap((field) => field.parts ?? [field.part])).size;
+}
 
 /**
- * The template filled the way the packing step will: the policy at its marker
- * and the data at its marker; `fault` plants one defect the smoke must catch.
+ * The template filled by the packer's own `assembleExplorerPage`: the policy and the data
+ * (index and gzip parts) at their markers; `fault` plants one defect the smoke must catch.
+ * The wait signal and a planted script go into a temporary copy of the template, next to its markers.
  */
 export function assemble(template, data, fault = null) {
-  for (const marker of [CSP_MARKER, DATA_MARKER]) {
-    if (template.split(marker).length !== 2) throw new Error(`the template must contain ${marker} exactly once`);
-  }
   let payload = data;
   let extraHead = '';
   let extraBody = '';
@@ -282,12 +298,31 @@ export function assemble(template, data, fault = null) {
   else if (fault === 'no-graph') payload = { ...data, 'knowledge-graph.json': undefined };
   else if (fault === 'no-products') payload = { ...data, 'unused-code.json': undefined, 'products.json': undefined };
   else if (fault === 'legacy-chrome') extraBody = LEGACY_CHROME_SCRIPT;
+  else if (fault === 'second-click-closes') extraBody = SECOND_CLICK_CLOSES_SCRIPT;
   else if (fault === 'wrong-counts') payload = withWrongCounts(data);
   else if (fault === 'node-missing') payload = withoutNode(data, 'function:src/util.js:leaf');
   else if (fault === 'no-sources') payload = { ...data, sources: undefined };
-  const csp = `<meta http-equiv="Content-Security-Policy" content="${CONTENT_SECURITY_POLICY}">${extraHead}`;
-  const dataScript = `<script>window.${DATA_GLOBAL}=${jsonForScript(payload)};${READY_SCRIPT}</script>${extraBody}`;
-  return template.replace(CSP_MARKER, () => csp).replace(DATA_MARKER, () => dataScript);
+  else if (fault === 'no-domain') payload = { ...data, 'domain-graph.json': undefined };
+
+  // The pages that have the data must really be cut: a smoke over single-part files would not run the part reader's joins.
+  if (fault === null) {
+    const { index } = chunkExplorerData(payload, { partChars: SMOKE_PART_CHARS });
+    for (const name of ['knowledge-graph.json', 'unused-code.json', 'sources'].filter((key) => payload[key] !== undefined)) {
+      if (partsOf(index, name) < 2) throw new Error(`the smoke data ${name} is in fewer than two parts at ${SMOKE_PART_CHARS} characters`);
+    }
+  }
+
+  const dir = mkdtempSync(join(tmpdir(), 'explorer-smoke-template-'));
+  try {
+    const templatePath = join(dir, 'explorer.html');
+    const text = template
+      .replace(CSP_MARKER, () => `${CSP_MARKER}${extraHead}`)
+      .replace(DATA_MARKER, () => `${DATA_MARKER}<script>${READY_SCRIPT}</script>${extraBody}`);
+    writeFileSync(templatePath, text);
+    return assembleExplorerPage({ templatePath, data: payload, manifest: {}, partChars: SMOKE_PART_CHARS }).toString('utf-8');
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 }
 
 /** Runs in the page once it has drawn: what the checks read. */
@@ -298,8 +333,32 @@ const PROBE = `(async () => {
   const until = async (test, tries = 60) => { for (let i = 0; i < (broken ? 1 : tries); i++) { if (test()) return true; await sleep(50); } broken = true; return false; };
   const cards = () => [...document.body.querySelectorAll('.react-flow__node')];
   const started = Date.now();
-  const out = { title: document.title, cards: cards().length, drilled: false, codeShown: false };
+  const out = { title: document.title, cards: 0, drilled: false, codeShown: false };
+  const press = (el) => el && el.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+  // A header button is highlighted when it carries the accent fill (the persona, mode and Diff buttons) or is aria-pressed (the product buttons).
+  const lit = (el) => Boolean(el) && (/(^| )bg-accent[/]20( |$)/.test(el.className) || el.getAttribute('aria-pressed') === 'true');
+  const headerButton = (title) => document.querySelector('header button[title="' + title + '"]');
+  const productsLit = () => [...document.querySelectorAll('header [data-excavator-product-button]')].filter(lit).map((b) => b.getAttribute('data-excavator-product-button'));
+  await until(() => cards().length > 0 || /Failed to load|Invalid knowledge graph/.test(document.body.innerText));
   await sleep(400);
+  // The defaults (spec: the dashboard): Overview is the persona and, with a domain graph, Domain is the mode; nothing else is highlighted, no product view is open, Diff is off.
+  out.defaults = {
+    overview: lit([...document.querySelectorAll('header button')].find((b) => b.textContent.trim() === 'Overview')),
+    otherPersonas: [...document.querySelectorAll('header button')].filter((b) => ['Learn', 'Deep Dive'].includes(b.textContent.trim()) && lit(b)).length,
+    domain: lit(headerButton('Domain')),
+    structural: lit(headerButton('Structural')),
+    products: productsLit(),
+    productView: document.querySelector('[data-excavator-product-view]') !== null,
+    diffOff: /^Diff OFF$/.test([...document.querySelectorAll('header button')].map((b) => b.textContent.trim()).find((t) => /^Diff/.test(t)) ?? ''),
+    domainCard: cards().some((n) => /^domain:/.test(n.getAttribute('data-id') ?? '')),
+  };
+  // Every check below is about the structural graph: switch to it (a page without a domain graph is already there).
+  if (!out.defaults.structural) {
+    press(headerButton('Structural'));
+    await until(() => cards().some((n) => !/^domain:/.test(n.getAttribute('data-id') ?? '')));
+    await sleep(300);
+  }
+  out.cards = cards().length;
   // No onboarding overlay and no Files / Classes or type-chip buttons in the header; the three product buttons stand there.
   out.onboardingShown = /GET STARTED|Welcome to the knowledge graph/.test(document.body.innerText);
   const headerButtons = [...document.querySelectorAll('header button')];
@@ -318,7 +377,6 @@ const PROBE = `(async () => {
   await sleep(300);
   const button = (text) => [...document.querySelectorAll('button')].find((b) => b.textContent.trim() === text);
   const card = (id) => document.querySelector('.react-flow__node[data-id="' + id + '"]');
-  const press = (el) => el && el.dispatchEvent(new MouseEvent('click', { bubbles: true }));
   // What the product views are read through. innerText follows text-transform, so labels are matched ignoring case or read from data attributes.
   const pv = {
     button: (name) => document.querySelector('header [data-excavator-product-button="' + name + '"]'),
@@ -369,14 +427,14 @@ const PROBE = `(async () => {
     out.graphMounted = cards().length === cardsBefore && cardsBefore > 0;
     out.overlayArea = Boolean(box) && box.top >= headerBox.bottom - 1 && box.right <= sideBox.left + 1 && getComputedStyle(shown).position === 'absolute' && getComputedStyle(shown).backgroundColor !== 'rgba(0, 0, 0, 0)';
     out.columnCentred = Boolean(column) && column.width <= 1100.5 && Math.abs((column.left - box.left) - (box.right - column.right)) < 24;
-    out.unusedPressed = pv.button('unused').getAttribute('aria-pressed') === 'true';
+    // While the view is open only its button is highlighted: Domain and Structural are not.
+    out.onlyUnusedLit = JSON.stringify(productsLit()) === JSON.stringify(['unused']) && !lit(headerButton('Domain')) && !lit(headerButton('Structural'));
+    // A second click on the open product's button keeps the view open, with the selection and the sidebar as they were.
     press(pv.button('unused'));
     await sleep(200);
-    out.viewClosed = pv.overlay() === null;
+    out.viewKeptOpen = pv.overlay() !== null && pv.overlay().getAttribute('data-excavator-product-view') === 'unused' && JSON.stringify(productsLit()) === JSON.stringify(['unused']);
     out.selectionKept = selectedBefore.includes('util.js') && pv.side() === selectedBefore;
-    // Structural, the mode already shown, closes a view the same way; the rows used only by tests open nothing.
-    press(pv.button('unused'));
-    await until(() => pv.overlay());
+    // The rows used only by tests open nothing; Structural, the mode the graph was in before the view, then returns to the graph.
     const inert = pv.rows('test-only');
     press(inert[0]);
     await sleep(150);
@@ -384,6 +442,8 @@ const PROBE = `(async () => {
     press(document.querySelector('header button[title="Structural"]'));
     await sleep(200);
     out.structuralKept = pv.overlay() === null && pv.side() === selectedBefore;
+    // Back on the graph the mode is highlighted again and no product button is.
+    out.backOnGraph = lit(headerButton('Structural')) && !lit(headerButton('Domain')) && productsLit().length === 0 && cards().length === cardsBefore;
     button('Project').click();
     await until(() => card('layer:app'));
     button('Learn').click();
@@ -604,6 +664,12 @@ export function judge(result) {
   return [
     { name: 'network', ok: network.length === 0, detail: network.length === 0 ? 'no request, no failed load, no policy violation' : network.join('; ') },
     { name: 'console', ok: consoleProblems.length === 0, detail: consoleProblems.length === 0 ? 'no console error or exception' : consoleProblems.join('; ').slice(0, 300) },
+    {
+      name: 'defaults',
+      ok: probe.defaults?.overview === true && probe.defaults?.otherPersonas === 0 && probe.defaults?.domain === true && probe.defaults?.structural === false
+        && (probe.defaults?.products ?? ['?']).length === 0 && probe.defaults?.productView === false && probe.defaults?.diffOff === true && probe.defaults?.domainCard === true,
+      detail: `Overview lit=${probe.defaults?.overview} other personas lit=${probe.defaults?.otherPersonas} Domain lit=${probe.defaults?.domain} Structural lit=${probe.defaults?.structural} product buttons lit=${(probe.defaults?.products ?? []).join('|')} product view open=${probe.defaults?.productView} Diff off=${probe.defaults?.diffOff} domain graph drawn=${probe.defaults?.domainCard}`,
+    },
     { name: 'cards', ok: probe.cards >= 2 && result.ready === '1', detail: `${probe.cards} cards at the top level (the fixture has 2 layers), ready=${result.ready}` },
     {
       name: 'our data',
@@ -622,8 +688,8 @@ export function judge(result) {
       ok: probe.onboardingShown === false && probe.headerFilesClasses === false && probe.headerTypeChips === false
         && JSON.stringify(probe.productButtons) === JSON.stringify(['Unused', 'Hotspots', 'Doc map'])
         && probe.unusedView === true && probe.unusedStatus === true && probe.graphMounted === true && probe.overlayArea === true && probe.columnCentred === true
-        && probe.unusedPressed === true && probe.viewClosed === true && probe.selectionKept === true && probe.structuralKept === true && probe.testOnlyInert === true,
-      detail: `onboarding=${probe.onboardingShown} Files/Classes=${probe.headerFilesClasses} type chips=${probe.headerTypeChips} buttons=${(probe.productButtons ?? []).join('|')} unused view=${probe.unusedView} state and revision=${probe.unusedStatus} graph mounted=${probe.graphMounted} covers graph area only=${probe.overlayArea} centred column<=1100=${probe.columnCentred} pressed=${probe.unusedPressed} closed by a second click=${probe.viewClosed} selection kept=${probe.selectionKept} kept after Structural=${probe.structuralKept} test-only rows inert=${probe.testOnlyInert}`,
+        && probe.onlyUnusedLit === true && probe.viewKeptOpen === true && probe.selectionKept === true && probe.structuralKept === true && probe.backOnGraph === true && probe.testOnlyInert === true,
+      detail: `onboarding=${probe.onboardingShown} Files/Classes=${probe.headerFilesClasses} type chips=${probe.headerTypeChips} buttons=${(probe.productButtons ?? []).join('|')} unused view=${probe.unusedView} state and revision=${probe.unusedStatus} graph mounted=${probe.graphMounted} covers graph area only=${probe.overlayArea} centred column<=1100=${probe.columnCentred} only its button lit=${probe.onlyUnusedLit} kept open by a second click=${probe.viewKeptOpen} selection kept=${probe.selectionKept} graph back on Structural=${probe.structuralKept} mode lit again=${probe.backOnGraph} test-only rows inert=${probe.testOnlyInert}`,
     },
     ...judgeViews(probe),
     // view-smoke gives the page's script 15 s; a probe near that limit would fail by timing, not by a defect.
@@ -781,7 +847,9 @@ function main(argv) {
       { fault: 'external-url', red: ['network'] },
       { fault: 'thrown-error', red: ['console'] },
       { fault: 'no-graph', red: ['cards'] },
+      { fault: 'no-domain', red: ['defaults'] },
       { fault: 'legacy-chrome', red: ['products'] },
+      { fault: 'second-click-closes', red: ['products'] },
       { fault: 'no-products', red: ['products'] },
       { fault: 'wrong-counts', red: ['unused view', 'hotspots view', 'doc map view'] },
       { fault: 'node-missing', red: ['unused view'] },

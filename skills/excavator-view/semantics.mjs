@@ -22,6 +22,7 @@
 
 import { join } from 'node:path';
 
+import { bufferLines } from '../excavator/jsonl-lines.mjs';
 import { isCanonicalSemanticCache, isFresh, SEMANTIC_CACHE_FILE } from '../excavator/semantic-cache.mjs';
 import { SEMANTIC_GRAPH_CONTENT_LANGUAGE, SEMANTIC_GRAPH_FILE, SEMANTIC_GRAPH_VERSION } from '../excavator/semantic-graph.mjs';
 import { parseJsonObject, readRegularFile } from './product-files.mjs';
@@ -39,7 +40,7 @@ function readGraphFacts(graphBytes) {
   const nodeFiles = new Map();
   let digest = null;
   let first = true;
-  for (const line of graphBytes.toString('utf-8').split('\n')) {
+  for (const line of bufferLines(graphBytes)) {
     if (line.trim() === '') continue;
     let record;
     try {
