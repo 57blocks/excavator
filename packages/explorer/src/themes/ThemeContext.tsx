@@ -12,7 +12,8 @@ import { DEFAULT_THEME_CONFIG } from "./types.ts";
 import { getPreset } from "./presets.ts";
 import { applyTheme } from "./theme-engine.ts";
 
-const STORAGE_KEY = "ua-theme";
+// Excavator: the page's own key; a choice saved under the copy's old key is not read (openspec: changes/explorer-view-defaults, design D4).
+const STORAGE_KEY = "excavator-explorer-theme";
 
 interface ThemeContextValue {
   config: ThemeConfig;
@@ -46,7 +47,7 @@ function saveToLocalStorage(config: ThemeConfig): void {
   }
 }
 
-function resolveInitialTheme(metaTheme?: ThemeConfig | null): ThemeConfig {
+export function resolveInitialTheme(metaTheme?: ThemeConfig | null): ThemeConfig {
   return loadFromLocalStorage() ?? metaTheme ?? DEFAULT_THEME_CONFIG;
 }
 

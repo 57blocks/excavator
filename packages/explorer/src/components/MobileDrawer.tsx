@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { useDashboardStore } from "../store";
+import { shownViewMode, useDashboardStore } from "../store";
 import { useI18n } from "../contexts/I18nContext";
 import PersonaSelector from "./PersonaSelector";
 import DiffToggle from "./DiffToggle";
@@ -33,7 +33,8 @@ export default function MobileDrawer({
   const graph = useDashboardStore((s) => s.graph);
   const isKnowledgeGraph = useDashboardStore((s) => s.isKnowledgeGraph);
   const domainGraph = useDashboardStore((s) => s.domainGraph);
-  const viewMode = useDashboardStore((s) => s.viewMode);
+  // Excavator: a mode button is highlighted only while the graph, not a product view, is shown.
+  const shownMode = useDashboardStore(shownViewMode);
   const setViewMode = useDashboardStore((s) => s.setViewMode);
   const { t } = useI18n();
 
@@ -124,7 +125,7 @@ export default function MobileDrawer({
                   type="button"
                   onClick={() => setViewMode("domain")}
                   className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
-                    viewMode === "domain"
+                    shownMode === "domain"
                       ? "bg-accent/20 text-accent"
                       : "text-text-muted hover:text-text-secondary"
                   }`}
@@ -135,7 +136,7 @@ export default function MobileDrawer({
                   type="button"
                   onClick={() => setViewMode("structural")}
                   className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
-                    viewMode === "structural"
+                    shownMode === "structural"
                       ? "bg-accent/20 text-accent"
                       : "text-text-muted hover:text-text-secondary"
                   }`}

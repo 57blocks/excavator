@@ -225,9 +225,8 @@ interface DashboardStore {
   /** Excavator: a node chosen from outside the graph that the structural view is to open its container for and fit. */
   revealNodeId: string | null;
   clearRevealNode: () => void;
+  /** Opens the view; the open one stays open, with its row (openspec: changes/explorer-view-defaults, design D2). */
   openProductView: (view: ProductView) => void;
-  /** Opens the view, or closes it when it is the open one. */
-  toggleProductView: (view: ProductView) => void;
   closeProductView: () => void;
   setProductRow: (row: unknown | null) => void;
 
@@ -317,6 +316,14 @@ function layerResetIfChanged(
   };
 }
 
+/**
+ * Excavator: the mode the middle of the page shows, or null while a product view
+ * covers the graph; the Domain / Structural buttons highlight only this one
+ * (openspec: changes/explorer-view-defaults, design D1).
+ */
+export const shownViewMode = (s: Pick<DashboardStore, "productView" | "viewMode">): ViewMode | null =>
+  s.productView === null ? s.viewMode : null;
+
 export const useDashboardStore = create<DashboardStore>()((set, get) => ({
   graph: null,
   layerSource: "graph",
@@ -340,7 +347,8 @@ export const useDashboardStore = create<DashboardStore>()((set, get) => ({
   currentTourStep: 0,
   tourHighlightedNodeIds: [],
 
-  persona: "junior",
+  // Excavator: the page opens on Overview (openspec: changes/explorer-view-defaults, design D3).
+  persona: "non-technical",
 
   diffMode: false,
   changedNodeIds: new Set<string>(),
@@ -616,7 +624,8 @@ export const useDashboardStore = create<DashboardStore>()((set, get) => ({
 
   setDiffOverlay: (changed, affected, label, description) =>
     set({
-      diffMode: true,
+      // Excavator: the overlay loads switched off (openspec: changes/explorer-view-defaults, design D5).
+      diffMode: false,
       changedNodeIds: new Set(changed),
       affectedNodeIds: new Set(affected),
       diffLabel: label ?? null,
@@ -745,7 +754,10 @@ export const useDashboardStore = create<DashboardStore>()((set, get) => ({
   activeDomainId: null,
 
   setDomainGraph: (graph) => {
-    set({ domainGraph: graph });
+    // Excavator: the first domain graph to arrive opens the Domain mode (openspec: changes/explorer-view-defaults, design D3).
+    const { domainGraph, viewMode } = get();
+    const openDomain = graph !== null && domainGraph === null && viewMode === "structural";
+    set(openDomain ? { domainGraph: graph, viewMode: "domain" as const } : { domainGraph: graph });
   },
 
   setIsKnowledgeGraph: (value) => {
@@ -756,9 +768,9 @@ export const useDashboardStore = create<DashboardStore>()((set, get) => ({
   productRow: null,
   revealNodeId: null,
   clearRevealNode: () => set({ revealNodeId: null }),
-  openProductView: (view) => set({ productView: view, productRow: null }),
-  toggleProductView: (view) =>
-    set((state) => ({ productView: state.productView === view ? null : view, productRow: null })),
+  openProductView: (view) => {
+    if (get().productView !== view) set({ productView: view, productRow: null });
+  },
   closeProductView: () => set({ productView: null, productRow: null }),
   setProductRow: (row) => set({ productRow: row }),
 
