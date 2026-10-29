@@ -170,7 +170,7 @@ skill MUST NOT 启动 HTTP 服务，MUST NOT 运行任何分析，MUST NOT 改�
 
 副本的来源与改动：
 - 源码取自 Understand Anything 的 `packages/explorer` 与它引用的 `packages/core` 模块，保留 MIT 许可声明与来源提交号；
-- 只为离线、产品名、缺层兜底与产物视图改动以下几处，此外的界面、交互、主题与文案 MUST NOT 改：
+- 只为离线、产品名、缺层兜底、产物视图、主题与差异覆盖层改动以下几处，此外的界面、交互、主题与文案 MUST NOT 改：
   - 数据文件改为读页面内联的数据；
   - 源码改为读内联的源码；
   - 去掉令牌门；
@@ -180,6 +180,8 @@ skill MUST NOT 启动 HTTP 服务，MUST NOT 运行任何分析，MUST NOT 改�
   - 图里没有层时，结构图顶层按副本自己的目录分组（目录过于集中时按副本自己的连接聚类）显示，界面上称「分组」而不称「层」；
   - 显示我们图里有而副本原本不显示或显示错的数据：节点摘要的核验结论、`mentions` 边、边的证据（文件与行号）、覆盖记录与缺口记录；
   - 产物视图与顶栏的改动（见「离线仪表盘的产物视图」）。
+  - 主题：增加两个按颜色命名的预设 Dark Violet 与 Light Violet，以及每组强调色里的 Violet，默认是 Dark Violet 配 Violet；原有预设与强调色保留；用户在主题选择里选过的主题仍优先于默认；仪表盘自己写死的金色强调（边、分组边框、搜索命中标记、选中边的标签）改为跟随当前强调色，导出的独立 SVG 例外；主题名与界面 MUST NOT 出现公司名；
+  - 差异覆盖层的说明文字、层卡片上的计数与分组高亮（见「差异覆盖层」）。
 - 页面 SHALL 是一个自包含的 HTML 文件，从磁盘直接打开即可使用，不需要 Node、网络或本地服务，打开后不发出任何网络请求。
 
 填入的数据：
@@ -305,3 +307,44 @@ skill MUST NOT 启动 HTTP 服务，MUST NOT 运行任何分析，MUST NOT 改�
 #### Scenario: 旧产物缺字段
 - **WHEN** `hotspots.json` 的目录行没有 `commitsByYear`
 - **THEN** Hotspots 视图目录表的该列显示「产物未提供」
+
+### Requirement: 差异覆盖层
+
+打包 SHALL 把 `.excavator/diff-overlay.json`（可选输入）放进页面数据的 `diff-overlay.json` 键，供结构图的 Diff 开关使用。目前没有 skill 写这个文件，由用户或脚本写出；它的格式：
+
+- 一个 JSON 对象；`changedNodeIds` 与 `affectedNodeIds` 是字符串数组（改动了的节点、与它们直接相连的节点）；
+- 可选的 `label`（一行说明差异的范围）与 `description`（较长的说明），都是字符串；
+- 可选的 `provenance.sourceRevision`：写出它时依据的源码版本；
+- 其余字段打包不读。
+
+打包规则：
+- 文件不存在时，打包结果的这一行为 not-run，页面没有这个键，Diff 开关不可用；
+- 文件读不了、不是 JSON 对象、两个数组缺失或含非字符串时为 unreadable，原因写明哪里不对，页面没有这个键；
+- 没有知识图时为 unused，页面没有这个键；
+- 页面只放 `changedNodeIds`、`affectedNodeIds`、`label`、`description` 四个键；不在知识图里的 id 不放进页面，两个数组里同时出现的 id 只算 changed，这两种的条数 SHALL 写进这一行的原因，MUST NOT 静默丢弃；去掉之后 changed 为空时同样不放这个键，状态为 unused 并写明原因；
+- `provenance.sourceRevision` 存在且与打包时源码快照的版本不同时为 different-revision，内容照放，原因写出两个版本；否则为 included。
+
+页面：
+- 有差异覆盖层时 Diff 开关可用且默认打开；顶栏显示 changed 与 affected 的节点数，以及 `label`（有时）；开关的提示文字是 `description`，没有时是 `label`；
+- 打开时，结构图顶层的每张层卡片 SHALL 显示该层的 changed 与 affected 数（为零的不显示），两者都为零的层变暗。一个节点在层的 `nodeIds` 里就算这一层；它不在任何层里时，按 `filePath` 算进含同一 `filePath` 节点的层；一个节点在一层里只算一次；
+- 层内视图里含有 changed 或 affected 节点的分组 SHALL 高亮，按同样的归属规则，首次显示时就生效；节点本身照副本原有的方式标出。
+
+#### Scenario: 有差异覆盖层
+- **WHEN** `.excavator/diff-overlay.json` 有 3 个 changed、2 个 affected 节点，都在知识图里，打包后打开 `explorer.html`
+- **THEN** 打包结果这一行为 included；Diff 开关为打开，顶栏写 Changed (3)、Affected (2) 与 `label`；含这些节点的层卡片显示计数，其余层变暗
+
+#### Scenario: 没有差异覆盖层
+- **WHEN** 打包一个 `.excavator/` 里没有 `diff-overlay.json` 的项目
+- **THEN** 这一行为 not-run，页面数据没有 `diff-overlay.json` 键，Diff 开关不可用
+
+#### Scenario: id 不在图里
+- **WHEN** `diff-overlay.json` 的 changed 里有 1 个知识图里没有的 id，affected 里有 1 个同时在 changed 里的 id
+- **THEN** 前者不在页面数据里，后者只在 `changedNodeIds` 里；这一行的原因写出 1 个不在图里、1 个两边都有
+
+#### Scenario: 格式错
+- **WHEN** `diff-overlay.json` 的 `affectedNodeIds` 是一个字符串
+- **THEN** 这一行为 unreadable，原因写明 `affectedNodeIds` 不是字符串数组；页面数据没有这个键；打包照常完成
+
+#### Scenario: 版本不同
+- **WHEN** `diff-overlay.json` 的 `provenance.sourceRevision` 与打包时源码快照的版本不同
+- **THEN** 这一行为 different-revision，原因写出两个版本，页面照常显示差异覆盖层
