@@ -33,6 +33,6 @@ export interface ThemeConfig {
 }
 
 export const DEFAULT_THEME_CONFIG: ThemeConfig = {
-  presetId: "dark-violet",
+  presetId: "light-violet",
   accentId: "violet",
 };

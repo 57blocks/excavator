@@ -26,35 +26,6 @@ const LIGHT_ACCENT_SWATCHES: AccentSwatch[] = [
 
 export const PRESETS: ThemePreset[] = [
   {
-    id: "dark-violet",
-    name: "Dark Violet",
-    isDark: true,
-    defaultAccentId: "violet",
-    accentSwatches: DARK_ACCENT_SWATCHES,
-    colors: {
-      root: "#0C0C0E",
-      surface: "#131316",
-      elevated: "#1C1C21",
-      panel: "#17171B",
-      "text-primary": "#F3F3F5",
-      "text-secondary": "#A3A3AD",
-      "text-muted": "#6C6C73",
-      "node-file": "#4a7c9b",
-      "node-function": "#5a9e6f",
-      "node-class": "#8b6fb0",
-      "node-module": "#c9a06c",
-      "node-concept": "#b07a8a",
-      "node-config": "#5eead4",
-      "node-document": "#7dd3fc",
-      "node-service": "#a78bfa",
-      "node-table": "#6ee7b7",
-      "node-endpoint": "#fdba74",
-      "node-pipeline": "#fda4af",
-      "node-schema": "#fcd34d",
-      "node-resource": "#a5b4fc",
-    },
-  },
-  {
     id: "light-violet",
     name: "Light Violet",
     isDark: false,
@@ -81,6 +52,35 @@ export const PRESETS: ThemePreset[] = [
       "node-pipeline": "#fb7185",
       "node-schema": "#facc15",
       "node-resource": "#818cf8",
+    },
+  },
+  {
+    id: "dark-violet",
+    name: "Dark Violet",
+    isDark: true,
+    defaultAccentId: "violet",
+    accentSwatches: DARK_ACCENT_SWATCHES,
+    colors: {
+      root: "#0C0C0E",
+      surface: "#131316",
+      elevated: "#1C1C21",
+      panel: "#17171B",
+      "text-primary": "#F3F3F5",
+      "text-secondary": "#A3A3AD",
+      "text-muted": "#6C6C73",
+      "node-file": "#4a7c9b",
+      "node-function": "#5a9e6f",
+      "node-class": "#8b6fb0",
+      "node-module": "#c9a06c",
+      "node-concept": "#b07a8a",
+      "node-config": "#5eead4",
+      "node-document": "#7dd3fc",
+      "node-service": "#a78bfa",
+      "node-table": "#6ee7b7",
+      "node-endpoint": "#fdba74",
+      "node-pipeline": "#fda4af",
+      "node-schema": "#fcd34d",
+      "node-resource": "#a5b4fc",
     },
   },
   {
@@ -231,7 +231,7 @@ export const PRESETS: ThemePreset[] = [
 ];
 
 export function getPreset(id: string): ThemePreset {
-  return PRESETS.find((p) => p.id === id) ?? PRESETS[0] /* dark-violet */;
+  return PRESETS.find((p) => p.id === id) ?? PRESETS[0] /* light-violet */;
 }
 
 export function getAccent(preset: ThemePreset, accentId: string): AccentSwatch {
