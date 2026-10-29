@@ -56,6 +56,10 @@
 
 `tests/skill/excavator-view/page.mjs` 的 `explorerPage(html)` 改为读索引、用 `zlib.gunzipSync` 解开各块、按 D3 拼回，返回与原来相同形状的 `data`。现有断言因此不用改写；新测试用很小的 `PART_CHARS` 让切分在小夹具上发生。
 
+### D7 打包按行读知识图谱
+
+知识图谱的输入是 `knowledge-graph.jsonl`，产物写成 JSON 后能超过单串上限，它的 JSONL 文件也一样。核心存储（`readKnowledgeGraph`）已按块读行；打包里另有两处只取文件路径与事实摘要的读取（`sources.mjs` 的 `graphFilePaths`、`semantics.mjs` 的 `readGraphFacts`）原先把整个文件解码成一个字符串再按行切，文件超过上限时打包在这里失败（O4 实测）。两处改用 `jsonl-lines.mjs` 新增的 `bufferLines(bytes)`：在 `Buffer` 里逐个找换行，只解码每一行；切出的行与 `toString().split('\n')` 相同。其它产物（unused-code、hotspots、doc-map 等）是由 Node 写出的单个 JSON 文件，写出它们的一步已受同一上限约束，本变更不改它们的读取。
+
 ## Risks / Trade-offs
 
 - [首次打开某个视图要等解压] → 只解开该产物的块；38 MB 的压缩数据整体解开在秒级，单个视图更少。验收时记录打开时间。

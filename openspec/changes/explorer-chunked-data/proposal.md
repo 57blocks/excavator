@@ -22,7 +22,7 @@
 
 ## Impact
 
-- 打包：`skills/excavator-view/page-assembly.mjs`、`skills/excavator-view/pack.mjs`。
+- 打包：`skills/excavator-view/page-assembly.mjs`、`skills/excavator-view/pack.mjs`、新增 `skills/excavator-view/data-chunks.mjs`；按行读知识图谱的 `skills/excavator-view/sources.mjs`、`skills/excavator-view/semantics.mjs` 与 `skills/excavator/jsonl-lines.mjs`（design D7）。
 - 页面：`packages/explorer/src/offline/inlineData.ts`（读数据的唯一入口，调用方已是异步读取）。
 - 测试：`tests/skill/excavator-view/`（读回页面数据的辅助函数改为解开数据块）、`packages/explorer/src/offline/__tests__/inlineData.test.ts`。
 - 不涉及：产物格式、`/excavator-prd-report` 的报告页、其它 skill。
