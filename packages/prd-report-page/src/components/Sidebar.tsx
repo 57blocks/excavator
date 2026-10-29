@@ -3,6 +3,7 @@ import { featureHash, findingsHash } from '../lib/route';
 import type { Route } from '../lib/route';
 import type { Feature, PageData } from '../lib/types';
 import { StatusBadge } from './StatusBadge';
+import { ThemeSwitch } from './ThemeSwitch';
 
 interface Props {
   data: PageData;
@@ -34,6 +35,7 @@ export function Sidebar({ data, route, findingCounts, open, onNavigate }: Props)
         <div className="sidebar-head">
           <h2 className="sidebar-project">{data.project}</h2>
           <div className="sidebar-sub" title={data.sourceRevision}>{shortRevision(data.sourceRevision)}</div>
+          <div className="sidebar-theme"><ThemeSwitch /></div>
         </div>
         <div className="nav-group">
           <NavLink href="#/" current={route.name === 'overview'}><span className="grow">Overview</span></NavLink>
