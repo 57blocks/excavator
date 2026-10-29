@@ -1,9 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { KnowledgeGraph } from "@understand-anything/core/types";
-import { useDashboardStore } from "../../store";
+import { shownViewMode, useDashboardStore } from "../../store";
 import { resolveInitialTheme } from "../../themes/ThemeContext";
 
-// openspec: changes/explorer-view-defaults, design D3, D4 and D5.
+// openspec: changes/explorer-view-defaults, design D1, D3, D4 and D5.
 
 const domainGraph = { nodes: [], edges: [] } as unknown as KnowledgeGraph;
 
@@ -45,6 +45,16 @@ describe("what the page opens on", () => {
       tour: [],
     } as unknown as KnowledgeGraph);
     expect(useDashboardStore.getState().viewMode).toBe("domain");
+  });
+});
+
+describe("the highlighted mode", () => {
+  it("is the current mode while the graph is shown, and none while a product view is open", () => {
+    expect(shownViewMode(useDashboardStore.getState())).toBe("structural");
+    useDashboardStore.getState().openProductView("unused");
+    expect(shownViewMode(useDashboardStore.getState())).toBeNull();
+    useDashboardStore.getState().setViewMode("domain");
+    expect(shownViewMode(useDashboardStore.getState())).toBe("domain");
   });
 });
 

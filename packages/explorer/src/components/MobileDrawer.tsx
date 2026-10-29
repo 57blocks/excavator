@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { useDashboardStore } from "../store";
+import { shownViewMode, useDashboardStore } from "../store";
 import { useI18n } from "../contexts/I18nContext";
 import PersonaSelector from "./PersonaSelector";
 import DiffToggle from "./DiffToggle";
@@ -33,8 +33,8 @@ export default function MobileDrawer({
   const graph = useDashboardStore((s) => s.graph);
   const isKnowledgeGraph = useDashboardStore((s) => s.isKnowledgeGraph);
   const domainGraph = useDashboardStore((s) => s.domainGraph);
-  // Excavator: a mode button is highlighted only while the graph, not a product view, is shown (openspec: changes/explorer-view-defaults, design D1).
-  const shownMode = useDashboardStore((s) => (s.productView === null ? s.viewMode : null));
+  // Excavator: a mode button is highlighted only while the graph, not a product view, is shown.
+  const shownMode = useDashboardStore(shownViewMode);
   const setViewMode = useDashboardStore((s) => s.setViewMode);
   const { t } = useI18n();
 

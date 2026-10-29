@@ -1,7 +1,7 @@
 import { useEffect, useState, useMemo, lazy, Suspense } from "react";
 import { validateGraph } from "@understand-anything/core/schema";
 import type { GraphIssue } from "@understand-anything/core/schema";
-import { useDashboardStore } from "./store";
+import { shownViewMode, useDashboardStore } from "./store";
 import GraphView from "./components/GraphView";
 import DomainGraphView from "./components/DomainGraphView";
 import KnowledgeGraphView from "./components/KnowledgeGraphView";
@@ -249,8 +249,8 @@ function DashboardContent({
   const [sidebarTab, setSidebarTab] = useState<SidebarTab>("info");
   // Excavator: no first-visit onboarding overlay (openspec: changes/explorer-products, design D5).
   const viewMode = useDashboardStore((s) => s.viewMode);
-  // Excavator: a mode button is highlighted only while the graph, not a product view, is shown (openspec: changes/explorer-view-defaults, design D1).
-  const shownMode = useDashboardStore((s) => (s.productView === null ? s.viewMode : null));
+  // Excavator: a mode button is highlighted only while the graph, not a product view, is shown.
+  const shownMode = useDashboardStore(shownViewMode);
   const setViewMode = useDashboardStore((s) => s.setViewMode);
   const isKnowledgeGraph = useDashboardStore((s) => s.isKnowledgeGraph);
   const domainGraph = useDashboardStore((s) => s.domainGraph);

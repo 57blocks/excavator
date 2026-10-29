@@ -316,6 +316,14 @@ function layerResetIfChanged(
   };
 }
 
+/**
+ * Excavator: the mode the middle of the page shows, or null while a product view
+ * covers the graph; the Domain / Structural buttons highlight only this one
+ * (openspec: changes/explorer-view-defaults, design D1).
+ */
+export const shownViewMode = (s: Pick<DashboardStore, "productView" | "viewMode">): ViewMode | null =>
+  s.productView === null ? s.viewMode : null;
+
 export const useDashboardStore = create<DashboardStore>()((set, get) => ({
   graph: null,
   layerSource: "graph",
