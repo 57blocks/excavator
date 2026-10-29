@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { KnowledgeGraph } from "@understand-anything/core/types";
+import type { KnowledgeGraph } from "../../core/types";
 import { shownViewMode, useDashboardStore } from "../../store";
 import { resolveInitialTheme } from "../../themes/ThemeContext";
 
