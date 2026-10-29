@@ -56,8 +56,11 @@
  *
  * A product that is not there, cannot be read or was not packed gives no key (`products.json` always
  * exists and says which of the three it is), and the
- * copy shows its own empty state for it; `rows` says why, key by key. `diff-overlay.json`
- * and `config.json` have no product to read: they are not produced here.
+ * copy shows its own empty state for it; `rows` says why, key by key. `config.json` has no
+ * product to read: it is not produced here. `diff-overlay.json` is an optional input no skill
+ * writes yet: the pack reads `.excavator/diff-overlay.json` (openspec: changes/violet-theme-diff-overlay,
+ * design D4) and puts only `changedNodeIds`, `affectedNodeIds`, `label` and `description` in the key,
+ * with ids the graph lacks dropped and ids in both lists kept as changed only; both counts are in the row's reason.
  *
  * No `language` is written for a source: the copy's code viewer then derives it from the
  * file name, as it does for a source the server gave none for.
@@ -88,10 +91,9 @@ const PRODUCT_FILES = [
 ];
 
 /** Keys the offline page may carry that nothing in the products produces. */
-const NOT_PRODUCED = [
-  ['diff-overlay.json', 'no product holds a diff overlay'],
-  ['config.json', 'no product holds an explorer config'],
-];
+const NOT_PRODUCED = [['config.json', 'no product holds an explorer config']];
+
+export const DIFF_OVERLAY_KEY = 'diff-overlay.json';
 
 const READABLE = new Set(['included', 'different-revision']);
 
@@ -279,6 +281,52 @@ function productStates(products, snapshotRevision) {
   return { value: { snapshotRevision, products: states }, row: { key: PRODUCTS_KEY, status: 'included', reason: words.join('; ') } };
 }
 
+const isStringArray = (value) => Array.isArray(value) && value.every((item) => typeof item === 'string');
+const unique = (list) => [...new Set(list)];
+
+/** The first thing wrong with an overlay's shape, named by field; null when it is fine. */
+function overlayShapeProblem(overlay) {
+  for (const field of ['changedNodeIds', 'affectedNodeIds']) {
+    if (!isStringArray(overlay[field])) return `${DIFF_OVERLAY_KEY} ${field} is not an array of strings`;
+  }
+  for (const field of ['label', 'description']) {
+    if (overlay[field] !== undefined && typeof overlay[field] !== 'string') return `${DIFF_OVERLAY_KEY} ${field} is not a string`;
+  }
+  return null;
+}
+
+/**
+ * The optional diff overlay, reduced to what the page reads, with the row that says what was dropped.
+ * Ids the graph lacks are dropped and an id in both lists counts as changed only; both counts are always written.
+ */
+function readDiffOverlay(dataDir, graph, snapshotRevision) {
+  const read = readObjectFile(dataDir, DIFF_OVERLAY_KEY, DIFF_OVERLAY_KEY);
+  if (!read.value) return { row: read.row };
+  const problem = overlayShapeProblem(read.value);
+  if (problem) return { row: { key: DIFF_OVERLAY_KEY, status: 'unreadable', reason: problem } };
+  if (!graph) return { row: { key: DIFF_OVERLAY_KEY, status: 'unused', reason: 'there is no knowledge graph to hold it' } };
+
+  const known = new Set(graph.nodes.map((node) => node.id));
+  const changedInput = unique(read.value.changedNodeIds);
+  const affectedInput = unique(read.value.affectedNodeIds);
+  const missing = unique([...changedInput, ...affectedInput]).filter((id) => !known.has(id)).length;
+  const changed = changedInput.filter((id) => known.has(id));
+  const changedSet = new Set(changed);
+  const both = affectedInput.filter((id) => changedSet.has(id)).length;
+  const affected = affectedInput.filter((id) => known.has(id) && !changedSet.has(id));
+  const counts = `${changed.length} changed, ${affected.length} affected; ${missing} ids not in the graph; ${both} in both lists`;
+  if (changed.length === 0) return { row: { key: DIFF_OVERLAY_KEY, status: 'unused', reason: `no changed node is in the graph (${counts})` } };
+
+  const value = { changedNodeIds: changed, affectedNodeIds: affected };
+  if (read.value.label !== undefined) value.label = read.value.label;
+  if (read.value.description !== undefined) value.description = read.value.description;
+  const revision = read.value.provenance?.sourceRevision;
+  if (typeof revision === 'string' && revision !== snapshotRevision) {
+    return { value, row: { key: DIFF_OVERLAY_KEY, status: 'different-revision', reason: `${counts}; written for ${revision}, the snapshot is ${snapshotRevision}` } };
+  }
+  return { value, row: { key: DIFF_OVERLAY_KEY, status: 'included', reason: counts } };
+}
+
 /**
  * @param {{ root: string, dataDir: string, snapshotRevision: string, products: { entries: object[], payloads: {id: string, bytes: Buffer}[], graph: object|null }, sources: { manifest: object, payloads: {id: string, bytes: Buffer}[] } }} input
  *   `root` is the project root the pack was given, `snapshotRevision` the revision of the snapshot it read; `products` and `sources` are what `collectProducts` and
@@ -331,6 +379,10 @@ export function buildExplorerData({ root, dataDir, snapshotRevision, products, s
   const table = sources.manifest.requested ? sourceTable(sources) : null;
   rows.push(sourcesRow(sources));
   if (table !== null) data[SOURCES_KEY] = table;
+
+  const overlay = readDiffOverlay(dataDir, data[GRAPH_KEY], snapshotRevision);
+  rows.push(overlay.row);
+  if (overlay.value) data[DIFF_OVERLAY_KEY] = overlay.value;
 
   for (const [key, reason] of NOT_PRODUCED) rows.push({ key, status: 'not-produced', reason });
   return { data, rows };
