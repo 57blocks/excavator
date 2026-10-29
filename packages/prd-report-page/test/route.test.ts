@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { featureHash, findingsHash, parseHash, serializeRoute } from '../src/lib/route';
+import { featureHash, findingsHash, parseHash, scrollTarget, serializeRoute } from '../src/lib/route';
 import type { Route } from '../src/lib/route';
 
 describe('parseHash', () => {
@@ -57,6 +57,38 @@ describe('parseHash', () => {
   });
 });
 
+describe('the finding parameter of a feature route', () => {
+  it('reads and writes #/feature/<id>?finding=<fid>', () => {
+    expect(parseHash('#/feature/F2?finding=F2-1')).toEqual({ name: 'feature', id: 'F2', finding: 'F2-1' });
+    expect(serializeRoute({ name: 'feature', id: 'F2', finding: 'F2-1' })).toBe('#/feature/F2?finding=F2-1');
+    expect(featureHash('F2', 'F2-1')).toBe('#/feature/F2?finding=F2-1');
+    expect(featureHash('F2')).toBe('#/feature/F2');
+  });
+
+  it('treats an empty or missing finding as none', () => {
+    for (const hash of ['#/feature/F2?finding=', '#/feature/F2?', '#/feature/F2']) {
+      expect(parseHash(hash), hash).toEqual({ name: 'feature', id: 'F2' });
+      expect('finding' in (parseHash(hash) as object), hash).toBe(false);
+    }
+    expect(serializeRoute({ name: 'feature', id: 'F2', finding: '' })).toBe('#/feature/F2');
+  });
+
+  it('drops every other parameter', () => {
+    expect(parseHash('#/feature/F2?class=product&finding=F2-1&q=x')).toEqual({ name: 'feature', id: 'F2', finding: 'F2-1' });
+    expect(parseHash('#/feature/F2?class=product')).toEqual({ name: 'feature', id: 'F2' });
+  });
+
+  it('round-trips ids that need escaping, and a trailing slash before the query still parses', () => {
+    const route: Route = { name: 'feature', id: 'F 1/2?', finding: 'F 1/2?-3 & 4' };
+    expect(parseHash(serializeRoute(route))).toEqual(route);
+    expect(parseHash('#/feature/F2/?finding=F2-1')).toEqual({ name: 'feature', id: 'F2', finding: 'F2-1' });
+  });
+
+  it('keeps a bad feature escape as not-found even with a finding', () => {
+    expect(parseHash('#/feature/%E0%A4%A?finding=x')).toEqual({ name: 'not-found', hash: '#/feature/%E0%A4%A?finding=x' });
+  });
+});
+
 describe('serializeRoute', () => {
   it('writes the plain pages', () => {
     expect(serializeRoute({ name: 'overview' })).toBe('#/');
@@ -89,5 +121,31 @@ describe('serializeRoute', () => {
       { name: 'findings', filters: { class: 'all', priority: 'P0', feature: '', q: '' } },
     ];
     for (const route of routes) expect(parseHash(serializeRoute(route)), serializeRoute(route)).toEqual(route);
+  });
+});
+
+describe('scrollTarget', () => {
+  const own = [{ id: 'F3-1' }, { id: 'F3-2' }];
+
+  it('is the finding of the route when it is one of the feature\'s own', () => {
+    expect(scrollTarget({ name: 'feature', id: 'F3', finding: 'F3-2' }, own)).toBe('F3-2');
+  });
+
+  it('is empty for another feature\'s finding or an unknown id', () => {
+    expect(scrollTarget({ name: 'feature', id: 'F3', finding: 'F4-1' }, own)).toBe('');
+    expect(scrollTarget({ name: 'feature', id: 'F3', finding: 'nope' }, own)).toBe('');
+    expect(scrollTarget({ name: 'feature', id: 'F3', finding: 'F3-1' }, [])).toBe('');
+  });
+
+  it('is empty for a feature route without a finding', () => {
+    expect(scrollTarget({ name: 'feature', id: 'F3' }, own)).toBe('');
+    expect(scrollTarget({ name: 'feature', id: 'F3', finding: '' }, own)).toBe('');
+  });
+
+  it('is empty for a route that is not a feature page', () => {
+    expect(scrollTarget({ name: 'overview' }, own)).toBe('');
+    expect(scrollTarget({ name: 'coverage' }, own)).toBe('');
+    expect(scrollTarget(parseHash('#/findings?q=F3-1'), own)).toBe('');
+    expect(scrollTarget({ name: 'not-found', hash: '#/x?finding=F3-1' }, own)).toBe('');
   });
 });

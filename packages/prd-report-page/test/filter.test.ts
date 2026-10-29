@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { evidenceLocation, filterFindings, shortRevision } from '../src/lib/filter';
+import { evidenceLocation, facetCounts, filterFindings, shortRevision } from '../src/lib/filter';
 import { NO_FILTERS } from '../src/lib/route';
 import type { Finding } from '../src/lib/types';
 
@@ -85,5 +85,24 @@ describe('evidenceLocation and shortRevision', () => {
     expect(shortRevision('0123456789abcdef0123456789abcdef01234567')).toBe('01234567');
     expect(shortRevision('directory:synthetic')).toBe('directory:synthetic');
     expect(shortRevision('x'.repeat(40))).toBe(`${'x'.repeat(27)}...`);
+  });
+});
+
+describe('facetCounts: the number on each segment under the other filters', () => {
+  it('counts a class under the level, feature and text filters but not under the class filter itself', () => {
+    const counts = facetCounts(findings, { ...NO_FILTERS, class: 'technical', priority: 'P1' });
+    expect(counts.class).toEqual({ all: 2, product: 1, technical: 1 });
+  });
+
+  it('counts a level under the class, feature and text filters but not under the level filter itself', () => {
+    const counts = facetCounts(findings, { ...NO_FILTERS, class: 'product', priority: 'P0' });
+    expect(counts.priority).toEqual({ all: 3, P0: 0, P1: 1, P2: 1, unranked: 1 });
+    expect(facetCounts(findings, NO_FILTERS).priority).toEqual({ all: 5, P0: 1, P1: 2, P2: 1, unranked: 1 });
+  });
+
+  it('applies the feature and the text filter to both', () => {
+    const counts = facetCounts(findings, { ...NO_FILTERS, feature: 'F2', q: 'cancel' });
+    expect(counts.class).toEqual({ all: 2, product: 1, technical: 1 });
+    expect(counts.priority).toEqual({ all: 2, P0: 1, P1: 0, P2: 1, unranked: 0 });
   });
 });

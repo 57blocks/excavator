@@ -4,39 +4,39 @@
 
 @theme {
   /* Base */
-  --color-root: #0C0C0E;
-  --color-surface: #131316;
-  --color-elevated: #1C1C21;
-  --color-panel: #17171B;
+  --color-root: #EDEDEF;
+  --color-surface: #E2E2E6;
+  --color-elevated: #FFFFFF;
+  --color-panel: #F4F4F6;
 
   /* Accent */
-  --color-accent: #7C5CFF;
-  --color-accent-dim: #6A4DFF;
-  --color-accent-bright: #A48BFF;
+  --color-accent: #6A4DFF;
+  --color-accent-dim: #3B2DB5;
+  --color-accent-bright: #7C5CFF;
 
   /* Text */
-  --color-text-primary: #F3F3F5;
-  --color-text-secondary: #A3A3AD;
+  --color-text-primary: #0C0C0E;
+  --color-text-secondary: #4A4A52;
   --color-text-muted: #6C6C73;
 
   /* Borders */
-  --color-border-subtle: rgba(124, 92, 255, 0.12);
-  --color-border-medium: rgba(124, 92, 255, 0.25);
+  --color-border-subtle: rgba(106, 77, 255, 0.1);
+  --color-border-medium: rgba(106, 77, 255, 0.18);
 
   /* Node types */
-  --color-node-file: #4a7c9b;
-  --color-node-function: #5a9e6f;
-  --color-node-class: #8b6fb0;
-  --color-node-module: #c9a06c;
-  --color-node-concept: #b07a8a;
-  --color-node-config: #5eead4;
-  --color-node-document: #7dd3fc;
-  --color-node-service: #a78bfa;
-  --color-node-table: #6ee7b7;
-  --color-node-endpoint: #fdba74;
-  --color-node-pipeline: #fda4af;
-  --color-node-schema: #fcd34d;
-  --color-node-resource: #a5b4fc;
+  --color-node-file: #3a6a87;
+  --color-node-function: #488a5b;
+  --color-node-class: #755d99;
+  --color-node-module: #a88a56;
+  --color-node-concept: #966674;
+  --color-node-config: #14b8a6;
+  --color-node-document: #38bdf8;
+  --color-node-service: #8b5cf6;
+  --color-node-table: #34d399;
+  --color-node-endpoint: #fb923c;
+  --color-node-pipeline: #fb7185;
+  --color-node-schema: #facc15;
+  --color-node-resource: #818cf8;
 
   /* Knowledge node types */
   --color-node-article: #d4a574;
@@ -52,31 +52,31 @@
   --color-diff-affected-dim: rgba(212, 160, 48, 0.25);
 
   /* Glass */
-  --glass-bg: rgba(20, 20, 20, 0.8);
-  --glass-bg-heavy: rgba(20, 20, 20, 0.95);
-  --glass-border: rgba(124, 92, 255, 0.1);
-  --glass-border-heavy: rgba(124, 92, 255, 0.15);
+  --glass-bg: rgba(255, 255, 255, 0.8);
+  --glass-bg-heavy: rgba(255, 255, 255, 0.95);
+  --glass-border: rgba(106, 77, 255, 0.08);
+  --glass-border-heavy: rgba(106, 77, 255, 0.12);
 
   /* Scrollbar */
-  --scrollbar-thumb: rgba(124, 92, 255, 0.2);
-  --scrollbar-thumb-hover: rgba(124, 92, 255, 0.35);
+  --scrollbar-thumb: rgba(106, 77, 255, 0.2);
+  --scrollbar-thumb-hover: rgba(106, 77, 255, 0.35);
 
   /* Glow */
-  --glow-accent: rgba(124, 92, 255, 0.15);
-  --glow-accent-strong: rgba(124, 92, 255, 0.4);
-  --glow-accent-pulse: rgba(124, 92, 255, 0.6);
+  --glow-accent: rgba(106, 77, 255, 0.15);
+  --glow-accent-strong: rgba(106, 77, 255, 0.4);
+  --glow-accent-pulse: rgba(106, 77, 255, 0.6);
 
   /* Edges */
-  --color-edge: rgba(124, 92, 255, 0.3);
-  --color-edge-dim: rgba(124, 92, 255, 0.08);
-  --color-edge-dot: rgba(124, 92, 255, 0.15);
+  --color-edge: rgba(106, 77, 255, 0.3);
+  --color-edge-dim: rgba(106, 77, 255, 0.08);
+  --color-edge-dot: rgba(106, 77, 255, 0.15);
 
   /* Accent overlays */
-  --color-accent-overlay-bg: rgba(124, 92, 255, 0.05);
-  --color-accent-overlay-border: rgba(124, 92, 255, 0.25);
+  --color-accent-overlay-bg: rgba(106, 77, 255, 0.05);
+  --color-accent-overlay-border: rgba(106, 77, 255, 0.25);
 
   /* Kbd */
-  --kbd-bg: rgba(124, 92, 255, 0.1);
+  --kbd-bg: rgba(106, 77, 255, 0.1);
 
   /* Typography */
   --font-serif: 'DM Serif Display', Georgia, serif;

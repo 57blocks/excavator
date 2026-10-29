@@ -2,8 +2,8 @@ import { describe, it, expect } from "vitest";
 import { DEFAULT_THEME_CONFIG, PRESETS, getAccent, getPreset } from "../index.ts";
 
 describe("theme presets", () => {
-  it("defaults to dark-violet with the violet accent", () => {
-    expect(DEFAULT_THEME_CONFIG.presetId).toBe("dark-violet");
+  it("defaults to light-violet with the violet accent", () => {
+    expect(DEFAULT_THEME_CONFIG.presetId).toBe("light-violet");
     expect(DEFAULT_THEME_CONFIG.accentId).toBe("violet");
   });
 
@@ -23,8 +23,15 @@ describe("theme presets", () => {
     expect(getAccent(p, "violet").accent).toBe("#6A4DFF");
   });
 
-  it("falls back to dark-violet for an unknown id", () => {
-    expect(getPreset("unknown").id).toBe("dark-violet");
+  it("falls back to light-violet for an unknown id", () => {
+    expect(getPreset("unknown").id).toBe("light-violet");
+  });
+
+  it("lists light-violet before dark-violet, and the default preset has the default accent", () => {
+    const ids = PRESETS.map((p) => p.id);
+    expect(ids.indexOf("light-violet")).toBeLessThan(ids.indexOf("dark-violet"));
+    const preset = getPreset(DEFAULT_THEME_CONFIG.presetId);
+    expect(preset.accentSwatches.map((s) => s.id)).toContain(DEFAULT_THEME_CONFIG.accentId);
   });
 
   it("keeps every earlier preset available", () => {

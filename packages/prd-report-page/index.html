@@ -7,7 +7,7 @@
     <script>
       // Set the remembered theme before the first paint; the app applies it again on start. Storage may throw.
       (function () {
-        var theme = 'dark';
+        var theme = 'light';
         try {
           var stored = window.localStorage.getItem('excavator-prd-report-theme');
           if (stored === 'light' || stored === 'dark') theme = stored;

@@ -2,19 +2,20 @@ import { evidenceLocation } from '../lib/filter';
 import { featureHash } from '../lib/route';
 import type { PageData } from '../lib/types';
 import { Markdown } from './Markdown';
+import { SectionHeading } from './SectionHeading';
 
 /** `#/coverage`: the two tables the script wrote, the unassigned entrypoints, the frameworks without patterns and the failed features. */
 export function CoveragePage({ data }: { data: PageData }) {
   const failed = data.features.filter((feature) => feature.status === 'failed');
   return (
-    <div className="page wide" data-view="coverage">
+    <div className="page" data-view="coverage">
       <h1>Coverage</h1>
       <p className="lede">What the run covered, from the tables the script wrote.</p>
 
       <Markdown source={data.tables.coverage} idPrefix="coverage" />
       <Markdown source={data.tables.verification} idPrefix="verification-table" />
 
-      <h2 className="section">Entrypoints not assigned to a feature ({data.unassigned.length})</h2>
+      <SectionHeading id="unassigned" name="Unassigned entrypoints" label={`Entrypoints not assigned to a feature (${data.unassigned.length})`} />
       {data.unassigned.length === 0 ? <div className="empty">Every entrypoint belongs to a feature.</div> : (
         <div className="table-scroll"><table data-table="unassigned">
           <thead><tr><th>Entrypoint</th><th>Location</th><th>Kind</th><th>Framework</th></tr></thead>
@@ -24,12 +25,12 @@ export function CoveragePage({ data }: { data: PageData }) {
         </table></div>
       )}
 
-      <h2 className="section">Frameworks without entrypoint patterns ({data.uncovered.length})</h2>
+      <SectionHeading id="uncovered" name="Frameworks without patterns" label={`Frameworks without entrypoint patterns (${data.uncovered.length})`} />
       {data.uncovered.length === 0 ? <div className="empty">Every detected framework has entrypoint patterns.</div> : (
         <div className="chips" data-list="uncovered">{data.uncovered.map((name) => <span className="chip" key={name}>{name}</span>)}</div>
       )}
 
-      <h2 className="section">Failed features ({failed.length})</h2>
+      <SectionHeading id="failed" name="Failed features" label={`Failed features (${failed.length})`} />
       {failed.length === 0 ? <div className="empty">No feature failed.</div> : (
         <div className="table-scroll"><table data-table="failed">
           <thead><tr><th>Feature</th><th>Step</th><th>Reasons</th></tr></thead>

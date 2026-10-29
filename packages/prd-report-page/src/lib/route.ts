@@ -1,6 +1,6 @@
 /**
  * The page's routes live in the URL fragment (design D5): `#/`,
- * `#/feature/<id>`, `#/findings?class=<c>&priority=<p>&feature=<id>&q=<text>` and
+ * `#/feature/<id>` (optionally `?finding=<finding id>`, the card to scroll to), `#/findings?class=<c>&priority=<p>&feature=<id>&q=<text>` and
  * `#/coverage`. Parsing never throws: a fragment that names no route is
  * `not-found`, and a filter value that is not one of the known ones is
  * dropped, so a shared link with a typo still opens the page.
@@ -21,7 +21,7 @@ export interface FindingsFilters {
 
 export type Route =
   | { name: 'overview' }
-  | { name: 'feature'; id: string }
+  | { name: 'feature'; id: string; finding?: string }
   | { name: 'findings'; filters: FindingsFilters }
   | { name: 'coverage' }
   | { name: 'not-found'; hash: string };
@@ -53,7 +53,10 @@ export function parseHash(hash: string): Route {
   if (rest.length === 1 && rest[0] === 'findings') return { name: 'findings', filters: parseFilters(query) };
   if (rest.length === 2 && rest[0] === 'feature') {
     const id = decode(rest[1]);
-    if (id !== null && id !== '') return { name: 'feature', id };
+    if (id !== null && id !== '') {
+      const finding = new URLSearchParams(query).get('finding');
+      return finding === null || finding === '' ? { name: 'feature', id } : { name: 'feature', id, finding };
+    }
   }
   return { name: 'not-found', hash };
 }
@@ -77,8 +80,10 @@ export function serializeRoute(route: Route): string {
       return '#/';
     case 'coverage':
       return '#/coverage';
-    case 'feature':
-      return `#/feature/${encodeURIComponent(route.id)}`;
+    case 'feature': {
+      const base = `#/feature/${encodeURIComponent(route.id)}`;
+      return route.finding === undefined || route.finding === '' ? base : `${base}?${new URLSearchParams({ finding: route.finding }).toString()}`;
+    }
     case 'findings': {
       const params = new URLSearchParams();
       if (route.filters.class !== 'all') params.set('class', route.filters.class);
@@ -93,5 +98,16 @@ export function serializeRoute(route: Route): string {
   }
 }
 
-export const featureHash = (id: string): string => serializeRoute({ name: 'feature', id });
+/** The fragment of a feature page; `finding` names the card the page scrolls to. */
+export const featureHash = (id: string, finding?: string): string => serializeRoute({ name: 'feature', id, finding });
 export const findingsHash = (filters: Partial<FindingsFilters> = {}): string => serializeRoute({ name: 'findings', filters: { ...NO_FILTERS, ...filters } });
+
+/**
+ * The finding card a route scrolls to (design D5): the route's `finding` when it
+ * is one of the feature's own findings, else '' (no scroll). A non-feature
+ * route, a missing or empty `finding`, and another feature's finding all give ''.
+ */
+export function scrollTarget(route: Route, findingsOfFeature: readonly { id: string }[]): string {
+  if (route.name !== 'feature' || route.finding === undefined || route.finding === '') return '';
+  return findingsOfFeature.some((item) => item.id === route.finding) ? route.finding : '';
+}
