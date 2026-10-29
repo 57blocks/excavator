@@ -8,10 +8,16 @@
  * It only replaces those two markers; every other byte is the template's. A
  * template that was not built is an error that says to build it.
  *
+ * The data goes in as an index block and gzip+base64 parts (data-chunks.mjs;
+ * openspec: changes/explorer-chunked-data, design D2-D5), and the page is joined
+ * from Buffers, so no string of the page's size is ever made.
+ *
  * Deterministic: keys in the order the caller built them, no pack time.
  */
 
 import { readFileSync } from 'node:fs';
+
+import { chunkExplorerData } from './data-chunks.mjs';
 
 /** No connection of any kind, scripts and styles only inline, images and fonts only data: URLs (the inlined fonts), workers only blob: URLs (the graph layout's inline worker). */
 export const CONTENT_SECURITY_POLICY = [
@@ -33,8 +39,7 @@ const DATA_MARKER = '<!-- xv:data -->';
 /** Where the built template is, relative to the plugin root. */
 export const EXPLORER_TEMPLATE_PATH = 'packages/explorer/dist/explorer.html';
 
-/** The global the explorer copy reads its data from. */
-export const EXPLORER_DATA_GLOBAL = '__EXCAVATOR_EXPLORER_DATA__';
+export const INDEX_BLOCK_ID = 'xv-explorer-index';
 
 /** JSON for a `<script type="application/json">`: every `<` is written as a unicode escape, so no content can close the element. */
 export function jsonForScript(value) {
@@ -53,28 +58,32 @@ function readTemplate(templatePath, label) {
   }
 }
 
-/** The template with the policy and `dataHtml` at its two markers; every other byte is the template's. */
-function fillTemplate(templatePath, label, dataHtml) {
+/** The template as Buffers with the policy and `dataPieces` at its two markers; every other byte is the template's. */
+function fillTemplate(templatePath, label, dataPieces) {
   const html = readTemplate(templatePath, label);
   for (const marker of [CSP_MARKER, DATA_MARKER]) {
     if (html.split(marker).length !== 2) throw new Error(`the ${label} template ${templatePath} must contain ${marker} exactly once; run \`pnpm build\` to rebuild it`);
   }
   const csp = `<meta http-equiv="Content-Security-Policy" content="${CONTENT_SECURITY_POLICY}">`;
-  return Buffer.from(html.replace(CSP_MARKER, () => csp).replace(DATA_MARKER, () => dataHtml), 'utf-8');
+  const [before, after] = html.replace(CSP_MARKER, () => csp).split(DATA_MARKER);
+  return Buffer.concat([Buffer.from(before, 'utf-8'), ...dataPieces.map((piece) => (typeof piece === 'string' ? Buffer.from(piece, 'utf-8') : piece)), Buffer.from(after, 'utf-8')]);
 }
 
 /**
- * The explorer page: the data object as one JSON block (parsed by a one-line script, so a key such as
- * `__proto__` stays a key and no content can close the element), then the pack's manifest block
- * `xv-explorer-manifest`, which the reply reads.
- * @param {{ templatePath: string, data: object, manifest: object }} input
+ * The explorer page: the index block `xv-explorer-index`, one `xv-part-<n>` block per
+ * compressed part of the data, then the pack's manifest block `xv-explorer-manifest`, which the reply reads.
+ * The parts are base64, so no content can close the element.
+ * @param {{ templatePath: string, data?: object, chunks?: ReturnType<typeof chunkExplorerData>, manifest: object, partChars?: number }} input
+ *   `chunks` is `chunkExplorerData(data)` when the caller already made it (the pack does, for the manifest's sizes);
+ *   `partChars` replaces the part limit (the tests use a tiny one)
  * @returns {Buffer} the HTML file
  */
-export function assembleExplorerPage({ templatePath, data, manifest }) {
-  const blocks = [
-    `<script type="application/json" id="xv-explorer-data">${jsonForScript(data)}</script>`,
-    `<script>window.${EXPLORER_DATA_GLOBAL}=JSON.parse(document.getElementById("xv-explorer-data").textContent);</script>`,
-    `<script type="application/json" id="xv-explorer-manifest">${jsonForScript(manifest)}</script>`,
-  ];
-  return fillTemplate(templatePath, 'explorer', blocks.join('\n'));
+export function assembleExplorerPage({ templatePath, data, chunks, manifest, partChars }) {
+  const { index, parts } = chunks ?? chunkExplorerData(data, { partChars });
+  const pieces = [`<script type="application/json" id="${INDEX_BLOCK_ID}">${jsonForScript(index)}</script>\n`];
+  for (const part of parts) {
+    pieces.push(`<script type="application/octet-stream" id="${part.id}">`, part.base64, '</script>\n');
+  }
+  pieces.push(`<script type="application/json" id="xv-explorer-manifest">${jsonForScript(manifest)}</script>`);
+  return fillTemplate(templatePath, 'explorer', pieces);
 }

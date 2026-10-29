@@ -10,7 +10,6 @@
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, dirname, join } from 'node:path';
-import vm from 'node:vm';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
 import { writeKnowledgeGraphAtomic } from '../../../skills/excavator/knowledge-graph-store.mjs';
@@ -18,6 +17,7 @@ import { CONTENT_SECURITY_POLICY } from '../../../skills/excavator-view/page-ass
 import { packProject } from '../../../skills/excavator-view/pack.mjs';
 import { collectProducts } from '../../../skills/excavator-view/products.mjs';
 import { docMapProduct, domainGraph, hotspotsProduct, makeGitProject, semanticCache, semanticEntry, semanticGraph, sourceManifest, tourProduct, unusedProduct, writeProduct } from './fixture.mjs';
+import { blockText, explorerPage, pageContent } from './page.mjs';
 import { FIXTURE_TEMPLATE, writeTemplate } from './plugin-fixture.mjs';
 
 const DIGEST = 'e'.repeat(64);
@@ -81,18 +81,11 @@ function writeGraphTo(root, value) {
   writeKnowledgeGraphAtomic(path, value);
 }
 const writeGraph = (value = graph()) => writeGraphTo(project.root, value);
-const BLOCK = (id) => new RegExp(`<script type="application/json" id="${id}">([\\s\\S]*?)</script>`);
-
-/** Pack and read the explorer page back the way the browser would: the data block, the manifest block, the script that exposes the data. */
+/** Pack and read the explorer page back the way the browser would: the index and the compressed parts, and the manifest block. */
 function pack(options) {
   const result = packProject(project.root, { explorerTemplate: templatePath, ...options });
   const html = readFileSync(result.out, 'utf-8');
-  return {
-    result,
-    html,
-    data: JSON.parse(BLOCK('xv-explorer-data').exec(html)[1]),
-    manifest: JSON.parse(BLOCK('xv-explorer-manifest').exec(html)[1]),
-  };
+  return { result, html, ...explorerPage(html) };
 }
 
 describe('the data keeps the content of the products', () => {
@@ -200,7 +193,7 @@ describe('the semantic product of a full analysis', () => {
     expect(nodeOf(data, 'function:src/a.js:run')).toMatchObject({ summary: '', tags: ['t'] });
     expect(nodeOf(data, 'file:src/b.js')).toMatchObject({ summary: 'b.js summary', tags: ['t'] });
     expect(nodeOf(data, 'function:src/b.js:load')).toMatchObject({ summary: 'load summary', tags: ['t'] });
-    expect(html).not.toContain('retries forever');
+    expect(pageContent(html)).not.toContain('retries forever');
     expect(manifest.rows.find((row) => row.key === 'semantics')).toEqual({ key: 'semantics', status: 'merged', reason: "3 nodes; 0 entries for ids the graph lacks; 1 layers replace the graph's" });
   });
 
@@ -213,14 +206,14 @@ describe('the semantic product of a full analysis', () => {
     writeGraph(contradictedGraph());
     let packed = pack();
     expect(nodeOf(packed.data, 'function:src/b.js:load')).toMatchObject({ summary: '', verification: 'contradicted' });
-    expect(packed.html).not.toContain('retries forever');
+    expect(pageContent(packed.html)).not.toContain('retries forever');
 
     writeFull({ entries: { 'file:src/a.js': { summary: 'Runs the job.', tags: [], semanticSourceHash: HASH_A } }, layers: [] });
     writeGraph(contradictedGraph());
     packed = pack();
     expect(nodeOf(packed.data, 'function:src/b.js:load')).toMatchObject({ summary: '', verification: 'contradicted' });
     expect(nodeOf(packed.data, 'file:src/a.js')).toMatchObject({ summary: 'Runs the job.' });
-    expect(packed.html).not.toContain('retries forever');
+    expect(pageContent(packed.html)).not.toContain('retries forever');
   });
 
   it('carries each entry\'s verdict onto its node, and writes none for an entry without one', () => {
@@ -611,29 +604,36 @@ describe('the explorer page', () => {
     writeGraph();
     const { html } = pack();
     expect(html).toContain(`<meta http-equiv="Content-Security-Policy" content="${CONTENT_SECURITY_POLICY}">`);
-    const rest = html.replace(/<meta http-equiv="Content-Security-Policy"[^>]*>/, '<!-- xv:csp -->').replace(/<script type="application\/json" id="xv-explorer-data">[\s\S]*<script type="application\/json" id="xv-explorer-manifest">[^<]*<\/script>/, '<!-- xv:data -->');
+    const rest = html.replace(/<meta http-equiv="Content-Security-Policy"[^>]*>/, '<!-- xv:csp -->').replace(/<script type="application\/json" id="xv-explorer-index">[\s\S]*<script type="application\/json" id="xv-explorer-manifest">[^<]*<\/script>/, '<!-- xv:data -->');
     expect(rest).toBe(FIXTURE_TEMPLATE);
   });
 
-  it('writes every < of the data as an escape, so no content can close the element', () => {
-    writeGraph(graph({ nodes: [node('file:src/a.js', 'file', '</script><b>', { filePath: 'src/a.js' })], edges: [], layers: [], tour: [] }));
-    const { html, data } = pack();
-    expect(BLOCK('xv-explorer-data').exec(html)[1]).not.toContain('<');
-    expect(data['knowledge-graph.json'].nodes[0].name).toBe('</script><b>');
+  it('writes the index with every < as an escape and the parts as base64, so no content can close the element', () => {
+    const odd = makeGitProject({ 'src/a<b>.js': 'x = 1;\n' });
+    try {
+      const { path } = writeTemplate();
+      writeGraphTo(odd.root, graph({ nodes: [node('file:src/a<b>.js', 'file', '</script><b>', { filePath: 'src/a<b>.js' })], edges: [], layers: [], tour: [] }));
+      const result = packProject(odd.root, { explorerTemplate: path });
+      const html = readFileSync(result.out, 'utf-8');
+      expect(blockText(html, 'xv-explorer-index')).not.toContain('<');
+      expect(html).not.toContain('</script><b>');
+      const { data } = explorerPage(html);
+      expect(data['knowledge-graph.json'].nodes[0].name).toBe('</script><b>');
+      expect(data.sources['src/a<b>.js'].content).toBe('x = 1;\n');
+    } finally {
+      odd.cleanup();
+    }
   });
 
-  it('exposes the data object on the page global the copy reads, with every key an own property', () => {
+  it('keeps every key of the source table an own key, whatever its name', () => {
     const odd = makeGitProject(Object.fromEntries([['__proto__', 'x = 1;\n'], ['src/a.js', 'a\n']]));
     try {
       const { path } = writeTemplate();
       writeGraphTo(odd.root, graph({ nodes: [node('file:__proto__', 'file', '__proto__', { filePath: '__proto__' })], edges: [], layers: [], tour: [] }));
       const result = packProject(odd.root, { explorerTemplate: path });
-      const html = readFileSync(result.out, 'utf-8');
-      const script = /<script>(window\.__EXCAVATOR_EXPLORER_DATA__=[^<]*)<\/script>/.exec(html)[1];
-      const dataText = BLOCK('xv-explorer-data').exec(html)[1];
-      const window = {};
-      vm.runInNewContext(script, { window, JSON, document: { getElementById: (id) => (id === 'xv-explorer-data' ? { textContent: dataText } : null) } });
-      expect(Object.hasOwn(window.__EXCAVATOR_EXPLORER_DATA__.sources, '__proto__')).toBe(true);
+      const { data } = explorerPage(readFileSync(result.out, 'utf-8'));
+      expect(Object.hasOwn(data.sources, '__proto__')).toBe(true);
+      expect(data.sources.__proto__.content).toBe('x = 1;\n');
     } finally {
       odd.cleanup();
     }
@@ -672,7 +672,7 @@ describe('the diff overlay input', () => {
     });
     expect(Object.keys(data[OVERLAY_KEY]).sort()).toEqual(['affectedNodeIds', 'changedNodeIds', 'description', 'label']);
     expect(rowOf(manifest)).toMatchObject({ status: 'included', reason: expect.stringContaining('3 changed, 1 affected; 0 ids not in the graph; 0 in both lists') });
-    expect(html).toContain('working tree changes');
+    expect(pageContent(html)).toContain('working tree changes');
   });
 
   it('leaves out label and description when the input has none', () => {

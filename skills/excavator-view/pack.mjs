@@ -29,8 +29,8 @@
  * `.excavator/` except the page.
  *
  * The page is the template `packages/explorer` builds (`pnpm build`), with the policy,
- * the data and the manifest inserted. Without a built template or validator the command
- * fails and says so, and writes nothing.
+ * the data (an index block and gzip+base64 parts, data-chunks.mjs) and the manifest inserted.
+ * Without a built template or validator the command fails and says so, and writes nothing.
  *
  * Contract: openspec/specs/report-viewer/spec.md
  */
@@ -41,6 +41,7 @@ import { fileURLToPath } from 'node:url';
 
 import { assertDataDir, bindProjectRoot } from '../excavator/project-paths.mjs';
 import { resolveSourceSnapshot } from '../excavator/source-snapshot.mjs';
+import { chunkExplorerData } from './data-chunks.mjs';
 import { buildExplorerData, GRAPH_KEY } from './explorer-data.mjs';
 import { countIssues, loadValidateGraph, VALIDATOR_PATH } from './explorer-validate.mjs';
 import { assembleExplorerPage, EXPLORER_TEMPLATE_PATH } from './page-assembly.mjs';
@@ -98,11 +99,13 @@ function resultProduct(entry) {
  * The page's data and its manifest (what the copy is given, and what the reply says about it:
  * each product's state, the embedded source count and the issue count).
  */
-function packExplorer({ root, dataDir, snapshotRevision, products, sources, templatePath, validatorPath }) {
+function packExplorer({ root, dataDir, snapshotRevision, products, sources, templatePath, validatorPath, partChars }) {
   const validateGraph = loadValidateGraph(validatorPath);
   const { data, rows } = buildExplorerData({ root, dataDir, snapshotRevision, products, sources });
   const issues = data[GRAPH_KEY] ? countIssues(validateGraph, data[GRAPH_KEY]) : null;
-  const keys = Object.fromEntries(Object.entries(data).map(([key, value]) => [key, Buffer.byteLength(JSON.stringify(value))]));
+  // The data is cut into compressed parts first: no value is ever written as one string, and the part sizes give each key's JSON size.
+  const chunks = chunkExplorerData(data, { partChars });
+  const keys = chunks.keyBytes;
   const manifest = {
     explorer: EXPLORER_MANIFEST_VERSION,
     products: products.entries.map(({ name, status }) => ({ name, status })),
@@ -111,14 +114,15 @@ function packExplorer({ root, dataDir, snapshotRevision, products, sources, temp
     keys,
     rows,
   };
-  return { page: assembleExplorerPage({ templatePath, data, manifest }), issues, keys, rows };
+  return { page: assembleExplorerPage({ templatePath, chunks, manifest }), issues, keys, rows };
 }
 
 /**
  * Pack the project and write the page.
  * @param {string} rootArg
- * @param {{ noSource?: boolean, out?: string|null, explorerTemplate?: string, explorerValidator?: string }} [options]
- *   `explorerTemplate` replaces the built template, `explorerValidator` the built validator (the tests use small ones)
+ * @param {{ noSource?: boolean, out?: string|null, explorerTemplate?: string, explorerValidator?: string, partChars?: number }} [options]
+ *   `explorerTemplate` replaces the built template, `explorerValidator` the built validator, `partChars` the limit of
+ *   characters in one data part (the tests use small ones)
  */
 export function packProject(rootArg, options = {}) {
   const noSource = options.noSource === true;
@@ -139,6 +143,7 @@ export function packProject(rootArg, options = {}) {
     sources,
     templatePath: options.explorerTemplate ?? pluginPath(EXPLORER_TEMPLATE_PATH),
     validatorPath: options.explorerValidator ?? pluginPath(VALIDATOR_PATH),
+    partChars: options.partChars,
   });
   writeAtomic(out, explorer.page);
 

@@ -17,7 +17,7 @@ import { collectSources, referencedPaths } from '../../../skills/excavator-view/
 import {
   docMapProduct, GRAPH_FORMAT, hotspotsProduct, makeGitProject, makeMultiRepoProject, unusedProduct, writeProduct,
 } from './fixture.mjs';
-import { explorerPage } from './page.mjs';
+import { explorerPage, pageContent } from './page.mjs';
 import { makePluginRoot, writeTemplate } from './plugin-fixture.mjs';
 
 // The pack runs on a small template, so these tests need no build of packages/explorer.
@@ -169,7 +169,7 @@ describe('--no-source', () => {
     expect(source.counts).toEqual({ embedded: 0, binary: 0, tooLarge: 0, notInSnapshot: 0, notEmbeddedOnRequest: 4 });
     expect(Object.values(source.files).every((f) => f.bucket === 'notEmbeddedOnRequest' && f.bytes === undefined)).toBe(true);
     expect(page.data).not.toHaveProperty('sources');
-    expect(html).not.toContain(MARKER);
+    expect(pageContent(html)).not.toContain(MARKER);
   });
 
   it('is the same on the command line, and embeds the marker only without the flag', () => {
@@ -272,7 +272,7 @@ describe('the files of the graph', () => {
     const { html, page } = pack(project.root, { noSource: true });
     expect(page.manifest.source.counts).toEqual({ embedded: 0, binary: 0, tooLarge: 0, notInSnapshot: 0, notEmbeddedOnRequest: 4 });
     expect(page.data).not.toHaveProperty('sources');
-    expect(html).not.toContain(MARKER);
+    expect(pageContent(html)).not.toContain(MARKER);
   });
 });
 

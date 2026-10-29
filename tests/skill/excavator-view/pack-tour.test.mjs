@@ -14,7 +14,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { packProject } from '../../../skills/excavator-view/pack.mjs';
 import { collectProducts } from '../../../skills/excavator-view/products.mjs';
 import { factGraphJsonl, makeGitProject, tourProduct, writeProduct } from './fixture.mjs';
-import { explorerPage } from './page.mjs';
+import { explorerPage, pageContent } from './page.mjs';
 import { writeTemplate } from './plugin-fixture.mjs';
 
 const DIGEST = 'c'.repeat(64);
@@ -87,7 +87,7 @@ describe('tour product', () => {
     expect(payload).toEqual({ contentLanguage: 'en', steps: written.steps, removed: written.removed, gaps: written.gaps, counts: written.counts });
     expect(payloadText(packed, 'tour')).not.toMatch(/excavator-tour\/1|sourceRevision|factDigest|candidatesNote/);
     // The extra field of the file never reaches the page.
-    expect(packed.html).not.toContain('not for the page');
+    expect(pageContent(packed.html)).not.toContain('not for the page');
   });
 
   it('writes the same bytes twice', () => {
@@ -114,8 +114,8 @@ describe('tour product', () => {
     expect(payload).toEqual({ contentLanguage: 'en', gaps: written.gaps, counts: written.counts });
     expect(payloadText(packed, 'tour')).not.toContain(written.steps[0].title);
     expect(payloadText(packed, 'tour')).not.toContain(written.removed[0].text);
-    expect(packed.html).not.toContain(written.steps[0].title);
-    expect(packed.html).not.toContain(written.removed[0].text);
+    expect(pageContent(packed.html)).not.toContain(written.steps[0].title);
+    expect(pageContent(packed.html)).not.toContain(written.removed[0].text);
   });
 
   it('is a different revision, never assumed current, when the tour or the graph records no digest', () => {

@@ -10,7 +10,7 @@ import { collectProducts } from '../../../skills/excavator-view/products.mjs';
 import {
   docMapProduct, graphJsonl, hotspotsProduct, makeGitProject, sourceManifest, unusedProduct, writeProduct,
 } from './fixture.mjs';
-import { explorerPage } from './page.mjs';
+import { explorerIndex, explorerPage, partTexts } from './page.mjs';
 import { FIXTURE_TEMPLATE, makePluginRoot, repoRoot, writeTemplate } from './plugin-fixture.mjs';
 
 
@@ -329,11 +329,13 @@ describe('the page', () => {
     writeProduct(project.root, 'doc-map.json', { ...docMapProduct(hostile[0]), units: [{ document: hostile[1], id: 'x', title: hostile[0], quote: hostile[3], line: 1, page: null, code: null }] });
     const { html, data } = pack();
 
-    // The template's scripts, the data block with the script that exposes it, and the manifest block: nothing of the content opened or closed one.
+    // The template's scripts, the index block, one block per part and the manifest block: nothing of the content opened or closed one.
     const opened = html.match(/<script\b/gi).length;
     const closed = html.match(/<\/script>/gi).length;
     const templateScripts = FIXTURE_TEMPLATE.match(/<script\b/g).length;
-    expect(opened).toBe(templateScripts + 3);
+    const parts = html.match(/id="xv-part-\d+"/g).length;
+    expect(parts).toBeGreaterThan(0);
+    expect(opened).toBe(templateScripts + 2 + parts);
     expect(closed).toBe(opened);
     expect(html).not.toContain('<script>alert');
     expect(html).not.toContain('<img');
@@ -346,9 +348,8 @@ describe('the page', () => {
   it('keeps non-ASCII text intact', () => {
     const text = String.fromCharCode(0x4e2d, 0x6587, 0x20, 0xe9, 0x20, 0xd83d, 0xde00);
     writeProduct(project.root, 'knowledge-graph.jsonl', graphJsonl({ name: text }));
-    const { html, data } = pack();
+    const { data } = pack();
     expect(data['knowledge-graph.json'].project.name).toBe(text);
-    expect(html).toContain(text);
   });
 
   it('writes nothing under .excavator except the page', () => {
@@ -430,7 +431,8 @@ describe('assembleExplorerPage and the template', () => {
     withTemplate(FIXTURE_TEMPLATE, (path) => {
       const html = assembleExplorerPage(input(path)).toString('utf-8');
       expect(html).toContain('<meta http-equiv="Content-Security-Policy"');
-      expect(html).toContain('id="xv-explorer-data">{"a":1}</script>');
+      expect(html).toContain('id="xv-explorer-index">{"version":1,"files":{"a":{"value":0}}}</script>');
+      expect(explorerPage(html).data).toEqual({ a: 1 });
       expect(html).toContain('id="xv-explorer-manifest">{"b":2}</script>');
     });
   });

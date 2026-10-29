@@ -3,10 +3,11 @@
  *
  * Builds the data object of `.excavator/explorer.html` (openspec: changes/
  * viewer-explorer, design D4). The explorer copy fetched six data files and a
- * source file from a dev server; the offline page reads one object from
- * `window.__EXCAVATOR_EXPLORER_DATA__` instead, with the original file names as
- * keys and the sources in a table (documented in `packages/explorer/src/offline/
- * inlineData.ts`). Only the shape changes here, never the content:
+ * source file from a dev server; the offline page reads one object instead, with
+ * the original file names as keys and the sources in a table (documented in
+ * `packages/explorer/src/offline/inlineData.ts`). `page-assembly.mjs` writes that
+ * object into the page as compressed parts (`data-chunks.mjs`); it is the same
+ * object when read back. Only the shape changes here, never the content:
  *
  *   knowledge-graph.json  the header's fields and every node, edge, layer, tour step, gap and
  *                         the coverage record of `knowledge-graph.jsonl`, joined back into one graph
