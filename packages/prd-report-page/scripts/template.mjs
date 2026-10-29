@@ -22,14 +22,19 @@ const CHARSET_WINDOW = 1024;
 const CHARSET_META = /<meta\s+charset=(?:"[^"]*"|'[^']*'|[^\s>]+)\s*\/?>/i;
 const ENTRY_NAME = 'index.html';
 
-/** The faces the page uses: Inter and JetBrains Mono, as in the explorer, in the Latin subsets and the weights the page sets. */
-export const PAGE_FONTS = FONT_REQUESTS
-  .filter((request) => request.pkg !== '@fontsource/dm-serif-display')
-  .map((request) => ({
-    pkg: request.pkg,
-    weights: request.pkg === '@fontsource/inter' ? [400, 500, 600] : [400, 500],
-    subsets: ['latin', 'latin-ext'],
-  }));
+/** Weights the page sets per face: DM Serif Display has one, Inter three, JetBrains Mono two. */
+const PAGE_WEIGHTS = /** @type {Record<string, number[]>} */ ({
+  '@fontsource/dm-serif-display': [400],
+  '@fontsource/inter': [400, 500, 600],
+  '@fontsource/jetbrains-mono': [400, 500],
+});
+
+/** The faces the page uses, as in the explorer (DM Serif Display headings, Inter text, JetBrains Mono code), in the Latin subsets and the weights the page sets. */
+export const PAGE_FONTS = FONT_REQUESTS.map((request) => ({
+  pkg: request.pkg,
+  weights: PAGE_WEIGHTS[request.pkg],
+  subsets: ['latin', 'latin-ext'],
+}));
 
 /** Packages the template must name: the ones the page certainly bundles. */
 const REQUIRED_PACKAGES = ['react', 'react-dom', 'react-markdown', 'remark-gfm', 'rehype-raw', 'rehype-sanitize', 'mermaid', ...PAGE_FONTS.map((font) => font.pkg)];

@@ -7,12 +7,44 @@ type Rendered = { state: 'pending' } | { state: 'done'; svg: string } | { state:
 /** Mermaid renders one diagram at a time: it builds each in a shared scratch element. */
 let queue: Promise<unknown> = Promise.resolve();
 
+/** The violet palette for mermaid's `base` theme, one set per page theme; the diagram box behind it is the page's elevated surface. */
+function themeVariables(dark: boolean): Record<string, string | boolean> {
+  return dark
+    ? {
+        darkMode: true, background: '#1c1c21', fontFamily: 'Inter, system-ui, sans-serif',
+        primaryColor: '#2b2557', primaryTextColor: '#f3f3f5', primaryBorderColor: '#7c5cff',
+        secondaryColor: '#17171b', secondaryTextColor: '#f3f3f5', secondaryBorderColor: '#6c6c73',
+        tertiaryColor: '#131316', tertiaryTextColor: '#f3f3f5', tertiaryBorderColor: '#6c6c73',
+        lineColor: '#a3a3ad', textColor: '#f3f3f5', mainBkg: '#2b2557', nodeBorder: '#7c5cff',
+        clusterBkg: '#131316', clusterBorder: '#6c6c73', titleColor: '#f3f3f5',
+        edgeLabelBackground: '#1c1c21', noteBkgColor: '#2b2557', noteTextColor: '#f3f3f5', noteBorderColor: '#7c5cff',
+        actorBkg: '#2b2557', actorBorder: '#7c5cff', actorTextColor: '#f3f3f5', actorLineColor: '#a3a3ad',
+        signalColor: '#a3a3ad', signalTextColor: '#f3f3f5', labelBoxBkgColor: '#17171b', labelBoxBorderColor: '#7c5cff',
+        labelTextColor: '#f3f3f5', loopTextColor: '#f3f3f5', activationBkgColor: '#2b2557', activationBorderColor: '#7c5cff',
+        sequenceNumberColor: '#0c0c0e',
+      }
+    : {
+        darkMode: false, background: '#ffffff', fontFamily: 'Inter, system-ui, sans-serif',
+        primaryColor: '#e6e1ff', primaryTextColor: '#0c0c0e', primaryBorderColor: '#6a4dff',
+        secondaryColor: '#f4f4f6', secondaryTextColor: '#0c0c0e', secondaryBorderColor: '#6c6c73',
+        tertiaryColor: '#e2e2e6', tertiaryTextColor: '#0c0c0e', tertiaryBorderColor: '#6c6c73',
+        lineColor: '#4a4a52', textColor: '#0c0c0e', mainBkg: '#e6e1ff', nodeBorder: '#6a4dff',
+        clusterBkg: '#f4f4f6', clusterBorder: '#6c6c73', titleColor: '#0c0c0e',
+        edgeLabelBackground: '#ffffff', noteBkgColor: '#e6e1ff', noteTextColor: '#0c0c0e', noteBorderColor: '#6a4dff',
+        actorBkg: '#e6e1ff', actorBorder: '#6a4dff', actorTextColor: '#0c0c0e', actorLineColor: '#4a4a52',
+        signalColor: '#4a4a52', signalTextColor: '#0c0c0e', labelBoxBkgColor: '#f4f4f6', labelBoxBorderColor: '#6a4dff',
+        labelTextColor: '#0c0c0e', loopTextColor: '#0c0c0e', activationBkgColor: '#e6e1ff', activationBorderColor: '#6a4dff',
+        sequenceNumberColor: '#ffffff',
+      };
+}
+
 async function renderMermaid(id: string, source: string, dark: boolean): Promise<string> {
   const { default: mermaid } = await import('mermaid');
   mermaid.initialize({
     startOnLoad: false,
     securityLevel: 'strict',
-    theme: dark ? 'dark' : 'default',
+    theme: 'base',
+    themeVariables: themeVariables(dark),
     suppressErrorRendering: true,
     fontFamily: 'Inter, system-ui, sans-serif',
   });

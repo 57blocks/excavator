@@ -4,24 +4,24 @@
 
 @theme {
   /* Base */
-  --color-root: #0a0a0a;
-  --color-surface: #111111;
-  --color-elevated: #1a1a1a;
-  --color-panel: #141414;
+  --color-root: #0C0C0E;
+  --color-surface: #131316;
+  --color-elevated: #1C1C21;
+  --color-panel: #17171B;
 
   /* Accent */
-  --color-accent: #d4a574;
-  --color-accent-dim: #c9a96e;
-  --color-accent-bright: #e8c49a;
+  --color-accent: #7C5CFF;
+  --color-accent-dim: #6A4DFF;
+  --color-accent-bright: #A48BFF;
 
   /* Text */
-  --color-text-primary: #f5f0eb;
-  --color-text-secondary: #a39787;
-  --color-text-muted: #6b5f53;
+  --color-text-primary: #F3F3F5;
+  --color-text-secondary: #A3A3AD;
+  --color-text-muted: #6C6C73;
 
   /* Borders */
-  --color-border-subtle: rgba(212, 165, 116, 0.12);
-  --color-border-medium: rgba(212, 165, 116, 0.25);
+  --color-border-subtle: rgba(124, 92, 255, 0.12);
+  --color-border-medium: rgba(124, 92, 255, 0.25);
 
   /* Node types */
   --color-node-file: #4a7c9b;
@@ -54,29 +54,29 @@
   /* Glass */
   --glass-bg: rgba(20, 20, 20, 0.8);
   --glass-bg-heavy: rgba(20, 20, 20, 0.95);
-  --glass-border: rgba(212, 165, 116, 0.1);
-  --glass-border-heavy: rgba(212, 165, 116, 0.15);
+  --glass-border: rgba(124, 92, 255, 0.1);
+  --glass-border-heavy: rgba(124, 92, 255, 0.15);
 
   /* Scrollbar */
-  --scrollbar-thumb: rgba(212, 165, 116, 0.2);
-  --scrollbar-thumb-hover: rgba(212, 165, 116, 0.35);
+  --scrollbar-thumb: rgba(124, 92, 255, 0.2);
+  --scrollbar-thumb-hover: rgba(124, 92, 255, 0.35);
 
   /* Glow */
-  --glow-accent: rgba(212, 165, 116, 0.15);
-  --glow-accent-strong: rgba(212, 165, 116, 0.4);
-  --glow-accent-pulse: rgba(212, 165, 116, 0.6);
+  --glow-accent: rgba(124, 92, 255, 0.15);
+  --glow-accent-strong: rgba(124, 92, 255, 0.4);
+  --glow-accent-pulse: rgba(124, 92, 255, 0.6);
 
   /* Edges */
-  --color-edge: rgba(212, 165, 116, 0.3);
-  --color-edge-dim: rgba(212, 165, 116, 0.08);
-  --color-edge-dot: rgba(212, 165, 116, 0.15);
+  --color-edge: rgba(124, 92, 255, 0.3);
+  --color-edge-dim: rgba(124, 92, 255, 0.08);
+  --color-edge-dot: rgba(124, 92, 255, 0.15);
 
   /* Accent overlays */
-  --color-accent-overlay-bg: rgba(212, 165, 116, 0.05);
-  --color-accent-overlay-border: rgba(212, 165, 116, 0.25);
+  --color-accent-overlay-bg: rgba(124, 92, 255, 0.05);
+  --color-accent-overlay-border: rgba(124, 92, 255, 0.25);
 
   /* Kbd */
-  --kbd-bg: rgba(212, 165, 116, 0.1);
+  --kbd-bg: rgba(124, 92, 255, 0.1);
 
   /* Typography */
   --font-serif: 'DM Serif Display', Georgia, serif;

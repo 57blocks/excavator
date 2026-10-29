@@ -1,14 +1,6 @@
-import { useSyncExternalStore } from 'react';
+import { useTheme } from './theme';
 
-const QUERY = '(prefers-color-scheme: dark)';
-
-function subscribe(onChange: () => void): () => void {
-  const media = window.matchMedia(QUERY);
-  media.addEventListener('change', onChange);
-  return () => media.removeEventListener('change', onChange);
-}
-
-/** Whether the system asks for the dark scheme; follows a change while the page is open. */
+/** Whether the chosen theme is Dark Violet; follows the switch while the page is open (the diagrams re-render on it). */
 export function useDarkMode(): boolean {
-  return useSyncExternalStore(subscribe, () => window.matchMedia(QUERY).matches, () => false);
+  return useTheme()[0] === 'dark';
 }

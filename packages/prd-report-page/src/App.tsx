@@ -6,6 +6,7 @@ import { FindingsPage } from './components/FindingsPage';
 import { NotFound } from './components/NotFound';
 import { Overview } from './components/Overview';
 import { Sidebar } from './components/Sidebar';
+import { ThemeSwitch } from './components/ThemeSwitch';
 import { findingsByFeature } from './lib/counts';
 import { parseHash } from './lib/route';
 import type { Route } from './lib/route';
@@ -70,6 +71,7 @@ export function App({ data }: { data: PageData }) {
       <header className="topbar">
         <button type="button" aria-expanded={menuOpen} aria-controls="sidebar" onClick={() => setMenuOpen(!menuOpen)}>Menu</button>
         <span className="title">{data.project}</span>
+        <ThemeSwitch />
       </header>
       {menuOpen && <div className="scrim" onClick={() => setMenuOpen(false)} aria-hidden="true" />}
       <Sidebar data={data} route={route} findingCounts={counts} open={menuOpen} onNavigate={() => setMenuOpen(false)} />

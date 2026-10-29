@@ -308,7 +308,7 @@ describe('a product that is missing is a missing key', () => {
     const { data, manifest, result } = pack();
     expect(Object.keys(data)).toEqual(['products.json']);
     expect(result.issues).toBeNull();
-    expect(manifest.rows.filter((row) => row.status === 'not-run').map((row) => row.key)).toEqual(['knowledge-graph.json', 'domain-graph.json', 'meta.json', 'unused-code.json', 'hotspots.json', 'doc-map.json']);
+    expect(manifest.rows.filter((row) => row.status === 'not-run').map((row) => row.key)).toEqual(['knowledge-graph.json', 'domain-graph.json', 'meta.json', 'unused-code.json', 'hotspots.json', 'doc-map.json', 'diff-overlay.json']);
     expect(manifest.rows.map((row) => row.key)).toEqual(['knowledge-graph.json', 'semantics', 'tour', 'domain-graph.json', 'meta.json', 'staleness.json', 'unused-code.json', 'hotspots.json', 'doc-map.json', 'doc-map-checks.json', 'products.json', 'sources', 'diff-overlay.json', 'config.json']);
   });
 
@@ -402,10 +402,10 @@ describe('a product that is missing is a missing key', () => {
     }
   });
 
-  it('names the two keys no product produces', () => {
+  it('names the one key no product produces', () => {
     writeGraph();
     const rows = pack().manifest.rows.filter((row) => row.status === 'not-produced');
-    expect(rows.map((row) => row.key)).toEqual(['diff-overlay.json', 'config.json']);
+    expect(rows.map((row) => row.key)).toEqual(['config.json']);
   });
 });
 
@@ -645,6 +645,117 @@ describe('the explorer page', () => {
     expect(Object.keys(result.keys)).toEqual(Object.keys(data));
     expect(result.keys.sources).toBe(Buffer.byteLength(JSON.stringify(data.sources)));
     expect(result.bytes).toBe(readFileSync(result.out).length);
+  });
+});
+
+describe('the diff overlay input', () => {
+  const OVERLAY_KEY = 'diff-overlay.json';
+  const rowOf = (manifest) => manifest.rows.find((row) => row.key === OVERLAY_KEY);
+  const ALL_IDS = ['file:src/a.js', 'file:src/b.js', 'function:src/a.js:run', 'function:src/b.js:load'];
+
+  it('includes a valid overlay with only the four allowed keys', () => {
+    writeGraph();
+    writeProduct(project.root, OVERLAY_KEY, {
+      changedNodeIds: ['file:src/a.js', 'function:src/a.js:run', 'function:src/b.js:load'],
+      affectedNodeIds: ['file:src/b.js', 'file:src/b.js'],
+      label: 'working tree changes',
+      description: 'Uncommitted edits on top of HEAD.',
+      repos: ['one', 'two'],
+      provenance: { sourceRevision: project.revision },
+    });
+    const { data, manifest, html } = pack();
+    expect(data[OVERLAY_KEY]).toEqual({
+      changedNodeIds: ['file:src/a.js', 'function:src/a.js:run', 'function:src/b.js:load'],
+      affectedNodeIds: ['file:src/b.js'],
+      label: 'working tree changes',
+      description: 'Uncommitted edits on top of HEAD.',
+    });
+    expect(Object.keys(data[OVERLAY_KEY]).sort()).toEqual(['affectedNodeIds', 'changedNodeIds', 'description', 'label']);
+    expect(rowOf(manifest)).toMatchObject({ status: 'included', reason: expect.stringContaining('3 changed, 1 affected; 0 ids not in the graph; 0 in both lists') });
+    expect(html).toContain('working tree changes');
+  });
+
+  it('leaves out label and description when the input has none', () => {
+    writeGraph();
+    writeProduct(project.root, OVERLAY_KEY, { changedNodeIds: ['file:src/a.js'], affectedNodeIds: [] });
+    const { data, manifest } = pack();
+    expect(data[OVERLAY_KEY]).toEqual({ changedNodeIds: ['file:src/a.js'], affectedNodeIds: [] });
+    expect(rowOf(manifest).status).toBe('included');
+  });
+
+  it('is not-run without the file: no key, and the row names the file', () => {
+    writeGraph();
+    const { data, manifest } = pack();
+    expect(data[OVERLAY_KEY]).toBeUndefined();
+    expect(rowOf(manifest)).toEqual({ key: OVERLAY_KEY, status: 'not-run', reason: 'diff-overlay.json was not produced' });
+  });
+
+  it('drops an id the graph lacks and counts an id in both lists as changed only, and states both counts', () => {
+    writeGraph();
+    writeProduct(project.root, OVERLAY_KEY, {
+      changedNodeIds: ['file:src/a.js', 'file:src/gone.js', 'function:src/a.js:run'],
+      affectedNodeIds: ['function:src/a.js:run', 'file:src/b.js'],
+    });
+    const { data, manifest } = pack();
+    expect(data[OVERLAY_KEY].changedNodeIds).toEqual(['file:src/a.js', 'function:src/a.js:run']);
+    expect(data[OVERLAY_KEY].affectedNodeIds).toEqual(['file:src/b.js']);
+    expect(JSON.stringify(data[OVERLAY_KEY])).not.toContain('gone.js');
+    expect(rowOf(manifest)).toMatchObject({ status: 'included', reason: expect.stringContaining('2 changed, 1 affected; 1 ids not in the graph; 1 in both lists') });
+  });
+
+  it('is unused with the counts when no changed id is left, and gives no key', () => {
+    writeGraph();
+    writeProduct(project.root, OVERLAY_KEY, { changedNodeIds: ['file:src/gone.js'], affectedNodeIds: ['file:src/b.js'] });
+    const { data, manifest } = pack();
+    expect(data[OVERLAY_KEY]).toBeUndefined();
+    expect(rowOf(manifest)).toMatchObject({ status: 'unused', reason: expect.stringContaining('0 changed, 1 affected; 1 ids not in the graph; 0 in both lists') });
+  });
+
+  it('is unreadable when affectedNodeIds is a string, names the field, and still packs', () => {
+    writeGraph();
+    const baseline = pack().result.issues;
+    writeProduct(project.root, OVERLAY_KEY, { changedNodeIds: ['file:src/a.js'], affectedNodeIds: 'file:src/b.js' });
+    const { data, manifest, result } = pack();
+    expect(data[OVERLAY_KEY]).toBeUndefined();
+    expect(result.issues).toEqual(baseline);
+    expect(rowOf(manifest)).toMatchObject({ status: 'unreadable', reason: expect.stringMatching(/affectedNodeIds/) });
+  });
+
+  it('is unreadable for a missing array, a non-string element, a non-string label or description, and a body that is not an object', () => {
+    writeGraph();
+    const cases = {
+      changedNodeIds: [{ affectedNodeIds: [] }, /changedNodeIds/],
+      element: [{ changedNodeIds: ['file:src/a.js', 3], affectedNodeIds: [] }, /changedNodeIds/],
+      label: [{ changedNodeIds: ['file:src/a.js'], affectedNodeIds: [], label: 4 }, /label/],
+      description: [{ changedNodeIds: ['file:src/a.js'], affectedNodeIds: [], description: ['x'] }, /description/],
+      array: [[1], /not a JSON object/],
+      text: ['{', /not valid JSON/],
+    };
+    for (const [name, [body, reason]] of Object.entries(cases)) {
+      writeProduct(project.root, OVERLAY_KEY, body);
+      const { data, manifest } = pack();
+      expect(data[OVERLAY_KEY], name).toBeUndefined();
+      expect(rowOf(manifest), name).toMatchObject({ status: 'unreadable', reason: expect.stringMatching(reason) });
+    }
+  });
+
+  it('is different-revision when provenance.sourceRevision differs, writes both revisions, and keeps the content', () => {
+    writeGraph();
+    const other = `git:${'2'.repeat(40)}`;
+    writeProduct(project.root, OVERLAY_KEY, { changedNodeIds: ['file:src/a.js'], affectedNodeIds: [], provenance: { sourceRevision: other } });
+    const { data, manifest } = pack();
+    expect(data[OVERLAY_KEY]).toEqual({ changedNodeIds: ['file:src/a.js'], affectedNodeIds: [] });
+    const row = rowOf(manifest);
+    expect(row.status).toBe('different-revision');
+    expect(row.reason).toContain(other);
+    expect(row.reason).toContain(project.revision);
+  });
+
+  it('is unused without a knowledge graph, and gives no key', () => {
+    writeProduct(project.root, OVERLAY_KEY, { changedNodeIds: ALL_IDS, affectedNodeIds: [] });
+    const { data, manifest } = pack();
+    expect(data[OVERLAY_KEY]).toBeUndefined();
+    expect(rowOf(manifest).status).toBe('unused');
   });
 });
 

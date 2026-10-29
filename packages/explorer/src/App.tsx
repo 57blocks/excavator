@@ -170,9 +170,19 @@ function Dashboard({ accessToken }: { accessToken: string }) {
           Array.isArray((data as Record<string, unknown>).changedNodeIds) &&
           Array.isArray((data as Record<string, unknown>).affectedNodeIds)
         ) {
-          const d = data as { changedNodeIds: string[]; affectedNodeIds: string[] };
+          const d = data as {
+            changedNodeIds: string[];
+            affectedNodeIds: string[];
+            label?: unknown;
+            description?: unknown;
+          };
           if (d.changedNodeIds.length > 0) {
-            setDiffOverlay(d.changedNodeIds, d.affectedNodeIds);
+            setDiffOverlay(
+              d.changedNodeIds,
+              d.affectedNodeIds,
+              typeof d.label === "string" && d.label ? d.label : undefined,
+              typeof d.description === "string" && d.description ? d.description : undefined,
+            );
           }
         }
       })

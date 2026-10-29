@@ -6,6 +6,8 @@ export default function DiffToggle() {
   const toggleDiffMode = useDashboardStore((s) => s.toggleDiffMode);
   const changedNodeIds = useDashboardStore((s) => s.changedNodeIds);
   const affectedNodeIds = useDashboardStore((s) => s.affectedNodeIds);
+  const diffLabel = useDashboardStore((s) => s.diffLabel);
+  const diffDescription = useDashboardStore((s) => s.diffDescription);
   const { t } = useI18n();
 
   const hasDiff = changedNodeIds.size > 0;
@@ -24,9 +26,8 @@ export default function DiffToggle() {
         }`}
         title={
           hasDiff
-            ? diffMode
-              ? t.diffToggle.hideOverlay
-              : t.diffToggle.showOverlay
+            ? (diffDescription ?? diffLabel ??
+                (diffMode ? t.diffToggle.hideOverlay : t.diffToggle.showOverlay))
             : t.diffToggle.noData
         }
       >
@@ -59,6 +60,14 @@ export default function DiffToggle() {
               </span>
             </span>
           </div>
+          {diffLabel && (
+            <span
+              className="text-text-muted text-[11px] truncate max-w-[260px]"
+              title={diffDescription ?? diffLabel}
+            >
+              {diffLabel}
+            </span>
+          )}
         </div>
       )}
     </div>
