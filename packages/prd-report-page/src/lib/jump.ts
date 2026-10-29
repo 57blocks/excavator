@@ -1,4 +1,5 @@
 import { byChapter } from './nav';
+import { featureHash } from './route';
 import type { Feature, Finding } from './types';
 
 /** The most results the quick-jump dialog lists; the total number of matches is reported next to them. */
@@ -48,3 +49,6 @@ export function matchJump(features: readonly Feature[], findings: readonly Findi
   hits.sort((a, b) => a.rank - b.rank || a.order - b.order);
   return { items: hits.slice(0, JUMP_LIMIT).map((hit) => hit.item), total: hits.length };
 }
+
+/** The fragment a result opens: a feature's page, or its owning feature's page with the finding to scroll to. */
+export const jumpHash = (item: JumpItem): string => (item.type === 'feature' ? featureHash(item.feature.id) : featureHash(item.finding.feature, item.finding.id));

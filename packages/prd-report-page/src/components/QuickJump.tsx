@@ -1,14 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 
-import { JUMP_LIMIT, matchJump } from '../lib/jump';
+import { JUMP_LIMIT, jumpHash, matchJump } from '../lib/jump';
 import type { JumpItem } from '../lib/jump';
-import { featureHash } from '../lib/route';
 import type { PageData } from '../lib/types';
 import { SearchIcon } from './Icons';
 import { PriorityBadge, StatusMark } from './StatusBadge';
-
-/** The fragment a result opens: a feature's page, or its owning feature's page with the finding to scroll to. */
-export const jumpHash = (item: JumpItem): string => (item.type === 'feature' ? featureHash(item.feature.id) : featureHash(item.finding.feature, item.finding.id));
 
 /**
  * The quick-jump dialog (design D5): one input and a list of the matching

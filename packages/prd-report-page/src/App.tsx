@@ -11,7 +11,7 @@ import { Sidebar } from './components/Sidebar';
 import { TopBar } from './components/TopBar';
 import { findingsByFeature } from './lib/counts';
 import { levelCountsByFeature } from './lib/matrix';
-import { parseHash } from './lib/route';
+import { parseHash, scrollTarget } from './lib/route';
 import type { Route } from './lib/route';
 import { flashElement, holdInView, scrollToElement } from './lib/scroll';
 import type { PageData } from './lib/types';
@@ -53,7 +53,7 @@ export function App({ data }: { data: PageData }) {
   const levels = useMemo(() => levelCountsByFeature(data.findings), [data.findings]);
 
   const key = pageKey(route);
-  const target = route.name === 'feature' ? route.finding ?? '' : '';
+  const target = scrollTarget(route, route.name === 'feature' ? byFeature.get(route.id) ?? [] : []);
   useEffect(() => {
     setMenuOpen(false);
     // A feature address with a finding of that feature scrolls to its card and marks it; any other page starts at the top.

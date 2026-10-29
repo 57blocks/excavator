@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { featureHash, findingsHash, parseHash, serializeRoute } from '../src/lib/route';
+import { featureHash, findingsHash, parseHash, scrollTarget, serializeRoute } from '../src/lib/route';
 import type { Route } from '../src/lib/route';
 
 describe('parseHash', () => {
@@ -121,5 +121,31 @@ describe('serializeRoute', () => {
       { name: 'findings', filters: { class: 'all', priority: 'P0', feature: '', q: '' } },
     ];
     for (const route of routes) expect(parseHash(serializeRoute(route)), serializeRoute(route)).toEqual(route);
+  });
+});
+
+describe('scrollTarget', () => {
+  const own = [{ id: 'F3-1' }, { id: 'F3-2' }];
+
+  it('is the finding of the route when it is one of the feature\'s own', () => {
+    expect(scrollTarget({ name: 'feature', id: 'F3', finding: 'F3-2' }, own)).toBe('F3-2');
+  });
+
+  it('is empty for another feature\'s finding or an unknown id', () => {
+    expect(scrollTarget({ name: 'feature', id: 'F3', finding: 'F4-1' }, own)).toBe('');
+    expect(scrollTarget({ name: 'feature', id: 'F3', finding: 'nope' }, own)).toBe('');
+    expect(scrollTarget({ name: 'feature', id: 'F3', finding: 'F3-1' }, [])).toBe('');
+  });
+
+  it('is empty for a feature route without a finding', () => {
+    expect(scrollTarget({ name: 'feature', id: 'F3' }, own)).toBe('');
+    expect(scrollTarget({ name: 'feature', id: 'F3', finding: '' }, own)).toBe('');
+  });
+
+  it('is empty for a route that is not a feature page', () => {
+    expect(scrollTarget({ name: 'overview' }, own)).toBe('');
+    expect(scrollTarget({ name: 'coverage' }, own)).toBe('');
+    expect(scrollTarget(parseHash('#/findings?q=F3-1'), own)).toBe('');
+    expect(scrollTarget({ name: 'not-found', hash: '#/x?finding=F3-1' }, own)).toBe('');
   });
 });

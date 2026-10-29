@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { JUMP_LIMIT, matchJump } from '../src/lib/jump';
+import { JUMP_LIMIT, jumpHash, matchJump } from '../src/lib/jump';
 import type { JumpItem } from '../src/lib/jump';
 import type { Feature, Finding } from '../src/lib/types';
 
@@ -68,5 +68,17 @@ describe('matchJump', () => {
 
   it('gives nothing for a query that matches nothing', () => {
     expect(matchJump(features, findings, 'zzz')).toEqual({ items: [], total: 0 });
+  });
+});
+
+describe('jumpHash', () => {
+  it('opens a feature result on that feature\'s page', () => {
+    expect(jumpHash({ type: 'feature', feature: feature('F2', 'Order cancel', 4) })).toBe('#/feature/F2');
+  });
+
+  it('opens a finding result on its owning feature\'s page, with the finding to scroll to', () => {
+    // The finding id carries a different prefix than its owner, so the feature id and the finding id cannot be swapped unseen.
+    const owned = finding('F10-3', 'F7', 'The export names no file.');
+    expect(jumpHash({ type: 'finding', finding: owned })).toBe('#/feature/F7?finding=F10-3');
   });
 });

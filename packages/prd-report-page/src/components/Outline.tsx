@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { RefObject } from 'react';
 
+import { activeIndex } from '../lib/outline';
 import { scrollToElement } from '../lib/scroll';
 
 interface Entry {
@@ -40,11 +41,8 @@ export function Outline({ rootRef, pageKey }: { rootRef: RefObject<HTMLElement |
     const elements = found.map((entry) => document.getElementById(entry.id)).filter((element): element is HTMLElement => element !== null);
     // The current entry is the last target whose top is at or above the reading line, else the first; it is recomputed on scroll and resize (one frame at a time).
     const compute = () => {
-      let current = elements[0]?.id ?? '';
-      for (const element of elements) {
-        if (element.getBoundingClientRect().top <= READING_LINE + 2) current = element.id;
-        else break;
-      }
+      const at = activeIndex(elements.map((element) => element.getBoundingClientRect().top), READING_LINE);
+      const current = at < 0 ? '' : elements[at].id;
       setActive(current);
     };
     let frame = 0;

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { headingId, isHeadingId } from '../src/lib/outline';
+import { activeIndex, headingId, isHeadingId } from '../src/lib/outline';
 
 describe('headingId', () => {
   it('is the prefix and the source line, so it does not depend on the heading text', () => {
@@ -16,5 +16,31 @@ describe('headingId', () => {
     expect(isHeadingId('F3-L42')).toBe(true);
     expect(isHeadingId('finding-F3-1')).toBe(false);
     expect(isHeadingId('')).toBe(false);
+  });
+});
+
+describe('activeIndex', () => {
+  const line = 80;
+
+  it('is the first entry when every top is below the reading line', () => {
+    expect(activeIndex([300, 500, 900], line)).toBe(0);
+  });
+
+  it('is the last entry whose top is at or above the reading line', () => {
+    expect(activeIndex([-400, -20, 60, 300, 500], line)).toBe(2);
+    expect(activeIndex([-400, -20, 60], line)).toBe(2);
+  });
+
+  it('counts a top exactly 2px below the line as reached, and 3px as not', () => {
+    expect(activeIndex([-10, line + 2, 400], line)).toBe(1);
+    expect(activeIndex([-10, line + 3, 400], line)).toBe(0);
+  });
+
+  it('stops at the first entry below the line even when a later top is above it', () => {
+    expect(activeIndex([10, 300, 20], line)).toBe(0);
+  });
+
+  it('is -1 for an empty list', () => {
+    expect(activeIndex([], line)).toBe(-1);
   });
 });

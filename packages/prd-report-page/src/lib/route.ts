@@ -101,3 +101,13 @@ export function serializeRoute(route: Route): string {
 /** The fragment of a feature page; `finding` names the card the page scrolls to. */
 export const featureHash = (id: string, finding?: string): string => serializeRoute({ name: 'feature', id, finding });
 export const findingsHash = (filters: Partial<FindingsFilters> = {}): string => serializeRoute({ name: 'findings', filters: { ...NO_FILTERS, ...filters } });
+
+/**
+ * The finding card a route scrolls to (design D5): the route's `finding` when it
+ * is one of the feature's own findings, else '' (no scroll). A non-feature
+ * route, a missing or empty `finding`, and another feature's finding all give ''.
+ */
+export function scrollTarget(route: Route, findingsOfFeature: readonly { id: string }[]): string {
+  if (route.name !== 'feature' || route.finding === undefined || route.finding === '') return '';
+  return findingsOfFeature.some((item) => item.id === route.finding) ? route.finding : '';
+}
