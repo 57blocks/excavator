@@ -180,7 +180,8 @@ skill MUST NOT 启动 HTTP 服务，MUST NOT 运行任何分析，MUST NOT 改�
   - 图里没有层时，结构图顶层按副本自己的目录分组（目录过于集中时按副本自己的连接聚类）显示，界面上称「分组」而不称「层」；
   - 显示我们图里有而副本原本不显示或显示错的数据：节点摘要的核验结论、`mentions` 边、边的证据（文件与行号）、覆盖记录与缺口记录；
   - 产物视图与顶栏的改动（见「离线仪表盘的产物视图」）。
-  - 主题：增加两个按颜色命名的预设 Light Violet 与 Dark Violet，以及每组强调色里的 Violet，默认是 Light Violet 配 Violet（样式表里 JavaScript 应用主题之前的回退值也是 Light Violet）；主题由顶栏 Theme 按钮打开的下拉菜单切换；原有预设与强调色保留；用户在主题选择里选过的主题仍优先于默认；仪表盘自己写死的金色强调（边、分组边框、搜索命中标记、选中边的标签）改为跟随当前强调色，导出的独立 SVG 例外；主题名与界面 MUST NOT 出现公司名；
+  - 打开页面时默认的视角是 Overview；有领域图时默认的模式是 Domain，没有领域图时照副本是 Structural；
+  - 主题：增加两个按颜色命名的预设 Light Violet 与 Dark Violet，以及每组强调色里的 Violet，默认是 Light Violet 配 Violet（样式表里 JavaScript 应用主题之前的回退值也是 Light Violet）；主题由顶栏 Theme 按钮打开的下拉菜单切换；原有预设与强调色保留；用户在主题选择里选过的主题仍优先于默认，但选择存在页面自己的键下，副本原来那个键里存的选择（Light Violet 成为默认之前存下的，或别的副本页面存下的）不再读；仪表盘自己写死的金色强调（边、分组边框、搜索命中标记、选中边的标签）改为跟随当前强调色，导出的独立 SVG 例外；主题名与界面 MUST NOT 出现公司名；
   - 差异覆盖层的说明文字、层卡片上的计数与分组高亮（见「差异覆盖层」）。
 - 页面 SHALL 是一个自包含的 HTML 文件，从磁盘直接打开即可使用，不需要 Node、网络或本地服务，打开后不发出任何网络请求。
 
@@ -246,15 +247,24 @@ skill MUST NOT 启动 HTTP 服务，MUST NOT 运行任何分析，MUST NOT 改�
 - **WHEN** 项目的 `.excavator/` 里有一个从前打出的 `view.html`，再打包一次
 - **THEN** 写出 `explorer.html`，`view.html` 原样保留，既不更新也不删除
 
+#### Scenario: 打开时的默认
+- **WHEN** 在没有存过主题选择的浏览器里打开一个有知识图谱与领域图的项目的 `explorer.html`
+- **THEN** 主题是 Light Violet 配 Violet，视角选中 Overview，模式选中 Domain，中间显示领域图
+
+#### Scenario: 旧键里的主题选择不再读
+- **WHEN** 浏览器在副本原来的主题键里存着 Dark Violet，在页面自己的键里没有存过，打开 `explorer.html`
+- **THEN** 主题是 Light Violet；在 Theme 下拉里选 Dark Violet 后再打开，主题是 Dark Violet
+
 ### Requirement: 离线仪表盘的产物视图
 
 `explorer.html` SHALL 显示 unused-code、hotspots、doc-map 三个产物：
 
 - 顶栏：
   - MUST NOT 显示文件与类的切换（以及类视图里的函数开关）和节点类型过滤标签；结构图按文件级显示全部节点类型；
-  - 在原来的位置 SHALL 显示 Unused、Hotspots、Doc map 三个按钮，样式与 Domain | Structural 切换相同，当前打开的那个高亮。
+  - 在原来的位置 SHALL 显示 Unused、Hotspots、Doc map 三个按钮，样式与 Domain | Structural 切换相同，当前打开的那个高亮；
+  - 高亮只给中间区域正在显示的东西：产物视图打开时只高亮它的按钮，Domain 与 Structural MUST NOT 高亮；回到图时高亮当前的模式。
 - 视图：
-  - 点一个按钮，中间区域 SHALL 换成该产物的视图；再点同一个按钮，或点当前所在的 Domain / Structural，SHALL 回到图，图的位置、层级与选中的节点不变；点另一个模式时与没有视图时一样切换模式；
+  - 点一个按钮，中间区域 SHALL 换成该产物的视图；再点已经打开的那个按钮，视图 SHALL 保持打开，不回到图；点切换前所在的 Domain / Structural，SHALL 回到图，图的位置、层级与选中的节点不变；点另一个模式时与没有视图时一样切换模式；
   - 版式 SHALL 用浏览页自己的主题颜色、字体与卡片样式，随浏览页的主题切换；
   - 「产物内容只当文字」同样适用；视图 MUST NOT 出现建议性措辞（例如「可以删除」「应当移除」「safe to delete」）。
 - Unused 视图 SHALL 显示：
@@ -293,8 +303,8 @@ skill MUST NOT 启动 HTTP 服务，MUST NOT 运行任何分析，MUST NOT 改�
 - **THEN** 顶栏没有 Files、Classes 按钮和 Code、Config 等过滤标签，有 Unused、Hotspots、Doc map 三个按钮；不出现引导弹窗
 
 #### Scenario: 打开 Unused 再回到图
-- **WHEN** 在结构图里选中一个节点后点 Unused，按置信度只选 high，再点 Unused
-- **THEN** 中间显示 Unused 视图，列出的条数等于 `counts.byConfidence.high`；回到图后同一个节点仍被选中
+- **WHEN** 在结构图里选中一个节点后点 Unused，按置信度只选 high，再点 Unused，再点 Structural
+- **THEN** 点 Unused 后中间显示 Unused 视图，只有 Unused 按钮高亮，Domain 与 Structural 都不高亮，列出的条数等于 `counts.byConfidence.high`；再点 Unused 后视图仍打开、筛选不变；点 Structural 后回到图，Structural 高亮，同一个节点仍被选中
 
 #### Scenario: 从行详情回到图
 - **WHEN** 在 Hotspots 视图点一个文件行，再点详情里的「在图中显示」
@@ -325,13 +335,13 @@ skill MUST NOT 启动 HTTP 服务，MUST NOT 运行任何分析，MUST NOT 改�
 - `provenance.sourceRevision` 存在且与打包时源码快照的版本不同时为 different-revision，内容照放，原因写出两个版本；否则为 included。
 
 页面：
-- 有差异覆盖层时 Diff 开关可用且默认打开；顶栏显示 changed 与 affected 的节点数，以及 `label`（有时）；开关的提示文字是 `description`，没有时是 `label`；
+- 有差异覆盖层时 Diff 开关可用、默认关闭（显示 Diff OFF，层卡片不显示计数、不变暗）；打开后顶栏显示 changed 与 affected 的节点数，以及 `label`（有时）；开关的提示文字是 `description`，没有时是 `label`；
 - 打开时，结构图顶层的每张层卡片 SHALL 显示该层的 changed 与 affected 数（为零的不显示），两者都为零的层变暗。一个节点在层的 `nodeIds` 里就算这一层；它不在任何层里时，按 `filePath` 算进含同一 `filePath` 节点的层；一个节点在一层里只算一次；
 - 层内视图里含有 changed 或 affected 节点的分组 SHALL 高亮，按同样的归属规则，首次显示时就生效；节点本身照副本原有的方式标出。
 
 #### Scenario: 有差异覆盖层
-- **WHEN** `.excavator/diff-overlay.json` 有 3 个 changed、2 个 affected 节点，都在知识图里，打包后打开 `explorer.html`
-- **THEN** 打包结果这一行为 included；Diff 开关为打开，顶栏写 Changed (3)、Affected (2) 与 `label`；含这些节点的层卡片显示计数，其余层变暗
+- **WHEN** `.excavator/diff-overlay.json` 有 3 个 changed、2 个 affected 节点，都在知识图里，打包后打开 `explorer.html`，再点 Diff 开关
+- **THEN** 打包结果这一行为 included；打开时 Diff 开关可用、为关闭，层卡片没有计数也不变暗；点开后顶栏写 Changed (3)、Affected (2) 与 `label`，含这些节点的层卡片显示计数，其余层变暗
 
 #### Scenario: 没有差异覆盖层
 - **WHEN** 打包一个 `.excavator/` 里没有 `diff-overlay.json` 的项目
