@@ -4,6 +4,7 @@ import ReactMarkdown from 'react-markdown';
 import type { Components } from 'react-markdown';
 
 import { rehypePlugins, remarkPlugins } from '../lib/markdown-config';
+import { headingId } from '../lib/outline';
 import { Diagram } from './Diagram';
 
 interface HastNode {
@@ -35,12 +36,21 @@ function mermaidSource(node: HastNode | undefined): string | null {
 /**
  * Markdown as the page shows it: GFM, raw HTML parsed then sanitized (design
  * D4), tables in a horizontal scroller, mermaid blocks as diagrams whose ids
- * come from `idPrefix` (the feature id) and the block's index.
+ * come from `idPrefix` (the feature id) and the block's index. Every h2 and h3
+ * gets the id `<idPrefix>-L<source line>` (design D6); `outline` marks them for
+ * the page's "On this page" list.
  */
-export function Markdown({ source, idPrefix }: { source: string; idPrefix: string }) {
+export function Markdown({ source, idPrefix, outline = true }: { source: string; idPrefix: string; outline?: boolean }) {
   const components = useMemo<Components>(() => {
     const fences = mermaidFenceLines(source);
+    const heading = (level: 2 | 3): Components['h2'] => ({ node, children, ...props }) => {
+      const line = (node as HastNode | undefined)?.position?.start.line;
+      const Tag = level === 2 ? 'h2' : 'h3';
+      return <Tag {...props} id={line === undefined ? undefined : headingId(idPrefix, line)} data-outline={line !== undefined && outline ? String(level) : undefined}>{children}</Tag>;
+    };
     return {
+      h2: heading(2),
+      h3: heading(3),
       table: ({ node: _node, ...props }) => <div className="table-scroll"><table {...props} /></div>,
       // The policy allows no image load (img-src data:), so an image is shown as its alt text: nothing is blank and nothing is requested.
       img: ({ node: _node, alt }) => <span className="img-alt">[image{alt ? `: ${alt}` : ''}]</span>,
@@ -56,7 +66,7 @@ export function Markdown({ source, idPrefix }: { source: string; idPrefix: strin
         return <Diagram id={`xv-diagram-${idPrefix}-${index === -1 ? `line-${line}` : index}`} source={diagram} />;
       },
     };
-  }, [source, idPrefix]);
+  }, [source, idPrefix, outline]);
 
   return (
     <div className="prose">

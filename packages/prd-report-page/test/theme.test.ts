@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
-import { DEFAULT_THEME, THEME_KEY, applyTheme, currentTheme, isTheme, readStoredTheme, writeStoredTheme } from '../src/lib/theme';
+import { DEFAULT_THEME, THEME_KEY, THEME_LABELS, THEME_ORDER, THEME_PREVIEW, applyTheme, currentTheme, isTheme, readStoredTheme, writeStoredTheme } from '../src/lib/theme';
 import type { ThemeStorage } from '../src/lib/theme';
 
 function fakeRoot(initial?: string) {
@@ -16,9 +16,19 @@ function fakeRoot(initial?: string) {
 const throwing: () => ThemeStorage = () => { throw new Error('storage blocked'); };
 
 describe('theme: the remembered choice', () => {
-  it('defaults to Dark Violet, not the system preference', () => {
-    expect(DEFAULT_THEME).toBe('dark');
-    expect(currentTheme(fakeRoot())).toBe('dark');
+  it('defaults to Light Violet, not the system preference', () => {
+    expect(DEFAULT_THEME).toBe('light');
+    expect(currentTheme(fakeRoot())).toBe('light');
+  });
+
+  it('lists Light Violet first and previews each theme with three colours', () => {
+    expect(THEME_ORDER).toEqual(['light', 'dark']);
+    expect(THEME_ORDER.map((theme) => THEME_LABELS[theme])).toEqual(['Light Violet', 'Dark Violet']);
+    for (const theme of THEME_ORDER) expect(THEME_PREVIEW[theme]).toHaveLength(3);
+  });
+
+  it('honours a stored dark choice over the default', () => {
+    expect(readStoredTheme(() => ({ getItem: () => 'dark', setItem: () => {} }))).toBe('dark');
   });
 
   it('reads back what was written, under the documented key', () => {
@@ -58,7 +68,7 @@ describe('theme: the document', () => {
   });
 
   it('reads an unknown attribute as the default', () => {
-    expect(currentTheme(fakeRoot('sepia'))).toBe('dark');
+    expect(currentTheme(fakeRoot('sepia'))).toBe('light');
   });
 });
 
@@ -74,8 +84,19 @@ describe('theme: the stylesheet and the page shell', () => {
     expect(css).toContain('--accent: #6a4dff');
   });
 
+  it('makes the light tokens the default of a document with no data-theme, and dark an override', () => {
+    const rootBlock = css.slice(css.indexOf(':root,'), css.indexOf('}', css.indexOf(':root,')));
+    expect(rootBlock).toContain(':root[data-theme="light"]');
+    expect(rootBlock).toContain('--accent: #6a4dff');
+    expect(css).toMatch(/\n:root\[data-theme="dark"\] \{/);
+  });
+
   it('sets the remembered theme in the head before the first paint, behind the CSP marker', () => {
     expect(html.indexOf('<!-- xv:csp -->')).toBeLessThan(html.indexOf('<script>'));
     expect(html).toContain(`getItem('${THEME_KEY}')`);
+  });
+
+  it('falls back to light in the pre-paint script when nothing valid is stored', () => {
+    expect(html).toContain("var theme = 'light';");
   });
 });

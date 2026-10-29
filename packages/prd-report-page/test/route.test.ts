@@ -57,6 +57,38 @@ describe('parseHash', () => {
   });
 });
 
+describe('the finding parameter of a feature route', () => {
+  it('reads and writes #/feature/<id>?finding=<fid>', () => {
+    expect(parseHash('#/feature/F2?finding=F2-1')).toEqual({ name: 'feature', id: 'F2', finding: 'F2-1' });
+    expect(serializeRoute({ name: 'feature', id: 'F2', finding: 'F2-1' })).toBe('#/feature/F2?finding=F2-1');
+    expect(featureHash('F2', 'F2-1')).toBe('#/feature/F2?finding=F2-1');
+    expect(featureHash('F2')).toBe('#/feature/F2');
+  });
+
+  it('treats an empty or missing finding as none', () => {
+    for (const hash of ['#/feature/F2?finding=', '#/feature/F2?', '#/feature/F2']) {
+      expect(parseHash(hash), hash).toEqual({ name: 'feature', id: 'F2' });
+      expect('finding' in (parseHash(hash) as object), hash).toBe(false);
+    }
+    expect(serializeRoute({ name: 'feature', id: 'F2', finding: '' })).toBe('#/feature/F2');
+  });
+
+  it('drops every other parameter', () => {
+    expect(parseHash('#/feature/F2?class=product&finding=F2-1&q=x')).toEqual({ name: 'feature', id: 'F2', finding: 'F2-1' });
+    expect(parseHash('#/feature/F2?class=product')).toEqual({ name: 'feature', id: 'F2' });
+  });
+
+  it('round-trips ids that need escaping, and a trailing slash before the query still parses', () => {
+    const route: Route = { name: 'feature', id: 'F 1/2?', finding: 'F 1/2?-3 & 4' };
+    expect(parseHash(serializeRoute(route))).toEqual(route);
+    expect(parseHash('#/feature/F2/?finding=F2-1')).toEqual({ name: 'feature', id: 'F2', finding: 'F2-1' });
+  });
+
+  it('keeps a bad feature escape as not-found even with a finding', () => {
+    expect(parseHash('#/feature/%E0%A4%A?finding=x')).toEqual({ name: 'not-found', hash: '#/feature/%E0%A4%A?finding=x' });
+  });
+});
+
 describe('serializeRoute', () => {
   it('writes the plain pages', () => {
     expect(serializeRoute({ name: 'overview' })).toBe('#/');

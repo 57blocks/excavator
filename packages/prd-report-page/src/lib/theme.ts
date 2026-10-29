@@ -1,13 +1,20 @@
 import { useCallback, useSyncExternalStore } from 'react';
 
-/** The two palettes of the page. Dark Violet is the default; the system preference is not consulted. */
+/** The two palettes of the page. Light Violet is the default; the system preference is not consulted. */
 export type Theme = 'dark' | 'light';
 
 export const THEME_KEY = 'excavator-prd-report-theme';
-export const DEFAULT_THEME: Theme = 'dark';
+export const DEFAULT_THEME: Theme = 'light';
 
 /** The names shown to the reader: themes are named by colour only. */
 export const THEME_LABELS: Record<Theme, string> = { dark: 'Dark Violet', light: 'Light Violet' };
+
+/** The themes in the order the menu lists them, and the three preview colours of each (page, surface, accent). */
+export const THEME_ORDER: readonly Theme[] = ['light', 'dark'];
+export const THEME_PREVIEW: Record<Theme, readonly [string, string, string]> = {
+  light: ['#ededef', '#e2e2e6', '#6a4dff'],
+  dark: ['#0c0c0e', '#131316', '#7c5cff'],
+};
 
 /** The subset of `Storage` the page uses, so a test can hand in a stub. */
 export interface ThemeStorage {
