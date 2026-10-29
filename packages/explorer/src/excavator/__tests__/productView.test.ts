@@ -14,15 +14,17 @@ describe("the product views in the store", () => {
     expect(Object.values(s.nodeTypeFilters).every((on) => on !== false)).toBe(true);
   });
 
-  it("opens a view, switches to another, and toggles the active one off", () => {
+  it("opens a view, switches to another, and keeps the open one open on a second click", () => {
     const store = useDashboardStore.getState();
     store.openProductView("unused");
     expect(useDashboardStore.getState().productView).toBe("unused");
-    useDashboardStore.getState().toggleProductView("hotspots");
+    useDashboardStore.getState().openProductView("hotspots");
     expect(useDashboardStore.getState().productView).toBe("hotspots");
-    useDashboardStore.getState().toggleProductView("hotspots");
-    expect(useDashboardStore.getState().productView).toBeNull();
-    useDashboardStore.getState().toggleProductView("doc-map");
+    useDashboardStore.getState().setProductRow({ path: "src/a.js" });
+    useDashboardStore.getState().openProductView("hotspots");
+    expect(useDashboardStore.getState().productView).toBe("hotspots");
+    expect(useDashboardStore.getState().productRow).toEqual({ path: "src/a.js" });
+    useDashboardStore.getState().openProductView("doc-map");
     expect(useDashboardStore.getState().productView).toBe("doc-map");
   });
 
@@ -42,7 +44,7 @@ describe("the product views in the store", () => {
     useDashboardStore.getState().selectNode("file:src/a.js");
     useDashboardStore.getState().openProductView("unused");
     expect(useDashboardStore.getState().selectedNodeId).toBe("file:src/a.js");
-    useDashboardStore.getState().toggleProductView("unused");
+    useDashboardStore.getState().setViewMode("structural");
     expect(useDashboardStore.getState().productView).toBeNull();
     expect(useDashboardStore.getState().selectedNodeId).toBe("file:src/a.js");
   });

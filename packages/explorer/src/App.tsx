@@ -249,6 +249,8 @@ function DashboardContent({
   const [sidebarTab, setSidebarTab] = useState<SidebarTab>("info");
   // Excavator: no first-visit onboarding overlay (openspec: changes/explorer-products, design D5).
   const viewMode = useDashboardStore((s) => s.viewMode);
+  // Excavator: a mode button is highlighted only while the graph, not a product view, is shown (openspec: changes/explorer-view-defaults, design D1).
+  const shownMode = useDashboardStore((s) => (s.productView === null ? s.viewMode : null));
   const setViewMode = useDashboardStore((s) => s.setViewMode);
   const isKnowledgeGraph = useDashboardStore((s) => s.isKnowledgeGraph);
   const domainGraph = useDashboardStore((s) => s.domainGraph);
@@ -467,7 +469,7 @@ function DashboardContent({
                   onClick={() => setViewMode("domain")}
                   title={t.drawer.domain}
                   className={`px-3 py-1 text-xs font-medium rounded-md transition-colors ${
-                    viewMode === "domain"
+                    shownMode === "domain"
                       ? "bg-accent/20 text-accent"
                       : "text-text-muted hover:text-text-secondary"
                   }`}
@@ -479,7 +481,7 @@ function DashboardContent({
                   onClick={() => setViewMode("structural")}
                   title={t.drawer.structural}
                   className={`px-3 py-1 text-xs font-medium rounded-md transition-colors ${
-                    viewMode === "structural"
+                    shownMode === "structural"
                       ? "bg-accent/20 text-accent"
                       : "text-text-muted hover:text-text-secondary"
                   }`}

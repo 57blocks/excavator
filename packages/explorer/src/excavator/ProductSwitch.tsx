@@ -4,12 +4,12 @@ import { PRODUCT_VIEWS } from "./productViews";
 /**
  * The Unused | Hotspots | Doc map buttons (openspec: changes/explorer-products,
  * design D2). Same segmented style as the Domain | Structural switch; the open
- * view is highlighted and a second click on it closes it. Plain English text, not
- * in the locale tables.
+ * view is highlighted and a second click on it keeps it open (changes/explorer-view-defaults,
+ * design D2). Plain English text, not in the locale tables.
  */
 export default function ProductSwitch({ onPick }: { onPick?: () => void }) {
   const productView = useDashboardStore((s) => s.productView);
-  const toggleProductView = useDashboardStore((s) => s.toggleProductView);
+  const openProductView = useDashboardStore((s) => s.openProductView);
   return (
     <div className="flex items-center bg-elevated rounded-lg p-0.5" role="group" aria-label="Products" data-excavator-product-switch>
       {PRODUCT_VIEWS.map((def) => (
@@ -17,7 +17,7 @@ export default function ProductSwitch({ onPick }: { onPick?: () => void }) {
           key={def.view}
           type="button"
           onClick={() => {
-            toggleProductView(def.view);
+            openProductView(def.view);
             onPick?.();
           }}
           title={def.title}
