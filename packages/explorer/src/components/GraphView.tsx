@@ -23,6 +23,7 @@ import type { PortalFlowNode } from "./PortalNode";
 import ContainerNode from "./ContainerNode";
 import type { ContainerFlowNode, ContainerNodeData } from "./ContainerNode";
 import { computeDiffLayerCounts } from "../utils/diffLayerCounts";
+import { diffContainerIds } from "../utils/diffContainers";
 import Breadcrumb from "./Breadcrumb";
 import { useDashboardStore } from "../store";
 import { drawnInLayer } from "../excavator/views/graphTarget";
@@ -277,13 +278,8 @@ function useOverviewGraph() {
     // `computeLayerStats`, which iterates `layer.nodeIds` against the
     // `nodesById` index — O(K) per layer instead of the previous
     // O(N) Array.filter that ran `layer.nodeIds.includes(n.id)` (#102).
-    const diffCounts = diffMode
-      ? computeDiffLayerCounts(layers, nodesById, changedNodeIds, affectedNodeIds)
-      : null;
-
     const clusterNodes: LayerClusterFlowNode[] = layers.map((layer, i) => {
       const { aggregateComplexity } = computeLayerStats(layer, nodesById);
-      const diffCount = diffCounts?.get(layer.id);
 
       return {
         id: layer.id,
@@ -297,8 +293,6 @@ function useOverviewGraph() {
           aggregateComplexity,
           layerColorIndex: i,
           searchMatchCount: searchMatchByLayer.get(layer.id),
-          diffChangedCount: diffCount?.changed,
-          diffAffectedCount: diffCount?.affected,
           onDrillIn: drillIntoLayer,
         },
       };
@@ -324,16 +318,7 @@ function useOverviewGraph() {
     }
 
     return { clusterNodes, flowEdges, dims };
-  }, [
-    graph,
-    nodesById,
-    nodeIdToLayerId,
-    searchResults,
-    drillIntoLayer,
-    diffMode,
-    changedNodeIds,
-    affectedNodeIds,
-  ]);
+  }, [graph, nodesById, nodeIdToLayerId, searchResults, drillIntoLayer]);
 
   const [overview, setOverview] = useState<{ nodes: Node[]; edges: Edge[] }>({
     nodes: [],
@@ -374,7 +359,23 @@ function useOverviewGraph() {
     };
   }, [built]);
 
-  return { ...overview, layoutStatus };
+  // Diff counts only change badge text and opacity, never geometry, so they
+  // are applied to the already laid-out nodes instead of feeding the layout.
+  const diffNodes = useMemo(() => {
+    const layers = graph?.layers;
+    if (!diffMode || !layers || overview.nodes.length === 0) return overview.nodes;
+    const counts = computeDiffLayerCounts(layers, nodesById, changedNodeIds, affectedNodeIds);
+    return overview.nodes.map((n) => {
+      const c = counts.get(n.id);
+      if (!c) return n;
+      return {
+        ...n,
+        data: { ...n.data, diffChangedCount: c.changed, diffAffectedCount: c.affected },
+      };
+    });
+  }, [overview.nodes, graph, nodesById, diffMode, changedNodeIds, affectedNodeIds]);
+
+  return { nodes: diffNodes, edges: overview.edges, layoutStatus };
 }
 
 // ── Layer detail level: topology (ELK Stage 1) + visual overlay ─────────
@@ -1076,33 +1077,13 @@ function useLayerDetailGraph() {
   // (function/class nodes at file detail level, or nodes outside the layer's
   // visible set) resolves through the file node that shares its filePath.
   const diffContainers = useMemo(() => {
-    const s = new Set<string>();
-    if (!diffMode) return s;
-    const nodesById = useDashboardStore.getState().nodesById;
-    let containerByPath: Map<string, string> | null = null;
-    const containerOf = (id: string): string | undefined => {
-      const direct = topo.nodeToContainer.get(id);
-      if (direct) return direct;
-      const filePath = nodesById.get(id)?.filePath;
-      if (!filePath) return undefined;
-      if (!containerByPath) {
-        containerByPath = new Map();
-        for (const [nodeId, cid] of topo.nodeToContainer) {
-          const p = nodesById.get(nodeId)?.filePath;
-          if (p && !containerByPath.has(p)) containerByPath.set(p, cid);
-        }
-      }
-      return containerByPath.get(filePath);
-    };
-    for (const id of changedNodeIds) {
-      const cid = containerOf(id);
-      if (cid && cid !== id) s.add(cid);
-    }
-    for (const id of affectedNodeIds) {
-      const cid = containerOf(id);
-      if (cid && cid !== id) s.add(cid);
-    }
-    return s;
+    if (!diffMode) return new Set<string>();
+    return diffContainerIds(
+      changedNodeIds,
+      affectedNodeIds,
+      topo.nodeToContainer,
+      useDashboardStore.getState().nodesById,
+    );
   }, [diffMode, changedNodeIds, affectedNodeIds, topo.nodeToContainer]);
 
   // O(filteredEdges) — focus node's container + 1-hop neighbor containers.
