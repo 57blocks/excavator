@@ -1,4 +1,6 @@
 export type PresetId =
+  | "dark-violet"
+  | "light-violet"
   | "dark-gold"
   | "dark-ocean"
   | "dark-forest"
@@ -31,6 +33,6 @@ export interface ThemeConfig {
 }
 
 export const DEFAULT_THEME_CONFIG: ThemeConfig = {
-  presetId: "dark-gold",
-  accentId: "gold",
+  presetId: "dark-violet",
+  accentId: "violet",
 };

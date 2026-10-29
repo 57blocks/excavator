@@ -22,6 +22,7 @@ import PortalNode from "./PortalNode";
 import type { PortalFlowNode } from "./PortalNode";
 import ContainerNode from "./ContainerNode";
 import type { ContainerFlowNode, ContainerNodeData } from "./ContainerNode";
+import { computeDiffLayerCounts } from "../utils/diffLayerCounts";
 import Breadcrumb from "./Breadcrumb";
 import { useDashboardStore } from "../store";
 import { drawnInLayer } from "../excavator/views/graphTarget";
@@ -243,6 +244,9 @@ function useOverviewGraph() {
   const nodeIdToLayerId = useDashboardStore((s) => s.nodeIdToLayerId);
   const searchResults = useDashboardStore((s) => s.searchResults);
   const drillIntoLayer = useDashboardStore((s) => s.drillIntoLayer);
+  const diffMode = useDashboardStore((s) => s.diffMode);
+  const changedNodeIds = useDashboardStore((s) => s.changedNodeIds);
+  const affectedNodeIds = useDashboardStore((s) => s.affectedNodeIds);
 
   // Build cluster nodes / flow edges / dims synchronously; only the layout
   // call itself is async, so we memo the structural pieces and run ELK in an
@@ -273,8 +277,13 @@ function useOverviewGraph() {
     // `computeLayerStats`, which iterates `layer.nodeIds` against the
     // `nodesById` index — O(K) per layer instead of the previous
     // O(N) Array.filter that ran `layer.nodeIds.includes(n.id)` (#102).
+    const diffCounts = diffMode
+      ? computeDiffLayerCounts(layers, nodesById, changedNodeIds, affectedNodeIds)
+      : null;
+
     const clusterNodes: LayerClusterFlowNode[] = layers.map((layer, i) => {
       const { aggregateComplexity } = computeLayerStats(layer, nodesById);
+      const diffCount = diffCounts?.get(layer.id);
 
       return {
         id: layer.id,
@@ -288,6 +297,8 @@ function useOverviewGraph() {
           aggregateComplexity,
           layerColorIndex: i,
           searchMatchCount: searchMatchByLayer.get(layer.id),
+          diffChangedCount: diffCount?.changed,
+          diffAffectedCount: diffCount?.affected,
           onDrillIn: drillIntoLayer,
         },
       };
@@ -301,10 +312,10 @@ function useOverviewGraph() {
       target: agg.targetLayerId,
       label: `${agg.count}`,
       style: {
-        stroke: "rgba(212,165,116,0.4)",
+        stroke: "color-mix(in srgb, var(--color-accent) 40%, transparent)",
         strokeWidth: Math.min(1 + Math.log2(agg.count + 1), 5),
       },
-      labelStyle: { fill: "#a39787", fontSize: 11, fontWeight: 600 },
+      labelStyle: { fill: "var(--color-text-secondary)", fontSize: 11, fontWeight: 600 },
     }));
 
     const dims = new Map<string, { width: number; height: number }>();
@@ -313,7 +324,16 @@ function useOverviewGraph() {
     }
 
     return { clusterNodes, flowEdges, dims };
-  }, [graph, nodesById, nodeIdToLayerId, searchResults, drillIntoLayer]);
+  }, [
+    graph,
+    nodesById,
+    nodeIdToLayerId,
+    searchResults,
+    drillIntoLayer,
+    diffMode,
+    changedNodeIds,
+    affectedNodeIds,
+  ]);
 
   const [overview, setOverview] = useState<{ nodes: Node[]; edges: Edge[] }>({
     nodes: [],
@@ -549,7 +569,7 @@ function useLayerDetailTopology(): LayerDetailTopology & {
         colorIndex: idx % 12,
         isExpanded: false,
         hasSearchHits: false,
-        isDiffAffected: false, // Task 14 will populate this
+        isDiffAffected: false, // overlaid per render from diffContainers
         isFocusedViaChild: false,
         onToggle: handleContainerToggle,
       },
@@ -587,9 +607,9 @@ function useLayerDetailTopology(): LayerDetailTopology & {
     // container, so just fade everything in diff mode at this stage).
     const aggEdges: Edge[] = interContainerAggregated.map((agg, i) => {
       const baseStyle = diffMode
-        ? { stroke: "rgba(212,165,116,0.08)", strokeWidth: 1 }
+        ? { stroke: "color-mix(in srgb, var(--color-accent) 8%, transparent)", strokeWidth: 1 }
         : {
-            stroke: "rgba(212,165,116,0.4)",
+            stroke: "color-mix(in srgb, var(--color-accent) 40%, transparent)",
             strokeWidth: Math.min(1 + Math.log2(agg.count + 1), 5),
           };
       return {
@@ -639,7 +659,7 @@ function useLayerDetailTopology(): LayerDetailTopology & {
           id: `e-${portalEdgeIdx++}`,
           source: atomId,
           target: `portal:${portal.layerId}`,
-          style: { stroke: "rgba(212,165,116,0.2)", strokeWidth: 1, strokeDasharray: "4 4" },
+          style: { stroke: "color-mix(in srgb, var(--color-accent) 20%, transparent)", strokeWidth: 1, strokeDasharray: "4 4" },
           animated: false,
         });
       }
@@ -1052,16 +1072,34 @@ function useLayerDetailGraph() {
     return m;
   }, [searchResults, topo.nodeToContainer]);
 
-  // O(changed + affected) — set of container atoms touched by the diff.
+  // Container atoms touched by the diff. A diff node that is not itself drawn
+  // (function/class nodes at file detail level, or nodes outside the layer's
+  // visible set) resolves through the file node that shares its filePath.
   const diffContainers = useMemo(() => {
     const s = new Set<string>();
     if (!diffMode) return s;
+    const nodesById = useDashboardStore.getState().nodesById;
+    let containerByPath: Map<string, string> | null = null;
+    const containerOf = (id: string): string | undefined => {
+      const direct = topo.nodeToContainer.get(id);
+      if (direct) return direct;
+      const filePath = nodesById.get(id)?.filePath;
+      if (!filePath) return undefined;
+      if (!containerByPath) {
+        containerByPath = new Map();
+        for (const [nodeId, cid] of topo.nodeToContainer) {
+          const p = nodesById.get(nodeId)?.filePath;
+          if (p && !containerByPath.has(p)) containerByPath.set(p, cid);
+        }
+      }
+      return containerByPath.get(filePath);
+    };
     for (const id of changedNodeIds) {
-      const cid = topo.nodeToContainer.get(id);
+      const cid = containerOf(id);
       if (cid && cid !== id) s.add(cid);
     }
     for (const id of affectedNodeIds) {
-      const cid = topo.nodeToContainer.get(id);
+      const cid = containerOf(id);
       if (cid && cid !== id) s.add(cid);
     }
     return s;
@@ -1248,8 +1286,8 @@ function useLayerDetailGraph() {
           source: realSrc,
           target: realTgt,
           label: m.type,
-          style: { stroke: "rgba(212,165,116,0.5)", strokeWidth: 1.5 },
-          labelStyle: { fill: "#a39787", fontSize: 10 },
+          style: { stroke: "color-mix(in srgb, var(--color-accent) 50%, transparent)", strokeWidth: 1.5 },
+          labelStyle: { fill: "var(--color-text-secondary)", fontSize: 10 },
         });
       }
     }
@@ -1266,8 +1304,8 @@ function useLayerDetailGraph() {
         source: e.source,
         target: e.target,
         label: e.type,
-        style: { stroke: "rgba(212,165,116,0.5)", strokeWidth: 1.5 },
-        labelStyle: { fill: "#a39787", fontSize: 10 },
+        style: { stroke: "color-mix(in srgb, var(--color-accent) 50%, transparent)", strokeWidth: 1.5 },
+        labelStyle: { fill: "var(--color-text-secondary)", fontSize: 10 },
       });
     }
     return out;
@@ -1292,10 +1330,10 @@ function useLayerDetailGraph() {
       if ((edge.style as Record<string, unknown>)?.strokeDasharray) return edge;
 
       if (isSelectedEdge) {
-        return { ...edge, animated: true, style: { stroke: "rgba(212,165,116,0.8)", strokeWidth: 2.5 }, labelStyle: { fill: "#d4a574", fontSize: 11, fontWeight: 600 } };
+        return { ...edge, animated: true, style: { stroke: "color-mix(in srgb, var(--color-accent) 80%, transparent)", strokeWidth: 2.5 }, labelStyle: { fill: "var(--color-accent)", fontSize: 11, fontWeight: 600 } };
       }
       // Fade unrelated edges
-      return { ...edge, animated: false, style: { stroke: "rgba(212,165,116,0.08)", strokeWidth: 1 }, labelStyle: { fill: "rgba(163,151,135,0.2)", fontSize: 10 } };
+      return { ...edge, animated: false, style: { stroke: "color-mix(in srgb, var(--color-accent) 8%, transparent)", strokeWidth: 1 }, labelStyle: { fill: "color-mix(in srgb, var(--color-text-secondary) 20%, transparent)", fontSize: 10 } };
     });
   }, [expandedEdges, topo.portalEdges, selectedNodeId]);
 
@@ -1616,7 +1654,7 @@ function GraphViewInner() {
             zIndex: 10,
           }}
         >
-          <span style={{ color: "#d4a574", fontSize: 14 }}>
+          <span style={{ color: "var(--color-accent)", fontSize: 14 }}>
             {tourFitPending ? "Locating tour highlight…" : "Computing layout…"}
           </span>
         </div>

@@ -1,6 +1,7 @@
 import type { AccentSwatch, ThemePreset } from "./types.ts";
 
 const DARK_ACCENT_SWATCHES: AccentSwatch[] = [
+  { id: "violet", name: "Violet", accent: "#7C5CFF", accentDim: "#6A4DFF", accentBright: "#A48BFF" },
   { id: "gold", name: "Gold", accent: "#d4a574", accentDim: "#c9a96e", accentBright: "#e8c49a" },
   { id: "ocean", name: "Ocean", accent: "#5ba4cf", accentDim: "#4e93ba", accentBright: "#7abce0" },
   { id: "emerald", name: "Emerald", accent: "#5ea67a", accentDim: "#4e9468", accentBright: "#78c492" },
@@ -12,6 +13,7 @@ const DARK_ACCENT_SWATCHES: AccentSwatch[] = [
 ];
 
 const LIGHT_ACCENT_SWATCHES: AccentSwatch[] = [
+  { id: "violet", name: "Violet", accent: "#6A4DFF", accentDim: "#3B2DB5", accentBright: "#7C5CFF" },
   { id: "indigo", name: "Indigo", accent: "#4a6fa5", accentDim: "#3d5f8f", accentBright: "#6088bf" },
   { id: "ocean", name: "Ocean", accent: "#3a8ab5", accentDim: "#2e7aa0", accentBright: "#55a0cc" },
   { id: "emerald", name: "Emerald", accent: "#3a8a5c", accentDim: "#2e7a4e", accentBright: "#55a878" },
@@ -23,6 +25,64 @@ const LIGHT_ACCENT_SWATCHES: AccentSwatch[] = [
 ];
 
 export const PRESETS: ThemePreset[] = [
+  {
+    id: "dark-violet",
+    name: "Dark Violet",
+    isDark: true,
+    defaultAccentId: "violet",
+    accentSwatches: DARK_ACCENT_SWATCHES,
+    colors: {
+      root: "#0C0C0E",
+      surface: "#131316",
+      elevated: "#1C1C21",
+      panel: "#17171B",
+      "text-primary": "#F3F3F5",
+      "text-secondary": "#A3A3AD",
+      "text-muted": "#6C6C73",
+      "node-file": "#4a7c9b",
+      "node-function": "#5a9e6f",
+      "node-class": "#8b6fb0",
+      "node-module": "#c9a06c",
+      "node-concept": "#b07a8a",
+      "node-config": "#5eead4",
+      "node-document": "#7dd3fc",
+      "node-service": "#a78bfa",
+      "node-table": "#6ee7b7",
+      "node-endpoint": "#fdba74",
+      "node-pipeline": "#fda4af",
+      "node-schema": "#fcd34d",
+      "node-resource": "#a5b4fc",
+    },
+  },
+  {
+    id: "light-violet",
+    name: "Light Violet",
+    isDark: false,
+    defaultAccentId: "violet",
+    accentSwatches: LIGHT_ACCENT_SWATCHES,
+    colors: {
+      root: "#EDEDEF",
+      surface: "#E2E2E6",
+      elevated: "#FFFFFF",
+      panel: "#F4F4F6",
+      "text-primary": "#0C0C0E",
+      "text-secondary": "#4A4A52",
+      "text-muted": "#6C6C73",
+      "node-file": "#3a6a87",
+      "node-function": "#488a5b",
+      "node-class": "#755d99",
+      "node-module": "#a88a56",
+      "node-concept": "#966674",
+      "node-config": "#14b8a6",
+      "node-document": "#38bdf8",
+      "node-service": "#8b5cf6",
+      "node-table": "#34d399",
+      "node-endpoint": "#fb923c",
+      "node-pipeline": "#fb7185",
+      "node-schema": "#facc15",
+      "node-resource": "#818cf8",
+    },
+  },
   {
     id: "dark-gold",
     name: "Dark Gold",
@@ -171,7 +231,7 @@ export const PRESETS: ThemePreset[] = [
 ];
 
 export function getPreset(id: string): ThemePreset {
-  return PRESETS.find((p) => p.id === id) ?? PRESETS[0];
+  return PRESETS.find((p) => p.id === id) ?? PRESETS[0] /* dark-violet */;
 }
 
 export function getAccent(preset: ThemePreset, accentId: string): AccentSwatch {

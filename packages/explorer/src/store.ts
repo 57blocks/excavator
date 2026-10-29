@@ -137,6 +137,8 @@ interface DashboardStore {
   diffMode: boolean;
   changedNodeIds: Set<string>;
   affectedNodeIds: Set<string>;
+  diffLabel: string | null;
+  diffDescription: string | null;
 
   // Focus mode: isolate a node's 1-hop neighborhood
   focusNodeId: string | null;
@@ -180,7 +182,12 @@ interface DashboardStore {
   expandCodeViewer: () => void;
   collapseCodeViewer: () => void;
 
-  setDiffOverlay: (changed: string[], affected: string[]) => void;
+  setDiffOverlay: (
+    changed: string[],
+    affected: string[],
+    label?: string,
+    description?: string,
+  ) => void;
   toggleDiffMode: () => void;
   clearDiffOverlay: () => void;
 
@@ -338,6 +345,8 @@ export const useDashboardStore = create<DashboardStore>()((set, get) => ({
   diffMode: false,
   changedNodeIds: new Set<string>(),
   affectedNodeIds: new Set<string>(),
+  diffLabel: null,
+  diffDescription: null,
 
   focusNodeId: null,
   nodeHistory: [],
@@ -605,11 +614,13 @@ export const useDashboardStore = create<DashboardStore>()((set, get) => ({
   expandCodeViewer: () => set({ codeViewerExpanded: true }),
   collapseCodeViewer: () => set({ codeViewerExpanded: false }),
 
-  setDiffOverlay: (changed, affected) =>
+  setDiffOverlay: (changed, affected, label, description) =>
     set({
       diffMode: true,
       changedNodeIds: new Set(changed),
       affectedNodeIds: new Set(affected),
+      diffLabel: label ?? null,
+      diffDescription: description ?? null,
     }),
 
   toggleDiffMode: () => set((state) => ({ diffMode: !state.diffMode })),
@@ -619,6 +630,8 @@ export const useDashboardStore = create<DashboardStore>()((set, get) => ({
       diffMode: false,
       changedNodeIds: new Set<string>(),
       affectedNodeIds: new Set<string>(),
+      diffLabel: null,
+      diffDescription: null,
     }),
 
   toggleFilterPanel: () => set((state) => ({
