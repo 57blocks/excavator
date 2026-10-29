@@ -19,4 +19,4 @@
 
 - [x] 5.1 只跑受影响的范围：两个包的 build、test、typecheck，`tests/skill/excavator-view`、`tests/skill/excavator-prd-report` 与读这两个包的根测试，`openspec validate --all --strict`；新文件先 `git add -N`
 - [x] 5.2 真实语料：按 design 的 Oracle 用新代码 `--out` 重打浏览页并对比数据块；两页在 headless Chrome 里无控制台错误
-- [ ] 5.3 分阶段 commit（OpenSpec、浏览页的主题与差异覆盖层（两者都改 `GraphView.tsx`，合为一个）、打包、报告页），每个 commit 核对 `--stat`；PR 用 `--merge`，评审按 REVIEW.md
+- [x] 5.3 分阶段 commit（OpenSpec、浏览页的主题与差异覆盖层（两者都改 `GraphView.tsx`，合为一个）、打包、报告页），每个 commit 核对 `--stat`；PR 用 `--merge`，评审按 REVIEW.md

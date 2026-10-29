@@ -213,6 +213,8 @@
 
 章节与总览的 Markdown SHALL 渲染为 HTML：表格、`<details>`/`<summary>` 证据块与 mermaid 图。原始 HTML SHALL 经白名单净化，只保留 Markdown 能产生的元素与 `<details>`/`<summary>`。mermaid 图渲染失败时 SHALL 显示图的源文本并标明渲染失败，MUST NOT 静默留空。页面界面文字固定英文；总览、章节、findings 与定级理由的正文按产物原样显示。
 
+页面 SHALL 与 `/excavator-view` 的浏览页同一外观：同样的字体（标题用衬线体，正文 Inter，编号与代码等宽体，全部内联）、同样按颜色命名的 Dark Violet 与 Light Violet 两套颜色与卡片样式，边框与高光颜色按浏览页的规则由强调色导出。默认 Dark Violet，不跟随系统的明暗设置；页面提供在两者之间切换的开关（窄屏时也可达），选择记在浏览器的本地存储里，读写失败时页面照常可用、退回默认；切换后 mermaid 图按新主题重绘。界面与主题名 MUST NOT 出现公司名。页面字节仍只由产物目录决定，主题选择不写进页面。
+
 `index.json`、`findings.json` 与各功能的文件不一致（`page` 按 `aggregate` 的规则重算的结果与磁盘上的汇总产物不同，或 `findings.json` 缺失）时，`page` SHALL 退出非零并提示先运行 `aggregate`，MUST NOT 写出页面。
 
 #### Scenario: 双击打开
@@ -242,6 +244,10 @@
 #### Scenario: 图写错了
 - **WHEN** 某章节的 mermaid 代码无法解析
 - **THEN** 该处显示图的源文本与「渲染失败」标记，页面其余部分照常
+
+#### Scenario: 切换主题
+- **WHEN** 用户第一次打开 `report.html`，点主题开关的 Light Violet，再刷新页面
+- **THEN** 第一次打开是 Dark Violet；切换后页面与 mermaid 图都换成 Light Violet；刷新后仍是 Light Violet；浏览器禁止本地存储时页面照常显示 Dark Violet
 
 #### Scenario: 从流程索引打开功能
 - **WHEN** 用户在总览的流程索引里点一个流程
