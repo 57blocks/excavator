@@ -10,9 +10,9 @@ import { projectRootProblem } from './project-root.mjs';
 export const CANDIDATES_FORMAT = 'excavator-product-handbook-candidates/1';
 export const CANDIDATES_FILE = 'candidates.json';
 
-/** The `candidates` command's output: the listing with the format as its first key. */
+/** The `candidates` command's output: the listing with the format as its first key. It never reads the knowledge graph (design D10). */
 export async function candidatesOutput(project, scope) {
-  return { format: CANDIDATES_FORMAT, ...(await listEntrypoints(project, { scope: scope ?? null })) };
+  return { format: CANDIDATES_FORMAT, ...(await listEntrypoints(project, { scope: scope ?? null, useGraph: false })) };
 }
 
 /**

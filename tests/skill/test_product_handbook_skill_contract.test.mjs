@@ -627,9 +627,9 @@ describe('excavator-product-handbook skill: Phase 5, verify', () => {
   });
 
   it('resumes each feature where its files show it stopped', () => {
-    expect(p).toContain('when `$OUT/verdicts/round-1/<id>.json` exists, run step 3 for it first');
+    expect(p).toContain('when `$OUT/verdicts/round-1/<id>/` exists, run the `verdicts` command of step 3 for it first (it names the parts still to dispatch)');
     expect(p).toContain('`slices` clears the older files of the feature');
-    expect(p).toContain('when `$OUT/verdicts/round-2/<id>.json` exists, go to step 7 for it; when `$OUT/verify/round-2/<id>.json` exists, go to step 6; otherwise go to step 4');
+    expect(p).toContain('when `$OUT/verdicts/round-2/<id>/` exists, go to step 7 for it; when `$OUT/verify/round-2/<id>/` exists, go to step 6; otherwise go to step 4');
   });
 
   it('cuts with slices and names the two paths it prints, as the script prints them', () => {
@@ -639,17 +639,16 @@ describe('excavator-product-handbook skill: Phase 5, verify', () => {
       run.writeEntry();
       expect(run.run('check-entry', 'F1').status).toBe(0);
       const result = run.run('slices', 'F1');
-      expect(result.lines[0]).toMatch(/^F1: round 1, \d+ items$/);
-      expect(result.lines[1]).toMatch(/^Verify file: /);
-      expect(result.lines[2]).toMatch(/^Verdict file: /);
-      expect(p).toContain('It prints `<id>: round 1, <n> items`, then `Verify file: <path>` and `Verdict file: <path>`');
+      expect(result.lines[0]).toMatch(/^F1: round 1, \d+ items in \d+ parts?$/);
+      expect(result.lines[1]).toMatch(/^Part 1\/\d+: Verify file: .+ \| Verdict file: .+$/);
+      expect(p).toContain('It prints `<id>: round 1, <n> items in <k> parts`, then one line per part, `Part <p>/<k>: Verify file: <path> | Verdict file: <path>`');
     } finally {
       run.cleanup();
     }
   });
 
-  it('dispatches one verifier per feature with the registered agent type, up to 10 in one message, in the foreground', () => {
-    expect(p).toContain('with the `excavator-handbook-verifier` agent type, up to 10 in one message so they run concurrently');
+  it('dispatches one verifier per part with the registered agent type, up to 10 in one message, in the foreground', () => {
+    expect(p).toContain('Dispatch one subagent per part with the `excavator-handbook-verifier` agent type, up to 10 in one message so they run concurrently');
     expect(p).toContain('there is no file to look for: name it as the subagent type');
     expect(p).toContain('Dispatch them in the foreground, never as background tasks');
     expect(p).not.toContain('agents/excavator-handbook-verifier.md');
@@ -661,12 +660,12 @@ describe('excavator-product-handbook skill: Phase 5, verify', () => {
     expect(prompt).toContain('Verdict file: <the verdict file of the line>');
     expect(prompt).toContain('Read the verify file and nothing else');
     expect(prompt).not.toMatch(/\$PROJECT_ROOT|\$PLUGIN_ROOT|entries\//);
-    expect(p).toContain('Give each the prompt below with its two paths filled in, and nothing else: not the entry, the map, a summary or any reason.');
+    expect(p).toContain('Give each the prompt below with the two paths of its part\'s line filled in, and nothing else: not the entry, the map, a summary or any reason.');
   });
 
   it('records the verdicts one command at a time and says what each outcome means, with the lines the script prints', () => {
     expect(p).toContain(`${HANDBOOK} verdicts "$OUT" <id> --round 1 --project "$PROJECT_ROOT"`);
-    expect(p).toContain('record its verdicts, one command at a time, never two at once');
+    expect(p).toContain('record its verdicts, one command per feature and one at a time, never two at once');
     expect(p).toContain('`<id>: verified (<n> items)`');
     expect(p).toContain('`<id>: <n> items to rewrite`, then `Rewrite file: <path>`');
     expect(p).toContain('`unverified` and `contradicted` alike');
@@ -683,10 +682,11 @@ describe('excavator-product-handbook skill: Phase 5, verify', () => {
   });
 
   it('dispatches a verifier once more with the printed lines when its verdicts are rejected or missing, then leaves the feature checked', () => {
-    expect(p).toContain('Dispatch that feature\'s verifier once more with the prompt followed by this line and then each line printed except the `Next:` line: `Your previous verdict file was rejected for these reasons; write it again:`');
+    expect(p).toContain('Dispatch a verifier once more for each part the `Next:` line names, and for no other part.');
+    expect(p).toContain('the prompt followed by this line and then each line printed for that part except the `Next:` line (the lines that start with `part <p>:`, without that start): `Your previous verdict file was rejected for these reasons; write it again:`');
     expect(p).toContain('When `verdicts` still exits 1, leave the feature as it is, `checked`: it is listed in the handbook as verification not finished.');
     expect(p).toContain('Never write or change a verdict yourself, and never edit `state.json`.');
-    expect(p).toContain('the verdict file is missing (the verifier wrote nothing)');
+    expect(p).toContain('the part\'s verdict file is missing (the verifier wrote nothing)');
     expect(p).toContain('holds a code-shaped word or, in a language with its own script, no letter of it');
   });
 
@@ -763,10 +763,16 @@ describe('excavator-product-handbook skill: Phase 6 and the files table know the
     expect(p).toContain('entries/<id>.json changed after it was verified');
   });
 
+  it('says a feature is cut into parts with a verifier each, and that the candidates never come from the knowledge graph', () => {
+    expect(phase(5)).toContain('A feature with many items is cut into parts so that no verify file is more than a verifier can read at once (at most 25 items and about 60,000 bytes a part).');
+    expect(phase(5)).toContain('Round 2 holds only the rewritten items, so it usually has one part.');
+    expect(phase(1)).toContain('The frameworks always come from the project\'s build files (`detection.source` is `build-files`), even when `.excavator/` holds a knowledge graph: the script does not open it, and neither do you.');
+  });
+
   it('lists the verify, verdict and rewrite files and who writes them', () => {
     const table = flat(skill.split(/^## How the work is split$/m)[1].split(/^## Options$/m)[0]);
-    expect(table).toContain('`verify/round-<r>/<id>.json`');
-    expect(table).toContain('`verdicts/round-<r>/<id>.json` | the verifier of feature `<id>`');
+    expect(table).toContain('`verify/round-<r>/<id>/part-<n>.json`');
+    expect(table).toContain('`verdicts/round-<r>/<id>/part-<n>.json` | the verifier of part `<n>` of feature `<id>`');
     expect(table).toContain('`rewrite/<id>.json`');
     expect(table).toContain('`state.json` | `handbook.mjs` only (`check-map`, `check-entry`, `mark`, `verdicts`)');
   });
@@ -784,6 +790,11 @@ describe('the handbook verifier agent', () => {
     if (Object.hasOwn(manifest, 'agents')) expect(manifest.agents).toContain('./agents/excavator-handbook-verifier.md');
     const check = spawnSync(process.execPath, [resolve(repoRoot, 'scripts/check-refs.mjs')], { encoding: 'utf-8', cwd: repoRoot });
     expect(check.status, check.stdout + check.stderr).toBe(0);
+  });
+
+  it('is given one part of a feature and judges only the items of its file', () => {
+    expect(text).toContain('Verify file: <OUT>/verify/round-<r>/<id>/part-<n>.json');
+    expect(text).toContain('you have part `part` of `parts`. The other parts are not yours: judge only the items of your file.');
   });
 
   it('reads only its verify file: no other file, no search, no subagent', () => {
@@ -816,7 +827,7 @@ describe('the handbook verifier agent', () => {
     expect(text).toContain('Name no function, variable or constant either');
     expect(text).toContain('Write it in the language of the claim.');
     expect(text).toContain('is shown to the readers of the handbook');
-    expect(text).toContain('Verdict file: <OUT>/verdicts/round-<r>/<id>.json');
+    expect(text).toContain('Verdict file: <OUT>/verdicts/round-<r>/<id>/part-<n>.json');
     expect(text).toContain('Write JSON to the verdict file named in your prompt');
     expect(text).toContain('Do NOT include the JSON in your response');
   });
@@ -828,7 +839,7 @@ describe('the handbook verifier agent', () => {
       run.writeEntry();
       expect(run.run('check-entry', 'F1').status).toBe(0);
       expect(run.run('slices', 'F1').status).toBe(0);
-      const real = JSON.parse(readFileSync(join(run.out, 'verify', 'round-1', 'F1.json'), 'utf-8'));
+      const real = JSON.parse(readFileSync(join(run.out, 'verify', 'round-1', 'F1', 'part-1.json'), 'utf-8'));
       expect(Object.keys(example)).toEqual(Object.keys(real));
       expect(Object.keys(example.items[0])).toEqual(Object.keys(real.items[0]));
       expect(Object.keys(example.items[0].evidence[0])).toEqual(Object.keys(real.items[0].evidence[0]));

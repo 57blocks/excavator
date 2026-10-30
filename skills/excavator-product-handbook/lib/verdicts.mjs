@@ -2,10 +2,14 @@
  * `handbook.mjs verdicts <out> <id> --round <r> --project <root>` (design
  * D14): record a verifier's verdicts for one round of one feature.
  *
- * The verdict file `{ verdicts: [{ id, verdict, reason }] }` must hold exactly
- * one verdict per item of that round's verify file, each one of `verified`,
- * `unverified`, `contradicted`, with a non-empty one-line reason; any failure
- * prints every problem and records nothing. Round 1 sends every item that is
+ * A round's verify file is cut into parts (verify-plan.mjs), each with its own
+ * verdict file `verdicts/round-<r>/<id>/part-<n>.json`
+ * `{ verdicts: [{ id, verdict, reason }] }`. Every part's file must hold exactly
+ * one verdict per item of that part's verify file (a verdict for an item of
+ * another part is an extra id), each one of `verified`, `unverified`,
+ * `contradicted`, with a non-empty one-line reason; so each item has exactly one
+ * verdict over all parts. Any failure prints every problem, by part, and
+ * records nothing. Round 1 sends every item that is
  * not verified to the rewrite file (`unverified` and `contradicted` alike: a
  * reader cannot check the code, so a sentence that cannot be proved is not
  * left in); with none, the feature is verified. Round 2 removes the items that
@@ -23,7 +27,7 @@ import { reviewItems } from './review.mjs';
 import { loadState, saveState, entryDigest } from './state.mjs';
 import { checkedFeature, planRound } from './slices.mjs';
 import { trimEntry } from './trim-entry.mjs';
-import { fileItems, rewriteFilePath, verdictFilePath, verifyFilePath } from './verify-plan.mjs';
+import { fileItems, partFile, rewriteFilePath, splitParts, verdictPartPath, verifyPartPath } from './verify-plan.mjs';
 
 export const VERDICTS = Object.freeze(['verified', 'unverified', 'contradicted']);
 
@@ -95,6 +99,63 @@ function removalRecords(entry, removedByVerdict, verdictOf, claimOf) {
   return { trimmed, records };
 }
 
+const joinAnd = (list) => (list.length < 2 ? list.join('') : `${list.slice(0, -1).join(', ')} and ${list.at(-1)}`);
+const partNoun = (list) => (list.length === 1 ? 'part' : 'parts');
+
+/**
+ * Read the verify files and the verdict files of every part of the round and
+ * check them. Returns `{ verdictList }` (the verdicts of all parts, in part
+ * order) or `{ stop }`: a stale or missing verify part, or the problem lines of
+ * the verdict parts, each line led by its part, with a Next line that names
+ * exactly the parts to dispatch again.
+ */
+function readParts(outDir, id, round, plan) {
+  const roundFlag = round === 2 ? ' --round 2' : '';
+  const expected = splitParts(id, round, fileItems(plan.items)).map((items, index, all) => partFile(id, round, index + 1, all.length, items));
+  const stale = [];
+  const missingVerify = [];
+  for (const part of expected) {
+    const read = readJson(verifyPartPath(outDir, id, round, part.part));
+    if (!read.ok) missingVerify.push(`part ${part.part}: verify/round-${round}/${id}/part-${part.part}.json ${read.reason}`);
+    else if (JSON.stringify(read.value) !== JSON.stringify(part)) stale.push(part.part);
+  }
+  if (missingVerify.length > 0) return { stop: { status: 1, lines: [...missingVerify, `Next: run slices for ${id}${roundFlag} first`] } };
+  if (stale.length > 0) {
+    return { stop: { status: 1, lines: [`${id}: the entry or the source changed since slices wrote the files of verify/round-${round}/${id}/ (${partNoun(stale)} ${joinAnd(stale)})`, `Next: run slices again${roundFlag} for ${id}, then send each part to the verifier`] } };
+  }
+
+  const files = [...new Set(plan.items.flatMap((item) => item.evidence.map((block) => block.file)))];
+  const lines = [];
+  const missing = [];
+  const rejected = [];
+  const verdictList = [];
+  for (const part of expected) {
+    const label = `part ${part.part}`;
+    const read = readJson(verdictPartPath(outDir, id, round, part.part));
+    const where = `verdicts/round-${round}/${id}/part-${part.part}.json`;
+    if (!read.ok) {
+      (read.missing ? missing : rejected).push(part.part);
+      lines.push(`${label}: ${where} ${read.reason}`);
+      continue;
+    }
+    const problems = verdictProblems(read.value, part.items, files);
+    if (problems.length === 0) problems.push(...reasonProblems(read.value.verdicts, plan));
+    if (problems.length > 0) {
+      rejected.push(part.part);
+      lines.push(...problems.map((problem) => `${label}: ${problem}`));
+    } else {
+      verdictList.push(...read.value.verdicts);
+    }
+  }
+  if (missing.length === 0 && rejected.length === 0) return { verdictList };
+  const again = [...missing, ...rejected].sort((a, b) => a - b);
+  if (rejected.length === 0) {
+    return { stop: { status: 1, lines: [...lines, `Next: dispatch the verifier once more for ${id} for exactly the missing ${partNoun(missing)}: ${joinAnd(missing)}, each with the verify file and the verdict file paths slices printed for it`] } };
+  }
+  const sortedRejected = [...rejected].sort((a, b) => a - b);
+  return { stop: { status: 1, lines: [...lines, `Next: delete the verdict ${sortedRejected.length === 1 ? 'file' : 'files'} of ${partNoun(sortedRejected)} ${joinAnd(sortedRejected)} and dispatch the verifier once more for ${partNoun(again)} ${joinAnd(again)} with the lines above; nothing was recorded`] } };
+}
+
 /** Run verdicts. Returns { status, lines }. */
 export function verdicts(outDir, id, root, round) {
   const feature = checkedFeature(outDir, id, round);
@@ -102,21 +163,10 @@ export function verdicts(outDir, id, root, round) {
   const plan = planRound(outDir, id, root, round);
   if (plan.stop) return plan.stop;
 
-  const verifyRead = readJson(verifyFilePath(outDir, id, round));
-  if (!verifyRead.ok) return { status: 1, lines: [`verify/round-${round}/${id}.json ${verifyRead.reason}`, `Next: run slices for ${id}${round === 2 ? ' --round 2' : ''} first`] };
-  if (JSON.stringify(verifyRead.value) !== JSON.stringify({ feature: id, round, items: fileItems(plan.items) })) {
-    return { status: 1, lines: [`${id}: the entry or the source changed since slices wrote verify/round-${round}/${id}.json`, `Next: run slices again${round === 2 ? ' --round 2' : ''} for ${id}, then send it to the verifier`] };
-  }
-
-  const verdictRead = readJson(verdictFilePath(outDir, id, round));
-  if (verdictRead.missing) return { status: 1, lines: [`verdicts/round-${round}/${id}.json is missing`, `Next: dispatch the verifier once more for ${id} with the verify file and the verdict file paths`] };
-  if (!verdictRead.ok) return { status: 1, lines: [`verdicts/round-${round}/${id}.json ${verdictRead.reason}`, `Next: delete it and dispatch the verifier once more for ${id}`] };
-  const files = [...new Set(plan.items.flatMap((item) => item.evidence.map((block) => block.file)))];
-  const problems = verdictProblems(verdictRead.value, plan.items, files);
-  if (problems.length === 0) problems.push(...reasonProblems(verdictRead.value.verdicts, plan));
-  if (problems.length > 0) return { status: 1, lines: [...problems, `Next: delete the verdict file and dispatch the verifier once more for ${id} with the lines above; nothing was recorded`] };
-  const given = verdictRead.value.verdicts;
-  const verdictOf = new Map(given.map((entry) => [entry.id, { verdict: entry.verdict, reason: entry.reason.trim() }]));
+  const checked = readParts(outDir, id, round, plan);
+  if (checked.stop) return checked.stop;
+  const { verdictList } = checked;
+  const verdictOf = new Map(verdictList.map((entry) => [entry.id, { verdict: entry.verdict, reason: entry.reason.trim() }]));
   const notVerified = plan.items.filter((item) => verdictOf.get(item.id).verdict !== 'verified');
 
   const stateRead = loadState(outDir);

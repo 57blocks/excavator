@@ -182,23 +182,27 @@ export function makeCheckedMapRun() {
 }
 
 /**
- * Slice a checked feature, write a verdict file that judges each item with
- * `decide(item)` (a verdict word or `{ verdict, reason }`; default verified),
- * and record it with `verdicts`. Returns the `verdicts` result. Round 2 judges
- * the items its verify file holds.
+ * Slice a checked feature, write a verdict file for every part of its verify
+ * files that judges each item with `decide(item)` (a verdict word or
+ * `{ verdict, reason }`; default verified), and record them with `verdicts`.
+ * Returns the `verdicts` result. Round 2 judges the items its verify files hold.
  */
 export function judge(run, id = 'F1', round = 1, decide = () => 'verified') {
   const sliced = run.run('slices', id, ...(round === 2 ? ['--round', '2'] : []));
   if (sliced.status !== 0) throw new Error(`slices failed:\n${sliced.stdout}${sliced.stderr}`);
-  const verify = JSON.parse(readFileSync(join(run.out, 'verify', `round-${round}`, `${id}.json`), 'utf-8'));
-  const verdicts = verify.items.map((item) => {
-    const given = decide(item);
-    const verdict = typeof given === 'string' ? { verdict: given } : given;
-    return { id: item.id, verdict: verdict.verdict, reason: verdict.reason ?? `The code shown decides ${item.id}.` };
-  });
-  const dir = join(run.out, 'verdicts', `round-${round}`);
+  const verifyDir = join(run.out, 'verify', `round-${round}`, id);
+  const dir = join(run.out, 'verdicts', `round-${round}`, id);
   mkdirSync(dir, { recursive: true });
-  writeFileSync(join(dir, `${id}.json`), `${JSON.stringify({ verdicts }, null, 2)}\n`);
+  const { parts } = JSON.parse(readFileSync(join(verifyDir, 'part-1.json'), 'utf-8'));
+  for (let part = 1; part <= parts; part += 1) {
+    const verify = JSON.parse(readFileSync(join(verifyDir, `part-${part}.json`), 'utf-8'));
+    const verdicts = verify.items.map((item) => {
+      const given = decide(item);
+      const verdict = typeof given === 'string' ? { verdict: given } : given;
+      return { id: item.id, verdict: verdict.verdict, reason: verdict.reason ?? `The code shown decides ${item.id}.` };
+    });
+    writeFileSync(join(dir, `part-${part}.json`), `${JSON.stringify({ verdicts }, null, 2)}\n`);
+  }
   return run.run('verdicts', id, '--round', String(round));
 }
 

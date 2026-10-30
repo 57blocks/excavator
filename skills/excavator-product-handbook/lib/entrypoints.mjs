@@ -7,8 +7,10 @@
  * framework }`. Which catalog groups run is decided by the detected
  * frameworks: the knowledge-graph header's `project.frameworks` when the graph
  * is there, otherwise the build files read by the same detector /excavator
- * uses; the catalog's own `detect` rules add the libraries the graph never
- * records (cron libraries, a Go or Node main). Every detected framework lands
+ * uses (a caller that must not read anything under `.excavator/` passes
+ * `useGraph: false` and always gets the build files); the catalog's own `detect`
+ * rules add the libraries the graph never records (cron libraries, a Go or
+ * Node main). Every detected framework lands
  * in exactly one of `covered` (the catalog has patterns for it) or
  * `uncovered`. Every walked file lands in one bucket of `files`. No model
  * call, nothing built or run.
@@ -40,6 +42,7 @@ const RESIDUAL = Object.freeze({
   oneCandidate: 'One candidate per line: a line that patterns of two frameworks match is credited to the framework listed first in the catalog.',
   react: 'Under react and react-router, route objects (path:) are listed only in files whose path contains "router", and under react <Route> elements too; a route declared in another file is not listed.',
   gin: 'The gin route pattern (.GET(, .POST( and the other verbs) also matches outbound HTTP-client calls of the same shape; such lines are expected to be left unassigned.',
+  graphIgnored: 'The knowledge graph is not read (the caller asked for detection from the build files only): frameworks were detected from the build files, by the detector /excavator uses and the catalog\'s own rules.',
   noGraph: 'No knowledge graph: frameworks were detected from the build files, by the detector /excavator uses and the catalog\'s own rules.',
 });
 
@@ -236,9 +239,11 @@ function detectedByCatalog(group, manifests) {
 
 /**
  * List the entrypoint candidates of `projectRoot` (optionally only under
- * `scope`). Returns the listing object without a `format` field; each command stamps its own.
+ * `scope`). With `useGraph: false` the knowledge graph is not opened, not even
+ * to see whether it exists. Returns the listing object without a `format`
+ * field; each command stamps its own.
  */
-export async function listEntrypoints(projectRootArg, { scope = null, catalogPath = CATALOG_FILE } = {}) {
+export async function listEntrypoints(projectRootArg, { scope = null, catalogPath = CATALOG_FILE, useGraph = true } = {}) {
   let projectRoot;
   try {
     projectRoot = realpathSync(resolve(projectRootArg));
@@ -250,7 +255,7 @@ export async function listEntrypoints(projectRootArg, { scope = null, catalogPat
   const groups = loadCatalog(catalogPath);
   const catalogManifests = new Set(groups.flatMap((group) => (group.detect ?? []).map((rule) => rule.manifest)));
 
-  const graph = readGraphFrameworks(projectRoot);
+  const graph = useGraph ? readGraphFrameworks(projectRoot) : { state: 'ignored' };
   const registry = graph.state === 'read' ? null : await loadFrameworkRegistry();
   const isManifest = (rel) => catalogManifests.has(basename(rel)) || (registry !== null && registry.isManifestPath(rel));
 
@@ -334,6 +339,7 @@ export async function listEntrypoints(projectRootArg, { scope = null, catalogPat
   if (covered.includes('react') || covered.includes('react-router')) residualAssumptions.push(RESIDUAL.react);
   if (covered.includes('gin')) residualAssumptions.push(RESIDUAL.gin);
   if (graph.state === 'absent') residualAssumptions.push(RESIDUAL.noGraph);
+  if (graph.state === 'ignored') residualAssumptions.push(RESIDUAL.graphIgnored);
   if (graph.state === 'unreadable') {
     residualAssumptions.push(`The knowledge graph header could not be read (${graph.reason}); frameworks were detected from the build files instead.`);
   }

@@ -35,8 +35,8 @@ All files of a run live in `$OUT`:
 | `map.json` | you |
 | `entries/<id>.json` | the lane of feature `<id>` |
 | `state.json` | `handbook.mjs` only (`check-map`, `check-entry`, `mark`, `verdicts`) |
-| `verify/round-<r>/<id>.json` | `handbook.mjs slices` (the items of a feature, with their claims and code); `verify/round-1/<id>.entry.json` is the entry as round 1 saw it |
-| `verdicts/round-<r>/<id>.json` | the verifier of feature `<id>` |
+| `verify/round-<r>/<id>/part-<n>.json` | `handbook.mjs slices` (the items of a feature, with their claims and code, cut by size into parts); `verify/round-1/<id>.entry.json` is the entry as round 1 saw it |
+| `verdicts/round-<r>/<id>/part-<n>.json` | the verifier of part `<n>` of feature `<id>` |
 | `rewrite/<id>.json` | `handbook.mjs verdicts --round 1` (the items to rewrite, with the verdicts) |
 | `ui.json` | the translation subagent; for English, the script copies its shipped table |
 | `handbook.md` | `handbook.mjs assemble` |
@@ -107,7 +107,7 @@ jq 'del(.items)' "$OUT/candidates.json"
 jq -r '.items[] | [.id, .kind, .framework, "\(.file):\(.line)", .text] | @tsv' "$OUT/candidates.json"
 ```
 
-The header says which frameworks were found, which have patterns (`covered`) and which have none (`uncovered`), and what the scan skipped. Tell the user in one line which frameworks are `uncovered`: their pages and routes are not in the list, so the handbook may lack those features. Do not add candidates yourself: the list is the script's, and the conservation check counts exactly these ids.
+The header says which frameworks were found, which have patterns (`covered`) and which have none (`uncovered`), and what the scan skipped. The frameworks always come from the project's build files (`detection.source` is `build-files`), even when `.excavator/` holds a knowledge graph: the script does not open it, and neither do you. Tell the user in one line which frameworks are `uncovered`: their pages and routes are not in the list, so the handbook may lack those features. Do not add candidates yourself: the list is the script's, and the conservation check counts exactly these ids.
 
 ---
 
@@ -311,16 +311,16 @@ A `checked` feature has an entry whose shape, citations, labels, numbers and wor
    jq -r '.features | to_entries[] | select(.value.status == "checked") | [.key, (if .value.rewriting then "rewrite" else "verify" end)] | @tsv' "$OUT/state.json"
    ```
    A feature that is `verified`, `failed`, `planned` or `dispatched` is not in the list: `verified` is done, the others have no entry that passed the checks. With no feature in the list, go to Phase 6.
-   A resumed run continues each listed feature where its files show it stopped. At `verify`: when `$OUT/verdicts/round-1/<id>.json` exists, run step 3 for it first, and when that exits 1 start at step 2 (`slices` clears the older files of the feature); otherwise start at step 2. At `rewrite`: when `$OUT/verdicts/round-2/<id>.json` exists, go to step 7 for it; when `$OUT/verify/round-2/<id>.json` exists, go to step 6; otherwise go to step 4.
+   A resumed run continues each listed feature where its files show it stopped. At `verify`: when `$OUT/verdicts/round-1/<id>/` exists, run the `verdicts` command of step 3 for it first (it names the parts still to dispatch), and when that exits 1 start at step 2 (`slices` clears the older files of the feature); otherwise start at step 2. At `rewrite`: when `$OUT/verdicts/round-2/<id>/` exists, go to step 7 for it; when `$OUT/verify/round-2/<id>/` exists, go to step 6; otherwise go to step 4.
 2. Cut each `verify` feature into items, one command per feature (the commands of a batch in one Bash command, one after another):
    ```bash
    node "$PLUGIN_ROOT/skills/excavator-product-handbook/handbook.mjs" slices "$OUT" <id> --project "$PROJECT_ROOT"
    ```
-   It prints `<id>: round 1, <n> items`, then `Verify file: <path>` and `Verdict file: <path>`: the two paths of that feature's verifier. Each item of the verify file has an id (its place in the entry), a claim (everything a reader is told by that item, with the context to read it: field, screen, side, operation) and the code its citations point to, 20 lines before and after each passage. Exit 1 prints why (the entry no longer passes its checks, or the source changed since the entry was checked) and a `Next:` line: follow it once; when it cannot be followed, leave the feature as it is. It stays `checked` and the handbook lists it as verification not finished.
-3. Dispatch one subagent per feature with the `excavator-handbook-verifier` agent type, up to 10 in one message so they run concurrently; send the next 10 when those have returned. The plugin registers that agent type, so there is no file to look for: name it as the subagent type. Dispatch them in the foreground, never as background tasks: a run without a terminal stops waiting for background subagents. Give each the prompt below with its two paths filled in, and nothing else: not the entry, the map, a summary or any reason.
+   It prints `<id>: round 1, <n> items in <k> parts`, then one line per part, `Part <p>/<k>: Verify file: <path> | Verdict file: <path>`: the two paths of that part's verifier. A feature with many items is cut into parts so that no verify file is more than a verifier can read at once (at most 25 items and about 60,000 bytes a part). Each item of a verify file has an id (its place in the entry), a claim (everything a reader is told by that item, with the context to read it: field, screen, side, operation) and the code its citations point to, 20 lines before and after each passage. Exit 1 prints why (the entry no longer passes its checks, or the source changed since the entry was checked) and a `Next:` line: follow it once; when it cannot be followed, leave the feature as it is. It stays `checked` and the handbook lists it as verification not finished.
+3. Dispatch one subagent per part with the `excavator-handbook-verifier` agent type, up to 10 in one message so they run concurrently; send the next 10 when those have returned. The parts of one feature, and of different features, are independent of one another. The plugin registers that agent type, so there is no file to look for: name it as the subagent type. Dispatch them in the foreground, never as background tasks: a run without a terminal stops waiting for background subagents. Give each the prompt below with the two paths of its part's line filled in, and nothing else: not the entry, the map, a summary or any reason.
 
 ````text
-You are checking the items of one feature of a product handbook against the code shown with them. Write nothing but the one output file named below.
+You are checking the items of one part of one feature of a product handbook against the code shown with them. Write nothing but the one output file named below.
 
 Verify file:  <the verify file of the line>
 Verdict file: <the verdict file of the line>
@@ -328,13 +328,13 @@ Verdict file: <the verdict file of the line>
 Read the verify file and nothing else, and write one verdict per item id as your agent definition says.
 ````
 
-   As each verifier returns, record its verdicts, one command at a time, never two at once:
+   When every part of a feature has returned, record its verdicts, one command per feature and one at a time, never two at once:
    ```bash
    node "$PLUGIN_ROOT/skills/excavator-product-handbook/handbook.mjs" verdicts "$OUT" <id> --round 1 --project "$PROJECT_ROOT"
    ```
-   - Exit 0 and `<id>: verified (<n> items)`: the feature is verified. Nothing more to do for it.
+   - Exit 0 and `<id>: verified (<n> items)`: the feature is verified, whatever the number of its parts. Nothing more to do for it.
    - Exit 0 and `<id>: <n> items to rewrite`, then `Rewrite file: <path>`: the items the verifier did not confirm, `unverified` and `contradicted` alike, are in that file with the claim, the verdict and the reason of each. Go to step 4 for it.
-   - Exit 1: nothing was recorded. The lines say why: the verdict file is missing (the verifier wrote nothing), or does not hold exactly one verdict for each item, or a verdict is not one of the three words, or a reason is empty, has more than one line, names a file, or (for a verdict that is not `verified`, which readers see) holds a code-shaped word or, in a language with its own script, no letter of it. Dispatch that feature's verifier once more with the prompt followed by this line and then each line printed except the `Next:` line: `Your previous verdict file was rejected for these reasons; write it again:`. Delete the old verdict file first (`rm -f "<the verdict file>"`). When `verdicts` still exits 1, leave the feature as it is, `checked`: it is listed in the handbook as verification not finished. Never write or change a verdict yourself, and never edit `state.json`.
+   - Exit 1: nothing was recorded. Each line says why, led by its part (`part <p>: ...`): the part's verdict file is missing (the verifier wrote nothing), or does not hold exactly one verdict for each item of that part (a verdict for an item of another part counts as extra), or a verdict is not one of the three words, or a reason is empty, has more than one line, names a file, or (for a verdict that is not `verified`, which readers see) holds a code-shaped word or, in a language with its own script, no letter of it. Dispatch a verifier once more for each part the `Next:` line names, and for no other part. For a missing part, the prompt as it was. For a rejected part, the prompt followed by this line and then each line printed for that part except the `Next:` line (the lines that start with `part <p>:`, without that start): `Your previous verdict file was rejected for these reasons; write it again:`. Delete the old verdict file of a rejected part first (`rm -f "<the verdict file>"`). Then run `verdicts` again. When `verdicts` still exits 1, leave the feature as it is, `checked`: it is listed in the handbook as verification not finished. Never write or change a verdict yourself, and never edit `state.json`.
 4. Rewrite, once. For each feature with a rewrite file, dispatch one rewrite subagent (a general-purpose subagent, in the foreground, up to `$CONCURRENCY` in one message) with the prompt below, its placeholders filled in:
 
 ````text
@@ -362,8 +362,8 @@ Write only `$OUT/entries/<id>.json`, and nothing else anywhere. Reply with one l
    ```
    - `check-entry` exit 1: the feature is `failed` at the step `rewrite`; there is no second rewrite. Leave it and go on with the next feature.
    - `slices` exit 1: the rewrite changed an item that was not listed, or deleted or added an item, and the lines name each path. There is no second rewrite: leave the feature as it is, `checked`; it is listed in the handbook as verification not finished.
-   - `slices` exit 0 prints `Verify file:` and `Verdict file:` for round 2, and holds only the listed items and the items that hang on them.
-6. Dispatch the verifiers of round 2 as in step 3: the same agent type, the same prompt with the round 2 paths, up to 10 in one message, in the foreground. A verifier whose verdict file is missing or rejected is dispatched once more as in step 3; when it still fails, leave the feature as it is.
+   - `slices` exit 0 prints the `Part <p>/<k>:` lines with the `Verify file:` and `Verdict file:` paths for round 2, and holds only the listed items and the items that hang on them.
+6. Dispatch the verifiers of round 2 as in step 3, one per part: the same agent type, the same prompt with the round 2 paths, up to 10 in one message, in the foreground. Round 2 holds only the rewritten items, so it usually has one part. A part whose verdict file is missing or rejected is dispatched once more as in step 3; when it still fails, leave the feature as it is.
 7. Settle each feature:
    ```bash
    node "$PLUGIN_ROOT/skills/excavator-product-handbook/handbook.mjs" verdicts "$OUT" <id> --round 2 --project "$PROJECT_ROOT"

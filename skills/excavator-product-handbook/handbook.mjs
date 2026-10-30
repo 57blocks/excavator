@@ -107,24 +107,28 @@ Commands:
       further argument one reason. lane is the only step mark records.
   slices <out> <featureId> --project <root> [--round 2]
       Only for a feature whose entry passed check-entry (state checked). Write
-      <out>/verify/round-<r>/<featureId>.json: the items of the entry that carry
-      evidence, each with its id (its JSON path), its claim (all its reader text
-      with the context to read it) and the source around every cited passage
-      (20 lines before and after, numbered, ranges of one file merged). Round 1
-      also saves a snapshot of the entry. Round 2 covers only the items listed
-      in <out>/rewrite/<featureId>.json and refuses an entry in which an item
-      that was not listed differs from the snapshot, printing each path. Prints
-      the verify file and the verdict file the verifier must write.
+      <out>/verify/round-<r>/<featureId>/part-<n>.json: the items of the entry
+      that carry evidence, each with its id (its JSON path), its claim (all its
+      reader text with the context to read it) and the source around every cited
+      passage (20 lines before and after, numbered, ranges of one file merged),
+      cut into parts in item order (at most 25 items and 60000 bytes a part; an
+      item over the byte limit alone is a part of its own). Round 1 also saves a
+      snapshot of the entry. Round 2 covers only the items listed in
+      <out>/rewrite/<featureId>.json and refuses an entry in which an item that
+      was not listed differs from the snapshot, printing each path. Prints, for
+      each part, the verify file and the verdict file its verifier must write.
   verdicts <out> <featureId> --round <1|2> --project <root>
-      Read <out>/verdicts/round-<r>/<featureId>.json ({ "verdicts": [{ "id",
-      "verdict", "reason" }] }): exactly one verdict per item of the round's
-      verify file, each verified, unverified or contradicted, with a one-line
-      reason. Any failure prints every problem and records nothing. Round 1
-      writes the items that are not verified to <out>/rewrite/<featureId>.json
-      (none: the feature is verified at once). Round 2 removes the items that
-      are still not verified from the entry (what hangs on them goes with
-      them), records them in state.json and verifies the feature; a purpose
-      that is not verified fails it at step verify.
+      Read <out>/verdicts/round-<r>/<featureId>/part-<n>.json for every part
+      ({ "verdicts": [{ "id", "verdict", "reason" }] }): exactly one verdict
+      per item of the round, in the file of the part that holds the item, each
+      verified, unverified or contradicted, with a one-line reason. Any failure
+      prints every problem by part, names the parts to dispatch again, and
+      records nothing. Round 1 writes the items that are not verified to
+      <out>/rewrite/<featureId>.json (none: the feature is verified at once).
+      Round 2 removes the items that are still not verified from the entry
+      (what hangs on them goes with them), records them in state.json and
+      verifies the feature; a purpose that is not verified fails it at step
+      verify.
   check-ui <out> [--language <name>]
       Run in English with no <out>/ui.json: copy the shipped English table
       there. Otherwise check <out>/ui.json: the same keys as the English table,

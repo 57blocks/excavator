@@ -2,16 +2,17 @@
  * `handbook.mjs slices <out> <id> --project <root> [--round 2]` (design D14):
  * cut a checked entry into the items a verifier judges, each with its claim
  * and the source around every passage it cites, and write
- * `<out>/verify/round-<r>/<id>.json`. Round 1 covers every item with evidence
- * and keeps a snapshot of the entry; round 2 covers only what the one rewrite
- * left of the items round 1 listed, and refuses an entry in which an item that
- * was not listed differs from the snapshot. Changes only files under
- * `<out>/verify` (and, in round 1, clears the feature's older verification
- * files so a new round 1 starts clean).
+ * `<out>/verify/round-<r>/<id>/part-<n>.json`, one file per part (the items cut
+ * by bytes, verify-plan.mjs). Round 1 covers every item with evidence and keeps
+ * a snapshot of the entry; round 2 covers only what the one rewrite left of the
+ * items round 1 listed, and refuses an entry in which an item that was not
+ * listed differs from the snapshot. Changes only files under `<out>/verify`
+ * (and clears the feature's older verification files of the round and those
+ * after it, so a new round starts clean).
  */
 
 import { mkdirSync, rmSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { join } from 'node:path';
 
 import { checkEntryFile, entryPath, loadForEntry } from './entry-check.mjs';
 import { readJson, writeJson } from './json-file.mjs';
@@ -19,7 +20,8 @@ import { loadState, featureState } from './state.mjs';
 import { loadUi } from './ui.mjs';
 import { UsageError } from './errors.mjs';
 import {
-  fileItems, rewriteFilePath, roundTwoPlan, snapshotPath, verdictFilePath, verifyFilePath, verifyItems,
+  fileItems, partFile, rewriteFilePath, roundTwoPlan, snapshotPath, splitParts, verdictDirPath, verdictPartPath,
+  verifyDirPath, verifyItems, verifyPartPath,
 } from './verify-plan.mjs';
 
 /** The state of feature `id`, or the lines that stop a verification command: only a checked feature is verified. */
@@ -81,16 +83,21 @@ export function slices(outDir, id, root, round) {
   const plan = planRound(outDir, id, root, round);
   if (plan.stop) return plan.stop;
 
-  const verifyPath = verifyFilePath(outDir, id, round);
-  mkdirSync(dirname(verifyPath), { recursive: true });
+  const dirs = [verifyDirPath(outDir, id, round), verdictDirPath(outDir, id, round)];
   if (round === 1) {
-    for (const stale of [rewriteFilePath(outDir, id), verdictFilePath(outDir, id, 1), verdictFilePath(outDir, id, 2), verifyFilePath(outDir, id, 2)]) rmSync(stale, { force: true });
-    writeJson(snapshotPath(outDir, id), plan.entry);
-  } else {
-    rmSync(verdictFilePath(outDir, id, 2), { force: true });
+    rmSync(rewriteFilePath(outDir, id), { force: true });
+    dirs.push(verifyDirPath(outDir, id, 2), verdictDirPath(outDir, id, 2));
   }
-  writeJson(verifyPath, { feature: id, round, items: fileItems(plan.items) });
-  const lines = [`${id}: round ${round}, ${plural(plan.items.length, 'item')}`, `Verify file: ${verifyPath}`, `Verdict file: ${verdictFilePath(outDir, id, round)}`];
-  lines.push(`Next: dispatch one excavator-handbook-verifier for ${id} with the two paths above, then run verdicts --round ${round}`);
+  for (const stale of dirs) rmSync(stale, { recursive: true, force: true });
+  mkdirSync(verifyDirPath(outDir, id, round), { recursive: true });
+  if (round === 1) writeJson(snapshotPath(outDir, id), plan.entry);
+  const parts = splitParts(id, round, fileItems(plan.items));
+  const lines = [`${id}: round ${round}, ${plural(plan.items.length, 'item')} in ${plural(parts.length, 'part')}`];
+  parts.forEach((items, index) => {
+    const number = index + 1;
+    writeJson(verifyPartPath(outDir, id, round, number), partFile(id, round, number, parts.length, items));
+    lines.push(`Part ${number}/${parts.length}: Verify file: ${verifyPartPath(outDir, id, round, number)} | Verdict file: ${verdictPartPath(outDir, id, round, number)}`);
+  });
+  lines.push(`Next: dispatch one excavator-handbook-verifier for each part of ${id} with the two paths of its line above, then run verdicts --round ${round}`);
   return { status: 0, lines };
 }
