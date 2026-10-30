@@ -16,6 +16,8 @@
  *       match exactly one feature. Changes no file.
  *   check-entry <out> <featureId> --project <root>
  *       Check <out>/entries/<featureId>.json and record the result in state.json.
+ *   try-entry <out> <featureId> --project <root>
+ *       The same checks for the lane itself; records nothing.
  *   mark <out> <featureId> dispatched | failed lane <reason>... --project <root>
  *       Record a lane dispatch or a lane that wrote nothing in state.json.
  *   check-ui <out>
@@ -40,7 +42,7 @@ import { resolve } from 'node:path';
 
 import { assemble } from './lib/assemble.mjs';
 import { candidatesOutput } from './lib/candidates.mjs';
-import { checkEntry } from './lib/entry-check.mjs';
+import { checkEntry, tryEntry } from './lib/entry-check.mjs';
 import { checkMap } from './lib/check-map.mjs';
 import { UsageError } from './lib/errors.mjs';
 import { withStateLock } from './lib/lock.mjs';
@@ -73,6 +75,11 @@ Commands:
       Check <out>/entries/<featureId>.json: shape, roles from the map,
       citations, labels, numbers and banned words, and record the result in
       state.json. A failure ends with a Next: line.
+  try-entry <out> <featureId> --project <root>
+      The same checks as check-entry, for the lane to run on its own file
+      before it replies. Reads and writes no state.json: it is not an attempt
+      and records no result. Prints "<featureId>: ok" or each problem and a
+      Next: line.
   mark <out> <featureId> dispatched --project <root>
       Count one more dispatch of the feature's lane in state.json.
   mark <out> <featureId> failed lane <reason>... --project <root>
@@ -157,6 +164,11 @@ const COMMANDS = {
     if (positionals.length !== 2) throw new UsageError('check-entry takes <out> and <featureId>');
     const root = projectRootOption(options.project);
     return withStateLock(positionals[0], () => report(checkEntry(positionals[0], positionals[1], root)));
+  },
+  'try-entry'(args) {
+    const { positionals, options } = parseArgs(args, ['project']);
+    if (positionals.length !== 2) throw new UsageError('try-entry takes <out> and <featureId>');
+    return report(tryEntry(positionals[0], positionals[1], projectRootOption(options.project)));
   },
   mark(args) {
     const { positionals, options } = parseArgs(args, ['project']);

@@ -2,7 +2,8 @@
  * check-entry (design D5 to D9): one entry file against the map and the
  * project: shape, id, roles from the map, citations, labels, numbers and the
  * banned-words gate; then the result goes into state.json. A missing entry
- * file is `lane-wrote-nothing`.
+ * file is `lane-wrote-nothing`. try-entry runs the same checks for the lane
+ * itself and records nothing.
  */
 
 import { existsSync } from 'node:fs';
@@ -44,26 +45,33 @@ export function checkEntryFile(outDir, id, root, { map, mapLabels = null, files 
   return { step: 'check-entry', problems: entryProblems(read.value, id, { map, files, memberDirs, mapLabels: labels }) };
 }
 
-/** Run check-entry for feature `id` of `<out>` and record the result. Returns { status, lines }. */
-export function checkEntry(outDir, id, root) {
+/** The checked map and project facts check-entry and try-entry share, or the lines that stop them. */
+function loadForEntry(outDir, id, root) {
   if (!existsSync(outDir)) throw new UsageError(`out directory ${outDir} does not exist`);
   const mapRead = readMap(outDir);
-  if (!mapRead.ok) return { status: 1, lines: [mapRead.line] };
+  if (!mapRead.ok) return { stop: { status: 1, lines: [mapRead.line] } };
   const map = mapRead.value;
-  const loaded = loadState(outDir);
-  if (!loaded.ok) {
-    if (loaded.missing) throw new UsageError(loaded.problem);
-    return { status: 1, lines: [loaded.problem] };
-  }
   const files = projectFiles(root);
   const memberDirs = memberDirectories(root);
   const labels = mapVerifiedLabels(map, { files, memberDirs });
-  if (labels.shapeProblems.length > 0) return { status: 1, lines: [...labels.shapeProblems.map((line) => `map.json: ${line}`), 'map.json is malformed; run check-map first'] };
+  if (labels.shapeProblems.length > 0) return { stop: { status: 1, lines: [...labels.shapeProblems.map((line) => `map.json: ${line}`), 'map.json is malformed; run check-map first'] } };
   if (!map.features.some((feature) => feature.id === id)) throw new UsageError(`feature ${id} is not in map.json`);
-  const { state } = loaded;
+  return { map, files, memberDirs, mapLabels: labels.verified };
+}
+
+/** Run check-entry for feature `id` of `<out>` and record the result. Returns { status, lines }. */
+export function checkEntry(outDir, id, root) {
+  const loaded = loadForEntry(outDir, id, root);
+  if (loaded.stop) return loaded.stop;
+  const stateRead = loadState(outDir);
+  if (!stateRead.ok) {
+    if (stateRead.missing) throw new UsageError(stateRead.problem);
+    return { status: 1, lines: [stateRead.problem] };
+  }
+  const { state } = stateRead;
   const current = featureState(state, id);
 
-  const result = checkEntryFile(outDir, id, root, { map, mapLabels: labels.verified, files, memberDirs });
+  const result = checkEntryFile(outDir, id, root, loaded);
   if (result.problems.length === 0) {
     state.features[id] = { status: 'checked', attempts: current.attempts };
     saveState(outDir, state);
@@ -72,4 +80,17 @@ export function checkEntry(outDir, id, root) {
   state.features[id] = { status: 'failed', attempts: current.attempts, failure: { step: result.step, reasons: result.problems } };
   saveState(outDir, state);
   return { status: 1, lines: [...result.problems, nextLine(id, current.attempts)] };
+}
+
+/**
+ * The same checks as check-entry for a lane to run on its own file before it
+ * replies; reads and writes no state, so it neither counts as an attempt nor
+ * records a result. Returns { status, lines }.
+ */
+export function tryEntry(outDir, id, root) {
+  const loaded = loadForEntry(outDir, id, root);
+  if (loaded.stop) return loaded.stop;
+  const result = checkEntryFile(outDir, id, root, loaded);
+  if (result.problems.length === 0) return { status: 0, lines: [`${id}: ok`] };
+  return { status: 1, lines: [...result.problems, `Next: fix each line above in ${entryPath(id)} and run try-entry again`] };
 }

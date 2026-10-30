@@ -381,3 +381,41 @@ describe('check-entry: state, attempts and retries', () => {
     expect(result.stderr).toMatch(/state\.json\.lock is held by pid 99999/);
   });
 });
+
+describe('try-entry: the lane checks its own file and nothing is recorded', () => {
+  const tryIt = (run, id = 'F1') => run.run('try-entry', id);
+
+  it('prints the same problems as check-entry and leaves state.json as it was', () => {
+    const run = newRun();
+    const entry = clone(run.entry);
+    entry.purpose.evidence[0].passage = 'a passage that is in no file of the project';
+    run.writeEntry('F1', entry);
+    const before = run.readJson('state.json');
+    const tried = tryIt(run);
+    expect(tried.status).toBe(1);
+    expect(tried.stdout).toMatch(/purpose\.evidence\[0\]: passage not in /);
+    expect(tried.lines.at(-1)).toBe('Next: fix each line above in entries/F1.json and run try-entry again');
+    expect(run.readJson('state.json')).toEqual(before);
+    const checked = check(run);
+    expect(checked.lines.slice(0, -1)).toEqual(tried.lines.slice(0, -1));
+  });
+
+  it('prints ok for the good entry and records neither checked nor an attempt', () => {
+    const run = newRun();
+    run.writeEntry();
+    const before = run.readJson('state.json');
+    const tried = tryIt(run);
+    expect(tried.lines).toEqual(['F1: ok']);
+    expect(tried.status).toBe(0);
+    expect(run.readJson('state.json')).toEqual(before);
+  });
+
+  it('reports a missing entry as the lane writing nothing, without recording it', () => {
+    const run = newRun();
+    const before = run.readJson('state.json');
+    const tried = tryIt(run);
+    expect(tried.status).toBe(1);
+    expect(tried.stdout).toMatch(/F1: lane-wrote-nothing/);
+    expect(run.readJson('state.json')).toEqual(before);
+  });
+});

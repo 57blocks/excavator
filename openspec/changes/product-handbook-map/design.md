@@ -41,6 +41,7 @@
 | `check-ui <out>` | 固定文字表的键、占位符（D12） |
 | `assemble <out> --project <root>` | 拼出 `handbook.md` |
 | `page <out> --project <root>` | 写出 `handbook.html`（D13） |
+| `try-entry <out> <id> --project <root>` | 与 `check-entry` 相同的检查，给 lane 交回前自查；不读不写状态（D9） |
 | `select <out> --project <root> --features <list>` | 把 `--features` 解析成功能 id（D9） |
 | `reply <out> --project <root>` | 重新检查整个运行，按固定格式打印最终回复的几行：两个产物的路径、各状态的功能数、失败的 id、候选守恒。不改任何文件 |
 
@@ -141,6 +142,7 @@
 
 - 编排者为每个要写条目的功能派一个前台子代理，最多 `--concurrency`（默认 3）个同时运行。子代理只读该功能的种子文件，以及否定类陈述所需的全项目搜索，只写 `entries/<id>.json`。
 - `check-entry` 通过记为 `checked`，不通过记为 `failed` 并保存原因。第一次失败后，带着原因重派一次；第二次仍失败就保持 `failed`，文件保留供查看。
+- lane 交回前先自己跑 `try-entry`：检查与 `check-entry` 相同，但不读不写 `state.json`，不算一次尝试。真实运行里两次尝试都栽在同一种机械错误上：引的是真实存在的源码行，文件却写成了同目录的另一个文件（共 7 处）。这种错 lane 自己搜一下就能改，不该每次都花掉整条 lane 的一次尝试。两次尝试的上限不变，`check-entry` 仍是唯一记结果的检查。
 - 状态只经过脚本改变，编排者不手改 `state.json`。
 - 重跑时，已 `checked` 的功能不再写；`--fresh` 清空 `<out>`，规则同旧 skill：只清空不存在、为空或含本 skill 写出的 `state.json` 或 `candidates.json`（按 format 字段认）的目录。认 `candidates.json` 是因为 `check-map` 通过前还没有 `state.json`，在那之前中断的运行否则无法 `--fresh`。
 - 最终回复由 `reply` 打印，模型只照抄（非英文时只翻译词句，路径、数字与 id 不动）：回复的计数来自脚本，不由模型加总。
