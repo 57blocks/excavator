@@ -20,6 +20,14 @@
  *       The same checks for the lane itself; records nothing.
  *   mark <out> <featureId> dispatched | failed lane <reason>... --project <root>
  *       Record a lane dispatch or a lane that wrote nothing in state.json.
+ *   slices <out> <featureId> --project <root> [--round 2]
+ *       Cut a checked entry into the items a verifier judges, each with its
+ *       claim and the source around its cited passages (design D14); round 2
+ *       covers only the items the one rewrite touched.
+ *   verdicts <out> <featureId> --round <r> --project <root>
+ *       Record the verifier's verdicts for the round: one per item, nothing
+ *       recorded when that does not hold; round 1 lists the items to rewrite,
+ *       round 2 removes what is still not verified and verifies the feature.
  *   check-ui <out> [--language <name>]
  *       Check <out>/ui.json against the shipped English table, or copy that
  *       table there when the run's language is English. The fixed text is
@@ -33,7 +41,7 @@
  *       Write <out>/handbook.html from the same checked run: one file that
  *       opens from disk, no network, the same bytes from the same input.
  *
- * check-map, check-entry and mark hold <out>/state.json.lock while they run.
+ * check-map, check-entry, mark and verdicts hold <out>/state.json.lock while they run.
  * In a run whose language is not English, check-map, check-entry, try-entry,
  * assemble and page also check that each narrative text holds a letter of the
  * language when it has its own script (design D12); they need a checked
@@ -56,7 +64,10 @@ import { writePage } from './lib/page.mjs';
 import { projectRootOption } from './lib/project-root.mjs';
 import { replyLines } from './lib/reply.mjs';
 import { selectFeatures } from './lib/select.mjs';
+import { slices } from './lib/slices.mjs';
 import { checkUi } from './lib/ui.mjs';
+import { ROUNDS } from './lib/verify-plan.mjs';
+import { verdicts } from './lib/verdicts.mjs';
 
 const USAGE = `Usage: node handbook.mjs <command> [arguments]
 
@@ -94,6 +105,26 @@ Commands:
   mark <out> <featureId> failed lane <reason>... --project <root>
       Record the feature's lane as failed without writing its entry, each
       further argument one reason. lane is the only step mark records.
+  slices <out> <featureId> --project <root> [--round 2]
+      Only for a feature whose entry passed check-entry (state checked). Write
+      <out>/verify/round-<r>/<featureId>.json: the items of the entry that carry
+      evidence, each with its id (its JSON path), its claim (all its reader text
+      with the context to read it) and the source around every cited passage
+      (20 lines before and after, numbered, ranges of one file merged). Round 1
+      also saves a snapshot of the entry. Round 2 covers only the items listed
+      in <out>/rewrite/<featureId>.json and refuses an entry in which an item
+      that was not listed differs from the snapshot, printing each path. Prints
+      the verify file and the verdict file the verifier must write.
+  verdicts <out> <featureId> --round <1|2> --project <root>
+      Read <out>/verdicts/round-<r>/<featureId>.json ({ "verdicts": [{ "id",
+      "verdict", "reason" }] }): exactly one verdict per item of the round's
+      verify file, each verified, unverified or contradicted, with a one-line
+      reason. Any failure prints every problem and records nothing. Round 1
+      writes the items that are not verified to <out>/rewrite/<featureId>.json
+      (none: the feature is verified at once). Round 2 removes the items that
+      are still not verified from the entry (what hangs on them goes with
+      them), records them in state.json and verifies the feature; a purpose
+      that is not verified fails it at step verify.
   check-ui <out> [--language <name>]
       Run in English with no <out>/ui.json: copy the shipped English table
       there. Otherwise check <out>/ui.json: the same keys as the English table,
@@ -144,6 +175,9 @@ function parseArgs(args, known) {
   return { positionals, options };
 }
 
+/** The round an option names (1 or 2), or 0 when it names neither. */
+const roundOption = (text) => (ROUNDS.includes(Number(text)) && /^\d+$/.test(text) ? Number(text) : 0);
+
 /** Print a check's lines to stdout and return its exit status. */
 function report({ status, lines }) {
   process.stdout.write(lines.map((line) => `${line}\n`).join(''));
@@ -187,6 +221,23 @@ const COMMANDS = {
     const [out, id, event, ...rest] = positionals;
     projectRootOption(options.project);
     return withStateLock(out, () => report(mark(out, id, event, rest)));
+  },
+  slices(args) {
+    const { positionals, options } = parseArgs(args, ['project', 'round']);
+    if (positionals.length !== 2) throw new UsageError('slices takes <out> and <featureId>');
+    const round = options.round === undefined ? 1 : roundOption(options.round);
+    if (round === 0) throw new UsageError('slices --round must be 2 (round 1 is the default)');
+    const root = projectRootOption(options.project);
+    return report(slices(positionals[0], positionals[1], root, round));
+  },
+  verdicts(args) {
+    const { positionals, options } = parseArgs(args, ['project', 'round']);
+    if (positionals.length !== 2) throw new UsageError('verdicts takes <out> and <featureId>');
+    if (options.round === undefined) throw new UsageError('verdicts needs --round 1 or --round 2');
+    const round = roundOption(options.round);
+    if (round === 0) throw new UsageError('verdicts --round must be 1 or 2');
+    const root = projectRootOption(options.project);
+    return withStateLock(positionals[0], () => report(verdicts(positionals[0], positionals[1], root, round)));
   },
   'check-ui'(args) {
     const { positionals, options } = parseArgs(args, ['language']);

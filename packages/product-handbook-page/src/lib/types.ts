@@ -5,8 +5,8 @@ export const PAGE_FORMAT = 'excavator-product-handbook-page/1';
 export const REACHES = ['menu', 'link', 'automated', 'interface', 'operator'] as const;
 export type Reach = (typeof REACHES)[number];
 
-/** The state of a feature's entry: only `checked` features carry an entry. */
-export type Status = 'planned' | 'dispatched' | 'checked' | 'failed';
+/** The state of a feature's entry: only `verified` features carry an entry; `checked` means its verification did not finish. */
+export type Status = 'planned' | 'dispatched' | 'checked' | 'verified' | 'failed';
 
 export type EntrypointKind = 'route' | 'page' | 'job' | 'main';
 
@@ -14,7 +14,7 @@ export interface Rule { side: 'frontend' | 'backend'; text: string }
 export interface Field { label: string; rules: Rule[] }
 export interface Screen { name: string; fields: Field[] }
 
-/** A checked entry as the page shows it: the text, never the evidence. */
+/** A verified entry as the page shows it: the text, never the evidence. */
 export interface Entry {
   purpose: string;
   who: { role: string; can: string }[];
@@ -40,11 +40,16 @@ export interface Feature {
   entry: Entry | null;
 }
 
+/** An item the verification removed from a feature's entry: its claim, why it went, and the verifier's reason. */
+export interface RemovedItem { claim: string; verdict: 'unverified' | 'contradicted' | 'withParent'; reason: string }
+
 export interface Coverage {
   candidateTotal: number;
   assigned: number;
   unassigned: { candidate: string; kind: EntrypointKind; reason: string }[];
   reachCounts: { reach: Reach; count: number }[];
+  /** The features that lost items to verification, with those items. */
+  removed: { feature: string; items: RemovedItem[] }[];
 }
 
 export interface PageData {

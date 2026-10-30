@@ -50,7 +50,7 @@ function feature(id: string, reach: Reach, status: Feature['status'], entry: Ent
   return { id: d(id), name: d(`name ${id}`), area: d('A1'), reach, label: label === undefined ? undefined : d(label), status, entry };
 }
 
-function dataFor(features: Feature[], unassigned: PageData['coverage']['unassigned'] = []): PageData {
+function dataFor(features: Feature[], unassigned: PageData['coverage']['unassigned'] = [], removed: PageData['coverage']['removed'] = []): PageData {
   return {
     format: 'excavator-product-handbook-page/1',
     project: d('project'),
@@ -64,21 +64,27 @@ function dataFor(features: Feature[], unassigned: PageData['coverage']['unassign
       assigned: 9 - unassigned.length,
       unassigned,
       reachCounts: reaches.map((reach) => ({ reach, count: features.filter((item) => item.reach === reach).length })),
+      removed,
     },
   };
 }
 
 const populated = dataFor(
   [
-    feature('F1', 'menu', 'checked', fullEntry, 'menu label'),
+    feature('F1', 'menu', 'verified', fullEntry, 'menu label'),
     feature('F2', 'link', 'planned', null, 'link label'),
     feature('F3', 'automated', 'dispatched', null),
     feature('F4', 'interface', 'failed', null),
-    feature('F5', 'operator', 'checked', emptyEntry),
+    feature('F5', 'operator', 'verified', emptyEntry),
+    feature('F6', 'menu', 'checked', null, 'other label'),
   ],
   [{ candidate: d('c7'), kind: 'route', reason: d('why') }, { candidate: d('c8'), kind: 'job', reason: d('why too') }],
+  [
+    { feature: d('F1'), items: [{ claim: d('a claim'), verdict: 'contradicted', reason: d('a reason') }, { claim: d('another claim'), verdict: 'unverified', reason: d('another reason') }, { claim: d('a child'), verdict: 'withParent', reason: '' }] },
+    { feature: d('F4'), items: [{ claim: d('lost claim'), verdict: 'unverified', reason: d('lost reason') }] },
+  ],
 );
-const allWritten = dataFor([feature('F1', 'menu', 'checked', emptyEntry)]);
+const allWritten = dataFor([feature('F1', 'menu', 'verified', emptyEntry)]);
 
 /** Decode the few entities React writes into markup. */
 const decode = (text: string): string => text.replace(/&quot;/g, '"').replace(/&#x27;/g, "'").replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&');
@@ -104,9 +110,10 @@ describe('every fixed text of the page comes from the ui table (O8, node half)',
     ['the overview', populated, '#/'],
     ['a feature with every section filled', populated, `#/feature/${featureId(populated, 0)}`],
     ['a feature whose sections are all empty', populated, `#/feature/${featureId(populated, 4)}`],
-    ['a feature with no checked entry (planned)', populated, `#/feature/${featureId(populated, 1)}`],
-    ['a feature with no checked entry (failed)', populated, `#/feature/${featureId(populated, 3)}`],
-    ['the coverage view with unassigned candidates and unwritten features', populated, '#/coverage'],
+    ['a feature with no verified entry (planned)', populated, `#/feature/${featureId(populated, 1)}`],
+    ['a feature with no verified entry (failed)', populated, `#/feature/${featureId(populated, 3)}`],
+    ['a feature with no verified entry (verification not finished)', populated, `#/feature/${featureId(populated, 5)}`],
+    ['the coverage view with unassigned candidates, unwritten features and removed items', populated, '#/coverage'],
     ['the coverage view with nothing unassigned and every feature written', allWritten, '#/coverage'],
     ['an address that is not a page', populated, '#/nowhere'],
     ['a feature id the handbook does not have', populated, '#/feature/missing'],
@@ -124,6 +131,23 @@ describe('every fixed text of the page comes from the ui table (O8, node half)',
     const html = render(populated, `#/feature/${featureId(populated, 0)}`);
     for (const text of ['purpose', 'role one', 'front rule', 'back rule two', 'operation', 'trigger', 'searched place', 'menu label']) expect(html).toContain(d(text));
     for (const key of ['md.section.purpose', 'md.table.frontendRules', 'md.table.channel', 'md.section.unknowns', 'page.breadcrumb.label']) expect(html).toContain(marked[key]);
+  });
+
+  it('lists the removed items of each feature with the result text, a count and the reason; an item that went with its parent has no reason', () => {
+    const html = render(populated, '#/coverage');
+    for (const text of ['a claim', 'a reason', 'another claim', 'another reason', 'a child', 'lost claim', 'lost reason']) expect(html).toContain(d(text));
+    for (const key of ['md.coverage.removedHeading', 'md.table.item', 'md.table.result', 'md.verdict.contradicted', 'md.verdict.unverified', 'md.verdict.withParent']) expect(html).toContain(marked[key]);
+    expect(html).toContain('data-empty="true"');
+    // Nothing removed: the section says so with the shared "none" text.
+    const section = (page: string): string => page.slice(page.indexOf('id="cov-removed"'));
+    expect(section(render(allWritten, '#/coverage'))).toContain(marked['md.none']);
+    expect(section(html)).not.toContain(marked['md.none']);
+  });
+
+  it('counts only verified features as written on the overview, and marks a checked one as not finished', () => {
+    const html = render(populated, '#/');
+    expect(html).toContain(marked['md.status.checked']);
+    expect(html).toMatch(/stat-value">2<\/span><span class="stat-label">@@With a verified entry/);
   });
 
   it('the instrument sees a fixed text the code wrote itself', () => {

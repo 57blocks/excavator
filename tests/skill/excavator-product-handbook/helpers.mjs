@@ -181,6 +181,34 @@ export function makeCheckedMapRun() {
   return run;
 }
 
+/**
+ * Slice a checked feature, write a verdict file that judges each item with
+ * `decide(item)` (a verdict word or `{ verdict, reason }`; default verified),
+ * and record it with `verdicts`. Returns the `verdicts` result. Round 2 judges
+ * the items its verify file holds.
+ */
+export function judge(run, id = 'F1', round = 1, decide = () => 'verified') {
+  const sliced = run.run('slices', id, ...(round === 2 ? ['--round', '2'] : []));
+  if (sliced.status !== 0) throw new Error(`slices failed:\n${sliced.stdout}${sliced.stderr}`);
+  const verify = JSON.parse(readFileSync(join(run.out, 'verify', `round-${round}`, `${id}.json`), 'utf-8'));
+  const verdicts = verify.items.map((item) => {
+    const given = decide(item);
+    const verdict = typeof given === 'string' ? { verdict: given } : given;
+    return { id: item.id, verdict: verdict.verdict, reason: verdict.reason ?? `The code shown decides ${item.id}.` };
+  });
+  const dir = join(run.out, 'verdicts', `round-${round}`);
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(join(dir, `${id}.json`), `${JSON.stringify({ verdicts }, null, 2)}\n`);
+  return run.run('verdicts', id, '--round', String(round));
+}
+
+/** Verify a checked feature with every item verified; throws when it does not end verified. */
+export function verifyChecked(run, id = 'F1') {
+  const result = judge(run, id);
+  if (result.status !== 0) throw new Error(`verdicts failed:\n${result.stdout}${result.stderr}`);
+  return result;
+}
+
 /** Non-ASCII text from code points, so that test sources hold only ASCII. */
 export const cjk = (...points) => String.fromCodePoint(...points);
 /** A CJK mark (two characters) put in front of every narrative text of a non-Latin test run. */

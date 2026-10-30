@@ -4,7 +4,8 @@
  * banned-words gate and the narrative language check (language-check.mjs);
  * then the result goes into state.json. A missing entry file is
  * `lane-wrote-nothing`. try-entry runs the same checks for the lane itself
- * and records nothing.
+ * and records nothing. A feature waiting for its one rewrite (design D14)
+ * that fails here is `failed` at step `rewrite`; there is no second rewrite.
  */
 
 import { existsSync } from 'node:fs';
@@ -19,7 +20,7 @@ import { languageGate } from './language-check.mjs';
 import { mapVerifiedLabels, readMap } from './map-check.mjs';
 import { projectFiles } from './project-files.mjs';
 import { reviewItems } from './review.mjs';
-import { featureState, loadState, nextLine, saveState } from './state.mjs';
+import { featureState, loadState, nextLine, rewriteNextLine, saveState } from './state.mjs';
 
 export const entryPath = (id) => `entries/${id}.json`;
 
@@ -48,7 +49,7 @@ export function checkEntryFile(outDir, id, root, { map, mapLabels = null, files 
 }
 
 /** The checked map and project facts check-entry and try-entry share, or the lines that stop them. */
-function loadForEntry(outDir, id, root) {
+export function loadForEntry(outDir, id, root) {
   if (!existsSync(outDir)) throw new UsageError(`out directory ${outDir} does not exist`);
   const mapRead = readMap(outDir);
   if (!mapRead.ok) return { stop: { status: 1, lines: [mapRead.line] } };
@@ -77,9 +78,16 @@ export function checkEntry(outDir, id, root) {
 
   const result = checkEntryFile(outDir, id, root, loaded);
   if (result.problems.length === 0) {
-    state.features[id] = { status: 'checked', attempts: current.attempts };
+    // A feature waiting for its one rewrite stays so; anything else starts over as checked (a verified one is no longer verified).
+    state.features[id] = current.rewriting ? { status: 'checked', attempts: current.attempts, rewriting: true } : { status: 'checked', attempts: current.attempts };
     saveState(outDir, state);
     return { status: 0, lines: [`${id}: checked`] };
+  }
+  if (current.rewriting) {
+    // The one rewrite (design D14) did not pass: there is no second one.
+    state.features[id] = { status: 'failed', attempts: current.attempts, failure: { step: 'rewrite', reasons: result.problems } };
+    saveState(outDir, state);
+    return { status: 1, lines: [...result.problems, rewriteNextLine(id)] };
   }
   state.features[id] = { status: 'failed', attempts: current.attempts, failure: { step: result.step, reasons: result.problems } };
   saveState(outDir, state);

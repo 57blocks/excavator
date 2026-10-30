@@ -1,6 +1,6 @@
 /**
- * handbook.md (design D11), rendered from data already checked: the map, the
- * checked entries, the state, the candidates and the fixed-text table. Pure
+ * handbook.md (design D11, D14), rendered from data already checked: the map, the
+ * verified entries, the state, the candidates and the fixed-text table. Pure
  * and deterministic: the same input gives the same bytes, with no time, no
  * path and no citation in the text. Every fixed text comes from `ui`.
  */
@@ -96,7 +96,7 @@ function coverageBlock(map, state, candidates, t) {
   }
 
   out.push(`### ${t('md.coverage.unwrittenHeading')}`, '');
-  const unwritten = map.features.filter((feature) => state.features[feature.id].status !== 'checked');
+  const unwritten = map.features.filter((feature) => state.features[feature.id].status !== 'verified');
   if (unwritten.length === 0) {
     out.push(t('md.coverage.allWritten'));
   } else {
@@ -109,12 +109,24 @@ function coverageBlock(map, state, candidates, t) {
     ));
   }
   out.push('');
+
+  out.push(`### ${t('md.coverage.removedHeading')}`, '');
+  const withRemoved = map.features.filter((feature) => (state.features[feature.id].removed ?? []).length > 0);
+  if (withRemoved.length === 0) out.push(t('md.none'), '');
+  for (const feature of withRemoved) {
+    const removed = state.features[feature.id].removed;
+    out.push(`#### ${inline(fill(t('md.coverage.removedFeature'), { id: feature.id, name: feature.name, area: areaName.get(feature.area), count: removed.length }))}`, '');
+    out.push(table(
+      [t('md.table.item'), t('md.table.result'), t('md.table.reason')],
+      removed.map((item) => [item.claim, t(`md.verdict.${item.verdict}`), item.reason === '' ? NONE_ROW : item.reason]),
+    ), '');
+  }
   return out;
 }
 
 /**
- * The handbook text. `entries` maps the id of each checked feature to its
- * entry; `candidates` is candidates.json's items; `ui` is the strings table.
+ * The handbook text. `entries` maps the id of each verified feature to its
+ * entry (only verified features have one); `candidates` is candidates.json's items; `ui` is the strings table.
  */
 export function renderHandbook({ map, entries, state, candidates, ui }) {
   const t = (key) => {

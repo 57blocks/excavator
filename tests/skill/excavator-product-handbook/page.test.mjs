@@ -10,7 +10,7 @@ import { join } from 'node:path';
 
 import { buildPageData } from '../../../skills/excavator-product-handbook/lib/page-data.mjs';
 import { languageTag } from '../../../skills/excavator-product-handbook/lib/language-tag.mjs';
-import { SHIPPED_UI, clone, makeCheckedMapRun, markedMap, runHandbook } from './helpers.mjs';
+import { SHIPPED_UI, clone, makeCheckedMapRun, markedMap, runHandbook, verifyChecked } from './helpers.mjs';
 
 const cleanups = [];
 afterEach(() => {
@@ -34,6 +34,7 @@ function checkedRun(adjust) {
   run.writeEntry('F1', entry);
   const result = run.run('check-entry', 'F1');
   expect(result.status, result.stdout).toBe(0);
+  verifyChecked(run);
   return run;
 }
 
@@ -93,13 +94,13 @@ describe('page: the file and its data', () => {
     expect(Object.keys(data.features[0])).toEqual(['id', 'name', 'area', 'reach', 'label', 'status', 'entry']);
   });
 
-  it('gives a checked feature its entry without evidence and every other feature its status and no entry', () => {
+  it('gives a verified feature its entry without evidence and every other feature its status and no entry', () => {
     const run = checkedRun();
     run.run('mark', 'F3', 'dispatched');
     page(run);
     const data = dataOf(html(run));
     const [f1, f2, f3] = data.features;
-    expect(f1.status).toBe('checked');
+    expect(f1.status).toBe('verified');
     expect(Object.keys(f1.entry)).toEqual(['purpose', 'who', 'where', 'screens', 'operations', 'states', 'notifications', 'automatic', 'unknowns']);
     expect(f1.entry.purpose).toBe('Staff place new orders for customers.');
     expect(f1.entry.where).toEqual(['Orders', 'New Order']);
@@ -227,12 +228,12 @@ describe('page: refuses what assemble refuses, and leaves no page', () => {
       map.features[2].name = 'send_reminders';
       run.writeMap(map);
     },
-    'a checked entry changed into a bad one': (run) => {
+    'a verified entry changed into a bad one': (run) => {
       const entry = clone(run.entry);
       entry.who[0].can = 'Only clerk_admin may do this.';
       run.writeEntry('F1', entry);
     },
-    'a checked entry whose file is gone': (run) => rmSync(join(run.out, 'entries/F1.json')),
+    'a verified entry whose file is gone': (run) => rmSync(join(run.out, 'entries/F1.json')),
     'a ui.json that check-ui would refuse': (run) => {
       const table = JSON.parse(readFileSync(SHIPPED_UI, 'utf-8'));
       delete table.strings['page.nav.overview'];

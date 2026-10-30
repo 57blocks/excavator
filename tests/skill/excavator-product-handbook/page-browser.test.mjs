@@ -12,7 +12,7 @@ import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 import { Browser, findChrome } from './chrome-cdp.mjs';
-import { clone, makeCheckedMapRun, repoRoot } from './helpers.mjs';
+import { clone, judge, makeCheckedMapRun, repoRoot } from './helpers.mjs';
 
 const TEMPLATE = join(repoRoot, 'packages/product-handbook-page/dist/product-handbook-page.html');
 const chrome = findChrome();
@@ -45,6 +45,12 @@ function pageRun() {
   run.writeEntry('F1', entry);
   const checked = run.run('check-entry', 'F1');
   if (checked.status !== 0) throw new Error(`the entry failed check-entry:\n${checked.stdout}`);
+  // One backend rule is contradicted in both rounds, so the coverage page has a removed-items table to lay out.
+  const bad = (item) => (item.id === 'screens[0].fields[1].rules[0]' ? { verdict: 'contradicted', reason: 'The limit the code shows is 50, not the number the sentence gives.' } : 'verified');
+  for (const round of [1, 2]) {
+    const judged = judge(run, 'F1', round, bad);
+    if (judged.status !== 0) throw new Error(`verdicts round ${round} failed:\n${judged.stdout}`);
+  }
   const made = run.run('page');
   if (made.status !== 0) throw new Error(`page failed (${made.status}):\n${made.stdout}${made.stderr}`);
   return run;
@@ -103,6 +109,7 @@ suite('page in a browser (O8)', () => {
         await goTo(page, '#/feature/F2', '[data-view="feature"][data-feature="F2"] .notice');
         await goTo(page, '#/coverage', '[data-view="coverage"]');
         await fits(page, width, 'the coverage page');
+        expect(await page.evaluate("document.querySelectorAll('[data-view=\"coverage\"] .removed-group').length")).toBe(1);
         expect(await page.evaluate("document.querySelector('[data-view=\"coverage\"] .callout').textContent")).toContain('Entrypoint candidates listed: 7.');
 
         await goTo(page, '#/nowhere', '[data-view="not-found"]');

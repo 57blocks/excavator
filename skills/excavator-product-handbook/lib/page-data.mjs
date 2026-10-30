@@ -1,7 +1,7 @@
 /**
  * The data of the handbook page (design D13): one object built from a loaded,
  * checked run, with its keys in a fixed order. It holds the text of the map
- * and of each checked entry, never their evidence, so it holds no citation
+ * and of each verified entry, never their evidence, so it holds no citation
  * path; and no time and no absolute path: the same run gives the same object.
  * Pure: the caller loads the run (load-run.mjs).
  */
@@ -62,6 +62,12 @@ export function buildPageData(run, roots) {
       assigned: map.features.reduce((sum, feature) => sum + feature.candidates.length, 0),
       unassigned: map.unassigned.map((item) => ({ candidate: item.candidate, kind: kind.get(item.candidate), reason: item.reason })),
       reachCounts: reachCounts(map),
+      removed: map.features
+        .filter((feature) => (state.features[feature.id].removed ?? []).length > 0)
+        .map((feature) => ({
+          feature: feature.id,
+          items: state.features[feature.id].removed.map((item) => ({ claim: item.claim, verdict: item.verdict, reason: item.reason })),
+        })),
     },
   };
   return withoutRootPaths(data, roots, project);

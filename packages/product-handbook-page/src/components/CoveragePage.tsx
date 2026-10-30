@@ -5,14 +5,18 @@ import { CheckIcon } from './Icons';
 import { ReachBadge } from './ReachBadge';
 import { Cell, TableScroll } from './Tables';
 
-/** What the handbook covers: the candidate count and its conservation, the unassigned candidates, link features and the features without a checked entry. */
+/** What the handbook covers: the candidate count and its conservation, the unassigned candidates, link features, the features without a verified entry and the items verification removed. */
 export function CoveragePage({ data }: { data: PageData }) {
   const t = useText();
   const { coverage } = data;
   const areaName = new Map(data.areas.map((area) => [area.id, area.name]));
   const itemValues = (feature: PageData['features'][number]) => ({ id: feature.id, name: feature.name, area: areaName.get(feature.area) ?? '' });
   const links = data.features.filter((feature) => feature.reach === 'link');
-  const unwritten = data.features.filter((feature) => feature.status !== 'checked');
+  const unwritten = data.features.filter((feature) => feature.status !== 'verified');
+  const removed = coverage.removed.flatMap((group) => {
+    const feature = data.features.find((item) => item.id === group.feature);
+    return feature === undefined ? [] : [{ feature, items: group.items }];
+  });
   return (
     <article className="page" data-view="coverage">
       <header className="page-head">
@@ -77,6 +81,25 @@ export function CoveragePage({ data }: { data: PageData }) {
             </tbody>
           </TableScroll>
         )}
+      </section>
+
+      <section className="section" aria-labelledby="cov-removed">
+        <h2 className="section-title" id="cov-removed">{t('md.coverage.removedHeading')}</h2>
+        {removed.length === 0 ? <p className="muted">{t('md.none')}</p> : removed.map(({ feature, items }) => (
+          <div key={feature.id} className="removed-group">
+            <h3 className="block-title"><a href={featureHash(feature.id)}>{t('md.coverage.removedFeature', { ...itemValues(feature), count: items.length })}</a></h3>
+            <TableScroll label={t('md.coverage.removedHeading')} wide>
+              <thead>
+                <tr><th scope="col">{t('md.table.item')}</th><th scope="col">{t('md.table.result')}</th><th scope="col">{t('md.table.reason')}</th></tr>
+              </thead>
+              <tbody>
+                {items.map((item, index) => (
+                  <tr key={index}><Cell row>{item.claim}</Cell><Cell>{t(`md.verdict.${item.verdict}`)}</Cell><Cell>{item.reason === '' ? undefined : item.reason}</Cell></tr>
+                ))}
+              </tbody>
+            </TableScroll>
+          </div>
+        ))}
       </section>
     </article>
   );

@@ -7,7 +7,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { existsSync, readFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { MARK, cjk, latinUi, makeRun, markedEntry, markedMap, set, translatedUi } from './helpers.mjs';
+import { MARK, cjk, latinUi, makeRun, markedEntry, markedMap, set, translatedUi, verifyChecked } from './helpers.mjs';
 
 const cleanups = [];
 afterEach(() => {
@@ -193,6 +193,7 @@ describe('the language check: assemble and page re-check a checked entry', () =>
     const run = newRun();
     run.writeEntry('F1', markedEntry(run.entry));
     expect(run.run('check-entry', 'F1').status).toBe(0);
+    verifyChecked(run);
     const entry = markedEntry(run.entry);
     set(entry, 'purpose.text', 'Staff place orders.');
     run.writeEntry('F1', entry);

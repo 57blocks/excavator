@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { SHIPPED_UI, clone, makeCheckedMapRun, markedEntry, markedMap, runHandbook } from './helpers.mjs';
+import { SHIPPED_UI, clone, makeCheckedMapRun, markedEntry, markedMap, runHandbook, verifyChecked } from './helpers.mjs';
 
 const cleanups = [];
 afterEach(() => {
@@ -18,7 +18,7 @@ function newRun() {
   return run;
 }
 
-/** A run whose F1 entry is written and checked. */
+/** A run whose F1 entry is written, checked and verified. */
 function checkedRun(adjust) {
   const run = newRun();
   const entry = clone(run.entry);
@@ -26,6 +26,7 @@ function checkedRun(adjust) {
   run.writeEntry('F1', entry);
   const result = run.run('check-entry', 'F1');
   expect(result.status, result.stdout).toBe(0);
+  verifyChecked(run);
   return run;
 }
 
@@ -160,7 +161,7 @@ describe('assemble: the coverage section equals the map and candidates.json', ()
     expect(coverage).not.toContain('src/app.js');
   });
 
-  it('lists the link features and the features without a checked entry, each with its status', () => {
+  it('lists the link features and the features without a verified entry, each with its status', () => {
     const run = checkedRun();
     run.run('mark', 'F3', 'dispatched');
     run.run('mark', 'F4', 'failed', 'lane', 'lane-wrote-nothing');
@@ -168,7 +169,7 @@ describe('assemble: the coverage section equals the map and candidates.json', ()
     const text = handbook(run);
     const links = text.slice(text.indexOf('### Features reached only by a link'), text.indexOf('### Unassigned candidates'));
     expect(links).toContain('- F2 Archive (Order handling)');
-    const unwritten = text.slice(text.indexOf('### Features without a checked entry'));
+    const unwritten = text.slice(text.indexOf('### Features without a verified entry'));
     expect(unwritten).toContain('| F2 Archive (Order handling) | Not written |');
     expect(unwritten).toContain('| F3 Reminders (Automatic work) | Written but not checked |');
     expect(unwritten).toContain('| F4 Admin tool (Automatic work) | Failed the checks |');
@@ -176,7 +177,7 @@ describe('assemble: the coverage section equals the map and candidates.json', ()
     expect(unwritten).not.toContain('F1 Orders');
   });
 
-  it('says so when every feature has a checked entry, and when there is nothing unassigned', () => {
+  it('says so when every feature has a verified entry, and when there is nothing unassigned', () => {
     const run = checkedRun();
     const map = clone(run.map);
     map.features[4].candidates.push(run.idOf('src/app.js', 8));
@@ -188,10 +189,11 @@ describe('assemble: the coverage section equals the map and candidates.json', ()
       entry.id = id;
       run.writeEntry(id, entry);
       expect(run.run('check-entry', id).status, id).toBe(0);
+      verifyChecked(run, id);
     }
     assemble(run);
     const text = handbook(run);
-    expect(text).toContain('Every feature has a checked entry.');
+    expect(text).toContain('Every feature has a verified entry.');
     expect(text).toContain('### Unassigned candidates\n\nNone.');
     expect(text).toContain('### Features reached only by a link\n\n- F2 Archive (Order handling)');
   });
@@ -270,6 +272,7 @@ describe('assemble: fixed texts come from ui.json', () => {
     expect(run.run('check-map').status).toBe(0);
     run.writeEntry('F1', markedEntry(run.entry));
     expect(run.run('check-entry', 'F1').status).toBe(0);
+    verifyChecked(run);
     const result = assemble(run);
     expect(result.status, result.stdout).toBe(0);
     const text = handbook(run);

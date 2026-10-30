@@ -6,7 +6,7 @@ import { ReachBadge } from './ReachBadge';
 /** The first page: how much the handbook holds, how readers get to the features, and the areas with their features. */
 export function Overview({ data }: { data: PageData }) {
   const t = useText();
-  const written = data.features.filter((feature) => feature.status === 'checked').length;
+  const written = data.features.filter((feature) => feature.status === 'verified').length;
   return (
     <article className="page" data-view="overview">
       <header className="page-head">
@@ -48,7 +48,7 @@ export function Overview({ data }: { data: PageData }) {
                         <a href={featureHash(feature.id)}>{feature.name}</a>
                         <span className="area-feature-meta">
                           <ReachBadge reach={feature.reach} />
-                          {feature.status !== 'checked' && <span className="status-chip" data-status={feature.status}>{t(`md.status.${feature.status}`)}</span>}
+                          {feature.status !== 'verified' && <span className="status-chip" data-status={feature.status}>{t(`md.status.${feature.status}`)}</span>}
                         </span>
                       </li>
                     ))}

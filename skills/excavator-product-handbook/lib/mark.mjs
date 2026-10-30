@@ -4,7 +4,7 @@
  * attempts + 1) and a lane that wrote nothing (status failed, step lane)
  * through this command, so the model never edits state.json by hand.
  * check-entry records its own result. A third dispatch is refused, and so is
- * dispatching a feature that is already checked.
+ * dispatching a feature that is already checked or verified.
  */
 
 import { UsageError } from './errors.mjs';
@@ -31,7 +31,7 @@ export function mark(outDir, id, event, rest) {
   const { state } = loaded;
   const current = featureState(state, id);
   if (event === 'dispatched') {
-    if (current.status === 'checked') return { status: 1, lines: [`${id}: already checked; it is not written again`] };
+    if (current.status === 'checked' || current.status === 'verified') return { status: 1, lines: [`${id}: already ${current.status}; it is not written again`] };
     if (current.attempts >= MAX_ATTEMPTS) return { status: 1, lines: [`${id}: attempts is already ${MAX_ATTEMPTS}, the most a lane gets`] };
     state.features[id] = { status: 'dispatched', attempts: current.attempts + 1 };
     saveState(outDir, state);

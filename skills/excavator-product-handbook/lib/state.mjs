@@ -1,12 +1,18 @@
 /**
- * `<out>/state.json` (design D9): which features are planned, dispatched,
- * checked or failed, how many times each lane was dispatched, and why a
- * feature failed. Only the scripts change it: check-map creates it, mark and
- * check-entry update it. Every write is atomic; the commands that change it
- * hold the state lock (lock.mjs).
+ * `<out>/state.json` (design D9, D14): which features are planned, dispatched,
+ * checked, verified or failed, how many times each lane was dispatched, and
+ * why a feature failed. `checked` means the entry passed the scripts' checks;
+ * `verified` means a verifier also confirmed each of its items (only then does
+ * the feature reach the handbook). A checked feature waiting for its one
+ * rewrite carries `rewriting: true`; a verified one carries the digest of its
+ * entry file, and the items round 2 removed. Only the scripts change it:
+ * check-map creates it; mark, check-entry and verdicts update it.
+ * Every write is atomic; the commands that change it hold the state lock
+ * (lock.mjs).
  */
 
-import { existsSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { UsageError } from './errors.mjs';
@@ -14,10 +20,15 @@ import { isObject, readJson, writeJson } from './json-file.mjs';
 
 export const STATE_FILE = 'state.json';
 export const STATE_FORMAT = 'excavator-product-handbook-state/1';
-export const STATUSES = Object.freeze(['planned', 'dispatched', 'checked', 'failed']);
-export const FAILURE_STEPS = Object.freeze(['check-entry', 'lane']);
+export const STATUSES = Object.freeze(['planned', 'dispatched', 'checked', 'verified', 'failed']);
+export const FAILURE_STEPS = Object.freeze(['check-entry', 'lane', 'rewrite', 'verify']);
+/** What a removed item records: a verifier's verdict, or `withParent` for an item that went with the item it belongs to. */
+export const REMOVED_VERDICTS = Object.freeze(['unverified', 'contradicted', 'withParent']);
 /** A lane gets at most two attempts. */
 export const MAX_ATTEMPTS = 2;
+
+const removedValid = (list) => Array.isArray(list) && list.every((item) => isObject(item)
+  && typeof item.path === 'string' && typeof item.claim === 'string' && typeof item.reason === 'string' && REMOVED_VERDICTS.includes(item.verdict));
 
 const stateProblems = (state) => {
   if (!isObject(state) || state.format !== STATE_FORMAT || !isObject(state.features)) return `format must be ${STATE_FORMAT} with a features object`;
@@ -28,6 +39,9 @@ const stateProblems = (state) => {
     if (entry.failure !== undefined && (!isObject(entry.failure) || !FAILURE_STEPS.includes(entry.failure.step) || !Array.isArray(entry.failure.reasons))) {
       return `feature ${id} has a failure that is not { step, reasons }`;
     }
+    if (entry.removed !== undefined && !removedValid(entry.removed)) return `feature ${id} has a removed list that is not [{ path, claim, verdict, reason }]`;
+    if (entry.entryDigest !== undefined && typeof entry.entryDigest !== 'string') return `feature ${id} has an entryDigest that is not a string`;
+    if (entry.rewriting !== undefined && entry.rewriting !== true) return `feature ${id} has a rewriting that is not true`;
   }
   return null;
 };
@@ -72,6 +86,12 @@ export function settleState(outDir, featureIds) {
 export const nextLine = (id, attempts) => (attempts < MAX_ATTEMPTS
   ? `Next: delete ${id}'s entry, mark it dispatched and re-dispatch it once with the lines above (attempt 2 of 2)`
   : `Next: ${id} stays failed (2 of 2 attempts)`);
+
+/** The last line of a failed check-entry of a feature whose one rewrite it checks (design D14): there is no second rewrite. */
+export const rewriteNextLine = (id) => `Next: ${id} stays failed (its one rewrite did not pass check-entry)`;
+
+/** The SHA-256 of an entry file's bytes: a verified feature is invalidated when they change. */
+export const entryDigest = (path) => createHash('sha256').update(readFileSync(path)).digest('hex');
 
 /** The state entry of `id`, or a usage error naming the file. */
 export function featureState(state, id) {
