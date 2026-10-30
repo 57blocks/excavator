@@ -38,7 +38,7 @@ function entryBlock(feature, entry, map, t) {
   const reachText = t(`md.reach.${feature.reach}`);
   const out = [`### ${inline(feature.name)}`, '', inline(fill(t('md.feature.reach'), { reach: reachText })), ''];
   if (feature.label !== undefined) out.push(inline(fill(t('md.feature.label'), { label: feature.label })), '');
-  out.push(`#### ${t('md.section.purpose')}`, '', inline(entry.purpose.text), '');
+  if (entry.purpose !== undefined) out.push(`#### ${t('md.section.purpose')}`, '', inline(entry.purpose.text), '');
   out.push(`#### ${t('md.section.who')}`, '');
   if (entry.who.length === 0) out.push(t('md.none'), '');
   else out.push(...entry.who.map((who) => `- ${inline(fill(t('md.who.item'), { role: who.role, can: who.can }))}`), '');

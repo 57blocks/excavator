@@ -262,7 +262,7 @@ Write one JSON file with exactly these keys, and no others. `E` stands for an ev
 {
   "format": "excavator-product-handbook-entry/1",
   "id": "<id>",
-  "purpose": {"text": "<what problem it solves, for whom>", "evidence": E},
+  "purpose": {"text": "<one plain sentence: who uses the feature to do what>", "evidence": E},
   "who": [{"role": "<a label from the list of roles>", "can": "<what this role can do here>", "evidence": E}],
   "where": [{"label": "<menu group, menu item, tab or page title, one per step>", "evidence": E}],
   "screens": [{"name": "<screen title as shown>", "evidence": E, "fields": [
@@ -283,7 +283,7 @@ Every key is always there: when a part does not apply to your feature, write an 
 
 **Evidence.** Every item carries its own evidence. A passage is text copied verbatim from the file, part of a line or whole lines; a script finds it by ignoring differences in white space and line breaks, and it must occur **exactly once** in that file. When a passage occurs more than once, quote a longer one (the whole line, or the lines around it). A file is a path from the project root, inside the project, and never under `.excavator`, `.git`, `node_modules`, `vendor`, `dist` or `build`. An item may cite several passages; each is checked.
 
-**Cite what proves it.** A verifier that sees only one item and the code around its citations judges every item afterwards, and an item the code shown does not support is removed from the handbook. So cite, for each item, the passage that by itself proves it. For who may do something, cite the condition the code checks (the comparison, the role test, the guard that lets one role in and keeps another out), not the name of a function or variable: a name that contains a role word says nothing about who may act. For a claim of "every", "any" or "cannot already", cite the whole condition, so that a narrower one cannot hide outside the quote. When no passage proves it, write it in `unknowns`.
+**Cite what proves it.** A verifier that sees only one item and the code around its citations judges every item afterwards, and an item the code shown does not support is removed from the handbook. So cite, for each item, the passage that by itself proves it. For who may do something, cite the condition the code checks (the comparison, the role test, the guard that lets one role in and keeps another out), not the name of a function or variable: a name that contains a role word says nothing about who may act. For a claim of "every", "any" or "cannot already", cite the whole condition, so that a narrower one cannot hide outside the quote. When no passage proves it, write it in `unknowns`. The purpose is one plain sentence saying who uses the feature to do what, citing the screen or handler that shows it; conditions, filters and limits belong in the rules, not in the purpose, because every extra detail in it is one more thing the code shown has to prove.
 
 **Labels and numbers must be in the item's own passages.** Every `label`, every screen `name` and every `where` label must occur in that item's own passages, exactly as the source writes it, in the source's language: never translate a label. Every number in your text must occur as a number in that item's own passages (the script ignores thousands commas, and underscores between digits in the source). Write numbers as Arabic numerals ("2 levels", never "two levels"). A number that is not in the item's passages (a count you made, an ordinal, a date) is not allowed: write the sentence without it, or cite the passage that holds it. The numbers of an operation's name are read against its sentences' passages.
 
@@ -369,7 +369,8 @@ Write only `$OUT/entries/<id>.json`, and nothing else anywhere. Reply with one l
    node "$PLUGIN_ROOT/skills/excavator-product-handbook/handbook.mjs" verdicts "$OUT" <id> --round 2 --project "$PROJECT_ROOT"
    ```
    - `<id>: verified (<n> items)` or `<id>: verified, <n> items removed`: the feature is verified. An item the two verifiers did not both confirm, `unverified` like `contradicted`, was removed from the entry together with what hangs on it, and is recorded in `state.json` with its claim, verdict and reason. The handbook's coverage section lists each removed item. The removal is not a rewrite: never put a removed item back.
-   - `<id>: failed at verify: the purpose could not be proved (...)`: a feature whose one sentence of purpose cannot be proved is not a description of a feature. It is `failed`; its entry file stays for the user to see.
+   - The purpose is an item like any other: when the two verifiers do not both confirm it, it is removed and recorded, and the feature stays verified. Its section is then missing from the handbook and the page, and the coverage section lists the removed purpose.
+   - `<id>: failed at verify: no item could be proved`: nothing of the entry was proved. It is `failed`; its entry file stays for the user to see.
    - Exit 1: nothing was recorded; handle it as in step 3 (dispatch the verifier once more with the printed lines, then leave the feature as it is).
 
 Then tell the user `Verify <id> <n>/<N>: <status>` for each feature, where `<n>` counts the features of this phase that are settled, `<N>` is the number of features step 1 listed and `<status>` is `verified`, `failed` or `not finished`, in `$LANGUAGE`.

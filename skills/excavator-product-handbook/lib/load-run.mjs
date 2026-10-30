@@ -64,7 +64,7 @@ export function loadCheckedRun(outDirArg, root) {
   const entries = new Map();
   const problems = [];
   for (const id of ids.filter((featureId) => state.features[featureId].status === 'verified')) {
-    const result = checkEntryFile(outDir, id, root, { map, mapLabels: mapChecked.verified, files, memberDirs, languageCheck });
+    const result = checkEntryFile(outDir, id, root, { map, mapLabels: mapChecked.verified, files, memberDirs, languageCheck }, { settled: true });
     if (result.problems.length > 0) {
       problems.push(...result.problems.map((line) => (line.startsWith(`${id}:`) ? line : `${id}: ${line}`)), `${id}: ${entryPath(id)} no longer passes check-entry; run check-entry for ${id}`);
     } else if (entryDigest(join(outDir, entryPath(id))) !== state.features[id].entryDigest) {

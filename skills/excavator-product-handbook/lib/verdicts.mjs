@@ -16,7 +16,8 @@
  * reader cannot check the code, so a sentence that cannot be proved is not
  * left in); with none, the feature is verified. Round 2 removes the items that
  * are still not verified from the entry in place, records them in state.json,
- * and verifies the feature, or fails it when the purpose is among them.
+ * and verifies the feature, or fails it when no item that carries evidence is
+ * left (the purpose is removed like any other item and does not fail it).
  */
 
 import { mkdirSync, rmSync } from 'node:fs';
@@ -225,14 +226,15 @@ function roundTwo({ outDir, id, plan, state, attempts, notVerified, verdictOf })
   const entry = plan.entry;
   const { trimmed, records } = removalRecords(entry, notVerified.map((item) => item.id), (path) => verdictOf.get(path), (path) => plan.claims.get(path));
   const removed = records;
-  if (notVerified.some((item) => item.id === 'purpose')) {
-    const { verdict, reason } = verdictOf.get('purpose');
-    const text = `the purpose could not be proved (${verdict}: ${reason})`;
+  // Nothing proved: every item that carries evidence is gone. The entry file stays as written for the user to see.
+  if (!entryItems(trimmed).some((item) => item.evidence.length > 0)) {
+    const text = 'no item could be proved';
     state.features[id] = { status: 'failed', attempts, failure: { step: 'verify', reasons: [text] }, removed };
     saveState(outDir, state);
     return { status: 0, lines: [`${id}: failed at verify: ${text}`] };
   }
-  const problems = entryProblems(trimmed, id, plan.loaded);
+  // The purpose is removed like any item, so the trimmed entry is checked as a settled one (no purpose key).
+  const problems = entryProblems(trimmed, id, plan.loaded, { settled: true });
   if (problems.length > 0) throw new Error(`the trimmed entry of ${id} fails check-entry (a bug in verdicts):\n${problems.join('\n')}`);
   writeJson(join(outDir, entryPath(id)), trimmed);
   const next = { status: 'verified', attempts, entryDigest: entryDigest(join(outDir, entryPath(id))) };

@@ -16,7 +16,8 @@ export interface Screen { name: string; fields: Field[] }
 
 /** A verified entry as the page shows it: the text, never the evidence. */
 export interface Entry {
-  purpose: string;
+  /** Absent when the purpose was removed as not verified. */
+  purpose?: string;
   who: { role: string; can: string }[];
   where: string[];
   screens: Screen[];

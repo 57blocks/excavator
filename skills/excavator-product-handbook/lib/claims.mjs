@@ -19,7 +19,7 @@ export function itemClaims(entry, ui) {
     return ui[key];
   };
   const claims = new Map();
-  claims.set('purpose', [t('md.section.purpose'), entry.purpose.text].join(SEP));
+  if (entry.purpose !== undefined) claims.set('purpose', [t('md.section.purpose'), entry.purpose.text].join(SEP));
   entry.who.forEach((who, i) => claims.set(`who[${i}]`, [t('md.section.who'), fill(t('md.who.item'), { role: who.role, can: who.can })].join(SEP)));
   entry.where.forEach((place, i) => claims.set(`where[${i}]`, [t('md.section.where'), place.label].join(SEP)));
   entry.screens.forEach((screen, i) => {

@@ -17,7 +17,7 @@ export const PAGE_FORMAT = 'excavator-product-handbook-page/1';
 /** An entry without its evidence, in the page's shape. */
 function pageEntry(entry) {
   return {
-    purpose: entry.purpose.text,
+    ...(entry.purpose === undefined ? {} : { purpose: entry.purpose.text }),
     who: entry.who.map((who) => ({ role: who.role, can: who.can })),
     where: entry.where.map((place) => place.label),
     screens: entry.screens.map((screen) => ({

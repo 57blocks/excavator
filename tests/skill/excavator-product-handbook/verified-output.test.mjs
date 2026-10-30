@@ -41,6 +41,24 @@ function removedRun() {
   return run;
 }
 
+/** Round 1 and round 2 judge every item not verified, so nothing is proved and the feature fails at verify. */
+function failedAtVerifyRun() {
+  const run = checkedRun();
+  expect(judge(run, 'F1', 1, () => 'unverified').status).toBe(0);
+  const round2 = judge(run, 'F1', 2, () => ({ verdict: 'unverified', reason: 'Nothing shown says why.' }));
+  expect(round2.lines).toEqual(['F1: failed at verify: no item could be proved']);
+  return run;
+}
+
+/** Round 2 removes only the purpose: the feature stays verified without it. */
+function purposeRemovedRun() {
+  const run = checkedRun();
+  expect(judge(run, 'F1', 1, (item) => (item.id === 'purpose' ? 'unverified' : 'verified')).status).toBe(0);
+  const round2 = judge(run, 'F1', 2, () => ({ verdict: 'unverified', reason: 'No line shown says why.' }));
+  expect(round2.lines).toEqual(['F1: verified, 1 item removed']);
+  return run;
+}
+
 const assemble = (run) => {
   const result = run.run('assemble');
   expect(result.status, result.stdout).toBe(0);
@@ -90,6 +108,18 @@ describe('assemble: the removed items are listed in the coverage section', () =>
     expect(body).toContain('The order is not sent yet.');
   });
 
+  it('writes a feature whose purpose was removed without a purpose section, and lists the removed purpose in the coverage section', () => {
+    const run = purposeRemovedRun();
+    const text = assemble(run);
+    const body = text.slice(0, text.indexOf('## Coverage'));
+    expect(body).toContain('### Orders');
+    expect(body).toContain('#### Who can use it');
+    expect(body).not.toContain('#### Purpose');
+    expect(body).not.toContain('Staff place new orders for customers.');
+    expect(text).not.toContain('| F1 Orders (Order handling) | Failed the checks |');
+    expect(text).toContain('| Purpose > Staff place new orders for customers. | The code shown does not settle it | No line shown says why. |');
+  });
+
   it('says none when nothing was removed', () => {
     const run = checkedRun();
     verifyChecked(run);
@@ -97,12 +127,10 @@ describe('assemble: the removed items are listed in the coverage section', () =>
   });
 
   it('lists the items of a feature that failed at verify, and the feature as failed', () => {
-    const run = checkedRun();
-    judge(run, 'F1', 1, (item) => (item.id === 'purpose' ? 'unverified' : 'verified'));
-    expect(judge(run, 'F1', 2, () => ({ verdict: 'unverified', reason: 'Nothing shown says why.' })).status).toBe(0);
+    const run = failedAtVerifyRun();
     const text = assemble(run);
     expect(text).toContain('| F1 Orders (Order handling) | Failed the checks |');
-    expect(text).toContain('#### F1 Orders (Order handling): items removed: 1');
+    expect(text).toContain('#### F1 Orders (Order handling): items removed: 15');
     expect(text).toContain('| Purpose > Staff place new orders for customers. | The code shown does not settle it | Nothing shown says why. |');
   });
 
@@ -149,6 +177,22 @@ describe('page: the status and the removed items', () => {
     }]);
   });
 
+  it('builds the page data of a verified feature whose purpose was removed: no purpose key, every other section, the purpose in the removed list', () => {
+    const run = purposeRemovedRun();
+    const built = page(run);
+    expect(built.status, built.stdout).toBe(0);
+    const data = dataOf(run);
+    const entry = data.features[0].entry;
+    expect(data.features[0].status).toBe('verified');
+    expect(Object.hasOwn(entry, 'purpose')).toBe(false);
+    expect(entry.who).toEqual([{ role: 'Clerk', can: expect.any(String) }]);
+    expect(entry.screens).toHaveLength(1);
+    expect(data.coverage.removed).toEqual([{
+      feature: 'F1',
+      items: [{ claim: 'Purpose > Staff place new orders for customers.', verdict: 'unverified', reason: 'No line shown says why.' }],
+    }]);
+  });
+
   it('has an empty removed list when nothing was removed', () => {
     const run = checkedRun();
     verifyChecked(run);
@@ -168,9 +212,7 @@ describe('reply: counts by status including verified', () => {
   });
 
   it('counts a feature that failed at verify as failed and names it', () => {
-    const run = checkedRun();
-    judge(run, 'F1', 1, (item) => (item.id === 'purpose' ? 'unverified' : 'verified'));
-    judge(run, 'F1', 2, () => 'unverified');
+    const run = failedAtVerifyRun();
     expect(run.run('assemble').status).toBe(0);
     const lines = run.run('reply').lines;
     expect(lines[2]).toBe('Features: 5 (planned 4, dispatched 0, checked 0, verified 0, failed 1)');

@@ -73,6 +73,10 @@ describe('check-entry: structure and evidence', () => {
     entry.purpose.mood = 'cheerful';
   }, /purpose: unexpected key "mood"/);
 
+  rejects('a missing purpose (only an entry settled by verdicts round 2 may lack one)', (entry) => {
+    delete entry.purpose;
+  }, /\(top level\): missing key "purpose"/);
+
   rejects('a missing top-level array', (entry) => {
     delete entry.notifications;
   }, /\(top level\): missing key "notifications"/);

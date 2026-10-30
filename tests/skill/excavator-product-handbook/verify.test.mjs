@@ -706,18 +706,65 @@ describe('verdicts: round 2', () => {
     expect(run.run('try-entry', 'F1').status).toBe(0);
   });
 
-  it('fails the feature at verify, with the reason, when the purpose is still not verified; the entry file is left as it is', () => {
+  it('removes a purpose that is still not verified like any other item: the feature stays verified, the entry has no purpose key, the handbook has no purpose section and the coverage section lists it', () => {
     const run = rewriteRun({ purpose: 'unverified' });
-    const before = readFileSync(join(run.out, 'entries', 'F1.json'), 'utf-8');
     const result = judge(run, 'F1', 2, () => ({ verdict: 'unverified', reason: 'No line shows why the order form exists.' }));
     expect(result.status, result.stdout).toBe(0);
-    expect(result.lines[0]).toBe('F1: failed at verify: the purpose could not be proved (unverified: No line shows why the order form exists.)');
+    expect(result.lines[0]).toBe('F1: verified, 1 item removed');
+    const state = stateOf(run);
+    expect(state.status).toBe('verified');
+    expect(state.failure).toBeUndefined();
+    expect(state.rewriting).toBeUndefined();
+    expect(state.entryDigest).toMatch(/^[0-9a-f]{64}$/);
+    expect(state.removed).toEqual([{
+      path: 'purpose',
+      claim: 'Purpose > Staff place new orders for customers.',
+      verdict: 'unverified',
+      reason: 'No line shows why the order form exists.',
+    }]);
+    const entry = entryOf(run);
+    expect(Object.hasOwn(entry, 'purpose')).toBe(false);
+    expect(entry.who).toEqual(run.entry.who);
+    expect(entry.screens).toEqual(run.entry.screens);
+    // The trimmed entry is a settled one: it is no longer a written entry, so check-entry and try-entry still ask for a purpose.
+    expect(run.run('try-entry', 'F1').stdout).toMatch(/missing key "purpose"/);
+
+    const assembled = run.run('assemble');
+    expect(assembled.status, assembled.stdout).toBe(0);
+    const text = readFileSync(join(run.out, 'handbook.md'), 'utf-8');
+    expect(text).toContain('### Orders');
+    expect(text).toContain('#### Who can use it');
+    expect(text).not.toContain('#### Purpose');
+    const coverageAt = text.indexOf('## Coverage');
+    expect(text.slice(0, coverageAt)).not.toContain('Staff place new orders for customers.');
+    const coverage = text.slice(coverageAt);
+    expect(coverage).toContain('Purpose > Staff place new orders for customers.');
+    expect(coverage).toContain('No line shows why the order form exists.');
+  });
+
+  it('fails the feature at verify, recording every removed item and leaving the entry file as it is, when no item that carries evidence is left', () => {
+    const run = rewriteRun(Object.fromEntries(ALL_ITEMS.map((id) => [id, 'unverified'])));
+    const before = readFileSync(join(run.out, 'entries', 'F1.json'), 'utf-8');
+    const result = judge(run, 'F1', 2, () => ({ verdict: 'unverified', reason: 'No line shown proves it.' }));
+    expect(result.status, result.stdout).toBe(0);
+    expect(result.lines).toEqual(['F1: failed at verify: no item could be proved']);
     const state = stateOf(run);
     expect(state.status).toBe('failed');
-    expect(state.failure).toEqual({ step: 'verify', reasons: ['the purpose could not be proved (unverified: No line shows why the order form exists.)'] });
-    expect(state.removed.map((item) => item.path)).toEqual(['purpose']);
+    expect(state.failure).toEqual({ step: 'verify', reasons: ['no item could be proved'] });
+    expect(state.removed.map((item) => item.path)).toEqual(expect.arrayContaining(ALL_ITEMS));
     expect(state.rewriting).toBeUndefined();
+    expect(state.entryDigest).toBeUndefined();
     expect(readFileSync(join(run.out, 'entries', 'F1.json'), 'utf-8')).toBe(before);
+  });
+
+  it('does not fail a feature that has one item left, even when everything else including the purpose was removed', () => {
+    const bad = Object.fromEntries(ALL_ITEMS.filter((id) => id !== 'states[0]').map((id) => [id, 'unverified']));
+    const run = rewriteRun(bad);
+    const result = judge(run, 'F1', 2, (item) => (item.id === 'states[0]' ? 'verified' : 'unverified'));
+    expect(result.lines[0]).toMatch(/^F1: verified, \d+ items removed$/);
+    expect(stateOf(run).status).toBe('verified');
+    expect(Object.hasOwn(entryOf(run), 'purpose')).toBe(false);
+    expect(entryOf(run).states.map((state) => state.label)).toEqual(['Draft']);
   });
 
   it('refuses round 2 on a feature that is not waiting for it, and conservation applies in round 2 too', () => {

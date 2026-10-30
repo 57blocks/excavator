@@ -85,6 +85,8 @@ const populated = dataFor(
   ],
 );
 const allWritten = dataFor([feature('F1', 'menu', 'verified', emptyEntry)]);
+const { purpose: _removedPurpose, ...entryWithoutPurpose } = fullEntry;
+const withoutPurpose = dataFor([feature('F1', 'menu', 'verified', entryWithoutPurpose)]);
 
 /** Decode the few entities React writes into markup. */
 const decode = (text: string): string => text.replace(/&quot;/g, '"').replace(/&#x27;/g, "'").replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&');
@@ -109,6 +111,7 @@ describe('every fixed text of the page comes from the ui table (O8, node half)',
   const views: [string, PageData, string][] = [
     ['the overview', populated, '#/'],
     ['a feature with every section filled', populated, `#/feature/${featureId(populated, 0)}`],
+    ['a feature whose purpose was removed', withoutPurpose, `#/feature/${featureId(withoutPurpose, 0)}`],
     ['a feature whose sections are all empty', populated, `#/feature/${featureId(populated, 4)}`],
     ['a feature with no verified entry (planned)', populated, `#/feature/${featureId(populated, 1)}`],
     ['a feature with no verified entry (failed)', populated, `#/feature/${featureId(populated, 3)}`],
@@ -126,6 +129,14 @@ describe('every fixed text of the page comes from the ui table (O8, node half)',
       expect(unmarked(html)).toEqual([]);
     });
   }
+
+  it('shows no purpose section for a feature whose purpose was removed, and the other sections stay', () => {
+    const html = render(withoutPurpose, `#/feature/${featureId(withoutPurpose, 0)}`);
+    expect(html).not.toContain(marked['md.section.purpose']);
+    expect(html).not.toContain('id="sec-purpose"');
+    expect(html).toContain(marked['md.section.who']);
+    expect(html).toContain(d('role one'));
+  });
 
   it('shows the data text and the marked fixed text together (the fixture reaches the page)', () => {
     const html = render(populated, `#/feature/${featureId(populated, 0)}`);

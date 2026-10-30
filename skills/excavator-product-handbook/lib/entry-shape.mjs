@@ -11,10 +11,17 @@ const field = objectOf({ label: nonEmptyString, evidence: evidenceList, rules: a
 const screen = objectOf({ name: nonEmptyString, evidence: evidenceList, fields: arrayOf(field) });
 const sentence = objectOf({ text: nonEmptyString, evidence: evidenceList });
 
-const ENTRY_SCHEMA = objectOf({
+const purpose = objectOf({ text: nonEmptyString, evidence: evidenceList });
+
+/**
+ * A written entry has a purpose. An entry settled by verdicts round 2 has no
+ * `purpose` key when the purpose was not verified and was removed (design D14),
+ * like the other removed items it is simply absent; `settled` allows that.
+ */
+const entrySchema = (settled) => objectOf({
   format: literal(ENTRY_FORMAT),
   id: nonEmptyString,
-  purpose: objectOf({ text: nonEmptyString, evidence: evidenceList }),
+  ...(settled ? {} : { purpose }),
   who: arrayOf(objectOf({ role: nonEmptyString, can: nonEmptyString, evidence: evidenceList })),
   where: arrayOf(objectOf({ label: nonEmptyString, evidence: evidenceList })),
   screens: arrayOf(screen),
@@ -25,7 +32,10 @@ const ENTRY_SCHEMA = objectOf({
   })),
   automatic: arrayOf(objectOf({ when: nonEmptyString, effect: nonEmptyString, evidence: evidenceList })),
   unknowns: arrayOf(objectOf({ item: nonEmptyString, searched: nonEmptyString })),
-});
+}, settled ? { purpose } : {});
 
-/** Shape problems of a parsed entry file. */
-export const entryShapeProblems = (entry) => shapeProblems(entry, ENTRY_SCHEMA);
+const ENTRY_SCHEMA = entrySchema(false);
+const SETTLED_SCHEMA = entrySchema(true);
+
+/** Shape problems of a parsed entry file; `settled` accepts an entry whose purpose was removed. */
+export const entryShapeProblems = (entry, { settled = false } = {}) => shapeProblems(entry, settled ? SETTLED_SCHEMA : ENTRY_SCHEMA);

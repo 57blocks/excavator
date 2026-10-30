@@ -127,8 +127,9 @@ Commands:
       <out>/rewrite/<featureId>.json (none: the feature is verified at once).
       Round 2 removes the items that are still not verified from the entry
       (what hangs on them goes with them), records them in state.json and
-      verifies the feature; a purpose that is not verified fails it at step
-      verify.
+      verifies the feature, the purpose included (it is removed like any
+      item); only when every item that carries evidence is removed does it
+      fail at step verify.
   check-ui <out> [--language <name>]
       Run in English with no <out>/ui.json: copy the shipped English table
       there. Otherwise check <out>/ui.json: the same keys as the English table,

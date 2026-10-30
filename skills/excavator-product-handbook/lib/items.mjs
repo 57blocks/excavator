@@ -58,8 +58,8 @@ export function mapItems(map) {
 /** The items of an entry that passed the shape check. */
 export function entryItems(entry) {
   const items = [];
-  const purpose = item('purpose', [text('purpose.text', entry.purpose.text, { narrative: true })], entry.purpose.evidence);
-  items.push(purpose);
+  // A settled entry whose purpose was removed has none (entry-shape.mjs).
+  if (entry.purpose !== undefined) items.push(item('purpose', [text('purpose.text', entry.purpose.text, { narrative: true })], entry.purpose.evidence));
   entry.who.forEach((who, i) => {
     items.push(item(`who[${i}]`, [text(`who[${i}].role`, who.role, { numbers: false }), text(`who[${i}].can`, who.can, { narrative: true })], who.evidence));
   });

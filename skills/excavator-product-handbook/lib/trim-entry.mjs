@@ -18,6 +18,8 @@ export function trimEntry(entry, removed) {
   const alongWith = (path) => {
     if (!gone(path)) together.push(path);
   };
+  // A removed purpose leaves no key, like an item filtered out of a list.
+  if (gone('purpose')) delete out.purpose;
   out.who = entry.who.filter((_, i) => !gone(`who[${i}]`));
   out.where = entry.where.filter((_, i) => !gone(`where[${i}]`));
   out.states = entry.states.filter((_, i) => !gone(`states[${i}]`));

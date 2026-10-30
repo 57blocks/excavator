@@ -27,9 +27,11 @@ function EntryBody({ entry }: { entry: Entry }) {
   const none = <p className="muted">{t('md.none')}</p>;
   return (
     <>
-      <Section id="purpose" title={t('md.section.purpose')}>
-        <p className="purpose">{entry.purpose}</p>
-      </Section>
+      {entry.purpose !== undefined && (
+        <Section id="purpose" title={t('md.section.purpose')}>
+          <p className="purpose">{entry.purpose}</p>
+        </Section>
+      )}
 
       <Section id="who" title={t('md.section.who')}>
         {entry.who.length === 0 ? none : (

@@ -590,6 +590,12 @@ describe('excavator-product-handbook skill: the lane prompt asks for citations t
     expect(prompt).toContain('When no passage proves it, write it in `unknowns`.');
   });
 
+  it('keeps the purpose to one plain sentence of who does what, citing the screen or handler, with conditions and limits left to the rules', () => {
+    expect(prompt).toContain('"purpose": {"text": "<one plain sentence: who uses the feature to do what>", "evidence": E}');
+    expect(prompt).toContain('The purpose is one plain sentence saying who uses the feature to do what, citing the screen or handler that shows it');
+    expect(prompt).toContain('conditions, filters and limits belong in the rules, not in the purpose');
+  });
+
   it('puts the rule before the labels-and-numbers rule, inside the evidence rules of the lane prompt', () => {
     expect(prompt.indexOf('**Evidence.**')).toBeLessThan(prompt.indexOf('**Cite what proves it.**'));
     expect(prompt.indexOf('**Cite what proves it.**')).toBeLessThan(prompt.indexOf('**Labels and numbers must be in the item\'s own passages.**'));
@@ -748,7 +754,10 @@ describe('excavator-product-handbook skill: Phase 5, verify', () => {
   it('dispatches the verifiers of round 2 like round 1 and settles with verdicts --round 2, quoting the lines the script prints', () => {
     expect(p).toContain(`${HANDBOOK} verdicts "$OUT" <id> --round 2 --project "$PROJECT_ROOT"`);
     expect(p).toContain('`<id>: verified, <n> items removed`');
-    expect(p).toContain('`<id>: failed at verify: the purpose could not be proved (...)`');
+    expect(p).toContain('The purpose is an item like any other: when the two verifiers do not both confirm it, it is removed and recorded, and the feature stays verified.');
+    expect(p).toContain('the coverage section lists the removed purpose');
+    expect(p).toContain('`<id>: failed at verify: no item could be proved`: nothing of the entry was proved. It is `failed`; its entry file stays for the user to see.');
+    expect(p).not.toContain('the purpose could not be proved');
     expect(p).toContain('`unverified` like `contradicted`, was removed from the entry');
     expect(p).toContain('The removal is not a rewrite: never put a removed item back.');
   });

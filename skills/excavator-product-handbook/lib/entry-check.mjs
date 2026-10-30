@@ -24,9 +24,14 @@ import { featureState, loadState, nextLine, rewriteNextLine, saveState } from '.
 
 export const entryPath = (id) => `entries/${id}.json`;
 
-/** Every way a parsed entry fails, given the map's roles and map-wide verified labels. */
-export function entryProblems(entry, id, { map, files, memberDirs, mapLabels, languageCheck = null }) {
-  const shape = entryShapeProblems(entry);
+/**
+ * Every way a parsed entry fails, given the map's roles and map-wide verified
+ * labels. `settled` is for an entry that verdicts round 2 has trimmed (design
+ * D14): its purpose may be absent. A written entry (check-entry, try-entry)
+ * is never settled, so its purpose stays required.
+ */
+export function entryProblems(entry, id, { map, files, memberDirs, mapLabels, languageCheck = null }, { settled = false } = {}) {
+  const shape = entryShapeProblems(entry, { settled });
   if (shape.length > 0) return shape;
   const problems = [];
   if (entry.id !== id) problems.push(`id: ${JSON.stringify(entry.id)} is not ${JSON.stringify(id)}, the feature this entry is checked as`);
@@ -39,13 +44,13 @@ export function entryProblems(entry, id, { map, files, memberDirs, mapLabels, la
 }
 
 /** The problems of `<out>/entries/<id>.json`, or the single missing-file reason; no state is read or written. */
-export function checkEntryFile(outDir, id, root, { map, mapLabels = null, files = projectFiles(root), memberDirs = memberDirectories(root), languageCheck = null }) {
+export function checkEntryFile(outDir, id, root, { map, mapLabels = null, files = projectFiles(root), memberDirs = memberDirectories(root), languageCheck = null }, { settled = false } = {}) {
   const file = join(outDir, entryPath(id));
   const labels = mapLabels ?? mapVerifiedLabels(map, { files, memberDirs }).verified;
   const read = readJson(file);
   if (read.missing) return { step: 'lane', problems: [`${id}: lane-wrote-nothing: ${entryPath(id)} is missing`] };
   if (!read.ok) return { step: 'check-entry', problems: [`${entryPath(id)} ${read.reason}`] };
-  return { step: 'check-entry', problems: entryProblems(read.value, id, { map, files, memberDirs, mapLabels: labels, languageCheck }) };
+  return { step: 'check-entry', problems: entryProblems(read.value, id, { map, files, memberDirs, mapLabels: labels, languageCheck }, { settled }) };
 }
 
 /** The checked map and project facts check-entry and try-entry share, or the lines that stop them. */
