@@ -68,7 +68,8 @@ import {
 } from './coverage-ledger.mjs';
 import { mergeVerification } from './verification-state.mjs';
 import { STRUCTURE_ALL_FILE, readStructureAllPath } from './structure-all-store.mjs';
-import { callScopePaths } from './fact-graph-resolve.mjs';
+import { BOUND_CALL_LANGUAGES, BOUND_CALL_UNRESOLVED_FORMS, callScopePaths, resolveBoundCallSite } from './fact-graph-resolve.mjs';
+import { createModuleBindingResolver } from './module-binding-resolution.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const pluginRoot = resolve(__dirname, '../..');
@@ -300,20 +301,34 @@ export function buildExpectedRecords({ structure, importMap }) {
 }
 
 /**
- * Call sites that resolve to exactly one declaration among the caller's file
- * and the files it imports, by the fact graph's own scope (`callScopePaths`:
- * a file only a re-export reaches is not in it). Only these are eligible for
- * `edge-missing`: an ambiguous or unresolvable callee is a gap in the readers,
- * not a hole in the model's graph.
+ * Call sites that resolve to exactly one declaration by the fact graph's own
+ * rules: a TS/JS callee only through the file's own bindings
+ * (`resolveBoundCallSite`), any other callee among the caller's file and the
+ * files it imports (`callScopePaths`: a file only a re-export reaches is not
+ * in it). Only these are eligible for `edge-missing`: an ambiguous or
+ * unresolvable callee is a gap in the readers, not a hole in the model's graph.
  */
 export function resolveUniqueCallSites({ structure, importMap, expected }) {
   const declarationsByName = new Map();
+  // TS/JS: the same declarations, as top-level ones the bindings can name.
+  const topLevelByName = new Map();
+  const declarationOfId = new Map();
   for (const [path, decls] of expected.declarations) {
-    for (const decl of decls) {
+    decls.forEach((decl, index) => {
       const key = `${path}|${decl.name}`;
       declarationsByName.set(key, decl);
-    }
+      if (decl.owner) return;
+      const id = `${path}#${index}`;
+      declarationOfId.set(id, { file: path, name: decl.name });
+      if (!topLevelByName.has(key)) topLevelByName.set(key, []);
+      topLevelByName.get(key).push({ id });
+    });
   }
+  const bindingResolver = createModuleBindingResolver({
+    rows: [...expected.byPath.values()],
+    importMap,
+    topLevelDecls: (path, name) => topLevelByName.get(`${path}|${name}`) ?? [],
+  });
 
   const unique = [];
   const ambiguous = [];
@@ -321,6 +336,20 @@ export function resolveUniqueCallSites({ structure, importMap, expected }) {
   for (const [path, decls] of expected.declarations) {
     void decls;
     const row = expected.byPath.get(path);
+    if (BOUND_CALL_LANGUAGES.has(row?.language)) {
+      for (const site of row.callGraph ?? []) {
+        const resolved = resolveBoundCallSite(bindingResolver, path, site);
+        const declarations = resolved.ids.map((id) => declarationOfId.get(id));
+        const record = { file: path, callee: site.callee, line: site.lineNumber, targets: declarations.map((d) => d.file) };
+        // The declaration a bound callee reaches need not carry the callee's
+        // text as its name (`write` for `log as write`, `util.helper`, a
+        // default import), so the record names it.
+        if (resolved.outcome === 'edge') unique.push({ ...record, declaration: declarations[0] });
+        else if (resolved.outcome === 'calls-ambiguous') ambiguous.push(record);
+        else unresolved.push(record);
+      }
+      continue;
+    }
     const scope = callScopePaths(importMap, path);
     for (const site of row?.callGraph ?? []) {
       const hits = scope.filter((candidate) => declarationsByName.has(`${candidate}|${site.callee}`));
@@ -468,6 +497,8 @@ export function annotate({
 
   // ── edges the model wrote ────────────────────────────────────────────────
   const matchedRecordKeys = new Set();
+  // The model's calls edges as caller file, target file and target name.
+  const modelCalls = new Set();
 
   for (const edge of annotated.edges) {
     if (!edge || typeof edge !== 'object') continue;
@@ -476,6 +507,9 @@ export function annotate({
     const record = findRecord(edge, source, target, expected);
 
     if (record) matchedRecordKeys.add(record.key);
+    if (edge.type === 'calls' && source?.filePath && target?.filePath && target?.name) {
+      modelCalls.add(`${source.filePath}|${target.filePath}|${target.name}`);
+    }
 
     const modelEvidence = Array.isArray(edge.evidence) ? edge.evidence : null;
 
@@ -644,7 +678,10 @@ export function annotate({
   const uniqueCalls = resolveUniqueCallSites({ structure, importMap, expected });
   for (const site of uniqueCalls.unique) {
     const key = `calls|${site.file}|${site.callee}`;
-    if (matchedRecordKeys.has(key)) continue;
+    const drawn = site.declaration
+      ? modelCalls.has(`${site.file}|${site.declaration.file}|${site.declaration.name}`)
+      : matchedRecordKeys.has(key);
+    if (drawn) continue;
     missingByType.calls = (missingByType.calls ?? 0) + 1;
     samples.add('edge-missing|calls', `${site.file}:${site.line} -> ${site.callee}`);
   }
@@ -776,7 +813,8 @@ export function annotate({
     `${uniqueCalls.ambiguous.length} call site(s) resolve to more than one declaration`,
     uniqueCalls.ambiguous.length);
   gap('calls-unresolved', 'graph',
-    `${uniqueCalls.unresolved.length} call site(s) resolve to no declaration in the caller's file or its imports`,
+    `${uniqueCalls.unresolved.length} call site(s) resolve to no single declaration. A TS/JS callee the caller's file does not bind `
+      + `to a repository function or class: ${BOUND_CALL_UNRESOLVED_FORMS}. Any other callee: no declaration in the caller's file or its imports`,
     uniqueCalls.unresolved.length);
   for (const site of uniqueCalls.ambiguous) samples.add('calls-ambiguous', `${site.file}:${site.line} -> ${site.callee}`);
   for (const site of uniqueCalls.unresolved) samples.add('calls-unresolved', `${site.file}:${site.line} -> ${site.callee}`);

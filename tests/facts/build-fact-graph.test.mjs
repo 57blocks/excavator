@@ -38,7 +38,7 @@ function baseFixture() {
         path: 'src/a.ts', language: 'typescript', fileCategory: 'code',
         totalLines: 5, nonEmptyLines: 5, status: 'parsed',
         functions: [{ name: 'run', owner: '', startLine: 1, endLine: 4, params: ['x'] }],
-        imports: [{ source: './b', specifiers: ['helper'], line: 1 }],
+        imports: [{ source: './b', specifiers: ['helper'], line: 1, bindings: [{ local: 'helper', imported: 'helper' }] }],
         exports: [{ name: 'run', line: 2, isDefault: false }],
         callGraph: [
           { caller: 'run', callee: 'helper', lineNumber: 3 },
@@ -89,6 +89,7 @@ function baseFixture() {
       'src/collide.ts': [],
     },
     unresolved: {},
+    resolvedSources: { 'src/a.ts': { './b': 'src/b.ts' } },
   };
 
   return { scan, structureAll, importMap };

@@ -7,7 +7,9 @@
 //   - forward-and-import.ts imports `log` from util.ts and forwards logger.ts,
 //     which also declares `log`;
 //   - forward-and-require.js forwards logger.ts and also require()s it, so
-//     logger.ts stays in its scope;
+//     logger.ts is not re-export-only; its call to the require()d `log`
+//     still draws no edge, since TS/JS calls resolve only through import
+//     bindings (import-binding-call-scope);
 //   - empty-forward.ts writes `export {} from`, which forwards no name at all.
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
@@ -67,8 +69,8 @@ describe('re-export targets and the call scope', () => {
   const gapSamples = (kind) => graph.gaps.filter((g) => g.kind === kind).flatMap((g) => g.samples);
 
   it('moves the pipeline version so graphs built with the wider scope are rebuilt', () => {
-    expect(PIPELINE_VERSION).toBe('lazy-fact-graph/14');
-    expect(graph.project.pipelineVersion).toBe('lazy-fact-graph/14');
+    expect(PIPELINE_VERSION).toBe('lazy-fact-graph/15');
+    expect(graph.project.pipelineVersion).toBe('lazy-fact-graph/15');
   });
 
   it('keeps every re-export target in the import map and as an imports edge', () => {
@@ -102,8 +104,9 @@ describe('re-export targets and the call scope', () => {
     expect(gapSamples('calls-ambiguous')).not.toContain(`${FORWARD_AND_IMPORT}:4 -> log`);
   });
 
-  it('keeps a forwarded module in scope when require() also binds from it', () => {
-    expect(callTargetsOf(FORWARD_AND_REQUIRE, 'trace')).toEqual([nodeId(LOGGER, 'log')]);
+  it('leaves a call to a require()d name unresolved though the module is not re-export-only', () => {
+    expect(callTargetsOf(FORWARD_AND_REQUIRE, 'trace')).toEqual([]);
+    expect(gapSamples('calls-unresolved')).toContain(`${FORWARD_AND_REQUIRE}:4 -> log`);
   });
 
   it('keeps an empty re-export out of the call scope', () => {
@@ -119,7 +122,7 @@ describe('re-export targets and the call scope', () => {
     expect(site(unique, FORWARD_ONLY)).toEqual([]);
     expect(site(unique, FORWARD_AND_IMPORT)).toEqual([[UTIL]]);
     expect(site(ambiguous, FORWARD_AND_IMPORT)).toEqual([]);
-    expect(site(unique, FORWARD_AND_REQUIRE)).toEqual([[LOGGER]]);
+    expect(site(unresolved, FORWARD_AND_REQUIRE)).toEqual([[]]);
     expect(site(unresolved, EMPTY_FORWARD)).toEqual([[]]);
   });
 });
