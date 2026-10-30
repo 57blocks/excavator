@@ -68,6 +68,7 @@ ENV CLAUDE_CODE_USE_BEDROCK=1 \
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
          git \
+         jq \
          python3 \
          python-is-python3 \
          ca-certificates \

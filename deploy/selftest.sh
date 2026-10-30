@@ -95,6 +95,23 @@ check_python() {
   }
 }
 
+# 4b. `jq` is on PATH and computes (skills tell the model to run it).
+check_jq() {
+  local out
+  command -v jq >/dev/null 2>&1 || {
+    echo "jq is not on PATH"
+    return 1
+  }
+  out="$(jq -n '1+1' 2>&1)" || {
+    echo "'jq -n 1+1' failed: $out"
+    return 1
+  }
+  if [[ "$out" != "2" ]]; then
+    echo "'jq -n 1+1' printed '$out', expected '2'"
+    return 1
+  fi
+}
+
 # 5. $HOME/.excavator-plugin resolves to the checkout and looks like it.
 check_plugin_symlink() {
   local resolved
@@ -216,6 +233,46 @@ EOF
     return 1
   fi
 
+  rm -rf "$tmp_repo"
+}
+
+# 7b. Hotspots reads a repository owned by another uid. The script switches
+# the machine git config off for its history reads (which hides the system
+# safe.directory above), so it must allow the repository on its own.
+# GIT_TEST_ASSUME_DIFFERENT_OWNER makes git treat the temp repo as foreign.
+check_hotspots_git() {
+  local tmp_repo step_out
+  tmp_repo="$(mktemp -d /tmp/excavator-selftest-XXXXXX)" || {
+    echo "mktemp failed to create a temp repo directory"
+    return 1
+  }
+  step_out="$(git -C "$tmp_repo" init -q 2>&1)" || {
+    echo "git init failed: $step_out"
+    rm -rf "$tmp_repo"
+    return 1
+  }
+  echo 'module.exports = { ok: true };' > "$tmp_repo/index.js"
+  step_out="$(git -C "$tmp_repo" add -A 2>&1)" || {
+    echo "git add failed: $step_out"
+    rm -rf "$tmp_repo"
+    return 1
+  }
+  step_out="$(git -C "$tmp_repo" -c user.name="Excavator Selftest" -c user.email="selftest@excavator.local" commit -q -m "selftest: initial commit" 2>&1)" || {
+    echo "git commit failed: $step_out"
+    rm -rf "$tmp_repo"
+    return 1
+  }
+
+  step_out="$(GIT_TEST_ASSUME_DIFFERENT_OWNER=1 node /opt/excavator/skills/excavator/hotspots.mjs "$tmp_repo" 2>&1)" || {
+    echo "hotspots.mjs failed on a repository owned by another uid: $step_out"
+    rm -rf "$tmp_repo"
+    return 1
+  }
+  if [[ ! -f "$tmp_repo/.excavator/hotspots.json" ]]; then
+    echo "$tmp_repo/.excavator/hotspots.json was not produced"
+    rm -rf "$tmp_repo"
+    return 1
+  fi
   rm -rf "$tmp_repo"
 }
 
@@ -596,10 +653,12 @@ run_check "claude-code-version" check_claude_code_version
 run_check "image-commit" check_image_commit
 run_check "plugin-validate" check_plugin_validate
 run_check "python" check_python
+run_check "jq" check_jq
 run_check "plugin-symlink" check_plugin_symlink
 run_check "safe-directory" check_safe_directory
 run_check "node-heap" check_node_heap
 run_check "lazy-analyze" check_lazy_analyze
+run_check "hotspots-git" check_hotspots_git
 run_check "load-probe" check_load_probe
 run_check "isolation" check_isolation
 run_check "isolation-control" check_isolation_control

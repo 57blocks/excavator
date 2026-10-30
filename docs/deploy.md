@@ -118,7 +118,7 @@ If Bedrock model-invocation logging is enabled, the logged payloads contain the 
 COMMIT=$(git rev-parse HEAD); TAG=${COMMIT:0:8}-amd64
 docker buildx build --platform linux/amd64 --load -f deploy/Dockerfile \
   --build-arg EXCAVATOR_COMMIT=$COMMIT -t excavator-runner:$TAG .
-docker run --rm --network none --entrypoint excavator-selftest excavator-runner:$TAG   # 12 PASS lines
+docker run --rm --network none --entrypoint excavator-selftest excavator-runner:$TAG   # 14 PASS lines
 docker save excavator-runner:$TAG | gzip > excavator-runner-$TAG.tar.gz
 sha256sum excavator-runner-$TAG.tar.gz > excavator-runner-$TAG.tar.gz.sha256          # macOS: shasum -a 256
 aws s3 cp excavator-runner-$TAG.tar.gz        s3://<BUCKET>/<PREFIX>/
@@ -133,10 +133,10 @@ aws s3 cp s3://<BUCKET>/<PREFIX>/excavator-runner-<TAG>.tar.gz .
 aws s3 cp s3://<BUCKET>/<PREFIX>/excavator-runner-<TAG>.tar.gz.sha256 .
 sha256sum -c excavator-runner-<TAG>.tar.gz.sha256
 docker load -i excavator-runner-<TAG>.tar.gz
-docker run --rm --network none --entrypoint excavator-selftest excavator-runner:<TAG>   # 12 PASS lines
+docker run --rm --network none --entrypoint excavator-selftest excavator-runner:<TAG>   # 14 PASS lines
 ```
 
-The self-test makes no model call and needs no credentials. It checks the Claude Code version, the image commit, plugin validity and loading, Python, the git safe-directory setting, the Node heap limit, a Lazy run, settings isolation and the MCP server.
+The self-test makes no model call and needs no credentials. It checks the Claude Code version, the image commit, plugin validity and loading, Python, `jq`, the git safe-directory setting, the Node heap limit, a Lazy run, a hotspots history read of a repository owned by another uid, settings isolation and the MCP server.
 
 ## 6. Preparing `/work/repo`
 
