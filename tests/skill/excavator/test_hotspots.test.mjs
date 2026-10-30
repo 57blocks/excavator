@@ -10,7 +10,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { execFileSync, spawn, spawnSync } from 'node:child_process';
 import {
-  existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, renameSync, rmSync, symlinkSync, writeFileSync,
+  appendFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, renameSync, rmSync, symlinkSync, writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
@@ -886,6 +886,60 @@ describe('no history is visible, never 0', () => {
     expect(readProduct(plain, [], noGit).noHistory).toEqual({ reason: 'not-a-repository', repositoryRoot: null, pathInRepository: null });
   });
 
+  it('refuses to write a product when git starts but does not work, and blames no .git', () => {
+    const repo = initRepo('hotspots-brokengit-');
+    commit(repo, { when: '2024-01-01', files: { 'src/a.txt': lines(2) } });
+    const parent = tempDir('hotspots-brokengit-multi-');
+    const member = join(parent, 'm');
+    mkdirSync(member);
+    git(member, ['init', '-q', '-b', 'main']);
+    commit(member, { when: '2024-01-01', files: { 'x.txt': lines(1) } });
+    const userConfig = tempDir('hotspots-brokengit-config-');
+    writeFile(userConfig, 'gitconfig', '[core\n');
+    const plain = tempDir('hotspots-brokengit-plain-');
+    writeFile(plain, 'a.txt', lines(2));
+
+    // git starts in both, and every command that reads its configuration fails
+    for (const env of [{ GIT_CONFIG_PARAMETERS: "'" }, { GIT_CONFIG_GLOBAL: join(userConfig, 'gitconfig') }]) {
+      for (const [root, found] of [[repo, '.git'], [join(repo, 'src'), '../.git'], [parent, 'm/.git']]) {
+        const result = runScript(root, [], env);
+        expect(result.status, result.stderr).toBe(1);
+        expect(result.stderr).toContain('git does not work here (');
+        expect(result.stderr).toContain(`, so the history in ${found} cannot be read`);
+        expect(result.stderr).not.toContain('does not accept');
+        expect(existsSync(productPath(root))).toBe(false);
+      }
+
+      // with no .git anywhere, git not working changes nothing
+      expect(readProduct(plain, [], env).noHistory).toEqual({ reason: 'not-a-repository', repositoryRoot: null, pathInRepository: null });
+    }
+  });
+
+  it('says git does not accept the .git, not that git does not work, when only the repository config is broken', () => {
+    const repo = initRepo('hotspots-brokenrepoconfig-');
+    commit(repo, { when: '2024-01-01', files: { 'a.txt': lines(2) } });
+    appendFileSync(join(repo, '.git', 'config'), '[core\n');
+
+    const result = runScript(repo);
+
+    expect(result.status, result.stderr).toBe(1);
+    expect(result.stderr).toContain('git does not accept .git in the project root, so its history cannot be read');
+    expect(result.stderr).not.toContain('does not work');
+    expect(existsSync(productPath(repo))).toBe(false);
+  });
+
+  it('does not let GIT_CONFIG, which only git config reads, say that git does not work', () => {
+    const repo = initRepo('hotspots-gitconfig-env-');
+    commit(repo, { when: '2024-01-01', files: { 'src/a.txt': lines(2) } });
+    const configs = tempDir('hotspots-gitconfig-env-files-');
+    writeFile(configs, 'broken', '[core\n');
+
+    for (const file of [join(configs, 'missing'), join(configs, 'broken')]) {
+      expect(readProduct(join(repo, 'src'), [], { GIT_CONFIG: file }).noHistory)
+        .toEqual({ reason: 'inside-repository', repositoryRoot: '..', pathInRepository: 'src' });
+    }
+  });
+
   it('refuses to write a product when git does not accept the .git of the root or of a child directory', () => {
     const dir = tempDir('hotspots-broken-');
     writeFile(dir, 'a.txt', lines(2));
@@ -900,6 +954,85 @@ describe('no history is visible, never 0', () => {
       expect(result.stderr).toContain(`git does not accept ${found}, so its history cannot be read`);
       expect(existsSync(productPath(root))).toBe(false);
     }
+  });
+
+  it('refuses when git does not accept a .git of the root or of a child directory, also inside another repository', () => {
+    const repo = initRepo('hotspots-outer-');
+    commit(repo, {
+      when: '2024-01-01',
+      files: {
+        'p/a.txt': lines(2), 'q/m/b.txt': lines(2), 'q2/m/c.txt': lines(2), 's/d.txt': lines(2),
+      },
+    });
+    // p holds a repository of its own whose HEAD is gone: git skips that .git and reads the work tree of `repo`
+    const own = join(repo, 'p');
+    git(own, ['init', '-q', '-b', 'main']);
+    commit(own, { when: '2024-01-01' });
+    rmSync(join(own, '.git', 'HEAD'));
+    // q has a child whose .git points nowhere
+    writeFile(repo, 'q/m/.git', `gitdir: ${join(repo, 'q', 'missing')}\n`);
+    // q2 has a child holding a repository without HEAD
+    const child = join(repo, 'q2', 'm');
+    git(child, ['init', '-q', '-b', 'main']);
+    commit(child, { when: '2024-01-01' });
+    rmSync(join(child, '.git', 'HEAD'));
+    // s has a child repository with no commit yet: git accepts it, so it is no reason to refuse
+    const fresh = join(repo, 's', 'new');
+    mkdirSync(fresh);
+    git(fresh, ['init', '-q', '-b', 'main']);
+    writeFile(fresh, 'y.txt', lines(1));
+
+    const skipped = 'git skips it and reads the work tree at ..';
+    for (const [root, message] of [
+      [join(repo, 'p'), `git does not accept .git in the project root, so its history cannot be read: ${skipped}`],
+      [join(repo, 'q'), 'git does not accept m/.git, so its history cannot be read'],
+      [join(repo, 'q2'), `git does not accept m/.git, so its history cannot be read: ${skipped}`],
+    ]) {
+      const result = runScript(root);
+      expect(result.status, result.stderr).toBe(1);
+      expect(result.stderr).toContain(message);
+      expect(existsSync(productPath(root))).toBe(false);
+    }
+
+    expect(readProduct(join(repo, 's')).noHistory).toEqual({ reason: 'inside-repository', repositoryRoot: '..', pathInRepository: 's' });
+  });
+
+  it('refuses in a multi-repo parent when git does not accept a .git of the root or of another child directory', () => {
+    const withMember = (parent) => {
+      const member = join(parent, 'a');
+      mkdirSync(member);
+      git(member, ['init', '-q', '-b', 'main']);
+      commit(member, { when: '2024-01-01', files: { 'x.txt': lines(2) } });
+    };
+    // a member, and another child whose .git points nowhere
+    const pointing = tempDir('hotspots-multi-missing-');
+    withMember(pointing);
+    writeFile(pointing, 'm/x.txt', lines(1));
+    writeFile(pointing, 'm/.git', `gitdir: ${join(pointing, 'missing')}\n`);
+    // a member, and a parent whose own .git is a repository without HEAD
+    const headless = tempDir('hotspots-multi-headless-');
+    git(headless, ['init', '-q', '-b', 'main']);
+    rmSync(join(headless, '.git', 'HEAD'));
+    withMember(headless);
+    // a member, and a child repository with no commit yet: git accepts it, so the product is written
+    const unborn = tempDir('hotspots-multi-unborn-');
+    withMember(unborn);
+    const fresh = join(unborn, 'new');
+    mkdirSync(fresh);
+    git(fresh, ['init', '-q', '-b', 'main']);
+    writeFile(fresh, 'y.txt', lines(1));
+
+    for (const [root, message] of [
+      [pointing, 'git does not accept m/.git, so its history cannot be read'],
+      [headless, 'git does not accept .git in the project root, so its history cannot be read'],
+    ]) {
+      const result = runScript(root);
+      expect(result.status, result.stderr).toBe(1);
+      expect(result.stderr).toContain(message);
+      expect(existsSync(productPath(root))).toBe(false);
+    }
+
+    expect(readProduct(unborn).sourceKind).toBe('multi-repo');
   });
 
   it('writes the product for a directory whose only child repository has no commit yet', () => {
