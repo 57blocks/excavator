@@ -824,12 +824,14 @@ describe('the handbook verifier agent', () => {
     expect(text).toContain('choose `contradicted` only if you can name the disagreement');
   });
 
-  it('carries the two rules that caught the real errors: a name is not evidence of who may act, and an absolute claim needs a condition with no narrower test', () => {
-    expect(text).toContain('A name is not evidence of who may do something.');
-    expect(text).toContain('Only the condition the code checks does');
-    expect(text).toContain('When the code shown has only the name, and no condition, the claim is `unverified`');
+  it('carries the rules that caught the real errors: a name never tells which person or role, an absolute claim needs a condition with no narrower test, and nothing holds past an unseen call', () => {
+    expect(text).toContain('A name never tells you which person, role or office.');
+    expect(text).toContain('Only a condition or a data lookup the code shows does');
+    expect(text).toContain('When the code shown has only the name, the claim is `unverified`');
     expect(text).toContain('A claim of "every", "any", "all", "always", "cannot already" or "none" holds only if nothing narrows it.');
     expect(text).toContain('contradicted` if the narrowing is visible in the code shown');
+    expect(text).toContain('Nothing is shown to hold after a call whose body is not shown.');
+    expect(text).toContain('unless the blocks include the function\'s body');
   });
 
   it('asks for a one-line reason that names no file, and writes the verdict file it is given', () => {
