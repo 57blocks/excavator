@@ -1,6 +1,6 @@
 /**
- * Entrypoint candidates for /excavator-prd-report (openspec change
- * prd-feature-pipeline, design D1).
+ * The entrypoint candidate lister, used by excavator-product-handbook and the
+ * PRD report skill's entrypoints command.
  *
  * Reads the project's source statically and lists every line a pattern of
  * `entrypoint-catalog.json` matches, as `{ id, kind, file, line, text,
@@ -23,9 +23,8 @@ import { UsageError } from './errors.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const PLUGIN_ROOT = resolve(here, '../../..');
-export const CATALOG_FILE = resolve(here, '../entrypoint-catalog.json');
+export const CATALOG_FILE = resolve(here, 'entrypoint-catalog.json');
 
-export const ENTRYPOINTS_FORMAT = 'excavator-prd-report-entrypoints/1';
 export const KINDS = Object.freeze(['route', 'page', 'job', 'main']);
 export const SKIPPED_DIRECTORIES = Object.freeze(['.git', '.excavator', 'node_modules', 'vendor', 'dist', 'build']);
 const TEST_FILE = /_test\.go$|\.test\.|\.spec\./;
@@ -237,7 +236,7 @@ function detectedByCatalog(group, manifests) {
 
 /**
  * List the entrypoint candidates of `projectRoot` (optionally only under
- * `scope`). Returns the JSON object `prd.mjs entrypoints` prints.
+ * `scope`). Returns the listing object without a `format` field; each command stamps its own.
  */
 export async function listEntrypoints(projectRootArg, { scope = null, catalogPath = CATALOG_FILE } = {}) {
   let projectRoot;
@@ -340,7 +339,6 @@ export async function listEntrypoints(projectRootArg, { scope = null, catalogPat
   }
 
   return {
-    format: ENTRYPOINTS_FORMAT,
     projectRoot,
     scope: scopeRel,
     detection: { source: graph.state === 'read' ? 'knowledge-graph' : 'build-files', graph: graph.state },

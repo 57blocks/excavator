@@ -6,9 +6,10 @@
 
 只搬家，不改行为：旧 skill 的输出与测试断言都不变（O4）。
 
-- [ ] 2.1 `entrypoints.mjs`、`entrypoint-catalog.json`、`normalize.mjs` 移到 `skills/excavator-product-handbook/lib/`；列表函数不再自带 `format`，旧 skill 的 `entrypoints` 命令盖回原格式串（D3）
-- [ ] 2.2 旧 skill 的引用路径、`tests/skill/excavator-prd-report/entrypoints.test.mjs` 与 normalize 测试的引用路径跟着改
-- [ ] 2.3 O4：迁移前后旧 skill 在同一夹具上的 `entrypoints.json` 逐字节比较
+- [x] 2.1 `entrypoints.mjs`、`entrypoint-catalog.json`、`normalize.mjs` 移到 `skills/excavator-product-handbook/lib/`；列表函数不再自带 `format`，旧 skill 的 `entrypoints` 命令盖回原格式串（D3）
+- [x] 2.2 旧 skill 的引用路径、`tests/skill/excavator-prd-report/entrypoints.test.mjs` 与 normalize 测试的引用路径跟着改
+- [x] 2.3 O4：迁移前后旧 skill 在同一夹具上的 `entrypoints.json` 逐字节比较
+- [x] 2.4 最小 `SKILL.md`（只有 frontmatter 与一句说明，写明尚未可用），随之更新安装测试与加载夹具里的 skill 计数：`check-refs` 要求每个 skill 目录都有 `SKILL.md`，没有它这个提交过不了门；5.1 再写完整内容
 
 ## 3. 脚本（提交 3）
 

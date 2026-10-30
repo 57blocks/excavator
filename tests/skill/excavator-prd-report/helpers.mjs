@@ -13,7 +13,7 @@ import { fileURLToPath } from 'node:url';
 const here = dirname(fileURLToPath(import.meta.url));
 export const repoRoot = resolve(here, '../../..');
 export const PRD_SCRIPT = join(repoRoot, 'skills/excavator-prd-report/prd.mjs');
-export const CATALOG_PATH = join(repoRoot, 'skills/excavator-prd-report/entrypoint-catalog.json');
+export const CATALOG_PATH = join(repoRoot, 'skills/excavator-product-handbook/lib/entrypoint-catalog.json');
 export const FIXTURES = join(repoRoot, 'tests/fixtures/prd-report-pipeline');
 
 /** Run `node prd.mjs <args>`; returns { status, stdout, stderr, json } (json is null when stdout is not JSON). */
