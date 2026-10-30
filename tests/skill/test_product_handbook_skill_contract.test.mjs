@@ -20,12 +20,14 @@ import { mapShapeProblems } from '../../skills/excavator-product-handbook/lib/ma
 import { nextLine } from '../../skills/excavator-product-handbook/lib/state.mjs';
 import { SELECT_NEXT } from '../../skills/excavator-product-handbook/lib/select.mjs';
 import { UI_FORMAT } from '../../skills/excavator-product-handbook/lib/ui.mjs';
-import { HANDBOOK_SCRIPT, makeCheckedMapRun, runHandbook } from './excavator-product-handbook/helpers.mjs';
+import { verdictProblems } from '../../skills/excavator-product-handbook/lib/verdicts.mjs';
+import { HANDBOOK_SCRIPT, clone, judge, makeCheckedMapRun, runHandbook } from './excavator-product-handbook/helpers.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(__dirname, '../..');
 const skill = readFileSync(resolve(repoRoot, 'skills/excavator-product-handbook/SKILL.md'), 'utf-8');
 const flat = (text) => text.replace(/\s+/g, ' ');
+const agent = readFileSync(resolve(repoRoot, 'agents/excavator-handbook-verifier.md'), 'utf-8');
 
 /** Split the skill into its `## Phase N: Title` sections, keyed by N, each without its title line. */
 function rawPhases(text) {
@@ -40,6 +42,7 @@ const before = flat(skill.split(/^## Phase 0: /m)[0]);
 /** The text blocks of four backticks (they hold three-backtick examples), in order: the lane prompt, then the translation prompt. */
 const promptBlocks = (text) => [...text.matchAll(/^````text\n([\s\S]*?)\n````$/gm)].map((match) => match[1]);
 const lanePrompt = promptBlocks(raw.get(4) ?? '')[0] ?? '';
+const [verifierPrompt = '', rewritePrompt = ''] = promptBlocks(raw.get(5) ?? '');
 const translationPrompt = promptBlocks(raw.get(2) ?? '')[0] ?? '';
 /** The fenced blocks of a language (three backticks), in order. */
 const blocks = (text, language) => [...text.matchAll(new RegExp(`^\\s*\`\`\`${language}\\n([\\s\\S]*?)\\n\\s*\`\`\`$`, 'gm'))].map((match) => match[1]);
@@ -64,10 +67,10 @@ describe('excavator-product-handbook skill: structure', () => {
     expect(description).not.toMatch(/: /);
   });
 
-  it('has the six phases in order', () => {
-    expect([...raw.keys()]).toEqual([0, 1, 2, 3, 4, 5]);
+  it('has the seven phases in order, the verify phase between the entries and the assembly', () => {
+    expect([...raw.keys()]).toEqual([0, 1, 2, 3, 4, 5, 6]);
     const titles = [...skill.matchAll(/^## Phase \d+: (.+)$/gm)].map((match) => match[1]);
-    expect(titles).toEqual(['Setup', 'Candidates', 'Fixed text', 'The map', 'Entries', 'Assemble, page and reply']);
+    expect(titles).toEqual(['Setup', 'Candidates', 'Fixed text', 'The map', 'Entries', 'Verify', 'Assemble, page and reply']);
   });
 
   it('describes every option of the argument hint in the Options section', () => {
@@ -96,13 +99,13 @@ describe('excavator-product-handbook skill: structure', () => {
 describe('excavator-product-handbook skill: language', () => {
   it('has the Language paragraph in Phase 0 and again before the closing reply', () => {
     expect(phase(0)).toContain(LANGUAGE_RULE);
-    expect(phase(5)).toContain(LANGUAGE_RULE);
-    const closing = phase(5);
+    expect(phase(6)).toContain(LANGUAGE_RULE);
+    const closing = phase(6);
     expect(closing.indexOf(LANGUAGE_RULE)).toBeLessThan(closing.indexOf('Then print the reply'));
   });
 
   it('repeats the one-line reminder at the top of every later phase', () => {
-    for (const n of [1, 2, 3, 4, 5]) expect(phase(n).startsWith(PHASE_LANGUAGE), `phase ${n}`).toBe(true);
+    for (const n of [1, 2, 3, 4, 5, 6]) expect(phase(n).startsWith(PHASE_LANGUAGE), `phase ${n}`).toBe(true);
   });
 
   it('writes the run language as English however the user spelled it, because the script only knows the name English', () => {
@@ -186,8 +189,8 @@ describe('excavator-product-handbook skill: commands', () => {
   const skillCommands = [...new Set([...skill.matchAll(/handbook\.mjs" ([a-z][a-z-]*)/g)].map((match) => match[1]))];
 
   it('names every command handbook.mjs has, and only those', () => {
-    expect(usageCommands.length).toBeGreaterThanOrEqual(9);
-    expect(usageCommands).toEqual(expect.arrayContaining(['candidates', 'check-map', 'select', 'check-entry', 'mark', 'check-ui', 'assemble', 'page', 'reply']));
+    expect(usageCommands.length).toBeGreaterThanOrEqual(11);
+    expect(usageCommands).toEqual(expect.arrayContaining(['candidates', 'check-map', 'select', 'check-entry', 'mark', 'slices', 'verdicts', 'check-ui', 'assemble', 'page', 'reply']));
     expect([...skillCommands].sort()).toEqual([...usageCommands].sort());
   });
 
@@ -198,9 +201,11 @@ describe('excavator-product-handbook skill: commands', () => {
     expect(raw.get(3)).toContain(`${HANDBOOK} select`);
     expect(raw.get(4)).toContain(`${HANDBOOK} mark`);
     expect(raw.get(4)).toContain(`${HANDBOOK} check-entry`);
-    expect(raw.get(5)).toContain(`${HANDBOOK} assemble`);
-    expect(raw.get(5)).toContain(`${HANDBOOK} page`);
-    expect(raw.get(5)).toContain(`${HANDBOOK} reply`);
+    expect(raw.get(5)).toContain(`${HANDBOOK} slices`);
+    expect(raw.get(5)).toContain(`${HANDBOOK} verdicts`);
+    expect(raw.get(6)).toContain(`${HANDBOOK} assemble`);
+    expect(raw.get(6)).toContain(`${HANDBOOK} page`);
+    expect(raw.get(6)).toContain(`${HANDBOOK} reply`);
   });
 
   it('runs every handbook.mjs command from the script path the resolve block builds', () => {
@@ -455,7 +460,8 @@ describe('excavator-product-handbook skill: the language of the narrative is che
     expect(before).toContain('**Reader text** in Phase 3');
     expect(flat(skill.split(/^## Options$/m)[1].split(/^## Sources$/m)[0])).toContain('Phase 3 resolves the list with `select`');
     expect(phase(3)).toContain('Only those get lanes in Phase 4');
-    expect(phase(5)).toContain('follow its `Next:` line as in Phase 4');
+    expect(phase(6)).toContain('follow its `Next:` line as in Phase 4');
+    expect(phase(6)).toContain('verify it again as Phase 5 says');
     for (const [, n] of skill.matchAll(/\bPhase (\d)\b/g)) expect(raw.has(Number(n)), `Phase ${n}`).toBe(true);
   });
 
@@ -537,7 +543,7 @@ describe('excavator-product-handbook skill: fixed text', () => {
 });
 
 describe('excavator-product-handbook skill: assemble, page and the closing reply', () => {
-  const p = phase(5);
+  const p = phase(6);
 
   it('assembles and writes the page with the two commands, in that order', () => {
     expect(p.indexOf(`${HANDBOOK} assemble`)).toBeGreaterThan(-1);
@@ -569,5 +575,274 @@ describe('excavator-product-handbook skill: assemble, page and the closing reply
 
   it('keeps the handbook in $OUT and writes nothing into the project unless the user says so', () => {
     expect(p).toContain('The handbook stays in `$OUT`: write it into the project only when the user says so.');
+  });
+});
+
+describe('excavator-product-handbook skill: the lane prompt asks for citations that prove the item', () => {
+  const prompt = flat(lanePrompt);
+
+  it('asks for the passage that by itself proves each item, the condition for who may do something, and the whole condition for an absolute claim', () => {
+    expect(prompt).toContain('**Cite what proves it.**');
+    expect(prompt).toContain('cite, for each item, the passage that by itself proves it');
+    expect(prompt).toContain('For who may do something, cite the condition the code checks');
+    expect(prompt).toContain('not the name of a function or variable');
+    expect(prompt).toContain('For a claim of "every", "any" or "cannot already", cite the whole condition');
+    expect(prompt).toContain('When no passage proves it, write it in `unknowns`.');
+  });
+
+  it('puts the rule before the labels-and-numbers rule, inside the evidence rules of the lane prompt', () => {
+    expect(prompt.indexOf('**Evidence.**')).toBeLessThan(prompt.indexOf('**Cite what proves it.**'));
+    expect(prompt.indexOf('**Cite what proves it.**')).toBeLessThan(prompt.indexOf('**Labels and numbers must be in the item\'s own passages.**'));
+  });
+});
+
+describe('excavator-product-handbook skill: Phase 5, verify', () => {
+  const p = phase(5);
+
+  it('sits between the entries and the assembly and is told in the run language', () => {
+    expect(p.startsWith(PHASE_LANGUAGE)).toBe(true);
+    expect(before).toContain('**Nothing stays that the code does not back up.**');
+    expect(before).toContain('Five rules govern everything below');
+  });
+
+  it('lists the checked features at round 1 or waiting for the rewrite, with a recipe that is run on a real state', () => {
+    const recipe = allBash.flatMap((block) => block.split('\n')).map((line) => line.trim()).find((line) => line.startsWith("jq -r '.features | to_entries[] | select(.value.status == \"checked\")"));
+    expect(recipe).toBeDefined();
+    const run = makeCheckedMapRun();
+    try {
+      for (const id of ['F1', 'F2', 'F3']) {
+        run.writeEntry(id, { ...clone(run.entry), id });
+        expect(run.run('check-entry', id).status).toBe(0);
+      }
+      // F1 waits for its rewrite, F2 is checked, F3 is verified.
+      expect(judge(run, 'F1', 1, (item) => (item.id === 'purpose' ? 'unverified' : 'verified')).status).toBe(0);
+      expect(judge(run, 'F3').status).toBe(0);
+      const line = recipe.replace('"$OUT/state.json"', `"${join(run.out, 'state.json')}"`);
+      const result = spawnSync('bash', ['-c', line], { encoding: 'utf-8' });
+      expect(result.status, result.stderr).toBe(0);
+      expect(result.stdout.trim().split('\n')).toEqual(['F1\trewrite', 'F2\tverify']);
+    } finally {
+      run.cleanup();
+    }
+  });
+
+  it('resumes each feature where its files show it stopped', () => {
+    expect(p).toContain('when `$OUT/verdicts/round-1/<id>.json` exists, run step 3 for it first');
+    expect(p).toContain('`slices` clears the older files of the feature');
+    expect(p).toContain('when `$OUT/verdicts/round-2/<id>.json` exists, go to step 7 for it; when `$OUT/verify/round-2/<id>.json` exists, go to step 6; otherwise go to step 4');
+  });
+
+  it('cuts with slices and names the two paths it prints, as the script prints them', () => {
+    expect(p).toContain(`${HANDBOOK} slices "$OUT" <id> --project "$PROJECT_ROOT"`);
+    const run = makeCheckedMapRun();
+    try {
+      run.writeEntry();
+      expect(run.run('check-entry', 'F1').status).toBe(0);
+      const result = run.run('slices', 'F1');
+      expect(result.lines[0]).toMatch(/^F1: round 1, \d+ items$/);
+      expect(result.lines[1]).toMatch(/^Verify file: /);
+      expect(result.lines[2]).toMatch(/^Verdict file: /);
+      expect(p).toContain('It prints `<id>: round 1, <n> items`, then `Verify file: <path>` and `Verdict file: <path>`');
+    } finally {
+      run.cleanup();
+    }
+  });
+
+  it('dispatches one verifier per feature with the registered agent type, up to 10 in one message, in the foreground', () => {
+    expect(p).toContain('with the `excavator-handbook-verifier` agent type, up to 10 in one message so they run concurrently');
+    expect(p).toContain('there is no file to look for: name it as the subagent type');
+    expect(p).toContain('Dispatch them in the foreground, never as background tasks');
+    expect(p).not.toContain('agents/excavator-handbook-verifier.md');
+  });
+
+  it('gives the verifier its two paths and nothing else', () => {
+    const prompt = flat(verifierPrompt);
+    expect(prompt).toContain('Verify file: <the verify file of the line>');
+    expect(prompt).toContain('Verdict file: <the verdict file of the line>');
+    expect(prompt).toContain('Read the verify file and nothing else');
+    expect(prompt).not.toMatch(/\$PROJECT_ROOT|\$PLUGIN_ROOT|entries\//);
+    expect(p).toContain('Give each the prompt below with its two paths filled in, and nothing else: not the entry, the map, a summary or any reason.');
+  });
+
+  it('records the verdicts one command at a time and says what each outcome means, with the lines the script prints', () => {
+    expect(p).toContain(`${HANDBOOK} verdicts "$OUT" <id> --round 1 --project "$PROJECT_ROOT"`);
+    expect(p).toContain('record its verdicts, one command at a time, never two at once');
+    expect(p).toContain('`<id>: verified (<n> items)`');
+    expect(p).toContain('`<id>: <n> items to rewrite`, then `Rewrite file: <path>`');
+    expect(p).toContain('`unverified` and `contradicted` alike');
+    const run = makeCheckedMapRun();
+    try {
+      run.writeEntry();
+      expect(run.run('check-entry', 'F1').status).toBe(0);
+      const rewrite = judge(run, 'F1', 1, (item) => (item.id === 'purpose' ? 'contradicted' : 'verified'));
+      expect(rewrite.lines[0]).toBe('F1: 1 item to rewrite');
+      expect(rewrite.lines[1]).toMatch(/^Rewrite file: /);
+    } finally {
+      run.cleanup();
+    }
+  });
+
+  it('dispatches a verifier once more with the printed lines when its verdicts are rejected or missing, then leaves the feature checked', () => {
+    expect(p).toContain('Dispatch that feature\'s verifier once more with the prompt followed by this line and then each line printed except the `Next:` line: `Your previous verdict file was rejected for these reasons; write it again:`');
+    expect(p).toContain('When `verdicts` still exits 1, leave the feature as it is, `checked`: it is listed in the handbook as verification not finished.');
+    expect(p).toContain('Never write or change a verdict yourself, and never edit `state.json`.');
+    expect(p).toContain('the verdict file is missing (the verifier wrote nothing)');
+    expect(p).toContain('holds a code-shaped word or, in a language with its own script, no letter of it');
+  });
+
+  it('rewrites once with a general-purpose subagent that gets the rewrite file, the entry and the try-entry command', () => {
+    expect(p).toContain('Rewrite, once.');
+    expect(p).toContain('dispatch one rewrite subagent (a general-purpose subagent, in the foreground, up to `$CONCURRENCY` in one message)');
+    const prompt = flat(rewritePrompt);
+    expect(prompt).toContain('Read `<the rewrite file>`');
+    expect(prompt).toContain('Read `$OUT/entries/<id>.json`, the entry you change');
+    expect(prompt).toContain('try-entry "$OUT" <id> --project "$PROJECT_ROOT"');
+    expect(prompt).toContain('slices "$OUT" <id> --round 2 --project "$PROJECT_ROOT"');
+    expect(prompt).toContain('until `try-entry` prints `<id>: ok`');
+  });
+
+  it('limits the rewrite to the listed items: re-cite, narrow or delete, and nothing else', () => {
+    const prompt = flat(rewritePrompt);
+    expect(prompt).toContain('cite a passage that by itself proves the item (for who may do something, the condition the code checks, not the name of a function or variable)');
+    expect(prompt).toContain('narrow the text to what the code shows');
+    expect(prompt).toContain('When an item cannot be saved, leave it exactly as it is: the script removes it after the second check. Never delete or add an item, and never move one into `unknowns`.');
+    expect(prompt).not.toMatch(/delete the item|move it into `unknowns`/);
+    expect(prompt).toContain('Change nothing else. An item that is not listed stays exactly as it is');
+    expect(prompt).toContain('refuses an entry in which an item is missing or added, or an item that is not listed differs');
+    expect(prompt).toContain('count as listed');
+  });
+
+  it('keeps the rules of the lane in the rewrite: reads no generated product, writes only the entry, replies one line', () => {
+    const prompt = flat(rewritePrompt);
+    expect(prompt).toContain('Never read anything under `.excavator/` except those files of this run');
+    expect(prompt).toContain('never read a document that an Excavator skill generated');
+    expect(prompt).toContain('never run, build or change anything in the project');
+    expect(prompt).toContain('Write only `$OUT/entries/<id>.json`, and nothing else anywhere.');
+    expect(prompt).toContain('Reply with one line: `<id>: rewritten`, and nothing else.');
+    expect(prompt).toContain('no code-shaped words in reader text');
+    expect(prompt).toContain('narrative in `$LANGUAGE`');
+  });
+
+  it('checks the rewritten entry with check-entry, then cuts round 2, and allows no second rewrite', () => {
+    expect(p).toContain(`${HANDBOOK} check-entry "$OUT" <id> --project "$PROJECT_ROOT"`);
+    expect(p).toContain(`${HANDBOOK} slices "$OUT" <id> --round 2 --project "$PROJECT_ROOT"`);
+    expect(p).toContain('the feature is `failed` at the step `rewrite`; there is no second rewrite');
+    expect(p).toContain('There is no second rewrite: leave the feature as it is, `checked`');
+    expect(p).not.toContain('no item is left to verify');
+    expect(p).toContain('or deleted or added an item, and the lines name each path');
+    const stepFive = p.slice(p.indexOf('5. As each rewrite subagent returns'));
+    expect(stepFive.indexOf('check-entry "$OUT"')).toBeLessThan(stepFive.indexOf('slices "$OUT" <id> --round 2'));
+  });
+
+  it('dispatches the verifiers of round 2 like round 1 and settles with verdicts --round 2, quoting the lines the script prints', () => {
+    expect(p).toContain(`${HANDBOOK} verdicts "$OUT" <id> --round 2 --project "$PROJECT_ROOT"`);
+    expect(p).toContain('`<id>: verified, <n> items removed`');
+    expect(p).toContain('`<id>: failed at verify: the purpose could not be proved (...)`');
+    expect(p).toContain('`unverified` like `contradicted`, was removed from the entry');
+    expect(p).toContain('The removal is not a rewrite: never put a removed item back.');
+  });
+
+  it('never edits an entry, a verify, verdict or rewrite file or state.json by hand, and reports each feature to the user in the run language', () => {
+    expect(p).toContain('Never edit `entries/<id>.json`, a verify, verdict or rewrite file or `state.json` yourself.');
+    expect(p).toContain('`Verify <id> <n>/<N>: <status>`');
+    expect(p).toContain('in `$LANGUAGE`');
+  });
+
+  it('passes the project to every command it runs', () => {
+    const lines = flat(p).split('node ').slice(1).map((chunk) => chunk.split('`')[0]);
+    expect(lines.length).toBeGreaterThan(5);
+    for (const chunk of lines) expect(chunk, chunk).toContain('--project "$PROJECT_ROOT"');
+  });
+});
+
+describe('excavator-product-handbook skill: Phase 6 and the files table know the verify products', () => {
+  it('writes only verified features into the handbook and lists the removed items and the unfinished verification', () => {
+    const p = phase(6);
+    expect(p).toContain('Only a `verified` feature has a section in the handbook.');
+    expect(p).toContain('the features without a verified entry, among them those whose verification did not finish, and the items verification removed, each with its reason');
+    expect(p).toContain('entries/<id>.json changed after it was verified');
+  });
+
+  it('lists the verify, verdict and rewrite files and who writes them', () => {
+    const table = flat(skill.split(/^## How the work is split$/m)[1].split(/^## Options$/m)[0]);
+    expect(table).toContain('`verify/round-<r>/<id>.json`');
+    expect(table).toContain('`verdicts/round-<r>/<id>.json` | the verifier of feature `<id>`');
+    expect(table).toContain('`rewrite/<id>.json`');
+    expect(table).toContain('`state.json` | `handbook.mjs` only (`check-map`, `check-entry`, `mark`, `verdicts`)');
+  });
+});
+
+describe('the handbook verifier agent', () => {
+  const text = flat(agent);
+
+  it('is registered under its file name, named by the skill as an agent type, and the references check passes', () => {
+    expect(agent.startsWith('---\nname: excavator-handbook-verifier\n')).toBe(true);
+    expect(existsSync(resolve(repoRoot, 'agents/excavator-handbook-verifier.md'))).toBe(true);
+    expect(skill).toContain('`excavator-handbook-verifier` agent type');
+    // The manifest lists no agents (they are found in agents/); when it does, this one is listed too.
+    const manifest = JSON.parse(readFileSync(resolve(repoRoot, '.claude-plugin/plugin.json'), 'utf-8'));
+    if (Object.hasOwn(manifest, 'agents')) expect(manifest.agents).toContain('./agents/excavator-handbook-verifier.md');
+    const check = spawnSync(process.execPath, [resolve(repoRoot, 'scripts/check-refs.mjs')], { encoding: 'utf-8', cwd: repoRoot });
+    expect(check.status, check.stdout + check.stderr).toBe(0);
+  });
+
+  it('reads only its verify file: no other file, no search, no subagent', () => {
+    expect(text).toContain('you read nothing but your verify file');
+    expect(text).toContain('Read the verify file, and nothing else: no other file, no search, no part of the project');
+    expect(text).toContain('Do not delegate work or create subagents');
+  });
+
+  it('gives exactly the three verdicts, with the meaning of each, and prefers unverified when torn', () => {
+    for (const word of ['verified', 'unverified', 'contradicted']) expect(text).toContain(`\`${word}\``);
+    expect(text).toMatch(/there is no fourth/i);
+    expect(text).toContain('The code shown supports the whole claim');
+    expect(text).toContain('The code shown neither supports nor denies the claim');
+    expect(text).toContain('The code shown disagrees');
+    expect(text).toContain('When you are torn between `verified` and `unverified`, choose `unverified`');
+    expect(text).toContain('choose `contradicted` only if you can name the disagreement');
+  });
+
+  it('carries the two rules that caught the real errors: a name is not evidence of who may act, and an absolute claim needs a condition with no narrower test', () => {
+    expect(text).toContain('A name is not evidence of who may do something.');
+    expect(text).toContain('Only the condition the code checks does');
+    expect(text).toContain('When the code shown has only the name, and no condition, the claim is `unverified`');
+    expect(text).toContain('A claim of "every", "any", "all", "always", "cannot already" or "none" holds only if nothing narrows it.');
+    expect(text).toContain('contradicted` if the narrowing is visible in the code shown');
+  });
+
+  it('asks for a one-line reason that names no file, and writes the verdict file it is given', () => {
+    expect(text).toContain('`reason` is one line of at most about 200 characters');
+    expect(text).toContain('Say "line 20", never a file name or path.');
+    expect(text).toContain('Name no function, variable or constant either');
+    expect(text).toContain('Write it in the language of the claim.');
+    expect(text).toContain('is shown to the readers of the handbook');
+    expect(text).toContain('Verdict file: <OUT>/verdicts/round-<r>/<id>.json');
+    expect(text).toContain('Write JSON to the verdict file named in your prompt');
+    expect(text).toContain('Do NOT include the JSON in your response');
+  });
+
+  it('describes the verify file the script writes: its keys, and the item and block keys', () => {
+    const example = JSON.parse(blocks(agent, 'json')[0]);
+    const run = makeCheckedMapRun();
+    try {
+      run.writeEntry();
+      expect(run.run('check-entry', 'F1').status).toBe(0);
+      expect(run.run('slices', 'F1').status).toBe(0);
+      const real = JSON.parse(readFileSync(join(run.out, 'verify', 'round-1', 'F1.json'), 'utf-8'));
+      expect(Object.keys(example)).toEqual(Object.keys(real));
+      expect(Object.keys(example.items[0])).toEqual(Object.keys(real.items[0]));
+      expect(Object.keys(example.items[0].evidence[0])).toEqual(Object.keys(real.items[0].evidence[0]));
+      // The block says what its code lines look like: a number, a colon, the line.
+      expect(real.items[0].evidence[0].code.split('\n')[0]).toMatch(/^\d+: /);
+      expect(text).toContain('every line prefixed with its line number');
+    } finally {
+      run.cleanup();
+    }
+  });
+
+  it('shows a verdict file the verdicts command accepts', () => {
+    const example = JSON.parse(blocks(agent, 'json')[1]);
+    expect(Object.keys(example)).toEqual(['verdicts']);
+    expect(verdictProblems(example, example.verdicts.map(({ id }) => ({ id })), [])).toEqual([]);
   });
 });
