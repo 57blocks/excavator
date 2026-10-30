@@ -183,20 +183,21 @@ describe('excavator-hotspots skill: the language of what it tells the user', () 
 
   it('finds the rule out of place in known-bad copies of the skill', () => {
     const noRule = [...Array(3)].reduce((text) => without(text, line), without(without(skill, paragraph), paragraph)).replace(OPTION_LANGUAGE, byRequest);
+    /** Each known-bad copy, and the problem that the check it was made for reports. */
     const bad = {
-      noRule,
-      noStepOne: without(skill, paragraph, '## Step 1 — '),
-      ownSection: without(without(skill, paragraph), paragraph).replace('---\n\n## Step 1 — ', `## Language\n\n${paragraph}---\n\n## Step 1 — `),
-      noStepThree: without(skill, line, '## Step 3 — '),
-      afterReply: `${without(skill, paragraph, '## Step 4 — ')}\n${LANGUAGE_RULE}\n`,
-      beforeCheck: without(skill, paragraph, '## Step 4 — ').replace('Then check the report for advice', `${paragraph}Then check the report for advice`),
-      reworded: skill.slice(0, skill.indexOf('## Step 4 — ')) + skill.slice(skill.indexOf('## Step 4 — ')).replace('memory and ', ''),
-      afterCommand: without(skill, paragraph, '## Step 1 — ').replace('2. Find the feature groups.', `${paragraph}2. Find the feature groups.`),
-      requestNames: skill.replace(OPTION_LANGUAGE, byRequest),
+      noRule: [noRule, 'the language paragraph is there 0 times, not twice'],
+      noStepOne: [without(skill, paragraph, '## Step 1 — '), 'Step 1 does not open with the language paragraph'],
+      ownSection: [without(without(skill, paragraph), paragraph).replace('---\n\n## Step 1 — ', `## Language\n\n${paragraph}---\n\n## Step 1 — `), 'Step 1 does not open with the language paragraph'],
+      noStepThree: [without(skill, line, '## Step 3 — '), 'Step 3 does not open with the language line'],
+      afterReply: [`${without(skill, paragraph, '## Step 4 — ')}\n${LANGUAGE_RULE}\n`, 'the language paragraph does not stand right before the final reply of Step 4'],
+      beforeCheck: [without(skill, paragraph, '## Step 4 — ').replace('Then check the report for advice', `${paragraph}Then check the report for advice`), 'the language paragraph of Step 4 comes before the advice check'],
+      reworded: [skill.slice(0, skill.indexOf('## Step 4 — ')) + skill.slice(skill.indexOf('## Step 4 — ')).replace('memory and ', ''), '1 of 2 language paragraphs differ from the others'],
+      afterCommand: [without(skill, paragraph, '## Step 1 — ').replace('2. Find the feature groups.', `${paragraph}2. Find the feature groups.`), 'Step 1 does not open with the language paragraph'],
+      requestNames: [skill.replace(OPTION_LANGUAGE, byRequest), 'the options do not say that only --language changes the language'],
     };
-    for (const [name, text] of Object.entries(bad)) {
+    for (const [name, [text, problem]] of Object.entries(bad)) {
       expect(text, name).not.toBe(skill);
-      expect(languageRuleProblems(text), name).not.toEqual([]);
+      expect(languageRuleProblems(text), name).toContain(problem);
     }
   });
 });
