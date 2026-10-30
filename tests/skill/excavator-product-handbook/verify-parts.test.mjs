@@ -1,9 +1,10 @@
 // Design D14 of openspec change product-handbook-map: a feature's verify file
 // is split by bytes into parts, one verifier per part, so that no file is more
 // than a verifier can read at once. `slices` writes
-// verify/round-<r>/<id>/part-<n>.json; `verdicts` reads every part's verdict
-// file and checks conservation over all parts together. Every rejection is
-// paired with a control that passes.
+// verify/round-<r>/<id>/part-<n>.json; `verdicts` reads every part's two
+// verdict files (part-<n>.a.json and part-<n>.b.json, two verifiers each) and
+// checks conservation over all parts together. Every rejection is paired with
+// a control that passes.
 import { afterEach, describe, expect, it } from 'vitest';
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -19,7 +20,8 @@ const LIMIT_BYTES = 60000;
 const LIMIT_ITEMS = 25;
 const ev = (file, passage) => ({ file, passage });
 const verifyPath = (run, round, part) => join(run.out, 'verify', `round-${round}`, 'F1', `part-${part}.json`);
-const verdictPath = (run, round, part) => join(run.out, 'verdicts', `round-${round}`, 'F1', `part-${part}.json`);
+const LETTERS = ['a', 'b'];
+const verdictPath = (run, round, part, letter = 'a') => join(run.out, 'verdicts', `round-${round}`, 'F1', `part-${part}.${letter}.json`);
 const readPart = (run, part, round = 1) => JSON.parse(readFileSync(verifyPath(run, round, part), 'utf-8'));
 const partBytes = (run, part, round = 1) => readFileSync(verifyPath(run, round, part)).length;
 const stateOf = (run) => run.readJson('state.json').features.F1;
@@ -84,11 +86,11 @@ const stageIds = (count) => Array.from({ length: count }, (_, i) => `states[${i 
 
 /** Verdict entries for `ids`, all verified. */
 const verified = (ids) => ids.map((id) => ({ id, verdict: 'verified', reason: 'The code shown decides it.' }));
-function writeVerdicts(run, round, part, verdicts) {
+function writeVerdicts(run, round, part, verdicts, letters = LETTERS) {
   mkdirSync(join(run.out, 'verdicts', `round-${round}`, 'F1'), { recursive: true });
-  writeFileSync(verdictPath(run, round, part), `${JSON.stringify({ verdicts }, null, 2)}\n`);
+  for (const letter of letters) writeFileSync(verdictPath(run, round, part, letter), `${JSON.stringify({ verdicts }, null, 2)}\n`);
 }
-/** One verified verdict file per part, each holding exactly the items of its verify part. */
+/** Verified verdict files, the two of every part, each holding exactly the items of its verify part; `skip` leaves out those parts. */
 function writeAllVerdicts(run, round = 1, skip = []) {
   allParts(run, round).forEach((part, i) => {
     if (!skip.includes(i + 1)) writeVerdicts(run, round, i + 1, verified(part.items.map((item) => item.id)));
@@ -134,10 +136,10 @@ describe('slices: parts by bytes and by item count', () => {
     // One line per part: the verify path and the verdict path, then the Next line.
     expect(result.lines[0]).toBe(`F1: round 1, ${14 + 12} items in ${parts.length} parts`);
     parts.forEach((part, i) => {
-      expect(result.lines[1 + i]).toBe(`Part ${i + 1}/${parts.length}: Verify file: ${verifyPath(run, 1, i + 1)} | Verdict file: ${verdictPath(run, 1, i + 1)}`);
+      expect(result.lines[1 + i]).toBe(`Part ${i + 1}/${parts.length}: Verify file: ${verifyPath(run, 1, i + 1)} | Verdict files: ${verdictPath(run, 1, i + 1, 'a')} ${verdictPath(run, 1, i + 1, 'b')}`);
     });
     expect(result.lines).toHaveLength(parts.length + 2);
-    expect(result.lines.at(-1)).toMatch(/^Next: dispatch one excavator-handbook-verifier for each part of F1/);
+    expect(result.lines.at(-1)).toMatch(/^Next: dispatch two excavator-handbook-verifier subagents for each part of F1/);
   });
 
   it('gives an item larger than the limit a part of its own and does not cut it', () => {
@@ -198,14 +200,20 @@ describe('slices: parts by bytes and by item count', () => {
     run.run('slices', 'F1');
     writeFileSync(verifyPath(run, 1, 7), '{}');
     writeVerdicts(run, 1, 1, []);
+    // A verdict file of the earlier layout, one verifier a part.
+    const oldLayout = join(run.out, 'verdicts', 'round-1', 'F1', 'part-1.json');
+    writeFileSync(oldLayout, '{}');
     mkdirSync(join(run.out, 'verify', 'round-2', 'F1'), { recursive: true });
     writeFileSync(verifyPath(run, 2, 1), '{}');
     writeVerdicts(run, 2, 1, []);
     expect(run.run('slices', 'F1').status).toBe(0);
     expect(existsSync(verifyPath(run, 1, 7))).toBe(false);
-    expect(existsSync(verdictPath(run, 1, 1))).toBe(false);
+    for (const letter of LETTERS) {
+      expect(existsSync(verdictPath(run, 1, 1, letter))).toBe(false);
+      expect(existsSync(verdictPath(run, 2, 1, letter))).toBe(false);
+    }
+    expect(existsSync(oldLayout)).toBe(false);
     expect(existsSync(verifyPath(run, 2, 1))).toBe(false);
-    expect(existsSync(verdictPath(run, 2, 1))).toBe(false);
   });
 });
 
@@ -228,15 +236,16 @@ describe('verdicts: conservation over all parts', () => {
     expect(stateOf(run).status).toBe('verified');
   });
 
-  it('rejects a missing verdict for an item of part 2, names the part, and records nothing', () => {
+  it('rejects a missing verdict for an item of part 2 in both files, names each by part and letter, and records nothing', () => {
     const run = twoParts();
     writeAllVerdicts(run);
     writeVerdicts(run, 1, 2, []);
     const bad = run.run('verdicts', 'F1', '--round', '1');
     expect(bad.status, bad.stdout).toBe(1);
-    expect(bad.stdout).toContain(`part 2: ${lastId}: no verdict`);
-    expect(bad.stdout).not.toMatch(/part 1:/);
-    expect(bad.lines.at(-1)).toMatch(/^Next: delete the verdict file of part 2 and dispatch the verifier once more for part 2 with the lines above/);
+    expect(bad.stdout).toContain(`part 2a: ${lastId}: no verdict`);
+    expect(bad.stdout).toContain(`part 2b: ${lastId}: no verdict`);
+    expect(bad.stdout).not.toMatch(/part 1[ab]:/);
+    expect(bad.lines.at(-1)).toMatch(/^Next: delete the verdict files of parts 2a and 2b and dispatch the verifier once more for parts 2a and 2b with the lines above/);
     expect(stateOf(run)).toEqual({ status: 'checked', attempts: 0 });
     expect(existsSync(join(run.out, 'rewrite', 'F1.json'))).toBe(false);
     writeAllVerdicts(run);
@@ -245,14 +254,16 @@ describe('verdicts: conservation over all parts', () => {
 
   it('rejects a verdict placed in the file of another part: an extra id there and a missing one in its own', () => {
     const run = twoParts();
+    writeAllVerdicts(run);
     const part1 = readPart(run, 1).items.map((item) => item.id);
-    writeVerdicts(run, 1, 1, verified([...part1, lastId]));
-    writeVerdicts(run, 1, 2, []);
+    writeVerdicts(run, 1, 1, verified([...part1, lastId]), ['b']);
+    writeVerdicts(run, 1, 2, [], ['a']);
     const bad = run.run('verdicts', 'F1', '--round', '1');
     expect(bad.status, bad.stdout).toBe(1);
-    expect(bad.stdout).toContain(`part 1: ${lastId}: is not an item of the verify file`);
-    expect(bad.stdout).toContain(`part 2: ${lastId}: no verdict`);
-    expect(bad.lines.at(-1)).toMatch(/^Next: delete the verdict files of parts 1 and 2 and dispatch the verifier once more for parts 1 and 2/);
+    expect(bad.stdout).toContain(`part 1b: ${lastId}: is not an item of the verify file`);
+    expect(bad.stdout).toContain(`part 2a: ${lastId}: no verdict`);
+    expect(bad.stdout).not.toMatch(/part 1a:|part 2b:/);
+    expect(bad.lines.at(-1)).toMatch(/^Next: delete the verdict files of parts 1b and 2a and dispatch the verifier once more for parts 1b and 2a/);
     expect(stateOf(run).status).toBe('checked');
     writeAllVerdicts(run);
     expect(run.run('verdicts', 'F1', '--round', '1').status).toBe(0);
@@ -264,7 +275,8 @@ describe('verdicts: conservation over all parts', () => {
     writeVerdicts(run, 1, 2, verified([lastId, 'purpose']));
     const bad = run.run('verdicts', 'F1', '--round', '1');
     expect(bad.status, bad.stdout).toBe(1);
-    expect(bad.stdout).toContain('part 2: purpose: is not an item of the verify file');
+    expect(bad.stdout).toContain('part 2a: purpose: is not an item of the verify file');
+    expect(bad.stdout).toContain('part 2b: purpose: is not an item of the verify file');
   });
 
   it('names a missing part file by its part and says to dispatch the verifier for exactly the missing parts', () => {
@@ -274,10 +286,9 @@ describe('verdicts: conservation over all parts', () => {
     writeAllVerdicts(run, 1, [1, 3]);
     const bad = run.run('verdicts', 'F1', '--round', '1');
     expect(bad.status, bad.stdout).toBe(1);
-    expect(bad.stdout).toContain('part 1: verdicts/round-1/F1/part-1.json is missing');
-    expect(bad.stdout).toContain('part 3: verdicts/round-1/F1/part-3.json is missing');
-    expect(bad.stdout).not.toMatch(/part 2:/);
-    expect(bad.lines.at(-1)).toMatch(/^Next: dispatch the verifier once more for F1 for exactly the missing parts: 1 and 3/);
+    for (const part of [1, 3]) for (const letter of LETTERS) expect(bad.stdout).toContain(`part ${part}${letter}: verdicts/round-1/F1/part-${part}.${letter}.json is missing`);
+    expect(bad.stdout).not.toMatch(/part 2[ab]:/);
+    expect(bad.lines.at(-1)).toMatch(/^Next: dispatch the verifier once more for F1 for exactly the missing parts: 1a, 1b, 3a and 3b/);
     expect(stateOf(run)).toEqual({ status: 'checked', attempts: 0 });
     // The control: the missing parts written, the feature is recorded.
     writeVerdicts(run, 1, 1, verified(readPart(run, 1).items.map((item) => item.id)));
@@ -291,18 +302,21 @@ describe('verdicts: conservation over all parts', () => {
     writeFileSync(verdictPath(run, 1, 1), '{ nope');
     const bad = run.run('verdicts', 'F1', '--round', '1');
     expect(bad.status).toBe(1);
-    expect(bad.stdout).toMatch(/part 1: verdicts\/round-1\/F1\/part-1\.json is not valid JSON/);
-    expect(bad.stdout).toContain('part 2: verdicts/round-1/F1/part-2.json is missing');
-    expect(bad.lines.at(-1)).toMatch(/^Next: delete the verdict file of part 1 and dispatch the verifier once more for parts 1 and 2/);
+    expect(bad.stdout).toMatch(/part 1a: verdicts\/round-1\/F1\/part-1\.a\.json is not valid JSON/);
+    expect(bad.stdout).toContain('part 1b: verdicts/round-1/F1/part-1.b.json is missing');
+    expect(bad.stdout).toContain('part 2a: verdicts/round-1/F1/part-2.a.json is missing');
+    expect(bad.stdout).toContain('part 2b: verdicts/round-1/F1/part-2.b.json is missing');
+    expect(bad.lines.at(-1)).toMatch(/^Next: delete the verdict file of part 1a and dispatch the verifier once more for parts 1a, 1b, 2a and 2b/);
   });
 
   it('checks the reason of a verdict that is not verified in every part', () => {
     const run = twoParts();
     writeAllVerdicts(run);
-    writeVerdicts(run, 1, 2, [{ id: lastId, verdict: 'unverified', reason: 'The check in is_admin shows nothing.' }]);
+    writeVerdicts(run, 1, 2, [{ id: lastId, verdict: 'unverified', reason: 'The check in is_admin shows nothing.' }], ['b']);
     const bad = run.run('verdicts', 'F1', '--round', '1');
     expect(bad.status, bad.stdout).toBe(1);
-    expect(bad.stdout).toMatch(new RegExp(`part 2: ${lastId.replace(/[[\]]/g, '\\$&')}\\.reason: "is_admin" is not allowed`));
+    expect(bad.stdout).toMatch(new RegExp(`part 2b: ${lastId.replace(/[[\]]/g, '\\$&')}\\.reason: "is_admin" is not allowed`));
+    expect(bad.stdout).not.toMatch(/part 2a:/);
     writeVerdicts(run, 1, 2, [{ id: lastId, verdict: 'unverified', reason: 'No line shown names this stage.' }]);
     const good = run.run('verdicts', 'F1', '--round', '1');
     expect(good.status, good.stdout).toBe(0);
@@ -359,7 +373,7 @@ describe('round 2 parts only the listed items', () => {
     const round2 = run.run('slices', 'F1', '--round', '2');
     expect(round2.status, round2.stdout).toBe(0);
     expect(round2.lines[0]).toBe('F1: round 2, 2 items in 1 part');
-    expect(round2.lines).toContain(`Part 1/1: Verify file: ${verifyPath(run, 2, 1)} | Verdict file: ${verdictPath(run, 2, 1)}`);
+    expect(round2.lines).toContain(`Part 1/1: Verify file: ${verifyPath(run, 2, 1)} | Verdict files: ${verdictPath(run, 2, 1, 'a')} ${verdictPath(run, 2, 1, 'b')}`);
     const part = readPart(run, 1, 2);
     expect([part.round, part.part, part.parts]).toEqual([2, 1, 1]);
     expect(part.items.map((item) => item.id)).toEqual(['who[0]', lastId]);
@@ -396,7 +410,8 @@ describe('round 2 parts only the listed items', () => {
     writeAllVerdicts(run, 2, [2]);
     const missing = run.run('verdicts', 'F1', '--round', '2');
     expect(missing.status).toBe(1);
-    expect(missing.stdout).toContain('part 2: verdicts/round-2/F1/part-2.json is missing');
+    expect(missing.stdout).toContain('part 2a: verdicts/round-2/F1/part-2.a.json is missing');
+    expect(missing.stdout).toContain('part 2b: verdicts/round-2/F1/part-2.b.json is missing');
     writeAllVerdicts(run, 2);
     expect(run.run('verdicts', 'F1', '--round', '2').status).toBe(0);
   });

@@ -3,8 +3,9 @@
  * cut a checked entry into the items a verifier judges, each with its claim
  * and the source around every passage it cites, and write
  * `<out>/verify/round-<r>/<id>/part-<n>.json`, one file per part (the items cut
- * by bytes, verify-plan.mjs). Round 1 covers every item with evidence and keeps
- * a snapshot of the entry; round 2 covers only what the one rewrite left of the
+ * by bytes, verify-plan.mjs), and prints the verify file and the two verdict
+ * files of each part (one for each of its two verifiers). Round 1 covers every
+ * item with evidence and keeps a snapshot of the entry; round 2 covers only what the one rewrite left of the
  * items round 1 listed, and refuses an entry in which an item that was not
  * listed differs from the snapshot. Changes only files under `<out>/verify`
  * (and clears the feature's older verification files of the round and those
@@ -20,7 +21,7 @@ import { loadState, featureState } from './state.mjs';
 import { loadUi } from './ui.mjs';
 import { UsageError } from './errors.mjs';
 import {
-  fileItems, partFile, rewriteFilePath, roundTwoPlan, snapshotPath, splitParts, verdictDirPath, verdictPartPath,
+  VERIFIERS, fileItems, partFile, rewriteFilePath, roundTwoPlan, snapshotPath, splitParts, verdictDirPath, verdictPartPath,
   verifyDirPath, verifyItems, verifyPartPath,
 } from './verify-plan.mjs';
 
@@ -96,8 +97,9 @@ export function slices(outDir, id, root, round) {
   parts.forEach((items, index) => {
     const number = index + 1;
     writeJson(verifyPartPath(outDir, id, round, number), partFile(id, round, number, parts.length, items));
-    lines.push(`Part ${number}/${parts.length}: Verify file: ${verifyPartPath(outDir, id, round, number)} | Verdict file: ${verdictPartPath(outDir, id, round, number)}`);
+    const verdictFiles = VERIFIERS.map((letter) => verdictPartPath(outDir, id, round, number, letter));
+    lines.push(`Part ${number}/${parts.length}: Verify file: ${verifyPartPath(outDir, id, round, number)} | Verdict files: ${verdictFiles.join(' ')}`);
   });
-  lines.push(`Next: dispatch one excavator-handbook-verifier for each part of ${id} with the two paths of its line above, then run verdicts --round ${round}`);
+  lines.push(`Next: dispatch two excavator-handbook-verifier subagents for each part of ${id}, one for each of the two verdict files of its line above, then run verdicts --round ${round}`);
   return { status: 0, lines };
 }

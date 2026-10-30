@@ -12,7 +12,7 @@
  * change with it.
  *
  * The items of a round are cut into parts, each its own verify file and its own
- * verdict file, so that a verifier can read one in a single read: filled
+ * two verdict files, so that a verifier can read one in a single read: filled
  * greedily in item order, at most `PART_MAX_BYTES` of JSON and `PART_MAX_ITEMS`
  * items a part; an item larger than the byte limit alone is a part of its own
  * and is not cut.
@@ -36,7 +36,9 @@ export const PART_MAX_ITEMS = 25;
 export const verifyDirPath = (outDir, id, round) => join(outDir, VERIFY_DIR, `round-${round}`, id);
 export const verifyPartPath = (outDir, id, round, part) => join(verifyDirPath(outDir, id, round), `part-${part}.json`);
 export const verdictDirPath = (outDir, id, round) => join(outDir, VERDICT_DIR, `round-${round}`, id);
-export const verdictPartPath = (outDir, id, round, part) => join(verdictDirPath(outDir, id, round), `part-${part}.json`);
+/** The two verifiers of a part, each with a verdict file of its own: `part-<n>.a.json` and `part-<n>.b.json`. */
+export const VERIFIERS = Object.freeze(['a', 'b']);
+export const verdictPartPath = (outDir, id, round, part, letter) => join(verdictDirPath(outDir, id, round), `part-${part}.${letter}.json`);
 export const snapshotPath = (outDir, id) => join(outDir, VERIFY_DIR, 'round-1', `${id}.entry.json`);
 export const rewriteFilePath = (outDir, id) => join(outDir, REWRITE_DIR, `${id}.json`);
 

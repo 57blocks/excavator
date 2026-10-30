@@ -32,15 +32,16 @@ function checkedRun(adjust) {
 }
 
 const verifyPath = (run, round = 1, id = 'F1', part = 1) => join(run.out, 'verify', `round-${round}`, id, `part-${part}.json`);
-const verdictPath = (run, round = 1, id = 'F1', part = 1) => join(run.out, 'verdicts', `round-${round}`, id, `part-${part}.json`);
+const verdictPath = (run, round = 1, id = 'F1', part = 1, letter = 'a') => join(run.out, 'verdicts', `round-${round}`, id, `part-${part}.${letter}.json`);
 const readVerify = (run, round = 1) => JSON.parse(readFileSync(verifyPath(run, round), 'utf-8'));
 const rewritePath = (run, id = 'F1') => join(run.out, 'rewrite', `${id}.json`);
 const stateOf = (run, id = 'F1') => run.readJson('state.json').features[id];
 const ids = (verify) => verify.items.map((item) => item.id);
 
+/** Both verifiers of the part give the same verdicts. */
 function writeVerdicts(run, round, verdicts, part = 1) {
   mkdirSync(join(run.out, 'verdicts', `round-${round}`, 'F1'), { recursive: true });
-  writeFileSync(verdictPath(run, round, 'F1', part), `${JSON.stringify({ verdicts }, null, 2)}\n`);
+  for (const letter of ['a', 'b']) writeFileSync(verdictPath(run, round, 'F1', part, letter), `${JSON.stringify({ verdicts }, null, 2)}\n`);
 }
 
 /** A source file of 100 numbered lines with three markers, at lines 10, 51 and 95. */
@@ -94,9 +95,9 @@ describe('slices: the verify file of round 1', () => {
     const result = run.run('slices', 'F1');
     expect(result.status, result.stdout).toBe(0);
     expect(result.lines[0]).toBe('F1: round 1, 14 items in 1 part');
-    expect(result.lines[1]).toBe(`Part 1/1: Verify file: ${verifyPath(run)} | Verdict file: ${verdictPath(run)}`);
+    expect(result.lines[1]).toBe(`Part 1/1: Verify file: ${verifyPath(run)} | Verdict files: ${verdictPath(run, 1, 'F1', 1, 'a')} ${verdictPath(run, 1, 'F1', 1, 'b')}`);
     expect(result.lines).toHaveLength(3);
-    expect(result.lines[2]).toMatch(/^Next: dispatch one excavator-handbook-verifier for each part of F1/);
+    expect(result.lines[2]).toMatch(/^Next: dispatch two excavator-handbook-verifier subagents for each part of F1/);
     const verify = readVerify(run);
     expect(Object.keys(verify)).toEqual(['feature', 'round', 'part', 'parts', 'items']);
     expect(verify.feature).toBe('F1');
@@ -295,7 +296,7 @@ describe('verdicts: conservation', () => {
     writeFileSync(verdictPath(run), '{"items": []}');
     const result = run.run('verdicts', 'F1', '--round', '1');
     expect(result.status).toBe(1);
-    expect(result.stdout).toMatch(/verdicts: must be an array/);
+    expect(result.stdout).toMatch(/part 1a: verdicts: must be an array/);
   });
 
   it('refuses when the entry or the source changed after slices (the verify file is stale)', () => {
@@ -337,7 +338,7 @@ describe('verdicts: the reason of a verdict that is not verified is reader text'
       const bad = run.run('verdicts', 'F1', '--round', '1');
       expect(bad.status, bad.stdout).toBe(1);
       expect(bad.stdout).toMatch(expected);
-      expect(bad.lines.at(-1)).toMatch(/^Next: delete the verdict file of part 1 and dispatch the verifier once more for part 1 with the lines above/);
+      expect(bad.lines.at(-1)).toMatch(/^Next: delete the verdict files of parts 1a and 1b and dispatch the verifier once more for parts 1a and 1b with the lines above/);
       expect(stateOf(run)).toEqual({ status: 'checked', attempts: 0 });
       expect(existsSync(rewritePath(run))).toBe(false);
       // The control: the same verdict with a plain reason is recorded.
@@ -500,7 +501,7 @@ describe('slices: round 2', () => {
     expect(verify.round).toBe(2);
     expect(ids(verify)).toEqual(['who[0]', 'screens[0].fields[1].rules[0]']);
     expect(verify.items[0].claim).toBe('Who can use it > Clerk: Create orders.');
-    expect(result.lines).toContain(`Part 1/1: Verify file: ${verifyPath(run, 2)} | Verdict file: ${verdictPath(run, 2)}`);
+    expect(result.lines).toContain(`Part 1/1: Verify file: ${verifyPath(run, 2)} | Verdict files: ${verdictPath(run, 2, 'F1', 1, 'a')} ${verdictPath(run, 2, 'F1', 1, 'b')}`);
   });
 
   it('refuses without a rewrite file, with round 1 not done, or on a feature that is not waiting for its rewrite', () => {

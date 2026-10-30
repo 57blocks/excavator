@@ -19,7 +19,7 @@ Your dispatch prompt gives you two paths:
 
 ```
 Verify file:  <OUT>/verify/round-<r>/<id>/part-<n>.json
-Verdict file: <OUT>/verdicts/round-<r>/<id>/part-<n>.json
+Verdict file: <OUT>/verdicts/round-<r>/<id>/part-<n>.<a|b>.json
 ```
 
 Read the verify file, and nothing else: no other file, no search, no part of the project. The code you judge against is inside the verify file. Never read a path that is not the verify file.
