@@ -36,9 +36,9 @@
 
 ## 7. 逐项核对（D14，O6 抽查 6/30 矛盾后提前到本片）
 
-- [ ] 7.1 `slices` 与 `verdicts`：核对文件（主张、引文前后各 20 行）、判词守恒、第一轮改写清单、第二轮删项与记录；`slices --round 2` 拒绝改动未列出的项；状态加 `verified`；`assemble`、`page`、`reply` 只把 `verified` 的功能写进正文，覆盖一节列删去的项与核对未完成的功能。测试先红后绿，装置先验
-- [ ] 7.2 agent 定义 `excavator-handbook-verifier`（只读核对文件、三种判词、一行理由）；插件清单与安装测试
-- [ ] 7.3 SKILL.md：核对阶段、改写子代理的 prompt、重派规则；lane prompt 要求每项引到能单独证明它的源码；契约测试
+- [x] 7.1 `slices` 与 `verdicts`：核对文件（主张、引文前后各 20 行）、判词守恒、第一轮改写清单、第二轮删项与记录；`slices --round 2` 拒绝改动未列出的项；状态加 `verified`；`assemble`、`page`、`reply` 只把 `verified` 的功能写进正文，覆盖一节列删去的项与核对未完成的功能。测试先红后绿，装置先验
+- [x] 7.2 agent 定义 `excavator-handbook-verifier`（只读核对文件、三种判词、一行理由）；插件清单与安装测试
+- [x] 7.3 SKILL.md：核对阶段、改写子代理的 prompt、重派规则；lane prompt 要求每项引到能单独证明它的源码；契约测试
 
 ## 6. 验收（提交 6）
 
