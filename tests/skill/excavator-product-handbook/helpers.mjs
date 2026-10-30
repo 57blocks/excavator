@@ -1,0 +1,193 @@
+/**
+ * Shared helpers for the excavator-product-handbook script tests: run
+ * `handbook.mjs` as a CLI and build a throwaway run (a copy of the synthetic
+ * fixture project, an out directory with its candidates.json, and a map and an
+ * entry that pass every check). Every project here is purpose-built; nothing
+ * is derived from a real project.
+ */
+
+import { spawnSync } from 'node:child_process';
+import { cpSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { dirname, join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const here = dirname(fileURLToPath(import.meta.url));
+export const repoRoot = resolve(here, '../../..');
+export const HANDBOOK_SCRIPT = join(repoRoot, 'skills/excavator-product-handbook/handbook.mjs');
+export const SHIPPED_UI = join(repoRoot, 'skills/excavator-product-handbook/ui-strings.json');
+export const FIXTURE_PROJECT = join(repoRoot, 'tests/fixtures/product-handbook/project');
+
+/** Run `node handbook.mjs <args>`; returns { status, stdout, stderr, lines } (lines: the non-empty stdout lines). */
+export function runHandbook(args, options = {}) {
+  const result = spawnSync(process.execPath, [HANDBOOK_SCRIPT, ...args], { encoding: 'utf-8', ...options });
+  return { status: result.status, stdout: result.stdout, stderr: result.stderr, lines: result.stdout.split('\n').filter((line) => line !== '') };
+}
+
+const clone = (value) => JSON.parse(JSON.stringify(value));
+const ev = (file, passage) => ({ file, passage });
+
+let candidatesCache = null;
+/** The fixture's candidates, listed once through the CLI. */
+function fixtureCandidates() {
+  if (candidatesCache === null) {
+    const out = runHandbook(['candidates', FIXTURE_PROJECT]);
+    if (out.status !== 0) throw new Error(`candidates failed: ${out.stderr}`);
+    candidatesCache = JSON.parse(out.stdout);
+  }
+  return candidatesCache;
+}
+
+/** The map that passes check-map on the fixture, with candidate ids filled in. */
+export function goodMap(idOf) {
+  return {
+    format: 'excavator-product-handbook-map/1',
+    language: 'English',
+    areas: [
+      { id: 'A1', name: 'Order handling' },
+      { id: 'A2', name: 'Automatic work' },
+    ],
+    features: [
+      {
+        id: 'F1', name: 'Orders', area: 'A1', reach: 'menu', label: 'Orders',
+        evidence: [ev('src/menu.js', "{ label: 'Orders', path: '/orders' },")],
+        candidates: [idOf('src/routes/orders.js', 5), idOf('src/routes/orders.js', 6)],
+        seedFiles: ['src/routes/orders.js', 'src/menu.js', 'src/forms/order-form.js'],
+      },
+      {
+        id: 'F2', name: 'Archive', area: 'A1', reach: 'link', label: 'Archive',
+        evidence: [ev('src/menu.js', "// { label: 'Archive', path: '/archive' },")],
+        candidates: [idOf('src/routes/archive.js', 5)],
+        seedFiles: ['src/routes/archive.js'],
+      },
+      {
+        id: 'F3', name: 'Reminders', area: 'A2', reach: 'automated',
+        candidates: [idOf('src/jobs/reminders.js', 4)],
+        seedFiles: ['src/jobs/reminders.js'],
+      },
+      {
+        id: 'F4', name: 'Admin tool', area: 'A2', reach: 'operator',
+        candidates: [idOf('bin/admin.js', 1)],
+        seedFiles: ['bin/admin.js'],
+      },
+      {
+        id: 'F5', name: 'Orders', area: 'A2', reach: 'interface',
+        candidates: [idOf('src/routes/orders.js', 7)],
+        seedFiles: ['src/routes/orders.js'],
+      },
+    ],
+    unassigned: [{ candidate: idOf('src/app.js', 8), reason: 'A health check that no reader uses.' }],
+    roles: [
+      { label: 'Clerk', evidence: [ev('src/roles.js', "const ROLES = ['Clerk', 'Approver'];")] },
+      { label: 'Approver', evidence: [ev('src/roles.js', "const ROLES = ['Clerk', 'Approver'];")] },
+    ],
+    names: [{ label: 'WorkBoard', evidence: [ev('src/menu.js', "{ label: 'WorkBoard', path: '/board' },")] }],
+  };
+}
+
+/** The entry of F1 that passes check-entry: numbers with and without thousands commas, labels, rules on both sides. */
+export function goodEntry() {
+  const form = 'src/forms/order-form.js';
+  const nameField = "{ label: 'Customer Name', required: true },";
+  const countField = "{ label: 'Item Count', max: 35000 },";
+  return {
+    format: 'excavator-product-handbook-entry/1',
+    id: 'F1',
+    purpose: { text: 'Staff place new orders for customers.', evidence: [ev(form, "title: 'New Order',")] },
+    who: [{ role: 'Clerk', can: 'Create an order.', evidence: [ev('src/roles.js', "const ROLES = ['Clerk', 'Approver'];")] }],
+    where: [
+      { label: 'Orders', evidence: [ev('src/menu.js', "{ label: 'Orders', path: '/orders' },")] },
+      { label: 'New Order', evidence: [ev(form, "title: 'New Order',")] },
+    ],
+    screens: [{
+      name: 'New Order',
+      evidence: [ev(form, "title: 'New Order',")],
+      fields: [
+        {
+          label: 'Customer Name',
+          evidence: [ev(form, nameField)],
+          rules: [{ side: 'frontend', text: 'The field is required.', evidence: [ev(form, nameField)] }],
+        },
+        {
+          label: 'Item Count',
+          evidence: [ev(form, countField)],
+          rules: [
+            { side: 'backend', text: 'At most 35,000 items.', evidence: [ev(form, countField)] },
+            { side: 'frontend', text: 'An upload may hold up to 100,000 bytes.', evidence: [ev(form, 'const MAX_UPLOAD = 100_000;')] },
+          ],
+        },
+      ],
+    }],
+    operations: [{
+      name: 'Place an order',
+      sentences: [
+        { text: 'The clerk fills in the customer name.', evidence: [ev(form, nameField)] },
+        { text: 'The item count is limited to 35000.', evidence: [ev(form, countField)] },
+      ],
+    }],
+    states: [
+      { label: 'Draft', meaning: 'The order is not sent yet.', evidence: [ev(form, "const statuses = ['Draft', 'Submitted'];")] },
+      { label: 'Submitted', meaning: 'The order was sent.', evidence: [ev(form, "const statuses = ['Draft', 'Submitted'];")] },
+    ],
+    notifications: [],
+    automatic: [],
+    unknowns: [{ item: 'Who approves a large order', searched: 'the order form and the routes of the orders area' }],
+  };
+}
+
+/**
+ * A throwaway run: { root, out, candidates, idOf, map, entry, writeMap, writeEntry, writeJson, readJson,
+ * run, cleanup }. `root` is a copy of the fixture project; `out` holds candidates.json already.
+ */
+export function makeRun() {
+  const base = realpathSync(mkdtempSync(join(tmpdir(), 'xhb-')));
+  const root = join(base, 'project');
+  const out = join(base, 'out');
+  cpSync(FIXTURE_PROJECT, root, { recursive: true });
+  mkdirSync(join(out, 'entries'), { recursive: true });
+  const listed = clone(fixtureCandidates());
+  listed.projectRoot = root;
+  writeFileSync(join(out, 'candidates.json'), `${JSON.stringify(listed, null, 2)}\n`);
+  const idOf = (file, line) => {
+    const hit = listed.items.find((item) => item.file === file && item.line === line);
+    if (!hit) throw new Error(`no candidate at ${file}:${line}`);
+    return hit.id;
+  };
+  const writeJson = (path, value) => writeFileSync(path, `${JSON.stringify(value, null, 2)}\n`);
+  const run = {
+    base,
+    root,
+    out,
+    candidates: listed,
+    idOf,
+    map: goodMap(idOf),
+    entry: goodEntry(),
+    writeJson,
+    readJson: (name) => JSON.parse(readFileSync(join(out, name), 'utf-8')),
+    writeMap: (map = run.map) => writeJson(join(out, 'map.json'), map),
+    writeEntry: (id = 'F1', entry = run.entry) => writeJson(join(out, 'entries', `${id}.json`), entry),
+    run: (command, ...args) => runHandbook([command, out, ...args, '--project', root]),
+    cleanup: () => rmSync(base, { recursive: true, force: true }),
+  };
+  return run;
+}
+
+/** Run check-map on a fresh good run and return it, so a test starts from a map that passed. */
+export function makeCheckedMapRun() {
+  const run = makeRun();
+  run.writeMap();
+  const result = run.run('check-map');
+  if (result.status !== 0) throw new Error(`the good map failed check-map:\n${result.stdout}${result.stderr}`);
+  return run;
+}
+
+/** Set `value` at a dotted path of an object, e.g. set(map, 'features.0.label', 'x'). */
+export function set(object, path, value) {
+  const keys = path.split('.');
+  let target = object;
+  for (const key of keys.slice(0, -1)) target = target[key];
+  target[keys.at(-1)] = value;
+  return object;
+}
+
+export { clone };

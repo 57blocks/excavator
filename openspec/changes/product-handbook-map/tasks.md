@@ -13,11 +13,11 @@
 
 ## 3. 脚本（提交 3）
 
-- [ ] 3.1 `handbook.mjs`：`candidates`、`check-map`、`check-entry`、`mark`、`check-ui`、`assemble`，退出码与 `Next:` 行（D2）；随 skill 发布的英文固定文字表 `ui-strings.json`（D12）
-- [ ] 3.2 地图检查：格式、守恒、到达方式与标签、角色、种子文件（D4）
-- [ ] 3.3 条目检查：结构（D5）、引文与路径（D6）、禁词门（D7）、值核对（D8）；状态记录与两次尝试（D9）
-- [ ] 3.4 `assemble`（D11）
-- [ ] 3.5 测试：O2、O3、O5（含 `check-ui`）。每类拒绝先写坏夹具看到红，再写合法夹具看到绿；身份夹具（同内容不同路径、同名不同区域）
+- [x] 3.1 `handbook.mjs`：`candidates`、`check-map`、`check-entry`、`mark`、`check-ui`、`assemble`，退出码与 `Next:` 行（D2）；随 skill 发布的英文固定文字表 `ui-strings.json`（D12）
+- [x] 3.2 地图检查：格式、守恒、到达方式与标签、角色、种子文件（D4）
+- [x] 3.3 条目检查：结构（D5）、引文与路径（D6）、禁词门（D7）、值核对（D8）；状态记录与两次尝试（D9）
+- [x] 3.4 `assemble`（D11）
+- [x] 3.5 测试：O2、O3、O5（含 `check-ui`）。每类拒绝先写坏夹具看到红，再写合法夹具看到绿；身份夹具（同内容不同路径、同名不同区域）
 
 ## 4. 页面（提交 4）
 
