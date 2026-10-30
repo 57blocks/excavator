@@ -94,7 +94,7 @@
 
 ### Requirement: 只读源码，只写输出目录
 
-运行 SHALL 只读项目源码与事实层，SHALL NOT 读 `.excavator/` 下别的产物或项目里由本工具生成的文档，SHALL NOT 重建事实层，SHALL 只写 `--out`。`--fresh` SHALL 只清空不存在、为空或含本 skill 状态文件的输出目录，否则停止并告知用户。
+运行 SHALL 只读项目源码与事实层，SHALL NOT 读 `.excavator/` 下别的产物或项目里由本工具生成的文档，SHALL NOT 重建事实层，SHALL 只写 `--out`。`--fresh` SHALL 只清空不存在、为空或含本 skill 写出的状态文件或候选文件（按格式串识别）的输出目录，否则停止并告知用户。
 
 #### Scenario: 输出目录里有别的文件
 - **WHEN** 以 `--fresh` 运行，而 `--out` 是一个含其他文件、但没有本 skill 状态文件的目录

@@ -41,6 +41,8 @@
 | `check-ui <out>` | 固定文字表的键、占位符（D12） |
 | `assemble <out> --project <root>` | 拼出 `handbook.md` |
 | `page <out> --project <root>` | 写出 `handbook.html`（D13） |
+| `select <out> --project <root> --features <list>` | 把 `--features` 解析成功能 id（D9） |
+| `reply <out> --project <root>` | 重新检查整个运行，按固定格式打印最终回复的几行：两个产物的路径、各状态的功能数、失败的 id、候选守恒。不改任何文件 |
 
 退出码沿用仓库惯例：0 通过，1 检查不过（逐行打印原因，最后一行 `Next:` 说下一步），2 用法或读写错误。
 
@@ -140,12 +142,15 @@
 - 编排者为每个要写条目的功能派一个前台子代理，最多 `--concurrency`（默认 3）个同时运行。子代理只读该功能的种子文件，以及否定类陈述所需的全项目搜索，只写 `entries/<id>.json`。
 - `check-entry` 通过记为 `checked`，不通过记为 `failed` 并保存原因。第一次失败后，带着原因重派一次；第二次仍失败就保持 `failed`，文件保留供查看。
 - 状态只经过脚本改变，编排者不手改 `state.json`。
-- 重跑时，已 `checked` 的功能不再写；`--fresh` 清空 `<out>`，规则同旧 skill：只清空不存在、为空或含本 skill `state.json` 的目录。
-- `--features <ids>`：只为这些功能派 lane。地图仍覆盖全部候选；没写条目的功能在手册里列为「未写」。
+- 重跑时，已 `checked` 的功能不再写；`--fresh` 清空 `<out>`，规则同旧 skill：只清空不存在、为空或含本 skill 写出的 `state.json` 或 `candidates.json`（按 format 字段认）的目录。认 `candidates.json` 是因为 `check-map` 通过前还没有 `state.json`，在那之前中断的运行否则无法 `--fresh`。
+- 最终回复由 `reply` 打印，模型只照抄（非英文时只翻译词句，路径、数字与 id 不动）：回复的计数来自脚本，不由模型加总。
+- `--features <list>`：只为这些功能派 lane。地图仍覆盖全部候选；没写条目的功能在手册里列为「未写」。
+  - 功能 id 由模型写地图时才定，运行前不知道，所以列表里每一项可以是 id，也可以是功能名（不分大小写、整名相等）。
+  - 由脚本 `handbook.mjs select` 在 `check-map` 通过后把列表解析成 id：每项恰好匹配一个功能才算数；有项不匹配或匹配多个时退出 1，打印该项与地图里全部的 id 和名称，运行停在这里，不派任何 lane。不做模糊匹配：猜错功能比停下更糟。
 
 ### D10 不读生成的文档
 
-- SKILL.md 与 lane prompt 明令：只读项目源码与事实层（`knowledge-graph.jsonl`、MCP），不读 `.excavator/` 下别的产物，也不读项目里由本工具生成的文档。
+- SKILL.md 与 lane prompt 明令：只读项目源码，不读 `.excavator/` 下的任何东西，也不读项目里由本工具生成的文档。本切片连事实层（`knowledge-graph.jsonl`、MCP）也不用：条目靠读种子文件与全项目搜索，用不上图；规则收成「`.excavator/` 一概不读」后，O6 检查运行记录时任何一次读取都算违规，不必区分哪些文件可读。以后某一片确实需要事实层时，再放开并写明可读的文件。
 - 机器层面，D6 拒绝 `.excavator/` 下的引文路径，生成文档的内容进不了条目的出处。读了但没引用这种情况，由 O6 检查运行记录。
 
 **domain graph 也不作输入。** 我在 go-multirepo 上看过 `excavator-domain` 的产物：6 个域、29 个流程、157 个步骤，流程名已经是业务说法。它看起来能直接当区域和功能的草稿，但不用，理由有四：
