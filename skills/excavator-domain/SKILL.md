@@ -176,8 +176,9 @@ else
 fi
 ```
 
-The standalone path (Phase 2) has no knowledge graph, so the flag is left out
-there and every step without `provenance: "inferred"` is reported unanchored.
+When `knowledge-graph.jsonl` does not exist, the flag is left out and every
+step without `provenance: "inferred"` is reported unanchored. When it exists,
+the flag is passed whichever path produced the analysis, `--full` included.
 
 Report `stepsTotal`, `stepsAnchored`, `stepsInferred` and `stepUnanchored` from
 that report to the user; the last three add up to the first. A domain graph has
