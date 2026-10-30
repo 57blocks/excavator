@@ -40,14 +40,14 @@ function translated(word) {
 const ui = (run) => runHandbook(['check-ui', run.out]);
 
 describe('the shipped English table', () => {
-  it('has the format, the language, and md.* keys with non-empty values', () => {
+  it('has the format, the language, and md.* and page.* keys with non-empty values', () => {
     const table = shipped();
     expect(table.format).toBe('excavator-product-handbook-ui/1');
     expect(table.language).toBe('English');
     const keys = Object.keys(table.strings);
     expect(keys.length).toBeGreaterThan(30);
     for (const key of keys) {
-      expect(key).toMatch(/^md\.[A-Za-z.]+$/);
+      expect(key).toMatch(/^(md|page)\.[A-Za-z.]+$/);
       expect(typeof table.strings[key]).toBe('string');
       expect(table.strings[key].trim()).not.toBe('');
     }

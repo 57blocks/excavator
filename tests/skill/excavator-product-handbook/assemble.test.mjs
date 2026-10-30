@@ -143,7 +143,7 @@ describe('assemble: the coverage section equals the map and candidates.json', ()
     const unassigned = run.map.unassigned.length;
     const assigned = run.map.features.reduce((sum, feature) => sum + feature.candidates.length, 0);
     expect(total).toBe(assigned + unassigned);
-    expect(text).toContain(`${total} entrypoint candidates were listed: ${assigned} belong to exactly one feature and ${unassigned} are in the unassigned list below.`);
+    expect(text).toContain(`Entrypoint candidates listed: ${total}. In exactly one feature: ${assigned}. In the unassigned list below: ${unassigned}.`);
     const coverage = text.slice(text.indexOf('## Coverage'));
     for (const [reach, label] of [['menu', 'From the menu'], ['link', 'By a link'], ['automated', 'Automatic'], ['interface', 'Interface for other systems'], ['operator', 'Operator command']]) {
       const count = run.map.features.filter((feature) => feature.reach === reach).length;

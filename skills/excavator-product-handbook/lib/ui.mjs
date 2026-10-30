@@ -6,7 +6,9 @@
  * `<out>/ui.json`. `check-ui` holds a translation to the English table's
  * shape: the same keys, a non-empty string for each, and the same
  * `{placeholder}` names in each value. Keys are namespaced by output:
- * `md.*` for handbook.md.
+ * `md.*` for handbook.md, `page.*` for the texts only the page has. The page
+ * also reads the `md.*` keys whose text it shares (section names, table
+ * headers, reach and status names), so a translation covers both outputs once.
  */
 
 import { existsSync } from 'node:fs';

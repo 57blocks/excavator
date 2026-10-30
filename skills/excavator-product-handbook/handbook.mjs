@@ -19,12 +19,17 @@
  *       table there when the run's language is English.
  *   assemble <out> --project <root>
  *       Write <out>/handbook.md, byte for byte the same from the same input.
+ *   page <out> --project <root>
+ *       Write <out>/handbook.html from the same checked run: one file that
+ *       opens from disk, no network, the same bytes from the same input.
  *
  * check-map, check-entry and mark hold <out>/state.json.lock while they run.
  *
  * Exit codes: 0 ok; 1 a check failed (every reason printed, one per line);
  * 2 usage or IO error.
  */
+
+import { resolve } from 'node:path';
 
 import { assemble } from './lib/assemble.mjs';
 import { candidatesOutput } from './lib/candidates.mjs';
@@ -33,6 +38,7 @@ import { checkMap } from './lib/check-map.mjs';
 import { UsageError } from './lib/errors.mjs';
 import { withStateLock } from './lib/lock.mjs';
 import { mark } from './lib/mark.mjs';
+import { writePage } from './lib/page.mjs';
 import { projectRootOption } from './lib/project-root.mjs';
 import { checkUi } from './lib/ui.mjs';
 
@@ -64,6 +70,12 @@ Commands:
       Write <out>/handbook.md from the map and the checked entries. Checks the
       map, every checked entry and the fixed-text table again first, and then
       writes nothing if any of them fails. Prints the path.
+  page <out> --project <root>
+      Write <out>/handbook.html: the same run, checked the same way, as one
+      self-contained page (navigation by area, a page per feature, a coverage
+      page; light and dark; every fixed text from <out>/ui.json). Removes an
+      earlier handbook.html first, so a refused run leaves none. Needs the
+      built template: run \`pnpm -r build\` at the plugin root. Prints the path.
 
 <out> is the run's output directory (candidates.json, map.json, entries/,
 state.json, ui.json). --project <root> is the project the run documents; files
@@ -132,6 +144,12 @@ const COMMANDS = {
     const { positionals, options } = parseArgs(args, ['project']);
     if (positionals.length !== 1) throw new UsageError('assemble takes exactly one <out> directory');
     return report(assemble(positionals[0], projectRootOption(options.project)));
+  },
+  page(args) {
+    const { positionals, options } = parseArgs(args, ['project']);
+    if (positionals.length !== 1) throw new UsageError('page takes exactly one <out> directory');
+    const root = projectRootOption(options.project);
+    return report(writePage(positionals[0], root, { rootAliases: [resolve(options.project)] }));
   },
 };
 
