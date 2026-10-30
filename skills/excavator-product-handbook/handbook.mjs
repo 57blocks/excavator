@@ -20,9 +20,10 @@
  *       The same checks for the lane itself; records nothing.
  *   mark <out> <featureId> dispatched | failed lane <reason>... --project <root>
  *       Record a lane dispatch or a lane that wrote nothing in state.json.
- *   check-ui <out>
+ *   check-ui <out> [--language <name>]
  *       Check <out>/ui.json against the shipped English table, or copy that
- *       table there when the run's language is English.
+ *       table there when the run's language is English. The fixed text is
+ *       written before the map: the language is --language, else map.json's.
  *   assemble <out> --project <root>
  *       Write <out>/handbook.md, byte for byte the same from the same input.
  *   reply <out> --project <root>
@@ -33,6 +34,10 @@
  *       opens from disk, no network, the same bytes from the same input.
  *
  * check-map, check-entry and mark hold <out>/state.json.lock while they run.
+ * In a run whose language is not English, check-map, check-entry, try-entry,
+ * assemble and page also check that each narrative text holds a letter of the
+ * language when it has its own script (design D12); they need a checked
+ * <out>/ui.json for that and refuse without one.
  *
  * Exit codes: 0 ok; 1 a check failed (every reason printed, one per line);
  * 2 usage or IO error.
@@ -62,8 +67,11 @@ Commands:
   check-map <out> --project <root>
       Check <out>/map.json against <out>/candidates.json and the project: the
       shape, every candidate in exactly one feature or in unassigned, reach and
-      labels, roles, seed files, citations, values and banned words. Creates
-      <out>/state.json (every feature planned) when the map passes.
+      labels, roles, seed files, citations, values and banned words, and, in a
+      language with its own script, that the names and reasons the model wrote
+      hold a letter of it (needs a checked <out>/ui.json when the language is
+      not English). Creates <out>/state.json (every feature planned) when the
+      map passes.
   select <out> --features <list> --project <root>
       Resolve the --features list (comma-separated feature ids or feature names;
       a name is equal ignoring case and surrounding spaces) to feature ids
@@ -73,8 +81,9 @@ Commands:
       exit 1. No fuzzy matching. Changes no file.
   check-entry <out> <featureId> --project <root>
       Check <out>/entries/<featureId>.json: shape, roles from the map,
-      citations, labels, numbers and banned words, and record the result in
-      state.json. A failure ends with a Next: line.
+      citations, labels, numbers and banned words, and the narrative language
+      (as check-map), and record the result in state.json. A failure ends with
+      a Next: line.
   try-entry <out> <featureId> --project <root>
       The same checks as check-entry, for the lane to run on its own file
       before it replies. Reads and writes no state.json: it is not an attempt
@@ -85,10 +94,12 @@ Commands:
   mark <out> <featureId> failed lane <reason>... --project <root>
       Record the feature's lane as failed without writing its entry, each
       further argument one reason. lane is the only step mark records.
-  check-ui <out>
+  check-ui <out> [--language <name>]
       Run in English with no <out>/ui.json: copy the shipped English table
       there. Otherwise check <out>/ui.json: the same keys as the English table,
-      a non-empty string for each, the same {placeholders} in each.
+      a non-empty string for each, the same {placeholders} in each. The run's
+      language is --language (the fixed text is written before the map), or
+      map.json's language when the option is not given.
   assemble <out> --project <root>
       Write <out>/handbook.md from the map and the checked entries. Checks the
       map, every checked entry and the fixed-text table again first, and then
@@ -178,9 +189,9 @@ const COMMANDS = {
     return withStateLock(out, () => report(mark(out, id, event, rest)));
   },
   'check-ui'(args) {
-    const { positionals } = parseArgs(args, []);
+    const { positionals, options } = parseArgs(args, ['language']);
     if (positionals.length !== 1) throw new UsageError('check-ui takes exactly one <out> directory');
-    return report(checkUi(positionals[0]));
+    return report(checkUi(positionals[0], options.language));
   },
   assemble(args) {
     const { positionals, options } = parseArgs(args, ['project']);

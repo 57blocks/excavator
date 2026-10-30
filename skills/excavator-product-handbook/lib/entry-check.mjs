@@ -1,9 +1,10 @@
 /**
  * check-entry (design D5 to D9): one entry file against the map and the
  * project: shape, id, roles from the map, citations, labels, numbers and the
- * banned-words gate; then the result goes into state.json. A missing entry
- * file is `lane-wrote-nothing`. try-entry runs the same checks for the lane
- * itself and records nothing.
+ * banned-words gate and the narrative language check (language-check.mjs);
+ * then the result goes into state.json. A missing entry file is
+ * `lane-wrote-nothing`. try-entry runs the same checks for the lane itself
+ * and records nothing.
  */
 
 import { existsSync } from 'node:fs';
@@ -14,6 +15,7 @@ import { entryShapeProblems } from './entry-shape.mjs';
 import { UsageError } from './errors.mjs';
 import { entryItems } from './items.mjs';
 import { readJson } from './json-file.mjs';
+import { languageGate } from './language-check.mjs';
 import { mapVerifiedLabels, readMap } from './map-check.mjs';
 import { projectFiles } from './project-files.mjs';
 import { reviewItems } from './review.mjs';
@@ -22,7 +24,7 @@ import { featureState, loadState, nextLine, saveState } from './state.mjs';
 export const entryPath = (id) => `entries/${id}.json`;
 
 /** Every way a parsed entry fails, given the map's roles and map-wide verified labels. */
-export function entryProblems(entry, id, { map, files, memberDirs, mapLabels }) {
+export function entryProblems(entry, id, { map, files, memberDirs, mapLabels, languageCheck = null }) {
   const shape = entryShapeProblems(entry);
   if (shape.length > 0) return shape;
   const problems = [];
@@ -31,18 +33,18 @@ export function entryProblems(entry, id, { map, files, memberDirs, mapLabels }) 
   entry.who.forEach((who, i) => {
     if (!roles.includes(who.role)) problems.push(`who[${i}].role: ${JSON.stringify(who.role)} is not a role in map.json (roles: ${roles.map((r) => JSON.stringify(r)).join(', ') || 'none'})`);
   });
-  problems.push(...reviewItems(entryItems(entry), { files, memberDirs, exemptLabels: mapLabels }).problems);
+  problems.push(...reviewItems(entryItems(entry), { files, memberDirs, exemptLabels: mapLabels, languageCheck }).problems);
   return problems;
 }
 
 /** The problems of `<out>/entries/<id>.json`, or the single missing-file reason; no state is read or written. */
-export function checkEntryFile(outDir, id, root, { map, mapLabels = null, files = projectFiles(root), memberDirs = memberDirectories(root) }) {
+export function checkEntryFile(outDir, id, root, { map, mapLabels = null, files = projectFiles(root), memberDirs = memberDirectories(root), languageCheck = null }) {
   const file = join(outDir, entryPath(id));
   const labels = mapLabels ?? mapVerifiedLabels(map, { files, memberDirs }).verified;
   const read = readJson(file);
   if (read.missing) return { step: 'lane', problems: [`${id}: lane-wrote-nothing: ${entryPath(id)} is missing`] };
   if (!read.ok) return { step: 'check-entry', problems: [`${entryPath(id)} ${read.reason}`] };
-  return { step: 'check-entry', problems: entryProblems(read.value, id, { map, files, memberDirs, mapLabels: labels }) };
+  return { step: 'check-entry', problems: entryProblems(read.value, id, { map, files, memberDirs, mapLabels: labels, languageCheck }) };
 }
 
 /** The checked map and project facts check-entry and try-entry share, or the lines that stop them. */
@@ -56,7 +58,9 @@ function loadForEntry(outDir, id, root) {
   const labels = mapVerifiedLabels(map, { files, memberDirs });
   if (labels.shapeProblems.length > 0) return { stop: { status: 1, lines: [...labels.shapeProblems.map((line) => `map.json: ${line}`), 'map.json is malformed; run check-map first'] } };
   if (!map.features.some((feature) => feature.id === id)) throw new UsageError(`feature ${id} is not in map.json`);
-  return { map, files, memberDirs, mapLabels: labels.verified };
+  const gate = languageGate(outDir, map);
+  if (!gate.ok) return { stop: { status: 1, lines: gate.lines } };
+  return { map, files, memberDirs, mapLabels: labels.verified, languageCheck: gate.check };
 }
 
 /** Run check-entry for feature `id` of `<out>` and record the result. Returns { status, lines }. */

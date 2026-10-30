@@ -6,18 +6,21 @@
  * occurs in its item's passages whose item's citations all resolve.
  * `exemptLabels` are labels verified elsewhere (the whole map's, when an
  * entry is reviewed); the banned-words gate exempts hits inside the item's
- * own document's verified labels and those.
+ * own document's verified labels and those. `languageCheck` (`{ language }`
+ * or null, from `languageGate`) turns on the narrative language check, which
+ * exempts the same labels.
  */
 
 import { bannedFragments, outsideLabels } from './banned-words.mjs';
 import { citationProblems } from './citations.mjs';
+import { narrativeProblem } from './narrative.mjs';
 import { labelOccurs, missingNumbers } from './values.mjs';
 
 /** The files an item cites, for a problem line. */
 const filesOf = (item) => [...new Set(item.evidence.map((entry) => entry.file))];
 const where = (item) => item.source ?? (filesOf(item).length === 0 ? 'no evidence' : filesOf(item).join(', '));
 
-export function reviewItems(items, { files, memberDirs, exemptLabels = new Set() }) {
+export function reviewItems(items, { files, memberDirs, exemptLabels = new Set(), languageCheck = null }) {
   const verified = new Set();
   const lines = items.map(() => []);
   items.forEach((item, index) => {
@@ -44,6 +47,8 @@ export function reviewItems(items, { files, memberDirs, exemptLabels = new Set()
       for (const hit of outsideLabels(bannedFragments(string.text, { memberDirs }), string.text, labels)) {
         lines[index].push(`${string.path}: ${JSON.stringify(hit.fragment)} is not allowed in reader text (${hit.category}); write it in plain words`);
       }
+      const wrongLanguage = languageCheck !== null && string.narrative ? narrativeProblem(string.text, labels, languageCheck.language) : null;
+      if (wrongLanguage !== null) lines[index].push(`${string.path}: ${wrongLanguage}`);
     }
   });
   return { problems: lines.flat(), verified };

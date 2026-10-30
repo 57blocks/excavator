@@ -39,8 +39,8 @@ const phase = (n) => flat(raw.get(n) ?? '').trim();
 const before = flat(skill.split(/^## Phase 0: /m)[0]);
 /** The text blocks of four backticks (they hold three-backtick examples), in order: the lane prompt, then the translation prompt. */
 const promptBlocks = (text) => [...text.matchAll(/^````text\n([\s\S]*?)\n````$/gm)].map((match) => match[1]);
-const lanePrompt = promptBlocks(raw.get(3) ?? '')[0] ?? '';
-const translationPrompt = promptBlocks(raw.get(4) ?? '')[0] ?? '';
+const lanePrompt = promptBlocks(raw.get(4) ?? '')[0] ?? '';
+const translationPrompt = promptBlocks(raw.get(2) ?? '')[0] ?? '';
 /** The fenced blocks of a language (three backticks), in order. */
 const blocks = (text, language) => [...text.matchAll(new RegExp(`^\\s*\`\`\`${language}\\n([\\s\\S]*?)\\n\\s*\`\`\`$`, 'gm'))].map((match) => match[1]);
 const allBash = blocks(skill, 'bash');
@@ -67,7 +67,7 @@ describe('excavator-product-handbook skill: structure', () => {
   it('has the six phases in order', () => {
     expect([...raw.keys()]).toEqual([0, 1, 2, 3, 4, 5]);
     const titles = [...skill.matchAll(/^## Phase \d+: (.+)$/gm)].map((match) => match[1]);
-    expect(titles).toEqual(['Setup', 'Candidates', 'The map', 'Entries', 'Fixed text', 'Assemble, page and reply']);
+    expect(titles).toEqual(['Setup', 'Candidates', 'Fixed text', 'The map', 'Entries', 'Assemble, page and reply']);
   });
 
   it('describes every option of the argument hint in the Options section', () => {
@@ -108,7 +108,7 @@ describe('excavator-product-handbook skill: language', () => {
   it('writes the run language as English however the user spelled it, because the script only knows the name English', () => {
     expect(phase(0)).toContain('`$RUN_LANGUAGE`');
     expect(phase(0)).toContain('the script treats only the name `English` as English');
-    expect(phase(2)).toContain('"language": "<$RUN_LANGUAGE>"');
+    expect(phase(3)).toContain('"language": "<$RUN_LANGUAGE>"');
   });
 });
 
@@ -193,11 +193,11 @@ describe('excavator-product-handbook skill: commands', () => {
 
   it('uses each command in the phase that needs it', () => {
     expect(raw.get(1)).toContain(`${HANDBOOK} candidates`);
-    expect(raw.get(2)).toContain(`${HANDBOOK} check-map`);
-    expect(raw.get(2)).toContain(`${HANDBOOK} select`);
-    expect(raw.get(3)).toContain(`${HANDBOOK} mark`);
-    expect(raw.get(3)).toContain(`${HANDBOOK} check-entry`);
-    expect(raw.get(4)).toContain(`${HANDBOOK} check-ui`);
+    expect(raw.get(2)).toContain(`${HANDBOOK} check-ui`);
+    expect(raw.get(3)).toContain(`${HANDBOOK} check-map`);
+    expect(raw.get(3)).toContain(`${HANDBOOK} select`);
+    expect(raw.get(4)).toContain(`${HANDBOOK} mark`);
+    expect(raw.get(4)).toContain(`${HANDBOOK} check-entry`);
     expect(raw.get(5)).toContain(`${HANDBOOK} assemble`);
     expect(raw.get(5)).toContain(`${HANDBOOK} page`);
     expect(raw.get(5)).toContain(`${HANDBOOK} reply`);
@@ -218,12 +218,12 @@ describe('excavator-product-handbook skill: candidates and map', () => {
   });
 
   it('shows a map.json example that passes the map shape check', () => {
-    const example = blocks(raw.get(2), 'json')[0];
+    const example = blocks(raw.get(3), 'json')[0];
     expect(mapShapeProblems(JSON.parse(example))).toEqual([]);
   });
 
   it('is a writing guide: areas, one feature per thing a reader does, the five reach values, labels, roles, names, conservation, seed files', () => {
-    const p = phase(2);
+    const p = phase(3);
     for (const word of ['**Areas, as the reader sees them.**', '**Features, one per thing a reader does.**', '**Reach: how a reader gets to the feature.**', '**Labels, quoted from the source.**', '**Roles.**', '**Names.**', '**Conservation.**', '**Seed files.**']) {
       expect(p, word).toContain(word);
     }
@@ -240,7 +240,7 @@ describe('excavator-product-handbook skill: candidates and map', () => {
   });
 
   it('lists the reader-text rules, naming every banned class, Arabic numerals and source-language labels', () => {
-    const p = phase(2);
+    const p = phase(3);
     for (const word of ['identifiers with an underscore', 'camel-case and mixed-case words', 'paths that start with `/`', '`.go`, `.ts`, `.tsx`, `.js`, `.jsx`, `.java`, `.py`, `.sql`, `.json`, `.yaml`, `.yml`', 'a name followed by `(`', 'the names of the project\'s member repositories']) {
       expect(p, word).toContain(word);
     }
@@ -250,7 +250,7 @@ describe('excavator-product-handbook skill: candidates and map', () => {
   });
 
   it('checks the map with check-map and fixes it before any lane is dispatched', () => {
-    const p = phase(2);
+    const p = phase(3);
     expect(p).toContain(`${HANDBOOK} check-map "$OUT" --project "$PROJECT_ROOT"`);
     expect(p).toContain('dispatch no lane until it exits 0');
     expect(p).toContain('creates `state.json` with every feature planned');
@@ -259,7 +259,7 @@ describe('excavator-product-handbook skill: candidates and map', () => {
 });
 
 describe('excavator-product-handbook skill: --features', () => {
-  const p = phase(2);
+  const p = phase(3);
 
   it('runs select after check-map passes, with the list as one single-quoted argument', () => {
     expect(p).toContain(`${HANDBOOK} select "$OUT" --features '<the --features value>' --project "$PROJECT_ROOT"`);
@@ -275,24 +275,24 @@ describe('excavator-product-handbook skill: --features', () => {
   });
 
   it('dispatches lanes only for the selected ids and leaves the others planned', () => {
-    expect(p).toContain('Only those get lanes in Phase 3');
+    expect(p).toContain('Only those get lanes in Phase 4');
     expect(p).toContain('Every other feature stays planned and is listed in the handbook as not written.');
-    expect(phase(3)).toContain('`<ids>` is `$SELECTED` space-separated, or empty without `--features`');
+    expect(phase(4)).toContain('`<ids>` is `$SELECTED` space-separated, or empty without `--features`');
   });
 
   it('names the feature-name matching rule in Options', () => {
     const options = flat(skill.split(/^## Options$/m)[1]);
     expect(options).toContain('a name is matched ignoring case, as a whole name');
-    expect(options).toContain('Phase 2 resolves the list with `select`');
+    expect(options).toContain('Phase 3 resolves the list with `select`');
   });
 });
 
 describe('excavator-product-handbook skill: the lane prompt', () => {
   const prompt = flat(lanePrompt);
 
-  it('exists as one four-backtick text block in Phase 3', () => {
+  it('exists as one four-backtick text block in Phase 4', () => {
     expect(lanePrompt.length).toBeGreaterThan(2000);
-    expect(promptBlocks(raw.get(3))).toHaveLength(1);
+    expect(promptBlocks(raw.get(4))).toHaveLength(1);
   });
 
   it('has an entry shape that the entry shape check accepts, with every key present', () => {
@@ -362,7 +362,7 @@ describe('excavator-product-handbook skill: the lane prompt', () => {
 });
 
 describe('excavator-product-handbook skill: dispatch and retry', () => {
-  const p = phase(3);
+  const p = phase(4);
 
   it('records each batch of dispatches with mark before the message that dispatches it', () => {
     expect(p).toContain('Put the `mark` calls of one batch in one Bash command, one after another, before the message that dispatches the batch');
@@ -436,8 +436,72 @@ describe('excavator-product-handbook skill: the lane listing recipe (run on a re
   });
 });
 
+describe('excavator-product-handbook skill: the language of the narrative is checked by the scripts', () => {
+  it('writes the fixed text before the map, because the scripts read it to know the language\'s script', () => {
+    const titles = [...skill.matchAll(/^## Phase \d+: (.+)$/gm)].map((match) => match[1]);
+    expect(titles.indexOf('Fixed text')).toBe(titles.indexOf('The map') - 1);
+    expect(phase(2)).toContain('This phase runs before the map on purpose');
+    expect(phase(2)).toContain('`check-map` and `check-entry` refuse a non-English run that has no checked `ui.json`');
+    expect(phase(2)).toContain('there is no `map.json` yet to read the language from');
+    expect(phase(2)).toContain('the run fails: tell the user the lines it printed, as printed, and stop; run no further phase');
+  });
+
+  it('keeps the resume rule: a ui.json of another language than the run\'s stops the run', () => {
+    expect(phase(0)).toContain('jq -r .language "$OUT/ui.json"');
+    expect(phase(0)).toContain('differs from `$RUN_LANGUAGE`, do the same');
+  });
+
+  it('refers to a phase by the number it has now', () => {
+    expect(before).toContain('**Reader text** in Phase 3');
+    expect(flat(skill.split(/^## Options$/m)[1].split(/^## Sources$/m)[0])).toContain('Phase 3 resolves the list with `select`');
+    expect(phase(3)).toContain('Only those get lanes in Phase 4');
+    expect(phase(5)).toContain('follow its `Next:` line as in Phase 4');
+    for (const [, n] of skill.matchAll(/\bPhase (\d)\b/g)) expect(raw.has(Number(n)), `Phase ${n}`).toBe(true);
+  });
+
+  it('tells the map writer that the scripts refuse names and reasons written only in ASCII letters, for a language with its own script', () => {
+    const p = phase(3);
+    expect(p).toContain('**Language of the narrative.**');
+    expect(p).toContain('an area name without `evidence`, a feature name without a `label`, every reason in `unassigned`');
+    expect(p).toContain('they refuse any such text that holds no letter outside ASCII, and say which field');
+    expect(p).toContain('a language written in Latin letters (French, Spanish) is not checked');
+    expect(p).toContain('A text made only of numbers and labels quoted from the source is not refused.');
+    expect(p).toContain('for a language with its own script, every name or reason of yours written only in ASCII letters');
+    expect(p).toContain('go back to Phase 2, then run it again');
+  });
+
+  it('prefers the role name the product shows, quoted, and the code key only when the product shows none', () => {
+    const p = phase(3);
+    expect(p).toContain('Prefer the role name the product shows to its users');
+    expect(p).toContain('Quote that line, so the label is the name a reader knows.');
+    expect(p).toContain('Use the key the code uses (an enum value, often with an underscore) only when the product shows no name for that role');
+    expect(p).toContain('"label": "<role name as the product shows it>"');
+  });
+
+  it('puts the language instruction in the lane prompt right before the JSON shape, and keeps the Write in line', () => {
+    const prompt = flat(lanePrompt);
+    const writeIn = prompt.indexOf('Write in `$LANGUAGE`, in plain words');
+    const instruction = prompt.indexOf('Every narrative value of the JSON file below is written in $LANGUAGE');
+    const shape = prompt.indexOf('Write one JSON file with exactly these keys');
+    expect(writeIn).toBeGreaterThan(-1);
+    expect(instruction).toBeGreaterThan(writeIn);
+    expect(shape).toBeGreaterThan(instruction);
+    // Nothing sits between the instruction paragraph and the shape paragraph.
+    expect(prompt.slice(instruction, shape).length).toBeLessThan(500);
+    expect(prompt.slice(instruction, shape)).toContain('Labels, screen names, `where` labels and the roles stay exactly as the source and the list above write them.');
+    expect(prompt).toContain('when $LANGUAGE has its own script, it also refuses a narrative value that is written only in ASCII letters');
+  });
+
+  it('names the Next line check-entry prints when the fixed text is not ready, and keeps the two attempt lines', () => {
+    const p = phase(4);
+    expect(p).toContain('A `Next:` line that starts `Next: write ui.json first`');
+    expect(p).toContain('this is not an attempt');
+    expect(p).toContain('go back to Phase 2');
+  });
+});
+
 describe('excavator-product-handbook skill: fixed text', () => {
-  const p = phase(4);
+  const p = phase(2);
 
   it('does nothing for English, where the script uses the shipped table', () => {
     expect(p).toContain('When `$RUN_LANGUAGE` is `English`, there is nothing to do: the script uses the shipped table.');
@@ -445,7 +509,7 @@ describe('excavator-product-handbook skill: fixed text', () => {
 
   it('dispatches one subagent for another language, then runs check-ui', () => {
     expect(p).toContain('dispatch one subagent in the foreground');
-    expect(p).toContain(`${HANDBOOK} check-ui "$OUT"`);
+    expect(p).toContain(`${HANDBOOK} check-ui "$OUT" --language "$RUN_LANGUAGE"`);
     expect(p).toContain('run `check-ui` first; when it exits 0 skip the translation');
   });
 

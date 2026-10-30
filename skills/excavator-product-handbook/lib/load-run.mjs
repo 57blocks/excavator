@@ -15,6 +15,7 @@ import { loadCandidates } from './candidates.mjs';
 import { checkEntryFile, entryPath } from './entry-check.mjs';
 import { UsageError } from './errors.mjs';
 import { readJson } from './json-file.mjs';
+import { languageGate } from './language-check.mjs';
 import { mapProblems, readMap } from './map-check.mjs';
 import { projectFiles } from './project-files.mjs';
 import { loadState } from './state.mjs';
@@ -36,7 +37,10 @@ export function loadCheckedRun(outDirArg, root) {
   const map = mapRead.value;
   const files = projectFiles(root);
   const memberDirs = memberDirectories(root);
-  const mapChecked = mapProblems(map, { candidates: candidates.items, files, memberDirs });
+  const gate = languageGate(outDir, map);
+  if (!gate.ok) return { ok: false, lines: gate.lines };
+  const languageCheck = gate.check;
+  const mapChecked = mapProblems(map, { candidates: candidates.items, files, memberDirs, languageCheck });
   if (mapChecked.problems.length > 0) return { ok: false, lines: mapChecked.problems.map((line) => `map.json: ${line}`) };
 
   const loaded = loadState(outDir);
@@ -57,7 +61,7 @@ export function loadCheckedRun(outDirArg, root) {
   const entries = new Map();
   const problems = [];
   for (const id of ids.filter((featureId) => state.features[featureId].status === 'checked')) {
-    const result = checkEntryFile(outDir, id, root, { map, mapLabels: mapChecked.verified, files, memberDirs });
+    const result = checkEntryFile(outDir, id, root, { map, mapLabels: mapChecked.verified, files, memberDirs, languageCheck });
     if (result.problems.length > 0) {
       problems.push(...result.problems.map((line) => (line.startsWith(`${id}:`) ? line : `${id}: ${line}`)), `${id}: ${entryPath(id)} no longer passes check-entry; run check-entry for ${id}`);
     } else {

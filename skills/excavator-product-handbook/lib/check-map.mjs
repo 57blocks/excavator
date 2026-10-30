@@ -5,6 +5,7 @@ import { existsSync } from 'node:fs';
 import { memberDirectories } from './banned-words.mjs';
 import { loadCandidates } from './candidates.mjs';
 import { UsageError } from './errors.mjs';
+import { languageGate } from './language-check.mjs';
 import { mapProblems, readMap } from './map-check.mjs';
 import { projectFiles } from './project-files.mjs';
 import { settleState } from './state.mjs';
@@ -21,7 +22,9 @@ export function loadCheckedMap(outDir, root) {
   const read = readMap(outDir);
   if (!read.ok) return { ok: false, lines: [read.line] };
   const map = read.value;
-  const { problems } = mapProblems(map, { candidates: candidates.items, files: projectFiles(root), memberDirs: memberDirectories(root) });
+  const gate = languageGate(outDir, map);
+  if (!gate.ok) return { ok: false, lines: gate.lines };
+  const { problems } = mapProblems(map, { candidates: candidates.items, files: projectFiles(root), memberDirs: memberDirectories(root), languageCheck: gate.check });
   return problems.length > 0 ? { ok: false, lines: problems } : { ok: true, map, candidates: candidates.items };
 }
 

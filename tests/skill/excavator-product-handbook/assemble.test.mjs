@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { SHIPPED_UI, clone, makeCheckedMapRun, runHandbook } from './helpers.mjs';
+import { SHIPPED_UI, clone, makeCheckedMapRun, markedEntry, markedMap, runHandbook } from './helpers.mjs';
 
 const cleanups = [];
 afterEach(() => {
@@ -257,10 +257,7 @@ describe('assemble: fixed texts come from ui.json', () => {
   it('writes the headings and table headers of a translated table, keeps source labels as written', () => {
     const run = makeCheckedMapRun();
     cleanups.push(run.cleanup);
-    const map = clone(run.map);
-    map.language = 'Chinese';
-    run.writeMap(map);
-    expect(run.run('check-map').status).toBe(0);
+    // A run in a language with its own script: the fixed text comes first, then the map and the entry are checked against it.
     const table = JSON.parse(readFileSync(SHIPPED_UI, 'utf-8'));
     table.language = 'Chinese';
     const mark = (word) => `${cjk(0x624b, 0x518c)}${word}`;
@@ -269,8 +266,9 @@ describe('assemble: fixed texts come from ui.json', () => {
     }
     run.writeJson(join(run.out, 'ui.json'), table);
     expect(runHandbook(['check-ui', run.out]).status).toBe(0);
-    const entry = clone(run.entry);
-    run.writeEntry('F1', entry);
+    run.writeMap(markedMap(run.map));
+    expect(run.run('check-map').status).toBe(0);
+    run.writeEntry('F1', markedEntry(run.entry));
     expect(run.run('check-entry', 'F1').status).toBe(0);
     const result = assemble(run);
     expect(result.status, result.stdout).toBe(0);

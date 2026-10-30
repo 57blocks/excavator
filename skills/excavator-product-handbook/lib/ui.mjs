@@ -80,10 +80,17 @@ function runLanguage(outDir) {
   return typeof language === 'string' && language.trim() !== '' ? { ok: true, language } : { ok: false, line: 'map.json: language must be a non-empty string' };
 }
 
-/** `handbook.mjs check-ui <out>`. Returns { status, lines }. */
-export function checkUi(outDir) {
+/** The run's language as `--language` gives it: `{ ok: true, language }` or `{ ok: false, line }`. */
+const namedLanguage = (language) => (language.trim() === '' ? { ok: false, line: '--language must be a non-empty name' } : { ok: true, language });
+
+/**
+ * `handbook.mjs check-ui <out> [--language <name>]`. The fixed text is written
+ * before the map, so the run's language comes from `--language` when it is
+ * given and from map.json otherwise. Returns { status, lines }.
+ */
+export function checkUi(outDir, givenLanguage) {
   if (!existsSync(outDir)) throw new UsageError(`out directory ${outDir} does not exist`);
-  const language = runLanguage(outDir);
+  const language = givenLanguage === undefined ? runLanguage(outDir) : namedLanguage(givenLanguage);
   if (!language.ok) return { status: 1, lines: [language.line] };
   const english = shippedTable();
   const path = join(outDir, UI_FILE);

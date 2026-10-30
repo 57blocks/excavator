@@ -10,7 +10,7 @@ import { join } from 'node:path';
 
 import { buildPageData } from '../../../skills/excavator-product-handbook/lib/page-data.mjs';
 import { languageTag } from '../../../skills/excavator-product-handbook/lib/language-tag.mjs';
-import { SHIPPED_UI, clone, makeCheckedMapRun, runHandbook } from './helpers.mjs';
+import { SHIPPED_UI, clone, makeCheckedMapRun, markedMap, runHandbook } from './helpers.mjs';
 
 const cleanups = [];
 afterEach(() => {
@@ -202,10 +202,7 @@ describe('page: a translated run', () => {
   it('puts the translated table in the data and the language tag of the language', () => {
     const run = makeCheckedMapRun();
     cleanups.push(run.cleanup);
-    const map = clone(run.map);
-    map.language = 'Chinese';
-    run.writeMap(map);
-    expect(run.run('check-map').status).toBe(0);
+    // The fixed text first: the narrative of a run in a language with its own script is checked against it.
     const table = JSON.parse(readFileSync(SHIPPED_UI, 'utf-8'));
     table.language = 'Chinese';
     const word = cjk(0x624b, 0x518c);
@@ -213,6 +210,8 @@ describe('page: a translated run', () => {
       table.strings[key] = table.strings[key].replace(/[A-Za-z]+(?: [A-Za-z]+)*/g, (piece, offset, whole) => (whole[offset - 1] === '{' ? piece : `${word}${key}`));
     }
     run.writeJson(join(run.out, 'ui.json'), table);
+    run.writeMap(markedMap(run.map));
+    expect(run.run('check-map').status).toBe(0);
     expect(page(run).status).toBe(0);
     const data = dataOf(html(run));
     expect(data.language).toBe('Chinese');

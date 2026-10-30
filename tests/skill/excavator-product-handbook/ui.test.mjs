@@ -164,3 +164,41 @@ describe('check-ui for another language: each rejection, then the good table', (
     expect(ui(run).status).toBe(2);
   });
 });
+
+describe('check-ui --language: the fixed text is written before the map', () => {
+  const withoutMap = () => {
+    const run = makeRun();
+    cleanups.push(run.cleanup);
+    return run;
+  };
+  const uiFor = (run, language) => runHandbook(['check-ui', run.out, '--language', language]);
+
+  it('copies the English table for English with no map.json', () => {
+    const run = withoutMap();
+    const result = uiFor(run, 'English');
+    expect(result.status).toBe(0);
+    expect(result.lines[0]).toMatch(/^ui\.json: copied the English table/);
+    expect(existsSync(join(run.out, 'ui.json'))).toBe(true);
+  });
+
+  it('checks a translated table against the shipped one with no map.json, and refuses a missing one', () => {
+    const run = withoutMap();
+    const missing = uiFor(run, 'Chinese');
+    expect(missing.status).toBe(1);
+    expect(missing.stdout).toMatch(/ui\.json is missing; the run's language is Chinese/);
+    expect(existsSync(join(run.out, 'ui.json'))).toBe(false);
+    run.writeJson(join(run.out, 'ui.json'), translated(cjk(0x6587)));
+    expect(uiFor(run, 'Chinese').status).toBe(0);
+    const bad = translated(cjk(0x6587));
+    delete bad.strings['md.title'];
+    run.writeJson(join(run.out, 'ui.json'), bad);
+    expect(uiFor(run, 'Chinese').lines).toEqual(['ui.json: missing key "md.title"']);
+  });
+
+  it('takes the language from --language over map.json, and is still a usage error for a missing out directory', () => {
+    const run = newRun('English');
+    expect(uiFor(run, 'Chinese').stdout).toMatch(/the run's language is Chinese/);
+    rmSync(run.out, { recursive: true });
+    expect(uiFor(run, 'Chinese').status).toBe(2);
+  });
+});

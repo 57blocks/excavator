@@ -81,3 +81,10 @@ export function outsideLabels(hits, text, labels) {
   const ranges = [...labels].flatMap((label) => labelRanges(text, label));
   return hits.filter((hit) => !ranges.some(([start, end]) => start <= hit.start && hit.end <= end));
 }
+
+/** `text` with every occurrence of one of `labels` replaced by a space: what is left is the text a model wrote around the labels. */
+export function withoutLabels(text, labels) {
+  const masked = [...text];
+  for (const [start, end] of [...labels].flatMap((label) => labelRanges(text, label))) masked.fill(' ', start, end);
+  return masked.join('');
+}

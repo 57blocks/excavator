@@ -181,6 +181,57 @@ export function makeCheckedMapRun() {
   return run;
 }
 
+/** Non-ASCII text from code points, so that test sources hold only ASCII. */
+export const cjk = (...points) => String.fromCodePoint(...points);
+/** A CJK mark (two characters) put in front of every narrative text of a non-Latin test run. */
+export const MARK = cjk(0x624b, 0x518c);
+
+const markText = (text, mark) => `${mark}${text}`;
+
+/**
+ * A translation of the shipped table for the language `language`: every value
+ * gets `mark(index)` in front (`mark` returns '' to leave a value alone), the
+ * placeholders stay. The default mark is a CJK mark on every value.
+ */
+export function translatedUi(language = 'Chinese', mark = () => MARK) {
+  const table = JSON.parse(readFileSync(SHIPPED_UI, 'utf-8'));
+  table.language = language;
+  Object.keys(table.strings).forEach((key, index) => {
+    table.strings[key] = markText(table.strings[key], mark(index));
+  });
+  return table;
+}
+
+/** A table for a language written in Latin letters: fewer than half of the values hold an accented letter. */
+export const latinUi = (language = 'French') => translatedUi(language, (index) => (index % 4 === 0 ? cjk(0xe9) : ''));
+
+/** The good map with the texts a model writes (area names without evidence, feature names without a label, unassigned reasons) marked. */
+export function markedMap(map, language = 'Chinese', mark = MARK) {
+  const marked = clone(map);
+  marked.language = language;
+  for (const area of marked.areas) if (area.evidence === undefined) area.name = markText(area.name, mark);
+  for (const feature of marked.features) if (feature.label === undefined) feature.name = markText(feature.name, mark);
+  for (const entry of marked.unassigned) entry.reason = markText(entry.reason, mark);
+  return marked;
+}
+
+/** The good entry with every narrative text marked. */
+export function markedEntry(entry, mark = MARK) {
+  const marked = clone(entry);
+  marked.purpose.text = markText(marked.purpose.text, mark);
+  for (const who of marked.who) who.can = markText(who.can, mark);
+  for (const screen of marked.screens) for (const field of screen.fields) for (const rule of field.rules) rule.text = markText(rule.text, mark);
+  for (const operation of marked.operations) {
+    operation.name = markText(operation.name, mark);
+    for (const sentence of operation.sentences) sentence.text = markText(sentence.text, mark);
+  }
+  for (const state of marked.states) state.meaning = markText(state.meaning, mark);
+  for (const n of marked.notifications) for (const key of ['trigger', 'recipient', 'channel', 'content']) n[key] = markText(n[key], mark);
+  for (const a of marked.automatic) for (const key of ['when', 'effect']) a[key] = markText(a[key], mark);
+  for (const u of marked.unknowns) for (const key of ['item', 'searched']) u[key] = markText(u[key], mark);
+  return marked;
+}
+
 /** Set `value` at a dotted path of an object, e.g. set(map, 'features.0.label', 'x'). */
 export function set(object, path, value) {
   const keys = path.split('.');

@@ -13,7 +13,7 @@ Four rules govern everything below:
 1. **As-Is only, no advice.** Describe behavior that exists in the code. Never write what the product should do, what is wrong with it, or how to change it. Where the code does not settle something, say so as an unknown and say what was searched.
 2. **Nothing is dropped silently.** A script lists the entrypoint candidates (pages, routes, scheduled jobs, program starts). Every candidate belongs to exactly one feature or is listed as unassigned with a reason, and a script checks it.
 3. **Every value has a source.** Each label, rule, number and sentence of an entry carries a passage copied from the source file. Scripts check that the passage is in the file exactly once, that every label and number is in its own passage, and that the file is project source.
-4. **Readers see no code.** Reader-visible text contains no code-shaped words. A script refuses them; the rules are under **Reader text** in Phase 2.
+4. **Readers see no code.** Reader-visible text contains no code-shaped words. A script refuses them; the rules are under **Reader text** in Phase 3.
 
 ## How the work is split
 
@@ -42,7 +42,7 @@ All files of a run live in `$OUT`:
 - A directory path - the project to document (default: current working directory).
 - `--language <lang>` - the language of the handbook's narrative, its area names and fixed text, and of everything said to the user during the run; English when it is not given. Labels quoted from the source stay in their source language.
 - `--out <dir>` - where the run's files, the handbook and the page go (default: `<project>/.excavator/product-handbook`).
-- `--features <list>` - write entries only for these features, as a comma-separated list of feature ids or feature names (a name is matched ignoring case, as a whole name). The map still covers every candidate; the features without an entry are listed in the handbook as not written. Feature ids exist only after the map is written, which is why names are accepted: Phase 2 resolves the list with `select`.
+- `--features <list>` - write entries only for these features, as a comma-separated list of feature ids or feature names (a name is matched ignoring case, as a whole name). The map still covers every candidate; the features without an entry are listed in the handbook as not written. Feature ids exist only after the map is written, which is why names are accepted: Phase 3 resolves the list with `select`.
 - `--concurrency <n>` - how many lanes run at once (default: 3).
 - `--fresh` - start over instead of resuming an earlier run in the same `--out`.
 
@@ -84,7 +84,7 @@ Read only the project's source code and configuration. Never read anything under
      fi
      ```
      When it prints `fresh: refused, the directory holds other files`, tell the user `$OUT` holds other files, and stop.
-   - Without `--fresh`, an `$OUT` that holds files of an earlier run is resumed: each phase below skips what its files already show done. `candidates.json` is kept as it is (a run over changed source needs `--fresh`). When `$OUT/map.json` exists, read its language with `jq -r .language "$OUT/map.json"`; when it differs from `$RUN_LANGUAGE`, tell the user to run again with `--fresh`, and stop.
+   - Without `--fresh`, an `$OUT` that holds files of an earlier run is resumed: each phase below skips what its files already show done. `candidates.json` is kept as it is (a run over changed source needs `--fresh`). When `$OUT/map.json` exists, read its language with `jq -r .language "$OUT/map.json"`; when it differs from `$RUN_LANGUAGE`, tell the user to run again with `--fresh`, and stop. The fixed text (Phase 2) is written before the map, so an `$OUT` can hold a `ui.json` and no map: when `$OUT/ui.json` exists and `jq -r .language "$OUT/ui.json"` differs from `$RUN_LANGUAGE`, do the same.
    - Create `$OUT` when it does not exist (`mkdir -p "$OUT/entries"`) and continue with Phase 1.
 
 ---
@@ -105,7 +105,36 @@ The header says which frameworks were found, which have patterns (`covered`) and
 
 ---
 
-## Phase 2: The map
+## Phase 2: Fixed text
+
+Write what you tell the user during this phase in `$LANGUAGE`, as **Language** in Phase 0 says.
+
+The headings, table headers and other fixed words of `handbook.md` and of the page come from a table of fixed text that ships with this skill in English. This phase runs before the map on purpose: for a language with its own script the scripts check the narrative against the translated table (see **Language of the narrative** in Phase 3), so `check-map` and `check-entry` refuse a non-English run that has no checked `ui.json`.
+
+- When `$RUN_LANGUAGE` is `English`, there is nothing to do: the script uses the shipped table.
+- Otherwise, when `$OUT/ui.json` exists, run `check-ui` first; when it exits 0 skip the translation. Otherwise dispatch one subagent in the foreground with the prompt below, then check its file (`--language` is `$RUN_LANGUAGE`: there is no `map.json` yet to read the language from):
+  ```bash
+  node "$PLUGIN_ROOT/skills/excavator-product-handbook/handbook.mjs" check-ui "$OUT" --language "$RUN_LANGUAGE"
+  ```
+  Exit 1 prints one line for each key that is missing or extra, each value that is empty and each `{placeholder}` that is lost or added. Delete the file (`rm -f "$OUT/ui.json"`) and dispatch the subagent once more with its prompt followed by this line and then each line printed: `Your previous attempt failed these checks; fix them and write the file again:`. When `check-ui` still exits 1, the run fails: tell the user the lines it printed, as printed, and stop; run no further phase.
+
+The translation prompt:
+
+````text
+You translate the fixed text of a product handbook into $LANGUAGE.
+
+Your scope. Read only `$PLUGIN_ROOT/skills/excavator-product-handbook/ui-strings.json`; read no other file and no code. It holds a `format`, a `language` and `strings`, an object from keys to English texts: headings, table headers, short labels, buttons and sentences of a document for readers who do not read code.
+
+Translate every value into $LANGUAGE, in plain words, as short as the English. Keep every `{placeholder}` of a value exactly as written (same name, in braces) in the translated text, and add none: the program fills them with names, numbers and values. `page.documentTitle` is a pattern whose `{page}` receives the text of `page.nav.overview` or of `page.notFound.heading`, so write it to read right with either. Never translate a key. Add no key and leave none out.
+
+Write only `$OUT/ui.json`, and nothing else anywhere, in this shape: `{"format": "excavator-product-handbook-ui/1", "language": "$LANGUAGE", "strings": {"<key>": "<translated value>", ...}}` with exactly the keys of the English file and a non-empty string for each.
+
+Reply with one line: `ui: written`, and nothing else.
+````
+
+---
+
+## Phase 3: The map
 
 Write what you tell the user during this phase in `$LANGUAGE`, as **Language** in Phase 0 says.
 
@@ -122,7 +151,7 @@ If you split this reading across subagents, dispatch them in the foreground and 
   "areas": [{"id": "A1", "name": "<area as the reader sees it>", "evidence": [{"file": "<path from the project root>", "passage": "<text copied from that file>"}]}],
   "features": [{"id": "F1", "name": "<what the reader does>", "area": "A1", "reach": "menu", "label": "<menu text>", "evidence": [{"file": "...", "passage": "..."}], "candidates": ["c1", "c2"], "seedFiles": ["<path from the project root>"]}],
   "unassigned": [{"candidate": "c7", "reason": "<why no feature holds it, in plain words>"}],
-  "roles": [{"label": "<role as written in the source>", "evidence": [{"file": "...", "passage": "..."}]}],
+  "roles": [{"label": "<role name as the product shows it>", "evidence": [{"file": "...", "passage": "..."}]}],
   "names": [{"label": "<external product or system name>", "evidence": [{"file": "...", "passage": "..."}]}]
 }
 ```
@@ -137,7 +166,7 @@ If you split this reading across subagents, dispatch them in the foreground and 
   - `operator` - commands an operator runs: program starts, command-line tools, maintenance scripts.
   A `menu` or `link` feature needs `label` and `evidence`, and the label must occur in the quoted passage.
 - **Labels, quoted from the source.** A label is the text exactly as the product shows it, in the source's language, never translated. Quote the line that holds it. When a menu text lives in a translation file under a key, quote the translation file's line that holds the text, so the label occurs in the passage.
-- **Roles.** `roles` lists the user categories or permission levels the project defines, each as the source writes it, each with the line that defines it. Entries can name only these roles.
+- **Roles.** `roles` lists the user categories or permission levels the project defines, each with the line that defines it. Entries can name only these roles. Prefer the role name the product shows to its users: the entries of a role list or the options of a role select in the interface, a table of display names. Quote that line, so the label is the name a reader knows. Use the key the code uses (an enum value, often with an underscore) only when the product shows no name for that role: a code key passes the banned-word gate because it is a quoted label, and the reader would then see a code word where the product has a name.
 - **Names.** `names` lists the external products, systems and integrations the source names (a messaging service, a code host, a payment provider), each as written in the source with the line that shows it. They are often written in camel or mixed case; a name listed here, with its passage, may appear in reader text.
 - **Conservation.** Every candidate id in `candidates.json` appears in exactly one feature's `candidates` or in `unassigned` with a reason: test code, a dead registration, an outbound HTTP call a pattern mistook for a route, a health check no reader uses. The check prints each candidate that is missing and each that is assigned twice.
 - **Seed files.** A feature's `seedFiles` are the files its lane reads, and the lane reads nothing else except for searches: the entrypoint files, the files they call or import directly, the files that define the forms, validation, constants, enums, statuses and settings the feature reads, the menu file its `where` labels come from, and for a page the code that sends its requests and the backend handlers that serve them. Every path exists inside the project and is not under `.git`, `node_modules`, `vendor`, `dist`, `build` or `.excavator`.
@@ -151,13 +180,15 @@ Everything a reader sees (area names, feature names, labels, reasons, and later 
 - Labels stay in the source's language. The narrative, the area names you give and the reasons are written in `$LANGUAGE`.
 - Describe the product as it is. No advice, no judgment of the product.
 
+**Language of the narrative.** Everything you write yourself in the map (an area name without `evidence`, a feature name without a `label`, every reason in `unassigned`) is written in `$LANGUAGE`; a name quoted from the source stays as the source writes it. The scripts do not rely on this line alone: for a language with its own script (Chinese, Japanese, Korean, Russian and the like) they refuse any such text that holds no letter outside ASCII, and say which field. The fixed text of Phase 2 tells them which languages those are; a language written in Latin letters (French, Spanish) is not checked, and there the rule rests on you. A text made only of numbers and labels quoted from the source is not refused.
+
 ### Check and fix
 
 ```bash
 node "$PLUGIN_ROOT/skills/excavator-product-handbook/handbook.mjs" check-map "$OUT" --project "$PROJECT_ROOT"
 ```
 
-`check-map` exits 1 and prints, one per line, every candidate assigned twice or not at all, every shape problem, every label that is not in its passage, every passage that is not in its file exactly once (a short passage found twice needs a longer one), every path that is outside the project or under a skipped directory, every missing seed file and every code-shaped word in reader text. Fix `map.json` for each line and run it again; dispatch no lane until it exits 0. Fix the cause: quote the right passage, rename the feature, change its reach; never drop a candidate into `unassigned` with a reason that is not true. On exit 0 it prints `map ok: ...` and creates `state.json` with every feature planned. Then print the areas and the features to the user, one line each: id, name and reach.
+`check-map` exits 1 and prints, one per line, every candidate assigned twice or not at all, every shape problem, every label that is not in its passage, every passage that is not in its file exactly once (a short passage found twice needs a longer one), every path that is outside the project or under a skipped directory, every missing seed file, every code-shaped word in reader text and, for a language with its own script, every name or reason of yours written only in ASCII letters. When `$RUN_LANGUAGE` is not English and `$OUT/ui.json` is missing or fails `check-ui`, it prints one line saying so and a `Next:` line: go back to Phase 2, then run it again. Fix `map.json` for each line and run it again; dispatch no lane until it exits 0. Fix the cause: quote the right passage, rename the feature, change its reach; never drop a candidate into `unassigned` with a reason that is not true. On exit 0 it prints `map ok: ...` and creates `state.json` with every feature planned. Then print the areas and the features to the user, one line each: id, name and reach.
 
 ### `--features`
 
@@ -167,13 +198,13 @@ Without `--features`, every feature gets an entry. With `--features`, run this o
 node "$PLUGIN_ROOT/skills/excavator-product-handbook/handbook.mjs" select "$OUT" --features '<the --features value>' --project "$PROJECT_ROOT"
 ```
 
-- Exit 0: it prints the selected feature ids, one per line, in map order. Only those get lanes in Phase 3; `$SELECTED` is that list. Every other feature stays planned and is listed in the handbook as not written.
+- Exit 0: it prints the selected feature ids, one per line, in map order. Only those get lanes in Phase 4; `$SELECTED` is that list. Every other feature stays planned and is listed in the handbook as not written.
 - Exit 1: an item matched no feature or several (two features share a name). It prints each failing item, then every feature as `id  name`, then a `Next:` line. Stop the run here: tell the user the lines it printed, as printed, dispatch no lane and run no further command.
 - Exit 2: show its message and stop.
 
 ---
 
-## Phase 3: Entries
+## Phase 4: Entries
 
 Write what you tell the user during this phase in `$LANGUAGE`, as **Language** in Phase 0 says.
 
@@ -198,6 +229,7 @@ Write what you tell the user during this phase in `$LANGUAGE`, as **Language** i
    - Exit 1: the entry failed its checks. The last line it prints is a `Next:` line. Follow it:
      - `Next: delete <id>'s entry, mark it dispatched and re-dispatch it once with the lines above (attempt 2 of 2)`: delete the entry (`rm -f "$OUT/entries/<id>.json"`), mark the dispatch (as in step 2) and re-dispatch the lane once with its prompt followed by this line and then each line `check-entry` printed except the `Next:` line: `Your previous attempt failed these checks; fix them and write the file again:`. Check it again when it returns.
      - `Next: <id> stays failed (2 of 2 attempts)`: leave the feature failed, with its file kept for the user to see. Never make a third attempt.
+     - A `Next:` line that starts `Next: write ui.json first`: the fixed text of a non-English run is missing or fails `check-ui`, nothing was recorded and this is not an attempt. Stop dispatching, go back to Phase 2, then check this lane again.
    - Exit 2: the command could not run. Show its message and stop.
 
    Never edit `entries/<id>.json` or `state.json` yourself, and never widen a passage or reword an entry to make it pass. A lane that fails its checks is fixed only by its own second attempt. Statuses and attempts change only through these commands.
@@ -215,6 +247,8 @@ The roles an entry may name, and no others: <roles, one label per line>.
 The names of external products and systems that the map lists: <names, one label per line>.
 
 Write in `$LANGUAGE`, in plain words for a reader who does not read code. Describe what the product does today. Give no advice, no opinion and no defect report: never write what the product should do or what is wrong with it.
+
+Every narrative value of the JSON file below is written in $LANGUAGE: the purpose, what a role can do, the names and sentences of the operations, the rule texts, the meanings of states, the parts of a notification, the automatic behavior and the unknowns. Labels, screen names, `where` labels and the roles stay exactly as the source and the list above write them.
 
 Write one JSON file with exactly these keys, and no others. `E` stands for an evidence list, a non-empty array of `{"file": "<path from the project root>", "passage": "<text copied from that file>"}`:
 
@@ -251,38 +285,9 @@ Every key is always there: when a part does not apply to your feature, write an 
 
 **Negative and absolute statements.** Before you write that something is never sent, never checked, not done, always done or done regardless of a setting, and before you write a trigger ("done by the nightly job", "recalculated by an event") or an ordering ("checked before"), search the whole project (every module, listeners and their registrations, scheduler registrations, SQL and migration scripts, configuration) and keep the searched scope in mind. If you cannot settle it, do not write it as a fact: write it in `unknowns` with `item` and what you `searched`.
 
-**Check your file before you reply.** Run `node "$PLUGIN_ROOT/skills/excavator-product-handbook/handbook.mjs" try-entry "$OUT" <id> --project "$PROJECT_ROOT"`. It runs the same checks the orchestrator runs on your file and records nothing. Fix the file for every line it prints and run it again until it prints `<id>: ok`, at most 5 runs. A passage reported as not in its file is most often a real line that sits in another file: search for it (`grep -rnF`) and cite the file it is in, or quote the line of the cited file that does say it. An item whose source you cannot find leaves the entry, or goes into `unknowns`; never cut a passage down until it happens to match.
+**Check your file before you reply.** Run `node "$PLUGIN_ROOT/skills/excavator-product-handbook/handbook.mjs" try-entry "$OUT" <id> --project "$PROJECT_ROOT"`. It runs the same checks the orchestrator runs on your file and records nothing; when $LANGUAGE has its own script, it also refuses a narrative value that is written only in ASCII letters, so write those values in $LANGUAGE and not in English. Fix the file for every line it prints and run it again until it prints `<id>: ok`, at most 5 runs. A passage reported as not in its file is most often a real line that sits in another file: search for it (`grep -rnF`) and cite the file it is in, or quote the line of the cited file that does say it. An item whose source you cannot find leaves the entry, or goes into `unknowns`; never cut a passage down until it happens to match.
 
 Write only `$OUT/entries/<id>.json`, and nothing else anywhere. Reply with one line: `<id>: written`, and nothing else.
-````
-
----
-
-## Phase 4: Fixed text
-
-Write what you tell the user during this phase in `$LANGUAGE`, as **Language** in Phase 0 says.
-
-The headings, table headers and other fixed words of `handbook.md` and of the page come from a table of fixed text that ships with this skill in English.
-
-- When `$RUN_LANGUAGE` is `English`, there is nothing to do: the script uses the shipped table.
-- Otherwise, when `$OUT/ui.json` exists, run `check-ui` first; when it exits 0 skip the translation. Otherwise dispatch one subagent in the foreground with the prompt below, then check its file:
-  ```bash
-  node "$PLUGIN_ROOT/skills/excavator-product-handbook/handbook.mjs" check-ui "$OUT"
-  ```
-  Exit 1 prints one line for each key that is missing or extra, each value that is empty and each `{placeholder}` that is lost or added. Delete the file (`rm -f "$OUT/ui.json"`) and dispatch the subagent once more with its prompt followed by this line and then each line printed: `Your previous attempt failed these checks; fix them and write the file again:`. When `check-ui` still exits 1, the run fails: tell the user the lines it printed, as printed, and stop; run no further phase.
-
-The translation prompt:
-
-````text
-You translate the fixed text of a product handbook into $LANGUAGE.
-
-Your scope. Read only `$PLUGIN_ROOT/skills/excavator-product-handbook/ui-strings.json`; read no other file and no code. It holds a `format`, a `language` and `strings`, an object from keys to English texts: headings, table headers, short labels, buttons and sentences of a document for readers who do not read code.
-
-Translate every value into $LANGUAGE, in plain words, as short as the English. Keep every `{placeholder}` of a value exactly as written (same name, in braces) in the translated text, and add none: the program fills them with names, numbers and values. `page.documentTitle` is a pattern whose `{page}` receives the text of `page.nav.overview` or of `page.notFound.heading`, so write it to read right with either. Never translate a key. Add no key and leave none out.
-
-Write only `$OUT/ui.json`, and nothing else anywhere, in this shape: `{"format": "excavator-product-handbook-ui/1", "language": "$LANGUAGE", "strings": {"<key>": "<translated value>", ...}}` with exactly the keys of the English file and a non-empty string for each.
-
-Reply with one line: `ui: written`, and nothing else.
 ````
 
 ---
@@ -297,7 +302,7 @@ Write what you tell the user during this phase in `$LANGUAGE`, as **Language** i
    node "$PLUGIN_ROOT/skills/excavator-product-handbook/handbook.mjs" page "$OUT" --project "$PROJECT_ROOT"
    ```
    Both check the map, every checked entry and the fixed text again before they write anything. `assemble` writes `$OUT/handbook.md` (the areas and features, one section per feature, and a coverage section with the candidate counts, the unassigned candidates, the features reached by a link and the features without an entry) and prints its path. `page` writes `$OUT/handbook.html`, one page that opens from disk with a double click, and prints its path; a failed `page` removes the page an earlier run left.
-   - When `assemble` exits 1, show the lines. A line that says `entries/<id>.json no longer passes check-entry` means the source changed after the entry was checked: run `check-entry` for that feature, follow its `Next:` line as in Phase 3, and run `assemble` again. Any other line: stop.
+   - When `assemble` exits 1, show the lines. A line that says `entries/<id>.json no longer passes check-entry` means the source changed after the entry was checked: run `check-entry` for that feature, follow its `Next:` line as in Phase 4, and run `assemble` again. Any other line: stop.
    - When `page` exits 2 because the page template does not exist, tell the user to run `pnpm -r build` at `$PLUGIN_ROOT` and then run this command again (a run resumes, so only this phase repeats). Any other non-zero exit: tell the user the lines it printed as they are; do not build or edit any page or product file yourself. Either way, go on to the reply: it prints `Page: not written`.
    - Then tell the user `Page: <status>`, where `<status>` is `written` or `failed`, in `$LANGUAGE`.
 2. Reply. The handbook stays in `$OUT`: write it into the project only when the user says so.

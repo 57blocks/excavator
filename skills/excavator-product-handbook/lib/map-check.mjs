@@ -75,11 +75,12 @@ function seedProblems(map, files) {
 /**
  * All problems of a map against the candidates, and the labels it verifies.
  * A shape problem stops the rest: nothing else can be read from a malformed map.
+ * `languageCheck` is the run's mode from `languageGate` (language-check.mjs).
  */
-export function mapProblems(map, { candidates, files, memberDirs }) {
+export function mapProblems(map, { candidates, files, memberDirs, languageCheck = null }) {
   const shape = mapShapeProblems(map);
   if (shape.length > 0) return { problems: shape, verified: new Set() };
-  const review = reviewItems(mapItems(map), { files, memberDirs });
+  const review = reviewItems(mapItems(map), { files, memberDirs, languageCheck });
   const problems = [
     ...structureProblems(map),
     ...conservationProblems(map, candidates),
