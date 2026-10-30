@@ -29,9 +29,10 @@
 
 ## 5. skill（提交 5）
 
-- [ ] 5.1 `skills/excavator-product-handbook/SKILL.md`：选项、Phase 0 的语言段与 `PLUGIN_ROOT` 解析、地图写作指南（区域、到达方式、`link` 的判定、角色）、lane prompt（条目结构、引文与值的写法、阿拉伯数字、禁词、不读生成文档）、派发与重试、拼装与回复（D9、D10、D12）；非英文时派翻译固定文字表的子代理并跑 `check-ui`
-- [ ] 5.2 README 的 skill 列表；安装测试与加载夹具里的 skill 计数；skill 契约测试（选项、命令名、lane prompt 的关键规则存在）
-- [ ] 5.3 O1：三件套、`check-refs`、`legacy-literals`、`openspec validate --all --strict`
+- [x] 5.1 `handbook.mjs select`：把 `--features` 的每一项按 id 或功能名解析成 id，不匹配或多匹配时退出 1 并列出全部 id 与名称（D9）；测试先红后绿
+- [x] 5.1b `skills/excavator-product-handbook/SKILL.md`：选项、Phase 0 的语言段与 `PLUGIN_ROOT` 解析、地图写作指南（区域、到达方式、`link` 的判定、角色）、lane prompt（条目结构、引文与值的写法、阿拉伯数字、禁词、不读生成文档）、派发与重试、拼装与回复（D9、D10、D12）；非英文时派翻译固定文字表的子代理并跑 `check-ui`
+- [x] 5.2 README 的 skill 列表；安装测试与加载夹具里的 skill 计数；skill 契约测试（选项、命令名、lane prompt 的关键规则存在）
+- [x] 5.3 O1：三件套、`check-refs`、`legacy-literals`、`openspec validate --all --strict`
 
 ## 6. 验收（提交 6）
 

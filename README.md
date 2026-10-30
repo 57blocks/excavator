@@ -100,7 +100,7 @@ Then ask questions:
 
 **Model usage:** the Lazy fact-building driver makes no model or subagent calls. The host AI still interprets the skill and your questions, and may review ignore rules before the driver runs, so this is not a promise of zero tokens for the whole interaction. Questions that need semantics can generate and cache node-local English summaries. `/excavator:excavator --mode=full` pre-generates missing or stale summaries and architecture; `--full` also forces the rebuild path. See [Lazy Mode](docs/lazy-mode.md).
 
-Excavator runs through the host and local scripts, without a persistent web application server. `/excavator:excavator-view`, `/excavator:excavator-prd-report`, and `/excavator:skopo-report` can write standalone HTML pages.
+Excavator runs through the host and local scripts, without a persistent web application server. `/excavator:excavator-view`, `/excavator:excavator-prd-report`, `/excavator:excavator-product-handbook`, and `/excavator:skopo-report` can write standalone HTML pages.
 
 For seven bounded local MCP tools, see [MCP setup](docs/mcp.md). Installing Skills alone does not register MCP in Codex; the server also needs dependencies and the core build in its own plugin directory.
 
@@ -134,6 +134,10 @@ For seven bounded local MCP tools, see [MCP setup](docs/mcp.md). Installing Skil
 # Default: .excavator/prd-report/; --out changes it; --concurrency defaults to 3
 # Reruns resume unfinished features at the same source revision
 /excavator:excavator-prd-report
+
+# Write a product handbook for non-technical readers: a map of areas and features, one entry per feature with every value quoted from the source, handbook.md and a standalone HTML page (no advice)
+# Default: .excavator/product-handbook/; --out changes it; --language picks the handbook's language (English by default); --features limits which entries are written; reruns resume
+/excavator:excavator-product-handbook
 
 # Verify an As-Is document (e.g. a PRD) against the code; --fix corrects it in place
 /excavator:excavator-verify docs/PRD.md

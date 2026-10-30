@@ -10,6 +10,10 @@
  *   check-map <out> --project <root>
  *       Check <out>/map.json: shape, candidate conservation, reach and labels,
  *       roles, seed files, citations, values, banned words; create state.json.
+ *   select <out> --features <list> --project <root>
+ *       Resolve a --features list of ids or feature names to ids against the
+ *       checked map; exit 1 and list every id and name when an item does not
+ *       match exactly one feature. Changes no file.
  *   check-entry <out> <featureId> --project <root>
  *       Check <out>/entries/<featureId>.json and record the result in state.json.
  *   mark <out> <featureId> dispatched | failed lane <reason>... --project <root>
@@ -19,6 +23,9 @@
  *       table there when the run's language is English.
  *   assemble <out> --project <root>
  *       Write <out>/handbook.md, byte for byte the same from the same input.
+ *   reply <out> --project <root>
+ *       Print the lines the run ends with (paths, feature counts by status,
+ *       candidate conservation), computed from the checked run.
  *   page <out> --project <root>
  *       Write <out>/handbook.html from the same checked run: one file that
  *       opens from disk, no network, the same bytes from the same input.
@@ -40,6 +47,8 @@ import { withStateLock } from './lib/lock.mjs';
 import { mark } from './lib/mark.mjs';
 import { writePage } from './lib/page.mjs';
 import { projectRootOption } from './lib/project-root.mjs';
+import { replyLines } from './lib/reply.mjs';
+import { selectFeatures } from './lib/select.mjs';
 import { checkUi } from './lib/ui.mjs';
 
 const USAGE = `Usage: node handbook.mjs <command> [arguments]
@@ -53,6 +62,13 @@ Commands:
       shape, every candidate in exactly one feature or in unassigned, reach and
       labels, roles, seed files, citations, values and banned words. Creates
       <out>/state.json (every feature planned) when the map passes.
+  select <out> --features <list> --project <root>
+      Resolve the --features list (comma-separated feature ids or feature names;
+      a name is equal ignoring case and surrounding spaces) to feature ids
+      against the checked map and print the ids, one per line, in map order.
+      Every item must match exactly one feature; otherwise print each failing
+      item and then every feature as "id  name", end with a Next: line and
+      exit 1. No fuzzy matching. Changes no file.
   check-entry <out> <featureId> --project <root>
       Check <out>/entries/<featureId>.json: shape, roles from the map,
       citations, labels, numbers and banned words, and record the result in
@@ -76,6 +92,13 @@ Commands:
       page; light and dark; every fixed text from <out>/ui.json). Removes an
       earlier handbook.html first, so a refused run leaves none. Needs the
       built template: run \`pnpm -r build\` at the plugin root. Prints the path.
+
+  reply <out> --project <root>
+      Print the lines a finished run is answered with, in this order: the path
+      of handbook.md; "Page: <path>" or "Page: not written"; "Features: <n>"
+      with the count of each status; "Failed: <ids>" when a feature failed; the
+      candidate conservation line. Checks the run again first; exits 1 with a
+      Next: line when handbook.md is missing. Changes no file.
 
 <out> is the run's output directory (candidates.json, map.json, entries/,
 state.json, ui.json). --project <root> is the project the run documents; files
@@ -122,6 +145,13 @@ const COMMANDS = {
     const root = projectRootOption(options.project);
     return withStateLock(positionals[0], () => report(checkMap(positionals[0], root)));
   },
+  select(args) {
+    const { positionals, options } = parseArgs(args, ['project', 'features']);
+    if (positionals.length !== 1) throw new UsageError('select takes exactly one <out> directory');
+    if (options.features === undefined) throw new UsageError('select needs --features <list>');
+    const root = projectRootOption(options.project);
+    return report(selectFeatures(positionals[0], root, options.features));
+  },
   'check-entry'(args) {
     const { positionals, options } = parseArgs(args, ['project']);
     if (positionals.length !== 2) throw new UsageError('check-entry takes <out> and <featureId>');
@@ -144,6 +174,11 @@ const COMMANDS = {
     const { positionals, options } = parseArgs(args, ['project']);
     if (positionals.length !== 1) throw new UsageError('assemble takes exactly one <out> directory');
     return report(assemble(positionals[0], projectRootOption(options.project)));
+  },
+  reply(args) {
+    const { positionals, options } = parseArgs(args, ['project']);
+    if (positionals.length !== 1) throw new UsageError('reply takes exactly one <out> directory');
+    return report(replyLines(positionals[0], projectRootOption(options.project)));
   },
   page(args) {
     const { positionals, options } = parseArgs(args, ['project']);
