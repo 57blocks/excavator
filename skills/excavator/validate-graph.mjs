@@ -40,7 +40,14 @@
  *      (required node fields, duplicate ids, dangling endpoints, layer and
  *      file nodes in a layer and orphan warnings).
  *   5. domain steps — a `step` node needs `nodeIds` that exist in the graph,
- *      or `provenance: "inferred"`. Otherwise: gap `step-unanchored`.
+ *      or `provenance: "inferred"`. Otherwise: gap `step-unanchored`. A domain
+ *      graph holds no code nodes, so its steps name nodes of the knowledge
+ *      graph: with `--reference <knowledge-graph>` a `nodeIds` entry resolves
+ *      against the graph's own nodes and the reference's node ids together
+ *      (nothing else of the reference is read). Every step lands in exactly one
+ *      bucket, counted as `stepsAnchored`, `stepsInferred` or `stepUnanchored`,
+ *      and the three add up to `stepsTotal`. A reference that is named but
+ *      cannot be read fails the run and writes nothing.
  *
  * A source file that cannot be read is counted (`source-missing`), never
  * treated as a contradiction: "we could not look" is not "the graph is wrong".
@@ -54,6 +61,7 @@
  *   node validate-graph.mjs <projectRoot>
  *     [--graph <annotated-graph.json>] [--out <validated-graph.json>]
  *     [--report <validation.json>] [--samples <n>]
+ *     [--reference <knowledge-graph.jsonl|.json>]
  *
  * Exit code is 0 whenever the run completed: findings are data, not a crash.
  * Determinism: no timestamps, all findings sorted, samples capped.
@@ -770,7 +778,7 @@ function sampler(limit) {
  * The whole validation. Pure except for the source reader it is handed, so it
  * is testable against a fixture project without a subprocess.
  */
-export function validateAgainstSource({ graph, reader, sampleLimit = 5, layers: layersInput }) {
+export function validateAgainstSource({ graph, reader, sampleLimit = 5, layers: layersInput, referenceNodeIds }) {
   const validated = JSON.parse(JSON.stringify(graph));
   validated.nodes = Array.isArray(validated.nodes) ? validated.nodes : [];
   validated.edges = Array.isArray(validated.edges) ? validated.edges : [];
@@ -791,6 +799,9 @@ export function validateAgainstSource({ graph, reader, sampleLimit = 5, layers: 
     sourceMissing: 0,
     pathOutOfScope: 0,
     constructTooLong: 0,
+    stepsTotal: 0,
+    stepsAnchored: 0,
+    stepsInferred: 0,
     stepUnanchored: 0,
   };
 
@@ -1027,9 +1038,15 @@ export function validateAgainstSource({ graph, reader, sampleLimit = 5, layers: 
   for (const node of validated.nodes) {
     if (!node || node.type !== 'step') continue;
     const ids = Array.isArray(node.nodeIds) ? node.nodeIds : [];
-    const resolvable = ids.filter((id) => nodeById.has(id));
-    if (resolvable.length > 0) continue;
-    if (node.provenance === 'inferred') continue;
+    counts.stepsTotal += 1;
+    if (ids.some((id) => nodeById.has(id) || referenceNodeIds?.has(id))) {
+      counts.stepsAnchored += 1;
+      continue;
+    }
+    if (node.provenance === 'inferred') {
+      counts.stepsInferred += 1;
+      continue;
+    }
     counts.stepUnanchored += 1;
     findings.stepUnanchored.push({
       nodeId: node.id,
@@ -1090,8 +1107,8 @@ export function validateAgainstSource({ graph, reader, sampleLimit = 5, layers: 
 // ---------------------------------------------------------------------------
 
 function parseArgs(argv) {
-  const args = { projectRoot: null, graph: null, out: null, report: null, sampleLimit: 5 };
-  const valueFlags = { '--graph': 'graph', '--out': 'out', '--report': 'report' };
+  const args = { projectRoot: null, graph: null, out: null, report: null, reference: null, sampleLimit: 5 };
+  const valueFlags = { '--graph': 'graph', '--out': 'out', '--report': 'report', '--reference': 'reference' };
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
     if (arg === '--samples') {
@@ -1113,7 +1130,7 @@ function parseArgs(argv) {
     throw new Error(`validate-graph: unexpected argument: ${arg}`);
   }
   if (!args.projectRoot) {
-    throw new Error('Usage: node validate-graph.mjs <projectRoot> [--graph <path>] [--out <path>] [--report <path>]');
+    throw new Error('Usage: node validate-graph.mjs <projectRoot> [--graph <path>] [--out <path>] [--report <path>] [--reference <path>]');
   }
   return args;
 }
@@ -1126,6 +1143,30 @@ function readSemanticLayers(dir) {
   } catch {
     return undefined;
   }
+}
+
+/**
+ * The node ids of a reference graph (`.jsonl` store or whole-document `.json`).
+ * Only ids are kept: the reference resolves step anchors and is never merged
+ * into the graph under validation. A reference that is missing, unparseable or
+ * has no `nodes` array throws, so no report is written.
+ */
+function readReferenceNodeIds(path) {
+  if (!existsSync(path)) throw new Error(`validate-graph: reference graph not found: ${path}`);
+  let ref;
+  try {
+    ref = path.endsWith('.jsonl') ? readKnowledgeGraph(path) : JSON.parse(readFileSync(path, 'utf-8'));
+  } catch (err) {
+    throw new Error(`validate-graph: reference graph unreadable: ${path} (${err.message})`);
+  }
+  if (!ref || !Array.isArray(ref.nodes)) {
+    throw new Error(`validate-graph: reference graph has no nodes array: ${path}`);
+  }
+  const ids = new Set();
+  for (const node of ref.nodes) {
+    if (node && typeof node.id === 'string') ids.add(node.id);
+  }
+  return ids;
 }
 
 async function main() {
@@ -1143,8 +1184,13 @@ async function main() {
     ? readKnowledgeGraph(graphPath)
     : JSON.parse(readFileSync(graphPath, 'utf-8'));
 
+  // Read before anything is written: an unreadable reference must not leave a
+  // report in which every anchored step has become unanchored.
+  const referenceNodeIds = args.reference ? readReferenceNodeIds(resolve(args.reference)) : undefined;
+
   const { validated, report } = validateAgainstSource({
     graph,
+    referenceNodeIds,
     layers: Array.isArray(graph.layers) && graph.layers.length > 0 ? undefined : readSemanticLayers(dirname(graphPath)),
     reader: createSourceReader(projectRoot),
     sampleLimit: args.sampleLimit,
@@ -1163,7 +1209,8 @@ async function main() {
   process.stderr.write(
     `validate-graph: nodes-checked=${c.nodesChecked} anchor-mismatch=${c.anchorMismatch} ` +
     `edges-checked=${c.edgesChecked} edge-contradicted=${c.edgeContradicted} ` +
-    `edges-inferred=${c.edgesInferred} step-unanchored=${c.stepUnanchored} ` +
+    `edges-inferred=${c.edgesInferred} steps-total=${c.stepsTotal} ` +
+    `steps-anchored=${c.stepsAnchored} steps-inferred=${c.stepsInferred} step-unanchored=${c.stepUnanchored} ` +
     `source-missing=${c.sourceMissing} path-out-of-scope=${c.pathOutOfScope} ` +
     `construct-too-long=${c.constructTooLong} issues=${report.issues.length}\n`,
   );
