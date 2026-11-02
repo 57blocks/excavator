@@ -247,6 +247,7 @@ describe('excavator-product-handbook skill: candidates and map', () => {
     expect(p).toContain('A `menu` or `link` feature needs `label` and `evidence`, and the label must occur in the quoted passage.');
     expect(p).toContain('Every candidate id in `candidates.json` appears in exactly one feature\'s `candidates` or in `unassigned` with a reason');
     expect(p).toContain('`names` lists the external products');
+    expect(p).toContain('the files its lane reads first');
   });
 
   it('lists the reader-text rules, naming every banned class, Arabic numerals and source-language labels', () => {
@@ -344,7 +345,24 @@ describe('excavator-product-handbook skill: the lane prompt', () => {
     expect(prompt).toContain('Never read anything under `.excavator/` and never read a document that an Excavator skill generated');
     expect(prompt).toContain('Read code only; never run, build or change anything in the project.');
     expect(prompt).toContain('--exclude-dir=.excavator');
-    expect(prompt).toContain('Read only these files: <seedFiles, one per line>');
+    expect(prompt).toContain('Start with these files, the seed files: <seedFiles, one per line>');
+  });
+
+  it('follows calls and imports out of the seed files, at most 20 more files, and settles an unknown first', () => {
+    for (const text of [
+      '**Following out of the seed files.**',
+      'The seed files are where you start, not a fence.',
+      'Open at most 20 files that are not seed files, in all; searches do not count.',
+      'never list or walk a directory to see what is in it',
+      'Before you write an item in `unknowns`, follow the call or import that could settle it.',
+      'who receives a notification and what it says',
+      'which columns a list shows, how it is sorted by default and how it can be filtered',
+      'what a detail page shows',
+      'When the 20 are spent, open no more',
+    ]) {
+      expect(prompt, text).toContain(text);
+    }
+    expect(prompt).toContain('Beyond them, open only the files that **Following out of the seed files** allows');
   });
 
   it('forbids code-shaped words in reader text, naming each class', () => {
