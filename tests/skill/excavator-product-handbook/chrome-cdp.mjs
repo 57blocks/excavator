@@ -47,7 +47,8 @@ export class Browser {
     ];
     // A container runs Chrome as root, which refuses to start without this.
     if (process.env.CI || (typeof process.getuid === 'function' && process.getuid() === 0)) args.unshift('--no-sandbox');
-    const child = spawn(executable, args, { stdio: ['ignore', 'ignore', 'pipe', 'pipe', 'pipe'] });
+    // Its own process group, so close() can stop Chrome's helper processes too.
+    const child = spawn(executable, args, { stdio: ['ignore', 'ignore', 'pipe', 'pipe', 'pipe'], detached: true });
     return new Browser(child, profile);
   }
 
@@ -117,16 +118,25 @@ export class Browser {
     return page;
   }
 
+  // Killing only the browser process leaves its helper processes running, and
+  // they keep writing into the profile, so removing it fails with ENOTEMPTY.
+  // Ask Chrome to close (it stops its helpers), then kill the whole process
+  // group for whatever is left, and only then remove the profile.
   async close() {
+    const exited = new Promise((resolve) => {
+      if (this.exited) resolve();
+      else this.child.once('exit', resolve);
+    });
     if (!this.exited) {
-      this.child.kill('SIGKILL');
-      await new Promise((resolve) => {
-        if (this.exited) resolve();
-        else this.child.once('exit', resolve);
-      });
+      this.send('Browser.close').catch(() => {});
+      await Promise.race([exited, new Promise((resolve) => setTimeout(resolve, 5000))]);
     }
-    // Chrome's helper processes can outlive the killed browser for a moment and
-    // still write into the profile: retry instead of failing with ENOTEMPTY.
+    try {
+      process.kill(-this.child.pid, 'SIGKILL');
+    } catch {
+      // The group is already gone.
+    }
+    await exited;
     rmSync(this.profile, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
   }
 }
