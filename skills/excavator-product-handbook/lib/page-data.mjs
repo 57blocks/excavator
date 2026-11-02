@@ -3,7 +3,8 @@
  * checked run, with its keys in a fixed order. It holds the text of the map
  * and of each verified entry, never their evidence, so it holds no citation
  * path; and no time and no absolute path: the same run gives the same object.
- * Pure: the caller loads the run (load-run.mjs).
+ * The caller loads the run (load-run.mjs); the only other read is the cited
+ * source the summary locates its job descriptions in (summary.mjs).
  */
 
 import { basename } from 'node:path';
@@ -11,8 +12,9 @@ import { basename } from 'node:path';
 import { reachCounts } from './render.mjs';
 import { languageTag } from './language-tag.mjs';
 import { withoutRootPaths } from './root-paths.mjs';
+import { buildSummary } from './summary.mjs';
 
-export const PAGE_FORMAT = 'excavator-product-handbook-page/1';
+export const PAGE_FORMAT = 'excavator-product-handbook-page/2';
 
 /** An entry without its evidence, in the page's shape. */
 function pageEntry(entry) {
@@ -35,7 +37,7 @@ function pageEntry(entry) {
 /**
  * The page data of a loaded run (`loadCheckedRun`'s result). `roots` are the
  * paths of the project, each replaced by the project's directory name in every
- * string; the first is the real path.
+ * string; the first is the real path, which the summary reads the source from.
  */
 export function buildPageData(run, roots) {
   const { map, entries, state, candidates, ui } = run;
@@ -69,6 +71,7 @@ export function buildPageData(run, roots) {
           items: state.features[feature.id].removed.map((item) => ({ claim: item.claim, verdict: item.verdict, reason: item.reason })),
         })),
     },
+    summary: buildSummary(run, roots[0]),
   };
   return withoutRootPaths(data, roots, project);
 }

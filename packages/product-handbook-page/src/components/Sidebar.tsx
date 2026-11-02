@@ -1,9 +1,9 @@
 import { REACHES } from '../lib/types';
 import type { Area, Feature } from '../lib/types';
-import { COVERAGE_HASH, OVERVIEW_HASH, featureHash } from '../lib/route';
+import { COVERAGE_HASH, JOBS_HASH, NOTIFICATIONS_HASH, OVERVIEW_HASH, featureHash } from '../lib/route';
 import type { Route } from '../lib/route';
 import { useText } from '../lib/text';
-import { CoverageIcon, OverviewIcon } from './Icons';
+import { BellIcon, ClockIcon, CoverageIcon, OverviewIcon } from './Icons';
 import { ReachDot } from './ReachBadge';
 
 interface Props {
@@ -15,7 +15,7 @@ interface Props {
 }
 
 /**
- * The navigation: overview, coverage, then the areas with their features, each
+ * The navigation: overview, the two cross-cutting tables, coverage, then the areas with their features, each
  * feature marked with its reach, and a key to the marks. Below 900px it is a
  * drawer that the top bar's button opens.
  */
@@ -37,6 +37,14 @@ export function Sidebar({ areas, features, route, open, onNavigate }: Props) {
         <a className="rail-link" href={OVERVIEW_HASH} aria-current={route.name === 'overview' ? 'page' : undefined}>
           <OverviewIcon />
           <span>{t('page.nav.overview')}</span>
+        </a>
+        <a className="rail-link" href={NOTIFICATIONS_HASH} aria-current={route.name === 'notifications' ? 'page' : undefined}>
+          <BellIcon />
+          <span>{t('page.nav.notifications')}</span>
+        </a>
+        <a className="rail-link" href={JOBS_HASH} aria-current={route.name === 'jobs' ? 'page' : undefined}>
+          <ClockIcon />
+          <span>{t('page.nav.jobs')}</span>
         </a>
         <a className="rail-link" href={COVERAGE_HASH} aria-current={route.name === 'coverage' ? 'page' : undefined}>
           <CoverageIcon />
