@@ -125,7 +125,9 @@ export class Browser {
         else this.child.once('exit', resolve);
       });
     }
-    rmSync(this.profile, { recursive: true, force: true });
+    // Chrome's helper processes can outlive the killed browser for a moment and
+    // still write into the profile: retry instead of failing with ENOTEMPTY.
+    rmSync(this.profile, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 });
   }
 }
 
