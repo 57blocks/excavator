@@ -14,10 +14,12 @@
  * part and letter, and records nothing. Round 1 sends every item that is
  * not verified to the rewrite file (`unverified` and `contradicted` alike: a
  * reader cannot check the code, so a sentence that cannot be proved is not
- * left in); with none, the feature is verified. Round 2 removes the items that
+ * left in); with none, the feature is confirmed. Round 2 removes the items that
  * are still not verified from the entry in place, records them in state.json,
- * and verifies the feature, or fails it when no item that carries evidence is
+ * and confirms the feature, or fails it when no item that carries evidence is
  * left (the purpose is removed like any other item and does not fail it).
+ * A feature either round settles is `confirmed`, not `verified`: the tracer of
+ * trace.mjs and trace-verdicts.mjs looks for counter-evidence next (design D14).
  */
 
 import { mkdirSync, rmSync } from 'node:fs';
@@ -30,13 +32,12 @@ import { reviewItems } from './review.mjs';
 import { loadState, saveState, entryDigest } from './state.mjs';
 import { checkedFeature, planRound } from './slices.mjs';
 import { combineVerdicts } from './combine-verdicts.mjs';
-import { trimEntry } from './trim-entry.mjs';
+import { removalRecords } from './removal-records.mjs';
 import { VERIFIERS, fileItems, partFile, rewriteFilePath, splitParts, verdictPartPath, verifyPartPath } from './verify-plan.mjs';
 
 export const VERDICTS = Object.freeze(['verified', 'unverified', 'contradicted']);
 
 const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
-const isAncestor = (ancestor, path) => path.startsWith(`${ancestor}.`);
 
 /** Every way the verdict file departs from one verdict per item; `files` are the files the items cite. */
 export function verdictProblems(raw, items, files) {
@@ -84,24 +85,8 @@ export function reasonProblems(verdictList, { entry, loaded }) {
   return reviewItems(gated, { files, memberDirs, exemptLabels: new Set([...mapLabels, ...entryLabels]), languageCheck }).problems;
 }
 
-/** Records for the items round 2 removes, in entry order, plus the operations left without a sentence. */
-function removalRecords(entry, removedByVerdict, verdictOf, claimOf) {
-  const removed = new Set(removedByVerdict);
-  const { entry: trimmed, together } = trimEntry(entry, removed);
-  const order = entryItems(entry).map((item) => item.path);
-  const emptiedOperations = together.filter((path) => /^operations\[\d+\]$/.test(path));
-  const paths = [...new Set([...removed, ...together.filter((path) => !emptiedOperations.includes(path))])].sort((a, b) => order.indexOf(a) - order.indexOf(b));
-  const records = paths.map((path) => {
-    const underRemoved = [...removed].some((ancestor) => isAncestor(ancestor, path));
-    if (!removed.has(path) || underRemoved) return { path, claim: claimOf(path), verdict: 'withParent', reason: '' };
-    return { path, claim: claimOf(path), verdict: verdictOf(path).verdict, reason: verdictOf(path).reason };
-  });
-  for (const path of emptiedOperations) {
-    const index = Number(path.match(/\d+/)[0]);
-    records.push({ path, claim: entry.operations[index].name, verdict: 'withParent', reason: '' });
-  }
-  return { trimmed, records };
-}
+/** The last line of a settled feature: the tracer is next (trace.mjs). */
+const traceNext = (id) => `Next: run trace for ${id}, dispatch one excavator-handbook-tracer per part, then run trace-verdicts`;
 
 const joinAnd = (list) => (list.length < 2 ? list.join('') : `${list.slice(0, -1).join(', ')} and ${list.at(-1)}`);
 const partNoun = (list) => (list.length === 1 ? 'part' : 'parts');
@@ -196,9 +181,9 @@ export function verdicts(outDir, id, root, round) {
   if (round === 1) {
     if (notVerified.length === 0) {
       rmSync(rewriteFilePath(outDir, id), { force: true });
-      state.features[id] = { status: 'verified', attempts, entryDigest: entryDigest(join(outDir, entryPath(id))) };
+      state.features[id] = { status: 'confirmed', attempts, entryDigest: entryDigest(join(outDir, entryPath(id))) };
       saveState(outDir, state);
-      return { status: 0, lines: [`${id}: verified (${plural(plan.items.length, 'item')})`] };
+      return { status: 0, lines: [`${id}: confirmed (${plural(plan.items.length, 'item')})`, traceNext(id)] };
     }
     const rewritePath = rewriteFilePath(outDir, id);
     mkdirSync(dirname(rewritePath), { recursive: true });
@@ -237,10 +222,10 @@ function roundTwo({ outDir, id, plan, state, attempts, notVerified, verdictOf })
   const problems = entryProblems(trimmed, id, plan.loaded, { settled: true });
   if (problems.length > 0) throw new Error(`the trimmed entry of ${id} fails check-entry (a bug in verdicts):\n${problems.join('\n')}`);
   writeJson(join(outDir, entryPath(id)), trimmed);
-  const next = { status: 'verified', attempts, entryDigest: entryDigest(join(outDir, entryPath(id))) };
+  const next = { status: 'confirmed', attempts, entryDigest: entryDigest(join(outDir, entryPath(id))) };
   if (removed.length > 0) next.removed = removed;
   state.features[id] = next;
   saveState(outDir, state);
   const verdictCount = plan.items.length;
-  return { status: 0, lines: [removed.length > 0 ? `${id}: verified, ${plural(removed.length, 'item')} removed` : `${id}: verified (${plural(verdictCount, 'item')})`] };
+  return { status: 0, lines: [removed.length > 0 ? `${id}: confirmed, ${plural(removed.length, 'item')} removed` : `${id}: confirmed (${plural(verdictCount, 'item')})`, traceNext(id)] };
 }

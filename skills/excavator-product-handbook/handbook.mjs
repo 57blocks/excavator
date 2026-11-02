@@ -28,6 +28,15 @@
  *       Record the verifier's verdicts for the round: one per item, nothing
  *       recorded when that does not hold; round 1 lists the items to rewrite,
  *       round 2 removes what is still not verified and verifies the feature.
+ *   trace <out> <featureId> --project <root>
+ *       For a confirmed feature (both verifiers settled it), write the items it
+ *       still holds as trace files for tracers that read the whole project and
+ *       look only for code that contradicts a claim (design D14).
+ *   trace-verdicts <out> <featureId> --project <root>
+ *       Record the tracers' verdicts: one per item, holds or contradicted, a
+ *       contradicted one with a position inside the project; remove the
+ *       contradicted items and verify the feature, nothing recorded when any
+ *       file does not hold.
  *   check-ui <out> [--language <name>]
  *       Check <out>/ui.json against the shipped English table, or copy that
  *       table there when the run's language is English. The fixed text is
@@ -41,7 +50,7 @@
  *       Write <out>/handbook.html from the same checked run: one file that
  *       opens from disk, no network, the same bytes from the same input.
  *
- * check-map, check-entry, mark and verdicts hold <out>/state.json.lock while they run.
+ * check-map, check-entry, mark, verdicts and trace-verdicts hold <out>/state.json.lock while they run.
  * In a run whose language is not English, check-map, check-entry, try-entry,
  * assemble and page also check that each narrative text holds a letter of the
  * language when it has its own script (design D12); they need a checked
@@ -65,6 +74,8 @@ import { projectRootOption } from './lib/project-root.mjs';
 import { replyLines } from './lib/reply.mjs';
 import { selectFeatures } from './lib/select.mjs';
 import { slices } from './lib/slices.mjs';
+import { trace } from './lib/trace.mjs';
+import { traceVerdicts } from './lib/trace-verdicts.mjs';
 import { checkUi } from './lib/ui.mjs';
 import { ROUNDS } from './lib/verify-plan.mjs';
 import { verdicts } from './lib/verdicts.mjs';
@@ -127,9 +138,28 @@ Commands:
       <out>/rewrite/<featureId>.json (none: the feature is verified at once).
       Round 2 removes the items that are still not verified from the entry
       (what hangs on them goes with them), records them in state.json and
-      verifies the feature, the purpose included (it is removed like any
+      confirms the feature, the purpose included (it is removed like any
       item); only when every item that carries evidence is removed does it
-      fail at step verify.
+      fail at step verify. A confirmed feature still has to be traced.
+  trace <out> <featureId> --project <root>
+      Only for a confirmed feature. Write <out>/trace/<featureId>/part-<n>.json:
+      the items of the entry that still carry evidence, each with its id, its
+      claim (as the verify files hold it) and the file and line range of each
+      cited passage, no code, in entry order, at most 25 items a part. Removes
+      the feature's older trace and trace-verdict files first. Prints, for each
+      part, the trace file and the verdict file its tracer must write.
+  trace-verdicts <out> <featureId> --project <root>
+      Read <out>/trace-verdicts/<featureId>/part-<n>.json for every part
+      ({ "verdicts": [{ "id", "verdict", "reason", "at"? }] }): exactly one
+      verdict per item of the part, each holds or contradicted, with a one-line
+      reason; a contradicted verdict needs at least one at entry { file, line }
+      that names an existing file inside the project (never read outside it)
+      and a line of that file, and its reason passes the reader-text gate. Any
+      failure prints every problem by part, names the parts to dispatch again,
+      and records nothing. Otherwise each contradicted item is removed from the
+      entry (what hangs on it goes with it) and recorded in state.json with
+      step trace and its at positions, and the feature is verified; when no
+      item that carries evidence is left, it fails at step trace.
   check-ui <out> [--language <name>]
       Run in English with no <out>/ui.json: copy the shipped English table
       there. Otherwise check <out>/ui.json: the same keys as the English table,
@@ -243,6 +273,17 @@ const COMMANDS = {
     if (round === 0) throw new UsageError('verdicts --round must be 1 or 2');
     const root = projectRootOption(options.project);
     return withStateLock(positionals[0], () => report(verdicts(positionals[0], positionals[1], root, round)));
+  },
+  trace(args) {
+    const { positionals, options } = parseArgs(args, ['project']);
+    if (positionals.length !== 2) throw new UsageError('trace takes <out> and <featureId>');
+    return report(trace(positionals[0], positionals[1], projectRootOption(options.project)));
+  },
+  'trace-verdicts'(args) {
+    const { positionals, options } = parseArgs(args, ['project']);
+    if (positionals.length !== 2) throw new UsageError('trace-verdicts takes <out> and <featureId>');
+    const root = projectRootOption(options.project);
+    return withStateLock(positionals[0], () => report(traceVerdicts(positionals[0], positionals[1], root)));
   },
   'check-ui'(args) {
     const { positionals, options } = parseArgs(args, ['language']);

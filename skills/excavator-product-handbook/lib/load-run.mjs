@@ -3,9 +3,10 @@
  * D13): the candidates, the map, the state, the fixed-text table and every
  * verified entry. The map and each verified entry are checked again against the
  * project, so a run whose files changed after their check is refused instead
- * of written out; a verified entry must also still be the file the verifier
- * saw (its digest in state.json). A feature that is only checked has no entry
- * in the output. `assemble` and `page` both start here, so they refuse the
+ * of written out; a verified entry must also still be the file the verifiers
+ * and the tracer saw (its digest in state.json), and a confirmed one (settled
+ * by the verifiers, not yet traced) is checked the same way. Only a verified
+ * feature has an entry in the output; a confirmed or checked one has none. `assemble` and `page` both start here, so they refuse the
  * same runs.
  */
 
@@ -60,16 +61,19 @@ export function loadCheckedRun(outDirArg, root) {
   const ui = loadUi(outDir);
   if (!ui.ok) return { ok: false, lines: ui.lines };
 
-  // Only a verified feature reaches the output (design D14); its entry is checked again, and must be the file that was verified.
+  // Only a verified feature reaches the output (design D14), but a confirmed one (settled by the verifiers, not yet traced)
+  // is checked the same way: its entry is checked again, and must be the file that was verified or confirmed.
   const entries = new Map();
   const problems = [];
-  for (const id of ids.filter((featureId) => state.features[featureId].status === 'verified')) {
+  const settled = ids.filter((featureId) => ['confirmed', 'verified'].includes(state.features[featureId].status));
+  for (const id of settled) {
     const result = checkEntryFile(outDir, id, root, { map, mapLabels: mapChecked.verified, files, memberDirs, languageCheck }, { settled: true });
     if (result.problems.length > 0) {
       problems.push(...result.problems.map((line) => (line.startsWith(`${id}:`) ? line : `${id}: ${line}`)), `${id}: ${entryPath(id)} no longer passes check-entry; run check-entry for ${id}`);
     } else if (entryDigest(join(outDir, entryPath(id))) !== state.features[id].entryDigest) {
-      problems.push(`${id}: ${entryPath(id)} changed after it was verified; run check-entry for ${id} and verify it again`);
-    } else {
+      const was = state.features[id].status === 'confirmed' ? 'confirmed' : 'verified';
+      problems.push(`${id}: ${entryPath(id)} changed after it was ${was}; run check-entry for ${id} and verify it again`);
+    } else if (state.features[id].status === 'verified') {
       entries.set(id, readJson(join(outDir, entryPath(id))).value);
     }
   }

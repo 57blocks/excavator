@@ -9,7 +9,8 @@
  * items round 1 listed, and refuses an entry in which an item that was not
  * listed differs from the snapshot. Changes only files under `<out>/verify`
  * (and clears the feature's older verification files of the round and those
- * after it, so a new round starts clean).
+ * after it, so a new round starts clean; round 1 also clears the feature's
+ * trace and trace-verdict files, which belong to the settled entry it replaces).
  */
 
 import { mkdirSync, rmSync } from 'node:fs';
@@ -20,6 +21,7 @@ import { readJson, writeJson } from './json-file.mjs';
 import { loadState, featureState } from './state.mjs';
 import { loadUi } from './ui.mjs';
 import { UsageError } from './errors.mjs';
+import { traceDirPath, traceVerdictDirPath } from './trace-plan.mjs';
 import {
   VERIFIERS, fileItems, partFile, rewriteFilePath, roundTwoPlan, snapshotPath, splitParts, verdictDirPath, verdictPartPath,
   verifyDirPath, verifyItems, verifyPartPath,
@@ -34,7 +36,8 @@ export function checkedFeature(outDir, id, round) {
   }
   const current = featureState(stateRead.state, id);
   if (current.status !== 'checked') {
-    return { stop: { status: 1, lines: [`${id}: is ${current.status}; only a checked feature is verified`, `Next: ${current.status === 'verified' ? 'nothing; it is verified' : `run check-entry for ${id} first`}`] } };
+    const next = current.status === 'verified' ? 'nothing; it is verified' : current.status === 'confirmed' ? `run trace for ${id}` : `run check-entry for ${id} first`;
+    return { stop: { status: 1, lines: [`${id}: is ${current.status}; only a checked feature is verified`, `Next: ${next}`] } };
   }
   if (round === 1 && current.rewriting) return { stop: { status: 1, lines: [`${id}: round 1 is done and its items wait for the rewrite`, `Next: rewrite the items listed in ${rewriteFilePath(outDir, id)}, run check-entry, then slices --round 2`] } };
   if (round === 2 && !current.rewriting) return { stop: { status: 1, lines: [`${id}: round 1 listed no items to rewrite, so there is no round 2`, `Next: run slices for ${id} without --round and send its items to the verifier`] } };
@@ -87,7 +90,7 @@ export function slices(outDir, id, root, round) {
   const dirs = [verifyDirPath(outDir, id, round), verdictDirPath(outDir, id, round)];
   if (round === 1) {
     rmSync(rewriteFilePath(outDir, id), { force: true });
-    dirs.push(verifyDirPath(outDir, id, 2), verdictDirPath(outDir, id, 2));
+    dirs.push(verifyDirPath(outDir, id, 2), verdictDirPath(outDir, id, 2), traceDirPath(outDir, id), traceVerdictDirPath(outDir, id));
   }
   for (const stale of dirs) rmSync(stale, { recursive: true, force: true });
   mkdirSync(verifyDirPath(outDir, id, round), { recursive: true });

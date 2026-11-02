@@ -59,6 +59,7 @@
     "md.status.planned": "Not written",
     "md.status.dispatched": "Written but not checked",
     "md.status.checked": "Written, verification not finished",
+    "md.status.confirmed": "Written, final check not finished",
     "md.status.failed": "Failed the checks",
     "md.verdict.unverified": "The code shown does not settle it",
     "md.verdict.contradicted": "The code shown says otherwise",

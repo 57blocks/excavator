@@ -12,7 +12,7 @@ import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 import { Browser, findChrome } from './chrome-cdp.mjs';
-import { clone, judge, makeCheckedMapRun, repoRoot } from './helpers.mjs';
+import { clone, judge, makeCheckedMapRun, repoRoot, traceFeature } from './helpers.mjs';
 
 const TEMPLATE = join(repoRoot, 'packages/product-handbook-page/dist/product-handbook-page.html');
 const chrome = findChrome();
@@ -51,6 +51,8 @@ function pageRun() {
     const judged = judge(run, 'F1', round, bad);
     if (judged.status !== 0) throw new Error(`verdicts round ${round} failed:\n${judged.stdout}`);
   }
+  const traced = traceFeature(run);
+  if (traced.status !== 0) throw new Error(`trace-verdicts failed:\n${traced.stdout}`);
   const made = run.run('page');
   if (made.status !== 0) throw new Error(`page failed (${made.status}):\n${made.stdout}${made.stderr}`);
   return run;

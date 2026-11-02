@@ -7,7 +7,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { clone, judge, makeCheckedMapRun, runHandbook, verifyChecked } from './helpers.mjs';
+import { clone, judge, makeCheckedMapRun, runHandbook, traceFeature, verifyChecked } from './helpers.mjs';
 
 const cleanups = [];
 afterEach(() => {
@@ -38,6 +38,7 @@ function removedRun() {
     ? { verdict: 'unverified', reason: 'No line shown names the state.' }
     : { verdict: 'contradicted', reason: 'The condition shown caps the count at 50.' }));
   expect(round2.status, round2.stdout).toBe(0);
+  expect(traceFeature(run).status).toBe(0);
   return run;
 }
 
@@ -55,7 +56,8 @@ function purposeRemovedRun() {
   const run = checkedRun();
   expect(judge(run, 'F1', 1, (item) => (item.id === 'purpose' ? 'unverified' : 'verified')).status).toBe(0);
   const round2 = judge(run, 'F1', 2, () => ({ verdict: 'unverified', reason: 'No line shown says why.' }));
-  expect(round2.lines).toEqual(['F1: verified, 1 item removed']);
+  expect(round2.lines[0]).toBe('F1: confirmed, 1 item removed');
+  expect(traceFeature(run).status).toBe(0);
   return run;
 }
 
@@ -138,6 +140,7 @@ describe('assemble: the removed items are listed in the coverage section', () =>
     const run = checkedRun();
     judge(run, 'F1', 1, (item) => (item.id === 'screens[0]' ? 'unverified' : 'verified'));
     judge(run, 'F1', 2, (item) => (item.id === 'screens[0]' ? { verdict: 'unverified', reason: 'No line names the screen.' } : 'verified'));
+    expect(traceFeature(run).status).toBe(0);
     const text = assemble(run);
     expect(text).toContain('items removed: 6');
     expect(text).toContain('| Screen: New Order > Field: Customer Name | Removed together with the item it belongs to | - |');
@@ -208,14 +211,14 @@ describe('reply: counts by status including verified', () => {
     expect(run.run('check-entry', 'F2').status).toBe(0);
     verifyChecked(run, 'F1');
     expect(run.run('assemble').status).toBe(0);
-    expect(run.run('reply').lines[2]).toBe('Features: 5 (planned 3, dispatched 0, checked 1, verified 1, failed 0)');
+    expect(run.run('reply').lines[2]).toBe('Features: 5 (planned 3, dispatched 0, checked 1, confirmed 0, verified 1, failed 0)');
   });
 
   it('counts a feature that failed at verify as failed and names it', () => {
     const run = failedAtVerifyRun();
     expect(run.run('assemble').status).toBe(0);
     const lines = run.run('reply').lines;
-    expect(lines[2]).toBe('Features: 5 (planned 4, dispatched 0, checked 0, verified 0, failed 1)');
+    expect(lines[2]).toBe('Features: 5 (planned 4, dispatched 0, checked 0, confirmed 0, verified 0, failed 1)');
     expect(lines[3]).toBe('Failed: F1');
   });
 });

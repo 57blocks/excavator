@@ -61,7 +61,7 @@ describe('verdicts: combining the two verifiers of a part', () => {
     ]);
   });
 
-  it('verifies the feature at once only when both verifiers verified every item', () => {
+  it('confirms the feature at once only when both verifiers verified every item', () => {
     const run = checkedRun();
     const one = judge(run, 'F1', 1, gives('first', {}), gives('second', { purpose: 'unverified' }));
     expect(one.status, one.stdout).toBe(0);
@@ -70,8 +70,8 @@ describe('verdicts: combining the two verifiers of a part', () => {
     // The control: the same two files, both verified, verify the feature.
     const run2 = checkedRun();
     const both = judge(run2, 'F1', 1, gives('first', {}), gives('second', {}));
-    expect(both.lines[0]).toBe('F1: verified (14 items)');
-    expect(stateOf(run2).status).toBe('verified');
+    expect(both.lines[0]).toBe('F1: confirmed (14 items)');
+    expect(stateOf(run2).status).toBe('confirmed');
   });
 
   it('combines the same way in round 2: what is not verified by both is removed, with the kept verdict and reason', () => {
@@ -82,7 +82,7 @@ describe('verdicts: combining the two verifiers of a part', () => {
     const b = { 'who[0]': 'unverified', 'screens[0].fields[1].rules[0]': 'contradicted', 'states[1]': 'verified', 'operations[0].sentences[1]': 'unverified', 'where[1]': 'verified' };
     const result = judge(run, 'F1', 2, gives('first', a), gives('second', b));
     expect(result.status, result.stdout).toBe(0);
-    expect(result.lines[0]).toBe('F1: verified, 4 items removed');
+    expect(result.lines[0]).toBe('F1: confirmed, 4 items removed');
     const removed = stateOf(run).removed.filter((record) => record.verdict !== 'withParent');
     expect(removed.map((record) => [record.path, record.verdict, record.reason])).toEqual([
       ['who[0]', 'unverified', pass('second', 'unverified')],

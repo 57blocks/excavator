@@ -1,6 +1,6 @@
 ---
 name: excavator-product-handbook
-description: Write a product handbook for non-technical readers from a project's source - a map of the product's areas and features, one entry per feature with its screens, fields, rules, states and notifications, every value checked against a passage quoted from the source and every item confirmed by a verifier that sees only that item and the code it cites, assembled into handbook.md and a one-file HTML page in the language you choose. A script lists the entrypoint candidates and checks every step, you write the map, one subagent per feature writes its entry and a second one checks it. It describes the product as it is and gives no advice.
+description: Write a product handbook for non-technical readers from a project's source - a map of the product's areas and features, one entry per feature with its screens, fields, rules, states and notifications, every value checked against a passage quoted from the source and every item confirmed by two verifiers that see only that item and the code it cites and then by a tracer that reads the whole project for code that contradicts it, assembled into handbook.md and a one-file HTML page in the language you choose. A script lists the entrypoint candidates and checks every step, you write the map, one subagent per feature writes its entry and others check it. It describes the product as it is and gives no advice.
 argument-hint: "[path] [--language <lang>] [--out <dir>] [--features <list>] [--concurrency <n>] [--fresh]"
 ---
 
@@ -14,16 +14,17 @@ Five rules govern everything below:
 2. **Nothing is dropped silently.** A script lists the entrypoint candidates (pages, routes, scheduled jobs, program starts). Every candidate belongs to exactly one feature or is listed as unassigned with a reason, and a script checks it.
 3. **Every value has a source.** Each label, rule, number and sentence of an entry carries a passage copied from the source file. Scripts check that the passage is in the file exactly once, that every label and number is in its own passage, and that the file is project source.
 4. **Readers see no code.** Reader-visible text contains no code-shaped words. A script refuses them; the rules are under **Reader text** in Phase 3.
-5. **Nothing stays that the code does not back up.** A passage that exists can still be read wrongly. A verifier that sees one item and the code around its citations judges each item (Phase 5); an item it cannot confirm is rewritten once, and removed if it is still not confirmed. Only a verified feature is written into the handbook, and every removed item is listed in its coverage section.
+5. **Nothing stays that the code does not back up.** A passage that exists can still be read wrongly. A verifier that sees one item and the code around its citations judges each item (Phase 5); an item it cannot confirm is rewritten once, and removed if it is still not confirmed. A tracer that reads the whole project then looks for code that contradicts each item that is left (Phase 6), and removes what it finds. Only a verified feature is written into the handbook, and every removed item is listed in its coverage section.
 
 ## How the work is split
 
 | Who | Does |
 |---|---|
-| `handbook.mjs` (a script, no model) | Lists the entrypoint candidates, checks the map and each entry, resolves `--features`, records each dispatch and result, cuts each entry into the items a verifier judges and records the verdicts, removes what stays unverified, checks the fixed-text table, assembles `handbook.md`, writes `handbook.html` and prints the closing lines. |
-| You (the orchestrator) | Write the map, dispatch the lanes, the verifiers, the rewriters and the translation of the fixed text, and reply. |
+| `handbook.mjs` (a script, no model) | Lists the entrypoint candidates, checks the map and each entry, resolves `--features`, records each dispatch and result, cuts each entry into the items a verifier judges and records the verdicts, removes what stays unverified, writes the trace files of each settled entry and records the tracers' verdicts, removes what they contradict, checks the fixed-text table, assembles `handbook.md`, writes `handbook.html` and prints the closing lines. |
+| You (the orchestrator) | Write the map, dispatch the lanes, the verifiers, the rewriters, the tracers and the translation of the fixed text, and reply. |
 | One subagent lane per feature | Reads that feature's files and writes its entry, one file, nothing else. |
 | Two `excavator-handbook-verifier` subagents per part of a feature and round | Each reads the same verify file (the items of the part, each with its claim and the code it cites), without seeing the other, and judges each item `verified`, `unverified` or `contradicted`, with a one-line reason. |
+| One `excavator-handbook-tracer` subagent per part of a feature that two verifiers settled | Reads the trace file (the items of the part, each with its claim and the files and lines it cites, no code) and the whole project, looks for code that contradicts each item, and judges it `holds` or `contradicted`, with a one-line reason and, for `contradicted`, where the code is. |
 | One rewrite subagent per feature that has items to rewrite | Changes only the items the verifier did not confirm, in the entry file. |
 | One subagent for the fixed text (only when the language is not English) | Translates the fixed-text table and writes `ui.json`. |
 
@@ -34,10 +35,12 @@ All files of a run live in `$OUT`:
 | `candidates.json` | `handbook.mjs candidates` (you save its output) |
 | `map.json` | you |
 | `entries/<id>.json` | the lane of feature `<id>` |
-| `state.json` | `handbook.mjs` only (`check-map`, `check-entry`, `mark`, `verdicts`) |
+| `state.json` | `handbook.mjs` only (`check-map`, `check-entry`, `mark`, `verdicts`, `trace-verdicts`) |
 | `verify/round-<r>/<id>/part-<n>.json` | `handbook.mjs slices` (the items of a feature, with their claims and code, cut by size into parts); `verify/round-1/<id>.entry.json` is the entry as round 1 saw it |
 | `verdicts/round-<r>/<id>/part-<n>.a.json` and `part-<n>.b.json` | the two verifiers of part `<n>` of feature `<id>`, one file each |
 | `rewrite/<id>.json` | `handbook.mjs verdicts --round 1` (the items to rewrite, with the verdicts) |
+| `trace/<id>/part-<n>.json` | `handbook.mjs trace` (the items a settled feature still holds, with their claims and cited line ranges, cut into parts of at most 25 items) |
+| `trace-verdicts/<id>/part-<n>.json` | the tracer of part `<n>` of feature `<id>` |
 | `ui.json` | the translation subagent; for English, the script copies its shipped table |
 | `handbook.md` | `handbook.mjs assemble` |
 | `handbook.html` | `handbook.mjs page` |
@@ -219,7 +222,7 @@ Write what you tell the user during this phase in `$LANGUAGE`, as **Language** i
    jq -r --arg ids "<ids>" '($ids | split(" ") | map(select(. != ""))) as $want | .features | to_entries[] | select(($want | length) == 0 or (.key | IN($want[]))) | [.key, .value.status, .value.attempts] | @tsv' "$OUT/state.json"
    jq -r '.features[] | [.id, .reach, .name] | @tsv' "$OUT/map.json"
    ```
-   A feature that is `checked` is not written again. A feature that is `dispatched` and has an entry file (an earlier run stopped after its lane wrote) goes to step 3 first, as if its lane had just returned. Every other feature with `attempts` below 2 gets a lane; one with `attempts` 2 that is not `checked` stays as it is. Before you dispatch a lane again, delete the file its earlier attempt left: `rm -f "$OUT/entries/<id>.json"`. A feature that is `failed` with `attempts` 1 (an earlier run stopped before its second attempt) gets its second attempt as step 3 describes, with the reasons `state.json` kept from the first: `jq -r '.features["<id>"].failure.reasons[]' "$OUT/state.json"`.
+   A feature that is `checked`, `confirmed` or `verified` is not written again. A feature that is `dispatched` and has an entry file (an earlier run stopped after its lane wrote) goes to step 3 first, as if its lane had just returned. Every other feature with `attempts` below 2 gets a lane; one with `attempts` 2 that is not `checked`, `confirmed` or `verified` stays as it is. Before you dispatch a lane again, delete the file its earlier attempt left: `rm -f "$OUT/entries/<id>.json"`. A feature that is `failed` with `attempts` 1 (an earlier run stopped before its second attempt) gets its second attempt as step 3 describes, with the reasons `state.json` kept from the first: `jq -r '.features["<id>"].failure.reasons[]' "$OUT/state.json"`.
 2. Right before you dispatch lanes, record their dispatches. Put the `mark` calls of one batch in one Bash command, one after another, before the message that dispatches the batch, one line per lane:
    ```bash
    node "$PLUGIN_ROOT/skills/excavator-product-handbook/handbook.mjs" mark "$OUT" <id> dispatched --project "$PROJECT_ROOT"
@@ -304,13 +307,13 @@ Write only `$OUT/entries/<id>.json`, and nothing else anywhere. Reply with one l
 
 Write what you tell the user during this phase in `$LANGUAGE`, as **Language** in Phase 0 says.
 
-A `checked` feature has an entry whose shape, citations, labels, numbers and words the scripts checked. That does not show that each item says what its passage does: a passage can be real and be read wrongly (a function name read as a role, a condition that stops two cases read as "every case"). Readers cannot read the code to find out, so each item is judged by a verifier that sees nothing of the map, the other features or the writer's reasons. Only a `verified` feature is written into the handbook.
+A `checked` feature has an entry whose shape, citations, labels, numbers and words the scripts checked. That does not show that each item says what its passage does: a passage can be real and be read wrongly (a function name read as a role, a condition that stops two cases read as "every case"). Readers cannot read the code to find out, so each item is judged by a verifier that sees nothing of the map, the other features or the writer's reasons. A feature whose items both verifiers confirm (after the one rewrite, with what they did not confirm removed) is `confirmed`: Phase 6 traces it, and only a `verified` feature is written into the handbook.
 
 1. List the features that need this phase, and for each whether it is at round 1 (`verify`) or waits for its one rewrite (`rewrite`):
    ```bash
    jq -r '.features | to_entries[] | select(.value.status == "checked") | [.key, (if .value.rewriting then "rewrite" else "verify" end)] | @tsv' "$OUT/state.json"
    ```
-   A feature that is `verified`, `failed`, `planned` or `dispatched` is not in the list: `verified` is done, the others have no entry that passed the checks. With no feature in the list, go to Phase 6.
+   A feature that is `confirmed`, `verified`, `failed`, `planned` or `dispatched` is not in the list: `confirmed` goes to Phase 6, `verified` is done, the others have no entry that passed the checks. With no feature in the list, go to Phase 6.
    A resumed run continues each listed feature where its files show it stopped. At `verify`: when `$OUT/verdicts/round-1/<id>/` exists, run the `verdicts` command of step 3 for it first (it names the part-letters still to dispatch), and when that exits 1 start at step 2 (`slices` clears the older files of the feature); otherwise start at step 2. At `rewrite`: when `$OUT/verdicts/round-2/<id>/` exists, go to step 7 for it; when `$OUT/verify/round-2/<id>/` exists, go to step 6; otherwise go to step 4.
 2. Cut each `verify` feature into items, one command per feature (the commands of a batch in one Bash command, one after another):
    ```bash
@@ -332,7 +335,7 @@ Read the verify file and nothing else, and write one verdict per item id as your
    ```bash
    node "$PLUGIN_ROOT/skills/excavator-product-handbook/handbook.mjs" verdicts "$OUT" <id> --round 1 --project "$PROJECT_ROOT"
    ```
-   - Exit 0 and `<id>: verified (<n> items)`: the feature is verified, whatever the number of its parts. Nothing more to do for it.
+   - Exit 0 and `<id>: confirmed (<n> items)`: both verifiers confirmed every item, whatever the number of the feature's parts, and the feature is `confirmed`. Nothing more to do for it in this phase: Phase 6 traces it.
    - Exit 0 and `<id>: <n> items to rewrite`, then `Rewrite file: <path>`: the items the two verifiers did not both confirm (`contradicted` when either said so, otherwise `unverified`, with the reason of a verifier that did not confirm it), `unverified` and `contradicted` alike, are in that file with the claim, the verdict and the reason of each. Go to step 4 for it.
    - Exit 1: nothing was recorded. Each line says why, led by its part and verifier (`part <p><x>: ...`, `<x>` being `a` or `b`): that verdict file is missing (the verifier wrote nothing), or does not hold exactly one verdict for each item of that part (a verdict for an item of another part counts as extra), or a verdict is not one of the three words, or a reason is empty, has more than one line, names a file, or (for a verdict that is not `verified`, which readers see) holds a code-shaped word or, in a language with its own script, no letter of it. Dispatch a verifier once more for each part-letter the `Next:` line names (a file of its own: `1b` is the second verifier of part 1), and for no other. For a missing file, the prompt as it was. For a rejected file, the prompt followed by this line and then each line printed for that part-letter except the `Next:` line (the lines that start with `part <p><x>:`, without that start): `Your previous verdict file was rejected for these reasons; write it again:`. Delete the old verdict file of a rejected part-letter first (`rm -f "<the verdict file>"`). Then run `verdicts` again. When `verdicts` still exits 1, leave the feature as it is, `checked`: it is listed in the handbook as verification not finished. Never write or change a verdict yourself, and never edit `state.json`.
 4. Rewrite, once. For each feature with a rewrite file, dispatch one rewrite subagent (a general-purpose subagent, in the foreground, up to `$CONCURRENCY` in one message) with the prompt below, its placeholders filled in:
@@ -368,18 +371,57 @@ Write only `$OUT/entries/<id>.json`, and nothing else anywhere. Reply with one l
    ```bash
    node "$PLUGIN_ROOT/skills/excavator-product-handbook/handbook.mjs" verdicts "$OUT" <id> --round 2 --project "$PROJECT_ROOT"
    ```
-   - `<id>: verified (<n> items)` or `<id>: verified, <n> items removed`: the feature is verified. An item the two verifiers did not both confirm, `unverified` like `contradicted`, was removed from the entry together with what hangs on it, and is recorded in `state.json` with its claim, verdict and reason. The handbook's coverage section lists each removed item. The removal is not a rewrite: never put a removed item back.
-   - The purpose is an item like any other: when the two verifiers do not both confirm it, it is removed and recorded, and the feature stays verified. Its section is then missing from the handbook and the page, and the coverage section lists the removed purpose.
+   - `<id>: confirmed (<n> items)` or `<id>: confirmed, <n> items removed`: the feature is `confirmed`. An item the two verifiers did not both confirm, `unverified` like `contradicted`, was removed from the entry together with what hangs on it, and is recorded in `state.json` with its claim, verdict and reason. The handbook's coverage section lists each removed item. The removal is not a rewrite: never put a removed item back.
+   - The purpose is an item like any other: when the two verifiers do not both confirm it, it is removed and recorded, and the feature stays confirmed. Its section is then missing from the handbook and the page, and the coverage section lists the removed purpose.
    - `<id>: failed at verify: no item could be proved`: nothing of the entry was proved. It is `failed`; its entry file stays for the user to see.
    - Exit 1: nothing was recorded; handle it as in step 3 (dispatch the verifier once more with the printed lines, then leave the feature as it is).
 
-Then tell the user `Verify <id> <n>/<N>: <status>` for each feature, where `<n>` counts the features of this phase that are settled, `<N>` is the number of features step 1 listed and `<status>` is `verified`, `failed` or `not finished`, in `$LANGUAGE`.
+Then tell the user `Verify <id> <n>/<N>: <status>` for each feature, where `<n>` counts the features of this phase that are settled, `<N>` is the number of features step 1 listed and `<status>` is `confirmed`, `failed` or `not finished`, in `$LANGUAGE`.
 
 Never edit `entries/<id>.json`, a verify, verdict or rewrite file or `state.json` yourself. Statuses change only through the commands above.
 
 ---
 
-## Phase 6: Assemble, page and reply
+## Phase 6: Trace
+
+Write what you tell the user during this phase in `$LANGUAGE`, as **Language** in Phase 0 says.
+
+A `confirmed` feature has items that two verifiers, who saw only the lines each item cites, both confirmed. That does not show that nothing else in the project contradicts them: the condition may sit in a function the cited lines call, a cap may be applied before a sum, a position may come out one off when the code is run through by hand. A tracer reads the whole project, starting from the cited lines, and looks only for code that contradicts an item. An item it contradicts is removed and listed in the coverage section; only a `verified` feature is written into the handbook.
+
+1. List the features that need this phase:
+   ```bash
+   jq -r '.features | to_entries[] | select(.value.status == "confirmed") | .key' "$OUT/state.json"
+   ```
+   With no feature in the list, go to Phase 7. A resumed run needs nothing else: a `confirmed` feature goes straight to this phase, wherever the earlier run stopped. When `$OUT/trace-verdicts/<id>/` exists, run the `trace-verdicts` command of step 3 for it first (it names the parts still to dispatch), and when that exits 1 start at step 2 (`trace` clears the older files of the feature); otherwise start at step 2.
+2. Write the trace files, one command per feature (the commands of a batch in one Bash command, one after another):
+   ```bash
+   node "$PLUGIN_ROOT/skills/excavator-product-handbook/handbook.mjs" trace "$OUT" <id> --project "$PROJECT_ROOT"
+   ```
+   It prints `<id>: <n> items in <k> parts`, then one line per part, `Part <p>/<k>: <m> items | Trace file: <path> | Verdict file: <path>`: the trace file of that part and the verdict file its tracer must write. A trace file holds, for each item still in the entry, its id, its claim and the files and line ranges it cites, and no code; a part holds at most 25 items. Exit 1 prints why (the feature is not `confirmed`, or its entry changed after it was confirmed or no longer passes its checks) and a `Next:` line: follow it once; when it cannot be followed, leave the feature as it is. It stays `confirmed` and the handbook lists it as verification not finished.
+3. Dispatch one subagent per part with the `excavator-handbook-tracer` agent type, up to 10 in one message so they run concurrently; send the next 10 when those have returned. The parts of one feature, and of different features, are independent of one another. The plugin registers that agent type, so there is no file to look for: name it as the subagent type. Dispatch them in the foreground, never as background tasks: a run without a terminal stops waiting for background subagents. Give each the three lines below with the trace file and the verdict file of its part's line and `$PROJECT_ROOT` written as its value, and nothing else: not the entry, the map, a summary, a hint about what to look for or any reason.
+
+````text
+Trace file:   <the trace file of the line>
+Verdict file: <the verdict file of the line>
+Project root: <$PROJECT_ROOT as its value>
+````
+
+   When every tracer of every part of a feature has returned, record its verdicts, one command per feature and one at a time, never two at once:
+   ```bash
+   node "$PLUGIN_ROOT/skills/excavator-product-handbook/handbook.mjs" trace-verdicts "$OUT" <id> --project "$PROJECT_ROOT"
+   ```
+   - Exit 0 and `<id>: verified (<n> items)`: no tracer found code that contradicts an item, and the feature is `verified`, whatever the number of its parts. Nothing more to do for it.
+   - Exit 0 and `<id>: verified, <n> items removed`: a tracer pointed at code that contradicts some items. Each was removed from the entry together with what hangs on it, and is recorded in `state.json` with its claim, its reason and where the code is (the readers of the handbook see the reason, not the place). The feature is `verified` without them, and the handbook's coverage section lists each removed item. The removal is not a rewrite: never put a removed item back.
+   - Exit 0 and `<id>: failed at trace: no item could be proved`: no item with a source was left. It is `failed`; its entry file stays for the user to see.
+   - Exit 1: nothing was recorded. Each line says why, led by its part (`part <p>: ...`): that verdict file is missing or is not JSON, or does not hold exactly one verdict for each item of that part (a verdict for an item of another part counts as extra), or a verdict is not `holds` or `contradicted`, or a reason is empty or has more than one line, or a `contradicted` item has no position, or its position is a file outside the project or one that does not exist or a line that is not in the file, or its reason holds a code-shaped word or a file name or, in a language with its own script, no letter of it. Dispatch a tracer once more for each part the `Next:` line names, and for no other. For a missing file, the three lines as they were. For a rejected file, the three lines followed by this line and then each line printed for that part except the `Next:` line (the lines that start with `part <p>:`, without that start): `Your previous verdict file was rejected for these reasons; write it again:`. Delete the old verdict file of a rejected part first (`rm -f "<the verdict file>"`). Then run `trace-verdicts` again. When it still exits 1, leave the feature as it is, `confirmed`: it is listed in the handbook as verification not finished. Never write or change a verdict yourself, and never edit `state.json`.
+
+Then tell the user `Trace <id> <n>/<N>: <status>` for each feature, where `<n>` counts the features of this phase that are settled, `<N>` is the number of features step 1 listed and `<status>` is `verified`, `failed` or `not finished`, in `$LANGUAGE`.
+
+Never edit `entries/<id>.json`, a trace or verdict file or `state.json` yourself. Statuses change only through the commands above.
+
+---
+
+## Phase 7: Assemble, page and reply
 
 Write what you tell the user during this phase in `$LANGUAGE`, as **Language** in Phase 0 says.
 
@@ -388,8 +430,8 @@ Write what you tell the user during this phase in `$LANGUAGE`, as **Language** i
    node "$PLUGIN_ROOT/skills/excavator-product-handbook/handbook.mjs" assemble "$OUT" --project "$PROJECT_ROOT"
    node "$PLUGIN_ROOT/skills/excavator-product-handbook/handbook.mjs" page "$OUT" --project "$PROJECT_ROOT"
    ```
-   Both check the map, every verified entry and the fixed text again before they write anything. Only a `verified` feature has a section in the handbook. `assemble` writes `$OUT/handbook.md` (the areas and features, one section per verified feature, and a coverage section with the candidate counts, the unassigned candidates, the features reached by a link, the features without a verified entry, among them those whose verification did not finish, and the items verification removed, each with its reason) and prints its path. `page` writes `$OUT/handbook.html`, one page that opens from disk with a double click, and prints its path; a failed `page` removes the page an earlier run left.
-   - When `assemble` exits 1, show the lines. A line that says `entries/<id>.json no longer passes check-entry` means the source changed after the entry was checked: run `check-entry` for that feature, follow its `Next:` line as in Phase 4, verify it again as Phase 5 says, and run `assemble` again. A line that says `entries/<id>.json changed after it was verified` means the entry file is not the one the verifier judged: run `check-entry` for that feature (it becomes `checked` again), verify it again as Phase 5 says, and run `assemble` again. Any other line: stop.
+   Both check the map, every verified entry (a confirmed one too, which they do not write) and the fixed text again before they write anything. Only a `verified` feature has a section in the handbook. `assemble` writes `$OUT/handbook.md` (the areas and features, one section per verified feature, and a coverage section with the candidate counts, the unassigned candidates, the features reached by a link, the features without a verified entry, among them those whose verification or trace did not finish, and the items verification and the trace removed, each with its reason) and prints its path. `page` writes `$OUT/handbook.html`, one page that opens from disk with a double click, and prints its path; a failed `page` removes the page an earlier run left.
+   - When `assemble` exits 1, show the lines. A line that says `entries/<id>.json no longer passes check-entry` means the source changed after the entry was checked: run `check-entry` for that feature, follow its `Next:` line as in Phase 4, verify it again as Phase 5 says and trace it as Phase 6 says, and run `assemble` again. A line that says `entries/<id>.json changed after it was verified` (or `confirmed`) means the entry file is not the one the verifiers and the tracer judged: run `check-entry` for that feature (it becomes `checked` again), verify it again as Phase 5 says and trace it as Phase 6 says, and run `assemble` again. Any other line: stop.
    - When `page` exits 2 because the page template does not exist, tell the user to run `pnpm -r build` at `$PLUGIN_ROOT` and then run this command again (a run resumes, so only this phase repeats). Any other non-zero exit: tell the user the lines it printed as they are; do not build or edit any page or product file yourself. Either way, go on to the reply: it prints `Page: not written`.
    - Then tell the user `Page: <status>`, where `<status>` is `written` or `failed`, in `$LANGUAGE`.
 2. Reply. The handbook stays in `$OUT`: write it into the project only when the user says so.

@@ -161,6 +161,13 @@ describe('every fixed text of the page comes from the ui table (O8, node half)',
     expect(html).toMatch(/stat-value">2<\/span><span class="stat-label">@@With a verified entry/);
   });
 
+  it('lists a confirmed feature (settled by the verifiers, not yet traced) as not finished, with no entry', () => {
+    const confirmed = dataFor([feature('F1', 'menu', 'confirmed', null, 'menu label')]);
+    expect(render(confirmed, '#/')).toContain(marked['md.status.confirmed']);
+    expect(render(confirmed, '#/coverage')).toContain(marked['md.status.confirmed']);
+    expect(render(confirmed, '#/')).toMatch(/stat-value">0<\/span><span class="stat-label">@@With a verified entry/);
+  });
+
   it('the instrument sees a fixed text the code wrote itself', () => {
     expect(unmarked('<main><button>Save</button><p>@@Purpose</p><p>d~name</p><a aria-label="Menu">x</a></main>')).toEqual(['Save', 'x', 'Menu']);
   });

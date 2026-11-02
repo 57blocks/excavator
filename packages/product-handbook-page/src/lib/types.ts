@@ -5,8 +5,8 @@ export const PAGE_FORMAT = 'excavator-product-handbook-page/1';
 export const REACHES = ['menu', 'link', 'automated', 'interface', 'operator'] as const;
 export type Reach = (typeof REACHES)[number];
 
-/** The state of a feature's entry: only `verified` features carry an entry; `checked` means its verification did not finish. */
-export type Status = 'planned' | 'dispatched' | 'checked' | 'verified' | 'failed';
+/** The state of a feature's entry: only `verified` features carry an entry; `checked` and `confirmed` mean its verification did not finish. */
+export type Status = 'planned' | 'dispatched' | 'checked' | 'confirmed' | 'verified' | 'failed';
 
 export type EntrypointKind = 'route' | 'page' | 'job' | 'main';
 

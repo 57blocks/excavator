@@ -232,8 +232,8 @@ describe('verdicts: conservation over all parts', () => {
     writeAllVerdicts(run);
     const result = run.run('verdicts', 'F1', '--round', '1');
     expect(result.status, result.stdout).toBe(0);
-    expect(result.lines[0]).toBe('F1: verified (26 items)');
-    expect(stateOf(run).status).toBe('verified');
+    expect(result.lines[0]).toBe('F1: confirmed (26 items)');
+    expect(stateOf(run).status).toBe('confirmed');
   });
 
   it('rejects a missing verdict for an item of part 2 in both files, names each by part and letter, and records nothing', () => {
@@ -382,8 +382,8 @@ describe('round 2 parts only the listed items', () => {
     writeVerdicts(run, 2, 1, verified(['who[0]', lastId]));
     const done = run.run('verdicts', 'F1', '--round', '2');
     expect(done.status, done.stdout).toBe(0);
-    expect(done.lines[0]).toBe('F1: verified (2 items)');
-    expect(stateOf(run).status).toBe('verified');
+    expect(done.lines[0]).toBe('F1: confirmed (2 items)');
+    expect(stateOf(run).status).toBe('confirmed');
   });
 
   it('splits round 2 too when the listed items are many and large, still only the listed ones', () => {

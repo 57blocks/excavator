@@ -209,10 +209,44 @@ export function judge(run, id = 'F1', round = 1, decide = () => 'verified', deci
   return run.run('verdicts', id, '--round', String(round));
 }
 
-/** Verify a checked feature with every item verified; throws when it does not end verified. */
-export function verifyChecked(run, id = 'F1') {
+/** Settle a checked feature with every item verified by both verifiers: it ends `confirmed`, not yet traced; throws otherwise. */
+export function confirmChecked(run, id = 'F1') {
   const result = judge(run, id);
   if (result.status !== 0) throw new Error(`verdicts failed:\n${result.stdout}${result.stderr}`);
+  return result;
+}
+
+/**
+ * Trace a confirmed feature: write the trace files with `trace`, one verdict
+ * file per part (`decide(item)` gives a verdict word or `{ verdict, reason, at }`,
+ * default `holds`), and record them with `trace-verdicts`. Returns that result.
+ * `edit(part, verdicts)` may change a part's verdict list before it is written.
+ */
+export function traceFeature(run, id = 'F1', decide = () => 'holds', edit = () => {}) {
+  const traced = run.run('trace', id);
+  if (traced.status !== 0) throw new Error(`trace failed:\n${traced.stdout}${traced.stderr}`);
+  const traceDir = join(run.out, 'trace', id);
+  const dir = join(run.out, 'trace-verdicts', id);
+  mkdirSync(dir, { recursive: true });
+  const { parts } = JSON.parse(readFileSync(join(traceDir, 'part-1.json'), 'utf-8'));
+  for (let part = 1; part <= parts; part += 1) {
+    const file = JSON.parse(readFileSync(join(traceDir, `part-${part}.json`), 'utf-8'));
+    const verdicts = file.items.map((item) => {
+      const given = decide(item);
+      const verdict = typeof given === 'string' ? { verdict: given } : given;
+      return { id: item.id, ...verdict, reason: verdict.reason ?? `Nothing in the code disagrees with ${item.id}.` };
+    });
+    edit(part, verdicts);
+    writeFileSync(join(dir, `part-${part}.json`), `${JSON.stringify({ verdicts }, null, 2)}\n`);
+  }
+  return run.run('trace-verdicts', id);
+}
+
+/** Verify a checked feature end to end: both verifiers confirm every item and the tracer finds no counter-evidence. Throws when it does not end verified. */
+export function verifyChecked(run, id = 'F1') {
+  confirmChecked(run, id);
+  const result = traceFeature(run, id);
+  if (result.status !== 0) throw new Error(`trace-verdicts failed:\n${result.stdout}${result.stderr}`);
   return result;
 }
 
