@@ -358,6 +358,8 @@ describe('excavator-product-handbook skill: the lane prompt', () => {
       'who receives a notification and what it says',
       'which columns a list shows, how it is sorted by default and how it can be filtered',
       'what a detail page shows',
+      'A function\'s name does not say which records it returns or which people it picks',
+      'check each one before you say where its value comes from',
       'When the 20 are spent, open no more',
     ]) {
       expect(prompt, text).toContain(text);
