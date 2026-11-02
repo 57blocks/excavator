@@ -70,11 +70,19 @@
 
 ### Requirement: 逐项核对
 
-条目通过脚本检查后，每个带出处的项 SHALL 由一个只看到该项主张与所引源码前后文的核对子代理给出 `verified`、`unverified` 或 `contradicted` 之一的判词。脚本 SHALL 检查每一项恰好有一个判词，不成立时什么都不记录。第一轮不是 `verified` 的项 SHALL 改写一次并再核对一次，改写 SHALL NOT 改动没被列出的项；第二轮仍不是 `verified` 的项 SHALL 从条目里删去，删去的项与理由 SHALL 记录下来并在手册的覆盖一节列出。只有核对完成的功能 SHALL 进入手册正文。
+条目通过脚本检查后，每个带出处的项 SHALL 由一个只看到该项主张与所引源码前后文的核对子代理给出 `verified`、`unverified` 或 `contradicted` 之一的判词。脚本 SHALL 检查每一项恰好有一个判词，不成立时什么都不记录。第一轮不是 `verified` 的项 SHALL 改写一次并再核对一次，改写 SHALL NOT 改动没被列出的项；第二轮仍不是 `verified` 的项 SHALL 从条目里删去，删去的项与理由 SHALL 记录下来并在手册的覆盖一节列出。核对者定案后，留下的每一项 SHALL 再由一个能读整个项目的追查子代理找反证，判为 `holds` 或 `contradicted`；`contradicted` SHALL 带项目内的文件与行号，脚本 SHALL 拒绝指向项目外或超出文件行数的位置；`contradicted` 的项 SHALL 删去并同样记录。只有追查也完成的功能 SHALL 进入手册正文。
 
 #### Scenario: 与代码矛盾的项
 - **WHEN** 一项主张说某角色能取消，而所引源码里的权限判断只放行另一个角色，核对者判为 `contradicted`，改写后仍判为 `contradicted`
 - **THEN** 该项不出现在手册正文里，覆盖一节列出它被删去及理由
+
+#### Scenario: 反证在没给出的代码里
+- **WHEN** 两名核对者都确认了一项，追查者读到被调用函数的函数体，发现它与主张不符，给出该函数所在的文件与行号
+- **THEN** `trace-verdicts` 删去该项并记录理由与位置，覆盖一节列出它被删去
+
+#### Scenario: 反证的位置在项目外
+- **WHEN** 追查判词里一个 `at` 的文件路径落在项目根之外，或行号超出文件行数
+- **THEN** `trace-verdicts` 退出 1，打印该项与位置，不记录任何判词
 
 #### Scenario: 改写动了别的项
 - **WHEN** 第二轮的条目里有一项不在改写清单上，却和第一轮不同

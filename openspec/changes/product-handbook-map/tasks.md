@@ -39,6 +39,9 @@
 - [x] 7.1 `slices` 与 `verdicts`：核对文件（主张、引文前后各 20 行）、判词守恒、第一轮改写清单、第二轮删项与记录；`slices --round 2` 拒绝改动未列出的项；状态加 `verified`；`assemble`、`page`、`reply` 只把 `verified` 的功能写进正文，覆盖一节列删去的项与核对未完成的功能。测试先红后绿，装置先验
 - [x] 7.2 agent 定义 `excavator-handbook-verifier`（只读核对文件、三种判词、一行理由）；插件清单与安装测试
 - [x] 7.3 SKILL.md：核对阶段、改写子代理的 prompt、重派规则；lane prompt 要求每项引到能单独证明它的源码；契约测试
+- [ ] 7.4 `trace` 与 `trace-verdicts`：追查文件（主张、引文的文件与行号，不给代码）、两种判词的守恒、`at` 的路径收敛到项目根内且行号在文件内、理由过禁词门与语言检查；删去 `contradicted` 的项并记 `step: "trace"`；状态加 `confirmed`，`verdicts` 定案后记 `confirmed` 而不是 `verified`；`assemble`、`page`、`reply` 把 `confirmed` 列为核对未完成。测试先红后绿
+- [ ] 7.5 agent 定义 `excavator-handbook-tracer`（读全项目、只找反证、两种判词、`at` 与一行理由）；插件清单与安装测试
+- [ ] 7.6 SKILL.md：追查阶段（派发、重派、删项）；契约测试
 
 ## 6. 验收（提交 6）
 
