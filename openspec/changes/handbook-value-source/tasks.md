@@ -12,10 +12,10 @@
 
 - [x] 3.1 `agents/excavator-handbook-tracer.md`：按 D2 加追值来源的一步、判法一条、`holds` 理由的要求；例子保持中性；源码零非 ASCII 字符
 - [x] 3.2 `tests/skill/test_product_handbook_skill_contract.test.mjs` 的追查者一节加断言（新步骤、判法、理由要求）；先在旧定义上看到红，再在新定义上看到绿
-- [ ] 3.3 O3：受影响测试、`check-refs`、`openspec validate --all --strict`；分离检出里跑全量三件套
+- [x] 3.3 O3：受影响测试、`check-refs`、`openspec validate --all --strict`；分离检出里跑全量三件套
 
 ## 4. 真实验收（提交 3）
 
-- [ ] 4.1 重装插件；O2 的只追查运行，记录花费、时长、删去的项
-- [ ] 4.2 O2 的 Opus 30 项分层抽查；残余逐条对照源码
-- [ ] 4.3 把 O1–O3 的结果写进 design 的验收记录（只写代号与脱敏摘要）
+- [x] 4.1 重装插件；O2 的只追查运行，记录花费、时长、删去的项
+- [x] 4.2 O2 的 Opus 30 项分层抽查；残余逐条对照源码
+- [x] 4.3 把 O1–O3 的结果写进 design 的验收记录（只写代号与脱敏摘要）
