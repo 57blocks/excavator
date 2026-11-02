@@ -10,8 +10,8 @@
 
 ## 3. 实现（提交 2）
 
-- [ ] 3.1 `agents/excavator-handbook-tracer.md`：按 D2 加追值来源的一步、判法一条、`holds` 理由的要求；例子保持中性；源码零非 ASCII 字符
-- [ ] 3.2 `tests/skill/test_product_handbook_skill_contract.test.mjs` 的追查者一节加断言（新步骤、判法、理由要求）；先在旧定义上看到红，再在新定义上看到绿
+- [x] 3.1 `agents/excavator-handbook-tracer.md`：按 D2 加追值来源的一步、判法一条、`holds` 理由的要求；例子保持中性；源码零非 ASCII 字符
+- [x] 3.2 `tests/skill/test_product_handbook_skill_contract.test.mjs` 的追查者一节加断言（新步骤、判法、理由要求）；先在旧定义上看到红，再在新定义上看到绿
 - [ ] 3.3 O3：受影响测试、`check-refs`、`openspec validate --all --strict`；分离检出里跑全量三件套
 
 ## 4. 真实验收（提交 3）
