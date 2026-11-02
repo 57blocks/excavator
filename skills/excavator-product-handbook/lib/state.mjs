@@ -3,12 +3,13 @@
  * checked, confirmed, verified or failed, how many times each lane was
  * dispatched, and why a feature failed. `checked` means the entry passed the
  * scripts' checks; `confirmed` means two verifiers also confirmed each of its
- * items; `verified` means a tracer that read the whole project then found no
+ * items; `verified` means two tracers that read the whole project then found no
  * counter-evidence (only then does the feature reach the handbook). A checked
  * feature waiting for its one rewrite carries `rewriting: true`; a confirmed
  * or verified one carries the digest of its entry file, and the items removed
- * so far (a record of a removal by the tracer also has `step: "trace"` and the
- * `at` positions that showed the counter-evidence). Only the scripts change it:
+ * so far (a record of a removal by the tracers also has `step: "trace"`, the
+ * `reasons` of every tracer that contradicted the item and the `at` positions
+ * that showed the counter-evidence). Only the scripts change it:
  * check-map creates it; mark, check-entry, verdicts and trace-verdicts update it.
  * Every write is atomic; the commands that change it hold the state lock
  * (lock.mjs).
@@ -36,7 +37,8 @@ const atValid = (list) => Array.isArray(list) && list.every((at) => isObject(at)
 
 const removedValid = (list) => Array.isArray(list) && list.every((item) => isObject(item)
   && typeof item.path === 'string' && typeof item.claim === 'string' && typeof item.reason === 'string' && REMOVED_VERDICTS.includes(item.verdict)
-  && (item.step === undefined || REMOVAL_STEPS.includes(item.step)) && (item.at === undefined || atValid(item.at)));
+  && (item.step === undefined || REMOVAL_STEPS.includes(item.step)) && (item.at === undefined || atValid(item.at))
+  && (item.reasons === undefined || (Array.isArray(item.reasons) && item.reasons.every((reason) => typeof reason === 'string'))));
 
 const stateProblems = (state) => {
   if (!isObject(state) || state.format !== STATE_FORMAT || !isObject(state.features)) return `format must be ${STATE_FORMAT} with a features object`;
@@ -47,7 +49,7 @@ const stateProblems = (state) => {
     if (entry.failure !== undefined && (!isObject(entry.failure) || !FAILURE_STEPS.includes(entry.failure.step) || !Array.isArray(entry.failure.reasons))) {
       return `feature ${id} has a failure that is not { step, reasons }`;
     }
-    if (entry.removed !== undefined && !removedValid(entry.removed)) return `feature ${id} has a removed list that is not [{ path, claim, verdict, reason, step?, at? }]`;
+    if (entry.removed !== undefined && !removedValid(entry.removed)) return `feature ${id} has a removed list that is not [{ path, claim, verdict, reason, step?, reasons?, at? }]`;
     if (entry.entryDigest !== undefined && typeof entry.entryDigest !== 'string') return `feature ${id} has an entryDigest that is not a string`;
     if (entry.rewriting !== undefined && entry.rewriting !== true) return `feature ${id} has a rewriting that is not true`;
   }

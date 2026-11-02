@@ -4,7 +4,7 @@
  * verified entry. The map and each verified entry are checked again against the
  * project, so a run whose files changed after their check is refused instead
  * of written out; a verified entry must also still be the file the verifiers
- * and the tracer saw (its digest in state.json), and a confirmed one (settled
+ * and the tracers saw (its digest in state.json), and a confirmed one (settled
  * by the verifiers, not yet traced) is checked the same way. Only a verified
  * feature has an entry in the output; a confirmed or checked one has none. `assemble` and `page` both start here, so they refuse the
  * same runs.

@@ -801,21 +801,21 @@ describe('excavator-product-handbook skill: Phase 7 and the files table know the
     expect(table).toContain('`rewrite/<id>.json`');
     expect(table).toContain('`state.json` | `handbook.mjs` only (`check-map`, `check-entry`, `mark`, `verdicts`, `trace-verdicts`)');
     expect(table).toContain('`trace/<id>/part-<n>.json` | `handbook.mjs trace`');
-    expect(table).toContain('`trace-verdicts/<id>/part-<n>.json` | the tracer of part `<n>` of feature `<id>`');
+    expect(table).toContain('`trace-verdicts/<id>/part-<n>.a.json` and `part-<n>.b.json` | the two tracers of part `<n>` of feature `<id>`, one file each');
   });
 });
 
 describe('excavator-product-handbook skill: Phase 6, trace', () => {
   const p = phase(6);
 
-  it('says in the description and the work split that a tracer reads the whole project for code that contradicts each confirmed item', () => {
+  it('says in the description and the work split that two tracers each read the whole project for code that contradicts each confirmed item', () => {
     const description = skill.match(/^description: (.+)$/m)[1];
-    expect(description).toContain('then by a tracer that reads the whole project for code that contradicts it');
+    expect(description).toContain('then by two tracers that each read the whole project for code that contradicts it');
     expect(description).not.toMatch(/: /);
     const table = flat(skill.split(/^## How the work is split$/m)[1].split(/^## Options$/m)[0]);
-    expect(table).toContain('One `excavator-handbook-tracer` subagent per part of a feature that two verifiers settled');
+    expect(table).toContain('Two `excavator-handbook-tracer` subagents per part of a feature that two verifiers settled');
     expect(table).toContain('looks for code that contradicts each item, and judges it `holds` or `contradicted`');
-    expect(before).toContain('A tracer that reads the whole project then looks for code that contradicts each item that is left (Phase 6)');
+    expect(before).toContain('Two tracers that each read the whole project then look for code that contradicts each item that is left (Phase 6), and what either finds is removed');
   });
 
   it('sits between the verify phase and the assembly and is told in the run language', () => {
@@ -862,16 +862,20 @@ describe('excavator-product-handbook skill: Phase 6, trace', () => {
       expect(judge(run, 'F1').status).toBe(0);
       const result = run.run('trace', 'F1');
       expect(result.lines[0]).toMatch(/^F1: \d+ items in \d+ parts?$/);
-      expect(result.lines[1]).toMatch(/^Part 1\/\d+: \d+ items \| Trace file: .+ \| Verdict file: .+$/);
-      expect(p).toContain('It prints `<id>: <n> items in <k> parts`, then one line per part, `Part <p>/<k>: <m> items | Trace file: <path> | Verdict file: <path>`');
+      expect(result.lines[1]).toMatch(/^Part 1\/\d+: \d+ items \| Trace file: .+ \| Verdict files: .+part-1\.a\.json .+part-1\.b\.json$/);
+      expect(p).toContain('It prints `<id>: <n> items in <k> parts`, then one line per part, `Part <p>/<k>: <m> items | Trace file: <path> | Verdict files: <path> <path>`');
+      expect(p).toContain('the two verdict files of its two tracers (`part-<p>.a.json` and `part-<p>.b.json`)');
       expect(p).toContain('and no code; a part holds at most 25 items');
     } finally {
       run.cleanup();
     }
   });
 
-  it('dispatches one tracer per part with the registered agent type, up to 10 in one message, in the foreground', () => {
-    expect(p).toContain('Dispatch one subagent per part with the `excavator-handbook-tracer` agent type, up to 10 in one message so they run concurrently');
+  it('dispatches two tracers per part with the registered agent type, one per verdict file, up to 10 in one message, in the foreground', () => {
+    expect(p).toContain("Dispatch two subagents per part with the `excavator-handbook-tracer` agent type, one for each of the part's two verdict files, up to 10 in one message so they run concurrently");
+    expect(p).toContain('so an item is removed when either finds it');
+    expect(p).toContain("they must not see each other's file, so never name one's file or verdicts to the other");
+    expect(p).toContain('its own verdict file (the `.a.json` path for the first tracer, the `.b.json` path for the second)');
     expect(p).toContain('there is no file to look for: name it as the subagent type');
     expect(p).toContain('Dispatch them in the foreground, never as background tasks');
     expect(p).not.toContain('agents/excavator-handbook-tracer.md');
@@ -889,15 +893,16 @@ describe('excavator-product-handbook skill: Phase 6, trace', () => {
   it('records the verdicts one command at a time and says what each outcome means, with the lines the script prints', () => {
     expect(p).toContain(`${HANDBOOK} trace-verdicts "$OUT" <id> --project "$PROJECT_ROOT"`);
     expect(p).toContain('record its verdicts, one command per feature and one at a time, never two at once');
-    expect(p).toContain('`<id>: verified (<n> items)`');
+    expect(p).toContain('`<id>: verified (<n> items)`: neither tracer found code that contradicts an item');
     expect(p).toContain('`<id>: verified, <n> items removed`');
     expect(p).toContain('`<id>: failed at trace: no item could be proved`');
     expect(p).toContain('the readers of the handbook see the reason, not the place');
     expect(p).toContain('The removal is not a rewrite: never put a removed item back.');
   });
 
-  it('dispatches a tracer once more for the parts the Next line names, then leaves the feature confirmed', () => {
-    expect(p).toContain('Dispatch a tracer once more for each part the `Next:` line names, and for no other.');
+  it('dispatches a tracer once more for the part-letters the Next line names, then leaves the feature confirmed', () => {
+    expect(p).toContain('led by its part and tracer (`part <p><x>: ...`, `<x>` being `a` or `b`)');
+    expect(p).toContain('Dispatch a tracer once more for each part-letter the `Next:` line names (a file of its own: `1b` is the second tracer of part 1), and for no other.');
     expect(p).toContain('`Your previous verdict file was rejected for these reasons; write it again:`');
     expect(p).toContain('When it still exits 1, leave the feature as it is, `confirmed`: it is listed in the handbook as verification not finished.');
     expect(p).toContain('Never write or change a verdict yourself, and never edit `state.json`.');
@@ -943,7 +948,7 @@ describe('the handbook tracer agent', () => {
 
   it('takes its three lines as input', () => {
     expect(text).toContain('Trace file: <OUT>/trace/<id>/part-<n>.json');
-    expect(text).toContain('Verdict file: <OUT>/trace-verdicts/<id>/part-<n>.json');
+    expect(text).toContain('Verdict file: <OUT>/trace-verdicts/<id>/part-<n>.<a or b>.json');
     expect(text).toContain('Project root: <ROOT>');
   });
 
