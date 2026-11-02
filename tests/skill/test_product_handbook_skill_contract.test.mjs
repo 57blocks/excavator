@@ -989,6 +989,24 @@ describe('the handbook tracer agent', () => {
     expect(text).toContain('A name is not evidence of who may act or what something is.');
   });
 
+  it('follows a claimed value source back to where it is read, for every call of the function that computes that kind of value', () => {
+    expect(text).toContain('When the claim says where a value comes from, follow the value back to where it is read.');
+    expect(text).toContain('trace every input of that computation back to the line that reads it');
+    expect(text).toContain('search the project for every call of the function that computes that kind of value');
+    expect(text).toContain('one call per handler is not enough');
+    expect(text).toContain('When the claim names a value the product itself defines and shows');
+    expect(text).toContain('compare with that definition');
+    expect(text).toContain('not when you would have computed it another way');
+  });
+
+  it('treats a wrong named source as contradicted, not as leaving something out, and asks a holds reason to name where each input is read', () => {
+    expect(text).toContain('Naming the wrong source is not leaving something out.');
+    expect(text).toContain('even when X plays some other part nearby');
+    expect(text).toContain('and even when the claim is right for some kinds of lines and wrong for one of them');
+    expect(text).toContain('is not another source');
+    expect(text).toContain('For a claim that names where a value comes from, the `holds` reason names the line where each input of the value is read.');
+  });
+
   it('asks for at positions and a one-line reason written for readers, and none for a holds', () => {
     expect(text).toContain('`at` lists one or more `{ "file", "line" }`');
     expect(text).toContain('`reason` is one line of at most about 200 characters, in the language of the claim');
