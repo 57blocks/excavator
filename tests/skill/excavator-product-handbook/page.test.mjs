@@ -84,8 +84,8 @@ describe('page: the file and its data', () => {
     const run = checkedRun();
     page(run);
     const data = dataOf(html(run));
-    expect(Object.keys(data)).toEqual(['format', 'project', 'language', 'languageTag', 'ui', 'areas', 'features', 'coverage']);
-    expect(data.format).toBe('excavator-product-handbook-page/1');
+    expect(Object.keys(data)).toEqual(['format', 'project', 'language', 'languageTag', 'ui', 'areas', 'features', 'coverage', 'summary']);
+    expect(data.format).toBe('excavator-product-handbook-page/2');
     expect(data.project).toBe('project');
     expect(data.language).toBe('English');
     expect(data.languageTag).toBe('en');
@@ -172,11 +172,11 @@ describe('page: deterministic bytes and nothing local', () => {
         language: 'English',
         areas: [{ id: 'A1', name: `Area at ${root}/src` }],
         features: [{ id: 'F1', name: 'One', area: 'A1', reach: 'automated', candidates: ['c1'], seedFiles: [] }],
-        unassigned: [{ candidate: 'c2', reason: `see ${root} and ${root}-two and /work/shop.bak` }],
+        unassigned: [{ candidate: 'c2', reason: `see ${root} and ${root}-two and /work/shop.bak` }, { candidate: 'c3', reason: `registered at ${root}/jobs` }],
       },
       entries: new Map(),
       state: { features: { F1: { status: 'planned', attempts: 0 } } },
-      candidates: [{ id: 'c1', kind: 'job' }, { id: 'c2', kind: 'route' }],
+      candidates: [{ id: 'c1', kind: 'job', file: 'a.js', line: 1, text: 'run()' }, { id: 'c2', kind: 'route' }, { id: 'c3', kind: 'job', file: 'b.js', line: 1, text: 'run()' }],
       ui: { 'md.title': `Handbook of ${root}` },
     };
     const data = buildPageData(run, [root, '/links/shop']);
@@ -184,6 +184,7 @@ describe('page: deterministic bytes and nothing local', () => {
     expect(data.areas[0].name).toBe('Area at shop/src');
     expect(data.coverage.unassigned[0].reason).toBe('see shop and /work/shop-two and /work/shop.bak');
     expect(data.ui.strings['md.title']).toBe('Handbook of shop');
+    expect(data.summary.jobs.map((row) => [row.candidate, row.feature, row.reason])).toEqual([['c1', 'F1', null], ['c3', null, 'registered at shop/jobs']]);
   });
 
   it('writes a "<" inside the data as an escape, so no text can close the data block', () => {

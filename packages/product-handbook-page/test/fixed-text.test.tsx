@@ -12,7 +12,7 @@ import { describe, expect, it } from 'vitest';
 
 import { AppView } from '../src/App';
 import { parseHash } from '../src/lib/route';
-import type { Entry, Feature, PageData, Reach } from '../src/lib/types';
+import type { Entry, Feature, PageData, Reach, Summary } from '../src/lib/types';
 
 const MARK = '@@';
 const DATA = 'd~';
@@ -50,9 +50,28 @@ function feature(id: string, reach: Reach, status: Feature['status'], entry: Ent
   return { id: d(id), name: d(`name ${id}`), area: d('A1'), reach, label: label === undefined ? undefined : d(label), status, entry };
 }
 
-function dataFor(features: Feature[], unassigned: PageData['coverage']['unassigned'] = [], removed: PageData['coverage']['removed'] = []): PageData {
+const emptySummary: Summary = {
+  notifications: [],
+  jobs: [],
+  counts: { featureTotal: 6, featuresWithEntry: 2, notificationRows: 0, jobRows: 0, schedule: { literal: 0, computed: 0, absent: 0 }, described: 0 },
+};
+
+const richSummary: Summary = {
+  notifications: [
+    { feature: d('F1'), trigger: d('note trigger one'), recipient: d('note recipient'), channel: d('note channel'), content: d('note content one') },
+    { feature: d('F5'), trigger: d('note trigger two'), recipient: d('note recipient'), channel: d('note channel'), content: d('note content two') },
+  ],
+  jobs: [
+    { kind: 'job', candidate: d('c1'), feature: d('F1'), reason: null, schedule: { bucket: 'literal', literal: d('0 9 * * *') }, automatic: [{ when: d('job when one'), effect: d('job effect one') }, { when: d('job when two'), effect: d('job effect two') }] },
+    { kind: 'job', candidate: d('c2'), feature: d('F5'), reason: null, schedule: { bucket: 'computed', literal: null }, automatic: [] },
+    { kind: 'job', candidate: d('c3'), feature: null, reason: d('job reason'), schedule: { bucket: 'absent', literal: null }, automatic: [] },
+  ],
+  counts: { featureTotal: 6, featuresWithEntry: 2, notificationRows: 2, jobRows: 3, schedule: { literal: 1, computed: 1, absent: 1 }, described: 1 },
+};
+
+function dataFor(features: Feature[], unassigned: PageData['coverage']['unassigned'] = [], removed: PageData['coverage']['removed'] = [], summary: Summary = emptySummary): PageData {
   return {
-    format: 'excavator-product-handbook-page/1',
+    format: 'excavator-product-handbook-page/2',
     project: d('project'),
     language: d('language'),
     languageTag: 'xx',
@@ -66,6 +85,7 @@ function dataFor(features: Feature[], unassigned: PageData['coverage']['unassign
       reachCounts: reaches.map((reach) => ({ reach, count: features.filter((item) => item.reach === reach).length })),
       removed,
     },
+    summary,
   };
 }
 
@@ -83,6 +103,7 @@ const populated = dataFor(
     { feature: d('F1'), items: [{ claim: d('a claim'), verdict: 'contradicted', reason: d('a reason') }, { claim: d('another claim'), verdict: 'unverified', reason: d('another reason') }, { claim: d('a child'), verdict: 'withParent', reason: '' }] },
     { feature: d('F4'), items: [{ claim: d('lost claim'), verdict: 'unverified', reason: d('lost reason') }] },
   ],
+  richSummary,
 );
 const allWritten = dataFor([feature('F1', 'menu', 'verified', emptyEntry)]);
 const { purpose: _removedPurpose, ...entryWithoutPurpose } = fullEntry;
@@ -118,6 +139,10 @@ describe('every fixed text of the page comes from the ui table (O8, node half)',
     ['a feature with no verified entry (verification not finished)', populated, `#/feature/${featureId(populated, 5)}`],
     ['the coverage view with unassigned candidates, unwritten features and removed items', populated, '#/coverage'],
     ['the coverage view with nothing unassigned and every feature written', allWritten, '#/coverage'],
+    ['the notification table with rows', populated, '#/notifications'],
+    ['the notification table with no row', allWritten, '#/notifications'],
+    ['the job table with a literal, a computed and an unassigned row', populated, '#/jobs'],
+    ['the job table with no row', allWritten, '#/jobs'],
     ['an address that is not a page', populated, '#/nowhere'],
     ['a feature id the handbook does not have', populated, '#/feature/missing'],
   ];
@@ -166,6 +191,45 @@ describe('every fixed text of the page comes from the ui table (O8, node half)',
     expect(render(confirmed, '#/')).toContain(marked['md.status.confirmed']);
     expect(render(confirmed, '#/coverage')).toContain(marked['md.status.confirmed']);
     expect(render(confirmed, '#/')).toMatch(/stat-value">0<\/span><span class="stat-label">@@With a verified entry/);
+  });
+
+  it('shows the rows of the two tables with their fixed texts, the schedule as written, and the reason of an unassigned job', () => {
+    const notifications = render(populated, '#/notifications');
+    for (const text of ['note trigger one', 'note content two', 'note recipient', 'note channel']) expect(notifications).toContain(d(text));
+    for (const key of ['md.summary.notifications.heading', 'md.summary.notifications.note', 'md.table.feature', 'md.table.trigger']) expect(notifications).toContain(marked[key]);
+    expect(notifications).toContain(`${MARK}Features with a verified entry: 2 of 6. Notifications listed: 2.`);
+    expect(notifications).not.toContain(marked['md.summary.notifications.none']);
+    expect((notifications.match(/<tbody>[\s\S]*<\/tbody>/)?.[0].match(/<tr>/g) ?? []).length).toBe(2);
+
+    const jobs = render(populated, '#/jobs');
+    for (const text of ['c1', 'job when two', 'job effect one', 'job reason']) expect(jobs).toContain(d(text));
+    expect(jobs).toContain(`${MARK}Scheduled jobs listed: 3. Schedule written on the registration line: 1. Schedule worked out when the job is registered: 1. Schedule not in the text of the registration line: 1. Rows with a verified description: 1.`);
+    expect(jobs).toContain(`${MARK}Unassigned: ${d('job reason')}`);
+    expect(jobs).toContain(`<code class="schedule">${d('0 9 * * *')}</code>`);
+    for (const key of ['md.summary.jobs.heading', 'md.summary.jobs.note', 'md.summary.schedule.computed', 'md.summary.schedule.absent', 'md.summary.noDescription', 'md.table.schedule', 'md.table.does']) expect(jobs).toContain(marked[key]);
+    expect((jobs.match(/<tbody>[\s\S]*<\/tbody>/)?.[0].match(/<tr>/g) ?? []).length).toBe(3);
+  });
+
+  it('says so with the fixed text instead of an empty table when a table has no row', () => {
+    expect(render(allWritten, '#/notifications')).toContain(marked['md.summary.notifications.none']);
+    expect(render(allWritten, '#/notifications')).not.toContain('<table');
+    expect(render(allWritten, '#/jobs')).toContain(marked['md.summary.jobs.none']);
+    expect(render(allWritten, '#/jobs')).not.toContain('<table');
+  });
+
+  it('puts the two tables in the navigation, after the overview and before the coverage page', () => {
+    const html = render(populated, '#/');
+    const at = (text: string): number => html.indexOf(text);
+    expect(at('href="#/notifications"')).toBeGreaterThan(at('href="#/"'));
+    expect(at('href="#/jobs"')).toBeGreaterThan(at('href="#/notifications"'));
+    expect(at('href="#/coverage"')).toBeGreaterThan(at('href="#/jobs"'));
+    expect(html).toContain(marked['page.nav.notifications']);
+    expect(html).toContain(marked['page.nav.jobs']);
+  });
+
+  it('marks the page of the current route in the navigation', () => {
+    expect(render(populated, '#/jobs')).toMatch(/<a class="rail-link" href="#\/jobs" aria-current="page">/);
+    expect(render(populated, '#/notifications')).toMatch(/<a class="rail-link" href="#\/notifications" aria-current="page">/);
   });
 
   it('the instrument sees a fixed text the code wrote itself', () => {

@@ -2,7 +2,9 @@ import { useEffect, useMemo, useState } from 'react';
 
 import { CoveragePage } from './components/CoveragePage';
 import { FeaturePage } from './components/FeaturePage';
+import { JobsPage } from './components/JobsPage';
 import { NotFound } from './components/NotFound';
+import { NotificationsPage } from './components/NotificationsPage';
 import { Overview } from './components/Overview';
 import { Sidebar } from './components/Sidebar';
 import { TopBar } from './components/TopBar';
@@ -31,6 +33,12 @@ export function AppView({ data, route }: { data: PageData; route: Route }) {
       break;
     case 'coverage':
       view = <CoveragePage data={data} />;
+      break;
+    case 'notifications':
+      view = <NotificationsPage data={data} />;
+      break;
+    case 'jobs':
+      view = <JobsPage data={data} />;
       break;
     case 'feature': {
       const feature = data.features.find((item) => item.id === route.id);
@@ -66,7 +74,8 @@ function useDocument(data: PageData, route: Route): void {
   useEffect(() => {
     const t = makeText(data.ui.strings);
     const feature = route.name === 'feature' ? data.features.find((item) => item.id === route.id) : undefined;
-    document.title = t('page.documentTitle', { project: data.project, page: feature?.name ?? t(route.name === 'coverage' ? 'page.nav.coverage' : route.name === 'overview' ? 'page.nav.overview' : 'page.notFound.heading') });
+    const titleKey = { overview: 'page.nav.overview', coverage: 'page.nav.coverage', notifications: 'page.nav.notifications', jobs: 'page.nav.jobs', feature: 'page.notFound.heading', 'not-found': 'page.notFound.heading' }[route.name];
+    document.title = t('page.documentTitle', { project: data.project, page: feature?.name ?? t(titleKey) });
   }, [route, data]);
 }
 

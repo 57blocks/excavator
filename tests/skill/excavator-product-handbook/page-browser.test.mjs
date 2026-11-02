@@ -114,6 +114,26 @@ suite('page in a browser (O8)', () => {
         expect(await page.evaluate("document.querySelectorAll('[data-view=\"coverage\"] .removed-group').length")).toBe(1);
         expect(await page.evaluate("document.querySelector('[data-view=\"coverage\"] .callout').textContent")).toContain('Entrypoint candidates listed: 7.');
 
+        // The two cross-cutting tables: reachable by hash, a row for each row of the data, no sideways page scroll.
+        const summary = JSON.parse(await page.evaluate("document.getElementById('xv-product-handbook-data').textContent")).summary;
+        expect(summary.notifications).toHaveLength(1);
+        expect(summary.jobs).toHaveLength(1);
+        await goTo(page, '#/notifications', '[data-view="notifications"] table');
+        expect(await page.evaluate('document.title')).toBe('All notifications - project - Product handbook');
+        await fits(page, width, 'the notification table page');
+        expect(await page.evaluate("document.querySelectorAll('[data-view=\"notifications\"] tbody tr').length")).toBe(summary.notifications.length);
+        expect(await page.evaluate("document.querySelector('[data-view=\"notifications\"] tbody tr').textContent")).toContain('A new order waits for approval.');
+        expect(await page.evaluate("document.querySelector('[data-view=\"notifications\"] .summary-counts').textContent")).toContain('Notifications listed: 1.');
+        await goTo(page, '#/jobs', '[data-view="jobs"] table');
+        expect(await page.evaluate('document.title')).toBe('All scheduled jobs - project - Product handbook');
+        await fits(page, width, 'the job table page');
+        expect(await page.evaluate("document.querySelectorAll('[data-view=\"jobs\"] tbody tr').length")).toBe(summary.jobs.length);
+        expect(await page.evaluate("document.querySelector('[data-view=\"jobs\"] tbody code.schedule').textContent")).toBe('0 9 * * *');
+        expect(await page.evaluate("document.querySelector('[data-view=\"jobs\"] tbody tr').textContent")).toContain('No verified description');
+        if (width < 500) {
+          expect(await page.evaluate("Array.from(document.querySelectorAll('[data-view=\"jobs\"] .table-scroll')).some((box) => box.scrollWidth > box.clientWidth)")).toBe(true);
+        }
+
         await goTo(page, '#/nowhere', '[data-view="not-found"]');
         await goTo(page, '#/feature/missing', '[data-view="not-found"]');
         await goTo(page, '#/', '[data-view="overview"]');
@@ -149,6 +169,13 @@ suite('page in a browser (O8)', () => {
           await page.waitFor("document.querySelector('.rail[data-open=\"false\"]')", 'the drawer closed after a choice');
         }
         expect(await page.evaluate("document.querySelector('.rail-feature[aria-current=\"page\"] .rail-feature-name').textContent")).toBe('Orders');
+        // The two tables are in the navigation too.
+        for (const [view, hash] of [['notifications', '#/notifications'], ['jobs', '#/jobs']]) {
+          if (width < 900) await page.evaluate("document.querySelector('.menu-btn').click()");
+          await page.evaluate(`document.querySelector('.rail-link[href="${hash}"]').click()`);
+          await page.waitFor(`document.querySelector('[data-view="${view}"]')`, `the ${view} page from the sidebar`);
+          expect(await page.evaluate(`document.querySelector('.rail-link[href="${hash}"]').getAttribute('aria-current')`)).toBe('page');
+        }
         expect(page.consoleErrors).toEqual([]);
       }, 60000);
     });

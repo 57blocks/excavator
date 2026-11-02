@@ -598,6 +598,20 @@ describe('excavator-product-handbook skill: assemble, page and the closing reply
     expect(p).toContain('`Candidates:` and the conservation line');
   });
 
+  it('says the handbook and the page hold two tables across features that the script writes, and the model writes nothing for them', () => {
+    expect(p).toContain('between the feature sections and the coverage section it has two tables across features, every notification of the verified entries and one row for every scheduled-job candidate with the schedule its registration line gives, which the script writes from the verified entries and the source, so you write nothing for them');
+    expect(p).toContain('`page` writes `$OUT/handbook.html`, one page that opens from disk with a double click, with the same two tables on pages of their own');
+  });
+
+  it('tells a resumed run what to do with a ui.json that lacks keys: translate again, or delete it for English', () => {
+    const step = flat(skill.split(/^## Phase 1: /m)[0]);
+    expect(step).toContain('A `ui.json` written before the skill gained new fixed texts lacks their keys');
+    expect(step).toContain('Phase 2 finds it with `check-ui` (exit 1, one line for each missing key) and translates the table again');
+    expect(step).toContain('for a run in English delete `$OUT/ui.json`');
+    // Phase 2 really does run check-ui on an existing ui.json and translates again when it exits 1.
+    expect(phase(2)).toContain('when `$OUT/ui.json` exists, run `check-ui` first; when it exits 0 skip the translation. Otherwise dispatch one subagent');
+  });
+
   it('keeps the handbook in $OUT and writes nothing into the project unless the user says so', () => {
     expect(p).toContain('The handbook stays in `$OUT`: write it into the project only when the user says so.');
   });
