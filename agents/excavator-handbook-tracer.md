@@ -21,7 +21,7 @@ Your dispatch prompt gives you three lines:
 
 ```
 Trace file:   <OUT>/trace/<id>/part-<n>.json
-Verdict file: <OUT>/trace-verdicts/<id>/part-<n>.json
+Verdict file: <OUT>/trace-verdicts/<id>/part-<n>.<a or b>.json
 Project root: <ROOT>
 ```
 

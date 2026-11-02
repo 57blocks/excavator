@@ -18,8 +18,8 @@
  * are still not verified from the entry in place, records them in state.json,
  * and confirms the feature, or fails it when no item that carries evidence is
  * left (the purpose is removed like any other item and does not fail it).
- * A feature either round settles is `confirmed`, not `verified`: the tracer of
- * trace.mjs and trace-verdicts.mjs looks for counter-evidence next (design D14).
+ * A feature either round settles is `confirmed`, not `verified`: the tracers of
+ * trace.mjs and trace-verdicts.mjs look for counter-evidence next (design D14).
  */
 
 import { mkdirSync, rmSync } from 'node:fs';
@@ -85,15 +85,15 @@ export function reasonProblems(verdictList, { entry, loaded }) {
   return reviewItems(gated, { files, memberDirs, exemptLabels: new Set([...mapLabels, ...entryLabels]), languageCheck }).problems;
 }
 
-/** The last line of a settled feature: the tracer is next (trace.mjs). */
-const traceNext = (id) => `Next: run trace for ${id}, dispatch one excavator-handbook-tracer per part, then run trace-verdicts`;
+/** The last line of a settled feature: the tracers are next (trace.mjs). */
+const traceNext = (id) => `Next: run trace for ${id}, dispatch two excavator-handbook-tracers per part, then run trace-verdicts`;
 
 const joinAnd = (list) => (list.length < 2 ? list.join('') : `${list.slice(0, -1).join(', ')} and ${list.at(-1)}`);
 const partNoun = (list) => (list.length === 1 ? 'part' : 'parts');
 
 /** The part-letters (`{ part, letter }`) in part order, then letter order, as `1a, 1b, 2a`. */
-const byPartLetter = (x, y) => x.part - y.part || x.letter.localeCompare(y.letter);
-const tagOf = ({ part, letter }) => `${part}${letter}`;
+export const byPartLetter = (x, y) => x.part - y.part || x.letter.localeCompare(y.letter);
+export const tagOf = ({ part, letter }) => `${part}${letter}`;
 
 /**
  * Read the verify files and the two verdict files of every part of the round

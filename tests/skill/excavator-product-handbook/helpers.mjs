@@ -217,12 +217,14 @@ export function confirmChecked(run, id = 'F1') {
 }
 
 /**
- * Trace a confirmed feature: write the trace files with `trace`, one verdict
- * file per part (`decide(item)` gives a verdict word or `{ verdict, reason, at }`,
- * default `holds`), and record them with `trace-verdicts`. Returns that result.
- * `edit(part, verdicts)` may change a part's verdict list before it is written.
+ * Trace a confirmed feature: write the trace files with `trace`, two verdict
+ * files per part (`part-<n>.a.json` judges each item with `decide(item)`, `.b`
+ * with `decideB(item)`, by default the same; a verdict word or
+ * `{ verdict, reason, at }`, default `holds`), and record them with
+ * `trace-verdicts`. Returns that result. `edit(part, verdicts)` may change the
+ * verdict list of file `a` of a part before it is written, `editB` that of `b`.
  */
-export function traceFeature(run, id = 'F1', decide = () => 'holds', edit = () => {}) {
+export function traceFeature(run, id = 'F1', decide = () => 'holds', edit = () => {}, decideB = decide, editB = () => {}) {
   const traced = run.run('trace', id);
   if (traced.status !== 0) throw new Error(`trace failed:\n${traced.stdout}${traced.stderr}`);
   const traceDir = join(run.out, 'trace', id);
@@ -231,13 +233,15 @@ export function traceFeature(run, id = 'F1', decide = () => 'holds', edit = () =
   const { parts } = JSON.parse(readFileSync(join(traceDir, 'part-1.json'), 'utf-8'));
   for (let part = 1; part <= parts; part += 1) {
     const file = JSON.parse(readFileSync(join(traceDir, `part-${part}.json`), 'utf-8'));
-    const verdicts = file.items.map((item) => {
-      const given = decide(item);
-      const verdict = typeof given === 'string' ? { verdict: given } : given;
-      return { id: item.id, ...verdict, reason: verdict.reason ?? `Nothing in the code disagrees with ${item.id}.` };
-    });
-    edit(part, verdicts);
-    writeFileSync(join(dir, `part-${part}.json`), `${JSON.stringify({ verdicts }, null, 2)}\n`);
+    for (const [letter, decider, editor] of [['a', decide, edit], ['b', decideB, editB]]) {
+      const verdicts = file.items.map((item) => {
+        const given = decider(item);
+        const verdict = typeof given === 'string' ? { verdict: given } : given;
+        return { id: item.id, ...verdict, reason: verdict.reason ?? `Nothing in the code disagrees with ${item.id}.` };
+      });
+      editor(part, verdicts);
+      writeFileSync(join(dir, `part-${part}.${letter}.json`), `${JSON.stringify({ verdicts }, null, 2)}\n`);
+    }
   }
   return run.run('trace-verdicts', id);
 }

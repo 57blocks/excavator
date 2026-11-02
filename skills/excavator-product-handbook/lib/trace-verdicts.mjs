@@ -1,14 +1,18 @@
 /**
  * `handbook.mjs trace-verdicts <out> <id> --project <root>` (design D14, the
- * third check): record the verdicts of the tracers of a `confirmed` feature.
+ * third check; two tracers per part, design D1-D4 of handbook-dual-tracer):
+ * record the verdicts of the tracers of a `confirmed` feature.
  *
- * Each part of the trace files has one verdict file
- * `trace-verdicts/<id>/part-<n>.json` `{ verdicts: [{ id, verdict, reason, at? }] }`.
- * It must hold exactly one verdict per item of that part (an id of another part
- * is an extra id), each `holds` or `contradicted`, with a non-empty one-line
- * reason; within one part no two `holds` verdicts share a reason (equal after
- * trimming and collapsing white space), since the same words for two items show
- * they were not traced one by one (contradicted reasons may repeat). A `contradicted` verdict needs at least one `at` entry `{ file, line }`
+ * Each part of the trace files is traced by two tracers that do not see each
+ * other, each with its own verdict file `trace-verdicts/<id>/part-<n>.a.json`
+ * and `part-<n>.b.json` `{ verdicts: [{ id, verdict, reason, at? }] }`. Each of
+ * the two files is checked on its own. It must hold exactly one verdict per
+ * item of that part (an id of another part is an extra id), each `holds` or
+ * `contradicted`, with a non-empty one-line reason; within one file no two
+ * `holds` verdicts share a reason (equal after trimming and collapsing white
+ * space), since the same words for two items show they were not traced one by
+ * one (contradicted reasons may repeat, and the two files may share a reason).
+ * A `contradicted` verdict needs at least one `at` entry `{ file, line }`
  * that points into the project: a path the project's file reader accepts (so
  * `..`, an absolute path, a symlink that resolves outside the root, or a path
  * under a directory of dependencies or tool products is refused before any read)
@@ -16,13 +20,16 @@
  * reaches readers (the coverage section lists it), so it passes the gate of
  * reader text like the reason of a verifier; the reason of a `holds` verdict is
  * shown to no one and is not gated. Any failure prints every problem, each led
- * by its part, and records nothing.
+ * by its part and letter (`part 1b:`), and records nothing.
  *
- * When every file is valid, each contradicted item is removed from the entry
- * (what hangs on it goes with it) and recorded in state.json with
- * `step: "trace"` and its `at` positions, which stay in state.json and are not
- * shown to readers. The feature is then `verified`; when no item with evidence
- * is left it is `failed` at the step `trace`.
+ * When every file is valid, the two verdicts of an item are combined
+ * (combine-verdicts.mjs): it is contradicted when either tracer says so. Each
+ * contradicted item is removed from the entry (what hangs on it goes with it)
+ * and recorded in state.json with `step: "trace"`, the `reason` readers see,
+ * the `reasons` of every tracer that contradicted it and their `at` positions,
+ * which stay in state.json and are not shown to readers. The feature is then
+ * `verified`; when no item with evidence is left it is `failed` at the step
+ * `trace`.
  */
 
 import { join } from 'node:path';
@@ -30,10 +37,11 @@ import { join } from 'node:path';
 import { entryPath, entryProblems } from './entry-check.mjs';
 import { isObject, readJson, writeJson } from './json-file.mjs';
 import { removalRecords } from './removal-records.mjs';
+import { combineTraceVerdicts } from './combine-verdicts.mjs';
 import { entryItems } from './items.mjs';
 import { entryDigest, saveState } from './state.mjs';
-import { confirmedPlan, tracePartFile, tracePartPath, traceVerdictPath } from './trace-plan.mjs';
-import { reasonProblems } from './verdicts.mjs';
+import { TRACERS, confirmedPlan, tracePartFile, tracePartPath, traceVerdictPath } from './trace-plan.mjs';
+import { byPartLetter, reasonProblems, tagOf } from './verdicts.mjs';
 
 export const TRACE_VERDICTS = Object.freeze(['holds', 'contradicted']);
 
@@ -107,9 +115,11 @@ export function traceVerdictProblems(raw, items, files, citedFiles) {
 }
 
 /**
- * Read the trace files and the verdict file of every part and check them.
- * Returns `{ verdictList }` (every verdict of all parts in part order) or
- * `{ stop }` with the problem lines, each led by its part, and a Next line.
+ * Read the trace files and the two verdict files of every part and check them,
+ * each file on its own. Returns `{ verdictList }` (the combined verdicts of all
+ * parts, in part order) or `{ stop }` with the problem lines, each led by its
+ * part and letter, and a Next line that names exactly the part-letters to
+ * dispatch again.
  */
 function readParts(outDir, id, plan) {
   const missingTrace = [];
@@ -122,7 +132,7 @@ function readParts(outDir, id, plan) {
   });
   if (missingTrace.length > 0) return { stop: { status: 1, lines: [...missingTrace, `Next: run trace for ${id} first`] } };
   if (stale.length > 0) {
-    return { stop: { status: 1, lines: [`${id}: the entry or the source changed since trace wrote the files of trace/${id}/ (${partNoun(stale)} ${joinAnd(stale)})`, `Next: run trace again for ${id}, then send each part to its tracer`] } };
+    return { stop: { status: 1, lines: [`${id}: the entry or the source changed since trace wrote the files of trace/${id}/ (${partNoun(stale)} ${joinAnd(stale)})`, `Next: run trace again for ${id}, then send each part to its two tracers`] } };
   }
 
   const { files } = plan.loaded;
@@ -133,32 +143,41 @@ function readParts(outDir, id, plan) {
   const verdictList = [];
   plan.parts.forEach((items, index) => {
     const number = index + 1;
-    const read = readJson(traceVerdictPath(outDir, id, number));
-    const where = `trace-verdicts/${id}/part-${number}.json`;
-    if (!read.ok) {
-      (read.missing ? missing : rejected).push(number);
-      lines.push(`part ${number}: ${where} ${read.reason}`);
-      return;
+    const given = {};
+    for (const letter of TRACERS) {
+      const label = `part ${tagOf({ part: number, letter })}`;
+      const read = readJson(traceVerdictPath(outDir, id, number, letter));
+      const where = `trace-verdicts/${id}/part-${number}.${letter}.json`;
+      if (!read.ok) {
+        (read.missing ? missing : rejected).push({ part: number, letter });
+        lines.push(`${label}: ${where} ${read.reason}`);
+        continue;
+      }
+      const problems = traceVerdictProblems(read.value, items, files, citedFiles);
+      if (problems.length === 0) {
+        const contradicted = read.value.verdicts.filter((entry) => entry.verdict === 'contradicted');
+        problems.push(...reasonProblems(contradicted, plan));
+      }
+      if (problems.length > 0) {
+        rejected.push({ part: number, letter });
+        lines.push(...problems.map((problem) => `${label}: ${problem}`));
+      } else {
+        given[letter] = read.value.verdicts;
+      }
     }
-    const problems = traceVerdictProblems(read.value, items, files, citedFiles);
-    if (problems.length === 0) {
-      const contradicted = read.value.verdicts.filter((entry) => entry.verdict === 'contradicted');
-      problems.push(...reasonProblems(contradicted, plan));
-    }
-    if (problems.length > 0) {
-      rejected.push(number);
-      lines.push(...problems.map((problem) => `part ${number}: ${problem}`));
-    } else {
-      verdictList.push(...read.value.verdicts);
+    if (TRACERS.every((letter) => given[letter] !== undefined)) {
+      const second = new Map(given.b.map((entry) => [entry.id, entry]));
+      verdictList.push(...given.a.map((entry) => combineTraceVerdicts(entry, second.get(entry.id))));
     }
   });
   if (missing.length === 0 && rejected.length === 0) return { verdictList };
-  const again = [...missing, ...rejected].sort((a, b) => a - b);
+  const again = [...missing, ...rejected].sort(byPartLetter).map(tagOf);
   if (rejected.length === 0) {
-    return { stop: { status: 1, lines: [...lines, `Next: dispatch the tracer once more for ${id} for exactly the missing ${partNoun(missing)}: ${joinAnd(missing)}, each with the trace file and the verdict file path trace printed for it`] } };
+    const names = missing.sort(byPartLetter).map(tagOf);
+    return { stop: { status: 1, lines: [...lines, `Next: dispatch the tracer once more for ${id} for exactly the missing ${partNoun(names)}: ${joinAnd(names)}, each with the trace file and the verdict file path trace printed for it`] } };
   }
-  const bad = [...rejected].sort((a, b) => a - b);
-  return { stop: { status: 1, lines: [...lines, `Next: delete the verdict ${bad.length === 1 ? 'file' : 'files'} of ${partNoun(bad)} ${joinAnd(bad)} and dispatch the tracer once more for ${partNoun(again)} ${joinAnd(again)} with the lines above; nothing was recorded`] } };
+  const names = rejected.sort(byPartLetter).map(tagOf);
+  return { stop: { status: 1, lines: [...lines, `Next: delete the verdict ${names.length === 1 ? 'file' : 'files'} of ${partNoun(names)} ${joinAnd(names)} and dispatch the tracer once more for ${partNoun(again)} ${joinAnd(again)} with the lines above; nothing was recorded`] } };
 }
 
 /** Run trace-verdicts. Returns { status, lines }. */
@@ -168,13 +187,14 @@ export function traceVerdicts(outDir, id, root) {
   const checked = readParts(outDir, id, plan);
   if (checked.stop) return checked.stop;
 
-  const verdictOf = new Map(checked.verdictList.map((entry) => [entry.id, { verdict: entry.verdict, reason: entry.reason.trim(), at: entry.at }]));
+  const verdictOf = new Map(checked.verdictList.map((entry) => [entry.id, entry]));
   const contradicted = plan.items.filter((item) => verdictOf.get(item.id).verdict === 'contradicted').map((item) => item.id);
   const { state, current, entry } = plan;
   const { attempts } = current;
   const earlier = current.removed ?? [];
-  const atOf = (path) => verdictOf.get(path).at.map(({ file, line }) => ({ file, line }));
-  const { trimmed, records } = removalRecords(entry, contradicted, (path) => verdictOf.get(path), (path) => plan.claims.get(path), { step: 'trace', atOf });
+  const reasonsOf = (path) => verdictOf.get(path).reasons;
+  const atOf = (path) => verdictOf.get(path).at;
+  const { trimmed, records } = removalRecords(entry, contradicted, (path) => verdictOf.get(path), (path) => plan.claims.get(path), { step: 'trace', reasonsOf, atOf });
   const removed = [...earlier, ...records];
 
   // Nothing left that carries evidence: nothing was proved. The entry file stays as written for the user to see.

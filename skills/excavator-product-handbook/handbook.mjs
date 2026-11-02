@@ -30,13 +30,13 @@
  *       round 2 removes what is still not verified and verifies the feature.
  *   trace <out> <featureId> --project <root>
  *       For a confirmed feature (both verifiers settled it), write the items it
- *       still holds as trace files for tracers that read the whole project and
- *       look only for code that contradicts a claim (design D14).
+ *       still holds as trace files for two tracers per part that read the whole
+ *       project and look only for code that contradicts a claim (design D14).
  *   trace-verdicts <out> <featureId> --project <root>
- *       Record the tracers' verdicts: one per item, holds or contradicted, a
- *       contradicted one with a position inside the project; remove the
- *       contradicted items and verify the feature, nothing recorded when any
- *       file does not hold.
+ *       Record the tracers' verdicts, two files per part: one verdict per item in
+ *       each, holds or contradicted, a contradicted one with a position inside
+ *       the project; remove the items either tracer contradicted and verify the
+ *       feature, nothing recorded when any file does not hold.
  *   check-ui <out> [--language <name>]
  *       Check <out>/ui.json against the shipped English table, or copy that
  *       table there when the run's language is English. The fixed text is
@@ -147,19 +147,21 @@ Commands:
       claim (as the verify files hold it) and the file and line range of each
       cited passage, no code, in entry order, at most 25 items a part. Removes
       the feature's older trace and trace-verdict files first. Prints, for each
-      part, the trace file and the verdict file its tracer must write.
+      part, the trace file and the two verdict files its two tracers must write.
   trace-verdicts <out> <featureId> --project <root>
-      Read <out>/trace-verdicts/<featureId>/part-<n>.json for every part
-      ({ "verdicts": [{ "id", "verdict", "reason", "at"? }] }): exactly one
-      verdict per item of the part, each holds or contradicted, with a one-line
-      reason; a contradicted verdict needs at least one at entry { file, line }
-      that names an existing file inside the project (never read outside it)
+      Read <out>/trace-verdicts/<featureId>/part-<n>.a.json and part-<n>.b.json
+      for every part ({ "verdicts": [{ "id", "verdict", "reason", "at"? }] }),
+      each file on its own: exactly one verdict per item of the part, each
+      holds or contradicted, with a one-line reason; a contradicted verdict
+      needs at least one at entry { file, line } that names an existing file inside the project (never read outside it)
       and a line of that file, and its reason passes the reader-text gate. Any
-      failure prints every problem by part, names the parts to dispatch again,
-      and records nothing. Otherwise each contradicted item is removed from the
-      entry (what hangs on it goes with it) and recorded in state.json with
-      step trace and its at positions, and the feature is verified; when no
-      item that carries evidence is left, it fails at step trace.
+      failure prints every problem by part and tracer (part 1b), names the
+      part-letters to dispatch again, and records nothing. Otherwise each item
+      either tracer contradicted is removed from the entry (what hangs on it
+      goes with it) and recorded in state.json with step trace, the reasons of
+      the tracers that contradicted it and their at positions, and the feature
+      is verified; when no item that carries evidence is left, it fails at
+      step trace.
   check-ui <out> [--language <name>]
       Run in English with no <out>/ui.json: copy the shipped English table
       there. Otherwise check <out>/ui.json: the same keys as the English table,

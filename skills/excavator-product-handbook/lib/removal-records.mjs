@@ -1,7 +1,7 @@
 /**
  * The records of the items a settling step removes from an entry (design D14):
  * `verdicts --round 2` removes what the two verifiers did not both confirm,
- * `trace-verdicts` removes what a tracer contradicted. Either way what hangs on
+ * `trace-verdicts` removes what either tracer contradicted. Either way what hangs on
  * a removed item goes with it, and each record names the item's path, its
  * claim, the verdict and the reason; the records go to state.json and the
  * coverage section lists them.
@@ -17,12 +17,13 @@ const isAncestor = (ancestor, path) => path.startsWith(`${ancestor}.`);
  * `entry`: the trimmed entry and a record for each item gone, in entry order,
  * plus one for each operation left without a sentence. `verdictOf(path)` is
  * `{ verdict, reason }` and `claimOf(path)` the claim of an item. With
- * `options.step` every record carries it (`step: "trace"`), and with
- * `options.atOf(path)` a record of a removed item carries the positions it
- * returns; records of the earlier step keep their older shape (no step).
+ * `options.step` every record carries it (`step: "trace"`), with
+ * `options.reasonsOf(path)` a record of a removed item carries the reasons it
+ * returns, and with `options.atOf(path)` the positions it returns; records of
+ * the earlier step keep their older shape (no step).
  */
 export function removalRecords(entry, removedByVerdict, verdictOf, claimOf, options = {}) {
-  const { step, atOf } = options;
+  const { step, reasonsOf, atOf } = options;
   const removed = new Set(removedByVerdict);
   const { entry: trimmed, together } = trimEntry(entry, removed);
   const order = entryItems(entry).map((item) => item.path);
@@ -33,7 +34,8 @@ export function removalRecords(entry, removedByVerdict, verdictOf, claimOf, opti
     const underRemoved = [...removed].some((ancestor) => isAncestor(ancestor, path));
     if (!removed.has(path) || underRemoved) return stamp({ path, claim: claimOf(path), verdict: 'withParent', reason: '' });
     const base = { path, claim: claimOf(path), verdict: verdictOf(path).verdict, reason: verdictOf(path).reason };
-    return stamp(atOf === undefined ? base : { ...base, at: atOf(path) });
+    const withReasons = reasonsOf === undefined ? base : { ...base, reasons: reasonsOf(path) };
+    return stamp(atOf === undefined ? withReasons : { ...withReasons, at: atOf(path) });
   });
   for (const path of emptiedOperations) {
     const index = Number(path.match(/\d+/)[0]);

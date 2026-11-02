@@ -1,17 +1,18 @@
 /**
  * `handbook.mjs trace <out> <id> --project <root>` (design D14, the third
  * check): for a `confirmed` feature, write the items that still carry evidence
- * as trace files, one per part of at most 25 items, for tracers that read the
- * whole project and look only for code that contradicts a claim. A trace file
- * holds each item's id, claim and the file and line range of each cited
- * passage, and no code. Removes the feature's older trace and trace-verdict
+ * as trace files, one per part of at most 25 items, for two tracers per part
+ * that read the whole project and look only for code that contradicts a claim.
+ * A trace file holds each item's id, claim and the file and line range of each
+ * cited passage, and no code; both tracers of a part read it and each writes
+ * its own verdict file. Removes the feature's older trace and trace-verdict
  * files first. Changes no other file and no state.
  */
 
 import { mkdirSync, rmSync } from 'node:fs';
 
 import { writeJson } from './json-file.mjs';
-import { confirmedPlan, traceDirPath, tracePartFile, tracePartPath, traceVerdictDirPath, traceVerdictPath } from './trace-plan.mjs';
+import { TRACERS, confirmedPlan, traceDirPath, tracePartFile, tracePartPath, traceVerdictDirPath, traceVerdictPath } from './trace-plan.mjs';
 
 const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
 
@@ -25,8 +26,9 @@ export function trace(outDir, id, root) {
   plan.parts.forEach((items, index) => {
     const number = index + 1;
     writeJson(tracePartPath(outDir, id, number), tracePartFile(id, number, plan.parts.length, items));
-    lines.push(`Part ${number}/${plan.parts.length}: ${plural(items.length, 'item')} | Trace file: ${tracePartPath(outDir, id, number)} | Verdict file: ${traceVerdictPath(outDir, id, number)}`);
+    const verdictFiles = TRACERS.map((letter) => traceVerdictPath(outDir, id, number, letter));
+    lines.push(`Part ${number}/${plan.parts.length}: ${plural(items.length, 'item')} | Trace file: ${tracePartPath(outDir, id, number)} | Verdict files: ${verdictFiles.join(' ')}`);
   });
-  lines.push(`Next: dispatch one excavator-handbook-tracer subagent per part of ${id}, each with the trace file, the verdict file and the project root of its line above, then run trace-verdicts for ${id}`);
+  lines.push(`Next: dispatch two excavator-handbook-tracer subagents per part of ${id}, one per verdict file, each with the trace file, its verdict file and the project root of its line above, then run trace-verdicts for ${id}`);
   return { status: 0, lines };
 }
