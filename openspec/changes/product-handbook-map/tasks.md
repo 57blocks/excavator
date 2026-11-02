@@ -47,7 +47,7 @@
 
 运行前把要用的命令、`--features` 选哪个功能、抽样表的分层写进仓库外的验收笔记；design 的验收记录只写代号与脱敏摘要。
 
-- [ ] 6.1 O6：在 go-multirepo 上以 Sonnet 无人值守运行（`--model sonnet`、`CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS=0`、`--out` 在语料外、`--language Chinese`），记录花费、时长与重试次数
-- [ ] 6.2 O6 审读：独立的 Sonnet 审读者分别做召回对照（读旧章节）与 30 项分层编造抽查（读源码）；从运行记录中检查有没有读 `.excavator/` 下的生成产物；通读中文固定文字；对运行产出的 `handbook.html` 再做一遍 O8；区域与 domain 的域对照（只记录）
-- [ ] 6.3 O7：权限视角探针，记录行数、花费与时长
-- [ ] 6.4 把 O1–O8 的结果写进 design 的验收记录；O6 发现的转写错误按值的类别计数，作为是否做确定性抽取器的依据（D5）
+- [x] 6.1 O6：在 go-multirepo 上以 Sonnet 无人值守运行（`--model sonnet`、`CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS=0`、`--out` 在语料外、`--language Chinese`），记录花费、时长与重试次数
+- [x] 6.2 O6 审读：独立的 Sonnet 审读者分别做召回对照（读旧章节）与 30 项分层编造抽查（读源码）；从运行记录中检查有没有读 `.excavator/` 下的生成产物；通读中文固定文字；对运行产出的 `handbook.html` 再做一遍 O8；区域与 domain 的域对照（只记录）
+- [x] 6.3 O7：权限视角探针，记录行数、花费与时长
+- [x] 6.4 把 O1–O8 的结果写进 design 的验收记录；O6 发现的转写错误按值的类别计数，作为是否做确定性抽取器的依据（D5）
