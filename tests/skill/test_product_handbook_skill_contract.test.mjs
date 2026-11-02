@@ -884,7 +884,7 @@ describe('excavator-product-handbook skill: Phase 6, trace', () => {
   it('gives the tracer its three lines and nothing else', () => {
     expect(tracerPrompt.split('\n')).toEqual([
       'Trace file:   <the trace file of the line>',
-      'Verdict file: <the verdict file of the line>',
+      'Verdict file: <your verdict file of the line: its .a.json path or its .b.json path>',
       'Project root: <$PROJECT_ROOT as its value>',
     ]);
     expect(p).toContain('and nothing else: not the entry, the map, a summary, a hint about what to look for or any reason.');

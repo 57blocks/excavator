@@ -402,7 +402,7 @@ A `confirmed` feature has items that two verifiers, who saw only the lines each 
 
 ````text
 Trace file:   <the trace file of the line>
-Verdict file: <the verdict file of the line>
+Verdict file: <your verdict file of the line: its .a.json path or its .b.json path>
 Project root: <$PROJECT_ROOT as its value>
 ````
 
