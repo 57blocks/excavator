@@ -8,7 +8,7 @@
 import { readFileSync, realpathSync, statSync } from 'node:fs';
 import { isAbsolute, join, relative, sep } from 'node:path';
 
-import { SKIPPED_DIRECTORIES } from './entrypoints.mjs';
+import { SKIPPED_DIRECTORIES } from '../../excavator-product-handbook/lib/entrypoints.mjs';
 
 /**
  * The reason a model-written path is refused: one of its directories is a

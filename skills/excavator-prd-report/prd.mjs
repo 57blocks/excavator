@@ -46,7 +46,8 @@
  * 2 usage or IO error.
  */
 
-import { listEntrypoints } from './lib/entrypoints.mjs';
+import { listEntrypoints } from '../excavator-product-handbook/lib/entrypoints.mjs';
+import { ENTRYPOINTS_FORMAT } from './lib/entrypoints-format.mjs';
 import { UsageError } from './lib/errors.mjs';
 import { checkIndex } from './lib/index-check.mjs';
 import { checkLane } from './lib/lane-check.mjs';
@@ -151,7 +152,7 @@ const COMMANDS = {
     const { positionals, options } = parseArgs(args, ['scope']);
     if (positionals.length !== 1) throw new UsageError('entrypoints takes exactly one <projectRoot>');
     const result = await listEntrypoints(positionals[0], { scope: options.scope ?? null });
-    process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+    process.stdout.write(`${JSON.stringify({ format: ENTRYPOINTS_FORMAT, ...result }, null, 2)}\n`);
     return 0;
   },
   'check-index'(args) {
@@ -230,7 +231,8 @@ async function main(argv) {
     return await run(rest);
   } catch (error) {
     // Any other error is an IO failure (unreadable directory, vanished file): exit 2, never 1, which means a check failed.
-    const message = error instanceof UsageError ? error.message : `${error?.stack ?? error}`;
+    // The shared lister throws its own UsageError class; match it by name too so the message stays the same.
+    const message = error instanceof UsageError || error?.name === 'UsageError' ? error.message : `${error?.stack ?? error}`;
     process.stderr.write(`prd.mjs ${command}: ${message}\n`);
     return 2;
   }

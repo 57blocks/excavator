@@ -23,7 +23,7 @@ import { parseFrontMatter } from './front-matter.mjs';
 import { endsInsideFence, headingsOf } from './headings.mjs';
 import { INDEX_FILE, MAX_ATTEMPTS, loadIndex } from './index-check.mjs';
 import { isObject, isString, isStringArray, readJson, writeJson } from './json-file.mjs';
-import { findOnce, normalize } from './normalize.mjs';
+import { findOnce, normalize } from '../../excavator-product-handbook/lib/normalize.mjs';
 import { projectFiles, skippedDirectoryReason } from './project-files.mjs';
 import { projectRootProblem } from './project-root.mjs';
 import { isTableOf } from './table-shape.mjs';
