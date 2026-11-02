@@ -6,7 +6,9 @@
  * `trace-verdicts/<id>/part-<n>.json` `{ verdicts: [{ id, verdict, reason, at? }] }`.
  * It must hold exactly one verdict per item of that part (an id of another part
  * is an extra id), each `holds` or `contradicted`, with a non-empty one-line
- * reason. A `contradicted` verdict needs at least one `at` entry `{ file, line }`
+ * reason; within one part no two `holds` verdicts share a reason (equal after
+ * trimming and collapsing white space), since the same words for two items show
+ * they were not traced one by one (contradicted reasons may repeat). A `contradicted` verdict needs at least one `at` entry `{ file, line }`
  * that points into the project: a path the project's file reader accepts (so
  * `..`, an absolute path, a symlink that resolves outside the root, or a path
  * under a directory of dependencies or tool products is refused before any read)
@@ -73,6 +75,7 @@ export function traceVerdictProblems(raw, items, files, citedFiles) {
   const problems = [];
   const ids = new Set(items.map((item) => item.id));
   const seen = new Set();
+  const holdsReasons = new Map();
   raw.verdicts.forEach((entry, index) => {
     if (!isObject(entry) || typeof entry.id !== 'string') {
       problems.push(`verdicts[${index}]: must be an object with id, verdict and reason`);
@@ -85,6 +88,12 @@ export function traceVerdictProblems(raw, items, files, citedFiles) {
     if (!TRACE_VERDICTS.includes(entry.verdict)) problems.push(`${id}: verdict ${JSON.stringify(entry.verdict)} is not one of ${TRACE_VERDICTS.join(', ')}`);
     if (typeof entry.reason !== 'string' || entry.reason.trim() === '') problems.push(`${id}: the reason must be a non-empty string`);
     else if (/[\r\n]/.test(entry.reason.trim())) problems.push(`${id}: the reason must be one line`);
+    if (entry.verdict === 'holds' && typeof entry.reason === 'string' && entry.reason.trim() !== '') {
+      // The same words for two items show they were not traced one by one.
+      const key = entry.reason.trim().replace(/\s+/g, ' ');
+      if (holdsReasons.has(key)) problems.push(`${id}: the same holds reason as ${holdsReasons.get(key)}: trace each item on its own`);
+      else holdsReasons.set(key, id);
+    }
     if (entry.verdict !== 'contradicted') return;
     problems.push(...atProblems(entry.at, files).map((problem) => `${id}: ${problem}`));
     if (typeof entry.reason === 'string') {

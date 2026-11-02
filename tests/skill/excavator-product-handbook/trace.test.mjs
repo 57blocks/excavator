@@ -326,11 +326,43 @@ describe('trace-verdicts: the verdict files are checked before anything is recor
     expect(lines.run.run('trace-verdicts', 'F1').status).toBe(0);
   });
 
+  describe('two holds verdicts of one part never share a reason', () => {
+    const SAME = 'Read the function that picks the reviewers and the query it runs: it selects every active member.';
+
+    it('rejects the same holds reason on two items of a part, names both ids, and records nothing', () => {
+      const { run, bad } = refuses((_, verdicts) => { verdicts[0].reason = SAME; verdicts[2].reason = SAME; }, `part 1: ${'where[0]'}: the same holds reason as purpose: trace each item on its own`);
+      expect(bad.lines.at(-1)).toBe('Next: delete the verdict file of part 1 and dispatch the tracer once more for part 1 with the lines above; nothing was recorded');
+      repair(run);
+      expect(run.run('trace-verdicts', 'F1').status).toBe(0);
+    });
+
+    it('treats reasons that differ only in white space as the same', () => {
+      const { run } = refuses((_, verdicts) => { verdicts[0].reason = SAME; verdicts[1].reason = `  ${SAME.replace(/ /g, '   ')} `; }, 'the same holds reason as purpose: trace each item on its own');
+      repair(run);
+      expect(run.run('trace-verdicts', 'F1').status).toBe(0);
+    });
+
+    it('allows the same reason on two contradicted items', () => {
+      const run = confirmedRun();
+      const result = traceFeature(run, 'F1', (item) => (['states[0]', 'states[1]'].includes(item.id)
+        ? { verdict: 'contradicted', reason: 'The order starts in another state.', at: [AT] }
+        : 'holds'));
+      expect(result.status, result.stdout).toBe(0);
+    });
+
+    it('does not compare a holds reason with the reasons of another part', () => {
+      const run = confirmedRun(twentySix);
+      const result = traceFeature(run, 'F1', () => 'holds', (part, verdicts) => { if (part === 2) verdicts[0].reason = 'Looked at purpose.'; });
+      expect(result.status, result.stdout).toBe(0);
+      expect(stateOf(run).status).toBe('verified');
+    });
+  });
+
   it('rejects a part file that is missing or not JSON, and names exactly the parts to dispatch again', () => {
     const run = confirmedRun(twentySix);
     expect(run.run('trace', 'F1').status).toBe(0);
     mkdirSync(join(run.out, 'trace-verdicts', 'F1'), { recursive: true });
-    writeFileSync(verdictPath(run, 1), `${JSON.stringify({ verdicts: readTrace(run, 1).items.map((item) => ({ id: item.id, verdict: 'holds', reason: 'Looked.' })) })}\n`);
+    writeFileSync(verdictPath(run, 1), `${JSON.stringify({ verdicts: readTrace(run, 1).items.map((item) => ({ id: item.id, verdict: 'holds', reason: `Looked at ${item.id}.` })) })}\n`);
     const missing = run.run('trace-verdicts', 'F1');
     expect(missing.status).toBe(1);
     expect(missing.lines[0]).toBe('part 2: trace-verdicts/F1/part-2.json is missing');

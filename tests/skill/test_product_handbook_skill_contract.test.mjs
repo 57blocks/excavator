@@ -961,6 +961,24 @@ describe('the handbook tracer agent', () => {
     expect(text).toContain('index arithmetic, a loop, a copy followed by an insert, a cap or a branch, walk the code step by step with a small concrete example');
   });
 
+  it('traces each item on its own: names what the claim depends on beyond the cited lines, reads the body of what computes, and checks the server behind a page', () => {
+    expect(text).toContain('Trace each item on its own: one item is not a copy of the one before it');
+    expect(text).toContain('Before you decide an item, name to yourself what the claim depends on that is not on the cited lines');
+    for (const word of ['a function the cited lines call', 'a value they read', 'the code that builds the list', 'the server check behind a page', 'the other side of the product']) expect(text, word).toContain(word);
+    expect(text).toContain('computes, filters, caps, converts, picks or permits something the claim describes, read its body, and the body of every implementation when the call goes through an interface or a table of handlers');
+    expect(text).toContain('A claim that something happens on a page or after an action also depends on whether the server lets that viewer or that request through.');
+  });
+
+  it('asks a holds reason to name what was followed for this item, and warns that two equal holds reasons in a file are rejected', () => {
+    expect(text).toContain('For `holds`, `reason` is one line, in any language, naming what you followed for this item');
+    expect(text).toContain('Code names are allowed and readers do not see it');
+    expect(text).toContain('Read the function that picks the reviewers and the query it runs: it selects every active member of the team, as claimed.');
+    expect(text).toContain('Two items never get the same `holds` reason');
+    expect(text).toContain('a file with two identical `holds` reasons');
+    const first = blocks(tracerAgent, 'json').map((block) => JSON.parse(block)).at(-1).verdicts.find((entry) => entry.verdict === 'holds');
+    expect(first.reason).toMatch(/^Read /);
+  });
+
   it('gives exactly two verdicts: holds also when it cannot settle it, contradicted only with code it can point to', () => {
     expect(text).toMatch(/there is no third/i);
     expect(text).toContain('You looked and found no code that disagrees with the claim. Also when you cannot settle it');
