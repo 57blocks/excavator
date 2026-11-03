@@ -25,7 +25,7 @@ function toolResult(result, isError = false) {
 
 export function createMcpServer(projectRoot) {
   const service = createProjectService(projectRoot);
-  const server = new McpServer({ name: 'excavator', version: '2.9.6' });
+  const server = new McpServer({ name: 'excavator', version: '2.9.11-rc.1' });
 
   function register(name, description, inputSchema, handler) {
     server.registerTool(name, { description, inputSchema }, async (args) => {
