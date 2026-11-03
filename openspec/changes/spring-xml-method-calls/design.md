@@ -21,7 +21,7 @@ XML 注入（`xmlInjections`）已经把 Spring `<bean>` 解析到仓库类：�
 
 ### D3 方法查找
 
-在所属类与它的全部仓库内祖先（`typeQueries.ancestors`）上，按 `owner` 与 `name` 取方法节点，再按参数个数（节点 id 的签名）过滤。同一节点经多条继承路径只算一次。构造器不参与。祖先里有仓库外或未知类型、而仓库内没找到时，方法可能来自库，落「方法可能在仓库外」，记缺口——这类调用不能证明仓库内某方法在用，也不能说它不存在。
+按运行时分派的顺序查找：先所属类，再 `typeQueries.ancestors` 给出的仓库内祖先（近者在前），在第一个有匹配（`owner`、`name`、参数个数）的类型上取方法节点。子类覆写父类方法时，容器调用的是子类的声明，所以只连最近的一个；被覆写的声明由未使用代码沿 `overrides` 的双向规则带到。只有同一类型上的多个匹配（重载）才是歧义。嵌套属性路径（`a.b`，容器调用 `getA().setB`）不建模，落可见桶。构造器不参与。祖先里有仓库外或未知类型、而仓库内没找到时，方法可能来自库，落「方法可能在仓库外」，记缺口——这类调用不能证明仓库内某方法在用，也不能说它不存在。
 
 setter 名按 JavaBeans 规则只把首字母大写（`URL` → `setURL`，`dao` → `setDao`）。
 
@@ -52,3 +52,24 @@ setter 名按 JavaBeans 规则只把首字母大写（`URL` → `setURL`，`dao`
 - unused-code：夹具上，被 `invokes` 指向的方法及其调用链不在候选里，`counts.roots.invokes` 等于被指向的方法数。
 - 本地真实语料（不用 AWS）：在含 Spring XML 的本地语料（sakai-12.7、oscar、openmrs-workspace、jpetstore-6）上，修复前后各跑 lazy 与 `unused-code candidates`：候选数下降量 = 新增的根可达函数数；每个非零的桶抽 5 条，核对 XML 行与方法声明。不设降幅阈值，照实记录。
 - 门：`pnpm -r build`、`pnpm --filter @excavator/core test`、`pnpm run typecheck`、`pnpm test`（与修复前基线比，只允许已知的环境性失败）。
+
+## 验收记录
+
+- 夹具：12 条 `invokes` 边（14 个成边调用点），`coverage.methodCalls` 27 个调用点、各桶之和相等；`unused-code candidates` 的 `counts.roots.invokes` 为 11，被指向的方法及其调用链（`start` → `loadCache`、`warm`）不在候选里，被覆写的 `DupBase#reset()` 经 `overrides` 带到。
+- 装置先验：去掉 setter 名映射、`declared` 退回消费者规则、去掉祖先查找、恢复「全部层级一起取」，各有对应测试失败；默认方法在继承库类型的 bean 上落可选未生效的测试，在旧的判定顺序下失败。
+- 实现中改动的两条规则（spec 已同步）：方法按运行时分派顺序取最近的声明，覆写不再算歧义；可选调用点找不到方法时一律落可选未生效，不因祖先在仓库外而记缺口。
+- 本地真实语料修复前后对照（不用 AWS，各语料在临时克隆上跑 lazy 与 `unused-code candidates`）：
+
+| 语料 | 调用点 | 成边 | `invokes` 边 | 候选（前 → 后） | 新增根可达 |
+|---|---|---|---|---|---|
+| jpetstore-6 | 5 | 0 | 0 | 364 → 364 | 0 |
+| openmrs-core | 59 | 11 | 10 | 15,969 → 15,954 | 15 |
+| oscar | 267 | 136 | 124 | 45,846 → 45,723 | 123 |
+| sakai-12.7 | 6,898 | 5,261 | 2,970 | 68,511 → 58,364 | 10,147 |
+
+  - 每个语料的候选减少数都等于新增的根可达函数数，没有新增候选；节点数不变，其它边类型的数量不变。
+  - 抽查：每个语料随机 5 条 `invokes` 边，XML 行与方法声明都对得上。
+  - 缺口抽查：
+    - 所属类未解析：`factory-method` 定义的 bean 上的属性（类读不出来）、`factory-bean` 所名 bean 在别的单元（sakai 的 kernel 组件）、`parent` 定义在别的单元。
+    - 方法未解析：继承仓库外基类的 setter（如 Hibernate 的工厂 bean）、Lombok `@Setter` 生成的 setter（源码里没有声明）、XML 写了而类上已经没有的 setter。
+    - 方法歧义：同一个类上两个单参数的同名 setter（`String` 与 `int`），容器按类型转换选，静态读不出。
