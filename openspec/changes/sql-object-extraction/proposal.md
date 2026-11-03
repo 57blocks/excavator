@@ -3,7 +3,7 @@
 在一个以 Oracle 为主库的大型 Java 项目上跑 lazy，图里只有 SQL 文件节点和表节点。用本地夹具复现后确认 SQL parser 有三个问题：
 
 - **编造表名**：`CREATE TABLE app.users (...)` 产出的表节点名叫 `app`，字段却是 users 的。名字正则 `(\w+)` 在点号处停下，把 schema 当成了表名。带 schema 前缀的建表语句在真实项目里很常见，这是错误事实进图，不是遗漏。
-- **静默丢失**：`CREATE [OR REPLACE] PROCEDURE / FUNCTION / PACKAGE [BODY] / TRIGGER` 和 PostgreSQL 的 `$$` 函数既不产节点，也不产 gap。唯一的痕迹是整个文件计作 `zero-symbol`；文件里同时有表时，文件算 `parsed`，过程就丢得毫无痕迹。那个项目约有 1,600 个这样的对象，写在 PL/SQL 里的业务规则对所有下游报告都不可见。这违反「没有第四态」。
+- **静默丢失**：`CREATE [OR REPLACE] PROCEDURE / FUNCTION / PACKAGE [BODY] / TRIGGER` 和 PostgreSQL 的 `$$` 函数既不产节点，也不产 gap。唯一的痕迹是整个文件计作 `zero-symbol`；文件里同时有表时，文件算 `parsed`，过程就丢得毫无痕迹。那个项目有大量这样的对象，写在 PL/SQL 里的业务规则对所有下游报告都不可见。这违反「没有第四态」。
 - 视图的行号只指向 `CREATE` 那一行。
 
 ## What Changes
