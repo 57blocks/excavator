@@ -274,8 +274,17 @@ export const KNOWLEDGE_GRAPH_VERSION = '1.0.0';
  *  call that found candidates in such a file moves: an edge to one becomes
  *  `calls-unresolved`, and a `calls-ambiguous` site can become an edge or
  *  `calls-unresolved`. An `export {} from` import entry now carries
- *  `reexports: []`. */
-export const PIPELINE_VERSION = 'lazy-fact-graph/14';
+ *  `reexports: []`.
+ *  `lazy-fact-graph/15` (openspec: changes/spring-xml-method-calls): the method a
+ *  descriptor names and the container calls (a Spring init-method, destroy-method,
+ *  factory-method, lookup-method, replaced-method, the setter a property or a p
+ *  attribute stands for, a scheduled or an advice method, and the root's default
+ *  init and destroy methods) becomes an `invokes` edge from the descriptor's file
+ *  node to the method node, or lands in a visible bucket; the new gap kinds
+ *  `method-call-owner-unresolved`, `method-call-method-unresolved` and
+ *  `method-call-ambiguous`, and a `coverage.methodCalls` section (`not-run`
+ *  without the name stages). The name-binding catalog is version 4. */
+export const PIPELINE_VERSION = 'lazy-fact-graph/15';
 
 /**
  * The framework ids the scan detected, for the graph header. A scan result
