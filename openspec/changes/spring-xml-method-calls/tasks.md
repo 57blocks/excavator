@@ -29,4 +29,4 @@
 - [x] 5.1 装置先验（design Oracle 的三条）
 - [x] 5.2 夹具跑 lazy 与 `unused-code candidates`，结果与 Oracle 一致
 - [x] 5.3 本地真实语料修复前后对照与分桶抽查（不用 AWS）
-- [ ] 5.4 门：build、core test、typecheck、`pnpm test`
+- [x] 5.4 门：build、core test、typecheck、`pnpm test`
