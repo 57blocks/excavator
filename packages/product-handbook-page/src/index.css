@@ -221,6 +221,9 @@ h1, h2, h3 { margin: 0; font-weight: 600; line-height: 1.3; letter-spacing: -0.0
 .data-table .num { text-align: right; font-variant-numeric: tabular-nums; }
 .data-table td[data-empty="true"]::after, .data-table th[data-empty="true"]::after { content: "\2014"; color: var(--text-3); }
 .rule-list { display: grid; gap: 6px; }
+.summary-counts { margin-bottom: 8px; color: var(--text); }
+.summary-note { margin-bottom: 18px; font-size: 14px; }
+.schedule { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace; font-size: 13px; padding: 1px 6px; border-radius: 4px; background: var(--surface-2); overflow-wrap: anywhere; }
 .rule-list li { position: relative; padding-left: 14px; }
 .rule-list li::before { content: ""; position: absolute; left: 2px; top: 0.7em; width: 4px; height: 4px; border-radius: 50%; background: var(--text-3); }
 

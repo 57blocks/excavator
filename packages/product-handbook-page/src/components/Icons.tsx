@@ -21,3 +21,11 @@ export const CoverageIcon = () => (
 export const CheckIcon = () => (
   <svg {...base}><circle cx="12" cy="12" r="9" /><path d="M8 12.5l2.7 2.7L16 9.5" /></svg>
 );
+
+export const BellIcon = () => (
+  <svg {...base}><path d="M6 9a6 6 0 0 1 12 0c0 6 2 7 2 7H4s2-1 2-7" /><path d="M10 19a2 2 0 0 0 4 0" /></svg>
+);
+
+export const ClockIcon = () => (
+  <svg {...base}><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></svg>
+);

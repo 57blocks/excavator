@@ -70,6 +70,39 @@ function entryBlock(feature, entry, map, t) {
   return out;
 }
 
+/** The notification table and the scheduled-job table (summary.mjs), written between the feature chapters and the coverage section. */
+function summaryBlock(summary, map, t) {
+  const name = new Map(map.features.map((feature) => [feature.id, feature.name]));
+  const featureText = (id) => fill(t('md.summary.feature'), { id, name: name.get(id) });
+  const { counts } = summary;
+  const out = [`## ${t('md.summary.notifications.heading')}`, ''];
+  out.push(fill(t('md.summary.notifications.counts'), { verified: counts.featuresWithEntry, total: counts.featureTotal, count: counts.notificationRows }), '');
+  out.push(t('md.summary.notifications.note'), '');
+  out.push(summary.notifications.length === 0
+    ? t('md.summary.notifications.none')
+    : table(
+      [t('md.table.feature'), t('md.table.trigger'), t('md.table.recipient'), t('md.table.channel'), t('md.table.content')],
+      summary.notifications.map((n) => [featureText(n.feature), n.trigger, n.recipient, n.channel, n.content]),
+    ), '');
+
+  const scheduleText = ({ bucket, literal }) => (bucket === 'literal' ? `\`${literal}\`` : t(`md.summary.schedule.${bucket}`));
+  out.push(`## ${t('md.summary.jobs.heading')}`, '');
+  out.push(fill(t('md.summary.jobs.counts'), { total: counts.jobRows, ...counts.schedule, described: counts.described }), '');
+  out.push(t('md.summary.jobs.note'), '');
+  out.push(summary.jobs.length === 0
+    ? t('md.summary.jobs.none')
+    : table(
+      [t('md.table.candidate'), t('md.table.feature'), t('md.table.schedule'), t('md.table.does')],
+      summary.jobs.map((job) => [
+        job.candidate,
+        job.feature === null ? fill(t('md.summary.unassigned'), { reason: job.reason }) : featureText(job.feature),
+        scheduleText(job.schedule),
+        job.automatic.length === 0 ? t('md.summary.noDescription') : job.automatic.map((a) => inline(fill(t('md.automatic.item'), a))).join('<br>'),
+      ]),
+    ), '');
+  return out;
+}
+
 function coverageBlock(map, state, candidates, t) {
   const areaName = new Map(map.areas.map((area) => [area.id, area.name]));
   const featureText = (key, feature) => `- ${inline(fill(t(key), { id: feature.id, name: feature.name, area: areaName.get(feature.area) }))}`;
@@ -126,9 +159,10 @@ function coverageBlock(map, state, candidates, t) {
 
 /**
  * The handbook text. `entries` maps the id of each verified feature to its
- * entry (only verified features have one); `candidates` is candidates.json's items; `ui` is the strings table.
+ * entry (only verified features have one); `candidates` is candidates.json's items; `ui` is the strings table;
+ * `summary` is the two cross-cutting tables (summary.mjs).
  */
-export function renderHandbook({ map, entries, state, candidates, ui }) {
+export function renderHandbook({ map, entries, state, candidates, ui, summary }) {
   const t = (key) => {
     if (!Object.hasOwn(ui, key)) throw new Error(`the fixed-text table has no key ${key}`);
     return ui[key];
@@ -149,7 +183,7 @@ export function renderHandbook({ map, entries, state, candidates, ui }) {
     out.push(`## ${inline(area.name)}`, '');
     for (const feature of written) out.push(...entryBlock(feature, entries.get(feature.id), map, t));
   }
-  out.push(...coverageBlock(map, state, candidates, t));
+  out.push(...summaryBlock(summary, map, t), ...coverageBlock(map, state, candidates, t));
   return `${out.join('\n').replace(/\n{3,}/g, '\n\n').trimEnd()}\n`;
 }
 
