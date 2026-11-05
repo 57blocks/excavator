@@ -11,13 +11,15 @@
  * `contradicted`, with a non-empty one-line reason, and is checked on its own.
  * The two verdicts of an item are combined (combine-verdicts.mjs), so each item
  * has exactly one verdict over all parts. Any failure prints every problem, by
- * part and letter, and records nothing. Round 1 sends every item that is
- * not verified to the rewrite file (`unverified` and `contradicted` alike: a
- * reader cannot check the code, so a sentence that cannot be proved is not
- * left in); with none, the feature is confirmed. Round 2 removes the items that
- * are still not verified from the entry in place, records them in state.json,
- * and confirms the feature, or fails it when no item that carries evidence is
- * left (the purpose is removed like any other item and does not fail it).
+ * part and letter, and records nothing. Round 1 removes every `contradicted`
+ * item, with what hangs on it, from the entry (a verifier's reason is a local
+ * reading, and the check must not write a new claim from it), and sends the
+ * `unverified` ones to the rewrite file, where only their citations may change;
+ * with none left, the feature is confirmed. Round 2 removes the items that
+ * are still not verified from the entry in place, records them in state.json
+ * after those of round 1, and confirms the feature, or fails it when no item
+ * that carries evidence is left (the purpose is removed like any other item and
+ * does not fail it).
  * A feature either round settles is `confirmed`, not `verified`: the tracers of
  * trace.mjs and trace-verdicts.mjs look for counter-evidence next (design D14).
  */
@@ -33,6 +35,7 @@ import { loadState, saveState, entryDigest } from './state.mjs';
 import { checkedFeature, planRound } from './slices.mjs';
 import { combineVerdicts } from './combine-verdicts.mjs';
 import { removalRecords } from './removal-records.mjs';
+import { shiftedPath } from './shift-paths.mjs';
 import { VERIFIERS, fileItems, partFile, rewriteFilePath, splitParts, verdictPartPath, verifyPartPath } from './verify-plan.mjs';
 
 export const VERDICTS = Object.freeze(['verified', 'unverified', 'contradicted']);
@@ -177,55 +180,82 @@ export function verdicts(outDir, id, root, round) {
   const stateRead = loadState(outDir);
   const { state } = stateRead;
   const { attempts } = state.features[id];
+  const earlier = state.features[id].removed ?? [];
+  const context = { outDir, id, plan, state, attempts, verdictOf };
 
-  if (round === 1) {
-    if (notVerified.length === 0) {
-      rmSync(rewriteFilePath(outDir, id), { force: true });
-      state.features[id] = { status: 'confirmed', attempts, entryDigest: entryDigest(join(outDir, entryPath(id))) };
-      saveState(outDir, state);
-      return { status: 0, lines: [`${id}: confirmed (${plural(plan.items.length, 'item')})`, traceNext(id)] };
-    }
-    const rewritePath = rewriteFilePath(outDir, id);
-    mkdirSync(dirname(rewritePath), { recursive: true });
-    writeJson(rewritePath, {
-      feature: id,
-      items: notVerified.map((item) => ({ id: item.id, claim: item.claim, verdict: verdictOf.get(item.id).verdict, reason: verdictOf.get(item.id).reason })),
-    });
-    state.features[id] = { status: 'checked', attempts, rewriting: true };
-    saveState(outDir, state);
-    return {
-      status: 0,
-      lines: [
-        `${id}: ${plural(notVerified.length, 'item')} to rewrite`,
-        `Rewrite file: ${rewritePath}`,
-        `Next: dispatch one rewrite subagent for ${id} with the rewrite file, then run check-entry, slices --round 2, the verifier and verdicts --round 2`,
-      ],
-    };
-  }
+  if (round === 1) return roundOne(context, notVerified);
 
   // Round 2: what is still not verified is removed.
-  return roundTwo({ outDir, id, plan, state, attempts, notVerified, verdictOf });
-}
-
-function roundTwo({ outDir, id, plan, state, attempts, notVerified, verdictOf }) {
-  const entry = plan.entry;
-  const { trimmed, records } = removalRecords(entry, notVerified.map((item) => item.id), (path) => verdictOf.get(path), (path) => plan.claims.get(path));
-  const removed = records;
-  // Nothing proved: every item that carries evidence is gone. The entry file stays as written for the user to see.
-  if (!entryItems(trimmed).some((item) => item.evidence.length > 0)) {
-    const text = 'no item could be proved';
-    state.features[id] = { status: 'failed', attempts, failure: { step: 'verify', reasons: [text] }, removed };
-    saveState(outDir, state);
-    return { status: 0, lines: [`${id}: failed at verify: ${text}`] };
-  }
-  // The purpose is removed like any item, so the trimmed entry is checked as a settled one (no purpose key).
-  const problems = entryProblems(trimmed, id, plan.loaded, { settled: true });
-  if (problems.length > 0) throw new Error(`the trimmed entry of ${id} fails check-entry (a bug in verdicts):\n${problems.join('\n')}`);
-  writeJson(join(outDir, entryPath(id)), trimmed);
+  const removal = removeItems({ ...context, ids: notVerified.map((item) => item.id), earlier });
+  if (removal.stop) return removal.stop;
+  const { removed } = removal;
   const next = { status: 'confirmed', attempts, entryDigest: entryDigest(join(outDir, entryPath(id))) };
   if (removed.length > 0) next.removed = removed;
   state.features[id] = next;
   saveState(outDir, state);
   const verdictCount = plan.items.length;
   return { status: 0, lines: [removed.length > 0 ? `${id}: confirmed, ${plural(removed.length, 'item')} removed` : `${id}: confirmed (${plural(verdictCount, 'item')})`, traceNext(id)] };
+}
+
+/**
+ * Take the items `ids` (paths) out of the entry and write it, for both rounds.
+ * Returns `{ stop }` when no item that carries evidence is left (the feature is
+ * failed at verify, recording every removed item; the entry file stays as
+ * written for the user to see), else `{ removed, records }`: the records of
+ * `earlier` and of this removal, and those of this removal alone.
+ */
+function removeItems({ outDir, id, plan, state, attempts, ids, verdictOf, earlier }) {
+  const { trimmed, records } = removalRecords(plan.entry, ids, (path) => verdictOf.get(path), (path) => plan.claims.get(path));
+  const removed = [...earlier, ...records];
+  if (records.length > 0 && !entryItems(trimmed).some((item) => item.evidence.length > 0)) {
+    const text = 'no item could be proved';
+    state.features[id] = { status: 'failed', attempts, failure: { step: 'verify', reasons: [text] }, removed };
+    saveState(outDir, state);
+    return { stop: { status: 0, lines: [`${id}: failed at verify: ${text}`] } };
+  }
+  // The purpose is removed like any item, so the trimmed entry is checked as a settled one (no purpose key).
+  const problems = entryProblems(trimmed, id, plan.loaded, { settled: true });
+  if (problems.length > 0) throw new Error(`the trimmed entry of ${id} fails check-entry (a bug in verdicts):\n${problems.join('\n')}`);
+  if (records.length > 0) writeJson(join(outDir, entryPath(id)), trimmed);
+  return { removed, records };
+}
+
+/**
+ * Round 1: every `contradicted` item is removed, and the `unverified` ones are
+ * listed for the rewrite, by their paths in the trimmed entry (the one the
+ * rewriter edits). With none listed the feature is confirmed.
+ */
+function roundOne(context, notVerified) {
+  const { outDir, id, plan, state, attempts, verdictOf } = context;
+  const contradicted = notVerified.filter((item) => verdictOf.get(item.id).verdict === 'contradicted').map((item) => item.id);
+  const removal = removeItems({ ...context, ids: contradicted, earlier: [] });
+  if (removal.stop) return removal.stop;
+  const { removed } = removal;
+  // An unverified item that hangs on a removed one went with it.
+  const gone = new Set(removed.map((record) => record.path));
+  const listed = notVerified.filter((item) => verdictOf.get(item.id).verdict === 'unverified' && !gone.has(item.id));
+  if (listed.length === 0) {
+    rmSync(rewriteFilePath(outDir, id), { force: true });
+    state.features[id] = { status: 'confirmed', attempts, entryDigest: entryDigest(join(outDir, entryPath(id))), ...(removed.length > 0 ? { removed } : {}) };
+    saveState(outDir, state);
+    if (removed.length === 0) return { status: 0, lines: [`${id}: confirmed (${plural(plan.items.length, 'item')})`, traceNext(id)] };
+    return { status: 0, lines: [`${id}: confirmed, ${plural(removed.length, 'item')} removed`, 'No rewrite file: no item is left to rewrite', traceNext(id)] };
+  }
+  const rewritePath = rewriteFilePath(outDir, id);
+  mkdirSync(dirname(rewritePath), { recursive: true });
+  writeJson(rewritePath, {
+    feature: id,
+    items: listed.map((item) => ({ id: shiftedPath(item.id, gone), claim: item.claim, verdict: verdictOf.get(item.id).verdict, reason: verdictOf.get(item.id).reason })),
+  });
+  state.features[id] = { status: 'checked', attempts, rewriting: true, ...(removed.length > 0 ? { removed } : {}) };
+  saveState(outDir, state);
+  return {
+    status: 0,
+    lines: [
+      ...(removed.length > 0 ? [`${id}: ${plural(removed.length, 'item')} removed`] : []),
+      `${id}: ${plural(listed.length, 'item')} to rewrite`,
+      `Rewrite file: ${rewritePath}`,
+      `Next: dispatch one rewrite subagent for ${id} with the rewrite file, which lets it change citations only, then run check-entry, slices --round 2, the verifier and verdicts --round 2`,
+    ],
+  };
 }

@@ -5,8 +5,9 @@
  * scripts' checks; `confirmed` means two verifiers also confirmed each of its
  * items; `verified` means two tracers that read the whole project then found no
  * counter-evidence (only then does the feature reach the handbook). A checked
- * feature waiting for its one rewrite carries `rewriting: true`; a confirmed
- * or verified one carries the digest of its entry file, and the items removed
+ * feature waiting for its one rewrite carries `rewriting: true` and the items
+ * round 1 removed; a confirmed or verified one carries the digest of its entry
+ * file, and the items removed
  * so far (a record of a removal by the tracers also has `step: "trace"`, the
  * `reasons` of every tracer that contradicted the item and the `at` positions
  * that showed the counter-evidence). Only the scripts change it:
@@ -99,6 +100,9 @@ export const nextLine = (id, attempts) => (attempts < MAX_ATTEMPTS
 
 /** The last line of a failed check-entry of a feature whose one rewrite it checks (design D14): there is no second rewrite. */
 export const rewriteNextLine = (id) => `Next: ${id} stays failed (its one rewrite did not pass check-entry)`;
+
+/** Whether the items removed so far include the purpose: the entry then has none, like a settled one (entry-shape.mjs). */
+export const purposeRemoved = (feature) => (feature.removed ?? []).some((item) => item.path === 'purpose');
 
 /** The SHA-256 of an entry file's bytes: a confirmed or verified feature is invalidated when they change. */
 export const entryDigest = (path) => createHash('sha256').update(readFileSync(path)).digest('hex');

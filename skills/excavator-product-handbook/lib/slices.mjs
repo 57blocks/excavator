@@ -7,7 +7,8 @@
  * files of each part (one for each of its two verifiers). Round 1 covers every
  * item with evidence and keeps a snapshot of the entry; round 2 covers only what the one rewrite left of the
  * items round 1 listed, and refuses an entry in which an item that was not
- * listed differs from the snapshot. Changes only files under `<out>/verify`
+ * listed differs from the snapshot, or a listed item (or one below it) has a
+ * different claim: the rewrite may only change citations. Changes only files under `<out>/verify`
  * (and clears the feature's older verification files of the round and those
  * after it, so a new round starts clean; round 1 also clears the feature's
  * trace and trace-verdict files, which belong to the settled entry it replaces).
@@ -18,7 +19,7 @@ import { join } from 'node:path';
 
 import { checkEntryFile, entryPath, loadForEntry } from './entry-check.mjs';
 import { readJson, writeJson } from './json-file.mjs';
-import { loadState, featureState } from './state.mjs';
+import { loadState, featureState, purposeRemoved } from './state.mjs';
 import { loadUi } from './ui.mjs';
 import { UsageError } from './errors.mjs';
 import { traceDirPath, traceVerdictDirPath } from './trace-plan.mjs';
@@ -54,7 +55,9 @@ export function checkedFeature(outDir, id, round) {
 export function planRound(outDir, id, root, round) {
   const loaded = loadForEntry(outDir, id, root);
   if (loaded.stop) return { stop: loaded.stop };
-  const result = checkEntryFile(outDir, id, root, loaded);
+  // Round 2 reads the entry round 1 trimmed: what round 1 removed stays removed, the purpose included.
+  const earlier = round === 2 ? loadState(outDir).state.features[id].removed ?? [] : [];
+  const result = checkEntryFile(outDir, id, root, loaded, { settled: purposeRemoved({ removed: earlier }) });
   if (result.problems.length > 0) {
     return { stop: { status: 1, lines: [...result.problems, `Next: fix ${entryPath(id)} (or run check-entry for ${id}) and run this command again`] } };
   }
@@ -71,9 +74,9 @@ export function planRound(outDir, id, root, round) {
   if (!rewrite.ok || !snapshot.ok) {
     return { stop: { status: 1, lines: [`${id}: the rewrite file or the round 1 snapshot ${!rewrite.ok ? 'is missing' : 'cannot be read'}`, `Next: run slices for ${id} without --round, then verdicts --round 1`] } };
   }
-  const plan = roundTwoPlan(rewrite.value, verifyItems(snapshot.value, context), items);
+  const plan = roundTwoPlan(rewrite.value, verifyItems(snapshot.value, context), items, earlier.map((record) => record.path));
   if (plan.problems.length > 0) {
-    return { stop: { status: 1, lines: [...plan.problems, `Next: put each item above back as it was in round 1 (change only the items listed in ${rewriteFilePath(outDir, id)}, and never delete or add an item), run check-entry, then slices --round 2 again`] } };
+    return { stop: { status: 1, lines: [...plan.problems, `Next: put each item above back as it was in round 1 (change only the citations of the items listed in ${rewriteFilePath(outDir, id)}, never a claim, and never delete or add an item), run check-entry, then slices --round 2 again`] } };
   }
   return { items: plan.items, entry, loaded, claims };
 }
