@@ -37,6 +37,6 @@
 
 ## 5. 验收
 
-- [ ] 5.1 变异检查（design O1 五条），各至少一个测试变红，结果写进 `acceptance.md`
-- [ ] 5.2 受影响测试、`check-refs`、`openspec validate --all --strict` 本地通过；全量门在分离检出里跑（O4）
-- [ ] 5.3 O3：在 go-multirepo 现有输出上两个视角拼装与导出，零模型花费；线与只报告的内容写进 `acceptance.md`
+- [x] 5.1 变异检查（design O1 五条），各至少一个测试变红，结果写进 `acceptance.md`
+- [x] 5.2 受影响测试、`check-refs`、`openspec validate --all --strict` 本地通过；全量门在分离检出里跑（O4）
+- [x] 5.3 O3：在 go-multirepo 现有输出上两个视角拼装与导出，零模型花费；线与只报告的内容写进 `acceptance.md`
