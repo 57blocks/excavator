@@ -51,7 +51,7 @@ export function SystemOverview({ data }: { data: PageData }) {
       {overview === null
         ? <p className="muted summary-note" role="note">{t('md.overview.notWritten', { step: t(`md.status.${system.status}`) })}</p>
         : <h2 className="block-title">{t('md.overview.heading')}</h2>}
-      <p className="summary-counts">{t('md.overview.counts', { ...counts, verified: counts.featuresWithEntry })}</p>
+      <p className="summary-counts">{t(data.domainBasis === 'domains' ? 'md.overview.countsWithDomains' : 'md.overview.counts', { ...counts, domains: counts.domains ?? data.domains.length, verified: counts.featuresWithEntry })}</p>
 
       {overview !== null && (
         <>

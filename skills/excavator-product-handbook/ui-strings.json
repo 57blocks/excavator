@@ -6,6 +6,7 @@
     "md.titleTechnical": "Product handbook: technical view",
     "md.overview.heading": "System overview",
     "md.overview.counts": "Applications: {applications}. Source files: {files}. Lines of source: {lines}. Areas: {areas}. Features: {features}. Features with a verified entry: {verified}. Roles: {roles}.",
+    "md.overview.countsWithDomains": "Applications: {applications}. Source files: {files}. Lines of source: {lines}. Areas: {areas}. Business domains: {domains}. Features: {features}. Features with a verified entry: {verified}. Roles: {roles}.",
     "md.overview.notWritten": "The system overview is not in this handbook. Where it stopped: {step}.",
     "md.overview.audiencesHeading": "Who uses it",
     "md.overview.applicationsHeading": "Applications",

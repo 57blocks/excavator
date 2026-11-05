@@ -6,8 +6,8 @@
  * directory is in a git work tree, the first and last commit date, the number
  * of commits without merges and the number of distinct author emails of the
  * history under that directory; for the system, the counts of application roots,
- * source files, lines, areas, features, features with a verified entry and
- * roles; for each area, and for each domain (the business domains of
+ * source files, lines, areas, business domains (null without a domains file),
+ * features, features with a verified entry and roles; for each area, and for each domain (the business domains of
  * domains.json, or the areas again when there is none), its features, its
  * features with a verified entry and the roles those entries name. Nothing here comes from a model: the inputs
  * are the project files, candidates.json, the map and the verified entries.
@@ -146,6 +146,7 @@ export function buildSystem(run, root, scan = scanProject(root)) {
   const doc = entries.get(OVERVIEW_ID);
   const counted = readSourceFiles(scan);
   const applications = applicationRows(doc === undefined ? [] : doc.applications, { scan, counted, candidates });
+  const grouping = domainGrouping(map, run.domains);
   const inRoots = counted.filter((file) => scan.roots.some((dir) => isUnder(file.rel, dir)));
   return {
     status,
@@ -161,11 +162,12 @@ export function buildSystem(run, root, scan = scanProject(root)) {
       files: inRoots.length,
       lines: inRoots.reduce((sum, file) => sum + file.lines, 0),
       areas: map.areas.length,
+      domains: grouping.basis === 'domains' ? grouping.groups.length : null,
       features: map.features.length,
       featuresWithEntry: map.features.filter((feature) => entries.has(feature.id)).length,
       roles: map.roles.length,
     },
     areas: groupRows(areaGroups(map), map, entries),
-    domains: groupRows(domainGrouping(map, run.domains).groups, map, entries),
+    domains: groupRows(grouping.groups, map, entries),
   };
 }

@@ -124,7 +124,7 @@ export interface System {
   status: Status;
   overview: OverviewText | null;
   applications: ApplicationFacts[];
-  counts: { applications: number; files: number; lines: number; areas: number; features: number; featuresWithEntry: number; roles: number };
+  counts: { applications: number; files: number; lines: number; areas: number; domains?: number | null; features: number; featuresWithEntry: number; roles: number };
   areas: AreaRow[];
   /** The same rows over the domains the page groups by (the areas again when `domainBasis` is `areas`). */
   domains: AreaRow[];

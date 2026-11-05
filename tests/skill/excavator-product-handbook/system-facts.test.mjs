@@ -192,7 +192,7 @@ describe('system facts: counts and areas', () => {
     const run = verifiedOverview();
     writeUnit(run, 'F1', ['Clerk'], verifyChecked);
     const { counts, applications } = systemOf(run);
-    expect(counts).toEqual({ applications: 1, files: applications[0].files, lines: applications[0].lines, areas: 2, features: 5, featuresWithEntry: 1, roles: 2 });
+    expect(counts).toEqual({ applications: 1, files: applications[0].files, lines: applications[0].lines, areas: 2, domains: null, features: 5, featuresWithEntry: 1, roles: 2 });
   });
 
   it('lists the roles of an area from its verified entries, in the order of the map roles, not the order of the entries', () => {

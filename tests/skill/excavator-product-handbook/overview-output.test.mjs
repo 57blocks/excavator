@@ -40,7 +40,7 @@ function verifiedOverviewRun(adjust) {
 
 describe('the fixed texts of the overview', () => {
   const KEYS = [
-    'md.overview.heading', 'md.overview.counts', 'md.overview.notWritten', 'md.overview.audiencesHeading', 'md.overview.applicationsHeading',
+    'md.overview.heading', 'md.overview.counts', 'md.overview.countsWithDomains', 'md.overview.notWritten', 'md.overview.audiencesHeading', 'md.overview.applicationsHeading',
     'md.overview.integrationsHeading', 'md.overview.areasHeading', 'md.overview.noHistory', 'md.overview.notVerified', 'md.overview.languageItem', 'md.overview.frameworkItem',
     'md.overview.application.item', 'md.coverage.removedOverview', 'md.table.who', 'md.table.directory', 'md.table.name', 'md.table.languages',
     'md.table.frameworks', 'md.table.files', 'md.table.lines', 'md.table.firstCommit', 'md.table.lastCommit', 'md.table.commits', 'md.table.authors',

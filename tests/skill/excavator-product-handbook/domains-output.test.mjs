@@ -183,10 +183,29 @@ describe('every output is the same bytes twice, and the domains change nothing b
     expect(readdirSync(run.out).sort()).toEqual(expect.arrayContaining(['domains.json', 'handbook.md']));
   });
 
-  it('keeps the overview counts line as it was: it still counts the map\'s areas', () => {
+  it('the overview counts line gives the area count and the business domain count when the handbook groups by domains', () => {
     const run = domainsRun();
     assemble(run, 'product');
-    expect(text(run, 'handbook.md')).toContain('Areas: 2. Features: 5.');
+    const md = text(run, 'handbook.md');
+    expect(md).toContain('Areas: 2. Business domains: 2. Features: 5.');
+    expect(sectionOf(md, '## System overview', '### ')).not.toContain('Areas: 2. Features:');
+  });
+
+  it('the overview counts line is the old one, with no domain count, when the handbook falls back to the areas', () => {
+    const run = domainsRun({ domains: false });
+    assemble(run, 'product');
+    const md = text(run, 'handbook.md');
+    expect(md).toContain('Areas: 2. Features: 5.');
+    expect(md).not.toContain('Business domains:');
+  });
+
+  it('the page data carries the domain count in the system counts only when the grouping is by domains', () => {
+    const withDomains = domainsRun();
+    expect(page(withDomains).status).toBe(0);
+    expect(dataOf(withDomains).system.counts.domains).toBe(2);
+    const without = domainsRun({ domains: false });
+    expect(page(without).status).toBe(0);
+    expect(dataOf(without).system.counts.domains).toBeNull();
   });
 });
 

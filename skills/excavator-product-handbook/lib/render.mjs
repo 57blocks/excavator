@@ -137,7 +137,7 @@ function overviewBlock(system, basis, t, locations) {
   const out = [`## ${inline(t('md.overview.heading'))}`, ''];
   const { overview, counts } = system;
   if (overview === null) out.push(inline(fill(t('md.overview.notWritten'), { step: t(`md.status.${system.status}`) })), '');
-  out.push(fill(t('md.overview.counts'), { ...counts, verified: counts.featuresWithEntry }), '');
+  out.push(fill(t(basis === 'domains' ? 'md.overview.countsWithDomains' : 'md.overview.counts'), { ...counts, verified: counts.featuresWithEntry }), '');
   if (overview !== null) {
     out.push(`### ${t('md.section.purpose')}`, '', overview.summary.length === 0 ? t('md.none') : overview.summary.map(inline).join(' '), '');
     out.push(`### ${t('md.overview.audiencesHeading')}`, '');

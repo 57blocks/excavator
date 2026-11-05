@@ -72,7 +72,7 @@ function dataFor(views: View[]): PageData {
         { dir: ADMIN, name: d('Admin'), does: d('admin work'), languages: [], frameworks: [], files: 1, lines: 5, history: { first: d('2024-01-01'), last: d('2024-02-01'), commits: 4, authors: 2 } },
         { dir: GHOST, name: null, does: null, languages: [], frameworks: [], files: 0, lines: 0, history: null },
       ],
-      counts: { applications: 2, files: 4, lines: 35, areas: 2, features: 4, featuresWithEntry: 2, roles: 2 },
+      counts: { applications: 2, files: 4, lines: 35, areas: 2, domains: 2, features: 4, featuresWithEntry: 2, roles: 2 },
       areas: [{ id: 'A1', name: d('area one'), features: 2, verified: 2, roles: [CLERK, APPROVER] }, { id: 'A2', name: d('area two'), features: 2, verified: 0, roles: [] }],
       domains: [{ id: 'D1', name: d('domain one'), features: 2, verified: 1, roles: [CLERK] }, { id: 'D2', name: d('domain two'), features: 2, verified: 1, roles: [CLERK, APPROVER] }],
     },
@@ -368,6 +368,12 @@ describe('the page groups the features by business domain', () => {
     expect(first).not.toContain('href="#/feature/F3"');
   });
 
+  it('the overview count line gives the area count and the business domain count', () => {
+    const html = render(data, '#/');
+    const line = html.slice(html.indexOf('class="summary-counts"'), html.indexOf('</p>', html.indexOf('class="summary-counts"')));
+    expect(line).toContain('Areas: 2. Business domains: 2. Features: 4.');
+  });
+
   it('the overview lists the domains and counts them under the domains label, with no fallback text', () => {
     const html = render(data, '#/');
     expect(html).toContain(marked['page.overview.domainsStat']);
@@ -414,7 +420,7 @@ describe('without business domains the page groups by area and says so', () => {
       domains: base.areas,
       domainBasis: 'areas',
       features: base.features.map((item) => ({ ...item, domain: item.area })),
-      system: { ...base.system, domains: base.system.areas },
+      system: { ...base.system, counts: { ...base.system.counts, domains: null }, domains: base.system.areas },
       entities: {
         ...base.entities,
         domains: [
@@ -429,6 +435,12 @@ describe('without business domains the page groups by area and says so', () => {
   it('writes the fixed text that these are areas drawn by the navigation on the overview and on a domain page', () => {
     for (const hash of ['#/', '#/domain/A1']) expect(render(data, hash), hash).toContain(marked['md.domains.fromAreas']);
     expect(render(data, '#/domain/A1')).not.toContain(marked['md.entities.domains.note']);
+  });
+
+  it('the overview count line is the one without a domain count', () => {
+    const html = render(data, '#/');
+    expect(html).toContain('Areas: 2. Features: 4.');
+    expect(html).not.toContain('Business domains:');
   });
 
   it('uses the areas label for the count, the heading and the overview table, and navigates by area', () => {
