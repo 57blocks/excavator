@@ -70,7 +70,7 @@
     "md.table.authors": "Authors",
     "md.table.system": "External system",
     "md.table.use": "What it is used for",
-    "md.table.callers": "Called by",
+    "md.table.callers": "Called by, in the quoted code",
     "md.table.area": "Area",
     "md.table.verified": "Verified entries",
     "md.table.roles": "Roles",

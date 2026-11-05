@@ -91,7 +91,7 @@ describe('handbook.md opens with the system overview', () => {
     expect(section).toContain('Staff place and review orders for customers.');
     expect(section).toContain('| Who | What it does |\n| --- | --- |\n| Clerk | Creates orders. |');
     expect(section).toContain('| Directory | Name | What it does | Languages | Frameworks | Source files | Lines | First commit | Last commit | Commits | Authors |');
-    expect(section).toContain('| External system | What it is used for | Called by |\n| --- | --- | --- |\n| Slack | Reminders go to a team channel. | . |');
+    expect(section).toContain('| External system | What it is used for | Called by, in the quoted code |\n| --- | --- | --- |\n| Slack | Reminders go to a team channel. | . |');
     expect(section).toContain('- Whether other tools call it (searched: the routes and the jobs)');
     expect(section).toContain('| Area | Features | Verified entries | Roles |\n| --- | --- | --- | --- |\n| Order handling | 2 | 0 | - |\n| Automatic work | 3 | 0 | - |');
   });
@@ -179,7 +179,7 @@ describe('the coverage section lists the removed overview items', () => {
     expect(section).toContain('#### System overview: items removed: 3');
     expect(section).toContain('| Application . (Order tool) > Serves the order pages and sends reminders. | The code shown says otherwise | The code shown names another tool. |');
     expect(section).toContain('| Who: Clerk; What it does: Creates orders. | The code shown does not settle it | No line shown names who uses it. |');
-    expect(section).toContain('| External system: Slack; What it is used for: Reminders go to a team channel.; Called by: . | The code shown says otherwise | Another function sends it to a different channel. |');
+    expect(section).toContain('| External system: Slack; What it is used for: Reminders go to a team channel.; Called by, in the quoted code: . | The code shown says otherwise | Another function sends it to a different channel. |');
     // The removed items are gone from the body.
     expect(sectionOf(text, '## System overview', '## Areas and features')).not.toContain('Order tool');
     expect(sectionOf(text, '## System overview', '## Areas and features')).not.toContain('Slack');
@@ -292,7 +292,7 @@ describe('a translated run', () => {
     expect(section).toContain(`### ${MARK}Who uses it`);
     expect(section).toContain(`| ${MARK}Who | ${MARK}What it does |`);
     expect(section).toContain(`${MARK}Staff place and review orders for customers.`);
-    expect(section).toContain(`| ${MARK}External system | ${MARK}What it is used for | ${MARK}Called by |`);
+    expect(section).toContain(`| ${MARK}External system | ${MARK}What it is used for | ${MARK}Called by, in the quoted code |`);
     // Not written: the not-written line is the translated text too.
     const second = translatedRun();
     expect(assemble(second)).toContain(`${MARK}The system overview is not in this handbook. Where it stopped: ${MARK}Not written.`);
