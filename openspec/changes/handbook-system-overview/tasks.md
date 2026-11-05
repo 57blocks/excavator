@@ -31,5 +31,5 @@
 ## 5. 验收
 
 - [x] 5.1 O1 夹具测试与四个变异检查，结果写进验收记录
-- [ ] 5.2 受影响测试、`check-refs`、`openspec validate --all --strict` 本地通过；全量门在分离检出里跑（O4）
-- [ ] 5.3 O3 真实运行与独立审读（Sonnet，花费上限 $10），结果写进 `acceptance.md`，没过的线照实写
+- [x] 5.2 受影响测试、`check-refs`、`openspec validate --all --strict` 本地通过；全量门在分离检出里跑（O4）
+- [x] 5.3 O3 真实运行与独立审读（Sonnet，花费上限 $10），结果写进 `acceptance.md`，没过的线照实写
