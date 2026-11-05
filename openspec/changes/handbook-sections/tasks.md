@@ -2,8 +2,8 @@
 
 提交：`feat(product-handbook): a sections command that lists the files a run reads`
 
-- [ ] 1.1 `handbook.mjs sections <list>`：取值、默认、依赖去重、固定顺序、非法值退出 1（design D2）
-- [ ] 1.2 测试（design O1），先红后绿
+- [x] 1.1 `handbook.mjs sections <list>`：取值、默认、依赖去重、固定顺序、非法值退出 1（design D2）
+- [x] 1.2 测试（design O1），先红后绿
 
 ## 2. 阶段文字移进部分文件
 

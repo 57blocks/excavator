@@ -53,6 +53,11 @@
  *       each, holds or contradicted, a contradicted one with a position inside
  *       the project; remove the items either tracer contradicted and verify the
  *       feature, nothing recorded when any file does not hold.
+ *   sections [<list>]
+ *       Validate a --sections list (overview, features; default all) and print
+ *       SECTIONS=<list> and one READ=<file> line per phase file the run reads,
+ *       in reading order, the shared map file once; exit 1 for a value that is
+ *       not a section. Reads and changes no file.
  *   check-ui <out> [--language <name>]
  *       Check <out>/ui.json against the shipped English table, or copy that
  *       table there when the run's language is English. The fixed text is
@@ -91,6 +96,7 @@ import { mark } from './lib/mark.mjs';
 import { writePage } from './lib/page.mjs';
 import { projectRootOption } from './lib/project-root.mjs';
 import { replyLines } from './lib/reply.mjs';
+import { parseSections, sectionLines } from './lib/sections.mjs';
 import { selectFeatures } from './lib/select.mjs';
 import { slices } from './lib/slices.mjs';
 import { trace } from './lib/trace.mjs';
@@ -131,6 +137,13 @@ Commands:
       Every item must match exactly one feature; otherwise print each failing
       item and then every feature as "id  name", end with a Next: line and
       exit 1. No fuzzy matching. Changes no file.
+  sections [<list>]
+      Validate the --sections list (comma-separated: overview, features; empty
+      or absent is all) and print "SECTIONS=<the sections in fixed order>",
+      then one "READ=<path>" line per phase file to read, relative to the skill
+      directory, in reading order: the stage files first (the map file once),
+      then each section's file. A value that is not a section exits 1 and the
+      allowed values are printed. Reads and changes no file.
   applications <projectRoot>
       Print "Application roots: <n>" and then one line "<dir><TAB><manifests>"
       for each application root: a directory that holds a build manifest
@@ -399,6 +412,13 @@ const COMMANDS = {
     if (positionals.length !== 2) throw new UsageError('trace-verdicts takes <out> and <featureId>');
     const root = projectRootOption(options.project);
     return withStateLock(positionals[0], () => report(traceVerdicts(positionals[0], positionals[1], root)));
+  },
+  sections(args) {
+    const { positionals } = parseArgs(args, []);
+    if (positionals.length > 1) throw new UsageError('sections takes one comma-separated list at most');
+    const parsed = parseSections(positionals[0]);
+    if (!parsed.ok) return report({ status: 1, lines: parsed.lines });
+    return report({ status: 0, lines: sectionLines(parsed.sections) });
   },
   'check-ui'(args) {
     const { positionals, options } = parseArgs(args, ['language']);
