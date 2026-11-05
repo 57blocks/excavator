@@ -1,6 +1,6 @@
 /** The page data `handbook.mjs page` writes into the template (openspec change product-handbook-map, design D13). */
 
-export const PAGE_FORMAT = 'excavator-product-handbook-page/2';
+export const PAGE_FORMAT = 'excavator-product-handbook-page/3';
 
 export const REACHES = ['menu', 'link', 'automated', 'interface', 'operator'] as const;
 export type Reach = (typeof REACHES)[number];
@@ -49,6 +49,8 @@ export interface Coverage {
   assigned: number;
   unassigned: { candidate: string; kind: EntrypointKind; reason: string }[];
   reachCounts: { reach: Reach; count: number }[];
+  /** The items the verification removed from the system overview (empty when it lost none). */
+  removedOverview: RemovedItem[];
   /** The features that lost items to verification, with those items. */
   removed: { feature: string; items: RemovedItem[] }[];
 }
@@ -84,6 +86,38 @@ export interface Summary {
   };
 }
 
+/** What the script found in an application's directory; `history` is null when it has no version history. */
+export interface ApplicationFacts {
+  dir: string;
+  name: string;
+  does: string;
+  languages: { language: string; files: number }[];
+  frameworks: { framework: string; candidates: number }[];
+  files: number;
+  lines: number;
+  history: { first: string; last: string; commits: number; authors: number } | null;
+}
+
+/** The text of a verified system overview, without its evidence. */
+export interface OverviewText {
+  summary: string[];
+  audiences: { who: string; does: string }[];
+  integrations: { system: string; use: string; callers: string[] }[];
+  unknowns: { item: string; searched: string }[];
+}
+
+/** One area of the map with the counts and roles the script computes from the verified entries. */
+export interface AreaRow { id: string; name: string; features: number; verified: number; roles: string[] }
+
+/** The system overview and the facts of the script: `overview` and `counts` are null unless the overview is verified (`status` says where it stopped). */
+export interface System {
+  status: Status;
+  overview: OverviewText | null;
+  applications: ApplicationFacts[];
+  counts: { applications: number; files: number; lines: number; areas: number; features: number; featuresWithEntry: number; roles: number } | null;
+  areas: AreaRow[];
+}
+
 export interface PageData {
   format: typeof PAGE_FORMAT;
   project: string;
@@ -94,4 +128,5 @@ export interface PageData {
   features: Feature[];
   coverage: Coverage;
   summary: Summary;
+  system: System;
 }

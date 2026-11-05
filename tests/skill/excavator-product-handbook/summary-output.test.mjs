@@ -162,6 +162,7 @@ describe('renderHandbook: the states the commands cannot easily reach', () => {
     state: { features: { F1: { status: 'planned' } } },
     candidates: [{ id: 'c1', kind: 'job' }, { id: 'c2', kind: 'job' }],
     ui,
+    system: { status: 'planned', overview: null, applications: [], counts: null, areas: [{ id: 'A1', name: 'Operations', features: 1, verified: 0, roles: [] }] },
   });
   const summary = {
     notifications: [],

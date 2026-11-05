@@ -6,8 +6,10 @@
  * of written out; a verified entry must also still be the file the verifiers
  * and the tracers saw (its digest in state.json), and a confirmed one (settled
  * by the verifiers, not yet traced) is checked the same way. Only a verified
- * feature has an entry in the output; a confirmed or checked one has none. `assemble` and `page` both start here, so they refuse the
- * same runs.
+ * feature has an entry in the output; a confirmed or checked one has none. The system
+ * overview is one more unit of the same kind: its entry is in `entries` under
+ * the key `overview` once it is verified. `assemble` and `page` both start
+ * here, so they refuse the same runs.
  */
 
 import { existsSync } from 'node:fs';
@@ -23,10 +25,11 @@ import { mapProblems, readMap } from './map-check.mjs';
 import { projectFiles } from './project-files.mjs';
 import { entryDigest, loadState } from './state.mjs';
 import { loadUi } from './ui.mjs';
+import { OVERVIEW_ID, unitFor, unitState } from './unit.mjs';
 
 /**
  * Returns `{ ok: true, outDir, map, entries, state, candidates, ui }` (entries:
- * id -> entry of each verified feature; candidates: candidates.json's items;
+ * id -> entry of each verified feature, and of the overview under `overview`; candidates: candidates.json's items;
  * ui: the strings table) or `{ ok: false, lines }` with every reason. Throws a
  * UsageError for an out directory or state that does not exist.
  */
@@ -65,15 +68,16 @@ export function loadCheckedRun(outDirArg, root) {
   // is checked the same way: its entry is checked again, and must be the file that was verified or confirmed.
   const entries = new Map();
   const problems = [];
-  const settled = ids.filter((featureId) => ['confirmed', 'verified'].includes(state.features[featureId].status));
+  const settled = [...ids, OVERVIEW_ID].filter((unitId) => ['confirmed', 'verified'].includes(unitState(state, unitId).status));
   for (const id of settled) {
+    const current = unitState(state, id);
     const result = checkEntryFile(outDir, id, root, { map, mapLabels: mapChecked.verified, files, memberDirs, languageCheck }, { settled: true });
     if (result.problems.length > 0) {
-      problems.push(...result.problems.map((line) => (line.startsWith(`${id}:`) ? line : `${id}: ${line}`)), `${id}: ${entryPath(id)} no longer passes check-entry; run check-entry for ${id}`);
-    } else if (entryDigest(join(outDir, entryPath(id))) !== state.features[id].entryDigest) {
-      const was = state.features[id].status === 'confirmed' ? 'confirmed' : 'verified';
-      problems.push(`${id}: ${entryPath(id)} changed after it was ${was}; run check-entry for ${id} and verify it again`);
-    } else if (state.features[id].status === 'verified') {
+      problems.push(...result.problems.map((line) => (line.startsWith(`${id}:`) ? line : `${id}: ${line}`)), `${id}: ${entryPath(id)} no longer passes ${unitFor(id).command}; ${unitFor(id).recheck(id)}`);
+    } else if (entryDigest(join(outDir, entryPath(id))) !== current.entryDigest) {
+      const was = current.status === 'confirmed' ? 'confirmed' : 'verified';
+      problems.push(`${id}: ${entryPath(id)} changed after it was ${was}; ${unitFor(id).recheck(id)} and verify it again`);
+    } else if (current.status === 'verified') {
       entries.set(id, readJson(join(outDir, entryPath(id))).value);
     }
   }

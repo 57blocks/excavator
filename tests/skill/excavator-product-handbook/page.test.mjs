@@ -84,8 +84,8 @@ describe('page: the file and its data', () => {
     const run = checkedRun();
     page(run);
     const data = dataOf(html(run));
-    expect(Object.keys(data)).toEqual(['format', 'project', 'language', 'languageTag', 'ui', 'areas', 'features', 'coverage', 'summary']);
-    expect(data.format).toBe('excavator-product-handbook-page/2');
+    expect(Object.keys(data)).toEqual(['format', 'project', 'language', 'languageTag', 'ui', 'areas', 'features', 'coverage', 'summary', 'system']);
+    expect(data.format).toBe('excavator-product-handbook-page/3');
     expect(data.project).toBe('project');
     expect(data.language).toBe('English');
     expect(data.languageTag).toBe('en');
@@ -173,6 +173,7 @@ describe('page: deterministic bytes and nothing local', () => {
         areas: [{ id: 'A1', name: `Area at ${root}/src` }],
         features: [{ id: 'F1', name: 'One', area: 'A1', reach: 'automated', candidates: ['c1'], seedFiles: [] }],
         unassigned: [{ candidate: 'c2', reason: `see ${root} and ${root}-two and /work/shop.bak` }, { candidate: 'c3', reason: `registered at ${root}/jobs` }],
+        roles: [],
       },
       entries: new Map(),
       state: { features: { F1: { status: 'planned', attempts: 0 } } },

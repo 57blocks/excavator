@@ -13,8 +13,9 @@ import { reachCounts } from './render.mjs';
 import { languageTag } from './language-tag.mjs';
 import { withoutRootPaths } from './root-paths.mjs';
 import { buildSummary } from './summary.mjs';
+import { buildSystem } from './system-facts.mjs';
 
-export const PAGE_FORMAT = 'excavator-product-handbook-page/2';
+export const PAGE_FORMAT = 'excavator-product-handbook-page/3';
 
 /** An entry without its evidence, in the page's shape. */
 function pageEntry(entry) {
@@ -64,6 +65,7 @@ export function buildPageData(run, roots) {
       assigned: map.features.reduce((sum, feature) => sum + feature.candidates.length, 0),
       unassigned: map.unassigned.map((item) => ({ candidate: item.candidate, kind: kind.get(item.candidate), reason: item.reason })),
       reachCounts: reachCounts(map),
+      removedOverview: (state.overview?.removed ?? []).map((item) => ({ claim: item.claim, verdict: item.verdict, reason: item.reason })),
       removed: map.features
         .filter((feature) => (state.features[feature.id].removed ?? []).length > 0)
         .map((feature) => ({
@@ -72,6 +74,7 @@ export function buildPageData(run, roots) {
         })),
     },
     summary: buildSummary(run, roots[0]),
+    system: buildSystem(run, roots[0]),
   };
   return withoutRootPaths(data, roots, project);
 }
