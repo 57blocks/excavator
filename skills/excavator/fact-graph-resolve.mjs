@@ -151,11 +151,13 @@ export function lookupCandidates(index, scopePaths, name) {
 }
 
 /**
- * The files a non-Java call in `path` looks its callee up in: the file
- * itself and its import-map targets, less the targets only `export ... from`
- * reaches (`reexportOnly`). A re-export binds no name in the file, so the
- * module it forwards declares nothing the file can call by a bare name.
- * Shared by the fact graph and the audit so both use one scope.
+ * The files a call in `path` looks its callee up in, for the languages that
+ * neither resolve by receiver type (Java) nor by the file's own bindings
+ * (`BOUND_CALL_LANGUAGES`): the file itself and its import-map targets, less
+ * the targets only `export ... from` reaches (`reexportOnly`). A re-export
+ * binds no name in the file, so the module it forwards declares nothing the
+ * file can call by a bare name. Shared by the fact graph and the audit so
+ * both use one scope.
  *
  * @param {{ importMap?: object, reexportOnly?: object }|null|undefined} importMap
  *   extract-import-map.mjs output
@@ -166,6 +168,43 @@ export function callScopePaths(importMap, path) {
   const reexportOnly = new Set(importMap?.reexportOnly?.[path] ?? []);
   return [path, ...(importMap?.importMap?.[path] ?? []).filter((target) => !reexportOnly.has(target))];
 }
+
+/** The languages whose calls resolve through the file's own bindings
+ *  (`resolveBoundCallSite`) rather than `callScopePaths`. */
+export const BOUND_CALL_LANGUAGES = new Set(['typescript', 'javascript']);
+
+// A callee the file's bindings can name: identifiers joined by `.`.
+const DOTTED_NAME = /^[\p{ID_Start}$_][\p{ID_Continue}$]*(?:\.[\p{ID_Start}$_][\p{ID_Continue}$]*)*$/u;
+
+/**
+ * Where a TS/JS call site goes when its callee resolves only to what the
+ * file binds (openspec: changes/import-binding-call-scope): a top-level
+ * function or class of its own, or what an import binding names through the
+ * module's exports. A same-named declaration an imported module happens to
+ * have is never a candidate. A callee an enclosing function binds (`local`),
+ * or one that is not a dotted name (`a()()`, `a?.b`, `a[b]`), resolves to
+ * nothing. Shared by the fact graph and the audit.
+ *
+ * @param {{ resolveName: (path: string, name: string) => { kind: string, ids?: string[] } }} resolver
+ *   module-binding-resolution.mjs's createModuleBindingResolver output
+ * @param {string} path
+ * @param {{ callee: string, local?: true }} site
+ * @returns {{ outcome: 'edge' | 'calls-ambiguous' | 'calls-unresolved', ids: string[] }}
+ *   `ids` holds the one target declaration of an edge, and is empty otherwise
+ */
+export function resolveBoundCallSite(resolver, path, site) {
+  if (site.local === true || !DOTTED_NAME.test(site.callee)) return { outcome: 'calls-unresolved', ids: [] };
+  const result = resolver.resolveName(path, site.callee);
+  if (result.kind === 'decls') return { outcome: 'edge', ids: result.ids };
+  return { outcome: result.kind === 'ambiguous' ? 'calls-ambiguous' : 'calls-unresolved', ids: [] };
+}
+
+/**
+ * The forms a TS/JS callee takes when `resolveBoundCallSite` finds nothing it
+ * binds; the fact graph's and the audit's calls-unresolved reasons both list
+ * them, so the two cannot drift apart.
+ */
+export const BOUND_CALL_UNRESOLVED_FORMS = 'the root name is a parameter or local of an enclosing function (a name declared in any of its blocks counts for the whole function), a global, a top-level value that is not a function or class, or a name require() binds (CommonJS bindings and exports are not read); or its import names a package or a path that did not resolve, or a module that does not export the name as a function or class; or the callee is a namespace itself, a member of a value rather than of a namespace import (`this.f()`, `obj.f()`), or no dotted name at all';
 
 // ---------------------------------------------------------------------------
 // Digest — canonical (key-sorted) JSON, sha256. Mirrors annotate-graph.mjs's

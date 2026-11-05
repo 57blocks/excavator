@@ -57,6 +57,9 @@ import {
   assignOrdinals,
   lookupCandidates,
   callScopePaths,
+  BOUND_CALL_LANGUAGES,
+  BOUND_CALL_UNRESOLVED_FORMS,
+  resolveBoundCallSite,
   canonicalizeForDigest,
   createGapCollector,
 } from './fact-graph-resolve.mjs';
@@ -78,6 +81,7 @@ import {
 } from './annotation-injection-resolution.mjs';
 import { ROUTE_GAP_KINDS, assertRouteConservation, resolveRoutes } from './route-resolution.mjs';
 import { JSX_GAP_KINDS, JSX_GAP_REASONS, assertJsxConservation, resolveJsxElements } from './jsx-element-resolution.mjs';
+import { createModuleBindingResolver } from './module-binding-resolution.mjs';
 import {
   BUSINESS_INTERFACE_GAP_KIND, TYPE_INJECTION_GAP_KINDS, TYPE_INJECTIONS_NOT_RUN, assertTypeInjectionConservation, resolveTypeInjections,
 } from './type-injection-resolution.mjs';
@@ -463,15 +467,19 @@ export function buildFactGraph({ scan, structureAll, importMap, mentionSites, me
 
   // calls: source (caller) and target (callee) must EACH resolve to exactly
   // one declaration, or the call site is a gap — never a guessed edge (D3).
-  // Scope for the callee is the caller's own file plus its import-map-
-  // resolved internal targets, less those only a re-export reaches
-  // (`callScopePaths`); scope for the caller is its own file only
-  // (a call graph entry's `caller` is always a function declared in that
-  // file). `callee`/`caller` text is matched verbatim (no receiver/dot
-  // splitting) — the same conservative rule already used by
-  // annotate-graph.mjs's resolveUniqueCallSites, so a dotted/member call
-  // (`this.save`, `repo.Save`) does not spuriously match a bare declaration
-  // name; it is an honest gap instead.
+  // TS/JS callees resolve only to what the file binds (`resolveBoundCallSite`,
+  // openspec: changes/import-binding-call-scope): a top-level function or
+  // class of its own, or what an import binding names through the module's
+  // exports, the rule JSX elements resolve by; a member is followed only on a
+  // namespace import. For the other non-Java languages the scope for the
+  // callee is the caller's own file plus its import-map-resolved internal
+  // targets, less those only a re-export reaches (`callScopePaths`), and the
+  // `callee` text is matched verbatim (no receiver/dot splitting) — the same
+  // conservative rule annotate-graph.mjs's resolveUniqueCallSites uses, so a
+  // dotted/member call (`this.save`, `repo.Save`) does not spuriously match a
+  // bare declaration name; it is an honest gap instead. The scope for the
+  // caller is its own file only (a call graph entry's `caller` is always a
+  // function declared in that file).
   //
   // Java rows resolve by the receiver's declared type instead (openspec:
   // changes/java-member-call-resolution, D7/D8/D11): every site becomes one
@@ -554,19 +562,35 @@ export function buildFactGraph({ scan, structureAll, importMap, mentionSites, me
     }
   }
 
+  // The file's own top-level functions and classes (no owner), which a name
+  // in TS/JS resolves to when no import binds it; JSX elements use it too.
+  const topLevelDecls = (path, name) => (declByPathName.get(`${path}|${name}`) ?? []).filter((decl) => !decl.owner);
+  const bindingResolver = createModuleBindingResolver({ rows: fileRows, importMap: importMapSafe, topLevelDecls });
   for (const row of fileRows) {
     if (isJava(row)) continue;
-    const scope = callScopePaths(importMapSafe, row.path);
+    const bound = BOUND_CALL_LANGUAGES.has(languageOfRow(row));
+    const scope = bound ? null : callScopePaths(importMapSafe, row.path);
     const lang = languageOfPath.get(row.path) ?? row.language ?? 'unknown';
     for (const site of row.callGraph ?? []) {
-      const targets = lookupCandidates(declByPathName, scope, site.callee);
-      if (targets.length === 0) {
-        gapCollector.add('calls-unresolved', lang, `${row.path}:${site.lineNumber} -> ${site.callee}`);
-        continue;
-      }
-      if (targets.length > 1) {
-        gapCollector.add('calls-ambiguous', lang, `${row.path}:${site.lineNumber} -> ${site.callee}`);
-        continue;
+      let targetId;
+      if (bound) {
+        const resolved = resolveBoundCallSite(bindingResolver, row.path, site);
+        if (resolved.outcome !== 'edge') {
+          gapCollector.add(resolved.outcome, lang, `${row.path}:${site.lineNumber} -> ${site.callee}`);
+          continue;
+        }
+        targetId = resolved.ids[0];
+      } else {
+        const targets = lookupCandidates(declByPathName, scope, site.callee);
+        if (targets.length === 0) {
+          gapCollector.add('calls-unresolved', lang, `${row.path}:${site.lineNumber} -> ${site.callee}`);
+          continue;
+        }
+        if (targets.length > 1) {
+          gapCollector.add('calls-ambiguous', lang, `${row.path}:${site.lineNumber} -> ${site.callee}`);
+          continue;
+        }
+        targetId = targets[0].id;
       }
 
       const callerCandidates = (declByPathName.get(`${row.path}|${site.caller}`) ?? [])
@@ -587,7 +611,7 @@ export function buildFactGraph({ scan, structureAll, importMap, mentionSites, me
 
       addEdge({
         source: callerId,
-        target: targets[0].id,
+        target: targetId,
         type: 'calls',
         direction: 'forward',
         weight: 0.8,
@@ -610,7 +634,7 @@ export function buildFactGraph({ scan, structureAll, importMap, mentionSites, me
   const jsxResolved = resolveJsxElements({
     rows: fileRows,
     importMap: importMapSafe,
-    topLevelDecls: (path, name) => (declByPathName.get(`${path}|${name}`) ?? []).filter((decl) => !decl.owner),
+    topLevelDecls,
     functionsOf: (path) => functionsByPath.get(path) ?? [],
     languageOf: (path) => languageOfPath.get(path) ?? fileRowByPath.get(path)?.language ?? 'unknown',
   });
@@ -867,8 +891,12 @@ export function buildFactGraph({ scan, structureAll, importMap, mentionSites, me
   // -------------------------------------------------------------------------
   const ledger = buildCoverageLedger({ scan, structure: structureAll, importMap: importMapSafe });
 
+  const callGapReasons = (scope) => {
+    if (scope === 'java') return JAVA_CALL_GAP_REASONS;
+    return BOUND_CALL_LANGUAGES.has(scope) ? BOUND_CALL_GAP_REASONS : {};
+  };
   const resolutionGaps = gapCollector.toArray((kind, scope) =>
-    (scope === 'java' ? JAVA_CALL_GAP_REASONS[kind] : undefined) ?? GAP_REASONS[kind] ?? `unrecognized gap kind ${kind}`);
+    callGapReasons(scope)[kind] ?? GAP_REASONS[kind] ?? `unrecognized gap kind ${kind}`);
 
   // Every Java call site is one edge or one gap: read the gap counts back
   // from what was recorded, so a dropped or misnamed bucket fails the build
@@ -1092,6 +1120,13 @@ const JAVA_CALL_GAP_REASONS = Object.freeze({
   'calls-generated': 'Java call site(s) to methods the source does not declare (accessors of declared fields, record members, Lombok builders and constructors, implicit constructors, enum values/valueOf)',
   'calls-caller-unresolved': 'Java call site(s) with no calling declaration node: calls in nested, anonymous and local types, and calls in field initializers, initializer blocks, enum constant arguments and record compact constructors (caller <clinit> or <init>)',
   'override-uncertain': 'Java method pair(s) with the same name and parameter count across a repository supertype where either side\'s erased parameter types cannot all be determined (a type variable, a nested or unresolvable type, an outside type from an on-demand import): no implements/overrides edge is drawn',
+});
+
+/** Reasons for the TS/JS call-site buckets (scopes `typescript` and
+ *  `javascript`), which resolve only through the file's own bindings. */
+const BOUND_CALL_GAP_REASONS = Object.freeze({
+  'calls-unresolved': `TS/JS call site(s) whose callee the file does not bind to a repository function or class: ${BOUND_CALL_UNRESOLVED_FORMS}: no calls edge is drawn, and a same-named declaration of an imported module is not guessed`,
+  'calls-ambiguous': 'TS/JS call site(s) whose callee resolves to more than one declaration (two `export *` provide the name, or the file declares it twice): no calls edge is drawn',
 });
 
 // -----------------------------------------------------------------------------
