@@ -22,7 +22,9 @@ import { SELECT_NEXT } from '../../skills/excavator-product-handbook/lib/select.
 import { UI_FORMAT } from '../../skills/excavator-product-handbook/lib/ui.mjs';
 import { traceVerdictProblems } from '../../skills/excavator-product-handbook/lib/trace-verdicts.mjs';
 import { verdictProblems } from '../../skills/excavator-product-handbook/lib/verdicts.mjs';
-import { HANDBOOK_SCRIPT, clone, judge, makeCheckedMapRun, runHandbook, verifyChecked } from './excavator-product-handbook/helpers.mjs';
+import { overviewShapeProblems } from '../../skills/excavator-product-handbook/lib/overview-shape.mjs';
+import { HANDBOOK_SCRIPT, clone, judge, makeCheckedMapRun, runHandbook, traceFeature, verifyChecked } from './excavator-product-handbook/helpers.mjs';
+import { checkedOverviewRun, overviewRun } from './excavator-product-handbook/overview-fixture.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(__dirname, '../..');
@@ -31,11 +33,11 @@ const flat = (text) => text.replace(/\s+/g, ' ');
 const agent = readFileSync(resolve(repoRoot, 'agents/excavator-handbook-verifier.md'), 'utf-8');
 const tracerAgent = readFileSync(resolve(repoRoot, 'agents/excavator-handbook-tracer.md'), 'utf-8');
 
-/** Split the skill into its `## Phase N: Title` sections, keyed by N, each without its title line. */
+/** Split the skill into its `## Phase N: Title` sections, keyed by N (a number; the system overview's `3b` stays a string), each without its title line. */
 function rawPhases(text) {
   const out = new Map();
-  const parts = text.split(/^## Phase (\d+): /m);
-  for (let i = 1; i < parts.length; i += 2) out.set(Number(parts[i]), parts[i + 1].slice(parts[i + 1].indexOf('\n') + 1));
+  const parts = text.split(/^## Phase (\d+b?): /m);
+  for (let i = 1; i < parts.length; i += 2) out.set(/^\d+$/.test(parts[i]) ? Number(parts[i]) : parts[i], parts[i + 1].slice(parts[i + 1].indexOf('\n') + 1));
   return out;
 }
 const raw = rawPhases(skill);
@@ -70,10 +72,10 @@ describe('excavator-product-handbook skill: structure', () => {
     expect(description).not.toMatch(/: /);
   });
 
-  it('has the eight phases in order, the verify and trace phases between the entries and the assembly', () => {
-    expect([...raw.keys()]).toEqual([0, 1, 2, 3, 4, 5, 6, 7]);
-    const titles = [...skill.matchAll(/^## Phase \d+: (.+)$/gm)].map((match) => match[1]);
-    expect(titles).toEqual(['Setup', 'Candidates', 'Fixed text', 'The map', 'Entries', 'Verify', 'Trace', 'Assemble, page and reply']);
+  it('has the phases in order: the system overview (3b) between the map and the entries, the verify and trace phases between the entries and the assembly', () => {
+    expect([...raw.keys()]).toEqual([0, 1, 2, 3, '3b', 4, 5, 6, 7]);
+    const titles = [...skill.matchAll(/^## Phase \d+b?: (.+)$/gm)].map((match) => match[1]);
+    expect(titles).toEqual(['Setup', 'Candidates', 'Fixed text', 'The map', 'System overview', 'Entries', 'Verify', 'Trace', 'Assemble, page and reply']);
   });
 
   it('describes every option of the argument hint in the Options section', () => {
@@ -108,7 +110,7 @@ describe('excavator-product-handbook skill: language', () => {
   });
 
   it('repeats the one-line reminder at the top of every later phase', () => {
-    for (const n of [1, 2, 3, 4, 5, 6, 7]) expect(phase(n).startsWith(PHASE_LANGUAGE), `phase ${n}`).toBe(true);
+    for (const n of [1, 2, 3, '3b', 4, 5, 6, 7]) expect(phase(n).startsWith(PHASE_LANGUAGE), `phase ${n}`).toBe(true);
   });
 
   it('writes the run language as English however the user spelled it, because the script only knows the name English', () => {
@@ -136,6 +138,7 @@ describe('excavator-product-handbook skill: setup', () => {
     expect(lines.length).toBeGreaterThan(5);
     for (const line of lines) {
       if (line.includes(`${HANDBOOK} candidates`)) expect(line).toContain('candidates "$PROJECT_ROOT"');
+      else if (line.includes(`${HANDBOOK} applications`)) expect(line).toContain('applications "$PROJECT_ROOT"');
       else if (line.includes(`${HANDBOOK} check-ui`)) expect(line).not.toContain('--project');
       else expect(line, line).toContain('--project "$PROJECT_ROOT"');
     }
@@ -192,8 +195,8 @@ describe('excavator-product-handbook skill: commands', () => {
   const skillCommands = [...new Set([...skill.matchAll(/handbook\.mjs" ([a-z][a-z-]*)/g)].map((match) => match[1]))];
 
   it('names every command handbook.mjs has, and only those', () => {
-    expect(usageCommands.length).toBeGreaterThanOrEqual(13);
-    expect(usageCommands).toEqual(expect.arrayContaining(['candidates', 'check-map', 'select', 'check-entry', 'mark', 'slices', 'verdicts', 'trace', 'trace-verdicts', 'check-ui', 'assemble', 'page', 'reply']));
+    expect(usageCommands.length).toBeGreaterThanOrEqual(16);
+    expect(usageCommands).toEqual(expect.arrayContaining(['candidates', 'applications', 'check-overview', 'try-overview', 'check-map', 'select', 'check-entry', 'mark', 'slices', 'verdicts', 'trace', 'trace-verdicts', 'check-ui', 'assemble', 'page', 'reply']));
     expect([...skillCommands].sort()).toEqual([...usageCommands].sort());
   });
 
@@ -202,6 +205,9 @@ describe('excavator-product-handbook skill: commands', () => {
     expect(raw.get(2)).toContain(`${HANDBOOK} check-ui`);
     expect(raw.get(3)).toContain(`${HANDBOOK} check-map`);
     expect(raw.get(3)).toContain(`${HANDBOOK} select`);
+    expect(raw.get('3b')).toContain(`${HANDBOOK} applications`);
+    expect(raw.get('3b')).toContain(`${HANDBOOK} mark`);
+    expect(raw.get('3b')).toContain(`${HANDBOOK} check-overview`);
     expect(raw.get(4)).toContain(`${HANDBOOK} mark`);
     expect(raw.get(4)).toContain(`${HANDBOOK} check-entry`);
     expect(raw.get(5)).toContain(`${HANDBOOK} slices`);
@@ -488,6 +494,7 @@ describe('excavator-product-handbook skill: the language of the narrative is che
     expect(phase(7)).toContain('follow its `Next:` line as in Phase 4');
     expect(phase(7)).toContain('verify it again as Phase 5 says and trace it as Phase 6 says');
     for (const [, n] of skill.matchAll(/\bPhase (\d)\b/g)) expect(raw.has(Number(n)), `Phase ${n}`).toBe(true);
+    expect(skill.match(/\bPhase 3b\b/g).length).toBeGreaterThan(0);
   });
 
   it('tells the map writer that the scripts refuse names and reasons written only in ASCII letters, for a language with its own script', () => {
@@ -595,6 +602,7 @@ describe('excavator-product-handbook skill: assemble, page and the closing reply
     expect(p).toContain('`Handbook:` and the path of `handbook.md`');
     expect(p).toContain('`Page:` and the path of `handbook.html`, or `Page: not written`');
     expect(p).toContain('`Features:` and the count of each status');
+    expect(p).toContain('`Overview:` and the status of the system overview');
     expect(p).toContain('`Candidates:` and the conservation line');
   });
 
@@ -909,7 +917,7 @@ describe('excavator-product-handbook skill: Phase 6, trace', () => {
     expect(p).toContain('a `confirmed` feature goes straight to this phase, wherever the earlier run stopped');
     expect(p).toContain('When `$OUT/trace-verdicts/<id>/` exists, run the `trace-verdicts` command of step 3 for it first');
     expect(p).toContain('`trace` clears the older files of the feature');
-    expect(p).toContain('With no feature in the list, go to Phase 7.');
+    expect(p).toContain('With no unit in the lists, go to Phase 7.');
     expect(phase(5)).toContain('`confirmed` goes to Phase 6');
   });
 
@@ -1205,5 +1213,144 @@ describe('the handbook verifier agent', () => {
     const example = JSON.parse(blocks(agent, 'json')[1]);
     expect(Object.keys(example)).toEqual(['verdicts']);
     expect(verdictProblems(example, example.verdicts.map(({ id }) => ({ id })), [])).toEqual([]);
+  });
+});
+
+describe('excavator-product-handbook skill: Phase 3b, the system overview (O2 of handbook-system-overview)', () => {
+  const p = phase('3b');
+  const overviewPrompt = promptBlocks(raw.get('3b') ?? '')[0] ?? '';
+  const recipe = (start) => allBash.flatMap((block) => block.split('\n')).map((line) => line.trim()).find((line) => line.startsWith(start));
+  const onState = (line, run) => {
+    const result = spawnSync('bash', ['-c', line.replace('"$OUT/state.json"', `"${join(run.out, 'state.json')}"`)], { encoding: 'utf-8' });
+    expect(result.status, result.stderr).toBe(0);
+    return result.stdout.trim().split('\n').filter((row) => row !== '');
+  };
+  const cleanups = [];
+  const track = (run) => {
+    cleanups.push(run.cleanup);
+    return run;
+  };
+  const clean = () => {
+    while (cleanups.length > 0) cleanups.pop()();
+  };
+
+  it('sits after the map and its --features step and before the entries, with the language reminder first', () => {
+    expect(p.startsWith(PHASE_LANGUAGE)).toBe(true);
+    expect(skill.indexOf('## Phase 3b: System overview')).toBeGreaterThan(skill.indexOf('## Phase 3: The map'));
+    expect(skill.indexOf('## Phase 3b: System overview')).toBeGreaterThan(skill.indexOf('### `--features`'));
+    expect(skill.indexOf('## Phase 3b: System overview')).toBeLessThan(skill.indexOf('## Phase 4: Entries'));
+  });
+
+  it('reads the overview state with a recipe that is run on a real state: planned without the key, checked after check-overview', () => {
+    const line = recipe('jq -r \'(.overview // {status: "planned", attempts: 0})');
+    expect(line).toBeDefined();
+    try {
+      const run = track(overviewRun([]));
+      expect(onState(line, run)).toEqual(['planned\t0']);
+      expect(run.run('check-overview').status).toBe(0);
+      expect(onState(line, run)).toEqual(['checked\t0']);
+    } finally {
+      clean();
+    }
+  });
+
+  it('skips a checked, confirmed or verified overview, resumes a dispatched one that wrote, and allows two attempts', () => {
+    expect(p).toContain('`checked`, `confirmed` or `verified`: the overview is not written again; go to Phase 4.');
+    expect(p).toContain('`dispatched` with `$OUT/entries/overview.json` present (an earlier run stopped after the subagent wrote): go to step 3 as if it had just returned.');
+    expect(p).toContain('`failed` with `attempts` 1');
+    expect(p).toContain('Any other state with `attempts` below 2: step 2.');
+    expect(p).toContain('never a third attempt');
+  });
+
+  it('is written whatever --features says, and is told so in Options', () => {
+    expect(p).toContain('`--features` does not skip the overview');
+    expect(flat(skill.split(/^## Options$/m)[1].split(/^## Sources$/m)[0])).toContain('The system overview is not a feature: this option never skips it (Phase 3b).');
+  });
+
+  it('prints the application roots, deletes the old file, records the dispatch and dispatches in the foreground, in that order', () => {
+    const step2 = p.slice(p.indexOf('2. Print what the prompt below needs'), p.indexOf('3. When the subagent returns'));
+    const order = [`${HANDBOOK} applications "$PROJECT_ROOT"`, 'rm -f "$OUT/entries/overview.json"', `${HANDBOOK} mark "$OUT" overview dispatched --project "$PROJECT_ROOT"`];
+    const at = order.map((text) => step2.indexOf(text));
+    expect(at.every((index) => index > -1)).toBe(true);
+    expect([...at].sort((a, b) => a - b)).toEqual(at);
+    expect(step2).toContain('dispatch one subagent in the foreground (never in the background');
+  });
+
+  it('checks the file with check-overview and quotes the Next lines the script prints', () => {
+    expect(p).toContain(`${HANDBOOK} check-overview "$OUT" --project "$PROJECT_ROOT"`);
+    expect(p).toContain(`\`${nextLine('overview', 0)}\``);
+    expect(p).toContain(`\`${nextLine('overview', 2)}\``);
+    expect(p).toContain(RETRY_HEADING);
+    expect(p).toContain('Never edit `entries/overview.json` or `state.json` yourself');
+  });
+
+  it('gives the subagent a prompt with the budget, the things it must not read, the one file it writes and the command it runs first', () => {
+    expect(overviewPrompt).not.toBe('');
+    expect(overviewPrompt).toContain('Open at most 30 files that are not build manifests, in all; searches do not count.');
+    expect(overviewPrompt).toContain('Never read anything under `.excavator/`');
+    expect(overviewPrompt).toContain('never read a document that an Excavator skill generated');
+    expect(overviewPrompt).toContain('never read an explanatory document: no `.md`, `.mdx`, `.txt`, `.rst` or `.adoc` file and no docs folder');
+    expect(overviewPrompt).toContain('never run, build or change anything in the project');
+    expect(overviewPrompt).toContain('Write only `$OUT/entries/overview.json`, and nothing else anywhere. Reply with one line: `overview: written`, and nothing else.');
+    expect(overviewPrompt).toContain(`${HANDBOOK} try-overview "$OUT" --project "$PROJECT_ROOT"`);
+    expect(overviewPrompt).toContain('until it prints `overview: ok`');
+    for (const text of ['the application roots below', 'External SDKs'.toLowerCase(), 'build manifests', 'entry files']) expect(overviewPrompt.toLowerCase()).toContain(text.toLowerCase());
+  });
+
+  it('shows a JSON example that the overview shape check accepts, with every key present', () => {
+    const example = blocks(overviewPrompt, 'json')[0];
+    expect(example).toBeDefined();
+    const doc = JSON.parse(example.replace(/\bE\b(?=[,}\]])/g, '[{"file": "a.js", "passage": "x"}]'));
+    expect(overviewShapeProblems(doc)).toEqual([]);
+    expect(Object.keys(doc)).toEqual(['format', 'id', 'summary', 'audiences', 'applications', 'integrations', 'unknowns']);
+    expect(overviewPrompt).toContain('Every key is always there');
+  });
+
+  it('states the conservation, the system-name, the callers and the no-document rules the script checks', () => {
+    expect(overviewPrompt).toContain('Every application root listed above must be covered');
+    expect(overviewPrompt).toContain('Two applications never name the same directory');
+    expect(overviewPrompt).toContain('the name must occur in the item\'s own passages');
+    expect(overviewPrompt).toContain('`callers` lists the `dir` of each listed application that calls it, at least one');
+    expect(overviewPrompt).toContain('never a document (`.md`, `.mdx`, `.txt`, `.rst`, `.adoc`)');
+    expect(overviewPrompt).toContain('exactly once');
+    expect(overviewPrompt).toContain('Arabic numerals');
+  });
+
+  it('puts the overview in the unit list of Phase 5 and of Phase 6, with recipes that are run on a real state', () => {
+    const verify = recipe('jq -r \'(.overview // {status: "planned"}) | select(.status == "checked")');
+    const trace = recipe('jq -r \'(.overview // {status: "planned"}) | select(.status == "confirmed")');
+    expect(verify).toBeDefined();
+    expect(trace).toBeDefined();
+    expect(phase(5)).toContain('The units of this phase are the overview, when its state is `checked`');
+    expect(phase(5)).toContain('where the rewrite prompt says `try-entry "$OUT" <id>`, the rewriter runs `try-overview "$OUT"`');
+    expect(phase(6)).toContain('The system overview is traced like a feature, with the id `overview`');
+    try {
+      const run = track(checkedOverviewRun([]));
+      expect(onState(verify, run)).toEqual(['overview\tverify']);
+      expect(onState(trace, run)).toEqual([]);
+      expect(judge(run, 'overview', 1, (item) => (item.id === 'summary[0]' ? 'unverified' : 'verified')).status).toBe(0);
+      expect(onState(verify, run)).toEqual(['overview\trewrite']);
+      expect(judge(run, 'overview', 2, () => 'verified').status).toBe(0);
+      expect(onState(verify, run)).toEqual([]);
+      expect(onState(trace, run)).toEqual(['overview']);
+      expect(traceFeature(run, 'overview').status).toBe(0);
+      expect(onState(trace, run)).toEqual([]);
+    } finally {
+      clean();
+    }
+  });
+
+  it('tells a resumed run that an output without the overview key is read as planned and gets the overview written', () => {
+    const step = flat(skill.split(/^## Phase 1: /m)[0]);
+    expect(step).toContain('has no `overview` key in `state.json`: the script reads that as planned with no attempt, so a resumed run writes the overview in Phase 3b and nothing is migrated');
+  });
+
+  it('says in Phase 7 and in the work split that the handbook opens with the overview and that the script writes its statistics', () => {
+    expect(phase(7)).toContain('the system overview first');
+    expect(phase(7)).toContain('each with its reason, the overview\'s included');
+    const table = flat(skill.split(/^## How the work is split$/m)[1].split(/^## Options$/m)[0]);
+    expect(table).toContain('computes every count and statistic of the system overview');
+    expect(table).toContain('| One subagent for the system overview (Phase 3b)');
+    expect(table).toContain('`entries/overview.json` | the overview subagent (Phase 3b)');
   });
 });
