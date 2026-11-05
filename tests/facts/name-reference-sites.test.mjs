@@ -295,3 +295,47 @@ describe('injection sites in collectNameReferenceSites (xml-injection-references
   });
 });
 
+
+describe('method call sites in collectNameReferenceSites (spring-xml-method-calls, task 2.2)', () => {
+  const BEANS = 'xmlns="http://www.springframework.org/schema/beans"';
+  const FAMILY = 'spring-xml-method-call';
+  const files = {
+    'a/ctx.xml': `<beans ${BEANS}>\n  <bean id="svc" class="a.Svc" init-method="start"><property name="dao" ref="d"/></bean>\n  <bean class="a.E" destroy-method=""/>\n</beans>`,
+    'a/defaults.xml': `<beans ${BEANS} default-init-method="init">\n  <bean id="x" class="a.X"/>\n</beans>`,
+    'a/cdi/beans.xml': '<beans xmlns="http://xmlns.jcp.org/xml/ns/javaee"><bean init-method="start"/></beans>',
+    'a/web.xml': '<web-app><bean init-method="start"/></web-app>',
+    'a/Svc.java': 'package a; class Svc { void start() {} }',
+  };
+  const methodScan = scanOf([['a/ctx.xml', 'xml'], ['a/defaults.xml', 'xml'], ['a/cdi/beans.xml', 'xml'], ['a/web.xml', 'xml'], ['a/Svc.java', 'java']]);
+  const run = (readFile = (path) => files[path]) => collectNameReferenceSites({ scan: methodScan, catalog, readFile });
+
+  it('reads the call sites of the files whose root a family reads, each row with its file, in manifest order', () => {
+    const { methodCalls } = run();
+    expect(methodCalls.map((r) => [r.file, r.family, r.site, r.method, r.line, r.token])).toEqual([
+      ['a/ctx.xml', FAMILY, 'spring-init-method', 'start', 2, 'start'],
+      ['a/ctx.xml', FAMILY, 'spring-property-setter', 'setDao', 2, 'dao'],
+      ['a/defaults.xml', FAMILY, 'spring-default-init-method', 'init', 1, 'init'],
+    ]);
+  });
+
+  it('counts the files each family read, every family listed, and the method names written empty', () => {
+    const result = run();
+    expect(result.methodCallFiles).toEqual({ [FAMILY]: 2 });
+    expect(result.methodCallsEmpty).toBe(1);
+  });
+
+  it('reads a file once for its bindings, injections and calls: one parse', async () => {
+    const { parseXml } = await import('../../skills/excavator/xml-name-bindings.mjs');
+    parseXml.mockClear();
+    run();
+    expect(parseXml.mock.calls.filter(([text]) => text.includes('init-method="start"><property')).length).toBe(1);
+  });
+
+  it('keeps the other output as it was, and does not read a file no family, binder or condition reads', () => {
+    const reads = [];
+    const { bindings, injections } = run((path) => { reads.push(path); return files[path]; });
+    expect(bindings.map((b) => [b.file, b.name])).toEqual([['a/ctx.xml', 'svc'], ['a/defaults.xml', 'x']]);
+    expect(injections.map((r) => [r.file, r.name])).toEqual([['a/ctx.xml', 'd']]);
+    expect(reads).toEqual(['a/ctx.xml', 'a/defaults.xml', 'a/cdi/beans.xml', 'a/web.xml']);
+  });
+});

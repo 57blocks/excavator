@@ -14,6 +14,7 @@ import { execFileSync, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 import { PIPELINE_VERSION, runLazyAnalysis } from '../../skills/excavator/lazy-analyze.mjs';
+import { XML_METHOD_CALL_GAP_KINDS } from '../../skills/excavator/xml-method-call-resolution.mjs';
 import { buildFactGraph } from '../../skills/excavator/build-fact-graph.mjs';
 import { createProjectService } from '../../skills/excavator/project-service.mjs';
 import { KNOWLEDGE_GRAPH_FILE, readKnowledgeGraph } from '../../skills/excavator/knowledge-graph-store.mjs';
@@ -123,8 +124,8 @@ describe('the name-reference stage in the real Lazy driver', () => {
   });
 
   it('stamps the product with the new pipeline version', () => {
-    expect(PIPELINE_VERSION).toBe('lazy-fact-graph/14');
-    expect(graph.project.pipelineVersion).toBe('lazy-fact-graph/14');
+    expect(PIPELINE_VERSION).toBe('lazy-fact-graph/15');
+    expect(graph.project.pipelineVersion).toBe('lazy-fact-graph/15');
   });
 
   it('records the framework its faces-config descriptors declare in the header', () => {
@@ -395,10 +396,10 @@ describe('the name-reference stage in the real Lazy driver', () => {
     expect(without.coverage.nameReferences).toEqual({ status: 'not-run' });
     expect(graph.nodes.length).toBe(without.nodes.length);
     // `without` has no mentions stage either: those edges and gaps are the previous step's
-    expect(graph.edges.filter((e) => e.type !== 'references' && e.type !== 'mentions').length).toBe(without.edges.length);
+    expect(graph.edges.filter((e) => e.type !== 'references' && e.type !== 'mentions' && e.type !== 'invokes').length).toBe(without.edges.length);
     const added = new Set([
       'name-reference-target-unindexed', 'name-reference-target-unknown', 'name-reference-ambiguous', 'name-reference-elsewhere', 'name-reference-unbound',
-      'mention-ambiguous', 'mention-target-unindexed', 'path-mention-unresolved',
+      'mention-ambiguous', 'mention-target-unindexed', 'path-mention-unresolved', ...Object.values(XML_METHOD_CALL_GAP_KINDS),
     ]);
     expect(graph.gaps.filter((g) => !added.has(g.kind))).toEqual(without.gaps);
   });

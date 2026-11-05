@@ -67,8 +67,8 @@ describe('re-export targets and the call scope', () => {
   const gapSamples = (kind) => graph.gaps.filter((g) => g.kind === kind).flatMap((g) => g.samples);
 
   it('moves the pipeline version so graphs built with the wider scope are rebuilt', () => {
-    expect(PIPELINE_VERSION).toBe('lazy-fact-graph/14');
-    expect(graph.project.pipelineVersion).toBe('lazy-fact-graph/14');
+    expect(PIPELINE_VERSION).toBe('lazy-fact-graph/15');
+    expect(graph.project.pipelineVersion).toBe('lazy-fact-graph/15');
   });
 
   it('keeps every re-export target in the import map and as an imports edge', () => {

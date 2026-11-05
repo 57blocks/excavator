@@ -10,6 +10,8 @@ import {
   readRootElement,
   readXmlBindings,
   readXmlInjections,
+  readXmlMethodCalls,
+  setterNameOf,
 } from '../../skills/excavator/xml-name-bindings.mjs';
 import { loadNameBindingCatalog, parseNameBindingCatalog } from '../../skills/excavator/name-binding-catalog.mjs';
 
@@ -630,5 +632,133 @@ describe('the Spring bridge condition (elementTextIn)', () => {
 
   it('wants the whole text to be the class name', () => {
     expect(hits(faces('org.springframework.web.jsf.el.SpringBeanFacesELResolverX'))).toEqual([]);
+  });
+});
+
+// spring-xml-method-calls, tasks 2.1 and 2.3: the method call sites of a descriptor.
+describe('the method call sites of a descriptor', () => {
+  const OPEN = [
+    '<beans xmlns="http://www.springframework.org/schema/beans" xmlns:p="http://www.springframework.org/schema/p"',
+    '       xmlns:task="http://www.springframework.org/schema/task" xmlns:aop="http://www.springframework.org/schema/aop"',
+    '       xmlns:x="urn:other">',
+  ];
+  const beans = (...body) => [...OPEN, ...body, '</beans>'];
+  const calls = (lines) => readXmlMethodCalls(lines.join('\n'), catalog).calls;
+  const shown = (rows) => rows.map((c) => [c.site, c.method, c.line, c.token]);
+
+  it('reads the method name as written, trimmed: init, destroy, lookup and replaced methods, and a static factory method', () => {
+    const rows = calls(beans(
+      '<bean id="a" class="x.A" init-method=" start " destroy-method="stop" factory-method="make">',
+      '  <lookup-method name="dao" bean="d"/>',
+      '  <replaced-method name="swap" replacer="r"/>',
+      '</bean>',
+    ));
+    expect(shown(rows)).toEqual([
+      ['spring-init-method', 'start', 4, 'start'],
+      ['spring-destroy-method', 'stop', 4, 'stop'],
+      ['spring-factory-method', 'make', 4, 'make'],
+      ['spring-lookup-method-name', 'dao', 5, 'dao'],
+      ['spring-replaced-method-name', 'swap', 6, 'swap'],
+    ]);
+  });
+
+  it('is the setter for a property name, and for a p attribute with its -ref suffix dropped', () => {
+    const rows = calls(beans('<bean class="x.A" p:orderDao-ref="d" p:limit="3" x:ignored="1"><property name="url" value="v"/><property name="URL" value="v"/></bean>'));
+    expect(shown(rows)).toEqual([
+      ['spring-p-setter', 'setOrderDao', 4, 'p:orderDao-ref'],
+      ['spring-p-setter', 'setLimit', 4, 'p:limit'],
+      ['spring-property-setter', 'setUrl', 4, 'url'],
+      ['spring-property-setter', 'setURL', 4, 'URL'],
+    ]);
+    expect(setterNameOf('dao')).toBe('setDao');
+    expect(setterNameOf('URL')).toBe('setURL');
+  });
+
+  it('knows an attribute of the p namespace by the namespace its prefix is bound to, not by the prefix', () => {
+    const text = '<beans xmlns="http://www.springframework.org/schema/beans" xmlns:q="http://www.springframework.org/schema/p" xmlns:p="urn:not-p">\n<bean class="x.A" q:dao-ref="d" p:other="o"/>\n</beans>';
+    expect(shown(readXmlMethodCalls(text, catalog).calls)).toEqual([['spring-p-setter', 'setDao', 2, 'q:dao-ref']]);
+  });
+
+  it('splits the factory method by factory-bean: the bean it names owns an instance method, none is a static one', () => {
+    const rows = calls(beans('<bean id="f" class="x.F"/>', '<bean id="x" factory-bean="f" factory-method="make"/>', '<bean id="y" class="x.F" factory-method="create"/>'));
+    expect(rows.map((c) => [c.site, c.method, c.named])).toEqual([
+      ['spring-factory-method-bean', 'make', { name: 'f', line: 5 }],
+      ['spring-factory-method', 'create', null],
+    ]);
+  });
+
+  it('gives a scheduled method the bean its own ref names, and an advice method the ref of the nearest enclosing aspect', () => {
+    const rows = calls(beans(
+      '<task:scheduled ref="job" method="run" fixed-delay="1"/>',
+      '<aop:config><aop:aspect ref="audit">',
+      '  <aop:before method="log" pointcut="p"/>',
+      '  <aop:around method="wrap" pointcut="p"/>',
+      '</aop:aspect><aop:aspect><aop:after method="noRef"/></aop:aspect></aop:config>',
+      '<task:scheduled method="orphan"/>',
+    ));
+    expect(rows.map((c) => [c.site, c.method, c.named])).toEqual([
+      ['spring-scheduled-method', 'run', { name: 'job', line: 4 }],
+      ['spring-aop-before', 'log', { name: 'audit', line: 5 }],
+      ['spring-aop-around', 'wrap', { name: 'audit', line: 5 }],
+      ['spring-aop-after', 'noRef', null],
+      ['spring-scheduled-method', 'orphan', null],
+    ]);
+  });
+
+  it('keeps the consumer of the call: the nearest bean element, an inner bean included, or none', () => {
+    const rows = calls(beans(
+      '<bean class="x.Outer"><property name="p"><bean class="x.Inner" init-method="go"/></property></bean>',
+      '<lookup-method name="m" bean="b"/>',
+    ));
+    // the property of the outer bean, the init method of the inner one, a lookup method under no bean
+    expect(rows.map((c) => [c.method, c.consumer?.target.text ?? null])).toEqual([['setP', 'x.Outer'], ['go', 'x.Inner'], ['m', null]]);
+    expect(rows[0].consumer.line).toBe(4);
+  });
+
+  it('counts an empty method name as empty, not as a call; a blank property name too', () => {
+    const result = readXmlMethodCalls(beans('<bean class="x.A" init-method="" destroy-method="  "><property name=""/></bean>').join('\n'), catalog);
+    expect(result.calls).toEqual([]);
+    expect(result.empty).toBe(3);
+  });
+
+  it('reads nothing from a comment, and nothing from a file of another root or another namespace', () => {
+    expect(calls(beans('<!-- <bean class="x.A" init-method="gone"/> -->'))).toEqual([]);
+    expect(readXmlMethodCalls('<web-app><bean init-method="x"/></web-app>', catalog)).toEqual({ calls: [], empty: 0, families: [] });
+    expect(readXmlMethodCalls('<beans xmlns="urn:cdi"><bean init-method="x"/></beans>', catalog).calls).toEqual([]);
+    expect(readXmlMethodCalls('', catalog)).toEqual({ calls: [], empty: 0, families: [] });
+  });
+
+  it('reads a DTD-form file, whose root declares no namespace, and reports the family as having read the file', () => {
+    const result = readXmlMethodCalls('<beans>\n<bean class="x.A" init-method="go"/>\n</beans>', catalog);
+    expect(result.families).toEqual(['spring-xml-method-call']);
+    expect(shown(result.calls)).toEqual([['spring-init-method', 'go', 2, 'go']]);
+  });
+
+  it('expands the root defaults onto every bean that does not write the attribute, on the root\'s line, as optional calls of the default\'s own id', () => {
+    const rows = calls([
+      '<beans xmlns="http://www.springframework.org/schema/beans"',
+      '       default-init-method="init" default-destroy-method="close">',
+      '  <bean id="a" class="x.A"/>',
+      '  <bean id="b" class="x.B" init-method="start"/>',
+      '  <bean id="c" class="x.C" destroy-method="stop"/>',
+      '</beans>',
+    ]);
+    expect(shown(rows).filter(([site]) => site.startsWith('spring-default'))).toEqual([
+      ['spring-default-init-method', 'init', 2, 'init'],
+      ['spring-default-init-method', 'init', 2, 'init'],
+      ['spring-default-destroy-method', 'close', 2, 'close'],
+      ['spring-default-destroy-method', 'close', 2, 'close'],
+    ]);
+    // a is given both defaults, b only the destroy one and c only the init one; their own attributes are calls of their own
+    expect(rows.filter((c) => c.site.startsWith('spring-default')).map((c) => c.consumer.line)).toEqual([3, 5, 3, 4]);
+    expect(shown(rows).filter(([site]) => !site.startsWith('spring-default'))).toEqual([
+      ['spring-init-method', 'start', 4, 'start'],
+      ['spring-destroy-method', 'stop', 5, 'stop'],
+    ]);
+  });
+
+  it('does not expand a default that a nested beans element writes, and has no default for a root without one', () => {
+    expect(calls(beans('<beans default-init-method="init"><bean class="x.A"/></beans>')).filter((c) => c.site.startsWith('spring-default'))).toEqual([]);
+    expect(calls(beans('<bean class="x.A"/>'))).toEqual([]);
   });
 });

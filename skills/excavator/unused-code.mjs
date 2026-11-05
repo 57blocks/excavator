@@ -19,8 +19,10 @@
  * everything reachable from it, and writes the unused code with its groups and
  * a confidence per node. It never reads the fact graph beyond its header digest.
  *
- * Definition. A function node is used when it is reachable from a route handler
- * (the target of a `routes` edge) along references; every other function node is
+ * Definition. A function node is used when it is reachable from a root along
+ * references; the roots are the route handlers (the targets of `routes` edges)
+ * and the methods a descriptor has the container call (the targets of `invokes`
+ * edges; `counts.roots` has how many of each); every other function node is
  * a candidate. References are `calls` edges between function nodes and
  * `implements` / `overrides` edges between function nodes, the latter in BOTH
  * directions (an overridden method in use makes its overrides dispatchable; an
@@ -37,8 +39,8 @@
  * type and direction, so the later `report` step can recompute reachability
  * from the product alone.
  *
- * Conservation. Every function node is in exactly one of {route-reachable,
- * candidates}. A violation is an Error and nothing is written.
+ * Conservation. Every function node is in exactly one of {reachable from a root
+ * (`routeReachable`, the name kept), candidates}. A violation is an Error and nothing is written.
  *
  * Name census (design D5). For every candidate, how often its name occurs in the
  * selected source files outside the places the facts already explain: its own
@@ -179,9 +181,9 @@ export function assertConservation({ functionIds, reachable, candidates }) {
 
   const problems = [];
   const show = (ids) => `${ids.slice(0, 5).join(', ')}${ids.length > 5 ? `, ... (${ids.length} in all)` : ''}`;
-  if (neither.length > 0) problems.push(`${neither.length} function node(s) in neither the route-reachable set nor the candidates: ${show(neither)}`);
-  if (both.length > 0) problems.push(`${both.length} function node(s) in both the route-reachable set and the candidates: ${show(both)}`);
-  if (stray.length > 0) problems.push(`${stray.length} id(s) in the route-reachable set or the candidates that are not function nodes: ${show(stray)}`);
+  if (neither.length > 0) problems.push(`${neither.length} function node(s) in neither the root-reachable set nor the candidates: ${show(neither)}`);
+  if (both.length > 0) problems.push(`${both.length} function node(s) in both the root-reachable set and the candidates: ${show(both)}`);
+  if (stray.length > 0) problems.push(`${stray.length} id(s) in the root-reachable set or the candidates that are not function nodes: ${show(stray)}`);
   if (problems.length > 0) {
     throw new Error(`unused-code conservation violated: functionNodes=${functions.size}, routeReachable=${reach.size}, candidates=${cand.size}; ${problems.join('; ')}`);
   }
@@ -332,9 +334,12 @@ function weaklyConnectedCount(nodeCount, from, to) {
  *   entryComponents: number,
  *   clusters: number,
  *   referrers: Array<Array<{ id: string, edge: string, reverse: boolean }>>,
+ *   roots: { routes: number, invokes: number },
  * }}
  *   `reachable` is indexed like `functionIds`; `entry`, `component`, `referrers`
- *   like `candidateIds`.
+ *   like `candidateIds`. `roots` counts the distinct function nodes that are the
+ *   target of a `routes` edge and of an `invokes` edge (a method that is both is
+ *   in both counts).
  */
 export function computeCandidateSet(graph) {
   if (!graph || !Array.isArray(graph.nodes) || !Array.isArray(graph.edges)) {
@@ -356,10 +361,16 @@ export function computeCandidateSet(graph) {
   const refTo = [];
   const refKind = [];
   const seeds = [];
+  const routeRoots = new Set();
+  const invokeRoots = new Set();
   for (const edge of graph.edges) {
-    if (edge?.type === 'routes') {
+    // A route handler and a method a descriptor has the container call are the roots.
+    if (edge?.type === 'routes' || edge?.type === 'invokes') {
       const target = indexOf.get(edge.target);
-      if (target !== undefined) seeds.push(target);
+      if (target !== undefined) {
+        seeds.push(target);
+        (edge.type === 'routes' ? routeRoots : invokeRoots).add(target);
+      }
       continue;
     }
     const forward = edge?.type === 'calls' ? KIND_CALLS
@@ -451,6 +462,7 @@ export function computeCandidateSet(graph) {
     entryComponents,
     clusters: weaklyConnectedCount(m, cFrom, cTo),
     referrers,
+    roots: { routes: routeRoots.size, invokes: invokeRoots.size },
   };
 }
 
@@ -740,6 +752,7 @@ export function buildUnusedCandidates({ graph, structure, sourceRevision }) {
     counts: {
       functionNodes,
       routeReachable,
+      roots: set.roots,
       candidates: candidates.length,
       entries,
       entryComponents: set.entryComponents,
@@ -1680,7 +1693,7 @@ function runCandidates(rootArg) {
   const { counts, census } = product;
   process.stdout.write(`${JSON.stringify({ product: path, counts, census })}\n`);
   process.stderr.write(`unused-code: ${counts.candidates} candidates (${counts.entries} entries in ${counts.entryComponents} components, `
-    + `${counts.clusters} clusters) of ${counts.functionNodes} function nodes, ${counts.routeReachable} route-reachable; `
+    + `${counts.clusters} clusters) of ${counts.functionNodes} function nodes, ${counts.routeReachable} reachable from roots (${counts.roots.routes} route handlers, ${counts.roots.invokes} container-invoked methods); `
     + `census over ${census.files} files, ${census.candidatesWithElsewhere} candidates with the name elsewhere -> ${path}\n`);
 }
 

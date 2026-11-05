@@ -172,15 +172,24 @@ describe('--no-source', () => {
     expect(pageContent(html)).not.toContain(MARKER);
   });
 
-  it('is the same on the command line, and embeds the marker only without the flag', () => {
+  it('is the default on the command line, and only --source embeds the marker', () => {
     writeProduct(project.root, 'unused-code.json', unusedProduct(project.revision, { unused: [row('src/a.js')] }));
-    const withFlag = JSON.parse(spawnSync(process.execPath, [packScript, project.root, '--no-source'], { encoding: 'utf-8' }).stdout);
-    expect(withFlag.source.counts.notEmbeddedOnRequest).toBe(1);
-    const noMarker = readFileSync(withFlag.out, 'utf-8');
-    expect(explorerPage(noMarker).data).not.toHaveProperty('sources');
-    expect(noMarker).not.toContain(MARKER);
-    const without = JSON.parse(spawnSync(process.execPath, [packScript, project.root], { encoding: 'utf-8' }).stdout);
-    expect(explorerPage(readFileSync(without.out, 'utf-8')).data.sources['src/a.js'].content).toContain(MARKER);
+    const cli = (...flags) => {
+      const result = JSON.parse(spawnSync(process.execPath, [packScript, project.root, ...flags], { encoding: 'utf-8' }).stdout);
+      return { result, html: readFileSync(result.out, 'utf-8') };
+    };
+    for (const flags of [[], ['--no-source'], ['--source', '--no-source']]) {
+      const { result, html } = cli(...flags);
+      expect(result.source).toMatchObject({ embedded: false, requested: false });
+      expect(result.source.counts.notEmbeddedOnRequest).toBe(1);
+      expect(explorerPage(html).data).not.toHaveProperty('sources');
+      expect(html).not.toContain(MARKER);
+    }
+    for (const flags of [['--source'], ['--no-source', '--source']]) {
+      const { result, html } = cli(...flags);
+      expect(result.source).toMatchObject({ embedded: true, requested: true });
+      expect(explorerPage(html).data.sources['src/a.js'].content).toContain(MARKER);
+    }
   });
 });
 

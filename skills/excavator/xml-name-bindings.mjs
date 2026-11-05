@@ -326,6 +326,30 @@ function siteMatches(site, element, attribute, local) {
 const isCensusAttribute = (census, local) => census.attributes.includes(local) || census.attributeSuffixes.some((suffix) => local.endsWith(suffix));
 
 /**
+ * The consumer of an element, for a family: the element itself or the nearest
+ * ancestor with the family's consumer element's local name - an inner or
+ * anonymous bean included - as `{ line, target, unknownBecause, inherits }`,
+ * read by the consumer binder's target rules as a binding's are, or null when
+ * no element around is one. One object per consumer element.
+ */
+function consumerReader(family, binder, { outermost = false } = {}) {
+  const consumers = new Map();
+  return (element) => {
+    let consumer = null;
+    for (let node = element; node; node = node.parent) {
+      if (node.local !== family.consumer.element) continue;
+      consumer = node;
+      if (!outermost) break; // the nearest; the seam walks on to the outermost
+    }
+    if (consumer === null) return null;
+    if (!consumers.has(consumer)) {
+      consumers.set(consumer, { line: consumer.line, target: targetOf(consumer, binder.target), ...targetRulesOf(consumer, binder.target) });
+    }
+    return consumers.get(consumer);
+  };
+}
+
+/**
  * The injection sites of a parsed descriptor, by the catalog's injection
  * families whose root (local name, and namespace - a `null` in the family's list
  * is a root with none) it has: the attributes that write the name of another
@@ -371,20 +395,7 @@ export function injectionsOfTree(tree, catalog, { mutations = {} } = {}) {
     result.families.push(family.id);
     const binder = binders.get(family.consumer.binder);
 
-    const consumers = new Map();
-    const consumerOf = (element) => {
-      let consumer = null;
-      for (let node = element; node; node = node.parent) {
-        if (node.local !== family.consumer.element) continue;
-        consumer = node;
-        if (!mutations.outermostConsumer) break; // the nearest; the seam walks on to the outermost
-      }
-      if (consumer === null) return null;
-      if (!consumers.has(consumer)) {
-        consumers.set(consumer, { line: consumer.line, target: targetOf(consumer, binder.target), ...targetRulesOf(consumer, binder.target) });
-      }
-      return consumers.get(consumer);
-    };
+    const consumerOf = consumerReader(family, binder, { outermost: mutations.outermostConsumer });
 
     for (const element of tree.elements) {
       let produced = 0;
@@ -417,6 +428,123 @@ export function injectionsOfTree(tree, catalog, { mutations = {} } = {}) {
 /** `injectionsOfTree` over a text. */
 export function readXmlInjections(text, catalog, { mutations = {} } = {}) {
   return injectionsOfTree(parseXml(text, { maskComments: !mutations.noCommentMask }), catalog, { mutations });
+}
+
+/** The setter a property name stands for: `set` and the name with its first letter in upper case. */
+export const setterNameOf = (property) => `set${property.charAt(0).toUpperCase()}${property.slice(1)}`;
+
+/** Does the element satisfy the site's `when` and `unless` conditions (attributes it writes, or does not)? */
+function conditionsHold(site, element) {
+  const writes = (name) => element.attributes.some((attribute) => attribute.name === name);
+  return (site.when === undefined || writes(site.when)) && (site.unless === undefined || !writes(site.unless));
+}
+
+/**
+ * The attribute value naming the bean a `named` owner stands for: on the
+ * element itself, or, when the site lists ancestors, on the nearest ancestor
+ * with one of those local names. `{ name, line }`, or null when there is no such
+ * element or it writes the attribute empty or not at all.
+ */
+function namedOwnerOf(site, element) {
+  const { attribute, ancestors } = site.owner;
+  let holder = element;
+  if (ancestors !== undefined) {
+    holder = element.parent;
+    while (holder && !ancestors.includes(holder.local)) holder = holder.parent;
+  }
+  const written = holder?.attributes.find((candidate) => candidate.name === attribute);
+  const name = written?.value.trim() ?? '';
+  return name === '' ? null : { name, line: written.line };
+}
+
+/**
+ * The method call sites of a parsed descriptor, by the catalog's method call
+ * families whose root (local name and namespace, as for an injection family) it
+ * has: the attributes that write the name of a method the container calls.
+ *
+ * A site is an attribute whose element and name, or namespace, a site of the
+ * family lists, and whose element meets the site's `when` and `unless`. Its
+ * method name is the value, trimmed (`value`), or `set` and the property name
+ * (`setter`): the value for an element site, the attribute's local name for a
+ * namespace site with a `-ref` suffix dropped. Its row is `{ family, site,
+ * method, line, token, consumer, named }`: `token` is what the line writes (the
+ * value, or for a namespace site the attribute as written), `consumer` as for an
+ * injection site, `named` the `{ name, line }` the site's `named` owner reads,
+ * or null (for any other owner, or when it is not written).
+ *
+ * An attribute of the root that a default lists stands for the default's `like`
+ * site on every consumer element that does not write the `like` site's
+ * attribute: an optional call, on the line of the root's attribute. An empty
+ * method name is no call and is counted in `empty`.
+ *
+ * @param {{ root: object|null, elements: object[] }} tree
+ * @param {{ xmlBinders: object[], xmlMethodCalls: object[] }} catalog
+ * @returns {{ calls: object[], empty: number, families: string[] }}
+ *   `families` are the ids of the families whose root the file has
+ */
+export function methodCallsOfTree(tree, catalog) {
+  const result = { calls: [], empty: 0, families: [] };
+  if (tree.root === null) return result;
+  const info = rootInfo(tree.root);
+  const binders = new Map(catalog.xmlBinders.map((binder) => [binder.id, binder]));
+
+  for (const family of catalog.xmlMethodCalls) {
+    if (!rootMatches(info, family.root, family.rootNamespace)) continue;
+    result.families.push(family.id);
+    const consumerOf = consumerReader(family, binders.get(family.consumer.binder));
+    const add = (element, site, { method, line, token }) => {
+      if (method === null) {
+        result.empty += 1;
+        return;
+      }
+      result.calls.push({
+        family: family.id,
+        site: site.id,
+        method,
+        line,
+        token,
+        // a setter for a nested property path (`a.b`) is not modeled by the resolution
+        nested: site.method === 'setter' && method.includes('.'),
+        consumer: consumerOf(element),
+        named: site.owner.from === 'named' ? namedOwnerOf(site, element) : null,
+      });
+    };
+
+    for (const element of tree.elements) {
+      for (const attribute of element.attributes) {
+        if (isNamespaceDeclaration(attribute.name)) continue;
+        const local = localNameOf(attribute.name);
+        for (const site of family.sites) {
+          const matches = site.element !== undefined
+            ? element.local === site.element && attribute.name === site.attribute
+            : prefixOf(attribute.name) !== null && namespaceOfPrefix(element, prefixOf(attribute.name)) === site.attributeNamespace;
+          if (!matches || !conditionsHold(site, element)) continue;
+          const written = site.attributeNamespace !== undefined ? local.replace(/-ref$/, '') : attribute.value.trim();
+          const method = written === '' ? null : site.method === 'setter' ? setterNameOf(written) : written;
+          add(element, site, { method, line: attribute.line, token: site.attributeNamespace !== undefined ? attribute.name : attribute.value.trim() });
+        }
+      }
+    }
+
+    // The root's default attributes: one optional call per consumer element that writes no attribute of its own.
+    for (const entry of family.defaults) {
+      const attribute = tree.root.attributes.find((candidate) => candidate.name === entry.attribute);
+      if (!attribute) continue;
+      const like = family.sites.find((site) => site.id === entry.like);
+      const value = attribute.value.trim();
+      for (const element of tree.elements) {
+        if (element.local !== family.consumer.element) continue;
+        if (element.attributes.some((candidate) => candidate.name === like.attribute)) continue;
+        add(element, { ...like, id: entry.id, owner: { from: 'consumer' } }, { method: value === '' ? null : value, line: attribute.line, token: value });
+      }
+    }
+  }
+  return result;
+}
+
+/** `methodCallsOfTree` over a text. */
+export function readXmlMethodCalls(text, catalog) {
+  return methodCallsOfTree(parseXml(text), catalog);
 }
 
 /**
