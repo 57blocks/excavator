@@ -13,8 +13,7 @@
  * registers many jobs would lend one job's description to another.
  */
 
-import { locatePassage } from './locate.mjs';
-import { projectFiles } from './project-files.mjs';
+import { citationLocator } from './citation-locator.mjs';
 import { scheduleBucket } from './schedule.mjs';
 
 /**
@@ -41,17 +40,7 @@ function describing(entry, file, line, locate) {
  */
 export function buildSummary(run, root) {
   const { map, entries, candidates } = run;
-  let files = null;
-  const located = new Map();
-  const locate = (citation) => {
-    const key = `${citation.file}\0${citation.passage}`;
-    if (!located.has(key)) {
-      files ??= projectFiles(root);
-      const resolved = files.resolve(citation.file);
-      located.set(key, resolved.ok ? locatePassage(resolved.text, citation.passage) : null);
-    }
-    return located.get(key);
-  };
+  const locate = citationLocator(root);
 
   const notifications = [];
   for (const area of map.areas) {

@@ -92,6 +92,7 @@ import { traceVerdicts } from './lib/trace-verdicts.mjs';
 import { checkUi } from './lib/ui.mjs';
 import { OVERVIEW_ID } from './lib/overview-shape.mjs';
 import { ROUNDS } from './lib/verify-plan.mjs';
+import { parseViews } from './lib/views.mjs';
 import { verdicts } from './lib/verdicts.mjs';
 
 const USAGE = `Usage: node handbook.mjs <command> [arguments]
@@ -261,6 +262,16 @@ function parseArgs(args, known) {
 /** The round an option names (1 or 2), or 0 when it names neither. */
 const roundOption = (text) => (ROUNDS.includes(Number(text)) && /^\d+$/.test(text) ? Number(text) : 0);
 
+/** The views of `--views`, or null when the value is not a view (the lines are printed and the command exits 1). */
+function viewsOf(options) {
+  const parsed = parseViews(options.views);
+  if (!parsed.ok) {
+    process.stdout.write(parsed.lines.map((line) => `${line}\n`).join(''));
+    return null;
+  }
+  return parsed.views;
+}
+
 /** Print a check's lines to stdout and return its exit status. */
 function report({ status, lines }) {
   process.stdout.write(lines.map((line) => `${line}\n`).join(''));
@@ -355,18 +366,21 @@ const COMMANDS = {
     return report(checkUi(positionals[0], options.language));
   },
   assemble(args) {
-    const { positionals, options } = parseArgs(args, ['project']);
+    const { positionals, options } = parseArgs(args, ['project', 'views']);
     if (positionals.length !== 1) throw new UsageError('assemble takes exactly one <out> directory');
+    if (viewsOf(options) === null) return 1;
     return report(assemble(positionals[0], projectRootOption(options.project)));
   },
   reply(args) {
-    const { positionals, options } = parseArgs(args, ['project']);
+    const { positionals, options } = parseArgs(args, ['project', 'views']);
     if (positionals.length !== 1) throw new UsageError('reply takes exactly one <out> directory');
+    if (viewsOf(options) === null) return 1;
     return report(replyLines(positionals[0], projectRootOption(options.project)));
   },
   page(args) {
-    const { positionals, options } = parseArgs(args, ['project']);
+    const { positionals, options } = parseArgs(args, ['project', 'views']);
     if (positionals.length !== 1) throw new UsageError('page takes exactly one <out> directory');
+    if (viewsOf(options) === null) return 1;
     const root = projectRootOption(options.project);
     return report(writePage(positionals[0], root, { rootAliases: [resolve(options.project)] }));
   },
