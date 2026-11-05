@@ -255,6 +255,7 @@ describe('excavator-product-handbook skill: candidates and map', () => {
     expect(p).toContain('**Start from the navigation.**');
     expect(p).toContain('each menu entry that opens a page is its own `menu` feature, at any depth of the menu');
     expect(p).toContain('A menu group that only opens a submenu is not a feature');
+    expect(p).toContain('each tab that opens its own route is its own `menu` feature');
     expect(p).toContain("never to an `interface` feature");
     expect(p.indexOf('**Start from the navigation.**')).toBeLessThan(p.indexOf('**Areas are business domains.**'));
     expect(p).toContain('requesting leave and approving leave are one domain');
