@@ -567,7 +567,11 @@ describe('verdicts: round 1', () => {
     expect(existsSync(rewritePath(run))).toBe(true);
     expect(judge(run, 'F1', 2).status).toBe(0);
     expect(existsSync(verdictPath(run, 2))).toBe(true);
-    // check-entry starts the feature over as checked; slices round 1 clears what the earlier verification left.
+    // The entry file is written again as a different file than the confirmed one, so check-entry starts the feature over as
+    // checked; slices round 1 clears what the earlier verification left.
+    const changed = clone(run.entry);
+    changed.purpose.text = 'Staff place new orders.';
+    run.writeEntry('F1', changed);
     expect(run.run('check-entry', 'F1').status).toBe(0);
     expect(verifyChecked(run).status).toBe(0);
     expect(existsSync(rewritePath(run))).toBe(false);
@@ -1077,9 +1081,12 @@ describe('check-entry after a rewrite', () => {
     expect(stateOf(run).failure.step).toBe('check-entry');
   });
 
-  it('puts a verified feature back to checked when check-entry is run on it again', () => {
+  it('puts a verified feature back to checked when check-entry is run on a changed entry file', () => {
     const run = checkedRun();
     verifyChecked(run);
+    const changed = clone(run.entry);
+    changed.purpose.text = 'Staff place new orders.';
+    run.writeEntry('F1', changed);
     expect(run.run('check-entry', 'F1').status).toBe(0);
     expect(stateOf(run)).toEqual({ status: 'checked', attempts: 0 });
   });

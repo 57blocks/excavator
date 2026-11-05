@@ -6,6 +6,8 @@
  * `lane-wrote-nothing`. try-entry runs the same checks for the lane itself
  * and records nothing. A feature waiting for its one rewrite (design D14)
  * that fails here is `failed` at step `rewrite`; there is no second rewrite.
+ * A verified or confirmed entry whose file is still the one that was settled is
+ * checked as load-run checks it and stays as it is; a changed file starts over.
  * The same functions check the system overview (check-overview and
  * try-overview): the unit of the id (unit.mjs) decides what is checked.
  */
@@ -19,7 +21,7 @@ import { readJson } from './json-file.mjs';
 import { languageGate } from './language-check.mjs';
 import { mapVerifiedLabels, readMap } from './map-check.mjs';
 import { projectFiles } from './project-files.mjs';
-import { loadState, nextLine, rewriteNextLine, saveState } from './state.mjs';
+import { entryDigest, loadState, nextLine, rewriteNextLine, saveState } from './state.mjs';
 import { isOverview, setUnitState, unitFor, unitState } from './unit.mjs';
 
 export const entryPath = (id) => `entries/${id}.json`;
@@ -65,7 +67,12 @@ export function checkEntry(outDir, id, root) {
 
   // A feature waiting for its one rewrite keeps what round 1 removed, and its entry has no purpose when round 1 removed it.
   const kept = current.rewriting && current.removed !== undefined ? { removed: current.removed } : {};
-  const result = checkEntryFile(outDir, id, root, loaded, { settled: current.rewriting === true && unit.settledAfter(current) });
+  // A verified or confirmed entry that is still the file that was settled is checked as load-run checks it (settled: true):
+  // verification may have trimmed it, and a trimmed entry cannot pass the rules of a fresh one.
+  const unchanged = ['verified', 'confirmed'].includes(current.status) && current.entryDigest !== undefined
+    && existsSync(join(outDir, entryPath(id))) && entryDigest(join(outDir, entryPath(id))) === current.entryDigest;
+  const result = checkEntryFile(outDir, id, root, loaded, { settled: unchanged || (current.rewriting === true && unit.settledAfter(current)) });
+  if (unchanged && result.problems.length === 0) return { status: 0, lines: [`${id}: ${current.status}, unchanged since it was ${current.status}`] };
   if (result.problems.length === 0) {
     // A feature waiting for its one rewrite stays so; anything else starts over as checked (a verified one is no longer verified).
     setUnitState(state, id, current.rewriting ? { status: 'checked', attempts: current.attempts, rewriting: true, ...kept } : { status: 'checked', attempts: current.attempts });
