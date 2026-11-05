@@ -40,7 +40,7 @@ function verifiedOverviewRun(adjust) {
 
 describe('the fixed texts of the overview', () => {
   const KEYS = [
-    'md.overview.heading', 'md.overview.counts', 'md.overview.notWritten', 'md.overview.audiencesHeading', 'md.overview.applicationsHeading',
+    'md.overview.heading', 'md.overview.counts', 'md.overview.countsWithDomains', 'md.overview.notWritten', 'md.overview.audiencesHeading', 'md.overview.applicationsHeading',
     'md.overview.integrationsHeading', 'md.overview.areasHeading', 'md.overview.noHistory', 'md.overview.notVerified', 'md.overview.languageItem', 'md.overview.frameworkItem',
     'md.overview.application.item', 'md.coverage.removedOverview', 'md.table.who', 'md.table.directory', 'md.table.name', 'md.table.languages',
     'md.table.frameworks', 'md.table.files', 'md.table.lines', 'md.table.firstCommit', 'md.table.lastCommit', 'md.table.commits', 'md.table.authors',
@@ -211,12 +211,12 @@ describe('the coverage section lists the removed overview items', () => {
 });
 
 describe('page data: the overview', () => {
-  it('has the format 4 and carries the text of the verified overview, the application facts and the counts, without evidence', () => {
+  it('has the format 5 and carries the text of the verified overview, the application facts and the counts, without evidence', () => {
     const run = verifiedOverviewRun();
     expect(page(run).status).toBe(0);
     const data = dataOf(run);
-    expect(data.format).toBe('excavator-product-handbook-page/4');
-    expect(Object.keys(data)).toEqual(['format', 'project', 'language', 'languageTag', 'ui', 'views', 'areas', 'features', 'coverage', 'summary', 'system', 'entities']);
+    expect(data.format).toBe('excavator-product-handbook-page/5');
+    expect(Object.keys(data)).toEqual(['format', 'project', 'language', 'languageTag', 'ui', 'views', 'areas', 'domains', 'domainBasis', 'features', 'coverage', 'summary', 'system', 'entities']);
     expect(data.system.status).toBe('verified');
     expect(data.system.overview).toEqual({
       summary: ['Staff place and review orders for customers.'],

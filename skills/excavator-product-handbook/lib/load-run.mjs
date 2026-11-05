@@ -17,6 +17,7 @@ import { join, resolve } from 'node:path';
 
 import { memberDirectories } from './banned-words.mjs';
 import { loadCandidates } from './candidates.mjs';
+import { loadDomains } from './domains-check.mjs';
 import { checkEntryFile, entryPath } from './entry-check.mjs';
 import { UsageError } from './errors.mjs';
 import { readJson } from './json-file.mjs';
@@ -28,7 +29,9 @@ import { loadUi } from './ui.mjs';
 import { OVERVIEW_ID, unitFor, unitState } from './unit.mjs';
 
 /**
- * Returns `{ ok: true, outDir, map, entries, state, candidates, ui }` (entries:
+ * Returns `{ ok: true, outDir, map, domains, entries, state, candidates, ui }` (domains: the
+ * business domains of domains.json when it passes check-domains, null otherwise, which
+ * groups the outputs by the map's areas instead; entries:
  * id -> entry of each verified feature, and of the overview under `overview`; candidates: candidates.json's items;
  * ui: the strings table) or `{ ok: false, lines }` with every reason. Throws a
  * UsageError for an out directory or state that does not exist.
@@ -48,6 +51,9 @@ export function loadCheckedRun(outDirArg, root) {
   const languageCheck = gate.check;
   const mapChecked = mapProblems(map, { candidates: candidates.items, files, memberDirs, languageCheck });
   if (mapChecked.problems.length > 0) return { ok: false, lines: mapChecked.problems.map((line) => `map.json: ${line}`) };
+
+  // A missing domains file, or one that does not pass its check, groups the outputs by the map's areas (domain-grouping.mjs).
+  const domains = loadDomains(outDir, { map, files, memberDirs, languageCheck });
 
   const loaded = loadState(outDir);
   if (!loaded.ok) {
@@ -82,5 +88,5 @@ export function loadCheckedRun(outDirArg, root) {
     }
   }
   if (problems.length > 0) return { ok: false, lines: problems };
-  return { ok: true, outDir, map, entries, state, candidates: candidates.items, ui: ui.strings };
+  return { ok: true, outDir, map, domains: domains.doc, entries, state, candidates: candidates.items, ui: ui.strings };
 }

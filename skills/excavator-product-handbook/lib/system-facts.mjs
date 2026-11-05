@@ -6,9 +6,10 @@
  * directory is in a git work tree, the first and last commit date, the number
  * of commits without merges and the number of distinct author emails of the
  * history under that directory; for the system, the counts of application roots,
- * source files, lines, areas, features, features with a verified entry and
- * roles; for each area, its features, its features with a verified entry and
- * the roles those entries name. Nothing here comes from a model: the inputs
+ * source files, lines, areas, business domains (null without a domains file),
+ * features, features with a verified entry and roles; for each area, and for each domain (the business domains of
+ * domains.json, or the areas again when there is none), its features, its
+ * features with a verified entry and the roles those entries name. Nothing here comes from a model: the inputs
  * are the project files, candidates.json, the map and the verified entries.
  * The same inputs give the same object, with no run time and no local path.
  *
@@ -28,6 +29,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { isUnder, scanProject } from './applications.mjs';
+import { areaGroups, domainGrouping } from './domain-grouping.mjs';
 import { OVERVIEW_ID, unitState } from './unit.mjs';
 
 const compare = (a, b) => (a < b ? -1 : a > b ? 1 : 0);
@@ -119,13 +121,12 @@ function applicationRows(listed, context) {
   return rows;
 }
 
-/** One row per area of the map: its features, its features with a verified entry, and the roles those entries name, in the order of the map's roles. */
-function areaRows(map, entries) {
-  return map.areas.map((area) => {
-    const features = map.features.filter((feature) => feature.area === area.id);
-    const written = features.filter((feature) => entries.has(feature.id));
-    const named = new Set(written.flatMap((feature) => entries.get(feature.id).who.map((who) => who.role)));
-    return { id: area.id, name: area.name, features: features.length, verified: written.length, roles: map.roles.map((role) => role.label).filter((label) => named.has(label)) };
+/** One row per group of features: its features, its features with a verified entry, and the roles those entries name, in the order of the map's roles. */
+function groupRows(groups, map, entries) {
+  return groups.map((group) => {
+    const written = group.features.filter((id) => entries.has(id));
+    const named = new Set(written.flatMap((id) => entries.get(id).who.map((who) => who.role)));
+    return { id: group.id, name: group.name, features: group.features.length, verified: written.length, roles: map.roles.map((role) => role.label).filter((label) => named.has(label)) };
   });
 }
 
@@ -145,6 +146,7 @@ export function buildSystem(run, root, scan = scanProject(root)) {
   const doc = entries.get(OVERVIEW_ID);
   const counted = readSourceFiles(scan);
   const applications = applicationRows(doc === undefined ? [] : doc.applications, { scan, counted, candidates });
+  const grouping = domainGrouping(map, run.domains);
   const inRoots = counted.filter((file) => scan.roots.some((dir) => isUnder(file.rel, dir)));
   return {
     status,
@@ -160,10 +162,12 @@ export function buildSystem(run, root, scan = scanProject(root)) {
       files: inRoots.length,
       lines: inRoots.reduce((sum, file) => sum + file.lines, 0),
       areas: map.areas.length,
+      domains: grouping.basis === 'domains' ? grouping.groups.length : null,
       features: map.features.length,
       featuresWithEntry: map.features.filter((feature) => entries.has(feature.id)).length,
       roles: map.roles.length,
     },
-    areas: areaRows(map, entries),
+    areas: groupRows(areaGroups(map), map, entries),
+    domains: groupRows(grouping.groups, map, entries),
   };
 }

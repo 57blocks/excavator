@@ -34,7 +34,7 @@ function ApplicationRow({ application }: { application: ApplicationFacts }) {
  * The system overview on the overview page: what the system is and who uses it
  * (from the verified overview), the counts and the applications with the
  * script's facts, the external systems, what the code does not settle, and the
- * areas with their roles. The counts, the application rows and the area table
+ * domains (or the areas, when there is no domains file) with their roles. The counts, the application rows and the domain table
  * are the script's and do not depend on the overview; an overview that is not
  * verified replaces only the sections a model writes with a line saying where it
  * stopped.
@@ -45,12 +45,13 @@ export function SystemOverview({ data }: { data: PageData }) {
   const view = useView();
   const { system } = data;
   const { overview, counts } = system;
+  const heading = data.domainBasis === 'domains' ? 'md.overview.domainsHeading' : 'md.overview.areasHeading';
   return (
     <div data-part="system">
       {overview === null
         ? <p className="muted summary-note" role="note">{t('md.overview.notWritten', { step: t(`md.status.${system.status}`) })}</p>
         : <h2 className="block-title">{t('md.overview.heading')}</h2>}
-      <p className="summary-counts">{t('md.overview.counts', { ...counts, verified: counts.featuresWithEntry })}</p>
+      <p className="summary-counts">{t(data.domainBasis === 'domains' ? 'md.overview.countsWithDomains' : 'md.overview.counts', { ...counts, domains: counts.domains ?? data.domains.length, verified: counts.featuresWithEntry })}</p>
 
       {overview !== null && (
         <>
@@ -110,19 +111,19 @@ export function SystemOverview({ data }: { data: PageData }) {
       )}
 
       <section className="section" aria-labelledby="sys-areas">
-        <h2 className="section-title" id="sys-areas">{t('md.overview.areasHeading')}</h2>
-        <TableScroll label={t('md.overview.areasHeading')} wide>
+        <h2 className="section-title" id="sys-areas">{t(heading)}</h2>
+        <TableScroll label={t(heading)} wide>
           <thead>
             <tr>
-              <th scope="col">{t('md.table.area')}</th>
+              <th scope="col">{t(data.domainBasis === 'domains' ? 'md.table.domain' : 'md.table.area')}</th>
               <th scope="col" className="num">{t('md.table.features')}</th>
               <th scope="col" className="num">{t('md.table.verified')}</th>
               <th scope="col">{t('md.table.roles')}</th>
             </tr>
           </thead>
           <tbody>
-            {system.areas.map((area) => (
-              <tr key={area.id}><Cell row>{area.name}</Cell><td className="num">{area.features}</td><td className="num">{area.verified}</td><Cell>{listText(area.roles)}</Cell></tr>
+            {system.domains.map((row) => (
+              <tr key={row.id}><Cell row>{row.name}</Cell><td className="num">{row.features}</td><td className="num">{row.verified}</td><Cell>{listText(row.roles)}</Cell></tr>
             ))}
           </tbody>
         </TableScroll>

@@ -6,30 +6,32 @@ import { ReachBadge } from './ReachBadge';
 import { Cell, TableScroll } from './Tables';
 
 /**
- * A domain (an area of the map): how many of its features have a verified
- * entry, what it does (only the purposes of its verified features, in the
- * words of their entries), and its features. In the technical view, also the
- * applications that hold quoted passages of its features.
+ * A domain (a business domain, or an area of the map when the handbook has no
+ * domains file, which the page then says): how many of its features have a
+ * verified entry, what it does (only the purposes of its verified features, in
+ * the words of their entries), and its features. In the technical view, also
+ * the applications that hold quoted passages of its features.
  */
-export function DomainPage({ data, area }: { data: PageData; area: Area }) {
+export function DomainPage({ data, domain: group }: { data: PageData; domain: Area }) {
   const t = useText();
   const nav = useLinks();
   const view = useView();
-  const domain = data.entities.domains.find((item) => item.id === area.id);
-  const features = data.features.filter((feature) => feature.area === area.id);
+  const domain = data.entities.domains.find((item) => item.id === group.id);
+  const features = data.features.filter((feature) => feature.domain === group.id);
   const featureText = (id: string) => t('md.summary.feature', { id, name: data.features.find((feature) => feature.id === id)?.name ?? '' });
   const technical = view === 'technical' ? data.technical : undefined;
-  const cells = technical?.applicationDomain.cells.filter((cell) => cell.domain === area.id) ?? [];
-  const outside = technical?.applicationDomain.unattributed.find((row) => row.domain === area.id);
+  const cells = technical?.applicationDomain.cells.filter((cell) => cell.domain === group.id) ?? [];
+  const outside = technical?.applicationDomain.unattributed.find((row) => row.domain === group.id);
   const appName = (dir: string) => data.system.applications.find((application) => application.dir === dir)?.name ?? undefined;
   return (
-    <article className="page" data-view="domain" data-domain={area.id}>
-      <Crumbs trail={[area.name]} />
+    <article className="page" data-view="domain" data-domain={group.id}>
+      <Crumbs trail={[group.name]} />
       <header className="page-head">
-        <h1 className="page-title">{area.name}</h1>
+        <h1 className="page-title">{group.name}</h1>
         <p className="lede">{t('md.entities.domain.counts', { features: features.length, verified: features.filter((feature) => feature.status === 'verified').length })}</p>
       </header>
-      <p className="muted summary-note">{t('md.entities.domains.note')}</p>
+      <p className="muted summary-note">{t(data.domainBasis === 'domains' ? 'md.entities.domains.note' : 'md.domains.fromAreas')}</p>
+      <p className="muted summary-note">{t('md.entities.domains.purposesNote')}</p>
 
       <section className="section" aria-labelledby="dom-does">
         <h2 className="section-title" id="dom-does">{t('md.entities.domain.whatItDoes')}</h2>

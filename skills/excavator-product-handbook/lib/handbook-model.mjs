@@ -17,6 +17,6 @@ export function handbookModel(run, root, views) {
   const scan = scanProject(root);
   const summary = buildSummary(run, root);
   const system = buildSystem(run, root, scan);
-  const entities = buildEntities({ map: run.map, entries: run.entries, candidates: run.candidates, summary, system, scan });
+  const entities = buildEntities({ map: run.map, domains: run.domains, entries: run.entries, candidates: run.candidates, summary, system, scan });
   return { summary, system, entities, locations: views.includes('technical') ? buildLocations(run, root) : null };
 }

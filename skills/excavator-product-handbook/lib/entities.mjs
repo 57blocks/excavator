@@ -1,6 +1,7 @@
 /**
  * The entities of the handbook and the relations between them (openspec change
- * handbook-entities-and-views, design D2): domains (the areas of the map),
+ * handbook-entities-and-views, design D2): domains (the business domains of
+ * domains.json, or the areas of the map when there is none: domain-grouping.mjs),
  * roles, applications, scheduled jobs, notifications and external systems,
  * computed from the verified units only. A pure function of its inputs: no
  * model, no clock, no local path; the same inputs give the same object.
@@ -23,6 +24,7 @@
  */
 
 import { isUnder } from './applications.mjs';
+import { domainGrouping } from './domain-grouping.mjs';
 import { entryItems } from './items.mjs';
 import { filesNaming } from './name-search.mjs';
 
@@ -41,28 +43,27 @@ const bump = (counts, key, by = 1) => counts.set(key, (counts.get(key) ?? 0) + b
 /**
  * @param {object} input
  * @param {{ areas: object[], roles: object[], features: object[] }} input.map
+ * @param {object | null} [input.domains] a domains.json that passed check-domains; null groups by the map's areas
  * @param {Map<string, object>} input.entries the verified entries by unit id
  * @param {object[]} input.candidates candidates.json's items
  * @param {{ notifications: object[], jobs: object[] }} input.summary
  * @param {{ applications: { dir: string, name: string|null, does: string|null }[], overview: { integrations: object[] } | null }} input.system
  * @param {{ sourceFiles: object[] }} input.scan the project scan (applications.mjs)
  */
-export function buildEntities({ map, entries, candidates, summary, system, scan }) {
+export function buildEntities({ map, domains = null, entries, candidates, summary, system, scan }) {
   const applications = system.applications.map(({ dir, name, does }) => ({ dir, name, does }));
   const dirs = applications.map((application) => application.dir);
-  const area = new Map(map.features.map((feature) => [feature.id, feature.area]));
+  const grouping = domainGrouping(map, domains);
+  const domainOf = new Map(grouping.groups.flatMap((group) => group.features.map((id) => [id, group.id])));
 
-  const domains = map.areas.map((item) => {
-    const features = map.features.filter((feature) => feature.area === item.id);
-    return {
-      id: item.id,
-      name: item.name,
-      features: features.map((feature) => feature.id),
-      purposes: features
-        .filter((feature) => entries.get(feature.id)?.purpose !== undefined)
-        .map((feature) => ({ feature: feature.id, text: entries.get(feature.id).purpose.text })),
-    };
-  });
+  const domainRows = grouping.groups.map((group) => ({
+    id: group.id,
+    name: group.name,
+    features: group.features,
+    purposes: group.features
+      .filter((id) => entries.get(id)?.purpose !== undefined)
+      .map((id) => ({ feature: id, text: entries.get(id).purpose.text })),
+  }));
   const roles = map.roles.map((role) => ({ label: role.label }));
 
   // Citations of each verified feature entry, by application.
@@ -100,16 +101,16 @@ export function buildEntities({ map, entries, candidates, summary, system, scan 
 
   // Application by domain: the citations of the domain's features that fall in the application.
   const domainCounts = new Map();
-  for (const row of featureApplication) bump(domainCounts, `${row.application}\0${area.get(row.feature)}`, row.citations);
+  for (const row of featureApplication) bump(domainCounts, `${row.application}\0${domainOf.get(row.feature)}`, row.citations);
   const domainOutside = new Map();
-  for (const row of unattributed) bump(domainOutside, area.get(row.feature), row.citations);
+  for (const row of unattributed) bump(domainOutside, domainOf.get(row.feature), row.citations);
   const applicationDomain = {
     applications: dirs,
-    domains: map.areas.map((item) => item.id),
-    cells: dirs.flatMap((dir) => map.areas
-      .filter((item) => domainCounts.has(`${dir}\0${item.id}`))
-      .map((item) => ({ application: dir, domain: item.id, citations: domainCounts.get(`${dir}\0${item.id}`) }))),
-    unattributed: map.areas.filter((item) => domainOutside.has(item.id)).map((item) => ({ domain: item.id, citations: domainOutside.get(item.id) })),
+    domains: grouping.groups.map((group) => group.id),
+    cells: dirs.flatMap((dir) => grouping.groups
+      .filter((group) => domainCounts.has(`${dir}\0${group.id}`))
+      .map((group) => ({ application: dir, domain: group.id, citations: domainCounts.get(`${dir}\0${group.id}`) }))),
+    unattributed: grouping.groups.filter((group) => domainOutside.has(group.id)).map((group) => ({ domain: group.id, citations: domainOutside.get(group.id) })),
   };
 
   // External systems: the verified overview's, with both relations to applications.
@@ -134,7 +135,8 @@ export function buildEntities({ map, entries, candidates, summary, system, scan 
 
   const fileOf = new Map(candidates.map((candidate) => [candidate.id, candidate.file]));
   return {
-    domains,
+    domainBasis: grouping.basis,
+    domains: domainRows,
     roles,
     applications,
     integrations,

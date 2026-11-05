@@ -85,6 +85,23 @@ export function goodMap(idOf) {
   };
 }
 
+/**
+ * The domains file that passes check-domains on the good map: orders, their
+ * archive and the interface that also serves orders in one domain, the two
+ * features that run by themselves or by an operator in another. The areas of
+ * the map are A1 (F1, F2) and A2 (F3, F4, F5), so the first domain crosses them.
+ */
+export function goodDomains() {
+  return {
+    format: 'excavator-product-handbook-domains/1',
+    language: 'English',
+    domains: [
+      { id: 'D1', name: 'Customer orders', features: ['F1', 'F2', 'F5'] },
+      { id: 'D2', name: 'System upkeep', features: ['F3', 'F4'] },
+    ],
+  };
+}
+
 /** The entry of F1 that passes check-entry: numbers with and without thousands commas, labels, rules on both sides. */
 export function goodEntry() {
   const form = 'src/forms/order-form.js';
@@ -136,7 +153,7 @@ export function goodEntry() {
 }
 
 /**
- * A throwaway run: { root, out, candidates, idOf, map, entry, writeMap, writeEntry, writeJson, readJson,
+ * A throwaway run: { root, out, candidates, idOf, map, domains, entry, writeMap, writeDomains, writeEntry, writeJson, readJson,
  * run, cleanup }. `root` is a copy of the fixture project; `out` holds candidates.json already.
  */
 export function makeRun() {
@@ -161,10 +178,12 @@ export function makeRun() {
     candidates: listed,
     idOf,
     map: goodMap(idOf),
+    domains: goodDomains(),
     entry: goodEntry(),
     writeJson,
     readJson: (name) => JSON.parse(readFileSync(join(out, name), 'utf-8')),
     writeMap: (map = run.map) => writeJson(join(out, 'map.json'), map),
+    writeDomains: (domains = run.domains) => writeJson(join(out, 'domains.json'), domains),
     writeEntry: (id = 'F1', entry = run.entry) => writeJson(join(out, 'entries', `${id}.json`), entry),
     run: (command, ...args) => runHandbook([command, out, ...args, '--project', root]),
     cleanup: () => rmSync(base, { recursive: true, force: true }),
@@ -285,6 +304,14 @@ export function markedMap(map, language = 'Chinese', mark = MARK) {
   for (const area of marked.areas) if (area.evidence === undefined) area.name = markText(area.name, mark);
   for (const feature of marked.features) if (feature.label === undefined) feature.name = markText(feature.name, mark);
   for (const entry of marked.unassigned) entry.reason = markText(entry.reason, mark);
+  return marked;
+}
+
+/** The good domains with every name marked (the domain names of the good file carry no evidence). */
+export function markedDomains(domains, language = 'Chinese', mark = MARK) {
+  const marked = clone(domains);
+  marked.language = language;
+  for (const domain of marked.domains) if (domain.evidence === undefined) domain.name = markText(domain.name, mark);
   return marked;
 }
 

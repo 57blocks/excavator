@@ -10,12 +10,14 @@
  */
 import { describe, expect, it } from 'vitest';
 import { spawnSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { entryShapeProblems, ENTRY_FORMAT } from '../../skills/excavator-product-handbook/lib/entry-shape.mjs';
+import { DOMAINS_FORMAT, domainsShapeProblems } from '../../skills/excavator-product-handbook/lib/domains-shape.mjs';
 import { mapShapeProblems } from '../../skills/excavator-product-handbook/lib/map-shape.mjs';
 import { nextLine } from '../../skills/excavator-product-handbook/lib/state.mjs';
 import { SELECT_NEXT } from '../../skills/excavator-product-handbook/lib/select.mjs';
@@ -33,10 +35,10 @@ const flat = (text) => text.replace(/\s+/g, ' ');
 const agent = readFileSync(resolve(repoRoot, 'agents/excavator-handbook-verifier.md'), 'utf-8');
 const tracerAgent = readFileSync(resolve(repoRoot, 'agents/excavator-handbook-tracer.md'), 'utf-8');
 
-/** Split the skill into its `## Phase N: Title` sections, keyed by N (a number; the system overview's `3b` stays a string), each without its title line. */
+/** Split the skill into its `## Phase N: Title` sections, keyed by N (a number; the system overview's `3b` and the business domains' `3c` stay strings), each without its title line. */
 function rawPhases(text) {
   const out = new Map();
-  const parts = text.split(/^## Phase (\d+b?): /m);
+  const parts = text.split(/^## Phase (\d+[bc]?): /m);
   for (let i = 1; i < parts.length; i += 2) out.set(/^\d+$/.test(parts[i]) ? Number(parts[i]) : parts[i], parts[i + 1].slice(parts[i + 1].indexOf('\n') + 1));
   return out;
 }
@@ -72,10 +74,10 @@ describe('excavator-product-handbook skill: structure', () => {
     expect(description).not.toMatch(/: /);
   });
 
-  it('has the phases in order: the system overview (3b) between the map and the entries, the verify and trace phases between the entries and the assembly', () => {
-    expect([...raw.keys()]).toEqual([0, 1, 2, 3, '3b', 4, 5, 6, 7]);
-    const titles = [...skill.matchAll(/^## Phase \d+b?: (.+)$/gm)].map((match) => match[1]);
-    expect(titles).toEqual(['Setup', 'Candidates', 'Fixed text', 'The map', 'System overview', 'Entries', 'Verify', 'Trace', 'Assemble, page and reply']);
+  it('has the phases in the order they run: the business domains (3c) and then the system overview (3b) between the map and the entries, the verify and trace phases between the entries and the assembly', () => {
+    expect([...raw.keys()]).toEqual([0, 1, 2, 3, '3c', '3b', 4, 5, 6, 7]);
+    const titles = [...skill.matchAll(/^## Phase \d+[bc]?: (.+)$/gm)].map((match) => match[1]);
+    expect(titles).toEqual(['Setup', 'Candidates', 'Fixed text', 'The map', 'Business domains', 'System overview', 'Entries', 'Verify', 'Trace', 'Assemble, page and reply']);
   });
 
   it('describes every option of the argument hint in the Options section', () => {
@@ -110,7 +112,7 @@ describe('excavator-product-handbook skill: language', () => {
   });
 
   it('repeats the one-line reminder at the top of every later phase', () => {
-    for (const n of [1, 2, 3, '3b', 4, 5, 6, 7]) expect(phase(n).startsWith(PHASE_LANGUAGE), `phase ${n}`).toBe(true);
+    for (const n of [1, 2, 3, '3c', '3b', 4, 5, 6, 7]) expect(phase(n).startsWith(PHASE_LANGUAGE), `phase ${n}`).toBe(true);
   });
 
   it('writes the run language as English however the user spelled it, because the script only knows the name English', () => {
@@ -196,7 +198,7 @@ describe('excavator-product-handbook skill: commands', () => {
 
   it('names every command handbook.mjs has, and only those', () => {
     expect(usageCommands.length).toBeGreaterThanOrEqual(16);
-    expect(usageCommands).toEqual(expect.arrayContaining(['candidates', 'applications', 'check-overview', 'try-overview', 'check-map', 'select', 'check-entry', 'mark', 'slices', 'verdicts', 'trace', 'trace-verdicts', 'check-ui', 'assemble', 'page', 'reply']));
+    expect(usageCommands).toEqual(expect.arrayContaining(['candidates', 'applications', 'check-overview', 'try-overview', 'check-map', 'check-domains', 'select', 'check-entry', 'mark', 'slices', 'verdicts', 'trace', 'trace-verdicts', 'check-ui', 'assemble', 'page', 'reply']));
     expect([...skillCommands].sort()).toEqual([...usageCommands].sort());
   });
 
@@ -205,6 +207,7 @@ describe('excavator-product-handbook skill: commands', () => {
     expect(raw.get(2)).toContain(`${HANDBOOK} check-ui`);
     expect(raw.get(3)).toContain(`${HANDBOOK} check-map`);
     expect(raw.get(3)).toContain(`${HANDBOOK} select`);
+    expect(raw.get('3c')).toContain(`${HANDBOOK} check-domains`);
     expect(raw.get('3b')).toContain(`${HANDBOOK} applications`);
     expect(raw.get('3b')).toContain(`${HANDBOOK} mark`);
     expect(raw.get('3b')).toContain(`${HANDBOOK} check-overview`);
@@ -1272,6 +1275,98 @@ describe('the handbook verifier agent', () => {
     const example = JSON.parse(blocks(agent, 'json')[1]);
     expect(Object.keys(example)).toEqual(['verdicts']);
     expect(verdictProblems(example, example.verdicts.map(({ id }) => ({ id })), [])).toEqual([]);
+  });
+});
+
+describe('excavator-product-handbook skill: Phase 3c, the business domains (O2 of handbook-map-by-domain)', () => {
+  const p = phase('3c');
+  // The map prompt as it was when the domains were added: Phase 3 is not edited by this change, so its text keeps this digest.
+  const MAP_PROMPT_SHA256 = '6c3a7049d4cacf11e10d90acffe68ae3b4147b0df92b5c15086f2c8f93ccde00';
+  const recipe = (start) => allBash.flatMap((block) => block.split('\n')).map((line) => line.trim()).find((line) => line.startsWith(start));
+
+  it('sits after the map and its --features step and before the system overview, says it runs in that order, and starts with the language reminder', () => {
+    expect(p.startsWith(PHASE_LANGUAGE)).toBe(true);
+    expect(skill.indexOf('## Phase 3c: Business domains')).toBeGreaterThan(skill.indexOf('### `--features`'));
+    expect(skill.indexOf('## Phase 3c: Business domains')).toBeLessThan(skill.indexOf('## Phase 3b: System overview'));
+    expect(p).toContain('Run this phase after the map has passed `check-map` and before Phase 3b');
+  });
+
+  it('leaves the map prompt as it was: the text of Phase 3 has the digest it had before the domains were added', () => {
+    expect(createHash('sha256').update(raw.get(3) ?? '').digest('hex')).toBe(MAP_PROMPT_SHA256);
+  });
+
+  it('is written for the main session: no subagent is dispatched, and the input is the map\'s features', () => {
+    expect(p).toContain('You write this file yourself, from the map. Dispatch no subagent');
+    expect(promptBlocks(raw.get('3c') ?? '')).toEqual([]);
+    expect(p).not.toMatch(/dispatch one subagent/i);
+  });
+
+  it('shows a domains.json example that passes the shape check', () => {
+    const example = blocks(raw.get('3c'), 'json')[0];
+    expect(domainsShapeProblems(JSON.parse(example))).toEqual([]);
+    expect(JSON.parse(example).format).toBe(DOMAINS_FORMAT);
+    expect(p).toContain('"language": "<$RUN_LANGUAGE>"');
+  });
+
+  it('states the same-domain rule: what submits something and what approves, reviews, lists or exports it share a domain, whatever menu they sit under', () => {
+    expect(p).toContain('A feature that submits something and the features that approve, review, list or export it are in the same domain, whatever menu they sit under.');
+    expect(p).toContain('The map does not change: the area of a feature stays what Phase 3 wrote');
+  });
+
+  it('puts a feature that runs by itself in the domain of the object it processes, and only a feature that processes no business object in a system-operations domain', () => {
+    expect(p).toContain('A feature that runs by itself (reach `automated`, `interface` or `operator`) goes in the domain of the business object it processes.');
+    expect(p).toContain('Only a feature that processes no business object goes in a domain for system operations');
+  });
+
+  it('asks for domain names in the reader\'s words and $LANGUAGE under the reader-text rules of Phase 3, numbered by first appearance in the navigation with the self-running domains last', () => {
+    expect(p).toContain('Name each domain in the reader\'s words, written in `$LANGUAGE`, under the reader-text rules of Phase 3');
+    expect(p).toContain('Number the domains `D1`, `D2`, ... without a gap, in the order in which the navigation first shows one of their features');
+    expect(p).toContain('a domain whose features all run by themselves comes after the others');
+  });
+
+  it('puts every feature in exactly one domain, and writes no narrative for a domain', () => {
+    expect(p).toContain('Every feature of the map is in exactly one domain.');
+    expect(p).toContain('Write no description of a domain');
+  });
+
+  it('checks the file with check-domains, fixes it by the printed lines, allows two attempts in all and then stops the run with the lines shown', () => {
+    expect(p).toContain(`${HANDBOOK} check-domains "$OUT" --project "$PROJECT_ROOT"`);
+    expect(p).toContain('Fix `domains.json` for each line it prints and run it again.');
+    expect(p).toContain('You get two attempts in all');
+    expect(p).toContain('tell the user the lines it printed, as printed, and stop; run no further phase');
+    expect(p).toContain('Exit 2: show its message and stop.');
+  });
+
+  it('keeps a domains.json that passes on a resume, writes it into an output that has none without touching the map or the entries, and reports one that no longer fits the map', () => {
+    expect(p).toContain('When `$OUT/domains.json` exists, run `check-domains` first; when it exits 0, skip the writing and go to Phase 3b.');
+    expect(p).toContain('An `$OUT` from before business domains has no `domains.json`: this phase writes it, and the map, the entries and `state.json` are not touched.');
+    expect(p).toContain('a `domains.json` that no longer fits a map that was written again is reported by `check-domains`');
+    const resume = flat(skill.split(/^## Phase 1: /m)[0]);
+    expect(resume).toContain('A `domains.json` that passes `check-domains` is kept (Phase 3c), and an `$OUT` from before business domains gets one written there with nothing else rewritten.');
+  });
+
+  it('reads the map with the command that lists the features in navigation order, run on a real map', () => {
+    const line = recipe('jq -r \'.features[] | [.id, .area, .reach, .name, (.label // "")]');
+    expect(line).toBeDefined();
+    const run = makeCheckedMapRun();
+    try {
+      const result = spawnSync('bash', ['-c', line.replace('"$OUT/map.json"', `"${join(run.out, 'map.json')}"`)], { encoding: 'utf-8' });
+      expect(result.status, result.stderr).toBe(0);
+      expect(result.stdout.trim().split('\n').map((row) => row.split('\t').slice(0, 3))).toEqual([
+        ['F1', 'A1', 'menu'], ['F2', 'A1', 'link'], ['F3', 'A2', 'automated'], ['F4', 'A2', 'operator'], ['F5', 'A2', 'interface'],
+      ]);
+    } finally {
+      run.cleanup();
+    }
+  });
+
+  it('is named in the work split and the files table, and Phase 7 says how the handbook groups the features and what it does without the file', () => {
+    const table = flat(skill.split(/^## How the work is split$/m)[1].split(/^## Options$/m)[0]);
+    expect(table).toContain('checks the map, the business domains, the overview and each entry');
+    expect(table).toContain('| `domains.json` | you (Phase 3c) |');
+    const seven = phase(7);
+    expect(seven).toContain('groups the features by the business domains of `domains.json`');
+    expect(seven).toContain('falls back to the areas of the map when that file is missing or does not pass `check-domains`, and says so in a fixed text');
   });
 });
 

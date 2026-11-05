@@ -55,6 +55,15 @@ export function mapItems(map) {
   return items;
 }
 
+/** The items of a domains file that passed the shape check: a domain name is read like an area name (quoted with evidence, or the model's own words). */
+export function domainItems(doc) {
+  return doc.domains.map((domain, i) => item(
+    `domains[${i}]`,
+    [text(`domains[${i}].name`, domain.name, { label: domain.evidence !== undefined, narrative: domain.evidence === undefined })],
+    domain.evidence,
+  ));
+}
+
 /** The items of an entry that passed the shape check. */
 export function entryItems(entry) {
   const items = [];

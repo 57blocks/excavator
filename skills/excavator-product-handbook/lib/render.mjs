@@ -37,9 +37,11 @@ function screensBlock(entry, t) {
   return out;
 }
 
-function entryBlock(feature, entry, map, t, locations) {
+/** `areaName`: the name of the feature's area when the handbook groups by business domain (the area is then a property of the feature), else null. */
+function entryBlock(feature, entry, map, t, locations, areaName) {
   const reachText = t(`md.reach.${feature.reach}`);
   const out = [`### ${inline(feature.name)}`, '', inline(fill(t('md.feature.reach'), { reach: reachText })), ''];
+  if (areaName !== null) out.push(inline(fill(t('md.feature.area'), { area: areaName })), '');
   if (feature.label !== undefined) out.push(inline(fill(t('md.feature.label'), { label: feature.label })), '');
   if (entry.purpose !== undefined) out.push(`#### ${t('md.section.purpose')}`, '', inline(entry.purpose.text), '');
   out.push(`#### ${t('md.section.who')}`, '');
@@ -107,11 +109,11 @@ function summaryBlock(summary, map, t) {
   return out;
 }
 
-/** The area table of the overview: one row per area, from the map and the verified entries, so it does not depend on the overview being written. */
-function areaTable(system, t) {
+/** The domain table of the overview: one row per domain (per area when the handbook groups by area), from the map and the verified entries, so it does not depend on the overview being written. */
+function domainTable(system, basis, t) {
   return table(
-    [t('md.table.area'), t('md.table.features'), t('md.table.verified'), t('md.table.roles')],
-    system.areas.map((area) => [area.name, String(area.features), String(area.verified), listCell(area.roles)]),
+    [t(basis === 'domains' ? 'md.table.domain' : 'md.table.area'), t('md.table.features'), t('md.table.verified'), t('md.table.roles')],
+    system.domains.map((row) => [row.name, String(row.features), String(row.verified), listCell(row.roles)]),
   );
 }
 
@@ -131,11 +133,11 @@ function applicationsTable(system, t) {
  * and do not depend on the overview; an overview that is not verified replaces
  * only the sections a model writes with a line saying where it stopped.
  */
-function overviewBlock(system, t, locations) {
+function overviewBlock(system, basis, t, locations) {
   const out = [`## ${inline(t('md.overview.heading'))}`, ''];
   const { overview, counts } = system;
   if (overview === null) out.push(inline(fill(t('md.overview.notWritten'), { step: t(`md.status.${system.status}`) })), '');
-  out.push(fill(t('md.overview.counts'), { ...counts, verified: counts.featuresWithEntry }), '');
+  out.push(fill(t(basis === 'domains' ? 'md.overview.countsWithDomains' : 'md.overview.counts'), { ...counts, verified: counts.featuresWithEntry }), '');
   if (overview !== null) {
     out.push(`### ${t('md.section.purpose')}`, '', overview.summary.length === 0 ? t('md.none') : overview.summary.map(inline).join(' '), '');
     out.push(`### ${t('md.overview.audiencesHeading')}`, '');
@@ -151,7 +153,7 @@ function overviewBlock(system, t, locations) {
     if (overview.unknowns.length === 0) out.push(t('md.none'), '');
     else out.push(...overview.unknowns.map((u) => `- ${inline(fill(t('md.unknown.item'), { item: u.item, searched: u.searched }))}`), '');
   }
-  out.push(`### ${t('md.overview.areasHeading')}`, '', areaTable(system, t), '');
+  out.push(`### ${t(basis === 'domains' ? 'md.overview.domainsHeading' : 'md.overview.areasHeading')}`, '', domainTable(system, basis, t), '');
   if (locations !== undefined) out.push(`### ${t('md.locations.overviewHeading')}`, '', ...locationLines(locations, t));
   return out;
 }
@@ -219,7 +221,7 @@ function coverageBlock(map, state, candidates, t) {
  * The handbook text. `entries` maps the id of each verified feature to its
  * entry (only verified features have one); `candidates` is candidates.json's items; `ui` is the strings table;
  * `summary` is the two cross-cutting tables (summary.mjs); `system` the facts of the system overview (system-facts.mjs);
- * `entities` the entities and relations (entities.mjs). `view` is `product` or `technical`: the technical view
+ * `entities` the entities and relations (entities.mjs), whose `domains` and `domainBasis` decide how the features are grouped (domain-grouping.mjs). `view` is `product` or `technical`: the technical view
  * also writes the application and external-system sections and, from `locations` (locations.mjs), the file and
  * lines of each item; the product view writes no citation path.
  */
@@ -230,21 +232,24 @@ export function renderHandbook({ map, entries, state, candidates, ui, summary, s
   };
   const technical = view === 'technical';
   const placesOf = new Map((technical ? locations ?? [] : []).map((unit) => [unit.id, unit]));
-  const out = [`# ${inline(t(technical ? 'md.titleTechnical' : 'md.title'))}`, '', ...overviewBlock(system, t, placesOf.get('overview')), `## ${t('md.areas.heading')}`, ''];
-  for (const area of map.areas) {
-    out.push(`- **${inline(area.name)}**`);
-    const features = map.features.filter((feature) => feature.area === area.id);
-    if (features.length === 0) out.push(`  - ${t('md.areas.noFeatures')}`);
-    for (const feature of features) {
-      out.push(`  - ${inline(fill(t('md.areas.featureLine'), { name: feature.name, reach: t(`md.reach.${feature.reach}`) }))}`);
+  const basis = entities.domainBasis;
+  const areaName = new Map(map.areas.map((area) => [area.id, area.name]));
+  const featureOf = new Map(map.features.map((feature) => [feature.id, feature]));
+  const out = [`# ${inline(t(technical ? 'md.titleTechnical' : 'md.title'))}`, '', ...overviewBlock(system, basis, t, placesOf.get('overview')), `## ${t(basis === 'domains' ? 'md.domains.heading' : 'md.areas.heading')}`, ''];
+  if (basis === 'areas') out.push(t('md.domains.fromAreas'), '');
+  for (const domain of entities.domains) {
+    out.push(`- **${inline(domain.name)}**`);
+    if (domain.features.length === 0) out.push(`  - ${t('md.areas.noFeatures')}`);
+    for (const id of domain.features) {
+      out.push(`  - ${inline(fill(t('md.areas.featureLine'), { name: featureOf.get(id).name, reach: t(`md.reach.${featureOf.get(id).reach}`) }))}`);
     }
   }
   out.push('', table([t('md.table.reach'), t('md.table.features')], reachCounts(map).map(({ reach, count }) => [t(`md.reach.${reach}`), String(count)])), '');
-  for (const area of map.areas) {
-    const written = map.features.filter((feature) => feature.area === area.id && entries.has(feature.id));
+  for (const domain of entities.domains) {
+    const written = domain.features.filter((id) => entries.has(id));
     if (written.length === 0) continue;
-    out.push(`## ${inline(area.name)}`, '');
-    for (const feature of written) out.push(...entryBlock(feature, entries.get(feature.id), map, t, placesOf.get(feature.id)));
+    out.push(`## ${inline(domain.name)}`, '');
+    for (const id of written) out.push(...entryBlock(featureOf.get(id), entries.get(id), map, t, placesOf.get(id), basis === 'domains' ? areaName.get(featureOf.get(id).area) : null));
   }
   out.push(...summaryBlock(summary, map, t), ...entitySections({ view, map, entities, summary, system, t }), ...coverageBlock(map, state, candidates, t));
   return `${out.join('\n').replace(/\n{3,}/g, '\n\n').trimEnd()}\n`;

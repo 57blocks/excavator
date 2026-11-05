@@ -47,7 +47,7 @@ const emptyEntry: Entry = { purpose: d('purpose'), who: [], where: [], screens: 
 const reaches: Reach[] = ['menu', 'link', 'automated', 'interface', 'operator'];
 
 function feature(id: string, reach: Reach, status: Feature['status'], entry: Entry | null, label?: string): Feature {
-  return { id: d(id), name: d(`name ${id}`), area: d('A1'), reach, label: label === undefined ? undefined : d(label), status, entry };
+  return { id: d(id), name: d(`name ${id}`), area: d('A1'), domain: d('A1'), reach, label: label === undefined ? undefined : d(label), status, entry };
 }
 
 const emptySummary: Summary = {
@@ -81,6 +81,7 @@ const unwrittenSystem: System = {
   applications: [{ dir: d('root/dir'), name: null, does: null, languages: [{ language: d('Lang A'), files: 3 }], frameworks: [], files: 3, lines: 40, history: null }],
   counts: { applications: 1, files: 3, lines: 40, areas: 2, features: 6, featuresWithEntry: 2, roles: 2 },
   areas: areaRows,
+  domains: areaRows,
 };
 
 const fullSystem: System = {
@@ -103,6 +104,7 @@ const fullSystem: System = {
   ],
   counts: { applications: 2, files: 11, lines: 1200, areas: 2, features: 6, featuresWithEntry: 2, roles: 2 },
   areas: areaRows,
+  domains: areaRows,
 };
 
 /** A verified overview that lost every part to verification. */
@@ -112,17 +114,21 @@ const emptySystem: System = {
   applications: [],
   counts: { applications: 0, files: 0, lines: 0, areas: 2, features: 6, featuresWithEntry: 2, roles: 0 },
   areas: areaRows,
+  domains: areaRows,
 };
 
 function dataFor(features: Feature[], unassigned: PageData['coverage']['unassigned'] = [], removed: PageData['coverage']['removed'] = [], summary: Summary = emptySummary, system: System = unwrittenSystem, removedOverview: PageData['coverage']['removedOverview'] = []): PageData {
   return {
-    format: 'excavator-product-handbook-page/4',
+    format: 'excavator-product-handbook-page/5',
     project: d('project'),
     language: d('language'),
     languageTag: 'xx',
     ui: { strings: marked },
     views: ['product'],
     areas: [{ id: d('A1'), name: d('area one') }, { id: d('A2'), name: d('area two') }],
+    // No domains file: the domains are the areas, and the page says so.
+    domains: [{ id: d('A1'), name: d('area one') }, { id: d('A2'), name: d('area two') }],
+    domainBasis: 'areas',
     features,
     coverage: {
       candidateTotal: 9,
