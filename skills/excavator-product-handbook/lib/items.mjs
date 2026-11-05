@@ -105,3 +105,6 @@ export function entryItems(entry) {
   });
   return items;
 }
+
+/** The constructors of an item and of its strings, for the other kinds of unit (overview-items.mjs). */
+export { item as itemOf, text as textOf };

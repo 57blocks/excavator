@@ -14,12 +14,23 @@
  *       Resolve a --features list of ids or feature names to ids against the
  *       checked map; exit 1 and list every id and name when an item does not
  *       match exactly one feature. Changes no file.
+ *   applications <projectRoot>
+ *       Print the application roots of the project: the topmost directories
+ *       that hold a build manifest, found with the candidate lister's walk.
+ *   check-overview <out> --project <root>
+ *       Check <out>/entries/overview.json (the system overview): the checks of
+ *       an entry, no citation of a documentation file, and the applications
+ *       against the application roots; record the result in state.json.
+ *   try-overview <out> --project <root>
+ *       The same checks for the overview lane itself; records nothing.
  *   check-entry <out> <featureId> --project <root>
  *       Check <out>/entries/<featureId>.json and record the result in state.json.
  *   try-entry <out> <featureId> --project <root>
  *       The same checks for the lane itself; records nothing.
  *   mark <out> <featureId> dispatched | failed lane <reason>... --project <root>
  *       Record a lane dispatch or a lane that wrote nothing in state.json.
+ *       The slices, verdicts, trace, trace-verdicts and mark commands also take
+ *       the unit id `overview` for the system overview.
  *   slices <out> <featureId> --project <root> [--round 2]
  *       Cut a checked entry into the items a verifier judges, each with its
  *       claim and the source around its cited passages (design D14); round 2
@@ -51,7 +62,7 @@
  *       Write <out>/handbook.html from the same checked run: one file that
  *       opens from disk, no network, the same bytes from the same input.
  *
- * check-map, check-entry, mark, verdicts and trace-verdicts hold <out>/state.json.lock while they run.
+ * check-map, check-entry, check-overview, mark, verdicts and trace-verdicts hold <out>/state.json.lock while they run.
  * In a run whose language is not English, check-map, check-entry, try-entry,
  * assemble and page also check that each narrative text holds a letter of the
  * language when it has its own script (design D12); they need a checked
@@ -64,6 +75,7 @@
 import { resolve } from 'node:path';
 
 import { assemble } from './lib/assemble.mjs';
+import { applicationLines, scanProject } from './lib/applications.mjs';
 import { candidatesOutput } from './lib/candidates.mjs';
 import { checkEntry, tryEntry } from './lib/entry-check.mjs';
 import { checkMap } from './lib/check-map.mjs';
@@ -78,6 +90,7 @@ import { slices } from './lib/slices.mjs';
 import { trace } from './lib/trace.mjs';
 import { traceVerdicts } from './lib/trace-verdicts.mjs';
 import { checkUi } from './lib/ui.mjs';
+import { OVERVIEW_ID } from './lib/overview-shape.mjs';
 import { ROUNDS } from './lib/verify-plan.mjs';
 import { verdicts } from './lib/verdicts.mjs';
 
@@ -102,6 +115,27 @@ Commands:
       Every item must match exactly one feature; otherwise print each failing
       item and then every feature as "id  name", end with a Next: line and
       exit 1. No fuzzy matching. Changes no file.
+  applications <projectRoot>
+      Print "Application roots: <n>" and then one line "<dir><TAB><manifests>"
+      for each application root: a directory that holds a build manifest
+      (package.json, go.mod, pom.xml, build.gradle, build.gradle.kts,
+      pyproject.toml, setup.py, requirements.txt, Cargo.toml, composer.json,
+      Gemfile, *.csproj, *.sln) with no other such directory between it and the
+      project root; the project root itself is ".". It walks the project as the
+      candidates command does (same skipped directories, no link followed).
+  check-overview <out> --project <root>
+      Check <out>/entries/overview.json, the system overview: the same checks
+      as check-entry (shape, citations, labels, numbers, banned words, the
+      narrative language), plus: a citation may not point to a documentation
+      file (.md, .mdx, .txt, .rst, .adoc), the name of an external system must
+      occur in its own citations, every application names a directory that
+      holds a build manifest, no two name the same directory, every application
+      root is covered by at least one application, and every caller of an
+      external system is a listed application. Records the result in state.json
+      under "overview"; a failure ends with a Next: line.
+  try-overview <out> --project <root>
+      The same checks as check-overview, for the lane to run on its own file
+      before it replies. Reads and writes no state.json.
   check-entry <out> <featureId> --project <root>
       Check <out>/entries/<featureId>.json: shape, roles from the map,
       citations, labels, numbers and banned words, and the narrative language
@@ -113,7 +147,10 @@ Commands:
       and records no result. Prints "<featureId>: ok" or each problem and a
       Next: line.
   mark <out> <featureId> dispatched --project <root>
-      Count one more dispatch of the feature's lane in state.json.
+      Count one more dispatch of the feature's lane in state.json. The id may be
+      overview: the system overview is a unit like a feature (so it is for
+      slices, verdicts, trace and trace-verdicts below), and its state is kept
+      under "overview" in state.json (absent means planned, attempts 0).
   mark <out> <featureId> failed lane <reason>... --project <root>
       Record the feature's lane as failed without writing its entry, each
       further argument one reason. lane is the only step mark records.
@@ -173,7 +210,11 @@ Commands:
       language is --language (the fixed text is written before the map), or
       map.json's language when the option is not given.
   assemble <out> --project <root>
-      Write <out>/handbook.md from the map and the checked entries. Checks the
+      Write <out>/handbook.md from the map and the checked entries; its first
+      section is the system overview (the verified overview with the facts the
+      script computes: languages, frameworks, files, lines and git history of
+      each application, the counts of the system, the roles of each area), or
+      a line saying where the overview stopped and the area table. Checks the
       map, every checked entry and the fixed-text table again first, and then
       writes nothing if any of them fails. Prints the path.
   page <out> --project <root>
@@ -186,7 +227,8 @@ Commands:
   reply <out> --project <root>
       Print the lines a finished run is answered with, in this order: the path
       of handbook.md; "Page: <path>" or "Page: not written"; "Features: <n>"
-      with the count of each status; "Failed: <ids>" when a feature failed; the
+      with the count of each status; "Overview: <status>"; "Failed: <ids>" when a
+      feature or the overview failed; the
       candidate conservation line. Checks the run again first; exits 1 with a
       Next: line when handbook.md is missing. Changes no file.
 
@@ -244,6 +286,22 @@ const COMMANDS = {
     if (options.features === undefined) throw new UsageError('select needs --features <list>');
     const root = projectRootOption(options.project);
     return report(selectFeatures(positionals[0], root, options.features));
+  },
+  applications(args) {
+    const { positionals } = parseArgs(args, []);
+    if (positionals.length !== 1) throw new UsageError('applications takes exactly one <projectRoot>');
+    return report({ status: 0, lines: applicationLines(scanProject(projectRootOption(positionals[0]))) });
+  },
+  'check-overview'(args) {
+    const { positionals, options } = parseArgs(args, ['project']);
+    if (positionals.length !== 1) throw new UsageError('check-overview takes exactly one <out> directory');
+    const root = projectRootOption(options.project);
+    return withStateLock(positionals[0], () => report(checkEntry(positionals[0], OVERVIEW_ID, root)));
+  },
+  'try-overview'(args) {
+    const { positionals, options } = parseArgs(args, ['project']);
+    if (positionals.length !== 1) throw new UsageError('try-overview takes exactly one <out> directory');
+    return report(tryEntry(positionals[0], OVERVIEW_ID, projectRootOption(options.project)));
   },
   'check-entry'(args) {
     const { positionals, options } = parseArgs(args, ['project']);

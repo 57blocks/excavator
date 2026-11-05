@@ -29,8 +29,8 @@ export const CATALOG_FILE = resolve(here, 'entrypoint-catalog.json');
 
 export const KINDS = Object.freeze(['route', 'page', 'job', 'main']);
 export const SKIPPED_DIRECTORIES = Object.freeze(['.git', '.excavator', 'node_modules', 'vendor', 'dist', 'build']);
-const TEST_FILE = /_test\.go$|\.test\.|\.spec\./;
-const MAX_FILE_BYTES = 2 * 1024 * 1024;
+export const TEST_FILE = /_test\.go$|\.test\.|\.spec\./;
+export const MAX_FILE_BYTES = 2 * 1024 * 1024;
 const TEXT_CAP = 200;
 const GRAPH_FILE = join('.excavator', 'knowledge-graph.jsonl');
 const HEADER_CAP_BYTES = 16 * 1024 * 1024;
@@ -151,7 +151,7 @@ async function loadFrameworkRegistry() {
  * Walk `startRel` under `projectRoot` in code-unit order, without following
  * symlinks. Calls `onFile(rel, abs)` for each regular file; counts the rest.
  */
-function walk(projectRoot, startRel, stats, onFile) {
+export function walk(projectRoot, startRel, stats, onFile) {
   const stack = [startRel ?? ''];
   while (stack.length > 0) {
     const rel = stack.pop();

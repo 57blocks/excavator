@@ -13,12 +13,11 @@
 
 import { join } from 'node:path';
 
-import { itemClaims } from './claims.mjs';
 import { checkEntryFile, entryPath, loadForEntry } from './entry-check.mjs';
-import { entryItems } from './items.mjs';
 import { readJson } from './json-file.mjs';
 import { locatePassage } from './locate.mjs';
-import { entryDigest, featureState, loadState } from './state.mjs';
+import { entryDigest, loadState } from './state.mjs';
+import { unitFor, unitState } from './unit.mjs';
 import { loadUi } from './ui.mjs';
 import { UsageError } from './errors.mjs';
 import { PART_MAX_ITEMS, VERIFIERS } from './verify-plan.mjs';
@@ -36,10 +35,10 @@ export const TRACERS = VERIFIERS;
 /** The content of a trace part file. */
 export const tracePartFile = (feature, part, parts, items) => ({ feature, part, parts, items });
 
-/** The trace items of `entry`: the items that carry evidence, in entry order. `ui` is the fixed-text table; `files` a projectFiles reader. */
-export function traceItems(entry, { ui, files }) {
-  const claims = itemClaims(entry, ui);
-  return entryItems(entry).filter((item) => item.evidence.length > 0).map((item) => {
+/** The trace items of `entry` of unit `unit`: the items that carry evidence, in entry order. `ui` is the fixed-text table; `files` a projectFiles reader. */
+export function traceItems(unit, entry, { ui, files }) {
+  const claims = unit.claims(entry, ui);
+  return unit.items(entry).filter((item) => item.evidence.length > 0).map((item) => {
     const claim = claims.get(item.path);
     if (claim === undefined) throw new Error(`no claim for item ${item.path}`);
     const citations = [];
@@ -72,7 +71,7 @@ const nextAfter = (status) => {
  * The plan of the trace of feature `id`, or the lines that stop the command:
  * only a `confirmed` feature is traced, its entry must still pass check-entry
  * as a settled entry and must still be the file that was confirmed. Returns
- * `{ stop }` or `{ state, current, entry, loaded, items, claims, parts }`
+ * `{ stop }` or `{ state, current, entry, loaded, unit, items, claims, parts }`
  * (`parts`: the item lists of the trace parts).
  */
 export function confirmedPlan(outDir, id, root) {
@@ -82,13 +81,14 @@ export function confirmedPlan(outDir, id, root) {
     return { stop: { status: 1, lines: [stateRead.problem] } };
   }
   const { state } = stateRead;
-  const current = featureState(state, id);
+  const unit = unitFor(id);
+  const current = unitState(state, id);
   if (current.status !== 'confirmed') {
     return { stop: { status: 1, lines: [`${id}: is ${current.status}; only a confirmed feature is traced`, `Next: ${nextAfter(current.status)}`] } };
   }
   const loaded = loadForEntry(outDir, id, root);
   if (loaded.stop) return { stop: loaded.stop };
-  const again = `Next: run check-entry for ${id}, then verify it again (slices, the verifiers, verdicts) before trace`;
+  const again = `Next: ${unit.recheck(id)}, then verify it again (slices, the verifiers, verdicts) before trace`;
   const result = checkEntryFile(outDir, id, root, loaded, { settled: true });
   if (result.problems.length > 0) return { stop: { status: 1, lines: [...result.problems, `${id}: ${entryPath(id)} no longer passes check-entry`, again] } };
   if (entryDigest(join(outDir, entryPath(id))) !== current.entryDigest) {
@@ -97,6 +97,6 @@ export function confirmedPlan(outDir, id, root) {
   const ui = loadUi(outDir);
   if (!ui.ok) return { stop: { status: 1, lines: ui.lines } };
   const entry = readJson(join(outDir, entryPath(id))).value;
-  const items = traceItems(entry, { ui: ui.strings, files: loaded.files });
-  return { state, current, entry, loaded, items, claims: new Map(items.map((item) => [item.id, item.claim])), parts: splitTraceParts(items) };
+  const items = traceItems(unit, entry, { ui: ui.strings, files: loaded.files });
+  return { state, current, entry, loaded, unit, items, claims: new Map(items.map((item) => [item.id, item.claim])), parts: splitTraceParts(items) };
 }

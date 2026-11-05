@@ -10,6 +10,7 @@ import { join } from 'node:path';
 import { UsageError } from './errors.mjs';
 import { readJson } from './json-file.mjs';
 import { ID_PATTERN, mapShapeProblems } from './map-shape.mjs';
+import { OVERVIEW_ID } from './overview-shape.mjs';
 import { mapItems } from './items.mjs';
 import { reviewItems } from './review.mjs';
 
@@ -25,6 +26,7 @@ function structureProblems(map) {
   });
   map.features.forEach((feature, i) => {
     if (!ID_PATTERN.test(feature.id)) problems.push(`features[${i}].id: ${JSON.stringify(feature.id)} is not a plain id such as F1`);
+    else if (feature.id === OVERVIEW_ID) problems.push(`features[${i}].id: ${JSON.stringify(feature.id)} is reserved for the system overview; use an id such as F${i + 1}`);
     if (!areaIds.includes(feature.area)) problems.push(`features[${i}].area: ${JSON.stringify(feature.area)} is not an area id`);
     if (feature.reach === 'menu' || feature.reach === 'link') {
       for (const key of ['label', 'evidence']) {

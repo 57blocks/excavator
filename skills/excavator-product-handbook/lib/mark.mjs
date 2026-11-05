@@ -1,6 +1,6 @@
 /**
  * `handbook.mjs mark <out> <id> dispatched | failed lane <reason>...`
- * (design D9): the orchestrator records a lane dispatch (status dispatched,
+ * (design D9; `<id>` is a feature id or `overview`): the orchestrator records a lane dispatch (status dispatched,
  * attempts + 1) and a lane that wrote nothing (status failed, step lane)
  * through this command, so the model never edits state.json by hand.
  * check-entry records its own result. A third dispatch is refused, and so is
@@ -8,7 +8,8 @@
  */
 
 import { UsageError } from './errors.mjs';
-import { MAX_ATTEMPTS, featureState, loadState, saveState } from './state.mjs';
+import { MAX_ATTEMPTS, loadState, saveState } from './state.mjs';
+import { setUnitState, unitState } from './unit.mjs';
 
 const EVENTS = ['dispatched', 'failed'];
 /** The one step `mark ... failed` records. */
@@ -29,15 +30,16 @@ export function mark(outDir, id, event, rest) {
     return { status: 1, lines: [loaded.problem] };
   }
   const { state } = loaded;
-  const current = featureState(state, id);
+  const current = unitState(state, id);
   if (event === 'dispatched') {
     if (['checked', 'confirmed', 'verified'].includes(current.status)) return { status: 1, lines: [`${id}: already ${current.status}; it is not written again`] };
     if (current.attempts >= MAX_ATTEMPTS) return { status: 1, lines: [`${id}: attempts is already ${MAX_ATTEMPTS}, the most a lane gets`] };
-    state.features[id] = { status: 'dispatched', attempts: current.attempts + 1 };
+    setUnitState(state, id, { status: 'dispatched', attempts: current.attempts + 1 });
     saveState(outDir, state);
     return { status: 0, lines: [`${id}: dispatched, attempts ${current.attempts + 1}`] };
   }
-  state.features[id] = { status: 'failed', attempts: current.attempts, failure: { step, reasons: reasons.map((reason) => reason.trim()) } };
+  const failure = { step, reasons: reasons.map((reason) => reason.trim()) };
+  setUnitState(state, id, { status: 'failed', attempts: current.attempts, failure });
   saveState(outDir, state);
-  return { status: 0, lines: [`${id}: failed at ${step}: ${state.features[id].failure.reasons.join('; ')}`] };
+  return { status: 0, lines: [`${id}: failed at ${step}: ${failure.reasons.join('; ')}`] };
 }
