@@ -18,8 +18,8 @@
 
 提交：`docs(product-handbook): the skill groups the map's features into business domains`
 
-- [ ] 3.1 第 3c 阶段：提示词（D4）、`check-domains`、两次尝试、续跑；地图提示词保持与 main 相同
-- [ ] 3.2 合约测试（O2）
+- [x] 3.1 第 3c 阶段：提示词（D4）、`check-domains`、两次尝试、续跑；地图提示词保持与 main 相同
+- [x] 3.2 合约测试（O2）
 
 ## 4. 验收
 
