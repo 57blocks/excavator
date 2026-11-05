@@ -1,7 +1,7 @@
 ---
 name: excavator-view
 description: Pack the products in a project's .excavator/ folder (knowledge graph, domain graph, unused-code, doc-map, hotspots and the tour) into one self-contained HTML file and open it with the system's default browser. A deterministic script writes the page and gives each product a visible state; the page needs no network, no server and nothing to install. It runs no analysis, edits no other file and gives no advice.
-argument-hint: "[project-path] [--no-source] [--out <path>]"
+argument-hint: "[project-path] [--source] [--no-source] [--out <path>]"
 ---
 
 # /excavator-view
@@ -15,7 +15,7 @@ Write one HTML file that shows the products already in `.excavator/`, and open i
 
 ## Options
 
-`$ARGUMENTS` may contain the project path (default: the current working directory), `--no-source`: leave the source text out of the file, and `--out <path>`: write the page there instead of `.excavator/explorer.html`.
+`$ARGUMENTS` may contain the project path (default: the current working directory), `--source`: put the source text of the files the products name into the file (without it the page holds no source text; `--no-source` says the same explicitly), and `--out <path>`: write the page there instead of `.excavator/explorer.html`.
 
 ---
 
@@ -34,7 +34,7 @@ for candidate in "${CLAUDE_PLUGIN_ROOT}" "$HOME/.excavator-plugin" "$SELF_RELATI
   if [ -n "$candidate" ] && [ -f "$candidate/package.json" ] && [ -f "$candidate/pnpm-workspace.yaml" ]; then PLUGIN_ROOT="$candidate"; break; fi
 done
 echo "plugin root: $PLUGIN_ROOT"
-node "$PLUGIN_ROOT/skills/excavator-view/pack.mjs" "$PROJECT_ROOT"            # add --no-source and --out <path> only when the user gave them
+node "$PLUGIN_ROOT/skills/excavator-view/pack.mjs" "$PROJECT_ROOT"            # add --source, --no-source and --out <path> only when the user gave them
 ```
 
 The result is one JSON line: `out` (the absolute path of the page), `bytes`, `snapshotRevision`, `products` (each with `name` and `status`, and `reason`, `revision` or `note` when it has one), `source` and `issues`.

@@ -22,7 +22,7 @@
  *      expected token: the callee name (`calls`), the target module segment
  *      (`imports`), the symbol name (`exports`), the declared name
  *      (`contains`, or what the entry's own `token` says its line holds, as
- *      for `mentions`, `references`, `injects` and `routes`); for a
+ *      for `mentions`, `references`, `injects`, `routes` and `invokes`); for a
  *      model-cited entry, either endpoint's name or file name. `imports` is
  *      checked across the whole statement (a multi-line ES import names its
  *      specifier several lines below its start); every other type is checked
@@ -265,6 +265,7 @@ export function expectedTokens(edge, source, target, evidenceEntry) {
     case 'references':
     case 'injects':
     case 'routes':
+    case 'invokes':
       // The line names what the mention WROTE: the evidence entry's own token.
       // The target's name is not on that line when a pattern (`spring/*.xml`)
       // or a classpath suffix hit the file (openspec: changes/name-mention-facts);
@@ -274,7 +275,9 @@ export function expectedTokens(edge, source, target, evidenceEntry) {
       // writes in an injection (`ref="orders"` -> `OrderDaoImpl`, `injects`,
       // openspec: changes/xml-injection-references); nor is the endpoint's name
       // (`GET /orders/{id}`) on the line of the annotation a `routes` edge cites
-      // (openspec: changes/jaxrs-route-facts).
+      // (openspec: changes/jaxrs-route-facts); nor is the method's name on the
+      // line of an `invokes` edge when it is a setter a property name stands for
+      // (`name="orderDao"` -> `setOrderDao`, openspec: changes/spring-xml-method-calls).
       return [evidenceEntry?.token].filter(Boolean);
     default:
       return [source?.name, target?.name].filter(Boolean);

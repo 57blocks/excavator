@@ -21,6 +21,13 @@
  *   injections    the injection sites the catalog's XML injection families
  *                 read, one row each, with its file (xml-name-bindings.mjs,
  *                 `injectionsOfTree`);
+ *   methodCalls   the method call sites the catalog's XML method call families
+ *                 read (xml-name-bindings.mjs, `methodCallsOfTree`), one row
+ *                 each, with its file;
+ *   methodCallFiles  per family id (every family of the catalog, zero
+ *                 included), the files whose root the family reads;
+ *   methodCallsEmpty  the method names a descriptor wrote empty, which are no
+ *                 call, merged over the files;
  *   injectionFiles  per family id (every family of the catalog, zero included),
  *                 the files whose root the family reads;
  *   uncoveredReferences  what the families' census counts and no site read,
@@ -48,7 +55,7 @@ import { extname } from 'node:path';
 import { lexElExpressions } from './el-expressions.mjs';
 import { isCodeLanguage } from './text-mentions.mjs';
 import {
-  bindingsOfTree, injectionsOfTree, parseXml, readRootElement, rootMatches, textConditionHitsOfTree,
+  bindingsOfTree, injectionsOfTree, methodCallsOfTree, parseXml, readRootElement, rootMatches, textConditionHitsOfTree,
 } from './xml-name-bindings.mjs';
 
 /**
@@ -78,6 +85,9 @@ const compareText = (a, b) => (a < b ? -1 : a > b ? 1 : 0);
  *   missingNames: Record<string, number>,
  *   injections: Array<{ file: string, family: string, site: string, name: string, line: number, scope: string, consumer: { line: number, target: { kind: string, text: string }|null, unknownBecause: string|null, inherits: string|null }|null }>,
  *   injectionFiles: Record<string, number>,
+ *   methodCalls: Array<{ file: string, family: string, site: string, method: string, line: number, token: string, consumer: object|null, named: { name: string, line: number }|null }>,
+ *   methodCallFiles: Record<string, number>,
+ *   methodCallsEmpty: number,
  *   uncoveredReferences: Record<string, number>,
  *   conditions: Array<{ file: string, expressionLanguage: string, namespace: string, line: number, text: string }>,
  *   outsideFiles: Record<string, number>,
@@ -104,6 +114,9 @@ export function collectNameReferenceSites({ scan, catalog, readFile, mutations =
     missingNames: {},
     injections: [],
     injectionFiles: Object.fromEntries(catalog.xmlInjections.map((family) => [family.id, 0])),
+    methodCalls: [],
+    methodCallFiles: Object.fromEntries(catalog.xmlMethodCalls.map((family) => [family.id, 0])),
+    methodCallsEmpty: 0,
     uncoveredReferences: {},
     conditions: [],
     outsideFiles: {},
@@ -123,6 +136,7 @@ export function collectNameReferenceSites({ scan, catalog, readFile, mutations =
     const reads = info !== null && (
       catalog.xmlBinders.some((binder) => rootMatches(info, binder.root, binder.rootNamespace))
       || catalog.xmlInjections.some((family) => rootMatches(info, family.root, mutations.anyRootNamespace ? undefined : family.rootNamespace))
+      || catalog.xmlMethodCalls.some((family) => rootMatches(info, family.root, family.rootNamespace))
       || languages.some((candidate) => conditionsOf(candidate).some((condition) => condition.root === info.local)));
     if (reads) {
       const tree = parseXml(text, { maskComments: !mutations.noCommentMask });
@@ -132,6 +146,10 @@ export function collectNameReferenceSites({ scan, catalog, readFile, mutations =
       const injected = injectionsOfTree(tree, catalog, { mutations });
       for (const site of injected.sites) result.injections.push({ file: file.path, ...site });
       for (const family of injected.families) result.injectionFiles[family] += 1;
+      const called = methodCallsOfTree(tree, catalog);
+      for (const call of called.calls) result.methodCalls.push({ file: file.path, ...call });
+      for (const family of called.families) result.methodCallFiles[family] += 1;
+      result.methodCallsEmpty += called.empty;
       for (const [key, count] of Object.entries(injected.uncovered)) result.uncoveredReferences[key] = (result.uncoveredReferences[key] ?? 0) + count;
       for (const candidate of languages) {
         for (const condition of conditionsOf(candidate)) {
