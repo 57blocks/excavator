@@ -7,14 +7,11 @@
  * coverage section lists them.
  */
 
-import { entryItems } from './items.mjs';
-import { trimEntry } from './trim-entry.mjs';
-
 const isAncestor = (ancestor, path) => path.startsWith(`${ancestor}.`);
 
 /**
  * `{ trimmed, records }` for removing the items `removedByVerdict` (paths) from
- * `entry`: the trimmed entry and a record for each item gone, in entry order,
+ * `entry` of the unit `unit` (unit.mjs): the trimmed entry and a record for each item gone, in entry order,
  * plus one for each operation left without a sentence. `verdictOf(path)` is
  * `{ verdict, reason }` and `claimOf(path)` the claim of an item. With
  * `options.step` every record carries it (`step: "trace"`), with
@@ -22,11 +19,11 @@ const isAncestor = (ancestor, path) => path.startsWith(`${ancestor}.`);
  * returns, and with `options.atOf(path)` the positions it returns; records of
  * the earlier step keep their older shape (no step).
  */
-export function removalRecords(entry, removedByVerdict, verdictOf, claimOf, options = {}) {
+export function removalRecords(unit, entry, removedByVerdict, verdictOf, claimOf, options = {}) {
   const { step, reasonsOf, atOf } = options;
   const removed = new Set(removedByVerdict);
-  const { entry: trimmed, together } = trimEntry(entry, removed);
-  const order = entryItems(entry).map((item) => item.path);
+  const { entry: trimmed, together } = unit.trim(entry, removed);
+  const order = unit.items(entry).map((item) => item.path);
   const emptiedOperations = together.filter((path) => /^operations\[\d+\]$/.test(path));
   const paths = [...new Set([...removed, ...together.filter((path) => !emptiedOperations.includes(path))])].sort((a, b) => order.indexOf(a) - order.indexOf(b));
   const stamp = (record) => (step === undefined ? record : { ...record, step });

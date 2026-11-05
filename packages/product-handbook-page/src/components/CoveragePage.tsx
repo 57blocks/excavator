@@ -1,9 +1,26 @@
 import { featureHash } from '../lib/route';
 import { useText } from '../lib/text';
-import type { PageData } from '../lib/types';
+import type { PageData, RemovedItem } from '../lib/types';
 import { CheckIcon } from './Icons';
 import { ReachBadge } from './ReachBadge';
 import { Cell, TableScroll } from './Tables';
+
+/** The items one unit lost to verification: each claim with its result and the reason a reader may see. */
+function RemovedTable({ items }: { items: RemovedItem[] }) {
+  const t = useText();
+  return (
+    <TableScroll label={t('md.coverage.removedHeading')} wide>
+      <thead>
+        <tr><th scope="col">{t('md.table.item')}</th><th scope="col">{t('md.table.result')}</th><th scope="col">{t('md.table.reason')}</th></tr>
+      </thead>
+      <tbody>
+        {items.map((item, index) => (
+          <tr key={index}><Cell row>{item.claim}</Cell><Cell>{t(`md.verdict.${item.verdict}`)}</Cell><Cell>{item.reason === '' ? undefined : item.reason}</Cell></tr>
+        ))}
+      </tbody>
+    </TableScroll>
+  );
+}
 
 /** What the handbook covers: the candidate count and its conservation, the unassigned candidates, link features, the features without a verified entry and the items verification removed. */
 export function CoveragePage({ data }: { data: PageData }) {
@@ -85,19 +102,17 @@ export function CoveragePage({ data }: { data: PageData }) {
 
       <section className="section" aria-labelledby="cov-removed">
         <h2 className="section-title" id="cov-removed">{t('md.coverage.removedHeading')}</h2>
-        {removed.length === 0 ? <p className="muted">{t('md.none')}</p> : removed.map(({ feature, items }) => (
+        {removed.length === 0 && coverage.removedOverview.length === 0 ? <p className="muted">{t('md.none')}</p> : null}
+        {coverage.removedOverview.length === 0 ? null : (
+          <div className="removed-group">
+            <h3 className="block-title">{t('md.coverage.removedOverview', { name: t('md.overview.heading'), count: coverage.removedOverview.length })}</h3>
+            <RemovedTable items={coverage.removedOverview} />
+          </div>
+        )}
+        {removed.map(({ feature, items }) => (
           <div key={feature.id} className="removed-group">
             <h3 className="block-title"><a href={featureHash(feature.id)}>{t('md.coverage.removedFeature', { ...itemValues(feature), count: items.length })}</a></h3>
-            <TableScroll label={t('md.coverage.removedHeading')} wide>
-              <thead>
-                <tr><th scope="col">{t('md.table.item')}</th><th scope="col">{t('md.table.result')}</th><th scope="col">{t('md.table.reason')}</th></tr>
-              </thead>
-              <tbody>
-                {items.map((item, index) => (
-                  <tr key={index}><Cell row>{item.claim}</Cell><Cell>{t(`md.verdict.${item.verdict}`)}</Cell><Cell>{item.reason === '' ? undefined : item.reason}</Cell></tr>
-                ))}
-              </tbody>
-            </TableScroll>
+            <RemovedTable items={items} />
           </div>
         ))}
       </section>

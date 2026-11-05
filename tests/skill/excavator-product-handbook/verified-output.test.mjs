@@ -220,6 +220,7 @@ describe('reply: counts by status including verified', () => {
     expect(run.run('assemble').status).toBe(0);
     const lines = run.run('reply').lines;
     expect(lines[2]).toBe('Features: 5 (planned 4, dispatched 0, checked 0, confirmed 0, verified 0, failed 1)');
-    expect(lines[3]).toBe('Failed: F1');
+    expect(lines[3]).toBe('Overview: planned');
+    expect(lines[4]).toBe('Failed: F1');
   });
 });

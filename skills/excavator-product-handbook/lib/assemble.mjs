@@ -12,6 +12,7 @@ import { writeTextAtomic } from './json-file.mjs';
 import { loadCheckedRun } from './load-run.mjs';
 import { renderHandbook } from './render.mjs';
 import { buildSummary } from './summary.mjs';
+import { buildSystem } from './system-facts.mjs';
 
 export const HANDBOOK_FILE = 'handbook.md';
 
@@ -21,6 +22,6 @@ export function assemble(outDirArg, root) {
   if (!run.ok) return { status: 1, lines: run.lines };
   const path = join(run.outDir, HANDBOOK_FILE);
   const summary = buildSummary(run, root);
-  writeTextAtomic(path, renderHandbook({ map: run.map, entries: run.entries, state: run.state, candidates: run.candidates, ui: run.ui, summary }));
+  writeTextAtomic(path, renderHandbook({ map: run.map, entries: run.entries, state: run.state, candidates: run.candidates, ui: run.ui, summary, system: buildSystem(run, root) }));
   return { status: 0, lines: [path] };
 }

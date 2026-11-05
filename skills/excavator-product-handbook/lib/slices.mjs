@@ -19,7 +19,8 @@ import { join } from 'node:path';
 
 import { checkEntryFile, entryPath, loadForEntry } from './entry-check.mjs';
 import { readJson, writeJson } from './json-file.mjs';
-import { loadState, featureState, purposeRemoved } from './state.mjs';
+import { loadState } from './state.mjs';
+import { unitFor, unitState } from './unit.mjs';
 import { loadUi } from './ui.mjs';
 import { UsageError } from './errors.mjs';
 import { traceDirPath, traceVerdictDirPath } from './trace-plan.mjs';
@@ -35,7 +36,7 @@ export function checkedFeature(outDir, id, round) {
     if (stateRead.missing) throw new UsageError(stateRead.problem);
     return { stop: { status: 1, lines: [stateRead.problem] } };
   }
-  const current = featureState(stateRead.state, id);
+  const current = unitState(stateRead.state, id);
   if (current.status !== 'checked') {
     const next = current.status === 'verified' ? 'nothing; it is verified' : current.status === 'confirmed' ? `run trace for ${id}` : `run check-entry for ${id} first`;
     return { stop: { status: 1, lines: [`${id}: is ${current.status}; only a checked feature is verified`, `Next: ${next}`] } };
@@ -49,15 +50,16 @@ export function checkedFeature(outDir, id, round) {
  * The items of the round for feature `id`, from the entry as it is now, or the
  * lines that stop the command. Used by slices to write them and by verdicts to
  * check that the verify file still matches. Returns
- * `{ items, entry, loaded, claims }` (claims: path to claim of every
- * item of the entry) or `{ stop }`.
+ * `{ items, entry, loaded, claims, unit }` (claims: path to claim of every
+ * item of the entry; unit: the unit of `id`, unit.mjs) or `{ stop }`.
  */
 export function planRound(outDir, id, root, round) {
   const loaded = loadForEntry(outDir, id, root);
   if (loaded.stop) return { stop: loaded.stop };
   // Round 2 reads the entry round 1 trimmed: what round 1 removed stays removed, the purpose included.
-  const earlier = round === 2 ? loadState(outDir).state.features[id].removed ?? [] : [];
-  const result = checkEntryFile(outDir, id, root, loaded, { settled: purposeRemoved({ removed: earlier }) });
+  const unit = unitFor(id);
+  const earlier = round === 2 ? unitState(loadState(outDir).state, id).removed ?? [] : [];
+  const result = checkEntryFile(outDir, id, root, loaded, { settled: unit.settledAfter({ removed: earlier }) });
   if (result.problems.length > 0) {
     return { stop: { status: 1, lines: [...result.problems, `Next: fix ${entryPath(id)} (or run check-entry for ${id}) and run this command again`] } };
   }
@@ -65,20 +67,20 @@ export function planRound(outDir, id, root, round) {
   if (!ui.ok) return { stop: { status: 1, lines: ui.lines } };
   const entry = readJson(join(outDir, entryPath(id))).value;
   const context = { ui: ui.strings, files: loaded.files };
-  const items = verifyItems(entry, context);
+  const items = verifyItems(unit, entry, context);
   const claims = new Map(items.map((item) => [item.id, item.claim]));
-  if (round === 1) return { items, entry, loaded, claims };
+  if (round === 1) return { items, entry, loaded, claims, unit };
 
   const rewrite = readJson(rewriteFilePath(outDir, id));
   const snapshot = readJson(snapshotPath(outDir, id));
   if (!rewrite.ok || !snapshot.ok) {
     return { stop: { status: 1, lines: [`${id}: the rewrite file or the round 1 snapshot ${!rewrite.ok ? 'is missing' : 'cannot be read'}`, `Next: run slices for ${id} without --round, then verdicts --round 1`] } };
   }
-  const plan = roundTwoPlan(rewrite.value, verifyItems(snapshot.value, context), items, earlier.map((record) => record.path));
+  const plan = roundTwoPlan(rewrite.value, verifyItems(unit, snapshot.value, context), items, earlier.map((record) => record.path));
   if (plan.problems.length > 0) {
     return { stop: { status: 1, lines: [...plan.problems, `Next: put each item above back as it was in round 1 (change only the citations of the items listed in ${rewriteFilePath(outDir, id)}, never a claim, and never delete or add an item), run check-entry, then slices --round 2 again`] } };
   }
-  return { items: plan.items, entry, loaded, claims };
+  return { items: plan.items, entry, loaded, claims, unit };
 }
 
 const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;

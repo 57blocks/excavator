@@ -12,7 +12,7 @@ import { describe, expect, it } from 'vitest';
 
 import { AppView } from '../src/App';
 import { parseHash } from '../src/lib/route';
-import type { Entry, Feature, PageData, Reach, Summary } from '../src/lib/types';
+import type { Entry, Feature, PageData, Reach, Summary, System } from '../src/lib/types';
 
 const MARK = '@@';
 const DATA = 'd~';
@@ -69,9 +69,54 @@ const richSummary: Summary = {
   counts: { featureTotal: 6, featuresWithEntry: 2, notificationRows: 2, jobRows: 3, schedule: { literal: 1, computed: 1, absent: 1 }, described: 1 },
 };
 
-function dataFor(features: Feature[], unassigned: PageData['coverage']['unassigned'] = [], removed: PageData['coverage']['removed'] = [], summary: Summary = emptySummary): PageData {
+const areaRows: System['areas'] = [
+  { id: d('A1'), name: d('area one'), features: 4, verified: 2, roles: [d('role one'), d('role two')] },
+  { id: d('A2'), name: d('area two'), features: 2, verified: 0, roles: [] },
+];
+
+/** An overview that is not verified: where it stopped, and the area table that does not depend on it. */
+const unwrittenSystem: System = {
+  status: 'checked',
+  overview: null,
+  applications: [{ dir: d('root/dir'), name: null, does: null, languages: [{ language: d('Lang A'), files: 3 }], frameworks: [], files: 3, lines: 40, history: null }],
+  counts: { applications: 1, files: 3, lines: 40, areas: 2, features: 6, featuresWithEntry: 2, roles: 2 },
+  areas: areaRows,
+};
+
+const fullSystem: System = {
+  status: 'verified',
+  overview: {
+    summary: [d('first summary sentence.'), d('second summary sentence.')],
+    audiences: [{ who: d('who one'), does: d('does one') }, { who: d('who two'), does: d('does two') }],
+    integrations: [{ system: d('system one'), use: d('use one'), callers: [d('dir one'), d('dir two')] }],
+    unknowns: [{ item: d('overview unknown'), searched: d('overview searched') }],
+  },
+  applications: [
+    {
+      dir: d('app/dir'), name: d('app name'), does: d('app does'),
+      languages: [{ language: d('Lang A'), files: 9 }, { language: d('Lang B'), files: 2 }],
+      frameworks: [{ framework: d('framework a'), candidates: 5 }],
+      files: 11, lines: 1200,
+      history: { first: d('2023-02-01'), last: d('2024-01-20'), commits: 14, authors: 3 },
+    },
+    { dir: d('other/dir'), name: null, does: null, languages: [], frameworks: [], files: 0, lines: 0, history: null },
+  ],
+  counts: { applications: 2, files: 11, lines: 1200, areas: 2, features: 6, featuresWithEntry: 2, roles: 2 },
+  areas: areaRows,
+};
+
+/** A verified overview that lost every part to verification. */
+const emptySystem: System = {
+  status: 'verified',
+  overview: { summary: [], audiences: [], integrations: [], unknowns: [] },
+  applications: [],
+  counts: { applications: 0, files: 0, lines: 0, areas: 2, features: 6, featuresWithEntry: 2, roles: 0 },
+  areas: areaRows,
+};
+
+function dataFor(features: Feature[], unassigned: PageData['coverage']['unassigned'] = [], removed: PageData['coverage']['removed'] = [], summary: Summary = emptySummary, system: System = unwrittenSystem, removedOverview: PageData['coverage']['removedOverview'] = []): PageData {
   return {
-    format: 'excavator-product-handbook-page/2',
+    format: 'excavator-product-handbook-page/3',
     project: d('project'),
     language: d('language'),
     languageTag: 'xx',
@@ -83,9 +128,11 @@ function dataFor(features: Feature[], unassigned: PageData['coverage']['unassign
       assigned: 9 - unassigned.length,
       unassigned,
       reachCounts: reaches.map((reach) => ({ reach, count: features.filter((item) => item.reach === reach).length })),
+      removedOverview,
       removed,
     },
     summary,
+    system,
   };
 }
 
@@ -104,7 +151,10 @@ const populated = dataFor(
     { feature: d('F4'), items: [{ claim: d('lost claim'), verdict: 'unverified', reason: d('lost reason') }] },
   ],
   richSummary,
+  fullSystem,
+  [{ claim: d('overview claim'), verdict: 'contradicted', reason: d('overview reason') }, { claim: d('other overview claim'), verdict: 'unverified', reason: d('other overview reason') }],
 );
+const emptyOverview = dataFor([feature('F1', 'menu', 'verified', emptyEntry)], [], [], emptySummary, emptySystem);
 const allWritten = dataFor([feature('F1', 'menu', 'verified', emptyEntry)]);
 const { purpose: _removedPurpose, ...entryWithoutPurpose } = fullEntry;
 const withoutPurpose = dataFor([feature('F1', 'menu', 'verified', entryWithoutPurpose)]);
@@ -130,7 +180,9 @@ const featureId = (data: PageData, index: number): string => encodeURIComponent(
 
 describe('every fixed text of the page comes from the ui table (O8, node half)', () => {
   const views: [string, PageData, string][] = [
-    ['the overview', populated, '#/'],
+    ['the overview with a verified system overview', populated, '#/'],
+    ['the overview with a system overview that was not written', allWritten, '#/'],
+    ['the overview with a verified system overview that lost every part', emptyOverview, '#/'],
     ['a feature with every section filled', populated, `#/feature/${featureId(populated, 0)}`],
     ['a feature whose purpose was removed', withoutPurpose, `#/feature/${featureId(withoutPurpose, 0)}`],
     ['a feature whose sections are all empty', populated, `#/feature/${featureId(populated, 4)}`],
@@ -230,6 +282,47 @@ describe('every fixed text of the page comes from the ui table (O8, node half)',
   it('marks the page of the current route in the navigation', () => {
     expect(render(populated, '#/jobs')).toMatch(/<a class="rail-link" href="#\/jobs" aria-current="page">/);
     expect(render(populated, '#/notifications')).toMatch(/<a class="rail-link" href="#\/notifications" aria-current="page">/);
+  });
+
+  it('shows the system overview: its text, the application facts from the script, the history cells and the area table', () => {
+    const html = render(populated, '#/');
+    for (const text of ['first summary sentence.', 'second summary sentence.', 'who two', 'does one', 'system one', 'use one', 'app/dir', 'app name', 'app does', '2023-02-01', '2024-01-20', 'overview unknown', 'overview searched', 'area one', 'role two']) expect(html).toContain(d(text));
+    for (const key of ['md.overview.heading', 'md.overview.audiencesHeading', 'md.overview.applicationsHeading', 'md.overview.integrationsHeading', 'md.overview.areasHeading', 'md.table.directory', 'md.table.firstCommit', 'md.table.authors', 'md.table.callers', 'md.table.verified', 'md.section.unknowns']) expect(html).toContain(marked[key]);
+    expect(html).toContain(`${MARK}Applications: 2. Source files: 11. Lines of source: 1200. Areas: 2. Features: 6. Features with a verified entry: 2. Roles: 2.`);
+    expect(html).toContain(`${MARK}${d('Lang A')} (9), ${MARK}${d('Lang B')} (2)`);
+    // The application with no version history says so in each of the four cells.
+    expect((html.match(new RegExp(`${MARK}No version history`, 'g')) ?? []).length).toBe(4);
+    // A root with no verified application keeps its row: the fixed not-verified text stands in the name and responsibility cells.
+    expect((html.match(new RegExp(`${MARK}Not verified`, 'g')) ?? []).length).toBe(2);
+    expect(html).not.toContain(marked['md.overview.notWritten']);
+  });
+
+  it('says where the system overview stopped, replaces only the model-written sections, and keeps the counts, the application rows and the area table', () => {
+    const html = render(allWritten, '#/');
+    expect(html).toContain(`${MARK}The system overview is not in this handbook. Where it stopped: ${marked['md.status.checked']}.`);
+    expect(html).toContain(marked['md.overview.areasHeading']);
+    expect(html).toContain(marked['md.overview.applicationsHeading']);
+    expect(html).toContain(`${MARK}Applications: 1. Source files: 3. Lines of source: 40.`);
+    expect(html).toContain(d('root/dir'));
+    // The name and responsibility cells of the root hold the fixed not-verified text.
+    expect((html.match(new RegExp(`${MARK}Not verified`, 'g')) ?? []).length).toBe(2);
+    expect(html).not.toContain(marked['md.overview.audiencesHeading']);
+    expect(html).not.toContain(marked['md.overview.integrationsHeading']);
+    expect(html).not.toContain(marked['md.section.purpose'] + '</h2>');
+    expect(html).toContain(d('role one'));
+  });
+
+  it('lists the removed items of the system overview first in the coverage view, with the unit named by its fixed text', () => {
+    const html = render(populated, '#/coverage');
+    for (const text of ['overview claim', 'overview reason', 'other overview claim', 'other overview reason']) expect(html).toContain(d(text));
+    expect(html).toContain(`${MARK}${shipped.strings['md.overview.heading']}: items removed: 2`);
+    expect(html.indexOf(d('overview claim'))).toBeLessThan(html.indexOf(d('a claim')));
+  });
+
+  it('shows the fixed text for each empty part of a verified system overview that lost every part', () => {
+    const html = render(emptyOverview, '#/');
+    const part = html.slice(html.indexOf('data-part="system"'), html.indexOf('id="overview-reach"'));
+    expect(part.split(marked['md.none']).length - 1).toBe(5);
   });
 
   it('the instrument sees a fixed text the code wrote itself', () => {

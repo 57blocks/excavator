@@ -10,7 +10,7 @@ import { isObject } from './json-file.mjs';
 export const nonEmptyString = Object.freeze({ type: 'string' });
 export const literal = (value) => ({ type: 'literal', value });
 export const enumOf = (...values) => ({ type: 'enum', values });
-export const arrayOf = (item, { min = 0 } = {}) => ({ type: 'array', item, min });
+export const arrayOf = (item, { min = 0, max = Infinity } = {}) => ({ type: 'array', item, min, max });
 /** `required` and `optional` map a key to its schema. */
 export const objectOf = (required, optional = {}) => ({ type: 'object', required, optional });
 
@@ -30,6 +30,7 @@ export function shapeProblems(value, schema, path = '') {
     case 'array': {
       if (!Array.isArray(value)) return [`${here(path)}: must be an array, found ${kind(value)}`];
       if (value.length < schema.min) return [`${here(path)}: must have at least ${schema.min} item${schema.min === 1 ? '' : 's'}`];
+      if (value.length > schema.max) return [`${here(path)}: must have at most ${schema.max} item${schema.max === 1 ? '' : 's'}`];
       return value.flatMap((item, index) => shapeProblems(item, schema.item, `${path}[${index}]`));
     }
     case 'object': {

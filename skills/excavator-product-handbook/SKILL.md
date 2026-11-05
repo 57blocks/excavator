@@ -1,12 +1,12 @@
 ---
 name: excavator-product-handbook
-description: Write a product handbook for non-technical readers from a project's source - a map of the product's areas and features, one entry per feature with its screens, fields, rules, states and notifications, every value checked against a passage quoted from the source and every item confirmed by two verifiers that see only that item and the code it cites and then by two tracers that each read the whole project for code that contradicts it, assembled into handbook.md and a one-file HTML page in the language you choose. A script lists the entrypoint candidates and checks every step, you write the map, one subagent per feature writes its entry and others check it. It describes the product as it is and gives no advice.
+description: Write a product handbook for non-technical readers from a project's source - a system overview (what the system is, who uses it, its applications and the external systems it calls), a map of the product's areas and features, one entry per feature with its screens, fields, rules, states and notifications, every value checked against a passage quoted from the source and every item confirmed by two verifiers that see only that item and the code it cites and then by two tracers that each read the whole project for code that contradicts it, assembled into handbook.md and a one-file HTML page in the language you choose. A script lists the entrypoint candidates and checks every step, you write the map, one subagent per feature writes its entry and others check it. It describes the product as it is and gives no advice.
 argument-hint: "[path] [--language <lang>] [--out <dir>] [--features <list>] [--concurrency <n>] [--fresh]"
 ---
 
 # /excavator-product-handbook
 
-Write a **product handbook**: a document for people who use or manage the product and do not read code. It describes what the product **actually does today**, reverse-engineered from the source, organized the way a reader sees the product: areas, then the features in each area, then each feature's screens, fields, rules, states, notifications and automatic behavior.
+Write a **product handbook**: a document for people who use or manage the product and do not read code. It describes what the product **actually does today**, reverse-engineered from the source, organized the way a reader sees the product: first the system as a whole (what it is, who uses it, its applications and external systems), then the areas, then the features in each area, then each feature's screens, fields, rules, states, notifications and automatic behavior.
 
 Five rules govern everything below:
 
@@ -14,14 +14,15 @@ Five rules govern everything below:
 2. **Nothing is dropped silently.** A script lists the entrypoint candidates (pages, routes, scheduled jobs, program starts). Every candidate belongs to exactly one feature or is listed as unassigned with a reason, and a script checks it.
 3. **Every value has a source.** Each label, rule, number and sentence of an entry carries a passage copied from the source file. Scripts check that the passage is in the file exactly once, that every label and number is in its own passage, and that the file is project source.
 4. **Readers see no code.** Reader-visible text contains no code-shaped words. A script refuses them; the rules are under **Reader text** in Phase 3.
-5. **Nothing stays that the code does not back up.** A passage that exists can still be read wrongly. A verifier that sees one item and the code around its citations judges each item (Phase 5); an item it finds contradicted is removed at once, an item it cannot confirm is given other citations once (its text never changes), and removed if it is still not confirmed. Two tracers that each read the whole project then look for code that contradicts each item that is left (Phase 6), and what either finds is removed. Only a verified feature is written into the handbook, and every removed item is listed in its coverage section.
+5. **Nothing stays that the code does not back up.** A passage that exists can still be read wrongly. A verifier that sees one item and the code around its citations judges each item (Phase 5); an item it finds contradicted is removed at once, an item it cannot confirm is given other citations once (its text never changes), and removed if it is still not confirmed. Two tracers that each read the whole project then look for code that contradicts each item that is left (Phase 6), and what either finds is removed. Only a verified feature is written into the handbook, and every removed item is listed in its coverage section. The system overview that opens the handbook is checked the same way, item by item.
 
 ## How the work is split
 
 | Who | Does |
 |---|---|
-| `handbook.mjs` (a script, no model) | Lists the entrypoint candidates, checks the map and each entry, resolves `--features`, records each dispatch and result, cuts each entry into the items a verifier judges and records the verdicts, removes what stays unverified, writes the trace files of each settled entry and records the tracers' verdicts, removes what they contradict, checks the fixed-text table, assembles `handbook.md`, writes `handbook.html` and prints the closing lines. |
-| You (the orchestrator) | Write the map, dispatch the lanes, the verifiers, the rewriters, the tracers and the translation of the fixed text, and reply. |
+| `handbook.mjs` (a script, no model) | Lists the entrypoint candidates and the application roots, checks the map, the overview and each entry, computes every count and statistic of the system overview (languages, frameworks, files, lines, commits, authors, the roles of each area), resolves `--features`, records each dispatch and result, cuts each entry into the items a verifier judges and records the verdicts, removes what stays unverified, writes the trace files of each settled entry and records the tracers' verdicts, removes what they contradict, checks the fixed-text table, assembles `handbook.md`, writes `handbook.html` and prints the closing lines. |
+| You (the orchestrator) | Write the map, dispatch the overview lane, the feature lanes, the verifiers, the rewriters, the tracers and the translation of the fixed text, and reply. |
+| One subagent for the system overview (Phase 3b) | Reads the map, the application roots the script prints, each application's build manifests and entry files and the search hits for external systems, opens at most 30 other files, and writes `entries/overview.json`, one file, nothing else. |
 | One subagent lane per feature | Reads that feature's seed files, follows calls and imports out of them to at most 20 more files, and writes its entry, one file, nothing else. |
 | Two `excavator-handbook-verifier` subagents per part of a feature and round | Each reads the same verify file (the items of the part, each with its claim and the code it cites), without seeing the other, and judges each item `verified`, `unverified` or `contradicted`, with a one-line reason. |
 | Two `excavator-handbook-tracer` subagents per part of a feature that two verifiers settled | Each reads the trace file (the items of the part, each with its claim and the files and lines it cites, no code) and the whole project, looks for code that contradicts each item, and judges it `holds` or `contradicted`, with a one-line reason and, for `contradicted`, where the code is. |
@@ -35,8 +36,9 @@ All files of a run live in `$OUT`:
 | `candidates.json` | `handbook.mjs candidates` (you save its output) |
 | `map.json` | you |
 | `entries/<id>.json` | the lane of feature `<id>` |
-| `state.json` | `handbook.mjs` only (`check-map`, `check-entry`, `mark`, `verdicts`, `trace-verdicts`) |
-| `verify/round-<r>/<id>/part-<n>.json` | `handbook.mjs slices` (the items of a feature, with their claims and code, cut by size into parts); `verify/round-1/<id>.entry.json` is the entry as round 1 saw it |
+| `entries/overview.json` | the overview subagent (Phase 3b) |
+| `state.json` | `handbook.mjs` only (`check-map`, `check-entry`, `mark`, `verdicts`, `trace-verdicts`), and `check-overview` for the overview, whose state is under its key `overview` |
+| `verify/round-<r>/<id>/part-<n>.json` | `handbook.mjs slices` (the items of a feature, or of the overview whose id is `overview`, with their claims and code, cut by size into parts); `verify/round-1/<id>.entry.json` is the entry as round 1 saw it |
 | `verdicts/round-<r>/<id>/part-<n>.a.json` and `part-<n>.b.json` | the two verifiers of part `<n>` of feature `<id>`, one file each |
 | `rewrite/<id>.json` | `handbook.mjs verdicts --round 1` (the items to rewrite, with the verdicts) |
 | `trace/<id>/part-<n>.json` | `handbook.mjs trace` (the items a settled feature still holds, with their claims and cited line ranges, cut into parts of at most 25 items) |
@@ -51,7 +53,7 @@ All files of a run live in `$OUT`:
 - A directory path - the project to document (default: current working directory).
 - `--language <lang>` - the language of the handbook's narrative, its area names and fixed text, and of everything said to the user during the run; English when it is not given. Labels quoted from the source stay in their source language.
 - `--out <dir>` - where the run's files, the handbook and the page go (default: `<project>/.excavator/product-handbook`).
-- `--features <list>` - write entries only for these features, as a comma-separated list of feature ids or feature names (a name is matched ignoring case, as a whole name). The map still covers every candidate; the features without an entry are listed in the handbook as not written. Feature ids exist only after the map is written, which is why names are accepted: Phase 3 resolves the list with `select`.
+- `--features <list>` - write entries only for these features, as a comma-separated list of feature ids or feature names (a name is matched ignoring case, as a whole name). The map still covers every candidate; the features without an entry are listed in the handbook as not written. The system overview is not a feature: this option never skips it (Phase 3b). Feature ids exist only after the map is written, which is why names are accepted: Phase 3 resolves the list with `select`.
 - `--concurrency <n>` - how many lanes run at once (default: 3).
 - `--fresh` - start over instead of resuming an earlier run in the same `--out`.
 
@@ -93,7 +95,7 @@ Read only the project's source code and configuration. Never read anything under
      fi
      ```
      When it prints `fresh: refused, the directory holds other files`, tell the user `$OUT` holds other files, and stop.
-   - Without `--fresh`, an `$OUT` that holds files of an earlier run is resumed: each phase below skips what its files already show done. `candidates.json` is kept as it is (a run over changed source needs `--fresh`). When `$OUT/map.json` exists, read its language with `jq -r .language "$OUT/map.json"`; when it differs from `$RUN_LANGUAGE`, tell the user to run again with `--fresh`, and stop. The fixed text (Phase 2) is written before the map, so an `$OUT` can hold a `ui.json` and no map: when `$OUT/ui.json` exists and `jq -r .language "$OUT/ui.json"` differs from `$RUN_LANGUAGE`, do the same. A `ui.json` written before the skill gained new fixed texts lacks their keys: for a run in another language Phase 2 finds it with `check-ui` (exit 1, one line for each missing key) and translates the table again; for a run in English delete `$OUT/ui.json` (the script then uses the shipped table), since Phase 2 has nothing to do for English.
+   - Without `--fresh`, an `$OUT` that holds files of an earlier run is resumed: each phase below skips what its files already show done. `candidates.json` is kept as it is (a run over changed source needs `--fresh`). When `$OUT/map.json` exists, read its language with `jq -r .language "$OUT/map.json"`; when it differs from `$RUN_LANGUAGE`, tell the user to run again with `--fresh`, and stop. The fixed text (Phase 2) is written before the map, so an `$OUT` can hold a `ui.json` and no map: when `$OUT/ui.json` exists and `jq -r .language "$OUT/ui.json"` differs from `$RUN_LANGUAGE`, do the same. A `ui.json` written before the skill gained new fixed texts lacks their keys: for a run in another language Phase 2 finds it with `check-ui` (exit 1, one line for each missing key) and translates the table again; for a run in English delete `$OUT/ui.json` (the script then uses the shipped table), since Phase 2 has nothing to do for English. An `$OUT` from before the system overview has no `overview` key in `state.json`: the script reads that as planned with no attempt, so a resumed run writes the overview in Phase 3b and nothing is migrated; an overview that is already `checked`, `confirmed` or `verified` is not written again.
    - Create `$OUT` when it does not exist (`mkdir -p "$OUT/entries"`) and continue with Phase 1.
 
 ---
@@ -213,6 +215,103 @@ node "$PLUGIN_ROOT/skills/excavator-product-handbook/handbook.mjs" select "$OUT"
 
 ---
 
+## Phase 3b: System overview
+
+Write what you tell the user during this phase in `$LANGUAGE`, as **Language** in Phase 0 says.
+
+The handbook opens with the system as a whole: what it is, who uses it, which applications it is made of and which external systems it calls. One subagent writes this overview from the code once the map has passed; the scripts check it, two verifiers and two tracers confirm each of its items (Phases 5 and 6, exactly as for a feature, with the id `overview`), and the script, not the subagent, computes every statistic next to it: each application's languages, frameworks, files and lines, its first and last commit date, commits and authors, the counts of the system and the roles of each area. `--features` does not skip the overview: it is written whenever it is not already, even when `$SELECTED` lists one feature.
+
+1. Read the overview's state (a `state.json` without an `overview` key, as an output directory from before the overview has, reads as planned with no attempt):
+   ```bash
+   jq -r '(.overview // {status: "planned", attempts: 0}) | [.status, .attempts] | @tsv' "$OUT/state.json"
+   ```
+   - `checked`, `confirmed` or `verified`: the overview is not written again; go to Phase 4.
+   - `dispatched` with `$OUT/entries/overview.json` present (an earlier run stopped after the subagent wrote): go to step 3 as if it had just returned.
+   - `failed` with `attempts` 1 (an earlier run stopped before the second attempt): step 2 with the reasons `state.json` kept, `jq -r '.overview.failure.reasons[]' "$OUT/state.json"`, as the retry in step 3 gives them.
+   - Any other state with `attempts` below 2: step 2. With `attempts` 2 and not `checked`, `confirmed` or `verified`, leave it as it is and go to Phase 4; the handbook then says the overview was not written and where it stopped.
+2. Print what the prompt below needs, delete the file an earlier attempt left, record the dispatch and dispatch one subagent in the foreground (never in the background: a run without a terminal stops waiting for background subagents):
+   ```bash
+   node "$PLUGIN_ROOT/skills/excavator-product-handbook/handbook.mjs" applications "$PROJECT_ROOT"
+   jq -r '.areas[] | [.id, .name] | @tsv' "$OUT/map.json"
+   jq -r '.features[] | [.id, .area, .reach, .name] | @tsv' "$OUT/map.json"
+   jq -r '.roles[].label' "$OUT/map.json"
+   jq 'del(.items) | del(.projectRoot)' "$OUT/candidates.json"
+   rm -f "$OUT/entries/overview.json"
+   node "$PLUGIN_ROOT/skills/excavator-product-handbook/handbook.mjs" mark "$OUT" overview dispatched --project "$PROJECT_ROOT"
+   ```
+   Fill the prompt's placeholders with those outputs and `$PLUGIN_ROOT`, `$PROJECT_ROOT`, `$OUT` and `$LANGUAGE` with their values.
+3. When the subagent returns, check its file:
+   ```bash
+   node "$PLUGIN_ROOT/skills/excavator-product-handbook/handbook.mjs" check-overview "$OUT" --project "$PROJECT_ROOT"
+   ```
+   It records its result in `state.json` itself: `checked`, or `failed` with the lines it printed as the reasons; a subagent that wrote no file fails with `lane-wrote-nothing`.
+   - Exit 0: the overview is checked.
+   - Exit 1: it failed its checks. The last line is a `Next:` line; follow it as Phase 4 step 3 does for a lane, with `overview` for the id: `Next: delete overview's entry, mark it dispatched and re-dispatch it once with the lines above (attempt 2 of 2)` means delete `$OUT/entries/overview.json`, run the `mark` line of step 2 again and dispatch once more with the prompt followed by `Your previous attempt failed these checks; fix them and write the file again:` and each line printed except the `Next:` line; check it again when it returns. `Next: overview stays failed (2 of 2 attempts)` leaves it failed, with its file kept for the user to see: never a third attempt. A `Next:` line that starts `Next: write ui.json first` is not an attempt: go back to Phase 2, then check again.
+   - Exit 2: the command could not run. Show its message and stop.
+
+   Never edit `entries/overview.json` or `state.json` yourself, and never widen a passage or reword the overview to make it pass.
+
+   Then tell the user `Overview: <status>`, where `<status>` is `checked` or `failed`, in `$LANGUAGE`.
+
+The overview prompt:
+
+````text
+You write the system overview of a product handbook, for readers who do not read code, from the source of the project at $PROJECT_ROOT. It says what the system is, who uses it, which applications it is made of and which external systems it calls, as the code is today.
+
+Your scope. Read: the areas, features and roles of the map below; the head of the candidate list below; the application roots below (one line each: the directory, `.` being the project root, and its build manifests); each application's build manifests and its entry files; and the hits of searches over the whole project for external SDKs, HTTP clients, queue and mail clients and credential or endpoint configuration (for example `grep -rnIE --exclude-dir=.excavator --exclude-dir=node_modules --exclude-dir=.git --exclude-dir=vendor --exclude-dir=dist --exclude-dir=build '<pattern>' .`). Open at most 30 files that are not build manifests, in all; searches do not count. Never open a file to look at what a directory holds. Never read anything under `.excavator/`, never read a document that an Excavator skill generated (PRD.md, handbook.md, reports, findings, tours), and never read an explanatory document: no `.md`, `.mdx`, `.txt`, `.rst` or `.adoc` file and no docs folder. A document may be out of date, and the overview says what the code does today. Read code only; never run, build or change anything in the project.
+
+The areas of the map (id, name): <areas, one per line>
+The features of the map (id, area, how readers reach it, name): <features, one per line>
+The roles of the map: <roles, one label per line>
+The head of the candidate list (frameworks found, what was skipped): <the output of the jq line, as printed>
+The application roots (directory, build manifests): <the output of the applications command, as printed>
+
+Write in `$LANGUAGE`, in plain words for a reader who does not read code. Describe what the system does today. Give no advice, no opinion and no defect report: never write what the system should do or what is wrong with it.
+
+Write one JSON file with exactly these keys, and no others. `E` stands for an evidence list, a non-empty array of `{"file": "<path from the project root>", "passage": "<text copied from that file>"}`:
+
+```json
+{
+  "format": "excavator-product-handbook-overview/1",
+  "id": "overview",
+  "summary": [{"text": "<one plain sentence: what the system is and does>", "evidence": E}],
+  "audiences": [{"who": "<a kind of user: staff, customers, partners, other systems>", "does": "<what they do in the system>", "evidence": E}],
+  "applications": [{"dir": "<a directory that holds a build manifest: an application root above, or one below it; . is the project root>", "name": "<the application's name as readers know it>", "does": "<what it is responsible for>", "evidence": E}],
+  "integrations": [{"system": "<external system as the source writes its name>", "use": "<what the system uses it for>", "callers": ["<the dir of an application listed above>"], "evidence": E}],
+  "unknowns": [{"item": "<what the code does not settle>", "searched": "<what you searched>"}]
+}
+```
+
+Every key is always there: write an empty list when nothing applies (`"integrations": []`), never leave a key out and never add one. `summary` has one to three items; `applications` has at least one. `unknowns` has no evidence.
+
+**Applications.** Every application root listed above must be covered: list at least one application whose `dir` is that root or lies below it (a repository that holds several applications can list each of them, a directory below the root that holds its own build manifest). Two applications never name the same directory, and a `dir` must hold a build manifest: a directory with none is refused. Each application is named by what readers call it and says what it is responsible for.
+
+**External systems.** An integration is a system outside the project that the code calls or is called by: a payment or messaging service, a mail or storage service, an identity provider, another company's API. `system` is its name exactly as the passage writes it, so the name must occur in the item's own passages (a name that is not in the quoted lines is refused). `callers` lists the `dir` of each listed application that calls it, at least one. Cite the line that calls it (the client call, the SDK construction, the endpoint or credential setting), not a list of dependencies.
+
+**Evidence.** Every item carries its own evidence. A passage is text copied verbatim from the file, part of a line or whole lines; a script finds it by ignoring differences in white space and line breaks, and it must occur **exactly once** in that file. When it occurs more than once, quote a longer one. A file is a path from the project root, inside the project, never under `.excavator`, `.git`, `node_modules`, `vendor`, `dist` or `build`, and never a document (`.md`, `.mdx`, `.txt`, `.rst`, `.adoc`): cite the code that shows it. An item may cite several passages; each is checked. Cite for each item the passage that by itself proves it: an item the code shown does not support is removed from the handbook by two verifiers that see only the item and the code around its citations, and by two tracers that read the whole project. A statement about the system as a whole ("a tool for ...") is hard to prove from one line; cite the entry file or the route table that shows what it does, and keep the sentence to what that code shows. When no passage proves it, write it in `unknowns`.
+
+**Only what the quoted lines show.** Every detail you add is one more thing the verifiers must find in the code shown, and an item with one detail they cannot find is removed whole. So:
+- A `summary` sentence names only what its passages name. Cite the menu or the route table and name the parts it lists; never write "all", "every" or a list longer than the lines you quote. Two short sentences that each cite their own table are better than one long one.
+- An application's `does` says what its entry file or route table shows it serving; never "all the pages" or "every service" unless the quoted lines are the whole list.
+- An audience cites the check that lets that kind of user in (the role test, the guard, the login of that kind of account) together with the route or screen of what they do there; do not add what they can see or not see unless the quoted check shows it.
+- An integration's `use` says what the quoted call does (sends a message, uploads a file, asks for a completion), not who it is for or what triggers it, unless those are in the quoted lines too. Name the provider only as the passage writes it: a mail client that sends over SMTP is not proof of a particular mail service.
+- When one item needs a fact the passage does not show, leave that fact out of the item, or move it to `unknowns`.
+
+**Numbers and names.** Every number in your text must occur as a number in that item's own passages; write numbers as Arabic numerals; a count you made is not allowed. Every `system` must occur in that item's own passages.
+
+**No code in reader text.** Everything except `evidence`, `dir` and `callers` is read by a reader. It contains no identifier with an underscore, no camel-case or mixed-case word, no path that starts with `/`, no file name with a source extension (.go .ts .tsx .js .jsx .java .py .sql .json .yaml .yml), no name followed by `(`, and no name of a member directory of the project. Say it in plain words. The only exceptions are a `system` that passed its own check and the names the map lists.
+
+**Negative and absolute statements.** Before you write that something is never called, always done or the only one, search the whole project; when you cannot settle it, write it in `unknowns` with what you `searched`.
+
+Every narrative value of the file is written in $LANGUAGE: `summary` texts, `who`, `does`, `name`, `use`, and the unknowns. `system`, `dir` and `callers` stay as the source and the list above write them.
+
+**Check your file before you reply.** Run `node "$PLUGIN_ROOT/skills/excavator-product-handbook/handbook.mjs" try-overview "$OUT" --project "$PROJECT_ROOT"`. It runs the checks the orchestrator runs on your file and records nothing; when $LANGUAGE has its own script, it also refuses a narrative value that is written only in ASCII letters. Fix the file for every line it prints and run it again until it prints `overview: ok`, at most 5 runs. A passage reported as not in its file is most often a real line that sits in another file: search for it (`grep -rnF`) and cite the file it is in. An item whose source you cannot find leaves the overview, or goes into `unknowns`; never cut a passage down until it happens to match.
+
+Write only `$OUT/entries/overview.json`, and nothing else anywhere. Reply with one line: `overview: written`, and nothing else.
+````
+
+---
+
 ## Phase 4: Entries
 
 Write what you tell the user during this phase in `$LANGUAGE`, as **Language** in Phase 0 says.
@@ -311,11 +410,17 @@ Write what you tell the user during this phase in `$LANGUAGE`, as **Language** i
 
 A `checked` feature has an entry whose shape, citations, labels, numbers and words the scripts checked. That does not show that each item says what its passage does: a passage can be real and be read wrongly (a function name read as a role, a condition that stops two cases read as "every case"). Readers cannot read the code to find out, so each item is judged by a verifier that sees nothing of the map, the other features or the writer's reasons. A feature whose items both verifiers confirm (after an item either found contradicted was removed, and the one re-citing of the others, with what they still did not confirm removed) is `confirmed`: Phase 6 traces it, and only a `verified` feature is written into the handbook.
 
+The system overview of Phase 3b goes through this phase and Phase 6 as one more unit, with the id `overview` where a step says `<id>`: the same `slices`, `verdicts`, prompts and rules, with these differences. Where a step says `check-entry`, run `check-overview "$OUT" --project "$PROJECT_ROOT"` for it; where the rewrite prompt says `try-entry "$OUT" <id>`, the rewriter runs `try-overview "$OUT"`, and its rule about roles from the map does not apply to the overview. The overview's state is under the key `overview` in `state.json`. The units of this phase are the overview, when its state is `checked` (the recipe of step 1), and the features that step 1 lists; the overview takes part whatever `--features` says.
+
 1. List the features that need this phase, and for each whether it is at round 1 (`verify`) or waits for its one rewrite (`rewrite`):
    ```bash
    jq -r '.features | to_entries[] | select(.value.status == "checked") | [.key, (if .value.rewriting then "rewrite" else "verify" end)] | @tsv' "$OUT/state.json"
    ```
-   A feature that is `confirmed`, `verified`, `failed`, `planned` or `dispatched` is not in the list: `confirmed` goes to Phase 6, `verified` is done, the others have no entry that passed the checks. With no feature in the list, go to Phase 6.
+   Then the overview, which `state.json` keeps under its own key (nothing is printed when it is not `checked`):
+   ```bash
+   jq -r '(.overview // {status: "planned"}) | select(.status == "checked") | ["overview", (if .rewriting then "rewrite" else "verify" end)] | @tsv' "$OUT/state.json"
+   ```
+   A feature that is `confirmed`, `verified`, `failed`, `planned` or `dispatched` is not in the list, and the same holds for the overview: `confirmed` goes to Phase 6, `verified` is done, the others have no entry that passed the checks. With no unit in the lists, go to Phase 6.
    A resumed run continues each listed feature where its files show it stopped. At `verify`: when `$OUT/verdicts/round-1/<id>/` exists, run the `verdicts` command of step 3 for it first (it names the part-letters still to dispatch), and when that exits 1 start at step 2 (`slices` clears the older files of the feature); otherwise start at step 2. At `rewrite`: when `$OUT/verdicts/round-2/<id>/` exists, go to step 7 for it; when `$OUT/verify/round-2/<id>/` exists, go to step 6; otherwise go to step 4.
 2. Cut each `verify` feature into items, one command per feature (the commands of a batch in one Bash command, one after another):
    ```bash
@@ -378,7 +483,7 @@ Write only `$OUT/entries/<id>.json`, and nothing else anywhere. Reply with one l
    - `<id>: failed at verify: no item could be proved`: nothing of the entry was proved. It is `failed`; its entry file stays for the user to see.
    - Exit 1: nothing was recorded; handle it as in step 3 (dispatch the verifier once more with the printed lines, then leave the feature as it is).
 
-Then tell the user `Verify <id> <n>/<N>: <status>` for each feature, where `<n>` counts the features of this phase that are settled, `<N>` is the number of features step 1 listed and `<status>` is `confirmed`, `failed` or `not finished`, in `$LANGUAGE`.
+Then tell the user `Verify <id> <n>/<N>: <status>` for each unit, where `<n>` counts the units of this phase that are settled, `<N>` is the number of units step 1 listed (features and overview) and `<status>` is `confirmed`, `failed` or `not finished`, in `$LANGUAGE`.
 
 Never edit `entries/<id>.json`, a verify, verdict or rewrite file or `state.json` yourself. Statuses change only through the commands above.
 
@@ -388,13 +493,14 @@ Never edit `entries/<id>.json`, a verify, verdict or rewrite file or `state.json
 
 Write what you tell the user during this phase in `$LANGUAGE`, as **Language** in Phase 0 says.
 
-A `confirmed` feature has items that two verifiers, who saw only the lines each item cites, both confirmed. That does not show that nothing else in the project contradicts them: the condition may sit in a function the cited lines call, a cap may be applied before a sum, a position may come out one off when the code is run through by hand. A tracer reads the whole project, starting from the cited lines, and looks only for code that contradicts an item; two tracers do it for each part, independently, and an item either contradicts is removed and listed in the coverage section. Only a `verified` feature is written into the handbook.
+A `confirmed` feature has items that two verifiers, who saw only the lines each item cites, both confirmed. That does not show that nothing else in the project contradicts them: the condition may sit in a function the cited lines call, a cap may be applied before a sum, a position may come out one off when the code is run through by hand. A tracer reads the whole project, starting from the cited lines, and looks only for code that contradicts an item; two tracers do it for each part, independently, and an item either contradicts is removed and listed in the coverage section. Only a `verified` feature is written into the handbook. The system overview is traced like a feature, with the id `overview`: the same `trace`, `trace-verdicts`, prompts and rules.
 
-1. List the features that need this phase:
+1. List the features that need this phase, and the overview when it is `confirmed`:
    ```bash
    jq -r '.features | to_entries[] | select(.value.status == "confirmed") | .key' "$OUT/state.json"
+   jq -r '(.overview // {status: "planned"}) | select(.status == "confirmed") | "overview"' "$OUT/state.json"
    ```
-   With no feature in the list, go to Phase 7. A resumed run needs nothing else: a `confirmed` feature goes straight to this phase, wherever the earlier run stopped. When `$OUT/trace-verdicts/<id>/` exists, run the `trace-verdicts` command of step 3 for it first (it names the part-letters still to dispatch), and when that exits 1 start at step 2 (`trace` clears the older files of the feature); otherwise start at step 2.
+   With no unit in the lists, go to Phase 7. A resumed run needs nothing else: a `confirmed` feature goes straight to this phase, wherever the earlier run stopped. When `$OUT/trace-verdicts/<id>/` exists, run the `trace-verdicts` command of step 3 for it first (it names the part-letters still to dispatch), and when that exits 1 start at step 2 (`trace` clears the older files of the feature); otherwise start at step 2.
 2. Write the trace files, one command per feature (the commands of a batch in one Bash command, one after another):
    ```bash
    node "$PLUGIN_ROOT/skills/excavator-product-handbook/handbook.mjs" trace "$OUT" <id> --project "$PROJECT_ROOT"
@@ -417,7 +523,7 @@ Project root: <$PROJECT_ROOT as its value>
    - Exit 0 and `<id>: failed at trace: no item could be proved`: no item with a source was left. It is `failed`; its entry file stays for the user to see.
    - Exit 1: nothing was recorded. Each line says why, led by its part and tracer (`part <p><x>: ...`, `<x>` being `a` or `b`): that verdict file is missing or is not JSON, or does not hold exactly one verdict for each item of that part (a verdict for an item of another part counts as extra), or a verdict is not `holds` or `contradicted`, or a reason is empty or has more than one line, or a `contradicted` item has no position, or its position is a file outside the project or one that does not exist or a line that is not in the file, or its reason holds a code-shaped word or a file name or, in a language with its own script, no letter of it. Dispatch a tracer once more for each part-letter the `Next:` line names (a file of its own: `1b` is the second tracer of part 1), and for no other. For a missing file, the three lines as they were. For a rejected file, the three lines followed by this line and then each line printed for that part-letter except the `Next:` line (the lines that start with `part <p><x>:`, without that start): `Your previous verdict file was rejected for these reasons; write it again:`. Delete the old verdict file of a rejected part-letter first (`rm -f "<the verdict file>"`). Then run `trace-verdicts` again. When it still exits 1, leave the feature as it is, `confirmed`: it is listed in the handbook as verification not finished. Never write or change a verdict yourself, and never edit `state.json`.
 
-Then tell the user `Trace <id> <n>/<N>: <status>` for each feature, where `<n>` counts the features of this phase that are settled, `<N>` is the number of features step 1 listed and `<status>` is `verified`, `failed` or `not finished`, in `$LANGUAGE`.
+Then tell the user `Trace <id> <n>/<N>: <status>` for each unit, where `<n>` counts the units of this phase that are settled, `<N>` is the number of units step 1 listed (features and overview) and `<status>` is `verified`, `failed` or `not finished`, in `$LANGUAGE`.
 
 Never edit `entries/<id>.json`, a trace or verdict file or `state.json` yourself. Statuses change only through the commands above.
 
@@ -432,8 +538,8 @@ Write what you tell the user during this phase in `$LANGUAGE`, as **Language** i
    node "$PLUGIN_ROOT/skills/excavator-product-handbook/handbook.mjs" assemble "$OUT" --project "$PROJECT_ROOT"
    node "$PLUGIN_ROOT/skills/excavator-product-handbook/handbook.mjs" page "$OUT" --project "$PROJECT_ROOT"
    ```
-   Both check the map, every verified entry (a confirmed one too, which they do not write) and the fixed text again before they write anything. Only a `verified` feature has a section in the handbook. `assemble` writes `$OUT/handbook.md` (the areas and features, one section per verified feature, and a coverage section with the candidate counts, the unassigned candidates, the features reached by a link, the features without a verified entry, among them those whose verification or trace did not finish, and the items verification and the trace removed, each with its reason) and prints its path; between the feature sections and the coverage section it has two tables across features, every notification of the verified entries and one row for every scheduled-job candidate with the schedule its registration line gives, which the script writes from the verified entries and the source, so you write nothing for them. `page` writes `$OUT/handbook.html`, one page that opens from disk with a double click, with the same two tables on pages of their own, and prints its path; a failed `page` removes the page an earlier run left.
-   - When `assemble` exits 1, show the lines. A line that says `entries/<id>.json no longer passes check-entry` means the source changed after the entry was checked: run `check-entry` for that feature, follow its `Next:` line as in Phase 4, verify it again as Phase 5 says and trace it as Phase 6 says, and run `assemble` again. A line that says `entries/<id>.json changed after it was verified` (or `confirmed`) means the entry file is not the one the verifiers and the tracers judged: run `check-entry` for that feature (it becomes `checked` again), verify it again as Phase 5 says and trace it as Phase 6 says, and run `assemble` again. Any other line: stop.
+   Both check the map, every verified entry (a confirmed one too, which they do not write) and the fixed text again before they write anything. Only a `verified` feature has a section in the handbook. `assemble` writes `$OUT/handbook.md` (the system overview first, which the script writes from the verified overview and its own counts, or a line saying where the overview stopped and the table of areas when the overview is not verified; then the areas and features, one section per verified feature, and a coverage section with the candidate counts, the unassigned candidates, the features reached by a link, the features without a verified entry, among them those whose verification or trace did not finish, and the items verification and the trace removed, each with its reason, the overview's included) and prints its path; between the feature sections and the coverage section it has two tables across features, every notification of the verified entries and one row for every scheduled-job candidate with the schedule its registration line gives, which the script writes from the verified entries and the source, so you write nothing for them. `page` writes `$OUT/handbook.html`, one page that opens from disk with a double click, with the same two tables on pages of their own, and prints its path; a failed `page` removes the page an earlier run left.
+   - When `assemble` exits 1, show the lines. A line that says `entries/<id>.json no longer passes check-entry` (for the overview, `entries/overview.json no longer passes check-overview`) means the source changed after the entry was checked: run `check-entry` for that feature (`check-overview` for the overview), follow its `Next:` line as in Phase 4 (as in Phase 3b for the overview), verify it again as Phase 5 says and trace it as Phase 6 says, and run `assemble` again. A line that says `entries/<id>.json changed after it was verified` (or `confirmed`) means the entry file is not the one the verifiers and the tracers judged: run `check-entry` for that feature (it becomes `checked` again), verify it again as Phase 5 says and trace it as Phase 6 says, and run `assemble` again. Any other line: stop.
    - When `page` exits 2 because the page template does not exist, tell the user to run `pnpm -r build` at `$PLUGIN_ROOT` and then run this command again (a run resumes, so only this phase repeats). Any other non-zero exit: tell the user the lines it printed as they are; do not build or edit any page or product file yourself. Either way, go on to the reply: it prints `Page: not written`.
    - Then tell the user `Page: <status>`, where `<status>` is `written` or `failed`, in `$LANGUAGE`.
 2. Reply. The handbook stays in `$OUT`: write it into the project only when the user says so.
@@ -446,4 +552,4 @@ Then print the reply's lines with this command:
 node "$PLUGIN_ROOT/skills/excavator-product-handbook/handbook.mjs" reply "$OUT" --project "$PROJECT_ROOT"
 ```
 
-It prints, in this order: `Handbook:` and the path of `handbook.md`; `Page:` and the path of `handbook.html`, or `Page: not written`; `Features:` and the count of each status; `Failed:` and the ids, when a feature failed; `Candidates:` and the conservation line. When it prints `handbook.md: missing`, run `assemble` and then this command again; when it exits 1 with other lines, show the lines and stop. Reply with exactly the lines it prints and nothing else: the same lines in the same order, none added and none left out. Write nothing before, between or after them, no word on the checks, the handbook or what was done, and no summary or notes. A project file's rule on how to reply (what to lead with, a summary, verification results) does not apply to this reply. When `$LANGUAGE` is not English, translate the words of those lines; the paths, the numbers and the ids stay as they are.
+It prints, in this order: `Handbook:` and the path of `handbook.md`; `Page:` and the path of `handbook.html`, or `Page: not written`; `Features:` and the count of each status; `Overview:` and the status of the system overview (`planned` when it was never written); `Failed:` and the ids, when a feature or the overview failed; `Candidates:` and the conservation line. When it prints `handbook.md: missing`, run `assemble` and then this command again; when it exits 1 with other lines, show the lines and stop. Reply with exactly the lines it prints and nothing else: the same lines in the same order, none added and none left out. Write nothing before, between or after them, no word on the checks, the handbook or what was done, and no summary or notes. A project file's rule on how to reply (what to lead with, a summary, verification results) does not apply to this reply. When `$LANGUAGE` is not English, translate the words of those lines; the paths, the numbers and the ids stay as they are.

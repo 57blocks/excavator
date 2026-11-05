@@ -21,8 +21,6 @@
 import { join } from 'node:path';
 
 import { codeBlocks } from './code-slice.mjs';
-import { itemClaims } from './claims.mjs';
-import { entryItems } from './items.mjs';
 import { shiftedPath } from './shift-paths.mjs';
 
 export const VERIFY_DIR = 'verify';
@@ -43,10 +41,10 @@ export const verdictPartPath = (outDir, id, round, part, letter) => join(verdict
 export const snapshotPath = (outDir, id) => join(outDir, VERIFY_DIR, 'round-1', `${id}.entry.json`);
 export const rewriteFilePath = (outDir, id) => join(outDir, REWRITE_DIR, `${id}.json`);
 
-/** The items of `entry` that carry evidence, in entry order. `ui` is the run's fixed-text table; `files` a projectFiles reader. */
-export function verifyItems(entry, { ui, files }) {
-  const claims = itemClaims(entry, ui);
-  return entryItems(entry).filter((item) => item.evidence.length > 0).map((item) => {
+/** The items of `entry` (of the unit `unit`, unit.mjs) that carry evidence, in entry order. `ui` is the run's fixed-text table; `files` a projectFiles reader. */
+export function verifyItems(unit, entry, { ui, files }) {
+  const claims = unit.claims(entry, ui);
+  return unit.items(entry).filter((item) => item.evidence.length > 0).map((item) => {
     const claim = claims.get(item.path);
     if (claim === undefined) throw new Error(`no claim for item ${item.path}`);
     return {

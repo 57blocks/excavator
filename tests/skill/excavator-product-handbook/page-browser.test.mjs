@@ -12,7 +12,10 @@ import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 import { Browser, findChrome } from './chrome-cdp.mjs';
+import { writeFileSync } from 'node:fs';
+
 import { clone, judge, makeCheckedMapRun, repoRoot, traceFeature } from './helpers.mjs';
+import { NOTIFY_FILE, NOTIFY_LINE, goodOverview } from './overview-fixture.mjs';
 
 const TEMPLATE = join(repoRoot, 'packages/product-handbook-page/dist/product-handbook-page.html');
 const chrome = findChrome();
@@ -51,6 +54,14 @@ function pageRun() {
   if (judged.status !== 0) throw new Error(`verdicts round 1 failed:\n${judged.stdout}`);
   const traced = traceFeature(run);
   if (traced.status !== 0) throw new Error(`trace-verdicts failed:\n${traced.stdout}`);
+  // A verified system overview that lost its external system in round 1, so the overview page holds the wide application table and the coverage page a second removed-items group.
+  writeFileSync(join(run.root, NOTIFY_FILE), `${NOTIFY_LINE}\n`);
+  run.writeEntry('overview', goodOverview());
+  if (run.run('check-overview').status !== 0) throw new Error('the overview failed check-overview');
+  const judgedOverview = judge(run, 'overview', 1, (item) => (item.id === 'integrations[0]' ? { verdict: 'contradicted', reason: 'The code shown sends it to another channel.' } : 'verified'));
+  if (judgedOverview.status !== 0) throw new Error(`overview verdicts failed:\n${judgedOverview.stdout}`);
+  const tracedOverview = traceFeature(run, 'overview');
+  if (tracedOverview.status !== 0) throw new Error(`overview trace-verdicts failed:\n${tracedOverview.stdout}`);
   const made = run.run('page');
   if (made.status !== 0) throw new Error(`page failed (${made.status}):\n${made.stdout}${made.stderr}`);
   return run;
@@ -96,6 +107,12 @@ suite('page in a browser (O8)', () => {
         expect(await page.evaluate('document.title')).toBe('Overview - project - Product handbook');
         await fits(page, width, 'the overview');
         expect(await page.evaluate("document.querySelectorAll('.area-card').length")).toBe(2);
+        // The system overview: its purpose and the wide application table, which scrolls in its own box on a phone.
+        expect(await page.evaluate("document.querySelector('[data-part=\"system\"] #sys-purpose').parentElement.textContent")).toContain('Staff place and review orders for customers.');
+        expect(await page.evaluate("document.querySelectorAll('[data-part=\"system\"] #sys-applications ~ .table-scroll tbody tr').length")).toBe(1);
+        if (width < 500) {
+          expect(await page.evaluate("(() => { const box = document.querySelector('#sys-applications').parentElement.querySelector('.table-scroll'); return box.scrollWidth > box.clientWidth; })()")).toBe(true);
+        }
 
         await goTo(page, '#/feature/F1', '[data-view="feature"][data-feature="F1"]');
         expect(await page.evaluate('document.title')).toBe('Orders - project - Product handbook');
@@ -109,7 +126,7 @@ suite('page in a browser (O8)', () => {
         await goTo(page, '#/feature/F2', '[data-view="feature"][data-feature="F2"] .notice');
         await goTo(page, '#/coverage', '[data-view="coverage"]');
         await fits(page, width, 'the coverage page');
-        expect(await page.evaluate("document.querySelectorAll('[data-view=\"coverage\"] .removed-group').length")).toBe(1);
+        expect(await page.evaluate("document.querySelectorAll('[data-view=\"coverage\"] .removed-group').length")).toBe(2);
         expect(await page.evaluate("document.querySelector('[data-view=\"coverage\"] .callout').textContent")).toContain('Entrypoint candidates listed: 7.');
 
         // The two cross-cutting tables: reachable by hash, a row for each row of the data, no sideways page scroll.

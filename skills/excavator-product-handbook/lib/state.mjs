@@ -13,14 +13,15 @@
  * that showed the counter-evidence). Only the scripts change it:
  * check-map creates it; mark, check-entry, verdicts and trace-verdicts update it.
  * Every write is atomic; the commands that change it hold the state lock
- * (lock.mjs).
+ * (lock.mjs). The system overview (openspec change handbook-system-overview)
+ * has the same entry under the optional key `overview`; a state without that
+ * key reads as planned with no attempt (unit.mjs).
  */
 
 import { createHash } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { UsageError } from './errors.mjs';
 import { isObject, readJson, writeJson } from './json-file.mjs';
 
 export const STATE_FILE = 'state.json';
@@ -41,20 +42,28 @@ const removedValid = (list) => Array.isArray(list) && list.every((item) => isObj
   && (item.step === undefined || REMOVAL_STEPS.includes(item.step)) && (item.at === undefined || atValid(item.at))
   && (item.reasons === undefined || (Array.isArray(item.reasons) && item.reasons.every((reason) => typeof reason === 'string'))));
 
+/** The problem of one state entry (of a feature, or the overview) named `label`, or null. */
+function entryProblem(label, entry) {
+  if (!isObject(entry) || !STATUSES.includes(entry.status) || !Number.isInteger(entry.attempts) || entry.attempts < 0) {
+    return `${label} needs a status (${STATUSES.join(', ')}) and a non-negative integer attempts`;
+  }
+  if (entry.failure !== undefined && (!isObject(entry.failure) || !FAILURE_STEPS.includes(entry.failure.step) || !Array.isArray(entry.failure.reasons))) {
+    return `${label} has a failure that is not { step, reasons }`;
+  }
+  if (entry.removed !== undefined && !removedValid(entry.removed)) return `${label} has a removed list that is not [{ path, claim, verdict, reason, step?, reasons?, at? }]`;
+  if (entry.entryDigest !== undefined && typeof entry.entryDigest !== 'string') return `${label} has an entryDigest that is not a string`;
+  if (entry.rewriting !== undefined && entry.rewriting !== true) return `${label} has a rewriting that is not true`;
+  return null;
+}
+
 const stateProblems = (state) => {
   if (!isObject(state) || state.format !== STATE_FORMAT || !isObject(state.features)) return `format must be ${STATE_FORMAT} with a features object`;
   for (const [id, entry] of Object.entries(state.features)) {
-    if (!isObject(entry) || !STATUSES.includes(entry.status) || !Number.isInteger(entry.attempts) || entry.attempts < 0) {
-      return `feature ${id} needs a status (${STATUSES.join(', ')}) and a non-negative integer attempts`;
-    }
-    if (entry.failure !== undefined && (!isObject(entry.failure) || !FAILURE_STEPS.includes(entry.failure.step) || !Array.isArray(entry.failure.reasons))) {
-      return `feature ${id} has a failure that is not { step, reasons }`;
-    }
-    if (entry.removed !== undefined && !removedValid(entry.removed)) return `feature ${id} has a removed list that is not [{ path, claim, verdict, reason, step?, reasons?, at? }]`;
-    if (entry.entryDigest !== undefined && typeof entry.entryDigest !== 'string') return `feature ${id} has an entryDigest that is not a string`;
-    if (entry.rewriting !== undefined && entry.rewriting !== true) return `feature ${id} has a rewriting that is not true`;
+    const problem = entryProblem(`feature ${id}`, entry);
+    if (problem !== null) return problem;
   }
-  return null;
+  // The system overview's entry is optional: a state without it reads as planned (unit.mjs).
+  return state.overview === undefined ? null : entryProblem('overview', state.overview);
 };
 
 /** Read state.json: `{ ok: true, state }`, `{ ok: false, missing: true }` or `{ ok: false, problem }`. */
@@ -106,10 +115,3 @@ export const purposeRemoved = (feature) => (feature.removed ?? []).some((item) =
 
 /** The SHA-256 of an entry file's bytes: a confirmed or verified feature is invalidated when they change. */
 export const entryDigest = (path) => createHash('sha256').update(readFileSync(path)).digest('hex');
-
-/** The state entry of `id`, or a usage error naming the file. */
-export function featureState(state, id) {
-  const entry = state.features[id];
-  if (entry === undefined) throw new UsageError(`feature ${id} is not in ${STATE_FILE}; run check-map first`);
-  return entry;
-}

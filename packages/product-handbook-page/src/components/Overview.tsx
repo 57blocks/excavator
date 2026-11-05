@@ -2,8 +2,9 @@ import { featureHash } from '../lib/route';
 import { useText } from '../lib/text';
 import type { PageData } from '../lib/types';
 import { ReachBadge } from './ReachBadge';
+import { SystemOverview } from './SystemOverview';
 
-/** The first page: how much the handbook holds, how readers get to the features, and the areas with their features. */
+/** The first page: how much the handbook holds, the system overview, how readers get to the features, and the areas with their features. */
 export function Overview({ data }: { data: PageData }) {
   const t = useText();
   const written = data.features.filter((feature) => feature.status === 'verified').length;
@@ -19,6 +20,8 @@ export function Overview({ data }: { data: PageData }) {
         <li className="stat"><span className="stat-value">{data.features.length}</span><span className="stat-label">{t('page.overview.featuresStat')}</span></li>
         <li className="stat"><span className="stat-value">{written}</span><span className="stat-label">{t('page.overview.writtenStat')}</span></li>
       </ul>
+
+      <SystemOverview data={data} />
 
       <section aria-labelledby="overview-reach" className="block">
         <h2 id="overview-reach" className="block-title">{t('md.coverage.reachHeading')}</h2>

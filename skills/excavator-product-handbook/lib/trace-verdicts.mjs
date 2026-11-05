@@ -34,12 +34,12 @@
 
 import { join } from 'node:path';
 
-import { entryPath, entryProblems } from './entry-check.mjs';
+import { entryPath } from './entry-check.mjs';
 import { isObject, readJson, writeJson } from './json-file.mjs';
 import { removalRecords } from './removal-records.mjs';
 import { combineTraceVerdicts } from './combine-verdicts.mjs';
-import { entryItems } from './items.mjs';
 import { entryDigest, saveState } from './state.mjs';
+import { setUnitState } from './unit.mjs';
 import { TRACERS, confirmedPlan, tracePartFile, tracePartPath, traceVerdictPath } from './trace-plan.mjs';
 import { byPartLetter, reasonProblems, tagOf } from './verdicts.mjs';
 
@@ -189,27 +189,27 @@ export function traceVerdicts(outDir, id, root) {
 
   const verdictOf = new Map(checked.verdictList.map((entry) => [entry.id, entry]));
   const contradicted = plan.items.filter((item) => verdictOf.get(item.id).verdict === 'contradicted').map((item) => item.id);
-  const { state, current, entry } = plan;
+  const { state, current, entry, unit } = plan;
   const { attempts } = current;
   const earlier = current.removed ?? [];
   const reasonsOf = (path) => verdictOf.get(path).reasons;
   const atOf = (path) => verdictOf.get(path).at;
-  const { trimmed, records } = removalRecords(entry, contradicted, (path) => verdictOf.get(path), (path) => plan.claims.get(path), { step: 'trace', reasonsOf, atOf });
+  const { trimmed, records } = removalRecords(unit, entry, contradicted, (path) => verdictOf.get(path), (path) => plan.claims.get(path), { step: 'trace', reasonsOf, atOf });
   const removed = [...earlier, ...records];
 
   // Nothing left that carries evidence: nothing was proved. The entry file stays as written for the user to see.
-  if (!entryItems(trimmed).some((item) => item.evidence.length > 0)) {
+  if (!unit.items(trimmed).some((item) => item.evidence.length > 0)) {
     const text = 'no item could be proved';
-    state.features[id] = { status: 'failed', attempts, failure: { step: 'trace', reasons: [text] }, removed };
+    setUnitState(state, id, { status: 'failed', attempts, failure: { step: 'trace', reasons: [text] }, removed });
     saveState(outDir, state);
     return { status: 0, lines: [`${id}: failed at trace: no item could be proved`] };
   }
-  const problems = entryProblems(trimmed, id, plan.loaded, { settled: true });
+  const problems = unit.problems(trimmed, id, plan.loaded, { settled: true });
   if (problems.length > 0) throw new Error(`the trimmed entry of ${id} fails check-entry (a bug in trace-verdicts):\n${problems.join('\n')}`);
   if (records.length > 0) writeJson(join(outDir, entryPath(id)), trimmed);
   const next = { status: 'verified', attempts, entryDigest: entryDigest(join(outDir, entryPath(id))) };
   if (removed.length > 0) next.removed = removed;
-  state.features[id] = next;
+  setUnitState(state, id, next);
   saveState(outDir, state);
   return { status: 0, lines: [records.length > 0 ? `${id}: verified, ${plural(records.length, 'item')} removed` : `${id}: verified (${plural(plan.items.length, 'item')})`] };
 }

@@ -1,6 +1,7 @@
 /**
  * handbook.md (design D11, D14), rendered from data already checked: the map, the
- * verified entries, the state, the candidates and the fixed-text table. Pure
+ * verified entries, the state, the candidates, the fixed-text table and the
+ * system facts (system-facts.mjs), whose overview section comes first. Pure
  * and deterministic: the same input gives the same bytes, with no time, no
  * path and no citation in the text. Every fixed text comes from `ui`.
  */
@@ -103,6 +104,73 @@ function summaryBlock(summary, map, t) {
   return out;
 }
 
+/** A table cell for a list: its items joined, or the dash when there is none. */
+const listCell = (items) => (items.length === 0 ? NONE_ROW : items.join(', '));
+
+/** The area table of the overview: one row per area, from the map and the verified entries, so it does not depend on the overview being written. */
+function areaTable(system, t) {
+  return table(
+    [t('md.table.area'), t('md.table.features'), t('md.table.verified'), t('md.table.roles')],
+    system.areas.map((area) => [area.name, String(area.features), String(area.verified), listCell(area.roles)]),
+  );
+}
+
+function applicationRow(application, t) {
+  const history = application.history === null
+    ? Array(4).fill(t('md.overview.noHistory'))
+    : [application.history.first, application.history.last, String(application.history.commits), String(application.history.authors)];
+  return [
+    application.dir,
+    application.name ?? t('md.overview.notVerified'),
+    application.does ?? t('md.overview.notVerified'),
+    listCell(application.languages.map((entry) => fill(t('md.overview.languageItem'), { language: entry.language, files: entry.files }))),
+    listCell(application.frameworks.map((entry) => fill(t('md.overview.frameworkItem'), { framework: entry.framework, count: entry.candidates }))),
+    String(application.files),
+    String(application.lines),
+    ...history,
+  ];
+}
+
+/** The applications table: one row per application root with the script's facts, the name and responsibility from the verified overview or the fixed not-verified text. */
+function applicationsTable(system, t) {
+  if (system.applications.length === 0) return t('md.none');
+  return table(
+    [t('md.table.directory'), t('md.table.name'), t('md.table.does'), t('md.table.languages'), t('md.table.frameworks'), t('md.table.files'), t('md.table.lines'),
+      t('md.table.firstCommit'), t('md.table.lastCommit'), t('md.table.commits'), t('md.table.authors')],
+    system.applications.map((application) => applicationRow(application, t)),
+  );
+}
+
+/**
+ * The system overview (system-facts.mjs), the first section of the handbook.
+ * The count line, the applications table and the area table are the script's
+ * and do not depend on the overview; an overview that is not verified replaces
+ * only the sections a model writes with a line saying where it stopped.
+ */
+function overviewBlock(system, t) {
+  const out = [`## ${inline(t('md.overview.heading'))}`, ''];
+  const { overview, counts } = system;
+  if (overview === null) out.push(inline(fill(t('md.overview.notWritten'), { step: t(`md.status.${system.status}`) })), '');
+  out.push(fill(t('md.overview.counts'), { ...counts, verified: counts.featuresWithEntry }), '');
+  if (overview !== null) {
+    out.push(`### ${t('md.section.purpose')}`, '', overview.summary.length === 0 ? t('md.none') : overview.summary.map(inline).join(' '), '');
+    out.push(`### ${t('md.overview.audiencesHeading')}`, '');
+    out.push(overview.audiences.length === 0 ? t('md.none') : table([t('md.table.who'), t('md.table.does')], overview.audiences.map((entry) => [entry.who, entry.does])), '');
+  }
+  out.push(`### ${t('md.overview.applicationsHeading')}`, '', applicationsTable(system, t), '');
+  if (overview !== null) {
+    out.push(`### ${t('md.overview.integrationsHeading')}`, '');
+    out.push(overview.integrations.length === 0
+      ? t('md.none')
+      : table([t('md.table.system'), t('md.table.use'), t('md.table.callers')], overview.integrations.map((entry) => [entry.system, entry.use, entry.callers.join(', ')])), '');
+    out.push(`### ${t('md.section.unknowns')}`, '');
+    if (overview.unknowns.length === 0) out.push(t('md.none'), '');
+    else out.push(...overview.unknowns.map((u) => `- ${inline(fill(t('md.unknown.item'), { item: u.item, searched: u.searched }))}`), '');
+  }
+  out.push(`### ${t('md.overview.areasHeading')}`, '', areaTable(system, t), '');
+  return out;
+}
+
 function coverageBlock(map, state, candidates, t) {
   const areaName = new Map(map.areas.map((area) => [area.id, area.name]));
   const featureText = (key, feature) => `- ${inline(fill(t(key), { id: feature.id, name: feature.name, area: areaName.get(feature.area) }))}`;
@@ -145,14 +213,19 @@ function coverageBlock(map, state, candidates, t) {
 
   out.push(`### ${t('md.coverage.removedHeading')}`, '');
   const withRemoved = map.features.filter((feature) => (state.features[feature.id].removed ?? []).length > 0);
-  if (withRemoved.length === 0) out.push(t('md.none'), '');
+  const overviewRemoved = state.overview?.removed ?? [];
+  if (withRemoved.length === 0 && overviewRemoved.length === 0) out.push(t('md.none'), '');
+  const removedTable = (removed) => table(
+    [t('md.table.item'), t('md.table.result'), t('md.table.reason')],
+    removed.map((item) => [item.claim, t(`md.verdict.${item.verdict}`), item.reason === '' ? NONE_ROW : item.reason]),
+  );
+  if (overviewRemoved.length > 0) {
+    out.push(`#### ${inline(fill(t('md.coverage.removedOverview'), { name: t('md.overview.heading'), count: overviewRemoved.length }))}`, '', removedTable(overviewRemoved), '');
+  }
   for (const feature of withRemoved) {
     const removed = state.features[feature.id].removed;
     out.push(`#### ${inline(fill(t('md.coverage.removedFeature'), { id: feature.id, name: feature.name, area: areaName.get(feature.area), count: removed.length }))}`, '');
-    out.push(table(
-      [t('md.table.item'), t('md.table.result'), t('md.table.reason')],
-      removed.map((item) => [item.claim, t(`md.verdict.${item.verdict}`), item.reason === '' ? NONE_ROW : item.reason]),
-    ), '');
+    out.push(removedTable(removed), '');
   }
   return out;
 }
@@ -160,14 +233,14 @@ function coverageBlock(map, state, candidates, t) {
 /**
  * The handbook text. `entries` maps the id of each verified feature to its
  * entry (only verified features have one); `candidates` is candidates.json's items; `ui` is the strings table;
- * `summary` is the two cross-cutting tables (summary.mjs).
+ * `summary` is the two cross-cutting tables (summary.mjs); `system` the facts of the system overview (system-facts.mjs).
  */
-export function renderHandbook({ map, entries, state, candidates, ui, summary }) {
+export function renderHandbook({ map, entries, state, candidates, ui, summary, system }) {
   const t = (key) => {
     if (!Object.hasOwn(ui, key)) throw new Error(`the fixed-text table has no key ${key}`);
     return ui[key];
   };
-  const out = [`# ${inline(t('md.title'))}`, '', `## ${t('md.areas.heading')}`, ''];
+  const out = [`# ${inline(t('md.title'))}`, '', ...overviewBlock(system, t), `## ${t('md.areas.heading')}`, ''];
   for (const area of map.areas) {
     out.push(`- **${inline(area.name)}**`);
     const features = map.features.filter((feature) => feature.area === area.id);
