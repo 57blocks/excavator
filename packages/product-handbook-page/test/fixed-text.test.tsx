@@ -116,11 +116,12 @@ const emptySystem: System = {
 
 function dataFor(features: Feature[], unassigned: PageData['coverage']['unassigned'] = [], removed: PageData['coverage']['removed'] = [], summary: Summary = emptySummary, system: System = unwrittenSystem, removedOverview: PageData['coverage']['removedOverview'] = []): PageData {
   return {
-    format: 'excavator-product-handbook-page/3',
+    format: 'excavator-product-handbook-page/4',
     project: d('project'),
     language: d('language'),
     languageTag: 'xx',
     ui: { strings: marked },
+    views: ['product'],
     areas: [{ id: d('A1'), name: d('area one') }, { id: d('A2'), name: d('area two') }],
     features,
     coverage: {
@@ -133,6 +134,7 @@ function dataFor(features: Feature[], unassigned: PageData['coverage']['unassign
     },
     summary,
     system,
+    entities: { domains: [], roles: [], roleFeature: { roles: [], features: [], cells: [] } },
   };
 }
 

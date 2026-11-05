@@ -1,6 +1,10 @@
 /** The page data `handbook.mjs page` writes into the template (openspec change product-handbook-map, design D13). */
 
-export const PAGE_FORMAT = 'excavator-product-handbook-page/3';
+export const PAGE_FORMAT = 'excavator-product-handbook-page/4';
+
+/** The views a page can hold (openspec change handbook-entities-and-views): the product view and the technical view. */
+export const VIEWS = ['product', 'technical'] as const;
+export type View = (typeof VIEWS)[number];
 
 export const REACHES = ['menu', 'link', 'automated', 'interface', 'operator'] as const;
 export type Reach = (typeof REACHES)[number];
@@ -118,15 +122,59 @@ export interface System {
   areas: AreaRow[];
 }
 
+/** A domain (an area of the map): its features, and the purposes of those that were verified, in the words of their entries. */
+export interface Domain { id: string; name: string; features: string[]; purposes: { feature: string; text: string }[] }
+
+/** What the verified entry of a feature says a role can do; a role-feature pair the entries do not name has no cell. */
+export interface RoleFeatureMatrix { roles: string[]; features: string[]; cells: { role: string; feature: string; can: string[] }[] }
+
+/** The product part of the entities: no application, no citation path. */
+export interface Entities { domains: Domain[]; roles: { label: string }[]; roleFeature: RoleFeatureMatrix }
+
+/** Quoted passages of the domain's verified features in each application; `unattributed` counts those in no application. */
+export interface ApplicationDomainMatrix {
+  applications: string[];
+  domains: string[];
+  cells: { application: string; domain: string; citations: number }[];
+  unattributed: { domain: string; citations: number }[];
+}
+
+/**
+ * An external system of the verified overview with the two relations to applications, kept apart: `shown` are the callers
+ * the quoted code shows (checked), `named` the applications whose source files hold the name as written (the script's
+ * search; it does not say the application calls the system), `namedOutside` the files holding the name that no application holds.
+ */
+export interface IntegrationRelations { system: string; use: string; shown: string[]; named: { application: string; files: number }[]; namedOutside: number }
+
+/** The file and lines of each passage quoted for each item of a verified unit (a feature id, or `overview`); null lines when the passage could not be located. */
+export interface UnitLocations {
+  id: string;
+  items: { claim: string; citations: { file: string; startLine: number | null; endLine: number | null }[] }[];
+}
+
+/** The technical part: only in a page that has the technical view. Holds the only citation paths of the page data. */
+export interface Technical {
+  featureApplication: { feature: string; application: string; citations: number }[];
+  unattributed: { feature: string; citations: number }[];
+  applicationDomain: ApplicationDomainMatrix;
+  integrations: IntegrationRelations[];
+  jobs: { candidate: string; feature: string | null; application: string | null }[];
+  locations: UnitLocations[];
+}
+
 export interface PageData {
   format: typeof PAGE_FORMAT;
   project: string;
   language: string;
   languageTag: string;
   ui: { strings: Record<string, string> };
+  /** The selected views in the fixed order; the page has a switch only when there are two. */
+  views: View[];
   areas: Area[];
   features: Feature[];
   coverage: Coverage;
   summary: Summary;
   system: System;
+  entities: Entities;
+  technical?: Technical;
 }

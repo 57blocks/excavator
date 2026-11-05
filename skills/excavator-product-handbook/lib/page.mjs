@@ -19,6 +19,7 @@ import { UsageError } from './errors.mjs';
 import { writeTextAtomic } from './json-file.mjs';
 import { loadCheckedRun } from './load-run.mjs';
 import { buildPageData } from './page-data.mjs';
+import { DEFAULT_VIEWS } from './views.mjs';
 
 export const PAGE_FILE = 'handbook.html';
 /** Where the built template is, relative to the plugin root. */
@@ -80,7 +81,7 @@ export function fillPageTemplate(template, data) {
  * Either way no handbook.html is left.
  * @param {string} outDirArg
  * @param {string} root the real path of --project
- * @param {{ templatePath?: string, rootAliases?: string[] }} [options]
+ * @param {{ templatePath?: string, rootAliases?: string[], views?: string[] }} [options] `views`: the views the page has (views.mjs)
  */
 export function writePage(outDirArg, root, options = {}) {
   const outDir = resolve(outDirArg);
@@ -89,7 +90,7 @@ export function writePage(outDirArg, root, options = {}) {
   rmSync(target, { force: true });
   const run = loadCheckedRun(outDir, root);
   if (!run.ok) return { status: 1, lines: run.lines };
-  const data = buildPageData(run, [root, ...(options.rootAliases ?? [])]);
+  const data = buildPageData(run, [root, ...(options.rootAliases ?? [])], { views: options.views ?? DEFAULT_VIEWS });
   const templatePath = options.templatePath ?? process.env[TEMPLATE_VARIABLE] ?? defaultTemplatePath();
   writeTextAtomic(target, fillPageTemplate(readTemplate(templatePath), data));
   return { status: 0, lines: [target] };

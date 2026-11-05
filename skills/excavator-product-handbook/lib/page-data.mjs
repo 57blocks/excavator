@@ -9,13 +9,13 @@
 
 import { basename } from 'node:path';
 
+import { handbookModel } from './handbook-model.mjs';
 import { reachCounts } from './render.mjs';
 import { languageTag } from './language-tag.mjs';
 import { withoutRootPaths } from './root-paths.mjs';
-import { buildSummary } from './summary.mjs';
-import { buildSystem } from './system-facts.mjs';
+import { DEFAULT_VIEWS } from './views.mjs';
 
-export const PAGE_FORMAT = 'excavator-product-handbook-page/3';
+export const PAGE_FORMAT = 'excavator-product-handbook-page/4';
 
 /** An entry without its evidence, in the page's shape. */
 function pageEntry(entry) {
@@ -39,17 +39,24 @@ function pageEntry(entry) {
  * The page data of a loaded run (`loadCheckedRun`'s result). `roots` are the
  * paths of the project, each replaced by the project's directory name in every
  * string; the first is the real path, which the summary reads the source from.
+ * `views` are the views the page has (views.mjs). Everything outside the key
+ * `technical` is the product part and holds no citation path; `technical`, only
+ * there when the technical view is selected, holds the application relations,
+ * the external systems with both relations to applications, and the file and
+ * lines of each cited item.
  */
-export function buildPageData(run, roots) {
+export function buildPageData(run, roots, { views = DEFAULT_VIEWS } = {}) {
   const { map, entries, state, candidates, ui } = run;
   const project = basename(roots[0]);
   const kind = new Map(candidates.map((candidate) => [candidate.id, candidate.kind]));
+  const { summary, system, entities, locations } = handbookModel(run, roots[0], views);
   const data = {
     format: PAGE_FORMAT,
     project,
     language: map.language,
     languageTag: languageTag(map.language),
     ui: { strings: ui },
+    views: [...views],
     areas: map.areas.map((area) => ({ id: area.id, name: area.name })),
     features: map.features.map((feature) => ({
       id: feature.id,
@@ -73,8 +80,23 @@ export function buildPageData(run, roots) {
           items: state.features[feature.id].removed.map((item) => ({ claim: item.claim, verdict: item.verdict, reason: item.reason })),
         })),
     },
-    summary: buildSummary(run, roots[0]),
-    system: buildSystem(run, roots[0]),
+    summary,
+    system,
+    entities: {
+      domains: entities.domains,
+      roles: entities.roles,
+      roleFeature: entities.matrices.roleFeature,
+    },
   };
+  if (views.includes('technical')) {
+    data.technical = {
+      featureApplication: entities.relations.featureApplication,
+      unattributed: entities.relations.unattributed,
+      applicationDomain: entities.matrices.applicationDomain,
+      integrations: entities.integrations,
+      jobs: entities.jobs,
+      locations,
+    };
+  }
   return withoutRootPaths(data, roots, project);
 }
