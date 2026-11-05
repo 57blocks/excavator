@@ -145,7 +145,7 @@ For seven bounded local MCP tools, see [MCP setup](docs/mcp.md). Installing Skil
 /excavator:excavator-hotspots
 
 # Pack the products in .excavator/ into one HTML file, .excavator/explorer.html, and open it in the browser: no server, no network, nothing to install to open it
-# (the page is built by `pnpm build` from packages/explorer; --no-source leaves the source text out of the file, --out <path> writes it elsewhere)
+# (the page is built by `pnpm build` from packages/explorer; the page holds no source text unless --source is given, --out <path> writes it elsewhere)
 /excavator:excavator-view
 
 # List the functions a folder of documents describes, each tied to a checked quote and to the code that does it,

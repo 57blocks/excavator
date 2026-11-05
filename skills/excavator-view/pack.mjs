@@ -6,7 +6,10 @@
  * (openspec: changes/report-viewer, capability `report-viewer`, design D2-D3;
  * changes/viewer-explorer, design D4; changes/retire-view-html, design D1-D4).
  *
- *   node pack.mjs <projectRoot> [--no-source] [--out <path>]
+ *   node pack.mjs <projectRoot> [--source] [--no-source] [--out <path>]
+ *
+ * Source text goes into the page only under `--source`; without it (or with `--no-source`)
+ * every referenced file is not embedded on request (openspec: changes/view-source-opt-in).
  *
  * Writes `<projectRoot>/.excavator/explorer.html` (or `--out`, under any name) through
  * a temporary file and a rename, so a failure leaves an existing page untouched, and
@@ -48,7 +51,7 @@ import { assembleExplorerPage, EXPLORER_TEMPLATE_PATH } from './page-assembly.mj
 import { collectProducts } from './products.mjs';
 import { collectSources, summarizeSources } from './sources.mjs';
 
-const USAGE = 'Usage: node pack.mjs <projectRoot> [--no-source] [--out <path>]\n';
+const USAGE = 'Usage: node pack.mjs <projectRoot> [--source] [--no-source] [--out <path>]\n';
 const EXPLORER_MANIFEST_VERSION = 2;
 export const EXPLORER_FILE = 'explorer.html';
 
@@ -57,11 +60,13 @@ function pluginPath(relative) {
   return resolve(realpathSync(dirname(fileURLToPath(import.meta.url))), '..', '..', relative);
 }
 
+/** The command line embeds no source unless `--source` is given; the last of `--source` and `--no-source` wins. `packProject` keeps its own default for its callers. */
 function parseArgs(argv) {
-  const options = { root: null, noSource: false, out: null };
+  const options = { root: null, noSource: true, out: null };
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
     if (arg === '--no-source') options.noSource = true;
+    else if (arg === '--source') options.noSource = false;
     else if (arg === '--out') {
       options.out = argv[++i];
       if (!options.out) throw new Error(`--out needs a path\n${USAGE}`);

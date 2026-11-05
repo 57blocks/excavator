@@ -24,7 +24,7 @@ describe('SKILL.md', () => {
   it('has the frontmatter of the other skills', () => {
     const front = /^---\nname: excavator-view\ndescription: (.+)\nargument-hint: "(.+)"\n---\n/.exec(skill);
     expect(front).not.toBeNull();
-    expect(front[2]).toBe('[project-path] [--no-source] [--out <path>]');
+    expect(front[2]).toBe('[project-path] [--source] [--no-source] [--out <path>]');
   });
 
   it('resolves the plugin root the way the other skills do', () => {
@@ -35,6 +35,7 @@ describe('SKILL.md', () => {
 
   it('runs the packer in the foreground with the options the user gave', () => {
     expect(skill).toContain('node "$PLUGIN_ROOT/skills/excavator-view/pack.mjs" "$PROJECT_ROOT"');
+    expect(skill).toMatch(/--source/);
     expect(skill).toMatch(/--no-source/);
     expect(skill).toMatch(/--out <path>/);
     expect(skill).toMatch(/Run the packer in the foreground/);
@@ -174,7 +175,7 @@ describe('the reply lines', () => {
     expect(replyLines('/x/p.html', 1, manifest)[3]).toBe('Products: knowledge graph unreadable; semantics not shown; domain graph not run; unused code not run; doc map not run; hotspots not run; tour not shown');
   });
 
-  it('say not embedded under --no-source', () => {
+  it('say not embedded when the source was not asked for', () => {
     expect(replyLines('/x/p.html', 1, { issues: null, products: [], source: { embedded: false, counts: { embedded: 0 } } })[4]).toBe('Source: not embedded');
   });
 
