@@ -15,6 +15,6 @@
 
 ## 3. 验收
 
-- [ ] 3.1 变异检查（design O2 两条），结果写进 `acceptance.md`
-- [ ] 3.2 O3 两次真实运行，结果写进 `acceptance.md`，没过的线照实写
-- [ ] 3.3 受影响测试、`check-refs`、`openspec validate --all --strict` 本地通过；全量门在分离检出里跑（O4）
+- [x] 3.1 变异检查（design O2 两条），结果写进 `acceptance.md`
+- [x] 3.2 O3 两次真实运行，结果写进 `acceptance.md`，没过的线照实写
+- [x] 3.3 受影响测试、`check-refs`、`openspec validate --all --strict` 本地通过；全量门在分离检出里跑（O4）
