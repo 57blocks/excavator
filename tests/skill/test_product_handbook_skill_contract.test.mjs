@@ -1046,6 +1046,26 @@ describe('the handbook tracer agent', () => {
     expect(text).toContain('For a claim that names where a value comes from, the `holds` reason names the line where each input of the value is read.');
   });
 
+  it('builds its example from the claim\'s own words and reads the claim by its words, not by the code or by other code', () => {
+    expect(text).toContain('When the claim states a condition (when, if, every, each, only, unless, as long as), read the condition as a reader of the handbook reads its words, not as the code tests it.');
+    expect(text).toContain('Build your example from the claim\'s own words');
+    expect(text).toContain('An example built from the code\'s own condition proves nothing');
+    expect(text).toContain('Read the claim by its own words. Narrowing or widening a claim until it matches the code is not tracing it');
+    expect(text).toContain('even when another reading of the claim would match the code');
+    expect(text).toContain('The words keep the meaning the product gives them: a value the product itself defines and shows');
+    expect(text).toContain('test what it spells out: the short name does not narrow it');
+    expect(text).toContain('Reading by the words is not adding words the claim does not say');
+    expect(text).toContain('Code that agrees with other code is not evidence for the claim.');
+    expect(text).toContain('For a claim that states a condition, the `holds` reason names the case you built from the claim\'s words and what the code returned for it.');
+  });
+
+  it('checks a page or action claim against the server handler its request reaches, and names that check in a holds reason', () => {
+    expect(text).toContain('find the handler that the page\'s or the action\'s request reaches on the server, read who it lets through and who it refuses, and compare them with the people or requests the claim covers');
+    expect(text).toContain('A page can only do something for the people the server lets through.');
+    expect(text).toContain('is `contradicted` when the server refuses some of them');
+    expect(text).toContain('For a claim that a page or an action does something, the `holds` reason names the server handler its request reaches and the check in it that lets this person or request through, or says that it has none.');
+  });
+
   it('asks for at positions and a one-line reason written for readers, and none for a holds', () => {
     expect(text).toContain('`at` lists one or more `{ "file", "line" }`');
     expect(text).toContain('`reason` is one line of at most about 200 characters, in the language of the claim');
