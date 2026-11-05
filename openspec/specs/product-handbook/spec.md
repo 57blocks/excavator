@@ -71,11 +71,19 @@
 
 ### Requirement: 逐项核对
 
-条目通过脚本检查后，每个带出处的项 SHALL 由一个只看到该项主张与所引源码前后文的核对子代理给出 `verified`、`unverified` 或 `contradicted` 之一的判词。脚本 SHALL 检查每一项恰好有一个判词，不成立时什么都不记录。第一轮不是 `verified` 的项 SHALL 改写一次并再核对一次，改写 SHALL NOT 改动没被列出的项；第二轮仍不是 `verified` 的项 SHALL 从条目里删去，删去的项与理由 SHALL 记录下来并在手册的覆盖一节列出。核对者定案后，留下的每一项 SHALL 再由两个互不相见、都能读整个项目的追查子代理各自找反证，各写自己的判词文件，判为 `holds` 或 `contradicted`；`contradicted` SHALL 带项目内的文件与行号，脚本 SHALL 拒绝指向项目外或超出文件行数的位置。脚本 SHALL 对每个判词文件单独检查每一项恰好一个判词与上述位置，任一文件缺失或被拒时什么都不记录，并只点名要重派的那几个判词文件。两名追查者中任一名判 `contradicted` 的项 SHALL 删去并同样记录，记录 SHALL 带每一名判 `contradicted` 的追查者的理由与全部位置。只有追查也完成的功能 SHALL 进入手册正文。
+条目通过脚本检查后，每个带出处的项 SHALL 由一个只看到该项主张与所引源码前后文的核对子代理给出 `verified`、`unverified` 或 `contradicted` 之一的判词。脚本 SHALL 检查每一项恰好有一个判词，不成立时什么都不记录。第一轮两名核对者中任一名判 `contradicted` 的项 SHALL 当即从条目里删去，SHALL NOT 改写。其余没有两名都判 `verified` 的项 SHALL 改写一次并再核对一次；改写 SHALL 只换或加这些项的引文，SHALL NOT 改动它们的主张，也 SHALL NOT 改动没被列出的项。第二轮仍不是 `verified` 的项 SHALL 从条目里删去。两轮删去的项 SHALL 连同主张、判词与理由记录下来，并在手册的覆盖一节列出。核对者定案后，留下的每一项 SHALL 再由两个互不相见、都能读整个项目的追查子代理各自找反证，各写自己的判词文件，判为 `holds` 或 `contradicted`；`contradicted` SHALL 带项目内的文件与行号，脚本 SHALL 拒绝指向项目外或超出文件行数的位置。脚本 SHALL 对每个判词文件单独检查每一项恰好一个判词与上述位置，任一文件缺失或被拒时什么都不记录，并只点名要重派的那几个判词文件。两名追查者中任一名判 `contradicted` 的项 SHALL 删去并同样记录，记录 SHALL 带每一名判 `contradicted` 的追查者的理由与全部位置。只有追查也完成的功能 SHALL 进入手册正文。
 
 #### Scenario: 与代码矛盾的项
-- **WHEN** 一项主张说某角色能取消，而所引源码里的权限判断只放行另一个角色，核对者判为 `contradicted`，改写后仍判为 `contradicted`
-- **THEN** 该项不出现在手册正文里，覆盖一节列出它被删去及理由
+- **WHEN** 一项主张说某角色能取消，而所引源码里的权限判断只放行另一个角色，第一轮一名核对者判为 `contradicted`
+- **THEN** `verdicts --round 1` 当即删去该项，它不进改写文件，也不出现在手册正文里，覆盖一节列出它被删去及理由
+
+#### Scenario: 第一轮只有矛盾的项
+- **WHEN** 第一轮没有两名都确认的项全是 `contradicted`
+- **THEN** `verdicts --round 1` 删去它们并记录，不写改写文件，功能直接 `confirmed`；删完后没有一项留下证据时，功能 `failed`
+
+#### Scenario: 改写改了主张
+- **WHEN** 改写文件列出的一项，第二轮条目里它的主张与第一轮不同，只是换了引文的项不算
+- **THEN** `slices --round 2` 拒绝，打印该项的位置，并说明只能换引文
 
 #### Scenario: 反证在没给出的代码里
 - **WHEN** 两名核对者都确认了一项，一名追查者读到被调用函数的函数体，发现它与主张不符，给出该函数所在的文件与行号
