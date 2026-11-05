@@ -10,6 +10,10 @@
  *   check-map <out> --project <root>
  *       Check <out>/map.json: shape, candidate conservation, reach and labels,
  *       roles, seed files, citations, values, banned words; create state.json.
+ *   check-domains <out> --project <root>
+ *       Check <out>/domains.json, the business domains the map's features are
+ *       grouped into: shape, ids D1, D2, ..., no empty domain, every map feature
+ *       in exactly one domain, reader text and narrative language of the names.
  *   select <out> --features <list> --project <root>
  *       Resolve a --features list of ids or feature names to ids against the
  *       checked map; exit 1 and list every id and name when an item does not
@@ -80,6 +84,7 @@ import { applicationLines, scanProject } from './lib/applications.mjs';
 import { candidatesOutput } from './lib/candidates.mjs';
 import { checkEntry, tryEntry } from './lib/entry-check.mjs';
 import { checkMap } from './lib/check-map.mjs';
+import { checkDomains } from './lib/domains-check.mjs';
 import { UsageError } from './lib/errors.mjs';
 import { withStateLock } from './lib/lock.mjs';
 import { mark } from './lib/mark.mjs';
@@ -110,6 +115,15 @@ Commands:
       hold a letter of it (needs a checked <out>/ui.json when the language is
       not English). Creates <out>/state.json (every feature planned) when the
       map passes.
+  check-domains <out> --project <root>
+      Check <out>/domains.json against the checked map and the project: the
+      shape, the language (the map's), ids D1, D2, ... in order without a gap, no
+      domain without features, every feature of the map in exactly one domain
+      (each feature that is missing, listed twice or not in the map is named),
+      and for each domain name the same checks an area name gets: its citations
+      and label when it carries evidence, banned words and, in a language with
+      its own script, a letter of it. Exit 1 prints every problem, one per line.
+      Changes no file. A missing domains.json exits 2.
   select <out> --features <list> --project <root>
       Resolve the --features list (comma-separated feature ids or feature names;
       a name is equal ignoring case and surrounding spaces) to feature ids
@@ -307,6 +321,11 @@ const COMMANDS = {
     if (positionals.length !== 1) throw new UsageError('check-map takes exactly one <out> directory');
     const root = projectRootOption(options.project);
     return withStateLock(positionals[0], () => report(checkMap(positionals[0], root)));
+  },
+  'check-domains'(args) {
+    const { positionals, options } = parseArgs(args, ['project']);
+    if (positionals.length !== 1) throw new UsageError('check-domains takes exactly one <out> directory');
+    return report(checkDomains(positionals[0], projectRootOption(options.project)));
   },
   select(args) {
     const { positionals, options } = parseArgs(args, ['project', 'features']);

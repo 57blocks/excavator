@@ -2,9 +2,9 @@
 
 提交：`feat(product-handbook): business domains as a checked layer over the map`
 
-- [ ] 1.1 `domains.json` 的形状、`check-domains` 命令（守恒、编号、空领域、读者文字与叙述语言、领域名引文）
-- [ ] 1.2 续跑：通过检查则保留；地图换了而对不上时报出
-- [ ] 1.3 夹具测试（design O1 的 `check-domains` 与续跑各条）
+- [x] 1.1 `domains.json` 的形状、`check-domains` 命令（守恒、编号、空领域、读者文字与叙述语言、领域名引文）
+- [x] 1.2 续跑：通过检查则保留；地图换了而对不上时报出
+- [x] 1.3 夹具测试（design O1 的 `check-domains` 与续跑各条）
 
 ## 2. 实体与输出取领域
 
