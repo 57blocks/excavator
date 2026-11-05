@@ -32,8 +32,8 @@
 
 提交：`docs(product-handbook): the skill takes --views and passes it to assemble, page and reply`
 
-- [ ] 4.1 第 0 阶段解析 `--views`，第 7 阶段把 `$VIEWS` 交给 `assemble`、`page`、`reply`；参数说明与回复格式更新
-- [ ] 4.2 合约测试（O2）
+- [x] 4.1 第 0 阶段解析 `--views`，第 7 阶段把 `$VIEWS` 交给 `assemble`、`page`、`reply`；参数说明与回复格式更新
+- [x] 4.2 合约测试（O2）
 
 ## 5. 验收
 
