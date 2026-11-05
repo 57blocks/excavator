@@ -1,3 +1,4 @@
+import { useLinks, useView } from '../lib/links';
 import { useText } from '../lib/text';
 import type { ApplicationFacts, PageData } from '../lib/types';
 import { Cell, TableScroll } from './Tables';
@@ -7,12 +8,14 @@ const listText = (items: string[]): string | undefined => (items.length === 0 ? 
 
 function ApplicationRow({ application }: { application: ApplicationFacts }) {
   const t = useText();
+  const nav = useLinks();
+  const view = useView();
   const { history } = application;
   const none = t('md.overview.noHistory');
   const unverified = t('md.overview.notVerified');
   return (
     <tr>
-      <Cell row>{application.dir}</Cell>
+      <Cell row>{view === 'technical' ? <a href={nav.application(application.dir)}>{application.dir}</a> : application.dir}</Cell>
       <Cell>{application.name ?? unverified}</Cell>
       <Cell>{application.does ?? unverified}</Cell>
       <Cell>{listText(application.languages.map((entry) => t('md.overview.languageItem', { language: entry.language, files: entry.files })))}</Cell>
@@ -38,6 +41,8 @@ function ApplicationRow({ application }: { application: ApplicationFacts }) {
  */
 export function SystemOverview({ data }: { data: PageData }) {
   const t = useText();
+  const nav = useLinks();
+  const view = useView();
   const { system } = data;
   const { overview, counts } = system;
   return (
@@ -90,7 +95,7 @@ export function SystemOverview({ data }: { data: PageData }) {
             {overview.integrations.length === 0 ? <p className="muted">{t('md.none')}</p> : (
               <TableScroll label={t('md.overview.integrationsHeading')} wide>
                 <thead><tr><th scope="col">{t('md.table.system')}</th><th scope="col">{t('md.table.use')}</th><th scope="col">{t('md.table.callers')}</th></tr></thead>
-                <tbody>{overview.integrations.map((entry, at) => <tr key={at}><Cell row>{entry.system}</Cell><Cell>{entry.use}</Cell><Cell>{entry.callers.join(', ')}</Cell></tr>)}</tbody>
+                <tbody>{overview.integrations.map((entry, at) => <tr key={at}><Cell row>{view === 'technical' ? <a href={nav.system(entry.system)}>{entry.system}</a> : entry.system}</Cell><Cell>{entry.use}</Cell><Cell>{entry.callers.join(', ')}</Cell></tr>)}</tbody>
               </TableScroll>
             )}
           </section>

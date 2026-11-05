@@ -61,7 +61,7 @@ const HANDBOOK = '"$PLUGIN_ROOT/skills/excavator-product-handbook/handbook.mjs"'
 describe('excavator-product-handbook skill: structure', () => {
   it('names the skill after its directory and lists the options in the argument hint', () => {
     expect(skill.startsWith('---\nname: excavator-product-handbook\n')).toBe(true);
-    expect(skill).toContain('argument-hint: "[path] [--language <lang>] [--out <dir>] [--features <list>] [--concurrency <n>] [--fresh]"');
+    expect(skill).toContain('argument-hint: "[path] [--language <lang>] [--out <dir>] [--features <list>] [--views <list>] [--concurrency <n>] [--fresh]"');
   });
 
   it('has the description in plain words: what it produces, and that it gives no advice', () => {
@@ -80,7 +80,7 @@ describe('excavator-product-handbook skill: structure', () => {
 
   it('describes every option of the argument hint in the Options section', () => {
     const options = flat(skill.split(/^## Options$/m)[1].split(/^## Sources$/m)[0]);
-    for (const option of ['--language <lang>', '--out <dir>', '--features <list>', '--concurrency <n>', '--fresh']) expect(options, option).toContain(`\`${option}\``);
+    for (const option of ['--language <lang>', '--out <dir>', '--features <list>', '--views <list>', '--concurrency <n>', '--fresh']) expect(options, option).toContain(`\`${option}\``);
     expect(options).toContain('(default: `<project>/.excavator/product-handbook`)');
     expect(options).toContain('(default: 3)');
     expect(options).toContain('English when it is not given');
@@ -589,7 +589,7 @@ describe('excavator-product-handbook skill: assemble, page and the closing reply
 
   it('prints the final reply with the last command of the skill, not composed by the model', () => {
     const last = allBash.at(-1);
-    expect(last.trim()).toBe(`node ${HANDBOOK} reply "$OUT" --project "$PROJECT_ROOT"`);
+    expect(last.trim()).toBe(`node ${HANDBOOK} reply "$OUT" --project "$PROJECT_ROOT" --views "$VIEWS"`);
     expect(skill.lastIndexOf(`${HANDBOOK} reply`)).toBeGreaterThan(skill.lastIndexOf(`${HANDBOOK} assemble`));
     const after = flat(skill.slice(skill.lastIndexOf(`${HANDBOOK} reply`)));
     expect(after).toContain('Reply with exactly the lines it prints and nothing else');
@@ -599,7 +599,7 @@ describe('excavator-product-handbook skill: assemble, page and the closing reply
   });
 
   it('lists the lines the reply holds: the paths, the counts by status and the conservation line', () => {
-    expect(p).toContain('`Handbook:` and the path of `handbook.md`');
+    expect(p).toContain('`Handbook:` and the path of `handbook.md`, when `$VIEWS` has the product view; `Technical handbook:` and the path of `handbook-technical.md`, when it has the technical view');
     expect(p).toContain('`Page:` and the path of `handbook.html`, or `Page: not written`');
     expect(p).toContain('`Features:` and the count of each status');
     expect(p).toContain('`Overview:` and the status of the system overview');
@@ -622,6 +622,65 @@ describe('excavator-product-handbook skill: assemble, page and the closing reply
 
   it('keeps the handbook in $OUT and writes nothing into the project unless the user says so', () => {
     expect(p).toContain('The handbook stays in `$OUT`: write it into the project only when the user says so.');
+  });
+});
+
+describe('excavator-product-handbook skill: --views (openspec change handbook-entities-and-views)', () => {
+  const commandLines = (name) => allBash.flatMap((block) => block.split('\n')).map((line) => line.trim()).filter((line) => line.startsWith(`node ${HANDBOOK} ${name} `));
+
+  it('describes --views in Options: the two views, the default, that it decides only what is written and is not recorded', () => {
+    const options = flat(skill.split(/^## Options$/m)[1].split(/^## Sources$/m)[0]);
+    expect(options).toContain('`--views <list>` - which views of the handbook are written: `product`, `technical` or both separated by a comma (default: `product`).');
+    expect(options).toContain('The option only decides what `assemble`, `page` and `reply` write; it changes no phase and is not recorded, so running again with other views only repeats Phase 7.');
+    expect(options).toContain('never shows a file path');
+    expect(options).toContain('the file and lines of the passages quoted for it');
+  });
+
+  it('parses --views in Phase 0 into $VIEWS, product when it is not given, and stops on a value that is not a view', () => {
+    const p = phase(0);
+    expect(p).toContain('`--views` (`$VIEWS`: the value, or `product` when it is not given; when it holds anything but `product` and `technical`, separated by a comma, tell the user those two values and stop)');
+    const [resolveBlock] = allBash.filter((block) => block.includes('PLUGIN_ROOT=""'));
+    expect(resolveBlock).toContain('VIEWS="product"   # or the --views value');
+    expect(resolveBlock).toContain('echo "VIEWS=$VIEWS"');
+    expect(p).toContain('Write `$VIEWS` the same way.');
+  });
+
+  it('hands $VIEWS to assemble, page and reply, each, and to no other command', () => {
+    for (const name of ['assemble', 'page', 'reply']) {
+      const lines = commandLines(name);
+      expect(lines.length, name).toBe(1);
+      expect(lines[0], name).toContain('--views "$VIEWS"');
+    }
+    const others = allBash.flatMap((block) => block.split('\n')).filter((line) => line.includes(`node ${HANDBOOK}`) && !/ (assemble|page|reply) /.test(line));
+    for (const line of others) expect(line, line).not.toContain('--views');
+  });
+
+  it('puts them in Phase 7, where assemble writes each view\'s file, removes the other one\'s, and the script writes the entity sections', () => {
+    const p = phase(7);
+    expect(p.indexOf(`${HANDBOOK} assemble`)).toBeGreaterThan(-1);
+    expect(p).toContain('`assemble` writes `$OUT/handbook.md` for the product view and `$OUT/handbook-technical.md` for the technical view');
+    expect(p).toContain('removes the file of a view that `$VIEWS` does not have');
+    expect(p).toContain('the entity sections, all computed by the script from the verified entries and the source, so you write nothing for them either');
+    expect(p).toContain('a switch in its top bar that stays on the same entity');
+    expect(p).toContain('the callers the quoted code shows and, kept apart, the applications whose source contains the system\'s name');
+  });
+
+  it('the commands the skill runs for it exist: an invalid --views is refused with exit 1 and the two values', () => {
+    const run = makeCheckedMapRun();
+    try {
+      const refused = run.run('assemble', '--views', 'design');
+      expect(refused.status).toBe(1);
+      expect(refused.stdout).toContain('product');
+      expect(refused.stdout).toContain('technical');
+    } finally {
+      run.cleanup();
+    }
+  });
+
+  it('adds no model step: the entities and the technical view come from the script', () => {
+    const p = phase(7);
+    expect(p).not.toMatch(/write the entity sections yourself/);
+    expect(flat(skill.split(/^## How the work is split$/m)[1].split(/^All files of a run/m)[0])).toContain('computes the entities and the relations between them (domains, roles, applications, external systems) from the verified entries and the source');
   });
 });
 

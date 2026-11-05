@@ -53,12 +53,13 @@
  *       Check <out>/ui.json against the shipped English table, or copy that
  *       table there when the run's language is English. The fixed text is
  *       written before the map: the language is --language, else map.json's.
- *   assemble <out> --project <root>
- *       Write <out>/handbook.md, byte for byte the same from the same input.
- *   reply <out> --project <root>
+ *   assemble <out> --project <root> [--views <list>]
+ *       Write <out>/handbook.md (product view) and/or <out>/handbook-technical.md
+ *       (technical view), byte for byte the same from the same input.
+ *   reply <out> --project <root> [--views <list>]
  *       Print the lines the run ends with (paths, feature counts by status,
  *       candidate conservation), computed from the checked run.
- *   page <out> --project <root>
+ *   page <out> --project <root> [--views <list>]
  *       Write <out>/handbook.html from the same checked run: one file that
  *       opens from disk, no network, the same bytes from the same input.
  *
@@ -92,6 +93,7 @@ import { traceVerdicts } from './lib/trace-verdicts.mjs';
 import { checkUi } from './lib/ui.mjs';
 import { OVERVIEW_ID } from './lib/overview-shape.mjs';
 import { ROUNDS } from './lib/verify-plan.mjs';
+import { parseViews } from './lib/views.mjs';
 import { verdicts } from './lib/verdicts.mjs';
 
 const USAGE = `Usage: node handbook.mjs <command> [arguments]
@@ -209,28 +211,44 @@ Commands:
       a non-empty string for each, the same {placeholders} in each. The run's
       language is --language (the fixed text is written before the map), or
       map.json's language when the option is not given.
-  assemble <out> --project <root>
-      Write <out>/handbook.md from the map and the checked entries; its first
+  assemble <out> --project <root> [--views <list>]
+      Write the handbook of each selected view from the map and the checked
+      entries: <out>/handbook.md for the product view, <out>/handbook-technical.md
+      for the technical view; the file of a view that is not selected is removed.
+      --views is product, technical or both separated by a comma (default
+      product; any other value exits 1 and prints the two). Each file's first
       section is the system overview (the verified overview with the facts the
       script computes: languages, frameworks, files, lines and git history of
       each application, the counts of the system, the roles of each area), or
-      a line saying where the overview stopped and the area table. Checks the
-      map, every checked entry and the fixed-text table again first, and then
-      writes nothing if any of them fails. Prints the path.
-  page <out> --project <root>
+      a line saying where the overview stopped and the area table. After the
+      features come the two cross-cutting tables, the entity sections (the
+      domains, the roles and the roles-by-feature matrix, computed from verified
+      entries only) and the coverage section. The technical file adds the
+      applications (features by where their quoted passages fall), the external
+      systems (the callers the quoted code shows, and the applications whose
+      source contains the name, kept apart), the applications-by-domain matrix
+      and, for each item, the file and lines of its quoted passages. The product
+      file holds no citation path. Checks the map, every checked entry and the
+      fixed-text table again first, and then writes nothing if any of them
+      fails. Prints the paths.
+  page <out> --project <root> [--views <list>]
       Write <out>/handbook.html: the same run, checked the same way, as one
-      self-contained page (navigation by area, a page per feature, a coverage
-      page; light and dark; every fixed text from <out>/ui.json). Removes an
-      earlier handbook.html first, so a refused run leaves none. Needs the
-      built template: run \`pnpm -r build\` at the plugin root. Prints the path.
+      self-contained page (navigation by area in the product view, by application
+      in the technical view, a switch between them when both are selected, a page
+      per feature and per entity, the matrices, a coverage page; light and dark;
+      every fixed text from <out>/ui.json). Removes an earlier handbook.html
+      first, so a refused run leaves none. Needs the built template: run
+      \`pnpm -r build\` at the plugin root. Prints the path.
 
-  reply <out> --project <root>
+  reply <out> --project <root> [--views <list>]
       Print the lines a finished run is answered with, in this order: the path
-      of handbook.md; "Page: <path>" or "Page: not written"; "Features: <n>"
+      of each handbook file of the selected views ("Handbook: <path>" for the
+      product view, "Technical handbook: <path>" for the technical view);
+      "Page: <path>" or "Page: not written"; "Features: <n>"
       with the count of each status; "Overview: <status>"; "Failed: <ids>" when a
       feature or the overview failed; the
       candidate conservation line. Checks the run again first; exits 1 with a
-      Next: line when handbook.md is missing. Changes no file.
+      Next: line when a handbook file is missing. Changes no file.
 
 <out> is the run's output directory (candidates.json, map.json, entries/,
 state.json, ui.json). --project <root> is the project the run documents; files
@@ -260,6 +278,16 @@ function parseArgs(args, known) {
 
 /** The round an option names (1 or 2), or 0 when it names neither. */
 const roundOption = (text) => (ROUNDS.includes(Number(text)) && /^\d+$/.test(text) ? Number(text) : 0);
+
+/** The views of `--views`, or null when the value is not a view (the lines are printed and the command exits 1). */
+function viewsOf(options) {
+  const parsed = parseViews(options.views);
+  if (!parsed.ok) {
+    process.stdout.write(parsed.lines.map((line) => `${line}\n`).join(''));
+    return null;
+  }
+  return parsed.views;
+}
 
 /** Print a check's lines to stdout and return its exit status. */
 function report({ status, lines }) {
@@ -355,20 +383,26 @@ const COMMANDS = {
     return report(checkUi(positionals[0], options.language));
   },
   assemble(args) {
-    const { positionals, options } = parseArgs(args, ['project']);
+    const { positionals, options } = parseArgs(args, ['project', 'views']);
     if (positionals.length !== 1) throw new UsageError('assemble takes exactly one <out> directory');
-    return report(assemble(positionals[0], projectRootOption(options.project)));
+    const views = viewsOf(options);
+    if (views === null) return 1;
+    return report(assemble(positionals[0], projectRootOption(options.project), { views }));
   },
   reply(args) {
-    const { positionals, options } = parseArgs(args, ['project']);
+    const { positionals, options } = parseArgs(args, ['project', 'views']);
     if (positionals.length !== 1) throw new UsageError('reply takes exactly one <out> directory');
-    return report(replyLines(positionals[0], projectRootOption(options.project)));
+    const views = viewsOf(options);
+    if (views === null) return 1;
+    return report(replyLines(positionals[0], projectRootOption(options.project), { views }));
   },
   page(args) {
-    const { positionals, options } = parseArgs(args, ['project']);
+    const { positionals, options } = parseArgs(args, ['project', 'views']);
     if (positionals.length !== 1) throw new UsageError('page takes exactly one <out> directory');
+    const views = viewsOf(options);
+    if (views === null) return 1;
     const root = projectRootOption(options.project);
-    return report(writePage(positionals[0], root, { rootAliases: [resolve(options.project)] }));
+    return report(writePage(positionals[0], root, { rootAliases: [resolve(options.project)], views }));
   },
 };
 

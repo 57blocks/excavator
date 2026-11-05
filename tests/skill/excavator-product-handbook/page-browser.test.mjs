@@ -7,7 +7,7 @@
 // PATH). Without a Chrome the suite is skipped with a visible reason, except
 // when CI is set: CI runners have Chrome, so there it fails.
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { existsSync } from 'node:fs';
+import { copyFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
@@ -36,8 +36,11 @@ const ev = (file, passage) => ({ file, passage });
 const form = 'src/forms/order-form.js';
 const LONG = 'A customer name that is longer than the print width is shortened in documents but kept in full in the order record, and a name made only of spaces is refused with a message asking for a real name.';
 
-/** A run whose F1 entry has a table wide enough to need its own scroll box on a phone. */
-function pageRun() {
+/**
+ * A run whose F1 entry has a table wide enough to need its own scroll box on a phone. `keepIntegration`
+ * keeps the overview's external system (it is removed in round 1 otherwise) and `views` is the page's --views.
+ */
+function pageRun({ keepIntegration = false, views = undefined } = {}) {
   const run = makeCheckedMapRun();
   const entry = clone(run.entry);
   entry.screens[0].fields[0].rules.push({ side: 'backend', text: LONG, evidence: [ev(form, "{ label: 'Customer Name', required: true },")] });
@@ -58,11 +61,11 @@ function pageRun() {
   writeFileSync(join(run.root, NOTIFY_FILE), `${NOTIFY_LINE}\n`);
   run.writeEntry('overview', goodOverview());
   if (run.run('check-overview').status !== 0) throw new Error('the overview failed check-overview');
-  const judgedOverview = judge(run, 'overview', 1, (item) => (item.id === 'integrations[0]' ? { verdict: 'contradicted', reason: 'The code shown sends it to another channel.' } : 'verified'));
+  const judgedOverview = judge(run, 'overview', 1, (item) => (item.id === 'integrations[0]' && !keepIntegration ? { verdict: 'contradicted', reason: 'The code shown sends it to another channel.' } : 'verified'));
   if (judgedOverview.status !== 0) throw new Error(`overview verdicts failed:\n${judgedOverview.stdout}`);
   const tracedOverview = traceFeature(run, 'overview');
   if (tracedOverview.status !== 0) throw new Error(`overview trace-verdicts failed:\n${tracedOverview.stdout}`);
-  const made = run.run('page');
+  const made = run.run('page', ...(views === undefined ? [] : ['--views', views]));
   if (made.status !== 0) throw new Error(`page failed (${made.status}):\n${made.stdout}${made.stderr}`);
   return run;
 }
@@ -71,17 +74,22 @@ suite('page in a browser (O8)', () => {
   let browser;
   let run;
   let url;
+  let both;
+  let urlBoth;
 
   beforeAll(async () => {
     if (!existsSync(TEMPLATE)) throw new Error(`the page template ${TEMPLATE} is not built: run \`pnpm -r build\` at the repository root`);
     run = pageRun();
     url = pathToFileURL(join(run.out, 'handbook.html')).href;
+    both = pageRun({ keepIntegration: true, views: 'product,technical' });
+    urlBoth = pathToFileURL(join(both.out, 'handbook.html')).href;
     browser = await Browser.launch(chrome);
   }, 60000);
 
   afterAll(async () => {
     await browser?.close();
     run?.cleanup();
+    both?.cleanup();
   });
 
   const overflow = (page) => page.evaluate('({ scroll: document.documentElement.scrollWidth, inner: window.innerWidth })');
@@ -207,4 +215,70 @@ suite('page in a browser (O8)', () => {
     }
     expect(colours[0]).not.toBe(colours[1]);
   }, 60000);
+
+  for (const [width, height] of [[375, 812], [1280, 800]]) {
+    describe(`the two views at ${width}x${height}`, () => {
+      it('a page with one view has no switch', async () => {
+        const page = await browser.openPage({ width, height });
+        await page.goto(url);
+        await page.waitFor('document.querySelector(\'[data-view="overview"]\')', 'the overview');
+        expect(await page.evaluate("document.querySelectorAll('[data-part=\"view-switch\"]').length")).toBe(0);
+        expect(await page.evaluate("document.querySelectorAll('.rail [data-application]').length")).toBe(0);
+        expect(page.consoleErrors).toEqual([]);
+      }, 60000);
+
+      it('shows the switch, which keeps the entity, the technical navigation by application, and no page scrolls sideways', async () => {
+        const page = await browser.openPage({ width, height });
+        await page.goto(urlBoth);
+        await page.waitFor('document.querySelector(\'[data-view="overview"]\')', 'the overview');
+        expect(await page.evaluate("document.querySelectorAll('[data-part=\"view-switch\"] a').length")).toBe(2);
+        await fits(page, width, 'the overview with the switch');
+
+        // Switching on a feature page stays on the feature, and the technical page shows where each item is cited.
+        await goTo(page, '#/product/feature/F1', '[data-view="feature"][data-feature="F1"]');
+        expect(await page.evaluate("document.querySelector('[data-part=\"locations\"]')")).toBeNull();
+        await page.evaluate("document.querySelector('[data-view-link=\"technical\"]').click()");
+        await page.waitFor('document.querySelector(\'[data-part="locations"]\')', 'the source locations after the switch');
+        expect(await page.evaluate('window.location.hash')).toBe('#/technical/feature/F1');
+        expect(await page.evaluate("document.querySelector('[data-view=\"feature\"]').getAttribute('data-feature')")).toBe('F1');
+        expect(await page.evaluate("document.querySelector('[data-part=\"locations\"]').textContent")).toMatch(/src\/forms\/order-form\.js, lines? \d+/);
+        await fits(page, width, 'the technical feature page');
+        // The technical rail is by application: the application, then its domains, then their features.
+        expect(await page.evaluate("document.querySelectorAll('.rail [data-application]').length")).toBeGreaterThan(0);
+        expect(await page.evaluate("(() => { const app = document.querySelector('.rail [data-application]'); return app.querySelector('.rail-domain .rail-feature') !== null; })()")).toBe(true);
+        // The other way: the entity stays too.
+        await page.evaluate("document.querySelector('[data-view-link=\"product\"]').click()");
+        await page.waitFor('document.querySelector(\'[data-view="feature"][data-feature="F1"]\')', 'F1 in the product view');
+        expect(await page.evaluate('window.location.hash')).toBe('#/product/feature/F1');
+        expect(await page.evaluate("document.querySelector('[data-part=\"locations\"]')")).toBeNull();
+        expect(await page.evaluate("document.querySelectorAll('.rail [data-application]').length")).toBe(0);
+
+        // A page the product view does not have: switching goes to the product overview.
+        await goTo(page, '#/technical/application/.', '[data-view="application"]');
+        await fits(page, width, 'the application page');
+        await page.evaluate("document.querySelector('[data-view-link=\"product\"]').click()");
+        await page.waitFor('document.querySelector(\'[data-view="overview"]\')', 'the product overview after the switch');
+        expect(await page.evaluate('window.location.hash')).toBe('#/product');
+
+        for (const [hash, selector, what] of [
+          ['#/technical', '[data-view="overview"]', 'the technical overview'],
+          ['#/technical/system/Slack', '[data-view="system"]', 'the external system page'],
+          ['#/technical/matrix/applications', '[data-view="applications-matrix"] table', 'the applications-by-domain matrix'],
+          ['#/technical/matrix/roles', '[data-view="roles-matrix"] table', 'the roles-by-feature matrix'],
+          ['#/technical/domain/A1', '[data-view="domain"]', 'the domain page'],
+          ['#/technical/role/Clerk', '[data-view="role"]', 'the role page'],
+          ['#/technical/coverage', '[data-view="coverage"]', 'the coverage page'],
+          ['#/product/matrix/roles', '[data-view="roles-matrix"] table', 'the product roles matrix'],
+          ['#/product/domain/A2', '[data-view="domain"]', 'the product domain page'],
+        ]) {
+          await goTo(page, hash, selector);
+          await fits(page, width, what);
+        }
+
+        const foreign = page.requests.filter((request) => request !== urlBoth && !request.startsWith('data:'));
+        expect(foreign).toEqual([]);
+        expect(page.consoleErrors).toEqual([]);
+      }, 90000);
+    });
+  }
 });

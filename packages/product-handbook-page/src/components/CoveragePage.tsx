@@ -1,4 +1,4 @@
-import { featureHash } from '../lib/route';
+import { useLinks } from '../lib/links';
 import { useText } from '../lib/text';
 import type { PageData, RemovedItem } from '../lib/types';
 import { CheckIcon } from './Icons';
@@ -25,6 +25,7 @@ function RemovedTable({ items }: { items: RemovedItem[] }) {
 /** What the handbook covers: the candidate count and its conservation, the unassigned candidates, link features, the features without a verified entry and the items verification removed. */
 export function CoveragePage({ data }: { data: PageData }) {
   const t = useText();
+  const nav = useLinks();
   const { coverage } = data;
   const areaName = new Map(data.areas.map((area) => [area.id, area.name]));
   const itemValues = (feature: PageData['features'][number]) => ({ id: feature.id, name: feature.name, area: areaName.get(feature.area) ?? '' });
@@ -62,7 +63,7 @@ export function CoveragePage({ data }: { data: PageData }) {
         <h2 className="section-title" id="cov-links">{t('md.coverage.linkHeading')}</h2>
         {links.length === 0 ? <p className="muted">{t('md.none')}</p> : (
           <ul className="plain-list">
-            {links.map((feature) => <li key={feature.id}><a href={featureHash(feature.id)}>{t('md.coverage.linkItem', itemValues(feature))}</a></li>)}
+            {links.map((feature) => <li key={feature.id}><a href={nav.feature(feature.id)}>{t('md.coverage.linkItem', itemValues(feature))}</a></li>)}
           </ul>
         )}
       </section>
@@ -91,7 +92,7 @@ export function CoveragePage({ data }: { data: PageData }) {
             <tbody>
               {unwritten.map((feature) => (
                 <tr key={feature.id}>
-                  <Cell row><a href={featureHash(feature.id)}>{t('md.coverage.unwrittenItem', itemValues(feature))}</a></Cell>
+                  <Cell row><a href={nav.feature(feature.id)}>{t('md.coverage.unwrittenItem', itemValues(feature))}</a></Cell>
                   <td><span className="status-chip" data-status={feature.status}>{t(`md.status.${feature.status}`)}</span></td>
                 </tr>
               ))}
@@ -111,7 +112,7 @@ export function CoveragePage({ data }: { data: PageData }) {
         )}
         {removed.map(({ feature, items }) => (
           <div key={feature.id} className="removed-group">
-            <h3 className="block-title"><a href={featureHash(feature.id)}>{t('md.coverage.removedFeature', { ...itemValues(feature), count: items.length })}</a></h3>
+            <h3 className="block-title"><a href={nav.feature(feature.id)}>{t('md.coverage.removedFeature', { ...itemValues(feature), count: items.length })}</a></h3>
             <RemovedTable items={items} />
           </div>
         ))}

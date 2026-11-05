@@ -136,13 +136,13 @@ function areaRows(map, entries) {
  * verified (null otherwise). The rest does not depend on it and is always
  * there: `applications` has one row per application root of the project with
  * the script facts (name and responsibility only from a verified overview,
- * else null), and `counts` is the system's size from the roots.
+ * else null), and `counts` is the system's size from the roots. `scan` is the
+ * project scan (applications.mjs), given when the caller has made it already.
  */
-export function buildSystem(run, root) {
+export function buildSystem(run, root, scan = scanProject(root)) {
   const { map, state, entries, candidates } = run;
   const status = unitState(state, OVERVIEW_ID).status;
   const doc = entries.get(OVERVIEW_ID);
-  const scan = scanProject(root);
   const counted = readSourceFiles(scan);
   const applications = applicationRows(doc === undefined ? [] : doc.applications, { scan, counted, candidates });
   const inRoots = counted.filter((file) => scan.roots.some((dir) => isUnder(file.rel, dir)));

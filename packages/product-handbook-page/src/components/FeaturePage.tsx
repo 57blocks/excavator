@@ -1,8 +1,9 @@
 import type { ReactNode } from 'react';
 
-import { OVERVIEW_HASH } from '../lib/route';
+import { useLinks } from '../lib/links';
 import { useText } from '../lib/text';
-import type { Area, Entry, Feature, Field, Rule } from '../lib/types';
+import type { Area, Entry, Feature, Field, Rule, UnitLocations } from '../lib/types';
+import { Locations } from './Locations';
 import { ReachBadge } from './ReachBadge';
 import { Cell, TableScroll } from './Tables';
 
@@ -148,15 +149,16 @@ function EntryBody({ entry }: { entry: Entry }) {
   );
 }
 
-/** One feature: where it sits, how readers get to it, and the checked entry, or why there is none. */
-export function FeaturePage({ feature, area }: { feature: Feature; area: Area | undefined }) {
+/** One feature: where it sits, how readers get to it, and the checked entry, or why there is none; in the technical view, the file and lines of each cited item. */
+export function FeaturePage({ feature, area, locations }: { feature: Feature; area: Area | undefined; locations?: UnitLocations }) {
   const t = useText();
+  const nav = useLinks();
   return (
     <article className="page" data-view="feature" data-feature={feature.id}>
       <nav className="crumbs" aria-label={t('page.breadcrumb.label')}>
         <ol>
-          <li><a href={OVERVIEW_HASH}>{t('page.nav.overview')}</a></li>
-          {area !== undefined && <li>{area.name}</li>}
+          <li><a href={nav.overview}>{t('page.nav.overview')}</a></li>
+          {area !== undefined && <li><a href={nav.domain(area.id)}>{area.name}</a></li>}
           <li aria-current="page">{feature.name}</li>
         </ol>
       </nav>
@@ -173,6 +175,7 @@ export function FeaturePage({ feature, area }: { feature: Feature; area: Area | 
           <p className="status-chip" data-status={feature.status}>{t(`md.status.${feature.status}`)}</p>
         </div>
       ) : <EntryBody entry={feature.entry} />}
+      {feature.entry !== null && locations !== undefined && <Locations unit={locations} />}
     </article>
   );
 }

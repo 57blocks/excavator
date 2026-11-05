@@ -8,6 +8,8 @@
 
 import { REACHES } from './map-shape.mjs';
 import { inline, table } from './markdown.mjs';
+import { applicationCells, listCell } from './render-application.mjs';
+import { entitySections, locationLines } from './render-entities.mjs';
 import { fill } from './ui.mjs';
 
 const NONE_ROW = '-';
@@ -35,7 +37,7 @@ function screensBlock(entry, t) {
   return out;
 }
 
-function entryBlock(feature, entry, map, t) {
+function entryBlock(feature, entry, map, t, locations) {
   const reachText = t(`md.reach.${feature.reach}`);
   const out = [`### ${inline(feature.name)}`, '', inline(fill(t('md.feature.reach'), { reach: reachText })), ''];
   if (feature.label !== undefined) out.push(inline(fill(t('md.feature.label'), { label: feature.label })), '');
@@ -68,6 +70,7 @@ function entryBlock(feature, entry, map, t) {
   out.push(`#### ${t('md.section.unknowns')}`, '');
   if (entry.unknowns.length === 0) out.push(t('md.none'), '');
   else out.push(...entry.unknowns.map((u) => `- ${inline(fill(t('md.unknown.item'), { item: u.item, searched: u.searched }))}`), '');
+  if (locations !== undefined) out.push(`#### ${t('md.locations.heading')}`, '', ...locationLines(locations, t));
   return out;
 }
 
@@ -104,9 +107,6 @@ function summaryBlock(summary, map, t) {
   return out;
 }
 
-/** A table cell for a list: its items joined, or the dash when there is none. */
-const listCell = (items) => (items.length === 0 ? NONE_ROW : items.join(', '));
-
 /** The area table of the overview: one row per area, from the map and the verified entries, so it does not depend on the overview being written. */
 function areaTable(system, t) {
   return table(
@@ -115,29 +115,13 @@ function areaTable(system, t) {
   );
 }
 
-function applicationRow(application, t) {
-  const history = application.history === null
-    ? Array(4).fill(t('md.overview.noHistory'))
-    : [application.history.first, application.history.last, String(application.history.commits), String(application.history.authors)];
-  return [
-    application.dir,
-    application.name ?? t('md.overview.notVerified'),
-    application.does ?? t('md.overview.notVerified'),
-    listCell(application.languages.map((entry) => fill(t('md.overview.languageItem'), { language: entry.language, files: entry.files }))),
-    listCell(application.frameworks.map((entry) => fill(t('md.overview.frameworkItem'), { framework: entry.framework, count: entry.candidates }))),
-    String(application.files),
-    String(application.lines),
-    ...history,
-  ];
-}
-
 /** The applications table: one row per application root with the script's facts, the name and responsibility from the verified overview or the fixed not-verified text. */
 function applicationsTable(system, t) {
   if (system.applications.length === 0) return t('md.none');
   return table(
     [t('md.table.directory'), t('md.table.name'), t('md.table.does'), t('md.table.languages'), t('md.table.frameworks'), t('md.table.files'), t('md.table.lines'),
       t('md.table.firstCommit'), t('md.table.lastCommit'), t('md.table.commits'), t('md.table.authors')],
-    system.applications.map((application) => applicationRow(application, t)),
+    system.applications.map((application) => applicationCells(application, t)),
   );
 }
 
@@ -147,7 +131,7 @@ function applicationsTable(system, t) {
  * and do not depend on the overview; an overview that is not verified replaces
  * only the sections a model writes with a line saying where it stopped.
  */
-function overviewBlock(system, t) {
+function overviewBlock(system, t, locations) {
   const out = [`## ${inline(t('md.overview.heading'))}`, ''];
   const { overview, counts } = system;
   if (overview === null) out.push(inline(fill(t('md.overview.notWritten'), { step: t(`md.status.${system.status}`) })), '');
@@ -168,6 +152,7 @@ function overviewBlock(system, t) {
     else out.push(...overview.unknowns.map((u) => `- ${inline(fill(t('md.unknown.item'), { item: u.item, searched: u.searched }))}`), '');
   }
   out.push(`### ${t('md.overview.areasHeading')}`, '', areaTable(system, t), '');
+  if (locations !== undefined) out.push(`### ${t('md.locations.overviewHeading')}`, '', ...locationLines(locations, t));
   return out;
 }
 
@@ -233,14 +218,19 @@ function coverageBlock(map, state, candidates, t) {
 /**
  * The handbook text. `entries` maps the id of each verified feature to its
  * entry (only verified features have one); `candidates` is candidates.json's items; `ui` is the strings table;
- * `summary` is the two cross-cutting tables (summary.mjs); `system` the facts of the system overview (system-facts.mjs).
+ * `summary` is the two cross-cutting tables (summary.mjs); `system` the facts of the system overview (system-facts.mjs);
+ * `entities` the entities and relations (entities.mjs). `view` is `product` or `technical`: the technical view
+ * also writes the application and external-system sections and, from `locations` (locations.mjs), the file and
+ * lines of each item; the product view writes no citation path.
  */
-export function renderHandbook({ map, entries, state, candidates, ui, summary, system }) {
+export function renderHandbook({ map, entries, state, candidates, ui, summary, system, entities, view = 'product', locations = null }) {
   const t = (key) => {
     if (!Object.hasOwn(ui, key)) throw new Error(`the fixed-text table has no key ${key}`);
     return ui[key];
   };
-  const out = [`# ${inline(t('md.title'))}`, '', ...overviewBlock(system, t), `## ${t('md.areas.heading')}`, ''];
+  const technical = view === 'technical';
+  const placesOf = new Map((technical ? locations ?? [] : []).map((unit) => [unit.id, unit]));
+  const out = [`# ${inline(t(technical ? 'md.titleTechnical' : 'md.title'))}`, '', ...overviewBlock(system, t, placesOf.get('overview')), `## ${t('md.areas.heading')}`, ''];
   for (const area of map.areas) {
     out.push(`- **${inline(area.name)}**`);
     const features = map.features.filter((feature) => feature.area === area.id);
@@ -254,9 +244,9 @@ export function renderHandbook({ map, entries, state, candidates, ui, summary, s
     const written = map.features.filter((feature) => feature.area === area.id && entries.has(feature.id));
     if (written.length === 0) continue;
     out.push(`## ${inline(area.name)}`, '');
-    for (const feature of written) out.push(...entryBlock(feature, entries.get(feature.id), map, t));
+    for (const feature of written) out.push(...entryBlock(feature, entries.get(feature.id), map, t, placesOf.get(feature.id)));
   }
-  out.push(...summaryBlock(summary, map, t), ...coverageBlock(map, state, candidates, t));
+  out.push(...summaryBlock(summary, map, t), ...entitySections({ view, map, entities, summary, system, t }), ...coverageBlock(map, state, candidates, t));
   return `${out.join('\n').replace(/\n{3,}/g, '\n\n').trimEnd()}\n`;
 }
 

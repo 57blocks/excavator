@@ -2,26 +2,31 @@
  * `handbook.mjs reply <out> --project <root>`: the lines the orchestrator
  * answers the user with at the end of a run, in a fixed order, computed from
  * the checked run so the model adds nothing up and writes none of them: the
- * path of handbook.md, the page line, the feature counts by status, the
+ * path of each handbook file written for the selected views (handbook.md for
+ * the product view, handbook-technical.md for the technical view), the page line, the feature counts by status, the
  * status of the system overview and the candidate conservation line. Changes no file.
  */
 
 import { existsSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 
-import { HANDBOOK_FILE } from './assemble.mjs';
+import { HANDBOOK_FILES } from './assemble.mjs';
 import { loadCheckedRun } from './load-run.mjs';
 import { PAGE_FILE } from './page.mjs';
 import { STATUSES } from './state.mjs';
 import { OVERVIEW_ID, unitState } from './unit.mjs';
+import { DEFAULT_VIEWS } from './views.mjs';
 
-/** Returns { status, lines }; status 1 with the reasons when the run does not pass its checks or handbook.md is missing. */
-export function replyLines(outDirArg, root) {
+/** The label of each view's handbook line. */
+const HANDBOOK_LABELS = Object.freeze({ product: 'Handbook', technical: 'Technical handbook' });
+
+/** Returns { status, lines }; status 1 with the reasons when the run does not pass its checks or a handbook file of a selected view is missing. */
+export function replyLines(outDirArg, root, { views = DEFAULT_VIEWS } = {}) {
   const run = loadCheckedRun(outDirArg, root);
   if (!run.ok) return { status: 1, lines: run.lines };
   const outDir = resolve(outDirArg);
-  const handbook = join(outDir, HANDBOOK_FILE);
-  if (!existsSync(handbook)) return { status: 1, lines: [`${HANDBOOK_FILE}: missing`, 'Next: run assemble, then this command again'] };
+  const missing = views.filter((view) => !existsSync(join(outDir, HANDBOOK_FILES[view])));
+  if (missing.length > 0) return { status: 1, lines: [...missing.map((view) => `${HANDBOOK_FILES[view]}: missing`), 'Next: run assemble, then this command again'] };
   const page = join(outDir, PAGE_FILE);
   const features = run.map.features;
   const counts = Object.fromEntries(STATUSES.map((status) => [status, features.filter((feature) => run.state.features[feature.id].status === status).length]));
@@ -29,7 +34,7 @@ export function replyLines(outDirArg, root) {
   const failed = [...features.filter((feature) => run.state.features[feature.id].status === 'failed').map((feature) => feature.id), ...(overview === 'failed' ? [OVERVIEW_ID] : [])];
   const assigned = features.reduce((sum, feature) => sum + feature.candidates.length, 0);
   const lines = [
-    `Handbook: ${handbook}`,
+    ...views.map((view) => `${HANDBOOK_LABELS[view]}: ${join(outDir, HANDBOOK_FILES[view])}`),
     existsSync(page) ? `Page: ${page}` : 'Page: not written',
     `Features: ${features.length} (${STATUSES.map((status) => `${status} ${counts[status]}`).join(', ')})`,
     `Overview: ${overview}`,
