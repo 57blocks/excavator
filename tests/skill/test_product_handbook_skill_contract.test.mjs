@@ -30,7 +30,19 @@ import { checkedOverviewRun, overviewRun } from './excavator-product-handbook/ov
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(__dirname, '../..');
-const skill = readFileSync(resolve(repoRoot, 'skills/excavator-product-handbook/SKILL.md'), 'utf-8');
+const skillDir = resolve(repoRoot, 'skills/excavator-product-handbook');
+/** SKILL.md as it is on disk: the shared phases and the Sections part. */
+const skillOwn = readFileSync(resolve(skillDir, 'SKILL.md'), 'utf-8');
+/** The phase files of the sections (openspec change handbook-sections): relative path under the skill directory, in the order a default run reads them. */
+const SECTION_FILES = ['stages/map.md', 'sections/overview.md', 'sections/features.md'];
+const sectionText = (path) => readFileSync(resolve(skillDir, path), 'utf-8');
+/**
+ * The skill as a default run reads it: SKILL.md with the three phase files put
+ * where the Sections part has the model read them, so the phases run in their
+ * order (0, 1, 2, 3, 3c, 3b, 4, 5, 6, 7). Every assertion below that looks for
+ * a phase's text looks in the file that holds it.
+ */
+const skill = skillOwn.replace(/^## Sections\n[\s\S]*?(?=^## Phase 5: )/m, SECTION_FILES.map(sectionText).join(''));
 const flat = (text) => text.replace(/\s+/g, ' ');
 const agent = readFileSync(resolve(repoRoot, 'agents/excavator-handbook-verifier.md'), 'utf-8');
 const tracerAgent = readFileSync(resolve(repoRoot, 'agents/excavator-handbook-tracer.md'), 'utf-8');
@@ -63,7 +75,7 @@ const HANDBOOK = '"$PLUGIN_ROOT/skills/excavator-product-handbook/handbook.mjs"'
 describe('excavator-product-handbook skill: structure', () => {
   it('names the skill after its directory and lists the options in the argument hint', () => {
     expect(skill.startsWith('---\nname: excavator-product-handbook\n')).toBe(true);
-    expect(skill).toContain('argument-hint: "[path] [--language <lang>] [--out <dir>] [--features <list>] [--views <list>] [--concurrency <n>] [--fresh]"');
+    expect(skill).toContain('argument-hint: "[path] [--language <lang>] [--out <dir>] [--features <list>] [--views <list>] [--sections <list>] [--concurrency <n>] [--fresh]"');
   });
 
   it('has the description in plain words: what it produces, and that it gives no advice', () => {
@@ -193,12 +205,12 @@ describe('excavator-product-handbook skill: setup', () => {
 
 describe('excavator-product-handbook skill: commands', () => {
   const usage = runHandbook(['--help']).stdout;
-  const usageCommands = [...new Set([...usage.matchAll(/^ {2}([a-z][a-z-]*) </gm)].map((match) => match[1]))];
-  const skillCommands = [...new Set([...skill.matchAll(/handbook\.mjs" ([a-z][a-z-]*)/g)].map((match) => match[1]))];
+  const usageCommands = [...new Set([...usage.matchAll(/^ {2}([a-z][a-z-]*) [<[]/gm)].map((match) => match[1]))];
+  const skillCommands = [...new Set([...`${skill}\n${skillOwn}`.matchAll(/handbook\.mjs" ([a-z][a-z-]*)/g)].map((match) => match[1]))];
 
   it('names every command handbook.mjs has, and only those', () => {
     expect(usageCommands.length).toBeGreaterThanOrEqual(16);
-    expect(usageCommands).toEqual(expect.arrayContaining(['candidates', 'applications', 'check-overview', 'try-overview', 'check-map', 'check-domains', 'select', 'check-entry', 'mark', 'slices', 'verdicts', 'trace', 'trace-verdicts', 'check-ui', 'assemble', 'page', 'reply']));
+    expect(usageCommands).toEqual(expect.arrayContaining(['candidates', 'applications', 'check-overview', 'try-overview', 'check-map', 'check-domains', 'select', 'sections', 'check-entry', 'mark', 'slices', 'verdicts', 'trace', 'trace-verdicts', 'check-ui', 'assemble', 'page', 'reply']));
     expect([...skillCommands].sort()).toEqual([...usageCommands].sort());
   });
 
@@ -1506,5 +1518,90 @@ describe('excavator-product-handbook skill: Phase 3b, the system overview (O2 of
     expect(table).toContain('computes every count and statistic of the system overview');
     expect(table).toContain('| One subagent for the system overview (Phase 3b)');
     expect(table).toContain('`entries/overview.json` | the overview subagent (Phase 3b)');
+  });
+});
+
+// O2 of openspec change handbook-sections: the phases of each section live in a
+// file of their own, byte for byte as they were in SKILL.md on main. The
+// digests are of the spans of main's SKILL.md (from the phase heading to the
+// line before the next phase's heading, separator and blank line included);
+// a changed word in any of the files changes its digest.
+describe('excavator-product-handbook skill: sections (O2 of handbook-sections)', () => {
+  const digest = (text) => createHash('sha256').update(text, 'utf8').digest('hex');
+  const PINNED = {
+    'stages/map.md': 'df39550d3c009255c094bf3d4d81869b64208f1c5b7657a08147d75320c7df75',
+    'sections/overview.md': '5512a5f58116b55aa428cb11e1fd86a2bc3d0693cf5870f7be9b26baedf5ab9a',
+    'sections/features.md': 'c1f9c6b4a31f7ada868088b307f3f4abbcc63e0c7e9946ec4fdf621d9562b590',
+  };
+  const heads = {
+    'stages/map.md': ['## Phase 3: The map', '## Phase 3c: Business domains'],
+    'sections/overview.md': ['## Phase 3b: System overview'],
+    'sections/features.md': ['## Phase 4: Entries'],
+  };
+
+  for (const path of SECTION_FILES) {
+    it(`${path} holds the text SKILL.md had on main, word for word`, () => {
+      expect(digest(sectionText(path))).toBe(PINNED[path]);
+    });
+
+    it(`${path} starts at its first phase heading and has each of its phases once`, () => {
+      const text = sectionText(path);
+      expect(text.startsWith(`${heads[path][0]}\n`)).toBe(true);
+      expect([...text.matchAll(/^## Phase .+$/gm)].map((match) => match[0])).toEqual(heads[path]);
+    });
+  }
+
+  it('SKILL.md no longer holds the bodies of the phases that moved, and keeps the shared ones', () => {
+    for (const heading of ['## Phase 3: ', '## Phase 3c: ', '## Phase 3b: ', '## Phase 4: Entries']) expect(skillOwn).not.toContain(heading);
+    expect([...skillOwn.matchAll(/^## Phase (\d+)/gm)].map((match) => Number(match[1]))).toEqual([0, 1, 2, 5, 6, 7]);
+    expect(skillOwn).not.toContain('### Writing the map');
+    expect(skillOwn).not.toContain('You write one feature of a product handbook');
+    expect(skillOwn.split('\n').length).toBeLessThan(380);
+  });
+
+  it('has a Sections part right after Phase 2 and before Phase 5 that runs the sections command and reads the files it prints', () => {
+    const at = (needle) => skillOwn.indexOf(needle);
+    expect(at('## Phase 2: Fixed text')).toBeLessThan(at('\n## Sections\n'));
+    expect(at('\n## Sections\n')).toBeLessThan(at('## Phase 5: Verify'));
+    const part = skillOwn.slice(at('\n## Sections\n'), at('## Phase 5: Verify'));
+    const text = flat(part);
+    expect(blocks(part, 'bash').map((block) => block.trim())).toEqual([`node "$PLUGIN_ROOT/skills/excavator-product-handbook/handbook.mjs" sections "<the --sections value, or empty>"`]);
+    expect(text).toContain('On exit 1, tell the user the lines it printed');
+    expect(text).toContain('and stop');
+    expect(text).toContain('record `$SECTIONS` as the value of the `SECTIONS=` line');
+    expect(text).toContain('Read each `READ=` file in that order with the Read tool');
+    expect(text).toContain('$PLUGIN_ROOT/skills/excavator-product-handbook/');
+    expect(text).toContain('Read a file at the moment you get there, not before');
+    expect(text).toContain('do that file\'s phases');
+    expect(text).toContain('before you read the next file');
+    expect(text).toContain('A phase in a file you did not read does not run');
+    expect(text).toContain('go to the next phase this run runs');
+    for (const path of SECTION_FILES) expect(text).toContain(`\`${path}\``);
+  });
+
+  it('takes only the units of the selected sections in Phases 5 and 6, and leaves Phase 7 to assemble what is there', () => {
+    const text = flat(skillOwn.slice(skillOwn.indexOf('\n## Sections\n'), skillOwn.indexOf('## Phase 5: Verify')));
+    expect(text).toContain('Phases 5 and 6 take only the units of the selected sections');
+    expect(text).toContain('only when `overview` is in `$SECTIONS`');
+    expect(text).toContain('only when `features` is');
+    expect(text).toContain('`--features` applies only to the `features` section');
+    expect(text).toContain('Phase 7 does not look at `$SECTIONS`');
+  });
+
+  it('parses --sections in Phase 0, documents it in the options and the argument hint, and names the files in the split and files descriptions', () => {
+    expect(skillOwn).toMatch(/^argument-hint: ".*\[--sections <list>\].*"$/m);
+    expect(flat(skillOwn.split(/^## Phase 1: /m)[0].split(/^## Phase 0: /m)[1])).toContain('`--sections` (`$SECTIONS`: the value, or empty when it is not given');
+    const options = flat(skillOwn.split(/^## Options$/m)[1].split(/^## Sources$/m)[0]);
+    expect(options).toContain('- `--sections <list>` - which sections of the handbook this run writes: `overview`');
+    expect(options).toContain('`features`');
+    const split = flat(skillOwn.split(/^## How the work is split$/m)[1].split(/^## Options$/m)[0]);
+    expect(split).toContain('validates `--sections` and prints the phase files a run reads');
+    for (const path of SECTION_FILES) expect(split).toContain(`\`${path}\``);
+  });
+
+  it('names the commands only the moved phases run (the map, domain and overview checks) in the phase files, not in SKILL.md', () => {
+    for (const command of ['check-map', 'check-domains', 'check-overview']) {
+      expect(skillOwn).not.toContain(`${HANDBOOK} ${command}`);
+    }
   });
 });

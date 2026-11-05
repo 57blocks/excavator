@@ -9,9 +9,9 @@
 
 提交：`refactor(product-handbook): each section's phases live in a file of their own`
 
-- [ ] 2.1 `stages/map.md`（第 3、3c 阶段）、`sections/overview.md`（第 3b 阶段）、`sections/features.md`（第 4 阶段），原文逐字移过去
-- [ ] 2.2 `SKILL.md`：「Sections」一节（跑 `sections`、按序读文件、没读的阶段不跑、第 5、6 阶段只处理所选部分的单元）；选项里加 `--sections`；第 0 阶段解析它；分工表与文件表提到部分文件
-- [ ] 2.3 合约测试（design O2）：三个文件等于 main 上原文（钉摘要），`SKILL.md` 不再含这些正文
+- [x] 2.1 `stages/map.md`（第 3、3c 阶段）、`sections/overview.md`（第 3b 阶段）、`sections/features.md`（第 4 阶段），原文逐字移过去
+- [x] 2.2 `SKILL.md`：「Sections」一节（跑 `sections`、按序读文件、没读的阶段不跑、第 5、6 阶段只处理所选部分的单元）；选项里加 `--sections`；第 0 阶段解析它；分工表与文件表提到部分文件
+- [x] 2.3 合约测试（design O2）：三个文件等于 main 上原文（钉摘要），`SKILL.md` 不再含这些正文
 
 ## 3. 验收
 
