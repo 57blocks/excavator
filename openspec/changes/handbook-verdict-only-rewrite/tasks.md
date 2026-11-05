@@ -20,6 +20,6 @@
 
 ## 3. 验收
 
-- [ ] 3.1 受影响测试、`check-refs`、`openspec validate --all --strict` 本地通过；全量门在分离检出里跑（O4）
-- [ ] 3.2 已知错误库 A、B 各跑一次，按 O3 打分（Sonnet，花费上限各 $15）
-- [ ] 3.3 验收记录 `acceptance.md`：O1–O4 的结果、变异检查、花费，没过的线照实写
+- [x] 3.1 受影响测试、`check-refs`、`openspec validate --all --strict` 本地通过；全量门在分离检出里跑（O4）
+- [x] 3.2 已知错误库 A、B 各跑一次，按 O3 打分（Sonnet，花费上限各 $15）
+- [x] 3.3 验收记录 `acceptance.md`：O1–O4 的结果、变异检查、花费，没过的线照实写
