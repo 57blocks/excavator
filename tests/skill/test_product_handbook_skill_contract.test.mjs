@@ -1572,6 +1572,7 @@ describe('excavator-product-handbook skill: sections (O2 of handbook-sections)',
     expect(text).toContain('Read each `READ=` file in that order with the Read tool');
     expect(text).toContain('$PLUGIN_ROOT/skills/excavator-product-handbook/');
     expect(text).toContain('Read a file at the moment you get there, not before');
+    expect(text).toContain('Read every file it printed, also when `state.json` or the files in `$OUT` already show that file\'s phases done');
     expect(text).toContain('do that file\'s phases');
     expect(text).toContain('before you read the next file');
     expect(text).toContain('A phase in a file you did not read does not run');
