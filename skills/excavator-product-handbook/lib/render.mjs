@@ -121,8 +121,8 @@ function applicationRow(application, t) {
     : [application.history.first, application.history.last, String(application.history.commits), String(application.history.authors)];
   return [
     application.dir,
-    application.name,
-    application.does,
+    application.name ?? t('md.overview.notVerified'),
+    application.does ?? t('md.overview.notVerified'),
     listCell(application.languages.map((entry) => fill(t('md.overview.languageItem'), { language: entry.language, files: entry.files }))),
     listCell(application.frameworks.map((entry) => fill(t('md.overview.frameworkItem'), { framework: entry.framework, count: entry.candidates }))),
     String(application.files),
@@ -131,34 +131,42 @@ function applicationRow(application, t) {
   ];
 }
 
-/** The system overview (system-facts.mjs), the first section of the handbook; an overview that is not verified says where it stopped and keeps the area table. */
+/** The applications table: one row per application root with the script's facts, the name and responsibility from the verified overview or the fixed not-verified text. */
+function applicationsTable(system, t) {
+  if (system.applications.length === 0) return t('md.none');
+  return table(
+    [t('md.table.directory'), t('md.table.name'), t('md.table.does'), t('md.table.languages'), t('md.table.frameworks'), t('md.table.files'), t('md.table.lines'),
+      t('md.table.firstCommit'), t('md.table.lastCommit'), t('md.table.commits'), t('md.table.authors')],
+    system.applications.map((application) => applicationRow(application, t)),
+  );
+}
+
+/**
+ * The system overview (system-facts.mjs), the first section of the handbook.
+ * The count line, the applications table and the area table are the script's
+ * and do not depend on the overview; an overview that is not verified replaces
+ * only the sections a model writes with a line saying where it stopped.
+ */
 function overviewBlock(system, t) {
   const out = [`## ${inline(t('md.overview.heading'))}`, ''];
-  if (system.overview === null) {
-    out.push(inline(fill(t('md.overview.notWritten'), { step: t(`md.status.${system.status}`) })), '');
-    out.push(`### ${t('md.overview.areasHeading')}`, '', areaTable(system, t), '');
-    return out;
-  }
   const { overview, counts } = system;
+  if (overview === null) out.push(inline(fill(t('md.overview.notWritten'), { step: t(`md.status.${system.status}`) })), '');
   out.push(fill(t('md.overview.counts'), { ...counts, verified: counts.featuresWithEntry }), '');
-  out.push(`### ${t('md.section.purpose')}`, '', overview.summary.length === 0 ? t('md.none') : overview.summary.map(inline).join(' '), '');
-  out.push(`### ${t('md.overview.audiencesHeading')}`, '');
-  out.push(overview.audiences.length === 0 ? t('md.none') : table([t('md.table.who'), t('md.table.does')], overview.audiences.map((entry) => [entry.who, entry.does])), '');
-  out.push(`### ${t('md.overview.applicationsHeading')}`, '');
-  out.push(system.applications.length === 0
-    ? t('md.none')
-    : table(
-      [t('md.table.directory'), t('md.table.name'), t('md.table.does'), t('md.table.languages'), t('md.table.frameworks'), t('md.table.files'), t('md.table.lines'),
-        t('md.table.firstCommit'), t('md.table.lastCommit'), t('md.table.commits'), t('md.table.authors')],
-      system.applications.map((application) => applicationRow(application, t)),
-    ), '');
-  out.push(`### ${t('md.overview.integrationsHeading')}`, '');
-  out.push(overview.integrations.length === 0
-    ? t('md.none')
-    : table([t('md.table.system'), t('md.table.use'), t('md.table.callers')], overview.integrations.map((entry) => [entry.system, entry.use, entry.callers.join(', ')])), '');
-  out.push(`### ${t('md.section.unknowns')}`, '');
-  if (overview.unknowns.length === 0) out.push(t('md.none'), '');
-  else out.push(...overview.unknowns.map((u) => `- ${inline(fill(t('md.unknown.item'), { item: u.item, searched: u.searched }))}`), '');
+  if (overview !== null) {
+    out.push(`### ${t('md.section.purpose')}`, '', overview.summary.length === 0 ? t('md.none') : overview.summary.map(inline).join(' '), '');
+    out.push(`### ${t('md.overview.audiencesHeading')}`, '');
+    out.push(overview.audiences.length === 0 ? t('md.none') : table([t('md.table.who'), t('md.table.does')], overview.audiences.map((entry) => [entry.who, entry.does])), '');
+  }
+  out.push(`### ${t('md.overview.applicationsHeading')}`, '', applicationsTable(system, t), '');
+  if (overview !== null) {
+    out.push(`### ${t('md.overview.integrationsHeading')}`, '');
+    out.push(overview.integrations.length === 0
+      ? t('md.none')
+      : table([t('md.table.system'), t('md.table.use'), t('md.table.callers')], overview.integrations.map((entry) => [entry.system, entry.use, entry.callers.join(', ')])), '');
+    out.push(`### ${t('md.section.unknowns')}`, '');
+    if (overview.unknowns.length === 0) out.push(t('md.none'), '');
+    else out.push(...overview.unknowns.map((u) => `- ${inline(fill(t('md.unknown.item'), { item: u.item, searched: u.searched }))}`), '');
+  }
   out.push(`### ${t('md.overview.areasHeading')}`, '', areaTable(system, t), '');
   return out;
 }

@@ -4,7 +4,7 @@
 // tests use a stub template with the two markers; the real template is
 // exercised by page-browser.test.mjs.
 import { afterAll, afterEach, describe, expect, it } from 'vitest';
-import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -166,13 +166,17 @@ describe('page: deterministic bytes and nothing local', () => {
   });
 
   it('replaces the project path by the directory name in every string of the data (defence in depth: the banned-word gate already refuses a path)', () => {
-    const root = '/work/shop';
+    // The system facts read the project, so the root is a real directory named shop.
+    const parent = realpathSync(mkdtempSync(join(tmpdir(), 'xhb-root-')));
+    cleanups.push(() => rmSync(parent, { recursive: true, force: true }));
+    const root = join(parent, 'shop');
+    mkdirSync(root);
     const run = {
       map: {
         language: 'English',
         areas: [{ id: 'A1', name: `Area at ${root}/src` }],
         features: [{ id: 'F1', name: 'One', area: 'A1', reach: 'automated', candidates: ['c1'], seedFiles: [] }],
-        unassigned: [{ candidate: 'c2', reason: `see ${root} and ${root}-two and /work/shop.bak` }, { candidate: 'c3', reason: `registered at ${root}/jobs` }],
+        unassigned: [{ candidate: 'c2', reason: `see ${root} and ${root}-two and ${root}.bak` }, { candidate: 'c3', reason: `registered at ${root}/jobs` }],
         roles: [],
       },
       entries: new Map(),
@@ -183,7 +187,7 @@ describe('page: deterministic bytes and nothing local', () => {
     const data = buildPageData(run, [root, '/links/shop']);
     expect(data.project).toBe('shop');
     expect(data.areas[0].name).toBe('Area at shop/src');
-    expect(data.coverage.unassigned[0].reason).toBe('see shop and /work/shop-two and /work/shop.bak');
+    expect(data.coverage.unassigned[0].reason).toBe(`see shop and ${root}-two and ${root}.bak`);
     expect(data.ui.strings['md.title']).toBe('Handbook of shop');
     expect(data.summary.jobs.map((row) => [row.candidate, row.feature, row.reason])).toEqual([['c1', 'F1', null], ['c3', null, 'registered at shop/jobs']]);
   });

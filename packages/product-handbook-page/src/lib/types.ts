@@ -86,11 +86,11 @@ export interface Summary {
   };
 }
 
-/** What the script found in an application's directory; `history` is null when it has no version history. */
+/** One row of the applications table: what the script found in an application root (or a listed application below one); `name` and `does` are null when no verified application stands for the directory; `history` is null when it has no version history. */
 export interface ApplicationFacts {
   dir: string;
-  name: string;
-  does: string;
+  name: string | null;
+  does: string | null;
   languages: { language: string; files: number }[];
   frameworks: { framework: string; candidates: number }[];
   files: number;
@@ -109,12 +109,12 @@ export interface OverviewText {
 /** One area of the map with the counts and roles the script computes from the verified entries. */
 export interface AreaRow { id: string; name: string; features: number; verified: number; roles: string[] }
 
-/** The system overview and the facts of the script: `overview` and `counts` are null unless the overview is verified (`status` says where it stopped). */
+/** The system overview and the facts of the script: `overview` is null unless the overview is verified (`status` says where it stopped); the application rows, counts and areas do not depend on it. */
 export interface System {
   status: Status;
   overview: OverviewText | null;
   applications: ApplicationFacts[];
-  counts: { applications: number; files: number; lines: number; areas: number; features: number; featuresWithEntry: number; roles: number } | null;
+  counts: { applications: number; files: number; lines: number; areas: number; features: number; featuresWithEntry: number; roles: number };
   areas: AreaRow[];
 }
 

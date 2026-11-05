@@ -9,7 +9,7 @@ import { spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { clone, confirmChecked, runHandbook, verifyChecked } from './helpers.mjs';
+import { clone, confirmChecked, judge, runHandbook, traceFeature, verifyChecked } from './helpers.mjs';
 import { checkedOverviewRun } from './overview-fixture.mjs';
 
 const cleanups = [];
@@ -212,5 +212,88 @@ describe('system facts: counts and areas', () => {
     expect(run.readJson('state.json').features.F2.status).toBe('confirmed');
     const [area] = systemOf(run).areas;
     expect(area).toEqual({ id: 'A1', name: 'Order handling', features: 2, verified: 1, roles: ['Clerk'] });
+  });
+});
+
+describe('system facts: one row per application root, whatever the overview says', () => {
+  const NOT_VERIFIED = 'Not verified';
+  const manifest = (name) => `{ "name": "${name}" }\n`;
+
+  /** A project of two application roots, repos/api and repos/web (each with one source file), and a package below repos/api. */
+  function twoRootsRun({ listTools = false, judgeBad = () => 'verified', verify = true } = {}) {
+    const run = checkedOverviewRun(cleanups, (doc, r) => {
+      rmSync(join(r.root, 'package.json'));
+      for (const dir of ['api', 'web']) {
+        mkdirSync(join(r.root, 'repos', dir, 'src'), { recursive: true });
+        writeFileSync(join(r.root, 'repos', dir, 'package.json'), manifest(dir));
+        writeFileSync(join(r.root, 'repos', dir, 'src', 'index.js'), `module.exports = '${dir}';\n`);
+      }
+      mkdirSync(join(r.root, 'repos', 'api', 'tools'), { recursive: true });
+      writeFileSync(join(r.root, 'repos', 'api', 'tools', 'package.json'), manifest('tools'));
+      writeFileSync(join(r.root, 'repos', 'api', 'tools', 'run.js'), 'module.exports = 1;\n');
+      const app = (dir, name) => ({ dir, name, does: `${name} does its work.`, evidence: [{ file: `${dir}/package.json`, passage: manifest(dir.split('/').at(-1)).trim() }] });
+      doc.applications = [app('repos/api', 'Api'), app('repos/web', 'Web'), ...(listTools ? [app('repos/api/tools', 'Tools')] : [])];
+      doc.integrations[0].callers = ['repos/api'];
+    });
+    if (verify) {
+      expect(judge(run, 'overview', 1, judgeBad).status).toBe(0);
+      expect(traceFeature(run, 'overview').status).toBe(0);
+    }
+    return run;
+  }
+
+  it('keeps the row of a root whose application was removed, with its facts and the not-verified text in the name and responsibility cells', () => {
+    const run = twoRootsRun({ judgeBad: (item) => (item.id === 'applications[1]' ? { verdict: 'contradicted', reason: 'The code shown does something else.' } : 'verified') });
+    expect(run.readJson('state.json').overview.removed.map((record) => record.path)).toEqual(['applications[1]']);
+    const system = systemOf(run);
+    expect(system.applications.map((row) => [row.dir, row.name, row.does])).toEqual([
+      ['repos/api', 'Api', 'Api does its work.'],
+      ['repos/web', null, null],
+    ]);
+    const web = system.applications[1];
+    expect(web.languages).toEqual([{ language: 'JavaScript', files: 1 }]);
+    expect(web.files).toBe(1);
+    expect(web.lines).toBe(1);
+    expect(web.history).toBeNull();
+    expect(system.counts.applications).toBe(2);
+    runHandbook(['assemble', run.out, '--project', run.root]);
+    const md = readFileSync(join(run.out, 'handbook.md'), 'utf-8');
+    expect(md).toContain(`| repos/web | ${NOT_VERIFIED} | ${NOT_VERIFIED} | JavaScript (1) | - | 1 | 1 | No version history |`);
+    expect(md).toContain('| repos/api | Api | Api does its work. |');
+    expect(md).toContain('Applications: 2. Source files: ');
+  });
+
+  it('puts a listed application below a root in its own row under that root, and counts roots, not listed applications', () => {
+    const run = twoRootsRun({ listTools: true });
+    const system = systemOf(run);
+    expect(system.applications.map((row) => row.dir)).toEqual(['repos/api', 'repos/api/tools', 'repos/web']);
+    expect(system.applications[1].name).toBe('Tools');
+    expect(system.applications[1].files).toBe(1);
+    expect(system.applications[0].files).toBe(2);
+    expect(system.counts.applications).toBe(2);
+    expect(system.counts.files).toBe(3);
+  });
+
+  it('an overview that is not verified still shows the rows with the script facts, the counts and the area table; only the model-written sections are replaced', () => {
+    const run = twoRootsRun({ verify: false });
+    const system = systemOf(run);
+    expect(system.overview).toBeNull();
+    expect(system.status).toBe('checked');
+    expect(system.applications.map((row) => [row.dir, row.name, row.does, row.files])).toEqual([['repos/api', null, null, 2], ['repos/web', null, null, 1]]);
+    expect(system.counts).toMatchObject({ applications: 2, files: 3, areas: 2, features: 5, featuresWithEntry: 0, roles: 2 });
+    runHandbook(['assemble', run.out, '--project', run.root]);
+    const md = readFileSync(join(run.out, 'handbook.md'), 'utf-8');
+    const section = md.slice(md.indexOf('## System overview'), md.indexOf('## Areas and features'));
+    expect(section).toContain('The system overview is not in this handbook. Where it stopped: Written, verification not finished.');
+    expect(section).toContain('Applications: 2. Source files: 3.');
+    expect(section).toContain(`| repos/api | ${NOT_VERIFIED} | ${NOT_VERIFIED} | JavaScript (2) |`);
+    expect(section).toContain('### Areas and roles');
+    for (const gone of ['### Purpose', '### Who uses it', '### External systems', 'Staff place', 'Slack']) expect(section).not.toContain(gone);
+  });
+
+  it('is the same bytes twice, with the rows in directory order', () => {
+    const run = twoRootsRun({ listTools: true });
+    const first = JSON.stringify(systemOf(run));
+    expect(JSON.stringify(systemOf(run))).toBe(first);
   });
 });

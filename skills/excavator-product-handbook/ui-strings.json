@@ -11,6 +11,7 @@
     "md.overview.integrationsHeading": "External systems",
     "md.overview.areasHeading": "Areas and roles",
     "md.overview.noHistory": "No version history",
+    "md.overview.notVerified": "Not verified",
     "md.overview.languageItem": "{language} ({files})",
     "md.overview.frameworkItem": "{framework} ({count})",
     "md.overview.application.item": "Application {dir} ({name})",

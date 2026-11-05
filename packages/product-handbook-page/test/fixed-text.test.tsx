@@ -75,7 +75,13 @@ const areaRows: System['areas'] = [
 ];
 
 /** An overview that is not verified: where it stopped, and the area table that does not depend on it. */
-const unwrittenSystem: System = { status: 'checked', overview: null, applications: [], counts: null, areas: areaRows };
+const unwrittenSystem: System = {
+  status: 'checked',
+  overview: null,
+  applications: [{ dir: d('root/dir'), name: null, does: null, languages: [{ language: d('Lang A'), files: 3 }], frameworks: [], files: 3, lines: 40, history: null }],
+  counts: { applications: 1, files: 3, lines: 40, areas: 2, features: 6, featuresWithEntry: 2, roles: 2 },
+  areas: areaRows,
+};
 
 const fullSystem: System = {
   status: 'verified',
@@ -93,7 +99,7 @@ const fullSystem: System = {
       files: 11, lines: 1200,
       history: { first: d('2023-02-01'), last: d('2024-01-20'), commits: 14, authors: 3 },
     },
-    { dir: d('other/dir'), name: d('other name'), does: d('other does'), languages: [], frameworks: [], files: 0, lines: 0, history: null },
+    { dir: d('other/dir'), name: null, does: null, languages: [], frameworks: [], files: 0, lines: 0, history: null },
   ],
   counts: { applications: 2, files: 11, lines: 1200, areas: 2, features: 6, featuresWithEntry: 2, roles: 2 },
   areas: areaRows,
@@ -286,15 +292,23 @@ describe('every fixed text of the page comes from the ui table (O8, node half)',
     expect(html).toContain(`${MARK}${d('Lang A')} (9), ${MARK}${d('Lang B')} (2)`);
     // The application with no version history says so in each of the four cells.
     expect((html.match(new RegExp(`${MARK}No version history`, 'g')) ?? []).length).toBe(4);
+    // A root with no verified application keeps its row: the fixed not-verified text stands in the name and responsibility cells.
+    expect((html.match(new RegExp(`${MARK}Not verified`, 'g')) ?? []).length).toBe(2);
     expect(html).not.toContain(marked['md.overview.notWritten']);
   });
 
-  it('says where the system overview stopped and keeps only the area table when it was not written', () => {
+  it('says where the system overview stopped, replaces only the model-written sections, and keeps the counts, the application rows and the area table', () => {
     const html = render(allWritten, '#/');
     expect(html).toContain(`${MARK}The system overview is not in this handbook. Where it stopped: ${marked['md.status.checked']}.`);
     expect(html).toContain(marked['md.overview.areasHeading']);
+    expect(html).toContain(marked['md.overview.applicationsHeading']);
+    expect(html).toContain(`${MARK}Applications: 1. Source files: 3. Lines of source: 40.`);
+    expect(html).toContain(d('root/dir'));
+    // The name and responsibility cells of the root hold the fixed not-verified text.
+    expect((html.match(new RegExp(`${MARK}Not verified`, 'g')) ?? []).length).toBe(2);
     expect(html).not.toContain(marked['md.overview.audiencesHeading']);
-    expect(html).not.toContain(marked['md.overview.applicationsHeading']);
+    expect(html).not.toContain(marked['md.overview.integrationsHeading']);
+    expect(html).not.toContain(marked['md.section.purpose'] + '</h2>');
     expect(html).toContain(d('role one'));
   });
 

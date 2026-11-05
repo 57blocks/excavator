@@ -41,7 +41,7 @@ function verifiedOverviewRun(adjust) {
 describe('the fixed texts of the overview', () => {
   const KEYS = [
     'md.overview.heading', 'md.overview.counts', 'md.overview.notWritten', 'md.overview.audiencesHeading', 'md.overview.applicationsHeading',
-    'md.overview.integrationsHeading', 'md.overview.areasHeading', 'md.overview.noHistory', 'md.overview.languageItem', 'md.overview.frameworkItem',
+    'md.overview.integrationsHeading', 'md.overview.areasHeading', 'md.overview.noHistory', 'md.overview.notVerified', 'md.overview.languageItem', 'md.overview.frameworkItem',
     'md.overview.application.item', 'md.coverage.removedOverview', 'md.table.who', 'md.table.directory', 'md.table.name', 'md.table.languages',
     'md.table.frameworks', 'md.table.files', 'md.table.lines', 'md.table.firstCommit', 'md.table.lastCommit', 'md.table.commits', 'md.table.authors',
     'md.table.system', 'md.table.use', 'md.table.callers', 'md.table.area', 'md.table.verified', 'md.table.roles',
@@ -131,7 +131,11 @@ describe('an overview that is not verified', () => {
       expect(section).toContain('| Area | Features | Verified entries | Roles |');
       expect(section).not.toContain('Staff place and review orders for customers.');
       expect(section).not.toContain('### Purpose');
-      expect(section).not.toContain('Applications: ');
+      expect(section).not.toContain('### Who uses it');
+      expect(section).not.toContain('### External systems');
+      // The facts of the script do not depend on the overview: counts, the application row and the area table stay.
+      expect(section).toContain('Applications: 1. Source files: ');
+      expect(section).toMatch(/\| \. \| Not verified \| Not verified \| JavaScript \(9\) \|/);
       expect(text).not.toContain('Slack');
     });
   }
@@ -142,14 +146,14 @@ describe('an overview that is not verified', () => {
     expect(assemble(run)).toContain('Where it stopped: Not written.');
   });
 
-  it('page data: no overview and no counts, the area table kept', () => {
+  it('page data: no overview, but the application rows, the counts and the area table', () => {
     const run = overviewRun(cleanups);
     expect(page(run).status).toBe(0);
     const { system } = dataOf(run);
     expect(system.status).toBe('planned');
     expect(system.overview).toBeNull();
-    expect(system.counts).toBeNull();
-    expect(system.applications).toEqual([]);
+    expect(system.counts).toMatchObject({ applications: 1, areas: 2, features: 5, featuresWithEntry: 0, roles: 2 });
+    expect(system.applications.map((row) => [row.dir, row.name, row.does])).toEqual([['.', null, null]]);
     expect(system.areas.map((area) => area.id)).toEqual(['A1', 'A2']);
   });
 });
@@ -192,7 +196,10 @@ describe('the coverage section lists the removed overview items', () => {
     ]);
     expect(JSON.stringify(data)).not.toContain('src/notify.js');
     expect(data.system.overview.applications).toBeUndefined();
-    expect(data.system.applications).toEqual([]);
+    // The application item was removed: its root keeps the row, with the script facts and no name.
+    expect(data.system.applications.map((row) => [row.dir, row.name, row.does])).toEqual([['.', null, null]]);
+    expect(data.system.applications[0].files).toBeGreaterThan(0);
+    expect(data.system.counts.applications).toBe(1);
   });
 
   it('lists nothing for an overview that lost no item', () => {
