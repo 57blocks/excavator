@@ -15,7 +15,7 @@ import { languageTag } from './language-tag.mjs';
 import { withoutRootPaths } from './root-paths.mjs';
 import { DEFAULT_VIEWS } from './views.mjs';
 
-export const PAGE_FORMAT = 'excavator-product-handbook-page/4';
+export const PAGE_FORMAT = 'excavator-product-handbook-page/5';
 
 /** An entry without its evidence, in the page's shape. */
 function pageEntry(entry) {
@@ -39,7 +39,10 @@ function pageEntry(entry) {
  * The page data of a loaded run (`loadCheckedRun`'s result). `roots` are the
  * paths of the project, each replaced by the project's directory name in every
  * string; the first is the real path, which the summary reads the source from.
- * `views` are the views the page has (views.mjs). Everything outside the key
+ * `views` are the views the page has (views.mjs). `areas` are the map's areas and
+ * `domains` the groups the page navigates by: the business domains of domains.json,
+ * or the areas again with `domainBasis` `areas` when there is none; each feature
+ * carries both its area and its domain. Everything outside the key
  * `technical` is the product part and holds no citation path; `technical`, only
  * there when the technical view is selected, holds the application relations,
  * the external systems with both relations to applications, and the file and
@@ -50,6 +53,7 @@ export function buildPageData(run, roots, { views = DEFAULT_VIEWS } = {}) {
   const project = basename(roots[0]);
   const kind = new Map(candidates.map((candidate) => [candidate.id, candidate.kind]));
   const { summary, system, entities, locations } = handbookModel(run, roots[0], views);
+  const domainOf = new Map(entities.domains.flatMap((domain) => domain.features.map((id) => [id, domain.id])));
   const data = {
     format: PAGE_FORMAT,
     project,
@@ -58,10 +62,13 @@ export function buildPageData(run, roots, { views = DEFAULT_VIEWS } = {}) {
     ui: { strings: ui },
     views: [...views],
     areas: map.areas.map((area) => ({ id: area.id, name: area.name })),
+    domains: entities.domains.map((domain) => ({ id: domain.id, name: domain.name })),
+    domainBasis: entities.domainBasis,
     features: map.features.map((feature) => ({
       id: feature.id,
       name: feature.name,
       area: feature.area,
+      domain: domainOf.get(feature.id),
       reach: feature.reach,
       label: feature.label,
       status: state.features[feature.id].status,

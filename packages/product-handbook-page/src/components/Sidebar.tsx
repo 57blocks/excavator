@@ -26,22 +26,22 @@ function FeatureLink({ feature, current }: { feature: Feature; current: boolean 
   );
 }
 
-/** The product view's navigation: the domains (areas of the map), each with its features. */
+/** The product view's navigation: the domains, each with its features. */
 function ByDomain({ data, route }: { data: PageData; route: Route }) {
   const t = useText();
   const nav = useLinks();
   const currentId = route.name === 'feature' ? route.id : '';
   return (
     <>
-      {data.areas.map((area) => {
-        const inArea = data.features.filter((feature) => feature.area === area.id);
+      {data.domains.map((domain) => {
+        const inDomain = data.features.filter((feature) => feature.domain === domain.id);
         return (
-          <section className="rail-area" key={area.id} aria-labelledby={`rail-area-${area.id}`}>
-            <h2 className="rail-area-name" id={`rail-area-${area.id}`}>
-              <a className="rail-area-link" href={nav.domain(area.id)} aria-current={route.name === 'domain' && route.id === area.id ? 'page' : undefined}>{area.name}</a>
+          <section className="rail-area" key={domain.id} aria-labelledby={`rail-area-${domain.id}`}>
+            <h2 className="rail-area-name" id={`rail-area-${domain.id}`}>
+              <a className="rail-area-link" href={nav.domain(domain.id)} aria-current={route.name === 'domain' && route.id === domain.id ? 'page' : undefined}>{domain.name}</a>
             </h2>
-            {inArea.length === 0 && <p className="rail-empty">{t('md.areas.noFeatures')}</p>}
-            {inArea.map((feature) => <FeatureLink feature={feature} current={currentId === feature.id} key={feature.id} />)}
+            {inDomain.length === 0 && <p className="rail-empty">{t('md.areas.noFeatures')}</p>}
+            {inDomain.map((feature) => <FeatureLink feature={feature} current={currentId === feature.id} key={feature.id} />)}
           </section>
         );
       })}

@@ -69,9 +69,9 @@ const SUMMARY = {
   ],
 };
 
-function build(root, { applications = APPS, integrations = [{ system: SYSTEM, use: 'Messages.', callers: ['svc'] }], entriesMap = entries(), overview = true } = {}) {
+function build(root, { applications = APPS, integrations = [{ system: SYSTEM, use: 'Messages.', callers: ['svc'] }], entriesMap = entries(), overview = true, domains } = {}) {
   const system = { applications, overview: overview ? { integrations } : null };
-  return buildEntities({ map: MAP, entries: entriesMap, candidates: CANDIDATES, summary: SUMMARY, system, scan: scanProject(root) });
+  return buildEntities({ map: MAP, domains: domains ?? null, entries: entriesMap, candidates: CANDIDATES, summary: SUMMARY, system, scan: scanProject(root) });
 }
 
 describe('owningApplication: the directory that holds a file, the longest match', () => {
@@ -236,5 +236,72 @@ describe('entities: same input, same bytes', () => {
     const first = JSON.stringify(build(project()));
     expect(JSON.stringify(build(project()))).toBe(first);
     expect(first).not.toMatch(/\/(?:private\/)?(?:var|tmp)\//);
+  });
+});
+
+// O1 of openspec change handbook-map-by-domain: the domains of the entities are
+// the business domains of domains.json, and the map's areas only when there is
+// none. D1 crosses the two areas of MAP (F1 and F2 are in A1, F3 and F4 in A2);
+// the features of D2 and D1 are listed in another order than the map's.
+const BUSINESS = {
+  format: 'excavator-product-handbook-domains/1',
+  language: 'English',
+  domains: [
+    { id: 'D1', name: 'Orders and panels', features: ['F3', 'F1', 'F2'] },
+    { id: 'D2', name: 'Upkeep', features: ['F4'] },
+  ],
+};
+
+describe('entities: business domains', () => {
+  it('takes the domains from domains.json, each with its features in the order of the map, even when they cross the map\'s areas', () => {
+    const { domains, domainBasis } = build(project(), { domains: BUSINESS });
+    expect(domainBasis).toBe('domains');
+    expect(domains).toEqual([
+      {
+        id: 'D1',
+        name: 'Orders and panels',
+        features: ['F1', 'F2', 'F3'],
+        purposes: [{ feature: 'F1', text: 'Staff place orders.' }, { feature: 'F2', text: 'Staff review orders.' }, { feature: 'F3', text: 'Admins open the panel.' }],
+      },
+      { id: 'D2', name: 'Upkeep', features: ['F4'], purposes: [] },
+    ]);
+  });
+
+  it('falls back to the areas of the map when there is no domains file, and says so in domainBasis', () => {
+    const { domains, domainBasis } = build(project());
+    expect(domainBasis).toBe('areas');
+    expect(domains.map((domain) => [domain.id, domain.name, domain.features])).toEqual([['A1', 'Orders', ['F1', 'F2']], ['A2', 'Admin work', ['F3', 'F4']]]);
+  });
+
+  it('sums the application by domain matrix over the business domains, not over the areas', () => {
+    const { matrices, relations } = build(project(), { domains: BUSINESS });
+    expect(matrices.applicationDomain.domains).toEqual(['D1', 'D2']);
+    expect(matrices.applicationDomain.cells).toEqual([
+      { application: 'other', domain: 'D1', citations: 2 },
+      { application: 'svc', domain: 'D1', citations: 3 },
+      { application: 'svc/admin', domain: 'D1', citations: 4 },
+    ]);
+    expect(matrices.applicationDomain.unattributed).toEqual([]);
+    const total = matrices.applicationDomain.cells.reduce((sum, cell) => sum + cell.citations, 0);
+    expect(total).toBe(relations.featureApplication.reduce((sum, row) => sum + row.citations, 0));
+  });
+
+  it('lists the citations of a business domain that sit in no application under that domain', () => {
+    const result = build(project(), { applications: [{ dir: 'other', name: null, does: null }], domains: BUSINESS });
+    expect(result.matrices.applicationDomain.unattributed).toEqual([{ domain: 'D1', citations: 7 }]);
+  });
+
+  it('does not change what the domains do not touch: relations, roles and the role by feature matrix are the same either way', () => {
+    const withDomains = build(project(), { domains: BUSINESS });
+    const without = build(project());
+    expect(withDomains.relations).toEqual(without.relations);
+    expect(withDomains.roles).toEqual(without.roles);
+    expect(withDomains.matrices.roleFeature).toEqual(without.matrices.roleFeature);
+  });
+
+  it('gives the same object twice, whatever the order the domains file lists its features in', () => {
+    const first = JSON.stringify(build(project(), { domains: BUSINESS }));
+    const reordered = { ...BUSINESS, domains: [{ ...BUSINESS.domains[0], features: ['F2', 'F3', 'F1'] }, BUSINESS.domains[1]] };
+    expect(JSON.stringify(build(project(), { domains: reordered }))).toBe(first);
   });
 });

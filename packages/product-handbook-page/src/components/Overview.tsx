@@ -5,7 +5,7 @@ import { Locations } from './Locations';
 import { ReachBadge } from './ReachBadge';
 import { SystemOverview } from './SystemOverview';
 
-/** The first page: how much the handbook holds, the system overview, how readers get to the features, and the areas with their features. */
+/** The first page: how much the handbook holds, the system overview, how readers get to the features, and the domains with their features. */
 export function Overview({ data }: { data: PageData }) {
   const t = useText();
   const nav = useLinks();
@@ -20,7 +20,7 @@ export function Overview({ data }: { data: PageData }) {
       </header>
 
       <ul className="stats">
-        <li className="stat"><span className="stat-value">{data.areas.length}</span><span className="stat-label">{t('page.overview.areasStat')}</span></li>
+        <li className="stat"><span className="stat-value">{data.domains.length}</span><span className="stat-label">{t(data.domainBasis === 'domains' ? 'page.overview.domainsStat' : 'page.overview.areasStat')}</span></li>
         <li className="stat"><span className="stat-value">{data.features.length}</span><span className="stat-label">{t('page.overview.featuresStat')}</span></li>
         <li className="stat"><span className="stat-value">{written}</span><span className="stat-label">{t('page.overview.writtenStat')}</span></li>
       </ul>
@@ -41,13 +41,14 @@ export function Overview({ data }: { data: PageData }) {
       </section>
 
       <section aria-labelledby="overview-areas" className="block">
-        <h2 id="overview-areas" className="block-title">{t('md.areas.heading')}</h2>
+        <h2 id="overview-areas" className="block-title">{t(data.domainBasis === 'domains' ? 'md.domains.heading' : 'md.areas.heading')}</h2>
+        {data.domainBasis === 'areas' && <p className="muted">{t('md.domains.fromAreas')}</p>}
         <div className="area-grid">
-          {data.areas.map((area) => {
-            const inArea = data.features.filter((feature) => feature.area === area.id);
+          {data.domains.map((domain) => {
+            const inArea = data.features.filter((feature) => feature.domain === domain.id);
             return (
-              <section className="area-card" key={area.id} aria-labelledby={`area-${area.id}`}>
-                <h3 className="area-name" id={`area-${area.id}`}><a href={nav.domain(area.id)}>{area.name}</a></h3>
+              <section className="area-card" key={domain.id} aria-labelledby={`area-${domain.id}`}>
+                <h3 className="area-name" id={`area-${domain.id}`}><a href={nav.domain(domain.id)}>{domain.name}</a></h3>
                 <p className="area-count">{t('page.overview.areaCount', { count: inArea.length })}</p>
                 {inArea.length === 0 ? <p className="muted">{t('md.areas.noFeatures')}</p> : (
                   <ul className="area-features">

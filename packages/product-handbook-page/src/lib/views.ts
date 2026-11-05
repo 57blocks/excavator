@@ -12,7 +12,7 @@ export function bodyOf(route: Route): RouteBody {
 export function entityExists(data: PageData, route: RouteBody): boolean {
   switch (route.name) {
     case 'feature': return data.features.some((feature) => feature.id === route.id);
-    case 'domain': return data.areas.some((area) => area.id === route.id);
+    case 'domain': return data.domains.some((domain) => domain.id === route.id);
     case 'role': return data.entities.roles.some((role) => role.label === route.label);
     case 'application': return data.system.applications.some((application) => application.dir === route.dir);
     case 'system': return (data.technical?.integrations ?? []).some((item) => item.system === route.system);
@@ -54,12 +54,12 @@ export function technicalNav(data: PageData): { applications: ApplicationNav[]; 
   const applications = data.system.applications.map((application) => ({
     dir: application.dir,
     label: application.name ?? application.dir,
-    domains: data.areas
-      .filter((area) => cells.some((cell) => cell.application === application.dir && cell.domain === area.id))
-      .map((area) => ({
-        id: area.id,
-        name: area.name,
-        features: data.features.filter((feature) => feature.area === area.id && rows.some((row) => row.feature === feature.id && row.application === application.dir)),
+    domains: data.domains
+      .filter((domain) => cells.some((cell) => cell.application === application.dir && cell.domain === domain.id))
+      .map((domain) => ({
+        id: domain.id,
+        name: domain.name,
+        features: data.features.filter((feature) => feature.domain === domain.id && rows.some((row) => row.feature === feature.id && row.application === application.dir)),
       })),
   }));
   const unplaced = data.features.filter((feature) => !rows.some((row) => row.feature === feature.id));

@@ -162,9 +162,10 @@ describe('renderHandbook: the states the commands cannot easily reach', () => {
     state: { features: { F1: { status: 'planned' } } },
     candidates: [{ id: 'c1', kind: 'job' }, { id: 'c2', kind: 'job' }],
     ui,
-    system: { status: 'planned', overview: null, applications: [], counts: { applications: 0, files: 0, lines: 0, areas: 1, features: 1, featuresWithEntry: 0, roles: 0 }, areas: [{ id: 'A1', name: 'Operations', features: 1, verified: 0, roles: [] }] },
+    system: { status: 'planned', overview: null, applications: [], counts: { applications: 0, files: 0, lines: 0, areas: 1, features: 1, featuresWithEntry: 0, roles: 0 }, areas: [{ id: 'A1', name: 'Operations', features: 1, verified: 0, roles: [] }], domains: [{ id: 'A1', name: 'Operations', features: 1, verified: 0, roles: [] }] },
     // The entity sections (handbook-entities-and-views) need the entities; this map has one domain and nothing verified.
     entities: {
+      domainBasis: 'areas',
       domains: [{ id: 'A1', name: 'Operations', features: ['F1'], purposes: [] }],
       roles: [],
       applications: [],

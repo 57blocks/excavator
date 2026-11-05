@@ -233,8 +233,12 @@ Commands:
       product; any other value exits 1 and prints the two). Each file's first
       section is the system overview (the verified overview with the facts the
       script computes: languages, frameworks, files, lines and git history of
-      each application, the counts of the system, the roles of each area), or
-      a line saying where the overview stopped and the area table. After the
+      each application, the counts of the system, the roles of each domain), or
+      a line saying where the overview stopped and the domain table. The
+      features are grouped by the business domains of <out>/domains.json when it
+      passes check-domains, and by the areas of the map, with a fixed text that
+      says they are areas drawn by the navigation, when it does not (or is
+      missing); a feature's area is shown next to it in the first case. After the
       features come the two cross-cutting tables, the entity sections (the
       domains, the roles and the roles-by-feature matrix, computed from verified
       entries only) and the coverage section. The technical file adds the
@@ -247,7 +251,7 @@ Commands:
       fails. Prints the paths.
   page <out> --project <root> [--views <list>]
       Write <out>/handbook.html: the same run, checked the same way, as one
-      self-contained page (navigation by area in the product view, by application
+      self-contained page (navigation by domain in the product view, by application
       in the technical view, a switch between them when both are selected, a page
       per feature and per entity, the matrices, a coverage page; light and dark;
       every fixed text from <out>/ui.json). Removes an earlier handbook.html

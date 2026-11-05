@@ -1,6 +1,6 @@
 /** The page data `handbook.mjs page` writes into the template (openspec change product-handbook-map, design D13). */
 
-export const PAGE_FORMAT = 'excavator-product-handbook-page/4';
+export const PAGE_FORMAT = 'excavator-product-handbook-page/5';
 
 /** The views a page can hold (openspec change handbook-entities-and-views): the product view and the technical view. */
 export const VIEWS = ['product', 'technical'] as const;
@@ -34,10 +34,16 @@ export interface Entry {
 
 export interface Area { id: string; name: string }
 
+/** What the page's domains are: the business domains of domains.json, or the map's areas drawn by the navigation when there are none. */
+export type DomainBasis = 'domains' | 'areas';
+
 export interface Feature {
   id: string;
   name: string;
+  /** The map's area, a property of the feature. */
   area: string;
+  /** The id of the domain the feature is grouped in (an area id when `domainBasis` is `areas`). */
+  domain: string;
   reach: Reach;
   /** The label readers see in the product, for `menu` and `link` features. */
   label?: string;
@@ -110,7 +116,7 @@ export interface OverviewText {
   unknowns: { item: string; searched: string }[];
 }
 
-/** One area of the map with the counts and roles the script computes from the verified entries. */
+/** One group of features (a domain, or an area of the map) with the counts and roles the script computes from the verified entries. */
 export interface AreaRow { id: string; name: string; features: number; verified: number; roles: string[] }
 
 /** The system overview and the facts of the script: `overview` is null unless the overview is verified (`status` says where it stopped); the application rows, counts and areas do not depend on it. */
@@ -120,9 +126,11 @@ export interface System {
   applications: ApplicationFacts[];
   counts: { applications: number; files: number; lines: number; areas: number; features: number; featuresWithEntry: number; roles: number };
   areas: AreaRow[];
+  /** The same rows over the domains the page groups by (the areas again when `domainBasis` is `areas`). */
+  domains: AreaRow[];
 }
 
-/** A domain (an area of the map): its features, and the purposes of those that were verified, in the words of their entries. */
+/** A domain (a business domain, or an area of the map when there is no domains file): its features, and the purposes of those that were verified, in the words of their entries. */
 export interface Domain { id: string; name: string; features: string[]; purposes: { feature: string; text: string }[] }
 
 /** What the verified entry of a feature says a role can do; a role-feature pair the entries do not name has no cell. */
@@ -171,6 +179,9 @@ export interface PageData {
   /** The selected views in the fixed order; the page has a switch only when there are two. */
   views: View[];
   areas: Area[];
+  /** The groups the page navigates by. */
+  domains: Area[];
+  domainBasis: DomainBasis;
   features: Feature[];
   coverage: Coverage;
   summary: Summary;

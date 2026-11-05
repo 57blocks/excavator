@@ -149,8 +149,8 @@ function EntryBody({ entry }: { entry: Entry }) {
   );
 }
 
-/** One feature: where it sits, how readers get to it, and the checked entry, or why there is none; in the technical view, the file and lines of each cited item. */
-export function FeaturePage({ feature, area, locations }: { feature: Feature; area: Area | undefined; locations?: UnitLocations }) {
+/** One feature: its domain (and, when the page groups by business domain, the area of the navigation it sits in), how readers get to it, and the checked entry, or why there is none; in the technical view, the file and lines of each cited item. */
+export function FeaturePage({ feature, domain, area, locations }: { feature: Feature; domain: Area | undefined; area: Area | undefined; locations?: UnitLocations }) {
   const t = useText();
   const nav = useLinks();
   return (
@@ -158,7 +158,7 @@ export function FeaturePage({ feature, area, locations }: { feature: Feature; ar
       <nav className="crumbs" aria-label={t('page.breadcrumb.label')}>
         <ol>
           <li><a href={nav.overview}>{t('page.nav.overview')}</a></li>
-          {area !== undefined && <li><a href={nav.domain(area.id)}>{area.name}</a></li>}
+          {domain !== undefined && <li><a href={nav.domain(domain.id)}>{domain.name}</a></li>}
           <li aria-current="page">{feature.name}</li>
         </ol>
       </nav>
@@ -167,6 +167,7 @@ export function FeaturePage({ feature, area, locations }: { feature: Feature; ar
         <div className="feature-facts">
           <ReachBadge reach={feature.reach} />
           {feature.label !== undefined && <span className="shown-as">{t('md.feature.label', { label: feature.label })}</span>}
+          {area !== undefined && <span className="shown-as">{t('md.feature.area', { area: area.name })}</span>}
         </div>
       </header>
       {feature.entry === null ? (

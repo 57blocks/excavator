@@ -35,14 +35,14 @@ function PageView({ data, route, view }: { data: PageData; route: Route; view: V
     case 'system': return technical === undefined ? <NotFound /> : <SystemPage data={data} technical={technical} system={body.system} />;
     case 'role': return <RolePage data={data} label={body.label} />;
     case 'domain': {
-      const area = data.areas.find((item) => item.id === body.id);
-      return area === undefined ? <NotFound /> : <DomainPage data={data} area={area} />;
+      const domain = data.domains.find((item) => item.id === body.id);
+      return domain === undefined ? <NotFound /> : <DomainPage data={data} domain={domain} />;
     }
     case 'feature': {
       const feature = data.features.find((item) => item.id === body.id);
       return feature === undefined
         ? <NotFound />
-        : <FeaturePage feature={feature} area={data.areas.find((item) => item.id === feature.area)} locations={technical?.locations.find((unit) => unit.id === feature.id)} />;
+        : <FeaturePage feature={feature} domain={data.domains.find((item) => item.id === feature.domain)} area={data.domainBasis === 'domains' ? data.areas.find((item) => item.id === feature.area) : undefined} locations={technical?.locations.find((unit) => unit.id === feature.id)} />;
     }
     case 'not-found': return <NotFound />;
   }
@@ -99,7 +99,7 @@ function pageTitle(data: PageData, route: Route, t: ReturnType<typeof makeText>)
       const application = data.system.applications.find((item) => item.dir === body.dir);
       return application === undefined ? t('page.notFound.heading') : application.name ?? application.dir;
     }
-    case 'domain': return data.areas.find((item) => item.id === body.id)?.name ?? t('page.notFound.heading');
+    case 'domain': return data.domains.find((item) => item.id === body.id)?.name ?? t('page.notFound.heading');
     case 'feature': return data.features.find((item) => item.id === body.id)?.name ?? t('page.notFound.heading');
     case 'not-found': return t('page.notFound.heading');
   }

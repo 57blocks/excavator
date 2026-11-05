@@ -44,7 +44,7 @@ export function ApplicationPage({ data, technical, dir }: { data: PageData; tech
   const reasonOf = new Map(data.summary.jobs.map((job) => [job.candidate, job.reason ?? '']));
   const shown = technical.integrations.filter((item) => item.shown.includes(dir));
   const named = technical.integrations.flatMap((item) => item.named.filter((entry) => entry.application === dir).map((entry) => ({ system: item.system, files: entry.files })));
-  const domainName = (id: string) => data.areas.find((area) => area.id === id)?.name ?? id;
+  const domainName = (id: string) => data.domains.find((domain) => domain.id === id)?.name ?? id;
   return (
     <article className="page" data-view="application" data-application={dir}>
       <Crumbs trail={[application.dir]} />
@@ -113,7 +113,7 @@ export function ApplicationsMatrixPage({ data, technical }: { data: PageData; te
   const nav = useLinks();
   const heading = t('md.matrix.applicationDomain.heading');
   const { applications, domains, cells, unattributed } = technical.applicationDomain;
-  const domainName = (id: string) => data.areas.find((area) => area.id === id)?.name ?? id;
+  const domainName = (id: string) => data.domains.find((domain) => domain.id === id)?.name ?? id;
   const appName = (dir: string) => data.system.applications.find((application) => application.dir === dir)?.name ?? undefined;
   return (
     <article className="page" data-view="applications-matrix">

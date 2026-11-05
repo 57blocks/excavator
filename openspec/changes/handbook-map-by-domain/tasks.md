@@ -10,9 +10,9 @@
 
 提交：`feat(product-handbook): the views group features by business domain`
 
-- [ ] 2.1 实体、关系与矩阵里的领域取 `domains.json`，没有或不通过时退回区域，并写固定文字说明
-- [ ] 2.2 `handbook.md`、`handbook-technical.md` 与页面数据按领域；页面包的导航与领域页取领域
-- [ ] 2.3 测试（design O1 的实体各条）
+- [x] 2.1 实体、关系与矩阵里的领域取 `domains.json`，没有或不通过时退回区域，并写固定文字说明
+- [x] 2.2 `handbook.md`、`handbook-technical.md` 与页面数据按领域；页面包的导航与领域页取领域
+- [x] 2.3 测试（design O1 的实体各条）
 
 ## 3. SKILL.md 与合约测试
 

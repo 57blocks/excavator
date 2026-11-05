@@ -84,14 +84,14 @@ describe('page: the file and its data', () => {
     const run = checkedRun();
     page(run);
     const data = dataOf(html(run));
-    expect(Object.keys(data)).toEqual(['format', 'project', 'language', 'languageTag', 'ui', 'views', 'areas', 'features', 'coverage', 'summary', 'system', 'entities']);
-    expect(data.format).toBe('excavator-product-handbook-page/4');
+    expect(Object.keys(data)).toEqual(['format', 'project', 'language', 'languageTag', 'ui', 'views', 'areas', 'domains', 'domainBasis', 'features', 'coverage', 'summary', 'system', 'entities']);
+    expect(data.format).toBe('excavator-product-handbook-page/5');
     expect(data.project).toBe('project');
     expect(data.language).toBe('English');
     expect(data.languageTag).toBe('en');
     expect(data.ui.strings).toEqual(JSON.parse(readFileSync(SHIPPED_UI, 'utf-8')).strings);
     expect(data.areas).toEqual([{ id: 'A1', name: 'Order handling' }, { id: 'A2', name: 'Automatic work' }]);
-    expect(Object.keys(data.features[0])).toEqual(['id', 'name', 'area', 'reach', 'label', 'status', 'entry']);
+    expect(Object.keys(data.features[0])).toEqual(['id', 'name', 'area', 'domain', 'reach', 'label', 'status', 'entry']);
   });
 
   it('gives a verified feature its entry without evidence and every other feature its status and no entry', () => {
