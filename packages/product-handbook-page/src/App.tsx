@@ -1,22 +1,61 @@
 import { useEffect, useMemo, useState } from 'react';
 
+import { ApplicationPage, ApplicationsMatrixPage } from './components/ApplicationPages';
 import { CoveragePage } from './components/CoveragePage';
+import { DomainPage } from './components/DomainPage';
 import { FeaturePage } from './components/FeaturePage';
 import { JobsPage } from './components/JobsPage';
 import { NotFound } from './components/NotFound';
 import { NotificationsPage } from './components/NotificationsPage';
 import { Overview } from './components/Overview';
+import { RolePage, RolesMatrixPage } from './components/RolePages';
 import { Sidebar } from './components/Sidebar';
+import { SystemPage } from './components/SystemPage';
 import { TopBar } from './components/TopBar';
+import { LinksContext, ViewContext, makeLinks } from './lib/links';
 import type { Route } from './lib/route';
 import { TextContext, makeText } from './lib/text';
-import type { PageData } from './lib/types';
+import type { PageData, View } from './lib/types';
 import { useRoute } from './lib/use-route';
+import { bodyOf, entityExists, switchTarget, viewOf } from './lib/views';
+
+/** The view of one page: the route's page, or the not-found page when the view or the entity is not in the data. */
+function PageView({ data, route, view }: { data: PageData; route: Route; view: View | null }) {
+  const body = bodyOf(route);
+  if (view === null || !entityExists(data, body)) return <NotFound />;
+  const technical = view === 'technical' ? data.technical : undefined;
+  switch (body.name) {
+    case 'overview': return <Overview data={data} />;
+    case 'coverage': return <CoveragePage data={data} />;
+    case 'notifications': return <NotificationsPage data={data} />;
+    case 'jobs': return <JobsPage data={data} />;
+    case 'roles-matrix': return <RolesMatrixPage data={data} />;
+    case 'applications-matrix': return technical === undefined ? <NotFound /> : <ApplicationsMatrixPage data={data} technical={technical} />;
+    case 'application': return technical === undefined ? <NotFound /> : <ApplicationPage data={data} technical={technical} dir={body.dir} />;
+    case 'system': return technical === undefined ? <NotFound /> : <SystemPage data={data} technical={technical} system={body.system} />;
+    case 'role': return <RolePage data={data} label={body.label} />;
+    case 'domain': {
+      const area = data.areas.find((item) => item.id === body.id);
+      return area === undefined ? <NotFound /> : <DomainPage data={data} area={area} />;
+    }
+    case 'feature': {
+      const feature = data.features.find((item) => item.id === body.id);
+      return feature === undefined
+        ? <NotFound />
+        : <FeaturePage feature={feature} area={data.areas.find((item) => item.id === feature.area)} locations={technical?.locations.find((unit) => unit.id === feature.id)} />;
+    }
+    case 'not-found': return <NotFound />;
+  }
+}
 
 /** The page for a route: the shell (bar, navigation) around one view. Pure in its props, so a test can render any route to a string. */
 export function AppView({ data, route }: { data: PageData; route: Route }) {
   const t = useMemo(() => makeText(data.ui.strings), [data.ui.strings]);
   const [menuOpen, setMenuOpen] = useState(false);
+  const view = viewOf(data, route);
+  const current: View = view ?? data.views[0];
+  const links = useMemo(() => makeLinks(data.views.length > 1 ? current : null), [data.views.length, current]);
+  const switchTo = Object.fromEntries(data.views.map((item) => [item, switchTarget(data, route, item)])) as Record<View, string>;
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -26,44 +65,44 @@ export function AppView({ data, route }: { data: PageData; route: Route }) {
     return () => window.removeEventListener('keydown', onKey);
   }, []);
 
-  let view;
-  switch (route.name) {
-    case 'overview':
-      view = <Overview data={data} />;
-      break;
-    case 'coverage':
-      view = <CoveragePage data={data} />;
-      break;
-    case 'notifications':
-      view = <NotificationsPage data={data} />;
-      break;
-    case 'jobs':
-      view = <JobsPage data={data} />;
-      break;
-    case 'feature': {
-      const feature = data.features.find((item) => item.id === route.id);
-      view = feature === undefined
-        ? <NotFound />
-        : <FeaturePage feature={feature} area={data.areas.find((item) => item.id === feature.area)} />;
-      break;
-    }
-    case 'not-found':
-      view = <NotFound />;
-      break;
-  }
-
   return (
     <TextContext.Provider value={t}>
-      <div className="app">
-        <TopBar project={data.project} menuOpen={menuOpen} onMenu={() => setMenuOpen(!menuOpen)} />
-        <div className="shell">
-          {menuOpen && <div className="scrim" onClick={() => setMenuOpen(false)} aria-hidden="true" />}
-          <Sidebar areas={data.areas} features={data.features} route={route} open={menuOpen} onNavigate={() => setMenuOpen(false)} />
-          <main className="main" id="main">{view}</main>
-        </div>
-      </div>
+      <ViewContext.Provider value={current}>
+        <LinksContext.Provider value={links}>
+          <div className="app">
+            <TopBar project={data.project} menuOpen={menuOpen} onMenu={() => setMenuOpen(!menuOpen)} views={data.views} current={current} switchTo={switchTo} />
+            <div className="shell">
+              {menuOpen && <div className="scrim" onClick={() => setMenuOpen(false)} aria-hidden="true" />}
+              <Sidebar data={data} route={route} open={menuOpen} onNavigate={() => setMenuOpen(false)} />
+              <main className="main" id="main"><PageView data={data} route={route} view={view} /></main>
+            </div>
+          </div>
+        </LinksContext.Provider>
+      </ViewContext.Provider>
     </TextContext.Provider>
   );
+}
+
+/** The title of the page a route shows. */
+function pageTitle(data: PageData, route: Route, t: ReturnType<typeof makeText>): string {
+  const body = bodyOf(route);
+  switch (body.name) {
+    case 'overview': return t('page.nav.overview');
+    case 'coverage': return t('page.nav.coverage');
+    case 'notifications': return t('page.nav.notifications');
+    case 'jobs': return t('page.nav.jobs');
+    case 'roles-matrix': return t('md.matrix.roleFeature.heading');
+    case 'applications-matrix': return t('md.matrix.applicationDomain.heading');
+    case 'role': return entityExists(data, body) ? body.label : t('page.notFound.heading');
+    case 'system': return entityExists(data, body) ? body.system : t('page.notFound.heading');
+    case 'application': {
+      const application = data.system.applications.find((item) => item.dir === body.dir);
+      return application === undefined ? t('page.notFound.heading') : application.name ?? application.dir;
+    }
+    case 'domain': return data.areas.find((item) => item.id === body.id)?.name ?? t('page.notFound.heading');
+    case 'feature': return data.features.find((item) => item.id === body.id)?.name ?? t('page.notFound.heading');
+    case 'not-found': return t('page.notFound.heading');
+  }
 }
 
 /** The document's own text: its language and its title come from the data, like everything else. */
@@ -73,9 +112,7 @@ function useDocument(data: PageData, route: Route): void {
   }, [data.languageTag]);
   useEffect(() => {
     const t = makeText(data.ui.strings);
-    const feature = route.name === 'feature' ? data.features.find((item) => item.id === route.id) : undefined;
-    const titleKey = { overview: 'page.nav.overview', coverage: 'page.nav.coverage', notifications: 'page.nav.notifications', jobs: 'page.nav.jobs', feature: 'page.notFound.heading', 'not-found': 'page.notFound.heading' }[route.name];
-    document.title = t('page.documentTitle', { project: data.project, page: feature?.name ?? t(titleKey) });
+    document.title = t('page.documentTitle', { project: data.project, page: viewOf(data, route) === null ? t('page.notFound.heading') : pageTitle(data, route, t) });
   }, [route, data]);
 }
 

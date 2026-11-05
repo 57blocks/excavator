@@ -1,4 +1,4 @@
-import { featureHash } from '../lib/route';
+import { useLinks } from '../lib/links';
 import { useText } from '../lib/text';
 import type { PageData } from '../lib/types';
 import { Cell, TableScroll } from './Tables';
@@ -6,6 +6,7 @@ import { Cell, TableScroll } from './Tables';
 /** Every notification of every verified entry, in the order of the map, in the entries' own words. */
 export function NotificationsPage({ data }: { data: PageData }) {
   const t = useText();
+  const nav = useLinks();
   const { counts, notifications } = data.summary;
   const name = new Map(data.features.map((feature) => [feature.id, feature.name]));
   const heading = t('md.summary.notifications.heading');
@@ -31,7 +32,7 @@ export function NotificationsPage({ data }: { data: PageData }) {
           <tbody>
             {notifications.map((n, at) => (
               <tr key={at}>
-                <Cell row><a href={featureHash(n.feature)}>{t('md.summary.feature', { id: n.feature, name: name.get(n.feature) ?? '' })}</a></Cell>
+                <Cell row><a href={nav.feature(n.feature)}>{t('md.summary.feature', { id: n.feature, name: name.get(n.feature) ?? '' })}</a></Cell>
                 <Cell>{n.trigger}</Cell><Cell>{n.recipient}</Cell><Cell>{n.channel}</Cell><Cell>{n.content}</Cell>
               </tr>
             ))}
