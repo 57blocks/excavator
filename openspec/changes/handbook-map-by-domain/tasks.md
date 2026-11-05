@@ -2,9 +2,9 @@
 
 提交：`docs(product-handbook): the map's areas are business domains`
 
-- [ ] 1.1 SKILL.md 地图提示词：「Areas are business domains」一段（D1）
-- [ ] 1.2 续跑说明：旧地图照旧可用，换成按领域的地图需要 `--fresh`（D2）
-- [ ] 1.3 合约测试（O1）
+- [x] 1.1 SKILL.md 地图提示词：「Areas are business domains」一段（D1）
+- [x] 1.2 续跑说明：旧地图照旧可用，换成按领域的地图需要 `--fresh`（D2）
+- [x] 1.3 合约测试（O1）
 
 ## 2. 验收
 

@@ -187,6 +187,12 @@ describe('excavator-product-handbook skill: setup', () => {
     expect(phase(0)).toContain('jq -r .language "$OUT/map.json"');
     expect(phase(0)).toContain('tell the user to run again with `--fresh`, and stop');
   });
+
+  it('keeps an existing map on a resume and needs --fresh for a map drawn by business domain', () => {
+    expect(phase(0)).toContain('An existing `map.json` is kept as it is, whatever way its areas were drawn');
+    expect(phase(0)).toContain('a map drawn again means every entry written again');
+    expect(phase(0)).toContain('run with `--fresh`');
+  });
 });
 
 describe('excavator-product-handbook skill: commands', () => {
@@ -240,11 +246,17 @@ describe('excavator-product-handbook skill: candidates and map', () => {
 
   it('is a writing guide: areas, one feature per thing a reader does, the five reach values, labels, roles, names, conservation, seed files', () => {
     const p = phase(3);
-    for (const word of ['**Areas, as the reader sees them.**', '**Features, one per thing a reader does.**', '**Reach: how a reader gets to the feature.**', '**Labels, quoted from the source.**', '**Roles.**', '**Names.**', '**Conservation.**', '**Seed files.**']) {
+    for (const word of ['**Areas are business domains.**', '**Features, one per thing a reader does.**', '**Reach: how a reader gets to the feature.**', '**Labels, quoted from the source.**', '**Roles.**', '**Names.**', '**Conservation.**', '**Seed files.**']) {
       expect(p, word).toContain(word);
     }
     for (const reach of ['menu', 'link', 'automated', 'interface', 'operator']) expect(p, reach).toContain(`\`${reach}\` -`);
     expect(p).toContain('navigation and menu configuration');
+    expect(p).toContain('not a menu: one domain often spans several menus');
+    expect(p).toContain('requesting leave and approving leave are one domain');
+    expect(p).toContain('in the area of the business object it works on');
+    expect(p).toContain('only work that touches no business object');
+    expect(p).toContain('The menu stays on each feature');
+    expect(p).not.toContain('a menu group, a section of the navigation, a page family');
     expect(p).toContain('page and tab titles');
     expect(p).toContain('public link');
     expect(p).toContain('a link inside an email or message the product sends');
