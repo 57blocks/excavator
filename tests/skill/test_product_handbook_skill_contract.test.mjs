@@ -647,6 +647,8 @@ describe('excavator-product-handbook skill: Phase 5, verify', () => {
   it('sits between the entries and the assembly and is told in the run language', () => {
     expect(p.startsWith(PHASE_LANGUAGE)).toBe(true);
     expect(before).toContain('**Nothing stays that the code does not back up.**');
+    expect(before).toContain('an item it finds contradicted is removed at once, an item it cannot confirm is given other citations once (its text never changes), and removed if it is still not confirmed.');
+    expect(before).not.toContain('is rewritten once');
     expect(before).toContain('Five rules govern everything below');
   });
 
@@ -724,16 +726,32 @@ describe('excavator-product-handbook skill: Phase 5, verify', () => {
     expect(p).toContain('record its verdicts, one command per feature and one at a time, never two at once');
     expect(p).toContain('`<id>: confirmed (<n> items)`');
     expect(p).toContain('`<id>: <n> items to rewrite`, then `Rewrite file: <path>`');
-    expect(p).toContain('`unverified` and `contradicted` alike');
+    expect(p).toContain('preceded by `<id>: <m> items removed` when round 1 removed any');
+    expect(p).toContain('`<id>: confirmed, <n> items removed`, then `No rewrite file: no item is left to rewrite`');
+    expect(p).toContain('an item either verifier judged `contradicted` was removed from the entry at once');
+    expect(p).toContain('A removed item is never rewritten and never put back');
+    expect(p).toContain('The items the two verifiers did not both confirm and neither judged `contradicted` are `unverified`; they are in the rewrite file');
+    expect(p).not.toContain('`unverified` and `contradicted` alike');
+    expect(p).toContain('`<id>: failed at verify: no item could be proved`: round 1 removed every item that carried evidence');
+    // The lines the text quotes are the lines the script prints.
     const run = makeCheckedMapRun();
     try {
       run.writeEntry();
       expect(run.run('check-entry', 'F1').status).toBe(0);
-      const rewrite = judge(run, 'F1', 1, (item) => (item.id === 'purpose' ? 'contradicted' : 'verified'));
-      expect(rewrite.lines[0]).toBe('F1: 1 item to rewrite');
-      expect(rewrite.lines[1]).toMatch(/^Rewrite file: /);
+      const word = { purpose: 'unverified', 'states[1]': 'contradicted' };
+      const rewrite = judge(run, 'F1', 1, (item) => word[item.id] ?? 'verified');
+      expect(rewrite.lines.slice(0, 3)).toEqual(['F1: 1 item removed', 'F1: 1 item to rewrite', expect.stringMatching(/^Rewrite file: /)]);
     } finally {
       run.cleanup();
+    }
+    const settled = makeCheckedMapRun();
+    try {
+      settled.writeEntry();
+      expect(settled.run('check-entry', 'F1').status).toBe(0);
+      const done = judge(settled, 'F1', 1, (item) => (item.id === 'states[1]' ? 'contradicted' : 'verified'));
+      expect(done.lines.slice(0, 2)).toEqual(['F1: confirmed, 1 item removed', 'No rewrite file: no item is left to rewrite']);
+    } finally {
+      settled.cleanup();
     }
   });
 
@@ -757,11 +775,18 @@ describe('excavator-product-handbook skill: Phase 5, verify', () => {
     expect(prompt).toContain('until `try-entry` prints `<id>: ok`');
   });
 
-  it('limits the rewrite to the listed items: re-cite, narrow or delete, and nothing else', () => {
+  it('limits the rewrite to new citations of the listed items: the text never changes, and nothing else', () => {
     const prompt = flat(rewritePrompt);
-    expect(prompt).toContain('cite a passage that by itself proves the item (for who may do something, the condition the code checks, not the name of a function or variable)');
-    expect(prompt).toContain('narrow the text to what the code shows');
-    expect(prompt).toContain('When an item cannot be saved, leave it exactly as it is: the script removes it after the second check. Never delete or add an item, and never move one into `unknowns`.');
+    expect(prompt).toContain('do one thing: change its citations only');
+    expect(prompt).toContain('so that the passage by itself proves the item as it is written (for who may do something, the condition the code checks, not the name of a function or variable)');
+    expect(prompt).toContain('The text of the item stays word for word as it is, and so do the screen name, field label or operation name it is written under');
+    expect(prompt).toContain('do not narrow, widen, correct or reword it, even when the code you read shows that the text is wrong');
+    expect(prompt).not.toMatch(/narrow the text|change the text only as far|do one of these/);
+    expect(prompt).toContain('Every one is `unverified`');
+    expect(prompt).toContain('never put those back');
+    expect(prompt).toContain('or a listed item\'s text differs (only its citations may change)');
+    expect(prompt).toContain('their citations may change, their text may not');
+    expect(prompt).toContain('When an item cannot be saved (no passage proves it as it is written), leave it exactly as it is: the script removes it after the second check. Never delete or add an item, and never move one into `unknowns`.');
     expect(prompt).not.toMatch(/delete the item|move it into `unknowns`/);
     expect(prompt).toContain('Change nothing else. An item that is not listed stays exactly as it is');
     expect(prompt).toContain('refuses an entry in which an item is missing or added, or an item that is not listed differs');
@@ -786,6 +811,7 @@ describe('excavator-product-handbook skill: Phase 5, verify', () => {
     expect(p).toContain('There is no second rewrite: leave the feature as it is, `checked`');
     expect(p).not.toContain('no item is left to verify');
     expect(p).toContain('or deleted or added an item, and the lines name each path');
+    expect(p).toContain('or changed the text of a listed item (its line reads `<item id>: listed for rewriting, but its claim changed; only its citations may change`)');
     const stepFive = p.slice(p.indexOf('5. As each rewrite subagent returns'));
     expect(stepFive.indexOf('check-entry "$OUT"')).toBeLessThan(stepFive.indexOf('slices "$OUT" <id> --round 2'));
   });

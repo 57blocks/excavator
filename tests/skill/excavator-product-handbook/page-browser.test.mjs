@@ -45,12 +45,10 @@ function pageRun() {
   run.writeEntry('F1', entry);
   const checked = run.run('check-entry', 'F1');
   if (checked.status !== 0) throw new Error(`the entry failed check-entry:\n${checked.stdout}`);
-  // One backend rule is contradicted in both rounds, so the coverage page has a removed-items table to lay out.
+  // One backend rule is contradicted in round 1 and removed there, so the coverage page has a removed-items table to lay out.
   const bad = (item) => (item.id === 'screens[0].fields[1].rules[0]' ? { verdict: 'contradicted', reason: 'The limit the code shows is 50, not the number the sentence gives.' } : 'verified');
-  for (const round of [1, 2]) {
-    const judged = judge(run, 'F1', round, bad);
-    if (judged.status !== 0) throw new Error(`verdicts round ${round} failed:\n${judged.stdout}`);
-  }
+  const judged = judge(run, 'F1', 1, bad);
+  if (judged.status !== 0) throw new Error(`verdicts round 1 failed:\n${judged.stdout}`);
   const traced = traceFeature(run);
   if (traced.status !== 0) throw new Error(`trace-verdicts failed:\n${traced.stdout}`);
   const made = run.run('page');

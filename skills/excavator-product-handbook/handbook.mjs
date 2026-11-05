@@ -26,7 +26,8 @@
  *       covers only the items the one rewrite touched.
  *   verdicts <out> <featureId> --round <r> --project <root>
  *       Record the verifier's verdicts for the round: one per item, nothing
- *       recorded when that does not hold; round 1 lists the items to rewrite,
+ *       recorded when that does not hold; round 1 removes what is contradicted
+ *       and lists the unverified items to rewrite (citations only),
  *       round 2 removes what is still not verified and verifies the feature.
  *   trace <out> <featureId> --project <root>
  *       For a confirmed feature (both verifiers settled it), write the items it
@@ -126,7 +127,8 @@ Commands:
       item over the byte limit alone is a part of its own). Round 1 also saves a
       snapshot of the entry. Round 2 covers only the items listed in
       <out>/rewrite/<featureId>.json and refuses an entry in which an item that
-      was not listed differs from the snapshot, printing each path. Prints, for
+      was not listed differs from the snapshot, or a listed item has another
+      claim (only its citations may change), printing each path. Prints, for
       each part, the verify file and the verdict file its verifier must write.
   verdicts <out> <featureId> --round <1|2> --project <root>
       Read <out>/verdicts/round-<r>/<featureId>/part-<n>.json for every part
@@ -134,8 +136,10 @@ Commands:
       per item of the round, in the file of the part that holds the item, each
       verified, unverified or contradicted, with a one-line reason. Any failure
       prints every problem by part, names the parts to dispatch again, and
-      records nothing. Round 1 writes the items that are not verified to
-      <out>/rewrite/<featureId>.json (none: the feature is verified at once).
+      records nothing. Round 1 removes every contradicted item from the entry
+      (what hangs on it goes with it) and records it in state.json, and writes
+      the unverified items to <out>/rewrite/<featureId>.json (none: the
+      feature is confirmed at once, with no rewrite file).
       Round 2 removes the items that are still not verified from the entry
       (what hangs on them goes with them), records them in state.json and
       confirms the feature, the purpose included (it is removed like any

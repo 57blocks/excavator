@@ -50,14 +50,17 @@ describe('verdicts: combining the two verifiers of a part', () => {
     const b = { 'who[0]': 'unverified', 'where[0]': 'contradicted', 'where[1]': 'verified', 'states[0]': 'unverified', 'states[1]': 'contradicted' };
     const result = judge(run, 'F1', 1, gives('first', a), gives('second', b));
     expect(result.status, result.stdout).toBe(0);
-    expect(result.lines[0]).toBe('F1: 5 items to rewrite');
-    // purpose and every other item both verifiers confirmed is not in the list.
-    expect(rewriteOf(run).map((item) => [item.id, item.verdict, item.reason])).toEqual([
-      ['who[0]', 'unverified', pass('second', 'unverified')],
+    // Either verifier's contradicted removes the item at once; the unverified ones are listed for the rewrite.
+    expect(result.lines.slice(0, 2)).toEqual(['F1: 3 items removed', 'F1: 2 items to rewrite']);
+    // purpose and every other item both verifiers confirmed is in neither.
+    expect(stateOf(run).removed.map((record) => [record.path, record.verdict, record.reason])).toEqual([
       ['where[0]', 'contradicted', pass('second', 'contradicted')],
       ['where[1]', 'contradicted', pass('first', 'contradicted')],
-      ['states[0]', 'unverified', pass('first', 'unverified')],
       ['states[1]', 'contradicted', pass('first', 'contradicted')],
+    ]);
+    expect(rewriteOf(run).map((item) => [item.id, item.verdict, item.reason])).toEqual([
+      ['who[0]', 'unverified', pass('second', 'unverified')],
+      ['states[0]', 'unverified', pass('first', 'unverified')],
     ]);
   });
 

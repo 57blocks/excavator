@@ -20,7 +20,7 @@ import { languageGate } from './language-check.mjs';
 import { mapVerifiedLabels, readMap } from './map-check.mjs';
 import { projectFiles } from './project-files.mjs';
 import { reviewItems } from './review.mjs';
-import { featureState, loadState, nextLine, rewriteNextLine, saveState } from './state.mjs';
+import { featureState, loadState, nextLine, purposeRemoved, rewriteNextLine, saveState } from './state.mjs';
 
 export const entryPath = (id) => `entries/${id}.json`;
 
@@ -81,16 +81,18 @@ export function checkEntry(outDir, id, root) {
   const { state } = stateRead;
   const current = featureState(state, id);
 
-  const result = checkEntryFile(outDir, id, root, loaded);
+  // A feature waiting for its one rewrite keeps what round 1 removed, and its entry has no purpose when round 1 removed it.
+  const kept = current.rewriting && current.removed !== undefined ? { removed: current.removed } : {};
+  const result = checkEntryFile(outDir, id, root, loaded, { settled: current.rewriting === true && purposeRemoved(current) });
   if (result.problems.length === 0) {
     // A feature waiting for its one rewrite stays so; anything else starts over as checked (a verified one is no longer verified).
-    state.features[id] = current.rewriting ? { status: 'checked', attempts: current.attempts, rewriting: true } : { status: 'checked', attempts: current.attempts };
+    state.features[id] = current.rewriting ? { status: 'checked', attempts: current.attempts, rewriting: true, ...kept } : { status: 'checked', attempts: current.attempts };
     saveState(outDir, state);
     return { status: 0, lines: [`${id}: checked`] };
   }
   if (current.rewriting) {
     // The one rewrite (design D14) did not pass: there is no second one.
-    state.features[id] = { status: 'failed', attempts: current.attempts, failure: { step: 'rewrite', reasons: result.problems } };
+    state.features[id] = { status: 'failed', attempts: current.attempts, failure: { step: 'rewrite', reasons: result.problems }, ...kept };
     saveState(outDir, state);
     return { status: 1, lines: [...result.problems, rewriteNextLine(id)] };
   }
