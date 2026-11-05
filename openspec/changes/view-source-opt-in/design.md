@@ -23,3 +23,10 @@
 - `node pack.mjs <root>`：`source.requested` 为 false，全部被引用文件在 `notEmbeddedOnRequest`，页面没有 `sources` 数据。
 - `node pack.mjs <root> --source`：与改动前的默认结果相同。
 - `--no-source` 与默认结果相同；`--no-source --source` 内嵌，`--source --no-source` 不内嵌。
+
+## 验收记录（2026-11-05，本地）
+
+- 装置先验：`parseArgs` 默认改回内嵌后，命令行用例变红（1 failed），恢复后通过。
+- `tests/skill/excavator-view`：10 个文件 279 个测试通过。
+- jpetstore（固定提交）实打包：默认 `requested: false`，113 个文件全在 `notEmbeddedOnRequest`，3,509,920 字节；`--source` 时 113 个全部内嵌，3,616,535 字节，与改动前的默认结果相同。回复的 `Source:` 行为 `not embedded`。
+
