@@ -252,6 +252,10 @@ describe('excavator-product-handbook skill: candidates and map', () => {
     for (const reach of ['menu', 'link', 'automated', 'interface', 'operator']) expect(p, reach).toContain(`\`${reach}\` -`);
     expect(p).toContain('navigation and menu configuration');
     expect(p).toContain('not a menu: one domain often spans several menus');
+    expect(p).toContain('**Start from the navigation.**');
+    expect(p).toContain('each menu entry is a `menu` feature');
+    expect(p).toContain("never to an `interface` feature");
+    expect(p.indexOf('**Start from the navigation.**')).toBeLessThan(p.indexOf('**Areas are business domains.**'));
     expect(p).toContain('requesting leave and approving leave are one domain');
     expect(p).toContain('in the area of the business object it works on');
     expect(p).toContain('only work that touches no business object');
