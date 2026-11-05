@@ -76,7 +76,9 @@ describe('service-only distribution contract', () => {
     // The second HTML package is the report page of /excavator-prd-report (openspec: changes/prd-report-page, design D2):
     // its own template, built into one file the same way and never served.
     const REPORT_PAGE_PACKAGE = 'packages/prd-report-page';
-    const HTML_PACKAGES = [EXPLORER_PACKAGE, REPORT_PAGE_PACKAGE];
+    // The third is the handbook page of /excavator-product-handbook (openspec: changes/product-handbook-map, design D13), built the same way.
+    const HANDBOOK_PAGE_PACKAGE = 'packages/product-handbook-page';
+    const HTML_PACKAGES = [EXPLORER_PACKAGE, REPORT_PAGE_PACKAGE, HANDBOOK_PAGE_PACKAGE];
 
     it.each(HTML_PACKAGES)('gives %s no script that starts a server', (pkg) => {
       const scripts = JSON.parse(read(`${pkg}/package.json`)).scripts ?? {};

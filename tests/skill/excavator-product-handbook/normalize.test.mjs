@@ -4,10 +4,12 @@
 // its code point, so the file holds none.
 import { describe, expect, it } from 'vitest';
 import { execFileSync } from 'node:child_process';
-import { join } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-import { findOnce, normalize } from '../../../skills/excavator-prd-report/lib/normalize.mjs';
-import { repoRoot } from './helpers.mjs';
+import { findOnce, normalize } from '../../../skills/excavator-product-handbook/lib/normalize.mjs';
+
+const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../../..');
 
 const cp = (...points) => String.fromCodePoint(...points);
 

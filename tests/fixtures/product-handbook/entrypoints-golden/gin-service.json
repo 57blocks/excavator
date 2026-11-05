@@ -1,0 +1,104 @@
+{
+  "format": "excavator-prd-report-entrypoints/1",
+  "projectRoot": "<ROOT>",
+  "scope": null,
+  "detection": {
+    "source": "build-files",
+    "graph": "absent"
+  },
+  "frameworks": [
+    "gin",
+    "go-cron",
+    "go-main"
+  ],
+  "covered": [
+    "gin",
+    "go-cron",
+    "go-main"
+  ],
+  "uncovered": [],
+  "byFramework": {
+    "gin": 4,
+    "go-cron": 1,
+    "go-main": 2
+  },
+  "items": [
+    {
+      "id": "c1",
+      "kind": "main",
+      "file": "cmd/worker/main.go",
+      "line": 5,
+      "text": "func main() {",
+      "framework": "go-main"
+    },
+    {
+      "id": "c2",
+      "kind": "job",
+      "file": "internal/jobs/jobs.go",
+      "line": 8,
+      "text": "_, _ = c.AddFunc(\"@every 1h\", sweep)",
+      "framework": "go-cron"
+    },
+    {
+      "id": "c3",
+      "kind": "main",
+      "file": "main.go",
+      "line": 9,
+      "text": "func main() {",
+      "framework": "go-main"
+    },
+    {
+      "id": "c4",
+      "kind": "route",
+      "file": "main.go",
+      "line": 12,
+      "text": "api.GET(\"/users\", handlers.ListUsers)",
+      "framework": "gin"
+    },
+    {
+      "id": "c5",
+      "kind": "route",
+      "file": "main.go",
+      "line": 13,
+      "text": "api.POST(\"/users\", handlers.CreateUser)",
+      "framework": "gin"
+    },
+    {
+      "id": "c6",
+      "kind": "route",
+      "file": "main.go",
+      "line": 14,
+      "text": "api.Any(\"/ping\", handlers.Ping)",
+      "framework": "gin"
+    },
+    {
+      "id": "c7",
+      "kind": "route",
+      "file": "main.go",
+      "line": 15,
+      "text": "r.Handle(\"PATCH\", \"/users/:id\", handlers.UpdateUser)",
+      "framework": "gin"
+    }
+  ],
+  "files": {
+    "seen": 6,
+    "scanned": 4,
+    "otherExtension": 1,
+    "skipped": {
+      "test-file": 1,
+      "too-large": 0,
+      "binary": 0,
+      "symlink": 0,
+      "unreadable": 0
+    }
+  },
+  "skippedDirectories": {},
+  "residualAssumptions": [
+    "Directories named .git, .excavator, node_modules, vendor, dist, build and files whose name ends in _test.go or contains .test. or .spec. are not scanned; an entrypoint in them is not listed.",
+    "Files over 2097152 bytes and files with a NUL byte are not scanned; they are counted under files.skipped.",
+    "A pattern matches one line, or the line and the next one for the entries the catalog marks \"lines\": 2 (express routes); a registration spread over more lines is not listed.",
+    "One candidate per line: a line that patterns of two frameworks match is credited to the framework listed first in the catalog.",
+    "The gin route pattern (.GET(, .POST( and the other verbs) also matches outbound HTTP-client calls of the same shape; such lines are expected to be left unassigned.",
+    "No knowledge graph: frameworks were detected from the build files, by the detector /excavator uses and the catalog's own rules."
+  ]
+}

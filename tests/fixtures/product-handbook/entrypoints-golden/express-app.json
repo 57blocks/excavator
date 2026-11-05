@@ -1,0 +1,119 @@
+{
+  "format": "excavator-prd-report-entrypoints/1",
+  "projectRoot": "<ROOT>",
+  "scope": null,
+  "detection": {
+    "source": "build-files",
+    "graph": "absent"
+  },
+  "frameworks": [
+    "express",
+    "node-main",
+    "node-schedule"
+  ],
+  "covered": [
+    "express",
+    "node-main",
+    "node-schedule"
+  ],
+  "uncovered": [],
+  "byFramework": {
+    "express": 7,
+    "node-main": 1,
+    "node-schedule": 1
+  },
+  "items": [
+    {
+      "id": "c1",
+      "kind": "main",
+      "file": "bin/admin.js",
+      "line": 1,
+      "text": "#!/usr/bin/env node",
+      "framework": "node-main"
+    },
+    {
+      "id": "c2",
+      "kind": "route",
+      "file": "src/app.js",
+      "line": 8,
+      "text": "app.get('/health', (req, res) => res.json({ ok: true }));",
+      "framework": "express"
+    },
+    {
+      "id": "c3",
+      "kind": "job",
+      "file": "src/jobs/reminders.js",
+      "line": 4,
+      "text": "return schedule.scheduleJob('0 9 * * *', () => send('daily reminder'));",
+      "framework": "node-schedule"
+    },
+    {
+      "id": "c4",
+      "kind": "route",
+      "file": "src/routes/orders.js",
+      "line": 5,
+      "text": "router.get('/', (req, res) => res.json([]));",
+      "framework": "express"
+    },
+    {
+      "id": "c5",
+      "kind": "route",
+      "file": "src/routes/orders.js",
+      "line": 6,
+      "text": "router.post('/', (req, res) => res.status(201).end());",
+      "framework": "express"
+    },
+    {
+      "id": "c6",
+      "kind": "route",
+      "file": "src/routes/orders.js",
+      "line": 7,
+      "text": "router.route('/:id').get((req, res) => res.json({}));",
+      "framework": "express"
+    },
+    {
+      "id": "c7",
+      "kind": "route",
+      "file": "src/routes/orders.js",
+      "line": 8,
+      "text": "router.delete('/:id', (req, res) => res.status(204).end());",
+      "framework": "express"
+    },
+    {
+      "id": "c8",
+      "kind": "route",
+      "file": "src/routes/payments.js",
+      "line": 5,
+      "text": "router.post( '/payments',",
+      "framework": "express"
+    },
+    {
+      "id": "c9",
+      "kind": "route",
+      "file": "src/routes/payments.js",
+      "line": 9,
+      "text": "router.get('/payments/:id', (req, res) => res.json({}));",
+      "framework": "express"
+    }
+  ],
+  "files": {
+    "seen": 7,
+    "scanned": 5,
+    "otherExtension": 1,
+    "skipped": {
+      "test-file": 1,
+      "too-large": 0,
+      "binary": 0,
+      "symlink": 0,
+      "unreadable": 0
+    }
+  },
+  "skippedDirectories": {},
+  "residualAssumptions": [
+    "Directories named .git, .excavator, node_modules, vendor, dist, build and files whose name ends in _test.go or contains .test. or .spec. are not scanned; an entrypoint in them is not listed.",
+    "Files over 2097152 bytes and files with a NUL byte are not scanned; they are counted under files.skipped.",
+    "A pattern matches one line, or the line and the next one for the entries the catalog marks \"lines\": 2 (express routes); a registration spread over more lines is not listed.",
+    "One candidate per line: a line that patterns of two frameworks match is credited to the framework listed first in the catalog.",
+    "No knowledge graph: frameworks were detected from the build files, by the detector /excavator uses and the catalog's own rules."
+  ]
+}

@@ -9,7 +9,7 @@
 import { existsSync, statSync } from 'node:fs';
 import { isAbsolute, join } from 'node:path';
 
-import { KINDS } from './entrypoints.mjs';
+import { KINDS } from '../../excavator-product-handbook/lib/entrypoints.mjs';
 import { UsageError } from './errors.mjs';
 import { isCount, isObject, isString, isStringArray, readJson, writeJson } from './json-file.mjs';
 import { projectFiles, skippedDirectoryReason } from './project-files.mjs';

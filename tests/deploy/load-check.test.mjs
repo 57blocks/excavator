@@ -31,10 +31,10 @@ describe('resolveExpectedAgentIds (task 2.2)', () => {
     expect(ids).toEqual(['excavator:a-agent', 'excavator:b-agent']);
   });
 
-  it('readExpectedAgentIds reads the real checkout and finds all twelve agents', () => {
+  it('readExpectedAgentIds reads the real checkout and finds all fourteen agents', () => {
     const ids = readExpectedAgentIds(repoRoot);
     expect(ids).toEqual(EXPECTED_AGENT_IDS);
-    expect(ids.length).toBe(12);
+    expect(ids.length).toBe(14);
   });
 
   it('readExpectedAgentIds returns an empty list for a missing agents/ dir, not a throw', () => {
