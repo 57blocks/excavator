@@ -33,6 +33,6 @@
 
 提交：`docs(openspec): record handbook-feature-findings acceptance`
 
-- [ ] 5.1 变异检查，结果写进 `acceptance.md`
-- [ ] 5.2 O3 真实运行与独立抽查，没过的线照实写
-- [ ] 5.3 受影响测试、`check-refs`、`openspec validate --all --strict` 本地过；全量门在分离检出里跑（O4）
+- [x] 5.1 变异检查，结果写进 `acceptance.md`
+- [x] 5.2 O3 真实运行与独立抽查，没过的线照实写
+- [x] 5.3 受影响测试、`check-refs`、`openspec validate --all --strict` 本地过；全量门在分离检出里跑（O4）
