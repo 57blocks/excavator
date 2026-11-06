@@ -59,13 +59,16 @@ function literalAt(code, strings, from) {
   let j = token.end + 1;
   while (j < code.length && /\s/.test(code[j])) j += 1;
   if (code[j] !== ',' && code[j] !== ')') return null;
-  return { value: token.raw, after: j };
+  return { value: token.raw, after: j, at: i };
 }
 
 /**
  * The operations of one script migration's `up` part, in position order:
  * `{ index, op, via, name, from? }` with `name` null when the table name is not
- * a literal. `index` is a character offset in `text`; `up` is `{ start, end }`.
+ * a literal. `index` is a character offset in `text`: where the table name
+ * literal starts (the first one for `renameTable`), so a call split over lines
+ * is cited at the line that shows the name; the method name when there is no
+ * literal. `up` is `{ start, end }`.
  */
 export function scriptOperations(text, up) {
   const { code, strings } = tokenizeJs(text);
@@ -85,13 +88,14 @@ export function scriptOperations(text, up) {
         name = second.value;
       }
     }
-    found.push({ index: call.index + call[0].indexOf(call[1]), op, via: 'call', name, ...(from === undefined ? {} : { from }) });
+    const at = name === null ? call.index + call[0].indexOf(call[1]) : first.at;
+    found.push({ index: at, op, via: 'call', name, ...(from === undefined ? {} : { from }) });
   }
   for (const [start, token] of strings) {
     if (start < up.start || start >= up.end) continue;
     for (const statement of sqlOperations(neutralizeEscapes(token.raw))) {
-      const { index, name, from, op } = statement;
-      found.push({ index: start + 1 + index, op, via: 'sql', name, ...(from === undefined ? {} : { from }) });
+      const { at, name, from, op } = statement;
+      found.push({ index: start + 1 + at, op, via: 'sql', name, ...(from === undefined ? {} : { from }) });
     }
   }
   return found.sort((a, b) => a.index - b.index);
@@ -99,7 +103,7 @@ export function scriptOperations(text, up) {
 
 /** The operations of a `.sql` migration: the whole file, comments left out. */
 export function sqlFileOperations(text) {
-  return sqlOperations(stripSqlComments(text)).map((statement) => ({ index: statement.index, op: statement.op, via: 'sql', name: statement.name, ...(statement.from === undefined ? {} : { from: statement.from }) }));
+  return sqlOperations(stripSqlComments(text)).map((statement) => ({ index: statement.at, op: statement.op, via: 'sql', name: statement.name, ...(statement.from === undefined ? {} : { from: statement.from }) }));
 }
 
 /** Read one migration file: `{ bucket, ops }` with `ops` carrying `line`. `form` is `script` or `sql`; a `.down.sql` file is a down-only file. */
@@ -118,9 +122,11 @@ export function readMigration(file, form, text) {
  * Replay the migrations of one directory in the order given (already sorted
  * by file name). `migrations` are `{ file, ops }`. Returns
  * `{ tables, dropped, operations }`: `tables` maps each table that exists at the
- * end to `{ createdBy: { file, line } | null, changes }`; `dropped` lists the
+ * end to `{ createdBy: { file, line, as? } | null, changes }`; `dropped` lists the
  * drops of tables nothing created again; `operations` is the ledger, one row
- * for each operation with its bucket.
+ * for each operation with its bucket. A change or a create that cites the table
+ * under another name (the table was renamed later) has `as`, the name its line
+ * shows; a rename cites the old name, so it has `as` too.
  */
 export function replay(migrations) {
   const tables = new Map();
@@ -137,7 +143,8 @@ export function replay(migrations) {
   for (const { file, ops } of migrations) {
     for (const op of ops) {
       const { line, via } = op;
-      const change = (extra = {}) => ({ file, line, op: op.op, via, ...extra });
+      // `named` is the name this line shows; replay turns it into `as` once the final name is known.
+      const change = (extra = {}, named = op.name) => ({ file, line, op: op.op, via, ...extra, named });
       const row = { file, line, op: op.op, via, table: op.name, bucket: op.name === null ? 'unnamed' : bucketOf(op.op) };
       if (op.from !== undefined) row.from = op.from;
       operations.push(row);
@@ -149,7 +156,7 @@ export function replay(migrations) {
         } else {
           const index = dropped.findIndex((entry) => entry.name === op.name);
           if (index >= 0) dropped.splice(index, 1);
-          tables.set(op.name, { createdBy: { file, line }, changes: [change()] });
+          tables.set(op.name, { createdBy: { file, line, named: op.name }, changes: [change()] });
         }
       } else if (op.op === 'drop-table') {
         const existing = tables.get(op.name);
@@ -161,11 +168,18 @@ export function replay(migrations) {
         const revived = dropped.findIndex((entry) => entry.name === op.name);
         if (revived >= 0) dropped.splice(revived, 1);
         const entry = old ?? { createdBy: null, changes: [] };
-        entry.changes.push(change({ from: op.from }));
+        entry.changes.push(change({ from: op.from }, op.from));
         tables.set(op.name, entry);
       } else {
         touch(op.name).changes.push(change());
       }
+    }
+  }
+  for (const [name, entry] of tables) {
+    for (const place of [entry.createdBy, ...entry.changes]) {
+      if (place === null) continue;
+      if (place.named !== name) place.as = place.named;
+      delete place.named;
     }
   }
   return { tables, dropped, operations };

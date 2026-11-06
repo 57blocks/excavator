@@ -133,7 +133,7 @@ function mergeTables(histories, declarations) {
     for (const [name, entry] of history.tables) {
       const table = ensure(name);
       table.directories.push(history.directory);
-      if (entry.createdBy !== null) table.sources.push({ kind: 'migration', file: entry.createdBy.file, line: entry.createdBy.line });
+      if (entry.createdBy !== null) table.sources.push({ kind: 'migration', file: entry.createdBy.file, line: entry.createdBy.line, ...(entry.createdBy.as === undefined ? {} : { as: entry.createdBy.as }) });
       table.changes.push(...entry.changes);
       const first = primary.get(name);
       if (first === undefined || (first.createdBy === null && entry.createdBy !== null)) primary.set(name, entry);

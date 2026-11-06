@@ -23,22 +23,24 @@ const MODIFIER = {
 /** Keep a string literal's backslash escapes from hiding a space: `\n`, `\r` and `\t` become two spaces. */
 export const neutralizeEscapes = (raw) => raw.replace(/\\[nrt]/g, '  ');
 
-/** `{ name, end }` for the table name that starts at `from` (`name` null for a placeholder), or null when none does. */
+/** `{ name, end, at }` for the table name that starts at `from` (`name` null for a placeholder), or null when none does. `at` is where the last segment starts: the offset a reader looks at to see the name. */
 function readName(text, from) {
   PLACEHOLDER.lastIndex = from;
-  if (PLACEHOLDER.test(text)) return { name: null, end: PLACEHOLDER.lastIndex };
+  if (PLACEHOLDER.test(text)) return { name: null, end: PLACEHOLDER.lastIndex, at: from };
   let pos = from;
   let last = null;
+  let at = from;
   for (;;) {
     SEGMENT.lastIndex = pos;
     const found = SEGMENT.exec(text);
     if (found === null) break;
     last = found[1];
+    at = pos;
     pos = SEGMENT.lastIndex;
     if (text[pos] !== '.') break;
     pos += 1;
   }
-  return last === null ? null : { name: last, end: pos };
+  return last === null ? null : { name: last, end: pos, at };
 }
 
 /** Skip whitespace from `from`. */
@@ -48,14 +50,14 @@ function skipSpace(text, from) {
   return i;
 }
 
-/** The names of a comma-separated list that starts at `from`, and where it ends. */
+/** The items `{ name, at }` of a comma-separated list of names that starts at `from`, and where it ends. */
 function readList(text, from) {
   const names = [];
   let pos = from;
   for (;;) {
     const item = readName(text, pos);
     if (item === null) break;
-    names.push(item.name);
+    names.push({ name: item.name, at: item.at });
     pos = item.end;
     const after = skipSpace(text, pos);
     if (text[after] !== ',') break;
@@ -74,9 +76,11 @@ function statementEnd(text, from) {
 
 /**
  * The operations in `text`, in the order they are written:
- * `{ index, op, name, to? }`, where `name` is null when the table name is a
- * placeholder. `index` is the offset of the keyword. A statement that names
- * several tables gives one operation for each.
+ * `{ index, at, op, name, from? }`, where `name` is null when the table name is a
+ * placeholder. `index` is the offset of the keyword and `at` the offset where
+ * the table name starts (the first name of a rename, which is the old one), so
+ * a statement split over lines is cited at the line that shows the name. A
+ * statement that names several tables gives one operation for each.
  */
 export function sqlOperations(text) {
   const found = [];
@@ -106,7 +110,7 @@ export function sqlOperations(text) {
         if (!TO.test(text)) break;
         const to = readName(text, skipSpace(text, TO.lastIndex));
         if (to === null) break;
-        found.push({ index, op, name: from.name === null || to.name === null ? null : to.name, from: from.name });
+        found.push({ index, at: from.at, op, name: from.name === null || to.name === null ? null : to.name, from: from.name });
         pos = skipSpace(text, to.end);
         if (text[pos] !== ',') break;
         pos = skipSpace(text, pos + 1);
@@ -120,7 +124,7 @@ export function sqlOperations(text) {
       const on = /\bON\s+(?:ONLY\s+)?/i.exec(text.slice(after, end));
       if (on === null) continue;
       const name = readName(text, after + on.index + on[0].length);
-      if (name !== null) found.push({ index, op, name: name.name });
+      if (name !== null) found.push({ index, at: name.at, op, name: name.name });
       continue;
     }
 
@@ -135,7 +139,7 @@ export function sqlOperations(text) {
 
     if (op === 'drop-table') {
       const list = readList(text, start);
-      for (const name of list.names) found.push({ index, op, name });
+      for (const item of list.names) found.push({ index, at: item.at, op, name: item.name });
       STATEMENT.lastIndex = Math.max(STATEMENT.lastIndex, list.end);
       continue;
     }
@@ -153,12 +157,12 @@ export function sqlOperations(text) {
       if (rename !== null) {
         const to = readName(text, name.end + rename.index + rename[0].length);
         if (to !== null) {
-          found.push({ index, op: 'rename-table', name: name.name === null || to.name === null ? null : to.name, from: name.name });
+          found.push({ index, at: name.at, op: 'rename-table', name: name.name === null || to.name === null ? null : to.name, from: name.name });
           continue;
         }
       }
     }
-    found.push({ index, op, name: name.name });
+    found.push({ index, at: name.at, op, name: name.name });
   }
   return found;
 }

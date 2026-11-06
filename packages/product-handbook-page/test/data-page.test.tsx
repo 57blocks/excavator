@@ -155,6 +155,13 @@ describe('the data page', () => {
     expect(row).toContain(`${MARK}${MARK}${d('tools/t.py')}, line 3 (${marked['md.data.rule.b']})`);
   });
 
+  it('shows the earlier name a source line shows, next to the place, and nothing when the line shows the current name', () => {
+    const renamed: DataSection = { ...section, tables: [table('now', {}, { sources: [{ kind: 'migration', file: d('m/old.js'), line: 3, as: d('before') }, { kind: 'migration', file: d('m/now.js'), line: 8 }] })] };
+    const row = main(render(dataFor(BOTH, renamed), '#/technical/data'));
+    expect(row).toContain(`${MARK}migration: ${MARK}${d('m/old.js')}, line 3 (as ${d('before')})`);
+    expect(row).not.toContain(`${d('m/now.js')}, line 8 (as`);
+  });
+
   it('has the sort controls, the by-name one pressed first', () => {
     expect(body).toContain(`aria-pressed="true"`);
     expect(body).toContain(marked['page.data.sort.name']);

@@ -80,7 +80,7 @@ function TablesTable({ section }: { section: DataSection }) {
                 <Cell>
                   {table.sources.length === 0 ? undefined : (
                     <ul className="rule-list">
-                      {table.sources.map((source, at) => <li key={at}>{t('md.data.source', { kind: kindText(t, source.kind), place: place(t, source.file, source.line) })}</li>)}
+                      {table.sources.map((source, at) => <li key={at}>{t(source.as === undefined ? 'md.data.source' : 'md.data.sourceAs', { kind: kindText(t, source.kind), place: place(t, source.file, source.line), name: source.as ?? '' })}</li>)}
                     </ul>
                   )}
                 </Cell>

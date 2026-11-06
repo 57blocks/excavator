@@ -2,6 +2,7 @@
 // purpose-built project with two applications. Every expectation below is
 // written by hand from the fixture files, never produced by the code.
 import { describe, expect, it } from 'vitest';
+import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { extractData } from '../../../skills/excavator-product-handbook/lib/data-extract.mjs';
@@ -19,8 +20,8 @@ describe('the table list', () => {
   it('holds the tables the up parts leave, plus the declared ones, sorted by name', () => {
     expect(names(data.tables)).toEqual([
       'accounts', 'audit_log', 'cache_entries', 'esm_const_t', 'esm_fn_t', 'exports_up_t', 'ghost_table', 'go_orders',
-      'invoices', 'ledger_entries', 'model_only_events', 'module_up_t', 'orders', 'reports', 'sql_migrated', 'sql_other',
-      'staging_q', 'staging_y', 'tags', 'ts_events', 'users',
+      'invoices', 'ledger_entries', 'model_only_events', 'module_up_t', 'multi_last', 'orders', 'reports', 'split_final', 'split_schema',
+      'sql_migrated', 'sql_other', 'staging_q', 'staging_y', 'tags', 'ts_events', 'users',
     ]);
   });
 
@@ -48,11 +49,11 @@ describe('the table list', () => {
     ]);
   });
 
-  it('reads a createTable whose name is on the next line, and ignores a call inside a comment', () => {
+  it('reads a createTable whose name is on the next line (the line cited is the line of the name), and ignores a call inside a comment', () => {
     const orders = table('orders');
-    expect(orders.sources).toEqual([{ kind: 'migration', file: m('002-create-orders.js'), line: 6 }]);
+    expect(orders.sources).toEqual([{ kind: 'migration', file: m('002-create-orders.js'), line: 7 }]);
     expect(orders.changes.map((c) => [c.file, c.line, c.op])).toEqual([
-      [m('002-create-orders.js'), 6, 'create-table'],
+      [m('002-create-orders.js'), 7, 'create-table'],
       [m('002-create-orders.js'), 12, 'add-index'],
       [m('009-raw-sql.js'), 10, 'update'],
     ]);
@@ -64,9 +65,10 @@ describe('the table list', () => {
     expect(invoices.createdBy).toBe(m('006-old-invoices.js'));
     expect(invoices.lastChangedBy).toBe(m('007-rename-invoices.js'));
     expect(invoices.changes).toEqual([
-      { file: m('006-old-invoices.js'), line: 5, op: 'create-table', via: 'call' },
-      { file: m('007-rename-invoices.js'), line: 5, op: 'rename-table', via: 'call', from: 'old_invoices' },
+      { file: m('006-old-invoices.js'), line: 5, op: 'create-table', via: 'call', as: 'old_invoices' },
+      { file: m('007-rename-invoices.js'), line: 5, op: 'rename-table', via: 'call', from: 'old_invoices', as: 'old_invoices' },
     ]);
+    expect(invoices.sources).toEqual([{ kind: 'migration', file: m('006-old-invoices.js'), line: 5, as: 'old_invoices' }]);
   });
 
   it('follows a rename by SQL: ALTER TABLE ... RENAME TO and RENAME TABLE with several pairs', () => {
@@ -74,12 +76,14 @@ describe('the table list', () => {
     expect(names(data.tables)).not.toContain('staging_x');
     expect(names(data.tables)).not.toContain('staging_p');
     expect(table('audit_log').changes).toEqual([
-      { file: m('009-raw-sql.js'), line: 5, op: 'create-table', via: 'sql' },
-      { file: m('009-raw-sql.js'), line: 6, op: 'alter-table', via: 'sql' },
-      { file: m('009-raw-sql.js'), line: 7, op: 'rename-table', via: 'sql', from: 'audit_entries' },
+      { file: m('009-raw-sql.js'), line: 5, op: 'create-table', via: 'sql', as: 'audit_entries' },
+      { file: m('009-raw-sql.js'), line: 6, op: 'alter-table', via: 'sql', as: 'audit_entries' },
+      { file: m('009-raw-sql.js'), line: 7, op: 'rename-table', via: 'sql', from: 'audit_entries', as: 'audit_entries' },
     ]);
-    expect(table('staging_y').changes.at(-1)).toEqual({ file: m('010-raw-rename.js'), line: 7, op: 'rename-table', via: 'sql', from: 'staging_x' });
-    expect(table('staging_q').changes.at(-1)).toEqual({ file: m('010-raw-rename.js'), line: 7, op: 'rename-table', via: 'sql', from: 'staging_p' });
+    expect(table('audit_log').sources).toEqual([{ kind: 'migration', file: m('009-raw-sql.js'), line: 5, as: 'audit_entries' }]);
+    expect(table('staging_y').changes.at(-1)).toEqual({ file: m('010-raw-rename.js'), line: 7, op: 'rename-table', via: 'sql', from: 'staging_x', as: 'staging_x' });
+    expect(table('staging_q').changes.at(-1)).toEqual({ file: m('010-raw-rename.js'), line: 7, op: 'rename-table', via: 'sql', from: 'staging_p', as: 'staging_p' });
+    expect(table('staging_y').changes[0]).toEqual({ file: m('010-raw-rename.js'), line: 5, op: 'create-table', via: 'sql', as: 'staging_x' });
   });
 
   it('takes the last segment of a qualified, quoted name and reads a template literal over several lines', () => {
@@ -114,12 +118,89 @@ describe('the table list', () => {
   });
 });
 
+describe('the line of an operation is the line where its table name starts', () => {
+  const F = m('023-multiline.js');
+
+  it('follows a table through two renames: each entry names the table as its own line shows it, and the current name carries no as', () => {
+    const last = table('multi_last');
+    expect(last.sources).toEqual([{ kind: 'migration', file: F, line: 6, as: 'multi_old' }]);
+    expect(last.changes).toEqual([
+      { file: F, line: 6, op: 'create-table', via: 'call', as: 'multi_old' },
+      { file: F, line: 10, op: 'rename-table', via: 'call', from: 'multi_old', as: 'multi_old' },
+      { file: F, line: 13, op: 'rename-table', via: 'call', from: 'multi_new', as: 'multi_new' },
+    ]);
+    expect(names(data.tables)).not.toContain('multi_old');
+    expect(names(data.tables)).not.toContain('multi_new');
+  });
+
+  it('points a SQL statement split over lines at the line of the table name, a rename at the line of the old name', () => {
+    const split = table('split_final');
+    expect(split.sources).toEqual([{ kind: 'migration', file: F, line: 16, as: 'split_sql' }]);
+    expect(split.changes).toEqual([
+      { file: F, line: 16, op: 'create-table', via: 'sql', as: 'split_sql' },
+      { file: F, line: 18, op: 'rename-table', via: 'sql', from: 'split_sql', as: 'split_sql' },
+    ]);
+  });
+
+  it('points each name of a DROP TABLE list at its own line, and a split CREATE TABLE of a .sql file at the name line', () => {
+    expect(data.dropped.filter((row) => row.file === F).map((row) => [row.name, row.line, row.createdBy])).toEqual([['tmp_c', 21, null], ['tmp_d', 22, null]]);
+    expect(table('split_schema').sources).toEqual([{ kind: 'sql', file: 'node-app/db/schema.sql', line: 4 }]);
+    expect(Object.values(table('split_schema').mentions).flat().map((x) => `${x.file}:${x.line}:${x.rule}`)).toEqual(['node-app/db/schema.sql:4:b']);
+  });
+});
+
+describe('every cited line shows the name', () => {
+  const lines = new Map();
+  const lineOf = (file, line) => {
+    if (!lines.has(file)) lines.set(file, readFileSync(join(FIXTURE, file), 'utf-8').split('\n'));
+    return lines.get(file)[line - 1] ?? '';
+  };
+  const shows = (file, line, name) => lineOf(file, line).toLowerCase().includes(name.toLowerCase());
+
+  it('has the table name, or the name recorded in as, on the line of each mention, source other than a model, change and drop', () => {
+    const bad = [];
+    let withAs = 0;
+    let checked = 0;
+    const check = (what, file, line, name) => {
+      checked += 1;
+      if (!shows(file, line, name)) bad.push(`${what} ${file}:${line} lacks ${name}`);
+    };
+    for (const entry of data.tables) {
+      for (const list of Object.values(entry.mentions)) for (const x of list) check('mention', x.file, x.line, entry.name);
+      for (const s of entry.sources) {
+        if (s.kind === 'model') continue;
+        if (s.as !== undefined) withAs += 1;
+        check('source', s.file, s.line, s.as ?? entry.name);
+      }
+      for (const c of entry.changes) {
+        if (c.as !== undefined) withAs += 1;
+        check('change', c.file, c.line, c.as ?? entry.name);
+      }
+    }
+    for (const row of data.dropped) check('dropped', row.file, row.line, row.name);
+    expect(bad).toEqual([]);
+    expect(checked).toBeGreaterThan(60);
+    expect(withAs).toBeGreaterThan(10);
+  });
+
+  it('never records as when it equals the table name, and only on migration entries', () => {
+    for (const entry of data.tables) {
+      for (const s of entry.sources) {
+        if (s.as !== undefined) expect([s.kind, s.as === entry.name]).toEqual(['migration', false]);
+      }
+      for (const c of entry.changes) if (c.as !== undefined) expect(c.as).not.toBe(entry.name);
+    }
+  });
+});
+
 describe('the dropped tables', () => {
   it('lists the tables a migration drops and nothing recreates, each with the dropping migration', () => {
     expect(data.dropped).toEqual([
       { name: 'temp_logs', file: m('005-drop-temp-logs.js'), line: 5, createdBy: m('004-temp-logs.js'), directory: 'node-app/migrations' },
       { name: 'tmp_a', file: m('009-raw-sql.js'), line: 17, createdBy: m('009-raw-sql.js'), directory: 'node-app/migrations' },
       { name: 'tmp_b', file: m('009-raw-sql.js'), line: 17, createdBy: m('009-raw-sql.js'), directory: 'node-app/migrations' },
+      { name: 'tmp_c', file: m('023-multiline.js'), line: 21, createdBy: null, directory: 'node-app/migrations' },
+      { name: 'tmp_d', file: m('023-multiline.js'), line: 22, createdBy: null, directory: 'node-app/migrations' },
     ]);
     expect(names(data.tables)).not.toContain('temp_logs');
   });
@@ -142,7 +223,7 @@ describe('the declared tables', () => {
   });
 
   it('lists the tables declared and not created by any migration', () => {
-    expect(data.declaredOnly).toEqual(['accounts', 'go_orders', 'ledger_entries', 'model_only_events', 'tags']);
+    expect(data.declaredOnly).toEqual(['accounts', 'go_orders', 'ledger_entries', 'model_only_events', 'split_schema', 'tags']);
   });
 
   it('puts a model name it cannot read to a literal in a bucket, with the position and why', () => {
@@ -161,7 +242,7 @@ describe('the migrations', () => {
   it('counts the migrations of each application', () => {
     expect(data.applications).toEqual([
       { directory: 'go-app', migrations: 0 },
-      { directory: 'node-app', migrations: 23 },
+      { directory: 'node-app', migrations: 24 },
     ]);
   });
 
@@ -210,7 +291,7 @@ describe('the operation ledger', () => {
   it('has one row for each recognized operation, in file and position order, each in one bucket', () => {
     expect(tuples).toEqual([
       ['001-create-users.js', 5, 'create-table', 'users', 'create'],
-      ['002-create-orders.js', 6, 'create-table', 'orders', 'create'],
+      ['002-create-orders.js', 7, 'create-table', 'orders', 'create'],
       ['002-create-orders.js', 12, 'add-index', 'orders', 'change'],
       ['003-add-users-email.js', 5, 'add-column', 'users', 'change'],
       ['004-temp-logs.js', 5, 'create-table', 'temp_logs', 'create'],
@@ -250,12 +331,19 @@ describe('the operation ledger', () => {
       ['020-module-exports-up.js', 4, 'create-table', 'module_up_t', 'create'],
       ['021-export-function.ts', 4, 'create-table', 'esm_fn_t', 'create'],
       ['022-export-const.ts', 4, 'create-table', 'esm_const_t', 'create'],
+      ['023-multiline.js', 6, 'create-table', 'multi_old', 'create'],
+      ['023-multiline.js', 10, 'rename-table', 'multi_new', 'rename'],
+      ['023-multiline.js', 13, 'rename-table', 'multi_last', 'rename'],
+      ['023-multiline.js', 16, 'create-table', 'split_sql', 'create'],
+      ['023-multiline.js', 18, 'rename-table', 'split_final', 'rename'],
+      ['023-multiline.js', 21, 'drop-table', 'tmp_c', 'drop'],
+      ['023-multiline.js', 22, 'drop-table', 'tmp_d', 'drop'],
     ]);
   });
 
   it('records where each renamed table came from', () => {
     const renames = data.operations.filter((o) => o.bucket === 'rename').map((o) => [o.table, o.from]);
-    expect(renames).toEqual([['invoices', 'old_invoices'], ['audit_log', 'audit_entries'], ['staging_y', 'staging_x'], ['staging_q', 'staging_p']]);
+    expect(renames).toEqual([['invoices', 'old_invoices'], ['audit_log', 'audit_entries'], ['staging_y', 'staging_x'], ['staging_q', 'staging_p'], ['multi_new', 'multi_old'], ['multi_last', 'multi_new'], ['split_final', 'split_sql']]);
   });
 });
 
@@ -296,7 +384,7 @@ describe('where a table name appears outside the migrations', () => {
   });
 
   it('lists the tables whose name appears only in migrations', () => {
-    expect(data.onlyInMigrations).toEqual(['audit_log', 'cache_entries', 'esm_const_t', 'esm_fn_t', 'exports_up_t', 'ghost_table', 'module_up_t', 'reports', 'sql_migrated', 'sql_other', 'staging_q', 'staging_y', 'ts_events']);
+    expect(data.onlyInMigrations).toEqual(['audit_log', 'cache_entries', 'esm_const_t', 'esm_fn_t', 'exports_up_t', 'ghost_table', 'module_up_t', 'multi_last', 'reports', 'split_final', 'sql_migrated', 'sql_other', 'staging_q', 'staging_y', 'ts_events']);
     for (const name of data.onlyInMigrations) expect(table(name).mentions).toEqual({});
   });
 });
@@ -304,18 +392,18 @@ describe('where a table name appears outside the migrations', () => {
 describe('the counts and the recognized forms', () => {
   it('are computed from the lists', () => {
     expect(data.counts).toEqual({
-      tables: 21,
-      migrations: 23,
-      migrationsReplayed: 20,
+      tables: 24,
+      migrations: 24,
+      migrationsReplayed: 21,
       migrationsUnsplit: 2,
       migrationsDownOnly: 1,
       otherMigrationFiles: 2,
-      operations: { total: 41, create: 19, drop: 4, rename: 4, change: 9, unnamed: 5 },
-      declarations: { total: 11, model: 5, sql: 1, unresolved: 5 },
-      dropped: 3,
+      operations: { total: 48, create: 21, drop: 6, rename: 7, change: 9, unnamed: 5 },
+      declarations: { total: 12, model: 5, sql: 2, unresolved: 5 },
+      dropped: 5,
       changedNeverCreated: 1,
-      declaredOnly: 5,
-      onlyInMigrations: 13,
+      declaredOnly: 6,
+      onlyInMigrations: 15,
       tablesInSeveralApplications: 1,
       gaps: 12,
     });

@@ -166,7 +166,8 @@ export interface NameMention { file: string; line: number; rule: 'a' | 'b' }
 /** One table of the data section: where it is declared, the migrations that created and last changed it, and where its name appears by application (the empty key is the places that belong to no application). */
 export interface DataTable {
   name: string;
-  sources: { kind: 'migration' | 'model' | 'sql'; file: string; line: number }[];
+  /** `as` is the name the line shows when it is an earlier name of the table (the table was renamed later). */
+  sources: { kind: 'migration' | 'model' | 'sql'; file: string; line: number; as?: string }[];
   createdBy: string | null;
   lastChangedBy: string | null;
   mentions: Record<string, NameMention[]>;

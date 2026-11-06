@@ -101,11 +101,11 @@ export function checkDataShape(value) {
     declarations: rows(problems, value.declarations, 'declarations', { kind: oneOf(['model', 'sql']), file: isString, line: isLine, table: nullOr(isString), bucket: oneOf(['resolved', 'unresolved']) }),
     tables: rows(problems, value.tables, 'tables', {
       name: isString,
-      sources: (v) => Array.isArray(v) && v.every((s) => isObject(s) && ['migration', 'model', 'sql'].includes(s.kind) && isString(s.file) && isLine(s.line)),
+      sources: (v) => Array.isArray(v) && v.every((s) => isObject(s) && ['migration', 'model', 'sql'].includes(s.kind) && isString(s.file) && isLine(s.line) && optional(isString)(s.as)),
       createdBy: nullOr(isString),
       lastChangedBy: nullOr(isString),
       directories: (v) => Array.isArray(v) && v.every(isString),
-      changes: (v) => Array.isArray(v) && v.every((c) => isObject(c) && isString(c.file) && isLine(c.line) && isString(c.op) && ['call', 'sql'].includes(c.via) && optional(isString)(c.from)),
+      changes: (v) => Array.isArray(v) && v.every((c) => isObject(c) && isString(c.file) && isLine(c.line) && isString(c.op) && ['call', 'sql'].includes(c.via) && optional(isString)(c.from) && optional(isString)(c.as)),
       mentions: (v) => isObject(v) && Object.values(v).every((list) => Array.isArray(list) && list.every((m) => isObject(m) && isString(m.file) && isLine(m.line) && ['a', 'b'].includes(m.rule))),
     }),
     dropped: rows(problems, value.dropped, 'dropped', { name: isString, file: isString, line: isLine, createdBy: nullOr(isString), directory: isString }),

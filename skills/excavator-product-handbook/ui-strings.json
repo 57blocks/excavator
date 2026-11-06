@@ -164,6 +164,7 @@
     "md.data.kind.model": "model",
     "md.data.kind.sql": ".sql file",
     "md.data.source": "{kind}: {place}",
+    "md.data.sourceAs": "{kind}: {place} (as {name})",
     "md.data.mentionCount": "{application}: {count}",
     "md.data.mentionPlace": "{place} ({rule})",
     "md.data.rule.a": "whole string",

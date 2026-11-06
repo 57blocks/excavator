@@ -16,6 +16,9 @@ const DASH = '-';
 const placeOf = (file, line, t) => fill(t('md.locations.placeOne'), { file, line });
 const bullets = (items) => [...items.map((item) => `- ${inline(item)}`), ''];
 
+/** One source of a table: the kind and the place; a migration line that shows the table under an earlier name says which. */
+const sourceText = (source, t) => fill(t(source.as === undefined ? 'md.data.source' : 'md.data.sourceAs'), { kind: t(`md.data.kind.${source.kind}`), place: placeOf(source.file, source.line, t), name: source.as ?? '' });
+
 /** The applications cell: a count per application where the name appears, or the fixed text when it appears only in migrations. */
 function applicationsCell(entry, t) {
   const keys = Object.keys(entry.mentions);
@@ -26,7 +29,7 @@ function applicationsCell(entry, t) {
 function tablesRows(data, t) {
   return data.tables.map((entry) => [
     entry.name,
-    entry.sources.length === 0 ? DASH : entry.sources.map((source) => inline(fill(t('md.data.source'), { kind: t(`md.data.kind.${source.kind}`), place: placeOf(source.file, source.line, t) }))).join('<br>'),
+    entry.sources.length === 0 ? DASH : entry.sources.map((source) => inline(sourceText(source, t))).join('<br>'),
     applicationsCell(entry, t),
     entry.createdBy ?? DASH,
     entry.lastChangedBy ?? DASH,

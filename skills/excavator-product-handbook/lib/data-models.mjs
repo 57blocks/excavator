@@ -121,5 +121,5 @@ export function sqlFileTables(text) {
   const lineAt = lineIndex(stripped);
   return sqlOperations(stripped)
     .filter((statement) => statement.op === 'create-table' && statement.name !== null)
-    .map((statement) => ({ line: lineAt(statement.index), name: statement.name }));
+    .map((statement) => ({ line: lineAt(statement.at), name: statement.name }));
 }

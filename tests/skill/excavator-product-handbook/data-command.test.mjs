@@ -42,7 +42,7 @@ describe('handbook.mjs data', () => {
     const result = runHandbook(['data', FIXTURE, out]);
     expect(result.status, result.stderr).toBe(0);
     expect(result.lines).toHaveLength(1);
-    expect(result.lines[0]).toBe('Data: 21 tables; 23 migrations (20 replayed, 2 not split, 1 down only); 3 dropped; 13 names only in migrations; 12 gaps (5 unnamed operations, 2 unsplit migrations, 5 unresolved model names).');
+    expect(result.lines[0]).toBe('Data: 24 tables; 24 migrations (21 replayed, 2 not split, 1 down only); 5 dropped; 15 names only in migrations; 12 gaps (5 unnamed operations, 2 unsplit migrations, 5 unresolved model names).');
     const written = JSON.parse(readFileSync(join(out, 'data.json'), 'utf-8'));
     expect(written).toEqual(extractData(FIXTURE));
     expect(checkDataShape(written)).toEqual([]);
@@ -118,6 +118,23 @@ describe('the shape check', () => {
     const dupe = good();
     dupe.tables.push(dupe.tables[0]);
     expect(checkDataShape(dupe).join('\n')).toContain('twice');
+  });
+
+  it('accepts the optional as on a source and a change, and refuses one that is not a string', () => {
+    const find = (data) => data.tables.find((entry) => entry.name === 'invoices');
+    const ok = good();
+    expect(find(ok).sources[0].as).toBe('old_invoices');
+    expect(find(ok).changes[0].as).toBe('old_invoices');
+    expect(checkDataShape(ok)).toEqual([]);
+    const source = good();
+    find(source).sources[0].as = 5;
+    expect(checkDataShape(source).join('\n')).toContain('tables[');
+    const change = good();
+    find(change).changes[0].as = '';
+    expect(checkDataShape(change).join('\n')).toContain('tables[');
+    const absent = good();
+    delete find(absent).sources[0].as;
+    expect(checkDataShape(absent)).toEqual([]);
   });
 
   it('refuses a bucket that is not one of the named ones', () => {
