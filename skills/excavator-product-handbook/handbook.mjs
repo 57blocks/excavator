@@ -21,6 +21,10 @@
  *   applications <projectRoot>
  *       Print the application roots of the project: the topmost directories
  *       that hold a build manifest, found with the candidate lister's walk.
+ *   names <projectRoot>
+ *       Print the system name candidates the code and the configuration write
+ *       (a web manifest, an HTML title, a package, module or build file), each
+ *       with its source, file and line, found in the application roots only.
  *   data <projectRoot> <out>
  *       Write <out>/data.json (the tables of the project, its migrations and
  *       where each table name appears) and <out>/dictionaries.json (the value
@@ -100,6 +104,7 @@ import { checkDomains } from './lib/domains-check.mjs';
 import { UsageError } from './lib/errors.mjs';
 import { withStateLock } from './lib/lock.mjs';
 import { mark } from './lib/mark.mjs';
+import { nameCandidates, nameLines } from './lib/name-candidates.mjs';
 import { writePage } from './lib/page.mjs';
 import { projectRootOption } from './lib/project-root.mjs';
 import { replyLines } from './lib/reply.mjs';
@@ -159,6 +164,25 @@ Commands:
       Gemfile, *.csproj, *.sln) with no other such directory between it and the
       project root; the project root itself is ".". It walks the project as the
       candidates command does (same skipped directories, no link followed).
+  names <projectRoot>
+      Print "Name candidates: <n>" and then one line "<value><TAB><source><TAB>
+      <file>:<line><TAB><resolved|unresolved>" for each system name the code or
+      the configuration writes, in the application roots (the roots that
+      applications prints) and their public directories only, never below and
+      never in a document: the name and short_name of manifest.json and
+      *.webmanifest (web-manifest-name, web-manifest-short-name), the title of
+      each *.html (html-title; a title that refers to a variable as %NAME%,
+      \${NAME} or import.meta.env.NAME is listed as written, unresolved, and the
+      value of the first definition of the variable in .env, .env.production,
+      .env.development of the root is listed at its line there), the productName,
+      displayName and name of package.json (package-product-name,
+      package-display-name, package-name), the last segment of the module of
+      go.mod (go-module), the name and artifactId of the root of pom.xml
+      (maven-name, maven-artifact) and the rootProject.name of settings.gradle
+      and settings.gradle.kts (gradle-root). An empty value is not listed. Then
+      "Files not read: <n>" and one line "<file><TAB><reason>" for each file that
+      exists and was not read (a link, over the size cap, a NUL byte, JSON that
+      does not parse). Reads the source statically, never builds or runs it.
   data <projectRoot> <out>
       Write <out>/data.json (the data section; no model writes any of it): the
       tables the migrations leave when replayed in file name order (the up part
@@ -379,6 +403,11 @@ const COMMANDS = {
     const { positionals } = parseArgs(args, []);
     if (positionals.length !== 1) throw new UsageError('applications takes exactly one <projectRoot>');
     return report({ status: 0, lines: applicationLines(scanProject(projectRootOption(positionals[0]))) });
+  },
+  names(args) {
+    const { positionals } = parseArgs(args, []);
+    if (positionals.length !== 1) throw new UsageError('names takes exactly one <projectRoot>');
+    return report({ status: 0, lines: nameLines(nameCandidates(scanProject(projectRootOption(positionals[0])))) });
   },
   data(args) {
     const { positionals } = parseArgs(args, []);
