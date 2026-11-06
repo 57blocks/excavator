@@ -36,14 +36,14 @@ const entry = (purpose: string, roles: [string, string][]): Entry => ({
 });
 
 const feature = (id: string, area: string, domain: string, status: Feature['status'], entryValue: Entry | null): Feature => ({
-  id, name: d(`name ${id}`), area, domain, reach: 'menu', status, entry: entryValue,
+  id, name: d(`name ${id}`), area, domain, reach: 'menu', status, entry: entryValue, findingsStatus: 'planned',
 });
 
 /** Two business domains that cross the two areas of the map (F1 and F3 are in A1, F2 and F4 in A2); F1 and F3 verified, F2 and F4 not; applications svc, svc/admin and one with no verified name; Slack is shown for svc and named in svc/admin too. */
 function dataFor(views: View[]): PageData {
   const withTechnical = views.includes('technical');
   return {
-    format: 'excavator-product-handbook-page/7',
+    format: 'excavator-product-handbook-page/8',
     project: d('project'),
     language: d('language'),
     languageTag: 'xx',
@@ -58,7 +58,8 @@ function dataFor(views: View[]): PageData {
       feature('F3', 'A1', 'D2', 'verified', entry('purpose three', [[CLERK, 'reviews'], [APPROVER, 'approves']])),
       feature('F4', 'A2', 'D2', 'failed', null),
     ],
-    coverage: { candidateTotal: 1, assigned: 1, unassigned: [], reachCounts: [{ reach: 'menu', count: 4 }], removedOverview: [], removed: [] },
+    findings: [],
+    coverage: { candidateTotal: 1, assigned: 1, unassigned: [], reachCounts: [{ reach: 'menu', count: 4 }], removedOverview: [], removed: [], findingsUnfinished: [], findingsNotWritten: 0, findingsRemoved: [] },
     summary: {
       notifications: [],
       jobs: [{ kind: 'job', candidate: d('c1'), feature: 'F1', reason: null, schedule: { bucket: 'absent', literal: null }, automatic: [] }],
@@ -108,6 +109,7 @@ function dataFor(views: View[]): PageData {
           { id: 'F1', items: [{ claim: d('claim one'), citations: [{ file: d('src/a.js'), startLine: 3, endLine: 3 }, { file: d('src/b.js'), startLine: 5, endLine: 9 }, { file: d('src/c.js'), startLine: null, endLine: null }] }] },
           { id: 'overview', items: [{ claim: d('overview claim'), citations: [{ file: d('package.json'), startLine: 1, endLine: 1 }] }] },
         ],
+        findingLocations: [],
         data: null,
         dataState: 'missing',
         dictionaries: null,

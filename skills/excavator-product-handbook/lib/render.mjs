@@ -12,6 +12,7 @@ import { REACHES } from './map-shape.mjs';
 import { inline, table } from './markdown.mjs';
 import { applicationCells, listCell } from './render-application.mjs';
 import { entitySections, locationLines } from './render-entities.mjs';
+import { featureFindingsLines, findingsChapter, findingsCoverage } from './render-findings.mjs';
 import { fill } from './ui.mjs';
 
 const NONE_ROW = '-';
@@ -39,8 +40,8 @@ function screensBlock(entry, t) {
   return out;
 }
 
-/** `areaName`: the name of the feature's area when the handbook groups by business domain (the area is then a property of the feature), else null. */
-function entryBlock(feature, entry, map, t, locations, areaName) {
+/** `areaName`: the name of the feature's area when the handbook groups by business domain (the area is then a property of the feature), else null. `findingsPart` is the findings context of render-findings.mjs. */
+function entryBlock(feature, entry, map, t, locations, areaName, findingsPart) {
   const reachText = t(`md.reach.${feature.reach}`);
   const out = [`### ${inline(feature.name)}`, '', inline(fill(t('md.feature.reach'), { reach: reachText })), ''];
   if (areaName !== null) out.push(inline(fill(t('md.feature.area'), { area: areaName })), '');
@@ -74,6 +75,7 @@ function entryBlock(feature, entry, map, t, locations, areaName) {
   out.push(`#### ${t('md.section.unknowns')}`, '');
   if (entry.unknowns.length === 0) out.push(t('md.none'), '');
   else out.push(...entry.unknowns.map((u) => `- ${inline(fill(t('md.unknown.item'), { item: u.item, searched: u.searched }))}`), '');
+  out.push(...featureFindingsLines(feature.id, findingsPart));
   if (locations !== undefined) out.push(`#### ${t('md.locations.heading')}`, '', ...locationLines(locations, t));
   return out;
 }
@@ -216,6 +218,7 @@ function coverageBlock(map, state, candidates, t) {
     out.push(`#### ${inline(fill(t('md.coverage.removedFeature'), { id: feature.id, name: feature.name, area: areaName.get(feature.area), count: removed.length }))}`, '');
     out.push(removedTable(removed), '');
   }
+  out.push(...findingsCoverage({ map, state, t, areaName }));
   return out;
 }
 
@@ -225,9 +228,10 @@ function coverageBlock(map, state, candidates, t) {
  * `summary` is the two cross-cutting tables (summary.mjs); `system` the facts of the system overview (system-facts.mjs);
  * `entities` the entities and relations (entities.mjs), whose `domains` and `domainBasis` decide how the features are grouped (domain-grouping.mjs). `view` is `product` or `technical`: the technical view
  * also writes the data chapter after the system overview (from `data`, data-section.mjs, and in it, from `dictionaries`, dict-section.mjs, the status dictionary part), the application and external-system sections and, from `locations` (locations.mjs), the file and
- * lines of each item; the product view writes no citation path.
+ * lines of each item; the product view writes no citation path. `findings` (findings-model.mjs) is the verified findings of the features: both views write the Findings chapter
+ * between the entity sections and the coverage section and each feature's own findings at the end of its section, the technical view with the file and lines of each finding.
  */
-export function renderHandbook({ map, entries, state, candidates, ui, summary, system, entities, view = 'product', locations = null, data = null, dictionaries = null }) {
+export function renderHandbook({ map, entries, state, candidates, ui, summary, system, entities, view = 'product', locations = null, data = null, dictionaries = null, findings = { list: [], locations: null } }) {
   const t = (key) => {
     if (!Object.hasOwn(ui, key)) throw new Error(`the fixed-text table has no key ${key}`);
     return ui[key];
@@ -237,6 +241,7 @@ export function renderHandbook({ map, entries, state, candidates, ui, summary, s
   const basis = entities.domainBasis;
   const areaName = new Map(map.areas.map((area) => [area.id, area.name]));
   const featureOf = new Map(map.features.map((feature) => [feature.id, feature]));
+  const findingsPart = { state, findings, t };
   const out = [`# ${inline(t(technical ? 'md.titleTechnical' : 'md.title'))}`, '', ...overviewBlock(system, basis, t, placesOf.get('overview')), ...(technical && data !== null ? dataBlock(data, t) : []), ...(technical && dictionaries !== null ? dictionaryBlock(dictionaries, t) : []), `## ${t(basis === 'domains' ? 'md.domains.heading' : 'md.areas.heading')}`, ''];
   if (basis === 'areas') out.push(t('md.domains.fromAreas'), '');
   for (const domain of entities.domains) {
@@ -251,9 +256,9 @@ export function renderHandbook({ map, entries, state, candidates, ui, summary, s
     const written = domain.features.filter((id) => entries.has(id));
     if (written.length === 0) continue;
     out.push(`## ${inline(domain.name)}`, '');
-    for (const id of written) out.push(...entryBlock(featureOf.get(id), entries.get(id), map, t, placesOf.get(id), basis === 'domains' ? areaName.get(featureOf.get(id).area) : null));
+    for (const id of written) out.push(...entryBlock(featureOf.get(id), entries.get(id), map, t, placesOf.get(id), basis === 'domains' ? areaName.get(featureOf.get(id).area) : null, findingsPart));
   }
-  out.push(...summaryBlock(summary, map, t), ...entitySections({ view, map, entities, summary, system, t }), ...coverageBlock(map, state, candidates, t));
+  out.push(...summaryBlock(summary, map, t), ...entitySections({ view, map, entities, summary, system, t }), ...findingsChapter({ map, state, findings, view, t }), ...coverageBlock(map, state, candidates, t));
   return `${out.join('\n').replace(/\n{3,}/g, '\n\n').trimEnd()}\n`;
 }
 

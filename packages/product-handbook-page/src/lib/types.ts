@@ -1,6 +1,6 @@
 /** The page data `handbook.mjs page` writes into the template (openspec change product-handbook-map, design D13). */
 
-export const PAGE_FORMAT = 'excavator-product-handbook-page/7';
+export const PAGE_FORMAT = 'excavator-product-handbook-page/8';
 
 /** The views a page can hold (openspec change handbook-entities-and-views): the product view and the technical view. */
 export const VIEWS = ['product', 'technical'] as const;
@@ -13,6 +13,12 @@ export type Reach = (typeof REACHES)[number];
 export type Status = 'planned' | 'dispatched' | 'checked' | 'confirmed' | 'verified' | 'failed';
 
 export type EntrypointKind = 'route' | 'page' | 'job' | 'main';
+
+/** The root causes a finding is sorted by, in the order the handbook lists them (the fixed text of each is `findingCategoryKey(value)`). */
+export const FINDING_CATEGORIES = ['authorization', 'error-handling', 'notification', 'consistency', 'calculation', 'hard-coded', 'contract', 'security', 'display', 'time', 'other'] as const;
+export type FindingCategory = (typeof FINDING_CATEGORIES)[number];
+/** The key of a category's display name in the ui table: `error-handling` is `errorHandling`, since keys hold letters and dots only. */
+export const findingCategoryKey = (category: FindingCategory): string => `md.findings.category.${category.replace(/-([a-z])/g, (_, letter: string) => letter.toUpperCase())}`;
 
 export interface Rule { side: 'frontend' | 'backend'; text: string }
 export interface Field { label: string; rules: Rule[] }
@@ -49,7 +55,12 @@ export interface Feature {
   label?: string;
   status: Status;
   entry: Entry | null;
+  /** Where the verification of the feature's findings stands: only `verified` ones are in `PageData.findings`. */
+  findingsStatus: Status;
 }
+
+/** One verified finding of a feature: `id` is the unit id and the item path (`F3.findings[0]`), the text the statement of the defect and when it happens. */
+export interface Finding { id: string; feature: string; category: FindingCategory; text: string }
 
 /** An item the verification removed from a feature's entry: its claim, why it went, and the verifier's reason. */
 export interface RemovedItem { claim: string; verdict: 'unverified' | 'contradicted' | 'withParent'; reason: string }
@@ -63,6 +74,12 @@ export interface Coverage {
   removedOverview: RemovedItem[];
   /** The features that lost items to verification, with those items. */
   removed: { feature: string; items: RemovedItem[] }[];
+  /** The features whose findings unit is not verified with where it stands; the units never written are not rows, see `findingsNotWritten`. */
+  findingsUnfinished: { feature: string; status: Status }[];
+  /** How many features have a findings unit that was never written (planned); they are one count, not rows. */
+  findingsNotWritten: number;
+  /** The features that lost findings to verification, with those findings. */
+  findingsRemoved: { feature: string; items: RemovedItem[] }[];
 }
 
 /** One notification of a verified entry, in the entry's words; `feature` is the id of the feature. */
@@ -290,6 +307,8 @@ export interface Technical {
   integrations: IntegrationRelations[];
   jobs: { candidate: string; feature: string | null; application: string | null }[];
   locations: UnitLocations[];
+  /** The file and lines of each passage quoted for each finding of `PageData.findings`, by finding id; null lines when a passage could not be located. */
+  findingLocations: { id: string; citations: { file: string; startLine: number | null; endLine: number | null }[] }[];
   /** The data section; null when `<out>/data.json` is missing or malformed, and `dataState` says which. */
   data: DataSection | null;
   dataState: 'ok' | 'missing' | 'malformed';
@@ -311,6 +330,8 @@ export interface PageData {
   domains: Area[];
   domainBasis: DomainBasis;
   features: Feature[];
+  /** The verified findings of all features, in the order of the map and then of each feature's file. */
+  findings: Finding[];
   coverage: Coverage;
   summary: Summary;
   system: System;

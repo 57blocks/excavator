@@ -47,7 +47,7 @@ const emptyEntry: Entry = { purpose: d('purpose'), who: [], where: [], screens: 
 const reaches: Reach[] = ['menu', 'link', 'automated', 'interface', 'operator'];
 
 function feature(id: string, reach: Reach, status: Feature['status'], entry: Entry | null, label?: string): Feature {
-  return { id: d(id), name: d(`name ${id}`), area: d('A1'), domain: d('A1'), reach, label: label === undefined ? undefined : d(label), status, entry };
+  return { id: d(id), name: d(`name ${id}`), area: d('A1'), domain: d('A1'), reach, label: label === undefined ? undefined : d(label), status, entry, findingsStatus: 'planned' };
 }
 
 const emptySummary: Summary = {
@@ -119,7 +119,7 @@ const emptySystem: System = {
 
 function dataFor(features: Feature[], unassigned: PageData['coverage']['unassigned'] = [], removed: PageData['coverage']['removed'] = [], summary: Summary = emptySummary, system: System = unwrittenSystem, removedOverview: PageData['coverage']['removedOverview'] = []): PageData {
   return {
-    format: 'excavator-product-handbook-page/7',
+    format: 'excavator-product-handbook-page/8',
     project: d('project'),
     language: d('language'),
     languageTag: 'xx',
@@ -130,6 +130,7 @@ function dataFor(features: Feature[], unassigned: PageData['coverage']['unassign
     domains: [{ id: d('A1'), name: d('area one') }, { id: d('A2'), name: d('area two') }],
     domainBasis: 'areas',
     features,
+    findings: [],
     coverage: {
       candidateTotal: 9,
       assigned: 9 - unassigned.length,
@@ -137,6 +138,9 @@ function dataFor(features: Feature[], unassigned: PageData['coverage']['unassign
       reachCounts: reaches.map((reach) => ({ reach, count: features.filter((item) => item.reach === reach).length })),
       removedOverview,
       removed,
+      findingsUnfinished: [],
+      findingsNotWritten: 0,
+      findingsRemoved: [],
     },
     summary,
     system,
@@ -235,7 +239,7 @@ describe('every fixed text of the page comes from the ui table (O8, node half)',
     for (const key of ['md.coverage.removedHeading', 'md.table.item', 'md.table.result', 'md.verdict.contradicted', 'md.verdict.unverified', 'md.verdict.withParent']) expect(html).toContain(marked[key]);
     expect(html).toContain('data-empty="true"');
     // Nothing removed: the section says so with the shared "none" text.
-    const section = (page: string): string => page.slice(page.indexOf('id="cov-removed"'));
+    const section = (page: string): string => page.slice(page.indexOf('id="cov-removed"'), page.indexOf('id="cov-findings-unfinished"'));
     expect(section(render(allWritten, '#/coverage'))).toContain(marked['md.none']);
     expect(section(html)).not.toContain(marked['md.none']);
   });
