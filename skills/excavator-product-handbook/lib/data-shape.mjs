@@ -46,7 +46,7 @@ export function computeCounts(data) {
       unresolved: declaration((row) => row.bucket === 'unresolved'),
     },
     dropped: data.dropped.length,
-    droppedButDeclared: data.droppedButDeclared.length,
+    removedButDeclared: data.removedButDeclared.length,
     changedNeverCreated: data.changedNeverCreated.length,
     declaredOnly: data.declaredOnly.length,
     onlyInMigrations: data.onlyInMigrations.length,
@@ -106,12 +106,12 @@ export function checkDataShape(value) {
       createdBy: nullOr(isString),
       lastChangedBy: nullOr(isString),
       directories: (v) => Array.isArray(v) && v.every(isString),
-      changes: (v) => Array.isArray(v) && v.every((c) => isObject(c) && isString(c.file) && isLine(c.line) && isString(c.op) && ['call', 'sql'].includes(c.via) && optional(isString)(c.from) && optional(isString)(c.as)),
+      changes: (v) => Array.isArray(v) && v.every((c) => isObject(c) && isString(c.file) && isLine(c.line) && isString(c.op) && ['call', 'sql'].includes(c.via) && optional(isString)(c.from) && optional(isString)(c.as) && optional(isString)(c.to)),
       mentions: (v) => isObject(v) && Object.values(v).every((list) => Array.isArray(list) && list.every((m) => isObject(m) && isString(m.file) && isLine(m.line) && ['a', 'b', 'c'].includes(m.rule))),
     }),
     dropped: rows(problems, value.dropped, 'dropped', { name: isString, file: isString, line: isLine, createdBy: nullOr(isString), directory: isString }),
   };
-  for (const key of ['changedNeverCreated', 'declaredOnly', 'droppedButDeclared', 'onlyInMigrations']) {
+  for (const key of ['changedNeverCreated', 'declaredOnly', 'removedButDeclared', 'onlyInMigrations']) {
     if (!Array.isArray(value[key]) || !value[key].every(isString)) {
       problems.push(`${key} is not a list of table names`);
       lists[key] = false;
@@ -138,7 +138,7 @@ export function checkDataShape(value) {
     if (names.has(table.name)) problems.push(`table ${table.name} is listed twice`);
     names.add(table.name);
   }
-  for (const key of ['changedNeverCreated', 'declaredOnly', 'droppedButDeclared', 'onlyInMigrations']) {
+  for (const key of ['changedNeverCreated', 'declaredOnly', 'removedButDeclared', 'onlyInMigrations']) {
     for (const name of value[key]) if (!names.has(name)) problems.push(`${key} names ${name}, which is not in tables`);
   }
   value.operations.forEach((row, i) => {

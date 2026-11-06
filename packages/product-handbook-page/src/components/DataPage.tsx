@@ -117,7 +117,7 @@ function SectionBody({ section }: { section: DataSection }) {
         <p className="muted">{t('md.data.recognized', { forms: section.recognized.map((form) => t(formKey(form))).join('; ') })}</p>
       </div>
       <p className="summary-counts">
-        {t('md.data.counts', {
+        {t('md.data.countLine', {
           tables: counts.tables,
           migrations: counts.migrations,
           replayed: counts.migrationsReplayed,
@@ -126,6 +126,9 @@ function SectionBody({ section }: { section: DataSection }) {
           several: counts.tablesInSeveralApplications,
           onlyInMigrations: counts.onlyInMigrations,
           dropped: counts.dropped,
+          declaredOnly: counts.declaredOnly,
+          removedButDeclared: counts.removedButDeclared,
+          changedNeverCreated: counts.changedNeverCreated,
           gaps: counts.gaps,
         })}
       </p>
@@ -151,7 +154,7 @@ function SectionBody({ section }: { section: DataSection }) {
         </TableScroll>
       )}
       <List heading={t('md.data.declaredOnlyHeading')} items={section.declaredOnly} />
-      <List heading={t('md.data.droppedButDeclaredHeading')} items={section.droppedButDeclared} />
+      <List heading={t('md.data.removedButDeclaredHeading')} items={section.removedButDeclared} />
       <List heading={t('md.data.changedNeverCreatedHeading')} items={section.changedNeverCreated} />
       <List heading={t('md.data.onlyInMigrationsHeading')} items={section.onlyInMigrations} />
       <h2 className="section-title">{t('md.data.gapsHeading')}</h2>

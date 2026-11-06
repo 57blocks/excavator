@@ -32,7 +32,7 @@ export function pageSection(data) {
     dropped: data.dropped,
     changedNeverCreated: data.changedNeverCreated,
     declaredOnly: data.declaredOnly,
-    droppedButDeclared: data.droppedButDeclared,
+    removedButDeclared: data.removedButDeclared,
     onlyInMigrations: data.onlyInMigrations,
     gaps: data.gaps,
     counts: data.counts,

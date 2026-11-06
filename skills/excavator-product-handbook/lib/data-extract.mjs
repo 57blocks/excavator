@@ -119,24 +119,25 @@ function readDeclarations(files) {
 
 /**
  * The history entries a table row is built from: the tables each directory
- * leaves, and the tables a directory drops that a model or a .sql file still
- * declares and no directory leaves (their history runs up to the drop).
- * `droppedButDeclared` lists the names of the second kind.
+ * leaves, and the tables a directory drops or renames away whose name a model
+ * or a .sql file still declares and no directory leaves (their history runs up
+ * to the drop or the rename). `removedButDeclared` lists the names of the
+ * second kind.
  */
 function historyEntries(histories, declarations) {
   const declared = new Set(declarations.filter((row) => row.bucket === 'resolved').map((row) => row.table));
   const live = new Set(histories.flatMap((history) => [...history.tables.keys()]));
   const entries = [];
-  const droppedButDeclared = new Set();
+  const removedButDeclared = new Set();
   for (const history of histories) {
     for (const [name, entry] of history.tables) entries.push({ name, entry, directory: history.directory });
-    for (const row of history.dropped) {
+    for (const row of [...history.dropped, ...history.renamedAway]) {
       if (!declared.has(row.name) || live.has(row.name)) continue;
-      droppedButDeclared.add(row.name);
+      removedButDeclared.add(row.name);
       entries.push({ name: row.name, entry: row.history, directory: history.directory });
     }
   }
-  return { entries, droppedButDeclared: [...droppedButDeclared].sort(byteOrder) };
+  return { entries, removedButDeclared: [...removedButDeclared].sort(byteOrder) };
 }
 
 /** The tables of every migration history and every resolved declaration, merged by name. */
@@ -201,7 +202,7 @@ export function extractData(projectRootArg) {
   const project = listProject(projectRootArg);
   const { migrations, histories, unsplit, other } = readMigrations(project.files);
   const { declarations, unresolved, skipped, searched } = readDeclarations(project.files);
-  const { entries, droppedButDeclared } = historyEntries(histories, declarations);
+  const { entries, removedButDeclared } = historyEntries(histories, declarations);
   const tables = mergeTables(entries, declarations);
   addMentions(project.files, tables);
 
@@ -225,7 +226,7 @@ export function extractData(projectRootArg) {
     dropped,
     changedNeverCreated: named(tables.filter((table) => table.createdBy === null && table.changes.length > 0)),
     declaredOnly: named(tables.filter((table) => table.createdBy === null && table.sources.some((source) => source.kind !== 'migration'))),
-    droppedButDeclared,
+    removedButDeclared,
     onlyInMigrations: named(tables.filter((table) => table.changes.length > 0 && Object.keys(table.mentions).length === 0)),
     gaps: {
       unsplitMigrations: unsplit,

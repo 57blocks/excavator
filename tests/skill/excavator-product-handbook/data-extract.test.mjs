@@ -20,7 +20,7 @@ describe('the table list', () => {
   it('holds the tables the up parts leave, plus the declared ones, sorted by name', () => {
     expect(names(data.tables)).toEqual([
       'accounts', 'audit_log', 'cache_entries', 'esm_const_t', 'esm_fn_t', 'exports_up_t', 'ghost_table', 'go_orders',
-      'invoices', 'ledger_entries', 'legacy_notes', 'model_only_events', 'module_up_t', 'multi_last', 'order_items', 'orders', 'reports', 'split_final', 'split_schema',
+      'invoices', 'ledger_entries', 'legacy_notes', 'model_only_events', 'module_up_t', 'multi_last', 'new_gadgets', 'new_gizmos', 'old_gadgets', 'old_gizmos', 'order_items', 'orders', 'reports', 'split_final', 'split_schema',
       'sql_migrated', 'sql_other', 'staging_q', 'staging_y', 'tags', 'ts_events', 'users',
     ]);
   });
@@ -213,16 +213,63 @@ describe('a table that a migration created and dropped and a model still declare
     ]);
   });
 
-  it('is not declared only, is listed as dropped but declared, and stays in the dropped list', () => {
+  it('is not declared only, is listed as removed but declared, and stays in the dropped list', () => {
     expect(data.declaredOnly).not.toContain('legacy_notes');
-    expect(data.droppedButDeclared).toEqual(['legacy_notes']);
+    expect(data.removedButDeclared).toContain('legacy_notes');
     expect(data.dropped.find((row) => row.name === 'legacy_notes')).toEqual({ name: 'legacy_notes', file: drop, line: 5, createdBy: create, directory: 'node-app/migrations' });
     expect(data.changedNeverCreated).not.toContain('legacy_notes');
   });
 
   it('keeps a dropped table nothing declares out of the tables and out of the new list', () => {
     expect(names(data.tables)).not.toContain('temp_logs');
-    expect(data.droppedButDeclared).not.toContain('temp_logs');
+    expect(data.removedButDeclared).not.toContain('temp_logs');
+  });
+});
+
+describe('a table that a migration renamed away and a model or a .sql file still declares', () => {
+  const G = [m('027-create-gadgets.js'), m('028-rename-gadgets.js')];
+  const Z = m('029-gizmos.js');
+
+  it('keeps the history up to the rename, with as where a line shows another name, and a to on the rename away', () => {
+    const old = table('old_gadgets');
+    expect(old.createdBy).toBe(G[0]);
+    expect(old.lastChangedBy).toBe(G[1]);
+    expect(old.changes).toEqual([
+      { file: G[0], line: 5, op: 'create-table', via: 'call', as: 'gadget_v0' },
+      { file: G[1], line: 5, op: 'rename-table', via: 'call', from: 'gadget_v0', as: 'gadget_v0' },
+      { file: G[1], line: 6, op: 'rename-table', via: 'call', from: 'old_gadgets', to: 'new_gadgets' },
+    ]);
+    expect(old.sources).toEqual([
+      { kind: 'migration', file: G[0], line: 5, as: 'gadget_v0' },
+      { kind: 'model', file: 'node-app/models/gadget.js', line: 5 },
+    ]);
+    expect(table('new_gadgets').changes).toEqual([
+      { file: G[0], line: 5, op: 'create-table', via: 'call', as: 'gadget_v0' },
+      { file: G[1], line: 5, op: 'rename-table', via: 'call', from: 'gadget_v0', as: 'gadget_v0' },
+      { file: G[1], line: 6, op: 'rename-table', via: 'call', from: 'old_gadgets', as: 'old_gadgets' },
+    ]);
+  });
+
+  it('does the same for a table a .sql file declares', () => {
+    const old = table('old_gizmos');
+    expect(old.createdBy).toBe(Z);
+    expect(old.changes).toEqual([
+      { file: Z, line: 5, op: 'create-table', via: 'call' },
+      { file: Z, line: 6, op: 'rename-table', via: 'call', from: 'old_gizmos', to: 'new_gizmos' },
+    ]);
+    expect(old.sources).toEqual([
+      { kind: 'sql', file: 'node-app/db/schema.sql', line: 5 },
+      { kind: 'migration', file: Z, line: 5 },
+    ]);
+  });
+
+  it('is not declared only, is in removedButDeclared with the dropped one, and not in the dropped list; the new name is a table of its own', () => {
+    expect(data.declaredOnly).not.toContain('old_gadgets');
+    expect(data.declaredOnly).not.toContain('old_gizmos');
+    expect(data.removedButDeclared).toEqual(['legacy_notes', 'old_gadgets', 'old_gizmos']);
+    expect(names(data.dropped)).not.toContain('old_gadgets');
+    expect(names(data.tables)).not.toContain('gadget_v0');
+    expect(data.changedNeverCreated).not.toContain('old_gadgets');
   });
 });
 
@@ -276,7 +323,7 @@ describe('the migrations', () => {
   it('counts the migrations of each application', () => {
     expect(data.applications).toEqual([
       { directory: 'go-app', migrations: 0 },
-      { directory: 'node-app', migrations: 27 },
+      { directory: 'node-app', migrations: 30 },
     ]);
   });
 
@@ -375,12 +422,17 @@ describe('the operation ledger', () => {
       ['024-create-legacy-notes.js', 5, 'create-table', 'legacy_notes', 'create'],
       ['025-drop-legacy-notes.js', 5, 'drop-table', 'legacy_notes', 'drop'],
       ['026-create-order-items.js', 5, 'create-table', 'order_items', 'create'],
+      ['027-create-gadgets.js', 5, 'create-table', 'gadget_v0', 'create'],
+      ['028-rename-gadgets.js', 5, 'rename-table', 'old_gadgets', 'rename'],
+      ['028-rename-gadgets.js', 6, 'rename-table', 'new_gadgets', 'rename'],
+      ['029-gizmos.js', 5, 'create-table', 'old_gizmos', 'create'],
+      ['029-gizmos.js', 6, 'rename-table', 'new_gizmos', 'rename'],
     ]);
   });
 
   it('records where each renamed table came from', () => {
     const renames = data.operations.filter((o) => o.bucket === 'rename').map((o) => [o.table, o.from]);
-    expect(renames).toEqual([['invoices', 'old_invoices'], ['audit_log', 'audit_entries'], ['staging_y', 'staging_x'], ['staging_q', 'staging_p'], ['multi_new', 'multi_old'], ['multi_last', 'multi_new'], ['split_final', 'split_sql']]);
+    expect(renames).toEqual([['invoices', 'old_invoices'], ['audit_log', 'audit_entries'], ['staging_y', 'staging_x'], ['staging_q', 'staging_p'], ['multi_new', 'multi_old'], ['multi_last', 'multi_new'], ['split_final', 'split_sql'], ['old_gadgets', 'gadget_v0'], ['new_gadgets', 'old_gadgets'], ['new_gizmos', 'old_gizmos']]);
   });
 });
 
@@ -436,7 +488,7 @@ describe('where a table name appears outside the migrations', () => {
   });
 
   it('lists the tables whose name appears only in migrations', () => {
-    expect(data.onlyInMigrations).toEqual(['audit_log', 'cache_entries', 'esm_const_t', 'esm_fn_t', 'exports_up_t', 'ghost_table', 'module_up_t', 'multi_last', 'reports', 'split_final', 'sql_migrated', 'sql_other', 'staging_q', 'staging_y', 'ts_events']);
+    expect(data.onlyInMigrations).toEqual(['audit_log', 'cache_entries', 'esm_const_t', 'esm_fn_t', 'exports_up_t', 'ghost_table', 'module_up_t', 'multi_last', 'new_gadgets', 'new_gizmos', 'reports', 'split_final', 'sql_migrated', 'sql_other', 'staging_q', 'staging_y', 'ts_events']);
     for (const name of data.onlyInMigrations) expect(table(name).mentions).toEqual({});
   });
 });
@@ -444,19 +496,19 @@ describe('where a table name appears outside the migrations', () => {
 describe('the counts and the recognized forms', () => {
   it('are computed from the lists', () => {
     expect(data.counts).toEqual({
-      tables: 26,
-      migrations: 27,
-      migrationsReplayed: 24,
+      tables: 30,
+      migrations: 30,
+      migrationsReplayed: 27,
       migrationsUnsplit: 2,
       migrationsDownOnly: 1,
       otherMigrationFiles: 2,
-      operations: { total: 51, create: 23, drop: 7, rename: 7, change: 9, unnamed: 5 },
-      declarations: { total: 14, model: 7, sql: 2, unresolved: 5 },
+      operations: { total: 56, create: 25, drop: 7, rename: 10, change: 9, unnamed: 5 },
+      declarations: { total: 16, model: 8, sql: 3, unresolved: 5 },
       dropped: 6,
-      droppedButDeclared: 1,
+      removedButDeclared: 3,
       changedNeverCreated: 1,
       declaredOnly: 6,
-      onlyInMigrations: 15,
+      onlyInMigrations: 17,
       tablesInSeveralApplications: 3,
       gaps: 12,
     });
@@ -468,6 +520,6 @@ describe('the counts and the recognized forms', () => {
   });
 
   it('counts the files searched', () => {
-    expect(data.scanned).toEqual({ filesSearched: 21, skippedBinary: 0, skippedTooLarge: 0, skippedUnreadable: 0, skippedSymlinks: 0 });
+    expect(data.scanned).toEqual({ filesSearched: 22, skippedBinary: 0, skippedTooLarge: 0, skippedUnreadable: 0, skippedSymlinks: 0 });
   });
 });

@@ -133,16 +133,25 @@ function finalizeNames(name, entry) {
  * `{ tables, dropped, operations }`: `tables` maps each table that exists at the
  * end to `{ createdBy: { file, line, as? } | null, changes }`; `dropped` lists the
  * drops of tables nothing created again; `operations` is the ledger, one row
- * for each operation with its bucket. Each `dropped` entry also carries the
- * `history` (`{ createdBy, changes }`, the drop included) of the table it
- * dropped, for the caller that finds the table still declared. A change or a create that cites the table
+ * for each operation with its bucket. `renamedAway` lists the tables a rename
+ * took the name from. Each `dropped` and `renamedAway` entry also carries the
+ * `history` (`{ createdBy, changes }`, the drop or the rename included, the
+ * rename away with a `to`) of the table under the name it left, for the caller
+ * that finds the name still declared. A change or a create that cites the table
  * under another name (the table was renamed later) has `as`, the name its line
  * shows; a rename cites the old name, so it has `as` too.
  */
 export function replay(migrations) {
   const tables = new Map();
   const dropped = [];
+  const renamedAway = [];
   const operations = [];
+  const forgetRemoved = (name) => {
+    for (const list of [dropped, renamedAway]) {
+      const at = list.findIndex((entry) => entry.name === name);
+      if (at >= 0) list.splice(at, 1);
+    }
+  };
   const touch = (name) => {
     let entry = tables.get(name);
     if (entry === undefined) {
@@ -165,8 +174,7 @@ export function replay(migrations) {
         if (existing !== undefined && existing.createdBy !== null) {
           existing.changes.push(change());
         } else {
-          const index = dropped.findIndex((entry) => entry.name === op.name);
-          if (index >= 0) dropped.splice(index, 1);
+          forgetRemoved(op.name);
           tables.set(op.name, { createdBy: { file, line, named: op.name }, changes: [change()] });
         }
       } else if (op.op === 'drop-table') {
@@ -179,16 +187,19 @@ export function replay(migrations) {
       } else if (op.op === 'rename-table') {
         const old = tables.get(op.from);
         tables.delete(op.from);
-        const revived = dropped.findIndex((entry) => entry.name === op.name);
-        if (revived >= 0) dropped.splice(revived, 1);
+        forgetRemoved(op.name);
         const entry = old ?? { createdBy: null, changes: [] };
         entry.changes.push(change({ from: op.from }, op.from));
         tables.set(op.name, entry);
+        const history = { createdBy: entry.createdBy === null ? null : { ...entry.createdBy }, changes: entry.changes.map((place) => ({ ...place })) };
+        history.changes.at(-1).to = op.name;
+        finalizeNames(op.from, history);
+        renamedAway.push({ name: op.from, file, line, to: op.name, history });
       } else {
         touch(op.name).changes.push(change());
       }
     }
   }
   for (const [name, entry] of tables) finalizeNames(name, entry);
-  return { tables, dropped, operations };
+  return { tables, dropped, renamedAway, operations };
 }

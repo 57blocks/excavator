@@ -40,7 +40,7 @@ const section: DataSection = {
   dropped: [{ name: d('old'), file: d('m/002.js'), line: 5, createdBy: d('m/001.js'), directory: d('m') }],
   changedNeverCreated: [d('mid')],
   declaredOnly: [d('zeta')],
-  droppedButDeclared: [d('beta')],
+  removedButDeclared: [d('beta')],
   onlyInMigrations: [d('mid')],
   gaps: {
     unsplitMigrations: [{ file: d('m/012.js') }],
@@ -52,7 +52,7 @@ const section: DataSection = {
     tables: 4, migrations: 4, migrationsReplayed: 3, migrationsUnsplit: 1, migrationsDownOnly: 0, otherMigrationFiles: 1,
     operations: { total: 5, create: 3, drop: 1, rename: 0, change: 0, unnamed: 1 },
     declarations: { total: 3, model: 1, sql: 1, unresolved: 2 },
-    dropped: 1, droppedButDeclared: 1, changedNeverCreated: 1, declaredOnly: 1, onlyInMigrations: 1, tablesInSeveralApplications: 1, gaps: 4,
+    dropped: 1, removedButDeclared: 1, changedNeverCreated: 1, declaredOnly: 1, onlyInMigrations: 1, tablesInSeveralApplications: 1, gaps: 4,
   },
 };
 
@@ -133,7 +133,7 @@ describe('the data page', () => {
   it('shows the fixed note, the recognized forms and the count line', () => {
     for (const key of ['md.data.note.nameRules', 'md.data.note.comments', 'md.data.note.ormDefaults', 'md.data.note.onlyInMigrations']) expect(body, key).toContain(marked[key]);
     expect(body).toContain(`${MARK}Forms of table declaration recognized in this version: ${marked['md.data.form.migrationCalls']}; ${marked['md.data.form.goTableName']}.`);
-    expect(body).toContain(`${MARK}Tables: 4. Migrations: 4 (3 replayed, 1 not split, 0 down only). Tables whose name appears in two or more applications: 1. Tables whose name appears only in migrations: 1. Tables dropped by a migration: 1. Gaps: 4.`);
+    expect(body).toContain(`${MARK}Tables: 4. Migrations: 4 (3 replayed, 1 not split, 0 down only). Tables whose name appears in two or more applications: 1. Tables whose name appears only in migrations: 1. Tables dropped by a migration: 1. Tables declared by a model or a .sql file and created by no migration: 1. Tables removed by a migration and still declared: 1. Tables changed by a migration and created by none: 1. Gaps: 4.`);
   });
 
   it('lists one row per table, by name, with the applications and counts, and the fixed text for a name that is only in migrations', () => {
@@ -176,7 +176,7 @@ describe('the data page', () => {
   });
 
   it('lists the dropped tables, the other lists and the four gap lists', () => {
-    for (const key of ['md.data.droppedHeading', 'md.data.declaredOnlyHeading', 'md.data.droppedButDeclaredHeading', 'md.data.changedNeverCreatedHeading', 'md.data.onlyInMigrationsHeading', 'md.data.gapsHeading', 'md.data.gap.unnamedHeading', 'md.data.gap.unsplitHeading', 'md.data.gap.unresolvedHeading', 'md.data.gap.otherHeading']) expect(body, key).toContain(marked[key]);
+    for (const key of ['md.data.droppedHeading', 'md.data.declaredOnlyHeading', 'md.data.removedButDeclaredHeading', 'md.data.changedNeverCreatedHeading', 'md.data.onlyInMigrationsHeading', 'md.data.gapsHeading', 'md.data.gap.unnamedHeading', 'md.data.gap.unsplitHeading', 'md.data.gap.unresolvedHeading', 'md.data.gap.otherHeading']) expect(body, key).toContain(marked[key]);
     expect(body).toContain(`${MARK}${MARK}${d('models/dup.go')}, line 7: ${d('tableDup')} (2 declarations found)`);
     expect(body).toContain(`${MARK}${MARK}${d('models/f.go')}, line 5: ${d('fmt.Sprintf()')}`);
   });

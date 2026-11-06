@@ -15,7 +15,7 @@ import { writeJson } from './json-file.mjs';
 /** The report line, computed from the counts. */
 export function dataLine(counts) {
   const gaps = `${counts.gaps} gaps (${counts.operations.unnamed} unnamed operations, ${counts.migrationsUnsplit} unsplit migrations, ${counts.declarations.unresolved} unresolved model names)`;
-  return `Data: ${counts.tables} tables; ${counts.migrations} migrations (${counts.migrationsReplayed} replayed, ${counts.migrationsUnsplit} not split, ${counts.migrationsDownOnly} down only); ${counts.dropped} dropped; ${counts.onlyInMigrations} names only in migrations; ${gaps}.`;
+  return `Data: ${counts.tables} tables; ${counts.migrations} migrations (${counts.migrationsReplayed} replayed, ${counts.migrationsUnsplit} not split, ${counts.migrationsDownOnly} down only); ${counts.dropped} dropped; ${counts.onlyInMigrations} names only in migrations; ${counts.declaredOnly} declared only; ${counts.removedButDeclared} removed but still declared; ${counts.changedNeverCreated} changed but never created; ${gaps}.`;
 }
 
 /** Write `<out>/data.json`; returns `{ status, lines }`. A shape problem is a bug in the extraction: exit 1 and every problem printed. */

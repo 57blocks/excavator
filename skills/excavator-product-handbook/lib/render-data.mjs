@@ -59,7 +59,7 @@ export function dataBlock(section, t) {
   const { counts } = data;
   out.push(...[t('md.data.note.nameRules'), t('md.data.note.comments'), t('md.data.note.ormDefaults'), t('md.data.note.onlyInMigrations')].flatMap((line) => [line, '']));
   out.push(fill(t('md.data.recognized'), { forms: data.recognized.map((form) => t(formKey(form))).join('; ') }), '');
-  out.push(fill(t('md.data.counts'), {
+  out.push(fill(t('md.data.countLine'), {
     tables: counts.tables,
     migrations: counts.migrations,
     replayed: counts.migrationsReplayed,
@@ -68,6 +68,9 @@ export function dataBlock(section, t) {
     several: counts.tablesInSeveralApplications,
     onlyInMigrations: counts.onlyInMigrations,
     dropped: counts.dropped,
+    declaredOnly: counts.declaredOnly,
+    removedButDeclared: counts.removedButDeclared,
+    changedNeverCreated: counts.changedNeverCreated,
     gaps: counts.gaps,
   }), '');
   out.push(`### ${t('md.data.migrationsHeading')}`, '');
@@ -82,7 +85,7 @@ export function dataBlock(section, t) {
   out.push(data.dropped.length === 0
     ? t('md.none')
     : table([t('md.data.table.name'), t('md.data.table.createdBy'), t('md.data.table.droppedBy')], data.dropped.map((row) => [row.name, row.createdBy ?? DASH, placeOf(row.file, row.line, t)])), '');
-  for (const [heading, names] of [['md.data.declaredOnlyHeading', data.declaredOnly], ['md.data.droppedButDeclaredHeading', data.droppedButDeclared], ['md.data.changedNeverCreatedHeading', data.changedNeverCreated], ['md.data.onlyInMigrationsHeading', data.onlyInMigrations]]) {
+  for (const [heading, names] of [['md.data.declaredOnlyHeading', data.declaredOnly], ['md.data.removedButDeclaredHeading', data.removedButDeclared], ['md.data.changedNeverCreatedHeading', data.changedNeverCreated], ['md.data.onlyInMigrationsHeading', data.onlyInMigrations]]) {
     out.push(`### ${t(heading)}`, '', ...(names.length === 0 ? [t('md.none'), ''] : bullets(names)));
   }
   out.push(...gapsBlock(data, t));
