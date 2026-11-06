@@ -1,25 +1,25 @@
 // O1 of openspec change handbook-sections, O2 of handbook-data-tables, the findings section of handbook-feature-findings and the
-// system-findings section of handbook-system-findings:
+// system-findings section of handbook-system-findings and the priority section of handbook-findings-priority:
 // `handbook.mjs sections <list>` validates the list and prints the files a run reads, from a fixed
 // dependency table: all sections by default, one section, the shared map
 // stage file once, a fixed order whatever order the list is written in, and
 // exit 1 with the allowed values for a value that is not a section.
 import { describe, expect, it } from 'vitest';
 
-import { DEFAULT_SECTIONS, SECTIONS, parseSections, readPlan } from '../../../skills/excavator-product-handbook/lib/sections.mjs';
+import { DEFAULT_SECTIONS, SECTIONS, afterTracePlan, parseSections, readPlan } from '../../../skills/excavator-product-handbook/lib/sections.mjs';
 import { runHandbook } from './helpers.mjs';
 
-const ALL = ['SECTIONS=overview,features,data,findings,system-findings', 'READ=stages/map.md', 'READ=sections/overview.md', 'READ=sections/features.md', 'READ=sections/data.md', 'READ=sections/findings.md', 'READ=sections/system-findings.md'];
+const ALL = ['SECTIONS=overview,features,data,findings,system-findings,priority,remedies,topics', 'READ=stages/map.md', 'READ=sections/overview.md', 'READ=sections/features.md', 'READ=sections/data.md', 'READ=sections/findings.md', 'READ=sections/system-findings.md', 'AFTER_TRACE=sections/priority.md', 'AFTER_TRACE=sections/remedies.md', 'AFTER_TRACE=sections/topics.md'];
 
 describe('parseSections', () => {
   it('defaults to every section when the list is not given or empty', () => {
-    expect(SECTIONS).toEqual(['overview', 'features', 'data', 'findings', 'system-findings']);
+    expect(SECTIONS).toEqual(['overview', 'features', 'data', 'findings', 'system-findings', 'priority', 'remedies', 'topics']);
     expect(DEFAULT_SECTIONS).toEqual(SECTIONS);
-    for (const text of [undefined, '', '   ']) expect(parseSections(text)).toEqual({ ok: true, sections: ['overview', 'features', 'data', 'findings', 'system-findings'] });
+    for (const text of [undefined, '', '   ']) expect(parseSections(text)).toEqual({ ok: true, sections: ['overview', 'features', 'data', 'findings', 'system-findings', 'priority', 'remedies', 'topics'] });
   });
 
   it('returns the sections in the fixed order, without repeats, whatever order they are written in', () => {
-    expect(parseSections('system-findings,findings,data,features,overview')).toEqual({ ok: true, sections: ['overview', 'features', 'data', 'findings', 'system-findings'] });
+    expect(parseSections('topics,remedies,priority,system-findings,findings,data,features,overview')).toEqual({ ok: true, sections: ['overview', 'features', 'data', 'findings', 'system-findings', 'priority', 'remedies', 'topics'] });
     expect(parseSections(' features , features ')).toEqual({ ok: true, sections: ['features'] });
   });
 
@@ -32,9 +32,10 @@ describe('parseSections', () => {
       expect(result.lines.join('\n'), bad).toContain('data');
       expect(result.lines.join('\n'), bad).toContain('findings');
       expect(result.lines.join('\n'), bad).toContain('system-findings');
+      expect(result.lines.join('\n'), bad).toContain('priority');
     }
     expect(parseSections('overview,tables').lines[0]).toContain('"tables"');
-    expect(parseSections('tables').lines[1]).toBe('--sections takes overview, features, data, findings, system-findings, any of them separated by a comma (default: all)');
+    expect(parseSections('tables').lines[1]).toBe('--sections takes overview, features, data, findings, system-findings, priority, remedies, topics, any of them separated by a comma (default: all)');
   });
 });
 
@@ -67,6 +68,56 @@ describe('readPlan', () => {
   it('a section needs the map stage file, then its own file', () => {
     expect(readPlan(['overview'])).toEqual(['stages/map.md', 'sections/overview.md']);
     expect(readPlan(['features'])).toEqual(['stages/map.md', 'sections/features.md']);
+  });
+});
+
+describe('the priority section (handbook-findings-priority, design D1)', () => {
+  it('has no READ file and no stage file: the readPlan of every list leaves it out, and the map stage file is not read for it', () => {
+    expect(readPlan(['priority'])).toEqual([]);
+    expect(readPlan(['findings', 'priority'])).toEqual(['stages/map.md', 'sections/findings.md']);
+    expect(readPlan(['data', 'priority'])).toEqual(['sections/data.md']);
+    expect(readPlan([...DEFAULT_SECTIONS])).not.toContain('sections/priority.md');
+  });
+
+  it('is the one AFTER_TRACE file of a run that selects it, and of no other', () => {
+    expect(afterTracePlan(['priority'])).toEqual(['sections/priority.md']);
+    expect(afterTracePlan([...DEFAULT_SECTIONS])).toEqual(['sections/priority.md', 'sections/remedies.md', 'sections/topics.md']);
+    expect(afterTracePlan(['overview', 'features', 'data', 'findings', 'system-findings'])).toEqual([]);
+  });
+
+  it('is last in the fixed order, after system-findings, whatever order the list is written in', () => {
+    expect(parseSections('priority,overview').sections).toEqual(['overview', 'priority']);
+    expect(SECTIONS.at(-3)).toBe('priority');
+    expect(SECTIONS.indexOf('priority')).toBeGreaterThan(SECTIONS.indexOf('system-findings'));
+  });
+
+  it('is printed by handbook.mjs sections as an AFTER_TRACE line and not as a READ line', () => {
+    const only = runHandbook(['sections', 'priority']);
+    expect(only.status, only.stderr).toBe(0);
+    expect(only.lines).toEqual(['SECTIONS=priority', 'AFTER_TRACE=sections/priority.md']);
+    expect(runHandbook(['sections', 'findings,priority']).lines).toEqual(['SECTIONS=findings,priority', 'READ=stages/map.md', 'READ=sections/findings.md', 'AFTER_TRACE=sections/priority.md']);
+    for (const list of ['priority', 'overview,priority', '']) expect(runHandbook(['sections', list]).lines.filter((line) => line === 'READ=sections/priority.md')).toEqual([]);
+    expect(runHandbook(['sections', 'overview']).lines.some((line) => line.startsWith('AFTER_TRACE='))).toBe(false);
+  });
+});
+
+// O1 of openspec change handbook-remedies, design D1: the remedies section is read after the trace too, after the priority one.
+describe('the remedies section (handbook-remedies, design D1)', () => {
+  it('has no READ file and no stage file, and is the second to last section in the fixed order', () => {
+    expect(readPlan(['remedies'])).toEqual([]);
+    expect(readPlan(['findings', 'remedies'])).toEqual(['stages/map.md', 'sections/findings.md']);
+    expect(readPlan([...DEFAULT_SECTIONS])).not.toContain('sections/remedies.md');
+    expect(SECTIONS.at(-2)).toBe('remedies');
+    expect(parseSections('remedies,priority,overview').sections).toEqual(['overview', 'priority', 'remedies']);
+  });
+
+  it('is an AFTER_TRACE file, printed after the priority one, and alone when only it is selected', () => {
+    expect(afterTracePlan(['remedies'])).toEqual(['sections/remedies.md']);
+    expect(afterTracePlan(['priority', 'remedies'])).toEqual(['sections/priority.md', 'sections/remedies.md']);
+    expect(runHandbook(['sections', 'remedies']).lines).toEqual(['SECTIONS=remedies', 'AFTER_TRACE=sections/remedies.md']);
+    expect(runHandbook(['sections', 'remedies,priority']).lines).toEqual(['SECTIONS=priority,remedies', 'AFTER_TRACE=sections/priority.md', 'AFTER_TRACE=sections/remedies.md']);
+    expect(runHandbook(['sections', 'priority']).lines).toEqual(['SECTIONS=priority', 'AFTER_TRACE=sections/priority.md']);
+    for (const list of ['remedies', 'priority,remedies', '']) expect(runHandbook(['sections', list]).lines.filter((line) => line === 'READ=sections/remedies.md')).toEqual([]);
   });
 });
 
@@ -112,20 +163,39 @@ describe('handbook.mjs sections', () => {
   });
 
   it('prints the same lines in the same order whatever order the list is written in', () => {
-    expect(runHandbook(['sections', 'system-findings,findings,data,features,overview']).lines).toEqual(ALL);
-    expect(runHandbook(['sections', 'features,data,system-findings,findings,overview,features']).lines).toEqual(ALL);
+    expect(runHandbook(['sections', 'topics,remedies,priority,system-findings,findings,data,features,overview']).lines).toEqual(ALL);
+    expect(runHandbook(['sections', 'features,data,topics,remedies,priority,system-findings,findings,overview,features']).lines).toEqual(ALL);
   });
 
   it('exits 1 and prints the allowed values for a value that is not a section, printing no READ line', () => {
     const result = runHandbook(['sections', 'tables,overview']);
     expect(result.status, result.stdout + result.stderr).toBe(1);
     expect(result.stdout).toContain('"tables"');
-    expect(result.stdout).toContain('--sections takes overview, features, data, findings, system-findings, any of them separated by a comma (default: all)');
+    expect(result.stdout).toContain('--sections takes overview, features, data, findings, system-findings, priority, remedies, topics, any of them separated by a comma (default: all)');
     expect(result.lines.some((line) => line.startsWith('READ='))).toBe(false);
   });
 
   it('takes one list at most and no option', () => {
     expect(runHandbook(['sections', 'overview', 'features']).status).toBe(2);
     expect(runHandbook(['sections', '--sections', 'overview']).status).toBe(2);
+  });
+});
+
+// O1 of openspec change handbook-topics, design D1: the topics section is read after the trace too, after the remedies one.
+describe('the topics section (handbook-topics, design D1)', () => {
+  it('has no READ file and no stage file, and is the last section in the fixed order', () => {
+    expect(readPlan(['topics'])).toEqual([]);
+    expect(readPlan(['findings', 'topics'])).toEqual(['stages/map.md', 'sections/findings.md']);
+    expect(readPlan([...DEFAULT_SECTIONS])).not.toContain('sections/topics.md');
+    expect(SECTIONS.at(-1)).toBe('topics');
+    expect(parseSections('topics,remedies,overview').sections).toEqual(['overview', 'remedies', 'topics']);
+  });
+
+  it('is an AFTER_TRACE file, printed after the remedies one, and alone when only it is selected', () => {
+    expect(afterTracePlan(['topics'])).toEqual(['sections/topics.md']);
+    expect(afterTracePlan(['remedies', 'topics'])).toEqual(['sections/remedies.md', 'sections/topics.md']);
+    expect(runHandbook(['sections', 'topics']).lines).toEqual(['SECTIONS=topics', 'AFTER_TRACE=sections/topics.md']);
+    expect(runHandbook(['sections', 'topics,priority,remedies']).lines).toEqual(['SECTIONS=priority,remedies,topics', 'AFTER_TRACE=sections/priority.md', 'AFTER_TRACE=sections/remedies.md', 'AFTER_TRACE=sections/topics.md']);
+    for (const list of ['topics', 'remedies,topics', '']) expect(runHandbook(['sections', list]).lines.filter((line) => line === 'READ=sections/topics.md')).toEqual([]);
   });
 });

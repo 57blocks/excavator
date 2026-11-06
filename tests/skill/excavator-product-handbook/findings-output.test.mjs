@@ -110,15 +110,15 @@ describe('the Findings chapter', () => {
     const run = shared();
     assemble(run, 'product');
     const chapter = section(text(run, 'handbook.md'), `## ${ui['md.findings.heading']}`);
-    expect(chapter).toContain('- F1 Orders: Deleting an order asks nothing about who calls: the handler removes the order and answers success to every caller.');
-    expect(chapter).toContain('- F1 Orders: The list of orders is always empty, whatever was created.');
-    expect(chapter).toContain('- F3 Reminders: The reminder goes out at one fixed time of day for every recipient, whatever their time zone.');
+    expect(chapter).toContain('- [Unranked] F1 Orders: Deleting an order asks nothing about who calls: the handler removes the order and answers success to every caller.');
+    expect(chapter).toContain('- [Unranked] F1 Orders: The list of orders is always empty, whatever was created.');
+    expect(chapter).toContain('- [Unranked] F3 Reminders: The reminder goes out at one fixed time of day for every recipient, whatever their time zone.');
     // A finding a verifier removed, a unit that failed its check and one that was not verified are not in the chapter.
     expect(chapter).not.toContain('Creating an order answers that it was created');
     expect(chapter).not.toContain(FAILED_TEXT);
     expect(chapter).not.toContain(UNFINISHED_TEXT);
     const headings = [...chapter.matchAll(/^### (.+)$/gm)].map((match) => match[1]);
-    expect(headings).toEqual([ui[categoryKey('authorization')], ui[categoryKey('hard-coded')], ui[categoryKey('time')]]);
+    expect(headings).toEqual([ui[categoryKey('authorization')], ui[categoryKey('hard-coded')], ui[categoryKey('time')]].map((name) => `${name} (1 findings; P0: 0)`));
   });
 
   it('counts by category on one line, and every count equals the length of the list it counts', () => {
@@ -126,12 +126,12 @@ describe('the Findings chapter', () => {
     assemble(run, 'product');
     const chapter = section(text(run, 'handbook.md'), `## ${ui['md.findings.heading']}`);
     const line = chapter.split('\n').find((candidate) => candidate.startsWith('Findings: '));
-    expect(line).toBe(`Findings: 3. Statements: 3. Groups merged: 0. Findings units verified: 3 of 5. System findings units verified: 0 of 1. By category: ${CATEGORY_NAMES.map((name) => `${name}: ${['authorization', 'hard-coded', 'time'].some((key) => ui[categoryKey(key)] === name) ? 1 : 0}`).join('; ')}.`);
+    expect(line).toBe(`Findings: 3. Statements: 3. Groups merged: 0. Findings units verified: 3 of 5. System findings units verified: 0 of 1. By category: ${CATEGORY_NAMES.map((name) => `${name}: ${['authorization', 'hard-coded', 'time'].some((key) => ui[categoryKey(key)] === name) ? 1 : 0}`).join('; ')}. By priority: P0: 0; P1: 0; P2: 0; Unranked: 3.`);
     const total = Number(/^Findings: (\d+)\./.exec(line)[1]);
     const groups = chapter.split(/^### /m).slice(1);
     expect(groups.map((group) => group.split('\n').filter((row) => row.startsWith('- ')).length).reduce((sum, n) => sum + n, 0)).toBe(total);
     for (const group of groups) {
-      const name = group.split('\n')[0];
+      const name = group.split('\n')[0].replace(/ \(\d+ findings; P0: \d+\)$/, '');
       const count = Number(new RegExp(`${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}: (\\d+)`).exec(line)[1]);
       expect(group.split('\n').filter((row) => row.startsWith('- ')).length, name).toBe(count);
     }
@@ -153,8 +153,8 @@ describe('the Findings chapter', () => {
     const run = shared();
     expect(assemble(run, 'product,technical').status).toBe(0);
     const technical = section(text(run, 'handbook-technical.md'), `## ${ui['md.findings.heading']}`);
-    expect(technical).toContain(`- F1 Orders: Deleting an order asks nothing about who calls: the handler removes the order and answers success to every caller. (${ORDERS_FILE}, line 7)`);
-    expect(technical).toContain(`- F3 Reminders: The reminder goes out at one fixed time of day for every recipient, whatever their time zone. (${JOBS_FILE}, line 4)`);
+    expect(technical).toContain(`- [Unranked] F1 Orders: Deleting an order asks nothing about who calls: the handler removes the order and answers success to every caller. (${ORDERS_FILE}, line 7)`);
+    expect(technical).toContain(`- [Unranked] F3 Reminders: The reminder goes out at one fixed time of day for every recipient, whatever their time zone. (${JOBS_FILE}, line 4)`);
     const product = text(run, 'handbook.md');
     for (const file of [ORDERS_FILE, JOBS_FILE, 'src/', 'bin/admin.js']) expect(product, file).not.toContain(file);
     expect(product).not.toMatch(/line \d+\)/);
@@ -274,18 +274,19 @@ describe('verified findings are checked again like an entry', () => {
 });
 
 describe('the page data', () => {
-  it('has the format /10, the findings of the verified units in map order as groups (one statement each here), and no citation path outside the technical part', () => {
+  it('has the format /11, the findings of the verified units in map order as groups (one statement each here), and no citation path outside the technical part', () => {
     const run = shared();
     const made = page(run);
     expect(made.status, made.stdout).toBe(0);
     const data = dataOf(run);
-    expect(data.format).toBe('excavator-product-handbook-page/10');
+    expect(data.format).toBe('excavator-product-handbook-page/13');
     expect(data.findings.map((group) => [group.items.map((item) => item.id), group.owners.map((owner) => [owner.kind, owner.id]), group.category])).toEqual([
       [['F1.findings[0]'], [['feature', 'F1']], 'authorization'],
       [['F1.findings[1]'], [['feature', 'F1']], 'hard-coded'],
       [['F3.findings[0]'], [['feature', 'F3']], 'time'],
     ]);
-    expect(Object.keys(data.findings[0])).toEqual(['category', 'owners', 'items']);
+    expect(Object.keys(data.findings[0])).toEqual(['category', 'owners', 'items', 'priority']);
+    expect(data.findings.map((group) => group.priority)).toEqual([null, null, null]);
     expect(JSON.stringify({ ...data, technical: undefined })).not.toContain(ORDERS_FILE);
     expect(data.technical.findingLocations.map((place) => [place.id, place.citations])).toEqual([
       ['F1.findings[0]', [{ file: ORDERS_FILE, startLine: 7, endLine: 7 }]],

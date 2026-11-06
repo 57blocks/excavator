@@ -1,6 +1,6 @@
 /** The page data `handbook.mjs page` writes into the template (openspec change product-handbook-map, design D13). */
 
-export const PAGE_FORMAT = 'excavator-product-handbook-page/10';
+export const PAGE_FORMAT = 'excavator-product-handbook-page/13';
 
 /** The views a page can hold (openspec change handbook-entities-and-views): the product view and the technical view. */
 export const VIEWS = ['product', 'technical'] as const;
@@ -19,6 +19,50 @@ export const FINDING_CATEGORIES = ['authorization', 'error-handling', 'notificat
 export type FindingCategory = (typeof FINDING_CATEGORIES)[number];
 /** The key of a category's display name in the ui table: `error-handling` is `errorHandling`, since keys hold letters and dots only. */
 export const findingCategoryKey = (category: FindingCategory): string => `md.findings.category.${category.replace(/-([a-z])/g, (_, letter: string) => letter.toUpperCase())}`;
+
+/** The levels of the ranking of the findings (openspec change handbook-findings-priority), most urgent first. */
+export const LEVELS = ['P0', 'P1', 'P2'] as const;
+export type Level = (typeof LEVELS)[number];
+/** The consequences a lane picks, each deciding a level (the fixed text of each is `consequenceKey(value)`). */
+export const CONSEQUENCES = ['othersRecords', 'money', 'dataLoss', 'secret', 'wrongResult', 'notification', 'blocked', 'display', 'inert'] as const;
+export type Consequence = (typeof CONSEQUENCES)[number];
+export const consequenceKey = (consequence: Consequence): string => `md.priority.consequence.${consequence}`;
+/** The rank of a group of findings: the level its consequence decides and the reason, which only repeats what the statements say. */
+export interface Priority { level: Level; consequence: Consequence; reason: string }
+
+/** A group a recommendation rests on: the first finding's id (the technical part holds its places), the category, the level (null for a group without one) and the representative statement. */
+export interface RemedyGroup { id: string; category: FindingCategory; level: Level | null; text: string }
+
+/** A cited fact that is not a group, with the values the script computed; the page writes it in words from the run's fixed text. */
+export type RemedyFact =
+  | { kind: 'app'; name: string; language: string | null; files: number; lines: number; commits: number | null; authors: number | null }
+  | { kind: 'tables'; count: number | null; tables: { name: string; applications: string[] }[] }
+  | { kind: 'counts'; groups: number; levels: { P0: number; P1: number; P2: number; unranked: number }; categories: { category: FindingCategory; count: number }[] };
+
+/** The remedies the judges confirmed (openspec change handbook-remedies): the common cause and measure of each category, and the recommendations in the order they are to be done. */
+export interface Remedies {
+  categories: { category: FindingCategory; cause: string; measure: string }[];
+  recommendations: { title: string; text: string; groups: RemedyGroup[]; facts: RemedyFact[] }[];
+}
+
+/** The five cross-cutting topics (openspec change handbook-topics) with their columns, in the order of the chapter; the fixed text of a column is `md.topics.col.<topic>.<column>`. */
+export const TOPICS = [
+  { id: 'approval', columns: ['business', 'route', 'skips', 'conditions', 'actors'] },
+  { id: 'time', columns: ['rule', 'calendar', 'scope'] },
+  { id: 'handoffs', columns: ['from', 'to', 'content'] },
+  { id: 'access', columns: ['feature', 'who', 'pageCheck', 'serverCheck'] },
+  { id: 'repeated', columns: ['mechanism', 'places'] },
+] as const;
+export type TopicId = (typeof TOPICS)[number]['id'];
+
+/** What a topic row rests on: a verified item of an entry (the feature's name and the item's text), or a group of findings (`id` the first finding's id, `level` null for a group without one). */
+export type TopicBasis =
+  | { id: string; kind: 'item'; feature: string; text: string }
+  | { id: string; kind: 'group'; category: FindingCategory; level: Level | null; text: string };
+
+/** A row the judges kept: its columns as the reader sees them (a data row's domains and an access row's feature by name) and its basis. */
+export interface TopicRow { fields: Record<string, string>; basis: TopicBasis[] }
+export type Topics = Record<TopicId, TopicRow[]>;
 
 export interface Rule { side: 'frontend' | 'backend'; text: string }
 export interface Field { label: string; rules: Rule[] }
@@ -66,7 +110,7 @@ export interface FindingOwner { kind: 'feature' | 'application'; id: string; nam
 export interface FindingItem { id: string; owner: FindingOwner; text: string }
 
 /** Findings of one category at the same place, which the handbook counts as one: `items` in the order of the handbook (the first is the representative), `owners` the distinct owners of the items in that order. */
-export interface FindingGroup { category: FindingCategory; owners: FindingOwner[]; items: FindingItem[] }
+export interface FindingGroup { category: FindingCategory; owners: FindingOwner[]; items: FindingItem[]; /** Null when no two judges confirmed a rank for the group, or the ranking did not finish. */ priority: Priority | null }
 
 /** An item the verification removed from a feature's entry: its claim, why it went, and the verifier's reason. */
 export interface RemovedItem { claim: string; verdict: 'unverified' | 'contradicted' | 'withParent'; reason: string }
@@ -94,6 +138,19 @@ export interface Coverage {
   systemFindingsNotWritten: number;
   /** The application roots that lost system findings to verification, with those findings. */
   systemFindingsRemoved: { id: string; name: string; items: RemovedItem[] }[];
+  /** The ranking of the findings: `finished` false when the unit is not verified (every group is then unranked); the groups without a priority, each by its representative finding, with the reasons of the judges (empty when none judged it). */
+  priority: { finished: boolean; unranked: { id: string; category: FindingCategory; text: string; reasons: string[] }[] };
+  /** The remedies: `finished` false when the unit is not verified or was written for other findings (`stale`), and then none is shown; `dropped` the paragraphs and recommendations a judge refused, `text` the cause or the recommendation's text, with the judges' reasons. */
+  remedies: { finished: boolean; stale: boolean; dropped: { id: string; kind: 'category' | 'recommendation'; category?: FindingCategory; title?: string; text: string; reasons: string[] }[] };
+  /** The topics: `finished` false when a lane is not verified for the facts now (`stale` when it was written for other ones); `entriesRead` and `groupsRead` what the verified lanes read; each lane (`name` null for the repeated lane) with its status and rows kept and left out; `dropped` the rows a judge refused, `text` their columns joined, with the judges' reasons. */
+  topics: {
+    finished: boolean;
+    stale: boolean;
+    entriesRead: number;
+    groupsRead: number;
+    lanes: { id: string; name: string | null; status: string; kept: number; dropped: number }[];
+    dropped: { id: string; topic: TopicId; text: string; reasons: string[] }[];
+  };
 }
 
 /** One notification of a verified entry, in the entry's words; `feature` is the id of the feature. */
@@ -324,6 +381,8 @@ export interface Technical {
   jobs: { candidate: string; feature: string | null; application: string | null }[];
   locations: UnitLocations[];
   /** The file and lines of each passage quoted for each finding of the items of `PageData.findings`, by item id; null lines when a passage could not be located. */
+  /** The file and lines of each verified item that a kept topic row cites, by item id. */
+  topicLocations: { id: string; citations: { file: string; startLine: number | null; endLine: number | null }[] }[];
   findingLocations: { id: string; citations: { file: string; startLine: number | null; endLine: number | null }[] }[];
   /** The data section; null when `<out>/data.json` is missing or malformed, and `dataState` says which. */
   data: DataSection | null;
@@ -349,6 +408,8 @@ export interface PageData {
   features: Feature[];
   /** The verified findings of the features and the application roots as groups, in the order of the first finding of each: the features in the map's order, then the application roots, each in its file's order. */
   findings: FindingGroup[];
+  remedies: Remedies;
+  topics: Topics;
   coverage: Coverage;
   summary: Summary;
   system: System;

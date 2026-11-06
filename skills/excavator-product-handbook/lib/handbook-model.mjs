@@ -4,7 +4,7 @@
  * entities and relations (entities.mjs) and, for the technical view, the source
  * positions of each item (locations.mjs), the data section and the status dictionary. Both outputs build it here, so they
  * cannot differ, and the project is scanned once. The verified findings of the features
- * (findings-model.mjs) are part of it too.
+ * (findings-model.mjs) are part of it too, each group with its priority (priority-model.mjs), and the remedies resolved against the facts of those findings (remedies-model.mjs).
  */
 
 import { scanProject } from './applications.mjs';
@@ -13,15 +13,27 @@ import { buildFindings } from './findings-model.mjs';
 import { loadDataSection } from './data-section.mjs';
 import { loadDictionariesSection } from './dict-section.mjs';
 import { buildLocations } from './locations.mjs';
+import { citationLocator } from './citation-locator.mjs';
+import { withPriority } from './priority-model.mjs';
+import { factsOf } from './remedies-facts.mjs';
+import { withRemedies } from './remedies-model.mjs';
 import { buildSummary } from './summary.mjs';
+import { loadTopicFacts } from './topics-facts.mjs';
+import { withTopics } from './topics-model.mjs';
 import { buildSystem } from './system-facts.mjs';
 
-/** `{ summary, system, entities, locations, data, dictionaries, findings }`; `findings` is `{ list, locations }` (findings-model.mjs), its `locations` null unless `views` holds `technical`; `locations`, `data` (the data section, data-section.mjs) and `dictionaries` (the status dictionary, dict-section.mjs) are null unless `views` holds `technical`. */
+/** `{ summary, system, entities, locations, data, dictionaries, findings, remedies, topics }`; `remedies` is remedies-model.mjs's; `topics` is topics-model.mjs's; `findings` is `{ list, groups, locations, applications, priority }` (findings-model.mjs, priority-model.mjs), its `locations` null unless `views` holds `technical`; `locations`, `data` (the data section, data-section.mjs) and `dictionaries` (the status dictionary, dict-section.mjs) are null unless `views` holds `technical`. */
 export function handbookModel(run, root, views) {
   const scan = scanProject(root);
   const summary = buildSummary(run, root);
   const system = buildSystem(run, root, scan);
   const entities = buildEntities({ map: run.map, domains: run.domains, entries: run.entries, candidates: run.candidates, summary, system, scan });
   const technical = views.includes('technical');
-  return { summary, system, entities, findings: buildFindings(run, root, { technical, roots: scan.roots, applicationRows: system.applications }), locations: technical ? buildLocations(run, root) : null, data: technical ? loadDataSection(run.outDir) : null, dictionaries: technical ? loadDictionariesSection(run.outDir) : null };
+  const findings = withPriority(buildFindings(run, root, { technical, roots: scan.roots, applicationRows: system.applications }), run.priority);
+  // The data section is read once: the technical view shows it, and the remedies' facts count the tables that several applications mention.
+  const dataSection = loadDataSection(run.outDir);
+  const remedies = withRemedies(run.remedies, factsOf({ findings, applications: system.applications, data: dataSection }));
+  // The topics (openspec change handbook-topics) are read against the facts of their lanes as they are now; the technical view also locates the cited items.
+  const topics = withTopics(run.topics, loadTopicFacts(run, root, scan), { locate: technical ? citationLocator(root) : null, findingPlaces: findings.locations });
+  return { summary, system, entities, findings, remedies, topics, locations: technical ? buildLocations(run, root) : null, data: technical ? dataSection : null, dictionaries: technical ? loadDictionariesSection(run.outDir) : null };
 }

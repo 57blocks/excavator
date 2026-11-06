@@ -6,6 +6,9 @@
 // the technical view only, the feature page listing its own findings, the
 // coverage page listing the units (features and application roots) not
 // verified and the removed findings, and every fixed text coming from the ui table.
+// O2 of handbook-findings-priority: each group has its level and reason (or the word for none), the counts
+// and each category heading say how many groups have which level, the findings page filters by level, the
+// feature page shows the levels and the coverage page lists the groups without a priority.
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
@@ -13,10 +16,10 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 
 import { AppView } from '../src/App';
-import { countByCategory, filterGroups } from '../src/components/FindingsPage';
+import { countByCategory, countByLevel, filterGroups } from '../src/components/FindingsPage';
 import { parseHash, routeHash } from '../src/lib/route';
 import { FINDING_CATEGORIES, findingCategoryKey } from '../src/lib/types';
-import type { Feature, FindingCategory, FindingGroup, FindingOwner, PageData, View } from '../src/lib/types';
+import type { Feature, FindingCategory, FindingGroup, FindingOwner, PageData, Priority, Remedies, View } from '../src/lib/types';
 import { switchTarget } from '../src/lib/views';
 
 const MARK = '@@';
@@ -32,18 +35,23 @@ const feature = (id: string, status: Feature['status'], findingsStatus: Feature[
 const owner = (id: string): FindingOwner => (id.startsWith('app') ? { kind: 'application', id, name: d(id === 'app1' ? 'backend' : 'web') } : { kind: 'feature', id, name: d(`name ${id}`) });
 const item = (id: string, who: string, text: string) => ({ id, owner: owner(who), text: d(text) });
 
-/** Four groups: F1 and F3 merged (authorization), F1 alone (hard-coded), the application app1 alone (notification), F3 and app1 merged (time). */
+const priority = (level: Priority['level'], consequence: Priority['consequence'], reason: string): Priority => ({ level, consequence, reason: d(reason) });
+
+/**
+ * Four groups: F1 and F3 merged (authorization, P0), F1 alone (hard-coded, P2), the application app1 alone (notification, no priority),
+ * F3 and app1 merged (time, P1).
+ */
 const FINDINGS: FindingGroup[] = [
-  { category: 'authorization', owners: [owner('F1'), owner('F3')], items: [item('F1.findings[0]', 'F1', 'first statement'), item('F3.findings[0]', 'F3', 'third statement')] },
-  { category: 'hard-coded', owners: [owner('F1')], items: [item('F1.findings[1]', 'F1', 'second statement')] },
-  { category: 'notification', owners: [owner('app1')], items: [item('app1.system[0]', 'app1', 'system statement')] },
-  { category: 'time', owners: [owner('F3'), owner('app1')], items: [item('F3.findings[1]', 'F3', 'fourth statement'), item('app1.system[1]', 'app1', 'fifth statement')] },
+  { category: 'authorization', owners: [owner('F1'), owner('F3')], items: [item('F1.findings[0]', 'F1', 'first statement'), item('F3.findings[0]', 'F3', 'third statement')], priority: priority('P0', 'othersRecords', 'reason one') },
+  { category: 'hard-coded', owners: [owner('F1')], items: [item('F1.findings[1]', 'F1', 'second statement')], priority: priority('P2', 'display', 'reason two') },
+  { category: 'notification', owners: [owner('app1')], items: [item('app1.system[0]', 'app1', 'system statement')], priority: null },
+  { category: 'time', owners: [owner('F3'), owner('app1')], items: [item('F3.findings[1]', 'F3', 'fourth statement'), item('app1.system[1]', 'app1', 'fifth statement')], priority: priority('P1', 'wrongResult', 'reason four') },
 ];
 
 /** F1 and F3 have verified findings, F2 verified with none, F4 failed, F5 planned; one finding of F1 was removed. */
-function dataFor(views: View[], findings: FindingGroup[] = FINDINGS): PageData {
+function dataFor(views: View[], findings: FindingGroup[] = FINDINGS, remedies: Remedies = { categories: [], recommendations: [] }, remediesCoverage: PageData['coverage']['remedies'] = { finished: true, stale: false, dropped: [] }): PageData {
   return {
-    format: 'excavator-product-handbook-page/10',
+    format: 'excavator-product-handbook-page/13',
     project: d('project'),
     language: d('language'),
     languageTag: 'xx',
@@ -54,6 +62,8 @@ function dataFor(views: View[], findings: FindingGroup[] = FINDINGS): PageData {
     domainBasis: 'domains',
     features: [feature('F1', 'planned', 'verified'), feature('F2', 'planned', 'verified'), feature('F3', 'planned', 'verified'), feature('F4', 'planned', 'failed'), feature('F5', 'planned', 'planned')],
     findings,
+    remedies,
+    topics: { approval: [], time: [], handoffs: [], access: [], repeated: [] },
     coverage: {
       candidateTotal: 0, assigned: 0, unassigned: [], reachCounts: [], removedOverview: [], removed: [],
       findingsUnfinished: [{ feature: 'F4', status: 'failed' }],
@@ -63,6 +73,9 @@ function dataFor(views: View[], findings: FindingGroup[] = FINDINGS): PageData {
       systemFindingsUnfinished: [{ id: 'app2', name: d('web'), status: 'failed' }],
       systemFindingsNotWritten: 1,
       systemFindingsRemoved: [{ id: 'app1', name: d('backend'), items: [{ claim: d('system removed claim'), verdict: 'unverified', reason: d('system removed reason') }] }],
+      priority: { finished: true, unranked: [{ id: 'app1.system[0]', category: 'notification', text: d('system statement'), reasons: [d('judge reason')] }] },
+      remedies: remediesCoverage,
+      topics: { finished: true, stale: false, entriesRead: 0, groupsRead: 0, lanes: [], dropped: [] },
     },
     summary: { notifications: [], jobs: [], counts: { featureTotal: 5, featuresWithEntry: 1, notificationRows: 0, jobRows: 0, schedule: { literal: 0, computed: 0, absent: 0 }, described: 0 } },
     system: { status: 'planned', overview: null, applications: [], counts: { applications: 0, files: 0, lines: 0, areas: 1, domains: 1, features: 5, featuresWithEntry: 1, roles: 0 }, areas: [], domains: [] },
@@ -70,7 +83,7 @@ function dataFor(views: View[], findings: FindingGroup[] = FINDINGS): PageData {
     ...(views.includes('technical') ? {
       technical: {
         featureApplication: [], unattributed: [], applicationDomain: { applications: [], domains: [], cells: [], unattributed: [] },
-        integrations: [], jobs: [], locations: [],
+        integrations: [], jobs: [], locations: [], topicLocations: [],
         findingLocations: [
           { id: 'F1.findings[0]', citations: [{ file: d('src/one.js'), startLine: 7, endLine: 7 }] },
           { id: 'F1.findings[1]', citations: [{ file: d('src/two.js'), startLine: 5, endLine: 9 }, { file: d('src/three.js'), startLine: null, endLine: null }] },
@@ -126,7 +139,7 @@ describe('the findings page', () => {
   it('shows the counts line (groups, statements, groups merged), the groups in the order of the categories and each group with its owners and its first statement', () => {
     const body = main(render(dataFor(['product']), '#/findings'));
     const counted = (key: string): number => (['authorization', 'notification', 'hard-coded', 'time'].includes(key) ? 1 : 0);
-    expect(body).toContain(`${MARK}Findings: 4. Statements: 6. Groups merged: 2. Findings units verified: 3 of 5. System findings units verified: 1 of 3. By category: ${FINDING_CATEGORIES.map((key) => `${MARK}${name(key)}: ${counted(key)}`).join('; ')}.`);
+    expect(body).toContain(`${MARK}Findings: 4. Statements: 6. Groups merged: 2. Findings units verified: 3 of 5. System findings units verified: 1 of 3. By category: ${FINDING_CATEGORIES.map((key) => `${MARK}${name(key)}: ${counted(key)}`).join('; ')}. By priority: ${[['P0', 1], ['P1', 1], ['P2', 1], ['Unranked', 1]].map(([word, count]) => `${MARK}${MARK}${word}: ${count}`).join('; ')}.`);
     expect([...body.matchAll(/data-category="([a-z-]+)"/g)].map((match) => match[1])).toEqual(['authorization', 'notification', 'hard-coded', 'time']);
     for (const text of ['first statement', 'second statement', 'system statement', 'fourth statement']) expect(body).toContain(d(text));
     expect(body).toContain(`${MARK}F1 ${d('name F1')}`);
@@ -137,7 +150,7 @@ describe('the findings page', () => {
 
   it('a merged group lists every owner and keeps its other statements under a details element, each with its owner; a single finding has none', () => {
     const body = main(render(dataFor(['product']), '#/findings'));
-    const rows = body.match(/<tr data-group="[a-z]+">[\s\S]*?<\/tr>/g) ?? [];
+    const rows = body.match(/<tr data-group="[a-z]+" data-level="[A-Za-z0-9]+">[\s\S]*?<\/tr>/g) ?? [];
     expect(rows).toHaveLength(4);
     const authorization = rows.find((row) => row.includes(d('first statement'))) ?? '';
     expect(authorization).toContain('data-group="merged"');
@@ -189,7 +202,7 @@ describe('the findings page', () => {
     expect(owners.slice(0, owners.indexOf('</select>')).match(/<option/g)).toHaveLength(2 + 2);
     expect(owners).toContain(`${MARK}F1 ${d('name F1')}</option>`);
     expect(owners).toContain(`${MARK}F3 ${d('name F3')}</option>`);
-    expect((html.slice(0, html.indexOf('data-part="findings-owner-filter"')).match(/<option/g) ?? []).length).toBe(1 + FINDING_CATEGORIES.length);
+    expect((html.slice(0, html.indexOf('data-part="findings-level-filter"')).match(/<option/g) ?? []).length).toBe(1 + FINDING_CATEGORIES.length);
     expect(html).toContain(`${MARK}Showing 4 of 4 findings`);
   });
 
@@ -206,6 +219,96 @@ describe('the findings page', () => {
     expect(ids(filterGroups(list, 'time', 'system'))).toEqual(['F3.findings[1]']);
     expect(filterGroups(list, 'hard-coded', 'system')).toEqual([]);
     expect(filterGroups(list, null, 'feature:F9')).toEqual([]);
+  });
+});
+
+describe('the priority of each group (handbook-findings-priority)', () => {
+  const rowOf = (body: string, statement: string): string => (body.match(/<tr data-group="[a-z]+" data-level="[A-Za-z0-9]+">[\s\S]*?<\/tr>/g) ?? []).find((row) => row.includes(d(statement))) ?? '';
+
+  it('shows the level as a badge with the name of the consequence as its tooltip, and the reason under the statement; a group with no priority shows the word for none and no reason', () => {
+    const body = main(render(dataFor(['product']), '#/findings'));
+    const authorization = rowOf(body, 'first statement');
+    expect(authorization).toContain('data-level="P0"');
+    expect(authorization).toContain(`<span class="priority-badge" data-level="P0" title="${marked['md.priority.consequence.othersRecords']}">${MARK}P0</span>`);
+    expect(authorization).toContain(`${MARK}Reason: ${d('reason one')}`);
+    const none = rowOf(body, 'system statement');
+    expect(none).toContain('data-level="none"');
+    expect(none).toContain(`<span class="priority-badge" data-level="none">${marked['md.priority.unranked']}</span>`);
+    expect(none).not.toContain('Reason:');
+    expect(rowOf(body, 'second statement')).toContain('data-level="P2"');
+    expect(rowOf(body, 'fourth statement')).toContain('data-level="P1"');
+  });
+
+  it('writes the number of groups and of P0 groups in the heading of each category', () => {
+    const body = main(render(dataFor(['product']), '#/findings'));
+    expect(body).toContain(`${MARK}${name('authorization')} (1 findings; P0: 1)`);
+    expect(body).toContain(`${MARK}${name('hard-coded')} (1 findings; P0: 0)`);
+    expect(body).toContain(`${MARK}${name('notification')} (1 findings; P0: 0)`);
+  });
+
+  it('has the level filter with every level and the unranked groups and their counts, between the category and the owner filter', () => {
+    const html = render(dataFor(['product']), '#/findings');
+    const start = html.indexOf('data-part="findings-level-filter"');
+    expect(start).toBeGreaterThan(html.indexOf(marked['page.findings.filter.category']));
+    expect(start).toBeLessThan(html.indexOf('data-part="findings-owner-filter"'));
+    const levels = html.slice(start, html.indexOf('</select>', start));
+    expect(levels).toContain(marked['page.findings.filter.level']);
+    expect(levels).toContain(`>${marked['page.findings.filter.allLevels']}</option>`);
+    expect([...levels.matchAll(/<option value="([A-Za-z0-9]+)"[^>]*>([^<]*)<\/option>/g)].map((match) => [match[1], match[2]])).toEqual([
+      ['all', marked['page.findings.filter.allLevels']],
+      ['P0', `${MARK}${MARK}P0: 1`], ['P1', `${MARK}${MARK}P1: 1`], ['P2', `${MARK}${MARK}P2: 1`], ['none', `${MARK}${marked['md.priority.unranked']}: 1`],
+    ]);
+  });
+
+  it('filterGroups keeps the groups of a level, or the groups without a priority, together with the other filters, and countByLevel counts them', () => {
+    const list = dataFor(['product']).findings;
+    const ids = (groups: FindingGroup[]): string[] => groups.map((group) => group.items[0].id);
+    expect(ids(filterGroups(list, null, 'all', 'P0'))).toEqual(['F1.findings[0]']);
+    expect(ids(filterGroups(list, null, 'all', 'P1'))).toEqual(['F3.findings[1]']);
+    expect(ids(filterGroups(list, null, 'all', 'P2'))).toEqual(['F1.findings[1]']);
+    expect(ids(filterGroups(list, null, 'all', 'none'))).toEqual(['app1.system[0]']);
+    expect(filterGroups(list, null, 'all', 'all')).toEqual(list);
+    expect(filterGroups(list, 'time', 'all', 'P0')).toEqual([]);
+    expect(ids(filterGroups(list, null, 'feature:F3', 'P1'))).toEqual(['F3.findings[1]']);
+    expect(countByLevel(list)).toEqual([{ level: 'P0', count: 1 }, { level: 'P1', count: 1 }, { level: 'P2', count: 1 }, { level: 'none', count: 1 }]);
+    expect(countByLevel(list).reduce((sum, entry) => sum + entry.count, 0)).toBe(list.length);
+  });
+
+  it('the feature page shows the level of each finding of the feature, and the word for none', () => {
+    const f1 = main(render(dataFor(['product']), '#/feature/F1'));
+    expect(f1).toContain(`${MARK}P0</span> ${MARK}${name('authorization')}: ${d('first statement')}`);
+    expect(f1).toContain(`${MARK}P2</span> ${MARK}${name('hard-coded')}: ${d('second statement')}`);
+    const f3 = main(render(dataFor(['product']), '#/feature/F3'));
+    expect(f3).toContain(`${MARK}P1</span> ${MARK}${name('time')}: ${d('fourth statement')}`);
+    const data = dataFor(['product']);
+    data.findings[1].priority = null;
+    expect(main(render(data, '#/feature/F1'))).toContain(`${marked['md.priority.unranked']}</span> ${MARK}${name('hard-coded')}: ${d('second statement')}`);
+  });
+
+  it('the coverage page lists the groups without a priority with the reasons of the judges, and the fixed reason for a group no judge saw', () => {
+    const data = dataFor(['product']);
+    const html = main(render(data, '#/coverage'));
+    const part = html.slice(html.indexOf('id="cov-priority"'));
+    expect(part).toContain(marked['md.coverage.priorityHeading']);
+    expect(part).toContain(`${MARK}Groups of findings without a priority: 1.`);
+    expect(part).toContain(`${MARK}${name('notification')}: ${d('system statement')}`);
+    expect(part).toContain(d('judge reason'));
+    data.coverage.priority.unranked[0].reasons = [];
+    expect(main(render(data, '#/coverage'))).toContain(marked['md.priority.notJudged']);
+  });
+
+  it('the coverage page says that the ranking did not finish, or that every group has a priority, or none when there is no finding', () => {
+    const unfinished = dataFor(['product']);
+    unfinished.coverage.priority = { finished: false, unranked: [] };
+    expect(main(render(unfinished, '#/coverage'))).toContain(`${MARK}The ranking did not finish: 4 groups of findings have no priority.`);
+    const all = dataFor(['product']);
+    all.coverage.priority = { finished: true, unranked: [] };
+    expect(main(render(all, '#/coverage'))).toContain(marked['md.coverage.priorityAllRanked']);
+    const empty = dataFor(['product'], []);
+    empty.coverage.priority = { finished: true, unranked: [] };
+    const html = main(render(empty, '#/coverage'));
+    expect(html.slice(html.indexOf('id="cov-priority"'))).toContain(marked['md.none']);
+    for (const data of [unfinished, all, empty]) expect(unmarked(render(data, '#/coverage'))).toEqual([]);
   });
 });
 
@@ -309,5 +412,136 @@ describe('every fixed text of the findings pages comes from the ui table', () =>
     // The word lists are matched by scripts and shown nowhere; they may hold won't and can't.
     const matched = ['md.findings.adviceWords', 'md.findings.scopeWords'];
     for (const [key, value] of Object.entries(shipped.strings)) if ((key.startsWith('md.findings.') || key.startsWith('page.findings.') || key === 'page.nav.findings') && !matched.includes(key)) expect(value, key).not.toContain("'");
+  });
+});
+
+// O2 (page) of openspec change handbook-remedies: the route #/recommendations in both views with a sidebar link after the findings,
+// the common cause and the measure under each category of the findings page, the recommendations in order with the groups (level and
+// statement) and the facts they rest on, the places of a statement in the technical view only, what the judges left out on the coverage page,
+// and every fixed text coming from the ui table.
+const REMEDIES: Remedies = {
+  categories: [
+    { category: 'authorization', cause: d('Nothing asks who calls.'), measure: d('Check the caller first.') },
+    { category: 'time', cause: d('One fixed hour for all.'), measure: d('Read the hour of the recipient.') },
+  ],
+  recommendations: [
+    {
+      title: d('Check the caller'),
+      text: d('Start with the finding of the highest level.'),
+      groups: [{ id: 'F1.findings[0]', category: 'authorization', level: 'P0', text: d('first statement') }, { id: 'app1.system[0]', category: 'notification', level: null, text: d('system statement') }],
+      facts: [
+        { kind: 'counts', groups: 4, levels: { P0: 1, P1: 1, P2: 1, unranked: 1 }, categories: [{ category: 'authorization', count: 1 }, { category: 'time', count: 1 }] },
+        { kind: 'app', name: d('backend'), language: d('Go'), files: 12, lines: 3400, commits: 50, authors: 3 },
+      ],
+    },
+    {
+      title: d('Share fewer tables'),
+      text: d('Split the tables that several applications use.'),
+      groups: [],
+      facts: [
+        { kind: 'tables', count: 2, tables: [{ name: d('orders'), applications: [d('backend'), d('web')] }, { name: d('carts'), applications: [d('backend'), d('web')] }] },
+        { kind: 'app', name: d('web'), language: null, files: 0, lines: 0, commits: null, authors: null },
+        { kind: 'tables', count: null, tables: [] },
+      ],
+    },
+  ],
+};
+const DROPPED: PageData['coverage']['remedies'] = {
+  finished: true,
+  stale: false,
+  dropped: [
+    { id: 'category:time', kind: 'category', category: 'time', text: d('One fixed hour for all.'), reasons: [d('The cause is wider than one statement.')] },
+    { id: 'recommendation:3', kind: 'recommendation', title: d('Third'), text: d('Third text.'), reasons: [d('No cited fact says three.')] },
+  ],
+};
+
+describe('the recommendations route and link', () => {
+  it('parses #/recommendations with and without the view and builds it back', () => {
+    expect(parseHash('#/recommendations')).toEqual({ name: 'recommendations' });
+    expect(parseHash('#/technical/recommendations')).toEqual({ name: 'recommendations', view: 'technical' });
+    expect(parseHash('#/product/recommendations/x').name).toBe('not-found');
+    expect(routeHash({ name: 'recommendations' }, null)).toBe('#/recommendations');
+    expect(routeHash({ name: 'recommendations' }, 'technical')).toBe('#/technical/recommendations');
+  });
+
+  it('both views have the sidebar link right after the findings link and the page', () => {
+    const data = dataFor(BOTH, FINDINGS, REMEDIES);
+    for (const view of BOTH) {
+      const rail = railOf(render(data, `#/${view}`));
+      expect(rail.indexOf(`href="#/${view}/recommendations"`)).toBeGreaterThan(rail.indexOf(`href="#/${view}/findings"`));
+      expect(rail.indexOf(`href="#/${view}/recommendations"`)).toBeLessThan(rail.indexOf(`href="#/${view}/coverage"`));
+      expect(render(data, `#/${view}/recommendations`)).toContain('data-view="recommendations"');
+    }
+    expect(switchTarget(data, parseHash('#/technical/recommendations'), 'product')).toBe('#/product/recommendations');
+  });
+});
+
+describe('the recommendations page', () => {
+  it('lists the recommendations in order, each with its text, the groups it rests on (level and statement) and the facts in words', () => {
+    const body = main(render(dataFor(['product'], FINDINGS, REMEDIES), '#/recommendations'));
+    expect(body).toContain(`${MARK}Recommendations: 2. Groups of findings they rest on: 2 of 4.`);
+    expect(body.indexOf(`${MARK}1. ${d('Check the caller')}`)).toBeGreaterThan(-1);
+    expect(body.indexOf(`${MARK}2. ${d('Share fewer tables')}`)).toBeGreaterThan(body.indexOf(`${MARK}1. ${d('Check the caller')}`));
+    expect(body).toContain(`${MARK}[${MARK}P0] ${name('authorization')}: ${d('first statement')}`);
+    expect(body).toContain(`${MARK}[${MARK}Unranked] ${name('notification')}: ${d('system statement')}`);
+    expect(body).toContain(`${MARK}Groups of findings: 4. By priority: ${MARK}${MARK}P0: 1; ${MARK}${MARK}P1: 1; ${MARK}${MARK}P2: 1; ${MARK}${MARK}Unranked: 1. By category: ${MARK}${name('authorization')}: 1; ${MARK}${name('time')}: 1.`);
+    expect(body).toContain(`${MARK}Application ${d('backend')}: main language ${d('Go')}, 12 source files, 3400 lines, 50 commits by 3 authors.`);
+    expect(body).toContain(`${MARK}Application ${d('web')}: main language ${MARK}none, 0 source files, 0 lines, no version history.`);
+    expect(body).toContain(`${MARK}Tables mentioned by two or more applications: 2 (${MARK}${d('orders')} in ${d('backend')}, ${d('web')}; ${MARK}${d('carts')} in ${d('backend')}, ${d('web')}).`);
+    expect(body).toContain(`${MARK}Tables mentioned by two or more applications: not known, the data section was not written.`);
+  });
+
+  it('writes no file or line in the product view and the file and line of each cited statement in the technical view', () => {
+    const data = dataFor(BOTH, FINDINGS, REMEDIES);
+    expect(main(render(data, '#/product/recommendations'))).not.toContain('src/one.js');
+    expect(main(render(data, '#/technical/recommendations'))).toContain(d('src/one.js'));
+  });
+
+  it('says there is no recommendation when none is left, and has no text of its own', () => {
+    const body = main(render(dataFor(['product']), '#/recommendations'));
+    expect(body).toContain(marked['md.remedies.none']);
+    expect(unmarked(render(dataFor(['product']), '#/recommendations'))).toEqual([]);
+  });
+
+  it('shows no text that is not from the ui table or the data, in either view', () => {
+    for (const hash of ['#/product/recommendations', '#/technical/recommendations', '#/technical/findings', '#/product/findings', '#/product/coverage', '#/technical/coverage']) {
+      expect(unmarked(render(dataFor(BOTH, FINDINGS, REMEDIES, DROPPED), hash)), hash).toEqual([]);
+    }
+  });
+});
+
+describe('the findings page with remedies', () => {
+  it('shows the common cause and the measure under the heading of a category that has them, and nothing under the others', () => {
+    const body = main(render(dataFor(['product'], FINDINGS, REMEDIES), '#/findings'));
+    const authorization = body.slice(body.indexOf('data-category="authorization"'), body.indexOf('data-category="hard-coded"'));
+    expect(authorization).toContain(`${MARK}Common cause:</span> ${d('Nothing asks who calls.')}`);
+    expect(authorization).toContain(`${MARK}Measure:</span> ${d('Check the caller first.')}`);
+    expect(authorization.indexOf('Common cause')).toBeLessThan(authorization.indexOf('<table'));
+    const hardCoded = body.slice(body.indexOf('data-category="hard-coded"'), body.indexOf('data-category="notification"'));
+    expect(hardCoded).not.toContain('category-remedy');
+    expect(body.match(/data-part="category-remedy"/g)).toHaveLength(2);
+  });
+});
+
+describe('the coverage page about the remedies', () => {
+  const part = (data: PageData): string => {
+    const body = main(render(data, '#/coverage'));
+    return body.slice(body.indexOf('id="cov-remedies"'));
+  };
+
+  it('lists what the judges left out with their reasons', () => {
+    const text = part(dataFor(['product'], FINDINGS, REMEDIES, DROPPED));
+    expect(text).toContain(`${MARK}Left out because a judge found a statement of how things are now that the cited findings and facts do not hold: 2.`);
+    expect(text).toContain(`${name('time')}: ${d('One fixed hour for all.')}`);
+    expect(text).toContain(d('The cause is wider than one statement.'));
+    expect(text).toContain(`${d('Third')}: ${d('Third text.')}`);
+    expect(text).toContain(d('No cited fact says three.'));
+  });
+
+  it('says that the remedies did not finish, that they were written for other findings, or that everything written is in the handbook', () => {
+    expect(part(dataFor(['product'], FINDINGS, REMEDIES, { finished: false, stale: false, dropped: [] }))).toContain(marked['md.coverage.remediesNotFinished']);
+    expect(part(dataFor(['product'], FINDINGS, REMEDIES, { finished: false, stale: true, dropped: [] }))).toContain(marked['md.coverage.remediesStale']);
+    expect(part(dataFor(['product'], FINDINGS, REMEDIES))).toContain(marked['md.coverage.remediesAllKept']);
+    expect(part(dataFor(['product'], []))).toContain(marked['md.none']);
   });
 });
