@@ -5,6 +5,7 @@ import { useText } from '../lib/text';
 import { findingCategoryKey } from '../lib/types';
 import type { Area, Entry, Feature, Field, FindingGroup, Rule, UnitLocations } from '../lib/types';
 import { Locations } from './Locations';
+import { PriorityBadge } from './PriorityBadge';
 import { ReachBadge } from './ReachBadge';
 import { Cell, TableScroll } from './Tables';
 
@@ -154,12 +155,12 @@ function EntryBody({ entry }: { entry: Entry }) {
 function FindingsSection({ feature, groups }: { feature: Feature; groups: FindingGroup[] }) {
   const t = useText();
   if (feature.findingsStatus !== 'verified') return null;
-  const own = groups.flatMap((group) => group.items.filter((item) => item.owner.kind === 'feature' && item.owner.id === feature.id).map((item) => ({ item, category: group.category })));
+  const own = groups.flatMap((group) => group.items.filter((item) => item.owner.kind === 'feature' && item.owner.id === feature.id).map((item) => ({ item, category: group.category, priority: group.priority })));
   return (
     <Section id="findings" title={t('md.findings.heading')}>
       {own.length === 0 ? <p className="muted">{t('md.none')}</p> : (
         <ul className="plain-list">
-          {own.map(({ item, category }) => <li key={item.id}>{t('md.findings.featureItem', { category: t(findingCategoryKey(category)), text: item.text })}</li>)}
+          {own.map(({ item, category, priority }) => <li key={item.id}><PriorityBadge priority={priority} /> {t('md.findings.featureItem', { category: t(findingCategoryKey(category)), text: item.text })}</li>)}
         </ul>
       )}
     </Section>

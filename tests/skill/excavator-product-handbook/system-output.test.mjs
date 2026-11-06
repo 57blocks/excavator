@@ -108,9 +108,9 @@ describe('the Findings chapter writes groups', () => {
     const run = shared();
     expect(assemble(run, 'product').status).toBe(0);
     const chapter = section(text(run, 'handbook.md'), `## ${ui['md.findings.heading']}`);
-    expect(chapter).toContain(`- F1 Orders; alpha (application): ${F1_TEXT}\n  - alpha (application): ${SYSTEM_SERVER_TEXT}\n`);
-    expect(chapter).toContain(`- F3 Nightly run; alpha (application): ${F3_TEXT}\n  - alpha (application): ${SYSTEM_TIME_TEXT}\n`);
-    expect(chapter).toContain(`- alpha (application): ${SYSTEM_MAIL_TEXT}\n`);
+    expect(chapter).toContain(`- [Unranked] F1 Orders; alpha (application): ${F1_TEXT}\n  - alpha (application): ${SYSTEM_SERVER_TEXT}\n`);
+    expect(chapter).toContain(`- [Unranked] F3 Nightly run; alpha (application): ${F3_TEXT}\n  - alpha (application): ${SYSTEM_TIME_TEXT}\n`);
+    expect(chapter).toContain(`- [Unranked] alpha (application): ${SYSTEM_MAIL_TEXT}\n`);
     expect(chapter).not.toContain(SYSTEM_REMOVED_TEXT);
     expect(chapter).not.toContain(STOCK_TEXT);
     // Every statement is written once.
@@ -121,7 +121,7 @@ describe('the Findings chapter writes groups', () => {
     const run = shared();
     assemble(run, 'product');
     const chapter = section(text(run, 'handbook.md'), `## ${ui['md.findings.heading']}`);
-    expect([...chapter.matchAll(/^### (.+)$/gm)].map((match) => match[1])).toEqual([ui[categoryKey('notification')], ui[categoryKey('time')], ui[categoryKey('other')]]);
+    expect([...chapter.matchAll(/^### (.+)$/gm)].map((match) => match[1])).toEqual([ui[categoryKey('notification')], ui[categoryKey('time')], ui[categoryKey('other')]].map((name) => `${name} (1 findings; P0: 0)`));
   });
 
   it('the counts line gives the groups, the statements and the groups merged, and the category counts count groups', () => {
@@ -131,7 +131,7 @@ describe('the Findings chapter writes groups', () => {
     const line = chapter.split('\n').find((candidate) => candidate.startsWith('Findings: '));
     const counted = ['notification', 'time', 'other'];
     const names = Object.keys(ui).filter((key) => key.startsWith('md.findings.category.')).map((key) => ui[key]);
-    expect(line).toBe(`Findings: 3. Statements: 5. Groups merged: 2. Findings units verified: 2 of 6. System findings units verified: 2 of 3. By category: ${names.map((name) => `${name}: ${counted.some((key) => ui[categoryKey(key)] === name) ? 1 : 0}`).join('; ')}.`);
+    expect(line).toBe(`Findings: 3. Statements: 5. Groups merged: 2. Findings units verified: 2 of 6. System findings units verified: 2 of 3. By category: ${names.map((name) => `${name}: ${counted.some((key) => ui[categoryKey(key)] === name) ? 1 : 0}`).join('; ')}. By priority: P0: 0; P1: 0; P2: 0; Unranked: 3.`);
     const bullets = chapter.split('\n').filter((row) => row.startsWith('- ')).length;
     expect(bullets).toBe(3);
     expect(chapter.split('\n').filter((row) => row.startsWith('  - ')).length).toBe(2);
@@ -141,8 +141,8 @@ describe('the Findings chapter writes groups', () => {
     const run = shared();
     expect(assemble(run, 'product,technical').status).toBe(0);
     const technical = section(text(run, 'handbook-technical.md'), `## ${ui['md.findings.heading']}`);
-    expect(technical).toContain(`- F1 Orders; alpha (application): ${F1_TEXT} (${SERVER}, line 5)\n  - alpha (application): ${SYSTEM_SERVER_TEXT} (${SERVER}, line 5)\n`);
-    expect(technical).toContain(`- alpha (application): ${SYSTEM_MAIL_TEXT} (${MAILER}, line 2)`);
+    expect(technical).toContain(`- [Unranked] F1 Orders; alpha (application): ${F1_TEXT} (${SERVER}, line 5)\n  - alpha (application): ${SYSTEM_SERVER_TEXT} (${SERVER}, line 5)\n`);
+    expect(technical).toContain(`- [Unranked] alpha (application): ${SYSTEM_MAIL_TEXT} (${MAILER}, line 2)`);
     const product = text(run, 'handbook.md');
     for (const file of [SERVER, MAILER, NIGHTLY, 'alpha/']) expect(product, file).not.toContain(file);
     expect(product).not.toMatch(/line \d+\)/);
@@ -152,7 +152,7 @@ describe('the Findings chapter writes groups', () => {
     const named = outputRun(cleanups, { overview: true });
     expect(assemble(named, 'product').status).toBe(0);
     const chapter = section(text(named, 'handbook.md'), `## ${ui['md.findings.heading']}`);
-    expect(chapter).toContain(`- F1 Orders; Shop service (application): ${F1_TEXT}\n  - Shop service (application): ${SYSTEM_SERVER_TEXT}`);
+    expect(chapter).toContain(`- [Unranked] F1 Orders; Shop service (application): ${F1_TEXT}\n  - Shop service (application): ${SYSTEM_SERVER_TEXT}`);
     expect(chapter).not.toContain('alpha (application)');
     expect(assemble(shared(), 'product').status).toBe(0);
     expect(text(shared(), 'handbook.md')).toContain('alpha (application)');
@@ -185,10 +185,10 @@ describe('findingsChapter and featureFindingsLines on a model: merged groups', (
 
   it('writes three owners once on the first line and two statements under it', () => {
     const lines = findingsChapter({ map, state, findings, view: 'product', t });
-    expect(lines).toContain('- F1 Orders; F2 Reports; alpha (application): one');
+    expect(lines).toContain('- [Unranked] F1 Orders; F2 Reports; alpha (application): one');
     expect(lines).toContain('  - F2 Reports: two');
     expect(lines).toContain('  - alpha (application): three');
-    expect(lines).toContain('- F2 Reports: four');
+    expect(lines).toContain('- [Unranked] F2 Reports: four');
     expect(lines.find((line) => line.startsWith('Findings: '))).toContain('Findings: 2. Statements: 4. Groups merged: 1.');
   });
 
@@ -274,18 +274,18 @@ describe('verified system findings are checked again like an entry', () => {
 });
 
 describe('the page data', () => {
-  it('has the format /10 and the findings as groups with their owners and items, in the order of the handbook, and no citation path outside the technical part', () => {
+  it('has the format /11 and the findings as groups with their owners and items, in the order of the handbook, and no citation path outside the technical part', () => {
     const run = shared();
     const made = page(run);
     expect(made.status, made.stdout).toBe(0);
     const data = dataOf(run);
-    expect(data.format).toBe('excavator-product-handbook-page/10');
+    expect(data.format).toBe('excavator-product-handbook-page/11');
     expect(data.findings.map((group) => [group.category, group.owners.map((one) => [one.kind, one.id, one.name]), group.items.map((one) => one.id)])).toEqual([
       ['other', [['feature', 'F1', 'Orders'], ['application', 'app1', 'alpha']], ['F1.findings[0]', 'app1.system[0]']],
       ['time', [['feature', 'F3', 'Nightly run'], ['application', 'app1', 'alpha']], ['F3.findings[0]', 'app1.system[2]']],
       ['notification', [['application', 'app1', 'alpha']], ['app1.system[1]']],
     ]);
-    expect(Object.keys(data.findings[0])).toEqual(['category', 'owners', 'items']);
+    expect(Object.keys(data.findings[0])).toEqual(['category', 'owners', 'items', 'priority']);
     expect(Object.keys(data.findings[0].items[0])).toEqual(['id', 'owner', 'text']);
     expect(data.findings[0].items.map((one) => one.text)).toEqual([F1_TEXT, SYSTEM_SERVER_TEXT]);
     expect(JSON.stringify({ ...data, technical: undefined })).not.toContain(SERVER);

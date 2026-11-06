@@ -1,6 +1,6 @@
 /** The page data `handbook.mjs page` writes into the template (openspec change product-handbook-map, design D13). */
 
-export const PAGE_FORMAT = 'excavator-product-handbook-page/10';
+export const PAGE_FORMAT = 'excavator-product-handbook-page/11';
 
 /** The views a page can hold (openspec change handbook-entities-and-views): the product view and the technical view. */
 export const VIEWS = ['product', 'technical'] as const;
@@ -19,6 +19,16 @@ export const FINDING_CATEGORIES = ['authorization', 'error-handling', 'notificat
 export type FindingCategory = (typeof FINDING_CATEGORIES)[number];
 /** The key of a category's display name in the ui table: `error-handling` is `errorHandling`, since keys hold letters and dots only. */
 export const findingCategoryKey = (category: FindingCategory): string => `md.findings.category.${category.replace(/-([a-z])/g, (_, letter: string) => letter.toUpperCase())}`;
+
+/** The levels of the ranking of the findings (openspec change handbook-findings-priority), most urgent first. */
+export const LEVELS = ['P0', 'P1', 'P2'] as const;
+export type Level = (typeof LEVELS)[number];
+/** The consequences a lane picks, each deciding a level (the fixed text of each is `consequenceKey(value)`). */
+export const CONSEQUENCES = ['othersRecords', 'money', 'dataLoss', 'secret', 'wrongResult', 'notification', 'blocked', 'display', 'inert'] as const;
+export type Consequence = (typeof CONSEQUENCES)[number];
+export const consequenceKey = (consequence: Consequence): string => `md.priority.consequence.${consequence}`;
+/** The rank of a group of findings: the level its consequence decides and the reason, which only repeats what the statements say. */
+export interface Priority { level: Level; consequence: Consequence; reason: string }
 
 export interface Rule { side: 'frontend' | 'backend'; text: string }
 export interface Field { label: string; rules: Rule[] }
@@ -66,7 +76,7 @@ export interface FindingOwner { kind: 'feature' | 'application'; id: string; nam
 export interface FindingItem { id: string; owner: FindingOwner; text: string }
 
 /** Findings of one category at the same place, which the handbook counts as one: `items` in the order of the handbook (the first is the representative), `owners` the distinct owners of the items in that order. */
-export interface FindingGroup { category: FindingCategory; owners: FindingOwner[]; items: FindingItem[] }
+export interface FindingGroup { category: FindingCategory; owners: FindingOwner[]; items: FindingItem[]; /** Null when no two judges confirmed a rank for the group, or the ranking did not finish. */ priority: Priority | null }
 
 /** An item the verification removed from a feature's entry: its claim, why it went, and the verifier's reason. */
 export interface RemovedItem { claim: string; verdict: 'unverified' | 'contradicted' | 'withParent'; reason: string }
@@ -94,6 +104,8 @@ export interface Coverage {
   systemFindingsNotWritten: number;
   /** The application roots that lost system findings to verification, with those findings. */
   systemFindingsRemoved: { id: string; name: string; items: RemovedItem[] }[];
+  /** The ranking of the findings: `finished` false when the unit is not verified (every group is then unranked); the groups without a priority, each by its representative finding, with the reasons of the judges (empty when none judged it). */
+  priority: { finished: boolean; unranked: { id: string; category: FindingCategory; text: string; reasons: string[] }[] };
 }
 
 /** One notification of a verified entry, in the entry's words; `feature` is the id of the feature. */

@@ -284,3 +284,17 @@ h1, h2, h3 { margin: 0; font-weight: 600; line-height: 1.3; letter-spacing: -0.0
 .dict-set { margin-bottom: 20px; }
 .dict-set-name { margin: 8px 0 2px; font-size: 14px; font-weight: 600; overflow-wrap: anywhere; }
 td[data-kind="string"]::before, td[data-kind="string"]::after { content: '"'; color: var(--text-2); }
+
+/* The level of a group of findings (openspec change handbook-findings-priority). */
+.priority-badge {
+  display: inline-block; padding: 0 8px; border-radius: 999px; white-space: nowrap;
+  font-size: 12.5px; font-weight: 600; line-height: 1.6; color: var(--priority-color, var(--reach-operator));
+  background: color-mix(in srgb, var(--priority-color, var(--reach-operator)) 12%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--priority-color, var(--reach-operator)) 28%, transparent);
+}
+.priority-badge[data-level="P0"] { --priority-color: #c4271f; }
+.priority-badge[data-level="P1"] { --priority-color: var(--reach-automated); }
+.priority-badge[data-level="P2"] { --priority-color: var(--reach-link); }
+@media (prefers-color-scheme: dark) {
+  .priority-badge[data-level="P0"] { --priority-color: #ff8a80; }
+}
