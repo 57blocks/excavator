@@ -128,7 +128,7 @@
     "md.data.note.nameRules": "A table name appears in an application when, in a file of that application outside the migration directories, (a) a string is exactly the table name; (b) the table name comes right after FROM, JOIN, INTO, UPDATE or TABLE, or after TABLE, an opening parenthesis and a quote; or (c) the table name comes right after many2many:.",
     "md.data.note.comments": "A name inside a comment counts as appearing.",
     "md.data.note.ormDefaults": "Access through a model type, through a name put together from several strings, or through a library default such as the default table of an adapter, is not seen.",
-    "md.data.note.onlyInMigrations": "A name that appears only in migrations means these two rules found it nowhere else. It does not mean the table is unused.",
+    "md.data.note.onlyInMigrationsAnyRule": "A name that appears only in migrations means none of these rules found it anywhere else. It does not mean the table is unused.",
     "md.data.recognized": "Forms of table declaration recognized in this version: {forms}.",
     "md.data.form.migrationCalls": "table calls in migration scripts (create, drop, rename and change calls with a literal table name)",
     "md.data.form.migrationSql": "SQL statements in migration scripts and in .sql migration files",

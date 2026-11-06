@@ -57,7 +57,7 @@ export function dataBlock(section, t) {
   if (section.state === 'malformed') return [...out, t('md.data.malformed'), ''];
   const { data } = section;
   const { counts } = data;
-  out.push(...[t('md.data.note.nameRules'), t('md.data.note.comments'), t('md.data.note.ormDefaults'), t('md.data.note.onlyInMigrations')].flatMap((line) => [line, '']));
+  out.push(...[t('md.data.note.nameRules'), t('md.data.note.comments'), t('md.data.note.ormDefaults'), t('md.data.note.onlyInMigrationsAnyRule')].flatMap((line) => [line, '']));
   out.push(fill(t('md.data.recognized'), { forms: data.recognized.map((form) => t(formKey(form))).join('; ') }), '');
   out.push(fill(t('md.data.countLine'), {
     tables: counts.tables,

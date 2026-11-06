@@ -84,7 +84,7 @@ describe('the technical handbook has a data chapter after the system overview', 
     expect(grouping).toBeGreaterThan(0);
     expect(at(`## ${ui['md.data.heading']}`)).toBeLessThan(grouping);
     const text_ = chapter(body);
-    for (const key of ['md.data.note.nameRules', 'md.data.note.comments', 'md.data.note.ormDefaults', 'md.data.note.onlyInMigrations']) expect(text_, key).toContain(ui[key]);
+    for (const key of ['md.data.note.nameRules', 'md.data.note.comments', 'md.data.note.ormDefaults', 'md.data.note.onlyInMigrationsAnyRule']) expect(text_, key).toContain(ui[key]);
     expect(text_).toContain(ui['md.data.recognized'].replace('{forms}', ['migration-calls', 'migration-sql', 'go-table-name', 'js-table-name', 'sql-file-create-table'].map((form) => ui[`md.data.form.${form.replace(/-([a-z])/g, (_, c) => c.toUpperCase())}`]).join('; ')));
     expect(text_).toContain('Tables: 30. Migrations: 30 (27 replayed, 2 not split, 1 down only). Tables whose name appears in two or more applications: 3. Tables whose name appears only in migrations: 17. Tables dropped by a migration: 6. Tables declared by a model or a .sql file and created by no migration: 6. Tables removed by a migration and still declared: 3. Tables changed by a migration and created by none: 1. Gaps: 12.');
   });

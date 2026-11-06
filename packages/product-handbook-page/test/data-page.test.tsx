@@ -131,7 +131,7 @@ describe('the data page', () => {
   const body = main(html);
 
   it('shows the fixed note, the recognized forms and the count line', () => {
-    for (const key of ['md.data.note.nameRules', 'md.data.note.comments', 'md.data.note.ormDefaults', 'md.data.note.onlyInMigrations']) expect(body, key).toContain(marked[key]);
+    for (const key of ['md.data.note.nameRules', 'md.data.note.comments', 'md.data.note.ormDefaults', 'md.data.note.onlyInMigrationsAnyRule']) expect(body, key).toContain(marked[key]);
     expect(body).toContain(`${MARK}Forms of table declaration recognized in this version: ${marked['md.data.form.migrationCalls']}; ${marked['md.data.form.goTableName']}.`);
     expect(body).toContain(`${MARK}Tables: 4. Migrations: 4 (3 replayed, 1 not split, 0 down only). Tables whose name appears in two or more applications: 1. Tables whose name appears only in migrations: 1. Tables dropped by a migration: 1. Tables declared by a model or a .sql file and created by no migration: 1. Tables removed by a migration and still declared: 1. Tables changed by a migration and created by none: 1. Gaps: 4.`);
   });
