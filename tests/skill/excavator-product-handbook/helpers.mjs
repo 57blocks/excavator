@@ -256,7 +256,10 @@ export function traceFeature(run, id = 'F1', decide = () => 'holds', edit = () =
       const verdicts = file.items.map((item) => {
         const given = decider(item);
         const verdict = typeof given === 'string' ? { verdict: given } : given;
-        return { id: item.id, ...verdict, reason: verdict.reason ?? `Nothing in the code disagrees with ${item.id}.` };
+        const written = { id: item.id, ...verdict, reason: verdict.reason ?? `Nothing in the code disagrees with ${item.id}.` };
+        // A finding whose statement has scope words needs one case for each word in a holds verdict.
+        if (written.verdict === 'holds' && written.scope === undefined && item.scopeWords !== undefined) written.scope = item.scopeWords.map((word) => ({ word, case: `A case inside "${word}" for ${item.id}.`, result: `The code does what the claim says for the case of ${item.id}.` }));
+        return written;
       });
       editor(part, verdicts);
       writeFileSync(join(dir, `part-${part}.${letter}.json`), `${JSON.stringify({ verdicts }, null, 2)}\n`);

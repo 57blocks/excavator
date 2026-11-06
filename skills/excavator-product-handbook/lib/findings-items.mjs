@@ -11,6 +11,7 @@
 
 import { categoryKey } from './findings-shape.mjs';
 import { itemOf, textOf } from './items.mjs';
+import { scopeWordsOf, wordsIn } from './word-lists.mjs';
 
 const SEP = ' > ';
 
@@ -43,4 +44,16 @@ export function trimFindings(doc, removed) {
   const out = structuredClone(doc);
   out.findings = doc.findings.filter((_, i) => !removed.has(`findings[${i}]`));
   return { entry: out, together: [] };
+}
+
+/**
+ * The scope words of one finding for its trace item (design D9 of the change):
+ * the words of the run's table that its statement holds, in the order of the
+ * table. The statement only, never the fixed words of the claim. `[]` for a
+ * path that is not a finding.
+ */
+export function findingScopeWords(doc, path, ui) {
+  const found = /^findings\[(\d+)\]$/.exec(path);
+  if (found === null) return [];
+  return wordsIn(doc.findings[Number(found[1])].text, scopeWordsOf(ui));
 }

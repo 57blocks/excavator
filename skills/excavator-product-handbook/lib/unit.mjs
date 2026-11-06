@@ -19,7 +19,7 @@ import { entryProblems } from './feature-check.mjs';
 import { entryItems } from './items.mjs';
 import { itemClaims } from './claims.mjs';
 import { findingsProblems } from './findings-check.mjs';
-import { findingsClaims, findingsItems, trimFindings } from './findings-items.mjs';
+import { findingScopeWords, findingsClaims, findingsItems, trimFindings } from './findings-items.mjs';
 import { featureOfFindings, findingsShapeProblems, isFindingsId } from './findings-shape.mjs';
 import { overviewProblems } from './overview-check.mjs';
 import { overviewClaims, overviewItems, trimOverview } from './overview-items.mjs';
@@ -63,6 +63,8 @@ const FINDINGS = Object.freeze({
   items: findingsItems,
   claims: findingsClaims,
   trim: trimFindings,
+  /** The scope words of the statement of the item `path` (design D9): its trace item carries them. */
+  scopeWords: findingScopeWords,
   problems: (doc, id, ctx) => findingsProblems(doc, id, ctx),
   settledAfter: () => true,
   /** A unit may hold no finding, and one that lost every finding to verification is still verified, with none. */

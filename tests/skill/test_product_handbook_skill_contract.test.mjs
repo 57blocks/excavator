@@ -1129,6 +1129,19 @@ describe('the handbook tracer agent', () => {
     expect(first.reason).toMatch(/^Read /);
   });
 
+  it('documents scopeWords in the trace file and scope in the verdict file, and the documented scope shape is the one trace-verdicts accepts (D9)', () => {
+    expect(text).toContain('`scopeWords`: only on a claim that states a defect');
+    expect(text).toContain('add `scope`: an array with exactly one `{ "word", "case", "result" }` for each of its words');
+    expect(text).toContain('a case from the claim\'s own words that falls inside what the word covers and is as far as you can make it from the code\'s own condition');
+    expect(text).toContain('When the result differs from what the claim says, the verdict is `contradicted`, not `holds`.');
+    expect(text).toContain('A `contradicted` verdict needs no `scope`.');
+    const item = { id: 'findings[0]', scopeWords: ['all'] };
+    const files = { root: '/x', resolve: () => ({ ok: false, reason: 'is not a file in the project' }) };
+    const holds = (scope) => ({ verdicts: [{ id: 'findings[0]', verdict: 'holds', reason: 'Read it.', ...(scope === undefined ? {} : { scope }) }] });
+    expect(traceVerdictProblems(holds([{ word: 'all', case: 'A case.', result: 'A result.' }]), [item], files, [])).toEqual([]);
+    expect(traceVerdictProblems(holds(), [item], files, [])).toEqual(['findings[0]: the holds verdict has no scope case for "all"']);
+  });
+
   it('gives exactly two verdicts: holds also when it cannot settle it, contradicted only with code it can point to', () => {
     expect(text).toMatch(/there is no third/i);
     expect(text).toContain('You looked and found no code that disagrees with the claim. Also when you cannot settle it');
@@ -1663,7 +1676,7 @@ describe('excavator-product-handbook skill: Phase 4c, the findings (O1 of handbo
   };
 
   it('sections/findings.md is pinned, holds Phase 4c only and starts with the language reminder', () => {
-    expect(digest(text)).toBe('a84f769c08d39f66b5f474ec4b9986645a2c3db09ba1ab1f77ebb6cea28a78c2');
+    expect(digest(text)).toBe('1d6275f6bafa185abb680822852e81b04284d3ca938811ed4ad88b2d4d7a645a');
     expect([...text.matchAll(/^## Phase .+$/gm)].map((match) => match[0])).toEqual(['## Phase 4c: Findings']);
     expect(text.startsWith('## Phase 4c: Findings\n')).toBe(true);
     expect(p.startsWith(PHASE_LANGUAGE)).toBe(true);
@@ -1723,6 +1736,11 @@ describe('excavator-product-handbook skill: Phase 4c, the findings (O1 of handbo
     expect(Object.keys(doc)).toEqual(['format', 'id', 'findings', 'unknowns']);
     expect(doc.format).toBe(FINDINGS_FORMAT);
     expect(prompt).toContain('Every key is always there');
+  });
+
+  it('asks the lane to cite the lines that decide when a scope word of its statement happens, and to leave the word out when none proves it (D9)', () => {
+    expect(prompt).toContain('When the statement uses a word of scope (all, every, never, always, only and the like, in $LANGUAGE), cite the lines that decide when it happens');
+    expect(prompt).toContain('When no passage proves that scope, leave the word out and state only the case the passages show.');
   });
 
   it('lists every category of the enum, with its meaning, and no other', () => {

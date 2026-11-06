@@ -4,7 +4,9 @@
  * that still carries evidence is `{ id, claim, citations }`, the id its JSON
  * path, the claim exactly as the verifiers saw it, and the citations the file
  * and line range of each cited passage, no code: the tracer reads the project
- * itself. Parts hold at most `PART_MAX_ITEMS` items, in entry order, in
+ * itself. An item of a findings unit whose statement holds scope words of the
+ * run's table also carries `scopeWords` (design D9 of handbook-feature-findings).
+ * Parts hold at most `PART_MAX_ITEMS` items, in entry order, in
  * `<out>/trace/<id>/part-<n>.json`; each part is traced by two tracers that do
  * not see each other (design D1 of handbook-dual-tracer), each writing its
  * verdicts to its own file `<out>/trace-verdicts/<id>/part-<n>.a.json` or
@@ -50,7 +52,11 @@ export function traceItems(unit, entry, { ui, files }) {
       const lines = `${found.startLine}-${found.endLine}`;
       if (!citations.some((one) => one.file === file && one.lines === lines)) citations.push({ file, lines });
     }
-    return { id: item.path, claim, citations };
+    const traced = { id: item.path, claim, citations };
+    // A finding's statement may hold scope words (design D9): the tracer builds a case for each.
+    const scopeWords = unit.scopeWords?.(entry, item.path, ui) ?? [];
+    if (scopeWords.length > 0) traced.scopeWords = scopeWords;
+    return traced;
   });
 }
 

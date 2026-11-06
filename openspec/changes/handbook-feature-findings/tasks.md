@@ -26,8 +26,8 @@
 
 提交：`feat(product-handbook): tracers build a case for every scope word of a finding`
 
-- [ ] 4.1 测试先红：追查文件的 `scopeWords`、`trace-verdicts` 对 `scope` 的检查、条目的追查文件不带这个键（design D9）
-- [ ] 4.2 `ui-strings.json` 的 `md.findings.scopeWords`；`trace` 与 `trace-verdicts`；追查者 agent 与 `sections/findings.md` 的措辞；合约测试更新摘要
+- [x] 4.1 测试先红：追查文件的 `scopeWords`、`trace-verdicts` 对 `scope` 的检查、条目的追查文件不带这个键（design D9）
+- [x] 4.2 `ui-strings.json` 的 `md.findings.scopeWords`；`trace` 与 `trace-verdicts`；追查者 agent 与 `sections/findings.md` 的措辞；合约测试更新摘要
 
 ## 5. 验收
 

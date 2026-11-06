@@ -261,6 +261,7 @@
     "md.findings.category.time": "Date, time zone and calendar defects",
     "md.findings.category.other": "Other",
     "md.findings.adviceWords": "should,must,ought,recommend,recommended,recommendation,suggest,suggested,suggestion,consider,fix,improve,improvement,refactor,avoid,better,ideally,preferably,needs to,need to",
+    "md.findings.scopeWords": "all,every,each,any,always,never,none,nobody,no one,only,whenever,whatever,every time",
     "md.summary.notifications.heading": "All notifications",
     "md.summary.notifications.counts": "Features with a verified entry: {verified} of {total}. Notifications listed: {count}. The notifications of the other features are not in this table; see the coverage section.",
     "md.summary.notifications.note": "Each row is one notification of a verified entry, in the words of the entry. Rows are not merged and channel names are not unified.",
