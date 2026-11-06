@@ -1603,11 +1603,12 @@ describe('excavator-product-handbook skill: sections (O2 of handbook-sections)',
 
   it('sections/data.md is pinned, holds Phase 4b only, runs the data command and dispatches no subagent', () => {
     const text = sectionText('sections/data.md');
-    expect(digest(text)).toBe('e51a64b99e522b2ac242ed7add0995b6c7de16509e8b9dad9a28d1099f66ffcb');
+    expect(digest(text)).toBe('ee6537f65af43d773f643adb8b6dd343a049fdc556ff6e89ede368cd1c5f57bc');
     expect([...text.matchAll(/^## Phase .+$/gm)].map((match) => match[0])).toEqual(['## Phase 4b: Data']);
     expect(blocks(text, 'bash').map((block) => block.trim())).toEqual([`node "$PLUGIN_ROOT/skills/excavator-product-handbook/handbook.mjs" data "$PROJECT_ROOT" "$OUT"`]);
     const flatText = flat(text);
-    expect(flatText).toContain('On exit 0, tell the user the one line it printed, as it is');
+    expect(flatText).toContain('On exit 0, tell the user the two lines it printed (the one that starts `Data:` and the one that starts `Dictionaries:`), as they are');
+    expect(flatText).toContain('It writes `$OUT/data.json` and then `$OUT/dictionaries.json` on every run');
     expect(flatText).toContain('On any other exit, tell the user the lines it printed as they are, and stop');
     expect(flatText).toContain('dispatch no subagent');
     expect(flatText).toContain('It needs no map');

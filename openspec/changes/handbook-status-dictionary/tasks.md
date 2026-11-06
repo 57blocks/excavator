@@ -2,11 +2,11 @@
 
 提交：`feat(product-handbook): the data command lists the value sets, with their comments and display names`
 
-- [ ] 1.1 夹具 `tests/fixtures/product-handbook/dict-project/` 与手写期望的测试，先红（design O1）
-- [ ] 1.2 Go、TS、JS 的值集合与值（design D2）
-- [ ] 1.3 注释与显示名（design D3）
-- [ ] 1.4 桶与守恒（design D4）、同名不同值（design D5）
-- [ ] 1.5 `dictionaries.json` 的写出与形状校验，计数行；`sections/data.md` 照抄两行，合约测试更新摘要（design D1）
+- [x] 1.1 夹具 `tests/fixtures/product-handbook/dict-project/` 与手写期望的测试，先红（design O1）
+- [x] 1.2 Go、TS、JS 的值集合与值（design D2）
+- [x] 1.3 注释与显示名（design D3）
+- [x] 1.4 桶与守恒（design D4）、同名不同值（design D5）
+- [x] 1.5 `dictionaries.json` 的写出与形状校验，计数行；`sections/data.md` 照抄两行，合约测试更新摘要（design D1）
 
 ## 2. 呈现
 

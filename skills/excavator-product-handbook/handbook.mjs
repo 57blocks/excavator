@@ -22,8 +22,11 @@
  *       Print the application roots of the project: the topmost directories
  *       that hold a build manifest, found with the candidate lister's walk.
  *   data <projectRoot> <out>
- *       Write <out>/data.json: the tables of the project, its migrations and
- *       where each table name appears, from the source alone; print one count line.
+ *       Write <out>/data.json (the tables of the project, its migrations and
+ *       where each table name appears) and <out>/dictionaries.json (the value
+ *       sets: Go named types with their constants, TypeScript enums, JavaScript
+ *       state objects, each member with its comment and display name), from the
+ *       source alone; print one count line for each (Data:, Dictionaries:).
  *   check-overview <out> --project <root>
  *       Check <out>/entries/overview.json (the system overview): the checks of
  *       an entry, no citation of a documentation file, and the applications
@@ -165,8 +168,14 @@ Commands:
       string that is the whole name, or the name after FROM, JOIN, INTO, UPDATE
       or TABLE), per application; and the gaps (operations whose table name is
       not a literal, migration files without a readable up part, model table
-      names that are not literals). Reads the source statically, never builds or
-      runs it. Prints one count line.
+      names that are not literals). Also writes <out>/dictionaries.json: the
+      value sets (a Go named type with a string or integer type and the
+      constants declared with it, iota computed by Go's rules; a TypeScript enum;
+      a JavaScript object assigned to a name that ends in Status, State, Type
+      and the like), each member with its value, its place, the comment next to
+      it and the display names a mapping table gives it, and the same-named
+      sets whose values differ between applications. Reads the source
+      statically, never builds or runs it. Prints two count lines.
   check-overview <out> --project <root>
       Check <out>/entries/overview.json, the system overview: the same checks
       as check-entry (shape, citations, labels, numbers, banned words, the
