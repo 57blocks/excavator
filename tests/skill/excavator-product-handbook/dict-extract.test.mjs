@@ -17,6 +17,7 @@ const TS_CONSTS = 'web-app/src/consts.ts';
 const TABLES = 'node-app/src/tables.js';
 const VARS = 'go-app/status/vars.go';
 const PLURAL = 'node-app/src/plural.js';
+const RECORDS = 'node-app/src/records.js';
 const TS_PLURAL = 'web-app/src/plural.ts';
 const CONSTANTS = 'node-app/src/constants.js';
 
@@ -52,6 +53,8 @@ describe('the value sets of the fixture', () => {
       [`${PLURAL}:TicketCategories`, 'js-object', 'node-app', 3],
       [`${PLURAL}:AllTypes`, 'js-object', 'node-app', 4],
       [`${PLURAL}:Roles`, 'js-object', 'node-app', 5],
+      [`${RECORDS}:ErrorStatus`, 'js-object', 'node-app', 1],
+      [`${RECORDS}:TaskStatus`, 'js-object', 'node-app', 11],
       [`${TABLES}:RoleType`, 'js-object', 'node-app', 1],
       [`${TABLES}:NoteKind`, 'js-object', 'node-app', 11],
       [`${TS_CONSTS}:TicketStatus`, 'ts-const-object', 'web-app', 1],
@@ -66,7 +69,7 @@ describe('the value sets of the fixture', () => {
     expect(data.dictionaries.filter((entry) => entry.form === 'go-type').map((entry) => [entry.name, entry.baseType])).toEqual([
       ['InvoiceState', 'string'], ['Mode', 'uint8'], ['Tier', 'string'], ['Status', 'int'], ['Kind', 'string'], ['Level', 'uint8'], ['Flags', 'uint16'], ['Phase', 'int32'], ['Tone', 'string'], ['Shade', 'uint8'],
     ]);
-    expect(data.applications).toEqual([{ directory: 'go-app', dictionaries: 10 }, { directory: 'node-app', dictionaries: 11 }, { directory: 'web-app', dictionaries: 8 }]);
+    expect(data.applications).toEqual([{ directory: 'go-app', dictionaries: 10 }, { directory: 'node-app', dictionaries: 13 }, { directory: 'web-app', dictionaries: 8 }]);
   });
 });
 
@@ -99,6 +102,29 @@ describe('Go: types, constants and iota', () => {
   it('takes string constants as they are, and leaves an untyped constant that points at a member out of the set', () => {
     expect(members(`${TYPES}:Kind`)).toEqual([['KindInternal', 'internal', true, 16], ['KindExternal', 'external', true, 17]]);
     expect(members('go-app/billing/invoice.go:InvoiceState')).toEqual([['InvoiceOpen', 'open', true, 7], ['InvoicePaid', 'paid', true, 8], ['InvoiceVoid', 'void', true, 9]]);
+  });
+});
+
+describe('JavaScript: members whose value is an object with a code, a value or an id', () => {
+  it('takes the first of code, value and id that is a literal as the value of the member, whatever the order in the source', () => {
+    expect(members(`${RECORDS}:ErrorStatus`)).toEqual([['ok', 0, true, 2], ['bad', 7, true, 3], ['odd', 3, true, 4], ['unused', 9, true, 7], ['plain', 'plain', true, 8]]);
+    expect(members(`${RECORDS}:TaskStatus`)).toEqual([['open', 1, true, 12], ['later', 4, true, 16]]);
+  });
+
+  it('takes the first of message, label, name, desc and description that is a string literal as a display name, at its own line', () => {
+    const labels = (id, name) => member(id, name).labels.map((l) => [l.text, l.file, l.line]);
+    expect(labels(`${RECORDS}:ErrorStatus`, 'ok')).toEqual([['Fine', RECORDS, 2]]);
+    expect(labels(`${RECORDS}:ErrorStatus`, 'bad')).toEqual([['Broken', RECORDS, 3]]);
+    expect(labels(`${RECORDS}:ErrorStatus`, 'odd')).toEqual([['Odd', RECORDS, 4]]);
+    expect(labels(`${RECORDS}:ErrorStatus`, 'unused')).toEqual([]);
+    expect(labels(`${RECORDS}:TaskStatus`, 'open')).toEqual([['Open task', RECORDS, 14]]);
+    expect(labels(`${RECORDS}:TaskStatus`, 'later')).toEqual([]);
+  });
+
+  it('counts an object with none of them in skippedMembers, and keeps the comments next to a member', () => {
+    expect(dict(`${RECORDS}:ErrorStatus`).skippedMembers).toBe(1);
+    expect(dict(`${RECORDS}:TaskStatus`).skippedMembers).toBe(0);
+    expect(member(`${RECORDS}:ErrorStatus`, 'unused').comments.map((c) => [c.text, c.line, c.where])).toEqual([['the unused one', 6, 'above'], ['trailing', 7, 'same-line']]);
   });
 });
 

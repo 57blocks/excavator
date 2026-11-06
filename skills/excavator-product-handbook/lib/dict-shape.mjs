@@ -13,9 +13,9 @@ import { isObject } from './json-file.mjs';
 
 export const DICT_FORMAT = 'excavator-product-handbook-dictionaries/1';
 /** The forms this version recognizes; the page words each by its key. */
-export const DICT_RECOGNIZED = Object.freeze(['go-named-type', 'go-typed-var', 'ts-enum', 'ts-const-object', 'js-object']);
+export const DICT_RECOGNIZED = Object.freeze(['go-named-type', 'go-typed-var', 'ts-enum', 'ts-const-object', 'js-object', 'js-record-member']);
 
-const FORMS = Object.freeze(['go-type', 'ts-enum', 'ts-const-object', 'js-object']);
+const FORMS = Object.freeze(['go-type', 'ts-enum', 'ts-const-object', 'js-object', 'js-record-member']);
 /** The buckets a candidate of each kind can land in. */
 export const CANDIDATE_BUCKETS = Object.freeze({
   'go-type': Object.freeze(['dictionary', 'noConstants', 'duplicate']),

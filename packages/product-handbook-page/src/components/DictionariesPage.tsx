@@ -130,7 +130,7 @@ function SectionBody({ section }: { section: DictionariesSection }) {
   return (
     <>
       <div className="summary-note" data-part="dict-note">
-        {['md.dict.note.nameRule', 'md.dict.note.meaning', 'md.dict.note.values'].map((key) => <p className="muted" key={key}>{t(key)}</p>)}
+        {['md.dict.note.nameRule', 'md.dict.note.sources', 'md.dict.note.values'].map((key) => <p className="muted" key={key}>{t(key)}</p>)}
         <p className="muted">{t('md.dict.recognized', { forms: section.recognized.map((form) => t(formKey(form))).join('; ') })}</p>
       </div>
       <p className="summary-counts">

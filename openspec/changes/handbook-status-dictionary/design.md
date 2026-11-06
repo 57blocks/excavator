@@ -42,6 +42,7 @@ Go，按包（目录）处理：
   - 一项写了类型 `T`，且 `T` 是同一目录里声明的基本具名类型：属于值集合 `T`。
   - 只写名字的项：重复上一项的类型与表达式（Go 的隐式重复）。
   - `iota` 是该项在组里的序号，从 0 起。
+- **变量**：`var ( … )` 组与单独的 `var`。一项写了类型 `T`（`T` 同上是本目录的基本具名类型）且写了值：属于值集合 `T`，成员记 `declaredAs: 'var'`（const 不记）。没写类型或没写值的 var 不是候选。var 里没有 `iota`，不算；值只认字面值，其它表达式照原样写出，标 `computed: false`。
 - **值**：
   - 字符串、整数字面值照写；
   - 能算出的表达式：`iota`、`iota ± k`、`k + iota`、`iota * k`、`1 << iota`、`1 << (iota + k)`，按 Go 语义算出；
@@ -52,11 +53,11 @@ TypeScript：
 - 成员写了值时照写；没写值时，按语言规则取上一个数值成员加 1，第一个成员是 0。上一个成员是字符串或算不出的表达式时，这一项也算不出，照原样标明。
 
 JavaScript（以及 TypeScript 文件里以 `as const` 结尾的对象）：
-- 赋值给 `const|let|var X`、`module.exports.X`、`exports.X` 的对象字面量，且 `X` 匹配 `/(status|state|type|kind|stage|phase|level|role|mode|category)$/i`；
-- 值集合是其中值为字符串或数字字面值的顶层成员；
+- 赋值给 `const|let|var X`、`module.exports.X`、`exports.X` 的对象字面量，且 `X` 匹配 `/(status|state|type|kind|stage|phase|level|role|mode|category)$/i`，词后可带复数后缀 `s` 或 `es`（`Levels`、`Statuses`），`category` 的复数是 `categories`；
+- 值集合是其中值为字符串或数字字面值的顶层成员，以及值为对象字面值、且含字面值 `code`、`value`、`id` 属性的成员（按此顺序取第一个找到的作成员的值；成员名是键）；
 - 其它顶层成员：
-  - 反向表（键都是本集合的值、值都是字符串字面值的嵌套对象）按 D3 处理；
-  - 其余计入该集合的 `skippedMembers`。
+  - 反向表（值都是字符串字面值的嵌套对象，且至少有一个键是本集合的某个值）按 D3 处理，键不对应任何成员的条目进 `unmatchedKey`（D4），不整张丢弃；
+  - 其余计入该集合的 `skippedMembers`（含没有任何键对应成员的嵌套对象）。
 
 值集合的 `id` 是 `应用/文件:名字`。Go 的 `id` 用声明类型的文件。
 
@@ -71,7 +72,7 @@ JavaScript（以及 TypeScript 文件里以 `as const` 结尾的对象）：
 **显示名**：
 - Go：同一应用里任意 `map[K]string{ … }` 字面值的条目。键是 `C`、`pkg.C`，或 `C.Method()`、`pkg.C.Method()`，`C` 是某个值集合的成员，值是字符串字面值。
 - TS：对象字面值的条目，键是 `[E.M]` 或 `[E['M']]`，值是字符串字面值。
-- JS：D2 的反向表。
+- JS：D2 的反向表；以及值为对象的成员里，字符串字面值的 `message`、`label`、`name`、`desc`、`description` 属性（按此顺序取第一个找到的），记该属性所在的文件与行。
 
 显示名记下映射表条目的文件与行。一个成员有多个显示名时全部列出。
 
@@ -81,9 +82,10 @@ JavaScript（以及 TypeScript 文件里以 `as const` 结尾的对象）：
 |---|---|
 | Go 基本具名类型 | `dictionary`（有常量）／`noConstants` |
 | Go 常量项 | `member`／`untypedIota`（组里没有类型、用了 `iota`）／`otherType`（类型不是本目录的基本具名类型）／`plain`（无类型、不用 `iota`） |
+| Go 带类型且有值的 var 项 | `member`／`otherType` |
 | TS 枚举 | `dictionary` |
 | JS 候选对象 | `dictionary`（至少一个字面值成员）／`noLiteralMembers` |
-| 映射表条目 | `label`／`unmatchedKey`：键形似成员引用，却不对应任何成员 |
+| 映射表条目 | `label`／`unmatchedKey`：键形似成员引用，却不对应任何成员；JS 反向表里键不是任何成员的值的条目同样进 `unmatchedKey`，行上写键与位置 |
 
 `counts` 只由脚本从清单算出。守恒测试逐类核对。
 

@@ -60,7 +60,7 @@ function subpart(part, headingKey) {
 
 describe('the shipped fixed text', () => {
   it('has every key the part and the page use', () => {
-    for (const key of ['md.dict.heading', 'md.dict.note.nameRule', 'md.dict.note.meaning', 'md.dict.countLine', 'md.dict.notWritten', 'md.dict.malformed', 'md.dict.mismatchHeading', 'md.dict.table.member', 'page.dict.filter.search']) expect(typeof ui[key], key).toBe('string');
+    for (const key of ['md.dict.heading', 'md.dict.note.nameRule', 'md.dict.note.sources', 'md.dict.countLine', 'md.dict.notWritten', 'md.dict.malformed', 'md.dict.mismatchHeading', 'md.dict.table.member', 'page.dict.filter.search']) expect(typeof ui[key], key).toBe('string');
   });
 
   it('names every word of the JavaScript name filter in the note, and the forms in the recognized list', () => {
@@ -68,10 +68,10 @@ describe('the shipped fixed text', () => {
     expect(ui['md.dict.note.nameRule']).toContain('as const');
     expect(ui['md.dict.note.nameRule']).toContain('plural');
     expect(Object.keys(ui)).not.toContain('md.dict.note.nameFilter');
-    expect(ui['md.dict.note.meaning']).toContain('comment');
-    expect(ui['md.dict.note.meaning']).toContain('blank');
+    expect(ui['md.dict.note.sources']).toContain('comment');
+    expect(ui['md.dict.note.sources']).toContain('blank');
     expect(ui['md.dict.form.tsConstObject']).toContain('as const');
-    expect(Object.keys(ui).filter((key) => key.startsWith('md.dict.form.')).sort()).toEqual(['md.dict.form.goNamedType', 'md.dict.form.goTypedVar', 'md.dict.form.jsObject', 'md.dict.form.tsConstObject', 'md.dict.form.tsEnum']);
+    expect(Object.keys(ui).filter((key) => key.startsWith('md.dict.form.')).sort()).toEqual(['md.dict.form.goNamedType', 'md.dict.form.goTypedVar', 'md.dict.form.jsObject', 'md.dict.form.jsRecordMember', 'md.dict.form.tsConstObject', 'md.dict.form.tsEnum']);
   });
 
   it('has no apostrophe in a text the page shows, since the page escapes it', () => {
@@ -95,9 +95,9 @@ describe('the technical handbook has the status dictionary inside the data chapt
     const made = run(dictionaries);
     assemble(made, 'technical');
     const part = dictionaryPart(text(made, 'handbook-technical.md'));
-    for (const key of ['md.dict.note.nameRule', 'md.dict.note.meaning', 'md.dict.note.values']) expect(part, key).toContain(ui[key]);
-    expect(part).toContain(ui['md.dict.recognized'].replace('{forms}', ['goNamedType', 'goTypedVar', 'tsEnum', 'tsConstObject', 'jsObject'].map((form) => ui[`md.dict.form.${form}`]).join('; ')));
-    expect(part).toContain('Value sets: 29 (10 Go types, 5 TS enums, 3 TS const objects, 11 JS objects). Members: 80 (74 computed, 6 not computed). Comments: 11. Display names: 20. Same names with different values: 3. Skipped members: 5.');
+    for (const key of ['md.dict.note.nameRule', 'md.dict.note.sources', 'md.dict.note.values']) expect(part, key).toContain(ui[key]);
+    expect(part).toContain(ui['md.dict.recognized'].replace('{forms}', ['goNamedType', 'goTypedVar', 'tsEnum', 'tsConstObject', 'jsObject', 'jsRecordMember'].map((form) => ui[`md.dict.form.${form}`]).join('; ')));
+    expect(part).toContain('Value sets: 31 (10 Go types, 5 TS enums, 3 TS const objects, 13 JS objects). Members: 87 (81 computed, 6 not computed). Comments: 13. Display names: 24. Same names with different values: 3. Skipped members: 6.');
     expect(part).toContain('Candidates that are not value sets: 2 Go types without constants or variables, 0 Go types declared again, 2 untyped iota constants, 2 constants of another type, 3 plain constants, 1 variables of another type, 1 TS const objects without literal members, 1 JS objects without literal members. Mapping table entries that name no member: 7. Mapping table entries that name more than one member: 0.');
   });
 
@@ -106,9 +106,9 @@ describe('the technical handbook has the status dictionary inside the data chapt
     assemble(made, 'technical');
     const part = dictionaryPart(text(made, 'handbook-technical.md'));
     const sets = part.split('\n').filter((line) => line.startsWith('###### '));
-    expect(sets).toHaveLength(29);
+    expect(sets).toHaveLength(31);
     const rows = part.split('\n').filter((line) => line.startsWith('| ') && !line.startsWith('| ---') && !line.startsWith(`| ${ui['md.dict.table.member']} |`));
-    expect(rows).toHaveLength(80);
+    expect(rows).toHaveLength(87);
     const mismatch = subpart(part, 'md.dict.mismatchHeading');
     expect(mismatch.split('\n').filter((line) => line.startsWith('- '))).toHaveLength(3);
     // the numbers of the count line, read back from the text, equal the list lengths
@@ -187,7 +187,7 @@ describe('the product view never shows the status dictionary', () => {
     expect(assemble(made, 'product').status).toBe(0);
     const body = text(made, 'handbook.md');
     expect(body).not.toContain(ui['md.dict.heading']);
-    expect(body).not.toContain(ui['md.dict.note.meaning']);
+    expect(body).not.toContain(ui['md.dict.note.sources']);
     expect(body).not.toContain('TicketStatus');
     expect(existsSync(join(made.out, 'handbook-technical.md'))).toBe(false);
   });
@@ -251,10 +251,10 @@ describe('the page data carries the dictionary in its technical part only', () =
     expect(Object.keys(got.technical).slice(-2)).toEqual(['dictionaries', 'dictionariesState']);
     expect(got.technical.dictionariesState).toBe('ok');
     expect(Object.keys(got.technical.dictionaries)).toEqual(['recognized', 'applications', 'dictionaries', 'mismatches', 'counts']);
-    expect(got.technical.dictionaries.dictionaries).toHaveLength(29);
+    expect(got.technical.dictionaries.dictionaries).toHaveLength(31);
     expect(got.technical.dictionaries.mismatches).toHaveLength(3);
     expect(got.technical.dictionaries.counts).toEqual(dictionaries.counts);
-    expect(got.technical.dictionaries.recognized).toEqual(['go-named-type', 'go-typed-var', 'ts-enum', 'ts-const-object', 'js-object']);
+    expect(got.technical.dictionaries.recognized).toEqual(['go-named-type', 'go-typed-var', 'ts-enum', 'ts-const-object', 'js-object', 'js-record-member']);
     const status = got.technical.dictionaries.dictionaries.find((entry) => entry.id === 'go-app/status/types.go:Status');
     expect(status.members[0]).toEqual(dictionaries.dictionaries.find((entry) => entry.id === 'go-app/status/types.go:Status').members[0]);
   });

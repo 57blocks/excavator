@@ -8,7 +8,10 @@
  * display names of the members that have those values; an entry whose key is
  * no member's value is returned in `unmatchedEntries`, and a nested object with
  * no key that is a member's value is not a reverse table. Every other top-level
- * member is counted in `skippedMembers`. In a TypeScript file (`asConst`) only
+ * member is counted in `skippedMembers`. A member whose value is an object
+ * with a literal `code`, `value` or `id` (the first found, in that order) is a
+ * member with that value, and its first string literal `message`, `label`,
+ * `name`, `desc` or `description` is its display name. In a TypeScript file (`asConst`) only
  * `const X = { ... } as const` is read, the same way. Nothing is run.
  */
 
@@ -69,6 +72,31 @@ function stringTable(source, open, close) {
   return entries.length === 0 ? null : entries;
 }
 
+/** Where a record gives its value: the first of these properties that is a string or a number literal. */
+const VALUE_PROPERTIES = Object.freeze(['code', 'value', 'id']);
+/** Where a record gives its display name: the first of these properties that is a non-empty string literal. */
+const LABEL_PROPERTIES = Object.freeze(['message', 'label', 'name', 'desc', 'description']);
+
+/**
+ * The reading of a member whose value is an object literal at `[open, close]`:
+ * `{ value, label }` (`label` is `{ property, text, line }` or null), or null
+ * when none of the value properties is a literal. Nothing else in the object is read.
+ */
+function readRecord(source, open, close) {
+  const literals = new Map();
+  for (const part of splitTopLevel(source.code, open + 1, close)) {
+    const keyed = keyOf(source, part.start, part.end);
+    if (keyed === null || literals.has(keyed.key)) continue;
+    const literal = literalValue(source, keyed.valueStart, part.end);
+    if (literal !== null) literals.set(keyed.key, literal);
+  }
+  const valueProperty = VALUE_PROPERTIES.find((property) => literals.has(property));
+  if (valueProperty === undefined) return null;
+  const labelProperty = LABEL_PROPERTIES.find((property) => typeof literals.get(property)?.value === 'string' && literals.get(property).value !== '');
+  const label = labelProperty === undefined ? null : { property: labelProperty, text: literals.get(labelProperty).value, line: source.lineAt(literals.get(labelProperty).at) };
+  return { value: literals.get(valueProperty).value, label };
+}
+
 /**
  * The candidate objects of a JavaScript file, or with `asConst` the `as const` objects of a TypeScript file:
  * `{ name, line, members, skippedMembers, tableEntries }`;
@@ -91,6 +119,7 @@ export function readJsObjects(source, { asConst = false } = {}) {
     if (asConst && !AS_CONST.test(code.slice(close + 1, close + 40))) continue;
     const members = [];
     const nested = [];
+    const tableEntries = [];
     let skippedMembers = 0;
     for (const part of splitTopLevel(code, open + 1, close)) {
       const keyed = keyOf(source, part.start, part.end);
@@ -105,11 +134,18 @@ export function readJsObjects(source, { asConst = false } = {}) {
       }
       let first = keyed.valueStart;
       while (first < part.end && /\s/.test(code[first])) first += 1;
-      if (code[first] === '{' && matchingBracket(code, first) === part.end - 1) nested.push({ open: first, close: part.end - 1 });
-      else skippedMembers += 1;
+      if (code[first] === '{' && matchingBracket(code, first) === part.end - 1) {
+        const record = readRecord(source, first, part.end - 1);
+        if (record === null) {
+          nested.push({ open: first, close: part.end - 1 });
+          continue;
+        }
+        const member = { name: keyed.key, computed: true, value: record.value, line: lineAt(part.start), comments: commentsFor(part.start, part.end) };
+        members.push(member);
+        if (record.label !== null) tableEntries.push({ key: `${keyed.key}.${record.label.property}`, text: record.label.text, line: record.label.line, member });
+      } else skippedMembers += 1;
     }
     const values = new Set(members.map((member) => String(member.value)));
-    const tableEntries = [];
     const unmatchedEntries = [];
     for (const table of nested) {
       const entries = stringTable(source, table.open, table.close);
