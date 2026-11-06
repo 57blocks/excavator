@@ -72,6 +72,12 @@ Return exactly one of these strings per item:
 - A sentence that says what to do ("build one check of the caller", "start with the open ones") is advice, and you do not judge it. A sentence that says how things are now ("three services share these tables", "most findings are of level P0") is a statement of fact, and it must be in the cited contents. A sentence that mixes the two is judged by its statement of fact.
 - A text may repeat or combine what the cited contents say, in other words, and may count what they list (two cited groups are two groups). It may not add: an application, a table, a role, a number or a result that is in none of the cited contents is a fact that is not there.
 - The cause of a category item must hold for every group it cites, not for most: read each cited group's statement and ask whether the cause is true of that statement. A cause that is wider than one of the statements, or about another defect than that statement describes, fails.
+- Texts that go beyond what they cite usually do it in one of these ways. Look for each one in every item:
+  1. **A condition is dropped.** A cited statement holds only in a case ("when the error is not one of its own kinds", "while the token is still valid"), and the text states it without that case.
+  2. **A word of scope covers more than the citations do.** "All", "every", "both", "several applications", "shared", "common", "the same in each" spread over a list of things while the cited contents support it for only some of them. Check the word against each thing in the list, one by one.
+  3. **One part of a cause fails for one group.** A cause in two parts ("the failure is not recorded, and the system carries on as if it had succeeded") must hold in both parts for every cited group; a group whose statement says something else happens (the work stops, later steps never run) fails it.
+  4. **Size, cost, effort, ease or urgency is stated.** "These changes are small", "cheap to fix", "can be done without waiting" state how things are now, and no cited content says it.
+  5. **A number counts something else.** The number is in a cited content but there it counts other things than the text says.
 - When you are torn between the two, choose `doesNotFollow`. Calling an unchecked text confirmed is the failure this check exists to prevent; a text left out is a visible gap, an unsupported one is not.
 - Judge each item as written, in whatever language it is written in.
 

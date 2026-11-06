@@ -61,12 +61,12 @@ export function recommendationsChapter({ findings, remedies, view, t }) {
   for (const recommendation of recommendations) {
     out.push(`### ${inline(fill(t('md.remedies.itemHeading'), { number: recommendation.number, title: recommendation.title }))}`, '', inline(recommendation.text), '');
     if (recommendation.groups.length > 0) {
-      out.push(`${t('md.remedies.groupsHeading')}:`, '');
+      out.push(`**${t('md.remedies.groupsHeading')}**`, '');
       for (const group of recommendation.groups) out.push(`- ${inline(groupLine(group, { locations: findings.locations, view, t }))}`);
       out.push('');
     }
     if (recommendation.facts.length > 0) {
-      out.push(`${t('md.remedies.factsHeading')}:`, '');
+      out.push(`**${t('md.remedies.factsHeading')}**`, '');
       for (const fact of recommendation.facts) out.push(`- ${inline(factText(fact, t))}`);
       out.push('');
     }
