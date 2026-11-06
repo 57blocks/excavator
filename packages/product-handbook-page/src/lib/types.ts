@@ -1,6 +1,6 @@
 /** The page data `handbook.mjs page` writes into the template (openspec change product-handbook-map, design D13). */
 
-export const PAGE_FORMAT = 'excavator-product-handbook-page/5';
+export const PAGE_FORMAT = 'excavator-product-handbook-page/6';
 
 /** The views a page can hold (openspec change handbook-entities-and-views): the product view and the technical view. */
 export const VIEWS = ['product', 'technical'] as const;
@@ -160,6 +160,55 @@ export interface UnitLocations {
   items: { claim: string; citations: { file: string; startLine: number | null; endLine: number | null }[] }[];
 }
 
+/** One place where a table name appears outside the migrations; `rule` is `a` (a string that is the whole name), `b` (the name after FROM, JOIN, INTO, UPDATE or TABLE, or at the start of the string of a Table( call) or `c` (the name right after many2many:). */
+export interface NameMention { file: string; line: number; rule: 'a' | 'b' | 'c' }
+
+/** One table of the data section: where it is declared, the migrations that created and last changed it, and where its name appears by application (the empty key is the places that belong to no application). */
+export interface DataTable {
+  name: string;
+  /** `as` is the name the line shows when it is an earlier name of the table (the table was renamed later). */
+  sources: { kind: 'migration' | 'model' | 'sql'; file: string; line: number; as?: string }[];
+  createdBy: string | null;
+  lastChangedBy: string | null;
+  mentions: Record<string, NameMention[]>;
+}
+
+/** The data section as the page draws it (data.json without its ledgers): the lists, the gaps and the counts the script computed. */
+export interface DataSection {
+  /** The keys of the declaration forms this version recognizes; the page words each by a fixed text. */
+  recognized: string[];
+  applications: { directory: string; migrations: number }[];
+  tables: DataTable[];
+  dropped: { name: string; file: string; line: number; createdBy: string | null; directory: string }[];
+  changedNeverCreated: string[];
+  declaredOnly: string[];
+  removedButDeclared: string[];
+  onlyInMigrations: string[];
+  gaps: {
+    unsplitMigrations: { file: string }[];
+    unnamedOperations: { file: string; line: number; op: string; via: 'call' | 'sql' }[];
+    unresolvedModelNames: { file: string; line: number; expression: string; matches: number | null }[];
+    otherMigrationFiles: { file: string; reason: string }[];
+  };
+  counts: {
+    tables: number;
+    migrations: number;
+    migrationsReplayed: number;
+    migrationsUnsplit: number;
+    migrationsDownOnly: number;
+    otherMigrationFiles: number;
+    operations: { total: number; create: number; drop: number; rename: number; change: number; unnamed: number };
+    declarations: { total: number; model: number; sql: number; unresolved: number };
+    dropped: number;
+    changedNeverCreated: number;
+    declaredOnly: number;
+    removedButDeclared: number;
+    onlyInMigrations: number;
+    tablesInSeveralApplications: number;
+    gaps: number;
+  };
+}
+
 /** The technical part: only in a page that has the technical view. Holds the only citation paths of the page data. */
 export interface Technical {
   featureApplication: { feature: string; application: string; citations: number }[];
@@ -168,6 +217,9 @@ export interface Technical {
   integrations: IntegrationRelations[];
   jobs: { candidate: string; feature: string | null; application: string | null }[];
   locations: UnitLocations[];
+  /** The data section; null when `<out>/data.json` is missing or malformed, and `dataState` says which. */
+  data: DataSection | null;
+  dataState: 'ok' | 'missing' | 'malformed';
 }
 
 export interface PageData {

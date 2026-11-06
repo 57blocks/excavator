@@ -43,7 +43,7 @@ const feature = (id: string, area: string, domain: string, status: Feature['stat
 function dataFor(views: View[]): PageData {
   const withTechnical = views.includes('technical');
   return {
-    format: 'excavator-product-handbook-page/5',
+    format: 'excavator-product-handbook-page/6',
     project: d('project'),
     language: d('language'),
     languageTag: 'xx',
@@ -108,6 +108,8 @@ function dataFor(views: View[]): PageData {
           { id: 'F1', items: [{ claim: d('claim one'), citations: [{ file: d('src/a.js'), startLine: 3, endLine: 3 }, { file: d('src/b.js'), startLine: 5, endLine: 9 }, { file: d('src/c.js'), startLine: null, endLine: null }] }] },
           { id: 'overview', items: [{ claim: d('overview claim'), citations: [{ file: d('package.json'), startLine: 1, endLine: 1 }] }] },
         ],
+        data: null,
+        dataState: 'missing',
       },
     } : {}),
   };

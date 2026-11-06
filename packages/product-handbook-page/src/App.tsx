@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 
 import { ApplicationPage, ApplicationsMatrixPage } from './components/ApplicationPages';
 import { CoveragePage } from './components/CoveragePage';
+import { DataPage } from './components/DataPage';
 import { DomainPage } from './components/DomainPage';
 import { FeaturePage } from './components/FeaturePage';
 import { JobsPage } from './components/JobsPage';
@@ -29,6 +30,7 @@ function PageView({ data, route, view }: { data: PageData; route: Route; view: V
     case 'coverage': return <CoveragePage data={data} />;
     case 'notifications': return <NotificationsPage data={data} />;
     case 'jobs': return <JobsPage data={data} />;
+    case 'data': return technical === undefined ? <NotFound /> : <DataPage data={data} technical={technical} />;
     case 'roles-matrix': return <RolesMatrixPage data={data} />;
     case 'applications-matrix': return technical === undefined ? <NotFound /> : <ApplicationsMatrixPage data={data} technical={technical} />;
     case 'application': return technical === undefined ? <NotFound /> : <ApplicationPage data={data} technical={technical} dir={body.dir} />;
@@ -91,6 +93,7 @@ function pageTitle(data: PageData, route: Route, t: ReturnType<typeof makeText>)
     case 'coverage': return t('page.nav.coverage');
     case 'notifications': return t('page.nav.notifications');
     case 'jobs': return t('page.nav.jobs');
+    case 'data': return t('md.data.heading');
     case 'roles-matrix': return t('md.matrix.roleFeature.heading');
     case 'applications-matrix': return t('md.matrix.applicationDomain.heading');
     case 'role': return entityExists(data, body) ? body.label : t('page.notFound.heading');

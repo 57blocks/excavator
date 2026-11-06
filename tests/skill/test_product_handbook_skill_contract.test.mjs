@@ -37,12 +37,12 @@ const skillOwn = readFileSync(resolve(skillDir, 'SKILL.md'), 'utf-8');
 const SECTION_FILES = ['stages/map.md', 'sections/overview.md', 'sections/features.md'];
 const sectionText = (path) => readFileSync(resolve(skillDir, path), 'utf-8');
 /**
- * The skill as a default run reads it: SKILL.md with the three phase files put
+ * The skill as a default run reads it: SKILL.md with the four phase files put
  * where the Sections part has the model read them, so the phases run in their
- * order (0, 1, 2, 3, 3c, 3b, 4, 5, 6, 7). Every assertion below that looks for
+ * order (0, 1, 2, 3, 3c, 3b, 4, 4b, 5, 6, 7). Every assertion below that looks for
  * a phase's text looks in the file that holds it.
  */
-const skill = skillOwn.replace(/^## Sections\n[\s\S]*?(?=^## Phase 5: )/m, SECTION_FILES.map(sectionText).join(''));
+const skill = skillOwn.replace(/^## Sections\n[\s\S]*?(?=^## Phase 5: )/m, [...SECTION_FILES, 'sections/data.md'].map(sectionText).join(''));
 const flat = (text) => text.replace(/\s+/g, ' ');
 const agent = readFileSync(resolve(repoRoot, 'agents/excavator-handbook-verifier.md'), 'utf-8');
 const tracerAgent = readFileSync(resolve(repoRoot, 'agents/excavator-handbook-tracer.md'), 'utf-8');
@@ -87,9 +87,9 @@ describe('excavator-product-handbook skill: structure', () => {
   });
 
   it('has the phases in the order they run: the business domains (3c) and then the system overview (3b) between the map and the entries, the verify and trace phases between the entries and the assembly', () => {
-    expect([...raw.keys()]).toEqual([0, 1, 2, 3, '3c', '3b', 4, 5, 6, 7]);
+    expect([...raw.keys()]).toEqual([0, 1, 2, 3, '3c', '3b', 4, '4b', 5, 6, 7]);
     const titles = [...skill.matchAll(/^## Phase \d+[bc]?: (.+)$/gm)].map((match) => match[1]);
-    expect(titles).toEqual(['Setup', 'Candidates', 'Fixed text', 'The map', 'Business domains', 'System overview', 'Entries', 'Verify', 'Trace', 'Assemble, page and reply']);
+    expect(titles).toEqual(['Setup', 'Candidates', 'Fixed text', 'The map', 'Business domains', 'System overview', 'Entries', 'Data', 'Verify', 'Trace', 'Assemble, page and reply']);
   });
 
   it('describes every option of the argument hint in the Options section', () => {
@@ -154,6 +154,7 @@ describe('excavator-product-handbook skill: setup', () => {
       if (line.includes(`${HANDBOOK} candidates`)) expect(line).toContain('candidates "$PROJECT_ROOT"');
       else if (line.includes(`${HANDBOOK} applications`)) expect(line).toContain('applications "$PROJECT_ROOT"');
       else if (line.includes(`${HANDBOOK} check-ui`)) expect(line).not.toContain('--project');
+      else if (line.includes(`${HANDBOOK} data`)) expect(line).toContain('data "$PROJECT_ROOT" "$OUT"');
       else expect(line, line).toContain('--project "$PROJECT_ROOT"');
     }
   });
@@ -1598,6 +1599,30 @@ describe('excavator-product-handbook skill: sections (O2 of handbook-sections)',
     const split = flat(skillOwn.split(/^## How the work is split$/m)[1].split(/^## Options$/m)[0]);
     expect(split).toContain('validates `--sections` and prints the phase files a run reads');
     for (const path of SECTION_FILES) expect(split).toContain(`\`${path}\``);
+  });
+
+  it('sections/data.md is pinned, holds Phase 4b only, runs the data command and dispatches no subagent', () => {
+    const text = sectionText('sections/data.md');
+    expect(digest(text)).toBe('e51a64b99e522b2ac242ed7add0995b6c7de16509e8b9dad9a28d1099f66ffcb');
+    expect([...text.matchAll(/^## Phase .+$/gm)].map((match) => match[0])).toEqual(['## Phase 4b: Data']);
+    expect(blocks(text, 'bash').map((block) => block.trim())).toEqual([`node "$PLUGIN_ROOT/skills/excavator-product-handbook/handbook.mjs" data "$PROJECT_ROOT" "$OUT"`]);
+    const flatText = flat(text);
+    expect(flatText).toContain('On exit 0, tell the user the one line it printed, as it is');
+    expect(flatText).toContain('On any other exit, tell the user the lines it printed as they are, and stop');
+    expect(flatText).toContain('dispatch no subagent');
+    expect(flatText).toContain('It needs no map');
+    expect(flatText).toContain('Phases 5 and 6 have nothing to verify or trace for it');
+  });
+
+  it('names the data section in the Sections part, the options and the split, with no map for it, and ends a data-only run without a map before Phase 7', () => {
+    const part = flat(skillOwn.slice(skillOwn.indexOf('\n## Sections\n'), skillOwn.indexOf('## Phase 5: Verify')));
+    expect(part).toContain('`sections/data.md` holds Phase 4b (the data, section `data`), which needs no map and no stage file');
+    expect(part).toContain('The `data` section has no unit: with only `data` selected, Phases 5 and 6 have nothing to do.');
+    expect(part).toContain('when only `data` is selected and `$OUT/map.json` does not exist, the run ends after the data phase');
+    const options = flat(skillOwn.split(/^## Options$/m)[1].split(/^## Sources$/m)[0]);
+    expect(options).toContain('and `data` (the tables, migrations and where each table name appears; written by a script, needs no map)');
+    const split = flat(skillOwn.split(/^## How the work is split$/m)[1].split(/^## Options$/m)[0]);
+    expect(split).toContain('`sections/data.md` holds Phase 4b');
   });
 
   it('names the commands only the moved phases run (the map, domain and overview checks) in the phase files, not in SKILL.md', () => {

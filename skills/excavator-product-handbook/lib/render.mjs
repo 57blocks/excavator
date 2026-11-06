@@ -6,6 +6,7 @@
  * path and no citation in the text. Every fixed text comes from `ui`.
  */
 
+import { dataBlock } from './render-data.mjs';
 import { REACHES } from './map-shape.mjs';
 import { inline, table } from './markdown.mjs';
 import { applicationCells, listCell } from './render-application.mjs';
@@ -222,10 +223,10 @@ function coverageBlock(map, state, candidates, t) {
  * entry (only verified features have one); `candidates` is candidates.json's items; `ui` is the strings table;
  * `summary` is the two cross-cutting tables (summary.mjs); `system` the facts of the system overview (system-facts.mjs);
  * `entities` the entities and relations (entities.mjs), whose `domains` and `domainBasis` decide how the features are grouped (domain-grouping.mjs). `view` is `product` or `technical`: the technical view
- * also writes the application and external-system sections and, from `locations` (locations.mjs), the file and
+ * also writes the data chapter after the system overview (from `data`, data-section.mjs), the application and external-system sections and, from `locations` (locations.mjs), the file and
  * lines of each item; the product view writes no citation path.
  */
-export function renderHandbook({ map, entries, state, candidates, ui, summary, system, entities, view = 'product', locations = null }) {
+export function renderHandbook({ map, entries, state, candidates, ui, summary, system, entities, view = 'product', locations = null, data = null }) {
   const t = (key) => {
     if (!Object.hasOwn(ui, key)) throw new Error(`the fixed-text table has no key ${key}`);
     return ui[key];
@@ -235,7 +236,7 @@ export function renderHandbook({ map, entries, state, candidates, ui, summary, s
   const basis = entities.domainBasis;
   const areaName = new Map(map.areas.map((area) => [area.id, area.name]));
   const featureOf = new Map(map.features.map((feature) => [feature.id, feature]));
-  const out = [`# ${inline(t(technical ? 'md.titleTechnical' : 'md.title'))}`, '', ...overviewBlock(system, basis, t, placesOf.get('overview')), `## ${t(basis === 'domains' ? 'md.domains.heading' : 'md.areas.heading')}`, ''];
+  const out = [`# ${inline(t(technical ? 'md.titleTechnical' : 'md.title'))}`, '', ...overviewBlock(system, basis, t, placesOf.get('overview')), ...(technical && data !== null ? dataBlock(data, t) : []), `## ${t(basis === 'domains' ? 'md.domains.heading' : 'md.areas.heading')}`, ''];
   if (basis === 'areas') out.push(t('md.domains.fromAreas'), '');
   for (const domain of entities.domains) {
     out.push(`- **${inline(domain.name)}**`);

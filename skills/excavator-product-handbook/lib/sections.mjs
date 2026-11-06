@@ -11,6 +11,7 @@
 const TABLE = Object.freeze([
   Object.freeze({ id: 'overview', stages: Object.freeze(['stages/map.md']), file: 'sections/overview.md' }),
   Object.freeze({ id: 'features', stages: Object.freeze(['stages/map.md']), file: 'sections/features.md' }),
+  Object.freeze({ id: 'data', stages: Object.freeze([]), file: 'sections/data.md' }),
 ]);
 
 export const SECTIONS = Object.freeze(TABLE.map((row) => row.id));
@@ -30,7 +31,7 @@ export function parseSections(text) {
       ok: false,
       lines: [
         `--sections: ${bad.map((part) => JSON.stringify(part)).join(', ')} is not a section`,
-        `--sections takes ${SECTIONS.join(', ')} or both, separated by a comma (default: all)`,
+        `--sections takes ${SECTIONS.join(', ')}, any of them separated by a comma (default: all)`,
       ],
     };
   }

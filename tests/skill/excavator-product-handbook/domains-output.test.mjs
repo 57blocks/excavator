@@ -133,7 +133,7 @@ describe('the page data', () => {
     expect(page(run).status).toBe(0);
     const data = dataOf(run);
     expect(Object.keys(data)).toEqual(['format', 'project', 'language', 'languageTag', 'ui', 'views', 'areas', 'domains', 'domainBasis', 'features', 'coverage', 'summary', 'system', 'entities', 'technical']);
-    expect(data.format).toBe('excavator-product-handbook-page/5');
+    expect(data.format).toBe('excavator-product-handbook-page/6');
     expect(data.domainBasis).toBe('domains');
     expect(data.domains).toEqual([{ id: 'D1', name: 'Customer orders' }, { id: 'D2', name: 'System upkeep' }]);
     expect(data.areas).toEqual([{ id: 'A1', name: 'Order handling' }, { id: 'A2', name: 'Automatic work' }]);
