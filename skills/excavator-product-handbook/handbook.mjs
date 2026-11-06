@@ -171,7 +171,6 @@ import { assemble } from './lib/assemble.mjs';
 import { applicationLines, scanProject } from './lib/applications.mjs';
 import { candidatesOutput } from './lib/candidates.mjs';
 import { runData } from './lib/data-run.mjs';
-import { runHistory } from './lib/history-run.mjs';
 import { checkEntry, tryEntry } from './lib/entry-check.mjs';
 import { checkMap } from './lib/check-map.mjs';
 import { checkDomains } from './lib/domains-check.mjs';
@@ -699,6 +698,8 @@ const COMMANDS = {
   async history(args) {
     const { positionals, options } = parseArgs(args, ['project']);
     if (positionals.length !== 1) throw new UsageError('history takes exactly one <out> directory');
+    // Loaded on demand: the git and hotspot modules are heavy and only this command needs them.
+    const { runHistory } = await import('./lib/history-run.mjs');
     return report(await runHistory(projectRootOption(options.project), resolve(positionals[0])));
   },
   'check-overview'(args) {
