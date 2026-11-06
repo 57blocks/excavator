@@ -117,7 +117,7 @@ export function resolveLabels({ goEntries, tsEntries, goMembers, dictionaries })
     const same = (goByName.get(entry.name) ?? []).filter((item) => item.application === entry.application && (entry.qualifier === null ? item.directory === entry.directory : item.pkg === entry.qualifier));
     attach(entry, same);
   }
-  const enums = dictionaries.filter((dictionary) => dictionary.form === 'ts-enum');
+  const enums = dictionaries.filter((dictionary) => dictionary.form === 'ts-enum' || dictionary.form === 'ts-const-object');
   for (const entry of tsEntries) {
     let targets = enums
       .filter((dictionary) => dictionary.application === entry.application && dictionary.name === entry.enumName)

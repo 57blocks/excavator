@@ -29,6 +29,26 @@ const extensionOf = (rel) => {
 const dirOf = (rel) => rel.slice(0, Math.max(rel.lastIndexOf('/'), 0));
 const byPlace = (a, b) => byteOrder(a.file, b.file) || a.line - b.line || byteOrder(a.name ?? a.key ?? '', b.name ?? b.key ?? '') || byteOrder(a.kind ?? '', b.kind ?? '');
 
+/** The candidate objects of one file as value sets (`form` is the candidate kind too) or `noLiteralMembers` rows; a reverse-table entry is a display name. */
+function addObjects(objects, form, file, dictionaries, candidates) {
+  for (const found of objects) {
+    const row = { kind: form, file: file.rel, line: found.line, name: found.name };
+    if (found.members.length === 0) {
+      candidates.push({ ...row, bucket: 'noLiteralMembers' });
+      continue;
+    }
+    const members = found.members.map((member) => makeMember(member, file.rel));
+    const dictionary = { application: file.application, form, name: found.name, file: file.rel, line: found.line, members, skippedMembers: found.skippedMembers };
+    dictionaries.push(dictionary);
+    candidates.push({ ...row, bucket: 'dictionary', dictionary });
+    for (const entry of found.tableEntries) {
+      const member = members[found.members.indexOf(entry.member)];
+      member.labels.push({ text: entry.text, file: file.rel, line: entry.line });
+      candidates.push({ kind: 'map-entry', file: file.rel, line: entry.line, key: entry.key, bucket: 'label', dictionary, member: member.name });
+    }
+  }
+}
+
 /** Read every Go, TypeScript and JavaScript file once; returns the readings and what the pass skipped. */
 function readFiles(files) {
   const skipped = { binary: 0, tooLarge: 0, unreadable: 0 };
@@ -60,24 +80,10 @@ function readFiles(files) {
         dictionaries.push(dictionary);
         candidates.push({ kind: 'ts-enum', file: file.rel, line: found.line, name: found.name, bucket: 'dictionary', dictionary });
       }
+      addObjects(readJsObjects(source, { asConst: true }), 'ts-const-object', file, dictionaries, candidates);
       tsEntries.push(...readTsLabelEntries(source).map((entry) => ({ ...place, ...entry })));
     } else {
-      for (const found of readJsObjects(source)) {
-        const row = { kind: 'js-object', file: file.rel, line: found.line, name: found.name };
-        if (found.members.length === 0) {
-          candidates.push({ ...row, bucket: 'noLiteralMembers' });
-          continue;
-        }
-        const members = found.members.map((member) => makeMember(member, file.rel));
-        const dictionary = { application: file.application, form: 'js-object', name: found.name, file: file.rel, line: found.line, members, skippedMembers: found.skippedMembers };
-        dictionaries.push(dictionary);
-        candidates.push({ ...row, bucket: 'dictionary', dictionary });
-        for (const entry of found.tableEntries) {
-          const member = members[found.members.indexOf(entry.member)];
-          member.labels.push({ text: entry.text, file: file.rel, line: entry.line });
-          candidates.push({ kind: 'map-entry', file: file.rel, line: entry.line, key: entry.key, bucket: 'label', dictionary, member: member.name });
-        }
-      }
+      addObjects(readJsObjects(source), 'js-object', file, dictionaries, candidates);
     }
   }
   return { go, goEntries, tsEntries, dictionaries, candidates, skipped, searched };

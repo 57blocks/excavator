@@ -6,7 +6,8 @@
  * literal. A nested object whose keys are all values of the set and whose
  * values are all string literals is a reverse table: its entries are the
  * display names of the members that have those values. Every other top-level
- * member is counted in `skippedMembers`. Nothing is run.
+ * member is counted in `skippedMembers`. In a TypeScript file (`asConst`) only
+ * `const X = { ... } as const` is read, the same way. Nothing is run.
  */
 
 import { commentFinder } from './dict-comments.mjs';
@@ -16,6 +17,7 @@ import { jsNumber, unescape } from './dict-values.mjs';
 /** The name of a set must end in one of these, in any case. */
 export const JS_NAME_WORDS = Object.freeze(['status', 'state', 'type', 'kind', 'stage', 'phase', 'level', 'role', 'mode', 'category']);
 const NAME_FILTER = new RegExp(`(?:${JS_NAME_WORDS.join('|')})$`, 'i');
+const AS_CONST = /^\s*as\s+const\b/;
 const ASSIGNMENT = /(?:\b(?:const|let|var)\s+|\bexports\.)([A-Za-z_$][\w$]*)\s*=\s*\{/dg;
 
 /** `{ key, valueStart }` for an object member `key: value` at `[start, end)`; null for a spread, a method, a shorthand or a computed key. */
@@ -65,11 +67,12 @@ function stringTable(source, open, close) {
 }
 
 /**
- * The candidate objects of a JavaScript file: `{ name, line, members, skippedMembers, tableEntries }`;
+ * The candidate objects of a JavaScript file, or with `asConst` the `as const` objects of a TypeScript file:
+ * `{ name, line, members, skippedMembers, tableEntries }`;
  * each reverse-table entry is already attached to its members and is also
  * returned in `tableEntries` as `{ key, text, line, member }` for the ledger.
  */
-export function readJsObjects(source) {
+export function readJsObjects(source, { asConst = false } = {}) {
   const { code, lineAt } = source;
   const commentsFor = commentFinder(source);
   const found = [];
@@ -78,9 +81,11 @@ export function readJsObjects(source) {
   while ((match = ASSIGNMENT.exec(code)) !== null) {
     const name = match[1];
     if (!NAME_FILTER.test(name)) continue;
+    if (asConst && !match[0].startsWith('const')) continue;
     const open = match.index + match[0].length - 1;
     const close = matchingBracket(code, open);
     if (close < 0) continue;
+    if (asConst && !AS_CONST.test(code.slice(close + 1, close + 40))) continue;
     const members = [];
     const nested = [];
     let skippedMembers = 0;

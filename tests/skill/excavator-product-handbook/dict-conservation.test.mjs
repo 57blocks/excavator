@@ -18,27 +18,27 @@ const count = (list, bucket) => list.filter((row) => row.bucket === bucket).leng
 describe('the buckets of each kind of candidate', () => {
   it('a Go named type: dictionary or noConstants, and the numbers add up to the types found by reading the files', () => {
     let found = 0;
-    for (const file of ['go-app/status/types.go', 'go-app/billing/invoice.go']) {
+    for (const file of ['go-app/status/types.go', 'go-app/status/aliases.go', 'go-app/billing/invoice.go']) {
       let inGroup = false;
       for (const line of read(file)) {
         if (/^type \($/.test(line)) inGroup = true;
         else if (/^\)$/.test(line)) inGroup = false;
-        else if (/^type \w+ (string|int|int8|int16|int32|int64|uint|uint8|uint16|uint32|uint64)$/.test(line)) found += 1;
-        else if (inGroup && /^\t\w+\s+(string|int|int8|int16|int32|int64|uint|uint8|uint16|uint32|uint64)$/.test(line)) found += 1;
+        else if (/^type \w+ (= )?(string|int|int8|int16|int32|int64|uint|uint8|uint16|uint32|uint64)$/.test(line)) found += 1;
+        else if (inGroup && /^\t\w+\s+(= )?(string|int|int8|int16|int32|int64|uint|uint8|uint16|uint32|uint64)$/.test(line)) found += 1;
       }
     }
-    expect(found).toBe(7);
+    expect(found).toBe(10);
     const types = rows('go-type');
     expect(types).toHaveLength(found);
-    expect(count(types, 'dictionary')).toBe(6);
-    expect(count(types, 'noConstants')).toBe(1);
+    expect(count(types, 'dictionary')).toBe(8);
+    expect(count(types, 'noConstants')).toBe(2);
     expect(count(types, 'duplicate')).toBe(0);
-    expect(types.filter((row) => row.bucket === 'noConstants').map((row) => row.name)).toEqual(['Lonely']);
+    expect(types.filter((row) => row.bucket === 'noConstants').map((row) => row.name)).toEqual(['Count', 'Lonely']);
   });
 
-  it('a Go constant item: member, untypedIota, otherType or plain, 26 of them found by counting the names in the const blocks', () => {
+  it('a Go constant item: member, untypedIota, otherType or plain, 30 of them found by counting the names in the const blocks', () => {
     let found = 0;
-    for (const file of ['go-app/status/consts.go', 'go-app/status/other.go', 'go-app/status/types.go', 'go-app/billing/invoice.go']) {
+    for (const file of ['go-app/status/consts.go', 'go-app/status/other.go', 'go-app/status/aliases.go', 'go-app/status/types.go', 'go-app/billing/invoice.go']) {
       let inBlock = false;
       for (const line of read(file)) {
         if (/^const \($/.test(line)) inBlock = true;
@@ -47,10 +47,10 @@ describe('the buckets of each kind of candidate', () => {
         else if (inBlock && /^\t(\w+)(\s|$)/.test(line) && !/^\t\/\//.test(line)) found += 1;
       }
     }
-    expect(found).toBe(26);
+    expect(found).toBe(30);
     const consts = rows('go-const');
     expect(consts).toHaveLength(found);
-    expect(count(consts, 'member')).toBe(19);
+    expect(count(consts, 'member')).toBe(23);
     expect(count(consts, 'untypedIota')).toBe(2);
     expect(count(consts, 'otherType')).toBe(2);
     expect(count(consts, 'plain')).toBe(3);
@@ -64,6 +64,17 @@ describe('the buckets of each kind of candidate', () => {
     expect(found).toBe(5);
     expect(rows('ts-enum')).toHaveLength(found);
     expect(count(rows('ts-enum'), 'dictionary')).toBe(5);
+  });
+
+  it('a TypeScript object ending in as const: dictionary or noLiteralMembers, 3 found by their declarations', () => {
+    const text = read('web-app/src/consts.ts').join('\n');
+    const found = [...text.matchAll(/const \w*(Status|Mode|Kind) = \{[^;]*\} as const;/g)].length;
+    expect(found).toBe(3);
+    const objects = rows('ts-const-object');
+    expect(objects).toHaveLength(found);
+    expect(count(objects, 'dictionary')).toBe(2);
+    expect(count(objects, 'noLiteralMembers')).toBe(1);
+    expect(objects.find((row) => row.bucket === 'noLiteralMembers').name).toBe('EmptyKind');
   });
 
   it('a JavaScript object: dictionary or noLiteralMembers, 5 whose name has a state word and is assigned an object', () => {
@@ -82,12 +93,12 @@ describe('the buckets of each kind of candidate', () => {
     expect(objects.find((row) => row.bucket === 'noLiteralMembers').name).toBe('EmptyKind');
   });
 
-  it('a map entry: label or unmatchedKey, 18 found by counting the entries of the maps by hand', () => {
-    // status/labels.go 5, api/labels.go 4, web labels.ts 6, the JS reverse table of UserStatus 3
+  it('a map entry: label or unmatchedKey, 22 found by counting the entries of the maps by hand', () => {
+    // status/labels.go 5, api/labels.go 4, web labels.ts 6, the JS reverse table of UserStatus 3, ticket-labels.ts 2, the reverse table of TicketStatus 2
     const entries = rows('map-entry');
-    expect(entries).toHaveLength(18);
-    expect(count(entries, 'label')).toBe(14);
-    expect(count(entries, 'unmatchedKey')).toBe(4);
+    expect(entries).toHaveLength(22);
+    expect(count(entries, 'label')).toBe(17);
+    expect(count(entries, 'unmatchedKey')).toBe(5);
     expect(count(entries, 'ambiguousKey')).toBe(0);
   });
 });
@@ -98,11 +109,12 @@ describe('the ledger and the lists agree', () => {
       'go-type': ['dictionary', 'noConstants', 'duplicate'],
       'go-const': ['member', 'untypedIota', 'otherType', 'plain'],
       'ts-enum': ['dictionary'],
+      'ts-const-object': ['dictionary', 'noLiteralMembers'],
       'js-object': ['dictionary', 'noLiteralMembers'],
       'map-entry': ['label', 'unmatchedKey', 'ambiguousKey'],
     };
     for (const row of data.candidates) expect(allowed[row.kind], `${row.kind} ${row.file}:${row.line}`).toContain(row.bucket);
-    expect(data.candidates).toHaveLength(7 + 26 + 5 + 5 + 18);
+    expect(data.candidates).toHaveLength(10 + 30 + 5 + 3 + 5 + 22);
     const keys = data.candidates.map((row) => `${row.kind}|${row.file}|${row.line}|${row.name ?? row.key}|${row.member ?? ''}`);
     expect(new Set(keys).size).toBe(keys.length);
   });
@@ -123,22 +135,23 @@ describe('the ledger and the lists agree', () => {
     const fromMembers = data.dictionaries.flatMap((entry) => entry.members.flatMap((m) => m.labels.map((l) => `${entry.id}|${m.name}|${l.file}|${l.line}`)));
     const fromRows = rows('map-entry').filter((row) => row.bucket === 'label').map((row) => `${row.dictionary}|${row.member}|${row.file}|${row.line}`);
     expect(fromRows.sort()).toEqual(fromMembers.sort());
-    expect(fromMembers).toHaveLength(14);
+    expect(fromMembers).toHaveLength(17);
   });
 
   it('the counts are the numbers of the lists, written by hand', () => {
     expect(data.counts).toEqual({
-      dictionaries: { total: 15, goType: 6, tsEnum: 5, jsObject: 4 },
-      members: { total: 54, computed: 50, notComputed: 4 },
-      comments: 9,
-      labels: 14,
+      dictionaries: { total: 19, goType: 8, tsEnum: 5, tsConstObject: 2, jsObject: 4 },
+      members: { total: 63, computed: 59, notComputed: 4 },
+      comments: 11,
+      labels: 17,
       skippedMembers: 5,
       candidates: {
-        goTypes: { total: 7, dictionary: 6, noConstants: 1, duplicate: 0 },
-        goConstants: { total: 26, member: 19, untypedIota: 2, otherType: 2, plain: 3 },
+        goTypes: { total: 10, dictionary: 8, noConstants: 2, duplicate: 0 },
+        goConstants: { total: 30, member: 23, untypedIota: 2, otherType: 2, plain: 3 },
         tsEnums: { total: 5, dictionary: 5 },
+        tsConstObjects: { total: 3, dictionary: 2, noLiteralMembers: 1 },
         jsObjects: { total: 5, dictionary: 4, noLiteralMembers: 1 },
-        mapEntries: { total: 18, label: 14, unmatchedKey: 4, ambiguousKey: 0 },
+        mapEntries: { total: 22, label: 17, unmatchedKey: 5, ambiguousKey: 0 },
       },
       mismatches: 3,
     });

@@ -37,7 +37,7 @@
 ### D2 认得的值集合
 
 Go，按包（目录）处理：
-- **类型**：`type T string|int|int8|int16|int32|int64|uint|uint8|uint16|uint32|uint64`，单独声明或在 `type ( … )` 组里。
+- **类型**：`type T string|int|int8|int16|int32|int64|uint|uint8|uint16|uint32|uint64`，也认别名写法 `type T = uint8`，单独声明或在 `type ( … )` 组里。
 - **常量**：`const ( … )` 组与单独的 `const`。
   - 一项写了类型 `T`，且 `T` 是同一目录里声明的基本具名类型：属于值集合 `T`。
   - 只写名字的项：重复上一项的类型与表达式（Go 的隐式重复）。
@@ -51,7 +51,7 @@ TypeScript：
 - `[export] [const] enum E { … }`；
 - 成员写了值时照写；没写值时，按语言规则取上一个数值成员加 1，第一个成员是 0。上一个成员是字符串或算不出的表达式时，这一项也算不出，照原样标明。
 
-JavaScript：
+JavaScript（以及 TypeScript 文件里以 `as const` 结尾的对象）：
 - 赋值给 `const|let|var X`、`module.exports.X`、`exports.X` 的对象字面量，且 `X` 匹配 `/(status|state|type|kind|stage|phase|level|role|mode|category)$/i`；
 - 值集合是其中值为字符串或数字字面值的顶层成员；
 - 其它顶层成员：

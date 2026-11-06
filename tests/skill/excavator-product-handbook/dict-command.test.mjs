@@ -47,7 +47,7 @@ describe('handbook.mjs data writes the dictionaries', () => {
     expect(result.status, result.stderr).toBe(0);
     expect(result.lines).toHaveLength(2);
     expect(result.lines[0]).toMatch(/^Data: /);
-    expect(result.lines[1]).toBe('Dictionaries: 15 value sets (6 Go types, 5 TS enums, 4 JS objects); 54 members (50 computed, 4 not computed); 9 comments; 14 display names; 3 same names with different values; 5 skipped members; 13 other candidates (1 Go types without constants, 0 Go types declared again, 2 untyped iota constants, 2 constants of another type, 3 plain constants, 1 JS objects without literal members, 4 unmatched keys, 0 ambiguous keys).');
+    expect(result.lines[1]).toBe('Dictionaries: 19 value sets (8 Go types, 5 TS enums, 2 TS const objects, 4 JS objects); 63 members (59 computed, 4 not computed); 11 comments; 17 display names; 3 same names with different values; 5 skipped members; 16 other candidates (2 Go types without constants, 0 Go types declared again, 2 untyped iota constants, 2 constants of another type, 3 plain constants, 1 TS const objects without literal members, 1 JS objects without literal members, 5 unmatched keys, 0 ambiguous keys).');
     const written = JSON.parse(readFileSync(join(out, 'dictionaries.json'), 'utf-8'));
     expect(written).toEqual(extractDictionaries(FIXTURE));
     expect(written.format).toBe('excavator-product-handbook-dictionaries/1');
@@ -72,7 +72,7 @@ describe('handbook.mjs data writes the dictionaries', () => {
     const out = tempDir('xhb-out-');
     const result = runHandbook(['data', root, out]);
     expect(result.status, result.stderr).toBe(0);
-    expect(result.lines[1]).toMatch(/^Dictionaries: 0 value sets \(0 Go types, 0 TS enums, 0 JS objects\); 0 members/);
+    expect(result.lines[1]).toMatch(/^Dictionaries: 0 value sets \(0 Go types, 0 TS enums, 0 TS const objects, 0 JS objects\); 0 members/);
     const written = JSON.parse(readFileSync(join(out, 'dictionaries.json'), 'utf-8'));
     expect(written.dictionaries).toEqual([]);
     expect(written.candidates).toEqual([]);
@@ -311,9 +311,10 @@ describe('TypeScript and JavaScript: edge cases', () => {
     expect(dictionary.skippedMembers).toBe(1);
   });
 
-  it('does not read the object form in a TypeScript file, nor the enum form in a JavaScript file', () => {
-    const root = jsProject({ 'a.ts': "export const OrderState = { open: 'open' } as const;\n", 'b.js': 'enum Fake { A }\n' });
-    expect(extractDictionaries(root).dictionaries).toEqual([]);
+  it('reads an object in a TypeScript file only when it ends in as const, and does not read the enum form in a JavaScript file', () => {
+    const root = jsProject({ 'a.ts': "export const OrderState = { open: 'open' } as const;\nconst LoanState = { open: 'open' };\nlet TaskState = { open: 'open' } as const;\nconst RoomState = { open: 'open' } as const satisfies Record<string, string>;\n", 'b.js': 'enum Fake { A }\nconst CaseState = { open: 1 } as const;\n' });
+    const data = extractDictionaries(root);
+    expect(data.dictionaries.map((entry) => [entry.id, entry.form])).toEqual([['a.ts:OrderState', 'ts-const-object'], ['a.ts:RoomState', 'ts-const-object'], ['b.js:CaseState', 'js-object']]);
   });
 
   it('keeps two sets with the same name in one file apart by line in the id', () => {
@@ -344,7 +345,7 @@ describe('files that are not read, and the speed', () => {
     const started = Date.now();
     const data = extractDictionaries(root);
     const elapsed = Date.now() - started;
-    expect(data.counts.dictionaries).toEqual({ total: 200, goType: 130, tsEnum: 70, jsObject: 0 });
+    expect(data.counts.dictionaries).toEqual({ total: 200, goType: 130, tsEnum: 70, tsConstObject: 0, jsObject: 0 });
     expect(data.counts.members.total).toBe(130 * 8 + 70 * 3);
     expect(data.counts.comments).toBe(130 * 8);
     expect(data.scanned.filesSearched).toBe(500);

@@ -13,14 +13,15 @@ import { isObject } from './json-file.mjs';
 
 export const DICT_FORMAT = 'excavator-product-handbook-dictionaries/1';
 /** The forms this version recognizes; the page words each by its key. */
-export const DICT_RECOGNIZED = Object.freeze(['go-named-type', 'ts-enum', 'js-object']);
+export const DICT_RECOGNIZED = Object.freeze(['go-named-type', 'ts-enum', 'ts-const-object', 'js-object']);
 
-const FORMS = Object.freeze(['go-type', 'ts-enum', 'js-object']);
+const FORMS = Object.freeze(['go-type', 'ts-enum', 'ts-const-object', 'js-object']);
 /** The buckets a candidate of each kind can land in. */
 export const CANDIDATE_BUCKETS = Object.freeze({
   'go-type': Object.freeze(['dictionary', 'noConstants', 'duplicate']),
   'go-const': Object.freeze(['member', 'untypedIota', 'otherType', 'plain']),
   'ts-enum': Object.freeze(['dictionary']),
+  'ts-const-object': Object.freeze(['dictionary', 'noLiteralMembers']),
   'js-object': Object.freeze(['dictionary', 'noLiteralMembers']),
   'map-entry': Object.freeze(['label', 'unmatchedKey', 'ambiguousKey']),
 });
@@ -34,7 +35,7 @@ export function computeDictionaryCounts(data) {
   };
   const members = data.dictionaries.flatMap((entry) => entry.members);
   return {
-    dictionaries: { total: data.dictionaries.length, goType: ofForm('go-type'), tsEnum: ofForm('ts-enum'), jsObject: ofForm('js-object') },
+    dictionaries: { total: data.dictionaries.length, goType: ofForm('go-type'), tsEnum: ofForm('ts-enum'), tsConstObject: ofForm('ts-const-object'), jsObject: ofForm('js-object') },
     members: { total: members.length, computed: members.filter((member) => member.computed).length, notComputed: members.filter((member) => !member.computed).length },
     comments: members.reduce((sum, member) => sum + member.comments.length, 0),
     labels: members.reduce((sum, member) => sum + member.labels.length, 0),
@@ -43,6 +44,7 @@ export function computeDictionaryCounts(data) {
       goTypes: bucketCounts('go-type'),
       goConstants: bucketCounts('go-const'),
       tsEnums: bucketCounts('ts-enum'),
+      tsConstObjects: bucketCounts('ts-const-object'),
       jsObjects: bucketCounts('js-object'),
       mapEntries: bucketCounts('map-entry'),
     },

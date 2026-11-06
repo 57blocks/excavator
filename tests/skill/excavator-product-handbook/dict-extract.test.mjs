@@ -12,6 +12,8 @@ const FIXTURE = join(repoRoot, 'tests/fixtures/product-handbook/dict-project');
 const CONSTS = 'go-app/status/consts.go';
 const TYPES = 'go-app/status/types.go';
 const ENUMS = 'web-app/src/enums.ts';
+const ALIASES = 'go-app/status/aliases.go';
+const TS_CONSTS = 'web-app/src/consts.ts';
 const CONSTANTS = 'node-app/src/constants.js';
 
 const data = extractDictionaries(FIXTURE);
@@ -28,6 +30,8 @@ describe('the value sets of the fixture', () => {
   it('lists each value set once, sorted by file and line, with its form, application and base type', () => {
     expect(data.dictionaries.map((entry) => [entry.id, entry.form, entry.application, entry.line])).toEqual([
       ['go-app/billing/invoice.go:InvoiceState', 'go-type', 'go-app', 4],
+      [`${ALIASES}:Mode`, 'go-type', 'go-app', 3],
+      [`${ALIASES}:Tier`, 'go-type', 'go-app', 6],
       [`${TYPES}:Status`, 'go-type', 'go-app', 4],
       [`${TYPES}:Kind`, 'go-type', 'go-app', 7],
       [`${TYPES}:Level`, 'go-type', 'go-app', 8],
@@ -37,6 +41,8 @@ describe('the value sets of the fixture', () => {
       [`${CONSTANTS}:INVOICE_STATE`, 'js-object', 'node-app', 17],
       [`${CONSTANTS}:OrderStage`, 'js-object', 'node-app', 23],
       ['node-app/src/leave.js:LeaveType', 'js-object', 'node-app', 1],
+      [`${TS_CONSTS}:TicketStatus`, 'ts-const-object', 'web-app', 1],
+      [`${TS_CONSTS}:RetryMode`, 'ts-const-object', 'web-app', 9],
       [`${ENUMS}:InvoiceState`, 'ts-enum', 'web-app', 1],
       [`${ENUMS}:Priority`, 'ts-enum', 'web-app', 9],
       [`${ENUMS}:Mixed`, 'ts-enum', 'web-app', 16],
@@ -44,9 +50,9 @@ describe('the value sets of the fixture', () => {
       [`${ENUMS}:LeaveType`, 'ts-enum', 'web-app', 40],
     ]);
     expect(data.dictionaries.filter((entry) => entry.form === 'go-type').map((entry) => [entry.name, entry.baseType])).toEqual([
-      ['InvoiceState', 'string'], ['Status', 'int'], ['Kind', 'string'], ['Level', 'uint8'], ['Flags', 'uint16'], ['Phase', 'int32'],
+      ['InvoiceState', 'string'], ['Mode', 'uint8'], ['Tier', 'string'], ['Status', 'int'], ['Kind', 'string'], ['Level', 'uint8'], ['Flags', 'uint16'], ['Phase', 'int32'],
     ]);
-    expect(data.applications).toEqual([{ directory: 'go-app', dictionaries: 6 }, { directory: 'node-app', dictionaries: 4 }, { directory: 'web-app', dictionaries: 5 }]);
+    expect(data.applications).toEqual([{ directory: 'go-app', dictionaries: 8 }, { directory: 'node-app', dictionaries: 4 }, { directory: 'web-app', dictionaries: 7 }]);
   });
 });
 
@@ -79,6 +85,52 @@ describe('Go: types, constants and iota', () => {
   it('takes string constants as they are, and leaves an untyped constant that points at a member out of the set', () => {
     expect(members(`${TYPES}:Kind`)).toEqual([['KindInternal', 'internal', true, 16], ['KindExternal', 'external', true, 17]]);
     expect(members('go-app/billing/invoice.go:InvoiceState')).toEqual([['InvoiceOpen', 'open', true, 7], ['InvoicePaid', 'paid', true, 8], ['InvoiceVoid', 'void', true, 9]]);
+  });
+});
+
+describe('Go: aliases of a basic type are value sets too', () => {
+  it('takes `type T = uint8` alone and in a group, with the same base type and the constants of the same directory', () => {
+    expect(members(`${ALIASES}:Mode`)).toEqual([['ModeOff', 0, true, 13], ['ModeOn', 1, true, 14]]);
+    expect(members(`${ALIASES}:Tier`)).toEqual([['TierGold', 'gold', true, 18], ['TierSilver', 'silver', true, 19]]);
+    expect(dict(`${ALIASES}:Mode`).baseType).toBe('uint8');
+    expect(dict(`${ALIASES}:Tier`).baseType).toBe('string');
+  });
+
+  it('puts an alias with no constant in noConstants, and does not take an alias of a named type', () => {
+    const rows = data.candidates.filter((row) => row.kind === 'go-type' && row.file === ALIASES).map((row) => [row.name, row.line, row.bucket]);
+    expect(rows).toEqual([['Mode', 3, 'dictionary'], ['Tier', 6, 'dictionary'], ['Count', 7, 'noConstants']]);
+  });
+});
+
+describe('TypeScript: objects ending in as const', () => {
+  it('takes the literal members of an exported or plain const object whose name ends in a state word and whose text ends in as const', () => {
+    expect(members(`${TS_CONSTS}:TicketStatus`)).toEqual([['Open', 'open', true, 2], ['Pending', 'pending', true, 4], ['Closed', 'closed', true, 5]]);
+    expect(members(`${TS_CONSTS}:RetryMode`)).toEqual([['Fast', 1, true, 9], ['Slow', 2, true, 9]]);
+    expect(dict(`${TS_CONSTS}:TicketStatus`).skippedMembers).toBe(0);
+  });
+
+  it('does not take an object with no as const, a name with no state word, or one in a comment', () => {
+    const names = data.dictionaries.map((entry) => entry.name);
+    for (const name of ['LoosePhase', 'Settings', 'CommentedLevel']) expect(names).not.toContain(name);
+  });
+
+  it('puts an as const object with no literal member in noLiteralMembers', () => {
+    expect(data.candidates.filter((row) => row.kind === 'ts-const-object').map((row) => [row.name, row.line, row.bucket])).toEqual([
+      ['TicketStatus', 1, 'dictionary'],
+      ['RetryMode', 9, 'dictionary'],
+      ['EmptyKind', 15, 'noLiteralMembers'],
+    ]);
+  });
+
+  it('reads the reverse table of the object and a [Object.Member] key of another file as display names', () => {
+    expect(member(`${TS_CONSTS}:TicketStatus`, 'Open').labels.map((l) => [l.text, l.file, l.line])).toEqual([['Open', TS_CONSTS, 6], ['Open ticket', 'web-app/src/ticket-labels.ts', 4]]);
+    expect(member(`${TS_CONSTS}:TicketStatus`, 'Pending').labels.map((l) => [l.text, l.file, l.line])).toEqual([['Pending', TS_CONSTS, 6]]);
+    expect(member(`${TS_CONSTS}:TicketStatus`, 'Closed').labels).toEqual([]);
+  });
+
+  it('takes the comments next to its members', () => {
+    expect(member(`${TS_CONSTS}:TicketStatus`, 'Pending').comments.map((c) => [c.text, c.line, c.where])).toEqual([['waiting for the customer', 3, 'above']]);
+    expect(member(`${TS_CONSTS}:TicketStatus`, 'Closed').comments.map((c) => [c.text, c.line, c.where])).toEqual([['no further changes', 5, 'same-line']]);
   });
 });
 
@@ -205,6 +257,7 @@ describe('display names: the map entries that give a member a name', () => {
       ['go-app/api/labels.go', 9, 'other.StatusDraft'],
       ['go-app/status/labels.go', 7, 'StatusNowhere'],
       ['web-app/src/labels.ts', 7, 'InvoiceState.Missing'],
+      ['web-app/src/ticket-labels.ts', 5, 'TicketStatus.Gone'],
     ]);
   });
 });

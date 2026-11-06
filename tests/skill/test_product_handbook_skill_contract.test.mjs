@@ -1603,7 +1603,7 @@ describe('excavator-product-handbook skill: sections (O2 of handbook-sections)',
 
   it('sections/data.md is pinned, holds Phase 4b only, runs the data command and dispatches no subagent', () => {
     const text = sectionText('sections/data.md');
-    expect(digest(text)).toBe('ee6537f65af43d773f643adb8b6dd343a049fdc556ff6e89ede368cd1c5f57bc');
+    expect(digest(text)).toBe('06f65dfc4274dbf1166dbebf92fa19613343dc578ebdb1203f705f76ce58e80b');
     expect([...text.matchAll(/^## Phase .+$/gm)].map((match) => match[0])).toEqual(['## Phase 4b: Data']);
     expect(blocks(text, 'bash').map((block) => block.trim())).toEqual([`node "$PLUGIN_ROOT/skills/excavator-product-handbook/handbook.mjs" data "$PROJECT_ROOT" "$OUT"`]);
     const flatText = flat(text);

@@ -1,7 +1,8 @@
 /**
  * Go value sets (openspec change handbook-status-dictionary, design D2 and
- * D4), read per package directory. A value set is a named type whose
- * underlying type is a string or an integer type, with the constants of the
+ * D4), read per package directory. A value set is a named type (`type T string`
+ * or the alias form `type T = string`) whose underlying type is a string or an
+ * integer type, with the constants of the
  * same directory that are declared with that type. A constant group's
  * implicit repetition (a name written alone repeats the previous type and
  * expression) and `iota` (the item's position in its group, from 0) follow
@@ -79,9 +80,9 @@ function splitSpecs(code, from, to) {
   return specs;
 }
 
-/** `{ name, base }` for a `Name basicType` spec, or null. */
+/** `{ name, base }` for a `Name basicType` or an alias `Name = basicType` spec, or null. */
 function parseTypeSpec(specCode) {
-  const m = new RegExp(`^([A-Za-z_]\\w*)\\s+(${GO_BASIC_TYPES.join('|')})$`).exec(specCode);
+  const m = new RegExp(`^([A-Za-z_]\\w*)(?:\\s+|\\s*=\\s*)(${GO_BASIC_TYPES.join('|')})$`).exec(specCode);
   return m === null ? null : { name: m[1], base: m[2] };
 }
 

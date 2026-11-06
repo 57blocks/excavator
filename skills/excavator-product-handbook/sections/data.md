@@ -2,7 +2,7 @@
 
 Write what you tell the user during this phase in `$LANGUAGE`, as **Language** in Phase 0 says.
 
-The data section lists the tables of the project, the migrations that build them and where each table name appears, and the value sets (status and type values: Go named types with their constants, TypeScript enums, JavaScript state objects) with the comments and display names the code gives them. A script writes all of it; you write nothing and dispatch no subagent. It needs no map.
+The data section lists the tables of the project, the migrations that build them and where each table name appears, and the value sets (status and type values: Go named types with their constants, TypeScript enums and as-const objects, JavaScript state objects) with the comments and display names the code gives them. A script writes all of it; you write nothing and dispatch no subagent. It needs no map.
 
 1. Run the script and write its result into `$OUT`:
    ```bash
