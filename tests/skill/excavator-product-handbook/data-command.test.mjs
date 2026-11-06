@@ -37,11 +37,12 @@ function project(files) {
 const upFile = (body) => `module.exports = {\n  async up(qi) {\n${body}\n  },\n  async down() {},\n};\n`;
 
 describe('handbook.mjs data', () => {
-  it('writes data.json and prints exactly one count line', () => {
+  it('writes data.json and prints its count line first (a second line, Dictionaries:, is the status dictionary\'s)', () => {
     const out = tempDir('xhb-out-');
     const result = runHandbook(['data', FIXTURE, out]);
     expect(result.status, result.stderr).toBe(0);
-    expect(result.lines).toHaveLength(1);
+    expect(result.lines).toHaveLength(2);
+    expect(result.lines[1]).toMatch(/^Dictionaries: /);
     expect(result.lines[0]).toBe('Data: 30 tables; 30 migrations (27 replayed, 2 not split, 1 down only); 6 dropped; 17 names only in migrations; 6 declared only; 3 removed but still declared; 1 changed but never created; 12 gaps (5 unnamed operations, 2 unsplit migrations, 5 unresolved model names).');
     const written = JSON.parse(readFileSync(join(out, 'data.json'), 'utf-8'));
     expect(written).toEqual(extractData(FIXTURE));

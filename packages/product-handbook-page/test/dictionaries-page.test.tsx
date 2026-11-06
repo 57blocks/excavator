@@ -1,0 +1,262 @@
+// O2 (page) of openspec change handbook-status-dictionary: the technical view
+// has the route #/dictionaries, a sidebar link and a page of the value sets,
+// filterable by application and searchable by name; the product view has
+// neither (the route there is not-found); a missing or malformed
+// dictionaries.json is one line; every fixed text comes from the ui table.
+// The data is written by hand with a prefix on every data text, so a fixed text
+// the code wrote itself is found by the absence of both markers.
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+
+import { renderToStaticMarkup } from 'react-dom/server';
+import { describe, expect, it } from 'vitest';
+
+import { AppView } from '../src/App';
+import { filterDictionaries } from '../src/components/DictionariesPage';
+import { parseHash, routeHash } from '../src/lib/route';
+import type { DictionariesSection, DictionaryEntry, PageData, View } from '../src/lib/types';
+import { switchTarget } from '../src/lib/views';
+
+const MARK = '@@';
+const DATA = 'd~';
+const shipped = JSON.parse(readFileSync(fileURLToPath(new URL('../../../skills/excavator-product-handbook/ui-strings.json', import.meta.url)), 'utf-8')) as { strings: Record<string, string> };
+const marked = Object.fromEntries(Object.entries(shipped.strings).map(([key, value]) => [key, `${MARK}${value}`]));
+const d = (text: string): string => `${DATA}${text}`;
+
+const member = (name: string, value: string | number | null, extra: Partial<DictionaryEntry['members'][number]> = {}): DictionaryEntry['members'][number] => ({
+  name: d(name), value, computed: value !== null && !extra.reason, file: d('src/a.go'), line: 5, comments: [], labels: [], ...extra,
+});
+const entry = (id: string, application: string, form: DictionaryEntry['form'], name: string, file: string, members: DictionaryEntry['members'], extra: Partial<DictionaryEntry> = {}): DictionaryEntry => ({
+  id: d(id), application: application === '' ? '' : d(application), form, name: d(name), file: d(file), line: 3, members, skippedMembers: 0, ...extra,
+});
+
+/** Five value sets in three applications (one of them the "in no application" bucket); `Status` has every kind of member cell. */
+const status = entry('go-app/status.go:Status', 'go-app', 'go-type', 'Status', 'go-app/status.go', [
+  member('StatusDraft', 1, { comments: [{ text: d('the first state'), file: d('go-app/status.go'), line: 4, where: 'above' }], labels: [{ text: d('Draft'), file: d('go-app/labels.go'), line: 6 }, { text: d('Draft (api)'), file: d('go-app/api.go'), line: 9 }] }),
+  member('StatusOpen', d('open'), {}),
+  member('StatusLegacy', d('base + 1'), { computed: false, reason: 'expression' }),
+  member('StatusAfter', null, { computed: false, reason: 'after-uncomputed' }),
+], { baseType: 'int', skippedMembers: 2 });
+const web = entry('web-app/src/status.ts:Status', 'web-app', 'ts-enum', 'Status', 'web-app/src/status.ts', [member('Draft', 1), member('Archived', 5)]);
+const kind = entry('go-app/kind.go:Kind', 'go-app', 'go-type', 'Kind', 'go-app/kind.go', [member('KindA', d('a'))], { baseType: 'string' });
+const retry = entry('web-app/src/consts.ts:RetryMode', 'web-app', 'ts-const-object', 'RetryMode', 'web-app/src/consts.ts', [member('Fast', 1)]);
+const loose = entry('tools/states.js:OrderState', '', 'js-object', 'OrderState', 'tools/states.js', [member('open', 1)]);
+
+const section: DictionariesSection = {
+  recognized: ['go-named-type', 'go-typed-var', 'ts-enum', 'ts-const-object', 'js-object', 'js-record-member'],
+  applications: [{ directory: d('go-app'), dictionaries: 2 }, { directory: d('web-app'), dictionaries: 2 }, { directory: '', dictionaries: 1 }],
+  dictionaries: [kind, status, retry, web, loose],
+  mismatches: [{
+    key: 'status',
+    left: { id: d('go-app/status.go:Status'), application: d('go-app'), name: d('Status') },
+    right: { id: d('web-app/src/status.ts:Status'), application: d('web-app'), name: d('Status') },
+    onlyLeft: [],
+    onlyRight: [{ value: 5, members: [d('Archived')] }],
+    both: [{ value: 1, left: [d('StatusDraft')], right: [d('Draft')] }],
+    uncompared: { left: [d('StatusLegacy')], right: [] },
+  }],
+  counts: {
+    dictionaries: { total: 5, goType: 2, tsEnum: 1, tsConstObject: 1, jsObject: 1 },
+    members: { total: 9, computed: 7, notComputed: 2 },
+    comments: 1,
+    labels: 2,
+    skippedMembers: 2,
+    candidates: {
+      goTypes: { total: 3, dictionary: 2, noConstants: 1, duplicate: 0 },
+      goConstants: { total: 8, member: 5, untypedIota: 1, otherType: 1, plain: 1 },
+      goVars: { total: 3, member: 2, otherType: 1 },
+      tsEnums: { total: 1, dictionary: 1 },
+      tsConstObjects: { total: 2, dictionary: 1, noLiteralMembers: 1 },
+      jsObjects: { total: 1, dictionary: 1, noLiteralMembers: 0 },
+      mapEntries: { total: 3, label: 2, unmatchedKey: 1, ambiguousKey: 0 },
+    },
+    mismatches: 1,
+  },
+};
+
+function dataFor(views: View[], dictionaries: DictionariesSection | null = section, dictionariesState: 'ok' | 'missing' | 'malformed' = 'ok'): PageData {
+  return {
+    format: 'excavator-product-handbook-page/7',
+    project: d('project'),
+    language: d('language'),
+    languageTag: 'xx',
+    ui: { strings: marked },
+    views,
+    areas: [{ id: 'A1', name: d('area') }],
+    domains: [{ id: 'D1', name: d('domain') }],
+    domainBasis: 'domains',
+    features: [],
+    coverage: { candidateTotal: 0, assigned: 0, unassigned: [], reachCounts: [], removedOverview: [], removed: [] },
+    summary: { notifications: [], jobs: [], counts: { featureTotal: 0, featuresWithEntry: 0, notificationRows: 0, jobRows: 0, schedule: { literal: 0, computed: 0, absent: 0 }, described: 0 } },
+    system: { status: 'planned', overview: null, applications: [], counts: { applications: 0, files: 0, lines: 0, areas: 1, domains: 1, features: 0, featuresWithEntry: 0, roles: 0 }, areas: [], domains: [] },
+    entities: { domains: [{ id: 'D1', name: d('domain'), features: [], purposes: [] }], roles: [], roleFeature: { roles: [], features: [], cells: [] } },
+    ...(views.includes('technical') ? {
+      technical: {
+        featureApplication: [], unattributed: [], applicationDomain: { applications: [], domains: [], cells: [], unattributed: [] },
+        integrations: [], jobs: [], locations: [], data: null, dataState: 'missing' as const, dictionaries, dictionariesState,
+      },
+    } : {}),
+  };
+}
+
+const BOTH: View[] = ['product', 'technical'];
+const render = (data: PageData, hash: string): string => renderToStaticMarkup(<AppView data={data} route={parseHash(hash)} />);
+const decode = (text: string): string => text.replace(/&quot;/g, '"').replace(/&#x27;/g, "'").replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&');
+function visibleTexts(html: string): string[] {
+  const nodes = html.split(/<[^>]*>/).map((text) => decode(text).trim()).filter((text) => text !== '');
+  const attributes = Array.from(html.matchAll(/\s(?:aria-label|title|alt|placeholder|aria-description)="([^"]*)"/g), (match) => decode(match[1]).trim());
+  return [...nodes, ...attributes];
+}
+const unmarked = (html: string): string[] => visibleTexts(html).filter((text) => !text.includes(MARK) && !(text.startsWith(DATA) && !text.includes('@')) && !/^\d+$/.test(text));
+const main = (html: string): string => html.slice(html.indexOf('<main'));
+const railOf = (html: string) => html.slice(html.indexOf('<nav class="rail"'), html.indexOf('</nav>', html.indexOf('<nav class="rail"')));
+const setBlock = (body: string, id: string): string => {
+  const start = body.indexOf(`data-set="${d(id)}"`);
+  expect(start, id).toBeGreaterThan(0);
+  return body.slice(start, body.indexOf('</section>', start));
+};
+
+describe('the dictionaries route and link', () => {
+  it('parses #/dictionaries with and without the view and builds it back', () => {
+    expect(parseHash('#/dictionaries')).toEqual({ name: 'dictionaries' });
+    expect(parseHash('#/technical/dictionaries')).toEqual({ name: 'dictionaries', view: 'technical' });
+    expect(parseHash('#/technical/dictionaries/x').name).toBe('not-found');
+    expect(routeHash({ name: 'dictionaries' }, null)).toBe('#/dictionaries');
+    expect(routeHash({ name: 'dictionaries' }, 'technical')).toBe('#/technical/dictionaries');
+  });
+
+  it('the technical view has the sidebar link and the page; the product view has neither', () => {
+    const data = dataFor(BOTH);
+    const technical = render(data, '#/technical');
+    expect(railOf(technical)).toContain('href="#/technical/dictionaries"');
+    expect(railOf(technical)).toContain(marked['md.dict.heading']);
+    const product = render(data, '#/product');
+    expect(railOf(product)).not.toContain('/dictionaries"');
+    expect(product).not.toContain('data-view="dictionaries"');
+  });
+
+  it('the route in the product view, or in a page without the technical view, is the not-found page', () => {
+    expect(render(dataFor(BOTH), '#/product/dictionaries')).toContain('data-view="not-found"');
+    expect(render(dataFor(['product']), '#/dictionaries')).toContain('data-view="not-found"');
+    expect(render(dataFor(['product']), '#/technical/dictionaries')).toContain('data-view="not-found"');
+    expect(render(dataFor(BOTH), '#/product/dictionaries')).not.toContain(d('RetryMode'));
+    expect(render(dataFor(['technical']), '#/dictionaries')).toContain('data-view="dictionaries"');
+  });
+
+  it('switching from the page goes to the overview of the product view, and into it stays on the page', () => {
+    const data = dataFor(BOTH);
+    expect(switchTarget(data, parseHash('#/technical/dictionaries'), 'product')).toBe('#/product');
+    expect(switchTarget(data, parseHash('#/product/dictionaries'), 'technical')).toBe('#/technical/dictionaries');
+  });
+});
+
+describe('the dictionaries page', () => {
+  const body = main(render(dataFor(BOTH), '#/technical/dictionaries'));
+
+  it('shows the fixed notes, the recognized forms and the two count lines', () => {
+    for (const key of ['md.dict.note.nameRule', 'md.dict.note.sources', 'md.dict.note.values']) expect(body, key).toContain(marked[key]);
+    expect(body).toContain(`${MARK}Forms of value set recognized in this version: ${['goNamedType', 'goTypedVar', 'tsEnum', 'tsConstObject', 'jsObject', 'jsRecordMember'].map((form) => marked[`md.dict.form.${form}`]).join('; ')}.`);
+    expect(body).toContain(`${MARK}Value sets: 5 (2 Go types, 1 TS enums, 1 TS const objects, 1 JS objects). Members: 9 (7 computed, 2 not computed). Comments: 1. Display names: 2. Same names with different values: 1. Skipped members: 2.`);
+    expect(body).toContain(`${MARK}Candidates that are not value sets: 1 Go types without constants or variables, 0 Go types declared again, 1 untyped iota constants, 1 constants of another type, 1 plain constants, 1 variables of another type, 1 TS const objects without literal members, 0 JS objects without literal members. Mapping table entries that name no member: 1. Mapping table entries that name more than one member: 0.`);
+  });
+
+  it('lists the same names with different values, with the side that has a value alone, the values both have and the members not compared', () => {
+    const start = body.indexOf('data-part="dict-mismatches"');
+    const list = body.slice(start, body.indexOf('<h2', start));
+    expect(list).toContain(`${MARK}${MARK}${d('go-app/status.go:Status')} (${d('go-app')}) and ${MARK}${d('web-app/src/status.ts:Status')} (${d('web-app')})`);
+    expect(list).toContain(`${MARK}Only in ${MARK}${d('web-app/src/status.ts:Status')} (${d('web-app')}): ${MARK}5 (${d('Archived')})`);
+    expect(list).toContain(`${MARK}In both: ${MARK}1 (${d('StatusDraft')} / ${d('Draft')})`);
+    expect(list).toContain(`${MARK}Not compared, value not computed in ${MARK}${d('go-app/status.go:Status')} (${d('go-app')}): ${d('StatusLegacy')}`);
+  });
+
+  it('groups the value sets by application and by file, in the order of the list, each as a table with the members', () => {
+    const order = [d('go-app'), d('web-app'), marked['md.data.noApplication']].map((name) => body.indexOf(`${MARK}Application ${name}`));
+    expect(order.every((at) => at > 0)).toBe(true);
+    expect([...order].sort((a, b) => a - b)).toEqual(order);
+    const sets = [...body.matchAll(/data-set="([^"]*)"/g)].map((match) => match[1]);
+    expect(sets).toEqual([d('go-app/kind.go:Kind'), d('go-app/status.go:Status'), d('web-app/src/consts.ts:RetryMode'), d('web-app/src/status.ts:Status'), d('tools/states.js:OrderState')]);
+    expect(body).toContain(`${MARK}Go named type (int), declared at ${MARK}${d('go-app/status.go')}, line 3.`);
+    expect(body).toContain(`${MARK}TypeScript object ending in as const, declared at ${MARK}${d('web-app/src/consts.ts')}, line 3.`);
+    expect(body).toContain(`${MARK}Parts of the declaration that were not read as members: 2.`);
+  });
+
+  it('writes the cells of a member: a string value marked as a string, not computed values marked, display names with places, comments and the location', () => {
+    const block = setBlock(body, 'go-app/status.go:Status');
+    const rows = block.split('<tr>').slice(2).map((row) => row.slice(0, row.indexOf('</tr>')));
+    expect(rows).toHaveLength(4);
+    expect(rows[0]).toContain(d('StatusDraft'));
+    expect(rows[0]).toContain('<td class="num">1</td>');
+    expect(rows[0]).toContain(`${MARK}${d('Draft')} (${MARK}${d('go-app/labels.go')}, line 6)`);
+    expect(rows[0]).toContain(`${MARK}${d('Draft (api)')} (${MARK}${d('go-app/api.go')}, line 9)`);
+    expect(rows[0]).toContain(d('the first state'));
+    expect(rows[0]).toContain(`${MARK}${d('src/a.go')}, line 5`);
+    expect(rows[1]).toContain(`<td data-kind="string">${d('open')}</td>`);
+    expect(rows[2]).toContain(`${MARK}${d('base + 1')} (not computed)`);
+    expect(rows[3]).toContain(`${MARK}not computed`);
+    expect(rows[1]).toContain('data-empty="true"');
+  });
+
+  it('has the application filter with every application and the search box', () => {
+    expect(body).toContain(marked['page.dict.filter.application']);
+    expect(body).toContain(marked['page.dict.filter.all']);
+    expect(body).toContain(marked['page.dict.filter.search']);
+    expect(body.match(/<option /g)).toHaveLength(4);
+    expect(body).toContain(`${MARK}Showing 5 of 5 value sets`);
+  });
+});
+
+describe('the filter', () => {
+  const list = section.dictionaries;
+  const names = (found: DictionaryEntry[]): string[] => found.map((item) => item.name);
+
+  it('takes every value set with no application and an empty query, and does not change the list', () => {
+    const copy = JSON.stringify(list);
+    expect(filterDictionaries(list, null, '')).toHaveLength(5);
+    expect(JSON.stringify(list)).toBe(copy);
+  });
+
+  it('takes the sets of one application, the "in no application" bucket included', () => {
+    expect(names(filterDictionaries(list, d('web-app'), ''))).toEqual([d('RetryMode'), d('Status')]);
+    expect(names(filterDictionaries(list, '', ''))).toEqual([d('OrderState')]);
+    expect(filterDictionaries(list, d('missing-app'), '')).toEqual([]);
+  });
+
+  it('takes the sets whose name holds the query, in any case, and a query with spaces around it', () => {
+    expect(names(filterDictionaries(list, null, 'STATUS'))).toEqual([d('Status'), d('Status')]);
+    expect(names(filterDictionaries(list, null, '  retry '))).toEqual([d('RetryMode')]);
+    expect(filterDictionaries(list, null, 'nothing')).toEqual([]);
+  });
+
+  it('applies both together', () => {
+    expect(names(filterDictionaries(list, d('go-app'), 'status'))).toEqual([d('Status')]);
+    expect(filterDictionaries(list, d('go-app'), 'retry')).toEqual([]);
+  });
+});
+
+describe('a section that is missing or malformed', () => {
+  it('is the heading and one line, and no value set', () => {
+    for (const [state, key] of [['missing', 'md.dict.notWritten'], ['malformed', 'md.dict.malformed']] as const) {
+      const html = render(dataFor(BOTH, null, state), '#/technical/dictionaries');
+      expect(main(html)).toContain(marked[key]);
+      expect(main(html)).not.toContain('data-set=');
+      expect(main(html).match(/data-part="dict-status"/g)?.length, state).toBe(1);
+    }
+  });
+});
+
+describe('every fixed text of the dictionaries page comes from the ui table', () => {
+  const empty: DictionariesSection = { ...section, dictionaries: [], mismatches: [], applications: [] };
+  for (const [name, data, hash] of [
+    ['full', dataFor(BOTH), '#/technical/dictionaries'],
+    ['no value set and no mismatch', dataFor(BOTH, empty), '#/technical/dictionaries'],
+    ['missing', dataFor(BOTH, null, 'missing'), '#/technical/dictionaries'],
+    ['malformed', dataFor(['technical'], null, 'malformed'), '#/dictionaries'],
+    ['not found in the product view', dataFor(BOTH), '#/product/dictionaries'],
+  ] as const) {
+    it(name, () => {
+      const html = render(data, hash);
+      expect(visibleTexts(html).length).toBeGreaterThan(3);
+      expect(unmarked(html)).toEqual([]);
+    });
+  }
+});

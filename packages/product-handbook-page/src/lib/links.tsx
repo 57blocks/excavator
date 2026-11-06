@@ -10,6 +10,7 @@ export interface Links {
   notifications: string;
   jobs: string;
   data: string;
+  dictionaries: string;
   rolesMatrix: string;
   applicationsMatrix: string;
   feature: (id: string) => string;
@@ -26,6 +27,7 @@ export function makeLinks(prefix: View | null): Links {
     notifications: routeHash({ name: 'notifications' }, prefix),
     jobs: routeHash({ name: 'jobs' }, prefix),
     data: routeHash({ name: 'data' }, prefix),
+    dictionaries: routeHash({ name: 'dictionaries' }, prefix),
     rolesMatrix: routeHash({ name: 'roles-matrix' }, prefix),
     applicationsMatrix: routeHash({ name: 'applications-matrix' }, prefix),
     feature: (id) => routeHash({ name: 'feature', id }, prefix),
