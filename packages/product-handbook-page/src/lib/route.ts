@@ -2,7 +2,7 @@
  * The page's routes live in the URL fragment so the back button and shared
  * links work: `#/`, `#/feature/<id>`, `#/domain/<id>`, `#/role/<label>`,
  * `#/application/<dir>`, `#/system/<name>`, `#/matrix/roles`,
- * `#/matrix/applications`, `#/notifications`, `#/jobs`, `#/coverage` and (technical view only) `#/data`. A page
+ * `#/matrix/applications`, `#/notifications`, `#/jobs`, `#/coverage` and (technical view only) `#/data` and `#/dictionaries`. A page
  * that has both views puts the view in front of each (`#/technical/feature/F1`);
  * a page with one view has no prefix, and a fragment without one is the first
  * view. Parsing never throws: a fragment that names no route is `not-found`.
@@ -24,6 +24,7 @@ export type RouteBody =
   | { name: 'jobs' }
   | { name: 'coverage' }
   | { name: 'data' }
+  | { name: 'dictionaries' }
   | { name: 'not-found'; hash: string };
 
 /** A route with the view its fragment names, when it names one. */
@@ -51,6 +52,7 @@ function parseBody(rest: string[], hash: string): RouteBody {
   if (rest.length === 1 && rest[0] === 'notifications') return { name: 'notifications' };
   if (rest.length === 1 && rest[0] === 'jobs') return { name: 'jobs' };
   if (rest.length === 1 && rest[0] === 'data') return { name: 'data' };
+  if (rest.length === 1 && rest[0] === 'dictionaries') return { name: 'dictionaries' };
   if (rest.length === 2 && rest[0] === 'matrix' && rest[1] === 'roles') return { name: 'roles-matrix' };
   if (rest.length === 2 && rest[0] === 'matrix' && rest[1] === 'applications') return { name: 'applications-matrix' };
   if (rest.length === 2 && Object.prototype.hasOwnProperty.call(KEYED, rest[0])) {
@@ -89,6 +91,7 @@ function segments(route: RouteBody): string[] {
     case 'jobs': return ['jobs'];
     case 'coverage': return ['coverage'];
     case 'data': return ['data'];
+    case 'dictionaries': return ['dictionaries'];
     case 'not-found': return [];
   }
 }
@@ -99,7 +102,7 @@ export function routeHash(route: RouteBody, prefix: View | null): string {
   return parts.length === 0 ? '#/' : `#/${parts.join('/')}`;
 }
 
-/** The pages only the technical view has: the application and external-system pages, the applications-by-domain matrix and the data page. */
-const TECHNICAL_ONLY: readonly RouteBody['name'][] = ['application', 'system', 'applications-matrix', 'data'];
+/** The pages only the technical view has: the application and external-system pages, the applications-by-domain matrix, the data page and the dictionaries page. */
+const TECHNICAL_ONLY: readonly RouteBody['name'][] = ['application', 'system', 'applications-matrix', 'data', 'dictionaries'];
 
 export const isInView = (route: RouteBody, view: View): boolean => view === 'technical' || !TECHNICAL_ONLY.includes(route.name);

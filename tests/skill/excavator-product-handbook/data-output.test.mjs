@@ -1,7 +1,7 @@
 // O3 of openspec change handbook-data-tables: the technical view shows the
 // data section, the product view never does; a missing and a malformed
 // data.json each give one visible line; the count line equals the lists; the
-// page data carries the section (format /6) in its technical part only.
+// page data carries the section (format /7) in its technical part only.
 import { afterAll, afterEach, describe, expect, it } from 'vitest';
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -39,12 +39,12 @@ function run(dataJson) {
   return made;
 }
 
-/** The lines of the chapter: from its heading to the next level-2 heading. */
+/** The lines of the chapter's data part: from its heading to the next level-2 heading, or to the status dictionary part (dict-output.test.mjs), which is its own part of the chapter. */
 function chapter(body) {
   const start = body.indexOf(`\n## ${ui['md.data.heading']}\n`);
   expect(start, 'the data chapter').toBeGreaterThanOrEqual(0);
-  const next = body.indexOf('\n## ', start + 4);
-  return body.slice(start + 1, next === -1 ? undefined : next);
+  const ends = [body.indexOf('\n## ', start + 4), body.indexOf(`\n### ${ui['md.dict.heading']}\n`, start + 4)].filter((at) => at !== -1);
+  return body.slice(start + 1, ends.length === 0 ? undefined : Math.min(...ends));
 }
 /** The text of a `###` part of the chapter, up to the next `###` or the end. */
 function part(text_, headingKey) {
@@ -211,12 +211,12 @@ describe('a missing or malformed data.json is one visible line in the technical 
 });
 
 describe('the page data carries the data section in its technical part only', () => {
-  it('uses format /6; the technical part holds the lists the page shows and none of the ledgers', () => {
+  it('uses format /7; the technical part holds the lists the page shows and none of the ledgers', () => {
     const made = run(data);
     expect(page(made, 'product,technical').status).toBe(0);
     const got = pageData(made);
-    expect(got.format).toBe('excavator-product-handbook-page/6');
-    expect(Object.keys(got.technical).slice(-2)).toEqual(['data', 'dataState']);
+    expect(got.format).toBe('excavator-product-handbook-page/7');
+    expect(Object.keys(got.technical).slice(-4)).toEqual(['data', 'dataState', 'dictionaries', 'dictionariesState']);
     expect(got.technical.dataState).toBe('ok');
     expect(Object.keys(got.technical.data)).toEqual(['recognized', 'applications', 'tables', 'dropped', 'changedNeverCreated', 'declaredOnly', 'removedButDeclared', 'onlyInMigrations', 'gaps', 'counts']);
     expect(got.technical.data.tables).toHaveLength(30);
@@ -230,7 +230,7 @@ describe('the page data carries the data section in its technical part only', ()
     const made = run(data);
     expect(page(made, 'product').status).toBe(0);
     const got = pageData(made);
-    expect(got.format).toBe('excavator-product-handbook-page/6');
+    expect(got.format).toBe('excavator-product-handbook-page/7');
     expect(Object.hasOwn(got, 'technical')).toBe(false);
     expect(text(made, 'handbook.html')).not.toContain('ledger_entries');
   });

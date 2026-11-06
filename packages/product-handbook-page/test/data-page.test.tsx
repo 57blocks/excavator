@@ -58,7 +58,7 @@ const section: DataSection = {
 
 function dataFor(views: View[], dataSection: DataSection | null = section, dataState: 'ok' | 'missing' | 'malformed' = 'ok'): PageData {
   return {
-    format: 'excavator-product-handbook-page/6',
+    format: 'excavator-product-handbook-page/7',
     project: d('project'),
     language: d('language'),
     languageTag: 'xx',
@@ -75,7 +75,7 @@ function dataFor(views: View[], dataSection: DataSection | null = section, dataS
     ...(views.includes('technical') ? {
       technical: {
         featureApplication: [], unattributed: [], applicationDomain: { applications: [], domains: [], cells: [], unattributed: [] },
-        integrations: [], jobs: [], locations: [], data: dataSection, dataState,
+        integrations: [], jobs: [], locations: [], data: dataSection, dataState, dictionaries: null, dictionariesState: 'missing' as const,
       },
     } : {}),
   };

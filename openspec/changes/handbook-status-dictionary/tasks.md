@@ -12,9 +12,9 @@
 
 提交：`feat(product-handbook): the technical view shows the status dictionary`
 
-- [ ] 2.1 `ui-strings.json` 新键；数据一章加「状态字典」一节，缺失或不合格时一行说明（design D6）
-- [ ] 2.2 页面数据 `/7`、`#/dictionaries` 路由、侧栏链接、字典页；产品视图没有
-- [ ] 2.3 渲染与页面测试（design O2）
+- [x] 2.1 `ui-strings.json` 新键；数据一章加「状态字典」一节，缺失或不合格时一行说明（design D6）
+- [x] 2.2 页面数据 `/7`、`#/dictionaries` 路由、侧栏链接、字典页；产品视图没有
+- [x] 2.3 渲染与页面测试（design O2）
 
 ## 3. 验收
 

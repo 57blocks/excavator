@@ -10,13 +10,14 @@
 import { basename } from 'node:path';
 
 import { pageSection } from './data-section.mjs';
+import { dictionariesPageSection } from './dict-section.mjs';
 import { handbookModel } from './handbook-model.mjs';
 import { reachCounts } from './render.mjs';
 import { languageTag } from './language-tag.mjs';
 import { withoutRootPaths } from './root-paths.mjs';
 import { DEFAULT_VIEWS } from './views.mjs';
 
-export const PAGE_FORMAT = 'excavator-product-handbook-page/6';
+export const PAGE_FORMAT = 'excavator-product-handbook-page/7';
 
 /** An entry without its evidence, in the page's shape. */
 function pageEntry(entry) {
@@ -47,14 +48,15 @@ function pageEntry(entry) {
  * `technical` is the product part and holds no citation path; `technical`, only
  * there when the technical view is selected, holds the application relations,
  * the external systems with both relations to applications, the file and
- * lines of each cited item and the data section (`data`, null with the reason in
- * `dataState` when data.json is missing or malformed).
+ * lines of each cited item, the data section (`data`, null with the reason in
+ * `dataState` when data.json is missing or malformed) and the status dictionary
+ * (`dictionaries` and `dictionariesState`, the same for dictionaries.json).
  */
 export function buildPageData(run, roots, { views = DEFAULT_VIEWS } = {}) {
   const { map, entries, state, candidates, ui } = run;
   const project = basename(roots[0]);
   const kind = new Map(candidates.map((candidate) => [candidate.id, candidate.kind]));
-  const { summary, system, entities, locations, data: dataSection } = handbookModel(run, roots[0], views);
+  const { summary, system, entities, locations, data: dataSection, dictionaries: dictionariesSection } = handbookModel(run, roots[0], views);
   const domainOf = new Map(entities.domains.flatMap((domain) => domain.features.map((id) => [id, domain.id])));
   const data = {
     format: PAGE_FORMAT,
@@ -107,6 +109,8 @@ export function buildPageData(run, roots, { views = DEFAULT_VIEWS } = {}) {
       locations,
       data: dataSection.state === 'ok' ? pageSection(dataSection.data) : null,
       dataState: dataSection.state,
+      dictionaries: dictionariesSection.state === 'ok' ? dictionariesPageSection(dictionariesSection.data) : null,
+      dictionariesState: dictionariesSection.state,
     };
   }
   return withoutRootPaths(data, roots, project);

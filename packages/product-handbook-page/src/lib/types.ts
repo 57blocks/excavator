@@ -1,6 +1,6 @@
 /** The page data `handbook.mjs page` writes into the template (openspec change product-handbook-map, design D13). */
 
-export const PAGE_FORMAT = 'excavator-product-handbook-page/6';
+export const PAGE_FORMAT = 'excavator-product-handbook-page/7';
 
 /** The views a page can hold (openspec change handbook-entities-and-views): the product view and the technical view. */
 export const VIEWS = ['product', 'technical'] as const;
@@ -209,6 +209,76 @@ export interface DataSection {
   };
 }
 
+/** One comment next to a member, as written; `where` is above the member or on its line. */
+export interface DictionaryComment { text: string; file: string; line: number; endLine?: number; where: 'above' | 'same-line' }
+
+/** One member of a value set: the value (a string, a number, or the expression as written when it is not computed; null when there is none), the comments and display names the code gives it, and its place. */
+export interface DictionaryMember {
+  name: string;
+  value: string | number | null;
+  computed: boolean;
+  reason?: 'expression' | 'after-uncomputed';
+  file: string;
+  line: number;
+  comments: DictionaryComment[];
+  labels: { text: string; file: string; line: number }[];
+}
+
+export type DictionaryForm = 'go-type' | 'ts-enum' | 'ts-const-object' | 'js-object';
+
+/** One value set; `application` is the empty string for a file that belongs to no application. */
+export interface DictionaryEntry {
+  id: string;
+  application: string;
+  form: DictionaryForm;
+  name: string;
+  file: string;
+  line: number;
+  /** The underlying type of a Go named type. */
+  baseType?: string;
+  members: DictionaryMember[];
+  skippedMembers: number;
+}
+
+/** A value with the member names that have it. */
+export interface DictionaryValue { value: string | number; members: string[] }
+
+/** Two value sets of the same name in two applications whose values differ. */
+export interface DictionaryMismatch {
+  key: string;
+  left: { id: string; application: string; name: string };
+  right: { id: string; application: string; name: string };
+  onlyLeft: DictionaryValue[];
+  onlyRight: DictionaryValue[];
+  both: { value: string | number; left: string[]; right: string[] }[];
+  uncompared: { left: string[]; right: string[] };
+}
+
+/** The status dictionary as the page draws it (dictionaries.json without its candidate ledger and scan counts). */
+export interface DictionariesSection {
+  /** The keys of the forms this version recognizes; the page words each by a fixed text. */
+  recognized: string[];
+  applications: { directory: string; dictionaries: number }[];
+  dictionaries: DictionaryEntry[];
+  mismatches: DictionaryMismatch[];
+  counts: {
+    dictionaries: { total: number; goType: number; tsEnum: number; tsConstObject: number; jsObject: number };
+    members: { total: number; computed: number; notComputed: number };
+    comments: number;
+    labels: number;
+    skippedMembers: number;
+    candidates: {
+      goTypes: { total: number; dictionary: number; noConstants: number; duplicate: number };
+      goConstants: { total: number; member: number; untypedIota: number; otherType: number; plain: number };
+      tsEnums: { total: number; dictionary: number };
+      tsConstObjects: { total: number; dictionary: number; noLiteralMembers: number };
+      jsObjects: { total: number; dictionary: number; noLiteralMembers: number };
+      mapEntries: { total: number; label: number; unmatchedKey: number; ambiguousKey: number };
+    };
+    mismatches: number;
+  };
+}
+
 /** The technical part: only in a page that has the technical view. Holds the only citation paths of the page data. */
 export interface Technical {
   featureApplication: { feature: string; application: string; citations: number }[];
@@ -220,6 +290,9 @@ export interface Technical {
   /** The data section; null when `<out>/data.json` is missing or malformed, and `dataState` says which. */
   data: DataSection | null;
   dataState: 'ok' | 'missing' | 'malformed';
+  /** The status dictionary; null when `<out>/dictionaries.json` is missing or malformed, and `dictionariesState` says which. */
+  dictionaries: DictionariesSection | null;
+  dictionariesState: 'ok' | 'missing' | 'malformed';
 }
 
 export interface PageData {
