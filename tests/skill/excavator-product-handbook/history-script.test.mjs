@@ -10,11 +10,11 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { buildHotspots } from '../../../skills/excavator/hotspots.mjs';
-import { authorsFor } from '../../../skills/excavator-product-handbook/lib/history-facts.mjs';
+import { authorsFor, readCommits } from '../../../skills/excavator-product-handbook/lib/history-facts.mjs';
 import { HISTORY_FORMAT, checkHistoryShape, loadHistorySection } from '../../../skills/excavator-product-handbook/lib/history-shape.mjs';
 import { isTestFile } from '../../../skills/excavator-product-handbook/lib/history-tests.mjs';
 import { HANDBOOK_SCRIPT } from './helpers.mjs';
-import { GIT_ENV, multiRepoProject, plainProject, tempDir, treeDigest } from './history-fixture.mjs';
+import { GIT_ENV, git, multiRepoProject, plainProject, tempDir, treeDigest } from './history-fixture.mjs';
 import { spawnSync } from 'node:child_process';
 
 const cleanups = [];
@@ -62,6 +62,31 @@ describe('handbook.mjs history: the years', () => {
     expect(years.map((row) => row.year)).toEqual([2022, 2023, 2024, 2025, 2026, 2027]);
     expect(years[4]).toEqual({ year: 2026, commits: 0, byApp: {} });
     expect(years[5]).toEqual({ year: 2027, commits: 1, byApp: { solo: 1 } });
+  });
+});
+
+describe('the commits read for an application', () => {
+  const cleanups = [];
+  afterEach(() => { while (cleanups.length > 0) cleanups.pop()(); });
+
+  it('keeps a commit of a merged branch whose change the main line also made, which a simplified log would drop', () => {
+    const root = tempDir(cleanups);
+    const who = (name, when) => ({ GIT_AUTHOR_NAME: name, GIT_AUTHOR_EMAIL: `${name}@example.test`, GIT_AUTHOR_DATE: when, GIT_COMMITTER_NAME: name, GIT_COMMITTER_EMAIL: `${name}@example.test`, GIT_COMMITTER_DATE: when });
+    git(root, ['init', '-q', '-b', 'main']);
+    writeFileSync(join(root, 'a.js'), 'one\n');
+    git(root, ['add', '-A']);
+    git(root, ['commit', '-q', '-m', 'one'], who('ann', '2023-01-01T00:00:00+0000'));
+    git(root, ['checkout', '-q', '-b', 'topic']);
+    writeFileSync(join(root, 'b.js'), 'same\n');
+    git(root, ['add', '-A']);
+    git(root, ['commit', '-q', '-m', 'branch'], who('bob', '2023-02-01T00:00:00+0000'));
+    git(root, ['checkout', '-q', 'main']);
+    writeFileSync(join(root, 'b.js'), 'same\n');
+    git(root, ['add', '-A']);
+    git(root, ['commit', '-q', '-m', 'main'], who('ann', '2023-03-01T00:00:00+0000'));
+    git(root, ['merge', '-q', '--no-ff', '-m', 'merge', 'topic'], who('cy', '2023-04-01T00:00:00+0000'));
+    const commits = readCommits(root, '.');
+    expect(commits.map((c) => c.author).sort()).toEqual(['ann@example.test', 'ann@example.test', 'bob@example.test']);
   });
 });
 

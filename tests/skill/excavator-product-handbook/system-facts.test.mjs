@@ -158,6 +158,25 @@ describe('system facts: version history', () => {
     expect(md).not.toContain('No version history');
   });
 
+  it('counts a commit of a merged branch whose change the main line also made, which a simplified log would drop', () => {
+    const run = verifiedOverview();
+    git(run.root, ['init', '-q']);
+    git(run.root, ['checkout', '-q', '-b', 'main']);
+    git(run.root, ['add', '-A']);
+    git(run.root, ['commit', '-q', '-m', 'one'], { name: 'A', email: 'a@example.org', date: '2023-02-01T10:00:00+0000' });
+    git(run.root, ['checkout', '-q', '-b', 'topic']);
+    writeFileSync(join(run.root, 'same.txt'), 'same\n');
+    git(run.root, ['add', '-A'], { name: 'B', email: 'b@example.org', date: '2023-03-01T10:00:00+0000' });
+    git(run.root, ['commit', '-q', '-m', 'on the branch'], { name: 'B', email: 'b@example.org', date: '2023-03-01T10:00:00+0000' });
+    git(run.root, ['checkout', '-q', 'main']);
+    writeFileSync(join(run.root, 'same.txt'), 'same\n');
+    git(run.root, ['add', '-A'], { name: 'A', email: 'a@example.org', date: '2023-04-01T10:00:00+0000' });
+    git(run.root, ['commit', '-q', '-m', 'on the main line'], { name: 'A', email: 'a@example.org', date: '2023-04-01T10:00:00+0000' });
+    git(run.root, ['merge', '-q', '--no-ff', '-m', 'merge', 'topic'], { name: 'C', email: 'c@example.org', date: '2023-05-01T10:00:00+0000' });
+    const [app] = systemOf(run).applications;
+    expect(app.history).toEqual({ first: '2023-02-01', last: '2023-04-01', commits: 3, authors: 2 });
+  });
+
   it('counts only the history under the directory of the application', () => {
     const run = verifiedOverview((doc, r) => {
       mkdirSync(join(r.root, 'tools'), { recursive: true });

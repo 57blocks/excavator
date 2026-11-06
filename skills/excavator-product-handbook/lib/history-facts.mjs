@@ -37,7 +37,7 @@ export function authorsFor(counts) {
 export function readCommits(projectRoot, dir) {
   let output;
   try {
-    output = execFileSync('git', ['-C', dir === '.' ? projectRoot : join(projectRoot, dir), 'log', '--no-merges', '--format=%H%x09%at%x09%ae', '--', '.'], {
+    output = execFileSync('git', ['-C', dir === '.' ? projectRoot : join(projectRoot, dir), 'log', '--no-merges', '--full-history', '--format=%H%x09%at%x09%ae', '--', '.'], {
       encoding: 'utf-8',
       stdio: ['ignore', 'pipe', 'ignore'],
       maxBuffer: GIT_BUFFER_BYTES,
