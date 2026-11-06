@@ -150,12 +150,13 @@ function SectionBody({ section }: { section: DictionariesSection }) {
         })}
       </p>
       <p className="summary-counts">
-        {t('md.dict.countLineOthers', {
+        {t('md.dict.countLineNotTaken', {
           noConstants: candidates.goTypes.noConstants,
           duplicate: candidates.goTypes.duplicate,
           untypedIota: candidates.goConstants.untypedIota,
           otherType: candidates.goConstants.otherType,
           plain: candidates.goConstants.plain,
+          otherVar: candidates.goVars.otherType,
           tsNoLiteral: candidates.tsConstObjects.noLiteralMembers,
           jsNoLiteral: candidates.jsObjects.noLiteralMembers,
           unmatchedKey: candidates.mapEntries.unmatchedKey,

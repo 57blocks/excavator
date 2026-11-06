@@ -15,6 +15,7 @@ const ENUMS = 'web-app/src/enums.ts';
 const ALIASES = 'go-app/status/aliases.go';
 const TS_CONSTS = 'web-app/src/consts.ts';
 const TABLES = 'node-app/src/tables.js';
+const VARS = 'go-app/status/vars.go';
 const CONSTANTS = 'node-app/src/constants.js';
 
 const data = extractDictionaries(FIXTURE);
@@ -38,6 +39,8 @@ describe('the value sets of the fixture', () => {
       [`${TYPES}:Level`, 'go-type', 'go-app', 8],
       [`${TYPES}:Flags`, 'go-type', 'go-app', 9],
       [`${TYPES}:Phase`, 'go-type', 'go-app', 10],
+      [`${VARS}:Tone`, 'go-type', 'go-app', 3],
+      [`${VARS}:Shade`, 'go-type', 'go-app', 4],
       [`${CONSTANTS}:UserStatus`, 'js-object', 'node-app', 3],
       [`${CONSTANTS}:INVOICE_STATE`, 'js-object', 'node-app', 17],
       [`${CONSTANTS}:OrderStage`, 'js-object', 'node-app', 23],
@@ -53,9 +56,9 @@ describe('the value sets of the fixture', () => {
       [`${ENUMS}:LeaveType`, 'ts-enum', 'web-app', 40],
     ]);
     expect(data.dictionaries.filter((entry) => entry.form === 'go-type').map((entry) => [entry.name, entry.baseType])).toEqual([
-      ['InvoiceState', 'string'], ['Mode', 'uint8'], ['Tier', 'string'], ['Status', 'int'], ['Kind', 'string'], ['Level', 'uint8'], ['Flags', 'uint16'], ['Phase', 'int32'],
+      ['InvoiceState', 'string'], ['Mode', 'uint8'], ['Tier', 'string'], ['Status', 'int'], ['Kind', 'string'], ['Level', 'uint8'], ['Flags', 'uint16'], ['Phase', 'int32'], ['Tone', 'string'], ['Shade', 'uint8'],
     ]);
-    expect(data.applications).toEqual([{ directory: 'go-app', dictionaries: 8 }, { directory: 'node-app', dictionaries: 6 }, { directory: 'web-app', dictionaries: 7 }]);
+    expect(data.applications).toEqual([{ directory: 'go-app', dictionaries: 10 }, { directory: 'node-app', dictionaries: 6 }, { directory: 'web-app', dictionaries: 7 }]);
   });
 });
 
@@ -88,6 +91,35 @@ describe('Go: types, constants and iota', () => {
   it('takes string constants as they are, and leaves an untyped constant that points at a member out of the set', () => {
     expect(members(`${TYPES}:Kind`)).toEqual([['KindInternal', 'internal', true, 16], ['KindExternal', 'external', true, 17]]);
     expect(members('go-app/billing/invoice.go:InvoiceState')).toEqual([['InvoiceOpen', 'open', true, 7], ['InvoicePaid', 'paid', true, 8], ['InvoiceVoid', 'void', true, 9]]);
+  });
+});
+
+describe('Go: typed variables are members too', () => {
+  it('takes the members of var blocks and of single var declarations, in source order, with literal values as they are', () => {
+    expect(members(`${VARS}:Tone`)).toEqual([['ToneWarm', 'warm', true, 7], ['ToneCold', 'cold', true, 8], ['ToneMix', 'pick()', false, 9]]);
+    expect(members(`${VARS}:Shade`)).toEqual([['ShadeDark', 1, true, 10], ['ShadeBad', 'iota', false, 11], ['ShadeLight', 2, true, 14]]);
+  });
+
+  it('shows an expression as written and not computed, and does not compute iota in a var', () => {
+    expect(member(`${VARS}:Tone`, 'ToneMix').reason).toBe('expression');
+    expect(member(`${VARS}:Shade`, 'ShadeBad').computed).toBe(false);
+  });
+
+  it('records that a member was declared with var, and leaves the mark off the members declared with const', () => {
+    for (const entry of [...dict(`${VARS}:Tone`).members, ...dict(`${VARS}:Shade`).members]) expect(entry.declaredAs, entry.name).toBe('var');
+    for (const entry of dict(`${TYPES}:Status`).members) expect(Object.hasOwn(entry, 'declaredAs'), entry.name).toBe(false);
+  });
+
+  it('puts a typed var with a value in member or otherType, and reads neither an untyped var nor one with no value', () => {
+    expect(data.candidates.filter((row) => row.kind === 'go-var').map((row) => [row.name, row.line, row.bucket, row.type ?? null])).toEqual([
+      ['ToneWarm', 7, 'member', 'Tone'],
+      ['ToneCold', 8, 'member', 'Tone'],
+      ['ToneMix', 9, 'member', 'Tone'],
+      ['ShadeDark', 10, 'member', 'Shade'],
+      ['ShadeBad', 11, 'member', 'Shade'],
+      ['ShadeLight', 14, 'member', 'Shade'],
+      ['Handle', 18, 'otherType', 'time.Duration'],
+    ]);
   });
 });
 

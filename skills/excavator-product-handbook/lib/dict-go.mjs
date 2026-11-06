@@ -20,7 +20,7 @@ export const GO_BASIC_TYPES = Object.freeze(['string', 'int', 'int8', 'int16', '
 const collapse = (text) => text.replace(/\s+/g, ' ').trim();
 const CONTINUES = /[,+\-*/%&|^<>=!]$/;
 
-/** The `type` and `const` declarations at the top level of a file: `{ keyword, start, end, grouped }` over `code`. */
+/** The `type`, `const` and `var` declarations at the top level of a file: `{ keyword, start, end, grouped }` over `code`. */
 function topLevelDeclarations(code) {
   const found = [];
   const n = code.length;
@@ -29,7 +29,7 @@ function topLevelDeclarations(code) {
   let i = 0;
   while (i < n) {
     if ((i === 0 || code[i - 1] === '\n') && brace === 0 && paren === 0) {
-      const keyword = /^(type|const)\b/.exec(code.slice(i, i + 6));
+      const keyword = /^(type|const|var)\b/.exec(code.slice(i, i + 6));
       if (keyword !== null) {
         let j = i + keyword[1].length;
         while (code[j] === ' ' || code[j] === '\t') j += 1;
@@ -104,6 +104,36 @@ function parseConstSpec(code, range) {
 }
 
 /**
+ * The items of one var spec `A, B T = e1, e2`: one per name, only when the
+ * spec writes a type and a value (a var with no type or no value is not a
+ * declaration of a value of a named type). The value is a literal as written or
+ * the expression as written, not computed: `iota` means nothing in a var.
+ */
+function varItems(source, range, commentsFor) {
+  const { text, code, lineAt } = source;
+  const spec = parseConstSpec(code, range);
+  if (spec === null || spec.typeText === null || spec.exprStart === null) return [];
+  const ranges = splitTopLevel(code, spec.exprStart, range.end);
+  const whole = { raw: text.slice(spec.exprStart, range.end), code: code.slice(spec.exprStart, range.end) };
+  const expressions = ranges.length === spec.names.length ? ranges.map((part) => ({ raw: text.slice(part.start, part.end), code: code.slice(part.start, part.end) })) : spec.names.map(() => whole);
+  const comments = commentsFor(range.start, range.end);
+  return spec.names.map((name, k) => {
+    const expression = expressions[k];
+    const usesIota = /\biota\b/.test(expression.code);
+    const evaluated = usesIota ? { computed: false } : evalGoExpression(expression.raw, 0);
+    return {
+      name: name.name,
+      line: lineAt(name.start),
+      typeText: spec.typeText,
+      usesIota,
+      declaredAs: 'var',
+      ...(evaluated.computed ? { computed: true, value: evaluated.value } : { computed: false, value: collapse(expression.raw), reason: 'expression' }),
+      comments,
+    };
+  });
+}
+
+/**
  * The reading of one Go file: `{ package, types, items }`. `types` are
  * `{ name, base, line }` for each named type with a basic underlying type;
  * `items` are one per constant name, in source order, with `typeText` (what
@@ -124,6 +154,10 @@ export function readGoFile(source) {
         const parsed = parseTypeSpec(code.slice(range.start, range.end));
         if (parsed !== null) types.push({ ...parsed, line: lineAt(range.start) });
       }
+      continue;
+    }
+    if (declaration.keyword === 'var') {
+      for (const range of specs) items.push(...varItems(source, range, commentsFor));
       continue;
     }
     let previous = null;

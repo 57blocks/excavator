@@ -2,12 +2,13 @@
 
 /** `raw` is `{ name, value, computed, reason?, line, comments }` as the readers give it. */
 export function makeMember(raw, file) {
-  const { name, value, computed, reason, line, comments } = raw;
+  const { name, value, computed, reason, line, comments, declaredAs } = raw;
   return {
     name,
     value,
     computed,
     ...(computed ? {} : { reason }),
+    ...(declaredAs === undefined ? {} : { declaredAs }),
     file,
     line,
     comments: comments.map(({ text, line: from, endLine, where }) => ({ text, file, line: from, ...(endLine === undefined ? {} : { endLine }), where })),

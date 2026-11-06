@@ -43,7 +43,7 @@ const retry = entry('web-app/src/consts.ts:RetryMode', 'web-app', 'ts-const-obje
 const loose = entry('tools/states.js:OrderState', '', 'js-object', 'OrderState', 'tools/states.js', [member('open', 1)]);
 
 const section: DictionariesSection = {
-  recognized: ['go-named-type', 'ts-enum', 'ts-const-object', 'js-object'],
+  recognized: ['go-named-type', 'go-typed-var', 'ts-enum', 'ts-const-object', 'js-object'],
   applications: [{ directory: d('go-app'), dictionaries: 2 }, { directory: d('web-app'), dictionaries: 2 }, { directory: '', dictionaries: 1 }],
   dictionaries: [kind, status, retry, web, loose],
   mismatches: [{
@@ -64,6 +64,7 @@ const section: DictionariesSection = {
     candidates: {
       goTypes: { total: 3, dictionary: 2, noConstants: 1, duplicate: 0 },
       goConstants: { total: 8, member: 5, untypedIota: 1, otherType: 1, plain: 1 },
+      goVars: { total: 3, member: 2, otherType: 1 },
       tsEnums: { total: 1, dictionary: 1 },
       tsConstObjects: { total: 2, dictionary: 1, noLiteralMembers: 1 },
       jsObjects: { total: 1, dictionary: 1, noLiteralMembers: 0 },
@@ -154,9 +155,9 @@ describe('the dictionaries page', () => {
 
   it('shows the fixed notes, the recognized forms and the two count lines', () => {
     for (const key of ['md.dict.note.nameFilter', 'md.dict.note.meaning', 'md.dict.note.values']) expect(body, key).toContain(marked[key]);
-    expect(body).toContain(`${MARK}Forms of value set recognized in this version: ${['goNamedType', 'tsEnum', 'tsConstObject', 'jsObject'].map((form) => marked[`md.dict.form.${form}`]).join('; ')}.`);
+    expect(body).toContain(`${MARK}Forms of value set recognized in this version: ${['goNamedType', 'goTypedVar', 'tsEnum', 'tsConstObject', 'jsObject'].map((form) => marked[`md.dict.form.${form}`]).join('; ')}.`);
     expect(body).toContain(`${MARK}Value sets: 5 (2 Go types, 1 TS enums, 1 TS const objects, 1 JS objects). Members: 9 (7 computed, 2 not computed). Comments: 1. Display names: 2. Same names with different values: 1. Skipped members: 2.`);
-    expect(body).toContain(`${MARK}Candidates that are not value sets: 1 Go types without constants, 0 Go types declared again, 1 untyped iota constants, 1 constants of another type, 1 plain constants, 1 TS const objects without literal members, 0 JS objects without literal members. Mapping table entries that name no member: 1. Mapping table entries that name more than one member: 0.`);
+    expect(body).toContain(`${MARK}Candidates that are not value sets: 1 Go types without constants or variables, 0 Go types declared again, 1 untyped iota constants, 1 constants of another type, 1 plain constants, 1 variables of another type, 1 TS const objects without literal members, 0 JS objects without literal members. Mapping table entries that name no member: 1. Mapping table entries that name more than one member: 0.`);
   });
 
   it('lists the same names with different values, with the side that has a value alone, the values both have and the members not compared', () => {

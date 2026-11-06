@@ -218,6 +218,8 @@ export interface DictionaryMember {
   value: string | number | null;
   computed: boolean;
   reason?: 'expression' | 'after-uncomputed';
+  /** `var` for a member of a Go value set that was declared with var; absent for const. */
+  declaredAs?: 'var';
   file: string;
   line: number;
   comments: DictionaryComment[];
@@ -270,6 +272,7 @@ export interface DictionariesSection {
     candidates: {
       goTypes: { total: number; dictionary: number; noConstants: number; duplicate: number };
       goConstants: { total: number; member: number; untypedIota: number; otherType: number; plain: number };
+      goVars: { total: number; member: number; otherType: number };
       tsEnums: { total: number; dictionary: number };
       tsConstObjects: { total: number; dictionary: number; noLiteralMembers: number };
       jsObjects: { total: number; dictionary: number; noLiteralMembers: number };

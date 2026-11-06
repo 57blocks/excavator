@@ -7,7 +7,8 @@
  * directory: its constants belong to the first declaration, which Go build
  * tags can make ambiguous). Each constant item lands in `member`,
  * `untypedIota` (no type, uses `iota`), `otherType` (a type that is not a
- * named basic type of the directory) or `plain`.
+ * named basic type of the directory) or `plain`. A typed var with a value is
+ * a `go-var` row, `member` or `otherType`, and its member says `declaredAs: 'var'`.
  */
 
 import { makeMember } from './dict-member.mjs';
@@ -44,7 +45,7 @@ export function assembleGo(files) {
     }
     for (const file of list) {
       for (const item of file.read.items) {
-        const row = { kind: 'go-const', file: file.rel, line: item.line, name: item.name, ...(item.typeText === null ? {} : { type: item.typeText }) };
+        const row = { kind: item.declaredAs === 'var' ? 'go-var' : 'go-const', file: file.rel, line: item.line, name: item.name, ...(item.typeText === null ? {} : { type: item.typeText }) };
         const dictionary = item.typeText === null ? undefined : declared.get(item.typeText);
         if (dictionary !== undefined) {
           const member = makeMember(item, file.rel);

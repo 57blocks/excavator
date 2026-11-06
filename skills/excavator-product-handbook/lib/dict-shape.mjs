@@ -13,13 +13,14 @@ import { isObject } from './json-file.mjs';
 
 export const DICT_FORMAT = 'excavator-product-handbook-dictionaries/1';
 /** The forms this version recognizes; the page words each by its key. */
-export const DICT_RECOGNIZED = Object.freeze(['go-named-type', 'ts-enum', 'ts-const-object', 'js-object']);
+export const DICT_RECOGNIZED = Object.freeze(['go-named-type', 'go-typed-var', 'ts-enum', 'ts-const-object', 'js-object']);
 
 const FORMS = Object.freeze(['go-type', 'ts-enum', 'ts-const-object', 'js-object']);
 /** The buckets a candidate of each kind can land in. */
 export const CANDIDATE_BUCKETS = Object.freeze({
   'go-type': Object.freeze(['dictionary', 'noConstants', 'duplicate']),
   'go-const': Object.freeze(['member', 'untypedIota', 'otherType', 'plain']),
+  'go-var': Object.freeze(['member', 'otherType']),
   'ts-enum': Object.freeze(['dictionary']),
   'ts-const-object': Object.freeze(['dictionary', 'noLiteralMembers']),
   'js-object': Object.freeze(['dictionary', 'noLiteralMembers']),
@@ -43,6 +44,7 @@ export function computeDictionaryCounts(data) {
     candidates: {
       goTypes: bucketCounts('go-type'),
       goConstants: bucketCounts('go-const'),
+      goVars: bucketCounts('go-var'),
       tsEnums: bucketCounts('ts-enum'),
       tsConstObjects: bucketCounts('ts-const-object'),
       jsObjects: bucketCounts('js-object'),
@@ -116,7 +118,7 @@ export function checkDictionariesShape(value) {
       file: isString,
       line: isLine,
       baseType: (v, row) => (row.form === 'go-type' ? isString(v) : v === undefined),
-      members: (v) => Array.isArray(v) && v.every((m) => isObject(m) && isText(m.name) && isValue(m.value) && typeof m.computed === 'boolean' && optional(isString)(m.reason) && isString(m.file) && isLine(m.line) && Array.isArray(m.comments) && m.comments.every(comment) && Array.isArray(m.labels) && m.labels.every(label)),
+      members: (v) => Array.isArray(v) && v.every((m) => isObject(m) && isText(m.name) && isValue(m.value) && typeof m.computed === 'boolean' && optional(isString)(m.reason) && (m.declaredAs === undefined || m.declaredAs === 'var') && isString(m.file) && isLine(m.line) && Array.isArray(m.comments) && m.comments.every(comment) && Array.isArray(m.labels) && m.labels.every(label)),
       skippedMembers: isCount,
     }),
     rows(problems, value.candidates, 'candidates', {
