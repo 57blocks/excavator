@@ -247,7 +247,7 @@ describe('the page data carries the dictionary in its technical part only', () =
     const made = run(dictionaries);
     expect(page(made, 'product,technical').status).toBe(0);
     const got = pageData(made);
-    expect(got.format).toBe('excavator-product-handbook-page/12');
+    expect(got.format).toBe('excavator-product-handbook-page/13');
     expect(Object.keys(got.technical).slice(-2)).toEqual(['dictionaries', 'dictionariesState']);
     expect(got.technical.dictionariesState).toBe('ok');
     expect(Object.keys(got.technical.dictionaries)).toEqual(['recognized', 'applications', 'dictionaries', 'mismatches', 'counts']);
@@ -263,7 +263,7 @@ describe('the page data carries the dictionary in its technical part only', () =
     const made = run(dictionaries);
     expect(page(made, 'product').status).toBe(0);
     const got = pageData(made);
-    expect(got.format).toBe('excavator-product-handbook-page/12');
+    expect(got.format).toBe('excavator-product-handbook-page/13');
     expect(Object.hasOwn(got, 'technical')).toBe(false);
     expect(text(made, 'handbook.html')).not.toContain('TicketStatus');
   });

@@ -1,6 +1,6 @@
 /** The page data `handbook.mjs page` writes into the template (openspec change product-handbook-map, design D13). */
 
-export const PAGE_FORMAT = 'excavator-product-handbook-page/12';
+export const PAGE_FORMAT = 'excavator-product-handbook-page/13';
 
 /** The views a page can hold (openspec change handbook-entities-and-views): the product view and the technical view. */
 export const VIEWS = ['product', 'technical'] as const;
@@ -44,6 +44,25 @@ export interface Remedies {
   categories: { category: FindingCategory; cause: string; measure: string }[];
   recommendations: { title: string; text: string; groups: RemedyGroup[]; facts: RemedyFact[] }[];
 }
+
+/** The five cross-cutting topics (openspec change handbook-topics) with their columns, in the order of the chapter; the fixed text of a column is `md.topics.col.<topic>.<column>`. */
+export const TOPICS = [
+  { id: 'approval', columns: ['business', 'route', 'skips', 'conditions', 'actors'] },
+  { id: 'time', columns: ['rule', 'calendar', 'scope'] },
+  { id: 'handoffs', columns: ['from', 'to', 'content'] },
+  { id: 'access', columns: ['feature', 'who', 'pageCheck', 'serverCheck'] },
+  { id: 'repeated', columns: ['mechanism', 'places'] },
+] as const;
+export type TopicId = (typeof TOPICS)[number]['id'];
+
+/** What a topic row rests on: a verified item of an entry (the feature's name and the item's text), or a group of findings (`id` the first finding's id, `level` null for a group without one). */
+export type TopicBasis =
+  | { id: string; kind: 'item'; feature: string; text: string }
+  | { id: string; kind: 'group'; category: FindingCategory; level: Level | null; text: string };
+
+/** A row the judges kept: its columns as the reader sees them (a data row's domains and an access row's feature by name) and its basis. */
+export interface TopicRow { fields: Record<string, string>; basis: TopicBasis[] }
+export type Topics = Record<TopicId, TopicRow[]>;
 
 export interface Rule { side: 'frontend' | 'backend'; text: string }
 export interface Field { label: string; rules: Rule[] }
@@ -123,6 +142,15 @@ export interface Coverage {
   priority: { finished: boolean; unranked: { id: string; category: FindingCategory; text: string; reasons: string[] }[] };
   /** The remedies: `finished` false when the unit is not verified or was written for other findings (`stale`), and then none is shown; `dropped` the paragraphs and recommendations a judge refused, `text` the cause or the recommendation's text, with the judges' reasons. */
   remedies: { finished: boolean; stale: boolean; dropped: { id: string; kind: 'category' | 'recommendation'; category?: FindingCategory; title?: string; text: string; reasons: string[] }[] };
+  /** The topics: `finished` false when a lane is not verified for the facts now (`stale` when it was written for other ones); `entriesRead` and `groupsRead` what the verified lanes read; each lane (`name` null for the repeated lane) with its status and rows kept and left out; `dropped` the rows a judge refused, `text` their columns joined, with the judges' reasons. */
+  topics: {
+    finished: boolean;
+    stale: boolean;
+    entriesRead: number;
+    groupsRead: number;
+    lanes: { id: string; name: string | null; status: string; kept: number; dropped: number }[];
+    dropped: { id: string; topic: TopicId; text: string; reasons: string[] }[];
+  };
 }
 
 /** One notification of a verified entry, in the entry's words; `feature` is the id of the feature. */
@@ -353,6 +381,8 @@ export interface Technical {
   jobs: { candidate: string; feature: string | null; application: string | null }[];
   locations: UnitLocations[];
   /** The file and lines of each passage quoted for each finding of the items of `PageData.findings`, by item id; null lines when a passage could not be located. */
+  /** The file and lines of each verified item that a kept topic row cites, by item id. */
+  topicLocations: { id: string; citations: { file: string; startLine: number | null; endLine: number | null }[] }[];
   findingLocations: { id: string; citations: { file: string; startLine: number | null; endLine: number | null }[] }[];
   /** The data section; null when `<out>/data.json` is missing or malformed, and `dataState` says which. */
   data: DataSection | null;
@@ -379,6 +409,7 @@ export interface PageData {
   /** The verified findings of the features and the application roots as groups, in the order of the first finding of each: the features in the map's order, then the application roots, each in its file's order. */
   findings: FindingGroup[];
   remedies: Remedies;
+  topics: Topics;
   coverage: Coverage;
   summary: Summary;
   system: System;

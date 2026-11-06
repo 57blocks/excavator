@@ -2,7 +2,7 @@
  * The page's routes live in the URL fragment so the back button and shared
  * links work: `#/`, `#/feature/<id>`, `#/domain/<id>`, `#/role/<label>`,
  * `#/application/<dir>`, `#/system/<name>`, `#/matrix/roles`,
- * `#/matrix/applications`, `#/notifications`, `#/jobs`, `#/findings`, `#/recommendations`, `#/coverage` and (technical view only) `#/data` and `#/dictionaries`. A page
+ * `#/matrix/applications`, `#/notifications`, `#/jobs`, `#/findings`, `#/recommendations`, `#/topics`, `#/coverage` and (technical view only) `#/data` and `#/dictionaries`. A page
  * that has both views puts the view in front of each (`#/technical/feature/F1`);
  * a page with one view has no prefix, and a fragment without one is the first
  * view. Parsing never throws: a fragment that names no route is `not-found`.
@@ -25,6 +25,7 @@ export type RouteBody =
   | { name: 'coverage' }
   | { name: 'findings' }
   | { name: 'recommendations' }
+  | { name: 'topics' }
   | { name: 'data' }
   | { name: 'dictionaries' }
   | { name: 'not-found'; hash: string };
@@ -55,6 +56,7 @@ function parseBody(rest: string[], hash: string): RouteBody {
   if (rest.length === 1 && rest[0] === 'jobs') return { name: 'jobs' };
   if (rest.length === 1 && rest[0] === 'findings') return { name: 'findings' };
   if (rest.length === 1 && rest[0] === 'recommendations') return { name: 'recommendations' };
+  if (rest.length === 1 && rest[0] === 'topics') return { name: 'topics' };
   if (rest.length === 1 && rest[0] === 'data') return { name: 'data' };
   if (rest.length === 1 && rest[0] === 'dictionaries') return { name: 'dictionaries' };
   if (rest.length === 2 && rest[0] === 'matrix' && rest[1] === 'roles') return { name: 'roles-matrix' };
@@ -96,6 +98,7 @@ function segments(route: RouteBody): string[] {
     case 'coverage': return ['coverage'];
     case 'findings': return ['findings'];
     case 'recommendations': return ['recommendations'];
+    case 'topics': return ['topics'];
     case 'data': return ['data'];
     case 'dictionaries': return ['dictionaries'];
     case 'not-found': return [];
