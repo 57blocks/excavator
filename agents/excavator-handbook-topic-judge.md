@@ -59,7 +59,7 @@ The judge file is:
 }
 ```
 
-- `rows`: the rows to judge. Each has an `id` (copy it back byte for byte), a `topic` (`approval`, `time`, `handoffs`, `access` or `repeated`), its columns in `fields`, and `cites`: everything the row rests on, each cited fact with its `id` and its `content`. The content of a cited item of an entry is the feature's name, the kind of the item (`who`, `sentence`, `state`, `automatic` or `notification`) and its text; the content of a cited group of findings is its level, its category, its statement and the application directories it is in. A data row's `fields` also carry the names of its two domains (`fromName`, `toName`), and an access row's the name of its feature (`featureName`). The columns of each topic: `approval`: business, route, skips, conditions, actors; `time`: rule, calendar, scope; `handoffs`: from, to, content; `access`: feature, who, pageCheck, serverCheck; `repeated`: mechanism, places. An empty column says nothing and needs no support.
+- `rows`: the rows to judge. Each has an `id` (copy it back byte for byte), a `topic` (`approval`, `time`, `handoffs`, `access` or `repeated`), its columns in `fields`, and `cites`: everything the row rests on, each cited fact with its `id` and its `content`. The content of a cited item of an entry is the feature's name, the kind of the item (`who`, `sentence`, `state`, `automatic` or `notification`) and its text; the content of a cited group of findings is its level, its category, its statement and the names of the applications it is in. A data row's `fields` also carry the names of its two domains (`fromName`, `toName`), and an access row's the name of its feature (`featureName`). The columns of each topic: `approval`: business, route, skips, conditions, actors; `time`: rule, calendar, scope; `handoffs`: from, to, content; `access`: feature, who, pageCheck, serverCheck; `repeated`: mechanism, places. An empty column says nothing and needs no support.
 
 **Deliberately withheld:** the code, the rest of the handbook, every fact the row does not cite. You judge words against words.
 
@@ -82,6 +82,7 @@ Return exactly one of these strings per row:
   3. A row joins two cited items into one rule or route that no single cited item states (step order, a skip, a threshold attached to the wrong step).
   4. A provider or a source is named that no cited item names (for handoffs: the giving domain must be named or plainly implied by the cited item).
   5. A number counts something else: the number is in a cited item but there it counts other things than the row says.
+  6. A mechanism is wider than one of its groups. A `repeated` row's mechanism, in every part of it ("in the background", "and the service seems to run", "not taken from configuration or data"), must hold for each cited group's statement, not for most; read each cited group and ask whether every part of the mechanism is in it, and whether a condition of that group ("over 40 hours") is kept.
 - When you are torn between the two, choose `doesNotFollow`. Calling an unchecked row confirmed is the failure this check exists to prevent; a row left out is a visible gap, an unsupported one is not.
 
 ## Output

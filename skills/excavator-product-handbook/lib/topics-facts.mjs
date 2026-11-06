@@ -13,9 +13,10 @@
  * state (`<label>: <meaning>`), automatic (`<when>: <effect>`) and notification
  * (`<trigger> | <channel> | <recipient>`); the item paths are those of items.mjs.
  * The repeated lane lists the groups of the verified findings as remedy-facts
- * does, plus the application directories the group's passages are in:
+ * does, plus the names of the applications the group's passages are in (the
+ * system name when the overview is verified, else the directory):
  *
- *   <group key> <level: P0|P1|P2|unranked> <category key> <statement> <directories|->
+ *   <group key> <level: P0|P1|P2|unranked> <category key> <statement> <application names|->
  *
  * The digest of a lane's lines is the input of the lane: changed facts start the
  * lane over. `laneFactsOf` is pure; `loadTopicFacts` builds them from a loaded run.
@@ -28,6 +29,7 @@ import { domainGrouping } from './domain-grouping.mjs';
 import { buildFindings } from './findings-model.mjs';
 import { groupKey } from './priority-groups.mjs';
 import { withPriority } from './priority-model.mjs';
+import { buildSystem } from './system-facts.mjs';
 import { REPEATED_LANE } from './topics-shape.mjs';
 
 export const NONE = '-';
@@ -71,7 +73,7 @@ function applicationOfFile(roots, file) {
 }
 
 /** The facts of a group of the verified findings: `{ id, kind: 'group', level, category, statement, applications, items, fields }`. */
-export function groupFactRow(group, { roots, places }) {
+export function groupFactRow(group, { roots, places, nameOf = (dir) => dir }) {
   const dirs = new Set();
   for (const item of group.items) for (const place of places.get(item.id) ?? []) {
     const dir = applicationOfFile(roots, place.file);
@@ -88,7 +90,7 @@ export function groupFactRow(group, { roots, places }) {
     statement,
     applications,
     items: group.items,
-    fields: [level, group.category, statement, applications.length === 0 ? NONE : applications.join(', ')],
+    fields: [level, group.category, statement, applications.length === 0 ? NONE : applications.map((dir) => oneLine(nameOf(dir))).join(', ')],
   };
 }
 
@@ -100,7 +102,7 @@ const lane = (id, kind, name, rows, extra = {}) => ({ id, kind, name, rows, byId
  * are among them); `features`: id -> name of the map's features. `groups` are the groups of the verified findings with their `key` and `priority`;
  * `places` maps a finding's id to the places of its passages.
  */
-export function laneFactsOf({ map, domains, entries, groups, roots, places }) {
+export function laneFactsOf({ map, domains, entries, groups, roots, places, nameOf }) {
   const grouping = domainGrouping(map, domains);
   const featureOf = new Map(map.features.map((feature) => [feature.id, feature]));
   const lanes = [];
@@ -110,7 +112,7 @@ export function laneFactsOf({ map, domains, entries, groups, roots, places }) {
     const rows = featureIds.flatMap((id) => entryFactRows(featureOf.get(id), entries.get(id)));
     lanes.push(lane(group.id, 'domain', oneLine(group.name), rows, { featureIds }));
   }
-  if (groups.length > 0) lanes.push(lane(REPEATED_LANE, 'repeated', NONE, groups.map((group) => groupFactRow(group, { roots, places })), { featureIds: [] }));
+  if (groups.length > 0) lanes.push(lane(REPEATED_LANE, 'repeated', NONE, groups.map((group) => groupFactRow(group, { roots, places, nameOf })), { featureIds: [] }));
   return {
     lanes,
     byLane: new Map(lanes.map((one) => [one.id, one])),
@@ -123,5 +125,7 @@ export function laneFactsOf({ map, domains, entries, groups, roots, places }) {
 export function loadTopicFacts(run, root, scan = scanProject(root)) {
   const findings = withPriority(buildFindings(run, root, { technical: true, roots: scan.roots }), run.priority);
   const groups = findings.groups.map((group) => ({ ...group, key: group.key ?? groupKey(group) }));
-  return laneFactsOf({ map: run.map, domains: run.domains, entries: run.entries, groups, roots: scan.roots, places: findings.locations });
+  const applications = buildSystem(run, root, scan).applications;
+  const nameOf = (dir) => applications.find((row) => row.dir === dir)?.name ?? dir;
+  return laneFactsOf({ map: run.map, domains: run.domains, entries: run.entries, groups, roots: scan.roots, places: findings.locations, nameOf });
 }

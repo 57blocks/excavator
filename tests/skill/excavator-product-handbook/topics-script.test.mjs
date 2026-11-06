@@ -7,7 +7,7 @@ import { afterAll, afterEach, describe, expect, it } from 'vitest';
 
 import { TOPICS, rowIdOf, topicsShapeProblems } from '../../../skills/excavator-product-handbook/lib/topics-shape.mjs';
 import { laneProblems } from '../../../skills/excavator-product-handbook/lib/topics-check.mjs';
-import { factLine, factsDigest } from '../../../skills/excavator-product-handbook/lib/topics-facts.mjs';
+import { factLine, factsDigest, groupFactRow } from '../../../skills/excavator-product-handbook/lib/topics-facts.mjs';
 import { makeRun } from './helpers.mjs';
 import {
   PART_FORMAT, checkedLane, checkedTopicsRun, factRows, judgePlan, judgeTopics, topicsRun, writeVerdicts,
@@ -136,6 +136,23 @@ describe('topic-facts', () => {
     expect(run.run('topic-facts', '--lane', 'D1').lines).toEqual(['Topics: D1: checked; next: run topic-judge']);
     expect(judgeTopics(run).status).toBe(0);
     expect(run.run('topic-facts', '--lane', 'D1').lines).toEqual(['Topics: D1: verified; nothing to write']);
+  });
+});
+
+describe('the application column of a repeated-lane fact', () => {
+  const group = { key: 'k', category: 'authorization', priority: null, items: [{ id: 'a', text: 'One statement.' }, { id: 'b', text: 'Another.' }] };
+  const places = new Map([['a', [{ file: 'svc-b/main.go' }]], ['b', [{ file: 'svc-a/x.go' }]]]);
+  const roots = ['svc-a', 'svc-b'];
+
+  it('names each application by the name it is given, sorted by directory, and keeps the directories apart', () => {
+    const names = { 'svc-a': 'Auth service', 'svc-b': 'Billing service' };
+    const row = groupFactRow(group, { roots, places, nameOf: (dir) => names[dir] });
+    expect(row.applications).toEqual(['svc-a', 'svc-b']);
+    expect(row.fields.at(-1)).toBe('Auth service, Billing service');
+  });
+
+  it('falls back to the directory when no name is given', () => {
+    expect(groupFactRow(group, { roots, places }).fields.at(-1)).toBe('svc-a, svc-b');
   });
 });
 
