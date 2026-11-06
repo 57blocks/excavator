@@ -11,7 +11,9 @@
  * the key `overview` once it is verified. So are the findings of each feature
  * (openspec change handbook-feature-findings): the unit `<featureId>.findings`,
  * checked the same way, with its file in `findings` under the feature's id once
- * it is verified, whatever the state of the feature's own entry. `assemble` and
+ * it is verified, whatever the state of the feature's own entry. So are the system
+ * findings of each application root (openspec change handbook-system-findings):
+ * the unit `app<n>.system`, with its file in `systemFindings` under that id. `assemble` and
  * `page` both start here, so they refuse the same runs.
  */
 
@@ -30,12 +32,13 @@ import { languageGate } from './language-check.mjs';
 import { mapProblems, readMap } from './map-check.mjs';
 import { projectFiles } from './project-files.mjs';
 import { entryDigest, loadState } from './state.mjs';
+import { loadSystemContext } from './system-unit.mjs';
 import { loadUi } from './ui.mjs';
-import { OVERVIEW_ID, featureOfFindings, isFindingsId, unitFor, unitState } from './unit.mjs';
+import { OVERVIEW_ID, featureOfFindings, isFindingsId, isSystemId, unitFor, unitState } from './unit.mjs';
 
 /**
- * Returns `{ ok: true, outDir, map, domains, entries, findings, state, candidates, ui }` (findings:
- * feature id -> the findings file of each verified findings unit; domains: the
+ * Returns `{ ok: true, outDir, map, domains, entries, findings, systemFindings, state, candidates, ui }` (findings:
+ * feature id -> the findings file of each verified findings unit; systemFindings: unit id `app<n>.system` -> the file of each verified system unit; domains: the
  * business domains of domains.json when it passes check-domains, null otherwise, which
  * groups the outputs by the map's areas instead; entries:
  * id -> entry of each verified feature, and of the overview under `overview`; candidates: candidates.json's items;
@@ -80,12 +83,24 @@ export function loadCheckedRun(outDirArg, root) {
   // is checked the same way: its entry is checked again, and must be the file that was verified or confirmed.
   const entries = new Map();
   const findings = new Map();
+  const systemFindings = new Map();
   const problems = [];
   const adviceWords = adviceWordsOf(ui.strings);
-  const settled = [...ids, OVERVIEW_ID, ...ids.map(findingsId)].filter((unitId) => ['confirmed', 'verified'].includes(unitState(state, unitId).status));
+  const systemIds = Object.keys(state.systemFindings ?? {}).map((key) => `${key}.system`);
+  const settled = [...ids, OVERVIEW_ID, ...ids.map(findingsId), ...systemIds].filter((unitId) => ['confirmed', 'verified'].includes(unitState(state, unitId).status));
   for (const id of settled) {
     const current = unitState(state, id);
-    const result = checkEntryFile(outDir, id, root, { map, mapLabels: mapChecked.verified, files, memberDirs, languageCheck, adviceWords }, { settled: true });
+    // A system unit is checked with its application (and refused when the state records another root for it).
+    let system = null;
+    if (isSystemId(id)) {
+      const loaded = loadSystemContext(outDir, root, id, state);
+      if (loaded.problems) {
+        problems.push(...loaded.problems.map((line) => (line.startsWith(`${id}:`) ? line : `${id}: ${line}`)));
+        continue;
+      }
+      system = loaded.system;
+    }
+    const result = checkEntryFile(outDir, id, root, { map, mapLabels: mapChecked.verified, files, memberDirs, languageCheck, adviceWords, system }, { settled: true });
     if (result.problems.length > 0) {
       problems.push(...result.problems.map((line) => (line.startsWith(`${id}:`) ? line : `${id}: ${line}`)), `${id}: ${entryPath(id)} no longer passes ${unitFor(id).command}; ${unitFor(id).recheck(id)}`);
     } else if (entryDigest(join(outDir, entryPath(id))) !== current.entryDigest) {
@@ -93,10 +108,11 @@ export function loadCheckedRun(outDirArg, root) {
       problems.push(`${id}: ${entryPath(id)} changed after it was ${was}; ${unitFor(id).recheck(id)} and verify it again`);
     } else if (current.status === 'verified') {
       const doc = readJson(join(outDir, entryPath(id))).value;
-      if (isFindingsId(id)) findings.set(featureOfFindings(id), doc);
+      if (isSystemId(id)) systemFindings.set(id, doc);
+      else if (isFindingsId(id)) findings.set(featureOfFindings(id), doc);
       else entries.set(id, doc);
     }
   }
   if (problems.length > 0) return { ok: false, lines: problems };
-  return { ok: true, outDir, map, domains: domains.doc, entries, findings, state, candidates: candidates.items, ui: ui.strings };
+  return { ok: true, outDir, map, domains: domains.doc, entries, findings, systemFindings, state, candidates: candidates.items, ui: ui.strings };
 }

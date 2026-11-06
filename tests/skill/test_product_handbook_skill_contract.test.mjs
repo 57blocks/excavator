@@ -29,6 +29,7 @@ import { FINDING_CATEGORIES, FINDINGS_FORMAT, findingsShapeProblems } from '../.
 import { HANDBOOK_SCRIPT, clone, judge, makeCheckedMapRun, runHandbook, traceFeature, verifyChecked } from './excavator-product-handbook/helpers.mjs';
 import { checkedOverviewRun, overviewRun } from './excavator-product-handbook/overview-fixture.mjs';
 import { checkedFindingsRun } from './excavator-product-handbook/findings-fixture.mjs';
+import { checkedSystemRun, systemRun } from './excavator-product-handbook/system-fixture.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(__dirname, '../..');
@@ -39,20 +40,20 @@ const skillOwn = readFileSync(resolve(skillDir, 'SKILL.md'), 'utf-8');
 const SECTION_FILES = ['stages/map.md', 'sections/overview.md', 'sections/features.md'];
 const sectionText = (path) => readFileSync(resolve(skillDir, path), 'utf-8');
 /**
- * The skill as a default run reads it: SKILL.md with the five phase files put
+ * The skill as a default run reads it: SKILL.md with the six phase files put
  * where the Sections part has the model read them, so the phases run in their
- * order (0, 1, 2, 3, 3c, 3b, 4, 4b, 4c, 5, 6, 7). Every assertion below that looks for
+ * order (0, 1, 2, 3, 3c, 3b, 4, 4b, 4c, 4d, 5, 6, 7). Every assertion below that looks for
  * a phase's text looks in the file that holds it.
  */
-const skill = skillOwn.replace(/^## Sections\n[\s\S]*?(?=^## Phase 5: )/m, [...SECTION_FILES, 'sections/data.md', 'sections/findings.md'].map(sectionText).join(''));
+const skill = skillOwn.replace(/^## Sections\n[\s\S]*?(?=^## Phase 5: )/m, [...SECTION_FILES, 'sections/data.md', 'sections/findings.md', 'sections/system-findings.md'].map(sectionText).join(''));
 const flat = (text) => text.replace(/\s+/g, ' ');
 const agent = readFileSync(resolve(repoRoot, 'agents/excavator-handbook-verifier.md'), 'utf-8');
 const tracerAgent = readFileSync(resolve(repoRoot, 'agents/excavator-handbook-tracer.md'), 'utf-8');
 
-/** Split the skill into its `## Phase N: Title` sections, keyed by N (a number; the system overview's `3b` and the business domains' `3c` stay strings), each without its title line. */
+/** Split the skill into its `## Phase N: Title` sections, keyed by N (a number; the system overview's `3b`, the business domains' `3c` and the like stay strings), each without its title line. */
 function rawPhases(text) {
   const out = new Map();
-  const parts = text.split(/^## Phase (\d+[bc]?): /m);
+  const parts = text.split(/^## Phase (\d+[bcd]?): /m);
   for (let i = 1; i < parts.length; i += 2) out.set(/^\d+$/.test(parts[i]) ? Number(parts[i]) : parts[i], parts[i + 1].slice(parts[i + 1].indexOf('\n') + 1));
   return out;
 }
@@ -77,7 +78,7 @@ const HANDBOOK = '"$PLUGIN_ROOT/skills/excavator-product-handbook/handbook.mjs"'
 describe('excavator-product-handbook skill: structure', () => {
   it('names the skill after its directory and lists the options in the argument hint', () => {
     expect(skill.startsWith('---\nname: excavator-product-handbook\n')).toBe(true);
-    expect(skill).toContain('argument-hint: "[path] [--language <lang>] [--out <dir>] [--features <list>] [--views <list>] [--sections <list>] [--concurrency <n>] [--fresh]"');
+    expect(skill).toContain('argument-hint: "[path] [--language <lang>] [--out <dir>] [--features <list>] [--applications <list>] [--views <list>] [--sections <list>] [--concurrency <n>] [--fresh]"');
   });
 
   it('has the description in plain words: what it produces, and that it gives no advice', () => {
@@ -89,14 +90,14 @@ describe('excavator-product-handbook skill: structure', () => {
   });
 
   it('has the phases in the order they run: the business domains (3c) and then the system overview (3b) between the map and the entries, the verify and trace phases between the entries and the assembly', () => {
-    expect([...raw.keys()]).toEqual([0, 1, 2, 3, '3c', '3b', 4, '4b', '4c', 5, 6, 7]);
-    const titles = [...skill.matchAll(/^## Phase \d+[bc]?: (.+)$/gm)].map((match) => match[1]);
-    expect(titles).toEqual(['Setup', 'Candidates', 'Fixed text', 'The map', 'Business domains', 'System overview', 'Entries', 'Data', 'Findings', 'Verify', 'Trace', 'Assemble, page and reply']);
+    expect([...raw.keys()]).toEqual([0, 1, 2, 3, '3c', '3b', 4, '4b', '4c', '4d', 5, 6, 7]);
+    const titles = [...skill.matchAll(/^## Phase \d+[bcd]?: (.+)$/gm)].map((match) => match[1]);
+    expect(titles).toEqual(['Setup', 'Candidates', 'Fixed text', 'The map', 'Business domains', 'System overview', 'Entries', 'Data', 'Findings', 'System findings', 'Verify', 'Trace', 'Assemble, page and reply']);
   });
 
   it('describes every option of the argument hint in the Options section', () => {
     const options = flat(skill.split(/^## Options$/m)[1].split(/^## Sources$/m)[0]);
-    for (const option of ['--language <lang>', '--out <dir>', '--features <list>', '--views <list>', '--concurrency <n>', '--fresh']) expect(options, option).toContain(`\`${option}\``);
+    for (const option of ['--language <lang>', '--out <dir>', '--features <list>', '--applications <list>', '--views <list>', '--concurrency <n>', '--fresh']) expect(options, option).toContain(`\`${option}\``);
     expect(options).toContain('(default: `<project>/.excavator/product-handbook`)');
     expect(options).toContain('(default: 3)');
     expect(options).toContain('English when it is not given');
@@ -1132,6 +1133,9 @@ describe('the handbook tracer agent', () => {
 
   it('documents scopeWords in the trace file and scope in the verdict file, and the documented scope shape is the one trace-verdicts accepts (D9)', () => {
     expect(text).toContain('`scopeWords`: only on a claim that states a defect');
+    // Design D10 of handbook-system-findings: negative and contrasting outcomes are scope words, walked to the last step the reader sees.
+    expect(text).toContain('which also cover a negative or contrasting outcome (will not, cannot, instead of and the like)');
+    expect(text).toContain('For a word of outcome (will not, cannot, instead of and the like), walk the case to the last step the reader would see: what the page that actually runs renders, where it navigates afterwards, what the caller finally receives; stopping at the route table or at the first function is not enough.');
     expect(text).toContain('add `scope`: an array with exactly one `{ "word", "case", "result" }` for each of its words');
     expect(text).toContain('a case from the claim\'s own words that falls inside what the word covers and is as far as you can make it from the code\'s own condition');
     expect(text).toContain('When the result differs from what the claim says, the verdict is `contradicted`, not `holds`.');
@@ -1801,7 +1805,7 @@ describe('excavator-product-handbook skill: Phase 4c, the findings (O1 of handbo
   it('allows the findings in rule 1 and nowhere else, and says in the Sections part, the options and the split that the section exists', () => {
     const rule = flat(skillOwn.split('\n').find((line) => line.startsWith('1. **As-Is only, no advice.**')));
     expect(rule).toContain('Never write what the product should do or how to change it, in any part.');
-    expect(rule).toContain('Only the findings (Phase 4c, the Findings chapter of the handbook) say what is wrong with the product, and they state the defect and nothing else; every other part states only what exists.');
+    expect(rule).toContain('Only the findings (Phases 4c and 4d, the Findings chapter of the handbook) say what is wrong with the product, and they state the defect and nothing else; every other part states only what exists.');
     const part = flat(skillOwn.slice(skillOwn.indexOf('\n## Sections\n'), skillOwn.indexOf('## Phase 5: Verify')));
     expect(part).toContain('`sections/findings.md` holds Phase 4c (the findings of each feature, section `findings`), which needs the map');
     expect(part).toContain('the findings units (the ids `<id>.findings`) only when `findings` is');
@@ -1816,5 +1820,205 @@ describe('excavator-product-handbook skill: Phase 4c, the findings (O1 of handbo
   it('leaves the entry and overview prompts as they were: they still write no defect', () => {
     expect(lanePrompt).toContain('Give no advice, no opinion and no defect report: never write what the product should do or what is wrong with it.');
     expect(promptBlocks(raw.get('3b') ?? '')[0]).toContain('Give no advice, no opinion and no defect report: never write what the system should do or what is wrong with it.');
+  });
+});
+
+// O1 of openspec change handbook-system-findings: the system-findings section has
+// its phase in a file of its own, byte for byte as pinned; the lane prompt carries
+// the writing rules of the findings lane word for word and its own scope; the
+// recipes are run on a real state; the units of Phases 5 and 6 include the system
+// findings units; the option --applications is resolved by select.
+describe('excavator-product-handbook skill: Phase 4d, the system findings (O1 of handbook-system-findings)', () => {
+  const digest = (text) => createHash('sha256').update(text, 'utf8').digest('hex');
+  const text = sectionText('sections/system-findings.md');
+  const p = phase('4d');
+  const systemPrompt = promptBlocks(raw.get('4d') ?? '')[0] ?? '';
+  const prompt = flat(systemPrompt);
+  const findingsPromptText = promptBlocks(raw.get('4c') ?? '')[0] ?? '';
+  const recipe = (start) => allBash.flatMap((block) => block.split('\n')).map((line) => line.trim()).find((line) => line.startsWith(start));
+  const onState = (line, run) => {
+    const result = spawnSync('bash', ['-c', line.replace('"$OUT/state.json"', `"${join(run.out, 'state.json')}"`).replace('"$OUT/map.json"', `"${join(run.out, 'map.json')}"`)], { encoding: 'utf-8' });
+    expect(result.status, result.stderr).toBe(0);
+    return result.stdout.trim().split('\n').filter((row) => row !== '');
+  };
+  const cleanups = [];
+  const track = (run) => {
+    cleanups.push(run.cleanup);
+    return run;
+  };
+  const clean = () => {
+    while (cleanups.length > 0) cleanups.pop()();
+  };
+
+  it('sections/system-findings.md is pinned, holds Phase 4d only, starts with the language reminder and sits between Phases 4c and 5', () => {
+    expect(digest(text)).toBe('4c2b5ff6d12d487ee25dd928d77b09b5059ebe60b4dae5dabece707b6c847a21');
+    expect([...text.matchAll(/^## Phase .+$/gm)].map((match) => match[0])).toEqual(['## Phase 4d: System findings']);
+    expect(text.startsWith('## Phase 4d: System findings\n')).toBe(true);
+    expect(p.startsWith(PHASE_LANGUAGE)).toBe(true);
+    expect(skill.indexOf('## Phase 4d: ')).toBeGreaterThan(skill.indexOf('## Phase 4c: Findings'));
+    expect(skill.indexOf('## Phase 4d: ')).toBeLessThan(skill.indexOf('## Phase 5: Verify'));
+  });
+
+  it('leaves the findings phase as it was: its digest is the one the findings tests pin', () => {
+    expect(digest(sectionText('sections/findings.md'))).toBe('1d6275f6bafa185abb680822852e81b04284d3ca938811ed4ad88b2d4d7a645a');
+  });
+
+  it('resolves --applications with select, with the list as one single-quoted argument, and stops on exit 1', () => {
+    expect(p).toContain(`${HANDBOOK} select "$OUT" --applications '<the --applications value>' --project "$PROJECT_ROOT"`);
+    expect(p).toContain(`${HANDBOOK} applications "$PROJECT_ROOT"`);
+    expect(p).toContain('Exit 1: tell the user the lines it printed (each item that is not an application root and every root), and stop: dispatch no lane.');
+    expect(p.indexOf('select "$OUT" --applications')).toBeLessThan(p.indexOf('system-seeds "$OUT"'));
+  });
+
+  it('lists the lanes with a recipe that is run on a real state: planned without the key, checked after check-system-findings', () => {
+    const line = recipe('jq -r --arg ids "<ids>" \'($ids | split(" ") | map(select(. != ""))) as $units');
+    expect(line).toBeDefined();
+    try {
+      const run = track(checkedSystemRun([], 1));
+      const all = 'app1.system app2.system app3.system';
+      expect(onState(line.replace('<ids>', all), run)).toEqual(['app1.system\tchecked\t0', 'app2.system\tplanned\t0', 'app3.system\tplanned\t0']);
+      expect(onState(line.replace('<ids>', 'app3.system app2.system'), run)).toEqual(['app3.system\tplanned\t0', 'app2.system\tplanned\t0']);
+      expect(run.run('mark', 'app2.system', 'dispatched').status).toBe(0);
+      expect(onState(line.replace('<ids>', 'app2.system'), run)).toEqual(['app2.system\tdispatched\t1']);
+      const fresh = track(systemRun([]));
+      expect(fresh.readState().systemFindings).toBeUndefined();
+      expect(onState(line.replace('<ids>', all), fresh).every((row) => row.endsWith('\tplanned\t0'))).toBe(true);
+      const features = recipe('jq -r \'.features[] | [.id, .name, (.seedFiles | join(", "))] | @tsv\'');
+      expect(features).toBeDefined();
+      expect(onState(features, run)[0]).toBe('F1\tOrders\talpha/src/routes/orders.js, alpha/src/server.js');
+    } finally {
+      clean();
+    }
+  });
+
+  it('finds the seed files with system-seeds, records an application with none as verified without a lane, and dispatches with mark and checks with check-system-findings', () => {
+    expect(p).toContain(`${HANDBOOK} system-seeds "$OUT" <id> --project "$PROJECT_ROOT"`);
+    expect(p).toContain('When it prints nothing, the application has no seed file: dispatch no lane for it.');
+    expect(p).toContain(`${HANDBOOK} check-system-findings "$OUT" <id> --project "$PROJECT_ROOT"`);
+    expect(p).toContain('prints `<id>: verified (0 findings)`');
+    expect(p).toContain(`${HANDBOOK} mark "$OUT" <id> dispatched --project "$PROJECT_ROOT"`);
+    expect(p).toContain('the run needs `--fresh`');
+    expect(p).toContain(`\`${nextLine('<id>', 0)}\``.replace("<id>'s", "<id>'s"));
+    expect(p).toContain('`Next: <id> stays failed (2 of 2 attempts)`');
+    expect(p).toContain(RETRY_HEADING);
+    expect(p).toContain('Never make a third attempt.');
+    expect(p).toContain('Never edit `entries/<id>.json` or `state.json` yourself');
+    expect(p).toContain('Dispatch at most `$CONCURRENCY` lanes in one message');
+    expect(p).toContain('never in the background');
+    expect(p).toContain('`System findings <id> <n>/<N>: <status>`');
+  });
+
+  it('the seed step is run on a real project: the files it prints are the ones the lane starts with, and an application with none is verified', () => {
+    const run = track(systemRun([]));
+    try {
+      expect(run.run('system-seeds', 'app1.system').lines).toEqual(['alpha/bin/start.js', 'alpha/src/jobs/nightly.js', 'alpha/src/server.js']);
+      expect(run.run('system-seeds', 'app3.system').lines).toEqual([]);
+      expect(run.run('check-system-findings', 'app3.system').lines).toEqual(['app3.system: verified (0 findings)']);
+    } finally {
+      clean();
+    }
+  });
+
+  it('gives the lane the reading limits of an entry lane, the one file it writes and the command it runs first', () => {
+    expect(systemPrompt).not.toBe('');
+    expect(prompt).toContain('Open at most 20 files that are not seed files, in all; searches do not count.');
+    expect(prompt).toContain('Never read anything under `.excavator/`');
+    expect(prompt).toContain('never read a document that an Excavator skill generated');
+    expect(prompt).toContain('Read code only; never run, build or change anything in the project.');
+    expect(prompt).toContain('Exclude `.excavator`, `.git`, `node_modules`, `vendor`, `dist` and `build` from every search');
+    expect(prompt).toContain('Write only `$OUT/entries/<id>.json`, and nothing else anywhere. Reply with one line: `<id>: written`, and nothing else.');
+    expect(prompt).toContain(`${HANDBOOK} try-system-findings "$OUT" <id> --project "$PROJECT_ROOT"`);
+    expect(prompt).toContain('until it prints `<id>: ok`, at most 5 runs');
+    expect(prompt).toContain('never list or walk a directory');
+  });
+
+  it('carries the writing rules of the findings lane word for word: the language line, what a finding is, the categories, the statement, the evidence, the negative statements, the reading limit, numbers, no code, scope words', () => {
+    const paragraphs = (text) => text.split('\n\n');
+    const wanted = ['Write in `$LANGUAGE`', '**What a finding is.**', '**Categories.**', 'Write one JSON file with exactly these keys', 'Every key is always there', '**The statement.**', '**Cite what proves it.**', '**Negative statements.**', '**Following out of the seed files.**', '**Numbers.**', '**No code in reader text.**', '**Evidence.**'];
+    const mine = paragraphs(systemPrompt);
+    for (const start of wanted) {
+      const original = paragraphs(findingsPromptText).find((one) => one.startsWith(start));
+      expect(original, start).toBeDefined();
+      expect(mine, start).toContain(original);
+    }
+    // The scope-word sentence is inside the carried evidence paragraph of the findings lane.
+    expect(prompt).toContain('When the statement uses a word of scope (all, every, never, always, only and the like, in $LANGUAGE), cite the lines that decide when it happens');
+    expect(prompt).toContain('When no passage proves that scope, leave the word out and state only the case the passages show.');
+  });
+
+  it('states its own scope: the shared parts of one application, every feature with its seed files, a defect of one feature left to that feature\'s lane', () => {
+    expect(prompt).toContain('You write the system findings of one application of a product handbook');
+    expect(prompt).toContain('the defects in the parts of the application that no single feature owns');
+    expect(prompt).toContain('whose root directory is `<dir>`');
+    expect(prompt).toContain('The features of this handbook, each with the seed files its own lane reads, which other lanes write: <id, name and seed files of every feature, one per line>.');
+    for (const part of ['start-up and shutdown', 'the reading of configuration', 'the registration of routes and middleware (which group of routes carries which middleware)', 'the registration of scheduled jobs', 'authentication, error handling, the sending of messages, calendar and time zone']) expect(prompt, part).toContain(part);
+    expect(prompt).toContain("A defect that lies only in the code of one feature belongs to that feature's lane: do not write it.");
+    expect(prompt).toContain('A finding cites at least one passage in a file under `<dir>`');
+  });
+
+  it('shows a JSON example that the findings shape check accepts, with every key present and the unit id', () => {
+    const example = blocks(systemPrompt, 'json')[0];
+    expect(example).toBeDefined();
+    const doc = JSON.parse(example.replace(/\bE\b(?=[,}\]])/g, '[{"file": "a.js", "passage": "x"}]').replace('<one of the words above>', 'other').replace('<id>', 'app1.system'));
+    expect(findingsShapeProblems(doc)).toEqual([]);
+    expect(Object.keys(doc)).toEqual(['format', 'id', 'findings', 'unknowns']);
+    expect(doc.id).toBe('app1.system');
+    expect(doc.format).toBe(FINDINGS_FORMAT);
+  });
+
+  it('lists every category of the enum, with its meaning, and no other', () => {
+    const listed = [...systemPrompt.matchAll(/^- `([a-z-]+)`: .+$/gm)].map((match) => match[1]);
+    expect(listed).toEqual([...FINDING_CATEGORIES]);
+  });
+
+  it('puts the system findings units in the lists of Phase 5 and of Phase 6, with recipes that are run on a real state', () => {
+    const verify = recipe('jq -r \'(.systemFindings // {}) | to_entries[] | select(.value.status == "checked")');
+    const trace = recipe('jq -r \'(.systemFindings // {}) | to_entries[] | select(.value.status == "confirmed")');
+    expect(verify).toBeDefined();
+    expect(trace).toBeDefined();
+    expect(phase(5)).toContain('where the rewrite prompt says `try-entry "$OUT" <id>`, the rewriter runs `try-system-findings "$OUT" <id>`');
+    expect(phase(5)).toContain('run `check-system-findings "$OUT" <id> --project "$PROJECT_ROOT"` for it');
+    expect(phase(5)).toContain('A unit that loses every finding in this phase is `confirmed` with none, never `failed`.');
+    expect(phase(6)).toContain('`trace` prints `app<n>.system: 0 items in 0 parts`');
+    try {
+      const run = track(checkedSystemRun([], 1));
+      expect(onState(verify, run)).toEqual(['app1.system\tverify']);
+      expect(onState(trace, run)).toEqual([]);
+      expect(judge(run, 'app1.system', 1, (item) => (item.id === 'findings[0]' ? 'unverified' : 'verified')).status).toBe(0);
+      expect(onState(verify, run)).toEqual(['app1.system\trewrite']);
+      expect(judge(run, 'app1.system', 2, () => 'verified').status).toBe(0);
+      expect(onState(verify, run)).toEqual([]);
+      expect(onState(trace, run)).toEqual(['app1.system']);
+      expect(traceFeature(run, 'app1.system').status).toBe(0);
+      expect(onState(trace, run)).toEqual([]);
+    } finally {
+      clean();
+    }
+  });
+
+  it('says in the Sections part, the options, the split and the files that the section and the option exist', () => {
+    const part = flat(skillOwn.slice(skillOwn.indexOf('\n## Sections\n'), skillOwn.indexOf('## Phase 5: Verify')));
+    expect(part).toContain('`sections/system-findings.md` holds Phase 4d (the system findings of each application root, section `system-findings`), which needs the map');
+    expect(part).toContain('and the system findings units (the ids `app<n>.system`) only when `system-findings` is');
+    expect(part).toContain('`--applications` applies only to the `system-findings` section (Phase 4d)');
+    const options = flat(skillOwn.split(/^## Options$/m)[1].split(/^## Sources$/m)[0]);
+    expect(options).toContain('`system-findings` (the defects in the parts of each application that no single feature owns)');
+    expect(options).toContain('- `--applications <list>` - write system findings only for these application roots');
+    expect(options).toContain('Phase 4d resolves the list with `select`');
+    const split = flat(skillOwn.split(/^## How the work is split$/m)[1].split(/^## Options$/m)[0]);
+    expect(split).toContain('| One system findings subagent per application root (Phase 4d)');
+    expect(split).toContain('`sections/system-findings.md` holds Phase 4d');
+    expect(split).toContain('`entries/app<n>.system.json` | the system findings subagent of the `<n>`th application root (Phase 4d)');
+    expect(split).toContain('`check-system-findings` for the system findings of an application root, whose state is under the key `systemFindings` by `app<n>`');
+    expect(flat(skillOwn.split(/^## Phase 1: /m)[0].split(/^## Phase 0: /m)[1])).toContain('`--applications` (`$APPLICATIONS`: the value, or none)');
+  });
+
+  it('the commands it names are the commands handbook.mjs has (system-seeds, check-system-findings, try-system-findings)', () => {
+    const usage = runHandbook(['--help']).stdout;
+    for (const command of ['system-seeds', 'check-system-findings', 'try-system-findings']) {
+      expect(usage, command).toMatch(new RegExp(`^ {2}${command} <out> app<n> --project <root>$`, 'm'));
+      expect(`${text}${skillOwn}`, command).toContain(`handbook.mjs" ${command}`);
+    }
+    expect(usage).toMatch(/^ {2}select <out> --applications <list> --project <root>$/m);
   });
 });

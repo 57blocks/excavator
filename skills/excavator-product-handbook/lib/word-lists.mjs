@@ -5,7 +5,9 @@
  * for each). Both are comma-separated and translated with the rest of the
  * table. A word written only in ASCII is matched as a whole word ignoring case;
  * a word with a letter outside ASCII (a language with its own script) is matched
- * as a substring ignoring case, since such text has no spaces to split on.
+ * as a substring ignoring case, since such text has no spaces to split on. A word with
+ * an apostrophe (won't) is an ASCII word like the others; a typographic apostrophe in
+ * the text counts as the plain one.
  */
 
 const ASCII_ONLY = /^[\x20-\x7e]+$/;
@@ -23,9 +25,12 @@ export const adviceWordsOf = (ui) => wordListOf(ui, 'md.findings.adviceWords');
 /** The scope words of the run's table (`md.findings.scopeWords`), as a list. */
 export const scopeWordsOf = (ui) => wordListOf(ui, 'md.findings.scopeWords');
 
+/** A typographic apostrophe is the plain one: the table writes won't, a model may write the other form. */
+const TYPOGRAPHIC_APOSTROPHE = new RegExp(`[${String.fromCharCode(0x2018, 0x2019)}]`, 'g');
+
 /** Every word of `words` that `text` holds, in the order of the list, each once. */
 export function wordsIn(text, words) {
-  const lower = text.toLowerCase();
+  const lower = text.toLowerCase().replace(TYPOGRAPHIC_APOSTROPHE, "'");
   const found = [];
   for (const word of words) {
     const needle = word.toLowerCase();

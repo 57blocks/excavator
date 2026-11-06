@@ -163,7 +163,7 @@ function overviewBlock(system, basis, t, locations) {
   return out;
 }
 
-function coverageBlock(map, state, candidates, t) {
+function coverageBlock(map, state, candidates, t, findings) {
   const areaName = new Map(map.areas.map((area) => [area.id, area.name]));
   const featureText = (key, feature) => `- ${inline(fill(t(key), { id: feature.id, name: feature.name, area: areaName.get(feature.area) }))}`;
   const claimed = map.features.reduce((sum, feature) => sum + feature.candidates.length, 0);
@@ -219,7 +219,7 @@ function coverageBlock(map, state, candidates, t) {
     out.push(`#### ${inline(fill(t('md.coverage.removedFeature'), { id: feature.id, name: feature.name, area: areaName.get(feature.area), count: removed.length }))}`, '');
     out.push(removedTable(removed), '');
   }
-  out.push(...findingsCoverage({ map, state, t, areaName }));
+  out.push(...findingsCoverage({ map, state, findings, t, areaName }));
   return out;
 }
 
@@ -232,7 +232,7 @@ function coverageBlock(map, state, candidates, t) {
  * lines of each item; the product view writes no citation path. `findings` (findings-model.mjs) is the verified findings of the features: both views write the Findings chapter
  * between the entity sections and the coverage section and each feature's own findings at the end of its section, the technical view with the file and lines of each finding.
  */
-export function renderHandbook({ map, entries, state, candidates, ui, summary, system, entities, view = 'product', locations = null, data = null, dictionaries = null, findings = { list: [], locations: null } }) {
+export function renderHandbook({ map, entries, state, candidates, ui, summary, system, entities, view = 'product', locations = null, data = null, dictionaries = null, findings = { list: [], groups: [], locations: null, applications: [] } }) {
   const t = (key) => {
     if (!Object.hasOwn(ui, key)) throw new Error(`the fixed-text table has no key ${key}`);
     return ui[key];
@@ -261,7 +261,7 @@ export function renderHandbook({ map, entries, state, candidates, ui, summary, s
     out.push(`## ${inline(domain.name)}`, '');
     for (const id of written) out.push(...entryBlock(featureOf.get(id), entries.get(id), map, t, placesOf.get(id), basis === 'domains' ? areaName.get(featureOf.get(id).area) : null, findingsPart));
   }
-  out.push(...summaryBlock(summary, map, t), ...entitySections({ view, map, entities, summary, system, t }), ...findingsChapter({ map, state, findings, view, t }), ...coverageBlock(map, state, candidates, t));
+  out.push(...summaryBlock(summary, map, t), ...entitySections({ view, map, entities, summary, system, t }), ...findingsChapter({ map, state, findings, view, t }), ...coverageBlock(map, state, candidates, t, findings));
   return `${out.join('\n').replace(/\n{3,}/g, '\n\n').trimEnd()}\n`;
 }
 

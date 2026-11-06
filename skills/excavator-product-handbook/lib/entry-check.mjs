@@ -12,7 +12,11 @@
  * try-overview) and the findings of a feature (check-findings and
  * try-findings, the id `<featureId>.findings`): the unit of the id (unit.mjs)
  * decides what is checked. A findings file with no finding has nothing to
- * prove, so it is recorded as verified at once.
+ * prove, so it is recorded as verified at once. The system findings of an
+ * application root (check-system-findings and try-system-findings, the id
+ * `app<n>.system`, openspec change handbook-system-findings) are checked the
+ * same way with the application's context (system-unit.mjs); an application with
+ * no seed file has its empty file written here and is verified at once.
  */
 
 import { existsSync } from 'node:fs';
@@ -26,19 +30,20 @@ import { languageGate } from './language-check.mjs';
 import { mapVerifiedLabels, readMap } from './map-check.mjs';
 import { projectFiles } from './project-files.mjs';
 import { entryDigest, loadState, nextLine, rewriteNextLine, saveState } from './state.mjs';
+import { bindSystemRoot, rootProblem, systemContext, writeEmptyWhenNoSeeds } from './system-unit.mjs';
 import { loadUi } from './ui.mjs';
-import { featureOfFindings, isFindingsId, isOverview, setUnitState, unitFor, unitState } from './unit.mjs';
+import { featureOfFindings, isFindingsId, isOverview, isSystemId, setUnitState, unitFor, unitState } from './unit.mjs';
 
 export const entryPath = (id) => `entries/${id}.json`;
 
 /** The problems of `<out>/entries/<id>.json`, or the single missing-file reason; no state is read or written. */
-export function checkEntryFile(outDir, id, root, { map, mapLabels = null, files = projectFiles(root), memberDirs = memberDirectories(root), languageCheck = null, adviceWords = [] }, { settled = false } = {}) {
+export function checkEntryFile(outDir, id, root, { map, mapLabels = null, files = projectFiles(root), memberDirs = memberDirectories(root), languageCheck = null, adviceWords = [], system = null }, { settled = false } = {}) {
   const file = join(outDir, entryPath(id));
   const labels = mapLabels ?? mapVerifiedLabels(map, { files, memberDirs }).verified;
   const read = readJson(file);
   if (read.missing) return { step: 'lane', problems: [`${id}: lane-wrote-nothing: ${entryPath(id)} is missing`] };
   if (!read.ok) return { step: 'check-entry', problems: [`${entryPath(id)} ${read.reason}`] };
-  return { step: 'check-entry', problems: unitFor(id).problems(read.value, id, { map, files, memberDirs, mapLabels: labels, languageCheck, adviceWords }, { settled }) };
+  return { step: 'check-entry', problems: unitFor(id).problems(read.value, id, { map, files, memberDirs, mapLabels: labels, languageCheck, adviceWords, system }, { settled }) };
 }
 
 /** The checked map and project facts check-entry and try-entry share, or the lines that stop them. */
@@ -52,17 +57,28 @@ export function loadForEntry(outDir, id, root) {
   const labels = mapVerifiedLabels(map, { files, memberDirs });
   if (labels.shapeProblems.length > 0) return { stop: { status: 1, lines: [...labels.shapeProblems.map((line) => `map.json: ${line}`), 'map.json is malformed; run check-map first'] } };
   const featureId = isFindingsId(id) ? featureOfFindings(id) : id;
-  if (!isOverview(id) && !map.features.some((feature) => feature.id === featureId)) throw new UsageError(`feature ${featureId} is not in map.json`);
+  if (!isOverview(id) && !isSystemId(id) && !map.features.some((feature) => feature.id === featureId)) throw new UsageError(`feature ${featureId} is not in map.json`);
   const gate = languageGate(outDir, map);
   if (!gate.ok) return { stop: { status: 1, lines: gate.lines } };
+  // A system unit belongs to the application root at its place of the application list; a state that
+  // records another root for it is from other source. The state is read here only for that: a command
+  // that needs it (check-system-findings) reads it again and reports a state it cannot read.
+  let system = null;
+  if (isSystemId(id)) {
+    system = systemContext(outDir, root, id);
+    if (system.stop) return { stop: system.stop };
+    const stateRead = loadState(outDir);
+    const problem = stateRead.ok ? rootProblem(stateRead.state, id, system.appDir) : null;
+    if (problem !== null) return { stop: { status: 1, lines: [problem] } };
+  }
   // The advice words are part of the run's fixed text, which only a findings unit reads.
   let adviceWords = [];
-  if (isFindingsId(id)) {
+  if (isFindingsId(id) || isSystemId(id)) {
     const ui = loadUi(outDir);
     if (!ui.ok) return { stop: { status: 1, lines: ui.lines } };
     adviceWords = adviceWordsOf(ui.strings);
   }
-  return { map, files, memberDirs, mapLabels: labels.verified, languageCheck: gate.check, adviceWords };
+  return { map, files, memberDirs, mapLabels: labels.verified, languageCheck: gate.check, adviceWords, system };
 }
 
 /** Run check-entry for feature `id` of `<out>` and record the result. Returns { status, lines }. */
@@ -76,7 +92,9 @@ export function checkEntry(outDir, id, root) {
   }
   const { state } = stateRead;
   const unit = unitFor(id);
+  if (isSystemId(id)) bindSystemRoot(state, id, root);
   const current = unitState(state, id);
+  if (isSystemId(id)) writeEmptyWhenNoSeeds(outDir, id, loaded.system, entryPath(id));
 
   // A feature waiting for its one rewrite keeps what round 1 removed, and its entry has no purpose when round 1 removed it.
   const kept = current.rewriting && current.removed !== undefined ? { removed: current.removed } : {};

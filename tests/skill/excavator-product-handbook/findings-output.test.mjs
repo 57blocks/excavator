@@ -126,7 +126,7 @@ describe('the Findings chapter', () => {
     assemble(run, 'product');
     const chapter = section(text(run, 'handbook.md'), `## ${ui['md.findings.heading']}`);
     const line = chapter.split('\n').find((candidate) => candidate.startsWith('Findings: '));
-    expect(line).toBe(`Findings: 3. Findings units verified: 3 of 5. By category: ${CATEGORY_NAMES.map((name) => `${name}: ${['authorization', 'hard-coded', 'time'].some((key) => ui[categoryKey(key)] === name) ? 1 : 0}`).join('; ')}.`);
+    expect(line).toBe(`Findings: 3. Statements: 3. Groups merged: 0. Findings units verified: 3 of 5. System findings units verified: 0 of 1. By category: ${CATEGORY_NAMES.map((name) => `${name}: ${['authorization', 'hard-coded', 'time'].some((key) => ui[categoryKey(key)] === name) ? 1 : 0}`).join('; ')}.`);
     const total = Number(/^Findings: (\d+)\./.exec(line)[1]);
     const groups = chapter.split(/^### /m).slice(1);
     expect(groups.map((group) => group.split('\n').filter((row) => row.startsWith('- ')).length).reduce((sum, n) => sum + n, 0)).toBe(total);
@@ -145,7 +145,7 @@ describe('the Findings chapter', () => {
     assemble(run, 'product');
     const chapter = section(text(run, 'handbook.md'), `## ${ui['md.findings.heading']}`);
     expect(chapter).toContain(ui['md.findings.none']);
-    expect(chapter).toContain('Findings: 0. Findings units verified: 0 of 5.');
+    expect(chapter).toContain('Findings: 0. Statements: 0. Groups merged: 0. Findings units verified: 0 of 5. System findings units verified: 0 of 1.');
     expect(chapter).not.toMatch(/^### /m);
   });
 
@@ -274,18 +274,18 @@ describe('verified findings are checked again like an entry', () => {
 });
 
 describe('the page data', () => {
-  it('has the format /9, the findings of the verified units in map order, and no citation path outside the technical part', () => {
+  it('has the format /10, the findings of the verified units in map order as groups (one statement each here), and no citation path outside the technical part', () => {
     const run = shared();
     const made = page(run);
     expect(made.status, made.stdout).toBe(0);
     const data = dataOf(run);
-    expect(data.format).toBe('excavator-product-handbook-page/9');
-    expect(data.findings.map((finding) => [finding.id, finding.feature, finding.category])).toEqual([
-      ['F1.findings[0]', 'F1', 'authorization'],
-      ['F1.findings[1]', 'F1', 'hard-coded'],
-      ['F3.findings[0]', 'F3', 'time'],
+    expect(data.format).toBe('excavator-product-handbook-page/10');
+    expect(data.findings.map((group) => [group.items.map((item) => item.id), group.owners.map((owner) => [owner.kind, owner.id]), group.category])).toEqual([
+      [['F1.findings[0]'], [['feature', 'F1']], 'authorization'],
+      [['F1.findings[1]'], [['feature', 'F1']], 'hard-coded'],
+      [['F3.findings[0]'], [['feature', 'F3']], 'time'],
     ]);
-    expect(Object.keys(data.findings[0])).toEqual(['id', 'feature', 'category', 'text']);
+    expect(Object.keys(data.findings[0])).toEqual(['category', 'owners', 'items']);
     expect(JSON.stringify({ ...data, technical: undefined })).not.toContain(ORDERS_FILE);
     expect(data.technical.findingLocations.map((place) => [place.id, place.citations])).toEqual([
       ['F1.findings[0]', [{ file: ORDERS_FILE, startLine: 7, endLine: 7 }]],

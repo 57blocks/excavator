@@ -18,6 +18,9 @@
  *       Resolve a --features list of ids or feature names to ids against the
  *       checked map; exit 1 and list every id and name when an item does not
  *       match exactly one feature. Changes no file.
+ *   select <out> --applications <list> --project <root>
+ *       Resolve a list of application root directories to the unit ids
+ *       app<n>.system; exit 1 and list every root when an item is not one.
  *   applications <projectRoot>
  *       Print the application roots of the project: the topmost directories
  *       that hold a build manifest, found with the candidate lister's walk.
@@ -47,11 +50,23 @@
  *       the result in state.json under "findings".
  *   try-findings <out> <featureId>.findings --project <root>
  *       The same checks for the findings lane itself; records nothing.
+ *   system-seeds <out> app<n> --project <root>
+ *       Print the seed files of the system findings of the n-th application root
+ *       (the order of `applications`), one per line, sorted: the files under the
+ *       root with a main or a job candidate, or at least 5 candidates.
+ *   check-system-findings <out> app<n> --project <root>
+ *       Check <out>/entries/app<n>.system.json: the checks of a findings file plus
+ *       a passage in the application and the ownership check; record the result
+ *       in state.json under "systemFindings". An application with no seed file is
+ *       recorded as verified with no finding.
+ *   try-system-findings <out> app<n> --project <root>
+ *       The same checks for the lane itself; records nothing.
  *   mark <out> <featureId> dispatched | failed lane <reason>... --project <root>
  *       Record a lane dispatch or a lane that wrote nothing in state.json.
  *       The slices, verdicts, trace, trace-verdicts and mark commands also take
- *       the unit id `overview` for the system overview and `<featureId>.findings`
- *       for the findings of a feature.
+ *       the unit id `overview` for the system overview, `<featureId>.findings`
+ *       for the findings of a feature and `app<n>.system` for the system
+ *       findings of an application root.
  *   slices <out> <featureId> --project <root> [--round 2]
  *       Cut a checked entry into the items a verifier judges, each with its
  *       claim and the source around its cited passages (design D14); round 2
@@ -71,7 +86,7 @@
  *       the project; remove the items either tracer contradicted and verify the
  *       feature, nothing recorded when any file does not hold.
  *   sections [<list>]
- *       Validate a --sections list (overview, features, data, findings; default all) and print
+ *       Validate a --sections list (overview, features, data, findings, system-findings; default all) and print
  *       SECTIONS=<list> and one READ=<file> line per phase file the run reads,
  *       in reading order, the shared map file once; exit 1 for a value that is
  *       not a section. Reads and changes no file.
@@ -117,11 +132,14 @@ import { projectRootOption } from './lib/project-root.mjs';
 import { replyLines } from './lib/reply.mjs';
 import { parseSections, sectionLines } from './lib/sections.mjs';
 import { selectFeatures } from './lib/select.mjs';
+import { selectApplications } from './lib/select-applications.mjs';
 import { slices } from './lib/slices.mjs';
 import { trace } from './lib/trace.mjs';
 import { traceVerdicts } from './lib/trace-verdicts.mjs';
 import { checkUi } from './lib/ui.mjs';
 import { isFindingsId } from './lib/findings-shape.mjs';
+import { systemContext } from './lib/system-unit.mjs';
+import { systemUnitIdOf } from './lib/system-shape.mjs';
 import { OVERVIEW_ID } from './lib/overview-shape.mjs';
 import { ROUNDS } from './lib/verify-plan.mjs';
 import { parseViews } from './lib/views.mjs';
@@ -157,8 +175,14 @@ Commands:
       Every item must match exactly one feature; otherwise print each failing
       item and then every feature as "id  name", end with a Next: line and
       exit 1. No fuzzy matching. Changes no file.
+  select <out> --applications <list> --project <root>
+      Resolve the --applications list (comma-separated application root
+      directories, exactly as applications prints them) to the unit ids
+      app<n>.system, one per line, in the order of the roots. An item that is
+      not an application root exits 1: print each such item, then every root as
+      "app<n>  <dir>", then a Next: line. Changes no file.
   sections [<list>]
-      Validate the --sections list (comma-separated: overview, features, data, findings; empty
+      Validate the --sections list (comma-separated: overview, features, data, findings, system-findings; empty
       or absent is all) and print "SECTIONS=<the sections in fixed order>",
       then one "READ=<path>" line per phase file to read, relative to the skill
       directory, in reading order: the stage files first (the map file once),
@@ -244,12 +268,36 @@ Commands:
   try-findings <out> <featureId>.findings --project <root>
       The same checks as check-findings, for the lane to run on its own file
       before it replies. Reads and writes no state.json.
+  system-seeds <out> app<n> --project <root>
+      Print the seed files of the system findings of the n-th application root
+      (n from 1, in the order applications prints the roots), one per line,
+      sorted: the files under that root that hold a main or a job candidate, or
+      at least 5 candidates of any kind. Prints nothing when there is none. Reads
+      candidates.json and the project; changes no file. app<n>.system is accepted
+      for app<n> in this command and the two below.
+  check-system-findings <out> app<n> --project <root>
+      Check <out>/entries/app<n>.system.json, the findings no single feature owns
+      in the n-th application root: the same checks as check-findings (shape, id,
+      citations, numbers, banned words, the narrative language, advice words)
+      plus two: each finding has at least one passage in a file under the
+      application root, and a finding whose every cited file is a seed file of
+      one and the same feature of the map, and of no one else here, is refused
+      with the feature's id. Records the result in state.json under
+      "systemFindings", by app<n>, with the application root; a state that
+      records another root for it exits 1 and asks for --fresh. A file with no
+      finding is verified at once; an application with no seed file has its empty
+      file written and is verified at once. A failure ends with a Next: line.
+  try-system-findings <out> app<n> --project <root>
+      The same checks as check-system-findings, for the lane to run on its own
+      file before it replies. Reads and writes no state.json.
   mark <out> <featureId> dispatched --project <root>
       Count one more dispatch of the feature's lane in state.json. The id may be
       overview: the system overview is a unit like a feature (so it is for
       slices, verdicts, trace and trace-verdicts below), and its state is kept
       under "overview" in state.json (absent means planned, attempts 0). The
-      findings of a feature are a unit too, with the id <featureId>.findings.
+      findings of a feature are a unit too, with the id <featureId>.findings,
+      and so are the system findings of an application root, app<n>.system, kept
+      under "systemFindings".
   mark <out> <featureId> failed lane <reason>... --project <root>
       Record the feature's lane as failed without writing its entry, each
       further argument one reason. lane is the only step mark records.
@@ -382,6 +430,13 @@ function requireFindingsId(id) {
   if (!isFindingsId(id)) throw new UsageError(`${id} is not the id of a findings unit; use <featureId>.findings`);
 }
 
+/** The unit id of the system findings an `app<n>` or `app<n>.system` argument names. */
+function requireSystemId(id) {
+  const unit = systemUnitIdOf(id);
+  if (unit === null) throw new UsageError(`${id} is not the id of a system findings unit; use app<n> (for example app1)`);
+  return unit;
+}
+
 /** The round an option names (1 or 2), or 0 when it names neither. */
 const roundOption = (text) => (ROUNDS.includes(Number(text)) && /^\d+$/.test(text) ? Number(text) : 0);
 
@@ -420,11 +475,33 @@ const COMMANDS = {
     return report(checkDomains(positionals[0], projectRootOption(options.project)));
   },
   select(args) {
-    const { positionals, options } = parseArgs(args, ['project', 'features']);
+    const { positionals, options } = parseArgs(args, ['project', 'features', 'applications']);
     if (positionals.length !== 1) throw new UsageError('select takes exactly one <out> directory');
-    if (options.features === undefined) throw new UsageError('select needs --features <list>');
+    if (options.features !== undefined && options.applications !== undefined) throw new UsageError('select takes --features <list> or --applications <list>, not both');
+    if (options.features === undefined && options.applications === undefined) throw new UsageError('select needs --features <list> or --applications <list>');
     const root = projectRootOption(options.project);
+    if (options.applications !== undefined) return report(selectApplications(root, options.applications));
     return report(selectFeatures(positionals[0], root, options.features));
+  },
+  'system-seeds'(args) {
+    const { positionals, options } = parseArgs(args, ['project']);
+    if (positionals.length !== 2) throw new UsageError('system-seeds takes <out> and app<n>');
+    const id = requireSystemId(positionals[1]);
+    const context = systemContext(resolve(positionals[0]), projectRootOption(options.project), id);
+    if (context.stop) return report(context.stop);
+    return report({ status: 0, lines: [...context.seeds] });
+  },
+  'check-system-findings'(args) {
+    const { positionals, options } = parseArgs(args, ['project']);
+    if (positionals.length !== 2) throw new UsageError('check-system-findings takes <out> and app<n>');
+    const id = requireSystemId(positionals[1]);
+    const root = projectRootOption(options.project);
+    return withStateLock(positionals[0], () => report(checkEntry(positionals[0], id, root)));
+  },
+  'try-system-findings'(args) {
+    const { positionals, options } = parseArgs(args, ['project']);
+    if (positionals.length !== 2) throw new UsageError('try-system-findings takes <out> and app<n>');
+    return report(tryEntry(positionals[0], requireSystemId(positionals[1]), projectRootOption(options.project)));
   },
   applications(args) {
     const { positionals } = parseArgs(args, []);
@@ -480,8 +557,8 @@ const COMMANDS = {
     const { positionals, options } = parseArgs(args, ['project']);
     if (positionals.length < 3) throw new UsageError('mark takes <out>, <featureId> and dispatched, or failed lane <reason>...');
     const [out, id, event, ...rest] = positionals;
-    projectRootOption(options.project);
-    return withStateLock(out, () => report(mark(out, id, event, rest)));
+    const root = projectRootOption(options.project);
+    return withStateLock(out, () => report(mark(out, id, event, rest, root)));
   },
   slices(args) {
     const { positionals, options } = parseArgs(args, ['project', 'round']);
