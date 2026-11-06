@@ -25,8 +25,10 @@ import { UI_FORMAT } from '../../skills/excavator-product-handbook/lib/ui.mjs';
 import { traceVerdictProblems } from '../../skills/excavator-product-handbook/lib/trace-verdicts.mjs';
 import { verdictProblems } from '../../skills/excavator-product-handbook/lib/verdicts.mjs';
 import { overviewShapeProblems } from '../../skills/excavator-product-handbook/lib/overview-shape.mjs';
+import { FINDING_CATEGORIES, FINDINGS_FORMAT, findingsShapeProblems } from '../../skills/excavator-product-handbook/lib/findings-shape.mjs';
 import { HANDBOOK_SCRIPT, clone, judge, makeCheckedMapRun, runHandbook, traceFeature, verifyChecked } from './excavator-product-handbook/helpers.mjs';
 import { checkedOverviewRun, overviewRun } from './excavator-product-handbook/overview-fixture.mjs';
+import { checkedFindingsRun } from './excavator-product-handbook/findings-fixture.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(__dirname, '../..');
@@ -37,12 +39,12 @@ const skillOwn = readFileSync(resolve(skillDir, 'SKILL.md'), 'utf-8');
 const SECTION_FILES = ['stages/map.md', 'sections/overview.md', 'sections/features.md'];
 const sectionText = (path) => readFileSync(resolve(skillDir, path), 'utf-8');
 /**
- * The skill as a default run reads it: SKILL.md with the four phase files put
+ * The skill as a default run reads it: SKILL.md with the five phase files put
  * where the Sections part has the model read them, so the phases run in their
- * order (0, 1, 2, 3, 3c, 3b, 4, 4b, 5, 6, 7). Every assertion below that looks for
+ * order (0, 1, 2, 3, 3c, 3b, 4, 4b, 4c, 5, 6, 7). Every assertion below that looks for
  * a phase's text looks in the file that holds it.
  */
-const skill = skillOwn.replace(/^## Sections\n[\s\S]*?(?=^## Phase 5: )/m, [...SECTION_FILES, 'sections/data.md'].map(sectionText).join(''));
+const skill = skillOwn.replace(/^## Sections\n[\s\S]*?(?=^## Phase 5: )/m, [...SECTION_FILES, 'sections/data.md', 'sections/findings.md'].map(sectionText).join(''));
 const flat = (text) => text.replace(/\s+/g, ' ');
 const agent = readFileSync(resolve(repoRoot, 'agents/excavator-handbook-verifier.md'), 'utf-8');
 const tracerAgent = readFileSync(resolve(repoRoot, 'agents/excavator-handbook-tracer.md'), 'utf-8');
@@ -87,9 +89,9 @@ describe('excavator-product-handbook skill: structure', () => {
   });
 
   it('has the phases in the order they run: the business domains (3c) and then the system overview (3b) between the map and the entries, the verify and trace phases between the entries and the assembly', () => {
-    expect([...raw.keys()]).toEqual([0, 1, 2, 3, '3c', '3b', 4, '4b', 5, 6, 7]);
+    expect([...raw.keys()]).toEqual([0, 1, 2, 3, '3c', '3b', 4, '4b', '4c', 5, 6, 7]);
     const titles = [...skill.matchAll(/^## Phase \d+[bc]?: (.+)$/gm)].map((match) => match[1]);
-    expect(titles).toEqual(['Setup', 'Candidates', 'Fixed text', 'The map', 'Business domains', 'System overview', 'Entries', 'Data', 'Verify', 'Trace', 'Assemble, page and reply']);
+    expect(titles).toEqual(['Setup', 'Candidates', 'Fixed text', 'The map', 'Business domains', 'System overview', 'Entries', 'Data', 'Findings', 'Verify', 'Trace', 'Assemble, page and reply']);
   });
 
   it('describes every option of the argument hint in the Options section', () => {
@@ -1630,5 +1632,158 @@ describe('excavator-product-handbook skill: sections (O2 of handbook-sections)',
     for (const command of ['check-map', 'check-domains', 'check-overview']) {
       expect(skillOwn).not.toContain(`${HANDBOOK} ${command}`);
     }
+  });
+});
+
+// O1 of openspec change handbook-feature-findings: the findings section has its
+// phase in a file of its own, byte for byte as pinned; the lane prompt carries
+// the reading limits of the entry lane and the content rules of the design; its
+// JSON example passes the shape check; the units of Phases 5 and 6 include the
+// findings units, with recipes that are run on a real state; rule 1 allows the
+// findings and nothing else.
+describe('excavator-product-handbook skill: Phase 4c, the findings (O1 of handbook-feature-findings)', () => {
+  const digest = (text) => createHash('sha256').update(text, 'utf8').digest('hex');
+  const text = sectionText('sections/findings.md');
+  const p = phase('4c');
+  const findingsPrompt = promptBlocks(raw.get('4c') ?? '')[0] ?? '';
+  const prompt = flat(findingsPrompt);
+  const recipe = (start) => allBash.flatMap((block) => block.split('\n')).map((line) => line.trim()).find((line) => line.startsWith(start));
+  const onState = (line, run) => {
+    const result = spawnSync('bash', ['-c', line.replace('"$OUT/state.json"', `"${join(run.out, 'state.json')}"`)], { encoding: 'utf-8' });
+    expect(result.status, result.stderr).toBe(0);
+    return result.stdout.trim().split('\n').filter((row) => row !== '');
+  };
+  const cleanups = [];
+  const track = (run) => {
+    cleanups.push(run.cleanup);
+    return run;
+  };
+  const clean = () => {
+    while (cleanups.length > 0) cleanups.pop()();
+  };
+
+  it('sections/findings.md is pinned, holds Phase 4c only and starts with the language reminder', () => {
+    expect(digest(text)).toBe('a84f769c08d39f66b5f474ec4b9986645a2c3db09ba1ab1f77ebb6cea28a78c2');
+    expect([...text.matchAll(/^## Phase .+$/gm)].map((match) => match[0])).toEqual(['## Phase 4c: Findings']);
+    expect(text.startsWith('## Phase 4c: Findings\n')).toBe(true);
+    expect(p.startsWith(PHASE_LANGUAGE)).toBe(true);
+    expect(skill.indexOf('## Phase 4c: Findings')).toBeGreaterThan(skill.indexOf('## Phase 4b: Data'));
+    expect(skill.indexOf('## Phase 4c: Findings')).toBeLessThan(skill.indexOf('## Phase 5: Verify'));
+  });
+
+  it('lists the lanes with a recipe that is run on a real state: planned without the key, checked after check-findings', () => {
+    const line = recipe('jq -r --arg ids "<ids>" \'($ids | split(" ") | map(select(. != ""))) as $want | (.findings // {})');
+    expect(line).toBeDefined();
+    try {
+      const run = track(checkedFindingsRun([], 'F1'));
+      const rows = onState(line.replace('<ids>', ''), run);
+      expect(rows[0]).toBe('F1.findings\tchecked\t0');
+      expect(rows.slice(1)).toEqual(['F2.findings\tplanned\t0', 'F3.findings\tplanned\t0', 'F4.findings\tplanned\t0', 'F5.findings\tplanned\t0']);
+      expect(onState(line.replace('<ids>', 'F3 F5'), run)).toEqual(['F3.findings\tplanned\t0', 'F5.findings\tplanned\t0']);
+      const fresh = track(checkedFindingsRun([], 'F1'));
+      const state = fresh.readState();
+      delete state.findings;
+      fresh.writeJson(join(fresh.out, 'state.json'), state);
+      expect(onState(line.replace('<ids>', ''), fresh).every((row) => row.endsWith('\tplanned\t0'))).toBe(true);
+    } finally {
+      clean();
+    }
+  });
+
+  it('dispatches with mark and checks with check-findings, quotes the Next lines the script prints and allows two attempts', () => {
+    expect(p).toContain(`${HANDBOOK} mark "$OUT" <id>.findings dispatched --project "$PROJECT_ROOT"`);
+    expect(p).toContain(`${HANDBOOK} check-findings "$OUT" <id>.findings --project "$PROJECT_ROOT"`);
+    expect(p).toContain(`\`${nextLine('<id>.findings', 0).replace("<id>.findings's", '<id>.findings\'s')}\``);
+    expect(p).toContain('`Next: <id>.findings stays failed (2 of 2 attempts)`');
+    expect(p).toContain(RETRY_HEADING);
+    expect(p).toContain('never make a third attempt'.replace('never', 'Never'));
+    expect(p).toContain('Never edit `entries/<id>.findings.json` or `state.json` yourself');
+    expect(p).toContain('dispatch at most `$CONCURRENCY` lanes'.replace('dispatch', 'Dispatch'));
+    expect(p).toContain('never in the background');
+  });
+
+  it('gives the lane the reading limits of an entry lane, the one file it writes and the command it runs first', () => {
+    expect(findingsPrompt).not.toBe('');
+    expect(prompt).toContain('Open at most 20 files that are not seed files, in all; searches do not count.');
+    expect(prompt).toContain('Never read anything under `.excavator/`');
+    expect(prompt).toContain('never read a document that an Excavator skill generated');
+    expect(prompt).toContain('Read code only; never run, build or change anything in the project.');
+    expect(prompt).toContain('Exclude `.excavator`, `.git`, `node_modules`, `vendor`, `dist` and `build` from every search');
+    expect(prompt).toContain('Write only `$OUT/entries/<id>.findings.json`, and nothing else anywhere. Reply with one line: `<id>.findings: written`, and nothing else.');
+    expect(prompt).toContain(`${HANDBOOK} try-findings "$OUT" <id>.findings --project "$PROJECT_ROOT"`);
+    expect(prompt).toContain('until it prints `<id>.findings: ok`, at most 5 runs');
+    expect(prompt).toContain('never list or walk a directory');
+  });
+
+  it('shows a JSON example that the findings shape check accepts, with every key present', () => {
+    const example = blocks(findingsPrompt, 'json')[0];
+    expect(example).toBeDefined();
+    const doc = JSON.parse(example.replace(/\bE\b(?=[,}\]])/g, '[{"file": "a.js", "passage": "x"}]').replace('<one of the words above>', 'other').replace('<id>.findings', 'F1.findings'));
+    expect(findingsShapeProblems(doc)).toEqual([]);
+    expect(Object.keys(doc)).toEqual(['format', 'id', 'findings', 'unknowns']);
+    expect(doc.format).toBe(FINDINGS_FORMAT);
+    expect(prompt).toContain('Every key is always there');
+  });
+
+  it('lists every category of the enum, with its meaning, and no other', () => {
+    const listed = [...findingsPrompt.matchAll(/^- `([a-z-]+)`: .+$/gm)].map((match) => match[1]);
+    expect(listed).toEqual([...FINDING_CATEGORIES]);
+  });
+
+  it('states what a finding is, the statement rule, the evidence rule, the negative-statement rule and the empty list', () => {
+    expect(prompt).toContain('something the code does today that is wrong, that a reader can reproduce from your words');
+    expect(prompt).toContain('It is not a matter of style or readability, and not a "may" or "might"');
+    expect(prompt).toContain('a feature with no defect has an empty list, never pad it');
+    expect(prompt).toContain('It never says how to change it and never judges it');
+    expect(prompt).toContain('For a missing check, cite the whole piece of code that performs the write or the action');
+    expect(prompt).toContain('For two places that disagree, cite both.');
+    expect(prompt).toContain('Before you write that something is never checked, never sent or not done, search the whole project');
+    expect(prompt).toContain('write it in `unknowns` with what you `searched`');
+    expect(prompt).toContain('exactly once');
+    expect(prompt).toContain('Arabic numerals');
+  });
+
+  it('puts the findings units in the lists of Phase 5 and of Phase 6, with recipes that are run on a real state', () => {
+    const verify = recipe('jq -r \'(.findings // {}) | to_entries[] | select(.value.status == "checked")');
+    const trace = recipe('jq -r \'(.findings // {}) | to_entries[] | select(.value.status == "confirmed")');
+    expect(verify).toBeDefined();
+    expect(trace).toBeDefined();
+    expect(phase(5)).toContain('where the rewrite prompt says `try-entry "$OUT" <id>`, the rewriter runs `try-findings "$OUT" <id>.findings`, and its rule about roles from the map does not apply to findings');
+    expect(phase(5)).toContain('A findings unit that loses every finding in this phase is `confirmed` with none, never `failed`.');
+    expect(phase(6)).toContain('`trace` prints `<id>.findings: 0 items in 0 parts`');
+    try {
+      const run = track(checkedFindingsRun([], 'F1'));
+      expect(onState(verify, run)).toEqual(['F1.findings\tverify']);
+      expect(onState(trace, run)).toEqual([]);
+      expect(judge(run, 'F1.findings', 1, (item) => (item.id === 'findings[0]' ? 'unverified' : 'verified')).status).toBe(0);
+      expect(onState(verify, run)).toEqual(['F1.findings\trewrite']);
+      expect(judge(run, 'F1.findings', 2, () => 'verified').status).toBe(0);
+      expect(onState(verify, run)).toEqual([]);
+      expect(onState(trace, run)).toEqual(['F1.findings']);
+      expect(traceFeature(run, 'F1.findings').status).toBe(0);
+      expect(onState(trace, run)).toEqual([]);
+    } finally {
+      clean();
+    }
+  });
+
+  it('allows the findings in rule 1 and nowhere else, and says in the Sections part, the options and the split that the section exists', () => {
+    const rule = flat(skillOwn.split('\n').find((line) => line.startsWith('1. **As-Is only, no advice.**')));
+    expect(rule).toContain('Never write what the product should do or how to change it, in any part.');
+    expect(rule).toContain('Only the findings (Phase 4c, the Findings chapter of the handbook) say what is wrong with the product, and they state the defect and nothing else; every other part states only what exists.');
+    const part = flat(skillOwn.slice(skillOwn.indexOf('\n## Sections\n'), skillOwn.indexOf('## Phase 5: Verify')));
+    expect(part).toContain('`sections/findings.md` holds Phase 4c (the findings of each feature, section `findings`), which needs the map');
+    expect(part).toContain('the findings units (the ids `<id>.findings`) only when `findings` is');
+    const options = flat(skillOwn.split(/^## Options$/m)[1].split(/^## Sources$/m)[0]);
+    expect(options).toContain('`findings` (the defects each feature\'s code shows, with their root causes)');
+    const split = flat(skillOwn.split(/^## How the work is split$/m)[1].split(/^## Options$/m)[0]);
+    expect(split).toContain('| One findings subagent per feature (Phase 4c)');
+    expect(split).toContain('`sections/findings.md` holds Phase 4c');
+    expect(split).toContain('`entries/<id>.findings.json` | the findings subagent of feature `<id>` (Phase 4c)');
+  });
+
+  it('leaves the entry and overview prompts as they were: they still write no defect', () => {
+    expect(lanePrompt).toContain('Give no advice, no opinion and no defect report: never write what the product should do or what is wrong with it.');
+    expect(promptBlocks(raw.get('3b') ?? '')[0]).toContain('Give no advice, no opinion and no defect report: never write what the system should do or what is wrong with it.');
   });
 });
