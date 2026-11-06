@@ -298,3 +298,7 @@ td[data-kind="string"]::before, td[data-kind="string"]::after { content: '"'; co
 @media (prefers-color-scheme: dark) {
   .priority-badge[data-level="P0"] { --priority-color: #ff8a80; }
 }
+
+.inline-label { font-weight: 600; }
+.category-remedy { display: grid; gap: 6px; margin: 0 0 14px; }
+.recommendations { display: grid; gap: 24px; list-style: none; padding: 0; }

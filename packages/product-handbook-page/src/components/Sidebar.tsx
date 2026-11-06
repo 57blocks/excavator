@@ -93,7 +93,7 @@ function ByApplication({ data, route }: { data: PageData; route: Route }) {
 
 /**
  * The navigation: overview, the roles and (in the technical view) the
- * applications matrices, the two cross-cutting tables, the findings, coverage; then, in the
+ * applications matrices, the two cross-cutting tables, the findings, the recommendations, coverage; then, in the
  * product view, the domains with their features, or, in the technical view,
  * the applications with their domains and features; and a key to the marks.
  * Below 900px it is a drawer that the top bar's button opens.
@@ -129,6 +129,7 @@ export function Sidebar({ data, route, open, onNavigate }: Props) {
         {view === 'technical' && link(nav.data, 'data', t('md.data.heading'), <OverviewIcon />)}
         {view === 'technical' && link(nav.dictionaries, 'dictionaries', t('md.dict.heading'), <OverviewIcon />)}
         {link(nav.findings, 'findings', t('page.nav.findings'), <CoverageIcon />)}
+        {link(nav.recommendations, 'recommendations', t('page.nav.recommendations'), <CoverageIcon />)}
         {link(nav.coverage, 'coverage', t('page.nav.coverage'), <CoverageIcon />)}
       </div>
       <div className="rail-scroll">

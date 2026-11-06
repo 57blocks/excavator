@@ -11,6 +11,7 @@ import { JobsPage } from './components/JobsPage';
 import { NotFound } from './components/NotFound';
 import { NotificationsPage } from './components/NotificationsPage';
 import { Overview } from './components/Overview';
+import { RecommendationsPage } from './components/RecommendationsPage';
 import { RolePage, RolesMatrixPage } from './components/RolePages';
 import { Sidebar } from './components/Sidebar';
 import { SystemPage } from './components/SystemPage';
@@ -33,6 +34,7 @@ function PageView({ data, route, view }: { data: PageData; route: Route; view: V
     case 'notifications': return <NotificationsPage data={data} />;
     case 'jobs': return <JobsPage data={data} />;
     case 'findings': return <FindingsPage data={data} />;
+    case 'recommendations': return <RecommendationsPage data={data} />;
     case 'data': return technical === undefined ? <NotFound /> : <DataPage data={data} technical={technical} />;
     case 'dictionaries': return technical === undefined ? <NotFound /> : <DictionariesPage data={data} technical={technical} />;
     case 'roles-matrix': return <RolesMatrixPage data={data} />;
@@ -98,6 +100,7 @@ function pageTitle(data: PageData, route: Route, t: ReturnType<typeof makeText>)
     case 'notifications': return t('page.nav.notifications');
     case 'jobs': return t('page.nav.jobs');
     case 'findings': return t('md.findings.heading');
+    case 'recommendations': return t('md.remedies.heading');
     case 'data': return t('md.data.heading');
     case 'dictionaries': return t('md.dict.heading');
     case 'roles-matrix': return t('md.matrix.roleFeature.heading');

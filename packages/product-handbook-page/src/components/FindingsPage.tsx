@@ -47,7 +47,8 @@ const ownerText = (t: Text, owner: FindingOwner): string => (owner.kind === 'app
  * application roots as groups of findings at the same place, by category, each
  * with its owners and the statement of its first finding, the other statements
  * of the group collapsed under it; filterable by category and by owner (a
- * feature, or the application roots as "System") and by level; each group has its level and, when it has one, the reason; the technical view adds the
+ * feature, or the application roots as "System") and by level; each group has its level and, when it has one, the reason; each category shows the common
+ * cause and the measure the remedies hold for it (openspec change handbook-remedies); the technical view adds the
  * file and lines of each statement's quoted passages.
  */
 export function FindingsPage({ data }: { data: PageData }) {
@@ -119,10 +120,17 @@ export function FindingsPage({ data }: { data: PageData }) {
           {FINDING_CATEGORIES.filter((name) => shown.some((group) => group.category === name)).map((name) => {
             const heading = t(findingCategoryKey(name));
             const own = data.findings.filter((group) => group.category === name);
+            const remedy = data.remedies.categories.find((entry) => entry.category === name);
             const title = t('md.priority.categoryHeading', { category: heading, count: own.length, p0: own.filter((group) => group.priority?.level === 'P0').length });
             return (
               <section className="section" key={name} data-category={name} aria-labelledby={`findings-${name}`}>
                 <h2 className="section-title" id={`findings-${name}`}>{title}</h2>
+                {remedy !== undefined && (
+                  <div className="category-remedy" data-part="category-remedy">
+                    <p><span className="inline-label">{t('page.remedies.cause')}</span> {remedy.cause}</p>
+                    <p><span className="inline-label">{t('page.remedies.measure')}</span> {remedy.measure}</p>
+                  </div>
+                )}
                 <TableScroll label={heading} wide>
                   <thead>
                     <tr>
