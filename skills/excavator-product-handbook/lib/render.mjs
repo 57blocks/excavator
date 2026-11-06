@@ -13,6 +13,7 @@ import { inline, table } from './markdown.mjs';
 import { applicationCells, listCell } from './render-application.mjs';
 import { entitySections, locationLines } from './render-entities.mjs';
 import { featureFindingsLines, findingsChapter, findingsCoverage } from './render-findings.mjs';
+import { EMPTY_PRIORITY } from './priority-model.mjs';
 import { fill } from './ui.mjs';
 
 const NONE_ROW = '-';
@@ -232,7 +233,7 @@ function coverageBlock(map, state, candidates, t, findings) {
  * lines of each item; the product view writes no citation path. `findings` (findings-model.mjs) is the verified findings of the features: both views write the Findings chapter
  * between the entity sections and the coverage section and each feature's own findings at the end of its section, the technical view with the file and lines of each finding.
  */
-export function renderHandbook({ map, entries, state, candidates, ui, summary, system, entities, view = 'product', locations = null, data = null, dictionaries = null, findings = { list: [], groups: [], locations: null, applications: [] } }) {
+export function renderHandbook({ map, entries, state, candidates, ui, summary, system, entities, view = 'product', locations = null, data = null, dictionaries = null, findings = { list: [], groups: [], locations: null, applications: [], priority: EMPTY_PRIORITY } }) {
   const t = (key) => {
     if (!Object.hasOwn(ui, key)) throw new Error(`the fixed-text table has no key ${key}`);
     return ui[key];

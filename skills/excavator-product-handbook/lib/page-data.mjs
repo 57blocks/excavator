@@ -21,7 +21,8 @@ import { languageTag } from './language-tag.mjs';
 import { withoutRootPaths } from './root-paths.mjs';
 import { DEFAULT_VIEWS } from './views.mjs';
 
-export const PAGE_FORMAT = 'excavator-product-handbook-page/10';
+/** The format is /11 since openspec change handbook-findings-priority: each group of findings carries its priority, and the coverage says which groups have none. */
+export const PAGE_FORMAT = 'excavator-product-handbook-page/11';
 
 /** An entry without its evidence, in the page's shape. */
 function pageEntry(entry) {
@@ -88,6 +89,7 @@ export function buildPageData(run, roots, { views = DEFAULT_VIEWS } = {}) {
       category: group.category,
       owners: group.owners.map((owner) => ({ kind: owner.kind, id: owner.id, name: owner.name })),
       items: group.items.map((item) => ({ id: item.id, owner: { kind: item.owner.kind, id: item.owner.id, name: item.owner.name }, text: item.text })),
+      priority: group.priority === null ? null : { level: group.priority.level, consequence: group.priority.consequence, reason: group.priority.reason },
     })),
     coverage: {
       candidateTotal: candidates.length,
@@ -116,6 +118,10 @@ export function buildPageData(run, roots, { views = DEFAULT_VIEWS } = {}) {
         .filter((application) => !['verified', 'planned'].includes(application.status))
         .map((application) => ({ id: application.id, name: application.name, status: application.status })),
       systemFindingsNotWritten: findings.applications.filter((application) => application.status === 'planned').length,
+      priority: {
+        finished: findings.priority.finished,
+        unranked: findings.priority.unranked.map(({ group, reasons }) => ({ id: group.items[0].id, category: group.category, text: group.items[0].text, reasons })),
+      },
       systemFindingsRemoved: findings.applications
         .filter((application) => application.removed.length > 0)
         .map((application) => ({

@@ -61,6 +61,19 @@
  *       recorded as verified with no finding.
  *   try-system-findings <out> app<n> --project <root>
  *       The same checks for the lane itself; records nothing.
+ *   priority-items <out> --project <root> [--part <n>]
+ *       Print the groups of the verified findings a ranking lane ranks, one line
+ *       each (group key, category, representative statement, other statements),
+ *       or one `Priority:` line when there is nothing to rank (design D3).
+ *   check-priority <out> --project <root>
+ *       Check the part files of the ranking lanes against those groups and write
+ *       <out>/entries/priority.json; record the result under "priority".
+ *   priority-judge <out> --project <root>
+ *       Write the judge files of a checked ranking and print the paths of the
+ *       two verdict files of each part.
+ *   priority-verdicts <out> --project <root>
+ *       Record the two judges' verdicts: a group has a priority only when both
+ *       say follows; the others are recorded unranked with their reasons.
  *   mark <out> <featureId> dispatched | failed lane <reason>... --project <root>
  *       Record a lane dispatch or a lane that wrote nothing in state.json.
  *       The slices, verdicts, trace, trace-verdicts and mark commands also take
@@ -86,10 +99,11 @@
  *       the project; remove the items either tracer contradicted and verify the
  *       feature, nothing recorded when any file does not hold.
  *   sections [<list>]
- *       Validate a --sections list (overview, features, data, findings, system-findings; default all) and print
- *       SECTIONS=<list> and one READ=<file> line per phase file the run reads,
- *       in reading order, the shared map file once; exit 1 for a value that is
- *       not a section. Reads and changes no file.
+ *       Validate a --sections list (overview, features, data, findings, system-findings, priority; default all) and print
+ *       SECTIONS=<list>, one READ=<file> line per phase file the run reads,
+ *       in reading order, the shared map file once, and an AFTER_TRACE=<file> line
+ *       for a section whose phase runs after the trace (priority); exit 1 for a
+ *       value that is not a section. Reads and changes no file.
  *   check-ui <out> [--language <name>]
  *       Check <out>/ui.json against the shipped English table, or copy that
  *       table there when the run's language is English. The fixed text is
@@ -104,7 +118,7 @@
  *       Write <out>/handbook.html from the same checked run: one file that
  *       opens from disk, no network, the same bytes from the same input.
  *
- * check-map, check-entry, check-overview, check-findings, mark, verdicts and trace-verdicts hold <out>/state.json.lock while they run.
+ * check-map, check-entry, check-overview, check-findings, check-priority, priority-verdicts, mark, verdicts and trace-verdicts hold <out>/state.json.lock while they run.
  * In a run whose language is not English, check-map, check-entry, try-entry,
  * assemble and page also check that each narrative text holds a letter of the
  * language when it has its own script (design D12); they need a checked
@@ -128,6 +142,10 @@ import { withStateLock } from './lib/lock.mjs';
 import { mark } from './lib/mark.mjs';
 import { nameCandidates, nameLines } from './lib/name-candidates.mjs';
 import { writePage } from './lib/page.mjs';
+import { checkPriority } from './lib/priority-check.mjs';
+import { priorityItems } from './lib/priority-items.mjs';
+import { priorityJudge } from './lib/priority-judge.mjs';
+import { priorityVerdicts } from './lib/priority-verdicts.mjs';
 import { projectRootOption } from './lib/project-root.mjs';
 import { replyLines } from './lib/reply.mjs';
 import { parseSections, sectionLines } from './lib/sections.mjs';
@@ -182,11 +200,13 @@ Commands:
       not an application root exits 1: print each such item, then every root as
       "app<n>  <dir>", then a Next: line. Changes no file.
   sections [<list>]
-      Validate the --sections list (comma-separated: overview, features, data, findings, system-findings; empty
+      Validate the --sections list (comma-separated: overview, features, data, findings, system-findings, priority; empty
       or absent is all) and print "SECTIONS=<the sections in fixed order>",
       then one "READ=<path>" line per phase file to read, relative to the skill
       directory, in reading order: the stage files first (the map file once),
-      then each section's file. A value that is not a section exits 1 and the
+      then each section's file. The file of a section whose phase runs after the
+      trace (priority) is printed as "AFTER_TRACE=<path>" instead: it is read at
+      the end of Phase 6. A value that is not a section exits 1 and the
       allowed values are printed. Reads and changes no file.
   applications <projectRoot>
       Print "Application roots: <n>" and then one line "<dir><TAB><manifests>"
@@ -290,6 +310,34 @@ Commands:
   try-system-findings <out> app<n> --project <root>
       The same checks as check-system-findings, for the lane to run on its own
       file before it replies. Reads and writes no state.json.
+  priority-items <out> --project <root> [--part <n>]
+      Print the groups of the verified findings a ranking lane ranks, one line
+      per group, tab-separated: the group key, the display name of the category,
+      the representative statement and the other statements of the group joined
+      with " | ". The key holds the unit and the index of the representative and a
+      digest of every statement of the group, so a group whose statement or
+      members changed is another key. --part <n> prints the groups of part n (at
+      most 40 groups a part). When there is nothing to rank (no verified finding,
+      a ranking that is current, one waiting for its judges, one that failed
+      twice) it prints one line that starts with "Priority:" and no group.
+  check-priority <out> --project <root>
+      Check <out>/priority/part-<n>.json for each part: exactly one item for each
+      group of the part, a consequence of the table (othersRecords, money,
+      dataLoss, secret, wrongResult, notification, blocked, display, inert), and a
+      reason of one line that passes the reader-text checks and holds no word of
+      advice. Writes <out>/entries/priority.json (the parts merged, in group
+      order) and records "priority" as checked; a failure records it failed and
+      ends with a Next: line naming the parts to rank again.
+  priority-judge <out> --project <root>
+      For a checked ranking, write <out>/priority/judge/part-<n>.json (the
+      statements, the consequence with its meaning and the reason of each group)
+      and print, for each part, the judge file and the two verdict files.
+  priority-verdicts <out> --project <root>
+      Record the verdicts of the two judges of each part: one per group, follows or
+      doesNotFollow, with a one-line reason. A group has a priority when both say
+      follows; any other group is recorded unranked with the reasons of the
+      judges that said doesNotFollow, and "priority" is verified. Nothing is
+      recorded when a file does not hold.
   mark <out> <featureId> dispatched --project <root>
       Count one more dispatch of the feature's lane in state.json. The id may be
       overview: the system overview is a unit like a feature (so it is for
@@ -297,7 +345,9 @@ Commands:
       under "overview" in state.json (absent means planned, attempts 0). The
       findings of a feature are a unit too, with the id <featureId>.findings,
       and so are the system findings of an application root, app<n>.system, kept
-      under "systemFindings".
+      under "systemFindings". The id priority is the ranking of the findings, kept
+      under "priority": a dispatch for groups other than the ones it was recorded
+      for starts it over with no attempt.
   mark <out> <featureId> failed lane <reason>... --project <root>
       Record the feature's lane as failed without writing its entry, each
       further argument one reason. lane is the only step mark records.
@@ -552,6 +602,29 @@ const COMMANDS = {
     const { positionals, options } = parseArgs(args, ['project']);
     if (positionals.length !== 2) throw new UsageError('try-entry takes <out> and <featureId>');
     return report(tryEntry(positionals[0], positionals[1], projectRootOption(options.project)));
+  },
+  'priority-items'(args) {
+    const { positionals, options } = parseArgs(args, ['project', 'part']);
+    if (positionals.length !== 1) throw new UsageError('priority-items takes exactly one <out> directory');
+    const part = options.part === undefined ? undefined : /^\d+$/.test(options.part) ? Number(options.part) : 0;
+    return report(priorityItems(positionals[0], projectRootOption(options.project), part));
+  },
+  'check-priority'(args) {
+    const { positionals, options } = parseArgs(args, ['project']);
+    if (positionals.length !== 1) throw new UsageError('check-priority takes exactly one <out> directory');
+    const root = projectRootOption(options.project);
+    return withStateLock(positionals[0], () => report(checkPriority(positionals[0], root)));
+  },
+  'priority-judge'(args) {
+    const { positionals, options } = parseArgs(args, ['project']);
+    if (positionals.length !== 1) throw new UsageError('priority-judge takes exactly one <out> directory');
+    return report(priorityJudge(positionals[0], projectRootOption(options.project)));
+  },
+  'priority-verdicts'(args) {
+    const { positionals, options } = parseArgs(args, ['project']);
+    if (positionals.length !== 1) throw new UsageError('priority-verdicts takes exactly one <out> directory');
+    const root = projectRootOption(options.project);
+    return withStateLock(positionals[0], () => report(priorityVerdicts(positionals[0], root)));
   },
   mark(args) {
     const { positionals, options } = parseArgs(args, ['project']);

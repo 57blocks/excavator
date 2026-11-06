@@ -1,5 +1,6 @@
 import { useLinks } from '../lib/links';
 import { systemName, useText } from '../lib/text';
+import { findingCategoryKey } from '../lib/types';
 import type { PageData, RemovedItem } from '../lib/types';
 import { CheckIcon } from './Icons';
 import { ReachBadge } from './ReachBadge';
@@ -19,6 +20,38 @@ function RemovedTable({ items }: { items: RemovedItem[] }) {
         ))}
       </tbody>
     </TableScroll>
+  );
+}
+
+/** The ranking of the findings: the groups without a priority with the reasons of the judges, that the ranking did not finish, or that every group has a priority. */
+function PriorityCoverage({ data }: { data: PageData }) {
+  const t = useText();
+  const { finished, unranked } = data.coverage.priority;
+  return (
+    <section className="section" aria-labelledby="cov-priority">
+      <h2 className="section-title" id="cov-priority">{t('md.coverage.priorityHeading')}</h2>
+      {data.findings.length === 0 && <p className="muted">{t('md.none')}</p>}
+      {data.findings.length > 0 && !finished && <p className="muted" data-part="priority-not-finished">{t('md.coverage.priorityNotFinished', { count: data.findings.length })}</p>}
+      {data.findings.length > 0 && finished && unranked.length === 0 && <p className="muted" data-part="priority-all-ranked">{t('md.coverage.priorityAllRanked')}</p>}
+      {data.findings.length > 0 && finished && unranked.length > 0 && (
+        <>
+          <p className="muted" data-part="priority-unranked">{t('md.coverage.priorityUnranked', { count: unranked.length })}</p>
+          <TableScroll label={t('md.coverage.priorityHeading')} wide>
+            <thead>
+              <tr><th scope="col">{t('md.findings.claimLabel')}</th><th scope="col">{t('md.table.reason')}</th></tr>
+            </thead>
+            <tbody>
+              {unranked.map((row) => (
+                <tr key={row.id}>
+                  <Cell row>{t('md.findings.featureItem', { category: t(findingCategoryKey(row.category)), text: row.text })}</Cell>
+                  <Cell>{row.reasons.length === 0 ? t('md.priority.notJudged') : row.reasons.join('; ')}</Cell>
+                </tr>
+              ))}
+            </tbody>
+          </TableScroll>
+        </>
+      )}
+    </section>
   );
 }
 
@@ -88,6 +121,8 @@ function FindingsCoverage({ data }: { data: PageData }) {
           </div>
         ))}
       </section>
+
+      <PriorityCoverage data={data} />
     </>
   );
 }
