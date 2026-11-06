@@ -110,8 +110,8 @@ describe('the Recommendations chapter', () => {
     expect(chapter.indexOf('### 2. Replace the fixed list')).toBeGreaterThan(chapter.indexOf('### 1. Check the caller first'));
     const first = chapter.slice(chapter.indexOf('### 1.'), chapter.indexOf('### 2.'));
     expect(first).toContain('Start with the 1 finding of the highest level, which lets any caller delete an order, and give it a check of the caller.');
-    expect(first).toContain(`Findings it rests on:\n\n- [P0] ${ui[categoryKey('authorization')]}: ${DELETE}`);
-    expect(first).toContain('Facts it rests on:\n\n- Groups of findings: 4. By priority: P0: 1; P1: 2; P2: 1; Unranked: 0. By category: ');
+    expect(first).toContain(`**Findings it rests on**\n\n- [P0] ${ui[categoryKey('authorization')]}: ${DELETE}`);
+    expect(first).toContain('**Facts it rests on**\n\n- Groups of findings: 4. By priority: P0: 1; P1: 2; P2: 1; Unranked: 0. By category: ');
     const second = chapter.slice(chapter.indexOf('### 2.'));
     expect(second).toContain(`- [P2] ${ui[categoryKey('hard-coded')]}: ${LIST}`);
     expect(second).toMatch(/- Tables mentioned by two or more applications: not known, the data section was not written\./);
@@ -136,7 +136,7 @@ describe('the Recommendations chapter', () => {
     expect(run.run('check-remedies').status).toBe(0);
     expect(judgeRemedies(run).status).toBe(0);
     assemble(run);
-    expect(recommendationsOf(text(run, 'handbook.md'))).toContain('Facts it rests on:\n\n- Tables mentioned by two or more applications: 2 (carts in ., web; orders in ., billing).');
+    expect(recommendationsOf(text(run, 'handbook.md'))).toContain('**Facts it rests on**\n\n- Tables mentioned by two or more applications: 2 (carts in ., web; orders in ., billing).');
   });
 
   it('writes nothing of remedies that were written before the data section appeared: the facts are other facts, and the coverage says so', () => {
@@ -246,8 +246,8 @@ describe('the page data', () => {
     const made = page(run);
     expect(made.status, made.stdout).toBe(0);
     const data = dataOf(run);
-    expect(data.format).toBe('excavator-product-handbook-page/12');
-    expect(Object.keys(data).slice(data.findings === undefined ? 0 : Object.keys(data).indexOf('findings'), Object.keys(data).indexOf('findings') + 3)).toEqual(['findings', 'remedies', 'coverage']);
+    expect(data.format).toBe('excavator-product-handbook-page/13');
+    expect(Object.keys(data).slice(data.findings === undefined ? 0 : Object.keys(data).indexOf('findings'), Object.keys(data).indexOf('findings') + 3)).toEqual(['findings', 'remedies', 'topics']);
     expect(Object.keys(data.remedies)).toEqual(['categories', 'recommendations']);
     expect(data.remedies.categories).toEqual([
       { category: 'authorization', cause: 'Deleting an order asks nothing about who calls.', measure: 'Put one check of the caller in front of every operation on orders.' },

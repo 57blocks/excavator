@@ -45,6 +45,7 @@ const technical: Technical = {
   dictionaries: null,
   dictionariesState: 'missing',
   findingLocations: [],
+  topicLocations: [],
 };
 
 const dataFor = (project: string | null): PageData => ({
@@ -60,7 +61,8 @@ const dataFor = (project: string | null): PageData => ({
   features: [],
   findings: [],
   remedies: { categories: [], recommendations: [] },
-  coverage: { candidateTotal: 0, assigned: 0, unassigned: [], reachCounts: [], removedOverview: [], removed: [], findingsUnfinished: [], findingsNotWritten: 0, findingsRemoved: [], systemFindingsTotal: 0, systemFindingsUnfinished: [], systemFindingsNotWritten: 0, systemFindingsRemoved: [], priority: { finished: true, unranked: [] }, remedies: { finished: true, stale: false, dropped: [] } },
+  topics: { approval: [], time: [], handoffs: [], access: [], repeated: [] },
+  coverage: { candidateTotal: 0, assigned: 0, unassigned: [], reachCounts: [], removedOverview: [], removed: [], findingsUnfinished: [], findingsNotWritten: 0, findingsRemoved: [], systemFindingsTotal: 0, systemFindingsUnfinished: [], systemFindingsNotWritten: 0, systemFindingsRemoved: [], priority: { finished: true, unranked: [] }, remedies: { finished: true, stale: false, dropped: [] }, topics: { finished: true, stale: false, entriesRead: 0, groupsRead: 0, lanes: [], dropped: [] } },
   summary,
   system,
   entities: { domains: [], roles: [], roleFeature: { roles: [], features: [], cells: [] } },
@@ -79,7 +81,7 @@ const HASHES = ['#/product', '#/product/coverage', '#/product/notifications', '#
 
 describe('the page data format', () => {
   it('is version 10: the project is the system name or null, the findings are groups', () => {
-    expect(PAGE_FORMAT).toBe('excavator-product-handbook-page/12');
+    expect(PAGE_FORMAT).toBe('excavator-product-handbook-page/13');
   });
 });
 

@@ -84,8 +84,8 @@ describe('page: the file and its data', () => {
     const run = checkedRun();
     page(run);
     const data = dataOf(html(run));
-    expect(Object.keys(data)).toEqual(['format', 'project', 'language', 'languageTag', 'ui', 'views', 'areas', 'domains', 'domainBasis', 'features', 'findings', 'remedies', 'coverage', 'summary', 'system', 'entities']);
-    expect(data.format).toBe('excavator-product-handbook-page/12');
+    expect(Object.keys(data)).toEqual(['format', 'project', 'language', 'languageTag', 'ui', 'views', 'areas', 'domains', 'domainBasis', 'features', 'findings', 'remedies', 'topics', 'coverage', 'summary', 'system', 'entities']);
+    expect(data.format).toBe('excavator-product-handbook-page/13');
     expect(data.project).toBeNull();
     expect(data.language).toBe('English');
     expect(data.languageTag).toBe('en');
