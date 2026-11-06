@@ -21,7 +21,7 @@ import { languageTag } from './language-tag.mjs';
 import { withoutRootPaths } from './root-paths.mjs';
 import { DEFAULT_VIEWS } from './views.mjs';
 
-export const PAGE_FORMAT = 'excavator-product-handbook-page/9';
+export const PAGE_FORMAT = 'excavator-product-handbook-page/10';
 
 /** An entry without its evidence, in the page's shape. */
 function pageEntry(entry) {
@@ -84,7 +84,11 @@ export function buildPageData(run, roots, { views = DEFAULT_VIEWS } = {}) {
       entry: entries.has(feature.id) ? pageEntry(entries.get(feature.id)) : null,
       findingsStatus: findingsStatus(state, feature.id),
     })),
-    findings: findings.list.map((finding) => ({ id: finding.id, feature: finding.feature, category: finding.category, text: finding.text })),
+    findings: findings.groups.map((group) => ({
+      category: group.category,
+      owners: group.owners.map((owner) => ({ kind: owner.kind, id: owner.id, name: owner.name })),
+      items: group.items.map((item) => ({ id: item.id, owner: { kind: item.owner.kind, id: item.owner.id, name: item.owner.name }, text: item.text })),
+    })),
     coverage: {
       candidateTotal: candidates.length,
       assigned: map.features.reduce((sum, feature) => sum + feature.candidates.length, 0),
@@ -107,6 +111,18 @@ export function buildPageData(run, roots, { views = DEFAULT_VIEWS } = {}) {
           feature: feature.id,
           items: state.findings[feature.id].removed.map((item) => ({ claim: item.claim, verdict: item.verdict, reason: item.reason })),
         })),
+      systemFindingsTotal: findings.applications.length,
+      systemFindingsUnfinished: findings.applications
+        .filter((application) => !['verified', 'planned'].includes(application.status))
+        .map((application) => ({ id: application.id, name: application.name, status: application.status })),
+      systemFindingsNotWritten: findings.applications.filter((application) => application.status === 'planned').length,
+      systemFindingsRemoved: findings.applications
+        .filter((application) => application.removed.length > 0)
+        .map((application) => ({
+          id: application.id,
+          name: application.name,
+          items: application.removed.map((item) => ({ claim: item.claim, verdict: item.verdict, reason: item.reason })),
+        })),
     },
     summary,
     system,
@@ -124,7 +140,7 @@ export function buildPageData(run, roots, { views = DEFAULT_VIEWS } = {}) {
       integrations: entities.integrations,
       jobs: entities.jobs,
       locations,
-      findingLocations: findings.list.map((finding) => ({ id: finding.id, citations: findings.locations.get(finding.id) })),
+      findingLocations: findings.groups.flatMap((group) => group.items).map((item) => ({ id: item.id, citations: findings.locations.get(item.id) })),
       data: dataSection.state === 'ok' ? pageSection(dataSection.data) : null,
       dataState: dataSection.state,
       dictionaries: dictionariesSection.state === 'ok' ? dictionariesPageSection(dictionariesSection.data) : null,

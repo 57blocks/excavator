@@ -215,7 +215,7 @@ describe('page data: the overview', () => {
     const run = verifiedOverviewRun();
     expect(page(run).status).toBe(0);
     const data = dataOf(run);
-    expect(data.format).toBe('excavator-product-handbook-page/9');
+    expect(data.format).toBe('excavator-product-handbook-page/10');
     expect(Object.keys(data)).toEqual(['format', 'project', 'language', 'languageTag', 'ui', 'views', 'areas', 'domains', 'domainBasis', 'features', 'findings', 'coverage', 'summary', 'system', 'entities']);
     expect(data.system.status).toBe('verified');
     expect(data.project).toBe('handbook-fixture');

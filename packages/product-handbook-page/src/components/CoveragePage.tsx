@@ -55,15 +55,36 @@ function FindingsCoverage({ data }: { data: PageData }) {
             </tbody>
           </TableScroll>
         )}
+        {coverage.systemFindingsNotWritten > 0 && <p className="muted" data-part="system-findings-not-written">{t('md.coverage.systemFindingsNotWritten', { count: coverage.systemFindingsNotWritten })}</p>}
+        {coverage.systemFindingsNotWritten === 0 && coverage.systemFindingsUnfinished.length === 0 && coverage.systemFindingsTotal > 0 && <p className="muted" data-part="system-findings-all-verified">{t('md.coverage.systemFindingsAllVerified')}</p>}
+        {coverage.systemFindingsUnfinished.length > 0 && (
+          <TableScroll label={t('md.table.application')}>
+            <thead><tr><th scope="col">{t('md.table.application')}</th><th scope="col">{t('md.table.status')}</th></tr></thead>
+            <tbody>
+              {coverage.systemFindingsUnfinished.map((row) => (
+                <tr key={row.id}>
+                  <Cell row>{t('md.findings.applicationOwner', { name: row.name })}</Cell>
+                  <td><span className="status-chip" data-status={row.status}>{t(`md.status.${row.status}`)}</span></td>
+                </tr>
+              ))}
+            </tbody>
+          </TableScroll>
+        )}
       </section>
 
       <section className="section" aria-labelledby="cov-findings-removed">
         <h2 className="section-title" id="cov-findings-removed">{t('md.coverage.findingsRemovedHeading')}</h2>
-        {removed.length === 0 ? <p className="muted">{t('md.none')}</p> : null}
+        {removed.length === 0 && coverage.systemFindingsRemoved.length === 0 ? <p className="muted">{t('md.none')}</p> : null}
         {removed.map(({ feature, items }) => (
           <div key={feature.id} className="removed-group">
             <h3 className="block-title"><a href={nav.feature(feature.id)}>{t('md.coverage.findingsRemovedFeature', { ...itemValues(feature), count: items.length })}</a></h3>
             <RemovedTable items={items} />
+          </div>
+        ))}
+        {coverage.systemFindingsRemoved.map((application) => (
+          <div key={application.id} className="removed-group">
+            <h3 className="block-title">{t('md.coverage.systemFindingsRemoved', { owner: t('md.findings.applicationOwner', { name: application.name }), count: application.items.length })}</h3>
+            <RemovedTable items={application.items} />
           </div>
         ))}
       </section>

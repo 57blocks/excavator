@@ -3,7 +3,7 @@ import type { ReactNode } from 'react';
 import { useLinks } from '../lib/links';
 import { useText } from '../lib/text';
 import { findingCategoryKey } from '../lib/types';
-import type { Area, Entry, Feature, Field, Finding, Rule, UnitLocations } from '../lib/types';
+import type { Area, Entry, Feature, Field, FindingGroup, Rule, UnitLocations } from '../lib/types';
 import { Locations } from './Locations';
 import { ReachBadge } from './ReachBadge';
 import { Cell, TableScroll } from './Tables';
@@ -150,15 +150,16 @@ function EntryBody({ entry }: { entry: Entry }) {
   );
 }
 
-/** The feature's own verified findings with their category; nothing when its findings are not verified (the coverage page says where they stopped). */
-function FindingsSection({ feature, findings }: { feature: Feature; findings: Finding[] }) {
+/** The feature's own verified findings with their category, from the groups that contain the feature (a group merged with another owner's finding still lists this feature's own statement); nothing when its findings are not verified (the coverage page says where they stopped). */
+function FindingsSection({ feature, groups }: { feature: Feature; groups: FindingGroup[] }) {
   const t = useText();
   if (feature.findingsStatus !== 'verified') return null;
+  const own = groups.flatMap((group) => group.items.filter((item) => item.owner.kind === 'feature' && item.owner.id === feature.id).map((item) => ({ item, category: group.category })));
   return (
     <Section id="findings" title={t('md.findings.heading')}>
-      {findings.length === 0 ? <p className="muted">{t('md.none')}</p> : (
+      {own.length === 0 ? <p className="muted">{t('md.none')}</p> : (
         <ul className="plain-list">
-          {findings.map((finding) => <li key={finding.id}>{t('md.findings.featureItem', { category: t(findingCategoryKey(finding.category)), text: finding.text })}</li>)}
+          {own.map(({ item, category }) => <li key={item.id}>{t('md.findings.featureItem', { category: t(findingCategoryKey(category)), text: item.text })}</li>)}
         </ul>
       )}
     </Section>
@@ -166,7 +167,7 @@ function FindingsSection({ feature, findings }: { feature: Feature; findings: Fi
 }
 
 /** One feature: its domain (and, when the page groups by business domain, the area of the navigation it sits in), how readers get to it, and the checked entry, or why there is none, then its verified findings; in the technical view, the file and lines of each cited item. */
-export function FeaturePage({ feature, findings, domain, area, locations }: { feature: Feature; findings: Finding[]; domain: Area | undefined; area: Area | undefined; locations?: UnitLocations }) {
+export function FeaturePage({ feature, findings, domain, area, locations }: { feature: Feature; findings: FindingGroup[]; domain: Area | undefined; area: Area | undefined; locations?: UnitLocations }) {
   const t = useText();
   const nav = useLinks();
   return (
@@ -192,7 +193,7 @@ export function FeaturePage({ feature, findings, domain, area, locations }: { fe
           <p className="status-chip" data-status={feature.status}>{t(`md.status.${feature.status}`)}</p>
         </div>
       ) : <EntryBody entry={feature.entry} />}
-      <FindingsSection feature={feature} findings={findings} />
+      <FindingsSection feature={feature} groups={findings} />
       {feature.entry !== null && locations !== undefined && <Locations unit={locations} />}
     </article>
   );

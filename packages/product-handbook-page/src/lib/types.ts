@@ -1,6 +1,6 @@
 /** The page data `handbook.mjs page` writes into the template (openspec change product-handbook-map, design D13). */
 
-export const PAGE_FORMAT = 'excavator-product-handbook-page/9';
+export const PAGE_FORMAT = 'excavator-product-handbook-page/10';
 
 /** The views a page can hold (openspec change handbook-entities-and-views): the product view and the technical view. */
 export const VIEWS = ['product', 'technical'] as const;
@@ -59,8 +59,14 @@ export interface Feature {
   findingsStatus: Status;
 }
 
-/** One verified finding of a feature: `id` is the unit id and the item path (`F3.findings[0]`), the text the statement of the defect and when it happens. */
-export interface Finding { id: string; feature: string; category: FindingCategory; text: string }
+/** Who a finding belongs to: a feature, or an application (`id` is `app<n>`, `name` the verified overview's name for its directory, else the directory). */
+export interface FindingOwner { kind: 'feature' | 'application'; id: string; name: string }
+
+/** One verified finding: `id` is the unit id and the item path (`F3.findings[0]`, `app1.system[0]`), the text the statement of the defect and when it happens. */
+export interface FindingItem { id: string; owner: FindingOwner; text: string }
+
+/** Findings of one category at the same place, which the handbook counts as one: `items` in the order of the handbook (the first is the representative), `owners` the distinct owners of the items in that order. */
+export interface FindingGroup { category: FindingCategory; owners: FindingOwner[]; items: FindingItem[] }
 
 /** An item the verification removed from a feature's entry: its claim, why it went, and the verifier's reason. */
 export interface RemovedItem { claim: string; verdict: 'unverified' | 'contradicted' | 'withParent'; reason: string }
@@ -80,6 +86,14 @@ export interface Coverage {
   findingsNotWritten: number;
   /** The features that lost findings to verification, with those findings. */
   findingsRemoved: { feature: string; items: RemovedItem[] }[];
+  /** How many application roots there are, one system findings unit each. */
+  systemFindingsTotal: number;
+  /** The application roots whose system findings unit is not verified with where it stands; the units never written are one count, see `systemFindingsNotWritten`. */
+  systemFindingsUnfinished: { id: string; name: string; status: Status }[];
+  /** How many application roots have a system findings unit that was never written (planned). */
+  systemFindingsNotWritten: number;
+  /** The application roots that lost system findings to verification, with those findings. */
+  systemFindingsRemoved: { id: string; name: string; items: RemovedItem[] }[];
 }
 
 /** One notification of a verified entry, in the entry's words; `feature` is the id of the feature. */
@@ -309,7 +323,7 @@ export interface Technical {
   integrations: IntegrationRelations[];
   jobs: { candidate: string; feature: string | null; application: string | null }[];
   locations: UnitLocations[];
-  /** The file and lines of each passage quoted for each finding of `PageData.findings`, by finding id; null lines when a passage could not be located. */
+  /** The file and lines of each passage quoted for each finding of the items of `PageData.findings`, by item id; null lines when a passage could not be located. */
   findingLocations: { id: string; citations: { file: string; startLine: number | null; endLine: number | null }[] }[];
   /** The data section; null when `<out>/data.json` is missing or malformed, and `dataState` says which. */
   data: DataSection | null;
@@ -333,8 +347,8 @@ export interface PageData {
   domains: Area[];
   domainBasis: DomainBasis;
   features: Feature[];
-  /** The verified findings of all features, in the order of the map and then of each feature's file. */
-  findings: Finding[];
+  /** The verified findings of the features and the application roots as groups, in the order of the first finding of each: the features in the map's order, then the application roots, each in its file's order. */
+  findings: FindingGroup[];
   coverage: Coverage;
   summary: Summary;
   system: System;

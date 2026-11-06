@@ -23,5 +23,5 @@ export function handbookModel(run, root, views) {
   const system = buildSystem(run, root, scan);
   const entities = buildEntities({ map: run.map, domains: run.domains, entries: run.entries, candidates: run.candidates, summary, system, scan });
   const technical = views.includes('technical');
-  return { summary, system, entities, findings: buildFindings(run, root, { technical }), locations: technical ? buildLocations(run, root) : null, data: technical ? loadDataSection(run.outDir) : null, dictionaries: technical ? loadDictionariesSection(run.outDir) : null };
+  return { summary, system, entities, findings: buildFindings(run, root, { technical, roots: scan.roots, applicationRows: system.applications }), locations: technical ? buildLocations(run, root) : null, data: technical ? loadDataSection(run.outDir) : null, dictionaries: technical ? loadDictionariesSection(run.outDir) : null };
 }

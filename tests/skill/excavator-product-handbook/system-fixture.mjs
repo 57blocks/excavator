@@ -136,6 +136,8 @@ export function makeSystemRun() {
   run.writeSystem = (n = 1, doc = goodSystemFindings(n)) => writeJson(join(out, 'entries', `${systemId(n)}.json`), doc);
   run.systemDoc = (n = 1) => clone(goodSystemFindings(n));
   run.readSystem = (n = 1) => run.readJson(`entries/${systemId(n)}.json`);
+  run.writeFindings = (featureId, doc) => writeJson(join(out, 'entries', `${featureId}.findings.json`), doc);
+  run.writeOverview = (doc) => writeJson(join(out, 'entries', 'overview.json'), doc);
   writeJson(join(out, 'map.json'), run.map);
   const checked = run.run('check-map');
   if (checked.status !== 0) throw new Error(`the system fixture map failed check-map:\n${checked.stdout}${checked.stderr}`);
@@ -156,4 +158,23 @@ export function checkedSystemRun(cleanups, n = 1) {
   const result = run.run('check-system-findings', systemId(n));
   expect(result.status, result.stdout + result.stderr).toBe(0);
   return run;
+}
+
+/** The overview that passes check-overview on the project above: no name (an unknown says so), the three applications with names, nothing else. */
+export function goodSystemOverview() {
+  const app = (dir, name, does, file, passage) => ({ dir, name, does, evidence: [ev(file, passage)] });
+  return {
+    format: 'excavator-product-handbook-overview/1',
+    id: 'overview',
+    name: null,
+    summary: [{ text: 'Staff look after shop orders and stock.', evidence: [ev(START, 'console.log("start");')] }],
+    audiences: [],
+    applications: [
+      app('alpha', 'Shop service', 'Serves the order routes and runs the nightly job.', 'alpha/package.json', '"name":"alpha"'),
+      app('beta', 'Stock service', 'Serves the stock routes.', 'beta/package.json', '"name":"beta"'),
+      app('gamma', 'Helper library', 'Holds helpers the others use.', 'gamma/package.json', '"name":"gamma"'),
+    ],
+    integrations: [],
+    unknowns: [{ item: 'The name of the system', searched: 'the names the packages of the applications give' }],
+  };
 }

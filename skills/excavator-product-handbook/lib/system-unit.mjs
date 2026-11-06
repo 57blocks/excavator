@@ -10,6 +10,7 @@ import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { loadCandidates } from './candidates.mjs';
+import { UsageError } from './errors.mjs';
 import { FINDINGS_FORMAT } from './findings-shape.mjs';
 import { writeJson } from './json-file.mjs';
 import { applicationOf, seedFilesOf } from './system-seeds.mjs';
@@ -65,4 +66,23 @@ export function systemContext(outDir, projectRoot, id) {
 export function writeEmptyWhenNoSeeds(outDir, id, system, path) {
   if (system.seeds.size > 0 || existsSync(join(outDir, path))) return;
   writeJson(join(outDir, path), { format: FINDINGS_FORMAT, id, findings: [], unknowns: [] });
+}
+
+/**
+ * The context of the two extra checks for a unit that is checked again later
+ * (load-run.mjs), with the root check against the recorded state: `{ system }`,
+ * or `{ problems }` (lines) when the project no longer has the application, the
+ * candidates cannot be read or the state records another root for the unit.
+ */
+export function loadSystemContext(outDir, projectRoot, id, state) {
+  let context;
+  try {
+    context = systemContext(outDir, projectRoot, id);
+  } catch (error) {
+    if (error instanceof UsageError) return { problems: [error.message] };
+    throw error;
+  }
+  if (context.stop) return { problems: context.stop.lines };
+  const problem = rootProblem(state, id, context.appDir);
+  return problem === null ? { system: context } : { problems: [problem] };
 }

@@ -16,9 +16,9 @@
 
 提交：`feat(product-handbook): findings at the same place are one, and the system findings are shown with their application`
 
-- [ ] 3.1 分组（design D7），测试先红
-- [ ] 3.2 「发现」一章、覆盖、拼装前的复查；页面数据 `/10`、归属与组（design D8）
-- [ ] 3.3 渲染与页面测试（design O2）
+- [x] 3.1 分组（design D7），测试先红
+- [x] 3.2 「发现」一章、覆盖、拼装前的复查；页面数据 `/10`、归属与组（design D8）
+- [x] 3.3 渲染与页面测试（design O2）
 
 ## 4. 验收
 
