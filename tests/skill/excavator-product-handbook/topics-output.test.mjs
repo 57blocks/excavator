@@ -232,9 +232,9 @@ describe('the page data', () => {
     const made = page(run);
     expect(made.status, made.stdout).toBe(0);
     const data = dataOf(run);
-    expect(data.format).toBe('excavator-product-handbook-page/13');
+    expect(data.format).toBe('excavator-product-handbook-page/14');
     const keys = Object.keys(data);
-    expect(keys.slice(keys.indexOf('findings'), keys.indexOf('findings') + 4)).toEqual(['findings', 'remedies', 'topics', 'coverage']);
+    expect(keys.slice(keys.indexOf('findings'), keys.indexOf('findings') + 6)).toEqual(['findings', 'remedies', 'topics', 'history', 'appendix', 'coverage']);
     expect(Object.keys(data.topics)).toEqual(['approval', 'time', 'handoffs', 'access', 'repeated']);
     expect(data.topics.approval).toEqual([{
       fields: { business: 'Place an order', route: 'The clerk fills in the customer name.', skips: '', conditions: 'The item count is limited to 35000.', actors: 'Clerk' },

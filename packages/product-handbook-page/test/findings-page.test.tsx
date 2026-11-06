@@ -21,6 +21,7 @@ import { parseHash, routeHash } from '../src/lib/route';
 import { FINDING_CATEGORIES, findingCategoryKey } from '../src/lib/types';
 import type { Feature, FindingCategory, FindingGroup, FindingOwner, PageData, Priority, Remedies, View } from '../src/lib/types';
 import { switchTarget } from '../src/lib/views';
+import { NO_APPENDIX, NO_HISTORY } from './empty-parts';
 
 const MARK = '@@';
 const DATA = 'd~';
@@ -51,7 +52,7 @@ const FINDINGS: FindingGroup[] = [
 /** F1 and F3 have verified findings, F2 verified with none, F4 failed, F5 planned; one finding of F1 was removed. */
 function dataFor(views: View[], findings: FindingGroup[] = FINDINGS, remedies: Remedies = { categories: [], recommendations: [] }, remediesCoverage: PageData['coverage']['remedies'] = { finished: true, stale: false, dropped: [] }): PageData {
   return {
-    format: 'excavator-product-handbook-page/13',
+    format: 'excavator-product-handbook-page/14',
     project: d('project'),
     language: d('language'),
     languageTag: 'xx',
@@ -64,6 +65,8 @@ function dataFor(views: View[], findings: FindingGroup[] = FINDINGS, remedies: R
     findings,
     remedies,
     topics: { approval: [], time: [], handoffs: [], access: [], repeated: [] },
+    history: NO_HISTORY,
+    appendix: NO_APPENDIX,
     coverage: {
       candidateTotal: 0, assigned: 0, unassigned: [], reachCounts: [], removedOverview: [], removed: [],
       findingsUnfinished: [{ feature: 'F4', status: 'failed' }],
@@ -83,7 +86,7 @@ function dataFor(views: View[], findings: FindingGroup[] = FINDINGS, remedies: R
     ...(views.includes('technical') ? {
       technical: {
         featureApplication: [], unattributed: [], applicationDomain: { applications: [], domains: [], cells: [], unattributed: [] },
-        integrations: [], jobs: [], locations: [], topicLocations: [],
+        integrations: [], jobs: [], locations: [], topicLocations: [], history: { hotspots: [], coChange: [] },
         findingLocations: [
           { id: 'F1.findings[0]', citations: [{ file: d('src/one.js'), startLine: 7, endLine: 7 }] },
           { id: 'F1.findings[1]', citations: [{ file: d('src/two.js'), startLine: 5, endLine: 9 }, { file: d('src/three.js'), startLine: null, endLine: null }] },

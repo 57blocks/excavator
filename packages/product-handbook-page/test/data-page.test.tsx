@@ -15,6 +15,7 @@ import { sortedTables } from '../src/components/DataPage';
 import { parseHash, routeHash } from '../src/lib/route';
 import type { DataSection, PageData, View } from '../src/lib/types';
 import { switchTarget } from '../src/lib/views';
+import { NO_APPENDIX, NO_HISTORY } from './empty-parts';
 
 const MARK = '@@';
 const DATA = 'd~';
@@ -58,7 +59,7 @@ const section: DataSection = {
 
 function dataFor(views: View[], dataSection: DataSection | null = section, dataState: 'ok' | 'missing' | 'malformed' = 'ok'): PageData {
   return {
-    format: 'excavator-product-handbook-page/13',
+    format: 'excavator-product-handbook-page/14',
     project: d('project'),
     language: d('language'),
     languageTag: 'xx',
@@ -71,6 +72,8 @@ function dataFor(views: View[], dataSection: DataSection | null = section, dataS
     findings: [],
     remedies: { categories: [], recommendations: [] },
     topics: { approval: [], time: [], handoffs: [], access: [], repeated: [] },
+    history: NO_HISTORY,
+    appendix: NO_APPENDIX,
     coverage: { candidateTotal: 0, assigned: 0, unassigned: [], reachCounts: [], removedOverview: [], removed: [], findingsUnfinished: [], findingsNotWritten: 0, findingsRemoved: [], systemFindingsTotal: 0, systemFindingsUnfinished: [], systemFindingsNotWritten: 0, systemFindingsRemoved: [], priority: { finished: true, unranked: [] }, remedies: { finished: true, stale: false, dropped: [] }, topics: { finished: true, stale: false, entriesRead: 0, groupsRead: 0, lanes: [], dropped: [] } },
     summary: { notifications: [], jobs: [], counts: { featureTotal: 0, featuresWithEntry: 0, notificationRows: 0, jobRows: 0, schedule: { literal: 0, computed: 0, absent: 0 }, described: 0 } },
     system: { status: 'planned', overview: null, applications: [], counts: { applications: 0, files: 0, lines: 0, areas: 1, domains: 1, features: 0, featuresWithEntry: 0, roles: 0 }, areas: [], domains: [] },
@@ -78,7 +81,7 @@ function dataFor(views: View[], dataSection: DataSection | null = section, dataS
     ...(views.includes('technical') ? {
       technical: {
         featureApplication: [], unattributed: [], applicationDomain: { applications: [], domains: [], cells: [], unattributed: [] },
-        integrations: [], jobs: [], locations: [], findingLocations: [], topicLocations: [], data: dataSection, dataState, dictionaries: null, dictionariesState: 'missing' as const,
+        integrations: [], jobs: [], locations: [], findingLocations: [], topicLocations: [], history: { hotspots: [], coChange: [] }, data: dataSection, dataState, dictionaries: null, dictionariesState: 'missing' as const,
       },
     } : {}),
   };

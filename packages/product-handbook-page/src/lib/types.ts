@@ -1,6 +1,6 @@
 /** The page data `handbook.mjs page` writes into the template (openspec change product-handbook-map, design D13). */
 
-export const PAGE_FORMAT = 'excavator-product-handbook-page/13';
+export const PAGE_FORMAT = 'excavator-product-handbook-page/14';
 
 /** The views a page can hold (openspec change handbook-entities-and-views): the product view and the technical view. */
 export const VIEWS = ['product', 'technical'] as const;
@@ -63,6 +63,53 @@ export type TopicBasis =
 /** A row the judges kept: its columns as the reader sees them (a data row's domains and an access row's feature by name) and its basis. */
 export interface TopicRow { fields: Record<string, string>; basis: TopicBasis[] }
 export type Topics = Record<TopicId, TopicRow[]>;
+
+/** Why a project, or one of its applications, has no version history (the keys of `md.history.reason.*` are these in camel case). */
+export type HistoryReason = 'not-a-repository' | 'inside-repository' | 'no-commits';
+
+/** The commits of one year: the distinct commits of all applications, and the commits of each application that has some. */
+export interface HistoryYear { year: number; commits: number; byApp: Record<string, number> }
+
+/** One application's history facts, or null in every fact with the reason when it has none. */
+export interface HistoryApp { dir: string; first: string | null; last: string | null; commits: number | null; authors: number | null; authors80: number | null; reason: HistoryReason | null }
+
+/** A file that changes much: its name (the technical part holds the path), the application it is in (null when none), its counts, the day of its last change and the verified features that cite it. */
+export interface HistoryHotspot { name: string; app: string | null; commits: number; authors: number; lines: number; last: string; uncertain: number; features: string[] }
+
+/** Two files, by name and application, changed together in `commits` commits. */
+export interface HistoryPair { a: string; appA: string | null; b: string; appB: string | null; commits: number }
+
+/** The source files and the test files of one application. */
+export interface HistoryTests { dir: string; sourceFiles: number; testFiles: number }
+
+/** The code health (openspec change handbook-history-appendix): `state` is `ok`, or says why there is nothing to show; `noHistory` is set when the project has no version history, with the reason; `conventions` are the keys of the naming conventions a test file follows (the fixed text of each is `md.history.test.<key>`). */
+export interface History {
+  state: 'ok' | 'missing' | 'malformed';
+  noHistory: { reason: 'not-a-repository' | 'inside-repository' } | null;
+  years: HistoryYear[];
+  apps: HistoryApp[];
+  hotspots: HistoryHotspot[];
+  coChange: HistoryPair[];
+  tests: HistoryTests[];
+  conventions: string[];
+}
+
+/** The kinds of a glossary term (the fixed text of each is `md.appendix.kind.<kind>`). */
+export const GLOSSARY_KINDS = ['entry', 'screen', 'state', 'role'] as const;
+export type GlossaryKind = (typeof GLOSSARY_KINDS)[number];
+
+/** One term of the glossary, as the verified entries write it: its kinds, the ids of the features it occurs in, and each meaning with the ids of the features that say it. */
+export interface GlossaryTerm { term: string; kinds: GlossaryKind[]; features: string[]; meanings: { text: string; features: string[] }[] }
+
+/** What a section of the run wrote and what the checks left of it (the fixed text of the name is `md.appendix.section.<id>` in camel case). */
+export interface SourcesPart { id: 'overview' | 'features' | 'findings' | 'system-findings'; units: number; verified: number; items: number; removedVerify: number; removedTrace: number; again: number }
+
+/** The appendix: the open questions (the overview's have no feature and no domain), the glossary and the sources and scope. */
+export interface Appendix {
+  open: { feature: string | null; domain: string | null; item: string; searched: string }[];
+  glossary: GlossaryTerm[];
+  sources: { parts: SourcesPart[]; ranked: { priority: { kept: number; left: number }; remedies: { kept: number; left: number }; topics: { kept: number; left: number } } };
+}
 
 export interface Rule { side: 'frontend' | 'backend'; text: string }
 export interface Field { label: string; rules: Rule[] }
@@ -383,6 +430,8 @@ export interface Technical {
   /** The file and lines of each passage quoted for each finding of the items of `PageData.findings`, by item id; null lines when a passage could not be located. */
   /** The file and lines of each verified item that a kept topic row cites, by item id. */
   topicLocations: { id: string; citations: { file: string; startLine: number | null; endLine: number | null }[] }[];
+  /** The path of each hotspot file and of each file of a pair of `PageData.history`, in the order of its rows. */
+  history: { hotspots: string[]; coChange: { a: string; b: string }[] };
   findingLocations: { id: string; citations: { file: string; startLine: number | null; endLine: number | null }[] }[];
   /** The data section; null when `<out>/data.json` is missing or malformed, and `dataState` says which. */
   data: DataSection | null;
@@ -410,6 +459,8 @@ export interface PageData {
   findings: FindingGroup[];
   remedies: Remedies;
   topics: Topics;
+  history: History;
+  appendix: Appendix;
   coverage: Coverage;
   summary: Summary;
   system: System;

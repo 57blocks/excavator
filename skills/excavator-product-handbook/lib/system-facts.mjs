@@ -4,7 +4,9 @@
  * each application the verified overview lists below one), its languages (files by extension, most first), the frameworks the candidate
  * list found under it, its source files and their lines, and, when its
  * directory is in a git work tree, the first and last commit date, the number
- * of commits without merges and the number of distinct author emails of the
+ * of commits without merges (every one reachable from HEAD that changes the
+ * directory, those of merged branches included: no history simplification)
+ * and the number of distinct author emails of the
  * history under that directory; for the system, the counts of application roots,
  * source files, lines, areas, business domains (null without a domains file),
  * features, features with a verified entry and roles; for each area, and for each domain (the business domains of
@@ -58,7 +60,7 @@ function readSourceFiles(scan) {
 function historyOf(scan, dir) {
   let output;
   try {
-    output = execFileSync('git', ['-C', dir === '.' ? scan.root : join(scan.root, dir), 'log', '--no-merges', '--format=%ad%x09%ae', '--date=short', '--', '.'], {
+    output = execFileSync('git', ['-C', dir === '.' ? scan.root : join(scan.root, dir), 'log', '--no-merges', '--full-history', '--format=%ad%x09%ae', '--date=short', '--', '.'], {
       encoding: 'utf-8',
       stdio: ['ignore', 'pipe', 'ignore'],
       maxBuffer: GIT_BUFFER_BYTES,

@@ -13,6 +13,7 @@ import { describe, expect, it } from 'vitest';
 import { AppView } from '../src/App';
 import { parseHash } from '../src/lib/route';
 import type { Entry, Feature, PageData, Reach, Summary, System } from '../src/lib/types';
+import { NO_APPENDIX, NO_HISTORY } from './empty-parts';
 
 const MARK = '@@';
 const DATA = 'd~';
@@ -120,7 +121,7 @@ const emptySystem: System = {
 
 function dataFor(features: Feature[], unassigned: PageData['coverage']['unassigned'] = [], removed: PageData['coverage']['removed'] = [], summary: Summary = emptySummary, system: System = unwrittenSystem, removedOverview: PageData['coverage']['removedOverview'] = []): PageData {
   return {
-    format: 'excavator-product-handbook-page/13',
+    format: 'excavator-product-handbook-page/14',
     project: d('project'),
     language: d('language'),
     languageTag: 'xx',
@@ -134,6 +135,8 @@ function dataFor(features: Feature[], unassigned: PageData['coverage']['unassign
     findings: [],
     remedies: { categories: [], recommendations: [] },
     topics: { approval: [], time: [], handoffs: [], access: [], repeated: [] },
+    history: NO_HISTORY,
+    appendix: NO_APPENDIX,
     coverage: {
       candidateTotal: 9,
       assigned: 9 - unassigned.length,
