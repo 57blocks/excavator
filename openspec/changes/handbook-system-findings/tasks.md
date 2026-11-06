@@ -2,8 +2,8 @@
 
 提交：`feat(product-handbook): each application root has a system findings unit with the checks of a finding`
 
-- [ ] 1.1 夹具与测试先红：种子、单元 id、状态键与 `root`、两道检查、`--applications`（design O1）
-- [ ] 1.2 `system-seeds`；`unit.mjs` 第四种单元；`state.json` 的 `systemFindings` 键；`check-system-findings`、`try-system-findings`；`mark`、`slices`、`verdicts`、`trace`、`trace-verdicts` 接受系统发现单元（design D2、D3、D4）
+- [x] 1.1 夹具与测试先红：种子、单元 id、状态键与 `root`、两道检查、`--applications`（design O1）
+- [x] 1.2 `system-seeds`；`unit.mjs` 第四种单元；`state.json` 的 `systemFindings` 键；`check-system-findings`、`try-system-findings`；`mark`、`slices`、`verdicts`、`trace`、`trace-verdicts` 接受系统发现单元（design D2、D3、D4）
 
 ## 2. 阶段文字
 

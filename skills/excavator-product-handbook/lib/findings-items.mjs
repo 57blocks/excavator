@@ -28,16 +28,22 @@ export function findingsItems(doc) {
   return items;
 }
 
-/** A Map from item path to claim for every finding: the fixed word, the category's display name and the statement. */
-export function findingsClaims(doc, ui) {
+/**
+ * A Map from item path to claim for every finding: the fixed word, the category's display name and the statement.
+ * `labelKey` is the fixed-text key of the word: a system finding (openspec change handbook-system-findings) has its own.
+ */
+export function findingsClaims(doc, ui, labelKey = 'md.findings.claimLabel') {
   const t = (key) => {
     if (!Object.hasOwn(ui, key)) throw new Error(`the fixed-text table has no key ${key}`);
     return ui[key];
   };
   const claims = new Map();
-  doc.findings.forEach((finding, i) => claims.set(`findings[${i}]`, [t('md.findings.claimLabel'), t(categoryKey(finding.category)), finding.text].join(SEP)));
+  doc.findings.forEach((finding, i) => claims.set(`findings[${i}]`, [t(labelKey), t(categoryKey(finding.category)), finding.text].join(SEP)));
   return claims;
 }
+
+/** The claims of the findings of a system unit: the same, with the fixed word of a system finding. */
+export const systemFindingsClaims = (doc, ui) => findingsClaims(doc, ui, 'md.findings.systemClaimLabel');
 
 /** Remove the findings of the path set `removed`; nothing hangs on a finding, so nothing goes with them. Returns `{ entry, together }`. */
 export function trimFindings(doc, removed) {

@@ -247,6 +247,7 @@
     "md.findings.heading": "Findings",
     "md.findings.note": "Each finding states what the code does today that is a defect, and when it happens. A finding is listed only when two verifiers and two tracers did not disprove it; the findings that were removed are in the coverage section.",
     "md.findings.claimLabel": "Finding",
+    "md.findings.systemClaimLabel": "System finding",
     "md.findings.counts": "Findings: {total}. Findings units verified: {verified} of {featureTotal}. By category: {categories}.",
     "md.findings.categoryCount": "{category}: {count}",
     "md.findings.none": "No finding is in this handbook.",

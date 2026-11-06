@@ -17,7 +17,10 @@
  * has the same entry under the optional key `overview`, and the findings of
  * each feature (openspec change handbook-feature-findings) under the optional
  * key `findings`, by feature id; a state without a key, or without a feature in
- * it, reads as planned with no attempt (unit.mjs).
+ * it, reads as planned with no attempt (unit.mjs). The system findings of each
+ * application root (openspec change handbook-system-findings) are under the
+ * optional key `systemFindings`, by `app<n>`, each entry with the `root` (the
+ * application directory) it was recorded for.
  */
 
 import { createHash } from 'node:crypto';
@@ -70,6 +73,14 @@ const stateProblems = (state) => {
     for (const [id, entry] of Object.entries(state.findings)) {
       const problem = entryProblem(`findings ${id}`, entry);
       if (problem !== null) return problem;
+    }
+  }
+  if (state.systemFindings !== undefined) {
+    if (!isObject(state.systemFindings)) return 'systemFindings must be an object from application keys (app1, app2, ...) to entries';
+    for (const [key, entry] of Object.entries(state.systemFindings)) {
+      const problem = /^app[1-9][0-9]*$/.test(key) ? entryProblem(`systemFindings ${key}`, entry) : `systemFindings has the key ${JSON.stringify(key)}, which is not app<n>`;
+      if (problem !== null) return problem;
+      if (entry.root !== undefined && (typeof entry.root !== 'string' || entry.root === '')) return `systemFindings ${key} has a root that is not a non-empty string`;
     }
   }
   return state.overview === undefined ? null : entryProblem('overview', state.overview);
