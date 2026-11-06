@@ -126,6 +126,7 @@ export function Sidebar({ data, route, open, onNavigate }: Props) {
         {view === 'technical' && link(nav.applicationsMatrix, 'applications-matrix', t('md.matrix.applicationDomain.heading'), <OverviewIcon />)}
         {link(nav.notifications, 'notifications', t('page.nav.notifications'), <BellIcon />)}
         {link(nav.jobs, 'jobs', t('page.nav.jobs'), <ClockIcon />)}
+        {view === 'technical' && link(nav.data, 'data', t('md.data.heading'), <OverviewIcon />)}
         {link(nav.coverage, 'coverage', t('page.nav.coverage'), <CoverageIcon />)}
       </div>
       <div className="rail-scroll">

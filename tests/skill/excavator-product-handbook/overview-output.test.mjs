@@ -211,11 +211,11 @@ describe('the coverage section lists the removed overview items', () => {
 });
 
 describe('page data: the overview', () => {
-  it('has the format 5 and carries the text of the verified overview, the application facts and the counts, without evidence', () => {
+  it('has the format 6 and carries the text of the verified overview, the application facts and the counts, without evidence', () => {
     const run = verifiedOverviewRun();
     expect(page(run).status).toBe(0);
     const data = dataOf(run);
-    expect(data.format).toBe('excavator-product-handbook-page/5');
+    expect(data.format).toBe('excavator-product-handbook-page/6');
     expect(Object.keys(data)).toEqual(['format', 'project', 'language', 'languageTag', 'ui', 'views', 'areas', 'domains', 'domainBasis', 'features', 'coverage', 'summary', 'system', 'entities']);
     expect(data.system.status).toBe('verified');
     expect(data.system.overview).toEqual({

@@ -19,9 +19,9 @@
 
 提交：`feat(product-handbook): the technical view shows the data section`
 
-- [ ] 3.1 `ui-strings.json` 新键；`assemble` 读 `data.json`，技术手册加数据一章，缺失或不合格时一行说明（design D5）
-- [ ] 3.2 页面数据 `/6`、`#/data` 路由、侧栏链接、数据页组件；产品视图不出现
-- [ ] 3.3 渲染测试（design O3）
+- [x] 3.1 `ui-strings.json` 新键；`assemble` 读 `data.json`，技术手册加数据一章，缺失或不合格时一行说明（design D5）
+- [x] 3.2 页面数据 `/6`、`#/data` 路由、侧栏链接、数据页组件；产品视图不出现
+- [x] 3.3 渲染测试（design O3）
 
 ## 4. 验收
 

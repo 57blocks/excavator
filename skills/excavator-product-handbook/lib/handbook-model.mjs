@@ -8,15 +8,17 @@
 
 import { scanProject } from './applications.mjs';
 import { buildEntities } from './entities.mjs';
+import { loadDataSection } from './data-section.mjs';
 import { buildLocations } from './locations.mjs';
 import { buildSummary } from './summary.mjs';
 import { buildSystem } from './system-facts.mjs';
 
-/** `{ summary, system, entities, locations }`; `locations` is null unless `views` holds `technical`. */
+/** `{ summary, system, entities, locations, data }`; `locations` and `data` (the data section, data-section.mjs) are null unless `views` holds `technical`. */
 export function handbookModel(run, root, views) {
   const scan = scanProject(root);
   const summary = buildSummary(run, root);
   const system = buildSystem(run, root, scan);
   const entities = buildEntities({ map: run.map, domains: run.domains, entries: run.entries, candidates: run.candidates, summary, system, scan });
-  return { summary, system, entities, locations: views.includes('technical') ? buildLocations(run, root) : null };
+  const technical = views.includes('technical');
+  return { summary, system, entities, locations: technical ? buildLocations(run, root) : null, data: technical ? loadDataSection(run.outDir) : null };
 }
