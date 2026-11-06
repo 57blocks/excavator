@@ -9,7 +9,10 @@
  * A verified or confirmed entry whose file is still the one that was settled is
  * checked as load-run checks it and stays as it is; a changed file starts over.
  * The same functions check the system overview (check-overview and
- * try-overview): the unit of the id (unit.mjs) decides what is checked.
+ * try-overview) and the findings of a feature (check-findings and
+ * try-findings, the id `<featureId>.findings`): the unit of the id (unit.mjs)
+ * decides what is checked. A findings file with no finding has nothing to
+ * prove, so it is recorded as verified at once.
  */
 
 import { existsSync } from 'node:fs';
@@ -17,23 +20,25 @@ import { join } from 'node:path';
 
 import { memberDirectories } from './banned-words.mjs';
 import { UsageError } from './errors.mjs';
+import { adviceWordsOf } from './findings-check.mjs';
 import { readJson } from './json-file.mjs';
 import { languageGate } from './language-check.mjs';
 import { mapVerifiedLabels, readMap } from './map-check.mjs';
 import { projectFiles } from './project-files.mjs';
 import { entryDigest, loadState, nextLine, rewriteNextLine, saveState } from './state.mjs';
-import { isOverview, setUnitState, unitFor, unitState } from './unit.mjs';
+import { loadUi } from './ui.mjs';
+import { featureOfFindings, isFindingsId, isOverview, setUnitState, unitFor, unitState } from './unit.mjs';
 
 export const entryPath = (id) => `entries/${id}.json`;
 
 /** The problems of `<out>/entries/<id>.json`, or the single missing-file reason; no state is read or written. */
-export function checkEntryFile(outDir, id, root, { map, mapLabels = null, files = projectFiles(root), memberDirs = memberDirectories(root), languageCheck = null }, { settled = false } = {}) {
+export function checkEntryFile(outDir, id, root, { map, mapLabels = null, files = projectFiles(root), memberDirs = memberDirectories(root), languageCheck = null, adviceWords = [] }, { settled = false } = {}) {
   const file = join(outDir, entryPath(id));
   const labels = mapLabels ?? mapVerifiedLabels(map, { files, memberDirs }).verified;
   const read = readJson(file);
   if (read.missing) return { step: 'lane', problems: [`${id}: lane-wrote-nothing: ${entryPath(id)} is missing`] };
   if (!read.ok) return { step: 'check-entry', problems: [`${entryPath(id)} ${read.reason}`] };
-  return { step: 'check-entry', problems: unitFor(id).problems(read.value, id, { map, files, memberDirs, mapLabels: labels, languageCheck }, { settled }) };
+  return { step: 'check-entry', problems: unitFor(id).problems(read.value, id, { map, files, memberDirs, mapLabels: labels, languageCheck, adviceWords }, { settled }) };
 }
 
 /** The checked map and project facts check-entry and try-entry share, or the lines that stop them. */
@@ -46,10 +51,18 @@ export function loadForEntry(outDir, id, root) {
   const memberDirs = memberDirectories(root);
   const labels = mapVerifiedLabels(map, { files, memberDirs });
   if (labels.shapeProblems.length > 0) return { stop: { status: 1, lines: [...labels.shapeProblems.map((line) => `map.json: ${line}`), 'map.json is malformed; run check-map first'] } };
-  if (!isOverview(id) && !map.features.some((feature) => feature.id === id)) throw new UsageError(`feature ${id} is not in map.json`);
+  const featureId = isFindingsId(id) ? featureOfFindings(id) : id;
+  if (!isOverview(id) && !map.features.some((feature) => feature.id === featureId)) throw new UsageError(`feature ${featureId} is not in map.json`);
   const gate = languageGate(outDir, map);
   if (!gate.ok) return { stop: { status: 1, lines: gate.lines } };
-  return { map, files, memberDirs, mapLabels: labels.verified, languageCheck: gate.check };
+  // The advice words are part of the run's fixed text, which only a findings unit reads.
+  let adviceWords = [];
+  if (isFindingsId(id)) {
+    const ui = loadUi(outDir);
+    if (!ui.ok) return { stop: { status: 1, lines: ui.lines } };
+    adviceWords = adviceWordsOf(ui.strings);
+  }
+  return { map, files, memberDirs, mapLabels: labels.verified, languageCheck: gate.check, adviceWords };
 }
 
 /** Run check-entry for feature `id` of `<out>` and record the result. Returns { status, lines }. */
@@ -73,6 +86,12 @@ export function checkEntry(outDir, id, root) {
     && existsSync(join(outDir, entryPath(id))) && entryDigest(join(outDir, entryPath(id))) === current.entryDigest;
   const result = checkEntryFile(outDir, id, root, loaded, { settled: unchanged || (current.rewriting === true && unit.settledAfter(current)) });
   if (unchanged && result.problems.length === 0) return { status: 0, lines: [`${id}: ${current.status}, unchanged since it was ${current.status}`] };
+  if (result.problems.length === 0 && unit.mayBeEmpty && !current.rewriting && unit.items(readJson(join(outDir, entryPath(id))).value).every((item) => item.evidence.length === 0)) {
+    // No finding: nothing to prove, so the verification steps have nothing to do with it.
+    setUnitState(state, id, { status: 'verified', attempts: current.attempts, entryDigest: entryDigest(join(outDir, entryPath(id))) });
+    saveState(outDir, state);
+    return { status: 0, lines: [`${id}: verified (0 findings)`] };
+  }
   if (result.problems.length === 0) {
     // A feature waiting for its one rewrite stays so; anything else starts over as checked (a verified one is no longer verified).
     setUnitState(state, id, current.rewriting ? { status: 'checked', attempts: current.attempts, rewriting: true, ...kept } : { status: 'checked', attempts: current.attempts });

@@ -1,14 +1,16 @@
 /**
- * The unit a verification command works on (openspec change
- * handbook-system-overview): a feature of the map, or the system overview,
- * whose id is `overview`. The slices, verdicts, trace, trace-verdicts, mark and
- * check commands go through the unit for everything that differs: the shape,
- * the items and claims, the trim, the checks and where the state is kept. The
- * verification rules themselves are written once.
+ * The unit a verification command works on (openspec changes
+ * handbook-system-overview and handbook-feature-findings): a feature of the
+ * map, the system overview, whose id is `overview`, or the findings of a
+ * feature, whose id is `<featureId>.findings`. The slices, verdicts, trace,
+ * trace-verdicts, mark and check commands go through the unit for everything
+ * that differs: the shape, the items and claims, the trim, the checks and where
+ * the state is kept. The verification rules themselves are written once.
  *
  * A feature's state is `state.features[id]`; the overview's is
- * `state.overview`, an optional key whose absence means planned with no
- * attempt, so an output directory from before the overview needs no migration.
+ * `state.overview` and the findings' `state.findings[featureId]`, optional
+ * keys whose absence means planned with no attempt, so an output directory from
+ * before them needs no migration.
  */
 
 import { entryShapeProblems } from './entry-shape.mjs';
@@ -16,13 +18,16 @@ import { UsageError } from './errors.mjs';
 import { entryProblems } from './feature-check.mjs';
 import { entryItems } from './items.mjs';
 import { itemClaims } from './claims.mjs';
+import { findingsProblems } from './findings-check.mjs';
+import { findingsClaims, findingsItems, trimFindings } from './findings-items.mjs';
+import { featureOfFindings, findingsShapeProblems, isFindingsId } from './findings-shape.mjs';
 import { overviewProblems } from './overview-check.mjs';
 import { overviewClaims, overviewItems, trimOverview } from './overview-items.mjs';
 import { OVERVIEW_ID, overviewShapeProblems } from './overview-shape.mjs';
 import { purposeRemoved } from './state.mjs';
 import { trimEntry } from './trim-entry.mjs';
 
-export { OVERVIEW_ID };
+export { OVERVIEW_ID, featureOfFindings, isFindingsId };
 export const isOverview = (id) => id === OVERVIEW_ID;
 
 const FEATURE = Object.freeze({
@@ -52,14 +57,34 @@ const OVERVIEW = Object.freeze({
   tryCommand: 'try-overview',
 });
 
+const FINDINGS = Object.freeze({
+  kind: 'findings',
+  shapeProblems: findingsShapeProblems,
+  items: findingsItems,
+  claims: findingsClaims,
+  trim: trimFindings,
+  problems: (doc, id, ctx) => findingsProblems(doc, id, ctx),
+  settledAfter: () => true,
+  /** A unit may hold no finding, and one that lost every finding to verification is still verified, with none. */
+  mayBeEmpty: true,
+  command: 'check-findings',
+  recheck: (id) => `run check-findings for ${id}`,
+  tryCommand: 'try-findings',
+});
+
 /** The unit of `id`. */
-export const unitFor = (id) => (isOverview(id) ? OVERVIEW : FEATURE);
+export const unitFor = (id) => (isOverview(id) ? OVERVIEW : isFindingsId(id) ? FINDINGS : FEATURE);
 
 const PLANNED = Object.freeze({ status: 'planned', attempts: 0 });
 
-/** The state entry of unit `id`: a feature must be in state.json; the overview is planned until it has an entry. */
+/** The state entry of unit `id`: a feature must be in state.json; the overview and the findings of a feature are planned until they have an entry. */
 export function unitState(state, id) {
   if (isOverview(id)) return state.overview ?? { ...PLANNED };
+  if (isFindingsId(id)) {
+    const featureId = featureOfFindings(id);
+    if (state.features[featureId] === undefined) throw new UsageError(`feature ${featureId} is not in state.json; run check-map first`);
+    return state.findings?.[featureId] ?? { ...PLANNED };
+  }
   const entry = state.features[id];
   if (entry === undefined) throw new UsageError(`feature ${id} is not in state.json; run check-map first`);
   return entry;
@@ -68,5 +93,6 @@ export function unitState(state, id) {
 /** Write `value` as the state entry of unit `id`. */
 export function setUnitState(state, id, value) {
   if (isOverview(id)) state.overview = value;
+  else if (isFindingsId(id)) state.findings = { ...state.findings, [featureOfFindings(id)]: value };
   else state.features[id] = value;
 }

@@ -21,6 +21,8 @@ export function trace(outDir, id, root) {
   const plan = confirmedPlan(outDir, id, root);
   if (plan.stop) return plan.stop;
   for (const stale of [traceDirPath(outDir, id), traceVerdictDirPath(outDir, id)]) rmSync(stale, { recursive: true, force: true });
+  // Nothing left to trace (the findings of a feature that lost all of them): no part, no tracer.
+  if (plan.items.length === 0) return { status: 0, lines: [`${id}: 0 items in 0 parts`, `Next: run trace-verdicts for ${id}; no tracer is needed, nothing is left to trace`] };
   mkdirSync(traceDirPath(outDir, id), { recursive: true });
   const lines = [`${id}: ${plural(plan.items.length, 'item')} in ${plural(plan.parts.length, 'part')}`];
   plan.parts.forEach((items, index) => {

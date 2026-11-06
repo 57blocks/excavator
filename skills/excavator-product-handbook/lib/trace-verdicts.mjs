@@ -184,7 +184,8 @@ function readParts(outDir, id, plan) {
 export function traceVerdicts(outDir, id, root) {
   const plan = confirmedPlan(outDir, id, root);
   if (plan.stop) return plan.stop;
-  const checked = readParts(outDir, id, plan);
+  // A unit with nothing left to trace (the findings of a feature that lost all of them) has no part to read.
+  const checked = plan.items.length === 0 ? { verdictList: [] } : readParts(outDir, id, plan);
   if (checked.stop) return checked.stop;
 
   const verdictOf = new Map(checked.verdictList.map((entry) => [entry.id, entry]));
@@ -198,7 +199,7 @@ export function traceVerdicts(outDir, id, root) {
   const removed = [...earlier, ...records];
 
   // Nothing left that carries evidence: nothing was proved. The entry file stays as written for the user to see.
-  if (!unit.items(trimmed).some((item) => item.evidence.length > 0)) {
+  if (!unit.mayBeEmpty && !unit.items(trimmed).some((item) => item.evidence.length > 0)) {
     const text = 'no item could be proved';
     setUnitState(state, id, { status: 'failed', attempts, failure: { step: 'trace', reasons: [text] }, removed });
     saveState(outDir, state);
@@ -211,5 +212,6 @@ export function traceVerdicts(outDir, id, root) {
   if (removed.length > 0) next.removed = removed;
   setUnitState(state, id, next);
   saveState(outDir, state);
+  if (plan.items.length === 0) return { status: 0, lines: [`${id}: verified (0 findings)`] };
   return { status: 0, lines: [records.length > 0 ? `${id}: verified, ${plural(records.length, 'item')} removed` : `${id}: verified (${plural(plan.items.length, 'item')})`] };
 }
