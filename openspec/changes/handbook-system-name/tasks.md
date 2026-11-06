@@ -23,6 +23,6 @@
 
 提交：`docs(openspec): record handbook-system-name acceptance`
 
-- [ ] 4.1 变异检查，结果写进 `acceptance.md`
-- [ ] 4.2 O4 真实运行，照实记录
-- [ ] 4.3 受影响测试、`check-refs`、`openspec validate --all --strict` 本地过；全量门在分离检出里跑（O5）
+- [x] 4.1 变异检查，结果写进 `acceptance.md`
+- [x] 4.2 O4 真实运行，照实记录
+- [x] 4.3 受影响测试、`check-refs`、`openspec validate --all --strict` 本地过；全量门在分离检出里跑（O5）
