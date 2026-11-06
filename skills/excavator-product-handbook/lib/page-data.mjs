@@ -21,7 +21,7 @@ import { languageTag } from './language-tag.mjs';
 import { withoutRootPaths } from './root-paths.mjs';
 import { DEFAULT_VIEWS } from './views.mjs';
 
-export const PAGE_FORMAT = 'excavator-product-handbook-page/8';
+export const PAGE_FORMAT = 'excavator-product-handbook-page/9';
 
 /** An entry without its evidence, in the page's shape. */
 function pageEntry(entry) {

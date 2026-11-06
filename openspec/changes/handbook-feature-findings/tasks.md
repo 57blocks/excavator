@@ -19,7 +19,7 @@
 提交：`feat(product-handbook): the handbook and the page show the verified findings`
 
 - [x] 3.1 「发现」一章、功能一节里的发现、覆盖（design D7）
-- [x] 3.2 页面数据 `/8`、`#/findings`、侧栏、功能页的发现
+- [x] 3.2 页面数据 `/9`、`#/findings`、侧栏、功能页的发现
 - [x] 3.3 渲染与页面测试（design O2）
 
 ## 4. 范围词的追查

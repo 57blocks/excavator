@@ -44,6 +44,7 @@ const technical: Technical = {
   dataState: 'missing',
   dictionaries: null,
   dictionariesState: 'missing',
+  findingLocations: [],
 };
 
 const dataFor = (project: string | null): PageData => ({
@@ -57,7 +58,8 @@ const dataFor = (project: string | null): PageData => ({
   domains: [],
   domainBasis: 'areas',
   features: [],
-  coverage: { candidateTotal: 0, assigned: 0, unassigned: [], reachCounts: [], removedOverview: [], removed: [] },
+  findings: [],
+  coverage: { candidateTotal: 0, assigned: 0, unassigned: [], reachCounts: [], removedOverview: [], removed: [], findingsUnfinished: [], findingsNotWritten: 0, findingsRemoved: [] },
   summary,
   system,
   entities: { domains: [], roles: [], roleFeature: { roles: [], features: [], cells: [] } },
@@ -76,7 +78,7 @@ const HASHES = ['#/product', '#/product/coverage', '#/product/notifications', '#
 
 describe('the page data format', () => {
   it('is version 8: the project is the system name or null', () => {
-    expect(PAGE_FORMAT).toBe('excavator-product-handbook-page/8');
+    expect(PAGE_FORMAT).toBe('excavator-product-handbook-page/9');
   });
 });
 

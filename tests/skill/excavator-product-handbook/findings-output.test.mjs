@@ -274,12 +274,12 @@ describe('verified findings are checked again like an entry', () => {
 });
 
 describe('the page data', () => {
-  it('has the format /8, the findings of the verified units in map order, and no citation path outside the technical part', () => {
+  it('has the format /9, the findings of the verified units in map order, and no citation path outside the technical part', () => {
     const run = shared();
     const made = page(run);
     expect(made.status, made.stdout).toBe(0);
     const data = dataOf(run);
-    expect(data.format).toBe('excavator-product-handbook-page/8');
+    expect(data.format).toBe('excavator-product-handbook-page/9');
     expect(data.findings.map((finding) => [finding.id, finding.feature, finding.category])).toEqual([
       ['F1.findings[0]', 'F1', 'authorization'],
       ['F1.findings[1]', 'F1', 'hard-coded'],

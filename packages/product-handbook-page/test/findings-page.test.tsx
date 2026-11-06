@@ -36,7 +36,7 @@ const FINDINGS: Finding[] = [
 /** F1 and F3 have verified findings, F2 verified with none, F4 failed, F5 planned; one finding of F1 was removed. */
 function dataFor(views: View[], findings: Finding[] = FINDINGS): PageData {
   return {
-    format: 'excavator-product-handbook-page/8',
+    format: 'excavator-product-handbook-page/9',
     project: d('project'),
     language: d('language'),
     languageTag: 'xx',
