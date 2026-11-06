@@ -120,7 +120,7 @@ const emptySystem: System = {
 
 function dataFor(features: Feature[], unassigned: PageData['coverage']['unassigned'] = [], removed: PageData['coverage']['removed'] = [], summary: Summary = emptySummary, system: System = unwrittenSystem, removedOverview: PageData['coverage']['removedOverview'] = []): PageData {
   return {
-    format: 'excavator-product-handbook-page/10',
+    format: 'excavator-product-handbook-page/12',
     project: d('project'),
     language: d('language'),
     languageTag: 'xx',
@@ -132,6 +132,7 @@ function dataFor(features: Feature[], unassigned: PageData['coverage']['unassign
     domainBasis: 'areas',
     features,
     findings: [],
+    remedies: { categories: [], recommendations: [] },
     coverage: {
       candidateTotal: 9,
       assigned: 9 - unassigned.length,
@@ -146,6 +147,8 @@ function dataFor(features: Feature[], unassigned: PageData['coverage']['unassign
       systemFindingsUnfinished: [],
       systemFindingsNotWritten: 0,
       systemFindingsRemoved: [],
+      priority: { finished: true, unranked: [] },
+      remedies: { finished: true, stale: false, dropped: [] },
     },
     summary,
     system,

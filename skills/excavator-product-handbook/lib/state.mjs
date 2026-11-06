@@ -20,7 +20,14 @@
  * it, reads as planned with no attempt (unit.mjs). The system findings of each
  * application root (openspec change handbook-system-findings) are under the
  * optional key `systemFindings`, by `app<n>`, each entry with the `root` (the
- * application directory) it was recorded for.
+ * application directory) it was recorded for. The ranking of the findings
+ * (openspec change handbook-findings-priority) is under the optional key
+ * `priority`, an entry of the same form with the digest of the groups it was made
+ * for (`groupsDigest`) and the groups the judges did not confirm (`unranked`).
+ * The remedies of the findings (openspec change handbook-remedies) are under the
+ * optional key `remedies`, again an entry of the same form, with the digest of
+ * the facts it was written for (`factsDigest`) and the paragraphs the judges did
+ * not both accept (`dropped`).
  */
 
 import { createHash } from 'node:crypto';
@@ -61,6 +68,28 @@ function entryProblem(label, entry) {
   return null;
 }
 
+/** The problem of the entry of the priority unit (openspec change handbook-findings-priority), or null: an entry of any other unit, plus the digest of its groups and the groups no two judges confirmed. */
+function priorityEntryProblem(entry) {
+  const problem = entryProblem('priority', entry);
+  if (problem !== null) return problem;
+  if (entry.groupsDigest !== undefined && typeof entry.groupsDigest !== 'string') return 'priority has a groupsDigest that is not a string';
+  if (entry.unranked !== undefined && !(Array.isArray(entry.unranked) && entry.unranked.every((one) => isObject(one) && typeof one.key === 'string' && Array.isArray(one.reasons) && one.reasons.every((reason) => typeof reason === 'string')))) {
+    return 'priority has an unranked list that is not [{ key, reasons }]';
+  }
+  return null;
+}
+
+/** The problem of the entry of the remedies unit (openspec change handbook-remedies), or null: an entry of any other unit, plus the digest of its facts and the paragraphs no two judges accepted. */
+function remediesEntryProblem(entry) {
+  const problem = entryProblem('remedies', entry);
+  if (problem !== null) return problem;
+  if (entry.factsDigest !== undefined && typeof entry.factsDigest !== 'string') return 'remedies has a factsDigest that is not a string';
+  if (entry.dropped !== undefined && !(Array.isArray(entry.dropped) && entry.dropped.every((one) => isObject(one) && typeof one.id === 'string' && Array.isArray(one.reasons) && one.reasons.every((reason) => typeof reason === 'string')))) {
+    return 'remedies has a dropped list that is not [{ id, reasons }]';
+  }
+  return null;
+}
+
 const stateProblems = (state) => {
   if (!isObject(state) || state.format !== STATE_FORMAT || !isObject(state.features)) return `format must be ${STATE_FORMAT} with a features object`;
   for (const [id, entry] of Object.entries(state.features)) {
@@ -82,6 +111,14 @@ const stateProblems = (state) => {
       if (problem !== null) return problem;
       if (entry.root !== undefined && (typeof entry.root !== 'string' || entry.root === '')) return `systemFindings ${key} has a root that is not a non-empty string`;
     }
+  }
+  if (state.priority !== undefined) {
+    const problem = priorityEntryProblem(state.priority);
+    if (problem !== null) return problem;
+  }
+  if (state.remedies !== undefined) {
+    const problem = remediesEntryProblem(state.remedies);
+    if (problem !== null) return problem;
   }
   return state.overview === undefined ? null : entryProblem('overview', state.overview);
 };

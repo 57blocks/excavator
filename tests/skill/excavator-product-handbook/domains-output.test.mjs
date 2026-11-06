@@ -132,8 +132,8 @@ describe('the page data', () => {
     const run = domainsRun();
     expect(page(run).status).toBe(0);
     const data = dataOf(run);
-    expect(Object.keys(data)).toEqual(['format', 'project', 'language', 'languageTag', 'ui', 'views', 'areas', 'domains', 'domainBasis', 'features', 'findings', 'coverage', 'summary', 'system', 'entities', 'technical']);
-    expect(data.format).toBe('excavator-product-handbook-page/10');
+    expect(Object.keys(data)).toEqual(['format', 'project', 'language', 'languageTag', 'ui', 'views', 'areas', 'domains', 'domainBasis', 'features', 'findings', 'remedies', 'coverage', 'summary', 'system', 'entities', 'technical']);
+    expect(data.format).toBe('excavator-product-handbook-page/12');
     expect(data.domainBasis).toBe('domains');
     expect(data.domains).toEqual([{ id: 'D1', name: 'Customer orders' }, { id: 'D2', name: 'System upkeep' }]);
     expect(data.areas).toEqual([{ id: 'A1', name: 'Order handling' }, { id: 'A2', name: 'Automatic work' }]);

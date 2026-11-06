@@ -43,7 +43,7 @@ const feature = (id: string, area: string, domain: string, status: Feature['stat
 function dataFor(views: View[]): PageData {
   const withTechnical = views.includes('technical');
   return {
-    format: 'excavator-product-handbook-page/10',
+    format: 'excavator-product-handbook-page/12',
     project: d('project'),
     language: d('language'),
     languageTag: 'xx',
@@ -59,7 +59,8 @@ function dataFor(views: View[]): PageData {
       feature('F4', 'A2', 'D2', 'failed', null),
     ],
     findings: [],
-    coverage: { candidateTotal: 1, assigned: 1, unassigned: [], reachCounts: [{ reach: 'menu', count: 4 }], removedOverview: [], removed: [], findingsUnfinished: [], findingsNotWritten: 0, findingsRemoved: [], systemFindingsTotal: 0, systemFindingsUnfinished: [], systemFindingsNotWritten: 0, systemFindingsRemoved: [] },
+    remedies: { categories: [], recommendations: [] },
+    coverage: { candidateTotal: 1, assigned: 1, unassigned: [], reachCounts: [{ reach: 'menu', count: 4 }], removedOverview: [], removed: [], findingsUnfinished: [], findingsNotWritten: 0, findingsRemoved: [], systemFindingsTotal: 0, systemFindingsUnfinished: [], systemFindingsNotWritten: 0, systemFindingsRemoved: [], priority: { finished: true, unranked: [] }, remedies: { finished: true, stale: false, dropped: [] } },
     summary: {
       notifications: [],
       jobs: [{ kind: 'job', candidate: d('c1'), feature: 'F1', reason: null, schedule: { bucket: 'absent', literal: null }, automatic: [] }],

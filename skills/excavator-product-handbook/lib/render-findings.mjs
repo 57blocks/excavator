@@ -8,12 +8,20 @@
  * feature, or an application), and the other statements of the group under it,
  * each with its owner. The chapter is in both views; the technical view adds the
  * file and lines of each statement's passages, the product view never writes a
- * path. Pure and deterministic.
+ * path. Each group also carries its priority and the reason (openspec change
+ * handbook-findings-priority, priority-model.mjs): the line starts with the level
+ * (or the word for no level), the groups of a category are in the order of the
+ * model (P0, P1, P2, unranked), and the counts line and each category heading
+ * say how many groups have which level. Under each category heading, the common cause and the measure the remedies
+ * hold for it (openspec change handbook-remedies, render-remedy-category.mjs) come before its groups. Pure and deterministic.
  */
 
 import { FINDING_CATEGORIES, categoryKey } from './findings-shape.mjs';
 import { findingsStatus } from './findings-model.mjs';
 import { inline, table } from './markdown.mjs';
+import { EMPTY_PRIORITY } from './priority-model.mjs';
+import { LEVELS } from './priority-shape.mjs';
+import { categoryRemedyLines } from './render-remedy-category.mjs';
 import { fill } from './ui.mjs';
 
 const NONE_ROW = '-';
@@ -22,7 +30,7 @@ const NONE_ROW = '-';
 export const ownerText = (owner, t) => (owner.kind === 'feature' ? fill(t('md.summary.feature'), { id: owner.id, name: owner.name }) : fill(t('md.findings.applicationOwner'), { name: owner.name }));
 
 /** One citation's place as the other chapters of the technical view write it. */
-function placeText({ file, startLine, endLine }, t) {
+export function placeText({ file, startLine, endLine }, t) {
   if (startLine === null || endLine === null) return fill(t('md.locations.unlocated'), { file });
   if (startLine === endLine) return fill(t('md.locations.placeOne'), { file, line: startLine });
   return fill(t('md.locations.place'), { file, start: startLine, end: endLine });
@@ -40,8 +48,22 @@ function statementText(item, owners, first, { locations, view, t }) {
   return fill(t(`${key}Technical`), { ...values, places: places.map((place) => placeText(place, t)).join('; ') });
 }
 
+/** The level as the reader sees it: `P0` is rank 0. */
+export const levelText = (level, t) => fill(t('md.priority.level'), { rank: level.slice(1) });
+
+/** The counts of groups by level and without one, as the counts line writes them. */
+export const priorityCountsText = (counts, t) => [...LEVELS.map((level) => fill(t('md.priority.count'), { level: levelText(level, t), count: counts[level] })), fill(t('md.priority.count'), { level: t('md.priority.unranked'), count: counts.unranked })].join('; ');
+
+/** The line of a group: its level (or the word for none), the statement of its first finding with the owners and, for a group with a priority, the reason. */
+function groupLine(group, first, context) {
+  const statement = statementText(first, group.owners, true, context);
+  const { t } = context;
+  if (group.priority === null || group.priority === undefined) return fill(t('md.priority.lineUnranked'), { level: t('md.priority.unranked'), statement });
+  return fill(t('md.priority.line'), { level: levelText(group.priority.level, t), statement, reason: group.priority.reason });
+}
+
 /** The Findings chapter: the counts line, then one list per category that has a group. */
-export function findingsChapter({ map, state, findings, view, t }) {
+export function findingsChapter({ map, state, findings, remedies = null, view, t }) {
   const { list, groups, locations, applications } = findings;
   const verified = map.features.filter((feature) => findingsStatus(state, feature.id) === 'verified').length;
   const counts = categoryCounts(groups);
@@ -55,13 +77,16 @@ export function findingsChapter({ map, state, findings, view, t }) {
     systemVerified: applications.filter((application) => application.status === 'verified').length,
     systemTotal: applications.length,
     categories: counts.map(({ category, count }) => fill(t('md.findings.categoryCount'), { category: t(categoryKey(category)), count })).join('; '),
+    priority: priorityCountsText((findings.priority ?? EMPTY_PRIORITY).counts, t),
   }), '');
   if (groups.length === 0) return [...out, t('md.findings.none'), ''];
   for (const { category } of counts.filter(({ count }) => count > 0)) {
-    out.push(`### ${t(categoryKey(category))}`, '');
-    for (const group of groups.filter((one) => one.category === category)) {
+    const own = groups.filter((one) => one.category === category);
+    out.push(`### ${fill(t('md.priority.categoryHeading'), { category: t(categoryKey(category)), count: own.length, p0: own.filter((one) => one.priority?.level === 'P0').length })}`, '');
+    out.push(...categoryRemedyLines(category, remedies, t));
+    for (const group of own) {
       const [first, ...others] = group.items;
-      out.push(`- ${inline(statementText(first, group.owners, true, { locations, view, t }))}`);
+      out.push(`- ${inline(groupLine(group, first, { locations, view, t }))}`);
       for (const other of others) out.push(`  - ${inline(statementText(other, group.owners, false, { locations, view, t }))}`);
     }
     out.push('');
@@ -117,5 +142,20 @@ export function findingsCoverage({ map, state, findings, t, areaName }) {
   for (const application of systemRemoved) {
     out.push(`#### ${inline(fill(t('md.coverage.systemFindingsRemoved'), { owner: fill(t('md.findings.applicationOwner'), { name: application.name }), count: application.removed.length }))}`, '', removedTable(application.removed), '');
   }
+  out.push(...priorityCoverage({ findings, t }));
   return out;
+}
+
+/**
+ * The part of the coverage section about the ranking: the groups without a priority with the reasons of the judges, or the
+ * statement that the ranking did not finish (the unit is not verified, so every group is without one), or that every group has one.
+ */
+export function priorityCoverage({ findings, t }) {
+  const { finished, unranked } = findings.priority ?? EMPTY_PRIORITY;
+  const out = [`### ${t('md.coverage.priorityHeading')}`, ''];
+  if (findings.groups.length === 0) return [...out, t('md.none'), ''];
+  if (!finished) return [...out, fill(t('md.coverage.priorityNotFinished'), { count: findings.groups.length }), ''];
+  if (unranked.length === 0) return [...out, t('md.coverage.priorityAllRanked'), ''];
+  const rows = unranked.map(({ group, reasons }) => [fill(t('md.findings.featureItem'), { category: t(categoryKey(group.category)), text: group.items[0].text }), reasons.length === 0 ? t('md.priority.notJudged') : reasons.join('; ')]);
+  return [...out, fill(t('md.coverage.priorityUnranked'), { count: unranked.length }), '', table([t('md.findings.claimLabel'), t('md.table.reason')], rows), ''];
 }

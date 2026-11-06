@@ -84,8 +84,8 @@ describe('page: the file and its data', () => {
     const run = checkedRun();
     page(run);
     const data = dataOf(html(run));
-    expect(Object.keys(data)).toEqual(['format', 'project', 'language', 'languageTag', 'ui', 'views', 'areas', 'domains', 'domainBasis', 'features', 'findings', 'coverage', 'summary', 'system', 'entities']);
-    expect(data.format).toBe('excavator-product-handbook-page/10');
+    expect(Object.keys(data)).toEqual(['format', 'project', 'language', 'languageTag', 'ui', 'views', 'areas', 'domains', 'domainBasis', 'features', 'findings', 'remedies', 'coverage', 'summary', 'system', 'entities']);
+    expect(data.format).toBe('excavator-product-handbook-page/12');
     expect(data.project).toBeNull();
     expect(data.language).toBe('English');
     expect(data.languageTag).toBe('en');
@@ -172,6 +172,8 @@ describe('page: deterministic bytes and nothing local', () => {
     const root = join(parent, 'shop');
     mkdirSync(root);
     const run = {
+      // The remedies' facts read the data section of the output directory, which this stub run has none of.
+      outDir: parent,
       map: {
         language: 'English',
         areas: [{ id: 'A1', name: `Area at ${root}/src` }],
