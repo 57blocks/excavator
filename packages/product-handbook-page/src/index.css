@@ -302,3 +302,11 @@ td[data-kind="string"]::before, td[data-kind="string"]::after { content: '"'; co
 .inline-label { font-weight: 600; }
 .category-remedy { display: grid; gap: 6px; margin: 0 0 14px; }
 .recommendations { display: grid; gap: 24px; list-style: none; padding: 0; }
+
+/* Code health and appendix */
+.year-bars { display: grid; gap: 6px; margin: 4px 0 18px; }
+.year-bar { display: grid; grid-template-columns: 4.5em minmax(0, 1fr) 4em; align-items: center; gap: 10px; font-variant-numeric: tabular-nums; font-size: 14px; }
+.year-bar-track { height: 10px; background: var(--surface-2); border-radius: 999px; overflow: hidden; }
+.year-bar-fill { display: block; height: 100%; background: var(--accent); border-radius: 999px; }
+.year-bar-count { text-align: right; color: var(--text-2); }
+.appendix-group { margin: 18px 0 6px; font-size: 15px; color: var(--text-2); }

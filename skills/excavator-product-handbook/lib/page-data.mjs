@@ -16,6 +16,7 @@ import { pageSection } from './data-section.mjs';
 import { dictionariesPageSection } from './dict-section.mjs';
 import { findingsStatus } from './findings-model.mjs';
 import { handbookModel } from './handbook-model.mjs';
+import { historyPageSection, historyPlaces } from './history-page.mjs';
 import { reachCounts } from './render.mjs';
 import { remediesPageSection } from './remedies-page.mjs';
 import { topicsCoveragePage, topicsPageSection } from './topics-page.mjs';
@@ -24,13 +25,16 @@ import { withoutRootPaths } from './root-paths.mjs';
 import { DEFAULT_VIEWS } from './views.mjs';
 
 /**
- * The format is /13 since openspec change handbook-topics: `topics` holds the rows of the five cross-cutting topics with their basis, the
+ * The format is /14 since openspec change handbook-history-appendix: `history` holds the code health (the commits of each year, the
+ * applications, the files that change most by name, the files changed together across applications, the source and test files) and
+ * `appendix` the open questions, the glossary and the sources and scope; the technical part holds the path of each file of `history`.
+ * (/13, openspec change handbook-topics: `topics` holds the rows of the five cross-cutting topics with their basis, the
  * coverage says which lanes finished and what the judges left out, and the technical part holds the places of the cited items.
  * (/12, openspec change handbook-remedies: `remedies` holds the common cause and measure of each category and the
  * recommendations with the groups and facts they rest on, and the coverage says what the judges left out. /11: each group of findings
  * carries its priority, and the coverage says which groups have none.)
  */
-export const PAGE_FORMAT = 'excavator-product-handbook-page/13';
+export const PAGE_FORMAT = 'excavator-product-handbook-page/14';
 
 /** An entry without its evidence, in the page's shape. */
 function pageEntry(entry) {
@@ -70,7 +74,7 @@ export function buildPageData(run, roots, { views = DEFAULT_VIEWS } = {}) {
   // The directory name only rewrites the project path in the strings; the page shows the verified system name, never the directory.
   const directory = basename(roots[0]);
   const kind = new Map(candidates.map((candidate) => [candidate.id, candidate.kind]));
-  const { summary, system, entities, locations, findings, remedies, topics, data: dataSection, dictionaries: dictionariesSection } = handbookModel(run, roots[0], views);
+  const { summary, system, entities, locations, findings, remedies, topics, history, appendix, data: dataSection, dictionaries: dictionariesSection } = handbookModel(run, roots[0], views);
   const domainOf = new Map(entities.domains.flatMap((domain) => domain.features.map((id) => [id, domain.id])));
   const data = {
     format: PAGE_FORMAT,
@@ -101,6 +105,8 @@ export function buildPageData(run, roots, { views = DEFAULT_VIEWS } = {}) {
     })),
     remedies: remediesPageSection(remedies),
     topics: topicsPageSection(topics),
+    history: historyPageSection(history),
+    appendix,
     coverage: {
       candidateTotal: candidates.length,
       assigned: map.features.reduce((sum, feature) => sum + feature.candidates.length, 0),
@@ -160,6 +166,7 @@ export function buildPageData(run, roots, { views = DEFAULT_VIEWS } = {}) {
       locations,
       topicLocations: topics.places.map((entry) => ({ id: entry.id, citations: entry.citations })),
       findingLocations: findings.groups.flatMap((group) => group.items).map((item) => ({ id: item.id, citations: findings.locations.get(item.id) })),
+      history: historyPlaces(history),
       data: dataSection.state === 'ok' ? pageSection(dataSection.data) : null,
       dataState: dataSection.state,
       dictionaries: dictionariesSection.state === 'ok' ? dictionariesPageSection(dictionariesSection.data) : null,

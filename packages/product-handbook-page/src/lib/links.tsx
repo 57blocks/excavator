@@ -12,6 +12,10 @@ export interface Links {
   findings: string;
   recommendations: string;
   topics: string;
+  history: string;
+  openQuestions: string;
+  glossary: string;
+  sources: string;
   data: string;
   dictionaries: string;
   rolesMatrix: string;
@@ -32,6 +36,10 @@ export function makeLinks(prefix: View | null): Links {
     findings: routeHash({ name: 'findings' }, prefix),
     recommendations: routeHash({ name: 'recommendations' }, prefix),
     topics: routeHash({ name: 'topics' }, prefix),
+    history: routeHash({ name: 'history' }, prefix),
+    openQuestions: routeHash({ name: 'open-questions' }, prefix),
+    glossary: routeHash({ name: 'glossary' }, prefix),
+    sources: routeHash({ name: 'sources' }, prefix),
     data: routeHash({ name: 'data' }, prefix),
     dictionaries: routeHash({ name: 'dictionaries' }, prefix),
     rolesMatrix: routeHash({ name: 'roles-matrix' }, prefix),

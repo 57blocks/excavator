@@ -2,7 +2,7 @@
  * The page's routes live in the URL fragment so the back button and shared
  * links work: `#/`, `#/feature/<id>`, `#/domain/<id>`, `#/role/<label>`,
  * `#/application/<dir>`, `#/system/<name>`, `#/matrix/roles`,
- * `#/matrix/applications`, `#/notifications`, `#/jobs`, `#/findings`, `#/recommendations`, `#/topics`, `#/coverage` and (technical view only) `#/data` and `#/dictionaries`. A page
+ * `#/matrix/applications`, `#/notifications`, `#/jobs`, `#/findings`, `#/recommendations`, `#/topics`, `#/history`, `#/coverage`, `#/open-questions`, `#/glossary`, `#/sources` and (technical view only) `#/data` and `#/dictionaries`. A page
  * that has both views puts the view in front of each (`#/technical/feature/F1`);
  * a page with one view has no prefix, and a fragment without one is the first
  * view. Parsing never throws: a fragment that names no route is `not-found`.
@@ -26,6 +26,10 @@ export type RouteBody =
   | { name: 'findings' }
   | { name: 'recommendations' }
   | { name: 'topics' }
+  | { name: 'history' }
+  | { name: 'open-questions' }
+  | { name: 'glossary' }
+  | { name: 'sources' }
   | { name: 'data' }
   | { name: 'dictionaries' }
   | { name: 'not-found'; hash: string };
@@ -57,6 +61,10 @@ function parseBody(rest: string[], hash: string): RouteBody {
   if (rest.length === 1 && rest[0] === 'findings') return { name: 'findings' };
   if (rest.length === 1 && rest[0] === 'recommendations') return { name: 'recommendations' };
   if (rest.length === 1 && rest[0] === 'topics') return { name: 'topics' };
+  if (rest.length === 1 && rest[0] === 'history') return { name: 'history' };
+  if (rest.length === 1 && rest[0] === 'open-questions') return { name: 'open-questions' };
+  if (rest.length === 1 && rest[0] === 'glossary') return { name: 'glossary' };
+  if (rest.length === 1 && rest[0] === 'sources') return { name: 'sources' };
   if (rest.length === 1 && rest[0] === 'data') return { name: 'data' };
   if (rest.length === 1 && rest[0] === 'dictionaries') return { name: 'dictionaries' };
   if (rest.length === 2 && rest[0] === 'matrix' && rest[1] === 'roles') return { name: 'roles-matrix' };
@@ -99,6 +107,10 @@ function segments(route: RouteBody): string[] {
     case 'findings': return ['findings'];
     case 'recommendations': return ['recommendations'];
     case 'topics': return ['topics'];
+    case 'history': return ['history'];
+    case 'open-questions': return ['open-questions'];
+    case 'glossary': return ['glossary'];
+    case 'sources': return ['sources'];
     case 'data': return ['data'];
     case 'dictionaries': return ['dictionaries'];
     case 'not-found': return [];

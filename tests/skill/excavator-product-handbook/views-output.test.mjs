@@ -102,8 +102,8 @@ describe('assemble and page write the views that --views selects', () => {
     expect(page(run, 'product,technical').status).toBe(0);
     const data = dataOf(run);
     expect(data.views).toEqual(['product', 'technical']);
-    expect(Object.keys(data)).toEqual(['format', 'project', 'language', 'languageTag', 'ui', 'views', 'areas', 'domains', 'domainBasis', 'features', 'findings', 'remedies', 'topics', 'coverage', 'summary', 'system', 'entities', 'technical']);
-    expect(Object.keys(data.technical)).toEqual(['featureApplication', 'unattributed', 'applicationDomain', 'integrations', 'jobs', 'locations', 'topicLocations', 'findingLocations', 'data', 'dataState', 'dictionaries', 'dictionariesState']);
+    expect(Object.keys(data)).toEqual(['format', 'project', 'language', 'languageTag', 'ui', 'views', 'areas', 'domains', 'domainBasis', 'features', 'findings', 'remedies', 'topics', 'history', 'appendix', 'coverage', 'summary', 'system', 'entities', 'technical']);
+    expect(Object.keys(data.technical)).toEqual(['featureApplication', 'unattributed', 'applicationDomain', 'integrations', 'jobs', 'locations', 'topicLocations', 'findingLocations', 'history', 'data', 'dataState', 'dictionaries', 'dictionariesState']);
   });
 
   it('technical only: the technical file alone, and the product file an earlier run left is removed', () => {

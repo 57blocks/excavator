@@ -15,6 +15,7 @@ import { Browser, findChrome } from './chrome-cdp.mjs';
 import { writeFileSync } from 'node:fs';
 
 import { clone, judge, makeCheckedMapRun, repoRoot, traceFeature } from './helpers.mjs';
+import { writeHistory } from './appendix-fixture.mjs';
 import { NOTIFY_FILE, NOTIFY_LINE, goodOverview } from './overview-fixture.mjs';
 
 const TEMPLATE = join(repoRoot, 'packages/product-handbook-page/dist/product-handbook-page.html');
@@ -67,6 +68,8 @@ function pageRun({ keepIntegration = false, views = undefined, unnamed = false }
   if (judgedOverview.status !== 0) throw new Error(`overview verdicts failed:\n${judgedOverview.stdout}`);
   const tracedOverview = traceFeature(run, 'overview');
   if (tracedOverview.status !== 0) throw new Error(`overview trace-verdicts failed:\n${tracedOverview.stdout}`);
+  // The code health page has a history file to show (the fixture project's one application root is `.`).
+  writeHistory(run);
   const made = run.run('page', ...(views === undefined ? [] : ['--views', views]));
   if (made.status !== 0) throw new Error(`page failed (${made.status}):\n${made.stdout}${made.stderr}`);
   return run;
@@ -301,5 +304,35 @@ suite('page in a browser (O8)', () => {
         expect(page.consoleErrors).toEqual([]);
       }, 90000);
     });
+  }
+
+  // O2 of openspec change handbook-history-appendix: the code health page and the three appendix pages open in both views at both widths
+  // with the tables inside their own boxes (no sideways scroll of the page), the technical view with the path of each file, and no console error.
+  for (const [width, height] of [[375, 812], [1280, 800]]) {
+    it(`shows the code health and the appendix pages at ${width}x${height}`, async () => {
+      const page = await browser.openPage({ width, height });
+      await page.goto(urlBoth);
+      await page.waitFor('document.querySelector(\'[data-view="overview"]\')', 'the overview');
+      for (const [hash, selector, what] of [
+        ['#/product/history', '[data-view="history"] [data-part="history-years"]', 'the product code health page'],
+        ['#/technical/history', '[data-view="history"] [data-part="history-hotspots"]', 'the technical code health page'],
+        ['#/product/open-questions', '[data-view="open-questions"] table', 'the open questions page'],
+        ['#/technical/glossary', '[data-view="glossary"] table', 'the glossary page'],
+        ['#/product/sources', '[data-view="sources"] table', 'the sources and scope page'],
+      ]) {
+        await goTo(page, hash, selector);
+        await fits(page, width, what);
+      }
+      await goTo(page, '#/product/history', '[data-view="history"] [data-part="history-hotspots"]');
+      const product = await page.evaluate("document.querySelector('[data-part=\"history-hotspots\"]').textContent");
+      expect(product).toContain('orders.js');
+      expect(product).not.toContain('src/routes');
+      await goTo(page, '#/technical/history', '[data-view="history"] [data-part="history-hotspots"]');
+      expect(await page.evaluate("document.querySelector('[data-part=\"history-hotspots\"]').textContent")).toContain('src/routes/orders.js');
+      expect(await page.evaluate("document.querySelectorAll('[data-part=\"history-chart\"] .year-bar').length")).toBe(3);
+      const foreign = page.requests.filter((request) => request !== urlBoth && !request.startsWith('data:'));
+      expect(foreign).toEqual([]);
+      expect(page.consoleErrors).toEqual([]);
+    }, 60000);
   }
 });
