@@ -21,6 +21,9 @@
  *   applications <projectRoot>
  *       Print the application roots of the project: the topmost directories
  *       that hold a build manifest, found with the candidate lister's walk.
+ *   data <projectRoot> <out>
+ *       Write <out>/data.json: the tables of the project, its migrations and
+ *       where each table name appears, from the source alone; print one count line.
  *   check-overview <out> --project <root>
  *       Check <out>/entries/overview.json (the system overview): the checks of
  *       an entry, no citation of a documentation file, and the applications
@@ -87,6 +90,7 @@ import { resolve } from 'node:path';
 import { assemble } from './lib/assemble.mjs';
 import { applicationLines, scanProject } from './lib/applications.mjs';
 import { candidatesOutput } from './lib/candidates.mjs';
+import { runData } from './lib/data-run.mjs';
 import { checkEntry, tryEntry } from './lib/entry-check.mjs';
 import { checkMap } from './lib/check-map.mjs';
 import { checkDomains } from './lib/domains-check.mjs';
@@ -152,6 +156,17 @@ Commands:
       Gemfile, *.csproj, *.sln) with no other such directory between it and the
       project root; the project root itself is ".". It walks the project as the
       candidates command does (same skipped directories, no link followed).
+  data <projectRoot> <out>
+      Write <out>/data.json (the data section; no model writes any of it): the
+      tables the migrations leave when replayed in file name order (the up part
+      of each migration) plus the tables models and .sql files declare, each with
+      where it is declared; the migrations of each application; the tables a
+      migration drops; where each table name appears outside the migrations (a
+      string that is the whole name, or the name after FROM, JOIN, INTO, UPDATE
+      or TABLE), per application; and the gaps (operations whose table name is
+      not a literal, migration files without a readable up part, model table
+      names that are not literals). Reads the source statically, never builds or
+      runs it. Prints one count line.
   check-overview <out> --project <root>
       Check <out>/entries/overview.json, the system overview: the same checks
       as check-entry (shape, citations, labels, numbers, banned words, the
@@ -355,6 +370,11 @@ const COMMANDS = {
     const { positionals } = parseArgs(args, []);
     if (positionals.length !== 1) throw new UsageError('applications takes exactly one <projectRoot>');
     return report({ status: 0, lines: applicationLines(scanProject(projectRootOption(positionals[0]))) });
+  },
+  data(args) {
+    const { positionals } = parseArgs(args, []);
+    if (positionals.length !== 2) throw new UsageError('data takes <projectRoot> and <out>');
+    return report(runData(projectRootOption(positionals[0]), resolve(positionals[1])));
   },
   'check-overview'(args) {
     const { positionals, options } = parseArgs(args, ['project']);

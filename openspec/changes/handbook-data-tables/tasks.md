@@ -2,11 +2,11 @@
 
 提交：`feat(product-handbook): a data command that lists tables, migrations and where each name appears`
 
-- [ ] 1.1 夹具 `tests/fixtures/product-handbook/data-project/`（design O1）与手写期望的测试，先红
-- [ ] 1.2 迁移识别、拆 `up`、操作识别与重放（design D2）
-- [ ] 1.3 模型声明与常量解析（design D3）
-- [ ] 1.4 表名查找规则 a、b，一次遍历（design D4、D6）
-- [ ] 1.5 `data.json` 的写出与形状校验，`handbook.mjs data` 命令（design D5），守恒测试
+- [x] 1.1 夹具 `tests/fixtures/product-handbook/data-project/`（design O1）与手写期望的测试，先红
+- [x] 1.2 迁移识别、拆 `up`、操作识别与重放（design D2）
+- [x] 1.3 模型声明与常量解析（design D3）
+- [x] 1.4 表名查找规则 a、b，一次遍历（design D4、D6）
+- [x] 1.5 `data.json` 的写出与形状校验，`handbook.mjs data` 命令（design D5），守恒测试
 
 ## 2. 第三个部分
 
