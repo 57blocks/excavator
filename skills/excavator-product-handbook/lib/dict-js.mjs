@@ -5,7 +5,9 @@
  * value set is the top-level members whose value is a string or a number
  * literal. A nested object whose keys are all values of the set and whose
  * values are all string literals is a reverse table: its entries are the
- * display names of the members that have those values. Every other top-level
+ * display names of the members that have those values; an entry whose key is
+ * no member's value is returned in `unmatchedEntries`, and a nested object with
+ * no key that is a member's value is not a reverse table. Every other top-level
  * member is counted in `skippedMembers`. In a TypeScript file (`asConst`) only
  * `const X = { ... } as const` is read, the same way. Nothing is run.
  */
@@ -107,17 +109,20 @@ export function readJsObjects(source, { asConst = false } = {}) {
     }
     const values = new Set(members.map((member) => String(member.value)));
     const tableEntries = [];
+    const unmatchedEntries = [];
     for (const table of nested) {
       const entries = stringTable(source, table.open, table.close);
-      if (entries === null || !entries.every((entry) => values.has(entry.key))) {
+      if (entries === null || !entries.some((entry) => values.has(entry.key))) {
         skippedMembers += 1;
         continue;
       }
       for (const entry of entries) {
-        for (const member of members.filter((candidate) => String(candidate.value) === entry.key)) tableEntries.push({ ...entry, member });
+        const named = members.filter((candidate) => String(candidate.value) === entry.key);
+        if (named.length === 0) unmatchedEntries.push({ key: entry.key, line: entry.line });
+        for (const member of named) tableEntries.push({ ...entry, member });
       }
     }
-    found.push({ name, line: lineAt(match.indices[1][0]), members, skippedMembers, tableEntries });
+    found.push({ name, line: lineAt(match.indices[1][0]), members, skippedMembers, tableEntries, unmatchedEntries });
   }
   return found;
 }

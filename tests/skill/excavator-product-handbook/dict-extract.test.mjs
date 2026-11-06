@@ -14,6 +14,7 @@ const TYPES = 'go-app/status/types.go';
 const ENUMS = 'web-app/src/enums.ts';
 const ALIASES = 'go-app/status/aliases.go';
 const TS_CONSTS = 'web-app/src/consts.ts';
+const TABLES = 'node-app/src/tables.js';
 const CONSTANTS = 'node-app/src/constants.js';
 
 const data = extractDictionaries(FIXTURE);
@@ -41,6 +42,8 @@ describe('the value sets of the fixture', () => {
       [`${CONSTANTS}:INVOICE_STATE`, 'js-object', 'node-app', 17],
       [`${CONSTANTS}:OrderStage`, 'js-object', 'node-app', 23],
       ['node-app/src/leave.js:LeaveType', 'js-object', 'node-app', 1],
+      [`${TABLES}:RoleType`, 'js-object', 'node-app', 1],
+      [`${TABLES}:NoteKind`, 'js-object', 'node-app', 11],
       [`${TS_CONSTS}:TicketStatus`, 'ts-const-object', 'web-app', 1],
       [`${TS_CONSTS}:RetryMode`, 'ts-const-object', 'web-app', 9],
       [`${ENUMS}:InvoiceState`, 'ts-enum', 'web-app', 1],
@@ -52,7 +55,7 @@ describe('the value sets of the fixture', () => {
     expect(data.dictionaries.filter((entry) => entry.form === 'go-type').map((entry) => [entry.name, entry.baseType])).toEqual([
       ['InvoiceState', 'string'], ['Mode', 'uint8'], ['Tier', 'string'], ['Status', 'int'], ['Kind', 'string'], ['Level', 'uint8'], ['Flags', 'uint16'], ['Phase', 'int32'],
     ]);
-    expect(data.applications).toEqual([{ directory: 'go-app', dictionaries: 8 }, { directory: 'node-app', dictionaries: 4 }, { directory: 'web-app', dictionaries: 7 }]);
+    expect(data.applications).toEqual([{ directory: 'go-app', dictionaries: 8 }, { directory: 'node-app', dictionaries: 6 }, { directory: 'web-app', dictionaries: 7 }]);
   });
 });
 
@@ -171,7 +174,9 @@ describe('JavaScript: objects', () => {
 
   it('counts the top-level members that are not literals, and a nested object that is not a reverse table', () => {
     expect(dict(`${CONSTANTS}:UserStatus`).skippedMembers).toBe(0);
-    expect(dict(`${CONSTANTS}:OrderStage`).skippedMembers).toBe(1);
+    // the names table of OrderStage has a key that is a value of the set, so it is a reverse table; a table with no such key is not
+    expect(dict(`${CONSTANTS}:OrderStage`).skippedMembers).toBe(0);
+    expect(dict(`${TABLES}:NoteKind`).skippedMembers).toBe(1);
     // a call, a boolean, a spread and a method
     expect(dict('node-app/src/leave.js:LeaveType').skippedMembers).toBe(4);
   });
@@ -242,6 +247,15 @@ describe('display names: the map entries that give a member a name', () => {
     expect(labels(`${CONSTANTS}:UserStatus`, 'pending')).toEqual([]);
   });
 
+  it('gives labels to the entries of a reverse table whose key is a member, and puts each other entry in the unmatchedKey bucket with its key and place', () => {
+    expect(members(`${TABLES}:RoleType`)).toEqual([['admin', 1, true, 2], ['user', 2, true, 3]]);
+    expect(labels(`${TABLES}:RoleType`, 'admin')).toEqual([['Admin', TABLES, 5]]);
+    expect(labels(`${TABLES}:RoleType`, 'user')).toEqual([['User', TABLES, 6]]);
+    expect(dict(`${TABLES}:RoleType`).skippedMembers).toBe(0);
+    expect(labels(`${CONSTANTS}:OrderStage`, 'created')).toEqual([['Created', CONSTANTS, 26]]);
+    expect(labels(`${CONSTANTS}:OrderStage`, 'done')).toEqual([]);
+  });
+
   it('gives no name from a map whose values are not strings, whose keys are not references, from a comment, or from a ternary index', () => {
     const all = data.dictionaries.flatMap((entry) => entry.members.flatMap((m) => m.labels.map((l) => l.text)));
     expect(all).not.toContain('not a reference');
@@ -256,6 +270,8 @@ describe('display names: the map entries that give a member a name', () => {
       ['go-app/api/labels.go', 8, 'status.StatusMissing'],
       ['go-app/api/labels.go', 9, 'other.StatusDraft'],
       ['go-app/status/labels.go', 7, 'StatusNowhere'],
+      [CONSTANTS, 26, 'gone'],
+      [TABLES, 7, '16'],
       ['web-app/src/labels.ts', 7, 'InvoiceState.Missing'],
       ['web-app/src/ticket-labels.ts', 5, 'TicketStatus.Gone'],
     ]);

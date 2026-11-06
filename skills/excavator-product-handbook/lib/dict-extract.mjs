@@ -46,6 +46,7 @@ function addObjects(objects, form, file, dictionaries, candidates) {
       member.labels.push({ text: entry.text, file: file.rel, line: entry.line });
       candidates.push({ kind: 'map-entry', file: file.rel, line: entry.line, key: entry.key, bucket: 'label', dictionary, member: member.name });
     }
+    for (const entry of found.unmatchedEntries) candidates.push({ kind: 'map-entry', file: file.rel, line: entry.line, key: entry.key, bucket: 'unmatchedKey' });
   }
 }
 
