@@ -24,8 +24,8 @@
 
 提交：`feat(product-handbook): negative and contrasting outcomes are scope words a tracer builds a case for`
 
-- [ ] 4.1 测试先红：表里有新词、追查文件带出这些词、追查者说明（design D10）
-- [ ] 4.2 `ui-strings.json`、追查者 agent 的说明；合约测试更新摘要
+- [x] 4.1 测试先红：表里有新词、追查文件带出这些词、追查者说明（design D10）
+- [x] 4.2 `ui-strings.json`、追查者 agent 的说明；合约测试更新摘要
 
 ## 5. 验收
 

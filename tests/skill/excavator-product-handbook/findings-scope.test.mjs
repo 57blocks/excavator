@@ -20,7 +20,7 @@ afterEach(() => {
 
 const ID = unitId('F1');
 const AT = { file: 'src/app.js', line: 6 };
-const WORDS = 'all,every,each,any,always,never,none,nobody,no one,only,whenever,whatever,every time';
+const WORDS = 'all,every,each,any,always,never,none,nobody,no one,only,whenever,whatever,every time,will not,won\'t,cannot,can\'t,does not,doesn\'t,instead of,rather than';
 const CJK_SCOPE = String.fromCodePoint(0x6240, 0x6709);
 const readTrace = (run, id = ID) => JSON.parse(readFileSync(join(run.out, 'trace', id, 'part-1.json'), 'utf-8'));
 const stateOf = (run) => run.readState().findings.F1;
@@ -54,6 +54,53 @@ describe('the scope words of the run\'s table', () => {
 
   it('lists the words in the order of the table, each once', () => {
     expect(findingsCheck.wordsIn('Always, whatever happens, always and every one.', ['every', 'always', 'whatever'])).toEqual(['every', 'always', 'whatever']);
+  });
+});
+
+describe('negative and contrasting words are scope words too (design D10 of handbook-system-findings)', () => {
+  const NEW_WORDS = ['will not', "won't", 'cannot', "can't", 'does not', "doesn't", 'instead of', 'rather than'];
+  const shipped = JSON.parse(readFileSync(new URL('../../../skills/excavator-product-handbook/ui-strings.json', import.meta.url), 'utf-8')).strings;
+  const table = findingsCheck.scopeWordsOf(shipped);
+
+  it('the shipped table holds them, after the earlier words and in this order', () => {
+    expect(table.slice(-NEW_WORDS.length)).toEqual(NEW_WORDS);
+    expect(table.slice(0, 13)).toEqual('all,every,each,any,always,never,none,nobody,no one,only,whenever,whatever,every time'.split(','));
+    expect(new Set(table).size).toBe(table.length);
+  });
+
+  it('a phrase matches as a whole phrase: "rather than" is found, "rather" alone is not, nor is a longer word around it', () => {
+    expect(findingsCheck.wordsIn('The list opens rather than the detail page.', table)).toEqual(['rather than']);
+    expect(findingsCheck.wordsIn('The list is rather long, and a rather odd one.', table)).toEqual([]);
+    expect(findingsCheck.wordsIn('It opens the list instead of the page.', table)).toEqual(['instead of']);
+    expect(findingsCheck.wordsIn('It opens the list instead off the page and does nothing.', table)).toEqual([]);
+  });
+
+  it('the forms with an apostrophe match: won\'t, can\'t, doesn\'t, in any case, also with a typographic apostrophe', () => {
+    const curly = String.fromCharCode(0x2019);
+    expect(findingsCheck.wordsIn("The caller won't be asked.", table)).toEqual(["won't"]);
+    expect(findingsCheck.wordsIn("It CAN'T be undone and doesn't ask.", table)).toEqual(["can't", "doesn't"]);
+    expect(findingsCheck.wordsIn(`It won${curly}t be asked and can${curly}t be undone.`, table)).toEqual(["won't", "can't"]);
+    expect(findingsCheck.wordsIn('A swon t is not a word, and cannot is one.', table)).toEqual(['cannot']);
+  });
+
+  it('a negative word is a whole word: "does not" and "will not" are found, "does nothing" and "willnot" are not', () => {
+    expect(findingsCheck.wordsIn('It does not ask and will not answer.', table)).toEqual(['will not', 'does not']);
+    expect(findingsCheck.wordsIn('It does nothing and willnot happen.', table)).toEqual([]);
+  });
+
+  it('a finding unit whose statement says "will not" and "instead of" gets both in its trace item, in the order of the table', () => {
+    const run = checkedFindingsRun(cleanups);
+    const doc = run.findingsDoc('F1');
+    doc.findings[0].text = 'Deleting an order will not ask who calls, and answers success instead of an error.';
+    run.writeFindings('F1', doc);
+    expect(run.run('check-findings', ID).status).toBe(0);
+    judge(run, ID);
+    expect(run.run('trace', ID).status).toBe(0);
+    expect(readTrace(run).items[0].scopeWords).toEqual(['will not', 'instead of']);
+    // A holds verdict needs a case for each of them.
+    const missing = traceFeature(run, ID, () => ({ verdict: 'holds', scope: [{ word: 'will not', case: 'a caller without a role', result: 'the order is deleted' }] }));
+    expect(missing.status).toBe(1);
+    expect(traceFeature(run, ID, () => 'holds').status).toBe(0);
   });
 });
 

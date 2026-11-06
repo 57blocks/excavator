@@ -272,6 +272,17 @@ describe('slices, verdicts, trace and trace-verdicts on a system unit', () => {
     expect(record(run).status).toBe('confirmed');
   });
 
+  it('a negative or contrasting word in a statement is a scope word: the trace item carries "does not" and "rather than"', () => {
+    const run = systemRun(cleanups);
+    const doc = run.systemDoc(1);
+    doc.findings[0].text = 'The mail helper does not send the message and answers sent rather than failed.';
+    run.writeSystem(1, doc);
+    expect(run.run('check-system-findings', ID).status).toBe(0);
+    expect(judge(run, ID).status).toBe(0);
+    expect(run.run('trace', ID).status).toBe(0);
+    expect(readJsonAt(join(run.out, 'trace', ID, 'part-1.json')).items[0].scopeWords).toEqual(['does not', 'rather than']);
+  });
+
   it('a tracer that contradicts a finding removes it, with the reasons kept; the unit is verified with the rest', () => {
     const run = checkedSystemRun(cleanups);
     expect(judge(run, ID).status).toBe(0);

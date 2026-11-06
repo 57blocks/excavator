@@ -235,7 +235,9 @@ describe('the shipped fixed text of the findings', () => {
   });
 
   it('has no apostrophe in a text the page shows, since the page escapes it', () => {
-    for (const [key, value] of Object.entries(shipped)) if (key.startsWith('md.findings.') || key.startsWith('page.findings.')) expect(value, key).not.toContain("'");
+    // The two word lists are matched by scripts and shown nowhere, so they may hold the forms with an apostrophe (won't, can't).
+    const matched = ['md.findings.adviceWords', 'md.findings.scopeWords'];
+    for (const [key, value] of Object.entries(shipped)) if ((key.startsWith('md.findings.') || key.startsWith('page.findings.')) && !matched.includes(key)) expect(value, key).not.toContain("'");
   });
 });
 

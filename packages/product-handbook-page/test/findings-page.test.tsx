@@ -306,6 +306,8 @@ describe('every fixed text of the findings pages comes from the ui table', () =>
   });
 
   it('has no apostrophe in a fixed text of the findings, since the page escapes it', () => {
-    for (const [key, value] of Object.entries(shipped.strings)) if (key.startsWith('md.findings.') || key.startsWith('page.findings.') || key === 'page.nav.findings') expect(value, key).not.toContain("'");
+    // The word lists are matched by scripts and shown nowhere; they may hold won't and can't.
+    const matched = ['md.findings.adviceWords', 'md.findings.scopeWords'];
+    for (const [key, value] of Object.entries(shipped.strings)) if ((key.startsWith('md.findings.') || key.startsWith('page.findings.') || key === 'page.nav.findings') && !matched.includes(key)) expect(value, key).not.toContain("'");
   });
 });

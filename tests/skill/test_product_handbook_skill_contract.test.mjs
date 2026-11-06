@@ -1133,6 +1133,9 @@ describe('the handbook tracer agent', () => {
 
   it('documents scopeWords in the trace file and scope in the verdict file, and the documented scope shape is the one trace-verdicts accepts (D9)', () => {
     expect(text).toContain('`scopeWords`: only on a claim that states a defect');
+    // Design D10 of handbook-system-findings: negative and contrasting outcomes are scope words, walked to the last step the reader sees.
+    expect(text).toContain('which also cover a negative or contrasting outcome (will not, cannot, instead of and the like)');
+    expect(text).toContain('For a word of outcome (will not, cannot, instead of and the like), walk the case to the last step the reader would see: what the page that actually runs renders, where it navigates afterwards, what the caller finally receives; stopping at the route table or at the first function is not enough.');
     expect(text).toContain('add `scope`: an array with exactly one `{ "word", "case", "result" }` for each of its words');
     expect(text).toContain('a case from the claim\'s own words that falls inside what the word covers and is as far as you can make it from the code\'s own condition');
     expect(text).toContain('When the result differs from what the claim says, the verdict is `contradicted`, not `holds`.');
