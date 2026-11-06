@@ -22,6 +22,9 @@ const TABLE = Object.freeze([
   // The causes, measures and recommendations (openspec change handbook-remedies) cite the verified and ranked findings, so they run after
   // the trace and after the ranking: the same AFTER_TRACE= line, printed after the priority one; they need no map and no stage file.
   Object.freeze({ id: 'remedies', stages: Object.freeze([]), file: 'sections/remedies.md', afterTrace: true }),
+  // The cross-cutting topics (openspec change handbook-topics) gather the verified entries and findings by a question that crosses features,
+  // so they run after the trace and after the remedies: the third AFTER_TRACE= line; they need no map and no stage file.
+  Object.freeze({ id: 'topics', stages: Object.freeze([]), file: 'sections/topics.md', afterTrace: true }),
 ]);
 
 export const SECTIONS = Object.freeze(TABLE.map((row) => row.id));
