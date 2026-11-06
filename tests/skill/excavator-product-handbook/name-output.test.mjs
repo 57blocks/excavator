@@ -123,13 +123,13 @@ describe('handbook.md: the title', () => {
 });
 
 describe('page data: the project is the system name', () => {
-  it('has the format 8 and the verified name in project', () => {
+  it('has the format 9 and the verified name in project', () => {
     const run = verifiedRun();
     expect(page(run).status).toBe(0);
     const data = dataOf(run);
-    expect(data.format).toBe('excavator-product-handbook-page/8');
+    expect(data.format).toBe('excavator-product-handbook-page/9');
     expect(data.project).toBe('handbook-fixture');
-    expect(Object.keys(data)).toEqual(['format', 'project', 'language', 'languageTag', 'ui', 'views', 'areas', 'domains', 'domainBasis', 'features', 'coverage', 'summary', 'system', 'entities']);
+    expect(Object.keys(data)).toEqual(['format', 'project', 'language', 'languageTag', 'ui', 'views', 'areas', 'domains', 'domainBasis', 'features', 'findings', 'coverage', 'summary', 'system', 'entities']);
   });
 
   for (const [what, make] of UNNAMED) {

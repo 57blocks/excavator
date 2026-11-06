@@ -5,6 +5,7 @@ import { CoveragePage } from './components/CoveragePage';
 import { DataPage } from './components/DataPage';
 import { DictionariesPage } from './components/DictionariesPage';
 import { DomainPage } from './components/DomainPage';
+import { FindingsPage } from './components/FindingsPage';
 import { FeaturePage } from './components/FeaturePage';
 import { JobsPage } from './components/JobsPage';
 import { NotFound } from './components/NotFound';
@@ -31,6 +32,7 @@ function PageView({ data, route, view }: { data: PageData; route: Route; view: V
     case 'coverage': return <CoveragePage data={data} />;
     case 'notifications': return <NotificationsPage data={data} />;
     case 'jobs': return <JobsPage data={data} />;
+    case 'findings': return <FindingsPage data={data} />;
     case 'data': return technical === undefined ? <NotFound /> : <DataPage data={data} technical={technical} />;
     case 'dictionaries': return technical === undefined ? <NotFound /> : <DictionariesPage data={data} technical={technical} />;
     case 'roles-matrix': return <RolesMatrixPage data={data} />;
@@ -46,7 +48,7 @@ function PageView({ data, route, view }: { data: PageData; route: Route; view: V
       const feature = data.features.find((item) => item.id === body.id);
       return feature === undefined
         ? <NotFound />
-        : <FeaturePage feature={feature} domain={data.domains.find((item) => item.id === feature.domain)} area={data.domainBasis === 'domains' ? data.areas.find((item) => item.id === feature.area) : undefined} locations={technical?.locations.find((unit) => unit.id === feature.id)} />;
+        : <FeaturePage feature={feature} findings={data.findings.filter((item) => item.feature === feature.id)} domain={data.domains.find((item) => item.id === feature.domain)} area={data.domainBasis === 'domains' ? data.areas.find((item) => item.id === feature.area) : undefined} locations={technical?.locations.find((unit) => unit.id === feature.id)} />;
     }
     case 'not-found': return <NotFound />;
   }
@@ -95,6 +97,7 @@ function pageTitle(data: PageData, route: Route, t: ReturnType<typeof makeText>)
     case 'coverage': return t('page.nav.coverage');
     case 'notifications': return t('page.nav.notifications');
     case 'jobs': return t('page.nav.jobs');
+    case 'findings': return t('md.findings.heading');
     case 'data': return t('md.data.heading');
     case 'dictionaries': return t('md.dict.heading');
     case 'roles-matrix': return t('md.matrix.roleFeature.heading');

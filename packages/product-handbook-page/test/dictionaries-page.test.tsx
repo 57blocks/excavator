@@ -76,7 +76,7 @@ const section: DictionariesSection = {
 
 function dataFor(views: View[], dictionaries: DictionariesSection | null = section, dictionariesState: 'ok' | 'missing' | 'malformed' = 'ok'): PageData {
   return {
-    format: 'excavator-product-handbook-page/8',
+    format: 'excavator-product-handbook-page/9',
     project: d('project'),
     language: d('language'),
     languageTag: 'xx',
@@ -86,14 +86,15 @@ function dataFor(views: View[], dictionaries: DictionariesSection | null = secti
     domains: [{ id: 'D1', name: d('domain') }],
     domainBasis: 'domains',
     features: [],
-    coverage: { candidateTotal: 0, assigned: 0, unassigned: [], reachCounts: [], removedOverview: [], removed: [] },
+    findings: [],
+    coverage: { candidateTotal: 0, assigned: 0, unassigned: [], reachCounts: [], removedOverview: [], removed: [], findingsUnfinished: [], findingsNotWritten: 0, findingsRemoved: [] },
     summary: { notifications: [], jobs: [], counts: { featureTotal: 0, featuresWithEntry: 0, notificationRows: 0, jobRows: 0, schedule: { literal: 0, computed: 0, absent: 0 }, described: 0 } },
     system: { status: 'planned', overview: null, applications: [], counts: { applications: 0, files: 0, lines: 0, areas: 1, domains: 1, features: 0, featuresWithEntry: 0, roles: 0 }, areas: [], domains: [] },
     entities: { domains: [{ id: 'D1', name: d('domain'), features: [], purposes: [] }], roles: [], roleFeature: { roles: [], features: [], cells: [] } },
     ...(views.includes('technical') ? {
       technical: {
         featureApplication: [], unattributed: [], applicationDomain: { applications: [], domains: [], cells: [], unattributed: [] },
-        integrations: [], jobs: [], locations: [], data: null, dataState: 'missing' as const, dictionaries, dictionariesState,
+        integrations: [], jobs: [], locations: [], findingLocations: [], data: null, dataState: 'missing' as const, dictionaries, dictionariesState,
       },
     } : {}),
   };

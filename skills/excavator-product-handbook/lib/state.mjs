@@ -14,8 +14,10 @@
  * check-map creates it; mark, check-entry, verdicts and trace-verdicts update it.
  * Every write is atomic; the commands that change it hold the state lock
  * (lock.mjs). The system overview (openspec change handbook-system-overview)
- * has the same entry under the optional key `overview`; a state without that
- * key reads as planned with no attempt (unit.mjs).
+ * has the same entry under the optional key `overview`, and the findings of
+ * each feature (openspec change handbook-feature-findings) under the optional
+ * key `findings`, by feature id; a state without a key, or without a feature in
+ * it, reads as planned with no attempt (unit.mjs).
  */
 
 import { createHash } from 'node:crypto';
@@ -62,7 +64,14 @@ const stateProblems = (state) => {
     const problem = entryProblem(`feature ${id}`, entry);
     if (problem !== null) return problem;
   }
-  // The system overview's entry is optional: a state without it reads as planned (unit.mjs).
+  // The entries of the overview and of the findings are optional: a state without them reads as planned (unit.mjs).
+  if (state.findings !== undefined) {
+    if (!isObject(state.findings)) return 'findings must be an object from feature ids to entries';
+    for (const [id, entry] of Object.entries(state.findings)) {
+      const problem = entryProblem(`findings ${id}`, entry);
+      if (problem !== null) return problem;
+    }
+  }
   return state.overview === undefined ? null : entryProblem('overview', state.overview);
 };
 

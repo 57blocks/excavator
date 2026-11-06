@@ -14,13 +14,14 @@ import { basename } from 'node:path';
 
 import { pageSection } from './data-section.mjs';
 import { dictionariesPageSection } from './dict-section.mjs';
+import { findingsStatus } from './findings-model.mjs';
 import { handbookModel } from './handbook-model.mjs';
 import { reachCounts } from './render.mjs';
 import { languageTag } from './language-tag.mjs';
 import { withoutRootPaths } from './root-paths.mjs';
 import { DEFAULT_VIEWS } from './views.mjs';
 
-export const PAGE_FORMAT = 'excavator-product-handbook-page/8';
+export const PAGE_FORMAT = 'excavator-product-handbook-page/9';
 
 /** An entry without its evidence, in the page's shape. */
 function pageEntry(entry) {
@@ -51,7 +52,7 @@ function pageEntry(entry) {
  * `technical` is the product part and holds no citation path; `technical`, only
  * there when the technical view is selected, holds the application relations,
  * the external systems with both relations to applications, the file and
- * lines of each cited item, the data section (`data`, null with the reason in
+ * lines of each cited item and of each finding (`findingLocations`), the data section (`data`, null with the reason in
  * `dataState` when data.json is missing or malformed) and the status dictionary
  * (`dictionaries` and `dictionariesState`, the same for dictionaries.json).
  */
@@ -60,7 +61,7 @@ export function buildPageData(run, roots, { views = DEFAULT_VIEWS } = {}) {
   // The directory name only rewrites the project path in the strings; the page shows the verified system name, never the directory.
   const directory = basename(roots[0]);
   const kind = new Map(candidates.map((candidate) => [candidate.id, candidate.kind]));
-  const { summary, system, entities, locations, data: dataSection, dictionaries: dictionariesSection } = handbookModel(run, roots[0], views);
+  const { summary, system, entities, locations, findings, data: dataSection, dictionaries: dictionariesSection } = handbookModel(run, roots[0], views);
   const domainOf = new Map(entities.domains.flatMap((domain) => domain.features.map((id) => [id, domain.id])));
   const data = {
     format: PAGE_FORMAT,
@@ -81,7 +82,9 @@ export function buildPageData(run, roots, { views = DEFAULT_VIEWS } = {}) {
       label: feature.label,
       status: state.features[feature.id].status,
       entry: entries.has(feature.id) ? pageEntry(entries.get(feature.id)) : null,
+      findingsStatus: findingsStatus(state, feature.id),
     })),
+    findings: findings.list.map((finding) => ({ id: finding.id, feature: finding.feature, category: finding.category, text: finding.text })),
     coverage: {
       candidateTotal: candidates.length,
       assigned: map.features.reduce((sum, feature) => sum + feature.candidates.length, 0),
@@ -93,6 +96,16 @@ export function buildPageData(run, roots, { views = DEFAULT_VIEWS } = {}) {
         .map((feature) => ({
           feature: feature.id,
           items: state.features[feature.id].removed.map((item) => ({ claim: item.claim, verdict: item.verdict, reason: item.reason })),
+        })),
+      findingsUnfinished: map.features
+        .filter((feature) => !['verified', 'planned'].includes(findingsStatus(state, feature.id)))
+        .map((feature) => ({ feature: feature.id, status: findingsStatus(state, feature.id) })),
+      findingsNotWritten: map.features.filter((feature) => findingsStatus(state, feature.id) === 'planned').length,
+      findingsRemoved: map.features
+        .filter((feature) => (state.findings?.[feature.id]?.removed ?? []).length > 0)
+        .map((feature) => ({
+          feature: feature.id,
+          items: state.findings[feature.id].removed.map((item) => ({ claim: item.claim, verdict: item.verdict, reason: item.reason })),
         })),
     },
     summary,
@@ -111,6 +124,7 @@ export function buildPageData(run, roots, { views = DEFAULT_VIEWS } = {}) {
       integrations: entities.integrations,
       jobs: entities.jobs,
       locations,
+      findingLocations: findings.list.map((finding) => ({ id: finding.id, citations: findings.locations.get(finding.id) })),
       data: dataSection.state === 'ok' ? pageSection(dataSection.data) : null,
       dataState: dataSection.state,
       dictionaries: dictionariesSection.state === 'ok' ? dictionariesPageSection(dictionariesSection.data) : null,

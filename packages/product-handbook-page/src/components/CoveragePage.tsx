@@ -22,6 +22,55 @@ function RemovedTable({ items }: { items: RemovedItem[] }) {
   );
 }
 
+/** The features whose findings are not verified, and the findings verification removed, as the two parts of the handbook's coverage section. */
+function FindingsCoverage({ data }: { data: PageData }) {
+  const t = useText();
+  const nav = useLinks();
+  const { coverage } = data;
+  const areaName = new Map(data.areas.map((area) => [area.id, area.name]));
+  const itemValues = (feature: PageData['features'][number]) => ({ id: feature.id, name: feature.name, area: areaName.get(feature.area) ?? '' });
+  const unfinished = coverage.findingsUnfinished.flatMap((row) => {
+    const feature = data.features.find((item) => item.id === row.feature);
+    return feature === undefined ? [] : [{ feature, status: row.status }];
+  });
+  const removed = coverage.findingsRemoved.flatMap((group) => {
+    const feature = data.features.find((item) => item.id === group.feature);
+    return feature === undefined ? [] : [{ feature, items: group.items }];
+  });
+  return (
+    <>
+      <section className="section" aria-labelledby="cov-findings-unfinished">
+        <h2 className="section-title" id="cov-findings-unfinished">{t('md.coverage.findingsUnfinishedHeading')}</h2>
+        {coverage.findingsNotWritten > 0 && <p className="muted" data-part="findings-not-written">{t('md.coverage.findingsNotWritten', { count: coverage.findingsNotWritten })}</p>}
+        {unfinished.length === 0 && coverage.findingsNotWritten === 0 ? <p className="muted">{t('md.coverage.findingsAllVerified')}</p> : unfinished.length === 0 ? null : (
+          <TableScroll label={t('md.coverage.findingsUnfinishedHeading')}>
+            <thead><tr><th scope="col">{t('md.table.feature')}</th><th scope="col">{t('md.table.status')}</th></tr></thead>
+            <tbody>
+              {unfinished.map(({ feature, status }) => (
+                <tr key={feature.id}>
+                  <Cell row><a href={nav.feature(feature.id)}>{t('md.coverage.findingsUnfinishedItem', itemValues(feature))}</a></Cell>
+                  <td><span className="status-chip" data-status={status}>{t(`md.status.${status}`)}</span></td>
+                </tr>
+              ))}
+            </tbody>
+          </TableScroll>
+        )}
+      </section>
+
+      <section className="section" aria-labelledby="cov-findings-removed">
+        <h2 className="section-title" id="cov-findings-removed">{t('md.coverage.findingsRemovedHeading')}</h2>
+        {removed.length === 0 ? <p className="muted">{t('md.none')}</p> : null}
+        {removed.map(({ feature, items }) => (
+          <div key={feature.id} className="removed-group">
+            <h3 className="block-title"><a href={nav.feature(feature.id)}>{t('md.coverage.findingsRemovedFeature', { ...itemValues(feature), count: items.length })}</a></h3>
+            <RemovedTable items={items} />
+          </div>
+        ))}
+      </section>
+    </>
+  );
+}
+
 /** What the handbook covers: the candidate count and its conservation, the unassigned candidates, link features, the features without a verified entry and the items verification removed. */
 export function CoveragePage({ data }: { data: PageData }) {
   const t = useText();
@@ -117,6 +166,8 @@ export function CoveragePage({ data }: { data: PageData }) {
           </div>
         ))}
       </section>
+
+      <FindingsCoverage data={data} />
     </article>
   );
 }

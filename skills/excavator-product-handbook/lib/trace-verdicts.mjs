@@ -19,7 +19,11 @@
  * and a line from 1 to the file's last. The reason of a `contradicted` verdict
  * reaches readers (the coverage section lists it), so it passes the gate of
  * reader text like the reason of a verifier; the reason of a `holds` verdict is
- * shown to no one and is not gated. Any failure prints every problem, each led
+ * shown to no one and is not gated. A `holds` verdict on an item whose trace item
+ * has `scopeWords` (a finding whose statement holds scope words, design D9 of
+ * handbook-feature-findings) also needs `scope`: an array with exactly one
+ * `{ word, case, result }` for each of those words, each `case` and `result` one
+ * non-empty line; a `contradicted` verdict needs none. Any failure prints every problem, each led
  * by its part and letter (`part 1b:`), and records nothing.
  *
  * When every file is valid, the two verdicts of an item are combined
@@ -77,11 +81,37 @@ function atProblems(at, files) {
   return problems;
 }
 
+/** The problems of the `scope` of a holds verdict: one `{ word, case, result }` for each of `words`, no other, none twice. */
+function scopeProblems(scope, words) {
+  const problems = [];
+  const given = new Set();
+  if (scope !== undefined && !Array.isArray(scope)) problems.push('scope must be an array of { word, case, result }');
+  else {
+    (scope ?? []).forEach((one, index) => {
+      const label = `scope[${index}]`;
+      if (!isObject(one) || typeof one.word !== 'string') {
+        problems.push(`${label}: must be { word, case, result }`);
+        return;
+      }
+      if (!words.includes(one.word)) problems.push(`${label}: ${JSON.stringify(one.word)} is not a scope word of this item (${words.map((word) => JSON.stringify(word)).join(', ')})`);
+      else if (given.has(one.word)) problems.push(`${label}: more than one case for ${JSON.stringify(one.word)}`);
+      given.add(one.word);
+      for (const key of ['case', 'result']) {
+        if (typeof one[key] !== 'string' || one[key].trim() === '') problems.push(`${label}.${key}: must be a non-empty string`);
+        else if (/[\r\n]/.test(one[key].trim())) problems.push(`${label}.${key}: must be one line`);
+      }
+    });
+  }
+  for (const word of words) if (!given.has(word)) problems.push(`the holds verdict has no scope case for ${JSON.stringify(word)}`);
+  return problems;
+}
+
 /** Every way a verdict file departs from one valid verdict per item of its part; `citedFiles` are the files the items cite. */
 export function traceVerdictProblems(raw, items, files, citedFiles) {
   if (!isObject(raw) || !Array.isArray(raw.verdicts)) return ['verdicts: must be an array in an object { "verdicts": [...] }'];
   const problems = [];
   const ids = new Set(items.map((item) => item.id));
+  const wordsOf = new Map(items.map((item) => [item.id, item.scopeWords ?? []]));
   const seen = new Set();
   const holdsReasons = new Map();
   raw.verdicts.forEach((entry, index) => {
@@ -102,6 +132,7 @@ export function traceVerdictProblems(raw, items, files, citedFiles) {
       if (holdsReasons.has(key)) problems.push(`${id}: the same holds reason as ${holdsReasons.get(key)}: trace each item on its own`);
       else holdsReasons.set(key, id);
     }
+    if (entry.verdict === 'holds' && (wordsOf.get(id) ?? []).length > 0) problems.push(...scopeProblems(entry.scope, wordsOf.get(id)).map((problem) => `${id}: ${problem}`));
     if (entry.verdict !== 'contradicted') return;
     problems.push(...atProblems(entry.at, files).map((problem) => `${id}: ${problem}`));
     if (typeof entry.reason === 'string') {
@@ -184,7 +215,8 @@ function readParts(outDir, id, plan) {
 export function traceVerdicts(outDir, id, root) {
   const plan = confirmedPlan(outDir, id, root);
   if (plan.stop) return plan.stop;
-  const checked = readParts(outDir, id, plan);
+  // A unit with nothing left to trace (the findings of a feature that lost all of them) has no part to read.
+  const checked = plan.items.length === 0 ? { verdictList: [] } : readParts(outDir, id, plan);
   if (checked.stop) return checked.stop;
 
   const verdictOf = new Map(checked.verdictList.map((entry) => [entry.id, entry]));
@@ -198,7 +230,7 @@ export function traceVerdicts(outDir, id, root) {
   const removed = [...earlier, ...records];
 
   // Nothing left that carries evidence: nothing was proved. The entry file stays as written for the user to see.
-  if (!unit.items(trimmed).some((item) => item.evidence.length > 0)) {
+  if (!unit.mayBeEmpty && !unit.items(trimmed).some((item) => item.evidence.length > 0)) {
     const text = 'no item could be proved';
     setUnitState(state, id, { status: 'failed', attempts, failure: { step: 'trace', reasons: [text] }, removed });
     saveState(outDir, state);
@@ -211,5 +243,6 @@ export function traceVerdicts(outDir, id, root) {
   if (removed.length > 0) next.removed = removed;
   setUnitState(state, id, next);
   saveState(outDir, state);
+  if (plan.items.length === 0) return { status: 0, lines: [`${id}: verified (0 findings)`] };
   return { status: 0, lines: [records.length > 0 ? `${id}: verified, ${plural(records.length, 'item')} removed` : `${id}: verified (${plural(plan.items.length, 'item')})`] };
 }

@@ -41,10 +41,17 @@
  *       Check <out>/entries/<featureId>.json and record the result in state.json.
  *   try-entry <out> <featureId> --project <root>
  *       The same checks for the lane itself; records nothing.
+ *   check-findings <out> <featureId>.findings --project <root>
+ *       Check <out>/entries/<featureId>.findings.json (the findings of a
+ *       feature): the checks of an entry plus the advice-word check; record
+ *       the result in state.json under "findings".
+ *   try-findings <out> <featureId>.findings --project <root>
+ *       The same checks for the findings lane itself; records nothing.
  *   mark <out> <featureId> dispatched | failed lane <reason>... --project <root>
  *       Record a lane dispatch or a lane that wrote nothing in state.json.
  *       The slices, verdicts, trace, trace-verdicts and mark commands also take
- *       the unit id `overview` for the system overview.
+ *       the unit id `overview` for the system overview and `<featureId>.findings`
+ *       for the findings of a feature.
  *   slices <out> <featureId> --project <root> [--round 2]
  *       Cut a checked entry into the items a verifier judges, each with its
  *       claim and the source around its cited passages (design D14); round 2
@@ -64,7 +71,7 @@
  *       the project; remove the items either tracer contradicted and verify the
  *       feature, nothing recorded when any file does not hold.
  *   sections [<list>]
- *       Validate a --sections list (overview, features, data; default all) and print
+ *       Validate a --sections list (overview, features, data, findings; default all) and print
  *       SECTIONS=<list> and one READ=<file> line per phase file the run reads,
  *       in reading order, the shared map file once; exit 1 for a value that is
  *       not a section. Reads and changes no file.
@@ -82,7 +89,7 @@
  *       Write <out>/handbook.html from the same checked run: one file that
  *       opens from disk, no network, the same bytes from the same input.
  *
- * check-map, check-entry, check-overview, mark, verdicts and trace-verdicts hold <out>/state.json.lock while they run.
+ * check-map, check-entry, check-overview, check-findings, mark, verdicts and trace-verdicts hold <out>/state.json.lock while they run.
  * In a run whose language is not English, check-map, check-entry, try-entry,
  * assemble and page also check that each narrative text holds a letter of the
  * language when it has its own script (design D12); they need a checked
@@ -114,6 +121,7 @@ import { slices } from './lib/slices.mjs';
 import { trace } from './lib/trace.mjs';
 import { traceVerdicts } from './lib/trace-verdicts.mjs';
 import { checkUi } from './lib/ui.mjs';
+import { isFindingsId } from './lib/findings-shape.mjs';
 import { OVERVIEW_ID } from './lib/overview-shape.mjs';
 import { ROUNDS } from './lib/verify-plan.mjs';
 import { parseViews } from './lib/views.mjs';
@@ -150,7 +158,7 @@ Commands:
       item and then every feature as "id  name", end with a Next: line and
       exit 1. No fuzzy matching. Changes no file.
   sections [<list>]
-      Validate the --sections list (comma-separated: overview, features, data; empty
+      Validate the --sections list (comma-separated: overview, features, data, findings; empty
       or absent is all) and print "SECTIONS=<the sections in fixed order>",
       then one "READ=<path>" line per phase file to read, relative to the skill
       directory, in reading order: the stage files first (the map file once),
@@ -223,11 +231,25 @@ Commands:
       before it replies. Reads and writes no state.json: it is not an attempt
       and records no result. Prints "<featureId>: ok" or each problem and a
       Next: line.
+  check-findings <out> <featureId>.findings --project <root>
+      Check <out>/entries/<featureId>.findings.json, the findings of a feature
+      (each a category from the fixed list, a statement of the defect and when it
+      happens, and evidence): the same checks as check-entry (shape, id,
+      citations, numbers, banned words, the narrative language), plus the
+      advice-word check: the statement may not hold a word of the run's list
+      (the fixed text md.findings.adviceWords). Records the result in state.json
+      under "findings", by feature id (absent means planned, attempts 0); a file
+      with no finding is recorded as verified at once. A failure ends with a
+      Next: line. The id is the unit id; the feature must be in map.json.
+  try-findings <out> <featureId>.findings --project <root>
+      The same checks as check-findings, for the lane to run on its own file
+      before it replies. Reads and writes no state.json.
   mark <out> <featureId> dispatched --project <root>
       Count one more dispatch of the feature's lane in state.json. The id may be
       overview: the system overview is a unit like a feature (so it is for
       slices, verdicts, trace and trace-verdicts below), and its state is kept
-      under "overview" in state.json (absent means planned, attempts 0).
+      under "overview" in state.json (absent means planned, attempts 0). The
+      findings of a feature are a unit too, with the id <featureId>.findings.
   mark <out> <featureId> failed lane <reason>... --project <root>
       Record the feature's lane as failed without writing its entry, each
       further argument one reason. lane is the only step mark records.
@@ -355,6 +377,11 @@ function parseArgs(args, known) {
   return { positionals, options };
 }
 
+/** The findings commands take the unit id of a feature's findings. */
+function requireFindingsId(id) {
+  if (!isFindingsId(id)) throw new UsageError(`${id} is not the id of a findings unit; use <featureId>.findings`);
+}
+
 /** The round an option names (1 or 2), or 0 when it names neither. */
 const roundOption = (text) => (ROUNDS.includes(Number(text)) && /^\d+$/.test(text) ? Number(text) : 0);
 
@@ -424,6 +451,19 @@ const COMMANDS = {
     const { positionals, options } = parseArgs(args, ['project']);
     if (positionals.length !== 1) throw new UsageError('try-overview takes exactly one <out> directory');
     return report(tryEntry(positionals[0], OVERVIEW_ID, projectRootOption(options.project)));
+  },
+  'check-findings'(args) {
+    const { positionals, options } = parseArgs(args, ['project']);
+    if (positionals.length !== 2) throw new UsageError('check-findings takes <out> and <featureId>.findings');
+    requireFindingsId(positionals[1]);
+    const root = projectRootOption(options.project);
+    return withStateLock(positionals[0], () => report(checkEntry(positionals[0], positionals[1], root)));
+  },
+  'try-findings'(args) {
+    const { positionals, options } = parseArgs(args, ['project']);
+    if (positionals.length !== 2) throw new UsageError('try-findings takes <out> and <featureId>.findings');
+    requireFindingsId(positionals[1]);
+    return report(tryEntry(positionals[0], positionals[1], projectRootOption(options.project)));
   },
   'check-entry'(args) {
     const { positionals, options } = parseArgs(args, ['project']);

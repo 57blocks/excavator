@@ -207,7 +207,8 @@ export function verdicts(outDir, id, root, round) {
 function removeItems({ outDir, id, plan, state, attempts, ids, verdictOf, earlier }) {
   const { trimmed, records } = removalRecords(plan.unit, plan.entry, ids, (path) => verdictOf.get(path), (path) => plan.claims.get(path));
   const removed = [...earlier, ...records];
-  if (records.length > 0 && !plan.unit.items(trimmed).some((item) => item.evidence.length > 0)) {
+  // A unit that may be empty (the findings of a feature) goes on with none; an entry or the overview that lost everything has nothing proved.
+  if (records.length > 0 && !plan.unit.mayBeEmpty && !plan.unit.items(trimmed).some((item) => item.evidence.length > 0)) {
     const text = 'no item could be proved';
     setUnitState(state, id, { status: 'failed', attempts, failure: { step: 'verify', reasons: [text] }, removed });
     saveState(outDir, state);

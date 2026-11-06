@@ -12,6 +12,7 @@ const TABLE = Object.freeze([
   Object.freeze({ id: 'overview', stages: Object.freeze(['stages/map.md']), file: 'sections/overview.md' }),
   Object.freeze({ id: 'features', stages: Object.freeze(['stages/map.md']), file: 'sections/features.md' }),
   Object.freeze({ id: 'data', stages: Object.freeze([]), file: 'sections/data.md' }),
+  Object.freeze({ id: 'findings', stages: Object.freeze(['stages/map.md']), file: 'sections/findings.md' }),
 ]);
 
 export const SECTIONS = Object.freeze(TABLE.map((row) => row.id));

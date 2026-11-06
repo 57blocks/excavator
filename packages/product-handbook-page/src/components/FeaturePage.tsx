@@ -2,7 +2,8 @@ import type { ReactNode } from 'react';
 
 import { useLinks } from '../lib/links';
 import { useText } from '../lib/text';
-import type { Area, Entry, Feature, Field, Rule, UnitLocations } from '../lib/types';
+import { findingCategoryKey } from '../lib/types';
+import type { Area, Entry, Feature, Field, Finding, Rule, UnitLocations } from '../lib/types';
 import { Locations } from './Locations';
 import { ReachBadge } from './ReachBadge';
 import { Cell, TableScroll } from './Tables';
@@ -149,8 +150,23 @@ function EntryBody({ entry }: { entry: Entry }) {
   );
 }
 
-/** One feature: its domain (and, when the page groups by business domain, the area of the navigation it sits in), how readers get to it, and the checked entry, or why there is none; in the technical view, the file and lines of each cited item. */
-export function FeaturePage({ feature, domain, area, locations }: { feature: Feature; domain: Area | undefined; area: Area | undefined; locations?: UnitLocations }) {
+/** The feature's own verified findings with their category; nothing when its findings are not verified (the coverage page says where they stopped). */
+function FindingsSection({ feature, findings }: { feature: Feature; findings: Finding[] }) {
+  const t = useText();
+  if (feature.findingsStatus !== 'verified') return null;
+  return (
+    <Section id="findings" title={t('md.findings.heading')}>
+      {findings.length === 0 ? <p className="muted">{t('md.none')}</p> : (
+        <ul className="plain-list">
+          {findings.map((finding) => <li key={finding.id}>{t('md.findings.featureItem', { category: t(findingCategoryKey(finding.category)), text: finding.text })}</li>)}
+        </ul>
+      )}
+    </Section>
+  );
+}
+
+/** One feature: its domain (and, when the page groups by business domain, the area of the navigation it sits in), how readers get to it, and the checked entry, or why there is none, then its verified findings; in the technical view, the file and lines of each cited item. */
+export function FeaturePage({ feature, findings, domain, area, locations }: { feature: Feature; findings: Finding[]; domain: Area | undefined; area: Area | undefined; locations?: UnitLocations }) {
   const t = useText();
   const nav = useLinks();
   return (
@@ -176,6 +192,7 @@ export function FeaturePage({ feature, domain, area, locations }: { feature: Fea
           <p className="status-chip" data-status={feature.status}>{t(`md.status.${feature.status}`)}</p>
         </div>
       ) : <EntryBody entry={feature.entry} />}
+      <FindingsSection feature={feature} findings={findings} />
       {feature.entry !== null && locations !== undefined && <Locations unit={locations} />}
     </article>
   );

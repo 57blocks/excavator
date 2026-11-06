@@ -9,6 +9,7 @@ export interface Links {
   coverage: string;
   notifications: string;
   jobs: string;
+  findings: string;
   data: string;
   dictionaries: string;
   rolesMatrix: string;
@@ -26,6 +27,7 @@ export function makeLinks(prefix: View | null): Links {
     coverage: routeHash({ name: 'coverage' }, prefix),
     notifications: routeHash({ name: 'notifications' }, prefix),
     jobs: routeHash({ name: 'jobs' }, prefix),
+    findings: routeHash({ name: 'findings' }, prefix),
     data: routeHash({ name: 'data' }, prefix),
     dictionaries: routeHash({ name: 'dictionaries' }, prefix),
     rolesMatrix: routeHash({ name: 'roles-matrix' }, prefix),
