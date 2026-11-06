@@ -176,7 +176,7 @@
     "md.data.notWritten": "The data section was not written.",
     "md.data.malformed": "data.json is malformed, so the data section is not shown.",
     "md.dict.heading": "Status dictionary",
-    "md.dict.note.nameFilter": "A JavaScript object, and a TypeScript object that ends in as const, is read as a value set only when the name it is assigned to ends in Status, State, Type, Kind, Stage, Phase, Level, Role, Mode or Category, in any case. A value set with another name is not seen.",
+    "md.dict.note.nameRule": "A JavaScript object, and a TypeScript object that ends in as const, is read as a value set only when the name it is assigned to ends in Status, State, Type, Kind, Stage, Phase, Level, Role, Mode or Category, or in the plural of one of these (such as Levels or Categories), in any case. A value set with another name is not seen.",
     "md.dict.note.meaning": "The meaning of a value comes only from two places in the code: the comment next to it, copied as written, and the display names that a mapping table gives it, with the place of each. Nothing is written by a model. A blank meaning means the code has none.",
     "md.dict.note.values": "A value marked not computed is written as in the code (it refers to another constant or is an expression that was not worked out) and is not compared with the other side.",
     "md.dict.recognized": "Forms of value set recognized in this version: {forms}.",

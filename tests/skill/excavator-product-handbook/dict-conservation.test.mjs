@@ -82,29 +82,29 @@ describe('the buckets of each kind of candidate', () => {
     expect(count(rows('ts-enum'), 'dictionary')).toBe(5);
   });
 
-  it('a TypeScript object ending in as const: dictionary or noLiteralMembers, 3 found by their declarations', () => {
-    const text = read('web-app/src/consts.ts').join('\n');
-    const found = [...text.matchAll(/const \w*(Status|Mode|Kind) = \{[^;]*\} as const;/g)].length;
-    expect(found).toBe(3);
+  it('a TypeScript object ending in as const: dictionary or noLiteralMembers, 4 found by their declarations', () => {
+    const text = [...read('web-app/src/consts.ts'), ...read('web-app/src/plural.ts')].join('\n');
+    const found = [...text.matchAll(/const \w*(Status|Mode|Kind|Modes) = \{[^;]*\} as const;/g)].length;
+    expect(found).toBe(4);
     const objects = rows('ts-const-object');
     expect(objects).toHaveLength(found);
-    expect(count(objects, 'dictionary')).toBe(2);
+    expect(count(objects, 'dictionary')).toBe(3);
     expect(count(objects, 'noLiteralMembers')).toBe(1);
     expect(objects.find((row) => row.bucket === 'noLiteralMembers').name).toBe('EmptyKind');
   });
 
-  it('a JavaScript object: dictionary or noLiteralMembers, 7 whose name has a state word and is assigned an object', () => {
+  it('a JavaScript object: dictionary or noLiteralMembers, 12 whose name has a state word and is assigned an object', () => {
     let found = 0;
-    for (const file of ['node-app/src/constants.js', 'node-app/src/leave.js', 'node-app/src/tables.js']) {
+    for (const file of ['node-app/src/constants.js', 'node-app/src/leave.js', 'node-app/src/plural.js', 'node-app/src/tables.js']) {
       for (const line of read(file)) {
         if (/^\s*\/\//.test(line)) continue;
-        if (/(const|let|var|exports\.)\s*\w*(Status|STATE|Stage|Kind|Type)\s*=\s*\{/.test(line)) found += 1;
+        if (/(const|let|var|exports\.)\s*\w*(Status|STATE|Stage|Kind|Type|Levels|Statuses|Categories|Types|Roles)\s*=\s*\{/.test(line)) found += 1;
       }
     }
-    expect(found).toBe(7);
+    expect(found).toBe(12);
     const objects = rows('js-object');
     expect(objects).toHaveLength(found);
-    expect(count(objects, 'dictionary')).toBe(6);
+    expect(count(objects, 'dictionary')).toBe(11);
     expect(count(objects, 'noLiteralMembers')).toBe(1);
     expect(objects.find((row) => row.bucket === 'noLiteralMembers').name).toBe('EmptyKind');
   });
@@ -131,7 +131,7 @@ describe('the ledger and the lists agree', () => {
       'map-entry': ['label', 'unmatchedKey', 'ambiguousKey'],
     };
     for (const row of data.candidates) expect(allowed[row.kind], `${row.kind} ${row.file}:${row.line}`).toContain(row.bucket);
-    expect(data.candidates).toHaveLength(12 + 30 + 7 + 5 + 3 + 7 + 27);
+    expect(data.candidates).toHaveLength(12 + 30 + 7 + 5 + 4 + 12 + 27);
     const keys = data.candidates.map((row) => `${row.kind}|${row.file}|${row.line}|${row.name ?? row.key}|${row.member ?? ''}`);
     expect(new Set(keys).size).toBe(keys.length);
   });
@@ -157,8 +157,8 @@ describe('the ledger and the lists agree', () => {
 
   it('the counts are the numbers of the lists, written by hand', () => {
     expect(data.counts).toEqual({
-      dictionaries: { total: 23, goType: 10, tsEnum: 5, tsConstObject: 2, jsObject: 6 },
-      members: { total: 72, computed: 66, notComputed: 6 },
+      dictionaries: { total: 29, goType: 10, tsEnum: 5, tsConstObject: 3, jsObject: 11 },
+      members: { total: 80, computed: 74, notComputed: 6 },
       comments: 11,
       labels: 20,
       skippedMembers: 5,
@@ -167,8 +167,8 @@ describe('the ledger and the lists agree', () => {
         goConstants: { total: 30, member: 23, untypedIota: 2, otherType: 2, plain: 3 },
         goVars: { total: 7, member: 6, otherType: 1 },
         tsEnums: { total: 5, dictionary: 5 },
-        tsConstObjects: { total: 3, dictionary: 2, noLiteralMembers: 1 },
-        jsObjects: { total: 7, dictionary: 6, noLiteralMembers: 1 },
+        tsConstObjects: { total: 4, dictionary: 3, noLiteralMembers: 1 },
+        jsObjects: { total: 12, dictionary: 11, noLiteralMembers: 1 },
         mapEntries: { total: 27, label: 20, unmatchedKey: 7, ambiguousKey: 0 },
       },
       mismatches: 3,

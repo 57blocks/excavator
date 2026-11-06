@@ -60,12 +60,14 @@ function subpart(part, headingKey) {
 
 describe('the shipped fixed text', () => {
   it('has every key the part and the page use', () => {
-    for (const key of ['md.dict.heading', 'md.dict.note.nameFilter', 'md.dict.note.meaning', 'md.dict.countLine', 'md.dict.notWritten', 'md.dict.malformed', 'md.dict.mismatchHeading', 'md.dict.table.member', 'page.dict.filter.search']) expect(typeof ui[key], key).toBe('string');
+    for (const key of ['md.dict.heading', 'md.dict.note.nameRule', 'md.dict.note.meaning', 'md.dict.countLine', 'md.dict.notWritten', 'md.dict.malformed', 'md.dict.mismatchHeading', 'md.dict.table.member', 'page.dict.filter.search']) expect(typeof ui[key], key).toBe('string');
   });
 
   it('names every word of the JavaScript name filter in the note, and the forms in the recognized list', () => {
-    for (const word of JS_NAME_WORDS) expect(ui['md.dict.note.nameFilter'].toLowerCase(), word).toContain(word);
-    expect(ui['md.dict.note.nameFilter']).toContain('as const');
+    for (const word of JS_NAME_WORDS) expect(ui['md.dict.note.nameRule'].toLowerCase(), word).toContain(word);
+    expect(ui['md.dict.note.nameRule']).toContain('as const');
+    expect(ui['md.dict.note.nameRule']).toContain('plural');
+    expect(Object.keys(ui)).not.toContain('md.dict.note.nameFilter');
     expect(ui['md.dict.note.meaning']).toContain('comment');
     expect(ui['md.dict.note.meaning']).toContain('blank');
     expect(ui['md.dict.form.tsConstObject']).toContain('as const');
@@ -93,9 +95,9 @@ describe('the technical handbook has the status dictionary inside the data chapt
     const made = run(dictionaries);
     assemble(made, 'technical');
     const part = dictionaryPart(text(made, 'handbook-technical.md'));
-    for (const key of ['md.dict.note.nameFilter', 'md.dict.note.meaning', 'md.dict.note.values']) expect(part, key).toContain(ui[key]);
+    for (const key of ['md.dict.note.nameRule', 'md.dict.note.meaning', 'md.dict.note.values']) expect(part, key).toContain(ui[key]);
     expect(part).toContain(ui['md.dict.recognized'].replace('{forms}', ['goNamedType', 'goTypedVar', 'tsEnum', 'tsConstObject', 'jsObject'].map((form) => ui[`md.dict.form.${form}`]).join('; ')));
-    expect(part).toContain('Value sets: 23 (10 Go types, 5 TS enums, 2 TS const objects, 6 JS objects). Members: 72 (66 computed, 6 not computed). Comments: 11. Display names: 20. Same names with different values: 3. Skipped members: 5.');
+    expect(part).toContain('Value sets: 29 (10 Go types, 5 TS enums, 3 TS const objects, 11 JS objects). Members: 80 (74 computed, 6 not computed). Comments: 11. Display names: 20. Same names with different values: 3. Skipped members: 5.');
     expect(part).toContain('Candidates that are not value sets: 2 Go types without constants or variables, 0 Go types declared again, 2 untyped iota constants, 2 constants of another type, 3 plain constants, 1 variables of another type, 1 TS const objects without literal members, 1 JS objects without literal members. Mapping table entries that name no member: 7. Mapping table entries that name more than one member: 0.');
   });
 
@@ -104,9 +106,9 @@ describe('the technical handbook has the status dictionary inside the data chapt
     assemble(made, 'technical');
     const part = dictionaryPart(text(made, 'handbook-technical.md'));
     const sets = part.split('\n').filter((line) => line.startsWith('###### '));
-    expect(sets).toHaveLength(23);
+    expect(sets).toHaveLength(29);
     const rows = part.split('\n').filter((line) => line.startsWith('| ') && !line.startsWith('| ---') && !line.startsWith(`| ${ui['md.dict.table.member']} |`));
-    expect(rows).toHaveLength(72);
+    expect(rows).toHaveLength(80);
     const mismatch = subpart(part, 'md.dict.mismatchHeading');
     expect(mismatch.split('\n').filter((line) => line.startsWith('- '))).toHaveLength(3);
     // the numbers of the count line, read back from the text, equal the list lengths
@@ -249,7 +251,7 @@ describe('the page data carries the dictionary in its technical part only', () =
     expect(Object.keys(got.technical).slice(-2)).toEqual(['dictionaries', 'dictionariesState']);
     expect(got.technical.dictionariesState).toBe('ok');
     expect(Object.keys(got.technical.dictionaries)).toEqual(['recognized', 'applications', 'dictionaries', 'mismatches', 'counts']);
-    expect(got.technical.dictionaries.dictionaries).toHaveLength(23);
+    expect(got.technical.dictionaries.dictionaries).toHaveLength(29);
     expect(got.technical.dictionaries.mismatches).toHaveLength(3);
     expect(got.technical.dictionaries.counts).toEqual(dictionaries.counts);
     expect(got.technical.dictionaries.recognized).toEqual(['go-named-type', 'go-typed-var', 'ts-enum', 'ts-const-object', 'js-object']);

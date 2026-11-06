@@ -123,7 +123,7 @@ export function dictionaryBlock(section, t) {
   if (section.state === 'missing') return [...out, t('md.dict.notWritten'), ''];
   if (section.state === 'malformed') return [...out, t('md.dict.malformed'), ''];
   const { data } = section;
-  out.push(...['md.dict.note.nameFilter', 'md.dict.note.meaning', 'md.dict.note.values'].flatMap((key) => [t(key), '']));
+  out.push(...['md.dict.note.nameRule', 'md.dict.note.meaning', 'md.dict.note.values'].flatMap((key) => [t(key), '']));
   out.push(fill(t('md.dict.recognized'), { forms: data.recognized.map((form) => t(dictFormKey(form))).join('; ') }), '');
   out.push(...countLines(data.counts, t).flatMap((line) => [line, '']));
   out.push(`#### ${t('md.dict.mismatchHeading')}`, '', t('md.dict.mismatchNote'), '');

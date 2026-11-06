@@ -1,7 +1,7 @@
 /**
  * JavaScript value sets (openspec change handbook-status-dictionary, design
  * D2 and D3): an object literal assigned to `const|let|var X`,
- * `module.exports.X` or `exports.X`, where `X` ends in a state word. The
+ * `module.exports.X` or `exports.X`, where `X` ends in a state word or its plural. The
  * value set is the top-level members whose value is a string or a number
  * literal. A nested object whose keys are all values of the set and whose
  * values are all string literals is a reverse table: its entries are the
@@ -16,9 +16,10 @@ import { commentFinder } from './dict-comments.mjs';
 import { matchingBracket, splitTopLevel } from './dict-text.mjs';
 import { jsNumber, unescape } from './dict-values.mjs';
 
-/** The name of a set must end in one of these, in any case. */
+/** The name of a set must end in one of these, in any case, or in the plural of one (`s` or `es`; `category` is `categories`). */
 export const JS_NAME_WORDS = Object.freeze(['status', 'state', 'type', 'kind', 'stage', 'phase', 'level', 'role', 'mode', 'category']);
-const NAME_FILTER = new RegExp(`(?:${JS_NAME_WORDS.join('|')})$`, 'i');
+const WORD_PATTERNS = JS_NAME_WORDS.map((word) => (word === 'category' ? 'categor(?:y|ies)' : `${word}(?:e?s)?`));
+const NAME_FILTER = new RegExp(`(?:${WORD_PATTERNS.join('|')})$`, 'i');
 const AS_CONST = /^\s*as\s+const\b/;
 const ASSIGNMENT = /(?:\b(?:const|let|var)\s+|\bexports\.)([A-Za-z_$][\w$]*)\s*=\s*\{/dg;
 

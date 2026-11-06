@@ -154,7 +154,7 @@ describe('the dictionaries page', () => {
   const body = main(render(dataFor(BOTH), '#/technical/dictionaries'));
 
   it('shows the fixed notes, the recognized forms and the two count lines', () => {
-    for (const key of ['md.dict.note.nameFilter', 'md.dict.note.meaning', 'md.dict.note.values']) expect(body, key).toContain(marked[key]);
+    for (const key of ['md.dict.note.nameRule', 'md.dict.note.meaning', 'md.dict.note.values']) expect(body, key).toContain(marked[key]);
     expect(body).toContain(`${MARK}Forms of value set recognized in this version: ${['goNamedType', 'goTypedVar', 'tsEnum', 'tsConstObject', 'jsObject'].map((form) => marked[`md.dict.form.${form}`]).join('; ')}.`);
     expect(body).toContain(`${MARK}Value sets: 5 (2 Go types, 1 TS enums, 1 TS const objects, 1 JS objects). Members: 9 (7 computed, 2 not computed). Comments: 1. Display names: 2. Same names with different values: 1. Skipped members: 2.`);
     expect(body).toContain(`${MARK}Candidates that are not value sets: 1 Go types without constants or variables, 0 Go types declared again, 1 untyped iota constants, 1 constants of another type, 1 plain constants, 1 variables of another type, 1 TS const objects without literal members, 0 JS objects without literal members. Mapping table entries that name no member: 1. Mapping table entries that name more than one member: 0.`);

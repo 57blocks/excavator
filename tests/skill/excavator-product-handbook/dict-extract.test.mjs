@@ -16,6 +16,8 @@ const ALIASES = 'go-app/status/aliases.go';
 const TS_CONSTS = 'web-app/src/consts.ts';
 const TABLES = 'node-app/src/tables.js';
 const VARS = 'go-app/status/vars.go';
+const PLURAL = 'node-app/src/plural.js';
+const TS_PLURAL = 'web-app/src/plural.ts';
 const CONSTANTS = 'node-app/src/constants.js';
 
 const data = extractDictionaries(FIXTURE);
@@ -45,6 +47,11 @@ describe('the value sets of the fixture', () => {
       [`${CONSTANTS}:INVOICE_STATE`, 'js-object', 'node-app', 17],
       [`${CONSTANTS}:OrderStage`, 'js-object', 'node-app', 23],
       ['node-app/src/leave.js:LeaveType', 'js-object', 'node-app', 1],
+      [`${PLURAL}:OrderLevels`, 'js-object', 'node-app', 1],
+      [`${PLURAL}:Statuses`, 'js-object', 'node-app', 2],
+      [`${PLURAL}:TicketCategories`, 'js-object', 'node-app', 3],
+      [`${PLURAL}:AllTypes`, 'js-object', 'node-app', 4],
+      [`${PLURAL}:Roles`, 'js-object', 'node-app', 5],
       [`${TABLES}:RoleType`, 'js-object', 'node-app', 1],
       [`${TABLES}:NoteKind`, 'js-object', 'node-app', 11],
       [`${TS_CONSTS}:TicketStatus`, 'ts-const-object', 'web-app', 1],
@@ -54,11 +61,12 @@ describe('the value sets of the fixture', () => {
       [`${ENUMS}:Mixed`, 'ts-enum', 'web-app', 16],
       [`${ENUMS}:Status`, 'ts-enum', 'web-app', 31],
       [`${ENUMS}:LeaveType`, 'ts-enum', 'web-app', 40],
+      [`${TS_PLURAL}:AlertModes`, 'ts-const-object', 'web-app', 1],
     ]);
     expect(data.dictionaries.filter((entry) => entry.form === 'go-type').map((entry) => [entry.name, entry.baseType])).toEqual([
       ['InvoiceState', 'string'], ['Mode', 'uint8'], ['Tier', 'string'], ['Status', 'int'], ['Kind', 'string'], ['Level', 'uint8'], ['Flags', 'uint16'], ['Phase', 'int32'], ['Tone', 'string'], ['Shade', 'uint8'],
     ]);
-    expect(data.applications).toEqual([{ directory: 'go-app', dictionaries: 10 }, { directory: 'node-app', dictionaries: 6 }, { directory: 'web-app', dictionaries: 7 }]);
+    expect(data.applications).toEqual([{ directory: 'go-app', dictionaries: 10 }, { directory: 'node-app', dictionaries: 11 }, { directory: 'web-app', dictionaries: 8 }]);
   });
 });
 
@@ -91,6 +99,22 @@ describe('Go: types, constants and iota', () => {
   it('takes string constants as they are, and leaves an untyped constant that points at a member out of the set', () => {
     expect(members(`${TYPES}:Kind`)).toEqual([['KindInternal', 'internal', true, 16], ['KindExternal', 'external', true, 17]]);
     expect(members('go-app/billing/invoice.go:InvoiceState')).toEqual([['InvoiceOpen', 'open', true, 7], ['InvoicePaid', 'paid', true, 8], ['InvoiceVoid', 'void', true, 9]]);
+  });
+});
+
+describe('the name filter takes a plural of a state word', () => {
+  it('takes Levels, Statuses, Categories, Types and Roles in JavaScript, and Modes in a TypeScript as const object', () => {
+    expect(members(`${PLURAL}:OrderLevels`)).toEqual([['low', 1, true, 1], ['high', 2, true, 1]]);
+    expect(members(`${PLURAL}:Statuses`)).toEqual([['on', 'on', true, 2], ['off', 'off', true, 2]]);
+    expect(members(`${PLURAL}:TicketCategories`)).toEqual([['bug', 'bug', true, 3]]);
+    expect(members(`${PLURAL}:AllTypes`)).toEqual([['a', 1, true, 4]]);
+    expect(members(`${PLURAL}:Roles`)).toEqual([['x', 1, true, 5]]);
+    expect(members(`${TS_PLURAL}:AlertModes`)).toEqual([['quiet', 'quiet', true, 1]]);
+  });
+
+  it('does not take a name that only looks like one: a word that is no plural of a state word, or a double s', () => {
+    const names = data.dictionaries.map((entry) => entry.name);
+    for (const name of ['Settings', 'Statess', 'Wishes']) expect(names).not.toContain(name);
   });
 });
 
@@ -154,6 +178,7 @@ describe('TypeScript: objects ending in as const', () => {
       ['TicketStatus', 1, 'dictionary'],
       ['RetryMode', 9, 'dictionary'],
       ['EmptyKind', 15, 'noLiteralMembers'],
+      ['AlertModes', 1, 'dictionary'],
     ]);
   });
 

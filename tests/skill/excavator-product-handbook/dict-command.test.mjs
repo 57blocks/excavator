@@ -47,7 +47,7 @@ describe('handbook.mjs data writes the dictionaries', () => {
     expect(result.status, result.stderr).toBe(0);
     expect(result.lines).toHaveLength(2);
     expect(result.lines[0]).toMatch(/^Data: /);
-    expect(result.lines[1]).toBe('Dictionaries: 23 value sets (10 Go types, 5 TS enums, 2 TS const objects, 6 JS objects); 72 members (66 computed, 6 not computed); 11 comments; 20 display names; 3 same names with different values; 5 skipped members; 19 other candidates (2 Go types without constants, 0 Go types declared again, 2 untyped iota constants, 2 constants of another type, 3 plain constants, 1 variables of another type, 1 TS const objects without literal members, 1 JS objects without literal members, 7 unmatched keys, 0 ambiguous keys).');
+    expect(result.lines[1]).toBe('Dictionaries: 29 value sets (10 Go types, 5 TS enums, 3 TS const objects, 11 JS objects); 80 members (74 computed, 6 not computed); 11 comments; 20 display names; 3 same names with different values; 5 skipped members; 19 other candidates (2 Go types without constants, 0 Go types declared again, 2 untyped iota constants, 2 constants of another type, 3 plain constants, 1 variables of another type, 1 TS const objects without literal members, 1 JS objects without literal members, 7 unmatched keys, 0 ambiguous keys).');
     const written = JSON.parse(readFileSync(join(out, 'dictionaries.json'), 'utf-8'));
     expect(written).toEqual(extractDictionaries(FIXTURE));
     expect(written.format).toBe('excavator-product-handbook-dictionaries/1');
