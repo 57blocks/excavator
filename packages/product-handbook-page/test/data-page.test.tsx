@@ -22,7 +22,7 @@ const shipped = JSON.parse(readFileSync(fileURLToPath(new URL('../../../skills/e
 const marked = Object.fromEntries(Object.entries(shipped.strings).map(([key, value]) => [key, `${MARK}${value}`]));
 const d = (text: string): string => `${DATA}${text}`;
 
-const mention = (file: string, line: number, rule: 'a' | 'b') => ({ file: d(file), line, rule });
+const mention = (file: string, line: number, rule: 'a' | 'b' | 'c') => ({ file: d(file), line, rule });
 const table = (name: string, mentions: DataSection['tables'][number]['mentions'], extra: Partial<DataSection['tables'][number]> = {}): DataSection['tables'][number] => ({
   name: d(name), sources: [{ kind: 'migration', file: d(`m/${name}.js`), line: 4 }], createdBy: d(`m/${name}.js`), lastChangedBy: d(`m/${name}.js`), mentions, ...extra,
 });
@@ -131,7 +131,7 @@ describe('the data page', () => {
   const body = main(html);
 
   it('shows the fixed note, the recognized forms and the count line', () => {
-    for (const key of ['md.data.note.rules', 'md.data.note.comments', 'md.data.note.orm', 'md.data.note.onlyInMigrations']) expect(body, key).toContain(marked[key]);
+    for (const key of ['md.data.note.nameRules', 'md.data.note.comments', 'md.data.note.ormDefaults', 'md.data.note.onlyInMigrations']) expect(body, key).toContain(marked[key]);
     expect(body).toContain(`${MARK}Forms of table declaration recognized in this version: ${marked['md.data.form.migrationCalls']}; ${marked['md.data.form.goTableName']}.`);
     expect(body).toContain(`${MARK}Tables: 4. Migrations: 4 (3 replayed, 1 not split, 0 down only). Tables whose name appears in two or more applications: 1. Tables whose name appears only in migrations: 1. Tables dropped by a migration: 1. Gaps: 4.`);
   });
@@ -161,6 +161,12 @@ describe('the data page', () => {
     const row = main(render(dataFor(BOTH, renamed), '#/technical/data'));
     expect(row).toContain(`${MARK}migration: ${MARK}${d('m/old.js')}, line 3 (as ${d('before')})`);
     expect(row).not.toContain(`${d('m/now.js')}, line 8 (as`);
+  });
+
+  it('words rule c from the ui table', () => {
+    const withC: DataSection = { ...section, tables: [table('joined', { [d('app-one')]: [mention('models/j.go', 4, 'c')] })] };
+    expect(main(render(dataFor(BOTH, withC), '#/technical/data'))).toContain(`${MARK}${MARK}${d('models/j.go')}, line 4 (${marked['md.data.rule.c']})`);
+    expect(marked['md.data.rule.c']).not.toBe('@@undefined');
   });
 
   it('has the sort controls, the by-name one pressed first', () => {

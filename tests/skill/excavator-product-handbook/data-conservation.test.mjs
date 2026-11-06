@@ -29,7 +29,7 @@ describe('migration files', () => {
     const otherFiles = data.gaps.otherMigrationFiles.map((entry) => entry.file);
     expect(new Set([...migrationFiles, ...otherFiles]).size).toBe(migrationFiles.length + otherFiles.length);
     expect([...migrationFiles, ...otherFiles].sort()).toEqual(inMigrationDir);
-    expect(inMigrationDir).toHaveLength(28);
+    expect(inMigrationDir).toHaveLength(29);
   });
 
   it('every migration has a bucket, and the bucket counts add up to the migrations', () => {
@@ -37,7 +37,7 @@ describe('migration files', () => {
     for (const entry of data.migrations) expect(buckets).toContain(entry.bucket);
     const sum = data.counts.migrationsReplayed + data.counts.migrationsUnsplit + data.counts.migrationsDownOnly;
     expect(sum).toBe(data.migrations.length);
-    expect(data.counts.migrations).toBe(26);
+    expect(data.counts.migrations).toBe(27);
     expect(data.gaps.unsplitMigrations.map((e) => e.file)).toEqual(data.migrations.filter((e) => e.bucket === 'unsplit').map((e) => e.file));
   });
 
@@ -55,7 +55,7 @@ describe('operations', () => {
     const { total, create, drop, rename, change, unnamed } = data.counts.operations;
     expect(create + drop + rename + change + unnamed).toBe(total);
     expect(total).toBe(data.operations.length);
-    expect(total).toBe(50);
+    expect(total).toBe(51);
   });
 
   it('the unnamed bucket is exactly the unnamed rows of the ledger', () => {
@@ -66,7 +66,7 @@ describe('operations', () => {
 
   it('the number of operations is the number of recognized call sites and statements found by reading the up parts', () => {
     // Counted by hand from the fixture: one per call, one per SQL statement or name in a statement list.
-    const handCount = { '001': 1, '002': 2, '003': 1, '004': 1, '005': 1, '006': 1, '007': 1, '008': 4, '009': 14, '010': 4, '011': 1, '014': 1, '015': 1, '016': 1, '017': 2, '018': 1, '019': 1, '020': 1, '021': 1, '022': 1, '023': 7, '024': 1, '025': 1 };
+    const handCount = { '001': 1, '002': 2, '003': 1, '004': 1, '005': 1, '006': 1, '007': 1, '008': 4, '009': 14, '010': 4, '011': 1, '014': 1, '015': 1, '016': 1, '017': 2, '018': 1, '019': 1, '020': 1, '021': 1, '022': 1, '023': 7, '024': 1, '025': 1, '026': 1 };
     const perFile = {};
     for (const op of data.operations) {
       const key = op.file.split('/').at(-1).slice(0, 3);

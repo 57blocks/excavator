@@ -42,7 +42,7 @@ describe('handbook.mjs data', () => {
     const result = runHandbook(['data', FIXTURE, out]);
     expect(result.status, result.stderr).toBe(0);
     expect(result.lines).toHaveLength(1);
-    expect(result.lines[0]).toBe('Data: 25 tables; 26 migrations (23 replayed, 2 not split, 1 down only); 6 dropped; 15 names only in migrations; 12 gaps (5 unnamed operations, 2 unsplit migrations, 5 unresolved model names).');
+    expect(result.lines[0]).toBe('Data: 26 tables; 27 migrations (24 replayed, 2 not split, 1 down only); 6 dropped; 15 names only in migrations; 12 gaps (5 unnamed operations, 2 unsplit migrations, 5 unresolved model names).');
     const written = JSON.parse(readFileSync(join(out, 'data.json'), 'utf-8'));
     expect(written).toEqual(extractData(FIXTURE));
     expect(checkDataShape(written)).toEqual([]);
@@ -135,6 +135,15 @@ describe('the shape check', () => {
     const absent = good();
     delete find(absent).sources[0].as;
     expect(checkDataShape(absent)).toEqual([]);
+  });
+
+  it('accepts rule c on a mention and refuses a rule it does not know', () => {
+    const withC = good();
+    expect(Object.values(withC.tables.find((entry) => entry.name === 'order_items').mentions).flat().map((x) => x.rule)).toEqual(['c']);
+    expect(checkDataShape(withC)).toEqual([]);
+    const unknown = good();
+    Object.values(unknown.tables.find((entry) => entry.name === 'order_items').mentions)[0][0].rule = 'd';
+    expect(checkDataShape(unknown).join('\n')).toContain('mentions');
   });
 
   it('refuses a droppedButDeclared that is missing, names an unlisted table, or disagrees with its count', () => {

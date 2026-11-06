@@ -113,7 +113,7 @@ function SectionBody({ section }: { section: DataSection }) {
   return (
     <>
       <div className="summary-note" data-part="data-note">
-        {['md.data.note.rules', 'md.data.note.comments', 'md.data.note.orm', 'md.data.note.onlyInMigrations'].map((key) => <p className="muted" key={key}>{t(key)}</p>)}
+        {['md.data.note.nameRules', 'md.data.note.comments', 'md.data.note.ormDefaults', 'md.data.note.onlyInMigrations'].map((key) => <p className="muted" key={key}>{t(key)}</p>)}
         <p className="muted">{t('md.data.recognized', { forms: section.recognized.map((form) => t(formKey(form))).join('; ') })}</p>
       </div>
       <p className="summary-counts">

@@ -107,7 +107,7 @@ export function checkDataShape(value) {
       lastChangedBy: nullOr(isString),
       directories: (v) => Array.isArray(v) && v.every(isString),
       changes: (v) => Array.isArray(v) && v.every((c) => isObject(c) && isString(c.file) && isLine(c.line) && isString(c.op) && ['call', 'sql'].includes(c.via) && optional(isString)(c.from) && optional(isString)(c.as)),
-      mentions: (v) => isObject(v) && Object.values(v).every((list) => Array.isArray(list) && list.every((m) => isObject(m) && isString(m.file) && isLine(m.line) && ['a', 'b'].includes(m.rule))),
+      mentions: (v) => isObject(v) && Object.values(v).every((list) => Array.isArray(list) && list.every((m) => isObject(m) && isString(m.file) && isLine(m.line) && ['a', 'b', 'c'].includes(m.rule))),
     }),
     dropped: rows(problems, value.dropped, 'dropped', { name: isString, file: isString, line: isLine, createdBy: nullOr(isString), directory: isString }),
   };

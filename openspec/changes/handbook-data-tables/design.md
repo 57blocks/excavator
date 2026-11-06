@@ -112,7 +112,8 @@
 
 对每个文件、每张表，命中以下任一条都算名字出现，记文件、行与规则：
 - **规则 a**：一个字符串字面值的全部内容等于表名，区分大小写；
-- **规则 b**：不分大小写的 `FROM|JOIN|INTO|UPDATE|TABLE` 之后，跳过空白、可选的引号或反引号与 `库名.` 前缀，接着正好是表名，且前后都不接 `[A-Za-z0-9_]`。
+- **规则 b**：不分大小写的 `FROM|JOIN|INTO|UPDATE|TABLE` 之后，跳过空白、可选的引号或反引号与 `库名.` 前缀，接着正好是表名，且前后都不接 `[A-Za-z0-9_]`。`TABLE` 之后的分隔还可以是 `(` 加一个字符串开头的引号（ORM 调用，如 `.Table("orders AS o")`），表名是字面值的开头、其后可接字面值的其余部分；字面值恰好等于表名的，已是规则 a，不重复记；
+- **规则 c**：`many2many:` 之后紧接表名（GORM 联结表的结构体标签），表名之后不接 `[A-Za-z0-9_]`。
 
 注释里的字符串也会命中，这是规则的一部分，写进页面的说明。模型声明的那一行与 Go 常量声明行都满足规则 a，自然算作出现。
 
@@ -120,7 +121,7 @@
 - 「名字出现在 N 个应用」，附位置；
 - 「名字只出现在迁移里」。
 
-不写「未使用」，因为 ORM 间接访问（例如按模型类型访问、表名由别的串拼出）这两条规则看不见。这一点作为固定说明写在章首。
+不写「未使用」，因为 ORM 间接访问（例如按模型类型访问、表名由别的串拼出）这三条规则看不见；经库的默认值到达的表（例如适配器的默认表）也看不见。这一点作为固定说明写在章首。
 
 ### D5 data.json 与呈现
 
@@ -132,7 +133,7 @@
   - `sources[]`：`{kind: migration|model|sql, file, line, as?}`；
   - `createdBy`、`lastChangedBy`：迁移的文件；
   - `changes[]`：`{file, line, op, via, from?, as?}`；
-  - `mentions`：`{application: [{file, line, rule}]}`；
+  - `mentions`：`{application: [{file, line, rule}]}`，`rule` 为 `a`、`b`、`c`；
 - `dropped[]`、`changedNeverCreated[]`、`declaredOnly[]`、`droppedButDeclared[]`、`onlyInMigrations[]`；`counts.droppedButDeclared` 是它的长度；技术手册与页面各有一个同名清单；
 - `gaps`：`{unsplitMigrations[], unnamedOperations[], unresolvedModelNames[], otherMigrationFiles[]}`；
 - `counts`。
@@ -161,7 +162,7 @@
 
 一次遍历每个文件：
 - 先取出所有字符串字面值，放进集合，查规则 a；
-- 再用一个关键字正则扫规则 b，查表名集合。
+- 再用一个关键字正则扫规则 b、一个 `many2many:` 正则扫规则 c，查表名集合。
 
 不按表 × 文件做嵌套正则。
 
@@ -185,7 +186,7 @@
   - 模型：`tableName`。
   - Go 应用：字面值、一处常量、两处同名常量。
   - 一个迁移外的 `.sql` 文件。
-  - 代码里规则 a、b 的命中与近似不命中：表名是标识符的一部分、`users_extra`。
+  - 代码里规则 a、b、c 的命中与近似不命中：表名是标识符的一部分、`users_extra`、`.Table("orders_archive")` 之于 `orders`、`many2many:order_items_x` 之于 `order_items`。
 
   期望值手写在测试里，不从实现生成。守恒测试：迁移文件、操作、模型声明，每个输入恰好在一个桶里。
 

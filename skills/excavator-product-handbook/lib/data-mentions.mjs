@@ -1,11 +1,17 @@
 /**
  * Where a table name appears outside the migrations (openspec change
- * handbook-data-tables, design D4 and D6). Two rules, nothing else:
+ * handbook-data-tables, design D4 and D6). Three rules, nothing else:
  *   a  a string literal whose whole content is the table name, case sensitive;
  *   b  FROM, JOIN, INTO, UPDATE or TABLE (any case) followed by optional
  *      whitespace, an optional quote or backtick, an optional `database.`
  *      prefix and then exactly the table name, with no letter, digit or
- *      underscore on either side.
+ *      underscore on either side. After TABLE the separator may also be an
+ *      opening parenthesis and a quote or backtick (an ORM call such as
+ *      `.Table("name AS n")`): the name is then the start of the literal and
+ *      the rest of the literal may follow. A literal that is the whole name is
+ *      rule a's, not counted twice;
+ *   c  `many2many:` followed at once by exactly the table name (the join
+ *      table of a struct tag), with no letter, digit or underscore after it.
  * A comment is text like any other, so a name in a comment counts. The result
  * says where the name appears; it does not say the file reads or writes the
  * table. One pass per file: the literals are cut out once and looked up in a
@@ -17,6 +23,8 @@
 const LITERAL = /'(?:[^'\\\n]|\\.)*'|"(?:[^"\\\n]|\\.)*"|`(?:[^`\\]|\\.)*`/g;
 const KEYWORD = /\b(?:FROM|JOIN|INTO|UPDATE|TABLE)\b/gi;
 const AFTER_KEYWORD = /\s*(?:[`"'[]?[\w$]+[`"'\]]?\.)*[`"'[]?([A-Za-z0-9_]+)/y;
+const AFTER_TABLE_CALL = /\s*\(\s*([`"'])(?:[`"'[]?[\w$]+[`"'\]]?\.)*[`"'[]?([A-Za-z0-9_]+)/y;
+const MANY_TO_MANY = /\bmany2many:([A-Za-z0-9_]+)/gi;
 
 /** A counter of line numbers for indexes that only increase. */
 function lineCounter(text) {
@@ -56,8 +64,21 @@ export function findMentions(file, text, names, into) {
   while ((match = KEYWORD.exec(text)) !== null) {
     AFTER_KEYWORD.lastIndex = KEYWORD.lastIndex;
     const word = AFTER_KEYWORD.exec(text);
-    if (word === null) continue;
+    if (word === null) {
+      if (match[0].toUpperCase() !== 'TABLE') continue;
+      AFTER_TABLE_CALL.lastIndex = KEYWORD.lastIndex;
+      const call = AFTER_TABLE_CALL.exec(text);
+      if (call === null || !names.has(call[2]) || text[AFTER_TABLE_CALL.lastIndex] === call[1]) continue;
+      record(call[2], keywordLine(call.index + call[0].length - call[2].length), 'b');
+      continue;
+    }
     const run = word[1];
     if (names.has(run)) record(run, keywordLine(word.index + word[0].length - run.length), 'b');
+  }
+
+  const joinLine = lineCounter(text);
+  MANY_TO_MANY.lastIndex = 0;
+  while ((match = MANY_TO_MANY.exec(text)) !== null) {
+    if (names.has(match[1])) record(match[1], joinLine(match.index + match[0].length - match[1].length), 'c');
   }
 }

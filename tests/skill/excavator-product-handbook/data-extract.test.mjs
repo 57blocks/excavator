@@ -20,7 +20,7 @@ describe('the table list', () => {
   it('holds the tables the up parts leave, plus the declared ones, sorted by name', () => {
     expect(names(data.tables)).toEqual([
       'accounts', 'audit_log', 'cache_entries', 'esm_const_t', 'esm_fn_t', 'exports_up_t', 'ghost_table', 'go_orders',
-      'invoices', 'ledger_entries', 'legacy_notes', 'model_only_events', 'module_up_t', 'multi_last', 'orders', 'reports', 'split_final', 'split_schema',
+      'invoices', 'ledger_entries', 'legacy_notes', 'model_only_events', 'module_up_t', 'multi_last', 'order_items', 'orders', 'reports', 'split_final', 'split_schema',
       'sql_migrated', 'sql_other', 'staging_q', 'staging_y', 'tags', 'ts_events', 'users',
     ]);
   });
@@ -276,7 +276,7 @@ describe('the migrations', () => {
   it('counts the migrations of each application', () => {
     expect(data.applications).toEqual([
       { directory: 'go-app', migrations: 0 },
-      { directory: 'node-app', migrations: 26 },
+      { directory: 'node-app', migrations: 27 },
     ]);
   });
 
@@ -374,6 +374,7 @@ describe('the operation ledger', () => {
       ['023-multiline.js', 22, 'drop-table', 'tmp_d', 'drop'],
       ['024-create-legacy-notes.js', 5, 'create-table', 'legacy_notes', 'create'],
       ['025-drop-legacy-notes.js', 5, 'drop-table', 'legacy_notes', 'drop'],
+      ['026-create-order-items.js', 5, 'create-table', 'order_items', 'create'],
     ]);
   });
 
@@ -393,12 +394,27 @@ describe('where a table name appears outside the migrations', () => {
     });
     expect(where('orders')).toEqual({
       '': ['tools/report.py:4:a'],
+      'go-app': ['go-app/store/archive.go:9:b', 'go-app/store/archive.go:10:b', 'go-app/store/archive.go:12:a'],
       'node-app': ['node-app/src/near.js:11:b', 'node-app/src/orders-service.js:3:b'],
     });
     expect(where('invoices')).toEqual({
       'go-app': ['go-app/store/invoices.go:4:b'],
       'node-app': ['node-app/src/orders-service.js:8:b'],
     });
+  });
+
+  it('records rule b for a Table( call with the name at the start of its string, and rule c for the name right after many2many:', () => {
+    // line 9 and 10: Table("orders AS o"), Table("orders o"); line 12 is the whole string, so rule a only
+    expect(where('orders')['go-app']).toEqual(['go-app/store/archive.go:9:b', 'go-app/store/archive.go:10:b', 'go-app/store/archive.go:12:a']);
+    expect(where('order_items')).toEqual({ 'go-app': ['go-app/store/archive.go:4:c'] });
+  });
+
+  it('does not match orders_archive for orders after Table(, nor order_items_x for order_items after many2many:', () => {
+    const lines = (name) => Object.values(table(name).mentions).flat().filter((x) => x.file === 'go-app/store/archive.go').map((x) => x.line);
+    expect(lines('orders')).not.toContain(11);
+    expect(lines('order_items')).not.toContain(5);
+    expect(names(data.tables)).not.toContain('orders_archive');
+    expect(names(data.tables)).not.toContain('order_items_x');
   });
 
   it('does not match a name that is part of a longer identifier, another case or a keyword prefix', () => {
@@ -428,20 +444,20 @@ describe('where a table name appears outside the migrations', () => {
 describe('the counts and the recognized forms', () => {
   it('are computed from the lists', () => {
     expect(data.counts).toEqual({
-      tables: 25,
-      migrations: 26,
-      migrationsReplayed: 23,
+      tables: 26,
+      migrations: 27,
+      migrationsReplayed: 24,
       migrationsUnsplit: 2,
       migrationsDownOnly: 1,
       otherMigrationFiles: 2,
-      operations: { total: 50, create: 22, drop: 7, rename: 7, change: 9, unnamed: 5 },
+      operations: { total: 51, create: 23, drop: 7, rename: 7, change: 9, unnamed: 5 },
       declarations: { total: 14, model: 7, sql: 2, unresolved: 5 },
       dropped: 6,
       droppedButDeclared: 1,
       changedNeverCreated: 1,
       declaredOnly: 6,
       onlyInMigrations: 15,
-      tablesInSeveralApplications: 2,
+      tablesInSeveralApplications: 3,
       gaps: 12,
     });
   });
@@ -452,6 +468,6 @@ describe('the counts and the recognized forms', () => {
   });
 
   it('counts the files searched', () => {
-    expect(data.scanned).toEqual({ filesSearched: 20, skippedBinary: 0, skippedTooLarge: 0, skippedUnreadable: 0, skippedSymlinks: 0 });
+    expect(data.scanned).toEqual({ filesSearched: 21, skippedBinary: 0, skippedTooLarge: 0, skippedUnreadable: 0, skippedSymlinks: 0 });
   });
 });

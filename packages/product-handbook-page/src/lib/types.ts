@@ -160,8 +160,8 @@ export interface UnitLocations {
   items: { claim: string; citations: { file: string; startLine: number | null; endLine: number | null }[] }[];
 }
 
-/** One place where a table name appears outside the migrations; `rule` is `a` (a string that is the whole name) or `b` (the name after FROM, JOIN, INTO, UPDATE or TABLE). */
-export interface NameMention { file: string; line: number; rule: 'a' | 'b' }
+/** One place where a table name appears outside the migrations; `rule` is `a` (a string that is the whole name), `b` (the name after FROM, JOIN, INTO, UPDATE or TABLE, or at the start of the string of a Table( call) or `c` (the name right after many2many:). */
+export interface NameMention { file: string; line: number; rule: 'a' | 'b' | 'c' }
 
 /** One table of the data section: where it is declared, the migrations that created and last changed it, and where its name appears by application (the empty key is the places that belong to no application). */
 export interface DataTable {

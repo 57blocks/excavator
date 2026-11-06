@@ -58,11 +58,21 @@ const tableRows = (section) => section.split('\n').filter((line) => line.startsW
 
 describe('the shipped fixed text', () => {
   it('has every key the chapter and the page use, so a check that a text is absent cannot pass on an undefined key', () => {
-    for (const key of ['md.data.heading', 'md.data.note.rules', 'md.data.notWritten', 'md.data.malformed', 'md.data.noApplication', 'md.data.onlyInMigrationsCell', 'page.data.sort.name']) expect(typeof ui[key], key).toBe('string');
+    for (const key of ['md.data.heading', 'md.data.note.nameRules', 'md.data.notWritten', 'md.data.malformed', 'md.data.noApplication', 'md.data.onlyInMigrationsCell', 'page.data.sort.name']) expect(typeof ui[key], key).toBe('string');
   });
 });
 
 describe('the technical handbook has a data chapter after the system overview', () => {
+  it('states three rules and the library-default caveat in the fixed notes', () => {
+    expect(ui['md.data.note.nameRules']).toContain('exactly the table name');
+    expect(ui['md.data.note.nameRules']).toContain('FROM, JOIN, INTO, UPDATE or TABLE');
+    expect(ui['md.data.note.nameRules']).toContain('many2many:');
+    expect(ui['md.data.note.ormDefaults']).toContain('library default');
+    expect(ui['md.data.rule.c']).toContain('many2many:');
+    expect(Object.keys(ui)).not.toContain('md.data.note.rules');
+    expect(Object.keys(ui)).not.toContain('md.data.note.orm');
+  });
+
   it('puts the chapter between the system overview and the domains, with the fixed note, the recognized forms and the count line', () => {
     const made = run(data);
     expect(assemble(made, 'technical').status).toBe(0);
@@ -74,16 +84,16 @@ describe('the technical handbook has a data chapter after the system overview', 
     expect(grouping).toBeGreaterThan(0);
     expect(at(`## ${ui['md.data.heading']}`)).toBeLessThan(grouping);
     const text_ = chapter(body);
-    for (const key of ['md.data.note.rules', 'md.data.note.comments', 'md.data.note.orm', 'md.data.note.onlyInMigrations']) expect(text_, key).toContain(ui[key]);
+    for (const key of ['md.data.note.nameRules', 'md.data.note.comments', 'md.data.note.ormDefaults', 'md.data.note.onlyInMigrations']) expect(text_, key).toContain(ui[key]);
     expect(text_).toContain(ui['md.data.recognized'].replace('{forms}', ['migration-calls', 'migration-sql', 'go-table-name', 'js-table-name', 'sql-file-create-table'].map((form) => ui[`md.data.form.${form.replace(/-([a-z])/g, (_, c) => c.toUpperCase())}`]).join('; ')));
-    expect(text_).toContain('Tables: 25. Migrations: 26 (23 replayed, 2 not split, 1 down only). Tables whose name appears in two or more applications: 2. Tables whose name appears only in migrations: 15. Tables dropped by a migration: 6. Gaps: 12.');
+    expect(text_).toContain('Tables: 26. Migrations: 27 (24 replayed, 2 not split, 1 down only). Tables whose name appears in two or more applications: 3. Tables whose name appears only in migrations: 15. Tables dropped by a migration: 6. Gaps: 12.');
   });
 
   it('every number of the count line equals the length of the list it counts', () => {
     const made = run(data);
     assemble(made, 'technical');
     const text_ = chapter(text(made, 'handbook-technical.md'));
-    expect(tableRows(part(text_, 'md.data.tablesHeading'))).toHaveLength(25);
+    expect(tableRows(part(text_, 'md.data.tablesHeading'))).toHaveLength(26);
     expect(tableRows(part(text_, 'md.data.droppedHeading'))).toHaveLength(6);
     expect(bullets(part(text_, 'md.data.onlyInMigrationsHeading'))).toHaveLength(15);
     expect(bullets(part(text_, 'md.data.declaredOnlyHeading'))).toHaveLength(6);
@@ -154,7 +164,7 @@ describe('the product view never shows the data section', () => {
     expect(assemble(made, 'product').status).toBe(0);
     const body = text(made, 'handbook.md');
     expect(body).not.toContain(ui['md.data.heading']);
-    expect(body).not.toContain(ui['md.data.note.rules']);
+    expect(body).not.toContain(ui['md.data.note.nameRules']);
     expect(body).not.toContain('ledger_entries');
     expect(existsSync(join(made.out, 'handbook-technical.md'))).toBe(false);
   });
@@ -204,7 +214,7 @@ describe('the page data carries the data section in its technical part only', ()
     expect(Object.keys(got.technical).slice(-2)).toEqual(['data', 'dataState']);
     expect(got.technical.dataState).toBe('ok');
     expect(Object.keys(got.technical.data)).toEqual(['recognized', 'applications', 'tables', 'dropped', 'changedNeverCreated', 'declaredOnly', 'droppedButDeclared', 'onlyInMigrations', 'gaps', 'counts']);
-    expect(got.technical.data.tables).toHaveLength(25);
+    expect(got.technical.data.tables).toHaveLength(26);
     expect(got.technical.data.counts).toEqual(data.counts);
     const users = got.technical.data.tables.find((entry) => entry.name === 'users');
     expect(Object.keys(users)).toEqual(['name', 'sources', 'createdBy', 'lastChangedBy', 'mentions']);
