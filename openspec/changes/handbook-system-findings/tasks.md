@@ -20,10 +20,17 @@
 - [x] 3.2 「发现」一章、覆盖、拼装前的复查；页面数据 `/10`、归属与组（design D8）
 - [x] 3.3 渲染与页面测试（design O2）
 
-## 4. 验收
+## 4. 否定与对比的范围词
+
+提交：`feat(product-handbook): negative and contrasting outcomes are scope words a tracer builds a case for`
+
+- [ ] 4.1 测试先红：表里有新词、追查文件带出这些词、追查者说明（design D10）
+- [ ] 4.2 `ui-strings.json`、追查者 agent 的说明；合约测试更新摘要
+
+## 5. 验收
 
 提交：`docs(openspec): record handbook-system-findings acceptance`
 
-- [ ] 4.1 变异检查，结果写进 `acceptance.md`
-- [ ] 4.2 O3 真实运行与独立抽查，没过的线照实写
-- [ ] 4.3 受影响测试、`check-refs`、`openspec validate --all --strict` 本地过；全量门在分离检出里跑（O4）
+- [ ] 5.1 变异检查，结果写进 `acceptance.md`
+- [ ] 5.2 O3 真实运行与独立抽查，没过的线照实写
+- [ ] 5.3 受影响测试、`check-refs`、`openspec validate --all --strict` 本地过；全量门在分离检出里跑（O4）
