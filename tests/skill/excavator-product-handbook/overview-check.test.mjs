@@ -141,6 +141,8 @@ describe('check-overview: application conservation', () => {
       rmSync(join(run.root, 'package.json'));
       doc.applications = ['repos/api', 'repos/web'].map((dir) => ({ dir, name: `App ${dir.slice(6)}`, does: 'Serves requests.', evidence: [{ file: `${dir}/package.json`, passage: '{ "name": "x" }' }] }));
       doc.integrations[0].callers = ['repos/api'];
+      // The project root's package.json is gone, so the name is cited from the first application's manifest (its package name).
+      doc.name = { text: 'x', evidence: [{ file: 'repos/api/package.json', passage: '{ "name": "x" }' }] };
       adjust?.(doc, run);
     });
   }

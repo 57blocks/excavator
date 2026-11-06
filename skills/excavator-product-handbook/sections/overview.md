@@ -15,6 +15,7 @@ The handbook opens with the system as a whole: what it is, who uses it, which ap
 2. Print what the prompt below needs, delete the file an earlier attempt left, record the dispatch and dispatch one subagent in the foreground (never in the background: a run without a terminal stops waiting for background subagents):
    ```bash
    node "$PLUGIN_ROOT/skills/excavator-product-handbook/handbook.mjs" applications "$PROJECT_ROOT"
+   node "$PLUGIN_ROOT/skills/excavator-product-handbook/handbook.mjs" names "$PROJECT_ROOT"
    jq -r '.areas[] | [.id, .name] | @tsv' "$OUT/map.json"
    jq -r '.features[] | [.id, .area, .reach, .name] | @tsv' "$OUT/map.json"
    jq -r '.roles[].label' "$OUT/map.json"
@@ -48,6 +49,7 @@ The features of the map (id, area, how readers reach it, name): <features, one p
 The roles of the map: <roles, one label per line>
 The head of the candidate list (frameworks found, what was skipped): <the output of the jq line, as printed>
 The application roots (directory, build manifests): <the output of the applications command, as printed>
+The name candidates (value, source, file and line, resolved or unresolved): <the output of the names command, as printed>
 
 Write in `$LANGUAGE`, in plain words for a reader who does not read code. Describe what the system does today. Give no advice, no opinion and no defect report: never write what the system should do or what is wrong with it.
 
@@ -57,6 +59,7 @@ Write one JSON file with exactly these keys, and no others. `E` stands for an ev
 {
   "format": "excavator-product-handbook-overview/1",
   "id": "overview",
+  "name": {"text": "<the value of one name candidate, copied exactly>", "evidence": E},
   "summary": [{"text": "<one plain sentence: what the system is and does>", "evidence": E}],
   "audiences": [{"who": "<a kind of user: staff, customers, partners, other systems>", "does": "<what they do in the system>", "evidence": E}],
   "applications": [{"dir": "<a directory that holds a build manifest: an application root above, or one below it; . is the project root>", "name": "<the application's name as readers know it>", "does": "<what it is responsible for>", "evidence": E}],
@@ -70,6 +73,8 @@ Every key is always there: write an empty list when nothing applies (`"integrati
 **Applications.** Every application root listed above must be covered: list at least one application whose `dir` is that root or lies below it (a repository that holds several applications can list each of them, a directory below the root that holds its own build manifest). Two applications never name the same directory, and a `dir` must hold a build manifest: a directory with none is refused. Each application is named by what readers call it and says what it is responsible for.
 
 **External systems.** An integration is a system outside the project that the code calls or is called by: a payment or messaging service, a mail or storage service, an identity provider, another company's API. `system` is its name exactly as the passage writes it, so the name must occur in the item's own passages (a name that is not in the quoted lines is refused). `callers` lists the `dir` of each listed application that calls it, at least one. Cite the line that calls it (the client call, the SDK construction, the endpoint or credential setting), not a list of dependencies.
+
+**System name.** `name` is the name readers know the system by, taken from the name candidates above, and nowhere else: never from a document, a directory name or your own wording. `text` is the value of one candidate, copied exactly as the list prints it, in whatever case and language the code spells it; it is not translated, not shortened and not rephrased, and none of the reader-text rules below applies to it. `evidence` is exactly one passage, not several: the line of that candidate in its file (the file and line are on its row), which must hold the value. Choose the full product name a reader would recognise rather than a package name, a module name or an abbreviation when the candidates offer one; never choose a candidate marked `unresolved`, which is a reference to a variable, not a name. When no candidate looks like the name of a product, write `"name": null` and add an item to `unknowns` that says which candidates you looked at and why none is the name.
 
 **Evidence.** Every item carries its own evidence. A passage is text copied verbatim from the file, part of a line or whole lines; a script finds it by ignoring differences in white space and line breaks, and it must occur **exactly once** in that file. When it occurs more than once, quote a longer one. A file is a path from the project root, inside the project, never under `.excavator`, `.git`, `node_modules`, `vendor`, `dist` or `build`, and never a document (`.md`, `.mdx`, `.txt`, `.rst`, `.adoc`): cite the code that shows it. An item may cite several passages; each is checked. Cite for each item the passage that by itself proves it: an item the code shown does not support is removed from the handbook by two verifiers that see only the item and the code around its citations, and by two tracers that read the whole project. A statement about the system as a whole ("a tool for ...") is hard to prove from one line; cite the entry file or the route table that shows what it does, and keep the sentence to what that code shows. When no passage proves it, write it in `unknowns`.
 

@@ -134,7 +134,9 @@ function groupRows(groups, map, entries) {
  * The system facts of a loaded run (`loadCheckedRun`'s result) over the
  * project at `root`: `{ status, overview, applications, counts, areas }`.
  * `status` is the overview's state; `overview` holds its text, only when it is
- * verified (null otherwise). The rest does not depend on it and is always
+ * verified (null otherwise); its `name` is the system name the overview kept,
+ * or null (the name is null, verification removed it, or the overview was
+ * verified before the key existed). The rest does not depend on it and is always
  * there: `applications` has one row per application root of the project with
  * the script facts (name and responsibility only from a verified overview,
  * else null), and `counts` is the system's size from the roots. `scan` is the
@@ -151,6 +153,7 @@ export function buildSystem(run, root, scan = scanProject(root)) {
   return {
     status,
     overview: doc === undefined ? null : {
+      name: doc.name?.text ?? null,
       summary: doc.summary.map((entry) => entry.text),
       audiences: doc.audiences.map(({ who, does }) => ({ who, does })),
       integrations: doc.integrations.map(({ system, use, callers }) => ({ system, use, callers: [...callers] })),
