@@ -42,7 +42,7 @@ describe('handbook.mjs data', () => {
     const result = runHandbook(['data', FIXTURE, out]);
     expect(result.status, result.stderr).toBe(0);
     expect(result.lines).toHaveLength(1);
-    expect(result.lines[0]).toBe('Data: 17 tables; 19 migrations (16 replayed, 2 not split, 1 down only); 3 dropped; 9 names only in migrations; 12 gaps (5 unnamed operations, 2 unsplit migrations, 5 unresolved model names).');
+    expect(result.lines[0]).toBe('Data: 21 tables; 23 migrations (20 replayed, 2 not split, 1 down only); 3 dropped; 13 names only in migrations; 12 gaps (5 unnamed operations, 2 unsplit migrations, 5 unresolved model names).');
     const written = JSON.parse(readFileSync(join(out, 'data.json'), 'utf-8'));
     expect(written).toEqual(extractData(FIXTURE));
     expect(checkDataShape(written)).toEqual([]);

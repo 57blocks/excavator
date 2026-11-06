@@ -12,8 +12,10 @@ import { neutralizeEscapes, sqlOperations, stripSqlComments } from './data-sql-o
 
 export const SCRIPT_EXTENSIONS = Object.freeze(['js', 'cjs', 'mjs', 'ts']);
 
-const UP_LINE = /^[ \t]*(?:async[ \t]+)?up[ \t]*[:(]/;
-const DOWN_LINE = /^[ \t]*(?:async[ \t]+)?down[ \t]*[:(]/;
+/** A line that starts the `up` (or `down`) part: a method or property, `[module.]exports.<name> =`, or an exported function or const. */
+const partLine = (name) => new RegExp(`^[ \\t]*(?:(?:async[ \\t]+)?${name}[ \\t]*[:(]|(?:module\\.)?exports\\.${name}[ \\t]*=|export[ \\t]+(?:async[ \\t]+)?function[ \\t]+${name}\\b|export[ \\t]+const[ \\t]+${name}[ \\t]*=)`);
+const UP_LINE = partLine('up');
+const DOWN_LINE = partLine('down');
 
 /** Method names of the migration API whose first argument is a table name, and the operation each is. */
 const CALLS = Object.freeze({

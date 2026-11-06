@@ -18,9 +18,9 @@ const names = (list) => list.map((entry) => (typeof entry === 'string' ? entry :
 describe('the table list', () => {
   it('holds the tables the up parts leave, plus the declared ones, sorted by name', () => {
     expect(names(data.tables)).toEqual([
-      'accounts', 'audit_log', 'cache_entries', 'ghost_table', 'go_orders', 'invoices', 'ledger_entries',
-      'model_only_events', 'orders', 'reports', 'sql_migrated', 'sql_other', 'staging_q', 'staging_y',
-      'tags', 'ts_events', 'users',
+      'accounts', 'audit_log', 'cache_entries', 'esm_const_t', 'esm_fn_t', 'exports_up_t', 'ghost_table', 'go_orders',
+      'invoices', 'ledger_entries', 'model_only_events', 'module_up_t', 'orders', 'reports', 'sql_migrated', 'sql_other',
+      'staging_q', 'staging_y', 'tags', 'ts_events', 'users',
     ]);
   });
 
@@ -161,7 +161,7 @@ describe('the migrations', () => {
   it('counts the migrations of each application', () => {
     expect(data.applications).toEqual([
       { directory: 'go-app', migrations: 0 },
-      { directory: 'node-app', migrations: 19 },
+      { directory: 'node-app', migrations: 23 },
     ]);
   });
 
@@ -175,6 +175,16 @@ describe('the migrations', () => {
     expect(bucket(m('017-extra.down.sql'))).toBe('down-only');
     expect(bucket(m('017-extra.sql'))).toBe('replayed');
     expect(bucket(m('001-create-users.js'))).toBe('replayed');
+  });
+
+  it('finds the up part of a migration that exports up and down by name, and does not replay its down part', () => {
+    const bucket = (file) => data.migrations.find((entry) => entry.file === file).bucket;
+    for (const file of ['019-exports-up.js', '020-module-exports-up.js', '021-export-function.ts', '022-export-const.ts']) expect(bucket(m(file))).toBe('replayed');
+    expect(table('exports_up_t').sources).toEqual([{ kind: 'migration', file: m('019-exports-up.js'), line: 4 }]);
+    expect(table('module_up_t').sources).toEqual([{ kind: 'migration', file: m('020-module-exports-up.js'), line: 4 }]);
+    expect(table('esm_fn_t').sources).toEqual([{ kind: 'migration', file: m('021-export-function.ts'), line: 4 }]);
+    expect(table('esm_const_t').sources).toEqual([{ kind: 'migration', file: m('022-export-const.ts'), line: 4 }]);
+    for (const name of ['exports_up_t', 'module_up_t', 'esm_fn_t', 'esm_const_t']) expect(names(data.dropped)).not.toContain(name);
   });
 
   it('counts the README and a file in a subdirectory of the migration directory in the other bucket', () => {
@@ -236,6 +246,10 @@ describe('the operation ledger', () => {
       ['017-extra.sql', 3, 'create-table', 'sql_migrated', 'create'],
       ['017-extra.sql', 4, 'create-table', 'sql_other', 'create'],
       ['018-ts-events.ts', 3, 'create-table', 'ts_events', 'create'],
+      ['019-exports-up.js', 4, 'create-table', 'exports_up_t', 'create'],
+      ['020-module-exports-up.js', 4, 'create-table', 'module_up_t', 'create'],
+      ['021-export-function.ts', 4, 'create-table', 'esm_fn_t', 'create'],
+      ['022-export-const.ts', 4, 'create-table', 'esm_const_t', 'create'],
     ]);
   });
 
@@ -282,7 +296,7 @@ describe('where a table name appears outside the migrations', () => {
   });
 
   it('lists the tables whose name appears only in migrations', () => {
-    expect(data.onlyInMigrations).toEqual(['audit_log', 'cache_entries', 'ghost_table', 'reports', 'sql_migrated', 'sql_other', 'staging_q', 'staging_y', 'ts_events']);
+    expect(data.onlyInMigrations).toEqual(['audit_log', 'cache_entries', 'esm_const_t', 'esm_fn_t', 'exports_up_t', 'ghost_table', 'module_up_t', 'reports', 'sql_migrated', 'sql_other', 'staging_q', 'staging_y', 'ts_events']);
     for (const name of data.onlyInMigrations) expect(table(name).mentions).toEqual({});
   });
 });
@@ -290,18 +304,18 @@ describe('where a table name appears outside the migrations', () => {
 describe('the counts and the recognized forms', () => {
   it('are computed from the lists', () => {
     expect(data.counts).toEqual({
-      tables: 17,
-      migrations: 19,
-      migrationsReplayed: 16,
+      tables: 21,
+      migrations: 23,
+      migrationsReplayed: 20,
       migrationsUnsplit: 2,
       migrationsDownOnly: 1,
       otherMigrationFiles: 2,
-      operations: { total: 37, create: 15, drop: 4, rename: 4, change: 9, unnamed: 5 },
+      operations: { total: 41, create: 19, drop: 4, rename: 4, change: 9, unnamed: 5 },
       declarations: { total: 11, model: 5, sql: 1, unresolved: 5 },
       dropped: 3,
       changedNeverCreated: 1,
       declaredOnly: 5,
-      onlyInMigrations: 9,
+      onlyInMigrations: 13,
       tablesInSeveralApplications: 1,
       gaps: 12,
     });
