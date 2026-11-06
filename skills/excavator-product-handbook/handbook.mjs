@@ -57,7 +57,7 @@
  *       the project; remove the items either tracer contradicted and verify the
  *       feature, nothing recorded when any file does not hold.
  *   sections [<list>]
- *       Validate a --sections list (overview, features; default all) and print
+ *       Validate a --sections list (overview, features, data; default all) and print
  *       SECTIONS=<list> and one READ=<file> line per phase file the run reads,
  *       in reading order, the shared map file once; exit 1 for a value that is
  *       not a section. Reads and changes no file.
@@ -142,7 +142,7 @@ Commands:
       item and then every feature as "id  name", end with a Next: line and
       exit 1. No fuzzy matching. Changes no file.
   sections [<list>]
-      Validate the --sections list (comma-separated: overview, features; empty
+      Validate the --sections list (comma-separated: overview, features, data; empty
       or absent is all) and print "SECTIONS=<the sections in fixed order>",
       then one "READ=<path>" line per phase file to read, relative to the skill
       directory, in reading order: the stage files first (the map file once),

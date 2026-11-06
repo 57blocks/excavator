@@ -12,8 +12,8 @@
 
 提交：`feat(product-handbook): data is a section of its own`
 
-- [ ] 2.1 `lib/sections.mjs` 加 `data`，错误提示列三个值；`sections` 测试（design O2）
-- [ ] 2.2 `sections/data.md`（Phase 4b）；`SKILL.md` 的选项、Sections 一节提到 `data`；合约测试钉摘要，其余三个文件摘要不变
+- [x] 2.1 `lib/sections.mjs` 加 `data`，错误提示列三个值；`sections` 测试（design O2）
+- [x] 2.2 `sections/data.md`（Phase 4b）；`SKILL.md` 的选项、Sections 一节提到 `data`；合约测试钉摘要，其余三个文件摘要不变
 
 ## 3. 呈现
 

@@ -1,5 +1,5 @@
-// O1 of openspec change handbook-sections: `handbook.mjs sections <list>`
-// validates the list and prints the files a run reads, from a fixed
+// O1 of openspec change handbook-sections and O2 of handbook-data-tables:
+// `handbook.mjs sections <list>` validates the list and prints the files a run reads, from a fixed
 // dependency table: all sections by default, one section, the shared map
 // stage file once, a fixed order whatever order the list is written in, and
 // exit 1 with the allowed values for a value that is not a section.
@@ -8,34 +8,42 @@ import { describe, expect, it } from 'vitest';
 import { DEFAULT_SECTIONS, SECTIONS, parseSections, readPlan } from '../../../skills/excavator-product-handbook/lib/sections.mjs';
 import { runHandbook } from './helpers.mjs';
 
-const ALL = ['SECTIONS=overview,features', 'READ=stages/map.md', 'READ=sections/overview.md', 'READ=sections/features.md'];
+const ALL = ['SECTIONS=overview,features,data', 'READ=stages/map.md', 'READ=sections/overview.md', 'READ=sections/features.md', 'READ=sections/data.md'];
 
 describe('parseSections', () => {
   it('defaults to every section when the list is not given or empty', () => {
-    expect(SECTIONS).toEqual(['overview', 'features']);
+    expect(SECTIONS).toEqual(['overview', 'features', 'data']);
     expect(DEFAULT_SECTIONS).toEqual(SECTIONS);
-    for (const text of [undefined, '', '   ']) expect(parseSections(text)).toEqual({ ok: true, sections: ['overview', 'features'] });
+    for (const text of [undefined, '', '   ']) expect(parseSections(text)).toEqual({ ok: true, sections: ['overview', 'features', 'data'] });
   });
 
   it('returns the sections in the fixed order, without repeats, whatever order they are written in', () => {
-    expect(parseSections('features,overview')).toEqual({ ok: true, sections: ['overview', 'features'] });
+    expect(parseSections('data,features,overview')).toEqual({ ok: true, sections: ['overview', 'features', 'data'] });
     expect(parseSections(' features , features ')).toEqual({ ok: true, sections: ['features'] });
   });
 
   it('refuses a value that is not a section and names it and the allowed ones', () => {
-    for (const bad of ['data', 'overview,data', 'Overview', 'overview,', ',', 'overview features']) {
+    for (const bad of ['tables', 'overview,tables', 'Overview', 'overview,', ',', 'overview features']) {
       const result = parseSections(bad);
       expect(result.ok, bad).toBe(false);
       expect(result.lines.join('\n'), bad).toContain('overview');
       expect(result.lines.join('\n'), bad).toContain('features');
+      expect(result.lines.join('\n'), bad).toContain('data');
     }
-    expect(parseSections('overview,data').lines[0]).toContain('"data"');
+    expect(parseSections('overview,tables').lines[0]).toContain('"tables"');
+    expect(parseSections('tables').lines[1]).toBe('--sections takes overview, features, data, any of them separated by a comma (default: all)');
   });
 });
 
 describe('readPlan', () => {
   it('lists the stage file before the section files and the shared map stage once', () => {
     expect(readPlan(['overview', 'features'])).toEqual(['stages/map.md', 'sections/overview.md', 'sections/features.md']);
+    expect(readPlan(['overview', 'features', 'data'])).toEqual(['stages/map.md', 'sections/overview.md', 'sections/features.md', 'sections/data.md']);
+  });
+
+  it('the data section needs no stage file: its own file only, whatever else is chosen', () => {
+    expect(readPlan(['data'])).toEqual(['sections/data.md']);
+    expect(readPlan(['overview', 'data'])).toEqual(['stages/map.md', 'sections/overview.md', 'sections/data.md']);
   });
 
   it('a section needs the map stage file, then its own file', () => {
@@ -59,24 +67,30 @@ describe('handbook.mjs sections', () => {
     expect(runHandbook(['sections', 'features']).lines).toEqual(['SECTIONS=features', 'READ=stages/map.md', 'READ=sections/features.md']);
   });
 
+  it('prints only the data file for the data section: no map stage file', () => {
+    const result = runHandbook(['sections', 'data']);
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.lines).toEqual(['SECTIONS=data', 'READ=sections/data.md']);
+    expect(runHandbook(['sections', 'overview,data']).lines).toEqual(['SECTIONS=overview,data', 'READ=stages/map.md', 'READ=sections/overview.md', 'READ=sections/data.md']);
+  });
+
   it('prints the map stage file once when both sections are chosen', () => {
     const result = runHandbook(['sections', 'overview,features']);
     expect(result.status, result.stderr).toBe(0);
-    expect(result.lines).toEqual(ALL);
+    expect(result.lines).toEqual(['SECTIONS=overview,features', 'READ=stages/map.md', 'READ=sections/overview.md', 'READ=sections/features.md']);
     expect(result.lines.filter((line) => line === 'READ=stages/map.md')).toHaveLength(1);
   });
 
   it('prints the same lines in the same order whatever order the list is written in', () => {
-    expect(runHandbook(['sections', 'features,overview']).lines).toEqual(ALL);
-    expect(runHandbook(['sections', 'features,overview,features']).lines).toEqual(ALL);
+    expect(runHandbook(['sections', 'data,features,overview']).lines).toEqual(ALL);
+    expect(runHandbook(['sections', 'features,data,overview,features']).lines).toEqual(ALL);
   });
 
   it('exits 1 and prints the allowed values for a value that is not a section, printing no READ line', () => {
-    const result = runHandbook(['sections', 'data,overview']);
+    const result = runHandbook(['sections', 'tables,overview']);
     expect(result.status, result.stdout + result.stderr).toBe(1);
-    expect(result.stdout).toContain('"data"');
-    expect(result.stdout).toContain('overview');
-    expect(result.stdout).toContain('features');
+    expect(result.stdout).toContain('"tables"');
+    expect(result.stdout).toContain('--sections takes overview, features, data, any of them separated by a comma (default: all)');
     expect(result.lines.some((line) => line.startsWith('READ='))).toBe(false);
   });
 
