@@ -9,8 +9,8 @@
 
 提交：`feat(product-handbook): the system-findings section writes, verifies and traces the findings of each application root`
 
-- [ ] 2.1 `lib/sections.mjs` 加 `system-findings`；`sections/system-findings.md` 第 4d 阶段与子代理提示（design D1、D5）
-- [ ] 2.2 `SKILL.md`：选项 `--applications`，第 5、6 阶段列出系统发现单元，「部分」规则；合约测试更新摘要（design D6）
+- [x] 2.1 `lib/sections.mjs` 加 `system-findings`；`sections/system-findings.md` 第 4d 阶段与子代理提示（design D1、D5）
+- [x] 2.2 `SKILL.md`：选项 `--applications`，第 5、6 阶段列出系统发现单元，「部分」规则；合约测试更新摘要（design D6）
 
 ## 3. 合并与呈现
 
