@@ -11,10 +11,12 @@
  * directory checks, but a removed application may leave a root uncovered and
  * a caller without its application, so coverage and the listed-caller rule
  * apply to a written overview only; a settled caller must still be a
- * directory that holds a manifest.
+ * directory that holds a manifest. The name (overview-name.mjs) is the value of
+ * a name candidate of the project, cited at the candidate's line.
  */
 
 import { isUnder, scanProject } from './applications.mjs';
+import { nameProblems } from './overview-name.mjs';
 import { overviewItems } from './overview-items.mjs';
 import { overviewShapeProblems } from './overview-shape.mjs';
 import { reviewItems } from './review.mjs';
@@ -74,9 +76,11 @@ export function overviewProblems(doc, { files, memberDirs, mapLabels, languageCh
   const shape = overviewShapeProblems(doc, { settled });
   if (shape.length > 0) return shape;
   const items = overviewItems(doc);
+  const scan = applications ?? scanProject(files.root);
   return [
     ...documentProblems(items),
     ...reviewItems(items, { files, memberDirs, exemptLabels: mapLabels, languageCheck }).problems,
-    ...applicationProblems(doc, applications ?? scanProject(files.root), { settled }),
+    ...applicationProblems(doc, scan, { settled }),
+    ...nameProblems(doc, scan, files),
   ];
 }

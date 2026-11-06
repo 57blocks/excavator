@@ -2,7 +2,7 @@
  * The run the system-overview tests share (openspec change
  * handbook-system-overview): the synthetic fixture project plus one extra
  * source file that names an external system, and an overview that passes
- * check-overview on it. The fixture project root holds a package.json, so it
+ * check-overview on it (its name is the fixture's package name, the one name candidate the project has). The fixture project root holds a package.json, so it
  * is the one application root and its directory is ".".
  */
 import { expect } from 'vitest';
@@ -21,6 +21,7 @@ export function goodOverview() {
   return {
     format: OVERVIEW_FORMAT,
     id: 'overview',
+    name: { text: 'handbook-fixture', evidence: [ev('package.json', '"name": "handbook-fixture",')] },
     summary: [{ text: 'Staff place and review orders for customers.', evidence: [ev('src/forms/order-form.js', "title: 'New Order',")] }],
     audiences: [{ who: 'Clerk', does: 'Creates orders.', evidence: [ev('src/roles.js', "const ROLES = ['Clerk', 'Approver'];")] }],
     applications: [{ dir: '.', name: 'Order tool', does: 'Serves the order pages and sends reminders.', evidence: [ev('package.json', '"express": "^4.18.0",')] }],

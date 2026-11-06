@@ -1,6 +1,6 @@
 /** The page data `handbook.mjs page` writes into the template (openspec change product-handbook-map, design D13). */
 
-export const PAGE_FORMAT = 'excavator-product-handbook-page/7';
+export const PAGE_FORMAT = 'excavator-product-handbook-page/8';
 
 /** The views a page can hold (openspec change handbook-entities-and-views): the product view and the technical view. */
 export const VIEWS = ['product', 'technical'] as const;
@@ -110,6 +110,8 @@ export interface ApplicationFacts {
 
 /** The text of a verified system overview, without its evidence. */
 export interface OverviewText {
+  /** The system name of the overview, or null (it has none, verification removed it, or the overview is older than the name). */
+  name: string | null;
   summary: string[];
   audiences: { who: string; does: string }[];
   integrations: { system: string; use: string; callers: string[] }[];
@@ -300,7 +302,8 @@ export interface Technical {
 
 export interface PageData {
   format: typeof PAGE_FORMAT;
-  project: string;
+  /** The system name the verified overview kept, or null; never the directory of the project. */
+  project: string | null;
   language: string;
   languageTag: string;
   ui: { strings: Record<string, string> };

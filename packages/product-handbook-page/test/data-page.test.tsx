@@ -58,7 +58,7 @@ const section: DataSection = {
 
 function dataFor(views: View[], dataSection: DataSection | null = section, dataState: 'ok' | 'missing' | 'malformed' = 'ok'): PageData {
   return {
-    format: 'excavator-product-handbook-page/7',
+    format: 'excavator-product-handbook-page/8',
     project: d('project'),
     language: d('language'),
     languageTag: 'xx',

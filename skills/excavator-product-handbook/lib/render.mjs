@@ -138,6 +138,7 @@ function applicationsTable(system, t) {
 function overviewBlock(system, basis, t, locations) {
   const out = [`## ${inline(t('md.overview.heading'))}`, ''];
   const { overview, counts } = system;
+  if (overview?.name == null) out.push(inline(t('md.overview.nameMissing')), '');
   if (overview === null) out.push(inline(fill(t('md.overview.notWritten'), { step: t(`md.status.${system.status}`) })), '');
   out.push(fill(t(basis === 'domains' ? 'md.overview.countsWithDomains' : 'md.overview.counts'), { ...counts, verified: counts.featuresWithEntry }), '');
   if (overview !== null) {
@@ -237,7 +238,9 @@ export function renderHandbook({ map, entries, state, candidates, ui, summary, s
   const basis = entities.domainBasis;
   const areaName = new Map(map.areas.map((area) => [area.id, area.name]));
   const featureOf = new Map(map.features.map((feature) => [feature.id, feature]));
-  const out = [`# ${inline(t(technical ? 'md.titleTechnical' : 'md.title'))}`, '', ...overviewBlock(system, basis, t, placesOf.get('overview')), ...(technical && data !== null ? dataBlock(data, t) : []), ...(technical && dictionaries !== null ? dictionaryBlock(dictionaries, t) : []), `## ${t(basis === 'domains' ? 'md.domains.heading' : 'md.areas.heading')}`, ''];
+  const name = system.overview?.name ?? null;
+  const title = name === null ? t(technical ? 'md.titleTechnical' : 'md.title') : fill(t(technical ? 'md.titleTechnicalNamed' : 'md.titleNamed'), { name });
+  const out = [`# ${inline(title)}`, '', ...overviewBlock(system, basis, t, placesOf.get('overview')), ...(technical && data !== null ? dataBlock(data, t) : []), ...(technical && dictionaries !== null ? dictionaryBlock(dictionaries, t) : []), `## ${t(basis === 'domains' ? 'md.domains.heading' : 'md.areas.heading')}`, ''];
   if (basis === 'areas') out.push(t('md.domains.fromAreas'), '');
   for (const domain of entities.domains) {
     out.push(`- **${inline(domain.name)}**`);

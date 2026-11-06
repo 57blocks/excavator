@@ -1,6 +1,6 @@
 import { useState } from 'react';
 
-import { useText } from '../lib/text';
+import { systemName, useText } from '../lib/text';
 import type { Text } from '../lib/text';
 import type { DataSection, DataTable, PageData, Technical } from '../lib/types';
 import { Cell, TableScroll } from './Tables';
@@ -173,7 +173,7 @@ export function DataPage({ data, technical }: { data: PageData; technical: Techn
   return (
     <article className="page" data-view="data">
       <header className="page-head">
-        <p className="eyebrow">{data.project}</p>
+        <p className="eyebrow">{systemName(data.project, t)}</p>
         <h1 className="page-title">{t('md.data.heading')}</h1>
       </header>
       {section === null
