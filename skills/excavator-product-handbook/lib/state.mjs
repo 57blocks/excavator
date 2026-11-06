@@ -24,6 +24,10 @@
  * (openspec change handbook-findings-priority) is under the optional key
  * `priority`, an entry of the same form with the digest of the groups it was made
  * for (`groupsDigest`) and the groups the judges did not confirm (`unranked`).
+ * The remedies of the findings (openspec change handbook-remedies) are under the
+ * optional key `remedies`, again an entry of the same form, with the digest of
+ * the facts it was written for (`factsDigest`) and the paragraphs the judges did
+ * not both accept (`dropped`).
  */
 
 import { createHash } from 'node:crypto';
@@ -75,6 +79,17 @@ function priorityEntryProblem(entry) {
   return null;
 }
 
+/** The problem of the entry of the remedies unit (openspec change handbook-remedies), or null: an entry of any other unit, plus the digest of its facts and the paragraphs no two judges accepted. */
+function remediesEntryProblem(entry) {
+  const problem = entryProblem('remedies', entry);
+  if (problem !== null) return problem;
+  if (entry.factsDigest !== undefined && typeof entry.factsDigest !== 'string') return 'remedies has a factsDigest that is not a string';
+  if (entry.dropped !== undefined && !(Array.isArray(entry.dropped) && entry.dropped.every((one) => isObject(one) && typeof one.id === 'string' && Array.isArray(one.reasons) && one.reasons.every((reason) => typeof reason === 'string')))) {
+    return 'remedies has a dropped list that is not [{ id, reasons }]';
+  }
+  return null;
+}
+
 const stateProblems = (state) => {
   if (!isObject(state) || state.format !== STATE_FORMAT || !isObject(state.features)) return `format must be ${STATE_FORMAT} with a features object`;
   for (const [id, entry] of Object.entries(state.features)) {
@@ -99,6 +114,10 @@ const stateProblems = (state) => {
   }
   if (state.priority !== undefined) {
     const problem = priorityEntryProblem(state.priority);
+    if (problem !== null) return problem;
+  }
+  if (state.remedies !== undefined) {
+    const problem = remediesEntryProblem(state.remedies);
     if (problem !== null) return problem;
   }
   return state.overview === undefined ? null : entryProblem('overview', state.overview);
