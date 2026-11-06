@@ -14,6 +14,9 @@ const TABLE = Object.freeze([
   Object.freeze({ id: 'overview', stages: Object.freeze(['stages/map.md']), file: 'sections/overview.md' }),
   Object.freeze({ id: 'features', stages: Object.freeze(['stages/map.md']), file: 'sections/features.md' }),
   Object.freeze({ id: 'data', stages: Object.freeze([]), file: 'sections/data.md' }),
+  // The code health (openspec change handbook-history-appendix) is a script section like the data: it reads git and the project files and
+  // needs no map, no stage file and no subagent; it is read where the run reaches it, right after the data file.
+  Object.freeze({ id: 'history', stages: Object.freeze([]), file: 'sections/history.md' }),
   Object.freeze({ id: 'findings', stages: Object.freeze(['stages/map.md']), file: 'sections/findings.md' }),
   Object.freeze({ id: 'system-findings', stages: Object.freeze(['stages/map.md']), file: 'sections/system-findings.md' }),
   // The ranking of the findings (openspec change handbook-findings-priority) works on the findings the trace left verified, so its

@@ -217,7 +217,7 @@ describe('excavator-product-handbook skill: setup', () => {
 describe('excavator-product-handbook skill: commands', () => {
   const usage = runHandbook(['--help']).stdout;
   const usageCommands = [...new Set([...usage.matchAll(/^ {2}([a-z][a-z-]*) [<[]/gm)].map((match) => match[1]))];
-  const skillCommands = [...new Set([...`${skill}\n${skillOwn}\n${sectionText('sections/priority.md')}\n${sectionText('sections/remedies.md')}\n${sectionText('sections/topics.md')}`.matchAll(/handbook\.mjs" ([a-z][a-z-]*)/g)].map((match) => match[1]))];
+  const skillCommands = [...new Set([...`${skill}\n${skillOwn}\n${sectionText('sections/history.md')}\n${sectionText('sections/priority.md')}\n${sectionText('sections/remedies.md')}\n${sectionText('sections/topics.md')}`.matchAll(/handbook\.mjs" ([a-z][a-z-]*)/g)].map((match) => match[1]))];
 
   it('names every command handbook.mjs has, and only those', () => {
     expect(usageCommands.length).toBeGreaterThanOrEqual(16);
@@ -1662,6 +1662,36 @@ describe('excavator-product-handbook skill: sections (O2 of handbook-sections)',
     expect(options).toContain('and `data` (the tables, migrations and where each table name appears; written by a script, needs no map)');
     const split = flat(skillOwn.split(/^## How the work is split$/m)[1].split(/^## Options$/m)[0]);
     expect(split).toContain('`sections/data.md` holds Phase 4b');
+  });
+
+  it('sections/history.md is pinned, holds Phase 4e only, runs the history command and dispatches no subagent (openspec change handbook-history-appendix)', () => {
+    const text = sectionText('sections/history.md');
+    expect(createHash('sha256').update(text, 'utf8').digest('hex')).toBe('9fbb202f05b39a2dadd92d96e7670d3da4ffc44ee8c58c636365679982cb140b');
+    expect([...text.matchAll(/^## Phase .+$/gm)].map((match) => match[0])).toEqual(['## Phase 4e: History']);
+    expect(blocks(text, 'bash').map((block) => block.trim())).toEqual([`node "$PLUGIN_ROOT/skills/excavator-product-handbook/handbook.mjs" history "$OUT" --project "$PROJECT_ROOT"`]);
+    const flatText = flat(text);
+    expect(flatText).toContain('On exit 0, tell the user the one line it printed (it starts `History:`), as it is');
+    expect(flatText).toContain('It writes `$OUT/entries/history.json` on every run');
+    expect(flatText).toContain('On any other exit, tell the user the lines it printed as they are, and stop');
+    expect(flatText).toContain('dispatch no subagent');
+    expect(flatText).toContain('It needs no map');
+    expect(flatText).toContain('writes nothing under it');
+    expect(flatText).toContain('Phases 5 and 6 have nothing to verify or trace for it');
+    expect(skill).not.toContain('## Phase 4e: ');
+  });
+
+  it('names the history section in the Sections part, the options, the split and the files table, with no map for it, and ends a history-only run without a map before Phase 7', () => {
+    const part = flat(skillOwn.slice(skillOwn.indexOf('\n## Sections\n'), skillOwn.indexOf('## Phase 5: Verify')));
+    expect(part).toContain('`sections/history.md` holds Phase 4e (the code health, section `history`), which needs no map and no stage file either');
+    expect(part).toContain('The `history` section has no unit either: with only `history` selected, Phases 5 and 6 have nothing to do.');
+    expect(part).toContain('The same holds when `history` is selected, with or without `data`, and nothing else: the run ends after the history phase');
+    const options = flat(skillOwn.split(/^## Options$/m)[1].split(/^## Sources$/m)[0]);
+    expect(options).toContain('and `history` (the code health: the commits of each year');
+    expect(options).toContain('written by a script from git and the project files, needs no map, writes nothing under the project)');
+    const split = flat(skillOwn.split(/^## How the work is split$/m)[1].split(/^## Options$/m)[0]);
+    expect(split).toContain('`sections/history.md` holds Phase 4e');
+    expect(split).toContain('computes the appendix (the open questions, the glossary, the sources and scope) from the verified entries and the run\'s records');
+    expect(split).toContain('| `entries/history.json` | `handbook.mjs history` (Phase 4e');
   });
 
   it('names the commands only the moved phases run (the map, domain and overview checks) in the phase files, not in SKILL.md', () => {

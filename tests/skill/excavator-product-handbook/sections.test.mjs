@@ -9,17 +9,17 @@ import { describe, expect, it } from 'vitest';
 import { DEFAULT_SECTIONS, SECTIONS, afterTracePlan, parseSections, readPlan } from '../../../skills/excavator-product-handbook/lib/sections.mjs';
 import { runHandbook } from './helpers.mjs';
 
-const ALL = ['SECTIONS=overview,features,data,findings,system-findings,priority,remedies,topics', 'READ=stages/map.md', 'READ=sections/overview.md', 'READ=sections/features.md', 'READ=sections/data.md', 'READ=sections/findings.md', 'READ=sections/system-findings.md', 'AFTER_TRACE=sections/priority.md', 'AFTER_TRACE=sections/remedies.md', 'AFTER_TRACE=sections/topics.md'];
+const ALL = ['SECTIONS=overview,features,data,history,findings,system-findings,priority,remedies,topics', 'READ=stages/map.md', 'READ=sections/overview.md', 'READ=sections/features.md', 'READ=sections/data.md', 'READ=sections/history.md', 'READ=sections/findings.md', 'READ=sections/system-findings.md', 'AFTER_TRACE=sections/priority.md', 'AFTER_TRACE=sections/remedies.md', 'AFTER_TRACE=sections/topics.md'];
 
 describe('parseSections', () => {
   it('defaults to every section when the list is not given or empty', () => {
-    expect(SECTIONS).toEqual(['overview', 'features', 'data', 'findings', 'system-findings', 'priority', 'remedies', 'topics']);
+    expect(SECTIONS).toEqual(['overview', 'features', 'data', 'history', 'findings', 'system-findings', 'priority', 'remedies', 'topics']);
     expect(DEFAULT_SECTIONS).toEqual(SECTIONS);
-    for (const text of [undefined, '', '   ']) expect(parseSections(text)).toEqual({ ok: true, sections: ['overview', 'features', 'data', 'findings', 'system-findings', 'priority', 'remedies', 'topics'] });
+    for (const text of [undefined, '', '   ']) expect(parseSections(text)).toEqual({ ok: true, sections: ['overview', 'features', 'data', 'history', 'findings', 'system-findings', 'priority', 'remedies', 'topics'] });
   });
 
   it('returns the sections in the fixed order, without repeats, whatever order they are written in', () => {
-    expect(parseSections('topics,remedies,priority,system-findings,findings,data,features,overview')).toEqual({ ok: true, sections: ['overview', 'features', 'data', 'findings', 'system-findings', 'priority', 'remedies', 'topics'] });
+    expect(parseSections('topics,remedies,priority,system-findings,findings,history,data,features,overview')).toEqual({ ok: true, sections: ['overview', 'features', 'data', 'history', 'findings', 'system-findings', 'priority', 'remedies', 'topics'] });
     expect(parseSections(' features , features ')).toEqual({ ok: true, sections: ['features'] });
   });
 
@@ -35,7 +35,7 @@ describe('parseSections', () => {
       expect(result.lines.join('\n'), bad).toContain('priority');
     }
     expect(parseSections('overview,tables').lines[0]).toContain('"tables"');
-    expect(parseSections('tables').lines[1]).toBe('--sections takes overview, features, data, findings, system-findings, priority, remedies, topics, any of them separated by a comma (default: all)');
+    expect(parseSections('tables').lines[1]).toBe('--sections takes overview, features, data, history, findings, system-findings, priority, remedies, topics, any of them separated by a comma (default: all)');
   });
 });
 
@@ -44,7 +44,7 @@ describe('readPlan', () => {
     expect(readPlan(['overview', 'features'])).toEqual(['stages/map.md', 'sections/overview.md', 'sections/features.md']);
     expect(readPlan(['overview', 'features', 'data'])).toEqual(['stages/map.md', 'sections/overview.md', 'sections/features.md', 'sections/data.md']);
     expect(readPlan(['overview', 'features', 'data', 'findings'])).toEqual(['stages/map.md', 'sections/overview.md', 'sections/features.md', 'sections/data.md', 'sections/findings.md']);
-    expect(readPlan([...DEFAULT_SECTIONS])).toEqual(['stages/map.md', 'sections/overview.md', 'sections/features.md', 'sections/data.md', 'sections/findings.md', 'sections/system-findings.md']);
+    expect(readPlan([...DEFAULT_SECTIONS])).toEqual(['stages/map.md', 'sections/overview.md', 'sections/features.md', 'sections/data.md', 'sections/history.md', 'sections/findings.md', 'sections/system-findings.md']);
   });
 
   it('the system-findings section needs the map stage file, then its own file, after the findings file, and adds nothing to the others', () => {
@@ -121,6 +121,35 @@ describe('the remedies section (handbook-remedies, design D1)', () => {
   });
 });
 
+// O1 of openspec change handbook-history-appendix, design D1: the history section is a script section like data: no map, no
+// stage file, no subagent; its file is read at the moment the run reaches it, right after the data file.
+describe('the history section (handbook-history-appendix, design D1)', () => {
+  it('needs no stage file: its own file only, whatever else is chosen, and it adds nothing to the other sections', () => {
+    expect(readPlan(['history'])).toEqual(['sections/history.md']);
+    expect(readPlan(['overview', 'history'])).toEqual(['stages/map.md', 'sections/overview.md', 'sections/history.md']);
+    expect(readPlan(['data', 'history'])).toEqual(['sections/data.md', 'sections/history.md']);
+    expect(readPlan(['history', 'findings'])).toEqual(['stages/map.md', 'sections/history.md', 'sections/findings.md']);
+    expect(afterTracePlan(['history'])).toEqual([]);
+    expect(readPlan(['overview', 'features', 'data', 'findings'])).not.toContain('sections/history.md');
+  });
+
+  it('comes right after data in the fixed order, whatever order the list is written in', () => {
+    expect(SECTIONS.indexOf('history')).toBe(SECTIONS.indexOf('data') + 1);
+    expect(parseSections('findings,history,overview').sections).toEqual(['overview', 'history', 'findings']);
+  });
+
+  it('is printed by handbook.mjs sections as one READ line and nothing else', () => {
+    const only = runHandbook(['sections', 'history']);
+    expect(only.status, only.stderr).toBe(0);
+    expect(only.lines).toEqual(['SECTIONS=history', 'READ=sections/history.md']);
+    expect(runHandbook(['sections', 'data,history']).lines).toEqual(['SECTIONS=data,history', 'READ=sections/data.md', 'READ=sections/history.md']);
+  });
+
+  it('is in the allowed values the usage line names', () => {
+    expect(parseSections('tables').lines[1]).toContain('overview, features, data, history, findings');
+  });
+});
+
 describe('handbook.mjs sections', () => {
   it('prints every section and file for no list and for an empty list', () => {
     const none = runHandbook(['sections']);
@@ -163,15 +192,15 @@ describe('handbook.mjs sections', () => {
   });
 
   it('prints the same lines in the same order whatever order the list is written in', () => {
-    expect(runHandbook(['sections', 'topics,remedies,priority,system-findings,findings,data,features,overview']).lines).toEqual(ALL);
-    expect(runHandbook(['sections', 'features,data,topics,remedies,priority,system-findings,findings,overview,features']).lines).toEqual(ALL);
+    expect(runHandbook(['sections', 'topics,remedies,priority,system-findings,findings,history,data,features,overview']).lines).toEqual(ALL);
+    expect(runHandbook(['sections', 'features,data,topics,remedies,priority,system-findings,findings,history,overview,features']).lines).toEqual(ALL);
   });
 
   it('exits 1 and prints the allowed values for a value that is not a section, printing no READ line', () => {
     const result = runHandbook(['sections', 'tables,overview']);
     expect(result.status, result.stdout + result.stderr).toBe(1);
     expect(result.stdout).toContain('"tables"');
-    expect(result.stdout).toContain('--sections takes overview, features, data, findings, system-findings, priority, remedies, topics, any of them separated by a comma (default: all)');
+    expect(result.stdout).toContain('--sections takes overview, features, data, history, findings, system-findings, priority, remedies, topics, any of them separated by a comma (default: all)');
     expect(result.lines.some((line) => line.startsWith('READ='))).toBe(false);
   });
 

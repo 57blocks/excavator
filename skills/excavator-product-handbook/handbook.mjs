@@ -34,6 +34,12 @@
  *       sets: Go named types with their constants, TypeScript enums, JavaScript
  *       state objects, each member with its comment and display name), from the
  *       source alone; print one count line for each (Data:, Dictionaries:).
+ *   history <out> --project <root>
+ *       Write <out>/entries/history.json (the code health: commits per year,
+ *       the first and last commit, commits and authors of each application, the
+ *       files that change most, the files changed together across applications,
+ *       the source and test files of each application) from git and the project
+ *       files, in memory, writing nothing under the project; print one line.
  *   check-overview <out> --project <root>
  *       Check <out>/entries/overview.json (the system overview): the checks of
  *       an entry, no citation of a documentation file, and the applications
@@ -165,6 +171,7 @@ import { assemble } from './lib/assemble.mjs';
 import { applicationLines, scanProject } from './lib/applications.mjs';
 import { candidatesOutput } from './lib/candidates.mjs';
 import { runData } from './lib/data-run.mjs';
+import { runHistory } from './lib/history-run.mjs';
 import { checkEntry, tryEntry } from './lib/entry-check.mjs';
 import { checkMap } from './lib/check-map.mjs';
 import { checkDomains } from './lib/domains-check.mjs';
@@ -239,7 +246,7 @@ Commands:
       not an application root exits 1: print each such item, then every root as
       "app<n>  <dir>", then a Next: line. Changes no file.
   sections [<list>]
-      Validate the --sections list (comma-separated: overview, features, data, findings, system-findings, priority, remedies, topics; empty
+      Validate the --sections list (comma-separated: overview, features, data, history, findings, system-findings, priority, remedies, topics; empty
       or absent is all) and print "SECTIONS=<the sections in fixed order>",
       then one "READ=<path>" line per phase file to read, relative to the skill
       directory, in reading order: the stage files first (the map file once),
@@ -291,6 +298,20 @@ Commands:
       it and the display names a mapping table gives it, and the same-named
       sets whose values differ between applications. Reads the source
       statically, never builds or runs it. Prints two count lines.
+  history <out> --project <root>
+      Write <out>/entries/history.json (the code health section; no model
+      writes any of it): the commits of each year (author time in UTC; the total
+      counts a commit once, the application columns count it in each application
+      it changes); for each application root the first and last commit day, the
+      commits without merges, the distinct author emails and the fewest authors
+      whose commits make up 80%; the 15 files with the highest commits x lines
+      (with the application and the verified features that cite the file); the 10
+      pairs of files in different applications changed together most; and the
+      source files and test files of each application (a test file follows one
+      of the naming conventions the chapter lists). Reads git with read-only
+      commands and the project files statically; writes nothing under the
+      project. Prints one line. A project in no repository writes noHistory
+      with the reason and counts the test files all the same.
   check-overview <out> --project <root>
       Check <out>/entries/overview.json, the system overview: the same checks
       as check-entry (shape, citations, labels, numbers, banned words, the
@@ -674,6 +695,11 @@ const COMMANDS = {
     const { positionals } = parseArgs(args, []);
     if (positionals.length !== 2) throw new UsageError('data takes <projectRoot> and <out>');
     return report(runData(projectRootOption(positionals[0]), resolve(positionals[1])));
+  },
+  async history(args) {
+    const { positionals, options } = parseArgs(args, ['project']);
+    if (positionals.length !== 1) throw new UsageError('history takes exactly one <out> directory');
+    return report(await runHistory(projectRootOption(options.project), resolve(positionals[0])));
   },
   'check-overview'(args) {
     const { positionals, options } = parseArgs(args, ['project']);
