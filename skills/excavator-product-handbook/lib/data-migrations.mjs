@@ -118,13 +118,24 @@ export function readMigration(file, form, text) {
   return { bucket: 'replayed', ops: scriptOperations(text, up).map((op) => ({ ...op, line: lineAt(op.index) })) };
 }
 
+/** Turn the `named` of each place of a table's history into `as` (kept only when it is not the table's final name). */
+function finalizeNames(name, entry) {
+  for (const place of [entry.createdBy, ...entry.changes]) {
+    if (place === null) continue;
+    if (place.named !== name) place.as = place.named;
+    delete place.named;
+  }
+}
+
 /**
  * Replay the migrations of one directory in the order given (already sorted
  * by file name). `migrations` are `{ file, ops }`. Returns
  * `{ tables, dropped, operations }`: `tables` maps each table that exists at the
  * end to `{ createdBy: { file, line, as? } | null, changes }`; `dropped` lists the
  * drops of tables nothing created again; `operations` is the ledger, one row
- * for each operation with its bucket. A change or a create that cites the table
+ * for each operation with its bucket. Each `dropped` entry also carries the
+ * `history` (`{ createdBy, changes }`, the drop included) of the table it
+ * dropped, for the caller that finds the table still declared. A change or a create that cites the table
  * under another name (the table was renamed later) has `as`, the name its line
  * shows; a rename cites the old name, so it has `as` too.
  */
@@ -161,7 +172,10 @@ export function replay(migrations) {
       } else if (op.op === 'drop-table') {
         const existing = tables.get(op.name);
         tables.delete(op.name);
-        dropped.push({ name: op.name, file, line, createdBy: existing?.createdBy?.file ?? null });
+        const history = existing ?? { createdBy: null, changes: [] };
+        history.changes.push(change());
+        finalizeNames(op.name, history);
+        dropped.push({ name: op.name, file, line, createdBy: existing?.createdBy?.file ?? null, history });
       } else if (op.op === 'rename-table') {
         const old = tables.get(op.from);
         tables.delete(op.from);
@@ -175,12 +189,6 @@ export function replay(migrations) {
       }
     }
   }
-  for (const [name, entry] of tables) {
-    for (const place of [entry.createdBy, ...entry.changes]) {
-      if (place === null) continue;
-      if (place.named !== name) place.as = place.named;
-      delete place.named;
-    }
-  }
+  for (const [name, entry] of tables) finalizeNames(name, entry);
   return { tables, dropped, operations };
 }

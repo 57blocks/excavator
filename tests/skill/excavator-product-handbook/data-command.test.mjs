@@ -42,7 +42,7 @@ describe('handbook.mjs data', () => {
     const result = runHandbook(['data', FIXTURE, out]);
     expect(result.status, result.stderr).toBe(0);
     expect(result.lines).toHaveLength(1);
-    expect(result.lines[0]).toBe('Data: 24 tables; 24 migrations (21 replayed, 2 not split, 1 down only); 5 dropped; 15 names only in migrations; 12 gaps (5 unnamed operations, 2 unsplit migrations, 5 unresolved model names).');
+    expect(result.lines[0]).toBe('Data: 25 tables; 26 migrations (23 replayed, 2 not split, 1 down only); 6 dropped; 15 names only in migrations; 12 gaps (5 unnamed operations, 2 unsplit migrations, 5 unresolved model names).');
     const written = JSON.parse(readFileSync(join(out, 'data.json'), 'utf-8'));
     expect(written).toEqual(extractData(FIXTURE));
     expect(checkDataShape(written)).toEqual([]);
@@ -135,6 +135,18 @@ describe('the shape check', () => {
     const absent = good();
     delete find(absent).sources[0].as;
     expect(checkDataShape(absent)).toEqual([]);
+  });
+
+  it('refuses a droppedButDeclared that is missing, names an unlisted table, or disagrees with its count', () => {
+    const missing = good();
+    delete missing.droppedButDeclared;
+    expect(checkDataShape(missing).join('\n')).toContain('droppedButDeclared');
+    const unlisted = good();
+    unlisted.droppedButDeclared.push('no_such_table');
+    expect(checkDataShape(unlisted).join('\n')).toContain('no_such_table');
+    const count = good();
+    count.counts.droppedButDeclared = 0;
+    expect(checkDataShape(count).join('\n')).toContain('counts.droppedButDeclared');
   });
 
   it('refuses a bucket that is not one of the named ones', () => {

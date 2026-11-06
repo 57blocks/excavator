@@ -46,6 +46,7 @@ export function computeCounts(data) {
       unresolved: declaration((row) => row.bucket === 'unresolved'),
     },
     dropped: data.dropped.length,
+    droppedButDeclared: data.droppedButDeclared.length,
     changedNeverCreated: data.changedNeverCreated.length,
     declaredOnly: data.declaredOnly.length,
     onlyInMigrations: data.onlyInMigrations.length,
@@ -110,7 +111,7 @@ export function checkDataShape(value) {
     }),
     dropped: rows(problems, value.dropped, 'dropped', { name: isString, file: isString, line: isLine, createdBy: nullOr(isString), directory: isString }),
   };
-  for (const key of ['changedNeverCreated', 'declaredOnly', 'onlyInMigrations']) {
+  for (const key of ['changedNeverCreated', 'declaredOnly', 'droppedButDeclared', 'onlyInMigrations']) {
     if (!Array.isArray(value[key]) || !value[key].every(isString)) {
       problems.push(`${key} is not a list of table names`);
       lists[key] = false;
@@ -137,7 +138,7 @@ export function checkDataShape(value) {
     if (names.has(table.name)) problems.push(`table ${table.name} is listed twice`);
     names.add(table.name);
   }
-  for (const key of ['changedNeverCreated', 'declaredOnly', 'onlyInMigrations']) {
+  for (const key of ['changedNeverCreated', 'declaredOnly', 'droppedButDeclared', 'onlyInMigrations']) {
     for (const name of value[key]) if (!names.has(name)) problems.push(`${key} names ${name}, which is not in tables`);
   }
   value.operations.forEach((row, i) => {

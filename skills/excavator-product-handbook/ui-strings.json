@@ -139,6 +139,7 @@
     "md.data.migrationsHeading": "Migrations by application",
     "md.data.tablesHeading": "Tables",
     "md.data.droppedHeading": "Tables dropped by a migration",
+    "md.data.droppedButDeclaredHeading": "Dropped by a migration and still declared by a model or a .sql file",
     "md.data.declaredOnlyHeading": "Tables declared by a model or a .sql file and created by no migration",
     "md.data.changedNeverCreatedHeading": "Tables a migration changes and no migration creates",
     "md.data.onlyInMigrationsHeading": "Tables whose name appears only in migrations",

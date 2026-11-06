@@ -82,7 +82,7 @@ export function dataBlock(section, t) {
   out.push(data.dropped.length === 0
     ? t('md.none')
     : table([t('md.data.table.name'), t('md.data.table.createdBy'), t('md.data.table.droppedBy')], data.dropped.map((row) => [row.name, row.createdBy ?? DASH, placeOf(row.file, row.line, t)])), '');
-  for (const [heading, names] of [['md.data.declaredOnlyHeading', data.declaredOnly], ['md.data.changedNeverCreatedHeading', data.changedNeverCreated], ['md.data.onlyInMigrationsHeading', data.onlyInMigrations]]) {
+  for (const [heading, names] of [['md.data.declaredOnlyHeading', data.declaredOnly], ['md.data.droppedButDeclaredHeading', data.droppedButDeclared], ['md.data.changedNeverCreatedHeading', data.changedNeverCreated], ['md.data.onlyInMigrationsHeading', data.onlyInMigrations]]) {
     out.push(`### ${t(heading)}`, '', ...(names.length === 0 ? [t('md.none'), ''] : bullets(names)));
   }
   out.push(...gapsBlock(data, t));

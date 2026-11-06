@@ -117,8 +117,30 @@ function readDeclarations(files) {
   return { declarations, unresolved, skipped, searched };
 }
 
+/**
+ * The history entries a table row is built from: the tables each directory
+ * leaves, and the tables a directory drops that a model or a .sql file still
+ * declares and no directory leaves (their history runs up to the drop).
+ * `droppedButDeclared` lists the names of the second kind.
+ */
+function historyEntries(histories, declarations) {
+  const declared = new Set(declarations.filter((row) => row.bucket === 'resolved').map((row) => row.table));
+  const live = new Set(histories.flatMap((history) => [...history.tables.keys()]));
+  const entries = [];
+  const droppedButDeclared = new Set();
+  for (const history of histories) {
+    for (const [name, entry] of history.tables) entries.push({ name, entry, directory: history.directory });
+    for (const row of history.dropped) {
+      if (!declared.has(row.name) || live.has(row.name)) continue;
+      droppedButDeclared.add(row.name);
+      entries.push({ name: row.name, entry: row.history, directory: history.directory });
+    }
+  }
+  return { entries, droppedButDeclared: [...droppedButDeclared].sort(byteOrder) };
+}
+
 /** The tables of every migration history and every resolved declaration, merged by name. */
-function mergeTables(histories, declarations) {
+function mergeTables(entries, declarations) {
   const byName = new Map();
   const ensure = (name) => {
     let table = byName.get(name);
@@ -129,15 +151,13 @@ function mergeTables(histories, declarations) {
     return table;
   };
   const primary = new Map();
-  for (const history of histories) {
-    for (const [name, entry] of history.tables) {
-      const table = ensure(name);
-      table.directories.push(history.directory);
-      if (entry.createdBy !== null) table.sources.push({ kind: 'migration', file: entry.createdBy.file, line: entry.createdBy.line, ...(entry.createdBy.as === undefined ? {} : { as: entry.createdBy.as }) });
-      table.changes.push(...entry.changes);
-      const first = primary.get(name);
-      if (first === undefined || (first.createdBy === null && entry.createdBy !== null)) primary.set(name, entry);
-    }
+  for (const { name, entry, directory } of entries) {
+    const table = ensure(name);
+    table.directories.push(directory);
+    if (entry.createdBy !== null) table.sources.push({ kind: 'migration', file: entry.createdBy.file, line: entry.createdBy.line, ...(entry.createdBy.as === undefined ? {} : { as: entry.createdBy.as }) });
+    table.changes.push(...entry.changes);
+    const first = primary.get(name);
+    if (first === undefined || (first.createdBy === null && entry.createdBy !== null)) primary.set(name, entry);
   }
   for (const [name, entry] of primary) {
     const table = byName.get(name);
@@ -181,7 +201,8 @@ export function extractData(projectRootArg) {
   const project = listProject(projectRootArg);
   const { migrations, histories, unsplit, other } = readMigrations(project.files);
   const { declarations, unresolved, skipped, searched } = readDeclarations(project.files);
-  const tables = mergeTables(histories, declarations);
+  const { entries, droppedButDeclared } = historyEntries(histories, declarations);
+  const tables = mergeTables(entries, declarations);
   addMentions(project.files, tables);
 
   const applications = project.roots.map((directory) => ({ directory, migrations: migrations.filter((entry) => entry.application === directory).length }));
@@ -189,7 +210,7 @@ export function extractData(projectRootArg) {
   if (outside > 0) applications.push({ directory: NO_APPLICATION, migrations: outside });
 
   const operations = histories.flatMap((history) => history.operations);
-  const dropped = histories.flatMap((history) => history.dropped.map((entry) => ({ ...entry, directory: history.directory })));
+  const dropped = histories.flatMap((history) => history.dropped.map(({ name, file, line, createdBy }) => ({ name, file, line, createdBy, directory: history.directory })));
   dropped.sort((a, b) => byteOrder(a.name, b.name) || byFileLine(a, b));
 
   const named = (list) => list.map((table) => table.name);
@@ -204,6 +225,7 @@ export function extractData(projectRootArg) {
     dropped,
     changedNeverCreated: named(tables.filter((table) => table.createdBy === null && table.changes.length > 0)),
     declaredOnly: named(tables.filter((table) => table.createdBy === null && table.sources.some((source) => source.kind !== 'migration'))),
+    droppedButDeclared,
     onlyInMigrations: named(tables.filter((table) => table.changes.length > 0 && Object.keys(table.mentions).length === 0)),
     gaps: {
       unsplitMigrations: unsplit,

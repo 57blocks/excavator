@@ -182,6 +182,7 @@ export interface DataSection {
   dropped: { name: string; file: string; line: number; createdBy: string | null; directory: string }[];
   changedNeverCreated: string[];
   declaredOnly: string[];
+  droppedButDeclared: string[];
   onlyInMigrations: string[];
   gaps: {
     unsplitMigrations: { file: string }[];
@@ -201,6 +202,7 @@ export interface DataSection {
     dropped: number;
     changedNeverCreated: number;
     declaredOnly: number;
+    droppedButDeclared: number;
     onlyInMigrations: number;
     tablesInSeveralApplications: number;
     gaps: number;

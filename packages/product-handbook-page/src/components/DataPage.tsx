@@ -151,6 +151,7 @@ function SectionBody({ section }: { section: DataSection }) {
         </TableScroll>
       )}
       <List heading={t('md.data.declaredOnlyHeading')} items={section.declaredOnly} />
+      <List heading={t('md.data.droppedButDeclaredHeading')} items={section.droppedButDeclared} />
       <List heading={t('md.data.changedNeverCreatedHeading')} items={section.changedNeverCreated} />
       <List heading={t('md.data.onlyInMigrationsHeading')} items={section.onlyInMigrations} />
       <h2 className="section-title">{t('md.data.gapsHeading')}</h2>

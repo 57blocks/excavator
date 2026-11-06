@@ -20,7 +20,7 @@ describe('the table list', () => {
   it('holds the tables the up parts leave, plus the declared ones, sorted by name', () => {
     expect(names(data.tables)).toEqual([
       'accounts', 'audit_log', 'cache_entries', 'esm_const_t', 'esm_fn_t', 'exports_up_t', 'ghost_table', 'go_orders',
-      'invoices', 'ledger_entries', 'model_only_events', 'module_up_t', 'multi_last', 'orders', 'reports', 'split_final', 'split_schema',
+      'invoices', 'ledger_entries', 'legacy_notes', 'model_only_events', 'module_up_t', 'multi_last', 'orders', 'reports', 'split_final', 'split_schema',
       'sql_migrated', 'sql_other', 'staging_q', 'staging_y', 'tags', 'ts_events', 'users',
     ]);
   });
@@ -193,9 +193,43 @@ describe('every cited line shows the name', () => {
   });
 });
 
+describe('a table that a migration created and dropped and a model still declares', () => {
+  const create = m('024-create-legacy-notes.js');
+  const drop = m('025-drop-legacy-notes.js');
+  const notes = table('legacy_notes');
+
+  it('keeps its migration history up to and including the drop, and its sources', () => {
+    expect(notes.createdBy).toBe(create);
+    expect(notes.lastChangedBy).toBe(drop);
+    expect(notes.directories).toEqual(['node-app/migrations']);
+    expect(notes.changes).toEqual([
+      { file: create, line: 5, op: 'create-table', via: 'call' },
+      { file: drop, line: 5, op: 'drop-table', via: 'call' },
+    ]);
+    expect(notes.sources).toEqual([
+      { kind: 'model', file: 'go-app/models/note.go', line: 5 },
+      { kind: 'migration', file: create, line: 5 },
+      { kind: 'model', file: 'node-app/models/legacy-note.js', line: 5 },
+    ]);
+  });
+
+  it('is not declared only, is listed as dropped but declared, and stays in the dropped list', () => {
+    expect(data.declaredOnly).not.toContain('legacy_notes');
+    expect(data.droppedButDeclared).toEqual(['legacy_notes']);
+    expect(data.dropped.find((row) => row.name === 'legacy_notes')).toEqual({ name: 'legacy_notes', file: drop, line: 5, createdBy: create, directory: 'node-app/migrations' });
+    expect(data.changedNeverCreated).not.toContain('legacy_notes');
+  });
+
+  it('keeps a dropped table nothing declares out of the tables and out of the new list', () => {
+    expect(names(data.tables)).not.toContain('temp_logs');
+    expect(data.droppedButDeclared).not.toContain('temp_logs');
+  });
+});
+
 describe('the dropped tables', () => {
   it('lists the tables a migration drops and nothing recreates, each with the dropping migration', () => {
     expect(data.dropped).toEqual([
+      { name: 'legacy_notes', file: m('025-drop-legacy-notes.js'), line: 5, createdBy: m('024-create-legacy-notes.js'), directory: 'node-app/migrations' },
       { name: 'temp_logs', file: m('005-drop-temp-logs.js'), line: 5, createdBy: m('004-temp-logs.js'), directory: 'node-app/migrations' },
       { name: 'tmp_a', file: m('009-raw-sql.js'), line: 17, createdBy: m('009-raw-sql.js'), directory: 'node-app/migrations' },
       { name: 'tmp_b', file: m('009-raw-sql.js'), line: 17, createdBy: m('009-raw-sql.js'), directory: 'node-app/migrations' },
@@ -242,7 +276,7 @@ describe('the migrations', () => {
   it('counts the migrations of each application', () => {
     expect(data.applications).toEqual([
       { directory: 'go-app', migrations: 0 },
-      { directory: 'node-app', migrations: 24 },
+      { directory: 'node-app', migrations: 26 },
     ]);
   });
 
@@ -338,6 +372,8 @@ describe('the operation ledger', () => {
       ['023-multiline.js', 18, 'rename-table', 'split_final', 'rename'],
       ['023-multiline.js', 21, 'drop-table', 'tmp_c', 'drop'],
       ['023-multiline.js', 22, 'drop-table', 'tmp_d', 'drop'],
+      ['024-create-legacy-notes.js', 5, 'create-table', 'legacy_notes', 'create'],
+      ['025-drop-legacy-notes.js', 5, 'drop-table', 'legacy_notes', 'drop'],
     ]);
   });
 
@@ -392,19 +428,20 @@ describe('where a table name appears outside the migrations', () => {
 describe('the counts and the recognized forms', () => {
   it('are computed from the lists', () => {
     expect(data.counts).toEqual({
-      tables: 24,
-      migrations: 24,
-      migrationsReplayed: 21,
+      tables: 25,
+      migrations: 26,
+      migrationsReplayed: 23,
       migrationsUnsplit: 2,
       migrationsDownOnly: 1,
       otherMigrationFiles: 2,
-      operations: { total: 48, create: 21, drop: 6, rename: 7, change: 9, unnamed: 5 },
-      declarations: { total: 12, model: 5, sql: 2, unresolved: 5 },
-      dropped: 5,
+      operations: { total: 50, create: 22, drop: 7, rename: 7, change: 9, unnamed: 5 },
+      declarations: { total: 14, model: 7, sql: 2, unresolved: 5 },
+      dropped: 6,
+      droppedButDeclared: 1,
       changedNeverCreated: 1,
       declaredOnly: 6,
       onlyInMigrations: 15,
-      tablesInSeveralApplications: 1,
+      tablesInSeveralApplications: 2,
       gaps: 12,
     });
   });
@@ -415,6 +452,6 @@ describe('the counts and the recognized forms', () => {
   });
 
   it('counts the files searched', () => {
-    expect(data.scanned).toEqual({ filesSearched: 18, skippedBinary: 0, skippedTooLarge: 0, skippedUnreadable: 0, skippedSymlinks: 0 });
+    expect(data.scanned).toEqual({ filesSearched: 20, skippedBinary: 0, skippedTooLarge: 0, skippedUnreadable: 0, skippedSymlinks: 0 });
   });
 });

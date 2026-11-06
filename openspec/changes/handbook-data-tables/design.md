@@ -85,10 +85,14 @@
 
 **重放**：
 - 建表：表存在，记建表迁移。删掉后再建，重新记。
-- 删表：表移出「存在」集合，进「被删掉的表」，记删表迁移。之后又建出的，从「被删掉的表」移回清单。
+- 删表：表移出「存在」集合，进「被删掉的表」，记删表迁移。之后又建出的，从「被删掉的表」移回清单。被删掉的表的历史（建表迁移、各次改动、含删表这一条）随条目保留。
 - 改名：历史跟着走；旧名不再存在，改名记在新名的改动里。
 - 其它操作：记为最后一次改动。
 - 操作的表在那一刻不存在（之前没有迁移建出它）时，表照样进清单，同时进「改动过但没有迁移建出的表」清单。不丢弃，也不臆造建表迁移。
+
+**位置是名字所在的行**：操作的 `line` 是表名字面值开头所在的行（`renameTable` 取第一个字面值，SQL 取表名开头；`DROP TABLE a, b` 每个名字各取自己的行），不是方法名或关键字所在的行，跨行调用与跨行语句因此引用到能看见名字的那一行。认不出表名的操作仍取方法名所在的行。
+
+**`as`**：改名后，`changes[]` 与 `sources[]`（迁移类）里行上写的名字与表的当前名不同的，记 `as`（行上的名字；相同时省略）。改名那一条自己引用的是旧名，所以记 `as: <旧名>`。模型声明（Go 的 `TableName()` 行、JS 的 `tableName:` 行）按原设计取声明所在的行，不受此限。
 
 ### D3 模型声明
 
@@ -100,7 +104,7 @@
 - **JS/TS**：`tableName:` 之后跟字符串字面值的，是表名；跟其它的进同一个桶。
 - **迁移目录以外的 `.sql` 文件**：`CREATE TABLE t`。
 
-声明的表并进清单，带来源 `model` 或 `sql` 与位置。不在任何迁移里的，进「只有声明、没有迁移建出的表」清单。
+声明的表并进清单，带来源 `model` 或 `sql` 与位置。没有任何迁移建出过的（含经改名建出），进「只有声明、没有迁移建出的表」清单。迁移建出后又在 `up` 里删掉、之后仍被声明、也没有别的目录留着它的表，行里带到删表为止的迁移历史（建表迁移、改动、迁移类来源），进 `droppedButDeclared[]`，不进「只有声明」；它仍在 `dropped[]` 里。
 
 ### D4 表名查找
 
@@ -125,11 +129,11 @@
 - `applications`：每个应用的迁移数；
 - `tables[]`：每张表有：
   - `name`；
-  - `sources[]`：`{kind: migration|model|sql, file, line}`；
+  - `sources[]`：`{kind: migration|model|sql, file, line, as?}`；
   - `createdBy`、`lastChangedBy`：迁移的文件；
-  - `changes[]`；
+  - `changes[]`：`{file, line, op, via, from?, as?}`；
   - `mentions`：`{application: [{file, line, rule}]}`；
-- `dropped[]`、`changedNeverCreated[]`、`declaredOnly[]`、`onlyInMigrations[]`；
+- `dropped[]`、`changedNeverCreated[]`、`declaredOnly[]`、`droppedButDeclared[]`、`onlyInMigrations[]`；`counts.droppedButDeclared` 是它的长度；技术手册与页面各有一个同名清单；
 - `gaps`：`{unsplitMigrations[], unnamedOperations[], unresolvedModelNames[], otherMigrationFiles[]}`；
 - `counts`。
 
@@ -209,6 +213,7 @@
     - 名字只出现在迁移里的表；
     - 被删掉的表；
     - 只有声明的表；
+    - 被迁移删掉、仍被声明的表；
     - 解析不到字面值的模型表名。
   - 与参考手册的 233 张表、52、39 对照，说明差异来源。参考是模型写的，不作门槛。
 - **O5**：受影响测试、`check-refs`、`openspec validate --all --strict` 本地过；全量门在分离检出里跑；源码零非 ASCII 字符。

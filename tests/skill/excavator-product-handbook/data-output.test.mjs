@@ -76,17 +76,18 @@ describe('the technical handbook has a data chapter after the system overview', 
     const text_ = chapter(body);
     for (const key of ['md.data.note.rules', 'md.data.note.comments', 'md.data.note.orm', 'md.data.note.onlyInMigrations']) expect(text_, key).toContain(ui[key]);
     expect(text_).toContain(ui['md.data.recognized'].replace('{forms}', ['migration-calls', 'migration-sql', 'go-table-name', 'js-table-name', 'sql-file-create-table'].map((form) => ui[`md.data.form.${form.replace(/-([a-z])/g, (_, c) => c.toUpperCase())}`]).join('; ')));
-    expect(text_).toContain('Tables: 24. Migrations: 24 (21 replayed, 2 not split, 1 down only). Tables whose name appears in two or more applications: 1. Tables whose name appears only in migrations: 15. Tables dropped by a migration: 5. Gaps: 12.');
+    expect(text_).toContain('Tables: 25. Migrations: 26 (23 replayed, 2 not split, 1 down only). Tables whose name appears in two or more applications: 2. Tables whose name appears only in migrations: 15. Tables dropped by a migration: 6. Gaps: 12.');
   });
 
   it('every number of the count line equals the length of the list it counts', () => {
     const made = run(data);
     assemble(made, 'technical');
     const text_ = chapter(text(made, 'handbook-technical.md'));
-    expect(tableRows(part(text_, 'md.data.tablesHeading'))).toHaveLength(24);
-    expect(tableRows(part(text_, 'md.data.droppedHeading'))).toHaveLength(5);
+    expect(tableRows(part(text_, 'md.data.tablesHeading'))).toHaveLength(25);
+    expect(tableRows(part(text_, 'md.data.droppedHeading'))).toHaveLength(6);
     expect(bullets(part(text_, 'md.data.onlyInMigrationsHeading'))).toHaveLength(15);
     expect(bullets(part(text_, 'md.data.declaredOnlyHeading'))).toHaveLength(6);
+    expect(bullets(part(text_, 'md.data.droppedButDeclaredHeading'))).toEqual(['- legacy_notes']);
     expect(bullets(part(text_, 'md.data.changedNeverCreatedHeading'))).toHaveLength(1);
     expect(tableRows(part(text_, 'md.data.migrationsHeading'))).toHaveLength(2);
     const gaps = part(text_, 'md.data.gapsHeading');
@@ -202,8 +203,8 @@ describe('the page data carries the data section in its technical part only', ()
     expect(got.format).toBe('excavator-product-handbook-page/6');
     expect(Object.keys(got.technical).slice(-2)).toEqual(['data', 'dataState']);
     expect(got.technical.dataState).toBe('ok');
-    expect(Object.keys(got.technical.data)).toEqual(['recognized', 'applications', 'tables', 'dropped', 'changedNeverCreated', 'declaredOnly', 'onlyInMigrations', 'gaps', 'counts']);
-    expect(got.technical.data.tables).toHaveLength(24);
+    expect(Object.keys(got.technical.data)).toEqual(['recognized', 'applications', 'tables', 'dropped', 'changedNeverCreated', 'declaredOnly', 'droppedButDeclared', 'onlyInMigrations', 'gaps', 'counts']);
+    expect(got.technical.data.tables).toHaveLength(25);
     expect(got.technical.data.counts).toEqual(data.counts);
     const users = got.technical.data.tables.find((entry) => entry.name === 'users');
     expect(Object.keys(users)).toEqual(['name', 'sources', 'createdBy', 'lastChangedBy', 'mentions']);
