@@ -3,6 +3,9 @@
  * checked run, with its keys in a fixed order. It holds the text of the map
  * and of each verified entry, never their evidence, so it holds no citation
  * path; and no time and no absolute path: the same run gives the same object.
+ * `project` is the system name of the verified overview, or null (design D3 of
+ * openspec change handbook-system-name); the project's directory name is not in
+ * the data except where it replaces a path inside a string.
  * The caller loads the run (load-run.mjs); the only other read is the cited
  * source the summary locates its job descriptions in (summary.mjs).
  */
@@ -17,7 +20,7 @@ import { languageTag } from './language-tag.mjs';
 import { withoutRootPaths } from './root-paths.mjs';
 import { DEFAULT_VIEWS } from './views.mjs';
 
-export const PAGE_FORMAT = 'excavator-product-handbook-page/7';
+export const PAGE_FORMAT = 'excavator-product-handbook-page/8';
 
 /** An entry without its evidence, in the page's shape. */
 function pageEntry(entry) {
@@ -54,13 +57,14 @@ function pageEntry(entry) {
  */
 export function buildPageData(run, roots, { views = DEFAULT_VIEWS } = {}) {
   const { map, entries, state, candidates, ui } = run;
-  const project = basename(roots[0]);
+  // The directory name only rewrites the project path in the strings; the page shows the verified system name, never the directory.
+  const directory = basename(roots[0]);
   const kind = new Map(candidates.map((candidate) => [candidate.id, candidate.kind]));
   const { summary, system, entities, locations, data: dataSection, dictionaries: dictionariesSection } = handbookModel(run, roots[0], views);
   const domainOf = new Map(entities.domains.flatMap((domain) => domain.features.map((id) => [id, domain.id])));
   const data = {
     format: PAGE_FORMAT,
-    project,
+    project: system.overview?.name ?? null,
     language: map.language,
     languageTag: languageTag(map.language),
     ui: { strings: ui },
@@ -113,5 +117,5 @@ export function buildPageData(run, roots, { views = DEFAULT_VIEWS } = {}) {
       dictionariesState: dictionariesSection.state,
     };
   }
-  return withoutRootPaths(data, roots, project);
+  return withoutRootPaths(data, roots, directory);
 }

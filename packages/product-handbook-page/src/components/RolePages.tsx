@@ -1,5 +1,5 @@
 import { useLinks } from '../lib/links';
-import { useText } from '../lib/text';
+import { systemName, useText } from '../lib/text';
 import type { PageData } from '../lib/types';
 import { Crumbs } from './Crumbs';
 import { Cell, TableScroll } from './Tables';
@@ -39,7 +39,7 @@ export function RolesMatrixPage({ data }: { data: PageData }) {
   return (
     <article className="page" data-view="roles-matrix">
       <header className="page-head">
-        <p className="eyebrow">{data.project}</p>
+        <p className="eyebrow">{systemName(data.project, t)}</p>
         <h1 className="page-title">{heading}</h1>
       </header>
       <p className="muted summary-note">{t('md.matrix.roleFeature.note')}</p>

@@ -40,7 +40,7 @@ const LONG = 'A customer name that is longer than the print width is shortened i
  * A run whose F1 entry has a table wide enough to need its own scroll box on a phone. `keepIntegration`
  * keeps the overview's external system (it is removed in round 1 otherwise) and `views` is the page's --views.
  */
-function pageRun({ keepIntegration = false, views = undefined } = {}) {
+function pageRun({ keepIntegration = false, views = undefined, unnamed = false } = {}) {
   const run = makeCheckedMapRun();
   const entry = clone(run.entry);
   entry.screens[0].fields[0].rules.push({ side: 'backend', text: LONG, evidence: [ev(form, "{ label: 'Customer Name', required: true },")] });
@@ -59,7 +59,9 @@ function pageRun({ keepIntegration = false, views = undefined } = {}) {
   if (traced.status !== 0) throw new Error(`trace-verdicts failed:\n${traced.stdout}`);
   // A verified system overview that lost its external system in round 1, so the overview page holds the wide application table and the coverage page a second removed-items group.
   writeFileSync(join(run.root, NOTIFY_FILE), `${NOTIFY_LINE}\n`);
-  run.writeEntry('overview', goodOverview());
+  const overview = goodOverview();
+  if (unnamed) overview.name = null;
+  run.writeEntry('overview', overview);
   if (run.run('check-overview').status !== 0) throw new Error('the overview failed check-overview');
   const judgedOverview = judge(run, 'overview', 1, (item) => (item.id === 'integrations[0]' && !keepIntegration ? { verdict: 'contradicted', reason: 'The code shown sends it to another channel.' } : 'verified'));
   if (judgedOverview.status !== 0) throw new Error(`overview verdicts failed:\n${judgedOverview.stdout}`);
@@ -112,7 +114,10 @@ suite('page in a browser (O8)', () => {
         await page.waitFor('document.querySelector(\'[data-view="overview"]\')', 'the overview');
 
         expect(await page.evaluate('document.documentElement.lang')).toBe('en');
-        expect(await page.evaluate('document.title')).toBe('Overview - project - Product handbook');
+        expect(await page.evaluate('document.title')).toBe('Overview - handbook-fixture - Product handbook');
+        // The bar and the eyebrow show the verified system name, not the directory the project sits in.
+        expect(await page.evaluate("document.querySelector('.brand-project').textContent")).toBe('handbook-fixture');
+        expect(await page.evaluate("document.querySelector('[data-view=\"overview\"] .eyebrow').textContent")).toBe('handbook-fixture');
         await fits(page, width, 'the overview');
         expect(await page.evaluate("document.querySelectorAll('.area-card').length")).toBe(2);
         // The system overview: its purpose and the wide application table, which scrolls in its own box on a phone.
@@ -123,7 +128,7 @@ suite('page in a browser (O8)', () => {
         }
 
         await goTo(page, '#/feature/F1', '[data-view="feature"][data-feature="F1"]');
-        expect(await page.evaluate('document.title')).toBe('Orders - project - Product handbook');
+        expect(await page.evaluate('document.title')).toBe('Orders - handbook-fixture - Product handbook');
         await fits(page, width, 'the feature page');
         expect(await page.evaluate("document.querySelectorAll('.table-scroll').length")).toBeGreaterThanOrEqual(2);
         if (width < 500) {
@@ -142,13 +147,13 @@ suite('page in a browser (O8)', () => {
         expect(summary.notifications).toHaveLength(1);
         expect(summary.jobs).toHaveLength(1);
         await goTo(page, '#/notifications', '[data-view="notifications"] table');
-        expect(await page.evaluate('document.title')).toBe('All notifications - project - Product handbook');
+        expect(await page.evaluate('document.title')).toBe('All notifications - handbook-fixture - Product handbook');
         await fits(page, width, 'the notification table page');
         expect(await page.evaluate("document.querySelectorAll('[data-view=\"notifications\"] tbody tr').length")).toBe(summary.notifications.length);
         expect(await page.evaluate("document.querySelector('[data-view=\"notifications\"] tbody tr').textContent")).toContain('A new order waits for approval.');
         expect(await page.evaluate("document.querySelector('[data-view=\"notifications\"] .summary-counts').textContent")).toContain('Notifications listed: 1.');
         await goTo(page, '#/jobs', '[data-view="jobs"] table');
-        expect(await page.evaluate('document.title')).toBe('All scheduled jobs - project - Product handbook');
+        expect(await page.evaluate('document.title')).toBe('All scheduled jobs - handbook-fixture - Product handbook');
         await fits(page, width, 'the job table page');
         expect(await page.evaluate("document.querySelectorAll('[data-view=\"jobs\"] tbody tr').length")).toBe(summary.jobs.length);
         expect(await page.evaluate("document.querySelector('[data-view=\"jobs\"] tbody code.schedule').textContent")).toBe('0 9 * * *');
@@ -203,6 +208,22 @@ suite('page in a browser (O8)', () => {
       }, 60000);
     });
   }
+
+  it('without a verified name the bar, the eyebrow and the browser title say there is none and never show the directory', async () => {
+    const unnamed = pageRun({ unnamed: true });
+    try {
+      const page = await browser.openPage({ width: 1280, height: 800 });
+      await page.goto(pathToFileURL(join(unnamed.out, 'handbook.html')).href);
+      await page.waitFor('document.querySelector(\'[data-view="overview"]\')', 'the overview');
+      expect(await page.evaluate('document.title')).toBe('Overview - Product handbook');
+      expect(await page.evaluate("document.querySelector('.brand-project').textContent")).toBe('No system name found in the code');
+      expect(await page.evaluate("document.querySelector('[data-view=\"overview\"] .eyebrow').textContent")).toBe('No system name found in the code');
+      expect(await page.evaluate("document.body.innerText.includes('/project') || document.title.includes('project')")).toBe(false);
+      expect(page.consoleErrors).toEqual([]);
+    } finally {
+      unnamed.cleanup();
+    }
+  }, 60000);
 
   it('follows the system colour scheme', async () => {
     const colours = [];

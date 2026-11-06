@@ -1,10 +1,11 @@
 import { useLinks } from '../lib/links';
-import { useText } from '../lib/text';
+import { systemName, useText } from '../lib/text';
 import type { View } from '../lib/types';
 import { CloseIcon, MenuIcon } from './Icons';
 
 interface Props {
-  project: string;
+  /** The verified system name, or null. */
+  project: string | null;
   menuOpen: boolean;
   onMenu: () => void;
   /** The views of the page and the view the reader is in; a page with one view has no switch. */
@@ -14,7 +15,7 @@ interface Props {
   switchTo: Record<View, string>;
 }
 
-/** The bar above everything: the drawer button on narrow screens, the handbook's title with the project's name, and, when the page has both views, the view switch. */
+/** The bar above everything: the drawer button on narrow screens, the handbook's title with the system's name (or the text that says the code has none), and, when the page has both views, the view switch. */
 export function TopBar({ project, menuOpen, onMenu, views, current, switchTo }: Props) {
   const t = useText();
   const nav = useLinks();
@@ -32,7 +33,7 @@ export function TopBar({ project, menuOpen, onMenu, views, current, switchTo }: 
       </button>
       <a className="brand" href={nav.overview}>
         <span className="brand-title">{t('md.title')}</span>
-        <span className="brand-project">{project}</span>
+        <span className="brand-project">{systemName(project, t)}</span>
       </a>
       {views.length > 1 && (
         <nav className="view-switch" aria-label={t('page.view.label')} data-part="view-switch">

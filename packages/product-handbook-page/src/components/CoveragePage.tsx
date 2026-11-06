@@ -1,5 +1,5 @@
 import { useLinks } from '../lib/links';
-import { useText } from '../lib/text';
+import { systemName, useText } from '../lib/text';
 import type { PageData, RemovedItem } from '../lib/types';
 import { CheckIcon } from './Icons';
 import { ReachBadge } from './ReachBadge';
@@ -38,7 +38,7 @@ export function CoveragePage({ data }: { data: PageData }) {
   return (
     <article className="page" data-view="coverage">
       <header className="page-head">
-        <p className="eyebrow">{data.project}</p>
+        <p className="eyebrow">{systemName(data.project, t)}</p>
         <h1 className="page-title">{t('md.coverage.heading')}</h1>
       </header>
 
