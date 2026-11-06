@@ -109,6 +109,37 @@ describe('the Code health chapter', () => {
     expect(historyOf(text(run, 'handbook.md'))).not.toContain('src/');
   });
 
+  it('writes no uncertain mark and no note about it when no listed file has an uncertain count', () => {
+    const run = shared();
+    for (const name of ['handbook.md', 'handbook-technical.md']) {
+      const part = section(historyOf(text(run, name)), `### ${ui['md.history.hotspotsHeading']}`);
+      expect(part, name).not.toContain('uncertain');
+      expect(part, name).not.toContain(ui['md.history.uncertainNote']);
+    }
+  });
+
+  it('writes the commits of a file with an uncertain count as "commits (n uncertain)" and one note after the hotspots note, in both views', () => {
+    const run = appendixRun(cleanups);
+    const doc = goodHistory();
+    doc.hotspots[0].uncertain = 3;
+    writeHistory(run, doc);
+    assemble(run, 'product,technical');
+    for (const [name, first] of [['handbook.md', '| orders.js | . | 5 (3 uncertain) | 2 | 20 | 2024-09-09 | Orders, Reminders |'], ['handbook-technical.md', '| src/routes/orders.js | . | 5 (3 uncertain) | 2 | 20 | 2024-09-09 | Orders, Reminders |']]) {
+      const part = section(historyOf(text(run, name)), `### ${ui['md.history.hotspotsHeading']}`);
+      expect(part, name).toContain(first);
+      // a file without an uncertain count keeps its plain number
+      expect(part, name).toMatch(/\| \S*app\.js \| \. \| 2 \| 1 \| 9 \|/);
+      expect(part.split(ui['md.history.uncertainNote']).length - 1, name).toBe(1);
+      expect(part.indexOf(ui['md.history.uncertainNote']), name).toBeGreaterThan(part.indexOf(ui['md.history.hotspotsNote']));
+      expect(part.indexOf(ui['md.history.uncertainNote']), name).toBeLessThan(part.indexOf('| File |') === -1 ? part.indexOf('| Path |') : part.indexOf('| File |'));
+    }
+  });
+
+  it('ships the two fixed texts of the uncertain count', () => {
+    expect(ui['md.history.commitsUncertain']).toBe('{commits} ({uncertain} uncertain)');
+    expect(ui['md.history.uncertainNote']).toBe('A count marked uncertain is for a file whose history branches: at that many commits git could not tell which file of the same name was changed, so the count can leave out or include those commits.');
+  });
+
   it('writes the path of each file in the technical view', () => {
     const run = shared();
     const body = historyOf(text(run, 'handbook-technical.md'));
@@ -274,10 +305,19 @@ describe('the page data', () => {
     const { history } = dataOf(run);
     expect(Object.keys(history)).toEqual(['state', 'noHistory', 'years', 'apps', 'hotspots', 'coChange', 'tests', 'conventions']);
     expect(history.state).toBe('ok');
-    expect(history.hotspots[0]).toEqual({ name: 'orders.js', app: '.', commits: 5, authors: 2, lines: 20, last: '2024-09-09', features: ['F1', 'F3'] });
+    expect(history.hotspots[0]).toEqual({ name: 'orders.js', app: '.', commits: 5, authors: 2, lines: 20, last: '2024-09-09', uncertain: 0, features: ['F1', 'F3'] });
     expect(history.coChange).toEqual([{ a: 'app.js', appA: '.', b: 'orders.js', appB: '.', commits: 4 }]);
     expect(history.years).toEqual(goodHistory().years);
     expect(history.conventions).toEqual(['goTest', 'dotTest', 'dotSpec', 'pyPrefix', 'pySuffix', 'javaTest', 'testsDir']);
+  });
+
+  it('holds the uncertain count of each hotspot file in the page data', () => {
+    const run = appendixRun(cleanups);
+    const doc = goodHistory();
+    doc.hotspots[1].uncertain = 4;
+    writeHistory(run, doc);
+    page(run);
+    expect(dataOf(run).history.hotspots.map((row) => row.uncertain)).toEqual([0, 4]);
   });
 
   it('holds the paths of the hotspot files and of each file of a pair in the technical part, in the order of the rows', () => {

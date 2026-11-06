@@ -5,7 +5,10 @@
  * memory with `buildHotspots`; nothing is written, so the project (and its
  * `.excavator` directory) is not touched. A file belongs to the application root
  * that holds it; a pair counts only when its two files are in different
- * applications (the product lists the pairs inside one application too).
+ * applications (the product lists the pairs inside one application too). `uncertain` of a file is the product's
+ * `lineageConflicts`: the places where, on a branched history, the walk could not settle which file of the same name
+ * a change belongs to, so the commit count of the file may leave out or include those commits; the chapter marks the
+ * count when it is above 0.
  */
 
 import { isUnder } from './applications.mjs';
@@ -31,7 +34,7 @@ export async function hotspotFacts(projectRoot, roots, featuresOf) {
     .filter((row) => row.score !== null && row.commits > 0)
     .sort((a, b) => b.score - a.score || b.commits - a.commits || compare(a.path, b.path))
     .slice(0, HOTSPOT_FILES)
-    .map((row) => ({ path: row.path, app: appOf(row.path), commits: row.commits, authors: row.authors, lines: row.lines, last: dayOf(row.lastChanged), features: featuresOf(row.path) }));
+    .map((row) => ({ path: row.path, app: appOf(row.path), commits: row.commits, authors: row.authors, lines: row.lines, last: dayOf(row.lastChanged), uncertain: row.lineageConflicts, features: featuresOf(row.path) }));
   const coChange = product.pairs
     .filter((pair) => {
       const a = appOf(pair.a);

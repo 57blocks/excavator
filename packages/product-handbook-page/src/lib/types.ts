@@ -74,7 +74,7 @@ export interface HistoryYear { year: number; commits: number; byApp: Record<stri
 export interface HistoryApp { dir: string; first: string | null; last: string | null; commits: number | null; authors: number | null; authors80: number | null; reason: HistoryReason | null }
 
 /** A file that changes much: its name (the technical part holds the path), the application it is in (null when none), its counts, the day of its last change and the verified features that cite it. */
-export interface HistoryHotspot { name: string; app: string | null; commits: number; authors: number; lines: number; last: string; features: string[] }
+export interface HistoryHotspot { name: string; app: string | null; commits: number; authors: number; lines: number; last: string; uncertain: number; features: string[] }
 
 /** Two files, by name and application, changed together in `commits` commits. */
 export interface HistoryPair { a: string; appA: string | null; b: string; appB: string | null; commits: number }

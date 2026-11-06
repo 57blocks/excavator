@@ -101,6 +101,7 @@ function Hotspots({ data, technical }: { data: PageData; technical: Technical | 
     <section className="section" aria-labelledby="hist-hotspots" data-part="history-hotspots">
       <h2 className="section-title" id="hist-hotspots">{t('md.history.hotspotsHeading')}</h2>
       <p className="muted summary-note">{t('md.history.hotspotsNote')}</p>
+      {history.hotspots.some((row) => row.uncertain > 0) && <p className="muted summary-note">{t('md.history.uncertainNote')}</p>}
       {history.hotspots.length === 0 ? <p className="muted">{t('md.none')}</p> : (
         <TableScroll label={t('md.history.hotspotsHeading')} wide>
           <thead>
@@ -114,7 +115,7 @@ function Hotspots({ data, technical }: { data: PageData; technical: Technical | 
               <tr key={index}>
                 <Cell row>{technical?.history.hotspots[index] ?? row.name}</Cell>
                 <Cell>{row.app ?? undefined}</Cell>
-                <Cell>{String(row.commits)}</Cell><Cell>{String(row.authors)}</Cell><Cell>{String(row.lines)}</Cell><Cell>{row.last}</Cell>
+                <Cell>{row.uncertain > 0 ? t('md.history.commitsUncertain', { commits: row.commits, uncertain: row.uncertain }) : String(row.commits)}</Cell><Cell>{String(row.authors)}</Cell><Cell>{String(row.lines)}</Cell><Cell>{row.last}</Cell>
                 <td data-empty={row.features.length === 0 ? 'true' : undefined}>
                   {row.features.map((id, at) => <span key={id}>{at > 0 && ', '}<a href={nav.feature(id)}>{name(id)}</a></span>)}
                 </td>

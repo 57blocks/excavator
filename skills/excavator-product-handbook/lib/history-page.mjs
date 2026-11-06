@@ -12,7 +12,7 @@ export const historyPageSection = (history) => ({
   noHistory: history.noHistory,
   years: history.years.map((row) => ({ year: row.year, commits: row.commits, byApp: { ...row.byApp } })),
   apps: history.apps.map((row) => ({ ...row })),
-  hotspots: history.hotspots.map((row) => ({ name: row.name, app: row.app, commits: row.commits, authors: row.authors, lines: row.lines, last: row.last, features: [...row.features] })),
+  hotspots: history.hotspots.map((row) => ({ name: row.name, app: row.app, commits: row.commits, authors: row.authors, lines: row.lines, last: row.last, uncertain: row.uncertain, features: [...row.features] })),
   coChange: history.coChange.map((row) => ({ a: row.aName, appA: row.appA, b: row.bName, appB: row.appB, commits: row.commits })),
   tests: history.tests.map((row) => ({ ...row })),
   conventions: [...history.conventions],

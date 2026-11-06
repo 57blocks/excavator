@@ -12,6 +12,7 @@ import { join } from 'node:path';
 import { buildHotspots } from '../../../skills/excavator/hotspots.mjs';
 import { authorsFor, readCommits } from '../../../skills/excavator-product-handbook/lib/history-facts.mjs';
 import { HISTORY_FORMAT, checkHistoryShape, loadHistorySection } from '../../../skills/excavator-product-handbook/lib/history-shape.mjs';
+import { hotspotFacts } from '../../../skills/excavator-product-handbook/lib/history-hotspots.mjs';
 import { isTestFile } from '../../../skills/excavator-product-handbook/lib/history-tests.mjs';
 import { HANDBOOK_SCRIPT } from './helpers.mjs';
 import { GIT_ENV, git, multiRepoProject, plainProject, tempDir, treeDigest } from './history-fixture.mjs';
@@ -130,14 +131,37 @@ describe('handbook.mjs history: the applications', () => {
 });
 
 describe('handbook.mjs history: the hotspots', () => {
+  it('carries the product\'s lineage conflicts of a file as its uncertain count, 0 for a file without any', async () => {
+    const root = tempDir(cleanups);
+    const who = (name, when) => ({ GIT_AUTHOR_NAME: name, GIT_AUTHOR_EMAIL: `${name}@example.test`, GIT_AUTHOR_DATE: when, GIT_COMMITTER_NAME: name, GIT_COMMITTER_EMAIL: `${name}@example.test`, GIT_COMMITTER_DATE: when });
+    const save = (path, text, name, when) => {
+      writeFileSync(join(root, path), text);
+      git(root, ['add', '-A']);
+      git(root, ['commit', '-q', '-m', path], who(name, when));
+    };
+    git(root, ['init', '-q', '-b', 'main']);
+    save('base.txt', 'one\ntwo\n', 'ann', '2023-01-01T00:00:00+0000');
+    git(root, ['checkout', '-q', '-b', 'bx']);
+    save('p.txt', 'a\nb\nc\n', 'bob', '2023-01-02T00:00:00+0000');
+    git(root, ['checkout', '-q', 'main']);
+    // the same file is created on both branches, so the walk cannot tell which creation is the file's
+    save('p.txt', 'a\nb\nc\n', 'cy', '2023-01-03T00:00:00+0000');
+    git(root, ['merge', '-q', '--no-ff', '-m', 'merge', 'bx'], who('ann', '2023-01-04T00:00:00+0000'));
+    const product = await buildHotspots(root);
+    expect(Object.fromEntries(product.files.map((row) => [row.path, row.lineageConflicts]))).toEqual({ 'base.txt': 0, 'p.txt': 1 });
+    const { hotspots } = await hotspotFacts(root, ['.'], () => []);
+    expect(Object.fromEntries(hotspots.map((row) => [row.path, row.uncertain]))).toEqual({ 'base.txt': 0, 'p.txt': 1 });
+    expect(hotspots.find((row) => row.path === 'p.txt')).toEqual({ path: 'p.txt', app: '.', commits: 1, authors: 1, lines: 3, last: '2023-01-03', uncertain: 1, features: [] });
+  });
+
   it('lists the files by commits x lines, highest first, with the application, the counts and the last change day', () => {
     const { history } = written();
     expect(history.hotspots.slice(0, 5)).toEqual([
-      { path: 'mono/api/main.go', app: 'mono/api', commits: 7, authors: 2, lines: 12, last: '2023-07-01', features: [] },
-      { path: 'mono/web/app.js', app: 'mono/web', commits: 4, authors: 2, lines: 6, last: '2023-04-10', features: [] },
-      { path: 'mono/api/util.go', app: 'mono/api', commits: 4, authors: 2, lines: 4, last: '2023-07-01', features: [] },
-      { path: 'solo/index.js', app: 'solo', commits: 3, authors: 2, lines: 3, last: '2025-06-06', features: [] },
-      { path: 'mono/web/src/view.js', app: 'mono/web', commits: 1, authors: 1, lines: 3, last: '2024-01-15', features: [] },
+      { path: 'mono/api/main.go', app: 'mono/api', commits: 7, authors: 2, lines: 12, last: '2023-07-01', uncertain: 0, features: [] },
+      { path: 'mono/web/app.js', app: 'mono/web', commits: 4, authors: 2, lines: 6, last: '2023-04-10', uncertain: 0, features: [] },
+      { path: 'mono/api/util.go', app: 'mono/api', commits: 4, authors: 2, lines: 4, last: '2023-07-01', uncertain: 0, features: [] },
+      { path: 'solo/index.js', app: 'solo', commits: 3, authors: 2, lines: 3, last: '2025-06-06', uncertain: 0, features: [] },
+      { path: 'mono/web/src/view.js', app: 'mono/web', commits: 1, authors: 1, lines: 3, last: '2024-01-15', uncertain: 0, features: [] },
     ]);
     expect(history.hotspots.length).toBeLessThanOrEqual(15);
   });
@@ -332,6 +356,11 @@ describe('the shape check and the loader of history.json', () => {
     expect(checkHistoryShape({ ...history, years: [{ year: '2022', commits: 1, byApp: {} }] })).not.toEqual([]);
     expect(checkHistoryShape({ ...history, apps: [{ ...history.apps[0], commits: 1.5 }] })).not.toEqual([]);
     expect(checkHistoryShape({ ...history, hotspots: [{ ...history.hotspots[0], features: 'F1' }] })).not.toEqual([]);
+    expect(checkHistoryShape({ ...history, hotspots: [{ ...history.hotspots[0], uncertain: 3 }] })).toEqual([]);
+    const { uncertain, ...unmarked } = history.hotspots[0];
+    expect(uncertain).toBe(0);
+    expect(checkHistoryShape({ ...history, hotspots: [unmarked] }).join('\n')).toContain('hotspots[0]');
+    for (const bad of [-1, 1.5, '2', null]) expect(checkHistoryShape({ ...history, hotspots: [{ ...history.hotspots[0], uncertain: bad }] }), String(bad)).not.toEqual([]);
     expect(checkHistoryShape({ ...history, noHistory: { reason: 'because' } })).not.toEqual([]);
     expect(checkHistoryShape({ ...history, tests: [{ dir: 'x', sourceFiles: -1, testFiles: 0 }] })).not.toEqual([]);
     expect(checkHistoryShape({ ...history, format: 'x' })).not.toEqual([]);

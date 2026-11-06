@@ -34,8 +34,8 @@ const HISTORY: History = {
     { dir: d('loose'), first: null, last: null, commits: null, authors: null, authors80: null, reason: 'not-a-repository' },
   ],
   hotspots: [
-    { name: d('orders.js'), app: d('api'), commits: 5, authors: 2, lines: 20, last: '2024-09-09', features: ['F1', 'F2'] },
-    { name: d('misc.js'), app: null, commits: 2, authors: 1, lines: 9, last: '2023-01-01', features: [] },
+    { name: d('orders.js'), app: d('api'), commits: 5, authors: 2, lines: 20, last: '2024-09-09', uncertain: 0, features: ['F1', 'F2'] },
+    { name: d('misc.js'), app: null, commits: 2, authors: 1, lines: 9, last: '2023-01-01', uncertain: 0, features: [] },
   ],
   coChange: [{ a: d('orders.js'), appA: d('api'), b: d('page.js'), appB: d('web'), commits: 4 }],
   tests: [{ dir: d('api'), sourceFiles: 9, testFiles: 2 }, { dir: d('web'), sourceFiles: 4, testFiles: 0 }],
@@ -150,6 +150,29 @@ describe('the history page', () => {
     expect(hotspots).toContain(`<a href="#/product/feature/F2">${d('Reminders')}</a>`);
     expect(hotspots).toMatch(/<th scope="row">d~misc\.js<\/th><td data-empty="true"><\/td>/);
     expect(html).not.toContain('api/src');
+  });
+
+  it('writes no uncertain mark and no note when no listed file has an uncertain count', () => {
+    for (const view of ['product', 'technical']) {
+      const hotspots = part(main(render(dataFor(), `#/${view}/history`)), 'history-hotspots');
+      expect(hotspots, view).not.toContain(marked['md.history.uncertainNote']);
+      expect(hotspots, view).not.toContain('uncertain)');
+      expect(hotspots, view).toContain('<td>5</td>');
+    }
+  });
+
+  it('writes the commits of a file with an uncertain count as the ui text and one note after the hotspots note, in both views', () => {
+    const uncertain: History = { ...HISTORY, hotspots: [{ ...HISTORY.hotspots[0], uncertain: 3 }, HISTORY.hotspots[1]] };
+    const mark = marked['md.history.commitsUncertain'].replace('{commits}', '5').replace('{uncertain}', '3');
+    for (const view of ['product', 'technical']) {
+      const hotspots = part(main(render(dataFor(uncertain), `#/${view}/history`)), 'history-hotspots');
+      expect(hotspots, view).toContain(`<td>${mark}</td>`);
+      // the file without an uncertain count keeps its plain number
+      expect(hotspots, view).toContain('<td>2</td>');
+      expect(hotspots.split(marked['md.history.uncertainNote']).length - 1, view).toBe(1);
+      expect(hotspots.indexOf(marked['md.history.uncertainNote']), view).toBeGreaterThan(hotspots.indexOf(marked['md.history.hotspotsNote']));
+      expect(hotspots.indexOf(marked['md.history.uncertainNote']), view).toBeLessThan(hotspots.indexOf('<table'));
+    }
   });
 
   it('writes the path of each file in the technical view', () => {

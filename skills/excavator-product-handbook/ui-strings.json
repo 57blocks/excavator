@@ -386,6 +386,8 @@
     "md.history.appNoHistory": "No version history: {reason}",
     "md.history.hotspotsHeading": "Files that change most",
     "md.history.hotspotsNote": "The score of a file is its number of commits times its number of lines at the latest commit. The 15 files with the highest score are listed. The features are the verified entries that quote a passage of the file. Git may not follow a file through a rename, so the history of a renamed file can start at the rename.",
+    "md.history.commitsUncertain": "{commits} ({uncertain} uncertain)",
+    "md.history.uncertainNote": "A count marked uncertain is for a file whose history branches: at that many commits git could not tell which file of the same name was changed, so the count can leave out or include those commits.",
     "md.history.table.file": "File",
     "md.history.table.path": "Path",
     "md.history.table.lastChange": "Last change",

@@ -39,7 +39,7 @@ const rowOf = (spec) => (value) => objectProblems(value, 'row', spec).length ===
 
 const YEAR_ROW = rowOf({ year: (v) => Number.isInteger(v) && v >= 1970, commits: isCount, byApp: (v) => isObject(v) && Object.values(v).every((n) => Number.isInteger(n) && n >= 1) });
 const APP_ROW = rowOf({ dir: isString, first: nullOr(isDay), last: nullOr(isDay), commits: nullOr(isCount), authors: nullOr(isCount), authors80: nullOr(isCount), reason: nullOr((v) => APP_REASONS.includes(v)) });
-const HOTSPOT_ROW = rowOf({ path: isString, app: nullOr(isString), commits: isCount, authors: isCount, lines: isCount, last: isDay, features: listOf(isString) });
+const HOTSPOT_ROW = rowOf({ path: isString, app: nullOr(isString), commits: isCount, authors: isCount, lines: isCount, last: isDay, uncertain: isCount, features: listOf(isString) });
 const PAIR_ROW = rowOf({ a: isString, b: isString, commits: isCount });
 const TEST_ROW = rowOf({ dir: isString, sourceFiles: isCount, testFiles: isCount });
 

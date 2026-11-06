@@ -58,11 +58,12 @@ function appsBlock(history, t) {
 function hotspotsBlock(history, map, technical, t) {
   const out = [`### ${t('md.history.hotspotsHeading')}`, '', t('md.history.hotspotsNote'), ''];
   if (history.hotspots.length === 0) return [...out, t('md.none'), ''];
+  if (history.hotspots.some((row) => row.uncertain > 0)) out.push(t('md.history.uncertainNote'), '');
   const names = new Map(map.features.map((feature) => [feature.id, feature.name]));
   const rows = history.hotspots.map((row) => [
     technical ? row.path : row.name,
     row.app ?? DASH,
-    String(row.commits),
+    row.uncertain > 0 ? fill(t('md.history.commitsUncertain'), { commits: row.commits, uncertain: row.uncertain }) : String(row.commits),
     String(row.authors),
     String(row.lines),
     row.last,
