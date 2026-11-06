@@ -27,6 +27,6 @@
 
 提交：`docs(openspec): record handbook-data-tables acceptance`
 
-- [ ] 4.1 变异检查（design O1 四条），结果写进 `acceptance.md`
-- [ ] 4.2 O4 真实运行与分层抽查，没过的线照实写
-- [ ] 4.3 受影响测试、`check-refs`、`openspec validate --all --strict` 本地过；全量门在分离检出里跑（O5）
+- [x] 4.1 变异检查（design O1 四条），结果写进 `acceptance.md`
+- [x] 4.2 O4 真实运行与分层抽查，没过的线照实写
+- [x] 4.3 受影响测试、`check-refs`、`openspec validate --all --strict` 本地过；全量门在分离检出里跑（O5）
