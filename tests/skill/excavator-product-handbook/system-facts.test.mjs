@@ -234,6 +234,7 @@ describe('system facts: one row per application root, whatever the overview says
       const app = (dir, name) => ({ dir, name, does: `${name} does its work.`, evidence: [{ file: `${dir}/package.json`, passage: manifest(dir.split('/').at(-1)).trim() }] });
       doc.applications = [app('repos/api', 'Api'), app('repos/web', 'Web'), ...(listTools ? [app('repos/api/tools', 'Tools')] : [])];
       doc.integrations[0].callers = ['repos/api'];
+      doc.name = { text: 'api', evidence: [{ file: 'repos/api/package.json', passage: manifest('api').trim() }] };
     });
     if (verify) {
       expect(judge(run, 'overview', 1, judgeBad).status).toBe(0);

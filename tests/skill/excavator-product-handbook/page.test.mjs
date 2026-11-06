@@ -80,13 +80,13 @@ describe('page: the file and its data', () => {
     expect(policy).toBe("default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; font-src data:; connect-src 'none'; base-uri 'none'; form-action 'none'");
   });
 
-  it('has the data keys in a fixed order, the project as a directory name only, and the ui table', () => {
+  it('has the data keys in a fixed order, no project name without a verified overview name, and the ui table', () => {
     const run = checkedRun();
     page(run);
     const data = dataOf(html(run));
     expect(Object.keys(data)).toEqual(['format', 'project', 'language', 'languageTag', 'ui', 'views', 'areas', 'domains', 'domainBasis', 'features', 'findings', 'coverage', 'summary', 'system', 'entities']);
     expect(data.format).toBe('excavator-product-handbook-page/8');
-    expect(data.project).toBe('project');
+    expect(data.project).toBeNull();
     expect(data.language).toBe('English');
     expect(data.languageTag).toBe('en');
     expect(data.ui.strings).toEqual(JSON.parse(readFileSync(SHIPPED_UI, 'utf-8')).strings);
@@ -186,7 +186,8 @@ describe('page: deterministic bytes and nothing local', () => {
       ui: { 'md.title': `Handbook of ${root}` },
     };
     const data = buildPageData(run, [root, '/links/shop']);
-    expect(data.project).toBe('shop');
+    // The directory name rewrites paths inside strings; it is not the name the page shows.
+    expect(data.project).toBeNull();
     expect(data.areas[0].name).toBe('Area at shop/src');
     expect(data.coverage.unassigned[0].reason).toBe(`see shop and ${root}-two and ${root}.bak`);
     expect(data.ui.strings['md.title']).toBe('Handbook of shop');

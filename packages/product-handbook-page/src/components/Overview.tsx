@@ -1,5 +1,5 @@
 import { useLinks, useView } from '../lib/links';
-import { useText } from '../lib/text';
+import { systemName, useText } from '../lib/text';
 import type { PageData } from '../lib/types';
 import { Locations } from './Locations';
 import { ReachBadge } from './ReachBadge';
@@ -15,7 +15,7 @@ export function Overview({ data }: { data: PageData }) {
   return (
     <article className="page" data-view="overview">
       <header className="page-head">
-        <p className="eyebrow">{data.project}</p>
+        <p className="eyebrow">{systemName(data.project, t)}</p>
         <h1 className="page-title">{t('page.overview.heading')}</h1>
       </header>
 

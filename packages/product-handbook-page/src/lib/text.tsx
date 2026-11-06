@@ -20,3 +20,6 @@ export const TextContext = createContext<Text>((key) => key);
 
 /** The page's one source of fixed text. */
 export const useText = (): Text => useContext(TextContext);
+
+/** What the page shows for the system: its verified name, or the fixed text that says the code gives none. */
+export const systemName = (project: string | null, t: Text): string => project ?? t('page.systemNameMissing');

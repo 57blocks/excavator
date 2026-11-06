@@ -97,8 +97,8 @@ describe('assemble and page write the views that --views selects', () => {
     const result = assemble(run, 'technical,product');
     expect(result.status, result.stdout).toBe(0);
     expect(result.lines).toEqual([join(run.out, 'handbook.md'), join(run.out, 'handbook-technical.md')]);
-    expect(text(run, 'handbook.md').startsWith('# Product handbook\n')).toBe(true);
-    expect(text(run, 'handbook-technical.md').startsWith('# Product handbook: technical view\n')).toBe(true);
+    expect(text(run, 'handbook.md').startsWith('# handbook-fixture - Product handbook\n')).toBe(true);
+    expect(text(run, 'handbook-technical.md').startsWith('# handbook-fixture - Product handbook: technical view\n')).toBe(true);
     expect(page(run, 'product,technical').status).toBe(0);
     const data = dataOf(run);
     expect(data.views).toEqual(['product', 'technical']);

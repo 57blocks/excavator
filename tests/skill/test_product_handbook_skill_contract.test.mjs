@@ -155,6 +155,7 @@ describe('excavator-product-handbook skill: setup', () => {
     for (const line of lines) {
       if (line.includes(`${HANDBOOK} candidates`)) expect(line).toContain('candidates "$PROJECT_ROOT"');
       else if (line.includes(`${HANDBOOK} applications`)) expect(line).toContain('applications "$PROJECT_ROOT"');
+      else if (line.includes(`${HANDBOOK} names`)) expect(line).toContain('names "$PROJECT_ROOT"');
       else if (line.includes(`${HANDBOOK} check-ui`)) expect(line).not.toContain('--project');
       else if (line.includes(`${HANDBOOK} data`)) expect(line).toContain('data "$PROJECT_ROOT" "$OUT"');
       else expect(line, line).toContain('--project "$PROJECT_ROOT"');
@@ -1451,7 +1452,7 @@ describe('excavator-product-handbook skill: Phase 3b, the system overview (O2 of
 
   it('prints the application roots, deletes the old file, records the dispatch and dispatches in the foreground, in that order', () => {
     const step2 = p.slice(p.indexOf('2. Print what the prompt below needs'), p.indexOf('3. When the subagent returns'));
-    const order = [`${HANDBOOK} applications "$PROJECT_ROOT"`, 'rm -f "$OUT/entries/overview.json"', `${HANDBOOK} mark "$OUT" overview dispatched --project "$PROJECT_ROOT"`];
+    const order = [`${HANDBOOK} applications "$PROJECT_ROOT"`, `${HANDBOOK} names "$PROJECT_ROOT"`, 'rm -f "$OUT/entries/overview.json"', `${HANDBOOK} mark "$OUT" overview dispatched --project "$PROJECT_ROOT"`];
     const at = order.map((text) => step2.indexOf(text));
     expect(at.every((index) => index > -1)).toBe(true);
     expect([...at].sort((a, b) => a - b)).toEqual(at);
@@ -1484,7 +1485,7 @@ describe('excavator-product-handbook skill: Phase 3b, the system overview (O2 of
     expect(example).toBeDefined();
     const doc = JSON.parse(example.replace(/\bE\b(?=[,}\]])/g, '[{"file": "a.js", "passage": "x"}]'));
     expect(overviewShapeProblems(doc)).toEqual([]);
-    expect(Object.keys(doc)).toEqual(['format', 'id', 'summary', 'audiences', 'applications', 'integrations', 'unknowns']);
+    expect(Object.keys(doc)).toEqual(['format', 'id', 'name', 'summary', 'audiences', 'applications', 'integrations', 'unknowns']);
     expect(overviewPrompt).toContain('Every key is always there');
   });
 
@@ -1496,6 +1497,18 @@ describe('excavator-product-handbook skill: Phase 3b, the system overview (O2 of
     expect(overviewPrompt).toContain('never a document (`.md`, `.mdx`, `.txt`, `.rst`, `.adoc`)');
     expect(overviewPrompt).toContain('exactly once');
     expect(overviewPrompt).toContain('Arabic numerals');
+  });
+
+  // O2 of handbook-system-name: the prompt gives the candidates and the rules of the name.
+  it('prints the name candidates for the prompt and gives the rules of the name: a candidate, copied, its line, the full name, never unresolved, null with unknowns', () => {
+    expect(overviewPrompt).toContain('The name candidates (value, source, file and line, resolved or unresolved): <the output of the names command, as printed>');
+    expect(overviewPrompt).toContain('`text` is the value of one candidate, copied exactly as the list prints it');
+    expect(overviewPrompt).toContain('`evidence` is exactly one passage, not several: the line of that candidate in its file');
+    expect(overviewPrompt).toContain('Choose the full product name a reader would recognise rather than a package name, a module name or an abbreviation');
+    expect(overviewPrompt).toContain('never choose a candidate marked `unresolved`');
+    expect(overviewPrompt).toContain('write `"name": null` and add an item to `unknowns`');
+    expect(overviewPrompt).toContain('never from a document, a directory name or your own wording');
+    expect(overviewPrompt).toContain('none of the reader-text rules below applies to it');
   });
 
   it('puts the overview in the unit list of Phase 5 and of Phase 6, with recipes that are run on a real state', () => {
@@ -1546,7 +1559,7 @@ describe('excavator-product-handbook skill: sections (O2 of handbook-sections)',
   const digest = (text) => createHash('sha256').update(text, 'utf8').digest('hex');
   const PINNED = {
     'stages/map.md': 'df39550d3c009255c094bf3d4d81869b64208f1c5b7657a08147d75320c7df75',
-    'sections/overview.md': '5512a5f58116b55aa428cb11e1fd86a2bc3d0693cf5870f7be9b26baedf5ab9a',
+    'sections/overview.md': '88062ce1583a85177d73f35500e63358f8dbd9675e5e51dce7e4f99582875da7',
     'sections/features.md': 'c1f9c6b4a31f7ada868088b307f3f4abbcc63e0c7e9946ec4fdf621d9562b590',
   };
   const heads = {

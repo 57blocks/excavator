@@ -1,5 +1,5 @@
 import { useLinks } from '../lib/links';
-import { useText } from '../lib/text';
+import { systemName, useText } from '../lib/text';
 import type { ApplicationFacts, PageData, Technical } from '../lib/types';
 import { Crumbs } from './Crumbs';
 import { Cell, TableScroll } from './Tables';
@@ -118,7 +118,7 @@ export function ApplicationsMatrixPage({ data, technical }: { data: PageData; te
   return (
     <article className="page" data-view="applications-matrix">
       <header className="page-head">
-        <p className="eyebrow">{data.project}</p>
+        <p className="eyebrow">{systemName(data.project, t)}</p>
         <h1 className="page-title">{heading}</h1>
       </header>
       <p className="muted summary-note">{t('md.matrix.applicationDomain.note')}</p>

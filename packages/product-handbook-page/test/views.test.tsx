@@ -67,7 +67,7 @@ function dataFor(views: View[]): PageData {
     },
     system: {
       status: 'verified',
-      overview: { summary: [d('summary')], audiences: [], integrations: [{ system: SLACK, use: d('messages'), callers: [SVC] }], unknowns: [] },
+      overview: { name: d('system name'), summary: [d('summary')], audiences: [], integrations: [{ system: SLACK, use: d('messages'), callers: [SVC] }], unknowns: [] },
       applications: [
         { dir: SVC, name: d('Service'), does: d('main work'), languages: [{ language: d('Lang'), files: 3 }], frameworks: [], files: 3, lines: 30, history: null },
         { dir: ADMIN, name: d('Admin'), does: d('admin work'), languages: [], frameworks: [], files: 1, lines: 5, history: { first: d('2024-01-01'), last: d('2024-02-01'), commits: 4, authors: 2 } },

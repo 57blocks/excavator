@@ -218,7 +218,9 @@ describe('page data: the overview', () => {
     expect(data.format).toBe('excavator-product-handbook-page/8');
     expect(Object.keys(data)).toEqual(['format', 'project', 'language', 'languageTag', 'ui', 'views', 'areas', 'domains', 'domainBasis', 'features', 'findings', 'coverage', 'summary', 'system', 'entities']);
     expect(data.system.status).toBe('verified');
+    expect(data.project).toBe('handbook-fixture');
     expect(data.system.overview).toEqual({
+      name: 'handbook-fixture',
       summary: ['Staff place and review orders for customers.'],
       audiences: [{ who: 'Clerk', does: 'Creates orders.' }],
       integrations: [{ system: 'Slack', use: 'Reminders go to a team channel.', callers: ['.'] }],

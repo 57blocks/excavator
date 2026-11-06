@@ -87,6 +87,7 @@ const unwrittenSystem: System = {
 const fullSystem: System = {
   status: 'verified',
   overview: {
+    name: d('system name'),
     summary: [d('first summary sentence.'), d('second summary sentence.')],
     audiences: [{ who: d('who one'), does: d('does one') }, { who: d('who two'), does: d('does two') }],
     integrations: [{ system: d('system one'), use: d('use one'), callers: [d('dir one'), d('dir two')] }],
@@ -110,7 +111,7 @@ const fullSystem: System = {
 /** A verified overview that lost every part to verification. */
 const emptySystem: System = {
   status: 'verified',
-  overview: { summary: [], audiences: [], integrations: [], unknowns: [] },
+  overview: { name: null, summary: [], audiences: [], integrations: [], unknowns: [] },
   applications: [],
   counts: { applications: 0, files: 0, lines: 0, areas: 2, features: 6, featuresWithEntry: 2, roles: 0 },
   areas: areaRows,

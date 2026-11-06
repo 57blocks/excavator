@@ -17,7 +17,7 @@ afterEach(() => {
 const stateOf = (run) => run.readJson('state.json');
 const entryOf = (run) => run.readJson('entries/overview.json');
 const readJsonAt = (path) => JSON.parse(readFileSync(path, 'utf-8'));
-const ITEMS = ['summary[0]', 'audiences[0]', 'applications[0]', 'integrations[0]'];
+const ITEMS = ['name', 'summary[0]', 'audiences[0]', 'applications[0]', 'integrations[0]'];
 
 describe('slices: the overview is cut into the items a verifier judges', () => {
   it('refuses an overview that has not passed check-overview, with a Next line, and cuts a checked one', () => {
@@ -28,7 +28,7 @@ describe('slices: the overview is cut into the items a verifier judges', () => {
     expect(run.run('check-overview').status).toBe(0);
     const result = run.run('slices', 'overview');
     expect(result.status, result.stdout).toBe(0);
-    expect(result.lines[0]).toBe('overview: round 1, 4 items in 1 part');
+    expect(result.lines[0]).toBe('overview: round 1, 5 items in 1 part');
     const verify = readJsonAt(join(run.out, 'verify', 'round-1', 'overview', 'part-1.json'));
     expect(verify.feature).toBe('overview');
     expect(verify.items.map((item) => item.id)).toEqual(ITEMS);
@@ -39,6 +39,7 @@ describe('slices: the overview is cut into the items a verifier judges', () => {
     run.run('slices', 'overview');
     const { items } = readJsonAt(join(run.out, 'verify', 'round-1', 'overview', 'part-1.json'));
     const claim = Object.fromEntries(items.map((item) => [item.id, item.claim]));
+    expect(claim.name).toBe('System name > handbook-fixture');
     expect(claim['summary[0]']).toBe('System overview > Purpose > Staff place and review orders for customers.');
     expect(claim['audiences[0]']).toBe('Who: Clerk; What it does: Creates orders.');
     expect(claim['applications[0]']).toBe('Application . (Order tool) > Serves the order pages and sends reminders.');
@@ -114,7 +115,7 @@ describe('verdicts: round 1 and round 2 on the overview', () => {
     const round2 = judge(run, 'overview', 2, () => ({ verdict: 'unverified', reason: 'Nothing shown says why.' }));
     expect(round2.lines).toEqual(['overview: failed at verify: no item could be proved']);
     expect(stateOf(run).overview.status).toBe('failed');
-    expect(stateOf(run).overview.removed).toHaveLength(4);
+    expect(stateOf(run).overview.removed).toHaveLength(5);
     expect(readFileSync(join(run.out, 'entries', 'overview.json'), 'utf-8')).toBe(before);
   });
 
@@ -135,12 +136,12 @@ describe('trace and trace-verdicts: the overview', () => {
     expect(judge(run, 'overview').status).toBe(0);
     const traced = run.run('trace', 'overview');
     expect(traced.status, traced.stdout).toBe(0);
-    expect(traced.lines[0]).toBe('overview: 4 items in 1 part');
+    expect(traced.lines[0]).toBe('overview: 5 items in 1 part');
     const file = readJsonAt(join(run.out, 'trace', 'overview', 'part-1.json'));
     expect(file.items.map((item) => item.id)).toEqual(ITEMS);
     for (const item of file.items) expect(Object.keys(item)).toEqual(['id', 'claim', 'citations']);
     const result = traceFeature(run, 'overview');
-    expect(result.lines).toEqual(['overview: verified (4 items)']);
+    expect(result.lines).toEqual(['overview: verified (5 items)']);
     expect(stateOf(run).overview).toMatchObject({ status: 'verified', attempts: 0 });
   });
 

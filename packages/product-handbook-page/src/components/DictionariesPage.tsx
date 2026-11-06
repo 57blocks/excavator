@@ -1,6 +1,6 @@
 import { useState } from 'react';
 
-import { useText } from '../lib/text';
+import { systemName, useText } from '../lib/text';
 import type { Text } from '../lib/text';
 import type { DictionariesSection, DictionaryEntry, DictionaryMember, DictionaryMismatch, DictionaryValue, PageData, Technical } from '../lib/types';
 import { TableScroll } from './Tables';
@@ -195,7 +195,7 @@ export function DictionariesPage({ data, technical }: { data: PageData; technica
   return (
     <article className="page" data-view="dictionaries">
       <header className="page-head">
-        <p className="eyebrow">{data.project}</p>
+        <p className="eyebrow">{systemName(data.project, t)}</p>
         <h1 className="page-title">{t('md.dict.heading')}</h1>
       </header>
       {section === null

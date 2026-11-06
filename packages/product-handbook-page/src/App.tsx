@@ -114,14 +114,20 @@ function pageTitle(data: PageData, route: Route, t: ReturnType<typeof makeText>)
   }
 }
 
+/** The browser title of a route: the page, the system name and the handbook; without a name the page and the handbook, never the directory of the project. */
+export function documentTitle(data: PageData, route: Route): string {
+  const t = makeText(data.ui.strings);
+  const page = viewOf(data, route) === null ? t('page.notFound.heading') : pageTitle(data, route, t);
+  return data.project === null ? t('page.documentTitleNoName', { page }) : t('page.documentTitle', { project: data.project, page });
+}
+
 /** The document's own text: its language and its title come from the data, like everything else. */
 function useDocument(data: PageData, route: Route): void {
   useEffect(() => {
     document.documentElement.lang = data.languageTag;
   }, [data.languageTag]);
   useEffect(() => {
-    const t = makeText(data.ui.strings);
-    document.title = t('page.documentTitle', { project: data.project, page: viewOf(data, route) === null ? t('page.notFound.heading') : pageTitle(data, route, t) });
+    document.title = documentTitle(data, route);
   }, [route, data]);
 }
 
