@@ -8,6 +8,8 @@
 
 import { dataBlock } from './render-data.mjs';
 import { dictionaryBlock } from './render-dict.mjs';
+import { appendixChapter } from './render-appendix.mjs';
+import { historyChapter } from './render-history.mjs';
 import { REACHES } from './map-shape.mjs';
 import { inline, table } from './markdown.mjs';
 import { applicationCells, listCell } from './render-application.mjs';
@@ -17,6 +19,8 @@ import { EMPTY_PRIORITY } from './priority-model.mjs';
 import { EMPTY_REMEDIES } from './remedies-model.mjs';
 import { recommendationsChapter, remediesCoverage } from './render-remedies.mjs';
 import { topicsChapter, topicsCoverage } from './render-topics.mjs';
+import { EMPTY_APPENDIX } from './appendix.mjs';
+import { NO_HISTORY_FILE } from './history-model.mjs';
 import { EMPTY_TOPICS } from './topics-model.mjs';
 import { fill } from './ui.mjs';
 
@@ -239,9 +243,10 @@ function coverageBlock(map, state, candidates, t, findings, remedies, topics) {
  * lines of each item; the product view writes no citation path. `findings` (findings-model.mjs) is the verified findings of the features: both views write the Findings chapter
  * between the entity sections and the coverage section and each feature's own findings at the end of its section, the technical view with the file and lines of each finding.
  * `topics` (topics-model.mjs) are the Cross-cutting topics chapter after the Recommendations chapter and its part of the coverage section.
+ * `history` (history-model.mjs) is the Code health chapter after the Cross-cutting topics chapter, and `appendix` (appendix.mjs) the Appendix chapter after the coverage section; both views write both.
  * `remedies` (remedies-model.mjs) are the common cause and measure under each category of the Findings chapter and the Recommendations chapter after it.
  */
-export function renderHandbook({ map, entries, state, candidates, ui, summary, system, entities, view = 'product', locations = null, data = null, dictionaries = null, findings = { list: [], groups: [], locations: null, applications: [], priority: EMPTY_PRIORITY }, remedies = EMPTY_REMEDIES, topics = EMPTY_TOPICS }) {
+export function renderHandbook({ map, entries, state, candidates, ui, summary, system, entities, view = 'product', locations = null, data = null, dictionaries = null, findings = { list: [], groups: [], locations: null, applications: [], priority: EMPTY_PRIORITY }, remedies = EMPTY_REMEDIES, topics = EMPTY_TOPICS, history = NO_HISTORY_FILE, appendix = EMPTY_APPENDIX }) {
   const t = (key) => {
     if (!Object.hasOwn(ui, key)) throw new Error(`the fixed-text table has no key ${key}`);
     return ui[key];
@@ -270,7 +275,7 @@ export function renderHandbook({ map, entries, state, candidates, ui, summary, s
     out.push(`## ${inline(domain.name)}`, '');
     for (const id of written) out.push(...entryBlock(featureOf.get(id), entries.get(id), map, t, placesOf.get(id), basis === 'domains' ? areaName.get(featureOf.get(id).area) : null, findingsPart));
   }
-  out.push(...summaryBlock(summary, map, t), ...entitySections({ view, map, entities, summary, system, t }), ...findingsChapter({ map, state, findings, remedies, view, t }), ...recommendationsChapter({ findings, remedies, view, t }), ...topicsChapter({ topics, view, t }), ...coverageBlock(map, state, candidates, t, findings, remedies, topics));
+  out.push(...summaryBlock(summary, map, t), ...entitySections({ view, map, entities, summary, system, t }), ...findingsChapter({ map, state, findings, remedies, view, t }), ...recommendationsChapter({ findings, remedies, view, t }), ...topicsChapter({ topics, view, t }), ...historyChapter({ history, map, view, t }), ...coverageBlock(map, state, candidates, t, findings, remedies, topics), ...appendixChapter({ appendix, map, entities, t }));
   return `${out.join('\n').replace(/\n{3,}/g, '\n\n').trimEnd()}\n`;
 }
 

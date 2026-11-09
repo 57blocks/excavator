@@ -93,7 +93,7 @@ function ByApplication({ data, route }: { data: PageData; route: Route }) {
 
 /**
  * The navigation: overview, the roles and (in the technical view) the
- * applications matrices, the two cross-cutting tables, the findings, the recommendations, the cross-cutting topics, coverage; then, in the
+ * applications matrices, the two cross-cutting tables, the findings, the recommendations, the cross-cutting topics, the code health, coverage and the three parts of the appendix (the open questions, the glossary, the sources and scope); then, in the
  * product view, the domains with their features, or, in the technical view,
  * the applications with their domains and features; and a key to the marks.
  * Below 900px it is a drawer that the top bar's button opens.
@@ -131,7 +131,11 @@ export function Sidebar({ data, route, open, onNavigate }: Props) {
         {link(nav.findings, 'findings', t('page.nav.findings'), <CoverageIcon />)}
         {link(nav.recommendations, 'recommendations', t('page.nav.recommendations'), <CoverageIcon />)}
         {link(nav.topics, 'topics', t('page.nav.topics'), <CoverageIcon />)}
+        {link(nav.history, 'history', t('md.history.heading'), <CoverageIcon />)}
         {link(nav.coverage, 'coverage', t('page.nav.coverage'), <CoverageIcon />)}
+        {link(nav.openQuestions, 'open-questions', t('md.appendix.openHeading'), <CoverageIcon />)}
+        {link(nav.glossary, 'glossary', t('md.appendix.glossaryHeading'), <CoverageIcon />)}
+        {link(nav.sources, 'sources', t('md.appendix.sourcesHeading'), <CoverageIcon />)}
       </div>
       <div className="rail-scroll">
         {view === 'technical' ? <ByApplication data={data} route={route} /> : <ByDomain data={data} route={route} />}

@@ -334,16 +334,16 @@ describe('remedy-verdicts', () => {
     expect(run.readState().remedies.dropped).toEqual([{ id: 'category:hard-coded', reasons: ['Judge a found a fact that is not cited.', 'Judge b found a fact that is not cited.'] }]);
   });
 
-  it('exits 1 and records nothing for a verdict file that misses a paragraph, has an extra one, a verdict that is not one of the two words, or a bad reason', () => {
-    const cases = [
-      ['misses a paragraph', (verdicts) => verdicts.slice(1), 'no verdict'],
-      ['has an extra id', (verdicts) => [...verdicts, { id: 'recommendation:9', verdict: 'follows', reason: 'Fine.' }], 'is not a group of the judge file'],
-      ['repeats an id', (verdicts) => [...verdicts, verdicts[0]], 'more than one verdict'],
-      ['has another verdict word', (verdicts) => verdicts.map((one, index) => (index === 0 ? { ...one, verdict: 'verified' } : one)), 'is not one of follows, doesNotFollow'],
-      ['has a reason of two lines', (verdicts) => verdicts.map((one, index) => (index === 0 ? { ...one, reason: 'One.\nTwo.' } : one)), 'the reason must be one line'],
-      ['has a reason with a code word', (verdicts) => verdicts.map((one, index) => (index === 0 ? { ...one, verdict: 'doesNotFollow', reason: 'The text never mentions delete_order.' } : one)), 'is not allowed in reader text'],
-    ];
-    for (const [name, edit, text] of cases) {
+  const BAD_FILES = [
+    ['misses a paragraph', (verdicts) => verdicts.slice(1), 'no verdict'],
+    ['has an extra id', (verdicts) => [...verdicts, { id: 'recommendation:9', verdict: 'follows', reason: 'Fine.' }], 'is not a group of the judge file'],
+    ['repeats an id', (verdicts) => [...verdicts, verdicts[0]], 'more than one verdict'],
+    ['has another verdict word', (verdicts) => verdicts.map((one, index) => (index === 0 ? { ...one, verdict: 'verified' } : one)), 'is not one of follows, doesNotFollow'],
+    ['has a reason of two lines', (verdicts) => verdicts.map((one, index) => (index === 0 ? { ...one, reason: 'One.\nTwo.' } : one)), 'the reason must be one line'],
+    ['has a reason with a code word', (verdicts) => verdicts.map((one, index) => (index === 0 ? { ...one, verdict: 'doesNotFollow', reason: 'The text never mentions delete_order.' } : one)), 'is not allowed in reader text'],
+  ];
+  for (const [name, edit, text] of BAD_FILES) {
+    it(`exits 1 and records nothing for a verdict file that ${name}`, () => {
       const run = checkedRemediesRun(cleanups);
       const plan = remedyJudgePlan(run);
       writeRemedyVerdicts(plan);
@@ -356,8 +356,8 @@ describe('remedy-verdicts', () => {
       expect(result.lines.join('\n'), name).toContain(text);
       expect(result.lines.at(-1), name).toContain('nothing was recorded');
       expect(readFileSync(join(run.out, 'state.json'), 'utf-8'), name).toBe(before);
-    }
-  });
+    });
+  }
 
   it('exits 1 for a verdict file that is missing, and names the verdict file to dispatch again', () => {
     const run = checkedRemediesRun(cleanups);

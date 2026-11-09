@@ -13,6 +13,7 @@ import { AppView, documentTitle } from '../src/App';
 import { parseHash } from '../src/lib/route';
 import { PAGE_FORMAT } from '../src/lib/types';
 import type { PageData, Summary, System, Technical } from '../src/lib/types';
+import { NO_APPENDIX, NO_HISTORY } from './empty-parts';
 
 const MARK = '@@';
 const DATA = 'd~';
@@ -45,7 +46,7 @@ const technical: Technical = {
   dictionaries: null,
   dictionariesState: 'missing',
   findingLocations: [],
-  topicLocations: [],
+  topicLocations: [], history: { hotspots: [], coChange: [] },
 };
 
 const dataFor = (project: string | null): PageData => ({
@@ -62,6 +63,8 @@ const dataFor = (project: string | null): PageData => ({
   findings: [],
   remedies: { categories: [], recommendations: [] },
   topics: { approval: [], time: [], handoffs: [], access: [], repeated: [] },
+  history: NO_HISTORY,
+  appendix: NO_APPENDIX,
   coverage: { candidateTotal: 0, assigned: 0, unassigned: [], reachCounts: [], removedOverview: [], removed: [], findingsUnfinished: [], findingsNotWritten: 0, findingsRemoved: [], systemFindingsTotal: 0, systemFindingsUnfinished: [], systemFindingsNotWritten: 0, systemFindingsRemoved: [], priority: { finished: true, unranked: [] }, remedies: { finished: true, stale: false, dropped: [] }, topics: { finished: true, stale: false, entriesRead: 0, groupsRead: 0, lanes: [], dropped: [] } },
   summary,
   system,
@@ -81,7 +84,7 @@ const HASHES = ['#/product', '#/product/coverage', '#/product/notifications', '#
 
 describe('the page data format', () => {
   it('is version 10: the project is the system name or null, the findings are groups', () => {
-    expect(PAGE_FORMAT).toBe('excavator-product-handbook-page/13');
+    expect(PAGE_FORMAT).toBe('excavator-product-handbook-page/14');
   });
 });
 

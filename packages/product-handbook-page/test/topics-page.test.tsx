@@ -12,6 +12,7 @@ import { AppView } from '../src/App';
 import { parseHash, routeHash } from '../src/lib/route';
 import { PAGE_FORMAT } from '../src/lib/types';
 import type { PageData, Topics } from '../src/lib/types';
+import { NO_APPENDIX, NO_HISTORY } from './empty-parts';
 
 const MARK = '@@';
 const DATA = 'd~';
@@ -57,6 +58,8 @@ function dataFor(topics: Topics = TOPICS, coverage: Partial<PageData['coverage']
     findings: [],
     remedies: { categories: [], recommendations: [] },
     topics,
+    history: NO_HISTORY,
+    appendix: NO_APPENDIX,
     coverage: {
       candidateTotal: 0, assigned: 0, unassigned: [], reachCounts: [], removedOverview: [], removed: [], findingsUnfinished: [], findingsNotWritten: 0, findingsRemoved: [],
       systemFindingsTotal: 0, systemFindingsUnfinished: [], systemFindingsNotWritten: 0, systemFindingsRemoved: [], priority: { finished: true, unranked: [] }, remedies: { finished: true, stale: false, dropped: [] },
@@ -69,6 +72,7 @@ function dataFor(topics: Topics = TOPICS, coverage: Partial<PageData['coverage']
       technical: {
         featureApplication: [], unattributed: [], applicationDomain: { applications: [], domains: [], cells: [], unattributed: [] }, integrations: [], jobs: [], locations: [],
         topicLocations: [{ id: 'F1#operations[0].sentences[0]', citations: [{ file: d('src/leave.js'), startLine: 12, endLine: 14 }] }],
+        history: { hotspots: [], coChange: [] },
         findingLocations: [{ id: 'F1.findings[0]', citations: [{ file: d('src/delete.js'), startLine: 7, endLine: 7 }] }],
         data: null, dataState: 'missing' as const, dictionaries: null, dictionariesState: 'missing' as const,
       },

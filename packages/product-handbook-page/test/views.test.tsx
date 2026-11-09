@@ -14,6 +14,7 @@ import { AppView } from '../src/App';
 import { parseHash, routeHash } from '../src/lib/route';
 import type { Entry, Feature, PageData, View } from '../src/lib/types';
 import { switchTarget, technicalNav } from '../src/lib/views';
+import { NO_APPENDIX, NO_HISTORY } from './empty-parts';
 
 const MARK = '@@';
 const DATA = 'd~';
@@ -43,7 +44,7 @@ const feature = (id: string, area: string, domain: string, status: Feature['stat
 function dataFor(views: View[]): PageData {
   const withTechnical = views.includes('technical');
   return {
-    format: 'excavator-product-handbook-page/13',
+    format: 'excavator-product-handbook-page/14',
     project: d('project'),
     language: d('language'),
     languageTag: 'xx',
@@ -61,6 +62,8 @@ function dataFor(views: View[]): PageData {
     findings: [],
     remedies: { categories: [], recommendations: [] },
     topics: { approval: [], time: [], handoffs: [], access: [], repeated: [] },
+    history: NO_HISTORY,
+    appendix: NO_APPENDIX,
     coverage: { candidateTotal: 1, assigned: 1, unassigned: [], reachCounts: [{ reach: 'menu', count: 4 }], removedOverview: [], removed: [], findingsUnfinished: [], findingsNotWritten: 0, findingsRemoved: [], systemFindingsTotal: 0, systemFindingsUnfinished: [], systemFindingsNotWritten: 0, systemFindingsRemoved: [], priority: { finished: true, unranked: [] }, remedies: { finished: true, stale: false, dropped: [] }, topics: { finished: true, stale: false, entriesRead: 0, groupsRead: 0, lanes: [], dropped: [] } },
     summary: {
       notifications: [],
@@ -112,7 +115,7 @@ function dataFor(views: View[]): PageData {
           { id: 'overview', items: [{ claim: d('overview claim'), citations: [{ file: d('package.json'), startLine: 1, endLine: 1 }] }] },
         ],
         findingLocations: [],
-        topicLocations: [],
+        topicLocations: [], history: { hotspots: [], coChange: [] },
         data: null,
         dataState: 'missing',
         dictionaries: null,
