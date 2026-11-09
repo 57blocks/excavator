@@ -74,7 +74,7 @@ describe('assemble: only a verified feature is in the body', () => {
   it('leaves a checked feature out of the body and names it in the coverage section as verification not finished', () => {
     const run = checkedRun();
     const text = assemble(run);
-    expect(text).not.toContain('### Orders\n\nHow readers get to it');
+    expect(text).not.toContain('### Orders\n\nAccess');
     expect(text).not.toContain('Staff place new orders for customers.');
     expect(text).toContain('| F1 Orders (Order handling) | Written, verification not finished |');
   });
@@ -83,7 +83,7 @@ describe('assemble: only a verified feature is in the body', () => {
     const run = checkedRun();
     verifyChecked(run);
     const text = assemble(run);
-    expect(text).toContain('### Orders\n\nHow readers get to it: From the menu');
+    expect(text).toContain('### Orders\n\nAccess: Menu');
     expect(text).not.toContain('F1 Orders (Order handling) |');
   });
 
@@ -116,7 +116,7 @@ describe('assemble: the removed items are listed in the coverage section', () =>
     const text = assemble(run);
     const body = text.slice(0, text.indexOf('## Coverage'));
     expect(body).toContain('### Orders');
-    expect(body).toContain('#### Who can use it');
+    expect(body).toContain('#### Roles');
     expect(body).not.toContain('#### Purpose');
     expect(body).not.toContain('Staff place new orders for customers.');
     expect(text).not.toContain('| F1 Orders (Order handling) | Failed the checks |');

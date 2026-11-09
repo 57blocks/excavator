@@ -16,7 +16,7 @@ function RemovedTable({ items }: { items: RemovedItem[] }) {
       </thead>
       <tbody>
         {items.map((item, index) => (
-          <tr key={index}><Cell row>{item.claim}</Cell><Cell>{t(`md.verdict.${item.verdict}`)}</Cell><Cell>{item.reason === '' ? undefined : item.reason}</Cell></tr>
+          <tr key={index}><Cell row col="text">{item.claim}</Cell><Cell col="short">{t(`md.verdict.${item.verdict}`)}</Cell><Cell col="text">{item.reason === '' ? undefined : item.reason}</Cell></tr>
         ))}
       </tbody>
     </TableScroll>
@@ -44,7 +44,7 @@ function PriorityCoverage({ data }: { data: PageData }) {
               {unranked.map((row) => (
                 <tr key={row.id}>
                   <Cell row>{t('md.findings.featureItem', { category: t(findingCategoryKey(row.category)), text: row.text })}</Cell>
-                  <Cell>{row.reasons.length === 0 ? t('md.priority.notJudged') : row.reasons.join('; ')}</Cell>
+                  <Cell col="text">{row.reasons.length === 0 ? t('md.priority.notJudged') : row.reasons.join('; ')}</Cell>
                 </tr>
               ))}
             </tbody>
@@ -76,7 +76,7 @@ function RemediesCoverage({ data }: { data: PageData }) {
               {dropped.map((row) => (
                 <tr key={row.id}>
                   <Cell row>{row.kind === 'category' && row.category !== undefined ? t('md.remedies.droppedCategory', { category: t(findingCategoryKey(row.category)), cause: row.text }) : t('md.remedies.droppedRecommendation', { title: row.title ?? '', text: row.text })}</Cell>
-                  <Cell>{row.reasons.length === 0 ? undefined : row.reasons.join('; ')}</Cell>
+                  <Cell col="text">{row.reasons.length === 0 ? undefined : row.reasons.join('; ')}</Cell>
                 </tr>
               ))}
             </tbody>
@@ -119,7 +119,7 @@ function TopicsCoverage({ data }: { data: PageData }) {
             </thead>
             <tbody>
               {dropped.map((row) => (
-                <tr key={row.id}><Cell row>{t('md.topics.droppedRow', { topic: t(`md.topics.${row.topic}.heading`), text: row.text })}</Cell><Cell>{row.reasons.length === 0 ? undefined : row.reasons.join('; ')}</Cell></tr>
+                <tr key={row.id}><Cell row>{t('md.topics.droppedRow', { topic: t(`md.topics.${row.topic}.heading`), text: row.text })}</Cell><Cell col="text">{row.reasons.length === 0 ? undefined : row.reasons.join('; ')}</Cell></tr>
               ))}
             </tbody>
           </TableScroll>

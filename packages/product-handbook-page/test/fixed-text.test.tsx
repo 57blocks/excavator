@@ -189,7 +189,7 @@ const decode = (text: string): string => text.replace(/&quot;/g, '"').replace(/&
 
 /** Every visible text node and every text attribute of the markup. */
 function visibleTexts(html: string): string[] {
-  const nodes = html.split(/<[^>]*>/).map((text) => decode(text).trim()).filter((text) => text !== '');
+  const nodes = html.replace(/<wbr\/>/g, '').split(/<[^>]*>/).map((text) => decode(text).trim()).filter((text) => text !== '');
   const attributes = Array.from(html.matchAll(/\s(?:aria-label|title|alt|placeholder|aria-description)="([^"]*)"/g), (match) => decode(match[1]).trim());
   return [...nodes, ...attributes];
 }

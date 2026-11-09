@@ -33,7 +33,7 @@ export function NotificationsPage({ data }: { data: PageData }) {
             {notifications.map((n, at) => (
               <tr key={at}>
                 <Cell row><a href={nav.feature(n.feature)}>{t('md.summary.feature', { id: n.feature, name: name.get(n.feature) ?? '' })}</a></Cell>
-                <Cell>{n.trigger}</Cell><Cell>{n.recipient}</Cell><Cell>{n.channel}</Cell><Cell>{n.content}</Cell>
+                <Cell col="text">{n.trigger}</Cell><Cell col="text">{n.recipient}</Cell><Cell col="short">{n.channel}</Cell><Cell col="text">{n.content}</Cell>
               </tr>
             ))}
           </tbody>

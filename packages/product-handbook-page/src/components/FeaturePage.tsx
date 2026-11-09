@@ -76,8 +76,8 @@ function EntryBody({ entry }: { entry: Entry }) {
                     {screen.fields.map((field, index) => (
                       <tr key={index}>
                         <Cell row>{field.label}</Cell>
-                        <Cell>{rulesOf(field, 'frontend')}</Cell>
-                        <Cell>{rulesOf(field, 'backend')}</Cell>
+                        <Cell col="text">{rulesOf(field, 'frontend')}</Cell>
+                        <Cell col="text">{rulesOf(field, 'backend')}</Cell>
                       </tr>
                     ))}
                   </tbody>
@@ -105,7 +105,7 @@ function EntryBody({ entry }: { entry: Entry }) {
             </thead>
             <tbody>
               {entry.states.map((state, at) => (
-                <tr key={at}><Cell row>{state.label}</Cell><Cell>{state.meaning}</Cell></tr>
+                <tr key={at}><Cell row>{state.label}</Cell><Cell col="text">{state.meaning}</Cell></tr>
               ))}
             </tbody>
           </TableScroll>
@@ -125,7 +125,7 @@ function EntryBody({ entry }: { entry: Entry }) {
             </thead>
             <tbody>
               {entry.notifications.map((n, at) => (
-                <tr key={at}><Cell>{n.trigger}</Cell><Cell>{n.recipient}</Cell><Cell>{n.channel}</Cell><Cell>{n.content}</Cell></tr>
+                <tr key={at}><Cell col="text">{n.trigger}</Cell><Cell col="text">{n.recipient}</Cell><Cell col="short">{n.channel}</Cell><Cell col="text">{n.content}</Cell></tr>
               ))}
             </tbody>
           </TableScroll>

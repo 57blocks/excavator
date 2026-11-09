@@ -57,8 +57,8 @@ describe('handbook.md groups the features by business domain', () => {
     const run = domainsRun();
     assemble(run);
     const md = text(run, 'handbook.md');
-    const top = sectionOf(md, '## Domains and features', '| How readers get to it |');
-    expect(top).toContain('- **Customer orders**\n  - Orders (From the menu)\n  - Archive (By a link)\n  - Orders (Interface for other systems)');
+    const top = sectionOf(md, '## Domains and features', '| Access |');
+    expect(top).toContain('- **Customer orders**\n  - Orders (Menu)\n  - Archive (Direct link)\n  - Orders (Interface for other systems)');
     expect(top).toContain('- **System upkeep**\n  - Reminders (Automatic)\n  - Admin tool (Operator command)');
     expect(md).not.toContain(FROM_AREAS);
     expect(md).not.toContain('## Areas and features');
@@ -68,16 +68,16 @@ describe('handbook.md groups the features by business domain', () => {
     const run = domainsRun();
     assemble(run);
     const md = text(run, 'handbook.md');
-    expect(md).toContain('## Customer orders\n\n### Orders\n\nHow readers get to it: From the menu');
+    expect(md).toContain('## Customer orders\n\n### Orders\n\nAccess: Menu');
     expect(md).not.toContain('## Order handling');
-    expect(md).toContain('Area in the navigation: Order handling');
+    expect(md).toContain('Navigation area: Order handling');
   });
 
   it('computes the domain entity section and the overview table over the domains', () => {
     const run = domainsRun();
     assemble(run);
     const md = text(run, 'handbook.md');
-    const domains = sectionOf(md, '## Domains\n', '## Roles');
+    const domains = sectionOf(md, '## Domains\n', '\n## Roles');
     expect(domains).toContain('### Customer orders\n\nFeatures: 3. Features with a verified entry: 1.');
     expect(domains).toContain('### System upkeep\n\nFeatures: 2. Features with a verified entry: 0.');
     expect(domains).not.toContain(FROM_AREAS);
@@ -99,12 +99,12 @@ describe('without a passing domains file the handbook falls back to the map\'s a
   const fallbackChecks = (run) => {
     assemble(run);
     const md = text(run, 'handbook.md');
-    const top = sectionOf(md, '## Areas and features', '| How readers get to it |');
+    const top = sectionOf(md, '## Areas and features', '| Access |');
     expect(top).toContain(FROM_AREAS);
-    expect(top).toContain('- **Order handling**\n  - Orders (From the menu)\n  - Archive (By a link)');
+    expect(top).toContain('- **Order handling**\n  - Orders (Menu)\n  - Archive (Direct link)');
     expect(md).toContain('## Order handling\n\n### Orders');
-    expect(md).not.toContain('Area in the navigation:');
-    expect(sectionOf(md, '## Domains\n', '## Roles')).toContain(FROM_AREAS);
+    expect(md).not.toContain('Navigation area:');
+    expect(sectionOf(md, '## Domains\n', '\n## Roles')).toContain(FROM_AREAS);
     expect(sectionOf(md, '### Areas and roles', '## Areas and features')).toContain('| Area | Features | Verified entries | Roles |');
     expect(sectionOf(text(run, 'handbook-technical.md'), '## Applications by domain')).toContain('| Application | Order handling | Automatic work |');
   };
@@ -225,7 +225,7 @@ describe('a run in a language with its own script', () => {
     const md = text(run, 'handbook.md');
     expect(md).toContain(`## ${MARK}Domains and features`);
     expect(md).toContain(`- **${MARK}Customer orders**`);
-    expect(md).toContain(`${MARK}Area in the navigation: `);
+    expect(md).toContain(`${MARK}Navigation area: `);
     expect(md).not.toContain(FROM_AREAS);
     fallbackText(run);
   });

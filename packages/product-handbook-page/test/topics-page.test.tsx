@@ -144,8 +144,8 @@ describe('the topics page', () => {
   it('writes no file or line in the product view and the file and lines of each cited item and group in the technical view', () => {
     expect(render(dataFor(), '#/product/topics')).not.toContain('src/');
     const technical = decode(main(render(dataFor(), '#/technical/topics')));
-    expect(technical).toContain(`${d('src/leave.js')}`);
-    expect(technical).toContain(`${d('src/delete.js')}`);
+    expect(technical).toContain(`<code class="loc-chip">${d('src/')}<wbr/>leave.js:12-14</code>`);
+    expect(technical).toContain(`<code class="loc-chip">${d('src/')}<wbr/>delete.js:7</code>`);
     expect(technical).not.toContain('src/delete.js, line 99');
   });
 

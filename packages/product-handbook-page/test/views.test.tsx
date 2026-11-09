@@ -130,7 +130,7 @@ const render = (data: PageData, hash: string): string => renderToStaticMarkup(<A
 
 const decode = (text: string): string => text.replace(/&quot;/g, '"').replace(/&#x27;/g, "'").replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&');
 function visibleTexts(html: string): string[] {
-  const nodes = html.split(/<[^>]*>/).map((text) => decode(text).trim()).filter((text) => text !== '');
+  const nodes = html.replace(/<wbr\/>/g, '').split(/<[^>]*>/).map((text) => decode(text).trim()).filter((text) => text !== '');
   const attributes = Array.from(html.matchAll(/\s(?:aria-label|title|alt|placeholder|aria-description)="([^"]*)"/g), (match) => decode(match[1]).trim());
   return [...nodes, ...attributes];
 }
@@ -241,6 +241,20 @@ describe('the technical view is navigated by application', () => {
     expect(rail).toContain('data-part="systems"');
   });
 
+  it('the rail is one scroll container that holds the page links, the feature list and the key', () => {
+    for (const hash of ['#/technical', '#/product']) {
+      const html = render(data, hash);
+      const rail = html.slice(html.indexOf('<nav class="rail"'), html.indexOf('</nav>', html.indexOf('<nav class="rail"')));
+      expect(rail.match(/class="rail-scroll"/g)).toHaveLength(1);
+      const open = rail.indexOf('class="rail-scroll"');
+      expect(rail.indexOf('class="rail-top"')).toBeGreaterThan(open);
+      expect(rail.indexOf('class="rail-feature"')).toBeGreaterThan(open);
+      expect(rail.indexOf('class="rail-key"')).toBeGreaterThan(rail.indexOf('class="rail-feature"'));
+      expect(rail).toMatch(/^<nav class="rail"[^>]*><div class="rail-scroll">/);
+      expect(rail.endsWith('</ul></div></div>')).toBe(true);
+    }
+  });
+
   it('the product navigation is by domain: no application in the rail', () => {
     const html = render(data, '#/product');
     const rail = html.slice(html.indexOf('<nav class="rail"'), html.indexOf('</nav>', html.indexOf('<nav class="rail"')));
@@ -257,9 +271,11 @@ describe('pages of the two views', () => {
   it('the feature page shows each cited item with the file and lines in the technical view, and nothing of the kind in the product view', () => {
     const technical = render(data, '#/technical/feature/F1');
     expect(technical).toContain(marked['md.locations.heading']);
-    expect(technical).toContain(`${MARK}${d('src/a.js')}, line 3`);
-    expect(technical).toContain(`${MARK}${d('src/b.js')}, lines 5-9`);
-    expect(technical).toContain(`${MARK}${d('src/c.js')}, lines not located`);
+    expect(technical).toContain('<details class="loc-details" data-part="locations-details">');
+    expect(technical).not.toContain('<details class="loc-details" data-part="locations-details" open');
+    expect(technical).toContain(`<code class="loc-chip">${d('src/')}<wbr/>a.js:3</code>`);
+    expect(technical).toContain(`<code class="loc-chip">${d('src/')}<wbr/>b.js:5-9</code>`);
+    expect(technical).toContain(`${MARK}${d('src/c.js')}, lines not located</code>`);
     const product = render(data, '#/product/feature/F1');
     expect(product).not.toContain('data-part="locations"');
     expect(product).not.toContain(d('src/a.js'));
@@ -411,7 +427,7 @@ describe('the page groups the features by business domain', () => {
   it('a feature page crumbs to its domain and shows the area it sits in as a property', () => {
     const html = render(data, '#/feature/F2');
     expect(html).toContain('href="#/domain/D1"');
-    expect(html).toContain(`${MARK}Area in the navigation: ${d('area two')}`);
+    expect(html).toContain(`${MARK}Navigation area: ${d('area two')}`);
   });
 
   it('keeps the technical navigation by application, with the domains inside, over the domain ids', () => {

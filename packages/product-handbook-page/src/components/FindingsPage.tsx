@@ -5,7 +5,7 @@ import { useText } from '../lib/text';
 import type { Text } from '../lib/text';
 import { FINDING_CATEGORIES, LEVELS, findingCategoryKey } from '../lib/types';
 import type { FindingCategory, FindingGroup, FindingOwner, Level, PageData } from '../lib/types';
-import { placeText } from './Locations';
+import { Chips } from './Locations';
 import { PriorityBadge } from './PriorityBadge';
 import { Cell, TableScroll } from './Tables';
 
@@ -63,7 +63,6 @@ export function FindingsPage({ data }: { data: PageData }) {
   const levels = countByLevel(data.findings);
   const levelName = (entry: Level | 'none'): string => (entry === 'none' ? t('md.priority.unranked') : t('md.priority.level', { rank: entry.slice(1) }));
   const places = new Map((view === 'technical' ? data.technical?.findingLocations ?? [] : []).map((entry) => [entry.id, entry.citations]));
-  const placesOf = (id: string): string => (places.get(id) ?? []).map((place) => placeText(t, place)).join('; ');
   const verified = data.features.filter((feature) => feature.findingsStatus === 'verified').length;
   const systemTotal = data.coverage.systemFindingsTotal;
   const systemVerified = systemTotal - data.coverage.systemFindingsUnfinished.length - data.coverage.systemFindingsNotWritten;
@@ -145,13 +144,13 @@ export function FindingsPage({ data }: { data: PageData }) {
                       const [first, ...others] = group.items;
                       return (
                         <tr key={first.id} data-group={group.items.length > 1 ? 'merged' : 'single'} data-level={group.priority?.level ?? 'none'}>
-                          <Cell><PriorityBadge priority={group.priority} /></Cell>
-                          <Cell row>
+                          <Cell col="short"><PriorityBadge priority={group.priority} /></Cell>
+                          <Cell row col="text">
                             <ul className="plain-list" data-part="findings-owners">
                               {group.owners.map((one) => <li key={`${one.kind}:${one.id}`}><Owner owner={one} /></li>)}
                             </ul>
                           </Cell>
-                          <Cell>
+                          <Cell col="text">
                             {first.text}
                             {group.priority !== null && <p className="muted" data-part="findings-reason">{t('page.findings.reason', { reason: group.priority.reason })}</p>}
                             {others.length > 0 && (
@@ -159,13 +158,13 @@ export function FindingsPage({ data }: { data: PageData }) {
                                 <summary>{t('page.findings.others', { count: others.length })}</summary>
                                 <ul className="plain-list">
                                   {others.map((other) => (
-                                    <li key={other.id}>{view === 'technical' && placesOf(other.id) !== '' ? t('md.findings.otherItemTechnical', { owner: ownerText(t, other.owner), text: other.text, places: placesOf(other.id) }) : t('md.findings.otherItem', { owner: ownerText(t, other.owner), text: other.text })}</li>
+                                    <li key={other.id}>{t('md.findings.otherItem', { owner: ownerText(t, other.owner), text: other.text })}<Chips citations={places.get(other.id) ?? []} /></li>
                                   ))}
                                 </ul>
                               </details>
                             )}
                           </Cell>
-                          {view === 'technical' && <Cell>{placesOf(first.id) || undefined}</Cell>}
+                          {view === 'technical' && <Cell col="text">{(places.get(first.id) ?? []).length === 0 ? undefined : <Chips citations={places.get(first.id) ?? []} />}</Cell>}
                         </tr>
                       );
                     })}

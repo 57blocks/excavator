@@ -3,21 +3,17 @@ import { useText } from '../lib/text';
 import type { Text } from '../lib/text';
 import { TOPICS, findingCategoryKey } from '../lib/types';
 import type { PageData, TopicBasis } from '../lib/types';
-import { placeText } from './Locations';
+import { Chips } from './Locations';
 import { levelName } from './RecommendationsPage';
 import { Cell, TableScroll } from './Tables';
 
 type Places = Map<string, { file: string; startLine: number | null; endLine: number | null }[]>;
 
 /** What one row rests on, in words: a verified item with its feature, a group of findings with its level and category; the technical view adds where the passages are. */
-function basisText(t: Text, entry: TopicBasis, places: Places): string {
-  const where = (places.get(entry.id) ?? []).map((place) => placeText(t, place)).join('; ');
-  if (entry.kind === 'item') {
-    const values = { feature: entry.feature, text: entry.text };
-    return where === '' ? t('md.topics.basisItem', values) : t('md.topics.basisItemTechnical', { ...values, places: where });
-  }
+function basisText(t: Text, entry: TopicBasis): string {
+  if (entry.kind === 'item') return t('md.topics.basisItem', { feature: entry.feature, text: entry.text });
   const values = { level: levelName(t, entry.level), category: t(findingCategoryKey(entry.category)), statement: entry.text };
-  return where === '' ? t('md.remedies.groupLine', values) : t('md.remedies.groupLineTechnical', { ...values, places: where });
+  return t('md.remedies.groupLine', values);
 }
 
 /**
@@ -70,7 +66,7 @@ export function TopicsPage({ data }: { data: PageData }) {
                               {topic.columns.map((column, index) => <Cell key={column} row={index === 0}>{row.fields[column] === '' ? undefined : row.fields[column]}</Cell>)}
                               <td data-part="topic-basis">
                                 <ul className="plain-list">
-                                  {row.basis.map((entry, index) => <li key={index}>{basisText(t, entry, places)}</li>)}
+                                  {row.basis.map((entry, index) => <li key={index}>{basisText(t, entry)}<Chips citations={places.get(entry.id) ?? []} /></li>)}
                                 </ul>
                               </td>
                             </tr>

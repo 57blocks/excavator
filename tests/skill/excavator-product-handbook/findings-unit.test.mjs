@@ -37,7 +37,7 @@ describe('slices: the findings are cut into the items a verifier judges', () => 
     const run = checkedFindingsRun(cleanups);
     run.run('slices', ID);
     const { items } = readJsonAt(join(run.out, 'verify', 'round-1', ID, 'part-1.json'));
-    expect(items[0].claim).toBe('Finding > Missing check of who may do it > Deleting an order asks nothing about who calls: the handler removes the order and answers success to every caller.');
+    expect(items[0].claim).toBe('Finding > Missing authorization check > Deleting an order asks nothing about who calls: the handler removes the order and answers success to every caller.');
     expect(items[1].claim.startsWith('Finding > Errors swallowed or answered as success > ')).toBe(true);
     expect(items[2].claim.startsWith('Finding > Hard-coded values, placeholders and unreachable code > ')).toBe(true);
   });

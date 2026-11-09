@@ -105,7 +105,7 @@ const BOTH: View[] = ['product', 'technical'];
 const render = (data: PageData, hash: string): string => renderToStaticMarkup(<AppView data={data} route={parseHash(hash)} />);
 const decode = (text: string): string => text.replace(/&quot;/g, '"').replace(/&#x27;/g, "'").replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&');
 function visibleTexts(html: string): string[] {
-  const nodes = html.split(/<[^>]*>/).map((text) => decode(text).trim()).filter((text) => text !== '');
+  const nodes = html.replace(/<wbr\/>/g, '').split(/<[^>]*>/).map((text) => decode(text).trim()).filter((text) => text !== '');
   const attributes = Array.from(html.matchAll(/\s(?:aria-label|title|alt|placeholder|aria-description)="([^"]*)"/g), (match) => decode(match[1]).trim());
   return [...nodes, ...attributes];
 }
@@ -185,10 +185,11 @@ describe('the findings page', () => {
     const data = dataFor(BOTH);
     const technical = main(render(data, '#/technical/findings'));
     expect(technical).toContain(`<th scope="col">${marked['md.locations.heading']}</th>`);
-    expect(technical).toContain(`${MARK}${d('src/one.js')}, line 7`);
-    expect(technical).toContain(`${MARK}F3 ${d('name F3')}: ${d('third statement')} (${MARK}${d('src/four.js')}, line 4)`);
-    expect(technical).toContain(`${MARK}${d('backend')} (application): ${d('fifth statement')} (${MARK}${d('src/seven.js')}, lines 11-12)`);
-    expect(technical).toContain(`${MARK}${d('src/two.js')}, lines 5-9; ${MARK}${d('src/three.js')}, lines not located`);
+    expect(technical).toContain(`<code class="loc-chip">${d('src/')}<wbr/>one.js:7</code>`);
+    expect(technical).toContain(`${MARK}${MARK}F3 ${d('name F3')}: ${d('third statement')}<span class="loc-chips" data-part="location-chips"><code class="loc-chip">${d('src/')}<wbr/>four.js:4</code>`);
+    expect(technical).toContain(`${MARK}${MARK}${d('backend')} (application): ${d('fifth statement')}<span class="loc-chips" data-part="location-chips"><code class="loc-chip">${d('src/')}<wbr/>seven.js:11-12</code>`);
+    expect(technical).toContain(`<code class="loc-chip">${d('src/')}<wbr/>two.js:5-9</code>`);
+    expect(technical).toContain(`${MARK}${d('src/three.js')}, lines not located</code>`);
     const product = render(data, '#/product/findings');
     for (const file of ['src/one.js', 'src/two.js', 'src/three.js', 'src/four.js', 'src/five.js', 'src/seven.js']) expect(product).not.toContain(file);
     expect(product).not.toContain(marked['md.locations.heading']);
@@ -497,7 +498,7 @@ describe('the recommendations page', () => {
   it('writes no file or line in the product view and the file and line of each cited statement in the technical view', () => {
     const data = dataFor(BOTH, FINDINGS, REMEDIES);
     expect(main(render(data, '#/product/recommendations'))).not.toContain('src/one.js');
-    expect(main(render(data, '#/technical/recommendations'))).toContain(d('src/one.js'));
+    expect(main(render(data, '#/technical/recommendations'))).toContain(`<code class="loc-chip">${d('src/')}<wbr/>one.js:7</code>`);
   });
 
   it('says there is no recommendation when none is left, and has no text of its own', () => {

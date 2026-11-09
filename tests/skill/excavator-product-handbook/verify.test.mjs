@@ -135,7 +135,7 @@ describe('slices: the verify file of round 1', () => {
     expect(claim('screens[0].fields[1].rules[1]')).toBe('Screen: New Order > Field: Item Count > Frontend rules > An upload may hold up to 100,000 bytes.');
     expect(claim('screens[0].fields[0]')).toBe('Screen: New Order > Field: Customer Name');
     expect(claim('operations[0].sentences[1]')).toBe('Operations > Place an order > The item count is limited to 35000.');
-    expect(claim('who[0]')).toBe('Who can use it > Clerk: Create an order.');
+    expect(claim('who[0]')).toBe('Roles > Clerk: Create an order.');
     expect(claim('states[0]')).toBe('State: Draft; Meaning: The order is not sent yet.');
     expect(claim('notifications[0]')).toBe('Trigger: An order is sent; Recipient: The approver; Channel: Message; Content: A new order waits.');
     expect(claim('automatic[0]')).toBe('Automatic behavior > Every night: Drafts are cleared.');
@@ -453,7 +453,7 @@ describe('verdicts: round 1', () => {
     const rewrite = JSON.parse(readFileSync(rewritePath(run), 'utf-8'));
     expect(rewrite.feature).toBe('F1');
     expect(rewrite.items).toEqual([
-      { id: 'who[0]', claim: 'Who can use it > Clerk: Create an order.', verdict: 'unverified', reason: 'No line shown names this role.' },
+      { id: 'who[0]', claim: 'Roles > Clerk: Create an order.', verdict: 'unverified', reason: 'No line shown names this role.' },
       { id: 'states[1]', claim: 'State: Submitted; Meaning: The order was sent.', verdict: 'unverified', reason: 'No line shown names this state.' },
     ]);
     expect(stateOf(run)).toEqual({ status: 'checked', attempts: 0, rewriting: true });
@@ -478,7 +478,7 @@ describe('verdicts: round 1', () => {
       status: 'checked',
       attempts: 0,
       rewriting: true,
-      removed: [{ path: 'who[0]', claim: 'Who can use it > Clerk: Create an order.', verdict: 'contradicted', reason: 'The check lets Approver in, not Clerk.' }],
+      removed: [{ path: 'who[0]', claim: 'Roles > Clerk: Create an order.', verdict: 'contradicted', reason: 'The check lets Approver in, not Clerk.' }],
     });
     // The trimmed entry still passes check-entry while it waits for its rewrite.
     expect(run.run('check-entry', 'F1').status).toBe(0);
@@ -611,7 +611,7 @@ describe('slices: round 2', () => {
     const verify = readVerify(run, 2);
     expect(verify.round).toBe(2);
     expect(ids(verify)).toEqual(['who[0]', 'screens[0].fields[1].rules[0]']);
-    expect(verify.items[0].claim).toBe('Who can use it > Clerk: Create an order.');
+    expect(verify.items[0].claim).toBe('Roles > Clerk: Create an order.');
     expect(verify.items[0].evidence.map((block) => block.file)).toEqual(['src/roles.js', form]);
     expect(result.lines).toContain(`Part 1/1: Verify file: ${verifyPath(run, 2)} | Verdict files: ${verdictPath(run, 2, 'F1', 1, 'a')} ${verdictPath(run, 2, 'F1', 1, 'b')}`);
   });
@@ -984,7 +984,7 @@ describe('verdicts: round 2', () => {
     expect(assembled.status, assembled.stdout).toBe(0);
     const text = readFileSync(join(run.out, 'handbook.md'), 'utf-8');
     expect(text).toContain('### Orders');
-    expect(text).toContain('#### Who can use it');
+    expect(text).toContain('#### Roles');
     expect(text).not.toContain('#### Purpose');
     const coverageAt = text.indexOf('## Coverage');
     expect(text.slice(0, coverageAt)).not.toContain('Staff place new orders for customers.');

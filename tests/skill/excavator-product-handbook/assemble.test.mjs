@@ -102,16 +102,16 @@ describe('assemble: what the text holds', () => {
     assemble(run);
     const text = handbook(run);
     const top = text.slice(0, text.indexOf('## Order handling'));
-    expect(top).toContain('- **Order handling**\n  - Orders (From the menu)\n  - Archive (By a link)');
+    expect(top).toContain('- **Order handling**\n  - Orders (Menu)\n  - Archive (Direct link)');
     expect(top).toContain('- **Automatic work**\n  - Reminders (Automatic)\n  - Admin tool (Operator command)\n  - Orders (Interface for other systems)');
-    expect(top).toContain('| From the menu | 1 |');
+    expect(top).toContain('| Menu | 1 |');
   });
 
   it('writes the checked feature as a section with a fields table, an operation paragraph, states and unknowns', () => {
     const run = checkedRun();
     assemble(run);
     const text = handbook(run);
-    expect(text).toContain('### Orders\n\nHow readers get to it: From the menu');
+    expect(text).toContain('### Orders\n\nAccess: Menu');
     expect(text).toContain('Orders > New Order');
     expect(text).toContain('| Field | Frontend rules | Backend rules |');
     expect(text).toContain('| Item Count | An upload may hold up to 100,000 bytes. | At most 35,000 items. |');
@@ -146,7 +146,7 @@ describe('assemble: the coverage section equals the map and candidates.json', ()
     expect(total).toBe(assigned + unassigned);
     expect(text).toContain(`Entrypoint candidates listed: ${total}. In exactly one feature: ${assigned}. In the unassigned list below: ${unassigned}.`);
     const coverage = text.slice(text.indexOf('## Coverage'));
-    for (const [reach, label] of [['menu', 'From the menu'], ['link', 'By a link'], ['automated', 'Automatic'], ['interface', 'Interface for other systems'], ['operator', 'Operator command']]) {
+    for (const [reach, label] of [['menu', 'Menu'], ['link', 'Direct link'], ['automated', 'Automatic'], ['interface', 'Interface for other systems'], ['operator', 'Operator command']]) {
       const count = run.map.features.filter((feature) => feature.reach === reach).length;
       expect(coverage).toContain(`| ${label} | ${count} |`);
     }

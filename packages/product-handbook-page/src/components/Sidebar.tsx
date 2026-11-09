@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react';
 import type { ReactNode } from 'react';
 
 import { REACHES } from '../lib/types';
@@ -102,6 +103,13 @@ export function Sidebar({ data, route, open, onNavigate }: Props) {
   const t = useText();
   const nav = useLinks();
   const view = useView();
+  const routeKey = JSON.stringify(route);
+  const scroller = useRef<HTMLDivElement>(null);
+  // Keep the current item in view inside the rail's one scroll container.
+  useEffect(() => {
+    const current = scroller.current?.querySelector('[aria-current="page"]');
+    if (current instanceof HTMLElement && typeof current.scrollIntoView === 'function') current.scrollIntoView({ block: 'nearest' });
+  }, [routeKey]);
   const used = REACHES.filter((reach) => data.features.some((feature) => feature.reach === reach));
   const link = (href: string, name: Route['name'], label: string, icon?: ReactNode) => (
     <a className="rail-link" href={href} aria-current={route.name === name ? 'page' : undefined}>
@@ -120,6 +128,7 @@ export function Sidebar({ data, route, open, onNavigate }: Props) {
         if ((event.target as HTMLElement).closest('a')) onNavigate();
       }}
     >
+      <div className="rail-scroll" ref={scroller}>
       <div className="rail-top">
         {link(nav.overview, 'overview', t('page.nav.overview'), <OverviewIcon />)}
         {link(nav.rolesMatrix, 'roles-matrix', t('md.matrix.roleFeature.heading'), <OverviewIcon />)}
@@ -137,7 +146,7 @@ export function Sidebar({ data, route, open, onNavigate }: Props) {
         {link(nav.glossary, 'glossary', t('md.appendix.glossaryHeading'), <CoverageIcon />)}
         {link(nav.sources, 'sources', t('md.appendix.sourcesHeading'), <CoverageIcon />)}
       </div>
-      <div className="rail-scroll">
+      <div className="rail-body">
         {view === 'technical' ? <ByApplication data={data} route={route} /> : <ByDomain data={data} route={route} />}
       </div>
       <div className="rail-key" aria-label={t('page.nav.key')} role="group">
@@ -150,6 +159,7 @@ export function Sidebar({ data, route, open, onNavigate }: Props) {
             </li>
           ))}
         </ul>
+      </div>
       </div>
     </nav>
   );

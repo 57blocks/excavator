@@ -265,7 +265,7 @@ suite('page in a browser (O8)', () => {
         await page.waitFor('document.querySelector(\'[data-part="locations"]\')', 'the source locations after the switch');
         expect(await page.evaluate('window.location.hash')).toBe('#/technical/feature/F1');
         expect(await page.evaluate("document.querySelector('[data-view=\"feature\"]').getAttribute('data-feature')")).toBe('F1');
-        expect(await page.evaluate("document.querySelector('[data-part=\"locations\"]').textContent")).toMatch(/src\/forms\/order-form\.js, lines? \d+/);
+        expect(await page.evaluate("document.querySelector('[data-part=\"locations\"]').textContent")).toMatch(/src\/forms\/order-form\.js:\s?\d+/);
         await fits(page, width, 'the technical feature page');
         // The technical rail is by application: the application, then its domains, then their features.
         expect(await page.evaluate("document.querySelectorAll('.rail [data-application]').length")).toBeGreaterThan(0);
