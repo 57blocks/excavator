@@ -14,6 +14,8 @@ import { applicationCells, listCell } from './render-application.mjs';
 import { entitySections, locationLines } from './render-entities.mjs';
 import { featureFindingsLines, findingsChapter, findingsCoverage } from './render-findings.mjs';
 import { EMPTY_PRIORITY } from './priority-model.mjs';
+import { EMPTY_REMEDIES } from './remedies-model.mjs';
+import { recommendationsChapter, remediesCoverage } from './render-remedies.mjs';
 import { fill } from './ui.mjs';
 
 const NONE_ROW = '-';
@@ -164,7 +166,7 @@ function overviewBlock(system, basis, t, locations) {
   return out;
 }
 
-function coverageBlock(map, state, candidates, t, findings) {
+function coverageBlock(map, state, candidates, t, findings, remedies) {
   const areaName = new Map(map.areas.map((area) => [area.id, area.name]));
   const featureText = (key, feature) => `- ${inline(fill(t(key), { id: feature.id, name: feature.name, area: areaName.get(feature.area) }))}`;
   const claimed = map.features.reduce((sum, feature) => sum + feature.candidates.length, 0);
@@ -221,6 +223,7 @@ function coverageBlock(map, state, candidates, t, findings) {
     out.push(removedTable(removed), '');
   }
   out.push(...findingsCoverage({ map, state, findings, t, areaName }));
+  out.push(...remediesCoverage({ remedies, t }));
   return out;
 }
 
@@ -232,8 +235,9 @@ function coverageBlock(map, state, candidates, t, findings) {
  * also writes the data chapter after the system overview (from `data`, data-section.mjs, and in it, from `dictionaries`, dict-section.mjs, the status dictionary part), the application and external-system sections and, from `locations` (locations.mjs), the file and
  * lines of each item; the product view writes no citation path. `findings` (findings-model.mjs) is the verified findings of the features: both views write the Findings chapter
  * between the entity sections and the coverage section and each feature's own findings at the end of its section, the technical view with the file and lines of each finding.
+ * `remedies` (remedies-model.mjs) are the common cause and measure under each category of the Findings chapter and the Recommendations chapter after it.
  */
-export function renderHandbook({ map, entries, state, candidates, ui, summary, system, entities, view = 'product', locations = null, data = null, dictionaries = null, findings = { list: [], groups: [], locations: null, applications: [], priority: EMPTY_PRIORITY } }) {
+export function renderHandbook({ map, entries, state, candidates, ui, summary, system, entities, view = 'product', locations = null, data = null, dictionaries = null, findings = { list: [], groups: [], locations: null, applications: [], priority: EMPTY_PRIORITY }, remedies = EMPTY_REMEDIES }) {
   const t = (key) => {
     if (!Object.hasOwn(ui, key)) throw new Error(`the fixed-text table has no key ${key}`);
     return ui[key];
@@ -262,7 +266,7 @@ export function renderHandbook({ map, entries, state, candidates, ui, summary, s
     out.push(`## ${inline(domain.name)}`, '');
     for (const id of written) out.push(...entryBlock(featureOf.get(id), entries.get(id), map, t, placesOf.get(id), basis === 'domains' ? areaName.get(featureOf.get(id).area) : null, findingsPart));
   }
-  out.push(...summaryBlock(summary, map, t), ...entitySections({ view, map, entities, summary, system, t }), ...findingsChapter({ map, state, findings, view, t }), ...coverageBlock(map, state, candidates, t, findings));
+  out.push(...summaryBlock(summary, map, t), ...entitySections({ view, map, entities, summary, system, t }), ...findingsChapter({ map, state, findings, remedies, view, t }), ...recommendationsChapter({ findings, remedies, view, t }), ...coverageBlock(map, state, candidates, t, findings, remedies));
   return `${out.join('\n').replace(/\n{3,}/g, '\n\n').trimEnd()}\n`;
 }
 

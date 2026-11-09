@@ -19,6 +19,9 @@ const TABLE = Object.freeze([
   // The ranking of the findings (openspec change handbook-findings-priority) works on the findings the trace left verified, so its
   // phase runs after Phase 6: its file is not a READ= file, it is the AFTER_TRACE= line, and it needs no stage file (it reads no map).
   Object.freeze({ id: 'priority', stages: Object.freeze([]), file: 'sections/priority.md', afterTrace: true }),
+  // The causes, measures and recommendations (openspec change handbook-remedies) cite the verified and ranked findings, so they run after
+  // the trace and after the ranking: the same AFTER_TRACE= line, printed after the priority one; they need no map and no stage file.
+  Object.freeze({ id: 'remedies', stages: Object.freeze([]), file: 'sections/remedies.md', afterTrace: true }),
 ]);
 
 export const SECTIONS = Object.freeze(TABLE.map((row) => row.id));

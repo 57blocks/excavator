@@ -12,7 +12,8 @@
  * handbook-findings-priority, priority-model.mjs): the line starts with the level
  * (or the word for no level), the groups of a category are in the order of the
  * model (P0, P1, P2, unranked), and the counts line and each category heading
- * say how many groups have which level. Pure and deterministic.
+ * say how many groups have which level. Under each category heading, the common cause and the measure the remedies
+ * hold for it (openspec change handbook-remedies, render-remedy-category.mjs) come before its groups. Pure and deterministic.
  */
 
 import { FINDING_CATEGORIES, categoryKey } from './findings-shape.mjs';
@@ -20,6 +21,7 @@ import { findingsStatus } from './findings-model.mjs';
 import { inline, table } from './markdown.mjs';
 import { EMPTY_PRIORITY } from './priority-model.mjs';
 import { LEVELS } from './priority-shape.mjs';
+import { categoryRemedyLines } from './render-remedy-category.mjs';
 import { fill } from './ui.mjs';
 
 const NONE_ROW = '-';
@@ -28,7 +30,7 @@ const NONE_ROW = '-';
 export const ownerText = (owner, t) => (owner.kind === 'feature' ? fill(t('md.summary.feature'), { id: owner.id, name: owner.name }) : fill(t('md.findings.applicationOwner'), { name: owner.name }));
 
 /** One citation's place as the other chapters of the technical view write it. */
-function placeText({ file, startLine, endLine }, t) {
+export function placeText({ file, startLine, endLine }, t) {
   if (startLine === null || endLine === null) return fill(t('md.locations.unlocated'), { file });
   if (startLine === endLine) return fill(t('md.locations.placeOne'), { file, line: startLine });
   return fill(t('md.locations.place'), { file, start: startLine, end: endLine });
@@ -50,7 +52,7 @@ function statementText(item, owners, first, { locations, view, t }) {
 export const levelText = (level, t) => fill(t('md.priority.level'), { rank: level.slice(1) });
 
 /** The counts of groups by level and without one, as the counts line writes them. */
-const priorityCountsText = (counts, t) => [...LEVELS.map((level) => fill(t('md.priority.count'), { level: levelText(level, t), count: counts[level] })), fill(t('md.priority.count'), { level: t('md.priority.unranked'), count: counts.unranked })].join('; ');
+export const priorityCountsText = (counts, t) => [...LEVELS.map((level) => fill(t('md.priority.count'), { level: levelText(level, t), count: counts[level] })), fill(t('md.priority.count'), { level: t('md.priority.unranked'), count: counts.unranked })].join('; ');
 
 /** The line of a group: its level (or the word for none), the statement of its first finding with the owners and, for a group with a priority, the reason. */
 function groupLine(group, first, context) {
@@ -61,7 +63,7 @@ function groupLine(group, first, context) {
 }
 
 /** The Findings chapter: the counts line, then one list per category that has a group. */
-export function findingsChapter({ map, state, findings, view, t }) {
+export function findingsChapter({ map, state, findings, remedies = null, view, t }) {
   const { list, groups, locations, applications } = findings;
   const verified = map.features.filter((feature) => findingsStatus(state, feature.id) === 'verified').length;
   const counts = categoryCounts(groups);
@@ -81,6 +83,7 @@ export function findingsChapter({ map, state, findings, view, t }) {
   for (const { category } of counts.filter(({ count }) => count > 0)) {
     const own = groups.filter((one) => one.category === category);
     out.push(`### ${fill(t('md.priority.categoryHeading'), { category: t(categoryKey(category)), count: own.length, p0: own.filter((one) => one.priority?.level === 'P0').length })}`, '');
+    out.push(...categoryRemedyLines(category, remedies, t));
     for (const group of own) {
       const [first, ...others] = group.items;
       out.push(`- ${inline(groupLine(group, first, { locations, view, t }))}`);

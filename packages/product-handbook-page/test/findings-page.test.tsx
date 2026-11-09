@@ -19,7 +19,7 @@ import { AppView } from '../src/App';
 import { countByCategory, countByLevel, filterGroups } from '../src/components/FindingsPage';
 import { parseHash, routeHash } from '../src/lib/route';
 import { FINDING_CATEGORIES, findingCategoryKey } from '../src/lib/types';
-import type { Feature, FindingCategory, FindingGroup, FindingOwner, PageData, Priority, View } from '../src/lib/types';
+import type { Feature, FindingCategory, FindingGroup, FindingOwner, PageData, Priority, Remedies, View } from '../src/lib/types';
 import { switchTarget } from '../src/lib/views';
 
 const MARK = '@@';
@@ -49,9 +49,9 @@ const FINDINGS: FindingGroup[] = [
 ];
 
 /** F1 and F3 have verified findings, F2 verified with none, F4 failed, F5 planned; one finding of F1 was removed. */
-function dataFor(views: View[], findings: FindingGroup[] = FINDINGS): PageData {
+function dataFor(views: View[], findings: FindingGroup[] = FINDINGS, remedies: Remedies = { categories: [], recommendations: [] }, remediesCoverage: PageData['coverage']['remedies'] = { finished: true, stale: false, dropped: [] }): PageData {
   return {
-    format: 'excavator-product-handbook-page/11',
+    format: 'excavator-product-handbook-page/12',
     project: d('project'),
     language: d('language'),
     languageTag: 'xx',
@@ -62,6 +62,7 @@ function dataFor(views: View[], findings: FindingGroup[] = FINDINGS): PageData {
     domainBasis: 'domains',
     features: [feature('F1', 'planned', 'verified'), feature('F2', 'planned', 'verified'), feature('F3', 'planned', 'verified'), feature('F4', 'planned', 'failed'), feature('F5', 'planned', 'planned')],
     findings,
+    remedies,
     coverage: {
       candidateTotal: 0, assigned: 0, unassigned: [], reachCounts: [], removedOverview: [], removed: [],
       findingsUnfinished: [{ feature: 'F4', status: 'failed' }],
@@ -72,6 +73,7 @@ function dataFor(views: View[], findings: FindingGroup[] = FINDINGS): PageData {
       systemFindingsNotWritten: 1,
       systemFindingsRemoved: [{ id: 'app1', name: d('backend'), items: [{ claim: d('system removed claim'), verdict: 'unverified', reason: d('system removed reason') }] }],
       priority: { finished: true, unranked: [{ id: 'app1.system[0]', category: 'notification', text: d('system statement'), reasons: [d('judge reason')] }] },
+      remedies: remediesCoverage,
     },
     summary: { notifications: [], jobs: [], counts: { featureTotal: 5, featuresWithEntry: 1, notificationRows: 0, jobRows: 0, schedule: { literal: 0, computed: 0, absent: 0 }, described: 0 } },
     system: { status: 'planned', overview: null, applications: [], counts: { applications: 0, files: 0, lines: 0, areas: 1, domains: 1, features: 5, featuresWithEntry: 1, roles: 0 }, areas: [], domains: [] },
@@ -408,5 +410,136 @@ describe('every fixed text of the findings pages comes from the ui table', () =>
     // The word lists are matched by scripts and shown nowhere; they may hold won't and can't.
     const matched = ['md.findings.adviceWords', 'md.findings.scopeWords'];
     for (const [key, value] of Object.entries(shipped.strings)) if ((key.startsWith('md.findings.') || key.startsWith('page.findings.') || key === 'page.nav.findings') && !matched.includes(key)) expect(value, key).not.toContain("'");
+  });
+});
+
+// O2 (page) of openspec change handbook-remedies: the route #/recommendations in both views with a sidebar link after the findings,
+// the common cause and the measure under each category of the findings page, the recommendations in order with the groups (level and
+// statement) and the facts they rest on, the places of a statement in the technical view only, what the judges left out on the coverage page,
+// and every fixed text coming from the ui table.
+const REMEDIES: Remedies = {
+  categories: [
+    { category: 'authorization', cause: d('Nothing asks who calls.'), measure: d('Check the caller first.') },
+    { category: 'time', cause: d('One fixed hour for all.'), measure: d('Read the hour of the recipient.') },
+  ],
+  recommendations: [
+    {
+      title: d('Check the caller'),
+      text: d('Start with the finding of the highest level.'),
+      groups: [{ id: 'F1.findings[0]', category: 'authorization', level: 'P0', text: d('first statement') }, { id: 'app1.system[0]', category: 'notification', level: null, text: d('system statement') }],
+      facts: [
+        { kind: 'counts', groups: 4, levels: { P0: 1, P1: 1, P2: 1, unranked: 1 }, categories: [{ category: 'authorization', count: 1 }, { category: 'time', count: 1 }] },
+        { kind: 'app', name: d('backend'), language: d('Go'), files: 12, lines: 3400, commits: 50, authors: 3 },
+      ],
+    },
+    {
+      title: d('Share fewer tables'),
+      text: d('Split the tables that several applications use.'),
+      groups: [],
+      facts: [
+        { kind: 'tables', count: 2, tables: [{ name: d('orders'), applications: [d('backend'), d('web')] }, { name: d('carts'), applications: [d('backend'), d('web')] }] },
+        { kind: 'app', name: d('web'), language: null, files: 0, lines: 0, commits: null, authors: null },
+        { kind: 'tables', count: null, tables: [] },
+      ],
+    },
+  ],
+};
+const DROPPED: PageData['coverage']['remedies'] = {
+  finished: true,
+  stale: false,
+  dropped: [
+    { id: 'category:time', kind: 'category', category: 'time', text: d('One fixed hour for all.'), reasons: [d('The cause is wider than one statement.')] },
+    { id: 'recommendation:3', kind: 'recommendation', title: d('Third'), text: d('Third text.'), reasons: [d('No cited fact says three.')] },
+  ],
+};
+
+describe('the recommendations route and link', () => {
+  it('parses #/recommendations with and without the view and builds it back', () => {
+    expect(parseHash('#/recommendations')).toEqual({ name: 'recommendations' });
+    expect(parseHash('#/technical/recommendations')).toEqual({ name: 'recommendations', view: 'technical' });
+    expect(parseHash('#/product/recommendations/x').name).toBe('not-found');
+    expect(routeHash({ name: 'recommendations' }, null)).toBe('#/recommendations');
+    expect(routeHash({ name: 'recommendations' }, 'technical')).toBe('#/technical/recommendations');
+  });
+
+  it('both views have the sidebar link right after the findings link and the page', () => {
+    const data = dataFor(BOTH, FINDINGS, REMEDIES);
+    for (const view of BOTH) {
+      const rail = railOf(render(data, `#/${view}`));
+      expect(rail.indexOf(`href="#/${view}/recommendations"`)).toBeGreaterThan(rail.indexOf(`href="#/${view}/findings"`));
+      expect(rail.indexOf(`href="#/${view}/recommendations"`)).toBeLessThan(rail.indexOf(`href="#/${view}/coverage"`));
+      expect(render(data, `#/${view}/recommendations`)).toContain('data-view="recommendations"');
+    }
+    expect(switchTarget(data, parseHash('#/technical/recommendations'), 'product')).toBe('#/product/recommendations');
+  });
+});
+
+describe('the recommendations page', () => {
+  it('lists the recommendations in order, each with its text, the groups it rests on (level and statement) and the facts in words', () => {
+    const body = main(render(dataFor(['product'], FINDINGS, REMEDIES), '#/recommendations'));
+    expect(body).toContain(`${MARK}Recommendations: 2. Groups of findings they rest on: 2 of 4.`);
+    expect(body.indexOf(`${MARK}1. ${d('Check the caller')}`)).toBeGreaterThan(-1);
+    expect(body.indexOf(`${MARK}2. ${d('Share fewer tables')}`)).toBeGreaterThan(body.indexOf(`${MARK}1. ${d('Check the caller')}`));
+    expect(body).toContain(`${MARK}[${MARK}P0] ${name('authorization')}: ${d('first statement')}`);
+    expect(body).toContain(`${MARK}[${MARK}Unranked] ${name('notification')}: ${d('system statement')}`);
+    expect(body).toContain(`${MARK}Groups of findings: 4. By priority: ${MARK}${MARK}P0: 1; ${MARK}${MARK}P1: 1; ${MARK}${MARK}P2: 1; ${MARK}${MARK}Unranked: 1. By category: ${MARK}${name('authorization')}: 1; ${MARK}${name('time')}: 1.`);
+    expect(body).toContain(`${MARK}Application ${d('backend')}: main language ${d('Go')}, 12 source files, 3400 lines, 50 commits by 3 authors.`);
+    expect(body).toContain(`${MARK}Application ${d('web')}: main language ${MARK}none, 0 source files, 0 lines, no version history.`);
+    expect(body).toContain(`${MARK}Tables mentioned by two or more applications: 2 (${MARK}${d('orders')} in ${d('backend')}, ${d('web')}; ${MARK}${d('carts')} in ${d('backend')}, ${d('web')}).`);
+    expect(body).toContain(`${MARK}Tables mentioned by two or more applications: not known, the data section was not written.`);
+  });
+
+  it('writes no file or line in the product view and the file and line of each cited statement in the technical view', () => {
+    const data = dataFor(BOTH, FINDINGS, REMEDIES);
+    expect(main(render(data, '#/product/recommendations'))).not.toContain('src/one.js');
+    expect(main(render(data, '#/technical/recommendations'))).toContain(d('src/one.js'));
+  });
+
+  it('says there is no recommendation when none is left, and has no text of its own', () => {
+    const body = main(render(dataFor(['product']), '#/recommendations'));
+    expect(body).toContain(marked['md.remedies.none']);
+    expect(unmarked(render(dataFor(['product']), '#/recommendations'))).toEqual([]);
+  });
+
+  it('shows no text that is not from the ui table or the data, in either view', () => {
+    for (const hash of ['#/product/recommendations', '#/technical/recommendations', '#/technical/findings', '#/product/findings', '#/product/coverage', '#/technical/coverage']) {
+      expect(unmarked(render(dataFor(BOTH, FINDINGS, REMEDIES, DROPPED), hash)), hash).toEqual([]);
+    }
+  });
+});
+
+describe('the findings page with remedies', () => {
+  it('shows the common cause and the measure under the heading of a category that has them, and nothing under the others', () => {
+    const body = main(render(dataFor(['product'], FINDINGS, REMEDIES), '#/findings'));
+    const authorization = body.slice(body.indexOf('data-category="authorization"'), body.indexOf('data-category="hard-coded"'));
+    expect(authorization).toContain(`${MARK}Common cause:</span> ${d('Nothing asks who calls.')}`);
+    expect(authorization).toContain(`${MARK}Measure:</span> ${d('Check the caller first.')}`);
+    expect(authorization.indexOf('Common cause')).toBeLessThan(authorization.indexOf('<table'));
+    const hardCoded = body.slice(body.indexOf('data-category="hard-coded"'), body.indexOf('data-category="notification"'));
+    expect(hardCoded).not.toContain('category-remedy');
+    expect(body.match(/data-part="category-remedy"/g)).toHaveLength(2);
+  });
+});
+
+describe('the coverage page about the remedies', () => {
+  const part = (data: PageData): string => {
+    const body = main(render(data, '#/coverage'));
+    return body.slice(body.indexOf('id="cov-remedies"'));
+  };
+
+  it('lists what the judges left out with their reasons', () => {
+    const text = part(dataFor(['product'], FINDINGS, REMEDIES, DROPPED));
+    expect(text).toContain(`${MARK}Left out because a judge found a statement of how things are now that the cited findings and facts do not hold: 2.`);
+    expect(text).toContain(`${name('time')}: ${d('One fixed hour for all.')}`);
+    expect(text).toContain(d('The cause is wider than one statement.'));
+    expect(text).toContain(`${d('Third')}: ${d('Third text.')}`);
+    expect(text).toContain(d('No cited fact says three.'));
+  });
+
+  it('says that the remedies did not finish, that they were written for other findings, or that everything written is in the handbook', () => {
+    expect(part(dataFor(['product'], FINDINGS, REMEDIES, { finished: false, stale: false, dropped: [] }))).toContain(marked['md.coverage.remediesNotFinished']);
+    expect(part(dataFor(['product'], FINDINGS, REMEDIES, { finished: false, stale: true, dropped: [] }))).toContain(marked['md.coverage.remediesStale']);
+    expect(part(dataFor(['product'], FINDINGS, REMEDIES))).toContain(marked['md.coverage.remediesAllKept']);
+    expect(part(dataFor(['product'], []))).toContain(marked['md.none']);
   });
 });

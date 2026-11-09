@@ -31,6 +31,7 @@ import { readJson } from './json-file.mjs';
 import { languageGate } from './language-check.mjs';
 import { mapProblems, readMap } from './map-check.mjs';
 import { loadPriority } from './priority-state.mjs';
+import { loadRemedies } from './remedies-state.mjs';
 import { projectFiles } from './project-files.mjs';
 import { entryDigest, loadState } from './state.mjs';
 import { loadSystemContext } from './system-unit.mjs';
@@ -43,7 +44,7 @@ import { OVERVIEW_ID, featureOfFindings, isFindingsId, isSystemId, unitFor, unit
  * business domains of domains.json when it passes check-domains, null otherwise, which
  * groups the outputs by the map's areas instead; entries:
  * id -> entry of each verified feature, and of the overview under `overview`; candidates: candidates.json's items;
- * ui: the strings table; priority: `{ status, doc, unranked }` of the ranking of the findings (priority-state.mjs); check: the facts a check of reader text needs,
+ * ui: the strings table; priority: `{ status, doc, unranked }` of the ranking of the findings (priority-state.mjs); remedies: `{ status, doc, dropped, factsDigest }` of the remedies (remedies-state.mjs); check: the facts a check of reader text needs,
  * `{ files, memberDirs, languageCheck, mapLabels }`) or `{ ok: false, lines }` with every reason. Throws a
  * UsageError for an out directory or state that does not exist.
  */
@@ -118,6 +119,8 @@ export function loadCheckedRun(outDirArg, root) {
   if (problems.length > 0) return { ok: false, lines: problems };
   // The ranking of the findings (openspec change handbook-findings-priority) is never a reason to refuse a run: a ranking that is not verified, or whose file is not the one the judges saw, is no ranking.
   const priority = loadPriority(outDir, state);
+  // The remedies (openspec change handbook-remedies) are the same: never a reason to refuse a run; whether they are for the current facts is decided where the facts are built (remedies-model.mjs).
+  const remedies = loadRemedies(outDir, state);
   const check = { files, memberDirs, languageCheck, mapLabels: mapChecked.verified };
-  return { ok: true, outDir, map, domains: domains.doc, entries, findings, systemFindings, priority, check, state, candidates: candidates.items, ui: ui.strings };
+  return { ok: true, outDir, map, domains: domains.doc, entries, findings, systemFindings, priority, remedies, check, state, candidates: candidates.items, ui: ui.strings };
 }

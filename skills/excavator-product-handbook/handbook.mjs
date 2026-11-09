@@ -74,6 +74,19 @@
  *   priority-verdicts <out> --project <root>
  *       Record the two judges' verdicts: a group has a priority only when both
  *       say follows; the others are recorded unranked with their reasons.
+ *   remedy-facts <out> --project <root>
+ *       Print the facts a remedies lane may cite, one line each (the verified
+ *       groups with level and category, the applications, the shared tables, the
+ *       counts), or one `Remedies:` line when there is nothing to write (design D2).
+ *   check-remedies <out> --project <root>
+ *       Check <out>/entries/remedies.json against those facts; record the result
+ *       under "remedies".
+ *   remedy-judge <out> --project <root>
+ *       Write the judge file of checked remedies and print the paths of the two
+ *       verdict files.
+ *   remedy-verdicts <out> --project <root>
+ *       Record the two judges' verdicts: a paragraph or recommendation is kept
+ *       only when both say follows; the others are recorded as dropped.
  *   mark <out> <featureId> dispatched | failed lane <reason>... --project <root>
  *       Record a lane dispatch or a lane that wrote nothing in state.json.
  *       The slices, verdicts, trace, trace-verdicts and mark commands also take
@@ -99,10 +112,10 @@
  *       the project; remove the items either tracer contradicted and verify the
  *       feature, nothing recorded when any file does not hold.
  *   sections [<list>]
- *       Validate a --sections list (overview, features, data, findings, system-findings, priority; default all) and print
+ *       Validate a --sections list (overview, features, data, findings, system-findings, priority, remedies; default all) and print
  *       SECTIONS=<list>, one READ=<file> line per phase file the run reads,
  *       in reading order, the shared map file once, and an AFTER_TRACE=<file> line
- *       for a section whose phase runs after the trace (priority); exit 1 for a
+ *       for a section whose phase runs after the trace (priority, remedies); exit 1 for a
  *       value that is not a section. Reads and changes no file.
  *   check-ui <out> [--language <name>]
  *       Check <out>/ui.json against the shipped English table, or copy that
@@ -118,7 +131,7 @@
  *       Write <out>/handbook.html from the same checked run: one file that
  *       opens from disk, no network, the same bytes from the same input.
  *
- * check-map, check-entry, check-overview, check-findings, check-priority, priority-verdicts, mark, verdicts and trace-verdicts hold <out>/state.json.lock while they run.
+ * check-map, check-entry, check-overview, check-findings, check-priority, priority-verdicts, check-remedies, remedy-verdicts, mark, verdicts and trace-verdicts hold <out>/state.json.lock while they run.
  * In a run whose language is not English, check-map, check-entry, try-entry,
  * assemble and page also check that each narrative text holds a letter of the
  * language when it has its own script (design D12); they need a checked
@@ -146,6 +159,10 @@ import { checkPriority } from './lib/priority-check.mjs';
 import { priorityItems } from './lib/priority-items.mjs';
 import { priorityJudge } from './lib/priority-judge.mjs';
 import { priorityVerdicts } from './lib/priority-verdicts.mjs';
+import { checkRemedies } from './lib/remedies-check.mjs';
+import { remedyFacts } from './lib/remedies-items.mjs';
+import { remedyJudge } from './lib/remedies-judge.mjs';
+import { remedyVerdicts } from './lib/remedies-verdicts.mjs';
 import { projectRootOption } from './lib/project-root.mjs';
 import { replyLines } from './lib/reply.mjs';
 import { parseSections, sectionLines } from './lib/sections.mjs';
@@ -200,12 +217,12 @@ Commands:
       not an application root exits 1: print each such item, then every root as
       "app<n>  <dir>", then a Next: line. Changes no file.
   sections [<list>]
-      Validate the --sections list (comma-separated: overview, features, data, findings, system-findings, priority; empty
+      Validate the --sections list (comma-separated: overview, features, data, findings, system-findings, priority, remedies; empty
       or absent is all) and print "SECTIONS=<the sections in fixed order>",
       then one "READ=<path>" line per phase file to read, relative to the skill
       directory, in reading order: the stage files first (the map file once),
       then each section's file. The file of a section whose phase runs after the
-      trace (priority) is printed as "AFTER_TRACE=<path>" instead: it is read at
+      trace (priority, remedies) is printed as "AFTER_TRACE=<path>" instead: it is read at
       the end of Phase 6. A value that is not a section exits 1 and the
       allowed values are printed. Reads and changes no file.
   applications <projectRoot>
@@ -338,6 +355,33 @@ Commands:
       follows; any other group is recorded unranked with the reasons of the
       judges that said doesNotFollow, and "priority" is verified. Nothing is
       recorded when a file does not hold.
+  remedy-facts <out> --project <root>
+      Print the facts a remedies lane may cite, one line each, tab-separated, the
+      first field the id a paragraph cites: a group of the verified findings (key,
+      level or unranked, category, representative statement), an application
+      (app:<dir>, name, main language, source files, lines, commits, authors; "-"
+      without a version history), tables-shared (the number of tables that two or
+      more applications mention, then each table with those applications) and
+      counts (groups, groups of each level, groups of each category). When there
+      is nothing to write (no verified finding, remedies that are current, ones
+      waiting for their judges, ones that failed twice) it prints one line that
+      starts with "Remedies:" and no fact.
+  check-remedies <out> --project <root>
+      Check <out>/entries/remedies.json: a paragraph for each category at most
+      once and only for a category with a verified group, a paragraph of a category
+      citing only groups of that category, 1 to 10 recommendations, every cited id
+      a fact of remedy-facts, the reader-text checks (the advice words are
+      allowed) and every number of a text occurring in the facts it cites. Records
+      "remedies" as checked; a failure records it failed and ends with a Next: line.
+  remedy-judge <out> --project <root>
+      For checked remedies, write <out>/remedies/judge.json (each paragraph with
+      what it cites) and print the judge file and the two verdict files.
+  remedy-verdicts <out> --project <root>
+      Record the verdicts of the two judges: one per paragraph or recommendation,
+      follows or doesNotFollow, with a one-line reason. A paragraph is kept when
+      both say follows; any other is recorded as dropped with the reasons of the
+      judges that said doesNotFollow, and "remedies" is verified. Nothing is
+      recorded when a file does not hold.
   mark <out> <featureId> dispatched --project <root>
       Count one more dispatch of the feature's lane in state.json. The id may be
       overview: the system overview is a unit like a feature (so it is for
@@ -347,7 +391,8 @@ Commands:
       and so are the system findings of an application root, app<n>.system, kept
       under "systemFindings". The id priority is the ranking of the findings, kept
       under "priority": a dispatch for groups other than the ones it was recorded
-      for starts it over with no attempt.
+      for starts it over with no attempt. The id remedies is the remedies of the
+      findings, kept under "remedies": a dispatch for other facts starts it over.
   mark <out> <featureId> failed lane <reason>... --project <root>
       Record the feature's lane as failed without writing its entry, each
       further argument one reason. lane is the only step mark records.
@@ -625,6 +670,28 @@ const COMMANDS = {
     if (positionals.length !== 1) throw new UsageError('priority-verdicts takes exactly one <out> directory');
     const root = projectRootOption(options.project);
     return withStateLock(positionals[0], () => report(priorityVerdicts(positionals[0], root)));
+  },
+  'remedy-facts'(args) {
+    const { positionals, options } = parseArgs(args, ['project']);
+    if (positionals.length !== 1) throw new UsageError('remedy-facts takes exactly one <out> directory');
+    return report(remedyFacts(positionals[0], projectRootOption(options.project)));
+  },
+  'check-remedies'(args) {
+    const { positionals, options } = parseArgs(args, ['project']);
+    if (positionals.length !== 1) throw new UsageError('check-remedies takes exactly one <out> directory');
+    const root = projectRootOption(options.project);
+    return withStateLock(positionals[0], () => report(checkRemedies(positionals[0], root)));
+  },
+  'remedy-judge'(args) {
+    const { positionals, options } = parseArgs(args, ['project']);
+    if (positionals.length !== 1) throw new UsageError('remedy-judge takes exactly one <out> directory');
+    return report(remedyJudge(positionals[0], projectRootOption(options.project)));
+  },
+  'remedy-verdicts'(args) {
+    const { positionals, options } = parseArgs(args, ['project']);
+    if (positionals.length !== 1) throw new UsageError('remedy-verdicts takes exactly one <out> directory');
+    const root = projectRootOption(options.project);
+    return withStateLock(positionals[0], () => report(remedyVerdicts(positionals[0], root)));
   },
   mark(args) {
     const { positionals, options } = parseArgs(args, ['project']);
