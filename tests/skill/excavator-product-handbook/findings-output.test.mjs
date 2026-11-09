@@ -279,7 +279,7 @@ describe('the page data', () => {
     const made = page(run);
     expect(made.status, made.stdout).toBe(0);
     const data = dataOf(run);
-    expect(data.format).toBe('excavator-product-handbook-page/14');
+    expect(data.format).toBe('excavator-product-handbook-page/15');
     expect(data.findings.map((group) => [group.items.map((item) => item.id), group.owners.map((owner) => [owner.kind, owner.id]), group.category])).toEqual([
       [['F1.findings[0]'], [['feature', 'F1']], 'authorization'],
       [['F1.findings[1]'], [['feature', 'F1']], 'hard-coded'],

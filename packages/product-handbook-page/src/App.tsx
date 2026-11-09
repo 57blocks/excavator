@@ -19,6 +19,7 @@ import { TopicsPage } from './components/TopicsPage';
 import { Sidebar } from './components/Sidebar';
 import { SystemPage } from './components/SystemPage';
 import { TopBar } from './components/TopBar';
+import { LoaderContext, createLoader } from './lib/chunks';
 import { LinksContext, ViewContext, makeLinks } from './lib/links';
 import type { Route } from './lib/route';
 import { TextContext, makeText } from './lib/text';
@@ -153,5 +154,6 @@ export function App({ data }: { data: PageData }) {
   useEffect(() => {
     window.scrollTo(0, 0);
   }, [route]);
-  return <AppView data={data} route={route} />;
+  const loader = useMemo(() => createLoader(data.chunks), [data.chunks]);
+  return <LoaderContext.Provider value={loader}><AppView data={data} route={route} /></LoaderContext.Provider>;
 }

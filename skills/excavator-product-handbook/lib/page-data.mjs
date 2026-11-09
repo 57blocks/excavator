@@ -25,7 +25,9 @@ import { withoutRootPaths } from './root-paths.mjs';
 import { DEFAULT_VIEWS } from './views.mjs';
 
 /**
- * The format is /14 since openspec change handbook-history-appendix: `history` holds the code health (the commits of each year, the
+ * The format is /15 since openspec change handbook-page-chunked-data: `chunks` is the index of the part files of a page whose data is
+ * large (the part ids and, for each unit, the parts that hold it); here it is always empty, and `page` fills it when it splits the data
+ * (page-units.mjs, page-chunks.mjs). (/14, openspec change handbook-history-appendix: `history` holds the code health (the commits of each year, the
  * applications, the files that change most by name, the files changed together across applications, the source and test files) and
  * `appendix` the open questions, the glossary and the sources and scope; the technical part holds the path of each file of `history`.
  * (/13, openspec change handbook-topics: `topics` holds the rows of the five cross-cutting topics with their basis, the
@@ -34,7 +36,7 @@ import { DEFAULT_VIEWS } from './views.mjs';
  * recommendations with the groups and facts they rest on, and the coverage says what the judges left out. /11: each group of findings
  * carries its priority, and the coverage says which groups have none.)
  */
-export const PAGE_FORMAT = 'excavator-product-handbook-page/14';
+export const PAGE_FORMAT = 'excavator-product-handbook-page/15';
 
 /** An entry without its evidence, in the page's shape. */
 function pageEntry(entry) {
@@ -78,6 +80,7 @@ export function buildPageData(run, roots, { views = DEFAULT_VIEWS } = {}) {
   const domainOf = new Map(entities.domains.flatMap((domain) => domain.features.map((id) => [id, domain.id])));
   const data = {
     format: PAGE_FORMAT,
+    chunks: { parts: [], units: {} },
     project: system.overview?.name ?? null,
     language: map.language,
     languageTag: languageTag(map.language),

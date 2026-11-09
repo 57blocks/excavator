@@ -246,6 +246,11 @@ h1, h2, h3 { margin: 0; font-weight: 600; line-height: 1.3; letter-spacing: -0.0
 .data-sorts { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
 .data-sort { padding: 5px 12px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); color: var(--text-2); font: inherit; font-size: 13px; cursor: pointer; }
 .data-sort[aria-pressed="true"] { border-color: var(--accent); background: var(--accent-bg); color: var(--accent-text); }
+/* Paging: more than 200 rows are shown 200 at a time, the controls under the list. */
+.pager { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; margin: 12px 0 4px; font-size: 13px; color: var(--text-2); }
+.pager button { padding: 5px 12px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); color: var(--text-2); font: inherit; font-size: 13px; cursor: pointer; }
+.pager button:hover:not(:disabled) { border-color: var(--accent); color: var(--accent-text); }
+.pager button:disabled { opacity: 0.5; cursor: default; }
 .data-mentions { margin-top: 8px; font-size: 13px; }
 .data-mentions summary { cursor: pointer; color: var(--accent-text); }
 .data-mentions > div { margin-top: 8px; }

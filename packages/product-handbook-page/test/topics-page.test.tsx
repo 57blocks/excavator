@@ -46,6 +46,7 @@ const LANES = [
 function dataFor(topics: Topics = TOPICS, coverage: Partial<PageData['coverage']['topics']> = {}, views: ('product' | 'technical')[] = ['product', 'technical']): PageData {
   return {
     format: PAGE_FORMAT,
+    chunks: { parts: [], units: {} },
     project: d('Acme'),
     language: d('language'),
     languageTag: 'xx',

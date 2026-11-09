@@ -46,6 +46,7 @@ const feature = (id: string, name: string, domain: string): PageData['features']
 function dataFor(appendix: Appendix = APPENDIX, views: ('product' | 'technical')[] = ['product', 'technical']): PageData {
   return {
     format: PAGE_FORMAT,
+    chunks: { parts: [], units: {} },
     project: d('Acme'),
     language: d('language'),
     languageTag: 'xx',

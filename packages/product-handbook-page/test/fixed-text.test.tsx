@@ -121,7 +121,8 @@ const emptySystem: System = {
 
 function dataFor(features: Feature[], unassigned: PageData['coverage']['unassigned'] = [], removed: PageData['coverage']['removed'] = [], summary: Summary = emptySummary, system: System = unwrittenSystem, removedOverview: PageData['coverage']['removedOverview'] = []): PageData {
   return {
-    format: 'excavator-product-handbook-page/14',
+    format: 'excavator-product-handbook-page/15',
+    chunks: { parts: [], units: {} },
     project: d('project'),
     language: d('language'),
     languageTag: 'xx',

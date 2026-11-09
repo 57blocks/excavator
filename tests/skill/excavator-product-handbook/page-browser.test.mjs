@@ -7,14 +7,14 @@
 // PATH). Without a Chrome the suite is skipped with a visible reason, except
 // when CI is set: CI runners have Chrome, so there it fails.
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { copyFileSync, existsSync } from 'node:fs';
+import { copyFileSync, existsSync, readdirSync, readFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 import { Browser, findChrome } from './chrome-cdp.mjs';
 import { writeFileSync } from 'node:fs';
 
-import { clone, judge, makeCheckedMapRun, repoRoot, traceFeature } from './helpers.mjs';
+import { clone, judge, makeCheckedMapRun, repoRoot, runHandbook, traceFeature } from './helpers.mjs';
 import { writeHistory } from './appendix-fixture.mjs';
 import { NOTIFY_FILE, NOTIFY_LINE, goodOverview } from './overview-fixture.mjs';
 
@@ -332,4 +332,54 @@ suite('page in a browser (O8)', () => {
       expect(page.consoleErrors).toEqual([]);
     }, 60000);
   }
+
+  // O3 (browser half) of openspec change handbook-page-chunked-data: the same run written with part files opens from file:// and shows
+  // the same page as the one-file form; the overview loads no part, a feature page loads its own parts by script, no request but the
+  // page and its part files, no console error; with a part deleted the page that needs it names it and the others still work.
+  describe('a page with part files', () => {
+    const route = '#/technical/feature/F1';
+    const mainOf = (page) => page.evaluate("document.querySelector('main').innerHTML");
+    const partsOf = (page) => page.requests.filter((request) => request.includes('/handbook-data/')).map((request) => request.replace(/^.*\//, ''));
+    const chunkedRun = () => {
+      const made = runHandbook(['page', both.out, '--project', both.root, '--views', 'product,technical'], {
+        env: { ...process.env, EXCAVATOR_PRODUCT_HANDBOOK_PAGE_CHUNK_THRESHOLD: '1', EXCAVATOR_PRODUCT_HANDBOOK_PAGE_PART_LIMIT: '1500' },
+      });
+      expect(made.status, made.stdout + made.stderr).toBe(0);
+    };
+
+    it('shows the page of the one-file form, loading only the parts of the page it opens, and names a missing part', async () => {
+      const single = await browser.openPage({ width: 1280, height: 800 });
+      await single.goto(urlBoth);
+      await single.waitFor('document.querySelector(\'[data-view="overview"]\')', 'the overview');
+      await goTo(single, route, '[data-view="feature"][data-feature="F1"]');
+      const expected = await mainOf(single);
+      expect(partsOf(single)).toEqual([]);
+
+      chunkedRun();
+      const names = readdirSync(join(both.out, 'handbook-data'));
+      expect(names.length).toBeGreaterThan(1);
+      const page = await browser.openPage({ width: 1280, height: 800 });
+      await page.goto(urlBoth);
+      await page.waitFor('document.querySelector(\'[data-view="overview"]\')', 'the overview');
+      expect(partsOf(page)).toEqual([]);
+      await goTo(page, route, '[data-view="feature"][data-feature="F1"]');
+      await page.waitFor("!document.querySelector('[data-part=\"chunk-loading\"]') && document.querySelector('[data-part=\"locations\"]')", 'the feature detail');
+      expect(await mainOf(page)).toBe(expected);
+      const loaded = partsOf(page);
+      expect(loaded.length).toBeGreaterThan(0);
+      expect(loaded.every((name) => names.includes(name))).toBe(true);
+      expect(page.requests.filter((request) => request !== urlBoth && !request.startsWith('data:') && !request.includes('/handbook-data/part-'))).toEqual([]);
+      expect(page.consoleErrors).toEqual([]);
+
+      rmSync(join(both.out, 'handbook-data', loaded[0]));
+      const broken = await browser.openPage({ width: 1280, height: 800 });
+      await broken.goto(urlBoth);
+      await broken.waitFor('document.querySelector(\'[data-view="overview"]\')', 'the overview');
+      await goTo(broken, route, '[data-part="chunk-missing"]');
+      expect(await broken.evaluate("document.querySelector('[data-part=\"chunk-missing\"]').textContent")).toContain(`handbook-data/${loaded[0]}`);
+      await goTo(broken, '#/technical/coverage', '[data-view="coverage"]');
+      expect(broken.consoleErrors.every((message) => message.includes('handbook-data'))).toBe(true);
+      expect(readFileSync(join(both.out, 'handbook.html'), 'utf-8')).toContain("script-src 'self' 'unsafe-inline'");
+    }, 90000);
+  });
 });

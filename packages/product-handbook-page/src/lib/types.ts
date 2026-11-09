@@ -1,6 +1,6 @@
 /** The page data `handbook.mjs page` writes into the template (openspec change product-handbook-map, design D13). */
 
-export const PAGE_FORMAT = 'excavator-product-handbook-page/14';
+export const PAGE_FORMAT = 'excavator-product-handbook-page/15';
 
 /** The views a page can hold (openspec change handbook-entities-and-views): the product view and the technical view. */
 export const VIEWS = ['product', 'technical'] as const;
@@ -441,8 +441,19 @@ export interface Technical {
   dictionariesState: 'ok' | 'missing' | 'malformed';
 }
 
+/**
+ * The index of the part files of a page whose data is large (openspec change handbook-page-chunked-data): the ids of the
+ * parts in order and, for each unit, the parts that hold it in order. Both are empty when the page is one file. A unit is the
+ * detail shown on one page: `feature:<id>` (the entry and source locations of a verified feature), `data` and `dictionaries`.
+ */
+export interface Chunks {
+  parts: string[];
+  units: Record<string, string[]>;
+}
+
 export interface PageData {
   format: typeof PAGE_FORMAT;
+  chunks: Chunks;
   /** The system name the verified overview kept, or null; never the directory of the project. */
   project: string | null;
   language: string;

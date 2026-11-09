@@ -30,8 +30,8 @@ describe('page data: the summary', () => {
     const made = page(run);
     expect(made.status, made.stdout + made.stderr).toBe(0);
     const data = dataOf(run);
-    expect(data.format).toBe('excavator-product-handbook-page/14');
-    expect(Object.keys(data)).toEqual(['format', 'project', 'language', 'languageTag', 'ui', 'views', 'areas', 'domains', 'domainBasis', 'features', 'findings', 'remedies', 'topics', 'history', 'appendix', 'coverage', 'summary', 'system', 'entities']);
+    expect(data.format).toBe('excavator-product-handbook-page/15');
+    expect(Object.keys(data)).toEqual(['format', 'chunks', 'project', 'language', 'languageTag', 'ui', 'views', 'areas', 'domains', 'domainBasis', 'features', 'findings', 'remedies', 'topics', 'history', 'appendix', 'coverage', 'summary', 'system', 'entities']);
     expect(data.summary.notifications).toEqual([{ feature: 'F1', trigger: 'An order is sent', recipient: 'The approver', channel: 'Message', content: 'A new order waits for approval.' }]);
     expect(data.summary.jobs).toEqual([{
       kind: 'job',

@@ -246,7 +246,7 @@ describe('the page data', () => {
     const made = page(run);
     expect(made.status, made.stdout).toBe(0);
     const data = dataOf(run);
-    expect(data.format).toBe('excavator-product-handbook-page/14');
+    expect(data.format).toBe('excavator-product-handbook-page/15');
     expect(Object.keys(data).slice(data.findings === undefined ? 0 : Object.keys(data).indexOf('findings'), Object.keys(data).indexOf('findings') + 3)).toEqual(['findings', 'remedies', 'topics']);
     expect(Object.keys(data.remedies)).toEqual(['categories', 'recommendations']);
     expect(data.remedies.categories).toEqual([

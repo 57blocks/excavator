@@ -51,6 +51,7 @@ const technical: Technical = {
 
 const dataFor = (project: string | null): PageData => ({
   format: PAGE_FORMAT,
+  chunks: { parts: [], units: {} },
   project,
   language: d('language'),
   languageTag: 'xx',
@@ -84,7 +85,7 @@ const HASHES = ['#/product', '#/product/coverage', '#/product/notifications', '#
 
 describe('the page data format', () => {
   it('is version 10: the project is the system name or null, the findings are groups', () => {
-    expect(PAGE_FORMAT).toBe('excavator-product-handbook-page/14');
+    expect(PAGE_FORMAT).toBe('excavator-product-handbook-page/15');
   });
 });
 

@@ -1,9 +1,11 @@
 import type { ReactNode } from 'react';
 
+import { useFeatureDetail } from '../lib/chunks';
 import { useLinks } from '../lib/links';
 import { useText } from '../lib/text';
 import { findingCategoryKey } from '../lib/types';
 import type { Area, Entry, Feature, Field, FindingGroup, Rule, UnitLocations } from '../lib/types';
+import { ChunkNotice } from './ChunkNotice';
 import { Locations } from './Locations';
 import { PriorityBadge } from './PriorityBadge';
 import { ReachBadge } from './ReachBadge';
@@ -161,6 +163,7 @@ function FindingsSection({ feature, groups }: { feature: Feature; groups: Findin
 export function FeaturePage({ feature, findings, domain, area, locations }: { feature: Feature; findings: FindingGroup[]; domain: Area | undefined; area: Area | undefined; locations?: UnitLocations }) {
   const t = useText();
   const nav = useLinks();
+  const detail = useFeatureDetail(feature, locations);
   return (
     <article className="page" data-view="feature" data-feature={feature.id}>
       <nav className="crumbs" aria-label={t('page.breadcrumb.label')}>
@@ -178,14 +181,14 @@ export function FeaturePage({ feature, findings, domain, area, locations }: { fe
           {area !== undefined && <span className="shown-as">{t('md.feature.area', { area: area.name })}</span>}
         </div>
       </header>
-      {feature.entry === null ? (
+      {detail.status !== 'ready' ? <ChunkNotice state={detail} /> : detail.value.entry === null ? (
         <div className="notice" role="note">
           <p>{t('page.feature.noEntry')}</p>
           <p className="status-chip" data-status={feature.status}>{t(`md.status.${feature.status}`)}</p>
         </div>
-      ) : <EntryBody entry={feature.entry} />}
+      ) : <EntryBody entry={detail.value.entry} />}
       <FindingsSection feature={feature} groups={findings} />
-      {feature.entry !== null && locations !== undefined && <Locations unit={locations} />}
+      {detail.status === 'ready' && detail.value.entry !== null && detail.value.locations !== undefined && <Locations unit={detail.value.locations} />}
     </article>
   );
 }

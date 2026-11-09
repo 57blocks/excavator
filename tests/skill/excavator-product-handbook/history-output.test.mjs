@@ -290,7 +290,7 @@ describe('the page data', () => {
     const made = page(run);
     expect(made.status, made.stdout).toBe(0);
     const data = dataOf(run);
-    expect(data.format).toBe('excavator-product-handbook-page/14');
+    expect(data.format).toBe('excavator-product-handbook-page/15');
     const keys = Object.keys(data);
     expect(keys.slice(keys.indexOf('topics'), keys.indexOf('topics') + 4)).toEqual(['topics', 'history', 'appendix', 'coverage']);
     const { technical, ...product } = data;
