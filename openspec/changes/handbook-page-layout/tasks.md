@@ -8,9 +8,18 @@
 - [x] 1.4 源码位置组件与发现表的位置列（D3、D4）
 - [x] 1.5 固定文字的正式用词与翻译提示（D5）
 
-## 2. 验收
+## 2. 控件与视觉
+
+提交：`feat(product-handbook-page): styled select, filter toolbar and stat grid on bundled Radix primitives`
+
+- [x] 2.1 测试先红（design O4 的组件测试）
+- [x] 2.2 令牌与 `src/components/ui/` 的下拉选择、工具栏、统计网格（D7、D8）
+- [x] 2.3 发现页、字典页换用新控件；其他页面的表格、标签、徽标用同一套令牌
+- [x] 2.4 依赖与模板许可说明（D6、D7）
+
+## 3. 验收
 
 提交：`docs(openspec): record handbook-page-layout acceptance`
 
-- [ ] 2.1 O2 截图核对
-- [ ] 2.2 O3 测试与全量门
+- [x] 3.1 O2、O4 截图与 file:// 核对
+- [x] 3.2 O3 测试

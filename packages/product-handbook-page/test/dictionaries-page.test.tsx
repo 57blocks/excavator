@@ -1,3 +1,4 @@
+// @vitest-environment happy-dom
 // O2 (page) of openspec change handbook-status-dictionary: the technical view
 // has the route #/dictionaries, a sidebar link and a page of the value sets,
 // filterable by application and searchable by name; the product view has
@@ -6,21 +7,23 @@
 // The data is written by hand with a prefix on every data text, so a fixed text
 // the code wrote itself is found by the absence of both markers.
 import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { renderToStaticMarkup } from 'react-dom/server';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 
 import { AppView } from '../src/App';
 import { filterDictionaries } from '../src/components/DictionariesPage';
 import { parseHash, routeHash } from '../src/lib/route';
 import type { DictionariesSection, DictionaryEntry, PageData, View } from '../src/lib/types';
 import { switchTarget } from '../src/lib/views';
+import { choose, cleanup, mount, openWithKeyboard, optionTexts, selectByLabel, status as statusOf, typeInto } from './dom';
 import { NO_APPENDIX, NO_HISTORY } from './empty-parts';
 
 const MARK = '@@';
 const DATA = 'd~';
-const shipped = JSON.parse(readFileSync(fileURLToPath(new URL('../../../skills/excavator-product-handbook/ui-strings.json', import.meta.url)), 'utf-8')) as { strings: Record<string, string> };
+const shipped = JSON.parse(readFileSync(join(dirname(fileURLToPath(import.meta.url)), '../../../skills/excavator-product-handbook/ui-strings.json'), 'utf-8')) as { strings: Record<string, string> };
 const marked = Object.fromEntries(Object.entries(shipped.strings).map(([key, value]) => [key, `${MARK}${value}`]));
 const d = (text: string): string => `${DATA}${text}`;
 
@@ -159,10 +162,10 @@ describe('the dictionaries route and link', () => {
 describe('the dictionaries page', () => {
   const body = main(render(dataFor(BOTH), '#/technical/dictionaries'));
 
-  it('shows the fixed notes, the recognized forms and the two count lines', () => {
+  it('shows the fixed notes, the recognized forms, the count cards and the candidates line', () => {
     for (const key of ['md.dict.note.nameRule', 'md.dict.note.sources', 'md.dict.note.values']) expect(body, key).toContain(marked[key]);
     expect(body).toContain(`${MARK}Forms of value set recognized in this version: ${['goNamedType', 'goTypedVar', 'tsEnum', 'tsConstObject', 'jsObject', 'jsRecordMember'].map((form) => marked[`md.dict.form.${form}`]).join('; ')}.`);
-    expect(body).toContain(`${MARK}Value sets: 5 (2 Go types, 1 TS enums, 1 TS const objects, 1 JS objects). Members: 9 (7 computed, 2 not computed). Comments: 1. Display names: 2. Same names with different values: 1. Skipped members: 2.`);
+    expect(body).toContain('data-part="dict-stats"');
     expect(body).toContain(`${MARK}Candidates that are not value sets: 1 Go types without constants or variables, 0 Go types declared again, 1 untyped iota constants, 1 constants of another type, 1 plain constants, 1 variables of another type, 1 TS const objects without literal members, 0 JS objects without literal members. Mapping table entries that name no member: 1. Mapping table entries that name more than one member: 0.`);
   });
 
@@ -206,8 +209,53 @@ describe('the dictionaries page', () => {
     expect(body).toContain(marked['page.dict.filter.application']);
     expect(body).toContain(marked['page.dict.filter.all']);
     expect(body).toContain(marked['page.dict.filter.search']);
-    expect(body.match(/<option /g)).toHaveLength(4);
     expect(body).toContain(`${MARK}Showing 5 of 5 value sets`);
+  });
+});
+
+describe('the styled application select, the search box and the count grid (handbook-page-layout)', () => {
+  afterEach(cleanup);
+  const page = (): HTMLElement => mount(<AppView data={dataFor(BOTH)} route={parseHash('#/technical/dictionaries')} />);
+  const APPLICATION = marked['page.dict.filter.application'];
+  const shownSets = (host: HTMLElement): number => host.querySelectorAll('[data-set]').length;
+
+  it('opens with the keyboard, lists every application and filters the value sets', async () => {
+    const host = page();
+    expect(host.querySelectorAll('select')).toHaveLength(0);
+    expect(statusOf(host)).toBe(`${MARK}Showing 5 of 5 value sets`);
+    await openWithKeyboard(selectByLabel(host, APPLICATION));
+    expect(optionTexts()).toEqual([marked['page.dict.filter.all'], d('go-app'), d('web-app'), marked['md.data.noApplication']]);
+    cleanup();
+    const again = page();
+    await choose(again, APPLICATION, d('web-app'));
+    expect(statusOf(again)).toBe(`${MARK}Showing 2 of 5 value sets`);
+    expect(shownSets(again)).toBe(2);
+  });
+
+  it('the search box is a styled input that narrows the list together with the select', async () => {
+    const host = page();
+    const input = host.querySelector<HTMLInputElement>('input[type="search"]');
+    expect(input?.className).toContain('field-control');
+    typeInto(input as HTMLInputElement, 'status');
+    expect(statusOf(host)).toBe(`${MARK}Showing 2 of 5 value sets`);
+    await choose(host, APPLICATION, d('go-app'));
+    expect(statusOf(host)).toBe(`${MARK}Showing 1 of 5 value sets`);
+    expect(shownSets(host)).toBe(1);
+  });
+
+  it('renders the value set counts as labelled cards', () => {
+    const host = page();
+    const cards = Object.fromEntries(Array.from(host.querySelectorAll('[data-part="dict-stats"] [data-part="stat"]')).map((card) => [card.querySelector('dt')?.textContent, card.querySelector('dd')?.textContent]));
+    expect(cards).toEqual({
+      [marked['page.stat.valueSets']]: '5',
+      [marked['page.stat.members']]: '9',
+      [marked['page.stat.membersComputed']]: '7',
+      [marked['page.stat.membersNotComputed']]: '2',
+      [marked['page.stat.comments']]: '1',
+      [marked['page.stat.displayNames']]: '2',
+      [marked['page.stat.mismatches']]: '1',
+      [marked['page.stat.skippedMembers']]: '2',
+    });
   });
 });
 

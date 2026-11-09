@@ -2,6 +2,7 @@ import { useLinks } from '../lib/links';
 import { systemName, useText } from '../lib/text';
 import type { JobRow, PageData } from '../lib/types';
 import { Cell, TableScroll } from './Tables';
+import { StatGrid } from './ui/StatGrid';
 
 /** One row per scheduled-job candidate: its feature (or why it has none), the schedule the registration line gives, and what a verified item says it does. */
 export function JobsPage({ data }: { data: PageData }) {
@@ -19,7 +20,13 @@ export function JobsPage({ data }: { data: PageData }) {
         <p className="eyebrow">{systemName(data.project, t)}</p>
         <h1 className="page-title">{heading}</h1>
       </header>
-      <p className="summary-counts">{t('md.summary.jobs.counts', { total: counts.jobRows, ...counts.schedule, described: counts.described })}</p>
+      <StatGrid part="jobs-stats" stats={[
+        { label: t('page.stat.jobsListed'), value: counts.jobRows },
+        { label: t('page.stat.jobsLiteral'), value: counts.schedule.literal },
+        { label: t('page.stat.jobsComputed'), value: counts.schedule.computed },
+        { label: t('page.stat.jobsAbsent'), value: counts.schedule.absent },
+        { label: t('page.stat.jobsDescribed'), value: counts.described },
+      ]} />
       <p className="muted summary-note">{t('md.summary.jobs.note')}</p>
       {jobs.length === 0 ? <p className="muted">{t('md.summary.jobs.none')}</p> : (
         <TableScroll label={heading} wide>

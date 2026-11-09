@@ -1,3 +1,4 @@
+// @vitest-environment happy-dom
 // O2 (page) of openspec changes handbook-feature-findings and handbook-system-findings:
 // the route #/findings in both views with a sidebar link, the counts (groups,
 // statements, groups merged), the groups by category with their owners and the
@@ -10,10 +11,11 @@
 // and each category heading say how many groups have which level, the findings page filters by level, the
 // feature page shows the levels and the coverage page lists the groups without a priority.
 import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { renderToStaticMarkup } from 'react-dom/server';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 
 import { AppView } from '../src/App';
 import { countByCategory, countByLevel, filterGroups } from '../src/components/FindingsPage';
@@ -21,11 +23,12 @@ import { parseHash, routeHash } from '../src/lib/route';
 import { FINDING_CATEGORIES, findingCategoryKey } from '../src/lib/types';
 import type { Feature, FindingCategory, FindingGroup, FindingOwner, PageData, Priority, Remedies, View } from '../src/lib/types';
 import { switchTarget } from '../src/lib/views';
+import { choose, cleanup, mount, moveAndConfirm, openWithKeyboard, optionTexts, pressActive, selectByLabel, status } from './dom';
 import { NO_APPENDIX, NO_HISTORY } from './empty-parts';
 
 const MARK = '@@';
 const DATA = 'd~';
-const shipped = JSON.parse(readFileSync(fileURLToPath(new URL('../../../skills/excavator-product-handbook/ui-strings.json', import.meta.url)), 'utf-8')) as { strings: Record<string, string> };
+const shipped = JSON.parse(readFileSync(join(dirname(fileURLToPath(import.meta.url)), '../../../skills/excavator-product-handbook/ui-strings.json'), 'utf-8')) as { strings: Record<string, string> };
 const marked = Object.fromEntries(Object.entries(shipped.strings).map(([key, value]) => [key, `${MARK}${value}`]));
 const d = (text: string): string => `${DATA}${text}`;
 
@@ -139,10 +142,15 @@ describe('the findings route and link', () => {
 });
 
 describe('the findings page', () => {
-  it('shows the counts line (groups, statements, groups merged), the groups in the order of the categories and each group with its owners and its first statement', () => {
+  it('shows the count cards (groups, statements, groups merged), the groups in the order of the categories and each group with its owners and its first statement', () => {
     const body = main(render(dataFor(['product']), '#/findings'));
-    const counted = (key: string): number => (['authorization', 'notification', 'hard-coded', 'time'].includes(key) ? 1 : 0);
-    expect(body).toContain(`${MARK}Findings: 4. Statements: 6. Groups merged: 2. Findings units verified: 3 of 5. System findings units verified: 1 of 3. By category: ${FINDING_CATEGORIES.map((key) => `${MARK}${name(key)}: ${counted(key)}`).join('; ')}. By priority: ${[['P0', 1], ['P1', 1], ['P2', 1], ['Unranked', 1]].map(([word, count]) => `${MARK}${MARK}${word}: ${count}`).join('; ')}.`);
+    expect(body).toContain('data-part="findings-stats"');
+    expect(body).not.toContain('class="summary-counts"');
+    expect(body).toContain(`<dt>${marked['page.stat.findings']}</dt><dd>4</dd>`);
+    expect(body).toContain(`<dt>${marked['page.stat.statements']}</dt><dd>6</dd>`);
+    expect(body).toContain(`<dt>${marked['page.stat.merged']}</dt><dd>2</dd>`);
+    expect(body).toContain(`<dt>${marked['page.stat.featuresVerified']}</dt><dd>${MARK}3 of 5</dd>`);
+    expect(body).toContain(`<dt>${marked['page.stat.systemVerified']}</dt><dd>${MARK}1 of 3</dd>`);
     expect([...body.matchAll(/data-category="([a-z-]+)"/g)].map((match) => match[1])).toEqual(['authorization', 'notification', 'hard-coded', 'time']);
     for (const text of ['first statement', 'second statement', 'system statement', 'fourth statement']) expect(body).toContain(d(text));
     expect(body).toContain(`${MARK}F1 ${d('name F1')}`);
@@ -195,19 +203,11 @@ describe('the findings page', () => {
     expect(product).not.toContain(marked['md.locations.heading']);
   });
 
-  it('has the category filter with every category and its count, and the owner filter with all owners, System and each feature that owns a group', () => {
+  it('shows the three filter labels and the status line before any interaction', () => {
     const html = render(dataFor(['product']), '#/findings');
-    expect(html).toContain(marked['page.findings.filter.category']);
-    expect(html).toContain(marked['page.findings.filter.all']);
-    expect(html).toContain(marked['page.findings.filter.owner']);
-    expect(html).toContain(marked['page.findings.filter.allOwners']);
-    expect(html).toContain(`>${marked['page.findings.filter.system']}</option>`);
-    const owners = html.slice(html.indexOf('data-part="findings-owner-filter"'));
-    expect(owners.slice(0, owners.indexOf('</select>')).match(/<option/g)).toHaveLength(2 + 2);
-    expect(owners).toContain(`${MARK}F1 ${d('name F1')}</option>`);
-    expect(owners).toContain(`${MARK}F3 ${d('name F3')}</option>`);
-    expect((html.slice(0, html.indexOf('data-part="findings-level-filter"')).match(/<option/g) ?? []).length).toBe(1 + FINDING_CATEGORIES.length);
+    for (const key of ['page.findings.filter.category', 'page.findings.filter.level', 'page.findings.filter.owner']) expect(html).toContain(marked[key]);
     expect(html).toContain(`${MARK}Showing 4 of 4 findings`);
+    expect(html).toContain('data-part="findings-toolbar"');
   });
 
   it('filterGroups keeps the groups of a category, of an owner (System is every application owner), or both, and changes nothing it is given', () => {
@@ -250,20 +250,6 @@ describe('the priority of each group (handbook-findings-priority)', () => {
     expect(body).toContain(`${MARK}${name('notification')} (1 findings; P0: 0)`);
   });
 
-  it('has the level filter with every level and the unranked groups and their counts, between the category and the owner filter', () => {
-    const html = render(dataFor(['product']), '#/findings');
-    const start = html.indexOf('data-part="findings-level-filter"');
-    expect(start).toBeGreaterThan(html.indexOf(marked['page.findings.filter.category']));
-    expect(start).toBeLessThan(html.indexOf('data-part="findings-owner-filter"'));
-    const levels = html.slice(start, html.indexOf('</select>', start));
-    expect(levels).toContain(marked['page.findings.filter.level']);
-    expect(levels).toContain(`>${marked['page.findings.filter.allLevels']}</option>`);
-    expect([...levels.matchAll(/<option value="([A-Za-z0-9]+)"[^>]*>([^<]*)<\/option>/g)].map((match) => [match[1], match[2]])).toEqual([
-      ['all', marked['page.findings.filter.allLevels']],
-      ['P0', `${MARK}${MARK}P0: 1`], ['P1', `${MARK}${MARK}P1: 1`], ['P2', `${MARK}${MARK}P2: 1`], ['none', `${MARK}${marked['md.priority.unranked']}: 1`],
-    ]);
-  });
-
   it('filterGroups keeps the groups of a level, or the groups without a priority, together with the other filters, and countByLevel counts them', () => {
     const list = dataFor(['product']).findings;
     const ids = (groups: FindingGroup[]): string[] => groups.map((group) => group.items[0].id);
@@ -284,7 +270,7 @@ describe('the priority of each group (handbook-findings-priority)', () => {
     expect(f1).toContain(`${MARK}P2</span> ${MARK}${name('hard-coded')}: ${d('second statement')}`);
     const f3 = main(render(dataFor(['product']), '#/feature/F3'));
     expect(f3).toContain(`${MARK}P1</span> ${MARK}${name('time')}: ${d('fourth statement')}`);
-    const data = dataFor(['product']);
+    const data = dataFor(['product'], structuredClone(FINDINGS));
     data.findings[1].priority = null;
     expect(main(render(data, '#/feature/F1'))).toContain(`${marked['md.priority.unranked']}</span> ${MARK}${name('hard-coded')}: ${d('second statement')}`);
   });
@@ -547,5 +533,110 @@ describe('the coverage page about the remedies', () => {
     expect(part(dataFor(['product'], FINDINGS, REMEDIES, { finished: false, stale: true, dropped: [] }))).toContain(marked['md.coverage.remediesStale']);
     expect(part(dataFor(['product'], FINDINGS, REMEDIES))).toContain(marked['md.coverage.remediesAllKept']);
     expect(part(dataFor(['product'], []))).toContain(marked['md.none']);
+  });
+});
+
+
+describe('the styled selects and the filter toolbar (handbook-page-layout)', () => {
+  afterEach(cleanup);
+  const page = (views: View[] = ['product']): HTMLElement => mount(<AppView data={dataFor(views, structuredClone(FINDINGS))} route={parseHash('#/findings')} />);
+  const label = (key: string): string => marked[key];
+  const CATEGORY = label('page.findings.filter.category');
+  const LEVEL = label('page.findings.filter.level');
+  const OWNER = label('page.findings.filter.owner');
+  const shown = (host: HTMLElement): string => status(host);
+  const rows = (host: HTMLElement): number => host.querySelectorAll('tbody tr').length;
+
+  it('uses no native select: each filter is a combobox that shows its current choice', () => {
+    const host = page();
+    expect(host.querySelectorAll('select')).toHaveLength(0);
+    expect(host.querySelectorAll('[role="combobox"]')).toHaveLength(3);
+    for (const name of [CATEGORY, LEVEL, OWNER]) expect(selectByLabel(host, name).getAttribute('aria-expanded')).toBe('false');
+    expect(selectByLabel(host, LEVEL).textContent).toContain(label('page.findings.filter.allLevels'));
+  });
+
+  it('opens with the keyboard and lists every category with its count, every level with the unranked one, and the owners', async () => {
+    const host = page();
+    await openWithKeyboard(selectByLabel(host, CATEGORY));
+    expect(optionTexts()).toHaveLength(1 + FINDING_CATEGORIES.length);
+    expect(optionTexts()[0]).toBe(label('page.findings.filter.all'));
+    cleanup();
+    const levels = page();
+    await openWithKeyboard(selectByLabel(levels, LEVEL));
+    expect(optionTexts()).toEqual([label('page.findings.filter.allLevels'), `${MARK}${MARK}P0: 1`, `${MARK}${MARK}P1: 1`, `${MARK}${MARK}P2: 1`, `${MARK}${marked['md.priority.unranked']}: 1`]);
+    cleanup();
+    const owners = page();
+    await openWithKeyboard(selectByLabel(owners, OWNER));
+    expect(optionTexts()).toEqual([label('page.findings.filter.allOwners'), label('page.findings.filter.system'), `${MARK}F1 ${d('name F1')}`, `${MARK}F3 ${d('name F3')}`]);
+  });
+
+  it('moving with the arrow keys and confirming with Enter changes the filter and the shown count', async () => {
+    const host = page();
+    expect(shown(host)).toBe(`${MARK}Showing 4 of 4 findings`);
+    await openWithKeyboard(selectByLabel(host, LEVEL));
+    await moveAndConfirm(2);
+    expect(selectByLabel(host, LEVEL).textContent).toContain(`${MARK}${MARK}P1: 1`);
+    expect(shown(host)).toBe(`${MARK}Showing 1 of 4 findings`);
+    expect(rows(host)).toBe(1);
+    expect(document.querySelector('[role="listbox"]')).toBeNull();
+  });
+
+  it('the three filters combine: category, level and owner each narrow the same list', async () => {
+    const host = page();
+    await choose(host, OWNER, `${MARK}F3 ${d('name F3')}`);
+    expect(shown(host)).toBe(`${MARK}Showing 2 of 4 findings`);
+    await choose(host, LEVEL, `${MARK}${MARK}P1: 1`);
+    expect(shown(host)).toBe(`${MARK}Showing 1 of 4 findings`);
+    await choose(host, CATEGORY, `${MARK}${name('time')}: 1`);
+    expect(shown(host)).toBe(`${MARK}Showing 1 of 4 findings`);
+    await choose(host, CATEGORY, `${MARK}${name('authorization')}: 1`);
+    expect(shown(host)).toBe(`${MARK}Showing 0 of 4 findings`);
+    expect(host.querySelector('[data-part="findings-no-match"]')).not.toBeNull();
+    await choose(host, LEVEL, label('page.findings.filter.allLevels'));
+    expect(shown(host)).toBe(`${MARK}Showing 1 of 4 findings`);
+    await choose(host, OWNER, label('page.findings.filter.system'));
+    expect(shown(host)).toBe(`${MARK}Showing 0 of 4 findings`);
+  });
+
+  it('Escape closes the list and keeps the choice', async () => {
+    const host = page();
+    await openWithKeyboard(selectByLabel(host, LEVEL));
+    expect(document.querySelector('[role="listbox"]')).not.toBeNull();
+    await pressActive('ArrowDown');
+    await pressActive('Escape');
+    expect(document.querySelector('[role="listbox"]')).toBeNull();
+    expect(shown(host)).toBe(`${MARK}Showing 4 of 4 findings`);
+  });
+
+  it('the toolbar holds the three filters and the status in one row group, each filter with a label', () => {
+    const host = page();
+    const toolbar = host.querySelector('[data-part="findings-toolbar"]');
+    expect(toolbar).not.toBeNull();
+    expect(toolbar?.querySelectorAll('[data-part="filter-field"]')).toHaveLength(3);
+    expect(toolbar?.querySelector('[role="status"]')).not.toBeNull();
+  });
+});
+
+describe('the counts as a grid of labelled cards (handbook-page-layout)', () => {
+  afterEach(cleanup);
+  const cards = (host: HTMLElement, part: string): Record<string, string> => Object.fromEntries(
+    Array.from(host.querySelectorAll(`[data-part="${part}"] [data-part="stat"]`)).map((card) => [card.querySelector('dt')?.textContent ?? '', card.querySelector('dd')?.textContent ?? '']),
+  );
+
+  it('renders the findings counts as label and value pairs, not as one sentence', () => {
+    const host = mount(<AppView data={dataFor(['product'], structuredClone(FINDINGS))} route={parseHash('#/findings')} />);
+    expect(cards(host, 'findings-stats')).toEqual({
+      [marked['page.stat.findings']]: '4',
+      [marked['page.stat.statements']]: '6',
+      [marked['page.stat.merged']]: '2',
+      [marked['page.stat.featuresVerified']]: `${MARK}3 of 5`,
+      [marked['page.stat.systemVerified']]: `${MARK}1 of 3`,
+    });
+    expect(host.querySelector('p.summary-counts')).toBeNull();
+    const byLevel = cards(host, 'findings-level-stats');
+    expect(Object.values(byLevel)).toEqual(['1', '1', '1', '1']);
+    expect(Object.keys(byLevel)).toEqual([`${MARK}P0`, `${MARK}P1`, `${MARK}P2`, marked['md.priority.unranked']]);
+    expect(Object.values(cards(host, 'findings-category-stats')).filter((value) => value === '1')).toHaveLength(4);
+    expect(Object.keys(cards(host, 'findings-category-stats'))).toHaveLength(FINDING_CATEGORIES.length);
   });
 });

@@ -280,7 +280,7 @@ describe('every fixed text of the page comes from the ui table (O8, node half)',
 
     const jobs = render(populated, '#/jobs');
     for (const text of ['c1', 'job when two', 'job effect one', 'job reason']) expect(jobs).toContain(d(text));
-    expect(jobs).toContain(`${MARK}Scheduled jobs listed: 3. Schedule written on the registration line: 1. Schedule worked out when the job is registered: 1. Schedule not in the text of the registration line: 1. Rows with a verified description: 1.`);
+    for (const [key, value] of [['jobsListed', 3], ['jobsLiteral', 1], ['jobsComputed', 1], ['jobsAbsent', 1], ['jobsDescribed', 1]] as const) expect(jobs).toContain(`<dt>${marked[`page.stat.${key}`]}</dt><dd>${value}</dd>`);
     expect(jobs).toContain(`${MARK}Unassigned: ${d('job reason')}`);
     expect(jobs).toContain(`<code class="schedule">${d('0 9 * * *')}</code>`);
     for (const key of ['md.summary.jobs.heading', 'md.summary.jobs.note', 'md.summary.schedule.computed', 'md.summary.schedule.absent', 'md.summary.noDescription', 'md.table.schedule', 'md.table.does']) expect(jobs).toContain(marked[key]);

@@ -4,6 +4,9 @@ import { systemName, useText } from '../lib/text';
 import type { Text } from '../lib/text';
 import type { DictionariesSection, DictionaryEntry, DictionaryMember, DictionaryMismatch, DictionaryValue, PageData, Technical } from '../lib/types';
 import { TableScroll } from './Tables';
+import { SelectField } from './ui/Select';
+import { StatGrid } from './ui/StatGrid';
+import { FilterToolbar, SearchField } from './ui/Toolbar';
 
 /** The bucket of the files that belong to no application. */
 const NO_APPLICATION = '';
@@ -133,22 +136,16 @@ function SectionBody({ section }: { section: DictionariesSection }) {
         {['md.dict.note.nameRule', 'md.dict.note.sources', 'md.dict.note.values'].map((key) => <p className="muted" key={key}>{t(key)}</p>)}
         <p className="muted">{t('md.dict.recognized', { forms: section.recognized.map((form) => t(formKey(form))).join('; ') })}</p>
       </div>
-      <p className="summary-counts">
-        {t('md.dict.countLine', {
-          total: counts.dictionaries.total,
-          goType: counts.dictionaries.goType,
-          tsEnum: counts.dictionaries.tsEnum,
-          tsConstObject: counts.dictionaries.tsConstObject,
-          jsObject: counts.dictionaries.jsObject,
-          members: counts.members.total,
-          computed: counts.members.computed,
-          notComputed: counts.members.notComputed,
-          comments: counts.comments,
-          labels: counts.labels,
-          mismatches: counts.mismatches,
-          skipped: counts.skippedMembers,
-        })}
-      </p>
+      <StatGrid part="dict-stats" stats={[
+        { label: t('page.stat.valueSets'), value: counts.dictionaries.total },
+        { label: t('page.stat.members'), value: counts.members.total },
+        { label: t('page.stat.membersComputed'), value: counts.members.computed },
+        { label: t('page.stat.membersNotComputed'), value: counts.members.notComputed },
+        { label: t('page.stat.comments'), value: counts.comments },
+        { label: t('page.stat.displayNames'), value: counts.labels },
+        { label: t('page.stat.mismatches'), value: counts.mismatches },
+        { label: t('page.stat.skippedMembers'), value: counts.skippedMembers },
+      ]} />
       <p className="summary-counts">
         {t('md.dict.countLineNotTaken', {
           noConstants: candidates.goTypes.noConstants,
@@ -167,20 +164,16 @@ function SectionBody({ section }: { section: DictionariesSection }) {
       <p className="muted">{t('md.dict.mismatchNote')}</p>
       {section.mismatches.length === 0 ? <p className="muted">{t('md.none')}</p> : <ul className="rule-list" data-part="dict-mismatches">{section.mismatches.map((row, at) => <Mismatch row={row} key={at} />)}</ul>}
       <h2 className="section-title">{t('md.dict.byApplicationHeading')}</h2>
-      <div className="dict-filters" data-part="dict-filters">
-        <label className="dict-filter">
-          <span>{t('page.dict.filter.application')}</span>
-          <select value={selected} onChange={(event) => setSelected(Number(event.target.value))}>
-            <option value={-1}>{t('page.dict.filter.all')}</option>
-            {section.applications.map((row, at) => <option value={at} key={row.directory}>{applicationLabel(t, row.directory)}</option>)}
-          </select>
-        </label>
-        <label className="dict-filter">
-          <span>{t('page.dict.filter.search')}</span>
-          <input type="search" value={query} onChange={(event) => setQuery(event.target.value)} />
-        </label>
-        <p className="muted" role="status">{t('page.dict.shown', { shown: shown.length, total: section.dictionaries.length })}</p>
-      </div>
+      <FilterToolbar part="dict-filters" status={t('page.dict.shown', { shown: shown.length, total: section.dictionaries.length })}>
+        <SelectField
+          name="application"
+          label={t('page.dict.filter.application')}
+          value={String(selected)}
+          onValueChange={(next) => setSelected(Number(next))}
+          options={[{ value: '-1', label: t('page.dict.filter.all') }, ...section.applications.map((row, at) => ({ value: String(at), label: applicationLabel(t, row.directory) }))]}
+        />
+        <SearchField label={t('page.dict.filter.search')} value={query} onChange={setQuery} />
+      </FilterToolbar>
       {section.dictionaries.length === 0 && <p className="muted">{t('md.none')}</p>}
       {section.dictionaries.length > 0 && shown.length === 0 && <p className="muted" data-part="dict-no-match">{t('page.dict.noMatch')}</p>}
       <Groups section={section} shown={shown} />

@@ -8,6 +8,9 @@ import type { FindingCategory, FindingGroup, FindingOwner, Level, PageData } fro
 import { Chips } from './Locations';
 import { PriorityBadge } from './PriorityBadge';
 import { Cell, TableScroll } from './Tables';
+import { StatGrid } from './ui/StatGrid';
+import { SelectField } from './ui/Select';
+import { FilterToolbar } from './ui/Toolbar';
 
 /** The owner filter: every owner (`all`), the application owners (`system`), or one feature (`feature:<id>`). */
 export type OwnerFilter = 'all' | 'system' | `feature:${string}`;
@@ -75,46 +78,46 @@ export function FindingsPage({ data }: { data: PageData }) {
         <h1 className="page-title">{t('md.findings.heading')}</h1>
       </header>
       <p className="muted summary-note">{t('md.findings.note')}</p>
-      <p className="summary-counts">
-        {t('md.findings.counts', {
-          total: data.findings.length,
-          statements,
-          merged: data.findings.filter((group) => group.items.length > 1).length,
-          verified,
-          featureTotal: data.features.length,
-          systemVerified,
-          systemTotal,
-          categories: counts.map((entry) => t('md.findings.categoryCount', { category: t(findingCategoryKey(entry.category)), count: entry.count })).join('; '),
-          priority: levels.map((entry) => t('md.priority.count', { level: levelName(entry.level), count: entry.count })).join('; '),
-        })}
-      </p>
+      <StatGrid part="findings-stats" stats={[
+        { label: t('page.stat.findings'), value: data.findings.length },
+        { label: t('page.stat.statements'), value: statements },
+        { label: t('page.stat.merged'), value: data.findings.filter((group) => group.items.length > 1).length },
+        { label: t('page.stat.featuresVerified'), value: t('page.stat.ofTotal', { value: verified, total: data.features.length }) },
+        { label: t('page.stat.systemVerified'), value: t('page.stat.ofTotal', { value: systemVerified, total: systemTotal }) },
+      ]} />
+      <h2 className="stat-group-title">{t('page.stat.byPriority')}</h2>
+      <StatGrid part="findings-level-stats" stats={levels.map((entry) => ({ label: levelName(entry.level), value: entry.count }))} />
+      <h2 className="stat-group-title">{t('page.stat.byCategory')}</h2>
+      <StatGrid part="findings-category-stats" stats={counts.map((entry) => ({ label: t(findingCategoryKey(entry.category)), value: entry.count }))} />
       {data.findings.length === 0 ? <p className="muted">{t('md.findings.none')}</p> : (
         <>
-          <div className="findings-filters" data-part="findings-filters">
-            <label className="findings-filter">
-              <span>{t('page.findings.filter.category')}</span>
-              <select value={selected} onChange={(event) => setSelected(Number(event.target.value))}>
-                <option value={-1}>{t('page.findings.filter.all')}</option>
-                {counts.map((entry, at) => <option value={at} key={entry.category}>{t('md.findings.categoryCount', { category: t(findingCategoryKey(entry.category)), count: entry.count })}</option>)}
-              </select>
-            </label>
-            <label className="findings-filter" data-part="findings-level-filter">
-              <span>{t('page.findings.filter.level')}</span>
-              <select value={level} onChange={(event) => setLevel(event.target.value as LevelFilter)}>
-                <option value="all">{t('page.findings.filter.allLevels')}</option>
-                {levels.map((entry) => <option value={entry.level} key={entry.level}>{t('md.priority.count', { level: levelName(entry.level), count: entry.count })}</option>)}
-              </select>
-            </label>
-            <label className="findings-filter" data-part="findings-owner-filter">
-              <span>{t('page.findings.filter.owner')}</span>
-              <select value={owner} onChange={(event) => setOwner(event.target.value as OwnerFilter)}>
-                <option value="all">{t('page.findings.filter.allOwners')}</option>
-                <option value="system">{t('page.findings.filter.system')}</option>
-                {ownerFeatures.map((feature) => <option value={`feature:${feature.id}`} key={feature.id}>{t('md.summary.feature', { id: feature.id, name: feature.name })}</option>)}
-              </select>
-            </label>
-            <p className="muted" role="status">{t('page.findings.shown', { shown: shown.length, total: data.findings.length })}</p>
-          </div>
+          <FilterToolbar part="findings-toolbar" status={t('page.findings.shown', { shown: shown.length, total: data.findings.length })}>
+            <SelectField
+              name="category"
+              label={t('page.findings.filter.category')}
+              value={String(selected)}
+              onValueChange={(next) => setSelected(Number(next))}
+              options={[{ value: '-1', label: t('page.findings.filter.all') }, ...counts.map((entry, at) => ({ value: String(at), label: t('md.findings.categoryCount', { category: t(findingCategoryKey(entry.category)), count: entry.count }) }))]}
+            />
+            <SelectField
+              name="level"
+              label={t('page.findings.filter.level')}
+              value={level}
+              onValueChange={(next) => setLevel(next as LevelFilter)}
+              options={[{ value: 'all', label: t('page.findings.filter.allLevels') }, ...levels.map((entry) => ({ value: entry.level, label: t('md.priority.count', { level: levelName(entry.level), count: entry.count }) }))]}
+            />
+            <SelectField
+              name="owner"
+              label={t('page.findings.filter.owner')}
+              value={owner}
+              onValueChange={(next) => setOwner(next as OwnerFilter)}
+              options={[
+                { value: 'all', label: t('page.findings.filter.allOwners') },
+                { value: 'system', label: t('page.findings.filter.system') },
+                ...ownerFeatures.map((feature) => ({ value: `feature:${feature.id}`, label: t('md.summary.feature', { id: feature.id, name: feature.name }) })),
+              ]}
+            />
+          </FilterToolbar>
           {shown.length === 0 && <p className="muted" data-part="findings-no-match">{t('page.findings.noMatch')}</p>}
           {FINDING_CATEGORIES.filter((name) => shown.some((group) => group.category === name)).map((name) => {
             const heading = t(findingCategoryKey(name));

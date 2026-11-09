@@ -4,7 +4,7 @@ import { CSP_MARKER, DATA_MARKER } from '../../explorer/scripts/single-file.mjs'
 import { NOTICE_HEADING } from '../../explorer/scripts/licenses.mjs';
 import { PAGE_FONTS, PAGE_TEMPLATE, checkPageTemplate } from '../scripts/template.mjs';
 
-const PACKAGES = ['react', 'react-dom', ...PAGE_FONTS.map((font) => font.pkg)];
+const PACKAGES = ['react', 'react-dom', '@radix-ui/react-select', ...PAGE_FONTS.map((font) => font.pkg)];
 
 /** A template that keeps the contract; each test breaks one thing in it. The charset meta comes first, the notice right after it. */
 function goodTemplate({ packages = PACKAGES, js = 'console.log(1);', charset = '<meta charset="UTF-8" />' } = {}) {
@@ -45,6 +45,9 @@ describe('checkPageTemplate: the build output contract (design D13)', () => {
     ]);
     expect(checkPageTemplate([PAGE_TEMPLATE], goodTemplate({ packages: PACKAGES.filter((name) => name !== 'react-dom') }))).toEqual([
       'the licence notice does not list react-dom',
+    ]);
+    expect(checkPageTemplate([PAGE_TEMPLATE], goodTemplate({ packages: PACKAGES.filter((name) => name !== '@radix-ui/react-select') }))).toEqual([
+      'the licence notice does not list @radix-ui/react-select',
     ]);
   });
 
