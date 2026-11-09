@@ -10,6 +10,6 @@
 
 提交：`docs(openspec): record handbook-subagent-tools acceptance`
 
-- [ ] 2.1 O2 启动上下文实测
-- [ ] 2.2 O3 真实冒烟，没过的线照实写
-- [ ] 2.3 受影响测试、`check-refs`、`openspec validate --all --strict` 本地过；全量门在分离检出里跑（O4）
+- [x] 2.1 O2 启动上下文实测
+- [x] 2.2 O3 真实冒烟，没过的线照实写
+- [x] 2.3 受影响测试、`check-refs`、`openspec validate --all --strict` 本地过；全量门在分离检出里跑（O4）
