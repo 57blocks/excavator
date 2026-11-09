@@ -17,7 +17,7 @@ The priority section ranks the verified findings. It runs after Phase 6 and befo
    node "$PLUGIN_ROOT/skills/excavator-product-handbook/handbook.mjs" mark "$OUT" priority dispatched --project "$PROJECT_ROOT"
    ```
    Exit 1 (`attempts is already 2`): leave the groups unranked and go to Phase 7. A dispatch for groups other than the ones the state records starts the unit over by itself.
-3. Dispatch one subagent for each part, in the foreground, at most `$CONCURRENCY` in one message so they run concurrently, each with the prompt below, its placeholders filled in: `<lines>` the exact output of `priority-items "$OUT" --part <p> --project "$PROJECT_ROOT"`, `<part file>` the path `$OUT/priority/part-<p>.json`, `<p>` the part number, and `$OUT` and `$LANGUAGE` written as their values. Wait for every subagent of the message to return before you send the next; never in the background: a run without a terminal stops waiting for background subagents.
+3. Dispatch one `excavator-handbook-writer` subagent for each part, in the foreground, at most `$CONCURRENCY` in one message so they run concurrently, each with the prompt below, its placeholders filled in: `<lines>` the exact output of `priority-items "$OUT" --part <p> --project "$PROJECT_ROOT"`, `<part file>` the path `$OUT/priority/part-<p>.json`, `<p>` the part number, and `$OUT` and `$LANGUAGE` written as their values. Wait for every subagent of the message to return before you send the next; never in the background: a run without a terminal stops waiting for background subagents.
 4. When every subagent has returned, check the part files, once for all parts:
    ```bash
    node "$PLUGIN_ROOT/skills/excavator-product-handbook/handbook.mjs" check-priority "$OUT" --project "$PROJECT_ROOT"
