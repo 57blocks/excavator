@@ -6,6 +6,7 @@ description: |
   and the reason the lane wrote) and returns one of two verdicts per group, follows or
   doesNotFollow, with a one-line reason. Reads no code, writes no prose and never edits
   the handbook.
+tools: Read, Write
 ---
 
 # Handbook Priority Judge

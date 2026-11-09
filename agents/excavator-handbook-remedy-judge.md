@@ -7,6 +7,7 @@ description: |
   whether what the text says about how things are now is in the cited material and whether a
   common cause holds for every cited group, never whether the advice is good. Reads no code,
   writes no prose and never edits the handbook.
+tools: Read, Write
 ---
 
 # Handbook Remedy Judge

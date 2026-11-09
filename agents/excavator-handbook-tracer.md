@@ -7,6 +7,7 @@ description: |
   returns one of two verdicts per claim, holds or contradicted, with a one-line reason
   and, for contradicted, where in the project the code is. Writes no prose and never
   edits the handbook.
+tools: Read, Grep, Glob, Bash, Write
 ---
 
 # Handbook Tracer
