@@ -7,12 +7,15 @@
 
 ### Requirement: 未使用代码的定义
 
-未使用代码 SHALL 定义为：事实图里的函数节点（方法、函数、构造器），从任何入口出发沿引用都走不到。引用 SHALL 是这几种事实边：
+未使用代码 SHALL 定义为：事实图里的函数节点（方法、函数、构造器），从任何入口出发沿引用都走不到。根 SHALL 是路由处理方法（`routes` 边的目标）与容器调用的方法（`invokes` 边的目标）。引用 SHALL 是这几种事实边：
 - `calls`（调用方到被调用方）；
 - `routes`（端点到处理方法）；
+- `invokes`（描述文件到容器调用的方法）；
 - 函数之间的 `implements` 与 `overrides`。
 
 `implements` 与 `overrides` SHALL 按双向处理：被覆写的方法在用，则覆写它的方法可能被分派到；覆写方法在用，则被覆写的声明不能删。
+
+候选产物的计数 SHALL 分别给出 `routes` 的目标数与 `invokes` 的目标数（同时是两者的方法各计一次）。
 
 每个未使用的节点 SHALL 带两种原因之一：
 - `unreferenced`：它是簇的入口，即没有任何引用，或属于一个只在内部互相引用的孤岛；
@@ -33,6 +36,10 @@
 #### Scenario: 只被测试调用
 - **WHEN** 方法 C 只被测试方法调用，测试方法被判为测试入口
 - **THEN** C 为 `test-only`，不出现在未使用候选里
+
+#### Scenario: 容器调用的方法及其调用链不是候选
+- **WHEN** `OrderService#start()` 是一条 `invokes` 边的目标，`start` 调用 `loadCache`
+- **THEN** `start` 与 `loadCache` 都可达，不出现在候选里；计数里 `invokes` 的目标数为 1
 
 ### Requirement: 确定性候选集
 
