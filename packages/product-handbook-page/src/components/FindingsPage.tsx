@@ -7,8 +7,8 @@ import { FINDING_CATEGORIES, LEVELS, findingCategoryKey } from '../lib/types';
 import type { FindingCategory, FindingGroup, FindingOwner, Level, PageData } from '../lib/types';
 import { Chips } from './Locations';
 import { PriorityBadge } from './PriorityBadge';
-import { Cell, TableScroll } from './Tables';
-import { StatGrid } from './ui/StatGrid';
+import { Item, ItemCollapse, ItemList } from './ui/ItemList';
+import { StatChips, StatStrip } from './ui/StatStrip';
 import { SelectField } from './ui/Select';
 import { FilterToolbar } from './ui/Toolbar';
 
@@ -78,17 +78,15 @@ export function FindingsPage({ data }: { data: PageData }) {
         <h1 className="page-title">{t('md.findings.heading')}</h1>
       </header>
       <p className="muted summary-note">{t('md.findings.note')}</p>
-      <StatGrid part="findings-stats" stats={[
+      <StatStrip part="findings-stats" stats={[
         { label: t('page.stat.findings'), value: data.findings.length },
         { label: t('page.stat.statements'), value: statements },
         { label: t('page.stat.merged'), value: data.findings.filter((group) => group.items.length > 1).length },
         { label: t('page.stat.featuresVerified'), value: t('page.stat.ofTotal', { value: verified, total: data.features.length }) },
         { label: t('page.stat.systemVerified'), value: t('page.stat.ofTotal', { value: systemVerified, total: systemTotal }) },
       ]} />
-      <h2 className="stat-group-title">{t('page.stat.byPriority')}</h2>
-      <StatGrid part="findings-level-stats" stats={levels.map((entry) => ({ label: levelName(entry.level), value: entry.count }))} />
-      <h2 className="stat-group-title">{t('page.stat.byCategory')}</h2>
-      <StatGrid part="findings-category-stats" stats={counts.map((entry) => ({ label: t(findingCategoryKey(entry.category)), value: entry.count }))} />
+      <StatChips part="findings-level-stats" title={t('page.stat.byPriority')} stats={levels.map((entry) => ({ label: levelName(entry.level), value: entry.count }))} />
+      <StatChips part="findings-category-stats" title={t('page.stat.byCategory')} stats={counts.map((entry) => ({ label: t(findingCategoryKey(entry.category)), value: entry.count }))} />
       {data.findings.length === 0 ? <p className="muted">{t('md.findings.none')}</p> : (
         <>
           <FilterToolbar part="findings-toolbar" status={t('page.findings.shown', { shown: shown.length, total: data.findings.length })}>
@@ -133,46 +131,45 @@ export function FindingsPage({ data }: { data: PageData }) {
                     <p><span className="inline-label">{t('page.remedies.measure')}</span> {remedy.measure}</p>
                   </div>
                 )}
-                <TableScroll label={heading} wide>
-                  <thead>
-                    <tr>
-                      <th scope="col">{t('page.findings.filter.level')}</th>
-                      <th scope="col">{t('page.findings.filter.owner')}</th>
-                      <th scope="col">{t('md.findings.claimLabel')}</th>
-                      {view === 'technical' && <th scope="col">{t('md.locations.heading')}</th>}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {shown.filter((group) => group.category === name).map((group) => {
-                      const [first, ...others] = group.items;
-                      return (
-                        <tr key={first.id} data-group={group.items.length > 1 ? 'merged' : 'single'} data-level={group.priority?.level ?? 'none'}>
-                          <Cell col="short"><PriorityBadge priority={group.priority} /></Cell>
-                          <Cell row col="text">
-                            <ul className="plain-list" data-part="findings-owners">
-                              {group.owners.map((one) => <li key={`${one.kind}:${one.id}`}><Owner owner={one} /></li>)}
-                            </ul>
-                          </Cell>
-                          <Cell col="text">
-                            {first.text}
-                            {group.priority !== null && <p className="muted" data-part="findings-reason">{t('page.findings.reason', { reason: group.priority.reason })}</p>}
+                <ItemList part="findings-list" label={heading}>
+                  {shown.filter((group) => group.category === name).map((group) => {
+                    const [first, ...others] = group.items;
+                    const firstPlaces = view === 'technical' ? places.get(first.id) ?? [] : [];
+                    return (
+                      <Item
+                        key={first.id}
+                        data={{ 'data-group': group.items.length > 1 ? 'merged' : 'single', 'data-level': group.priority?.level ?? 'none' }}
+                        attrs={(
+                          <>
+                            <PriorityBadge priority={group.priority} />
+                            <span className="item-owners" data-part="findings-owners">
+                              {group.owners.map((one) => <span className="item-owner" key={`${one.kind}:${one.id}`}><Owner owner={one} /></span>)}
+                            </span>
+                          </>
+                        )}
+                        note={group.priority !== null ? <p data-part="findings-reason">{t('page.findings.reason', { reason: group.priority.reason })}</p> : undefined}
+                        extra={others.length === 0 && firstPlaces.length === 0 ? undefined : (
+                          <>
                             {others.length > 0 && (
-                              <details data-part="findings-others">
-                                <summary>{t('page.findings.others', { count: others.length })}</summary>
+                              <ItemCollapse part="findings-others" summary={t('page.findings.others', { count: others.length })}>
                                 <ul className="plain-list">
                                   {others.map((other) => (
                                     <li key={other.id}>{t('md.findings.otherItem', { owner: ownerText(t, other.owner), text: other.text })}<Chips citations={places.get(other.id) ?? []} /></li>
                                   ))}
                                 </ul>
-                              </details>
+                              </ItemCollapse>
                             )}
-                          </Cell>
-                          {view === 'technical' && <Cell col="text">{(places.get(first.id) ?? []).length === 0 ? undefined : <Chips citations={places.get(first.id) ?? []} />}</Cell>}
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </TableScroll>
+                            {firstPlaces.length > 0 && (
+                              <ItemCollapse part="findings-locations" summary={t('md.locations.heading')}><Chips citations={firstPlaces} /></ItemCollapse>
+                            )}
+                          </>
+                        )}
+                      >
+                        <p>{first.text}</p>
+                      </Item>
+                    );
+                  })}
+                </ItemList>
               </section>
             );
           })}

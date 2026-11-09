@@ -189,20 +189,34 @@ describe('the dictionaries page', () => {
     expect(body).toContain(`${MARK}Parts of the declaration that were not read as members: 2.`);
   });
 
-  it('writes the cells of a member: a string value marked as a string, not computed values marked, display names with places, comments and the location', () => {
+  it('writes a set whose members carry comments or display names as blocks: name, value and place on the first line, the comment as the body, the display names under it', () => {
     const block = setBlock(body, 'go-app/status.go:Status');
+    expect(block).not.toContain('<table');
+    const items = block.split('<li class="item"').slice(1);
+    expect(items).toHaveLength(4);
+    expect(items[0]).toContain(d('StatusDraft'));
+    expect(items[0]).toContain('<code class="item-code">1</code>');
+    expect(items[0]).toContain(`${MARK}${d('Draft')} (${MARK}${d('go-app/labels.go')}, line 6)`);
+    expect(items[0]).toContain(`${MARK}${d('Draft (api)')} (${MARK}${d('go-app/api.go')}, line 9)`);
+    expect(items[0]).toContain(d('the first state'));
+    expect(items[0]).toContain(`${MARK}${d('src/a.go')}, line 5`);
+    expect(items[0].indexOf('item-attrs')).toBeLessThan(items[0].indexOf('item-body'));
+    expect(items[0].indexOf('item-body')).toBeLessThan(items[0].indexOf('item-note'));
+    expect(items[1]).toContain(`<code class="item-code" data-kind="string">${d('open')}</code>`);
+    expect(items[1]).not.toContain('item-body');
+    expect(items[2]).toContain(`${MARK}${d('base + 1')} (not computed)`);
+    expect(items[3]).toContain(`${MARK}not computed`);
+  });
+
+  it('writes a set of bare members, all short values, as a table of member, value and place', () => {
+    const block = setBlock(body, 'web-app/src/status.ts:Status');
+    expect(block).toContain('<table');
+    expect(block).toContain(`<th scope="col">${marked['md.dict.table.member']}</th>`);
+    expect(block).not.toContain(marked['md.dict.table.comment']);
     const rows = block.split('<tr>').slice(2).map((row) => row.slice(0, row.indexOf('</tr>')));
-    expect(rows).toHaveLength(4);
-    expect(rows[0]).toContain(d('StatusDraft'));
+    expect(rows).toHaveLength(2);
     expect(rows[0]).toContain('<td class="num">1</td>');
-    expect(rows[0]).toContain(`${MARK}${d('Draft')} (${MARK}${d('go-app/labels.go')}, line 6)`);
-    expect(rows[0]).toContain(`${MARK}${d('Draft (api)')} (${MARK}${d('go-app/api.go')}, line 9)`);
-    expect(rows[0]).toContain(d('the first state'));
     expect(rows[0]).toContain(`${MARK}${d('src/a.go')}, line 5`);
-    expect(rows[1]).toContain(`<td data-kind="string">${d('open')}</td>`);
-    expect(rows[2]).toContain(`${MARK}${d('base + 1')} (not computed)`);
-    expect(rows[3]).toContain(`${MARK}not computed`);
-    expect(rows[1]).toContain('data-empty="true"');
   });
 
   it('has the application filter with every application and the search box', () => {
@@ -213,7 +227,7 @@ describe('the dictionaries page', () => {
   });
 });
 
-describe('the styled application select, the search box and the count grid (handbook-page-layout)', () => {
+describe('the styled application select, the search box and the count strip (handbook-page-layout)', () => {
   afterEach(cleanup);
   const page = (): HTMLElement => mount(<AppView data={dataFor(BOTH)} route={parseHash('#/technical/dictionaries')} />);
   const APPLICATION = marked['page.dict.filter.application'];
@@ -243,8 +257,10 @@ describe('the styled application select, the search box and the count grid (hand
     expect(shownSets(host)).toBe(1);
   });
 
-  it('renders the value set counts as labelled cards', () => {
+  it('renders the value set counts as an inline strip, not cards', () => {
     const host = page();
+    expect(host.querySelector('[data-part="dict-stats"]')?.className).toBe('stat-strip');
+    expect(host.querySelector('.stat-card, .stat-grid')).toBeNull();
     const cards = Object.fromEntries(Array.from(host.querySelectorAll('[data-part="dict-stats"] [data-part="stat"]')).map((card) => [card.querySelector('dt')?.textContent, card.querySelector('dd')?.textContent]));
     expect(cards).toEqual({
       [marked['page.stat.valueSets']]: '5',

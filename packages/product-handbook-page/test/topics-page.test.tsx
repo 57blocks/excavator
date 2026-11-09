@@ -121,13 +121,15 @@ describe('the topics page', () => {
     expect(decode(html)).toContain(`${MARK}Lanes: 3. Verified entries read: 3. Verified groups of findings read: 2. Rows: 3.`);
   });
 
-  it('writes the columns of the topic and a basis column, an empty column as an empty cell, and the basis of each row', () => {
+  it('writes each row as a block: its first column on the first line, the other columns as labelled fields, and the basis under them', () => {
     const html = main(render(dataFor(), '#/product/topics'));
     const approval = part(html, 'approval');
-    expect(approval).toContain(`<th scope="col">${marked['md.topics.col.approval.business']}</th>`);
-    expect(approval).toContain(`<th scope="col">${marked['md.topics.col.basis']}</th>`);
+    expect(approval).not.toContain('<table');
+    expect(approval).toContain('<ul class="item-list"');
+    expect(approval).toContain(`<div class="item-attrs">`);
+    expect(approval).toContain(`<span class="inline-label">${marked['md.topics.col.approval.route']}</span>`);
+    expect(approval).toContain(`<span class="inline-label">${marked['md.topics.col.basis']}</span>`);
     expect(approval).toContain(d('The lead approves, then the head.'));
-    expect(approval).toMatch(/data-empty="true"><\/td>/);
     expect(approval).toContain(`${MARK}${d('Leave')}: ${d('Submit: the lead approves, then the head.')}`);
     expect(part(html, 'handoffs')).toContain(d('Payroll'));
     expect(part(html, 'repeated')).toContain(`${MARK}[${marked['md.priority.level'].replace('{rank}', '0')}] `);

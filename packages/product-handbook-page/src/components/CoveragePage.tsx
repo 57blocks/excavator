@@ -5,21 +5,34 @@ import type { PageData, RemovedItem } from '../lib/types';
 import { CheckIcon } from './Icons';
 import { ReachBadge } from './ReachBadge';
 import { Cell, TableScroll } from './Tables';
+import { Item, ItemCollapse, ItemList } from './ui/ItemList';
+
+/** How many candidate ids a group shows before the rest are collapsed. */
+const MAX_IDS = 8;
+
+/** The unassigned candidates with exactly the same kind and reason as one group each, in the order of each group's first candidate. */
+function groupUnassigned(rows: PageData['coverage']['unassigned']): { kind: string; reason: string; candidates: string[] }[] {
+  const groups = new Map<string, { kind: string; reason: string; candidates: string[] }>();
+  for (const row of rows) {
+    const key = JSON.stringify([row.kind, row.reason]);
+    const group = groups.get(key) ?? { kind: row.kind, reason: row.reason, candidates: [] };
+    group.candidates.push(row.candidate);
+    groups.set(key, group);
+  }
+  return [...groups.values()];
+}
 
 /** The items one unit lost to verification: each claim with its result and the reason a reader may see. */
 function RemovedTable({ items }: { items: RemovedItem[] }) {
   const t = useText();
   return (
-    <TableScroll label={t('md.coverage.removedHeading')} wide>
-      <thead>
-        <tr><th scope="col">{t('md.table.item')}</th><th scope="col">{t('md.table.result')}</th><th scope="col">{t('md.table.reason')}</th></tr>
-      </thead>
-      <tbody>
-        {items.map((item, index) => (
-          <tr key={index}><Cell row col="text">{item.claim}</Cell><Cell col="short">{t(`md.verdict.${item.verdict}`)}</Cell><Cell col="text">{item.reason === '' ? undefined : item.reason}</Cell></tr>
-        ))}
-      </tbody>
-    </TableScroll>
+    <ItemList part="removed" label={t('md.coverage.removedHeading')}>
+      {items.map((item, index) => (
+        <Item key={index} attrs={<span className="verdict-chip">{t(`md.verdict.${item.verdict}`)}</span>} note={item.reason === '' ? undefined : <p><span className="inline-label">{t('md.table.reason')}</span> {item.reason}</p>}>
+          <p>{item.claim}</p>
+        </Item>
+      ))}
+    </ItemList>
   );
 }
 
@@ -36,19 +49,13 @@ function PriorityCoverage({ data }: { data: PageData }) {
       {data.findings.length > 0 && finished && unranked.length > 0 && (
         <>
           <p className="muted" data-part="priority-unranked">{t('md.coverage.priorityUnranked', { count: unranked.length })}</p>
-          <TableScroll label={t('md.coverage.priorityHeading')} wide>
-            <thead>
-              <tr><th scope="col">{t('md.findings.claimLabel')}</th><th scope="col">{t('md.table.reason')}</th></tr>
-            </thead>
-            <tbody>
-              {unranked.map((row) => (
-                <tr key={row.id}>
-                  <Cell row>{t('md.findings.featureItem', { category: t(findingCategoryKey(row.category)), text: row.text })}</Cell>
-                  <Cell col="text">{row.reasons.length === 0 ? t('md.priority.notJudged') : row.reasons.join('; ')}</Cell>
-                </tr>
-              ))}
-            </tbody>
-          </TableScroll>
+          <ItemList part="priority-unranked-list" label={t('md.coverage.priorityHeading')}>
+            {unranked.map((row) => (
+              <Item key={row.id} note={<p><span className="inline-label">{t('md.table.reason')}</span> {row.reasons.length === 0 ? t('md.priority.notJudged') : row.reasons.join('; ')}</p>}>
+                <p>{t('md.findings.featureItem', { category: t(findingCategoryKey(row.category)), text: row.text })}</p>
+              </Item>
+            ))}
+          </ItemList>
         </>
       )}
     </section>
@@ -68,19 +75,13 @@ function RemediesCoverage({ data }: { data: PageData }) {
       {data.findings.length > 0 && finished && dropped.length > 0 && (
         <>
           <p className="muted" data-part="remedies-dropped">{t('md.coverage.remediesDropped', { count: dropped.length })}</p>
-          <TableScroll label={t('md.coverage.remediesHeading')} wide>
-            <thead>
-              <tr><th scope="col">{t('md.remedies.tableText')}</th><th scope="col">{t('md.table.reason')}</th></tr>
-            </thead>
-            <tbody>
-              {dropped.map((row) => (
-                <tr key={row.id}>
-                  <Cell row>{row.kind === 'category' && row.category !== undefined ? t('md.remedies.droppedCategory', { category: t(findingCategoryKey(row.category)), cause: row.text }) : t('md.remedies.droppedRecommendation', { title: row.title ?? '', text: row.text })}</Cell>
-                  <Cell col="text">{row.reasons.length === 0 ? undefined : row.reasons.join('; ')}</Cell>
-                </tr>
-              ))}
-            </tbody>
-          </TableScroll>
+          <ItemList part="remedies-dropped-list" label={t('md.coverage.remediesHeading')}>
+            {dropped.map((row) => (
+              <Item key={row.id} note={row.reasons.length === 0 ? undefined : <p><span className="inline-label">{t('md.table.reason')}</span> {row.reasons.join('; ')}</p>}>
+                <p>{row.kind === 'category' && row.category !== undefined ? t('md.remedies.droppedCategory', { category: t(findingCategoryKey(row.category)), cause: row.text }) : t('md.remedies.droppedRecommendation', { title: row.title ?? '', text: row.text })}</p>
+              </Item>
+            ))}
+          </ItemList>
         </>
       )}
     </section>
@@ -113,16 +114,13 @@ function TopicsCoverage({ data }: { data: PageData }) {
       {dropped.length > 0 && (
         <>
           <p className="muted" data-part="topics-dropped">{t('md.coverage.topicsDropped', { count: dropped.length })}</p>
-          <TableScroll label={t('md.coverage.topicsHeading')} wide>
-            <thead>
-              <tr><th scope="col">{t('md.remedies.tableText')}</th><th scope="col">{t('md.table.reason')}</th></tr>
-            </thead>
-            <tbody>
-              {dropped.map((row) => (
-                <tr key={row.id}><Cell row>{t('md.topics.droppedRow', { topic: t(`md.topics.${row.topic}.heading`), text: row.text })}</Cell><Cell col="text">{row.reasons.length === 0 ? undefined : row.reasons.join('; ')}</Cell></tr>
-              ))}
-            </tbody>
-          </TableScroll>
+          <ItemList part="topics-dropped-list" label={t('md.coverage.topicsHeading')}>
+            {dropped.map((row) => (
+              <Item key={row.id} note={row.reasons.length === 0 ? undefined : <p><span className="inline-label">{t('md.table.reason')}</span> {row.reasons.join('; ')}</p>}>
+                <p>{t('md.topics.droppedRow', { topic: t(`md.topics.${row.topic}.heading`), text: row.text })}</p>
+              </Item>
+            ))}
+          </ItemList>
         </>
       )}
     </section>
@@ -253,16 +251,26 @@ export function CoveragePage({ data }: { data: PageData }) {
       <section className="section" aria-labelledby="cov-unassigned">
         <h2 className="section-title" id="cov-unassigned">{t('md.coverage.unassignedHeading')}</h2>
         {coverage.unassigned.length === 0 ? <p className="muted">{t('md.none')}</p> : (
-          <TableScroll label={t('md.coverage.unassignedHeading')} wide>
-            <thead>
-              <tr><th scope="col">{t('md.table.candidate')}</th><th scope="col">{t('md.table.kind')}</th><th scope="col">{t('md.table.reason')}</th></tr>
-            </thead>
-            <tbody>
-              {coverage.unassigned.map((item) => (
-                <tr key={item.candidate}><Cell row>{item.candidate}</Cell><Cell>{t(`md.kind.${item.kind}`)}</Cell><Cell>{item.reason}</Cell></tr>
-              ))}
-            </tbody>
-          </TableScroll>
+          <ItemList part="unassigned" label={t('md.coverage.unassignedHeading')}>
+            {groupUnassigned(coverage.unassigned).map((group) => (
+              <Item
+                key={group.candidates[0]}
+                attrs={(
+                  <>
+                    <span className="verdict-chip">{t(`md.kind.${group.kind}`)}</span>
+                    {group.candidates.slice(0, MAX_IDS).map((id) => <code className="item-code" key={id}>{id}</code>)}
+                  </>
+                )}
+                extra={group.candidates.length > MAX_IDS ? (
+                  <ItemCollapse summary={t('page.coverage.moreCandidates', { count: group.candidates.length - MAX_IDS })}>
+                    <p className="item-ids">{group.candidates.slice(MAX_IDS).map((id) => <code className="item-code" key={id}>{id}</code>)}</p>
+                  </ItemCollapse>
+                ) : undefined}
+              >
+                <p>{group.reason}</p>
+              </Item>
+            ))}
+          </ItemList>
         )}
       </section>
 

@@ -5,7 +5,8 @@ import type { Text } from '../lib/text';
 import type { DictionariesSection, DictionaryEntry, DictionaryMember, DictionaryMismatch, DictionaryValue, PageData, Technical } from '../lib/types';
 import { TableScroll } from './Tables';
 import { SelectField } from './ui/Select';
-import { StatGrid } from './ui/StatGrid';
+import { Item, ItemField, ItemList } from './ui/ItemList';
+import { StatStrip } from './ui/StatStrip';
 import { FilterToolbar, SearchField } from './ui/Toolbar';
 
 /** The bucket of the files that belong to no application. */
@@ -41,11 +42,64 @@ function ValueCell({ member }: { member: DictionaryMember }) {
   return <td className="num">{member.value}</td>;
 }
 
-/** A cell of a list of texts: empty, one text, or a list. */
-function ListCell({ items }: { items: string[] }) {
-  if (items.length === 0) return <td data-empty="true" />;
-  if (items.length === 1) return <td>{items[0]}</td>;
-  return <td><ul className="rule-list">{items.map((item, at) => <li key={at}>{item}</li>)}</ul></td>;
+/** The value of a member as one line of an item (the stylesheet draws the quotes of a string); a value that was not computed says so. */
+function valueLine(t: Text, member: DictionaryMember): string {
+  if (!member.computed) return member.value === null ? t('md.dict.notComputed') : t('md.dict.valueNotComputed', { value: member.value });
+  return String(member.value);
+}
+
+/** A list of texts as one text, or a list when there are several. */
+function TextList({ items }: { items: string[] }) {
+  return items.length === 1 ? <>{items[0]}</> : <ul className="rule-list">{items.map((item, at) => <li key={at}>{item}</li>)}</ul>;
+}
+
+/** A set whose members carry comments or display names (free text) is a list of blocks; a set of bare members, all short values, is a table. */
+function SetMembers({ entry }: { entry: DictionaryEntry }) {
+  const t = useText();
+  const hasText = entry.members.some((member) => member.comments.length > 0 || member.labels.length > 0);
+  if (!hasText) {
+    return (
+      <TableScroll label={entry.name}>
+        <thead>
+          <tr>
+            <th scope="col">{t('md.dict.table.member')}</th>
+            <th scope="col">{t('md.dict.table.value')}</th>
+            <th scope="col">{t('md.dict.table.location')}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {entry.members.map((member, at) => (
+            <tr key={at}>
+              <th scope="row">{member.name}</th>
+              <ValueCell member={member} />
+              <td>{place(t, member.file, member.line)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </TableScroll>
+    );
+  }
+  return (
+    <ItemList part="dict-members" label={entry.name}>
+      {entry.members.map((member, at) => (
+        <Item
+          key={at}
+          attrs={(
+            <>
+              <span>{member.name}</span>
+              <code className="item-code" data-kind={member.computed && typeof member.value === 'string' ? 'string' : undefined}>{valueLine(t, member)}</code>
+              <span className="item-place muted">{place(t, member.file, member.line)}</span>
+            </>
+          )}
+          note={member.labels.length === 0 ? undefined : (
+            <ItemField label={t('md.dict.table.names')}><TextList items={member.labels.map((label) => t('md.dict.labelItem', { text: label.text, place: place(t, label.file, label.line) }))} /></ItemField>
+          )}
+        >
+          {member.comments.length > 0 && <ItemField label={t('md.dict.table.comment')}><TextList items={member.comments.map((comment) => comment.text)} /></ItemField>}
+        </Item>
+      ))}
+    </ItemList>
+  );
 }
 
 function SetTable({ entry }: { entry: DictionaryEntry }) {
@@ -55,28 +109,7 @@ function SetTable({ entry }: { entry: DictionaryEntry }) {
       <h5 className="dict-set-name">{entry.name}</h5>
       <p className="muted">{description(t, entry)}</p>
       {entry.skippedMembers > 0 && <p className="muted">{t('md.dict.set.skipped', { count: entry.skippedMembers })}</p>}
-      <TableScroll label={entry.name} wide>
-        <thead>
-          <tr>
-            <th scope="col">{t('md.dict.table.member')}</th>
-            <th scope="col">{t('md.dict.table.value')}</th>
-            <th scope="col">{t('md.dict.table.names')}</th>
-            <th scope="col">{t('md.dict.table.comment')}</th>
-            <th scope="col">{t('md.dict.table.location')}</th>
-          </tr>
-        </thead>
-        <tbody>
-          {entry.members.map((member, at) => (
-            <tr key={at}>
-              <th scope="row">{member.name}</th>
-              <ValueCell member={member} />
-              <ListCell items={member.labels.map((label) => t('md.dict.labelItem', { text: label.text, place: place(t, label.file, label.line) }))} />
-              <ListCell items={member.comments.map((comment) => comment.text)} />
-              <td>{place(t, member.file, member.line)}</td>
-            </tr>
-          ))}
-        </tbody>
-      </TableScroll>
+      <SetMembers entry={entry} />
     </section>
   );
 }
@@ -136,7 +169,7 @@ function SectionBody({ section }: { section: DictionariesSection }) {
         {['md.dict.note.nameRule', 'md.dict.note.sources', 'md.dict.note.values'].map((key) => <p className="muted" key={key}>{t(key)}</p>)}
         <p className="muted">{t('md.dict.recognized', { forms: section.recognized.map((form) => t(formKey(form))).join('; ') })}</p>
       </div>
-      <StatGrid part="dict-stats" stats={[
+      <StatStrip part="dict-stats" stats={[
         { label: t('page.stat.valueSets'), value: counts.dictionaries.total },
         { label: t('page.stat.members'), value: counts.members.total },
         { label: t('page.stat.membersComputed'), value: counts.members.computed },

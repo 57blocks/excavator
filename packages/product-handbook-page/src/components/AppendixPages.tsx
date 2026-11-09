@@ -3,6 +3,7 @@ import { useText } from '../lib/text';
 import type { Text } from '../lib/text';
 import type { PageData } from '../lib/types';
 import { Cell, TableScroll } from './Tables';
+import { Definition, DefinitionList, Item, ItemField, ItemList } from './ui/ItemList';
 
 /** The ui key of the name of a section of the sources part (`system-findings` is `systemFindings`). */
 const sectionKey = (id: string): string => `md.appendix.section.${id.replace(/-([a-z])/g, (_, letter: string) => letter.toUpperCase())}`;
@@ -43,20 +44,13 @@ export function OpenQuestionsPage({ data }: { data: PageData }) {
         return (
           <section className="section" key={group.id ?? 'overview'} data-domain={group.id ?? 'overview'}>
             <h2 className="section-title">{group.name}</h2>
-            <TableScroll label={group.name} wide>
-              <thead>
-                <tr><th scope="col">{t('md.table.feature')}</th><th scope="col">{t('md.appendix.table.question')}</th><th scope="col">{t('md.appendix.table.searched')}</th></tr>
-              </thead>
-              <tbody>
-                {rows.map((row, at) => (
-                  <tr key={at}>
-                    <td data-empty={row.feature === null ? 'true' : undefined}>{row.feature !== null && <FeatureLinks data={data} ids={[row.feature]} />}</td>
-                    <Cell>{row.item}</Cell>
-                    <Cell>{row.searched}</Cell>
-                  </tr>
-                ))}
-              </tbody>
-            </TableScroll>
+            <ItemList part="open-questions" label={group.name}>
+              {rows.map((row, at) => (
+                <Item key={at} attrs={row.feature === null ? undefined : <FeatureLinks data={data} ids={[row.feature]} />} note={<ItemField label={t('md.appendix.table.searched')}>{row.searched}</ItemField>}>
+                  <p>{row.item}</p>
+                </Item>
+              ))}
+            </ItemList>
           </section>
         );
       })}
@@ -74,27 +68,19 @@ export function GlossaryPage({ data }: { data: PageData }) {
       <p className="muted summary-note">{t('md.appendix.glossaryNote')}</p>
       <p className="summary-counts">{t('md.appendix.glossaryCount', { count: glossary.length })}</p>
       {glossary.length === 0 ? <p className="muted" data-part="glossary-none">{t('md.none')}</p> : (
-        <TableScroll label={t('md.appendix.glossaryHeading')} wide>
-          <thead>
-            <tr><th scope="col">{t('md.appendix.table.term')}</th><th scope="col">{t('md.appendix.table.kind')}</th><th scope="col">{t('md.table.meaning')}</th><th scope="col">{t('md.table.features')}</th></tr>
-          </thead>
-          <tbody>
-            {glossary.map((row, at) => (
-              <tr key={at} data-term={row.term}>
-                <Cell row>{row.term}</Cell>
-                <Cell>{row.kinds.map((kind) => t(`md.appendix.kind.${kind}`)).join(', ')}</Cell>
-                <td data-empty={row.meanings.length === 0 ? 'true' : undefined}>
-                  {row.meanings.length > 0 && (
-                    <ul className="rule-list">
-                      {row.meanings.map((meaning, index) => <li key={index}>{t('md.appendix.meaningItem', { meaning: meaning.text, features: meaning.features.map((id) => data.features.find((feature) => feature.id === id)?.name ?? id).join(', ') })}</li>)}
-                    </ul>
-                  )}
-                </td>
-                <td><FeatureLinks data={data} ids={row.features} /></td>
-              </tr>
-            ))}
-          </tbody>
-        </TableScroll>
+        <DefinitionList part="glossary" label={t('md.appendix.glossaryHeading')}>
+          {glossary.map((row, at) => (
+            <Definition key={at} data={{ 'data-term': row.term }} term={row.term}>
+              {row.kinds.length > 0 && <p className="muted">{row.kinds.map((kind) => t(`md.appendix.kind.${kind}`)).join(', ')}</p>}
+              {row.meanings.length > 0 && (
+                <ul className="rule-list">
+                  {row.meanings.map((meaning, index) => <li key={index}>{t('md.appendix.meaningItem', { meaning: meaning.text, features: meaning.features.map((id) => data.features.find((feature) => feature.id === id)?.name ?? id).join(', ') })}</li>)}
+                </ul>
+              )}
+              {row.features.length > 0 && <p className="def-features"><span className="inline-label">{t('md.table.features')}</span> <FeatureLinks data={data} ids={row.features} /></p>}
+            </Definition>
+          ))}
+        </DefinitionList>
       )}
     </article>
   );

@@ -116,6 +116,8 @@ const unmarked = (html: string): string[] => visibleTexts(html).filter((text) =>
 const main = (html: string): string => html.slice(html.indexOf('<main'));
 const railOf = (html: string) => html.slice(html.indexOf('<nav class="rail"'), html.indexOf('</nav>', html.indexOf('<nav class="rail"')));
 const name = (key: FindingCategory): string => marked[findingCategoryKey(key)];
+/** The item blocks of the findings lists, each cut at the end of its category section (an item holds nested lists, so a pattern cannot find its end). */
+const itemsOf = (body: string): string[] => body.split('<li class="item" data-group=').slice(1).map((part) => `<li class="item" data-group=${part.split('</section>')[0]}`);
 
 describe('the findings route and link', () => {
   it('parses #/findings with and without the view and builds it back', () => {
@@ -142,10 +144,11 @@ describe('the findings route and link', () => {
 });
 
 describe('the findings page', () => {
-  it('shows the count cards (groups, statements, groups merged), the groups in the order of the categories and each group with its owners and its first statement', () => {
+  it('shows the counts as an inline strip (groups, statements, groups merged), the groups in the order of the categories and each group with its owners and its first statement', () => {
     const body = main(render(dataFor(['product']), '#/findings'));
-    expect(body).toContain('data-part="findings-stats"');
+    expect(body).toContain('<dl class="stat-strip" data-part="findings-stats">');
     expect(body).not.toContain('class="summary-counts"');
+    expect(body).not.toContain('stat-card');
     expect(body).toContain(`<dt>${marked['page.stat.findings']}</dt><dd>4</dd>`);
     expect(body).toContain(`<dt>${marked['page.stat.statements']}</dt><dd>6</dd>`);
     expect(body).toContain(`<dt>${marked['page.stat.merged']}</dt><dd>2</dd>`);
@@ -156,12 +159,15 @@ describe('the findings page', () => {
     expect(body).toContain(`${MARK}F1 ${d('name F1')}`);
     expect(body).toContain(`${MARK}${d('backend')} (application)`);
     expect(body).toContain(marked['md.findings.note']);
-    expect((body.match(/<tbody>[\s\S]*?<\/tbody>/g) ?? []).map((part) => (part.match(/<tr[ >]/g) ?? []).length)).toEqual([1, 1, 1, 1]);
+    // Every finding has a free-text statement, so a category is a list of blocks and not a table.
+    expect(body).not.toContain('<table');
+    expect((body.match(/<ul class="item-list"/g) ?? [])).toHaveLength(4);
+    expect(itemsOf(body)).toHaveLength(4);
   });
 
   it('a merged group lists every owner and keeps its other statements under a details element, each with its owner; a single finding has none', () => {
     const body = main(render(dataFor(['product']), '#/findings'));
-    const rows = body.match(/<tr data-group="[a-z]+" data-level="[A-Za-z0-9]+">[\s\S]*?<\/tr>/g) ?? [];
+    const rows = itemsOf(body);
     expect(rows).toHaveLength(4);
     const authorization = rows.find((row) => row.includes(d('first statement'))) ?? '';
     expect(authorization).toContain('data-group="merged"');
@@ -192,7 +198,11 @@ describe('the findings page', () => {
   it('the technical view adds the file and lines of each statement, the others inside the details; the product view never carries a path', () => {
     const data = dataFor(BOTH);
     const technical = main(render(data, '#/technical/findings'));
-    expect(technical).toContain(`<th scope="col">${marked['md.locations.heading']}</th>`);
+    // The locations of a statement are collapsed at the end of its block, not a column.
+    expect(technical).not.toContain('<table');
+    expect(technical).toContain(`<details class="item-collapse" data-part="findings-locations"><summary>${marked['md.locations.heading']}</summary>`);
+    const one = itemsOf(technical).find((row) => row.includes(d('first statement'))) ?? '';
+    expect(one.indexOf(d('first statement'))).toBeLessThan(one.indexOf('data-part="findings-locations"'));
     expect(technical).toContain(`<code class="loc-chip">${d('src/')}<wbr/>one.js:7</code>`);
     expect(technical).toContain(`${MARK}${MARK}F3 ${d('name F3')}: ${d('third statement')}<span class="loc-chips" data-part="location-chips"><code class="loc-chip">${d('src/')}<wbr/>four.js:4</code>`);
     expect(technical).toContain(`${MARK}${MARK}${d('backend')} (application): ${d('fifth statement')}<span class="loc-chips" data-part="location-chips"><code class="loc-chip">${d('src/')}<wbr/>seven.js:11-12</code>`);
@@ -227,7 +237,7 @@ describe('the findings page', () => {
 });
 
 describe('the priority of each group (handbook-findings-priority)', () => {
-  const rowOf = (body: string, statement: string): string => (body.match(/<tr data-group="[a-z]+" data-level="[A-Za-z0-9]+">[\s\S]*?<\/tr>/g) ?? []).find((row) => row.includes(d(statement))) ?? '';
+  const rowOf = (body: string, statement: string): string => itemsOf(body).find((row) => row.includes(d(statement))) ?? '';
 
   it('shows the level as a badge with the name of the consequence as its tooltip, and the reason under the statement; a group with no priority shows the word for none and no reason', () => {
     const body = main(render(dataFor(['product']), '#/findings'));
@@ -506,7 +516,7 @@ describe('the findings page with remedies', () => {
     const authorization = body.slice(body.indexOf('data-category="authorization"'), body.indexOf('data-category="hard-coded"'));
     expect(authorization).toContain(`${MARK}Common cause:</span> ${d('Nothing asks who calls.')}`);
     expect(authorization).toContain(`${MARK}Measure:</span> ${d('Check the caller first.')}`);
-    expect(authorization.indexOf('Common cause')).toBeLessThan(authorization.indexOf('<table'));
+    expect(authorization.indexOf('Common cause')).toBeLessThan(authorization.indexOf('<ul class="item-list"'));
     const hardCoded = body.slice(body.indexOf('data-category="hard-coded"'), body.indexOf('data-category="notification"'));
     expect(hardCoded).not.toContain('category-remedy');
     expect(body.match(/data-part="category-remedy"/g)).toHaveLength(2);
@@ -545,7 +555,7 @@ describe('the styled selects and the filter toolbar (handbook-page-layout)', () 
   const LEVEL = label('page.findings.filter.level');
   const OWNER = label('page.findings.filter.owner');
   const shown = (host: HTMLElement): string => status(host);
-  const rows = (host: HTMLElement): number => host.querySelectorAll('tbody tr').length;
+  const rows = (host: HTMLElement): number => host.querySelectorAll('li.item[data-group]').length;
 
   it('uses no native select: each filter is a combobox that shows its current choice', () => {
     const host = page();
@@ -617,13 +627,14 @@ describe('the styled selects and the filter toolbar (handbook-page-layout)', () 
   });
 });
 
-describe('the counts as a grid of labelled cards (handbook-page-layout)', () => {
+describe('the counts as an inline strip (handbook-page-layout)', () => {
   afterEach(cleanup);
   const cards = (host: HTMLElement, part: string): Record<string, string> => Object.fromEntries(
     Array.from(host.querySelectorAll(`[data-part="${part}"] [data-part="stat"]`)).map((card) => [card.querySelector('dt')?.textContent ?? '', card.querySelector('dd')?.textContent ?? '']),
   );
+  const chips = (host: HTMLElement, part: string): [string, string][] => Array.from(host.querySelectorAll(`[data-part="${part}"] .stat-chip`)).map((chip) => [(chip.firstChild?.textContent ?? '').trim(), chip.querySelector('b')?.textContent ?? '']);
 
-  it('renders the findings counts as label and value pairs, not as one sentence', () => {
+  it('renders the findings counts as inline label and value items, not as cards or one sentence', () => {
     const host = mount(<AppView data={dataFor(['product'], structuredClone(FINDINGS))} route={parseHash('#/findings')} />);
     expect(cards(host, 'findings-stats')).toEqual({
       [marked['page.stat.findings']]: '4',
@@ -632,11 +643,17 @@ describe('the counts as a grid of labelled cards (handbook-page-layout)', () => 
       [marked['page.stat.featuresVerified']]: `${MARK}3 of 5`,
       [marked['page.stat.systemVerified']]: `${MARK}1 of 3`,
     });
+    expect(host.querySelector('.stat-card, .stat-grid')).toBeNull();
     expect(host.querySelector('p.summary-counts')).toBeNull();
-    const byLevel = cards(host, 'findings-level-stats');
-    expect(Object.values(byLevel)).toEqual(['1', '1', '1', '1']);
-    expect(Object.keys(byLevel)).toEqual([`${MARK}P0`, `${MARK}P1`, `${MARK}P2`, marked['md.priority.unranked']]);
-    expect(Object.values(cards(host, 'findings-category-stats')).filter((value) => value === '1')).toHaveLength(4);
-    expect(Object.keys(cards(host, 'findings-category-stats'))).toHaveLength(FINDING_CATEGORIES.length);
+  });
+
+  it('renders the breakdowns by priority and by category as a run of small chips', () => {
+    const host = mount(<AppView data={dataFor(['product'], structuredClone(FINDINGS))} route={parseHash('#/findings')} />);
+    const byLevel = chips(host, 'findings-level-stats');
+    expect(byLevel.map(([, count]) => count)).toEqual(['1', '1', '1', '1']);
+    expect(byLevel.map(([label]) => label)).toEqual([`${MARK}P0`, `${MARK}P1`, `${MARK}P2`, marked['md.priority.unranked']]);
+    expect(chips(host, 'findings-category-stats').filter(([, count]) => count === '1')).toHaveLength(4);
+    expect(chips(host, 'findings-category-stats')).toHaveLength(FINDING_CATEGORIES.length);
+    expect(host.querySelector('[data-part="findings-level-stats"]')?.textContent).toContain(marked['page.stat.byPriority']);
   });
 });

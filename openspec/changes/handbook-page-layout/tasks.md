@@ -17,9 +17,17 @@
 - [x] 2.3 发现页、字典页换用新控件；其他页面的表格、标签、徽标用同一套令牌
 - [x] 2.4 依赖与模板许可说明（D6、D7）
 
-## 3. 验收
+## 3. 条目列表与紧凑统计
+
+提交：`feat(product-handbook-page): long-text rows render as item lists and counts as an inline strip`
+
+- [x] 3.1 测试先红（O5）
+- [x] 3.2 逐个表格按列判断，含长文字的改为条目列表，词与定义改为定义列表（D9）
+- [x] 3.3 统计卡片改为行内统计与小标签串（D10）
+
+## 4. 验收
 
 提交：`docs(openspec): record handbook-page-layout acceptance`
 
-- [x] 3.1 O2、O4 截图与 file:// 核对
-- [x] 3.2 O3 测试
+- [x] 4.1 O2、O4、O5 截图与 file:// 核对
+- [x] 4.2 O3 测试

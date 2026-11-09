@@ -490,6 +490,8 @@
     "page.overview.featuresStat": "Features",
     "page.overview.writtenStat": "With a verified entry",
     "page.overview.areaCount": "Features: {count}",
+    "page.feature.fieldsWithoutRules": "Other fields",
+    "page.coverage.moreCandidates": "+{count} more",
     "page.feature.noEntry": "This feature has no verified entry yet, so the handbook has nothing to say about it beyond its name.",
     "page.notFound.heading": "Page not found",
     "page.notFound.body": "This address is not a page of the handbook.",

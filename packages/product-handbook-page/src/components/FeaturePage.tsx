@@ -7,7 +7,7 @@ import type { Area, Entry, Feature, Field, FindingGroup, Rule, UnitLocations } f
 import { Locations } from './Locations';
 import { PriorityBadge } from './PriorityBadge';
 import { ReachBadge } from './ReachBadge';
-import { Cell, TableScroll } from './Tables';
+import { Definition, DefinitionList, Item, ItemField, ItemList } from './ui/ItemList';
 
 function Section({ id, title, children }: { id: string; title: string; children: ReactNode }) {
   return (
@@ -64,24 +64,27 @@ function EntryBody({ entry }: { entry: Entry }) {
             <div className="screen" key={at}>
               <h3 className="screen-title">{heading}</h3>
               {screen.fields.length === 0 ? none : (
-                <TableScroll label={heading} wide>
-                  <thead>
-                    <tr>
-                      <th scope="col">{t('md.table.field')}</th>
-                      <th scope="col">{t('md.table.frontendRules')}</th>
-                      <th scope="col">{t('md.table.backendRules')}</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {screen.fields.map((field, index) => (
-                      <tr key={index}>
-                        <Cell row>{field.label}</Cell>
-                        <Cell col="text">{rulesOf(field, 'frontend')}</Cell>
-                        <Cell col="text">{rulesOf(field, 'backend')}</Cell>
-                      </tr>
-                    ))}
-                  </tbody>
-                </TableScroll>
+                <>
+                  {screen.fields.some((field) => field.rules.length > 0) && (
+                    <ItemList part="fields" label={heading}>
+                      {screen.fields.filter((field) => field.rules.length > 0).map((field, index) => {
+                        const frontend = rulesOf(field, 'frontend');
+                        const backend = rulesOf(field, 'backend');
+                        return (
+                          <Item key={index} attrs={field.label}>
+                            {frontend !== null && <ItemField label={t('md.table.frontendRules')}>{frontend}</ItemField>}
+                            {backend !== null && <ItemField label={t('md.table.backendRules')}>{backend}</ItemField>}
+                          </Item>
+                        );
+                      })}
+                    </ItemList>
+                  )}
+                  {screen.fields.some((field) => field.rules.length === 0) && (
+                    <p className="fields-without-rules" data-part="fields-without-rules">
+                      <span className="inline-label">{t('page.feature.fieldsWithoutRules')}</span> {screen.fields.filter((field) => field.rules.length === 0).map((field) => field.label).join(' \u00b7 ')}
+                    </p>
+                  )}
+                </>
               )}
             </div>
           );
@@ -99,36 +102,23 @@ function EntryBody({ entry }: { entry: Entry }) {
 
       <Section id="states" title={t('md.section.states')}>
         {entry.states.length === 0 ? none : (
-          <TableScroll label={t('md.section.states')}>
-            <thead>
-              <tr><th scope="col">{t('md.table.state')}</th><th scope="col">{t('md.table.meaning')}</th></tr>
-            </thead>
-            <tbody>
-              {entry.states.map((state, at) => (
-                <tr key={at}><Cell row>{state.label}</Cell><Cell col="text">{state.meaning}</Cell></tr>
-              ))}
-            </tbody>
-          </TableScroll>
+          <DefinitionList part="states" label={t('md.section.states')}>
+            {entry.states.map((state, at) => <Definition key={at} term={state.label}>{state.meaning}</Definition>)}
+          </DefinitionList>
         )}
       </Section>
 
       <Section id="notifications" title={t('md.section.notifications')}>
         {entry.notifications.length === 0 ? none : (
-          <TableScroll label={t('md.section.notifications')} wide>
-            <thead>
-              <tr>
-                <th scope="col">{t('md.table.trigger')}</th>
-                <th scope="col">{t('md.table.recipient')}</th>
-                <th scope="col">{t('md.table.channel')}</th>
-                <th scope="col">{t('md.table.content')}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {entry.notifications.map((n, at) => (
-                <tr key={at}><Cell col="text">{n.trigger}</Cell><Cell col="text">{n.recipient}</Cell><Cell col="short">{n.channel}</Cell><Cell col="text">{n.content}</Cell></tr>
-              ))}
-            </tbody>
-          </TableScroll>
+          <ItemList part="notifications" label={t('md.section.notifications')}>
+            {entry.notifications.map((n, at) => (
+              <Item key={at} attrs={<span className="channel-chip">{n.channel}</span>}>
+                <ItemField label={t('md.table.trigger')}>{n.trigger}</ItemField>
+                <ItemField label={t('md.table.recipient')}>{n.recipient}</ItemField>
+                <ItemField label={t('md.table.content')}>{n.content}</ItemField>
+              </Item>
+            ))}
+          </ItemList>
         )}
       </Section>
 
