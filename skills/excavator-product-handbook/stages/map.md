@@ -6,7 +6,7 @@ The map is the handbook's spine: the areas of the product, the features in each 
 
 ### Writing the map
 
-If you split this reading across subagents, dispatch them in the foreground and wait for them, as for the lanes. Read the source that shows the product as a reader meets it: navigation and menu configuration, route tables, page and tab titles, sign-in and public pages, the messages and emails the product sends, scheduled-job and queue registrations, command-line entry files. Read code only. Then write `$OUT/map.json`:
+If you split this reading across subagents, dispatch them as `excavator-handbook-writer` subagents in the foreground and wait for them, as for the lanes. Read the source that shows the product as a reader meets it: navigation and menu configuration, route tables, page and tab titles, sign-in and public pages, the messages and emails the product sends, scheduled-job and queue registrations, command-line entry files. Read code only. Then write `$OUT/map.json`:
 
 ```json
 {

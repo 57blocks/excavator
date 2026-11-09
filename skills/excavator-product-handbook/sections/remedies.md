@@ -17,7 +17,7 @@ The remedies section is the one place of the handbook that gives advice, and it 
    node "$PLUGIN_ROOT/skills/excavator-product-handbook/handbook.mjs" mark "$OUT" remedies dispatched --project "$PROJECT_ROOT"
    ```
    Exit 1 (`attempts is already 2`): leave the remedies unwritten and this phase is done. A dispatch for facts other than the ones the state records starts the unit over by itself.
-3. Dispatch one subagent, in the foreground, with the prompt below, its placeholders filled in: `<lines>` the exact output of `remedy-facts "$OUT" --project "$PROJECT_ROOT"`, and `$OUT` and `$LANGUAGE` written as their values. Wait for it to return; never in the background: a run without a terminal stops waiting for background subagents.
+3. Dispatch one `excavator-handbook-writer` subagent, in the foreground, with the prompt below, its placeholders filled in: `<lines>` the exact output of `remedy-facts "$OUT" --project "$PROJECT_ROOT"`, and `$OUT` and `$LANGUAGE` written as their values. Wait for it to return; never in the background: a run without a terminal stops waiting for background subagents.
 4. When it has returned, check the file:
    ```bash
    node "$PLUGIN_ROOT/skills/excavator-product-handbook/handbook.mjs" check-remedies "$OUT" --project "$PROJECT_ROOT"

@@ -12,7 +12,7 @@ The handbook opens with the system as a whole: what it is, who uses it, which ap
    - `dispatched` with `$OUT/entries/overview.json` present (an earlier run stopped after the subagent wrote): go to step 3 as if it had just returned.
    - `failed` with `attempts` 1 (an earlier run stopped before the second attempt): step 2 with the reasons `state.json` kept, `jq -r '.overview.failure.reasons[]' "$OUT/state.json"`, as the retry in step 3 gives them.
    - Any other state with `attempts` below 2: step 2. With `attempts` 2 and not `checked`, `confirmed` or `verified`, leave it as it is and go to Phase 4; the handbook then says the overview was not written and where it stopped.
-2. Print what the prompt below needs, delete the file an earlier attempt left, record the dispatch and dispatch one subagent in the foreground (never in the background: a run without a terminal stops waiting for background subagents):
+2. Print what the prompt below needs, delete the file an earlier attempt left, record the dispatch and dispatch one `excavator-handbook-writer` subagent in the foreground (never in the background: a run without a terminal stops waiting for background subagents):
    ```bash
    node "$PLUGIN_ROOT/skills/excavator-product-handbook/handbook.mjs" applications "$PROJECT_ROOT"
    node "$PLUGIN_ROOT/skills/excavator-product-handbook/handbook.mjs" names "$PROJECT_ROOT"

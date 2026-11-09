@@ -6,6 +6,7 @@ description: |
   one of two verdicts for each, follows or doesNotFollow, with a one-line reason. Judges whether
   every fact a row states is in the cited material, and for a data row whether the providing
   domain is supported by it. Reads no code, writes no prose and never edits the handbook.
+tools: Read, Write
 ---
 
 # Handbook Topic Judge

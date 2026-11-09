@@ -5,6 +5,7 @@ description: |
   code shown with them. Receives only a verify file (each item's claim and the code its
   citations point to) and returns one of three verdicts per item, verified, unverified or
   contradicted, with a one-line reason. Writes no prose and never edits the handbook.
+tools: Read, Write
 ---
 
 # Handbook Verifier

@@ -433,7 +433,7 @@ describe('excavator-product-handbook skill: dispatch and retry', () => {
 
   it('dispatches foreground subagents, at most $CONCURRENCY in one message', () => {
     expect(p).toContain('Dispatch at most `$CONCURRENCY` lanes in one message');
-    expect(p).toContain('each a subagent in the foreground');
+    expect(p).toContain('each an `excavator-handbook-writer` subagent in the foreground');
     expect(p).toContain('never in the background');
     expect(p).toContain('Wait for every lane of the message to return before you send the next');
   });
@@ -572,13 +572,13 @@ describe('excavator-product-handbook skill: fixed text', () => {
   });
 
   it('dispatches one subagent for another language, then runs check-ui', () => {
-    expect(p).toContain('dispatch one subagent in the foreground');
+    expect(p).toContain('dispatch one `excavator-handbook-writer` subagent in the foreground');
     expect(p).toContain(`${HANDBOOK} check-ui "$OUT" --language "$RUN_LANGUAGE"`);
     expect(p).toContain('run `check-ui` first; when it exits 0 skip the translation');
   });
 
   it('re-dispatches once with the printed reasons, and fails the run when it still fails', () => {
-    expect(p).toContain(`dispatch the subagent once more with its prompt followed by this line and then each line printed: \`${RETRY_HEADING}\``);
+    expect(p).toContain(`dispatch the \`excavator-handbook-writer\` subagent once more with its prompt followed by this line and then each line printed: \`${RETRY_HEADING}\``);
     expect(p).toContain('the run fails: tell the user the lines it printed, as printed, and stop; run no further phase');
   });
 
@@ -643,7 +643,7 @@ describe('excavator-product-handbook skill: assemble, page and the closing reply
     expect(step).toContain('Phase 2 finds it with `check-ui` (exit 1, one line for each missing key) and translates the table again');
     expect(step).toContain('for a run in English delete `$OUT/ui.json`');
     // Phase 2 really does run check-ui on an existing ui.json and translates again when it exits 1.
-    expect(phase(2)).toContain('when `$OUT/ui.json` exists, run `check-ui` first; when it exits 0 skip the translation. Otherwise dispatch one subagent');
+    expect(phase(2)).toContain('when `$OUT/ui.json` exists, run `check-ui` first; when it exits 0 skip the translation. Otherwise dispatch one `excavator-handbook-writer` subagent');
   });
 
   it('keeps the handbook in $OUT and writes nothing into the project unless the user says so', () => {
@@ -859,7 +859,7 @@ describe('excavator-product-handbook skill: Phase 5, verify', () => {
 
   it('rewrites once with a general-purpose subagent that gets the rewrite file, the entry and the try-entry command', () => {
     expect(p).toContain('Rewrite, once.');
-    expect(p).toContain('dispatch one rewrite subagent (a general-purpose subagent, in the foreground, up to `$CONCURRENCY` in one message)');
+    expect(p).toContain('dispatch one rewrite subagent (an `excavator-handbook-writer` subagent, in the foreground, up to `$CONCURRENCY` in one message)');
     const prompt = flat(rewritePrompt);
     expect(prompt).toContain('Read `<the rewrite file>`');
     expect(prompt).toContain('Read `$OUT/entries/<id>.json`, the entry you change');
@@ -1320,7 +1320,7 @@ describe('the handbook verifier agent', () => {
 describe('excavator-product-handbook skill: Phase 3c, the business domains (O2 of handbook-map-by-domain)', () => {
   const p = phase('3c');
   // The map prompt as it was when the domains were added: Phase 3 is not edited by this change, so its text keeps this digest.
-  const MAP_PROMPT_SHA256 = '6c3a7049d4cacf11e10d90acffe68ae3b4147b0df92b5c15086f2c8f93ccde00';
+  const MAP_PROMPT_SHA256 = 'b43e3aed216bdadd68bd545f21f053546be576c81ee22a51a78414b68362a4f3';
   const recipe = (start) => allBash.flatMap((block) => block.split('\n')).map((line) => line.trim()).find((line) => line.startsWith(start));
 
   it('sits after the map and its --features step and before the system overview, says it runs in that order, and starts with the language reminder', () => {
@@ -1466,7 +1466,7 @@ describe('excavator-product-handbook skill: Phase 3b, the system overview (O2 of
     const at = order.map((text) => step2.indexOf(text));
     expect(at.every((index) => index > -1)).toBe(true);
     expect([...at].sort((a, b) => a - b)).toEqual(at);
-    expect(step2).toContain('dispatch one subagent in the foreground (never in the background');
+    expect(step2).toContain('dispatch one `excavator-handbook-writer` subagent in the foreground (never in the background');
   });
 
   it('checks the file with check-overview and quotes the Next lines the script prints', () => {
@@ -1555,7 +1555,7 @@ describe('excavator-product-handbook skill: Phase 3b, the system overview (O2 of
     expect(phase(7)).toContain('each with its reason, the overview\'s included');
     const table = flat(skill.split(/^## How the work is split$/m)[1].split(/^## Options$/m)[0]);
     expect(table).toContain('computes every count and statistic of the system overview');
-    expect(table).toContain('| One subagent for the system overview (Phase 3b)');
+    expect(table).toContain('| One `excavator-handbook-writer` subagent for the system overview (Phase 3b)');
     expect(table).toContain('`entries/overview.json` | the overview subagent (Phase 3b)');
   });
 });
@@ -1568,9 +1568,9 @@ describe('excavator-product-handbook skill: Phase 3b, the system overview (O2 of
 describe('excavator-product-handbook skill: sections (O2 of handbook-sections)', () => {
   const digest = (text) => createHash('sha256').update(text, 'utf8').digest('hex');
   const PINNED = {
-    'stages/map.md': 'df39550d3c009255c094bf3d4d81869b64208f1c5b7657a08147d75320c7df75',
-    'sections/overview.md': '88062ce1583a85177d73f35500e63358f8dbd9675e5e51dce7e4f99582875da7',
-    'sections/features.md': 'c1f9c6b4a31f7ada868088b307f3f4abbcc63e0c7e9946ec4fdf621d9562b590',
+    'stages/map.md': 'e9bcaefb267906065651edd1b6782ee7e65e0b0e7ccdddc1bbc162e1345c479f',
+    'sections/overview.md': '2a4f1e07bf2c5d0b65c27028982abff2fdc421b0c91dc78695837282ab46ae66',
+    'sections/features.md': 'f971c0c5ba4bb23b05e5759ea23c082a28b9456e8c1ad4dcd4d422f8725073df',
   };
   const heads = {
     'stages/map.md': ['## Phase 3: The map', '## Phase 3c: Business domains'],
@@ -1729,7 +1729,7 @@ describe('excavator-product-handbook skill: Phase 4c, the findings (O1 of handbo
   };
 
   it('sections/findings.md is pinned, holds Phase 4c only and starts with the language reminder', () => {
-    expect(digest(text)).toBe('1d6275f6bafa185abb680822852e81b04284d3ca938811ed4ad88b2d4d7a645a');
+    expect(digest(text)).toBe('4d57cb768429e0b4d4c525823de2d51223ad1f5af96b4c13844657909eb78e5b');
     expect([...text.matchAll(/^## Phase .+$/gm)].map((match) => match[0])).toEqual(['## Phase 4c: Findings']);
     expect(text.startsWith('## Phase 4c: Findings\n')).toBe(true);
     expect(p.startsWith(PHASE_LANGUAGE)).toBe(true);
@@ -1848,7 +1848,7 @@ describe('excavator-product-handbook skill: Phase 4c, the findings (O1 of handbo
     const options = flat(skillOwn.split(/^## Options$/m)[1].split(/^## Sources$/m)[0]);
     expect(options).toContain('`findings` (the defects each feature\'s code shows, with their root causes)');
     const split = flat(skillOwn.split(/^## How the work is split$/m)[1].split(/^## Options$/m)[0]);
-    expect(split).toContain('| One findings subagent per feature (Phase 4c)');
+    expect(split).toContain('| One `excavator-handbook-writer` findings subagent per feature (Phase 4c)');
     expect(split).toContain('`sections/findings.md` holds Phase 4c');
     expect(split).toContain('`entries/<id>.findings.json` | the findings subagent of feature `<id>` (Phase 4c)');
   });
@@ -1887,7 +1887,7 @@ describe('excavator-product-handbook skill: Phase 4d, the system findings (O1 of
   };
 
   it('sections/system-findings.md is pinned, holds Phase 4d only, starts with the language reminder and sits between Phases 4c and 5', () => {
-    expect(digest(text)).toBe('4c2b5ff6d12d487ee25dd928d77b09b5059ebe60b4dae5dabece707b6c847a21');
+    expect(digest(text)).toBe('79ce23182f91e3a1f0a8d709d2a6540d00b1230807a25affb3757274f295e0d9');
     expect([...text.matchAll(/^## Phase .+$/gm)].map((match) => match[0])).toEqual(['## Phase 4d: System findings']);
     expect(text.startsWith('## Phase 4d: System findings\n')).toBe(true);
     expect(p.startsWith(PHASE_LANGUAGE)).toBe(true);
@@ -1896,7 +1896,7 @@ describe('excavator-product-handbook skill: Phase 4d, the system findings (O1 of
   });
 
   it('leaves the findings phase as it was: its digest is the one the findings tests pin', () => {
-    expect(digest(sectionText('sections/findings.md'))).toBe('1d6275f6bafa185abb680822852e81b04284d3ca938811ed4ad88b2d4d7a645a');
+    expect(digest(sectionText('sections/findings.md'))).toBe('4d57cb768429e0b4d4c525823de2d51223ad1f5af96b4c13844657909eb78e5b');
   });
 
   it('resolves --applications with select, with the list as one single-quoted argument, and stops on exit 1', () => {
@@ -2042,7 +2042,7 @@ describe('excavator-product-handbook skill: Phase 4d, the system findings (O1 of
     expect(options).toContain('- `--applications <list>` - write system findings only for these application roots');
     expect(options).toContain('Phase 4d resolves the list with `select`');
     const split = flat(skillOwn.split(/^## How the work is split$/m)[1].split(/^## Options$/m)[0]);
-    expect(split).toContain('| One system findings subagent per application root (Phase 4d)');
+    expect(split).toContain('| One `excavator-handbook-writer` system findings subagent per application root (Phase 4d)');
     expect(split).toContain('`sections/system-findings.md` holds Phase 4d');
     expect(split).toContain('`entries/app<n>.system.json` | the system findings subagent of the `<n>`th application root (Phase 4d)');
     expect(split).toContain('`check-system-findings` for the system findings of an application root, whose state is under the key `systemFindings` by `app<n>`');
@@ -2098,7 +2098,7 @@ describe('excavator-product-handbook skill: Phase 6b, the priority (O1 of handbo
     const options = flat(skillOwn.split(/^## Options$/m)[1].split(/^## Sources$/m)[0]);
     expect(options).toContain('`priority` (a level, P0, P1 or P2, and a reason for each group of the verified findings; it runs after the trace, needs no map and changes no finding)');
     const split = flat(skillOwn.split(/^## How the work is split$/m)[1].split(/^## Options$/m)[0]);
-    expect(split).toContain('| One ranking subagent per part of the verified findings (Phase 6b)');
+    expect(split).toContain('| One `excavator-handbook-writer` ranking subagent per part of the verified findings (Phase 6b)');
     expect(split).toContain('| Two `excavator-handbook-priority-judge` subagents per part of the ranking');
     expect(split).toContain('`sections/priority.md` holds Phase 6b');
     expect(split).toContain('`priority/part-<p>.json` | the ranking subagent of part `<p>`');
@@ -2229,7 +2229,7 @@ describe('excavator-product-handbook skill: Phase 6c, the remedies (O1 of handbo
     const options = flat(skillOwn.split(/^## Options$/m)[1].split(/^## Sources$/m)[0]);
     expect(options).toContain('`remedies` (a common cause and a measure for each category of the verified findings and 1 to 10 ordered recommendations, the only advice in the handbook');
     const split = flat(skillOwn.split(/^## How the work is split$/m)[1].split(/^## Options$/m)[0]);
-    expect(split).toContain('| One remedies subagent (Phase 6c)');
+    expect(split).toContain('| One `excavator-handbook-writer` remedies subagent (Phase 6c)');
     expect(split).toContain('| Two `excavator-handbook-remedy-judge` subagents');
     expect(split).toContain('`sections/remedies.md` holds Phase 6c');
     expect(split).toContain('`entries/remedies.json` | the remedies subagent (Phase 6c)');
@@ -2353,7 +2353,7 @@ describe('excavator-product-handbook skill: Phase 6d, the topics (O1 of handbook
     const options = flat(skillOwn.split(/^## Options$/m)[1].split(/^## Sources$/m)[0]);
     expect(options).toContain('`topics` (rows for five cross-cutting tables, each resting on cited verified items or groups of findings and kept only when two judges agree');
     const split = flat(skillOwn.split(/^## How the work is split$/m)[1].split(/^## Options$/m)[0]);
-    expect(split).toContain('| One topics subagent per lane (Phase 6d)');
+    expect(split).toContain('| One `excavator-handbook-writer` topics subagent per lane (Phase 6d)');
     expect(split).toContain('| Two `excavator-handbook-topic-judge` subagents per lane');
     expect(split).toContain('`sections/topics.md` holds Phase 6d');
     expect(split).toContain('`topics/part-<lane>.json` | the topics subagent of the lane `<lane>`');
