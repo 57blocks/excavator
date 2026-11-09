@@ -13,13 +13,16 @@ import { buildFindings } from './findings-model.mjs';
 import { loadDataSection } from './data-section.mjs';
 import { loadDictionariesSection } from './dict-section.mjs';
 import { buildLocations } from './locations.mjs';
+import { citationLocator } from './citation-locator.mjs';
 import { withPriority } from './priority-model.mjs';
 import { factsOf } from './remedies-facts.mjs';
 import { withRemedies } from './remedies-model.mjs';
 import { buildSummary } from './summary.mjs';
+import { loadTopicFacts } from './topics-facts.mjs';
+import { withTopics } from './topics-model.mjs';
 import { buildSystem } from './system-facts.mjs';
 
-/** `{ summary, system, entities, locations, data, dictionaries, findings, remedies }`; `remedies` is remedies-model.mjs's; `findings` is `{ list, groups, locations, applications, priority }` (findings-model.mjs, priority-model.mjs), its `locations` null unless `views` holds `technical`; `locations`, `data` (the data section, data-section.mjs) and `dictionaries` (the status dictionary, dict-section.mjs) are null unless `views` holds `technical`. */
+/** `{ summary, system, entities, locations, data, dictionaries, findings, remedies, topics }`; `remedies` is remedies-model.mjs's; `topics` is topics-model.mjs's; `findings` is `{ list, groups, locations, applications, priority }` (findings-model.mjs, priority-model.mjs), its `locations` null unless `views` holds `technical`; `locations`, `data` (the data section, data-section.mjs) and `dictionaries` (the status dictionary, dict-section.mjs) are null unless `views` holds `technical`. */
 export function handbookModel(run, root, views) {
   const scan = scanProject(root);
   const summary = buildSummary(run, root);
@@ -30,5 +33,7 @@ export function handbookModel(run, root, views) {
   // The data section is read once: the technical view shows it, and the remedies' facts count the tables that several applications mention.
   const dataSection = loadDataSection(run.outDir);
   const remedies = withRemedies(run.remedies, factsOf({ findings, applications: system.applications, data: dataSection }));
-  return { summary, system, entities, findings, remedies, locations: technical ? buildLocations(run, root) : null, data: technical ? dataSection : null, dictionaries: technical ? loadDictionariesSection(run.outDir) : null };
+  // The topics (openspec change handbook-topics) are read against the facts of their lanes as they are now; the technical view also locates the cited items.
+  const topics = withTopics(run.topics, loadTopicFacts(run, root, scan), { locate: technical ? citationLocator(root) : null, findingPlaces: findings.locations });
+  return { summary, system, entities, findings, remedies, topics, locations: technical ? buildLocations(run, root) : null, data: technical ? dataSection : null, dictionaries: technical ? loadDictionariesSection(run.outDir) : null };
 }

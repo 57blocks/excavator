@@ -26,6 +26,7 @@
     "excavator:excavator-graph-reviewer",
     "excavator:excavator-handbook-priority-judge",
     "excavator:excavator-handbook-remedy-judge",
+    "excavator:excavator-handbook-topic-judge",
     "excavator:excavator-handbook-tracer",
     "excavator:excavator-handbook-verifier",
     "excavator:excavator-knowledge-graph-guide",

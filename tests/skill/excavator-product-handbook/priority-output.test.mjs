@@ -261,7 +261,7 @@ describe('the page data', () => {
     const made = page(run);
     expect(made.status, made.stdout).toBe(0);
     const data = dataOf(run);
-    expect(data.format).toBe('excavator-product-handbook-page/12');
+    expect(data.format).toBe('excavator-product-handbook-page/13');
     expect(data.findings.map((group) => group.priority)).toEqual([
       { level: 'P0', consequence: 'othersRecords', reason: REASONS[1] },
       { level: 'P1', consequence: 'wrongResult', reason: REASONS[0] },

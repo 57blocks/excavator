@@ -51,7 +51,7 @@ const FINDINGS: FindingGroup[] = [
 /** F1 and F3 have verified findings, F2 verified with none, F4 failed, F5 planned; one finding of F1 was removed. */
 function dataFor(views: View[], findings: FindingGroup[] = FINDINGS, remedies: Remedies = { categories: [], recommendations: [] }, remediesCoverage: PageData['coverage']['remedies'] = { finished: true, stale: false, dropped: [] }): PageData {
   return {
-    format: 'excavator-product-handbook-page/12',
+    format: 'excavator-product-handbook-page/13',
     project: d('project'),
     language: d('language'),
     languageTag: 'xx',
@@ -63,6 +63,7 @@ function dataFor(views: View[], findings: FindingGroup[] = FINDINGS, remedies: R
     features: [feature('F1', 'planned', 'verified'), feature('F2', 'planned', 'verified'), feature('F3', 'planned', 'verified'), feature('F4', 'planned', 'failed'), feature('F5', 'planned', 'planned')],
     findings,
     remedies,
+    topics: { approval: [], time: [], handoffs: [], access: [], repeated: [] },
     coverage: {
       candidateTotal: 0, assigned: 0, unassigned: [], reachCounts: [], removedOverview: [], removed: [],
       findingsUnfinished: [{ feature: 'F4', status: 'failed' }],
@@ -74,6 +75,7 @@ function dataFor(views: View[], findings: FindingGroup[] = FINDINGS, remedies: R
       systemFindingsRemoved: [{ id: 'app1', name: d('backend'), items: [{ claim: d('system removed claim'), verdict: 'unverified', reason: d('system removed reason') }] }],
       priority: { finished: true, unranked: [{ id: 'app1.system[0]', category: 'notification', text: d('system statement'), reasons: [d('judge reason')] }] },
       remedies: remediesCoverage,
+      topics: { finished: true, stale: false, entriesRead: 0, groupsRead: 0, lanes: [], dropped: [] },
     },
     summary: { notifications: [], jobs: [], counts: { featureTotal: 5, featuresWithEntry: 1, notificationRows: 0, jobRows: 0, schedule: { literal: 0, computed: 0, absent: 0 }, described: 0 } },
     system: { status: 'planned', overview: null, applications: [], counts: { applications: 0, files: 0, lines: 0, areas: 1, domains: 1, features: 5, featuresWithEntry: 1, roles: 0 }, areas: [], domains: [] },
@@ -81,7 +83,7 @@ function dataFor(views: View[], findings: FindingGroup[] = FINDINGS, remedies: R
     ...(views.includes('technical') ? {
       technical: {
         featureApplication: [], unattributed: [], applicationDomain: { applications: [], domains: [], cells: [], unattributed: [] },
-        integrations: [], jobs: [], locations: [],
+        integrations: [], jobs: [], locations: [], topicLocations: [],
         findingLocations: [
           { id: 'F1.findings[0]', citations: [{ file: d('src/one.js'), startLine: 7, endLine: 7 }] },
           { id: 'F1.findings[1]', citations: [{ file: d('src/two.js'), startLine: 5, endLine: 9 }, { file: d('src/three.js'), startLine: null, endLine: null }] },

@@ -18,16 +18,19 @@ import { findingsStatus } from './findings-model.mjs';
 import { handbookModel } from './handbook-model.mjs';
 import { reachCounts } from './render.mjs';
 import { remediesPageSection } from './remedies-page.mjs';
+import { topicsCoveragePage, topicsPageSection } from './topics-page.mjs';
 import { languageTag } from './language-tag.mjs';
 import { withoutRootPaths } from './root-paths.mjs';
 import { DEFAULT_VIEWS } from './views.mjs';
 
 /**
- * The format is /12 since openspec change handbook-remedies: `remedies` holds the common cause and measure of each category and the
- * recommendations with the groups and facts they rest on, and the coverage says what the judges left out. (/11: each group of findings
+ * The format is /13 since openspec change handbook-topics: `topics` holds the rows of the five cross-cutting topics with their basis, the
+ * coverage says which lanes finished and what the judges left out, and the technical part holds the places of the cited items.
+ * (/12, openspec change handbook-remedies: `remedies` holds the common cause and measure of each category and the
+ * recommendations with the groups and facts they rest on, and the coverage says what the judges left out. /11: each group of findings
  * carries its priority, and the coverage says which groups have none.)
  */
-export const PAGE_FORMAT = 'excavator-product-handbook-page/12';
+export const PAGE_FORMAT = 'excavator-product-handbook-page/13';
 
 /** An entry without its evidence, in the page's shape. */
 function pageEntry(entry) {
@@ -67,7 +70,7 @@ export function buildPageData(run, roots, { views = DEFAULT_VIEWS } = {}) {
   // The directory name only rewrites the project path in the strings; the page shows the verified system name, never the directory.
   const directory = basename(roots[0]);
   const kind = new Map(candidates.map((candidate) => [candidate.id, candidate.kind]));
-  const { summary, system, entities, locations, findings, remedies, data: dataSection, dictionaries: dictionariesSection } = handbookModel(run, roots[0], views);
+  const { summary, system, entities, locations, findings, remedies, topics, data: dataSection, dictionaries: dictionariesSection } = handbookModel(run, roots[0], views);
   const domainOf = new Map(entities.domains.flatMap((domain) => domain.features.map((id) => [id, domain.id])));
   const data = {
     format: PAGE_FORMAT,
@@ -97,6 +100,7 @@ export function buildPageData(run, roots, { views = DEFAULT_VIEWS } = {}) {
       priority: group.priority === null ? null : { level: group.priority.level, consequence: group.priority.consequence, reason: group.priority.reason },
     })),
     remedies: remediesPageSection(remedies),
+    topics: topicsPageSection(topics),
     coverage: {
       candidateTotal: candidates.length,
       assigned: map.features.reduce((sum, feature) => sum + feature.candidates.length, 0),
@@ -129,6 +133,7 @@ export function buildPageData(run, roots, { views = DEFAULT_VIEWS } = {}) {
         unranked: findings.priority.unranked.map(({ group, reasons }) => ({ id: group.items[0].id, category: group.category, text: group.items[0].text, reasons })),
       },
       remedies: { finished: remedies.finished, stale: remedies.stale, dropped: remedies.dropped.map((paragraph) => ({ id: paragraph.id, kind: paragraph.kind, text: paragraph.kind === 'category' ? paragraph.cause : paragraph.text, ...(paragraph.kind === 'category' ? { category: paragraph.category } : { title: paragraph.title }), reasons: paragraph.reasons })) },
+      topics: topicsCoveragePage(topics),
       systemFindingsRemoved: findings.applications
         .filter((application) => application.removed.length > 0)
         .map((application) => ({
@@ -153,6 +158,7 @@ export function buildPageData(run, roots, { views = DEFAULT_VIEWS } = {}) {
       integrations: entities.integrations,
       jobs: entities.jobs,
       locations,
+      topicLocations: topics.places.map((entry) => ({ id: entry.id, citations: entry.citations })),
       findingLocations: findings.groups.flatMap((group) => group.items).map((item) => ({ id: item.id, citations: findings.locations.get(item.id) })),
       data: dataSection.state === 'ok' ? pageSection(dataSection.data) : null,
       dataState: dataSection.state,

@@ -28,6 +28,10 @@
  * optional key `remedies`, again an entry of the same form, with the digest of
  * the facts it was written for (`factsDigest`) and the paragraphs the judges did
  * not both accept (`dropped`).
+ * The topics of the handbook (openspec change handbook-topics) are under the optional key
+ * `topics`, by lane id (a domain's, or `repeated`), each an entry of the same form with the
+ * digest of the facts of the lane (`factsDigest`) and the rows the judges did not both accept
+ * (`dropped`).
  */
 
 import { createHash } from 'node:crypto';
@@ -90,6 +94,17 @@ function remediesEntryProblem(entry) {
   return null;
 }
 
+/** The problem of the entry of a topics lane (openspec change handbook-topics), or null: an entry of any other unit, plus the digest of its facts and the rows no two judges accepted. */
+function topicsEntryProblem(lane, entry) {
+  const problem = entryProblem(`topics ${lane}`, entry);
+  if (problem !== null) return problem;
+  if (entry.factsDigest !== undefined && typeof entry.factsDigest !== 'string') return `topics ${lane} has a factsDigest that is not a string`;
+  if (entry.dropped !== undefined && !(Array.isArray(entry.dropped) && entry.dropped.every((one) => isObject(one) && typeof one.id === 'string' && Array.isArray(one.reasons) && one.reasons.every((reason) => typeof reason === 'string')))) {
+    return `topics ${lane} has a dropped list that is not [{ id, reasons }]`;
+  }
+  return null;
+}
+
 const stateProblems = (state) => {
   if (!isObject(state) || state.format !== STATE_FORMAT || !isObject(state.features)) return `format must be ${STATE_FORMAT} with a features object`;
   for (const [id, entry] of Object.entries(state.features)) {
@@ -119,6 +134,13 @@ const stateProblems = (state) => {
   if (state.remedies !== undefined) {
     const problem = remediesEntryProblem(state.remedies);
     if (problem !== null) return problem;
+  }
+  if (state.topics !== undefined) {
+    if (!isObject(state.topics)) return 'topics must be an object from lane ids to entries';
+    for (const [lane, entry] of Object.entries(state.topics)) {
+      const problem = topicsEntryProblem(lane, entry);
+      if (problem !== null) return problem;
+    }
   }
   return state.overview === undefined ? null : entryProblem('overview', state.overview);
 };

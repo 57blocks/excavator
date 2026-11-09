@@ -246,8 +246,8 @@ describe('the page data', () => {
     const made = page(run);
     expect(made.status, made.stdout).toBe(0);
     const data = dataOf(run);
-    expect(data.format).toBe('excavator-product-handbook-page/12');
-    expect(Object.keys(data).slice(data.findings === undefined ? 0 : Object.keys(data).indexOf('findings'), Object.keys(data).indexOf('findings') + 3)).toEqual(['findings', 'remedies', 'coverage']);
+    expect(data.format).toBe('excavator-product-handbook-page/13');
+    expect(Object.keys(data).slice(data.findings === undefined ? 0 : Object.keys(data).indexOf('findings'), Object.keys(data).indexOf('findings') + 3)).toEqual(['findings', 'remedies', 'topics']);
     expect(Object.keys(data.remedies)).toEqual(['categories', 'recommendations']);
     expect(data.remedies.categories).toEqual([
       { category: 'authorization', cause: 'Deleting an order asks nothing about who calls.', measure: 'Put one check of the caller in front of every operation on orders.' },

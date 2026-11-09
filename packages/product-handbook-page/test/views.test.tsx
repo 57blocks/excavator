@@ -43,7 +43,7 @@ const feature = (id: string, area: string, domain: string, status: Feature['stat
 function dataFor(views: View[]): PageData {
   const withTechnical = views.includes('technical');
   return {
-    format: 'excavator-product-handbook-page/12',
+    format: 'excavator-product-handbook-page/13',
     project: d('project'),
     language: d('language'),
     languageTag: 'xx',
@@ -60,7 +60,8 @@ function dataFor(views: View[]): PageData {
     ],
     findings: [],
     remedies: { categories: [], recommendations: [] },
-    coverage: { candidateTotal: 1, assigned: 1, unassigned: [], reachCounts: [{ reach: 'menu', count: 4 }], removedOverview: [], removed: [], findingsUnfinished: [], findingsNotWritten: 0, findingsRemoved: [], systemFindingsTotal: 0, systemFindingsUnfinished: [], systemFindingsNotWritten: 0, systemFindingsRemoved: [], priority: { finished: true, unranked: [] }, remedies: { finished: true, stale: false, dropped: [] } },
+    topics: { approval: [], time: [], handoffs: [], access: [], repeated: [] },
+    coverage: { candidateTotal: 1, assigned: 1, unassigned: [], reachCounts: [{ reach: 'menu', count: 4 }], removedOverview: [], removed: [], findingsUnfinished: [], findingsNotWritten: 0, findingsRemoved: [], systemFindingsTotal: 0, systemFindingsUnfinished: [], systemFindingsNotWritten: 0, systemFindingsRemoved: [], priority: { finished: true, unranked: [] }, remedies: { finished: true, stale: false, dropped: [] }, topics: { finished: true, stale: false, entriesRead: 0, groupsRead: 0, lanes: [], dropped: [] } },
     summary: {
       notifications: [],
       jobs: [{ kind: 'job', candidate: d('c1'), feature: 'F1', reason: null, schedule: { bucket: 'absent', literal: null }, automatic: [] }],
@@ -111,6 +112,7 @@ function dataFor(views: View[]): PageData {
           { id: 'overview', items: [{ claim: d('overview claim'), citations: [{ file: d('package.json'), startLine: 1, endLine: 1 }] }] },
         ],
         findingLocations: [],
+        topicLocations: [],
         data: null,
         dataState: 'missing',
         dictionaries: null,
