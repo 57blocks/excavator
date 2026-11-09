@@ -5,21 +5,39 @@
  * scripts' checks; `confirmed` means two verifiers also confirmed each of its
  * items; `verified` means two tracers that read the whole project then found no
  * counter-evidence (only then does the feature reach the handbook). A checked
- * feature waiting for its one rewrite carries `rewriting: true`; a confirmed
- * or verified one carries the digest of its entry file, and the items removed
+ * feature waiting for its one rewrite carries `rewriting: true` and the items
+ * round 1 removed; a confirmed or verified one carries the digest of its entry
+ * file, and the items removed
  * so far (a record of a removal by the tracers also has `step: "trace"`, the
  * `reasons` of every tracer that contradicted the item and the `at` positions
  * that showed the counter-evidence). Only the scripts change it:
  * check-map creates it; mark, check-entry, verdicts and trace-verdicts update it.
  * Every write is atomic; the commands that change it hold the state lock
- * (lock.mjs).
+ * (lock.mjs). The system overview (openspec change handbook-system-overview)
+ * has the same entry under the optional key `overview`, and the findings of
+ * each feature (openspec change handbook-feature-findings) under the optional
+ * key `findings`, by feature id; a state without a key, or without a feature in
+ * it, reads as planned with no attempt (unit.mjs). The system findings of each
+ * application root (openspec change handbook-system-findings) are under the
+ * optional key `systemFindings`, by `app<n>`, each entry with the `root` (the
+ * application directory) it was recorded for. The ranking of the findings
+ * (openspec change handbook-findings-priority) is under the optional key
+ * `priority`, an entry of the same form with the digest of the groups it was made
+ * for (`groupsDigest`) and the groups the judges did not confirm (`unranked`).
+ * The remedies of the findings (openspec change handbook-remedies) are under the
+ * optional key `remedies`, again an entry of the same form, with the digest of
+ * the facts it was written for (`factsDigest`) and the paragraphs the judges did
+ * not both accept (`dropped`).
+ * The topics of the handbook (openspec change handbook-topics) are under the optional key
+ * `topics`, by lane id (a domain's, or `repeated`), each an entry of the same form with the
+ * digest of the facts of the lane (`factsDigest`) and the rows the judges did not both accept
+ * (`dropped`).
  */
 
 import { createHash } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { UsageError } from './errors.mjs';
 import { isObject, readJson, writeJson } from './json-file.mjs';
 
 export const STATE_FILE = 'state.json';
@@ -40,20 +58,91 @@ const removedValid = (list) => Array.isArray(list) && list.every((item) => isObj
   && (item.step === undefined || REMOVAL_STEPS.includes(item.step)) && (item.at === undefined || atValid(item.at))
   && (item.reasons === undefined || (Array.isArray(item.reasons) && item.reasons.every((reason) => typeof reason === 'string'))));
 
+/** The problem of one state entry (of a feature, or the overview) named `label`, or null. */
+function entryProblem(label, entry) {
+  if (!isObject(entry) || !STATUSES.includes(entry.status) || !Number.isInteger(entry.attempts) || entry.attempts < 0) {
+    return `${label} needs a status (${STATUSES.join(', ')}) and a non-negative integer attempts`;
+  }
+  if (entry.failure !== undefined && (!isObject(entry.failure) || !FAILURE_STEPS.includes(entry.failure.step) || !Array.isArray(entry.failure.reasons))) {
+    return `${label} has a failure that is not { step, reasons }`;
+  }
+  if (entry.removed !== undefined && !removedValid(entry.removed)) return `${label} has a removed list that is not [{ path, claim, verdict, reason, step?, reasons?, at? }]`;
+  if (entry.entryDigest !== undefined && typeof entry.entryDigest !== 'string') return `${label} has an entryDigest that is not a string`;
+  if (entry.rewriting !== undefined && entry.rewriting !== true) return `${label} has a rewriting that is not true`;
+  return null;
+}
+
+/** The problem of the entry of the priority unit (openspec change handbook-findings-priority), or null: an entry of any other unit, plus the digest of its groups and the groups no two judges confirmed. */
+function priorityEntryProblem(entry) {
+  const problem = entryProblem('priority', entry);
+  if (problem !== null) return problem;
+  if (entry.groupsDigest !== undefined && typeof entry.groupsDigest !== 'string') return 'priority has a groupsDigest that is not a string';
+  if (entry.unranked !== undefined && !(Array.isArray(entry.unranked) && entry.unranked.every((one) => isObject(one) && typeof one.key === 'string' && Array.isArray(one.reasons) && one.reasons.every((reason) => typeof reason === 'string')))) {
+    return 'priority has an unranked list that is not [{ key, reasons }]';
+  }
+  return null;
+}
+
+/** The problem of the entry of the remedies unit (openspec change handbook-remedies), or null: an entry of any other unit, plus the digest of its facts and the paragraphs no two judges accepted. */
+function remediesEntryProblem(entry) {
+  const problem = entryProblem('remedies', entry);
+  if (problem !== null) return problem;
+  if (entry.factsDigest !== undefined && typeof entry.factsDigest !== 'string') return 'remedies has a factsDigest that is not a string';
+  if (entry.dropped !== undefined && !(Array.isArray(entry.dropped) && entry.dropped.every((one) => isObject(one) && typeof one.id === 'string' && Array.isArray(one.reasons) && one.reasons.every((reason) => typeof reason === 'string')))) {
+    return 'remedies has a dropped list that is not [{ id, reasons }]';
+  }
+  return null;
+}
+
+/** The problem of the entry of a topics lane (openspec change handbook-topics), or null: an entry of any other unit, plus the digest of its facts and the rows no two judges accepted. */
+function topicsEntryProblem(lane, entry) {
+  const problem = entryProblem(`topics ${lane}`, entry);
+  if (problem !== null) return problem;
+  if (entry.factsDigest !== undefined && typeof entry.factsDigest !== 'string') return `topics ${lane} has a factsDigest that is not a string`;
+  if (entry.dropped !== undefined && !(Array.isArray(entry.dropped) && entry.dropped.every((one) => isObject(one) && typeof one.id === 'string' && Array.isArray(one.reasons) && one.reasons.every((reason) => typeof reason === 'string')))) {
+    return `topics ${lane} has a dropped list that is not [{ id, reasons }]`;
+  }
+  return null;
+}
+
 const stateProblems = (state) => {
   if (!isObject(state) || state.format !== STATE_FORMAT || !isObject(state.features)) return `format must be ${STATE_FORMAT} with a features object`;
   for (const [id, entry] of Object.entries(state.features)) {
-    if (!isObject(entry) || !STATUSES.includes(entry.status) || !Number.isInteger(entry.attempts) || entry.attempts < 0) {
-      return `feature ${id} needs a status (${STATUSES.join(', ')}) and a non-negative integer attempts`;
-    }
-    if (entry.failure !== undefined && (!isObject(entry.failure) || !FAILURE_STEPS.includes(entry.failure.step) || !Array.isArray(entry.failure.reasons))) {
-      return `feature ${id} has a failure that is not { step, reasons }`;
-    }
-    if (entry.removed !== undefined && !removedValid(entry.removed)) return `feature ${id} has a removed list that is not [{ path, claim, verdict, reason, step?, reasons?, at? }]`;
-    if (entry.entryDigest !== undefined && typeof entry.entryDigest !== 'string') return `feature ${id} has an entryDigest that is not a string`;
-    if (entry.rewriting !== undefined && entry.rewriting !== true) return `feature ${id} has a rewriting that is not true`;
+    const problem = entryProblem(`feature ${id}`, entry);
+    if (problem !== null) return problem;
   }
-  return null;
+  // The entries of the overview and of the findings are optional: a state without them reads as planned (unit.mjs).
+  if (state.findings !== undefined) {
+    if (!isObject(state.findings)) return 'findings must be an object from feature ids to entries';
+    for (const [id, entry] of Object.entries(state.findings)) {
+      const problem = entryProblem(`findings ${id}`, entry);
+      if (problem !== null) return problem;
+    }
+  }
+  if (state.systemFindings !== undefined) {
+    if (!isObject(state.systemFindings)) return 'systemFindings must be an object from application keys (app1, app2, ...) to entries';
+    for (const [key, entry] of Object.entries(state.systemFindings)) {
+      const problem = /^app[1-9][0-9]*$/.test(key) ? entryProblem(`systemFindings ${key}`, entry) : `systemFindings has the key ${JSON.stringify(key)}, which is not app<n>`;
+      if (problem !== null) return problem;
+      if (entry.root !== undefined && (typeof entry.root !== 'string' || entry.root === '')) return `systemFindings ${key} has a root that is not a non-empty string`;
+    }
+  }
+  if (state.priority !== undefined) {
+    const problem = priorityEntryProblem(state.priority);
+    if (problem !== null) return problem;
+  }
+  if (state.remedies !== undefined) {
+    const problem = remediesEntryProblem(state.remedies);
+    if (problem !== null) return problem;
+  }
+  if (state.topics !== undefined) {
+    if (!isObject(state.topics)) return 'topics must be an object from lane ids to entries';
+    for (const [lane, entry] of Object.entries(state.topics)) {
+      const problem = topicsEntryProblem(lane, entry);
+      if (problem !== null) return problem;
+    }
+  }
+  return state.overview === undefined ? null : entryProblem('overview', state.overview);
 };
 
 /** Read state.json: `{ ok: true, state }`, `{ ok: false, missing: true }` or `{ ok: false, problem }`. */
@@ -100,12 +189,8 @@ export const nextLine = (id, attempts) => (attempts < MAX_ATTEMPTS
 /** The last line of a failed check-entry of a feature whose one rewrite it checks (design D14): there is no second rewrite. */
 export const rewriteNextLine = (id) => `Next: ${id} stays failed (its one rewrite did not pass check-entry)`;
 
+/** Whether the items removed so far include the purpose: the entry then has none, like a settled one (entry-shape.mjs). */
+export const purposeRemoved = (feature) => (feature.removed ?? []).some((item) => item.path === 'purpose');
+
 /** The SHA-256 of an entry file's bytes: a confirmed or verified feature is invalidated when they change. */
 export const entryDigest = (path) => createHash('sha256').update(readFileSync(path)).digest('hex');
-
-/** The state entry of `id`, or a usage error naming the file. */
-export function featureState(state, id) {
-  const entry = state.features[id];
-  if (entry === undefined) throw new UsageError(`feature ${id} is not in ${STATE_FILE}; run check-map first`);
-  return entry;
-}

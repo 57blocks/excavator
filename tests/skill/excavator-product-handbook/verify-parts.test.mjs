@@ -323,12 +323,12 @@ describe('verdicts: conservation over all parts', () => {
     expect(JSON.parse(readFileSync(join(run.out, 'rewrite', 'F1.json'), 'utf-8')).items.map((item) => item.id)).toEqual([lastId]);
   });
 
-  it('writes the items that are not verified in every part to the rewrite file, in item order', () => {
+  it('writes the unverified items of every part to the rewrite file, in item order', () => {
     const run = twoParts();
     const bad = new Set(['who[0]', lastId]);
     allParts(run).forEach((part, i) => {
       writeVerdicts(run, 1, i + 1, part.items.map((item) => (bad.has(item.id)
-        ? { id: item.id, verdict: 'contradicted', reason: `Line ${i + 1} disagrees.` }
+        ? { id: item.id, verdict: 'unverified', reason: `Line ${i + 1} disagrees.` }
         : { id: item.id, verdict: 'verified', reason: 'ok' })));
     });
     const result = run.run('verdicts', 'F1', '--round', '1');

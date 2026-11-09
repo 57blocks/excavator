@@ -29,14 +29,15 @@ function checkedRun() {
   return run;
 }
 
-/** A run whose F1 entry had one backend rule removed in round 2 and one state with it. */
+/** A run whose F1 entry had one backend rule removed in round 1 and one state in round 2. */
 function removedRun() {
   const run = checkedRun();
-  const bad = { 'screens[0].fields[1].rules[0]': 'contradicted', 'states[1]': 'unverified' };
-  expect(judge(run, 'F1', 1, (item) => (bad[item.id] ? { verdict: bad[item.id], reason: `Round 1: ${item.id}.` } : 'verified')).status).toBe(0);
-  const round2 = judge(run, 'F1', 2, (item) => (item.id === 'states[1]'
-    ? { verdict: 'unverified', reason: 'No line shown names the state.' }
-    : { verdict: 'contradicted', reason: 'The condition shown caps the count at 50.' }));
+  const bad = {
+    'screens[0].fields[1].rules[0]': { verdict: 'contradicted', reason: 'The condition shown caps the count at 50.' },
+    'states[1]': { verdict: 'unverified', reason: 'Round 1: no line shown names the state.' },
+  };
+  expect(judge(run, 'F1', 1, (item) => bad[item.id] ?? 'verified').status).toBe(0);
+  const round2 = judge(run, 'F1', 2, () => ({ verdict: 'unverified', reason: 'No line shown names the state.' }));
   expect(round2.status, round2.stdout).toBe(0);
   expect(traceFeature(run).status).toBe(0);
   return run;
@@ -219,6 +220,7 @@ describe('reply: counts by status including verified', () => {
     expect(run.run('assemble').status).toBe(0);
     const lines = run.run('reply').lines;
     expect(lines[2]).toBe('Features: 5 (planned 4, dispatched 0, checked 0, confirmed 0, verified 0, failed 1)');
-    expect(lines[3]).toBe('Failed: F1');
+    expect(lines[3]).toBe('Overview: planned');
+    expect(lines[4]).toBe('Failed: F1');
   });
 });

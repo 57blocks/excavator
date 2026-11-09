@@ -4,7 +4,7 @@
 // tests use a stub template with the two markers; the real template is
 // exercised by page-browser.test.mjs.
 import { afterAll, afterEach, describe, expect, it } from 'vitest';
-import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -80,18 +80,18 @@ describe('page: the file and its data', () => {
     expect(policy).toBe("default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; font-src data:; connect-src 'none'; base-uri 'none'; form-action 'none'");
   });
 
-  it('has the data keys in a fixed order, the project as a directory name only, and the ui table', () => {
+  it('has the data keys in a fixed order, no project name without a verified overview name, and the ui table', () => {
     const run = checkedRun();
     page(run);
     const data = dataOf(html(run));
-    expect(Object.keys(data)).toEqual(['format', 'project', 'language', 'languageTag', 'ui', 'areas', 'features', 'coverage', 'summary']);
-    expect(data.format).toBe('excavator-product-handbook-page/2');
-    expect(data.project).toBe('project');
+    expect(Object.keys(data)).toEqual(['format', 'project', 'language', 'languageTag', 'ui', 'views', 'areas', 'domains', 'domainBasis', 'features', 'findings', 'remedies', 'topics', 'history', 'appendix', 'coverage', 'summary', 'system', 'entities']);
+    expect(data.format).toBe('excavator-product-handbook-page/14');
+    expect(data.project).toBeNull();
     expect(data.language).toBe('English');
     expect(data.languageTag).toBe('en');
     expect(data.ui.strings).toEqual(JSON.parse(readFileSync(SHIPPED_UI, 'utf-8')).strings);
     expect(data.areas).toEqual([{ id: 'A1', name: 'Order handling' }, { id: 'A2', name: 'Automatic work' }]);
-    expect(Object.keys(data.features[0])).toEqual(['id', 'name', 'area', 'reach', 'label', 'status', 'entry']);
+    expect(Object.keys(data.features[0])).toEqual(['id', 'name', 'area', 'domain', 'reach', 'label', 'status', 'entry', 'findingsStatus']);
   });
 
   it('gives a verified feature its entry without evidence and every other feature its status and no entry', () => {
@@ -166,23 +166,32 @@ describe('page: deterministic bytes and nothing local', () => {
   });
 
   it('replaces the project path by the directory name in every string of the data (defence in depth: the banned-word gate already refuses a path)', () => {
-    const root = '/work/shop';
+    // The system facts read the project, so the root is a real directory named shop.
+    const parent = realpathSync(mkdtempSync(join(tmpdir(), 'xhb-root-')));
+    cleanups.push(() => rmSync(parent, { recursive: true, force: true }));
+    const root = join(parent, 'shop');
+    mkdirSync(root);
     const run = {
+      // The remedies' facts read the data section of the output directory, which this stub run has none of.
+      outDir: parent,
       map: {
         language: 'English',
         areas: [{ id: 'A1', name: `Area at ${root}/src` }],
         features: [{ id: 'F1', name: 'One', area: 'A1', reach: 'automated', candidates: ['c1'], seedFiles: [] }],
-        unassigned: [{ candidate: 'c2', reason: `see ${root} and ${root}-two and /work/shop.bak` }, { candidate: 'c3', reason: `registered at ${root}/jobs` }],
+        unassigned: [{ candidate: 'c2', reason: `see ${root} and ${root}-two and ${root}.bak` }, { candidate: 'c3', reason: `registered at ${root}/jobs` }],
+        roles: [],
       },
       entries: new Map(),
+      findings: new Map(),
       state: { features: { F1: { status: 'planned', attempts: 0 } } },
       candidates: [{ id: 'c1', kind: 'job', file: 'a.js', line: 1, text: 'run()' }, { id: 'c2', kind: 'route' }, { id: 'c3', kind: 'job', file: 'b.js', line: 1, text: 'run()' }],
       ui: { 'md.title': `Handbook of ${root}` },
     };
     const data = buildPageData(run, [root, '/links/shop']);
-    expect(data.project).toBe('shop');
+    // The directory name rewrites paths inside strings; it is not the name the page shows.
+    expect(data.project).toBeNull();
     expect(data.areas[0].name).toBe('Area at shop/src');
-    expect(data.coverage.unassigned[0].reason).toBe('see shop and /work/shop-two and /work/shop.bak');
+    expect(data.coverage.unassigned[0].reason).toBe(`see shop and ${root}-two and ${root}.bak`);
     expect(data.ui.strings['md.title']).toBe('Handbook of shop');
     expect(data.summary.jobs.map((row) => [row.candidate, row.feature, row.reason])).toEqual([['c1', 'F1', null], ['c3', null, 'registered at shop/jobs']]);
   });

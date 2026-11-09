@@ -36,6 +36,7 @@ describe('reply', () => {
       `Handbook: ${join(run.out, 'handbook.md')}`,
       'Page: not written',
       'Features: 5 (planned 4, dispatched 0, checked 0, confirmed 0, verified 1, failed 0)',
+      'Overview: planned',
       `Candidates: ${run.candidates.items.length} listed, ${run.candidates.items.length - 1} in features, 1 unassigned; none missing, none counted twice`,
     ]);
   });
@@ -53,8 +54,9 @@ describe('reply', () => {
     const result = run.run('reply');
     expect(result.status).toBe(0);
     expect(result.lines[2]).toBe('Features: 5 (planned 2, dispatched 1, checked 0, confirmed 0, verified 1, failed 1)');
-    expect(result.lines[3]).toBe('Failed: F3');
-    expect(result.lines).toHaveLength(5);
+    expect(result.lines[3]).toBe('Overview: planned');
+    expect(result.lines[4]).toBe('Failed: F3');
+    expect(result.lines).toHaveLength(6);
   });
 
   it('is the same on two runs and changes no file', () => {

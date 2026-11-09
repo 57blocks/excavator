@@ -6,51 +6,44 @@
  * `lane-wrote-nothing`. try-entry runs the same checks for the lane itself
  * and records nothing. A feature waiting for its one rewrite (design D14)
  * that fails here is `failed` at step `rewrite`; there is no second rewrite.
+ * A verified or confirmed entry whose file is still the one that was settled is
+ * checked as load-run checks it and stays as it is; a changed file starts over.
+ * The same functions check the system overview (check-overview and
+ * try-overview) and the findings of a feature (check-findings and
+ * try-findings, the id `<featureId>.findings`): the unit of the id (unit.mjs)
+ * decides what is checked. A findings file with no finding has nothing to
+ * prove, so it is recorded as verified at once. The system findings of an
+ * application root (check-system-findings and try-system-findings, the id
+ * `app<n>.system`, openspec change handbook-system-findings) are checked the
+ * same way with the application's context (system-unit.mjs); an application with
+ * no seed file has its empty file written here and is verified at once.
  */
 
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { memberDirectories } from './banned-words.mjs';
-import { entryShapeProblems } from './entry-shape.mjs';
 import { UsageError } from './errors.mjs';
-import { entryItems } from './items.mjs';
+import { adviceWordsOf } from './findings-check.mjs';
 import { readJson } from './json-file.mjs';
 import { languageGate } from './language-check.mjs';
 import { mapVerifiedLabels, readMap } from './map-check.mjs';
 import { projectFiles } from './project-files.mjs';
-import { reviewItems } from './review.mjs';
-import { featureState, loadState, nextLine, rewriteNextLine, saveState } from './state.mjs';
+import { entryDigest, loadState, nextLine, rewriteNextLine, saveState } from './state.mjs';
+import { bindSystemRoot, rootProblem, systemContext, writeEmptyWhenNoSeeds } from './system-unit.mjs';
+import { loadUi } from './ui.mjs';
+import { featureOfFindings, isFindingsId, isOverview, isSystemId, setUnitState, unitFor, unitState } from './unit.mjs';
 
 export const entryPath = (id) => `entries/${id}.json`;
 
-/**
- * Every way a parsed entry fails, given the map's roles and map-wide verified
- * labels. `settled` is for an entry that verdicts round 2 has trimmed (design
- * D14): its purpose may be absent. A written entry (check-entry, try-entry)
- * is never settled, so its purpose stays required.
- */
-export function entryProblems(entry, id, { map, files, memberDirs, mapLabels, languageCheck = null }, { settled = false } = {}) {
-  const shape = entryShapeProblems(entry, { settled });
-  if (shape.length > 0) return shape;
-  const problems = [];
-  if (entry.id !== id) problems.push(`id: ${JSON.stringify(entry.id)} is not ${JSON.stringify(id)}, the feature this entry is checked as`);
-  const roles = map.roles.map((role) => role.label);
-  entry.who.forEach((who, i) => {
-    if (!roles.includes(who.role)) problems.push(`who[${i}].role: ${JSON.stringify(who.role)} is not a role in map.json (roles: ${roles.map((r) => JSON.stringify(r)).join(', ') || 'none'})`);
-  });
-  problems.push(...reviewItems(entryItems(entry), { files, memberDirs, exemptLabels: mapLabels, languageCheck }).problems);
-  return problems;
-}
-
 /** The problems of `<out>/entries/<id>.json`, or the single missing-file reason; no state is read or written. */
-export function checkEntryFile(outDir, id, root, { map, mapLabels = null, files = projectFiles(root), memberDirs = memberDirectories(root), languageCheck = null }, { settled = false } = {}) {
+export function checkEntryFile(outDir, id, root, { map, mapLabels = null, files = projectFiles(root), memberDirs = memberDirectories(root), languageCheck = null, adviceWords = [], system = null }, { settled = false } = {}) {
   const file = join(outDir, entryPath(id));
   const labels = mapLabels ?? mapVerifiedLabels(map, { files, memberDirs }).verified;
   const read = readJson(file);
   if (read.missing) return { step: 'lane', problems: [`${id}: lane-wrote-nothing: ${entryPath(id)} is missing`] };
   if (!read.ok) return { step: 'check-entry', problems: [`${entryPath(id)} ${read.reason}`] };
-  return { step: 'check-entry', problems: entryProblems(read.value, id, { map, files, memberDirs, mapLabels: labels, languageCheck }, { settled }) };
+  return { step: 'check-entry', problems: unitFor(id).problems(read.value, id, { map, files, memberDirs, mapLabels: labels, languageCheck, adviceWords, system }, { settled }) };
 }
 
 /** The checked map and project facts check-entry and try-entry share, or the lines that stop them. */
@@ -63,10 +56,29 @@ export function loadForEntry(outDir, id, root) {
   const memberDirs = memberDirectories(root);
   const labels = mapVerifiedLabels(map, { files, memberDirs });
   if (labels.shapeProblems.length > 0) return { stop: { status: 1, lines: [...labels.shapeProblems.map((line) => `map.json: ${line}`), 'map.json is malformed; run check-map first'] } };
-  if (!map.features.some((feature) => feature.id === id)) throw new UsageError(`feature ${id} is not in map.json`);
+  const featureId = isFindingsId(id) ? featureOfFindings(id) : id;
+  if (!isOverview(id) && !isSystemId(id) && !map.features.some((feature) => feature.id === featureId)) throw new UsageError(`feature ${featureId} is not in map.json`);
   const gate = languageGate(outDir, map);
   if (!gate.ok) return { stop: { status: 1, lines: gate.lines } };
-  return { map, files, memberDirs, mapLabels: labels.verified, languageCheck: gate.check };
+  // A system unit belongs to the application root at its place of the application list; a state that
+  // records another root for it is from other source. The state is read here only for that: a command
+  // that needs it (check-system-findings) reads it again and reports a state it cannot read.
+  let system = null;
+  if (isSystemId(id)) {
+    system = systemContext(outDir, root, id);
+    if (system.stop) return { stop: system.stop };
+    const stateRead = loadState(outDir);
+    const problem = stateRead.ok ? rootProblem(stateRead.state, id, system.appDir) : null;
+    if (problem !== null) return { stop: { status: 1, lines: [problem] } };
+  }
+  // The advice words are part of the run's fixed text, which only a findings unit reads.
+  let adviceWords = [];
+  if (isFindingsId(id) || isSystemId(id)) {
+    const ui = loadUi(outDir);
+    if (!ui.ok) return { stop: { status: 1, lines: ui.lines } };
+    adviceWords = adviceWordsOf(ui.strings);
+  }
+  return { map, files, memberDirs, mapLabels: labels.verified, languageCheck: gate.check, adviceWords, system };
 }
 
 /** Run check-entry for feature `id` of `<out>` and record the result. Returns { status, lines }. */
@@ -79,22 +91,38 @@ export function checkEntry(outDir, id, root) {
     return { status: 1, lines: [stateRead.problem] };
   }
   const { state } = stateRead;
-  const current = featureState(state, id);
+  const unit = unitFor(id);
+  if (isSystemId(id)) bindSystemRoot(state, id, root);
+  const current = unitState(state, id);
+  if (isSystemId(id)) writeEmptyWhenNoSeeds(outDir, id, loaded.system, entryPath(id));
 
-  const result = checkEntryFile(outDir, id, root, loaded);
+  // A feature waiting for its one rewrite keeps what round 1 removed, and its entry has no purpose when round 1 removed it.
+  const kept = current.rewriting && current.removed !== undefined ? { removed: current.removed } : {};
+  // A verified or confirmed entry that is still the file that was settled is checked as load-run checks it (settled: true):
+  // verification may have trimmed it, and a trimmed entry cannot pass the rules of a fresh one.
+  const unchanged = ['verified', 'confirmed'].includes(current.status) && current.entryDigest !== undefined
+    && existsSync(join(outDir, entryPath(id))) && entryDigest(join(outDir, entryPath(id))) === current.entryDigest;
+  const result = checkEntryFile(outDir, id, root, loaded, { settled: unchanged || (current.rewriting === true && unit.settledAfter(current)) });
+  if (unchanged && result.problems.length === 0) return { status: 0, lines: [`${id}: ${current.status}, unchanged since it was ${current.status}`] };
+  if (result.problems.length === 0 && unit.mayBeEmpty && !current.rewriting && unit.items(readJson(join(outDir, entryPath(id))).value).every((item) => item.evidence.length === 0)) {
+    // No finding: nothing to prove, so the verification steps have nothing to do with it.
+    setUnitState(state, id, { status: 'verified', attempts: current.attempts, entryDigest: entryDigest(join(outDir, entryPath(id))) });
+    saveState(outDir, state);
+    return { status: 0, lines: [`${id}: verified (0 findings)`] };
+  }
   if (result.problems.length === 0) {
     // A feature waiting for its one rewrite stays so; anything else starts over as checked (a verified one is no longer verified).
-    state.features[id] = current.rewriting ? { status: 'checked', attempts: current.attempts, rewriting: true } : { status: 'checked', attempts: current.attempts };
+    setUnitState(state, id, current.rewriting ? { status: 'checked', attempts: current.attempts, rewriting: true, ...kept } : { status: 'checked', attempts: current.attempts });
     saveState(outDir, state);
     return { status: 0, lines: [`${id}: checked`] };
   }
   if (current.rewriting) {
     // The one rewrite (design D14) did not pass: there is no second one.
-    state.features[id] = { status: 'failed', attempts: current.attempts, failure: { step: 'rewrite', reasons: result.problems } };
+    setUnitState(state, id, { status: 'failed', attempts: current.attempts, failure: { step: 'rewrite', reasons: result.problems }, ...kept });
     saveState(outDir, state);
     return { status: 1, lines: [...result.problems, rewriteNextLine(id)] };
   }
-  state.features[id] = { status: 'failed', attempts: current.attempts, failure: { step: result.step, reasons: result.problems } };
+  setUnitState(state, id, { status: 'failed', attempts: current.attempts, failure: { step: result.step, reasons: result.problems } });
   saveState(outDir, state);
   return { status: 1, lines: [...result.problems, nextLine(id, current.attempts)] };
 }
@@ -109,5 +137,5 @@ export function tryEntry(outDir, id, root) {
   if (loaded.stop) return loaded.stop;
   const result = checkEntryFile(outDir, id, root, loaded);
   if (result.problems.length === 0) return { status: 0, lines: [`${id}: ok`] };
-  return { status: 1, lines: [...result.problems, `Next: fix each line above in ${entryPath(id)} and run try-entry again`] };
+  return { status: 1, lines: [...result.problems, `Next: fix each line above in ${entryPath(id)} and run ${unitFor(id).tryCommand} again`] };
 }

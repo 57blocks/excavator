@@ -114,6 +114,9 @@ describe('a confirmed feature is not written or verified again', () => {
   it('takes the trace files away when it is verified again from round 1', () => {
     const run = confirmedRun();
     expect(run.run('trace', 'F1').status).toBe(0);
+    const changed = clone(run.entry);
+    changed.purpose.text = 'Staff place new orders.';
+    run.writeEntry('F1', changed);
     expect(run.run('check-entry', 'F1').status).toBe(0);
     expect(stateOf(run).status).toBe('checked');
     expect(run.run('slices', 'F1').status).toBe(0);
