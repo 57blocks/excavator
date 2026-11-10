@@ -1,7 +1,7 @@
 ## 1. 目录的格式与检查
 
 - [x] 1.1 测试先红：形状、守恒（漏放、重复、未知 id、空理由）、空部分、语言、禁用词、块与列表写错
-- [x] 1.2 `outline-shape.mjs`、`outline-check.mjs`、块的清单；`handbook.mjs` 加命令 `outline-facts`、`check-outline`
+- [x] 1.2 `lib/outline.mjs`（格式、检查与块的清单）；`handbook.mjs` 加命令 `outline-facts`、`check-outline`
 
 ## 2. 按目录输出
 
@@ -21,6 +21,6 @@
 
 ## 5. 验收
 
-- [ ] 5.1 O4 变异
-- [ ] 5.2 O5 真实页面：审阅副本与另一个语料各写一份目录，截图
-- [ ] 5.3 O6 测试与检查，写 `acceptance.md`
+- [x] 5.1 O4 变异
+- [ ] 5.2 O5 真实页面：审阅副本与另一个语料各写一份目录，截图（审阅副本已完成；另一个语料待下次全量运行，见 acceptance.md）
+- [x] 5.3 O6 测试与检查，写 `acceptance.md`
