@@ -29,3 +29,10 @@
 - [ ] 4.1 O3 变异
 - [ ] 4.2 O5 测试与检查
 - [ ] 4.3 O4 最小真实运行、审读、召回清单与 D10 的测量
+
+## 5. 导航分组
+
+提交：`feat(excavator-product-handbook): the page navigation groups its links and folds each domain`
+
+- [x] 5.1 页面测试先红（O6）
+- [x] 5.2 分组与折叠（D11），固定文字表新键
