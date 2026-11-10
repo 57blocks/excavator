@@ -2,7 +2,7 @@ import { useText } from '../lib/text';
 import type { Text } from '../lib/text';
 import { findingCategoryKey } from '../lib/types';
 import type { Level, PageData, RemedyFact } from '../lib/types';
-import { placeText } from './Locations';
+import { Chips } from './Locations';
 import { useView } from '../lib/links';
 
 /** A level as the reader sees it: P0 to P2, or the word for none. */
@@ -68,9 +68,8 @@ export function RecommendationsPage({ data }: { data: PageData }) {
                         <p className="muted">{t('page.remedies.groups')}</p>
                         <ul className="plain-list">
                           {recommendation.groups.map((group) => {
-                            const where = (places.get(group.id) ?? []).map((place) => placeText(t, place)).join('; ');
                             const values = { level: levelName(t, group.level), category: t(findingCategoryKey(group.category)), statement: group.text };
-                            return <li key={group.id}>{where === '' ? t('md.remedies.groupLine', values) : t('md.remedies.groupLineTechnical', { ...values, places: where })}</li>;
+                            return <li key={group.id}>{t('md.remedies.groupLine', values)}<Chips citations={places.get(group.id) ?? []} /></li>;
                           })}
                         </ul>
                       </div>

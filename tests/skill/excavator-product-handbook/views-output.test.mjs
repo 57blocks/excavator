@@ -226,8 +226,8 @@ describe('entity sections and matrices', () => {
       const at = (heading) => body.indexOf(heading);
       expect(at('## All scheduled jobs'), name).toBeGreaterThan(0);
       expect(at('## Domains'), name).toBeGreaterThan(at('## All scheduled jobs'));
-      expect(at('## Roles\n'), name).toBeGreaterThan(at('## Domains'));
-      expect(at('## Roles by feature'), name).toBeGreaterThan(at('## Roles\n'));
+      expect(at('\n## Roles\n'), name).toBeGreaterThan(at('## Domains'));
+      expect(at('## Roles by feature'), name).toBeGreaterThan(at('\n## Roles\n'));
       expect(at('## Coverage'), name).toBeGreaterThan(at('## Roles by feature'));
     }
   });
@@ -236,12 +236,12 @@ describe('entity sections and matrices', () => {
     const run = viewsRun();
     assemble(run, 'product');
     const body = text(run, 'handbook.md');
-    const domains = sectionOf(body, '## Domains', '## Roles\n');
+    const domains = sectionOf(body, '## Domains', '\n## Roles\n');
     expect(domains).toContain('### Order handling');
     expect(domains).toContain('Features: 2. Features with a verified entry: 1.');
     expect(domains).toContain('- F1 Orders: Staff place new orders for customers.');
     expect(domains).not.toContain('F2 Archive:');
-    const roles = sectionOf(body, '## Roles\n', '## Roles by feature');
+    const roles = sectionOf(body, '\n## Roles\n', '## Roles by feature');
     expect(roles).toContain('### Clerk\n\n- F1 Orders: Create an order.');
     expect(roles).toContain('### Approver\n\nNone.');
     const matrix = sectionOf(body, '## Roles by feature', '## Coverage');

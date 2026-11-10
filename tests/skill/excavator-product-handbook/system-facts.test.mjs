@@ -308,7 +308,7 @@ describe('system facts: one row per application root, whatever the overview says
     expect(section).toContain('Applications: 2. Source files: 3.');
     expect(section).toContain(`| repos/api | ${NOT_VERIFIED} | ${NOT_VERIFIED} | JavaScript (2) |`);
     expect(section).toContain('### Areas and roles');
-    for (const gone of ['### Purpose', '### Who uses it', '### External systems', 'Staff place', 'Slack']) expect(section).not.toContain(gone);
+    for (const gone of ['### Purpose', '### User groups', '### External systems', 'Staff place', 'Slack']) expect(section).not.toContain(gone);
   });
 
   it('is the same bytes twice, with the rows in directory order', () => {

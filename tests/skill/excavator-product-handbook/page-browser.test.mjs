@@ -109,6 +109,9 @@ suite('page in a browser (O8)', () => {
     await page.waitFor(`document.querySelector(${JSON.stringify(selector)})`, `${selector} after ${hash}`);
   };
 
+  // The text of a block keeps (nearly) the whole content width of its list, the opposite of a squeezed column.
+  const fullWidth = (page, selector) => page.evaluate(`(() => { const el = document.querySelector(${JSON.stringify(selector)}); const list = el.closest('.item-list'); return el.getBoundingClientRect().width >= list.getBoundingClientRect().width * 0.6; })()`);
+
   for (const [width, height] of [[375, 812], [1280, 800]]) {
     describe(`at ${width}x${height}`, () => {
       it('opens from file:// with no network request and no console error, and shows each view by hash', async () => {
@@ -123,21 +126,18 @@ suite('page in a browser (O8)', () => {
         expect(await page.evaluate("document.querySelector('[data-view=\"overview\"] .eyebrow').textContent")).toBe('handbook-fixture');
         await fits(page, width, 'the overview');
         expect(await page.evaluate("document.querySelectorAll('.area-card').length")).toBe(2);
-        // The system overview: its purpose and the wide application table, which scrolls in its own box on a phone.
+        // The system overview: its purpose and the applications, each a block that has the full width (not a column of a wide table).
         expect(await page.evaluate("document.querySelector('[data-part=\"system\"] #sys-purpose').parentElement.textContent")).toContain('Staff place and review orders for customers.');
-        expect(await page.evaluate("document.querySelectorAll('[data-part=\"system\"] #sys-applications ~ .table-scroll tbody tr').length")).toBe(1);
-        if (width < 500) {
-          expect(await page.evaluate("(() => { const box = document.querySelector('#sys-applications').parentElement.querySelector('.table-scroll'); return box.scrollWidth > box.clientWidth; })()")).toBe(true);
-        }
+        expect(await page.evaluate("document.querySelectorAll('[data-part=\"system\"] #sys-applications ~ .item-list li.item').length")).toBe(1);
+        expect(await fullWidth(page, '[data-part="system"] #sys-applications ~ .item-list li.item')).toBe(true);
 
         await goTo(page, '#/feature/F1', '[data-view="feature"][data-feature="F1"]');
         expect(await page.evaluate('document.title')).toBe('Orders - handbook-fixture - Product handbook');
         await fits(page, width, 'the feature page');
-        expect(await page.evaluate("document.querySelectorAll('.table-scroll').length")).toBeGreaterThanOrEqual(2);
-        if (width < 500) {
-          // The wide table keeps its width inside its own box: the box scrolls, the page does not.
-          expect(await page.evaluate("Array.from(document.querySelectorAll('.table-scroll')).some((box) => box.scrollWidth > box.clientWidth)")).toBe(true);
-        }
+        // The rules and the notifications hold free text: blocks, not tables, and the long rule keeps the full width of its block.
+        expect(await page.evaluate("document.querySelectorAll('[data-view=\"feature\"] .item-list').length")).toBeGreaterThanOrEqual(2);
+        expect(await page.evaluate("document.querySelectorAll('[data-view=\"feature\"] table').length")).toBe(0);
+        expect(await fullWidth(page, '[data-view="feature"] [data-part="fields"] li.item .item-body')).toBe(true);
 
         await goTo(page, '#/feature/F2', '[data-view="feature"][data-feature="F2"] .notice');
         await goTo(page, '#/coverage', '[data-view="coverage"]');
@@ -149,21 +149,18 @@ suite('page in a browser (O8)', () => {
         const summary = JSON.parse(await page.evaluate("document.getElementById('xv-product-handbook-data').textContent")).summary;
         expect(summary.notifications).toHaveLength(1);
         expect(summary.jobs).toHaveLength(1);
-        await goTo(page, '#/notifications', '[data-view="notifications"] table');
+        await goTo(page, '#/notifications', '[data-view="notifications"] .item-list');
         expect(await page.evaluate('document.title')).toBe('All notifications - handbook-fixture - Product handbook');
         await fits(page, width, 'the notification table page');
-        expect(await page.evaluate("document.querySelectorAll('[data-view=\"notifications\"] tbody tr').length")).toBe(summary.notifications.length);
-        expect(await page.evaluate("document.querySelector('[data-view=\"notifications\"] tbody tr').textContent")).toContain('A new order waits for approval.');
+        expect(await page.evaluate("document.querySelectorAll('[data-view=\"notifications\"] li.item').length")).toBe(summary.notifications.length);
+        expect(await page.evaluate("document.querySelector('[data-view=\"notifications\"] li.item').textContent")).toContain('A new order waits for approval.');
         expect(await page.evaluate("document.querySelector('[data-view=\"notifications\"] .summary-counts').textContent")).toContain('Notifications listed: 1.');
-        await goTo(page, '#/jobs', '[data-view="jobs"] table');
+        await goTo(page, '#/jobs', '[data-view="jobs"] .item-list');
         expect(await page.evaluate('document.title')).toBe('All scheduled jobs - handbook-fixture - Product handbook');
         await fits(page, width, 'the job table page');
-        expect(await page.evaluate("document.querySelectorAll('[data-view=\"jobs\"] tbody tr').length")).toBe(summary.jobs.length);
-        expect(await page.evaluate("document.querySelector('[data-view=\"jobs\"] tbody code.schedule').textContent")).toBe('0 9 * * *');
-        expect(await page.evaluate("document.querySelector('[data-view=\"jobs\"] tbody tr').textContent")).toContain('No verified description');
-        if (width < 500) {
-          expect(await page.evaluate("Array.from(document.querySelectorAll('[data-view=\"jobs\"] .table-scroll')).some((box) => box.scrollWidth > box.clientWidth)")).toBe(true);
-        }
+        expect(await page.evaluate("document.querySelectorAll('[data-view=\"jobs\"] li.item').length")).toBe(summary.jobs.length);
+        expect(await page.evaluate("document.querySelector('[data-view=\"jobs\"] li.item code.schedule').textContent")).toBe('0 9 * * *');
+        expect(await page.evaluate("document.querySelector('[data-view=\"jobs\"] li.item').textContent")).toContain('No verified description');
 
         await goTo(page, '#/nowhere', '[data-view="not-found"]');
         await goTo(page, '#/feature/missing', '[data-view="not-found"]');
@@ -265,7 +262,7 @@ suite('page in a browser (O8)', () => {
         await page.waitFor('document.querySelector(\'[data-part="locations"]\')', 'the source locations after the switch');
         expect(await page.evaluate('window.location.hash')).toBe('#/technical/feature/F1');
         expect(await page.evaluate("document.querySelector('[data-view=\"feature\"]').getAttribute('data-feature')")).toBe('F1');
-        expect(await page.evaluate("document.querySelector('[data-part=\"locations\"]').textContent")).toMatch(/src\/forms\/order-form\.js, lines? \d+/);
+        expect(await page.evaluate("document.querySelector('[data-part=\"locations\"]').textContent")).toMatch(/src\/forms\/order-form\.js:\s?\d+/);
         await fits(page, width, 'the technical feature page');
         // The technical rail is by application: the application, then its domains, then their features.
         expect(await page.evaluate("document.querySelectorAll('.rail [data-application]').length")).toBeGreaterThan(0);
@@ -307,7 +304,7 @@ suite('page in a browser (O8)', () => {
   }
 
   // O2 of openspec change handbook-history-appendix: the code health page and the three appendix pages open in both views at both widths
-  // with the tables inside their own boxes (no sideways scroll of the page), the technical view with the path of each file, and no console error.
+  // with the free text in blocks and the tables inside their own boxes (no sideways scroll of the page), the technical view with the path of each file, and no console error.
   for (const [width, height] of [[375, 812], [1280, 800]]) {
     it(`shows the code health and the appendix pages at ${width}x${height}`, async () => {
       const page = await browser.openPage({ width, height });
@@ -316,8 +313,8 @@ suite('page in a browser (O8)', () => {
       for (const [hash, selector, what] of [
         ['#/product/history', '[data-view="history"] [data-part="history-years"]', 'the product code health page'],
         ['#/technical/history', '[data-view="history"] [data-part="history-hotspots"]', 'the technical code health page'],
-        ['#/product/open-questions', '[data-view="open-questions"] table', 'the open questions page'],
-        ['#/technical/glossary', '[data-view="glossary"] table', 'the glossary page'],
+        ['#/product/open-questions', '[data-view="open-questions"] .item-list', 'the open questions page'],
+        ['#/technical/glossary', '[data-view="glossary"] .def-list', 'the glossary page'],
         ['#/product/sources', '[data-view="sources"] table', 'the sources and scope page'],
       ]) {
         await goTo(page, hash, selector);

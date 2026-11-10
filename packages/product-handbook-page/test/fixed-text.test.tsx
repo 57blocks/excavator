@@ -189,7 +189,7 @@ const decode = (text: string): string => text.replace(/&quot;/g, '"').replace(/&
 
 /** Every visible text node and every text attribute of the markup. */
 function visibleTexts(html: string): string[] {
-  const nodes = html.split(/<[^>]*>/).map((text) => decode(text).trim()).filter((text) => text !== '');
+  const nodes = html.replace(/<wbr\/>/g, '').split(/<[^>]*>/).map((text) => decode(text).trim()).filter((text) => text !== '');
   const attributes = Array.from(html.matchAll(/\s(?:aria-label|title|alt|placeholder|aria-description)="([^"]*)"/g), (match) => decode(match[1]).trim());
   return [...nodes, ...attributes];
 }
@@ -243,14 +243,23 @@ describe('every fixed text of the page comes from the ui table (O8, node half)',
   it('shows the data text and the marked fixed text together (the fixture reaches the page)', () => {
     const html = render(populated, `#/feature/${featureId(populated, 0)}`);
     for (const text of ['purpose', 'role one', 'front rule', 'back rule two', 'operation', 'trigger', 'searched place', 'menu label']) expect(html).toContain(d(text));
-    for (const key of ['md.section.purpose', 'md.table.frontendRules', 'md.table.channel', 'md.section.unknowns', 'page.breadcrumb.label']) expect(html).toContain(marked[key]);
+    for (const key of ['md.section.purpose', 'md.table.frontendRules', 'md.table.trigger', 'md.section.unknowns', 'page.breadcrumb.label']) expect(html).toContain(marked[key]);
+    // Rules, states and notifications hold free text: item lists and a definition list, no table.
+    expect(html).not.toContain('<table');
+    expect(html).toContain('<ul class="item-list" role="list" data-part="fields"');
+    expect(html).toContain('<dl class="def-list" data-part="states"');
+    expect(html).toContain('<ul class="item-list" role="list" data-part="notifications"');
   });
 
   it('lists the removed items of each feature with the result text, a count and the reason; an item that went with its parent has no reason', () => {
     const html = render(populated, '#/coverage');
     for (const text of ['a claim', 'a reason', 'another claim', 'another reason', 'a child', 'lost claim', 'lost reason']) expect(html).toContain(d(text));
-    for (const key of ['md.coverage.removedHeading', 'md.table.item', 'md.table.result', 'md.verdict.contradicted', 'md.verdict.unverified', 'md.verdict.withParent']) expect(html).toContain(marked[key]);
-    expect(html).toContain('data-empty="true"');
+    for (const key of ['md.coverage.removedHeading', 'md.table.reason', 'md.verdict.contradicted', 'md.verdict.unverified', 'md.verdict.withParent']) expect(html).toContain(marked[key]);
+    // Each removed item is a block with its result first, the claim as the body and the reason under it; an item that went with its parent has no reason line.
+    const removed = html.slice(html.indexOf('id="cov-removed"'), html.indexOf('id="cov-findings-unfinished"'));
+    expect(removed).not.toContain('<table');
+    expect((removed.match(/<li class="item">/g) ?? []).length).toBeGreaterThan(0);
+    expect((removed.match(new RegExp(`${marked['md.table.reason']}</span>`, 'g')) ?? []).length).toBe((removed.match(/<li class="item">/g) ?? []).length - 1);
     // Nothing removed: the section says so with the shared "none" text.
     const section = (page: string): string => page.slice(page.indexOf('id="cov-removed"'), page.indexOf('id="cov-findings-unfinished"'));
     expect(section(render(allWritten, '#/coverage'))).toContain(marked['md.none']);
@@ -273,18 +282,63 @@ describe('every fixed text of the page comes from the ui table (O8, node half)',
   it('shows the rows of the two tables with their fixed texts, the schedule as written, and the reason of an unassigned job', () => {
     const notifications = render(populated, '#/notifications');
     for (const text of ['note trigger one', 'note content two', 'note recipient', 'note channel']) expect(notifications).toContain(d(text));
-    for (const key of ['md.summary.notifications.heading', 'md.summary.notifications.note', 'md.table.feature', 'md.table.trigger']) expect(notifications).toContain(marked[key]);
+    for (const key of ['md.summary.notifications.heading', 'md.summary.notifications.note', 'md.table.trigger', 'md.table.recipient', 'md.table.content']) expect(notifications).toContain(marked[key]);
     expect(notifications).toContain(`${MARK}Features with a verified entry: 2 of 6. Notifications listed: 2.`);
     expect(notifications).not.toContain(marked['md.summary.notifications.none']);
-    expect((notifications.match(/<tbody>[\s\S]*<\/tbody>/)?.[0].match(/<tr>/g) ?? []).length).toBe(2);
+    expect(notifications).not.toContain('<table');
+    expect((notifications.match(/<li class="item">/g) ?? []).length).toBe(2);
 
     const jobs = render(populated, '#/jobs');
     for (const text of ['c1', 'job when two', 'job effect one', 'job reason']) expect(jobs).toContain(d(text));
-    expect(jobs).toContain(`${MARK}Scheduled jobs listed: 3. Schedule written on the registration line: 1. Schedule worked out when the job is registered: 1. Schedule not in the text of the registration line: 1. Rows with a verified description: 1.`);
+    for (const [key, value] of [['jobsListed', 3], ['jobsLiteral', 1], ['jobsComputed', 1], ['jobsAbsent', 1], ['jobsDescribed', 1]] as const) expect(jobs).toContain(`<dt>${marked[`page.stat.${key}`]}</dt><dd>${value}</dd>`);
     expect(jobs).toContain(`${MARK}Unassigned: ${d('job reason')}`);
     expect(jobs).toContain(`<code class="schedule">${d('0 9 * * *')}</code>`);
-    for (const key of ['md.summary.jobs.heading', 'md.summary.jobs.note', 'md.summary.schedule.computed', 'md.summary.schedule.absent', 'md.summary.noDescription', 'md.table.schedule', 'md.table.does']) expect(jobs).toContain(marked[key]);
-    expect((jobs.match(/<tbody>[\s\S]*<\/tbody>/)?.[0].match(/<tr>/g) ?? []).length).toBe(3);
+    for (const key of ['md.summary.jobs.heading', 'md.summary.jobs.note', 'md.summary.schedule.computed', 'md.summary.schedule.absent', 'md.summary.noDescription', 'md.table.does']) expect(jobs).toContain(marked[key]);
+    expect(jobs).not.toContain('<table');
+    expect((jobs.match(/<li class="item">/g) ?? []).length).toBe(3);
+  });
+
+  it('keeps a table for a collection of short values (the features by reach, the unwritten features and their status) while the free-text parts of the same page are item lists', () => {
+    const html = render(populated, '#/coverage');
+    expect(html).toContain('<table');
+    expect(html).toContain(`<th scope="col">${marked['md.table.reach']}</th>`);
+    expect(html).toContain(`<th scope="col">${marked['md.table.status']}</th>`);
+    expect(html).toContain('<ul class="item-list"');
+  });
+
+  it('keeps only fields with rules as blocks and puts the others on one line after the list, in field order; a screen with only rule-less fields has just that line', () => {
+    const html = render(populated, `#/feature/${featureId(populated, 0)}`);
+    const one = html.slice(html.indexOf(d('screen one')), html.indexOf(d('screen two')));
+    expect((one.match(/<li class="item"/g) ?? []).length).toBe(1);
+    expect(one).toContain(`<p class="fields-without-rules" data-part="fields-without-rules"><span class="inline-label">${marked['page.feature.fieldsWithoutRules']}</span> ${d('field two')}</p>`);
+    expect(one.indexOf('item-list')).toBeLessThan(one.indexOf('fields-without-rules'));
+    const loose: Feature = feature('F1', 'menu', 'verified', { ...fullEntry, screens: [{ name: d('only loose'), fields: [{ label: d('a'), rules: [] }, { label: d('b'), rules: [] }] }] }, 'menu label');
+    const looseData = dataFor([loose]);
+    const out = render(looseData, `#/feature/${featureId(looseData, 0)}`);
+    const screen = out.slice(out.indexOf(d('only loose')));
+    expect(screen.indexOf('fields-without-rules')).toBeGreaterThan(0);
+    expect(screen.slice(0, screen.indexOf('fields-without-rules')).includes('class="item-list"')).toBe(false);
+    expect(out).toContain(`${d('a')} \u00b7 ${d('b')}</p>`);
+  });
+
+  it('groups unassigned candidates with the same kind and reason into one block with the reason once, groups ordered by first candidate', () => {
+    const rows = [
+      ...['c1', 'c2', 'c3'].map((candidate) => ({ candidate: d(candidate), kind: 'page' as const, reason: d('same reason') })),
+      { candidate: d('c4'), kind: 'page' as const, reason: d('other reason') },
+      { candidate: d('c5'), kind: 'job' as const, reason: d('same reason') },
+      ...Array.from({ length: 10 }, (_, at) => ({ candidate: d(`z${at}`), kind: 'page' as const, reason: d('many') })),
+    ];
+    const html = render(dataFor([feature('F1', 'menu', 'verified', fullEntry, 'menu label')], rows), '#/coverage');
+    const part = html.slice(html.indexOf('data-part="unassigned"'), html.indexOf('id="cov-unwritten"'));
+    expect((part.match(/<li class="item"/g) ?? []).length).toBe(4);
+    expect((part.match(new RegExp(d('same reason'), 'g')) ?? []).length).toBe(2);
+    expect(part.indexOf(d('c1'))).toBeLessThan(part.indexOf(d('c4')));
+    const many = part.split('<li class="item"').find((item) => item.includes(d('many'))) ?? '';
+    const shown = many.slice(0, many.indexOf('item-body'));
+    expect((shown.match(/<code class="item-code">/g) ?? []).length).toBe(8);
+    const collapsed = many.slice(many.indexOf('<details'));
+    expect(collapsed).toContain(marked['page.coverage.moreCandidates'].replace('{count}', '2'));
+    expect(collapsed).toContain(d('z9'));
   });
 
   it('says so with the fixed text instead of an empty table when a table has no row', () => {
@@ -312,7 +366,7 @@ describe('every fixed text of the page comes from the ui table (O8, node half)',
   it('shows the system overview: its text, the application facts from the script, the history cells and the area table', () => {
     const html = render(populated, '#/');
     for (const text of ['first summary sentence.', 'second summary sentence.', 'who two', 'does one', 'system one', 'use one', 'app/dir', 'app name', 'app does', '2023-02-01', '2024-01-20', 'overview unknown', 'overview searched', 'area one', 'role two']) expect(html).toContain(d(text));
-    for (const key of ['md.overview.heading', 'md.overview.audiencesHeading', 'md.overview.applicationsHeading', 'md.overview.integrationsHeading', 'md.overview.areasHeading', 'md.table.directory', 'md.table.firstCommit', 'md.table.authors', 'md.table.callers', 'md.table.verified', 'md.section.unknowns']) expect(html).toContain(marked[key]);
+    for (const key of ['md.overview.heading', 'md.overview.audiencesHeading', 'md.overview.applicationsHeading', 'md.overview.integrationsHeading', 'md.overview.areasHeading', 'md.table.firstCommit', 'md.table.authors', 'md.table.callers', 'md.table.verified', 'md.section.unknowns']) expect(html).toContain(marked[key]);
     expect(html).toContain(`${MARK}Applications: 2. Source files: 11. Lines of source: 1200. Areas: 2. Features: 6. Features with a verified entry: 2. Roles: 2.`);
     expect(html).toContain(`${MARK}${d('Lang A')} (9), ${MARK}${d('Lang B')} (2)`);
     // The application with no version history says so in each of the four cells.

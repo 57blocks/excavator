@@ -66,7 +66,7 @@ describe('handbook.md: the two tables', () => {
     const text = assemble(verifiedRun());
     const at = (heading) => text.indexOf(heading);
     expect(at('### Orders')).toBeGreaterThan(-1);
-    expect(at('## All notifications')).toBeGreaterThan(at('#### What the code does not settle'));
+    expect(at('## All notifications')).toBeGreaterThan(at('#### Undetermined from the code'));
     expect(at('## All scheduled jobs')).toBeGreaterThan(at('## All notifications'));
     expect(at('## Coverage')).toBeGreaterThan(at('## All scheduled jobs'));
   });

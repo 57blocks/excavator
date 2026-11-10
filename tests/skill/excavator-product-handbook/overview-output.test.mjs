@@ -81,7 +81,7 @@ describe('handbook.md opens with the system overview', () => {
     const run = verifiedOverviewRun();
     const text = assemble(run);
     const section = sectionOf(text, '## System overview', '## Areas and features');
-    const order = ['### Purpose', '### Who uses it', '### Applications', '### External systems', '### What the code does not settle', '### Areas and roles'];
+    const order = ['### Purpose', '### User groups', '### Applications', '### External systems', '### Undetermined from the code', '### Areas and roles'];
     const at = order.map((heading) => section.indexOf(heading));
     expect(at.every((index) => index > 0)).toBe(true);
     expect([...at].sort((a, b) => a - b)).toEqual(at);
@@ -89,7 +89,7 @@ describe('handbook.md opens with the system overview', () => {
     expect(section.indexOf('Applications: 1. Source files:')).toBeLessThan(at[0]);
     expect(section).toContain('Areas: 2. Features: 5. Features with a verified entry: 0. Roles: 2.');
     expect(section).toContain('Staff place and review orders for customers.');
-    expect(section).toContain('| Who | What it does |\n| --- | --- |\n| Clerk | Creates orders. |');
+    expect(section).toContain('| Roles | What it does |\n| --- | --- |\n| Clerk | Creates orders. |');
     expect(section).toContain('| Directory | Name | What it does | Languages | Frameworks | Source files | Lines | First commit | Last commit | Commits | Authors |');
     expect(section).toContain('| External system | What it is used for | Called by, in the quoted code |\n| --- | --- | --- |\n| Slack | Reminders go to a team channel. | . |');
     expect(section).toContain('- Whether other tools call it (searched: the routes and the jobs)');
@@ -109,7 +109,7 @@ describe('handbook.md opens with the system overview', () => {
     const run = checkedOverviewRun(cleanups);
     expect(judge(run, 'overview', 1, (item) => (item.id === 'integrations[0]' ? 'contradicted' : 'verified')).status).toBe(0);
     expect(traceFeature(run, 'overview').status).toBe(0);
-    const section = sectionOf(assemble(run), '### External systems', '### What the code does not settle');
+    const section = sectionOf(assemble(run), '### External systems', '### Undetermined from the code');
     expect(section).toContain('None.');
     expect(section).not.toContain('Slack');
   });
@@ -131,7 +131,7 @@ describe('an overview that is not verified', () => {
       expect(section).toContain('| Area | Features | Verified entries | Roles |');
       expect(section).not.toContain('Staff place and review orders for customers.');
       expect(section).not.toContain('### Purpose');
-      expect(section).not.toContain('### Who uses it');
+      expect(section).not.toContain('### User groups');
       expect(section).not.toContain('### External systems');
       // The facts of the script do not depend on the overview: counts, the application row and the area table stay.
       expect(section).toContain('Applications: 1. Source files: ');
@@ -178,7 +178,7 @@ describe('the coverage section lists the removed overview items', () => {
     const section = sectionOf(text, '### Items removed because the code did not back them up');
     expect(section).toContain('#### System overview: items removed: 3');
     expect(section).toContain('| Application . (Order tool) > Serves the order pages and sends reminders. | The code shown says otherwise | The code shown names another tool. |');
-    expect(section).toContain('| Who: Clerk; What it does: Creates orders. | The code shown does not settle it | No line shown names who uses it. |');
+    expect(section).toContain('| Roles: Clerk; What it does: Creates orders. | The code shown does not settle it | No line shown names who uses it. |');
     expect(section).toContain('| External system: Slack; What it is used for: Reminders go to a team channel.; Called by, in the quoted code: . | The code shown says otherwise | Another function sends it to a different channel. |');
     // The removed items are gone from the body.
     expect(sectionOf(text, '## System overview', '## Areas and features')).not.toContain('Order tool');
@@ -291,8 +291,8 @@ describe('a translated run', () => {
     verifyChecked(run, 'overview');
     const text = assemble(run);
     const section = sectionOf(text, `## ${MARK}System overview`, `## ${MARK}Areas and features`);
-    expect(section).toContain(`### ${MARK}Who uses it`);
-    expect(section).toContain(`| ${MARK}Who | ${MARK}What it does |`);
+    expect(section).toContain(`### ${MARK}User groups`);
+    expect(section).toContain(`| ${MARK}Roles | ${MARK}What it does |`);
     expect(section).toContain(`${MARK}Staff place and review orders for customers.`);
     expect(section).toContain(`| ${MARK}External system | ${MARK}What it is used for | ${MARK}Called by, in the quoted code |`);
     // Not written: the not-written line is the translated text too.

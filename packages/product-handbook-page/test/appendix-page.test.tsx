@@ -121,8 +121,12 @@ describe('the open questions page', () => {
     expect(html).toContain(`<a href="#/product/feature/F2">${d('Reminders')}</a>`);
     expect(html).toContain(d('Whether other tools call it'));
     expect(html).toContain(d('the routes and the jobs'));
-    // The overview's row has no feature.
-    expect(html).toMatch(/<tr><td data-empty="true"><\/td><td>d~Whether other tools call it<\/td>/);
+    // Free text is an item list, not a table; the overview's item has no feature, so no first line.
+    expect(html).not.toContain('<table');
+    const overviewItem = html.slice(html.indexOf('<li class="item"'), html.indexOf('</li>', html.indexOf('<li class="item"')));
+    expect(overviewItem).not.toContain('item-attrs');
+    expect(overviewItem).toContain('<div class="item-body"><p>d~Whether other tools call it</p></div>');
+    expect(overviewItem).toContain(`${marked['md.appendix.table.searched']}`);
   });
 
   it('says None when there is no question', () => {
@@ -136,16 +140,18 @@ describe('the glossary page', () => {
   it('writes each term once with its kinds, each meaning with its features, and the features it occurs in as links', () => {
     const html = main(render(dataFor(), '#/product/glossary'));
     expect(decode(html)).toContain(`${MARK}Terms: 2.`);
-    expect(html).toContain(`<th scope="row">${d('Clerk')}</th><td>${marked['md.appendix.kind.role']}</td>`);
+    expect(html).not.toContain('<table');
+    expect(html).toContain(`<dt>${d('Clerk')}</dt><dd><p class="muted">${marked['md.appendix.kind.role']}</p>`);
     expect(html).toContain(`<li>${marked['md.appendix.meaningItem'].replace('{meaning}', d('Create an order.')).replace('{features}', d('Orders'))}</li>`);
     expect(html).toContain(`<li>${marked['md.appendix.meaningItem'].replace('{meaning}', d('Print an order.')).replace('{features}', d('Reminders'))}</li>`);
-    expect(html).toContain(`<td>${marked['md.appendix.kind.entry']}, ${marked['md.appendix.kind.screen']}</td>`);
+    expect(html).toContain(`<p class="muted">${marked['md.appendix.kind.entry']}, ${marked['md.appendix.kind.screen']}</p>`);
     expect(html).toContain(`<a href="#/product/feature/F1">${d('Orders')}</a>`);
   });
 
-  it('writes an empty meaning cell for a term without a meaning', () => {
+  it('writes no meaning list for a term without a meaning', () => {
     const html = main(render(dataFor(), '#/product/glossary'));
-    expect(html).toMatch(/<th scope="row">d~New Order<\/th><td>[^<]*<\/td><td data-empty="true"><\/td>/);
+    const term = html.slice(html.indexOf('<dt>d~New Order</dt>'), html.indexOf('</div>', html.indexOf('<dt>d~New Order</dt>')));
+    expect(term).not.toContain('<ul');
   });
 
   it('says None when there is no term', () => {

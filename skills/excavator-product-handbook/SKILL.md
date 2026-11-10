@@ -167,6 +167,8 @@ Your scope. Read only `$PLUGIN_ROOT/skills/excavator-product-handbook/ui-strings
 
 Translate every value into $LANGUAGE, in plain words, as short as the English. Keep every `{placeholder}` of a value exactly as written (same name, in braces) in the translated text, and add none: the program fills them with names, numbers and values. `page.documentTitle` is a pattern whose `{page}` receives the text of `page.nav.overview` or of `page.notFound.heading`, so write it to read right with either. Never translate a key. Add no key and leave none out.
 
+Keep the formal register of a reference document for every heading and label: noun phrases, not conversational questions (no "who can..." or "where to..." in the target language).
+
 Write only `$OUT/ui.json`, and nothing else anywhere, in this shape: `{"format": "excavator-product-handbook-ui/1", "language": "$LANGUAGE", "strings": {"<key>": "<translated value>", ...}}` with exactly the keys of the English file and a non-empty string for each.
 
 Reply with one line: `ui: written`, and nothing else.

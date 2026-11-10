@@ -99,6 +99,15 @@ const unmarked = (html: string): string[] => visibleTexts(html).filter((text) =>
 const main = (html: string): string => html.slice(html.indexOf('<main'));
 const railOf = (html: string) => html.slice(html.indexOf('<nav class="rail"'), html.indexOf('</nav>', html.indexOf('<nav class="rail"')));
 
+/** The block of one table in the tables list: from its item to the next item (or the end of the list). */
+const item = (html: string, name: string): string => {
+  const from = html.indexOf(`<li class="item" data-table="${d(name)}">`);
+  expect(from, name).toBeGreaterThan(0);
+  const rest = html.slice(from + 1);
+  const next = rest.indexOf('<li class="item"');
+  return rest.slice(0, next < 0 ? rest.indexOf('</ul></div>') : next);
+};
+
 describe('the data route and link', () => {
   it('parses #/data with and without the view and builds it back', () => {
     expect(parseHash('#/data')).toEqual({ name: 'data' });
@@ -143,18 +152,16 @@ describe('the data page', () => {
   });
 
   it('lists one row per table, by name, with the applications and counts, and the fixed text for a name that is only in migrations', () => {
-    const rows = body.slice(body.indexOf('data-part="data-tables"')).match(/<tr data-table="[^"]*">/g) ?? [];
-    expect(rows).toEqual([d('alpha'), d('beta'), d('mid'), d('zeta')].map((name) => `<tr data-table="${name}">`));
-    const zeta = body.slice(body.indexOf(`<tr data-table="${d('zeta')}">`));
-    expect(zeta.slice(0, zeta.indexOf('</tr>'))).toContain(`${MARK}${d('app-one')}: 2`);
-    expect(zeta.slice(0, zeta.indexOf('</tr>'))).toContain(`${MARK}${marked['md.data.noApplication']}: 1`);
-    const mid = body.slice(body.indexOf(`<tr data-table="${d('mid')}">`));
-    expect(mid.slice(0, mid.indexOf('</tr>'))).toContain(marked['md.data.onlyInMigrationsCell']);
+    // The declared places and the paths are long, so a table is a block with its fields, not a row of a table.
+    const rows = body.slice(body.indexOf('data-part="data-tables"')).match(/<li class="item" data-table="[^"]*">/g) ?? [];
+    expect(rows).toEqual([d('alpha'), d('beta'), d('mid'), d('zeta')].map((name) => `<li class="item" data-table="${name}">`));
+    expect(item(body, 'zeta')).toContain(`${MARK}${d('app-one')}: 2`);
+    expect(item(body, 'zeta')).toContain(`${MARK}${marked['md.data.noApplication']}: 1`);
+    expect(item(body, 'mid')).toContain(marked['md.data.onlyInMigrationsCell']);
   });
 
   it('puts the places where a name appears in a details element, with the rule of each', () => {
-    const zeta = body.slice(body.indexOf(`<tr data-table="${d('zeta')}">`));
-    const row = zeta.slice(0, zeta.indexOf('</tr>'));
+    const row = item(body, 'zeta');
     expect(row).toContain('<details class="data-mentions">');
     expect(row).toContain(`${MARK}Where the name appears (4)`);
     expect(row).toContain(`${MARK}${MARK}${d('src/z.js')}, line 2 (${marked['md.data.rule.b']})`);

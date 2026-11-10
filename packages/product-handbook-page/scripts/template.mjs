@@ -30,7 +30,7 @@ const ENTRY_NAME = 'index.html';
 export const PAGE_FONTS = [{ pkg: '@fontsource/inter', weights: [400, 500, 600], subsets: ['latin', 'latin-ext'] }];
 
 /** Packages the template must name: the ones the page certainly bundles. */
-const REQUIRED_PACKAGES = ['react', 'react-dom', ...PAGE_FONTS.map((font) => font.pkg)];
+const REQUIRED_PACKAGES = ['react', 'react-dom', '@radix-ui/react-select', ...PAGE_FONTS.map((font) => font.pkg)];
 
 /**
  * Every way the build output breaks the template contract.

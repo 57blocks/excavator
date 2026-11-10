@@ -2,31 +2,44 @@ import { useLinks, useView } from '../lib/links';
 import { useText } from '../lib/text';
 import type { ApplicationFacts, PageData } from '../lib/types';
 import { Cell, TableScroll } from './Tables';
+import { Definition, DefinitionList, Item, ItemList } from './ui/ItemList';
 
 /** The cell text of a list of facts: its items joined, or an empty cell. */
 const listText = (items: string[]): string | undefined => (items.length === 0 ? undefined : items.join(', '));
 
-function ApplicationRow({ application }: { application: ApplicationFacts }) {
+function ApplicationItem({ application }: { application: ApplicationFacts }) {
   const t = useText();
   const nav = useLinks();
   const view = useView();
   const { history } = application;
   const none = t('md.overview.noHistory');
   const unverified = t('md.overview.notVerified');
+  const facts: [string, string | number | undefined][] = [
+    ['md.table.languages', listText(application.languages.map((entry) => t('md.overview.languageItem', { language: entry.language, files: entry.files })))],
+    ['md.table.frameworks', listText(application.frameworks.map((entry) => t('md.overview.frameworkItem', { framework: entry.framework, count: entry.candidates })))],
+    ['md.table.files', application.files],
+    ['md.table.lines', application.lines],
+    ['md.table.firstCommit', history === null ? none : history.first],
+    ['md.table.lastCommit', history === null ? none : history.last],
+    ['md.table.commits', history === null ? none : history.commits],
+    ['md.table.authors', history === null ? none : history.authors],
+  ];
   return (
-    <tr>
-      <Cell row>{view === 'technical' ? <a href={nav.application(application.dir)}>{application.dir}</a> : application.dir}</Cell>
-      <Cell>{application.name ?? unverified}</Cell>
-      <Cell>{application.does ?? unverified}</Cell>
-      <Cell>{listText(application.languages.map((entry) => t('md.overview.languageItem', { language: entry.language, files: entry.files })))}</Cell>
-      <Cell>{listText(application.frameworks.map((entry) => t('md.overview.frameworkItem', { framework: entry.framework, count: entry.candidates })))}</Cell>
-      <td className="num">{application.files}</td>
-      <td className="num">{application.lines}</td>
-      <Cell>{history === null ? none : history.first}</Cell>
-      <Cell>{history === null ? none : history.last}</Cell>
-      {history === null ? <Cell>{none}</Cell> : <td className="num">{history.commits}</td>}
-      {history === null ? <Cell>{none}</Cell> : <td className="num">{history.authors}</td>}
-    </tr>
+    <Item
+      attrs={(
+        <>
+          <span>{application.name ?? unverified}</span>
+          <code className="item-code">{view === 'technical' ? <a href={nav.application(application.dir)}>{application.dir}</a> : application.dir}</code>
+        </>
+      )}
+      note={(
+        <dl className="item-facts">
+          {facts.filter(([, value]) => value !== undefined).map(([key, value]) => <div key={key}><dt>{t(key)}</dt><dd>{value}</dd></div>)}
+        </dl>
+      )}
+    >
+      <p>{application.does ?? unverified}</p>
+    </Item>
   );
 }
 
@@ -63,10 +76,9 @@ export function SystemOverview({ data }: { data: PageData }) {
           <section className="section" aria-labelledby="sys-audiences">
             <h2 className="section-title" id="sys-audiences">{t('md.overview.audiencesHeading')}</h2>
             {overview.audiences.length === 0 ? <p className="muted">{t('md.none')}</p> : (
-              <TableScroll label={t('md.overview.audiencesHeading')}>
-                <thead><tr><th scope="col">{t('md.table.who')}</th><th scope="col">{t('md.table.does')}</th></tr></thead>
-                <tbody>{overview.audiences.map((entry, at) => <tr key={at}><Cell row>{entry.who}</Cell><Cell>{entry.does}</Cell></tr>)}</tbody>
-              </TableScroll>
+              <DefinitionList part="audiences" label={t('md.overview.audiencesHeading')}>
+                {overview.audiences.map((entry, at) => <Definition key={at} term={entry.who}>{entry.does}</Definition>)}
+              </DefinitionList>
             )}
           </section>
         </>
@@ -75,17 +87,9 @@ export function SystemOverview({ data }: { data: PageData }) {
       <section className="section" aria-labelledby="sys-applications">
         <h2 className="section-title" id="sys-applications">{t('md.overview.applicationsHeading')}</h2>
         {system.applications.length === 0 ? <p className="muted">{t('md.none')}</p> : (
-          <TableScroll label={t('md.overview.applicationsHeading')} wide>
-            <thead>
-              <tr>
-                {['md.table.directory', 'md.table.name', 'md.table.does', 'md.table.languages', 'md.table.frameworks'].map((key) => <th scope="col" key={key}>{t(key)}</th>)}
-                {['md.table.files', 'md.table.lines'].map((key) => <th scope="col" className="num" key={key}>{t(key)}</th>)}
-                {['md.table.firstCommit', 'md.table.lastCommit'].map((key) => <th scope="col" key={key}>{t(key)}</th>)}
-                {['md.table.commits', 'md.table.authors'].map((key) => <th scope="col" className="num" key={key}>{t(key)}</th>)}
-              </tr>
-            </thead>
-            <tbody>{system.applications.map((application, at) => <ApplicationRow application={application} key={at} />)}</tbody>
-          </TableScroll>
+          <ItemList part="applications" label={t('md.overview.applicationsHeading')}>
+            {system.applications.map((application, at) => <ApplicationItem application={application} key={at} />)}
+          </ItemList>
         )}
       </section>
 
@@ -94,10 +98,17 @@ export function SystemOverview({ data }: { data: PageData }) {
           <section className="section" aria-labelledby="sys-integrations">
             <h2 className="section-title" id="sys-integrations">{t('md.overview.integrationsHeading')}</h2>
             {overview.integrations.length === 0 ? <p className="muted">{t('md.none')}</p> : (
-              <TableScroll label={t('md.overview.integrationsHeading')} wide>
-                <thead><tr><th scope="col">{t('md.table.system')}</th><th scope="col">{t('md.table.use')}</th><th scope="col">{t('md.table.callers')}</th></tr></thead>
-                <tbody>{overview.integrations.map((entry, at) => <tr key={at}><Cell row>{view === 'technical' ? <a href={nav.system(entry.system)}>{entry.system}</a> : entry.system}</Cell><Cell>{entry.use}</Cell><Cell>{entry.callers.join(', ')}</Cell></tr>)}</tbody>
-              </TableScroll>
+              <ItemList part="integrations" label={t('md.overview.integrationsHeading')}>
+                {overview.integrations.map((entry, at) => (
+                  <Item
+                    key={at}
+                    attrs={view === 'technical' ? <a href={nav.system(entry.system)}>{entry.system}</a> : entry.system}
+                    note={entry.callers.length === 0 ? undefined : <p><span className="inline-label">{t('md.table.callers')}</span> {entry.callers.join(', ')}</p>}
+                  >
+                    <p>{entry.use}</p>
+                  </Item>
+                ))}
+              </ItemList>
             )}
           </section>
 

@@ -13,9 +13,9 @@ export function TableScroll({ label, wide = false, children }: { label: string; 
   );
 }
 
-/** A cell that may be empty: an empty one shows a dash drawn by the stylesheet, not text. */
-export function Cell({ children, row = false }: { children?: ReactNode; row?: boolean }) {
+/** A cell that may be empty; `col` says what the column holds: `text` (a sentence or more, kept at a readable width) or `short` (a word or number, never broken): an empty one shows a dash drawn by the stylesheet, not text. */
+export function Cell({ children, row = false, col }: { children?: ReactNode; row?: boolean; col?: 'text' | 'short' }) {
   const empty = children === undefined || children === null || children === false;
-  const props = { 'data-empty': empty ? 'true' : undefined } as const;
+  const props = { 'data-empty': empty ? 'true' : undefined, 'data-col': col } as const;
   return row ? <th scope="row" {...props}>{children}</th> : <td {...props}>{children}</td>;
 }

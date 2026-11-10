@@ -1,7 +1,8 @@
 import { useLinks } from '../lib/links';
 import { systemName, useText } from '../lib/text';
 import type { JobRow, PageData } from '../lib/types';
-import { Cell, TableScroll } from './Tables';
+import { Item, ItemField, ItemList } from './ui/ItemList';
+import { StatStrip } from './ui/StatStrip';
 
 /** One row per scheduled-job candidate: its feature (or why it has none), the schedule the registration line gives, and what a verified item says it does. */
 export function JobsPage({ data }: { data: PageData }) {
@@ -19,35 +20,38 @@ export function JobsPage({ data }: { data: PageData }) {
         <p className="eyebrow">{systemName(data.project, t)}</p>
         <h1 className="page-title">{heading}</h1>
       </header>
-      <p className="summary-counts">{t('md.summary.jobs.counts', { total: counts.jobRows, ...counts.schedule, described: counts.described })}</p>
+      <StatStrip part="jobs-stats" stats={[
+        { label: t('page.stat.jobsListed'), value: counts.jobRows },
+        { label: t('page.stat.jobsLiteral'), value: counts.schedule.literal },
+        { label: t('page.stat.jobsComputed'), value: counts.schedule.computed },
+        { label: t('page.stat.jobsAbsent'), value: counts.schedule.absent },
+        { label: t('page.stat.jobsDescribed'), value: counts.described },
+      ]} />
       <p className="muted summary-note">{t('md.summary.jobs.note')}</p>
       {jobs.length === 0 ? <p className="muted">{t('md.summary.jobs.none')}</p> : (
-        <TableScroll label={heading} wide>
-          <thead>
-            <tr>
-              <th scope="col">{t('md.table.candidate')}</th>
-              <th scope="col">{t('md.table.feature')}</th>
-              <th scope="col">{t('md.table.schedule')}</th>
-              <th scope="col">{t('md.table.does')}</th>
-            </tr>
-          </thead>
-          <tbody>
-            {jobs.map((job) => (
-              <tr key={job.candidate}>
-                <Cell row>{job.candidate}</Cell>
-                <Cell>{featureCell(job)}</Cell>
-                <td>{job.schedule.bucket === 'literal' ? <code className="schedule">{job.schedule.literal}</code> : t(`md.summary.schedule.${job.schedule.bucket}`)}</td>
-                <td>
-                  {job.automatic.length === 0 ? t('md.summary.noDescription') : (
-                    <ul className="rule-list">
-                      {job.automatic.map((item, at) => <li key={at}>{t('md.automatic.item', { when: item.when, effect: item.effect })}</li>)}
-                    </ul>
-                  )}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </TableScroll>
+        <ItemList part="jobs" label={heading}>
+          {jobs.map((job) => (
+            <Item
+              key={job.candidate}
+              note={job.feature === null ? <p>{featureCell(job)}</p> : undefined}
+              attrs={(
+                <>
+                  <code className="item-code">{job.candidate}</code>
+                  {job.feature !== null && <span className="item-owner">{featureCell(job)}</span>}
+                  <span className="channel-chip">{job.schedule.bucket === 'literal' ? <code className="schedule">{job.schedule.literal}</code> : t(`md.summary.schedule.${job.schedule.bucket}`)}</span>
+                </>
+              )}
+            >
+              <ItemField label={t('md.table.does')}>
+                {job.automatic.length === 0 ? t('md.summary.noDescription') : (
+                  <ul className="rule-list">
+                    {job.automatic.map((item, at) => <li key={at}>{t('md.automatic.item', { when: item.when, effect: item.effect })}</li>)}
+                  </ul>
+                )}
+              </ItemField>
+            </Item>
+          ))}
+        </ItemList>
       )}
     </article>
   );

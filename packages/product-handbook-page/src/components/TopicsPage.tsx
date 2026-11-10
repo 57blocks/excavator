@@ -3,21 +3,17 @@ import { useText } from '../lib/text';
 import type { Text } from '../lib/text';
 import { TOPICS, findingCategoryKey } from '../lib/types';
 import type { PageData, TopicBasis } from '../lib/types';
-import { placeText } from './Locations';
+import { Chips } from './Locations';
 import { levelName } from './RecommendationsPage';
-import { Cell, TableScroll } from './Tables';
+import { Item, ItemCollapse, ItemField, ItemList } from './ui/ItemList';
 
 type Places = Map<string, { file: string; startLine: number | null; endLine: number | null }[]>;
 
 /** What one row rests on, in words: a verified item with its feature, a group of findings with its level and category; the technical view adds where the passages are. */
-function basisText(t: Text, entry: TopicBasis, places: Places): string {
-  const where = (places.get(entry.id) ?? []).map((place) => placeText(t, place)).join('; ');
-  if (entry.kind === 'item') {
-    const values = { feature: entry.feature, text: entry.text };
-    return where === '' ? t('md.topics.basisItem', values) : t('md.topics.basisItemTechnical', { ...values, places: where });
-  }
+function basisText(t: Text, entry: TopicBasis): string {
+  if (entry.kind === 'item') return t('md.topics.basisItem', { feature: entry.feature, text: entry.text });
   const values = { level: levelName(t, entry.level), category: t(findingCategoryKey(entry.category)), statement: entry.text };
-  return where === '' ? t('md.remedies.groupLine', values) : t('md.remedies.groupLineTechnical', { ...values, places: where });
+  return t('md.remedies.groupLine', values);
 }
 
 /**
@@ -57,26 +53,35 @@ export function TopicsPage({ data }: { data: PageData }) {
                       <p className="muted" data-part="topic-empty">{isDomain ? t('md.topics.emptyEntries', { count: coverage.entriesRead }) : t('md.topics.emptyGroups', { count: coverage.groupsRead })}</p>
                     )}
                     {own.length > 0 && (
-                      <TableScroll label={t(`md.topics.${topic.id}.heading`)} wide>
-                        <thead>
-                          <tr>
-                            {topic.columns.map((column) => <th scope="col" key={column}>{t(`md.topics.col.${topic.id}.${column}`)}</th>)}
-                            <th scope="col">{t('md.topics.col.basis')}</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {own.map((row, at) => (
-                            <tr key={at}>
-                              {topic.columns.map((column, index) => <Cell key={column} row={index === 0}>{row.fields[column] === '' ? undefined : row.fields[column]}</Cell>)}
-                              <td data-part="topic-basis">
-                                <ul className="plain-list">
-                                  {row.basis.map((entry, index) => <li key={index}>{basisText(t, entry, places)}</li>)}
-                                </ul>
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </TableScroll>
+                      <ItemList part={`topic-${topic.id}`} label={t(`md.topics.${topic.id}.heading`)}>
+                        {own.map((row, at) => {
+                          const [head, ...rest] = topic.columns;
+                          const located = row.basis.filter((entry) => (places.get(entry.id) ?? []).length > 0);
+                          return (
+                            <Item
+                              key={at}
+                              attrs={row.fields[head] === '' ? undefined : row.fields[head]}
+                              note={(
+                                <div data-part="topic-basis">
+                                  <span className="inline-label">{t('md.topics.col.basis')}</span>
+                                  <ul className="plain-list">
+                                    {row.basis.map((entry, index) => <li key={index}>{basisText(t, entry)}</li>)}
+                                  </ul>
+                                </div>
+                              )}
+                              extra={located.length === 0 ? undefined : (
+                                <ItemCollapse summary={t('md.locations.heading')}>
+                                  <ul className="plain-list">
+                                    {located.map((entry, index) => <li key={index}><Chips citations={places.get(entry.id) ?? []} /></li>)}
+                                  </ul>
+                                </ItemCollapse>
+                              )}
+                            >
+                              {rest.filter((column) => row.fields[column] !== '').map((column) => <ItemField key={column} label={t(`md.topics.col.${topic.id}.${column}`)}>{row.fields[column]}</ItemField>)}
+                            </Item>
+                          );
+                        })}
+                      </ItemList>
                     )}
                   </section>
                 );

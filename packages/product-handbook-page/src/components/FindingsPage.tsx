@@ -5,9 +5,12 @@ import { useText } from '../lib/text';
 import type { Text } from '../lib/text';
 import { FINDING_CATEGORIES, LEVELS, findingCategoryKey } from '../lib/types';
 import type { FindingCategory, FindingGroup, FindingOwner, Level, PageData } from '../lib/types';
-import { placeText } from './Locations';
+import { Chips } from './Locations';
 import { PriorityBadge } from './PriorityBadge';
-import { Cell, TableScroll } from './Tables';
+import { Item, ItemCollapse, ItemList } from './ui/ItemList';
+import { StatChips, StatStrip } from './ui/StatStrip';
+import { SelectField } from './ui/Select';
+import { FilterToolbar } from './ui/Toolbar';
 
 /** The owner filter: every owner (`all`), the application owners (`system`), or one feature (`feature:<id>`). */
 export type OwnerFilter = 'all' | 'system' | `feature:${string}`;
@@ -63,7 +66,6 @@ export function FindingsPage({ data }: { data: PageData }) {
   const levels = countByLevel(data.findings);
   const levelName = (entry: Level | 'none'): string => (entry === 'none' ? t('md.priority.unranked') : t('md.priority.level', { rank: entry.slice(1) }));
   const places = new Map((view === 'technical' ? data.technical?.findingLocations ?? [] : []).map((entry) => [entry.id, entry.citations]));
-  const placesOf = (id: string): string => (places.get(id) ?? []).map((place) => placeText(t, place)).join('; ');
   const verified = data.features.filter((feature) => feature.findingsStatus === 'verified').length;
   const systemTotal = data.coverage.systemFindingsTotal;
   const systemVerified = systemTotal - data.coverage.systemFindingsUnfinished.length - data.coverage.systemFindingsNotWritten;
@@ -76,46 +78,44 @@ export function FindingsPage({ data }: { data: PageData }) {
         <h1 className="page-title">{t('md.findings.heading')}</h1>
       </header>
       <p className="muted summary-note">{t('md.findings.note')}</p>
-      <p className="summary-counts">
-        {t('md.findings.counts', {
-          total: data.findings.length,
-          statements,
-          merged: data.findings.filter((group) => group.items.length > 1).length,
-          verified,
-          featureTotal: data.features.length,
-          systemVerified,
-          systemTotal,
-          categories: counts.map((entry) => t('md.findings.categoryCount', { category: t(findingCategoryKey(entry.category)), count: entry.count })).join('; '),
-          priority: levels.map((entry) => t('md.priority.count', { level: levelName(entry.level), count: entry.count })).join('; '),
-        })}
-      </p>
+      <StatStrip part="findings-stats" stats={[
+        { label: t('page.stat.findings'), value: data.findings.length },
+        { label: t('page.stat.statements'), value: statements },
+        { label: t('page.stat.merged'), value: data.findings.filter((group) => group.items.length > 1).length },
+        { label: t('page.stat.featuresVerified'), value: t('page.stat.ofTotal', { value: verified, total: data.features.length }) },
+        { label: t('page.stat.systemVerified'), value: t('page.stat.ofTotal', { value: systemVerified, total: systemTotal }) },
+      ]} />
+      <StatChips part="findings-level-stats" title={t('page.stat.byPriority')} stats={levels.map((entry) => ({ label: levelName(entry.level), value: entry.count }))} />
+      <StatChips part="findings-category-stats" title={t('page.stat.byCategory')} stats={counts.map((entry) => ({ label: t(findingCategoryKey(entry.category)), value: entry.count }))} />
       {data.findings.length === 0 ? <p className="muted">{t('md.findings.none')}</p> : (
         <>
-          <div className="findings-filters" data-part="findings-filters">
-            <label className="findings-filter">
-              <span>{t('page.findings.filter.category')}</span>
-              <select value={selected} onChange={(event) => setSelected(Number(event.target.value))}>
-                <option value={-1}>{t('page.findings.filter.all')}</option>
-                {counts.map((entry, at) => <option value={at} key={entry.category}>{t('md.findings.categoryCount', { category: t(findingCategoryKey(entry.category)), count: entry.count })}</option>)}
-              </select>
-            </label>
-            <label className="findings-filter" data-part="findings-level-filter">
-              <span>{t('page.findings.filter.level')}</span>
-              <select value={level} onChange={(event) => setLevel(event.target.value as LevelFilter)}>
-                <option value="all">{t('page.findings.filter.allLevels')}</option>
-                {levels.map((entry) => <option value={entry.level} key={entry.level}>{t('md.priority.count', { level: levelName(entry.level), count: entry.count })}</option>)}
-              </select>
-            </label>
-            <label className="findings-filter" data-part="findings-owner-filter">
-              <span>{t('page.findings.filter.owner')}</span>
-              <select value={owner} onChange={(event) => setOwner(event.target.value as OwnerFilter)}>
-                <option value="all">{t('page.findings.filter.allOwners')}</option>
-                <option value="system">{t('page.findings.filter.system')}</option>
-                {ownerFeatures.map((feature) => <option value={`feature:${feature.id}`} key={feature.id}>{t('md.summary.feature', { id: feature.id, name: feature.name })}</option>)}
-              </select>
-            </label>
-            <p className="muted" role="status">{t('page.findings.shown', { shown: shown.length, total: data.findings.length })}</p>
-          </div>
+          <FilterToolbar part="findings-toolbar" status={t('page.findings.shown', { shown: shown.length, total: data.findings.length })}>
+            <SelectField
+              name="category"
+              label={t('page.findings.filter.category')}
+              value={String(selected)}
+              onValueChange={(next) => setSelected(Number(next))}
+              options={[{ value: '-1', label: t('page.findings.filter.all') }, ...counts.map((entry, at) => ({ value: String(at), label: t('md.findings.categoryCount', { category: t(findingCategoryKey(entry.category)), count: entry.count }) }))]}
+            />
+            <SelectField
+              name="level"
+              label={t('page.findings.filter.level')}
+              value={level}
+              onValueChange={(next) => setLevel(next as LevelFilter)}
+              options={[{ value: 'all', label: t('page.findings.filter.allLevels') }, ...levels.map((entry) => ({ value: entry.level, label: t('md.priority.count', { level: levelName(entry.level), count: entry.count }) }))]}
+            />
+            <SelectField
+              name="owner"
+              label={t('page.findings.filter.owner')}
+              value={owner}
+              onValueChange={(next) => setOwner(next as OwnerFilter)}
+              options={[
+                { value: 'all', label: t('page.findings.filter.allOwners') },
+                { value: 'system', label: t('page.findings.filter.system') },
+                ...ownerFeatures.map((feature) => ({ value: `feature:${feature.id}`, label: t('md.summary.feature', { id: feature.id, name: feature.name }) })),
+              ]}
+            />
+          </FilterToolbar>
           {shown.length === 0 && <p className="muted" data-part="findings-no-match">{t('page.findings.noMatch')}</p>}
           {FINDING_CATEGORIES.filter((name) => shown.some((group) => group.category === name)).map((name) => {
             const heading = t(findingCategoryKey(name));
@@ -131,46 +131,45 @@ export function FindingsPage({ data }: { data: PageData }) {
                     <p><span className="inline-label">{t('page.remedies.measure')}</span> {remedy.measure}</p>
                   </div>
                 )}
-                <TableScroll label={heading} wide>
-                  <thead>
-                    <tr>
-                      <th scope="col">{t('page.findings.filter.level')}</th>
-                      <th scope="col">{t('page.findings.filter.owner')}</th>
-                      <th scope="col">{t('md.findings.claimLabel')}</th>
-                      {view === 'technical' && <th scope="col">{t('md.locations.heading')}</th>}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {shown.filter((group) => group.category === name).map((group) => {
-                      const [first, ...others] = group.items;
-                      return (
-                        <tr key={first.id} data-group={group.items.length > 1 ? 'merged' : 'single'} data-level={group.priority?.level ?? 'none'}>
-                          <Cell><PriorityBadge priority={group.priority} /></Cell>
-                          <Cell row>
-                            <ul className="plain-list" data-part="findings-owners">
-                              {group.owners.map((one) => <li key={`${one.kind}:${one.id}`}><Owner owner={one} /></li>)}
-                            </ul>
-                          </Cell>
-                          <Cell>
-                            {first.text}
-                            {group.priority !== null && <p className="muted" data-part="findings-reason">{t('page.findings.reason', { reason: group.priority.reason })}</p>}
+                <ItemList part="findings-list" label={heading}>
+                  {shown.filter((group) => group.category === name).map((group) => {
+                    const [first, ...others] = group.items;
+                    const firstPlaces = view === 'technical' ? places.get(first.id) ?? [] : [];
+                    return (
+                      <Item
+                        key={first.id}
+                        data={{ 'data-group': group.items.length > 1 ? 'merged' : 'single', 'data-level': group.priority?.level ?? 'none' }}
+                        attrs={(
+                          <>
+                            <PriorityBadge priority={group.priority} />
+                            <span className="item-owners" data-part="findings-owners">
+                              {group.owners.map((one) => <span className="item-owner" key={`${one.kind}:${one.id}`}><Owner owner={one} /></span>)}
+                            </span>
+                          </>
+                        )}
+                        note={group.priority !== null ? <p data-part="findings-reason">{t('page.findings.reason', { reason: group.priority.reason })}</p> : undefined}
+                        extra={others.length === 0 && firstPlaces.length === 0 ? undefined : (
+                          <>
                             {others.length > 0 && (
-                              <details data-part="findings-others">
-                                <summary>{t('page.findings.others', { count: others.length })}</summary>
+                              <ItemCollapse part="findings-others" summary={t('page.findings.others', { count: others.length })}>
                                 <ul className="plain-list">
                                   {others.map((other) => (
-                                    <li key={other.id}>{view === 'technical' && placesOf(other.id) !== '' ? t('md.findings.otherItemTechnical', { owner: ownerText(t, other.owner), text: other.text, places: placesOf(other.id) }) : t('md.findings.otherItem', { owner: ownerText(t, other.owner), text: other.text })}</li>
+                                    <li key={other.id}>{t('md.findings.otherItem', { owner: ownerText(t, other.owner), text: other.text })}<Chips citations={places.get(other.id) ?? []} /></li>
                                   ))}
                                 </ul>
-                              </details>
+                              </ItemCollapse>
                             )}
-                          </Cell>
-                          {view === 'technical' && <Cell>{placesOf(first.id) || undefined}</Cell>}
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </TableScroll>
+                            {firstPlaces.length > 0 && (
+                              <ItemCollapse part="findings-locations" summary={t('md.locations.heading')}><Chips citations={firstPlaces} /></ItemCollapse>
+                            )}
+                          </>
+                        )}
+                      >
+                        <p>{first.text}</p>
+                      </Item>
+                    );
+                  })}
+                </ItemList>
               </section>
             );
           })}

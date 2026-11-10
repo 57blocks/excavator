@@ -85,7 +85,7 @@ describe('the Cross-cutting topics chapter', () => {
     const run = shared();
     assemble(run);
     const part = topicOf(text(run, 'handbook.md'), 'approval');
-    expect(part).toContain('| Business | Route | Skips and special cases | Extra conditions | Who can act | Basis |');
+    expect(part).toContain('| Business | Route | Skips and special cases | Extra conditions | Actors | Basis |');
     expect(part).toContain('| Place an order | The clerk fills in the customer name. | - | The item count is limited to 35000. | Clerk | Orders: Place an order: The clerk fills in the customer name.<br>Orders: Place an order: The item count is limited to 35000.<br>Orders: Clerk: Create an order. |');
   });
 
@@ -95,9 +95,9 @@ describe('the Cross-cutting topics chapter', () => {
     const body = text(run, 'handbook.md');
     expect(topicOf(body, 'time')).toContain('| Rule | Calendar or time zone | Applies to | Basis |');
     expect(topicOf(body, 'time')).toContain('| A reminder goes out every day at nine. | - | Reminders | Reminders: Every day at nine: A reminder goes out. |');
-    expect(topicOf(body, 'access')).toContain('| Feature | Who can use it | Check on the page | Check on the server | Basis |');
+    expect(topicOf(body, 'access')).toContain('| Feature | Roles | Check on the page | Check on the server | Basis |');
     expect(topicOf(body, 'access')).toContain('| Orders | Clerk | - | - | Orders: Clerk: Create an order. |');
-    expect(topicOf(body, 'repeated')).toContain('| What repeats | Where | Basis |');
+    expect(topicOf(body, 'repeated')).toContain('| Recurring pattern | Where | Basis |');
     expect(topicOf(body, 'repeated')).toMatch(/\| Operations on orders answer success without reading or storing anything\. \| Orders \| \[Unranked\] .*Deleting an order asks nothing about who calls.*<br>\[Unranked\] .*Creating an order answers/);
   });
 

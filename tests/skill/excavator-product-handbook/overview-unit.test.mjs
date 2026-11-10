@@ -41,7 +41,7 @@ describe('slices: the overview is cut into the items a verifier judges', () => {
     const claim = Object.fromEntries(items.map((item) => [item.id, item.claim]));
     expect(claim.name).toBe('System name > handbook-fixture');
     expect(claim['summary[0]']).toBe('System overview > Purpose > Staff place and review orders for customers.');
-    expect(claim['audiences[0]']).toBe('Who: Clerk; What it does: Creates orders.');
+    expect(claim['audiences[0]']).toBe('Roles: Clerk; What it does: Creates orders.');
     expect(claim['applications[0]']).toBe('Application . (Order tool) > Serves the order pages and sends reminders.');
     expect(claim['integrations[0]']).toBe('External system: Slack; What it is used for: Reminders go to a team channel.; Called by, in the quoted code: .');
     for (const item of items) expect(item.evidence.length).toBeGreaterThan(0);

@@ -1,7 +1,7 @@
 import { useLinks } from '../lib/links';
 import { systemName, useText } from '../lib/text';
 import type { PageData } from '../lib/types';
-import { Cell, TableScroll } from './Tables';
+import { Item, ItemField, ItemList } from './ui/ItemList';
 
 /** Every notification of every verified entry, in the order of the map, in the entries' own words. */
 export function NotificationsPage({ data }: { data: PageData }) {
@@ -19,25 +19,23 @@ export function NotificationsPage({ data }: { data: PageData }) {
       <p className="summary-counts">{t('md.summary.notifications.counts', { verified: counts.featuresWithEntry, total: counts.featureTotal, count: counts.notificationRows })}</p>
       <p className="muted summary-note">{t('md.summary.notifications.note')}</p>
       {notifications.length === 0 ? <p className="muted">{t('md.summary.notifications.none')}</p> : (
-        <TableScroll label={heading} wide>
-          <thead>
-            <tr>
-              <th scope="col">{t('md.table.feature')}</th>
-              <th scope="col">{t('md.table.trigger')}</th>
-              <th scope="col">{t('md.table.recipient')}</th>
-              <th scope="col">{t('md.table.channel')}</th>
-              <th scope="col">{t('md.table.content')}</th>
-            </tr>
-          </thead>
-          <tbody>
-            {notifications.map((n, at) => (
-              <tr key={at}>
-                <Cell row><a href={nav.feature(n.feature)}>{t('md.summary.feature', { id: n.feature, name: name.get(n.feature) ?? '' })}</a></Cell>
-                <Cell>{n.trigger}</Cell><Cell>{n.recipient}</Cell><Cell>{n.channel}</Cell><Cell>{n.content}</Cell>
-              </tr>
-            ))}
-          </tbody>
-        </TableScroll>
+        <ItemList part="notifications" label={heading}>
+          {notifications.map((n, at) => (
+            <Item
+              key={at}
+              attrs={(
+                <>
+                  <a href={nav.feature(n.feature)}>{t('md.summary.feature', { id: n.feature, name: name.get(n.feature) ?? '' })}</a>
+                  <span className="channel-chip">{n.channel}</span>
+                </>
+              )}
+            >
+              <ItemField label={t('md.table.trigger')}>{n.trigger}</ItemField>
+              <ItemField label={t('md.table.recipient')}>{n.recipient}</ItemField>
+              <ItemField label={t('md.table.content')}>{n.content}</ItemField>
+            </Item>
+          ))}
+        </ItemList>
       )}
     </article>
   );

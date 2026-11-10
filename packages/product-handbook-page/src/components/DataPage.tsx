@@ -4,6 +4,7 @@ import { systemName, useText } from '../lib/text';
 import type { Text } from '../lib/text';
 import type { DataSection, DataTable, PageData, Technical } from '../lib/types';
 import { Cell, TableScroll } from './Tables';
+import { Item, ItemField, ItemList } from './ui/ItemList';
 
 /** The bucket of the places that belong to no application. */
 const NO_APPLICATION = '';
@@ -24,13 +25,14 @@ const kindText = (t: Text, kind: string): string => t(`md.data.kind.${kind}`);
 const formKey = (form: string): string => `md.data.form.${form.replace(/-([a-z])/g, (_, letter: string) => letter.toUpperCase())}`;
 const applicationLabel = (t: Text, key: string): string => (key === NO_APPLICATION ? t('md.data.noApplication') : key);
 
-function ApplicationsCell({ table, onlyInMigrations }: { table: DataTable; onlyInMigrations: boolean }) {
+/** Where a table name appears: the count in each application, and the places themselves collapsed under it; or the fixed text for a name only in migrations. Nothing for a name that appears nowhere else. */
+function ApplicationsBlock({ table, onlyInMigrations }: { table: DataTable; onlyInMigrations: boolean }) {
   const t = useText();
   const keys = Object.keys(table.mentions);
-  if (keys.length === 0) return <td>{onlyInMigrations ? t('md.data.onlyInMigrationsCell') : undefined}</td>;
+  if (keys.length === 0) return onlyInMigrations ? <>{t('md.data.onlyInMigrationsCell')}</> : null;
   const total = keys.reduce((sum, key) => sum + table.mentions[key].length, 0);
   return (
-    <td>
+    <>
       <ul className="rule-list">
         {keys.map((key) => <li key={key}>{t('md.data.mentionCount', { application: applicationLabel(t, key), count: table.mentions[key].length })}</li>)}
       </ul>
@@ -45,7 +47,7 @@ function ApplicationsCell({ table, onlyInMigrations }: { table: DataTable; onlyI
           </div>
         ))}
       </details>
-    </td>
+    </>
   );
 }
 
@@ -63,34 +65,26 @@ function TablesTable({ section }: { section: DataSection }) {
         {sort('applications', 'page.data.sort.applications')}
       </div>
       {section.tables.length === 0 ? <p className="muted">{t('md.none')}</p> : (
-        <TableScroll label={heading} wide>
-          <thead>
-            <tr>
-              <th scope="col">{t('md.data.table.name')}</th>
-              <th scope="col">{t('md.data.table.declared')}</th>
-              <th scope="col">{t('md.data.table.applications')}</th>
-              <th scope="col">{t('md.data.table.createdBy')}</th>
-              <th scope="col">{t('md.data.table.lastChangedBy')}</th>
-            </tr>
-          </thead>
-          <tbody data-part="data-tables">
-            {sortedTables(section.tables, order).map((table) => (
-              <tr key={table.name} data-table={table.name}>
-                <Cell row>{table.name}</Cell>
-                <Cell>
-                  {table.sources.length === 0 ? undefined : (
+        <ItemList part="data-tables" label={heading}>
+          {sortedTables(section.tables, order).map((table) => {
+            const mentions = <ApplicationsBlock table={table} onlyInMigrations={only.has(table.name)} />;
+            const hasMentions = Object.keys(table.mentions).length > 0 || only.has(table.name);
+            return (
+              <Item key={table.name} data={{ 'data-table': table.name }} attrs={table.name}>
+                {table.sources.length > 0 && (
+                  <ItemField label={t('md.data.table.declared')}>
                     <ul className="rule-list">
                       {table.sources.map((source, at) => <li key={at}>{t(source.as === undefined ? 'md.data.source' : 'md.data.sourceAs', { kind: kindText(t, source.kind), place: place(t, source.file, source.line), name: source.as ?? '' })}</li>)}
                     </ul>
-                  )}
-                </Cell>
-                <ApplicationsCell table={table} onlyInMigrations={only.has(table.name)} />
-                <Cell>{table.createdBy ?? undefined}</Cell>
-                <Cell>{table.lastChangedBy ?? undefined}</Cell>
-              </tr>
-            ))}
-          </tbody>
-        </TableScroll>
+                  </ItemField>
+                )}
+                {hasMentions && <ItemField label={t('md.data.table.applications')}>{mentions}</ItemField>}
+                {table.createdBy !== null && <ItemField label={t('md.data.table.createdBy')}>{table.createdBy}</ItemField>}
+                {table.lastChangedBy !== null && <ItemField label={t('md.data.table.lastChangedBy')}>{table.lastChangedBy}</ItemField>}
+              </Item>
+            );
+          })}
+        </ItemList>
       )}
     </>
   );
@@ -144,14 +138,14 @@ function SectionBody({ section }: { section: DataSection }) {
       <TablesTable section={section} />
       <h2 className="section-title">{t('md.data.droppedHeading')}</h2>
       {section.dropped.length === 0 ? <p className="muted">{t('md.none')}</p> : (
-        <TableScroll label={t('md.data.droppedHeading')} wide>
-          <thead>
-            <tr><th scope="col">{t('md.data.table.name')}</th><th scope="col">{t('md.data.table.createdBy')}</th><th scope="col">{t('md.data.table.droppedBy')}</th></tr>
-          </thead>
-          <tbody>
-            {section.dropped.map((row, at) => <tr key={at}><Cell row>{row.name}</Cell><Cell>{row.createdBy ?? undefined}</Cell><Cell>{place(t, row.file, row.line)}</Cell></tr>)}
-          </tbody>
-        </TableScroll>
+        <ItemList part="data-dropped" label={t('md.data.droppedHeading')}>
+          {section.dropped.map((row, at) => (
+            <Item key={at} attrs={row.name}>
+              {row.createdBy !== null && <ItemField label={t('md.data.table.createdBy')}>{row.createdBy}</ItemField>}
+              <ItemField label={t('md.data.table.droppedBy')}>{place(t, row.file, row.line)}</ItemField>
+            </Item>
+          ))}
+        </ItemList>
       )}
       <List heading={t('md.data.declaredOnlyHeading')} items={section.declaredOnly} />
       <List heading={t('md.data.removedButDeclaredHeading')} items={section.removedButDeclared} />

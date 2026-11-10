@@ -1,3 +1,4 @@
+// @vitest-environment happy-dom
 // O2 (page) of openspec changes handbook-feature-findings and handbook-system-findings:
 // the route #/findings in both views with a sidebar link, the counts (groups,
 // statements, groups merged), the groups by category with their owners and the
@@ -10,10 +11,11 @@
 // and each category heading say how many groups have which level, the findings page filters by level, the
 // feature page shows the levels and the coverage page lists the groups without a priority.
 import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { renderToStaticMarkup } from 'react-dom/server';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 
 import { AppView } from '../src/App';
 import { countByCategory, countByLevel, filterGroups } from '../src/components/FindingsPage';
@@ -21,11 +23,12 @@ import { parseHash, routeHash } from '../src/lib/route';
 import { FINDING_CATEGORIES, findingCategoryKey } from '../src/lib/types';
 import type { Feature, FindingCategory, FindingGroup, FindingOwner, PageData, Priority, Remedies, View } from '../src/lib/types';
 import { switchTarget } from '../src/lib/views';
+import { choose, cleanup, mount, moveAndConfirm, openWithKeyboard, optionTexts, pressActive, selectByLabel, status } from './dom';
 import { NO_APPENDIX, NO_HISTORY } from './empty-parts';
 
 const MARK = '@@';
 const DATA = 'd~';
-const shipped = JSON.parse(readFileSync(fileURLToPath(new URL('../../../skills/excavator-product-handbook/ui-strings.json', import.meta.url)), 'utf-8')) as { strings: Record<string, string> };
+const shipped = JSON.parse(readFileSync(join(dirname(fileURLToPath(import.meta.url)), '../../../skills/excavator-product-handbook/ui-strings.json'), 'utf-8')) as { strings: Record<string, string> };
 const marked = Object.fromEntries(Object.entries(shipped.strings).map(([key, value]) => [key, `${MARK}${value}`]));
 const d = (text: string): string => `${DATA}${text}`;
 
@@ -105,7 +108,7 @@ const BOTH: View[] = ['product', 'technical'];
 const render = (data: PageData, hash: string): string => renderToStaticMarkup(<AppView data={data} route={parseHash(hash)} />);
 const decode = (text: string): string => text.replace(/&quot;/g, '"').replace(/&#x27;/g, "'").replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&');
 function visibleTexts(html: string): string[] {
-  const nodes = html.split(/<[^>]*>/).map((text) => decode(text).trim()).filter((text) => text !== '');
+  const nodes = html.replace(/<wbr\/>/g, '').split(/<[^>]*>/).map((text) => decode(text).trim()).filter((text) => text !== '');
   const attributes = Array.from(html.matchAll(/\s(?:aria-label|title|alt|placeholder|aria-description)="([^"]*)"/g), (match) => decode(match[1]).trim());
   return [...nodes, ...attributes];
 }
@@ -113,6 +116,8 @@ const unmarked = (html: string): string[] => visibleTexts(html).filter((text) =>
 const main = (html: string): string => html.slice(html.indexOf('<main'));
 const railOf = (html: string) => html.slice(html.indexOf('<nav class="rail"'), html.indexOf('</nav>', html.indexOf('<nav class="rail"')));
 const name = (key: FindingCategory): string => marked[findingCategoryKey(key)];
+/** The item blocks of the findings lists, each cut at the end of its category section (an item holds nested lists, so a pattern cannot find its end). */
+const itemsOf = (body: string): string[] => body.split('<li class="item" data-group=').slice(1).map((part) => `<li class="item" data-group=${part.split('</section>')[0]}`);
 
 describe('the findings route and link', () => {
   it('parses #/findings with and without the view and builds it back', () => {
@@ -139,21 +144,30 @@ describe('the findings route and link', () => {
 });
 
 describe('the findings page', () => {
-  it('shows the counts line (groups, statements, groups merged), the groups in the order of the categories and each group with its owners and its first statement', () => {
+  it('shows the counts as an inline strip (groups, statements, groups merged), the groups in the order of the categories and each group with its owners and its first statement', () => {
     const body = main(render(dataFor(['product']), '#/findings'));
-    const counted = (key: string): number => (['authorization', 'notification', 'hard-coded', 'time'].includes(key) ? 1 : 0);
-    expect(body).toContain(`${MARK}Findings: 4. Statements: 6. Groups merged: 2. Findings units verified: 3 of 5. System findings units verified: 1 of 3. By category: ${FINDING_CATEGORIES.map((key) => `${MARK}${name(key)}: ${counted(key)}`).join('; ')}. By priority: ${[['P0', 1], ['P1', 1], ['P2', 1], ['Unranked', 1]].map(([word, count]) => `${MARK}${MARK}${word}: ${count}`).join('; ')}.`);
+    expect(body).toContain('<dl class="stat-strip" data-part="findings-stats">');
+    expect(body).not.toContain('class="summary-counts"');
+    expect(body).not.toContain('stat-card');
+    expect(body).toContain(`<dt>${marked['page.stat.findings']}</dt><dd>4</dd>`);
+    expect(body).toContain(`<dt>${marked['page.stat.statements']}</dt><dd>6</dd>`);
+    expect(body).toContain(`<dt>${marked['page.stat.merged']}</dt><dd>2</dd>`);
+    expect(body).toContain(`<dt>${marked['page.stat.featuresVerified']}</dt><dd>${MARK}3 of 5</dd>`);
+    expect(body).toContain(`<dt>${marked['page.stat.systemVerified']}</dt><dd>${MARK}1 of 3</dd>`);
     expect([...body.matchAll(/data-category="([a-z-]+)"/g)].map((match) => match[1])).toEqual(['authorization', 'notification', 'hard-coded', 'time']);
     for (const text of ['first statement', 'second statement', 'system statement', 'fourth statement']) expect(body).toContain(d(text));
     expect(body).toContain(`${MARK}F1 ${d('name F1')}`);
     expect(body).toContain(`${MARK}${d('backend')} (application)`);
     expect(body).toContain(marked['md.findings.note']);
-    expect((body.match(/<tbody>[\s\S]*?<\/tbody>/g) ?? []).map((part) => (part.match(/<tr[ >]/g) ?? []).length)).toEqual([1, 1, 1, 1]);
+    // Every finding has a free-text statement, so a category is a list of blocks and not a table.
+    expect(body).not.toContain('<table');
+    expect((body.match(/<ul class="item-list"/g) ?? [])).toHaveLength(4);
+    expect(itemsOf(body)).toHaveLength(4);
   });
 
   it('a merged group lists every owner and keeps its other statements under a details element, each with its owner; a single finding has none', () => {
     const body = main(render(dataFor(['product']), '#/findings'));
-    const rows = body.match(/<tr data-group="[a-z]+" data-level="[A-Za-z0-9]+">[\s\S]*?<\/tr>/g) ?? [];
+    const rows = itemsOf(body);
     expect(rows).toHaveLength(4);
     const authorization = rows.find((row) => row.includes(d('first statement'))) ?? '';
     expect(authorization).toContain('data-group="merged"');
@@ -184,29 +198,26 @@ describe('the findings page', () => {
   it('the technical view adds the file and lines of each statement, the others inside the details; the product view never carries a path', () => {
     const data = dataFor(BOTH);
     const technical = main(render(data, '#/technical/findings'));
-    expect(technical).toContain(`<th scope="col">${marked['md.locations.heading']}</th>`);
-    expect(technical).toContain(`${MARK}${d('src/one.js')}, line 7`);
-    expect(technical).toContain(`${MARK}F3 ${d('name F3')}: ${d('third statement')} (${MARK}${d('src/four.js')}, line 4)`);
-    expect(technical).toContain(`${MARK}${d('backend')} (application): ${d('fifth statement')} (${MARK}${d('src/seven.js')}, lines 11-12)`);
-    expect(technical).toContain(`${MARK}${d('src/two.js')}, lines 5-9; ${MARK}${d('src/three.js')}, lines not located`);
+    // The locations of a statement are collapsed at the end of its block, not a column.
+    expect(technical).not.toContain('<table');
+    expect(technical).toContain(`<details class="item-collapse" data-part="findings-locations"><summary>${marked['md.locations.heading']}</summary>`);
+    const one = itemsOf(technical).find((row) => row.includes(d('first statement'))) ?? '';
+    expect(one.indexOf(d('first statement'))).toBeLessThan(one.indexOf('data-part="findings-locations"'));
+    expect(technical).toContain(`<code class="loc-chip">${d('src/')}<wbr/>one.js:7</code>`);
+    expect(technical).toContain(`${MARK}${MARK}F3 ${d('name F3')}: ${d('third statement')}<span class="loc-chips" data-part="location-chips"><code class="loc-chip">${d('src/')}<wbr/>four.js:4</code>`);
+    expect(technical).toContain(`${MARK}${MARK}${d('backend')} (application): ${d('fifth statement')}<span class="loc-chips" data-part="location-chips"><code class="loc-chip">${d('src/')}<wbr/>seven.js:11-12</code>`);
+    expect(technical).toContain(`<code class="loc-chip">${d('src/')}<wbr/>two.js:5-9</code>`);
+    expect(technical).toContain(`${MARK}${d('src/three.js')}, lines not located</code>`);
     const product = render(data, '#/product/findings');
     for (const file of ['src/one.js', 'src/two.js', 'src/three.js', 'src/four.js', 'src/five.js', 'src/seven.js']) expect(product).not.toContain(file);
     expect(product).not.toContain(marked['md.locations.heading']);
   });
 
-  it('has the category filter with every category and its count, and the owner filter with all owners, System and each feature that owns a group', () => {
+  it('shows the three filter labels and the status line before any interaction', () => {
     const html = render(dataFor(['product']), '#/findings');
-    expect(html).toContain(marked['page.findings.filter.category']);
-    expect(html).toContain(marked['page.findings.filter.all']);
-    expect(html).toContain(marked['page.findings.filter.owner']);
-    expect(html).toContain(marked['page.findings.filter.allOwners']);
-    expect(html).toContain(`>${marked['page.findings.filter.system']}</option>`);
-    const owners = html.slice(html.indexOf('data-part="findings-owner-filter"'));
-    expect(owners.slice(0, owners.indexOf('</select>')).match(/<option/g)).toHaveLength(2 + 2);
-    expect(owners).toContain(`${MARK}F1 ${d('name F1')}</option>`);
-    expect(owners).toContain(`${MARK}F3 ${d('name F3')}</option>`);
-    expect((html.slice(0, html.indexOf('data-part="findings-level-filter"')).match(/<option/g) ?? []).length).toBe(1 + FINDING_CATEGORIES.length);
+    for (const key of ['page.findings.filter.category', 'page.findings.filter.level', 'page.findings.filter.owner']) expect(html).toContain(marked[key]);
     expect(html).toContain(`${MARK}Showing 4 of 4 findings`);
+    expect(html).toContain('data-part="findings-toolbar"');
   });
 
   it('filterGroups keeps the groups of a category, of an owner (System is every application owner), or both, and changes nothing it is given', () => {
@@ -226,7 +237,7 @@ describe('the findings page', () => {
 });
 
 describe('the priority of each group (handbook-findings-priority)', () => {
-  const rowOf = (body: string, statement: string): string => (body.match(/<tr data-group="[a-z]+" data-level="[A-Za-z0-9]+">[\s\S]*?<\/tr>/g) ?? []).find((row) => row.includes(d(statement))) ?? '';
+  const rowOf = (body: string, statement: string): string => itemsOf(body).find((row) => row.includes(d(statement))) ?? '';
 
   it('shows the level as a badge with the name of the consequence as its tooltip, and the reason under the statement; a group with no priority shows the word for none and no reason', () => {
     const body = main(render(dataFor(['product']), '#/findings'));
@@ -249,20 +260,6 @@ describe('the priority of each group (handbook-findings-priority)', () => {
     expect(body).toContain(`${MARK}${name('notification')} (1 findings; P0: 0)`);
   });
 
-  it('has the level filter with every level and the unranked groups and their counts, between the category and the owner filter', () => {
-    const html = render(dataFor(['product']), '#/findings');
-    const start = html.indexOf('data-part="findings-level-filter"');
-    expect(start).toBeGreaterThan(html.indexOf(marked['page.findings.filter.category']));
-    expect(start).toBeLessThan(html.indexOf('data-part="findings-owner-filter"'));
-    const levels = html.slice(start, html.indexOf('</select>', start));
-    expect(levels).toContain(marked['page.findings.filter.level']);
-    expect(levels).toContain(`>${marked['page.findings.filter.allLevels']}</option>`);
-    expect([...levels.matchAll(/<option value="([A-Za-z0-9]+)"[^>]*>([^<]*)<\/option>/g)].map((match) => [match[1], match[2]])).toEqual([
-      ['all', marked['page.findings.filter.allLevels']],
-      ['P0', `${MARK}${MARK}P0: 1`], ['P1', `${MARK}${MARK}P1: 1`], ['P2', `${MARK}${MARK}P2: 1`], ['none', `${MARK}${marked['md.priority.unranked']}: 1`],
-    ]);
-  });
-
   it('filterGroups keeps the groups of a level, or the groups without a priority, together with the other filters, and countByLevel counts them', () => {
     const list = dataFor(['product']).findings;
     const ids = (groups: FindingGroup[]): string[] => groups.map((group) => group.items[0].id);
@@ -283,7 +280,7 @@ describe('the priority of each group (handbook-findings-priority)', () => {
     expect(f1).toContain(`${MARK}P2</span> ${MARK}${name('hard-coded')}: ${d('second statement')}`);
     const f3 = main(render(dataFor(['product']), '#/feature/F3'));
     expect(f3).toContain(`${MARK}P1</span> ${MARK}${name('time')}: ${d('fourth statement')}`);
-    const data = dataFor(['product']);
+    const data = dataFor(['product'], structuredClone(FINDINGS));
     data.findings[1].priority = null;
     expect(main(render(data, '#/feature/F1'))).toContain(`${marked['md.priority.unranked']}</span> ${MARK}${name('hard-coded')}: ${d('second statement')}`);
   });
@@ -497,7 +494,7 @@ describe('the recommendations page', () => {
   it('writes no file or line in the product view and the file and line of each cited statement in the technical view', () => {
     const data = dataFor(BOTH, FINDINGS, REMEDIES);
     expect(main(render(data, '#/product/recommendations'))).not.toContain('src/one.js');
-    expect(main(render(data, '#/technical/recommendations'))).toContain(d('src/one.js'));
+    expect(main(render(data, '#/technical/recommendations'))).toContain(`<code class="loc-chip">${d('src/')}<wbr/>one.js:7</code>`);
   });
 
   it('says there is no recommendation when none is left, and has no text of its own', () => {
@@ -519,7 +516,7 @@ describe('the findings page with remedies', () => {
     const authorization = body.slice(body.indexOf('data-category="authorization"'), body.indexOf('data-category="hard-coded"'));
     expect(authorization).toContain(`${MARK}Common cause:</span> ${d('Nothing asks who calls.')}`);
     expect(authorization).toContain(`${MARK}Measure:</span> ${d('Check the caller first.')}`);
-    expect(authorization.indexOf('Common cause')).toBeLessThan(authorization.indexOf('<table'));
+    expect(authorization.indexOf('Common cause')).toBeLessThan(authorization.indexOf('<ul class="item-list"'));
     const hardCoded = body.slice(body.indexOf('data-category="hard-coded"'), body.indexOf('data-category="notification"'));
     expect(hardCoded).not.toContain('category-remedy');
     expect(body.match(/data-part="category-remedy"/g)).toHaveLength(2);
@@ -546,5 +543,117 @@ describe('the coverage page about the remedies', () => {
     expect(part(dataFor(['product'], FINDINGS, REMEDIES, { finished: false, stale: true, dropped: [] }))).toContain(marked['md.coverage.remediesStale']);
     expect(part(dataFor(['product'], FINDINGS, REMEDIES))).toContain(marked['md.coverage.remediesAllKept']);
     expect(part(dataFor(['product'], []))).toContain(marked['md.none']);
+  });
+});
+
+
+describe('the styled selects and the filter toolbar (handbook-page-layout)', () => {
+  afterEach(cleanup);
+  const page = (views: View[] = ['product']): HTMLElement => mount(<AppView data={dataFor(views, structuredClone(FINDINGS))} route={parseHash('#/findings')} />);
+  const label = (key: string): string => marked[key];
+  const CATEGORY = label('page.findings.filter.category');
+  const LEVEL = label('page.findings.filter.level');
+  const OWNER = label('page.findings.filter.owner');
+  const shown = (host: HTMLElement): string => status(host);
+  const rows = (host: HTMLElement): number => host.querySelectorAll('li.item[data-group]').length;
+
+  it('uses no native select: each filter is a combobox that shows its current choice', () => {
+    const host = page();
+    expect(host.querySelectorAll('select')).toHaveLength(0);
+    expect(host.querySelectorAll('[role="combobox"]')).toHaveLength(3);
+    for (const name of [CATEGORY, LEVEL, OWNER]) expect(selectByLabel(host, name).getAttribute('aria-expanded')).toBe('false');
+    expect(selectByLabel(host, LEVEL).textContent).toContain(label('page.findings.filter.allLevels'));
+  });
+
+  it('opens with the keyboard and lists every category with its count, every level with the unranked one, and the owners', async () => {
+    const host = page();
+    await openWithKeyboard(selectByLabel(host, CATEGORY));
+    expect(optionTexts()).toHaveLength(1 + FINDING_CATEGORIES.length);
+    expect(optionTexts()[0]).toBe(label('page.findings.filter.all'));
+    cleanup();
+    const levels = page();
+    await openWithKeyboard(selectByLabel(levels, LEVEL));
+    expect(optionTexts()).toEqual([label('page.findings.filter.allLevels'), `${MARK}${MARK}P0: 1`, `${MARK}${MARK}P1: 1`, `${MARK}${MARK}P2: 1`, `${MARK}${marked['md.priority.unranked']}: 1`]);
+    cleanup();
+    const owners = page();
+    await openWithKeyboard(selectByLabel(owners, OWNER));
+    expect(optionTexts()).toEqual([label('page.findings.filter.allOwners'), label('page.findings.filter.system'), `${MARK}F1 ${d('name F1')}`, `${MARK}F3 ${d('name F3')}`]);
+  });
+
+  it('moving with the arrow keys and confirming with Enter changes the filter and the shown count', async () => {
+    const host = page();
+    expect(shown(host)).toBe(`${MARK}Showing 4 of 4 findings`);
+    await openWithKeyboard(selectByLabel(host, LEVEL));
+    await moveAndConfirm(2);
+    expect(selectByLabel(host, LEVEL).textContent).toContain(`${MARK}${MARK}P1: 1`);
+    expect(shown(host)).toBe(`${MARK}Showing 1 of 4 findings`);
+    expect(rows(host)).toBe(1);
+    expect(document.querySelector('[role="listbox"]')).toBeNull();
+  });
+
+  it('the three filters combine: category, level and owner each narrow the same list', async () => {
+    const host = page();
+    await choose(host, OWNER, `${MARK}F3 ${d('name F3')}`);
+    expect(shown(host)).toBe(`${MARK}Showing 2 of 4 findings`);
+    await choose(host, LEVEL, `${MARK}${MARK}P1: 1`);
+    expect(shown(host)).toBe(`${MARK}Showing 1 of 4 findings`);
+    await choose(host, CATEGORY, `${MARK}${name('time')}: 1`);
+    expect(shown(host)).toBe(`${MARK}Showing 1 of 4 findings`);
+    await choose(host, CATEGORY, `${MARK}${name('authorization')}: 1`);
+    expect(shown(host)).toBe(`${MARK}Showing 0 of 4 findings`);
+    expect(host.querySelector('[data-part="findings-no-match"]')).not.toBeNull();
+    await choose(host, LEVEL, label('page.findings.filter.allLevels'));
+    expect(shown(host)).toBe(`${MARK}Showing 1 of 4 findings`);
+    await choose(host, OWNER, label('page.findings.filter.system'));
+    expect(shown(host)).toBe(`${MARK}Showing 0 of 4 findings`);
+  });
+
+  it('Escape closes the list and keeps the choice', async () => {
+    const host = page();
+    await openWithKeyboard(selectByLabel(host, LEVEL));
+    expect(document.querySelector('[role="listbox"]')).not.toBeNull();
+    await pressActive('ArrowDown');
+    await pressActive('Escape');
+    expect(document.querySelector('[role="listbox"]')).toBeNull();
+    expect(shown(host)).toBe(`${MARK}Showing 4 of 4 findings`);
+  });
+
+  it('the toolbar holds the three filters and the status in one row group, each filter with a label', () => {
+    const host = page();
+    const toolbar = host.querySelector('[data-part="findings-toolbar"]');
+    expect(toolbar).not.toBeNull();
+    expect(toolbar?.querySelectorAll('[data-part="filter-field"]')).toHaveLength(3);
+    expect(toolbar?.querySelector('[role="status"]')).not.toBeNull();
+  });
+});
+
+describe('the counts as an inline strip (handbook-page-layout)', () => {
+  afterEach(cleanup);
+  const cards = (host: HTMLElement, part: string): Record<string, string> => Object.fromEntries(
+    Array.from(host.querySelectorAll(`[data-part="${part}"] [data-part="stat"]`)).map((card) => [card.querySelector('dt')?.textContent ?? '', card.querySelector('dd')?.textContent ?? '']),
+  );
+  const chips = (host: HTMLElement, part: string): [string, string][] => Array.from(host.querySelectorAll(`[data-part="${part}"] .stat-chip`)).map((chip) => [(chip.firstChild?.textContent ?? '').trim(), chip.querySelector('b')?.textContent ?? '']);
+
+  it('renders the findings counts as inline label and value items, not as cards or one sentence', () => {
+    const host = mount(<AppView data={dataFor(['product'], structuredClone(FINDINGS))} route={parseHash('#/findings')} />);
+    expect(cards(host, 'findings-stats')).toEqual({
+      [marked['page.stat.findings']]: '4',
+      [marked['page.stat.statements']]: '6',
+      [marked['page.stat.merged']]: '2',
+      [marked['page.stat.featuresVerified']]: `${MARK}3 of 5`,
+      [marked['page.stat.systemVerified']]: `${MARK}1 of 3`,
+    });
+    expect(host.querySelector('.stat-card, .stat-grid')).toBeNull();
+    expect(host.querySelector('p.summary-counts')).toBeNull();
+  });
+
+  it('renders the breakdowns by priority and by category as a run of small chips', () => {
+    const host = mount(<AppView data={dataFor(['product'], structuredClone(FINDINGS))} route={parseHash('#/findings')} />);
+    const byLevel = chips(host, 'findings-level-stats');
+    expect(byLevel.map(([, count]) => count)).toEqual(['1', '1', '1', '1']);
+    expect(byLevel.map(([label]) => label)).toEqual([`${MARK}P0`, `${MARK}P1`, `${MARK}P2`, marked['md.priority.unranked']]);
+    expect(chips(host, 'findings-category-stats').filter(([, count]) => count === '1')).toHaveLength(4);
+    expect(chips(host, 'findings-category-stats')).toHaveLength(FINDING_CATEGORIES.length);
+    expect(host.querySelector('[data-part="findings-level-stats"]')?.textContent).toContain(marked['page.stat.byPriority']);
   });
 });
