@@ -32,7 +32,8 @@
 
 ## 5. 导航分组
 
-提交：`feat(excavator-product-handbook): the page navigation groups its links and folds each domain`
+提交：`feat(excavator-product-handbook): the page navigation groups its links and folds each domain`；按用户意见改为两层不折叠：`feat(excavator-product-handbook): the page navigation is two levels, groups and their links, with no feature list`
 
 - [x] 5.1 页面测试先红（O6）
 - [x] 5.2 分组与折叠（D11），固定文字表新键
+- [x] 5.3 改为两层、不折叠、不编号，导航里不列功能（D11 修订）：测试先红，再改实现
