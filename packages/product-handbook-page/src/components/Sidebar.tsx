@@ -1,5 +1,5 @@
-import { useEffect, useRef } from 'react';
-import type { ReactNode } from 'react';
+import { isValidElement, useEffect, useRef } from 'react';
+import type { ReactElement, ReactNode } from 'react';
 
 import { REACHES } from '../lib/types';
 import type { Feature, PageData } from '../lib/types';
@@ -27,7 +27,7 @@ function FeatureLink({ feature, current }: { feature: Feature; current: boolean 
   );
 }
 
-/** The product view's navigation: the domains, each with its features. */
+/** The product view's navigation: the domains, each folding over its features and open only when it holds the current page. */
 function ByDomain({ data, route }: { data: PageData; route: Route }) {
   const t = useText();
   const nav = useLinks();
@@ -37,20 +37,23 @@ function ByDomain({ data, route }: { data: PageData; route: Route }) {
       {data.domains.map((domain) => {
         const inDomain = data.features.filter((feature) => feature.domain === domain.id);
         return (
-          <section className="rail-area" key={domain.id} aria-labelledby={`rail-area-${domain.id}`}>
-            <h2 className="rail-area-name" id={`rail-area-${domain.id}`}>
-              <a className="rail-area-link" href={nav.domain(domain.id)} aria-current={route.name === 'domain' && route.id === domain.id ? 'page' : undefined}>{domain.name}</a>
-            </h2>
+          <details className="rail-area" key={domain.id} open={(route.name === 'domain' && route.id === domain.id) || inDomain.some((feature) => feature.id === currentId)}>
+            <summary className="rail-area-summary">
+              <h2 className="rail-area-name">
+                <a className="rail-area-link" href={nav.domain(domain.id)} aria-current={route.name === 'domain' && route.id === domain.id ? 'page' : undefined}>{domain.name}</a>
+              </h2>
+              <span className="rail-count">{inDomain.length}</span>
+            </summary>
             {inDomain.length === 0 && <p className="rail-empty">{t('md.areas.noFeatures')}</p>}
             {inDomain.map((feature) => <FeatureLink feature={feature} current={currentId === feature.id} key={feature.id} />)}
-          </section>
+          </details>
         );
       })}
     </>
   );
 }
 
-/** The technical view's navigation: the applications, in each the domains whose features have quoted passages in it, and under each domain those features; then the features that fall in no application. */
+/** The technical view's navigation: the applications, in each the domains whose features have quoted passages in it, and under each domain those features; then the features that fall in no application. Each application folds and is open only when it holds the current page. */
 function ByApplication({ data, route }: { data: PageData; route: Route }) {
   const t = useText();
   const nav = useLinks();
@@ -58,11 +61,19 @@ function ByApplication({ data, route }: { data: PageData; route: Route }) {
   const { applications, unplaced } = technicalNav(data);
   return (
     <>
-      {applications.map((application) => (
-        <section className="rail-area" key={application.dir} aria-label={application.label} data-application={application.dir}>
-          <h2 className="rail-area-name">
-            <a className="rail-area-link" href={nav.application(application.dir)} aria-current={route.name === 'application' && route.dir === application.dir ? 'page' : undefined}>{application.label}</a>
-          </h2>
+      {applications.map((application) => {
+        const features = new Set(application.domains.flatMap((domain) => domain.features.map((feature) => feature.id)));
+        const open = (route.name === 'application' && route.dir === application.dir)
+          || (route.name === 'domain' && application.domains.some((domain) => domain.id === route.id))
+          || features.has(currentId);
+        return (
+        <details className="rail-area" key={application.dir} aria-label={application.label} data-application={application.dir} open={open}>
+          <summary className="rail-area-summary">
+            <h2 className="rail-area-name">
+              <a className="rail-area-link" href={nav.application(application.dir)} aria-current={route.name === 'application' && route.dir === application.dir ? 'page' : undefined}>{application.label}</a>
+            </h2>
+            <span className="rail-count">{features.size}</span>
+          </summary>
           {application.domains.length === 0 && <p className="rail-empty">{t('md.none')}</p>}
           {application.domains.map((domain) => (
             <div className="rail-domain" key={domain.id} data-domain={domain.id}>
@@ -70,33 +81,43 @@ function ByApplication({ data, route }: { data: PageData; route: Route }) {
               {domain.features.map((feature) => <FeatureLink feature={feature} current={currentId === feature.id} key={feature.id} />)}
             </div>
           ))}
-        </section>
-      ))}
+        </details>
+        );
+      })}
       {unplaced.length > 0 && (
-        <section className="rail-area" aria-label={t('page.nav.unplaced')} data-part="unplaced">
-          <h2 className="rail-area-name">{t('page.nav.unplaced')}</h2>
+        <details className="rail-area" aria-label={t('page.nav.unplaced')} data-part="unplaced" open={unplaced.some((feature) => feature.id === currentId)}>
+          <summary className="rail-area-summary">
+            <h2 className="rail-area-name">{t('page.nav.unplaced')}</h2>
+            <span className="rail-count">{unplaced.length}</span>
+          </summary>
           {unplaced.map((feature) => <FeatureLink feature={feature} current={currentId === feature.id} key={feature.id} />)}
-        </section>
+        </details>
       )}
       {(data.technical?.integrations.length ?? 0) > 0 && (
-        <section className="rail-area" aria-label={t('md.entities.systems.heading')} data-part="systems">
-          <h2 className="rail-area-name">{t('md.entities.systems.heading')}</h2>
+        <details className="rail-area" aria-label={t('md.entities.systems.heading')} data-part="systems" open={route.name === 'system'}>
+          <summary className="rail-area-summary">
+            <h2 className="rail-area-name">{t('md.entities.systems.heading')}</h2>
+            <span className="rail-count">{data.technical?.integrations.length}</span>
+          </summary>
           {data.technical?.integrations.map((item) => (
             <a className="rail-feature rail-system" key={item.system} href={nav.system(item.system)} aria-current={route.name === 'system' && route.system === item.system ? 'page' : undefined}>
               <span className="rail-feature-name">{item.system}</span>
             </a>
           ))}
-        </section>
+        </details>
       )}
     </>
   );
 }
 
 /**
- * The navigation: overview, the roles and (in the technical view) the
- * applications matrices, the two cross-cutting tables, the findings, the recommendations, the cross-cutting topics, the code health, coverage and the three parts of the appendix (the open questions, the glossary, the sources and scope); then, in the
- * product view, the domains with their features, or, in the technical view,
- * the applications with their domains and features; and a key to the marks.
+ * The navigation (openspec change handbook-deep-entry, design D11): the overview alone at the top; then three folding
+ * groups of page links, product (the roles and, in the technical view, the applications matrices, the two cross-cutting
+ * tables and, in the technical view, the data and dictionaries pages), assessment (the findings, the recommendations,
+ * the cross-cutting topics, the code health) and appendix (coverage, the open questions, the glossary, the sources and
+ * scope); then, in the product view, the domains with their features, or, in the technical view, the applications with
+ * their domains and features, each folding; and a key to the marks. Only the group and the domain or application that
+ * hold the current page are open.
  * Below 900px it is a drawer that the top bar's button opens.
  */
 export function Sidebar({ data, route, open, onNavigate }: Props) {
@@ -112,11 +133,21 @@ export function Sidebar({ data, route, open, onNavigate }: Props) {
   }, [routeKey]);
   const used = REACHES.filter((reach) => data.features.some((feature) => feature.reach === reach));
   const link = (href: string, name: Route['name'], label: string, icon?: ReactNode) => (
-    <a className="rail-link" href={href} aria-current={route.name === name ? 'page' : undefined}>
+    <a className="rail-link" key={name} href={href} aria-current={route.name === name ? 'page' : undefined}>
       {icon}
       <span>{label}</span>
     </a>
   );
+  /** A folding group of page links, open only when it holds the current page. */
+  const group = (name: 'product' | 'assessment' | 'appendix', links: (ReactNode | false)[]) => {
+    const shown = links.filter((item): item is ReactElement => isValidElement(item));
+    return (
+      <details className="rail-group" data-group={name} open={shown.some((item) => item.key === route.name)}>
+        <summary className="rail-group-name">{t(`page.nav.group.${name}`)}</summary>
+        <div className="rail-group-links">{shown}</div>
+      </details>
+    );
+  };
   return (
     <nav
       className="rail"
@@ -131,20 +162,26 @@ export function Sidebar({ data, route, open, onNavigate }: Props) {
       <div className="rail-scroll" ref={scroller}>
       <div className="rail-top">
         {link(nav.overview, 'overview', t('page.nav.overview'), <OverviewIcon />)}
-        {link(nav.rolesMatrix, 'roles-matrix', t('md.matrix.roleFeature.heading'), <OverviewIcon />)}
-        {view === 'technical' && link(nav.applicationsMatrix, 'applications-matrix', t('md.matrix.applicationDomain.heading'), <OverviewIcon />)}
-        {link(nav.notifications, 'notifications', t('page.nav.notifications'), <BellIcon />)}
-        {link(nav.jobs, 'jobs', t('page.nav.jobs'), <ClockIcon />)}
-        {view === 'technical' && link(nav.data, 'data', t('md.data.heading'), <OverviewIcon />)}
-        {view === 'technical' && link(nav.dictionaries, 'dictionaries', t('md.dict.heading'), <OverviewIcon />)}
-        {link(nav.findings, 'findings', t('page.nav.findings'), <CoverageIcon />)}
-        {link(nav.recommendations, 'recommendations', t('page.nav.recommendations'), <CoverageIcon />)}
-        {link(nav.topics, 'topics', t('page.nav.topics'), <CoverageIcon />)}
-        {link(nav.history, 'history', t('md.history.heading'), <CoverageIcon />)}
-        {link(nav.coverage, 'coverage', t('page.nav.coverage'), <CoverageIcon />)}
-        {link(nav.openQuestions, 'open-questions', t('md.appendix.openHeading'), <CoverageIcon />)}
-        {link(nav.glossary, 'glossary', t('md.appendix.glossaryHeading'), <CoverageIcon />)}
-        {link(nav.sources, 'sources', t('md.appendix.sourcesHeading'), <CoverageIcon />)}
+        {group('product', [
+          link(nav.rolesMatrix, 'roles-matrix', t('md.matrix.roleFeature.heading'), <OverviewIcon />),
+          view === 'technical' && link(nav.applicationsMatrix, 'applications-matrix', t('md.matrix.applicationDomain.heading'), <OverviewIcon />),
+          link(nav.notifications, 'notifications', t('page.nav.notifications'), <BellIcon />),
+          link(nav.jobs, 'jobs', t('page.nav.jobs'), <ClockIcon />),
+          view === 'technical' && link(nav.data, 'data', t('md.data.heading'), <OverviewIcon />),
+          view === 'technical' && link(nav.dictionaries, 'dictionaries', t('md.dict.heading'), <OverviewIcon />),
+        ])}
+        {group('assessment', [
+          link(nav.findings, 'findings', t('page.nav.findings'), <CoverageIcon />),
+          link(nav.recommendations, 'recommendations', t('page.nav.recommendations'), <CoverageIcon />),
+          link(nav.topics, 'topics', t('page.nav.topics'), <CoverageIcon />),
+          link(nav.history, 'history', t('md.history.heading'), <CoverageIcon />),
+        ])}
+        {group('appendix', [
+          link(nav.coverage, 'coverage', t('page.nav.coverage'), <CoverageIcon />),
+          link(nav.openQuestions, 'open-questions', t('md.appendix.openHeading'), <CoverageIcon />),
+          link(nav.glossary, 'glossary', t('md.appendix.glossaryHeading'), <CoverageIcon />),
+          link(nav.sources, 'sources', t('md.appendix.sourcesHeading'), <CoverageIcon />),
+        ])}
       </div>
       <div className="rail-body">
         {view === 'technical' ? <ByApplication data={data} route={route} /> : <ByDomain data={data} route={route} />}
