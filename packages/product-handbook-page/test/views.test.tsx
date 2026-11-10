@@ -672,6 +672,13 @@ describe('the overview draws the business flow between domains and the technical
     expect(architecture).toContain(marked['md.entities.systems.diagramHeading']);
     expect(architecture).toContain(`href="#/technical/application/${enc(SVC)}"`);
     expect(architecture).toContain(`href="#/technical/system/${enc(SLACK)}"`);
+    // An application whose files only hold the name, and a system no verified caller is shown calling, are not drawn.
+    expect(architecture).not.toContain(`href="#/technical/application/${enc(ADMIN)}"`);
+    const unshown = withFlows(BOTH);
+    unshown.technical!.integrations.push({ system: d('Mail'), use: d('mail'), shown: [], named: [{ application: ADMIN, files: 3 }], namedOutside: 0 });
+    const drawn = partOf(render(unshown, '#/technical'), 'overview-architecture');
+    expect(drawn).not.toContain(d('Mail'));
+    expect(drawn).not.toContain(`href="#/technical/application/${enc(ADMIN)}"`);
   });
 
   it('takes every text from the ui table or the data', () => {
