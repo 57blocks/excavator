@@ -1,7 +1,7 @@
 ## 1. 正文与事实表
 
-- [ ] 1.1 测试先红：`check-chapter` 的接受、每种结构拒绝、每种内容问题只记数、切项与 id、报数；去掉若干项后的正文；`/3` 事实表的形状与拒绝；已核实 `/2` 照常拼装
-- [ ] 1.2 正文的解析与检查（切项、出处解析成 `{file, lines, passage}`、时序图子集与最少一张、内容问题记成 `notes`）；`/3` 事实表；`check-entry` 与 `try-entry` 一起检查两者；`check-chapter` 命令
+- [x] 1.1 测试先红：`check-chapter` 的接受、每种结构拒绝、每种内容问题只记数、切项与 id、报数；去掉若干项后的正文；`/3` 事实表的形状与拒绝；已核实 `/2` 照常拼装
+- [x] 1.2 正文的解析与检查（切项、出处解析成 `{file, lines, passage}`、时序图子集与最少一张、内容问题记成 `notes`）；`/3` 事实表；`check-entry` 与 `try-entry` 一起检查两者；`check-chapter` 命令
 - commit：`feat(excavator-product-handbook): free chapter and /3 fact sheet with their checks`
 
 ## 2. 拼装与页面

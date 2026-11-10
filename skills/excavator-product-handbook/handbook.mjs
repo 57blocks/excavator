@@ -67,6 +67,9 @@
  *       The same checks for the overview lane itself; records nothing.
  *   check-entry <out> <featureId> --project <root>
  *       Check <out>/entries/<featureId>.json and record the result in state.json.
+ *   check-chapter <out> <featureId> --project <root>
+ *       Check <out>/chapters/<featureId>.md, the free chapter of a /3 entry, and
+ *       print its counts; records nothing.
  *   try-entry <out> <featureId> --project <root>
  *       The same checks for the lane itself; records nothing.
  *   check-findings <out> <featureId>.findings --project <root>
@@ -191,6 +194,7 @@ import { assemble } from './lib/assemble.mjs';
 import { applicationLines, scanProject } from './lib/applications.mjs';
 import { candidatesOutput } from './lib/candidates.mjs';
 import { runData } from './lib/data-run.mjs';
+import { checkChapterCommand } from './lib/chapter-command.mjs';
 import { checkEntry, tryEntry } from './lib/entry-check.mjs';
 import { checkMap } from './lib/check-map.mjs';
 import { checkDomains } from './lib/domains-check.mjs';
@@ -350,6 +354,16 @@ Commands:
       citations, labels, numbers and banned words, and the narrative language
       (as check-map), and record the result in state.json. A failure ends with
       a Next: line.
+  check-chapter <out> <featureId> --project <root>
+      Check <out>/chapters/<featureId>.md, the free chapter written next to a
+      /3 entry (the fact sheet; check-entry and try-entry check both files):
+      every citation (<path>:<n> or <path>:<a>-<b> in backticks, at most 80 lines, inside
+      the project), the numbers and quoted texts of each sentence, table row,
+      arrow and heading against its own citations, code-shaped words, words of
+      advice, the narrative language, the sequence diagram subset, and at least
+      one sequence diagram or a no-diagram line. Prints each problem with the item
+      id, or "<featureId>: chapter ok" and the counts of sentences, table rows,
+      citations, diagrams and arrows. Reads and writes no state.json.
   try-entry <out> <featureId> --project <root>
       The same checks as check-entry, for the lane to run on its own file
       before it replies. Reads and writes no state.json: it is not an attempt
@@ -763,6 +777,11 @@ const COMMANDS = {
     if (positionals.length !== 2) throw new UsageError('check-entry takes <out> and <featureId>');
     const root = projectRootOption(options.project);
     return withStateLock(positionals[0], () => report(checkEntry(positionals[0], positionals[1], root)));
+  },
+  'check-chapter'(args) {
+    const { positionals, options } = parseArgs(args, ['project']);
+    if (positionals.length !== 2) throw new UsageError('check-chapter takes <out> and <featureId>');
+    return report(checkChapterCommand(positionals[0], positionals[1], projectRootOption(options.project)));
   },
   'try-entry'(args) {
     const { positionals, options } = parseArgs(args, ['project']);

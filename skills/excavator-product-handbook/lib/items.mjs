@@ -80,7 +80,7 @@ export function entryItems(entry) {
   entry.screens.forEach((screen, i) => {
     const sPath = `screens[${i}]`;
     items.push(item(sPath, [text(`${sPath}.name`, screen.name, { label: true })], screen.evidence));
-    screen.fields.forEach((field, j) => {
+    (screen.fields ?? []).forEach((field, j) => {
       const fPath = `${sPath}.fields[${j}]`;
       items.push(item(fPath, [text(`${fPath}.label`, field.label, { label: true })], field.evidence));
       field.rules.forEach((rule, k) => {
@@ -88,7 +88,7 @@ export function entryItems(entry) {
       });
     });
   });
-  entry.operations.forEach((operation, i) => {
+  (entry.operations ?? []).forEach((operation, i) => {
     const oPath = `operations[${i}]`;
     const sentences = operation.sentences.map((sentence, j) => item(`${oPath}.sentences[${j}]`, [text(`${oPath}.sentences[${j}].text`, sentence.text, { narrative: true })], sentence.evidence));
     // The name has no citation of its own: its numbers are read against the passages of its sentences.
@@ -107,6 +107,10 @@ export function entryItems(entry) {
         items.push(item(path, part.strings.map((key) => text(`${path}.${key}`, element[key], { narrative: true })), element.evidence));
       });
     }
+  });
+  // The fact sheet (/3) lists its hand-overs at the top level; a /2 entry keeps them in its operations.
+  (entry.handoffs ?? []).forEach((handoff, i) => {
+    items.push(item(`handoffs[${i}]`, [text(`handoffs[${i}].text`, handoff.text, { narrative: true })], handoff.evidence));
   });
   entry.states.forEach((state, i) => {
     items.push(item(`states[${i}]`, [text(`states[${i}].label`, state.label, { label: true }), text(`states[${i}].meaning`, state.meaning, { narrative: true })], state.evidence));

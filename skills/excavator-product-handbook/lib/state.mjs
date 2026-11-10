@@ -12,7 +12,9 @@
  * `reasons` of every tracer that contradicted the item and the `at` positions
  * that showed the counter-evidence). A unit whose rewrite changed the claim of
  * an item also carries `narrowed`, `[{ path, from, to, kept }]`, for the audit
- * (openspec change handbook-recall); the handbook does not show it. Only the scripts change it:
+ * (openspec change handbook-recall); the handbook does not show it. A checked /3 entry
+ * (openspec change handbook-free-chapter) also carries `chapter: { items, notes }`, the items of its chapter with each
+ * citation as `{ file, lines, passage }` and the content findings `{ id, kind, detail }` the chapter check reported. Only the scripts change it:
  * check-map creates it; mark, check-entry, verdicts and trace-verdicts update it.
  * Every write is atomic; the commands that change it hold the state lock
  * (lock.mjs). The system overview (openspec change handbook-system-overview)
@@ -64,6 +66,14 @@ const removedValid = (list) => Array.isArray(list) && list.every((item) => isObj
 const narrowedValid = (list) => Array.isArray(list) && list.every((item) => isObject(item)
   && typeof item.path === 'string' && typeof item.from === 'string' && typeof item.to === 'string' && typeof item.kept === 'boolean');
 
+/** The chapter items a /3 entry's checked state keeps (openspec change handbook-free-chapter): each with its citations resolved to lines and their text. */
+const chapterValid = (chapter) => isObject(chapter) && Array.isArray(chapter.items)
+  && (chapter.notes === undefined || (Array.isArray(chapter.notes) && chapter.notes.every((note) => isObject(note) && ['id', 'kind', 'detail'].every((key) => typeof note[key] === 'string'))))
+  && chapter.items.every((item) => isObject(item)
+  && typeof item.id === 'string' && typeof item.kind === 'string' && typeof item.text === 'string' && typeof item.claim === 'string'
+  && Array.isArray(item.cites) && item.cites.every((cite) => isObject(cite) && typeof cite.file === 'string' && typeof cite.passage === 'string'
+    && Array.isArray(cite.lines) && cite.lines.length === 2 && cite.lines.every(Number.isInteger)));
+
 /** The problem of one state entry (of a feature, or the overview) named `label`, or null. */
 function entryProblem(label, entry) {
   if (!isObject(entry) || !STATUSES.includes(entry.status) || !Number.isInteger(entry.attempts) || entry.attempts < 0) {
@@ -76,6 +86,7 @@ function entryProblem(label, entry) {
   if (entry.narrowed !== undefined && !narrowedValid(entry.narrowed)) return `${label} has a narrowed list that is not [{ path, from, to, kept }]`;
   if (entry.entryDigest !== undefined && typeof entry.entryDigest !== 'string') return `${label} has an entryDigest that is not a string`;
   if (entry.rewriting !== undefined && entry.rewriting !== true) return `${label} has a rewriting that is not true`;
+  if (entry.chapter !== undefined && !chapterValid(entry.chapter)) return `${label} has a chapter that is not { items: [{ id, kind, text, claim, cites: [{ file, lines, passage }] }] }`;
   return null;
 }
 

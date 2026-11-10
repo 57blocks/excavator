@@ -18,9 +18,14 @@ export const HANDBOOK_SCRIPT = join(repoRoot, 'skills/excavator-product-handbook
 export const SHIPPED_UI = join(repoRoot, 'skills/excavator-product-handbook/ui-strings.json');
 export const FIXTURE_PROJECT = join(repoRoot, 'tests/fixtures/product-handbook/project');
 
-/** Run `node handbook.mjs <args>`; returns { status, stdout, stderr, lines } (lines: the non-empty stdout lines). */
+/**
+ * Run `node handbook.mjs <args>`; returns { status, stdout, stderr, lines } (lines: the non-empty stdout lines).
+ * The many runs here that build verified /2 entries set the variable that lets check-entry read a /2 file
+ * (a new entry is /3); the tests of the /3 rules pass `env: { EXCAVATOR_HANDBOOK_ALLOW_V2_ENTRY: '' }` to drop it.
+ */
 export function runHandbook(args, options = {}) {
-  const result = spawnSync(process.execPath, [HANDBOOK_SCRIPT, ...args], { encoding: 'utf-8', ...options });
+  const env = { ...process.env, EXCAVATOR_HANDBOOK_ALLOW_V2_ENTRY: '1', ...options.env };
+  const result = spawnSync(process.execPath, [HANDBOOK_SCRIPT, ...args], { encoding: 'utf-8', ...options, env });
   return { status: result.status, stdout: result.stdout, stderr: result.stderr, lines: result.stdout.split('\n').filter((line) => line !== '') };
 }
 

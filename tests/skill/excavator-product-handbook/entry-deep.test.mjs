@@ -110,7 +110,7 @@ describe('entry /2: shape and checks', () => {
     entry.operations[0].edges[0].then = 'The itemCount check refuses it.';
   }, /operations\[0\]\.edges\[0\]\.then: .*itemCount/);
 
-  it('rejects a newly written /1 entry and says new entries are /2', () => {
+  it('rejects a newly written /1 entry and says new entries are /3', () => {
     const run = makeCheckedMapRun();
     cleanups.push(run.cleanup);
     const entry = clone(goodEntry());
@@ -118,7 +118,7 @@ describe('entry /2: shape and checks', () => {
     run.writeEntry('F1', entry);
     const bad = run.run('check-entry', 'F1');
     expect(bad.status).toBe(1);
-    expect(bad.stdout).toMatch(/format: .*excavator-product-handbook-entry\/2.*new entr/);
+    expect(bad.stdout).toMatch(/format: .*excavator-product-handbook-entry\/3.*new entr/);
   });
 
   it('accepts a /1 entry only as a settled one, with the new lists absent', () => {
