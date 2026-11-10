@@ -129,7 +129,11 @@ export function DomainPage({ data, domain: group }: { data: PageData; domain: Ar
   );
 }
 
-/** Where the code of a domain is: the hotspots its features cite, the files its verified entries quote, the tables named in those files and the applications that hold its passages. */
+/**
+ * Where the code of a domain is: the hotspots its features cite, the files its verified entries quote, the tables named in
+ * those files and the applications that hold its passages. When the code health or the data file was not read, its part
+ * says so in the same words as its own page instead of none.
+ */
 function DomainCode({ data, domainId, own }: { data: PageData; domainId: string; own: Set<string> }) {
   const t = useText();
   const nav = useLinks();
@@ -150,7 +154,7 @@ function DomainCode({ data, domainId, own }: { data: PageData; domainId: string;
 
       <h3 className="sub-title">{t('page.domain.hotspots')}</h3>
       <p className="muted summary-note">{t('page.domain.hotspotsNote')}</p>
-      {hotspots.length === 0 ? none : (
+      {data.history.state !== 'ok' ? <p className="muted">{t(data.history.state === 'malformed' ? 'md.history.malformed' : 'md.history.notWritten')}</p> : hotspots.length === 0 ? none : (
         <ul className="plain-list">{hotspots.map(({ row, file }) => <li key={file}><code>{t('page.domain.hotspotItem', { file, commits: row.commits })}</code></li>)}</ul>
       )}
 
@@ -161,7 +165,7 @@ function DomainCode({ data, domainId, own }: { data: PageData; domainId: string;
 
       <h3 className="sub-title">{t('page.domain.tables')}</h3>
       <p className="muted summary-note">{t('page.domain.tablesNote')}</p>
-      {tables.length === 0 ? none : (
+      {technical.dataState !== 'ok' ? <p className="muted">{t(technical.dataState === 'malformed' ? 'md.data.malformed' : 'md.data.notWritten')}</p> : tables.length === 0 ? none : (
         <ul className="plain-list">{tables.map((table) => <li key={table.name}><a href={nav.data}><code>{table.name}</code></a></li>)}</ul>
       )}
 

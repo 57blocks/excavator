@@ -615,6 +615,22 @@ describe('the domain page has the sections of the reference handbook (handbook-d
     expect(code).toContain(marked['page.domain.tablesNote']);
   });
 
+  it('says why the hotspots or the tables are missing instead of none when their file was not read', () => {
+    const data = withDomain(BOTH);
+    data.history = { ...data.history, state: 'malformed' } as PageData['history'];
+    data.technical!.data = null;
+    data.technical!.dataState = 'missing';
+    const code = sectionOf(mainOf(render(data, '#/technical/domain/D1')), 'domain-code');
+    expect(code).toContain(marked['md.history.malformed']);
+    expect(code).toContain(marked['md.data.notWritten']);
+    const unread = withDomain(BOTH);
+    unread.history = { ...unread.history, state: 'missing' } as PageData['history'];
+    unread.technical!.dataState = 'malformed';
+    const second = sectionOf(mainOf(render(unread, '#/technical/domain/D1')), 'domain-code');
+    expect(second).toContain(marked['md.history.notWritten']);
+    expect(second).toContain(marked['md.data.malformed']);
+  });
+
   it('lists the relations on two sides, each linking both features and the other domain', () => {
     const relations = sectionOf(technical, 'domain-relations');
     const gives = relations.slice(relations.indexOf(marked['md.entities.domain.gives']), relations.indexOf(marked['md.entities.domain.gets']));
