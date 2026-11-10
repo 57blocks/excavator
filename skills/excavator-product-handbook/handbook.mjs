@@ -14,7 +14,26 @@
  *       Check <out>/domains.json, the business domains the map's features are
  *       grouped into: shape, ids D1, D2, ..., no empty domain, every map feature
  *       in exactly one domain, reader text and narrative language of the names.
- *   select <out> --features <list> --project <root>
+ *   outline-facts <out> --project <root>
+ *       Print every block the outline can place, one line each: id, block or
+ *       list, the views that have it, and its default title in the run's fixed text.
+ *   check-outline <out> --project <root>
+ *       Check <out>/outline.json, the parts and chapters of the handbook: the
+ *       shape, the language (the map's), every block placed once or left out
+ *       with a reason, and the reader text of the titles and reasons.
+ *   outline-facts <out> --project <root>
+      Print every block the outline can place, one line each, tab separated:
+      the id, block or list, technical or both views, and the default title in
+      the run's fixed text. Needs the map to pass check-map. Changes no file.
+  check-outline <out> --project <root>
+      Check <out>/outline.json against the project and the map: the shape, the
+      language (the map's), every block placed in exactly one chapter or left
+      out in "unplaced" with a reason (each block missing, placed twice or
+      unknown is named; a list is written as "list", a block as "block"), no
+      part without chapters, and for each title and reason the banned-words
+      and narrative-language checks a domain name gets. Prints every problem;
+      exits 1 when there is one. Changes no file.
+  select <out> --features <list> --project <root>
  *       Resolve a --features list of ids or feature names to ids against the
  *       checked map; exit 1 and list every id and name when an item does not
  *       match exactly one feature. Changes no file.
@@ -136,10 +155,10 @@
  *       the project; remove the items either tracer contradicted and verify the
  *       feature, nothing recorded when any file does not hold.
  *   sections [<list>]
- *       Validate a --sections list (overview, features, data, findings, system-findings, priority, remedies, topics; default all) and print
+ *       Validate a --sections list (overview, features, data, history, findings, system-findings, priority, remedies, topics, outline; default all) and print
  *       SECTIONS=<list>, one READ=<file> line per phase file the run reads,
  *       in reading order, the shared map file once, and an AFTER_TRACE=<file> line
- *       for a section whose phase runs after the trace (priority, remedies, topics); exit 1 for a
+ *       for a section whose phase runs after the trace (priority, remedies, topics, outline); exit 1 for a
  *       value that is not a section. Reads and changes no file.
  *   check-ui <out> [--language <name>]
  *       Check <out>/ui.json against the shipped English table, or copy that
@@ -174,6 +193,7 @@ import { runData } from './lib/data-run.mjs';
 import { checkEntry, tryEntry } from './lib/entry-check.mjs';
 import { checkMap } from './lib/check-map.mjs';
 import { checkDomains } from './lib/domains-check.mjs';
+import { checkOutline, outlineFacts } from './lib/outline.mjs';
 import { UsageError } from './lib/errors.mjs';
 import { withStateLock } from './lib/lock.mjs';
 import { mark } from './lib/mark.mjs';
@@ -245,12 +265,12 @@ Commands:
       not an application root exits 1: print each such item, then every root as
       "app<n>  <dir>", then a Next: line. Changes no file.
   sections [<list>]
-      Validate the --sections list (comma-separated: overview, features, data, history, findings, system-findings, priority, remedies, topics; empty
+      Validate the --sections list (comma-separated: overview, features, data, history, findings, system-findings, priority, remedies, topics, outline; empty
       or absent is all) and print "SECTIONS=<the sections in fixed order>",
       then one "READ=<path>" line per phase file to read, relative to the skill
       directory, in reading order: the stage files first (the map file once),
       then each section's file. The file of a section whose phase runs after the
-      trace (priority, remedies, topics) is printed as "AFTER_TRACE=<path>" instead: it is read at
+      trace (priority, remedies, topics, outline) is printed as "AFTER_TRACE=<path>" instead: it is read at
       the end of Phase 6. A value that is not a section exits 1 and the
       allowed values are printed. Reads and changes no file.
   applications <projectRoot>
@@ -650,6 +670,16 @@ const COMMANDS = {
     const { positionals, options } = parseArgs(args, ['project']);
     if (positionals.length !== 1) throw new UsageError('check-domains takes exactly one <out> directory');
     return report(checkDomains(positionals[0], projectRootOption(options.project)));
+  },
+  'outline-facts'(args) {
+    const { positionals, options } = parseArgs(args, ['project']);
+    if (positionals.length !== 1) throw new UsageError('outline-facts takes exactly one <out> directory');
+    return report(outlineFacts(positionals[0], projectRootOption(options.project)));
+  },
+  'check-outline'(args) {
+    const { positionals, options } = parseArgs(args, ['project']);
+    if (positionals.length !== 1) throw new UsageError('check-outline takes exactly one <out> directory');
+    return report(checkOutline(positionals[0], projectRootOption(options.project)));
   },
   select(args) {
     const { positionals, options } = parseArgs(args, ['project', 'features', 'applications']);
