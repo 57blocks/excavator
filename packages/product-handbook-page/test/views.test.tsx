@@ -656,48 +656,93 @@ describe('the domain page has the sections of the reference handbook (handbook-d
   });
 });
 
-describe('the overview draws the business flow between domains and the technical structure (handbook-domain-page D4, D5)', () => {
+describe('the business flow and the technical structure are chapters of their own, like the reference handbook (handbook-domain-page D4, D5, D6)', () => {
   const withFlows = (views: View[]): PageData => {
     const data = dataFor(views);
-    data.entities.domainFlows = [{ from: 'D1', to: 'D2', count: 3 }];
+    data.entities.domainFlows = [{ from: 'D1', to: 'D2', count: 1 }];
+    data.entities.domains[0] = { ...data.entities.domains[0], relations: [{ direction: 'out', domain: 'D2', from: 'F1', to: 'F3', text: d('hands the order on') }] };
+    data.entities.domains[1] = { ...data.entities.domains[1], relations: [{ direction: 'in', domain: 'D1', from: 'F1', to: 'F3', text: d('hands the order on') }] };
     return data;
   };
   const partOf = (html: string, part: string) => {
     const start = html.indexOf(`data-part="${part}"`);
     return start < 0 ? '' : html.slice(start, html.indexOf('</section>', start));
   };
+  const systemGroup = (html: string) => {
+    const rail = html.slice(html.indexOf('<nav class="rail"'));
+    const start = rail.indexOf('data-group="system"');
+    return rail.slice(start, rail.indexOf('</section>', start));
+  };
 
-  it('draws a node for each domain with a flow, linking its page, and an edge labelled with the count', () => {
-    const flow = partOf(render(withFlows(BOTH), '#/product'), 'overview-flow');
-    expect(flow).toContain(marked['md.entities.domains.flowHeading']);
-    expect(flow).toContain('href="#/product/domain/D1"');
-    expect(flow).toContain('href="#/product/domain/D2"');
-    expect(flow).toContain('data-edge="D1 D2"');
-    expect(flow).toContain('>3<');
+  it('routes the two chapters, the technical structure in the technical view only', () => {
+    expect(parseHash('#/business')).toEqual({ name: 'business' });
+    expect(parseHash('#/technical/architecture')).toEqual({ name: 'architecture', view: 'technical' });
+    expect(routeHash({ name: 'architecture' }, 'technical')).toBe('#/technical/architecture');
+    expect(render(withFlows(BOTH), '#/product/architecture')).not.toContain('data-view="architecture"');
+  });
+
+  it('lists the chapters of the system first in the rail: overview, business flow, technical structure, data, then the matrices', () => {
+    const order = (html: string) => Array.from(systemGroup(html).matchAll(/href="([^"]+)"/g), (match) => match[1]);
+    expect(order(render(withFlows(BOTH), '#/technical'))).toEqual(['#/technical', '#/technical/business', '#/technical/architecture', '#/technical/data', '#/technical/matrix/roles', '#/technical/matrix/applications', '#/technical/dictionaries']);
+    expect(order(render(withFlows(BOTH), '#/product'))).toEqual(['#/product', '#/product/business', '#/product/matrix/roles']);
+  });
+
+  it('leaves the two diagrams off the overview', () => {
+    const overview = render(withFlows(BOTH), '#/technical');
+    expect(overview).not.toContain('data-part="flow-chart"');
+    expect(overview).not.toContain('data-part="architecture-chart"');
+  });
+
+  it('draws the business flow and lists every handoff between domains once, with both domains, both features and what is handed over', () => {
+    const html = render(withFlows(BOTH), '#/product/business');
+    expect(html).toContain('data-view="business"');
+    expect(html).toContain(marked['page.business.lede']);
+    const chart = partOf(html, 'business-flow');
+    expect(chart).toContain('data-edge="D1 D2"');
+    expect(chart).toContain('href="#/product/domain/D1"');
+    const list = decode(partOf(html, 'business-list'));
+    expect(list.split(d('hands the order on')).length).toBe(2);
+    for (const href of ['#/product/domain/D1', '#/product/domain/D2', '#/product/feature/F1', '#/product/feature/F3']) expect(list).toContain(`href="${href}"`);
   });
 
   it('writes a fixed text and draws nothing when no handoff crosses domains', () => {
-    const flow = partOf(render(dataFor(BOTH), '#/product'), 'overview-flow');
-    expect(flow).toContain(marked['md.entities.domains.flowNone']);
-    expect(flow).not.toContain('<svg');
+    const html = render(dataFor(BOTH), '#/product/business');
+    expect(partOf(html, 'business-flow')).toContain(marked['md.entities.domains.flowNone']);
+    expect(html).not.toContain('class="flow-svg"');
+    expect(html).not.toContain('data-part="business-list"');
   });
 
-  it('draws the applications and the systems they are shown calling, only in the technical view', () => {
-    expect(render(withFlows(BOTH), '#/product')).not.toContain('data-part="overview-architecture"');
-    const architecture = partOf(render(withFlows(BOTH), '#/technical'), 'overview-architecture');
-    expect(architecture).toContain(marked['md.entities.systems.diagramHeading']);
-    expect(architecture).toContain(`href="#/technical/application/${enc(SVC)}"`);
-    expect(architecture).toContain(`href="#/technical/system/${enc(SLACK)}"`);
-    // An application whose files only hold the name, and a system no verified caller is shown calling, are not drawn.
-    expect(architecture).not.toContain(`href="#/technical/application/${enc(ADMIN)}"`);
+  it('gives the technical structure a table of the applications, the diagram of the calls to external systems and the external systems', () => {
+    const html = render(withFlows(BOTH), '#/technical/architecture');
+    expect(html).toContain(marked['page.architecture.lede']);
+    const apps = decode(partOf(html, 'architecture-applications'));
+    for (const name of [d('Service'), d('Admin'), d('main work'), d('Lang'), d('2024-01-01')]) expect(apps).toContain(name);
+    expect(apps).toContain(`href="#/technical/application/${enc(SVC)}"`);
+    const calls = partOf(html, 'architecture-calls');
+    expect(calls).toContain(`href="#/technical/application/${enc(SVC)}"`);
+    expect(calls).toContain(`href="#/technical/system/${enc(SLACK)}"`);
+    expect(calls).not.toContain(`href="#/technical/application/${enc(ADMIN)}"`);
     const unshown = withFlows(BOTH);
     unshown.technical!.integrations.push({ system: d('Mail'), use: d('mail'), shown: [], named: [{ application: ADMIN, files: 3 }], namedOutside: 0 });
-    const drawn = partOf(render(unshown, '#/technical'), 'overview-architecture');
+    const drawn = partOf(render(unshown, '#/technical/architecture'), 'architecture-calls');
     expect(drawn).not.toContain(d('Mail'));
     expect(drawn).not.toContain(`href="#/technical/application/${enc(ADMIN)}"`);
+    expect(decode(partOf(html, 'architecture-systems'))).toContain(d('messages'));
+  });
+
+  it('ends a chapter with links to the previous and the next chapter of the rail', () => {
+    const technical = partOf(render(withFlows(BOTH), '#/technical/business'), 'chapter-nav');
+    expect(technical).toContain('href="#/technical"');
+    expect(technical).toContain('href="#/technical/architecture"');
+    expect(technical).toContain(marked['page.chapter.previous']);
+    const product = partOf(render(withFlows(BOTH), '#/product/business'), 'chapter-nav');
+    expect(product).toContain('href="#/product/matrix/roles"');
+    const first = partOf(render(withFlows(BOTH), '#/product'), 'chapter-nav');
+    expect(first).not.toContain(marked['page.chapter.previous']);
+    expect(first).toContain('href="#/product/business"');
   });
 
   it('takes every text from the ui table or the data', () => {
-    for (const hash of ['#/product', '#/technical']) expect(unmarked(render(withFlows(BOTH), hash)), hash).toEqual([]);
+    for (const hash of ['#/product', '#/technical', '#/product/business', '#/technical/business', '#/technical/architecture']) expect(unmarked(render(withFlows(BOTH), hash)), hash).toEqual([]);
   });
 });

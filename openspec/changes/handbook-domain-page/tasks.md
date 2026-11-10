@@ -26,3 +26,11 @@
 - [x] 4.1 O3 变异
 - [x] 4.2 O4 真实页面截图
 - [x] 4.3 O5 测试与检查
+
+## 5. 业务全景与技术架构各成一章（评审后加入）
+
+提交：`feat(excavator-product-handbook): the business flow and the technical structure are chapters of their own`
+
+- [x] 5.1 页面测试先红：路由、导航顺序、概览不再有图、两章的内容、上一章与下一章
+- [x] 5.2 两章的页面、章节列表、导航改读章节列表、上一章与下一章
+- [ ] 5.3 真实页面截图，补验收记录
