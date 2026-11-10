@@ -7,7 +7,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { clone, confirmChecked, judge, makeCheckedMapRun, traceFeature, verifyChecked } from './helpers.mjs';
+import { clone, confirmChecked, judgeBothRounds, makeCheckedMapRun, traceFeature, verifyChecked } from './helpers.mjs';
 import { checkedOverviewRun } from './overview-fixture.mjs';
 
 const cleanups = [];
@@ -57,7 +57,7 @@ describe('check-entry on a verified feature', () => {
     run.writeEntry();
     expect(run.run('check-entry', 'F1').status).toBe(0);
     // The purpose is not traced (design D5 of handbook-deep-entry): the verifiers remove it.
-    const judged = judge(run, 'F1', 1, (item) => (item.id === 'purpose' ? { verdict: 'contradicted', reason: 'Nobody places orders here.' } : 'verified'));
+    const judged = judgeBothRounds(run, 'F1', (item) => (item.id === 'purpose' ? { verdict: 'contradicted', reason: 'Nobody places orders here.' } : 'verified'));
     expect(judged.lines[0], judged.stdout).toBe('F1: confirmed, 1 item removed');
     const result = traceFeature(run, 'F1');
     expect(result.lines, result.stdout).toEqual(['F1: verified (8 items)']);

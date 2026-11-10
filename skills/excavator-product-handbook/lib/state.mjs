@@ -10,7 +10,9 @@
  * file, and the items removed
  * so far (a record of a removal by the tracers also has `step: "trace"`, the
  * `reasons` of every tracer that contradicted the item and the `at` positions
- * that showed the counter-evidence). Only the scripts change it:
+ * that showed the counter-evidence). A unit whose rewrite changed the claim of
+ * an item also carries `narrowed`, `[{ path, from, to, kept }]`, for the audit
+ * (openspec change handbook-recall); the handbook does not show it. Only the scripts change it:
  * check-map creates it; mark, check-entry, verdicts and trace-verdicts update it.
  * Every write is atomic; the commands that change it hold the state lock
  * (lock.mjs). The system overview (openspec change handbook-system-overview)
@@ -58,6 +60,10 @@ const removedValid = (list) => Array.isArray(list) && list.every((item) => isObj
   && (item.step === undefined || REMOVAL_STEPS.includes(item.step)) && (item.at === undefined || atValid(item.at))
   && (item.reasons === undefined || (Array.isArray(item.reasons) && item.reasons.every((reason) => typeof reason === 'string'))));
 
+/** The claims a round-2 rewrite changed (openspec change handbook-recall): each with its old and new claim and whether the item stayed. */
+const narrowedValid = (list) => Array.isArray(list) && list.every((item) => isObject(item)
+  && typeof item.path === 'string' && typeof item.from === 'string' && typeof item.to === 'string' && typeof item.kept === 'boolean');
+
 /** The problem of one state entry (of a feature, or the overview) named `label`, or null. */
 function entryProblem(label, entry) {
   if (!isObject(entry) || !STATUSES.includes(entry.status) || !Number.isInteger(entry.attempts) || entry.attempts < 0) {
@@ -67,6 +73,7 @@ function entryProblem(label, entry) {
     return `${label} has a failure that is not { step, reasons }`;
   }
   if (entry.removed !== undefined && !removedValid(entry.removed)) return `${label} has a removed list that is not [{ path, claim, verdict, reason, step?, reasons?, at? }]`;
+  if (entry.narrowed !== undefined && !narrowedValid(entry.narrowed)) return `${label} has a narrowed list that is not [{ path, from, to, kept }]`;
   if (entry.entryDigest !== undefined && typeof entry.entryDigest !== 'string') return `${label} has an entryDigest that is not a string`;
   if (entry.rewriting !== undefined && entry.rewriting !== true) return `${label} has a rewriting that is not true`;
   return null;

@@ -1,9 +1,9 @@
 // Design D14 of openspec change product-handbook-map: `slices` cuts a checked
 // entry into items with their claim and the source around each cited passage;
 // `verdicts` records the verifier's verdicts (one per item, nothing recorded
-// when that does not hold), removes the items round 1 contradicted, lists the
-// unverified ones for a rewrite that may change citations only, and after
-// round 2 removes what is still not verified. Every rejection is paired with a
+// when that does not hold), lists every item not both verified for a rewrite
+// (round 1 removes nothing; the rewrite may narrow a claim but never rename),
+// and after round 2 removes what is still not verified. Every rejection is paired with a
 // control that passes.
 import { afterEach, describe, expect, it } from 'vitest';
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
@@ -459,76 +459,46 @@ describe('verdicts: round 1', () => {
     expect(stateOf(run)).toEqual({ status: 'checked', attempts: 0, rewriting: true });
   });
 
-  it('removes a contradicted item at once, records it with its claim, verdict and reason, and keeps it out of the rewrite file', () => {
+  it('lists a contradicted item for the rewrite with its verdict and reason, and removes nothing', () => {
     const run = checkedRun();
+    const before = readFileSync(join(run.out, 'entries', 'F1.json'), 'utf-8');
     const result = judge(run, 'F1', 1, (item) => {
       if (item.id === 'who[0]') return { verdict: 'contradicted', reason: 'The check lets Approver in, not Clerk.' };
       if (item.id === 'states[1]') return { verdict: 'unverified', reason: 'No line shown names this state.' };
       return 'verified';
     });
     expect(result.status, result.stdout).toBe(0);
-    expect(result.lines.slice(0, 3)).toEqual(['F1: 1 item removed', 'F1: 1 item to rewrite', `Rewrite file: ${rewritePath(run)}`]);
+    expect(result.lines.slice(0, 2)).toEqual(['F1: 2 items to rewrite', `Rewrite file: ${rewritePath(run)}`]);
+    expect(result.stdout).not.toMatch(/removed/);
     expect(result.lines.at(-1)).toMatch(/^Next: dispatch one rewrite subagent for F1/);
-    const rewrite = JSON.parse(readFileSync(rewritePath(run), 'utf-8'));
-    expect(rewrite.items.map((item) => item.id)).toEqual(['states[1]']);
-    const entry = JSON.parse(readFileSync(join(run.out, 'entries', 'F1.json'), 'utf-8'));
-    expect(entry.who).toEqual([]);
-    expect(entry.states).toHaveLength(2);
-    expect(stateOf(run)).toEqual({
-      status: 'checked',
-      attempts: 0,
-      rewriting: true,
-      removed: [{ path: 'who[0]', claim: 'Roles > Clerk: Create an order.', verdict: 'contradicted', reason: 'The check lets Approver in, not Clerk.' }],
-    });
-    // The trimmed entry still passes check-entry while it waits for its rewrite.
+    expect(result.lines.at(-1)).not.toMatch(/citations only/);
+    expect(JSON.parse(readFileSync(rewritePath(run), 'utf-8')).items).toEqual([
+      { id: 'who[0]', claim: 'Roles > Clerk: Create an order.', verdict: 'contradicted', reason: 'The check lets Approver in, not Clerk.' },
+      { id: 'states[1]', claim: 'State: Submitted; Meaning: The order was sent.', verdict: 'unverified', reason: 'No line shown names this state.' },
+    ]);
+    expect(readFileSync(join(run.out, 'entries', 'F1.json'), 'utf-8')).toBe(before);
+    expect(stateOf(run)).toEqual({ status: 'checked', attempts: 0, rewriting: true });
     expect(run.run('check-entry', 'F1').status).toBe(0);
-    expect(stateOf(run).removed).toHaveLength(1);
+    expect(stateOf(run).removed).toBeUndefined();
   });
 
-  it('takes what hangs on a contradicted item with it, and lists the unverified items under their paths in the trimmed entry', () => {
+  it('lists a contradicted field and an unverified rule under another field, each under its own path, and keeps the entry whole', () => {
     const run = checkedRun();
     const result = judge(run, 'F1', 1, (item) => {
       if (item.id === 'screens[0].fields[0]') return { verdict: 'contradicted', reason: 'The field is not on this screen.' };
-      if (item.id === 'screens[0].fields[0].rules[0]') return { verdict: 'unverified', reason: 'It went with its field.' };
       if (item.id === 'screens[0].fields[1].rules[1]') return { verdict: 'unverified', reason: 'No line shown gives this limit.' };
       return 'verified';
     });
     expect(result.status, result.stdout).toBe(0);
-    expect(result.lines[0]).toBe('F1: 2 items removed');
-    const removed = stateOf(run).removed;
-    expect(removed.map((item) => [item.path, item.verdict])).toEqual([['screens[0].fields[0]', 'contradicted'], ['screens[0].fields[0].rules[0]', 'withParent']]);
-    // The second field is now the first: the rewrite file names the item where the rewriter finds it.
-    expect(JSON.parse(readFileSync(rewritePath(run), 'utf-8')).items.map((item) => item.id)).toEqual(['screens[0].fields[0].rules[1]']);
+    expect(result.lines[0]).toBe('F1: 2 items to rewrite');
+    expect(JSON.parse(readFileSync(rewritePath(run), 'utf-8')).items.map((item) => [item.id, item.verdict])).toEqual([
+      ['screens[0].fields[0]', 'contradicted'], ['screens[0].fields[1].rules[1]', 'unverified'],
+    ]);
     const entry = JSON.parse(readFileSync(join(run.out, 'entries', 'F1.json'), 'utf-8'));
-    expect(entry.screens[0].fields.map((field) => field.label)).toEqual(['Item Count']);
+    expect(entry.screens[0].fields.map((field) => field.label)).toEqual(['Customer Name', 'Item Count']);
   });
 
-  it('confirms the feature at once, with what it removed and no rewrite file, when every item left is verified', () => {
-    const run = checkedRun();
-    const result = judge(run, 'F1', 1, (item) => (item.id === 'states[1]' ? { verdict: 'contradicted', reason: 'The code shows no such state.' } : 'verified'));
-    expect(result.status, result.stdout).toBe(0);
-    expect(result.lines[0]).toBe('F1: confirmed, 1 item removed');
-    expect(result.lines).toContain('No rewrite file: no item is left to rewrite');
-    expect(result.lines.at(-1)).toMatch(/^Next: run trace for F1/);
-    expect(result.stdout).not.toMatch(/Rewrite file:/);
-    expect(existsSync(rewritePath(run))).toBe(false);
-    const state = stateOf(run);
-    expect(state.status).toBe('confirmed');
-    expect(state.rewriting).toBeUndefined();
-    expect(state.entryDigest).toMatch(/^[0-9a-f]{64}$/);
-    expect(state.removed).toEqual([{ path: 'states[1]', claim: 'State: Submitted; Meaning: The order was sent.', verdict: 'contradicted', reason: 'The code shows no such state.' }]);
-    expect(JSON.parse(readFileSync(join(run.out, 'entries', 'F1.json'), 'utf-8')).states.map((state) => state.label)).toEqual(['Draft']);
-    // Round 2 has nothing to do, and the settled feature goes on to the tracers and the handbook.
-    expect(run.run('slices', 'F1', '--round', '2').status).toBe(1);
-    expect(traceFeature(run).status).toBe(0);
-    expect(stateOf(run).status).toBe('verified');
-    const assembled = run.run('assemble');
-    expect(assembled.status, assembled.stdout).toBe(0);
-    const text = readFileSync(join(run.out, 'handbook.md'), 'utf-8');
-    expect(text.slice(text.indexOf('## Coverage'))).toContain('The code shows no such state.');
-  });
-
-  it('removes a contradicted purpose at round 1, and the feature waits for its rewrite without one', () => {
+  it('lists a contradicted purpose with the other items; the entry keeps its purpose until round 2 settles it', () => {
     const run = checkedRun();
     const result = judge(run, 'F1', 1, (item) => {
       if (item.id === 'purpose') return { verdict: 'contradicted', reason: 'The form is not about customers.' };
@@ -536,29 +506,41 @@ describe('verdicts: round 1', () => {
       return 'verified';
     });
     expect(result.status, result.stdout).toBe(0);
-    expect(Object.hasOwn(JSON.parse(readFileSync(join(run.out, 'entries', 'F1.json'), 'utf-8')), 'purpose')).toBe(false);
-    // check-entry and slices --round 2 accept an entry whose purpose round 1 removed, and the record stays.
+    expect(Object.hasOwn(JSON.parse(readFileSync(join(run.out, 'entries', 'F1.json'), 'utf-8')), 'purpose')).toBe(true);
     rewrite(run, (entry) => { entry.who[0].evidence.push(ev(form, "title: 'New Order',")); });
-    expect(stateOf(run).removed.map((item) => item.path)).toEqual(['purpose']);
     expect(run.run('slices', 'F1', '--round', '2').status).toBe(0);
-    expect(judge(run, 'F1', 2).status).toBe(0);
-    expect(stateOf(run).removed.map((item) => item.path)).toEqual(['purpose']);
+    expect(judge(run, 'F1', 2, (item) => (item.id === 'purpose' ? { verdict: 'contradicted', reason: 'Still not about customers.' } : 'verified')).status).toBe(0);
+    expect(stateOf(run).removed.map((item) => [item.path, item.verdict])).toEqual([['purpose', 'contradicted']]);
     expect(stateOf(run).status).toBe('confirmed');
   });
 
-  it('fails the feature at verify, recording what it removed, when round 1 leaves no item with evidence', () => {
+  it('lists every item when all are contradicted: round 1 cannot fail the feature, round 2 can', () => {
     const run = checkedRun();
     const before = readFileSync(join(run.out, 'entries', 'F1.json'), 'utf-8');
     const result = judge(run, 'F1', 1, () => ({ verdict: 'contradicted', reason: 'The code says something else.' }));
     expect(result.status, result.stdout).toBe(0);
-    expect(result.lines).toEqual(['F1: failed at verify: no item could be proved']);
+    expect(result.lines[0]).toBe('F1: 14 items to rewrite');
     const state = stateOf(run);
-    expect(state.status).toBe('failed');
-    expect(state.failure).toEqual({ step: 'verify', reasons: ['no item could be proved'] });
-    expect(state.removed.map((item) => item.path)).toEqual(expect.arrayContaining(ALL_ITEMS));
-    expect(state.rewriting).toBeUndefined();
-    expect(existsSync(rewritePath(run))).toBe(false);
+    expect(state).toEqual({ status: 'checked', attempts: 0, rewriting: true });
+    expect(JSON.parse(readFileSync(rewritePath(run), 'utf-8')).items.map((item) => item.id)).toEqual(ALL_ITEMS);
     expect(readFileSync(join(run.out, 'entries', 'F1.json'), 'utf-8')).toBe(before);
+    expect(run.run('slices', 'F1', '--round', '2').status).toBe(0);
+    const second = judge(run, 'F1', 2, () => ({ verdict: 'contradicted', reason: 'The code still says something else.' }));
+    expect(second.lines).toEqual(['F1: failed at verify: no item could be proved']);
+    expect(stateOf(run).removed.map((item) => item.path)).toEqual(expect.arrayContaining(ALL_ITEMS));
+  });
+
+  it('a contradicted item that round 2 still contradicts is removed there and listed in the coverage section', () => {
+    const run = checkedRun();
+    judge(run, 'F1', 1, (item) => (item.id === 'states[1]' ? { verdict: 'contradicted', reason: 'The code shows no such state.' } : 'verified'));
+    expect(judge(run, 'F1', 2, () => ({ verdict: 'contradicted', reason: 'The code shows no such state.' })).status).toBe(0);
+    expect(stateOf(run).status).toBe('confirmed');
+    expect(JSON.parse(readFileSync(join(run.out, 'entries', 'F1.json'), 'utf-8')).states.map((state) => state.label)).toEqual(['Draft']);
+    expect(traceFeature(run).status).toBe(0);
+    const assembled = run.run('assemble');
+    expect(assembled.status, assembled.stdout).toBe(0);
+    const text = readFileSync(join(run.out, 'handbook.md'), 'utf-8');
+    expect(text.slice(text.indexOf('## Coverage'))).toContain('The code shows no such state.');
   });
 
   it('leaves no stale rewrite or round 2 file when a verified feature is verified again from round 1', () => {
@@ -694,8 +676,14 @@ describe('slices: round 2', () => {
     expect(ids(readVerify(run, 2))).toEqual(['screens[0].fields[1]', 'screens[0].fields[1].rules[0]', 'screens[0].fields[1].rules[1]']);
   });
 
-  describe('a listed item may change its citations only', () => {
-    const claimLine = (id) => `${id}: listed for rewriting, but its claim changed; only its citations may change`;
+  describe('a listed item may narrow its claim and change its citations, never a name or a label', () => {
+    const menu = ev('src/menu.js', "{ label: 'Orders', path: '/orders' },");
+    const countField = "{ label: 'Item Count', max: 35000 },";
+    const nameLine = (id) => new RegExp(`^${id.replace(/[[\]]/g, '\\$&')}: listed for rewriting, but a name or label changed .*names and labels may not change`, 'm');
+    const withTransitionAndHandoff = (entry) => {
+      entry.transitions.push({ from: 'Draft', to: 'Submitted', by: 'The clerk sends it.', evidence: [ev(form, "const statuses = ['Draft', 'Submitted'];")] });
+      entry.operations[0].handoffs.push({ feature: 'F2', text: 'Finished orders move to the archive.', evidence: [ev(form, "const statuses = ['Draft', 'Submitted'];")] });
+    };
 
     it('accepts a rewrite that only swaps, adds or drops citations of a listed item', () => {
       const run = rewriteRun({ 'who[0]': 'unverified', 'states[1]': 'unverified' });
@@ -708,75 +696,107 @@ describe('slices: round 2', () => {
       expect(ids(readVerify(run, 2))).toEqual(['who[0]', 'states[1]']);
     });
 
-    it('refuses a listed item whose text changed, prints the line with its path, and writes no verify file', () => {
-      const run = rewriteRun({ 'who[0]': 'unverified' });
-      rewrite(run, (entry) => { entry.who[0].can = 'Create orders.'; });
-      const result = run.run('slices', 'F1', '--round', '2');
-      expect(result.status, result.stdout).toBe(1);
-      expect(result.lines).toContain(claimLine('who[0]'));
-      expect(result.lines.at(-1)).toMatch(/^Next: /);
-      expect(existsSync(verifyPath(run, 2))).toBe(false);
-    });
-
-    it('refuses a changed claim of every kind a reader sees: a rule, a state meaning, a notification part', () => {
+    it('accepts a listed item whose claim changed, of every kind a reader sees, and slices the new claim', () => {
       const adjust = (entry) => {
         entry.notifications.push({ trigger: 'An order is sent', recipient: 'The approver', channel: 'Message', content: 'A new order waits.', evidence: [ev(form, "const statuses = ['Draft', 'Submitted'];")] });
       };
-      const run = rewriteRun({ 'screens[0].fields[1].rules[0]': 'unverified', 'states[1]': 'unverified', 'notifications[0]': 'unverified' }, adjust);
+      const run = rewriteRun({ 'who[0]': 'unverified', 'screens[0].fields[1].rules[0]': 'contradicted', 'states[1]': 'unverified', 'notifications[0]': 'unverified' }, adjust);
       rewrite(run, (entry) => {
-        entry.screens[0].fields[1].rules[0].text = 'At most 35000 items.';
+        entry.who[0].can = 'Create an order, except for a locked customer.';
+        entry.screens[0].fields[1].rules[0].text = 'At most 35,000 items, unless the customer is exempt.';
         entry.states[1].meaning = 'The order went out.';
         entry.notifications[0].channel = 'Email';
       });
       const result = run.run('slices', 'F1', '--round', '2');
-      expect(result.status, result.stdout).toBe(1);
-      for (const id of ['screens[0].fields[1].rules[0]', 'states[1]', 'notifications[0]']) expect(result.lines).toContain(claimLine(id));
+      expect(result.status, result.stdout).toBe(0);
+      const verify = readVerify(run, 2);
+      expect(ids(verify)).toEqual(['who[0]', 'screens[0].fields[1].rules[0]', 'states[1]', 'notifications[0]']);
+      expect(verify.items[0].claim).toBe('Roles > Clerk: Create an order, except for a locked customer.');
     });
 
-    it('refuses a rule under a listed field whose text changed', () => {
-      const run = rewriteRun({ 'screens[0].fields[1]': 'unverified' });
-      rewrite(run, (entry) => { entry.screens[0].fields[1].rules[0].text = 'At most 35000 items.'; });
+    it('accepts a rule under a listed field whose text changed, and a sentence whose own text changed', () => {
+      const run = rewriteRun({ 'screens[0].fields[1]': 'unverified', 'operations[0].sentences[1]': 'contradicted' });
+      rewrite(run, (entry) => {
+        entry.screens[0].fields[1].rules[0].text = 'At most 35000 items for a standard customer.';
+        entry.operations[0].sentences[1].text = 'The item count is limited to 35000 for a standard customer.';
+      });
+      expect(run.run('slices', 'F1', '--round', '2').status).toBe(0);
+    });
+
+    const renames = [
+      ['a role', 'who[0]', (entry) => { entry.who[0].role = 'Approver'; }, {}],
+      ['a navigation label', 'where[1]', (entry) => { entry.where[1].label = 'Orders'; entry.where[1].evidence.push(menu); }, {}],
+      ['a screen name', 'screens[0]', (entry) => { entry.screens[0].name = 'Orders'; entry.screens[0].evidence.push(menu); }, {}],
+      ['a field label', 'screens[0].fields[0]', (entry) => { entry.screens[0].fields[0].label = 'Item Count'; entry.screens[0].fields[0].evidence.push(ev(form, countField)); }, {}],
+      ['the side of a rule', 'screens[0].fields[1].rules[0]', (entry) => { entry.screens[0].fields[1].rules[0].side = 'frontend'; }, {}],
+      ['a state label', 'states[1]', (entry) => { entry.states[1].label = 'Draft'; }, {}],
+      ['the from state of a transition', 'transitions[0]', (entry) => { entry.transitions[0].from = 'Submitted'; }, { adjust: withTransitionAndHandoff }],
+      ['the to state of a transition', 'transitions[0]', (entry) => { entry.transitions[0].to = 'Draft'; }, { adjust: withTransitionAndHandoff }],
+      ['the target feature of a handoff', 'operations[0].handoffs[0]', (entry) => { entry.operations[0].handoffs[0].feature = 'F3'; }, { adjust: withTransitionAndHandoff }],
+      ['an operation name, with a listed sentence below it', 'operations[0].sentences[0]', (entry) => { entry.operations[0].name = 'Send an order'; }, {}],
+    ];
+    for (const [name, listed, change, options] of renames) {
+      it(`refuses ${name}, prints the item path and that names and labels may not change, and writes no verify file`, () => {
+        const run = rewriteRun({ [listed]: 'unverified' }, options.adjust);
+        rewrite(run, change);
+        const result = run.run('slices', 'F1', '--round', '2');
+        expect(result.status, result.stdout).toBe(1);
+        expect(result.stdout).toMatch(nameLine(listed));
+        expect(result.lines.at(-1)).toMatch(/^Next: /);
+        expect(existsSync(verifyPath(run, 2))).toBe(false);
+      });
+    }
+
+    it('refuses the rename of a screen below which a field is listed, naming the listed field', () => {
+      const run = rewriteRun({ 'screens[0].fields[0]': 'unverified' });
+      rewrite(run, (entry) => { entry.screens[0].name = 'Orders'; entry.screens[0].evidence.push(menu); });
       const result = run.run('slices', 'F1', '--round', '2');
       expect(result.status, result.stdout).toBe(1);
-      expect(result.lines).toContain(claimLine('screens[0].fields[1].rules[0]'));
+      expect(result.stdout).toMatch(nameLine('screens[0].fields[0]'));
     });
 
-    it('refuses a listed sentence whose operation name changed, because the name is part of its claim', () => {
-      const run = rewriteRun({ 'operations[0].sentences[0]': 'unverified' });
-      rewrite(run, (entry) => { entry.operations[0].name = 'Send an order'; });
+    it('does not say the claim may not change: the old refusal line is gone', () => {
+      const run = rewriteRun({ 'who[0]': 'unverified' });
+      rewrite(run, (entry) => { entry.who[0].role = 'Approver'; });
       const result = run.run('slices', 'F1', '--round', '2');
-      expect(result.status, result.stdout).toBe(1);
-      expect(result.lines).toContain(claimLine('operations[0].sentences[0]'));
+      expect(result.stdout).not.toMatch(/only its citations may change/);
+      expect(result.stdout).not.toMatch(/claim changed/);
     });
 
-    it('still compares an item that is not listed by its fingerprint, so a changed citation of it is refused as before', () => {
+    it('still compares an item that is not listed by its fingerprint, so a changed claim or citation of it is refused', () => {
       const run = rewriteRun({ 'who[0]': 'unverified' });
       rewrite(run, (entry) => { entry.states[0].evidence.push(ev(form, "title: 'New Order',")); });
       const result = run.run('slices', 'F1', '--round', '2');
       expect(result.status, result.stdout).toBe(1);
       expect(result.lines).toContain('states[0]: not listed for rewriting, but changed');
-      expect(result.stdout).not.toMatch(/claim changed/);
     });
   });
 
-  describe('after items were removed at round 1', () => {
-    /** Round 1 removes `where[0]` and `states[0]` (contradicted) and lists `who[0]` and `states[1]` (unverified); `states[1]` is `states[0]` now. */
+  describe('after items were removed at round 1 (a state written before round 1 stopped removing)', () => {
+    /** A run in the state an older round 1 left: `where[0]` and `states[0]` removed, `who[0]` and `states[1]` (now `states[0]`) listed. */
     const removedFirstRun = () => {
       const run = checkedRun();
-      const bad = {
-        'where[0]': { verdict: 'contradicted', reason: 'The menu has no such entry.' },
-        'states[0]': { verdict: 'contradicted', reason: 'The code shows no such state.' },
-        'who[0]': { verdict: 'unverified', reason: 'No line shown names this role.' },
-        'states[1]': { verdict: 'unverified', reason: 'No line shown names this state.' },
-      };
-      const result = judge(run, 'F1', 1, (item) => bad[item.id] ?? 'verified');
+      const bad = { 'who[0]': 'unverified', 'states[1]': 'unverified' };
+      const result = judge(run, 'F1', 1, (item) => (Object.hasOwn(bad, item.id) ? { verdict: bad[item.id], reason: `Round 1: ${item.id}.` } : 'verified'));
       expect(result.status, result.stdout).toBe(0);
+      const entry = JSON.parse(readFileSync(join(run.out, 'entries', 'F1.json'), 'utf-8'));
+      entry.where.shift();
+      entry.states.shift();
+      run.writeEntry('F1', entry);
+      const state = run.readJson('state.json');
+      state.features.F1.removed = [
+        { path: 'where[0]', claim: 'Where > Orders', verdict: 'contradicted', reason: 'The menu has no such entry.' },
+        { path: 'states[0]', claim: 'State: Draft; Meaning: The order is not sent yet.', verdict: 'contradicted', reason: 'The code shows no such state.' },
+      ];
+      run.writeJson(join(run.out, 'state.json'), state);
+      const listed = JSON.parse(readFileSync(rewritePath(run), 'utf-8'));
+      listed.items.find((item) => item.id === 'states[1]').id = 'states[0]';
+      run.writeJson(rewritePath(run), listed);
       return run;
     };
 
     it('does not report the removed items as missing, and reads the items after them at their new paths', () => {
       const run = removedFirstRun();
-      expect(JSON.parse(readFileSync(rewritePath(run), 'utf-8')).items.map((item) => item.id)).toEqual(['who[0]', 'states[0]']);
       rewrite(run, (entry) => {
         recite(entry.who[0]);
         recite(entry.states[0]);
@@ -789,16 +809,21 @@ describe('slices: round 2', () => {
       expect(verify.items[1].claim).toBe('State: Submitted; Meaning: The order was sent.');
     });
 
-    it('still refuses what round 1 did not remove when it is missing, and a changed claim of the shifted item', () => {
+    it('accepts a narrowed claim of the shifted item, and refuses its renamed label; still refuses what round 1 did not remove when it is missing', () => {
       const run = removedFirstRun();
       rewrite(run, (entry) => {
         entry.states[0].meaning = 'The order went out.';
         entry.where.pop();
       });
-      const result = run.run('slices', 'F1', '--round', '2');
-      expect(result.status, result.stdout).toBe(1);
-      expect(result.lines).toContain('states[0]: listed for rewriting, but its claim changed; only its citations may change');
-      expect(result.lines).toContain('where[0]: missing');
+      const missing = run.run('slices', 'F1', '--round', '2');
+      expect(missing.status, missing.stdout).toBe(1);
+      expect(missing.stdout).not.toMatch(/states\[0\]/);
+      expect(missing.lines).toContain('where[0]: missing');
+      const other = removedFirstRun();
+      rewrite(other, (entry) => { entry.states[0].label = 'Draft'; });
+      const renamed = other.run('slices', 'F1', '--round', '2');
+      expect(renamed.status, renamed.stdout).toBe(1);
+      expect(renamed.stdout).toMatch(/^states\[0\]: listed for rewriting, but a name or label changed .*names and labels may not change/m);
     });
 
     it('refuses an item that comes back after round 1 removed it', () => {
@@ -822,7 +847,6 @@ describe('slices: round 2', () => {
         ['states[0]', 'contradicted', 'The code shows no such state.'],
         ['states[0]', 'unverified', 'Still no line names it.'],
       ]);
-      expect(state.removed[1].claim).toBe('State: Draft; Meaning: The order is not sent yet.');
       expect(state.removed[2].claim).toBe('State: Submitted; Meaning: The order was sent.');
       const entry = JSON.parse(readFileSync(join(run.out, 'entries', 'F1.json'), 'utf-8'));
       expect(entry.states).toEqual([]);
@@ -1032,6 +1056,74 @@ describe('verdicts: round 2', () => {
   });
 });
 
+describe('verdicts: round 2 records the claims the rewrite narrowed', () => {
+  const FROM = 'Roles > Clerk: Create an order.';
+  const TO = 'Roles > Clerk: Create an order, except for a locked customer.';
+  const narrowWho = (entry) => { entry.who[0].can = 'Create an order, except for a locked customer.'; };
+
+  it('records the old and the new claim of a narrowed item that stayed, and keeps it through the tracers', () => {
+    const run = rewriteRun({ 'who[0]': 'contradicted' });
+    rewrite(run, narrowWho);
+    const result = judge(run, 'F1', 2);
+    expect(result.status, result.stdout).toBe(0);
+    expect(stateOf(run).narrowed).toEqual([{ path: 'who[0]', from: FROM, to: TO, kept: true }]);
+    expect(stateOf(run).removed).toBeUndefined();
+    expect(traceFeature(run).status).toBe(0);
+    expect(stateOf(run).status).toBe('verified');
+    expect(stateOf(run).narrowed).toEqual([{ path: 'who[0]', from: FROM, to: TO, kept: true }]);
+    // The record is for the audit: neither the handbook nor the page data shows it.
+    expect(run.run('assemble').status).toBe(0);
+    const text = readFileSync(join(run.out, 'handbook.md'), 'utf-8');
+    expect(text).toContain('Create an order, except for a locked customer.');
+    expect(text).not.toContain('narrowed');
+  });
+
+  it('records a narrowed item that round 2 removed as not kept, and the removal itself as before', () => {
+    const run = rewriteRun({ 'who[0]': 'unverified' });
+    rewrite(run, narrowWho);
+    const result = judge(run, 'F1', 2, () => ({ verdict: 'unverified', reason: 'No line shown proves the exception.' }));
+    expect(result.status, result.stdout).toBe(0);
+    expect(stateOf(run).narrowed).toEqual([{ path: 'who[0]', from: FROM, to: TO, kept: false }]);
+    expect(stateOf(run).removed).toEqual([{ path: 'who[0]', claim: TO, verdict: 'unverified', reason: 'No line shown proves the exception.' }]);
+  });
+
+  it('records no narrowed key when no claim differs, and does not record an item whose citations only changed', () => {
+    const run = rewriteRun({ 'who[0]': 'unverified', 'states[1]': 'unverified' });
+    rewrite(run, (entry) => { recite(entry.who[0]); entry.states[1].meaning = 'The order went out.'; });
+    expect(judge(run, 'F1', 2).status).toBe(0);
+    expect(stateOf(run).narrowed.map((item) => item.path)).toEqual(['states[1]']);
+    const plain = rewriteRun({ 'who[0]': 'unverified' });
+    rewrite(plain, (entry) => { recite(entry.who[0]); });
+    expect(judge(plain, 'F1', 2).status).toBe(0);
+    expect(Object.hasOwn(stateOf(plain), 'narrowed')).toBe(false);
+  });
+
+  it('records the changed rules under a listed field, and marks them not kept when the field goes', () => {
+    const run = rewriteRun({ 'screens[0].fields[1]': 'contradicted' });
+    rewrite(run, (entry) => { entry.screens[0].fields[1].rules[0].text = 'At most 35,000 items for a standard customer.'; });
+    const result = judge(run, 'F1', 2, (item) => (item.id === 'screens[0].fields[1]' ? { verdict: 'unverified', reason: 'No line shown names the field.' } : 'verified'));
+    expect(result.status, result.stdout).toBe(0);
+    expect(stateOf(run).narrowed.map((item) => [item.path, item.kept])).toEqual([['screens[0].fields[1].rules[0]', false]]);
+    expect(stateOf(run).removed.map((item) => item.path)).toContain('screens[0].fields[1].rules[0]');
+  });
+
+  it('keeps the record when round 2 fails the feature', () => {
+    const run = rewriteRun(Object.fromEntries(ALL_ITEMS.map((id) => [id, 'unverified'])));
+    rewrite(run, narrowWho);
+    const result = judge(run, 'F1', 2, () => ({ verdict: 'unverified', reason: 'No line shown proves it.' }));
+    expect(result.lines).toEqual(['F1: failed at verify: no item could be proved']);
+    expect(stateOf(run).narrowed).toEqual([{ path: 'who[0]', from: FROM, to: TO, kept: false }]);
+  });
+
+  it('refuses a state whose narrowed list is malformed', () => {
+    const run = rewriteRun({ 'who[0]': 'unverified' });
+    const state = run.readJson('state.json');
+    state.features.F1.narrowed = [{ path: 'who[0]', from: 'a', to: 'b' }];
+    run.writeJson(join(run.out, 'state.json'), state);
+    expect(run.run('check-entry', 'F1').stdout).toMatch(/narrowed/);
+  });
+});
+
 describe('check-entry after a rewrite', () => {
   it('keeps a feature that is waiting for its rewrite checked, and the rewrite flag', () => {
     const run = rewriteRun({ 'who[0]': 'unverified' });
@@ -1041,12 +1133,15 @@ describe('check-entry after a rewrite', () => {
 
   it('keeps what round 1 removed while the feature waits for its rewrite, and when the rewrite fails', () => {
     const run = checkedRun();
-    judge(run, 'F1', 1, (item) => {
-      if (item.id === 'states[1]') return { verdict: 'contradicted', reason: 'The code shows no such state.' };
-      return item.id === 'who[0]' ? 'unverified' : 'verified';
-    });
-    const removed = stateOf(run).removed;
-    expect(removed).toHaveLength(1);
+    judge(run, 'F1', 1, (item) => (item.id === 'who[0]' ? 'unverified' : 'verified'));
+    // A state written before round 1 stopped removing: states[1] is gone and recorded.
+    const trimmed = JSON.parse(readFileSync(join(run.out, 'entries', 'F1.json'), 'utf-8'));
+    trimmed.states.pop();
+    run.writeEntry('F1', trimmed);
+    const older = run.readJson('state.json');
+    older.features.F1.removed = [{ path: 'states[1]', claim: 'State: Submitted; Meaning: The order was sent.', verdict: 'contradicted', reason: 'The code shows no such state.' }];
+    run.writeJson(join(run.out, 'state.json'), older);
+    const { removed } = stateOf(run);
     rewrite(run, (entry) => { recite(entry.who[0]); });
     expect(stateOf(run)).toEqual({ status: 'checked', attempts: 0, rewriting: true, removed });
     const entry = JSON.parse(readFileSync(join(run.out, 'entries', 'F1.json'), 'utf-8'));

@@ -234,6 +234,17 @@ export function judge(run, id = 'F1', round = 1, decide = () => 'verified', deci
   return run.run('verdicts', id, '--round', String(round));
 }
 
+/**
+ * Both rounds with the same judges: round 1 lists every item not both verified for the one rewrite (it removes
+ * nothing), the rewrite is left out (the entry stays as it is), and round 2 judges the listed items again, so what
+ * the judges do not confirm is removed there. Returns the result of the last `verdicts`.
+ */
+export function judgeBothRounds(run, id = 'F1', decide = () => 'verified', decideB = decide) {
+  const first = judge(run, id, 1, decide, decideB);
+  if (first.status !== 0 || !first.lines.some((line) => line.endsWith('to rewrite'))) return first;
+  return judge(run, id, 2, decide, decideB);
+}
+
 /** Settle a checked feature with every item verified by both verifiers: it ends `confirmed`, not yet traced; throws otherwise. */
 export function confirmChecked(run, id = 'F1') {
   const result = judge(run, id);

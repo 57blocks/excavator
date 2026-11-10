@@ -250,14 +250,44 @@ describe('slices, verdicts, trace and trace-verdicts on a system unit', () => {
     expect(items[1].claim.startsWith('System finding > Date, time zone and calendar defects > ')).toBe(true);
   });
 
-  it('removes a contradicted finding at once and records it under systemFindings', () => {
+  it('lists a contradicted finding for the rewrite, and round 2 removes it when still contradicted and records it under systemFindings', () => {
     const run = checkedSystemRun(cleanups);
     const result = judge(run, ID, 1, (item) => (item.id === 'findings[0]' ? { verdict: 'contradicted', reason: 'The code shown does send the message.' } : 'verified'));
     expect(result.status, result.stdout).toBe(0);
-    expect(result.lines[0]).toBe('app1.system: confirmed, 1 item removed');
+    expect(result.lines[0]).toBe('app1.system: 1 item to rewrite');
+    expect(record(run)).toEqual({ status: 'checked', attempts: 0, rewriting: true, root: 'alpha' });
+    expect(run.readSystem(1).findings).toHaveLength(2);
+    const second = judge(run, ID, 2, () => ({ verdict: 'contradicted', reason: 'The code shown still sends the message.' }));
+    expect(second.lines[0]).toBe('app1.system: confirmed, 1 item removed');
     expect(record(run).removed.map((entry) => [entry.path, entry.verdict])).toEqual([['findings[0]', 'contradicted']]);
     expect(record(run).removed[0].claim.startsWith('System finding > ')).toBe(true);
+    expect(record(run).root).toBe('alpha');
     expect(run.readSystem(1).findings).toHaveLength(1);
+  });
+
+  it('a rewrite may narrow a system finding, never its category; the record keeps the application root and the narrowed claim', () => {
+    const run = checkedSystemRun(cleanups);
+    expect(judge(run, ID, 1, (item) => (item.id === 'findings[0]' ? { verdict: 'contradicted', reason: 'One branch of the helper does send it.' } : 'verified')).status).toBe(0);
+    const doc = run.readSystem(1);
+    const old = doc.findings[0].text;
+    doc.findings[0].category = 'display';
+    run.writeSystem(1, doc);
+    expect(run.run('check-system-findings', ID).status).toBe(0);
+    const refused = run.run('slices', ID, '--round', '2');
+    expect(refused.status, refused.stdout).toBe(1);
+    expect(refused.stdout).toMatch(/^findings\[0\]: listed for rewriting, but a name or label changed .*names and labels may not change/m);
+    doc.findings[0].category = 'notification';
+    doc.findings[0].text = `${old.replace(/\.$/, '')}, apart from the branch for a test address.`;
+    run.writeSystem(1, doc);
+    expect(run.run('check-system-findings', ID).status).toBe(0);
+    expect(judge(run, ID, 2).status).toBe(0);
+    expect(record(run)).toMatchObject({ status: 'confirmed', root: 'alpha' });
+    expect(record(run).narrowed).toEqual([{
+      path: 'findings[0]',
+      from: `System finding > Notifications not sent, sent to the wrong people or wrong in content > ${old}`,
+      to: `System finding > Notifications not sent, sent to the wrong people or wrong in content > ${doc.findings[0].text}`,
+      kept: true,
+    }]);
   });
 
   it('the trace items of a statement with scope words carry them, exactly as findings units do, and a holds verdict needs a case for each', () => {
@@ -297,7 +327,8 @@ describe('slices, verdicts, trace and trace-verdicts on a system unit', () => {
   it('every finding removed leaves a verified unit with none, not a failed one', () => {
     const run = checkedSystemRun(cleanups);
     const result = judge(run, ID, 1, () => ({ verdict: 'contradicted', reason: 'The code shown does not say so.' }));
-    expect(result.lines[0]).toBe('app1.system: confirmed, 2 items removed');
+    expect(result.lines[0]).toBe('app1.system: 2 items to rewrite');
+    expect(judge(run, ID, 2, () => ({ verdict: 'contradicted', reason: 'The code shown does not say so.' })).lines[0]).toBe('app1.system: confirmed, 2 items removed');
     expect(run.run('trace', ID).lines[0]).toBe('app1.system: 0 items in 0 parts');
     expect(run.run('trace-verdicts', ID).lines).toEqual(['app1.system: verified (0 findings)']);
     expect(record(run).status).toBe('verified');

@@ -9,7 +9,7 @@ import { spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { clone, confirmChecked, judge, runHandbook, traceFeature, verifyChecked } from './helpers.mjs';
+import { clone, confirmChecked, judgeBothRounds, runHandbook, traceFeature, verifyChecked } from './helpers.mjs';
 import { checkedOverviewRun } from './overview-fixture.mjs';
 
 const cleanups = [];
@@ -256,7 +256,7 @@ describe('system facts: one row per application root, whatever the overview says
       doc.name = { text: 'api', evidence: [{ file: 'repos/api/package.json', passage: manifest('api').trim() }] };
     });
     if (verify) {
-      expect(judge(run, 'overview', 1, judgeBad).status).toBe(0);
+      expect(judgeBothRounds(run, 'overview', judgeBad).status).toBe(0);
       expect(traceFeature(run, 'overview').status).toBe(0);
     }
     return run;

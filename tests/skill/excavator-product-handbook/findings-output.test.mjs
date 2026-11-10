@@ -11,7 +11,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { categoryKey } from '../../../skills/excavator-product-handbook/lib/findings-shape.mjs';
-import { clone, judge, runHandbook, traceFeature, verifyChecked } from './helpers.mjs';
+import { clone, judgeBothRounds, runHandbook, traceFeature, verifyChecked } from './helpers.mjs';
 import { DELETE_LINE, JOBS_FILE, ORDERS_FILE, findingsRun, goodFindings, unitId } from './findings-fixture.mjs';
 
 const cleanups = [];
@@ -60,7 +60,7 @@ function outputRun(owner = cleanups) {
 
   run.writeFindings('F1');
   expect(run.run('check-findings', unitId('F1')).status).toBe(0);
-  const judged = judge(run, unitId('F1'), 1, (item) => (item.id === 'findings[1]' ? { verdict: 'contradicted', reason: REMOVED_REASON } : 'verified'));
+  const judged = judgeBothRounds(run, unitId('F1'), (item) => (item.id === 'findings[1]' ? { verdict: 'contradicted', reason: REMOVED_REASON } : 'verified'));
   expect(judged.status, judged.stdout).toBe(0);
   expect(traceFeature(run, unitId('F1')).lines).toEqual(['F1.findings: verified (2 items)']);
 

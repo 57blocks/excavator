@@ -44,16 +44,46 @@ describe('slices: the findings are cut into the items a verifier judges', () => 
 });
 
 describe('verdicts and trace-verdicts on a findings unit', () => {
-  it('removes a contradicted finding at once, records it under state.findings and confirms the rest', () => {
+  it('lists a contradicted finding for the rewrite with its verdict and reason; round 2 removes it when still contradicted and records it under state.findings', () => {
     const run = checkedFindingsRun(cleanups);
     const result = judge(run, ID, 1, (item) => (item.id === 'findings[1]' ? { verdict: 'contradicted', reason: 'The code shown stores the order.' } : 'verified'));
     expect(result.status, result.stdout).toBe(0);
-    expect(result.lines[0]).toBe('F1.findings: confirmed, 1 item removed');
+    expect(result.lines[0]).toBe('F1.findings: 1 item to rewrite');
+    expect(stateOf(run)).toEqual({ status: 'checked', attempts: 0, rewriting: true });
+    expect(run.readFindings('F1').findings).toHaveLength(3);
+    expect(readJsonAt(join(run.out, 'rewrite', `${ID}.json`)).items.map((item) => [item.id, item.verdict, item.reason])).toEqual([['findings[1]', 'contradicted', 'The code shown stores the order.']]);
+    const second = judge(run, ID, 2, () => ({ verdict: 'contradicted', reason: 'The code shown still stores the order.' }));
+    expect(second.lines[0]).toBe('F1.findings: confirmed, 1 item removed');
     expect(stateOf(run).status).toBe('confirmed');
-    expect(stateOf(run).removed.map((record) => [record.path, record.verdict, record.reason])).toEqual([['findings[1]', 'contradicted', 'The code shown stores the order.']]);
+    expect(stateOf(run).removed.map((record) => [record.path, record.verdict, record.reason])).toEqual([['findings[1]', 'contradicted', 'The code shown still stores the order.']]);
     expect(stateOf(run).removed[0].claim.startsWith('Finding > Errors swallowed or answered as success > ')).toBe(true);
     expect(run.readFindings('F1').findings.map((finding) => finding.category)).toEqual(['authorization', 'hard-coded']);
     expect(run.readState().features.F1.status).toBe('planned');
+  });
+
+  it('a rewrite may narrow the statement of a listed finding but never its category; the record keeps the old and the new claim', () => {
+    const run = checkedFindingsRun(cleanups);
+    expect(judge(run, ID, 1, (item) => (item.id === 'findings[0]' ? { verdict: 'contradicted', reason: 'A step before the handler checks the caller.' } : 'verified')).status).toBe(0);
+    const doc = clone(run.readFindings('F1'));
+    doc.findings[0].category = 'display';
+    run.writeFindings('F1', doc);
+    expect(run.run('check-findings', ID).status).toBe(0);
+    const refused = run.run('slices', ID, '--round', '2');
+    expect(refused.status, refused.stdout).toBe(1);
+    expect(refused.stdout).toMatch(/^findings\[0\]: listed for rewriting, but a name or label changed .*names and labels may not change/m);
+    doc.findings[0].category = 'authorization';
+    doc.findings[0].text = 'Deleting an order asks nothing about who calls when the request comes from a script: the handler removes the order and answers success.';
+    run.writeFindings('F1', doc);
+    expect(run.run('check-findings', ID).status).toBe(0);
+    expect(run.run('slices', ID, '--round', '2').status).toBe(0);
+    expect(judge(run, ID, 2).status).toBe(0);
+    expect(stateOf(run).narrowed).toEqual([{
+      path: 'findings[0]',
+      from: 'Finding > Missing authorization check > Deleting an order asks nothing about who calls: the handler removes the order and answers success to every caller.',
+      to: 'Finding > Missing authorization check > Deleting an order asks nothing about who calls when the request comes from a script: the handler removes the order and answers success.',
+      kept: true,
+    }]);
+    expect(stateOf(run).removed).toBeUndefined();
   });
 
   it('two findings, both confirmed, a tracer finds counter-evidence for the second: only the first stays, the second is recorded with the tracer\'s reason', () => {
@@ -73,7 +103,7 @@ describe('verdicts and trace-verdicts on a findings unit', () => {
     expect(typeof stateOf(run).entryDigest).toBe('string');
   });
 
-  it('an unverified finding goes to one rewrite of its citations; round 2 removes what is still not verified and confirms', () => {
+  it('an unverified finding goes to one rewrite; round 2 removes what is still not verified and confirms', () => {
     const run = checkedFindingsRun(cleanups);
     const first = judge(run, ID, 1, (item) => (item.id === 'findings[2]' ? { verdict: 'unverified', reason: 'No line shown says what was created.' } : 'verified'));
     expect(first.status, first.stdout).toBe(0);
@@ -86,11 +116,13 @@ describe('verdicts and trace-verdicts on a findings unit', () => {
     expect(run.readFindings('F1').findings).toHaveLength(2);
   });
 
-  it('every finding removed by the verifiers leaves a confirmed unit with none, not a failed one; trace then needs no tracer and verifies it', () => {
+  it('every finding removed by round 2 leaves a confirmed unit with none, not a failed one; trace then needs no tracer and verifies it', () => {
     const run = checkedFindingsRun(cleanups);
     const result = judge(run, ID, 1, () => ({ verdict: 'contradicted', reason: 'The code shown does not say so.' }));
     expect(result.status, result.stdout).toBe(0);
-    expect(result.lines[0]).toBe('F1.findings: confirmed, 3 items removed');
+    expect(result.lines[0]).toBe('F1.findings: 3 items to rewrite');
+    const settledAtTwo = judge(run, ID, 2, () => ({ verdict: 'contradicted', reason: 'The code shown does not say so.' }));
+    expect(settledAtTwo.lines[0]).toBe('F1.findings: confirmed, 3 items removed');
     expect(stateOf(run).status).toBe('confirmed');
     expect(run.readFindings('F1').findings).toEqual([]);
     expect(stateOf(run).removed.map((record) => record.path)).toEqual(ITEMS);

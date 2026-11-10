@@ -7,7 +7,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { clone, judge, makeCheckedMapRun, runHandbook, traceFeature, verifyChecked } from './helpers.mjs';
+import { clone, judge, judgeBothRounds, makeCheckedMapRun, runHandbook, traceFeature, verifyChecked } from './helpers.mjs';
 
 const cleanups = [];
 afterEach(() => {
@@ -34,10 +34,9 @@ function removedRun() {
   const run = checkedRun();
   const bad = {
     'screens[0].fields[1].rules[0]': { verdict: 'contradicted', reason: 'The condition shown caps the count at 50.' },
-    'states[1]': { verdict: 'unverified', reason: 'Round 1: no line shown names the state.' },
+    'states[1]': { verdict: 'unverified', reason: 'No line shown names the state.' },
   };
-  expect(judge(run, 'F1', 1, (item) => bad[item.id] ?? 'verified').status).toBe(0);
-  const round2 = judge(run, 'F1', 2, () => ({ verdict: 'unverified', reason: 'No line shown names the state.' }));
+  const round2 = judgeBothRounds(run, 'F1', (item) => bad[item.id] ?? 'verified');
   expect(round2.status, round2.stdout).toBe(0);
   expect(traceFeature(run).status).toBe(0);
   return run;

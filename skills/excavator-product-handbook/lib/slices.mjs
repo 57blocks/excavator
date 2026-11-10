@@ -8,7 +8,8 @@
  * item with evidence and keeps a snapshot of the entry; round 2 covers only what the one rewrite left of the
  * items round 1 listed, and refuses an entry in which an item that was not
  * listed differs from the snapshot, or a listed item (or one below it) has a
- * different claim: the rewrite may only change citations. Changes only files under `<out>/verify`
+ * different name or label (name-keys.mjs): the rewrite may narrow a claim and
+ * change citations, never rename. Changes only files under `<out>/verify`
  * (and clears the feature's older verification files of the round and those
  * after it, so a new round starts clean; round 1 also clears the feature's
  * trace and trace-verdict files, which belong to the settled entry it replaces).
@@ -19,6 +20,7 @@ import { join } from 'node:path';
 
 import { checkEntryFile, entryPath, loadForEntry } from './entry-check.mjs';
 import { readJson, writeJson } from './json-file.mjs';
+import { identityKeys } from './name-keys.mjs';
 import { loadState } from './state.mjs';
 import { unitFor, unitState } from './unit.mjs';
 import { loadUi } from './ui.mjs';
@@ -51,7 +53,8 @@ export function checkedFeature(outDir, id, round) {
  * lines that stop the command. Used by slices to write them and by verdicts to
  * check that the verify file still matches. Returns
  * `{ items, entry, loaded, claims, unit }` (claims: path to claim of every
- * item of the entry; unit: the unit of `id`, unit.mjs) or `{ stop }`.
+ * item of the entry; unit: the unit of `id`, unit.mjs; round 2 adds `narrowed`,
+ * the items whose claim the rewrite changed) or `{ stop }`.
  */
 export function planRound(outDir, id, root, round) {
   const loaded = loadForEntry(outDir, id, root);
@@ -76,11 +79,14 @@ export function planRound(outDir, id, root, round) {
   if (!rewrite.ok || !snapshot.ok) {
     return { stop: { status: 1, lines: [`${id}: the rewrite file or the round 1 snapshot ${!rewrite.ok ? 'is missing' : 'cannot be read'}`, `Next: run slices for ${id} without --round, then verdicts --round 1`] } };
   }
-  const plan = roundTwoPlan(rewrite.value, verifyItems(unit, snapshot.value, context), items, earlier.map((record) => record.path));
+  const removedPaths = earlier.map((record) => record.path);
+  // The round-1 names are read at the paths of the rewritten entry: what an older round 1 removed is trimmed from the snapshot first.
+  const names = { before: identityKeys(unit.kind, unit.trim(snapshot.value, new Set(removedPaths)).entry), after: identityKeys(unit.kind, entry) };
+  const plan = roundTwoPlan(rewrite.value, verifyItems(unit, snapshot.value, context), items, removedPaths, names);
   if (plan.problems.length > 0) {
-    return { stop: { status: 1, lines: [...plan.problems, `Next: put each item above back as it was in round 1 (change only the citations of the items listed in ${rewriteFilePath(outDir, id)}, never a claim, and never delete or add an item), run check-entry, then slices --round 2 again`] } };
+    return { stop: { status: 1, lines: [...plan.problems, `Next: put each item above back as it was in round 1 (an item not listed in ${rewriteFilePath(outDir, id)} exactly; a listed item may change its claim and its citations but never a name or a label), never delete or add an item, run check-entry, then slices --round 2 again`] } };
   }
-  return { items: plan.items, entry, loaded, claims, unit };
+  return { items: plan.items, entry, loaded, claims, unit, narrowed: plan.narrowed };
 }
 
 const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;

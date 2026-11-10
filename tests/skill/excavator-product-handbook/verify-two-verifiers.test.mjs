@@ -44,23 +44,22 @@ const gives = (side, table) => (item) => {
 const pass = (side, word) => reasonOf(side, word === 'verified' ? 'backs' : word === 'unverified' ? 'silent on' : 'against');
 
 describe('verdicts: combining the two verifiers of a part', () => {
-  it('combines per item: both verified is verified, either contradicted is contradicted, else unverified, with the reason of the one that is not verified', () => {
+  it('combines per item: both verified is verified, either contradicted is contradicted, else unverified, with the reason of the one that is not verified; none is removed at round 1', () => {
     const run = checkedRun();
     const a = { 'who[0]': 'verified', 'where[0]': 'unverified', 'where[1]': 'contradicted', 'states[0]': 'unverified', 'states[1]': 'contradicted' };
     const b = { 'who[0]': 'unverified', 'where[0]': 'contradicted', 'where[1]': 'verified', 'states[0]': 'unverified', 'states[1]': 'contradicted' };
     const result = judge(run, 'F1', 1, gives('first', a), gives('second', b));
     expect(result.status, result.stdout).toBe(0);
-    // Either verifier's contradicted removes the item at once; the unverified ones are listed for the rewrite.
-    expect(result.lines.slice(0, 2)).toEqual(['F1: 3 items removed', 'F1: 2 items to rewrite']);
-    // purpose and every other item both verifiers confirmed is in neither.
-    expect(stateOf(run).removed.map((record) => [record.path, record.verdict, record.reason])).toEqual([
-      ['where[0]', 'contradicted', pass('second', 'contradicted')],
-      ['where[1]', 'contradicted', pass('first', 'contradicted')],
-      ['states[1]', 'contradicted', pass('first', 'contradicted')],
-    ]);
+    // Round 1 removes nothing: every item not both verified is listed, either verifier's contradicted winning.
+    expect(result.lines[0]).toBe('F1: 5 items to rewrite');
+    expect(stateOf(run).removed).toBeUndefined();
+    // purpose and every other item both verifiers confirmed is not listed.
     expect(rewriteOf(run).map((item) => [item.id, item.verdict, item.reason])).toEqual([
       ['who[0]', 'unverified', pass('second', 'unverified')],
+      ['where[0]', 'contradicted', pass('second', 'contradicted')],
+      ['where[1]', 'contradicted', pass('first', 'contradicted')],
       ['states[0]', 'unverified', pass('first', 'unverified')],
+      ['states[1]', 'contradicted', pass('first', 'contradicted')],
     ]);
   });
 

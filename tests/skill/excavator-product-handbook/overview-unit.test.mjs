@@ -55,57 +55,98 @@ describe('slices: the overview is cut into the items a verifier judges', () => {
 });
 
 describe('verdicts: round 1 and round 2 on the overview', () => {
-  it('removes an item either verifier judged contradicted at once, records it under state.overview and lists the unverified one', () => {
+  it('lists an item either verifier judged contradicted, and one it could not confirm, for the rewrite; removes nothing and records nothing', () => {
     const run = checkedOverviewRun(cleanups);
     const bad = {
       'applications[0]': { verdict: 'contradicted', reason: 'The code shown names another tool.' },
       'audiences[0]': { verdict: 'unverified', reason: 'No line shown names who uses it.' },
     };
+    const before = entryOf(run);
     const result = judge(run, 'overview', 1, (item) => bad[item.id] ?? 'verified');
     expect(result.status, result.stdout).toBe(0);
-    expect(result.lines).toEqual(['overview: 1 item removed', 'overview: 1 item to rewrite', `Rewrite file: ${join(run.out, 'rewrite', 'overview.json')}`, result.lines[3]]);
+    expect(result.lines).toEqual(['overview: 2 items to rewrite', `Rewrite file: ${join(run.out, 'rewrite', 'overview.json')}`, result.lines[2]]);
     const { overview } = stateOf(run);
-    expect(overview.status).toBe('checked');
-    expect(overview.rewriting).toBe(true);
-    expect(overview.removed.map((record) => [record.path, record.verdict, record.reason])).toEqual([['applications[0]', 'contradicted', 'The code shown names another tool.']]);
-    expect(entryOf(run).applications).toEqual([]);
+    expect(overview).toEqual({ status: 'checked', attempts: 0, rewriting: true });
+    expect(entryOf(run)).toEqual(before);
     expect(stateOf(run).features.F1.status).toBe('planned');
-    expect(readJsonAt(join(run.out, 'rewrite', 'overview.json')).items.map((item) => item.id)).toEqual(['audiences[0]']);
+    expect(readJsonAt(join(run.out, 'rewrite', 'overview.json')).items.map((item) => [item.id, item.verdict])).toEqual([['audiences[0]', 'unverified'], ['applications[0]', 'contradicted']]);
   });
 
-  it('a verifier that says contradicted wins over the other, as for a feature', () => {
+  it('a verifier that says contradicted wins over the other, as for a feature, and the item is listed', () => {
     const run = checkedOverviewRun(cleanups);
     const result = judge(run, 'overview', 1, (item) => (item.id === 'integrations[0]' ? 'contradicted' : 'verified'), () => 'verified');
     expect(result.status, result.stdout).toBe(0);
-    expect(result.lines[0]).toBe('overview: confirmed, 1 item removed');
-    expect(entryOf(run).integrations).toEqual([]);
+    expect(result.lines[0]).toBe('overview: 1 item to rewrite');
+    expect(entryOf(run).integrations).toHaveLength(1);
   });
 
-  it('round 2 removes what is still not verified and confirms the overview; the rewrite may change citations only', () => {
+  /** Round 1 lists `bad` (paths), then `change` edits a copy of the overview, check-overview passes. */
+  const rewritten = (bad, change) => {
     const run = checkedOverviewRun(cleanups);
-    expect(judge(run, 'overview', 1, (item) => (item.id === 'summary[0]' ? 'unverified' : 'verified')).status).toBe(0);
-    // A rewrite that changes the text is refused by slices --round 2, as for a feature.
-    const changed = clone(entryOf(run));
-    changed.summary[0].text = 'Staff place orders.';
-    run.writeOverview(changed);
-    expect(run.run('check-overview').status).toBe(0);
-    const refused = run.run('slices', 'overview', '--round', '2');
-    expect(refused.status).toBe(1);
-    expect(refused.lines[0]).toBe('summary[0]: listed for rewriting, but its claim changed; only its citations may change');
-    // Citations only.
-    const kept = clone(entryOf(run));
-    kept.summary[0].text = run.overview.summary[0].text;
-    kept.summary[0].evidence = [{ file: 'src/menu.js', passage: "{ label: 'Orders', path: '/orders' }," }];
-    run.writeOverview(kept);
-    expect(run.run('check-overview').status).toBe(0);
+    expect(judge(run, 'overview', 1, (item) => (bad.includes(item.id) ? 'unverified' : 'verified')).status).toBe(0);
+    const doc = clone(entryOf(run));
+    change(doc);
+    run.writeOverview(doc);
+    const checked = run.run('check-overview');
+    expect(checked.status, checked.stdout).toBe(0);
+    return run;
+  };
+  const NAME_LINE = /^[a-z]+\[0\]: listed for rewriting, but a name or label changed .*names and labels may not change/m;
+
+  it('round 2 accepts a narrowed claim and new citations, removes what is still not verified and confirms the overview', () => {
+    const run = rewritten(['summary[0]'], (doc) => {
+      doc.summary[0].text = 'Staff place orders, except for locked customers.';
+      doc.summary[0].evidence = [{ file: 'src/menu.js', passage: "{ label: 'Orders', path: '/orders' }," }];
+    });
+    expect(run.run('slices', 'overview', '--round', '2').status).toBe(0);
     const round2 = judge(run, 'overview', 2, () => ({ verdict: 'unverified', reason: 'No line shown says so.' }));
     expect(round2.status, round2.stdout).toBe(0);
     expect(round2.lines[0]).toBe('overview: confirmed, 1 item removed');
     const { overview } = stateOf(run);
     expect(overview.status).toBe('confirmed');
     expect(overview.removed.map((record) => [record.path, record.verdict])).toEqual([['summary[0]', 'unverified']]);
+    expect(overview.narrowed).toEqual([{
+      path: 'summary[0]',
+      from: 'System overview > Purpose > Staff place and review orders for customers.',
+      to: 'System overview > Purpose > Staff place orders, except for locked customers.',
+      kept: false,
+    }]);
     expect(entryOf(run).summary).toEqual([]);
     expect(typeof overview.entryDigest).toBe('string');
+  });
+
+  it('round 2 records a narrowed overview item that stays as kept', () => {
+    const run = rewritten(['audiences[0]'], (doc) => { doc.audiences[0].does = 'Creates orders for standard customers.'; });
+    expect(judge(run, 'overview', 2).status).toBe(0);
+    expect(stateOf(run).overview.narrowed).toEqual([{
+      path: 'audiences[0]',
+      from: 'Roles: Clerk; What it does: Creates orders.',
+      to: 'Roles: Clerk; What it does: Creates orders for standard customers.',
+      kept: true,
+    }]);
+    expect(stateOf(run).overview.removed).toBeUndefined();
+  });
+
+  const renames = [
+    ['an audience', ['audiences[0]'], (doc) => { doc.audiences[0].who = 'Approver'; }, NAME_LINE],
+    ['an application name', ['applications[0]'], (doc) => { doc.applications[0].name = 'Order desk'; }, NAME_LINE],
+    ['an integration system', ['integrations[0]'], (doc) => { doc.integrations[0].system = 'CHANNEL'; }, NAME_LINE],
+  ];
+  for (const [name, bad, change, expected] of renames) {
+    it(`slices --round 2 refuses a changed ${name} of a listed item, and writes no verify file`, () => {
+      const run = rewritten(bad, change);
+      const refused = run.run('slices', 'overview', '--round', '2');
+      expect(refused.status, refused.stdout).toBe(1);
+      expect(refused.stdout).toMatch(expected);
+      expect(existsSync(join(run.out, 'verify', 'round-2', 'overview'))).toBe(false);
+    });
+  }
+
+  it('slices --round 2 refuses a change of an overview item that is not listed', () => {
+    const run = rewritten(['summary[0]'], (doc) => { doc.audiences[0].does = 'Creates and reviews orders.'; });
+    const refused = run.run('slices', 'overview', '--round', '2');
+    expect(refused.status).toBe(1);
+    expect(refused.lines).toContain('audiences[0]: not listed for rewriting, but changed');
   });
 
   it('fails at verify when every item that carries evidence is removed, and leaves the file as written', () => {

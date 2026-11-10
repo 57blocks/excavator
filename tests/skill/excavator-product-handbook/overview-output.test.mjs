@@ -8,7 +8,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { MARK, SHIPPED_UI, judge, makeCheckedMapRun, markedMap, runHandbook, set, traceFeature, translatedUi, verifyChecked } from './helpers.mjs';
+import { MARK, SHIPPED_UI, judge, judgeBothRounds, makeCheckedMapRun, markedMap, runHandbook, set, traceFeature, translatedUi, verifyChecked } from './helpers.mjs';
 import { NOTIFY_FILE, NOTIFY_LINE, checkedOverviewRun, goodOverview, overviewRun } from './overview-fixture.mjs';
 
 const cleanups = [];
@@ -107,7 +107,7 @@ describe('handbook.md opens with the system overview', () => {
 
   it('shows none for a part that was removed from a verified overview, and keeps the rest', () => {
     const run = checkedOverviewRun(cleanups);
-    expect(judge(run, 'overview', 1, (item) => (item.id === 'integrations[0]' ? 'contradicted' : 'verified')).status).toBe(0);
+    expect(judgeBothRounds(run, 'overview', (item) => (item.id === 'integrations[0]' ? 'contradicted' : 'verified')).status).toBe(0);
     expect(traceFeature(run, 'overview').status).toBe(0);
     const section = sectionOf(assemble(run), '### External systems', '### Undetermined from the code');
     expect(section).toContain('None.');
@@ -162,8 +162,7 @@ describe('the coverage section lists the removed overview items', () => {
   function removedRun() {
     const run = checkedOverviewRun(cleanups);
     const bad = { 'audiences[0]': { verdict: 'unverified', reason: 'No line shown names who uses it.' } };
-    expect(judge(run, 'overview', 1, (item) => (item.id === 'applications[0]' ? { verdict: 'contradicted', reason: 'The code shown names another tool.' } : bad[item.id] ?? 'verified')).status).toBe(0);
-    const round2 = judge(run, 'overview', 2, () => ({ verdict: 'unverified', reason: 'No line shown names who uses it.' }));
+    const round2 = judgeBothRounds(run, 'overview', (item) => (item.id === 'applications[0]' ? { verdict: 'contradicted', reason: 'The code shown names another tool.' } : bad[item.id] ?? 'verified'));
     expect(round2.status, round2.stdout).toBe(0);
     const traced = traceFeature(run, 'overview', () => 'holds', () => {}, (item) => (item.id === 'integrations[0]'
       ? { verdict: 'contradicted', reason: 'Another function sends it to a different channel.', at: [{ file: 'src/roles.js', line: 1 }] }
@@ -190,8 +189,8 @@ describe('the coverage section lists the removed overview items', () => {
     expect(page(run).status).toBe(0);
     const data = dataOf(run);
     expect(data.coverage.removedOverview.map((item) => [item.verdict, item.reason])).toEqual([
-      ['contradicted', 'The code shown names another tool.'],
       ['unverified', 'No line shown names who uses it.'],
+      ['contradicted', 'The code shown names another tool.'],
       ['contradicted', 'Another function sends it to a different channel.'],
     ]);
     expect(JSON.stringify(data)).not.toContain('src/notify.js');

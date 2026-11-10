@@ -14,7 +14,7 @@ import { entryItems } from '../../../skills/excavator-product-handbook/lib/items
 import { trimEntry } from '../../../skills/excavator-product-handbook/lib/trim-entry.mjs';
 import { entryFactRows } from '../../../skills/excavator-product-handbook/lib/topics-facts.mjs';
 import { entryDigest } from '../../../skills/excavator-product-handbook/lib/state.mjs';
-import { clone, goodEntry, judge, makeCheckedMapRun, runHandbook, traceFeature } from './helpers.mjs';
+import { clone, goodEntry, judge, judgeBothRounds, makeCheckedMapRun, runHandbook, traceFeature } from './helpers.mjs';
 
 const cleanups = [];
 afterEach(() => {
@@ -178,7 +178,7 @@ describe('entry /2: trimming and removal records', () => {
   it('takes the other parts of an operation with it when no sentence is left, as withParent', () => {
     const run = checkedRun(deepEntry());
     const decide = (item) => (item.id.startsWith('operations[0].sentences') ? { verdict: 'contradicted', reason: 'The code shown says otherwise.' } : 'verified');
-    expect(judge(run, 'F1', 1, decide).status).toBe(0);
+    expect(judgeBothRounds(run, 'F1', decide).status).toBe(0);
     const records = run.readJson('state.json').features.F1.removed;
     const byPath = new Map(records.map((record) => [record.path, record]));
     for (const path of ['operations[0].triggers[0]', 'operations[0].calculations[0]', 'operations[0].changes[0]', 'operations[0].edges[0]', 'operations[0].handoffs[0]', 'operations[0]']) {

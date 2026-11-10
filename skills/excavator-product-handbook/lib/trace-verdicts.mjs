@@ -211,6 +211,9 @@ function readParts(outDir, id, plan) {
   return { stop: { status: 1, lines: [...lines, `Next: delete the verdict ${names.length === 1 ? 'file' : 'files'} of ${partNoun(names)} ${joinAnd(names)} and dispatch the tracer once more for ${partNoun(again)} ${joinAnd(again)} with the lines above; nothing was recorded`] } };
 }
 
+/** The `narrowed` record of round 2 (openspec change handbook-recall) travels with the unit through the tracers. */
+const narrowedOf = (current) => (current.narrowed === undefined ? {} : { narrowed: current.narrowed });
+
 /** Run trace-verdicts. Returns { status, lines }. */
 export function traceVerdicts(outDir, id, root) {
   const plan = confirmedPlan(outDir, id, root);
@@ -232,7 +235,7 @@ export function traceVerdicts(outDir, id, root) {
   // Nothing left that carries evidence: nothing was proved. The entry file stays as written for the user to see.
   if (!unit.mayBeEmpty && !unit.items(trimmed).some((item) => item.evidence.length > 0)) {
     const text = 'no item could be proved';
-    setUnitState(state, id, { status: 'failed', attempts, failure: { step: 'trace', reasons: [text] }, removed });
+    setUnitState(state, id, { status: 'failed', attempts, failure: { step: 'trace', reasons: [text] }, removed, ...narrowedOf(current) });
     saveState(outDir, state);
     return { status: 0, lines: [`${id}: failed at trace: no item could be proved`] };
   }
@@ -241,6 +244,7 @@ export function traceVerdicts(outDir, id, root) {
   if (records.length > 0) writeJson(join(outDir, entryPath(id)), trimmed);
   const next = { status: 'verified', attempts, entryDigest: entryDigest(join(outDir, entryPath(id))) };
   if (removed.length > 0) next.removed = removed;
+  Object.assign(next, narrowedOf(current));
   setUnitState(state, id, next);
   saveState(outDir, state);
   if (plan.items.length === 0) return { status: 0, lines: [`${id}: verified (0 findings)`] };

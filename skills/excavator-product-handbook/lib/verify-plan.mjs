@@ -9,7 +9,8 @@
  * entry are those of the round-1 snapshot (less the items round 1 removed),
  * and every item that was not listed is identical at its path. A listed item
  * implies its descendants (a screen its fields and rules). The rewrite may
- * only change the citations of these items, never their claims.
+ * change the claim text and the citations of these items (a narrowing), never
+ * the name and label keys of name-keys.mjs.
  *
  * The items of a round are cut into parts, each its own verify file and its own
  * two verdict files, so that a verifier can read one in a single read: filled
@@ -21,6 +22,7 @@
 import { join } from 'node:path';
 
 import { codeBlocks } from './code-slice.mjs';
+import { nameChanges } from './name-keys.mjs';
 import { shiftedPath } from './shift-paths.mjs';
 
 export const VERIFY_DIR = 'verify';
@@ -94,17 +96,23 @@ const isBelow = (path, ancestor) => path.startsWith(`${ancestor}.`);
  * `rewrite` is the rewrite file's parsed content; `snapshot` and `current`
  * are the items (`verifyItems`) of the round-1 entry and the rewritten one;
  * `removedAtRound1` the paths round 1 removed from the entry (the records of
- * state.json): those items and what hangs on them are gone from the rewritten
+ * state.json; only a state written before round 1 stopped removing has any):
+ * those items and what hangs on them are gone from the rewritten
  * entry on purpose, so they are not missing, and the items after them in an
  * array have moved up, so the snapshot is read at their new paths (the paths
- * the rewrite file names). A listed item, and each item below one, may change
- * its citations only: its claim must be the snapshot's. Returns
- * `{ problems, items }`: the problem lines (an item path that was added or is
- * missing, an item that was not listed and changed, a listed item whose claim
- * changed) and the items to verify, those of the listed items and their
- * descendants.
+ * the rewrite file names). `names` is `{ before, after }`, the name and label
+ * keys (name-keys.mjs `identityKeys`) of the round-1 entry read at those same
+ * paths and of the rewritten one; it is required, so the names are always compared.
+ * A listed item, and each item below one, may change its claim and its
+ * citations, but not a name or label key of its own node or of a node above it.
+ * Returns `{ problems, items, narrowed }`: the problem lines (an item path that
+ * was added or is missing, an item that was not listed and changed, a listed
+ * item whose name or label changed), the items to verify, those of the listed
+ * items and their descendants, and `{ path, from, to }` for each of them whose
+ * claim differs from round 1.
  */
-export function roundTwoPlan(rewrite, snapshot, current, removedAtRound1 = []) {
+export function roundTwoPlan(rewrite, snapshot, current, removedAtRound1, names) {
+  if (names === undefined || names === null) throw new Error('roundTwoPlan needs the name and label keys of both entries');
   const problems = [];
   const gone = new Set(removedAtRound1);
   const isGone = (id) => gone.has(id) || [...gone].some((ancestor) => isBelow(id, ancestor));
@@ -118,15 +126,18 @@ export function roundTwoPlan(rewrite, snapshot, current, removedAtRound1 = []) {
   for (const item of current) if (!before.has(item.id)) problems.push(`${item.id}: added`);
   for (const item of kept) if (!after.has(item.id)) problems.push(`${item.id}: missing`);
   const items = [];
+  const narrowed = [];
   for (const item of current) {
     const old = before.get(item.id);
     if (old === undefined) continue;
     if (listedIds.has(item.id) || [...listedIds].some((ancestor) => isBelow(item.id, ancestor))) {
       items.push(item);
-      if (old.claim !== item.claim) problems.push(`${item.id}: listed for rewriting, but its claim changed; only its citations may change`);
+      const renamed = nameChanges(names.before, names.after, item.id);
+      if (renamed.length > 0) problems.push(`${item.id}: listed for rewriting, but a name or label changed (${renamed.join(', ')}); names and labels may not change`);
+      else if (old.claim !== item.claim) narrowed.push({ path: item.id, from: old.claim, to: item.claim });
     } else if (old.fingerprint !== item.fingerprint) {
       problems.push(`${item.id}: not listed for rewriting, but changed`);
     }
   }
-  return { problems, items };
+  return { problems, items, narrowed };
 }
