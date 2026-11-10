@@ -20,11 +20,19 @@ const bullets = (items, t) => (items.length === 0 ? [t('md.none'), ''] : [...ite
 
 function domainsSection({ map, entities, t }) {
   const feature = new Map(map.features.map((item) => [item.id, item]));
-  const out = [`## ${t('md.entities.domains.heading')}`, '', t(entities.domainBasis === 'domains' ? 'md.entities.domains.note' : 'md.domains.fromAreas'), '', t('md.entities.domains.purposesNote'), ''];
+  const nameOf = new Map(entities.domains.map((domain) => [domain.id, domain.name]));
+  const out = [`## ${t('md.entities.domains.heading')}`, '', t(entities.domainBasis === 'domains' ? 'md.entities.domains.note' : 'md.domains.fromAreas'), '', t('md.entities.domains.purposesNote'), '', t('md.entities.domain.relationsNote'), ''];
   for (const domain of entities.domains) {
     out.push(`### ${inline(domain.name)}`, '');
     out.push(`#### ${t('md.entities.domain.whatItDoes')}`, '');
     out.push(...bullets(domain.purposes.map((item) => fill(t('md.entities.domain.purposeItem'), { feature: featureText(feature.get(item.feature), t), purpose: inline(item.text) })), t));
+    // handbook-domain-page D1: the handoffs to and from other domains, from the verified entries only.
+    out.push(`#### ${t('md.entities.domain.relationsHeading')}`, '');
+    for (const [label, direction] of [['md.entities.domain.gives', 'out'], ['md.entities.domain.gets', 'in']]) {
+      const items = (domain.relations ?? []).filter((item) => item.direction === direction);
+      out.push(t(label), '');
+      out.push(...bullets(items.map((item) => fill(t('md.entities.domain.relationItem'), { from: featureText(feature.get(item.from), t), to: featureText(feature.get(item.to), t), domain: nameOf.get(item.domain), text: item.text })), t));
+    }
   }
   return out;
 }

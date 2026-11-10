@@ -13,6 +13,8 @@
  *   application whose directory is the longest match of the cited file;
  * - `unattributed`: citations that fall in no application, so none is dropped;
  * - the role by feature matrix: what the entry says the role can do;
+ * - `domains[].relations`: a handoff of a verified entry from a feature of the
+ *   domain to a feature of another domain (`out`), or the other way (`in`);
  * - `integrations[].shown`: the callers the verified overview lists;
  * - `integrations[].named`: the applications whose source files hold the system
  *   name, with the number of files; `namedOutside` counts such files in no
@@ -56,6 +58,18 @@ export function buildEntities({ map, domains = null, entries, candidates, summar
   const grouping = domainGrouping(map, domains);
   const domainOf = new Map(grouping.groups.flatMap((group) => group.features.map((id) => [id, group.id])));
 
+  // Handoffs of the verified entries that cross from one domain to another (openspec change
+  // handbook-deep-entry, D12), in the order of the map, the operations and the handoffs.
+  const crossings = [];
+  for (const feature of map.features) {
+    for (const operation of entries.get(feature.id)?.operations ?? []) {
+      for (const handoff of operation.handoffs ?? []) {
+        const from = domainOf.get(feature.id);
+        const to = domainOf.get(handoff.feature);
+        if (from !== undefined && to !== undefined && from !== to) crossings.push({ from: feature.id, to: handoff.feature, text: handoff.text, fromDomain: from, toDomain: to });
+      }
+    }
+  }
   const domainRows = grouping.groups.map((group) => ({
     id: group.id,
     name: group.name,
@@ -63,7 +77,26 @@ export function buildEntities({ map, domains = null, entries, candidates, summar
     purposes: group.features
       .filter((id) => entries.get(id)?.purpose !== undefined)
       .map((id) => ({ feature: id, text: entries.get(id).purpose.text })),
+    relations: [
+      ...crossings.filter((item) => item.fromDomain === group.id).map((item) => ({ direction: 'out', domain: item.toDomain, from: item.from, to: item.to, text: item.text })),
+      ...crossings.filter((item) => item.toDomain === group.id).map((item) => ({ direction: 'in', domain: item.fromDomain, from: item.from, to: item.to, text: item.text })),
+    ],
+    // The states and transitions of the domain's verified entries (handbook-domain-page D2).
+    states: group.features.flatMap((id) => (entries.get(id)?.states ?? []).map((state) => ({ feature: id, label: state.label, meaning: state.meaning }))),
+    transitions: group.features.flatMap((id) => (entries.get(id)?.transitions ?? []).map((item) => ({ feature: id, from: item.from, to: item.to, by: item.by }))),
   }));
+  // The files the verified entries of each domain cite, most cited first, then by path (handbook-domain-page D2).
+  const domainFiles = grouping.groups.map((group) => {
+    const counts = new Map();
+    for (const id of group.features) {
+      const entry = entries.get(id);
+      if (entry === undefined) continue;
+      for (const item of entryItems(entry)) for (const citation of item.evidence) bump(counts, citation.file);
+    }
+    const files = [...counts].map(([file, citations]) => ({ file, citations }))
+      .sort((a, b) => b.citations - a.citations || (a.file < b.file ? -1 : a.file > b.file ? 1 : 0));
+    return { domain: group.id, files };
+  });
   const roles = map.roles.map((role) => ({ label: role.label }));
 
   // Citations of each verified feature entry, by application.
@@ -137,6 +170,7 @@ export function buildEntities({ map, domains = null, entries, candidates, summar
   return {
     domainBasis: grouping.basis,
     domains: domainRows,
+    domainFiles,
     roles,
     applications,
     integrations,

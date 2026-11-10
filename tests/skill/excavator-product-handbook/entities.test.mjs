@@ -89,9 +89,48 @@ describe('owningApplication: the directory that holds a file, the longest match'
 describe('entities: the entities', () => {
   it('has a domain for each area of the map and lists its features and the purposes of the verified ones', () => {
     const { domains } = build(project());
-    expect(domains).toEqual([
-      { id: 'A1', name: 'Orders', features: ['F1', 'F2'], purposes: [{ feature: 'F1', text: 'Staff place orders.' }, { feature: 'F2', text: 'Staff review orders.' }] },
-      { id: 'A2', name: 'Admin work', features: ['F3', 'F4'], purposes: [{ feature: 'F3', text: 'Admins open the panel.' }] },
+    expect(domains.map(({ id, name, features, purposes, relations }) => ({ id, name, features, purposes, relations }))).toEqual([
+      { id: 'A1', name: 'Orders', features: ['F1', 'F2'], purposes: [{ feature: 'F1', text: 'Staff place orders.' }, { feature: 'F2', text: 'Staff review orders.' }], relations: [] },
+      { id: 'A2', name: 'Admin work', features: ['F3', 'F4'], purposes: [{ feature: 'F3', text: 'Admins open the panel.' }], relations: [] },
+    ]);
+  });
+
+  it('relates a domain to another by the handoffs of verified entries only, out of the domain and into it, and leaves out a handoff inside one domain (handbook-deep-entry D12)', () => {
+    const map = entries();
+    const handoff = (feature, text) => ({ feature, text, evidence: [ev('svc/a.js', 'export const a = 1;')] });
+    map.get('F1').operations = [
+      { name: 'Place', sentences: [], handoffs: [handoff('F3', 'The panel shows the new order.'), handoff('F2', 'Review picks it up.')] },
+      { name: 'Cancel', sentences: [] },
+    ];
+    map.get('F3').operations = [{ name: 'Open', sentences: [], handoffs: [handoff('F2', 'An admin sends an order back to review.')] }];
+    const { domains } = build(project(), { entriesMap: map });
+    expect(domains[0].relations).toEqual([
+      { direction: 'out', domain: 'A2', from: 'F1', to: 'F3', text: 'The panel shows the new order.' },
+      { direction: 'in', domain: 'A2', from: 'F3', to: 'F2', text: 'An admin sends an order back to review.' },
+    ]);
+    expect(domains[1].relations).toEqual([
+      { direction: 'out', domain: 'A1', from: 'F3', to: 'F2', text: 'An admin sends an order back to review.' },
+      { direction: 'in', domain: 'A1', from: 'F1', to: 'F3', text: 'The panel shows the new order.' },
+    ]);
+    map.delete('F3');
+    expect(build(project(), { entriesMap: map }).domains[1].relations).toEqual([{ direction: 'in', domain: 'A1', from: 'F1', to: 'F3', text: 'The panel shows the new order.' }]);
+  });
+
+  it('gives each domain the states and transitions of its verified entries, by feature (handbook-domain-page D2)', () => {
+    const map = entries();
+    map.get('F3').transitions = [{ from: 'S0', to: 'S1', by: 'Opens.', evidence: [ev('svc/admin/panel.js', 'export const panel = 1;')] }];
+    const { domains } = build(project(), { entriesMap: map });
+    expect(domains[0].states).toEqual([{ feature: 'F1', label: 'S0', meaning: 'm' }]);
+    expect(domains[0].transitions).toEqual([]);
+    expect(domains[1].states).toEqual([{ feature: 'F3', label: 'S0', meaning: 'm' }, { feature: 'F3', label: 'S1', meaning: 'm' }]);
+    expect(domains[1].transitions).toEqual([{ feature: 'F3', from: 'S0', to: 'S1', by: 'Opens.' }]);
+  });
+
+  it('counts the files the verified entries of each domain cite, most cited first, then by path (handbook-domain-page D2)', () => {
+    const { domainFiles } = build(project());
+    expect(domainFiles).toEqual([
+      { domain: 'A1', files: [{ file: 'other/d.js', citations: 2 }, { file: 'svc/routes.js', citations: 2 }, { file: 'svc/a.js', citations: 1 }, { file: 'svc/admin/panel.js', citations: 1 }] },
+      { domain: 'A2', files: [{ file: 'svc/admin/panel.js', citations: 3 }] },
     ]);
   });
 
@@ -256,14 +295,15 @@ describe('entities: business domains', () => {
   it('takes the domains from domains.json, each with its features in the order of the map, even when they cross the map\'s areas', () => {
     const { domains, domainBasis } = build(project(), { domains: BUSINESS });
     expect(domainBasis).toBe('domains');
-    expect(domains).toEqual([
+    expect(domains.map(({ id, name, features, purposes, relations }) => ({ id, name, features, purposes, relations }))).toEqual([
       {
         id: 'D1',
         name: 'Orders and panels',
         features: ['F1', 'F2', 'F3'],
         purposes: [{ feature: 'F1', text: 'Staff place orders.' }, { feature: 'F2', text: 'Staff review orders.' }, { feature: 'F3', text: 'Admins open the panel.' }],
+        relations: [],
       },
-      { id: 'D2', name: 'Upkeep', features: ['F4'], purposes: [] },
+      { id: 'D2', name: 'Upkeep', features: ['F4'], purposes: [], relations: [] },
     ]);
   });
 

@@ -2,8 +2,8 @@
 
 提交：`feat(excavator-product-handbook): domains carry their relations, states and cited files from the verified entries`
 
-- [ ] 1.1 测试先红（O1：关系、状态与转换、被引用文件）
-- [ ] 1.2 `entities.mjs` 算出关系、状态与转换、被引用文件；`handbook.md` 的领域一节写关系两栏
+- [x] 1.1 测试先红（O1：关系、状态与转换、被引用文件）
+- [x] 1.2 `entities.mjs` 算出关系、状态与转换、被引用文件；`handbook.md` 的领域一节写关系两栏
 
 ## 2. 领域页七节
 
