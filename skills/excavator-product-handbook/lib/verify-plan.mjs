@@ -42,8 +42,8 @@ export const snapshotPath = (outDir, id) => join(outDir, VERIFY_DIR, 'round-1', 
 export const rewriteFilePath = (outDir, id) => join(outDir, REWRITE_DIR, `${id}.json`);
 
 /** The items of `entry` (of the unit `unit`, unit.mjs) that carry evidence, in entry order. `ui` is the run's fixed-text table; `files` a projectFiles reader. */
-export function verifyItems(unit, entry, { ui, files }) {
-  const claims = unit.claims(entry, ui);
+export function verifyItems(unit, entry, { ui, files, map = null }) {
+  const claims = unit.claims(entry, ui, { map });
   return unit.items(entry).filter((item) => item.evidence.length > 0).map((item) => {
     const claim = claims.get(item.path);
     if (claim === undefined) throw new Error(`no claim for item ${item.path}`);

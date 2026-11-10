@@ -6,6 +6,7 @@
  * path and no citation in the text. Every fixed text comes from `ui`.
  */
 
+import { OPERATION_PARTS, partList, transitionList } from './entry-parts.mjs';
 import { dataBlock } from './render-data.mjs';
 import { dictionaryBlock } from './render-dict.mjs';
 import { appendixChapter } from './render-appendix.mjs';
@@ -49,9 +50,30 @@ function screensBlock(entry, t) {
   return out;
 }
 
+/** The parts of an operation besides its steps, each a bold label and a list; a part with no element writes nothing (the diagrams of a later step draw from the same lists). */
+function operationPartLines(operation, names, t) {
+  const out = [];
+  for (const part of OPERATION_PARTS) {
+    const elements = partList(operation, part);
+    if (elements.length === 0) continue;
+    out.push(`**${t(part.uiKey)}**`, '');
+    for (const element of elements) {
+      const text = part.key === 'edges'
+        ? fill(t('md.edge.item'), { when: element.when, then: element.then })
+        : part.key === 'handoffs'
+          ? fill(t('md.handoff.item'), { feature: names.get(element.feature) ?? element.feature, text: element.text })
+          : element.text;
+      out.push(`- ${inline(text)}`);
+    }
+    out.push('');
+  }
+  return out;
+}
+
 /** `areaName`: the name of the feature's area when the handbook groups by business domain (the area is then a property of the feature), else null. `findingsPart` is the findings context of render-findings.mjs. */
 function entryBlock(feature, entry, map, t, locations, areaName, findingsPart) {
   const reachText = t(`md.reach.${feature.reach}`);
+  const names = new Map(map.features.map((other) => [other.id, other.name]));
   const out = [`### ${inline(feature.name)}`, '', inline(fill(t('md.feature.reach'), { reach: reachText })), ''];
   if (areaName !== null) out.push(inline(fill(t('md.feature.area'), { area: areaName })), '');
   if (feature.label !== undefined) out.push(inline(fill(t('md.feature.label'), { label: feature.label })), '');
@@ -66,11 +88,17 @@ function entryBlock(feature, entry, map, t, locations, areaName, findingsPart) {
   if (entry.operations.length === 0) out.push(t('md.none'), '');
   for (const operation of entry.operations) {
     out.push(`##### ${inline(operation.name)}`, '', operation.sentences.map((sentence) => inline(sentence.text)).join(' '), '');
+    out.push(...operationPartLines(operation, names, t));
   }
   out.push(`#### ${t('md.section.states')}`, '');
   out.push(entry.states.length === 0
     ? t('md.none')
     : table([t('md.table.state'), t('md.table.meaning')], entry.states.map((state) => [state.label, state.meaning])), '');
+  const transitions = transitionList(entry);
+  if (transitions.length > 0) {
+    out.push(`**${t('md.section.transitions')}**`, '');
+    out.push(...transitions.map((x) => `- ${inline(fill(t('md.transition.item'), { from: x.from, to: x.to, by: x.by }))}`), '');
+  }
   out.push(`#### ${t('md.section.notifications')}`, '');
   out.push(entry.notifications.length === 0
     ? t('md.none')

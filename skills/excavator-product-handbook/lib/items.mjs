@@ -21,6 +21,8 @@
  * `who` is checked against the map's roles instead of the item's passages.
  */
 
+import { OPERATION_PARTS, partList, transitionList } from './entry-parts.mjs';
+
 const text = (path, value, { label = false, numbers = true, narrative = false } = {}) => ({ path, text: value, label, numbers, narrative });
 
 function evidenceOf(path, list) {
@@ -98,9 +100,21 @@ export function entryItems(entry) {
       source: 'its sentences',
     });
     items.push(...sentences);
+    // Each new part is its own item with its own citations; a handoff's feature id is not reader text, so it is no string.
+    for (const part of OPERATION_PARTS) {
+      partList(operation, part).forEach((element, k) => {
+        const path = `${oPath}.${part.key}[${k}]`;
+        items.push(item(path, part.strings.map((key) => text(`${path}.${key}`, element[key], { narrative: true })), element.evidence));
+      });
+    }
   });
   entry.states.forEach((state, i) => {
     items.push(item(`states[${i}]`, [text(`states[${i}].label`, state.label, { label: true }), text(`states[${i}].meaning`, state.meaning, { narrative: true })], state.evidence));
+  });
+  // A transition names two states quoted from the source, like a state label; how it happens is narrative.
+  transitionList(entry).forEach((transition, i) => {
+    const p = `transitions[${i}]`;
+    items.push(item(p, [text(`${p}.from`, transition.from, { label: true }), text(`${p}.to`, transition.to, { label: true }), text(`${p}.by`, transition.by, { narrative: true })], transition.evidence));
   });
   entry.notifications.forEach((n, i) => {
     const p = `notifications[${i}]`;

@@ -2,10 +2,10 @@
 
 提交：`feat(excavator-product-handbook): entries describe each operation as a flow with triggers, calculations, changes, edges and handoffs`
 
-- [ ] 1.1 脚本测试先红（O1 的形状、项、主张、裁剪、主题事实）
-- [ ] 1.2 形状与兼容（D1）：`/2` 的新列表与 `transitions`，交接 id 检查，`/1` 只在已定案路径上通过
-- [ ] 1.3 项、主张、裁剪、删除记录、主题事实（D1、D8）
-- [ ] 1.4 写作提示与改写提示（D2、D3、D6），固定文字表新键
+- [x] 1.1 脚本测试先红（O1 的形状、项、主张、裁剪、主题事实）
+- [x] 1.2 形状与兼容（D1）：`/2` 的新列表与 `transitions`，交接 id 检查，`/1` 只在已定案路径上通过
+- [x] 1.3 项、主张、裁剪、删除记录、主题事实（D1、D8）
+- [x] 1.4 写作提示与改写提示（D2、D3、D6），固定文字表新键
 
 ## 2. 流程图与页面
 

@@ -21,7 +21,7 @@ export function buildLocations(run, root) {
   return ids.map((id) => {
     const entry = entries.get(id);
     const unit = unitFor(id);
-    const claims = unit.claims(entry, ui);
+    const claims = unit.claims(entry, ui, { map });
     const items = unit.items(entry)
       .filter((item) => item.evidence.length > 0)
       .map((item) => ({

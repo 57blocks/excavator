@@ -14,6 +14,7 @@ import { basename } from 'node:path';
 
 import { pageSection } from './data-section.mjs';
 import { dictionariesPageSection } from './dict-section.mjs';
+import { OPERATION_PARTS, partList, transitionList } from './entry-parts.mjs';
 import { findingsStatus } from './findings-model.mjs';
 import { handbookModel } from './handbook-model.mjs';
 import { historyPageSection, historyPlaces } from './history-page.mjs';
@@ -38,6 +39,8 @@ import { DEFAULT_VIEWS } from './views.mjs';
  */
 export const PAGE_FORMAT = 'excavator-product-handbook-page/15';
 
+const PARTS = Object.fromEntries(OPERATION_PARTS.map((part) => [part.key, part]));
+
 /** An entry without its evidence, in the page's shape. */
 function pageEntry(entry) {
   return {
@@ -48,8 +51,17 @@ function pageEntry(entry) {
       name: screen.name,
       fields: screen.fields.map((field) => ({ label: field.label, rules: field.rules.map((rule) => ({ side: rule.side, text: rule.text })) })),
     })),
-    operations: entry.operations.map((operation) => ({ name: operation.name, sentences: operation.sentences.map((sentence) => sentence.text) })),
+    operations: entry.operations.map((operation) => ({
+      name: operation.name,
+      sentences: operation.sentences.map((sentence) => sentence.text),
+      triggers: partList(operation, PARTS.triggers).map((x) => x.text),
+      calculations: partList(operation, PARTS.calculations).map((x) => x.text),
+      changes: partList(operation, PARTS.changes).map((x) => x.text),
+      edges: partList(operation, PARTS.edges).map((x) => ({ when: x.when, then: x.then })),
+      handoffs: partList(operation, PARTS.handoffs).map((x) => ({ feature: x.feature, text: x.text })),
+    })),
     states: entry.states.map((state) => ({ label: state.label, meaning: state.meaning })),
+    transitions: transitionList(entry).map((x) => ({ from: x.from, to: x.to, by: x.by })),
     notifications: entry.notifications.map((n) => ({ trigger: n.trigger, recipient: n.recipient, channel: n.channel, content: n.content })),
     automatic: entry.automatic.map((item) => ({ when: item.when, effect: item.effect })),
     unknowns: entry.unknowns.map((item) => ({ item: item.item, searched: item.searched })),

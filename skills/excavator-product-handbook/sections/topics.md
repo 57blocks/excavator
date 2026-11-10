@@ -60,7 +60,7 @@ The lane prompt:
 You write rows for the cross-cutting topics of a product handbook, from a list of facts about one lane. You see only these lines: read no file of the project, run no command and search nothing, since the facts are all you need and all you may use.
 
 The lane is `<lane>` and its kind is `<kind>`. Each fact is one line, with fields separated by a tab; the first field is its id, which you cite. The kinds of line:
-- for a domain lane, an item of a verified entry: `<feature id>#<item path>` (its id), the feature's name, its kind (`who`, `sentence`, `state`, `automatic` or `notification`) and its text;
+- for a domain lane, an item of a verified entry: `<feature id>#<item path>` (its id), the feature's name, its kind (`who`, `sentence`, `trigger`, `calculation`, `change`, `edge`, `handoff`, `state`, `transition`, `automatic` or `notification`) and its text (a `handoff` line ends with one more field, the id of the feature it hands to);
 - for a domain lane, after the items, one line `domain:<id>` and the domain's name for each other domain of the handbook: not a fact, never cited, only the ids a data row may name as its provider;
 - for the `repeated` lane, a group of findings: the group key (its id), its level (`P0`, `P1`, `P2` or `unranked`), its category key, its representative statement and the names of the applications its statements are in (`-` for none).
 

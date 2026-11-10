@@ -108,7 +108,7 @@ export function goodEntry() {
   const nameField = "{ label: 'Customer Name', required: true },";
   const countField = "{ label: 'Item Count', max: 35000 },";
   return {
-    format: 'excavator-product-handbook-entry/1',
+    format: 'excavator-product-handbook-entry/2',
     id: 'F1',
     purpose: { text: 'Staff place new orders for customers.', evidence: [ev(form, "title: 'New Order',")] },
     who: [{ role: 'Clerk', can: 'Create an order.', evidence: [ev('src/roles.js', "const ROLES = ['Clerk', 'Approver'];")] }],
@@ -141,11 +141,17 @@ export function goodEntry() {
         { text: 'The clerk fills in the customer name.', evidence: [ev(form, nameField)] },
         { text: 'The item count is limited to 35000.', evidence: [ev(form, countField)] },
       ],
+      triggers: [],
+      calculations: [],
+      changes: [],
+      edges: [],
+      handoffs: [],
     }],
     states: [
       { label: 'Draft', meaning: 'The order is not sent yet.', evidence: [ev(form, "const statuses = ['Draft', 'Submitted'];")] },
       { label: 'Submitted', meaning: 'The order was sent.', evidence: [ev(form, "const statuses = ['Draft', 'Submitted'];")] },
     ],
+    transitions: [],
     notifications: [],
     automatic: [],
     unknowns: [{ item: 'Who approves a large order', searched: 'the order form and the routes of the orders area' }],

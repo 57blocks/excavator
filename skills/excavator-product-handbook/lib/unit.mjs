@@ -74,7 +74,8 @@ const FINDINGS = Object.freeze({
   kind: 'findings',
   shapeProblems: findingsShapeProblems,
   items: findingsItems,
-  claims: findingsClaims,
+  // The third argument of a unit's claims is the run context ({ map }); a finding's claim needs none of it.
+  claims: (doc, ui) => findingsClaims(doc, ui),
   trim: trimFindings,
   /** The scope words of the statement of the item `path` (design D9): its trace item carries them. */
   scopeWords: findingScopeWords,

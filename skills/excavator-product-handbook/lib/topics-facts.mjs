@@ -11,7 +11,10 @@
  *
  * with the kinds who (`<role>: <can>`), sentence (`<operation>: <sentence>`),
  * state (`<label>: <meaning>`), automatic (`<when>: <effect>`) and notification
- * (`<trigger> | <channel> | <recipient>`); the item paths are those of items.mjs.
+ * (`<trigger> | <channel> | <recipient>`), and the parts of an operation and the state transitions of an entry
+ * of format /2: trigger, calculation, change and handoff (`<operation>: <text>`; a handoff line ends with a fourth
+ * field, the id of the feature it hands to), edge (`<operation>: <when>: <then>`) and transition
+ * (`<from> -> <to>: <by>`); the item paths are those of items.mjs.
  * The repeated lane lists the groups of the verified findings as remedy-facts
  * does, plus the names of the applications the group's passages are in (the
  * system name when the overview is verified, else the directory):
@@ -25,6 +28,7 @@
 import { createHash } from 'node:crypto';
 
 import { isUnder, scanProject } from './applications.mjs';
+import { OPERATION_PARTS, partList, transitionList } from './entry-parts.mjs';
 import { domainGrouping } from './domain-grouping.mjs';
 import { buildFindings } from './findings-model.mjs';
 import { groupKey } from './priority-groups.mjs';
@@ -45,7 +49,7 @@ export const factsDigest = (rows) => createHash('sha256').update(rows.map(factLi
 
 /** The facts of one verified entry, in the order of the kinds: `{ id, kind: 'item', itemKind, feature, text, path, evidence, fields }`. */
 export function entryFactRows(feature, entry) {
-  const row = (path, itemKind, text, evidence) => ({
+  const row = (path, itemKind, text, evidence, extra = {}) => ({
     id: `${feature.id}#${path}`,
     kind: 'item',
     itemKind,
@@ -53,12 +57,21 @@ export function entryFactRows(feature, entry) {
     path,
     text: oneLine(text),
     evidence,
-    fields: [oneLine(feature.name), itemKind, oneLine(text)],
+    fields: [oneLine(feature.name), itemKind, oneLine(text), ...(extra.toFeature === undefined ? [] : [extra.toFeature])],
+    ...extra,
   });
   return [
     ...entry.who.map((who, i) => row(`who[${i}]`, 'who', `${who.role}: ${who.can}`, who.evidence)),
-    ...entry.operations.flatMap((operation, i) => operation.sentences.map((sentence, j) => row(`operations[${i}].sentences[${j}]`, 'sentence', `${operation.name}: ${sentence.text}`, sentence.evidence))),
+    ...entry.operations.flatMap((operation, i) => [
+      ...operation.sentences.map((sentence, j) => row(`operations[${i}].sentences[${j}]`, 'sentence', `${operation.name}: ${sentence.text}`, sentence.evidence)),
+      ...OPERATION_PARTS.flatMap((part) => partList(operation, part).map((element, k) => {
+        const path = `operations[${i}].${part.key}[${k}]`;
+        const text = part.key === 'edges' ? `${operation.name}: ${element.when}: ${element.then}` : `${operation.name}: ${element.text}`;
+        return row(path, part.itemKind, text, element.evidence, part.key === 'handoffs' ? { toFeature: element.feature } : {});
+      })),
+    ]),
     ...entry.states.map((state, i) => row(`states[${i}]`, 'state', `${state.label}: ${state.meaning}`, state.evidence)),
+    ...transitionList(entry).map((transition, i) => row(`transitions[${i}]`, 'transition', `${transition.from} -> ${transition.to}: ${transition.by}`, transition.evidence)),
     ...entry.automatic.map((item, i) => row(`automatic[${i}]`, 'automatic', `${item.when}: ${item.effect}`, item.evidence)),
     ...entry.notifications.map((n, i) => row(`notifications[${i}]`, 'notification', `${n.trigger} | ${n.channel} | ${n.recipient}`, n.evidence)),
   ];

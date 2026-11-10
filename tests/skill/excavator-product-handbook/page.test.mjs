@@ -101,7 +101,7 @@ describe('page: the file and its data', () => {
     const data = dataOf(html(run));
     const [f1, f2, f3] = data.features;
     expect(f1.status).toBe('verified');
-    expect(Object.keys(f1.entry)).toEqual(['purpose', 'who', 'where', 'screens', 'operations', 'states', 'notifications', 'automatic', 'unknowns']);
+    expect(Object.keys(f1.entry)).toEqual(['purpose', 'who', 'where', 'screens', 'operations', 'states', 'transitions', 'notifications', 'automatic', 'unknowns']);
     expect(f1.entry.purpose).toBe('Staff place new orders for customers.');
     expect(f1.entry.where).toEqual(['Orders', 'New Order']);
     expect(f1.entry.screens[0].fields[1].rules).toEqual([{ side: 'backend', text: 'At most 35,000 items.' }, { side: 'frontend', text: 'An upload may hold up to 100,000 bytes.' }]);

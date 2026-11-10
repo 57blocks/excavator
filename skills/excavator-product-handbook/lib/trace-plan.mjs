@@ -38,8 +38,8 @@ export const TRACERS = VERIFIERS;
 export const tracePartFile = (feature, part, parts, items) => ({ feature, part, parts, items });
 
 /** The trace items of `entry` of unit `unit`: the items that carry evidence, in entry order. `ui` is the fixed-text table; `files` a projectFiles reader. */
-export function traceItems(unit, entry, { ui, files }) {
-  const claims = unit.claims(entry, ui);
+export function traceItems(unit, entry, { ui, files, map = null }) {
+  const claims = unit.claims(entry, ui, { map });
   return unit.items(entry).filter((item) => item.evidence.length > 0).map((item) => {
     const claim = claims.get(item.path);
     if (claim === undefined) throw new Error(`no claim for item ${item.path}`);
@@ -103,6 +103,6 @@ export function confirmedPlan(outDir, id, root) {
   const ui = loadUi(outDir);
   if (!ui.ok) return { stop: { status: 1, lines: ui.lines } };
   const entry = readJson(join(outDir, entryPath(id))).value;
-  const items = traceItems(unit, entry, { ui: ui.strings, files: loaded.files });
+  const items = traceItems(unit, entry, { ui: ui.strings, files: loaded.files, map: loaded.map });
   return { state, current, entry, loaded, unit, items, claims: new Map(items.map((item) => [item.id, item.claim])), parts: splitTraceParts(items) };
 }

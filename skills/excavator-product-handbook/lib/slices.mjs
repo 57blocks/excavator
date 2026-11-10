@@ -66,7 +66,7 @@ export function planRound(outDir, id, root, round) {
   const ui = loadUi(outDir);
   if (!ui.ok) return { stop: { status: 1, lines: ui.lines } };
   const entry = readJson(join(outDir, entryPath(id))).value;
-  const context = { ui: ui.strings, files: loaded.files };
+  const context = { ui: ui.strings, files: loaded.files, map: loaded.map };
   const items = verifyItems(unit, entry, context);
   const claims = new Map(items.map((item) => [item.id, item.claim]));
   if (round === 1) return { items, entry, loaded, claims, unit };
