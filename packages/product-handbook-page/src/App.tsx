@@ -59,7 +59,7 @@ function PageView({ data, route, view }: { data: PageData; route: Route; view: V
       const feature = data.features.find((item) => item.id === body.id);
       return feature === undefined
         ? <NotFound />
-        : <FeaturePage feature={feature} findings={data.findings.filter((group) => group.owners.some((owner) => owner.kind === 'feature' && owner.id === feature.id))} domain={data.domains.find((item) => item.id === feature.domain)} area={data.domainBasis === 'domains' ? data.areas.find((item) => item.id === feature.area) : undefined} locations={technical?.locations.find((unit) => unit.id === feature.id)} />;
+        : <FeaturePage feature={feature} findings={data.findings.filter((group) => group.owners.some((owner) => owner.kind === 'feature' && owner.id === feature.id))} domain={data.domains.find((item) => item.id === feature.domain)} area={data.domainBasis === 'domains' ? data.areas.find((item) => item.id === feature.area) : undefined} locations={technical?.locations.find((unit) => unit.id === feature.id)} featureNames={new Map(data.features.map((item) => [item.id, item.name]))} />;
     }
     case 'not-found': return <NotFound />;
   }

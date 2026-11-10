@@ -11,9 +11,9 @@
 
 提交：`feat(excavator-product-handbook): handbook and page draw a sequence diagram per operation and list state transitions`
 
-- [ ] 2.1 脚本与页面测试先红（O1 的图、O2）
-- [ ] 2.2 参与者与箭头的计算（D4），`handbook.md` 的 mermaid
-- [ ] 2.3 页面数据 `/16`（D7）与功能页的流程、SVG 时序图、转换
+- [x] 2.1 脚本与页面测试先红（O1 的图、O2）
+- [x] 2.2 参与者与箭头的计算（D4），`handbook.md` 的 mermaid
+- [x] 2.3 页面数据 `/16`（D7）与功能页的流程、SVG 时序图、转换
 
 ## 3. 追查按类别
 

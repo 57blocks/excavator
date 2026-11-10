@@ -4,11 +4,12 @@ import { useFeatureDetail } from '../lib/chunks';
 import { useLinks } from '../lib/links';
 import { useText } from '../lib/text';
 import { findingCategoryKey } from '../lib/types';
-import type { Area, Entry, Feature, Field, FindingGroup, Rule, UnitLocations } from '../lib/types';
+import type { Area, Entry, Feature, Field, FindingGroup, Operation, Rule, UnitLocations } from '../lib/types';
 import { ChunkNotice } from './ChunkNotice';
 import { Locations } from './Locations';
 import { PriorityBadge } from './PriorityBadge';
 import { ReachBadge } from './ReachBadge';
+import { SequenceDiagram } from './SequenceDiagram';
 import { Definition, DefinitionList, Item, ItemField, ItemList } from './ui/ItemList';
 
 function Section({ id, title, children }: { id: string; title: string; children: ReactNode }) {
@@ -27,7 +28,63 @@ function rulesOf(field: Field, side: Rule['side']): ReactNode {
   return texts.length === 1 ? texts[0] : <ul className="rule-list">{texts.map((text, at) => <li key={at}>{text}</li>)}</ul>;
 }
 
-function EntryBody({ entry }: { entry: Entry }) {
+/** One part of an operation: a label and a list; nothing when the part has no element. */
+function OperationPart({ part, label, items }: { part: string; label: string; items: ReactNode[] }) {
+  if (items.length === 0) return null;
+  return (
+    <div className="operation-part" data-part={part}>
+      <h4 className="part-label">{label}</h4>
+      <ul className="plain-list">{items.map((item, at) => <li key={at}>{item}</li>)}</ul>
+    </div>
+  );
+}
+
+/**
+ * One operation (openspec change handbook-deep-entry): what starts it, its steps numbered with the participant of each,
+ * the sequence diagram the script computed, its fixed note, then its calculations, data changes, edge cases and the
+ * features it hands over to, each a link to that feature's page before what passes to it (no separator, which would be
+ * a fixed text the code wrote).
+ */
+function OperationBlock({ operation, featureNames }: { operation: Operation; featureNames: Map<string, string> }) {
+  const t = useText();
+  const nav = useLinks();
+  const { participants, steps } = operation.sequence;
+  return (
+    <div className="operation" data-part="operation">
+      <h3 className="operation-title">{operation.name}</h3>
+      <OperationPart part="triggers" label={t('md.operation.triggers')} items={operation.triggers} />
+      <div className="operation-part" data-part="steps">
+        <h4 className="part-label">{t('md.operation.steps')}</h4>
+        <ol className="step-list">
+          {operation.sentences.map((sentence, at) => (
+            <li key={at}>
+              <span className="step-text">{sentence}</span>
+              {steps[at] !== undefined && <span className="participant-chip">{participants[steps[at].to]}</span>}
+            </li>
+          ))}
+        </ol>
+      </div>
+      {steps.length > 0 && (
+        <>
+          <SequenceDiagram sequence={operation.sequence} label={t('page.flow.label', { name: operation.name })} />
+          <p className="muted flow-note">{t('md.flow.note')}</p>
+        </>
+      )}
+      <OperationPart part="calculations" label={t('md.operation.calculations')} items={operation.calculations} />
+      <OperationPart part="changes" label={t('md.operation.changes')} items={operation.changes} />
+      <OperationPart part="edges" label={t('md.operation.edges')} items={operation.edges.map((edge) => t('md.edge.item', { when: edge.when, then: edge.then }))} />
+      <OperationPart
+        part="handoffs"
+        label={t('md.operation.handoffs')}
+        items={operation.handoffs.map((handoff) => (
+          <><a className="handoff-link" href={nav.feature(handoff.feature)}>{featureNames.get(handoff.feature) ?? handoff.feature}</a> <span>{handoff.text}</span></>
+        ))}
+      />
+    </div>
+  );
+}
+
+function EntryBody({ entry, featureNames }: { entry: Entry; featureNames: Map<string, string> }) {
   const t = useText();
   const none = <p className="muted">{t('md.none')}</p>;
   return (
@@ -94,12 +151,7 @@ function EntryBody({ entry }: { entry: Entry }) {
       </Section>
 
       <Section id="operations" title={t('md.section.operations')}>
-        {entry.operations.length === 0 ? none : entry.operations.map((operation, at) => (
-          <div className="operation" key={at}>
-            <h3 className="operation-title">{operation.name}</h3>
-            <p>{operation.sentences.join(' ')}</p>
-          </div>
-        ))}
+        {entry.operations.length === 0 ? none : entry.operations.map((operation, at) => <OperationBlock key={at} operation={operation} featureNames={featureNames} />)}
       </Section>
 
       <Section id="states" title={t('md.section.states')}>
@@ -107,6 +159,14 @@ function EntryBody({ entry }: { entry: Entry }) {
           <DefinitionList part="states" label={t('md.section.states')}>
             {entry.states.map((state, at) => <Definition key={at} term={state.label}>{state.meaning}</Definition>)}
           </DefinitionList>
+        )}
+        {entry.transitions.length > 0 && (
+          <div className="operation-part" data-part="transitions">
+            <h3 className="part-label">{t('md.section.transitions')}</h3>
+            <ul className="plain-list">
+              {entry.transitions.map((x, at) => <li key={at}>{t('md.transition.item', { from: x.from, to: x.to, by: x.by })}</li>)}
+            </ul>
+          </div>
         )}
       </Section>
 
@@ -159,8 +219,8 @@ function FindingsSection({ feature, groups }: { feature: Feature; groups: Findin
   );
 }
 
-/** One feature: its domain (and, when the page groups by business domain, the area of the navigation it sits in), how readers get to it, and the checked entry, or why there is none, then its verified findings; in the technical view, the file and lines of each cited item. */
-export function FeaturePage({ feature, findings, domain, area, locations }: { feature: Feature; findings: FindingGroup[]; domain: Area | undefined; area: Area | undefined; locations?: UnitLocations }) {
+/** One feature (`featureNames`: the name of each feature by id, for the features an operation hands over to): its domain (and, when the page groups by business domain, the area of the navigation it sits in), how readers get to it, and the checked entry, or why there is none, then its verified findings; in the technical view, the file and lines of each cited item. */
+export function FeaturePage({ feature, findings, domain, area, locations, featureNames = new Map() }: { feature: Feature; findings: FindingGroup[]; domain: Area | undefined; area: Area | undefined; locations?: UnitLocations; featureNames?: Map<string, string> }) {
   const t = useText();
   const nav = useLinks();
   const detail = useFeatureDetail(feature, locations);
@@ -186,7 +246,7 @@ export function FeaturePage({ feature, findings, domain, area, locations }: { fe
           <p>{t('page.feature.noEntry')}</p>
           <p className="status-chip" data-status={feature.status}>{t(`md.status.${feature.status}`)}</p>
         </div>
-      ) : <EntryBody entry={detail.value.entry} />}
+      ) : <EntryBody entry={detail.value.entry} featureNames={featureNames} />}
       <FindingsSection feature={feature} groups={findings} />
       {detail.status === 'ready' && detail.value.entry !== null && detail.value.locations !== undefined && <Locations unit={detail.value.locations} />}
     </article>

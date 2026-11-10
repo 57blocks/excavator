@@ -1,6 +1,6 @@
 /** The page data `handbook.mjs page` writes into the template (openspec change product-handbook-map, design D13). */
 
-export const PAGE_FORMAT = 'excavator-product-handbook-page/15';
+export const PAGE_FORMAT = 'excavator-product-handbook-page/16';
 
 /** The views a page can hold (openspec change handbook-entities-and-views): the product view and the technical view. */
 export const VIEWS = ['product', 'technical'] as const;
@@ -115,6 +115,21 @@ export interface Rule { side: 'frontend' | 'backend'; text: string }
 export interface Field { label: string; rules: Rule[] }
 export interface Screen { name: string; fields: Field[] }
 
+/** The sequence diagram of an operation, computed by the script from the steps' citations: participant names, and per step the indices of the participants its arrow joins. */
+export interface Sequence { participants: string[]; steps: { from: number; to: number }[] }
+
+/** An operation as a flow (entry format /2): an operation of an older entry has empty lists. */
+export interface Operation {
+  name: string;
+  sentences: string[];
+  triggers: string[];
+  calculations: string[];
+  changes: string[];
+  edges: { when: string; then: string }[];
+  handoffs: { feature: string; text: string }[];
+  sequence: Sequence;
+}
+
 /** A verified entry as the page shows it: the text, never the evidence. */
 export interface Entry {
   /** Absent when the purpose was removed as not verified. */
@@ -122,8 +137,9 @@ export interface Entry {
   who: { role: string; can: string }[];
   where: string[];
   screens: Screen[];
-  operations: { name: string; sentences: string[] }[];
+  operations: Operation[];
   states: { label: string; meaning: string }[];
+  transitions: { from: string; to: string; by: string }[];
   notifications: { trigger: string; recipient: string; channel: string; content: string }[];
   automatic: { when: string; effect: string }[];
   unknowns: { item: string; searched: string }[];

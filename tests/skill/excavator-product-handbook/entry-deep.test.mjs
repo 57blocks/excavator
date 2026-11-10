@@ -225,6 +225,20 @@ describe('entry /2: handbook.md and a settled /1 entry', () => {
     expect(states).toContain('- From Draft to Submitted, caused by The clerk sends the order.');
   });
 
+  it('numbers the steps and follows them with the sequence diagram and its note, and draws the transitions as a state diagram', () => {
+    const text = assemble(verifiedRun(deepEntry()));
+    const operation = text.slice(text.indexOf('##### Place an order'), text.indexOf('#### States'));
+    expect(operation).toMatch(/\*\*Steps\*\*\n\n1\. /);
+    const diagram = operation.slice(operation.indexOf('```mermaid'));
+    expect(diagram.startsWith('```mermaid\nsequenceDiagram\n  participant P0 as User\n')).toBe(true);
+    expect(diagram).toContain('  P0->>P1: 1');
+    expect(operation.indexOf('```mermaid')).toBeGreaterThan(operation.indexOf('1. '));
+    expect(operation.indexOf('```mermaid')).toBeLessThan(operation.indexOf('Calculations'));
+    expect(operation).toContain('each arrow is numbered like the step it stands for');
+    const states = text.slice(text.indexOf('#### States'), text.indexOf('#### Notifications'));
+    expect(states).toContain('```mermaid\nstateDiagram-v2\n  state "Draft" as S0\n  state "Submitted" as S1\n  S0 --> S1: The clerk sends the order.\n```');
+  });
+
   it('assembles and builds the page for a settled /1 entry, with only the steps', () => {
     const run = verifiedRun(deepEntry());
     const file = join(run.out, 'entries', 'F1.json');
@@ -240,6 +254,8 @@ describe('entry /2: handbook.md and a settled /1 entry', () => {
     expect(text).toContain('The clerk fills in the customer name.');
     expect(text).not.toContain('Starts when');
     expect(text).not.toContain('State changes');
+    expect(text).not.toContain('stateDiagram-v2');
+    expect(text).toContain('sequenceDiagram');
     const page = runHandbook(['page', run.out, '--project', run.root], { env: { ...process.env, EXCAVATOR_PRODUCT_HANDBOOK_PAGE_TEMPLATE: stubPath } });
     expect(page.status, page.stdout + page.stderr).toBe(0);
   });

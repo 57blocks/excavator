@@ -127,7 +127,7 @@ describe('page data: the project is the system name', () => {
     const run = verifiedRun();
     expect(page(run).status).toBe(0);
     const data = dataOf(run);
-    expect(data.format).toBe('excavator-product-handbook-page/15');
+    expect(data.format).toBe('excavator-product-handbook-page/16');
     expect(data.project).toBe('handbook-fixture');
     expect(Object.keys(data)).toEqual(['format', 'chunks', 'project', 'language', 'languageTag', 'ui', 'views', 'areas', 'domains', 'domainBasis', 'features', 'findings', 'remedies', 'topics', 'history', 'appendix', 'coverage', 'summary', 'system', 'entities']);
   });

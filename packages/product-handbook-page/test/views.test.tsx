@@ -33,7 +33,7 @@ const SLACK = d('Slack');
 const entry = (purpose: string, roles: [string, string][]): Entry => ({
   purpose: d(purpose),
   who: roles.map(([role, can]) => ({ role, can: d(can) })),
-  where: [], screens: [], operations: [], states: [], notifications: [], automatic: [], unknowns: [],
+  where: [], screens: [], operations: [], states: [], transitions: [], notifications: [], automatic: [], unknowns: [],
 });
 
 const feature = (id: string, area: string, domain: string, status: Feature['status'], entryValue: Entry | null): Feature => ({
@@ -44,7 +44,7 @@ const feature = (id: string, area: string, domain: string, status: Feature['stat
 function dataFor(views: View[]): PageData {
   const withTechnical = views.includes('technical');
   return {
-    format: 'excavator-product-handbook-page/15',
+    format: 'excavator-product-handbook-page/16',
     chunks: { parts: [], units: {} },
     project: d('project'),
     language: d('language'),

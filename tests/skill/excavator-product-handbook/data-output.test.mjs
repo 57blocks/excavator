@@ -215,7 +215,7 @@ describe('the page data carries the data section in its technical part only', ()
     const made = run(data);
     expect(page(made, 'product,technical').status).toBe(0);
     const got = pageData(made);
-    expect(got.format).toBe('excavator-product-handbook-page/15');
+    expect(got.format).toBe('excavator-product-handbook-page/16');
     expect(Object.keys(got.technical).slice(-4)).toEqual(['data', 'dataState', 'dictionaries', 'dictionariesState']);
     expect(got.technical.dataState).toBe('ok');
     expect(Object.keys(got.technical.data)).toEqual(['recognized', 'applications', 'tables', 'dropped', 'changedNeverCreated', 'declaredOnly', 'removedButDeclared', 'onlyInMigrations', 'gaps', 'counts']);
@@ -230,7 +230,7 @@ describe('the page data carries the data section in its technical part only', ()
     const made = run(data);
     expect(page(made, 'product').status).toBe(0);
     const got = pageData(made);
-    expect(got.format).toBe('excavator-product-handbook-page/15');
+    expect(got.format).toBe('excavator-product-handbook-page/16');
     expect(Object.hasOwn(got, 'technical')).toBe(false);
     expect(text(made, 'handbook.html')).not.toContain('ledger_entries');
   });

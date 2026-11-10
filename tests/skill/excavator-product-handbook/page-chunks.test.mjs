@@ -78,7 +78,7 @@ describe('page: below the threshold it is one file', () => {
     expect(existsSync(join(made.out, PARTS_DIR))).toBe(false);
     const before = readFileSync(join(made.out, 'handbook.html'));
     const data = dataOf(html(made));
-    expect(data.format).toBe('excavator-product-handbook-page/15');
+    expect(data.format).toBe('excavator-product-handbook-page/16');
     expect(data.chunks).toEqual({ parts: [], units: {} });
     expect(data.features[0].entry).not.toBeNull();
     expect(data.technical.dictionaries.dictionaries).toHaveLength(31);

@@ -80,7 +80,7 @@ const section: DictionariesSection = {
 
 function dataFor(views: View[], dictionaries: DictionariesSection | null = section, dictionariesState: 'ok' | 'missing' | 'malformed' = 'ok'): PageData {
   return {
-    format: 'excavator-product-handbook-page/15',
+    format: 'excavator-product-handbook-page/16',
     chunks: { parts: [], units: {} },
     project: d('project'),
     language: d('language'),

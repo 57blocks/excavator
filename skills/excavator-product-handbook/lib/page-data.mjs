@@ -15,6 +15,7 @@ import { basename } from 'node:path';
 import { pageSection } from './data-section.mjs';
 import { dictionariesPageSection } from './dict-section.mjs';
 import { OPERATION_PARTS, partList, transitionList } from './entry-parts.mjs';
+import { operationSequence } from './flows.mjs';
 import { findingsStatus } from './findings-model.mjs';
 import { handbookModel } from './handbook-model.mjs';
 import { historyPageSection, historyPlaces } from './history-page.mjs';
@@ -26,9 +27,11 @@ import { withoutRootPaths } from './root-paths.mjs';
 import { DEFAULT_VIEWS } from './views.mjs';
 
 /**
- * The format is /15 since openspec change handbook-page-chunked-data: `chunks` is the index of the part files of a page whose data is
+ * The format is /16 since openspec change handbook-deep-entry: each operation of an entry carries the parts of entry format /2
+ * (triggers, calculations, changes, edges, handoffs) and `sequence`, the participants and arrows of its sequence diagram
+ * (flows.mjs), and an entry carries its state `transitions`. (/15, openspec change handbook-page-chunked-data: `chunks` is the index of the part files of a page whose data is
  * large (the part ids and, for each unit, the parts that hold it); here it is always empty, and `page` fills it when it splits the data
- * (page-units.mjs, page-chunks.mjs). (/14, openspec change handbook-history-appendix: `history` holds the code health (the commits of each year, the
+ * (page-units.mjs, page-chunks.mjs).) (/14, openspec change handbook-history-appendix: `history` holds the code health (the commits of each year, the
  * applications, the files that change most by name, the files changed together across applications, the source and test files) and
  * `appendix` the open questions, the glossary and the sources and scope; the technical part holds the path of each file of `history`.
  * (/13, openspec change handbook-topics: `topics` holds the rows of the five cross-cutting topics with their basis, the
@@ -37,12 +40,12 @@ import { DEFAULT_VIEWS } from './views.mjs';
  * recommendations with the groups and facts they rest on, and the coverage says what the judges left out. /11: each group of findings
  * carries its priority, and the coverage says which groups have none.)
  */
-export const PAGE_FORMAT = 'excavator-product-handbook-page/15';
+export const PAGE_FORMAT = 'excavator-product-handbook-page/16';
 
 const PARTS = Object.fromEntries(OPERATION_PARTS.map((part) => [part.key, part]));
 
-/** An entry without its evidence, in the page's shape. */
-function pageEntry(entry) {
+/** An entry without its evidence, in the page's shape; `sequenceOf` gives an operation's sequence diagram (flows.mjs). */
+function pageEntry(entry, sequenceOf) {
   return {
     ...(entry.purpose === undefined ? {} : { purpose: entry.purpose.text }),
     who: entry.who.map((who) => ({ role: who.role, can: who.can })),
@@ -59,6 +62,7 @@ function pageEntry(entry) {
       changes: partList(operation, PARTS.changes).map((x) => x.text),
       edges: partList(operation, PARTS.edges).map((x) => ({ when: x.when, then: x.then })),
       handoffs: partList(operation, PARTS.handoffs).map((x) => ({ feature: x.feature, text: x.text })),
+      sequence: sequenceOf(operation),
     })),
     states: entry.states.map((state) => ({ label: state.label, meaning: state.meaning })),
     transitions: transitionList(entry).map((x) => ({ from: x.from, to: x.to, by: x.by })),
@@ -109,7 +113,7 @@ export function buildPageData(run, roots, { views = DEFAULT_VIEWS } = {}) {
       reach: feature.reach,
       label: feature.label,
       status: state.features[feature.id].status,
-      entry: entries.has(feature.id) ? pageEntry(entries.get(feature.id)) : null,
+      entry: entries.has(feature.id) ? pageEntry(entries.get(feature.id), (operation) => operationSequence(operation, feature.reach, system.applications, (key) => ui[key])) : null,
       findingsStatus: findingsStatus(state, feature.id),
     })),
     findings: findings.groups.map((group) => ({

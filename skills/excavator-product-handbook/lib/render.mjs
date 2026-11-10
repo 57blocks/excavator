@@ -7,6 +7,7 @@
  */
 
 import { OPERATION_PARTS, partList, transitionList } from './entry-parts.mjs';
+import { operationSequence, sequenceMermaid, stateGraph, stateMermaid } from './flows.mjs';
 import { dataBlock } from './render-data.mjs';
 import { dictionaryBlock } from './render-dict.mjs';
 import { appendixChapter } from './render-appendix.mjs';
@@ -50,10 +51,10 @@ function screensBlock(entry, t) {
   return out;
 }
 
-/** The parts of an operation besides its steps, each a bold label and a list; a part with no element writes nothing (the diagrams of a later step draw from the same lists). */
-function operationPartLines(operation, names, t) {
+/** The parts of an operation besides its steps, each a bold label and a list; a part with no element writes nothing. `keys` picks the parts. */
+function operationPartLines(operation, names, t, keys) {
   const out = [];
-  for (const part of OPERATION_PARTS) {
+  for (const part of OPERATION_PARTS.filter((one) => keys.includes(one.key))) {
     const elements = partList(operation, part);
     if (elements.length === 0) continue;
     out.push(`**${t(part.uiKey)}**`, '');
@@ -70,8 +71,25 @@ function operationPartLines(operation, names, t) {
   return out;
 }
 
-/** `areaName`: the name of the feature's area when the handbook groups by business domain (the area is then a property of the feature), else null. `findingsPart` is the findings context of render-findings.mjs. */
-function entryBlock(feature, entry, map, t, locations, areaName, findingsPart) {
+const BEFORE_STEPS = ['triggers'];
+const AFTER_STEPS = ['calculations', 'changes', 'edges', 'handoffs'];
+
+/**
+ * One operation: what starts it, its steps numbered, the sequence diagram the script draws from the steps' citations
+ * (flows.mjs) with its fixed note, then its other parts. `applications` are the system facts' application rows.
+ */
+function operationLines(operation, feature, names, applications, t) {
+  const out = [`##### ${inline(operation.name)}`, ''];
+  out.push(...operationPartLines(operation, names, t, BEFORE_STEPS));
+  out.push(`**${t('md.operation.steps')}**`, '');
+  out.push(...operation.sentences.map((sentence, at) => `${at + 1}. ${inline(sentence.text)}`), '');
+  out.push(...sequenceMermaid(operationSequence(operation, feature.reach, applications, t)), '', t('md.flow.note'), '');
+  out.push(...operationPartLines(operation, names, t, AFTER_STEPS));
+  return out;
+}
+
+/** `areaName`: the name of the feature's area when the handbook groups by business domain (the area is then a property of the feature), else null. `findingsPart` is the findings context of render-findings.mjs. `applications` are the system facts' application rows. */
+function entryBlock(feature, entry, map, t, locations, areaName, findingsPart, applications) {
   const reachText = t(`md.reach.${feature.reach}`);
   const names = new Map(map.features.map((other) => [other.id, other.name]));
   const out = [`### ${inline(feature.name)}`, '', inline(fill(t('md.feature.reach'), { reach: reachText })), ''];
@@ -86,10 +104,7 @@ function entryBlock(feature, entry, map, t, locations, areaName, findingsPart) {
   out.push(`#### ${t('md.section.screens')}`, '', ...screensBlock(entry, t));
   out.push(`#### ${t('md.section.operations')}`, '');
   if (entry.operations.length === 0) out.push(t('md.none'), '');
-  for (const operation of entry.operations) {
-    out.push(`##### ${inline(operation.name)}`, '', operation.sentences.map((sentence) => inline(sentence.text)).join(' '), '');
-    out.push(...operationPartLines(operation, names, t));
-  }
+  for (const operation of entry.operations) out.push(...operationLines(operation, feature, names, applications, t));
   out.push(`#### ${t('md.section.states')}`, '');
   out.push(entry.states.length === 0
     ? t('md.none')
@@ -98,6 +113,7 @@ function entryBlock(feature, entry, map, t, locations, areaName, findingsPart) {
   if (transitions.length > 0) {
     out.push(`**${t('md.section.transitions')}**`, '');
     out.push(...transitions.map((x) => `- ${inline(fill(t('md.transition.item'), { from: x.from, to: x.to, by: x.by }))}`), '');
+    out.push(...stateMermaid(stateGraph(entry)), '');
   }
   out.push(`#### ${t('md.section.notifications')}`, '');
   out.push(entry.notifications.length === 0
@@ -301,7 +317,7 @@ export function renderHandbook({ map, entries, state, candidates, ui, summary, s
     const written = domain.features.filter((id) => entries.has(id));
     if (written.length === 0) continue;
     out.push(`## ${inline(domain.name)}`, '');
-    for (const id of written) out.push(...entryBlock(featureOf.get(id), entries.get(id), map, t, placesOf.get(id), basis === 'domains' ? areaName.get(featureOf.get(id).area) : null, findingsPart));
+    for (const id of written) out.push(...entryBlock(featureOf.get(id), entries.get(id), map, t, placesOf.get(id), basis === 'domains' ? areaName.get(featureOf.get(id).area) : null, findingsPart, system.applications));
   }
   out.push(...summaryBlock(summary, map, t), ...entitySections({ view, map, entities, summary, system, t }), ...findingsChapter({ map, state, findings, remedies, view, t }), ...recommendationsChapter({ findings, remedies, view, t }), ...topicsChapter({ topics, view, t }), ...historyChapter({ history, map, view, t }), ...coverageBlock(map, state, candidates, t, findings, remedies, topics), ...appendixChapter({ appendix, map, entities, t }));
   return `${out.join('\n').replace(/\n{3,}/g, '\n\n').trimEnd()}\n`;

@@ -85,7 +85,7 @@ const HASHES = ['#/product', '#/product/coverage', '#/product/notifications', '#
 
 describe('the page data format', () => {
   it('is version 10: the project is the system name or null, the findings are groups', () => {
-    expect(PAGE_FORMAT).toBe('excavator-product-handbook-page/15');
+    expect(PAGE_FORMAT).toBe('excavator-product-handbook-page/16');
   });
 });
 

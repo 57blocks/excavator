@@ -107,7 +107,7 @@ describe('assemble: what the text holds', () => {
     expect(top).toContain('| Menu | 1 |');
   });
 
-  it('writes the checked feature as a section with a fields table, an operation paragraph, states and unknowns', () => {
+  it('writes the checked feature as a section with a fields table, an operation with numbered steps, states and unknowns', () => {
     const run = checkedRun();
     assemble(run);
     const text = handbook(run);
@@ -116,7 +116,7 @@ describe('assemble: what the text holds', () => {
     expect(text).toContain('| Field | Frontend rules | Backend rules |');
     expect(text).toContain('| Item Count | An upload may hold up to 100,000 bytes. | At most 35,000 items. |');
     expect(text).toContain('| Customer Name | The field is required. | - |');
-    expect(text).toContain('The clerk fills in the customer name. The item count is limited to 35000.');
+    expect(text).toContain('1. The clerk fills in the customer name.\n2. The item count is limited to 35000.');
     expect(text).toContain('| Draft | The order is not sent yet. |');
     expect(text).toContain('- Clerk: Create an order.');
     expect(text).toContain('- Who approves a large order (searched: the order form and the routes of the orders area)');

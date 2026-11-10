@@ -218,6 +218,27 @@ h1, h2, h3 { margin: 0; font-weight: 600; line-height: 1.3; letter-spacing: -0.0
 .screen + .screen, .operation + .operation { margin-top: 22px; }
 .screen-title, .operation-title { margin-bottom: 8px; font-size: 16px; }
 .operation p { color: var(--text); }
+.operation { padding: 14px 16px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); }
+.operation-part { margin-top: 12px; }
+.part-label { margin-bottom: 6px; font-size: 13px; font-weight: 600; letter-spacing: 0.02em; color: var(--text-2); }
+.step-list { display: grid; gap: 8px; counter-reset: step; }
+.step-list li { counter-increment: step; position: relative; padding-left: 32px; }
+.step-list li::before { content: counter(step); position: absolute; left: 0; top: 1px; width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; font-size: 12px; font-weight: 600; color: var(--accent-text); background: var(--accent-bg); }
+.participant-chip { display: inline-block; margin-left: 8px; padding: 0 8px; border-radius: 999px; font-size: 12px; line-height: 1.7; color: var(--text-2); background: var(--surface-2); vertical-align: 1px; }
+.seq { margin-top: 14px; }
+.seq-scroll { overflow-x: auto; max-width: 100%; padding-bottom: 4px; }
+.seq-inner { min-width: 0; }
+.seq-heads { display: grid; gap: 0; }
+.seq-head { margin: 0 6px; padding: 6px 8px; border: 1px solid var(--line-strong); border-radius: 8px; background: var(--surface-2); font-size: 12.5px; font-weight: 600; text-align: center; overflow-wrap: anywhere; }
+.seq-head[data-starter] { color: var(--accent-text); background: var(--accent-bg); border-color: var(--accent-bg); }
+.seq-svg { display: block; }
+.seq-life { stroke: var(--line-strong); stroke-width: 1; stroke-dasharray: 4 4; }
+.seq-arrow { stroke: var(--accent); stroke-width: 1.5; }
+.seq-arrowhead { fill: var(--accent); }
+.seq-badge { fill: var(--surface); stroke: var(--accent); stroke-width: 1.2; }
+.seq-number { fill: var(--accent-text); font-size: 11px; font-weight: 600; }
+.flow-note { margin-top: 6px; font-size: 12.5px; }
+.handoff-link { margin-right: 6px; padding: 0 8px; border-radius: 6px; font-weight: 600; background: var(--accent-bg); }
 .plain-list { display: grid; gap: 8px; }
 .plain-list li { position: relative; padding-left: 18px; }
 .plain-list li::before { content: ""; position: absolute; left: 4px; top: 0.7em; width: 5px; height: 5px; border-radius: 50%; background: var(--line-strong); }

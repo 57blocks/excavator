@@ -36,14 +36,24 @@ const fullEntry: Entry = {
     },
     { name: d('screen two'), fields: [] },
   ],
-  operations: [{ name: d('operation'), sentences: [d('first sentence.'), d('second sentence.')] }],
+  operations: [{
+    name: d('operation'),
+    sentences: [d('first sentence.'), d('second sentence.')],
+    triggers: [d('trigger one')],
+    calculations: [d('calculation one')],
+    changes: [d('change one')],
+    edges: [{ when: d('edge when'), then: d('edge then') }],
+    handoffs: [{ feature: d('F2'), text: d('handoff text') }],
+    sequence: { participants: [d('starter'), d('app one'), d('app two')], steps: [{ from: 0, to: 1 }, { from: 1, to: 1 }] },
+  }],
   states: [{ label: d('state'), meaning: d('state meaning') }],
+  transitions: [{ from: d('state'), to: d('state two'), by: d('cause') }],
   notifications: [{ trigger: d('trigger'), recipient: d('recipient'), channel: d('channel'), content: d('content') }],
   automatic: [{ when: d('when'), effect: d('effect') }],
   unknowns: [{ item: d('unknown item'), searched: d('searched place') }],
 };
 
-const emptyEntry: Entry = { purpose: d('purpose'), who: [], where: [], screens: [], operations: [], states: [], notifications: [], automatic: [], unknowns: [] };
+const emptyEntry: Entry = { purpose: d('purpose'), who: [], where: [], screens: [], operations: [], states: [], transitions: [], notifications: [], automatic: [], unknowns: [] };
 
 const reaches: Reach[] = ['menu', 'link', 'automated', 'interface', 'operator'];
 
@@ -121,7 +131,7 @@ const emptySystem: System = {
 
 function dataFor(features: Feature[], unassigned: PageData['coverage']['unassigned'] = [], removed: PageData['coverage']['removed'] = [], summary: Summary = emptySummary, system: System = unwrittenSystem, removedOverview: PageData['coverage']['removedOverview'] = []): PageData {
   return {
-    format: 'excavator-product-handbook-page/15',
+    format: 'excavator-product-handbook-page/16',
     chunks: { parts: [], units: {} },
     project: d('project'),
     language: d('language'),
@@ -407,5 +417,64 @@ describe('every fixed text of the page comes from the ui table (O8, node half)',
 
   it('the instrument sees a fixed text the code wrote itself', () => {
     expect(unmarked('<main><button>Save</button><p>@@Purpose</p><p>d~name</p><a aria-label="Menu">x</a></main>')).toEqual(['Save', 'x', 'Menu']);
+  });
+});
+
+// O2 of openspec change handbook-deep-entry: a feature page shows each operation as a flow (what starts it, the
+// numbered steps with the participant of each, the sequence diagram, the calculations, data changes, edge cases and
+// the features it hands over to as links) and the state transitions; an entry written before the change (format /1,
+// whose operations have only steps) still shows its steps.
+describe('the operations of a feature as flows (handbook-deep-entry O2)', () => {
+  const html = render(populated, `#/feature/${featureId(populated, 0)}`);
+  const operation = html.slice(html.indexOf('data-part="operation"'), html.indexOf('id="sec-states"'));
+  const at = (needle: string): number => operation.indexOf(needle);
+
+  it('shows the parts in order: triggers, steps, diagram, calculations, changes, edges, handoffs', () => {
+    const order = ['data-part="triggers"', 'data-part="steps"', 'data-part="sequence"', 'data-part="calculations"', 'data-part="changes"', 'data-part="edges"', 'data-part="handoffs"'].map(at);
+    expect(order.every((value) => value >= 0)).toBe(true);
+    expect([...order].sort((a, b) => a - b)).toEqual(order);
+    expect(operation).toContain(d('trigger one'));
+    expect(operation).toContain(d('calculation one'));
+    expect(operation).toContain(d('change one'));
+    expect(operation).toContain(marked['md.edge.item'].replace('{when}', d('edge when')).replace('{then}', d('edge then')));
+  });
+
+  it('numbers the steps and names the participant of each', () => {
+    const steps = operation.slice(at('class="step-list"'), at('</ol>'));
+    expect(steps.match(/<li>/g)).toHaveLength(2);
+    expect(steps).toContain(`<span class="step-text">${d('first sentence.')}</span><span class="participant-chip">${d('app one')}</span>`);
+    expect(steps).toContain(`<span class="step-text">${d('second sentence.')}</span><span class="participant-chip">${d('app one')}</span>`);
+  });
+
+  it('draws the diagram as an SVG with a lifeline per participant and a numbered arrow per step, a step that stays a loop', () => {
+    const svg = operation.slice(at('<svg'), at('</svg>'));
+    expect(svg).toContain(`aria-label="${marked['page.flow.label'].replace('{name}', d('operation'))}"`);
+    expect(svg.match(/class="seq-life"/g)).toHaveLength(3);
+    expect(svg.match(/class="seq-step"/g)).toHaveLength(2);
+    expect(svg).toMatch(/data-step="1"><line class="seq-arrow"/);
+    expect(svg).toMatch(/data-step="2"><path class="seq-arrow"/);
+    expect(operation).toContain(`<li class="seq-head" data-starter="">${d('starter')}</li>`);
+    expect(operation).toContain(marked['md.flow.note']);
+  });
+
+  it('links each feature an operation hands over to by its name', () => {
+    const handoffs = operation.slice(at('data-part="handoffs"'));
+    expect(handoffs).toContain(`href="#/feature/${encodeURIComponent(d('F2'))}">${d('name F2')}</a>`);
+    expect(handoffs).toContain(d('handoff text'));
+  });
+
+  it('lists the state transitions after the states', () => {
+    const states = html.slice(html.indexOf('id="sec-states"'), html.indexOf('id="sec-notifications"'));
+    expect(states).toContain(`<h3 class="part-label">${marked['md.section.transitions']}</h3>`);
+    expect(states).toContain(marked['md.transition.item'].replace('{from}', d('state')).replace('{to}', d('state two')).replace('{by}', d('cause')));
+  });
+
+  it('shows an operation written before the change (steps only) with its steps and no empty part', () => {
+    const only: Entry = { ...emptyEntry, operations: [{ name: d('old operation'), sentences: [d('a step.')], triggers: [], calculations: [], changes: [], edges: [], handoffs: [], sequence: { participants: [d('starter')], steps: [] } }] };
+    const data = dataFor([feature('F1', 'menu', 'verified', only)]);
+    const page = render(data, `#/feature/${featureId(data, 0)}`);
+    expect(page).toContain(d('a step.'));
+    for (const part of ['triggers', 'calculations', 'changes', 'edges', 'handoffs', 'sequence', 'transitions']) expect(page).not.toContain(`data-part="${part}"`);
+    expect(unmarked(page)).toEqual([]);
   });
 });

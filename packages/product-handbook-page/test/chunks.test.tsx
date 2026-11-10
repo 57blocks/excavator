@@ -38,8 +38,9 @@ const entry: Entry = {
   who: [{ role: d('role'), can: d('can') }],
   where: [d('menu')],
   screens: [{ name: d('screen one'), fields: [] }, { name: d('screen two'), fields: [] }],
-  operations: [{ name: d('operation one'), sentences: [d('a sentence.')] }],
+  operations: [{ name: d('operation one'), sentences: [d('a sentence.')], triggers: [], calculations: [], changes: [], edges: [], handoffs: [], sequence: { participants: [d('starter'), d('app')], steps: [{ from: 0, to: 1 }] } }],
   states: [],
+  transitions: [],
   notifications: [],
   automatic: [],
   unknowns: [],
@@ -68,7 +69,7 @@ const section: DictionariesSection = { recognized: ['ts-enum'], applications: [{
 /** A page whose F1 has a verified entry with source locations and whose dictionaries are written; F2 has no entry. */
 function fullData(): PageData {
   return {
-    format: 'excavator-product-handbook-page/15',
+    format: 'excavator-product-handbook-page/16',
     chunks: { parts: [], units: {} },
     project: d('project'),
     language: d('language'),
