@@ -19,8 +19,8 @@
 
 提交：`feat(excavator-product-handbook): trace skips label and purpose items`
 
-- [ ] 3.1 测试先红（O1 的追查文件）
-- [ ] 3.2 `traceItems` 跳过 D5 的几类，覆盖一节的说明
+- [x] 3.1 测试先红（O1 的追查文件）
+- [x] 3.2 `traceItems` 跳过 D5 的几类，覆盖一节的说明
 
 ## 4. 验收
 

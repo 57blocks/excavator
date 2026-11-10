@@ -37,10 +37,14 @@ export const TRACERS = VERIFIERS;
 /** The content of a trace part file. */
 export const tracePartFile = (feature, part, parts, items) => ({ feature, part, parts, items });
 
-/** The trace items of `entry` of unit `unit`: the items that carry evidence, in entry order. `ui` is the fixed-text table; `files` a projectFiles reader. */
+/**
+ * The trace items of `entry` of unit `unit`: the items that carry evidence, in entry order, without the kinds the unit
+ * leaves to the verifiers (`unit.untraced`, design D5 of handbook-deep-entry). `ui` is the fixed-text table; `files` a
+ * projectFiles reader.
+ */
 export function traceItems(unit, entry, { ui, files, map = null }) {
   const claims = unit.claims(entry, ui, { map });
-  return unit.items(entry).filter((item) => item.evidence.length > 0).map((item) => {
+  return unit.items(entry).filter((item) => item.evidence.length > 0 && !(unit.untraced?.(item.path) ?? false)).map((item) => {
     const claim = claims.get(item.path);
     if (claim === undefined) throw new Error(`no claim for item ${item.path}`);
     const citations = [];

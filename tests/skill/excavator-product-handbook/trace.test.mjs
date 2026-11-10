@@ -18,10 +18,10 @@ afterEach(() => {
 
 const form = 'src/forms/order-form.js';
 const ev = (file, passage) => ({ file, passage });
+// The traced items of the good entry, in entry order: its 14 items without the purpose, the navigation path, the screen
+// and the field labels, which the verifiers alone settle (design D5 of openspec change handbook-deep-entry).
 const ALL_ITEMS = [
-  'purpose', 'who[0]', 'where[0]', 'where[1]', 'screens[0]',
-  'screens[0].fields[0]', 'screens[0].fields[0].rules[0]',
-  'screens[0].fields[1]', 'screens[0].fields[1].rules[0]', 'screens[0].fields[1].rules[1]',
+  'who[0]', 'screens[0].fields[0].rules[0]', 'screens[0].fields[1].rules[0]', 'screens[0].fields[1].rules[1]',
   'operations[0].sentences[0]', 'operations[0].sentences[1]', 'states[0]', 'states[1]',
 ];
 
@@ -54,9 +54,9 @@ function confirmedRun(adjust) {
   return run;
 }
 
-/** 26 items: the 14 of the good entry and 12 more states. */
+/** 26 traced items: the 8 of the good entry and 18 more states. */
 const twentySix = (run, entry) => {
-  for (let i = 0; i < 12; i += 1) {
+  for (let i = 0; i < 18; i += 1) {
     entry.states.push({ label: 'Draft', meaning: `The order is in stage ${String.fromCharCode(65 + i)}.`, evidence: [ev(form, "const statuses = ['Draft', 'Submitted'];")] });
   }
 };
@@ -162,7 +162,7 @@ describe('trace: the trace files', () => {
     expect([file.feature, file.part, file.parts]).toEqual(['F1', 1, 1]);
     expect(file.items.map((item) => item.id)).toEqual(ALL_ITEMS);
     const verify = JSON.parse(readFileSync(join(run.out, 'verify', 'round-1', 'F1', 'part-1.json'), 'utf-8'));
-    expect(file.items.map((item) => [item.id, item.claim])).toEqual(verify.items.map((item) => [item.id, item.claim]));
+    expect(file.items.map((item) => [item.id, item.claim])).toEqual(verify.items.filter((item) => ALL_ITEMS.includes(item.id)).map((item) => [item.id, item.claim]));
     for (const item of file.items) {
       expect(Object.keys(item)).toEqual(['id', 'claim', 'citations']);
       expect(item.citations.length).toBeGreaterThan(0);
@@ -172,8 +172,8 @@ describe('trace: the trace files', () => {
       }
     }
     // The passage itself, not the 20 lines around it: one line of the form file.
-    const purpose = file.items.find((item) => item.id === 'purpose');
-    expect(purpose.citations).toEqual([{ file: form, lines: '3-3' }]);
+    const countCap = file.items.find((item) => item.id === 'screens[0].fields[1].rules[0]');
+    expect(countCap.citations).toEqual([{ file: form, lines: '6-6' }]);
     const countRule = file.items.find((item) => item.id === 'screens[0].fields[1].rules[1]');
     expect(countRule.citations).toEqual([{ file: form, lines: '9-9' }]);
     const text = readFileSync(tracePath(run), 'utf-8');
@@ -186,8 +186,8 @@ describe('trace: the trace files', () => {
     const run = confirmedRun();
     const result = run.run('trace', 'F1');
     expect(result.lines).toEqual([
-      'F1: 14 items in 1 part',
-      `Part 1/1: 14 items | Trace file: ${tracePath(run)} | Verdict files: ${verdictPath(run, 1, 'F1', 'a')} ${verdictPath(run, 1, 'F1', 'b')}`,
+      'F1: 8 items in 1 part',
+      `Part 1/1: 8 items | Trace file: ${tracePath(run)} | Verdict files: ${verdictPath(run, 1, 'F1', 'a')} ${verdictPath(run, 1, 'F1', 'b')}`,
       'Next: dispatch two excavator-handbook-tracer subagents per part of F1, one per verdict file, each with the trace file, its verdict file and the project root of its line above, then run trace-verdicts for F1',
     ]);
   });
@@ -202,15 +202,15 @@ describe('trace: the trace files', () => {
     const [one, two] = [readTrace(run, 1), readTrace(run, 2)];
     expect([one.part, one.parts, two.part, two.parts]).toEqual([1, 2, 2, 2]);
     expect(one.items).toHaveLength(25);
-    expect(two.items.map((item) => item.id)).toEqual(['states[13]']);
-    expect([...one.items, ...two.items].map((item) => item.id)).toEqual([...ALL_ITEMS, ...Array.from({ length: 12 }, (_, i) => `states[${i + 2}]`)]);
+    expect(two.items.map((item) => item.id)).toEqual(['states[19]']);
+    expect([...one.items, ...two.items].map((item) => item.id)).toEqual([...ALL_ITEMS, ...Array.from({ length: 18 }, (_, i) => `states[${i + 2}]`)]);
   });
 
   it('writes the items that are still in the entry: an item round 2 removed is not traced', () => {
     const run = checkedRun();
     expect(judge(run, 'F1', 1, (item) => (item.id === 'states[1]' ? 'unverified' : 'verified')).status).toBe(0);
     expect(judge(run, 'F1', 2, () => ({ verdict: 'unverified', reason: 'No line shown names the state.' })).status).toBe(0);
-    expect(run.run('trace', 'F1').lines[0]).toBe('F1: 13 items in 1 part');
+    expect(run.run('trace', 'F1').lines[0]).toBe('F1: 7 items in 1 part');
     expect(readTrace(run).items.map((item) => item.id)).not.toContain('states[1]');
   });
 
@@ -300,7 +300,7 @@ describe('trace-verdicts: the verdict files are checked before anything is recor
   const repair = (run) => writeFileSync(verdictPath(run), `${JSON.stringify({ verdicts: goodList(run) }, null, 2)}\n`);
 
   it('rejects an item without a verdict, names its part, and records nothing', () => {
-    const { run, bad } = refuses((_, verdicts) => verdicts.splice(2, 1), 'part 1a: where[0]: no verdict');
+    const { run, bad } = refuses((_, verdicts) => verdicts.splice(2, 1), 'part 1a: screens[0].fields[1].rules[0]: no verdict');
     expect(bad.lines.at(-1)).toBe('Next: delete the verdict file of part 1a and dispatch the tracer once more for part 1a with the lines above; nothing was recorded');
     repair(run);
     expect(run.run('trace-verdicts', 'F1').status).toBe(0);
@@ -310,35 +310,35 @@ describe('trace-verdicts: the verdict files are checked before anything is recor
     const extra = refuses((_, verdicts) => verdicts.push({ id: 'states[7]', verdict: 'holds', reason: 'Looked.' }), 'part 1a: states[7]: is not an item of the trace file');
     repair(extra.run);
     expect(extra.run.run('trace-verdicts', 'F1').status).toBe(0);
-    const twice = refuses((_, verdicts) => verdicts.push({ ...verdicts[0] }), 'part 1a: purpose: more than one verdict');
+    const twice = refuses((_, verdicts) => verdicts.push({ ...verdicts[0] }), 'part 1a: who[0]: more than one verdict');
     repair(twice.run);
     expect(twice.run.run('trace-verdicts', 'F1').status).toBe(0);
   });
 
   it('rejects a verdict that is not holds or contradicted, in particular the verifier words', () => {
     for (const word of ['maybe', 'verified', 'unverified']) {
-      const { run } = refuses((_, verdicts) => { verdicts[3].verdict = word; }, `part 1a: where[1]: verdict "${word}" is not one of holds, contradicted`);
+      const { run } = refuses((_, verdicts) => { verdicts[3].verdict = word; }, `part 1a: screens[0].fields[1].rules[1]: verdict "${word}" is not one of holds, contradicted`);
       repair(run);
       expect(run.run('trace-verdicts', 'F1').status).toBe(0);
     }
   });
 
   it('rejects a contradicted verdict without an at entry, and one whose at is empty or malformed', () => {
-    const none = refuses((_, verdicts) => { verdicts[1] = { id: 'who[0]', verdict: 'contradicted', reason: 'The code lets another role in.' }; }, 'part 1a: who[0]: a contradicted verdict needs at least one at entry');
+    const none = refuses((_, verdicts) => { verdicts[0] = { id: 'who[0]', verdict: 'contradicted', reason: 'The code lets another role in.' }; }, 'part 1a: who[0]: a contradicted verdict needs at least one at entry');
     repair(none.run);
     expect(none.run.run('trace-verdicts', 'F1').status).toBe(0);
-    const empty = refuses((_, verdicts) => { verdicts[1] = { id: 'who[0]', verdict: 'contradicted', reason: 'The code lets another role in.', at: [] }; }, 'part 1a: who[0]: a contradicted verdict needs at least one at entry');
+    const empty = refuses((_, verdicts) => { verdicts[0] = { id: 'who[0]', verdict: 'contradicted', reason: 'The code lets another role in.', at: [] }; }, 'part 1a: who[0]: a contradicted verdict needs at least one at entry');
     repair(empty.run);
-    const malformed = refuses((_, verdicts) => { verdicts[1] = { id: 'who[0]', verdict: 'contradicted', reason: 'The code lets another role in.', at: [{ file: form }] }; }, 'part 1a: who[0]: at[0]: must be { file, line }');
+    const malformed = refuses((_, verdicts) => { verdicts[0] = { id: 'who[0]', verdict: 'contradicted', reason: 'The code lets another role in.', at: [{ file: form }] }; }, 'part 1a: who[0]: at[0]: must be { file, line }');
     repair(malformed.run);
     expect(malformed.run.run('trace-verdicts', 'F1').status).toBe(0);
   });
 
   it('rejects an empty reason and a reason of more than one line', () => {
-    const empty = refuses((_, verdicts) => { verdicts[0].reason = '  '; }, 'part 1a: purpose: the reason must be a non-empty string');
+    const empty = refuses((_, verdicts) => { verdicts[0].reason = '  '; }, 'part 1a: who[0]: the reason must be a non-empty string');
     repair(empty.run);
     expect(empty.run.run('trace-verdicts', 'F1').status).toBe(0);
-    const lines = refuses((_, verdicts) => { verdicts[0].reason = 'Looked.\nThen looked again.'; }, 'part 1a: purpose: the reason must be one line');
+    const lines = refuses((_, verdicts) => { verdicts[0].reason = 'Looked.\nThen looked again.'; }, 'part 1a: who[0]: the reason must be one line');
     repair(lines.run);
     expect(lines.run.run('trace-verdicts', 'F1').status).toBe(0);
   });
@@ -347,14 +347,14 @@ describe('trace-verdicts: the verdict files are checked before anything is recor
     const SAME = 'Read the function that picks the reviewers and the query it runs: it selects every active member.';
 
     it('rejects the same holds reason on two items of a part, names both ids, and records nothing', () => {
-      const { run, bad } = refuses((_, verdicts) => { verdicts[0].reason = SAME; verdicts[2].reason = SAME; }, `part 1a: ${'where[0]'}: the same holds reason as purpose: trace each item on its own`);
+      const { run, bad } = refuses((_, verdicts) => { verdicts[0].reason = SAME; verdicts[2].reason = SAME; }, `part 1a: screens[0].fields[1].rules[0]: the same holds reason as who[0]: trace each item on its own`);
       expect(bad.lines.at(-1)).toBe('Next: delete the verdict file of part 1a and dispatch the tracer once more for part 1a with the lines above; nothing was recorded');
       repair(run);
       expect(run.run('trace-verdicts', 'F1').status).toBe(0);
     });
 
     it('treats reasons that differ only in white space as the same', () => {
-      const { run } = refuses((_, verdicts) => { verdicts[0].reason = SAME; verdicts[1].reason = `  ${SAME.replace(/ /g, '   ')} `; }, 'the same holds reason as purpose: trace each item on its own');
+      const { run } = refuses((_, verdicts) => { verdicts[0].reason = SAME; verdicts[1].reason = `  ${SAME.replace(/ /g, '   ')} `; }, 'the same holds reason as who[0]: trace each item on its own');
       repair(run);
       expect(run.run('trace-verdicts', 'F1').status).toBe(0);
     });
@@ -381,7 +381,7 @@ describe('trace-verdicts: the verdict files are checked before anything is recor
     mkdirSync(join(run.out, 'trace-verdicts', 'F1'), { recursive: true });
     const one = `${JSON.stringify({ verdicts: readTrace(run, 1).items.map((item) => ({ id: item.id, verdict: 'holds', reason: `Looked at ${item.id}.` })) })}\n`;
     for (const letter of ['a', 'b']) writeFileSync(verdictPath(run, 1, 'F1', letter), one);
-    writeFileSync(verdictPath(run, 2, 'F1', 'a'), `${JSON.stringify({ verdicts: [{ id: 'states[13]', verdict: 'holds', reason: 'Looked.' }] })}\n`);
+    writeFileSync(verdictPath(run, 2, 'F1', 'a'), `${JSON.stringify({ verdicts: [{ id: 'states[19]', verdict: 'holds', reason: 'Looked.' }] })}\n`);
     const missing = run.run('trace-verdicts', 'F1');
     expect(missing.status).toBe(1);
     expect(missing.lines[0]).toBe('part 2b: trace-verdicts/F1/part-2.b.json is missing');
@@ -394,7 +394,7 @@ describe('trace-verdicts: the verdict files are checked before anything is recor
     expect(broken.lines.at(-1)).toBe('Next: delete the verdict file of part 2b and dispatch the tracer once more for part 2b with the lines above; nothing was recorded');
     expect(stateOf(run).status).toBe('confirmed');
     // The control: part 2b written right records the feature.
-    writeFileSync(verdictPath(run, 2, 'F1', 'b'), `${JSON.stringify({ verdicts: [{ id: 'states[13]', verdict: 'holds', reason: 'Looked.' }] })}\n`);
+    writeFileSync(verdictPath(run, 2, 'F1', 'b'), `${JSON.stringify({ verdicts: [{ id: 'states[19]', verdict: 'holds', reason: 'Looked.' }] })}\n`);
     const done = run.run('trace-verdicts', 'F1');
     expect(done.status, done.stdout).toBe(0);
     expect(done.lines).toEqual(['F1: verified (26 items)']);
@@ -428,7 +428,7 @@ describe('trace-verdicts: the verdict files are checked before anything is recor
 
   describe('the at position of a contradicted verdict', () => {
     const contradict = (at) => (_, verdicts) => {
-      verdicts[8] = { id: 'screens[0].fields[1].rules[0]', verdict: 'contradicted', reason: 'The code caps the count at fifty.', at };
+      verdicts[2] = { id: 'screens[0].fields[1].rules[0]', verdict: 'contradicted', reason: 'The code caps the count at fifty.', at };
     };
     const wanted = (message) => `part 1a: screens[0].fields[1].rules[0]: at[0]: ${message}`;
     const withAt = (at, message) => refuses(contradict(at), wanted(message));
@@ -522,7 +522,7 @@ describe('trace-verdicts: the verdict files are checked before anything is recor
 
   describe('the reason of a contradicted verdict reaches readers', () => {
     const contradict = (reason) => (_, verdicts) => {
-      verdicts[8] = { id: 'screens[0].fields[1].rules[0]', verdict: 'contradicted', reason, at: [AT] };
+      verdicts[2] = { id: 'screens[0].fields[1].rules[0]', verdict: 'contradicted', reason, at: [AT] };
     };
 
     it.each([
@@ -551,9 +551,9 @@ describe('trace-verdicts: the verdict files are checked before anything is recor
 
     it('does not gate the reason of a holds verdict: it is not shown to readers', () => {
       const run = confirmedRun();
-      const result = attempt(run, (_, verdicts) => { verdicts[8].reason = 'Read capCount(items) in max_items.js and found nothing against it.'; });
+      const result = attempt(run, (_, verdicts) => { verdicts[2].reason = 'Read capCount(items) in max_items.js and found nothing against it.'; });
       expect(result.status, result.stdout).toBe(0);
-      expect(result.lines).toEqual(['F1: verified (14 items)']);
+      expect(result.lines).toEqual(['F1: verified (8 items)']);
     });
   });
 });
@@ -571,7 +571,7 @@ describe('trace-verdicts: the reason in a run in a language with its own script'
     return run;
   }
   const contradict = (reason) => (_, verdicts) => {
-    verdicts[8] = { id: 'screens[0].fields[1].rules[0]', verdict: 'contradicted', reason, at: [AT] };
+    verdicts[2] = { id: 'screens[0].fields[1].rules[0]', verdict: 'contradicted', reason, at: [AT] };
   };
 
   it('rejects a reason of a contradicted verdict written only in ASCII letters, then accepts one with a letter of the language', () => {
@@ -597,7 +597,7 @@ describe('trace-verdicts: recording', () => {
     const run = confirmedRun();
     const result = traceFeature(run, 'F1');
     expect(result.status, result.stdout).toBe(0);
-    expect(result.lines).toEqual(['F1: verified (14 items)']);
+    expect(result.lines).toEqual(['F1: verified (8 items)']);
     const state = stateOf(run);
     expect(state.status).toBe('verified');
     expect(state.attempts).toBe(0);
@@ -613,7 +613,7 @@ describe('trace-verdicts: recording', () => {
     expect(judge(run, 'F1', 1, (item) => (item.id === 'states[1]' ? 'unverified' : 'verified')).status).toBe(0);
     expect(judge(run, 'F1', 2, () => ({ verdict: 'unverified', reason: 'No line shown names the state.' })).status).toBe(0);
     const result = traceFeature(run, 'F1');
-    expect(result.lines).toEqual(['F1: verified (13 items)']);
+    expect(result.lines).toEqual(['F1: verified (7 items)']);
     expect(stateOf(run).removed.map((record) => record.path)).toEqual(['states[1]']);
   });
 
@@ -663,19 +663,23 @@ describe('trace-verdicts: recording', () => {
   });
 
   it('takes what hangs on a contradicted item with it and records it as removed together with it', () => {
-    const run = confirmedRun();
-    const result = traceFeature(run, 'F1', (item) => (item.id === 'screens[0].fields[1]'
-      ? { verdict: 'contradicted', reason: 'The count field is not on this screen.', at: [AT] }
+    // An operation whose every step is contradicted goes, and its other parts with it.
+    const run = confirmedRun((_, entry) => {
+      entry.operations[0].triggers = [{ text: 'The clerk opens the new order form.', evidence: [ev(form, "title: 'New Order',")] }];
+    });
+    const result = traceFeature(run, 'F1', (item) => (item.id.startsWith('operations[0].sentences')
+      ? { verdict: 'contradicted', reason: 'The order is not placed this way.', at: [AT] }
       : 'holds'));
-    expect(result.lines).toEqual(['F1: verified, 3 items removed']);
+    expect(result.lines).toEqual(['F1: verified, 4 items removed']);
     const removed = stateOf(run).removed;
     expect(removed.map((record) => [record.path, record.verdict, record.step])).toEqual([
-      ['screens[0].fields[1]', 'contradicted', 'trace'],
-      ['screens[0].fields[1].rules[0]', 'withParent', 'trace'],
-      ['screens[0].fields[1].rules[1]', 'withParent', 'trace'],
+      ['operations[0].sentences[0]', 'contradicted', 'trace'],
+      ['operations[0].sentences[1]', 'contradicted', 'trace'],
+      ['operations[0].triggers[0]', 'withParent', 'trace'],
+      ['operations[0]', 'withParent', 'trace'],
     ]);
-    expect(removed[1].reason).toBe('');
-    expect(removed[1].at).toBeUndefined();
+    expect(removed[2].reason).toBe('');
+    expect(removed[2].at).toBeUndefined();
   });
 
   it('appends to what round 2 removed and leaves those records as they were', () => {
@@ -691,19 +695,20 @@ describe('trace-verdicts: recording', () => {
     expect(removed[1]).toMatchObject({ path: 'states[0]', step: 'trace', verdict: 'contradicted' });
   });
 
-  it('fails the feature at trace when no item with evidence is left, and leaves the entry file as it was written', () => {
+  it('keeps the items the verifiers alone settle when every traced item is contradicted, and the feature stays verified', () => {
+    // Design D5 of handbook-deep-entry: the purpose, the navigation path, the screen and the field labels are not
+    // traced, so a feature whose every traced item goes still holds them and is not failed.
     const run = confirmedRun();
-    const before = entryText(run);
     const result = traceFeature(run, 'F1', () => ({ verdict: 'contradicted', reason: 'The code says something else.', at: [AT] }));
     expect(result.status, result.stdout).toBe(0);
-    expect(result.lines).toEqual(['F1: failed at trace: no item could be proved']);
+    expect(result.lines).toEqual(['F1: verified, 9 items removed']);
     const state = stateOf(run);
-    expect(state.status).toBe('failed');
-    expect(state.failure).toEqual({ step: 'trace', reasons: ['no item could be proved'] });
-    // Nine items are contradicted themselves; the fields and rules under the contradicted screen and the emptied operation go with them.
-    expect(state.removed.filter((record) => record.step === 'trace' && record.verdict === 'contradicted')).toHaveLength(9);
-    expect(state.removed.filter((record) => record.step === 'trace' && record.verdict === 'withParent')).toHaveLength(6);
-    expect(entryText(run)).toBe(before);
+    expect(state.status).toBe('verified');
+    expect(state.removed.filter((record) => record.step === 'trace' && record.verdict === 'contradicted')).toHaveLength(8);
+    expect(state.removed.filter((record) => record.step === 'trace' && record.verdict === 'withParent').map((record) => record.path)).toEqual(['operations[0]']);
+    const entry = JSON.parse(entryText(run));
+    expect([entry.purpose.text, entry.where.length, entry.screens[0].fields.map((field) => field.label)]).toEqual(['Staff place new orders for customers.', 2, ['Customer Name', 'Item Count']]);
+    expect([entry.who, entry.operations, entry.states]).toEqual([[], [], []]);
   });
 
   it('puts the removal of a feature that failed at trace in the coverage section like the others', () => {
@@ -715,11 +720,14 @@ describe('trace-verdicts: recording', () => {
     expect(text).not.toContain(form);
   });
 
-  it('removes the purpose like any item and the feature stays verified', () => {
+  it('does not trace the purpose: a verdict for it is refused as not an item of the trace file, and the purpose stays', () => {
     const run = confirmedRun();
-    const result = traceFeature(run, 'F1', (item) => (item.id === 'purpose' ? { verdict: 'contradicted', reason: 'Nobody places orders here.', at: [AT] } : 'holds'));
-    expect(result.lines).toEqual(['F1: verified, 1 item removed']);
-    expect(JSON.parse(entryText(run)).purpose).toBeUndefined();
+    const bad = traceFeature(run, 'F1', () => 'holds', (_, verdicts) => verdicts.push({ id: 'purpose', verdict: 'contradicted', reason: 'Nobody places orders here.', at: [AT] }));
+    expect(bad.status).toBe(1);
+    expect(bad.lines).toContain('part 1a: purpose: is not an item of the trace file');
+    const good = traceFeature(run, 'F1');
+    expect(good.lines).toEqual(['F1: verified (8 items)']);
+    expect(JSON.parse(entryText(run)).purpose.text).toBe('Staff place new orders for customers.');
   });
 });
 
@@ -771,7 +779,7 @@ describe('trace-verdicts: two tracers per part, an item is removed when either c
   it('removes nothing when both tracers say holds, and records no reasons', () => {
     const run = confirmedRun();
     const result = traceFeature(run, 'F1');
-    expect(result.lines).toEqual(['F1: verified (14 items)']);
+    expect(result.lines).toEqual(['F1: verified (8 items)']);
     expect(stateOf(run).removed).toBeUndefined();
   });
 
@@ -822,8 +830,8 @@ describe('trace-verdicts: two tracers per part, an item is removed when either c
     const spoil = (_, verdicts) => verdicts.splice(2, 1);
     const result = traceFeature(run, 'F1', () => 'holds', spoil, () => 'holds', spoil);
     expect(result.status).toBe(1);
-    expect(result.lines).toContain('part 1a: where[0]: no verdict');
-    expect(result.lines).toContain('part 1b: where[0]: no verdict');
+    expect(result.lines).toContain('part 1a: screens[0].fields[1].rules[0]: no verdict');
+    expect(result.lines).toContain('part 1b: screens[0].fields[1].rules[0]: no verdict');
     expect(result.lines.at(-1)).toBe('Next: delete the verdict files of parts 1a and 1b and dispatch the tracer once more for parts 1a and 1b with the lines above; nothing was recorded');
   });
 
@@ -841,7 +849,7 @@ describe('trace-verdicts: two tracers per part, an item is removed when either c
     const run = confirmedRun();
     const within = traceFeature(run, 'F1', () => 'holds', () => {}, () => 'holds', (_, verdicts) => { verdicts[0].reason = SAME; verdicts[2].reason = SAME; });
     expect(within.status).toBe(1);
-    expect(within.lines).toContain('part 1b: where[0]: the same holds reason as purpose: trace each item on its own');
+    expect(within.lines).toContain('part 1b: screens[0].fields[1].rules[0]: the same holds reason as who[0]: trace each item on its own');
     expect(stateOf(run).status).toBe('confirmed');
   });
 });

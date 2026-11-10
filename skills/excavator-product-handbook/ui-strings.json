@@ -248,6 +248,7 @@
     "md.coverage.unwrittenItem": "{id} {name} ({area})",
     "md.coverage.allWritten": "Every feature has a verified entry.",
     "md.coverage.removedHeading": "Items removed because the code did not back them up",
+    "md.coverage.untraced": "The purpose, the navigation path, the screens and the field labels of a feature are checked by the two verifiers only; they are not traced.",
     "md.coverage.removedFeature": "{id} {name} ({area}): items removed: {count}",
     "md.coverage.removedOverview": "{name}: items removed: {count}",
     "md.coverage.findingsUnfinishedHeading": "Features whose findings are not verified",

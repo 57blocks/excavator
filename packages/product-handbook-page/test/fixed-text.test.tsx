@@ -478,3 +478,12 @@ describe('the operations of a feature as flows (handbook-deep-entry O2)', () => 
     expect(unmarked(page)).toEqual([]);
   });
 });
+
+// Design D5 of handbook-deep-entry: the coverage view says which kinds of a feature's items were not traced.
+describe('the coverage view names the kinds that were not traced (handbook-deep-entry D5)', () => {
+  it('writes the fixed text under the removed items heading', () => {
+    const html = render(populated, '#/coverage');
+    const removed = html.slice(html.indexOf('id="cov-removed"'));
+    expect(removed).toContain(`<p class="muted" data-part="untraced">${marked['md.coverage.untraced']}</p>`);
+  });
+});

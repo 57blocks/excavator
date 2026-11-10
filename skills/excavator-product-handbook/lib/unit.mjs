@@ -43,10 +43,18 @@ export const isPriority = (id) => id === PRIORITY_ID;
 export const isRemedies = (id) => id === REMEDIES_ID;
 export { isLaneUnitId as isTopics };
 
+/**
+ * The items of a feature entry the tracers do not read (design D5 of openspec change handbook-deep-entry): the purpose,
+ * the navigation path, the screens and the field labels, whose claims are a label or one sentence of purpose. The two
+ * verifiers still settle them; a field's rules and every other item are traced.
+ */
+const UNTRACED = /^(purpose|where\[\d+\]|screens\[\d+\](\.fields\[\d+\])?)$/;
+
 const FEATURE = Object.freeze({
   kind: 'feature',
   shapeProblems: entryShapeProblems,
   items: entryItems,
+  untraced: (path) => UNTRACED.test(path),
   claims: itemClaims,
   trim: trimEntry,
   problems: entryProblems,

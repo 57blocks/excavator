@@ -293,6 +293,7 @@ export function CoveragePage({ data }: { data: PageData }) {
 
       <section className="section" aria-labelledby="cov-removed">
         <h2 className="section-title" id="cov-removed">{t('md.coverage.removedHeading')}</h2>
+        <p className="muted" data-part="untraced">{t('md.coverage.untraced')}</p>
         {removed.length === 0 && coverage.removedOverview.length === 0 ? <p className="muted">{t('md.none')}</p> : null}
         {coverage.removedOverview.length === 0 ? null : (
           <div className="removed-group">

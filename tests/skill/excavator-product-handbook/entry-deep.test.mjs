@@ -287,3 +287,33 @@ describe('entry /2: topic facts', () => {
     expect(entryFactRows({ id: 'F1', name: 'Orders' }, v1).map((row) => row.itemKind)).toEqual(['who', 'sentence', 'sentence', 'state', 'state']);
   });
 });
+
+// Design D5 of handbook-deep-entry: the purpose, the navigation path, the screens and the field labels of a feature
+// are settled by the two verifiers only; the trace file leaves them out, the field rules and every other item stay,
+// and the coverage section says which kinds were not traced.
+describe('entry /2: the trace leaves out the label and purpose items', () => {
+  it('writes no purpose, navigation path, screen or field label to the trace file, and keeps the rules and the rest', () => {
+    const run = checkedRun(deepEntry());
+    expect(judge(run, 'F1').status).toBe(0);
+    const traced = run.run('trace', 'F1');
+    expect(traced.status, traced.stdout).toBe(0);
+    const ids = run.readJson('trace/F1/part-1.json').items.map((item) => item.id);
+    for (const id of ids) expect(id).not.toMatch(/^(purpose|where\[\d+\]|screens\[\d+\](\.fields\[\d+\])?)$/);
+    for (const id of ['who[0]', 'screens[0].fields[0].rules[0]', 'operations[0].sentences[0]', 'operations[0].triggers[0]', 'operations[0].handoffs[0]', 'states[0]', 'transitions[0]']) expect(ids).toContain(id);
+  });
+
+  it('keeps the untraced items in the verified entry and says in the coverage section that they were not traced', () => {
+    const run = checkedRun(deepEntry());
+    expect(judge(run, 'F1').status).toBe(0);
+    expect(traceFeature(run).status).toBe(0);
+    const entry = run.readJson('entries/F1.json');
+    expect(entry.purpose).toBeDefined();
+    expect(entry.where).toHaveLength(2);
+    expect(entry.screens[0].fields).toHaveLength(2);
+    const assembled = run.run('assemble');
+    expect(assembled.status, assembled.stdout).toBe(0);
+    const text = readFileSync(join(run.out, 'handbook.md'), 'utf-8');
+    const coverage = text.slice(text.indexOf('## Coverage'));
+    expect(coverage).toContain('The purpose, the navigation path, the screens and the field labels of a feature are checked by the two verifiers only; they are not traced.');
+  });
+});

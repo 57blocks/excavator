@@ -126,7 +126,7 @@ describe('assemble: the removed items are listed in the coverage section', () =>
   it('says none when nothing was removed', () => {
     const run = checkedRun();
     verifyChecked(run);
-    expect(assemble(run)).toContain('### Items removed because the code did not back them up\n\nNone.');
+    expect(assemble(run)).toContain('### Items removed because the code did not back them up\n\nThe purpose, the navigation path, the screens and the field labels of a feature are checked by the two verifiers only; they are not traced.\n\nNone.');
   });
 
   it('lists the items of a feature that failed at verify, and the feature as failed', () => {

@@ -257,6 +257,7 @@ function coverageBlock(map, state, candidates, t, findings, remedies, topics) {
   out.push('');
 
   out.push(`### ${t('md.coverage.removedHeading')}`, '');
+  out.push(t('md.coverage.untraced'), '');
   const withRemoved = map.features.filter((feature) => (state.features[feature.id].removed ?? []).length > 0);
   const overviewRemoved = state.overview?.removed ?? [];
   if (withRemoved.length === 0 && overviewRemoved.length === 0) out.push(t('md.none'), '');

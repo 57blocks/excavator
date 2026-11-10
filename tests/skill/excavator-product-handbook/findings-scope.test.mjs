@@ -161,13 +161,13 @@ describe('the trace file of a findings unit', () => {
     const run = makeCheckedMapRun();
     cleanups.push(run.cleanup);
     const entry = clone(run.entry);
-    entry.purpose.text = 'Every order is always placed here by staff, whatever the customer.';
+    entry.who[0].can = 'Every order is always placed here by staff, whatever the customer.';
     run.writeEntry('F1', entry);
     expect(run.run('check-entry', 'F1').status).toBe(0);
     confirmChecked(run);
     expect(run.run('trace', 'F1').status).toBe(0);
     const { items } = readTrace(run, 'F1');
-    expect(items[0].id).toBe('purpose');
+    expect(items[0].id).toBe('who[0]');
     expect(items[0].claim).toContain('Every order is always placed here');
     for (const item of items) expect(Object.hasOwn(item, 'scopeWords'), item.id).toBe(false);
   });
@@ -293,7 +293,7 @@ describe('trace-verdicts where scope is not required', () => {
     const run = makeCheckedMapRun();
     cleanups.push(run.cleanup);
     const entry = clone(run.entry);
-    entry.purpose.text = 'Every order is always placed here by staff, whatever the customer.';
+    entry.who[0].can = 'Every order is always placed here by staff, whatever the customer.';
     run.writeEntry('F1', entry);
     expect(run.run('check-entry', 'F1').status).toBe(0);
     confirmChecked(run);
