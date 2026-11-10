@@ -27,9 +27,11 @@ import { withoutRootPaths } from './root-paths.mjs';
 import { DEFAULT_VIEWS } from './views.mjs';
 
 /**
- * The format is /16 since openspec change handbook-deep-entry: each operation of an entry carries the parts of entry format /2
+ * The format is /17 since openspec change handbook-domain-page: each domain of `entities.domains` carries its `relations` with other
+ * domains, its `states` and `transitions`, and the technical part holds `domainFiles`, the files the verified entries of each domain quote.
+ * (/16, openspec change handbook-deep-entry: each operation of an entry carries the parts of entry format /2
  * (triggers, calculations, changes, edges, handoffs) and `sequence`, the participants and arrows of its sequence diagram
- * (flows.mjs), and an entry carries its state `transitions`. (/15, openspec change handbook-page-chunked-data: `chunks` is the index of the part files of a page whose data is
+ * (flows.mjs), and an entry carries its state `transitions`.) (/15, openspec change handbook-page-chunked-data: `chunks` is the index of the part files of a page whose data is
  * large (the part ids and, for each unit, the parts that hold it); here it is always empty, and `page` fills it when it splits the data
  * (page-units.mjs, page-chunks.mjs).) (/14, openspec change handbook-history-appendix: `history` holds the code health (the commits of each year, the
  * applications, the files that change most by name, the files changed together across applications, the source and test files) and
@@ -40,7 +42,7 @@ import { DEFAULT_VIEWS } from './views.mjs';
  * recommendations with the groups and facts they rest on, and the coverage says what the judges left out. /11: each group of findings
  * carries its priority, and the coverage says which groups have none.)
  */
-export const PAGE_FORMAT = 'excavator-product-handbook-page/16';
+export const PAGE_FORMAT = 'excavator-product-handbook-page/17';
 
 const PARTS = Object.fromEntries(OPERATION_PARTS.map((part) => [part.key, part]));
 
@@ -186,6 +188,7 @@ export function buildPageData(run, roots, { views = DEFAULT_VIEWS } = {}) {
       topicLocations: topics.places.map((entry) => ({ id: entry.id, citations: entry.citations })),
       findingLocations: findings.groups.flatMap((group) => group.items).map((item) => ({ id: item.id, citations: findings.locations.get(item.id) })),
       history: historyPlaces(history),
+      domainFiles: entities.domainFiles,
       data: dataSection.state === 'ok' ? pageSection(dataSection.data) : null,
       dataState: dataSection.state,
       dictionaries: dictionariesSection.state === 'ok' ? dictionariesPageSection(dictionariesSection.data) : null,

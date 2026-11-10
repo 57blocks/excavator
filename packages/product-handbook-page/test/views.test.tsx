@@ -44,7 +44,7 @@ const feature = (id: string, area: string, domain: string, status: Feature['stat
 function dataFor(views: View[]): PageData {
   const withTechnical = views.includes('technical');
   return {
-    format: 'excavator-product-handbook-page/16',
+    format: 'excavator-product-handbook-page/17',
     chunks: { parts: [], units: {} },
     project: d('project'),
     language: d('language'),
@@ -541,5 +541,101 @@ describe('the rail is two levels: groups and their links', () => {
   it('every text of the rail comes from the ui table', () => {
     for (const hash of ['#/', '#/feature/F3', '#/findings']) expect(unmarked(railOf(render(product, hash))), hash).toEqual([]);
     for (const hash of ['#/technical', '#/technical/feature/F3']) expect(unmarked(railOf(render(both, hash))), hash).toEqual([]);
+  });
+});
+
+describe('the domain page has the sections of the reference handbook (handbook-domain-page D2)', () => {
+  /** D1 holds F1 (menu, verified) and F2 (made automatic here); its relations, states, findings, hotspots, cited files and tables are set here. */
+  const withDomain = (views: View[]): PageData => {
+    const data = dataFor(views);
+    data.features[1] = { ...data.features[1], reach: 'automated' };
+    data.entities.domains[0] = {
+      ...data.entities.domains[0],
+      relations: [
+        { direction: 'out', domain: 'D2', from: 'F1', to: 'F3', text: d('hands the order on') },
+        { direction: 'in', domain: 'D2', from: 'F3', to: 'F1', text: d('sends it back') },
+      ],
+      states: [{ feature: 'F1', label: d('Draft'), meaning: d('not sent yet') }],
+      transitions: [{ feature: 'F1', from: d('Draft'), to: d('Sent'), by: d('the clerk sends it') }],
+    };
+    const owner = (id: string) => ({ kind: 'feature' as const, id, name: d(`name ${id}`) });
+    data.findings = [
+      { category: 'calculation', owners: [owner('F1')], items: [{ id: 'F1.findings[0]', owner: owner('F1'), text: d('finding of one') }], priority: { level: 'P1', consequence: 'wrongResult', reason: d('wrong total') } },
+      { category: 'display', owners: [owner('F3')], items: [{ id: 'F3.findings[0]', owner: owner('F3'), text: d('finding of three') }], priority: null },
+    ];
+    const hot = (name: string, features: string[]) => ({ name: d(name), app: SVC, commits: 7, authors: 2, lines: 50, last: d('2024-05-01'), uncertain: 0, features });
+    data.history = { ...NO_HISTORY, state: 'ok', hotspots: [hot('a.js', ['F1']), hot('z.js', ['F3'])] } as PageData['history'];
+    if (data.technical !== undefined) {
+      data.technical.history = { hotspots: [d('src/a.js'), d('src/z.js')], coChange: [] };
+      data.technical.domainFiles = [{ domain: 'D1', files: [{ file: d('src/a.js'), citations: 3 }, { file: d('src/b.js'), citations: 1 }] }, { domain: 'D2', files: [] }];
+      const table = (name: string, file: string) => ({ name: d(name), sources: [], createdBy: null, lastChangedBy: null, mentions: { [SVC]: [{ file: d(file), line: 1, rule: 'a' as const }] } });
+      data.technical.data = { tables: [table('orders', 'src/b.js'), table('audit', 'src/q.js')] } as unknown as NonNullable<NonNullable<PageData['technical']>['data']>;
+      data.technical.dataState = 'ok';
+    }
+    return data;
+  };
+  const mainOf = (html: string) => html.slice(html.indexOf('<main'));
+  const sectionOf = (html: string, part: string) => {
+    const start = html.indexOf(`data-part="${part}"`);
+    return start < 0 ? '' : html.slice(start, html.indexOf('</section>', start));
+  };
+  const technical = mainOf(render(withDomain(BOTH), '#/technical/domain/D1'));
+  const product = mainOf(render(withDomain(BOTH), '#/product/domain/D1'));
+
+  it('puts the sections in the order of the reference handbook, the code only in the technical view', () => {
+    const order = ['domain-does', 'domain-features', 'domain-states', 'domain-code', 'domain-relations', 'domain-findings'];
+    const at = order.map((part) => technical.indexOf(`data-part="${part}"`));
+    expect(at.every((position) => position > 0)).toBe(true);
+    expect([...at].sort((a, b) => a - b)).toEqual(at);
+    expect(product).not.toContain('data-part="domain-code"');
+    for (const part of order.filter((name) => name !== 'domain-code')) expect(product).toContain(`data-part="${part}"`);
+  });
+
+  it('groups the features by how readers reach them, with a count per group', () => {
+    const features = sectionOf(technical, 'domain-features');
+    expect(features).toContain(`${MARK}Menu (1)`);
+    expect(features).toContain(`${MARK}Automatic (1)`);
+    expect(features.indexOf('href="#/technical/feature/F1"')).toBeLessThan(features.indexOf('href="#/technical/feature/F2"'));
+  });
+
+  it('lists the states and transitions by feature', () => {
+    const states = sectionOf(technical, 'domain-states');
+    expect(states).toContain('href="#/technical/feature/F1"');
+    expect(decode(states)).toContain(`${MARK}${d('Draft')}: ${d('not sent yet')}`);
+    expect(decode(states)).toContain(`${MARK}${d('Draft')} to ${d('Sent')}: ${d('the clerk sends it')}`);
+  });
+
+  it('shows where the code is: the hotspots of its features, the files its entries quote, and the tables named in those files', () => {
+    const code = decode(sectionOf(technical, 'domain-code'));
+    expect(code).toContain(d('src/a.js'));
+    expect(code).not.toContain(d('src/z.js'));
+    expect(code).toContain(`${MARK}${d('src/b.js')}: 1 passages`);
+    expect(code).toContain(d('orders'));
+    expect(code).not.toContain(d('audit'));
+    expect(code).toContain(marked['page.domain.tablesNote']);
+  });
+
+  it('lists the relations on two sides, each linking both features and the other domain', () => {
+    const relations = sectionOf(technical, 'domain-relations');
+    const gives = relations.slice(relations.indexOf(marked['md.entities.domain.gives']), relations.indexOf(marked['md.entities.domain.gets']));
+    const gets = relations.slice(relations.indexOf(marked['md.entities.domain.gets']));
+    expect(gives).toContain('href="#/technical/feature/F3"');
+    expect(decode(gives)).toContain(d('hands the order on'));
+    expect(gives).toContain('href="#/technical/domain/D2"');
+    expect(decode(gets)).toContain(d('sends it back'));
+    expect(decode(gives)).not.toContain(d('sends it back'));
+  });
+
+  it('lists only the findings of its own features, and links the findings page', () => {
+    const findings = decode(sectionOf(technical, 'domain-findings'));
+    expect(findings).toContain(d('finding of one'));
+    expect(findings).not.toContain(d('finding of three'));
+    expect(findings).toContain('href="#/technical/findings"');
+  });
+
+  it('writes none for an empty section, and every text comes from the ui table or the data', () => {
+    const empty = mainOf(render(dataFor(BOTH), '#/technical/domain/D2'));
+    for (const part of ['domain-states', 'domain-relations', 'domain-findings']) expect(sectionOf(empty, part)).toContain(marked['md.none']);
+    for (const html of [technical, product, empty]) expect(unmarked(html)).toEqual([]);
   });
 });

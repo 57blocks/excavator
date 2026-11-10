@@ -55,7 +55,7 @@ const FINDINGS: FindingGroup[] = [
 /** F1 and F3 have verified findings, F2 verified with none, F4 failed, F5 planned; one finding of F1 was removed. */
 function dataFor(views: View[], findings: FindingGroup[] = FINDINGS, remedies: Remedies = { categories: [], recommendations: [] }, remediesCoverage: PageData['coverage']['remedies'] = { finished: true, stale: false, dropped: [] }): PageData {
   return {
-    format: 'excavator-product-handbook-page/16',
+    format: 'excavator-product-handbook-page/17',
     chunks: { parts: [], units: {} },
     project: d('project'),
     language: d('language'),

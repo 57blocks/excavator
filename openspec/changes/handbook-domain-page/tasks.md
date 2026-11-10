@@ -9,8 +9,8 @@
 
 提交：`feat(excavator-product-handbook): the domain page has the sections of the reference handbook`
 
-- [ ] 2.1 页面测试先红（O2：各节、关系链接、已知问题的过滤、产品视角无代码一节）
-- [ ] 2.2 领域页重排，固定文字表新键，页面数据格式升一版
+- [x] 2.1 页面测试先红（O2：各节、关系链接、已知问题的过滤、产品视角无代码一节）
+- [x] 2.2 领域页重排，固定文字表新键，页面数据格式升一版
 
 ## 3. 业务全景图与技术架构图
 

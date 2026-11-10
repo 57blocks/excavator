@@ -1,6 +1,6 @@
 /** The page data `handbook.mjs page` writes into the template (openspec change product-handbook-map, design D13). */
 
-export const PAGE_FORMAT = 'excavator-product-handbook-page/16';
+export const PAGE_FORMAT = 'excavator-product-handbook-page/17';
 
 /** The views a page can hold (openspec change handbook-entities-and-views): the product view and the technical view. */
 export const VIEWS = ['product', 'technical'] as const;
@@ -284,7 +284,20 @@ export interface System {
 }
 
 /** A domain (a business domain, or an area of the map when there is no domains file): its features, and the purposes of those that were verified, in the words of their entries. */
-export interface Domain { id: string; name: string; features: string[]; purposes: { feature: string; text: string }[] }
+export interface Domain {
+  id: string;
+  name: string;
+  features: string[];
+  purposes: { feature: string; text: string }[];
+  /** The handoffs of verified entries that cross into or out of the domain (openspec change handbook-domain-page, D1): `out` first, then `in`; `domain` is the other domain. */
+  relations?: DomainRelation[];
+  /** The states and transitions of the domain's verified entries, by feature. */
+  states?: { feature: string; label: string; meaning: string }[];
+  transitions?: { feature: string; from: string; to: string; by: string }[];
+}
+
+/** One handoff between a feature of this domain and a feature of another domain, in the words of the verified entry. */
+export interface DomainRelation { direction: 'out' | 'in'; domain: string; from: string; to: string; text: string }
 
 /** What the verified entry of a feature says a role can do; a role-feature pair the entries do not name has no cell. */
 export interface RoleFeatureMatrix { roles: string[]; features: string[]; cells: { role: string; feature: string; can: string[] }[] }
@@ -448,6 +461,8 @@ export interface Technical {
   topicLocations: { id: string; citations: { file: string; startLine: number | null; endLine: number | null }[] }[];
   /** The path of each hotspot file and of each file of a pair of `PageData.history`, in the order of its rows. */
   history: { hotspots: string[]; coChange: { a: string; b: string }[] };
+  /** The files the verified entries of each domain quote, with the number of passages, most quoted first (openspec change handbook-domain-page, D2). */
+  domainFiles?: { domain: string; files: { file: string; citations: number }[] }[];
   findingLocations: { id: string; citations: { file: string; startLine: number | null; endLine: number | null }[] }[];
   /** The data section; null when `<out>/data.json` is missing or malformed, and `dataState` says which. */
   data: DataSection | null;
